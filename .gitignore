@@ -47,15 +47,6 @@ docs/
 /HEAVY_FRACTION_VISCOSITY_LITERATURE.md
 /MISSING_PARAMETER_ESTIMATION_RESEARCH.md
 /PSEUDOCOMPONENT_COLD_FLOW.md
-/examples/cold-flow/
-/examples/audit_residue_viscosity_units.py
-/examples/crude-assays/build_quality.py
-/examples/crude-assays/cut-quality-profiles.json
-/examples/crude-assays/estimation-screening.json
-/examples/crude-assays/extract_quality.py
-/examples/crude-assays/screen_estimation_methods.py
-/examples/crude-assays/source-quality.json
-/examples/crude-assays/test_quality.py
 
 # Claude × Codex collaboration runtime files
 .collab/
@@ -77,3 +68,9 @@ CLAUDE.md
 
 # Local Minecraft MCP bridge connection
 /.mcp.json
+
+# Local working material (owner decision 2026-10-14): documents, tools, research and examples are not tracked.
+/documentation/
+/tools/
+/research/
+/examples/

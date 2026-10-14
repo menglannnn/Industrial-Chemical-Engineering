@@ -1,5 +1,0 @@
-/setblock -2 -56 30 minecraft:air
-/setblock -1 -56 30 minecraft:air
-/setblock 0 -59 30 createcheme:fluid_void
-/setblock 0 -58 30 createcheme:fluid_pipe
-/setblock 0 -57 30 createcheme:fluid_pump[facing=down]

@@ -1,3 +1,0 @@
-/setblock 3 -56 10 createcheme:fluid_void
-/setblock 2 -56 10 createcheme:fluid_pipe
-/setblock 1 -56 10 createcheme:fluid_pump[facing=east]

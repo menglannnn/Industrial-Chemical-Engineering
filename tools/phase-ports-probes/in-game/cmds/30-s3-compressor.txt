@@ -1,5 +1,0 @@
-/setblock 0 -59 20 createcheme:fluid_reservoir
-/setblock 1 -59 20 createcheme:fluid_pipe
-/setblock 4 -59 20 createcheme:fluid_reservoir
-/setblock 3 -59 20 createcheme:fluid_pipe
-/setblock 2 -59 20 createcheme:fluid_compressor[facing=east]

@@ -1,8 +1,0 @@
-/setblock -2 -56 10 minecraft:air
-/setblock -1 -56 10 minecraft:air
-/setblock 1 -56 10 minecraft:air
-/setblock 2 -56 10 minecraft:air
-/setblock 3 -56 10 minecraft:air
-/setblock 0 -59 8 minecraft:stone
-/setblock 0 -58 10 createcheme:fluid_pipe
-/setblock 0 -57 10 createcheme:fluid_pump[facing=down]

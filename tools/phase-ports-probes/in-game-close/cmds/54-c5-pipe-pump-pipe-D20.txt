@@ -1,3 +1,0 @@
-/setblock 0 -58 50 createcheme:fluid_pipe
-/setblock 0 -59 50 createcheme:fluid_pump[facing=down]
-/setblock 0 -60 50 createcheme:fluid_pipe

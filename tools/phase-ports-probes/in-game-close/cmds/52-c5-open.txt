@@ -1,3 +1,0 @@
-/setblock -2 -57 50 minecraft:air
-/setblock -1 -57 50 minecraft:air
-/setblock 0 -60 50 createcheme:fluid_void

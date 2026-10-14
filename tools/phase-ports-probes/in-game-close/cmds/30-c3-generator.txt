@@ -1,4 +1,0 @@
-/setblock -2 -57 20 createcheme:fluid_generator
-/setblock -2 -59 22 minecraft:stone
-/setblock 0 -59 22 minecraft:stone
-/setblock 2 -59 22 minecraft:stone

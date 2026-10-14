@@ -1,1 +1,0 @@
-skipped: OpenJ9 has no -XX:-UseLibmIntrinsic (it silently ignores unknown -XX options)

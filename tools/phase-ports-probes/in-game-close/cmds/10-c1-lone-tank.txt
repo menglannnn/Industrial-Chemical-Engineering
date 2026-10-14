@@ -1,2 +1,0 @@
-/setblock 0 -57 0 createcheme:fluid_reservoir
-/setblock 0 -59 2 minecraft:stone
