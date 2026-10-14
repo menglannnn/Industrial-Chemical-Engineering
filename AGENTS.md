@@ -56,7 +56,14 @@ The owner's words: "try to shorten the tests, they are taking too long/too much 
 - Do not add new top-level folders for documents or scripts. `examples/` is tracked and referenced by the build and tests; leave it where it is.
 - After every task, update the documentation of its batch in the same session: put the task's documents in the batch folder (create a new dated folder for a new batch) and update the batch row of `documentation/INDEX.md` (and `research/INDEX.md` or `tools/INDEX.md` when those changed) with the status and its date: Implemented (date it reached `main`), In progress since, Planned, Concluded (research only), or Abandoned / Superseded with the reason.
 - Documents written in a worktree are copied into the main checkout's `documentation/<batch>/` when the work merges, or when the task ends if it never merges.
-- Every merge to `main` adds a `CHANGELOG.md` entry (Keep a Changelog format, one line per batch with its commits and batch folder) and bumps `mod_version` in `gradle.properties` in the same merge: minor version for a merged batch of work, patch version for a merge that only fixes. `0.1.0` is the state before the changelog existed; `0.2.0` is the solid-phase fluid system merge. Branches record their entry under `[Unreleased]`; the merge turns it into the new version heading.
+- Every merge to `main` adds a `CHANGELOG.md` entry (Keep a Changelog format, one line per batch with its commits and batch folder) bumps `mod_version` in `gradle.properties` and updates the code guide (see "Code guide" below) in the same merge: minor version for a merged batch of work, patch version for a merge that only fixes. `0.1.0` is the state before the changelog existed; `0.2.0` is the solid-phase fluid system merge. Branches record their entry under `[Unreleased]`; the merge turns it into the new version heading.
+
+## Code guide: regular task before every merge to main (recorded 2026-10-15)
+
+- The progressive-disclosure code guide lives in the main checkout at `documentation/reference/code-guide/` (git-ignored, canonical copy there): `README.md` is level 1 (what the mod calculates) and level 2 (code map and routing table); one chapter per subsystem holds the deeper levels (class map, main flow, collapsible detail, owning layer per change, tests that pin it).
+- Read `README.md` first when starting work in an unfamiliar area; open only the chapter the task needs.
+- Before every merge to `main`, as a regular merge task beside the `CHANGELOG.md` entry and the `mod_version` bump: update the chapters whose code the batch changed (new, renamed or removed classes, changed flows, contracts, defaults, formats and versions, Gradle tasks and gates), set each touched chapter's snapshot line to the merge commit and date, and add a chapter plus a README row for a new subsystem. Facts come from the code on the merging branch, not from plans.
+- A batch that changes no code covered by the guide records "code guide: no change" in its review.
 
 ## Test classes and tools after a batch (recorded 2026-09-24)
 
