@@ -69,8 +69,16 @@ CLAUDE.md
 # Local Minecraft MCP bridge connection
 /.mcp.json
 
-# Local working material (owner decision 2026-10-14): documents, tools, research and examples are not tracked.
+# Local working material (owner decision 2026-10-14): documents, tools and research are not tracked. examples/ stays tracked (AGENTS.md).
 /documentation/
 /tools/
 /research/
-/examples/
+/examples/cold-flow/
+/examples/audit_residue_viscosity_units.py
+/examples/crude-assays/build_quality.py
+/examples/crude-assays/cut-quality-profiles.json
+/examples/crude-assays/estimation-screening.json
+/examples/crude-assays/extract_quality.py
+/examples/crude-assays/screen_estimation_methods.py
+/examples/crude-assays/source-quality.json
+/examples/crude-assays/test_quality.py
