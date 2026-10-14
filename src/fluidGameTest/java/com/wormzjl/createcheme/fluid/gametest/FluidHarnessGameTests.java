@@ -25,11 +25,12 @@ public final class FluidHarnessGameTests {
         long tankId=((com.wormzjl.createcheme.world.level.block.entity.FluidDeviceBlockEntity)level.getBlockEntity(reservoir)).fluidIdentity();
         var registration=world.registrations().get(sourceId);var spec=registration.spec();
         world.edit(sourceId,registration.revision(),registration.device(),new com.wormzjl.createcheme.runtime.fluid.FluidDeviceSpec(spec.volume(),spec.temperature(),200000,spec.composition()));
-        double initialNitrogen=world.view(tankId).state().phaseMoles()[2][com.wormzjl.createcheme.science.fluid.thermo.FluidMaterialCatalog.nitrogenIndex()];int[] phase={0};double[] before={0};long[] changedAt={0};
+        // A placed tank holds nothing (decision D54): no nitrogen at the start, and none may appear.
+        var initialState=world.view(tankId).state();double initialNitrogen=initialState==null?0:initialState.phaseMoles()[2][com.wormzjl.createcheme.science.fluid.thermo.FluidMaterialCatalog.nitrogenIndex()];int[] phase={0};double[] before={0};long[] changedAt={0};
         helper.succeedWhen(()->{
             if(phase[0]==0) {
                 helper.assertTrue(!level.hasChunkAt(middle),"Waiting for intermediate pipe chunks to unload");
-                var view=world.view(tankId);helper.assertTrue(view.state().phaseMoles()[1][com.wormzjl.createcheme.science.fluid.thermo.FluidMaterialCatalog.waterIndex()]>0,"No transfer across unloaded middle chunks");
+                var view=world.view(tankId);helper.assertTrue(view.state()!=null&&view.state().phaseMoles()[1][com.wormzjl.createcheme.science.fluid.thermo.FluidMaterialCatalog.waterIndex()]>0,"No transfer across unloaded middle chunks");
                 helper.assertTrue(level.hasChunkAt(source)&&level.hasChunkAt(reservoir),"Test endpoint tickets were not retained");
                 level.setChunkForced(a.x,a.z,false);level.setChunkForced(b.x,b.z,false);phase[0]=1;
                 helper.assertTrue(false,"Waiting for endpoint chunks to unload");
@@ -66,7 +67,8 @@ public final class FluidHarnessGameTests {
         var p=(com.wormzjl.createcheme.world.level.block.entity.FluidDeviceBlockEntity)level.getBlockEntity(pipe);
         var g=(com.wormzjl.createcheme.world.level.block.entity.FluidDeviceBlockEntity)level.getBlockEntity(source);
         helper.assertTrue(r.fluidIdentity()>0&&p.fluidIdentity()>0&&g.fluidIdentity()>0,"Placement did not bind stable identities");
-        long tankId=r.fluidIdentity(),pipeId=p.fluidIdentity();var initial=world.view(tankId).state();double nitrogen=initial.phaseMoles()[2][com.wormzjl.createcheme.science.fluid.thermo.FluidMaterialCatalog.nitrogenIndex()];
+        // A placed tank holds nothing (decision D54): construction books no nitrogen, and removal none.
+        long tankId=r.fluidIdentity(),pipeId=p.fluidIdentity();var initial=world.view(tankId).state();double nitrogen=initial==null?0:initial.phaseMoles()[2][com.wormzjl.createcheme.science.fluid.thermo.FluidMaterialCatalog.nitrogenIndex()];
         var registration=world.registrations().get(g.fluidIdentity());var spec=registration.spec();
         world.edit(g.fluidIdentity(),registration.revision(),registration.device(),new com.wormzjl.createcheme.runtime.fluid.FluidDeviceSpec(spec.volume(),spec.temperature(),200000,spec.composition()));
         int[] phase={0};

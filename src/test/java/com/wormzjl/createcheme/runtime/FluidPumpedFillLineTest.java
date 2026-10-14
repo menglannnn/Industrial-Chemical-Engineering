@@ -24,6 +24,10 @@ import static org.junit.jupiter.api.Assertions.*;
  */
 class FluidPumpedFillLineTest {
     private static final PipeResistance.Geometry BLOCK=new PipeResistance.Geometry(1,.05,.000045,0);
+    /** W: a 0.1 m pipe block, the suction block the gas transfer needs since only pipes connect (decision D20): with a 0.05 m
+     * block the compressor closes on a suction junction 4.2 Pa below its tank (the block's friction at the closing flow),
+     * outside the 3 Pa this test states the ratio limit to; the wide block adds no measurable drop. */
+    private static final PipeResistance.Geometry WIDE=new PipeResistance.Geometry(1,.1,.000045,0);
     private static final long NANOS_PER_CHECKPOINT=1_000;
     private static final BoundedCpuSolveService.CancellationToken NEVER=new BoundedCpuSolveService.CancellationToken() {
         public long deadlineNanos(){return Long.MAX_VALUE;}public boolean isDeadlineExceeded(){return false;}
@@ -32,17 +36,23 @@ class FluidPumpedFillLineTest {
     private final FluidThermodynamics model=FluidTestSupport.networkModel();
 
     private double[] pure(int component){double[] n=new double[MaterialTestBasis.NETWORK+1];n[component]=1;return n;}
-    /** A line of blocks along +x, every block facing east, in the WP5 rig's letters: G generator, U pump, P pipe, R tank, V void. */
+    /** The compressor of the gas transfer (decision D2): the pump's 0.01 m3/s, ratio 1.01 (the lowest the plan's GUI bounds
+     * allow; a 1013 Pa rise on 1 atm suction, near the pump's 575 Pa density-scaled limit this test was written for). */
+    private static final double COMPRESSOR_RATIO=1.01;
+    /** A line of blocks along +x, every block facing east, in the WP5 rig's letters: G generator, U pump, P pipe, R tank, V void;
+     * a pipe block stands between the generator and the pump and between the suction tank and the compressor, since only pipes
+     * connect (decision D20; they touched until 2026-09-28);
+     * and C, a compressor (phase-ports batch, decision D2). */
     private PassiveNetwork line(String layout) {
         var devices=new ArrayList<PhysicalFluidTopology.Device>();var boundaries=new LinkedHashMap<Long,PassiveNetwork.Reservoir>();
         for(int i=0;i<layout.length();i++) {
-            var kind=switch(layout.charAt(i)){case 'G'->TopologyCompiler.Kind.GENERATOR;case 'U'->TopologyCompiler.Kind.PUMP;case 'P'->TopologyCompiler.Kind.PIPE;
+            var kind=switch(layout.charAt(i)){case 'G'->TopologyCompiler.Kind.GENERATOR;case 'U'->TopologyCompiler.Kind.PUMP;case 'C'->TopologyCompiler.Kind.COMPRESSOR;case 'P','W'->TopologyCompiler.Kind.PIPE;
                 case 'R'->TopologyCompiler.Kind.RESERVOIR;case 'V'->TopologyCompiler.Kind.VOID;default->throw new IllegalArgumentException(layout);};
-            var device=new PhysicalFluidTopology.Device(i+1,new PhysicalFluidTopology.Position("minecraft:overworld",i,64,0),kind,PhysicalFluidTopology.Direction.EAST,BLOCK,
-                    kind==TopologyCompiler.Kind.PUMP?new FlowControl.Pump(.01,500000,1):new FlowControl.Passive());
+            var device=new PhysicalFluidTopology.Device(i+1,new PhysicalFluidTopology.Position("minecraft:overworld",i,64,0),kind,PhysicalFluidTopology.Direction.EAST,layout.charAt(i)=='W'?WIDE:BLOCK,
+                    kind==TopologyCompiler.Kind.PUMP?new FlowControl.Pump(.01,500000,1):kind==TopologyCompiler.Kind.COMPRESSOR?new FlowControl.Compressor(.01,COMPRESSOR_RATIO,1):new FlowControl.Passive());
             devices.add(device);
             if(kind==TopologyCompiler.Kind.GENERATOR)boundaries.put(device.id(),new FluidDeviceSpec(1,298.15,101325,pure(MaterialTestBasis.NETWORK)).initialize(device,model,()->{}));
-            else if(kind==TopologyCompiler.Kind.RESERVOIR||kind==TopologyCompiler.Kind.VOID)boundaries.put(device.id(),new FluidDeviceSpec(1,298.15,101325,pure(MaterialTestBasis.NITROGEN)).initialize(device,model,()->{}));
+            else if(kind==TopologyCompiler.Kind.RESERVOIR||kind==TopologyCompiler.Kind.VOID)boundaries.put(device.id(),com.wormzjl.createcheme.fluid.support.FluidTestSupport.chargedBoundary(new FluidDeviceSpec(1,298.15,101325,pure(MaterialTestBasis.NITROGEN)),device,model));
         }
         var compiled=PhysicalFluidTopology.compile(devices,boundaries);
         var connected=compiled.islands().stream().filter(i->i.physicalIds().size()==devices.size()).toList();
@@ -95,7 +105,7 @@ class FluidPumpedFillLineTest {
      * at residual 7.923408755940031E-7} in game and here, bit for bit).
      */
     @Test void everyPumpedChainCommitsItsFirstTickFromAColdSolver() {
-        for(String layout:List.of("GUPRPRPR","GUPRPRPRPRPRPR","GUPRPRPRPRPRPRPV")) {
+        for(String layout:List.of("GPUPRPRPR","GPUPRPRPRPRPRPR","GPUPRPRPRPRPRPRPV")) {
             var result=new PassiveIntervalSolver(model).solve(line(layout),.05,PassiveIntervalSolver.Settings.defaults(),()->{},RetainedSolver.COLD_START_SECONDS);
             System.out.println(layout+": first tick accepted="+result.acceptedSubsteps()+" rejected="+result.rejectedSubsteps()+" reasons="+result.rejectionReasons());
             var first=tanks(result.graph()).getFirst().state();
@@ -110,7 +120,7 @@ class FluidPumpedFillLineTest {
      * residual 0.10479353009252752} (in game after the first committed tick: {@code 0.10479996312241754}).
      */
     @Test void aPumpedFillPassesTheSecondTanksBackflowWithoutAHold() {
-        var result=new PassiveIntervalSolver(model).solve(line("GUPRPRPR"),.6,PassiveIntervalSolver.Settings.defaults(),()->{},RetainedSolver.COLD_START_SECONDS);
+        var result=new PassiveIntervalSolver(model).solve(line("GPUPRPRPR"),.6,PassiveIntervalSolver.Settings.defaults(),()->{},RetainedSolver.COLD_START_SECONDS);
         System.out.println("three-tank fill, 0.6 s: accepted="+result.acceptedSubsteps()+" rejected="+result.rejectedSubsteps()+" reasons="+result.rejectionReasons());
         assertEquals(.6,result.advancedSeconds(),1e-12);
     }
@@ -120,7 +130,7 @@ class FluidPumpedFillLineTest {
      * at its 500 kPa limit over the generator (601,325 Pa), where it closes, and the island certifies STEADY.
      */
     @Test void aPumpedThreeTankChainFillsToThePumpsShutoffAndCertifies() {
-        var rig=new Rig("GUPRPRPR");rig.run(20*420,s->s.certificate().isPresent());
+        var rig=new Rig("GPUPRPRPR");rig.run(20*420,s->s.certificate().isPresent());
         System.out.println("three-tank fill: "+rig.describe());
         var island=rig.island();
         assertTrue(island.certificate().isPresent(),"the filled chain certifies: "+rig.describe());
@@ -133,7 +143,7 @@ class FluidPumpedFillLineTest {
     /** A pumped chain vented to a void: the tanks fill with water, the nitrogen leaves through the void, and the pump
      * holds its 0.01 m3/s through the chain. */
     @Test void aVentedChainReachesThroughFlowAtThePumpsTarget() {
-        var rig=new Rig("GUPRPRPRPV");rig.run(20*600,s->false);
+        var rig=new Rig("GPUPRPRPRPV");rig.run(20*600,s->false);
         System.out.println("vented three-tank chain: "+rig.describe());
         var island=rig.island();var result=island.lastResult().orElseThrow();
         assertTrue(island.status().startsWith("FULL"),rig.describe());
@@ -150,28 +160,32 @@ class FluidPumpedFillLineTest {
      * target: the first two simulated seconds are the whole of its difficulty.
      */
     @Test void aSixTankChainPassesTheStartThatHeldItForever() {
-        var rig=new Rig("GUPRPRPRPRPRPR");rig.run(20*120,s->s.clock().committedTick()>=40);
+        var rig=new Rig("GPUPRPRPRPRPRPR");rig.run(20*120,s->s.clock().committedTick()>=40);
         System.out.println("six-tank fill: "+rig.describe());
         assertTrue(rig.island().clock().committedTick()>=40,"past its first two seconds: "+rig.describe());
         assertEquals(FlowControl.Mode.PUMP_TARGET,rig.island().lastResult().orElseThrow().endpointModes().get(1));
     }
 
     /**
-     * A pump moving nitrogen from one closed tank to another. Its "max pressure rise" is the rise for water; on nitrogen at
-     * 1 atm its limit is that times 1.145/996, about 575 Pa, so it reaches the limit and then its shutoff within a
-     * fraction of a second, the suction tank a quarter of a kelvin cooler, and the island certifies (F4, pump option P1).
-     * Before P1 the pump evacuated the suction tank adiabatically until it reached the model's 273.16 K floor after 21.9 s
-     * and stayed held there (F1 review, section 2.6); the extended nitrogen domain would only have moved that end to 63 K.
+     * A compressor moving nitrogen from one closed tank to another (decision D2: a liquid-only pump refuses the gas, D1). Its
+     * limit is a pressure ratio (decision D7): it reaches the discharge at {@code r_max} times the suction and then its
+     * shutoff within a few seconds, and the island certifies. The suction tank is a bag (decision D54): it gives its gas
+     * at the ambient and at its own temperature, shrinking as the gas leaves, so it stays at 298.15 K and 101325 Pa; the
+     * discharge tank, a full bag, rises to {@code r_max} times that. (Before D54 the suction tank was rigid and cooled a
+     * fraction of a kelvin by its expansion. Test name kept from the pump it was: the pump held its density-scaled limit,
+     * 575 Pa on this gas, with the suction a quarter of a kelvin cooler. Before that, option P1 of the F1 review, the pump
+     * evacuated the suction tank until it reached the model's 273.16 K floor after 21.9 s.)
      */
     @Test void aGasTransferClosesAtThePumpsScaledLimitAndCertifies() {
-        var rig=new Rig("RUPR");
+        var rig=new Rig("RWCPR");
         rig.run(20*120,s->s.certificate().isPresent());
-        System.out.println("gas transfer: "+rig.describe());
+        System.out.println("gas transfer (compressor): "+rig.describe());
         var island=rig.island();var suction=tanks(island.graph()).getFirst().state();var discharge=tanks(island.graph()).getLast().state();
         assertTrue(island.certificate().isPresent(),"the closed transfer certifies: "+rig.describe());
-        assertEquals(FlowControl.Mode.CLOSED,island.lastResult().orElseThrow().endpointModes().get(1),"the pump is closed at its shutoff");
-        assertTrue(suction.temperature()<298.15&&suction.temperature()>297.5,"a fraction of a kelvin cooler: "+rig.describe());
-        assertEquals(500000*1.145/model.pumpReferenceDensity(),discharge.pressure()-suction.pressure(),3,"the pump holds its scaled limit: "+rig.describe());
+        assertEquals(FlowControl.Mode.CLOSED,island.lastResult().orElseThrow().endpointModes().get(1),"the compressor is closed at its shutoff");
+        assertEquals(298.15,suction.temperature(),1e-6,"the suction bag gives its gas at its own temperature (D54): "+rig.describe());
+        assertEquals(101325,suction.pressure(),1e-3,"the suction bag stays at the ambient (D54): "+rig.describe());
+        assertEquals(COMPRESSOR_RATIO*suction.pressure(),discharge.pressure(),3,"the compressor holds its ratio limit: "+rig.describe());
         assertTrue(rig.jobs<=20,"a handful of solves: "+rig.describe());
     }
 }

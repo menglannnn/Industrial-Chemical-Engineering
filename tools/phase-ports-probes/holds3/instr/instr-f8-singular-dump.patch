@@ -1,0 +1,75 @@
+diff --git a/src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveStepSolver.java b/src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveStepSolver.java
+index 19867d04..737e293c 100644
+--- a/src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveStepSolver.java
++++ b/src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveStepSolver.java
+@@ -292,6 +292,7 @@ public final class PassiveStepSolver {
+     record LastSolve(Equations equations,double[] variables) {}
+     private LastSolve lastSolve;
+     private boolean rateOnly;
++    public static volatile java.util.function.Consumer<String> INSTR_LAYOUT;
+     /** Owned by this solver, which the ownership latch confines to one worker at a time. */
+     private final com.wormzjl.createcheme.science.fluid.transport.MixtureViscosity.Workspace viscosities=
+             new com.wormzjl.createcheme.science.fluid.transport.MixtureViscosity.Workspace();
+@@ -458,6 +459,7 @@ public final class PassiveStepSolver {
+             double tolerance=acceptance==Acceptance.APPROXIMATE?1e-6:smallHeadspace?1e-10:1e-9;
+             try{numerical=SparseNewton.solve(equations,equations.initial(),new SparseNewton.Settings(20,tolerance,1e-6,24),checkpoint,workspace);}
+             catch(SparseNewton.Nonconvergence failure) {
++                if(INSTR_LAYOUT!=null)INSTR_LAYOUT.accept("pass="+pass+" failure="+failure.getMessage()+"\n"+equations.instrLayout());
+                 if(failure.lastVariables()==null)throw failure;
+                 double[] trialFlows=Arrays.copyOfRange(failure.lastVariables(),equations.edgeOffset,equations.edgeOffset+graph.pipes().size());
+                 // A point the Newton never reached is deliberately not read as evidence about this
+@@ -1955,6 +1957,12 @@ public final class PassiveStepSolver {
+     double[] acceptedPoint(){return lastSolve==null?null:lastSolve.variables().clone();}
+     /** The rows a block Jacobian sweep has to re-evaluate for one perturbed node or edge column. */
+     final class Equations implements SparseNewton.Equations {
++        String instrLayout() {
++            var b=new StringBuilder("rateOnly="+rateOnly+" dt="+dt+" size="+size+" edgeOffset="+edgeOffset+" filterOffsets="+Arrays.toString(filterOffsets)+"\n");
++            for(int i=0;i<layout.length;i++){var n=graph.reservoirs().get(i);b.append("  node ").append(i).append(" id=").append(n.id()).append(' ').append(n.kind()).append(" offset=").append(offsets[i]).append(layout[i]==null?" fixed":" size="+layout[i].size()+" "+layout[i].instrLabels()).append('\n');}
++            for(int i=0;i<graph.pipes().size();i++){var p=graph.pipes().get(i);b.append("  edge ").append(i).append(' ').append(p.first()).append("->").append(p.second()).append(" flow@").append(edgeOffset+i).append(" control@").append(controlOffsets[i]).append(" mode=").append(modes.get(i)).append(" closed=").append(boundaryClosed[i]).append('\n');}
++            return b.toString();
++        }
+         final double[][] solidTargets,solidIncoming;
+         final int[] filterOffsets;
+         /** The connections as the warm-flow check may compare them: never including the cake. */
+diff --git a/src/main/java/com/wormzjl/createcheme/science/fluid/solver/PhaseLayout.java b/src/main/java/com/wormzjl/createcheme/science/fluid/solver/PhaseLayout.java
+index 1a6a3a42..b1a99657 100644
+--- a/src/main/java/com/wormzjl/createcheme/science/fluid/solver/PhaseLayout.java
++++ b/src/main/java/com/wormzjl/createcheme/science/fluid/solver/PhaseLayout.java
+@@ -99,6 +99,7 @@ public final class PhaseLayout {
+         }
+     }
+     public int size(){return size;}
++    public String instrLabels(){return "T@"+temperatureIndex+" P@"+pressureIndex+" wl@"+waterLiquidIndex+" wv@"+waterVaporIndex+" pc@"+partialPressureIndex+" comps="+java.util.Arrays.toString(components);}
+     public int componentBalanceCount(){return components.length+(waterLiquidIndex>=0||waterVaporIndex>=0?1:0);}
+     /** This layout's frozen per-component support, in the conserved hydrocarbon basis. */
+     public PhaseSupport support(int component){return support[component];}
+diff --git a/src/main/java/com/wormzjl/createcheme/science/fluid/solver/SparseNewton.java b/src/main/java/com/wormzjl/createcheme/science/fluid/solver/SparseNewton.java
+index 12d9666a..fcdcb56d 100644
+--- a/src/main/java/com/wormzjl/createcheme/science/fluid/solver/SparseNewton.java
++++ b/src/main/java/com/wormzjl/createcheme/science/fluid/solver/SparseNewton.java
+@@ -10,6 +10,7 @@ import java.util.*;
+ /** Per-call sparse Newton workspace. Inputs and residuals must already be dimensionlessly scaled. */
+ public final class SparseNewton {
+     private SparseNewton() {}
++    public static volatile java.util.function.BiConsumer<SparseMatrix,double[]> INSTR_SINGULAR;
+ 
+     public interface Equations {
+         int size();
+@@ -158,7 +159,7 @@ public final class SparseNewton {
+             double[] direction;
+             lastNonzeros=workspace.matrix.nonzeroCount();
+             try{direction=workspace.factorization.solve(rhs,SparseLuSolver.Verification.UNTIL_VERIFIED);}
+-            catch(SparseLuSolver.SolveFailure failure){if(!fresh){SolverDiagnostics.count(SolverDiagnostics.newtonRefreshesFailed);refresh=true;continue;}workspace.invalidate();throw new Nonconvergence("Singular Newton Jacobian: "+failure.getMessage(),x);}
++            catch(SparseLuSolver.SolveFailure failure){if(!fresh){SolverDiagnostics.count(SolverDiagnostics.newtonRefreshesFailed);refresh=true;continue;}if(INSTR_SINGULAR!=null)INSTR_SINGULAR.accept(workspace.matrix,f.clone());workspace.invalidate();throw new Nonconvergence("Singular Newton Jacobian: "+failure.getMessage(),x);}
+             double alpha=Math.min(1,equations.maximumStep(x,direction));boolean accepted=false;
+             if(!Double.isFinite(alpha)||alpha<=0)throw new Nonconvergence("No feasible Newton direction",x);
+             for(int backtrack=0;backtrack<settings.backtracks();backtrack++,alpha*=.5) {
+@@ -269,7 +270,7 @@ public final class SparseNewton {
+     private static int factor(double[] x,double[] derivatives,Workspace workspace,Pattern pattern,int calls) {
+         var numeric=pattern.numericMatrix(derivatives);
+         try{if(workspace.ordering==null)workspace.ordering=SparseLuSolver.prepareOrdering(pattern.symbolicMatrix());workspace.factorization=workspace.shared.factors.factor(numeric,workspace.ordering);workspace.matrix=numeric;}
+-        catch(SparseLuSolver.SolveFailure failure){workspace.invalidate();throw new Nonconvergence("Singular Newton Jacobian: "+failure.getMessage(),x);}
++        catch(SparseLuSolver.SolveFailure failure){if(INSTR_SINGULAR!=null)INSTR_SINGULAR.accept(numeric,x.clone());workspace.invalidate();throw new Nonconvergence("Singular Newton Jacobian: "+failure.getMessage(),x);}
+         return calls;
+     }
+     private static double[] evaluate(Equations equations,double[] variables,int size) {

@@ -22,12 +22,30 @@ Standing rules from the project owner. They apply to every agent working in this
 
 ## Working rules already in force
 
-- One Gradle invocation at a time on the machine; never a test suite while a dev client is running.
+- Gradle invocations (amended 2026-09-28): at most two at a time on the machine, each in its own worktree, and only when neither measures time (correctness runs that count tests or seeds). A run that measures time (benchmarks, cost gates judged by wall time) runs alone. Never a test suite while a dev client is running. When two runs overlap, cost is judged by counters, not wall time, and a wall-clock budget hold is replayed alone before it is counted.
 - Never use bare `git stash` or `git stash pop`; set work aside with a WIP commit or a tagged stash entry restored with `git stash apply`.
 - Work only inside your own worktree; never modify another agent's worktree sources.
 - Every review or audit is written to `documentation/<batch>/<TOPIC>_REVIEW.md`; plans to `documentation/<batch>/<TOPIC>_PLAN.md`, inside the folder of the batch of work they belong to (see the next section).
 - GUI work is verified in the dev client through the langyo/minecraft-mod-mcp bridge (jar in `<worktree>/run/mods`, `.mcp.json` in the worktree root).
-- Large solver campaigns run with 8 to 10 worker threads and never overlap another campaign or a Gradle suite.
+- Large solver campaigns run with 8 to 10 worker threads and never overlap another campaign at that size. A run on the second Gradle lane uses at most 4 worker threads.
+
+
+## Measurement per task: lean (recorded 2026-10-13)
+
+The owner's words: "try to shorten the tests, they are taking too long/too much effort". Every task measures with the least that decides it:
+
+- Forms and variants are compared on the 200-seed quick check (both distributions), at most three forms per task; one is chosen.
+- One full campaign (1000 seeds, both distributions, 8 workers) for the chosen form only. Worse seeds are not replayed alone; only new budget-class holds (classes C and F that are not in the baseline) are replayed alone, batched in one run.
+- Worse worlds are listed by class from the campaign's classifier; at most the two smallest new ones are minimized and traced.
+- References once: the suites (which give the 33 junction lines, the printed lines and MIXED_GAS_COST), chain-100, and the GameTests inside one final `gates.sh` run. No second gates run: the GameTest read is at a fixed online tick (A141) and is deterministic.
+- A gate test's proof with the rule disabled runs that one test, not the suite.
+- Counters come from the campaign itself; no separate per-seed Newton runs.
+- A split of a hold class by mechanism is made only when the task targets that class, on the final code, with the existing classifier script.
+- Reports are at most 50 lines.
+## Defects: physics first, structure over patches (recorded 2026-09-28)
+
+- Every issue is first reasoned from real-life physics, with simplifications: what flows where, and what the steady state is, in numbers. The report leads with that expectation, then states what the code did instead in plain words, and ends in a proposition for the owner to validate.
+- Every fix improves the existing code structure. A fix is placed in the stage it belongs to and absorbs the special cases it makes unnecessary; no isolated patches.
 
 ## Documentation, research, tools and versions (recorded 2026-09-23)
 

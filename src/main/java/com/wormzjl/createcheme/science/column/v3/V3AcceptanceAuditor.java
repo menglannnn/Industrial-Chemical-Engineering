@@ -1,5 +1,7 @@
 package com.wormzjl.createcheme.science.column.v3;
 
+import com.wormzjl.createcheme.science.math.DeterministicMath;
+
 import com.wormzjl.createcheme.science.column.v3.thermo.V3ThermoModel;
 import com.wormzjl.createcheme.science.column.v3.thermo.V3ThermoWorkspace;
 import com.wormzjl.createcheme.science.column.v3.thermo.V3PengRobinsonThermo;
@@ -769,7 +771,7 @@ final class V3AcceptanceAuditor {
                     vapor, V3Phase.VAPOR, workspace);
             double[] kValues = new double[overall.length];
             for (int component = 0; component < kValues.length; component++) {
-                kValues[component] = Math.exp(liquidFugacity.logFugacityCoefficient(component)
+                kValues[component] = DeterministicMath.exp(liquidFugacity.logFugacityCoefficient(component)
                         - vaporFugacity.logFugacityCoefficient(component)) / vaporScale;
                 if (!Double.isFinite(kValues[component]) || kValues[component] <= 0.0) {
                     return IndependentCondenserFlash.unavailable(overall.length);

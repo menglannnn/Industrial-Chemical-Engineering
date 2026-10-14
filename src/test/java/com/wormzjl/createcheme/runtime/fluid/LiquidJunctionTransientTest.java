@@ -13,8 +13,9 @@ import static org.junit.jupiter.api.Assertions.*;
  * Liquid junction transients (BE_INTEGRATOR_PLAN.md WP3 (d), review 9.3): two water inlets at different pressures and
  * temperatures (300 K at 150 kPa, 350 K at 130 kPa) feed a compiled junction with two void outlets at 1 atm, 50 or 20 mm
  * bore, for 20 s. The inlets are either generators (fixed states, a steady through-flow) or liquid-full 1 m3 tanks. Every
- * case must converge at 0.1 s intervals and at the product's 5 s cycle and close its ledger (tanks plus the junction's
- * owned holdup plus the boundary transfers) at roundoff, as MixedGasJunctionTransientTest does for gases.
+ * case must converge at 0.1 s intervals and at the product's 5 s cycle and close its ledger (owner decision D46: the
+ * tanks' change equals the boundary transfers plus the junction term, the change of the junction's buffer) at roundoff,
+ * the term within its bound m_J, as MixedGasJunctionTransientTest does for gases ({@link JunctionLedger}).
  *
  * <p>It also measures what the junction holdup costs a liquid: the junction's specific enthalpy lags the inflow mixture
  * with the time constant m_J/Q, and m_J is sized from the configured 100 m/s velocity limit for every phase (review 7.10:
@@ -25,7 +26,6 @@ import static org.junit.jupiter.api.Assertions.*;
 class LiquidJunctionTransientTest {
     private final FluidThermodynamics model=FluidThermodynamics.forNetwork(MaterialCatalog.bundled(),"createcheme:tjl20_methane_nitrogen",1e-9);
     private final double[] mw=model.molecularWeights();
-    private final int water=mw.length-1;
     private static final double LEDGER=1e-12;
     private static final double DURATION=20;
 
@@ -48,41 +48,29 @@ class LiquidJunctionTransientTest {
     }
 
     private static String key(boolean tanks,double bore){return (tanks?"tanks":"generators")+":"+bore;}
-    private PassiveNetwork.Reservoir boundary(long id,int y,double temperature,double pressure,PassiveNetwork.NodeKind kind) {
-        double[] n=new double[mw.length];n[water]=1;
+    private static PassiveNetwork.Reservoir boundary(FluidThermodynamics model,long id,int y,double temperature,double pressure,PassiveNetwork.NodeKind kind) {
+        var mw=model.molecularWeights();double[] n=new double[mw.length];n[mw.length-1]=1;
         var unit=model.flashTP(temperature,pressure,n,()->{});for(int c=0;c<n.length;c++)n[c]/=unit.volume();
         return new PassiveNetwork.Reservoir(id,y,model.flashTP(temperature,pressure,n,()->{}),kind);
     }
     /** One case: the junction trajectory summary; throws on nonconvergence or a ledger error. */
     private String run(boolean tanks,double bore,double interval) {
-        int[][] positions={{-1,0,0},{1,0,0},{0,0,-1},{0,0,1}};
-        var geometry=new PipeResistance.Geometry(1,bore,PipeResistance.DEFAULT_ROUGHNESS_METRES,0);
-        var devices=new ArrayList<PhysicalFluidTopology.Device>();
-        devices.add(new PhysicalFluidTopology.Device(100,new PhysicalFluidTopology.Position("minecraft:overworld",0,0,0),Kind.PIPE,PhysicalFluidTopology.Direction.EAST,geometry,new FlowControl.Passive()));
-        var boundaries=new HashMap<Long,PassiveNetwork.Reservoir>();
-        for(int i=0;i<4;i++) {
-            int[] at=positions[i];boolean inlet=i<2;
-            var kind=inlet?(tanks?Kind.RESERVOIR:Kind.GENERATOR):Kind.VOID;
-            var d=new PhysicalFluidTopology.Device(i+1,new PhysicalFluidTopology.Position("minecraft:overworld",at[0],at[1],at[2]),kind,PhysicalFluidTopology.Direction.EAST,geometry,new FlowControl.Passive());devices.add(d);
-            var nodeKind=inlet?(tanks?PassiveNetwork.NodeKind.RESERVOIR:PassiveNetwork.NodeKind.GENERATOR):PassiveNetwork.NodeKind.VOID;
-            boundaries.put(d.id(),boundary(d.id(),at[1],i==1?350:300,i==0?150000:i==1?130000:101325,nodeKind));
-        }
-        var graph=PassiveNetwork.sizeJunctionHoldups(PhysicalFluidTopology.compile(devices,boundaries).islands().getFirst().graph(),model);
+        var graph=island(model,tanks,bore);
         int junction=-1,first=-1,second=-1;
         for(int i=0;i<graph.reservoirs().size();i++){var node=graph.reservoirs().get(i);if(node.junction())junction=i;if(node.id()==1)first=i;if(node.id()==2)second=i;}
         double mJ=mass(graph.reservoirs().get(junction));
         double hFirst=specificEnthalpy(graph.reservoirs().get(first).state()),hSecond=specificEnthalpy(graph.reservoirs().get(second).state());
-        double[] initial=totals(graph),external=new double[mw.length];double initialEnergy=energy(graph),externalEnergy=0;
+        var ledger=new JunctionLedger(graph,mw);
         var solver=new PassiveIntervalSolver(model);PassiveIntervalSolver.Result committed=null;
         long steps=Math.round(DURATION/interval),started=System.nanoTime();
         var mismatch=new double[(int)steps];var inflow=new double[(int)steps];
         for(int step=0;step<steps;step++) {
-            solver.replayStart(graph,committed==null?null:committed.graph(),committed==null?null:committed.endpointModes());
+            solver.replayStart(graph,committed);
             var result=solver.solve(graph,interval,PassiveIntervalSolver.Settings.defaults(),()->{});committed=result;graph=result.graph();
-            for(var transfer:result.boundaries()){var n=transfer.moles();for(int c=0;c<n.length;c++)external[c]+=n[c];externalEnergy+=transfer.totalEnergyJoule();}
-            var sum=totals(graph);
-            for(int c=0;c<sum.length;c++){double error=Math.abs(sum[c]-initial[c]-external[c])/Math.max(1,initial[c]);assertTrue(error<LEDGER,"interval "+step+": component "+c+" ledger error "+error);}
-            double error=Math.abs(energy(graph)-initialEnergy-externalEnergy)/Math.max(1,Math.abs(initialEnergy));assertTrue(error<LEDGER,"interval "+step+": energy ledger error "+error);
+            ledger.add(result);
+            assertTrue(ledger.worstMoles<LEDGER,"interval "+step+": component ledger error "+ledger.worstMoles);
+            assertTrue(ledger.worstEnergy<LEDGER,"interval "+step+": energy ledger error "+ledger.worstEnergy);
+            assertTrue(ledger.worstShare<=1,"interval "+step+": the junction term exceeds m_J: "+ledger.worstShare);
             // The inflow mixture at the end of the interval: the inflows' donor states weighted by the interval-average flows.
             double q=0,qh=0;
             for(int p=0;p<graph.pipes().size();p++) {
@@ -103,21 +91,27 @@ class LiquidJunctionTransientTest {
         var slices=new StringBuilder();
         if(interval>=1)for(int s=0;s<steps;s++)slices.append(String.format(Locale.ROOT,"%s%.3g",s==0?"":",",mismatch[s]));
         double q=inflow[(int)Math.min(steps-1,Math.round(1/interval))];
-        return String.format(Locale.ROOT,"%s m_J=%.4g kg Q(1s)=%.4g kg/s m_J/Q=%.4g s%s mismatch(1s)=%.3g mismatch(end)=%.3g%s ms=%d",
+        return String.format(Locale.ROOT,"%s m_J=%.4g kg Q(1s)=%.4g kg/s m_J/Q=%.4g s%s mismatch(1s)=%.3g mismatch(end)=%.3g%s junctionShare=%.3g ms=%d",
                 key(tanks,bore),mJ,q,q>0?mJ/q:Double.POSITIVE_INFINITY,fitted,mismatch[(int)Math.min(steps-1,Math.round(1/interval))],mismatch[(int)steps-1],
-                slices.length()>0?" perSlice=["+slices+"]":"",ms);
+                slices.length()>0?" perSlice=["+slices+"]":"",ledger.worstShare,ms);
+    }
+    /** One case's island: the two water inlets (ids 1 and 2; generators, or liquid-full 1 m3 tanks) and the two voids around
+     * the compiled junction, sized as the solver would size it at its first solve. */
+    static PassiveNetwork island(FluidThermodynamics model,boolean tanks,double bore) {
+        int[][] positions={{-1,0,0},{1,0,0},{0,0,-1},{0,0,1}};
+        var geometry=new PipeResistance.Geometry(1,bore,PipeResistance.DEFAULT_ROUGHNESS_METRES,0);
+        var devices=new ArrayList<PhysicalFluidTopology.Device>();
+        devices.add(new PhysicalFluidTopology.Device(100,new PhysicalFluidTopology.Position("minecraft:overworld",0,0,0),Kind.PIPE,PhysicalFluidTopology.Direction.EAST,geometry,new FlowControl.Passive()));
+        var boundaries=new HashMap<Long,PassiveNetwork.Reservoir>();
+        for(int i=0;i<4;i++) {
+            int[] at=positions[i];boolean inlet=i<2;
+            var kind=inlet?(tanks?Kind.RESERVOIR:Kind.GENERATOR):Kind.VOID;
+            var d=new PhysicalFluidTopology.Device(i+1,new PhysicalFluidTopology.Position("minecraft:overworld",at[0],at[1],at[2]),kind,PhysicalFluidTopology.Direction.EAST,geometry,new FlowControl.Passive());devices.add(d);
+            var nodeKind=inlet?(tanks?PassiveNetwork.NodeKind.RESERVOIR:PassiveNetwork.NodeKind.GENERATOR):PassiveNetwork.NodeKind.VOID;
+            boundaries.put(d.id(),boundary(model,d.id(),at[1],i==1?350:300,i==0?150000:i==1?130000:101325,nodeKind));
+        }
+        return PassiveNetwork.sizeJunctionHoldups(PhysicalFluidTopology.compile(devices,boundaries).islands().getFirst().graph(),model);
     }
     private double mass(PassiveNetwork.Reservoir node){double m=0;var n=node.inventory().moles();for(int c=0;c<n.length;c++)m+=mw[c]*n[c];return m;}
     private static double specificEnthalpy(FluidThermodynamics.State state){return state.enthalpy()/state.mass();}
-    private double[] totals(PassiveNetwork graph) {
-        var totals=new double[mw.length];
-        for(var node:graph.reservoirs())if(node.kind()==PassiveNetwork.NodeKind.RESERVOIR||node.junction()){var n=node.inventory().moles();for(int c=0;c<n.length;c++)totals[c]+=n[c];}
-        return totals;
-    }
-    private double energy(PassiveNetwork graph) {
-        double energy=0;
-        for(var node:graph.reservoirs())if(node.kind()==PassiveNetwork.NodeKind.RESERVOIR||node.junction())
-            energy+=node.inventory().internalEnergy()+mass(node)*PassiveStepSolver.GRAVITY*node.elevation();
-        return energy;
-    }
 }

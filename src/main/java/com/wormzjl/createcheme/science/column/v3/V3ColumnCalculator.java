@@ -1,5 +1,7 @@
 package com.wormzjl.createcheme.science.column.v3;
 
+import com.wormzjl.createcheme.science.math.DeterministicMath;
+
 import com.wormzjl.createcheme.science.column.v3.thermo.V3FlashResult;
 import com.wormzjl.createcheme.science.column.v3.thermo.V3FlashTruncationEvidence;
 import com.wormzjl.createcheme.science.column.v3.thermo.V3FeedPhase;
@@ -2634,8 +2636,8 @@ public final class V3ColumnCalculator {
     static String closureSuffix(double closureTolerance) {
         V3ConvergenceEvidence.requireClosure(closureTolerance);
         if (closureTolerance <= V3ConvergenceEvidence.MAXIMUM_LOG_FLOW_CHANGE) return "";
-        int exponent = (int) Math.floor(Math.log10(closureTolerance));
-        double mantissa = closureTolerance / Math.pow(10.0, exponent);
+        int exponent = (int) Math.floor(DeterministicMath.log10(closureTolerance));
+        double mantissa = closureTolerance / DeterministicMath.pow(10.0, exponent);
         String digits = new java.math.BigDecimal(mantissa)
                 .round(new java.math.MathContext(6)).stripTrailingZeros().toPlainString();
         return "-closure" + digits + "e" + exponent;

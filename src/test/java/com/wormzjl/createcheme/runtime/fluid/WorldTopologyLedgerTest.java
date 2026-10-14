@@ -46,7 +46,7 @@ class WorldTopologyLedgerTest {
     @Test void constructionAndDestructionCountOnceAndNeverReuseTheOldIdentity() {
         var ledger=new WorldTopologyLedger(WorldTopologyLedger.Snapshot.empty());var registration=record(1,Kind.RESERVOIR);
         ledger.commit(ledger.queue(List.of(new WorldTopologyLedger.Edit(1,registration)),Set.of(1L),2));
-        var model=FluidThermodynamics.forNetwork(MaterialCatalog.bundled(),FluidPresetCatalog.NETWORK_PACKAGE,1e-9);var charge=registration.spec().initialize(registration.device(),model,()->{});
+        var model=FluidThermodynamics.forNetwork(MaterialCatalog.bundled(),FluidPresetCatalog.NETWORK_PACKAGE,1e-9);var charge=com.wormzjl.createcheme.fluid.support.FluidTestSupport.chargedBoundary(registration.spec(),registration.device(),model);
         double[] w=new double[com.wormzjl.createcheme.science.material.MaterialTestBasis.NETWORK+1];for(int c=0;c<com.wormzjl.createcheme.science.material.MaterialTestBasis.NETWORK+1;c++)w[c]=c==com.wormzjl.createcheme.science.material.MaterialTestBasis.NETWORK?model.waterMolecularWeight:model.hydrocarbon.molecularWeight(c);
         var created=ledger.applyFirst(List.of(charge),List.of(),w,3);var stale=ledger.applyFirst(List.of(charge),List.of(),w,3);ledger.commit(created);
         assertThrows(IllegalStateException.class,()->ledger.commit(stale));assertArrayEquals(charge.inventory().moles(),ledger.snapshot().constructed().moles());

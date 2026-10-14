@@ -1,0 +1,8 @@
+// t17 (integration, D46): forwards -Pt17nopin to every test JVM as a system property (scratch experiments only; the
+// switch exists only in a working tree with src/scratch-t17-no-pin.patch applied, never in a commit).
+gradle.projectsEvaluated {
+    def root = gradle.rootProject
+    root.tasks.withType(Test).configureEach {
+        ['t17nopin'].each { k -> def v = root.findProperty(k); if (v != null) systemProperty k, v }
+    }
+}

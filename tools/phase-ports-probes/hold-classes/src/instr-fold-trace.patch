@@ -1,0 +1,71 @@
+diff --git a/src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveStepSolver.java b/src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveStepSolver.java
+index 2327874e..c8a62500 100644
+--- a/src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveStepSolver.java
++++ b/src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveStepSolver.java
+@@ -427,6 +427,7 @@ public final class PassiveStepSolver {
+             // residual or a Jacobian probe; a seed taken from a converged point of an earlier pass may still hold a phase its
+             // Newton drove below the trace share.
+             seeds=foldedSeeds(graph,seeds);
++            if(INSTR_FOLD){var sb=new StringBuilder("FOLDTRACE pass="+pass+" dt="+dt);for(int q=0;q<seeds.size();q++){if(graph.reservoirs().get(q).fixed())continue;var z=seeds.get(q);double a=PhaseLayout.sum(z.liquidView()),b=PhaseLayout.sum(z.vaporView()),tot=a+b+z.waterLiquid()+z.waterVapor();sb.append(" n"+q+"[code="+phaseCode(z)+" l="+a/tot+" v="+(b+z.waterVapor())/tot+" w="+z.waterLiquid()/tot+" T="+z.temperature()+" P="+z.pressure()+"]");}System.out.println(sb);}
+             // A junction owns stock like a vessel: it keeps the undirected composition basis
+             // {@link #reachableComponents} gives every node and its own state as its seed.
+             int[] phases=new int[seeds.size()];for(int i=0;i<phases.length;i++)phases[i]=phaseCode(seeds.get(i));
+@@ -439,7 +440,7 @@ public final class PassiveStepSolver {
+             // which equations this pass states, and the pass loop revises them. So do the phase-port segments, which the
+             // cycle key carries beside the structure (see {@link PassKey}).
+             var structure=new WorkspaceKey(0,nodeIds,kinds,pipeIdentities,phases,componentMask,supportCodes(supports),modeCodes,boundaryClosed.clone(),equations.junctionDonorFirst);
+-            if(!seen.add(new PassKey(structure,equations.segmentCodes(),foldedPhases.clone())))throw new SparseNewton.Nonconvergence("Phase/device active-set cycle");
++            if(!seen.add(new PassKey(structure,equations.segmentCodes(),foldedPhases.clone()))){if(INSTR_FOLD)System.out.println("FOLDTRACE  CYCLE");throw new SparseNewton.Nonconvergence("Phase/device active-set cycle");}
+             var key=new WorkspaceKey(Double.doubleToLongBits(dt),nodeIds,kinds,pipeIdentities,phases,componentMask,structure.supports,modeCodes,structure.boundaryClosed,structure.junctionDonors);
+             var workspace=workspaces.get(key);
+             SolverDiagnostics.count(workspace==null?SolverDiagnostics.workspaceBuilds:SolverDiagnostics.workspaceReuses);
+@@ -490,7 +491,7 @@ public final class PassiveStepSolver {
+                 // pass whose seed still holds it may have no root (see drainedSeeds).
+                 if(changedSeeds==null)changedSeeds=equations.drainedSeeds(checkpoint);
+                 if(changedSeeds==null)throw new SparseNewton.Nonconvergence(failure.getMessage()+"; active-set pass="+pass,failure.lastVariables(),failure.domainViolation());
+-                seeds=changedSeeds;continue;
++                if(INSTR_FOLD)System.out.println("FOLDTRACE  -> newton failed: "+failure.getMessage());seeds=changedSeeds;continue;
+             }
+             double[] x=numerical.variables();var states=equations.states(x);double[] flows=new double[graph.pipes().size()],heads=new double[flows.length];
+             // The converged Newton point is not phase-checked here: the reconstructed point below, which is what an accepted
+@@ -499,7 +500,7 @@ public final class PassiveStepSolver {
+             // The same outer stability question the phase correction above answers for a whole phase,
+             // asked per component of the frozen trace support: this converged point's own fugacity
+             // coefficients decide whether an omitted phase is still a trace.
+-            if(reactivate(equations,states,promoted)>0){seeds=states;continue;}
++            if(reactivate(equations,states,promoted)>0){if(INSTR_FOLD)System.out.println("FOLDTRACE  -> reactivate");seeds=states;continue;}
+             boolean changed=false;int illegalDirection=-1;
+             for(int i=0;i<flows.length;i++) {
+                 flows[i]=x[equations.edgeOffset+i];heads[i]=equations.controlOffsets[i]<0?0:x[equations.controlOffsets[i]]*1e5;
+@@ -534,6 +535,7 @@ public final class PassiveStepSolver {
+                 if(!(pipe.control() instanceof FlowControl.Passive))modes.set(illegalDirection,FlowControl.Mode.CLOSED);
+                 changed=true;
+             }
++            if(changed&&INSTR_FOLD)System.out.println("FOLDTRACE  -> mode change");
+             if(changed){seeds=states;previousPipes=pipeIdentities;previousNodeIds=nodeIds;previousInputStates=inputStates;previousFlows=flows.clone();previousHeads=heads.clone();previousModes=List.copyOf(modes);continue;}
+             // Decision D11: the phase-port segments this pass froze must be the ones its own converged flows land in
+             // (which phases a port draws at its capacity and which one carries the rest); otherwise the pass is solved
+@@ -554,12 +556,12 @@ public final class PassiveStepSolver {
+             // hydrocarbon its layout omitted, was restated by the reconstruction as its flash (ConservativeTransport
+             // .repartition); the pass is solved again from it, as from any phase appearance. Before, that restatement
+             // failed and every step size was refused.
+-            if(phaseAppeared(states,projection.states())){seeds=projection.states();continue;}
++            if(phaseAppeared(states,projection.states())){if(INSTR_FOLD)System.out.println("FOLDTRACE  -> appeared");seeds=projection.states();continue;}
+             // Decision D34: the reconstruction folded a phase this pass solved (its booked share fell below the trace share),
+             // so the pass is solved again from the folded states: the Newton, the reconstruction and the equation gate then
+             // read the same phases.
+-            if(recordFolds(graph,states,projection.states(),foldedPhases)){SolverDiagnostics.count(SolverDiagnostics.traceFoldPasses);seeds=projection.states();continue;}
+-            var changedSeeds=phaseCorrection(graph,projection.states(),checkpoint,true,equations.cachedPrepared,foldedPhases);if(changedSeeds!=null){seeds=changedSeeds;continue;}
++            if(recordFolds(graph,states,projection.states(),foldedPhases)){SolverDiagnostics.count(SolverDiagnostics.traceFoldPasses);if(INSTR_FOLD)System.out.println("FOLDTRACE  -> folded");seeds=projection.states();continue;}
++            var changedSeeds=phaseCorrection(graph,projection.states(),checkpoint,true,equations.cachedPrepared,foldedPhases);if(changedSeeds!=null){if(INSTR_FOLD)System.out.println("FOLDTRACE  -> phase correction");seeds=changedSeeds;continue;}
+             var reconstructed=x.clone();
+             for(int node=0;node<projection.states().size();node++)if(equations.layout[node]!=null){var encoded=equations.layout[node].encode(projection.states().get(node));System.arraycopy(encoded,0,reconstructed,equations.offsets[node],encoded.length);}
+             SolverDiagnostics.count(SolverDiagnostics.verificationResiduals);
+@@ -1489,6 +1491,7 @@ public final class PassiveStepSolver {
+      * The pass's seeds with their trace phases folded ({@code FluidThermodynamics.folded}, decision D34); the list itself
+      * when no seed holds one. Fixed nodes carry no unknowns and keep their boundary state.
+      */
++    static final boolean INSTR_FOLD=Boolean.getBoolean("instrfold");
+     private List<FluidThermodynamics.State> foldedSeeds(PassiveNetwork graph,List<FluidThermodynamics.State> seeds) {
+         List<FluidThermodynamics.State> result=null;
+         for(int i=0;i<seeds.size();i++) {

@@ -26,8 +26,15 @@ class FluidFallbackQualificationTest {
         if(name.equals("nitrogen"))n[com.wormzjl.createcheme.science.material.MaterialTestBasis.NITROGEN]=1;
         else{n=Arrays.copyOf(V3PengRobinsonThermo.fromRegisteredPackage("createcheme:tjl20_methane_nitrogen").crudeFeed("createcheme:tia_juana_light_methane").moleFractions(),com.wormzjl.createcheme.science.material.MaterialTestBasis.NETWORK+1);n[com.wormzjl.createcheme.science.material.MaterialTestBasis.NITROGEN]=.1;n[com.wormzjl.createcheme.science.material.MaterialTestBasis.NETWORK]=.2;}
         boolean pump=name.equals("wet crude pump");
-        var graph=new PassiveNetwork(List.of(node(1,pump?149000:150000,n,PassiveNetwork.NodeKind.GENERATOR),node(2,pump?150000:149000,n,PassiveNetwork.NodeKind.RESERVOIR)),List.of(
-                new PassiveNetwork.Pipe(1,0,1,new PipeResistance.Geometry(100,name.equals("nitrogen")?.01:.03,.000045,0),pump?new FlowControl.Pump(.0001,500000,1):new FlowControl.Passive())));
+        // The pump is liquid-only (decision D1 of the phase-ports batch): the wet crude with nitrogen is three-phase at
+        // 350 K and 149 kPa, so the pump case draws water from its generator (a liquid at 350 K and 149 kPa) into the
+        // three-phase wet-crude tank; re-baselined from a wet-crude generator, which the pump would refuse. Its target falls
+        // from 1e-4 to 2e-6 m3/s: water is not the tank's composition, and the three approximate intervals must stay inside
+        // the anchor's 1 % composition trust region (about 300 mol in the tank; 15 s at 1e-4 m3/s would add 80 mol).
+        double[] supply=n;
+        if(pump){supply=new double[n.length];supply[com.wormzjl.createcheme.science.material.MaterialTestBasis.NETWORK]=1;}
+        var graph=new PassiveNetwork(List.of(node(1,pump?149000:150000,supply,PassiveNetwork.NodeKind.GENERATOR),node(2,pump?150000:149000,n,PassiveNetwork.NodeKind.RESERVOIR)),List.of(
+                new PassiveNetwork.Pipe(1,0,1,new PipeResistance.Geometry(100,name.equals("nitrogen")?.01:.03,.000045,0),pump?new FlowControl.Pump(2e-6,500000,1):new FlowControl.Passive())));
         return new PassiveIntervalSolver(model).solve(graph,.05,PassiveIntervalSolver.Settings.defaults(),()->{});
     }
     private ProcessSolveServices.FluidIslandSolveResult approximate(PassiveNetwork graph,ApproximationAnchor anchor,FallbackAllowance allowance,int cadence,double duration) {
@@ -99,6 +106,13 @@ class FluidFallbackQualificationTest {
         var rejected=approximate(changed,anchor,FallbackAllowance.NONE,100,5);assertTrue(rejected.candidate().isEmpty());assertEquals(FallbackAllowance.NONE,rejected.proposedAllowance());assertTrue(rejected.detail().contains("topology"));
         assertEquals(graph.reservoirs().get(1).inventory(),changed.reservoirs().get(1).inventory());
     }
+    /**
+     * A hard wall deadline inside the fallback publishes nothing. A boundary regime change publishes no approximate
+     * interval: the anchor's guard refuses it. Since the closures are decided before the solve (t25 of the phase-ports
+     * batch, decision D58) the reversed line, a tank above its generator, is closed before any solve and the island is at
+     * rest, so the command's full solve of it finishes inside any soft budget and is published as a full interval (CLOSED,
+     * no flow); the approximate solver, asked directly under the anchor's guard, refuses the regime at its first step.
+     */
     @Test void hardTimeoutInsideFallbackAndBoundaryRegimeChangesCannotPublish() {
         var full=warm("nitrogen");var anchor=ApproximationAnchor.fromFull(model,full);
         var deadline=new ProcessSolveServices.FluidIslandCommand(model,full.graph(),5,PassiveIntervalSolver.Settings.defaults(),5,
@@ -107,8 +121,12 @@ class FluidFallbackQualificationTest {
         assertTrue(held.candidate().isEmpty());assertTrue(held.detail().contains("wall deadline"));assertEquals(FallbackAllowance.NONE,held.proposedAllowance());
         var changed=new ArrayList<>(full.graph().reservoirs());var state=model.initialNitrogenCharge(1,350,150400,()->{});
         changed.set(1,new PassiveNetwork.Reservoir(2,0,state,PassiveNetwork.NodeKind.RESERVOIR,new PassiveNetwork.Inventory(1,com.wormzjl.createcheme.science.fluid.solver.PhaseLayout.totalAmounts(state),state.internalEnergy())));
-        var graph=new PassiveNetwork(changed,full.graph().pipes());var refused=approximate(graph,anchor,FallbackAllowance.NONE,100,5);
-        assertTrue(refused.candidate().isEmpty());assertTrue(refused.detail().contains("regime"),refused.detail());assertEquals(FallbackAllowance.NONE,refused.proposedAllowance());
+        var graph=new PassiveNetwork(changed,full.graph().pipes());var closed=approximate(graph,anchor,FallbackAllowance.NONE,100,5);
+        assertEquals("FULL",closed.detail(),closed.detail());assertEquals(List.of(FlowControl.Mode.CLOSED),closed.candidate().orElseThrow().endpointModes());
+        assertEquals(FallbackAllowance.NONE,closed.proposedAllowance());
+        var guard=anchor.guard(model,graph);
+        var refused=assertThrows(ApproximationRejected.class,()->new PassiveIntervalSolver(model).solveApproximate(graph,5,PassiveIntervalSolver.Settings.defaults(),()->{},guard));
+        assertTrue(refused.getMessage().contains("regime"),refused.getMessage());
     }
     @Test void trustBoundaryPerturbationsAreCheckedOnBothSidesOfThePublishedProfile() {
         var full=warm("nitrogen");var anchor=ApproximationAnchor.fromFull(model,full);var old=full.graph().reservoirs().get(1).state();

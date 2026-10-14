@@ -21,21 +21,25 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 @org.junit.jupiter.api.extension.ExtendWith(com.wormzjl.createcheme.science.material.Cdu17FixtureExtension.class)
 class V3ExactWarmStartSweepTest {
+    // Both cases run a live reboiler (50 kW base duty). At zero duty the two-tray binary has a dead stripping
+    // section (bottom liquid ~1e-8 mol/s, pinched temperatures) and a numerically singular root, so whether a cold
+    // path converges and certifies it is decided by the last bits of the math library (batch
+    // 2026-09-27-jdk-determinism, COLUMN_TESTS_REVIEW.md).
     @Test
     void numericalTwoPhaseMatrixRemainsRejectedAfterFreshExactInputHotStarts() {
         for (V3ColumnInput input : List.of(
-                binaryInput(100.0, 550.0, 250_000.0, 750.0, 300.0, 2.0, 0.0),
-                binaryInput(100.0, 551.0, 250_000.0, 750.0, 300.0, 2.0, 0.0),
-                binaryInput(100.0, 550.0, 250_000.0, 0.0, 300.0, 2.0, 0.0),
+                binaryInput(100.0, 550.0, 250_000.0, 750.0, 300.0, 2.0, 50_000.0),
+                binaryInput(100.0, 551.0, 250_000.0, 750.0, 300.0, 2.0, 50_000.0),
+                binaryInput(100.0, 550.0, 250_000.0, 0.0, 300.0, 2.0, 50_000.0),
                 binaryInput(100.0, 550.0, 250_000.0, 750.0, 300.0, 2.0, 20_000.0),
-                binaryInput(100.0, 550.0, 250_000.0, 750.0, 300.0, 2.0, 50_000.0))) {
+                binaryInput(100.0, 550.0, 250_000.0, 750.0, 300.0, 2.0, 100_000.0))) {
             verifyExactHotStart(input, V3CondenserPhaseBranch.TWO_PHASE, false);
         }
     }
 
     @Test
     void physicallyAcceptedLiquidOnlyStatePassesFreshExactInputHotStart() {
-        verifyExactHotStart(binaryInput(100.0, 550.0, 250_000.0, 750.0, 300.0, 2.0, 0.0),
+        verifyExactHotStart(binaryInput(100.0, 550.0, 250_000.0, 750.0, 300.0, 2.0, 50_000.0),
                 V3CondenserPhaseBranch.LIQUID_ONLY, true);
     }
 

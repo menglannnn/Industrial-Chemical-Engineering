@@ -1,0 +1,36 @@
+seed 298 distribution random keep 4@478,6@747,7@956,11@1295,12@1638,14@1638,16@1681,17@1694,19@2083,20@2362,21@2362,22@2362,23@2362
+blocks (placement tick: block with its spec, as HoldFuzzTest places it)
+  478: pipe0.05@0,2,-2 bore=0.05 control=Passive[]
+  747: tank@0,2,-4 bore=0.05 control=Passive[] spec=[T=298.15 K, P=101325.0 Pa, volume=1.0 m3, composition (network basis, mole fractions)=[0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0]]
+  956: pipe0.01@0,-1,-2 bore=0.01 control=Passive[]
+  1295: pipe0.05@0,0,-2 bore=0.05 control=Passive[]
+  1638: tank@0,3,-1 bore=0.05 control=Passive[] spec=[T=298.15 K, P=101325.0 Pa, volume=1.0 m3, composition (network basis, mole fractions)=[0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0]]
+  1638: pipe0.05@0,-1,-1 bore=0.05 control=Passive[]
+  1681: pipe0.02@1,1,-1 bore=0.02 control=Passive[]
+  1694: pipe0.05@0,0,-1 bore=0.05 control=Passive[]
+  2083: gen[crude 339K 242kPa]@0,0,-3 bore=0.05 control=Passive[] spec=[T=339.468101349068 K, P=241640.4902890176 Pa, volume=1.0 m3, composition (network basis, mole fractions)=[0.005000000000000001, 0.0011908995509034748, 0.010591918105298616, 0.006510980717557732, 0.0222592523684086, 0.01663176428669243, 0.024555314957131154, 0.16629362769970432, 0.12314847499525976, 0.1177490756868832, 0.10469103210175804, 0.08701659237073239, 0.07336455325619681, 0.06154184102834706, 0.06057002423058549, 0.06607465545777229, 0.02967631275527244, 0.015001342402485261, 0.008132338029011052, 0.0, 0.0]]
+  2362: pipe0.05@0,2,-1 bore=0.05 control=Passive[]
+  2362: pipe0.05@0,2,-3 bore=0.05 control=Passive[]
+  2362: pipe0.05@0,1,-1 bore=0.05 control=Passive[]
+  2362: tank@1,2,-1 bore=0.02 control=Passive[] spec=[T=298.15 K, P=101325.0 Pa, volume=1.0 m3, composition (network basis, mole fractions)=[0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0]]
+first hold: Held[tick=4089, island=18, committed=3989, status=HELD: Substep refinement exhausted: Singular Newton Jacobian: Sparse LU rejected a singular matrix; active-set pass=0; reasons={Singular Newton Jacobian: Sparse LU rejected a singular matrix; active-set pass=#=20}]
+class: E2 crude two-phase node in the held island: true
+island 18 committed=3989 status=HELD: Substep refinement exhausted: Singular Newton Jacobian: Sparse LU rejected a singular matrix; active-set pass=0; reasons={Singular Newton Jacobian: Sparse LU rejected a singular matrix; active-set pass=#=20}
+    node 0 id=2 RESERVOIR z=2.0 P=225082.42343013367 T=338.5504434356051 m=205.07731376051873 liq=0.23983382632875372 water=0.0 vap=0.7601661736712529
+    node 1 id=5 JUNCTION z=0.0 P=241669.66836484615 T=339.4680872093027 m=842.1173878116921 liq=0.9999999626571411 water=0.0 vap=0.0
+    node 2 id=6 RESERVOIR z=3.0 P=215113.01902529298 T=338.34595387994 m=174.62932237537456 liq=0.20365160094359536 water=0.0 vap=0.7963483990562921
+    node 3 id=10 JUNCTION z=0.0 P=241669.66836483145 T=339.4680872015055 m=842.1173877959079 liq=0.9999999626337418 water=0.0 vap=0.0
+    node 4 id=11 GENERATOR z=0.0 P=241640.4902890176 T=339.468101349068 m=842.1173877899929 liq=1.0 water=0.0 vap=0.0
+    node 5 id=13 JUNCTION z=2.0 P=225082.62743142128 T=338.7715879499634 m=852.3139481568268 liq=1.009392190812054 water=0.0 vap=0.0
+    node 6 id=15 JUNCTION z=1.0 P=233386.46709579977 T=338.6930297331784 m=853.4989232611679 liq=1.0104748983725955 water=0.0 vap=0.0
+    node 7 id=16 RESERVOIR z=2.0 P=225074.01861121954 T=338.5717090557488 m=202.93660907150152 liq=0.237308379672568 water=0.0 vap=0.7626916203274754
+    pipe 0 0->5 Passive[] d=0.001963495408493621 blocked=0 filter=false ports=BULK/BULK
+    pipe 1 1->3 Passive[] d=7.853981633974484E-5 blocked=0 filter=false ports=BULK/BULK
+    pipe 2 1->4 Passive[] d=0.001963495408493621 blocked=0 filter=false ports=BULK/BULK
+    pipe 3 1->3 Passive[] d=0.001963495408493621 blocked=0 filter=false ports=BULK/BULK
+    pipe 4 2->5 Passive[] d=0.001963495408493621 blocked=0 filter=false ports=LIQUID/BULK
+    pipe 5 3->6 Passive[] d=0.001963495408493621 blocked=0 filter=false ports=BULK/BULK
+    pipe 6 5->6 Passive[] d=0.001963495408493621 blocked=0 filter=false ports=BULK/BULK
+    pipe 7 5->7 Passive[] d=0.001963495408493621 blocked=0 filter=false ports=BULK/BULK
+    pipe 8 6->7 Passive[] d=3.1415926535897936E-4 blocked=0 filter=false ports=BULK/LIQUID
+    last modes=[PASSIVE, PASSIVE, CLOSED, PASSIVE, PASSIVE, PASSIVE, PASSIVE, PASSIVE, PASSIVE] flows=[-0.018289122765282738, 3.5479750892203204E-5, -0.022281283583459374, 0.022245803809411428, -0.02260961495790683, 0.02228128356030363, -0.4450631012201324, 0.40416436349694285, -0.4227818176598288]

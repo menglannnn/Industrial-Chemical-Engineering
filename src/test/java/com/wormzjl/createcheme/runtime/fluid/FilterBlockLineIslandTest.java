@@ -57,7 +57,7 @@ class FilterBlockLineIslandTest {
     /** The compiled island the world would hand a worker for this line of blocks. */
     private PassiveNetwork island(List<PhysicalFluidTopology.Device> devices,Map<Long,FluidDeviceSpec> specs) {
         var boundaries=new LinkedHashMap<Long,PassiveNetwork.Reservoir>();
-        for(var d:devices)if(specs.containsKey(d.id()))boundaries.put(d.id(),specs.get(d.id()).initialize(d,model,()->{}));
+        for(var d:devices)if(specs.containsKey(d.id()))boundaries.put(d.id(),FluidTestSupport.chargedBoundary(specs.get(d.id()),d,model));
         var stock=new LinkedHashMap<Long,InlineFilter>();
         for(var d:devices)if(d.kind()==TopologyCompiler.Kind.FILTER)
             stock.put(d.id(),new InlineFilter(FILTER_CAPACITY,FILTER_RESISTANCE,SolidInventory.EMPTY,0));
@@ -95,13 +95,13 @@ class FilterBlockLineIslandTest {
                 device(4,3,TopologyCompiler.Kind.PIPE),device(5,4,TopologyCompiler.Kind.RESERVOIR));
         return island(devices,Map.of(1L,generatorSpec(generatorPressure,solidFraction),5L,boundarySpec()));
     }
-    /** generator - pump - pipe - filter - pipe - reservoir. */
+    /** generator - pipe - pump - pipe - filter - pipe - reservoir (a pipe block before the pump since only pipes connect, decision D20). */
     private PassiveNetwork pumpLine(double generatorPressure,double solidFraction) {
         var devices=List.of(device(1,0,TopologyCompiler.Kind.GENERATOR),
-                device(2,1,TopologyCompiler.Kind.PUMP,PhysicalFluidTopology.Direction.EAST),
-                device(3,2,TopologyCompiler.Kind.PIPE),
-                device(4,3,TopologyCompiler.Kind.FILTER,PhysicalFluidTopology.Direction.EAST),
-                device(5,4,TopologyCompiler.Kind.PIPE),device(6,5,TopologyCompiler.Kind.RESERVOIR));
+                device(7,1,TopologyCompiler.Kind.PIPE),device(2,2,TopologyCompiler.Kind.PUMP,PhysicalFluidTopology.Direction.EAST),
+                device(3,3,TopologyCompiler.Kind.PIPE),
+                device(4,4,TopologyCompiler.Kind.FILTER,PhysicalFluidTopology.Direction.EAST),
+                device(5,5,TopologyCompiler.Kind.PIPE),device(6,6,TopologyCompiler.Kind.RESERVOIR));
         return island(devices,Map.of(1L,generatorSpec(generatorPressure,solidFraction),6L,boundarySpec()));
     }
     /** generator - pipe - filter - pipe - void, the line that stayed healthy without solids. */
@@ -121,12 +121,12 @@ class FilterBlockLineIslandTest {
                 device(6,5,TopologyCompiler.Kind.RESERVOIR));
         return island(devices,Map.of(1L,generatorSpec(generatorPressure,0),6L,boundarySpec()));
     }
-    /** generator - pump - three pipes - reservoir: the pump control, with no filter in it. */
+    /** generator - pipe - pump - three pipes - reservoir: the pump control, with no filter in it (the pipe before the pump: decision D20). */
     private PassiveNetwork pumpControlLine(double generatorPressure,double solidFraction) {
         var devices=List.of(device(1,0,TopologyCompiler.Kind.GENERATOR),
-                device(2,1,TopologyCompiler.Kind.PUMP,PhysicalFluidTopology.Direction.EAST),
-                device(3,2,TopologyCompiler.Kind.PIPE),device(4,3,TopologyCompiler.Kind.PIPE),
-                device(5,4,TopologyCompiler.Kind.PIPE),device(6,5,TopologyCompiler.Kind.RESERVOIR));
+                device(7,1,TopologyCompiler.Kind.PIPE),device(2,2,TopologyCompiler.Kind.PUMP,PhysicalFluidTopology.Direction.EAST),
+                device(3,3,TopologyCompiler.Kind.PIPE),device(4,4,TopologyCompiler.Kind.PIPE),
+                device(5,5,TopologyCompiler.Kind.PIPE),device(6,6,TopologyCompiler.Kind.RESERVOIR));
         return island(devices,Map.of(1L,generatorSpec(generatorPressure,solidFraction),6L,boundarySpec()));
     }
     /** generator - four pipes - reservoir: the filter-free control that ran a whole session. */

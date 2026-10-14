@@ -1,5 +1,7 @@
 package com.wormzjl.createcheme.science.column.v3;
 
+import com.wormzjl.createcheme.science.math.DeterministicMath;
+
 import com.wormzjl.createcheme.science.column.v3.thermo.V3FlashResult;
 import com.wormzjl.createcheme.science.column.v3.thermo.V3Phase;
 import java.util.ArrayList;
@@ -132,10 +134,10 @@ public final class V3HollandExample32 {
             for (int component = 0; component < components; component++) {
                 liquid[node][component] = source.liquidComponentFlows()[node][component]
                         * HollandExample32Data.LB_MOL_PER_HOUR_TO_MOL_PER_SECOND
-                        * Math.exp((((node * 31 + component * 17) % 7) - 3) * 0.002);
+                        * DeterministicMath.exp((((node * 31 + component * 17) % 7) - 3) * 0.002);
                 vapor[node][component] = source.vaporComponentFlows()[node][component]
                         * HollandExample32Data.LB_MOL_PER_HOUR_TO_MOL_PER_SECOND
-                        * Math.exp((((node * 19 + component * 23) % 7) - 3) * 0.002);
+                        * DeterministicMath.exp((((node * 19 + component * 23) % 7) - 3) * 0.002);
             }
         }
         return new V3DryMeshState(problem.topology(), components, liquid, vapor, temperatures);

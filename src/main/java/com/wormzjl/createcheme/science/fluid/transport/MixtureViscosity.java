@@ -1,5 +1,7 @@
 package com.wormzjl.createcheme.science.fluid.transport;
 
+import com.wormzjl.createcheme.science.math.DeterministicMath;
+
 import com.wormzjl.createcheme.science.fluid.thermo.WaterRegion1;
 import com.wormzjl.createcheme.science.material.MaterialCatalog;
 import com.wormzjl.createcheme.science.material.ViscosityCorrelation;
@@ -100,7 +102,7 @@ public final class MixtureViscosity {
             }
             mu=curve.dynamicViscosityPascalSeconds(temperature,curve.minimumPressurePascal());prepared.liquidKind[component]=Prepared.CONDITIONAL_SOLUTE;
         }
-        prepared.liquidLog[component]=Math.log(mu);
+        prepared.liquidLog[component]=DeterministicMath.log(mu);
     }
     private double pureVapor(double temperature,int component) {
         if(component==liquidCorrelations.length)return WaterRegion1.diluteVaporViscosity(temperature);
@@ -124,7 +126,7 @@ public final class MixtureViscosity {
         if(!(sum>0) || !Double.isFinite(sum) || !(carrier>0)) {
             throw new IllegalArgumentException("Liquid mixture needs a supported carrier; no pure-liquid claim for conditional solutes");
         }
-        return new Result(positive(Math.exp(logSum/sum+liquidMixture.logCorrection(temperature,amounts))),conditional>0);
+        return new Result(positive(DeterministicMath.exp(logSum/sum+liquidMixture.logCorrection(temperature,amounts))),conditional>0);
     }
 
     public double waterLiquid(double temperature) {

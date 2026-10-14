@@ -1,0 +1,27 @@
+diff --git a/src/main/java/com/wormzjl/createcheme/science/fluid/network/NetworkReduction.java b/src/main/java/com/wormzjl/createcheme/science/fluid/network/NetworkReduction.java
+index 65be1252..586639ed 100644
+--- a/src/main/java/com/wormzjl/createcheme/science/fluid/network/NetworkReduction.java
++++ b/src/main/java/com/wormzjl/createcheme/science/fluid/network/NetworkReduction.java
+@@ -590,7 +590,13 @@ public final class NetworkReduction {
+      * no such stream exists (a pressure that is not positive, a temperature that cannot be bracketed, a flash outside the
+      * property data) the stream at its own state.
+      */
++    /** t18 scratch switch (never commit): comma-separated flags, -Dt18mode or set per thread by the probes. nocolumn = the
++     * single-stream starts at their source's pressure (before card E9 (a)); noprimed = every drain bound the receiver's gas
++     * column (before the primed falling drain). */
++    public static final ThreadLocal<String> SCRATCH_T18=ThreadLocal.withInitial(()->System.getProperty("t18mode","on"));
++    static boolean t18(String flag){return Arrays.asList(SCRATCH_T18.get().split(",")).contains(flag);}
+     private static FluidThermodynamics.State at(FluidThermodynamics model,FluidThermodynamics.State s,double p) {
++        if(t18("nocolumn"))return s;
+         if(p==s.pressure()||!(p>0)||!Double.isFinite(p))return s;
+         try{var restated=mixture(model,List.of(s),new double[]{1},p);return restated==null?s:restated;}
+         catch(IllegalArgumentException outside){return s;} // a ThermoDomainViolation included
+@@ -695,7 +701,7 @@ public final class NetworkReduction {
+          * falling path, if the junction holds liquid, the reference less the column of that fluid; otherwise the walk's
+          * bound (the receiver's gas column). */
+         double bound(double p,Fluid fluid) {
+-            if(!falling||!(fluid.condensed()>0))return bound;
++            if(t18("noprimed")||!falling||!(fluid.condensed()>0))return bound;
+             return reference+column(fluid.density(p),height,z);
+         }
+         double flow(double p,Fluid fluid) {

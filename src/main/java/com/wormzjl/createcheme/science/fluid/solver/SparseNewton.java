@@ -27,6 +27,14 @@ public final class SparseNewton {
          */
         default void project(double[] variables,double[] candidate){}
         /**
+         * Whether a Jacobian built at {@code built} still describes the equations at {@code now}, so that a chord step may
+         * reuse it. Asked before every chord step; {@code built} is null where the point is unknown. Only the equations know
+         * which of their rows change slope with which unknown: the residual's contraction, the solver's own test, sees a
+         * stale slope only once it has cost a step, and a row whose stated slope is twice its own still contracts by a half
+         * per chord step, which that test reads as progress. The default: always.
+         */
+        default boolean linearisationHolds(double[] built,double[] now){return true;}
+        /**
          * Optional block-structured Jacobian: fills {@code entries}, the values of the pattern
          * {@code columnRows()} declares in column-major order ({@code entryOffsets} indexes it per
          * column, {@code entryRows} is the row of each entry), with the same one-sided differences
@@ -44,6 +52,16 @@ public final class SparseNewton {
                                          int[] entryOffsets,int[] entryRows,double[] entries,Runnable checkpoint) {
             return -1;
         }
+        /**
+         * Brackets a Jacobian build at {@code base}. Between this call and {@link #linearised} every residual the build
+         * evaluates is a one-sided trial about {@code base}; equations with a kinked row (a vessel's wall, decision A423)
+         * state it, for those trials, on the branch {@code base} is on, so the differences read that branch's slope: the
+         * generalised Jacobian of a semismooth Newton. A trial the line search evaluates is never inside a bracket. The
+         * defaults do nothing.
+         */
+        default void linearising(double[] base){}
+        /** Ends the bracket {@link #linearising} opened. */
+        default void linearised(){}
     }
     public record Settings(int iterations,double tolerance,double differenceStep,int backtracks) {
         public Settings {
@@ -101,14 +119,16 @@ public final class SparseNewton {
         }
         private Workspace(Workspace parent){ownership=parent.ownership;shared=parent.shared;}
         private void owned(){ownership.check("Newton workspace belongs to the worker holding its solver latch");}
-        public void invalidate(){owned();matrix=null;factorization=null;}
+        /** The point the current factorization was differenced at ({@link Equations#linearisationHolds}). */
+        private double[] jacobianPoint;
+        public void invalidate(){owned();matrix=null;factorization=null;jacobianPoint=null;}
         /** Reuse immutable sparsity/coloring/order for another timestep, with fresh numeric factors. */
         public Workspace forkStructure(){owned();var fork=new Workspace(this);fork.pattern=pattern;fork.ordering=ordering;return fork;}
         /** Seed modified Newton with the previous timestep's Jacobian. All uses remain sequential
          * on this worker; poor contraction, a failed line search or a sibling's refactorization
          * refreshes from current equations. The current nonlinear residual, not this approximation,
          * decides convergence. */
-        public Workspace forkPreconditioner(){owned();var fork=forkStructure();fork.matrix=matrix;fork.factorization=factorization;return fork;}
+        public Workspace forkPreconditioner(){owned();var fork=forkStructure();fork.matrix=matrix;fork.factorization=factorization;fork.jacobianPoint=jacobianPoint;return fork;}
         /** A usable preconditioner: built, and not superseded by a sibling timestep's refresh. */
         private boolean preconditioned() {
             if(factorization==null)return false;
@@ -148,6 +168,8 @@ public final class SparseNewton {
             domain=null;
             SolverDiagnostics.count(SolverDiagnostics.newtonIterations);
             if(openedPreconditioned)SolverDiagnostics.count(SolverDiagnostics.newtonIterationsPreconditioned);
+            // A chord step reuses the Jacobian only while the equations say it still describes them.
+            if(!refresh&&!equations.linearisationHolds(workspace.jacobianPoint,x))refresh=true;
             boolean fresh=refresh;
             SolverDiagnostics.count(fresh?SolverDiagnostics.newtonIterationsFresh:SolverDiagnostics.newtonIterationsStale);
             if(refresh) {
@@ -241,6 +263,11 @@ public final class SparseNewton {
         }
     }
     private static int differentiate0(Equations equations,double[] x,double[] f,double differenceStep,Runnable checkpoint,Workspace workspace) {
+        equations.linearising(x);
+        try{return differentiate1(equations,x,f,differenceStep,checkpoint,workspace);}
+        finally{equations.linearised();}
+    }
+    private static int differentiate1(Equations equations,double[] x,double[] f,double differenceStep,Runnable checkpoint,Workspace workspace) {
         var pattern=workspace.pattern;int n=x.length,calls=0;
         double[] derivatives=workspace.derivatives(pattern.rows.length),steps=workspace.steps(n);
         int blocks=equations.differentiateEntries(x,f,differenceStep,pattern.offsets,pattern.rows,derivatives,checkpoint);
@@ -268,7 +295,7 @@ public final class SparseNewton {
     /** The ordering, numeric matrix and factorization are the same whichever sweep filled the entries. */
     private static int factor(double[] x,double[] derivatives,Workspace workspace,Pattern pattern,int calls) {
         var numeric=pattern.numericMatrix(derivatives);
-        try{if(workspace.ordering==null)workspace.ordering=SparseLuSolver.prepareOrdering(pattern.symbolicMatrix());workspace.factorization=workspace.shared.factors.factor(numeric,workspace.ordering);workspace.matrix=numeric;}
+        try{if(workspace.ordering==null)workspace.ordering=SparseLuSolver.prepareOrdering(pattern.symbolicMatrix());workspace.factorization=workspace.shared.factors.factor(numeric,workspace.ordering);workspace.matrix=numeric;workspace.jacobianPoint=x.clone();}
         catch(SparseLuSolver.SolveFailure failure){workspace.invalidate();throw new Nonconvergence("Singular Newton Jacobian: "+failure.getMessage(),x);}
         return calls;
     }

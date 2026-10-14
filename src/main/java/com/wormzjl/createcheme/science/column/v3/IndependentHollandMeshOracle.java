@@ -1,5 +1,7 @@
 package com.wormzjl.createcheme.science.column.v3;
 
+import com.wormzjl.createcheme.science.math.DeterministicMath;
+
 import java.util.Arrays;
 import java.util.Objects;
 
@@ -192,8 +194,8 @@ final class IndependentHollandMeshOracle {
             double vaporTotal = sum(vapor[node]);
             double[] ratios = equilibriumRatios(temperatures[node]);
             for (int component = 0; component < componentCount; component++) {
-                residual[row++] = Math.log(vapor[node][component] / vaporTotal)
-                        - Math.log(ratios[component] * liquid[node][component] / liquidTotal);
+                residual[row++] = DeterministicMath.log(vapor[node][component] / vaporTotal)
+                        - DeterministicMath.log(ratios[component] * liquid[node][component] / liquidTotal);
             }
         }
         for (int node = 1; node < NODE_COUNT; node++) {
@@ -243,10 +245,10 @@ final class IndependentHollandMeshOracle {
         double[] coordinates = new double[coordinateCount()];
         int index = 0;
         for (double[] node : state.liquidComponentFlows()) {
-            for (double flow : node) coordinates[index++] = Math.log(requirePositive(flow, "independent liquid flow"));
+            for (double flow : node) coordinates[index++] = DeterministicMath.log(requirePositive(flow, "independent liquid flow"));
         }
         for (double[] node : state.vaporComponentFlows()) {
-            for (double flow : node) coordinates[index++] = Math.log(requirePositive(flow, "independent vapor flow"));
+            for (double flow : node) coordinates[index++] = DeterministicMath.log(requirePositive(flow, "independent vapor flow"));
         }
         for (int node = 1; node < NODE_COUNT; node++) coordinates[index++] = state.temperaturesFahrenheit()[node];
         return coordinates;
@@ -262,12 +264,12 @@ final class IndependentHollandMeshOracle {
         double[][] vapor = new double[NODE_COUNT][componentCount];
         for (int node = 0; node < NODE_COUNT; node++) {
             for (int component = 0; component < componentCount; component++) {
-                liquid[node][component] = requirePositive(Math.exp(coordinates[index++]), "independent liquid flow");
+                liquid[node][component] = requirePositive(DeterministicMath.exp(coordinates[index++]), "independent liquid flow");
             }
         }
         for (int node = 0; node < NODE_COUNT; node++) {
             for (int component = 0; component < componentCount; component++) {
-                vapor[node][component] = requirePositive(Math.exp(coordinates[index++]), "independent vapor flow");
+                vapor[node][component] = requirePositive(DeterministicMath.exp(coordinates[index++]), "independent vapor flow");
             }
         }
         double[] temperatures = new double[NODE_COUNT];

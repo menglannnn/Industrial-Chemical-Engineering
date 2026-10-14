@@ -1,5 +1,7 @@
 package com.wormzjl.createcheme.science.column.v3.thermo;
 
+import com.wormzjl.createcheme.science.math.DeterministicMath;
+
 import com.wormzjl.createcheme.science.thermo.TraceTruncationPolicy;
 import java.util.Objects;
 
@@ -76,7 +78,7 @@ final class V3TruncatedFlash {
         double[] referenceVapor = reference.vaporComposition();
         for (int component = 0; component < overall.length; component++) {
             workspace.logK[component] = support.phaseSupport(component) == V3FlashPhaseSupport.PhaseSupport.BOTH
-                    ? Math.log(referenceVapor[component]) - Math.log(referenceLiquid[component]) : 0.0;
+                    ? DeterministicMath.log(referenceVapor[component]) - DeterministicMath.log(referenceLiquid[component]) : 0.0;
         }
         for (int iteration = 1; iteration <= MAXIMUM_ITERATIONS; iteration++) {
             checkpoint.run();
@@ -159,12 +161,12 @@ final class V3TruncatedFlash {
                 case LIQUID_ONLY -> -overall[component] / (1.0 - beta);
                 case VAPOR_ONLY -> overall[component] / beta;
                 case BOTH -> {
-                    double k = Math.exp(logK[component]);
+                    double k = DeterministicMath.exp(logK[component]);
                     double denominator = (1.0 - beta) + beta * k;
                     if (!Double.isFinite(k) || !Double.isFinite(denominator) || denominator <= 0.0) {
                         throw failure("Reduced flash has an invalid finite K or RR denominator");
                     }
-                    yield overall[component] * Math.expm1(logK[component]) / denominator;
+                    yield overall[component] * DeterministicMath.expm1(logK[component]) / denominator;
                 }
             };
         }
@@ -192,7 +194,7 @@ final class V3TruncatedFlash {
                     vaporAmount = overall[component];
                 }
                 case BOTH -> {
-                    double vaporWeight = beta * Math.exp(logK[component]);
+                    double vaporWeight = beta * DeterministicMath.exp(logK[component]);
                     double liquidWeight = 1.0 - beta;
                     double denominator = liquidWeight + vaporWeight;
                     if (!Double.isFinite(denominator) || denominator <= 0.0) throw failure("Invalid reduced phase weights");
@@ -233,7 +235,7 @@ final class V3TruncatedFlash {
         boolean materialClosed = true;
         boolean retainedEquilibrium = true;
         boolean omittedStillTrace = true;
-        double logCutoff = Math.log(policy.cutoffMoleFraction());
+        double logCutoff = DeterministicMath.log(policy.cutoffMoleFraction());
         for (int component = 0; component < overall.length; component++) {
             double liquidAmount = (1.0 - beta) * liquid[component];
             double vaporAmount = beta * vapor[component];
@@ -249,14 +251,14 @@ final class V3TruncatedFlash {
                 case ABSENT -> materialClosed &= liquidAmount == 0.0 && vaporAmount == 0.0;
                 case BOTH -> retainedEquilibrium &= liquid[component] > 0.0 && vapor[component] > 0.0
                         && Double.isFinite(targetLogK[component])
-                        && Math.abs(Math.log(vapor[component]) - Math.log(liquid[component]) - targetLogK[component])
+                        && Math.abs(DeterministicMath.log(vapor[component]) - DeterministicMath.log(liquid[component]) - targetLogK[component])
                         <= LOG_K_TOLERANCE;
                 case LIQUID_ONLY -> omittedStillTrace &= vapor[component] == 0.0 && liquid[component] > 0.0
                         && Double.isFinite(targetLogK[component])
-                        && Math.log(liquid[component]) + targetLogK[component] < logCutoff;
+                        && DeterministicMath.log(liquid[component]) + targetLogK[component] < logCutoff;
                 case VAPOR_ONLY -> omittedStillTrace &= liquid[component] == 0.0 && vapor[component] > 0.0
                         && Double.isFinite(targetLogK[component])
-                        && Math.log(vapor[component]) - targetLogK[component] < logCutoff;
+                        && DeterministicMath.log(vapor[component]) - targetLogK[component] < logCutoff;
             }
         }
         double betaError = Math.abs(beta - referenceBeta);

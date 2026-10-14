@@ -1,5 +1,7 @@
 package com.wormzjl.createcheme.science.fluid.thermo;
 
+import com.wormzjl.createcheme.science.math.DeterministicMath;
+
 import com.wormzjl.createcheme.science.fluid.diagnostics.SolverDiagnostics;
 import com.wormzjl.createcheme.science.thermo.PengRobinson78;
 import com.wormzjl.createcheme.science.thermo.PengRobinsonKernel;
@@ -313,12 +315,12 @@ public final class TranslatedPengRobinson {
         double dpdt = R/(v-b) - da/denominator;
         if (!(dpdv < 0)) throw new IllegalArgumentException("Mechanically unstable PR root");
         double dvdp = 1/dpdv, dvdt = -dpdt/dpdv;
-        double dpdvv = 2*R*temperature/Math.pow(v-b,3) + 2*a/(denominator*denominator)
-                - 8*a*(v+b)*(v+b)/Math.pow(denominator,3);
+        double dpdvv = 2*R*temperature/((v-b)*(v-b)*(v-b)) + 2*a/(denominator*denominator)
+                - 8*a*(v+b)*(v+b)/(denominator*denominator*denominator);
         double dpdtv = -R/((v-b)*(v-b)) + 2*da*(v+b)/(denominator*denominator);
         double dvdtt = -(-dda/denominator + 2*dpdtv*dvdt + dpdvv*dvdt*dvdt)/dpdv;
         double physicalV = v + shift;
-        double log = Math.log((v+(1+SQRT_TWO)*b)/(v+(1-SQRT_TWO)*b));
+        double log = DeterministicMath.log((v+(1+SQRT_TWO)*b)/(v+(1-SQRT_TWO)*b));
         double h=idealH+evaluation.residualEnthalpyJoulesPerMol()+pressure*shift;
         double dlogdv = 1/(v+(1+SQRT_TWO)*b) - 1/(v+(1-SQRT_TWO)*b);
         double cp = idealCp + pressure*dvdt - R + temperature*dda/(2*SQRT_TWO*b)*log

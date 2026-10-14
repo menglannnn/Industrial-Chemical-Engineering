@@ -135,7 +135,11 @@ neoForge {
             client()
             sourceSet = sourceSets.mcpCompat
             gameDirectory = layout.projectDirectory.dir('run/mcp-client')
-            programArguments.addAll('--username', 'FluidMcpTester', '--width', '854', '--height', '480')
+            // Window size: -PmcpClientWidth / -PmcpClientHeight (default 854x480) check a GUI at another size without desktop input.
+            def mcpWidth = providers.gradleProperty('mcpClientWidth').getOrElse('854')
+            def mcpHeight = providers.gradleProperty('mcpClientHeight').getOrElse('480')
+            if (!(mcpWidth ==~ /[0-9]{3,4}/ && mcpHeight ==~ /[0-9]{3,4}/)) throw new GradleException('mcpClientWidth and mcpClientHeight must be 3- or 4-digit pixel counts')
+            programArguments.addAll('--username', 'FluidMcpTester', '--width', mcpWidth, '--height', mcpHeight)
             systemProperty 'neoforge.enabledGameTestNamespaces', mod_id
         }
 

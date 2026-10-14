@@ -1,0 +1,26 @@
+// Attaches src-t16/ (the t16 gauge probe and the D44 crude-case minimizer), src/ without the E6 probe and ../hold-fuzz/src/ to the test source set for one Gradle invocation and
+// forwards the fuzz and minimizer switches and every -Pt16* property as a system property under both names (-Pt16seeds=47 ->
+// t16.seeds=47 and t16seeds=47). -Pt16switch=true compiles the contrast minimizer (needs src/scratch-t16-switch.patch).
+// Not part of any gate suite: without this init script nothing here is compiled.
+//   ./gradlew --no-configuration-cache --init-script tools/phase-ports-probes/hold-classes/t16.init.gradle test --tests '*T16TieProbeTest' -Pt16seeds=47 -PholdFuzzDefaults=true
+gradle.projectsEvaluated {
+    def here = gradle.startParameter.initScripts.find { it.name == 't16.init.gradle' }.parentFile
+    def root = gradle.rootProject
+    root.sourceSets.test.java.srcDir(new File(here, 'src'))
+    root.sourceSets.test.java.srcDir(new File(here, '../hold-fuzz/src'))
+    root.sourceSets.test.java.srcDir(new File(here, 'src-t16'))
+    root.sourceSets.test.java.exclude('**/E6RowScaleProbeTest.java')
+    // The contrast minimizer needs src/scratch-t16-switch.patch applied (NetworkReduction.SCRATCH_T16).
+    if (root.findProperty('t16switch') == null) { root.sourceSets.test.java.exclude('**/T16ContrastMinimizerTest.java'); root.sourceSets.test.java.exclude('**/T16WorldProbeTest.java'); root.sourceSets.test.java.exclude('**/T16DivergeProbeTest.java') }
+    root.tasks.withType(Test).configureEach {
+        maxHeapSize = '8g'
+        systemProperty 'holdFuzz.slices', root.findProperty('holdFuzzSlices') ?: '120'
+        systemProperty 'holdFuzz.defaults', root.findProperty('holdFuzzDefaults') ?: 'false'
+        systemProperty 'holdFuzz.pipeBetween', root.findProperty('holdFuzzPipeBetween') ?: 'true'
+        ['holdFuzz.wallNanos','holdFuzz.softNanos','instr'].each { k -> def v = root.findProperty(k); if (v != null) systemProperty k, v }
+        root.properties.findAll { it.key.startsWith('t16') }.each { k, v -> systemProperty 't16.' + k.substring(3), v; systemProperty k, v }
+        ['seed','defaults','class','slices','match','threads'].each { k -> def v = root.findProperty('minimize' + k.capitalize()); if (v != null) systemProperty 'minimize.' + k, v }
+        testLogging { showStandardStreams = true }
+        outputs.upToDateWhen { false }
+    }
+}

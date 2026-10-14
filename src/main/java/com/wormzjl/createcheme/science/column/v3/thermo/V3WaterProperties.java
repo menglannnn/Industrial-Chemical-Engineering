@@ -1,5 +1,7 @@
 package com.wormzjl.createcheme.science.column.v3.thermo;
 
+import com.wormzjl.createcheme.science.math.DeterministicMath;
+
 import com.wormzjl.createcheme.science.material.MaterialCatalog;
 
 /**
@@ -41,10 +43,12 @@ public final class V3WaterProperties {
         requireSaturationTemperature(water, temperatureKelvin);
         if (temperatureKelvin == water.criticalTemperature()) return water.criticalPressure();
         double theta = 1.0 - temperatureKelvin / water.criticalTemperature();
-        double polynomial = water.saturation().get(0) * theta + water.saturation().get(1) * Math.pow(theta, 1.5)
-                + water.saturation().get(2) * theta * theta * theta + water.saturation().get(3) * Math.pow(theta, 3.5)
-                + water.saturation().get(4) * theta * theta * theta * theta + water.saturation().get(5) * Math.pow(theta, 7.5);
-        return water.criticalPressure() * Math.exp(water.criticalTemperature() / temperatureKelvin * polynomial);
+        // Half-integer powers as products with the correctly rounded sqrt, not pow (batch 2026-09-27-jdk-determinism).
+        double root = Math.sqrt(theta), cube = theta * theta * theta;
+        double polynomial = water.saturation().get(0) * theta + water.saturation().get(1) * (theta * root)
+                + water.saturation().get(2) * theta * theta * theta + water.saturation().get(3) * (cube * root)
+                + water.saturation().get(4) * theta * theta * theta * theta + water.saturation().get(5) * (cube * cube * theta * root);
+        return water.criticalPressure() * DeterministicMath.exp(water.criticalTemperature() / temperatureKelvin * polynomial);
     }
 
     /**
@@ -63,12 +67,14 @@ public final class V3WaterProperties {
     public static double dLogSaturationPressureDT(MaterialCatalog.Water water, double temperatureKelvin) {
         requireSaturationTemperature(water, temperatureKelvin);
         double theta = 1.0 - temperatureKelvin / water.criticalTemperature();
-        double polynomial = water.saturation().get(0) * theta + water.saturation().get(1) * Math.pow(theta, 1.5)
-                + water.saturation().get(2) * theta * theta * theta + water.saturation().get(3) * Math.pow(theta, 3.5)
-                + water.saturation().get(4) * theta * theta * theta * theta + water.saturation().get(5) * Math.pow(theta, 7.5);
+        // Half-integer powers as products with the correctly rounded sqrt, not pow (batch 2026-09-27-jdk-determinism).
+        double root = Math.sqrt(theta), cube = theta * theta * theta;
+        double polynomial = water.saturation().get(0) * theta + water.saturation().get(1) * (theta * root)
+                + water.saturation().get(2) * theta * theta * theta + water.saturation().get(3) * (cube * root)
+                + water.saturation().get(4) * theta * theta * theta * theta + water.saturation().get(5) * (cube * cube * theta * root);
         double slope = water.saturation().get(0) + 1.5 * water.saturation().get(1) * Math.sqrt(theta)
-                + 3.0 * water.saturation().get(2) * theta * theta + 3.5 * water.saturation().get(3) * Math.pow(theta, 2.5)
-                + 4.0 * water.saturation().get(4) * theta * theta * theta + 7.5 * water.saturation().get(5) * Math.pow(theta, 6.5);
+                + 3.0 * water.saturation().get(2) * theta * theta + 3.5 * water.saturation().get(3) * (theta * theta * root)
+                + 4.0 * water.saturation().get(4) * theta * theta * theta + 7.5 * water.saturation().get(5) * (cube * cube * root);
         return -water.criticalTemperature() * polynomial / (temperatureKelvin * temperatureKelvin)
                 - slope / temperatureKelvin;
     }
@@ -135,7 +141,7 @@ public final class V3WaterProperties {
         if (temperatureKelvin >= water.criticalTemperature()) return 0.0;
         double reduced = (1.0 - temperatureKelvin / water.criticalTemperature())
                 / (1.0 - water.boilingTemperature() / water.criticalTemperature());
-        return water.vaporizationEnthalpy() * Math.pow(Math.max(0.0, reduced), water.watsonExponent());
+        return water.vaporizationEnthalpy() * DeterministicMath.pow(Math.max(0.0, reduced), water.watsonExponent());
     }
 
     /**
@@ -156,7 +162,7 @@ public final class V3WaterProperties {
         double span = 1.0 - water.boilingTemperature() / water.criticalTemperature();
         double reduced = (1.0 - temperatureKelvin / water.criticalTemperature()) / span;
         return water.vaporizationEnthalpy() * water.watsonExponent()
-                * Math.pow(reduced, water.watsonExponent() - 1.0) * (-1.0 / (water.criticalTemperature() * span));
+                * DeterministicMath.pow(reduced, water.watsonExponent() - 1.0) * (-1.0 / (water.criticalTemperature() * span));
     }
 
     public static double liquidMolarEnthalpy(double temperatureKelvin) {

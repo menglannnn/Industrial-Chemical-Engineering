@@ -73,8 +73,8 @@ class TraceTruncationLayoutTest {
         double[] n=PhaseLayout.totalAmounts(seed);
         double[] a=new double[reference.size()],b=new double[explicit.size()];
         var x=reference.encode(seed);
-        reference.residual(seed,n,seed.internalEnergy(),seed.volume(),a,0,x);
-        explicit.residual(seed,n,seed.internalEnergy(),seed.volume(),b,0,x);
+        reference.residual(seed,n,seed.internalEnergy(),seed.volume(),Double.NaN,a,0,x);
+        explicit.residual(seed,n,seed.internalEnergy(),seed.volume(),Double.NaN,b,0,x);
         assertArrayEquals(a,b,0,"residual must be bitwise identical");
     }
 
@@ -93,7 +93,7 @@ class TraceTruncationLayoutTest {
             assertEquals(full.componentBalanceCount(),layout.componentBalanceCount());
             double[] residual=new double[layout.size()];
             layout.residual(layout.decode(layout.encode(seed),0),PhaseLayout.totalAmounts(seed),
-                    seed.internalEnergy(),seed.volume(),residual,0,layout.encode(seed));
+                    seed.internalEnergy(),seed.volume(),Double.NaN,residual,0,layout.encode(seed));
             assertTrue(Arrays.stream(residual).allMatch(Double::isFinite));
         }
     }
@@ -124,7 +124,7 @@ class TraceTruncationLayoutTest {
         var seed=model.flashTP(350,101325,n,()->{});var target=model.flashTP(351,105000,n,()->{});
         var layout=new PhaseLayout(model,seed,null,null,support(seed,1e-5));
         assertTrue(layout.singlePhaseComponentCount()>0);
-        var equations=layout.fixedInventory(n,target.internalEnergy(),target.volume());
+        var equations=layout.wallClosure(n,target.internalEnergy(),target.volume(),Double.NaN);
         var solved=SparseNewton.solve(equations,layout.encode(seed),new SparseNewton.Settings(30,1e-10,1e-6,24),()->{});
         var actual=layout.decode(solved.variables(),0);
         assertEquals(target.temperature(),actual.temperature(),1e-3);

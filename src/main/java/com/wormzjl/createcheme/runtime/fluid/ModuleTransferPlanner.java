@@ -102,7 +102,7 @@ public final class ModuleTransferPlanner {
         var withdrawn=new HashMap<UUID,MaterialParcel>();amounts.forEach((key,n)->withdrawn.put(key,new MaterialParcel(n,weights,energy.get(key),reference)));
         // Request-scoped source terms become explicit owned parcels and disappear from the next interval.
         var graph=new PassiveNetwork(candidate.graph().reservoirs(),candidate.graph().pipes());
-        var result=new PassiveIntervalSolver.Result(graph,candidate.advancedSeconds(),candidate.averageMassFlows(),candidate.acceptedSubsteps(),candidate.rejectedSubsteps(),candidate.pumpWorkJoule(),external,candidate.rejectionReasons(),candidate.endpointModes(),candidate.endpointHeads(),candidate.acceptance(),candidate.pipeTransfers());
+        var result=new PassiveIntervalSolver.Result(graph,candidate.advancedSeconds(),candidate.averageMassFlows(),candidate.acceptedSubsteps(),candidate.rejectedSubsteps(),candidate.pumpWorkJoule(),external,candidate.rejectionReasons(),candidate.endpointModes(),candidate.endpointHeads(),candidate.endpointFlows(),candidate.acceptance(),candidate.pipeTransfers());
         return new Proposal(result,delivered,withdrawn);
     }
     private void validateBasis(MaterialParcel parcel) {

@@ -1,5 +1,7 @@
 package com.wormzjl.createcheme.science.column.v3;
 
+import com.wormzjl.createcheme.science.math.DeterministicMath;
+
 import com.wormzjl.createcheme.science.column.v3.thermo.V3FugacityResult;
 import com.wormzjl.createcheme.science.column.v3.thermo.V3Phase;
 import com.wormzjl.createcheme.science.column.v3.thermo.V3ThermoException;
@@ -58,7 +60,7 @@ final class V3StageEquilibriumRatios {
                         V3Phase.VAPOR, workspace);
                 for (int component = 0; component < ratios.length; component++) {
                     int publicComponent = basis.publicIndex(component);
-                    ratios[component] = Math.exp(liquid.logFugacityCoefficient(publicComponent)
+                    ratios[component] = DeterministicMath.exp(liquid.logFugacityCoefficient(publicComponent)
                             - vapor.logFugacityCoefficient(publicComponent));
                 }
             } catch (V3ThermoException | IllegalArgumentException unavailable) {

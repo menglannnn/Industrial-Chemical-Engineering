@@ -23,15 +23,20 @@ class FluidDeviceSpecDomainTest {
                 new PipeResistance.Geometry(1,.05,.000045,0),new FlowControl.Passive());
     }
 
-    @Test void aNitrogenReservoirAt200KelvinIsValidAndOneAt50KelvinIsRefusedWithTheDedicatedError() {
+    /** A void holds nitrogen at its settings; a reservoir is placed empty (owner decision D54), so its settings name no
+     * fluid to check. */
+    @Test void aNitrogenVoidAt200KelvinIsValidAndOneAt50KelvinIsRefusedWithTheDedicatedErrorWhileAReservoirIsPlacedEmpty() {
         var cold=new FluidDeviceSpec(1,200,101325,FluidDeviceSpec.nitrogen(catalog).composition());
-        assertDoesNotThrow(()->cold.validate(model,TopologyCompiler.Kind.RESERVOIR));
-        var tank=cold.initialize(device(TopologyCompiler.Kind.RESERVOIR),model,()->{});
-        assertEquals(200,tank.state().temperature());
+        assertDoesNotThrow(()->cold.validate(model,TopologyCompiler.Kind.VOID));
+        var vent=cold.initialize(device(TopologyCompiler.Kind.VOID),model,()->{});
+        assertEquals(200,vent.state().temperature());
         var colder=new FluidDeviceSpec(1,50,101325,FluidDeviceSpec.nitrogen(catalog).composition());
-        var refused=assertThrows(ThermoDomainViolation.class,()->colder.validate(model,TopologyCompiler.Kind.RESERVOIR));
+        var refused=assertThrows(ThermoDomainViolation.class,()->colder.validate(model,TopologyCompiler.Kind.VOID));
         assertEquals("Thermo domain: Nitrogen at 50.00 K is below its valid range 63.151..900 K (package createcheme:tjl20_methane_nitrogen); the state cannot be evaluated",refused.getMessage());
-        assertThrows(ThermoDomainViolation.class,()->colder.initialize(device(TopologyCompiler.Kind.RESERVOIR),model,()->{}));
+        assertThrows(ThermoDomainViolation.class,()->colder.initialize(device(TopologyCompiler.Kind.VOID),model,()->{}));
+        assertDoesNotThrow(()->colder.validate(model,TopologyCompiler.Kind.RESERVOIR));
+        var tank=colder.initialize(device(TopologyCompiler.Kind.RESERVOIR),model,()->{});
+        assertTrue(tank.empty(),"a placed tank holds nothing");assertEquals(1,tank.inventory().volume());
     }
 
     @Test void aGeneratorIsCheckedAgainstWhatItHoldsAndControlsAreOnlyStructural() {

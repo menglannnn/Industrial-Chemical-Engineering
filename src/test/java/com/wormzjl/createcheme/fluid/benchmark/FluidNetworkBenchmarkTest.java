@@ -1,5 +1,7 @@
 package com.wormzjl.createcheme.fluid.benchmark;
 
+import com.wormzjl.createcheme.science.math.DeterministicMath;
+
 import com.google.gson.GsonBuilder;
 import com.wormzjl.createcheme.science.fluid.network.*;
 import com.wormzjl.createcheme.science.fluid.solver.PhaseLayout;
@@ -25,7 +27,7 @@ class FluidNetworkBenchmarkTest {
         for(int count:new int[]{2,10,100}) {
             var nodes=new ArrayList<PassiveNetwork.Reservoir>();var pipes=new ArrayList<PassiveNetwork.Pipe>();
             for(int i=0;i<count;i++) {
-                double pressure=150000+1000*Math.cos(i*.7);var n=composition.clone();var unit=model.flashTP(350,pressure,n,()->{});
+                double pressure=150000+1000*DeterministicMath.cos(i*.7);var n=composition.clone();var unit=model.flashTP(350,pressure,n,()->{});
                 for(int c=0;c<n.length;c++)n[c]/=unit.volume();var state=model.flashTP(350,pressure,n,()->{});
                 nodes.add(new PassiveNetwork.Reservoir(i+1,0,state,PassiveNetwork.NodeKind.RESERVOIR,new PassiveNetwork.Inventory(1,n,state.internalEnergy())));
                 if(i>0)pipes.add(new PassiveNetwork.Pipe(i,i-1,i,new PipeResistance.Geometry(100,.05,.000045,0)));

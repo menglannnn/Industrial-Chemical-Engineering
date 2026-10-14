@@ -43,16 +43,23 @@ class BackwardEulerStepTest {
         var result=new PassiveIntervalSolver(model).solve(graph,.05,PassiveIntervalSolver.Settings.defaults(),()->{});
         var old=graph.reservoirs().get(1).inventory();var next=result.graph().reservoirs().get(1).inventory();
         double[] incoming=new double[com.wormzjl.createcheme.science.material.MaterialTestBasis.NETWORK+1];double energy=0;
-        for(var entry:result.boundaries()){assertEquals(1,entry.nodeId());var amounts=entry.moles();for(int c=0;c<com.wormzjl.createcheme.science.material.MaterialTestBasis.NETWORK+1;c++)incoming[c]+=amounts[c];energy+=entry.totalEnergyJoule();}
+        for(var entry:result.boundaries()){
+            // Decision D54: the 1 atm tank is a bag; the water it takes evaporates into its dry nitrogen and cools it, so the
+            // bag shrinks at the ambient pressure, and the ambient's work on it is booked at the tank, energy alone.
+            if(entry.nodeId()==2){assertTrue(java.util.Arrays.stream(entry.moles()).allMatch(m->m==0),"the ambient moves no material");energy+=entry.totalEnergyJoule();continue;}
+            assertEquals(1,entry.nodeId(),"a transfer at "+entry.nodeId()+": "+entry.totalEnergyJoule()+" J, "+java.util.Arrays.toString(entry.moles()));var amounts=entry.moles();for(int c=0;c<com.wormzjl.createcheme.science.material.MaterialTestBasis.NETWORK+1;c++)incoming[c]+=amounts[c];energy+=entry.totalEnergyJoule();}
         var before=old.moles();var after=next.moles();double movedMass=0;
         for(int c=0;c<com.wormzjl.createcheme.science.material.MaterialTestBasis.NETWORK+1;c++){assertEquals(before[c]+incoming[c],after[c],1e-8);movedMass+=incoming[c]*(c==com.wormzjl.createcheme.science.material.MaterialTestBasis.NETWORK?model.waterMolecularWeight:model.hydrocarbon.molecularWeight(c));}
         assertTrue(after[com.wormzjl.createcheme.science.material.MaterialTestBasis.NETWORK]>0);assertEquals(before[com.wormzjl.createcheme.science.material.MaterialTestBasis.NITROGEN],after[com.wormzjl.createcheme.science.material.MaterialTestBasis.NITROGEN],1e-9);
         assertEquals(energy,next.internalEnergy()-old.internalEnergy()+movedMass*2*PassiveStepSolver.GRAVITY,1e-3);
     }
     @Test void pumpWorkIncludesAllStagesAndElevationEnergy() {
-        // A pump's setting is its rise for water (F4, P1): the setting that is 500 kPa on this nitrogen, as before.
-        var suction=gas(1,101325,0);
-        var graph=graph(suction,gas(2,200000,10),new FlowControl.Pump(.001,500000*model.pumpReferenceDensity()/(suction.state().mass()/suction.state().volume()),.8));
+        // Nitrogen is moved by a compressor (decision D2; test name kept): its isothermal shaft work over the efficiency is
+        // booked as heat into the discharge (decision D8), and the ledger holds that work exactly.
+        // Above the ambient: drawn at 1 atm, the suction tank (a bag, decision D54) would go slack and take the ambient's
+        // work on its shrinking bag into the ledger this test states for the shaft work alone.
+        var suction=gas(1,150000,0);
+        var graph=graph(suction,gas(2,200000,10),new FlowControl.Compressor(.001,3,.8));
         var result=new PassiveStepSolver(model).solve(graph,.2,()->{});
         assertTrue(result.pumpWorkJoule()>0);double change=0;
         for(int i=0;i<2;i++){var old=graph.reservoirs().get(i).inventory();var next=result.inventories().get(i);double dm=(next.moles()[com.wormzjl.createcheme.science.material.MaterialTestBasis.NITROGEN]-old.moles()[com.wormzjl.createcheme.science.material.MaterialTestBasis.NITROGEN])*model.hydrocarbon.molecularWeight(com.wormzjl.createcheme.science.material.MaterialTestBasis.NITROGEN);change+=next.internalEnergy()-old.internalEnergy()+dm*graph.reservoirs().get(i).elevation()*PassiveStepSolver.GRAVITY;}

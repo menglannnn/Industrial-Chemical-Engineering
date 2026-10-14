@@ -168,6 +168,11 @@ class V3SideDrawCalculatorTest {
      * calibrated 0.30 — so the request-only screen types it before any solve. The original contract is about
      * what the solver does when it is made to attempt the geometry, so it keeps the raw solver via the
      * disabled screen ratio.</p>
+     *
+     * <p>The column runs a 100 kW reboiler. At zero duty its draw-free surrogate is a dead stripping section
+     * whose cold solve can stall before the authored geometry is attempted, and then the failure cannot name
+     * the authored tray (batch 2026-09-27-jdk-determinism, COLUMN_TESTS_REVIEW.md); the screen ratio is the
+     * same 0.9706 either way.</p>
      */
     @Test
     void legalNearFeedDrawNeverBecomesInvalidInputWhenTheDrawBlindSeedIsAvailable() {
@@ -179,7 +184,7 @@ class V3SideDrawCalculatorTest {
                 thermo.componentBasis(), feed, 550, 2, 1, 250_000, 750, List.of(
                 new V3ColumnSpecification.CondenserOutletTemperature(300),
                 new V3ColumnSpecification.OrganicRefluxRatio(2),
-                new V3ColumnSpecification.ReboilerDuty(0)), List.of(new V3SideDrawSpec(1, 99)));
+                new V3ColumnSpecification.ReboilerDuty(100_000)), List.of(new V3SideDrawSpec(1, 99)));
 
         V3ColumnOutcome.Failure screened = assertInstanceOf(V3ColumnOutcome.Failure.class,
                 V3ColumnCalculator.calculate(input));

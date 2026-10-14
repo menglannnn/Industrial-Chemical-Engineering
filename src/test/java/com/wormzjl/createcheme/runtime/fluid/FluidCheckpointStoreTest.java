@@ -53,7 +53,7 @@ class FluidCheckpointStoreTest {
     }
     private PassiveNetwork island(List<PhysicalFluidTopology.Device> devices,Map<Long,FluidDeviceSpec> specs) {
         var stock=new LinkedHashMap<Long,PassiveNetwork.Reservoir>();
-        for(var d:devices){var spec=specs.get(d.id());if(spec!=null)stock.put(d.id(),spec.initialize(d,model,()->{}));}
+        for(var d:devices){var spec=specs.get(d.id());if(spec!=null)stock.put(d.id(),FluidTestSupport.chargedBoundary(spec,d,model));}
         var connected=PhysicalFluidTopology.compile(devices,stock).islands().stream().filter(i->i.physicalIds().size()==devices.size()).toList();
         assertEquals(1,connected.size());return connected.getFirst().graph();
     }
@@ -414,7 +414,7 @@ class FluidCheckpointStoreTest {
             java.util.function.UnaryOperator<PassiveNetwork> relabel=g->new PassiveNetwork(g.reservoirs().stream().map(n->new PassiveNetwork.Reservoir(node,n.elevation(),n.state(),n.kind(),n.inventory())).toList(),g.pipes());
             var r=saved.interval().result();
             var result=new PassiveIntervalSolver.Result(relabel.apply(r.graph()),r.advancedSeconds(),r.averageMassFlows(),r.acceptedSubsteps(),r.rejectedSubsteps(),r.pumpWorkJoule(),
-                    r.boundaries().stream().map(b->new ConservativeTransport.BoundaryTransfer(node,b.moles(),b.totalEnergyJoule(),b.solids(),b.solidDirection())).toList(),r.rejectionReasons(),r.endpointModes(),r.endpointHeads(),r.acceptance(),r.pipeTransfers());
+                    r.boundaries().stream().map(b->new ConservativeTransport.BoundaryTransfer(node,b.moles(),b.totalEnergyJoule(),b.solids(),b.solidDirection())).toList(),r.rejectionReasons(),r.endpointModes(),r.endpointHeads(),r.endpointFlows(),r.acceptance(),r.pipeTransfers());
             var copy=new IslandCertificate.Saved(saved.sinceTick(),saved.horizonTick(),new IslandCertificate.Interval(saved.interval().startTick(),saved.interval().endTick(),relabel.apply(saved.interval().before()),result),
                     IslandCertificate.Signature.of(model,policy,result.graph()));
             snapshots.add(new IslandCoordinator.Snapshot(id,0,relabel.apply(t.graph()),t.clock(),t.allowance(),t.anchor().map(a->new ApproximationAnchor(a.propertyRevision(),relabel.apply(a.graph()),a.modes())),Optional.of(result),t.status(),Map.of(),

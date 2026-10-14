@@ -14,7 +14,8 @@ import static org.junit.jupiter.api.Assertions.*;
  * (methane at 150 kPa; nitrogen at 150 kPa, or 90 kPa and 400 K) feed a compiled junction with 2 to 4 void outlets, 50 or
  * 20 mm bore. 10 s through the approach to rest, 3 s of 0.5 mol/s methane injected into the first tank (a restart), 3 s of
  * settling. Every case must converge at the probe's 0.1 s intervals and at the product's 5 s cycle, and every committed
- * interval must close the ledger (tanks plus the junction's owned holdup plus the boundary transfers) at roundoff. Each
+ * interval must close the ledger (owner decision D46: the tanks' change equals the boundary transfers plus the junction
+ * term, the change of the junction's buffer) at roundoff, the term within its bound, m_J ({@link JunctionLedger}). Each
  * interval is a job as the island runtime runs it: {@link PassiveIntervalSolver#replayStart} from the committed interval,
  * then the settings' initial step. Formerly JunctionHoldupTransientProbe (tools/junction-holdup-prototype); the TR-BDF2
  * chain failed the 50 mm six-port restart.
@@ -30,7 +31,8 @@ class MixedGasJunctionTransientTest {
     /** The ledger closes by construction (exact reconstruction); these bounds are roundoff, relative to max(1, initial)
      * (measured at most 5.4e-15 over both cadences). */
     private static final double COMPONENT_LEDGER=1e-12,ENERGY_LEDGER=1e-12;
-    private record Outcome(String key,double worstMoles,double worstEnergy,long newtonSolves,long ms,long bytes) {}
+    /** {@code junctionShare}: the junction term's largest component mass over m_J (D46's bound is 1). */
+    private record Outcome(String key,double worstMoles,double worstEnergy,double junctionShare,long newtonSolves,long ms,long bytes) {}
 
     @Test void everyCaseConvergesAndClosesItsLedgerAtTenthSecondIntervals() {
         var failures=new ArrayList<String>();
@@ -58,7 +60,7 @@ class MixedGasJunctionTransientTest {
             try{
                 var ledger=runCase(bore,ports,unequal,interval);
                 long elapsed=(System.nanoTime()-start)/1000000;bytes=threadAllocated()-bytes;
-                outcomes.add(new Outcome(key,ledger[0],ledger[1],cost?SolverDiagnostics.sample().value("newtonSolves"):0,elapsed,bytes));
+                outcomes.add(new Outcome(key,ledger[0],ledger[1],ledger[2],cost?SolverDiagnostics.sample().value("newtonSolves"):0,elapsed,bytes));
             }catch(Exception|AssertionError failure){failures.add(key+": "+failure);}
             finally{if(cost){SolverDiagnostics.ENABLED=enabled;SolverDiagnostics.reset();}}
         }
@@ -67,8 +69,47 @@ class MixedGasJunctionTransientTest {
     private static long threadAllocated() {
         return java.lang.management.ManagementFactory.getThreadMXBean() instanceof com.sun.management.ThreadMXBean sun?sun.getCurrentThreadAllocatedBytes():0;
     }
-    /** Runs one case and returns its worst relative component and energy ledger errors. */
+    /** Runs one case and returns its worst relative component and energy ledger errors and its junction share. */
     private double[] runCase(double bore,int ports,boolean unequal,double interval){
+        var graph=island(model,bore,ports,unequal);
+        var ledger=new JunctionLedger(graph,mw);
+        int tank=-1;for(int i=0;i<graph.reservoirs().size();i++)if(graph.reservoirs().get(i).id()==1)tank=i;
+        // 0.5 mol/s methane at 350 K and 150 kPa, enthalpy plus the tank's gravitational term.
+        double[] feed=new double[mw.length];feed[0]=.5;
+        var feedState=model.flashTP(350,150000,feed,()->{});
+        double feedEnergy=feedState.enthalpy()+.5*mw[0]*PassiveStepSolver.GRAVITY*graph.reservoirs().get(tank).elevation();
+        var solver=new PassiveIntervalSolver(model);
+        PassiveIntervalSolver.Result committed=null;
+        var schedule=schedule(interval);
+        for(int step=0;step<schedule.size();step++){
+            List<ScheduledTransfer> transfers=schedule.get(step)[1]>0?List.of(new ScheduledTransfer.Injection(900,tank,feed,feedEnergy)):List.of();
+            graph=new PassiveNetwork(graph.reservoirs(),graph.pipes(),transfers);
+            solver.replayStart(graph,committed);
+            var result=solver.solve(graph,schedule.get(step)[0],PassiveIntervalSolver.Settings.defaults(),()->{});committed=result;
+            graph=result.graph();ledger.add(result);
+            assertTrue(ledger.worstMoles<COMPONENT_LEDGER,"interval "+step+": component balance error "+ledger.worstMoles);
+            assertTrue(ledger.worstEnergy<ENERGY_LEDGER,"interval "+step+": energy balance "+ledger.worstEnergy);
+            assertTrue(ledger.worstShare<=1,"interval "+step+": the junction term exceeds m_J: "+ledger.worstShare);
+        }
+        return new double[]{ledger.worstMoles,ledger.worstEnergy,ledger.worstShare};
+    }
+    /**
+     * The schedule (10 s rest, 3 s injection, 3 s settle) cut into intervals of the given length, a segment's last
+     * interval shortened to its end (5 s: 5, 5, 3, 3): per interval its length and 1 while methane is injected.
+     */
+    static List<double[]> schedule(double interval) {
+        var schedule=new ArrayList<double[]>();
+        for(double[] segment:new double[][]{{10,0},{3,1},{3,0}}){
+            double length=segment[0];long whole=Math.round(length/interval);
+            if(Math.abs(whole*interval-length)<=1e-9*length){for(long k=0;k<whole;k++)schedule.add(new double[]{interval,segment[1]});}
+            else{long full=(long)Math.floor(length/interval);for(long k=0;k<full;k++)schedule.add(new double[]{interval,segment[1]});schedule.add(new double[]{length-full*interval,segment[1]});}
+        }
+        return schedule;
+    }
+    /** One case's island: the two tanks (ids 1 and 2) and the voids around the compiled junction, sized as the solver would
+     * size it at its first solve. */
+    static PassiveNetwork island(FluidThermodynamics model,double bore,int ports,boolean unequal) {
+        var mw=model.molecularWeights();
         int[][] positions={{-1,0,0},{1,0,0},{0,0,-1},{0,0,1},{0,1,0},{0,-1,0}};
         var geometry=new PipeResistance.Geometry(1,bore,PipeResistance.DEFAULT_ROUGHNESS_METRES,0);
         var devices=new ArrayList<PhysicalFluidTopology.Device>();
@@ -84,55 +125,7 @@ class MixedGasJunctionTransientTest {
             var state=model.flashTP(temperature,pressure,n,()->{});
             boundaries.put(d.id(),new PassiveNetwork.Reservoir(d.id(),at[1],state,i<2?PassiveNetwork.NodeKind.RESERVOIR:PassiveNetwork.NodeKind.VOID));
         }
-        // Sized here, as the solver would at its first solve, so the ledger's initial totals hold the owned holdup.
-        var graph=PassiveNetwork.sizeJunctionHoldups(PhysicalFluidTopology.compile(devices,boundaries).islands().getFirst().graph(),model);
-        double[] initial=totals(graph),external=new double[mw.length];
-        double initialEnergy=energy(graph),externalEnergy=0,worstMoles=0,worstEnergy=0;
-        int tank=-1;for(int i=0;i<graph.reservoirs().size();i++)if(graph.reservoirs().get(i).id()==1)tank=i;
-        // 0.5 mol/s methane at 350 K and 150 kPa, enthalpy plus the tank's gravitational term.
-        double[] feed=new double[mw.length];feed[0]=.5;
-        var feedState=model.flashTP(350,150000,feed,()->{});
-        double feedEnergy=feedState.enthalpy()+.5*mw[0]*PassiveStepSolver.GRAVITY*graph.reservoirs().get(tank).elevation();
-        var solver=new PassiveIntervalSolver(model);
-        // The schedule (10 s rest, 3 s injection, 3 s settle) cut into intervals of the given length, a segment's last
-        // interval shortened to its end (5 s: 5, 5, 3, 3).
-        var durations=new ArrayList<Double>();var injecting=new ArrayList<Boolean>();
-        for(double[] segment:new double[][]{{10,0},{3,1},{3,0}}){
-            double length=segment[0];long whole=Math.round(length/interval);
-            if(Math.abs(whole*interval-length)<=1e-9*length){for(long k=0;k<whole;k++){durations.add(interval);injecting.add(segment[1]>0);}}
-            else{long full=(long)Math.floor(length/interval);for(long k=0;k<full;k++){durations.add(interval);injecting.add(segment[1]>0);}durations.add(length-full*interval);injecting.add(segment[1]>0);}
-        }
-        PassiveIntervalSolver.Result committed=null;
-        for(int step=0;step<durations.size();step++){
-            List<ScheduledTransfer> transfers=injecting.get(step)?List.of(new ScheduledTransfer.Injection(900,tank,feed,feedEnergy)):List.of();
-            graph=new PassiveNetwork(graph.reservoirs(),graph.pipes(),transfers);
-            solver.replayStart(graph,committed==null?null:committed.graph(),committed==null?null:committed.endpointModes());
-            var result=solver.solve(graph,durations.get(step),PassiveIntervalSolver.Settings.defaults(),()->{});committed=result;
-            graph=result.graph();
-            for(var transfer:result.boundaries()){var n=transfer.moles();for(int c=0;c<n.length;c++)external[c]+=n[c];externalEnergy+=transfer.totalEnergyJoule();}
-            var sum=totals(graph);
-            for(int c=0;c<sum.length;c++){
-                double error=Math.abs(sum[c]-initial[c]-external[c])/Math.max(1,initial[c]);worstMoles=Math.max(worstMoles,error);
-                assertTrue(error<COMPONENT_LEDGER,"interval "+step+": component balance "+c+" error "+error);
-            }
-            double error=Math.abs(energy(graph)-initialEnergy-externalEnergy)/Math.max(1,Math.abs(initialEnergy));
-            worstEnergy=Math.max(worstEnergy,error);assertTrue(error<ENERGY_LEDGER,"interval "+step+": energy balance "+error);
-        }
-        return new double[]{worstMoles,worstEnergy};
-    }
-    /** Tanks and the junction's owned holdup. */
-    private double[] totals(PassiveNetwork graph){
-        var totals=new double[mw.length];
-        for(var node:graph.reservoirs())if(node.kind()==PassiveNetwork.NodeKind.RESERVOIR||node.junction()){var n=node.inventory().moles();for(int c=0;c<n.length;c++)totals[c]+=n[c];}
-        return totals;
-    }
-    /** The junction's owned inventory (energy field m h) is counted like a tank's. */
-    private double energy(PassiveNetwork graph){
-        double energy=0;
-        for(var node:graph.reservoirs())if(node.kind()==PassiveNetwork.NodeKind.RESERVOIR||node.junction()){
-            double mass=0;var n=node.inventory().moles();for(int c=0;c<n.length;c++)mass+=mw[c]*n[c];
-            energy+=node.inventory().internalEnergy()+mass*PassiveStepSolver.GRAVITY*node.elevation();
-        }
-        return energy;
+        // Sized here, as the solver would at its first solve, so the ledger starts from the junction's buffer.
+        return PassiveNetwork.sizeJunctionHoldups(PhysicalFluidTopology.compile(devices,boundaries).islands().getFirst().graph(),model);
     }
 }

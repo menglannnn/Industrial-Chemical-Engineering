@@ -1,0 +1,67 @@
+diff --git a/src/main/java/com/wormzjl/createcheme/science/fluid/solver/PhaseLayout.java b/src/main/java/com/wormzjl/createcheme/science/fluid/solver/PhaseLayout.java
+index 9f2893c5..aa22f0f0 100644
+--- a/src/main/java/com/wormzjl/createcheme/science/fluid/solver/PhaseLayout.java
++++ b/src/main/java/com/wormzjl/createcheme/science/fluid/solver/PhaseLayout.java
+@@ -24,6 +24,17 @@ public final class PhaseLayout {
+     private final int[] junctionBasis;
+     private final int waterLiquidIndex,waterVaporIndex,temperatureIndex,pressureIndex,partialPressureIndex,size;
+     private final double amountScale,energyScale;
++    /**
++     * The wall row's scale ({@link #balanceRows}): the contents' own stiffness at the seed, {@code -d ln V / d ln P} at fixed
++     * amounts ({@link FluidThermodynamics#isothermalCompliance} times {@code P / V}), at most 1. The row in relative volume
++     * divided by it reads as a share of the pressure the wall carries, whatever the contents: about 1 for a gas, so a gas
++     * vessel's row is unchanged, and {@code P} times the liquid compressibility for a liquid, 3.6e-4 for water at 363 kPa.
++     * Unscaled, a Newton tolerance of 1e-10 on a full water tank's row left its pressure free by 0.2 Pa, which the lines
++     * into it read as 6e-7 against the 1e-8 equation gate (random fuzz seed 71: the booking's closure moved a full tank's
++     * pressure by 0.01 Pa and the gate refused every step size). Capped at 1, so the scale never loosens the row. A common
++     * positive factor of both branches: the root, the branch a state is on ({@link #wall}) and every comparison are unchanged.
++     */
++    private final double wallScale;
+     private final double[] componentScales,differenceScales;
+     private final boolean liquidActive,vaporActive;
+     private final int solidIndex;
+@@ -88,6 +99,8 @@ public final class PhaseLayout {
+         solidScale=new double[]{Math.max(1e-12,seed.mass()),Math.max(1e-12,seed.volume()),Math.max(1e-9,seed.mass()*1000)};
+         amountScale=Math.max(1e-12,sum(l)+sum(v)+seed.waterLiquid()+seed.waterVapor());
+         energyScale=Math.max(1,Math.max(Math.abs(seed.internalEnergy()),amountScale*FluidThermodynamics.R*seed.temperature()));
++        double stiffness=seed.volume()>0?seed.pressure()*model.isothermalCompliance(seed)/seed.volume():1;
++        wallScale="w2".equals(System.getProperty("t32off"))||!(stiffness>0)?1:Math.min(1,stiffness);
+         if(conservedReference!=null&&conservedReference.length!=l.length+1)throw new IllegalArgumentException("Balance reference basis mismatch");
+         boolean resolveTraces=seed.vaporVolume()/seed.volume()<.01;
+         componentScales=new double[l.length+1];for(int c=0;c<l.length;c++)componentScales[c]=!resolveTraces||conservedReference!=null&&conservedReference[c]==0?amountScale:Math.max(1e-30,l[c]+v[c]);
+@@ -354,7 +367,7 @@ public final class PhaseLayout {
+         double energy=state.internalEnergy();
+         if(!Double.isNaN(workFrom)){double moved=bagVolume(state,capacity,branch)-workFrom;if(moved!=0)energy+=AMBIENT_PRESSURE*moved;}
+         result[row++]=(energy-targetEnergy)/energyScale;
+-        result[row++]=wallRow(state,capacity,branch);
++        result[row++]=wallRow(state,capacity,branch)/wallScale;
+         if(solidIndex>=0){solidRows(state,variables,offset,solidReference,false,result);row+=3;}
+         return row;
+     }
+diff --git a/src/main/java/com/wormzjl/createcheme/science/fluid/thermo/FluidThermodynamics.java b/src/main/java/com/wormzjl/createcheme/science/fluid/thermo/FluidThermodynamics.java
+index 98829c29..66995393 100644
+--- a/src/main/java/com/wormzjl/createcheme/science/fluid/thermo/FluidThermodynamics.java
++++ b/src/main/java/com/wormzjl/createcheme/science/fluid/thermo/FluidThermodynamics.java
+@@ -164,14 +164,20 @@ public final class FluidThermodynamics {
+     public TraceTruncationPolicy traceTruncation(){return tracePolicy;}
+     /** A hydraulic rate bound only; temperature and phase allocation still come from the EOS/energy equations. */
+     public double velocityLimit(State state){return Math.min(maximumVelocity,isothermalAcousticBound(state));}
+-    /** Frozen-phase isothermal acoustic bound used by the configured hydraulic velocity clamp. */
+-    public double isothermalAcousticBound(State state) {
++    /** The frozen-phase isothermal compliance of a state's contents, {@code -dV/dP} at fixed amounts: its liquids' through the
++     * global compressibility, its gas's through its equation of state and the water vapour's partial pressure. */
++    public double isothermalCompliance(State state) {
+         double compliance=(state.liquidVolume()+state.waterVolume())*liquidResponse.compressibilityPerPascal();
+         if(state.vaporVolume()>0) {
+             double stiffness=state.waterPartialPressure();
+             if(state.vaporProperties()!=null){var gas=state.vaporProperties();stiffness+=-gas.molarVolume()/gas.volumePressureDerivative();}
+             compliance+=state.vaporVolume()/stiffness;
+         }
++        return compliance;
++    }
++    /** Frozen-phase isothermal acoustic bound used by the configured hydraulic velocity clamp. */
++    public double isothermalAcousticBound(State state) {
++        double compliance=isothermalCompliance(state);
+         double speed=state.volume()/Math.sqrt(state.mass()*compliance);
+         if(!Double.isFinite(speed)||speed<=0)throw new IllegalArgumentException("Invalid acoustic flow-domain bound");
+         return speed;

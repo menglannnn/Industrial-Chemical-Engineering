@@ -54,6 +54,9 @@ public final class IslandCertificate {
          */
         final double[] referenceMass;
         final boolean fullAcceptance,transitionFree,closuresUnchanged,solidsUnchanged,phasesUnchanged,exactZero,grossWithoutNet,solidsInTransport,hasFilter;
+        /** The interval booked a transfer at a node the island owns (a vessel or a junction): a trace flush
+         * ({@code PassiveIntervalSolver.flushTraces}), a one-time removal that linear replay must not repeat. */
+        final boolean flushed;
         /** {@code molecularWeights} (kg/mol, conserved-component order) weigh the finite inventories for {@link #referenceMass}. */
         Summary(Interval interval,double[] molecularWeights) {
             this.interval=interval;startTick=interval.startTick;endTick=interval.endTick;durationTicks=Math.toIntExact(endTick-startTick);
@@ -87,6 +90,11 @@ public final class IslandCertificate {
             for(double q:result.averageMassFlows())if(q!=0)zero=false;
             if(result.pumpWorkJoule()!=0)zero=false;
             for(var boundary:result.boundaries()){for(double n:boundary.moles())if(n!=0)zero=false;if(boundary.totalEnergyJoule()!=0||!boundary.solids().empty())zero=false;}
+            boolean flush=false;
+            // A boundary transfer at a vessel is a flush when it carries material; the wall's work on the ambient (decision
+            // D54) is booked there as energy alone.
+            for(var boundary:result.boundaries())for(var node:after.reservoirs())if(node.id()==boundary.nodeId()&&!node.fixed()&&carriesMaterial(boundary))flush=true;
+            flushed=flush;
             boolean closures=true,filter=false;
             for(int p=0;p<after.pipes().size();p++) {
                 var x=before.pipes().get(p);var y=after.pipes().get(p);
@@ -106,6 +114,11 @@ public final class IslandCertificate {
         /** Which of vapour, hydrocarbon liquid and free water a node holds. */
         static int phases(com.wormzjl.createcheme.science.fluid.thermo.FluidThermodynamics.State state) {
             return (state.vaporVolume()>0?1:0)|(state.liquidVolume()>0?2:0)|(state.waterVolume()>0?4:0);
+        }
+        private static boolean carriesMaterial(com.wormzjl.createcheme.science.fluid.network.ConservativeTransport.BoundaryTransfer boundary) {
+            if(!boundary.solids().empty())return true;
+            for(double n:boundary.moles())if(n!=0)return true;
+            return false;
         }
         private static double endpointMass(PassiveNetwork graph,double[] nodeMass,double smallest,int node) {
             return graph.reservoirs().get(node).junction()?smallest:nodeMass[node];
@@ -272,6 +285,7 @@ public final class IslandCertificate {
      */
     static Result issue(Summary last,CertificatePolicy policy) {
         if(!last.fullAcceptance||!last.transitionFree||!last.closuresUnchanged||!last.solidsUnchanged||!last.phasesUnchanged)return Result.refused("the interval changed a closure, a cake, a phase or node solids");
+        if(last.flushed)return Result.refused("the interval flushed a trace component");
         if(last.grossWithoutNet)return Result.refused("gross flow with a zero average is not rest");
         if(last.exactZero) {
             long horizon=policy.recheckSeconds()==0?Long.MAX_VALUE:Math.addExact(last.endTick,20L*policy.recheckSeconds());
@@ -303,8 +317,8 @@ public final class IslandCertificate {
      * The validity signature of a certificate: the model's full property revision ({@link ApproximationAnchor#revision},
      * which also carries the velocity clamp, the trace cutoff and the solid settings), the six certificate policy values
      * it was issued under, and a SHA-256 digest of its island's graph identity - node ids, kinds, elevations and finite
-     * volumes, fixed-node inventories and states, and pipe identities with their sections, controls, blocked masks and
-     * filters. Replay repeats one solved interval of one graph under one model and one policy, so a certificate holds
+     * volumes, fixed-node inventories and states, and pipe identities with their sections, controls, blocked masks, end
+     * ports and filters. Replay repeats one solved interval of one graph under one model and one policy, so a certificate holds
      * only under the signature it was issued with; a saved one whose signature is not its island's current one is
      * discarded on load and the island keeps its inventory.
      */
@@ -334,7 +348,7 @@ public final class IslandCertificate {
     }
     /** The digest of what replay takes to be fixed about an island: everything but its finite inventories and states. */
     static String graphIdentity(PassiveNetwork graph) {
-        var d=new Digest();d.text("createcheme-certificate-graph-identity-1");d.integer(graph.reservoirs().size());
+        var d=new Digest();d.text("createcheme-certificate-graph-identity-2");d.integer(graph.reservoirs().size());
         for(var node:graph.reservoirs()) {
             d.number(node.id());d.text(node.kind().name());d.real(node.elevation());
             // A junction's volume is a numerical placeholder that a solve may move; a vessel's is its identity.
@@ -351,9 +365,12 @@ public final class IslandCertificate {
             switch(pipe.control()) {
                 case FlowControl.Passive ignored->d.text("passive");
                 case FlowControl.Pump pump->{d.text("pump");d.real(pump.targetVolumeFlow());d.real(pump.maximumAddedPressure());d.real(pump.efficiency());}
+                case FlowControl.Compressor compressor->{d.text("compressor");d.real(compressor.targetVolumeFlow());d.real(compressor.maximumPressureRatio());d.real(compressor.efficiency());}
                 case FlowControl.PressureValve valve->{d.text("valve");d.real(valve.targetPressure());}
             }
             d.integer(pipe.blockedDirections());
+            // What each end draws (PassiveNetwork.PhasePort): it changes the equations, so a replay holds only under it.
+            d.integer(pipe.firstPort().ordinal());d.integer(pipe.secondPort().ordinal());
             var filter=pipe.filter();
             if(filter==null)d.text("no filter");
             else{d.text("filter");d.real(filter.capacity());d.real(filter.cleanResistance());d.integer(filter.stoppedAtCapacity()?1:0);d.solids(filter.captured());d.real(filter.energyJoule());}
@@ -465,7 +482,7 @@ public final class IslandCertificate {
         var pipes=new ArrayList<PipeTransfer>(recorded.pipeTransfers().size());
         for(var p:recorded.pipeTransfers())pipes.add(new PipeTransfer(p.pipeId(),scale(p.forward(),g),scale(p.reverse(),g)));
         return new PassiveIntervalSolver.Result(graphAt(to),(to-from)/20.0,recorded.averageMassFlows(),0,0,g*recorded.pumpWorkJoule(),boundaries,Map.of(),
-                recorded.endpointModes(),recorded.endpointHeads(),recorded.acceptance(),pipes);
+                recorded.endpointModes(),recorded.endpointHeads(),recorded.endpointFlows(),recorded.acceptance(),pipes);
     }
     private static PipeTransfer.Stream scale(PipeTransfer.Stream stream,double g) {
         var phases=stream.phaseMoles();for(var phase:phases)for(int c=0;c<phase.length;c++)phase[c]*=g;

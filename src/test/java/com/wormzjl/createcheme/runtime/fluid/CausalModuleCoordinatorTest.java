@@ -84,7 +84,17 @@ class CausalModuleCoordinatorTest {
             assertTrue(work.isEmpty());assertEquals(0,active);
             return new FluidCheckpointCodec.Checkpoint(islands.snapshots().stream().map(s->new FluidCheckpointCodec.IslandEntry("minecraft:overworld","createcheme:tjl20_methane_nitrogen",1e-9,s)).toList(),modules.transfers(),modules.snapshots(),modules.bindings());
         }
+        /** The energy the ambient gave the islands (decision D54: a slack tank's bag moves at the ambient pressure, and that
+         * work is booked as an energy-only boundary transfer at the tank), each committed interval counted once. */
+        double ambient;
+        final Set<PassiveIntervalSolver.Result> counted=Collections.newSetFromMap(new IdentityHashMap<>());
         private void published(List<IslandCoordinator.Snapshot> changed) {
+            for(var island:changed)island.lastResult().ifPresent(result->{
+                if(!counted.add(result))return;
+                for(var transfer:result.boundaries()){boolean material=!transfer.solids().empty();for(double n:transfer.moles())material|=n!=0;
+                    final long node=transfer.nodeId();
+                    if(!material&&result.graph().reservoirs().stream().anyMatch(r->r.id()==node&&r.kind()==PassiveNetwork.NodeKind.RESERVOIR))ambient+=transfer.totalEnergyJoule();}
+            });
             // Ownership needs no current inventory, so the stored islands are read and nothing is materialised.
             var owners=new HashMap<Long,Long>();for(var island:islands.observe())for(var node:island.graph().reservoirs())owners.put(node.id(),island.id());
             if(polled){modules.rebind(owners);advance();}
@@ -118,7 +128,7 @@ class CausalModuleCoordinatorTest {
             }
         }
         double[] totals() {
-            double[] sum=new double[23];for(var island:islands.snapshots())for(var node:island.graph().reservoirs()) {var n=node.inventory().moles();for(int c=0;c<com.wormzjl.createcheme.science.material.MaterialTestBasis.NETWORK+1;c++)sum[c]+=n[c];sum[22]+=node.inventory().internalEnergy();}
+            double[] sum=new double[23];sum[22]-=ambient;for(var island:islands.snapshots())for(var node:island.graph().reservoirs()) {var n=node.inventory().moles();for(int c=0;c<com.wormzjl.createcheme.science.material.MaterialTestBasis.NETWORK+1;c++)sum[c]+=n[c];sum[22]+=node.inventory().internalEnergy();}
             for(var pending:modules.transfers().pending().values())add(sum,pending.remaining());
             for(var module:modules.snapshots())if(module.cycle()!=null)for(var input:module.cycle().inputs().values())add(sum,input.owned());return sum;
         }

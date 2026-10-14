@@ -1,5 +1,6 @@
 package com.wormzjl.createcheme.science.fluid.network;
 
+import com.wormzjl.createcheme.science.fluid.solver.PhaseLayout;
 import com.wormzjl.createcheme.science.fluid.thermo.FluidThermodynamics;
 import com.wormzjl.createcheme.science.material.MaterialCatalog;
 import org.junit.jupiter.api.Test;
@@ -20,10 +21,19 @@ class EmptyNetworkTest {
         assertArrayEquals(new double[com.wormzjl.createcheme.science.material.MaterialTestBasis.NETWORK+1],result.graph().reservoirs().getFirst().inventory().moles());assertEquals(0,result.graph().reservoirs().getFirst().inventory().internalEnergy());
         assertEquals(0,result.averageMassFlows().length);assertTrue(result.boundaries().isEmpty());assertEquals(initial,result.graph());
     }
-    @Test void unsupportedVacuumFillingIsExplicitAndCannotPublishOutflowFromTheRetainedGuess() {
+    /**
+     * Owner decision D54: a vessel that holds nothing is a slack bag at the ambient. A 2 bar nitrogen generator fills it
+     * (it was refused before: an evacuated vessel had no state to fill from); it gives nothing back, and the step's ledger
+     * books what arrived, less the wall's work on the ambient, in the vessel.
+     */
+    @Test void anEmptyVesselFillsFromWhatArrivesAndGivesNothingBack() {
         var empty=empty();var source=new PassiveNetwork.Reservoir(2,0,model.initialNitrogenCharge(1,298.15,200000,()->{}),PassiveNetwork.NodeKind.GENERATOR);
-        var graph=new PassiveNetwork(List.of(empty,source),List.of(new PassiveNetwork.Pipe(3,0,1,new PipeResistance.Geometry(1,.05,0,0))));
-        var failure=assertThrows(IllegalArgumentException.class,()->new PassiveStepSolver(model).solve(graph,1,()->{}));assertTrue(failure.getMessage().contains("no fluid temperature"));
+        var graph=new PassiveNetwork(List.of(empty,source),List.of(new PassiveNetwork.Pipe(3,1,0,new PipeResistance.Geometry(1,.05,0,0))));
+        var result=new PassiveStepSolver(model).solve(graph,.01,()->{});
+        assertTrue(result.massFlows()[0]>0,"the generator fills the vessel: "+result.massFlows()[0]);
+        var filled=result.inventories().get(0);double held=0;for(double n:filled.moles())held+=n;
+        assertTrue(held>0,"the vessel holds what arrived");
+        var state=result.states().get(0);assertTrue(state.pressure()>=PhaseLayout.AMBIENT_PRESSURE*(1-1e-9),"no vacuum: "+state.pressure());
         assertArrayEquals(new double[com.wormzjl.createcheme.science.material.MaterialTestBasis.NETWORK+1],empty.inventory().moles());assertEquals(0,empty.inventory().internalEnergy());
     }
 }

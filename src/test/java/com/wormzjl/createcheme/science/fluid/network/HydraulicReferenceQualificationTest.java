@@ -119,44 +119,11 @@ class HydraulicReferenceQualificationTest {
         write("M2-transition-reference.json", rows);
     }
 
-    @Test void twoFiniteVesselsMatchSmallSignalComplianceWithReversedInitialPressures() throws Exception {
-        var rows = new ArrayList<Map<String, Object>>();
-        // Explicit nitrogen reference properties at 350 K; independent Cp polynomial evaluation.
-        double offset = 350 - 298.15;
-        double cp = 29.124372589504464 + offset * (.0005780310349492723 + offset *
-                (3.07622401005812e-6 + offset * (4.1241579732790716e-8 + offset *
-                        (-8.967281103873693e-11 + offset * 5.418990171918791e-14))));
-        double gasConstant = 8.31446261815324, gamma = cp / (cp - gasConstant), mu = 20.1172264699e-6;
-        double rate = gamma * 1000 * Math.PI * Math.pow(.01, 4) / (64 * mu), duration = 10;
-        double remainingDifference = Math.exp(-rate * duration);
-        double meanFlow = (1 - remainingDifference) * .0280134 / (2 * gamma * gasConstant * 350 * duration);
-        for (int sign : new int[]{-1, 1}) {
-            var graph = new PassiveNetwork(List.of(new PassiveNetwork.Reservoir(1, 0, state(false, 1000 + sign * .5)),
-                    new PassiveNetwork.Reservoir(2, 0, state(false, 1000 - sign * .5))),
-                    List.of(new PassiveNetwork.Pipe(3, 0, 1, new PipeResistance.Geometry(1, .01, 0, 0))));
-            var actual = new PassiveIntervalSolver(model).solve(graph, duration,
-                    new PassiveIntervalSolver.Settings(.1, .1, 1024), () -> {});
-            assertEquals(sign * meanFlow, actual.averageMassFlows()[0], 1e-10 + 1e-4 * meanFlow);
-            double difference = actual.graph().reservoirs().get(0).state().pressure()
-                    - actual.graph().reservoirs().get(1).state().pressure();
-            assertEquals(sign * remainingDifference, difference, 1 + 1e-4 * remainingDifference);
-            double beforeMoles = 0, afterMoles = 0, beforeEnergy = 0, afterEnergy = 0;
-            for (int i = 0; i < 2; i++) {
-                beforeMoles += graph.reservoirs().get(i).inventory().moles()[com.wormzjl.createcheme.science.material.MaterialTestBasis.NITROGEN];
-                afterMoles += actual.graph().reservoirs().get(i).inventory().moles()[com.wormzjl.createcheme.science.material.MaterialTestBasis.NITROGEN];
-                beforeEnergy += graph.reservoirs().get(i).inventory().internalEnergy();
-                afterEnergy += actual.graph().reservoirs().get(i).inventory().internalEnergy();
-            }
-            assertEquals(beforeMoles, afterMoles, 1e-10 + 1e-8 * beforeMoles);
-            assertEquals(beforeEnergy, afterEnergy, 1e-4 + 1e-6 * Math.abs(beforeEnergy));
-            rows.add(Map.of("sign", sign, "expectedAverageMassFlowKgPerSecond", sign * meanFlow,
-                    "actualAverageMassFlowKgPerSecond", actual.averageMassFlows()[0],
-                    "expectedPressureDifferencePa", sign * remainingDifference, "actualPressureDifferencePa", difference,
-                    "componentBalanceMoles", afterMoles - beforeMoles, "energyBalanceJoules", afterEnergy - beforeEnergy,
-                    "status", "PASS"));
-        }
-        write("M2-laminar-compliance-reference.json", rows);
-    }
+    // Retired with owner decision D54 (every vessel a bag with a stiff wall), thread t24, 2026-10-14:
+    // twoFiniteVesselsMatchSmallSignalComplianceWithReversedInitialPressures compared two closed nitrogen vessels at 1 kPa
+    // with the dilute ideal-gas compliance to 1e-4. A bag cannot hold 1 kPa (it goes slack at the ambient), and at the lowest
+    // pressure it can hold, 1 kPa above the ambient with the interval and steps scaled to the same decay, the real gas
+    // stands 1.7e-3 from the dilute reference (measured, logs es09). The test is in the history at 50145147.
 
     private FluidThermodynamics.State state(boolean water, double pressure) {
         double[] n = new double[com.wormzjl.createcheme.science.material.MaterialTestBasis.NETWORK+1]; n[water ? com.wormzjl.createcheme.science.material.MaterialTestBasis.NETWORK : com.wormzjl.createcheme.science.material.MaterialTestBasis.NITROGEN] = 1;

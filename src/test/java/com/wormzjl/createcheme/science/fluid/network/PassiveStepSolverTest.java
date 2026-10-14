@@ -47,8 +47,9 @@ class PassiveStepSolverTest {
         var graph=new PassiveNetwork(List.of(
                 new PassiveNetwork.Reservoir(1,0,fill(300000,0),PassiveNetwork.NodeKind.GENERATOR),
                 new PassiveNetwork.Reservoir(2,0,fill(170000,0),true),
-                new PassiveNetwork.Reservoir(3,0,fill(100000,0)),
-                new PassiveNetwork.Reservoir(4,0,fill(100000,0))),List.of(
+                // Above the ambient: a vessel is a bag (decision D54), and one charged below the ambient goes slack at it.
+                new PassiveNetwork.Reservoir(3,0,fill(110000,0)),
+                new PassiveNetwork.Reservoir(4,0,fill(110000,0))),List.of(
                 new PassiveNetwork.Pipe(5,0,1,List.of(geometry),new FlowControl.Passive(),3),
                 new PassiveNetwork.Pipe(6,1,2,List.of(geometry),new FlowControl.Passive(),3),
                 new PassiveNetwork.Pipe(7,0,3,new PipeResistance.Geometry(10,.05,.000045,0))));
@@ -57,7 +58,7 @@ class PassiveStepSolverTest {
         assertEquals(0,result.massFlows()[0]);assertEquals(0,result.massFlows()[1]);
         assertEquals(170000,result.states().get(1).pressure(),1e-6*170000);
         // Nothing crossed either closure, so the reservoir behind them is exactly where it was.
-        assertEquals(fill(100000,0).pressure(),result.states().get(2).pressure(),1e-6*100000);
+        assertEquals(fill(110000,0).pressure(),result.states().get(2).pressure(),1e-6*110000);
         assertEquals(graph.reservoirs().get(2).inventory().moles()[0],result.inventories().get(2).moles()[0],1e-12);
     }
     @Test void branchJunctionHasNoInventoryAndBalancesEveryConnectedFlow() {

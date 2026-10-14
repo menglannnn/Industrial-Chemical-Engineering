@@ -1,5 +1,7 @@
 package com.wormzjl.createcheme.science.fluid.thermo;
 
+import com.wormzjl.createcheme.science.math.DeterministicMath;
+
 import com.wormzjl.createcheme.science.material.MaterialCatalog;
 import com.wormzjl.createcheme.science.thermo.PengRobinson78;
 import com.wormzjl.createcheme.science.thermo.PhaseRoot;
@@ -50,7 +52,7 @@ public final class HydrocarbonModel {
             double[] pure=new double[count];pure[i]=1;
             double rawVolume=raw.evaluate(t,REFERENCE_PRESSURE,pure,PhaseRoot.LIQUID).compressibilityFactor()
                     *PengRobinson78.GAS_CONSTANT*t/REFERENCE_PRESSURE;
-            shifts[i]=targetVolume*Math.exp(compressibility*(referenceP-REFERENCE_PRESSURE))-rawVolume;
+            shifts[i]=targetVolume*DeterministicMath.exp(compressibility*(referenceP-REFERENCE_PRESSURE))-rawVolume;
         }
         translated=new TranslatedPengRobinson(components,interactions,cp,shifts,joints,low);
         revision=catalog.fluidThermoFingerprint(packageId)+":fluid-shared-k-v1:fluid-domain-data-v1:cp-segments-v1:catalog-volume-reference-v1:k="+Double.toHexString(compressibility);

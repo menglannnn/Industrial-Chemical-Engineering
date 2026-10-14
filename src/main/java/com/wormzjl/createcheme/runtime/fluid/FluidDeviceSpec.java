@@ -30,13 +30,14 @@ public record FluidDeviceSpec(double volume,double temperature,double pressure,d
     }
     /**
      * Refuses settings the model cannot evaluate, with the dedicated {@link com.wormzjl.createcheme.science.fluid.thermo.ThermoDomainViolation}:
-     * the fluid a device of this kind would hold at this temperature and pressure - a nitrogen charge for a reservoir or
-     * a void, this composition for a generator - against the package's domain. Pipes and actuators hold nothing.
+     * the fluid a device of this kind would hold at this temperature and pressure - nitrogen for a void, this composition
+     * for a generator - against the package's domain. A reservoir is placed empty (decision D54), and pipes and actuators
+     * hold nothing.
      */
     public void validate(FluidThermodynamics model,TopologyCompiler.Kind kind) {
         if(composition.length!=model.components().size())throw new IllegalArgumentException("Device composition differs from captured fluid axis");
         switch(kind) {
-            case RESERVOIR,VOID->{
+            case VOID->{
                 int nitrogen=model.hydrocarbon.components().indexOf(com.wormzjl.createcheme.science.fluid.thermo.FluidMaterialCatalog.NITROGEN);
                 double[] charge=new double[composition.length];charge[nitrogen]=1;model.domain().checkTotals(temperature,pressure,charge);
             }
@@ -49,8 +50,10 @@ public record FluidDeviceSpec(double volume,double temperature,double pressure,d
         if(composition.length!=model.components().size())throw new IllegalArgumentException("Device composition differs from captured fluid axis");
         validate(model,device.kind());
         var kind=switch(device.kind()) {case RESERVOIR->PassiveNetwork.NodeKind.RESERVOIR;case GENERATOR->PassiveNetwork.NodeKind.GENERATOR;case VOID->PassiveNetwork.NodeKind.VOID;default->throw new IllegalArgumentException("Pipes and actuators have no owned reservoir");};
+        // Decision D54: a placed reservoir holds nothing; it fills from what its connections deliver.
+        if(kind==PassiveNetwork.NodeKind.RESERVOIR)return PassiveNetwork.emptyVessel(device.id(),device.position().y(),volume,model);
         FluidThermodynamics.State state;
-        if(kind==PassiveNetwork.NodeKind.RESERVOIR||kind==PassiveNetwork.NodeKind.VOID)state=model.initialNitrogenCharge(volume,temperature,pressure,checkpoint);
+        if(kind==PassiveNetwork.NodeKind.VOID)state=model.initialNitrogenCharge(volume,temperature,pressure,checkpoint);
         else {
             var n=composition.clone();var unit=model.flashTP(temperature,pressure,n,checkpoint);
             var stock=solids.unitMass(model.solids);double liquidVolume=unit.liquidVolume()+unit.waterVolume();

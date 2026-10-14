@@ -1,12 +1,13 @@
 package com.wormzjl.createcheme.science.fluid.topology;
 
+import com.wormzjl.createcheme.science.fluid.network.NetworkReduction;
 import com.wormzjl.createcheme.science.fluid.network.PipeResistance;
 import java.util.*;
 
 /** Deterministic compilation of persistent block identities; no Minecraft reads or loaded-chunk dependency. */
 public final class TopologyCompiler {
     private TopologyCompiler() {}
-    public enum Kind { RESERVOIR, PIPE, PUMP, VALVE, GENERATOR, VOID, FILTER }
+    public enum Kind { RESERVOIR, PIPE, PUMP, VALVE, GENERATOR, VOID, FILTER, COMPRESSOR }
     public record Node(long id,Kind kind,double elevation) {
         public Node{Objects.requireNonNull(kind);if(!Double.isFinite(elevation))throw new IllegalArgumentException("Invalid elevation");}
     }
@@ -34,13 +35,11 @@ public final class TopologyCompiler {
             adjacent.get(link.first).add(link.id);adjacent.get(link.second).add(link.id);
         }
         for(var neighbors:adjacent.values())neighbors.sort(Long::compare);
-        var active=new HashSet<>(links.keySet());var dead=new TreeSet<Long>();var queue=new ArrayDeque<Long>();
-        for(var node:nodes.values())if(node.kind==Kind.PIPE&&adjacent.get(node.id).size()<=1)queue.add(node.id);
-        while(!queue.isEmpty()) {
-            long id=queue.remove();if(nodes.get(id).kind!=Kind.PIPE)continue;
-            var remaining=adjacent.get(id).stream().filter(active::contains).toList();if(remaining.size()!=1)continue;
-            long edge=remaining.getFirst();active.remove(edge);dead.add(edge);queue.add(links.get(edge).other(id));
-        }
+        // The network reduction stage (NetworkReduction): step 1 is the graph above, step 2 the dead ends, step 3 the runs,
+        // step 4 the islands.
+        java.util.function.LongBinaryOperator other=(link,node)->links.get(link).other(node);
+        var active=new HashSet<>(links.keySet());
+        var dead=NetworkReduction.pruneDeadEnds(adjacent,other,id->destination(nodes.get(id).kind),active);
         var retained=new TreeMap<Long,Node>();
         for(var node:nodes.values())if(node.kind!=Kind.PIPE||adjacent.get(node.id).stream().filter(active::contains).count()!=2)retained.put(node.id,node);
         var visited=new HashSet<Long>();var runs=new ArrayList<Run>();var views=new HashMap<Long,PipeView>();
@@ -60,22 +59,18 @@ public final class TopologyCompiler {
             }
         }
         var unanchored=new TreeSet<>(active);unanchored.removeAll(visited);
-        var islands=new ArrayList<Set<Long>>();var seen=new HashSet<Long>();
-        for(var start:retained.values()) {
-            if(seen.contains(start.id)||adjacent.get(start.id).stream().noneMatch(visited::contains))continue;
-            var members=new TreeSet<Long>();queue.add(start.id);seen.add(start.id);
-            while(!queue.isEmpty()) {
-                long id=queue.remove();members.add(id);
-                for(long edge:adjacent.get(id))if(visited.contains(edge)){long other=links.get(edge).other(id);if(seen.add(other))queue.add(other);}
-            }
-            islands.add(members);
-        }
+        var islands=NetworkReduction.splitAtFixedBoundaries(retained.keySet(),adjacent,other,id->fixed(nodes.get(id).kind),visited);
         return new Compiled(new ArrayList<>(retained.values()),runs,views,dead,unanchored,invalidPumps(nodes,links,adjacent),islands);
     }
-    /** Reservoir and boundary ports are disconnected for this structural test; valves remain traversable. */
+    /** A boundary whose state nothing in the network changes: a generator or a void (a tank's state is its inventory). */
+    public static boolean fixed(Kind kind){return kind==Kind.GENERATOR||kind==Kind.VOID;}
+    /** Where a branch may lead flow (owner decision D18): a tank, a generator or a void. Every other block only passes it on. */
+    public static boolean destination(Kind kind){return kind==Kind.RESERVOIR||fixed(kind);}
+    /** Reservoir and boundary ports are disconnected for this structural test; valves remain traversable. A compressor is a
+     * mover like the pump and is held to the same rule (plan 3.7). */
     private static Set<Long> invalidPumps(Map<Long,Node> nodes,Map<Long,Link> links,Map<Long,List<Long>> adjacent) {
         var invalid=new TreeSet<Long>();
-        for(var pump:nodes.values())if(pump.kind==Kind.PUMP) {
+        for(var pump:nodes.values())if(pump.kind==Kind.PUMP||pump.kind==Kind.COMPRESSOR) {
             var edges=adjacent.get(pump.id);if(edges.size()!=2){invalid.add(pump.id);continue;}
             long start=links.get(edges.get(0)).other(pump.id),target=links.get(edges.get(1)).other(pump.id);
             // Separate ports on one tank are still distinct and permit a tank-buffered recycle.

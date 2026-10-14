@@ -31,7 +31,21 @@ class V3LearnedRecoveryTest {
         return column(8, 4, List.of());
     }
 
+    /**
+     * The draw column with a 50 kW reboiler. At zero duty its stripping section is pinched and the accepted root
+     * is nearly singular, so whether a re-seeded accepted state re-certifies is decided by the last bits of the
+     * math library (batch 2026-09-27-jdk-determinism, COLUMN_TESTS_REVIEW.md).
+     */
+    private static V3ColumnInput boiledDrawInput() {
+        return column(8, 4, List.of(new V3SideDrawSpec(6, 2.0)), 50_000);
+    }
+
     private static V3ColumnInput column(int stages, int feedStage, List<V3SideDrawSpec> draws) {
+        return column(stages, feedStage, draws, 0);
+    }
+
+    private static V3ColumnInput column(int stages, int feedStage, List<V3SideDrawSpec> draws,
+            double reboilerDutyWatts) {
         var thermo = V3PengRobinsonThermo.fromRegisteredPackage("createcheme:tjl19_dwsim");
         double[] feed = new double[thermo.componentBasis().componentCount()];
         feed[7] = 50;
@@ -40,7 +54,7 @@ class V3LearnedRecoveryTest {
                 stages, feedStage, 250_000, 750,
                 List.of(new V3ColumnSpecification.CondenserOutletTemperature(300),
                         new V3ColumnSpecification.OrganicRefluxRatio(2),
-                        new V3ColumnSpecification.ReboilerDuty(0)),
+                        new V3ColumnSpecification.ReboilerDuty(reboilerDutyWatts)),
                 draws, List.of(), List.of());
     }
 
@@ -89,7 +103,7 @@ class V3LearnedRecoveryTest {
      * publish the same digest, the same streams and the same Newton evidence whichever rule is selected.</p>
      */
     @Test void anAcceptedLearnedCorrectionIsIdenticalUnderEitherRecoveryRule() {
-        V3ColumnInput input = drawInput();
+        V3ColumnInput input = boiledDrawInput();
         V3NeuralInitializer model = fixed(acceptedProfile(input));
         var none = assertInstanceOf(V3ColumnOutcome.Success.class, V3ColumnCalculator.calculate(input, () -> {},
                 0, 0, learned(V3InitializationOptions.Mode.LNN_ONLY, 16, V3InitializationOptions.Recovery.NONE), model));

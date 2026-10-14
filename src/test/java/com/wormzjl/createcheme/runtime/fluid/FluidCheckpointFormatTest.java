@@ -18,7 +18,7 @@ import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
- * Checkpoint format 5 (F3's format 4, which replaced format 3 of plan section 3.5, less its kind column): clocks, material, fences, pending events, modules
+ * Checkpoint format 6 (format 5 plus the pipe ports and the compressor control of the phase-ports batch; format 5 was F3's format 4, which replaced format 3 of plan section 3.5, less its kind column): clocks, material, fences, pending events, modules
  * and certificates round-trip exactly through the core record and the island units; every index and certificate
  * field is validated; certificates are discarded, keeping inventory, when certificates are off or their signature
  * changed; a certified island's unit is reused in place, never re-encoded, while it stays certified; a thousand
@@ -51,7 +51,7 @@ class FluidCheckpointFormatTest {
     }
     private PassiveNetwork island(List<PhysicalFluidTopology.Device> devices,Map<Long,FluidDeviceSpec> specs) {
         var stock=new LinkedHashMap<Long,PassiveNetwork.Reservoir>();
-        for(var d:devices){var spec=specs.get(d.id());if(spec!=null)stock.put(d.id(),spec.initialize(d,model,()->{}));}
+        for(var d:devices){var spec=specs.get(d.id());if(spec!=null)stock.put(d.id(),FluidTestSupport.chargedBoundary(spec,d,model));}
         var connected=PhysicalFluidTopology.compile(devices,stock).islands().stream().filter(i->i.physicalIds().size()==devices.size()).toList();
         assertEquals(1,connected.size());return connected.getFirst().graph();
     }
@@ -145,7 +145,7 @@ class FluidCheckpointFormatTest {
     /** A certified island's snapshot with its certificate base and interval start graphs replaced. */
     private static FluidCheckpointCodec.IslandEntry withCertificateGraphs(FluidCheckpointCodec.IslandEntry entry,java.util.function.UnaryOperator<PassiveNetwork> base,java.util.function.UnaryOperator<PassiveNetwork> before) {
         var s=entry.snapshot();var c=s.certificate().orElseThrow();var saved=c.saved().orElseThrow();var interval=saved.interval();var r=interval.result();
-        var result=new PassiveIntervalSolver.Result(base.apply(r.graph()),r.advancedSeconds(),r.averageMassFlows(),r.acceptedSubsteps(),r.rejectedSubsteps(),r.pumpWorkJoule(),r.boundaries(),r.rejectionReasons(),r.endpointModes(),r.endpointHeads(),r.acceptance(),r.pipeTransfers());
+        var result=new PassiveIntervalSolver.Result(base.apply(r.graph()),r.advancedSeconds(),r.averageMassFlows(),r.acceptedSubsteps(),r.rejectedSubsteps(),r.pumpWorkJoule(),r.boundaries(),r.rejectionReasons(),r.endpointModes(),r.endpointHeads(),r.endpointFlows(),r.acceptance(),r.pipeTransfers());
         var edited=new IslandCertificate.Saved(saved.sinceTick(),saved.horizonTick(),new IslandCertificate.Interval(interval.startTick(),interval.endTick(),before.apply(interval.before()),result),saved.signature());
         var certified=new IslandCoordinator.Certified(c.drift(),c.sinceTick(),c.baseTick(),c.horizonTick(),c.largestFlow(),Optional.of(edited));
         return new FluidCheckpointCodec.IslandEntry(entry.dimension(),entry.packageId(),entry.compressibility(),new IslandCoordinator.Snapshot(s.id(),s.revision(),s.graph(),s.clock(),s.allowance(),s.anchor(),Optional.of(result),s.status(),s.fences(),Optional.of(certified)));
@@ -185,10 +185,10 @@ class FluidCheckpointFormatTest {
         var world=topology.snapshot();assertEquals(1,world.events().size());
 
         var data=new FluidSavedData(checkpoint,world,key->model);var tag=data.save(new CompoundTag(),null);
-        assertEquals(5,tag.getInt("FluidFormat"));assertEquals(1_234,tag.getLong("Epoch"));
+        assertEquals(7,tag.getInt("FluidFormat"));assertEquals(1_234,tag.getLong("Epoch"));
         assertEquals(FluidCheckpointCodec.AWAKE,index(tag,4,"Base"));
         assertEquals(checkpoint.islands().get(1).snapshot().certificate().orElseThrow().baseTick(),index(tag,2,"Base"));
-        assertFalse(tag.getCompound("Islands").contains("Kind"),"format 5 has one certificate kind and no kind column");
+        assertFalse(tag.getCompound("Islands").contains("Kind"),"format 7, like 5 and 6, has one certificate kind and no kind column");
         assertEquals(0.0,checkpoint.islands().get(1).snapshot().certificate().orElseThrow().drift(),"the closed pair's certificate is the identity map, drift 0");
         var loaded=FluidSavedData.load(tag,key->model,data.store().reopen());
         for(int i=0;i<4;i++) {

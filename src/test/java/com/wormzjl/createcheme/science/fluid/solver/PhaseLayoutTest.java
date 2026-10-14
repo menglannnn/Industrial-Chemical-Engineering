@@ -24,12 +24,35 @@ class PhaseLayoutTest {
         for(double[] n:new double[][]{crude,water,methane}) {
             var seed=model.flashTP(350,101325,n,()->{});var target=model.flashTP(351,105000,n,()->{});
             var layout=new PhaseLayout(model,seed);
-            var equations=layout.fixedInventory(n,target.internalEnergy(),target.volume());var initial=layout.encode(seed);var initialResidual=equations.residual(initial);
+            var equations=layout.wallClosure(n,target.internalEnergy(),target.volume(),Double.NaN);var initial=layout.encode(seed);var initialResidual=equations.residual(initial);
             var result=SparseNewton.solve(equations,initial,new SparseNewton.Settings(30,1e-10,1e-6,24),()->{});
             var actual=layout.decode(result.variables(),0);
             assertArrayEquals(initialResidual,equations.residual(initial),0,"Exact-temperature coefficient cache must not retain a perturbed Newton temperature");
             assertEquals(target.temperature(),actual.temperature(),1e-5);assertEquals(target.pressure(),actual.pressure(),.1);
             assertArrayEquals(n,PhaseLayout.totalAmounts(actual),1e-10);
         }
+    }
+    /** Decision A423: the wall row and the bag volume stated on a given branch, as a Jacobian sweep reads them. */
+    @Test void theWallRowAndTheBagVolumeAreStatedOnTheBranchASweepIsBuiltOn() {
+        var model=new FluidThermodynamics(MaterialCatalog.bundled(),"createcheme:tjl20_methane_nitrogen",1e-9);
+        var air=model.initialNitrogenCharge(1,298.15,101325,()->{});double volume=air.volume();
+        var taut=new PhaseLayout.Wall(true,true);var slack=new PhaseLayout.Wall(false,false);
+        // The charge in a vessel 1e-8 larger: a slack bag at the ambient. Its own branch reads the slack row, zero; the taut
+        // branch reads the volume short of the capacity, and the bag at the capacity.
+        double larger=volume*(1+1e-8);
+        assertEquals(slack,PhaseLayout.wall(air,larger));
+        assertEquals(0,PhaseLayout.wallRow(air,larger),0);assertEquals(PhaseLayout.wallRow(air,larger),PhaseLayout.wallRow(air,larger,slack),0);
+        assertEquals((volume-larger)/larger,PhaseLayout.wallRow(air,larger,taut),0);
+        assertEquals(volume,PhaseLayout.bagVolume(air,larger),0);assertEquals(larger,PhaseLayout.bagVolume(air,larger,taut),0);
+        // The charge in a vessel 1e-8 smaller: the wall carries it. Its own branch reads the taut row; the slack branch
+        // reads zero at the ambient, and the bag at the contents' volume.
+        double smaller=volume*(1-1e-8);
+        assertEquals(taut,PhaseLayout.wall(air,smaller));
+        assertEquals((volume-smaller)/smaller,PhaseLayout.wallRow(air,smaller),0);assertEquals(PhaseLayout.wallRow(air,smaller),PhaseLayout.wallRow(air,smaller,taut),0);
+        assertEquals(0,PhaseLayout.wallRow(air,smaller,slack),0);
+        assertEquals(smaller,PhaseLayout.bagVolume(air,smaller),0);assertEquals(volume,PhaseLayout.bagVolume(air,smaller,slack),0);
+        // Within 1e-12 of the capacity the bag is the capacity on the slack branch too (the kink's own band).
+        double kink=volume*(1+1e-13);
+        assertEquals(new PhaseLayout.Wall(false,true),PhaseLayout.wall(air,kink));assertEquals(kink,PhaseLayout.bagVolume(air,kink,new PhaseLayout.Wall(false,true)),0);
     }
 }

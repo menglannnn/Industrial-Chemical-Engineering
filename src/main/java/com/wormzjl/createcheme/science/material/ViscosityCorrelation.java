@@ -1,5 +1,7 @@
 package com.wormzjl.createcheme.science.material;
 
+import com.wormzjl.createcheme.science.math.DeterministicMath;
+
 import java.util.List;
 import java.util.Objects;
 
@@ -85,18 +87,19 @@ public record ViscosityCorrelation(Model model, double minimumTemperatureKelvin,
 
     private static double evaluate(Model model, double t, double reference, List<Double> c, List<Double> powers, List<Double> nodes) {
         return switch (model) {
-            case ANDRADE -> Math.exp(Math.log(c.get(0)) + c.get(1) / t);
-            case SUTHERLAND -> c.get(0) * Math.pow(t / reference, 1.5) * (reference + c.get(1)) / (t + c.get(1));
+            case ANDRADE -> DeterministicMath.exp(DeterministicMath.log(c.get(0)) + c.get(1) / t);
+            case SUTHERLAND -> c.get(0) * DeterministicMath.pow(t / reference, 1.5) * (reference + c.get(1)) / (t + c.get(1));
             case LOG_TABLE -> {
                 int index = java.util.Collections.binarySearch(nodes, t);
                 if (index >= 0) yield c.get(index);
                 int high = -index - 1, low = high - 1;
                 double fraction = (t - nodes.get(low)) / (nodes.get(high) - nodes.get(low));
-                yield Math.exp(Math.log(c.get(low)) + fraction * (Math.log(c.get(high)) - Math.log(c.get(low))));
+                double lowLog = DeterministicMath.log(c.get(low));
+                yield DeterministicMath.exp(lowLog + fraction * (DeterministicMath.log(c.get(high)) - lowLog));
             }
             case POWER_SUM -> {
                 double total = 0;
-                for (int i = 0; i < c.size(); i++) total += c.get(i) * Math.pow(t / reference, powers.get(i));
+                for (int i = 0; i < c.size(); i++) total += c.get(i) * DeterministicMath.pow(t / reference, powers.get(i));
                 yield total;
             }
         };

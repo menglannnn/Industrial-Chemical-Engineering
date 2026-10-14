@@ -1,5 +1,7 @@
 package com.wormzjl.createcheme.science.column.v3;
 
+import com.wormzjl.createcheme.science.math.DeterministicMath;
+
 import com.wormzjl.createcheme.science.column.v3.thermo.V3FlashResult;
 import com.wormzjl.createcheme.science.column.v3.thermo.V3FugacityResult;
 import com.wormzjl.createcheme.science.column.v3.thermo.V3Phase;
@@ -411,7 +413,7 @@ final class V3ColumnInitializer {
         double sum = 0.0;
         for (int component = 0; component < active.componentCount(); component++) {
             int publicComponent = active.publicIndex(component);
-            sum += liquidComposition[publicComponent] * Math.exp(
+            sum += liquidComposition[publicComponent] * DeterministicMath.exp(
                     liquid.logFugacityCoefficient(publicComponent) - vapor.logFugacityCoefficient(publicComponent));
         }
         return sum - 1.0;
@@ -466,9 +468,9 @@ final class V3ColumnInitializer {
         for (int node = 0; node < current.length; node++) {
             for (int component = 0; component < current[node].length; component++) {
                 maximumLogChange = Math.max(maximumLogChange,
-                        Math.abs(Math.log(target[node][component]) - Math.log(current[node][component])));
-                current[node][component] = Math.exp((1.0 - damping) * Math.log(current[node][component])
-                        + damping * Math.log(target[node][component]));
+                        Math.abs(DeterministicMath.log(target[node][component]) - DeterministicMath.log(current[node][component])));
+                current[node][component] = DeterministicMath.exp((1.0 - damping) * DeterministicMath.log(current[node][component])
+                        + damping * DeterministicMath.log(target[node][component]));
             }
         }
         return maximumLogChange;
@@ -771,10 +773,10 @@ final class V3ColumnInitializer {
                 vaporSum += vapor[node][component];
             }
             if (!(liquidSum > 0.0)) return Double.POSITIVE_INFINITY;
-            mismatch = Math.max(mismatch, Math.abs(Math.log(liquidSum / liquidTotals[node])));
+            mismatch = Math.max(mismatch, Math.abs(DeterministicMath.log(liquidSum / liquidTotals[node])));
             if (node == 0 && vaporSum == 0.0 && vaporTotals[node] == 0.0) continue;
             if (!(vaporSum > 0.0)) return Double.POSITIVE_INFINITY;
-            mismatch = Math.max(mismatch, Math.abs(Math.log(vaporSum / vaporTotals[node])));
+            mismatch = Math.max(mismatch, Math.abs(DeterministicMath.log(vaporSum / vaporTotals[node])));
         }
         return mismatch;
     }
@@ -809,7 +811,7 @@ final class V3ColumnInitializer {
                     V3Phase.VAPOR, workspace);
             for (int component = 0; component < active.componentCount(); component++) {
                 int publicComponent = active.publicIndex(component);
-                ratios[node][component] = boundedRatio(Math.exp(
+                ratios[node][component] = boundedRatio(DeterministicMath.exp(
                         liquidResult.logFugacityCoefficient(publicComponent)
                                 - vaporResult.logFugacityCoefficient(publicComponent)));
             }

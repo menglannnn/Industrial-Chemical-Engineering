@@ -18,7 +18,8 @@ class McpGameplayRegressionTest {
             return com.google.gson.JsonParser.parseString(new String(input.readAllBytes(),java.nio.charset.StandardCharsets.UTF_8)).getAsJsonObject().getAsJsonArray("islands").get(0).getAsJsonObject();
         }
     }
-    /** The capture predates solids, blocked masks and filters and holds none of them, so they are empty here. */
+    /** The capture predates solids, blocked masks, filters and phase ports (checkpoint format 6) and holds none of them,
+     * so they are empty here and every pipe end is a BULK end. */
     private static PassiveNetwork archivedGraph(com.google.gson.JsonObject island,FluidThermodynamics model) {
         var graph=island.getAsJsonObject("graph").deepCopy();
         for(var node:graph.getAsJsonArray("nodes")) {
@@ -26,8 +27,8 @@ class McpGameplayRegressionTest {
             var empty=new com.google.gson.JsonObject();empty.add("populations",new com.google.gson.JsonArray());inventory.add("solids",empty);
         }
         for(var pipe:graph.getAsJsonArray("pipes")) {
-            var p=pipe.getAsJsonObject();assertFalse(p.has("blockedDirections")||p.has("filter"));
-            p.addProperty("blockedDirections",0);p.add("filter",com.google.gson.JsonNull.INSTANCE);
+            var p=pipe.getAsJsonObject();assertFalse(p.has("blockedDirections")||p.has("filter")||p.has("firstPort")||p.has("secondPort"));
+            p.addProperty("blockedDirections",0);p.add("filter",com.google.gson.JsonNull.INSTANCE);p.addProperty("firstPort","BULK");p.addProperty("secondPort","BULK");
         }
         return FluidCheckpointCodec.decodeGraph(graph,model);
     }
@@ -82,10 +83,20 @@ class McpGameplayRegressionTest {
         assertEquals(nitrogen.vapor()[com.wormzjl.createcheme.science.material.MaterialTestBasis.NITROGEN],result.graph().reservoirs().getFirst().inventory().moles()[com.wormzjl.createcheme.science.material.MaterialTestBasis.NITROGEN],1e-8);
         var refined=new PassiveIntervalSolver(model).solve(graph,5,new PassiveIntervalSolver.Settings(.00005,.02,4096),()->{});
         var actual=result.graph().reservoirs().getFirst().state();var expected=refined.graph().reservoirs().getFirst().state();
-        assertEquals(expected.pressure(),actual.pressure(),.001*expected.pressure());
+        System.out.println("MCP_BELOW_SEA_LEVEL pressure="+actual.pressure()+"/"+expected.pressure()+" temperature="+actual.temperature()+"/"+expected.temperature()
+                +" mass="+actual.mass()+"/"+expected.mass()+" flow="+result.averageMassFlows()[0]+"/"+refined.averageMassFlows()[0]
+                +" accepted="+result.acceptedSubsteps()+"/"+refined.acceptedSubsteps());
+        // Restated 2026-09-27 (hold F7, owner decision: a vessel's mass change is measured against at least 900 kg/m3
+        // times its volume). The 1.2 kg nitrogen tank no longer forces small steps while water enters, only the 5 %
+        // pressure cap limits the step: 10 accepted steps in the 5 s slice against 260 refined. Measured against the
+        // refined run: pressure 129960.05 against 130299.51 Pa (0.26 %; bound was 0.1 %), mass 201.288 against
+        // 203.412 kg (1.04 %; was 203.164 kg, 0.125 %, bound 0.2 %), flow 40.029 against 40.453 kg/s (1.05 %; bound
+        // was 0.2 %). First-order backward-Euler error at the larger step, accepted with the 5 s cycle. Since decision D22
+        // (2026-09-28) the twenty idle intervals (generator and tank both at 1 atm, level) are at rest and not solved, so
+        // the edited slice starts from a fresh solver history: 129967.48 Pa, 201.335 kg, 40.038 kg/s, 9 accepted steps.
+        assertEquals(expected.pressure(),actual.pressure(),.003*expected.pressure());
         assertEquals(expected.temperature(),actual.temperature(),.1);
-        // Backward Euler (WP1 of the mixed-gas junction batch): 203.164 against a refined 203.419 kg, 0.125 % (TR-BDF2 0.1 %).
-        assertEquals(expected.mass(),actual.mass(),.002*expected.mass());
-        assertEquals(refined.averageMassFlows()[0],result.averageMassFlows()[0],.002*Math.abs(refined.averageMassFlows()[0]));
+        assertEquals(expected.mass(),actual.mass(),.012*expected.mass());
+        assertEquals(refined.averageMassFlows()[0],result.averageMassFlows()[0],.012*Math.abs(refined.averageMassFlows()[0]));
     }
 }

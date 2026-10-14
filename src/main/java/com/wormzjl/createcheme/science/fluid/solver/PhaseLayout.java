@@ -1,5 +1,7 @@
 package com.wormzjl.createcheme.science.fluid.solver;
 
+import com.wormzjl.createcheme.science.math.DeterministicMath;
+
 import com.wormzjl.createcheme.science.fluid.diagnostics.SolverDiagnostics;
 import com.wormzjl.createcheme.science.fluid.thermo.FluidThermodynamics;
 import com.wormzjl.createcheme.science.thermo.PhaseSupport;
@@ -99,6 +101,8 @@ public final class PhaseLayout {
         }
     }
     public int size(){return size;}
+    /** The local column of the pressure unknown, {@code ln(P / 1e5)}; every layout has one. */
+    public int pressureVariable(){return pressureIndex;}
     public int componentBalanceCount(){return components.length+(waterLiquidIndex>=0||waterVaporIndex>=0?1:0);}
     /** This layout's frozen per-component support, in the conserved hydrocarbon basis. */
     public PhaseSupport support(int component){return support[component];}
@@ -125,9 +129,43 @@ public final class PhaseLayout {
     }
     public double amountScale(){return amountScale;}
     public double energyScale(){return energyScale;}
-    /** Resolve trace amounts relative to their own scale rather than the bulk water inventory. */
-    public double differenceScale(int local,double value){return Math.max(Math.abs(value),totalAmountVariable(local)?Math.max(1e-30,Math.abs(differenceScales[local])):1);}
-    public double temperature(double[] variables,int offset){return 350*Math.exp(variables[offset+temperatureIndex]);}
+    /** Resolve trace amounts relative to their own scale rather than the bulk water inventory. This is also the floor
+     * {@code PassiveStepSolver} derives its trace clamp from; the finite-difference step itself is
+     * {@link #differenceStepScale}. */
+    public double differenceScale(int local,double value){return Math.max(Math.abs(value),totalAmountVariable(local)?Math.max(TRACE_DIFFERENCE_GUARD,Math.abs(differenceScales[local])):1);}
+    /** The difference scale an amount takes when its value and its seed are both zero. */
+    public static final double TRACE_DIFFERENCE_GUARD=1e-30;
+    /**
+     * The seed's own difference scale of an amount unknown (its encoded seed value, or the floor the layout put under it),
+     * without the {@link #TRACE_DIFFERENCE_GUARD}; see {@link #differenceStepScale}.
+     */
+    public double seedDifferenceScale(int local){return Math.abs(differenceScales[local]);}
+    /**
+     * The scale of the finite-difference step of this column: {@link #differenceScale}, except that an amount whose value
+     * and seed both lie below {@link #TRACE_DIFFERENCE_GUARD} is differenced relative to its own size, the guard applying
+     * only where both are zero. The guard used to apply to every such amount, so a trace of 1e-36 of its node's amount
+     * was differenced with a step as large as itself: the equilibrium rows, which read a trace phase's amounts through
+     * logarithms and ratios (the water saturation row of a vanishing vapour phase holding a trace of nitrogen that free
+     * water does not dissolve), got a secant 20-35 % below the tangent, and the Newton overshot and alternated, contracting
+     * by only 0.06-0.5 per iteration, so 20 iterations ended a little above the tolerance (1.1-1.8e-9 against 1e-9 in game)
+     * at every step size (phase-ports in-game defects F1 and F2, tools/phase-ports-probes/holds/). Bitwise wherever the
+     * value or the seed is at least the guard.
+     *
+     * <p>What this does not reach: such a trace decays geometrically and never to zero (a junction washed out by backward
+     * Euler, a gas cap a phase port draws at its D11 capacity share), and near the bottom of the double range (about
+     * 1e-300 of its node) the rows reading it through a logarithm have Jacobian entries of order 1/amount that overflow
+     * the factorization, then subnormal amounts that no longer resolve their own ratio. That end needs a decision on
+     * traces (the review's options), not a difference step.
+     */
+    public double differenceStepScale(int local,double value) {
+        if(!totalAmountVariable(local))return differenceScale(local,value);
+        return traceDifferenceScale(Math.max(Math.abs(value),Math.abs(differenceScales[local])));
+    }
+    /** The difference scale of an amount whose own size (the larger of its value and its seed) is {@code own}: {@code own}
+     * itself, and {@link #TRACE_DIFFERENCE_GUARD} at zero; for every {@code own} at or above the guard this is exactly
+     * {@code max(guard, own)}, the scale it always was. */
+    public static double traceDifferenceScale(double own){return own>0?own:TRACE_DIFFERENCE_GUARD;}
+    public double temperature(double[] variables,int offset){return 350*DeterministicMath.exp(variables[offset+temperatureIndex]);}
     public double[] encode(FluidThermodynamics.State state) {
         return encode(state,state.liquidView(),state.vaporView());
     }
@@ -150,17 +188,17 @@ public final class PhaseLayout {
         for(int i:components){
             if(support[i]==PhaseSupport.BOTH) {
                 x[liquidIndex[i]]=(l[i]+v[i])/amountScale;
-                if(l[i]>0&&v[i]>0)x[vaporIndex[i]]=Math.log(v[i])-Math.log(l[i]);
+                if(l[i]>0&&v[i]>0)x[vaporIndex[i]]=DeterministicMath.log(v[i])-DeterministicMath.log(l[i]);
                 else {
                     if(fl==null) {
-                        phaseAmountRatio=Math.log(sum(v)/sum(l));
+                        phaseAmountRatio=DeterministicMath.log(sum(v)/sum(l));
                         fl=state.liquidProperties().logFugacityView();fv=state.vaporProperties().logFugacityView();
                     }
                     // The equilibrium split this component would reach at the seed's fugacity
                     // coefficients: ln(v_i/l_i) = ln(n_V/n_L) + ln phi_i^L - ln phi_i^V + ln(P/Pc).
                     // It is the seed for a phase that has just appeared, and for a trace component
                     // the active set has just reactivated, which is the same situation.
-                    x[vaporIndex[i]]=phaseAmountRatio+fl[i]-fv[i]+Math.log(state.pressure()/state.hydrocarbonPartialPressure());
+                    x[vaporIndex[i]]=phaseAmountRatio+fl[i]-fv[i]+DeterministicMath.log(state.pressure()/state.hydrocarbonPartialPressure());
                 }
             }
             // One retained phase, whether because the node carries only that phase or because the
@@ -170,8 +208,8 @@ public final class PhaseLayout {
         }
         if(waterLiquidIndex>=0)x[waterLiquidIndex]=state.waterLiquid()/amountScale;
         if(waterVaporIndex>=0)x[waterVaporIndex]=state.waterVapor()/amountScale;
-        x[temperatureIndex]=Math.log(state.temperature()/350);x[pressureIndex]=Math.log(state.pressure()/1e5);
-        if(partialPressureIndex>=0)x[partialPressureIndex]=Math.log(state.hydrocarbonPartialPressure()/1e5);
+        x[temperatureIndex]=DeterministicMath.log(state.temperature()/350);x[pressureIndex]=DeterministicMath.log(state.pressure()/1e5);
+        if(partialPressureIndex>=0)x[partialPressureIndex]=DeterministicMath.log(state.hydrocarbonPartialPressure()/1e5);
         if(solidIndex>=0){var moments=state.solidMoments().values();for(int i=0;i<3;i++)x[solidIndex+i]=moments[i]/solidScale[i];}
         return x;
     }
@@ -185,8 +223,8 @@ public final class PhaseLayout {
         for(int i:components){
             if(support[i]==PhaseSupport.BOTH) {
                 double amount=amountScale*variables[offset+liquidIndex[i]],ratio=variables[offset+vaporIndex[i]];
-                if(ratio>=0){l[i]=amount/(1+Math.exp(ratio));v[i]=amount-l[i];}
-                else{v[i]=amount/(1+Math.exp(-ratio));l[i]=amount-v[i];}
+                if(ratio>=0){l[i]=amount/(1+DeterministicMath.exp(ratio));v[i]=amount-l[i];}
+                else{v[i]=amount/(1+DeterministicMath.exp(-ratio));l[i]=amount-v[i];}
             }
             // The omitted phase is written as exactly zero, never as a small number, so every
             // component total, every transport split and every conservation audit is exact.
@@ -195,8 +233,8 @@ public final class PhaseLayout {
         }
         double wl=waterLiquidIndex<0?0:amountScale*variables[offset+waterLiquidIndex];
         double wv=waterVaporIndex<0?0:amountScale*variables[offset+waterVaporIndex];
-        double t=350*Math.exp(variables[offset+temperatureIndex]),p=1e5*Math.exp(variables[offset+pressureIndex]);
-        double pc=partialPressureIndex>=0?1e5*Math.exp(variables[offset+partialPressureIndex]):vaporActive?p:0;
+        double t=350*DeterministicMath.exp(variables[offset+temperatureIndex]),p=1e5*DeterministicMath.exp(variables[offset+pressureIndex]);
+        double pc=partialPressureIndex>=0?1e5*DeterministicMath.exp(variables[offset+partialPressureIndex]):vaporActive?p:0;
         var state=model.adoptingState(t,p,l,v,wl,wv,pc,prepared);
         if(solidIndex<0)return state;
         // The three moments are hard-nonnegative in SolidInventory.Moments. Enforce that by
@@ -210,30 +248,113 @@ public final class PhaseLayout {
         if(mass<0||volume<0||capacity<0)SolverDiagnostics.count(SolverDiagnostics.solidMomentProjections);
         return state.withSolidState(solidBasis,new SolidInventory.Moments(Math.max(0,mass),Math.max(0,volume),Math.max(0,capacity)));
     }
-    /** Target amounts/U may include backward-Euler edge contributions computed in the same residual evaluation. */
-    public void residual(FluidThermodynamics.State state,double[] targetAmounts,double targetEnergy,double targetVolume,double[] result,int offset,double[] variables) {
-        residual(state,targetAmounts,targetEnergy,targetVolume,result,offset,variables,null);
+    /**
+     * The game's ambient pressure (Pa): the outside of every vessel's wall, and the pressure of the air the network
+     * reduction's ambient state holds.
+     */
+    public static final double AMBIENT_PRESSURE=101325;
+    /**
+     * Owner decision D54 (plan {@code documentation/2026-10-14-empty-start-progressive-volume/EMPTY_START_PLAN.md}): every
+     * vessel is a bag with a stiff wall. Its wall carries no load while the contents are smaller than the capacity, so the
+     * pressure is the ambient and the volume is the contents' own; once the contents would exceed the capacity the wall
+     * holds them at the capacity and the pressure comes from the contents. The wall law {@code P = P_ambient + k max(0,
+     * V - V_max)} is taken in its stiff limit, {@code k} infinite: {@code V <= V_max}, {@code P >= P_ambient}, one of the
+     * two an equality. As one row, {@code max(taut, slack) = 0}, with {@code taut = (V - V_max)/V_max} (the fixed-volume
+     * row it replaces, to the bit) and {@code slack = 2 (P_ambient - P)/P_ambient}. The slack row is stated twice as steep
+     * in pressure as any contents' own volume (a gas's is about 1 in log pressure), so a vessel exactly at the kink reads
+     * the taut row.
+     *
+     * <p>The row is continuous and smooth on each branch, with a kink where the branches meet; a Newton on it takes the
+     * slopes of the branch the iterate is on ({@code branch}, decision A423, see {@link Wall}).
+     */
+    public static double wallRow(FluidThermodynamics.State state,double capacity){return wallRow(state,capacity,null);}
+    /** {@link #wallRow} stated on {@code branch}'s branch ({@link Wall#taut}); on the state's own when it is null. */
+    public static double wallRow(FluidThermodynamics.State state,double capacity,Wall branch) {
+        double taut=(state.volume()-capacity)/capacity,slack=2*(AMBIENT_PRESSURE-state.pressure())/AMBIENT_PRESSURE;
+        return (branch==null?taut>=slack:branch.taut())?taut:slack;
     }
-    public void residual(FluidThermodynamics.State state,double[] targetAmounts,double targetEnergy,double targetVolume,double[] result,int offset,
+    /**
+     * The branches of a vessel's wall at one state: {@code taut}, whether the wall carries the contents ({@link #wallRow}
+     * on its taut branch); {@code full}, whether the bag is at the capacity ({@link #bagVolume}).
+     *
+     * <p>Decision A423 (the close of the phase-ports batch, 2026-10-14). The wall row and the bag volume are continuous
+     * and piecewise smooth, and a one-sided difference across their kink reads the far branch's slope for a row on the
+     * near one. A full tank of air at the ambient, the common state of a vessel in the game, sits on that kink. The
+     * six-tank pumped chain's cold first tick (0.05 s) seeded its five full nitrogen tanks 7.5e-9 of their capacity over
+     * it (the trace flash of a vessel a reachable water may enter, {@code PassiveStepSolver.initialPhaseSeeds}); the first
+     * step, on the taut slopes, left them 2.7e-8 below the ambient and 1.9e-8 over the capacity; the chord steps kept the
+     * taut slopes across the branch flips (a pressure moved 2.7e-8 passes the chord test), while the energy row's bag
+     * volume switched between the contents' volume and the capacity under them: the line search stalled at 5.3e-8 at every
+     * step size down to 4.8e-8 s (log cl08). The rule: a Jacobian sweep states every wall row and bag volume on the
+     * branches of the point it is built at ({@link SparseNewton.Equations#linearising}: the generalised Jacobian of a
+     * semismooth Newton), and a chord step is refused once a vessel's branches differ from the Jacobian's
+     * ({@link SparseNewton.Equations#linearisationHolds}). The rows are unchanged, so is every root.
+     */
+    public record Wall(boolean taut,boolean full) {}
+    /** The wall's branches at {@code state}. */
+    public static Wall wall(FluidThermodynamics.State state,double capacity) {
+        boolean taut=taut(state,capacity);return new Wall(taut,taut||state.volume()>=capacity*(1-1e-12));
+    }
+    /** Whether the wall carries the contents ({@link #wallRow} on its taut branch). */
+    public static boolean taut(FluidThermodynamics.State state,double capacity) {
+        return (state.volume()-capacity)/capacity>=2*(AMBIENT_PRESSURE-state.pressure())/AMBIENT_PRESSURE;
+    }
+    /**
+     * The volume of the bag holding {@code state}: the capacity exactly while the wall carries it, the contents' own volume
+     * while it is slack. The wall's work on the ambient over a step is {@code P_ambient (V_bag,end - V_bag,start)}: the
+     * volume moves only on the slack branch, where the inside pressure is the ambient, so the work is exact and is zero
+     * between two taut states. Contents within 1e-12 of the capacity fill it (a vessel at the kink, the ambient pressure at
+     * its capacity, reads the slack branch or the taut one by the roundoff of its volume; ten times below the closure's
+     * resolution, so no row registers it).
+     */
+    public static double bagVolume(FluidThermodynamics.State state,double capacity){return bagVolume(state,capacity,null);}
+    /** {@link #bagVolume} stated on {@code branch}'s branch ({@link Wall#full}); on the state's own when it is null. */
+    public static double bagVolume(FluidThermodynamics.State state,double capacity,Wall branch) {
+        double volume=state.volume();
+        return (branch==null?taut(state,capacity)||volume>=capacity*(1-1e-12):branch.full())?capacity:volume;
+    }
+    /** Target amounts/U may include backward-Euler edge contributions computed in the same residual evaluation. {@code capacity}
+     * is the vessel's {@code V_max} ({@link #wallRow}); {@code workFrom} is the bag volume the step starts from, whose wall work
+     * the energy row books ({@code NaN}: none, the state is closed to the energy it holds). */
+    public void residual(FluidThermodynamics.State state,double[] targetAmounts,double targetEnergy,double capacity,double workFrom,double[] result,int offset,double[] variables) {
+        residual(state,targetAmounts,targetEnergy,capacity,workFrom,result,offset,variables,null);
+    }
+    public void residual(FluidThermodynamics.State state,double[] targetAmounts,double targetEnergy,double capacity,double workFrom,double[] result,int offset,
                          double[] variables,FluidThermodynamics.Prepared prepared) {
+        residual(state,targetAmounts,targetEnergy,capacity,workFrom,result,offset,variables,prepared,null);
+    }
+    /** {@code branch}: the wall's branches the rows are stated on in a Jacobian sweep ({@link Wall}, decision A423); null, the state's own. */
+    public void residual(FluidThermodynamics.State state,double[] targetAmounts,double targetEnergy,double capacity,double workFrom,double[] result,int offset,
+                         double[] variables,FluidThermodynamics.Prepared prepared,Wall branch) {
         double[] l=state.liquidView(),v=state.vaporView();
-        int row=balanceRows(state,targetAmounts,targetEnergy,targetVolume,result,offset,variables);
+        int row=balanceRows(state,targetAmounts,targetEnergy,capacity,workFrom,result,offset,variables,branch);
         equilibriumResidual(state,l,v,result,row,offset,variables,prepared);
     }
     /**
      * The rows a change of this node's accumulated targets can move, and no others: the component
-     * balances, the water balance, the energy balance and the volume closure. The equilibrium and
+     * balances, the water balance, the energy balance and the wall row. The equilibrium and
      * closure rows below them read the decoded state alone, so a Jacobian sweep that perturbs a
      * <em>neighbour</em> leaves them at exactly the residual it already evaluated. Returns the
      * first row after this block.
+     *
+     * <p>The energy balance of a vessel whose wall moves is {@code dU = sum(h_in dm_in) - P_ambient dV_bag}
+     * ({@link #bagVolume}): with {@code workFrom} the start's bag volume the row states
+     * {@code U + P_ambient (V_bag - workFrom) = target}, which between two taut states is {@code U = target} to the bit.
      */
-    public int balanceRows(FluidThermodynamics.State state,double[] targetAmounts,double targetEnergy,double targetVolume,
+    public int balanceRows(FluidThermodynamics.State state,double[] targetAmounts,double targetEnergy,double capacity,double workFrom,
                            double[] result,int offset,double[] variables) {
+        return balanceRows(state,targetAmounts,targetEnergy,capacity,workFrom,result,offset,variables,null);
+    }
+    /** {@code branch}: the wall's branches the energy row's bag volume and the wall row are stated on ({@link Wall}); null, the state's own. */
+    public int balanceRows(FluidThermodynamics.State state,double[] targetAmounts,double targetEnergy,double capacity,double workFrom,
+                           double[] result,int offset,double[] variables,Wall branch) {
         double[] l=state.liquidView(),v=state.vaporView();int row=offset;
         for(int i:components)result[row++]=(l[i]+v[i]-targetAmounts[i])/componentScales[i];
         if(waterLiquidIndex>=0||waterVaporIndex>=0)result[row++]=(state.waterLiquid()+state.waterVapor()-targetAmounts[l.length])/componentScales[l.length];
-        result[row++]=(state.internalEnergy()-targetEnergy)/energyScale;
-        result[row++]=(state.volume()-targetVolume)/targetVolume;
+        double energy=state.internalEnergy();
+        if(!Double.isNaN(workFrom)){double moved=bagVolume(state,capacity,branch)-workFrom;if(moved!=0)energy+=AMBIENT_PRESSURE*moved;}
+        result[row++]=(energy-targetEnergy)/energyScale;
+        result[row++]=wallRow(state,capacity,branch);
         if(solidIndex>=0){solidRows(state,variables,offset,solidReference,false,result);row+=3;}
         return row;
     }
@@ -277,7 +398,7 @@ public final class PhaseLayout {
         }
         // 1 kg/s reference scale, or the retained pressure of an isolated junction, in the
         // logarithmic variable the pressure unknown already is.
-        result[row++]=retainedPressure>0?variables[offset+pressureIndex]-Math.log(retainedPressure/1e5):netMassFlow;
+        result[row++]=retainedPressure>0?variables[offset+pressureIndex]-DeterministicMath.log(retainedPressure/1e5):netMassFlow;
         result[row++]=weight*(state.enthalpy()/state.mass()-incomingSpecificEnthalpy)/Math.max(1,energyScale/state.mass());
         result[row++]=sum(n)/amountScale-1;
         if(solidIndex>=0){var target=solidReference.clone();for(int i=0;i<3;i++)target[i]/=state.mass();solidRows(state,variables,offset,target,true,result);row+=3;}
@@ -311,10 +432,12 @@ public final class PhaseLayout {
             // The total amount cancels from the fugacity ratio, including at zero amount. A component
             // the frozen support reduced to one phase has no split unknown and therefore no row here:
             // its material balance is the whole of it, and this is the only equation it loses.
+            // Hoisted, not changed: both logarithms are the same doubles for every component.
+            double amountLog=DeterministicMath.log(nv/nl),pressureLog=DeterministicMath.log(state.pressure()/state.hydrocarbonPartialPressure());
             for(int i:components)if(support[i]==PhaseSupport.BOTH)
-                result[row++]=-variables[offset+vaporIndex[i]]+Math.log(nv/nl)+fl[i]-fv[i]+Math.log(state.pressure()/state.hydrocarbonPartialPressure());
+                result[row++]=-variables[offset+vaporIndex[i]]+amountLog+fl[i]-fv[i]+pressureLog;
         }
-        if(waterLiquidIndex>=0&&waterVaporIndex>=0)result[row++]=Math.log(state.waterPartialPressure()
+        if(waterLiquidIndex>=0&&waterVaporIndex>=0)result[row++]=DeterministicMath.log(state.waterPartialPressure()
                 /(prepared==null?model.saturationPressure(state.temperature()):model.saturationPressure(prepared)));
         if(partialPressureIndex>=0)result[row++]=(state.hydrocarbonPartialPressure()+state.waterPartialPressure()-state.pressure())/state.pressure();
         if(row!=offset+size)throw new IllegalStateException("Phase equation/unknown count mismatch");
@@ -345,14 +468,14 @@ public final class PhaseLayout {
         double[] l=state.liquidView(),v=state.vaporView(),fl=lp.logFugacityView(),fv=vp.logFugacityView();
         double nl=sum(l),nv=sum(v);
         if(!(nl>0&&nv>0))return 0;
-        double pressureRatio=Math.log(state.pressure()/state.hydrocarbonPartialPressure());
-        double threshold=Math.log(TraceTruncationPolicy.REINSERTION_FACTOR*policy.cutoffMoleFraction());
+        double pressureRatio=DeterministicMath.log(state.pressure()/state.hydrocarbonPartialPressure());
+        double threshold=DeterministicMath.log(TraceTruncationPolicy.REINSERTION_FACTOR*policy.cutoffMoleFraction());
         int restored=0;
         for(int i:components) {
             if(!support[i].singlePhase()||promoted[i])continue;
             double implied=support[i]==PhaseSupport.LIQUID_ONLY
-                    ?Math.log(l[i]/nl)+fl[i]-fv[i]+pressureRatio
-                    :Math.log(v[i]/nv)-fl[i]+fv[i]-pressureRatio;
+                    ?DeterministicMath.log(l[i]/nl)+fl[i]-fv[i]+pressureRatio
+                    :DeterministicMath.log(v[i]/nv)-fl[i]+fv[i]-pressureRatio;
             if(implied>=threshold){promoted[i]=true;restored++;}
         }
         return restored;
@@ -376,6 +499,24 @@ public final class PhaseLayout {
      * one.</p>
      */
     public static PhaseSupport[] support(FluidThermodynamics.State seed,boolean[] componentMask,TraceTruncationPolicy policy,boolean[] promoted) {
+        return support(seed,componentMask,policy,promoted,false);
+    }
+    /**
+     * {@link #support} for a node that is a pipe junction ({@code junction}) or a vessel. A junction whose seed holds a
+     * carried trace gas ({@link FluidThermodynamics#carriedTrace}, decision D41) has no phase of its own for it in the
+     * solve: its gas components are omitted traces, like a masked component nothing delivers, with no unknown and no row.
+     * They are below what the junction's rows resolve (stated over its whole holdup): an amount unknown there has a
+     * difference step no row registers, so its column is zero and the factorization singular, and with the gas's water
+     * vapour as well the saturation row read the ratio of two such amounts and never contracted. The transport
+     * reconstruction carries them exactly, out with the water in proportion, and books more when more arrives: a share at
+     * or above the trace is a phase appearance, and the pass is solved again with them in it.
+     */
+    public static PhaseSupport[] support(FluidThermodynamics.State seed,boolean[] componentMask,TraceTruncationPolicy policy,boolean[] promoted,boolean junction) {
+        var support=supportOf(seed,componentMask,policy,promoted);
+        if(junction&&FluidThermodynamics.carriedTrace(seed))for(int i=0;i<support.length;i++)if(support[i]==PhaseSupport.VAPOR_ONLY)support[i]=PhaseSupport.ABSENT;
+        return support;
+    }
+    private static PhaseSupport[] supportOf(FluidThermodynamics.State seed,boolean[] componentMask,TraceTruncationPolicy policy,boolean[] promoted) {
         Objects.requireNonNull(seed);Objects.requireNonNull(policy);
         double[] l=seed.liquidView(),v=seed.vaporView();
         if(componentMask!=null&&componentMask.length!=l.length)throw new IllegalArgumentException("Component mask mismatch");
@@ -407,19 +548,30 @@ public final class PhaseLayout {
         double[] n=Arrays.copyOf(l,l.length+1);
         for(int i=0;i<l.length;i++)n[i]+=v[i];n[l.length]=state.waterLiquid()+state.waterVapor();return n;
     }
-    public SparseNewton.Equations fixedInventory(double[] amounts,double energy,double volume) {
+    /** A vessel's closure at what it holds: the amounts, the energy and the wall ({@link #balanceRows}; {@code workFrom} as
+     * there). */
+    public SparseNewton.Equations wallClosure(double[] amounts,double energy,double capacity,double workFrom) {
         double[] target=amounts.clone();
         return new SparseNewton.Equations(){
             private volatile FluidThermodynamics.Prepared prepared;
+            /** The wall's branches at the point the Jacobian in use was built at (decision A423): {@code sweeping} is read by
+             * the sweep's trials while the build is bracketed, {@code built} by the chord test. */
+            private Wall sweeping,built;
             public int size(){return PhaseLayout.this.size;}
-            public double differenceScale(int column,double value){return PhaseLayout.this.differenceScale(column,value);}
+            public double differenceScale(int column,double value){return PhaseLayout.this.differenceStepScale(column,value);}
             public double maximumStep(double[] x,double[] direction){double alpha=1;for(int c=0;c<x.length;c++)if(totalAmountVariable(c)&&x[c]>0&&direction[c]<0)alpha=Math.min(alpha,.99*x[c]/-direction[c]);return alpha;}
             public int[][] columnRows(){int[][] rows=new int[size()][size()];for(int[] column:rows)for(int i=0;i<column.length;i++)column[i]=i;return rows;}
+            public void linearising(double[] x){built=sweeping=wall(decode(x,0,prepare(x)),capacity);}
+            public void linearised(){sweeping=null;}
+            public boolean linearisationHolds(double[] builtAt,double[] now){return built==null||built.equals(wall(decode(now,0,prepare(now)),capacity));}
             public double[] residual(double[] x){
-                double temperature=PhaseLayout.this.temperature(x,0);
-                var local=prepared;
+                var local=prepare(x);
+                double[] f=new double[size()];PhaseLayout.this.residual(decode(x,0,local),target,energy,capacity,workFrom,f,0,x,local,sweeping);return f;
+            }
+            private FluidThermodynamics.Prepared prepare(double[] x) {
+                double temperature=PhaseLayout.this.temperature(x,0);var local=prepared;
                 if(local==null||local.temperature()!=temperature)prepared=local=model.prepare(temperature);
-                double[] f=new double[size()];PhaseLayout.this.residual(decode(x,0,local),target,energy,volume,f,0,x,local);return f;
+                return local;
             }
         };
     }

@@ -1,5 +1,7 @@
 package com.wormzjl.createcheme.science.column.v3;
 
+import com.wormzjl.createcheme.science.math.DeterministicMath;
+
 import com.wormzjl.createcheme.science.column.v3.thermo.V3PengRobinsonThermo;
 import java.util.ArrayList;
 import java.util.List;
@@ -361,7 +363,7 @@ final class V3FreeWaterContinuation {
         private double saturationResidual(int tray) {
             double water = waterVaporFlow(tray);
             V3WetTraySet.Saturation saturation = V3WetTraySet.saturation(problem, state, tray, water);
-            return saturation == null ? Double.NaN : Math.log(saturation.ratio());
+            return saturation == null ? Double.NaN : DeterministicMath.log(saturation.ratio());
         }
 
         private double waterVaporFlow(int node) {

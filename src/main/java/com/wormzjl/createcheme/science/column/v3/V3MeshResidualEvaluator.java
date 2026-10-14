@@ -1,5 +1,7 @@
 package com.wormzjl.createcheme.science.column.v3;
 
+import com.wormzjl.createcheme.science.math.DeterministicMath;
+
 import com.wormzjl.createcheme.science.column.v3.thermo.V3FugacityDerivatives;
 import com.wormzjl.createcheme.science.column.v3.thermo.V3FugacityResult;
 import com.wormzjl.createcheme.science.column.v3.thermo.V3Phase;
@@ -319,11 +321,17 @@ final class V3MeshResidualEvaluator {
 
     private double equilibriumResidual(V3DryMeshState state, int node, int component, NodeProperties properties) {
         int publicComponent = activeComponentBasis.publicIndex(component);
-        double residual = Math.log(properties.vaporComposition()[publicComponent])
+        double residual = DeterministicMath.log(properties.vaporComposition()[publicComponent])
                 + properties.vaporResult().logFugacityCoefficient(publicComponent)
-                - Math.log(properties.liquidComposition()[publicComponent])
+                - DeterministicMath.log(properties.liquidComposition()[publicComponent])
                 - properties.liquidResult().logFugacityCoefficient(publicComponent);
-        return problem.hasSteamFeeds() ? residual + waterDilutionLogTerm(state, node, properties.vaporTotal()) : residual;
+        if (!problem.hasSteamFeeds()) return residual;
+        double[] dilution = properties.waterDilution();
+        if (dilution[0] == 0.0) {
+            dilution[1] = waterDilutionLogTerm(state, node, properties.vaporTotal());
+            dilution[0] = 1.0;
+        }
+        return residual + dilution[1];
     }
 
     /**
@@ -377,8 +385,8 @@ final class V3MeshResidualEvaluator {
             throw new IllegalArgumentException("V3 MESH wet tray carries no positive water vapor");
         }
         double hydrocarbon = properties.vaporTotal();
-        return Math.log(problem.nodePressurePascal(node)) + Math.log(water) - Math.log(hydrocarbon + water)
-                - Math.log(V3WaterProperties.saturationPressurePascal(state.temperatureKelvin(node)));
+        return DeterministicMath.log(problem.nodePressurePascal(node)) + DeterministicMath.log(water) - DeterministicMath.log(hydrocarbon + water)
+                - DeterministicMath.log(V3WaterProperties.saturationPressurePascal(state.temperatureKelvin(node)));
     }
 
     private double phaseEnergy(V3DryMeshState state, int node, boolean liquid, NodeProperties[] properties) {
@@ -424,7 +432,7 @@ final class V3MeshResidualEvaluator {
             liquidResult = thermo.fugacity(temperature, pressure, liquidComposition, V3Phase.LIQUID, workspace);
         }
         return new NodeProperties(liquidComposition, vaporComposition, liquidResult, vaporResult,
-                problem.topology().hasVaporPhase(node) ? phaseTotal(state, node, false) : 0.0);
+                problem.topology().hasVaporPhase(node) ? phaseTotal(state, node, false) : 0.0, new double[2]);
     }
 
     private double[] normalizedPublicPhaseComposition(V3DryMeshState state, int node, boolean liquid) {
@@ -465,7 +473,7 @@ final class V3MeshResidualEvaluator {
 
     private double waterDilutionLogTerm(V3DryMeshState state, int node, double hydrocarbonVaporTotal) {
         double water = waterVaporFlow(state, node);
-        return water == 0.0 ? 0.0 : Math.log(hydrocarbonVaporTotal / (hydrocarbonVaporTotal + water));
+        return water == 0.0 ? 0.0 : DeterministicMath.log(hydrocarbonVaporTotal / (hydrocarbonVaporTotal + water));
     }
 
     /**
@@ -518,7 +526,10 @@ final class V3MeshResidualEvaluator {
             double[] vaporComposition,
             V3FugacityResult liquidResult,
             V3FugacityResult vaporResult,
-            double vaporTotal) {}
+            double vaporTotal,
+            // {computed flag, value} of the node's water dilution log term: it is the same double for every
+            // component row of the node, so it is computed once per node and evaluation instead of once per row.
+            double[] waterDilution) {}
 
     /**
      * Package-local response of one node to a local coordinate perturbation.

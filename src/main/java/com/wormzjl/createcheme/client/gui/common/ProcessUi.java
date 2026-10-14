@@ -16,6 +16,18 @@ public final class ProcessUi {
     public static String number(double value){
         return String.format(Locale.ROOT,value!=0&&Math.abs(value)<0.05?"%.3g":"%.1f",value);
     }
+    /** The gauge's resolution, Pa (owner decision D42, {@code NetworkReduction.REST_RESOLUTION}). */
+    public static final double PRESSURE_RESOLUTION=0.1;
+    /**
+     * A pressure (Pa) as the gauge shows it: rounded to {@link #PRESSURE_RESOLUTION}, written in kPa with four decimals
+     * ({@code 101.3250 kPa}). Only the text is rounded; the value the server sent is untouched. A pressure difference below
+     * half the resolution reads as zero.
+     */
+    public static String pressure(double pascal){
+        if(!Double.isFinite(pascal))return "—";
+        double steps=Math.rint(pascal/PRESSURE_RESOLUTION);
+        return String.format(Locale.ROOT,"%.4f kPa",steps==0?0.0:steps*PRESSURE_RESOLUTION/1000);
+    }
     /** A focus/control hand-off can hide/grab the cursor without reopening the existing screen. */
     public static void restoreCursor(Minecraft client,Screen screen){
         if(client==null||client.screen!=screen||!client.isWindowActive())return;

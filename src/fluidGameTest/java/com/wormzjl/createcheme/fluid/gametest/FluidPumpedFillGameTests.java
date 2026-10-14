@@ -10,7 +10,7 @@ import net.neoforged.neoforge.gametest.*;
 
 /**
  * {@code fill100}'s line placed block by block with the mod's placement defaults: a water generator, a pump facing east
- * and a closed chain of three nitrogen tanks. In game on 0.3.0 such a line was held for minutes (a third of 100 never
+ * and a closed chain of three tanks (placed empty since decision D54; nitrogen-charged before). In game on 0.3.0 such a line was held for minutes (a third of 100 never
  * recovered); here it must start through the real coordinator, its wall budget and its hold policy, and fill.
  */
 @GameTestHolder("createcheme_fluid_test")
@@ -21,7 +21,8 @@ public final class FluidPumpedFillGameTests {
     public static void aPlacedPumpedThreeTankChainFills(GameTestHelper helper) {
         var level=helper.getLevel();var world=FluidWorldAuthority.find(level.getServer()).orElseThrow();
         var origin=helper.absolutePos(new BlockPos(0,1,0));var positions=new java.util.ArrayList<BlockPos>();
-        String layout="GUPRPRPR";
+        // A pipe block between the generator and the pump: only pipes connect (decision D20).
+        String layout="GPUPRPRPR";
         for(int i=0;i<layout.length();i++) {
             var pos=origin.east(i);positions.add(pos);
             var state=switch(layout.charAt(i)) {
@@ -32,8 +33,8 @@ public final class FluidPumpedFillGameTests {
             };
             level.setBlock(pos,state,3);
         }
-        long firstTank=((FluidDeviceBlockEntity)level.getBlockEntity(positions.get(3))).fluidIdentity();
-        long lastTank=((FluidDeviceBlockEntity)level.getBlockEntity(positions.get(7))).fluidIdentity();
+        long firstTank=((FluidDeviceBlockEntity)level.getBlockEntity(positions.get(4))).fluidIdentity();
+        long lastTank=((FluidDeviceBlockEntity)level.getBlockEntity(positions.get(8))).fluidIdentity();
         boolean[] done={false};int[] heldTicks={0};long deadline=System.nanoTime()+90_000_000_000L;
         helper.onEachTick(()->{
             if(done[0])return;
@@ -41,11 +42,13 @@ public final class FluidPumpedFillGameTests {
             var first=world.view(firstTank);var last=world.view(lastTank);
             if(first.status().startsWith("HELD"))heldTicks[0]++;
             helper.assertTrue(System.nanoTime()<deadline,"The pumped chain did not fill within 90 s of wall time: "+first.status()+", held for "+heldTicks[0]+" ticks");
-            if(first.state()==null||last.state()==null)return;
+            if(first.state()==null)return;
             // A tenth of the first tank in water: about 25 s of pumping at the pump's 0.01 m3/s.
             if(first.state().mass()<100)return;
             helper.assertTrue(!first.status().startsWith("HELD"),"Held while filling: "+first.status());
-            helper.assertTrue(first.state().pressure()>101325&&last.state().pressure()>101325,"The chain is compressed as it fills");
+            // Placed tanks hold nothing (decision D54): the first fills as a slack bag at the ambient, the last still empty.
+            helper.assertTrue(Math.abs(first.state().pressure()-101325)<1&&first.state().fill()<1,"The first tank fills slack at the ambient: "+first.state().pressure()+" Pa, fill "+first.state().fill());
+            helper.assertTrue(last.state()==null&&last.status().startsWith("EMPTY: holds nothing"),"The last tank is still empty: "+last.status());
             done[0]=true;for(var pos:positions)level.removeBlock(pos,false);helper.succeed();
         });
     }

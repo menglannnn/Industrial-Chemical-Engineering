@@ -48,11 +48,20 @@ public final class PhysicalRegistry {
     private final double[] weights;
     private final InlineFilter emptyFilter;
     private final Host host;
-    private FluidThermodynamics.State idleSeed;
     private final Map<Long,String> diagnostics=new HashMap<>();
     private final Map<Long,List<PhysicalFluidTopology.View>> pipeViews=new HashMap<>();
+    private final Map<Long,Map<Long,PhysicalFluidTopology.Direction>> tankFaces=new HashMap<>();
+    /** Each owned device's island; for a fixed boundary (a generator or a void), the lowest of its islands. */
     private final Map<Long,Long> owners=new HashMap<>();
     private final Map<Long,Long> ownersView=Collections.unmodifiableMap(owners);
+    /**
+     * Every island of each owned fixed boundary. A generator or a void belongs to every island that reaches it (owner
+     * decision D17): islands that meet only at one are separate, and an edit near one changes only the islands its walk
+     * reaches through devices that are not fixed boundaries. An edit of the boundary itself changes all of them.
+     */
+    private final Map<Long,TreeSet<Long>> fixedOwners=new HashMap<>();
+    /** The state of every applied fixed boundary, the one every island holding it carries (nothing changes it). */
+    private final Map<Long,PassiveNetwork.Reservoir> fixedStates=new HashMap<>();
     private long ownersVersion;
     private final Map<Long,List<Long>> members=new HashMap<>();
     private final Map<ChunkKey,Set<Long>> chunkMembers=new HashMap<>();
@@ -63,26 +72,37 @@ public final class PhysicalRegistry {
         this.topology=Objects.requireNonNull(topology);this.model=Objects.requireNonNull(model);weights=model.molecularWeights();
         this.emptyFilter=Objects.requireNonNull(emptyFilter);this.host=Objects.requireNonNull(host);
     }
-    /** The zero-flow property seed of a disconnected filter's ports; the same state every compile used. */
-    private FluidThermodynamics.State idleSeed(){if(idleSeed==null)idleSeed=model.initialNitrogenCharge(1,298.15,101325,()->{});return idleSeed;}
     /** Compiles the loaded registry once and binds every device to the island a checkpoint restored for it. */
     public void load() {
         var islands=host.coordinator().snapshots();
-        var stock=new HashMap<Long,PassiveNetwork.Reservoir>();var cakes=new HashMap<Long,InlineFilter>();var byBoundary=new HashMap<Long,Long>();var byFilter=new HashMap<Long,Long>();
+        // A saved island is found again by what only it holds: its connections (compiled pipe identities, filters included),
+        // its tanks, and for an island with no connection its one boundary. A generator or a void may be in several islands.
+        var stock=new HashMap<Long,PassiveNetwork.Reservoir>();var cakes=new HashMap<Long,InlineFilter>();var byPipe=new HashMap<Long,Long>();var byTank=new HashMap<Long,Long>();var byLone=new HashMap<Long,Long>();
         for(var island:islands) {
-            for(var node:island.graph().reservoirs())if(!node.junction()&&node.id()>0){stock.put(node.id(),node);byBoundary.put(node.id(),island.id());}
-            for(var pipe:island.graph().pipes())if(pipe.filter()!=null){cakes.put(pipe.id()-Long.MIN_VALUE,pipe.filter());byFilter.put(pipe.id(),island.id());}
+            for(var node:island.graph().reservoirs())if(!node.junction()&&node.id()>0) {
+                stock.put(node.id(),node);if(node.kind()==PassiveNetwork.NodeKind.RESERVOIR)byTank.put(node.id(),island.id());
+                if(island.graph().pipes().isEmpty())byLone.put(node.id(),island.id());
+            }
+            for(var pipe:island.graph().pipes()){byPipe.put(pipe.id(),island.id());if(pipe.filter()!=null)cakes.put(pipe.id()-Long.MIN_VALUE,pipe.filter());}
         }
         for(var r:topology.latest().values())if(r.device().kind()==TopologyCompiler.Kind.FILTER)cakes.putIfAbsent(r.device().id(),emptyFilter);
         var active=topology.active();
-        var compiled=PhysicalFluidTopology.compile(active.values().stream().map(WorldTopologyLedger.Registration::device).toList(),stock,cakes,idleSeed());
-        diagnostics.putAll(compiled.diagnostics());pipeViews.putAll(compiled.pipeViews());
+        for(var entry:stock.entrySet()){var r=active.get(entry.getKey());if(r!=null&&r.device().fixed())fixedStates.put(entry.getKey(),entry.getValue());}
+        // A disconnected filter's ports stand at the ambient (NetworkReduction.ambient), as an empty vessel does.
+        var compiled=PhysicalFluidTopology.compile(active.values().stream().map(WorldTopologyLedger.Registration::device).toList(),stock,cakes,
+                com.wormzjl.createcheme.science.fluid.network.NetworkReduction.ambient(model));
+        diagnostics.putAll(compiled.diagnostics());pipeViews.putAll(compiled.pipeViews());tankFaces.putAll(compiled.tankFaces());
         for(var island:compiled.islands()) {
-            var ids=java.util.stream.Stream.concat(island.graph().reservoirs().stream().filter(n->!n.junction()).map(n->byBoundary.get(n.id())),island.graph().pipes().stream().filter(p->p.filter()!=null).map(p->byFilter.get(p.id()))).filter(Objects::nonNull).distinct().toList();
-            if(ids.size()!=1)throw new IllegalStateException("Saved topology and hydraulic ownership disagree");for(long id:island.physicalIds())owners.put(id,ids.getFirst());
+            var graph=island.graph();
+            var ids=java.util.stream.Stream.concat(java.util.stream.Stream.concat(graph.pipes().stream().map(p->byPipe.get(p.id())),
+                    graph.reservoirs().stream().filter(n->n.kind()==PassiveNetwork.NodeKind.RESERVOIR).map(n->byTank.get(n.id()))),
+                    graph.pipes().isEmpty()?graph.reservoirs().stream().filter(n->!n.junction()&&n.id()>0).map(n->byLone.get(n.id())):java.util.stream.Stream.<Long>empty())
+                    .filter(Objects::nonNull).distinct().toList();
+            if(ids.size()!=1)throw new IllegalStateException("Saved topology and hydraulic ownership disagree");
+            long saved=ids.getFirst();if(members.containsKey(saved))throw new IllegalStateException("Saved topology and hydraulic ownership disagree");
+            var devices=island.physicalIds().stream().sorted().toList();members.put(saved,devices);for(long id:devices)bind(id,saved);
         }
-        var byIsland=new HashMap<Long,List<Long>>();owners.forEach((device,island)->byIsland.computeIfAbsent(island,ignored->new ArrayList<>()).add(device));
-        byIsland.forEach((island,devices)->{devices.sort(null);members.put(island,List.copyOf(devices));});ownersVersion++;
+        ownersVersion++;
         var registered=new HashSet<Long>();for(var r:active.values())if(r.device().kind()==TopologyCompiler.Kind.RESERVOIR)registered.add(r.device().id());
         var owned=new HashSet<Long>();for(var s:islands)for(var n:s.graph().reservoirs())if(n.kind()==PassiveNetwork.NodeKind.RESERVOIR)owned.add(n.id());
         if(!registered.equals(owned))throw new IllegalStateException("Physical registry would lose or duplicate saved reservoir ownership");
@@ -95,8 +115,10 @@ public final class PhysicalRegistry {
     public Map<Long,WorldTopologyLedger.Registration> registrations(){return topology.latest();}
     /** The registration at a position, queued events applied. */
     public Optional<WorldTopologyLedger.Registration> at(PhysicalFluidTopology.Position position){return Optional.ofNullable(topology.latestAt(position));}
-    /** The island that owns a device, or null. */
+    /** The island that owns a device, or null; for a generator or a void in several islands, the lowest of them. */
     public Long owner(long device){return owners.get(device);}
+    /** Every island a device belongs to (several only for a generator or a void, owner decision D17), in identity order. */
+    public Set<Long> islands(long device){return Collections.unmodifiableSet(new TreeSet<>(islandsOf(device)));}
     /** Device to owning island: a live, unmodifiable view; {@link #ownersVersion()} changes with every application. */
     public Map<Long,Long> owners(){return ownersView;}
     public long ownersVersion(){return ownersVersion;}
@@ -106,6 +128,8 @@ public final class PhysicalRegistry {
     public String diagnostic(long device){return diagnostics.get(device);}
     /** The compiled connections a device's view reports. */
     public List<PhysicalFluidTopology.View> pipeViews(long device){return pipeViews.getOrDefault(device,List.of());}
+    /** A tank's compiled connections by the face each leaves it by (compiled pipe id to face), from the same compile as its island. */
+    public Map<Long,PhysicalFluidTopology.Direction> tankFaces(long tank){return tankFaces.getOrDefault(tank,Map.of());}
     /** The applied devices in one chunk. */
     public Collection<Long> chunk(String dimension,long chunk){var ids=chunkMembers.get(new ChunkKey(dimension,chunk));return ids==null?List.of():Collections.unmodifiableSet(ids);}
     @FunctionalInterface public interface ChunkVisitor{void visit(String dimension,long chunk,Collection<Long> devices);}
@@ -127,7 +151,9 @@ public final class PhysicalRegistry {
      * touched set is the edited devices, every device beside an edited position, and every device reached from them
      * through applied devices that no island owns and no queued event edits (a dead-end branch, a line with no tank). An
      * owned device stands for its island, which the fence covers whole, and a queued device for the event that edits it,
-     * which this event now follows; the walk stops at both, so its cost is the neighbourhood, not the island.
+     * which this event now follows; the walk stops at both, so its cost is the neighbourhood, not the island. A fixed
+     * boundary (a generator or a void) the event does not edit stops the walk and stands for none of its islands: they
+     * meet there without being joined (owner decision D17). One the event edits stands for all of them.
      */
     public WorldTopologyLedger.Event submit(List<WorldTopologyLedger.Edit> edits,long nextId,WorldTopologyLedger.Recovery recovery) {
         var latest=topology.latest();var proposed=new HashMap<Long,Optional<WorldTopologyLedger.Registration>>();var proposedAt=new HashMap<PhysicalFluidTopology.Position,WorldTopologyLedger.Registration>();
@@ -150,12 +176,14 @@ public final class PhysicalRegistry {
         for(var start:starts)for(var d:PhysicalFluidTopology.Direction.values())queue.add(start.offset(d));
         while(!queue.isEmpty()) {
             var position=queue.removeFirst();if(!seen.add(position))continue;var record=at.apply(position);if(record==null)continue;long id=record.device().id();touched.add(id);
-            if(!starts.contains(position)&&(owners.containsKey(id)||topology.pending(id)))continue;
+            // A fixed boundary the event does not edit is never walked through: what lies beyond it is another island.
+            if(!starts.contains(position)&&(record.device().fixed()||standsForItsComponent(id)||topology.pending(id)))continue;
             for(var d:PhysicalFluidTopology.Direction.values()) {
-                var neighbor=at.apply(position.offset(d));if(neighbor!=null&&record.device().connects(d)&&neighbor.device().connects(d)&&!(record.device().boundary()&&neighbor.device().boundary()))queue.add(neighbor.device().position());
+                var neighbor=at.apply(position.offset(d));if(neighbor!=null&&record.device().joins(neighbor.device(),d))queue.add(neighbor.device().position());
             }
         }
-        var prepared=topology.queue(edits,touched,nextId,recovery);var affected=new HashSet<Long>();for(long id:touched){Long owner=owners.get(id);if(owner!=null)affected.add(owner);}
+        var edited=new HashSet<Long>();for(var edit:edits)edited.add(edit.id());
+        var prepared=topology.queue(edits,touched,nextId,recovery);var affected=new HashSet<Long>();for(long id:touched)affected.addAll(standsFor(id,edited));
         host.coordinator().fence(prepared.event().id(),prepared.event().tick(),affected);topology.commit(prepared);unapplied++;
         return prepared.event();
     }
@@ -190,7 +218,7 @@ public final class PhysicalRegistry {
      * identities it touches; a missing fence is installed. */
     private Set<Long> owners(WorldTopologyLedger.Event event) {
         var coordinator=host.coordinator();var affected=new HashSet<Long>(coordinator.fencedIslands(event.id()));
-        for(long id:event.touched()){Long owner=owners.get(id);if(owner!=null)affected.add(owner);}
+        var edited=edited(event);for(long id:event.touched())affected.addAll(standsFor(id,edited));
         for(long id:affected)if(!coordinator.hasFence(id,event.id()))coordinator.fence(event.id(),event.tick(),List.of(id));
         return affected;
     }
@@ -202,13 +230,11 @@ public final class PhysicalRegistry {
         var coordinator=host.coordinator();var events=batch.events();var affected=batch.affected();var active=topology.active();
         // What the affected islands hold - boundary stock and filter cakes - read once each, already aligned.
         var stock=new HashMap<Long,PassiveNetwork.Reservoir>();var cakes=new HashMap<Long,InlineFilter>();
-        // Every junction owns a holdup: every junction of an island the batch replaces is discarded by the recompile,
-        // so its owned inventory is booked as destroyed (and the recompile's new junctions as constructed, below). A
-        // junction's composition therefore resets at a topology edit.
-        var discardedJunctions=new ArrayList<PassiveNetwork.Reservoir>();
+        // A junction's buffer is not inventory (owner decision D46): the junctions of an island the batch replaces leave
+        // with it and the recompile mints new ones, and the ledger books neither. A junction's composition therefore
+        // resets at a topology edit.
         for(long island:affected) {
             var graph=coordinator.snapshot(island).graph();
-            for(var node:graph.reservoirs())if(node.junction())discardedJunctions.add(node);
             for(var node:graph.reservoirs())if(!node.junction()&&node.id()>0)stock.put(node.id(),node);
             for(var pipe:graph.pipes())if(pipe.filter()!=null)cakes.put(pipe.id()-Long.MIN_VALUE,pipe.filter());
         }
@@ -244,61 +270,148 @@ public final class PhysicalRegistry {
             var mine=changedAt.get(p);if(mine!=null)return mine;var record=topology.activeAt(p);return record==null||changed.containsKey(record.device().id())?null:record;
         };
         // The connected components, after the batch, of every device the events touched and every device of the islands
-        // they replace: the only part of the registry the batch can change.
+        // they replace: the only part of the registry the batch can change. A fixed boundary the batch does not edit ends
+        // the walk (it is a leaf of what is compiled): beyond it lie other islands, which the batch does not change.
+        var editedIds=new HashSet<Long>();for(var event:events)editedIds.addAll(edited(event));
         var selected=new HashSet<Long>();for(var event:events)selected.addAll(event.touched());for(long island:affected)selected.addAll(members(island));
         var component=new LinkedHashMap<Long,WorldTopologyLedger.Registration>();var queue=new ArrayDeque<WorldTopologyLedger.Registration>();
         for(long id:selected){var record=current(changed,active,id);if(record!=null&&component.putIfAbsent(id,record)==null)queue.add(record);}
         while(!queue.isEmpty()) {
-            var record=queue.removeFirst();
+            var record=queue.removeFirst();if(record.device().fixed()&&!editedIds.contains(record.device().id()))continue;
             for(var d:PhysicalFluidTopology.Direction.values()) {
                 if(!record.device().connects(d))continue;var neighbor=at.apply(record.device().position().offset(d));
-                if(neighbor!=null&&neighbor.device().connects(d)&&!(record.device().boundary()&&neighbor.device().boundary())&&component.putIfAbsent(neighbor.device().id(),neighbor)==null)queue.add(neighbor);
+                if(neighbor!=null&&record.device().joins(neighbor.device(),d)&&component.putIfAbsent(neighbor.device().id(),neighbor)==null)queue.add(neighbor);
             }
         }
         var componentStock=new HashMap<Long,PassiveNetwork.Reservoir>();var componentCakes=new HashMap<Long,InlineFilter>();
         for(var record:component.values()) {
             long id=record.device().id();
-            if(record.device().boundary()){var state=stock.get(id);if(state==null)throw new IllegalStateException("Topology event reached boundary "+id+" outside the islands it fenced");componentStock.put(id,state);}
+            if(record.device().boundary()) {
+                // A fixed boundary's state is the same in every island that holds it and nothing changes it: one met at the
+                // edge of the walk, whose islands the batch does not replace, is read from the registry's copy.
+                var state=stock.get(id);if(state==null&&record.device().fixed())state=fixedStates.get(id);
+                if(state==null)throw new IllegalStateException("Topology event reached boundary "+id+" outside the islands it fenced");componentStock.put(id,state);
+            }
             if(record.device().kind()==TopologyCompiler.Kind.FILTER) {
                 var cake=cakes.get(id);
+                // A filter on a dead-end branch (owner decision D18) sits in a dormant island of its own, which the walk may
+                // reach beyond the islands the batch replaces without the event touching it: its cake is read from there, and
+                // it must come out of this compile dormant again (checked below), so that island stays as it is.
+                if(cake==null&&active.containsKey(id)&&dormantFilter(id)&&!affected.contains(owners.get(id)))cake=dormantCake(id);
                 if(cake==null){if(active.containsKey(id))throw new IllegalStateException("Topology event reached filter "+id+" outside the islands it fenced");cake=emptyFilter;}
                 componentCakes.put(id,cake);
             }
         }
-        var compiled=PhysicalFluidTopology.compile(component.values().stream().map(WorldTopologyLedger.Registration::device).toList(),componentStock,componentCakes,idleSeed());
+        var compiled=PhysicalFluidTopology.compile(component.values().stream().map(WorldTopologyLedger.Registration::device).toList(),componentStock,componentCakes,
+                com.wormzjl.createcheme.science.fluid.network.NetworkReduction.ambient(model));
         FluidRuntimeDiagnostics.count(FluidRuntimeDiagnostics.topologyBatches);FluidRuntimeDiagnostics.count(FluidRuntimeDiagnostics.topologyEvents,events.size());
         FluidRuntimeDiagnostics.count(FluidRuntimeDiagnostics.compiledDevices,component.size());
         var replacements=new ArrayList<IslandCoordinator.Replacement>();var replacementMembers=new LinkedHashMap<Long,List<Long>>();long nextId=topology.nextIdentity();
         for(var island:compiled.islands())if(island.physicalIds().stream().anyMatch(selected::contains)) {
-            // The recompile's junctions are sized here, before the constructed booking below.
-            long id=nextId++;replacements.add(new IslandCoordinator.Replacement(id,PassiveNetwork.sizeJunctionHoldups(island.graph(),model)));replacementMembers.put(id,island.physicalIds().stream().sorted().toList());
+            // A fixed boundary the compile left alone (no connection in the part it compiled) keeps any island of it the
+            // batch does not replace, and gets no island of its own; one with no such island is an island of one, as ever.
+            if(island.graph().pipes().isEmpty()&&island.physicalIds().size()==1) {
+                long only=island.physicalIds().iterator().next();
+                if(fixedDevice(only)&&islandsOf(only).stream().anyMatch(other->!affected.contains(other)))continue;
+            }
+            for(long device:island.physicalIds()){Long holder=owners.get(device);if(holder!=null&&!affected.contains(holder)&&!fixedDevice(device))
+                throw new IllegalStateException("Topology event reached device "+device+" outside the islands it fenced");}
+            // The recompile's junctions are minted here (start state, decision D37, and buffer size, D25); nothing is booked (D46).
+            long id=nextId++;replacements.add(new IslandCoordinator.Replacement(id,PassiveNetwork.mintJunctions(island.graph(),model)));replacementMembers.put(id,island.physicalIds().stream().sorted().toList());
         }
         var eventIds=new LinkedHashSet<UUID>();for(var event:events)eventIds.add(event.id());
-        // Every junction the recompile mints for a replacement island is booked as constructed - a boundary transfer at
-        // the junction at compile, in the world ledger's own terms (moles, energy field + m g z, the sum
-        // checkConservation keeps for an owned junction).
-        destroyed.addAll(discardedJunctions);
-        for(var replacement:replacements)for(var node:replacement.graph().reservoirs())if(node.junction())constructed.add(node);
         var preparation=topology.applyBatch(List.copyOf(eventIds),constructed,destroyed,weights,nextId);
         var prepared=recovered==null?preparation:topology.withRecovery(preparation,recovered);
         var removedDevices=new HashSet<Long>();var removedRecords=new ArrayList<WorldTopologyLedger.Registration>();var addedRecords=new ArrayList<WorldTopologyLedger.Registration>();
         for(var entry:changed.entrySet()){var before=active.get(entry.getKey());if(entry.getValue().isEmpty()){if(before!=null){removedDevices.add(entry.getKey());removedRecords.add(before);}}else if(before==null)addedRecords.add(entry.getValue().orElseThrow());}
         host.topology(batch.dimension(),eventIds,affected,replacements,batch.tick(),topology.onlineTick(),additions,removed.keySet(),recovered==null?Map.of():Map.of(PhysicalFluidTopology.filterIdentity(recoveredFilter),released),()->{
             topology.commit(prepared);
-            for(long id:component.keySet()){diagnostics.remove(id);pipeViews.remove(id);}
-            for(long id:removedDevices){diagnostics.remove(id);pipeViews.remove(id);owners.remove(id);}
-            diagnostics.putAll(compiled.diagnostics());pipeViews.putAll(compiled.pipeViews());
-            for(long island:affected){var devices=members.remove(island);if(devices!=null)for(long device:devices)owners.remove(device,island);}
-            replacementMembers.forEach((island,devices)->{members.put(island,devices);for(long device:devices)owners.put(device,island);});ownersVersion++;
+            for(long id:component.keySet()){diagnostics.remove(id);pipeViews.remove(id);tankFaces.remove(id);}
+            for(long id:removedDevices){diagnostics.remove(id);pipeViews.remove(id);tankFaces.remove(id);owners.remove(id);fixedOwners.remove(id);fixedStates.remove(id);}
+            diagnostics.putAll(compiled.diagnostics());pipeViews.putAll(compiled.pipeViews());tankFaces.putAll(compiled.tankFaces());
+            for(var entry:componentStock.entrySet())if(fixedDevice(entry.getKey()))fixedStates.put(entry.getKey(),entry.getValue());
+            for(long island:affected){var devices=members.remove(island);if(devices!=null)for(long device:devices)unbind(device,island);}
+            replacementMembers.forEach((island,devices)->{members.put(island,devices);for(long device:devices)bind(device,island);});ownersVersion++;
             for(var record:removedRecords)chunkRemove(record);for(var record:addedRecords)chunkAdd(record);
             host.committed(Set.copyOf(removedDevices));
         });
-        // A queued event that touches a replacement island's devices is fenced on it now: it will change that island.
+        // A queued event that reaches a replacement island is fenced on it now: it will change that island. It reaches it
+        // through a device the island owns, or through devices no island owns: submit's walk stopped at a device a queued
+        // event placed, and this batch may have left that device owned by no island (a dead-end pipe), so the island
+        // beyond it was never fenced for the later event, whose own component walk will reach it.
         if(!replacements.isEmpty()) {
             var fresh=new HashSet<Long>();for(var replacement:replacements)fresh.add(replacement.id());
-            for(var future:topology.events())for(long id:future.touched()){Long owner=owners.get(id);if(owner!=null&&fresh.contains(owner)&&!coordinator.hasFence(owner,future.id()))coordinator.fence(future.id(),future.tick(),List.of(owner));}
+            for(var future:topology.events())for(long owner:reached(future,component.keySet()))
+                if(fresh.contains(owner)&&!coordinator.hasFence(owner,future.id()))coordinator.fence(future.id(),future.tick(),List.of(owner));
         }
         return recovered!=null;
+    }
+    /**
+     * The owners of the applied devices reached from an event's touched devices (those of them in {@code within}, a union
+     * of connected components of the applied registry): an owned device stands for its island, and the walk goes on through
+     * devices no island owns, following connections as {@link #apply} compiles them. A fixed boundary stands for its
+     * islands only when the event edits it, and is never walked through.
+     */
+    private Set<Long> reached(WorldTopologyLedger.Event event,Set<Long> within) {
+        var found=new HashSet<Long>();var seen=new HashSet<Long>();var queue=new ArrayDeque<WorldTopologyLedger.Registration>();var edited=edited(event);
+        for(long id:event.touched())if(within.contains(id)&&seen.add(id)){var record=topology.active().get(id);if(record!=null)queue.add(record);}
+        while(!queue.isEmpty()) {
+            var record=queue.removeFirst();long id=record.device().id();
+            found.addAll(standsFor(id,edited));if(record.device().fixed()||standsForItsComponent(id))continue;
+            for(var d:PhysicalFluidTopology.Direction.values()) {
+                if(!record.device().connects(d))continue;var neighbor=topology.activeAt(record.device().position().offset(d));
+                if(neighbor!=null&&record.device().joins(neighbor.device(),d)&&seen.add(neighbor.device().id()))queue.add(neighbor);
+            }
+        }
+        return found;
+    }
+    /**
+     * Whether a device's island stands for everything connected to it, so a walk may stop there: it is owned, and not a
+     * filter in a dormant island of its own (the compiler gives each filter of a component with no boundary, and each filter
+     * on a dead-end branch, its own island, so a chain of such filters is one component and several islands).
+     */
+    private boolean standsForItsComponent(long id) {
+        return owners.containsKey(id)&&!dormantFilter(id);
+    }
+    /** Whether an applied filter sits in a dormant island of its own (no destination on its branch, or no boundary at all). */
+    private boolean dormantFilter(long filter) {
+        Long owner=owners.get(filter);var record=topology.active().get(filter);
+        return owner!=null&&record!=null&&record.device().kind()==TopologyCompiler.Kind.FILTER&&members.getOrDefault(owner,List.of()).size()==1;
+    }
+    /** A dormant filter's cake, as its island holds it (read without materialising: nothing moves it there). */
+    private InlineFilter dormantCake(long filter) {
+        long identity=PhysicalFluidTopology.filterIdentity(filter);
+        for(var pipe:host.coordinator().observe(owners.get(filter)).graph().pipes())if(pipe.id()==identity)return pipe.filter();
+        return null;
+    }
+    /** Whether a registered device (applied, else queued) is a fixed boundary: a generator or a void. */
+    private boolean fixedDevice(long id) {
+        var record=topology.active().get(id);if(record==null)record=topology.latest().get(id);
+        return record!=null&&record.device().fixed();
+    }
+    /** Every island a device belongs to: all of a fixed boundary's, the one of any other owned device, none otherwise. */
+    private Set<Long> islandsOf(long device) {
+        var shared=fixedOwners.get(device);if(shared!=null)return shared;
+        Long owner=owners.get(device);return owner==null?Set.of():Set.of(owner);
+    }
+    /**
+     * The islands an event's touched device stands for: every island of a device the event edits, the island of any other
+     * owned device, and none for a fixed boundary it only passes (a device beside an edit, a member of an island the walk
+     * stopped at): islands that share a generator or a void are independent of each other (owner decision D17).
+     */
+    private Set<Long> standsFor(long device,Set<Long> edited) {
+        if(edited.contains(device))return islandsOf(device);
+        return fixedDevice(device)?Set.of():islandsOf(device);
+    }
+    private static Set<Long> edited(WorldTopologyLedger.Event event){var ids=new HashSet<Long>();for(var edit:event.edits())ids.add(edit.id());return ids;}
+    private void bind(long device,long island) {
+        if(fixedDevice(device)){var set=fixedOwners.computeIfAbsent(device,ignored->new TreeSet<>());set.add(island);owners.put(device,set.first());}
+        else owners.put(device,island);
+    }
+    private void unbind(long device,long island) {
+        var set=fixedOwners.get(device);
+        if(set!=null){set.remove(island);if(set.isEmpty()){fixedOwners.remove(device);owners.remove(device);}else owners.put(device,set.first());}
+        else owners.remove(device,island);
     }
     private void chunkAdd(WorldTopologyLedger.Registration record){var p=record.device().position();chunkMembers.computeIfAbsent(new ChunkKey(p.dimension(),chunkOf(p)),ignored->new LinkedHashSet<>()).add(record.device().id());}
     private void chunkRemove(WorldTopologyLedger.Registration record){var p=record.device().position();var key=new ChunkKey(p.dimension(),chunkOf(p));var ids=chunkMembers.get(key);if(ids!=null&&ids.remove(record.device().id())&&ids.isEmpty())chunkMembers.remove(key);}

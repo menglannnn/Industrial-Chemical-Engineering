@@ -1,0 +1,357 @@
+diff --git a/documentation/2026-09-27-jdk-determinism/DECISION_LOG.md b/documentation/2026-09-27-jdk-determinism/DECISION_LOG.md
+index 4343101e..abc13ac2 100644
+--- a/documentation/2026-09-27-jdk-determinism/DECISION_LOG.md
++++ b/documentation/2026-09-27-jdk-determinism/DECISION_LOG.md
+@@ -11,3 +11,4 @@ Owner decisions and the recommended decisions taken under the autonomy rule. Evi
+ | D5 | 2026-09-27 | Re-baseline (review decision 3) deferred until the mitigation is chosen, so that junction lines and chain-100 are re-recorded once | recommended, reversible | 10.3 |
+ | D6 | 2026-09-27 | Mitigation stack B + A + C implemented on `claude/jdk-determinism-perf-wip` (hoisting, integer/half-integer powers as products and `sqrt`, table-driven `DeterministicPow`); D (fast `log`/`exp`) and E (trig identities, caches) not taken. `DeterministicMath.pow` is no longer bitwise `StrictMath.pow` (within 1 ulp, 0.505 ulp exact error, identical on every JVM); `DeterministicMath.strictPow` keeps the fdlibm port. Within D4 (no solve count moves); reversible by pointing `pow` back at `FdlibmPow` | recommended, reversible | `POW_PERFORMANCE_REVIEW.md` 4-8 |
+ | D7 | 2026-09-27 | `full-science-routing.patch` committed unchanged on the perf branch (`0f3a94b6`) as the implementation of D3, so the column cost is measured on the routed code; the 4 JDK-sensitive column tests still fail with unchanged values and are left for the column batch | recommended, reversible | `POW_PERFORMANCE_REVIEW.md` 7 |
++| D8 | 2026-09-28 | Cross-runtime testing on Windows: "do GraalVM on win, rewrite tools if needed. Linux testing will be a separate work." The owner installed IBM Semeru 21.0.12.15 (OpenJ9) and GraalVM CE 25.4.4.1.1 under `D:/Minecraft/Modding/jdks/`; a Windows sweep tool `tools/jdk-determinism/winsweep/` covers HotSpot 21, HotSpot 25 (Zulu, JBR), OpenJ9 and GraalVM; `sweep.sh` (Linux, container) is left as is and the Linux sweep is a later, separate piece of work | owner (via orchestrator) | `INTEGRATION_REHEARSAL.md` 13-14 |
+diff --git a/tools/jdk-determinism/rehearsal/xrt.sh b/tools/jdk-determinism/rehearsal/xrt.sh
+index 1edafbdf..cb34d02b 100644
+--- a/tools/jdk-determinism/rehearsal/xrt.sh
++++ b/tools/jdk-determinism/rehearsal/xrt.sh
+@@ -18,6 +18,7 @@ case $rt in
+   zulu25) export JAVA="C:/Program Files/Zulu/zulu-25/bin/java" ;;
+   jbr25) export JAVA="C:/Program Files/JetBrains/IntelliJ IDEA 2026.2.1/jbr/bin/java" ;;
+   openj9) export JAVA="D:/Minecraft/Modding/jdks/jdk-21.0.12.15/bin/java" ;;
++  graal25) export JAVA="D:/Minecraft/Modding/jdks/graalvm-community-25.4.4.1.1+1.1/bin/java" ;;
+   *) echo "unknown runtime $rt"; exit 2 ;;
+ esac
+ export JVM_OPTS="${JVM_OPTS:--Xmx4g}"
+diff --git a/tools/jdk-determinism/winsweep/README.md b/tools/jdk-determinism/winsweep/README.md
+new file mode 100644
+index 00000000..5e55f4de
+--- /dev/null
++++ b/tools/jdk-determinism/winsweep/README.md
+@@ -0,0 +1,74 @@
++# jdk-determinism/winsweep
++
++Windows counterpart of `../sweep.sh`: runs the agreed cross-runtime check set of the deterministic math under every JDK
++home given and prints one table, exit status 1 on any real difference. Batch `2026-09-27-jdk-determinism`, owner
++decision D8 (2026-09-28): "do GraalVM on win, rewrite tools if needed. Linux testing will be a separate work." `sweep.sh`
++(Linux, container JDKs from `fetch-jdks.sh`) is left unchanged; the Linux sweep of the final code is a later, separate
++piece of work. Written on branch `claude/determinism-rehearsal`; first run in
++`documentation/2026-09-27-jdk-determinism/INTEGRATION_REHEARSAL.md` section 14.
++
++## How to run (Git Bash, from any directory)
++
++```
++bash tools/jdk-determinism/winsweep/winsweep.sh <out-dir> <reference-jdk-home> <jdk-home>...
++# e.g. the five runtimes of this machine, HotSpot 21 as the reference:
++bash tools/jdk-determinism/winsweep/winsweep.sh build/winsweep/run1 \
++  "C:/Program Files/Java/jdk-21.0.11" "C:/Program Files/Zulu/zulu-25" \
++  "C:/Program Files/JetBrains/IntelliJ IDEA 2026.2.1/jbr" \
++  "D:/Minecraft/Modding/jdks/jdk-21.0.12.15" "D:/Minecraft/Modding/jdks/graalvm-community-25.4.4.1.1+1.1"
++```
++
++Env: `ROOT` (worktree under test, default the one holding this script), `SEEDS` (default `1-200`), `THREADS` (fuzz
++workers, default 4; the machine rule is at most 4 while another agent runs a campaign), `FUZZ=0` (skip the fuzz),
++`BUILD=auto|always|never`, `FUZZ_RUNNER` (the Gradle-free fuzz runner folder; default
++`<ROOT>/tools/phase-ports-probes/fuzz-runner`, else the `claude/fuzz-runner` worktree until that branch merges),
++`JAVAC_HOME` (compiles the two helper classes, default Oracle JDK 21.0.11).
++
++Output: `<out-dir>/table.md` (also printed), `details.txt` (every differing printed line, chain-100 line or fuzz seed),
++and per runtime `r<i>/`: `identity.txt` (`-XshowSettings:properties`, plus `UseJVMCICompiler`/`EnableJVMCI` from
++`-XX:+PrintFlagsFinal` on non-OpenJ9 VMs), `mathsweep.txt`, `suite.txt`, `regression.txt`, `fuzz-<dist>-report.txt`
++(+ `.classes.txt`, `.java.txt`), and on GraalVM `graal-compilation.log`.
++
++## What it does
++
++1. **Build, once, with Gradle** (only when missing or older than a file under `src/` or the probe sources): the fuzz
++   runner's `build.sh` compiles main and test classes and the probe sources, builds the mod jar, and writes the test
++   task's `java`, JVM arguments, class path and working directory into `<ROOT>/build/fuzz-runner/`. Then `javac`
++   compiles `../perf/src/MiniLauncher.java` (JUnit Platform launcher with package selectors) and `../src/MathSweep.java`
++   into `<ROOT>/build/winsweep/`. Everything after this is Gradle-free.
++2. **Per runtime** (the test task's JVM arguments and class path, only the `java` executable changes):
++   - identity and family: OpenJ9 by VM name, GraalVM by `UseJVMCICompiler = true`, otherwise HotSpot by major version;
++   - `MathSweep`: which `java.lang.Math` functions differ from `StrictMath` on this runtime and whether any is
++     tier-dependent (the libm the product must not depend on; nonzero on HotSpot and GraalVM, zero on OpenJ9);
++   - fluid suites: `package:science.fluid`, `package:runtime.fluid`, `runtime.Fluid*Test`, the probe classes of
++     `phase-ports-probes/hold-fuzz/src` and `hold-classes/src` excluded; on GraalVM with
++     `-Djdk.graal.PrintCompilation=true -Djdk.graal.LogFile=r<i>/graal-compilation.log`, so the table can show that the
++     Graal compiler compiled the science code and the `DeterministicMath`/`DeterministicPow` methods during the run;
++   - chain-100 exact (`FluidSolverRegressionTest`, `-Dfluid.regression.mode=exact`, never capture);
++   - placement-sequence fuzz, random and world-default distributions, `SEEDS`, `THREADS` workers, 120 slices.
++3. **Compare** (`compare.js`) against the first runtime:
++   - printed suite lines in order, after masking `ms=`, `allocatedMB=`, `bytes=`, `wall...=`; lines that report a wall
++     time (a number followed by `ms`, a `Nanos=` count) are ignored and counted; lines that differ only in the order of
++     a `reasons={...}` map (a `Map.copyOf`, randomised per JVM start; `INTEGRATION_REHEARSAL.md` decision 2) count as
++     identical; the set of failing tests must be the same;
++   - chain-100: the whole deviation line against the in-tree record and the step, solve, iteration and residual counts
++     must be the same text as the reference's;
++   - fuzz: per seed the first hold (class and full status text, or clean). A seed that differs with a budget hold
++     (class F: wall deadline / soft budget) on either side is "budget-only" (timing-dependent by design); any other
++     difference is real.
++
++## Adding a runtime
++
++Extract the JDK anywhere (not on PATH, no system setting) and pass its home directory; nothing else changes. A runtime
++must run class files of release 21 (the build's target) and accept the test task's JVM arguments (`-Xmx8g`, `-ea`,
++`-D...`, file encoding and locale; HotSpot 21/25, OpenJ9 21 and GraalVM 25 all do). Family detection covers HotSpot,
++OpenJ9 and GraalVM with the Graal JIT; a GraalVM run with `-XX:-UseJVMCICompiler` would be reported as HotSpot.
++
++## Cost in counted work (per runtime)
++
++- 5 JVM starts for checks (+ 2 short identity starts): `MathSweep` (11 functions x 1,048,576 inputs x 3 repetitions,
++  each through `Math` and `StrictMath`: about 69 million calls), the fluid suites (528 tests in the first run, 286
++  Newton solves in the mixed-gas cost case alone), chain-100 (1 test: 3 accepted steps, 4 Newton solves, 29 iterations),
++  and two fuzz runs of `SEEDS` seeds (default 2 x 200 seed runs of 120 five-second slices each, `THREADS` workers).
++- Build: one Gradle invocation when stale (none when the build is current) and two `javac` runs.
++- The fuzz reports print their own `seedMsSum`/`wallMs`; they are load-dependent and not a claim of this tool.
+diff --git a/tools/jdk-determinism/winsweep/winsweep.sh b/tools/jdk-determinism/winsweep/winsweep.sh
+new file mode 100644
+index 00000000..edf5e309
+--- /dev/null
++++ b/tools/jdk-determinism/winsweep/winsweep.sh
+@@ -0,0 +1,89 @@
++#!/usr/bin/env bash
++# Windows cross-runtime determinism sweep (batch 2026-09-27-jdk-determinism). Git Bash. One Gradle invocation to build
++# (the fuzz runner's build: main + test classes, mod jar, the test task's JVM arguments and class path), then every check
++# runs Gradle-free under each JDK home given. The first JDK is the reference; every other runtime is compared with it.
++#
++#   winsweep.sh <out-dir> <jdk-home> [<jdk-home>...]
++#
++# Checks per runtime (see README.md): identity (vendor, VM, JIT; UseJVMCICompiler for GraalVM), MathSweep (which Math
++# functions differ from StrictMath on this runtime: the libm the product must not depend on), the fluid suites
++# (science.fluid, runtime.fluid, runtime.Fluid*Test; printed lines), chain-100 exact (FluidSolverRegressionTest), and the
++# placement-sequence fuzz in both distributions (first hold per seed). Then compare.js prints one table to
++# <out-dir>/table.md and exits non-zero on any real difference.
++#
++# Env: ROOT (worktree to test; default the one holding this script), SEEDS (default 1-200), THREADS (fuzz workers,
++#      default 4), FUZZ=0 (skip the fuzz), BUILD=auto|always|never (default auto: build when missing or stale),
++#      FUZZ_RUNNER (folder of the Gradle-free fuzz runner; default <ROOT>/tools/phase-ports-probes/fuzz-runner, else the
++#      claude/fuzz-runner worktree), JAVAC_HOME (compiles MiniLauncher and MathSweep; default C:/Program Files/Java/jdk-21.0.11).
++set -uo pipefail
++unset JAVA_TOOL_OPTIONS
++HERE=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
++ROOT=$(cd "${ROOT:-$HERE/../../..}" && pwd)
++[ $# -ge 2 ] || { sed -n 2,19p "$0"; exit 2; }
++OUTDIR=$1; shift
++mkdir -p "$OUTDIR"; OUTDIR=$(cd "$OUTDIR" && pwd)
++SEEDS=${SEEDS:-1-200}; THREADS=${THREADS:-4}; FUZZ=${FUZZ:-1}; BUILD=${BUILD:-auto}
++JAVAC_HOME=${JAVAC_HOME:-"C:/Program Files/Java/jdk-21.0.11"}
++if [ -z "${FUZZ_RUNNER:-}" ]; then
++  FUZZ_RUNNER="$ROOT/tools/phase-ports-probes/fuzz-runner"
++  [ -f "$FUZZ_RUNNER/build.sh" ] || FUZZ_RUNNER=/d/Minecraft/Modding/1.21/CreateChemE/.claude/worktrees/agent-a0fdb6ef46fa27b13/tools/phase-ports-probes/fuzz-runner
++fi
++FB="$ROOT/build/fuzz-runner"; WB="$ROOT/build/winsweep"
++PROBES="$ROOT/tools/phase-ports-probes"
++win() { cygpath -w "$1"; }
++
++# ---- build (one Gradle invocation) ------------------------------------------------------------------------------------
++stale=0
++[ -f "$FB/stamp" ] || stale=1
++[ $stale = 0 ] && [ -n "$(find "$ROOT/src" "$PROBES/hold-fuzz/src" "$PROBES/hold-classes/src" -type f -newer "$FB/stamp" 2>/dev/null | head -1)" ] && stale=1
++if [ "$BUILD" = always ] || { [ "$BUILD" = auto ] && [ $stale = 1 ]; }; then
++  echo "winsweep: building $ROOT (one Gradle invocation, $FUZZ_RUNNER/build.sh)"
++  bash "$FUZZ_RUNNER/build.sh" "$ROOT" || { echo "winsweep: build failed"; exit 2; }
++elif [ $stale = 1 ]; then echo "winsweep: build missing or stale and BUILD=never"; exit 2; fi
++mkdir -p "$WB/launcher" "$WB/mathsweep"
++junit=$(node "$HERE/argfile.js" "$FB/classpath.args" "$(win "$WB/launcher")" "$WB/classpath.args") || exit 2
++"$JAVAC_HOME/bin/javac" --release 21 -nowarn -d "$(win "$WB/launcher")" -cp "$junit" "$(win "$ROOT/tools/jdk-determinism/perf/src/MiniLauncher.java")" || exit 2
++"$JAVAC_HOME/bin/javac" --release 17 -nowarn -d "$(win "$WB/mathsweep")" "$(win "$ROOT/tools/jdk-determinism/src/MathSweep.java")" || exit 2
++WORKDIR=$(tr -d '\r\n' < "$FB/workdir.txt")
++PKG=com.wormzjl.createcheme
++# Probe classes the fuzz runner build compiles into the test output (not part of any suite): excluded by simple name.
++excl=$(find "$PROBES/hold-fuzz/src" "$PROBES/hold-classes/src" -name '*.java' -printf '%f\n' 2>/dev/null | sed -E 's/\.java$//' | sort -u | sed -E 's/^/exclude:.*\\./; s/$/$/' | tr '\n' ' ')
++fluidcls=$(cd "$ROOT/build/classes/java/test" && ls com/wormzjl/createcheme/runtime/Fluid*Test.class 2>/dev/null | sed -E 's#/#.#g; s#\.class$##; s#^#class:#' | tr '\n' ' ')
++HEAD=$(git -C "$ROOT" rev-parse --short HEAD)$(git -C "$ROOT" diff --quiet HEAD -- src || echo '+dirty')
++echo "root=$ROOT head=$HEAD seeds=$SEEDS threads=$THREADS fuzz=$FUZZ" > "$OUTDIR/sweep.txt"
++
++# ---- per runtime -------------------------------------------------------------------------------------------------------
++launch() {  # launch <java> <log> <extra -D/-X...> -- <main class and args...>
++  local j=$1 log=$2; shift 2; local opts=()
++  while [ $# -gt 0 ] && [ "$1" != -- ]; do opts+=("$1"); shift; done; shift
++  (cd "$WORKDIR" && "$j" @"$(win "$FB/jvm.args")" "${opts[@]}" @"$(win "$WB/classpath.args")" "$@") > "$log" 2>&1
++}
++i=0
++for home in "$@"; do
++  i=$((i+1)); j="$home/bin/java"
++  [ -x "$j" ] || [ -x "$j.exe" ] || { echo "winsweep: no java in $home"; exit 2; }
++  d="$OUTDIR/r$i"; mkdir -p "$d"
++  echo "$home" > "$d/home.txt"
++  "$j" -XshowSettings:properties -version > "$d/identity.txt" 2>&1
++  if ! grep -q 'OpenJ9' "$d/identity.txt"; then "$j" -XX:+PrintFlagsFinal -version 2>/dev/null | grep -E ' (UseJVMCICompiler|EnableJVMCI) ' >> "$d/identity.txt"; fi
++  graal=0; grep -qE 'UseJVMCICompiler +:?= true' "$d/identity.txt" && graal=1
++  echo "== r$i $(grep -m1 -E 'java.vm.name' "$d/identity.txt" | sed 's/.*= //') $(grep -m1 -E 'java.runtime.version' "$d/identity.txt" | sed 's/.*= //') graal=$graal"
++  "$j" -cp "$(win "$WB/mathsweep")" MathSweep > "$d/mathsweep.txt" 2>&1
++  gopts=(); [ $graal = 1 ] && gopts=(-Djdk.graal.PrintCompilation=true "-Djdk.graal.LogFile=$(win "$d/graal-compilation.log")")
++  # shellcheck disable=SC2086
++  launch "$j" "$d/suite.txt" "${gopts[@]}" -- MiniLauncher package:$PKG.science.fluid package:$PKG.runtime.fluid $fluidcls $excl
++  grep -m1 MINILAUNCHER "$d/suite.txt"
++  launch "$j" "$d/regression.txt" -Dfluid.regression.mode=exact -Dfluid.regression.capture=false -- MiniLauncher class:$PKG.fluid.benchmark.FluidSolverRegressionTest
++  grep -m1 -oE 'chain-100 vs reference: max deviation: state/moles [^ ]+' "$d/regression.txt"
++  if [ "$FUZZ" = 1 ]; then
++    for dist in random defaults; do
++      dflag=false; [ $dist = defaults ] && dflag=true
++      launch "$j" "$d/fuzz-$dist.java.txt" -DholdFuzz.seeds="$SEEDS" -DholdFuzz.threads="$THREADS" -DholdFuzz.slices=120 \
++        -DholdFuzz.verbose=false -DholdFuzz.strict=false -DholdFuzz.defaults=$dflag -DholdFuzz.out="$(win "$d/fuzz-$dist-report.txt")" \
++        -- FuzzRunnerLauncher "method:$PKG.runtime.fluid.HoldFuzzTest#placementSequenceFuzz"
++      bash "$PROBES/hold-fuzz/classify.sh" "$d/fuzz-$dist-report.txt" > /dev/null
++      grep -h '^SUMMARY' "$d/fuzz-$dist-report.txt" | cut -d' ' -f2-3
++    done
++  fi
++done
++node "$HERE/compare.js" "$OUTDIR" $i
+diff --git a/tools/jdk-determinism/winsweep/argfile.js b/tools/jdk-determinism/winsweep/argfile.js
+new file mode 100644
+index 00000000..24f454a8
+--- /dev/null
++++ b/tools/jdk-determinism/winsweep/argfile.js
+@@ -0,0 +1,11 @@
++// winsweep helper: reads build/fuzz-runner/classpath.args (java @argfile: "-cp" then one quoted, backslash-escaped path
++// list), writes a copy with <dir> prepended to the class path, and prints the JUnit Platform jars of that class path
++// (';'-separated) for compiling the MiniLauncher.   node argfile.js <classpath.args> <dir-to-prepend> <out-argfile>
++const fs = require('fs');
++const [src, dir, out] = process.argv.slice(2);
++const lines = fs.readFileSync(src, 'utf8').replace(/\r/g, '').split('\n').filter(l => l.length);
++if (lines[0] !== '-cp' || !/^".*"$/.test(lines[1])) throw new Error('unexpected classpath.args format: ' + src);
++const cp = lines[1].slice(1, -1).replace(/\\(.)/g, '$1');
++const q = s => '"' + s.replace(/\\/g, '\\\\').replace(/"/g, '\\"') + '"';
++fs.writeFileSync(out, '-cp\n' + q(dir + ';' + cp) + '\n');
++console.log(cp.split(';').filter(p => /[\\/](junit-platform-(launcher|engine|commons)|opentest4j|apiguardian-api)-[^\\/]*\.jar$/.test(p)).join(';'));
+diff --git a/tools/jdk-determinism/winsweep/compare.js b/tools/jdk-determinism/winsweep/compare.js
+new file mode 100644
+index 00000000..56dff554
+--- /dev/null
++++ b/tools/jdk-determinism/winsweep/compare.js
+@@ -0,0 +1,138 @@
++// winsweep comparison: reads <out>/r1..rN (r1 = reference runtime), prints a Markdown table to stdout and <out>/table.md,
++// details to <out>/details.txt, and exits 1 on any real difference (printed suite lines, failing tests, chain-100,
++// fuzz first holds that differ without a budget hold on either side).   node compare.js <out-dir> <N>
++const fs = require('fs'), path = require('path');
++const [out, nArg] = process.argv.slice(2); const N = +nArg;
++const rd = (d, f) => { const p = path.join(out, d, f); return fs.existsSync(p) ? fs.readFileSync(p, 'utf8').replace(/\r/g, '') : null; };
++const details = [];
++
++function identity(d) {
++  const t = rd(d, 'identity.txt') || '';
++  const prop = k => { const m = new RegExp('^\\s*' + k.replace(/\./g, '\\.') + ' = (.*)$', 'm').exec(t); return m ? m[1].trim() : ''; };
++  const vm = prop('java.vm.name'), ver = prop('java.runtime.version'), vendor = prop('java.vendor.version') || prop('java.vendor');
++  const major = parseInt(prop('java.specification.version'), 10);
++  const graal = /UseJVMCICompiler\s+=\s+true/.test(t);
++  let family;
++  if (/OpenJ9/.test(vm + prop('java.vm.vendor'))) family = `OpenJ9 ${major}`;
++  else if (graal) family = `GraalVM ${major} (Graal JIT)`;
++  else family = `HotSpot ${major}`;
++  return { name: `${vendor} ${ver}`.trim(), family, graal };
++}
++function jit(d, id) {
++  if (!id.graal) return id.family.startsWith('OpenJ9') ? 'OpenJ9 JIT' : 'C1/C2';
++  const log = rd(d, 'graal-compilation.log');
++  if (!log) return 'Graal (no compilation log)';
++  const lines = log.split('\n').filter(l => /^HotSpotCompilation-\d+/.test(l));
++  const sci = lines.filter(l => /^\S+\s+Lcom\/wormzjl\/createcheme\/science\//.test(l));
++  const facade = new Set(lines.map(l => l.split(/\s+/)).filter(w => /science\/math\/Deterministic(Math|Pow);/.test(w[1])).map(w => w[1].replace(/.*\//, '').replace(';', '') + '.' + w[2]));
++  return `Graal (JVMCI): ${lines.length} compilations, ${sci.length} of science/, facade compiled: ${[...facade].sort().join(' ') || 'none'}`;
++}
++function mathsweep(d) {
++  const t = rd(d, 'mathsweep.txt') || '';
++  const fns = []; let unstable = [];
++  for (const l of t.split('\n')) {
++    const w = l.trim().split(/\s+/);
++    if (w.length >= 7 && /^\d+$/.test(w[1]) && /^[a-z0-9]+$/.test(w[0])) { if (+w[1] > 0) fns.push(w[0]); if (w[6] === 'NO') unstable.push(w[0]); }
++  }
++  return (fns.length ? fns.join(',') : 'none') + (unstable.length ? ` (tier-dependent: ${unstable.join(',')})` : '');
++}
++const normReasons = l => l.replace(/reasons=\{([^}]*)\}/g, (m, inner) => 'reasons={' + inner.split(/, (?=[^,]*=\d+(?:, |$))/).sort().join(', ') + '}');
++function suite(d) {
++  const t = rd(d, 'suite.txt'); if (!t) return null;
++  const all = t.split('\n');
++  const cut = all.findIndex(l => /^Failures \(\d+\):/.test(l) || /^MINILAUNCHER /.test(l));
++  const body = (cut < 0 ? all : all.slice(0, cut));
++  const summary = (all.find(l => /^MINILAUNCHER /.test(l)) || '').replace(/ wallMs=\d+/, '');
++  const failures = all.filter(l => /^\s+JUnit Jupiter:/.test(l)).map(l => l.trim());
++  const failSet = [...new Set(failures)].sort();
++  const printed = [], timing = [];
++  for (let l of body) {
++    if (/^\[Use -Djdk\.graal/.test(l)) continue;
++    l = l.replace(/ ms=[0-9.]+/g, ' ms=*').replace(/ allocatedMB=[0-9.]+/g, ' allocatedMB=*').replace(/ bytes=[0-9]+/g, ' bytes=*').replace(/wall(Ms|Nanos)?=[0-9.]+/g, 'wall=*');
++    // A wall-time line: a number followed by the unit ms (not a masked "ms=*" field), or a nanosecond count.
++    if (/\d ?ms\b(?!=)|Nanos=\d|median ms/.test(l)) { timing.push(l); continue; }
++    printed.push(l);
++  }
++  return { summary, failSet, printed, timing };
++}
++function chain(d) {
++  const t = rd(d, 'regression.txt') || '';
++  const dev = (/chain-100 vs reference: (.*)/.exec(t) || [, 'no chain-100 line'])[1].trim();
++  const row = (/^\s*\| 0 \|(.*)$/m.exec(t) || [, ''])[1].split('|').map(s => s.trim());
++  const counts = row.length > 10 ? `accepted=${row[2]} rejected=${row[3]} solves=${row[6]} iterations=${row[7]} residualEvaluations=${row[9]}` : 'no table row';
++  const moles = (/state\/moles (\S+)/.exec(dev) || [, '?'])[1];
++  return { dev, counts, moles };
++}
++const fcls = s => {
++  if (/^HELD \(thermo domain\)/.test(s)) return 'C';
++  if (/^HELD: wall deadline/.test(s) || /^HELD: soft budget/.test(s)) return 'F';
++  return 'other';
++};
++function fuzz(d, dist) {
++  const t = rd(d, `fuzz-${dist}-report.txt`); if (!t) return null;
++  const m = new Map(); let rec = null, clean = 0;
++  for (const l of t.split('\n')) {
++    let g;
++    if ((g = /^SEED (\d+) /.exec(l))) { rec = { first: 'clean', cls: 'clean' }; m.set(+g[1], rec); }
++    else if (rec && rec.first === 'clean' && /^  (HELD|EXCEPTION) /.test(l)) {
++      const s = /^  HELD /.test(l) ? l.replace(/.*status=/, '') : l.trim();
++      rec.first = s; rec.cls = /^  HELD /.test(l) ? fcls(s) : 'X';
++    }
++  }
++  for (const r of m.values()) if (r.cls === 'clean') clean++;
++  return { m, clean };
++}
++function fuzzCmp(a, b) {
++  if (!a || !b) return { text: 'not run', real: 0 };
++  let same = 0; const budget = [], real = [];
++  for (const [s, ra] of a.m) {
++    const rb = b.m.get(s); if (!rb) continue;
++    if (ra.first === rb.first) { same++; continue; }
++    (ra.cls === 'F' || rb.cls === 'F' ? budget : real).push(s);
++  }
++  return { text: `${same}/${a.m.size} identical` + (budget.length ? `, budget-only ${budget.length} (${budget.join(' ')})` : '') + (real.length ? `, **real ${real.length}** (${real.join(' ')})` : '') + `; clean ${b.clean}`, real: real.length, realSeeds: real };
++}
++
++const R = [];
++for (let i = 1; i <= N; i++) {
++  const d = 'r' + i; const id = identity(d);
++  R.push({ d, id, jit: jit(d, id), ms: mathsweep(d), suite: suite(d), chain: chain(d), fr: fuzz(d, 'random'), fd: fuzz(d, 'defaults'), home: (rd(d, 'home.txt') || '').trim() });
++}
++const ref = R[0]; let realAny = 0;
++const rows = [];
++rows.push('| runtime | family | JIT | Math != StrictMath on this runtime | suites (tests; printed lines vs reference) | chain-100 exact vs in-tree record | fuzz random first holds vs reference | fuzz defaults first holds vs reference | verdict |');
++rows.push('|---|---|---|---|---|---|---|---|---|');
++for (const r of R) {
++  let real = 0; let suiteText, chainText;
++  const s = r.suite, rs = ref.suite;
++  if (!s) { suiteText = 'not run'; real++; }
++  else {
++    let identical = 0, orderOnly = 0; const diff = [];
++    const n = Math.max(s.printed.length, rs.printed.length);
++    for (let k = 0; k < n; k++) {
++      const a = rs.printed[k], b = s.printed[k];
++      if (a === b) identical++; else if (a !== undefined && b !== undefined && normReasons(a) === normReasons(b)) orderOnly++; else diff.push(k + 1);
++    }
++    const failSame = JSON.stringify(s.failSet) === JSON.stringify(rs.failSet);
++    suiteText = `${s.summary.replace('MINILAUNCHER tests ', '').replace(/ skipped=0 aborted=0/, '')}; ${s.printed.length} lines: ${identical} identical, ${orderOnly} reason-order only, ${diff.length} differ; ${s.timing.length} timing lines ignored` + (failSame ? '' : '; **failing tests differ**');
++    if (diff.length || !failSame) { real++; details.push(`== ${r.d} printed lines differing from r1 (first 20): ${diff.slice(0, 20).join(' ')}`); for (const k of diff.slice(0, 20)) { details.push(`  < ${(rs.printed[k - 1] || '').slice(0, 400)}`); details.push(`  > ${(s.printed[k - 1] || '').slice(0, 400)}`); } if (!failSame) details.push(`  failures r1: ${rs.failSet.join(' | ')}\n  failures ${r.d}: ${s.failSet.join(' | ')}`); }
++  }
++  const same = r.chain.dev === ref.chain.dev && r.chain.counts === ref.chain.counts;
++  chainText = `moles ${r.chain.moles}; ${same ? (r === ref ? 'reference' : 'identical to reference') : '**differs**'}`;
++  if (!same) { real++; details.push(`== ${r.d} chain-100: ${r.chain.dev} | ${r.chain.counts}\n   r1: ${ref.chain.dev} | ${ref.chain.counts}`); }
++  const cr = r === ref ? { text: `reference; clean ${r.fr ? r.fr.clean : '-'}`, real: 0 } : fuzzCmp(ref.fr, r.fr);
++  const cd = r === ref ? { text: `reference; clean ${r.fd ? r.fd.clean : '-'}`, real: 0 } : fuzzCmp(ref.fd, r.fd);
++  real += cr.real + cd.real;
++  for (const [c, dist, a, b] of [[cr, 'random', ref.fr, r.fr], [cd, 'defaults', ref.fd, r.fd]]) if (c.real) for (const sd of c.realSeeds) details.push(`== ${r.d} fuzz ${dist} seed ${sd}\n   r1: ${a.m.get(sd).first.slice(0, 300)}\n   ${r.d}: ${b.m.get(sd).first.slice(0, 300)}`);
++  realAny += real;
++  rows.push(`| ${r.d}: ${r.id.name} | ${r.id.family} | ${r.jit} | ${r.ms} | ${suiteText} | ${chainText} | ${cr.text} | ${cd.text} | ${real ? '**REAL DIFFERENCE**' : 'identical (budget holds excepted)'} |`);
++}
++rows.push('');
++rows.push(`Reference r1 chain-100 line: ${ref.chain.dev} (${ref.chain.counts}). Homes: ${R.map(r => r.d + '=' + r.home).join('; ')}.`);
++const table = rows.join('\n');
++fs.writeFileSync(path.join(out, 'table.md'), table + '\n');
++fs.writeFileSync(path.join(out, 'details.txt'), details.join('\n') + '\n');
++console.log(table);
++if (details.length) console.log(`\ndetails: ${path.join(out, 'details.txt')}`);
++console.log(realAny ? `winsweep: REAL DIFFERENCES (${realAny})` : 'winsweep: all runtimes identical (budget holds excepted)');
++process.exit(realAny ? 1 : 0);

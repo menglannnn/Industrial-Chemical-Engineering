@@ -1,0 +1,7 @@
+// Forwards -Pmint and -Pinstr to every test JVM as system properties (scratch experiments; used with campaign.sh EXTRA=...).
+gradle.projectsEvaluated {
+    def root = gradle.rootProject
+    root.tasks.withType(Test).configureEach {
+        ['mint','instr','estimate','filterclose','capscale','capscale2','actclose','holdFuzz.wallNanos','holdFuzz.softNanos'].each { k -> def v = root.findProperty(k); if (v != null) systemProperty k, v }
+    }
+}

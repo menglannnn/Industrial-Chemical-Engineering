@@ -1,0 +1,24 @@
+seed 786 distribution random keep 0@158,1@473,2@504,3@553,6@625,8@694,10@1283,11@1563
+blocks (placement tick: block with its spec, as HoldFuzzTest places it)
+  158: pipe0.05@0,0,2 bore=0.05 control=Passive[]
+  473: pipe0.05@-3,0,2 bore=0.05 control=Passive[]
+  504: gen[crude 321K 280kPa]@-1,-1,2 bore=0.01 control=Passive[] spec=[T=320.52575732159227 K, P=280221.16209447035 Pa, volume=1.0 m3, composition (network basis, mole fractions)=[0.005000000000000001, 0.0011908995509034748, 0.010591918105298616, 0.006510980717557732, 0.0222592523684086, 0.01663176428669243, 0.024555314957131154, 0.16629362769970432, 0.12314847499525976, 0.1177490756868832, 0.10469103210175804, 0.08701659237073239, 0.07336455325619681, 0.06154184102834706, 0.06057002423058549, 0.06607465545777229, 0.02967631275527244, 0.015001342402485261, 0.008132338029011052, 0.0, 0.0]]
+  553: pipe0.05@0,-1,2 bore=0.05 control=Passive[]
+  625: pipe0.05@-1,0,2 bore=0.05 control=Passive[]
+  694: tank@-3,0,1 bore=0.1 control=Passive[] spec=[T=298.15 K, P=101325.0 Pa, volume=1.0 m3, composition (network basis, mole fractions)=[0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0]]
+  1283: pipe0.05@-2,0,2 bore=0.05 control=Passive[]
+  1563: void@0,0,3 bore=0.05 control=Passive[] spec=[T=298.15 K, P=101325.0 Pa, volume=1.0 m3, composition (network basis, mole fractions)=[0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0]]
+first hold: Held[tick=1690, island=13, committed=1626, status=HELD: Substep refinement exhausted: Singular Newton Jacobian: Sparse LU rejected a singular matrix; active-set pass=0; reasons={Singular Newton Jacobian: Sparse LU rejected a singular matrix; active-set pass=#=21}]
+class: E2 crude two-phase node in the held island: true
+island 13 committed=1626 status=HELD: Substep refinement exhausted: Singular Newton Jacobian: Sparse LU rejected a singular matrix; active-set pass=0; reasons={Singular Newton Jacobian: Sparse LU rejected a singular matrix; active-set pass=#=21}
+    node 0 id=1 JUNCTION z=0.0 P=193551.21036906776 T=320.5651426837366 m=808.5623425523311 liq=0.9501166841378129 water=0.0 vap=0.0
+    node 1 id=3 GENERATOR z=-1.0 P=280221.16209447035 T=320.52575732159227 m=851.1055337791105 liq=1.0 water=0.0 vap=0.0
+    node 2 id=6 JUNCTION z=0.0 P=237860.7921596971 T=320.5423623618469 m=851.1055337791123 liq=1.0000512993604558 water=0.0 vap=0.0
+    node 3 id=8 RESERVOIR z=0.0 P=229701.92488647098 T=320.2753936789624 m=328.28279229721244 liq=0.38306586869587783 water=0.0 vap=0.6169341313041226
+    node 4 id=12 VOID z=0.0 P=101325.0 T=298.15 m=1.145353086183201 liq=0.0 water=0.0 vap=1.0
+    pipe 0 0->1 Passive[] d=0.001963495408493621 blocked=0 filter=false ports=BULK/BULK
+    pipe 1 0->4 Passive[] d=0.001963495408493621 blocked=0 filter=false ports=BULK/BULK
+    pipe 2 0->2 Passive[] d=0.001963495408493621 blocked=0 filter=false ports=BULK/BULK
+    pipe 3 1->2 Passive[] d=0.001963495408493621 blocked=0 filter=false ports=BULK/BULK
+    pipe 4 2->3 Passive[] d=0.001963495408493621 blocked=0 filter=false ports=BULK/BULK
+    last modes=[PASSIVE, PASSIVE, PASSIVE, PASSIVE, PASSIVE] flows=[-28.456435974023798, 54.50248442326146, -26.04604844923765, 32.77259423931099, 6.72654579007334]

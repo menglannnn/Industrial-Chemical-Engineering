@@ -60,7 +60,7 @@ class ElevatedBlockLineIslandTest {
     /** The compiled island the world would hand a worker for this line of blocks. */
     private PassiveNetwork island(List<PhysicalFluidTopology.Device> devices,Map<Long,FluidDeviceSpec> specs) {
         var boundaries=new LinkedHashMap<Long,PassiveNetwork.Reservoir>();
-        for(var d:devices)if(specs.containsKey(d.id()))boundaries.put(d.id(),specs.get(d.id()).initialize(d,model,()->{}));
+        for(var d:devices)if(specs.containsKey(d.id()))boundaries.put(d.id(),FluidTestSupport.chargedBoundary(specs.get(d.id()),d,model));
         var stock=new LinkedHashMap<Long,InlineFilter>();
         for(var d:devices)if(d.kind()==TopologyCompiler.Kind.FILTER)
             stock.put(d.id(),new InlineFilter(FILTER_CAPACITY,FILTER_RESISTANCE,SolidInventory.EMPTY,0));
@@ -95,13 +95,14 @@ class ElevatedBlockLineIslandTest {
                 device(4,0,BOTTOM+3,TopologyCompiler.Kind.PIPE),device(5,0,BOTTOM+LIFT,TopologyCompiler.Kind.RESERVOIR));
         return island(devices,Map.of(1L,generatorSpec(generatorPressure),5L,tankSpec(tankPressure)));
     }
-    /** generator - pump - two pipes - tank, all of it vertical. The pump's outlet junction sits one
-     * block above the generator, so its head is added there and only the remaining three blocks of
+    /** generator - pipe - pump - pipe - tank, all of it vertical (a pipe block below the pump since only pipes connect,
+     * decision D20; the pump stood on the generator until 2026-09-28). The pump.s outlet junction sits two
+     * blocks above the generator, so its head is added there and only the remaining two blocks of
      * column stand between it and the tank. */
     private PassiveNetwork risingPumpLine(double generatorPressure) {
         var devices=List.of(device(1,0,BOTTOM,TopologyCompiler.Kind.GENERATOR),
-                device(2,0,BOTTOM+1,TopologyCompiler.Kind.PUMP,PhysicalFluidTopology.Direction.UP),
-                device(3,0,BOTTOM+2,TopologyCompiler.Kind.PIPE),device(4,0,BOTTOM+3,TopologyCompiler.Kind.PIPE),
+                device(6,0,BOTTOM+1,TopologyCompiler.Kind.PIPE),device(2,0,BOTTOM+2,TopologyCompiler.Kind.PUMP,PhysicalFluidTopology.Direction.UP),
+                device(4,0,BOTTOM+3,TopologyCompiler.Kind.PIPE),
                 device(5,0,BOTTOM+LIFT,TopologyCompiler.Kind.RESERVOIR));
         return island(devices,Map.of(1L,generatorSpec(generatorPressure),5L,tankSpec(101325)));
     }
@@ -127,13 +128,19 @@ class ElevatedBlockLineIslandTest {
         return state.mass()/state.volume();
     }
     private double head(double pressure,int lift){return waterDensity(pressure)*PassiveStepSolver.GRAVITY*lift;}
+    /** The level head of a tank's bottom (LIQUID) port on its final state (decision D9 of the phase-ports batch):
+     * {@code g m_c H / V}, the condensed mass over a fixed 1 m height. */
+    private double levelHead(Run run) {
+        var tank=run.tankNode();return PassiveStepSolver.GRAVITY*model.liquidMass(tank.state())*PassiveStepSolver.LEVEL_HEAD_HEIGHT/tank.inventory().volume();
+    }
 
     /** How far a line got, why it stopped if it did, and the graph it finished on. */
     private record Run(int survived,String detail,PassiveNetwork finished) {
-        FluidThermodynamics.State tank() {
+        FluidThermodynamics.State tank(){return tankNode().state();}
+        PassiveNetwork.Reservoir tankNode() {
             for(int i=finished.reservoirs().size()-1;i>=0;i--) {
                 var node=finished.reservoirs().get(i);
-                if(node.kind()==PassiveNetwork.NodeKind.RESERVOIR)return node.state();
+                if(node.kind()==PassiveNetwork.NodeKind.RESERVOIR)return node;
             }
             throw new AssertionError("No reservoir in this island");
         }
@@ -193,10 +200,14 @@ class ElevatedBlockLineIslandTest {
      * is the physics rather than an error: a connection is at rest when
      * {@code P_generator - P_tank = rho*g*dz}, so a tank {@link #LIFT} m above a 400 kPa water
      * generator settles 39.08 kPa below it and one {@link #LIFT} m below settles that much above
-     * it. Every line here lands within a pascal of that. The pumped line's outlet junction is one
-     * block up, so its shutoff pressure is the generator's plus the pump's head less one block of
-     * column, and only three blocks of column stand between that and the tank - which is the same
+     * it. Every line here lands within a pascal of that. The pumped line's suction junction is two
+     * blocks up (decision D20), so its shutoff pressure is the generator's plus the pump's head less two blocks of
+     * column, and only two blocks of column stand between that and the tank - which is the same
      * total {@link #LIFT} of head, because the column is continuous.
+     *
+     * <p>Since the phase-ports batch (WP5) a rising line enters its tank through the tank's DOWN face, its bottom port,
+     * whose pressure is the headspace's plus the level head of the tank's water (decision D9): there {@code P_tank} is that
+     * bottom pressure, and the headspace rests one level head (about 7 kPa here) lower.
      */
     @Test void elevatedLinesIntegrateFortyIntervalsLikeTheirFlatControl() {
         double pressure=400000;
@@ -208,26 +219,41 @@ class ElevatedBlockLineIslandTest {
         lines.put("rising  generator->3 pipes up->tank",run(risingLine(pressure),40));
         lines.put("falling generator->3 pipes down->tank",run(fallingLine(pressure),40));
         lines.put("rising  generator->pipe->filter->pipe->tank",run(risingFilterLine(pressure,101325),40));
-        lines.put("rising  generator->pump->2 pipes->tank",run(risingPumpLine(pressure),40));
+        lines.put("rising  generator->pipe->pump->pipe->tank",run(risingPumpLine(pressure),40));
         lines.forEach((name,line)->System.out.println("("+name+") "+line.detail()
                 +(line.ok()?"\n   tank P="+line.tank().pressure()+" mass="+line.tank().mass()
-                +" offset vs flat="+(line.tank().pressure()-flat.tank().pressure())+" Pa":"")));
+                +" offset vs flat="+(line.tank().pressure()-flat.tank().pressure())+" Pa level head="+levelHead(line)+" liquid="+model.liquidMass(line.tank())
+                +" T="+line.tank().temperature()+" bottom="+(line.tank().pressure()+levelHead(line)):"")));
         lines.forEach((name,line)->assertTrue(line.ok(),name+": "+line.detail()));
-        assertEquals(pressure-head(pressure,LIFT),lines.get("rising  generator->3 pipes up->tank").tank().pressure(),1e-5*pressure,
-                "A tank above its generator must settle one water column below it");
+        // The rising lines reach their tank through its DOWN face, which compiles to its bottom (LIQUID) port (phase-ports
+        // WP5, default A1), where the level head of the water it holds adds to the headspace pressure (decision D9, H = 1 m).
+        // So it is the tank's bottom, P + g m_c H / V, that settles one water column below the generator: the headspace
+        // rests about one level head lower (re-baselined in WP5: headspace 360918.3081 Pa before, 353969.4046 Pa now, level
+        // head 6948.90 Pa of 708.6 kg of water, bottom 360918.3068 Pa; PHASE_PORTS_REVIEW.md WP5). The falling line enters
+        // through the tank's UP face, its top (VAPOR) port, which has no head: unchanged.
+        var rising=lines.get("rising  generator->3 pipes up->tank");
+        assertEquals(pressure-head(pressure,LIFT),rising.tank().pressure()+levelHead(rising),1e-5*pressure,
+                "A tank above its generator must settle with its bottom one water column below it");
         assertEquals(pressure+head(pressure,LIFT),lines.get("falling generator->3 pipes down->tank").tank().pressure(),1e-5*pressure,
                 "A tank below its generator must settle one water column above it");
-        assertEquals(pressure-head(pressure,LIFT),lines.get("rising  generator->pipe->filter->pipe->tank").tank().pressure(),1e-5*pressure,
+        // Re-baselined in WP5 like the plain rising line: headspace 360918.3787 Pa before, 353969.7255 Pa now, bottom 360918.6286 Pa.
+        var risingFilter=lines.get("rising  generator->pipe->filter->pipe->tank");
+        assertEquals(pressure-head(pressure,LIFT),risingFilter.tank().pressure()+levelHead(risingFilter),1e-5*pressure,
                 "A filter block may not change where the column settles");
         // The pump's shutoff is its rise limit, the setting scaled by its suction's density over the pump reference
-        // density (the suction is the junction one block above the generator), less the column: the model's exact
+        // density (the suction is the junction two blocks above the generator since decision D20), less the column: the model's exact
         // shutoff. The earlier expectation took the rise as exactly PUMP_HEAD and was 144.5 Pa low; TR-BDF2 met it only
         // while its pump row stood on the discharge column (HANDOFF_REVIEW.md 8.9 (e) of the mixed-gas junction batch,
         // decision D6). A hundred pascals rather than the four the passive lines hold to, because the pump does work on
         // the water in the middle of the column.
-        double suctionDensity=waterDensity(pressure-head(pressure,1));
-        assertEquals(pressure+PUMP_HEAD*suctionDensity/model.pumpReferenceDensity()-head(pressure,LIFT),lines.get("rising  generator->pump->2 pipes->tank").tank().pressure(),
-                1e-4*(pressure+PUMP_HEAD),"A pumped tank must settle one water column below its own shutoff pressure");
+        // Re-baselined in WP5: the pump discharges into the tank's bottom port, so its bottom (headspace plus level head)
+        // closes the pump: headspace 861062.9819 Pa before, 852452.8285 Pa now, level head 8610.21 Pa, bottom 861063.0384 Pa.
+        // Rebuilt for decision D20 (a pipe block between the generator and the pump, 2026-09-28): the suction two blocks up,
+        // headspace 852448.0673 Pa, level head 8610.20 Pa, bottom 861058.2704 Pa (4.77 Pa lower: the rise scales with the
+        // density of water one block higher up the column).
+        double suctionDensity=waterDensity(pressure-head(pressure,2));var pumped=lines.get("rising  generator->pipe->pump->pipe->tank");
+        assertEquals(pressure+PUMP_HEAD*suctionDensity/model.pumpReferenceDensity()-head(pressure,LIFT),pumped.tank().pressure()+levelHead(pumped),
+                1e-4*(pressure+PUMP_HEAD),"A pumped tank must settle with its bottom one water column below its own shutoff pressure");
     }
 
     /**

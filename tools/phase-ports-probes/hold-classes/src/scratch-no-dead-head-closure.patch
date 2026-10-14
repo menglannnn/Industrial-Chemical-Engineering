@@ -1,0 +1,13 @@
+diff --git a/src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveStepSolver.java b/src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveStepSolver.java
+index 2327874e..ff113300 100644
+--- a/src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveStepSolver.java
++++ b/src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveStepSolver.java
+@@ -388,7 +388,7 @@ public final class PassiveStepSolver {
+         // may still close it on a converged point. See {@link #reopenable}.
+         boolean[] keep=null;
+         if(!keepOpen.isEmpty()&&!rateOnly){var ids=identities(graph);keep=new boolean[ids.size()];for(int i=0;i<keep.length;i++)keep[i]=keepOpen.contains(ids.get(i));keepOpen=Set.of();}
+-        closeDeadHeads(graph,boundaryClosed,keep);
++        // SCRATCH: closure disabled // closeDeadHeads(graph,boundaryClosed,keep);
+         closeIllegalStarts(graph,modes,boundaryClosed,keep);
+         // Decision D12: in the cold start's rate seed, the generators the one-way estimate shows receiving start closed.
+         graph=closeColdReceivingGenerators(graph,boundaryClosed,keep,checkpoint);

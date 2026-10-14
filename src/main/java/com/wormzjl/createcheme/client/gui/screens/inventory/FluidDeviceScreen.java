@@ -54,10 +54,25 @@ public final class FluidDeviceScreen extends AbstractContainerScreen<FluidDevice
     private boolean transport(){return menu.clientData()!=null&&menu.clientData().view().pipeInfo()!=null;}
     private boolean canEdit(){return !menu.debug()&&menu.clientData()!=null;}
     private int rail(){return Math.min(210,imageWidth/3);}
+    // The rail below "Operating conditions" (its fields, the filter's button and the values) is one column clipped to
+    // the area above the status separator and scrolled by its own bar on the rail/table divider when it is longer than
+    // that area, as the table area scrolls its rows. At 427x240 or 480x270 scaled pixels (GUI scale 2 at 854x480, the
+    // automatic scale at 1920x1080) the screen is 250 GUI px high and a pump's or compressor's column does not fit.
+    private static final int RAIL_STEP=10,RAIL_CONTROL=42,RAIL_LINE=30;
+    private final ProcessScroll railScroll=new ProcessScroll();
+    private int railBuiltOffset,hoverX=-1,hoverY=-1,clipTop=Integer.MIN_VALUE,clipBottom=Integer.MAX_VALUE;
+    private int railTop(){return pipe()?78:90;}
+    private int railBottom(){return imageHeight-52;}
+    private int railOffset(){return railScroll.value()*RAIL_STEP;}
+    private boolean inRail(int y,int height){return y>=railTop()&&y+height<=railBottom();}
     private int tableX(){return rail()+24;}
     private int tableWidth(){return imageWidth-tableX()-22;}
-    private int tableTop(){return page==0?(pipe()?110:130):page==1?166:page==3?104:142;}
-    private int rowHeight(){return page==0||page==3?18:25;}
+    // Page 4 is a tank's "Connections by face": one two-line row per connection in the table area, scrolled like the
+    // other tables, so the list is readable at every GUI scale (it was on the rail, below the tank's values, and did
+    // not fit below about 323 scaled pixels of height).
+    private boolean tank(){return menu.clientData()!=null&&menu.clientData().kind()==TopologyCompiler.Kind.RESERVOIR;}
+    private int tableTop(){return page==0?(pipe()?110:130):page==1?166:page==3?104:page==4?100:142;}
+    private int rowHeight(){return page==0||page==3?18:page==4?24:25;}
     private int visibleRows(){return Math.max(1,(imageHeight-64-tableTop())/rowHeight());}
     private void refresh(){
         if(menu.messageRevision()!=messageRevision){messageRevision=menu.messageRevision();message=menu.message();}
@@ -69,6 +84,7 @@ public final class FluidDeviceScreen extends AbstractContainerScreen<FluidDevice
         fields.clear();fields.put("temperature",new NumericDraft(temperatureUnit.display(c.temperature())));
         fields.put("pressure",new NumericDraft(c.pressure()));fields.put("diameter",new NumericDraft(c.diameter()));
         fields.put("volumeFlow",new NumericDraft(c.volumeFlow()));fields.put("maximumAddedPressure",new NumericDraft(c.maximumAddedPressure()));
+        fields.put("maximumPressureRatio",new NumericDraft(c.maximumPressureRatio()));
         composition=new RelativeComposition(data.components(),data.molecularWeights(),c.composition());
         if(mass)composition.toggleBasis();
         loadSolids(c.solids());if(data.kind()==TopologyCompiler.Kind.FILTER)phase=3;
@@ -94,11 +110,24 @@ public final class FluidDeviceScreen extends AbstractContainerScreen<FluidDevice
     private Button action(String key,int x,int y,int w,Runnable run){
         var b=button(tr(key),x,y,w,run);b.setTooltip(Tooltip.create(Component.translatable("gui.createcheme.fluid."+key+".hint")));return b;
     }
-    private void field(String key,String label,int x,int y,int width){
+    private EditBox field(String key,String label,int x,int y,int width){
         labels.add(new Label(label,x,y,width));
         var box=new EditBox(font,leftPos+x,topPos+y+12,width,18,Component.literal(label));
         box.setMaxLength(48);box.setValue(fields.get(key).text());box.setResponder(v->fields.get(key).text(v));
         box.setTooltip(Tooltip.create(Component.literal(label)));box.setEditable(canEdit());editors.put(key,addRenderableWidget(box));
+        return box;
+    }
+    /** A field of the scrolled rail: its label is clipped with the rail, the box shows only when it lies wholly inside. */
+    private void railField(String key,String label,int y){field(key,label,12,y,rail()-4).visible=inRail(y+12,18);}
+    private int[] bottomButtons(){
+        int[] widths={65,110,118,108};int natural=Arrays.stream(widths).sum(),room=imageWidth-38;
+        if(room<natural)for(int i=0;i<widths.length;i++)widths[i]=widths[i]*room/natural;
+        return widths;
+    }
+    /** Rail controls above the values: the fields a device's page edits, or a filter's recover button. */
+    private int railControls(){
+        var data=menu.clientData();if(data==null||!canEdit())return 0;
+        return switch(data.kind()){case GENERATOR,PUMP,COMPRESSOR->2;case VALVE,VOID,PIPE,FILTER->1;default->0;};
     }
     private void changePage(int target){page=target;templates=false;scroll.reset();rebuild();}
     private void toggleBasis(){
@@ -124,28 +153,36 @@ public final class FluidDeviceScreen extends AbstractContainerScreen<FluidDevice
             action("composition",116,29,112,()->changePage(1)).active=page!=1;
             action("solids",234,29,100,()->changePage(2)).active=page!=2;
         }
-        button(tr("temperature_unit",temperatureUnit.symbol()),imageWidth-118,imageHeight-27,108,this::toggleTemperature)
+        // The button row: Close and Apply from the left, the basis and unit toggles from the right, all four narrowed in
+        // proportion when they do not fit side by side (their natural widths need 439 GUI px; a 427-wide screen has 411).
+        int[] bottom=bottomButtons();int by=imageHeight-27;
+        button(tr("temperature_unit",temperatureUnit.symbol()),imageWidth-10-bottom[3],by,bottom[3],this::toggleTemperature)
             .setTooltip(Tooltip.create(Component.translatable("gui.createcheme.column.temperature_unit.hint")));
-        button(tr(mass?"mass_basis":"mole_basis"),imageWidth-242,imageHeight-27,118,this::toggleBasis)
+        button(tr(mass?"mass_basis":"mole_basis"),imageWidth-16-bottom[3]-bottom[2],by,bottom[2],this::toggleBasis)
             .setTooltip(Tooltip.create(Component.translatable("gui.createcheme.column.composition_basis.hint")));
-        action("close",10,imageHeight-27,65,this::onClose);
+        action("close",10,by,bottom[0],this::onClose);
         var data=menu.clientData();if(data==null)return;
         if(canEdit()&&data.kind()!=TopologyCompiler.Kind.RESERVOIR&&data.kind()!=TopologyCompiler.Kind.FILTER)
-            action("apply",81,imageHeight-27,110,this::apply);
+            action("apply",16+bottom[0],by,bottom[1],this::apply);
         if(pipe()&&data.view().pipeInfo().connections().size()>1)
             action("connections",116,29,112,()->changePage(3)).active=page!=3;
-        int y=pipe()?78:90;
+        // The tab's hover hint is the outlets hint (the D11 rule), key "outlets.hint".
+        if(tank())action("outlets",116,29,130,()->changePage(4)).active=page!=4;
+        railBuiltOffset=railOffset();int y=railTop()-railBuiltOffset;
         if(canEdit())switch(data.kind()){
-            case GENERATOR->{field("pressure",tr("pressure_input"),12,y,rail()-4);field("temperature",tr("temperature_input",temperatureUnit.symbol()),12,y+42,rail()-4);}
-            case PUMP->{field("volumeFlow",tr("flow_input"),12,y,rail()-4);field("maximumAddedPressure",tr("head_input"),12,y+42,rail()-4);}
-            case VALVE,VOID->field("pressure",tr("pressure_input"),12,y,rail()-4);
-            case PIPE->field("diameter",tr("diameter_input"),12,y,rail()-4);
+            case GENERATOR->{railField("pressure",tr("pressure_input"),y);railField("temperature",tr("temperature_input",temperatureUnit.symbol()),y+RAIL_CONTROL);}
+            case PUMP->{railField("volumeFlow",tr("flow_input"),y);railField("maximumAddedPressure",tr("head_input"),y+RAIL_CONTROL);}
+            case COMPRESSOR->{railField("volumeFlow",tr("flow_input"),y);railField("maximumPressureRatio",tr("ratio_input"),y+RAIL_CONTROL);}
+            case VALVE,VOID->railField("pressure",tr("pressure_input"),y);
+            case PIPE->railField("diameter",tr("diameter_input"),y);
             default->{}
         }
-        if(data.kind()==TopologyCompiler.Kind.FILTER&&canEdit())
-            action("recover",12,90,rail()-4,()->{FluidNetwork.recoverSolids(menu,revision);message=tr("waiting");})
-                .active=data.view().filter()!=null&&!data.view().filter().captured().empty();
-        if(page==0)buildContents();else if(page==1)buildComposition();else if(page==2)buildSolids();else configureScroll(data.view().pipeInfo().connections().size());
+        if(data.kind()==TopologyCompiler.Kind.FILTER&&canEdit()){
+            var recover=action("recover",12,y,rail()-4,()->{FluidNetwork.recoverSolids(menu,revision);message=tr("waiting");});
+            recover.active=data.view().filter()!=null&&!data.view().filter().captured().empty();recover.visible=inRail(y,18);
+        }
+        if(page==0)buildContents();else if(page==1)buildComposition();else if(page==2)buildSolids();
+        else if(page==4)configureScroll(data.view().outlets().size());else configureScroll(data.view().pipeInfo().connections().size());
         if(focused!=null&&editors.containsKey(focused)){setFocused(editors.get(focused));editors.get(focused).setCursorPosition(cursor);}
         if(componentDropdown!=null&&"search".equals(focused))componentDropdown.expanded(dropdownOpen);
     }
@@ -228,10 +265,15 @@ public final class FluidDeviceScreen extends AbstractContainerScreen<FluidDevice
     }
     private void apply(){
         if(!canEdit())return;
+        // A compressor's ratio outside its bounds is named with them (the bounds Controls validates with), not the generic message.
+        if(menu.clientData().kind()==TopologyCompiler.Kind.COMPRESSOR){
+            double ratio;try{ratio=fields.get("maximumPressureRatio").value();}catch(IllegalArgumentException e){ratio=Double.NaN;}
+            if(!FluidNetwork.pressureRatioAllowed(ratio)){message=tr("invalid_ratio",(Object[])FluidNetwork.pressureRatioBoundsText());return;}
+        }
         try{
             var controls=new FluidNetwork.Controls(temperatureUnit.kelvin(fields.get("temperature").value()),fields.get("pressure").value(),
                 fields.get("diameter").value(),PipeResistance.DEFAULT_ROUGHNESS_METRES,fields.get("volumeFlow").value(),
-                fields.get("maximumAddedPressure").value(),composition.moleFractions(),solids());
+                fields.get("maximumAddedPressure").value(),composition.moleFractions(),solids(),fields.get("maximumPressureRatio").value());
             FluidNetwork.sendEdit(menu,revision,controls);message=tr("waiting");
         }catch(IllegalArgumentException e){message=tr("invalid_input");}
     }
@@ -270,12 +312,21 @@ public final class FluidDeviceScreen extends AbstractContainerScreen<FluidDevice
         var data=menu.clientData();String name=data.components().get(id);
         return MaterialNames.localized(data.materialNames().getOrDefault(name,MaterialName.chemical(name)));
     }
-    private void text(GuiGraphics g,String value,int x,int y,int color,int width){g.drawString(font,font.plainSubstrByWidth(value,Math.max(0,width)),x,y,color,false);}
+    private void text(GuiGraphics g,String value,int x,int y,int color,int width){
+        String shown=font.plainSubstrByWidth(value,Math.max(0,width));g.drawString(font,shown,x,y,color,false);
+        // A line cut to its column reads in full on hover, so a narrow screen drops nothing silently.
+        if(shown.length()<value.length()&&hoverX>=x&&hoverX<x+width&&hoverY>=Math.max(y,clipTop)&&hoverY<Math.min(y+9,clipBottom))hovered=value;
+    }
     private void railLine(GuiGraphics g,String key,String value,int y){text(g,tr(key),12,y,MUTED,rail()-2);text(g,value,12,y+12,TEXT,rail()-2);}
+    private boolean railHover(int mx,int my,int y0,int y1){return mx>=12&&mx<rail()+10&&my>=Math.max(y0,railTop())&&my<Math.min(y1,railBottom());}
     @Override public void render(GuiGraphics g,int mouseX,int mouseY,float partialTick){
         ProcessUi.restoreCursor(minecraft,this);refresh();if(rebuildNext)rebuild();hovered=null;
         super.render(g,mouseX,mouseY,partialTick);
-        if(hovered!=null&&(componentDropdown==null||!componentDropdown.popupContains(mouseX,mouseY)))g.renderTooltip(font,Arrays.stream(hovered.split("\\n")).<Component>map(Component::literal).toList(),Optional.empty(),mouseX,mouseY);
+        if(hovered!=null&&(componentDropdown==null||!componentDropdown.popupContains(mouseX,mouseY))){
+            var lines=new ArrayList<net.minecraft.util.FormattedCharSequence>();
+            for(var line:hovered.split("\\n"))lines.addAll(font.split(Component.literal(line),Math.max(160,width/2)));
+            g.renderTooltip(font,lines,mouseX,mouseY);
+        }
         if(componentDropdown!=null)componentDropdown.renderSuggestions(g,mouseX,mouseY);
     }
     @Override protected void renderBg(GuiGraphics g,float partialTick,int mouseX,int mouseY){
@@ -283,72 +334,127 @@ public final class FluidDeviceScreen extends AbstractContainerScreen<FluidDevice
         g.renderOutline(leftPos,topPos,imageWidth,imageHeight,LINE);
     }
     @Override protected void renderLabels(GuiGraphics g,int mouseX,int mouseY){
+        hoverX=mouseX-leftPos;hoverY=mouseY-topPos;
         text(g,title.getString(),10,10,TEXT,imageWidth-20);
         var data=menu.clientData();
         if(data==null){text(g,tr("waiting"),10,62,MUTED,imageWidth-20);return;}
-        var view=data.view();if(!pipe())text(g,view.status(),10,59,MUTED,imageWidth-20);
+        // A refused mover's reason ("ERROR: pump inlet not liquid ...") and a hold read in the warning colour.
+        var view=data.view();if(!pipe())text(g,view.status(),10,59,warning(view.status())?WARN:MUTED,imageWidth-20);
         g.vLine(rail()+14,pipe()?60:78,imageHeight-52,LINE);g.hLine(8,imageWidth-8,imageHeight-49,LINE);
         text(g,tr("operating"),12,pipe()?62:77,ACCENT,rail());
-        for(var label:labels)text(g,label.text(),label.x(),label.y(),MUTED,label.width());
-        if(pipe())renderPipeRail(g,mouseX-leftPos,mouseY-topPos);
-        else {
-        int y=switch(data.kind()){case RESERVOIR->94;case VALVE,VOID->146;default->218;};
-        if(view.state()!=null){
-            var state=view.state();
-            railLine(g,"temperature",number(temperatureUnit.display(state.temperature()))+" "+temperatureUnit.symbol(),y);y+=30;
-            railLine(g,"pressure",number(state.pressure()/1000)+" kPa",y);y+=30;
-            if(data.kind()==TopologyCompiler.Kind.RESERVOIR){
-                railLine(g,"volume",number(state.volume()*1000)+" L",y);y+=30;
-                railLine(g,"mass",number(state.mass())+" kg",y);y+=30;
-            }
-        }
-        if(data.kind()==TopologyCompiler.Kind.PIPE||data.kind()==TopologyCompiler.Kind.PUMP||data.kind()==TopologyCompiler.Kind.VOID||generator()){
-            double flow=displayedFlow();
-            railLine(g,"last_flow",(Double.isFinite(flow)?number(flow):"—")+(mass?" kg/h":" kmol/h"),y);y+=30;
-        }
-        if(view.filter()!=null){
-            railLine(g,"filter_load",number(view.filter().loading()*100)+" %",y);y+=30;
-            railLine(g,"captured",number(view.filter().captured().massKg())+" kg",y);y+=30;
-        }
-        if(view.devicePressureChange()!=null&&y+30<imageHeight-55){railLine(g,"pressure_change",number(view.devicePressureChange()/1000)+" kPa",y);y+=30;}
-        }
+        for(var label:labels)if(label.x()>=tableX())text(g,label.text(),label.x(),label.y(),MUTED,label.width());
+        // The rail column (see railTop): drawn clipped to its area, its length sets the rail's scrollbar.
+        int top=railTop(),bottom=railBottom(),start=top-railOffset();
+        g.enableScissor(leftPos+1,topPos+top,leftPos+rail()+10,topPos+bottom);clipTop=top;clipBottom=bottom;
+        for(var label:labels)if(label.x()<tableX())text(g,label.text(),label.x(),label.y(),MUTED,label.width());
+        int end=pipe()?renderPipeRail(g,hoverX,hoverY,start):renderDeviceRail(g,start+(railControls()==0?4:railControls()*RAIL_CONTROL));
+        g.disableScissor();clipTop=Integer.MIN_VALUE;clipBottom=Integer.MAX_VALUE;
+        int visible=Math.max(1,(bottom-top)/RAIL_STEP),overflow=end-start-(bottom-top);
+        railScroll.configure(leftPos+rail()+10,topPos+top,bottom-top,visible,visible+(overflow>0?(overflow+RAIL_STEP-1)/RAIL_STEP:0));
+        if(railOffset()!=railBuiltOffset)rebuildNext=true;
         if(page==0)renderContents(g,mouseX-leftPos,mouseY-topPos);
         else if(page==1)renderComposition(g,mouseX-leftPos,mouseY-topPos);
         else if(page==3)renderConnections(g,mouseX-leftPos,mouseY-topPos);
+        else if(page==4)renderOutlets(g,mouseX-leftPos,mouseY-topPos);
         else {
             int w=tableWidth();text(g,tr("solid_col.0"),tableX(),128,TEXT,w/2);
             text(g,tr("solid_col.1"),tableX()+w/2,128,TEXT,w/4);text(g,tr("solid_col.2"),tableX()+3*w/4,128,TEXT,w/4);
         }
         String status=message.isBlank()?tr("view_time",number(view.onlineTick()/20.0)):message;
         text(g,status,10,imageHeight-42,WARN,imageWidth-20);
-        // Scrollbar stores screen coordinates because all mouse events arrive there.
-        g.pose().pushPose();g.pose().translate(-leftPos,-topPos,0);scroll.draw(g);g.pose().popPose();
+        // Scrollbars store screen coordinates because all mouse events arrive there.
+        g.pose().pushPose();g.pose().translate(-leftPos,-topPos,0);scroll.draw(g);railScroll.draw(g);g.pose().popPose();
     }
-    private void renderPipeRail(GuiGraphics g,int mx,int my){
-        var view=menu.clientData().view();var info=view.pipeInfo();int y=124;
-        if(info.junction()){text(g,tr("junction",info.connections().size()),12,112,ACCENT,rail());y=136;}
+    /** A device's values on the rail from y (unscrolled: below its controls); returns the bottom of the last line. */
+    private int renderDeviceRail(GuiGraphics g,int y){
+        var data=menu.clientData();var view=data.view();
+        if(view.state()!=null){
+            var state=view.state();
+            railLine(g,"temperature",number(temperatureUnit.display(state.temperature()))+" "+temperatureUnit.symbol(),y);y+=RAIL_LINE;
+            railLine(g,"pressure",pressure(state.pressure()),y);y+=RAIL_LINE;
+            if(data.kind()==TopologyCompiler.Kind.RESERVOIR){
+                railLine(g,"volume",number(state.volume()*1000)+" L",y);y+=RAIL_LINE;
+                railLine(g,"fill",number(state.fill()*100)+" %",y);y+=RAIL_LINE;
+                railLine(g,"mass",number(state.mass())+" kg",y);y+=RAIL_LINE;
+            }
+        }
+        if(data.kind()==TopologyCompiler.Kind.PIPE||data.kind()==TopologyCompiler.Kind.PUMP||data.kind()==TopologyCompiler.Kind.COMPRESSOR||data.kind()==TopologyCompiler.Kind.VOID||generator()){
+            double flow=displayedFlow();
+            railLine(g,"last_flow",(Double.isFinite(flow)?number(flow):"—")+(mass?" kg/h":" kmol/h"),y);y+=RAIL_LINE;
+        }
+        if(view.filter()!=null){
+            railLine(g,"filter_load",number(view.filter().loading()*100)+" %",y);y+=RAIL_LINE;
+            railLine(g,"captured",number(view.filter().captured().massKg())+" kg",y);y+=RAIL_LINE;
+        }
+        if(view.devicePressureChange()!=null){railLine(g,"pressure_change",pressure(view.devicePressureChange()),y);y+=RAIL_LINE;}
+        // The compressor's rise over its suction (its own junction, the state this rail shows): the quantity its ratio limits.
+        if(data.kind()==TopologyCompiler.Kind.COMPRESSOR&&view.devicePressureChange()!=null&&view.state()!=null&&view.state().pressure()>0){
+            railLine(g,"pressure_ratio",number((view.state().pressure()+view.devicePressureChange())/view.state().pressure()),y);y+=RAIL_LINE;}
+        return y-(RAIL_LINE-21);
+    }
+    private static boolean warning(String status){return status.contains("HELD")||status.contains("ERROR");}
+    /**
+     * A tank's connections by face (plan 4.3), page 4: what each outlet is and which face it leaves by, what it drew over
+     * the last interval and its flow; one two-line row per connection in the table area, scrolled when they do not all fit.
+     */
+    private void renderOutlets(GuiGraphics g,int mx,int my){
+        var outlets=menu.clientData().view().outlets();int x=tableX(),w=tableWidth();
+        text(g,tr("outlets"),x,82,ACCENT,w);if(mx>=x&&mx<x+w&&my>=80&&my<92)hovered=tr("outlets.hint");
+        configureScroll(outlets.size());
+        for(int i=scroll.value();i<Math.min(outlets.size(),scroll.value()+visibleRows());i++){
+            var outlet=outlets.get(i);int y=tableTop()+(i-scroll.value())*rowHeight();
+            // No row tooltip: a screen opens with the cursor at the window centre, inside these rows at GUI scale 2 and
+            // above, and a tooltip there would cover them. The hint is on the page title and on the tab button.
+            text(g,outletName(outlet),x,y,MUTED,w-4);text(g,outletState(outlet),x,y+11,TEXT,w-4);g.hLine(x,x+w,y+21,LINE);
+        }
+        if(outlets.isEmpty())text(g,tr("outlets.none"),x,tableTop()+8,MUTED,w);
+    }
+    private String outletName(com.wormzjl.createcheme.runtime.fluid.FluidView.Outlet outlet){
+        String face=tr("face."+outlet.face().name().toLowerCase(Locale.ROOT));
+        return switch(outlet.port()){
+            case VAPOR->tr("outlet.top",face);
+            case BULK->tr("outlet.side",face);
+            case LIQUID->outlet.head()>0?tr("outlet.bottom_head",face,number(outlet.head()/1000)):tr("outlet.bottom",face);
+        };
+    }
+    private String outletState(com.wormzjl.createcheme.runtime.fluid.FluidView.Outlet outlet){
+        double flow=mass?outlet.massFlow()*3600:outlet.moleFlow()*3.6;String unit=mass?" kg/h":" kmol/h";
+        if(outlet.massFlow()<0)return tr("outlet.receiving")+" · "+number(-flow)+unit;
+        if(!(outlet.massFlow()>0))return tr("outlet.idle");
+        String drawing=outlet.port()==com.wormzjl.createcheme.science.fluid.network.PassiveNetwork.PhasePort.BULK?tr("outlet.drawing_all")
+            :outlet.drawn()==2?tr("outlet.drawing_gas")
+            :outlet.port()==com.wormzjl.createcheme.science.fluid.network.PassiveNetwork.PhasePort.VAPOR?tr("outlet.drawing_overflow")
+            :outlet.drawn()==1?tr("outlet.drawing_water"):outlet.drawn()==0?tr("outlet.drawing_oil"):"—";
+        return drawing+" · "+number(flow)+unit;
+    }
+    /** A pipe's rail from base (the scrolled rail top); returns the bottom of its last status line. */
+    private int renderPipeRail(GuiGraphics g,int mx,int my,int base){
+        var view=menu.clientData().view();var info=view.pipeInfo();int y=base+46;
+        if(info.junction()){text(g,tr("junction",info.connections().size()),12,base+34,ACCENT,rail());y=base+58;}
         double flow=displayedFlow();
         railLine(g,"throughput",(Double.isFinite(flow)?number(flow):"—")+(mass?" kg/h":" kmol/h"),y);
-        if(mx>=12&&mx<rail()+10&&my>=y&&my<y+27)hovered=tr("throughput.hint");
+        if(railHover(mx,my,y,y+27))hovered=tr("throughput.hint");
         y+=30;
         railLine(g,"velocity",metricRange(info.connections(),com.wormzjl.createcheme.runtime.fluid.FluidView.PipeConnection::velocityMetresPerSecond," m/s"),y);
-        if(mx>=12&&mx<rail()+10&&my>=y&&my<y+27)hovered=tr("velocity.hint");
+        if(railHover(mx,my,y,y+27))hovered=tr("velocity.hint");
         y+=30;
         railLine(g,"gradient",metricRange(info.connections(),com.wormzjl.createcheme.runtime.fluid.FluidView.PipeConnection::pressureDropPascalPerMetre," Pa/m"),y);
-        if(mx>=12&&mx<rail()+10&&my>=y&&my<y+27)hovered=tr("gradient.hint");
+        if(railHover(mx,my,y,y+27))hovered=tr("gradient.hint");
         y+=32;text(g,tr("phase_ratio"),12,y,MUTED,rail());y+=14;
         double[] volumes=Arrays.copyOf(info.contents().phaseVolumes(),4);volumes[3]=info.contents().solids().volume();
         double total=Arrays.stream(volumes).sum();int at=12;int[] colors={0xffd6a65a,0xff549bd2,0xffb3c0ca,0xffa28565};
         for(int i=0;i<4;i++){int end=i==3?rail()+8:at+(total>0?(int)Math.round((rail()-4)*volumes[i]/total):0);if(total>0)g.fill(at,y,end,y+5,colors[i]);at=end;}
         y+=10;
         for(int i=0;i<4;i++){int col=i%2,row=i/2;text(g,tr("phase."+i)+" "+(total>0?number(100*volumes[i]/total)+"%":"—"),12+col*rail()/2,y+row*13,TEXT,rail()/2-4);}
-        if(mx>=12&&mx<rail()+10&&my>=y-24&&my<y+26)hovered=tr("phase_ratio.hint");
+        if(railHover(mx,my,y-24,y+26))hovered=tr("phase_ratio.hint");
         y+=34;text(g,tr("pipe_status"),12,y,ACCENT,rail());y+=14;
         String status=pipeStatus(view.status());
         if(info.changedDirection())status=tr("reversed_interval")+" "+status;
-        var lines=font.split(Component.literal(status),rail()-4);int available=Math.max(1,(imageHeight-58-y)/10);
-        for(int i=0;i<Math.min(available,lines.size());i++)g.drawString(font,lines.get(i),12,y+i*10,view.status().contains("HELD")||view.status().contains("ERROR")?WARN:MUTED,false);
-        if(mx>=12&&mx<rail()+10&&my>=y-14&&my<imageHeight-52)hovered=view.status();
+        // Every line of the status: the rail scrolls when they do not fit (they were cut at the separator before).
+        var lines=font.split(Component.literal(status),rail()-4);
+        for(int i=0;i<lines.size();i++)g.drawString(font,lines.get(i),12,y+i*10,view.status().contains("HELD")||view.status().contains("ERROR")?WARN:MUTED,false);
+        if(railHover(mx,my,y-14,y+lines.size()*10))hovered=view.status();
+        return y+Math.max(1,lines.size())*10-1;
     }
     private String pipeStatus(String status){
         if(status.contains("HELD")||status.contains("ERROR")||status.contains("WAITING")||status.contains("closed")||status.contains("UNBOUND"))return status;
@@ -427,11 +533,20 @@ public final class FluidDeviceScreen extends AbstractContainerScreen<FluidDevice
         if(ProcessUi.textKeyPressed(this,key,scan,modifiers))return true;
         return super.keyPressed(key,scan,modifiers);
     }
-    @Override public boolean mouseClicked(double x,double y,int button){if(componentDropdown!=null&&componentDropdown.popupClick(x,y,button))return true;if(scroll.click(x,y,button)){rebuildNext=true;return true;}return super.mouseClicked(x,y,button);}
-    @Override public boolean mouseDragged(double x,double y,int button,double dx,double dy){if(componentDropdown!=null&&componentDropdown.popupDrag(y))return true;if(scroll.drag(y)){rebuildNext=true;return true;}return super.mouseDragged(x,y,button,dx,dy);}
-    @Override public boolean mouseReleased(double x,double y,int button){if(componentDropdown!=null)componentDropdown.popupRelease();scroll.release();return super.mouseReleased(x,y,button);}
+    @Override public boolean mouseClicked(double x,double y,int button){
+        if(componentDropdown!=null&&componentDropdown.popupClick(x,y,button))return true;
+        if(scroll.click(x,y,button)||railScroll.click(x,y,button)){rebuildNext=true;return true;}return super.mouseClicked(x,y,button);
+    }
+    @Override public boolean mouseDragged(double x,double y,int button,double dx,double dy){
+        if(componentDropdown!=null&&componentDropdown.popupDrag(y))return true;
+        if(scroll.drag(y)||railScroll.drag(y)){rebuildNext=true;return true;}return super.mouseDragged(x,y,button,dx,dy);
+    }
+    @Override public boolean mouseReleased(double x,double y,int button){if(componentDropdown!=null)componentDropdown.popupRelease();scroll.release();railScroll.release();return super.mouseReleased(x,y,button);}
     @Override public boolean mouseScrolled(double x,double y,double horizontal,double vertical){
         if(componentDropdown!=null&&componentDropdown.popupScroll(x,y,vertical))return true;
-        if(x>=leftPos+tableX()&&scroll.wheel(vertical)){rebuildNext=true;return true;}return super.mouseScrolled(x,y,horizontal,vertical);
+        if(x>=leftPos+tableX()&&scroll.wheel(vertical)){rebuildNext=true;return true;}
+        // The wheel over the rail column scrolls it (three steps of 10 px: one value line).
+        if(x<leftPos+tableX()&&y>=topPos+railTop()&&y<topPos+railBottom()&&railScroll.wheel(vertical)){rebuildNext=true;return true;}
+        return super.mouseScrolled(x,y,horizontal,vertical);
     }
 }

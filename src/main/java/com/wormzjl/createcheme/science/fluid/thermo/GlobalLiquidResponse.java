@@ -1,5 +1,7 @@
 package com.wormzjl.createcheme.science.fluid.thermo;
 
+import com.wormzjl.createcheme.science.math.DeterministicMath;
+
 /**
  * Shared liquid compressibility approximation, independent of material identity.
  * v(P)=v(ref)*exp(-k*(P-Pref)); pressure corrections are integrated consistently into Gibbs energy/enthalpy.
@@ -30,8 +32,8 @@ public final class GlobalLiquidResponse {
         }
         double exponent = -compressibility*(pressure-referencePressure);
         if (Math.abs(exponent) > 1) throw new IllegalArgumentException("Liquid compression approximation outside domain");
-        double factor = Math.exp(exponent);
-        double integral = -Math.expm1(exponent)/compressibility;
+        double factor = DeterministicMath.exp(exponent);
+        double integral = -DeterministicMath.expm1(exponent)/compressibility;
         double v = referenceVolume*factor;
         double vt = referenceVolumeTemperatureDerivative*factor;
         double h = referenceEnthalpy + (referenceVolume-temperature*referenceVolumeTemperatureDerivative)*integral;
@@ -47,8 +49,10 @@ public final class GlobalLiquidResponse {
                 || !(referencePressure > 0) || !Double.isFinite(temperature) || !Double.isFinite(pressure)
                 || !Double.isFinite(referencePressure) || !Double.isFinite(integral)) throw new IllegalArgumentException("Invalid liquid fugacity inputs");
         double[] result = referenceLogPhi.clone();
+        // Hoisted, not changed: the logarithm does not depend on the component.
+        double pressureLog = DeterministicMath.log(referencePressure/pressure);
         for (int i=0;i<result.length;i++) {
-            result[i] += Math.log(referencePressure/pressure) + partialReferenceVolumes[i]*integral/(R*temperature);
+            result[i] += pressureLog + partialReferenceVolumes[i]*integral/(R*temperature);
             if (!Double.isFinite(result[i])) throw new IllegalArgumentException("Nonfinite liquid fugacity");
         }
         return result;
@@ -59,9 +63,10 @@ public final class GlobalLiquidResponse {
         if (referenceLogPhi.length != partialReferenceVolumes.length || !(temperature > 0) || !(pressure > 0)
                 || !(referencePressure > 0) || !Double.isFinite(temperature) || !Double.isFinite(pressure)
                 || !Double.isFinite(referencePressure) || !Double.isFinite(integral)) throw new IllegalArgumentException("Invalid liquid fugacity inputs");
+        double pressureLog = DeterministicMath.log(referencePressure/pressure);
         for (int i=0;i<out.length;i++) {
             double value = referenceLogPhi[i];
-            value += Math.log(referencePressure/pressure) + partialReferenceVolumes[i]*integral/(R*temperature);
+            value += pressureLog + partialReferenceVolumes[i]*integral/(R*temperature);
             if (!Double.isFinite(value)) throw new IllegalArgumentException("Nonfinite liquid fugacity");
             out[i] = value;
         }

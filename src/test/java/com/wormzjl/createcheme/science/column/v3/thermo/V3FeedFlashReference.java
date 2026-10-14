@@ -1,5 +1,7 @@
 package com.wormzjl.createcheme.science.column.v3.thermo;
 
+import com.wormzjl.createcheme.science.math.DeterministicMath;
+
 /** Frozen db46e88 flash for numerical equivalence tests; do not update with the implementation. */
 final class V3FeedFlashReference {
     private static final int MAXIMUM_ITERATIONS = 64;
@@ -13,7 +15,7 @@ final class V3FeedFlashReference {
             V3PengRobinsonThermo model, double temperatureKelvin, double pressurePascal, V3ThermoWorkspace workspace) {
         int componentCount = workspace.componentCount();
         model.wilsonK(temperatureKelvin, pressurePascal, workspace.wilsonK, workspace);
-        for (int component = 0; component < componentCount; component++) workspace.logK[component] = Math.log(workspace.wilsonK[component]);
+        for (int component = 0; component < componentCount; component++) workspace.logK[component] = DeterministicMath.log(workspace.wilsonK[component]);
 
         double atLiquidEndpoint = rachfordRiceResidual(workspace.normalizedOverall, workspace.logK, 0.0);
         double atVaporEndpoint = rachfordRiceResidual(workspace.normalizedOverall, workspace.logK, 1.0);
@@ -91,8 +93,8 @@ final class V3FeedFlashReference {
         double residual = 0.0;
         for (int component = 0; component < composition.length; component++) {
             if (composition[component] == 0.0) continue;
-            double k = Math.exp(logK[component]);
-            double kMinusOne = Math.expm1(logK[component]);
+            double k = DeterministicMath.exp(logK[component]);
+            double kMinusOne = DeterministicMath.expm1(logK[component]);
             // Keep a tiny positive K at beta=1 instead of cancelling it in 1 + (K - 1).
             double denominator = (1.0 - vaporFraction) + vaporFraction * k;
             if (!(denominator > 0.0) || !Double.isFinite(denominator)) return Double.NaN;
@@ -111,7 +113,7 @@ final class V3FeedFlashReference {
                 vapor[component] = 0.0;
                 continue;
             }
-            double k = Math.exp(logK[component]);
+            double k = DeterministicMath.exp(logK[component]);
             liquid[component] = overall[component] / ((1.0 - vaporFraction) + vaporFraction * k);
             vapor[component] = k * liquid[component];
             liquidTotal += liquid[component];

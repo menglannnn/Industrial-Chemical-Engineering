@@ -56,6 +56,21 @@ public final class FluidTestSupport {
         return model.flashTP(temperature, pressure, amounts, () -> {});
     }
 
+    /**
+     * A device's boundary with its tank charged: a reservoir holds nitrogen at the spec's volume, temperature and pressure,
+     * exactly as {@code FluidDeviceSpec.initialize} built it before owner decision D54 (a placed tank now holds nothing), so
+     * a fixture whose subject is a charged tank keeps its charge, explicitly and to the bit; every other kind as
+     * {@code initialize} builds it.
+     */
+    public static PassiveNetwork.Reservoir chargedBoundary(com.wormzjl.createcheme.runtime.fluid.FluidDeviceSpec spec,
+            com.wormzjl.createcheme.runtime.fluid.PhysicalFluidTopology.Device device,FluidThermodynamics model) {
+        if(device.kind()!=com.wormzjl.createcheme.science.fluid.topology.TopologyCompiler.Kind.RESERVOIR)return spec.initialize(device,model,()->{});
+        spec.validate(model,com.wormzjl.createcheme.science.fluid.topology.TopologyCompiler.Kind.VOID);
+        var state=model.initialNitrogenCharge(spec.volume(),spec.temperature(),spec.pressure(),()->{});
+        return new PassiveNetwork.Reservoir(device.id(),device.position().y(),state,PassiveNetwork.NodeKind.RESERVOIR,
+                new PassiveNetwork.Inventory(spec.volume(),com.wormzjl.createcheme.science.fluid.solver.PhaseLayout.totalAmounts(state),state.internalEnergy(),state.solids()));
+    }
+
     /** Retains the production nitrogen-initialization path used by world fixtures. */
     public static FluidThermodynamics.State nitrogenCharge(
             FluidThermodynamics model, double volume, double temperature, double pressure) {

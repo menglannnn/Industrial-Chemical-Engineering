@@ -11,8 +11,9 @@ import java.util.Objects;
  * One interval solver kept for one island across its jobs, so the sparsity pattern, the colouring and the
  * fill-reducing ordering survive between intervals instead of being rebuilt per job.
  *
- * <p>Nothing numeric crosses a job boundary: at the start of every job the solver is reset to what a fresh solver would
- * derive from the island's committed interval ({@link PassiveIntervalSolver#replayStart}; the coordinator hands the
+ * <p>Nothing numeric crosses a job boundary but the committed interval: at the start of every job the solver is reset to
+ * what a fresh solver would derive from the island's committed interval (its first step starts from the interval's end
+ * flows, heads and modes) ({@link PassiveIntervalSolver#replayStart}; the coordinator hands the
  * committed interval over at dispatch, {@link #committed}), and an ordinary interval starts at
  * {@code min(initialStep, duration)}, a function of the interval alone. A certified island is woken with a new handle,
  * and its replay must reproduce the island that solved every interval bit for bit; a factorization or a step estimate
@@ -46,7 +47,7 @@ public final class RetainedSolver {
     public void committed(PassiveIntervalSolver.Result result){this.committed=result;}
     private void begin(PassiveIntervalSolver solver,PassiveNetwork snapshot) {
         if(!replayPending)return;
-        replayPending=false;solver.replayStart(snapshot,committed==null?null:committed.graph(),committed==null?null:committed.endpointModes());
+        replayPending=false;solver.replayStart(snapshot,committed);
     }
 
     /** One job's exclusive use of this island's solver. A job may integrate its interval more than

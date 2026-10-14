@@ -62,12 +62,6 @@ public final class FluidWorldAuthority implements AutoCloseable {
         model=model(new FluidCheckpointCodec.PackageKey(com.wormzjl.createcheme.science.fluid.thermo.FluidMaterialCatalog.networkPackage(catalog),compressibility));
         propertyReload=new FluidPropertyReloadGuard(catalog,com.wormzjl.createcheme.science.fluid.thermo.FluidMaterialCatalog.networkPackage(catalog),compressibility,model);
         presetCache=FluidPresetCatalog.resolve(catalog);componentNames=model.components();
-        // The configured charge of a newly placed reservoir must be a state the network package can evaluate; the config
-        // range itself is only physical (it is fixed before any data pack loads), so the domain is checked here, once.
-        try{new FluidDeviceSpec(options.volume(),options.temperature(),options.pressure(),FluidDeviceSpec.nitrogen(catalog).composition()).validate(model,TopologyCompiler.Kind.RESERVOIR);}
-        catch(com.wormzjl.createcheme.science.fluid.thermo.ThermoDomainViolation invalid){
-            throw new IllegalStateException("Fluid config initialNitrogenTemperatureKelvin/initialNitrogenPressurePascal: "+invalid.getMessage(),invalid);
-        }
         legacyUnbound=data.world().isEmpty()&&!data.checkpoint().islands().isEmpty();
         var savedTopology=data.world().orElseGet(()->WorldTopologyLedger.Snapshot.empty(catalog));savedTopology.basis().requireCurrent(catalog);
         SolidCompatibility.validate(catalog.solids(),data.checkpoint(),savedTopology);observedSolidData=catalog;
@@ -157,10 +151,11 @@ public final class FluidWorldAuthority implements AutoCloseable {
     private void refuseEvent(UUID event,String reason){refusedEvents.put(event,reason);if(refusedEvents.size()>WorldTopologyLedger.MAXIMUM_EVENTS)refusedEvents.remove(refusedEvents.keySet().iterator().next());}
     public WorldTopologyLedger.Registration place(PhysicalFluidTopology.Position position,TopologyCompiler.Kind kind,PhysicalFluidTopology.Direction facing) {
         owned();if(at(position).isPresent())throw new IllegalStateException("A fluid identity already occupies this position");
-        long id=topology.nextIdentity();var control=switch(kind){case PUMP->new FlowControl.Pump(.01,500000,1);case VALVE->new FlowControl.PressureValve(200000);default->new FlowControl.Passive();};
+        long id=topology.nextIdentity();var control=switch(kind){case PUMP->new FlowControl.Pump(.01,500000,1);case COMPRESSOR->new FlowControl.Compressor(.05,3.0,1);case VALVE->new FlowControl.PressureValve(200000);default->new FlowControl.Passive();};
         var device=new PhysicalFluidTopology.Device(id,position,kind,facing,new PipeResistance.Geometry(1,.05,PipeResistance.DEFAULT_ROUGHNESS_METRES,0),control);
         var spec=kind==TopologyCompiler.Kind.GENERATOR?FluidDeviceSpec.water(catalog):FluidDeviceSpec.nitrogen(catalog);
-        if(kind==TopologyCompiler.Kind.RESERVOIR)spec=new FluidDeviceSpec(options.volume(),options.temperature(),options.pressure(),spec.composition());
+        // A reservoir is placed empty (decision D54): of its settings only the capacity means anything.
+        if(kind==TopologyCompiler.Kind.RESERVOIR)spec=new FluidDeviceSpec(options.volume(),298.15,com.wormzjl.createcheme.science.fluid.solver.PhaseLayout.AMBIENT_PRESSURE,spec.composition());
         var record=new WorldTopologyLedger.Registration(device,spec,0);
         submit(List.of(new WorldTopologyLedger.Edit(id,record)),Math.addExact(id,1));return record;
     }
@@ -277,10 +272,11 @@ public final class FluidWorldAuthority implements AutoCloseable {
         FluidRuntimeDiagnostics.count(FluidRuntimeDiagnostics.viewBuilds);var registration=registrations().get(id);if(registration==null)return new FluidView(id,0,0,topology.onlineTick(),"REMOVED",null,0,List.of());
         Long owner=registry.owner(id);if(owner==null)return new FluidView(id,registration.revision(),0,topology.onlineTick(),legacyUnbound?"LEGACY UNBOUND":!topology.active().containsKey(id)?"WAITING: topology event":Objects.requireNonNullElse(registry.diagnostic(id),"NO FLOW: no hydraulic boundary"),null,0,List.of(),null,false,0,"",List.of());
         var snapshot=islands.computeIfAbsent(owner,runtime.coordinator()::presentation);FluidView.State state=null;int nodeIndex=-1;boolean empty=false;
-        for(int i=0;i<snapshot.graph().reservoirs().size();i++)if(snapshot.graph().reservoirs().get(i).id()==id){nodeIndex=i;var node=snapshot.graph().reservoirs().get(i);empty=node.empty();if(!empty)state=FluidView.State.from(node.state());break;}
+        for(int i=0;i<snapshot.graph().reservoirs().size();i++)if(snapshot.graph().reservoirs().get(i).id()==id){nodeIndex=i;var node=snapshot.graph().reservoirs().get(i);empty=node.empty();if(!empty)state=FluidView.State.from(node.state(),node.kind()==PassiveNetwork.NodeKind.RESERVOIR?node.inventory().volume():node.state().volume());break;}
         InlineFilter filter=null;if(registration.device().kind()==TopologyCompiler.Kind.FILTER){state=null;for(var p:snapshot.graph().pipes())if(p.id()==PhysicalFluidTopology.filterIdentity(id))filter=p.filter();}
         var history=new ArrayList<PipeTransfer>();double flow=0;Double devicePressureChange=null;String status=snapshot.status();
-        if(empty)status="EMPTY: no fluid temperature / "+status;
+        // Decision D54: a placed tank holds nothing until something fills it.
+        if(empty)status="EMPTY: holds nothing / "+status;
         if(snapshot.lastResult().isPresent()) {
             var result=snapshot.lastResult().orElseThrow();var q=result.averageMassFlows();
             for(int i=0;i<snapshot.graph().pipes().size();i++){var pipe=snapshot.graph().pipes().get(i);if(pipe.first()==nodeIndex)flow+=q[i];if(pipe.second()==nodeIndex)flow-=q[i];}
@@ -290,8 +286,24 @@ public final class FluidWorldAuthority implements AutoCloseable {
             }
             if(!history.isEmpty())flow=(history.getFirst().forward().massKg()-history.getFirst().reverse().massKg())/result.advancedSeconds();
             if(registration.device().actuator())for(int i=0;i<snapshot.graph().pipes().size();i++){var pipe=snapshot.graph().pipes().get(i);if(pipe.first()==nodeIndex&&!(pipe.control() instanceof FlowControl.Passive)){flow=q[i];devicePressureChange=result.endpointHeads()[i];status+=" / "+result.endpointModes().get(i);
-                // The setting is the rise for water; on what the pump actually draws its limit scales with the density.
-                if(pipe.control() instanceof FlowControl.Pump pump){var suction=snapshot.graph().reservoirs().get(pipe.first()).state();status+=String.format(java.util.Locale.ROOT," (limit %.0f Pa on this fluid)",pump.maximumAddedPressure()*(suction.mass()/suction.volume())/model.pumpReferenceDensity());}}}
+                if(pipe.control() instanceof FlowControl.Mover mover&&!snapshot.graph().reservoirs().get(pipe.first()).empty()) {
+                    if(result.endpointModes().get(i)==FlowControl.Mode.INLET_WRONG_PHASE&&result.endpointModes().size()==snapshot.graph().pipes().size())status+=" / "+inletReason(snapshot.graph(),i,result.advancedSeconds());
+                    // Owner decision D59 (4): a pump on its suction limit delivers what its suction line gives at the vapour
+                    // pressure.
+                    else if(result.endpointModes().get(i)==FlowControl.Mode.PUMP_SUCTION_LIMIT)status+=" / pump cavitating: suction at the vapour pressure";
+                    // The limit on the suction stream the mover draws (its own junction, what arrives at its inlet; decision
+                    // D4): a pump's setting is the rise for water and scales with the suction density, a compressor's is the
+                    // ratio over the suction pressure.
+                    else {var suction=snapshot.graph().reservoirs().get(pipe.first()).state();double limit=mover.riseLimit(suction.mass()/suction.volume(),suction.pressure(),model.pumpReferenceDensity());
+                        status+=String.format(java.util.Locale.ROOT,mover instanceof FlowControl.Pump?" (limit %.0f Pa on this fluid)":" (limit %.0f Pa at this suction)",limit);}
+                }}}
+        }
+        // A generator or a void in several islands (owner decision D17) reads the status of its owner (the lowest island) and
+        // the net flow of all of them.
+        if(registration.device().fixed())for(long other:registry.islands(id))if(other!=owner) {
+            var shared=islands.computeIfAbsent(other,runtime.coordinator()::presentation);if(shared.lastResult().isEmpty())continue;var q=shared.lastResult().orElseThrow().averageMassFlows();
+            int index=-1;for(int i=0;i<shared.graph().reservoirs().size();i++)if(shared.graph().reservoirs().get(i).id()==id)index=i;
+            for(int i=0;i<shared.graph().pipes().size();i++){var pipe=shared.graph().pipes().get(i);if(pipe.first()==index)flow+=q[i];if(pipe.second()==index)flow-=q[i];}
         }
         if(filter!=null)for(var pipe:snapshot.graph().pipes())if(pipe.id()==PhysicalFluidTopology.filterIdentity(id))devicePressureChange=snapshot.graph().reservoirs().get(pipe.first()).state().pressure()-snapshot.graph().reservoirs().get(pipe.second()).state().pressure();
         if(filter!=null&&filter.clogged())status="filter clogged / "+status;
@@ -308,6 +320,7 @@ public final class FluidWorldAuthority implements AutoCloseable {
         double seconds=snapshot.lastResult().map(PassiveIntervalSolver.Result::advancedSeconds).orElse(0.0);
         var view=new FluidView(id,registration.revision(),snapshot.clock().committedTick(),topology.onlineTick(),status,state,flow,history,devicePressureChange,true,
                 seconds,snapshot.lastResult().map(r->r.acceptance().name()).orElse(""),routes,filter);
+        if(registration.device().kind()==TopologyCompiler.Kind.RESERVOIR&&nodeIndex>=0)view=view.withOutlets(TankOutlets.of(model,snapshot.graph(),nodeIndex,snapshot.lastResult().orElse(null),registry.tankFaces(id)));
         if(registration.device().kind()==TopologyCompiler.Kind.PIPE||registration.device().kind()==TopologyCompiler.Kind.FILTER)
             view=view.withPipeInfo(PipePresentation.withBulkSpeed(
                 PipePresentation.inspect(registration.device(),snapshot.graph(),registry.pipeViews(id),history,seconds,componentNames.size()),
@@ -360,6 +373,16 @@ public final class FluidWorldAuthority implements AutoCloseable {
         CreateChemE.LOGGER.warn("fluid_island={} dimension={} node={} device={} status=THERMO_DOMAIN code={} package={} component={} property={} value={} range={} waits_for_inputs={} detail={} action=Extend the component's validity range in its data file only with data validated for it; see documentation/fluid-followups/THERMO_DOMAIN_ERROR.md and FLUID_PUMP_AND_THERMO_DOMAIN_REVIEW.md",
                 island,dimension,violation.node()==com.wormzjl.createcheme.science.fluid.thermo.ThermoDomainViolation.NO_NODE?"unknown":violation.node(),where.isEmpty()?"unknown":where,
                 violation.code(),violation.packageId(),violation.component(),violation.property().label(),violation.value(),violation.range(),parked,violation.getMessage());
+    }
+    /**
+     * Why a mover is refused (decision D6), as the solver's inlet check states it on the committed state the next slice
+     * decides on ({@link InletPhase#reason}), with the node the supply walk ended at named as a device. Pure arithmetic on
+     * the committed state's stored phase amounts: no solve and no flash.
+     */
+    private String inletReason(PassiveNetwork graph,int edge,double seconds) {
+        var mover=(FlowControl.Mover)graph.pipes().get(edge).control();
+        var supply=InletPhase.supply(model,graph,edge,mover.targetVolumeFlow(),seconds);
+        return InletPhase.reason(mover,supply).replace("from node "+supply.nodeId()+")","from "+deviceLabel(supply.nodeId())+")");
     }
     private String nodeLabel(long id) {
         var registration=topology.active().get(id);if(registration==null)return "Junction "+id;

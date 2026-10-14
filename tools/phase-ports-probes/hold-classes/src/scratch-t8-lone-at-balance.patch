@@ -1,0 +1,22 @@
+diff --git a/src/main/java/com/wormzjl/createcheme/science/fluid/network/NetworkReduction.java b/src/main/java/com/wormzjl/createcheme/science/fluid/network/NetworkReduction.java
+index 0fe9fa78..8ad745a4 100644
+--- a/src/main/java/com/wormzjl/createcheme/science/fluid/network/NetworkReduction.java
++++ b/src/main/java/com/wormzjl/createcheme/science/fluid/network/NetworkReduction.java
+@@ -317,7 +317,7 @@ public final class NetworkReduction {
+             var reached=arrivals.get(v);if(reached.isEmpty())continue;
+             // A pocket (it drains nowhere) fills to the supplier standing highest (D12); a single stream needs no balance.
+             boolean single=true;for(var a:reached)single&=a.source()==reached.getFirst().source()&&a.port()==reached.getFirst().port();
+-            starts.set(v,lowest[v]==Double.POSITIVE_INFINITY||single?strongest(reached).stream():balanced(graph,model,v,reached,drains,scratch));
++            starts.set(v,lowest[v]==Double.POSITIVE_INFINITY?strongest(reached).stream():balanced(graph,model,v,reached,drains,scratch)); // SCRATCH t8 (A119): every start at the balance pressure
+         }
+         for(int v=0;v<nodes;v++) {
+             var junction=graph.reservoirs().get(v);
+@@ -417,7 +417,7 @@ public final class NetworkReduction {
+                     if(first<0)first=i;else one&=arrivals.get(i).source()==arrivals.get(first).source()&&arrivals.get(i).port()==arrivals.get(first).port();
+                 }
+                 if(first<0)return strongest.stream();
+-                if(one)return arrivals.get(first).stream();
++                if(one){var at=mixture(model,arrivals,q,p);return at!=null?at:arrivals.get(first).stream();} // SCRATCH t8 (A119)
+                 mixed=mixture(model,arrivals,q,p);if(mixed==null)return strongest.stream();
+                 if(before!=null&&Arrays.equals(open,before)&&Math.abs(p-previous)<=1e-9*Math.abs(previous))return mixed;
+                 previous=p;before=open;held=mixed;

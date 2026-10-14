@@ -1,5 +1,7 @@
 package com.wormzjl.createcheme.science.fluid.thermo;
 
+import com.wormzjl.createcheme.science.math.DeterministicMath;
+
 import com.wormzjl.createcheme.science.column.v3.thermo.V3WaterProperties;
 import com.wormzjl.createcheme.science.fluid.diagnostics.SolverDiagnostics;
 import com.wormzjl.createcheme.science.fluid.transport.MixtureViscosity;
@@ -174,6 +176,208 @@ public final class FluidThermodynamics {
         if(!Double.isFinite(speed)||speed<=0)throw new IllegalArgumentException("Invalid acoustic flow-domain bound");
         return speed;
     }
+    /**
+     * The fluid a phase-selective vessel outlet draws, read off the vessel's own state with no flash and no extra
+     * equation-of-state root: every term below is a sum over the phase amounts, volumes and molar properties
+     * {@link #state} already computed (plan table 3.2 of documentation/2026-09-26-phase-ports-and-compressor).
+     * <ul>
+     * <li>The vapour stream is the hydrocarbon vapour and the water vapour: {@code moles} are {@code vapor} with the
+     * water vapour in the last slot, its volume is the gas volume, its enthalpy {@code n_v h_v + n_wv h_wv(T)}, and it
+     * carries no solid.</li>
+     * <li>The condensed phase is the hydrocarbon liquid, the free water and every solid; a port draws its two liquids
+     * one after the other (decision D11), so each liquid is its own stream ({@link #phaseStream}): {@code moles} are
+     * {@code liquid} with a zero water slot (OIL) or only the free water in the last slot (WATER), its volume the
+     * liquid's volume plus its volume share of the solids, its enthalpy {@code n_l h_l} or {@code n_wl h_wl(T,P)} plus
+     * that share of {@code H_solids(T,P)}. {@link #liquidMass}, {@link #liquidStreamVolume} and {@link #liquidDensity}
+     * state the whole condensed phase (the level head's mass and a level's volume).</li>
+     * </ul>
+     * The streams partition the state: their moles, masses, volumes and enthalpies add up to the state's own. The
+     * velocity limit is {@link #isothermalAcousticBound}'s formula restricted to the stream's phases,
+     * {@code V_s / sqrt(M_s * compliance_s)}, i.e. {@code sqrt(stiffness/rho_v)} for the vapour and
+     * {@code sqrt(1/(kappa rho))} (solids incompressible) for a liquid, capped by the configured maximum as
+     * {@link #velocityLimit} caps the bulk: a vapour drawn off a wet tank is limited by the vapour's own acoustic bound,
+     * not by the far lower bound of the two-phase mixture. The viscosity is the stream's own terms of the volume
+     * average the step solver states for the bulk (the slurry correction over the liquid's share of the solids).
+     *
+     * <p>A stream whose phase the state does not hold is not built: the builders return {@code null}, and what an
+     * absent stream means is the reader's rule (the step solver's: a port draws the next phase of its priority order,
+     * decision D11).
+     */
+    public record PhaseStream(double[] moles,double mass,double volume,double viscosity,double specificEnthalpy,double velocityLimit,
+                              SolidInventory.Moments solidMoments) {
+        public PhaseStream {Objects.requireNonNull(moles);Objects.requireNonNull(solidMoments);}
+        /** The moles themselves, for the solver packages. The caller must not mutate them. */
+        public double[] molesView(){return moles;}
+        @Override public double[] moles(){return moles.clone();}
+    }
+    /** Whether the state holds a gas phase to draw. */
+    public static boolean holdsVapor(State state){return state.vaporVolume()>0;}
+    /** Whether the state holds a hydrocarbon liquid or free water to draw (solids alone do not flow as a liquid). */
+    public static boolean holdsLiquid(State state){return state.liquidVolume()+state.waterVolume()>0;}
+    /** Mass of the vapour stream: hydrocarbon vapour then water vapour, summed in the order {@link #state} sums the whole. */
+    public double vaporMass(State state) {
+        double mass=0;var v=state.vaporView();
+        for(int i=0;i<v.length;i++)mass+=v[i]*hydrocarbon.molecularWeight(i);
+        return mass+state.waterVapor()*waterMolecularWeight;
+    }
+    /** Mass of the condensed phase: hydrocarbon liquid, free water, then every solid (the level head's mass). */
+    public double liquidMass(State state) {
+        double mass=0;var l=state.liquidView();
+        for(int i=0;i<l.length;i++)mass+=l[i]*hydrocarbon.molecularWeight(i);
+        return mass+state.waterLiquid()*waterMolecularWeight+state.solidMoments().mass();
+    }
+    /** Volume of the condensed phase: the two liquid volumes and the solid volume. */
+    public static double liquidStreamVolume(State state){return state.liquidVolume()+state.waterVolume()+state.solidMoments().volume();}
+    /** The vapour stream's density, for a state that {@link #holdsVapor}. */
+    public double vaporDensity(State state){return vaporMass(state)/state.vaporVolume();}
+    /** The condensed phase's density (its mass over its volume), for a state that {@link #holdsLiquid}. */
+    public double liquidDensity(State state){return liquidMass(state)/liquidStreamVolume(state);}
+    /** The vapour stream's specific enthalpy (J/kg); {@code prepared} as for {@link #state}, or null. */
+    public double vaporSpecificEnthalpy(State state,Prepared prepared) {
+        double h=0;
+        if(state.vaporProperties()!=null)h+=total(state.vaporView())*state.vaporProperties().molarEnthalpy();
+        if(state.waterVapor()>0)h+=state.waterVapor()*(prepared==null?vaporWaterEnthalpy(state.temperature()):match(prepared,state.temperature()).vaporEnthalpy());
+        return h/vaporMass(state);
+    }
+    /** The vapour stream's velocity limit: {@code min(maximum, V_v/sqrt(M_v V_v/stiffness))}. */
+    public double vaporVelocityLimit(State state) {
+        double stiffness=state.waterPartialPressure();
+        if(state.vaporProperties()!=null){var gas=state.vaporProperties();stiffness+=-gas.molarVolume()/gas.volumePressureDerivative();}
+        return Math.min(maximumVelocity,acoustic(state.vaporVolume(),vaporMass(state),state.vaporVolume()/stiffness));
+    }
+    /**
+     * {@code V / sqrt(M C)}. The product of a phase's mass and compliance goes subnormal for a trace phase (a vanishing
+     * nitrogen vapour below about 2e-150 mol, whose mass and compliance are each of order its amount): it then keeps too
+     * few bits, and below about 2e-158 mol it is zero and the bound infinite. Such a product is evaluated as
+     * {@code sqrt(V/M) sqrt(V/C)}, ratios of like-sized quantities, which is the same number to rounding; every product
+     * at or above {@link Double#MIN_NORMAL} takes the original expression, bit for bit (phase-ports in-game defect F2,
+     * tools/phase-ports-probes/holds/).
+     */
+    private static double acoustic(double volume,double mass,double compliance) {
+        double product=mass*compliance;
+        double speed=product>=Double.MIN_NORMAL?volume/Math.sqrt(product):Math.sqrt(volume/mass)*Math.sqrt(volume/compliance);
+        if(!Double.isFinite(speed)||speed<=0)throw new IllegalArgumentException("Invalid acoustic flow-domain bound");
+        return speed;
+    }
+    /** The vapour stream's viscosity: the vapour term of the solver's volume average, over the gas volume. */
+    public double vaporViscosity(State state,MixtureViscosity.Workspace scratch,Prepared prepared) {
+        var terms=prepared==null?null:match(prepared,state.temperature()).viscosities();
+        return viscosity.vapor(state.temperature(),state.vaporView(),state.waterVapor(),scratch,terms);
+    }
+    /** The vapour stream of {@code state}, or null when it holds no gas. */
+    public PhaseStream vaporStream(State state,Prepared prepared,MixtureViscosity.Workspace scratch) {
+        if(!holdsVapor(state))return null;
+        var v=state.vaporView();double[] n=Arrays.copyOf(v,v.length+1);n[v.length]=state.waterVapor();
+        return new PhaseStream(n,vaporMass(state),state.vaporVolume(),vaporViscosity(state,scratch,prepared),
+                vaporSpecificEnthalpy(state,prepared),vaporVelocityLimit(state),SolidInventory.Moments.ZERO);
+    }
+    /*
+     * The three phases a vessel port can draw one after another (decision D11 of
+     * documentation/2026-09-26-phase-ports-and-compressor: ports carry mixed phases by priority). GAS is the vapour stream
+     * above. The condensed phase splits into the hydrocarbon liquid (OIL) and the free water (WATER), each carrying its
+     * volume share of every solid population: the solids are held as a uniform suspension in the combined liquid, the
+     * carrier the solid mobility check already reads (volume-averaged density and viscosity of both liquids), so a phase
+     * of the liquid draws its share of them. The OIL and WATER streams partition the condensed phase (moles, mass,
+     * volume, enthalpy and solids add up to the condensed phase's), and with one liquid present its stream carries every
+     * solid (a share of exactly 1.0). All read the state's own amounts and molar properties: no flash.
+     */
+    public static final int GAS=0,OIL=1,WATER=2;
+    /** Whether {@code state} holds {@code phase} ({@link #GAS}, {@link #OIL} or {@link #WATER}) to draw: a positive
+     * volume of it. */
+    public static boolean holdsPhase(State state,int phase) {
+        return switch(phase){case GAS->state.vaporVolume()>0;case OIL->state.liquidVolume()>0;case WATER->state.waterVolume()>0;default->throw new IllegalArgumentException("phase "+phase);};
+    }
+    /** The share of the state's solids a phase stream carries: none in the gas, the liquids' in proportion to their
+     * volumes ({@code 1.0} exactly for the only liquid held). */
+    public static double phaseSolidShare(State state,int phase) {
+        if(phase==GAS)return 0;
+        double oil=state.liquidVolume(),water=state.waterVolume();
+        return phase==OIL?oil/(oil+water):water/(oil+water);
+    }
+    /** The own density (no solids) of a liquid phase the state holds: its fluid mass over its volume. */
+    public double liquidPhaseDensity(State state,int phase) {
+        if(phase==WATER)return state.waterLiquid()*waterMolecularWeight/state.waterVolume();
+        double mass=0;var l=state.liquidView();for(int i=0;i<l.length;i++)mass+=l[i]*hydrocarbon.molecularWeight(i);
+        return mass/state.liquidVolume();
+    }
+    /** The heavier of the state's two liquids by their own densities: {@link #OIL} only when both are held and the
+     * hydrocarbon liquid is the denser, {@link #WATER} otherwise (which one is named when at most one is held does not
+     * matter to a priority order: an absent phase is skipped). */
+    public int heavierLiquid(State state) {
+        return state.liquidVolume()>0&&state.waterVolume()>0&&liquidPhaseDensity(state,OIL)>liquidPhaseDensity(state,WATER)?OIL:WATER;
+    }
+    /** Mass of a phase stream, its solid share included; {@link #vaporMass} for the gas. */
+    public double phaseMass(State state,int phase) {
+        if(phase==GAS)return vaporMass(state);
+        double mass=0;
+        if(phase==OIL){var l=state.liquidView();for(int i=0;i<l.length;i++)mass+=l[i]*hydrocarbon.molecularWeight(i);}
+        else mass=state.waterLiquid()*waterMolecularWeight;
+        return mass+phaseSolidShare(state,phase)*state.solidMoments().mass();
+    }
+    /** Volume of a phase stream: the gas volume, or the liquid's volume plus its share of the solid volume. */
+    public static double phaseVolume(State state,int phase) {
+        if(phase==GAS)return state.vaporVolume();
+        return (phase==OIL?state.liquidVolume():state.waterVolume())+phaseSolidShare(state,phase)*state.solidMoments().volume();
+    }
+    /** The conserved amounts (water last) of a phase stream. */
+    public static double[] phaseMoles(State state,int phase) {
+        var view=phase==GAS?state.vaporView():state.liquidView();double[] n=new double[view.length+1];
+        switch(phase) {
+            case GAS->{System.arraycopy(view,0,n,0,view.length);n[view.length]=state.waterVapor();}
+            case OIL->System.arraycopy(view,0,n,0,view.length);
+            default->n[view.length]=state.waterLiquid();
+        }
+        return n;
+    }
+    /** The solid moments a phase stream carries: its share of the state's. */
+    public static SolidInventory.Moments phaseSolidMoments(State state,int phase) {
+        double share=phaseSolidShare(state,phase);if(share==0)return SolidInventory.Moments.ZERO;
+        var m=state.solidMoments();return new SolidInventory.Moments(share*m.mass(),share*m.volume(),share*m.heatCapacity());
+    }
+    /** A phase stream's specific enthalpy (J/kg), its solid share included; {@code prepared} as for {@link #state}. */
+    public double phaseSpecificEnthalpy(State state,int phase,Prepared prepared) {
+        if(phase==GAS)return vaporSpecificEnthalpy(state,prepared);
+        double h=0,t=state.temperature(),p=state.pressure();
+        if(phase==OIL){if(state.liquidProperties()!=null)h+=total(state.liquidView())*state.liquidProperties().molarEnthalpy();}
+        else if(state.waterLiquid()>0)h+=state.waterLiquid()*waterLiquid(t,p,prepared).molarEnthalpy;
+        h+=phaseSolidShare(state,phase)*state.solidMoments().enthalpy(t,p);
+        return h/phaseMass(state,phase);
+    }
+    /** A phase stream's velocity limit: {@link #vaporVelocityLimit} for the gas, {@code min(maximum, V/sqrt(M V_liquid
+     * kappa))} for a liquid with its solids (incompressible). */
+    public double phaseVelocityLimit(State state,int phase) {
+        if(phase==GAS)return vaporVelocityLimit(state);
+        double liquid=phase==OIL?state.liquidVolume():state.waterVolume();
+        return Math.min(maximumVelocity,acoustic(phaseVolume(state,phase),phaseMass(state,phase),liquid*liquidResponse.compressibilityPerPascal()));
+    }
+    /** A phase stream's viscosity: {@link #vaporViscosity} for the gas; a liquid's own viscosity with the slurry
+     * correction for its share of the solids, over the stream's volume. */
+    public double phaseViscosity(State state,int phase,MixtureViscosity.Workspace scratch,Prepared prepared) {
+        if(phase==GAS)return vaporViscosity(state,scratch,prepared);
+        var terms=prepared==null?null:match(prepared,state.temperature()).viscosities();
+        double t=state.temperature(),liquid,value;
+        if(phase==OIL){liquid=state.liquidVolume();value=liquid*viscosity.liquid(t,state.liquidView(),terms).pascalSeconds();}
+        else{liquid=state.waterVolume();value=liquid*viscosity.waterLiquid(t,terms);}
+        double solid=phaseSolidShare(state,phase)*state.solidMoments().volume();
+        if(solid>0){double phi=solid/(liquid+solid);value=com.wormzjl.createcheme.science.fluid.transport.SlurryTransport.effectiveViscosity(value/liquid,Math.min(phi,0.62-1e-9))*(liquid+solid);}
+        return value/(liquid+solid);
+    }
+    /** The carrier viscosity of a phase stream (no slurry correction), which an inline filter's cake resistance scales
+     * with: the gas's own, or the liquid's own. */
+    public double phaseCarrierViscosity(State state,int phase,MixtureViscosity.Workspace scratch) {
+        if(phase==GAS)return vaporViscosity(state,scratch,null);
+        return phase==OIL?viscosity.liquid(state.temperature(),state.liquidView()).pascalSeconds():viscosity.waterLiquid(state.temperature());
+    }
+    /** The stream of one phase of {@code state}, or null when it does not hold that phase; {@link #vaporStream} for the
+     * gas. */
+    public PhaseStream phaseStream(State state,int phase,Prepared prepared,MixtureViscosity.Workspace scratch) {
+        if(!holdsPhase(state,phase))return null;
+        if(phase==GAS)return vaporStream(state,prepared,scratch);
+        return new PhaseStream(phaseMoles(state,phase),phaseMass(state,phase),phaseVolume(state,phase),phaseViscosity(state,phase,scratch,prepared),
+                phaseSpecificEnthalpy(state,phase,prepared),phaseVelocityLimit(state,phase),phaseSolidMoments(state,phase));
+    }
+    /** The amount sum {@link #state} forms ({@code sum}), without its validation: a state's own amounts are valid. */
+    private static double total(double[] values){double total=0;for(double value:values)total+=value;return total;}
     public static double waterVaporPressureLimit(double t) {
         if(t>=900)return 2e6;if(t>=750)return 1.5e6;if(t>=600)return .8e6;
         if(t>=500)return .4e6;if(t>=450)return .25e6;if(t>=400)return .15e6;return .125e6;
@@ -249,6 +453,121 @@ public final class FluidThermodynamics {
                 moments.enthalpy(temperature,pressure),moments.internalEnergy(temperature),moments.mass(),0,0,0,null,null,solids,moments);
     }
 
+    /**
+     * Owner decision D34 (phase-ports batch, 2026-09-28): a fluid phase holding less than this share of its node's fluid
+     * amount is a trace phase and does not exist; its material is in the node's other phase (A83). The share is taken in
+     * moles over every fluid phase and component of the node, solids not counted: the unit the Newton states a node's
+     * balances in (its tolerance is a share of the node's total amount), so a phase below it is below what the solve
+     * resolves, and the same number for a condensate film in a gas and for the last bubble in a liquid.
+     */
+    public static final double PHASE_TRACE_FRACTION=1e-9;
+    /**
+     * Folds the trace phases of one split in place (owner decisions D33, D34): nothing leaves the node and nothing is
+     * booked, so every component amount, and with it the node's mass, is unchanged. The rule (A84):
+     * <ul>
+     * <li>a trace hydrocarbon liquid goes into the gas phase when that holds hydrocarbons (a gas of water vapour alone has
+     * no hydrocarbon partial pressure to state it at);</li>
+     * <li>a trace of free water goes into the gas phase as water vapour;</li>
+     * <li>a trace gas phase goes into the liquids, its hydrocarbons into the hydrocarbon liquid and its water vapour into
+     * the free water, when each part it holds has its liquid;</li>
+     * <li>a trace gas whose gas components have no hydrocarbon liquid to go into, in a node with free water, is a carried
+     * gas (owner decision D41, {@link #carriedGas}): its water vapour goes into the free water and its gas components stay
+     * a dry gas at the node's pressure. A trace gas is no gas space, so it has no saturation row of its own;</li>
+     * <li>a trace phase none of whose receiving phases exists stays otherwise: a trace of hydrocarbon liquid in free water
+     * with no gas. A receiving phase that is itself a trace receives nothing.</li>
+     * </ul>
+     * {@code water} is {free water, water vapour}. Returns whether anything moved. This is the rule; {@link #folded} and
+     * every flash apply it to a state.
+     */
+    public boolean foldTracePhases(double[] liquid,double[] vapor,double[] water) {
+        double nl=0,nh=0;for(double x:liquid)nl+=x;for(double x:vapor)nh+=x;
+        double nv=nh+water[1],nw=water[0],total=nl+nv+nw;
+        if(!(total>0))return false;
+        double limit=PHASE_TRACE_FRACTION*total;boolean moved=false;
+        if(nl>0&&nl<limit&&nh>0&&nv>=limit){for(int i=0;i<liquid.length;i++){vapor[i]+=liquid[i];liquid[i]=0;}moved=true;}
+        if(nw>0&&nw<limit&&nv>=limit){water[1]+=water[0];water[0]=0;moved=true;}
+        if(nv>0&&nv<limit&&(nh==0||nl>=limit)&&(water[1]==0||nw>=limit)) {
+            for(int i=0;i<vapor.length;i++){liquid[i]+=vapor[i];vapor[i]=0;}water[0]+=water[1];water[1]=0;moved=true;
+        }
+        else if(nv>0&&nv<limit&&nh>0&&nl<limit&&water[1]>0&&nw>=limit){water[0]+=water[1];water[1]=0;moved=true;}
+        return moved;
+    }
+    /**
+     * Owner decision D41 (phase-ports batch, 2026-10-13): a gas bubble in a liquid-full pipe is carried by the liquid, at the
+     * liquid's velocity, to the next gas space (a vessel's gas space, a void, a gas-filled junction), where it joins the
+     * gas there. In the pipe it sits at the liquid's temperature and pressure with its own volume, and it is in no
+     * equilibrium of its own with the water around it: its water vapour is a negligible part of a negligible phase. Such a
+     * gas is a <em>carried gas</em>: a dry gas at the node's pressure (its hydrocarbon partial pressure is the pressure),
+     * whose water is in the free water, so the node states no saturation row and no partial-pressure row for it. It leaves
+     * with the liquid in proportion (a junction's outflow is its bulk), and the first node with a gas space gives it its
+     * vapour again in its own flash. A node holds a carried gas, rather than a gas space, when
+     * <ul>
+     * <li>its gas is a trace ({@link #foldTracePhases}), whatever the node: a trace gas is no gas space;</li>
+     * <li>it is a pipe junction ({@code junction}) whose only liquid is free water and whose free water fills more of it
+     * than its gas: the water is the continuous phase and the gas is bubbles in it. A vessel separates its gas upwards
+     * into a gas space by gravity and keeps the saturation of that space; a junction is a piece of pipe the liquid runs
+     * through, held 0.05 s of its peak flow (D25).</li>
+     * </ul>
+     * Returns whether {@code state} holds a gas of the second kind that is not yet dry.
+     */
+    public static boolean carriedGas(State state,boolean junction) {
+        if(!junction||!(state.waterVapor()>0)||!(state.waterLiquid()>0)||state.liquidVolume()>0||!(state.vaporVolume()<state.waterVolume()))return false;
+        for(double x:state.vaporView())if(x>0)return true;
+        return false;
+    }
+    /**
+     * Whether {@code state} holds a carried trace gas (decision D41): a dry gas, below {@link #PHASE_TRACE_FRACTION} of the
+     * node's moles, in free water with no hydrocarbon liquid. Below that share the gas is below what a junction's rows
+     * resolve (they are stated over the junction's whole holdup, decision D34, A83), so a junction's step layout carries no
+     * unknown for it: its gas components are an omitted trace of the junction ({@code PhaseLayout.support}), carried
+     * exactly by the transport reconstruction like every other component, and the junction's state keeps them as this
+     * dry gas.
+     */
+    public static boolean carriedTrace(State state) {
+        if(state.liquidVolume()>0||state.waterVapor()>0||!(state.waterLiquid()>0))return false;
+        double nh=0;for(double x:state.vaporView())nh+=x;
+        return nh>0&&nh<PHASE_TRACE_FRACTION*(nh+state.waterLiquid());
+    }
+    /**
+     * The hydrocarbon partial pressure of a split the trace rule restated ({@link #foldTracePhases}): a gas holding
+     * hydrocarbons and no water vapour, the carried gas of decision D41, is at the node's pressure, as a layout decodes a
+     * dry gas; any other split keeps the one it was stated at.
+     */
+    public static double foldedHydrocarbonPressure(double pressure,double hydrocarbonPressure,double[] vapor,double waterVapor) {
+        if(waterVapor>0)return hydrocarbonPressure;
+        for(double x:vapor)if(x>0)return pressure;
+        return hydrocarbonPressure;
+    }
+    /**
+     * {@code state} restated at its temperature and pressure with its trace phases folded ({@link #foldTracePhases}),
+     * its solids kept; the state itself when it holds none. The fluid network's one statement of which phases a node has:
+     * every flash ({@link #flashTP}), the reconstruction's restatement of a node and the phase set each Newton pass is
+     * laid out for pass through it. Never inside a residual: a fold is a jump of the state function.
+     */
+    public State folded(State state) {
+        var result=folded(state,null);
+        return result==state||state.solids().empty()?result:result.withSolidState(state.solids(),state.solidMoments());
+    }
+    /**
+     * {@link #folded(State)} for a node that is a pipe junction ({@code junction}) or a vessel, with the carried gas of
+     * decision D41 ({@link #carriedGas}): a liquid-full junction's gas is restated dry at the junction's pressure, its
+     * water vapour in the free water. Nothing leaves the node and nothing is booked, as for the trace fold.
+     */
+    public State folded(State state,boolean junction) {
+        var result=folded(state);
+        if(!carriedGas(result,junction))return result;
+        SolverDiagnostics.count(SolverDiagnostics.traceFolds);
+        var carried=state(result.temperature(),result.pressure(),result.liquid(),result.vapor(),result.waterLiquid()+result.waterVapor(),0,result.pressure(),null,null);
+        return result.solids().empty()?carried:carried.withSolidState(result.solids(),result.solidMoments());
+    }
+    private State folded(State state,TranslatedPengRobinson.Workspace terms) {
+        double[] l=state.liquid(),v=state.vapor(),water={state.waterLiquid(),state.waterVapor()};
+        if(!foldTracePhases(l,v,water))return state;
+        SolverDiagnostics.count(SolverDiagnostics.traceFolds);
+        return state(state.temperature(),state.pressure(),l,v,water[0],water[1],
+                foldedHydrocarbonPressure(state.pressure(),state.hydrocarbonPartialPressure(),v,water[1]),terms,null);
+    }
+
     /** Initializer/boundary flash only. The time-step solver must not call this in residual evaluation. */
     public State flashTP(double t,double p,double[] overall,Runnable checkpoint) {
         return flashTP(t,p,overall,checkpoint,null);
@@ -258,6 +577,15 @@ public final class FluidThermodynamics {
      * into two buffers rather than building two phase records per iteration (review 8.7 (c) E1: the phase-check flashes
      * were half of a flowing island's allocation). */
     public State flashTP(double t,double p,double[] overall,Runnable checkpoint,Prepared prepared) {
+        TranslatedPengRobinson.Workspace given=prepared!=null&&prepared.temperature()==t?prepared.pengRobinson():null;
+        return folded(equilibriumTP(t,p,overall,checkpoint,prepared),given);
+    }
+    /**
+     * The equilibrium split of {@link #flashTP} before its trace phases are folded. Not a state the network lays out or
+     * commits: {@code flashTP} is that, {@code folded(equilibriumTP(...))}. The step solver's phase correction reads both
+     * to know which phase the trace rule, rather than the equilibrium, removed (decision D34, A85).
+     */
+    public State equilibriumTP(double t,double p,double[] overall,Runnable checkpoint,Prepared prepared) {
         TranslatedPengRobinson.Workspace given=prepared!=null&&prepared.temperature()==t?prepared.pengRobinson():null;
         SolverDiagnostics.count(SolverDiagnostics.flashCalls);
         int n=hydrocarbon.componentCount();if(overall.length!=n+1)throw new IllegalArgumentException("Fluid basis mismatch");
@@ -294,8 +622,10 @@ public final class FluidThermodynamics {
     private double[][] splitHydrocarbon(double t,double liquidPressure,double vaporPressure,double[] amounts,Runnable checkpoint,TranslatedPengRobinson.Workspace terms) {
         int n=amounts.length;double total=sum(amounts);double[] z=amounts.clone(),k=new double[n],x=new double[n],y=new double[n];
         for(int i=0;i<n;i++) {z[i]/=total;var c=hydrocarbon.propertyPackage().properties().get(i).pr();
-            k[i]=Math.exp(Math.clamp(Math.log(c.criticalPressure()/vaporPressure)+5.373*(1+c.acentricFactor())*(1-c.criticalTemperature()/t),-600,600));}
+            k[i]=DeterministicMath.exp(Math.clamp(DeterministicMath.log(c.criticalPressure()/vaporPressure)+5.373*(1+c.acentricFactor())*(1-c.criticalTemperature()/t),-600,600));}
         double beta=0;double[] liquidLogPhi=new double[n],vaporLogPhi=new double[n];
+        // Hoisted, not changed: the same double every component of every iteration used to recompute.
+        double pressureLog=DeterministicMath.log(liquidPressure/vaporPressure);
         for(int iteration=0;iteration<200;iteration++) {
             checkpoint.run();double f0=0,f1=0;for(int i=0;i<n;i++){f0+=z[i]*(k[i]-1);f1+=z[i]*(1-1/k[i]);}
             if(f0<=0)beta=0;else if(f1>=0)beta=1;else {
@@ -310,14 +640,19 @@ public final class FluidThermodynamics {
             boolean vaporBranch=hydrocarbon.logFugacityInto(t,vaporPressure,y,PhaseRoot.VAPOR,terms,vaporLogPhi);
             double[] fl=liquidLogPhi,fv=vaporLogPhi;
             double error=0;
-            for(int i=0;i<n;i++) {double target=fl[i]-fv[i]+Math.log(liquidPressure/vaporPressure);
+            for(int i=0;i<n;i++) {
                 // A component the mixture does not hold takes no part in the split (its x and y are zero whatever its
                 // ratio), so its ratio is only kept finite: at cryogenic temperatures the heaviest absent fractions'
                 // ratios pass e^600 in liquid nitrogen, and a pure nitrogen flash at 63 K used to be refused for them.
-                // A ratio inside the range is updated exactly as before.
-                if(z[i]==0){if(Double.isFinite(target))k[i]=Math.exp(.5*Math.log(k[i])+.5*Math.clamp(target,-600,600));continue;}
+                // A ratio inside the range is updated exactly as before. A component with no amount at all keeps its
+                // finite Wilson ratio instead: nothing reads it (its x, y, split terms and allocation are exact zeros
+                // for any positive finite ratio), so its update was dead work (batch 2026-09-27-jdk-determinism).
+                if(z[i]==0&&amounts[i]==0)continue;
+                double target=fl[i]-fv[i]+pressureLog;
+                if(z[i]==0){if(Double.isFinite(target))k[i]=DeterministicMath.exp(.5*DeterministicMath.log(k[i])+.5*Math.clamp(target,-600,600));continue;}
                 if(!Double.isFinite(target)||Math.abs(target)>600)throw new IllegalArgumentException("Equilibrium ratio outside numerical range");
-                if(z[i]>0)error=Math.max(error,Math.abs(target-Math.log(k[i])));k[i]=Math.exp(.5*Math.log(k[i])+.5*target);}
+                double logK=DeterministicMath.log(k[i]);
+                if(z[i]>0)error=Math.max(error,Math.abs(target-logK));k[i]=DeterministicMath.exp(.5*logK+.5*target);}
             if(error<1e-8) {
                 if(!vaporBranch)return new double[][] {amounts.clone(),new double[n]};
                 double[] l=new double[n],v=new double[n];

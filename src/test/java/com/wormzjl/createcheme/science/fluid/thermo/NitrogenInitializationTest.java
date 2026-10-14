@@ -49,7 +49,7 @@ class NitrogenInitializationTest {
         int water=model.hydrocarbon.componentCount();amounts[water]=.01/model.waterMolecularWeight;
         double energy=initial.internalEnergy()+amounts[water]*model.waterLiquid(298.15,101325).molarEnthalpy();
         var seed=model.flashTP(280,101325,amounts,()->{});var layout=new PhaseLayout(model,seed);
-        var solution=SparseNewton.solve(layout.fixedInventory(amounts,energy,1),layout.encode(seed),new SparseNewton.Settings(30,1e-10,1e-6,24),()->{});
+        var solution=SparseNewton.solve(layout.wallClosure(amounts,energy,1,Double.NaN),layout.encode(seed),new SparseNewton.Settings(30,1e-10,1e-6,24),()->{});
         var result=layout.decode(solution.variables(),0);
         assertEquals(energy,result.internalEnergy(),1e-4);assertArrayEquals(amounts,PhaseLayout.totalAmounts(result),1e-10);
         assertTrue(result.temperature()>273.16&&result.temperature()<298.15);assertTrue(result.waterLiquid()>0);assertTrue(result.waterVapor()>0);

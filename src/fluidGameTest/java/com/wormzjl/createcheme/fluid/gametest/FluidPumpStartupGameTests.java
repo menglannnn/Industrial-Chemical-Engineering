@@ -26,19 +26,29 @@ public final class FluidPumpStartupGameTests {
         long sourceId=((FluidDeviceBlockEntity)level.getBlockEntity(source)).fluidIdentity(),tankId=((FluidDeviceBlockEntity)level.getBlockEntity(tank)).fluidIdentity();
         if(crude) {
             var feed=world.presets().stream().filter(p->p.id().equals("createcheme:tia_juana_light_methane")).findFirst().orElseThrow();
-            var old=world.registrations().get(sourceId);world.edit(sourceId,old.revision(),old.device(),new FluidDeviceSpec(1,350,101325,feed.moleFractions()));
+            // A liquid-only pump (decision D1 of the phase-ports batch) refuses the crude at 350 K and 1 atm, which is 76 %
+            // vapour by volume; its bubble point at 350 K is 226 kPa (one flashTP, PHASE_PORTS_REVIEW.md WP3), so the
+            // generator stands at 1 MPa and supplies a liquid (re-baselined from 101325 Pa).
+            var old=world.registrations().get(sourceId);world.edit(sourceId,old.revision(),old.device(),new FluidDeviceSpec(1,350,1e6,feed.moleFractions()));
             long id=((FluidDeviceBlockEntity)level.getBlockEntity(pump)).fluidIdentity();old=world.registrations().get(id);var d=old.device();
             world.edit(id,old.revision(),new PhysicalFluidTopology.Device(d.id(),d.position(),d.kind(),d.facing(),d.geometry(),new FlowControl.Pump(.0001,500000,1)),old.spec());
         }
-        double initialMass=world.view(tankId).state().mass();
-        level.setBlock(inlet,ModBlocks.FLUID_PIPE.get().defaultBlockState(),3);level.setBlock(outlet,ModBlocks.FLUID_PIPE.get().defaultBlockState(),3);
-        boolean[] done={false};long deadline=System.nanoTime()+30_000_000_000L;
+        // A placed tank holds nothing (decision D54): the nitrogen reservoir is charged first, at 102 kPa (TankCharge).
+        var charge=new TankCharge(helper,world,tank,Direction.SOUTH,102000);
+        boolean[] done={false};double[] initialMass={-1};long[] deadline={System.nanoTime()+150_000_000_000L};
         helper.onEachTick(()->{
             if(done[0])return;
             java.util.concurrent.locks.LockSupport.parkNanos(1_000_000L);
             var view=world.view(tankId);
-            helper.assertTrue(System.nanoTime()<deadline,"Pump did not start: "+view.status());
-            if(view.state()==null||view.state().mass()<initialMass+.001)return;
+            if(initialMass[0]<0) {
+                helper.assertTrue(System.nanoTime()<deadline[0],"The reservoir was not charged: "+view.status());
+                if(!charge.charged())return;
+                initialMass[0]=view.state().mass();
+                level.setBlock(inlet,ModBlocks.FLUID_PIPE.get().defaultBlockState(),3);level.setBlock(outlet,ModBlocks.FLUID_PIPE.get().defaultBlockState(),3);
+                deadline[0]=System.nanoTime()+30_000_000_000L;return;
+            }
+            helper.assertTrue(System.nanoTime()<deadline[0],"Pump did not start: "+view.status());
+            if(view.state()==null||view.state().mass()<initialMass[0]+.001)return;
             helper.assertTrue(!view.status().startsWith("HELD"),"Pump held after transfer: "+view.status());
             helper.assertTrue(Double.isFinite(view.state().pressure())&&view.state().pressure()>0,"Invalid receiving pressure");
             int component=world.components().indexOf(crude?"crude_pc12":"Water");double delivered=0;

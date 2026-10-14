@@ -1,5 +1,7 @@
 package com.wormzjl.createcheme.science.thermo;
 
+import com.wormzjl.createcheme.science.math.DeterministicMath;
+
 import java.util.Arrays;
 import java.util.Objects;
 
@@ -161,8 +163,8 @@ public final class PengRobinsonKernel {
         requirePackageState(temperatureKelvin, pressurePascal);
         requireLength(output, "output");
         for (int i = 0; i < count; i++) {
-            output[i] = Math.exp(Math.clamp(
-                    Math.log(criticalPressures[i] / pressurePascal)
+            output[i] = DeterministicMath.exp(Math.clamp(
+                    DeterministicMath.log(criticalPressures[i] / pressurePascal)
                             + 5.373 * (1.0 + acentricFactors[i])
                             * (1.0 - criticalTemperatures[i] / temperatureKelvin),
                     -40.0, 40.0));
@@ -268,11 +270,11 @@ public final class PengRobinsonKernel {
         double reducedB = bMix * pressurePascal / (GAS_CONSTANT * temperatureKelvin);
         RootSelection rootSelection = selectRoot(reducedA, reducedB, root);
         double z = rootSelection.selectedCompressibility();
-        double logRatio = Math.log((z + (1.0 + SQRT_TWO) * reducedB) / (z + (1.0 - SQRT_TWO) * reducedB));
+        double logRatio = DeterministicMath.log((z + (1.0 + SQRT_TWO) * reducedB) / (z + (1.0 - SQRT_TWO) * reducedB));
         double attraction = reducedA / (2.0 * SQRT_TWO * Math.max(reducedB, 1.0e-300));
         // Hoisted, not changed: the argument does not depend on i, so this is the same double the loop
         // used to recompute n times, and one logarithm instead of one per component.
-        double freeVolumeLog = Math.log(z - reducedB);
+        double freeVolumeLog = DeterministicMath.log(z - reducedB);
         for (int i = 0; i < count; i++) {
             double bRatio = coVolumes[i] / bMix;
             double attractionRatio = 2.0 * workspace.sumA[i] / aMix - bRatio;
@@ -336,7 +338,7 @@ public final class PengRobinsonKernel {
                 + 3.0 * reducedB * reducedB) / slope;
         double lower = z + (1.0 + SQRT_TWO) * reducedB;
         double upper = z + (1.0 - SQRT_TWO) * reducedB;
-        double logRatio = Math.log(lower / upper);
+        double logRatio = DeterministicMath.log(lower / upper);
         double attraction = reducedA / (2.0 * SQRT_TWO * Math.max(reducedB, 1.0e-300));
         double secondDaDt = secondTemperatureDerivative(
                 temperatureKelvin, workspace, output.rootDt, output.rootDt2, output.crossDt);
@@ -473,7 +475,7 @@ public final class PengRobinsonKernel {
         int physicalRootCount = 1;
         if (discriminant > COALESCENCE_DISCRIMINANT_TOLERANCE) {
             double sqrt = Math.sqrt(discriminant);
-            largest = Math.cbrt(-q / 2.0 + sqrt) + Math.cbrt(-q / 2.0 - sqrt) - offset;
+            largest = DeterministicMath.cbrt(-q / 2.0 + sqrt) + DeterministicMath.cbrt(-q / 2.0 - sqrt) - offset;
             // Compute the non-cancelling Cardano term, then use uv=-p/3 for its partner.
             // Subtracting nearly equal -q/2 and sqrt(D) before taking a cube root amplifies
             // roundoff enough to prevent the unchanged flash fugacity criterion from converging.
@@ -481,7 +483,7 @@ public final class PengRobinsonKernel {
             // last-bit changes to well-behaved roots can perturb finite-difference cold solves.
             if (!(largest > reducedB) || !backwardAccurate(largest, c2, c1, c0)) {
                 double dominant = -q / 2.0 - Math.copySign(sqrt, q);
-                double u = Math.cbrt(dominant);
+                double u = DeterministicMath.cbrt(dominant);
                 double repaired = refineRoot(u - p / (3.0 * u) - offset, c2, c1, c0, reducedB);
                 if (Double.isFinite(repaired) && repaired > reducedB
                         && (!(largest > reducedB) || Math.abs(cubicResidual(repaired, c2, c1, c0))
@@ -492,14 +494,14 @@ public final class PengRobinsonKernel {
             // Preserve the existing classification and arithmetic at coalescence. A multiple
             // root is ill-conditioned; unconstrained Newton refinement could change its branch.
             double sqrt = Math.sqrt(Math.max(0.0, discriminant));
-            largest = Math.cbrt(-q / 2.0 + sqrt) + Math.cbrt(-q / 2.0 - sqrt) - offset;
+            largest = DeterministicMath.cbrt(-q / 2.0 + sqrt) + DeterministicMath.cbrt(-q / 2.0 - sqrt) - offset;
             smallestPhysical = largest;
         } else {
             double radius = 2.0 * Math.sqrt(-p / 3.0);
-            double angle = Math.acos(Math.clamp((3.0 * q / (2.0 * p)) * Math.sqrt(-3.0 / p), -1.0, 1.0)) / 3.0;
-            double r0 = radius * Math.cos(angle) - offset;
-            double r1 = radius * Math.cos(angle - 2.0 * Math.PI / 3.0) - offset;
-            double r2 = radius * Math.cos(angle - 4.0 * Math.PI / 3.0) - offset;
+            double angle = DeterministicMath.acos(Math.clamp((3.0 * q / (2.0 * p)) * Math.sqrt(-3.0 / p), -1.0, 1.0)) / 3.0;
+            double r0 = radius * DeterministicMath.cos(angle) - offset;
+            double r1 = radius * DeterministicMath.cos(angle - 2.0 * Math.PI / 3.0) - offset;
+            double r2 = radius * DeterministicMath.cos(angle - 4.0 * Math.PI / 3.0) - offset;
             double physicalBoundary = reducedB + ROOT_EPSILON;
             // Freeze membership before refinement. Each Newton interval is derived from the
             // same immutable polynomial, not from previously refined neighboring roots.

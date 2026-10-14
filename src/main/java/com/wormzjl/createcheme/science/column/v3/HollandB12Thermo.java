@@ -1,5 +1,7 @@
 package com.wormzjl.createcheme.science.column.v3;
 
+import com.wormzjl.createcheme.science.math.DeterministicMath;
+
 import com.wormzjl.createcheme.science.column.v3.thermo.V3FeedPhase;
 import com.wormzjl.createcheme.science.column.v3.thermo.V3FlashResult;
 import com.wormzjl.createcheme.science.column.v3.thermo.V3FugacityResult;
@@ -49,7 +51,7 @@ final class HollandB12Thermo implements V3ThermoModel {
         double[] logPhi = new double[data.componentCount()];
         if (phase == V3Phase.LIQUID) {
             double[] ratios = equilibriumRatios(temperatureKelvin, pressurePascal);
-            for (int component = 0; component < ratios.length; component++) logPhi[component] = Math.log(ratios[component]);
+            for (int component = 0; component < ratios.length; component++) logPhi[component] = DeterministicMath.log(ratios[component]);
         }
         return new V3FugacityResult(phase, logPhi, phase == V3Phase.LIQUID ? 0.1 : 1.0,
                 molarEnthalpy(temperatureKelvin, pressurePascal, normalized, phase, workspace), 1, 0.0);

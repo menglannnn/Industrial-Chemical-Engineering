@@ -98,7 +98,7 @@ class DeadHeadedLineIslandTest {
         var stock=new LinkedHashMap<Long,PassiveNetwork.Reservoir>();
         long last=devices.getLast().id();
         stock.put(1L,generatorSpec(generator).initialize(devices.getFirst(),model,()->{}));
-        stock.put(last,tankSpec(tank).initialize(devices.getLast(),model,()->{}));
+        stock.put(last,FluidTestSupport.chargedBoundary(tankSpec(tank),devices.getLast(),model));
         return island(devices,stock);
     }
     /**
@@ -148,6 +148,10 @@ class DeadHeadedLineIslandTest {
         return state.mass()/state.volume();
     }
     private double column(double pressure){return waterDensity(pressure)*PassiveStepSolver.GRAVITY*LIFT;}
+    /** The level head of the tank's bottom (LIQUID) port on a run's final state (decision D9 of the phase-ports batch). */
+    private double levelHead(Run run) {
+        var tank=tankOf(run.finished());return PassiveStepSolver.GRAVITY*model.liquidMass(tank.state())*PassiveStepSolver.LEVEL_HEAD_HEIGHT/tank.inventory().volume();
+    }
 
     /**
      * Every connection of a dead-headed line is closed and carries <em>exactly</em> zero; the tank
@@ -155,12 +159,15 @@ class DeadHeadedLineIslandTest {
      * reconstruction's own roundoff - measured at one unit in the last place of its nitrogen over
      * the forty, against the {@code 1e-12} relative bound asserted here, and a nanopascal of
      * pressure. Nothing is transferred, because there is nothing for a zero flow to transfer; what
-     * moves is the last bit of a state that is re-decoded from that inventory each substep.
+     * moves is the last bit of a state that is re-decoded from that inventory each substep. An island the rest stage takes
+     * before anything is solved (owner decisions D19, D58: nothing can drive it) reports a connection open both ways as
+     * PASSIVE, carrying the same exact zero; the generator's connection reports CLOSED either way.
      */
     private void assertAtRest(Run run,PassiveNetwork.Reservoir before,String what) {
         assertTrue(run.ok(),what+": "+run.detail());
-        for(int edge=0;edge<run.modes().size();edge++)assertEquals(FlowControl.Mode.CLOSED,run.modes().get(edge),
-                what+": connection "+edge+" must be closed in the direction its boundary forbids, modes="+run.modes());
+        for(int edge=0;edge<run.modes().size();edge++)assertTrue(run.modes().get(edge)==FlowControl.Mode.CLOSED||run.modes().get(edge)==FlowControl.Mode.PASSIVE,
+                what+": connection "+edge+" must be closed or at rest, modes="+run.modes());
+        assertTrue(run.modes().contains(FlowControl.Mode.CLOSED),what+": the generator's connection is closed in the direction its boundary forbids, modes="+run.modes());
         for(double flow:run.flows())assertEquals(0,flow,0,what+": a closed line carries exactly zero");
         var after=tankOf(run.finished());
         double[] was=before.inventory().moles(),now=after.inventory().moles();
@@ -238,11 +245,15 @@ class DeadHeadedLineIslandTest {
 
         var raised=raiseGenerator(held.finished(),blocks,400000);
         var filled=run(raised,40);
-        System.out.println("(reopened at 400 kPa) "+filled.detail()+" tank P="+filled.tank().pressure()+" mass="+filled.tank().mass());
+        System.out.println("(reopened at 400 kPa) "+filled.detail()+" tank P="+filled.tank().pressure()+" mass="+filled.tank().mass()+" level head="+levelHead(filled)
+                +" bottom="+(filled.tank().pressure()+levelHead(filled)));
         assertTrue(filled.ok(),"raising the generator must re-open the line: "+filled.detail());
+        // The line enters the tank through its DOWN face, its bottom (LIQUID) port (phase-ports WP5, default A1), where the
+        // level head of its water adds to the headspace (decision D9): the bottom settles one water column below the
+        // generator. Re-baselined in WP5: headspace 360918.3081 Pa before, 353969.4046 Pa now (PHASE_PORTS_REVIEW.md WP5).
         double expected=400000-column(400000);
-        assertEquals(expected,filled.tank().pressure(),1e-5*expected,
-                "a tank four blocks above a 400 kPa generator must settle one water column below it");
+        assertEquals(expected,filled.tank().pressure()+levelHead(filled),1e-5*expected,
+                "a tank four blocks above a 400 kPa generator must settle with its bottom one water column below it");
         assertTrue(filled.tank().mass()>700,"the tank must actually have filled with water: "+filled.tank().mass()+" kg");
         // And once it is full it is dead-headed again, at its own hydrostatic balance rather than
         // against an adverse charge, so the same closure holds it there. That is the end state a

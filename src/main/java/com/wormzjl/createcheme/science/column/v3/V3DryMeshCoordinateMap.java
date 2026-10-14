@@ -1,5 +1,7 @@
 package com.wormzjl.createcheme.science.column.v3;
 
+import com.wormzjl.createcheme.science.math.DeterministicMath;
+
 import java.util.List;
 import java.util.Objects;
 
@@ -116,18 +118,18 @@ final class V3DryMeshCoordinateMap {
         if (!Double.isFinite(flow) || flow <= 0.0) {
             throw new IllegalArgumentException("V3 MESH active flow must be positive before entering log coordinates");
         }
-        return Math.log(flow / componentFlowScales[component]);
+        return DeterministicMath.log(flow / componentFlowScales[component]);
     }
 
     private double logFreeWater(double flow) {
         if (!Double.isFinite(flow) || flow <= 0.0) {
             throw new IllegalArgumentException("V3 MESH free water must be positive on a wet tray before entering log coordinates");
         }
-        return Math.log(flow / freeWaterFlowScale);
+        return DeterministicMath.log(flow / freeWaterFlowScale);
     }
 
     private double freeWaterFlow(double coordinate) {
-        double flow = freeWaterFlowScale * Math.exp(coordinate);
+        double flow = freeWaterFlowScale * DeterministicMath.exp(coordinate);
         if (!Double.isFinite(flow) || flow <= 0.0) {
             throw new IllegalArgumentException("V3 MESH free-water log coordinate decodes outside the finite positive flow domain");
         }
@@ -135,7 +137,7 @@ final class V3DryMeshCoordinateMap {
     }
 
     private double flow(double coordinate, int component) {
-        double flow = componentFlowScales[component] * Math.exp(coordinate);
+        double flow = componentFlowScales[component] * DeterministicMath.exp(coordinate);
         if (!Double.isFinite(flow) || flow <= 0.0) {
             throw new IllegalArgumentException("V3 MESH log coordinate decodes outside the finite positive flow domain");
         }

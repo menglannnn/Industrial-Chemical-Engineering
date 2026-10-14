@@ -4,7 +4,9 @@ import com.wormzjl.createcheme.science.fluid.network.PassiveNetwork;
 import com.wormzjl.createcheme.science.fluid.state.SolidInventory;
 import com.wormzjl.createcheme.science.fluid.thermo.FluidThermodynamics;
 
-/** Outlet-specific transport eligibility. Existing physical outlets request MIXED. */
+/** Outlet-specific transport eligibility. A bulk end requests MIXED; a phase port requests the outlet of the phase it
+ * draws first ({@code SolidEventIntegrator}; decision D11 of the phase-ports batch, the bottom port a decant): GAS,
+ * ORGANIC_LIQUID or WATER. */
 public final class SolidMobility {
     public enum Outlet { MIXED, ORGANIC_LIQUID, WATER, GAS }
     /**
@@ -86,11 +88,22 @@ public final class SolidMobility {
      */
     public static Check check(Donor prepared, FluidThermodynamics.State donor,
                               PassiveNetwork.Pipe pipe, double massFlow, Outlet outlet) {
+        return check(prepared,donor,pipe,massFlow,outlet,donor.mass());
+    }
+    /**
+     * {@link #check} of a connection that draws {@code drawnMass} kilograms of stream per the donor's whole liquid and
+     * solid content: the donor's own mass for a bulk withdrawal, and for a phase port drawing one liquid that liquid's
+     * stream mass over its share of the liquid (it carries its volume share of the donor's liquid and solids). The liquid
+     * velocity is
+     * {@code |q| / drawnMass * liquidVolume / area}.
+     */
+    public static Check check(Donor prepared, FluidThermodynamics.State donor,
+                              PassiveNetwork.Pipe pipe, double massFlow, Outlet outlet, double drawnMass) {
         if(outlet==Outlet.GAS)return new Check(Reason.MOBILE,0,0);
         if((outlet==Outlet.MIXED||outlet==Outlet.ORGANIC_LIQUID)&&prepared.immobileOrganic)return new Check(Reason.IMMOBILE_LIQUID,0,0);
         if((outlet==Outlet.MIXED||outlet==Outlet.WATER)&&prepared.immobileWater)return new Check(Reason.IMMOBILE_LIQUID,0,0);
         double liquidVolume=prepared.liquidVolume;
-        double velocity=Math.abs(massFlow)/donor.mass()*liquidVolume/pipe.maximumArea();
+        double velocity=Math.abs(massFlow)/drawnMass*liquidVolume/pipe.maximumArea();
         if(prepared.active) {
             if(liquidVolume==0)return new Check(Reason.NO_LIQUID_CARRIER,velocity,0);
             if(prepared.largestDiameter>=pipe.minimumDiameter())return new Check(Reason.PARTICLE_TOO_LARGE,velocity,0);

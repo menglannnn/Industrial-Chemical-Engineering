@@ -1,5 +1,7 @@
 package com.wormzjl.createcheme.science.thermo;
 
+import com.wormzjl.createcheme.science.math.DeterministicMath;
+
 import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
@@ -66,10 +68,10 @@ public final class PengRobinson78 {
         double[] ratios = new double[components.size()];
         for (int i = 0; i < ratios.length; i++) {
             ThermoComponent component = components.get(i);
-            double logRatio = Math.log(component.criticalPressurePascal() / pressurePascal)
+            double logRatio = DeterministicMath.log(component.criticalPressurePascal() / pressurePascal)
                     + 5.373 * (1.0 + component.acentricFactor())
                     * (1.0 - component.criticalTemperatureKelvin() / temperatureKelvin);
-            ratios[i] = Math.exp(Math.clamp(logRatio, -40.0, 40.0));
+            ratios[i] = DeterministicMath.exp(Math.clamp(logRatio, -40.0, 40.0));
         }
         return ratios;
     }
@@ -123,7 +125,7 @@ public final class PengRobinson78 {
         }
 
         double compressibility = selectRoot(reducedA, reducedB, phaseRoot);
-        double logRatio = Math.log(
+        double logRatio = DeterministicMath.log(
                 (compressibility + (1.0 + SQRT_TWO) * reducedB)
                         / (compressibility + (1.0 - SQRT_TWO) * reducedB));
         double attraction = reducedA / (2.0 * SQRT_TWO * reducedB);
@@ -132,7 +134,7 @@ public final class PengRobinson78 {
             double bRatio = coVolumes[i] / bMix;
             double attractionRatio = 2.0 * sumA[i] / aMix - bRatio;
             logFugacity[i] = bRatio * (compressibility - 1.0)
-                    - Math.log(compressibility - reducedB)
+                    - DeterministicMath.log(compressibility - reducedB)
                     - attraction * attractionRatio * logRatio;
         }
         double residualEnthalpy = GAS_CONSTANT * temperatureKelvin * (compressibility - 1.0)
@@ -191,21 +193,21 @@ public final class PengRobinson78 {
         if (discriminant > 1.0e-16) {
             double root = Math.sqrt(discriminant);
             return new double[] {
-                    Math.cbrt(-q / 2.0 + root) + Math.cbrt(-q / 2.0 - root) - offset
+                    DeterministicMath.cbrt(-q / 2.0 + root) + DeterministicMath.cbrt(-q / 2.0 - root) - offset
             };
         }
         if (Math.abs(discriminant) <= 1.0e-16) {
-            double u = Math.cbrt(-q / 2.0);
+            double u = DeterministicMath.cbrt(-q / 2.0);
             return new double[] {2.0 * u - offset, -u - offset};
         }
 
         double radius = 2.0 * Math.sqrt(-p / 3.0);
-        double angle = Math.acos(Math.clamp(
+        double angle = DeterministicMath.acos(Math.clamp(
                 (3.0 * q / (2.0 * p)) * Math.sqrt(-3.0 / p), -1.0, 1.0)) / 3.0;
         return new double[] {
-                radius * Math.cos(angle) - offset,
-                radius * Math.cos(angle - 2.0 * Math.PI / 3.0) - offset,
-                radius * Math.cos(angle - 4.0 * Math.PI / 3.0) - offset
+                radius * DeterministicMath.cos(angle) - offset,
+                radius * DeterministicMath.cos(angle - 2.0 * Math.PI / 3.0) - offset,
+                radius * DeterministicMath.cos(angle - 4.0 * Math.PI / 3.0) - offset
         };
     }
 

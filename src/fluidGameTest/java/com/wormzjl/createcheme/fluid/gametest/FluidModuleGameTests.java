@@ -17,8 +17,10 @@ public final class FluidModuleGameTests {
     @GameTest(template="empty",timeoutTicks=200000,batch="fluid-modules")
     public static void sharedWorkersTransferThroughCausalModuleAndPersistAllMaterialOwners(GameTestHelper helper) {
         var server=helper.getLevel().getServer();var model=FluidThermodynamics.forNetwork(MaterialCatalog.bundled(),FluidPresetCatalog.NETWORK_PACKAGE,1e-9);
-        var nitrogen=model.initialNitrogenCharge(1,298.15,101325,()->{});var n=new double[com.wormzjl.createcheme.science.fluid.thermo.FluidMaterialCatalog.conservedCount()];System.arraycopy(nitrogen.vapor(),0,n,0,nitrogen.vapor().length);n[com.wormzjl.createcheme.science.fluid.thermo.FluidMaterialCatalog.waterIndex()]=100/model.waterMolecularWeight;
-        var feed=model.flashTP(298.15,101325,n,()->{});var graphs=new ArrayList<PassiveNetwork>();var buffers=new HashMap<UUID,BufferedTransfers.Buffer>();var bindings=new ArrayList<CausalModuleCoordinator.Binding>();
+        // Decision D54: a vessel is a bag; at 1 atm a tank stands on its wall's kink and goes slack as the module draws on it, the
+        // ambient then working on its bag. The tanks stand at 2 bar, taut throughout, as the rigid tanks of this test were.
+        var nitrogen=model.initialNitrogenCharge(1,298.15,202650,()->{});var n=new double[com.wormzjl.createcheme.science.fluid.thermo.FluidMaterialCatalog.conservedCount()];System.arraycopy(nitrogen.vapor(),0,n,0,nitrogen.vapor().length);n[com.wormzjl.createcheme.science.fluid.thermo.FluidMaterialCatalog.waterIndex()]=100/model.waterMolecularWeight;
+        var feed=model.flashTP(298.15,202650,n,()->{});var graphs=new ArrayList<PassiveNetwork>();var buffers=new HashMap<UUID,BufferedTransfers.Buffer>();var bindings=new ArrayList<CausalModuleCoordinator.Binding>();
         for(int i=1;i<=3;i++){var state=i==1?feed:nitrogen;graphs.add(new PassiveNetwork(List.of(new PassiveNetwork.Reservoir(i,0,state)),List.of()));buffers.put(id(i),new BufferedTransfers.Buffer(id(i),1000,state.mass(),Map.of()));bindings.add(new CausalModuleCoordinator.Binding(id(i),i,i));}
         double[] fractions=new double[com.wormzjl.createcheme.science.fluid.thermo.FluidMaterialCatalog.conservedCount()];Arrays.fill(fractions,.5);
         var definition=new FixedSplitModule.Definition(id(100),List.of(new FixedSplitModule.Feed(id(1),.2)),id(2),id(3),300,fractions);

@@ -30,7 +30,8 @@ public final class FluidTopologyGameTests {
                 level.setBlock(independent,ModBlocks.FLUID_RESERVOIR.get().defaultBlockState(),3);
                 long id=((FluidDeviceBlockEntity)level.getBlockEntity(independent)).fluidIdentity();
                 var capture=world.capture();helper.assertTrue(capture.world().active().containsKey(id),"Unrelated placement was blocked by an earlier island event");
-                helper.assertTrue(world.view(id).state()!=null,"Unrelated reservoir has no initialized authority");
+                // A placed tank holds nothing (decision D54): its authority is initialized when an island owns it and reports it.
+                helper.assertTrue(world.view(id).status().startsWith("EMPTY: holds nothing"),"Unrelated reservoir has no initialized authority: "+world.view(id).status());
                 helper.assertTrue(capture.world().events().stream().anyMatch(e->e.tick()==editTick[0]&&e.edits().stream().anyMatch(change->change.id()==sourceId)),"Blocked edit was dropped or retimestamped");
                 helper.assertTrue(coordinator.snapshot(island.id()).clock().committedTick()==island.clock().committedTick(),"Blocked island advanced past its causal horizon");
                 level.removeBlock(independent,false);helper.assertTrue(!world.capture().world().active().containsKey(id),"Unrelated removal was blocked");

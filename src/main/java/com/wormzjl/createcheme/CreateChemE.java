@@ -45,7 +45,7 @@ public final class CreateChemE {
     private static final ModConfigSpec.IntValue SOLVER_FORCED_SHUTDOWN_MILLISECONDS;
     private static final ModConfigSpec.IntValue FLUID_INITIAL_INTERVAL_SECONDS,FLUID_WALL_BUDGET_MILLISECONDS;
     private static final ModConfigSpec.DoubleValue SOLID_IMMOBILE_VISCOSITY,SOLID_TRACE_FRACTION,SOLID_SUSPENSION_MULTIPLIER,FILTER_CAPACITY,FILTER_RESISTANCE;
-    private static final ModConfigSpec.DoubleValue FLUID_LIQUID_COMPRESSIBILITY,FLUID_INITIAL_VOLUME,FLUID_INITIAL_TEMPERATURE,FLUID_INITIAL_PRESSURE,FLUID_MAXIMUM_VELOCITY,FLUID_TRACE_CUTOFF;
+    private static final ModConfigSpec.DoubleValue FLUID_LIQUID_COMPRESSIBILITY,FLUID_INITIAL_VOLUME,FLUID_MAXIMUM_VELOCITY,FLUID_TRACE_CUTOFF;
     private static final ModConfigSpec.BooleanValue FLUID_DEBUG_CHAT,FLUID_ADAPTIVE_CADENCE;
     private static final ModConfigSpec.BooleanValue FLUID_REST_DETECTION;
     private static final ModConfigSpec.DoubleValue FLUID_CERTIFICATE_TOLERANCE,FLUID_CERTIFICATE_BUDGET;
@@ -95,8 +95,6 @@ public final class CreateChemE {
         FLUID_LIQUID_COMPRESSIBILITY=builder.comment("One liquid compressibility for every liquid, in 1/Pa, for a new fluid world. Existing saves retain their recorded model until explicit migration.").defineInRange("liquidCompressibility",1e-9,1e-12,5e-7);
         FLUID_MAXIMUM_VELOCITY=builder.comment("Maximum bulk pipe velocity in m/s, also limited by the current fluid's acoustic bound. Caps mass transfer inside the coupled equations; does not set temperature. Captured on server start.").defineInRange("maximumVelocityMetresPerSecond",100.0,.01,100000.0);
         FLUID_INITIAL_VOLUME=builder.comment("Volume of newly placed reservoirs in cubic metres. Applied on server start.").defineInRange("reservoirVolumeCubicMetres",1.0,.001,1000.0);
-        FLUID_INITIAL_TEMPERATURE=builder.comment("One-time nitrogen charge temperature in kelvin for newly placed reservoirs.","Checked at world start against the network property package's fluid_domain (nitrogen: 63.151..900 K); a value outside it stops the world with the thermo-domain error.").defineInRange("initialNitrogenTemperatureKelvin",298.15,1.0,10000.0);
-        FLUID_INITIAL_PRESSURE=builder.comment("One-time nitrogen charge absolute pressure in pascals for newly placed reservoirs.","Checked at world start against the network property package's fluid_domain (100 Pa..2 MPa).").defineInRange("initialNitrogenPressurePascal",101325.0,1.0,1.0e9);
         FLUID_TRACE_CUTOFF=builder
                 .comment("Trace cutoff as a mole fraction for the hydraulic network's Newton unknowns, not a feed filter.",
                         "A component whose seed mole fraction is below this in one hydrocarbon phase and at or above it",
@@ -209,13 +207,13 @@ public final class CreateChemE {
     public static boolean calculationLoggingEnabled() {
         return CALCULATION_LOGGING.getAsBoolean();
     }
-    public record FluidOptions(int initialCadenceTicks,long wallBudgetNanos,double compressibility,double volume,double temperature,double pressure,boolean debugChat,boolean adaptiveCadence,double maximumVelocity,double traceCutoffMoleFraction,com.wormzjl.createcheme.science.fluid.transport.SolidTransportSettings solids,com.wormzjl.createcheme.runtime.fluid.CertificatePolicy certificates) {
-        public FluidOptions(int initialCadenceTicks,long wallBudgetNanos,double compressibility,double volume,double temperature,double pressure,boolean debugChat,boolean adaptiveCadence,double maximumVelocity,double traceCutoffMoleFraction){this(initialCadenceTicks,wallBudgetNanos,compressibility,volume,temperature,pressure,debugChat,adaptiveCadence,maximumVelocity,traceCutoffMoleFraction,com.wormzjl.createcheme.science.fluid.transport.SolidTransportSettings.defaults());}
-        public FluidOptions(int initialCadenceTicks,long wallBudgetNanos,double compressibility,double volume,double temperature,double pressure,boolean debugChat,boolean adaptiveCadence,double maximumVelocity,double traceCutoffMoleFraction,com.wormzjl.createcheme.science.fluid.transport.SolidTransportSettings solids){this(initialCadenceTicks,wallBudgetNanos,compressibility,volume,temperature,pressure,debugChat,adaptiveCadence,maximumVelocity,traceCutoffMoleFraction,solids,com.wormzjl.createcheme.runtime.fluid.CertificatePolicy.defaults());}
+    public record FluidOptions(int initialCadenceTicks,long wallBudgetNanos,double compressibility,double volume,boolean debugChat,boolean adaptiveCadence,double maximumVelocity,double traceCutoffMoleFraction,com.wormzjl.createcheme.science.fluid.transport.SolidTransportSettings solids,com.wormzjl.createcheme.runtime.fluid.CertificatePolicy certificates) {
+        public FluidOptions(int initialCadenceTicks,long wallBudgetNanos,double compressibility,double volume,boolean debugChat,boolean adaptiveCadence,double maximumVelocity,double traceCutoffMoleFraction){this(initialCadenceTicks,wallBudgetNanos,compressibility,volume,debugChat,adaptiveCadence,maximumVelocity,traceCutoffMoleFraction,com.wormzjl.createcheme.science.fluid.transport.SolidTransportSettings.defaults());}
+        public FluidOptions(int initialCadenceTicks,long wallBudgetNanos,double compressibility,double volume,boolean debugChat,boolean adaptiveCadence,double maximumVelocity,double traceCutoffMoleFraction,com.wormzjl.createcheme.science.fluid.transport.SolidTransportSettings solids){this(initialCadenceTicks,wallBudgetNanos,compressibility,volume,debugChat,adaptiveCadence,maximumVelocity,traceCutoffMoleFraction,solids,com.wormzjl.createcheme.runtime.fluid.CertificatePolicy.defaults());}
         public FluidOptions {java.util.Objects.requireNonNull(solids);java.util.Objects.requireNonNull(certificates);}
     }
     public static FluidOptions fluidOptions() {
-        return new FluidOptions(20*FLUID_INITIAL_INTERVAL_SECONDS.getAsInt(),1_000_000L*FLUID_WALL_BUDGET_MILLISECONDS.getAsInt(),FLUID_LIQUID_COMPRESSIBILITY.get(),FLUID_INITIAL_VOLUME.get(),FLUID_INITIAL_TEMPERATURE.get(),FLUID_INITIAL_PRESSURE.get(),FLUID_DEBUG_CHAT.getAsBoolean(),FLUID_ADAPTIVE_CADENCE.getAsBoolean(),FLUID_MAXIMUM_VELOCITY.get(),FLUID_TRACE_CUTOFF.get(),new com.wormzjl.createcheme.science.fluid.transport.SolidTransportSettings(SOLID_IMMOBILE_VISCOSITY.get(),SOLID_TRACE_FRACTION.get(),SOLID_SUSPENSION_MULTIPLIER.get(),FILTER_CAPACITY.get(),FILTER_RESISTANCE.get()),
+        return new FluidOptions(20*FLUID_INITIAL_INTERVAL_SECONDS.getAsInt(),1_000_000L*FLUID_WALL_BUDGET_MILLISECONDS.getAsInt(),FLUID_LIQUID_COMPRESSIBILITY.get(),FLUID_INITIAL_VOLUME.get(),FLUID_DEBUG_CHAT.getAsBoolean(),FLUID_ADAPTIVE_CADENCE.getAsBoolean(),FLUID_MAXIMUM_VELOCITY.get(),FLUID_TRACE_CUTOFF.get(),new com.wormzjl.createcheme.science.fluid.transport.SolidTransportSettings(SOLID_IMMOBILE_VISCOSITY.get(),SOLID_TRACE_FRACTION.get(),SOLID_SUSPENSION_MULTIPLIER.get(),FILTER_CAPACITY.get(),FILTER_RESISTANCE.get()),
                 new com.wormzjl.createcheme.runtime.fluid.CertificatePolicy(FLUID_REST_DETECTION.getAsBoolean(),FLUID_CERTIFICATE_TOLERANCE.get(),FLUID_CERTIFICATE_BUDGET.get(),FLUID_CERTIFICATE_MAXIMUM_INTERVALS.getAsInt(),FLUID_REST_CONFIRM_INTERVALS.getAsInt(),FLUID_REST_RECHECK_SECONDS.getAsInt()));
     }
 
@@ -254,7 +252,7 @@ public final class CreateChemE {
     private static void addCreativeTabItem(BuildCreativeModeTabContentsEvent event) {
         if (event.getTabKey() == CreativeModeTabs.FUNCTIONAL_BLOCKS) {
             event.accept(ModItems.COLUMN_CALCULATOR_V3.get());
-            event.accept(ModItems.FLUID_RESERVOIR.get());event.accept(ModItems.FLUID_PIPE.get());event.accept(ModItems.FLUID_PUMP.get());event.accept(ModItems.PRESSURE_CONTROL_VALVE.get());event.accept(ModItems.FLUID_GENERATOR.get());event.accept(ModItems.FLUID_VOID.get());event.accept(ModItems.INLINE_FILTER.get());event.accept(ModItems.FLUID_DEBUGGER.get());
+            event.accept(ModItems.FLUID_RESERVOIR.get());event.accept(ModItems.FLUID_PIPE.get());event.accept(ModItems.FLUID_PUMP.get());event.accept(ModItems.FLUID_COMPRESSOR.get());event.accept(ModItems.PRESSURE_CONTROL_VALVE.get());event.accept(ModItems.FLUID_GENERATOR.get());event.accept(ModItems.FLUID_VOID.get());event.accept(ModItems.INLINE_FILTER.get());event.accept(ModItems.FLUID_DEBUGGER.get());
         }
     }
 

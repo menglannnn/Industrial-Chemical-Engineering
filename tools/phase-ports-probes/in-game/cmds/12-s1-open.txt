@@ -1,0 +1,6 @@
+/setblock -2 -57 0 minecraft:air
+/setblock -1 -57 0 minecraft:air
+/setblock 0 -55 0 createcheme:fluid_void
+/setblock 2 -57 0 createcheme:fluid_void
+/setblock 0 -59 0 createcheme:fluid_void
+/setblock -1 -59 0 minecraft:stone

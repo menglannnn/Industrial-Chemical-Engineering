@@ -1,5 +1,7 @@
 package com.wormzjl.createcheme.science.fluid.thermo;
 
+import com.wormzjl.createcheme.science.math.DeterministicMath;
+
 import static org.junit.jupiter.api.Assertions.*;
 
 import com.wormzjl.createcheme.science.material.MaterialCatalog;
@@ -138,11 +140,11 @@ class TranslatedPengRobinsonDerivativesTest {
         var random=new Random(20260916L);
         for(double[] point:new double[][]{{300,101325},{330,250000},{350,500000},{400,1000000},{450,2000000},{520,250000}}) {
             double[] fractions=new double[count];
-            for(int i=0;i<count;i++)fractions[i]=Math.pow(10,-2*random.nextDouble());
+            for(int i=0;i<count;i++)fractions[i]=DeterministicMath.pow(10,-2*random.nextDouble());
             all.add(new State(point[0],point[1],fractions));
         }
         double[] heavy=new double[count];
-        for(int i=0;i<count;i++)heavy[i]=Math.exp(-i/6.0);
+        for(int i=0;i<count;i++)heavy[i]=DeterministicMath.exp(-i/6.0);
         all.add(new State(360,300000,heavy));
         all.add(new State(480,900000,heavy));
         double[] light=new double[count];

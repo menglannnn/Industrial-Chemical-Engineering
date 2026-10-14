@@ -1,0 +1,14 @@
+// Attaches src-g2/ (the G2 grid and restatement probes, 2026-10-12) to the test source set for one Gradle invocation and
+// forwards the g2* switches. Not part of any gate suite: without this init script nothing in src-g2/ is compiled.
+//   ./gradlew --no-configuration-cache --init-script tools/phase-ports-probes/hold-classes/g2.init.gradle test --tests '*G2GridProbeTest' -Pg2grid=true
+gradle.projectsEvaluated {
+    def here = gradle.startParameter.initScripts.find { it.name == 'g2.init.gradle' }.parentFile
+    def root = gradle.rootProject
+    root.sourceSets.test.java.srcDir(new File(here, 'src-g2'))
+    root.tasks.withType(Test).configureEach {
+        maxHeapSize = '8g'
+        root.properties.findAll { it.key.startsWith('g2') }.each { k, v -> systemProperty k, v }
+        testLogging { showStandardStreams = true }
+        outputs.upToDateWhen { false }
+    }
+}

@@ -1,0 +1,67 @@
+diff --git a/src/main/java/com/wormzjl/createcheme/runtime/fluid/PhysicalRegistry.java b/src/main/java/com/wormzjl/createcheme/runtime/fluid/PhysicalRegistry.java
+index 848b4679..52df2e4e 100644
+--- a/src/main/java/com/wormzjl/createcheme/runtime/fluid/PhysicalRegistry.java
++++ b/src/main/java/com/wormzjl/createcheme/runtime/fluid/PhysicalRegistry.java
+@@ -317,7 +317,7 @@ public final class PhysicalRegistry {
+             for(long device:island.physicalIds()){Long holder=owners.get(device);if(holder!=null&&!affected.contains(holder)&&!fixedDevice(device))
+                 throw new IllegalStateException("Topology event reached device "+device+" outside the islands it fenced");}
+             // The recompile's junctions are minted here (start state, decision D37, and buffer size, D25); nothing is booked (D46).
+-            long id=nextId++;replacements.add(new IslandCoordinator.Replacement(id,PassiveNetwork.mintJunctions(island.graph(),model)));replacementMembers.put(id,island.physicalIds().stream().sorted().toList());
++            long id=nextId++;if(com.wormzjl.createcheme.science.fluid.network.NetworkReduction.T18_PRINT)System.out.println("T18_ISLAND id="+id+" members="+island.physicalIds().size());replacements.add(new IslandCoordinator.Replacement(id,PassiveNetwork.mintJunctions(island.graph(),model)));replacementMembers.put(id,island.physicalIds().stream().sorted().toList());
+         }
+         var eventIds=new LinkedHashSet<UUID>();for(var event:events)eventIds.add(event.id());
+         var preparation=topology.applyBatch(List.copyOf(eventIds),constructed,destroyed,weights,nextId);
+diff --git a/src/main/java/com/wormzjl/createcheme/science/fluid/network/NetworkReduction.java b/src/main/java/com/wormzjl/createcheme/science/fluid/network/NetworkReduction.java
+index 5448c53e..bf27bfb0 100644
+--- a/src/main/java/com/wormzjl/createcheme/science/fluid/network/NetworkReduction.java
++++ b/src/main/java/com/wormzjl/createcheme/science/fluid/network/NetworkReduction.java
+@@ -494,7 +494,12 @@ public final class NetworkReduction {
+                 if(here>highest||here==highest&&standing!=null&&(heavy>density||heavy==density&&boundary.id()<standing.id())){highest=here;standing=boundary;density=heavy;}
+             }
+             starts.set(v,standing==null?junction.state():at(model,stream(model,standing.state(),PassiveNetwork.PhasePort.BULK),highest));
++            if(T18_PRINT)System.out.println("T18_NONE node="+v+" contact="+(standing==null?"-":standing.id()+" "+standing.kind()+" z="+standing.elevation()+" P="+standing.state().pressure()+" here="+highest));
+         }
++        if(T18_PRINT)for(int v=0;v<nodes;v++){var j=graph.reservoirs().get(v);if(!j.junction())continue;var s=starts.get(v);
++            var text=new StringBuilder("T18_START node="+v+" id="+j.id()+" z="+j.elevation()+" lowest="+lowest[v]+" other="+other[v]+" P="+s.pressure()+" T="+s.temperature()+" rho="+s.mass()/s.volume()+" vap="+s.vaporVolume()+" liq="+(s.liquidVolume()+s.waterVolume()));
++            for(var a:arrivals.get(v))text.append(" | from=").append(a.sourceId()).append(" pipe=").append(a.pipeId()).append(" end=").append(a.pressure()).append(" rho=").append(a.density()).append(" standing=").append(a.standing()).append(" lifted=").append(a.lifted()).append(" len=").append(a.length());
++            System.out.println(text);}
+         return starts;
+     }
+     /**
+@@ -548,8 +553,10 @@ public final class NetworkReduction {
+      * {@code P} ({@link #mixture}), a single one as itself throttled to {@code P}. No supplier open at {@code P}, or a
+      * property outside the data: the strongest supplier's stream where it stands ({@link #strongest}, {@link #alone}).
+      */
++    public static final boolean T18_PRINT=Boolean.getBoolean("t18print");
+     private static FluidThermodynamics.State balanced(PassiveNetwork graph,FluidThermodynamics model,int junction,List<Arrival> arrivals,List<Drain> drains,MixtureViscosity.Workspace scratch) {
+         var strongest=strongest(arrivals);
++        if(T18_PRINT)System.out.println("T18_BALANCE node="+junction+" arrivals="+arrivals.size());
+         try {
+             var supplies=new ArrayList<Supply>(arrivals.size());for(var a:arrivals)supplies.add(Supply.of(graph,model,a,scratch));
+             var outlets=new ArrayList<Outlet>();
+@@ -564,13 +571,14 @@ public final class NetworkReduction {
+                 var fluid=Fluid.of(model,held,scratch);double p=pressure(supplies,outlets,fluid);
+                 double[] q=new double[arrivals.size()];boolean[] open=new boolean[q.length];boolean any=false;
+                 for(int i=0;i<q.length;i++){q[i]=supplies.get(i).flow(p);open[i]=q[i]>0;any|=open[i];}
+-                if(!any)return alone(graph,model,strongest);
+-                mixed=mixture(model,streams(arrivals),q,p);if(mixed==null)return alone(graph,model,strongest);
++                if(T18_PRINT)System.out.println("T18_ROUND node="+junction+" round="+round+" P="+p+" q="+Arrays.toString(q)+" outlets="+outlets.size()+" bounds="+outlets.stream().map(o->String.valueOf(o.bound())).toList());
++                if(!any){if(T18_PRINT)System.out.println("T18_FALLBACK node="+junction+" none-open");return alone(graph,model,strongest);}
++                mixed=mixture(model,streams(arrivals),q,p);if(mixed==null){if(T18_PRINT)System.out.println("T18_FALLBACK node="+junction+" mixture-null");return alone(graph,model,strongest);}
+                 if(before!=null&&Arrays.equals(open,before)&&Math.abs(p-previous)<=1e-9*Math.abs(previous))return mixed;
+                 previous=p;before=open;held=mixed;
+             }
+             return mixed;
+-        } catch(IllegalArgumentException outside){return alone(graph,model,strongest);} // a ThermoDomainViolation included
++        } catch(IllegalArgumentException outside){if(T18_PRINT)System.out.println("T18_FALLBACK node="+junction+" outside "+outside.getMessage());return alone(graph,model,strongest);} // a ThermoDomainViolation included
+     }
+     /**
+      * A junction one stream starts on its own (a pocket's strongest supplier, D12, and every fallback of the balance): the
+@@ -578,6 +586,7 @@ public final class NetworkReduction {
+      * filled from below holds its supplier's pressure less the column it holds; one past a pump, the pump's shutoff there.
+      */
+     private static FluidThermodynamics.State alone(PassiveNetwork graph,FluidThermodynamics model,Arrival a) {
++        if(T18_PRINT)System.out.println("T18_ALONE from="+a.sourceId()+" end="+a.pressure()+" standing="+Supply.standing(graph,model,a)+" lifted="+a.lifted());
+         return at(model,a.stream(),Supply.standing(graph,model,a));
+     }
+     /**

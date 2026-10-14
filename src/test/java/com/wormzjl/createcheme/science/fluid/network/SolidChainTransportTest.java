@@ -19,8 +19,9 @@ import static org.junit.jupiter.api.Assertions.*;
  * stall, and the clear-fluid chain beside it has to be untouched.
  */
 class SolidChainTransportTest {
-    // Measured under the backward-Euler controller (WP1); see clearChainSubstepCountsAreUnchanged.
-    private static final int HALF_ACCEPTED=3,HALF_REJECTED=1,FULL_ACCEPTED=5,FULL_REJECTED=1,TWO_ACCEPTED=4,TWO_REJECTED=0;
+    // Measured under the backward-Euler controller (WP1); see clearChainSubstepCountsAreUnchanged. Re-recorded in the D36/D38
+    // re-baseline (claude/integration-1, A222): the clear chain reaches the gauge (D42) after two steps (was 3/1, 5/1, 4/0).
+    private static final int HALF_ACCEPTED=2,HALF_REJECTED=1,FULL_ACCEPTED=2,FULL_REJECTED=1,TWO_ACCEPTED=2,TWO_REJECTED=0;
     /** The solid closure pass solves the port graph once at each interval start (measured: 1 per interval). */
     private static final int RATE_SOLVES_PER_INTERVAL=2;
     private final FluidThermodynamics model=FluidTestSupport.networkModel();

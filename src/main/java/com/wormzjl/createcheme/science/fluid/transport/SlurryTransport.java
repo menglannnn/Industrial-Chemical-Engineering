@@ -1,5 +1,7 @@
 package com.wormzjl.createcheme.science.fluid.transport;
 
+import com.wormzjl.createcheme.science.math.DeterministicMath;
+
 /**
  * SI transport correlations for inert particles in a liquid carrier.
  * These functions do not own material or decide which conserved populations are traces.
@@ -24,7 +26,7 @@ public final class SlurryTransport {
             throw new IllegalArgumentException("Slurry volume fraction outside the flowing domain");
         }
         if (solidVolumeFraction == 0) return carrierViscosity;
-        return positive(carrierViscosity * Math.pow(1 - solidVolumeFraction / MAXIMUM_PACKING_FRACTION,
+        return positive(carrierViscosity * DeterministicMath.pow(1 - solidVolumeFraction / MAXIMUM_PACKING_FRACTION,
                 -2.5 * MAXIMUM_PACKING_FRACTION), "slurry viscosity");
     }
 

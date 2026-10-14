@@ -43,7 +43,9 @@ record V3PropertyComponent(
         double delta = temperatureKelvin - 298.15;
         double cubic = cpA + cpB * delta + cpC * delta * delta + cpD * delta * delta * delta;
         if (cpE == 0.0 && cpF == 0.0) return cubic;
-        return cubic + Math.pow(delta, 4) * (cpE + cpF * delta);
+        // Integer powers as products, not pow (batch 2026-09-27-jdk-determinism, pow cost).
+        double square = delta * delta;
+        return cubic + square * square * (cpE + cpF * delta);
     }
 
     /** Analytic ideal-gas enthalpy relative to 298.15 K in J/mol. */
@@ -52,6 +54,7 @@ record V3PropertyComponent(
         double cubicIntegral = cpA * delta + 0.5 * cpB * delta * delta + cpC * delta * delta * delta / 3.0
                 + 0.25 * cpD * delta * delta * delta * delta;
         if (cpE == 0.0 && cpF == 0.0) return cubicIntegral;
-        return cubicIntegral + Math.pow(delta, 5) * (cpE / 5.0 + cpF * delta / 6.0);
+        double square = delta * delta;
+        return cubicIntegral + square * square * delta * (cpE / 5.0 + cpF * delta / 6.0);
     }
 }

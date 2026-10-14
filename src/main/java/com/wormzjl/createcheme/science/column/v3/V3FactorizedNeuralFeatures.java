@@ -1,12 +1,14 @@
 package com.wormzjl.createcheme.science.column.v3;
 
+import com.wormzjl.createcheme.science.math.DeterministicMath;
+
 import java.util.Arrays;
 
 /** Gen3 targets separate phase traffic from normalized compositions and optional learned seed support. */
 public final class V3FactorizedNeuralFeatures {
     public static final String REVISION = "v3-factorized-stage-1";
     public static final double TRACE_FLOOR_FRACTION = 1e-10;
-    private static final double MAXIMUM_LOG_TOTAL = Math.log1p(1000);
+    private static final double MAXIMUM_LOG_TOTAL = DeterministicMath.log1p(1000);
 
     private V3FactorizedNeuralFeatures() {}
 
@@ -27,7 +29,7 @@ public final class V3FactorizedNeuralFeatures {
             result[n][0] = temperatures[n];
             encodePhase(result[n], 1, 3, 5 + 2*c, liquid[n], feed, total);
             encodePhase(result[n], 2, 3 + c, 5 + 3*c, vapor[n], feed, total);
-            result[n][3 + 2*c] = Math.log1p(water[n] / (total * 1e-8));
+            result[n][3 + 2*c] = DeterministicMath.log1p(water[n] / (total * 1e-8));
             result[n][4 + 2*c] = wet[n] ? 1 : 0;
         }
         return result;
@@ -36,13 +38,13 @@ public final class V3FactorizedNeuralFeatures {
     private static void encodePhase(double[] target, int totalIndex, int compositionOffset, int presenceOffset,
             double[] flows, double[] feed, double totalFeed) {
         double phaseTotal = Arrays.stream(flows).sum();
-        target[totalIndex] = Math.log1p(phaseTotal / totalFeed);
+        target[totalIndex] = DeterministicMath.log1p(phaseTotal / totalFeed);
         double center = 0; int active = 0;
         for (int c = 0; c < feed.length; c++) {
             double floor = Math.max(feed[c], totalFeed * 1e-12) * TRACE_FLOOR_FRACTION;
             target[presenceOffset + c] = feed[c] > 0 && flows[c] >= floor ? 8 : -8;
             if (feed[c] == 0 || phaseTotal == 0) continue;
-            double logRatio = Math.log(Math.max(flows[c], floor) / phaseTotal / (feed[c] / totalFeed));
+            double logRatio = DeterministicMath.log(Math.max(flows[c], floor) / phaseTotal / (feed[c] / totalFeed));
             target[compositionOffset + c] = logRatio; center += logRatio; active++;
         }
         if (active > 0) for (int c = 0; c < feed.length; c++)
@@ -114,7 +116,7 @@ public final class V3FactorizedNeuralFeatures {
 
         /** Presence logit a kept component must reach to be lifted; unreachable while the rule is off. */
         double liftLogit() {
-            return liftsPresentTraces() ? Math.log(liftPresenceProbability / (1 - liftPresenceProbability))
+            return liftsPresentTraces() ? DeterministicMath.log(liftPresenceProbability / (1 - liftPresenceProbability))
                     : Double.POSITIVE_INFINITY;
         }
     }
@@ -151,7 +153,7 @@ public final class V3FactorizedNeuralFeatures {
             double waterLog = row[3 + 2*c];
             if (waterLog > 30) throw new IllegalArgumentException("Unbounded factorized water flow");
             wet[n] = row[4 + 2*c] >= .5 && n > 0 && n < count-1 && !input.steamFeeds().isEmpty();
-            water[n] = wet[n] ? Math.expm1(Math.max(0, waterLog)) * total * 1e-8 : 0;
+            water[n] = wet[n] ? DeterministicMath.expm1(Math.max(0, waterLog)) * total * 1e-8 : 0;
         }
         for (var spec : input.specifications()) if (spec instanceof V3ColumnSpecification.CondenserOutletTemperature t) temperatures[0] = t.kelvin();
         return new V3NeuralSeed(input, revision, branch, liquid, vapor, temperatures, water, wet);
@@ -159,7 +161,7 @@ public final class V3FactorizedNeuralFeatures {
 
     private static double phaseTotal(double value, double feed) {
         if (value > MAXIMUM_LOG_TOTAL) throw new IllegalArgumentException("Unbounded factorized phase total");
-        return Math.expm1(Math.max(0, value)) * feed;
+        return DeterministicMath.expm1(Math.max(0, value)) * feed;
     }
 
     private static double[] decodePhase(double[] row, int compositionOffset, int presenceOffset, double total,
@@ -167,12 +169,12 @@ public final class V3FactorizedNeuralFeatures {
         double[] flows = new double[feed.length], logits = new double[feed.length];
         boolean[] present = new boolean[feed.length]; int fallback = -1;
         double maximum = -Double.MAX_VALUE, fallbackMaximum = -Double.MAX_VALUE;
-        double thresholdLogit = presenceThreshold == 0 ? -Double.MAX_VALUE : Math.log(presenceThreshold / (1-presenceThreshold));
+        double thresholdLogit = presenceThreshold == 0 ? -Double.MAX_VALUE : DeterministicMath.log(presenceThreshold / (1-presenceThreshold));
         for (int c = 0; c < feed.length; c++) {
             if (Math.abs(row[compositionOffset+c]) > 120 || Math.abs(row[presenceOffset+c]) > 120)
                 throw new IllegalArgumentException("Unbounded factorized composition or presence logit");
             if (feed[c] == 0) continue;
-            logits[c] = Math.log(feed[c] / totalFeed) + row[compositionOffset+c];
+            logits[c] = DeterministicMath.log(feed[c] / totalFeed) + row[compositionOffset+c];
             if (fallback < 0 || logits[c] > fallbackMaximum) { fallback = c; fallbackMaximum = logits[c]; }
             present[c] = row[presenceOffset+c] >= thresholdLogit;
             if (present[c]) maximum = Math.max(maximum, logits[c]);
@@ -190,7 +192,7 @@ public final class V3FactorizedNeuralFeatures {
         // A positive phase-total head retains at least one component if all support scores are uncertain.
         if (maximum == -Double.MAX_VALUE) { present[fallback] = true; maximum = fallbackMaximum; }
         double sum = 0;
-        for (int c = 0; c < feed.length; c++) if (present[c]) { flows[c] = Math.exp(logits[c]-maximum); sum += flows[c]; }
+        for (int c = 0; c < feed.length; c++) if (present[c]) { flows[c] = DeterministicMath.exp(logits[c]-maximum); sum += flows[c]; }
         double retained = 0, liftLogit = options.liftLogit();
         double[] lifted = null;
         for (int c = 0; c < feed.length; c++) {

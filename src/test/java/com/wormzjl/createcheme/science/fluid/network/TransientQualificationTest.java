@@ -14,11 +14,16 @@ import org.junit.jupiter.api.Test;
 class TransientQualificationTest {
     @Test void diluteGasSmallSignalMatchesAnalyticAdiabaticPoiseuilleRelaxation() throws Exception {
         double[] n=new double[com.wormzjl.createcheme.science.material.MaterialTestBasis.NETWORK+1];n[com.wormzjl.createcheme.science.material.MaterialTestBasis.NITROGEN]=1;
-        var graph=new PassiveNetwork(List.of(tank(1,1000.5,n),tank(2,999.5,n)),List.of(new PassiveNetwork.Pipe(1,0,1,new PipeResistance.Geometry(1,.01,0,0))));
+        // The pair stands at P0 = 102325 Pa, 1 kPa above the ambient (it was 1 kPa): a tank is a bag (decision D54) and one
+        // below the ambient goes slack at it. The relaxation rate is proportional to P0, so the interval and the default
+        // steps are scaled by 1 kPa / P0: the same decay in the same steps.
+        double p0=102325,scale=1000/p0;
+        var graph=new PassiveNetwork(List.of(tank(1,p0+.5,n),tank(2,p0-.5,n)),List.of(new PassiveNetwork.Pipe(1,0,1,new PipeResistance.Geometry(1,.01,0,0))));
         // Independent ideal-gas limiting solution. NIST nitrogen viscosity at 350 K is 20.1172264699 uPa.s.
-        double gamma=1.4,mu=20.1172264699e-6,rate=gamma*1000*Math.PI*Math.pow(.01,4)/(64*mu),duration=10;
+        double gamma=1.4,mu=20.1172264699e-6,rate=gamma*p0*Math.PI*Math.pow(.01,4)/(64*mu),duration=10*1000/p0;
         double expectedDifference=Math.exp(-rate*duration),expectedMass=(1-expectedDifference)*.0280134/(2*gamma*8.31446261815324*350);
-        var result=new PassiveIntervalSolver(model).solve(graph,duration,PassiveIntervalSolver.Settings.defaults(),()->{});
+        var defaults=PassiveIntervalSolver.Settings.defaults();
+        var result=new PassiveIntervalSolver(model).solve(graph,duration,new PassiveIntervalSolver.Settings(defaults.initialStep()*scale,defaults.maximumStep()*scale,defaults.maximumAttempts()),()->{});
         double difference=result.graph().reservoirs().get(0).state().pressure()-result.graph().reservoirs().get(1).state().pressure();
         double pressureError=Math.abs(difference/expectedDifference-1),massError=Math.abs(result.averageMassFlows()[0]*duration/expectedMass-1);
         // The state cap measures change relative to max(100 Pa, P), so a 1 Pa signal in 1000 Pa tanks never binds it and the
@@ -72,7 +77,8 @@ class TransientQualificationTest {
         for(String name:List.of("liquid-full compression","small gas headspace","wet crude equalization","wet crude reversed direction","pump against pressure")) {
             var composition=name.startsWith("liquid")?water:name.startsWith("small")?smallHeadspace:name.startsWith("pump")?gas:wet;
             double pa=name.contains("reversed")?150000:151000,pb=name.contains("reversed")?151000:150000;
-            FlowControl control=name.startsWith("pump")?new FlowControl.Pump(.001,500000,.8):new FlowControl.Passive();
+            // The gas case's device is a compressor (decision D2; a liquid-only pump refuses nitrogen); case name kept.
+            FlowControl control=name.startsWith("pump")?new FlowControl.Compressor(.001,3,.8):new FlowControl.Passive();
             if(name.startsWith("pump")){pa=101325;pb=200000;}
             var graph=new PassiveNetwork(List.of(tank(1,pa,composition),tank(2,pb,composition)),List.of(new PassiveNetwork.Pipe(1,0,1,new PipeResistance.Geometry(100,.05,.000045,0),control)));
             var row=new LinkedHashMap<String,Object>();rows.add(row);row.put("case",name);double duration=.5;

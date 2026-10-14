@@ -1,9 +1,13 @@
 package com.wormzjl.createcheme.science.fluid.network;
 
+import com.wormzjl.createcheme.science.math.DeterministicMath;
+
 /** Homogeneous Darcy-Weisbach loss with a C1 laminar/turbulent blend over Reynolds 2000..4000. */
 public final class PipeResistance {
     /** Fixed steel-wall roughness for player-built piping. */
     public static final double DEFAULT_ROUGHNESS_METRES=0.000045;
+    /** ln 10, the same double the loss used to recompute on every call. */
+    private static final double LN_10=DeterministicMath.log(10);
     private PipeResistance() {}
     public record Geometry(double length,double diameter,double roughness,double minorLoss) {
         public Geometry {
@@ -30,12 +34,14 @@ public final class PipeResistance {
         }
         double q=Math.abs(massFlow),reSlope=4/(Math.PI*viscosity*pipe.diameter),re=q*reSlope;
         double area=pipe.area(),coefficient=1/(2*density*area*area);
-        double laminarSlope=128*viscosity*pipe.length/(Math.PI*density*Math.pow(pipe.diameter,4));
+        // Integer powers as products, and re^1.9 as re^0.9 re (batch 2026-09-27-jdk-determinism, pow cost).
+        double diameterSquared=pipe.diameter*pipe.diameter;
+        double laminarSlope=128*viscosity*pipe.length/(Math.PI*density*(diameterSquared*diameterSquared));
         double loss=laminarSlope*q,derivative=laminarSlope;
         if(re>2000) {
-            double argument=pipe.roughness/(3.7*pipe.diameter)+5.74/Math.pow(re,.9);
-            double logarithm=Math.log10(argument),friction=.25/(logarithm*logarithm);
-            double df=-.5/Math.pow(logarithm,3)*(-.9*5.74/Math.pow(re,1.9))/(argument*Math.log(10));
+            double re09=DeterministicMath.pow(re,.9),argument=pipe.roughness/(3.7*pipe.diameter)+5.74/re09;
+            double logarithm=DeterministicMath.log10(argument),friction=.25/(logarithm*logarithm);
+            double df=-.5/(logarithm*logarithm*logarithm)*(-.9*5.74/(re09*re))/(argument*LN_10);
             double turbulent=friction*pipe.length/pipe.diameter*coefficient*q*q;
             double turbulentSlope=pipe.length/pipe.diameter*coefficient*(2*q*friction+q*q*df*reSlope);
             double s=Math.min(1,(re-2000)/2000),weight=s*s*(3-2*s),weightSlope=6*s*(1-s)*reSlope/2000;

@@ -1,5 +1,7 @@
 package com.wormzjl.createcheme.science.column.v3;
 
+import com.wormzjl.createcheme.science.math.DeterministicMath;
+
 import com.wormzjl.createcheme.science.column.v3.thermo.V3WaterProperties;
 import java.util.Arrays;
 
@@ -23,7 +25,7 @@ public final class V3GeneralNeuralFeatures {
         double[] feed = input.feedComponentMolarFlowsMolPerSecond();
         double total = Arrays.stream(feed).sum(), span = input.stageCount() + 1.0;
         double[] x = new double[globalWidth(feed.length)];
-        x[0] = Math.log(total); x[1] = input.feedTemperatureKelvin();
+        x[0] = DeterministicMath.log(total); x[1] = input.feedTemperatureKelvin();
         x[2] = input.topPressurePascal() / 1e5; x[3] = input.stagePressureDropPascal() / 1e3;
         x[4] = input.stageCount() / 64.0; x[5] = input.feedStageNumber() / span;
         for (V3ColumnSpecification spec : input.specifications()) {
@@ -117,9 +119,9 @@ public final class V3GeneralNeuralFeatures {
         double[][] y = new double[t.length][outputWidth(feed.length)];
         for (int n = 0; n < t.length; n++) {
             int k = 0; y[n][k++] = t[n];
-            for (int c = 0; c < feed.length; c++) y[n][k++] = Math.log1p(l[n][c] / componentScale(feed[c], total));
-            for (int c = 0; c < feed.length; c++) y[n][k++] = Math.log1p(v[n][c] / componentScale(feed[c], total));
-            y[n][k++] = Math.log1p(w[n] / (total * FLOW_FLOOR)); y[n][k] = wet[n] ? 1 : 0;
+            for (int c = 0; c < feed.length; c++) y[n][k++] = DeterministicMath.log1p(l[n][c] / componentScale(feed[c], total));
+            for (int c = 0; c < feed.length; c++) y[n][k++] = DeterministicMath.log1p(v[n][c] / componentScale(feed[c], total));
+            y[n][k++] = DeterministicMath.log1p(w[n] / (total * FLOW_FLOOR)); y[n][k] = wet[n] ? 1 : 0;
         }
         return y;
     }
@@ -156,7 +158,7 @@ public final class V3GeneralNeuralFeatures {
     private static double componentScale(double componentFeed, double total) { return Math.max(componentFeed, total * 1e-12) * 1e-5; }
     private static double flow(double value, double scale) {
         if (!Double.isFinite(value) || value > 30) throw new IllegalArgumentException("Unbounded neural flow");
-        return scale * Math.expm1(Math.max(0, value));
+        return scale * DeterministicMath.expm1(Math.max(0, value));
     }
     private static double nearestPosition(int[] positions, int node, double span) {
         if (positions.length == 0) return 0;

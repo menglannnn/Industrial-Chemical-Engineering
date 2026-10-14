@@ -1,0 +1,12 @@
+diff --git a/src/main/java/com/wormzjl/createcheme/science/fluid/network/NetworkReduction.java b/src/main/java/com/wormzjl/createcheme/science/fluid/network/NetworkReduction.java
+index 0fe9fa78..2cffd4d1 100644
+--- a/src/main/java/com/wormzjl/createcheme/science/fluid/network/NetworkReduction.java
++++ b/src/main/java/com/wormzjl/createcheme/science/fluid/network/NetworkReduction.java
+@@ -416,6 +416,7 @@ public final class NetworkReduction {
+                     q[i]=supplies.get(i).flow(p);open[i]=q[i]>0;if(!open[i])continue;
+                     if(first<0)first=i;else one&=arrivals.get(i).source()==arrivals.get(first).source()&&arrivals.get(i).port()==arrivals.get(first).port();
+                 }
++                if(String.valueOf(System.getProperty("instr")).contains("mprime")){var sb=new StringBuilder("M8_BAL node="+junction+" round="+round+" P="+p+" drains="+outlets.size());for(int i=0;i<q.length;i++)sb.append(String.format(Locale.ROOT," [src=%d port=%s S=%.3f lifted=%b q=%.6g]",arrivals.get(i).sourceId(),arrivals.get(i).port(),supplies.get(i).standing(),supplies.get(i).lifted(),q[i]));System.out.println(sb);} // INSTR
+                 if(first<0)return strongest.stream();
+                 if(one)return arrivals.get(first).stream();
+                 mixed=mixture(model,arrivals,q,p);if(mixed==null)return strongest.stream();

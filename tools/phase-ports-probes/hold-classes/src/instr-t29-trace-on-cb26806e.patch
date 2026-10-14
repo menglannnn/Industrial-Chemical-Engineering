@@ -1,0 +1,401 @@
+diff --git a/src/main/java/com/wormzjl/createcheme/science/fluid/network/ConservativeTransport.java b/src/main/java/com/wormzjl/createcheme/science/fluid/network/ConservativeTransport.java
+index 95cd0a73..52a72147 100644
+--- a/src/main/java/com/wormzjl/createcheme/science/fluid/network/ConservativeTransport.java
++++ b/src/main/java/com/wormzjl/createcheme/science/fluid/network/ConservativeTransport.java
+@@ -231,6 +231,23 @@ public final class ConservativeTransport {
+             for(int c=0;c<result.length;c++)result[c]+=weight*w[c];}
+         return result;
+     }
++    // INSTR t29 (never commit): -Dt29trace prints every overdrawn reservoir's booking.
++    static final boolean T29_TRACE=Boolean.getBoolean("t29trace");
++    private static void t29Overdraw(PassiveNetwork graph,List<FluidThermodynamics.State> candidate,double[] solved,double[] booked,double[][] draws,Emptying[] emptying,
++                                    double dt,int node,double[] endMass,FluidThermodynamics model) {
++        var b=new StringBuilder("T29_OVERDRAW dt="+dt+" node="+node);
++        var r=graph.reservoirs().get(node);double held=0;var mw=model.molecularWeights();var old=r.inventory().moles();
++        for(int c=0;c<old.length;c++)held+=old[c]*mw[c];held+=r.inventory().solids().massKg();
++        b.append(String.format(" id=%d %s%s z=%.1f held=%.9g end=%.9g cand=%.9g candP=%.3f candT=%.3f vap=%.4g liq=%.4g wat=%.4g startP=%.3f startVap=%.4g startLiq=%.4g startWat=%.4g cap=%.4g emptying=%s",
++                r.id(),r.kind(),r.junction()?" J":"",r.elevation(),held,endMass[node],candidate.get(node).mass(),candidate.get(node).pressure(),candidate.get(node).temperature(),
++                candidate.get(node).vaporVolume(),candidate.get(node).liquidVolume(),candidate.get(node).waterVolume(),r.state().pressure(),r.state().vaporVolume(),r.state().liquidVolume(),r.state().waterVolume(),
++                r.inventory().volume(),emptying==null?"none":java.util.Arrays.toString(java.util.stream.IntStream.range(0,emptying.length).filter(i->emptying[i]!=null).toArray())));
++        for(int e=0;e<booked.length;e++){var p=graph.pipes().get(e);if(p.first()!=node&&p.second()!=node)continue;
++            int other=p.first()==node?p.second():p.first();var o=graph.reservoirs().get(other);
++            b.append(String.format("%n  e%d %d->%d ports=%s/%s %s solved=%.9g booked=%.9g out=%s other=%s%s draws=%s",e,p.first(),p.second(),p.firstPort(),p.secondPort(),p.control().getClass().getSimpleName(),
++                    solved[e],booked[e],(booked[e]>0)==(p.first()==node)&&booked[e]!=0,o.kind(),o.junction()?" J":"",draws==null||draws[e]==null?"bulk":java.util.Arrays.toString(draws[e])));}
++        System.out.println(b);
++    }
+     private static Projection reconstruct0(PassiveNetwork graph,List<FluidThermodynamics.State> candidate,double[] solvedFlows,double[] heads,
+                                          double dt,FluidThermodynamics model,Runnable checkpoint,Workspace workspace,boolean frozen,double[][] draws,
+                                          PhaseSupport[][] supports,Emptying[] emptying) {
+@@ -248,9 +265,8 @@ public final class ConservativeTransport {
+         double[] molecularWeight=model.molecularWeights();
+         double[][] old=new double[nodes][],fractions=new double[nodes][conserved];
+         double[] endMass=new double[nodes],incoming=new double[nodes],outgoing=new double[nodes];
+-        // Decision D54: a vessel holding nothing (at the bag's resolution, D59 (2)) that nothing reaches in this step keeps
+-        // what it holds (it has no state to restate), as a fixed node keeps its inventory; one that receives is booked like
+-        // every vessel.
++        // Decision D54: an empty vessel nothing reaches in this step stays empty (it holds no state to restate), as a fixed
++        // node keeps its inventory; one that receives is booked like every vessel.
+         boolean[] reached=new boolean[nodes];
+         for(int edge=0;edge<flows.length;edge++)if(flows[edge]!=0){var pipe=graph.pipes().get(edge);reached[flows[edge]>0?pipe.second():pipe.first()]=true;}
+         for(var transfer:graph.scheduledTransfers())if(transfer instanceof ScheduledTransfer.Injection)reached[transfer.node()]=true;
+@@ -318,7 +334,10 @@ public final class ConservativeTransport {
+             checkpoint.run();int row=index[node];var reservoir=graph.reservoirs().get(node);
+             // An emptying vessel's pinned flows take exactly what it held and what reached it: it ends with nothing.
+             if(emptying!=null&&emptying[node]!=null)endMass[node]=0;
+-            else if(!(endMass[node]>0)||!Double.isFinite(endMass[node]))throw new SparseNewton.Nonconvergence("Candidate overdraws a reservoir");
++            else if(!(endMass[node]>0)||!Double.isFinite(endMass[node])) {
++                if(T29_TRACE)t29Overdraw(graph,candidate,solvedFlows,flows,draws,emptying,dt,node,endMass,model);
++                throw new SparseNewton.Nonconvergence("Candidate overdraws a reservoir");
++            }
+             add(columns,row,row,endMass[node]+dt*outgoing[node]);
+             for(int c=0;c<components;c++)rhs[c][row]=old[node][c]*molecularWeight[c];
+             for(int c=0;c<populationKeys.size();c++)rhs[components+c][row]=reservoir.inventory().solids().mass(populationKeys.get(c));
+diff --git a/src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveStepSolver.java b/src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveStepSolver.java
+index 53d5712c..c7a8a14b 100644
+--- a/src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveStepSolver.java
++++ b/src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveStepSolver.java
+@@ -72,6 +72,141 @@ public final class PassiveStepSolver {
+      * capacity as having met it.
+      */
+     private static final double FILTER_CAPACITY_MARGIN=1e-12;
++    static final boolean T29_OFF_DRYFLOW="dryflow".equals(System.getProperty("t29off"));
++    static final boolean T29_OFF_CHORD="chord".equals(System.getProperty("t29off")),T29_OFF_NOTHING="nothing".equals(System.getProperty("t29off"));
++    // INSTR t13 (never commit): a probe installs a sink per thread; every failed Newton of a step pass is reported to it.
++    public static volatile boolean T13_ON=false;
++    // INSTR t13 diagnostic: -Dt13iters raises the step Newton limit (never a proposition: a budget is not raised).
++    static final int T13_ITERATIONS=Integer.getInteger("t13iters",20);
++    public static final ThreadLocal<java.util.function.Consumer<String>> T13_SINK=new ThreadLocal<>();
++    private String t13Report(PassiveNetwork graph,Equations equations,SparseNewton.Nonconvergence failure,int pass,double dt,boolean rateOnly,
++                             List<FlowControl.Mode> modes,boolean[] boundaryClosed,double tolerance) {
++        var b=new StringBuilder("T13_FAIL pass="+pass+" dt="+dt+" rate="+rateOnly+" tol="+tolerance+" msg="+failure.getMessage());
++        var hist=SparseNewton.T13_HIST.get();b.append("\n  newton=").append(hist==null?"":hist.toString());
++        double[] xv=failure.lastVariables();if(xv==null){b.append("\n  (no last point)");return b.toString();}
++        try {
++            double[] r=equations.residual(xv);
++            Integer[] order=new Integer[r.length];for(int k=0;k<r.length;k++)order[k]=k;Arrays.sort(order,(a1,a2)->Double.compare(Math.abs(r[a2]),Math.abs(r[a1])));
++            b.append("\n  rows:");
++            for(int k=0;k<Math.min(8,r.length);k++)b.append(" [").append(t13RowLabel(graph,equations,order[k])).append(" r=").append(String.format("%.4g",r[order[k]])).append(']');
++            var sts=equations.states(xv);
++            for(int q=0;q<sts.size();q++) {
++                var n=graph.reservoirs().get(q);var s=sts.get(q);var seed=equations.seeds.get(q);var amounts=PhaseLayout.totalAmounts(s);
++                b.append("\n  node ").append(q).append(" id=").append(n.id()).append(' ').append(n.kind()).append(n.junction()?" J":"").append(" z=").append(n.elevation())
++                        .append(String.format(" P=%.6f T=%.4f m=%.5g vap=%.4g liq=%.4g wat=%.4g | seedP=%.6f seedT=%.4f seedVap=%.4g seedLiq=%.4g seedWat=%.4g held=%.5g",
++                                s.pressure(),s.temperature(),s.mass(),s.vaporVolume(),s.liquidVolume(),s.waterVolume(),seed.pressure(),seed.temperature(),seed.vaporVolume(),seed.liquidVolume(),seed.waterVolume(),n.inventory()==null?-1.0:PhaseLayout.sum(n.inventory().moles())))
++                        .append(" n={");
++                for(int c=0;c<amounts.length;c++)if(amounts[c]!=0)b.append(c==amounts.length-1?"w":"c"+c).append(':').append(String.format("%.4g",amounts[c])).append(' ');
++                b.append('}');
++                if(equations.layout[q]!=null)b.append(" vars").append(equations.layout[q].t13Variables());
++            }
++            for(int e=0;e<graph.pipes().size();e++) {
++                var p=graph.pipes().get(e);
++                b.append("\n  pipe ").append(e).append(' ').append(p.first()).append("->").append(p.second()).append(" ports=").append(p.firstPort()).append('/').append(p.secondPort())
++                        .append(' ').append(p.control().getClass().getSimpleName()).append(" mode=").append(modes.get(e)).append(" closed=").append(boundaryClosed[e])
++                        .append(String.format(" q=%.6g drive=%.6g loss=%.6g scale=%.6g",xv[equations.edgeOffset+e],equations.t13Driving==null?Double.NaN:equations.t13Driving[e],equations.t13Loss==null?Double.NaN:equations.t13Loss[e],equations.pressureScales[e]));
++                if(p.filter()==null)b.append(String.format(" cap0=%.6g cap1=%.6g",equations.capDrop(e,0,equations.cachedTransport[p.first()]),equations.capDrop(e,1,equations.cachedTransport[p.second()])));
++                double dz=graph.reservoirs().get(p.second()).elevation()-graph.reservoirs().get(p.first()).elevation();
++                if(dz!=0){var sa=sts.get(p.first());var sb=sts.get(p.second());double ra=endDensity(sa,p.firstPort()),rb=endDensity(sb,p.secondPort());
++                    double diff=endPressure(graph.reservoirs().get(p.first()),p.firstPort(),sa)-endPressure(graph.reservoirs().get(p.second()),p.secondPort(),sb);
++                    double d1=diff-ra*GRAVITY*dz,d2=diff-rb*GRAVITY*dz;
++                    b.append(String.format(" dz=%.0f rhoA=%.4g rhoB=%.4g colEnd=%d dA=%.4g dB=%.4g%s",dz,ra,rb,equations.columnEnds[e],d1,d2,Math.signum(d1)*Math.signum(d2)<0?" MIXED":""));}
++            }
++            var xs=SparseNewton.T13_X.get();
++            if(xs!=null&&xs.size()>1) {
++                int edges=graph.pipes().size();
++                try{double[] r0=equations.residual(xs.get(0));b.append("\n  start:");
++                    for(int e=0;e<edges;e++){int row=equations.edgeOffset+e;
++                        if(Math.abs(r0[row])>.05)b.append(String.format(" [e%d %d->%d q0=%.4g d0=%.4g l0=%.4g r0=%.3g]",e,graph.pipes().get(e).first(),graph.pipes().get(e).second(),xs.get(0)[row],equations.t13Driving[e],equations.t13Loss[e],r0[row]));}
++                    for(int k=0;k<r0.length;k++)if(Math.abs(r0[k])>.05&&!(k>=equations.edgeOffset&&k<equations.edgeOffset+edges))b.append(" [").append(t13RowLabel(graph,equations,k)).append(String.format(" r0=%.3g]",r0[k]));
++                }catch(RuntimeException outside){b.append(" (start residual: ").append(outside.getClass().getSimpleName()).append(')');}
++                b.append("\n  flips:");
++                for(int e=0;e<edges;e++){int flips=0;for(int k=1;k<xs.size();k++)if(Math.signum(xs.get(k)[equations.edgeOffset+e])*Math.signum(xs.get(k-1)[equations.edgeOffset+e])<0)flips++;if(flips>0)b.append(" e").append(e).append(':').append(flips);}
++                for(int t=0;t<Math.min(3,r.length);t++) {
++                    int row=order[t];var line=new StringBuilder("\n  traj ").append(t13RowLabel(graph,equations,row)).append(':');
++                    for(var xk:xs) {
++                        try {
++                            double[] rk=equations.residual(xk);
++                            if(row>=equations.edgeOffset&&row<equations.edgeOffset+edges){int e=row-equations.edgeOffset;line.append(String.format(" [q=%.4g d=%.4g l=%.4g r=%.3g]",xk[row],equations.t13Driving[e],equations.t13Loss[e],rk[row]));}
++                            else {int node=-1;for(int q=0;q<equations.offsets.length;q++)if(equations.layout[q]!=null&&row>=equations.offsets[q]&&row<equations.offsets[q]+equations.layout[q].size())node=q;
++                                if(node<0)line.append(String.format(" [r=%.3g]",rk[row]));
++                                else{var s=equations.states(xk).get(node);line.append(String.format(" [P=%.2f T=%.3f vap=%.3g wat=%.3g r=%.3g]",s.pressure(),s.temperature(),s.vaporVolume(),s.waterVolume(),rk[row]));}}
++                        }catch(RuntimeException outside){line.append(" [").append(outside.getClass().getSimpleName()).append(']');}
++                    }
++                    b.append(line);
++                }
++                equations.residual(xv);
++            }
++            // INSTR t29: the Jacobian differenced at the last iterate against the one differenced where the factorization
++            // in use was built; every entry that moved by more than 1 % of its row's largest.
++            var jp=SparseNewton.T29_JPOINT.get();
++            if(Boolean.getBoolean("t29jac")&&jp!=null&&jp.length==xv.length) {
++                int n=xv.length;double[] r0=equations.residual(xv).clone(),r1=equations.residual(jp).clone();
++                double[][] now=new double[n][n],built=new double[n][n];
++                for(int c=0;c<n;c++) {
++                    double h=1e-7*Math.max(1,Math.abs(xv[c]));double[] p=xv.clone();p[c]+=h;double[] rp=equations.residual(p);for(int row=0;row<n;row++)now[row][c]=(rp[row]-r0[row])/h;
++                    h=1e-7*Math.max(1,Math.abs(jp[c]));p=jp.clone();p[c]+=h;rp=equations.residual(p);for(int row=0;row<n;row++)built[row][c]=(rp[row]-r1[row])/h;
++                }
++                b.append("\n  jac now vs built:");
++                for(int row=0;row<n;row++) {
++                    double mx=0;for(int c=0;c<n;c++)mx=Math.max(mx,Math.max(Math.abs(now[row][c]),Math.abs(built[row][c])));
++                    var line=new StringBuilder();
++                    for(int c=0;c<n;c++)if(Math.abs(now[row][c]-built[row][c])>1e-2*mx)line.append(String.format(" [%s now=%.5g built=%.5g]",t29Col(graph,equations,c),now[row][c],built[row][c]));
++                    if(line.length()>0)b.append("\n    ").append(t13RowLabel(graph,equations,row)).append(String.format(" r=%.3g:",r0[row])).append(line);
++                }
++                b.append("\n    dx:");for(int c=0;c<n;c++)if(Math.abs(xv[c]-jp[c])>1e-6*Math.max(1,Math.abs(xv[c])))b.append(String.format(" [%s %.6g->%.6g]",t29Col(graph,equations,c),jp[c],xv[c]));
++                equations.residual(xv);
++            }
++        }catch(RuntimeException e){b.append("\n  (report failed: ").append(e).append(')');}
++        return b.toString();
++    }
++    // INSTR t29: a converged point the equation gate refuses: its worst reconstructed rows and every vessel on both points.
++    private void t29Gate(PassiveNetwork graph,Equations equations,double[] x,double[] reconstructed,double dt,double tolerance,int pass,
++                         List<FluidThermodynamics.State> booked,SparseNewton.Result numerical) {
++        var b=new StringBuilder(String.format("T29_GATE dt=%.6g pass=%d tol=%.1e newton=%.3e it=%d",dt,pass,tolerance,numerical.residualNorm(),numerical.iterations()));
++        try {
++            double[] rr=equations.residual(reconstructed).clone(),rx=equations.residual(x).clone();
++            Integer[] order=new Integer[rr.length];for(int k=0;k<rr.length;k++)order[k]=k;Arrays.sort(order,(a1,a2)->Double.compare(Math.abs(rr[a2]),Math.abs(rr[a1])));
++            for(int k=0;k<Math.min(6,rr.length);k++)b.append(String.format(" [%s rec=%.3e conv=%.3e]",t13RowLabel(graph,equations,order[k]),rr[order[k]],rx[order[k]]));
++            var conv=equations.states(x);
++            if(Boolean.getBoolean("t29gatefull")) {
++                var rec=equations.states(reconstructed);
++                for(int q=0;q<graph.reservoirs().size();q++) {
++                    var n=graph.reservoirs().get(q);if(equations.layout[q]==null)continue;var s1=conv.get(q);var s2=rec.get(q);var s3=booked.get(q);
++                    var n1=PhaseLayout.totalAmounts(s1);var n3=PhaseLayout.totalAmounts(s3);var c=new StringBuilder();
++                    for(int k=0;k<n1.length;k++)if(n1[k]!=0||n3[k]!=0)c.append(String.format(" c%d:%.9g/%.9g",k,n1[k],n3[k]));
++                    b.append(String.format("%n  node %d id=%d %s%s conv[P=%.9f T=%.9f vap=%.6g liq=%.6g wl=%.9g wv=%.6g pc=%.6g] rec[P=%.9f T=%.9f vap=%.6g wl=%.9g wv=%.6g pc=%.6g] booked[P=%.9f T=%.9f vap=%.6g wv=%.6g] n(conv/booked):%s vars%s",
++                            q,n.id(),n.kind(),n.junction()?" J":"",s1.pressure(),s1.temperature(),s1.vaporVolume(),s1.liquidVolume(),s1.waterLiquid(),s1.waterVapor(),s1.hydrocarbonPartialPressure(),
++                            s2.pressure(),s2.temperature(),s2.vaporVolume(),s2.waterLiquid(),s2.waterVapor(),s2.hydrocarbonPartialPressure(),s3.pressure(),s3.temperature(),s3.vaporVolume(),s3.waterVapor(),c,equations.layout[q].t13Variables()));
++                }
++                for(int e=0;e<graph.pipes().size();e++){var p=graph.pipes().get(e);b.append(String.format("%n  pipe %d %d->%d ports=%s/%s q=%.9g",e,p.first(),p.second(),p.firstPort(),p.secondPort(),x[equations.edgeOffset+e]));}
++            }
++            for(int q=0;q<graph.reservoirs().size();q++) {
++                var n=graph.reservoirs().get(q);if(n.kind()!=PassiveNetwork.NodeKind.RESERVOIR||equations.layout[q]==null)continue;
++                double cap=n.inventory().volume();var s0=equations.seeds.get(q);var s1=conv.get(q);var s2=booked.get(q);
++                b.append(String.format("%n  vessel %d id=%d seed[taut=%b V/cap=%.12f vap=%.3g P=%.3f] conv[taut=%b V/cap=%.12f vap=%.3g P=%.6f m=%.9g] booked[taut=%b V/cap=%.12f P=%.6f m=%.9g] heldAtStart=%.9g",
++                        q,n.id(),PhaseLayout.taut(s0,cap),s0.volume()/cap,s0.vaporVolume(),s0.pressure(),PhaseLayout.taut(s1,cap),s1.volume()/cap,s1.vaporVolume(),s1.pressure(),s1.mass(),
++                        PhaseLayout.taut(s2,cap),s2.volume()/cap,s2.pressure(),s2.mass(),n.state().mass()));
++            }
++            equations.residual(x);
++        }catch(RuntimeException e){b.append(" (gate report failed: ").append(e).append(')');}
++        System.out.println(b);
++    }
++    private static String t29Col(PassiveNetwork graph,Equations equations,int c) {
++        if(c>=equations.edgeOffset&&c<equations.edgeOffset+graph.pipes().size())return "q"+(c-equations.edgeOffset);
++        for(int e=0;e<equations.controlOffsets.length;e++)if(equations.controlOffsets[e]==c)return "h"+e;
++        for(int e=0;e<equations.filterOffsets.length;e++)if(equations.filterOffsets[e]==c)return "L"+e;
++        for(int q=0;q<equations.offsets.length;q++)if(equations.layout[q]!=null&&c>=equations.offsets[q]&&c<equations.offsets[q]+equations.layout[q].size())return "n"+q+"."+(c-equations.offsets[q]);
++        return "x"+c;
++    }
++    private static String t13RowLabel(PassiveNetwork graph,Equations equations,int row) {
++        if(row>=equations.edgeOffset&&row<equations.edgeOffset+graph.pipes().size())return "flow e"+(row-equations.edgeOffset);
++        for(int e=0;e<equations.controlOffsets.length;e++)if(equations.controlOffsets[e]==row)return "control e"+e;
++        for(int e=0;e<equations.filterOffsets.length;e++)if(equations.filterOffsets[e]==row)return "filter e"+e;
++        for(int q=0;q<equations.offsets.length;q++)if(equations.layout[q]!=null&&row>=equations.offsets[q]&&row<equations.offsets[q]+equations.layout[q].size())
++            return "node "+q+" "+equations.layout[q].t13RowName(row-equations.offsets[q],graph.reservoirs().get(q).junction());
++        return "row "+row;
++    }
+     /**
+      * The share of a row's gap a chord step may leave before it stops being worth taking ({@link Equations#linearisationHolds}).
+      * A chord step on a row whose reused Jacobian states the slope s where the row's own is t moves that row by t/s of its
+@@ -540,8 +675,9 @@ public final class PassiveStepSolver {
+             // Keep two orders of margin to the unchanged 1e-8 full-equation gate; every final
+             // reconstruction and the independent interval accuracy/accounting checks still run.
+             double tolerance=acceptance==Acceptance.APPROXIMATE?1e-6:smallHeadspace?1e-10:1e-9;
+-            try{numerical=SparseNewton.solve(equations,equations.initial(),new SparseNewton.Settings(20,tolerance,1e-6,24),checkpoint,workspace);}
++            try{numerical=SparseNewton.solve(equations,equations.initial(),new SparseNewton.Settings(T13_ITERATIONS,tolerance,1e-6,24),checkpoint,workspace);}
+             catch(SparseNewton.Nonconvergence failure) {
++                if(T13_SINK.get()!=null)T13_SINK.get().accept(t13Report(graph,equations,failure,pass,dt,rateOnly,modes,boundaryClosed,tolerance));
+                 if(failure.lastVariables()==null)throw failure;
+                 double[] trialFlows=Arrays.copyOfRange(failure.lastVariables(),equations.edgeOffset,equations.edgeOffset+graph.pipes().size());
+                 // Owner decision D59 (4): a pump whose target or head limit pulled its suction below the vapour pressure of the
+@@ -603,7 +739,8 @@ public final class PassiveStepSolver {
+                 // Decision D54: a dry end has nothing to give; an outflow from it within the forbidden-direction tolerance
+                 // below is no flow ({@link #outOfDryEnd}).
+                 var pipe=graph.pipes().get(i);
+-                if(flows[i]!=0&&Math.abs(flows[i])<=1e-10&&outOfDryEnd(graph,pipe,flows[i])){flows[i]=0;x[equations.edgeOffset+i]=0;}
++                if(flows[i]!=0&&Math.abs(flows[i])<=1e-10&&outOfDryEnd(graph,pipe,flows[i])&&!T29_OFF_DRYFLOW){flows[i]=0;x[equations.edgeOffset+i]=0;}
++                else if(T29_OFF_DRYFLOW&&flows[i]!=0&&equations.dry[flows[i]>0?pipe.first():pipe.second()]&&Math.abs(flows[i])<=1e-10){flows[i]=0;x[equations.edgeOffset+i]=0;}
+                 // What the first (suction) end draws at this flow: its bulk at a BULK end, the priority stream at a phase port.
+                 var up=states.get(pipe.first());var suction=equations.drawn(i,0,equations.cachedTransport[pipe.first()],flows[i]);
+                 double rho=suction.density;var mode=modes.get(i);var next=mode;
+@@ -706,6 +843,7 @@ public final class PassiveStepSolver {
+                     System.arraycopy(polished.heads(),0,heads,0,heads.length);draws=polished.draws();
+                     projection=polished.projection();reconstructed=polished.reconstructed();maximumResidual=polished.residual();}
+             }
++            if(maximumResidual>gate&&Boolean.getBoolean("t29trace"))t29Gate(graph,equations,x,reconstructed,dt,tolerance,pass,projection.states(),numerical);
+             if(maximumResidual>gate){SolverDiagnostics.count(SolverDiagnostics.equationGateRejections);throw new SparseNewton.Nonconvergence("Conservative reconstruction fails equation gate: "+maximumResidual);}
+             if(acceptance==Acceptance.APPROXIMATE)checkApproximation(equations,reconstructed,projection.states(),flows,workspace,checkpoint,tolerance);
+             // The ledger reads the island as it is: an emptying vessel is a vessel that ends empty, not the junction it stood
+@@ -784,7 +922,7 @@ public final class PassiveStepSolver {
+             flows[edge]=variables[equations.edgeOffset+edge];heads[edge]=equations.controlOffsets[edge]<0?0:variables[equations.controlOffsets[edge]]*1e5;
+             if(boundaryClosed[edge]||modes.get(edge)==FlowControl.Mode.CLOSED){flows[edge]=0;variables[equations.edgeOffset+edge]=0;}
+             var pipe=graph.pipes().get(edge);
+-            if(flows[edge]!=0&&Math.abs(flows[edge])<=1e-10&&outOfDryEnd(graph,pipe,flows[edge])){flows[edge]=0;variables[equations.edgeOffset+edge]=0;}
++            if(flows[edge]!=0&&Math.abs(flows[edge])<=1e-10&&outOfDryEnd(graph,pipe,flows[edge])&&!T29_OFF_DRYFLOW){flows[edge]=0;variables[equations.edgeOffset+edge]=0;}
+             if(!boundaryAllowed(graph,pipe,flows[edge])&&Math.abs(flows[edge])>1e-10)return null;
+             if(boundaryClosed[edge])continue;
+             var suction=equations.drawn(edge,0,equations.cachedTransport[pipe.first()],flows[edge]);
+@@ -1183,7 +1321,7 @@ public final class PassiveStepSolver {
+                     try{delivered=model.folded(model.flashTP(weighted/mass,PhaseLayout.AMBIENT_PRESSURE,n,checkpoint),false);}
+                     catch(com.wormzjl.createcheme.science.fluid.thermo.ThermoDomainViolation outside){continue;}
+                     // What arrives may itself be nothing at the bag's resolution: the vessel then stays dry.
+-                    if(PhaseLayout.bagVolume(delivered,node.inventory().volume())<=HOLDS_NOTHING*node.inventory().volume())continue;
++                    if(!T29_OFF_NOTHING&&PhaseLayout.bagVolume(delivered,node.inventory().volume())<=HOLDS_NOTHING*node.inventory().volume())continue;
+                     if(result==null)result=new ArrayList<>(seeds);
+                     result.set(j,delivered);changed=true;continue;
+                 }
+@@ -2759,14 +2897,9 @@ public final class PassiveStepSolver {
+         double capacity=inventory.volume();
+         return PhaseLayout.bagVolume(state,capacity)<=HOLDS_NOTHING*capacity;
+     }
+-    /**
+-     * A vessel a step lays out dry when nothing arrives in it (decision D54) and books nothing for when nothing reaches it:
+-     * one that holds nothing at the bag's resolution (owner decision D59 (2)). A residue below it has no phases worth
+-     * stating: random seed 708 kept a 4e-33 kg crude residue in a tank and a pass laid out another tank from a 2e-29 kg
+-     * roundoff arrival, both as two phases, and their fugacity rows, stated for that roundoff, stalled the line search at
+-     * every step size.
+-     */
++    /** A vessel a step lays out dry when nothing arrives in it: one that holds nothing (decision D54, owner decision D59 (2)). */
+     static boolean holdsNothingVessel(PassiveNetwork.Reservoir node) {
++        if(T29_OFF_NOTHING)return node.empty();
+         return node.kind()==PassiveNetwork.NodeKind.RESERVOIR&&holdsNothing(node);
+     }
+     /** The bag's resolution as a share of its capacity: the share below which a vessel holds nothing (D59 (2), A311). */
+@@ -2839,8 +2972,12 @@ public final class PassiveStepSolver {
+     /** Whether a converged pass's reconstruction books something into a vessel the pass laid out dry: more than nothing at the
+      * bag's resolution ({@link #holdsNothing}); a roundoff it receives stays booked and the vessel stays dry. */
+     private static boolean filled(Equations equations,ConservativeTransport.Projection projection) {
+-        for(int node=0;node<equations.dry.length;node++)
+-            if(equations.dry[node]&&!holdsNothing(projection.inventories().get(node),projection.states().get(node)))return true;
++        for(int node=0;node<equations.dry.length;node++) {
++            if(!equations.dry[node])continue;
++            var inventory=projection.inventories().get(node);
++            if(T29_OFF_NOTHING){if(!inventory.solids().empty())return true;for(double n:inventory.moles())if(n!=0)return true;continue;}
++            if(!holdsNothing(inventory,projection.states().get(node)))return true;
++        }
+         return false;
+     }
+     /**
+@@ -2924,6 +3061,7 @@ public final class PassiveStepSolver {
+     double[] acceptedPoint(){return lastSolve==null?null:lastSolve.variables().clone();}
+     /** The rows a block Jacobian sweep has to re-evaluate for one perturbed node or edge column. */
+     final class Equations implements SparseNewton.Equations {
++        double[] t13Driving,t13Loss;
+         final double[][] solidTargets,solidIncoming;
+         final int[] filterOffsets;
+         /** The connections as the warm-flow check may compare them: never including the cake. They are the solve's own
+@@ -3643,9 +3781,9 @@ public final class PassiveStepSolver {
+                 var transport=drawn(edge,to>=0?0:1,cachedTransport[to>=0?pipe.first():pipe.second()],to);
+                 double then=pipe.loss(from,transport.density,transport.viscosity).massFlowDerivative();
+                 double slope=pipe.loss(to,transport.density,transport.viscosity).massFlowDerivative();
+-                if(!chordHolds(then,slope))return false;
++                if(T29_OFF_CHORD?Math.max(then,slope)>2*Math.min(then,slope):!chordHolds(then,slope))return false;
+             }
+-            for(int node=0;node<layout.length;node++)if(layout[node]!=null) {
++            if(!T29_OFF_CHORD)for(int node=0;node<layout.length;node++)if(layout[node]!=null) {
+                 int at=offsets[node]+layout[node].pressureVariable();
+                 if(!chordHolds(1,Math.exp(now[at]-built[at])))return false;
+             }
+@@ -4111,6 +4249,7 @@ public final class PassiveStepSolver {
+             // below and the closed-edge row are mass flows and keep their own flow scale, and the
+             // pump's target row is a volume flow.
+             double pressureScale=pressureScales[edge];
++            if(T13_ON){if(t13Driving==null){t13Driving=new double[graph.pipes().size()];t13Loss=new double[graph.pipes().size()];}t13Driving[edge]=driving;t13Loss[edge]=loss;}
+             f[edgeOffset+edge]=(driving-loss)/pressureScale;
+             // No cap on an edge a dead-ended junction can only carry zero through; see {@link #deadEnd}.
+             if(clamps(edge)) {
+diff --git a/src/main/java/com/wormzjl/createcheme/science/fluid/solver/PhaseLayout.java b/src/main/java/com/wormzjl/createcheme/science/fluid/solver/PhaseLayout.java
+index bc4176ba..3fb15fa9 100644
+--- a/src/main/java/com/wormzjl/createcheme/science/fluid/solver/PhaseLayout.java
++++ b/src/main/java/com/wormzjl/createcheme/science/fluid/solver/PhaseLayout.java
+@@ -101,6 +101,23 @@ public final class PhaseLayout {
+     public int size(){return size;}
+     /** The local column of the pressure unknown, {@code ln(P / 1e5)}; every layout has one. */
+     public int pressureVariable(){return pressureIndex;}
++    /** INSTR t13 (never commit): the equation a local row states, c<i> a hydrocarbon component, w water. */
++    public String t13RowName(int local,boolean junction) {
++        var names=new ArrayList<String>();
++        if(junction){for(int k=0;k<junctionBasis.length-1;k++)names.add("frac:"+(junctionBasis[k]==model.hydrocarbon.componentCount()?"w":"c"+junctionBasis[k]));names.add("continuity");names.add("enthalpy");names.add("normalize");}
++        else{for(int i:components)names.add("bal:c"+i);if(waterLiquidIndex>=0||waterVaporIndex>=0)names.add("bal:w");names.add("energy");names.add("volume");}
++        if(solidIndex>=0){names.add("solid0");names.add("solid1");names.add("solid2");}
++        if(liquidActive&&vaporActive)for(int i:components)if(support[i]==PhaseSupport.BOTH)names.add("lnfug:c"+i);
++        if(waterLiquidIndex>=0&&waterVaporIndex>=0)names.add("wsat");
++        if(partialPressureIndex>=0)names.add("pclose");
++        return local<names.size()?names.get(local):"?"+local;
++    }
++    /** INSTR t13: the unknowns of this layout, in column order. */
++    public String t13Variables() {
++        var b=new StringBuilder();for(int i:components)b.append(" c").append(i).append(':').append(support[i]);
++        b.append(" wL=").append(waterLiquidIndex).append(" wV=").append(waterVaporIndex).append(" T=").append(temperatureIndex).append(" P=").append(pressureIndex).append(" pp=").append(partialPressureIndex).append(" liq=").append(liquidActive).append(" vap=").append(vaporActive);
++        return b.toString();
++    }
+     public int componentBalanceCount(){return components.length+(waterLiquidIndex>=0||waterVaporIndex>=0?1:0);}
+     /** This layout's frozen per-component support, in the conserved hydrocarbon basis. */
+     public PhaseSupport support(int component){return support[component];}
+diff --git a/src/main/java/com/wormzjl/createcheme/science/fluid/solver/SparseNewton.java b/src/main/java/com/wormzjl/createcheme/science/fluid/solver/SparseNewton.java
+index 147051b9..cbc5c5c6 100644
+--- a/src/main/java/com/wormzjl/createcheme/science/fluid/solver/SparseNewton.java
++++ b/src/main/java/com/wormzjl/createcheme/science/fluid/solver/SparseNewton.java
+@@ -138,7 +138,15 @@ public final class SparseNewton {
+     public static Result solve(Equations equations,double[] initial,Settings settings,Runnable checkpoint) {
+         return solve(equations,initial,settings,checkpoint,new Workspace());
+     }
++    /** INSTR t13 (never commit): the current solve's residual history, kept only while a probe installs a builder. */
++    public static final ThreadLocal<StringBuilder> T13_HIST=new ThreadLocal<>();
++    // INSTR t29 diagnostic (never commit): -Dt29fresh differentiates at every iteration.
++    static final boolean T29_FRESH=Boolean.getBoolean("t29fresh");
++    /** INSTR t29: the point the last Jacobian of this thread's solve was differenced at (kept while a probe traces). */
++    public static final ThreadLocal<double[]> T29_JPOINT=new ThreadLocal<>();
++    public static final ThreadLocal<java.util.List<double[]>> T13_X=new ThreadLocal<>();
+     public static Result solve(Equations equations,double[] initial,Settings settings,Runnable checkpoint,Workspace workspace) {
++        var t13=T13_HIST.get();if(t13!=null){t13.setLength(0);T13_X.get().clear();T13_X.get().add(initial.clone());}
+         Objects.requireNonNull(equations);Objects.requireNonNull(settings);Objects.requireNonNull(checkpoint);
+         Objects.requireNonNull(workspace).owned();SolverDiagnostics.count(SolverDiagnostics.newtonSolves);
+         int n=equations.size();if(n==0||initial.length!=n)throw new IllegalArgumentException("Invalid equation dimension");
+@@ -148,6 +156,7 @@ public final class SparseNewton {
+         boolean openedPreconditioned=!refresh;
+         if(openedPreconditioned)SolverDiagnostics.count(SolverDiagnostics.newtonSolvesPreconditioned);
+         checkpoint.run();double[] f=evaluate(equations,x,n);double norm=norm(f);
++        if(t13!=null)t13.append(String.format("%.3e",norm));
+         // The property-domain refusal the current iteration's line search met, if any: when that iteration is the one
+         // that fails, the failure is the domain's and says so.
+         ThermoDomainViolation domain=null;
+@@ -160,9 +169,11 @@ public final class SparseNewton {
+             if(openedPreconditioned)SolverDiagnostics.count(SolverDiagnostics.newtonIterationsPreconditioned);
+             // A chord step reuses the Jacobian only while the equations say it still describes them.
+             if(!refresh&&!equations.linearisationHolds(workspace.jacobianPoint,x))refresh=true;
++            if(T29_FRESH)refresh=true;
+             boolean fresh=refresh;
+             SolverDiagnostics.count(fresh?SolverDiagnostics.newtonIterationsFresh:SolverDiagnostics.newtonIterationsStale);
+             if(refresh) {
++                if(t13!=null)T29_JPOINT.set(x.clone());
+                 calls+=differentiate(equations,x,f,settings.differenceStep(),checkpoint,workspace);
+                 lastNonzeros=workspace.matrix.nonzeroCount();refresh=false;iterationsSinceRefresh=0;
+             }
+@@ -199,7 +210,9 @@ public final class SparseNewton {
+                         // stalled searches still force a fresh Jacobian immediately.
+                         refresh=reduction>.8||++iterationsSinceRefresh>=8;
+                         if(refresh)SolverDiagnostics.count(reduction>.8?SolverDiagnostics.newtonRefreshesStalled:SolverDiagnostics.newtonRefreshesAged);
+-                        x=candidate;f=next;norm=nextNorm;accepted=true;break;
++                        x=candidate;f=next;norm=nextNorm;accepted=true;
++                        if(t13!=null){T13_X.get().add(candidate.clone());int mr=0;for(int q=0;q<next.length;q++)if(Math.abs(next[q])>Math.abs(next[mr]))mr=q;t13.append(String.format(" %.3e%s%s@%d",norm,fresh?"":"s",alpha<1?"/a"+String.format("%.2g",alpha):"",mr));}
++                        break;
+                     }
+                 }catch(IllegalArgumentException outsideDomain){
+                     // A smaller Newton step may stay in the valid domain.
+diff --git a/src/main/java/com/wormzjl/createcheme/science/fluid/thermo/FluidThermodynamics.java b/src/main/java/com/wormzjl/createcheme/science/fluid/thermo/FluidThermodynamics.java
+index 420c6e53..c50cfddc 100644
+--- a/src/main/java/com/wormzjl/createcheme/science/fluid/thermo/FluidThermodynamics.java
++++ b/src/main/java/com/wormzjl/createcheme/science/fluid/thermo/FluidThermodynamics.java
+@@ -613,7 +613,11 @@ public final class FluidThermodynamics {
+             if(residual>0)high=pc;else low=pc;
+         }
+         var result=state(t,p,split[0],split[1],0,w,pc,terms);
+-        if(Math.abs(pc+result.waterPartialPressure-p)>1e-6*p)throw new IllegalArgumentException("Hybrid TP initialization did not converge");
++        if(Math.abs(pc+result.waterPartialPressure-p)>1e-6*p) {
++            if(Boolean.getBoolean("t29trace")){var st=new StringBuilder();for(var f:Thread.currentThread().getStackTrace())if(f.getClassName().contains("network"))st.append(' ').append(f.getMethodName()).append(':').append(f.getLineNumber());
++                System.out.println(String.format("T29_HYBRID t=%.4f p=%.3f pc=%.6g pw=%.6g ps=%.6g nh=%.6g w=%.6g vapHc=%.6g liqHc=%.6g stack=%s",t,p,pc,result.waterPartialPressure,ps,nh,w,sum(split[1]),sum(split[0]),st));}
++            throw new IllegalArgumentException("Hybrid TP initialization did not converge");
++        }
+         return result;
+     }
+ 

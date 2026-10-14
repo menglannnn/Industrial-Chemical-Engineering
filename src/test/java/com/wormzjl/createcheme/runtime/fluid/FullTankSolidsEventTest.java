@@ -95,7 +95,7 @@ class FullTankSolidsEventTest {
     private PassiveNetwork activate(double pressure,double solidFraction) {
         var devices=line();var stock=new HashMap<Long,PassiveNetwork.Reservoir>();
         stock.put(1L,generatorSpec(pressure,solidFraction).initialize(devices.get(0),model,()->{}));
-        stock.put(5L,vesselSpec().initialize(devices.get(4),model,()->{}));
+        stock.put(5L,FluidTestSupport.chargedBoundary(vesselSpec(),devices.get(4),model));
         return compile(devices,stock,Map.of(FILTER_ID,new InlineFilter(FILTER_CAPACITY,FILTER_RESISTANCE,SolidInventory.EMPTY,0)));
     }
     /**
@@ -104,8 +104,8 @@ class FullTankSolidsEventTest {
      */
     private PassiveNetwork event(PassiveNetwork live,List<PhysicalFluidTopology.Device> devices,long edited,FluidDeviceSpec spec) {
         var stock=boundaries(live);
-        for(var d:devices)if(d.id()==edited)stock.put(edited,spec.initialize(d,model,()->{}));
-        for(var d:devices)if(d.boundary()&&!stock.containsKey(d.id()))stock.put(d.id(),vesselSpec().initialize(d,model,()->{}));
+        for(var d:devices)if(d.id()==edited)stock.put(edited,FluidTestSupport.chargedBoundary(spec,d,model));
+        for(var d:devices)if(d.boundary()&&!stock.containsKey(d.id()))stock.put(d.id(),FluidTestSupport.chargedBoundary(vesselSpec(),d,model));
         return compile(devices,stock,cakes(live));
     }
 

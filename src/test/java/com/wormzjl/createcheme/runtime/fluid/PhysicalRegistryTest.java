@@ -187,7 +187,9 @@ class PhysicalRegistryTest {
         var s=sequential.ledger.snapshot();var b=batched.ledger.snapshot();
         assertArrayEquals(s.constructed().moles(),b.constructed().moles());assertEquals(s.constructed().totalEnergy(),b.constructed().totalEnergy());
         assertArrayEquals(s.destroyed().moles(),b.destroyed().moles());assertEquals(s.destroyed().totalEnergy(),b.destroyed().totalEnergy());
-        assertTrue(s.destroyed().totalEnergy()!=0,"the tank placed and broken in the tick is booked built and destroyed");
+        // Decision D54: a tank is placed empty, so the one placed and broken in the tick is booked built and destroyed holding
+        // nothing.
+        assertEquals(0,s.destroyed().totalEnergy(),"the tank placed and broken in the tick held nothing");assertEquals(0,Arrays.stream(s.destroyed().moles()).sum());
         for(var entry:sequentialIslands.entrySet()) {
             var graph=entry.getValue().graph();var twin=batchedIslands.get(entry.getKey()).graph();
             assertEquals(graph.reservoirs().size(),twin.reservoirs().size());assertEquals(graph.pipes().size(),twin.pipes().size());
@@ -268,13 +270,14 @@ class PhysicalRegistryTest {
     }
 
     /**
-     * BE_INTEGRATOR_PLAN.md WP3 (b): every junction owns a holdup m_J = tau x the largest velocity-cap mass flow of its
-     * connections at its seed state (tau = 0.05 s, PassiveStepSolver.HOLDUP_TAU), and the world ledger books it: minted
-     * as constructed when the island is compiled, and at a topology edit the replaced island's junction stock - as it
-     * stands after solving - as destroyed and the recompile's freshly minted junctions as constructed. The edit resets a
-     * junction's composition to its seed state (the accepted behaviour, review 9.3).
+     * BE_INTEGRATOR_PLAN.md WP3 (b): every junction's buffer holds m_J = tau x the largest velocity-cap mass flow of its
+     * connections at its seed state (tau = 0.05 s, PassiveStepSolver.HOLDUP_TAU). The edit resets a junction's composition
+     * to its seed state (the accepted behaviour, review 9.3). Owner decision D46: the buffer is the state of the
+     * junction's relaxation row, not inventory, so the world ledger books no junction, neither the minted ones when the
+     * island is compiled nor, at a topology edit, the replaced island's solved buffers or the recompile's fresh ones.
+     * Restated by D46: before, every minted junction was booked as constructed and every replaced one as destroyed.
      */
-    @Test void junctionHoldupsAreBookedAsConstructedAndRemintedAtATopologyEdit() {
+    @Test void junctionBuffersAreSizedAndRemintedAtATopologyEditAndNothingIsBooked() {
         var w=new World(1);int count=model.components().size();var weights=model.molecularWeights();
         int methane=catalog.requirePackage("createcheme:tjl20_methane_nitrogen").components().indexOf("Methane");
         int nitrogen=model.components().indexOf("Nitrogen");
@@ -296,12 +299,11 @@ class PhysicalRegistryTest {
             for(var pipe:graph.pipes())if(pipe.first()==index||pipe.second()==index)capacity=Math.max(capacity,rho*pipe.minimumArea()*model.velocityLimit(state));
             double minted=0;var n=junction.inventory().moles();for(int c=0;c<count;c++)minted+=n[c]*weights[c];
             System.out.println("junction "+junction.id()+": m_J "+minted+" kg, 0.05 s x cap flow "+capacity+" kg/s");
-            assertEquals(.05*capacity,minted,1e-12*minted,"junction "+junction.id()+" owns tau x its largest cap flow");
+            assertEquals(.05*capacity,minted,1e-12*minted,"junction "+junction.id()+"'s buffer holds tau x its largest cap flow");
         }
         var tanks=graph.reservoirs().stream().filter(n->n.kind()==PassiveNetwork.NodeKind.RESERVOIR).toList();
-        var all=new ArrayList<PassiveNetwork.Reservoir>(tanks);all.addAll(junctions);
         assertEquals(2,tanks.size());
-        assertBooked(empty.plus(all,weights),placed.constructed(),start.constructed(),"the placement books both tanks and every minted junction as constructed");
+        assertBooked(empty.plus(tanks,weights),placed.constructed(),start.constructed(),"the placement books both tanks as constructed, and no junction (D46)");
         assertBooked(empty,placed.destroyed(),start.destroyed(),"a placement into an empty world destroys nothing");
         // Ten intervals of flow move the junctions' composition away from the mint.
         w.run(1_000);
@@ -313,8 +315,8 @@ class PhysicalRegistryTest {
         var after=w.ledger.snapshot();assertNotEquals(owner,w.owner(tank),"the edit replaced the island");
         var fresh=w.island(tank).graph().reservoirs().stream().filter(PassiveNetwork.Reservoir::junction).toList();
         assertFalse(fresh.isEmpty(),"the recompiled island mints its junctions again");
-        assertBooked(empty.plus(old,weights),after.destroyed(),before.destroyed(),"the replaced island's solved junction stock is booked as destroyed");
-        assertBooked(empty.plus(fresh,weights),after.constructed(),before.constructed(),"the recompile's minted junctions (and no tank) are booked as constructed");
+        assertBooked(empty,after.destroyed(),before.destroyed(),"the replaced island's solved junction buffers are not booked (D46)");
+        assertBooked(empty,after.constructed(),before.constructed(),"the recompile's minted junctions are not booked (D46), and no tank was placed");
         // Composition resets at an edit: every fresh junction holds its seed state's composition, whatever the old one held.
         double moved=0;
         for(var junction:fresh) {
@@ -324,7 +326,7 @@ class PhysicalRegistryTest {
         }
         for(var junction:old){var n=junction.inventory().moles();double total=0;for(double v:n)total+=v;moved=Math.max(moved,n[methane]/total);}
         System.out.println("remint: old junction methane fractions up to "+moved+"; fresh junctions at their seed composition");
-        assertTrue(moved>1e-3,"the solved junctions had taken up methane, which the remint discards (booked, not lost)");
+        assertTrue(moved>1e-3,"the solved junctions had taken up methane, which the remint discards with the buffer (D46: not booked)");
     }
     private long queueSpec(World w,int x,int z,Kind kind,FluidDeviceSpec spec) {
         long id=w.ledger.nextIdentity();

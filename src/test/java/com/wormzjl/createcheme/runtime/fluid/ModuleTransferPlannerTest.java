@@ -46,7 +46,12 @@ class ModuleTransferPlannerTest {
         var graph=graph(1);var id=UUID.randomUUID();var planner=new ModuleTransferPlanner(model);
         var result=planner.prepare(graph,0,100,List.of(),List.of(new ModuleTransferPlanner.Withdrawal(id,1,.005)),()->{});
         var parcel=result.withdrawn().get(id);assertEquals(.005,parcel.massKg(),1e-12);
-        assertEquals(graph.reservoirs().getFirst().inventory().internalEnergy(),result.candidate().graph().reservoirs().getFirst().inventory().internalEnergy()+parcel.energyJoule(),1e-5);
+        // Decision D54: the 1 atm tank is a slack bag; the withdrawal shrinks it at the ambient pressure, and that work is the
+        // ambient boundary's energy at the tank (an energy-only transfer), which the tank's ledger closes over.
+        double ambient=0;long tank=graph.reservoirs().getFirst().id();
+        for(var transfer:result.candidate().boundaries())if(transfer.nodeId()==tank&&Arrays.stream(transfer.moles()).allMatch(n->n==0))ambient+=transfer.totalEnergyJoule();
+        assertTrue(ambient>0,"the ambient pushes the bag in");
+        assertEquals(graph.reservoirs().getFirst().inventory().internalEnergy()+ambient,result.candidate().graph().reservoirs().getFirst().inventory().internalEnergy()+parcel.energyJoule(),1e-5);
         assertThrows(java.util.concurrent.CancellationException.class,()->planner.prepare(graph,0,100,List.of(),List.of(new ModuleTransferPlanner.Withdrawal(id,1,.005)),()->{throw new java.util.concurrent.CancellationException();}));
     }
 }

@@ -82,19 +82,19 @@ class SolidRuntimeTest {
     }
     @Test void physicalPumpFilterAndNitrogenReceiverStartTogether(){
         var devices=new ArrayList<PhysicalFluidTopology.Device>();
-        var kinds=new TopologyCompiler.Kind[]{TopologyCompiler.Kind.GENERATOR,TopologyCompiler.Kind.PUMP,TopologyCompiler.Kind.PIPE,TopologyCompiler.Kind.FILTER,TopologyCompiler.Kind.PIPE,TopologyCompiler.Kind.RESERVOIR};
-        for(int i=0;i<kinds.length;i++)devices.add(new PhysicalFluidTopology.Device(i+1,new PhysicalFluidTopology.Position("minecraft:overworld",i,-60,0),kinds[i],PhysicalFluidTopology.Direction.EAST,new PipeResistance.Geometry(1,.05,.000045,0),i==1?new FlowControl.Pump(.01,500000,1):new FlowControl.Passive()));
+        var kinds=new TopologyCompiler.Kind[]{TopologyCompiler.Kind.GENERATOR,TopologyCompiler.Kind.PIPE,TopologyCompiler.Kind.PUMP,TopologyCompiler.Kind.PIPE,TopologyCompiler.Kind.FILTER,TopologyCompiler.Kind.PIPE,TopologyCompiler.Kind.RESERVOIR};
+        for(int i=0;i<kinds.length;i++)devices.add(new PhysicalFluidTopology.Device(i+1,new PhysicalFluidTopology.Position("minecraft:overworld",i,-60,0),kinds[i],PhysicalFluidTopology.Direction.EAST,new PipeResistance.Geometry(1,.05,.000045,0),i==2?new FlowControl.Pump(.01,500000,1):new FlowControl.Passive()));
         var spec=new FluidDeviceSpec(1,298.15,101325,FluidDeviceSpec.water(catalog).composition(),SlurryFeed.demo());
         var source=spec.initialize(devices.getFirst(),model,()->{});
-        var sink=FluidDeviceSpec.nitrogen(catalog).initialize(devices.getLast(),model,()->{});
-        var compiled=PhysicalFluidTopology.compile(devices,Map.of(1L,source,6L,sink),Map.of(),model.initialNitrogenCharge(1,298.15,101325,()->{}));
+        var sink=FluidTestSupport.chargedBoundary(FluidDeviceSpec.nitrogen(catalog),devices.getLast(),model);
+        var compiled=PhysicalFluidTopology.compile(devices,Map.of(1L,source,7L,sink),Map.of(),model.initialNitrogenCharge(1,298.15,101325,()->{}));
         var graph=compiled.islands().getFirst().graph();
         var solver=new PassiveIntervalSolver(model);
         PassiveIntervalSolver.Result result=null;
         for(int interval=0;interval<20;interval++){result=solver.solve(graph,5,PassiveIntervalSolver.Settings.defaults(),()->{});graph=result.graph();}
         assertTrue(result.graph().pipes().stream().filter(p->p.filter()!=null).findFirst().orElseThrow().filter().clogged());
         assertEquals(0,result.averageMassFlows()[0],1e-9);
-        assertTrue(result.graph().reservoirs().stream().filter(n->n.id()==6).findFirst().orElseThrow().inventory().solids().empty());
+        assertTrue(result.graph().reservoirs().stream().filter(n->n.id()==7).findFirst().orElseThrow().inventory().solids().empty());
     }
     @Test void aClosedConnectionTellsTheDeviceStatusWhichReasonStoppedIt(){
         var graph=new PassiveNetwork(List.of(

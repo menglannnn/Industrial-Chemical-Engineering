@@ -200,7 +200,8 @@ public final class FluidPresentationGameTests {
         boolean[] removed={false};var lineIds=line.stream().mapToLong(p->identity(helper,p)).toArray();
         helper.succeedWhen(()->{
             if(removed[0]){assertCleaned(helper,world,tankId);assertCleaned(helper,world,lineIds);return;}
-            var resting=world.deliveries(rest).stream().filter(d->d.status().startsWith("STEADY: no flow since")).findFirst();
+            // The lone tank is placed, so it holds nothing (decision D54): its line reads "EMPTY: holds nothing / STEADY: ...".
+            var resting=world.deliveries(rest).stream().filter(d->d.status().startsWith("EMPTY: holds nothing / STEADY: no flow since")).findFirst();
             var replaying=world.deliveries(steady).stream().filter(d->d.status().startsWith("STEADY: replaying")&&d.status().contains("kg/s since")&&d.status().contains(", next check at")).findFirst();
             helper.assertTrue(resting.isPresent(),"Waiting for no flow on the lone tank's menu: "+world.deliveries(rest).stream().map(FluidPresentation.Delivery::status).reduce((x,y)->y).orElse("none"));
             helper.assertTrue(replaying.isPresent(),"Waiting for STEADY on the line's menu: "+world.deliveries(steady).stream().map(FluidPresentation.Delivery::status).reduce((x,y)->y).orElse("none"));

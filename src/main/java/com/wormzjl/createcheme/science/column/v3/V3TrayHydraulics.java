@@ -1,5 +1,7 @@
 package com.wormzjl.createcheme.science.column.v3;
 
+import com.wormzjl.createcheme.science.math.DeterministicMath;
+
 import com.wormzjl.createcheme.science.column.v3.thermo.V3PengRobinsonThermo;
 import java.util.Locale;
 import java.util.Objects;
@@ -204,8 +206,8 @@ public final class V3TrayHydraulics {
         double standardReduced = Math.min(0.98,
                 STANDARD_DENSITY_TEMPERATURE_KELVIN / tray.liquidCriticalTemperatureKelvin());
         double reduced = Math.min(0.98, tray.temperatureKelvin() / tray.liquidCriticalTemperatureKelvin());
-        return standardDensity * Math.pow(rackettCompressibility,
-                Math.pow(1.0 - standardReduced, 2.0 / 7.0) - Math.pow(1.0 - reduced, 2.0 / 7.0));
+        return standardDensity * DeterministicMath.pow(rackettCompressibility,
+                DeterministicMath.pow(1.0 - standardReduced, 2.0 / 7.0) - DeterministicMath.pow(1.0 - reduced, 2.0 / 7.0));
     }
 
     /**
@@ -231,13 +233,13 @@ public final class V3TrayHydraulics {
         double densityDifference = Math.max(1.0, liquidDensity - vaporDensity);
         double bubblingVelocity = vaporVolumeFlow / bubblingArea();
         double capacityFactor = bubblingVelocity * Math.sqrt(vaporDensity / densityDifference);
-        double aeration = Math.exp(-12.55 * Math.pow(capacityFactor, 0.91));
-        double crestCoefficient = 0.501 + 0.438 * Math.exp(-137.8 * WEIR_HEIGHT_METRES);
+        double aeration = DeterministicMath.exp(-12.55 * DeterministicMath.pow(capacityFactor, 0.91));
+        double crestCoefficient = 0.501 + 0.438 * DeterministicMath.exp(-137.8 * WEIR_HEIGHT_METRES);
         double clearLiquidHeight = aeration * (WEIR_HEIGHT_METRES + crestCoefficient
-                * Math.pow(Math.max(0.0, liquidVolumeFlow) / (weirLengthMetres() * aeration), 2.0 / 3.0));
+                * DeterministicMath.pow(Math.max(0.0, liquidVolumeFlow) / (weirLengthMetres() * aeration), 2.0 / 3.0));
         double holeVelocity = bubblingVelocity / HOLE_AREA_FRACTION;
         double dry = vaporDensity * holeVelocity * holeVelocity / (2.0 * ORIFICE_COEFFICIENT * ORIFICE_COEFFICIENT);
-        double bubbleDiameter = 1.27 * Math.cbrt(HOLE_DIAMETER_METRES * SURFACE_TENSION_NEWTON_PER_METRE
+        double bubbleDiameter = 1.27 * DeterministicMath.cbrt(HOLE_DIAMETER_METRES * SURFACE_TENSION_NEWTON_PER_METRE
                 / (STANDARD_GRAVITY * densityDifference));
         double residual = 6.0 * SURFACE_TENSION_NEWTON_PER_METRE / bubbleDiameter;
         double flowParameter = tray.vaporMassFlowKgPerSecond() > 0.0
@@ -245,9 +247,9 @@ public final class V3TrayHydraulics {
                         + tray.freeWaterMolarFlowMolPerSecond() * WATER_MOLECULAR_WEIGHT_KG_PER_MOL)
                         / tray.vaporMassFlowKgPerSecond() * Math.sqrt(vaporDensity / liquidDensity)
                 : 1.0;
-        double capacityParameter = (0.0105 + 8.127e-4 * Math.pow(TRAY_SPACING_METRES * 1000.0, 0.755)
-                * Math.exp(-1.463 * Math.pow(flowParameter, 0.842)))
-                * Math.pow(SURFACE_TENSION_NEWTON_PER_METRE / 0.02, 0.2);
+        double capacityParameter = (0.0105 + 8.127e-4 * DeterministicMath.pow(TRAY_SPACING_METRES * 1000.0, 0.755)
+                * DeterministicMath.exp(-1.463 * DeterministicMath.pow(flowParameter, 0.842)))
+                * DeterministicMath.pow(SURFACE_TENSION_NEWTON_PER_METRE / 0.02, 0.2);
         double flood = (vaporVolumeFlow / netArea())
                 / (capacityParameter * Math.sqrt(Math.max(1.0e-9, densityDifference / vaporDensity)));
         return new Terms(dry, liquidDensity * STANDARD_GRAVITY * clearLiquidHeight, residual, flood);

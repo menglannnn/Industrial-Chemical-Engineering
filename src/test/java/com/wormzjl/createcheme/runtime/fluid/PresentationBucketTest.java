@@ -44,7 +44,7 @@ class PresentationBucketTest {
     private PassiveNetwork line(Map<Long,FluidDeviceSpec> specs,Kind... kinds) {
         var devices=new ArrayList<PhysicalFluidTopology.Device>();for(int i=0;i<kinds.length;i++)devices.add(device(i+1,i,kinds[i]));
         var stock=new LinkedHashMap<Long,PassiveNetwork.Reservoir>();
-        for(var d:devices){var spec=specs.get(d.id());if(spec!=null)stock.put(d.id(),spec.initialize(d,model,()->{}));}
+        for(var d:devices){var spec=specs.get(d.id());if(spec!=null)stock.put(d.id(),FluidTestSupport.chargedBoundary(spec,d,model));}
         var connected=PhysicalFluidTopology.compile(devices,stock).islands().stream().filter(i->i.physicalIds().size()==devices.size()).toList();
         assertEquals(1,connected.size());return connected.getFirst().graph();
     }

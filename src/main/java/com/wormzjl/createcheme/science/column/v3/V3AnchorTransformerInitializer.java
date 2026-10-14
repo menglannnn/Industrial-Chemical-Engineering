@@ -1,5 +1,7 @@
 package com.wormzjl.createcheme.science.column.v3;
 
+import com.wormzjl.createcheme.science.math.DeterministicMath;
+
 import com.google.gson.Gson;
 import java.io.IOException;
 import java.io.InputStream;
@@ -275,7 +277,7 @@ final class V3AnchorTransformerInitializer implements V3NeuralInitializer {
                     for (int k = 0; k < 16; k++) scores[j] += qkv[i][head * 16 + k] * qkv[j][64 + head * 16 + k];
                     scores[j] *= .25; max = Math.max(max, scores[j]);
                 }
-                for (int j = 0; j < n; j++) { scores[j] = Math.exp(scores[j] - max); sum += scores[j]; }
+                for (int j = 0; j < n; j++) { scores[j] = DeterministicMath.exp(scores[j] - max); sum += scores[j]; }
                 for (int j = 0; j < n; j++) for (int k = 0; k < 16; k++) joined[head * 16 + k] += scores[j] / sum * qkv[j][128 + head * 16 + k];
             }
             output[i] = linear(joined, p + "out_proj", control);
@@ -312,7 +314,7 @@ final class V3AnchorTransformerInitializer implements V3NeuralInitializer {
         // Its effect on complete model outputs is bounded by the parity gate.
         for (int i = 0; i < x.length; i++) {
             double v = x[i] / Math.sqrt(2), a = Math.abs(v), t = 1 / (1 + .3275911 * a);
-            double erf = 1 - (((((1.061405429 * t - 1.453152027) * t) + 1.421413741) * t - .284496736) * t + .254829592) * t * Math.exp(-a * a);
+            double erf = 1 - (((((1.061405429 * t - 1.453152027) * t) + 1.421413741) * t - .284496736) * t + .254829592) * t * DeterministicMath.exp(-a * a);
             x[i] *= .5 * (1 + Math.copySign(erf, v));
         }
         return x;
