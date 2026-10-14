@@ -127,8 +127,14 @@ public final class FluidSavedData extends SavedData {
         var storage=server.overworld().getDataStorage();
         var factory=new SavedData.Factory<>(()->new FluidSavedData(new FluidCheckpointCodec.Checkpoint(List.of(),new BufferedTransfers.Snapshot(0,Map.of(),Map.of())),models,store),(tag,registries)->load(tag,models,store));
         var existing=storage.get(factory,DATA_NAME);
-        if(existing!=null){existing.store.cleanOrphans();return existing;}
         var path=dataFolder.resolve(FluidCheckpointStore.CORE_NAME);
+        if(existing!=null) {
+            // A world save always carries its topology unit; islands without one are a fixture image (the regression
+            // harness and module tests load those through load), never a world. No compatibility path: refused.
+            if(existing.world.isEmpty()&&!existing.checkpoint.islands().isEmpty())
+                throw new IllegalStateException("Fluid checkpoint holds islands but no world topology unit: it is a fixture image, not a world save. Create a fresh world for this development build. Refusing to open: "+path);
+            existing.store.cleanOrphans();return existing;
+        }
         try {
             Files.readAttributes(path,BasicFileAttributes.class);
             // The storage logs the failure and returns nothing; read the checkpoint again so the refusal names its

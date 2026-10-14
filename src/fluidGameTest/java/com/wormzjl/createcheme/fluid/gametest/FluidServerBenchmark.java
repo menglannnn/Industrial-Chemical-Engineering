@@ -68,7 +68,7 @@ public final class FluidServerBenchmark {
         final String profile=System.getProperty("createcheme.fluid.benchmark.profile","one");
         final boolean stress=TIMED_PROFILES.contains(profile);
         final int warmupTicks=stress?20*Math.max(10,Integer.getInteger("createcheme.fluid.stress.warmupSeconds",60)):pilot?20*Math.max(5,Integer.getInteger("createcheme.fluid.benchmark.pilotWarmupSeconds",5)):2400,targetIntervals=pilot?5:200;
-        final long stressMeasurementNanos=1_000_000_000L*Math.max(20,Integer.getInteger("createcheme.fluid.stress.measurementSeconds",120));
+        final long stressMeasurementNanos=1_000_000_000L*Math.max(20,Integer.getInteger("createcheme.fluid.stress.measurementSeconds",60));
         final long startTick,startNanos=System.nanoTime();
         final long startEpochMillis=System.currentTimeMillis();
         final boolean memoryEnabled=Boolean.getBoolean("createcheme.fluid.benchmark.memory");

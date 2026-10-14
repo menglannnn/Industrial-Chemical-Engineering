@@ -117,7 +117,7 @@ neoForge {
             systemProperty 'createcheme.fluid.benchmark.pilot', providers.gradleProperty('fluidBenchmarkPilot').getOrElse('false')
             systemProperty 'createcheme.fluid.benchmark.pilotWarmupSeconds', providers.gradleProperty('fluidBenchmarkPilotWarmupSeconds').getOrElse('5')
             systemProperty 'createcheme.fluid.stress.warmupSeconds', providers.gradleProperty('fluidStressWarmupSeconds').getOrElse('60')
-            systemProperty 'createcheme.fluid.stress.measurementSeconds', providers.gradleProperty('fluidStressMeasurementSeconds').getOrElse('120')
+            systemProperty 'createcheme.fluid.stress.measurementSeconds', providers.gradleProperty('fluidStressMeasurementSeconds').getOrElse('60')
             systemProperty 'createcheme.fluid.stress.profile', providers.gradleProperty('fluidStressProfile').getOrElse('false')
             systemProperty 'createcheme.fluid.benchmark.memory', providers.gradleProperty('fluidBenchmarkMemory').getOrElse('false')
             systemProperty 'createcheme.fluid.benchmark.diagnostics', providers.gradleProperty('fluidBenchmarkDiagnostics').getOrElse('false')

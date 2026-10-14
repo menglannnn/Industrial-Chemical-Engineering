@@ -2,9 +2,6 @@ package com.wormzjl.createcheme.science.material;
 
 /** Liquid render tint, independent of thermodynamic and optical properties. */
 public record FluidAppearance(int rgb, double transparency, boolean estimated) {
-    /** Legacy records use a neutral opaque tint; this is not a measured appearance. */
-    public static final FluidAppearance DEFAULT = new FluidAppearance(0xFFFFFF, 0, true);
-
     public FluidAppearance {
         if (rgb < 0 || rgb > 0xFFFFFF) throw new IllegalArgumentException("appearance.color must be 24-bit RGB");
         if (!Double.isFinite(transparency) || transparency < 0 || transparency > 1)

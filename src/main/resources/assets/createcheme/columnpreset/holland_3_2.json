@@ -1,5 +1,5 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "kind": "column",
   "name": "Holland Example 3-2",
   "translation_key": "gui.createcheme.column_preset.holland_3_2",
@@ -11,6 +11,7 @@
   "reboiler_duty_mw": 0.45481699380027163,
   "reflux_ratio": 10000.0,
   "top_pressure_bar": 20.684271879504,
+  "stage_pressure_drop_kpa": 0.0,
   "diameter_m": 0.0,
   "draws": [
     {

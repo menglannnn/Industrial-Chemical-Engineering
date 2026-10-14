@@ -17,6 +17,6 @@ public record FluidBasis(String packageId,List<String> components,String scienti
         return new FluidBasis(id,ids,catalog.fluidThermoFingerprint(id)+":"+catalog.viscosityFingerprint(id));
     }
     public void requireCurrent(MaterialCatalog catalog) {
-        if(!equals(capture(catalog)))throw new IllegalArgumentException("Incompatible saved fluid topology basis; use a fresh development world or explicitly reset its fluid data");
+        if(!equals(capture(catalog)))throw new IllegalArgumentException("Incompatible saved fluid topology basis; use a fresh development world");
     }
 }

@@ -35,20 +35,21 @@ class V3ClientPresetsTest {
         d.composition().clear();d.composition().add(0);d.composition().set(0,"27");
         String json=V3ClientPresets.mixtureJson("custom",d.composition());
         Path file=l.save(V3ClientPresets.Kind.MIXTURE,"custom",json);
-        assertEquals(game.resolve("CreatChemE/mixturepreset/custom.json"),file);
+        assertEquals(game.resolve("CreateChemE/mixturepreset/custom.json"),file);
         assertEquals(7,first.entries().size());assertEquals(8,l.refresh(V3ClientPresets.Kind.MIXTURE).entries().size());
         assertNotEquals(file,l.save(V3ClientPresets.Kind.MIXTURE,"custom",json));assertEquals(json,Files.readString(file));
         assertThrows(IllegalArgumentException.class,()->l.save(V3ClientPresets.Kind.MIXTURE,"../escape",json));
     }
     @Test void jsonRoundTripRetainsIndependentMixtureAndColumnConfiguration(){
-        var d=draft();for(int i=0;i<3;i++)d.removeDraw(i);for(int i=0;i<4;i++)d.removePumparound(i);d.set("s2","2");d.set("s3","2");
-        var pot=d.assemble();assertEquals(0,pot.stageCount());assertEquals(1,pot.feedStageNumber());
+        var d=draft();for(int i=0;i<3;i++)d.removeDraw(i);for(int i=0;i<4;i++)d.removePumparound(i);d.set("s2","2");d.set("s3","2");d.set("s8","0.7");
+        var pot=d.assemble();assertEquals(0,pot.stageCount());assertEquals(1,pot.feedStageNumber());assertEquals(700,pot.stagePressureDropPascal(),1e-9);
         assertTrue(pot.sideDraws().isEmpty());assertTrue(pot.pumparounds().isEmpty());assertEquals(1,pot.steamFeeds().getFirst().stageNumber());
         String column=V3ClientPresets.columnJson("pot",pot);
         assertFalse(column.contains("package"));assertFalse(column.contains("components"));
         var c=(V3ClientPresets.Column)V3ClientPresets.decode(column,V3ClientPresets.Kind.COLUMN);
         var restored=draft();restored.loadColumn(c.fields());
         var reloaded=restored.assemble();assertEquals(pot.stageCount(),reloaded.stageCount());assertEquals(pot.steamFeeds(),reloaded.steamFeeds());
+        assertEquals(pot.stagePressureDropPascal(),reloaded.stagePressureDropPascal(),1e-9);
         assertArrayEquals(pot.feedComponentMolarFlowsMolPerSecond(),reloaded.feedComponentMolarFlowsMolPerSecond(),1e-12);
         d.composition().toggleBasis();
         String mixture=V3ClientPresets.mixtureJson("feed",d.composition());
@@ -71,6 +72,9 @@ class V3ClientPresetsTest {
         var result=l.refresh(V3ClientPresets.Kind.COLUMN);assertEquals(8,result.entries().size());assertEquals(2,result.problems().size());
         var o=JsonParser.parseString(V3ClientPresets.columnJson("case",reference())).getAsJsonObject();o.addProperty("tray_count",1);
         assertThrows(IllegalArgumentException.class,()->V3ClientPresets.decode(o.toString(),V3ClientPresets.Kind.COLUMN));
+        // Column schema 2 carries the stage drop; a schema 1 file (no drop) is refused, not defaulted.
+        var old=JsonParser.parseString(V3ClientPresets.columnJson("case",reference())).getAsJsonObject();old.addProperty("schema_version",1);old.remove("stage_pressure_drop_kpa");
+        assertThrows(IllegalArgumentException.class,()->V3ClientPresets.decode(old.toString(),V3ClientPresets.Kind.COLUMN));
     }
 
     @Test void separateHollandFilesCanReconstructTheFixedBenchmark(){

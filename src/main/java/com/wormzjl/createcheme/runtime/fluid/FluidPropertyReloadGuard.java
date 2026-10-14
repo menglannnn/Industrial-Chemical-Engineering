@@ -7,9 +7,9 @@ import java.util.Objects;
 import java.util.Optional;
 
 /** Owner-thread check against the qualified startup property snapshot. A new scientific
- * model needs explicit qualification/migration; replacing names alone does not pause science. */
+ * model holds the world until the qualified data is restored or a fresh world is created; replacing names alone does not pause science. */
 public final class FluidPropertyReloadGuard {
-    public static final String HOLD="HELD: property data changed; restore the qualified data or use a fresh development world after an explicit data reset";
+    public static final String HOLD="HELD: property data changed; restore the qualified data or create a fresh world";
     private final String packageId,qualifiedRevision;
     private final double compressibility,maximumVelocity,traceCutoff;
     private final com.wormzjl.createcheme.science.fluid.transport.SolidTransportSettings solids;

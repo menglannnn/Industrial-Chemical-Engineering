@@ -31,7 +31,6 @@ public final class FluidWorldAuthority implements AutoCloseable {
     private final BufferedTransfers transfers;
     private final MinecraftFluidRuntime runtime;
     private final CausalModuleCoordinator moduleHost;
-    private final boolean legacyUnbound;
     /** Island ownership, compiler diagnostics and chunk membership of the registered devices, and the event path. */
     private final PhysicalRegistry registry;
     /** The ownership version the module host was last rebound to; every topology commit changes the registry's. */
@@ -62,12 +61,11 @@ public final class FluidWorldAuthority implements AutoCloseable {
         model=model(new FluidCheckpointCodec.PackageKey(com.wormzjl.createcheme.science.fluid.thermo.FluidMaterialCatalog.networkPackage(catalog),compressibility));
         propertyReload=new FluidPropertyReloadGuard(catalog,com.wormzjl.createcheme.science.fluid.thermo.FluidMaterialCatalog.networkPackage(catalog),compressibility,model);
         presetCache=FluidPresetCatalog.resolve(catalog);componentNames=model.components();
-        legacyUnbound=data.world().isEmpty()&&!data.checkpoint().islands().isEmpty();
         var savedTopology=data.world().orElseGet(()->WorldTopologyLedger.Snapshot.empty(catalog));savedTopology.basis().requireCurrent(catalog);
         SolidCompatibility.validate(catalog.solids(),data.checkpoint(),savedTopology);observedSolidData=catalog;
         topology=new WorldTopologyLedger(savedTopology);transfers=new BufferedTransfers(data.checkpoint().transfers());
         presentation=new FluidPresentation<>(new PresentationHost(),topology.onlineTick());
-        moduleHost=data.checkpoint().modules().isEmpty()||legacyUnbound?null:new CausalModuleCoordinator(model,data.checkpoint().moduleBindings(),data.checkpoint().transfers(),data.checkpoint().modules());
+        moduleHost=data.checkpoint().modules().isEmpty()?null:new CausalModuleCoordinator(model,data.checkpoint().moduleBindings(),data.checkpoint().transfers(),data.checkpoint().modules());
         var settings=new IslandCoordinator.Settings(options.wallBudgetNanos(),options.wallBudgetNanos()*3/4,64,options.adaptiveCadence(),options.initialCadenceTicks(),options.certificates());
         // Island clocks read the world's online tick: one epoch increment per tick advances every island.
         runtime=moduleHost==null?new MinecraftFluidRuntime(server,this::published,settings,(attempt,command)->command,IslandCoordinator.CommitHook.NO_MATERIAL,topology::onlineTick)
@@ -75,9 +73,6 @@ public final class FluidWorldAuthority implements AutoCloseable {
         runtime.coordinator().onReleased(this::released);runtime.coordinator().onReplayed(this::replayed);
         runtime.coordinator().onDomainHold(this::domainHeld);runtime.coordinator().nodeNames(this::deviceLabel);
         registry=new PhysicalRegistry(topology,model,new InlineFilter(options.solids().filterCapacity(),options.solids().filterResistance(),com.wormzjl.createcheme.science.fluid.state.SolidInventory.EMPTY,0),new RegistryHost());
-        if(legacyUnbound) {
-            CreateChemE.LOGGER.error("fluid_world status=LEGACY_UNBOUND detail=Core inventories preserved; physical bindings are unavailable in this older checkpoint");return;
-        }
         for(var entry:data.checkpoint().islands())runtime.register(dimension(entry.dimension()),entry.snapshot(),model(new FluidCheckpointCodec.PackageKey(entry.packageId(),entry.compressibility())));
         logLoad();
         registry.load();data.bindCapture(this::capture);
@@ -105,9 +100,9 @@ public final class FluidWorldAuthority implements AutoCloseable {
     /** Also called before between-tick completion routing, so an old worker cannot win a reload race. */
     public static void refreshProperties(MinecraftServer server){find(server).ifPresent(FluidWorldAuthority::refreshProperties);}
     private void refreshProperties() {
-        owned();if(closed||legacyUnbound)return;
+        owned();if(closed)return;
         var current=MaterialRuntime.active();String next=propertyReload.inspect(current).orElse(null);
-        if(current!=observedSolidData){observedSolidData=current;try{var saved=capture();SolidCompatibility.validate(current.solids(),saved.checkpoint(),saved.world());solidPropertyHold=null;}catch(IllegalArgumentException incompatible){solidPropertyHold="HELD: solid property data changed; restore qualified definitions or explicitly migrate saved solids";}}
+        if(current!=observedSolidData){observedSolidData=current;try{var saved=capture();SolidCompatibility.validate(current.solids(),saved.checkpoint(),saved.world());solidPropertyHold=null;}catch(IllegalArgumentException incompatible){solidPropertyHold="HELD: solid property data changed; restore the definitions this world was saved with or create a fresh world";}}
         if(next==null)next=solidPropertyHold;
         if(Objects.equals(next,propertyHold))return;
         propertyHold=next;
@@ -166,25 +161,25 @@ public final class FluidWorldAuthority implements AutoCloseable {
         return submit(List.of(new WorldTopologyLedger.Edit(id,new WorldTopologyLedger.Registration(device,spec,Math.addExact(expectedRevision,1)))),topology.nextIdentity());
     }
     public void remove(long id){owned();var old=registrations().get(id);if(old!=null)submit(List.of(new WorldTopologyLedger.Edit(id,null)),topology.nextIdentity(),old.device().kind()==TopologyCompiler.Kind.FILTER?new WorldTopologyLedger.Recovery(id,null):null);}
-    /** Queues a filter's solid recovery as a ledger event and returns it. */
+    /**
+     * Queues a filter's solid recovery as a ledger event and returns it, as an edit is queued: nothing is applied or
+     * delivered here. The engine applies it with the next batch of events, takes the cake the island holds then and
+     * delivers the item; an empty filter or a full inventory at that point refuses it in the menu's next reply.
+     */
     public WorldTopologyLedger.Event recoverFilter(long id,long expectedRevision,net.minecraft.server.level.ServerPlayer player){
-        owned();flush();var old=registrations().get(id);if(old==null||old.revision()!=expectedRevision||old.device().kind()!=TopologyCompiler.Kind.FILTER)throw new IllegalStateException("Stale filter controls");
+        owned();var old=registrations().get(id);if(old==null||old.revision()!=expectedRevision||old.device().kind()!=TopologyCompiler.Kind.FILTER)throw new IllegalStateException("Stale filter controls");
         if(player.getInventory().getFreeSlot()<0)throw new IllegalStateException("Inventory full; filter unchanged");
-        var cake=registry.cake(id);if(cake==null||cake.captured().empty())throw new IllegalStateException("Filter has no captured solids");
-        // A recovery applies at once, as it always has, so the player's item is delivered with the action.
-        var event=submit(List.of(new WorldTopologyLedger.Edit(id,new WorldTopologyLedger.Registration(old.device(),old.spec(),Math.addExact(old.revision(),1)))),topology.nextIdentity(),new WorldTopologyLedger.Recovery(id,player.getUUID()));
-        applyPending();deliverRecoveries();
-        return event;
+        return submit(List.of(new WorldTopologyLedger.Edit(id,new WorldTopologyLedger.Registration(old.device(),old.spec(),Math.addExact(old.revision(),1)))),topology.nextIdentity(),new WorldTopologyLedger.Recovery(id,player.getUUID()));
     }
     private WorldTopologyLedger.Event submit(List<WorldTopologyLedger.Edit> edits,long nextId){return submit(edits,nextId,null);}
     private WorldTopologyLedger.Event submit(List<WorldTopologyLedger.Edit> edits,long nextId,WorldTopologyLedger.Recovery recovery) {
-        if(closed||legacyUnbound)throw new IllegalStateException("Fluid world is closed or has unbound legacy inventories");
+        if(closed)throw new IllegalStateException("Fluid world is closed");
         var event=registry.submit(edits,nextId,recovery);data.setDirty();
         if(registry.unapplied()>=APPLY_BATCH)applyPending();
         return event;
     }
     /** Applies the events queued since the last application before a read that must see them. */
-    private void flush(){if(!closed&&!legacyUnbound&&registry.unapplied()>0)applyPending();}
+    private void flush(){if(!closed&&registry.unapplied()>0)applyPending();}
     /**
      * The per-tick hook does only what is due. The epoch increment advances every island clock at once; the
      * coordinator's tick resets the dispatch budget and pops due deadlines (island slices and retries, round
@@ -196,7 +191,7 @@ public final class FluidWorldAuthority implements AutoCloseable {
      * events, so its replies and views include them.
      */
     private void tick() {
-        owned();if(closed||legacyUnbound)return;refreshProperties();topology.tick();
+        owned();if(closed)return;refreshProperties();topology.tick();
         runtime.tick();
         if(topology.hasPendingEvents()){applyPending();runtime.coordinator().pumpIfUseful();}
         presentation.tick(topology.onlineTick());
@@ -265,12 +260,13 @@ public final class FluidWorldAuthority implements AutoCloseable {
         }
         return new FluidSavedData.Capture(new FluidCheckpointCodec.Checkpoint(islands,moduleHost==null?transfers.snapshot():moduleHost.transfers(),moduleHost==null?data.checkpoint().modules():moduleHost.snapshots(),moduleHost==null?data.checkpoint().moduleBindings():moduleHost.bindings()),world);
     }
-    /** A device's view, as a presentation read: a certified island is materialised to now but never woken by it. */
-    public FluidView view(long id){owned();flush();return view(id,new HashMap<>());}
+    /** A device's view, as a presentation read: queued events are not applied (they apply on the engine's tick), and a
+     * certified island is materialised to now but never woken by it. */
+    public FluidView view(long id){owned();return view(id,new HashMap<>());}
     /** {@code islands} caches island reads, so one bucket reads each island once however many of its devices it presents. */
     private FluidView view(long id,Map<Long,IslandCoordinator.Snapshot> islands) {
         FluidRuntimeDiagnostics.count(FluidRuntimeDiagnostics.viewBuilds);var registration=registrations().get(id);if(registration==null)return new FluidView(id,0,0,topology.onlineTick(),"REMOVED",null,0,List.of());
-        Long owner=registry.owner(id);if(owner==null)return new FluidView(id,registration.revision(),0,topology.onlineTick(),legacyUnbound?"LEGACY UNBOUND":!topology.active().containsKey(id)?"WAITING: topology event":Objects.requireNonNullElse(registry.diagnostic(id),"NO FLOW: no hydraulic boundary"),null,0,List.of(),null,false,0,"",List.of());
+        Long owner=registry.owner(id);if(owner==null)return new FluidView(id,registration.revision(),0,topology.onlineTick(),!topology.active().containsKey(id)?"WAITING: topology event":Objects.requireNonNullElse(registry.diagnostic(id),"NO FLOW: no hydraulic boundary"),null,0,List.of(),null,false,0,"",List.of());
         var snapshot=islands.computeIfAbsent(owner,runtime.coordinator()::presentation);FluidView.State state=null;int nodeIndex=-1;boolean empty=false;
         for(int i=0;i<snapshot.graph().reservoirs().size();i++)if(snapshot.graph().reservoirs().get(i).id()==id){nodeIndex=i;var node=snapshot.graph().reservoirs().get(i);empty=node.empty();if(!empty)state=FluidView.State.from(node.state(),node.kind()==PassiveNetwork.NodeKind.RESERVOIR?node.inventory().volume():node.state().volume());break;}
         InlineFilter filter=null;if(registration.device().kind()==TopologyCompiler.Kind.FILTER){state=null;for(var p:snapshot.graph().pipes())if(p.id()==PhysicalFluidTopology.filterIdentity(id))filter=p.filter();}

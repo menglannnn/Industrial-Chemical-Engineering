@@ -49,9 +49,8 @@ import org.jetbrains.annotations.Nullable;
  * exactly matches.</p>
  */
 public final class ColumnCalculatorV3BlockEntity extends BlockEntity implements MenuProvider {
+    /** The only readable format; other saved data is refused and replaced by a fresh input (no migration). */
     public static final int DATA_VERSION = 12;
-    /** Only the current development format is readable; no save migration. */
-    private static final int MINIMUM_READABLE_DATA_VERSION = DATA_VERSION;
     public static final String LITERATURE_PACKAGE = "createcheme:tjl19_dwsim";
     private static final String TAG_DATA_VERSION = "V3DataVersion";
     private static final String TAG_INPUT_REVISION = "InputRevision";
@@ -69,8 +68,6 @@ public final class ColumnCalculatorV3BlockEntity extends BlockEntity implements 
     private V3ColumnDisplayResult displayResult;
     private V3Operation activeOperation;
     private List<String> attemptDetails = List.of();
-    /** Unsupported development state is retained verbatim until the player explicitly loads a preset. */
-    private CompoundTag incompatibleState;
 
     public ColumnCalculatorV3BlockEntity(BlockPos pos, BlockState state) {
         super(ModBlockEntities.COLUMN_CALCULATOR_V3.get(), pos, state);
@@ -83,7 +80,7 @@ public final class ColumnCalculatorV3BlockEntity extends BlockEntity implements 
      * rejected without changing the block state.</p>
      */
     public Optional<V3Operation> tryBegin(long expectedInputRevision, long operationId, V3ColumnInput input) {
-        if (!(level instanceof ServerLevel) || expectedInputRevision != inputRevision || activeOperation != null || incompatibleState != null) {
+        if (!(level instanceof ServerLevel) || expectedInputRevision != inputRevision || activeOperation != null) {
             return Optional.empty();
         }
         input = Objects.requireNonNull(input, "input");
@@ -176,7 +173,6 @@ public final class ColumnCalculatorV3BlockEntity extends BlockEntity implements 
             setChanged();
             return false;
         }
-        incompatibleState = null;
         currentInput = preset;
         displayResult = null;
         attemptDetails = List.of();
@@ -184,6 +180,16 @@ public final class ColumnCalculatorV3BlockEntity extends BlockEntity implements 
         detail = bounded(presetDetail);
         setChanged();
         return true;
+    }
+
+    /** The state the engine's presentation last published for this block, with no client nonce; never saved. */
+    private V3State published;
+    /** What an opening screen may replay at once: the last published state, a cached read; empty until a bucket published one. */
+    public Optional<V3State> published() { return Optional.ofNullable(published); }
+    /** Recorded by the presentation bucket that published {@code state}. */
+    public void markPublished(V3State state) {
+        if (Objects.requireNonNull(state).clientNonce() != 0L) throw new IllegalArgumentException("A published snapshot acknowledges no client");
+        published = state;
     }
 
     /** Immutable view for a requester or broadcast viewer; it excludes numerical workspaces and carries only accepted inspection data. */
@@ -237,14 +243,6 @@ public final class ColumnCalculatorV3BlockEntity extends BlockEntity implements 
     @Override
     protected void saveAdditional(CompoundTag tag, HolderLookup.Provider registries) {
         super.saveAdditional(tag, registries);
-        if (incompatibleState != null) {
-            for (String key : List.of(TAG_DATA_VERSION, TAG_INPUT_REVISION, TAG_RESULT_REVISION,
-                    TAG_STATE_REVISION, TAG_INPUT, TAG_RESULT)) {
-                if (incompatibleState.contains(key)) tag.put(key, incompatibleState.get(key).copy());
-                else tag.remove(key);
-            }
-            return;
-        }
         tag.putInt(TAG_DATA_VERSION, DATA_VERSION);
         tag.putLong(TAG_INPUT_REVISION, inputRevision);
         tag.putLong(TAG_RESULT_REVISION, resultRevision);
@@ -259,37 +257,25 @@ public final class ColumnCalculatorV3BlockEntity extends BlockEntity implements 
         super.loadAdditional(tag, registries);
         activeOperation = null;
         attemptDetails = List.of();
-        incompatibleState = null;
         displayResult = null;
         inputRevision = 0L;
         resultRevision = -1L;
         stateRevision = 0L;
         currentInput = freshInput();
-        if (!tag.contains(TAG_DATA_VERSION, Tag.TAG_INT)) {
+        if (!tag.contains(TAG_DATA_VERSION)) {
             status = V3Status.DIRTY;
             detail = "No V3 persisted state";
             return;
         }
-        int dataVersion = tag.getInt(TAG_DATA_VERSION);
-        if (dataVersion > DATA_VERSION || dataVersion < MINIMUM_READABLE_DATA_VERSION) {
-            incompatibleState = tag.copy();
-            status = V3Status.INCOMPATIBLE;
-            detail = "Incompatible material basis; explicitly load a current preset to replace this unsupported input";
-            return;
-        }
-        if (dataVersion < 1 || !tag.contains(TAG_INPUT, Tag.TAG_COMPOUND)) {
-            incompatibleState = tag.copy();
-            status = V3Status.INCOMPATIBLE;
-            detail = "Unsupported or corrupt input retained; explicitly load a current preset to replace it";
-            return;
-        }
         try {
+            if (!tag.contains(TAG_DATA_VERSION, Tag.TAG_INT) || tag.getInt(TAG_DATA_VERSION) != DATA_VERSION)
+                throw new IllegalArgumentException("saved data version is not " + DATA_VERSION);
+            if (!tag.contains(TAG_INPUT, Tag.TAG_COMPOUND)) throw new IllegalArgumentException("saved input is missing");
             currentInput = com.wormzjl.createcheme.science.column.v3.V3MaterialInputs.requireCurrent(readInput(tag.getCompound(TAG_INPUT)),com.wormzjl.createcheme.science.material.MaterialRuntime.current());
-            inputRevision = nonNegative(tag.getLong(TAG_INPUT_REVISION));
-            resultRevision = tag.contains(TAG_RESULT_REVISION, Tag.TAG_LONG)
-                    ? tag.getLong(TAG_RESULT_REVISION) : -1L;
+            inputRevision = nonNegative(requiredLong(tag, TAG_INPUT_REVISION));
+            resultRevision = requiredLong(tag, TAG_RESULT_REVISION);
             if (resultRevision < -1L) throw new IllegalArgumentException("Invalid V3 result revision");
-            stateRevision = nonNegative(tag.getLong(TAG_STATE_REVISION));
+            stateRevision = nonNegative(requiredLong(tag, TAG_STATE_REVISION));
             if (tag.contains(TAG_RESULT, Tag.TAG_COMPOUND)) {
                 displayResult = readDisplayResult(tag.getCompound(TAG_RESULT));
                 if (resultRevision < 0L) throw new IllegalArgumentException("V3 result lacks revision");
@@ -300,15 +286,21 @@ public final class ColumnCalculatorV3BlockEntity extends BlockEntity implements 
                 detail = "Persisted V3 input is ready to calculate";
             }
         } catch (IllegalArgumentException invalid) {
+            // No compatibility path: data this build cannot read is refused and the block starts from a fresh input,
+            // which the next save writes in the current format.
             currentInput = freshInput();
             displayResult = null;
             inputRevision = 0L;
             resultRevision = -1L;
             stateRevision = 0L;
-            incompatibleState = tag.copy();
-            status = V3Status.INCOMPATIBLE;
-            detail = "Unsupported or corrupt input retained; explicitly load a current preset to replace it";
+            status = V3Status.DIRTY;
+            detail = bounded("Saved column data refused (" + invalid.getMessage() + "); a fresh input replaces it");
         }
+    }
+
+    private static long requiredLong(CompoundTag tag, String key) {
+        if (!tag.contains(key, Tag.TAG_LONG)) throw new IllegalArgumentException("saved " + key + " is missing");
+        return tag.getLong(key);
     }
 
     @Override
@@ -393,8 +385,7 @@ public final class ColumnCalculatorV3BlockEntity extends BlockEntity implements 
         SUCCESS("SUCCESS", 2),
         FAILED("FAILED", 3),
         STALE("STALE", 4),
-        DIRTY("DIRTY", 5),
-        INCOMPATIBLE("INCOMPATIBLE", 6);
+        DIRTY("DIRTY", 5);
 
         private final String serializedName;
         private final int code;

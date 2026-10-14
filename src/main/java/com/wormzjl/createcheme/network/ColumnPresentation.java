@@ -47,7 +47,20 @@ final class ColumnPresentation {
             session = new Session(player, menu); host.sessions.put(player, session);
         }
         host.mailbox.subscribe(session, engine.orElseThrow().onlineTick());
-        if (action == null) { session.refresh = true; return; }
+        if (action == null) {
+            session.refresh = true;
+            // An opening screen replays the block's last published state at once: a cached read that runs no solve,
+            // applies no input and advances no time. Later states come with the session's buckets; with no published
+            // state yet, the first bucket delivers it.
+            if (player.serverLevel().getBlockEntity(pos) instanceof ColumnCalculatorV3BlockEntity calculator) {
+                var published = calculator.published();
+                if (published.isPresent()) {
+                    ColumnV3Network.deliverState(player, pos, published.get());
+                    session.revision = published.get().stateRevision(); session.refresh = false;
+                }
+            }
+            return;
+        }
         if (!host.mailbox.submit(session, engine.orElseThrow().onlineTick(), action))
             session.rejection = new Rejection(pos, nonce, "A request is already awaiting the engine");
     }
@@ -77,6 +90,7 @@ final class ColumnPresentation {
             var level = session.player.serverLevel();
             if (level.getBlockEntity(session.menu.blockPos()) instanceof ColumnCalculatorV3BlockEntity calculator) {
                 var state = calculator.state(session.nonce);
+                calculator.markPublished(session.nonce == 0 ? state : calculator.state(0));
                 if (session.refresh || session.revision != state.stateRevision()) {
                     ColumnV3Network.deliverState(session.player, session.menu.blockPos(), state);
                     session.revision = state.stateRevision(); session.refresh = false; session.nonce = 0;

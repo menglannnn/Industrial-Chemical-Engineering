@@ -241,6 +241,7 @@ public final class ColumnCalculatorV3Screen extends AbstractContainerScreen<Colu
         canvasField("top_temperature","s4",right,0,82);
         canvasField("reflux","s6",right+88,0,65);
         canvasField("top_pressure","s7",right,32,62);
+        canvasField("pressure_drop","s8",right+68,32,70);
         int fy=trayY(feedTray());
         canvasField("feed_flow","s0",left,fy+12,76);
         canvasField("feed_temperature","s1",left,fy+46,65);

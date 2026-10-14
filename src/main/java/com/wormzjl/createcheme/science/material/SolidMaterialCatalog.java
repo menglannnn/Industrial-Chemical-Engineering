@@ -16,7 +16,7 @@ public final class SolidMaterialCatalog {
     }
     public void validate(SolidInventory inventory) {
         for (var p : inventory.populations())
-            if (!require(p.material().id()).equals(p.material())) throw new IllegalArgumentException("Saved solid properties need explicit migration: " + p.material().id());
+            if (!require(p.material().id()).equals(p.material())) throw new IllegalArgumentException("Saved solid properties differ from the loaded data (no migration; create a fresh world): " + p.material().id());
     }
     static SolidMaterialCatalog parse(Map<String, String> resources) {
         var solids = new TreeMap<String, SolidMaterial>();

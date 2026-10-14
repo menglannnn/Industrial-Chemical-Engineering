@@ -17,7 +17,7 @@ public final class FluidMaterialCatalog {
     public static String resolveNetworkPackage(MaterialCatalog catalog,String packageId) {
         Objects.requireNonNull(catalog);Objects.requireNonNull(packageId);
         String selected=networkPackage(catalog);
-        if(!selected.equals(packageId))throw new IllegalArgumentException("Unsupported saved fluid basis "+packageId+"; configured basis is "+selected+". Use a fresh development world or explicitly reset its data.");
+        if(!selected.equals(packageId))throw new IllegalArgumentException("Unsupported saved fluid basis "+packageId+"; configured basis is "+selected+". Use a fresh development world.");
         return selected;
     }
 }

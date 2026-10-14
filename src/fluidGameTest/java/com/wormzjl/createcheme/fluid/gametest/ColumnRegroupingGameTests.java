@@ -48,41 +48,31 @@ public final class ColumnRegroupingGameTests {
             waiting[0]=true;
         });
     }
+    /** No compatibility (AGENTS.md): saved column data this build cannot read is refused, never kept or interpreted,
+     * and the block starts from a fresh input that its next save writes in the current format. */
     @GameTest(template="empty",timeoutTicks=100,batch="column-regrouping")
-    public static void obsoleteColumnInputSurvivesSavingUntilExplicitPresetReplacement(GameTestHelper helper) {
-        var level=helper.getLevel();var pos=helper.absolutePos(new BlockPos(0,1,0));
-        level.setBlock(pos,ModBlocks.COLUMN_CALCULATOR_V3.get().defaultBlockState(),3);
-        var block=(ColumnCalculatorV3BlockEntity)level.getBlockEntity(pos);
-        var old=new CompoundTag();old.putInt("V3DataVersion",8);
-        var oldInput=new CompoundTag();oldInput.putDouble("retired_component_amount",42);
-        old.put("Input",oldInput);block.loadWithComponents(old,level.registryAccess());
-        helper.assertTrue(block.state(0).status()==ColumnCalculatorV3BlockEntity.V3Status.INCOMPATIBLE,"Old input was silently interpreted");
-        var saved=block.saveWithFullMetadata(level.registryAccess());
-        helper.assertTrue(saved.getInt("V3DataVersion")==8&&saved.getCompound("Input").equals(oldInput),"Saving silently erased unsupported input");
-        var preset=ColumnInputPreset.TIA_JUANA.input(MaterialRuntime.current());
-        helper.assertTrue(block.tryBegin(0,1,preset).isEmpty(),"Calculation implicitly replaced incompatible input");
-        helper.assertTrue(block.tryLoadPreset(0,preset,"Explicit replacement"),"Explicit preset replacement was refused");
-        var current=block.saveWithFullMetadata(level.registryAccess());
-        helper.assertTrue(current.getInt("V3DataVersion")==ColumnCalculatorV3BlockEntity.DATA_VERSION,"New input was not saved with current contract");
-        helper.assertTrue(block.state(0).input().componentBasis().componentIds().equals(preset.componentBasis().componentIds()),"Current basis was changed");
-        level.removeBlock(pos,false);helper.succeed();
-    }
-    @GameTest(template="empty",timeoutTicks=100,batch="column-regrouping")
-    public static void currentVersionUnsupportedAxisAndCorruptInputAreRetained(GameTestHelper helper) {
+    public static void unreadableColumnDataIsRefusedAndReplacedByAFreshInput(GameTestHelper helper) {
         var level=helper.getLevel();var pos=helper.absolutePos(new BlockPos(0,1,0));
         level.setBlock(pos,ModBlocks.COLUMN_CALCULATOR_V3.get().defaultBlockState(),3);
         var block=(ColumnCalculatorV3BlockEntity)level.getBlockEntity(pos);
         var original=block.saveWithFullMetadata(level.registryAccess());
-        for(String failure:java.util.List.of("axis","package","missing")) {
-            var bad=original.copy();var input=bad.getCompound("Input");
+        var fresh=block.state(0).input();
+        var old=new CompoundTag();old.putInt("V3DataVersion",8);
+        var oldInput=new CompoundTag();oldInput.putDouble("retired_component_amount",42);old.put("Input",oldInput);
+        for(String failure:java.util.List.of("version","axis","package","input","revision")) {
+            var bad=failure.equals("version")?old.copy():original.copy();var input=bad.getCompound("Input");
             if(failure.equals("axis"))input.getList("Axis",net.minecraft.nbt.Tag.TAG_STRING).set(0,net.minecraft.nbt.StringTag.valueOf("Retired"));
             else if(failure.equals("package"))input.putString("Package","retired:package");
-            else bad.remove("Input");
+            else if(failure.equals("input"))bad.remove("Input");
+            else if(failure.equals("revision"))bad.remove("ResultRevision");
             block.loadWithComponents(bad,level.registryAccess());
-            helper.assertTrue(block.state(0).status()==ColumnCalculatorV3BlockEntity.V3Status.INCOMPATIBLE,"Unsupported "+failure+" was silently reset");
+            var state=block.state(0);
+            helper.assertTrue(state.status()==ColumnCalculatorV3BlockEntity.V3Status.DIRTY&&state.diagnostics().getFirst().startsWith("Saved column data refused"),"Unreadable "+failure+" was not refused: "+state.diagnostics());
+            helper.assertTrue(state.input().equals(fresh)&&state.inputRevision()==0&&state.displayResult().isEmpty(),"Unreadable "+failure+" was interpreted");
             var saved=block.saveWithFullMetadata(level.registryAccess());
-            helper.assertTrue(saved.contains("Input")==bad.contains("Input")&&saved.getCompound("Input").equals(bad.getCompound("Input")),"Saving erased unsupported "+failure);
-            helper.assertTrue(block.tryLoadPreset(0,ColumnInputPreset.TIA_JUANA.input(MaterialRuntime.current()),"Explicit reset"),"Explicit reset failed");
+            helper.assertTrue(saved.getInt("V3DataVersion")==ColumnCalculatorV3BlockEntity.DATA_VERSION&&!saved.getCompound("Input").equals(oldInput),"Unreadable "+failure+" was saved back");
+            helper.assertTrue(block.tryBegin(0,1,fresh).isPresent(),"The fresh input after refused "+failure+" cannot be calculated");
+            block.loadWithComponents(original,level.registryAccess());
         }
         level.removeBlock(pos,false);helper.succeed();
     }

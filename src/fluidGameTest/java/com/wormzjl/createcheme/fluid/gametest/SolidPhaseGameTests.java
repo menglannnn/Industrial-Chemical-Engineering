@@ -73,8 +73,13 @@ public final class SolidPhaseGameTests {
                 helper.assertTrue(contents.solids().equals(first[0].captured())&&contents.energyJoule()==first[0].energyJoule(),"Recovered item changed mass, size, or energy");
                 helper.assertTrue(world.view(filterId).filter().captured().empty(),"Recovered stock remains in filter");
                 helper.assertTrue(RecoveredSolidsItem.carriesTransfer(items.getFirst(),contents.transfer()),"Recovery identity was lost");
-                boolean repeated=false;try{world.recoverFilter(filterId,world.registrations().get(filterId).revision(),player);}catch(IllegalStateException empty){repeated=true;}
-                helper.assertTrue(repeated&&player.getInventory().items.stream().filter(s->s.is(ModItems.RECOVERED_SOLIDS.get())).count()==1,"Repeated recovery duplicated solids");
+                // A second recovery of the now empty filter is queued like any input; the engine refuses it when it applies.
+                world.recoverFilter(filterId,world.registrations().get(filterId).revision(),player);
+            })
+            .thenWaitUntil(()->helper.assertTrue(world.capture().world().events().isEmpty(),"Waiting for the repeated recovery to apply"))
+            .thenExecute(()->{
+                helper.assertTrue(player.getInventory().items.stream().filter(s->s.is(ModItems.RECOVERED_SOLIDS.get())).count()==1,"Repeated recovery duplicated solids");
+                helper.assertTrue(world.view(filterId).filter().captured().empty(),"Repeated recovery changed the empty filter");
                 unregisterLookup(level.getServer().getPlayerList(),player);
                 level.setBlock(left,ModBlocks.FLUID_PIPE.get().defaultBlockState(),3);level.setBlock(right,ModBlocks.FLUID_PIPE.get().defaultBlockState(),3);
             })

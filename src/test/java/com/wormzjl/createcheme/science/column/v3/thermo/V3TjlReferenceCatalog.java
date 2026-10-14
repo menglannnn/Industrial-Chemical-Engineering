@@ -7,6 +7,8 @@ import java.util.*;
 /** Rebuilds only the independent old numerical oracle for frozen stalled/wet-state regressions. */
 public final class V3TjlReferenceCatalog {
     private V3TjlReferenceCatalog() {}
+    /** Every component and assay record carries an appearance; a neutral estimated tint for these test records. */
+    private static final Map<String,Object> TEST_APPEARANCE=Map.of("color","#FFFFFF","transparency",0,"estimated",true);
     public static MaterialCatalog catalog() {
         var resources=new LinkedHashMap<>(MaterialRuntime.current().resources());
         resources.keySet().removeIf(key->key.contains("/networks/")); // Independent column-only numerical oracle.
@@ -16,7 +18,7 @@ public final class V3TjlReferenceCatalog {
             for(int i=0;i<ids.size();i++) {
                 var p=old.component(i);String slug=p.id().toLowerCase(Locale.ROOT).replace('-','_');
                 String id="test:tjl_"+slug;refs.add(id);
-                resources.put(root+"components/"+slug+".json",json.toJson(Map.of("schema_version",1,"id",p.id(),"kind","lump","translation_key","test."+slug,"fallback",p.id())));
+                resources.put(root+"components/"+slug+".json",json.toJson(Map.of("schema_version",1,"id",p.id(),"kind","lump","translation_key","test."+slug,"fallback",p.id(),"appearance",TEST_APPEARANCE)));
                 var property=new LinkedHashMap<String,Object>();
                 property.put("schema_version",1);property.put("id",id);property.put("component",p.id());property.put("revision",old.datasetRevision());property.put("source","Independent frozen Java numerical oracle");
                 property.put("molecular_weight_kg_per_mol",p.molecularWeightKgPerMol());property.put("normal_boiling_point_kelvin",p.normalBoilingPointKelvin());property.put("standard_liquid_density_kg_per_m3",p.standardLiquidDensityKgPerCubicMetre());
@@ -39,7 +41,7 @@ public final class V3TjlReferenceCatalog {
             resources.put(presetPath,preset.toString());
             resources.put(root+"packages/"+suffix+".json",json.toJson(packageRecord));
             String assay=suffix.equals("tjl19")?"createcheme:tia_juana_light":"createcheme:tia_juana_light_methane";
-            resources.put(root+"assays/"+suffix+".json",json.toJson(Map.of("schema_version",1,"id",assay,"package",old.packageId(),"components",ids,"basis","mole","amounts",old.crudeFeed(assay).moleFractions())));
+            resources.put(root+"assays/"+suffix+".json",json.toJson(Map.of("schema_version",1,"id",assay,"package",old.packageId(),"components",ids,"basis","mole","amounts",old.crudeFeed(assay).moleFractions(),"appearance",TEST_APPEARANCE)));
         }
         return MaterialCatalog.parse(resources);
     }

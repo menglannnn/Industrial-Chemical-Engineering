@@ -18,6 +18,13 @@ All notable changes to CreateChemE are recorded in this file. The format follows
 ### Changed
 
 - AGENTS.md: updating the progressive-disclosure code guide (`documentation/reference/code-guide/`, rewritten 2026-10-15 at `ac3a00fc`) is a regular task before every merge to `main`, beside this changelog and the `mod_version` bump (`bef39fc1`; batch folder: `reference`).
+- Engine-owned presentation, the code-guide findings (owner decision 2026-10-15, batch folder: `2026-10-15-code-guide-findings`): a filter recovery is queued as an engine event like an edit (the packet handler no longer applies events or delivers the item; an empty filter is refused when the event applies); `FluidWorldAuthority.view` is a cached read that applies no queued event; an opening column screen replays the block's last published state at once (`ColumnCalculatorV3BlockEntity.published`, recorded by each presentation bucket).
+- Column GUI: the stage pressure drop has its canvas field; client column presets are schema 2 with the required `stage_pressure_drop_kpa` (schema 1 files are refused); custom presets live in `<gameDir>/CreateChemE/` (was misspelled `CreatChemE`).
+- `fluidServerBenchmark` stress measurement defaults to 60 s (60 s warm-up + 60 s measurement).
+
+### Removed
+
+- Backward compatibility (owner decision 2026-10-15: none at this stage; batch folder: `2026-10-15-code-guide-findings`): `FluidWorldAuthority.legacyUnbound` (a checkpoint with islands but no topology unit is refused when a world opens it); the column block's verbatim retention of unreadable saves and `V3Status.INCOMPATIBLE` (such data is refused and a fresh input replaces it; all three revisions are required); the default `columnDiameterMetres` of server column presets; the default material `appearance` (`FluidAppearance.DEFAULT`); migration and "explicitly reset" wording in hold and refusal texts; the dead `examples/material-gametest.gradle`.
 
 ### Fixed
 

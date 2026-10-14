@@ -1,5 +1,5 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "kind": "column",
   "name": "WTI Light - Export",
   "translation_key": "gui.createcheme.column_preset.wti_light_export",
@@ -11,6 +11,7 @@
   "reboiler_duty_mw": 0.0,
   "reflux_ratio": 4.17,
   "top_pressure_bar": 2.5,
+  "stage_pressure_drop_kpa": 0.0,
   "diameter_m": 8.0,
   "draws": [
     {

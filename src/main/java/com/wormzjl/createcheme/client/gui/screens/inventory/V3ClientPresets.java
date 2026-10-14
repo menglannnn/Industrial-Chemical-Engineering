@@ -11,10 +11,11 @@ import java.util.function.Function;
 /** Explicitly refreshed, client-owned JSON libraries. Neither custom paths nor files cross the wire. */
 final class V3ClientPresets {
     static final int MAX_BYTES=65536,MAX_FILES=256;
+    /** {@code schema} is the only version a file of the kind may carry; column 2 added {@code stage_pressure_drop_kpa}. */
     enum Kind {
-        COLUMN("columnpreset","column"),MIXTURE("mixturepreset","mixture");
-        final String folder,id;
-        Kind(String folder,String id){this.folder=folder;this.id=id;}
+        COLUMN("columnpreset","column",2),MIXTURE("mixturepreset","mixture",1);
+        final String folder,id;final int schema;
+        Kind(String folder,String id,int schema){this.folder=folder;this.id=id;this.schema=schema;}
     }
     sealed interface Preset permits Column,Mixture {String name();String translationKey();}
     record Column(String name,String translationKey,Map<String,String> fields) implements Preset {
@@ -32,7 +33,7 @@ final class V3ClientPresets {
     private final Path root;
     private final Function<String,InputStream> resources;
     V3ClientPresets(Path gameDirectory,Function<String,InputStream> resources){
-        root=gameDirectory.toAbsolutePath().normalize().resolve("CreatChemE");this.resources=resources;
+        root=gameDirectory.toAbsolutePath().normalize().resolve("CreateChemE");this.resources=resources;
     }
     Path directory(Kind kind){return root.resolve(kind.folder);}
     Snapshot refresh(Kind kind){
@@ -91,7 +92,7 @@ final class V3ClientPresets {
     static Preset decode(String json,Kind kind){
         try{
             JsonObject o=JsonParser.parseString(json).getAsJsonObject();
-            if(integer(o,"schema_version")!=1||!string(o,"kind").equals(kind.id))throw new IllegalArgumentException("Unsupported preset schema");
+            if(integer(o,"schema_version")!=kind.schema||!string(o,"kind").equals(kind.id))throw new IllegalArgumentException("Unsupported preset schema");
             String name=string(o,"name"),key=string(o,"translation_key");
             if(name.isBlank()||name.length()>128||key.length()>128)throw new IllegalArgumentException("Invalid preset name");
             if(kind==Kind.MIXTURE){
@@ -108,9 +109,10 @@ final class V3ClientPresets {
             }
             Map<String,String> f=new LinkedHashMap<>();
             String[] names={"feed_flow_kmol_h","feed_temperature_kelvin","tray_count","feed_tray","top_temperature_kelvin",
-                "reboiler_duty_mw","reflux_ratio","top_pressure_bar","nominal_dp","diameter_m"};
+                "reboiler_duty_mw","reflux_ratio","top_pressure_bar","stage_pressure_drop_kpa","diameter_m"};
             for(int i=0;i<10;i++){
-                double value=i==8?0:number(o,names[i]);if(i==1||i==4)value-=273.15;
+                double value=number(o,names[i]);if(i==1||i==4)value-=273.15;
+                if(i==8&&value<0)throw new IllegalArgumentException("Negative stage pressure drop");
                 if(i==2||i==3)f.put("s"+i,Integer.toString(integer(o,names[i])));else f.put("s"+i,Double.toString(value));
             }
             int total=integer(o,"tray_count"),feed=integer(o,"feed_tray");
@@ -156,7 +158,8 @@ final class V3ClientPresets {
         o.addProperty("top_temperature_kelvin",V3EditorDraft.value(input,V3ControlledQuantity.CONDENSER_OUTLET_TEMPERATURE));
         o.addProperty("reboiler_duty_mw",V3EditorDraft.value(input,V3ControlledQuantity.REBOILER_DUTY)/1e6);
         o.addProperty("reflux_ratio",V3EditorDraft.value(input,V3ControlledQuantity.ORGANIC_REFLUX_RATIO));
-        o.addProperty("top_pressure_bar",input.topPressurePascal()/1e5);o.addProperty("diameter_m",input.columnDiameterMetres());
+        o.addProperty("top_pressure_bar",input.topPressurePascal()/1e5);o.addProperty("stage_pressure_drop_kpa",input.stagePressureDropPascal()/1000);
+        o.addProperty("diameter_m",input.columnDiameterMetres());
         JsonArray draws=new JsonArray(),steam=new JsonArray(),pas=new JsonArray();
         for(var d:input.sideDraws()){var v=new JsonObject();v.addProperty("tray",d.trayNumber()+1);v.addProperty("flow_kmol_h",d.molarFlowMolPerSecond()*3.6);draws.add(v);}
         for(var t:input.steamFeeds()){var v=new JsonObject();v.addProperty("tray",t.stageNumber()+1);v.addProperty("flow_kmol_h",t.molarFlowMolPerSecond()*3.6);v.addProperty("temperature_kelvin",t.temperatureKelvin());steam.add(v);}
@@ -164,7 +167,7 @@ final class V3ClientPresets {
         o.add("draws",draws);o.add("steam",steam);o.add("pumparounds",pas);return JSON.toJson(o);
     }
     private static JsonObject header(String name,Kind kind){
-        var o=new JsonObject();o.addProperty("schema_version",1);o.addProperty("kind",kind.id);o.addProperty("name",name);o.addProperty("translation_key","");return o;
+        var o=new JsonObject();o.addProperty("schema_version",kind.schema);o.addProperty("kind",kind.id);o.addProperty("name",name);o.addProperty("translation_key","");return o;
     }
     private static String string(JsonObject o,String key){
         var v=o.get(key);if(v==null||!v.isJsonPrimitive()||!v.getAsJsonPrimitive().isString())throw new IllegalArgumentException("Missing string: "+key);

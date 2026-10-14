@@ -36,11 +36,9 @@ class FluidAppearanceTest {
         }
     }
 
-    @Test void legacyRecordsWithoutAppearanceRemainLoadable() {
-        var c = MaterialCatalog.parse(MaterialCatalogTest.changed("components/water.json", o -> o.remove("appearance")));
-        assertEquals(FluidAppearance.DEFAULT, c.componentAppearance(PACKAGE, "Water"));
-        c = MaterialCatalog.parse(MaterialCatalogTest.changed("assays/tjl20.json", o -> o.remove("appearance")));
-        assertEquals(FluidAppearance.DEFAULT, c.assayAppearance(PACKAGE, "createcheme:tia_juana_light_methane"));
+    @Test void recordsWithoutAppearanceAreRefused() {
+        for (String path : new String[]{"components/water.json", "assays/tjl20.json"})
+            assertThrows(IllegalArgumentException.class, () -> MaterialCatalog.parse(MaterialCatalogTest.changed(path, o -> o.remove("appearance"))), path);
     }
 
     @Test void invalidAppearanceIdentifiesResourceAndRetainsPublishedSnapshot() {

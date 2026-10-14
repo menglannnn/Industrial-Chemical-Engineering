@@ -150,7 +150,7 @@ public final class MaterialCatalog {
         String id = p.canonicalId(Objects.requireNonNull(componentId, "componentId"));
         if (!p.components().contains(id) && !id.equals("Water"))
             throw new IllegalArgumentException("Component is outside package: " + componentId);
-        return componentAppearances.getOrDefault(id, FluidAppearance.DEFAULT);
+        return Objects.requireNonNull(componentAppearances.get(id), "No appearance for component " + id);
     }
 
     /** Whole-feed liquid visual settings; no component-color mixing rule is implied. */
@@ -159,7 +159,7 @@ public final class MaterialCatalog {
             throw new IllegalArgumentException("Assay is outside package: " + assayId);
         // Assay identity is (package, id) everywhere else in this class, so the appearance is keyed
         // that way too: one composition may be declared on two packages with different bases.
-        return assayAppearances.getOrDefault(packageId + "/" + assayId, FluidAppearance.DEFAULT);
+        return Objects.requireNonNull(assayAppearances.get(packageId + "/" + assayId), "No appearance for assay " + assayId);
     }
 
     /** Selected pure-component viscosity data, absent when that phase has no dataset. No mixing rule is implied. */
@@ -487,8 +487,8 @@ public final class MaterialCatalog {
         return result;
     }
 
+    /** Every component and assay record carries its appearance; there is no default tint. */
     private static FluidAppearance readAppearance(JsonObject record) {
-        if (!record.has("appearance")) return FluidAppearance.DEFAULT;
         try {
             JsonObject o = object(record, "appearance");
             String color = string(o, "color");

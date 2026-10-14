@@ -51,8 +51,8 @@ public final class FluidThermodynamics {
 
     /**
      * The canonical gameplay basis, which includes nitrogen. {@code packageId} is resolved through
-     * {@link FluidMaterialCatalog#resolveNetworkPackage} - it is the registered network package, or a
-     * pre-registration saved id that migrates to it - and a package without nitrogen is refused
+     * {@link FluidMaterialCatalog#resolveNetworkPackage}, which accepts only the registered network package (any
+     * other id is refused; there is no migration), and a package without nitrogen is refused
      * rather than silently run on a shorter basis. Direct construction retains an explicitly supplied
      * test/science basis.
      */
