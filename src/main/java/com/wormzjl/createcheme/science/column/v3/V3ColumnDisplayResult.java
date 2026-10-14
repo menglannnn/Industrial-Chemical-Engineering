@@ -32,7 +32,7 @@ public record V3ColumnDisplayResult(
                 maximumScaledResidual, acceptanceCheckCount, streams, dutyLedger, closureTolerance,
                 trayHydraulics, Optional.empty());
     }
-    /** Legacy certificate without a duty ledger; older persisted and wire results decode through here. */
+    /** Shorthand: a certificate without a duty ledger, recorded closure or tray hydraulics. */
     public V3ColumnDisplayResult(
             String inputDigest, String formulationRevision, String assumptionsRevision, String datasetRevision,
             int newtonIterations, double maximumScaledResidual, int acceptanceCheckCount,
@@ -41,7 +41,7 @@ public record V3ColumnDisplayResult(
                 maximumScaledResidual, acceptanceCheckCount, streams, Optional.empty());
     }
 
-    /** Certificate without a recorded closure; a version 7 persisted or wire result reads as the default. */
+    /** Shorthand: a certificate without a recorded closure; the closure reads as the default. */
     public V3ColumnDisplayResult(
             String inputDigest, String formulationRevision, String assumptionsRevision, String datasetRevision,
             int newtonIterations, double maximumScaledResidual, int acceptanceCheckCount,
@@ -51,7 +51,7 @@ public record V3ColumnDisplayResult(
                 V3ConvergenceEvidence.MAXIMUM_LOG_FLOW_CHANGE);
     }
 
-    /** Certificate of a prescribed-drop result; a version 10 persisted or wire result reads as empty. */
+    /** Shorthand: a certificate of a prescribed-drop result; the tray hydraulics summary is empty. */
     public V3ColumnDisplayResult(
             String inputDigest, String formulationRevision, String assumptionsRevision, String datasetRevision,
             int newtonIterations, double maximumScaledResidual, int acceptanceCheckCount,

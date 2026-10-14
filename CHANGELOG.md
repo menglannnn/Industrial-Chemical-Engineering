@@ -15,6 +15,14 @@ All notable changes to CreateChemE are recorded in this file. The format follows
 
 ## [Unreleased]
 
+### Changed
+
+- AGENTS.md: updating the progressive-disclosure code guide (`documentation/reference/code-guide/`, rewritten 2026-10-15 at `ac3a00fc`) is a regular task before every merge to `main`, beside this changelog and the `mod_version` bump (`bef39fc1`; batch folder: `reference`).
+
+### Fixed
+
+- Stale comments and pointers found by the code-guide rewrite: checkpoint format 7 in the codec, store and saved-data comments; the shipped model name in the `initializerMode` config comment; shorthand constructors of `V3ColumnInput` / `V3ColumnDisplayResult` no longer claim to decode older saves; the compressibility config comment no longer promises a migration; the `prepareMcpControlMod` message points to the batch folder; MATERIALS.md attributes the material reload GameTest to the fluid run (batch folder: `reference`).
+
 ## [0.7.0] - 2026-10-14
 
 ### Changed

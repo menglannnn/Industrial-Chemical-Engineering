@@ -92,7 +92,7 @@ public final class CreateChemE {
         FLUID_INITIAL_INTERVAL_SECONDS=builder.comment("Starting hydraulic cadence for newly created islands. Existing saved clocks retain their cadence; adaptation uses 1-20 s.").defineInRange("initialIntervalSeconds",5,1,20);
         FLUID_ADAPTIVE_CADENCE=builder.comment("Adapt island cadence to measured CPU load. Disable for reproducible fixed-cadence qualification; saved simulation debt is retained.").define("adaptiveCadence",true);
         FLUID_WALL_BUDGET_MILLISECONDS=builder.comment("Hard worker budget per island interval; 75% is reserved for the full solve. Applied on server start.").defineInRange("wallBudgetMilliseconds",2000,100,60000);
-        FLUID_LIQUID_COMPRESSIBILITY=builder.comment("One liquid compressibility for every liquid, in 1/Pa, for a new fluid world. Existing saves retain their recorded model until explicit migration.").defineInRange("liquidCompressibility",1e-9,1e-12,5e-7);
+        FLUID_LIQUID_COMPRESSIBILITY=builder.comment("One liquid compressibility for every liquid, in 1/Pa, for a new fluid world. A world with saved islands keeps the value it was created with.").defineInRange("liquidCompressibility",1e-9,1e-12,5e-7);
         FLUID_MAXIMUM_VELOCITY=builder.comment("Maximum bulk pipe velocity in m/s, also limited by the current fluid's acoustic bound. Caps mass transfer inside the coupled equations; does not set temperature. Captured on server start.").defineInRange("maximumVelocityMetresPerSecond",100.0,.01,100000.0);
         FLUID_INITIAL_VOLUME=builder.comment("Volume of newly placed reservoirs in cubic metres. Applied on server start.").defineInRange("reservoirVolumeCubicMetres",1.0,.001,1000.0);
         FLUID_TRACE_CUTOFF=builder
@@ -128,10 +128,8 @@ public final class CreateChemE {
         COLUMN_V3_INITIALIZER_MODE = builder
                 .comment("LNN_FIRST tries the bundled learned seed, then the current initializer as backup.",
                         "LNN_ONLY never invokes current initialization. CURRENT_ONLY bypasses the model.",
-                        "One learned model ships: the qualified anchor-augmented Transformer F-20260911-s4160,",
-                        "with the phase-level decoder floor and the progress-based correction budget it was",
-                        "qualified with. There is no model selection; the earlier experimental families were",
-                        "retired to the offline tools and an initializerModel key in an older config is ignored.",
+                        "One learned model ships: the regrouped-basis Transformer regrouped-seed-17041-epoch-160",
+                        "(data/createcheme/neural/registry.json). There is no model selection.",
                         "All routes retain physical acceptance checks. Captured at request admission.")
                 .defineEnum("initializerMode", V3InitializationOptions.Mode.LNN_FIRST);
         COLUMN_V3_WET_START = builder

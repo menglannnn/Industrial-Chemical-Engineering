@@ -297,8 +297,9 @@ catalog snapshots immutable and keep all numeric arrays and model workspaces loc
 
 Run `gradlew.bat test fluidScienceTest fluidRuntimeTest` for numerical parity, codec, concurrency, neural, and solver regressions.
 Run `gradlew.bat runFluidGameTestServer -PfluidGameTestRunId=<fresh-id>` for actual Minecraft fluid and reload tests, and
-`gradlew.bat runColumnGameTestServer -PcolumnGameTestRunId=<fresh-id>` separately for calculator service tests. It applies a higher-priority override, rejects an invalid replacement without
-publishing it, and restores the original selection. The three former hardcoded package classes are test-only
+`gradlew.bat runColumnGameTestServer -PcolumnGameTestRunId=<fresh-id>` separately for calculator service tests
+(`ColumnRegroupingGameTests`). The fluid run's reload test (`MaterialReloadGameTests.materialReloadIsAtomic`) applies a
+higher-priority override, rejects an invalid replacement without publishing it, and restores the original selection. The three former hardcoded package classes are test-only
 fixtures. Their independent numeric tables and the archived neural seed oracle remain regression references.
 
 ## Five additional crude feeds

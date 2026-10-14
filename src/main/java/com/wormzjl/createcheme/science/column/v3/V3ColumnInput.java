@@ -46,7 +46,7 @@ public record V3ColumnInput(
     public static final double DEFAULT_COLUMN_DIAMETER_METRES = 8.0;
     public static final double MAX_COLUMN_DIAMETER_METRES = 15.0;
 
-    /** Legacy no-draw input; preserves the existing schema and digest representation. */
+    /** Shorthand: no side draws, steam, pumparounds or tray hydraulics (prescribed uniform drop). */
     public V3ColumnInput(
             int schemaVersion, String packageId, String assayId, V3ComponentBasis componentBasis,
             double[] feedComponentMolarFlowsMolPerSecond, double feedTemperatureKelvin, int stageCount,
@@ -57,7 +57,7 @@ public record V3ColumnInput(
                 specifications, List.of(), List.of(), List.of());
     }
 
-    /** Legacy side-draw input; preserves all dry callers and their empty steam contract. */
+    /** Shorthand: side draws only; no steam, pumparounds or tray hydraulics. */
     public V3ColumnInput(
             int schemaVersion, String packageId, String assayId, V3ComponentBasis componentBasis,
             double[] feedComponentMolarFlowsMolPerSecond, double feedTemperatureKelvin, int stageCount,
@@ -68,7 +68,7 @@ public record V3ColumnInput(
                 specifications, sideDraws, List.of(), List.of());
     }
 
-    /** Legacy steam input; preserves every existing wire and persistence caller with no stage heat. */
+    /** Shorthand: side draws and steam; no pumparounds (stage heat) or tray hydraulics. */
     public V3ColumnInput(
             int schemaVersion, String packageId, String assayId, V3ComponentBasis componentBasis,
             double[] feedComponentMolarFlowsMolPerSecond, double feedTemperatureKelvin, int stageCount,
@@ -80,7 +80,7 @@ public record V3ColumnInput(
                 specifications, sideDraws, steamFeeds, List.of());
     }
 
-    /** Legacy prescribed-drop input; every existing caller, wire payload and persisted state decodes through here. */
+    /** Shorthand: every list, with the prescribed uniform drop instead of tray hydraulics. */
     public V3ColumnInput(
             int schemaVersion, String packageId, String assayId, V3ComponentBasis componentBasis,
             double[] feedComponentMolarFlowsMolPerSecond, double feedTemperatureKelvin, int stageCount,

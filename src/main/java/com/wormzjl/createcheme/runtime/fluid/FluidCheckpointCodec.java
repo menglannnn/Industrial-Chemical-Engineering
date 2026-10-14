@@ -19,12 +19,12 @@ import java.util.function.Function;
 import java.util.function.UnaryOperator;
 
 /**
- * Checkpoint format 6 of committed science and runtime state: what one storage unit holds and what the core record
+ * Checkpoint format 7 of committed science and runtime state: what one storage unit holds and what the core record
  * holds. Rebuilds properties through the immutable model; it never deserializes implementation caches or creates a
  * nitrogen charge. Where the units live - pack files beside the world's saved data, dirty tracking, atomic writes and
  * orphan cleanup - is {@link FluidCheckpointStore}'s business.
  *
- * <p><b>Core record</b> (one NBT compound, the world's saved data): {@code FluidFormat = 6}; the world {@code Epoch};
+ * <p><b>Core record</b> (one NBT compound, the world's saved data): {@code FluidFormat = 7}; the world {@code Epoch};
  * the {@code Ledger} of buffered transfers, pending material and module states as checksummed JSON; {@code Strings},
  * an append-only table of the long texts units refer to (dimensions, packages, property revisions, certificate
  * policies); {@code Packages}, one entry per property package with the thermodynamic revision and energy reference
@@ -616,7 +616,7 @@ public final class FluidCheckpointCodec {
     }
     private static final List<String> LONG_COLUMNS=List.of("Id","Revision","Generation","Online","Committed","Retry","Base","Since","Start","Horizon","Pack","Offset");
     /**
-     * Reads and validates a core record: format 6 only (older formats are refused with the instruction to create a
+     * Reads and validates a core record: format 7 only (older formats are refused with the instruction to create a
      * fresh world), every field present and typed, the envelope and ledger digests, the string and package tables,
      * the pack list, and every index row's unit reference lying inside a listed pack. The units themselves are read by
      * {@link #island} and {@link #topology}.
