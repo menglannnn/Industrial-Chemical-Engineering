@@ -156,6 +156,38 @@ class DeterministicMathTest {
         return sum;
     }
 
+    /**
+     * {@code atan} and {@code tanh} (added for the solid CO2 Gibbs function and the methane spine's cosh-type terms) are
+     * {@code StrictMath} bit for bit on the special values and on sampled inputs, and return the fdlibm bits pinned below
+     * (recorded from {@code StrictMath} on HotSpot 21.0.11): a JVM that computed any of them differently fails here.
+     */
+    @Test void atanAndTanhAreStrictMathBitForBit() {
+        for (double x : SPECIAL) {
+            assertSameBits(StrictMath.atan(x), DeterministicMath.atan(x), "atan(" + Double.toHexString(x) + ")");
+            assertSameBits(StrictMath.tanh(x), DeterministicMath.tanh(x), "tanh(" + Double.toHexString(x) + ")");
+        }
+        for (int i = 0; i < 200_000; i++) {
+            double any = Double.longBitsToDouble(next()); // every double class
+            double small = ((next() & 1) == 0 ? 1 : -1) * logUniform(-30, 6); // the thermodynamic arguments
+            for (double x : new double[] {any, small}) {
+                assertSameBits(StrictMath.atan(x), DeterministicMath.atan(x), "atan(" + Double.toHexString(x) + ")");
+                assertSameBits(StrictMath.tanh(x), DeterministicMath.tanh(x), "tanh(" + Double.toHexString(x) + ")");
+            }
+        }
+        double[][] atan = {{0.5, 0x1.dac670561bb4fp-2}, {1.0, 0x1.921fb54442d18p-1}, {2.0, 0x1.1b6e192ebbe44p0},
+            {-3.75, -0x1.4f68dea672618p0}, {1e-3, 0x1.0624d77516e16p-10}};
+        double[][] tanh = {{0.5, 0x1.d9353d7568af3p-2}, {1.0, 0x1.85efab514f394p-1}, {2.0, 0x1.ed9505e1bc3d4p-1},
+            {-0.125, -0x1.fd5992bc4b834p-4}, {1e-3, 0x1.0624d77516ce2p-10}};
+        for (double[] c : atan) assertSameBits(c[1], DeterministicMath.atan(c[0]), "pinned atan(" + c[0] + ")");
+        for (double[] c : tanh) assertSameBits(c[1], DeterministicMath.tanh(c[0]), "pinned tanh(" + c[0] + ")");
+    }
+
+    private static void assertSameBits(double expected, double actual, String where) {
+        if (Double.doubleToRawLongBits(expected) != Double.doubleToRawLongBits(actual) && !(Double.isNaN(expected) && Double.isNaN(actual))) {
+            fail(where + ": " + Double.toHexString(actual) + ", expected " + Double.toHexString(expected));
+        }
+    }
+
     @Test void powAllocatesNothing() {
         var threads = (com.sun.management.ThreadMXBean) ManagementFactory.getThreadMXBean();
         long thread = Thread.currentThread().threadId();

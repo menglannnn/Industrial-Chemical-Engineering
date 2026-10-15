@@ -59,6 +59,16 @@ public final class DeterministicMath {
         return StrictMath.acos(x);
     }
 
+    /** The arctangent; the solid CO2 Gibbs function's lattice terms (Jaeger and Span 2012) call it. */
+    public static double atan(double x) {
+        return StrictMath.atan(x);
+    }
+
+    /** The hyperbolic tangent; the GERG-2008 cosh-type ideal-gas terms of the methane reference spine call it. */
+    public static double tanh(double x) {
+        return StrictMath.tanh(x);
+    }
+
     /**
      * x to the power y by {@link DeterministicPow}: the same bits on every JVM, within 1 ulp of {@code StrictMath.pow}
      * (about 0.5 ulp of the exact value), {@code StrictMath.pow} bit for bit on every special case, without allocation.
