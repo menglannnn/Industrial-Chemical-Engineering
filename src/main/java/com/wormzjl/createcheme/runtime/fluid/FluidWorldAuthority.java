@@ -426,8 +426,12 @@ public final class FluidWorldAuthority implements AutoCloseable {
         }
         public boolean acceptsRecovery(UUID player){var online=server.getPlayerList().getPlayer(player);return online!=null&&online.getInventory().getFreeSlot()>=0;}
         public void refused(UUID event,String reason){refuseEvent(event,reason);}
-        public void committed(Set<Long> removed) {
+        public void committed(Set<Long> removed,Set<Long> recompiled) {
             unboundBindings.removeAll(removed);publishedMenuData.keySet().removeAll(removed);
+            // Every recompiled device's cached snapshot predates the change, and one left in no island (a pipe whose only
+            // tank was broken) gets no publication that would mark it: each is marked for its next bucket, which presents
+            // its new view (its replacement island, or "no hydraulic boundary"); an opening menu waits for that bucket.
+            publishedMenuData.keySet().removeAll(recompiled);for(long device:recompiled)presentation.markIfLoaded(device);
             // Open menus follow their devices to the replacement islands' buckets.
             presentation.rekey();
         }

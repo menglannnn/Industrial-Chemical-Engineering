@@ -41,7 +41,7 @@ class V3ClientPresetsTest {
         assertThrows(IllegalArgumentException.class,()->l.save(V3ClientPresets.Kind.MIXTURE,"../escape",json));
     }
     @Test void jsonRoundTripRetainsIndependentMixtureAndColumnConfiguration(){
-        var d=draft();for(int i=0;i<3;i++)d.removeDraw(i);for(int i=0;i<4;i++)d.removePumparound(i);d.set("s2","2");d.set("s3","2");d.set("s8","0.7");
+        var d=draft();for(int i=0;i<V3ColumnInput.MAX_SIDE_DRAWS;i++)d.removeDraw(i);for(int i=0;i<4;i++)d.removePumparound(i);d.set("s2","2");d.set("s3","2");d.set("s8","0.7");
         var pot=d.assemble();assertEquals(0,pot.stageCount());assertEquals(1,pot.feedStageNumber());assertEquals(700,pot.stagePressureDropPascal(),1e-9);
         assertTrue(pot.sideDraws().isEmpty());assertTrue(pot.pumparounds().isEmpty());assertEquals(1,pot.steamFeeds().getFirst().stageNumber());
         String column=V3ClientPresets.columnJson("pot",pot);
@@ -57,6 +57,15 @@ class V3ClientPresetsTest {
         var m=(V3ClientPresets.Mixture)V3ClientPresets.decode(mixture,V3ClientPresets.Kind.MIXTURE);
         restored.composition().load(m.amounts(),m.mass());
         assertArrayEquals(d.composition().moleFractions(),restored.composition().moleFractions(),1e-14);
+        assertEquals(com.wormzjl.createcheme.runtime.fluid.SlurryFeed.NONE,m.solids(),"a mixture without a solids block carries none");
+    }
+    @Test void aMixtureFileCarriesItsSolidsForTheFluidGenerator(){
+        String json="{\"schema_version\":1,\"kind\":\"mixture\",\"name\":\"slurry\",\"translation_key\":\"\",\"package\":\"createcheme:tjl20_methane_nitrogen\","
+            +"\"basis\":\"mole\",\"components\":[{\"id\":\"Water\",\"amount\":1}],"
+            +"\"solids\":{\"volume_fraction_percent\":10,\"grades\":[{\"material\":\"createcheme:demo_particle\",\"diameter_um\":100,\"mass_share\":1}]}}";
+        var m=(V3ClientPresets.Mixture)V3ClientPresets.decode(json,V3ClientPresets.Kind.MIXTURE);
+        assertEquals(com.wormzjl.createcheme.runtime.fluid.SlurryFeed.demo(),m.solids());
+        assertThrows(IllegalArgumentException.class,()->V3ClientPresets.decode(json.replace("\"volume_fraction_percent\":10","\"volume_fraction_percent\":100"),V3ClientPresets.Kind.MIXTURE));
     }
     @Test void changingPercentBasisAndRateBasisProducesPhysicalMassAndMolarValues(){
         var d=new V3CompositionDraft(V3EditorDraftTest.input(),List.of(0.02,0.2));d.clear();d.add(0);d.add(1);d.set(0,"2");d.set(1,"3");

@@ -220,7 +220,7 @@ public final class ColumnCalculatorV3Screen extends AbstractContainerScreen<Colu
     }
     private void buildConnections(){
         action("add_draw",10,CONTENT+26,240,()->{selectedDraw=draft.addDraw(Math.clamp(selectedNode+1,2,Math.max(2,stageCount()+1)));selectedPA=selectedSteam=-1;connectionMenu=false;edited();rebuild();}).active=editable()&&
-            stageCount()>0&&java.util.stream.IntStream.range(0,3).anyMatch(i->draft.get("d"+i+"stage").isBlank());
+            stageCount()>0&&java.util.stream.IntStream.range(0,V3ColumnInput.MAX_SIDE_DRAWS).anyMatch(i->draft.get("d"+i+"stage").isBlank());
         action("add_pa",10,CONTENT+51,240,()->{selectedPA=draft.addPumparound(Math.clamp(selectedNode+1,3,Math.max(3,stageCount()+1)));selectedDraw=selectedSteam=-1;connectionMenu=false;edited();rebuild();}).active=editable()&&
             stageCount()>1&&java.util.stream.IntStream.range(0,4).anyMatch(i->draft.get("c"+i+"draw").isBlank());
         action("add_steam",10,CONTENT+76,240,()->{selectedSteam=draft.addSteam(Math.clamp(selectedNode+1,2,stageCount()+2));selectedDraw=selectedPA=-1;connectionMenu=false;edited();rebuild();}).active=editable()&&
@@ -425,7 +425,7 @@ public final class ColumnCalculatorV3Screen extends AbstractContainerScreen<Colu
         int fy=sy(trayY(feedTray()));
         g.hLine(sx(5),x-26,fy,ACCENT);text(g,tr("feed_icon"),sx(5),fy-11,ACCENT,125);
         hit(sx(5),fy-13,Math.min(125,font.width(tr("feed_icon"))+8),13,()->changePage(1),tr("feed_icon.hint"));
-        for(int i=0;i<3;i++)if(!draft.get("d"+i+"stage").isBlank()){
+        for(int i=0;i<V3ColumnInput.MAX_SIDE_DRAWS;i++)if(!draft.get("d"+i+"stage").isBlank()){
             int at=draft.preview("d"+i+"stage",2,2,n+2)-1,y=sy(trayY(at)),id=i;
             g.hLine(x+26,x+39,y,ACCENT);text(g,tr("draw_icon",i+1),x+27,y-9,ACCENT,26);
             hit(x+26,y-11,28,13,()->{selectedDraw=id;selectedPA=selectedSteam=-1;rebuild();},tr("draw_icon.hint",i+1,at+1));

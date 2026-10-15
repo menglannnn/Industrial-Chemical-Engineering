@@ -195,8 +195,8 @@ public final class FluidDeviceScreen extends AbstractContainerScreen<FluidDevice
     private List<Choice> mixtureChoices(){
         var data=menu.clientData();var list=new ArrayList<Choice>();
         for(var preset:data.presets())list.add(new Choice(preset.name(),()->{
-            composition=new RelativeComposition(data.components(),data.molecularWeights(),preset.moleFractions());
-            if(mass)composition.toggleBasis();loadSolids(preset.solids());templates=false;scroll.reset();message=tr("mixture_loaded");rebuild();
+            var replacement=new RelativeComposition(data.components(),data.molecularWeights(),preset.moleFractions());
+            if(mass)replacement.toggleBasis();loadMixture(replacement,preset.solids());
         }));
         if(mixtureSnapshot!=null)for(var entry:mixtureSnapshot.entries()){
             var mixture=(V3ClientPresets.Mixture)entry.preset();
@@ -204,11 +204,15 @@ public final class FluidDeviceScreen extends AbstractContainerScreen<FluidDevice
             String name=mixture.translationKey().isBlank()?mixture.name():Component.translatable(mixture.translationKey()).getString();
             list.add(new Choice(name+" · "+tr(entry.bundled()?"bundled":"custom"),()->{
                 var replacement=new RelativeComposition(data.components(),data.molecularWeights(),new double[data.components().size()]);
-                replacement.load(mixture.amounts(),mixture.mass());composition=replacement;mass=mixture.mass();
-                templates=false;scroll.reset();message=tr("mixture_loaded");rebuild();
+                replacement.load(mixture.amounts(),mixture.mass());loadMixture(replacement,mixture.solids());
             }));
         }
         return List.copyOf(list);
+    }
+    /** Every preset choice loads a whole feed: its fluid composition and its solids (none clears the previous grades). */
+    private void loadMixture(RelativeComposition replacement,SlurryFeed solids){
+        composition=replacement;mass=replacement.mass();loadSolids(solids);
+        templates=false;scroll.reset();message=tr("mixture_loaded");rebuild();
     }
     private void buildComposition(){
         int x=tableX(),w=tableWidth();

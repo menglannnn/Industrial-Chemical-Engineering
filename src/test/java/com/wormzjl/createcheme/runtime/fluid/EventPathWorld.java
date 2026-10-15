@@ -54,7 +54,7 @@ class EventPathWorld {
             }
             public boolean acceptsRecovery(UUID player){return true;}
             public void refused(UUID event,String reason){}
-            public void committed(Set<Long> removed){committedRemovals.add(removed);}
+            public void committed(Set<Long> removed,Set<Long> recompiled){committedRemovals.add(removed);}
         });
         registry.load();
     }

@@ -39,8 +39,9 @@ public final class PhysicalRegistry {
         boolean acceptsRecovery(UUID player);
         /** An applied event did nothing for the player who asked; the reason reaches them with the reply to their input. */
         void refused(UUID event,String reason);
-        /** An application committed; {@code removed} are the devices it took out of the registry. */
-        void committed(Set<Long> removed);
+        /** An application committed; {@code removed} are the devices it took out of the registry, {@code recompiled} the
+         * surviving devices of the part it compiled: their island (or the absence of one) may have changed. */
+        void committed(Set<Long> removed,Set<Long> recompiled);
     }
     private record ChunkKey(String dimension,long chunk) {}
     private final WorldTopologyLedger topology;
@@ -327,7 +328,8 @@ public final class PhysicalRegistry {
             for(long island:affected){var devices=members.remove(island);if(devices!=null)for(long device:devices)unbind(device,island);}
             replacementMembers.forEach((island,devices)->{members.put(island,devices);for(long device:devices)bind(device,island);});
             for(var record:removedRecords)chunkRemove(record);for(var record:addedRecords)chunkAdd(record);
-            host.committed(Set.copyOf(removedDevices));
+            var recompiled=new HashSet<>(component.keySet());recompiled.removeAll(removedDevices);
+            host.committed(Set.copyOf(removedDevices),Set.copyOf(recompiled));
         });
         // A queued event that reaches a replacement island is fenced on it now: it will change that island. It reaches it
         // through a device the island owns, or through devices no island owns: submit's walk stopped at a device a queued

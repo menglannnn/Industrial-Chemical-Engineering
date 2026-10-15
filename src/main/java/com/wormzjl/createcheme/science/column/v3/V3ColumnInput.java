@@ -37,7 +37,7 @@ public record V3ColumnInput(
     /** Internal interior-tray count. Public total tray count is stageCount + 2. */
     public static final int MIN_STAGE_COUNT = 0;
     public static final int MAX_STAGE_COUNT = 64;
-    public static final int MAX_SIDE_DRAWS = 3;
+    public static final int MAX_SIDE_DRAWS = 4;
     public static final int MAX_STEAM_FEEDS = 2;
     public static final int MAX_PUMPAROUNDS = 4;
     /** Prescribed-drop mode: the historical uniform profile, bit-identical in every published field. */

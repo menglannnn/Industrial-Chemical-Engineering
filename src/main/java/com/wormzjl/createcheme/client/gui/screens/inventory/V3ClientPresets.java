@@ -2,7 +2,9 @@ package com.wormzjl.createcheme.client.gui.screens.inventory;
 
 import com.google.gson.*;
 import com.wormzjl.createcheme.science.column.v3.*;
+import com.wormzjl.createcheme.runtime.fluid.SlurryFeed;
 import com.wormzjl.createcheme.science.column.v3.V3ColumnSpecification.ControlledQuantity;
+import com.wormzjl.createcheme.science.fluid.state.ParticleSize;
 import java.io.*;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
@@ -22,8 +24,9 @@ final class V3ClientPresets {
     record Column(String name,String translationKey,Map<String,String> fields) implements Preset {
         Column {fields=Map.copyOf(fields);}
     }
-    record Mixture(String name,String translationKey,String packageId,boolean mass,Map<String,Double> amounts) implements Preset {
-        Mixture {amounts=Collections.unmodifiableMap(new LinkedHashMap<>(amounts));}
+    /** {@code solids} is the optional {@code "solids"} object of a mixture file (a fluid generator loads it; the column ignores it). */
+    record Mixture(String name,String translationKey,String packageId,boolean mass,Map<String,Double> amounts,SlurryFeed solids) implements Preset {
+        Mixture {amounts=Collections.unmodifiableMap(new LinkedHashMap<>(amounts));Objects.requireNonNull(solids);}
     }
     record Entry(Preset preset,boolean bundled,String file){}
     record Problem(String file,String reason){}
@@ -106,7 +109,7 @@ final class V3ClientPresets {
                     total+=value;
                 }
                 if(!Double.isFinite(total)||total<=0)throw new IllegalArgumentException("Empty mixture");
-                return new Mixture(name,key,pkg,basis.equals("mass"),amounts);
+                return new Mixture(name,key,pkg,basis.equals("mass"),amounts,solids(o));
             }
             Map<String,String> f=new LinkedHashMap<>();
             String[] names={"feed_flow_kmol_h","feed_temperature_kelvin","tray_count","feed_tray","top_temperature_kelvin",
@@ -118,11 +121,11 @@ final class V3ClientPresets {
             }
             int total=integer(o,"tray_count"),feed=integer(o,"feed_tray");
             if(total<2||total>66||feed<2||feed>total)throw new IllegalArgumentException("Invalid public tray numbering");
-            for(int i=0;i<3;i++){f.put("d"+i+"stage","");f.put("d"+i+"rate","");}
+            for(int i=0;i<V3ColumnInput.MAX_SIDE_DRAWS;i++){f.put("d"+i+"stage","");f.put("d"+i+"rate","");}
             for(int i=0;i<2;i++){f.put("t"+i+"stage","");f.put("t"+i+"rate","");f.put("t"+i+"T","");}
             for(int i=0;i<4;i++){f.put("c"+i+"draw","");f.put("c"+i+"return","");f.put("c"+i+"duty","");f.put("c"+i+"split","UNIFORM");}
             int i=0;
-            for(var element:array(o,"draws",3)){
+            for(var element:array(o,"draws",V3ColumnInput.MAX_SIDE_DRAWS)){
                 var d=element.getAsJsonObject();int at=integer(d,"tray");
                 if(at<2||at>=total)throw new IllegalArgumentException("Draw must be on an interior tray");
                 f.put("d"+i+"stage",Integer.toString(at));f.put("d"+i+"rate",Double.toString(number(d,"flow_kmol_h")));i++;
@@ -144,6 +147,20 @@ final class V3ClientPresets {
             }
             return new Column(name,key,f);
         }catch(IllegalStateException|NullPointerException|ClassCastException e){throw new IllegalArgumentException("Invalid preset JSON",e);}
+    }
+    /**
+     * A mixture's optional solids: {@code {"volume_fraction_percent": 10, "grades": [{"material": "createcheme:demo_particle",
+     * "diameter_um": 100, "mass_share": 1}]}} (at most 64 grades). Absent means no solids; the record checks the ranges.
+     */
+    private static SlurryFeed solids(JsonObject o){
+        var value=o.get("solids");if(value==null)return SlurryFeed.NONE;
+        if(!value.isJsonObject())throw new IllegalArgumentException("Invalid solids");
+        var s=value.getAsJsonObject();var grades=new ArrayList<SlurryFeed.Grade>();
+        for(var element:array(s,"grades",64)){
+            var g=element.getAsJsonObject();number(g,"diameter_um");
+            grades.add(new SlurryFeed.Grade(string(g,"material"),ParticleSize.micrometres(g.getAsJsonPrimitive("diameter_um").getAsBigDecimal().toPlainString()),number(g,"mass_share")));
+        }
+        return new SlurryFeed(number(s,"volume_fraction_percent")/100,grades);
     }
     static String mixtureJson(String name,V3CompositionDraft composition){
         JsonObject o=header(name,Kind.MIXTURE);o.addProperty("package",composition.source().packageId());

@@ -45,6 +45,24 @@ class V3BundledRegroupedModelTest {
             assertArrayEquals(actual.temperatures(),model.predict(input,V3SolveControl.UNBOUNDED).orElseThrow().temperatures());
         }
     }
+    /** The model has three draw slots; a column with the fourth draw the input allows is left to the classical seed. */
+    @Test void aFourthSideDrawIsAValidInputTheBundledModelDeclines() throws Exception {
+        JsonObject fixture;
+        try(var stream=getClass().getResourceAsStream("/science/column/v3/neural/regrouped-predictions.json")) {
+            assertNotNull(stream);fixture=JsonParser.parseReader(new InputStreamReader(stream,StandardCharsets.UTF_8)).getAsJsonObject();
+        }
+        V3ColumnInput base=null;
+        for(var entry:fixture.getAsJsonArray("fixtures")){var candidate=input(entry.getAsJsonObject().getAsJsonObject("input"));if(candidate.stageCount()>=4){base=candidate;break;}}
+        assertNotNull(base);
+        double rate=Arrays.stream(base.feedComponentMolarFlowsMolPerSecond()).sum()*0.01;
+        var draws=new ArrayList<V3SideDrawSpec>();for(int tray=1;tray<=V3ColumnInput.MAX_SIDE_DRAWS;tray++)draws.add(new V3SideDrawSpec(tray,rate));
+        assertEquals(4,V3ColumnInput.MAX_SIDE_DRAWS);
+        var input=new V3ColumnInput(base.schemaVersion(),base.packageId(),base.assayId(),base.componentBasis(),base.feedComponentMolarFlowsMolPerSecond(),
+                base.feedTemperatureKelvin(),base.stageCount(),base.feedStageNumber(),base.topPressurePascal(),base.stagePressureDropPascal(),
+                base.specifications(),draws,base.steamFeeds(),base.pumparounds(),base.columnDiameterMetres());
+        assertTrue(V3NeuralRegistry.bundled().predict(base,V3SolveControl.UNBOUNDED).isPresent());
+        assertTrue(V3NeuralRegistry.bundled().predict(input,V3SolveControl.UNBOUNDED).isEmpty());
+    }
     private static void checkFlows(double[][] expected,double[][] actual,double total) {
         assertEquals(expected.length,actual.length);
         for(int n=0;n<expected.length;n++) {

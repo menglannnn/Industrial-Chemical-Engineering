@@ -22,7 +22,7 @@ final class V3EditorDraft {
             value(base,ControlledQuantity.REBOILER_DUTY)/1e6,value(base,ControlledQuantity.ORGANIC_REFLUX_RATIO),
             base.topPressurePascal()/1e5,base.stagePressureDropPascal()/1000,base.columnDiameterMetres()};
         for(int i=0;i<scalars.length;i++)putNumber("s"+i,scalars[i],i==2||i==3);
-        for(int i=0;i<3;i++){
+        for(int i=0;i<V3ColumnInput.MAX_SIDE_DRAWS;i++){
             var d=i<base.sideDraws().size()?base.sideDraws().get(i):null;
             if(d==null){put("d"+i+"stage","");put("d"+i+"rate","");}
             else{putNumber("d"+i+"stage",d.trayNumber()+1,true);putNumber("d"+i+"rate",d.molarFlowMolPerSecond()*3.6,false);}
@@ -78,7 +78,7 @@ final class V3EditorDraft {
         try{return Math.clamp(Integer.parseInt(get(key)),min,max);}catch(NumberFormatException e){return fallback;}
     }
     int addDraw(int tray){
-        for(int i=0;i<3;i++)if(get("d"+i+"stage").isBlank()){
+        for(int i=0;i<V3ColumnInput.MAX_SIDE_DRAWS;i++)if(get("d"+i+"stage").isBlank()){
             set("d"+i+"stage",Integer.toString(tray));set("d"+i+"rate","1.0");return i;}
         return -1;
     }
@@ -126,7 +126,7 @@ final class V3EditorDraft {
         if(!dirty())return base;
         List<String> scalar=new ArrayList<>();for(int i=0;i<10;i++)scalar.add(i==2?index("s2",-2):i==3?index("s3",-1):precise("s"+i));
         List<SideDrawDraft.Row> draws=new ArrayList<>();
-        for(int i=0;i<3;i++)draws.add(new SideDrawDraft.Row(index("d"+i+"stage",-1),precise("d"+i+"rate")));
+        for(int i=0;i<V3ColumnInput.MAX_SIDE_DRAWS;i++)draws.add(new SideDrawDraft.Row(index("d"+i+"stage",-1),precise("d"+i+"rate")));
         List<PumparoundDraft.Row> coolers=new ArrayList<>();
         for(int i=0;i<V3ColumnInput.MAX_PUMPAROUNDS;i++)coolers.add(new PumparoundDraft.Row(
             index("c"+i+"draw",-1),index("c"+i+"return",-1),precise("c"+i+"duty"),V3PumparoundSpec.Split.valueOf(get("c"+i+"split"))));
