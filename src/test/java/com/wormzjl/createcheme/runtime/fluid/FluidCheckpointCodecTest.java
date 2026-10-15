@@ -105,8 +105,8 @@ class FluidCheckpointCodecTest {
                 new WorldTopologyLedger.Event(UUID.randomUUID(),12,List.of(new WorldTopologyLedger.Edit(2,null)),Set.of(2L),new WorldTopologyLedger.Recovery(2,player)));
         var particle=new com.wormzjl.createcheme.science.material.SolidMaterial("createcheme:demo_particle","r1",2500,800);
         var solids=new com.wormzjl.createcheme.science.fluid.state.SolidInventory(List.of(new com.wormzjl.createcheme.science.fluid.state.SolidInventory.Population(particle,com.wormzjl.createcheme.science.fluid.state.ParticleSize.micrometres("100"),.25)));
-        var recoveries=Map.of(UUID.randomUUID(),new RecoveredSolid(new PhysicalFluidTopology.Position("minecraft:overworld",3,65,-3),player,solids,12.5),
-                UUID.randomUUID(),new RecoveredSolid(new PhysicalFluidTopology.Position("minecraft:the_nether",9,70,1),null,solids,-4));
+        var recoveries=Map.of(UUID.randomUUID(),new WorldTopologyLedger.RecoveredSolid(new PhysicalFluidTopology.Position("minecraft:overworld",3,65,-3),player,solids,12.5),
+                UUID.randomUUID(),new WorldTopologyLedger.RecoveredSolid(new PhysicalFluidTopology.Position("minecraft:the_nether",9,70,1),null,solids,-4));
         var moles=new double[count];moles[0]=3.5;moles[count-1]=-0.0+1e-9;
         var constructed=new WorldTopologyLedger.MaterialTotal(moles,4.25e6,Map.of("createcheme:demo_particle",.75));
         var world=new WorldTopologyLedger.Snapshot(12,9,Map.of(1L,reservoir,2L,pump,3L,valve,4L,pipe,5L,generator),events,constructed,WorldTopologyLedger.MaterialTotal.empty(count),empty.basis(),recoveries);
@@ -127,7 +127,7 @@ class FluidCheckpointCodecTest {
         var loaded=FluidCheckpointCodec.decode(image,key->FluidThermodynamics.forNetwork(MaterialCatalog.bundled(),PACKAGE,1e-9,10));
         var a=before.islands().getFirst().snapshot();var b=loaded.islands().getFirst().snapshot();
         assertEquals(a.graph().reservoirs().getFirst().inventory(),b.graph().reservoirs().getFirst().inventory());assertEquals(a.clock(),b.clock());assertEquals(a.allowance(),b.allowance());assertEquals(a.fences(),b.fences());
-        assertThrows(ApproximationRejected.class,()->b.anchor().orElseThrow().guard(FluidThermodynamics.forNetwork(MaterialCatalog.bundled(),PACKAGE,1e-9,10),b.graph()));
+        assertThrows(ApproximationAnchor.Rejected.class,()->b.anchor().orElseThrow().guard(FluidThermodynamics.forNetwork(MaterialCatalog.bundled(),PACKAGE,1e-9,10),b.graph()));
         // An anchor recorded under the thermodynamic revision alone does not carry the hydraulic acceptance law.
         var thermodynamicOnly=CheckpointImages.withIsland(image,1,key->model,entry->{
             var s=entry.snapshot();var anchor=s.anchor().orElseThrow();
@@ -136,7 +136,7 @@ class FluidCheckpointCodecTest {
         });
         var restored=FluidCheckpointCodec.decode(thermodynamicOnly,key->model).islands().getFirst().snapshot();
         assertEquals(a.clock(),restored.clock());assertEquals(a.allowance(),restored.allowance());assertEquals(a.graph().reservoirs().getFirst().inventory(),restored.graph().reservoirs().getFirst().inventory());
-        assertThrows(ApproximationRejected.class,()->restored.anchor().orElseThrow().guard(model,restored.graph()));
+        assertThrows(ApproximationAnchor.Rejected.class,()->restored.anchor().orElseThrow().guard(model,restored.graph()));
     }
 
     // ---------------- format 6: pipe ports and the compressor (phase-ports WP5, plan 4.4) ----------------

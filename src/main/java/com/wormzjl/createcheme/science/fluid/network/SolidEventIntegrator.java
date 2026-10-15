@@ -220,8 +220,8 @@ final class SolidEventIntegrator {
     private static boolean atCapacity(InlineFilter state) {
         return state.clogged()||state.captured().volume()>=state.capacity()*(1-1e-9);
     }
-    private StageGuard guard(PassiveNetwork graph) {
-        return new StageGuard() {
+    private PassiveIntervalSolver.StageGuard guard(PassiveNetwork graph) {
+        return new PassiveIntervalSolver.StageGuard() {
             public void check(List<FluidThermodynamics.State> states,List<FlowControl.Mode> modes) {}
             @Override public void checkRate(Map<Long,InlineFilter> filters,List<FluidThermodynamics.State> states,List<FlowControl.Mode> modes,double[] flows) {
                 // The graph this guard closes over is the one the segment started from, so its own

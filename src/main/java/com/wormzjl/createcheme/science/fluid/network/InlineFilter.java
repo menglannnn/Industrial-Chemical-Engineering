@@ -11,7 +11,8 @@ public record InlineFilter(double capacity, double cleanResistance, SolidInvento
         if(!Double.isFinite(capacity)||capacity<=0||!Double.isFinite(cleanResistance)||cleanResistance<=0
                 ||!Double.isFinite(energyJoule)||captured.empty()&&energyJoule!=0)throw new IllegalArgumentException("Invalid filter state");
     }
-    public static InlineFilter empty(){return new InlineFilter(.01,1e6,SolidInventory.EMPTY,0);}
+    /** A clean filter with the default capacity and resistance ({@link com.wormzjl.createcheme.science.fluid.transport.SlurryTransport.Settings#defaults}). */
+    public static InlineFilter empty(){var d=com.wormzjl.createcheme.science.fluid.transport.SlurryTransport.Settings.defaults();return new InlineFilter(d.filterCapacity(),d.filterResistance(),SolidInventory.EMPTY,0);}
     public double loading(){return captured.volume()/capacity;}
     public boolean clogged(){return stoppedAtCapacity||captured.volume()>=capacity;}
     public InlineFilter stopped(){return new InlineFilter(capacity,cleanResistance,captured,energyJoule,true);}

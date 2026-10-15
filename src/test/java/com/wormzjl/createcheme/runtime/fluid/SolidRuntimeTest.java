@@ -6,7 +6,7 @@ import com.wormzjl.createcheme.science.fluid.network.*;
 import com.wormzjl.createcheme.science.fluid.state.*;
 import com.wormzjl.createcheme.science.fluid.thermo.FluidThermodynamics;
 import com.wormzjl.createcheme.science.fluid.topology.TopologyCompiler;
-import com.wormzjl.createcheme.science.fluid.transport.SolidTransportSettings;
+import com.wormzjl.createcheme.science.fluid.transport.SlurryTransport;
 import com.wormzjl.createcheme.science.material.*;
 import java.util.*;
 import org.junit.jupiter.api.Test;
@@ -47,7 +47,7 @@ class SolidRuntimeTest {
         var restored=FluidCheckpointCodec.decode(json,key->model).islands().getFirst().snapshot().graph();
         assertEquals(cake,restored.pipes().getFirst().filter());
         assertEquals(source.solids(),restored.reservoirs().getFirst().inventory().solids());
-        var changed=FluidThermodynamics.forNetwork(catalog,FluidPresetCatalog.NETWORK_PACKAGE,1e-9,100,1e-6,new SolidTransportSettings(100,1e-8,12,.0001,2e6));
+        var changed=FluidThermodynamics.forNetwork(catalog,FluidPresetCatalog.NETWORK_PACKAGE,1e-9,100,1e-6,new SlurryTransport.Settings(100,1e-8,12,.0001,2e6));
         var resized=FluidCheckpointCodec.decode(json,key->changed).islands().getFirst().snapshot().graph().pipes().getFirst().filter();
         assertTrue(resized.clogged());assertEquals(cake.captured(),resized.captured());assertEquals(cake.energyJoule(),resized.energyJoule());
         assertEquals(.0001,resized.capacity());assertEquals(2e6,resized.cleanResistance());
@@ -119,7 +119,7 @@ class SolidRuntimeTest {
         var resources=new HashMap<>(catalog.resources());
         resources.put("data/createcheme/materials/solids/another.json","{\"schema_version\":1,\"id\":\"createcheme:another\",\"revision\":\"v1\",\"density_kg_per_m3\":1500,\"heat_capacity_j_per_kg_kelvin\":900}");
         var extended=MaterialCatalog.parse(resources);
-        assertEquals(FluidBasis.capture(catalog),FluidBasis.capture(extended));
+        assertEquals(WorldTopologyLedger.FluidBasis.capture(catalog),WorldTopologyLedger.FluidBasis.capture(extended));
         extended.solids().validate(stock(1));
         var changed=new HashMap<>(catalog.resources());var key="data/createcheme/materials/solids/demo_particle.json";
         var record=JsonParser.parseString(changed.get(key)).getAsJsonObject();record.addProperty("density_kg_per_m3",2600);changed.put(key,record.toString());

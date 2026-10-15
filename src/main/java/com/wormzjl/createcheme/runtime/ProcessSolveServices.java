@@ -17,8 +17,6 @@ import com.wormzjl.createcheme.science.fluid.network.PassiveNetwork;
 import com.wormzjl.createcheme.science.fluid.network.PassiveIntervalSolver;
 import com.wormzjl.createcheme.science.fluid.thermo.FluidThermodynamics;
 import com.wormzjl.createcheme.science.fluid.network.ApproximationAnchor;
-import com.wormzjl.createcheme.science.fluid.network.ApproximationRejected;
-import com.wormzjl.createcheme.runtime.fluid.FluidFallbackPolicy;
 import com.wormzjl.createcheme.runtime.fluid.FallbackAllowance;
 
 import java.time.Duration;
@@ -375,13 +373,13 @@ public final class ProcessSolveServices {
 
     /** Contains no live level, block entity, callback, or mutable server-owned collection. */
     public record FluidIslandCommand(FluidThermodynamics model,PassiveNetwork snapshot,double durationSeconds,
-                                     PassiveIntervalSolver.Settings settings,long wallBudgetNanos,FluidFallbackPolicy fallback,
+                                     PassiveIntervalSolver.Settings settings,long wallBudgetNanos,FallbackAllowance.Policy fallback,
                                      com.wormzjl.createcheme.runtime.fluid.RetainedSolver retained) implements FluidSolveCommand {
         public FluidIslandCommand(FluidThermodynamics model,PassiveNetwork snapshot,double durationSeconds,PassiveIntervalSolver.Settings settings,long wallBudgetNanos) {
-            this(model,snapshot,durationSeconds,settings,wallBudgetNanos,FluidFallbackPolicy.disabled());
+            this(model,snapshot,durationSeconds,settings,wallBudgetNanos,FallbackAllowance.Policy.disabled());
         }
         /** Without a retained handle the job gets its own, which is the per-job solver of before. */
-        public FluidIslandCommand(FluidThermodynamics model,PassiveNetwork snapshot,double durationSeconds,PassiveIntervalSolver.Settings settings,long wallBudgetNanos,FluidFallbackPolicy fallback) {
+        public FluidIslandCommand(FluidThermodynamics model,PassiveNetwork snapshot,double durationSeconds,PassiveIntervalSolver.Settings settings,long wallBudgetNanos,FallbackAllowance.Policy fallback) {
             this(model,snapshot,durationSeconds,settings,wallBudgetNanos,fallback,new com.wormzjl.createcheme.runtime.fluid.RetainedSolver());
         }
         public FluidIslandCommand {
@@ -415,13 +413,13 @@ public final class ProcessSolveServices {
                         var approximateSettings=new PassiveIntervalSolver.Settings(Math.min(1,durationSeconds),20,256);
                         var candidate=retained.solveApproximate(model,snapshot,durationSeconds,approximateSettings,hard,guard);hard.run();
                         return new FluidIslandSolveResult(Optional.of(candidate),"APPROXIMATE: soft budget",elapsed[0],fallback.allowance().accept(ticks,fallback.cadenceTicks()),fallback.anchor());
-                    }catch(com.wormzjl.createcheme.science.fluid.solver.SparseNewton.Nonconvergence|IllegalArgumentException|ApproximationRejected refused) {
+                    }catch(com.wormzjl.createcheme.science.fluid.solver.SparseNewton.Nonconvergence|IllegalArgumentException|ApproximationAnchor.Rejected refused) {
                         cancellationToken.throwIfCancellationRequested();
                         return new FluidIslandSolveResult(Optional.empty(),SOFT_BUDGET_REFUSED+refused.getMessage(),elapsed[0],fallback.allowance(),fallback.anchor());
                     }
                 }
             }catch(FluidWallDeadline deadline){return new FluidIslandSolveResult(Optional.empty(),WALL_DEADLINE,elapsed[0],fallback.allowance(),fallback.anchor());}
-            catch(com.wormzjl.createcheme.science.fluid.solver.SparseNewton.Nonconvergence|IllegalArgumentException|ApproximationRejected failed) {
+            catch(com.wormzjl.createcheme.science.fluid.solver.SparseNewton.Nonconvergence|IllegalArgumentException|ApproximationAnchor.Rejected failed) {
                 cancellationToken.throwIfCancellationRequested();
                 // A failure the property domain decided carries the violation itself, so the coordinator can hold the island
                 // with the dedicated status and tell a reproduced violation from a numerical one (IslandCoordinator.hold).
@@ -747,4 +745,22 @@ public final class ProcessSolveServices {
         }
     }
 
+    /** Coalesces terminal notifications into at most one pending owner-thread mailbox task.
+     * The executor must enqueue asynchronously onto the constructing thread; it must never run inline.
+     * A signal carries no result and never releases service capacity. Only the owner pump may drain results.
+     */
+    public static final class CompletionWakeup implements AutoCloseable {
+        private final Thread owner=Thread.currentThread();
+        private final java.util.concurrent.Executor mailbox;
+        private final Runnable pump;
+        private final java.util.concurrent.atomic.AtomicBoolean pending=new java.util.concurrent.atomic.AtomicBoolean(),closed=new java.util.concurrent.atomic.AtomicBoolean();
+        public CompletionWakeup(java.util.concurrent.Executor mailbox,Runnable pump){this.mailbox=Objects.requireNonNull(mailbox);this.pump=Objects.requireNonNull(pump);}
+        public void signal() {
+            if(closed.get()||!pending.compareAndSet(false,true))return;
+            try{mailbox.execute(()->{owned();pending.set(false);if(!closed.get())pump.run();});}
+            catch(RuntimeException failure){pending.set(false);throw failure;}
+        }
+        @Override public void close(){owned();closed.set(true);}
+        private void owned(){if(Thread.currentThread()!=owner)throw new IllegalStateException("Completion pump must run on its owning thread");}
+    }
 }

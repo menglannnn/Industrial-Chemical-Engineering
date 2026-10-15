@@ -11,6 +11,8 @@ import com.wormzjl.createcheme.science.material.SolidMaterial;
 import net.minecraft.nbt.*;
 import java.lang.reflect.*;
 import java.nio.ByteBuffer;
+import java.nio.charset.CharacterCodingException;
+import java.nio.charset.CodingErrorAction;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -34,7 +36,7 @@ import java.util.function.Function;
  * STEADY certificates into one kind) and where the island's unit lies with its SHA-256. {@code SHA256}
  * covers every field.
  *
- * <p><b>Island unit</b> (binary, {@link FluidUnitIO}): a header naming the island, its revision and the unit's
+ * <p><b>Island unit</b> (binary, {@link Writer}, {@link Reader}): a header naming the island, its revision and the unit's
  * generation (all three must match the index), then its dimension and package, status, fallback allowance and fences;
  * the graph's topology once - node identities, elevations, kinds and volumes, pipe ends, sections, controls (tag 0
  * passive, 1 pump, 2 valve, 3 compressor) and, since format 6, the two ends' phase ports - and
@@ -164,7 +166,7 @@ public final class FluidCheckpointCodec {
      * unit of an unchanged ledger.
      */
     public static byte[] encodeTopology(WorldTopologyLedger.Snapshot world) {
-        var tables=new Tables();var body=new FluidUnitIO.Writer();
+        var tables=new Tables();var body=new Writer();
         var active=new ArrayList<>(world.active().values());active.sort(Comparator.comparingLong(r->r.device().id()));
         body.varint(active.size());for(var r:active)registration(body,r,tables);
         body.varint(world.events().size());
@@ -181,15 +183,15 @@ public final class FluidCheckpointCodec {
         for(var e:recoveries.entrySet()) {
             var r=e.getValue();uuid(body,e.getKey());position(body,r.position(),tables);body.bool(r.player()!=null);if(r.player()!=null)uuid(body,r.player());solids(body,r.solids());body.f64(r.energyJoule());
         }
-        var w=new FluidUnitIO.Writer();w.varlong(world.nextIdentity());
+        var w=new Writer();w.varlong(world.nextIdentity());
         w.varint(tables.texts.size());for(var text:tables.texts.keySet())w.text(text);
         w.varint(tables.geometryValues.size());for(var g:tables.geometryValues){w.f64(g.length());w.f64(g.diameter());w.f64(g.roughness());w.f64(g.minorLoss());}
         w.varint(tables.compositionValues.size());for(var c:tables.compositionValues)w.sparse(c);
         w.append(body,0,body.size());return w.toByteArray();
     }
     /** A topology {@link #encodeTopology} wrote, at {@code onlineTick}, validated as the ledger itself validates it. */
-    public static WorldTopologyLedger.Snapshot decodeTopology(byte[] bytes,long onlineTick){return topologyBody(new FluidUnitIO.Reader(bytes,0,bytes.length,"topology unit"),onlineTick);}
-    private static WorldTopologyLedger.Snapshot topologyBody(FluidUnitIO.Reader r,long onlineTick) {
+    public static WorldTopologyLedger.Snapshot decodeTopology(byte[] bytes,long onlineTick){return topologyBody(new Reader(bytes,0,bytes.length,"topology unit"),onlineTick);}
+    private static WorldTopologyLedger.Snapshot topologyBody(Reader r,long onlineTick) {
         long nextIdentity=r.varlong();
         int textCount=r.varint(MAXIMUM_STRINGS);var texts=new String[textCount];for(int i=0;i<textCount;i++)texts[i]=r.text(MAXIMUM_TEXT);
         int geometryCount=r.varint(MAXIMUM_PIPES);var geometries=new PipeResistance.Geometry[geometryCount];for(int i=0;i<geometryCount;i++)geometries[i]=new PipeResistance.Geometry(r.f64(),r.f64(),r.f64(),r.f64());
@@ -208,17 +210,17 @@ public final class FluidCheckpointCodec {
         }
         var constructed=total(r,texts);var destroyed=total(r,texts);
         String packageId=text(r,texts);int componentCount=r.varint(MAXIMUM_ARRAY);var components=new ArrayList<String>(componentCount);for(int i=0;i<componentCount;i++)components.add(text(r,texts));
-        var basis=new FluidBasis(packageId,components,text(r,texts));
-        int recoveryCount=r.varint(WorldTopologyLedger.MAXIMUM_EVENTS);var recoveries=new HashMap<UUID,RecoveredSolid>();
+        var basis=new WorldTopologyLedger.FluidBasis(packageId,components,text(r,texts));
+        int recoveryCount=r.varint(WorldTopologyLedger.MAXIMUM_EVENTS);var recoveries=new HashMap<UUID,WorldTopologyLedger.RecoveredSolid>();
         for(int i=0;i<recoveryCount;i++) {
             var id=uuid(r);var position=position(r,texts);var player=r.bool()?uuid(r):null;
-            if(recoveries.put(id,new RecoveredSolid(position,player,solids(r,null),r.f64()))!=null)throw r.invalid("duplicate recovery "+id);
+            if(recoveries.put(id,new WorldTopologyLedger.RecoveredSolid(position,player,solids(r,null),r.f64()))!=null)throw r.invalid("duplicate recovery "+id);
         }
         r.end();
         var snapshot=new WorldTopologyLedger.Snapshot(onlineTick,nextIdentity,active,events,constructed,destroyed,basis,recoveries);
         new WorldTopologyLedger(snapshot);return snapshot;
     }
-    private static void registration(FluidUnitIO.Writer w,WorldTopologyLedger.Registration r,Tables tables) {
+    private static void registration(Writer w,WorldTopologyLedger.Registration r,Tables tables) {
         var d=r.device();w.varlong(d.id());position(w,d.position(),tables);w.u8(d.kind().ordinal());w.u8(d.facing().ordinal());w.varint(tables.geometry(d.geometry()));
         switch(d.control()) {
             case FlowControl.Passive ignored->w.u8(0);
@@ -231,7 +233,7 @@ public final class FluidCheckpointCodec {
         for(var g:s.solids().grades()){w.varint(tables.text(g.material()));w.varint(tables.text(g.size().metres()));w.f64(g.massShare());}
         w.varlong(r.revision());
     }
-    private static WorldTopologyLedger.Registration registration(FluidUnitIO.Reader r,Object[][] tables) {
+    private static WorldTopologyLedger.Registration registration(Reader r,Object[][] tables) {
         var texts=(String[])tables[0];var geometries=(PipeResistance.Geometry[])tables[1];var compositions=(double[][])tables[2];
         long id=r.varlong();var position=position(r,texts);int kind=r.u8();if(kind>=DEVICE_KINDS.length)throw r.invalid("unknown device kind "+kind);
         int facing=r.u8();if(facing>=DIRECTIONS.length)throw r.invalid("unknown facing "+facing);
@@ -244,19 +246,19 @@ public final class FluidCheckpointCodec {
         for(int i=0;i<gradeCount;i++)grades.add(new SlurryFeed.Grade(text(r,texts),new ParticleSize(text(r,texts)),r.f64()));
         return new WorldTopologyLedger.Registration(device,new FluidDeviceSpec(volume,temperature,pressure,composition,new SlurryFeed(fraction,grades)),r.varlong());
     }
-    private static void position(FluidUnitIO.Writer w,PhysicalFluidTopology.Position p,Tables tables){w.varint(tables.text(p.dimension()));w.i32(p.x());w.i32(p.y());w.i32(p.z());}
-    private static PhysicalFluidTopology.Position position(FluidUnitIO.Reader r,String[] texts){return new PhysicalFluidTopology.Position(text(r,texts),r.i32(),r.i32(),r.i32());}
-    private static void total(FluidUnitIO.Writer w,WorldTopologyLedger.MaterialTotal total,Tables tables) {
+    private static void position(Writer w,PhysicalFluidTopology.Position p,Tables tables){w.varint(tables.text(p.dimension()));w.i32(p.x());w.i32(p.y());w.i32(p.z());}
+    private static PhysicalFluidTopology.Position position(Reader r,String[] texts){return new PhysicalFluidTopology.Position(text(r,texts),r.i32(),r.i32(),r.i32());}
+    private static void total(Writer w,WorldTopologyLedger.MaterialTotal total,Tables tables) {
         w.sparse(total.moles());w.f64(total.totalEnergy());var solids=new TreeMap<>(total.solidMasses());w.varint(solids.size());for(var e:solids.entrySet()){w.varint(tables.text(e.getKey()));w.f64(e.getValue());}
     }
-    private static WorldTopologyLedger.MaterialTotal total(FluidUnitIO.Reader r,String[] texts) {
+    private static WorldTopologyLedger.MaterialTotal total(Reader r,String[] texts) {
         var moles=r.sparse(MAXIMUM_ARRAY);double energy=r.f64();int count=r.varint(MAXIMUM_STRINGS);var solids=new HashMap<String,Double>();
         for(int i=0;i<count;i++)if(solids.put(text(r,texts),r.f64())!=null)throw r.invalid("duplicate solid total");
         return new WorldTopologyLedger.MaterialTotal(moles,energy,solids);
     }
-    private static String text(FluidUnitIO.Reader r,String[] texts){return texts[r.varint(texts.length-1)];}
-    private static void uuid(FluidUnitIO.Writer w,UUID id){w.i64(id.getMostSignificantBits());w.i64(id.getLeastSignificantBits());}
-    private static UUID uuid(FluidUnitIO.Reader r){return new UUID(r.i64(),r.i64());}
+    private static String text(Reader r,String[] texts){return texts[r.varint(texts.length-1)];}
+    private static void uuid(Writer w,UUID id){w.i64(id.getMostSignificantBits());w.i64(id.getLeastSignificantBits());}
+    private static UUID uuid(Reader r){return new UUID(r.i64(),r.i64());}
     /** Whether two ledger snapshots hold the same ledger, whatever their online ticks: a snapshot shares the ledger's
      * immutable parts with the state it was taken from, so an unchanged ledger is the same objects. */
     public static boolean sameWorldBody(WorldTopologyLedger.Snapshot a,WorldTopologyLedger.Snapshot b) {
@@ -264,10 +266,10 @@ public final class FluidCheckpointCodec {
                 &&a.destroyed()==b.destroyed()&&a.basis()==b.basis()&&a.recoveries()==b.recoveries();
     }
     static byte[] topologyUnit(WorldTopologyLedger.Snapshot world,long generation) {
-        var w=new FluidUnitIO.Writer();header(w,TOPOLOGY,0,0,generation);w.raw(encodeTopology(world));return w.toByteArray();
+        var w=new Writer();header(w,TOPOLOGY,0,0,generation);w.raw(encodeTopology(world));return w.toByteArray();
     }
     static WorldTopologyLedger.Snapshot topology(byte[] data,int offset,int length,long generation,long epoch) {
-        var r=new FluidUnitIO.Reader(data,offset,length,"topology unit");
+        var r=new Reader(data,offset,length,"topology unit");
         requireHeader(r,TOPOLOGY,0,0,generation,"the topology");
         return topologyBody(r,epoch);
     }
@@ -303,10 +305,10 @@ public final class FluidCheckpointCodec {
 
     // ---------------- island units ----------------
 
-    private static void header(FluidUnitIO.Writer w,byte kind,long id,long revision,long generation) {
+    private static void header(Writer w,byte kind,long id,long revision,long generation) {
         w.i32(UNIT_MAGIC);w.u8(UNIT_FORMAT);w.u8(kind);w.i64(id);w.i64(revision);w.i64(generation);
     }
-    private static void requireHeader(FluidUnitIO.Reader r,byte kind,long id,long revision,long generation,String what) {
+    private static void requireHeader(Reader r,byte kind,long id,long revision,long generation,String what) {
         if(r.i32()!=UNIT_MAGIC)throw new IllegalArgumentException("Invalid saved unit of "+what+": not a fluid storage unit");
         int format=r.u8();if(format!=UNIT_FORMAT)throw new IllegalArgumentException("Fluid storage unit format "+format+" of "+what+" cannot be read: this build reads unit format "+UNIT_FORMAT
                 +" only and has no upgrade from older formats. Create a fresh world for this development build.");
@@ -328,7 +330,7 @@ public final class FluidCheckpointCodec {
         var graph=persisted.map(saved->saved.interval().result().graph()).orElse(s.graph());
         var result=persisted.isPresent()?Optional.of(persisted.orElseThrow().interval().result()):s.lastResult();
         if(!graph.scheduledTransfers().isEmpty())throw new IllegalArgumentException("Request-scoped transfers must be resolved into the committed ledger before saving");
-        var w=new FluidUnitIO.Writer();
+        var w=new Writer();
         header(w,ISLAND,s.id(),s.revision(),generation);
         w.varint(strings.ref(entry.dimension));w.varint(strings.ref(entry.packageId));w.f64(entry.compressibility);
         w.text(s.status());
@@ -364,15 +366,15 @@ public final class FluidCheckpointCodec {
     }
     /** A graph beside the island's main one: 1 when it is the same graph (same topology and state bytes), 2 when it
      * shares the topology (then its state follows), 3 otherwise (its topology and state follow). */
-    private static void related(FluidUnitIO.Writer w,PassiveNetwork other,PassiveNetwork main,Written written) {
+    private static void related(Writer w,PassiveNetwork other,PassiveNetwork main,Written written) {
         if(other==main){w.u8(1);return;}
         int flag=w.size();w.u8(0);int topologyStart=w.size();topology(w,other);int stateStart=w.size();state(w,other);int end=w.size();
         boolean sameTopology=w.sameBytes(topologyStart,stateStart,written.topologyStart,written.stateStart);
         if(sameTopology&&w.sameBytes(stateStart,end,written.stateStart,written.end)){w.truncate(flag);w.u8(1);return;}
         if(!sameTopology){w.truncate(flag);w.u8(3);topology(w,other);state(w,other);return;}
-        var state=new FluidUnitIO.Writer();state.append(w,stateStart,end);w.truncate(flag);w.u8(2);w.append(state,0,state.size());
+        var state=new Writer();state.append(w,stateStart,end);w.truncate(flag);w.u8(2);w.append(state,0,state.size());
     }
-    private static void topology(FluidUnitIO.Writer w,PassiveNetwork graph) {
+    private static void topology(Writer w,PassiveNetwork graph) {
         w.varint(graph.reservoirs().size());
         for(var n:graph.reservoirs()){w.i64(n.id());w.f64(n.elevation());w.u8(n.kind().ordinal());w.f64(n.inventory().volume());}
         w.varint(graph.pipes().size());
@@ -389,7 +391,7 @@ public final class FluidCheckpointCodec {
             w.u8(p.firstPort().ordinal());w.u8(p.secondPort().ordinal());
         }
     }
-    private static void state(FluidUnitIO.Writer w,PassiveNetwork graph) {
+    private static void state(Writer w,PassiveNetwork graph) {
         for(var n:graph.reservoirs()) {
             var inventory=n.inventory();var s=n.state();
             w.sparse(inventory.moles());w.f64(inventory.internalEnergy());solids(w,inventory.solids());
@@ -401,12 +403,12 @@ public final class FluidCheckpointCodec {
             if(filter==null)w.u8(0);else{w.u8(1);w.f64(filter.capacity());solids(w,filter.captured());w.f64(filter.energyJoule());w.bool(filter.stoppedAtCapacity());}
         }
     }
-    private static void solids(FluidUnitIO.Writer w,SolidInventory solids) {
+    private static void solids(Writer w,SolidInventory solids) {
         w.varint(solids.populations().size());
         for(var p:solids.populations()){var m=p.material();w.text(m.id());w.text(m.revision());w.f64(m.density());w.f64(m.heatCapacity());w.text(p.size().metres());w.f64(p.massKg());}
     }
-    private static void modes(FluidUnitIO.Writer w,List<FlowControl.Mode> modes){w.varint(modes.size());for(var mode:modes)w.u8(mode.ordinal());}
-    private static void stream(FluidUnitIO.Writer w,PipeTransfer.Stream stream) {
+    private static void modes(Writer w,List<FlowControl.Mode> modes){w.varint(modes.size());for(var mode:modes)w.u8(mode.ordinal());}
+    private static void stream(Writer w,PipeTransfer.Stream stream) {
         var phases=stream.phaseMoles();var volumes=stream.phaseVolumes();
         boolean zero=Double.doubleToRawLongBits(stream.massKg())==0&&stream.solids().empty();
         for(var phase:phases)for(double n:phase)zero&=Double.doubleToRawLongBits(n)==0;
@@ -421,7 +423,7 @@ public final class FluidCheckpointCodec {
     record UnitRef(long pack,long offset,int length,byte[] sha256) {}
     private record Topology(long[] ids,double[] elevations,PassiveNetwork.NodeKind[] kinds,double[] volumes,long[] pipeIds,int[] first,int[] second,
                             List<List<PipeResistance.Geometry>> sections,List<FlowControl> controls,PassiveNetwork.PhasePort[] firstPorts,PassiveNetwork.PhasePort[] secondPorts) {}
-    private static PassiveNetwork.PhasePort port(FluidUnitIO.Reader r){int port=r.u8();if(port>=PHASE_PORTS.length)throw r.invalid("unknown pipe port "+port);return PHASE_PORTS[port];}
+    private static PassiveNetwork.PhasePort port(Reader r){int port=r.u8();if(port>=PHASE_PORTS.length)throw r.invalid("unknown pipe port "+port);return PHASE_PORTS[port];}
 
     /**
      * Reads one island unit and validates it against its index row, as format 3 validated its island compound and
@@ -431,7 +433,7 @@ public final class FluidCheckpointCodec {
      * to its committed tick without a solve; whether its certificate still holds is decided when it is registered.
      */
     static IslandEntry island(byte[] data,IndexRow row,long epoch,Strings strings,Map<PackageKey,FluidThermodynamics> models) {
-        long id=row.id;var r=new FluidUnitIO.Reader(data,(int)row.unit.offset,row.unit.length,"unit of island "+id);
+        long id=row.id;var r=new Reader(data,(int)row.unit.offset,row.unit.length,"unit of island "+id);
         requireHeader(r,ISLAND,id,row.revision,row.generation,"island "+id);
         String dimension=strings.get(r.varint(Integer.MAX_VALUE),"unit of island "+id),packageId=strings.get(r.varint(Integer.MAX_VALUE),"unit of island "+id);double compressibility=r.f64();
         var model=models.get(new PackageKey(packageId,compressibility));
@@ -491,7 +493,7 @@ public final class FluidCheckpointCodec {
         var certified=new IslandCoordinator.Certified(rebuilt.drift(),row.since,row.base,row.horizon,rebuilt.largestFlow(),Optional.of(persisted));
         return new IslandEntry(dimension,packageId,compressibility,new IslandCoordinator.Snapshot(id,row.revision,rebuilt.graphAt(row.committed),clock,allowance,anchor,result,status,fences,Optional.of(certified),generation));
     }
-    private static PassiveNetwork related(FluidUnitIO.Reader r,int flag,PassiveNetwork main,Topology topology,FluidThermodynamics model) {
+    private static PassiveNetwork related(Reader r,int flag,PassiveNetwork main,Topology topology,FluidThermodynamics model) {
         return switch(flag) {
             case 1->main;
             case 2->state(r,topology,model);
@@ -499,7 +501,7 @@ public final class FluidCheckpointCodec {
             default->throw r.invalid("unknown graph reference "+flag);
         };
     }
-    private static Topology topology(FluidUnitIO.Reader r) {
+    private static Topology topology(Reader r) {
         int nodes=r.varint(MAXIMUM_NODES);if(nodes==0)throw new IllegalArgumentException("Invalid saved graph size");
         var ids=new long[nodes];var elevations=new double[nodes];var kinds=new PassiveNetwork.NodeKind[nodes];var volumes=new double[nodes];
         for(int n=0;n<nodes;n++) {
@@ -519,7 +521,7 @@ public final class FluidCheckpointCodec {
         }
         return new Topology(ids,elevations,kinds,volumes,pipeIds,first,second,sections,controls,firstPorts,secondPorts);
     }
-    private static PassiveNetwork state(FluidUnitIO.Reader r,Topology t,FluidThermodynamics model) {
+    private static PassiveNetwork state(Reader r,Topology t,FluidThermodynamics model) {
         var nodes=new ArrayList<PassiveNetwork.Reservoir>(t.ids.length);
         for(int n=0;n<t.ids.length;n++) {
             var moles=r.sparse(MAXIMUM_ARRAY);double energy=r.f64();var solids=solids(r,model);
@@ -541,7 +543,7 @@ public final class FluidCheckpointCodec {
     private static InlineFilter currentFilter(double capacity,SolidInventory captured,double energy,boolean stopped,FluidThermodynamics model) {
         var settings=model.solidSettings;return new InlineFilter(settings.filterCapacity(),settings.filterResistance(),captured,energy,stopped&&capacity==settings.filterCapacity());
     }
-    private static SolidInventory solids(FluidUnitIO.Reader r,FluidThermodynamics model) {
+    private static SolidInventory solids(Reader r,FluidThermodynamics model) {
         int count=r.varint(SolidInventory.MAXIMUM_POPULATIONS);if(count==0)return SolidInventory.EMPTY;
         var populations=new ArrayList<SolidInventory.Population>(count);
         for(int i=0;i<count;i++) {
@@ -550,15 +552,15 @@ public final class FluidCheckpointCodec {
         }
         var solids=new SolidInventory(populations);
         if(solids.populations().size()!=count)throw r.invalid("solid populations not in canonical form");
-        // A topology unit's recoveries are validated against the solid catalog when the world starts (SolidCompatibility).
+        // A topology unit's recoveries are validated against the solid catalog when the world starts (FluidPropertyReloadGuard.validateSolids).
         if(model!=null)model.solids.validate(solids);return solids;
     }
-    private static List<FlowControl.Mode> modes(FluidUnitIO.Reader r,int maximum) {
+    private static List<FlowControl.Mode> modes(Reader r,int maximum) {
         int count=r.varint(maximum);var modes=new ArrayList<FlowControl.Mode>(count);
         for(int i=0;i<count;i++){int mode=r.u8();if(mode>=MODES.length)throw r.invalid("unknown mode "+mode);modes.add(MODES[mode]);}
         return modes;
     }
-    private static PipeTransfer.Stream stream(FluidUnitIO.Reader r,int count,FluidThermodynamics model) {
+    private static PipeTransfer.Stream stream(Reader r,int count,FluidThermodynamics model) {
         if(!r.bool())return new PipeTransfer.Stream(0,new double[3][count],new double[3]);
         double mass=r.f64();var phases=new double[3][];for(int p=0;p<3;p++){phases[p]=r.sparse(MAXIMUM_ARRAY);if(phases[p].length!=count)throw r.invalid("pipe history phase of "+phases[p].length+" components, "+count+" expected");}
         var volumes=r.sparse(3);if(volumes.length!=3)throw r.invalid("pipe history needs three phase volumes");
@@ -813,5 +815,93 @@ public final class FluidCheckpointCodec {
         } else if(c==long.class||c==Long.class)value.getAsBigDecimal().longValueExact();
         else if(c==int.class||c==Integer.class)value.getAsBigDecimal().intValueExact();
         else if(c==double.class||c==Double.class){if(!Double.isFinite(value.getAsDouble()))throw new IllegalArgumentException("Nonfinite checkpoint number");}
+    }
+    // ---------------- unit binary primitives ----------------
+
+    /**
+     * The binary primitives of a checkpoint storage unit (format 4 onwards): big-endian fixed-width integers and doubles, unsigned
+     * LEB128 variable-length integers, UTF-8 texts with their byte length, and sparse double arrays - a bit mask of the
+     * entries whose raw bits are not zero, then those entries' raw bits. Every double is written and read with its exact
+     * bits and must be finite, as every number of format 3 had to be; a sparse array never stores an entry whose raw bits
+     * are zero, so one value has one encoding and a unit re-encodes to the same bytes. The reader refuses a truncated unit,
+     * an overlong or out-of-range integer, malformed UTF-8, a non-canonical sparse entry and trailing bytes.
+     */
+    static final class Writer {
+        private byte[] buffer=new byte[4096];private int size;
+        int size(){return size;}
+        byte[] toByteArray(){return Arrays.copyOf(buffer,size);}
+        /** Whether the bytes written in [from, to) equal those in [otherFrom, otherTo). */
+        boolean sameBytes(int from,int to,int otherFrom,int otherTo){return Arrays.equals(buffer,from,to,buffer,otherFrom,otherTo);}
+        /** Copies bytes [from, to) of {@code other}'s buffer here. */
+        void append(Writer other,int from,int to){ensure(to-from);System.arraycopy(other.buffer,from,buffer,size,to-from);size+=to-from;}
+        void truncate(int length){if(length<0||length>size)throw new IllegalArgumentException();size=length;}
+        private void ensure(int more){if(size+more>buffer.length)buffer=Arrays.copyOf(buffer,Math.max(buffer.length*2,size+more));}
+        void u8(int value){ensure(1);buffer[size++]=(byte)value;}
+        void bool(boolean value){u8(value?1:0);}
+        void i32(int value){ensure(4);buffer[size++]=(byte)(value>>>24);buffer[size++]=(byte)(value>>>16);buffer[size++]=(byte)(value>>>8);buffer[size++]=(byte)value;}
+        void i64(long value){ensure(8);for(int shift=56;shift>=0;shift-=8)buffer[size++]=(byte)(value>>>shift);}
+        /** A finite double with its exact bits. */
+        void f64(double value){if(!Double.isFinite(value))throw new IllegalArgumentException("Nonfinite checkpoint number");i64(Double.doubleToRawLongBits(value));}
+        void varint(int value){if(value<0)throw new IllegalArgumentException("Negative checkpoint count");varlong(value);}
+        void varlong(long value) {
+            if(value<0)throw new IllegalArgumentException("Negative checkpoint count");
+            ensure(10);while((value&~0x7FL)!=0){buffer[size++]=(byte)((value&0x7F)|0x80);value>>>=7;}buffer[size++]=(byte)value;
+        }
+        void text(String value){var bytes=value.getBytes(StandardCharsets.UTF_8);varint(bytes.length);raw(bytes);}
+        void raw(byte[] bytes){ensure(bytes.length);System.arraycopy(bytes,0,buffer,size,bytes.length);size+=bytes.length;}
+        /** A double array: its length, a mask of the entries whose raw bits are not zero, then those entries. */
+        void sparse(double[] values) {
+            varint(values.length);int mask=size;int maskBytes=(values.length+7)/8;ensure(maskBytes);Arrays.fill(buffer,size,size+maskBytes,(byte)0);size+=maskBytes;
+            for(int i=0;i<values.length;i++) {
+                long bits=Double.doubleToRawLongBits(values[i]);if(bits==0)continue;
+                if(!Double.isFinite(values[i]))throw new IllegalArgumentException("Nonfinite checkpoint number");
+                buffer[mask+i/8]|=(byte)(1<<(i%8));i64(bits);
+            }
+        }
+    }
+
+    static final class Reader {
+        private final byte[] data;private final int end;private int position;private final String what;
+        Reader(byte[] data,int offset,int length,String what) {
+            if(offset<0||length<0||offset+length>data.length)throw new IllegalArgumentException("Invalid saved "+what+": out of bounds");
+            this.data=data;this.position=offset;this.end=offset+length;this.what=what;
+        }
+        IllegalArgumentException invalid(String reason){return new IllegalArgumentException("Invalid saved "+what+": "+reason);}
+        private void need(int bytes){if(end-position<bytes)throw invalid("truncated");}
+        int u8(){need(1);return data[position++]&0xFF;}
+        boolean bool(){int value=u8();if(value>1)throw invalid("invalid flag "+value);return value==1;}
+        int i32(){need(4);int value=ByteBuffer.wrap(data,position,4).getInt();position+=4;return value;}
+        long i64(){need(8);long value=ByteBuffer.wrap(data,position,8).getLong();position+=8;return value;}
+        double f64(){double value=Double.longBitsToDouble(i64());if(!Double.isFinite(value))throw invalid("nonfinite checkpoint number");return value;}
+        long varlong() {
+            long value=0;
+            for(int shift=0;;shift+=7) {
+                int b=u8();if(shift==63&&(b&0x7E)!=0)throw invalid("integer overflow");
+                value|=(long)(b&0x7F)<<shift;
+                if((b&0x80)==0){if(b==0&&shift>0)throw invalid("overlong integer");return value;}
+                if(shift>=63)throw invalid("integer overflow");
+            }
+        }
+        /** A count at most {@code maximum}. */
+        int varint(int maximum){long value=varlong();if(value>maximum)throw invalid("count "+value+" exceeds "+maximum);return (int)value;}
+        String text(int maximumBytes) {
+            int length=varint(maximumBytes);need(length);
+            try{var text=StandardCharsets.UTF_8.newDecoder().onMalformedInput(CodingErrorAction.REPORT).onUnmappableCharacter(CodingErrorAction.REPORT).decode(ByteBuffer.wrap(data,position,length)).toString();position+=length;return text;}
+            catch(CharacterCodingException malformed){throw invalid("malformed text");}
+        }
+        byte[] raw(int length){need(length);var bytes=Arrays.copyOfRange(data,position,position+length);position+=length;return bytes;}
+        double[] sparse(int maximumLength) {
+            int length=varint(maximumLength);int maskBytes=(length+7)/8;need(maskBytes);int mask=position;position+=maskBytes;
+            if(length%8!=0&&(data[mask+maskBytes-1]&0xFF)>>>(length%8)!=0)throw invalid("mask bits beyond the array");
+            var values=new double[length];
+            for(int i=0;i<length;i++) {
+                if((data[mask+i/8]&(1<<(i%8)))==0)continue;
+                long bits=i64();if(bits==0)throw invalid("zero entry stored in a sparse array");
+                values[i]=Double.longBitsToDouble(bits);if(!Double.isFinite(values[i]))throw invalid("nonfinite checkpoint number");
+            }
+            return values;
+        }
+        /** Refuses anything left after the last field. */
+        void end(){if(position!=end)throw invalid((end-position)+" trailing bytes");}
     }
 }

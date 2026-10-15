@@ -1,7 +1,7 @@
 package com.wormzjl.createcheme.world.item;
 
 import com.google.gson.Gson;
-import com.wormzjl.createcheme.runtime.fluid.RecoveredSolid;
+import com.wormzjl.createcheme.runtime.fluid.WorldTopologyLedger;
 import com.wormzjl.createcheme.science.fluid.state.SolidInventory;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.nbt.CompoundTag;
@@ -22,7 +22,7 @@ public final class RecoveredSolidsItem extends Item {
         }
     }
     public RecoveredSolidsItem(Properties properties){super(properties.stacksTo(1));}
-    public static ItemStack create(UUID transfer,RecoveredSolid recovered) {
+    public static ItemStack create(UUID transfer,WorldTopologyLedger.RecoveredSolid recovered) {
         var stack=new ItemStack(com.wormzjl.createcheme.registry.ModItems.RECOVERED_SOLIDS.get());
         var tag=new CompoundTag();tag.putString(KEY,JSON.toJson(new Contents(transfer,recovered.solids(),recovered.energyJoule(),REFERENCE)));
         stack.set(DataComponents.CUSTOM_DATA,CustomData.of(tag));return stack;

@@ -62,7 +62,7 @@ public final class FluidWorldAuthority implements AutoCloseable {
         propertyReload=new FluidPropertyReloadGuard(catalog,com.wormzjl.createcheme.science.fluid.thermo.FluidMaterialCatalog.networkPackage(catalog),compressibility,model);
         presetCache=FluidPresetCatalog.resolve(catalog);componentNames=model.components();
         var savedTopology=data.world().orElseGet(()->WorldTopologyLedger.Snapshot.empty(catalog));savedTopology.basis().requireCurrent(catalog);
-        SolidCompatibility.validate(catalog.solids(),data.checkpoint(),savedTopology);observedSolidData=catalog;
+        FluidPropertyReloadGuard.validateSolids(catalog.solids(),data.checkpoint(),savedTopology);observedSolidData=catalog;
         topology=new WorldTopologyLedger(savedTopology);transfers=new BufferedTransfers(data.checkpoint().transfers());
         presentation=new FluidPresentation<>(new PresentationHost(),topology.onlineTick());
         moduleHost=data.checkpoint().modules().isEmpty()?null:new CausalModuleCoordinator(model,data.checkpoint().moduleBindings(),data.checkpoint().transfers(),data.checkpoint().modules());
@@ -102,7 +102,7 @@ public final class FluidWorldAuthority implements AutoCloseable {
     private void refreshProperties() {
         owned();if(closed)return;
         var current=MaterialRuntime.active();String next=propertyReload.inspect(current).orElse(null);
-        if(current!=observedSolidData){observedSolidData=current;try{var saved=capture();SolidCompatibility.validate(current.solids(),saved.checkpoint(),saved.world());solidPropertyHold=null;}catch(IllegalArgumentException incompatible){solidPropertyHold="HELD: solid property data changed; restore the definitions this world was saved with or create a fresh world";}}
+        if(current!=observedSolidData){observedSolidData=current;try{var saved=capture();FluidPropertyReloadGuard.validateSolids(current.solids(),saved.checkpoint(),saved.world());solidPropertyHold=null;}catch(IllegalArgumentException incompatible){solidPropertyHold="HELD: solid property data changed; restore the definitions this world was saved with or create a fresh world";}}
         if(next==null)next=solidPropertyHold;
         if(Objects.equals(next,propertyHold))return;
         propertyHold=next;

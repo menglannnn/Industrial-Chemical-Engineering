@@ -369,7 +369,7 @@ public final class PassiveStepSolver {
         for(var node:graph.reservoirs())ports.add(new PassiveNetwork.Reservoir(node.id(),node.elevation(),node.state(),
                 node.kind()==PassiveNetwork.NodeKind.RESERVOIR?PassiveNetwork.NodeKind.PORT:node.kind(),node.inventory()));
         try{return solveRate(new PassiveNetwork(ports,graph.pipes()),checkpoint,acceptance);}
-        catch(SparseNewton.Nonconvergence|IllegalArgumentException|ApproximationRejected failed){return null;}
+        catch(SparseNewton.Nonconvergence|IllegalArgumentException|ApproximationAnchor.Rejected failed){return null;}
     }
     public Result solve(PassiveNetwork graph,double dt,Runnable checkpoint,Acceptance acceptance) {return solve(graph,dt,checkpoint,acceptance,false);}
     private Result solve(PassiveNetwork inputGraph,double dt,Runnable checkpoint,Acceptance acceptance,boolean rateOnly) {
@@ -1006,7 +1006,7 @@ public final class PassiveStepSolver {
     private void checkApproximation(Equations equations,double[] point,List<FluidThermodynamics.State> candidate,double[] flows,SparseNewton.Workspace workspace,Runnable checkpoint,double tolerance) {
         var estimate=SparseNewton.estimateCorrection(equations,point,checkpoint,workspace);var probe=estimate.probe();var corrected=equations.states(probe);
         double inflation=estimate.initialResidual()>1e-12?1/(1-Math.min(.5,estimate.probeResidual()/estimate.initialResidual())):1;
-        if(phaseCorrection(equations.graph,corrected,checkpoint,true)!=null)throw new ApproximationRejected("Error probe changes a phase regime");
+        if(phaseCorrection(equations.graph,corrected,checkpoint,true)!=null)throw new ApproximationAnchor.Rejected("Error probe changes a phase regime");
         for(int i=0;i<candidate.size();i++) {
             var a=candidate.get(i);var b=corrected.get(i);
             if(inflation*Math.abs(a.pressure()-b.pressure())>.001*b.pressure()+.1
@@ -1014,7 +1014,7 @@ public final class PassiveStepSolver {
                     ||inflation*Math.abs(a.vaporVolume()/a.volume()-b.vaporVolume()/b.volume())>.002
                     ||inflation*Math.abs(a.liquidVolume()/a.volume()-b.liquidVolume()/b.volume())>.002
                     ||inflation*Math.abs(a.waterVolume()/a.volume()-b.waterVolume()/b.volume())>.002)
-                throw new ApproximationRejected("Coupled property-error estimate exceeds the fallback trust profile");
+                throw new ApproximationAnchor.Rejected("Coupled property-error estimate exceeds the fallback trust profile");
         }
         for(int edge=0;edge<flows.length;edge++) {
             var pipe=equations.graph.pipes().get(edge);double q=probe[equations.edgeOffset+edge],floor=1e-10;
@@ -1022,7 +1022,7 @@ public final class PassiveStepSolver {
             if(inflation*Math.abs(q-flows[edge])>floor+.002*Math.abs(q)
                     ||Math.signum(q)!=Math.signum(flows[edge])&&Math.max(Math.abs(q),Math.abs(flows[edge]))>floor
                     ||!boundaryAllowed(equations.graph,pipe,q)&&Math.abs(q)>floor)
-                throw new ApproximationRejected("Coupled flow-error estimate exceeds the fallback trust profile");
+                throw new ApproximationAnchor.Rejected("Coupled flow-error estimate exceeds the fallback trust profile");
             double head=equations.controlOffsets[edge]<0?0:probe[equations.controlOffsets[edge]]*1e5;
             var up=corrected.get(pipe.first());var mode=equations.modes.get(edge);
             if(pipe.control() instanceof FlowControl.Mover pump&&mode!=FlowControl.Mode.INLET_WRONG_PHASE) {
@@ -1032,14 +1032,14 @@ public final class PassiveStepSolver {
                 double band=shutoffBand(equations.pressureScales[edge],tolerance);
                 double limit=riseLimit(pump,endDensity(up,pipe.firstPort()),up.pressure());
                 if(q<-floor||mode!=FlowControl.Mode.CLOSED&&head>limit+.01||mode==FlowControl.Mode.CLOSED&&pump.targetVolumeFlow()>0&&head<limit-band)
-                    throw new ApproximationRejected("Error probe changes pump feasibility");
+                    throw new ApproximationAnchor.Rejected("Error probe changes pump feasibility");
             }else if(pipe.control() instanceof FlowControl.PressureValve valve) {
                 if(q<-floor||mode==FlowControl.Mode.VALVE_REGULATING&&head<-.01
                         ||mode==FlowControl.Mode.VALVE_OPEN&&up.pressure()<valve.targetPressure()-.01&&q>floor
                         ||mode==FlowControl.Mode.CLOSED&&up.pressure()>valve.targetPressure()+.01&&head>.01)
-                    throw new ApproximationRejected("Error probe changes valve feasibility");
+                    throw new ApproximationAnchor.Rejected("Error probe changes valve feasibility");
             }
-            if(Math.abs(q)>velocityCap(equations,edge,q,corrected)*(1+2e-8)+floor)throw new ApproximationRejected("Error probe violates velocity constraint");
+            if(Math.abs(q)>velocityCap(equations,edge,q,corrected)*(1+2e-8)+floor)throw new ApproximationAnchor.Rejected("Error probe violates velocity constraint");
         }
     }
     /** Physical species can traverse passive pipes in either direction, actuators only downstream.

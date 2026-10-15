@@ -78,9 +78,9 @@ public final class PassiveIntervalSolver {
     }
     public Result solveApproximate(PassiveNetwork initial,double duration,Settings settings,Runnable checkpoint,StageGuard guard) {
         initial=PassiveNetwork.sizeJunctionHoldups(initial,model);
-        if(com.wormzjl.createcheme.science.fluid.transport.SolidMobility.requiresFull(model,initial))throw new ApproximationRejected("Solid/filter intervals require a full solve");
+        if(com.wormzjl.createcheme.science.fluid.transport.SolidMobility.requiresFull(model,initial))throw new ApproximationAnchor.Rejected("Solid/filter intervals require a full solve");
         StageGuard checked=(states,modes)->{
-            for(var state:states)if(state.solidMoments().mass()>0||com.wormzjl.createcheme.science.fluid.transport.SolidMobility.immobileLiquid(model,state))throw new ApproximationRejected("Solid transition requires a full solve");
+            for(var state:states)if(state.solidMoments().mass()>0||com.wormzjl.createcheme.science.fluid.transport.SolidMobility.immobileLiquid(model,state))throw new ApproximationAnchor.Rejected("Solid transition requires a full solve");
             guard.check(states,modes);
         };
         decideInlets(initial,duration);
@@ -452,5 +452,24 @@ public final class PassiveIntervalSolver {
         var reservoirs=new ArrayList<PassiveNetwork.Reservoir>();
         for(int i=0;i<states.size();i++){var old=graph.reservoirs().get(i);reservoirs.add(new PassiveNetwork.Reservoir(old.id(),old.elevation(),states.get(i),old.kind(),result.inventories().get(i)));}
         return new PassiveNetwork(reservoirs,graph.pipes().stream().map(p->result.filters().containsKey(p.id())?p.withFilter(result.filters().get(p.id())):p).toList(),graph.scheduledTransfers());
+    }
+    /**
+     * A check the interval solver runs on every step it takes: {@link #checkRate} on the state a step starts from,
+     * {@link #checkFilters} on the step's converged end. It throws to refuse the step: a
+     * {@link SolidEventIntegrator.Transition} to declare a solid transport event (the interval solver then searches the
+     * step onto it), an {@link ApproximationAnchor.Rejected} to send an approximate interval back to a full solve.
+     */
+    @FunctionalInterface public interface StageGuard {
+        StageGuard NONE=(states,modes)->{};
+        void check(List<FluidThermodynamics.State> states,List<FlowControl.Mode> modes);
+        default void checkFlow(List<FluidThermodynamics.State> states,List<FlowControl.Mode> modes,double[] flows){check(states,modes);}
+        default void checkFilters(Map<Long,InlineFilter> filters,List<FluidThermodynamics.State> states,List<FlowControl.Mode> modes,double[] flows){checkFlow(states,modes,flows);}
+        /**
+         * The state at the start of a step - the previous accepted step's end, the end carried from the last interval, or
+         * one rate solve of the port graph when nothing is carried - together with the live cake of the graph being stepped.
+         * A transition seen here is at the step's own t0 and is therefore already exactly located: the interval solver
+         * declares it at the current elapsed time instead of refining the step towards it.
+         */
+        default void checkRate(Map<Long,InlineFilter> filters,List<FluidThermodynamics.State> states,List<FlowControl.Mode> modes,double[] flows){checkFlow(states,modes,flows);}
     }
 }

@@ -34,7 +34,7 @@ class ElevatedBlockLineIslandTest {
     private static final int BOTTOM=-59;
     /** The elevation a stack of pipe blocks puts between the generator and the tank. */
     private static final int LIFT=4;
-    /** The world's own defaults; see FluidWorldAuthority.place and SolidTransportSettings.defaults. */
+    /** The world's own defaults; see FluidWorldAuthority.place and SlurryTransport.Settings.defaults. */
     private static final PipeResistance.Geometry BLOCK=new PipeResistance.Geometry(1,.05,.000045,0);
     private static final double FILTER_CAPACITY=.01,FILTER_RESISTANCE=1e6;
     /** The pump every pumped fixture in the tree uses; see FilterBlockLineIslandTest. */

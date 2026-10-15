@@ -148,7 +148,7 @@ public final class IslandCoordinator {
         private FallbackAllowance allowance;
         private Optional<ApproximationAnchor> anchor;
         private Optional<PassiveIntervalSolver.Result> lastResult;
-        private final PipeSpeedWindow pipeSpeed = new PipeSpeedWindow();
+        private final PipePresentation.SpeedWindow pipeSpeed = new PipePresentation.SpeedWindow();
         private String status;
         private Metrics metrics;
         private boolean suspended;
@@ -225,7 +225,7 @@ public final class IslandCoordinator {
     private long ownEpoch;
     private final Map<Long,Island> islands=new LinkedHashMap<>();
     private final Map<Long,Pending> pending=new HashMap<>();
-    private final FairIslandQueue ready=new FairIslandQueue();
+    private final IslandScheduler.FairQueue ready=new IslandScheduler.FairQueue();
     private final IslandScheduler scheduler=new IslandScheduler();
     /** Event fences by event: which islands hold a fence for it, so an event finds its owners without a scan. */
     private final Map<UUID,Set<Long>> fenceOwners=new HashMap<>();
@@ -504,7 +504,7 @@ public final class IslandCoordinator {
                 var island=require(next.getAsLong());long request=dispatcher.nextRequestId();
                 var slice=island.clock.nextSlice(request,island.fence(),island.maximumSliceTicks).orElseThrow();
                 var attempt=new Attempt(island.id,island.revision,slice);
-                var policy=island.anchor.isPresent()&&!island.fullOnly&&!com.wormzjl.createcheme.science.fluid.transport.SolidMobility.requiresFull(island.model,island.graph)?FluidFallbackPolicy.active(island.anchor.orElseThrow(),island.allowance,island.clock.snapshot().cadenceTicks(),settings.softBudgetNanos):FluidFallbackPolicy.disabled();
+                var policy=island.anchor.isPresent()&&!island.fullOnly&&!com.wormzjl.createcheme.science.fluid.transport.SolidMobility.requiresFull(island.model,island.graph)?FallbackAllowance.Policy.active(island.anchor.orElseThrow(),island.allowance,island.clock.snapshot().cadenceTicks(),settings.softBudgetNanos):FallbackAllowance.Policy.disabled();
                 // The job starts from the committed interval, not from the solver's history; see RetainedSolver.
                 island.retained.committed(island.lastResult.orElse(null));
                 var command=new ProcessSolveServices.FluidIslandCommand(island.model,island.graph,slice.seconds(),PassiveIntervalSolver.Settings.defaults(),settings.hardBudgetNanos,policy,island.retained);

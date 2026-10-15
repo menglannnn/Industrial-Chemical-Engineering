@@ -3,7 +3,7 @@ package com.wormzjl.createcheme.runtime.fluid;
 import com.wormzjl.createcheme.science.fluid.SolverOwnership;
 import com.wormzjl.createcheme.science.fluid.network.PassiveIntervalSolver;
 import com.wormzjl.createcheme.science.fluid.network.PassiveNetwork;
-import com.wormzjl.createcheme.science.fluid.network.StageGuard;
+import com.wormzjl.createcheme.science.fluid.network.PassiveIntervalSolver.StageGuard;
 import com.wormzjl.createcheme.science.fluid.thermo.FluidThermodynamics;
 import java.util.Objects;
 

@@ -1,6 +1,6 @@
 package com.wormzjl.createcheme.runtime.fluid;
 
-import com.wormzjl.createcheme.runtime.CompletionWakeup;
+import com.wormzjl.createcheme.runtime.ProcessSolveServices.CompletionWakeup;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.atomic.AtomicInteger;
 import static org.junit.jupiter.api.Assertions.*;

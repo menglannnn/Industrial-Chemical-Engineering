@@ -39,7 +39,7 @@ class FluidFallbackQualificationTest {
     }
     private ProcessSolveServices.FluidIslandSolveResult approximate(PassiveNetwork graph,ApproximationAnchor anchor,FallbackAllowance allowance,int cadence,double duration) {
         var command=new ProcessSolveServices.FluidIslandCommand(model,graph,duration,PassiveIntervalSolver.Settings.defaults(),1_000_000_000,
-                FluidFallbackPolicy.active(anchor,allowance,cadence,1000));var clock=new AtomicLong();
+                FallbackAllowance.Policy.active(anchor,allowance,cadence,1000));var clock=new AtomicLong();
         return (ProcessSolveServices.FluidIslandSolveResult)command.solve(token,()->clock.getAndAdd(1000));
     }
     @Test void threeApproximateIntervalsMeetThePublishedTrajectoryAndThroughputBounds() throws Exception {
@@ -74,7 +74,7 @@ class FluidFallbackQualificationTest {
                     assertTrue(Math.abs(a.pressure()-b.pressure())<=1+.02*b.pressure());assertTrue(maxT<=2);assertTrue(maxPhase<=.02);
                 }
                 var exhausted=new ProcessSolveServices.FluidIslandCommand(model,approximateGraph,5,PassiveIntervalSolver.Settings.defaults(),1_000_000,
-                        FluidFallbackPolicy.active(anchor,allowance,200,1));var clock=new AtomicLong();
+                        FallbackAllowance.Policy.active(anchor,allowance,200,1));var clock=new AtomicLong();
                 var held=(ProcessSolveServices.FluidIslandSolveResult)exhausted.solve(token,()->clock.getAndAdd(1_000_000));assertTrue(held.candidate().isEmpty());assertEquals(allowance,held.proposedAllowance());
                 var recovered=(ProcessSolveServices.FluidIslandSolveResult)exhausted.solve(token,()->0);assertEquals("FULL",recovered.detail());assertEquals(FallbackAllowance.NONE,recovered.proposedAllowance());
                 row.put("status","PASS");row.put("maximumPressureRelativeError",maxP);row.put("maximumTemperatureErrorKelvin",maxT);row.put("maximumPhaseVolumeFractionError",maxPhase);row.put("maximumCumulativeComponentThroughputError",maxComponent);row.put("actualApproximateWallMillisecondsForThreeIntervals",actualMillis);
@@ -85,14 +85,14 @@ class FluidFallbackQualificationTest {
     }
     @Test void topologyPropertyPhaseAndTrustChangesRefuseTheOldAnchor() {
         var full=warm("nitrogen");var anchor=ApproximationAnchor.fromFull(model,full);var graph=full.graph();
-        assertThrows(ApproximationRejected.class,()->anchor.guard(model,new PassiveNetwork(graph.reservoirs(),List.of())));
-        assertThrows(ApproximationRejected.class,()->anchor.guard(FluidThermodynamics.forNetwork(MaterialCatalog.bundled(),"createcheme:tjl20_methane_nitrogen",1.1e-9),graph));
+        assertThrows(ApproximationAnchor.Rejected.class,()->anchor.guard(model,new PassiveNetwork(graph.reservoirs(),List.of())));
+        assertThrows(ApproximationAnchor.Rejected.class,()->anchor.guard(FluidThermodynamics.forNetwork(MaterialCatalog.bundled(),"createcheme:tjl20_methane_nitrogen",1.1e-9),graph));
         var changed=new ArrayList<>(graph.reservoirs());var high=model.initialNitrogenCharge(1,350,160000,()->{});
         changed.set(1,new PassiveNetwork.Reservoir(2,0,high,PassiveNetwork.NodeKind.RESERVOIR,new PassiveNetwork.Inventory(1,com.wormzjl.createcheme.science.fluid.solver.PhaseLayout.totalAmounts(high),high.internalEnergy())));
-        assertTrue(assertThrows(ApproximationRejected.class,()->anchor.guard(model,new PassiveNetwork(changed,graph.pipes()))).getMessage().contains("trust region"));
+        assertTrue(assertThrows(ApproximationAnchor.Rejected.class,()->anchor.guard(model,new PassiveNetwork(changed,graph.pipes()))).getMessage().contains("trust region"));
         double[] wet=new double[com.wormzjl.createcheme.science.material.MaterialTestBasis.NETWORK+1];wet[com.wormzjl.createcheme.science.material.MaterialTestBasis.NITROGEN]=1;wet[com.wormzjl.createcheme.science.material.MaterialTestBasis.NETWORK]=10;var unit=model.flashTP(350,149000,wet,()->{});for(int c=0;c<wet.length;c++)wet[c]/=unit.volume();var phase=model.flashTP(350,149000,wet,()->{});
         changed.set(1,new PassiveNetwork.Reservoir(2,0,phase,PassiveNetwork.NodeKind.RESERVOIR,new PassiveNetwork.Inventory(1,wet,phase.internalEnergy())));
-        assertTrue(assertThrows(ApproximationRejected.class,()->anchor.guard(model,new PassiveNetwork(changed,graph.pipes()))).getMessage().contains("Phase"));
+        assertTrue(assertThrows(ApproximationAnchor.Rejected.class,()->anchor.guard(model,new PassiveNetwork(changed,graph.pipes()))).getMessage().contains("Phase"));
     }
     @Test void durationCapAndAnUntrustedCandidateCannotConsumeOrRenewAllowance() {
         var full=warm("nitrogen");var anchor=ApproximationAnchor.fromFull(model,full);
@@ -100,7 +100,7 @@ class FluidFallbackQualificationTest {
         var second=approximate(first.candidate().orElseThrow().graph(),anchor,first.proposedAllowance(),400,10);assertTrue(second.candidate().isPresent(),second.detail());
         assertEquals(new FallbackAllowance(2,300,100),second.proposedAllowance());
         var exhausted=new ProcessSolveServices.FluidIslandCommand(model,second.candidate().orElseThrow().graph(),.05,PassiveIntervalSolver.Settings.defaults(),100,
-                FluidFallbackPolicy.active(anchor,new FallbackAllowance(2,300,100),400,1));var clock=new AtomicLong();
+                FallbackAllowance.Policy.active(anchor,new FallbackAllowance(2,300,100),400,1));var clock=new AtomicLong();
         var held=(ProcessSolveServices.FluidIslandSolveResult)exhausted.solve(token,()->clock.getAndAdd(100));assertTrue(held.candidate().isEmpty());assertEquals(second.proposedAllowance(),held.proposedAllowance());
         var graph=full.graph();var changed=new PassiveNetwork(graph.reservoirs(),List.of(new PassiveNetwork.Pipe(99,0,1,new PipeResistance.Geometry(10,.05,.000045,0))));
         var rejected=approximate(changed,anchor,FallbackAllowance.NONE,100,5);assertTrue(rejected.candidate().isEmpty());assertEquals(FallbackAllowance.NONE,rejected.proposedAllowance());assertTrue(rejected.detail().contains("topology"));
@@ -116,7 +116,7 @@ class FluidFallbackQualificationTest {
     @Test void hardTimeoutInsideFallbackAndBoundaryRegimeChangesCannotPublish() {
         var full=warm("nitrogen");var anchor=ApproximationAnchor.fromFull(model,full);
         var deadline=new ProcessSolveServices.FluidIslandCommand(model,full.graph(),5,PassiveIntervalSolver.Settings.defaults(),5,
-                FluidFallbackPolicy.active(anchor,FallbackAllowance.NONE,100,1));var clock=new AtomicLong();
+                FallbackAllowance.Policy.active(anchor,FallbackAllowance.NONE,100,1));var clock=new AtomicLong();
         var held=(ProcessSolveServices.FluidIslandSolveResult)deadline.solve(token,clock::getAndIncrement);
         assertTrue(held.candidate().isEmpty());assertTrue(held.detail().contains("wall deadline"));assertEquals(FallbackAllowance.NONE,held.proposedAllowance());
         var changed=new ArrayList<>(full.graph().reservoirs());var state=model.initialNitrogenCharge(1,350,150400,()->{});
@@ -125,7 +125,7 @@ class FluidFallbackQualificationTest {
         assertEquals("FULL",closed.detail(),closed.detail());assertEquals(List.of(FlowControl.Mode.CLOSED),closed.candidate().orElseThrow().endpointModes());
         assertEquals(FallbackAllowance.NONE,closed.proposedAllowance());
         var guard=anchor.guard(model,graph);
-        var refused=assertThrows(ApproximationRejected.class,()->new PassiveIntervalSolver(model).solveApproximate(graph,5,PassiveIntervalSolver.Settings.defaults(),()->{},guard));
+        var refused=assertThrows(ApproximationAnchor.Rejected.class,()->new PassiveIntervalSolver(model).solveApproximate(graph,5,PassiveIntervalSolver.Settings.defaults(),()->{},guard));
         assertTrue(refused.getMessage().contains("regime"),refused.getMessage());
     }
     @Test void trustBoundaryPerturbationsAreCheckedOnBothSidesOfThePublishedProfile() {
@@ -135,7 +135,7 @@ class FluidFallbackQualificationTest {
             var state=model.initialNitrogenCharge(1,t,p,()->{});var nodes=new ArrayList<>(full.graph().reservoirs());
             nodes.set(1,new PassiveNetwork.Reservoir(2,0,state,PassiveNetwork.NodeKind.RESERVOIR,new PassiveNetwork.Inventory(1,com.wormzjl.createcheme.science.fluid.solver.PhaseLayout.totalAmounts(state),state.internalEnergy())));
             var graph=new PassiveNetwork(nodes,full.graph().pipes());
-            if(fraction>1){assertThrows(ApproximationRejected.class,()->anchor.guard(model,graph));continue;}
+            if(fraction>1){assertThrows(ApproximationAnchor.Rejected.class,()->anchor.guard(model,graph));continue;}
             assertDoesNotThrow(()->anchor.guard(model,graph));
             var outcome=approximate(graph,anchor,FallbackAllowance.NONE,100,5);assertTrue(outcome.candidate().isPresent(),outcome.detail());
             var reference=new PassiveIntervalSolver(model).solve(graph,5,PassiveIntervalSolver.Settings.defaults(),()->{});var result=outcome.candidate().orElseThrow();
@@ -154,7 +154,7 @@ class FluidFallbackQualificationTest {
             var nodes=new ArrayList<>(full.graph().reservoirs());
             nodes.set(1,new PassiveNetwork.Reservoir(2,0,state,PassiveNetwork.NodeKind.RESERVOIR,new PassiveNetwork.Inventory(1,n,state.internalEnergy())));
             var changed=new PassiveNetwork(nodes,full.graph().pipes());
-            if(methane>.01)assertThrows(ApproximationRejected.class,()->anchor.guard(model,changed));
+            if(methane>.01)assertThrows(ApproximationAnchor.Rejected.class,()->anchor.guard(model,changed));
             else assertDoesNotThrow(()->anchor.guard(model,changed));
         }
     }

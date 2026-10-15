@@ -68,7 +68,7 @@ class VelocityClampTest {
         assertThrows(IllegalArgumentException.class,()->model(0));assertThrows(IllegalArgumentException.class,()->model(Double.NaN));
         var model=model(100);var graph=graph(model,false,false,new FlowControl.Passive(),true);
         var full=new PassiveIntervalSolver(model).solve(graph,.05,PassiveIntervalSolver.Settings.defaults(),()->{});
-        var anchor=ApproximationAnchor.fromFull(model,full);assertThrows(ApproximationRejected.class,()->anchor.guard(model(10),full.graph()));
+        var anchor=ApproximationAnchor.fromFull(model,full);assertThrows(ApproximationAnchor.Rejected.class,()->anchor.guard(model(10),full.graph()));
         assertEquals(ApproximationAnchor.thermodynamicRevision(model),ApproximationAnchor.thermodynamicRevision(model(10)));
     }
     @Test void aWarmWorkspaceReleasesTheClampWhenThePressureDriveFalls() {

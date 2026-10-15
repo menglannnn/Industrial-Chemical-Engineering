@@ -12,7 +12,7 @@ public final class FluidPropertyReloadGuard {
     public static final String HOLD="HELD: property data changed; restore the qualified data or create a fresh world";
     private final String packageId,qualifiedRevision;
     private final double compressibility,maximumVelocity,traceCutoff;
-    private final com.wormzjl.createcheme.science.fluid.transport.SolidTransportSettings solids;
+    private final com.wormzjl.createcheme.science.fluid.transport.SlurryTransport.Settings solids;
     private MaterialCatalog observed;
     private String refusal;
     public FluidPropertyReloadGuard(MaterialCatalog initial,String packageId,double compressibility,FluidThermodynamics model) {
@@ -31,5 +31,15 @@ public final class FluidPropertyReloadGuard {
             refusal=qualifiedRevision.equals(ApproximationAnchor.revision(candidate))?null:HOLD;
         } catch(IllegalArgumentException|IllegalStateException unavailable) {refusal=HOLD;}
         return Optional.ofNullable(refusal);
+    }
+    /** Validates the solid materials a saved world owns or references against {@code catalog}, never an unrelated added definition. */
+    static void validateSolids(com.wormzjl.createcheme.science.material.SolidMaterialCatalog catalog,FluidCheckpointCodec.Checkpoint checkpoint,WorldTopologyLedger.Snapshot world) {
+        for(var island:checkpoint.islands()) {
+            for(var node:island.snapshot().graph().reservoirs())catalog.validate(node.inventory().solids());
+            for(var pipe:island.snapshot().graph().pipes())if(pipe.filter()!=null)catalog.validate(pipe.filter().captured());
+        }
+        for(var pending:checkpoint.transfers().pending().values())catalog.validate(pending.remaining().solids());
+        for(var module:checkpoint.modules())if(module.cycle()!=null)for(var input:module.cycle().inputs().values())catalog.validate(input.owned().solids());
+        for(var recovery:world.recoveries().values())catalog.validate(recovery.solids());
     }
 }

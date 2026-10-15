@@ -238,11 +238,11 @@ public final class PhysicalRegistry {
             for(var node:graph.reservoirs())if(!node.junction()&&node.id()>0)stock.put(node.id(),node);
             for(var pipe:graph.pipes())if(pipe.filter()!=null)cakes.put(pipe.id()-Long.MIN_VALUE,pipe.filter());
         }
-        RecoveredSolid recovered=null;InlineFilter released=null;long recoveredFilter=0;
+        WorldTopologyLedger.RecoveredSolid recovered=null;InlineFilter released=null;long recoveredFilter=0;
         for(var event:events)if(event.recovery()!=null) {
             var request=event.recovery();var cake=cakes.get(request.filterId());var record=active.get(request.filterId());
             if(record!=null&&cake!=null&&!cake.captured().empty()&&(request.player()==null||host.acceptsRecovery(request.player()))){
-                recovered=new RecoveredSolid(record.device().position(),request.player(),cake.captured(),cake.energyJoule());released=cake;recoveredFilter=request.filterId();cakes.put(request.filterId(),cake.cleared());
+                recovered=new WorldTopologyLedger.RecoveredSolid(record.device().position(),request.player(),cake.captured(),cake.energyJoule());released=cake;recoveredFilter=request.filterId();cakes.put(request.filterId(),cake.cleared());
             // The event still applies (its revision is spent); the refusal reaches the player with the reply to
             // the recovery input on its menu's next bucket, never as a message pushed from here.
             }else if(request.player()!=null)host.refused(event.id(),"Filter unchanged: inventory full or no captured solids");

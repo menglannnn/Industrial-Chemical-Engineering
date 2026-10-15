@@ -57,8 +57,9 @@ class DeterministicMathSourceTest {
                 violations.addAll(violations(file, Files.readString(file)));
             }
         }
-        // The scanned roots hold 205 files at 2026-09-27; a much smaller count means the scan lost its roots.
-        assertTrue(scanned >= 200, "only " + scanned + " files scanned");
+        // The scanned roots hold about 190 files after the code consolidation of 2026-10-15 (205 at 2026-09-27); a much
+        // smaller count means the scan lost its roots.
+        assertTrue(scanned >= 150, "only " + scanned + " files scanned");
         assertTrue(Files.isRegularFile(FACADE), "facade is missing (moved?): " + FACADE);
         assertTrue(violations.isEmpty(), "use DeterministicMath (bitwise identical on every JVM) instead of:\n"
                 + String.join("\n", violations));

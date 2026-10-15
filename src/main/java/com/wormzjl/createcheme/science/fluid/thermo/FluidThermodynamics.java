@@ -31,7 +31,7 @@ public final class FluidThermodynamics {
      * ceiling. 0 is the exact off switch, the identical numerical path rather than a small cutoff. */
     public static final double DEFAULT_TRACE_CUTOFF_MOLE_FRACTION=1e-6;
     public final HydrocarbonModel hydrocarbon;
-    public final com.wormzjl.createcheme.science.fluid.transport.SolidTransportSettings solidSettings;
+    public final com.wormzjl.createcheme.science.fluid.transport.SlurryTransport.Settings solidSettings;
     public final MixtureViscosity viscosity;
     public final com.wormzjl.createcheme.science.material.SolidMaterialCatalog solids;
     public final double waterMolecularWeight;
@@ -66,9 +66,9 @@ public final class FluidThermodynamics {
      * and the ceiling is {@link #MAX_TRACE_CUTOFF_MOLE_FRACTION}. */
     public static FluidThermodynamics forNetwork(MaterialCatalog catalog,String packageId,double liquidCompressibility,
                                                  double maximumVelocity,double traceCutoffMoleFraction) {
-        return forNetwork(catalog,packageId,liquidCompressibility,maximumVelocity,traceCutoffMoleFraction,com.wormzjl.createcheme.science.fluid.transport.SolidTransportSettings.defaults());
+        return forNetwork(catalog,packageId,liquidCompressibility,maximumVelocity,traceCutoffMoleFraction,com.wormzjl.createcheme.science.fluid.transport.SlurryTransport.Settings.defaults());
     }
-    public static FluidThermodynamics forNetwork(MaterialCatalog catalog,String packageId,double liquidCompressibility,double maximumVelocity,double traceCutoffMoleFraction,com.wormzjl.createcheme.science.fluid.transport.SolidTransportSettings solidSettings) {
+    public static FluidThermodynamics forNetwork(MaterialCatalog catalog,String packageId,double liquidCompressibility,double maximumVelocity,double traceCutoffMoleFraction,com.wormzjl.createcheme.science.fluid.transport.SlurryTransport.Settings solidSettings) {
         TraceTruncationPolicy.requireCutoff(traceCutoffMoleFraction,MAX_TRACE_CUTOFF_MOLE_FRACTION);
         return new FluidThermodynamics(catalog,FluidMaterialCatalog.resolveNetworkPackage(catalog,packageId),liquidCompressibility,
                 maximumVelocity,TraceTruncationPolicy.of(traceCutoffMoleFraction),solidSettings);
@@ -91,9 +91,9 @@ public final class FluidThermodynamics {
     }
     public FluidThermodynamics(MaterialCatalog catalog,String packageId,double liquidCompressibility,double maximumVelocity,
                                TraceTruncationPolicy tracePolicy) {
-        this(catalog,packageId,liquidCompressibility,maximumVelocity,tracePolicy,com.wormzjl.createcheme.science.fluid.transport.SolidTransportSettings.defaults());
+        this(catalog,packageId,liquidCompressibility,maximumVelocity,tracePolicy,com.wormzjl.createcheme.science.fluid.transport.SlurryTransport.Settings.defaults());
     }
-    public FluidThermodynamics(MaterialCatalog catalog,String packageId,double liquidCompressibility,double maximumVelocity,TraceTruncationPolicy tracePolicy,com.wormzjl.createcheme.science.fluid.transport.SolidTransportSettings solidSettings) {
+    public FluidThermodynamics(MaterialCatalog catalog,String packageId,double liquidCompressibility,double maximumVelocity,TraceTruncationPolicy tracePolicy,com.wormzjl.createcheme.science.fluid.transport.SlurryTransport.Settings solidSettings) {
         this.solidSettings=Objects.requireNonNull(solidSettings);
         if(!Double.isFinite(maximumVelocity)||maximumVelocity<=0)throw new IllegalArgumentException("Positive finite maximum velocity required");
         TraceTruncationPolicy.requireCutoff(Objects.requireNonNull(tracePolicy,"tracePolicy").cutoffMoleFraction(),MAX_TRACE_CUTOFF_MOLE_FRACTION);

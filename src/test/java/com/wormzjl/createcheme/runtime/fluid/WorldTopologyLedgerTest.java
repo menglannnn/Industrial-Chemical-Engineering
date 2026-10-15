@@ -59,4 +59,32 @@ class WorldTopologyLedgerTest {
         var ledger=new WorldTopologyLedger(snapshot);var changed=new WorldTopologyLedger.Registration(registration.device(),new FluidDeviceSpec(1,298.15,200000,registration.spec().composition()),1);
         assertThrows(IllegalStateException.class,()->ledger.queue(List.of(new WorldTopologyLedger.Edit(1,changed)),Set.of(1L),2));assertSame(snapshot,ledger.snapshot());
     }
+    // The fluid basis (merged from FluidBasisTest).
+    @org.junit.jupiter.api.AfterEach void resetMaterials(){com.wormzjl.createcheme.science.material.MaterialRuntime.reset();}
+    private static MaterialCatalog reordered() {
+        var resources=new HashMap<>(MaterialCatalog.bundled().resources());String path="data/createcheme/materials/bases/network.json";
+        var basis=com.google.gson.JsonParser.parseString(resources.get(path)).getAsJsonObject();basis.remove("extends");
+        var original=MaterialCatalog.bundled().requirePackage("createcheme:tjl20_methane_nitrogen");
+        var ids=new ArrayList<>(original.components());var properties=new ArrayList<>(original.properties().stream().map(MaterialCatalog.Property::id).toList());
+        Collections.reverse(ids);Collections.reverse(properties);basis.add("components",new com.google.gson.Gson().toJsonTree(ids));basis.add("properties",new com.google.gson.Gson().toJsonTree(properties));resources.put(path,basis.toString());
+        return MaterialCatalog.parse(resources);
+    }
+    @Test void topologyWithoutAnyIslandStillRejectsAChangedIdentityAxis() {
+        var original=MaterialCatalog.bundled();var saved=WorldTopologyLedger.Snapshot.empty(original);
+        var decoded=FluidCheckpointCodec.decodeTopology(FluidCheckpointCodec.encodeTopology(saved),saved.onlineTick());assertEquals(saved.basis(),decoded.basis());
+        decoded.basis().requireCurrent(original);
+        assertThrows(IllegalArgumentException.class,()->decoded.basis().requireCurrent(reordered()));
+        // The basis lies near the end of the topology: one cut short of it is refused, never read without it.
+        var bytes=FluidCheckpointCodec.encodeTopology(saved);
+        assertThrows(IllegalArgumentException.class,()->FluidCheckpointCodec.decodeTopology(Arrays.copyOf(bytes,bytes.length-2),0));
+    }
+    @Test void capturedAccountingAndSerializationNeverReadTheReloadedGlobalAxis() {
+        var basis=new WorldTopologyLedger.FluidBasis("test:nitrogen",List.of("Nitrogen","Water"),"0".repeat(64)+":"+"0".repeat(64));
+        var ledger=new WorldTopologyLedger(new WorldTopologyLedger.Snapshot(0,1,Map.of(),List.of(),WorldTopologyLedger.MaterialTotal.empty(2),WorldTopologyLedger.MaterialTotal.empty(2),basis));
+        com.wormzjl.createcheme.science.material.MaterialRuntime.publish(reordered());ledger.tick();
+        var saved=ledger.snapshot();assertEquals(basis,saved.basis());assertEquals(2,saved.constructed().moles().length);
+        var next=saved.constructed().plus(List.of(),new double[saved.basis().components().size()]);
+        assertArrayEquals(saved.constructed().moles(),next.moles());
+        var decoded=FluidCheckpointCodec.decodeTopology(FluidCheckpointCodec.encodeTopology(saved),saved.onlineTick());assertEquals(saved.basis(),decoded.basis());
+    }
 }

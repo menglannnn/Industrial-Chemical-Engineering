@@ -11,6 +11,18 @@ public final class SlurryTransport {
     public static final double DEFAULT_TRACE_VOLUME_FRACTION = 1e-8;
     private static final double GRAVITY = 9.80665;
 
+    /** Captured solid transport settings; changing them never changes a material or energy basis. {@link #defaults} is the one
+     * statement of their defaults: the server config and an unconfigured filter ({@code InlineFilter.empty}) read it. */
+    public record Settings(double immobileViscosity,double traceVolumeFraction,double suspensionMultiplier,
+                           double filterCapacity,double filterResistance) {
+        private static final Settings DEFAULTS=new Settings(100,DEFAULT_TRACE_VOLUME_FRACTION,10,.01,1e6);
+        public Settings {
+            if(!Double.isFinite(immobileViscosity)||immobileViscosity<=0||!Double.isFinite(traceVolumeFraction)||traceVolumeFraction<0||traceVolumeFraction>=1
+                    ||!Double.isFinite(suspensionMultiplier)||suspensionMultiplier<=0||!Double.isFinite(filterCapacity)||filterCapacity<=0
+                    ||!Double.isFinite(filterResistance)||filterResistance<=0)throw new IllegalArgumentException("Invalid solid transport settings");
+        }
+        public static Settings defaults(){return DEFAULTS;}
+    }
     private SlurryTransport() {}
 
     /**
