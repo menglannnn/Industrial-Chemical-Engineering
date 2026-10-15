@@ -36,7 +36,7 @@ class V3TruncationStructureTest {
                     }
                     V3TruncationSupport support = V3TruncationSupport.derive(original, 0.01,
                             new V3DryMeshState(original.topology(), 2, liquid, vapor, temperatures));
-                    V3ColumnProblem masked = V3ColumnProblemResolver.withTruncation(original, support);
+                    V3ColumnProblem masked = V3ColumnProblemResolver.withTruncation(original, support, V3WetTraySet.dry(original.topology()));
                     V3StageBlockLayout layout = new V3StageBlockLayout(masked);
                     assertEquals(nodes - 1, support.truncatedPointCount());
                     assertEquals(0, support.closurePrunedCount());
@@ -62,7 +62,7 @@ class V3TruncationStructureTest {
     void reducedLedgerIsSquareFullRankAndContainsOnlyRetainedPoints(V3CondenserPhaseBranch branch) {
         V3ColumnProblem original = V3TruncationSupportTest.problem(branch, 0.0, 2);
         V3TruncationSupport support = V3TruncationSupportTest.topTailSupport(original);
-        V3ColumnProblem masked = V3ColumnProblemResolver.withTruncation(original, support);
+        V3ColumnProblem masked = V3ColumnProblemResolver.withTruncation(original, support, V3WetTraySet.dry(original.topology()));
         V3DegreeOfFreedomLedger ledger = masked.degreeOfFreedomLedger();
 
         assertNotSame(original, masked);
@@ -115,7 +115,6 @@ class V3TruncationStructureTest {
         assertEquals(original.unknowns(), explicitIdentity.unknowns());
         assertEquals(original.equations(), explicitIdentity.equations());
         assertEquals(original.diagnostics(), explicitIdentity.diagnostics());
-        assertEquals(original.calculatedQuantities(), explicitIdentity.calculatedQuantities());
         assertEquals(original.humanReadableDiagnostic(), explicitIdentity.humanReadableDiagnostic());
     }
 
@@ -124,7 +123,7 @@ class V3TruncationStructureTest {
     void decodeLeavesTruncatedPointsExactlyZeroWithoutChangingTheCoordinateMap(V3CondenserPhaseBranch branch) {
         V3ColumnProblem original = V3TruncationSupportTest.problem(branch, 0.0, 2);
         V3TruncationSupport support = V3TruncationSupportTest.topTailSupport(original);
-        V3ColumnProblem masked = V3ColumnProblemResolver.withTruncation(original, support);
+        V3ColumnProblem masked = V3ColumnProblemResolver.withTruncation(original, support, V3WetTraySet.dry(original.topology()));
         V3DryMeshCoordinateMap map = new V3DryMeshCoordinateMap(masked);
         double[][] flows = V3TruncationSupportTest.uniformFlows(original);
         V3DryMeshState seed = V3TruncationSupportTest.state(original, flows, flows);
@@ -146,15 +145,12 @@ class V3TruncationStructureTest {
     }
 
     @Test
-    void rejectsSupportLedgerMismatchBeforeLayoutAndDoesNotAllowNestedMasks() {
+    void doesNotAllowNestedMasks() {
         V3ColumnProblem original = V3TruncationSupportTest.problem(V3CondenserPhaseBranch.TWO_PHASE, 1.0, 2);
         V3TruncationSupport support = V3TruncationSupportTest.topTailSupport(original);
-        assertThrows(IllegalArgumentException.class, () -> new V3ColumnProblem(original.input(), original.topology(),
-                original.activeComponentBasis(), original.condenserComponentPhases(), original.nodePressuresPascal(),
-                original.degreeOfFreedomLedger(), support, original.wetTraySet()));
-        V3ColumnProblem masked = V3ColumnProblemResolver.withTruncation(original, support);
+        V3ColumnProblem masked = V3ColumnProblemResolver.withTruncation(original, support, V3WetTraySet.dry(original.topology()));
         assertThrows(IllegalArgumentException.class,
-                () -> V3ColumnProblemResolver.withTruncation(masked, original.truncationSupport()));
+                () -> V3ColumnProblemResolver.withTruncation(masked, original.truncationSupport(), V3WetTraySet.dry(masked.topology())));
         assertThrows(IllegalArgumentException.class, () -> V3TruncationSupport.derive(masked, 0.01, null));
         assertFalse(masked.truncationSupport().isIdentity());
     }
@@ -167,7 +163,7 @@ class V3TruncationStructureTest {
         V3TruncationSupport wrongAxis = V3TruncationSupport.identity(original.topology(), 1);
         for (V3TruncationSupport incompatible : new V3TruncationSupport[] {wrongFeed, wrongBranch, wrongAxis}) {
             assertThrows(IllegalArgumentException.class,
-                    () -> V3ColumnProblemResolver.withTruncation(original, incompatible));
+                    () -> V3ColumnProblemResolver.withTruncation(original, incompatible, V3WetTraySet.dry(original.topology())));
             assertThrows(IllegalArgumentException.class, () -> V3DegreeOfFreedomLedger.create(original.topology(), 2,
                     original.input().specifications(), original.condenserComponentPhases(), incompatible));
         }

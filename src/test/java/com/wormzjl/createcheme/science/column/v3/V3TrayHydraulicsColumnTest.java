@@ -182,7 +182,7 @@ class V3TrayHydraulicsColumnTest {
                 legacy.assayId(), legacy.componentBasis(), legacy.feedComponentMolarFlowsMolPerSecond(),
                 legacy.feedTemperatureKelvin(), legacy.stageCount(), legacy.feedStageNumber(),
                 legacy.topPressurePascal(), legacy.stagePressureDropPascal(), legacy.specifications(),
-                legacy.sideDraws(), legacy.steamFeeds(), legacy.pumparounds())));
+                legacy.sideDraws(), legacy.steamFeeds(), legacy.pumparounds(), V3ColumnInput.PRESCRIBED_DROP_DIAMETER)));
     }
 
     @Test

@@ -8,8 +8,8 @@ import java.util.List;
 import org.junit.jupiter.api.Test;
 
 /**
- * The opt-in decoder presence floor. The production decode is the {@code DecodeOptions.NONE} path and
- * must stay bit identical; every assertion on it here is an exact comparison for that reason.
+ * The decoder's below-floor prune. A kept component whose decoded flow lands below its support floor is
+ * pruned to exactly zero; every assertion here is an exact comparison.
  */
 class V3DecoderPresenceFloorTest {
     private static final int STAGES = 17, NODE = 5, COMPONENT = 3, LIQUID_COMPOSITION = 3;
@@ -17,72 +17,13 @@ class V3DecoderPresenceFloorTest {
 
     @Test void defaultDecodeStillPrunesAKeptComponentThatFallsBelowItsFloor() {
         var input = input(); double[][] raw = belowFloor(input, 8);
-        var explicit = decode(input, raw, V3FactorizedNeuralFeatures.DecodeOptions.NONE);
-        var implicit = V3FactorizedNeuralFeatures.decode(input, "test", V3CondenserPhaseBranch.TWO_PHASE, raw, PRESENCE_THRESHOLD);
-        assertEquals(0, explicit.liquid()[NODE][COMPONENT]);
-        for (int n = 0; n < STAGES + 2; n++) {
-            assertArrayEquals(implicit.liquid()[n], explicit.liquid()[n]);
-            assertArrayEquals(implicit.vapor()[n], explicit.vapor()[n]);
-        }
-        assertEquals(0, V3FactorizedNeuralFeatures.DecodeOptions.NONE.liftFactor());
-        assertFalse(V3FactorizedNeuralFeatures.DecodeOptions.NONE.liftsPresentTraces());
-        assertEquals(Double.POSITIVE_INFINITY, V3FactorizedNeuralFeatures.DecodeOptions.NONE.liftLogit());
-    }
-
-    @Test void aKeptButBelowFloorComponentIsLiftedToTheSupportReinsertionMultiple() {
-        var input = input(); double[][] raw = belowFloor(input, 8);
-        var pruned = decode(input, raw, V3FactorizedNeuralFeatures.DecodeOptions.NONE);
-        var lifted = decode(input, raw, V3FactorizedNeuralFeatures.DecodeOptions.lift(10, PRESENCE_THRESHOLD));
-        double floor = floor(input, COMPONENT);
-        assertEquals(0, pruned.liquid()[NODE][COMPONENT]);
-        assertEquals(10 * floor, lifted.liquid()[NODE][COMPONENT]);
-        assertEquals(V3TruncationSupport.FLOOR_REINSERTION_FACTOR * floor, lifted.liquid()[NODE][COMPONENT]);
-        // Only the lifted trace differs: the lift adds mass instead of renormalising the phase for it.
-        for (int n = 0; n < STAGES + 2; n++) for (int c = 0; c < input.componentBasis().componentCount(); c++) {
-            assertEquals(pruned.vapor()[n][c], lifted.vapor()[n][c]);
-            if (n != NODE || c != COMPONENT) assertEquals(pruned.liquid()[n][c], lifted.liquid()[n][c]);
-        }
-        double prunedTotal = Arrays.stream(pruned.liquid()[NODE]).sum();
-        double liftedTotal = Arrays.stream(lifted.liquid()[NODE]).sum();
-        assertEquals(10 * floor, liftedTotal - prunedTotal, floor);
-        assertTrue(10 * floor < 1e-6 * prunedTotal, "the lifted mass must stay a trace of the phase total");
-        assertEquals(floor, decode(input, raw, V3FactorizedNeuralFeatures.DecodeOptions.lift(1, PRESENCE_THRESHOLD))
+        assertEquals(0, decode(input, raw, V3FactorizedNeuralFeatures.DecodeOptions.NONE).liquid()[NODE][COMPONENT]);
+        // The shipped zero-phase floor only seeds empty phases; a below-floor trace of a populated phase is pruned.
+        assertEquals(0, decode(input, raw, V3FactorizedNeuralFeatures.DecodeOptions.zeroPhaseFloor(10))
                 .liquid()[NODE][COMPONENT]);
     }
 
-    @Test void componentsTheHeadDroppedOrTheFeedLacksStayAtZero() {
-        var input = input();
-        double[][] absent = belowFloor(input, -8);
-        var lifted = decode(input, absent, V3FactorizedNeuralFeatures.DecodeOptions.lift(10, PRESENCE_THRESHOLD));
-        var pruned = decode(input, absent, V3FactorizedNeuralFeatures.DecodeOptions.NONE);
-        assertEquals(0, pruned.liquid()[NODE][COMPONENT]);
-        assertEquals(0, lifted.liquid()[NODE][COMPONENT]);
-        assertEquals(0, input.feedComponentMolarFlowsMolPerSecond()[0]);
-        for (int n = 0; n < STAGES + 2; n++) {
-            assertEquals(0, lifted.liquid()[n][0]); assertEquals(0, lifted.vapor()[n][0]);
-            assertArrayEquals(pruned.liquid()[n], lifted.liquid()[n]);
-        }
-    }
-
-    @Test void theGateComparesThePresenceProbabilityNotOnlyTheDecodeThreshold() {
-        var input = input();
-        double[][] weak = belowFloor(input, Math.log(.1 / .9));
-        assertEquals(10 * floor(input, COMPONENT),
-                decode(input, weak, V3FactorizedNeuralFeatures.DecodeOptions.lift(10, PRESENCE_THRESHOLD)).liquid()[NODE][COMPONENT]);
-        assertEquals(0, decode(input, weak, V3FactorizedNeuralFeatures.DecodeOptions.lift(10, .5)).liquid()[NODE][COMPONENT]);
-        double[][] confident = belowFloor(input, 8);
-        assertEquals(10 * floor(input, COMPONENT),
-                decode(input, confident, V3FactorizedNeuralFeatures.DecodeOptions.lift(10, .5)).liquid()[NODE][COMPONENT]);
-        assertEquals(Math.log(.5 / .5), V3FactorizedNeuralFeatures.DecodeOptions.lift(10, .5).liftLogit());
-    }
-
     @Test void malformedDecodeOptionsFailClosed() {
-        assertThrows(IllegalArgumentException.class, () -> V3FactorizedNeuralFeatures.DecodeOptions.lift(.5, .02));
-        assertThrows(IllegalArgumentException.class, () -> V3FactorizedNeuralFeatures.DecodeOptions.lift(-1, .02));
-        assertThrows(IllegalArgumentException.class, () -> V3FactorizedNeuralFeatures.DecodeOptions.lift(Double.NaN, .02));
-        assertThrows(IllegalArgumentException.class, () -> V3FactorizedNeuralFeatures.DecodeOptions.lift(1e9, .02));
-        assertThrows(IllegalArgumentException.class, () -> V3FactorizedNeuralFeatures.DecodeOptions.lift(10, 0));
-        assertThrows(IllegalArgumentException.class, () -> V3FactorizedNeuralFeatures.DecodeOptions.lift(10, 1));
         var input = input(); double[][] raw = belowFloor(input, 8);
         assertThrows(IllegalArgumentException.class, () -> V3FactorizedNeuralFeatures.decode(
                 input, "test", V3CondenserPhaseBranch.TWO_PHASE, raw, PRESENCE_THRESHOLD, null));
@@ -90,11 +31,6 @@ class V3DecoderPresenceFloorTest {
 
     private static V3NeuralSeed decode(V3ColumnInput input, double[][] raw, V3FactorizedNeuralFeatures.DecodeOptions options) {
         return V3FactorizedNeuralFeatures.decode(input, "test", V3CondenserPhaseBranch.TWO_PHASE, raw, PRESENCE_THRESHOLD, options);
-    }
-
-    private static double floor(V3ColumnInput input, int component) {
-        double[] feed = input.feedComponentMolarFlowsMolPerSecond();
-        return Math.max(feed[component], Arrays.stream(feed).sum() * 1e-12) * V3FactorizedNeuralFeatures.TRACE_FLOOR_FRACTION;
     }
 
     /** One liquid trace of {@link #NODE} driven far under its floor, with a chosen presence logit. */

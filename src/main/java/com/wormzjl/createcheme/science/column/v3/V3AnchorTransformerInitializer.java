@@ -1,6 +1,14 @@
 package com.wormzjl.createcheme.science.column.v3;
 
+import com.wormzjl.createcheme.science.column.v3.thermo.V3FlashResult;
+import com.wormzjl.createcheme.science.column.v3.thermo.V3FugacityResult;
+import com.wormzjl.createcheme.science.column.v3.thermo.V3PengRobinsonThermo;
+import com.wormzjl.createcheme.science.column.v3.thermo.V3ThermoException;
+import com.wormzjl.createcheme.science.column.v3.thermo.V3ThermoModel;
+import com.wormzjl.createcheme.science.column.v3.thermo.V3ThermoWorkspace;
 import com.wormzjl.createcheme.science.math.DeterministicMath;
+import com.wormzjl.createcheme.science.thermo.PengRobinsonKernel.Root;
+import com.wormzjl.createcheme.science.thermo.TraceTruncationPolicy;
 
 import com.google.gson.Gson;
 import java.io.IOException;
@@ -24,45 +32,15 @@ final class V3AnchorTransformerInitializer implements V3NeuralInitializer {
     private static final V3CondenserPhaseBranch[] BRANCHES = {V3CondenserPhaseBranch.LIQUID_ONLY,
             V3CondenserPhaseBranch.TWO_PHASE, V3CondenserPhaseBranch.VAPOR_ONLY};
 
-    /**
-     * How many seeds one prediction offers the learned entry, out of the same frozen weights and the same
-     * single forward pass.
-     *
-     * <p>{@link #SINGLE} is the qualified production rule: the loading caller's decode of the best legal
-     * condenser branch, and nothing else. {@link #DECODE_VARIANTS} offers that seed first and then the same
-     * network outputs decoded by the unchanged prune rule, which is a different seed wherever the loading
-     * rule lifted a phase the phase-total head zeroed. The learned entry already tries candidates in order
-     * inside one shared allowance, so the second seed costs a decode and whatever correction time is left,
-     * never a second inference.</p>
-     *
-     * <p>A second condenser branch is deliberately not offered: the branch is a one-hot input to the network
-     * and to {@link V3NativeAnchor}, so a second branch is a second anchor build and a second forward pass,
-     * which is not free in the way a second decode is.</p>
-     */
-    enum CandidateRule { SINGLE, DECODE_VARIANTS }
-
     private final Document model;
     /** Decoder variant selected by the loading caller, never by the model bytes. */
     private final V3FactorizedNeuralFeatures.DecodeOptions decode;
-    /** Candidate rule selected by the loading caller, never by the model bytes. */
-    private final CandidateRule candidateRule;
-    private V3AnchorTransformerInitializer(Document model, V3FactorizedNeuralFeatures.DecodeOptions decode,
-            CandidateRule candidateRule) {
-        this.model = model; this.decode = decode; this.candidateRule = candidateRule;
-    }
-
-    static V3AnchorTransformerInitializer read(InputStream stream) throws IOException {
-        return read(stream, V3FactorizedNeuralFeatures.DecodeOptions.NONE);
+    private V3AnchorTransformerInitializer(Document model, V3FactorizedNeuralFeatures.DecodeOptions decode) {
+        this.model = model; this.decode = decode;
     }
 
     static V3AnchorTransformerInitializer read(InputStream stream, V3FactorizedNeuralFeatures.DecodeOptions decode) throws IOException {
-        return read(stream, decode, CandidateRule.SINGLE);
-    }
-
-    static V3AnchorTransformerInitializer read(InputStream stream, V3FactorizedNeuralFeatures.DecodeOptions decode,
-            CandidateRule candidateRule) throws IOException {
         if (decode == null) throw new IllegalArgumentException("Missing pipeline decode options");
-        if (candidateRule == null) throw new IllegalArgumentException("Missing pipeline candidate rule");
         byte[] bytes = stream.readNBytes(8 * 1024 * 1024 + 1);
         if (bytes.length > 8 * 1024 * 1024) throw new IllegalArgumentException("Transformer artifact exceeds size limit");
         Document m = new Gson().fromJson(new String(bytes, StandardCharsets.UTF_8), Document.class);
@@ -75,7 +53,7 @@ final class V3AnchorTransformerInitializer implements V3NeuralInitializer {
                 || m.branchesSeen == null || m.branchesSeen.length != 3 || !(m.branchesSeen[0] || m.branchesSeen[1] || m.branchesSeen[2])
                 || m.presenceThreshold != .02 || m.traceFloorFraction != V3TruncationSupport.TRACE_FLOOR_FRACTION
                 || m.normalization == null || m.weights == null || m.weights.size() != 34 || m.designConstraints == null
-                || !V3NativeAnchor.REVISION.equals(m.baselineRevision) || m.physicsFingerprint == null
+                || !NativeAnchor.REVISION.equals(m.baselineRevision) || m.physicsFingerprint == null
                 || !m.physicsFingerprint.matches("[0-9a-f]{64}"))
             throw new IllegalArgumentException("Invalid transformer manifest");
         for (String name : List.of("xm", "xscale", "ym", "yscale", "gm", "gscale", "bm", "bscale")) {
@@ -99,7 +77,7 @@ final class V3AnchorTransformerInitializer implements V3NeuralInitializer {
                     throw new IllegalArgumentException("Invalid composition endpoint");
             }
         }
-        var result = new V3AnchorTransformerInitializer(m, decode, candidateRule);
+        var result = new V3AnchorTransformerInitializer(m, decode);
         result.checkLinear("embed", inputs(m), 64); result.checkNorm("output.0"); result.checkLinear("output.1", 64, outputWidth(m));
         result.checkLinear("branch.0", globalWidth(m), 64); result.checkLinear("branch.2", 64, 3);
         for (int i = 0; i < 2; i++) {
@@ -142,32 +120,6 @@ final class V3AnchorTransformerInitializer implements V3NeuralInitializer {
         if (best < 0 || !Double.isFinite(raw.branchLogits[best])) return Optional.empty();
         try { return Optional.of(V3FactorizedNeuralFeatures.decode(input, propertyRevision(input.packageId()), BRANCHES[best], raw.values, model.presenceThreshold, decode)); }
         catch (IllegalArgumentException invalid) { return Optional.empty(); }
-    }
-
-    /**
-     * The seeds this model offers one request, in the order the learned entry should try them.
-     *
-     * <p>{@link CandidateRule#SINGLE} is exactly {@link #predict}. Under {@link
-     * CandidateRule#DECODE_VARIANTS} the same forward pass is decoded twice: first by the loading caller's
-     * rule, then by the unchanged prune rule. The two are offered only when they are actually different
-     * rules, and a decode that the seed contract rejects is simply not offered rather than failing the
-     * request.</p>
-     */
-    @Override public List<V3NeuralSeed> candidates(V3ColumnInput input, V3SolveControl control) {
-        if (candidateRule == CandidateRule.SINGLE || decode.equals(V3FactorizedNeuralFeatures.DecodeOptions.NONE))
-            return predict(input, control).stream().toList();
-        control.checkpoint();
-        if (!supported(input)) return List.of();
-        Raw raw = raw(input, control);
-        int best = bestBranch(input, raw.branchLogits);
-        if (best < 0 || !Double.isFinite(raw.branchLogits[best])) return List.of();
-        var seeds = new java.util.ArrayList<V3NeuralSeed>(2);
-        for (var options : List.of(decode, V3FactorizedNeuralFeatures.DecodeOptions.NONE)) {
-            control.checkpoint();
-            try { seeds.add(V3FactorizedNeuralFeatures.decode(input, propertyRevision(input.packageId()), BRANCHES[best], raw.values, model.presenceThreshold, options)); }
-            catch (IllegalArgumentException invalid) { /* an inadmissible decode is not offered, never thrown */ }
-        }
-        return List.copyOf(seeds);
     }
 
     /** Highest-scoring branch the model saw in training and the request's own specifications allow. */
@@ -230,7 +182,7 @@ final class V3AnchorTransformerInitializer implements V3NeuralInitializer {
         double[] branch = linear(gelu(linear(global, "branch.0", control)), "branch.2", control);
         int best = bestBranch(input, branch);
         if (best < 0 || !Double.isFinite(branch[best])) throw new IllegalArgumentException("No legal branch");
-        var anchor = V3NativeAnchor.build(input, BRANCHES[best], control);
+        var anchor = NativeAnchor.build(input, BRANCHES[best], control);
         double[][] features = V3GeneralNeuralFeatures.nodes(input, V3CondenserPhaseBranch.TWO_PHASE);
         double[][] hidden = new double[features.length][];
         for (int i = 0; i < features.length; i++) {
@@ -338,5 +290,55 @@ final class V3AnchorTransformerInitializer implements V3NeuralInitializer {
         List<String> components, formulationRevisions; boolean[] branchesSeen;
         double presenceThreshold, traceFloorFraction; double[] globalMin, globalMax;
         Map<String, double[]> normalization; Map<String, Tensor> weights; Design designConstraints;
+    }
+
+    /** Input-only, branch-conditioned native anchor. Each call owns its workspace.
+     * Ordinary construction failures return a zero anchor and a separate availability
+     * flag; cancellation always propagates. An anchor is never a certified label.
+     *
+     * <p>The anchor encoding has four coordinates per component and five scalar coordinates.
+     * Its revision is part of the trained payload contract; changing its arithmetic requires requalification.</p>
+     */
+    static final class NativeAnchor {
+        static final String REVISION = "native-material-closed-anchor-v2-basis-width";
+        private NativeAnchor() {}
+        record Anchor(double[][] values, boolean available, String reason) {}
+
+        static Anchor build(V3ColumnInput input, V3CondenserPhaseBranch branch, V3SolveControl control) {
+            control.checkpoint();
+            try {
+                var nativeThermo = V3PengRobinsonThermo.fromRegisteredPackage(input.packageId());
+                var problem = V3ColumnProblemResolver.resolve(input, branch);
+                var thermo = new ControlledThermo(nativeThermo, control);
+                var state = V3ColumnInitializer.initialize(problem, thermo, thermo.newWorkspace(),
+                        V3ColumnInitializer.Mode.MATERIAL_CLOSED).state();
+                control.checkpoint();
+                var seed = V3NeuralSeed.capture(problem, state, nativeThermo.datasetRevision());
+                double[][] values = V3FactorizedNeuralFeatures.targets(seed);
+                for (double[] node : values) for (double value : node)
+                    if (!Double.isFinite(value)) throw new IllegalArgumentException("nonfinite native anchor");
+                return new Anchor(values, true, "AVAILABLE");
+            } catch (V3ThermoException | IllegalArgumentException declined) {
+                control.checkpoint();
+                return new Anchor(new double[input.stageCount() + 2][V3FactorizedNeuralFeatures.outputWidth(input.componentBasis().componentCount())], false,
+                        declined.getClass().getSimpleName() + ": " + declined.getMessage());
+            }
+        }
+
+        private record ControlledThermo(V3PengRobinsonThermo delegate, V3SolveControl control) implements V3ThermoModel {
+            @Override public V3ComponentBasis componentBasis() { return delegate.componentBasis(); }
+            @Override public V3ThermoWorkspace newWorkspace() { return delegate.newWorkspace(); }
+            @Override public V3FugacityResult fugacity(double t, double p, double[] x, Root phase, V3ThermoWorkspace w) {
+                control.checkpoint(); var result = delegate.fugacity(t, p, x, phase, w); control.checkpoint(); return result;
+            }
+            @Override public double molarEnthalpy(double t, double p, double[] x, Root phase, V3ThermoWorkspace w) {
+                control.checkpoint(); double result = delegate.molarEnthalpy(t, p, x, phase, w); control.checkpoint(); return result;
+            }
+            @Override public V3FlashResult flashTP(double t, double p, double[] x, V3ThermoWorkspace w) {
+                control.checkpoint();
+                var result = delegate.flashTP(t, p, x, TraceTruncationPolicy.of(0), w, control::checkpoint);
+                control.checkpoint(); return result;
+            }
+        }
     }
 }

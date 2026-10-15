@@ -4,16 +4,88 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import com.wormzjl.createcheme.science.column.v3.thermo.V3CrudeFeed;
 import com.wormzjl.createcheme.science.column.v3.thermo.V3FeedPhase;
 import com.wormzjl.createcheme.science.column.v3.thermo.V3FlashResult;
 import com.wormzjl.createcheme.science.column.v3.thermo.V3FugacityResult;
-import com.wormzjl.createcheme.science.column.v3.thermo.V3Phase;
+import com.wormzjl.createcheme.science.column.v3.thermo.V3PengRobinsonThermo;
 import com.wormzjl.createcheme.science.column.v3.thermo.V3ThermoModel;
 import com.wormzjl.createcheme.science.column.v3.thermo.V3ThermoWorkspace;
+import com.wormzjl.createcheme.science.thermo.PengRobinsonKernel.Root;
 import java.util.List;
+import java.util.concurrent.CancellationException;
 import org.junit.jupiter.api.Test;
 
+@org.junit.jupiter.api.extension.ExtendWith(com.wormzjl.createcheme.science.material.Cdu17FixtureExtension.class)
 class V3ColumnInitializerTest {
+    private static final String CDU17 = "createcheme:cdu17_tjl_acs2018";
+
+    @Test
+    void registeredTiaJuanaCrudeFlashesAndBuildsAnExactZeroAwareFiniteSeed() {
+        V3PengRobinsonThermo thermo = V3PengRobinsonThermo.fromRegisteredPackage(CDU17);
+        V3CrudeFeed crude = thermo.crudeFeed("createcheme:tia_juana_light");
+        double[] feedFlows = crude.moleFractions();
+        for (int component = 0; component < feedFlows.length; component++) feedFlows[component] *= 100.0;
+        V3ColumnInput input = new V3ColumnInput(V3ColumnInput.SCHEMA_VERSION, crude.packageId(), crude.assayId(),
+                crude.componentBasis(), feedFlows, 638.15, 4, 2, 266_500.0, 750.0, List.of(
+                        new V3ColumnSpecification.CondenserOutletTemperature(332.15),
+                        new V3ColumnSpecification.OrganicRefluxRatio(4.17),
+                        new V3ColumnSpecification.ReboilerDuty(8_000_000.0)));
+        V3ColumnProblem problem = V3ColumnProblemResolver.resolve(input, V3CondenserPhaseBranch.TWO_PHASE);
+
+        V3ColumnInitializer.Seed seed = V3ColumnInitializer.initialize(problem, thermo, thermo.newWorkspace());
+
+        assertEquals("TWO_PHASE", seed.evidence().feedPhase());
+        assertTrue(problem.activeComponentBasis().componentCount() < crude.componentBasis().componentCount());
+        assertEquals(problem.activeComponentBasis().componentCount(), seed.state().componentCount());
+        for (int node = 0; node < seed.state().nodeCount(); node++) {
+            for (int component = 0; component < seed.state().componentCount(); component++) {
+                assertTrue(seed.state().vaporFlow(node, component) > 0.0);
+                assertTrue(seed.state().liquidFlow(node, component) > 0.0);
+            }
+        }
+    }
+
+    @Test
+    void bubblePointProjectionOfTheMaterialClosedSeedIsFiniteAndPositive() {
+        V3PengRobinsonThermo thermo = V3PengRobinsonThermo.fromRegisteredPackage(CDU17);
+        V3ColumnProblem problem = V3ColumnProblemResolver.resolve(bubblePointInput(), V3CondenserPhaseBranch.TWO_PHASE);
+        V3DryMeshState materialClosed = V3ColumnInitializer.initialize(
+                problem, thermo, thermo.newWorkspace(), V3ColumnInitializer.Mode.MATERIAL_CLOSED).state();
+
+        V3DryMeshState projected = V3ColumnInitializer.projectMaterialBalancesAtFixedTemperature(
+                problem, thermo, thermo.newWorkspace(), materialClosed);
+
+        for (int node = 0; node < projected.nodeCount(); node++) {
+            assertTrue(projected.temperatureKelvin(node) > 0.0);
+            for (int component = 0; component < projected.componentCount(); component++) {
+                assertTrue(projected.vaporFlow(node, component) > 0.0);
+                if (problem.condenserComponentPhases().hasLiquid(problem.topology(), node, component)) {
+                    assertTrue(projected.liquidFlow(node, component) > 0.0);
+                } else {
+                    assertEquals(0.0, projected.liquidFlow(node, component));
+                }
+            }
+        }
+    }
+
+    @Test
+    void cancellationEscapesTheBubblePointProjectionRatherThanKeepingThePreviousSeed() {
+        V3PengRobinsonThermo thermo = V3PengRobinsonThermo.fromRegisteredPackage(CDU17);
+        V3ColumnProblem problem = V3ColumnProblemResolver.resolve(bubblePointInput(), V3CondenserPhaseBranch.TWO_PHASE);
+        V3DryMeshState materialClosed = V3ColumnInitializer.initialize(
+                problem, thermo, thermo.newWorkspace(), V3ColumnInitializer.Mode.MATERIAL_CLOSED).state();
+
+        assertThrows(CancellationException.class, () -> V3ColumnCalculator.projectedSeedOrPrevious(
+                problem, thermo, materialClosed, () -> {
+                    throw new CancellationException("test cancellation");
+                }));
+    }
+
+    private static V3ColumnInput bubblePointInput() {
+        return V3TestInputs.cdu17Binary("test:bubble-point");
+    }
+
     @Test
     void materialClosedSeedIncludesAFeedTrayDrawInDownflowAndBottoms() {
         V3ColumnInput base = problem(1.0, V3CondenserPhaseBranch.TWO_PHASE, new double[] {30, 60}).input();
@@ -87,7 +159,7 @@ class V3ColumnInitializerTest {
             V3DryMeshCoordinateMap coordinates = new V3DryMeshCoordinateMap(problem);
             V3DryMeshState restored = coordinates.decode(coordinates.encode(seed));
             V3AcceptanceAudit audit = new V3AcceptanceAuditor(problem, thermo, 0.0)
-                    .audit(restored, thermo.newWorkspace());
+                    .audit(restored, thermo.newWorkspace(), V3SolveControl.UNBOUNDED);
 
             for (int component = 0; component < restored.componentCount(); component++) {
                 assertEquals(0.0, restored.vaporFlow(0, component));
@@ -131,14 +203,14 @@ class V3ColumnInitializerTest {
 
         @Override
         public V3FugacityResult fugacity(
-                double temperatureKelvin, double pressurePascal, double[] composition, V3Phase phase,
+                double temperatureKelvin, double pressurePascal, double[] composition, Root phase,
                 V3ThermoWorkspace workspace) {
             return new V3FugacityResult(phase, new double[] {0.0, 0.0}, 1.0, 0.0, 1, 0.0);
         }
 
         @Override
         public double molarEnthalpy(
-                double temperatureKelvin, double pressurePascal, double[] composition, V3Phase phase,
+                double temperatureKelvin, double pressurePascal, double[] composition, Root phase,
                 V3ThermoWorkspace workspace) {
             return 0.0;
         }

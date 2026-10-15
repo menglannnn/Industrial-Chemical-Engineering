@@ -4,7 +4,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 import com.google.gson.GsonBuilder;
 import com.wormzjl.createcheme.science.column.v3.thermo.V3FlashResult;
-import com.wormzjl.createcheme.science.column.v3.thermo.V3Phase;
+import com.wormzjl.createcheme.science.thermo.PengRobinsonKernel.Root;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -102,17 +102,17 @@ class HollandExample32BenchmarkTest {
         long coldStarted = System.nanoTime();
         V3SimultaneousColumnSolver.Attempt coldAttempt = V3SimultaneousColumnSolver.solve(
                 problem, evaluator, new V3DryMeshCoordinateMap(problem), coldSeed.state(),
-                thermo::newWorkspace, 64, 1.0e-8);
+                thermo::newWorkspace, V3ConvergenceEvidence.unavailable(), 64, 1.0e-8, V3FiniteDifferenceJacobian.DifferenceScale.FINE, V3SolveControl.UNBOUNDED);
         double coldSeconds = (System.nanoTime() - coldStarted) / 1.0e9;
         V3DryMeshState seed = perturbedV3State(problem, independent.state());
         long v3Started = System.nanoTime();
         V3SimultaneousColumnSolver.Attempt attempt = V3SimultaneousColumnSolver.solve(
-                problem, evaluator, new V3DryMeshCoordinateMap(problem), seed, thermo::newWorkspace, 64, 1.0e-8);
+                problem, evaluator, new V3DryMeshCoordinateMap(problem), seed, thermo::newWorkspace, V3ConvergenceEvidence.unavailable(), 64, 1.0e-8, V3FiniteDifferenceJacobian.DifferenceScale.FINE, V3SolveControl.UNBOUNDED);
         double v3Seconds = (System.nanoTime() - v3Started) / 1.0e9;
         V3SimultaneousColumnSolver.Attempt.Converged converged = assertInstanceOf(
                 V3SimultaneousColumnSolver.Attempt.Converged.class, attempt, attempt::toString);
         V3AcceptanceAudit audit = new V3AcceptanceAuditor(problem, thermo, feedFlash.molarEnthalpyJoulesPerMol())
-                .audit(converged.state(), thermo.newWorkspace());
+                .audit(converged.state(), thermo.newWorkspace(), V3SolveControl.UNBOUNDED);
         assertTrue(audit.accepted(), audit::toString);
 
         double maximumTemperatureDelta = 0.0;
@@ -310,7 +310,7 @@ class HollandExample32BenchmarkTest {
         }
         for (int component = 0; component < flows.length; component++) flows[component] /= total;
         return total * result.thermo().molarEnthalpy(state.temperatureKelvin(node),
-                result.problem().nodePressurePascal(node), flows, liquid ? V3Phase.LIQUID : V3Phase.VAPOR,
+                result.problem().nodePressurePascal(node), flows, liquid ? Root.LIQUID : Root.VAPOR,
                 result.thermo().newWorkspace());
     }
 

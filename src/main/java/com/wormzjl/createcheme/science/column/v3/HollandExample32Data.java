@@ -128,10 +128,6 @@ final class HollandExample32Data {
         return (fahrenheit - 32.0) / 1.8 + 273.15;
     }
 
-    static double fahrenheitFromKelvin(double kelvin) {
-        return (kelvin - 273.15) * 1.8 + 32.0;
-    }
-
     private double[][] coefficients(java.util.function.Function<Component, double[]> values, double[] scales) {
         double[][] coefficients = new double[componentCount()][scales.length];
         for (int component = 0; component < componentCount(); component++) {

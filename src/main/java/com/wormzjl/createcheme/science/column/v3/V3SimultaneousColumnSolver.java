@@ -29,14 +29,6 @@ final class V3SimultaneousColumnSolver {
     static Attempt solve(
             V3ColumnProblem problem, V3MeshResidualEvaluator evaluator, V3DryMeshCoordinateMap coordinates,
             V3DryMeshState initialState, V3FiniteDifferenceJacobian.V3ThermoWorkspaceFactory workspaceFactory,
-            int maximumIterations, double scaledTolerance) {
-        return solve(problem, evaluator, coordinates, initialState, workspaceFactory, V3ConvergenceEvidence.unavailable(),
-                maximumIterations, scaledTolerance, V3FiniteDifferenceJacobian.DifferenceScale.FINE, V3SolveControl.UNBOUNDED);
-    }
-
-    static Attempt solve(
-            V3ColumnProblem problem, V3MeshResidualEvaluator evaluator, V3DryMeshCoordinateMap coordinates,
-            V3DryMeshState initialState, V3FiniteDifferenceJacobian.V3ThermoWorkspaceFactory workspaceFactory,
             int maximumIterations, double scaledTolerance, V3SolveControl control) {
         return solve(problem, evaluator, coordinates, initialState, workspaceFactory, V3ConvergenceEvidence.unavailable(),
                 maximumIterations, scaledTolerance, V3FiniteDifferenceJacobian.DifferenceScale.FINE, control);
@@ -57,15 +49,6 @@ final class V3SimultaneousColumnSolver {
     }
 
     static Attempt solve(
-            V3ColumnProblem problem, V3MeshResidualEvaluator evaluator, V3DryMeshCoordinateMap coordinates,
-            V3DryMeshState initialState, V3FiniteDifferenceJacobian.V3ThermoWorkspaceFactory workspaceFactory,
-            V3ConvergenceEvidence initialConvergenceEvidence, int maximumIterations, double scaledTolerance,
-            V3FiniteDifferenceJacobian.DifferenceScale differenceScale) {
-        return solve(problem, evaluator, coordinates, initialState, workspaceFactory, initialConvergenceEvidence,
-                maximumIterations, scaledTolerance, differenceScale, V3SolveControl.UNBOUNDED);
-    }
-
-    static Attempt solve(
             V3ColumnProblem problem,
             V3MeshResidualEvaluator evaluator,
             V3DryMeshCoordinateMap coordinates,
@@ -77,7 +60,7 @@ final class V3SimultaneousColumnSolver {
             V3FiniteDifferenceJacobian.DifferenceScale differenceScale,
             V3SolveControl control) {
         return solve(problem, evaluator, coordinates, initialState, workspaceFactory, initialConvergenceEvidence,
-                maximumIterations, scaledTolerance, differenceScale, control, V3NewtonTrace.NONE);
+                maximumIterations, scaledTolerance, differenceScale, control, NewtonTrace.NONE);
     }
 
     static Attempt solve(
@@ -91,7 +74,7 @@ final class V3SimultaneousColumnSolver {
             double scaledTolerance,
             V3FiniteDifferenceJacobian.DifferenceScale differenceScale,
             V3SolveControl control,
-            V3NewtonTrace trace) {
+            NewtonTrace trace) {
         return solve(problem, evaluator, coordinates, initialState, workspaceFactory, initialConvergenceEvidence,
                 maximumIterations, scaledTolerance, differenceScale, control, trace, 0, 0, RungBudget.DEFAULT,
                 Extension.NONE);
@@ -111,21 +94,8 @@ final class V3SimultaneousColumnSolver {
             V3FiniteDifferenceJacobian.V3ThermoWorkspaceFactory workspaceFactory,
             int maximumIterations,
             double scaledTolerance,
-            V3SolveControl control) {
-        return solveWithContinuationLocalBlocks(problem, evaluator, coordinates, initialState, workspaceFactory,
-                maximumIterations, scaledTolerance, control, V3NewtonTrace.NONE);
-    }
-
-    static Attempt solveWithContinuationLocalBlocks(
-            V3ColumnProblem problem,
-            V3MeshResidualEvaluator evaluator,
-            V3DryMeshCoordinateMap coordinates,
-            V3DryMeshState initialState,
-            V3FiniteDifferenceJacobian.V3ThermoWorkspaceFactory workspaceFactory,
-            int maximumIterations,
-            double scaledTolerance,
             V3SolveControl control,
-            V3NewtonTrace trace) {
+            NewtonTrace trace) {
         return solveWithContinuationLocalBlocks(problem, evaluator, coordinates, initialState, workspaceFactory,
                 maximumIterations, scaledTolerance, control, trace, RungBudget.DEFAULT);
     }
@@ -139,7 +109,7 @@ final class V3SimultaneousColumnSolver {
             int maximumIterations,
             double scaledTolerance,
             V3SolveControl control,
-            V3NewtonTrace trace,
+            NewtonTrace trace,
             RungBudget budget) {
         return solveWithContinuationLocalBlocks(problem, evaluator, coordinates, initialState, workspaceFactory,
                 maximumIterations, scaledTolerance, control, trace, budget, Extension.NONE);
@@ -154,7 +124,7 @@ final class V3SimultaneousColumnSolver {
             int maximumIterations,
             double scaledTolerance,
             V3SolveControl control,
-            V3NewtonTrace trace,
+            NewtonTrace trace,
             RungBudget budget,
             Extension extension) {
         return solve(problem, evaluator, coordinates, initialState, workspaceFactory, V3ConvergenceEvidence.unavailable(),
@@ -172,7 +142,7 @@ final class V3SimultaneousColumnSolver {
             int maximumIterations,
             double scaledTolerance,
             V3SolveControl control,
-            V3NewtonTrace trace) {
+            NewtonTrace trace) {
         return solve(problem, evaluator, coordinates, initialState, workspaceFactory, V3ConvergenceEvidence.unavailable(),
                 maximumIterations, scaledTolerance, V3FiniteDifferenceJacobian.DifferenceScale.FINE,
                 control, trace, MAXIMUM_FROZEN_FINE_JACOBIAN_STEPS, 1, RungBudget.DEFAULT, Extension.NONE);
@@ -189,7 +159,7 @@ final class V3SimultaneousColumnSolver {
             double scaledTolerance,
             V3FiniteDifferenceJacobian.DifferenceScale differenceScale,
             V3SolveControl control,
-            V3NewtonTrace trace,
+            NewtonTrace trace,
             int maximumFrozenFineJacobianSteps,
             int maximumLocalBlockAttempts,
             RungBudget budget,
@@ -535,11 +505,6 @@ final class V3SimultaneousColumnSolver {
 
     /** Keeps every coefficient in the declared adjacent-stage coupling, independent of its magnitude. */
     static V3BandedMatrix toBandedMatrix(
-            V3FiniteDifferenceJacobian.Jacobian jacobian, V3StageBlockLayout layout) {
-        return toBandedMatrix(jacobian, layout, null);
-    }
-
-    private static V3BandedMatrix toBandedMatrix(
             V3FiniteDifferenceJacobian.Jacobian jacobian, V3StageBlockLayout layout,
             V3BandedPivotedSolver.Workspace workspace) {
         int lastNode = layout.nodeCount() - 1;
@@ -729,6 +694,40 @@ final class V3SimultaneousColumnSolver {
                 maximumTemperatureStepRatio, V3ConvergenceEvidence.closureOf(scaledTolerance));
     }
 
+    /** Package-local, solve-confined Newton observation hook for deterministic cold diagnostics. */
+    @FunctionalInterface
+    interface NewtonTrace {
+        NewtonTrace NONE = (iteration, residual, scaledMerit) -> {};
+
+        void sampledIteration(int iteration, V3MeshResidual residual, double scaledMerit);
+
+        /** Optional state-bearing observation for bounded solver diagnostics. */
+        default void sampledState(
+                int iteration, V3DryMeshState state, V3MeshResidual residual, double scaledMerit) {
+            sampledIteration(iteration, residual, scaledMerit);
+        }
+
+        /** Records whether the request-local local-block direction passed the same Armijo gate as a full Newton step. */
+        default void localBlockDirection(int iteration, boolean accepted) {}
+
+        /** Records a fresh or one-step-reused full finite-difference Jacobian fallback. */
+        default void finiteDifferenceJacobian(int iteration, boolean reused) {}
+
+        /**
+         * Marks the start of one Newton attempt inside a single correction pass.
+         *
+         * <p>A pass repeats its attempt whenever the frozen floor support or the free-water tray set is
+         * refreshed, and each repeat restarts its own iteration counter from zero. Without this boundary an
+         * observer cannot tell one long attempt from three short ones, and the retention the attempt was
+         * prepared on is what decides whether a refresh reinserted a point or only dropped one.</p>
+         */
+        default void beganAttempt(int attempt, int supportRefreshes, int wetTrayRefreshes, int iterationBudget,
+                int retainedPoints, int totalPoints, int wetTrayCount) {}
+
+        /** Records how one attempt ended: its solver code, completed iterations and final scaled residual. */
+        default void finishedAttempt(int attempt, String code, int iterations, double maximumScaledResidual) {}
+    }
+
     /**
      * Newton budget of one continuation rung.
      *
@@ -763,12 +762,6 @@ final class V3SimultaneousColumnSolver {
                     || !Double.isFinite(stallResidualFloor) || stallResidualFloor < 0.0) {
                 throw new IllegalArgumentException("V3 Newton rung budget is invalid");
             }
-        }
-
-        /** Same fallbacks, no damped certificate cascade: for a rung whose state is a seed, not a published result. */
-        RungBudget withoutVerificationCascade() {
-            return new RungBudget(maximumDampingSteps, gradientFallback, 0,
-                    stallWindow, stallFactor, stallResidualFloor);
         }
     }
 

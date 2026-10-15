@@ -87,7 +87,7 @@ class V3PathDependentInfeasibilityTest {
             if (System.nanoTime() - started >= BUDGET_NANOS) {
                 throw new AssertionError("path-dependent gate case exceeded its cold budget");
             }
-        });
+        }, 0, 0, V3ColumnCalculator.DEFAULT_LIQUID_SUPPLY_SCREEN_RATIO);
     }
 
     /** The same v1-scale TJL CDU case the pumparound suite uses, so the bound is exercised where it is tuned. */
@@ -101,6 +101,6 @@ class V3PathDependentInfeasibilityTest {
                 crude.componentBasis(), flows, 365.0 + 273.15, 30, 24, 250_000.0, 750.0, List.of(
                         new V3ColumnSpecification.CondenserOutletTemperature(332.15),
                         new V3ColumnSpecification.OrganicRefluxRatio(4.17),
-                        new V3ColumnSpecification.ReboilerDuty(8_000_000.0)), List.of(), List.of(), pumparounds);
+                        new V3ColumnSpecification.ReboilerDuty(8_000_000.0)), List.of(), List.of(), pumparounds, V3ColumnInput.PRESCRIBED_DROP_DIAMETER);
     }
 }

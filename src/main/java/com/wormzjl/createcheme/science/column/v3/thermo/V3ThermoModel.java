@@ -1,6 +1,7 @@
 package com.wormzjl.createcheme.science.column.v3.thermo;
 
 import com.wormzjl.createcheme.science.column.v3.V3ComponentBasis;
+import com.wormzjl.createcheme.science.thermo.PengRobinsonKernel.Root;
 
 /** Narrow immutable hydrocarbon thermodynamic boundary for V3; free-water steam is handled by {@link V3WaterProperties}. */
 public interface V3ThermoModel {
@@ -9,11 +10,11 @@ public interface V3ThermoModel {
     V3ThermoWorkspace newWorkspace();
 
     V3FugacityResult fugacity(
-            double temperatureKelvin, double pressurePascal, double[] composition, V3Phase phase,
+            double temperatureKelvin, double pressurePascal, double[] composition, Root phase,
             V3ThermoWorkspace workspace);
 
     double molarEnthalpy(
-            double temperatureKelvin, double pressurePascal, double[] composition, V3Phase phase,
+            double temperatureKelvin, double pressurePascal, double[] composition, Root phase,
             V3ThermoWorkspace workspace);
 
     V3FlashResult flashTP(

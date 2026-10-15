@@ -10,15 +10,21 @@ import com.wormzjl.createcheme.science.column.v3.thermo.V3CrudeFeed;
 import com.wormzjl.createcheme.science.column.v3.thermo.V3FlashResult;
 import com.wormzjl.createcheme.science.column.v3.thermo.V3FugacityResult;
 import com.wormzjl.createcheme.science.column.v3.thermo.V3PengRobinsonThermo;
-import com.wormzjl.createcheme.science.column.v3.thermo.V3Phase;
 import com.wormzjl.createcheme.science.column.v3.thermo.V3ThermoModel;
 import com.wormzjl.createcheme.science.column.v3.thermo.V3ThermoWorkspace;
+import com.wormzjl.createcheme.science.thermo.PengRobinsonKernel.Root;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
+import static org.junit.jupiter.api.Assertions.*;
 
 @org.junit.jupiter.api.extension.ExtendWith(com.wormzjl.createcheme.science.material.Cdu17FixtureExtension.class)
 class V3SimultaneousColumnSolverTest {
+    /** The default fallbacks without the damped certificate cascade: a rung whose state is a seed. */
+    private static final V3SimultaneousColumnSolver.RungBudget NO_VERIFICATION_CASCADE =
+            new V3SimultaneousColumnSolver.RungBudget(V3SimultaneousColumnSolver.RungBudget.DEFAULT.maximumDampingSteps(),
+                    true, 0, 0, 0.0, 0.0);
+
     @Test
     void dampedBandedNewtonRecoversTheManufacturedFullMeshStateOnlyThroughBothAcceptanceGates() {
         V3ColumnProblem problem = problem();
@@ -47,10 +53,10 @@ class V3SimultaneousColumnSolverTest {
         assertTrue(converged.evidence().convergenceEvidence().satisfiesGates());
         V3MeshResidual finalResidual = evaluator.evaluate(converged.state(), thermo.newWorkspace());
         assertTrue(finalResidual.maximumAbsoluteScaledResidual() <= 1.0e-9);
-        V3AcceptanceAudit audit = new V3AcceptanceAuditor(problem, thermo, 0.0).audit(converged.state(), thermo.newWorkspace());
+        V3AcceptanceAudit audit = new V3AcceptanceAuditor(problem, thermo, 0.0).audit(converged.state(), thermo.newWorkspace(), V3SolveControl.UNBOUNDED);
         assertTrue(audit.accepted());
         V3ConvergenceEvidence convergenceEvidence = converged.evidence().convergenceEvidence();
-        V3ColumnResult result = V3ColumnResult.accepted(
+        V3ColumnResult result = V3TestInputs.stateless(
                 problem, new V3InputDigest("0".repeat(64)), audit, convergenceEvidence);
         V3SolverDiagnostics diagnostics = new V3SolverDiagnostics(
                 0, converged.evidence().iterations(), 1, 1, converged.evidence().maximumScaledResidual(), 0.0,
@@ -70,7 +76,7 @@ class V3SimultaneousColumnSolverTest {
         V3MeshResidualEvaluator evaluator = new V3MeshResidualEvaluator(
                 problem, thermo, feedFlash.molarEnthalpyJoulesPerMol());
         V3SimultaneousColumnSolver.Attempt attempt = V3SimultaneousColumnSolver.solve(
-                problem, evaluator, new V3DryMeshCoordinateMap(problem), seed.state(), thermo::newWorkspace, 128, 1.0e-8);
+                problem, evaluator, new V3DryMeshCoordinateMap(problem), seed.state(), thermo::newWorkspace, V3ConvergenceEvidence.unavailable(), 128, 1.0e-8, V3FiniteDifferenceJacobian.DifferenceScale.FINE, V3SolveControl.UNBOUNDED);
 
         V3MeshResidual terminalResidual = evaluator.evaluate(attempt.state(), thermo.newWorkspace());
         System.out.println("V3 real crude Newton outcome: " + attempt + "; residual families="
@@ -80,7 +86,7 @@ class V3SimultaneousColumnSolverTest {
         if (attempt instanceof V3SimultaneousColumnSolver.Attempt.Converged converged) {
             assertTrue(converged.evidence().convergenceEvidence().satisfiesGates());
             assertTrue(new V3AcceptanceAuditor(problem, thermo, feedFlash.molarEnthalpyJoulesPerMol())
-                    .audit(converged.state(), thermo.newWorkspace()).accepted());
+                    .audit(converged.state(), thermo.newWorkspace(), V3SolveControl.UNBOUNDED).accepted());
         } else {
             V3SimultaneousColumnSolver.Attempt.Failure failure = assertInstanceOf(
                     V3SimultaneousColumnSolver.Attempt.Failure.class, attempt);
@@ -91,7 +97,7 @@ class V3SimultaneousColumnSolverTest {
     @Test
     void registeredPrBinaryNumericalTwoPhaseRootCannotPassTheIndependentPhaseGate() {
         V3PengRobinsonThermo thermo = V3PengRobinsonThermo.fromRegisteredPackage("createcheme:cdu17_tjl_acs2018");
-        V3ColumnProblem problem = V3ColumnProblemResolver.resolve(binaryInput(thermo), V3CondenserPhaseBranch.TWO_PHASE);
+        V3ColumnProblem problem = V3ColumnProblemResolver.resolve(V3TestInputs.cdu17Binary("test:registered-pr-binary"),V3CondenserPhaseBranch.TWO_PHASE);
         V3FlashResult feedFlash = thermo.flashTP(problem.input().feedTemperatureKelvin(),
                 problem.nodePressurePascal(problem.topology().feedTrayNumber()),
                 problem.input().feedComponentMolarFlowsMolPerSecond(), thermo.newWorkspace());
@@ -99,31 +105,29 @@ class V3SimultaneousColumnSolverTest {
         V3MeshResidualEvaluator evaluator = new V3MeshResidualEvaluator(
                 problem, thermo, feedFlash.molarEnthalpyJoulesPerMol());
         V3SimultaneousColumnSolver.Attempt attempt = V3SimultaneousColumnSolver.solve(
-                problem, evaluator, new V3DryMeshCoordinateMap(problem), seed.state(), thermo::newWorkspace, 128, 1.0e-8);
+                problem, evaluator, new V3DryMeshCoordinateMap(problem), seed.state(), thermo::newWorkspace, V3ConvergenceEvidence.unavailable(), 128, 1.0e-8, V3FiniteDifferenceJacobian.DifferenceScale.FINE, V3SolveControl.UNBOUNDED);
         // This fixture tests rejection of a numerically converged, physically invalid branch,
         // not convergence from one particular cold trajectory. Use the same existing recovery
         // paths as the exact-warm companion and production facade; keep every acceptance gate.
         if (!(attempt instanceof V3SimultaneousColumnSolver.Attempt.Converged)) {
-            V3SequentialPreconditioner.Result preparation = V3BubblePointPreconditioner.INSTANCE.prepare(
-                    new V3SequentialPreconditioner.Request(problem, attempt.state(), V3SolveControl.UNBOUNDED),
-                    thermo, thermo.newWorkspace());
-            if (preparation instanceof V3SequentialPreconditioner.Result.Prepared prepared) {
+            V3DryMeshState prepared = projectedOrNull(problem, thermo, attempt.state());
+            if (prepared != null) {
                 attempt = V3SimultaneousColumnSolver.solveWithContinuationLocalBlocks(
-                        problem, evaluator, new V3DryMeshCoordinateMap(problem), prepared.state(), thermo::newWorkspace,
-                        128, 1.0e-8, V3SolveControl.UNBOUNDED);
+                        problem, evaluator, new V3DryMeshCoordinateMap(problem), prepared, thermo::newWorkspace,
+                        128, 1.0e-8, V3SolveControl.UNBOUNDED, V3SimultaneousColumnSolver.NewtonTrace.NONE);
             }
         }
         if (!(attempt instanceof V3SimultaneousColumnSolver.Attempt.Converged)) {
             attempt = V3SimultaneousColumnSolver.solve(
                     problem, evaluator, new V3DryMeshCoordinateMap(problem), seed.state(), thermo::newWorkspace,
                     V3ConvergenceEvidence.unavailable(), 128, 1.0e-8,
-                    V3FiniteDifferenceJacobian.DifferenceScale.COARSE);
+                    V3FiniteDifferenceJacobian.DifferenceScale.COARSE, V3SolveControl.UNBOUNDED);
         }
         V3SimultaneousColumnSolver.Attempt.Converged converged = assertInstanceOf(
                 V3SimultaneousColumnSolver.Attempt.Converged.class, attempt, attempt::toString);
         V3ConvergenceEvidence convergenceEvidence = converged.evidence().convergenceEvidence();
         V3AcceptanceAudit audit = new V3AcceptanceAuditor(problem, thermo, feedFlash.molarEnthalpyJoulesPerMol())
-                .audit(converged.state(), thermo.newWorkspace());
+                .audit(converged.state(), thermo.newWorkspace(), V3SolveControl.UNBOUNDED);
 
         assertTrue(convergenceEvidence.satisfiesGates());
         // This old numerical fixture can close a two-phase MESH system at a liquid-only outlet.
@@ -133,7 +137,7 @@ class V3SimultaneousColumnSolverTest {
         assertFalse(audit.accepted());
         assertTrue(audit.checks().stream().anyMatch(check -> check.family().equals("CONDENSER_PHASE")
                 && !check.passed() && check.detail().contains("LIQUID")));
-        assertThrows(IllegalArgumentException.class, () -> V3ColumnResult.accepted(
+        assertThrows(IllegalArgumentException.class, () -> V3TestInputs.stateless(
                 problem, new V3InputDigest("1".repeat(64)), audit, convergenceEvidence));
 
         V3SimultaneousColumnSolver.Attempt.Converged warmConverged = assertInstanceOf(
@@ -143,7 +147,7 @@ class V3SimultaneousColumnSolverTest {
         assertEquals(0, warmConverged.evidence().iterations());
         assertTrue(warmConverged.evidence().convergenceEvidence().satisfiesGates());
         assertFalse(new V3AcceptanceAuditor(problem, thermo, feedFlash.molarEnthalpyJoulesPerMol())
-                .audit(warmConverged.state(), thermo.newWorkspace()).accepted());
+                .audit(warmConverged.state(), thermo.newWorkspace(), V3SolveControl.UNBOUNDED).accepted());
     }
 
     /**
@@ -213,14 +217,14 @@ class V3SimultaneousColumnSolverTest {
         V3SimultaneousColumnSolver.Attempt.Converged full = assertInstanceOf(
                 V3SimultaneousColumnSolver.Attempt.Converged.class,
                 V3SimultaneousColumnSolver.solveWithContinuationLocalBlocks(problem, evaluator, coordinates, perturbed,
-                        counting(thermo, fullWorkspaces), 32, 1.0e-9, V3SolveControl.UNBOUNDED, V3NewtonTrace.NONE,
+                        counting(thermo, fullWorkspaces), 32, 1.0e-9, V3SolveControl.UNBOUNDED, V3SimultaneousColumnSolver.NewtonTrace.NONE,
                         V3SimultaneousColumnSolver.RungBudget.DEFAULT));
 
         AtomicInteger rampWorkspaces = new AtomicInteger();
         V3SimultaneousColumnSolver.Attempt.Converged ramp = assertInstanceOf(
                 V3SimultaneousColumnSolver.Attempt.Converged.class,
                 V3SimultaneousColumnSolver.solveWithContinuationLocalBlocks(problem, evaluator, coordinates, perturbed,
-                        counting(thermo, rampWorkspaces), 32, 1.0e-9, V3SolveControl.UNBOUNDED, V3NewtonTrace.NONE,
+                        counting(thermo, rampWorkspaces), 32, 1.0e-9, V3SolveControl.UNBOUNDED, V3SimultaneousColumnSolver.NewtonTrace.NONE,
                         new V3SimultaneousColumnSolver.RungBudget(2, false, 8, 0, 0.0, 0.0)));
         assertEquals(full.evidence().iterations(), ramp.evidence().iterations());
         assertEquals(full.evidence().maximumScaledResidual(), ramp.evidence().maximumScaledResidual(), 0.0);
@@ -230,7 +234,7 @@ class V3SimultaneousColumnSolverTest {
         AtomicInteger cappedWorkspaces = new AtomicInteger();
         V3SimultaneousColumnSolver.Attempt capped =
                 V3SimultaneousColumnSolver.solveWithContinuationLocalBlocks(problem, evaluator, coordinates, perturbed,
-                        counting(thermo, cappedWorkspaces), 32, 1.0e-9, V3SolveControl.UNBOUNDED, V3NewtonTrace.NONE,
+                        counting(thermo, cappedWorkspaces), 32, 1.0e-9, V3SolveControl.UNBOUNDED, V3SimultaneousColumnSolver.NewtonTrace.NONE,
                         new V3SimultaneousColumnSolver.RungBudget(0, false, 8, 0, 0.0, 0.0));
         if (capped instanceof V3SimultaneousColumnSolver.Attempt.Failure failure) {
             assertTrue(cappedWorkspaces.get() < fullWorkspaces.get(),
@@ -248,7 +252,7 @@ class V3SimultaneousColumnSolverTest {
         V3SimultaneousColumnSolver.Attempt uncertified =
                 V3SimultaneousColumnSolver.solveWithContinuationLocalBlocks(problem, evaluator, coordinates, perturbed,
                         counting(thermo, uncertifiedWorkspaces), 32, 1.0e-9, V3SolveControl.UNBOUNDED,
-                        V3NewtonTrace.NONE, V3SimultaneousColumnSolver.RungBudget.DEFAULT.withoutVerificationCascade());
+                        V3SimultaneousColumnSolver.NewtonTrace.NONE, NO_VERIFICATION_CASCADE);
         if (uncertified instanceof V3SimultaneousColumnSolver.Attempt.Converged certified) {
             assertTrue(certified.evidence().convergenceEvidence().satisfiesGates());
         } else {
@@ -277,7 +281,7 @@ class V3SimultaneousColumnSolverTest {
                 () -> new V3SimultaneousColumnSolver.RungBudget(8, true, 8, 4, 0.5, -1.0));
 
         V3SimultaneousColumnSolver.RungBudget seed =
-                V3SimultaneousColumnSolver.RungBudget.DEFAULT.withoutVerificationCascade();
+                NO_VERIFICATION_CASCADE;
         assertEquals(0, seed.verificationDampingSteps());
         assertEquals(V3SimultaneousColumnSolver.RungBudget.DEFAULT.maximumDampingSteps(), seed.maximumDampingSteps());
         assertTrue(seed.gradientFallback());
@@ -288,7 +292,7 @@ class V3SimultaneousColumnSolverTest {
             V3ColumnProblem problem, V3MeshResidualEvaluator evaluator, V3DryMeshCoordinateMap coordinates,
             V3DryMeshState seed, NewtonManufacturedThermo thermo, V3SimultaneousColumnSolver.RungBudget budget) {
         return V3SimultaneousColumnSolver.solveWithContinuationLocalBlocks(problem, evaluator, coordinates, seed,
-                thermo::newWorkspace, 32, 1.0e-9, V3SolveControl.UNBOUNDED, V3NewtonTrace.NONE, budget);
+                thermo::newWorkspace, 32, 1.0e-9, V3SolveControl.UNBOUNDED, V3SimultaneousColumnSolver.NewtonTrace.NONE, budget);
     }
 
     private static V3FiniteDifferenceJacobian.V3ThermoWorkspaceFactory counting(
@@ -327,16 +331,6 @@ class V3SimultaneousColumnSolverTest {
                         new V3ColumnSpecification.ReboilerDuty(8_000_000.0)));
     }
 
-    private static V3ColumnInput binaryInput(V3PengRobinsonThermo thermo) {
-        double[] feedFlows = new double[thermo.componentBasis().componentCount()];
-        feedFlows[6] = 50.0; // PC03
-        feedFlows[13] = 50.0; // PC10
-        return new V3ColumnInput(V3ColumnInput.SCHEMA_VERSION, thermo.packageId(), "test:registered-pr-binary",
-                thermo.componentBasis(), feedFlows, 550.0, 2, 1, 250_000.0, 750.0, List.of(
-                        new V3ColumnSpecification.CondenserOutletTemperature(300.0),
-                        new V3ColumnSpecification.OrganicRefluxRatio(2.0),
-                        new V3ColumnSpecification.ReboilerDuty(0.0)));
-    }
 
     private static String maximumResidualsByFamily(V3MeshResidual residual) {
         StringBuilder summary = new StringBuilder();
@@ -371,11 +365,11 @@ class V3SimultaneousColumnSolverTest {
 
         @Override
         public V3FugacityResult fugacity(
-                double temperatureKelvin, double pressurePascal, double[] composition, V3Phase phase,
+                double temperatureKelvin, double pressurePascal, double[] composition, Root phase,
                 V3ThermoWorkspace workspace) {
             int node = nodeForTemperature(temperatureKelvin);
             double[] logPhi = new double[2];
-            if (phase == V3Phase.LIQUID) {
+            if (phase == Root.LIQUID) {
                 double referenceTemperature = 400.0 + 10.0 * node;
                 for (int component = 0; component < 2; component++) logPhi[component] = Math.log(K[node][component])
                         + (component + 1) * 1.0e-3 * (temperatureKelvin - referenceTemperature);
@@ -385,7 +379,7 @@ class V3SimultaneousColumnSolverTest {
 
         @Override
         public double molarEnthalpy(
-                double temperatureKelvin, double pressurePascal, double[] composition, V3Phase phase,
+                double temperatureKelvin, double pressurePascal, double[] composition, Root phase,
                 V3ThermoWorkspace workspace) {
             return temperatureKelvin - (400.0 + 10.0 * nodeForTemperature(temperatureKelvin));
         }
@@ -401,5 +395,52 @@ class V3SimultaneousColumnSolverTest {
             if (node < 0 || node >= K.length) throw new IllegalArgumentException("Manufactured Newton temperature is outside its grid");
             return node;
         }
+    }
+
+    /** The bounded material/bubble-point projection, or null when it fails on a property or state error. */
+    static V3DryMeshState projectedOrNull(V3ColumnProblem problem, V3PengRobinsonThermo thermo, V3DryMeshState state) {
+        try {
+            return V3ColumnInitializer.projectMaterialBalancesAtFixedTemperature(problem, thermo, thermo.newWorkspace(), state);
+        } catch (com.wormzjl.createcheme.science.column.v3.thermo.V3ThermoException | IllegalArgumentException failure) {
+            return null;
+        }
+    }
+
+    // Merged from V3VerificationAcceptanceTest.
+    private static final V3ConvergenceEvidence SMALL_STEP = new V3ConvergenceEvidence(true, 1e-14, 1e-12, 1e-12, 1e-6, V3ConvergenceEvidence.MAXIMUM_LOG_FLOW_CHANGE);
+
+    @Test
+    void allowanceRequiresBothStatesWithinFixedCeilingAndADirectCorrection() {
+        assertTrue(accept(1e-27, 2e-27, Math.nextDown(1e-12), 1e-12, 1e-8, true, SMALL_STEP));
+        assertFalse(accept(1e-27, 2e-27, Math.nextUp(1e-12), 1e-12, 1e-8, true, SMALL_STEP));
+        assertFalse(accept(1e-27, 2e-27, 1e-12, Math.nextUp(1e-12), 1e-8, true, SMALL_STEP));
+        assertFalse(accept(1e-27, 2e-27, 1e-14, 1e-14, 1e-8, false, SMALL_STEP));
+        assertFalse(accept(1e-27, 2e-27, 2e-13, 1e-14, 1e-13, true, SMALL_STEP));
+        assertFalse(accept(1e-27, 2e-27, 1e-14, 2e-13, 1e-13, true, SMALL_STEP));
+        assertFalse(accept(1e-27, 2e-27, 1e-10, 1e-10, 1e-3, true, SMALL_STEP));
+        assertTrue(accept(2e-12, 1e-12, 1e-6, 1e-6, 1e-3, false, SMALL_STEP));
+    }
+
+    @Test
+    void nearRootMeritCannotOverrideAnyActualCorrectionGateOrNonfiniteValues() {
+        for (V3ConvergenceEvidence invalid : new V3ConvergenceEvidence[]{
+                V3ConvergenceEvidence.unavailable(),
+                new V3ConvergenceEvidence(true, Math.nextUp(1e-12), 0, 0, 0, V3ConvergenceEvidence.MAXIMUM_LOG_FLOW_CHANGE),
+                new V3ConvergenceEvidence(true, 0, Math.nextUp(1e-8), 0, 0, V3ConvergenceEvidence.MAXIMUM_LOG_FLOW_CHANGE),
+                new V3ConvergenceEvidence(true, 0, 0, 1e-5, Math.nextUp(1.0), V3ConvergenceEvidence.MAXIMUM_LOG_FLOW_CHANGE)}) {
+            assertFalse(accept(1e-27, 2e-27, 1e-14, 1e-14, 1e-8, true, invalid));
+        }
+        for (double nonfinite : new double[]{Double.NaN, Double.POSITIVE_INFINITY}) {
+            assertFalse(accept(nonfinite, 2e-27, 1e-14, 1e-14, 1e-8, true, SMALL_STEP));
+            assertFalse(accept(1e-27, nonfinite, 1e-14, 1e-14, 1e-8, true, SMALL_STEP));
+            assertFalse(accept(1e-27, 2e-27, nonfinite, 1e-14, 1e-8, true, SMALL_STEP));
+            assertFalse(accept(1e-27, 2e-27, 1e-14, nonfinite, 1e-8, true, SMALL_STEP));
+        }
+    }
+
+    private static boolean accept(double baseMerit, double candidateMerit, double baseMaximum, double candidateMaximum,
+            double tolerance, boolean direct, V3ConvergenceEvidence evidence) {
+        return V3SimultaneousColumnSolver.verificationCandidateAcceptable(
+                baseMerit, candidateMerit, baseMaximum, candidateMaximum, tolerance, direct, evidence);
     }
 }

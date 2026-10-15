@@ -1,6 +1,7 @@
 package com.wormzjl.createcheme.science.column.v3;
 
 import com.google.gson.JsonParser;
+import com.wormzjl.createcheme.network.ColumnCodecs;
 import com.wormzjl.createcheme.science.material.MaterialCatalog;
 import com.wormzjl.createcheme.science.column.v3.thermo.V3PengRobinsonThermo;
 import com.wormzjl.createcheme.science.material.MaterialRuntime;
@@ -15,14 +16,11 @@ import static org.junit.jupiter.api.Assertions.*;
 class ColumnInputPresetTest {
     @Test void everySelectablePresetIsValidAndSurvivesSaving() throws Exception {
         var catalog=MaterialCatalog.bundled();
-        var write=ColumnCalculatorV3BlockEntity.class.getDeclaredMethod("writeInput",V3ColumnInput.class);
-        var read=ColumnCalculatorV3BlockEntity.class.getDeclaredMethod("readInput",CompoundTag.class);
-        write.setAccessible(true);read.setAccessible(true);
         for (var choice : ColumnInputPreset.values()) {
             var input=choice.input(catalog);
             assertTrue(choice.matches(input));
             V3ColumnProblemResolver.validateInput(input);
-            assertEquals(input,read.invoke(null,write.invoke(null,input)));
+            assertEquals(input,ColumnCodecs.readInputNbt(ColumnCodecs.writeInputNbt(input)));
             if (choice==ColumnInputPreset.HOLLAND) continue;
             var thermo=V3PengRobinsonThermo.fromRegisteredPackage(input.packageId());
             double[] expected=thermo.crudeFeed(input.assayId()).moleFractions();
@@ -30,15 +28,15 @@ class ColumnInputPresetTest {
             for (int i=0;i<expected.length;i++)
                 assertEquals(expected[i],input.feedComponentMolarFlowsMolPerSecond()[i]/total,1e-14);
         }
-        assertEquals(ColumnCalculatorV3BlockEntity.methaneCduInput(),ColumnInputPreset.TIA_JUANA.input(catalog));
+        assertEquals(ColumnCalculatorV3BlockEntity.methaneCduInput(),ColumnInputPreset.fromId(catalog,"tia_juana").input(catalog));
         assertThrows(IllegalArgumentException.class,()->ColumnInputPreset.fromId("arbitrary:package"));
     }
 
     @Test void newCrudesKeepEditableCurrentColumnConditionsAndDistinctFeeds() {
         var catalog=MaterialCatalog.bundled();
-        var base=ColumnInputPreset.TIA_JUANA.input(catalog);
-        for (var choice : new ColumnInputPreset[]{ColumnInputPreset.WTI,ColumnInputPreset.UPPER_ZAKUM,
-                ColumnInputPreset.BONGA,ColumnInputPreset.DALIA,ColumnInputPreset.COLD_LAKE}) {
+        var base=ColumnInputPreset.fromId(catalog,"tia_juana").input(catalog);
+        for (var choice : new ColumnInputPreset[]{ColumnInputPreset.fromId(catalog,"wti_light_export"),ColumnInputPreset.fromId(catalog,"upper_zakum"),
+                ColumnInputPreset.fromId(catalog,"bonga"),ColumnInputPreset.fromId(catalog,"dalia"),ColumnInputPreset.fromId(catalog,"cold_lake_blend")}) {
             var input=choice.input(catalog);
             assertEquals(base.componentBasis(),input.componentBasis());
             assertEquals(base.stageCount(),input.stageCount());
@@ -66,10 +64,10 @@ class ColumnInputPresetTest {
         assay.getAsJsonObject("amounts_by_component").addProperty("crude_pc01",.8);
         resources.put(path,assay.toString());
         var edited=MaterialCatalog.parse(resources);
-        var before=ColumnInputPreset.BONGA.input(original);
-        var after=ColumnInputPreset.BONGA.input(edited);
+        var before=ColumnInputPreset.fromId(original,"bonga").input(original);
+        var after=ColumnInputPreset.fromId(original,"bonga").input(edited);
         assertFalse(Arrays.equals(before.feedComponentMolarFlowsMolPerSecond(),after.feedComponentMolarFlowsMolPerSecond()));
-        assertEquals(before,ColumnInputPreset.BONGA.input(original));
+        assertEquals(before,ColumnInputPreset.fromId(original,"bonga").input(original));
         assertSame(original,MaterialRuntime.current());
     }
 }

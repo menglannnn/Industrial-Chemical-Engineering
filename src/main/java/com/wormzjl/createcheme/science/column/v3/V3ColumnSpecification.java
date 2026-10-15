@@ -3,7 +3,14 @@ package com.wormzjl.createcheme.science.column.v3;
 /** One typed V3.0 specification; no product-flow or condenser-duty specification exists. */
 public sealed interface V3ColumnSpecification permits V3ColumnSpecification.CondenserOutletTemperature,
         V3ColumnSpecification.OrganicRefluxRatio, V3ColumnSpecification.ReboilerDuty {
-    V3ControlledQuantity controlledQuantity();
+    ControlledQuantity controlledQuantity();
+
+    /** A physical degree of freedom explicitly controlled by the narrow V3.0 specification set. */
+    enum ControlledQuantity {
+        CONDENSER_OUTLET_TEMPERATURE,
+        ORGANIC_REFLUX_RATIO,
+        REBOILER_DUTY
+    }
 
     /** Specified partial-condenser outlet temperature in kelvin. */
     record CondenserOutletTemperature(double kelvin) implements V3ColumnSpecification {
@@ -12,8 +19,8 @@ public sealed interface V3ColumnSpecification permits V3ColumnSpecification.Cond
         }
 
         @Override
-        public V3ControlledQuantity controlledQuantity() {
-            return V3ControlledQuantity.CONDENSER_OUTLET_TEMPERATURE;
+        public ControlledQuantity controlledQuantity() {
+            return ControlledQuantity.CONDENSER_OUTLET_TEMPERATURE;
         }
     }
 
@@ -24,8 +31,8 @@ public sealed interface V3ColumnSpecification permits V3ColumnSpecification.Cond
         }
 
         @Override
-        public V3ControlledQuantity controlledQuantity() {
-            return V3ControlledQuantity.ORGANIC_REFLUX_RATIO;
+        public ControlledQuantity controlledQuantity() {
+            return ControlledQuantity.ORGANIC_REFLUX_RATIO;
         }
     }
 
@@ -36,8 +43,8 @@ public sealed interface V3ColumnSpecification permits V3ColumnSpecification.Cond
         }
 
         @Override
-        public V3ControlledQuantity controlledQuantity() {
-            return V3ControlledQuantity.REBOILER_DUTY;
+        public ControlledQuantity controlledQuantity() {
+            return ControlledQuantity.REBOILER_DUTY;
         }
     }
 

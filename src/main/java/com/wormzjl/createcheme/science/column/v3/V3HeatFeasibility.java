@@ -1,10 +1,10 @@
 package com.wormzjl.createcheme.science.column.v3;
 
 import com.wormzjl.createcheme.science.column.v3.thermo.V3FlashResult;
-import com.wormzjl.createcheme.science.column.v3.thermo.V3Phase;
 import com.wormzjl.createcheme.science.column.v3.thermo.V3ThermoModel;
 import com.wormzjl.createcheme.science.column.v3.thermo.V3ThermoWorkspace;
 import com.wormzjl.createcheme.science.column.v3.thermo.V3WaterProperties;
+import com.wormzjl.createcheme.science.thermo.PengRobinsonKernel.Root;
 import java.util.Locale;
 import java.util.Objects;
 
@@ -44,7 +44,7 @@ final class V3HeatFeasibility {
         V3ThermoWorkspace workspace = thermo.newWorkspace();
         V3FlashResult feedFlash = thermo.flashTP(input.feedTemperatureKelvin(), feedPressure, feed, workspace);
         double coldLiquid = thermo.molarEnthalpy(condenserTemperature, input.topPressurePascal(), composition,
-                V3Phase.LIQUID, workspace);
+                Root.LIQUID, workspace);
         double available = totalFeed * (feedFlash.referenceMolarEnthalpyJoulesPerMol() - coldLiquid)
                 + specification(input, V3ColumnSpecification.ReboilerDuty.class).watts();
         for (V3SteamFeedSpec steam : input.steamFeeds()) {
@@ -62,7 +62,7 @@ final class V3HeatFeasibility {
      * it a valid input that authors a heater and a cooler is rejected before Newton is ever attempted.</p>
      */
     static double heatingCreditWatts(V3ColumnInput input) {
-        double heating = V3Pumparounds.totalHeatingWatts(input);
+        double heating = V3PumparoundSpec.totalHeatingWatts(input);
         return Double.isFinite(heating) && heating > 0.0 ? heating : 0.0;
     }
 
@@ -101,9 +101,9 @@ final class V3HeatFeasibility {
             composition[basis.publicIndex(component)] = state.vaporFlow(source, component) / total;
         }
         double vapor = thermo.molarEnthalpy(state.temperatureKelvin(source), problem.nodePressurePascal(source),
-                composition, V3Phase.VAPOR, workspace);
+                composition, Root.VAPOR, workspace);
         double liquid = thermo.molarEnthalpy(state.temperatureKelvin(tray), problem.nodePressurePascal(tray),
-                composition, V3Phase.LIQUID, workspace);
+                composition, Root.LIQUID, workspace);
         double capacity = total * (vapor - liquid);
         if (problem.hasSteamFeeds()) {
             double water = problem.waterVaporFlowMolPerSecond(source);

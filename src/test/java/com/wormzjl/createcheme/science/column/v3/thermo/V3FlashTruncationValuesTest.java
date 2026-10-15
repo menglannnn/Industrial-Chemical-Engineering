@@ -89,16 +89,16 @@ class V3FlashTruncationValuesTest {
         double[] overall = overallComposition(0.25, liquid, vapor);
         V3FlashResult reference = V3FlashResult.twoPhase(7, 0.25, liquid, vapor, 1_234.0, "reference");
 
-        V3FlashPhaseSupport support = V3FlashPhaseSupport.derive(
+        V3TruncatedFlash.Support support = V3TruncatedFlash.Support.derive(
                 overall, reference, TraceTruncationPolicy.of(CUTOFF));
 
         assertEquals(6, support.componentCount());
-        assertEquals(V3FlashPhaseSupport.PhaseSupport.ABSENT, support.phaseSupport(0));
-        assertEquals(V3FlashPhaseSupport.PhaseSupport.VAPOR_ONLY, support.phaseSupport(1));
-        assertEquals(V3FlashPhaseSupport.PhaseSupport.LIQUID_ONLY, support.phaseSupport(2));
-        assertEquals(V3FlashPhaseSupport.PhaseSupport.BOTH, support.phaseSupport(3));
-        assertEquals(V3FlashPhaseSupport.PhaseSupport.BOTH, support.phaseSupport(4));
-        assertEquals(V3FlashPhaseSupport.PhaseSupport.BOTH, support.phaseSupport(5));
+        assertEquals(V3TruncatedFlash.Support.PhaseSupport.ABSENT, support.phaseSupport(0));
+        assertEquals(V3TruncatedFlash.Support.PhaseSupport.VAPOR_ONLY, support.phaseSupport(1));
+        assertEquals(V3TruncatedFlash.Support.PhaseSupport.LIQUID_ONLY, support.phaseSupport(2));
+        assertEquals(V3TruncatedFlash.Support.PhaseSupport.BOTH, support.phaseSupport(3));
+        assertEquals(V3TruncatedFlash.Support.PhaseSupport.BOTH, support.phaseSupport(4));
+        assertEquals(V3TruncatedFlash.Support.PhaseSupport.BOTH, support.phaseSupport(5));
         assertEquals(1, support.omittedLiquidCount());
         assertEquals(1, support.omittedVaporCount());
         assertFalse(support.isIdentity());
@@ -114,13 +114,13 @@ class V3FlashTruncationValuesTest {
         double[] vapor = {below, CUTOFF, CUTOFF, 1.0 - 2.0 * CUTOFF - below};
         V3FlashResult reference = V3FlashResult.twoPhase(7, 0.5, liquid, vapor, 1_234.0, "threshold");
 
-        V3FlashPhaseSupport support = V3FlashPhaseSupport.derive(
+        V3TruncatedFlash.Support support = V3TruncatedFlash.Support.derive(
                 overallComposition(0.5, liquid, vapor), reference, TraceTruncationPolicy.of(CUTOFF));
 
-        assertEquals(V3FlashPhaseSupport.PhaseSupport.LIQUID_ONLY, support.phaseSupport(0));
-        assertEquals(V3FlashPhaseSupport.PhaseSupport.VAPOR_ONLY, support.phaseSupport(1));
-        assertEquals(V3FlashPhaseSupport.PhaseSupport.BOTH, support.phaseSupport(2));
-        assertEquals(V3FlashPhaseSupport.PhaseSupport.BOTH, support.phaseSupport(3));
+        assertEquals(V3TruncatedFlash.Support.PhaseSupport.LIQUID_ONLY, support.phaseSupport(0));
+        assertEquals(V3TruncatedFlash.Support.PhaseSupport.VAPOR_ONLY, support.phaseSupport(1));
+        assertEquals(V3TruncatedFlash.Support.PhaseSupport.BOTH, support.phaseSupport(2));
+        assertEquals(V3TruncatedFlash.Support.PhaseSupport.BOTH, support.phaseSupport(3));
         assertEquals(1, support.omittedLiquidCount());
         assertEquals(1, support.omittedVaporCount());
     }
@@ -131,13 +131,13 @@ class V3FlashTruncationValuesTest {
         double[] vapor = {0.0, 0.8, 0.2};
         V3FlashResult reference = V3FlashResult.twoPhase(7, 0.25, liquid, vapor, 1_234.0, "reference");
 
-        V3FlashPhaseSupport support = V3FlashPhaseSupport.derive(
+        V3TruncatedFlash.Support support = V3TruncatedFlash.Support.derive(
                 overallComposition(0.25, liquid, vapor), reference, TraceTruncationPolicy.OFF);
 
         assertTrue(support.isIdentity());
-        assertEquals(V3FlashPhaseSupport.PhaseSupport.ABSENT, support.phaseSupport(0));
-        assertEquals(V3FlashPhaseSupport.PhaseSupport.BOTH, support.phaseSupport(1));
-        assertEquals(V3FlashPhaseSupport.PhaseSupport.BOTH, support.phaseSupport(2));
+        assertEquals(V3TruncatedFlash.Support.PhaseSupport.ABSENT, support.phaseSupport(0));
+        assertEquals(V3TruncatedFlash.Support.PhaseSupport.BOTH, support.phaseSupport(1));
+        assertEquals(V3TruncatedFlash.Support.PhaseSupport.BOTH, support.phaseSupport(2));
         assertEquals(0, support.omittedLiquidCount());
         assertEquals(0, support.omittedVaporCount());
     }
@@ -148,12 +148,12 @@ class V3FlashTruncationValuesTest {
         double[] vapor = {0.0002, 0.9998};
         V3FlashResult reference = V3FlashResult.twoPhase(7, 0.25, liquid, vapor, 1_234.0, "reference");
 
-        V3FlashPhaseSupport support = V3FlashPhaseSupport.derive(
+        V3TruncatedFlash.Support support = V3TruncatedFlash.Support.derive(
                 overallComposition(0.25, liquid, vapor), reference, TraceTruncationPolicy.of(CUTOFF));
 
         assertTrue(support.isIdentity());
-        assertEquals(V3FlashPhaseSupport.PhaseSupport.BOTH, support.phaseSupport(0));
-        assertEquals(V3FlashPhaseSupport.PhaseSupport.BOTH, support.phaseSupport(1));
+        assertEquals(V3TruncatedFlash.Support.PhaseSupport.BOTH, support.phaseSupport(0));
+        assertEquals(V3TruncatedFlash.Support.PhaseSupport.BOTH, support.phaseSupport(1));
         assertEquals(0, support.omittedLiquidCount());
         assertEquals(0, support.omittedVaporCount());
     }
@@ -162,18 +162,18 @@ class V3FlashTruncationValuesTest {
     void singlePhaseSupportIsIdentityWithOnlyItsNaturalPhase() {
         double[] composition = {0.0, 0.0001, 0.9999};
         TraceTruncationPolicy policy = TraceTruncationPolicy.of(CUTOFF);
-        V3FlashPhaseSupport liquidSupport = V3FlashPhaseSupport.derive(composition,
+        V3TruncatedFlash.Support liquidSupport = V3TruncatedFlash.Support.derive(composition,
                 V3FlashResult.liquid(4, composition, -1_234.0, "liquid"), policy);
-        V3FlashPhaseSupport vaporSupport = V3FlashPhaseSupport.derive(composition,
+        V3TruncatedFlash.Support vaporSupport = V3TruncatedFlash.Support.derive(composition,
                 V3FlashResult.vapor(5, composition, 1_234.0, "vapor"), policy);
 
         assertTrue(liquidSupport.isIdentity());
         assertTrue(vaporSupport.isIdentity());
-        assertEquals(V3FlashPhaseSupport.PhaseSupport.ABSENT, liquidSupport.phaseSupport(0));
-        assertEquals(V3FlashPhaseSupport.PhaseSupport.ABSENT, vaporSupport.phaseSupport(0));
+        assertEquals(V3TruncatedFlash.Support.PhaseSupport.ABSENT, liquidSupport.phaseSupport(0));
+        assertEquals(V3TruncatedFlash.Support.PhaseSupport.ABSENT, vaporSupport.phaseSupport(0));
         for (int i = 1; i < composition.length; i++) {
-            assertEquals(V3FlashPhaseSupport.PhaseSupport.LIQUID_ONLY, liquidSupport.phaseSupport(i));
-            assertEquals(V3FlashPhaseSupport.PhaseSupport.VAPOR_ONLY, vaporSupport.phaseSupport(i));
+            assertEquals(V3TruncatedFlash.Support.PhaseSupport.LIQUID_ONLY, liquidSupport.phaseSupport(i));
+            assertEquals(V3TruncatedFlash.Support.PhaseSupport.VAPOR_ONLY, vaporSupport.phaseSupport(i));
         }
         assertEquals(0, liquidSupport.omittedLiquidCount());
         assertEquals(0, liquidSupport.omittedVaporCount());
@@ -187,7 +187,7 @@ class V3FlashTruncationValuesTest {
         double[] vapor = {0.02, 0.0001, 0.9799};
         double[] overall = overallComposition(0.25, liquid, vapor);
         V3FlashResult reference = V3FlashResult.twoPhase(7, 0.25, liquid, vapor, 1_234.0, "reference");
-        V3FlashPhaseSupport support = V3FlashPhaseSupport.derive(
+        V3TruncatedFlash.Support support = V3TruncatedFlash.Support.derive(
                 overall, reference, TraceTruncationPolicy.of(CUTOFF));
 
         liquid[0] = 1.0;
@@ -197,9 +197,9 @@ class V3FlashTruncationValuesTest {
         reference.liquidComposition()[0] = 1.0;
         reference.vaporComposition()[1] = 1.0;
 
-        assertEquals(V3FlashPhaseSupport.PhaseSupport.VAPOR_ONLY, support.phaseSupport(0));
-        assertEquals(V3FlashPhaseSupport.PhaseSupport.LIQUID_ONLY, support.phaseSupport(1));
-        assertEquals(V3FlashPhaseSupport.PhaseSupport.BOTH, support.phaseSupport(2));
+        assertEquals(V3TruncatedFlash.Support.PhaseSupport.VAPOR_ONLY, support.phaseSupport(0));
+        assertEquals(V3TruncatedFlash.Support.PhaseSupport.LIQUID_ONLY, support.phaseSupport(1));
+        assertEquals(V3TruncatedFlash.Support.PhaseSupport.BOTH, support.phaseSupport(2));
         assertEquals(1, support.omittedLiquidCount());
         assertEquals(1, support.omittedVaporCount());
     }
@@ -212,13 +212,13 @@ class V3FlashTruncationValuesTest {
         for (double[] overall : new double[][]{new double[0], {0.0, 0.0}, {0.3, 0.3},
                 {-0.1, 1.1}, {Double.NaN, 1.0}, {Double.POSITIVE_INFINITY, 0.0}, {1.0}}) {
             assertThrows(IllegalArgumentException.class,
-                    () -> V3FlashPhaseSupport.derive(overall, reference, policy));
+                    () -> V3TruncatedFlash.Support.derive(overall, reference, policy));
         }
-        assertThrows(NullPointerException.class, () -> V3FlashPhaseSupport.derive(null, reference, policy));
+        assertThrows(NullPointerException.class, () -> V3TruncatedFlash.Support.derive(null, reference, policy));
         assertThrows(NullPointerException.class,
-                () -> V3FlashPhaseSupport.derive(new double[]{0.5, 0.5}, null, policy));
+                () -> V3TruncatedFlash.Support.derive(new double[]{0.5, 0.5}, null, policy));
         assertThrows(NullPointerException.class,
-                () -> V3FlashPhaseSupport.derive(new double[]{0.5, 0.5}, reference, null));
+                () -> V3TruncatedFlash.Support.derive(new double[]{0.5, 0.5}, reference, null));
     }
 
     @Test

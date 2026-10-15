@@ -5,9 +5,9 @@ import static org.junit.jupiter.api.Assertions.*;
 import com.wormzjl.createcheme.science.column.v3.linalg.V3BandedMatrix;
 import com.wormzjl.createcheme.science.column.v3.thermo.V3FlashResult;
 import com.wormzjl.createcheme.science.column.v3.thermo.V3FugacityResult;
-import com.wormzjl.createcheme.science.column.v3.thermo.V3Phase;
 import com.wormzjl.createcheme.science.column.v3.thermo.V3ThermoModel;
 import com.wormzjl.createcheme.science.column.v3.thermo.V3ThermoWorkspace;
+import com.wormzjl.createcheme.science.thermo.PengRobinsonKernel.Root;
 import java.util.Arrays;
 import java.util.List;
 import org.junit.jupiter.api.Test;
@@ -129,9 +129,9 @@ class V3TruncationNumericsTest {
         V3DryMeshCoordinateMap coordinates = new V3DryMeshCoordinateMap(problem);
         assertTrue(coordinates.coordinateCount() < 96, "the reference must select the uncolored central path");
         for (V3FiniteDifferenceJacobian.DifferenceScale scale : V3FiniteDifferenceJacobian.DifferenceScale.values()) {
-            double[][] full = V3FiniteDifferenceJacobian.evaluate(evaluator, coordinates, state,
+            double[][] full = V3JacobianOracle.evaluate(evaluator, coordinates, state,
                     fixture.thermo()::newWorkspace, scale).values();
-            double[][] colored = V3FiniteDifferenceJacobian.evaluateStageColored(evaluator, coordinates, state,
+            double[][] colored = V3JacobianOracle.evaluateStageColored(evaluator, coordinates, state,
                     fixture.thermo()::newWorkspace, scale).values();
             var compact = V3FiniteDifferenceJacobian.evaluateCompact(evaluator, coordinates, state,
                     fixture.thermo()::newWorkspace, scale, V3SolveControl.UNBOUNDED);
@@ -149,7 +149,7 @@ class V3TruncationNumericsTest {
             }
             assertTrue(local.maximumOffBandMagnitude() <= 1.0e-10);
         }
-        assertTrue(V3BlockJacobianAssembler.assemble(problem, evaluator, coordinates, state,
+        assertTrue(V3JacobianOracle.assemble(problem, evaluator, coordinates, state,
                 fixture.thermo()::newWorkspace).maximumOffBandMagnitude() <= 1.0e-10);
     }
 
@@ -159,7 +159,7 @@ class V3TruncationNumericsTest {
         V3MeshResidualEvaluator evaluator = new V3MeshResidualEvaluator(fixture.problem(), fixture.thermo(), 0.0);
         assertTrue(evaluator.evaluate(fixture.exact(), fixture.thermo().newWorkspace()).maximumAbsoluteScaledResidual() < 1.0e-12);
         V3SimultaneousColumnSolver.Attempt attempt = V3SimultaneousColumnSolver.solve(fixture.problem(), evaluator,
-                new V3DryMeshCoordinateMap(fixture.problem()), perturb(fixture), fixture.thermo()::newWorkspace, 32, 1.0e-9);
+                new V3DryMeshCoordinateMap(fixture.problem()), perturb(fixture), fixture.thermo()::newWorkspace, V3ConvergenceEvidence.unavailable(), 32, 1.0e-9, V3FiniteDifferenceJacobian.DifferenceScale.FINE, V3SolveControl.UNBOUNDED);
         V3SimultaneousColumnSolver.Attempt.Converged converged = assertInstanceOf(
                 V3SimultaneousColumnSolver.Attempt.Converged.class, attempt, attempt::toString);
         assertTrue(converged.evidence().iterations() > 0);
@@ -200,7 +200,7 @@ class V3TruncationNumericsTest {
         if (!original.topology().hasVaporPhase(0)) vapor[0] = new double[3];
         V3DryMeshState exact = new V3DryMeshState(original.topology(), 3, liquid, vapor, temperatures());
         V3TruncationSupport support = V3TruncationSupport.derive(original, 0.01, exact);
-        V3ColumnProblem masked = V3ColumnProblemResolver.withTruncation(original, support);
+        V3ColumnProblem masked = V3ColumnProblemResolver.withTruncation(original, support, V3WetTraySet.dry(original.topology()));
         return new Fixture(original, masked, exact, new ManufacturedThermo(input.componentBasis(), exact));
     }
 
@@ -261,13 +261,13 @@ class V3TruncationNumericsTest {
         @Override public V3ThermoWorkspace newWorkspace() { return new V3ThermoWorkspace(4); }
 
         @Override public V3FugacityResult fugacity(double temperature, double pressure, double[] composition,
-                                                 V3Phase phase, V3ThermoWorkspace workspace) {
+                                                 Root phase, V3ThermoWorkspace workspace) {
             int node = (int) Math.round((temperature - 400.0) / 10.0);
             assertEquals(0.0, composition[1]);
             if (!traceNodes[node]) assertEquals(0.0, composition[3]);
             assertEquals(1.0, Arrays.stream(composition).sum(), 1.0e-12);
             double[] logPhi = new double[4];
-            if (phase == V3Phase.LIQUID) {
+            if (phase == Root.LIQUID) {
                 for (int component = 0; component < 4; component++) {
                     logPhi[component] = logK[node][component] + (component + 1) * 1.0e-3 * (temperature - (400 + 10 * node));
                 }
@@ -277,7 +277,7 @@ class V3TruncationNumericsTest {
         }
 
         @Override public double molarEnthalpy(double temperature, double pressure, double[] composition,
-                                              V3Phase phase, V3ThermoWorkspace workspace) {
+                                              Root phase, V3ThermoWorkspace workspace) {
             int node = (int) Math.round((temperature - 400.0) / 10.0);
             return (temperature - (400 + 10 * node)) * (30 * composition[0] + 40 * composition[2] + 50 * composition[3]);
         }

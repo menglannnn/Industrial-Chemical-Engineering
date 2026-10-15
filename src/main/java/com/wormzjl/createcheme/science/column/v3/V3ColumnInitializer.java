@@ -4,10 +4,10 @@ import com.wormzjl.createcheme.science.math.DeterministicMath;
 
 import com.wormzjl.createcheme.science.column.v3.thermo.V3FlashResult;
 import com.wormzjl.createcheme.science.column.v3.thermo.V3FugacityResult;
-import com.wormzjl.createcheme.science.column.v3.thermo.V3Phase;
 import com.wormzjl.createcheme.science.column.v3.thermo.V3ThermoException;
 import com.wormzjl.createcheme.science.column.v3.thermo.V3ThermoModel;
 import com.wormzjl.createcheme.science.column.v3.thermo.V3ThermoWorkspace;
+import com.wormzjl.createcheme.science.thermo.PengRobinsonKernel.Root;
 import java.util.Objects;
 
 /**
@@ -24,13 +24,10 @@ final class V3ColumnInitializer {
     private static final double VAPOR_ONLY_EXTERNAL_VAPOR_FRACTION = 0.30;
     private static final double ZERO_REFLUX_TRAFFIC_FRACTION = 0.10;
     private static final int COLD_TRAFFIC_GRID_DIVISIONS = 8;
-    private static final int MAXIMUM_COLD_TRAFFIC_SWEEPS = 20;
     private static final int MAXIMUM_PARTIAL_CONDENSER_TEAR_SWEEPS = 100;
     private static final double MINIMUM_PHASE_RATIO = 1.0e-12;
     private static final double MAXIMUM_PHASE_RATIO = 1.0e12;
     private static final double COLD_TRAFFIC_DAMPING = 0.5;
-    private static final double PHASE_AWARE_VAPOR_DAMPING = 0.25;
-    private static final int PHASE_AWARE_SWEEPS = 3;
     private static final double BUBBLE_POINT_DIFFERENCE_KELVIN = 1.0;
     private static final double BUBBLE_POINT_MAXIMUM_TEMPERATURE_CHANGE_KELVIN = 5.0;
     private static final double BUBBLE_POINT_DAMPING = 0.5;
@@ -111,10 +108,7 @@ final class V3ColumnInitializer {
         String trafficPolicy = refluxRatio == 0.0
                 ? "zero-reflux finite traffic seed" : "organic-reflux material-closed traffic seed";
         try {
-            if (mode == Mode.PHASE_AWARE_TRAFFIC) {
-                state = phaseAwareTrafficSeed(problem, thermo, workspace, materialClosed);
-                trafficPolicy = "PR phase-aware fixed-traffic seed";
-            } else if (mode == Mode.SEQUENTIAL_MATERIAL_VLE) {
+            if (mode == Mode.SEQUENTIAL_MATERIAL_VLE) {
                 state = sequentialModularSeed(problem, thermo, workspace, materialClosed, feedFlash.vaporFraction(),
                         feedFlash.molarEnthalpyJoulesPerMol());
                 trafficPolicy = "sequential-modular PR material/VLE seed";
@@ -193,12 +187,6 @@ final class V3ColumnInitializer {
         }
     }
 
-    static void solveMaterialBalances(
-            V3ColumnProblem problem, double[][] equilibriumConstants, double[][] liquid, double[][] vapor) {
-        double[][] phaseFlowRatios = phaseFlowRatios(equilibriumConstants, liquid, vapor);
-        solveMaterialBalancesWithPhaseFlowRatios(problem, phaseFlowRatios, liquid, vapor);
-    }
-
     private static void solveMaterialBalancesWithPhaseFlowRatios(
             V3ColumnProblem problem, double[][] phaseFlowRatios, double[][] liquid, double[][] vapor) {
         V3ColumnTopology topology = problem.topology();
@@ -275,39 +263,6 @@ final class V3ColumnInitializer {
         double[] result = new double[phaseRatios.length];
         for (int node = 0; node < result.length; node++) result[node] = phaseRatios[node][component];
         return result;
-    }
-
-    private static V3DryMeshState phaseAwareTrafficSeed(
-            V3ColumnProblem problem, V3ThermoModel thermo, V3ThermoWorkspace workspace, V3DryMeshState materialClosed) {
-        double[][] liquid = flows(materialClosed, true);
-        double[][] vapor = flows(materialClosed, false);
-        for (int sweep = 0; sweep < PHASE_AWARE_SWEEPS; sweep++) {
-            double[][] kValues = phaseRatios(problem, thermo, workspace, liquid, vapor, temperatures(materialClosed));
-            for (int node = 0; node < vapor.length; node++) {
-                if (!problem.topology().hasVaporPhase(node)) continue;
-                double vaporTotal = 0.0;
-                double liquidTotal = 0.0;
-                for (double flow : vapor[node]) vaporTotal += flow;
-                for (double flow : liquid[node]) liquidTotal += flow;
-                double[] targetVaporFractions = new double[vapor[node].length];
-                double targetTotal = 0.0;
-                for (int component = 0; component < targetVaporFractions.length; component++) {
-                    targetVaporFractions[component] = kValues[node][component] * liquid[node][component] / liquidTotal;
-                    targetTotal += targetVaporFractions[component];
-                }
-                if (!Double.isFinite(targetTotal) || targetTotal <= 0.0) {
-                    throw new IllegalArgumentException("V3 phase-aware seed has no positive vapor composition");
-                }
-                for (int component = 0; component < targetVaporFractions.length; component++) {
-                    double currentFraction = vapor[node][component] / vaporTotal;
-                    double targetFraction = targetVaporFractions[component] / targetTotal;
-                    vapor[node][component] = vaporTotal * ((1.0 - PHASE_AWARE_VAPOR_DAMPING) * currentFraction
-                            + PHASE_AWARE_VAPOR_DAMPING * targetFraction);
-                }
-            }
-        }
-        return new V3DryMeshState(problem.topology(), materialClosed.componentCount(), liquid, vapor,
-                temperatures(materialClosed));
     }
 
     private static V3DryMeshState sequentialModularSeed(
@@ -407,9 +362,9 @@ final class V3ColumnInitializer {
         double[] vaporComposition = publicComposition(active, vaporFlows);
         double pressure = problem.nodePressurePascal(node);
         V3FugacityResult liquid = thermo.fugacity(
-                temperatureKelvin, pressure, liquidComposition, V3Phase.LIQUID, workspace);
+                temperatureKelvin, pressure, liquidComposition, Root.LIQUID, workspace);
         V3FugacityResult vapor = thermo.fugacity(
-                temperatureKelvin, pressure, vaporComposition, V3Phase.VAPOR, workspace);
+                temperatureKelvin, pressure, vaporComposition, Root.VAPOR, workspace);
         double sum = 0.0;
         for (int component = 0; component < active.componentCount(); component++) {
             int publicComponent = active.publicIndex(component);
@@ -562,10 +517,10 @@ final class V3ColumnInitializer {
             try {
                 double pressure = problem.nodePressurePascal(node);
                 liquidEnthalpy[node] = thermo.molarEnthalpy(temperatures[node], pressure,
-                        publicComposition(active, reference.liquidFlows()[node]), V3Phase.LIQUID, workspace);
+                        publicComposition(active, reference.liquidFlows()[node]), Root.LIQUID, workspace);
                 if (problem.topology().hasVaporPhase(node)) {
                     vaporEnthalpy[node] = thermo.molarEnthalpy(temperatures[node], pressure,
-                            publicComposition(active, reference.vaporFlows()[node]), V3Phase.VAPOR, workspace);
+                            publicComposition(active, reference.vaporFlows()[node]), Root.VAPOR, workspace);
                 }
             } catch (V3ThermoException | IllegalArgumentException unavailable) {
                 return null;
@@ -805,10 +760,10 @@ final class V3ColumnInitializer {
             double[] vaporComposition = publicComposition(active, vapor[node]);
             V3FugacityResult liquidResult = thermo.fugacity(
                     temperatures[node], problem.nodePressurePascal(node), liquidComposition,
-                    V3Phase.LIQUID, workspace);
+                    Root.LIQUID, workspace);
             V3FugacityResult vaporResult = thermo.fugacity(
                     temperatures[node], problem.nodePressurePascal(node), vaporComposition,
-                    V3Phase.VAPOR, workspace);
+                    Root.VAPOR, workspace);
             for (int component = 0; component < active.componentCount(); component++) {
                 int publicComponent = active.publicIndex(component);
                 ratios[node][component] = boundedRatio(DeterministicMath.exp(
@@ -1050,7 +1005,6 @@ final class V3ColumnInitializer {
 
     enum Mode {
         MATERIAL_CLOSED,
-        PHASE_AWARE_TRAFFIC,
         SEQUENTIAL_MATERIAL_VLE
     }
 

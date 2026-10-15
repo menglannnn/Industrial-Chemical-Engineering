@@ -15,9 +15,9 @@ import com.wormzjl.createcheme.science.column.v3.V3SteamFeedSpec;
 import com.wormzjl.createcheme.science.column.v3.V3ColumnProblemResolver;
 import com.wormzjl.createcheme.science.column.v3.V3ColumnOutcome;
 import com.wormzjl.createcheme.science.column.v3.V3ColumnSpecification;
+import com.wormzjl.createcheme.science.column.v3.V3ColumnSpecification.ControlledQuantity;
 import com.wormzjl.createcheme.science.column.v3.V3ColumnStreamProperties;
 import com.wormzjl.createcheme.science.column.v3.V3ComponentBasis;
-import com.wormzjl.createcheme.science.column.v3.V3ControlledQuantity;
 import com.wormzjl.createcheme.science.column.v3.V3HollandExample32;
 import com.wormzjl.createcheme.science.column.v3.thermo.V3PengRobinsonThermo;
 import com.wormzjl.createcheme.world.inventory.ColumnCalculatorV3Menu;
@@ -56,7 +56,7 @@ import net.neoforged.neoforge.network.registration.PayloadRegistrar;
  */
 public final class ColumnV3Network {
     // Version 15 supports two-terminal-stage pots and total-tray presentation.
-    public static final int WIRE_SCHEMA_VERSION = 15;
+    public static final int WIRE_SCHEMA_VERSION = 16;
 
     // Both peers must use the same engine-scheduled inspection protocol.
     private static final String PROTOCOL_VERSION = "11";
@@ -85,7 +85,6 @@ public final class ColumnV3Network {
     public static void register(RegisterPayloadHandlersEvent event) {
         PayloadRegistrar registrar = event.registrar(PROTOCOL_VERSION).executesOn(HandlerThread.MAIN);
         registrar.playToServer(CalculatePayload.TYPE, CalculatePayload.STREAM_CODEC, ColumnV3Network::handleCalculate);
-        registrar.playToServer(PresetPayload.TYPE, PresetPayload.STREAM_CODEC, ColumnV3Network::handlePreset);
         registrar.playToServer(StateRequestPayload.TYPE, StateRequestPayload.STREAM_CODEC,
                 ColumnV3Network::handleStateRequest);
         registrar.playToClient(StatePayload.TYPE, StatePayload.STREAM_CODEC, ColumnV3Network::handleState);
@@ -104,16 +103,6 @@ public final class ColumnV3Network {
     public static long sendCalculate(BlockPos blockPos, long expectedInputRevision, V3ColumnInput input) {
         long nonce = CLIENT_NONCE_SEQUENCE.incrementAndGet();
         PacketDistributor.sendToServer(new CalculatePayload(blockPos, nonce, expectedInputRevision, input));
-        return nonce;
-    }
-
-    /** Requests one allowlisted input; the server resolves the catalog feed. */
-    public static long sendPreset(BlockPos blockPos, long expectedInputRevision, ColumnInputPreset preset) {
-        return sendPreset(blockPos,expectedInputRevision,preset.id());
-    }
-    public static long sendPreset(BlockPos blockPos,long expectedInputRevision,String presetId) {
-        long nonce = CLIENT_NONCE_SEQUENCE.incrementAndGet();
-        PacketDistributor.sendToServer(new PresetPayload(blockPos, nonce, expectedInputRevision, presetId));
         return nonce;
     }
 
@@ -173,39 +162,6 @@ public final class ColumnV3Network {
         ColumnPresentation.queue(context, payload.blockPos(), payload.clientNonce(), null);
     }
 
-    private static void handlePreset(PresetPayload payload, IPayloadContext context) {
-        ColumnPresentation.queue(context, payload.blockPos(), payload.clientNonce(), () -> applyPreset(payload, context));
-    }
-
-    private static void applyPreset(PresetPayload payload, IPayloadContext context) {
-        if (!(context.player() instanceof ServerPlayer player)) {
-            reject(context, payload.blockPos(), payload.clientNonce(), "REJECTED_CONTEXT");
-            return;
-        }
-        ColumnCalculatorV3BlockEntity calculator = resolveCalculator(player, payload.blockPos());
-        if (calculator == null || !(player.containerMenu instanceof ColumnCalculatorV3Menu menu)
-                || !menu.blockPos().equals(payload.blockPos()) || !menu.stillValid(player)) {
-            reject(context, payload.blockPos(), payload.clientNonce(), "REJECTED_CONTEXT");
-            return;
-        }
-        V3ColumnInput preset;
-        try {
-            preset = ColumnInputPreset.fromId(payload.presetId()).input(MaterialRuntime.current());
-            validateResolvedInput(preset);
-        } catch (IllegalArgumentException invalid) {
-            reject(context, payload.blockPos(), payload.clientNonce(),
-                    "REJECTED_PRESET: " + bounded(invalid.getMessage()));
-            return;
-        }
-        String detail = "Loaded " + ColumnInputPreset.fromId(payload.presetId()).label() + " input preset";
-        if (!calculator.tryLoadPreset(payload.expectedInputRevision(), preset, detail)) {
-            reject(context, payload.blockPos(), payload.clientNonce(), "STALE_REVISION_OR_BUSY");
-            return;
-        }
-        ColumnTarget target = new ColumnTarget(player.serverLevel().dimension(), payload.blockPos());
-        reply(context, payload.blockPos(), calculator.state(payload.clientNonce()));
-    }
-
     /** Called solely by {@link ProcessSolveCoordinator} on the server thread when a worker completion drains. */
     static void handleRoutedCompletion(MinecraftServer server, V3ColumnCompletion job) {
         Objects.requireNonNull(server, "server");
@@ -248,20 +204,18 @@ public final class ColumnV3Network {
 
     private static void validateResolvedInput(V3ColumnInput input) {
         input = Objects.requireNonNull(input, "input");
-        if (input.schemaVersion() != V3ColumnInput.SCHEMA_VERSION) {
-            throw new IllegalArgumentException("Unsupported V3 scientific input schema");
-        }
         if (V3HollandExample32.isPackage(input.packageId())) {
+            // The fixed benchmark preset: equality with it and the resolver validation are checked there.
             V3HollandExample32.validateInput(input);
-        } else {
-            V3PengRobinsonThermo thermo = V3PengRobinsonThermo.fromRegisteredPackage(input.packageId());
-            if (!thermo.componentBasis().equals(input.componentBasis())) {
-                throw new IllegalArgumentException("V3 component axis does not match the server property package");
-            }
+            return;
         }
-        EnumSet<V3ControlledQuantity> controls = EnumSet.noneOf(V3ControlledQuantity.class);
+        V3PengRobinsonThermo thermo = V3PengRobinsonThermo.fromRegisteredPackage(input.packageId());
+        if (!thermo.componentBasis().equals(input.componentBasis())) {
+            throw new IllegalArgumentException("V3 component axis does not match the server property package");
+        }
+        EnumSet<ControlledQuantity> controls = EnumSet.noneOf(ControlledQuantity.class);
         for (V3ColumnSpecification specification : input.specifications()) controls.add(specification.controlledQuantity());
-        if (controls.size() != 3 || !controls.containsAll(EnumSet.allOf(V3ControlledQuantity.class))) {
+        if (controls.size() != 3 || !controls.containsAll(EnumSet.allOf(ControlledQuantity.class))) {
             throw new IllegalArgumentException("V3 input must provide exactly the supported condenser, reflux, and duty controls");
         }
         V3ColumnProblemResolver.validateInput(input);
@@ -345,9 +299,9 @@ public final class ColumnV3Network {
                 totalSteamFlow(input) * 3.6,
                 input.topPressurePascal() / 1_000.0,
                 input.stagePressureDropPascal() / 1_000.0,
-                specifiedValue(input, V3ControlledQuantity.CONDENSER_OUTLET_TEMPERATURE),
-                specifiedValue(input, V3ControlledQuantity.ORGANIC_REFLUX_RATIO),
-                specifiedValue(input, V3ControlledQuantity.REBOILER_DUTY) / 1_000_000.0,
+                specifiedValue(input, ControlledQuantity.CONDENSER_OUTLET_TEMPERATURE),
+                specifiedValue(input, ControlledQuantity.ORGANIC_REFLUX_RATIO),
+                specifiedValue(input, ControlledQuantity.REBOILER_DUTY) / 1_000_000.0,
                 detail);
         job.completion().result().ifPresent(outcome -> {
             for (String event : outcome.diagnostics().events()) {
@@ -368,7 +322,7 @@ public final class ColumnV3Network {
         return input.steamFeeds().stream().mapToDouble(V3SteamFeedSpec::molarFlowMolPerSecond).sum();
     }
 
-    private static double specifiedValue(V3ColumnInput input, V3ControlledQuantity wanted) {
+    private static double specifiedValue(V3ColumnInput input, ControlledQuantity wanted) {
         for (V3ColumnSpecification specification : input.specifications()) {
             if (specification.controlledQuantity() == wanted) return specificationValue(specification);
         }
@@ -414,50 +368,6 @@ public final class ColumnV3Network {
         public Type<? extends CustomPacketPayload> type() {
             return TYPE;
         }
-    }
-
-    private record PresetPayload(
-            BlockPos blockPos, long clientNonce, long expectedInputRevision, String presetId)
-            implements CustomPacketPayload {
-        private static final Type<PresetPayload> TYPE = new Type<>(
-                ResourceLocation.fromNamespaceAndPath(CreateChemE.MOD_ID, "load_column_v3_preset"));
-        private static final StreamCodec<RegistryFriendlyByteBuf, PresetPayload> STREAM_CODEC = new StreamCodec<>() {
-            @Override
-            public PresetPayload decode(RegistryFriendlyByteBuf buffer) {
-                requireWireSchema(buffer);
-                return new PresetPayload(buffer.readBlockPos(),
-                        nonNegative(buffer.readVarLong(), "client nonce"),
-                        nonNegative(buffer.readVarLong(), "input revision"), readPresetId(buffer));
-            }
-
-            @Override
-            public void encode(RegistryFriendlyByteBuf buffer, PresetPayload payload) {
-                writeWireSchema(buffer);
-                buffer.writeBlockPos(payload.blockPos());
-                buffer.writeVarLong(payload.clientNonce());
-                buffer.writeVarLong(payload.expectedInputRevision());
-                buffer.writeUtf(payload.presetId(), 128);
-            }
-        };
-
-        private PresetPayload {
-            blockPos = Objects.requireNonNull(blockPos, "blockPos");
-            if(presetId==null||!presetId.matches("[a-z][a-z0-9_.:-]{0,127}"))throw new IllegalArgumentException("Invalid preset ID");
-            if (clientNonce < 0L || expectedInputRevision < 0L) {
-                throw new IllegalArgumentException("Invalid V3 preset request revision");
-            }
-        }
-
-        @Override
-        public Type<? extends CustomPacketPayload> type() {
-            return TYPE;
-        }
-    }
-
-    private static String readPresetId(RegistryFriendlyByteBuf buffer) {
-        String id=buffer.readUtf(128);
-        if(!id.matches("[a-z][a-z0-9_.:-]{0,127}"))throw new DecoderException("Invalid preset ID");
-        return id;
     }
 
     private record StateRequestPayload(BlockPos blockPos, long clientNonce) implements CustomPacketPayload {
@@ -558,7 +468,7 @@ public final class ColumnV3Network {
         buffer.writeVarLong(state.operationId());
         buffer.writeVarLong(state.inputRevision());
         buffer.writeVarLong(state.resultRevision() + 1L);
-        buffer.writeUtf(state.status().serializedName(), MAX_REJECTION_LENGTH);
+        buffer.writeUtf(state.status().name(), MAX_REJECTION_LENGTH);
         writeInput(buffer, state.input());
         buffer.writeBoolean(state.displayResult().isPresent());
         state.displayResult().ifPresent(result -> writeDisplayResult(buffer, result));
@@ -574,11 +484,6 @@ public final class ColumnV3Network {
             buffer.writeBoolean(n.upperKelvin()!=null); if(n.upperKelvin()!=null)buffer.writeDouble(n.upperKelvin());
             buffer.writeBoolean(n.estimated());
         }
-        buffer.writeVarInt(state.presets().size());
-        for(var p:state.presets()) {
-            buffer.writeUtf(p.id(),128);buffer.writeUtf(p.label(),128);buffer.writeUtf(p.translationKey(),128);
-            buffer.writeUtf(p.packageId(),128);buffer.writeUtf(p.assayId(),128);
-        }
     }
 
     private static V3State readState(RegistryFriendlyByteBuf buffer) {
@@ -591,7 +496,7 @@ public final class ColumnV3Network {
         if (resultRevision < -1L) throw new DecoderException("Invalid V3 result revision");
         V3Status status;
         try {
-            status = V3Status.fromSerializedName(buffer.readUtf(MAX_REJECTION_LENGTH));
+            status = V3Status.valueOf(buffer.readUtf(MAX_REJECTION_LENGTH));
         } catch (IllegalArgumentException invalid) {
             throw new DecoderException("Unknown V3 status", invalid);
         }
@@ -610,12 +515,8 @@ public final class ColumnV3Network {
                 var name=new com.wormzjl.createcheme.science.material.MaterialName(id,translation,fallback,kind,lower,upper,buffer.readBoolean());
                 if(names.putIfAbsent(key,name)!=null)throw new DecoderException("Duplicate material name key");
             }
-            var presets=new ArrayList<com.wormzjl.createcheme.science.material.MaterialPresets.Descriptor>();
-            int presetCount=readCount(buffer,com.wormzjl.createcheme.science.material.MaterialPresets.MAX_PRESETS,"preset");
-            for(int i=0;i<presetCount;i++)presets.add(new com.wormzjl.createcheme.science.material.MaterialPresets.Descriptor(
-                    buffer.readUtf(128),buffer.readUtf(128),buffer.readUtf(128),buffer.readUtf(128),buffer.readUtf(128)));
             return new V3State(clientNonce, stateRevision, operationId, inputRevision, resultRevision, status, input,
-                    result, diagnostics,names,presets,editorCatalog);
+                    result, diagnostics,names,editorCatalog);
         } catch (IllegalArgumentException invalid) {
             throw new DecoderException("Invalid V3 state", invalid);
         }
@@ -690,7 +591,7 @@ public final class ColumnV3Network {
             if (specificationCount != 3) throw new DecoderException("V3 specification count must be three");
             List<V3ColumnSpecification> specifications = new ArrayList<>(specificationCount);
             for (int index = 0; index < specificationCount; index++) {
-                V3ControlledQuantity quantity = V3ControlledQuantity.valueOf(
+                ControlledQuantity quantity = ControlledQuantity.valueOf(
                         buffer.readUtf(MAX_COMPONENT_IDENTIFIER_LENGTH));
                 specifications.add(specification(quantity, finite(buffer.readDouble(), "specification")));
             }
@@ -861,7 +762,7 @@ public final class ColumnV3Network {
         }
     }
 
-    private static V3ColumnSpecification specification(V3ControlledQuantity quantity, double value) {
+    private static V3ColumnSpecification specification(ControlledQuantity quantity, double value) {
         return switch (quantity) {
             case CONDENSER_OUTLET_TEMPERATURE -> new V3ColumnSpecification.CondenserOutletTemperature(value);
             case ORGANIC_REFLUX_RATIO -> new V3ColumnSpecification.OrganicRefluxRatio(value);

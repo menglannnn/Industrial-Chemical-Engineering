@@ -32,8 +32,10 @@ class RegroupedCrudeTest {
         }
         assertEquals(159.65286000000003,mass,1e-9);
         assertEquals(.18401666666666672,volume,1e-12);
-        var original=V3Tjl19PropertyPackage.INSTANCE;var oldFractions=original.crudeFeed("createcheme:tia_juana_light").moleFractions();
-        var loaded=V3PropertyPackageRegistry.require(current.id());
+        // The independent original is the frozen TJL19 table the reference catalog carries.
+        var original=MaterialRuntime.with(V3TjlReferenceCatalog.catalog(),current.id(),()->V3CatalogPropertyPackage.require(current.id()));
+        var oldFractions=original.crudeFeed("createcheme:tia_juana_light").moleFractions();
+        var loaded=V3CatalogPropertyPackage.require(current.id());
         for(double t:new double[]{293.15,298.15,500,638.15,900}) {
             double oldCp=0,newCp=0,oldH=0,newH=0;
             for(int i=0;i<oldFractions.length;i++) {
@@ -98,11 +100,11 @@ class RegroupedCrudeTest {
     }
 
     @Test void previouslyDifficultCrudesPublishAuditedClassicalSolutionsWithoutLearnedSeeds() {
-        for(var preset:List.of(ColumnInputPreset.BONGA,ColumnInputPreset.COLD_LAKE)) {
+        for(var preset:List.of(ColumnInputPreset.fromId(MaterialCatalog.bundled(),"bonga"),ColumnInputPreset.fromId(MaterialCatalog.bundled(),"cold_lake_blend"))) {
             var input=preset.input(MaterialCatalog.bundled());long start=System.nanoTime();
             var result=V3ColumnCalculator.calculate(input,()->{
                 if(System.nanoTime()-start>45_000_000_000L)throw new java.util.concurrent.CancellationException("Regrouped preset deadline");
-            },0,0,V3InitializationOptions.CURRENT,V3NeuralInitializer.UNAVAILABLE);
+            },0,0,V3InitializationOptions.CURRENT,V3NeuralInitializer.UNAVAILABLE, V3ColumnCalculator.DEFAULT_LIQUID_SUPPLY_SCREEN_RATIO);
             var success=assertInstanceOf(V3ColumnOutcome.Success.class,result,result::toString);
             assertTrue(success.result().convergenceEvidence().satisfiesGates());
             assertTrue(success.result().acceptanceAudit().accepted());

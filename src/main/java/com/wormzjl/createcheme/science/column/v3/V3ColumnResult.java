@@ -23,28 +23,8 @@ public final class V3ColumnResult {
     /** Scientific identity captured during the solve; never reconstructed from a later live catalog. */
     public String datasetRevision() { return datasetRevision; }
 
-    private V3ColumnResult(
-            V3ColumnProblem problem, V3InputDigest inputDigest, V3AcceptanceAudit acceptanceAudit,
-            V3ConvergenceEvidence convergenceEvidence, List<V3ColumnStreamProperties> streams, String formulationRevision) {
-        this(problem, inputDigest, acceptanceAudit, convergenceEvidence, streams, formulationRevision, null);
-    }
-
-    private V3ColumnResult(
-            V3ColumnProblem problem, V3InputDigest inputDigest, V3AcceptanceAudit acceptanceAudit,
-            V3ConvergenceEvidence convergenceEvidence, List<V3ColumnStreamProperties> streams, String formulationRevision,
-            V3ColumnDutyLedger dutyLedger) {
-        this(problem, inputDigest, acceptanceAudit, convergenceEvidence, streams, formulationRevision, dutyLedger, null);
-    }
-
-    private V3ColumnResult(
-            V3ColumnProblem problem, V3InputDigest inputDigest, V3AcceptanceAudit acceptanceAudit,
-            V3ConvergenceEvidence convergenceEvidence, List<V3ColumnStreamProperties> streams, String formulationRevision,
-            V3ColumnDutyLedger dutyLedger, V3TrayHydraulicsSummary trayHydraulics) {
-        this(problem, inputDigest, acceptanceAudit, convergenceEvidence, streams, formulationRevision,
-                dutyLedger, trayHydraulics, null);
-    }
-
-    private V3ColumnResult(V3ColumnProblem problem, V3InputDigest inputDigest, V3AcceptanceAudit acceptanceAudit,
+    /** The full certificate; tests that need a result without a state state every field. */
+    V3ColumnResult(V3ColumnProblem problem, V3InputDigest inputDigest, V3AcceptanceAudit acceptanceAudit,
             V3ConvergenceEvidence convergenceEvidence, List<V3ColumnStreamProperties> streams, String formulationRevision,
             V3ColumnDutyLedger dutyLedger, V3TrayHydraulicsSummary trayHydraulics, V3ColumnInspection inspection) {
         this.inspection = inspection;
@@ -71,41 +51,10 @@ public final class V3ColumnResult {
         }
     }
 
-    /** Package-private until the independent numerical audit owns the accepted-result gate. */
-    static V3ColumnResult accepted(
-            V3ColumnProblem problem, V3InputDigest inputDigest, V3AcceptanceAudit acceptanceAudit,
-            V3ConvergenceEvidence convergenceEvidence) {
-        return new V3ColumnResult(problem, inputDigest, acceptanceAudit, convergenceEvidence, List.of(),
-                V3ColumnCalculator.formulationRevision(problem.input(), problem.truncationSupport().cutoffMoleFraction()));
-    }
-
-    /** Extracts product properties only from the rigorously accepted final MESH state. */
-    static V3ColumnResult accepted(
-            V3ColumnProblem problem, V3InputDigest inputDigest, V3AcceptanceAudit acceptanceAudit,
-            V3ConvergenceEvidence convergenceEvidence, V3DryMeshState state, V3PengRobinsonThermo thermo) {
-        return accepted(problem, inputDigest, acceptanceAudit, convergenceEvidence, state, thermo,
-                V3ColumnCalculator.formulationRevision(problem.truncationSupport().cutoffMoleFraction()));
-    }
-
-    static V3ColumnResult accepted(
-            V3ColumnProblem problem, V3InputDigest inputDigest, V3AcceptanceAudit acceptanceAudit,
-            V3ConvergenceEvidence convergenceEvidence, V3DryMeshState state, V3PengRobinsonThermo thermo,
-            String formulationRevision) {
-        return new V3ColumnResult(problem, inputDigest, acceptanceAudit, convergenceEvidence,
-                V3ColumnStreamProperties.fromAccepted(problem, state, thermo), formulationRevision, null, null,
-                V3ColumnInspection.fromAccepted(problem, state, acceptanceAudit));
-    }
-
-    /** Publication path that also carries the recomputed boundary duties of the accepted state. */
-    static V3ColumnResult accepted(
-            V3ColumnProblem problem, V3InputDigest inputDigest, V3AcceptanceAudit acceptanceAudit,
-            V3ConvergenceEvidence convergenceEvidence, V3DryMeshState state, V3PengRobinsonThermo thermo,
-            String formulationRevision, V3ColumnDutyLedger dutyLedger) {
-        return accepted(problem, inputDigest, acceptanceAudit, convergenceEvidence, state, thermo,
-                formulationRevision, dutyLedger, null);
-    }
-
-    /** The same publication, carrying the tray hydraulics of a request that authored a column diameter. */
+    /**
+     * Publishes the rigorously accepted final MESH state with its recomputed boundary duties, and the tray
+     * hydraulics of a request that authored a column diameter (null otherwise).
+     */
     static V3ColumnResult accepted(
             V3ColumnProblem problem, V3InputDigest inputDigest, V3AcceptanceAudit acceptanceAudit,
             V3ConvergenceEvidence convergenceEvidence, V3DryMeshState state, V3PengRobinsonThermo thermo,

@@ -154,7 +154,7 @@ class V3PumparoundCalculatorTest {
                 new V3PumparoundSpec(8, 11, 1.0e9, V3PumparoundSpec.Split.RETURN_TRAY)));
         V3ColumnTopology topology = V3ColumnProblemResolver
                 .resolve(cancelling, V3CondenserPhaseBranch.TWO_PHASE).topology();
-        for (double duty : V3Pumparounds.nodeDutyWatts(cancelling, topology)) {
+        for (double duty : V3PumparoundSpec.nodeDutyWatts(cancelling, topology)) {
             assertEquals(0.0, duty, 0.0, "the authored pair leaves no net stage heat on any node");
         }
 
@@ -205,7 +205,7 @@ class V3PumparoundCalculatorTest {
         return new V3ColumnInput(base.schemaVersion(), base.packageId(), base.assayId(), base.componentBasis(),
                 base.feedComponentMolarFlowsMolPerSecond(), base.feedTemperatureKelvin(), base.stageCount(),
                 base.feedStageNumber(), base.topPressurePascal(), base.stagePressureDropPascal(),
-                base.specifications(), base.sideDraws(), base.steamFeeds(), pumparounds);
+                base.specifications(), base.sideDraws(), base.steamFeeds(), pumparounds, V3ColumnInput.PRESCRIBED_DROP_DIAMETER);
     }
 
     /**
@@ -238,7 +238,7 @@ class V3PumparoundCalculatorTest {
                 preset.componentBasis(), preset.feedComponentMolarFlowsMolPerSecond(), preset.feedTemperatureKelvin(),
                 preset.stageCount(), preset.feedStageNumber(), preset.topPressurePascal(), preset.stagePressureDropPascal(),
                 preset.specifications(), preset.sideDraws(), List.of(),
-                List.of(new V3PumparoundSpec(4, 8, -3.0e6, V3PumparoundSpec.Split.UNIFORM)));
+                List.of(new V3PumparoundSpec(4, 8, -3.0e6, V3PumparoundSpec.Split.UNIFORM)), V3ColumnInput.PRESCRIBED_DROP_DIAMETER);
         Run cooled = run("preset-draws-plus-pumparound", heated);
 
         assertEquals(3, preset.sideDraws().size());
@@ -308,7 +308,7 @@ class V3PumparoundCalculatorTest {
                 heated.componentBasis(), heated.feedComponentMolarFlowsMolPerSecond(), heated.feedTemperatureKelvin(),
                 heated.stageCount(), heated.feedStageNumber(), heated.topPressurePascal(),
                 heated.stagePressureDropPascal(), heated.specifications(), List.copyOf(draws), List.of(),
-                heated.pumparounds());
+                heated.pumparounds(), V3ColumnInput.PRESCRIBED_DROP_DIAMETER);
     }
 
     /**
@@ -345,7 +345,7 @@ class V3PumparoundCalculatorTest {
             if (System.nanoTime() - started >= BUDGET_NANOS) {
                 throw new AssertionError("bounded stalled-refresh case exceeded its cold budget");
             }
-        });
+        }, 0, 0, V3ColumnCalculator.DEFAULT_LIQUID_SUPPLY_SCREEN_RATIO);
 
         System.out.printf(Locale.ROOT, "pumparound case %-30s %6.2f s  checkpoints=%d  %s%n",
                 "return-tray-40-MW/refresh-cost", (System.nanoTime() - started) / 1.0e9, checkpoints[0], outcome);
@@ -386,7 +386,7 @@ class V3PumparoundCalculatorTest {
             if (System.nanoTime() - started >= BUDGET_NANOS) {
                 throw new AssertionError("pumparound case " + label + " exceeded its cold budget");
             }
-        });
+        }, 0, 0, V3ColumnCalculator.DEFAULT_LIQUID_SUPPLY_SCREEN_RATIO);
         double seconds = (System.nanoTime() - started) / 1.0e9;
         System.out.printf(Locale.ROOT, "pumparound case %-30s %6.2f s  %s%n", label, seconds,
                 outcome instanceof V3ColumnOutcome.Success success
@@ -407,7 +407,7 @@ class V3PumparoundCalculatorTest {
                 crude.componentBasis(), flows, 365.0 + 273.15, 30, 24, 250_000.0, 750.0, List.of(
                         new V3ColumnSpecification.CondenserOutletTemperature(332.15),
                         new V3ColumnSpecification.OrganicRefluxRatio(4.17),
-                        new V3ColumnSpecification.ReboilerDuty(8_000_000.0)), List.of(), List.of(), pumparounds);
+                        new V3ColumnSpecification.ReboilerDuty(8_000_000.0)), List.of(), List.of(), pumparounds, V3ColumnInput.PRESCRIBED_DROP_DIAMETER);
     }
 
     private record Run(String label, V3ColumnOutcome outcome, double seconds) {

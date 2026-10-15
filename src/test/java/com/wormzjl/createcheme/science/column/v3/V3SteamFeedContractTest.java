@@ -4,10 +4,10 @@ import static org.junit.jupiter.api.Assertions.*;
 
 import com.wormzjl.createcheme.science.column.v3.thermo.V3FlashResult;
 import com.wormzjl.createcheme.science.column.v3.thermo.V3FugacityResult;
-import com.wormzjl.createcheme.science.column.v3.thermo.V3Phase;
 import com.wormzjl.createcheme.science.column.v3.thermo.V3ThermoModel;
 import com.wormzjl.createcheme.science.column.v3.thermo.V3ThermoWorkspace;
 import com.wormzjl.createcheme.science.column.v3.thermo.V3WaterProperties;
+import com.wormzjl.createcheme.science.thermo.PengRobinsonKernel.Root;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 
@@ -68,10 +68,10 @@ class V3SteamFeedContractTest {
                 4, 2, 150_000.0, 750.0, List.of(
                         new V3ColumnSpecification.CondenserOutletTemperature(400.0),
                         new V3ColumnSpecification.OrganicRefluxRatio(2.0), new V3ColumnSpecification.ReboilerDuty(8_000_000.0)),
-                List.of(), List.of(new V3SteamFeedSpec(5, 4.0, 450.0)));
+                List.of(), List.of(new V3SteamFeedSpec(5, 4.0, 450.0)), List.of(), V3ColumnInput.PRESCRIBED_DROP_DIAMETER);
         V3ColumnProblem problem = V3ColumnProblemResolver.resolve(input, V3CondenserPhaseBranch.TWO_PHASE);
 
-        assertEquals(V3WaterCondenserRegime.ALL_VAPOR, problem.waterCondenserRegime());
+        assertEquals(V3ColumnProblem.WaterCondenserRegime.ALL_VAPOR, problem.waterCondenserRegime());
         assertTrue(problem.hasAllVaporWaterCondenser());
         assertEquals(0.0, problem.waterVaporSlipCoefficient());
     }
@@ -83,7 +83,7 @@ class V3SteamFeedContractTest {
                 4, 2, 150_000.0, 750.0, List.of(
                         new V3ColumnSpecification.CondenserOutletTemperature(400.0),
                         new V3ColumnSpecification.OrganicRefluxRatio(2.0), new V3ColumnSpecification.ReboilerDuty(8_000_000.0)),
-                List.of(), List.of(new V3SteamFeedSpec(5, 4.0, 450.0)));
+                List.of(), List.of(new V3SteamFeedSpec(5, 4.0, 450.0)), List.of(), V3ColumnInput.PRESCRIBED_DROP_DIAMETER);
         V3ColumnProblem problem = V3ColumnProblemResolver.resolve(input, V3CondenserPhaseBranch.TWO_PHASE);
         V3DryMeshState state = manufacturedWetState(problem, 400.0);
         List<V3ColumnStreamProperties> streams = V3ColumnStreamProperties.fromAccepted(problem, state,
@@ -131,9 +131,9 @@ class V3SteamFeedContractTest {
                 4, 2, topPressure, 750.0, List.of(
                         new V3ColumnSpecification.CondenserOutletTemperature(condenserTemperature),
                         new V3ColumnSpecification.OrganicRefluxRatio(2.0), new V3ColumnSpecification.ReboilerDuty(0.0)),
-                List.of(), List.of(new V3SteamFeedSpec(5, 4.0, 450.0)));
+                List.of(), List.of(new V3SteamFeedSpec(5, 4.0, 450.0)), List.of(), V3ColumnInput.PRESCRIBED_DROP_DIAMETER);
         V3ColumnProblem problem = V3ColumnProblemResolver.resolve(input, V3CondenserPhaseBranch.LIQUID_ONLY);
-        assertEquals(V3WaterCondenserRegime.ALL_VAPOR, problem.waterCondenserRegime());
+        assertEquals(V3ColumnProblem.WaterCondenserRegime.ALL_VAPOR, problem.waterCondenserRegime());
         assertEquals(V3CondenserPhaseBranch.LIQUID_ONLY, problem.topology().condenserPhaseBranch());
         assertFalse(problem.topology().hasVaporPhase(problem.topology().condenserNode()));
         V3DryMeshState state = manufacturedWetState(problem, condenserTemperature);
@@ -169,7 +169,7 @@ class V3SteamFeedContractTest {
         // The whole-column closure adds the condenser vapor outlet inside the condenser duty and subtracts it again
         // as a product, so it is blind to this term and passes with or without the fix; the condenser-duty
         // assertion above is the guard for the published number.
-        V3AcceptanceAudit audit = new V3AcceptanceAuditor(problem, thermo, 0.0).audit(state, workspace);
+        V3AcceptanceAudit audit = new V3AcceptanceAuditor(problem, thermo, 0.0).audit(state, workspace, V3SolveControl.UNBOUNDED);
         V3AcceptanceAudit.Check closure = audit.checks().stream()
                 .filter(check -> check.family().equals("GLOBAL_ENERGY_BALANCE")).findFirst().orElseThrow();
         assertTrue(closure.passed(), closure::toString);
@@ -187,9 +187,9 @@ class V3SteamFeedContractTest {
                 4, 2, 50_000.0, 750.0, List.of(
                         new V3ColumnSpecification.CondenserOutletTemperature(condenserTemperature),
                         new V3ColumnSpecification.OrganicRefluxRatio(2.0), new V3ColumnSpecification.ReboilerDuty(0.0)),
-                List.of(), List.of(new V3SteamFeedSpec(5, 4.0, 450.0)));
+                List.of(), List.of(new V3SteamFeedSpec(5, 4.0, 450.0)), List.of(), V3ColumnInput.PRESCRIBED_DROP_DIAMETER);
         V3ColumnProblem problem = V3ColumnProblemResolver.resolve(input, V3CondenserPhaseBranch.LIQUID_ONLY);
-        assertEquals(V3WaterCondenserRegime.ALL_VAPOR, problem.waterCondenserRegime());
+        assertEquals(V3ColumnProblem.WaterCondenserRegime.ALL_VAPOR, problem.waterCondenserRegime());
         V3DryMeshState state = manufacturedWetState(problem, condenserTemperature);
         ZeroEnthalpyThermo thermo = new ZeroEnthalpyThermo(input.componentBasis());
         V3MeshResidualEvaluator evaluator = new V3MeshResidualEvaluator(problem, thermo, 0.0);
@@ -198,20 +198,20 @@ class V3SteamFeedContractTest {
         double published = V3ColumnDutyLedger.condenserDutyWatts(problem, state, evaluator, workspace);
 
         V3AcceptanceAudit.Check consistent = V3AcceptanceAuditor.condenserEnergyBalance(
-                problem, thermo, state, workspace, published);
+                problem, thermo, state, workspace, published, V3ConvergenceEvidence.MAXIMUM_LOG_FLOW_CHANGE);
         assertTrue(consistent.passed(), consistent::toString);
         assertEquals(0.0, consistent.value(), 1.0e-9 * steamProductEnergy);
 
         // The pre-fix evaluator returned before adding the water term on the LIQUID_ONLY condenser, so the
         // ledger published exactly this duty: the steam product's enthalpy never left the node.
         V3AcceptanceAudit.Check dropped = V3AcceptanceAuditor.condenserEnergyBalance(
-                problem, thermo, state, workspace, published - steamProductEnergy);
+                problem, thermo, state, workspace, published - steamProductEnergy, V3ConvergenceEvidence.MAXIMUM_LOG_FLOW_CHANGE);
         assertFalse(dropped.passed(), dropped::toString);
         assertEquals(steamProductEnergy, dropped.value(), 1.0e-9 * steamProductEnergy);
         assertTrue(dropped.value() > dropped.limit());
 
         V3AcceptanceAudit.Check doubled = V3AcceptanceAuditor.condenserEnergyBalance(
-                problem, thermo, state, workspace, published + steamProductEnergy);
+                problem, thermo, state, workspace, published + steamProductEnergy, V3ConvergenceEvidence.MAXIMUM_LOG_FLOW_CHANGE);
         assertFalse(doubled.passed(), doubled::toString);
         assertEquals(steamProductEnergy, doubled.value(), 1.0e-9 * steamProductEnergy);
     }
@@ -228,12 +228,12 @@ class V3SteamFeedContractTest {
         @Override public V3ThermoWorkspace newWorkspace() { return new V3ThermoWorkspace(basis.componentCount()); }
 
         @Override
-        public V3FugacityResult fugacity(double t, double p, double[] z, V3Phase phase, V3ThermoWorkspace workspace) {
+        public V3FugacityResult fugacity(double t, double p, double[] z, Root phase, V3ThermoWorkspace workspace) {
             return new V3FugacityResult(phase, new double[basis.componentCount()], 1.0, 0.0, 1, 0.0);
         }
 
         @Override
-        public double molarEnthalpy(double t, double p, double[] z, V3Phase phase, V3ThermoWorkspace workspace) {
+        public double molarEnthalpy(double t, double p, double[] z, Root phase, V3ThermoWorkspace workspace) {
             return 0.0;
         }
 
@@ -267,6 +267,6 @@ class V3SteamFeedContractTest {
                 new double[] {40.0, 60.0}, 450.0, 4, 2, 250_000.0, 750.0, List.of(
                         new V3ColumnSpecification.CondenserOutletTemperature(332.15),
                         new V3ColumnSpecification.OrganicRefluxRatio(2.0), new V3ColumnSpecification.ReboilerDuty(duty)),
-                List.of(), steam);
+                List.of(), steam, List.of(), V3ColumnInput.PRESCRIBED_DROP_DIAMETER);
     }
 }

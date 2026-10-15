@@ -1,19 +1,20 @@
 package com.wormzjl.createcheme.science.column.v3.thermo;
 
+import com.wormzjl.createcheme.science.thermo.PengRobinsonKernel.Root;
 import java.util.Objects;
 
 /** Typed thermodynamic failure with optional phase context; never a numerical success sentinel. */
 public final class V3ThermoException extends RuntimeException {
     private final Code code;
-    private final V3Phase phase;
+    private final Root phase;
 
-    public V3ThermoException(Code code, V3Phase phase, String message, Throwable cause) {
+    public V3ThermoException(Code code, Root phase, String message, Throwable cause) {
         super(message, cause);
         this.code = Objects.requireNonNull(code, "code");
         this.phase = phase;
     }
 
-    public V3ThermoException(Code code, V3Phase phase, String message) {
+    public V3ThermoException(Code code, Root phase, String message) {
         this(code, phase, message, null);
     }
 
@@ -21,7 +22,7 @@ public final class V3ThermoException extends RuntimeException {
         return code;
     }
 
-    public V3Phase phase() {
+    public Root phase() {
         return phase;
     }
 

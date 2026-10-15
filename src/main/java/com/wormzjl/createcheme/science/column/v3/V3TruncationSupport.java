@@ -339,14 +339,6 @@ final class V3TruncationSupport {
                 V3ColumnInitializer.freeWaterFlows(seed));
     }
 
-    /** Support floor of one active component: {@link #TRACE_FLOOR_FRACTION} of its flow scale. */
-    double componentFloorMolPerSecond(int component) {
-        if (component < 0 || component >= componentCount) {
-            throw new IndexOutOfBoundsException("V3 truncation component is outside the basis");
-        }
-        return componentFloors[component];
-    }
-
     boolean sameRetention(V3TruncationSupport other) {
         Objects.requireNonNull(other, "other");
         if (other.topology != topology || other.componentCount != componentCount) return false;
@@ -403,7 +395,7 @@ final class V3TruncationSupport {
 
     private double liquidDownflowFraction(V3DryMeshState state, int node) {
         if (nodeSideDrawRates[node] == 0.0) return 1.0;
-        return 1.0 - V3SideDraws.withdrawal(state, node, nodeSideDrawRates[node]).fraction();
+        return 1.0 - V3SideDrawSpec.withdrawal(state, node, nodeSideDrawRates[node]).fraction();
     }
 
     private void requireState(V3DryMeshState state) {

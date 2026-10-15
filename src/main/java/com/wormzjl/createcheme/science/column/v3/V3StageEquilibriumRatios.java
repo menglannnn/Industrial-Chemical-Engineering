@@ -3,10 +3,10 @@ package com.wormzjl.createcheme.science.column.v3;
 import com.wormzjl.createcheme.science.math.DeterministicMath;
 
 import com.wormzjl.createcheme.science.column.v3.thermo.V3FugacityResult;
-import com.wormzjl.createcheme.science.column.v3.thermo.V3Phase;
 import com.wormzjl.createcheme.science.column.v3.thermo.V3ThermoException;
 import com.wormzjl.createcheme.science.column.v3.thermo.V3ThermoModel;
 import com.wormzjl.createcheme.science.column.v3.thermo.V3ThermoWorkspace;
+import com.wormzjl.createcheme.science.thermo.PengRobinsonKernel.Root;
 import java.util.Objects;
 
 /**
@@ -54,10 +54,10 @@ final class V3StageEquilibriumRatios {
             try {
                 V3FugacityResult liquid = thermo.fugacity(state.temperatureKelvin(node),
                         problem.nodePressurePascal(node), composition(problem, state, node, true, liquidTotal),
-                        V3Phase.LIQUID, workspace);
+                        Root.LIQUID, workspace);
                 V3FugacityResult vapor = thermo.fugacity(state.temperatureKelvin(node),
                         problem.nodePressurePascal(node), composition(problem, state, node, false, vaporTotal),
-                        V3Phase.VAPOR, workspace);
+                        Root.VAPOR, workspace);
                 for (int component = 0; component < ratios.length; component++) {
                     int publicComponent = basis.publicIndex(component);
                     ratios[component] = DeterministicMath.exp(liquid.logFugacityCoefficient(publicComponent)

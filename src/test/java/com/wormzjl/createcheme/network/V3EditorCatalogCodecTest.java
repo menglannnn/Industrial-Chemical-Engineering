@@ -24,14 +24,8 @@ class V3EditorCatalogCodecTest {
     }
     @Test void realStatePacketCarriesTemplatesAndPreciseMolecularWeights() throws Exception {
         var c=catalog();var input=c.templates().values().iterator().next();
-        var state=new V3State(1,2,0,3,-1,V3Status.DIRTY,input,Optional.empty(),List.of("Ready"),Map.of(),List.of(),c);
-        var b=new RegistryFriendlyByteBuf(Unpooled.buffer(),RegistryAccess.EMPTY);
-        try{
-            var write=ColumnV3Network.class.getDeclaredMethod("writeState",RegistryFriendlyByteBuf.class,V3State.class);
-            var read=ColumnV3Network.class.getDeclaredMethod("readState",RegistryFriendlyByteBuf.class);
-            write.setAccessible(true);read.setAccessible(true);write.invoke(null,b,state);
-            assertEquals(state,read.invoke(null,b));assertEquals(0,b.readableBytes());
-        }finally{b.release();}
+        var state=new V3State(1,2,0,3,-1,V3Status.DIRTY,input,Optional.empty(),List.of("Ready"),Map.of(),c);
+        assertEquals(state,ColumnCodecs.wireRoundTrip(state));
     }
     @Test void rejectsTruncatedTrailingOversizedAndNonphysicalData(){
         var bytes=V3EditorCatalogCodec.encode(catalog());

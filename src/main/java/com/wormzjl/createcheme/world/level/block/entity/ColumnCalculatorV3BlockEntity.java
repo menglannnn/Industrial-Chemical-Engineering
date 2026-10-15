@@ -11,10 +11,10 @@ import com.wormzjl.createcheme.science.column.v3.V3TrayHydraulicsSummary;
 import com.wormzjl.createcheme.science.column.v3.V3ColumnProblemResolver;
 import com.wormzjl.createcheme.science.column.v3.V3ColumnOutcome;
 import com.wormzjl.createcheme.science.column.v3.V3ColumnSpecification;
+import com.wormzjl.createcheme.science.column.v3.V3ColumnSpecification.ControlledQuantity;
 import com.wormzjl.createcheme.science.column.v3.V3ColumnStreamProperties;
 import com.wormzjl.createcheme.science.column.v3.V3ComponentBasis;
 import com.wormzjl.createcheme.science.column.v3.V3ConvergenceEvidence;
-import com.wormzjl.createcheme.science.column.v3.V3ControlledQuantity;
 import com.wormzjl.createcheme.science.column.v3.V3HollandExample32;
 import com.wormzjl.createcheme.science.column.v3.thermo.V3PengRobinsonThermo;
 import com.wormzjl.createcheme.science.column.v3.thermo.V3CrudeFeed;
@@ -214,7 +214,7 @@ public final class ColumnCalculatorV3BlockEntity extends BlockEntity implements 
                 status,
                 currentInput,
                 Optional.ofNullable(displayResult),
-                diagnostics, names,ColumnInputPreset.descriptors(catalog),editorCatalog);
+                diagnostics, names, editorCatalog);
     }
 
     private void refreshMaterialFreshness() {
@@ -228,16 +228,6 @@ public final class ColumnCalculatorV3BlockEntity extends BlockEntity implements 
             }
             detail = "Material properties changed; recalculate this result";
         }
-    }
-
-    public int statusCode() {
-        return status.code();
-    }
-
-    public Optional<V3Operation> activeOperation(long operationId, long expectedInputRevision) {
-        return activeOperation != null && activeOperation.operationId() == operationId
-                && activeOperation.inputRevision() == expectedInputRevision
-                ? Optional.of(activeOperation) : Optional.empty();
     }
 
     @Override
@@ -337,29 +327,9 @@ public final class ColumnCalculatorV3BlockEntity extends BlockEntity implements 
             Optional<V3ColumnDisplayResult> displayResult,
             List<String> diagnostics,
             java.util.Map<String, com.wormzjl.createcheme.science.material.MaterialName> materialNames,
-            List<com.wormzjl.createcheme.science.material.MaterialPresets.Descriptor> presets,
             com.wormzjl.createcheme.science.column.v3.V3EditorCatalog editorCatalog) {
-        public V3State(long clientNonce,long stateRevision,long operationId,long inputRevision,long resultRevision,
-                V3Status status,V3ColumnInput input,Optional<V3ColumnDisplayResult> displayResult,List<String> diagnostics,
-                java.util.Map<String,com.wormzjl.createcheme.science.material.MaterialName> names,
-                List<com.wormzjl.createcheme.science.material.MaterialPresets.Descriptor> presets) {
-            this(clientNonce,stateRevision,operationId,inputRevision,resultRevision,status,input,displayResult,diagnostics,
-                    names,presets,com.wormzjl.createcheme.science.column.v3.V3EditorCatalog.EMPTY);
-        }
-        public V3State(long clientNonce, long stateRevision, long operationId, long inputRevision, long resultRevision,
-                V3Status status, V3ColumnInput input, Optional<V3ColumnDisplayResult> displayResult, List<String> diagnostics) {
-            this(clientNonce,stateRevision,operationId,inputRevision,resultRevision,status,input,displayResult,diagnostics,java.util.Map.of(),List.of());
-        }
-        public V3State(long clientNonce,long stateRevision,long operationId,long inputRevision,long resultRevision,
-                V3Status status,V3ColumnInput input,Optional<V3ColumnDisplayResult> displayResult,List<String> diagnostics,
-                java.util.Map<String,com.wormzjl.createcheme.science.material.MaterialName> materialNames) {
-            this(clientNonce,stateRevision,operationId,inputRevision,resultRevision,status,input,displayResult,diagnostics,materialNames,List.of());
-        }
         public V3State {
             Objects.requireNonNull(editorCatalog,"editorCatalog");
-            presets=List.copyOf(presets);
-            if(presets.size()>com.wormzjl.createcheme.science.material.MaterialPresets.MAX_PRESETS||presets.stream().map(p->p.id()).distinct().count()!=presets.size())
-                throw new IllegalArgumentException("Invalid column preset descriptor list");
             materialNames = java.util.Map.copyOf(materialNames);
             if (materialNames.size() > 2 * V3ColumnStreamProperties.MAX_COMPONENTS
                     || materialNames.keySet().stream().anyMatch(id -> !id.matches("[A-Za-z][A-Za-z0-9_.:-]{0,63}")))
@@ -378,38 +348,8 @@ public final class ColumnCalculatorV3BlockEntity extends BlockEntity implements 
         }
     }
 
-    /** Persisted status uses stable names; only current runtime states are ever sent over the wire. */
-    public enum V3Status {
-        IDLE("IDLE", 0),
-        CALCULATING("CALCULATING", 1),
-        SUCCESS("SUCCESS", 2),
-        FAILED("FAILED", 3),
-        STALE("STALE", 4),
-        DIRTY("DIRTY", 5);
-
-        private final String serializedName;
-        private final int code;
-
-        V3Status(String serializedName, int code) {
-            this.serializedName = serializedName;
-            this.code = code;
-        }
-
-        public String serializedName() {
-            return serializedName;
-        }
-
-        public int code() {
-            return code;
-        }
-
-        public static V3Status fromSerializedName(String name) {
-            for (V3Status status : values()) {
-                if (status.serializedName.equals(name)) return status;
-            }
-            throw new IllegalArgumentException("Unknown V3 status");
-        }
-    }
+    /** Sent over the wire by {@code name()}; never saved. */
+    public enum V3Status { CALCULATING, SUCCESS, FAILED, STALE, DIRTY }
 
     /**
      * Original methane-free reference: the Ledezma-Martinez (2019) no-preflash atmospheric column. Forty
@@ -513,7 +453,7 @@ public final class ColumnCalculatorV3BlockEntity extends BlockEntity implements 
         List<V3ColumnSpecification> specifications = new ArrayList<>(specificationTags.size());
         for (int index = 0; index < specificationTags.size(); index++) {
             CompoundTag specification = specificationTags.getCompound(index);
-            specifications.add(specification(V3ControlledQuantity.valueOf(specification.getString("Kind")),
+            specifications.add(specification(ControlledQuantity.valueOf(specification.getString("Kind")),
                     specification.getDouble("Value")));
         }
         ListTag flowTags = tag.getList("FeedFlows", Tag.TAG_DOUBLE);
@@ -727,7 +667,7 @@ public final class ColumnCalculatorV3BlockEntity extends BlockEntity implements 
                 tag.getInt("AcceptanceChecks"), streams, ledger, closure, hydraulics, inspection);
     }
 
-    private static V3ColumnSpecification specification(V3ControlledQuantity quantity, double value) {
+    private static V3ColumnSpecification specification(ControlledQuantity quantity, double value) {
         return switch (quantity) {
             case CONDENSER_OUTLET_TEMPERATURE -> new V3ColumnSpecification.CondenserOutletTemperature(value);
             case ORGANIC_REFLUX_RATIO -> new V3ColumnSpecification.OrganicRefluxRatio(value);

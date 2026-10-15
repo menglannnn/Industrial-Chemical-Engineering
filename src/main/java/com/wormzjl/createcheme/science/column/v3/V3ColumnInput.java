@@ -54,7 +54,7 @@ public record V3ColumnInput(
             List<V3ColumnSpecification> specifications) {
         this(schemaVersion, packageId, assayId, componentBasis, feedComponentMolarFlowsMolPerSecond,
                 feedTemperatureKelvin, stageCount, feedStageNumber, topPressurePascal, stagePressureDropPascal,
-                specifications, List.of(), List.of(), List.of());
+                specifications, List.of(), List.of(), List.of(), PRESCRIBED_DROP_DIAMETER);
     }
 
     /** Shorthand: side draws only; no steam, pumparounds or tray hydraulics. */
@@ -65,31 +65,7 @@ public record V3ColumnInput(
             List<V3ColumnSpecification> specifications, List<V3SideDrawSpec> sideDraws) {
         this(schemaVersion, packageId, assayId, componentBasis, feedComponentMolarFlowsMolPerSecond,
                 feedTemperatureKelvin, stageCount, feedStageNumber, topPressurePascal, stagePressureDropPascal,
-                specifications, sideDraws, List.of(), List.of());
-    }
-
-    /** Shorthand: side draws and steam; no pumparounds (stage heat) or tray hydraulics. */
-    public V3ColumnInput(
-            int schemaVersion, String packageId, String assayId, V3ComponentBasis componentBasis,
-            double[] feedComponentMolarFlowsMolPerSecond, double feedTemperatureKelvin, int stageCount,
-            int feedStageNumber, double topPressurePascal, double stagePressureDropPascal,
-            List<V3ColumnSpecification> specifications, List<V3SideDrawSpec> sideDraws,
-            List<V3SteamFeedSpec> steamFeeds) {
-        this(schemaVersion, packageId, assayId, componentBasis, feedComponentMolarFlowsMolPerSecond,
-                feedTemperatureKelvin, stageCount, feedStageNumber, topPressurePascal, stagePressureDropPascal,
-                specifications, sideDraws, steamFeeds, List.of());
-    }
-
-    /** Shorthand: every list, with the prescribed uniform drop instead of tray hydraulics. */
-    public V3ColumnInput(
-            int schemaVersion, String packageId, String assayId, V3ComponentBasis componentBasis,
-            double[] feedComponentMolarFlowsMolPerSecond, double feedTemperatureKelvin, int stageCount,
-            int feedStageNumber, double topPressurePascal, double stagePressureDropPascal,
-            List<V3ColumnSpecification> specifications, List<V3SideDrawSpec> sideDraws,
-            List<V3SteamFeedSpec> steamFeeds, List<V3PumparoundSpec> pumparounds) {
-        this(schemaVersion, packageId, assayId, componentBasis, feedComponentMolarFlowsMolPerSecond,
-                feedTemperatureKelvin, stageCount, feedStageNumber, topPressurePascal, stagePressureDropPascal,
-                specifications, sideDraws, steamFeeds, pumparounds, PRESCRIBED_DROP_DIAMETER);
+                specifications, sideDraws, List.of(), List.of(), PRESCRIBED_DROP_DIAMETER);
     }
 
     public V3ColumnInput {

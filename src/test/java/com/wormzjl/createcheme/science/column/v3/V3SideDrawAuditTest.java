@@ -10,15 +10,15 @@ class V3SideDrawAuditTest {
     void splitAuditRequiresStrictlyPositiveDownflowEvenWhenStoredFlowsArePositive() {
         var fixture = V3TruncationNumericsTest.fixture(V3CondenserPhaseBranch.TWO_PHASE, 0.01);
         V3ColumnProblem problem = drawn(fixture.original(), 2, 20);
-        problem = V3ColumnProblemResolver.withTruncation(problem, V3TruncationSupport.derive(problem, 0.01, fixture.exact()));
+        problem = V3ColumnProblemResolver.withTruncation(problem, V3TruncationSupport.derive(problem, 0.01, fixture.exact()), V3WetTraySet.dry(problem.topology()));
         V3AcceptanceAuditor auditor = new V3AcceptanceAuditor(problem, fixture.thermo(), 0);
-        assertTrue(check(auditor.audit(fixture.exact(), fixture.thermo().newWorkspace()), "SIDE_DRAW_SPLIT").passed());
+        assertTrue(check(auditor.audit(fixture.exact(), fixture.thermo().newWorkspace(), V3SolveControl.UNBOUNDED), "SIDE_DRAW_SPLIT").passed());
         for (double total : new double[] {20.0, 10.0}) {
             double[][] liquid = V3TruncationNumericsTest.copyFlows(fixture.exact(), true);
             liquid[2] = new double[] {total * 0.25, total * 0.5, total * 0.25};
             V3DryMeshState state = new V3DryMeshState(problem.topology(), 3, liquid,
                     V3TruncationNumericsTest.copyFlows(fixture.exact(), false), V3TruncationNumericsTest.temperatures());
-            assertFalse(check(auditor.audit(state, fixture.thermo().newWorkspace()), "SIDE_DRAW_SPLIT").passed());
+            assertFalse(check(auditor.audit(state, fixture.thermo().newWorkspace(), V3SolveControl.UNBOUNDED), "SIDE_DRAW_SPLIT").passed());
         }
     }
 
@@ -27,17 +27,17 @@ class V3SideDrawAuditTest {
         var fixture = V3TruncationNumericsTest.fixture(V3CondenserPhaseBranch.TWO_PHASE, 0.01);
         V3ColumnProblem original = drawn(fixture.original(), 2, 20);
         V3TruncationSupport support = V3TruncationSupport.derive(original, 0.01, fixture.exact());
-        V3ColumnProblem problem = V3ColumnProblemResolver.withTruncation(original, support);
+        V3ColumnProblem problem = V3ColumnProblemResolver.withTruncation(original, support, V3WetTraySet.dry(original.topology()));
         assertFalse(support.isIdentity());
         assertTrue(problem.degreeOfFreedomLedger().isValid());
         double expected = 0.004 + 0.006 * (1 - 20.0 / 100.006);
         assertEquals(expected, support.massDefectMolPerSecond(fixture.exact()), 1e-14);
         V3AcceptanceAudit audit = new V3AcceptanceAuditor(problem, fixture.thermo(), 0)
-                .audit(fixture.exact(), fixture.thermo().newWorkspace());
+                .audit(fixture.exact(), fixture.thermo().newWorkspace(), V3SolveControl.UNBOUNDED);
         assertEquals(expected / 90.01, check(audit, "TRUNCATION_MASS_DEFECT").value(), 1e-14);
         V3MeshResidualEvaluator evaluator = new V3MeshResidualEvaluator(problem, fixture.thermo(), 0);
         V3DryMeshCoordinateMap coordinates = new V3DryMeshCoordinateMap(problem);
-        var reference = V3BlockJacobianAssembler.assemble(problem, evaluator, coordinates, fixture.exact(), fixture.thermo()::newWorkspace);
+        var reference = V3JacobianOracle.assemble(problem, evaluator, coordinates, fixture.exact(), fixture.thermo()::newWorkspace);
         var local = V3BlockJacobianAssembler.assembleLocal(problem, evaluator, coordinates, fixture.exact(), fixture.thermo()::newWorkspace,
                 V3FiniteDifferenceJacobian.DifferenceScale.FINE, V3SolveControl.UNBOUNDED).toBandedMatrix();
         var dense = reference.toBandedMatrix();
@@ -64,7 +64,7 @@ class V3SideDrawAuditTest {
         assertTrue(support.retainsLiquid(3, 2));
         assertFalse(support.retainsVapor(3, 2));
         assertFalse(support.retains(4, 2));
-        assertTrue(V3ColumnProblemResolver.withTruncation(connected, support).degreeOfFreedomLedger().isValid());
+        assertTrue(V3ColumnProblemResolver.withTruncation(connected, support, V3WetTraySet.dry(connected.topology())).degreeOfFreedomLedger().isValid());
 
         V3ColumnProblem distant = drawn(fixture.original(), 4, 5);
         V3TruncationSupport path = V3TruncationSupport.derive(distant, 0.01, fixture.exact());
@@ -72,7 +72,7 @@ class V3SideDrawAuditTest {
         assertTrue(path.retains(2, 2), "the feed tray is still retained whole");
         for (int tray : new int[] {0, 1, 3, 4, 5}) assertFalse(path.retains(tray, 2), "tray " + tray);
         assertEquals("", path.note());
-        assertTrue(V3ColumnProblemResolver.withTruncation(distant, path).degreeOfFreedomLedger().isValid());
+        assertTrue(V3ColumnProblemResolver.withTruncation(distant, path, V3WetTraySet.dry(distant.topology())).degreeOfFreedomLedger().isValid());
         V3DryMeshState projected = path.projectSeed(distant, fixture.exact());
         assertEquals(0.0, projected.liquidFlow(3, 2));
         assertEquals(0.0, projected.vaporFlow(3, 2));
@@ -94,7 +94,7 @@ class V3SideDrawAuditTest {
         }
         assertTrue(support.retains(4, 2), "the feed tray is still retained whole");
         for (int tray : new int[] {0, 1, 2, 3, 5}) assertFalse(support.retains(tray, 2), "tray " + tray);
-        assertTrue(V3ColumnProblemResolver.withTruncation(problem, support).degreeOfFreedomLedger().isValid());
+        assertTrue(V3ColumnProblemResolver.withTruncation(problem, support, V3WetTraySet.dry(problem.topology())).degreeOfFreedomLedger().isValid());
     }
 
     private static V3AcceptanceAudit.Check check(V3AcceptanceAudit audit, String name) {

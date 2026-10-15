@@ -6,9 +6,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.wormzjl.createcheme.science.column.v3.thermo.V3FlashResult;
 import com.wormzjl.createcheme.science.column.v3.thermo.V3FugacityResult;
-import com.wormzjl.createcheme.science.column.v3.thermo.V3Phase;
 import com.wormzjl.createcheme.science.column.v3.thermo.V3ThermoModel;
 import com.wormzjl.createcheme.science.column.v3.thermo.V3ThermoWorkspace;
+import com.wormzjl.createcheme.science.thermo.PengRobinsonKernel.Root;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 
@@ -54,7 +54,7 @@ class V3MeshResidualEvaluatorTest {
         V3ColumnProblem problem = problem();
         AffineEnthalpyThermo thermo = new AffineEnthalpyThermo();
         double feedEnthalpy = thermo.molarEnthalpy(400.0, problem.nodePressurePascal(2),
-                new double[] {1.0 / 3.0, 2.0 / 3.0}, V3Phase.LIQUID, thermo.newWorkspace());
+                new double[] {1.0 / 3.0, 2.0 / 3.0}, Root.LIQUID, thermo.newWorkspace());
         V3MeshResidualEvaluator evaluator = new V3MeshResidualEvaluator(problem, thermo, feedEnthalpy);
         V3DryMeshState isothermal = new V3DryMeshState(problem.topology(), 2, liquidFlows(), vaporFlows(),
                 new double[] {400.0, 400.0, 400.0, 400.0, 400.0, 400.0});
@@ -120,7 +120,7 @@ class V3MeshResidualEvaluatorTest {
                 input.assayId(), input.componentBasis(), input.feedComponentMolarFlowsMolPerSecond(), input.feedTemperatureKelvin(),
                 input.stageCount(), input.feedStageNumber(), input.topPressurePascal(), input.stagePressureDropPascal(),
                 input.specifications(), List.of(), List.of(),
-                List.of(new V3PumparoundSpec(tray, tray, duty, V3PumparoundSpec.Split.RETURN_TRAY))),
+                List.of(new V3PumparoundSpec(tray, tray, duty, V3PumparoundSpec.Split.RETURN_TRAY)), V3ColumnInput.PRESCRIBED_DROP_DIAMETER),
                 V3CondenserPhaseBranch.TWO_PHASE);
         AffineEnthalpyThermo thermo = new AffineEnthalpyThermo();
         V3DryMeshState state = manufacturedState(plain.topology());
@@ -196,14 +196,14 @@ class V3MeshResidualEvaluatorTest {
 
         @Override
         public V3FugacityResult fugacity(
-                double temperatureKelvin, double pressurePascal, double[] composition, V3Phase phase,
+                double temperatureKelvin, double pressurePascal, double[] composition, Root phase,
                 V3ThermoWorkspace workspace) {
             int node = (int) Math.round((temperatureKelvin - 400.0) / 10.0);
             if (node < 0 || node >= K.length || Math.abs(temperatureKelvin - (400.0 + node * 10.0)) > 1.0e-9) {
                 throw new IllegalArgumentException("Manufactured VLE test temperature is unknown");
             }
             double[] logPhi = new double[basis.componentCount()];
-            if (phase == V3Phase.LIQUID) {
+            if (phase == Root.LIQUID) {
                 for (int component = 0; component < logPhi.length; component++) logPhi[component] = Math.log(K[node][component]);
             }
             return new V3FugacityResult(phase, logPhi, 1.0, 0.0, 1, 0.0);
@@ -211,7 +211,7 @@ class V3MeshResidualEvaluatorTest {
 
         @Override
         public double molarEnthalpy(
-                double temperatureKelvin, double pressurePascal, double[] composition, V3Phase phase,
+                double temperatureKelvin, double pressurePascal, double[] composition, Root phase,
                 V3ThermoWorkspace workspace) {
             return 0.0;
         }
@@ -231,7 +231,7 @@ class V3MeshResidualEvaluatorTest {
 
         @Override
         public V3FugacityResult fugacity(
-                double temperatureKelvin, double pressurePascal, double[] composition, V3Phase phase,
+                double temperatureKelvin, double pressurePascal, double[] composition, Root phase,
                 V3ThermoWorkspace workspace) {
             return new V3FugacityResult(phase, new double[] {0.0, 0.0}, 1.0,
                     molarEnthalpy(temperatureKelvin, pressurePascal, composition, phase, workspace), 1, 0.0);
@@ -239,7 +239,7 @@ class V3MeshResidualEvaluatorTest {
 
         @Override
         public double molarEnthalpy(
-                double temperatureKelvin, double pressurePascal, double[] composition, V3Phase phase,
+                double temperatureKelvin, double pressurePascal, double[] composition, Root phase,
                 V3ThermoWorkspace workspace) {
             return temperatureKelvin * (30.0 * composition[0] + 40.0 * composition[1]);
         }

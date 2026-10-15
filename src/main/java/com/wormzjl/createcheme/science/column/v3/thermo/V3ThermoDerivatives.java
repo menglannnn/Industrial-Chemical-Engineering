@@ -1,5 +1,7 @@
 package com.wormzjl.createcheme.science.column.v3.thermo;
 
+import com.wormzjl.createcheme.science.thermo.PengRobinsonKernel.Root;
+
 /**
  * The optional capability of a {@link V3ThermoModel} to differentiate itself.
  *
@@ -22,6 +24,6 @@ public interface V3ThermoDerivatives {
      *     separated enough for its derivative to exist
      */
     V3FugacityDerivatives fugacityDerivatives(
-            double temperatureKelvin, double pressurePascal, double[] composition, V3Phase phase,
+            double temperatureKelvin, double pressurePascal, double[] composition, Root phase,
             V3ThermoWorkspace workspace);
 }

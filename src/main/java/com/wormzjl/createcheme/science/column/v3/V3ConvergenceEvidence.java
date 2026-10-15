@@ -38,14 +38,6 @@ public record V3ConvergenceEvidence(
         }
     }
 
-    /** Certificate at the default closure; the historical five-component form. */
-    public V3ConvergenceEvidence(
-            boolean hasFinalNewtonStep, double finalLinearBackwardError, double maximumLogFlowChange,
-            double maximumTemperatureChangeKelvin, double maximumTemperatureStepRatio) {
-        this(hasFinalNewtonStep, finalLinearBackwardError, maximumLogFlowChange, maximumTemperatureChangeKelvin,
-                maximumTemperatureStepRatio, MAXIMUM_LOG_FLOW_CHANGE);
-    }
-
     /**
      * Validates one convergence closure and returns it.
      *

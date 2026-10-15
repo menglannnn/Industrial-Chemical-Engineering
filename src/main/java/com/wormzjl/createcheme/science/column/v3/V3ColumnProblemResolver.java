@@ -50,21 +50,14 @@ public final class V3ColumnProblemResolver {
         }
         return new V3ColumnProblem(input, topology, activeComponentBasis, condenserComponentPhases,
                 nodePressuresPascal == null ? pressureProfile(input, topology)
-                        : requireProfile(nodePressuresPascal, input, topology),
+                        : nodePressuresPascal.clone(),
                 ledger, ledger.truncationSupport(), ledger.wetTraySet());
     }
 
     /**
-     * Attaches fixed support without changing authored inputs. Identity returns the original problem
-     * and ledger. An invalid reduced ledger is rejected for the attempt orchestrator to retry unmasked.
-     */
-    static V3ColumnProblem withTruncation(V3ColumnProblem problem, V3TruncationSupport support) {
-        return withTruncation(problem, support, V3WetTraySet.dry(
-                Objects.requireNonNull(problem, "problem").topology()));
-    }
-
-    /**
-     * Attaches this attempt's frozen truncation support and free-water tray set together.
+     * Attaches this attempt's frozen truncation support and free-water tray set together, without changing
+     * authored inputs. Identity returns the original problem and ledger. An invalid reduced ledger is rejected
+     * for the attempt orchestrator to retry unmasked.
      *
      * <p>Both are attempt-local decisions taken from a seed and refreshed from a solved state, and both change
      * the ledger, so they are attached in one step: a problem never carries a support that its wet set has not
@@ -78,6 +71,9 @@ public final class V3ColumnProblemResolver {
         support.requireCompatible(problem);
         if (!problem.truncationSupport().isIdentity() || problem.hasWetTrays()) {
             throw new IllegalArgumentException("V3 truncation requires the original untruncated problem");
+        }
+        if (wetTraySet.hasWetTrays() && !problem.hasSteamFeeds()) {
+            throw new IllegalArgumentException("V3 free water requires an authored steam feed");
         }
         if (support.isIdentity() && !wetTraySet.hasWetTrays()) return problem;
         V3DegreeOfFreedomLedger ledger = V3DegreeOfFreedomLedger.create(problem.topology(),
@@ -162,7 +158,7 @@ public final class V3ColumnProblemResolver {
         double reboilerDuty = input.specifications().stream().filter(V3ColumnSpecification.ReboilerDuty.class::isInstance)
                 .map(V3ColumnSpecification.ReboilerDuty.class::cast).findFirst()
                 .orElseThrow(() -> new IllegalArgumentException("V3 input is missing a reboiler-duty specification")).watts();
-        if (!input.steamFeeds().isEmpty() && reboilerDuty == 0.0 && !V3SteamFeeds.hasSumpFeed(input)) {
+        if (!input.steamFeeds().isEmpty() && reboilerDuty == 0.0 && !V3SteamFeedSpec.hasSumpFeed(input)) {
             throw new IllegalArgumentException("V3 zero reboiler duty requires steam injection at the last tray or positive duty");
         }
         if (!input.steamFeeds().isEmpty()) {
@@ -205,15 +201,6 @@ public final class V3ColumnProblemResolver {
         if (nodePressuresPascal[trayCount + 1] != nodePressuresPascal[trayCount]) {
             throw new IllegalArgumentException("V3 supplied pressure profile must put the sump on the bottom tray");
         }
-    }
-
-    private static double[] requireProfile(
-            double[] nodePressuresPascal, V3ColumnInput input, V3ColumnTopology topology) {
-        if (nodePressuresPascal.length != topology.nodeCount()
-                || topology.condenserNode() != 0 || topology.reboilerNode() != input.stageCount() + 1) {
-            throw new IllegalArgumentException("V3 supplied pressure profile does not match the resolved topology");
-        }
-        return nodePressuresPascal.clone();
     }
 
     private static double[] pressureProfile(V3ColumnInput input, V3ColumnTopology topology) {

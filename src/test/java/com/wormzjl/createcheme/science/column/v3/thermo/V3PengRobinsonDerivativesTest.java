@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.wormzjl.createcheme.science.column.v3.V3ComponentBasis;
 import com.wormzjl.createcheme.science.thermo.PengRobinsonKernel;
+import com.wormzjl.createcheme.science.thermo.PengRobinsonKernel.Root;
 import java.util.List;
 import java.util.Random;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -49,7 +50,7 @@ class V3PengRobinsonDerivativesTest {
         V3PengRobinsonThermo thermo = V3PengRobinsonThermo.fromRegisteredPackage(packageId);
         int compared = 0;
         for (State state : states(thermo)) {
-            for (V3Phase phase : V3Phase.values()) {
+            for (Root phase : Root.values()) {
                 V3FugacityDerivatives analytic = state.derivativesOrNull(thermo, phase);
                 if (analytic == null || !state.probeKeepsRoot(thermo, phase, TEMPERATURE_STEP_KELVIN)) continue;
                 double[] higher = state.logFugacity(thermo, phase, TEMPERATURE_STEP_KELVIN);
@@ -75,7 +76,7 @@ class V3PengRobinsonDerivativesTest {
         V3PengRobinsonThermo thermo = V3PengRobinsonThermo.fromRegisteredPackage(packageId);
         int compared = 0;
         for (State state : states(thermo)) {
-            for (V3Phase phase : V3Phase.values()) {
+            for (Root phase : Root.values()) {
                 V3FugacityDerivatives analytic = state.derivativesOrNull(thermo, phase);
                 if (analytic == null) continue;
                 int count = analytic.componentCount();
@@ -107,7 +108,7 @@ class V3PengRobinsonDerivativesTest {
         V3PengRobinsonThermo thermo = V3PengRobinsonThermo.fromRegisteredPackage(packageId);
         int compared = 0;
         for (State state : states(thermo)) {
-            for (V3Phase phase : V3Phase.values()) {
+            for (Root phase : Root.values()) {
                 V3FugacityDerivatives analytic = state.derivativesOrNull(thermo, phase);
                 if (analytic == null) continue;
                 if (state.probeKeepsRoot(thermo, phase, TEMPERATURE_STEP_KELVIN)) {
@@ -150,7 +151,7 @@ class V3PengRobinsonDerivativesTest {
         V3PengRobinsonThermo thermo = V3PengRobinsonThermo.fromRegisteredPackage(packageId);
         int checked = 0;
         for (State state : states(thermo)) {
-            for (V3Phase phase : V3Phase.values()) {
+            for (Root phase : Root.values()) {
                 V3FugacityDerivatives analytic = state.derivativesOrNull(thermo, phase);
                 if (analytic == null) continue;
                 int count = analytic.componentCount();
@@ -236,9 +237,9 @@ class V3PengRobinsonDerivativesTest {
         composition[9] = 0.5;
         for (double[] outside : new double[][] {{901.0, 250_000.0}, {500.0, 2_100_000.0}, {500.0, 10_000.0}}) {
             assertThrows(V3ThermoException.class, () -> thermo.fugacity(
-                    outside[0], outside[1], composition, V3Phase.LIQUID, thermo.newWorkspace()));
+                    outside[0], outside[1], composition, Root.LIQUID, thermo.newWorkspace()));
             assertThrows(V3ThermoException.class, () -> thermo.fugacityDerivatives(
-                    outside[0], outside[1], composition, V3Phase.LIQUID, thermo.newWorkspace()));
+                    outside[0], outside[1], composition, Root.LIQUID, thermo.newWorkspace()));
         }
     }
 
@@ -248,7 +249,7 @@ class V3PengRobinsonDerivativesTest {
     void derivativeBundleCarriesTheSameValuesTheFugacityPathPublishes(String packageId) {
         V3PengRobinsonThermo thermo = V3PengRobinsonThermo.fromRegisteredPackage(packageId);
         for (State state : states(thermo)) {
-            for (V3Phase phase : V3Phase.values()) {
+            for (Root phase : Root.values()) {
                 V3FugacityDerivatives analytic = state.derivativesOrNull(thermo, phase);
                 if (analytic == null) continue;
                 V3FugacityResult value = thermo.fugacity(state.temperatureKelvin, state.pressurePascal,
@@ -288,7 +289,7 @@ class V3PengRobinsonDerivativesTest {
     }
 
     private record State(double temperatureKelvin, double pressurePascal, double[] moleFractions) {
-        V3FugacityDerivatives derivativesOrNull(V3PengRobinsonThermo thermo, V3Phase phase) {
+        V3FugacityDerivatives derivativesOrNull(V3PengRobinsonThermo thermo, Root phase) {
             try {
                 return thermo.fugacityDerivatives(temperatureKelvin, pressurePascal, moleFractions, phase,
                         thermo.newWorkspace());
@@ -297,14 +298,14 @@ class V3PengRobinsonDerivativesTest {
             }
         }
 
-        boolean probeKeepsRoot(V3PengRobinsonThermo thermo, V3Phase phase, double temperatureStep) {
+        boolean probeKeepsRoot(V3PengRobinsonThermo thermo, Root phase, double temperatureStep) {
             V3FugacityResult base = thermo.fugacity(temperatureKelvin, pressurePascal, moleFractions, phase,
                     thermo.newWorkspace());
             return sameBranch(base, thermo, phase, temperatureKelvin + temperatureStep, moleFractions)
                     && sameBranch(base, thermo, phase, temperatureKelvin - temperatureStep, moleFractions);
         }
 
-        boolean probeKeepsRootOnMoles(V3PengRobinsonThermo thermo, V3Phase phase, int component, double step) {
+        boolean probeKeepsRootOnMoles(V3PengRobinsonThermo thermo, Root phase, int component, double step) {
             if (!(moleFractions[component] > 10.0 * step)) return false;
             V3FugacityResult base = thermo.fugacity(temperatureKelvin, pressurePascal, moleFractions, phase,
                     thermo.newWorkspace());
@@ -312,7 +313,7 @@ class V3PengRobinsonDerivativesTest {
                     && sameBranch(base, thermo, phase, temperatureKelvin, perturbed(component, -step));
         }
 
-        private boolean sameBranch(V3FugacityResult base, V3PengRobinsonThermo thermo, V3Phase phase,
+        private boolean sameBranch(V3FugacityResult base, V3PengRobinsonThermo thermo, Root phase,
                                    double temperature, double[] composition) {
             try {
                 V3FugacityResult probe = thermo.fugacity(temperature, pressurePascal, composition, phase,
@@ -325,22 +326,22 @@ class V3PengRobinsonDerivativesTest {
             }
         }
 
-        double[] logFugacity(V3PengRobinsonThermo thermo, V3Phase phase, double temperatureStep) {
+        double[] logFugacity(V3PengRobinsonThermo thermo, Root phase, double temperatureStep) {
             return thermo.fugacity(temperatureKelvin + temperatureStep, pressurePascal, moleFractions, phase,
                     thermo.newWorkspace()).logFugacityCoefficients();
         }
 
-        double[] logFugacityWithMoles(V3PengRobinsonThermo thermo, V3Phase phase, int component, double step) {
+        double[] logFugacityWithMoles(V3PengRobinsonThermo thermo, Root phase, int component, double step) {
             return thermo.fugacity(temperatureKelvin, pressurePascal, perturbed(component, step), phase,
                     thermo.newWorkspace()).logFugacityCoefficients();
         }
 
-        double molarEnthalpy(V3PengRobinsonThermo thermo, V3Phase phase, double temperatureStep) {
+        double molarEnthalpy(V3PengRobinsonThermo thermo, Root phase, double temperatureStep) {
             return thermo.molarEnthalpy(temperatureKelvin + temperatureStep, pressurePascal, moleFractions, phase,
                     thermo.newWorkspace());
         }
 
-        double totalEnthalpyWithMoles(V3PengRobinsonThermo thermo, V3Phase phase, int component, double step) {
+        double totalEnthalpyWithMoles(V3PengRobinsonThermo thermo, Root phase, int component, double step) {
             double[] moles = perturbed(component, step);
             double total = 0.0;
             for (double value : moles) total += value;

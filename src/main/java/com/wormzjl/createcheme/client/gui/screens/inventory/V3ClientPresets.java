@@ -2,6 +2,7 @@ package com.wormzjl.createcheme.client.gui.screens.inventory;
 
 import com.google.gson.*;
 import com.wormzjl.createcheme.science.column.v3.*;
+import com.wormzjl.createcheme.science.column.v3.V3ColumnSpecification.ControlledQuantity;
 import java.io.*;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
@@ -155,9 +156,9 @@ final class V3ClientPresets {
         o.addProperty("tray_count",input.stageCount()+2);o.addProperty("feed_tray",input.feedStageNumber()+1);
         o.addProperty("feed_flow_kmol_h",Arrays.stream(input.feedComponentMolarFlowsMolPerSecond()).sum()*3.6);
         o.addProperty("feed_temperature_kelvin",input.feedTemperatureKelvin());
-        o.addProperty("top_temperature_kelvin",V3EditorDraft.value(input,V3ControlledQuantity.CONDENSER_OUTLET_TEMPERATURE));
-        o.addProperty("reboiler_duty_mw",V3EditorDraft.value(input,V3ControlledQuantity.REBOILER_DUTY)/1e6);
-        o.addProperty("reflux_ratio",V3EditorDraft.value(input,V3ControlledQuantity.ORGANIC_REFLUX_RATIO));
+        o.addProperty("top_temperature_kelvin",V3EditorDraft.value(input,ControlledQuantity.CONDENSER_OUTLET_TEMPERATURE));
+        o.addProperty("reboiler_duty_mw",V3EditorDraft.value(input,ControlledQuantity.REBOILER_DUTY)/1e6);
+        o.addProperty("reflux_ratio",V3EditorDraft.value(input,ControlledQuantity.ORGANIC_REFLUX_RATIO));
         o.addProperty("top_pressure_bar",input.topPressurePascal()/1e5);o.addProperty("stage_pressure_drop_kpa",input.stagePressureDropPascal()/1000);
         o.addProperty("diameter_m",input.columnDiameterMetres());
         JsonArray draws=new JsonArray(),steam=new JsonArray(),pas=new JsonArray();

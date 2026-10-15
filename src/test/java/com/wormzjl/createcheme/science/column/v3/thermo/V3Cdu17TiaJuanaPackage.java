@@ -12,9 +12,6 @@ final class V3Cdu17TiaJuanaPackage implements V3PropertyPackage {
     static final String DATASET_REVISION = "cdu17-tjl-kl1976-r2";
     static final String ASSAY_ID = "createcheme:tia_juana_light";
     static final V3Cdu17TiaJuanaPackage INSTANCE = new V3Cdu17TiaJuanaPackage();
-    static final double STANDARD_TEMPERATURE_KELVIN = 288.7055555556;
-    static final double STANDARD_PRESSURE_PASCAL = 101_325.0;
-    static final double ACS_BULK_DENSITY_KG_PER_CUBIC_METRE = 867.6;
     static final double ACS_STANDARD_VOLUME_CUBIC_METRES_PER_HOUR = 662.464;
     static final double PC12_NBP_KELVIN = 1_035.975246548323;
     static final double PC12_MOLECULAR_WEIGHT_KG_PER_MOL = 0.650;

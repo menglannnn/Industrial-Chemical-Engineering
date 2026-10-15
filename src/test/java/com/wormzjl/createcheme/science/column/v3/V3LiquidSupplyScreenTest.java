@@ -187,7 +187,7 @@ class V3LiquidSupplyScreenTest {
 
     private static V3InitializationOptions lnnOnly() {
         return new V3InitializationOptions(V3InitializationOptions.Mode.LNN_ONLY,
-                V3InitializationOptions.WetStart.AUTO, 8, 500);
+                V3InitializationOptions.WetStart.AUTO, 8, 500, V3InitializationOptions.Correction.PROGRESS);
     }
 
     private static List<V3ColumnSpecification> specifications() {
@@ -201,6 +201,6 @@ class V3LiquidSupplyScreenTest {
         return new V3ColumnInput(V3ColumnInput.SCHEMA_VERSION, "test:ideal_binary", "test:baseline",
                 new V3ComponentBasis(List.of("methane", "n-pentane")), new double[] {40.0, 60.0}, 450.0, 4, 3,
                 250_000.0, 750.0, specifications(), List.of(new V3SideDrawSpec(DRAW_TRAY, drawMolPerSecond)),
-                List.of(), pumparounds);
+                List.of(), pumparounds, V3ColumnInput.PRESCRIBED_DROP_DIAMETER);
     }
 }

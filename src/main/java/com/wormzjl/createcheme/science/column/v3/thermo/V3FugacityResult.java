@@ -1,10 +1,11 @@
 package com.wormzjl.createcheme.science.column.v3.thermo;
 
+import com.wormzjl.createcheme.science.thermo.PengRobinsonKernel.Root;
 import java.util.Objects;
 
 /** Immutable Peng–Robinson phase result in the V3 SI/property convention. */
 public final class V3FugacityResult {
-    private final V3Phase phase;
+    private final Root phase;
     private final double[] logFugacityCoefficients;
     private final double compressibilityFactor;
     private final double molarEnthalpyJoulesPerMol;
@@ -12,7 +13,7 @@ public final class V3FugacityResult {
     private final double rootSeparation;
 
     public V3FugacityResult(
-            V3Phase phase, double[] logFugacityCoefficients, double compressibilityFactor,
+            Root phase, double[] logFugacityCoefficients, double compressibilityFactor,
             double molarEnthalpyJoulesPerMol, int physicalRootCount, double rootSeparation) {
         this.phase = Objects.requireNonNull(phase, "phase");
         this.logFugacityCoefficients = Objects.requireNonNull(logFugacityCoefficients, "logFugacityCoefficients").clone();
@@ -33,7 +34,7 @@ public final class V3FugacityResult {
         }
     }
 
-    public V3Phase phase() {
+    public Root phase() {
         return phase;
     }
 

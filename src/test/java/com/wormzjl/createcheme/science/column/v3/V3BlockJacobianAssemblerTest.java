@@ -5,17 +5,18 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.wormzjl.createcheme.science.column.v3.thermo.V3FlashResult;
 import com.wormzjl.createcheme.science.column.v3.thermo.V3FugacityResult;
-import com.wormzjl.createcheme.science.column.v3.thermo.V3Phase;
 import com.wormzjl.createcheme.science.column.v3.thermo.V3CrudeFeed;
 import com.wormzjl.createcheme.science.column.v3.thermo.V3PengRobinsonThermo;
 import com.wormzjl.createcheme.science.column.v3.thermo.V3ThermoModel;
 import com.wormzjl.createcheme.science.column.v3.thermo.V3ThermoWorkspace;
 import com.wormzjl.createcheme.science.column.v3.linalg.V3BandedMatrix;
+import com.wormzjl.createcheme.science.thermo.PengRobinsonKernel.Root;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
 import org.junit.jupiter.params.provider.ValueSource;
+import static org.junit.jupiter.api.Assertions.*;
 
 @org.junit.jupiter.api.extension.ExtendWith(com.wormzjl.createcheme.science.material.Cdu17FixtureExtension.class)
 class V3BlockJacobianAssemblerTest {
@@ -60,7 +61,7 @@ class V3BlockJacobianAssemblerTest {
                 plain.packageId(), plain.assayId(), plain.componentBasis(), plain.feedComponentMolarFlowsMolPerSecond(),
                 plain.feedTemperatureKelvin(), plain.stageCount(), plain.feedStageNumber(), plain.topPressurePascal(),
                 plain.stagePressureDropPascal(), plain.specifications(), List.of(), List.of(),
-                List.of(new V3PumparoundSpec(2, 4, -750_000.0, V3PumparoundSpec.Split.UNIFORM))),
+                List.of(new V3PumparoundSpec(2, 4, -750_000.0, V3PumparoundSpec.Split.UNIFORM)), V3ColumnInput.PRESCRIBED_DROP_DIAMETER),
                 V3CondenserPhaseBranch.TWO_PHASE);
 
         assertLocalBlocksMatchFiniteDifference(problem);
@@ -75,9 +76,9 @@ class V3BlockJacobianAssemblerTest {
         V3MeshResidualEvaluator evaluator = new V3MeshResidualEvaluator(problem, thermo, 0.0);
         V3DryMeshCoordinateMap coordinates = new V3DryMeshCoordinateMap(problem);
 
-        V3FiniteDifferenceJacobian.Jacobian full = V3FiniteDifferenceJacobian.evaluate(
+        V3FiniteDifferenceJacobian.Jacobian full = V3JacobianOracle.evaluate(
                 evaluator, coordinates, state, thermo::newWorkspace);
-        V3BlockJacobian referenceBlocks = V3BlockJacobianAssembler.assemble(
+        V3BlockJacobian referenceBlocks = V3JacobianOracle.assemble(
                 problem, evaluator, coordinates, state, thermo::newWorkspace);
         V3BlockJacobianAssembler.AnalyticTally tally = new V3BlockJacobianAssembler.AnalyticTally();
         V3BlockJacobian localBlocks = V3BlockJacobianAssembler.assembleLocal(
@@ -148,7 +149,7 @@ class V3BlockJacobianAssemblerTest {
         V3MeshResidualEvaluator evaluator = new V3MeshResidualEvaluator(problem, thermo, feed.molarEnthalpyJoulesPerMol());
         V3DryMeshCoordinateMap coordinates = new V3DryMeshCoordinateMap(problem);
 
-        V3FiniteDifferenceJacobian.Jacobian reference = V3FiniteDifferenceJacobian.evaluateStageColored(
+        V3FiniteDifferenceJacobian.Jacobian reference = V3JacobianOracle.evaluateStageColored(
                 evaluator, coordinates, state, thermo::newWorkspace, V3FiniteDifferenceJacobian.DifferenceScale.COARSE);
         V3BlockJacobianAssembler.AnalyticTally tally = new V3BlockJacobianAssembler.AnalyticTally();
         V3BlockJacobian local = V3BlockJacobianAssembler.assembleLocal(
@@ -221,7 +222,7 @@ class V3BlockJacobianAssemblerTest {
                     "the condenser split of " + feature + " must exercise the intended side of its cap");
         }
 
-        V3FiniteDifferenceJacobian.Jacobian reference = V3FiniteDifferenceJacobian.evaluateStageColored(
+        V3FiniteDifferenceJacobian.Jacobian reference = V3JacobianOracle.evaluateStageColored(
                 evaluator, coordinates, state, thermo::newWorkspace, V3FiniteDifferenceJacobian.DifferenceScale.COARSE);
         V3BlockJacobianAssembler.AnalyticTally tally = new V3BlockJacobianAssembler.AnalyticTally();
         V3BandedMatrix flattened = V3BlockJacobianAssembler.assembleLocal(problem, evaluator, coordinates, state,
@@ -262,7 +263,7 @@ class V3BlockJacobianAssemblerTest {
                 new V3MeshResidualEvaluator(problem, thermo, feed.molarEnthalpyJoulesPerMol());
         V3DryMeshCoordinateMap coordinates = new V3DryMeshCoordinateMap(problem);
 
-        V3FiniteDifferenceJacobian.Jacobian reference = V3FiniteDifferenceJacobian.evaluateStageColored(
+        V3FiniteDifferenceJacobian.Jacobian reference = V3JacobianOracle.evaluateStageColored(
                 evaluator, coordinates, state, thermo::newWorkspace, V3FiniteDifferenceJacobian.DifferenceScale.COARSE);
         V3BlockJacobianAssembler.AnalyticTally tally = new V3BlockJacobianAssembler.AnalyticTally();
         V3BandedMatrix flattened = V3BlockJacobianAssembler.assembleLocal(problem, evaluator, coordinates, state,
@@ -314,7 +315,7 @@ class V3BlockJacobianAssemblerTest {
                 crude.componentBasis(), flows, 638.15, 30, 24, 250_000.0, 750.0, List.of(
                         new V3ColumnSpecification.CondenserOutletTemperature(323.15),
                         new V3ColumnSpecification.OrganicRefluxRatio(2.0),
-                        new V3ColumnSpecification.ReboilerDuty(8_000_000.0)), draws, steam, pumparounds);
+                        new V3ColumnSpecification.ReboilerDuty(8_000_000.0)), draws, steam, pumparounds, V3ColumnInput.PRESCRIBED_DROP_DIAMETER);
     }
 
     /**
@@ -543,7 +544,7 @@ class V3BlockJacobianAssemblerTest {
                 4, 2, steamFeeds.isEmpty() ? 250_000.0 : 150_000.0, 750.0, List.of(
                         new V3ColumnSpecification.CondenserOutletTemperature(400.0),
                         new V3ColumnSpecification.OrganicRefluxRatio(1.0),
-                        new V3ColumnSpecification.ReboilerDuty(0.0)), List.of(), steamFeeds);
+                        new V3ColumnSpecification.ReboilerDuty(0.0)), List.of(), steamFeeds, List.of(), V3ColumnInput.PRESCRIBED_DROP_DIAMETER);
         return V3ColumnProblemResolver.resolve(input, V3CondenserPhaseBranch.TWO_PHASE);
     }
 
@@ -559,7 +560,7 @@ class V3BlockJacobianAssemblerTest {
                         new V3ColumnSpecification.CondenserOutletTemperature(400.0),
                         new V3ColumnSpecification.OrganicRefluxRatio(1.0),
                         new V3ColumnSpecification.ReboilerDuty(0.0)), List.of(),
-                List.of(new V3SteamFeedSpec(5, 10.0, 520.0)));
+                List.of(new V3SteamFeedSpec(5, 10.0, 520.0)), List.of(), V3ColumnInput.PRESCRIBED_DROP_DIAMETER);
         V3ColumnProblem dry = V3ColumnProblemResolver.resolve(input, V3CondenserPhaseBranch.TWO_PHASE);
         boolean[] wet = new boolean[dry.topology().nodeCount()];
         wet[1] = true;
@@ -593,12 +594,12 @@ class V3BlockJacobianAssemblerTest {
 
         @Override
         public V3FugacityResult fugacity(
-                double temperatureKelvin, double pressurePascal, double[] composition, V3Phase phase,
+                double temperatureKelvin, double pressurePascal, double[] composition, Root phase,
                 V3ThermoWorkspace workspace) {
             int node = (int) Math.round((temperatureKelvin - 400.0) / 10.0);
             if (node < 0 || node >= K.length) throw new IllegalArgumentException("Manufactured VLE temperature is outside its grid");
             double[] logPhi = new double[2];
-            if (phase == V3Phase.LIQUID) {
+            if (phase == Root.LIQUID) {
                 double referenceTemperature = 400.0 + 10.0 * node;
                 for (int component = 0; component < 2; component++) logPhi[component] = Math.log(K[node][component])
                         + (component + 1) * 1.0e-3 * (temperatureKelvin - referenceTemperature);
@@ -608,7 +609,7 @@ class V3BlockJacobianAssemblerTest {
 
         @Override
         public double molarEnthalpy(
-                double temperatureKelvin, double pressurePascal, double[] composition, V3Phase phase,
+                double temperatureKelvin, double pressurePascal, double[] composition, Root phase,
                 V3ThermoWorkspace workspace) {
             return 0.0;
         }
@@ -618,5 +619,50 @@ class V3BlockJacobianAssemblerTest {
                 double temperatureKelvin, double pressurePascal, double[] overallComposition, V3ThermoWorkspace workspace) {
             throw new UnsupportedOperationException("The smooth manufactured model does not implement a flash");
         }
+    }
+
+    // Merged from V3BlockJacobianOwnershipTest.
+    @Test
+    void copyingConstructorAndOwnedAssemblyBothKeepAccessorSnapshotsIndependent() {
+        V3StageBlockLayout layout = new V3StageBlockLayout(
+                V3TruncationSupportTest.problem(V3CondenserPhaseBranch.TWO_PHASE, 0.0, 2));
+        for (boolean owned : new boolean[]{false, true}) {
+            double[][][] lower = blocks(layout, -1);
+            double[][][] diagonal = blocks(layout, 0);
+            double[][][] upper = blocks(layout, 1);
+            diagonal[0][0][0] = -0.0;
+            diagonal[0][0][1] = 3.5;
+            V3BlockJacobian matrix = owned ? V3BlockJacobian.fromOwnedBlocks(layout, lower, diagonal, upper, 0)
+                    : new V3BlockJacobian(layout, lower, diagonal, upper, 0);
+            if (!owned) diagonal[0][0][1] = 99;
+            double[][] snapshot = matrix.diagonal(0);
+            snapshot[0][0] = 9;
+            snapshot[0][1] = 99;
+            snapshot[1] = new double[1];
+            assertEquals(Double.doubleToRawLongBits(-0.0), Double.doubleToRawLongBits(matrix.diagonal(0)[0][0]));
+            assertEquals(3.5, matrix.diagonal(0)[0][1]);
+            assertEquals(3.5, matrix.toBandedMatrix().get(0, 1));
+        }
+    }
+
+    @Test
+    void ownedAssemblyStillRejectsInvalidShapesAndNonfiniteEntries() {
+        V3StageBlockLayout layout = new V3StageBlockLayout(
+                V3TruncationSupportTest.problem(V3CondenserPhaseBranch.TWO_PHASE, 0.0, 2));
+        double[][][] diagonal = blocks(layout, 0);
+        diagonal[0][0][0] = Double.NaN;
+        assertThrows(IllegalArgumentException.class,
+                () -> V3BlockJacobian.fromOwnedBlocks(layout, blocks(layout, -1), diagonal, blocks(layout, 1), 0));
+        assertThrows(IllegalArgumentException.class,
+                () -> V3BlockJacobian.fromOwnedBlocks(layout, blocks(layout, 0), blocks(layout, 0), blocks(layout, 1), 0));
+    }
+
+    private static double[][][] blocks(V3StageBlockLayout layout, int offset) {
+        double[][][] blocks = new double[layout.nodeCount()][][];
+        for (int node = 0; node < blocks.length; node++) {
+            int columnNode = node + offset;
+            blocks[node] = new double[layout.size(node)][columnNode < 0 || columnNode >= blocks.length ? 0 : layout.size(columnNode)];
+        }
+        return blocks;
     }
 }

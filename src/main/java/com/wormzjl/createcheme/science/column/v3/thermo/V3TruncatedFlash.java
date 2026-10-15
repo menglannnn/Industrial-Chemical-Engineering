@@ -2,6 +2,7 @@ package com.wormzjl.createcheme.science.column.v3.thermo;
 
 import com.wormzjl.createcheme.science.math.DeterministicMath;
 
+import com.wormzjl.createcheme.science.thermo.PengRobinsonKernel.Root;
 import com.wormzjl.createcheme.science.thermo.TraceTruncationPolicy;
 import java.util.Objects;
 
@@ -35,7 +36,7 @@ final class V3TruncatedFlash {
                     V3FlashTruncationEvidence.Status.SINGLE_PHASE, "Single-phase reference; no phase truncation"));
         }
         double[] overall = workspace.normalizedOverall.clone();
-        V3FlashPhaseSupport support = V3FlashPhaseSupport.derive(overall, reference, policy);
+        Support support = Support.derive(overall, reference, policy);
         if (support.isIdentity()) {
             return reference.withTruncationEvidence(referenceOnly(reference, policy,
                     V3FlashTruncationEvidence.Status.NO_CANDIDATES, "No unambiguous phase-trace candidates"));
@@ -48,8 +49,8 @@ final class V3TruncatedFlash {
             checkpoint.run();
             double[] targetLogK = new double[overall.length];
             for (int component = 0; component < targetLogK.length; component++) {
-                targetLogK[component] = model.logFugacityCoefficient(V3Phase.LIQUID, component, workspace)
-                        - model.logFugacityCoefficient(V3Phase.VAPOR, component, workspace);
+                targetLogK[component] = model.logFugacityCoefficient(Root.LIQUID, component, workspace)
+                        - model.logFugacityCoefficient(Root.VAPOR, component, workspace);
             }
             V3FlashTruncationEvidence evidence = assess(overall, reference, candidate, support, policy, targetLogK);
             if (evidence.status() == V3FlashTruncationEvidence.Status.APPLIED) {
@@ -72,12 +73,12 @@ final class V3TruncatedFlash {
     }
 
     private static V3FlashResult reduced(V3PengRobinsonThermo model, double temperature, double pressure,
-                                         double[] overall, V3FlashResult reference, V3FlashPhaseSupport support,
+                                         double[] overall, V3FlashResult reference, Support support,
                                          V3ThermoWorkspace workspace, Runnable checkpoint, Progress progress) {
         double[] referenceLiquid = reference.liquidComposition();
         double[] referenceVapor = reference.vaporComposition();
         for (int component = 0; component < overall.length; component++) {
-            workspace.logK[component] = support.phaseSupport(component) == V3FlashPhaseSupport.PhaseSupport.BOTH
+            workspace.logK[component] = support.phaseSupport(component) == Support.PhaseSupport.BOTH
                     ? DeterministicMath.log(referenceVapor[component]) - DeterministicMath.log(referenceLiquid[component]) : 0.0;
         }
         for (int iteration = 1; iteration <= MAXIMUM_ITERATIONS; iteration++) {
@@ -88,28 +89,28 @@ final class V3TruncatedFlash {
             split(overall, workspace.logK, beta, support, workspace.liquidComposition, workspace.vaporComposition);
             requireNormalized(workspace.liquidComposition);
             requireNormalized(workspace.vaporComposition);
-            model.evaluateInto(temperature, pressure, workspace.liquidComposition, V3Phase.LIQUID, workspace);
-            model.evaluateInto(temperature, pressure, workspace.vaporComposition, V3Phase.VAPOR, workspace);
+            model.evaluateInto(temperature, pressure, workspace.liquidComposition, Root.LIQUID, workspace);
+            model.evaluateInto(temperature, pressure, workspace.vaporComposition, Root.VAPOR, workspace);
             double maximumError = 0.0;
             for (int component = 0; component < overall.length; component++) {
-                if (support.phaseSupport(component) != V3FlashPhaseSupport.PhaseSupport.BOTH) continue;
-                double target = model.logFugacityCoefficient(V3Phase.LIQUID, component, workspace)
-                        - model.logFugacityCoefficient(V3Phase.VAPOR, component, workspace);
+                if (support.phaseSupport(component) != Support.PhaseSupport.BOTH) continue;
+                double target = model.logFugacityCoefficient(Root.LIQUID, component, workspace)
+                        - model.logFugacityCoefficient(Root.VAPOR, component, workspace);
                 if (!Double.isFinite(target)) throw failure("Reduced flash has a nonfinite fugacity ratio");
                 maximumError = Math.max(maximumError, Math.abs(target - workspace.logK[component]));
                 workspace.nextLogK[component] = 0.5 * (workspace.logK[component] + target);
             }
             if (maximumError <= LOG_K_TOLERANCE) {
                 double liquidEnthalpy = model.phaseMolarEnthalpy(temperature, workspace.liquidComposition,
-                        V3Phase.LIQUID, workspace);
+                        Root.LIQUID, workspace);
                 double vaporEnthalpy = model.phaseMolarEnthalpy(temperature, workspace.vaporComposition,
-                        V3Phase.VAPOR, workspace);
+                        Root.VAPOR, workspace);
                 return V3FlashResult.twoPhase(iteration, beta, workspace.liquidComposition, workspace.vaporComposition,
                         (1.0 - beta) * liquidEnthalpy + beta * vaporEnthalpy,
                         "Reference-validated phase-truncated TP flash");
             }
             for (int component = 0; component < overall.length; component++) {
-                if (support.phaseSupport(component) == V3FlashPhaseSupport.PhaseSupport.BOTH) {
+                if (support.phaseSupport(component) == Support.PhaseSupport.BOTH) {
                     workspace.logK[component] = workspace.nextLogK[component];
                 }
             }
@@ -118,7 +119,7 @@ final class V3TruncatedFlash {
     }
 
     /** A phase-only component contributes finite material without an infinite or zero log-K sentinel. */
-    static double rachfordRiceRoot(double[] overall, double[] logK, V3FlashPhaseSupport support) {
+    static double rachfordRiceRoot(double[] overall, double[] logK, Support support) {
         double lower = 0.0;
         double liquidOnly = 0.0;
         for (int component = 0; component < overall.length; component++) {
@@ -152,7 +153,7 @@ final class V3TruncatedFlash {
         return 0.5 * (lower + upper);
     }
 
-    static double rachfordRiceResidual(double[] overall, double[] logK, double beta, V3FlashPhaseSupport support) {
+    static double rachfordRiceResidual(double[] overall, double[] logK, double beta, Support support) {
         double residual = 0.0;
         for (int component = 0; component < overall.length; component++) {
             if (overall[component] == 0.0) continue;
@@ -174,7 +175,7 @@ final class V3TruncatedFlash {
     }
 
     /** Allocates each component first, then divides by phase totals. Never clips and renormalizes a finished split. */
-    static void split(double[] overall, double[] logK, double beta, V3FlashPhaseSupport support,
+    static void split(double[] overall, double[] logK, double beta, Support support,
                       double[] liquid, double[] vapor) {
         for (int component = 0; component < overall.length; component++) {
             double liquidAmount;
@@ -216,7 +217,7 @@ final class V3TruncatedFlash {
 
     /** Fresh full-basis reference/error check, also exposed package-locally for adversarial numerical tests. */
     static V3FlashTruncationEvidence assess(double[] overall, V3FlashResult reference, V3FlashResult candidate,
-                                           V3FlashPhaseSupport support, TraceTruncationPolicy policy,
+                                           Support support, TraceTruncationPolicy policy,
                                            double[] targetLogK) {
         double[] referenceLiquid = reference.liquidComposition();
         double[] referenceVapor = reference.vaporComposition();
@@ -286,7 +287,7 @@ final class V3TruncatedFlash {
                 false, 0.0, 0.0, 0.0, 0.0, 0.0, reference.molarEnthalpyJoulesPerMol(), detail);
     }
 
-    private static V3FlashTruncationEvidence rejectedWithoutMetrics(V3FlashResult reference, V3FlashPhaseSupport support,
+    private static V3FlashTruncationEvidence rejectedWithoutMetrics(V3FlashResult reference, Support support,
                                                                     TraceTruncationPolicy policy, int iterations,
                                                                     String detail) {
         return new V3FlashTruncationEvidence(V3FlashTruncationEvidence.Status.FALLBACK, policy.cutoffMoleFraction(),
@@ -324,8 +325,81 @@ final class V3TruncatedFlash {
             System.arraycopy(nextLogK, 0, workspace.nextLogK, 0, nextLogK.length);
             System.arraycopy(liquid, 0, workspace.liquidComposition, 0, liquid.length);
             System.arraycopy(vapor, 0, workspace.vaporComposition, 0, vapor.length);
-            model.evaluateInto(temperature, pressure, liquid, V3Phase.LIQUID, workspace);
-            model.evaluateInto(temperature, pressure, vapor, V3Phase.VAPOR, workspace);
+            model.evaluateInto(temperature, pressure, liquid, Root.LIQUID, workspace);
+            model.evaluateInto(temperature, pressure, vapor, Root.VAPOR, workspace);
         }
+    }
+
+    /**
+     * Immutable phase-only support selected once from a full flash reference, never from an in-flight iterate.
+     * Positive-overall components always retain at least one phase; ambiguous traces retain both.
+     */
+    static final class Support {
+        enum PhaseSupport { ABSENT, BOTH, LIQUID_ONLY, VAPOR_ONLY }
+
+        private final PhaseSupport[] support;
+        private final int omittedLiquidCount;
+        private final int omittedVaporCount;
+
+        private Support(PhaseSupport[] support, int omittedLiquidCount, int omittedVaporCount) {
+            this.support = support.clone();
+            this.omittedLiquidCount = omittedLiquidCount;
+            this.omittedVaporCount = omittedVaporCount;
+        }
+
+        static Support derive(
+                double[] normalizedOverall, V3FlashResult reference, TraceTruncationPolicy policy) {
+            Objects.requireNonNull(normalizedOverall, "normalizedOverall");
+            Objects.requireNonNull(reference, "reference");
+            Objects.requireNonNull(policy, "policy");
+            if (normalizedOverall.length == 0) throw new IllegalArgumentException("V3 flash support needs a component basis");
+            double total = 0.0;
+            for (double value : normalizedOverall) {
+                if (!Double.isFinite(value) || value < 0.0) {
+                    throw new IllegalArgumentException("V3 flash support needs a finite nonnegative overall composition");
+                }
+                total += value;
+            }
+            if (!Double.isFinite(total) || Math.abs(total - 1.0) > 1.0e-10) {
+                throw new IllegalArgumentException("V3 flash support needs an already normalized overall composition");
+            }
+            double[] liquid = reference.liquidComposition();
+            double[] vapor = reference.vaporComposition();
+            if ((reference.phase() != V3FeedPhase.VAPOR && liquid.length != normalizedOverall.length)
+                    || (reference.phase() != V3FeedPhase.LIQUID && vapor.length != normalizedOverall.length)) {
+                throw new IllegalArgumentException("V3 flash reference phases differ from the overall component basis");
+            }
+            PhaseSupport[] support = new PhaseSupport[normalizedOverall.length];
+            int omittedLiquid = 0;
+            int omittedVapor = 0;
+            for (int component = 0; component < support.length; component++) {
+                if (normalizedOverall[component] == 0.0) {
+                    support[component] = PhaseSupport.ABSENT;
+                } else if (reference.phase() == V3FeedPhase.LIQUID) {
+                    support[component] = PhaseSupport.LIQUID_ONLY;
+                } else if (reference.phase() == V3FeedPhase.VAPOR) {
+                    support[component] = PhaseSupport.VAPOR_ONLY;
+                } else {
+                    boolean liquidTrace = policy.enabled() && liquid[component] < policy.cutoffMoleFraction();
+                    boolean vaporTrace = policy.enabled() && vapor[component] < policy.cutoffMoleFraction();
+                    if (liquidTrace && !vaporTrace) {
+                        support[component] = PhaseSupport.VAPOR_ONLY;
+                        omittedLiquid++;
+                    } else if (vaporTrace && !liquidTrace) {
+                        support[component] = PhaseSupport.LIQUID_ONLY;
+                        omittedVapor++;
+                    } else {
+                        support[component] = PhaseSupport.BOTH;
+                    }
+                }
+            }
+            return new Support(support, omittedLiquid, omittedVapor);
+        }
+
+        int componentCount() { return support.length; }
+        PhaseSupport phaseSupport(int component) { return support[component]; }
+        boolean isIdentity() { return omittedLiquidCount == 0 && omittedVaporCount == 0; }
+        int omittedLiquidCount() { return omittedLiquidCount; }
+        int omittedVaporCount() { return omittedVaporCount; }
     }
 }

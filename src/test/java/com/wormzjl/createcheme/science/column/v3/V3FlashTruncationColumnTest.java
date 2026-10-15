@@ -75,14 +75,6 @@ class V3FlashTruncationColumnTest {
     }
 
     private static V3ColumnInput binaryInput() {
-        V3PengRobinsonThermo thermo = V3PengRobinsonThermo.fromRegisteredPackage("createcheme:cdu17_tjl_acs2018");
-        double[] flows = new double[thermo.componentBasis().componentCount()];
-        flows[6] = 50.0;
-        flows[13] = 50.0;
-        return new V3ColumnInput(V3ColumnInput.SCHEMA_VERSION, thermo.packageId(), "test:registered-pr-binary",
-                thermo.componentBasis(), flows, 550.0, 2, 1, 250000.0, 750.0, List.of(
-                        new V3ColumnSpecification.CondenserOutletTemperature(300.0),
-                        new V3ColumnSpecification.OrganicRefluxRatio(2.0),
-                        new V3ColumnSpecification.ReboilerDuty(0.0)));
+        return V3TestInputs.cdu17Binary("test:registered-pr-binary");
     }
 }

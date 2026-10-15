@@ -52,78 +52,34 @@ public final class V3FactorizedNeuralFeatures {
     }
 
     /**
-     * Opt-in decoder presence floor, used only by offline research pipelines.
+     * The decoder's zero-phase floor.
      *
-     * <p>The production decode prunes a kept component whose decoded flow lands below its own support
-     * floor to exactly zero, and the native support refresh then has to reinsert the point. This option
-     * instead seeds such a component at {@code liftFactor} floors, so the point is already present when
-     * the solver starts. {@link V3TruncationSupport#FLOOR_REINSERTION_FACTOR} is the hysteresis the native
-     * support uses to reinsert a removed phase, which is why ten floors is the natural default: a lifted
-     * trace lands exactly at the flow the support rules already treat as "carrying material again", and
-     * below that it would still be inside the remove/reinsert band.</p>
+     * <p>The decode prunes a kept component whose decoded flow lands below its own support floor to exactly
+     * zero, and the native support refresh then has to reinsert the point. Of F0's 819 above-floor
+     * omissions across the 168 certified reference profiles, 765 are whole phases whose <b>phase-total</b>
+     * head decoded to zero and 54 are components the presence head itself dropped. A phase total of zero
+     * empties the phase whatever the composition head says, so {@code zeroPhaseFloorFactor} seeds such a
+     * phase at that many support floors summed over the components the presence head did keep, and then
+     * decodes it by the unchanged rule. A phase the condenser branch forbids is never lifted, and neither is
+     * one in which the presence head kept nothing: the fallback component that a positive phase total
+     * rescues when every support score is uncertain is not a kept component.</p>
      *
-     * <p>{@code liftPresenceProbability} gates the rule on the presence head's own confidence, as a
-     * probability rather than a logit. The decode presence threshold itself (0.02 in production) still
-     * decides which components are kept at all, so a gate at 0.02 reproduces "every kept component" and a
-     * gate at 0.5 lifts only confident presences. The fallback component that a positive phase total
-     * rescues when every support score is uncertain is never lifted: it was not kept by the head.</p>
-     *
-     * <p>The lift is <b>not</b> renormalised into the phase total. The lifted mass is added after the
-     * existing renormalisation, so every component that stays above its floor keeps its default decoded
-     * value bit for bit and only the lifted traces differ. The phase total then exceeds the predicted
-     * total by at most one lift per component, which is of order 1e-9 of the feed; the material rows are
-     * Newton unknowns and absorb it, whereas renormalising would perturb every major component of the
-     * phase to pay for a trace.</p>
-     *
-     * <p>{@code zeroPhaseFloorFactor} is a second, independent opt-in aimed at the mechanism the
-     * decoder-floor campaign actually measured. Of F0's 819 above-floor omissions across the 168 certified
-     * reference profiles, 765 are whole phases whose <b>phase-total</b> head decoded to zero and 54 are
-     * components the presence head itself dropped; the "presence head kept it, the continuous head
-     * undershot it" case the lift above can reach is measurably zero of them. A phase total of zero empties
-     * the phase whatever the composition head says, so this seeds such a phase at that many support floors
-     * summed over the components the presence head did keep, and then decodes it by the unchanged rule. A
-     * phase the condenser branch forbids is never lifted, and neither is one in which the presence head
-     * kept nothing: the fallback component that a positive phase total rescues when every support score is
-     * uncertain is not a kept component.</p>
-     *
-     * @param liftFactor multiple of the component's support floor to seed, or zero to prune as usual
-     * @param liftPresenceProbability minimum presence probability of a kept component for the lift to apply
      * @param zeroPhaseFloorFactor support floors to seed a zero phase total at, or zero to leave it empty
      */
-    record DecodeOptions(double liftFactor, double liftPresenceProbability, double zeroPhaseFloorFactor) {
-        /** The unchanged production rule: below-floor flows of kept components are pruned to zero. */
-        static final DecodeOptions NONE = new DecodeOptions(0, .5, 0);
+    record DecodeOptions(double zeroPhaseFloorFactor) {
+        /** No floor: a zero phase total decodes to an empty phase. */
+        static final DecodeOptions NONE = new DecodeOptions(0);
 
         DecodeOptions {
             if (!Double.isFinite(zeroPhaseFloorFactor) || zeroPhaseFloorFactor < 0 || zeroPhaseFloorFactor > 1e6
                     || (zeroPhaseFloorFactor > 0 && zeroPhaseFloorFactor < 1))
                 throw new IllegalArgumentException("Invalid decoder zero-phase floor factor");
-            if (!Double.isFinite(liftFactor) || liftFactor < 0 || liftFactor > 1e6
-                    || (liftFactor > 0 && liftFactor < 1))
-                throw new IllegalArgumentException("Invalid decoder presence floor lift factor");
-            if (!Double.isFinite(liftPresenceProbability) || liftPresenceProbability <= 0 || liftPresenceProbability >= 1)
-                throw new IllegalArgumentException("Invalid decoder presence floor gate probability");
         }
-
-        static DecodeOptions lift(double factor, double probability) { return new DecodeOptions(factor, probability, 0); }
 
         /** Seeds a zero phase total at {@code factor} support floors over the kept components. */
-        static DecodeOptions zeroPhaseFloor(double factor) { return new DecodeOptions(0, .5, factor); }
+        static DecodeOptions zeroPhaseFloor(double factor) { return new DecodeOptions(factor); }
 
         boolean liftsZeroPhases() { return zeroPhaseFloorFactor > 0; }
-
-        boolean liftsPresentTraces() { return liftFactor > 0; }
-
-        /** Presence logit a kept component must reach to be lifted; unreachable while the rule is off. */
-        double liftLogit() {
-            return liftsPresentTraces() ? DeterministicMath.log(liftPresenceProbability / (1 - liftPresenceProbability))
-                    : Double.POSITIVE_INFINITY;
-        }
-    }
-
-    static V3NeuralSeed decode(V3ColumnInput input, String revision, V3CondenserPhaseBranch branch,
-            double[][] outputs, double presenceThreshold) {
-        return decode(input, revision, branch, outputs, presenceThreshold, DecodeOptions.NONE);
     }
 
     static V3NeuralSeed decode(V3ColumnInput input, String revision, V3CondenserPhaseBranch branch,
@@ -180,8 +136,6 @@ public final class V3FactorizedNeuralFeatures {
             if (present[c]) maximum = Math.max(maximum, logits[c]);
         }
         if (total == 0) {
-            // Opt-in only. The default factor is zero, so the historical path returns an empty phase here and
-            // every decoded value below is bit identical.
             if (!options.liftsZeroPhases() || !branchAllows || maximum == -Double.MAX_VALUE) return flows;
             double floors = 0;
             for (int c = 0; c < feed.length; c++)
@@ -193,27 +147,15 @@ public final class V3FactorizedNeuralFeatures {
         if (maximum == -Double.MAX_VALUE) { present[fallback] = true; maximum = fallbackMaximum; }
         double sum = 0;
         for (int c = 0; c < feed.length; c++) if (present[c]) { flows[c] = DeterministicMath.exp(logits[c]-maximum); sum += flows[c]; }
-        double retained = 0, liftLogit = options.liftLogit();
-        double[] lifted = null;
+        double retained = 0;
         for (int c = 0; c < feed.length; c++) {
             flows[c] *= total / sum;
             double floor = Math.max(feed[c], totalFeed * 1e-12) * TRACE_FLOOR_FRACTION;
-            if (flows[c] < floor) {
-                // Opt-in only: the gate logit is positive infinity while the rule is off, so the default
-                // path below is exactly the historical prune and every retained flow is bit identical.
-                if (present[c] && row[presenceOffset+c] >= liftLogit) {
-                    if (lifted == null) lifted = new double[feed.length];
-                    lifted[c] = floor * options.liftFactor();
-                }
-                flows[c] = 0;
-            }
+            if (flows[c] < floor) flows[c] = 0;
             retained += flows[c];
         }
         // This only forms a seed. The unchanged native support refresh and final physical audits decide acceptance.
         if (retained > 0) for (int c = 0; c < flows.length; c++) flows[c] *= total / retained;
-        // Lifted traces are written after the renormalisation, so they add their own mass instead of taking
-        // it from the components the phase total was predicted for. See DecodeOptions for why.
-        if (lifted != null) for (int c = 0; c < flows.length; c++) if (lifted[c] > 0) flows[c] = lifted[c];
         return flows;
     }
 }

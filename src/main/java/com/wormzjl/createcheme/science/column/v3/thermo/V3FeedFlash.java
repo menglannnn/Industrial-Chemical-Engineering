@@ -1,6 +1,7 @@
 package com.wormzjl.createcheme.science.column.v3.thermo;
 
 import com.wormzjl.createcheme.science.math.DeterministicMath;
+import com.wormzjl.createcheme.science.thermo.PengRobinsonKernel.Root;
 
 /** Bounded rigorous dry-hydrocarbon TP flash with normal all-liquid, two-phase, and all-vapor outcomes. */
 final class V3FeedFlash {
@@ -24,15 +25,15 @@ final class V3FeedFlash {
                     "V3 feed flash could not establish a finite Rachford-Rice phase bracket");
         }
         if (atLiquidEndpoint <= PHASE_ENDPOINT_TOLERANCE) {
-            model.evaluateInto(temperatureKelvin, pressurePascal, workspace.normalizedOverall, V3Phase.LIQUID, workspace);
+            model.evaluateInto(temperatureKelvin, pressurePascal, workspace.normalizedOverall, Root.LIQUID, workspace);
             return V3FlashResult.liquid(0, workspace.normalizedOverall,
-                    model.phaseMolarEnthalpy(temperatureKelvin, workspace.normalizedOverall, V3Phase.LIQUID, workspace),
+                    model.phaseMolarEnthalpy(temperatureKelvin, workspace.normalizedOverall, Root.LIQUID, workspace),
                     "all-liquid Wilson endpoint classification");
         }
         if (atVaporEndpoint >= -PHASE_ENDPOINT_TOLERANCE) {
-            model.evaluateInto(temperatureKelvin, pressurePascal, workspace.normalizedOverall, V3Phase.VAPOR, workspace);
+            model.evaluateInto(temperatureKelvin, pressurePascal, workspace.normalizedOverall, Root.VAPOR, workspace);
             return V3FlashResult.vapor(0, workspace.normalizedOverall,
-                    model.phaseMolarEnthalpy(temperatureKelvin, workspace.normalizedOverall, V3Phase.VAPOR, workspace),
+                    model.phaseMolarEnthalpy(temperatureKelvin, workspace.normalizedOverall, Root.VAPOR, workspace),
                     "all-vapor Wilson endpoint classification");
         }
 
@@ -48,12 +49,12 @@ final class V3FeedFlash {
             }
             populatePhaseCompositions(workspace.normalizedOverall, workspace.logK, vaporFraction,
                     workspace.liquidComposition, workspace.vaporComposition);
-            model.evaluateInto(temperatureKelvin, pressurePascal, workspace.liquidComposition, V3Phase.LIQUID, workspace);
-            model.evaluateInto(temperatureKelvin, pressurePascal, workspace.vaporComposition, V3Phase.VAPOR, workspace);
+            model.evaluateInto(temperatureKelvin, pressurePascal, workspace.liquidComposition, Root.LIQUID, workspace);
+            model.evaluateInto(temperatureKelvin, pressurePascal, workspace.vaporComposition, Root.VAPOR, workspace);
             double maximumLogKChange = 0.0;
             for (int component = 0; component < componentCount; component++) {
-                double target = model.logFugacityCoefficient(V3Phase.LIQUID, component, workspace)
-                        - model.logFugacityCoefficient(V3Phase.VAPOR, component, workspace);
+                double target = model.logFugacityCoefficient(Root.LIQUID, component, workspace)
+                        - model.logFugacityCoefficient(Root.VAPOR, component, workspace);
                 maximumLogKChange = Math.max(maximumLogKChange, Math.abs(target - workspace.logK[component]));
                 workspace.nextLogK[component] = 0.5 * (workspace.logK[component] + target);
             }
@@ -61,15 +62,15 @@ final class V3FeedFlash {
                 // PR updates can move an initial Wilson two-phase bracket onto the liquid endpoint.
                 // Bisection otherwise leaves a tiny positive vapor fraction and mislabels the single phase.
                 if (rachfordRiceResidual(workspace.normalizedOverall, workspace.logK, 0.0) <= PHASE_ENDPOINT_TOLERANCE) {
-                    model.evaluateInto(temperatureKelvin, pressurePascal, workspace.normalizedOverall, V3Phase.LIQUID, workspace);
+                    model.evaluateInto(temperatureKelvin, pressurePascal, workspace.normalizedOverall, Root.LIQUID, workspace);
                     return V3FlashResult.liquid(iteration, workspace.normalizedOverall,
-                            model.phaseMolarEnthalpy(temperatureKelvin, workspace.normalizedOverall, V3Phase.LIQUID, workspace),
+                            model.phaseMolarEnthalpy(temperatureKelvin, workspace.normalizedOverall, Root.LIQUID, workspace),
                             "all-liquid converged PR endpoint classification");
                 }
                 double liquidEnthalpy = model.phaseMolarEnthalpy(temperatureKelvin, workspace.liquidComposition,
-                        V3Phase.LIQUID, workspace);
+                        Root.LIQUID, workspace);
                 double vaporEnthalpy = model.phaseMolarEnthalpy(temperatureKelvin, workspace.vaporComposition,
-                        V3Phase.VAPOR, workspace);
+                        Root.VAPOR, workspace);
                 return V3FlashResult.twoPhase(iteration, vaporFraction, workspace.liquidComposition,
                         workspace.vaporComposition, (1.0 - vaporFraction) * liquidEnthalpy + vaporFraction * vaporEnthalpy,
                         "rigorous two-phase Rachford-Rice flash");

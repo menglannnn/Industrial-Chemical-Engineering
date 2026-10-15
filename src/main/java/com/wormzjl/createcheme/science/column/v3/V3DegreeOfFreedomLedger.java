@@ -1,5 +1,6 @@
 package com.wormzjl.createcheme.science.column.v3;
 
+import com.wormzjl.createcheme.science.column.v3.V3ColumnSpecification.ControlledQuantity;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.EnumMap;
@@ -25,14 +26,13 @@ public final class V3DegreeOfFreedomLedger {
     private final List<V3ColumnSpecification> specifications;
     private final List<Unknown> unknowns;
     private final List<Equation> equations;
-    private final List<V3CalculatedQuantity> calculatedQuantities;
-    private final List<V3ContractDiagnostic> diagnostics;
+    private final List<ContractDiagnostic> diagnostics;
     private final int structuralRank;
 
     private V3DegreeOfFreedomLedger(
             V3ColumnTopology topology, int componentCount, List<V3ColumnSpecification> specifications,
-            List<Unknown> unknowns, List<Equation> equations, List<V3CalculatedQuantity> calculatedQuantities,
-            List<V3ContractDiagnostic> diagnostics, int structuralRank, V3TruncationSupport truncationSupport,
+            List<Unknown> unknowns, List<Equation> equations,
+            List<ContractDiagnostic> diagnostics, int structuralRank, V3TruncationSupport truncationSupport,
             V3WetTraySet wetTraySet) {
         this.topology = topology;
         this.componentCount = componentCount;
@@ -41,15 +41,8 @@ public final class V3DegreeOfFreedomLedger {
         this.specifications = List.copyOf(specifications);
         this.unknowns = List.copyOf(unknowns);
         this.equations = List.copyOf(equations);
-        this.calculatedQuantities = List.copyOf(calculatedQuantities);
         this.diagnostics = List.copyOf(diagnostics);
         this.structuralRank = structuralRank;
-    }
-
-    public static V3DegreeOfFreedomLedger create(
-            V3ColumnTopology topology, int componentCount, List<V3ColumnSpecification> specifications) {
-        V3CondenserComponentPhases phases = V3CondenserComponentPhases.allLiquid(componentCount);
-        return create(topology, componentCount, specifications, phases);
     }
 
     static V3DegreeOfFreedomLedger create(
@@ -98,24 +91,20 @@ public final class V3DegreeOfFreedomLedger {
             throw new IllegalArgumentException("V3 specifications cannot contain null");
         }
 
-        List<V3ContractDiagnostic> diagnostics = specificationDiagnostics(topology, specifications);
+        List<ContractDiagnostic> diagnostics = specificationDiagnostics(topology, specifications);
         List<Unknown> unknowns = enumerateUnknowns(topology, componentCount, condenserComponentPhases,
                 truncationSupport, wetTraySet);
         List<Equation> equations = enumerateEquations(topology, componentCount, unknowns, diagnostics,
                 condenserComponentPhases, truncationSupport, sideDraws, wetTraySet);
         int structuralRank = maximumBipartiteMatching(equations, unknowns);
         if (unknowns.size() != equations.size()) {
-            diagnostics.add(new V3ContractDiagnostic("DOF_COUNT_MISMATCH", "V3 unknown and equation counts differ"));
+            diagnostics.add(new ContractDiagnostic("DOF_COUNT_MISMATCH", "V3 unknown and equation counts differ"));
         }
         if (structuralRank != equations.size()) {
-            diagnostics.add(new V3ContractDiagnostic("STRUCTURAL_RANK_DEFICIENT",
+            diagnostics.add(new ContractDiagnostic("STRUCTURAL_RANK_DEFICIENT",
                     "V3 equation-to-unknown sparsity matching is rank deficient"));
         }
         return new V3DegreeOfFreedomLedger(topology, componentCount, specifications, unknowns, equations,
-                List.of(V3CalculatedQuantity.CONDENSER_DUTY, V3CalculatedQuantity.EXTERNAL_OVERHEAD_COMPONENT_FLOWS,
-                        V3CalculatedQuantity.BOTTOMS_COMPONENT_FLOWS,
-                        V3CalculatedQuantity.STAGE_LIQUID_COMPONENT_FLOWS,
-                        V3CalculatedQuantity.STAGE_VAPOR_COMPONENT_FLOWS),
                 diagnostics, structuralRank, truncationSupport, wetTraySet);
     }
 
@@ -147,11 +136,7 @@ public final class V3DegreeOfFreedomLedger {
         return equations;
     }
 
-    public List<V3CalculatedQuantity> calculatedQuantities() {
-        return calculatedQuantities;
-    }
-
-    public List<V3ContractDiagnostic> diagnostics() {
+    public List<ContractDiagnostic> diagnostics() {
         return diagnostics;
     }
 
@@ -178,31 +163,31 @@ public final class V3DegreeOfFreedomLedger {
     /** Stable compact diagnostic intended for tests and a future V3 UI. */
     public String humanReadableDiagnostic() {
         String codes = diagnostics.isEmpty() ? "none"
-                : diagnostics.stream().map(V3ContractDiagnostic::code).distinct().sorted().reduce((a, b) -> a + "," + b)
+                : diagnostics.stream().map(ContractDiagnostic::code).distinct().sorted().reduce((a, b) -> a + "," + b)
                 .orElseThrow();
         return "topology=" + topology + ", components=" + componentCount + ", unknowns=" + unknownCount()
                 + ", equations=" + equationCount() + ", structuralRank=" + structuralRank + ", diagnostics=" + codes;
     }
 
-    private static List<V3ContractDiagnostic> specificationDiagnostics(
+    private static List<ContractDiagnostic> specificationDiagnostics(
             V3ColumnTopology topology, List<V3ColumnSpecification> specifications) {
-        Map<V3ControlledQuantity, V3ColumnSpecification> controls = new EnumMap<>(V3ControlledQuantity.class);
-        List<V3ContractDiagnostic> diagnostics = new ArrayList<>();
+        Map<ControlledQuantity, V3ColumnSpecification> controls = new EnumMap<>(ControlledQuantity.class);
+        List<ContractDiagnostic> diagnostics = new ArrayList<>();
         for (V3ColumnSpecification specification : specifications) {
             if (controls.putIfAbsent(specification.controlledQuantity(), specification) != null) {
-                diagnostics.add(new V3ContractDiagnostic("DUPLICATE_CONTROL",
+                diagnostics.add(new ContractDiagnostic("DUPLICATE_CONTROL",
                         "V3 controls " + specification.controlledQuantity() + " more than once"));
             }
         }
-        for (V3ControlledQuantity required : EnumSet.allOf(V3ControlledQuantity.class)) {
+        for (ControlledQuantity required : EnumSet.allOf(ControlledQuantity.class)) {
             if (!controls.containsKey(required)) {
-                diagnostics.add(new V3ContractDiagnostic("MISSING_CONTROL", "V3 is missing " + required));
+                diagnostics.add(new ContractDiagnostic("MISSING_CONTROL", "V3 is missing " + required));
             }
         }
-        V3ColumnSpecification reflux = controls.get(V3ControlledQuantity.ORGANIC_REFLUX_RATIO);
+        V3ColumnSpecification reflux = controls.get(ControlledQuantity.ORGANIC_REFLUX_RATIO);
         if (topology.condenserPhaseBranch() == V3CondenserPhaseBranch.VAPOR_ONLY
                 && reflux instanceof V3ColumnSpecification.OrganicRefluxRatio ratio && ratio.ratio() > 0.0) {
-            diagnostics.add(new V3ContractDiagnostic("VAPOR_ONLY_WITH_POSITIVE_REFLUX",
+            diagnostics.add(new ContractDiagnostic("VAPOR_ONLY_WITH_POSITIVE_REFLUX",
                     "A vapor-only condenser cannot supply positive organic reflux"));
         }
         return diagnostics;
@@ -235,7 +220,7 @@ public final class V3DegreeOfFreedomLedger {
 
     private static List<Equation> enumerateEquations(
             V3ColumnTopology topology, int componentCount, List<Unknown> unknowns,
-            List<V3ContractDiagnostic> diagnostics, V3CondenserComponentPhases condenserComponentPhases,
+            List<ContractDiagnostic> diagnostics, V3CondenserComponentPhases condenserComponentPhases,
             V3TruncationSupport truncationSupport, List<V3SideDrawSpec> sideDraws, V3WetTraySet wetTraySet) {
         boolean[] drawTrays = new boolean[topology.nodeCount()];
         for (V3SideDrawSpec draw : sideDraws) drawTrays[draw.trayNumber()] = true;
@@ -264,12 +249,12 @@ public final class V3DegreeOfFreedomLedger {
         }
         for (Equation equation : equations) {
             if (equation.referencedUnknowns().isEmpty()) {
-                diagnostics.add(new V3ContractDiagnostic("EQUATION_WITHOUT_UNKNOWN",
+                diagnostics.add(new ContractDiagnostic("EQUATION_WITHOUT_UNKNOWN",
                         "V3 equation " + equation.id() + " does not reference an active unknown"));
             }
             for (UnknownId referencedUnknown : equation.referencedUnknowns()) {
                 if (!activeUnknowns.contains(referencedUnknown)) {
-                    diagnostics.add(new V3ContractDiagnostic("EQUATION_REFERENCES_REMOVED_PHASE",
+                    diagnostics.add(new ContractDiagnostic("EQUATION_REFERENCES_REMOVED_PHASE",
                             "V3 equation " + equation.id() + " references " + referencedUnknown));
                 }
             }
@@ -386,6 +371,22 @@ public final class V3DegreeOfFreedomLedger {
             }
         }
         return false;
+    }
+
+    /** A stable, UI-safe contract diagnostic emitted before numerical work is admitted. */
+    public record ContractDiagnostic(String code, String detail) {
+        public ContractDiagnostic {
+            code = requireBounded(code, "code", 64);
+            detail = requireBounded(detail, "detail", 512);
+        }
+
+        private static String requireBounded(String value, String name, int maximumLength) {
+            value = Objects.requireNonNull(value, name);
+            if (value.isBlank() || value.length() > maximumLength) {
+                throw new IllegalArgumentException(name + " is blank or exceeds the bounded contract");
+            }
+            return value;
+        }
     }
 
     /** Stable semantic identity for one numerical unknown. */

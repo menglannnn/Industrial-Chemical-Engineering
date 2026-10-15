@@ -23,43 +23,6 @@ public record V3ColumnDisplayResult(
         double closureTolerance,
         Optional<V3TrayHydraulicsSummary> trayHydraulics,
         Optional<V3ColumnInspection> inspection) {
-    /** A summary-only certificate for scientific paths without a physical state. */
-    public V3ColumnDisplayResult(String inputDigest, String formulationRevision, String assumptionsRevision,
-            String datasetRevision, int newtonIterations, double maximumScaledResidual, int acceptanceCheckCount,
-            List<V3ColumnStreamProperties> streams, Optional<V3ColumnDutyLedger> dutyLedger,
-            double closureTolerance, Optional<V3TrayHydraulicsSummary> trayHydraulics) {
-        this(inputDigest, formulationRevision, assumptionsRevision, datasetRevision, newtonIterations,
-                maximumScaledResidual, acceptanceCheckCount, streams, dutyLedger, closureTolerance,
-                trayHydraulics, Optional.empty());
-    }
-    /** Shorthand: a certificate without a duty ledger, recorded closure or tray hydraulics. */
-    public V3ColumnDisplayResult(
-            String inputDigest, String formulationRevision, String assumptionsRevision, String datasetRevision,
-            int newtonIterations, double maximumScaledResidual, int acceptanceCheckCount,
-            List<V3ColumnStreamProperties> streams) {
-        this(inputDigest, formulationRevision, assumptionsRevision, datasetRevision, newtonIterations,
-                maximumScaledResidual, acceptanceCheckCount, streams, Optional.empty());
-    }
-
-    /** Shorthand: a certificate without a recorded closure; the closure reads as the default. */
-    public V3ColumnDisplayResult(
-            String inputDigest, String formulationRevision, String assumptionsRevision, String datasetRevision,
-            int newtonIterations, double maximumScaledResidual, int acceptanceCheckCount,
-            List<V3ColumnStreamProperties> streams, Optional<V3ColumnDutyLedger> dutyLedger) {
-        this(inputDigest, formulationRevision, assumptionsRevision, datasetRevision, newtonIterations,
-                maximumScaledResidual, acceptanceCheckCount, streams, dutyLedger,
-                V3ConvergenceEvidence.MAXIMUM_LOG_FLOW_CHANGE);
-    }
-
-    /** Shorthand: a certificate of a prescribed-drop result; the tray hydraulics summary is empty. */
-    public V3ColumnDisplayResult(
-            String inputDigest, String formulationRevision, String assumptionsRevision, String datasetRevision,
-            int newtonIterations, double maximumScaledResidual, int acceptanceCheckCount,
-            List<V3ColumnStreamProperties> streams, Optional<V3ColumnDutyLedger> dutyLedger, double closureTolerance) {
-        this(inputDigest, formulationRevision, assumptionsRevision, datasetRevision, newtonIterations,
-                maximumScaledResidual, acceptanceCheckCount, streams, dutyLedger, closureTolerance, Optional.empty());
-    }
-
     public V3ColumnDisplayResult {
         Objects.requireNonNull(inspection, "inspection");
         if (inspection.isPresent() && inspection.orElseThrow().audit().checks().size() != acceptanceCheckCount)

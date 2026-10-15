@@ -1,5 +1,7 @@
 package com.wormzjl.createcheme.client.gui.common;
 
+import com.wormzjl.createcheme.client.gui.common.ProcessUi.NumericDraft;
+import com.wormzjl.createcheme.client.gui.common.ProcessUi.TemperatureUnit;
 import java.util.*;
 import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;

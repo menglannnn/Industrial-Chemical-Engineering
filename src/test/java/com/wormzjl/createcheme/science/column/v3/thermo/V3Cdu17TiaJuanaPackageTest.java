@@ -46,7 +46,7 @@ class V3Cdu17TiaJuanaPackageTest {
         assertEquals("ESTIMATED_HEAVY_RESIDUE", V3Cdu17TiaJuanaPackage.heavyResidueWarning(
                 V3Cdu17TiaJuanaPackage.HEAVY_RESIDUE_WARNING_TEMPERATURE_KELVIN, 0.0));
         assertThrows(IllegalArgumentException.class,
-                () -> V3PropertyPackageRegistry.require("createcheme:unsupported_property_package"));
+                () -> V3CatalogPropertyPackage.require("createcheme:unsupported_property_package"));
     }
 
     @Test

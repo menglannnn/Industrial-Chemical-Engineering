@@ -67,10 +67,6 @@ public final class V3TrayHydraulics {
         return new V3TrayHydraulics(diameterMetres);
     }
 
-    public double diameterMetres() {
-        return diameterMetres;
-    }
-
     /** Total, bubbling and net areas, and the weir length, of the authored diameter. */
     double area() {
         return Math.PI * diameterMetres * diameterMetres / 4.0;

@@ -7,9 +7,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import com.wormzjl.createcheme.science.column.v3.thermo.V3FeedPhase;
 import com.wormzjl.createcheme.science.column.v3.thermo.V3FlashResult;
 import com.wormzjl.createcheme.science.column.v3.thermo.V3FugacityResult;
-import com.wormzjl.createcheme.science.column.v3.thermo.V3Phase;
 import com.wormzjl.createcheme.science.column.v3.thermo.V3ThermoModel;
 import com.wormzjl.createcheme.science.column.v3.thermo.V3ThermoWorkspace;
+import com.wormzjl.createcheme.science.thermo.PengRobinsonKernel.Root;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 
@@ -30,10 +30,10 @@ class V3FiniteDifferenceJacobianTest {
                 var evaluator = new V3MeshResidualEvaluator(problem, thermo, 0);
                 var coordinates = new V3DryMeshCoordinateMap(problem);
                 for (var scale : V3FiniteDifferenceJacobian.DifferenceScale.values()) {
-                    var dense = V3FiniteDifferenceJacobian.evaluate(evaluator, coordinates, state, thermo::newWorkspace, scale);
+                    var dense = V3JacobianOracle.evaluate(evaluator, coordinates, state, thermo::newWorkspace, scale);
                     var compact = V3FiniteDifferenceJacobian.evaluateCompact(evaluator, coordinates, state,
                             thermo::newWorkspace, scale, V3SolveControl.UNBOUNDED);
-                    assertTrue(compact.storedValueCount() < dense.storedValueCount() * 0.6);
+                    assertTrue(V3JacobianOracle.storedValueCount(compact) < V3JacobianOracle.storedValueCount(dense) * 0.6);
                     double[][] snapshot = compact.values();
                     for (int row = 0; row < snapshot.length; row++) {
                         for (int column = 0; column < snapshot.length; column++) {
@@ -79,9 +79,9 @@ class V3FiniteDifferenceJacobianTest {
             var layout = new V3StageBlockLayout(problem);
             if (noise > 1e-10) {
                 assertEquals(assertThrows(IllegalStateException.class,
-                        () -> V3SimultaneousColumnSolver.toBandedMatrix(dense, layout)).getMessage(),
+                        () -> V3SimultaneousColumnSolver.toBandedMatrix(dense, layout, null)).getMessage(),
                         assertThrows(IllegalStateException.class,
-                                () -> V3SimultaneousColumnSolver.toBandedMatrix(compact, layout)).getMessage());
+                                () -> V3SimultaneousColumnSolver.toBandedMatrix(compact, layout, null)).getMessage());
             } else {
                 var residual = evaluator.evaluate(state, thermo.newWorkspace());
                 var expected = V3NormalEquations.prepare(dense, residual, layout, V3SolveControl.UNBOUNDED);
@@ -111,8 +111,8 @@ class V3FiniteDifferenceJacobianTest {
                                 Double.doubleToRawLongBits(compactDirection[index]));
                     }
                 }
-                var expectedMatrix = expected.dampedMatrix(1e-3, V3SolveControl.UNBOUNDED);
-                var actualMatrix = actual.dampedMatrix(1e-3, V3SolveControl.UNBOUNDED);
+                var expectedMatrix = expected.dampedMatrix(1e-3, V3SolveControl.UNBOUNDED, null);
+                var actualMatrix = actual.dampedMatrix(1e-3, V3SolveControl.UNBOUNDED, null);
                 for (int row = 0; row <= column; row++) for (int col = 0; col <= column; col++) {
                     assertEquals(Double.doubleToRawLongBits(expectedMatrix.get(row, col)),
                             Double.doubleToRawLongBits(actualMatrix.get(row, col)));
@@ -135,9 +135,9 @@ class V3FiniteDifferenceJacobianTest {
         V3MeshResidualEvaluator evaluator = new V3MeshResidualEvaluator(problem, thermo, 0.0);
         V3DryMeshCoordinateMap coordinates = new V3DryMeshCoordinateMap(problem);
 
-        V3FiniteDifferenceJacobian.Jacobian central = V3FiniteDifferenceJacobian.evaluate(
+        V3FiniteDifferenceJacobian.Jacobian central = V3JacobianOracle.evaluate(
                 evaluator, coordinates, state, thermo::newWorkspace, V3FiniteDifferenceJacobian.DifferenceScale.FINE);
-        V3FiniteDifferenceJacobian.Jacobian colored = V3FiniteDifferenceJacobian.evaluateStageColored(
+        V3FiniteDifferenceJacobian.Jacobian colored = V3JacobianOracle.evaluateStageColored(
                 evaluator, coordinates, state, thermo::newWorkspace, V3FiniteDifferenceJacobian.DifferenceScale.FINE);
 
         double[][] expected = central.values();
@@ -204,17 +204,17 @@ class V3FiniteDifferenceJacobianTest {
 
         @Override
         public V3FugacityResult fugacity(
-                double temperatureKelvin, double pressurePascal, double[] composition, V3Phase phase,
+                double temperatureKelvin, double pressurePascal, double[] composition, Root phase,
                 V3ThermoWorkspace workspace) {
             return new V3FugacityResult(phase, new double[] {0.0, 0.0}, 1.0,
-                    temperatureKelvin * (phase == V3Phase.LIQUID ? 100.0 : 120.0), 1, 0.1);
+                    temperatureKelvin * (phase == Root.LIQUID ? 100.0 : 120.0), 1, 0.1);
         }
 
         @Override
         public double molarEnthalpy(
-                double temperatureKelvin, double pressurePascal, double[] composition, V3Phase phase,
+                double temperatureKelvin, double pressurePascal, double[] composition, Root phase,
                 V3ThermoWorkspace workspace) {
-            return temperatureKelvin * (phase == V3Phase.LIQUID ? 100.0 : 120.0);
+            return temperatureKelvin * (phase == Root.LIQUID ? 100.0 : 120.0);
         }
 
         @Override

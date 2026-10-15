@@ -49,9 +49,9 @@ class V3WaterPropertyDerivativesTest {
         for (double temperature = 280.0; temperature <= 630.0; temperature += 5.0) {
             double difference = (V3WaterProperties.vaporizationEnthalpy(temperature + STEP_KELVIN)
                     - V3WaterProperties.vaporizationEnthalpy(temperature - STEP_KELVIN)) / (2.0 * STEP_KELVIN);
-            assertEquals(difference, V3WaterProperties.dVaporizationEnthalpyDT(temperature),
+            assertEquals(difference, V3WaterProperties.dVaporizationEnthalpyDT(com.wormzjl.createcheme.science.material.MaterialRuntime.water(), temperature),
                     TOLERANCE * Math.abs(difference), "T=" + temperature);
-            assertTrue(V3WaterProperties.dVaporizationEnthalpyDT(temperature) < 0.0, "T=" + temperature);
+            assertTrue(V3WaterProperties.dVaporizationEnthalpyDT(com.wormzjl.createcheme.science.material.MaterialRuntime.water(), temperature) < 0.0, "T=" + temperature);
         }
     }
 
@@ -71,7 +71,7 @@ class V3WaterPropertyDerivativesTest {
         for (double temperature : new double[] {
                 V3WaterProperties.criticalTemperature(), 700.0, V3WaterProperties.maximumTemperature()}) {
             assertEquals(0.0, V3WaterProperties.vaporizationEnthalpy(temperature), 0.0);
-            assertEquals(0.0, V3WaterProperties.dVaporizationEnthalpyDT(temperature), 0.0);
+            assertEquals(0.0, V3WaterProperties.dVaporizationEnthalpyDT(com.wormzjl.createcheme.science.material.MaterialRuntime.water(), temperature), 0.0);
         }
     }
 
@@ -82,7 +82,7 @@ class V3WaterPropertyDerivativesTest {
             assertThrows(IllegalArgumentException.class, () -> V3WaterProperties.vaporMolarEnthalpy(outside));
             assertThrows(IllegalArgumentException.class, () -> V3WaterProperties.dVaporMolarEnthalpyDT(outside));
             assertThrows(IllegalArgumentException.class, () -> V3WaterProperties.vaporizationEnthalpy(outside));
-            assertThrows(IllegalArgumentException.class, () -> V3WaterProperties.dVaporizationEnthalpyDT(outside));
+            assertThrows(IllegalArgumentException.class, () -> V3WaterProperties.dVaporizationEnthalpyDT(com.wormzjl.createcheme.science.material.MaterialRuntime.water(), outside));
             assertThrows(IllegalArgumentException.class, () -> V3WaterProperties.dLiquidMolarEnthalpyDT(outside));
         }
         for (double outside : new double[] {273.0, 648.0, Double.NaN}) {

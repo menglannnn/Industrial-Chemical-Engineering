@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.wormzjl.createcheme.science.column.v3.thermo.V3WaterProperties;
+import com.wormzjl.createcheme.science.thermo.PengRobinsonKernel.Root;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 
@@ -170,7 +171,7 @@ class V3FreeWaterTrayTest {
                 new double[] {30.0, 60.0}, 400.0, 3, 2, TOP_PRESSURE_PASCAL, 750.0, List.of(
                         new V3ColumnSpecification.CondenserOutletTemperature(400.0),
                         new V3ColumnSpecification.OrganicRefluxRatio(1.0),
-                        new V3ColumnSpecification.ReboilerDuty(1.0)), List.of(), List.of()),
+                        new V3ColumnSpecification.ReboilerDuty(1.0)), List.of(), List.of(), List.of(), V3ColumnInput.PRESCRIBED_DROP_DIAMETER),
                 V3CondenserPhaseBranch.TWO_PHASE);
 
         assertFalse(problem.hasWetTrays());
@@ -357,7 +358,7 @@ class V3FreeWaterTrayTest {
                         new V3ColumnSpecification.CondenserOutletTemperature(400.0),
                         new V3ColumnSpecification.OrganicRefluxRatio(1.0),
                         new V3ColumnSpecification.ReboilerDuty(0.0)), List.of(),
-                List.of(new V3SteamFeedSpec(4, STEAM_MOL_PER_SECOND, 520.0))),
+                List.of(new V3SteamFeedSpec(4, STEAM_MOL_PER_SECOND, 520.0)), List.of(), V3ColumnInput.PRESCRIBED_DROP_DIAMETER),
                 V3CondenserPhaseBranch.TWO_PHASE);
     }
 
@@ -392,7 +393,7 @@ class V3FreeWaterTrayTest {
         @Override
         public com.wormzjl.createcheme.science.column.v3.thermo.V3FugacityResult fugacity(
                 double temperatureKelvin, double pressurePascal, double[] composition,
-                com.wormzjl.createcheme.science.column.v3.thermo.V3Phase phase,
+                Root phase,
                 com.wormzjl.createcheme.science.column.v3.thermo.V3ThermoWorkspace workspace) {
             return new com.wormzjl.createcheme.science.column.v3.thermo.V3FugacityResult(phase,
                     new double[] {0.0, 0.0}, 1.0,
@@ -402,7 +403,7 @@ class V3FreeWaterTrayTest {
         @Override
         public double molarEnthalpy(
                 double temperatureKelvin, double pressurePascal, double[] composition,
-                com.wormzjl.createcheme.science.column.v3.thermo.V3Phase phase,
+                Root phase,
                 com.wormzjl.createcheme.science.column.v3.thermo.V3ThermoWorkspace workspace) {
             return temperatureKelvin * (30.0 * composition[0] + 40.0 * composition[1]);
         }

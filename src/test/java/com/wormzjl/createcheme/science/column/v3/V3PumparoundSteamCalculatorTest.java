@@ -6,9 +6,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.wormzjl.createcheme.science.column.v3.thermo.V3CrudeFeed;
 import com.wormzjl.createcheme.science.column.v3.thermo.V3PengRobinsonThermo;
-import com.wormzjl.createcheme.science.column.v3.thermo.V3Phase;
 import com.wormzjl.createcheme.science.column.v3.thermo.V3ThermoWorkspace;
 import com.wormzjl.createcheme.science.column.v3.thermo.V3WaterProperties;
+import com.wormzjl.createcheme.science.thermo.PengRobinsonKernel.Root;
 import com.wormzjl.createcheme.world.level.block.entity.ColumnCalculatorV3BlockEntity;
 import java.util.List;
 import java.util.Locale;
@@ -219,7 +219,7 @@ class V3PumparoundSteamCalculatorTest {
         for (int component = 0; component < componentCount; component++) {
             composition[component] = fractions.get(component).moleFraction() / (1.0 - waterFraction);
         }
-        V3Phase phase = stream.vaporMoleFraction() == 1.0 ? V3Phase.VAPOR : V3Phase.LIQUID;
+        Root phase = stream.vaporMoleFraction() == 1.0 ? Root.VAPOR : Root.LIQUID;
         return water + hydrocarbonFlow
                 * thermo.molarEnthalpy(stream.temperatureKelvin(), stream.pressurePascal(), composition, phase, workspace);
     }
@@ -238,7 +238,7 @@ class V3PumparoundSteamCalculatorTest {
             if (System.nanoTime() - started >= BUDGET_NANOS) {
                 throw new AssertionError("wet pumparound case " + label + " exceeded its cold budget");
             }
-        });
+        }, 0, 0, V3ColumnCalculator.DEFAULT_LIQUID_SUPPLY_SCREEN_RATIO);
         double seconds = (System.nanoTime() - started) / 1.0e9;
         System.out.printf(Locale.ROOT, "wet pumparound case %-38s %7.2f s  %s%n", label, seconds,
                 outcome instanceof V3ColumnOutcome.Success success
@@ -266,7 +266,7 @@ class V3PumparoundSteamCalculatorTest {
                         new V3ColumnSpecification.OrganicRefluxRatio(4.17),
                         new V3ColumnSpecification.ReboilerDuty(reboilerDutyWatts)), sideDraws,
                 List.of(new V3SteamFeedSpec(STAGE_COUNT + 1, SUMP_STEAM_MOL_PER_SECOND,
-                        SUMP_STEAM_TEMPERATURE_KELVIN)), pumparounds);
+                        SUMP_STEAM_TEMPERATURE_KELVIN)), pumparounds, V3ColumnInput.PRESCRIBED_DROP_DIAMETER);
     }
 
     private record Run(String label, V3ColumnOutcome outcome, double seconds) {

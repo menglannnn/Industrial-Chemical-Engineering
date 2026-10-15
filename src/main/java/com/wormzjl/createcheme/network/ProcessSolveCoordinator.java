@@ -68,23 +68,17 @@ public final class ProcessSolveCoordinator {
 
     private static void route(MinecraftServer server, List<ProcessSolveCompletion> completions) {
         for (ProcessSolveCompletion completion : completions) {
-            if (completion instanceof V3ColumnCompletion v3) {
-                ColumnV3Network.handleRoutedCompletion(server, v3);
-            } else if(completion instanceof ProcessSolveServices.FluidIslandCompletion fluid) {
-                fluid.request().handler().completed(fluid);
-            } else {
-                throw new IllegalStateException("Unknown process-solve completion family");
+            switch (completion) {
+                case V3ColumnCompletion v3 -> ColumnV3Network.handleRoutedCompletion(server, v3);
+                case ProcessSolveServices.FluidIslandCompletion fluid -> fluid.request().handler().completed(fluid);
             }
         }
     }
 
     private static void routeAbandoned(MinecraftServer server, ProcessSolveRequest request) {
-        if (request instanceof V3ColumnRequest v3) {
-            ColumnV3Network.handleRoutedAbandoned(server, v3);
-        } else if(request instanceof ProcessSolveServices.FluidIslandRequest fluid) {
-            fluid.handler().abandoned(fluid);
-        } else {
-            throw new IllegalStateException("Unknown process-solve request family");
+        switch (request) {
+            case V3ColumnRequest v3 -> ColumnV3Network.handleRoutedAbandoned(server, v3);
+            case ProcessSolveServices.FluidIslandRequest fluid -> fluid.handler().abandoned(fluid);
         }
     }
 }

@@ -69,10 +69,6 @@ public final class V3ColumnTopology {
         return node != condenserNode() || condenserPhaseBranch != V3CondenserPhaseBranch.LIQUID_ONLY;
     }
 
-    public boolean hasVaporLiquidEquilibriumEquation(int node) {
-        return hasLiquidPhase(node) && hasVaporPhase(node);
-    }
-
     public boolean hasTemperatureUnknown(int node) {
         requireNode(node);
         return node != condenserNode();

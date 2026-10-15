@@ -81,4 +81,24 @@ class V3SideDrawContractTest {
                 new V3ColumnSpecification.CondenserOutletTemperature(332.15),
                 new V3ColumnSpecification.OrganicRefluxRatio(4.17), new V3ColumnSpecification.ReboilerDuty(8_000_000)), draws);
     }
+
+    // Merged from V3SideDrawsTest.
+    @Test
+    void centralizesLiquidTotalAndWithdrawalArithmetic() {
+        V3ColumnProblem problem = V3ColumnProblemResolver.resolve(
+                V3SideDrawContractTest.input(java.util.List.of()), V3CondenserPhaseBranch.TWO_PHASE);
+        double[][] liquid = new double[problem.topology().nodeCount()][2];
+        double[][] vapor = new double[problem.topology().nodeCount()][2];
+        double[] temperatures = new double[problem.topology().nodeCount()];
+        for (int node = 0; node < temperatures.length; node++) {
+            temperatures[node] = 400;
+            liquid[node] = new double[] {30, 70};
+            vapor[node] = new double[] {40, 60};
+        }
+        V3DryMeshState state = new V3DryMeshState(problem.topology(), 2, liquid, vapor, temperatures);
+        V3SideDrawSpec.Withdrawal withdrawal = V3SideDrawSpec.withdrawal(state, 2, 25);
+        assertEquals(100, withdrawal.liquidTotalMolPerSecond());
+        assertEquals(0.25, withdrawal.fraction());
+        assertThrows(IllegalArgumentException.class, () -> V3SideDrawSpec.withdrawal(state, 2, -1));
+    }
 }

@@ -137,7 +137,7 @@ class V3EnergyShiftPredictorTest {
             if (System.nanoTime() - started >= BUDGET_NANOS) {
                 throw new AssertionError("the three-cooler no-draw case exceeded its cold budget");
             }
-        });
+        }, 0, 0, V3ColumnCalculator.DEFAULT_LIQUID_SUPPLY_SCREEN_RATIO);
         System.out.println("Three-cooler no-draw case: " + (System.nanoTime() - started) / 1e9 + " s; "
                 + outcome.diagnostics().solvePath() + "; " + outcome.diagnostics().events());
 
@@ -185,6 +185,6 @@ class V3EnergyShiftPredictorTest {
                         new V3ColumnSpecification.ReboilerDuty(8_000_000.0)), List.of(), List.of(), List.of(
                         new V3PumparoundSpec(6, 8, -12.84e6, V3PumparoundSpec.Split.UNIFORM),
                         new V3PumparoundSpec(13, 15, -17.89e6, V3PumparoundSpec.Split.UNIFORM),
-                        new V3PumparoundSpec(20, 22, -11.20e6, V3PumparoundSpec.Split.UNIFORM)));
+                        new V3PumparoundSpec(20, 22, -11.20e6, V3PumparoundSpec.Split.UNIFORM)), V3ColumnInput.PRESCRIBED_DROP_DIAMETER);
     }
 }

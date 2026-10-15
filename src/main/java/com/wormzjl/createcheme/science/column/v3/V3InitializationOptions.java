@@ -4,39 +4,12 @@ import java.util.Objects;
 
 /** Immutable admission snapshot. Neural budgets never replace the caller's overall deadline. */
 public record V3InitializationOptions(Mode mode, WetStart wetStart, int maximumIterations, int budgetMilliseconds,
-        Correction correction, Recovery recovery, int recoveryBudgetMilliseconds) {
+        Correction correction) {
     public enum Mode { LNN_FIRST, LNN_ONLY, CURRENT_ONLY }
     public enum WetStart { AUTO, DRY_START, PREDICTED_WET }
 
     /**
-     * What a failed learned correction may do with the state it reached, before its route ends.
-     *
-     * <p>{@link #NONE} is the frozen production rule and the default: a learned pass that fails publishes its
-     * failure, {@code LNN_ONLY} stops there and {@code LNN_FIRST} restarts classically from the original
-     * input with no state carried over.</p>
-     *
-     * <p>{@link #RAMP_HANDOFF} gives that terminal state one more use. An input carrying side draws, stage
-     * heat or steam is solved classically by continuing a feature-free surrogate up to the authored
-     * parameters in bounded rungs, and on the columns the learned seed cannot close by itself that ramp is
-     * what closes them. The handoff re-solves the same feature-free surrogate from the failed learned state
-     * instead of from a cold stage continuation, and, if that surrogate is accepted, hands it to the
-     * unchanged ramp. It is skipped entirely when the learned attempt never produced a state — a rejected
-     * seed, an out-of-coverage request or a request-only typed failure — and when the input carries none of
-     * the three features, because then there is no ramp to hand anything to.</p>
-     *
-     * <p>The handoff spends the caller's own request deadline, never the learned allowance, under the
-     * sub-wall {@link #recoveryBudgetMilliseconds()} states; it runs before the classical restart in
-     * {@code LNN_FIRST} and as the last step in {@code LNN_ONLY}. A handoff that fails changes nothing about
-     * what is published except the diagnostic event that records what it cost.</p>
-     */
-    public enum Recovery { NONE, RAMP_HANDOFF }
-
-    /**
      * How one learned correction attempt is allowed to spend Newton iterations.
-     *
-     * <p>{@link #WALLS} is the frozen production rule and the default: a hard iteration cap inside a hard
-     * wall-clock allowance, with no progress test of any kind. It reproduces the historical path bit for
-     * bit, because every field it would consult is zero.</p>
      *
      * <p>A progress rule keeps the same base cap and, when an attempt reaches it, extends it in blocks
      * while the maximum scaled residual is still falling by {@code contractionFactor} over
@@ -46,26 +19,22 @@ public record V3InitializationOptions(Mode mode, WetStart wetStart, int maximumI
      * instead of spending the rest of its cap. Extending and stopping are one rule, not two — the time the
      * stop returns is what pays for the time the extension spends.</p>
      *
-     * @param extensionBlock iterations added per granted block, or zero for the frozen hard cap
+     * @param extensionBlock iterations added per granted block
      * @param extensionMaximumIterations the cap an extended attempt may never exceed
      * @param contractionWindow iterations the extension's contraction test looks back over
      * @param contractionFactor the fraction of its earlier value the residual must have reached
-     * @param stallWindow iterations the early stop looks back over, or zero to never stop early
+     * @param stallWindow iterations the early stop looks back over
      * @param stallFactor the fraction an attempt must beat to continue
      * @param stallResidualFloor residual below which the early stop never fires
      */
     public record Correction(int extensionBlock, int extensionMaximumIterations, int contractionWindow,
             double contractionFactor, int stallWindow, double stallFactor, double stallResidualFloor) {
-        /** The frozen production rule: walls only. */
-        public static final Correction WALLS = new Correction(0, 0, 0, 0.0, 0, 0.0, 0.0);
-
         /**
          * The qualified progress rule, and the learned default since the Transformer promotion.
          *
          * <p>Extension blocks of eight iterations up to a cap of forty-eight, and an early stop when the
          * maximum scaled residual has not fallen below nine tenths of its value eight iterations ago while
-         * still above 1e-6. The base cap of sixteen and the two-second allowance are unchanged, and
-         * {@link #WALLS} remains available for a caller that wants the frozen path.</p>
+         * still above 1e-6. The base cap of sixteen and the two-second allowance are unchanged.</p>
          *
          * <p>The contraction factor is <b>1.0</b>: an attempt that reaches its cap is extended unless its
          * residual actually rose over the window. The neural-budget study registered 0.5 — the residual had
@@ -78,63 +47,35 @@ public record V3InitializationOptions(Mode mode, WetStart wetStart, int maximumI
          */
         public static final Correction PROGRESS = new Correction(8, 48, 8, 1.0, 8, 0.9, 1e-6);
 
-        /** The rule the Transformer promotion shipped; kept so the archived studies can state their own. */
-        public static final Correction PROMOTED_2026_09_14 = new Correction(8, 48, 8, 0.5, 8, 0.9, 1e-6);
-
         public Correction {
-            if (extensionBlock < 0 || extensionMaximumIterations < 0 || contractionWindow < 0 || stallWindow < 0
+            if (extensionBlock < 1 || extensionMaximumIterations < 1 || contractionWindow < 1 || stallWindow < 1
                     || extensionMaximumIterations > V3ColumnCalculator.MAXIMUM_NEWTON_ITERATIONS
                     || !Double.isFinite(contractionFactor) || contractionFactor < 0.0 || contractionFactor > 1.0
                     || !Double.isFinite(stallFactor) || stallFactor < 0.0 || stallFactor > 1.0
                     || !Double.isFinite(stallResidualFloor) || stallResidualFloor < 0.0) {
                 throw new IllegalArgumentException("Invalid neural correction progress rule");
             }
-            if (extensionBlock > 0 && (contractionWindow < 1 || extensionMaximumIterations < 1)) {
-                throw new IllegalArgumentException("A neural correction extension needs a window and a cap");
-            }
         }
-
-        public boolean extendsAttempts() { return extensionBlock > 0; }
-
-        public boolean stopsEarly() { return stallWindow > 0; }
     }
 
-    /** The learned default: the bundled Transformer's qualified walls and progress rule. */
-    public static final V3InitializationOptions DEFAULT =
-            new V3InitializationOptions(Mode.LNN_FIRST, WetStart.AUTO, 16, 2_000, Correction.PROGRESS);
-    /** The classical route. It runs no learned correction, so no progress rule applies to it. */
+    /** The classical route. It runs no learned correction, so its progress rule is never consulted. */
     public static final V3InitializationOptions CURRENT =
-            new V3InitializationOptions(Mode.CURRENT_ONLY, WetStart.DRY_START, 16, 2_000);
+            new V3InitializationOptions(Mode.CURRENT_ONLY, WetStart.DRY_START, 16, 2_000, Correction.PROGRESS);
 
-    /** The production walls; every caller that does not ask for a progress rule gets the frozen path. */
+    /** The qualified progress rule; kept for the runtime command test, which states no correction. */
     public V3InitializationOptions(Mode mode, WetStart wetStart, int maximumIterations, int budgetMilliseconds) {
-        this(mode, wetStart, maximumIterations, budgetMilliseconds, Correction.WALLS);
-    }
-
-    /** The frozen recovery rule; a caller that does not ask for one keeps the historical failure path. */
-    public V3InitializationOptions(Mode mode, WetStart wetStart, int maximumIterations, int budgetMilliseconds,
-            Correction correction) {
-        this(mode, wetStart, maximumIterations, budgetMilliseconds, correction, Recovery.NONE);
-    }
-
-    /** A recovery at its default allowance; only a study states a different one. */
-    public V3InitializationOptions(Mode mode, WetStart wetStart, int maximumIterations, int budgetMilliseconds,
-            Correction correction, Recovery recovery) {
-        this(mode, wetStart, maximumIterations, budgetMilliseconds, correction, recovery,
-                Math.toIntExact(V3ColumnCalculator.NEURAL_RAMP_HANDOFF_BUDGET_MILLIS));
+        this(mode, wetStart, maximumIterations, budgetMilliseconds, Correction.PROGRESS);
     }
 
     public V3InitializationOptions {
         Objects.requireNonNull(mode, "mode");
         Objects.requireNonNull(wetStart, "wetStart");
         Objects.requireNonNull(correction, "correction");
-        Objects.requireNonNull(recovery, "recovery");
         if (maximumIterations < 1 || maximumIterations > V3ColumnCalculator.MAXIMUM_NEWTON_ITERATIONS
-                || budgetMilliseconds < 1 || budgetMilliseconds > 60_000
-                || recoveryBudgetMilliseconds < 1 || recoveryBudgetMilliseconds > 60_000) {
+                || budgetMilliseconds < 1 || budgetMilliseconds > 60_000) {
             throw new IllegalArgumentException("Invalid neural initialization budget");
         }
-        if (correction.extendsAttempts() && correction.extensionMaximumIterations() < maximumIterations) {
+        if (correction.extensionMaximumIterations() < maximumIterations) {
             throw new IllegalArgumentException("A neural correction extension cannot lower the base cap");
         }
     }

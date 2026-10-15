@@ -8,8 +8,8 @@ import com.wormzjl.createcheme.science.column.v3.thermo.V3PengRobinsonThermo;
 import com.wormzjl.createcheme.science.column.v3.thermo.V3FeedPhase;
 import com.wormzjl.createcheme.science.column.v3.thermo.V3FugacityResult;
 import com.wormzjl.createcheme.science.column.v3.thermo.V3FlashResult;
-import com.wormzjl.createcheme.science.column.v3.thermo.V3Phase;
 import com.wormzjl.createcheme.science.column.v3.thermo.V3WaterProperties;
+import com.wormzjl.createcheme.science.thermo.PengRobinsonKernel.Root;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -59,10 +59,6 @@ final class V3AcceptanceAuditor {
     /** The residual evaluator's own energy row scale, {@code max(1, F_total * 1e5 W)}. */
     private double energyScale() {
         return Math.max(1.0, problem.activeComponentBasis().totalFeedFlowMolPerSecond() * 100_000.0);
-    }
-
-    V3AcceptanceAudit audit(V3DryMeshState state, V3ThermoWorkspace workspace) {
-        return audit(state, workspace, V3SolveControl.UNBOUNDED);
     }
 
     V3AcceptanceAudit audit(V3DryMeshState state, V3ThermoWorkspace workspace, V3SolveControl control) {
@@ -143,7 +139,7 @@ final class V3AcceptanceAuditor {
             liquidEnergy[node] = terms.liquidPhaseEnergy();
             vaporEnergy[node] = terms.vaporPhaseEnergy();
         }
-        double[] stageHeat = V3Pumparounds.nodeDutyWatts(problem.input(), topology);
+        double[] stageHeat = V3PumparoundSpec.nodeDutyWatts(problem.input(), topology);
         double stageHeatTotal = 0.0;
         for (double duty : stageHeat) stageHeatTotal += duty;
         double freeWater = V3ColumnDutyLedger.freeWaterEnergyWatts(problem, state);
@@ -156,7 +152,7 @@ final class V3AcceptanceAuditor {
         double bottoms = liquidEnergy[topology.reboilerNode()];
         double sideDraws = 0.0;
         for (V3SideDrawSpec draw : problem.input().sideDraws()) {
-            sideDraws += V3SideDraws.withdrawal(state, draw.trayNumber(), draw.molarFlowMolPerSecond()).fraction()
+            sideDraws += V3SideDrawSpec.withdrawal(state, draw.trayNumber(), draw.molarFlowMolPerSecond()).fraction()
                     * liquidEnergy[draw.trayNumber()];
         }
         double closure = feed + reboiler + steam + stageHeatTotal + condenser
@@ -189,13 +185,6 @@ final class V3AcceptanceAuditor {
      * evaluator's condenser terms, so a condenser vapor outlet that drops or double-counts the water it
      * publishes fails this check instead of silently shifting the duty the ledger reports.</p>
      */
-    static V3AcceptanceAudit.Check condenserEnergyBalance(
-            V3ColumnProblem problem, V3ThermoModel thermo, V3DryMeshState state, V3ThermoWorkspace workspace,
-            double publishedCondenserWatts) {
-        return condenserEnergyBalance(problem, thermo, state, workspace, publishedCondenserWatts,
-                V3ConvergenceEvidence.MAXIMUM_LOG_FLOW_CHANGE);
-    }
-
     static V3AcceptanceAudit.Check condenserEnergyBalance(
             V3ColumnProblem problem, V3ThermoModel thermo, V3DryMeshState state, V3ThermoWorkspace workspace,
             double publishedCondenserWatts, double closureTolerance) {
@@ -247,7 +236,7 @@ final class V3AcceptanceAuditor {
         if (!(total > 0.0) || !Double.isFinite(total)) return 0.0;
         for (int component = 0; component < composition.length; component++) composition[component] /= total;
         return total * thermo.molarEnthalpy(state.temperatureKelvin(node), problem.nodePressurePascal(node),
-                composition, liquid ? V3Phase.LIQUID : V3Phase.VAPOR, workspace);
+                composition, liquid ? Root.LIQUID : Root.VAPOR, workspace);
     }
 
     /** Advisory only: a cooled tray that condenses nearly all of its arriving vapor is at its physical cap. */
@@ -494,7 +483,7 @@ final class V3AcceptanceAuditor {
         boolean valid = true;
         for (V3SideDrawSpec draw : problem.input().sideDraws()) {
             try {
-                V3SideDraws.Withdrawal withdrawal = V3SideDraws.withdrawal(
+                V3SideDrawSpec.Withdrawal withdrawal = V3SideDrawSpec.withdrawal(
                         state, draw.trayNumber(), draw.molarFlowMolPerSecond());
                 valid &= withdrawal.liquidTotalMolPerSecond() > draw.molarFlowMolPerSecond();
                 maximum = Math.max(maximum, withdrawal.fraction());
@@ -734,7 +723,7 @@ final class V3AcceptanceAuditor {
                 || !(arrivingWater > 0.0) || !Double.isFinite(arrivingWater)) {
             return IndependentCondenserFlash.unavailable(overall.length);
         }
-        if (problem.waterCondenserRegime() == V3WaterCondenserRegime.FREE_WATER) {
+        if (problem.waterCondenserRegime() == V3ColumnProblem.WaterCondenserRegime.FREE_WATER) {
             double saturationFraction = V3WaterProperties.saturationPressurePascal(state.temperatureKelvin(condenser))
                     / problem.nodePressurePascal(condenser);
             IndependentCondenserFlash saturated = flashAtWaterMoleFraction(
@@ -766,9 +755,9 @@ final class V3AcceptanceAuditor {
         if (liquid == null || vapor == null) return IndependentCondenserFlash.unavailable(overall.length);
         for (int iteration = 0; iteration < 256; iteration++) {
             V3FugacityResult liquidFugacity = thermo.fugacity(state.temperatureKelvin(condenser), totalPressure,
-                    liquid, V3Phase.LIQUID, workspace);
+                    liquid, Root.LIQUID, workspace);
             V3FugacityResult vaporFugacity = thermo.fugacity(state.temperatureKelvin(condenser), totalPressure,
-                    vapor, V3Phase.VAPOR, workspace);
+                    vapor, Root.VAPOR, workspace);
             double[] kValues = new double[overall.length];
             for (int component = 0; component < kValues.length; component++) {
                 kValues[component] = DeterministicMath.exp(liquidFugacity.logFugacityCoefficient(component)
@@ -877,10 +866,6 @@ final class V3AcceptanceAuditor {
             result[index] = current[index] + fraction * (target[index] - current[index]);
         }
         return result;
-    }
-
-    private double independentWaterSlipCoefficient() {
-        return independentWaterSlipCoefficient(problem);
     }
 
     private static double independentWaterSlipCoefficient(V3ColumnProblem problem) {

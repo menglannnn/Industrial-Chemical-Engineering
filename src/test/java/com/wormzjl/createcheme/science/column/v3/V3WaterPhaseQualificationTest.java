@@ -23,7 +23,7 @@ class V3WaterPhaseQualificationTest {
                     base.feedStageNumber(), base.topPressurePascal(), base.stagePressureDropPascal(),
                     base.specifications().stream().map(s -> s instanceof V3ColumnSpecification.CondenserOutletTemperature
                             ? (V3ColumnSpecification)new V3ColumnSpecification.CondenserOutletTemperature(tc) : s).toList(),
-                    base.sideDraws(), base.steamFeeds(), base.pumparounds());
+                    base.sideDraws(), base.steamFeeds(), base.pumparounds(), V3ColumnInput.PRESCRIBED_DROP_DIAMETER);
             var gson = new Gson();
             return new V3NeuralSeed(input, com.wormzjl.createcheme.science.material.MaterialRuntime.current().requirePackage(input.packageId()).scientificRevision(),
                     V3CondenserPhaseBranch.valueOf(seed.get("branch").getAsString()),
@@ -61,7 +61,8 @@ class V3WaterPhaseQualificationTest {
             public Optional<V3NeuralSeed> predict(V3ColumnInput input, V3SolveControl control) { return Optional.of(seed); }
         };
         var outcome = V3ColumnCalculator.calculateWithAcceptedProfile(seed.input(), () -> {},
-                new V3InitializationOptions(V3InitializationOptions.Mode.LNN_ONLY, V3InitializationOptions.WetStart.PREDICTED_WET, 16, 10_000),
+                new V3InitializationOptions(V3InitializationOptions.Mode.LNN_ONLY, V3InitializationOptions.WetStart.PREDICTED_WET, 16, 10_000,
+                        V3InitializationOptions.Correction.PROGRESS),
                 fixed, captured::set);
         assertInstanceOf(V3ColumnOutcome.Success.class, outcome, outcome::toString);
         assertNotNull(captured.get());

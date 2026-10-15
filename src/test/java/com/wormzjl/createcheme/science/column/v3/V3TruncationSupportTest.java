@@ -11,6 +11,7 @@ import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
+import static org.junit.jupiter.api.Assertions.*;
 
 class V3TruncationSupportTest {
     /**
@@ -25,11 +26,11 @@ class V3TruncationSupportTest {
 
         assertSame(problem.truncationSupport(), support);
         assertSame(support, V3TruncationSupport.derive(problem, -0.0, populated));
-        assertSame(problem, V3ColumnProblemResolver.withTruncation(problem, support));
+        assertSame(problem, V3ColumnProblemResolver.withTruncation(problem, support, V3WetTraySet.dry(problem.topology())));
         assertSame(problem.degreeOfFreedomLedger(),
-                V3ColumnProblemResolver.withTruncation(problem, support).degreeOfFreedomLedger());
+                V3ColumnProblemResolver.withTruncation(problem, support, V3WetTraySet.dry(problem.topology())).degreeOfFreedomLedger());
         assertSame(problem, V3ColumnProblemResolver.withTruncation(problem,
-                V3TruncationSupport.identity(problem.topology(), 2)));
+                V3TruncationSupport.identity(problem.topology(), 2), V3WetTraySet.dry(problem.topology())));
         assertEquals(12, support.totalPointCount());
         assertEquals(0, support.truncatedPointCount());
         assertEquals(0, support.closurePrunedCount());
@@ -132,7 +133,7 @@ class V3TruncationSupportTest {
             assertEquals(0.0, projected.vaporFlow(node, 0));
         }
         assertThrows(IllegalArgumentException.class,
-                () -> V3ColumnProblemResolver.withTruncation(noReflux, withReflux));
+                () -> V3ColumnProblemResolver.withTruncation(noReflux, withReflux, V3WetTraySet.dry(noReflux.topology())));
     }
 
     @ParameterizedTest
@@ -154,7 +155,7 @@ class V3TruncationSupportTest {
             assertEquals(0.0, projected.liquidFlow(node, 0));
             assertEquals(0.0, projected.vaporFlow(node, 0));
         }
-        assertTrue(V3ColumnProblemResolver.withTruncation(problem, support).degreeOfFreedomLedger().isValid());
+        assertTrue(V3ColumnProblemResolver.withTruncation(problem, support, V3WetTraySet.dry(problem.topology())).degreeOfFreedomLedger().isValid());
     }
 
     /**
@@ -182,7 +183,7 @@ class V3TruncationSupportTest {
         assertEquals(0, support.closurePrunedCount());
         assertEquals(4, support.truncatedPointCount());
         assertEquals(1, support.onePhasePointCount());
-        assertTrue(V3ColumnProblemResolver.withTruncation(problem, support).degreeOfFreedomLedger().isValid());
+        assertTrue(V3ColumnProblemResolver.withTruncation(problem, support, V3WetTraySet.dry(problem.topology())).degreeOfFreedomLedger().isValid());
     }
 
     @Test
@@ -215,7 +216,7 @@ class V3TruncationSupportTest {
         assertEquals(0.01, support.cutoffMoleFraction());
         assertTrue(support.note().contains("identity"));
         assertTrue(support.note().length() <= 256);
-        assertSame(problem, V3ColumnProblemResolver.withTruncation(problem, support));
+        assertSame(problem, V3ColumnProblemResolver.withTruncation(problem, support, V3WetTraySet.dry(problem.topology())));
     }
 
     @Test
@@ -283,5 +284,52 @@ class V3TruncationSupportTest {
         double[] temperatures = new double[problem.topology().nodeCount()];
         Arrays.fill(temperatures, 400.0);
         return temperatures;
+    }
+
+    // Merged from V3TruncationAuditTest.
+    @Test
+    void auditConsumesFrozenSupportAndAcceptsTheRecomputedSmallDefect() {
+        V3TruncationNumericsTest.Fixture fixture = V3TruncationNumericsTest.fixture(V3CondenserPhaseBranch.TWO_PHASE, 0.01);
+        V3TruncationSupport support = fixture.problem().truncationSupport();
+        V3AcceptanceAudit audit = new V3AcceptanceAuditor(fixture.problem(), fixture.thermo(), 0.0)
+                .audit(fixture.exact(), fixture.thermo().newWorkspace(), V3SolveControl.UNBOUNDED);
+        assertTrue(audit.accepted(), audit::toString);
+        V3AcceptanceAudit.Check defect = defectCheck(audit);
+        assertEquals(0.01 / 90.01, defect.value(), 1.0e-16);
+        // The floor support adds its own per-sink-edge construction bound to the cutoff budget: 4.4e-13 here.
+        assertEquals(0.08, defect.limit(), 1.0e-9);
+        assertSame(support, fixture.problem().truncationSupport());
+        assertEquals(5, support.truncatedPointCount());
+    }
+
+    @Test
+    void auditRejectsAnOversizedDefectEvenWhenAllRetainedMeshRowsClose() {
+        V3TruncationNumericsTest.Fixture fixture = V3TruncationNumericsTest.fixture(V3CondenserPhaseBranch.TWO_PHASE, 10.0);
+        V3AcceptanceAudit audit = new V3AcceptanceAuditor(fixture.problem(), fixture.thermo(), 0.0)
+                .audit(fixture.exact(), fixture.thermo().newWorkspace(), V3SolveControl.UNBOUNDED);
+        assertFalse(audit.accepted());
+        assertEquals(0.1, defectCheck(audit).value(), 1.0e-15);
+        assertFalse(defectCheck(audit).passed());
+        assertTrue(audit.checks().stream().filter(check -> !check.family().equals("TRUNCATION_MASS_DEFECT"))
+                .allMatch(V3AcceptanceAudit.Check::passed));
+    }
+
+    @Test
+    void digestIncludesTheRequestedCutoffButNotPathDependentSupportAndPreservesZeroEncoding() {
+        V3TruncationNumericsTest.Fixture fixture = V3TruncationNumericsTest.fixture(V3CondenserPhaseBranch.TWO_PHASE, 0.01);
+        V3InputDigest original = V3InputDigest.of(fixture.original(), "mesh-r2", "data", "assumptions");
+        assertEquals(original, V3InputDigest.of(fixture.original(), "mesh-r2", "data", "assumptions", 0.0));
+        assertEquals(original, V3InputDigest.of(fixture.original(), "mesh-r2", "data", "assumptions", -0.0));
+        V3InputDigest enabled = V3InputDigest.of(fixture.problem(), "mesh-r3", "data", "assumptions", 1.0e-6);
+        assertEquals(enabled, V3InputDigest.of(fixture.original(), "mesh-r3", "data", "assumptions", 1.0e-6));
+        assertNotEquals(original, enabled);
+        assertNotEquals(enabled, V3InputDigest.of(fixture.problem(), "mesh-r3", "data", "assumptions", 1.0e-5));
+        assertThrows(IllegalArgumentException.class,
+                () -> V3InputDigest.of(fixture.problem(), "mesh-r3", "data", "assumptions", Double.NaN));
+    }
+
+    private static V3AcceptanceAudit.Check defectCheck(V3AcceptanceAudit audit) {
+        return audit.checks().stream().filter(check -> check.family().equals("TRUNCATION_MASS_DEFECT"))
+                .findFirst().orElseThrow();
     }
 }

@@ -21,8 +21,8 @@ class V3BundledRegroupedModelTest {
         try(var p=getClass().getResourceAsStream("/data/createcheme/neural/v3-column-transformer-regrouped.payload.json");var s=getClass().getResourceAsStream("/data/createcheme/neural/v3-column-transformer-regrouped.sidecar.json")) {
             assertNotNull(p);assertNotNull(s);payload=p.readAllBytes();sidecar=s.readAllBytes();
         }
-        assertEquals(fixture.get("payloadSha256").getAsString(),V3TransformerArtifact.sha256(payload));
-        var model=V3TransformerArtifact.read(new ByteArrayInputStream(payload),new ByteArrayInputStream(sidecar)).initializer();
+        assertEquals(fixture.get("payloadSha256").getAsString(),V3NeuralRegistry.TransformerArtifact.sha256(payload));
+        var model=V3NeuralRegistry.TransformerArtifact.read(new ByteArrayInputStream(payload),new ByteArrayInputStream(sidecar)).initializer();
         assertEquals(88852,model.parameterCount());
         assertEquals(fixture.get("modelId").getAsString(),model.modelId());
         for(var entry:fixture.getAsJsonArray("fixtures")) {
@@ -67,6 +67,6 @@ class V3BundledRegroupedModelTest {
                 json.get("stagePressureDropPascal").getAsDouble(),specs,
                 Arrays.asList(JSON.fromJson(json.get("sideDraws"),V3SideDrawSpec[].class)),
                 Arrays.asList(JSON.fromJson(json.get("steamFeeds"),V3SteamFeedSpec[].class)),
-                Arrays.asList(JSON.fromJson(json.get("pumparounds"),V3PumparoundSpec[].class)));
+                Arrays.asList(JSON.fromJson(json.get("pumparounds"),V3PumparoundSpec[].class)), V3ColumnInput.PRESCRIBED_DROP_DIAMETER);
     }
 }

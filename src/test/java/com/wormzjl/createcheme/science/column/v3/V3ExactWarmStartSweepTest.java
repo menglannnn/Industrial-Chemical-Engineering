@@ -74,7 +74,7 @@ class V3ExactWarmStartSweepTest {
                             1.0e-8), label + ": exact-input hot solve");
             V3AcceptanceAudit hotAudit = new V3AcceptanceAuditor(
                     freshProblem, freshThermo, freshFlash.molarEnthalpyJoulesPerMol())
-                    .audit(hotConverged.state(), freshThermo.newWorkspace());
+                    .audit(hotConverged.state(), freshThermo.newWorkspace(), V3SolveControl.UNBOUNDED);
             assertEquals(0, hotConverged.evidence().iterations(), label);
             assertTrue(hotConverged.evidence().convergenceEvidence().satisfiesGates(),
                     () -> label + ": hot evidence=" + hotConverged.evidence());
@@ -96,22 +96,20 @@ class V3ExactWarmStartSweepTest {
         // Preserve the original two-phase numerical matrix; the accepted liquid case uses production's cold policy.
         V3SimultaneousColumnSolver.Attempt attempt = branch == V3CondenserPhaseBranch.TWO_PHASE
                 ? V3SimultaneousColumnSolver.solve(problem, evaluator, new V3DryMeshCoordinateMap(problem), seed.state(),
-                        thermo::newWorkspace, 128, 1.0e-8)
+                        thermo::newWorkspace, V3ConvergenceEvidence.unavailable(), 128, 1.0e-8, V3FiniteDifferenceJacobian.DifferenceScale.FINE, V3SolveControl.UNBOUNDED)
                 : V3SimultaneousColumnSolver.solveWithContinuationLocalBlocks(
                 problem, evaluator, new V3DryMeshCoordinateMap(problem), seed.state(), thermo::newWorkspace,
-                128, 1.0e-8, V3SolveControl.UNBOUNDED);
+                128, 1.0e-8, V3SolveControl.UNBOUNDED, V3SimultaneousColumnSolver.NewtonTrace.NONE);
         V3AcceptanceAuditor auditor = new V3AcceptanceAuditor(problem, thermo, flash.molarEnthalpyJoulesPerMol());
-        V3AcceptanceAudit audit = auditor.audit(attempt.state(), thermo.newWorkspace());
+        V3AcceptanceAudit audit = auditor.audit(attempt.state(), thermo.newWorkspace(), V3SolveControl.UNBOUNDED);
         if (!(attempt instanceof V3SimultaneousColumnSolver.Attempt.Converged)
                 || (branch != V3CondenserPhaseBranch.TWO_PHASE && !audit.accepted())) {
-            V3SequentialPreconditioner.Result preparation = V3BubblePointPreconditioner.INSTANCE.prepare(
-                    new V3SequentialPreconditioner.Request(problem, attempt.state(), V3SolveControl.UNBOUNDED),
-                    thermo, thermo.newWorkspace());
-            if (preparation instanceof V3SequentialPreconditioner.Result.Prepared prepared) {
+            V3DryMeshState prepared = V3SimultaneousColumnSolverTest.projectedOrNull(problem, thermo, attempt.state());
+            if (prepared != null) {
                 V3SimultaneousColumnSolver.Attempt recovered = V3SimultaneousColumnSolver.solveWithContinuationLocalBlocks(
-                        problem, evaluator, new V3DryMeshCoordinateMap(problem), prepared.state(),
-                        thermo::newWorkspace, 128, 1.0e-8, V3SolveControl.UNBOUNDED);
-                V3AcceptanceAudit recoveredAudit = auditor.audit(recovered.state(), thermo.newWorkspace());
+                        problem, evaluator, new V3DryMeshCoordinateMap(problem), prepared,
+                        thermo::newWorkspace, 128, 1.0e-8, V3SolveControl.UNBOUNDED, V3SimultaneousColumnSolver.NewtonTrace.NONE);
+                V3AcceptanceAudit recoveredAudit = auditor.audit(recovered.state(), thermo.newWorkspace(), V3SolveControl.UNBOUNDED);
                 if (recovered instanceof V3SimultaneousColumnSolver.Attempt.Converged
                         && (branch == V3CondenserPhaseBranch.TWO_PHASE || recoveredAudit.accepted())) {
                     attempt = recovered;
@@ -125,8 +123,8 @@ class V3ExactWarmStartSweepTest {
             V3SimultaneousColumnSolver.Attempt coarseAttempt = V3SimultaneousColumnSolver.solve(
                     problem, evaluator, new V3DryMeshCoordinateMap(problem), seed.state(), thermo::newWorkspace,
                     V3ConvergenceEvidence.unavailable(), 128, 1.0e-8,
-                    V3FiniteDifferenceJacobian.DifferenceScale.COARSE);
-            V3AcceptanceAudit coarseAudit = auditor.audit(coarseAttempt.state(), thermo.newWorkspace());
+                    V3FiniteDifferenceJacobian.DifferenceScale.COARSE, V3SolveControl.UNBOUNDED);
+            V3AcceptanceAudit coarseAudit = auditor.audit(coarseAttempt.state(), thermo.newWorkspace(), V3SolveControl.UNBOUNDED);
             if (coarseAttempt instanceof V3SimultaneousColumnSolver.Attempt.Converged coarseConverged
                     && coarseConverged.evidence().convergenceEvidence().satisfiesGates()
                     && (branch == V3CondenserPhaseBranch.TWO_PHASE || coarseAudit.accepted())) {
@@ -144,8 +142,8 @@ class V3ExactWarmStartSweepTest {
                     problem, thermo, thermo.newWorkspace(), V3ColumnInitializer.Mode.MATERIAL_CLOSED);
             V3SimultaneousColumnSolver.Attempt closedAttempt = V3SimultaneousColumnSolver.solve(
                     problem, evaluator, new V3DryMeshCoordinateMap(problem), materialClosed.state(),
-                    thermo::newWorkspace, 128, 1.0e-8);
-            V3AcceptanceAudit closedAudit = auditor.audit(closedAttempt.state(), thermo.newWorkspace());
+                    thermo::newWorkspace, V3ConvergenceEvidence.unavailable(), 128, 1.0e-8, V3FiniteDifferenceJacobian.DifferenceScale.FINE, V3SolveControl.UNBOUNDED);
+            V3AcceptanceAudit closedAudit = auditor.audit(closedAttempt.state(), thermo.newWorkspace(), V3SolveControl.UNBOUNDED);
             if (closedAttempt instanceof V3SimultaneousColumnSolver.Attempt.Converged closedConverged
                     && closedConverged.evidence().convergenceEvidence().satisfiesGates()
                     && (branch == V3CondenserPhaseBranch.TWO_PHASE || closedAudit.accepted())) {

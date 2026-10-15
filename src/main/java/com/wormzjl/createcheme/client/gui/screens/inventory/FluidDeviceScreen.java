@@ -1,6 +1,5 @@
 package com.wormzjl.createcheme.client.gui.screens.inventory;
 
-import com.wormzjl.createcheme.client.MaterialNames;
 import com.wormzjl.createcheme.client.gui.common.*;
 import com.wormzjl.createcheme.network.FluidNetwork;
 import com.wormzjl.createcheme.runtime.fluid.SlurryFeed;
@@ -34,7 +33,6 @@ public final class FluidDeviceScreen extends AbstractContainerScreen<FluidDevice
     private String search="",message="",hovered;
     private V3ClientPresets library;
     private V3ClientPresets.Snapshot mixtureSnapshot;
-    private record Label(String text,int x,int y,int width){}
     private record Choice(String label,Runnable select){}
     private List<Choice> choices=List.of();
 
@@ -104,8 +102,7 @@ public final class FluidDeviceScreen extends AbstractContainerScreen<FluidDevice
         fields.put("solidFraction",new NumericDraft(solids.volumeFraction()*100));
     }
     private Button button(String text,int x,int y,int w,Runnable action){
-        var button=addRenderableWidget(Button.builder(Component.literal(text),b->action.run()).bounds(leftPos+x,topPos+y,w,18).build());
-        button.setTooltip(Tooltip.create(Component.literal(text)));return button;
+        return addRenderableWidget(ProcessUi.button(text,leftPos+x,topPos+y,w,action));
     }
     private Button action(String key,int x,int y,int w,Runnable run){
         var b=button(tr(key),x,y,w,run);b.setTooltip(Tooltip.create(Component.translatable("gui.createcheme.fluid."+key+".hint")));return b;
@@ -310,7 +307,7 @@ public final class FluidDeviceScreen extends AbstractContainerScreen<FluidDevice
     }
     private String material(int id){
         var data=menu.clientData();String name=data.components().get(id);
-        return MaterialNames.localized(data.materialNames().getOrDefault(name,MaterialName.chemical(name)));
+        return materialName(data.materialNames().getOrDefault(name,MaterialName.chemical(name)));
     }
     private void text(GuiGraphics g,String value,int x,int y,int color,int width){
         String shown=font.plainSubstrByWidth(value,Math.max(0,width));g.drawString(font,shown,x,y,color,false);

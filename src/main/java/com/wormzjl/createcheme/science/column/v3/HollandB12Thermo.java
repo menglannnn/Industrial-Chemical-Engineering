@@ -5,9 +5,9 @@ import com.wormzjl.createcheme.science.math.DeterministicMath;
 import com.wormzjl.createcheme.science.column.v3.thermo.V3FeedPhase;
 import com.wormzjl.createcheme.science.column.v3.thermo.V3FlashResult;
 import com.wormzjl.createcheme.science.column.v3.thermo.V3FugacityResult;
-import com.wormzjl.createcheme.science.column.v3.thermo.V3Phase;
 import com.wormzjl.createcheme.science.column.v3.thermo.V3ThermoModel;
 import com.wormzjl.createcheme.science.column.v3.thermo.V3ThermoWorkspace;
+import com.wormzjl.createcheme.science.thermo.PengRobinsonKernel.Root;
 import java.util.Objects;
 
 /** Benchmark-only implementation of Holland's Appendix B ideal-solution K and enthalpy fits. */
@@ -43,23 +43,23 @@ final class HollandB12Thermo implements V3ThermoModel {
 
     @Override
     public V3FugacityResult fugacity(
-            double temperatureKelvin, double pressurePascal, double[] composition, V3Phase phase,
+            double temperatureKelvin, double pressurePascal, double[] composition, Root phase,
             V3ThermoWorkspace workspace) {
         requireState(temperatureKelvin, pressurePascal, composition, workspace);
         phase = Objects.requireNonNull(phase, "phase");
         double[] normalized = normalized(composition);
         double[] logPhi = new double[data.componentCount()];
-        if (phase == V3Phase.LIQUID) {
+        if (phase == Root.LIQUID) {
             double[] ratios = equilibriumRatios(temperatureKelvin, pressurePascal);
             for (int component = 0; component < ratios.length; component++) logPhi[component] = DeterministicMath.log(ratios[component]);
         }
-        return new V3FugacityResult(phase, logPhi, phase == V3Phase.LIQUID ? 0.1 : 1.0,
+        return new V3FugacityResult(phase, logPhi, phase == Root.LIQUID ? 0.1 : 1.0,
                 molarEnthalpy(temperatureKelvin, pressurePascal, normalized, phase, workspace), 1, 0.0);
     }
 
     @Override
     public double molarEnthalpy(
-            double temperatureKelvin, double pressurePascal, double[] composition, V3Phase phase,
+            double temperatureKelvin, double pressurePascal, double[] composition, Root phase,
             V3ThermoWorkspace workspace) {
         requireState(temperatureKelvin, pressurePascal, composition, workspace);
         phase = Objects.requireNonNull(phase, "phase");
@@ -83,12 +83,12 @@ final class HollandB12Thermo implements V3ThermoModel {
         double atVaporBoundary = rachfordRice(z, k, 1.0);
         if (atLiquidBoundary <= FLASH_BOUNDARY_TOLERANCE) {
             return new V3FlashResult(V3FeedPhase.LIQUID, 0, 0.0, z, new double[0],
-                    molarEnthalpy(temperatureKelvin, pressurePascal, z, V3Phase.LIQUID, workspace),
+                    molarEnthalpy(temperatureKelvin, pressurePascal, z, Root.LIQUID, workspace),
                     "Holland B-1/B-2 ideal liquid");
         }
         if (atVaporBoundary >= -FLASH_BOUNDARY_TOLERANCE) {
             return new V3FlashResult(V3FeedPhase.VAPOR, 0, 1.0, new double[0], z,
-                    molarEnthalpy(temperatureKelvin, pressurePascal, z, V3Phase.VAPOR, workspace),
+                    molarEnthalpy(temperatureKelvin, pressurePascal, z, Root.VAPOR, workspace),
                     "Holland B-1/B-2 ideal vapor");
         }
         double lower = 0.0;
@@ -111,9 +111,9 @@ final class HollandB12Thermo implements V3ThermoModel {
         normalizeInPlace(liquid);
         normalizeInPlace(vapor);
         double liquidEnthalpy = molarEnthalpy(
-                temperatureKelvin, pressurePascal, liquid, V3Phase.LIQUID, workspace);
+                temperatureKelvin, pressurePascal, liquid, Root.LIQUID, workspace);
         double vaporEnthalpy = molarEnthalpy(
-                temperatureKelvin, pressurePascal, vapor, V3Phase.VAPOR, workspace);
+                temperatureKelvin, pressurePascal, vapor, Root.VAPOR, workspace);
         return new V3FlashResult(V3FeedPhase.TWO_PHASE, iterations, beta, liquid, vapor,
                 (1.0 - beta) * liquidEnthalpy + beta * vaporEnthalpy,
                 "Holland B-1/B-2 ideal two-phase flash");
@@ -156,10 +156,10 @@ final class HollandB12Thermo implements V3ThermoModel {
         return ratios;
     }
 
-    double[] componentEnthalpiesBtuPerLbMol(double temperatureKelvin, V3Phase phase) {
+    double[] componentEnthalpiesBtuPerLbMol(double temperatureKelvin, Root phase) {
         requireTemperaturePressure(temperatureKelvin, data.pressurePascal());
         double rankine = temperatureKelvin * 1.8;
-        double[][] coefficients = phase == V3Phase.LIQUID
+        double[][] coefficients = phase == Root.LIQUID
                 ? liquidEnthalpyCoefficients : vaporEnthalpyCoefficients;
         double[] enthalpies = new double[data.componentCount()];
         for (int component = 0; component < enthalpies.length; component++) {

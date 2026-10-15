@@ -260,7 +260,7 @@ class V3TrayHydraulicsTest {
                 new double[] {30.0, 60.0}, 400.0, 3, 2, TOP_PRESSURE_PASCAL, 750.0, List.of(
                         new V3ColumnSpecification.CondenserOutletTemperature(400.0),
                         new V3ColumnSpecification.OrganicRefluxRatio(1.0),
-                        new V3ColumnSpecification.ReboilerDuty(0.0)), List.of(), steam),
+                        new V3ColumnSpecification.ReboilerDuty(0.0)), List.of(), steam, List.of(), V3ColumnInput.PRESCRIBED_DROP_DIAMETER),
                 V3CondenserPhaseBranch.TWO_PHASE);
     }
 

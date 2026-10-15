@@ -62,12 +62,10 @@ final class V3NormalEquations {
         return new V3NormalEquations(product, gradient, bandwidth);
     }
 
-    /** Applies damping to a fresh matrix, always using the original undamped diagonal. */
-    V3BandedMatrix dampedMatrix(double damping, V3SolveControl control) {
-        return dampedMatrix(damping, control, null);
-    }
-
-    /** Reuses only the output matrix; the undamped products remain immutable across damping trials. */
+    /**
+     * Applies damping always using the original undamped diagonal. A workspace reuses only the output matrix
+     * (null allocates a fresh one); the undamped products remain immutable across damping trials.
+     */
     V3BandedMatrix dampedMatrix(double damping, V3SolveControl control,
             com.wormzjl.createcheme.science.column.v3.linalg.V3BandedPivotedSolver.Workspace workspace) {
         Objects.requireNonNull(control, "control");

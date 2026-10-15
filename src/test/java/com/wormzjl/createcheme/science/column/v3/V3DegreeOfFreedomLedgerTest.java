@@ -14,11 +14,11 @@ class V3DegreeOfFreedomLedgerTest {
         for (int trayCount = V3ColumnInput.MIN_STAGE_COUNT; trayCount <= 8; trayCount++) {
             for (int componentCount = 1; componentCount <= 4; componentCount++) {
                 V3DegreeOfFreedomLedger twoPhase = V3DegreeOfFreedomLedger.create(
-                        V3ColumnTopology.twoPhase(trayCount, 1), componentCount, standardSpecifications(0.0));
+                        V3ColumnTopology.twoPhase(trayCount, 1), componentCount, standardSpecifications(0.0), V3CondenserComponentPhases.allLiquid(componentCount));
                 V3DegreeOfFreedomLedger vaporOnly = V3DegreeOfFreedomLedger.create(
-                        V3ColumnTopology.vaporOnly(trayCount, Math.max(1,trayCount)), componentCount, standardSpecifications(0.0));
+                        V3ColumnTopology.vaporOnly(trayCount, Math.max(1,trayCount)), componentCount, standardSpecifications(0.0), V3CondenserComponentPhases.allLiquid(componentCount));
                 V3DegreeOfFreedomLedger liquidOnly = V3DegreeOfFreedomLedger.create(
-                        V3ColumnTopology.liquidOnly(trayCount, 1), componentCount, standardSpecifications(4.17));
+                        V3ColumnTopology.liquidOnly(trayCount, 1), componentCount, standardSpecifications(4.17), V3CondenserComponentPhases.allLiquid(componentCount));
 
                 assertTrue(twoPhase.isValid(), twoPhase::humanReadableDiagnostic);
                 assertEquals(twoPhase.equationCount(), twoPhase.structuralRank(), twoPhase::humanReadableDiagnostic);
@@ -47,11 +47,6 @@ class V3DegreeOfFreedomLedgerTest {
                         V3DegreeOfFreedomLedger.UnknownFamily.LIQUID_COMPONENT_FLOW, 0, 0))));
         assertTrue(ledger.unknowns().stream().noneMatch(unknown -> unknown.id().equals(
                 new V3DegreeOfFreedomLedger.UnknownId(V3DegreeOfFreedomLedger.UnknownFamily.TEMPERATURE, 0, -1))));
-        assertEquals(List.of(V3CalculatedQuantity.CONDENSER_DUTY,
-                V3CalculatedQuantity.EXTERNAL_OVERHEAD_COMPONENT_FLOWS,
-                V3CalculatedQuantity.BOTTOMS_COMPONENT_FLOWS,
-                V3CalculatedQuantity.STAGE_LIQUID_COMPONENT_FLOWS,
-                V3CalculatedQuantity.STAGE_VAPOR_COMPONENT_FLOWS), ledger.calculatedQuantities());
         assertTrue(ledger.humanReadableDiagnostic().contains("unknowns=29"));
     }
 
@@ -113,10 +108,10 @@ class V3DegreeOfFreedomLedgerTest {
                 new V3ColumnSpecification.CondenserOutletTemperature(332.15),
                 new V3ColumnSpecification.OrganicRefluxRatio(4.17),
                 new V3ColumnSpecification.OrganicRefluxRatio(1.0),
-                new V3ColumnSpecification.ReboilerDuty(8_000_000.0)));
+                new V3ColumnSpecification.ReboilerDuty(8_000_000.0)), V3CondenserComponentPhases.allLiquid(2));
         V3DegreeOfFreedomLedger missing = V3DegreeOfFreedomLedger.create(topology, 2, List.of(
                 new V3ColumnSpecification.CondenserOutletTemperature(332.15),
-                new V3ColumnSpecification.ReboilerDuty(8_000_000.0)));
+                new V3ColumnSpecification.ReboilerDuty(8_000_000.0)), V3CondenserComponentPhases.allLiquid(2));
 
         assertFalse(duplicate.isValid());
         assertTrue(duplicate.diagnostics().stream().anyMatch(diagnostic -> diagnostic.code().equals("DUPLICATE_CONTROL")));

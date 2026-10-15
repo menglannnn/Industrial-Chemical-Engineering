@@ -9,9 +9,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import com.wormzjl.createcheme.science.column.v3.thermo.V3FeedPhase;
 import com.wormzjl.createcheme.science.column.v3.thermo.V3FlashResult;
 import com.wormzjl.createcheme.science.column.v3.thermo.V3FugacityResult;
-import com.wormzjl.createcheme.science.column.v3.thermo.V3Phase;
 import com.wormzjl.createcheme.science.column.v3.thermo.V3ThermoModel;
 import com.wormzjl.createcheme.science.column.v3.thermo.V3ThermoWorkspace;
+import com.wormzjl.createcheme.science.thermo.PengRobinsonKernel.Root;
 import java.util.List;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -23,7 +23,7 @@ class V3CondenserPhaseAuditTest {
         V3TruncationNumericsTest.Fixture fixture = V3TruncationNumericsTest.fixture(V3CondenserPhaseBranch.TWO_PHASE, 0.01);
 
         V3AcceptanceAudit audit = new V3AcceptanceAuditor(fixture.problem(), fixture.thermo(), 0.0)
-                .audit(fixture.exact(), fixture.thermo().newWorkspace());
+                .audit(fixture.exact(), fixture.thermo().newWorkspace(), V3SolveControl.UNBOUNDED);
 
         assertTrue(phaseCheck(audit).passed(), phaseCheck(audit)::toString);
         assertTrue(audit.accepted(), audit::toString);
@@ -36,7 +36,7 @@ class V3CondenserPhaseAuditTest {
                 new double[] {0.6, 0.0, 0.4, 0.0}, new double[0], 0.0, "manufactured liquid override"));
 
         V3AcceptanceAudit audit = new V3AcceptanceAuditor(fixture.problem(), thermo, 0.0)
-                .audit(fixture.exact(), thermo.newWorkspace());
+                .audit(fixture.exact(), thermo.newWorkspace(), V3SolveControl.UNBOUNDED);
 
         assertFalse(phaseCheck(audit).passed());
         assertFalse(audit.accepted());
@@ -53,7 +53,7 @@ class V3CondenserPhaseAuditTest {
         V3ThermoModel thermo = withFlash(fixture.thermo(), inconsistent);
 
         V3AcceptanceAudit audit = new V3AcceptanceAuditor(fixture.problem(), thermo, 0.0)
-                .audit(fixture.exact(), thermo.newWorkspace());
+                .audit(fixture.exact(), thermo.newWorkspace(), V3SolveControl.UNBOUNDED);
 
         assertFalse(phaseCheck(audit).passed());
         assertFalse(audit.accepted());
@@ -73,7 +73,7 @@ class V3CondenserPhaseAuditTest {
         V3ThermoModel thermo = withFlash(fixture.thermo(), wrongPartition);
 
         V3AcceptanceAudit audit = new V3AcceptanceAuditor(fixture.problem(), thermo, 0.0)
-                .audit(fixture.exact(), thermo.newWorkspace());
+                .audit(fixture.exact(), thermo.newWorkspace(), V3SolveControl.UNBOUNDED);
 
         assertFalse(phaseCheck(audit).passed());
     }
@@ -84,11 +84,11 @@ class V3CondenserPhaseAuditTest {
         V3ColumnProblem wetProblem = wetProblem(fixture, 150_000.0);
         V3ThermoModel wetThermo = withWetEquilibrium(fixture, wetProblem);
         V3AcceptanceAudit exactAudit = new V3AcceptanceAuditor(wetProblem, wetThermo, 0.0)
-                .audit(fixture.exact(), wetThermo.newWorkspace());
+                .audit(fixture.exact(), wetThermo.newWorkspace(), V3SolveControl.UNBOUNDED);
         assertTrue(phaseCheck(exactAudit).passed(), phaseCheck(exactAudit)::toString);
         // Psat(400 K) exceeds 150 kPa, so this drum is ALL_VAPOR on the TWO_PHASE branch: all of the water
         // leaves with the hydrocarbon vapor and the published duty must carry it.
-        assertEquals(V3WaterCondenserRegime.ALL_VAPOR, wetProblem.waterCondenserRegime());
+        assertEquals(V3ColumnProblem.WaterCondenserRegime.ALL_VAPOR, wetProblem.waterCondenserRegime());
         V3AcceptanceAudit.Check condenserClosure = exactAudit.checks().stream()
                 .filter(check -> check.family().equals("CONDENSER_ENERGY_BALANCE")).findFirst().orElseThrow();
         assertTrue(condenserClosure.passed(), condenserClosure::toString);
@@ -102,7 +102,7 @@ class V3CondenserPhaseAuditTest {
         V3DryMeshState wrongPartition = new V3DryMeshState(wetProblem.topology(), 3, liquid, vapor,
                 V3TruncationNumericsTest.temperatures());
         V3AcceptanceAudit wrongAudit = new V3AcceptanceAuditor(wetProblem, wetThermo, 0.0)
-                .audit(wrongPartition, wetThermo.newWorkspace());
+                .audit(wrongPartition, wetThermo.newWorkspace(), V3SolveControl.UNBOUNDED);
 
         assertFalse(phaseCheck(wrongAudit).passed());
     }
@@ -115,12 +115,12 @@ class V3CondenserPhaseAuditTest {
         V3ColumnProblem wetProblem = wetProblem(fixture, 600_000.0, 12.0);
         V3ThermoModel wetThermo = withWetEquilibrium(fixture, wetProblem);
         V3ColumnProblem.WaterCondenserSplit split = wetProblem.waterCondenserSplit(fixture.exact());
-        assertEquals(V3WaterCondenserRegime.FREE_WATER, wetProblem.waterCondenserRegime());
+        assertEquals(V3ColumnProblem.WaterCondenserRegime.FREE_WATER, wetProblem.waterCondenserRegime());
         assertTrue(split.freeWaterFlowMolPerSecond() > 0.0);
         assertTrue(split.vaporFlowMolPerSecond() > 0.0);
 
         V3AcceptanceAudit audit = new V3AcceptanceAuditor(wetProblem, wetThermo, 0.0)
-                .audit(fixture.exact(), wetThermo.newWorkspace());
+                .audit(fixture.exact(), wetThermo.newWorkspace(), V3SolveControl.UNBOUNDED);
         V3AcceptanceAudit.Check condenserClosure = audit.checks().stream()
                 .filter(check -> check.family().equals("CONDENSER_ENERGY_BALANCE")).findFirst().orElseThrow();
 
@@ -138,7 +138,7 @@ class V3CondenserPhaseAuditTest {
         V3ThermoModel wetThermo = withWetEquilibrium(fixture, wetProblem);
 
         V3AcceptanceAudit audit = new V3AcceptanceAuditor(wetProblem, wetThermo, 0.0)
-                .audit(fixture.exact(), wetThermo.newWorkspace());
+                .audit(fixture.exact(), wetThermo.newWorkspace(), V3SolveControl.UNBOUNDED);
         V3AcceptanceAudit.Check freeWater = audit.checks().stream()
                 .filter(check -> check.family().equals("FREE_WATER_SPLIT")).findFirst().orElseThrow();
 
@@ -160,10 +160,10 @@ class V3CondenserPhaseAuditTest {
         V3ThermoModel thermo = new V3ThermoModel() {
             @Override public V3ComponentBasis componentBasis() { return fixture.thermo().componentBasis(); }
             @Override public V3ThermoWorkspace newWorkspace() { return fixture.thermo().newWorkspace(); }
-            @Override public V3FugacityResult fugacity(double t, double p, double[] z, V3Phase phase, V3ThermoWorkspace workspace) {
+            @Override public V3FugacityResult fugacity(double t, double p, double[] z, Root phase, V3ThermoWorkspace workspace) {
                 return fixture.thermo().fugacity(t, p, z, phase, workspace);
             }
-            @Override public double molarEnthalpy(double t, double p, double[] z, V3Phase phase, V3ThermoWorkspace workspace) {
+            @Override public double molarEnthalpy(double t, double p, double[] z, Root phase, V3ThermoWorkspace workspace) {
                 return fixture.thermo().molarEnthalpy(t, p, z, phase, workspace);
             }
             @Override public V3FlashResult flashTP(double t, double p, double[] z, V3ThermoWorkspace workspace) {
@@ -181,10 +181,10 @@ class V3CondenserPhaseAuditTest {
         return new V3ThermoModel() {
             @Override public V3ComponentBasis componentBasis() { return delegate.componentBasis(); }
             @Override public V3ThermoWorkspace newWorkspace() { return delegate.newWorkspace(); }
-            @Override public V3FugacityResult fugacity(double t, double p, double[] z, V3Phase phase, V3ThermoWorkspace workspace) {
+            @Override public V3FugacityResult fugacity(double t, double p, double[] z, Root phase, V3ThermoWorkspace workspace) {
                 return delegate.fugacity(t, p, z, phase, workspace);
             }
-            @Override public double molarEnthalpy(double t, double p, double[] z, V3Phase phase, V3ThermoWorkspace workspace) {
+            @Override public double molarEnthalpy(double t, double p, double[] z, Root phase, V3ThermoWorkspace workspace) {
                 return delegate.molarEnthalpy(t, p, z, phase, workspace);
             }
             @Override public V3FlashResult flashTP(double t, double p, double[] z, V3ThermoWorkspace workspace) { return flash; }
@@ -201,9 +201,9 @@ class V3CondenserPhaseAuditTest {
         V3ColumnInput wet = new V3ColumnInput(dry.schemaVersion(), dry.packageId(), dry.assayId(), dry.componentBasis(),
                 dry.feedComponentMolarFlowsMolPerSecond(), dry.feedTemperatureKelvin(), dry.stageCount(), dry.feedStageNumber(),
                 topPressurePascal, dry.stagePressureDropPascal(), dry.specifications(), dry.sideDraws(),
-                List.of(new V3SteamFeedSpec(dry.stageCount() + 1, sumpSteamMolPerSecond, 450.0)));
+                List.of(new V3SteamFeedSpec(dry.stageCount() + 1, sumpSteamMolPerSecond, 450.0)), List.of(), V3ColumnInput.PRESCRIBED_DROP_DIAMETER);
         V3ColumnProblem untruncated = V3ColumnProblemResolver.resolve(wet, V3CondenserPhaseBranch.TWO_PHASE);
-        return V3ColumnProblemResolver.withTruncation(untruncated, fixture.problem().truncationSupport());
+        return V3ColumnProblemResolver.withTruncation(untruncated, fixture.problem().truncationSupport(), V3WetTraySet.dry(untruncated.topology()));
     }
 
     private static V3ThermoModel withWetEquilibrium(
@@ -214,9 +214,9 @@ class V3CondenserPhaseAuditTest {
 
             @Override
             public V3FugacityResult fugacity(double temperature, double pressure, double[] composition,
-                                              V3Phase phase, V3ThermoWorkspace workspace) {
+                                              Root phase, V3ThermoWorkspace workspace) {
                 V3FugacityResult result = fixture.thermo().fugacity(temperature, pressure, composition, phase, workspace);
-                if (phase != V3Phase.LIQUID) return result;
+                if (phase != Root.LIQUID) return result;
                 int node = (int) Math.round((temperature - 400.0) / 10.0);
                 double hydrocarbon = 0.0;
                 for (int component = 0; component < fixture.exact().componentCount(); component++) {
@@ -232,7 +232,7 @@ class V3CondenserPhaseAuditTest {
                         result.molarEnthalpyJoulesPerMol(), result.physicalRootCount(), result.rootSeparation());
             }
 
-            @Override public double molarEnthalpy(double t, double p, double[] z, V3Phase phase, V3ThermoWorkspace workspace) {
+            @Override public double molarEnthalpy(double t, double p, double[] z, Root phase, V3ThermoWorkspace workspace) {
                 return fixture.thermo().molarEnthalpy(t, p, z, phase, workspace);
             }
 

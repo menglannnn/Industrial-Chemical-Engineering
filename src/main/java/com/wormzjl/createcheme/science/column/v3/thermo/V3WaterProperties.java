@@ -152,10 +152,6 @@ public final class V3WaterProperties {
      * Approaching it from below the slope does diverge, which is a property of the correlation and not of this
      * derivative: the free water that uses it exists only where liquid water does.</p>
      */
-    public static double dVaporizationEnthalpyDT(double temperatureKelvin) {
-        return dVaporizationEnthalpyDT(data(), temperatureKelvin);
-    }
-
     public static double dVaporizationEnthalpyDT(MaterialCatalog.Water water, double temperatureKelvin) {
         requireEnthalpyTemperature(water, temperatureKelvin);
         if (temperatureKelvin >= water.criticalTemperature()) return 0.0;
