@@ -3,9 +3,11 @@ package com.wormzjl.createcheme.science.fluid.thermo;
 import com.wormzjl.createcheme.science.math.DeterministicMath;
 
 import com.wormzjl.createcheme.science.fluid.diagnostics.SolverDiagnostics;
+import com.wormzjl.createcheme.science.thermo.PairInteractions;
 import com.wormzjl.createcheme.science.thermo.PengRobinsonKernel;
 import com.wormzjl.createcheme.science.thermo.ThermoComponent;
 import java.util.List;
+import java.util.Objects;
 
 /**
  * Constant volume-translated PR78 with analytic fixed-composition volumetric/caloric derivatives.
@@ -35,6 +37,8 @@ public final class TranslatedPengRobinson {
      */
     private final double[] joints,jointEnthalpies,jointAntiderivatives;
     private final double[][] lowCoefficients;
+    /** See {@link #residualOnly}: no ideal-gas part, so the heat capacity is the residual one and may be any sign. */
+    private final boolean residualOnly;
 
     /** Cp coefficients are powers of (T - 298.15 K); each component has exactly six coefficients. */
     public TranslatedPengRobinson(List<ThermoComponent> components, double[][] interactions,
@@ -49,9 +53,42 @@ public final class TranslatedPengRobinson {
     public TranslatedPengRobinson(List<ThermoComponent> components, double[][] interactions,
                                  double[][] heatCapacityCoefficients, double[] translations,
                                  double[] joints, double[][] lowCoefficients) {
+        this(components,interactions,null,heatCapacityCoefficients,translations,joints,lowCoefficients,false);
+    }
+
+    /**
+     * The same equation of state without an ideal-gas part, for an evaluator that adds its own ideal-gas functions
+     * (the phase engine's {@code science.thermo.phase.CubicPhaseEvaluator}). Every heat-capacity coefficient is zero,
+     * so the ideal-gas enthalpy and heat capacity are exact zeros: {@link Values#molarEnthalpy()} is then
+     * {@code h^R + P c} bit for bit and {@link Values#heatCapacity()} is the residual {@code c_p}, whose sign is not
+     * checked. Volume, fugacity coefficients and every volumetric derivative are the ones the full model computes.
+     */
+    public static TranslatedPengRobinson residualOnly(List<ThermoComponent> components, double[][] interactions,
+                                                      double[] translations) {
+        return new TranslatedPengRobinson(components,interactions,null,new double[components.size()][6],translations,null,null,true);
+    }
+
+    /**
+     * {@link #residualOnly(List, double[][], double[])} on a pair-interaction model: the kernel runs
+     * {@link PengRobinsonKernel.Mixing#TEMPERATURE_DEPENDENT_PAIRS}, so a group-contribution (E-PPR78) pair's
+     * {@code k_ij(T)} and its temperature derivatives enter every value. On a model of constant pairs it is the matrix
+     * factory's model bit for bit.
+     */
+    public static TranslatedPengRobinson residualOnly(List<ThermoComponent> components, PairInteractions interactions,
+                                                      double[] translations) {
+        return new TranslatedPengRobinson(components,null,Objects.requireNonNull(interactions,"interactions"),
+                new double[components.size()][6],translations,null,null,true);
+    }
+
+    /** Exactly one of {@code interactions} (the constant matrix, {@code SPARSE_PAIRS}) and {@code pairModel} is set. */
+    private TranslatedPengRobinson(List<ThermoComponent> components, double[][] interactions, PairInteractions pairModel,
+                                   double[][] heatCapacityCoefficients, double[] translations,
+                                   double[] joints, double[][] lowCoefficients, boolean residualOnly) {
+        this.residualOnly = residualOnly;
         this.components = List.copyOf(components);
         int count = components.size();
-        if (count == 0 || interactions.length != count || heatCapacityCoefficients.length != count
+        if (count == 0 || (pairModel == null ? interactions.length != count : pairModel.componentCount() != count)
+                || heatCapacityCoefficients.length != count
                 || translations.length != count) throw new IllegalArgumentException("Inconsistent property basis");
         if ((joints == null) != (lowCoefficients == null) || joints != null && (joints.length != count || lowCoefficients.length != count))
             throw new IllegalArgumentException("Inconsistent low-temperature heat-capacity segments");
@@ -73,11 +110,11 @@ public final class TranslatedPengRobinson {
         this.translations = translations.clone();
         double[] criticalTemperatures=new double[count],criticalPressures=new double[count],acentricFactors=new double[count];
         for (int i = 0; i < count; i++) {
-            if (interactions[i].length != count || heatCapacityCoefficients[i].length != 6) {
+            if ((pairModel == null && interactions[i].length != count) || heatCapacityCoefficients[i].length != 6) {
                 throw new IllegalArgumentException("Invalid property matrix dimensions");
             }
             this.heatCapacityCoefficients[i] = heatCapacityCoefficients[i].clone();
-            for (double value : interactions[i]) finite(value);
+            if (pairModel == null) for (double value : interactions[i]) finite(value);
             for (double value : this.heatCapacityCoefficients[i]) finite(value);
             finite(this.translations[i]);
             var component=components.get(i);
@@ -85,15 +122,21 @@ public final class TranslatedPengRobinson {
             criticalPressures[i]=component.criticalPressurePascal();
             acentricFactors[i]=component.acentricFactor();
         }
-        for (int i = 0; i < count; i++) for (int j = 0; j < count; j++) {
+        if (pairModel == null) for (int i = 0; i < count; i++) for (int j = 0; j < count; j++) {
             if (interactions[i][j] != interactions[j][i]) throw new IllegalArgumentException("Asymmetric interactions");
         }
         // The kernel's own domain is left open: this class validates every state itself, with the messages it
         // always produced, and a property package's validity range is the caller's business, not the EOS's.
-        kernel=new PengRobinsonKernel(criticalTemperatures,criticalPressures,acentricFactors,interactions,
-                Double.MIN_VALUE,Double.MAX_VALUE,Double.MIN_VALUE,Double.MAX_VALUE,
-                PengRobinsonKernel.Mixing.SPARSE_PAIRS);
+        kernel=pairModel == null
+                ? new PengRobinsonKernel(criticalTemperatures,criticalPressures,acentricFactors,interactions,
+                        Double.MIN_VALUE,Double.MAX_VALUE,Double.MIN_VALUE,Double.MAX_VALUE,
+                        PengRobinsonKernel.Mixing.SPARSE_PAIRS)
+                : new PengRobinsonKernel(criticalTemperatures,criticalPressures,acentricFactors,pairModel,
+                        Double.MIN_VALUE,Double.MAX_VALUE,Double.MIN_VALUE,Double.MAX_VALUE);
     }
+
+    /** The equation of state this model translates; the phase-stability test runs on it (the translation cancels). */
+    public PengRobinsonKernel kernel() { return kernel; }
 
     public Phase evaluate(double temperature, double pressure, double[] amounts, PengRobinsonKernel.Root root) {
         return evaluate(temperature,pressure,amounts,root,prepare(temperature));
@@ -136,6 +179,7 @@ public final class TranslatedPengRobinson {
                 volumePressureDerivative,heatCapacity,enthalpyPressureDerivative,isothermalCompressibility,
                 volumeSecondTemperatureDerivative,compressibility,idealGasHeatCapacity;
         private boolean vaporBranch;
+        private int physicalRootCount;
         private Values(int count) {
             logFugacityCoefficients=new double[count];partialMolarVolumes=new double[count];
         }
@@ -152,6 +196,8 @@ public final class TranslatedPengRobinson {
         /** The ideal-gas half of {@link #heatCapacity()}; the residual half is the kernel's dH^R/dT. */
         public double idealGasHeatCapacity(){return idealGasHeatCapacity;}
         public boolean vaporBranch(){return vaporBranch;}
+        /** Physical roots of the cubic at this state and composition: 1, or 3 where both roots exist. */
+        public int physicalRootCount(){return physicalRootCount;}
         /** The caller must not mutate these; they are refilled by the next evaluation. */
         public double[] logFugacityCoefficientsView(){return logFugacityCoefficients;}
         public double[] partialMolarVolumesView(){return partialMolarVolumes;}
@@ -261,7 +307,7 @@ public final class TranslatedPengRobinson {
             partialVolumes[i]=v-pressureCompositionDerivative/dpdv+translations[i];
             if(!Double.isFinite(logPhi[i])||!Double.isFinite(partialVolumes[i]))throw new IllegalArgumentException("Nonfinite chemical-potential derivative");
         }
-        if (!(physicalV > 0) || !(cp > 0) || !Double.isFinite(h) || !Double.isFinite(cp)
+        if (!(physicalV > 0) || !(residualOnly || cp > 0) || !Double.isFinite(h) || !Double.isFinite(cp)
                 || !Double.isFinite(dvdp) || !Double.isFinite(dvdt) || !Double.isFinite(dhdp)) {
             throw new IllegalArgumentException("Invalid translated phase properties");
         }
@@ -270,6 +316,7 @@ public final class TranslatedPengRobinson {
         out.enthalpyPressureDerivative=dhdp;out.isothermalCompressibility=-dvdp/physicalV;
         out.volumeSecondTemperatureDerivative=dvdtt;out.compressibility=z;out.idealGasHeatCapacity=idealCp;
         out.vaporBranch=a/(R*temperature*b)<5.8773599486044 || v/b>3.9513730355914;
+        out.physicalRootCount=evaluation.physicalRootCount();
     }
 
     private double coVolume(int component) { return kernel.coVolume(component); }

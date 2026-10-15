@@ -1,0 +1,169 @@
+package com.wormzjl.createcheme.science.thermo.phase;
+
+import com.wormzjl.createcheme.science.fluid.thermo.FluidDomain;
+import com.wormzjl.createcheme.science.material.CrystalReference;
+import com.wormzjl.createcheme.science.material.MaterialCatalog;
+import com.wormzjl.createcheme.science.material.MaterialCoverage;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Objects;
+import java.util.Set;
+
+/**
+ * What a package promises the equilibrium engine: its shared component basis, how water takes part, which phase
+ * competitions it is qualified for, which species need water chemistry, where it may be evaluated, how good a fluid
+ * answer inside that domain is, and its thermodynamic identity.
+ *
+ * <p>Rules the constructor enforces:</p>
+ * <ul>
+ *   <li>Water: {@link WaterParticipation#NONE} names no water component; {@link WaterParticipation#SEPARATE_FREE_WATER}
+ *   names one in the basis. {@link #waterChemistrySpecies()} lie in the basis and are not the water itself.</li>
+ *   <li>Competitions: at least one; none with gas hydrates, because no P2 water participation models them.</li>
+ *   <li>The domain covers exactly the basis.</li>
+ *   <li>The fluid coverage grade is one an answer can have ({@code QUALIFIED}, {@code ESTIMATED_DECLARED_ERROR} or
+ *   {@code RESEARCH_ONLY}).</li>
+ * </ul>
+ *
+ * @param components the shared conserved basis, EOS components and water (if any) alike
+ * @param waterComponent the id of water in {@code components}, {@code null} for {@link WaterParticipation#NONE}
+ * @param qualifiedCompetitions each competition the package is qualified for, as a whole
+ * @param waterChemistrySpecies species whose presence together with water needs aqueous chemistry (ammonia and the
+ *        like), refused under {@link WaterParticipation#SEPARATE_FREE_WATER}
+ * @param fluidCoverage the grade and evidence of a converged fluid-phase answer inside the domain
+ */
+public record PhaseContract(String packageId, ThermoIdentity identity, List<String> components,
+                            WaterParticipation water, String waterComponent,
+                            Set<PhaseCompetition> qualifiedCompetitions, Set<String> waterChemistrySpecies,
+                            PhaseDomain domain, EquilibriumResult.Coverage fluidCoverage) {
+    public PhaseContract {
+        Objects.requireNonNull(packageId, "packageId");
+        Objects.requireNonNull(identity, "identity");
+        components = List.copyOf(components);
+        if (components.isEmpty() || components.stream().distinct().count() != components.size()) {
+            throw new IllegalArgumentException("A contract needs a nonempty basis without duplicates");
+        }
+        Objects.requireNonNull(water, "water");
+        if ((water == WaterParticipation.NONE) != (waterComponent == null)
+                || waterComponent != null && !components.contains(waterComponent)) {
+            throw new IllegalArgumentException("Separate free water names its basis component; no water names none");
+        }
+        qualifiedCompetitions = Set.copyOf(qualifiedCompetitions);
+        if (qualifiedCompetitions.isEmpty()) throw new IllegalArgumentException("A package qualifies at least one competition");
+        for (PhaseCompetition competition : qualifiedCompetitions) {
+            if (competition.hydrates()) {
+                throw new IllegalArgumentException("No water participation of P2 models hydrates; a package cannot qualify them");
+            }
+        }
+        waterChemistrySpecies = Set.copyOf(waterChemistrySpecies);
+        for (String species : waterChemistrySpecies) {
+            if (!components.contains(species) || species.equals(waterComponent)) {
+                throw new IllegalArgumentException("Water-chemistry species must be basis components other than water: " + species);
+            }
+        }
+        Objects.requireNonNull(domain, "domain");
+        if (!domain.components().equals(components)) throw new IllegalArgumentException("Domain basis differs from the contract basis");
+        Objects.requireNonNull(fluidCoverage, "fluidCoverage");
+        if (!fluidCoverage.grade().answer()) throw new IllegalArgumentException("The fluid coverage must be a grade an answer can have");
+    }
+
+    /**
+     * The fluid network package: its PR78 components followed by {@code Water} as separate free water, qualified for
+     * fluid-only competition, the network's {@link FluidDomain}, no water-chemistry species (the bundled packages hold
+     * hydrocarbons and nitrogen only), graded estimated-with-declared-error.
+     */
+    public static PhaseContract forNetworkPackage(MaterialCatalog catalog, String packageId, String spineFingerprint) {
+        var propertyPackage = catalog.requirePackage(packageId);
+        List<String> basis = new ArrayList<>(propertyPackage.components());
+        basis.add("Water");
+        var identity = ThermoIdentity.of(catalog, packageId, CubicPhaseEvaluator.FAMILY, spineFingerprint,
+                WaterParticipation.SEPARATE_FREE_WATER);
+        var domain = PhaseDomain.of(FluidDomain.of(catalog, packageId), basis);
+        var coverage = new EquilibriumResult.Coverage(EquilibriumResult.CoverageGrade.ESTIMATED_DECLARED_ERROR,
+                "PR78 with constant volume translation, every phase at the state pressure (P1: liquid density within "
+                        + "2.6 % mean per isobar to 10 MPa for N2, CH4, C2H6, CO2 outside the critical band); the "
+                        + "declared critical band is graded research-only by the engine (P3); the package's advisory evidence applies");
+        return new PhaseContract(packageId, identity, basis, WaterParticipation.SEPARATE_FREE_WATER, "Water",
+                Set.of(PhaseCompetition.FLUID_ONLY), Set.of(), domain, coverage);
+    }
+
+    /**
+     * The fluid network package's contract with the package's own spine (P3 WP5): {@link #forNetworkPackage(MaterialCatalog,
+     * String, String)} with the package's {@code spineFingerprint()}, or {@link ThermoIdentity#NO_SPINE} for a package
+     * without one. The identity is the engine's ({@link CubicPhaseEvaluator#FAMILY}, the formation datum of
+     * {@link CubicPhaseEvaluator#forPackage}); the network's own revision is {@code HydrocarbonModel.NETWORK_FAMILY}'s
+     * identity, which differs from it by the family (another energy datum). The package's crystals, if any, are not
+     * qualified here: the network requests fluid-only competition until its crystal inventory exists (P4 stage 2b);
+     * {@link #forPackage} is the contract with the package's crystal set (P4 stage 2a).
+     */
+    public static PhaseContract forNetworkPackage(MaterialCatalog catalog, String packageId) {
+        String spine = catalog.requirePackage(packageId).spineFingerprint();
+        return forNetworkPackage(catalog, packageId, spine.isEmpty() ? ThermoIdentity.NO_SPINE : spine);
+    }
+
+    /**
+     * The package's contract for the equilibrium engine with its crystals (P4 stage 2a):
+     * {@link #forNetworkPackage(MaterialCatalog, String)} (the same basis, identity, water participation, domain and
+     * fluid coverage) qualified in addition for the competition of the fluid phases with every crystal the package
+     * admits ({@link #admittedCrystals}), as one whole set (D8). A package that admits no crystal gets the fluid-only
+     * contract, so a crystal request on it is refused as not qualified. The fluid network keeps
+     * {@link #forNetworkPackage(MaterialCatalog, String)}.
+     */
+    public static PhaseContract forPackage(MaterialCatalog catalog, String packageId) {
+        PhaseContract fluid = forNetworkPackage(catalog, packageId);
+        List<String> crystals = admittedCrystals(catalog, packageId);
+        if (crystals.isEmpty()) return fluid;
+        var competitions = new HashSet<>(fluid.qualifiedCompetitions());
+        competitions.add(PhaseCompetition.withCrystals(crystals.toArray(String[]::new)));
+        return new PhaseContract(fluid.packageId(), fluid.identity(), fluid.components(), fluid.water(), fluid.waterComponent(),
+                competitions, fluid.waterChemistrySpecies(), fluid.domain(), fluid.fluidCoverage());
+    }
+
+    /**
+     * The crystals of a package that may compete (P4 stage 2a): those the package declares whose records are usable
+     * ({@link CrystalReference#usable()}) and graded {@code qualified} or {@code estimated_declared_error}; a
+     * research-only or unavailable record is not admitted. In declaration order.
+     */
+    public static List<String> admittedCrystals(MaterialCatalog catalog, String packageId) {
+        List<String> admitted = new ArrayList<>();
+        for (String id : catalog.requirePackage(packageId).crystals()) {
+            CrystalReference record = catalog.crystals().get(id);
+            if (record == null || !record.usable()) continue;
+            MaterialCoverage.Grade grade = record.coverage().grade();
+            if (grade == MaterialCoverage.Grade.QUALIFIED || grade == MaterialCoverage.Grade.ESTIMATED_DECLARED_ERROR) admitted.add(id);
+        }
+        return admitted;
+    }
+
+    /**
+     * The qualified competition with crystals that holds the most of them (the package's whole crystal set), or
+     * {@code null} when the contract qualifies none.
+     */
+    public PhaseCompetition crystalCompetition() {
+        PhaseCompetition best = null;
+        for (PhaseCompetition competition : qualifiedCompetitions) {
+            if (competition.crystals().isEmpty() || competition.hydrates()) continue;
+            if (best == null || competition.crystals().size() > best.crystals().size()
+                    || competition.crystals().size() == best.crystals().size() && competition.toString().compareTo(best.toString()) < 0) {
+                best = competition;
+            }
+        }
+        return best;
+    }
+
+    /**
+     * The competition a request means: {@link PhaseCompetition#FLUID_AND_CRYSTALS} is the package's
+     * {@link #crystalCompetition()} (itself when the contract qualifies none, and then refused); any other competition
+     * is itself.
+     */
+    public PhaseCompetition resolve(PhaseCompetition competition) {
+        if (!competition.packageCrystals()) return competition;
+        PhaseCompetition crystals = crystalCompetition();
+        return crystals == null ? competition : crystals;
+    }
+
+    public int index(String component) { return components.indexOf(component); }
+    /** The water slot of the basis, -1 without water. */
+    public int waterIndex() { return waterComponent == null ? -1 : components.indexOf(waterComponent); }
+    public boolean qualifies(PhaseCompetition competition) { return qualifiedCompetitions.contains(competition); }
+}

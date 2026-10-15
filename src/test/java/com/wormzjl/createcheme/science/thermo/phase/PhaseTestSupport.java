@@ -1,0 +1,241 @@
+package com.wormzjl.createcheme.science.thermo.phase;
+
+import com.wormzjl.createcheme.science.column.v3.thermo.V3WaterProperties;
+import com.wormzjl.createcheme.science.fluid.thermo.FluidThermodynamics;
+import com.wormzjl.createcheme.science.material.MaterialCatalog;
+import com.wormzjl.createcheme.science.thermo.IdealGasFunction;
+import com.wormzjl.createcheme.science.thermo.PengRobinsonKernel;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Set;
+
+/**
+ * Shared fixtures of the phase-contract tests. Everything here is built from the bundled network package's PR78
+ * records and a stub {@link IdealGasFunction}, so the tests do not depend on the data spine's records.
+ */
+final class PhaseTestSupport {
+    static final String NETWORK = "createcheme:tjl20_methane_nitrogen";
+    static final double R = PengRobinsonKernel.GAS_CONSTANT;
+    /** Constant translations of the size of the P1 study's anchor (b) for N2 and CH4, m3/mol; the sign makes v smaller. */
+    static final double NITROGEN_TRANSLATION = -3.519e-6;
+    static final double METHANE_TRANSLATION = -3.389e-6;
+
+    private PhaseTestSupport() {}
+
+    static MaterialCatalog.Package network() { return MaterialCatalog.bundled().requirePackage(NETWORK); }
+
+    /**
+     * A stub ideal-gas function: {@code c_p = sum a_k (T - 298.15)^k}, {@code h = h0 + integral c_p},
+     * {@code s = s0 + integral c_p/T - R ln(P/1e5)}, refused outside {@code [minimum, maximum]}.
+     */
+    static final class StubIdealGas implements IdealGasFunction {
+        static final double REFERENCE_T = 298.15;
+        private final double[] a;
+        private final double[] powers;
+        private final double formationEnthalpy;
+        private final double standardEntropy;
+        private final double minimum;
+        private final double maximum;
+
+        StubIdealGas(double[] coefficients, double formationEnthalpy, double standardEntropy, double minimum, double maximum) {
+            a = coefficients.clone();
+            this.formationEnthalpy = formationEnthalpy;
+            this.standardEntropy = standardEntropy;
+            this.minimum = minimum;
+            this.maximum = maximum;
+            // The same polynomial in powers of T, for the entropy integral.
+            powers = new double[a.length];
+            for (int k = 0; k < a.length; k++) {
+                for (int m = 0; m <= k; m++) powers[m] += a[k] * binomial(k, m) * Math.pow(-REFERENCE_T, k - m);
+            }
+        }
+
+        static StubIdealGas constant(double heatCapacity, double minimum, double maximum) {
+            return new StubIdealGas(new double[] {heatCapacity, 0, 0, 0, 0, 0}, 0.0, 0.0, minimum, maximum);
+        }
+
+        /** The property's main {@code shifted_polynomial_5} fit, with zero formation enthalpy and entropy. */
+        static StubIdealGas of(MaterialCatalog.Property property, double minimum, double maximum) {
+            double[] coefficients = property.cp().stream().mapToDouble(Double::doubleValue).toArray();
+            return new StubIdealGas(coefficients, 0.0, 0.0, minimum, maximum);
+        }
+
+        StubIdealGas withReference(double enthalpy, double entropy) {
+            return new StubIdealGas(a, enthalpy, entropy, minimum, maximum);
+        }
+
+        @Override public double heatCapacity(double t) {
+            check(t);
+            double delta = t - REFERENCE_T;
+            double cp = 0.0;
+            for (int k = a.length - 1; k >= 0; k--) cp = cp * delta + a[k];
+            return cp;
+        }
+
+        /** The Horner form the translated model uses, so its ideal part is reproduced to rounding. */
+        @Override public double enthalpy(double t) {
+            check(t);
+            double delta = t - REFERENCE_T;
+            double h = 0.0;
+            for (int k = a.length - 1; k >= 0; k--) h = h * delta + a[k] / (k + 1);
+            return formationEnthalpy + h * delta;
+        }
+
+        @Override public double entropy(double t, double p) {
+            check(t);
+            if (!(p > 0.0)) throw new IllegalArgumentException("pressure");
+            double integral = powers[0] * Math.log(t / REFERENCE_T);
+            for (int m = 1; m < powers.length; m++) integral += powers[m] * (Math.pow(t, m) - Math.pow(REFERENCE_T, m)) / m;
+            return standardEntropy + integral - R * Math.log(p / 1.0e5);
+        }
+
+        @Override public double minimumTemperature() { return minimum; }
+        @Override public double maximumTemperature() { return maximum; }
+        @Override public String revision() { return "test-stub"; }
+
+        private void check(double t) {
+            if (!(t >= minimum && t <= maximum)) throw new IllegalArgumentException("Outside the stub's range: " + t);
+        }
+
+        private static double binomial(int n, int k) {
+            double value = 1.0;
+            for (int i = 1; i <= k; i++) value = value * (n - k + i) / i;
+            return value;
+        }
+    }
+
+    /** Methane and nitrogen of the network package with the P1-sized translations and their own cp fits as stubs. */
+    static CubicPhaseEvaluator methaneNitrogen() {
+        var pkg = network();
+        List<IdealGasFunction> gas = new ArrayList<>();
+        for (String id : List.of("Methane", "Nitrogen")) {
+            gas.add(StubIdealGas.of(pkg.properties().get(pkg.components().indexOf(id)), 50.0, 1500.0));
+        }
+        return CubicPhaseEvaluator.fromPackage(pkg, List.of("Methane", "Nitrogen"),
+                new double[] {METHANE_TRANSLATION, NITROGEN_TRANSLATION}, gas);
+    }
+
+    /** A declared open-domain research contract over the evaluator's basis, fluid-only, no water. */
+    static PhaseContract openContract(CubicPhaseEvaluator evaluator) {
+        return openContract(evaluator, Set.of(PhaseCompetition.FLUID_ONLY));
+    }
+
+    static PhaseContract openContract(CubicPhaseEvaluator evaluator, Set<PhaseCompetition> competitions) {
+        var identity = new ThermoIdentity("test:" + String.join(",", evaluator.components()), evaluator.family(),
+                ThermoIdentity.NO_SPINE, ThermoIdentity.NO_WATER);
+        return new PhaseContract("test:open", identity, evaluator.components(), WaterParticipation.NONE, null,
+                competitions, Set.of(), PhaseDomain.open("test:open", evaluator.components()),
+                new EquilibriumResult.Coverage(EquilibriumResult.CoverageGrade.RESEARCH_ONLY, "test contract, open domain"));
+    }
+
+    /**
+     * The network package's 20 EOS components in package order, with zero translations (a flash does not depend on
+     * them) and stubs from each record's main cp fit over the component's fluid-network temperature range.
+     */
+    static CubicPhaseEvaluator networkEvaluator() {
+        var catalog = MaterialCatalog.bundled();
+        var pkg = network();
+        List<IdealGasFunction> gas = new ArrayList<>();
+        for (int i = 0; i < pkg.components().size(); i++) {
+            var range = catalog.fluidValidity(NETWORK, pkg.components().get(i)).orElseThrow();
+            gas.add(StubIdealGas.of(pkg.properties().get(i), range.minimumTemperature(), range.maximumTemperature()));
+        }
+        return CubicPhaseEvaluator.fromPackage(pkg, pkg.components(), new double[pkg.components().size()], gas);
+    }
+
+    static FluidTpEquilibrium networkService() {
+        var contract = PhaseContract.forNetworkPackage(MaterialCatalog.bundled(), NETWORK, ThermoIdentity.NO_SPINE);
+        return new FluidTpEquilibrium(contract, networkEvaluator(), FluidTpEquilibrium.Settings.DEFAULT, null);
+    }
+
+    /** {@code settings} with other PH/UV search limits (the outer search's evaluation budget and step tolerance). */
+    static FluidTpEquilibrium.Settings withOuterSearch(FluidTpEquilibrium.Settings settings, int maximumOuterIterations,
+                                                       double outerTolerance) {
+        var s = settings;
+        return new FluidTpEquilibrium.Settings(s.lnKTolerance(), s.maximumIterations(), s.accelerationCycle(),
+                s.coexistenceTolerance(), s.trivialDistance(), s.stability(), s.slowSubstitutionSteps(), s.slowEigenvalue(),
+                s.substitutionLimit(), s.maximumNewtonIterations(), s.fugacityTolerance(), s.bandTieLine(),
+                s.bandStationaryDistance(), s.mergeTieLine(), s.mergeVolumeGap(), maximumOuterIterations, outerTolerance);
+    }
+
+    /** The network contract with the network's own free water ({@link #networkFreeWater}). */
+    static FluidTpEquilibrium networkService(FreeWaterModel water) {
+        var contract = PhaseContract.forNetworkPackage(MaterialCatalog.bundled(), NETWORK, ThermoIdentity.NO_SPINE);
+        return new FluidTpEquilibrium(contract, networkEvaluator(), FluidTpEquilibrium.Settings.DEFAULT, water);
+    }
+
+    /**
+     * The fluid network's free water as a {@link FreeWaterModel}, over the very methods {@code FluidThermodynamics.flashTP}
+     * and {@code state} use: its saturation pressure, its liquid water at (T, P), its ideal-gas steam enthalpy and its
+     * steam partial-pressure limit. The steam's heat capacity is the same Shomate polynomial's derivative
+     * ({@code V3WaterProperties.dVaporMolarEnthalpyDT}); its entropy is that polynomial's Shomate entropy, anchored at the
+     * standard entropy of water vapour, 188.835 J/(mol K) at 298.15 K and 1e5 Pa (JANAF), minus {@code R ln(P/1e5)}.
+     */
+    static FreeWaterModel networkFreeWater(FluidThermodynamics fluid) {
+        MaterialCatalog.Water water = network().water();
+        IdealGasFunction steam = new IdealGasFunction() {
+            private final double offset = 188.835 - shomateEntropy(298.15);
+
+            private double shomateEntropy(double t) {
+                double x = t / 1000.0;
+                List<Double> c = water.shomate();
+                return c.get(0) * Math.log(x) + c.get(1) * x + c.get(2) * x * x / 2.0 + c.get(3) * x * x * x / 3.0
+                        - c.get(4) / (2.0 * x * x);
+            }
+
+            @Override public double heatCapacity(double t) { return V3WaterProperties.dVaporMolarEnthalpyDT(water, t); }
+            @Override public double enthalpy(double t) { return fluid.vaporWaterEnthalpy(t); }
+            @Override public double entropy(double t, double p) { return shomateEntropy(t) + offset - R * Math.log(p / 1.0e5); }
+            @Override public double minimumTemperature() { return water.triplePoint(); }
+            @Override public double maximumTemperature() { return water.maximumTemperature(); }
+            @Override public String revision() { return water.revision(); }
+        };
+        return new FreeWaterModel() {
+            @Override public String revision() { return water.revision(); }
+            @Override public double saturationPressure(double t) { return fluid.saturationPressure(t); }
+            @Override public double vaporPartialPressureLimit(double t) { return FluidThermodynamics.waterVaporPressureLimit(t); }
+            @Override public void liquid(double t, double p, double[] out) {
+                var liquid = fluid.waterLiquid(t, p);
+                out[0] = liquid.molarVolume();
+                out[1] = liquid.molarEnthalpy();
+            }
+            @Override public IdealGasFunction vapor() { return steam; }
+        };
+    }
+
+    /** The Tia Juana light assay plus 5 mol% nitrogen over the network basis (water last, zero). */
+    static double[] crudeWithNitrogen(PhaseContract contract) {
+        var pkg = network();
+        var assay = pkg.assays().get("createcheme:tia_juana_light_methane");
+        double[] z = new double[contract.components().size()];
+        for (int c = 0; c < assay.components().size(); c++) z[contract.index(assay.components().get(c))] = assay.amounts().get(c);
+        z[contract.index("Nitrogen")] = 0.05;
+        return z;
+    }
+
+    /** A PR kernel over named network components, built as {@code TangentPlaneStabilityTest} builds its own. */
+    static PengRobinsonKernel classicalKernel(String... names) {
+        var pkg = network();
+        int n = names.length;
+        double[] tc = new double[n];
+        double[] pc = new double[n];
+        double[] omega = new double[n];
+        double[][] interactions = new double[n][n];
+        for (int a = 0; a < n; a++) {
+            int i = pkg.components().indexOf(names[a]);
+            var pr = pkg.properties().get(i).pr();
+            tc[a] = pr.criticalTemperature();
+            pc[a] = pr.criticalPressure();
+            omega[a] = pr.acentricFactor();
+            for (int b = 0; b < n; b++) interactions[a][b] = pkg.interactions().get(i).get(pkg.components().indexOf(names[b]));
+        }
+        return new PengRobinsonKernel(tc, pc, omega, interactions, Double.MIN_VALUE, Double.MAX_VALUE,
+                Double.MIN_VALUE, Double.MAX_VALUE, PengRobinsonKernel.Mixing.CLASSICAL);
+    }
+
+    static double sum(double[] values) {
+        double total = 0.0;
+        for (double value : values) total += value;
+        return total;
+    }
+}

@@ -138,7 +138,7 @@ public final class HydrocarbonModel {
      * (test tree, pinned by {@code PengRobinson78Test}) evaluates a pure composition: for one component the mixing rules
      * give {@code a_mix = sqrt(a a) (1 - k_cc)} and {@code b_mix = b} exactly, so the result is the reference's bit for bit.
      */
-    private static double pureLiquidCompressibility(ThermoComponent c,double kcc,double t,double p) {
+    static double pureLiquidCompressibility(ThermoComponent c,double kcc,double t,double p) {
         if(!Double.isFinite(t)||t<=0.0||!Double.isFinite(p)||p<=0.0)throw new IllegalArgumentException("Temperature and pressure must be finite and positive");
         double r=FluidThermodynamics.R,tc=c.criticalTemperatureKelvin(),pc=c.criticalPressurePascal(),omega=c.acentricFactor();
         double criticalA=0.45724*square(r)*square(tc)/pc;

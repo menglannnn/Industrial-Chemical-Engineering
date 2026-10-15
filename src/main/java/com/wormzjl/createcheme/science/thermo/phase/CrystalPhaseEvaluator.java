@@ -1,0 +1,252 @@
+package com.wormzjl.createcheme.science.thermo.phase;
+
+import com.wormzjl.createcheme.science.material.CrystalReference;
+import com.wormzjl.createcheme.science.material.JaegerSpanGibbsFunction;
+import com.wormzjl.createcheme.science.material.MaterialCatalog;
+import com.wormzjl.createcheme.science.thermo.IdealGasFunction;
+import com.wormzjl.createcheme.science.thermo.PengRobinsonKernel;
+import com.wormzjl.createcheme.science.thermo.PengRobinsonKernel.Root;
+import com.wormzjl.createcheme.science.thermo.phase.PhaseEvaluator.Capability;
+import java.util.Collections;
+import java.util.EnumSet;
+import java.util.Objects;
+import java.util.Set;
+
+/**
+ * The {@link SolidPhaseEvaluator} of a crystal record (P4 stage 1, batch 2026-09-24-coolprop-low-temperature): the
+ * record's model ({@link CrystalReference}, for CO2 the Gibbs function of Jaeger and Span 2012) anchored at the triple
+ * point to the fluid family's pure liquid.
+ *
+ * <p>Anchoring. {@link #anchor(PhaseEvaluator)} evaluates the fluid family's pure liquid of the species at the record's
+ * triple point (T_t, P_t) and returns its chemical potential mu_L and enthalpy h_L. The crystal then satisfies
+ * g_s(T_t, P_t) = mu_L and s_s(T_t, P_t) = (h_L - mu_L)/T_t - dH_fus/T_t (Jaeger and Span's equations 19 and 20, with the
+ * record's fusion enthalpy); for a Gibbs-function record these two linear conditions fix its integration constants g0
+ * and g1. Nothing of the paper's own reference state is used at runtime.</p>
+ *
+ * <p>State. The evaluator fills a one-component {@link PhaseKind#SOLID} state naming the record's id as its crystal:
+ * v, h and s of the anchored crystal, split against the species' ideal gas (the package's spine) as
+ * {@code h = h_ig(T) + (h - h_ig)} and {@code s = s_ig(T, P) + (s - s_ig)}, and
+ * {@code ln phi = (g_s - g_ig(T, P)) / (R T)} with the kernel's gas constant, so that
+ * {@link PhaseState#chemicalPotential(int)} equals g_s and compares directly with a fluid phase's chemical potential.
+ * Outside the record's range, or outside the ideal-gas function's range, the evaluation is refused
+ * ({@link IllegalArgumentException}); an unusable record is refused at construction.</p>
+ *
+ * <p>Anchored view (P4 stage 2a). {@link #anchored(TriplePointAnchor)} solves the integration constants once and returns
+ * an immutable {@link Anchored} crystal that evaluates its function once per state; an equilibrium service holds one per
+ * crystal for its contract's thermodynamic identity (the fluid family, the package and the crystal record decide the
+ * anchor), so a flash never re-solves g0 and g1. {@link #evaluate(double, double, TriplePointAnchor, PhaseState)} keeps
+ * the last anchored view it built and reuses it while the caller passes an equal anchor.</p>
+ *
+ * <p>Derivatives ({@link #derivatives}): the crystal is a pure phase of fixed composition, so
+ * {@link Capability#FUGACITY_STATE_DERIVATIVES} ({@code d ln phi/dT = -(h_s - h_ig)/(R T^2)},
+ * {@code d ln phi/dP = v_s/(R T) - 1/P}, equivalent to {@code d mu/dT = -s} and {@code d mu/dP = v}),
+ * {@link Capability#VOLUMETRIC_DERIVATIVES} ({@code dv/dT = alpha v}, {@code dv/dP = -kappa v}) and
+ * {@link Capability#CALORIC_DERIVATIVES} ({@code c_p}, {@code dh/dP = v (1 - alpha T)}) are provided, and no composition
+ * derivatives.</p>
+ */
+public final class CrystalPhaseEvaluator implements SolidPhaseEvaluator {
+    private static final double R = PengRobinsonKernel.GAS_CONSTANT;
+    /** The derivative blocks {@link #derivatives} provides: no composition derivatives for a pure crystal. */
+    public static final Set<Capability> CAPABILITIES = Collections.unmodifiableSet(EnumSet.of(
+            Capability.FUGACITY_STATE_DERIVATIVES, Capability.VOLUMETRIC_DERIVATIVES, Capability.CALORIC_DERIVATIVES));
+    private static final double[] ONE = {1.0};
+
+    private final CrystalReference crystal;
+    private final IdealGasFunction idealGas;
+    private final String family;
+    /** The last anchored view {@link #evaluate} built: reused while the caller passes an equal anchor. */
+    private volatile Anchored last;
+
+    private CrystalPhaseEvaluator(CrystalReference crystal, IdealGasFunction idealGas) {
+        this.crystal = Objects.requireNonNull(crystal, "crystal");
+        this.idealGas = Objects.requireNonNull(idealGas, "idealGas");
+        if (!crystal.usable()) throw new IllegalStateException(crystal.id() + ": crystal record is not usable, missing " + crystal.missing());
+        this.family = "crystal_" + crystal.kind().key() + "_triple_point_anchored_v1";
+    }
+
+    /** The crystal of {@code crystal} with the species' ideal-gas function {@code idealGas}. */
+    public static CrystalPhaseEvaluator of(CrystalReference crystal, IdealGasFunction idealGas) {
+        return new CrystalPhaseEvaluator(crystal, idealGas);
+    }
+
+    /** A crystal the package declares, with the package's reference spine of its species as the ideal gas. */
+    public static CrystalPhaseEvaluator forPackage(MaterialCatalog catalog, String packageId, String crystalId) {
+        var pkg = catalog.requirePackage(packageId);
+        if (!pkg.crystals().contains(crystalId)) throw new IllegalArgumentException("Package " + packageId + " does not declare crystal " + crystalId);
+        CrystalReference record = catalog.crystals().get(crystalId);
+        return new CrystalPhaseEvaluator(record, catalog.requireSpine(packageId, record.component()));
+    }
+
+    /** The record this evaluator anchors. */
+    public CrystalReference record() { return crystal; }
+
+    /** The species' ideal-gas function the state is split against (the package's spine): {@code ln phi} refers to it. */
+    public IdealGasFunction idealGas() { return idealGas; }
+
+    @Override public String family() { return family; }
+    @Override public String crystal() { return crystal.id(); }
+    @Override public String component() { return crystal.component(); }
+
+    /**
+     * The anchor of this crystal on a fluid family: the family's pure liquid of {@link #component()} at the record's
+     * triple point. The family must carry the component and have a liquid root there distinct from its vapour root.
+     */
+    public TriplePointAnchor anchor(PhaseEvaluator fluid) {
+        int index = fluid.components().indexOf(component());
+        if (index < 0) throw new IllegalArgumentException("Fluid family " + fluid.family() + " does not carry " + component());
+        double[] amounts = new double[fluid.componentCount()];
+        amounts[index] = 1.0;
+        double t = crystal.anchor().temperature();
+        double p = crystal.anchor().pressure();
+        PhaseState liquid = fluid.evaluate(t, p, amounts, Root.LIQUID, fluid.newWorkspace(), fluid.newState());
+        if (liquid.kind() != PhaseKind.LIQUID)
+            throw new IllegalStateException(fluid.family() + ": no liquid root of " + component() + " distinct from the vapour at the triple point "
+                    + t + " K, " + p + " Pa (got " + liquid.kind() + ")");
+        return new TriplePointAnchor(component(), t, p, liquid.chemicalPotential(index), liquid.molarEnthalpy());
+    }
+
+    /** The anchored crystal's properties at (T, P), including c_p, expansion and compressibility. */
+    public CrystalReference.State properties(double temperature, double pressure, TriplePointAnchor anchor) {
+        return view(anchor).properties(temperature, pressure);
+    }
+
+    @Override
+    public PhaseState evaluate(double temperature, double pressure, TriplePointAnchor anchor, PhaseState out) {
+        return view(anchor).evaluate(temperature, pressure, out);
+    }
+
+    /** The anchored crystal and its derivatives at (T, P) into {@code out} (one component); see the class comment. */
+    @Override
+    public PhaseDerivatives derivatives(double temperature, double pressure, TriplePointAnchor anchor, PhaseDerivatives out) {
+        return view(anchor).derivatives(temperature, pressure, out);
+    }
+
+    @Override public Set<Capability> capabilities() { return CAPABILITIES; }
+
+    /**
+     * The crystal anchored at {@code anchor}, its integration constants solved once: the view an equilibrium service
+     * keeps per thermodynamic identity. The anchor must name the record's species and triple point.
+     */
+    public Anchored anchored(TriplePointAnchor anchor) {
+        requireAnchor(anchor);
+        return new Anchored(anchor);
+    }
+
+    private Anchored view(TriplePointAnchor anchor) {
+        Anchored view = last;
+        if (view != null && view.anchor.equals(anchor)) return view;
+        view = anchored(anchor);
+        last = view;
+        return view;
+    }
+
+    /**
+     * The crystal of this evaluator anchored at one {@link TriplePointAnchor}, immutable and safe to share between
+     * threads: a Gibbs-function record with its integration constants g0 and g1 solved at construction (one function
+     * evaluation per state), a segment record through {@link CrystalReference#state}. Callers pass their own
+     * {@link PhaseState} and {@link PhaseDerivatives} (one component); a state allocates its property records only.
+     */
+    public final class Anchored {
+        private final TriplePointAnchor anchor;
+        private final JaegerSpanGibbsFunction function;
+        private final double g0;
+        private final double g1;
+
+        private Anchored(TriplePointAnchor anchor) {
+            this.anchor = anchor;
+            this.function = crystal.gibbsFunction();
+            if (function != null) {
+                double[] constants = crystal.integrationConstants(anchor.chemicalPotential(), anchor.liquidEnthalpy());
+                g0 = constants[0];
+                g1 = constants[1];
+            } else {
+                g0 = Double.NaN;
+                g1 = Double.NaN;
+            }
+        }
+
+        public TriplePointAnchor anchor() { return anchor; }
+        public CrystalPhaseEvaluator evaluator() { return CrystalPhaseEvaluator.this; }
+        public IdealGasFunction idealGas() { return idealGas; }
+        public String family() { return family; }
+        public String crystal() { return crystal.id(); }
+        public String component() { return crystal.component(); }
+        public CrystalReference record() { return crystal; }
+        /** The solved integration constants {g0, g1} of a Gibbs-function record; NaN for a segment record. */
+        public double[] integrationConstants() { return new double[] {g0, g1}; }
+
+        /** Whether (T, P) lies in the record's range and the species' ideal-gas range (P strictly positive). */
+        public boolean covers(double temperature, double pressure) {
+            return temperature >= crystal.minimumTemperature() && temperature <= crystal.maximumTemperature()
+                    && pressure > 0.0 && !(pressure < crystal.minimumPressure()) && !(pressure > crystal.maximumPressure())
+                    && temperature >= idealGas.minimumTemperature() && temperature <= idealGas.maximumTemperature();
+        }
+
+        /** g, h, s, v, c_p, alpha and kappa at (T, P); refused outside the record's range. */
+        public CrystalReference.State properties(double temperature, double pressure) {
+            if (function == null) return crystal.state(temperature, pressure, anchor.chemicalPotential(), anchor.liquidEnthalpy());
+            var s = function.evaluate(checked(temperature), pressure, g0, g1);
+            return new CrystalReference.State(temperature, pressure, s.gibbs(), s.enthalpy(), s.entropy(), s.volume(),
+                    s.heatCapacity(), s.expansion(), s.compressibility());
+        }
+
+        /** {@code g_s(T, P)}, J/mol on the spine's reference: the crystal's chemical potential. */
+        public double chemicalPotential(double temperature, double pressure) {
+            if (function == null) return properties(temperature, pressure).gibbs();
+            return function.evaluate(checked(temperature), pressure, g0, g1).gibbs();
+        }
+
+        /** Fills {@code out} (one component) with the crystal at (T, P), as the evaluator does. */
+        public PhaseState evaluate(double temperature, double pressure, PhaseState out) {
+            Objects.requireNonNull(out, "out");
+            if (out.componentCount() != 1) throw new IllegalArgumentException("A crystal state has one component");
+            return fill(properties(temperature, pressure), out);
+        }
+
+        /** The state and the derivative blocks of {@link #CAPABILITIES} at (T, P) into {@code out} (one component). */
+        public PhaseDerivatives derivatives(double temperature, double pressure, PhaseDerivatives out) {
+            Objects.requireNonNull(out, "out");
+            if (out.componentCount() != 1) throw new IllegalArgumentException("A crystal state has one component");
+            CrystalReference.State s = properties(temperature, pressure);
+            PhaseState state = fill(s, out.state());
+            out.begin(family);
+            double rt = R * temperature;
+            // ln phi = (g_s - g_ig)/(R T): d/dT = -(h_s - h_ig)/(R T^2), d/dP = (v_s - R T/P)/(R T).
+            out.logFugacityTemperatureBuffer()[0] = -state.residualEnthalpy() / (rt * temperature);
+            out.logFugacityPressureBuffer()[0] = s.volume() / rt - 1.0 / pressure;
+            out.provide(Capability.FUGACITY_STATE_DERIVATIVES);
+            double volume = s.volume();
+            out.setVolumetric(s.expansion() * volume, -s.compressibility() * volume);
+            out.setCaloric(s.heatCapacity(), volume * (1.0 - s.expansion() * temperature));
+            return out;
+        }
+
+        private double checked(double temperature) {
+            if (!(temperature >= crystal.minimumTemperature() && temperature <= crystal.maximumTemperature()))
+                throw new IllegalArgumentException(crystal.id() + ": temperature " + temperature + " K outside "
+                        + crystal.minimumTemperature() + ".." + crystal.maximumTemperature() + " K");
+            return temperature;
+        }
+
+        private PhaseState fill(CrystalReference.State s, PhaseState out) {
+            double temperature = s.temperature();
+            double pressure = s.pressure();
+            double hIdeal = idealGas.enthalpy(temperature);
+            double sIdeal = idealGas.entropy(temperature, pressure);
+            double gIdeal = hIdeal - temperature * sIdeal;
+            out.set(PhaseKind.SOLID, crystal.id(), null, 0, temperature, pressure, s.volume(), hIdeal, s.enthalpy() - hIdeal,
+                    sIdeal, s.entropy() - sIdeal, s.gibbs(), ONE, new double[] {(s.gibbs() - gIdeal) / (R * temperature)},
+                    new double[] {gIdeal});
+            return out;
+        }
+    }
+
+    private void requireAnchor(TriplePointAnchor anchor) {
+        Objects.requireNonNull(anchor, "anchor");
+        if (!anchor.component().equals(component()))
+            throw new IllegalArgumentException("Anchor of " + anchor.component() + " for a crystal of " + component());
+        if (anchor.temperature() != crystal.anchor().temperature() || anchor.pressure() != crystal.anchor().pressure())
+            throw new IllegalArgumentException("Anchor at (" + anchor.temperature() + " K, " + anchor.pressure() + " Pa), not at the record's triple point ("
+                    + crystal.anchor().temperature() + " K, " + crystal.anchor().pressure() + " Pa)");
+    }
+}
