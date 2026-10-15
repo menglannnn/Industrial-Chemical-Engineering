@@ -15,6 +15,10 @@ All notable changes to CreateChemE are recorded in this file. The format follows
 
 ## [Unreleased]
 
+### Changed
+
+- Fluid tank and column GUI fixes (owner list 2026-10-15, batch folder: `2026-10-15-fluid-tank-column-gui-fixes`, commits `abd40da5`, `ad991e17`): the tank rail shows the pipe's phase ratio and "Status / errors" blocks; fluid tables show kmol and kg side by side (column products and, on a wide panel, the composition feed rates too); phases are named organic and aqueous; the column takes four side draws (a fourth one is solved from the classical seed, the bundled model has three draw slots); the column preset `tia_juana_nitrogen` (package `tjl20_methane_nitrogen`) admits nitrogen in the feed; every generator mixture choice loads its solids (client mixture files take an optional `solids` block); a topology commit marks every recompiled device for its next bucket, so a device left without an island stops showing the network it lost.
+
 ## [0.7.2] - 2026-10-15
 
 ### Changed

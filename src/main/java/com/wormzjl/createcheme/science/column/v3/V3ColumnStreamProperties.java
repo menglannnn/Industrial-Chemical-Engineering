@@ -23,7 +23,8 @@ public record V3ColumnStreamProperties(
         double pressurePascal,
         double vaporMoleFraction,
         List<ComponentFraction> moleFractions) {
-    public static final int MAX_STREAMS = 7;
+    /** Overhead vapor (or water vapor), liquid distillate, bottoms and free water, plus one stream per side draw. */
+    public static final int MAX_STREAMS = 4 + V3ColumnInput.MAX_SIDE_DRAWS;
     public static final int MAX_COMPONENTS = V3ComponentBasis.MAX_COMPONENTS + 1;
 
     public V3ColumnStreamProperties {

@@ -19,7 +19,7 @@ class V3ClientPresetsTest {
     @Test void bundledLibrariesAreIndependentAndPreserveAuthoredOperatingData(){
         var l=library();var columns=l.refresh(V3ClientPresets.Kind.COLUMN);var mixtures=l.refresh(V3ClientPresets.Kind.MIXTURE);
         assertTrue(columns.problems().isEmpty(),()->columns.problems().toString());assertTrue(mixtures.problems().isEmpty());
-        assertEquals(8,columns.entries().size());assertEquals(7,mixtures.entries().size());
+        assertEquals(8,columns.entries().size());assertEquals(8,mixtures.entries().size());
         for(var entry:columns.entries()){
             if(entry.file().equals("holland_3_2.json")||entry.file().equals("pot.json"))continue;
             var d=draft();var column=(V3ClientPresets.Column)entry.preset();d.loadColumn(column.fields());
@@ -36,7 +36,7 @@ class V3ClientPresetsTest {
         String json=V3ClientPresets.mixtureJson("custom",d.composition());
         Path file=l.save(V3ClientPresets.Kind.MIXTURE,"custom",json);
         assertEquals(game.resolve("CreateChemE/mixturepreset/custom.json"),file);
-        assertEquals(7,first.entries().size());assertEquals(8,l.refresh(V3ClientPresets.Kind.MIXTURE).entries().size());
+        assertEquals(8,first.entries().size());assertEquals(9,l.refresh(V3ClientPresets.Kind.MIXTURE).entries().size());
         assertNotEquals(file,l.save(V3ClientPresets.Kind.MIXTURE,"custom",json));assertEquals(json,Files.readString(file));
         assertThrows(IllegalArgumentException.class,()->l.save(V3ClientPresets.Kind.MIXTURE,"../escape",json));
     }

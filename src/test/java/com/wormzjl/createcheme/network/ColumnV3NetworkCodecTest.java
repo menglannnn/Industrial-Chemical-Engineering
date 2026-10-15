@@ -92,8 +92,8 @@ class ColumnV3NetworkCodecTest {
     }
 
     @Test
-    void sevenStreamCertificateRoundTripsThroughWireAndNbtAndRejectsAnEighthStream() throws Exception {
-        List<V3ColumnStreamProperties> streams = java.util.stream.IntStream.range(0, 7).mapToObj(index ->
+    void aFullStreamCertificateRoundTripsThroughWireAndNbtAndRejectsOneMoreStream() throws Exception {
+        List<V3ColumnStreamProperties> streams = java.util.stream.IntStream.range(0, V3ColumnStreamProperties.MAX_STREAMS).mapToObj(index ->
                 new V3ColumnStreamProperties("product_" + index, "Product " + index, "LIQUID", 10, 1, 400, 250_000, 0,
                         List.of(new V3ColumnStreamProperties.ComponentFraction("a", 1, 1)))).toList();
         V3ColumnDisplayResult result = new V3ColumnDisplayResult("0".repeat(64), "mesh", "assumptions", "data", 2, 0, 6,
