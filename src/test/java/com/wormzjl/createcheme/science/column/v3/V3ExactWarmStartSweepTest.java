@@ -104,12 +104,10 @@ class V3ExactWarmStartSweepTest {
         V3AcceptanceAudit audit = auditor.audit(attempt.state(), thermo.newWorkspace());
         if (!(attempt instanceof V3SimultaneousColumnSolver.Attempt.Converged)
                 || (branch != V3CondenserPhaseBranch.TWO_PHASE && !audit.accepted())) {
-            V3SequentialPreconditioner.Result preparation = V3BubblePointPreconditioner.INSTANCE.prepare(
-                    new V3SequentialPreconditioner.Request(problem, attempt.state(), V3SolveControl.UNBOUNDED),
-                    thermo, thermo.newWorkspace());
-            if (preparation instanceof V3SequentialPreconditioner.Result.Prepared prepared) {
+            V3DryMeshState prepared = V3SimultaneousColumnSolverTest.projectedOrNull(problem, thermo, attempt.state());
+            if (prepared != null) {
                 V3SimultaneousColumnSolver.Attempt recovered = V3SimultaneousColumnSolver.solveWithContinuationLocalBlocks(
-                        problem, evaluator, new V3DryMeshCoordinateMap(problem), prepared.state(),
+                        problem, evaluator, new V3DryMeshCoordinateMap(problem), prepared,
                         thermo::newWorkspace, 128, 1.0e-8, V3SolveControl.UNBOUNDED);
                 V3AcceptanceAudit recoveredAudit = auditor.audit(recovered.state(), thermo.newWorkspace());
                 if (recovered instanceof V3SimultaneousColumnSolver.Attempt.Converged

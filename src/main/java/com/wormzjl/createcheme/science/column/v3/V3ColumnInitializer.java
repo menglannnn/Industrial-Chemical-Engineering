@@ -192,12 +192,6 @@ final class V3ColumnInitializer {
         }
     }
 
-    static void solveMaterialBalances(
-            V3ColumnProblem problem, double[][] equilibriumConstants, double[][] liquid, double[][] vapor) {
-        double[][] phaseFlowRatios = phaseFlowRatios(equilibriumConstants, liquid, vapor);
-        solveMaterialBalancesWithPhaseFlowRatios(problem, phaseFlowRatios, liquid, vapor);
-    }
-
     private static void solveMaterialBalancesWithPhaseFlowRatios(
             V3ColumnProblem problem, double[][] phaseFlowRatios, double[][] liquid, double[][] vapor) {
         V3ColumnTopology topology = problem.topology();

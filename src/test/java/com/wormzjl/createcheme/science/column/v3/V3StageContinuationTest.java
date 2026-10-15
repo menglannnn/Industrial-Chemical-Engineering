@@ -409,10 +409,12 @@ class V3StageContinuationTest {
                 target.input(), V3ColumnSpecification.CondenserOutletTemperature.class).kelvin();
         V3DryMeshState interpolated = new V3DryMeshState(target.topology(), components, liquid, vapor, temperatures);
         V3PengRobinsonThermo thermo = V3PengRobinsonThermo.fromRegisteredPackage(target.input().packageId());
-        V3SequentialPreconditioner.Result prepared = V3BubblePointPreconditioner.INSTANCE.prepare(
-                new V3SequentialPreconditioner.Request(target, interpolated, V3SolveControl.UNBOUNDED),
-                thermo, thermo.newWorkspace());
-        return prepared instanceof V3SequentialPreconditioner.Result.Prepared result ? result.state() : interpolated;
+        try {
+            return V3ColumnInitializer.projectMaterialBalancesAtFixedTemperature(
+                    target, thermo, thermo.newWorkspace(), interpolated);
+        } catch (com.wormzjl.createcheme.science.column.v3.thermo.V3ThermoException | IllegalArgumentException failure) {
+            return interpolated;
+        }
     }
 
     private static <S extends V3ColumnSpecification> S specification(V3ColumnInput input, Class<S> type) {

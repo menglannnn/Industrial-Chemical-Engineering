@@ -1500,20 +1500,24 @@ public final class V3ColumnCalculator {
         return projectedSeedOrPrevious(targetProblem, thermo, interpolated, control);
     }
 
-    private static V3DryMeshState projectedSeedOrPrevious(
+    /**
+     * Bounded component-material/bubble-point projection of a seed. The projection is a candidate for a later
+     * rigorous MESH correction; a property-domain or invalid-state failure, or a state outside the log
+     * coordinates, keeps the previous state.
+     */
+    static V3DryMeshState projectedSeedOrPrevious(
             V3ColumnProblem problem, V3PengRobinsonThermo thermo, V3DryMeshState previousState, V3SolveControl control) {
-        V3SequentialPreconditioner.Result result = V3BubblePointPreconditioner.INSTANCE.prepare(
-                new V3SequentialPreconditioner.Request(problem, previousState, control), thermo, thermo.newWorkspace());
-        return preparedSeedOrPrevious(problem, previousState, result);
-    }
-
-    private static V3DryMeshState preparedSeedOrPrevious(
-            V3ColumnProblem problem, V3DryMeshState previousState, V3SequentialPreconditioner.Result result) {
-        if (result instanceof V3SequentialPreconditioner.Result.Prepared prepared
-                && isLogCoordinateFeasible(problem, prepared.state())) {
-            return prepared.state();
+        var workspace = thermo.newWorkspace();
+        control.checkpoint();
+        V3DryMeshState projected;
+        try {
+            projected = V3ColumnInitializer.projectMaterialBalancesAtFixedTemperature(
+                    problem, thermo, workspace, previousState);
+            control.checkpoint();
+        } catch (V3ThermoException | IllegalArgumentException failure) {
+            return previousState;
         }
-        return previousState;
+        return isLogCoordinateFeasible(problem, projected) ? projected : previousState;
     }
 
     private static boolean isLogCoordinateFeasible(V3ColumnProblem problem, V3DryMeshState state) {

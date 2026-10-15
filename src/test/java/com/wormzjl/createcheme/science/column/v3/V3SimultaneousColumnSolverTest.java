@@ -104,12 +104,10 @@ class V3SimultaneousColumnSolverTest {
         // not convergence from one particular cold trajectory. Use the same existing recovery
         // paths as the exact-warm companion and production facade; keep every acceptance gate.
         if (!(attempt instanceof V3SimultaneousColumnSolver.Attempt.Converged)) {
-            V3SequentialPreconditioner.Result preparation = V3BubblePointPreconditioner.INSTANCE.prepare(
-                    new V3SequentialPreconditioner.Request(problem, attempt.state(), V3SolveControl.UNBOUNDED),
-                    thermo, thermo.newWorkspace());
-            if (preparation instanceof V3SequentialPreconditioner.Result.Prepared prepared) {
+            V3DryMeshState prepared = projectedOrNull(problem, thermo, attempt.state());
+            if (prepared != null) {
                 attempt = V3SimultaneousColumnSolver.solveWithContinuationLocalBlocks(
-                        problem, evaluator, new V3DryMeshCoordinateMap(problem), prepared.state(), thermo::newWorkspace,
+                        problem, evaluator, new V3DryMeshCoordinateMap(problem), prepared, thermo::newWorkspace,
                         128, 1.0e-8, V3SolveControl.UNBOUNDED);
             }
         }
@@ -400,6 +398,15 @@ class V3SimultaneousColumnSolverTest {
             int node = (int) Math.round((temperatureKelvin - 400.0) / 10.0);
             if (node < 0 || node >= K.length) throw new IllegalArgumentException("Manufactured Newton temperature is outside its grid");
             return node;
+        }
+    }
+
+    /** The bounded material/bubble-point projection, or null when it fails on a property or state error. */
+    static V3DryMeshState projectedOrNull(V3ColumnProblem problem, V3PengRobinsonThermo thermo, V3DryMeshState state) {
+        try {
+            return V3ColumnInitializer.projectMaterialBalancesAtFixedTemperature(problem, thermo, thermo.newWorkspace(), state);
+        } catch (com.wormzjl.createcheme.science.column.v3.thermo.V3ThermoException | IllegalArgumentException failure) {
+            return null;
         }
     }
 }
