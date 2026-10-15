@@ -5,7 +5,6 @@ import com.wormzjl.createcheme.science.fluid.state.*;
 import com.wormzjl.createcheme.science.fluid.thermo.FluidThermodynamics;
 import com.wormzjl.createcheme.science.fluid.transport.SlurryTransport;
 import java.util.List;
-import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -17,7 +16,6 @@ import static org.junit.jupiter.api.Assertions.*;
  * qualify that placement: that it does not move when the tolerance is tightened by three orders,
  * and that a prescribed constant feed meets a filter capacity at the time arithmetic says it does.
  */
-@Tag("solid-feasibility")
 class SolidClosureFeasibilityTest {
     private final FluidThermodynamics model = FluidTestSupport.networkModel();
 

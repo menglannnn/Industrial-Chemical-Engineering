@@ -45,19 +45,11 @@ public final class GlobalLiquidResponse {
     /** Chemical-potential correction matching the volume integral; arrays represent partial molar volumes at Pref. */
     public double[] logFugacity(double temperature,double pressure,double referencePressure,
                                double integral,double[] referenceLogPhi,double[] partialReferenceVolumes) {
-        if (referenceLogPhi.length != partialReferenceVolumes.length || !(temperature > 0) || !(pressure > 0)
-                || !(referencePressure > 0) || !Double.isFinite(temperature) || !Double.isFinite(pressure)
-                || !Double.isFinite(referencePressure) || !Double.isFinite(integral)) throw new IllegalArgumentException("Invalid liquid fugacity inputs");
-        double[] result = referenceLogPhi.clone();
-        // Hoisted, not changed: the logarithm does not depend on the component.
-        double pressureLog = DeterministicMath.log(referencePressure/pressure);
-        for (int i=0;i<result.length;i++) {
-            result[i] += pressureLog + partialReferenceVolumes[i]*integral/(R*temperature);
-            if (!Double.isFinite(result[i])) throw new IllegalArgumentException("Nonfinite liquid fugacity");
-        }
+        double[] result = new double[referenceLogPhi.length];
+        logFugacityInto(temperature,pressure,referencePressure,integral,referenceLogPhi,partialReferenceVolumes,result);
         return result;
     }
-    /** {@link #logFugacity} into {@code out}, same arithmetic; for the flash's equilibrium iteration. */
+    /** {@link #logFugacity} into {@code out}; for the flash's equilibrium iteration. */
     public void logFugacityInto(double temperature,double pressure,double referencePressure,
                                 double integral,double[] referenceLogPhi,double[] partialReferenceVolumes,double[] out) {
         if (referenceLogPhi.length != partialReferenceVolumes.length || !(temperature > 0) || !(pressure > 0)

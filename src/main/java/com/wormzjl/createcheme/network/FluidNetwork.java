@@ -72,10 +72,9 @@ public final class FluidNetwork {
         public MenuData {
             Objects.requireNonNull(kind);Objects.requireNonNull(view);Objects.requireNonNull(controls);Objects.requireNonNull(message);
             components=new com.wormzjl.createcheme.science.material.MaterialAxis(components).ids();presets=List.copyOf(presets);materialNames=Map.copyOf(materialNames);molecularWeights=validatedWeights(molecularWeights,components.size());
-            if(message.length()>1024||controls.composition().length!=components.size()||presets.size()>com.wormzjl.createcheme.science.material.MaterialPresets.MAX_PRESETS
+            if(controls.composition().length!=components.size()||presets.size()>com.wormzjl.createcheme.science.material.MaterialPresets.MAX_PRESETS
                     ||presets.stream().map(FluidPresetCatalog.Preset::id).distinct().count()!=presets.size()||materialNames.size()>components.size()
                     ||!components.containsAll(materialNames.keySet()))throw new IllegalArgumentException("Invalid bounded fluid menu state");
-            if(view.pipeHistory().size()>12||view.pipeRoutes().size()>12||view.status().length()>2048)throw new IllegalArgumentException("Fluid view exceeds display bounds");
             if(kind!=TopologyCompiler.Kind.RESERVOIR&&!view.outlets().isEmpty())throw new IllegalArgumentException("Only a tank lists outlets");
             if((kind==TopologyCompiler.Kind.PIPE||kind==TopologyCompiler.Kind.FILTER)&&view.pipeInfo()==null)
                 throw new IllegalArgumentException("Missing pipe inspection");
@@ -175,10 +174,10 @@ public final class FluidNetwork {
         return new MenuData(record.device().kind(),view,Controls.from(record),world.components(),world.presets(),"",
             world.materialNames(),Arrays.stream(world.model().molecularWeights()).boxed().toList());
     }
-    /** Sends a published snapshot to an installed, requested menu; replay uses an empty reply. */
+    /** Sends a published snapshot to an installed, requested menu; replay uses an empty reply. The presentation checked
+     * that the menu is open ({@code FluidPresentation.Host.open}) and the snapshot is its device's. */
     public static void deliver(FluidDeviceMenu menu,boolean withStatic,MenuData data,String reply) {
         var player=menu.serverPlayer();
-        if(player==null||player.containerMenu!=menu||menu.identity()!=data.view().identity()||!menu.stillValid(player))return;
         if(withStatic) {
             PacketDistributor.sendToPlayer(player,new StaticPayload(menu.containerId,menu.identity(),JSON.toJson(data.staticData(data.view().inputRevision()))));
             FluidRuntimeDiagnostics.count(FluidRuntimeDiagnostics.menuPackets);FluidRuntimeDiagnostics.count(FluidRuntimeDiagnostics.staticPayloads);

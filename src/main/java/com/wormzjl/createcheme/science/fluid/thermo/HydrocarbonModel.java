@@ -93,13 +93,7 @@ public final class HydrocarbonModel {
      * flash's equilibrium iteration.
      */
     public boolean logFugacityInto(double t,double p,double[] amounts,PhaseRoot root,TranslatedPengRobinson.Workspace terms,double[] out) {
-        if(amounts.length!=componentCount())throw new IllegalArgumentException("Hydrocarbon basis mismatch");
-        if(!Double.isFinite(t)||!Double.isFinite(p))throw new IllegalArgumentException("Fluid hydrocarbon state is not finite");
-        domain.checkPhaseTemperature(t,amounts);
-        if(root==PhaseRoot.VAPOR) {
-            if(p<VAPOR_PARTIAL_PRESSURE_FLOOR)throw new IllegalArgumentException("Hydrocarbon vapour partial pressure below the numerical floor");
-            if(p>domain.envelope().maximumPressure())domain.checkEnvelope(t,p);
-        } else domain.check(t,p,amounts,null,0);
+        checkPhase(t,p,amounts,root);
         if(root==PhaseRoot.VAPOR) {
             var gas=translated.evaluateValues(t,p,amounts,root,terms);
             System.arraycopy(gas.logFugacityCoefficientsView(),0,out,0,out.length);
@@ -113,18 +107,23 @@ public final class HydrocarbonModel {
                 reference.logFugacityCoefficientsView(),reference.partialMolarVolumesView(),out);
         return false;
     }
-    public Phase phase(double t,double p,double[] amounts,PhaseRoot root,TranslatedPengRobinson.Workspace terms) {
+    /**
+     * The checks of {@link #phase} and {@link #logFugacityInto}: the basis, a finite state, and every carried component within
+     * its own temperature range (a thermo-domain violation otherwise). A liquid is evaluated at the state pressure, which
+     * must lie in the range of every component it carries; a vapour at its hydrocarbon partial pressure, which is only
+     * guarded numerically here and capped by the envelope, since the state that carries it checks the total pressure.
+     */
+    private void checkPhase(double t,double p,double[] amounts,PhaseRoot root) {
         if(amounts.length!=componentCount())throw new IllegalArgumentException("Hydrocarbon basis mismatch");
         if(!Double.isFinite(t)||!Double.isFinite(p))throw new IllegalArgumentException("Fluid hydrocarbon state is not finite");
-        // Every carried component within its own temperature range (a thermo-domain violation otherwise). A liquid is
-        // evaluated at the state pressure, which must lie in the range of every component it carries; a vapour at its
-        // hydrocarbon partial pressure, which is only guarded numerically here and capped by the envelope, since the
-        // state that carries it checks the total pressure.
         domain.checkPhaseTemperature(t,amounts);
         if(root==PhaseRoot.VAPOR) {
             if(p<VAPOR_PARTIAL_PRESSURE_FLOOR)throw new IllegalArgumentException("Hydrocarbon vapour partial pressure below the numerical floor");
             if(p>domain.envelope().maximumPressure())domain.checkEnvelope(t,p);
         } else domain.check(t,p,amounts,null,0);
+    }
+    public Phase phase(double t,double p,double[] amounts,PhaseRoot root,TranslatedPengRobinson.Workspace terms) {
+        checkPhase(t,p,amounts,root);
         // The same numbers from the workspace's own buffer, copying only the coefficients the returned record keeps (the
         // vapor's ln phi; the liquid's is the response's own array).
         if(root==PhaseRoot.VAPOR) {

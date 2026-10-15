@@ -47,7 +47,6 @@ public record FluidDeviceSpec(double volume,double temperature,double pressure,d
     }
     /** Called for first activation, never to reconcile an already owned finite reservoir. */
     public PassiveNetwork.Reservoir initialize(PhysicalFluidTopology.Device device,FluidThermodynamics model,Runnable checkpoint) {
-        if(composition.length!=model.components().size())throw new IllegalArgumentException("Device composition differs from captured fluid axis");
         validate(model,device.kind());
         var kind=switch(device.kind()) {case RESERVOIR->PassiveNetwork.NodeKind.RESERVOIR;case GENERATOR->PassiveNetwork.NodeKind.GENERATOR;case VOID->PassiveNetwork.NodeKind.VOID;default->throw new IllegalArgumentException("Pipes and actuators have no owned reservoir");};
         // Decision D54: a placed reservoir holds nothing; it fills from what its connections deliver.

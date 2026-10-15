@@ -47,8 +47,8 @@ public final class FluidDeviceBlockEntity extends BlockEntity implements FluidVi
     private void released() {
         if(identity!=0&&level instanceof ServerLevel serverLevel&&serverLevel.getServer().isSameThread())FluidWorldAuthority.find(serverLevel.getServer()).ifPresent(world->world.deviceUnloaded(identity));
     }
-    /** The engine's bucket hands over the view; the block entity keeps it for server-side readers. */
-    @Override public void acceptFluidView(FluidView view){if(view.identity()==identity)lastView=view;}
+    /** The engine's bucket hands over this device's view (the authority checked the identity); the block entity keeps it for server-side readers. */
+    @Override public void acceptFluidView(FluidView view){lastView=view;}
     public FluidView lastView(){return lastView;}
     public void open(ServerPlayer player,boolean debug) {
         if(identity==0){player.displayClientMessage(Component.literal("Fluid device is waiting for its world identity."),true);return;}

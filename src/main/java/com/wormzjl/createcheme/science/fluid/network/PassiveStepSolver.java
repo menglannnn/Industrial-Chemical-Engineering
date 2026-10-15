@@ -455,7 +455,7 @@ public final class PassiveStepSolver {
         // trace of a component only that connection could bring puts an unknown on a nonnegativity
         // boundary whose only root is zero, which is what used to refuse the whole Newton step. See
         // {@link #closeDeadHeads} and documentation/DEAD_HEADED_LINE.md.
-        var reachable=reachableComponents(graph,null,boundaryClosed);
+        var reachable=reachableComponents(graph,boundaryClosed);
         var seeds=initialPhaseSeeds(graph,dt,checkpoint,reachable,modes,boundaryClosed);
         var seen=new HashSet<PassKey>();
         // Constant for this solve: every pass keys on the same graph identity and component support.
@@ -1043,11 +1043,9 @@ public final class PassiveStepSolver {
         }
     }
     /** Physical species can traverse passive pipes in either direction, actuators only downstream.
-     * Junction property guesses own no inventory and therefore cannot introduce a species. */
-    private boolean[][] reachableComponents(PassiveNetwork graph,double[] directions){return reachableComponents(graph,directions,null);}
-    /** {@code closed} names the connections this pass has already pinned to a flow of exactly zero;
+     * Junction property guesses own no inventory and therefore cannot introduce a species. {@code closed} names the connections this pass has already pinned to a flow of exactly zero;
      * they carry no species in either direction. {@code null} is no closure at all. */
-    private boolean[][] reachableComponents(PassiveNetwork graph,double[] directions,boolean[] closed) {
+    private boolean[][] reachableComponents(PassiveNetwork graph,boolean[] closed) {
         int count=model.hydrocarbon.componentCount()+1,nodes=graph.reservoirs().size();
         var possible=new BitSet[nodes];var outgoing=new ArrayList<List<Integer>>(nodes);
         for(int i=0;i<nodes;i++) {
@@ -1063,8 +1061,8 @@ public final class PassiveStepSolver {
         for(int edge=0;edge<graph.pipes().size();edge++) {var pipe=graph.pipes().get(edge);
             if(closed!=null&&closed[edge])continue;
             if(!(pipe.control() instanceof FlowControl.Mover pump)||pump.targetVolumeFlow()>0) {
-                if((directions==null||directions[edge]>1e-14)&&boundaryAllowed(graph,pipe,1))outgoing.get(pipe.first()).add(pipe.second());
-                if((directions==null||directions[edge]<-1e-14)&&pipe.control() instanceof FlowControl.Passive&&boundaryAllowed(graph,pipe,-1))outgoing.get(pipe.second()).add(pipe.first());
+                if(boundaryAllowed(graph,pipe,1))outgoing.get(pipe.first()).add(pipe.second());
+                if(pipe.control() instanceof FlowControl.Passive&&boundaryAllowed(graph,pipe,-1))outgoing.get(pipe.second()).add(pipe.first());
             }
         }
         var queue=new ArrayDeque<Integer>();var queued=new boolean[nodes];
@@ -1403,7 +1401,7 @@ public final class PassiveStepSolver {
                 states=next;
                 if(!moved)return states;
             }
-        } catch(SparseNewton.Nonconvergence|IllegalArgumentException|ApproximationRejected outside){return states;} // a ThermoDomainViolation included
+        } catch(SparseNewton.Nonconvergence|IllegalArgumentException outside){return states;} // a ThermoDomainViolation included
         return states;
     }
     /**
@@ -1538,7 +1536,7 @@ public final class PassiveStepSolver {
                 if(point.enthalpy()/point.mass()<heat/mass)lower=t;else upper=t;
             }
             states.set(j,model.flashTP(.5*(lower+upper),pressure,y.clone(),checkpoint));
-        } catch(IllegalArgumentException|ApproximationRejected outside){return false;} // a ThermoDomainViolation included
+        } catch(IllegalArgumentException outside){return false;} // a ThermoDomainViolation included
         return true;
     }
     /**

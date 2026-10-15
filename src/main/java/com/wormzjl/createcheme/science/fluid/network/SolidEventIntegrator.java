@@ -40,9 +40,8 @@ final class SolidEventIntegrator {
      * substep while the interval solver refines onto the event, so it carries no stack trace.
      */
     static final class Transition extends RuntimeException {
-        /** {@code direction} is the closure mask to apply, which is {@link #BOTH_DIRECTIONS} for
-         * every transport closure; see there. */
-        final int edge,direction;
+        /** Every transport closure applies the mask {@link #BOTH_DIRECTIONS}; see there. */
+        final int edge;
         /** The connection's own identity, which is what a player sees on a device and what the
          * only durable record of a closure - the reason text - is looked up by. The edge index is
          * a position in one graph and means nothing outside it. */
@@ -51,12 +50,12 @@ final class SolidEventIntegrator {
         /** Seen on the state at the start of a step: the event is at the accepted state
          * itself, so it needs no refinement and is declared where the integration stands. */
         final boolean atStart;
-        Transition(int edge,long pipeId,int direction,SolidMobility.Check check,boolean atStart) {
+        Transition(int edge,long pipeId,SolidMobility.Check check,boolean atStart) {
             super("blocked with solid: "+check.reason()+"; pipe="+pipeId+"; velocity="+check.velocity()+"; deposition="+check.minimumVelocity());
-            this.edge=edge;this.pipeId=pipeId;this.direction=direction;this.check=check;this.atStart=atStart;
+            this.edge=edge;this.pipeId=pipeId;this.check=check;this.atStart=atStart;
         }
         SolidMobility.Reason reason(){return check.reason();}
-        Transition atStart(){return atStart?this:new Transition(edge,pipeId,direction,check,true);}
+        Transition atStart(){return atStart?this:new Transition(edge,pipeId,check,true);}
         @Override public synchronized Throwable fillInStackTrace(){return this;}
     }
     private PassiveNetwork masks(PassiveNetwork graph,int[] masks) {
@@ -99,11 +98,11 @@ final class SolidEventIntegrator {
             }
             if(check.allowed())continue;
             double candidate=closureRatio(check);
-            if(candidate<ratio||candidate==ratio&&pipe.id()<identity){result=new Transition(i,pipe.id(),BOTH_DIRECTIONS,check,false);ratio=candidate;identity=pipe.id();}
+            if(candidate<ratio||candidate==ratio&&pipe.id()<identity){result=new Transition(i,pipe.id(),check,false);ratio=candidate;identity=pipe.id();}
         }
         if(limited!=null)for(var entry:narrowLimits(graph,states,flows,reach,limited).entrySet()) {
             var pipe=graph.pipes().get(entry.getKey());double candidate=closureRatio(entry.getValue());
-            if(candidate<ratio||candidate==ratio&&pipe.id()<identity){result=new Transition(entry.getKey(),pipe.id(),BOTH_DIRECTIONS,entry.getValue(),false);ratio=candidate;identity=pipe.id();}
+            if(candidate<ratio||candidate==ratio&&pipe.id()<identity){result=new Transition(entry.getKey(),pipe.id(),entry.getValue(),false);ratio=candidate;identity=pipe.id();}
         }
         return result;
     }
@@ -210,7 +209,7 @@ final class SolidEventIntegrator {
         return !graph.reservoirs().get(receiver).fixed()&&reach.get(receiver).size()>SolidInventory.MAXIMUM_POPULATIONS;
     }
     private static Transition clogged(int edge,long pipeId) {
-        return new Transition(edge,pipeId,BOTH_DIRECTIONS,new SolidMobility.Check(SolidMobility.Reason.FILTER_CLOGGED,0,0),false);
+        return new Transition(edge,pipeId,new SolidMobility.Check(SolidMobility.Reason.FILTER_CLOGGED,0,0),false);
     }
     /**
      * Whether this cake has met its capacity and the connection must stop. The saturated inlet law
@@ -281,7 +280,7 @@ final class SolidEventIntegrator {
             if(candidate==null)break;
             var failure=failed(graph,candidate.states(),candidate.massFlows());
             if(failure==null)break;
-            blocked[failure.edge]|=failure.direction;
+            blocked[failure.edge]|=BOTH_DIRECTIONS;
             // A cake the last interval's final step left at capacity is declared here, at the next interval's t0, and
             // not by an in-interval guard: under backward Euler a 5 s interval is often a single step, so the saturated
             // inlet's landing is the interval's last step. Stop the filter exactly as a declared FILTER_CLOGGED
@@ -303,7 +302,7 @@ final class SolidEventIntegrator {
             var prefix=integrator.integrateToTransition(start,remaining,settings,checkpoint,PassiveStepSolver.Acceptance.FULL,guard(start),step);
             var transition=prefix.transition();int stoppedFilter=-1;
             if(transition!=null) {
-                blocked[transition.edge]|=transition.direction;
+                blocked[transition.edge]|=BOTH_DIRECTIONS;
                 if(transition.reason()==SolidMobility.Reason.FILTER_CLOGGED)stoppedFilter=transition.edge;
             }
             var result=prefix.result();
@@ -320,7 +319,6 @@ final class SolidEventIntegrator {
             graph=masks(graph,blocked);
         }
         if(elapsed<duration||last==null)throw new SparseNewton.Nonconvergence("Solid event limit exhausted; no partial interval may commit");
-        graph=masks(graph,blocked);
         for(int i=0;i<transported.length;i++)transported[i]/=duration;
         return new PassiveIntervalSolver.Result(graph,duration,transported,accepted,rejected,work,boundaries,reasons,
                 last.endpointModes(),last.endpointHeads(),last.endpointFlows(),PassiveStepSolver.Acceptance.FULL,histories.snapshot());

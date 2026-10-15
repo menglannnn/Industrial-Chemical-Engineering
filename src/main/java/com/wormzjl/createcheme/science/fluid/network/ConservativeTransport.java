@@ -225,7 +225,7 @@ public final class ConservativeTransport {
                                          double dt,FluidThermodynamics model,Runnable checkpoint,Workspace workspace,boolean frozen,double[][] draws,
                                          PhaseSupport[][] supports,Emptying[] emptying) {
         int nodes=graph.reservoirs().size(),components=model.hydrocarbon.componentCount()+1;
-        if(candidate.size()!=nodes||solvedFlows.length!=graph.pipes().size()||heads.length!=solvedFlows.length||!Double.isFinite(dt)||dt<=0)throw new IllegalArgumentException("Invalid transport reconstruction");
+        if(candidate.size()!=nodes||solvedFlows.length!=graph.pipes().size()||heads.length!=solvedFlows.length)throw new IllegalArgumentException("Invalid transport reconstruction");
         for(double q:solvedFlows)if(!Double.isFinite(q))throw new IllegalArgumentException("Nonfinite candidate flow/head");
         // The flows this reconstruction books: the solved flows with every junction's mass held (an emptying vessel's taken
         // to zero); see pinnedFlows.
