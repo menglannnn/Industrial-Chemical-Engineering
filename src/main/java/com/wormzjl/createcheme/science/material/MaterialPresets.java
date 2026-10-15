@@ -3,6 +3,7 @@ package com.wormzjl.createcheme.science.material;
 import com.google.gson.*;
 import com.wormzjl.createcheme.science.column.v3.*;
 import java.util.*;
+import static com.wormzjl.createcheme.science.material.JsonFields.*;
 
 /** Server-authored operating choices. Identity, feed data and editable operating settings stay separate. */
 public final class MaterialPresets {
@@ -107,8 +108,4 @@ public final class MaterialPresets {
         return new MaterialPresets(columns,fluids,network);
     }
     private static void requireAssay(Map<String,MaterialCatalog.Package> packages,String pkg,String assay){if(!packages.containsKey(pkg)||!packages.get(pkg).assays().containsKey(assay))throw new IllegalArgumentException("package/assay: unknown "+pkg+"/"+assay);}
-    private static String text(JsonObject row,String field){var e=row.get(field);if(e==null||!e.isJsonPrimitive()||!e.getAsJsonPrimitive().isString()||e.getAsString().isBlank())throw new IllegalArgumentException(field+": string required");return e.getAsString();}
-    private static double number(JsonObject row,String field){var e=row.get(field);if(e==null||!e.isJsonPrimitive()||!e.getAsJsonPrimitive().isNumber()||!Double.isFinite(e.getAsDouble()))throw new IllegalArgumentException(field+": finite number required");return e.getAsDouble();}
-    private static int integer(JsonObject row,String field){number(row,field);try{return row.get(field).getAsBigDecimal().intValueExact();}catch(ArithmeticException e){throw new IllegalArgumentException(field+": integer required",e);}}
-    private static boolean bool(JsonObject row,String field){var e=row.get(field);if(e==null||!e.isJsonPrimitive()||!e.getAsJsonPrimitive().isBoolean())throw new IllegalArgumentException(field+": boolean required");return e.getAsBoolean();}
 }

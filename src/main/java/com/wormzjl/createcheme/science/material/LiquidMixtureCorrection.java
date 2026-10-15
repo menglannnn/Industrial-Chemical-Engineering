@@ -2,6 +2,7 @@ package com.wormzjl.createcheme.science.material;
 
 import com.google.gson.JsonObject;
 import java.util.List;
+import static com.wormzjl.createcheme.science.material.JsonFields.number;
 
 /** Immutable empirical transport correction. It carries no elemental or reactive state. */
 public record LiquidMixtureCorrection(List<Double> coefficients, List<Descriptor> descriptors,
@@ -38,13 +39,6 @@ public record LiquidMixtureCorrection(List<Double> coefficients, List<Descriptor
         var c = new java.util.ArrayList<Double>();
         for (var value : o.getAsJsonArray("coefficients")) c.add(value.getAsDouble());
         return new LiquidMixtureCorrection(c,descriptors,number(o,"reference_kelvin"),number(o,"slope_cap_kelvin"));
-    }
-    private static double number(JsonObject o,String name) {
-        if (!o.has(name) || !o.get(name).isJsonPrimitive() || !o.getAsJsonPrimitive(name).isNumber())
-            throw new IllegalArgumentException("liquid_mixture."+name+": required number");
-        double value=o.get(name).getAsDouble();
-        if (!Double.isFinite(value)) throw new IllegalArgumentException("liquid_mixture."+name+": nonfinite");
-        return value;
     }
     /** Pair sums factored to O(n). Nonparticipants still dilute the participating mole fractions. */
     public double logCorrection(double temperature, double[] amounts) {

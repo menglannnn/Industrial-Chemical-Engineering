@@ -5,6 +5,7 @@ import java.io.*;
 import java.nio.charset.StandardCharsets;
 import java.security.*;
 import java.util.*;
+import static com.wormzjl.createcheme.science.material.JsonFields.*;
 
 /** Immutable validated SI database. Resource keys are distinct from plain component IDs. */
 public final class MaterialCatalog {
@@ -299,11 +300,11 @@ public final class MaterialCatalog {
                 String kind = path.substring(start + 10).split("/")[0];
                 if (!Set.of("components","properties","interactions","packages","assays","water","bases","transport","presets","networks","solids").contains(kind))
                     throw new IllegalArgumentException("Unknown record kind: " + kind);
-                String id = string(o, "id");
+                String id = text(o, "id");
                 if (!kind.equals("components") && !id.matches("[a-z][a-z0-9_.:-]{0,127}"))
                     throw new IllegalArgumentException("id: expected lowercase stable identifier");
                 if (!id.matches("[A-Za-z][A-Za-z0-9_.:-]{0,127}")) throw new IllegalArgumentException("Invalid id");
-                String key = kind.equals("assays") ? string(o,"package") + "/" + id : id;
+                String key = kind.equals("assays") ? text(o,"package") + "/" + id : id;
                 if (groups.computeIfAbsent(kind, unused -> new LinkedHashMap<>()).putIfAbsent(key,o) != null)
                     throw new IllegalArgumentException("Duplicate " + kind + " id: " + key);
                 origins.put(o,path);
@@ -324,25 +325,25 @@ public final class MaterialCatalog {
         var packageValidity = new HashMap<String, Validity>();
         for (var o : group(groups,"components").values()) checked(origins,o,() -> {
             JsonObject cut = o.has("cut") ? object(o,"cut") : null;
-            String id=string(o,"id"), kind=string(o,"kind");
+            String id=text(o,"id"), kind=text(o,"kind");
             componentAppearances.put(id, readAppearance(o));
             if (kind.equals("petroleum_fraction")) {
                 if (cut == null || !cut.has("lower_kelvin") && !cut.has("upper_kelvin")) throw new IllegalArgumentException("cut boundaries required");
-                string(cut,"derivation"); string(cut,"series");
+                text(cut,"derivation"); text(cut,"series");
             }
-            names.put(id,new MaterialName(id,string(o,"translation_key"),string(o,"fallback"),kind,
+            names.put(id,new MaterialName(id,text(o,"translation_key"),text(o,"fallback"),kind,
                     cut != null && cut.has("lower_kelvin") ? number(cut,"lower_kelvin") : null,
                     cut != null && cut.has("upper_kelvin") ? number(cut,"upper_kelvin") : null,
                     cut != null && bool(cut,"estimated")));
         });
         for (var o : group(groups,"properties").values()) checked(origins,o,() -> {
-            String id=string(o,"id"), component=string(o,"component"); require(names,component,"component");
+            String id=text(o,"id"), component=text(o,"component"); require(names,component,"component");
             viscosities.put("properties/" + id, readViscosities(o));
             descriptors.put(id,LiquidMixtureCorrection.Descriptor.read(o));
-            string(o,"revision"); string(o,"source");
+            text(o,"revision"); text(o,"source");
             JsonObject cp=object(o,"ideal_gas_cp");
-            if (!string(cp,"type").equals("shifted_polynomial_5")) throw new IllegalArgumentException("Unsupported ideal_gas_cp.type");
-            List<Double> coefficients=numbers(cp,"coefficients",6); double reference=positive(cp,"reference_kelvin");
+            if (!text(cp,"type").equals("shifted_polynomial_5")) throw new IllegalArgumentException("Unsupported ideal_gas_cp.type");
+            List<Double> coefficients=counted(cp,"coefficients",6); double reference=positive(cp,"reference_kelvin");
             if (reference != 298.15) throw new IllegalArgumentException("shifted_polynomial_5.reference_kelvin must be 298.15");
             JsonObject models=object(o,"models"); Pr78 pr=null;
             for (String model : models.keySet()) if (!model.equals("pr78")) throw new IllegalArgumentException("Unsupported pure-component model: " + model);
@@ -353,10 +354,10 @@ public final class MaterialCatalog {
             double min=positive(o,"temperature_min_kelvin"), max=positive(o,"temperature_max_kelvin"); range(min,max,"temperature");
             CpSegment low=null;
             if (cp.has("below")) {
-                JsonObject segment=object(cp,"below"); string(segment,"source");
+                JsonObject segment=object(cp,"below"); text(segment,"source");
                 double joint=positive(segment,"temperature_kelvin");
                 if (joint<=min || joint>max || joint>reference) throw new IllegalArgumentException("ideal_gas_cp.below.temperature_kelvin must lie in (temperature_min_kelvin, 298.15]");
-                low=new CpSegment(joint,numbers(segment,"coefficients",6));
+                low=new CpSegment(joint,counted(segment,"coefficients",6));
             }
             properties.put(id,new Property(id,component,positive(o,"molecular_weight_kg_per_mol"),positive(o,"normal_boiling_point_kelvin"),
                     positive(o,"standard_liquid_density_kg_per_m3"),positive(o,"standard_temperature_kelvin"),positive(o,"standard_pressure_pascal"),
@@ -374,19 +375,19 @@ public final class MaterialCatalog {
             }
         });
         for (var o : group(groups,"water").values()) checked(origins,o,() -> {
-            viscosities.put("water/" + string(o,"id"), readViscosities(o));
-            if (!string(o,"type").equals("iapws_shomate_watson")) throw new IllegalArgumentException("Unsupported water.type");
-            string(o,"source");
-            Water w=new Water(string(o,"revision"),positive(o,"molar_mass"),positive(o,"triple_point"),positive(o,"critical_temperature"),
+            viscosities.put("water/" + text(o,"id"), readViscosities(o));
+            if (!text(o,"type").equals("iapws_shomate_watson")) throw new IllegalArgumentException("Unsupported water.type");
+            text(o,"source");
+            Water w=new Water(text(o,"revision"),positive(o,"molar_mass"),positive(o,"triple_point"),positive(o,"critical_temperature"),
                     positive(o,"critical_pressure"),positive(o,"max_enthalpy_temperature"),positive(o,"reference_boiling_temperature"),
-                    positive(o,"reference_vaporization_enthalpy"),positive(o,"watson_exponent"),numbers(o,"saturation_coefficients",6),numbers(o,"shomate_coefficients",7));
+                    positive(o,"reference_vaporization_enthalpy"),positive(o,"watson_exponent"),counted(o,"saturation_coefficients",6),counted(o,"shomate_coefficients",7));
             range(w.triplePoint(),w.boilingTemperature(),"water boiling"); range(w.boilingTemperature(),w.criticalTemperature(),"water critical");
-            range(w.triplePoint(),w.maximumTemperature(),"water enthalpy"); require(names,"Water","component"); waters.put(string(o,"id"),w);
+            range(w.triplePoint(),w.maximumTemperature(),"water enthalpy"); require(names,"Water","component"); waters.put(text(o,"id"),w);
         });
         for (var o : group(groups,"interactions").values()) checked(origins,o,() -> validateInteractions(o,names));
         for (var o : group(groups,"packages").values()) checked(origins,o,() -> {
-            String id=string(o,"id"), model=string(o,"model"), policy=string(o,"missing_interactions");
-            if(string(o,"revision").length()>63)throw new IllegalArgumentException("revision: maximum 63 characters with fingerprint");
+            String id=text(o,"id"), model=text(o,"model"), policy=text(o,"missing_interactions");
+            if(text(o,"revision").length()>63)throw new IllegalArgumentException("revision: maximum 63 characters with fingerprint");
             var evidence=strings(o,"advisory_evidence");
             if(evidence.size()>32 || evidence.stream().anyMatch(e->e.length()>256))throw new IllegalArgumentException("advisory_evidence: exceeds reporting bounds");
             if (!Set.of("pr78","nrtl").contains(model)) throw new IllegalArgumentException("Unsupported model: " + model);
@@ -405,11 +406,11 @@ public final class MaterialCatalog {
                 ps.add(p);
             }
             liquidMixtures.put(id,LiquidMixtureCorrection.read(o,refs.stream().map(descriptors::get).toList()));
-            JsonObject interaction=require(group(groups,"interactions"),string(o,"interactions"),"interactions");
-            if(!model.equals(string(interaction,"model"))) throw new IllegalArgumentException("Interaction model mismatch");
+            JsonObject interaction=require(group(groups,"interactions"),text(o,"interactions"),"interactions");
+            if(!model.equals(text(interaction,"model"))) throw new IllegalArgumentException("Interaction model mismatch");
             double[][] matrix=new double[ids.size()][ids.size()]; var nrtl=new ArrayList<NrtlPair>(); var seen=new HashSet<String>();
             for(var value:array(interaction,"pairs")) {
-                JsonObject pair=value.getAsJsonObject(); String a=string(pair,"first"), b=string(pair,"second");
+                JsonObject pair=value.getAsJsonObject(); String a=text(pair,"first"), b=text(pair,"second");
                 int i=ids.indexOf(a),j=ids.indexOf(b); if(i<0 || j<0) throw new IllegalArgumentException("Interaction component outside package");
                 seen.add(pairKey(a,b));
                 if(model.equals("pr78")) matrix[i][j]=matrix[j][i]=number(pair,"kij");
@@ -426,8 +427,8 @@ public final class MaterialCatalog {
                     throw new IllegalArgumentException("Ambiguous/invalid alias: "+e.getKey());
                 aliases.put(e.getKey(),target);
             }
-            Water water=require(waters,string(o,"water_model"),"water_model");
-            waterModels.put(id, string(o,"water_model"));
+            Water water=require(waters,text(o,"water_model"),"water_model");
+            waterModels.put(id, text(o,"water_model"));
             if(o.has("fluid_domain")) {
                 // The fluid network's rule: the package range is the outer envelope, every component's own range - and
                 // the water model's, from its triple point to its enthalpy limit - lies inside it, and a state is valid
@@ -443,8 +444,8 @@ public final class MaterialCatalog {
                 packageValidity.put(id,envelope);
             }
             var assays=new HashMap<String,Assay>();
-            for(var a:group(groups,"assays").values()) if(string(a,"package").equals(id)) checked(origins,a,() -> {
-                assayAppearances.put(id + "/" + string(a,"id"), readAppearance(a));
+            for(var a:group(groups,"assays").values()) if(text(a,"package").equals(id)) checked(origins,a,() -> {
+                assayAppearances.put(id + "/" + text(a,"id"), readAppearance(a));
                 List<String> axis; List<Double> amounts;
                 if(a.has("amounts_by_component")) {
                     if(a.has("components")||a.has("amounts"))throw new IllegalArgumentException("amounts_by_component: cannot combine sparse and positional forms");
@@ -453,26 +454,26 @@ public final class MaterialCatalog {
                     axis=ids;var ordered=new ArrayList<Double>();
                     for(String component:ids)ordered.add(sparse.has(component)?number(sparse,component):0.0);
                     amounts=List.copyOf(ordered);
-                } else {axis=strings(a,"components");amounts=numbers(a,"amounts",ids.size());}
+                } else {axis=strings(a,"components");amounts=counted(a,"amounts",ids.size());}
                 double total=amounts.stream().mapToDouble(Double::doubleValue).sum();
                 if(!axis.equals(ids) || amounts.stream().anyMatch(v->v<0) || total<=0 || !Double.isFinite(total)) throw new IllegalArgumentException("Invalid assay components/amounts");
-                String basis=string(a,"basis"); if(!Set.of("mole","mass","standard_liquid_volume").contains(basis)) throw new IllegalArgumentException("Unknown assay basis");
+                String basis=text(a,"basis"); if(!Set.of("mole","mass","standard_liquid_volume").contains(basis)) throw new IllegalArgumentException("Unknown assay basis");
                 if(basis.equals("standard_liquid_volume")) for(Property p:ps)
                     if(number(a,"standard_temperature_kelvin")!=p.standardTemperature() || number(a,"standard_pressure_pascal")!=p.standardPressure())
                         throw new IllegalArgumentException("Assay density reference conditions differ");
-                assays.put(string(a,"id"),new Assay(string(a,"id"),basis,axis,amounts,a.has("volume_scale")?positive(a,"volume_scale"):1,
+                assays.put(text(a,"id"),new Assay(text(a,"id"),basis,axis,amounts,a.has("volume_scale")?positive(a,"volume_scale"):1,
                         a.has("amount_total")?positive(a,"amount_total"):1));
             });
             var rows=new ArrayList<List<Double>>(); for(double[] row:matrix) rows.add(Arrays.stream(row).boxed().toList());
             String fingerprint=hash(new Gson().toJson(List.of(model,ids,ps,rows,nrtl,new TreeMap<>(assays),water,tmin,tmax,pmin,pmax)));
-            packages.put(id,new Package(id,string(o,"revision"),fingerprint,model,ids,ps,rows,nrtl,aliases,assays,water,tmin,tmax,pmin,pmax,strings(o,"advisory_evidence")));
+            packages.put(id,new Package(id,text(o,"revision"),fingerprint,model,ids,ps,rows,nrtl,aliases,assays,water,tmin,tmax,pmin,pmax,strings(o,"advisory_evidence")));
         });
-        for(var a:group(groups,"assays").values()) checked(origins,a,() -> require(packages,string(a,"package"),"assay package"));
+        for(var a:group(groups,"assays").values()) checked(origins,a,() -> require(packages,text(a,"package"),"assay package"));
         if(packages.isEmpty()) throw new IllegalArgumentException("Material catalog has no packages");
         var result=new MaterialCatalog(names,packages,resources,viscosities,waterModels,assayAppearances,componentAppearances,liquidMixtures,MaterialPresets.read(group(groups,"presets"),group(groups,"networks"),origins,packages,names.keySet()),FluidData.read(group(groups,"transport"),origins,names.keySet()),
                 propertyValidity,packageValidity);
-        for(var row:group(groups,"presets").values())if(string(row,"kind").equals("column"))checked(origins,row,()->
-                MaterialRuntime.with(result,string(row,"package"),()->{com.wormzjl.createcheme.science.column.v3.V3ColumnProblemResolver.validateInput(result.presets().column(string(row,"id")).input(result));return null;}));
+        for(var row:group(groups,"presets").values())if(text(row,"kind").equals("column"))checked(origins,row,()->
+                MaterialRuntime.with(result,text(row,"package"),()->{com.wormzjl.createcheme.science.column.v3.V3ColumnProblemResolver.validateInput(result.presets().column(text(row,"id")).input(result));return null;}));
         for(var row:group(groups,"networks").values())checked(origins,row,()->{
             var config=result.presets().network();var network=result.requirePackage(config.packageId());
             for(String id:config.fluidPresets()) {
@@ -491,7 +492,7 @@ public final class MaterialCatalog {
     private static FluidAppearance readAppearance(JsonObject record) {
         try {
             JsonObject o = object(record, "appearance");
-            String color = string(o, "color");
+            String color = text(o, "color");
             if (!color.matches("#[0-9a-fA-F]{6}"))
                 throw new IllegalArgumentException("color must be #RRGGBB (alpha is specified by transparency)");
             return new FluidAppearance(Integer.parseInt(color.substring(1), 16), number(o, "transparency"), bool(o, "estimated"));
@@ -511,7 +512,7 @@ public final class MaterialCatalog {
                     default -> throw new IllegalArgumentException("unknown phase");
                 };
                 JsonObject o = entry.getValue().getAsJsonObject();
-                var model = switch (string(o,"type")) {
+                var model = switch (text(o,"type")) {
                     case "andrade" -> ViscosityCorrelation.Model.ANDRADE;
                     case "sutherland" -> ViscosityCorrelation.Model.SUTHERLAND;
                     case "power_sum" -> ViscosityCorrelation.Model.POWER_SUM;
@@ -525,9 +526,9 @@ public final class MaterialCatalog {
                         ? array(o,"coefficients").size() : 2;
                 result.put(phase, new ViscosityCorrelation(model, positive(o,"temperature_min_kelvin"), positive(o,"temperature_max_kelvin"),
                         positive(o,"pressure_min_pascal"), positive(o,"pressure_max_pascal"), positive(o,"reference_temperature_kelvin"),
-                        numbers(o,"coefficients",count), o.has("exponents") ? numbers(o,"exponents",count) : List.of(),
-                        string(o,"revision"), string(o,"source"), bool(o,"estimated"),
-                        o.has("temperatures_kelvin") ? numbers(o,"temperatures_kelvin",count) : List.of()));
+                        counted(o,"coefficients",count), o.has("exponents") ? counted(o,"exponents",count) : List.of(),
+                        text(o,"revision"), text(o,"source"), bool(o,"estimated"),
+                        o.has("temperatures_kelvin") ? counted(o,"temperatures_kelvin",count) : List.of()));
             } catch (RuntimeException error) {
                 throw new IllegalArgumentException("viscosity." + entry.getKey() + ": " + error.getMessage(), error);
             }
@@ -535,18 +536,18 @@ public final class MaterialCatalog {
         return Map.copyOf(result);
     }
     private static void validateInteractions(JsonObject o,Map<String,MaterialName> names) {
-        String model=string(o,"model"); string(o,"source");
+        String model=text(o,"model"); text(o,"source");
         if(!Set.of("pr78","nrtl").contains(model)) throw new IllegalArgumentException("Unknown interaction model");
         var seen=new HashSet<String>();
         for(var value:array(o,"pairs")) {
-            JsonObject p=value.getAsJsonObject(); String a=string(p,"first"),b=string(p,"second"); require(names,a,"first"); require(names,b,"second");
+            JsonObject p=value.getAsJsonObject(); String a=text(p,"first"),b=text(p,"second"); require(names,a,"first"); require(names,b,"second");
             if(a.equals(b) || !seen.add(pairKey(a,b))) throw new IllegalArgumentException("Duplicate/self interaction pair");
             if(model.equals("pr78")) number(p,"kij"); else nrtl(p);
         }
     }
     private static Validity validity(JsonObject o) {
         try {
-            String evidence=string(o,"evidence");
+            String evidence=text(o,"evidence");
             double tmin=positive(o,"temperature_min_kelvin"),tmax=positive(o,"temperature_max_kelvin");range(tmin,tmax,"temperature");
             double pmin=positive(o,"pressure_min_pascal"),pmax=positive(o,"pressure_max_pascal");range(pmin,pmax,"pressure");
             return new Validity(tmin,tmax,pmin,pmax,evidence);
@@ -555,51 +556,16 @@ public final class MaterialCatalog {
     private static NrtlPair nrtl(JsonObject p) {
         double min=positive(p,"temperature_min_kelvin"),max=positive(p,"temperature_max_kelvin"); range(min,max,"NRTL temperature");
         double alpha=number(p,"alpha"); if(alpha<0 || alpha>1) throw new IllegalArgumentException("NRTL alpha must be in [0,1]");
-        return new NrtlPair(string(p,"first"),string(p,"second"),number(p,"a12"),number(p,"b12_kelvin"),number(p,"a21"),number(p,"b21_kelvin"),alpha,min,max);
+        return new NrtlPair(text(p,"first"),text(p,"second"),number(p,"a12"),number(p,"b12_kelvin"),number(p,"a21"),number(p,"b21_kelvin"),alpha,min,max);
     }
     private static String pairKey(String a,String b) { return a.compareTo(b)<0?a+"/"+b:b+"/"+a; }
     private static Map<String,JsonObject> group(Map<String,Map<String,JsonObject>> groups,String key) { return groups.getOrDefault(key,Map.of()); }
     private static <T> T require(Map<String,T> map,String id,String field) { T v=map.get(id); if(v==null)throw new IllegalArgumentException(field+": unresolved "+id);return v; }
-    private static JsonElement required(JsonObject o, String key) {
-        if (o == null || !o.has(key) || o.get(key).isJsonNull())
-            throw new IllegalArgumentException(key + ": required field");
-        return o.get(key);
-    }
-    private static JsonObject object(JsonObject o, String key) {
-        JsonElement e=required(o,key);
-        if(!e.isJsonObject())throw new IllegalArgumentException(key+": expected object");
-        return e.getAsJsonObject();
-    }
-    private static JsonArray array(JsonObject o, String key) {
-        JsonElement e=required(o,key);
-        if(!e.isJsonArray())throw new IllegalArgumentException(key+": expected array");
-        return e.getAsJsonArray();
-    }
-    private static String string(JsonObject o,String key) {
-        JsonElement e=required(o,key);
-        if(!e.isJsonPrimitive() || !e.getAsJsonPrimitive().isString())throw new IllegalArgumentException(key+": expected string");
-        String s=e.getAsString();
-        if(s.isBlank() || s.length()>2048)throw new IllegalArgumentException(key+": invalid text");
-        return s;
-    }
-    private static boolean bool(JsonObject o,String key) {
-        JsonElement e=required(o,key);
-        if(!e.isJsonPrimitive() || !e.getAsJsonPrimitive().isBoolean())throw new IllegalArgumentException(key+": expected boolean");
-        return e.getAsBoolean();
-    }
-    private static double number(JsonObject o,String key) {
-        JsonElement e=required(o,key);
-        if(!e.isJsonPrimitive() || !e.getAsJsonPrimitive().isNumber())throw new IllegalArgumentException(key+": expected number");
-        double d=e.getAsDouble();
-        if(!Double.isFinite(d))throw new IllegalArgumentException(key+": nonfinite");
-        return d;
-    }
-    private static double positive(JsonObject o,String key) { double d=number(o,key);if(d<=0)throw new IllegalArgumentException(key+": must be positive");return d; }
     private static void range(double a,double b,String field) { if(a>=b)throw new IllegalArgumentException(field+": invalid range"); }
-    private static List<String> strings(JsonObject o,String key) { var r=new ArrayList<String>();for(var e:array(o,key))r.add(e.getAsString());return List.copyOf(r); }
-    private static List<Double> numbers(JsonObject o,String key,int count) {
-        var r=new ArrayList<Double>();for(var e:array(o,key)){double d=e.getAsDouble();if(!Double.isFinite(d))throw new IllegalArgumentException(key+": nonfinite");r.add(d);}
-        if(r.size()!=count)throw new IllegalArgumentException(key+": expected "+count+" coefficients/amounts");return List.copyOf(r);
+    /** An array of exactly {@code count} finite numbers. */
+    private static List<Double> counted(JsonObject o,String key,int count) {
+        var r=numbers(o,key);
+        if(r.size()!=count)throw new IllegalArgumentException(key+": expected "+count+" coefficients/amounts");return r;
     }
     private static void checked(Map<JsonObject,String> origins,JsonObject o,Runnable action) { try{action.run();}catch(RuntimeException e){throw error(origins.get(o),e);} }
     private static IllegalArgumentException error(String path,RuntimeException e) { return new IllegalArgumentException(path+": "+e.getMessage(),e); }
@@ -662,21 +628,12 @@ public final class MaterialCatalog {
                     var parent=resolve(row.get("extends").getAsString(),source,resolved,visiting,origins);
                     components.addAll(parent.components());properties.addAll(parent.properties());
                 }
-                components.addAll(strings(row,"components"));properties.addAll(strings(row,"properties"));
+                components.addAll(strings(row,"components","basis.components"));properties.addAll(strings(row,"properties","basis.properties"));
                 if(components.size()>64||components.size()!=properties.size())throw new IllegalArgumentException("basis: invalid ordered components/properties");
                 new MaterialAxis(components);
                 var result=new Basis(List.copyOf(components),List.copyOf(properties));resolved.put(id,result);return result;
             }catch(RuntimeException invalid){throw error(origins,row,invalid.getMessage());}
             finally {visiting.remove(id);}
-        }
-        private static List<String> strings(JsonObject o,String key) {
-            if(!o.has(key)||!o.get(key).isJsonArray())throw new IllegalArgumentException("basis."+key+": required array");
-            var values=new ArrayList<String>();
-            for(var value:o.getAsJsonArray(key)) {
-                if(!value.isJsonPrimitive()||!value.getAsJsonPrimitive().isString()||value.getAsString().isBlank())throw new IllegalArgumentException("basis."+key+": string required");
-                values.add(value.getAsString());
-            }
-            return values;
         }
         private static IllegalArgumentException error(Map<JsonObject,String> origins,JsonObject row,String message) {
             return new IllegalArgumentException(origins.get(row)+": "+message);
@@ -721,10 +678,6 @@ public final class MaterialCatalog {
             return new FluidData(volumes,curves);
         }
         private static String component(JsonObject row,Set<String> components){String id=text(row,"component");if(!components.contains(id))throw new IllegalArgumentException("component: unknown "+id);return id;}
-        private static String text(JsonObject row,String key){var e=row.get(key);if(e==null||!e.isJsonPrimitive()||!e.getAsJsonPrimitive().isString()||e.getAsString().isBlank())throw new IllegalArgumentException(key+": string required");return e.getAsString();}
-        private static JsonArray array(JsonObject row,String key){var e=row.get(key);if(e==null||!e.isJsonArray())throw new IllegalArgumentException(key+": array required");return e.getAsJsonArray();}
-        private static double positive(JsonObject row,String key){var e=row.get(key);if(e==null||!e.isJsonPrimitive()||!e.getAsJsonPrimitive().isNumber())throw new IllegalArgumentException(key+": number required");double v=e.getAsDouble();if(!Double.isFinite(v)||v<=0)throw new IllegalArgumentException(key+": positive finite value required");return v;}
-        private static List<Double> numbers(JsonObject row,String key){var values=new ArrayList<Double>();for(var e:array(row,key)){if(!e.isJsonPrimitive()||!e.getAsJsonPrimitive().isNumber())throw new IllegalArgumentException(key+": number required");double v=e.getAsDouble();if(!Double.isFinite(v)||v<=0)throw new IllegalArgumentException(key+": positive finite values required");values.add(v);}return List.copyOf(values);}
     }
     /** Liquid render tint, independent of thermodynamic and optical properties. */
     public record FluidAppearance(int rgb, double transparency, boolean estimated) {
