@@ -13,9 +13,10 @@ import org.junit.jupiter.api.Test;
 
 /**
  * D21 (batch 2026-09-24-coolprop-low-temperature, {@code DECISION_LOG.md}; {@code P6B_RUNTIME_FAILURE_DIAGNOSIS.md}
- * section 1): a CO2 feed with traces of at most 1e-6 takes the pure species' crystal steps, its traces in the fluid,
- * before the pseudo-binary rule; anything that rule does not answer is the typed {@link EquilibriumResult#CRYSTAL_STEP}
- * hold, at once. Before D21 the row A vessel failed for every trace from 1e-12 to 1e-7 after 7 k to 94 k kernel calls.
+ * section 1): a CO2 feed with traces of at most 1e-5 (1e-6 until the owner's follow-up of 2026-10-15) takes the pure
+ * species' crystal steps, its traces in the fluid, before the pseudo-binary rule; anything that rule does not answer is
+ * the typed {@link EquilibriumResult#CRYSTAL_STEP} hold, at once. Before D21 the row A vessel failed for every trace from
+ * 1e-12 to 1e-7 after 7 k to 94 k kernel calls.
  */
 class NearPureCrystalStepTest {
     static final FluidTpEquilibrium SERVICE = FluidTpEquilibrium.forPackage(MaterialCatalog.bundled(), "createcheme:pilot_cryogenic");
@@ -23,7 +24,17 @@ class NearPureCrystalStepTest {
     static final int N2 = BASIS.indexOf("Nitrogen");
     static final int CO2 = BASIS.indexOf("CarbonDioxide");
     static final PhaseCompetition CRYSTALS = PhaseCompetition.FLUID_AND_CRYSTALS;
-    static final double[] TRACES = {0.0, 1e-12, 1e-9, 1e-7, 1e-6};
+    /** The rule's bound on the traces. */
+    static final double THETA = 1e-5;
+    /** Row A's traces, to the bound. */
+    static final double[] ROW_A_TRACES = {0.0, 1e-12, 1e-9, 1e-7, 1e-6, THETA};
+    /**
+     * The PH traces. 2e-6 is the regression row: with the bound at 1e-6 its target 1000 J below the vapour closed on a
+     * 0.57 J step of H(T) over 6e-10 K and failed. The bound itself is no PH row: there the 95 % crystal's vapour share
+     * (0.054) lies below the rule's smallest fluid, which keeps the traces within 1e-4 of it (0.1 of the feed), and the
+     * general solve answers it.
+     */
+    static final double[] PH_TRACES = {0.0, 1e-12, 1e-9, 1e-7, 1e-6, 2e-6};
 
     /** {@code co2} mol of CO2 with nitrogen at fraction {@code f} of the feed. */
     static double[] feed(double co2, double f) {
@@ -54,7 +65,7 @@ class NearPureCrystalStepTest {
         var ws = SERVICE.newWorkspace();
         double u = -9.972099514183599e7, v = 1.0;
         EquilibriumResult pure = null;
-        for (double f : TRACES) {
+        for (double f : ROW_A_TRACES) {
             double[] z = feed(249.1435, f);
             var r = SERVICE.uv(EquilibriumRequest.uv(u, v, BASIS, z, CRYSTALS), ws);
             double t = r.converged() ? r.phases().get(0).temperature() : Double.NaN, p = r.converged() ? r.phases().get(0).pressure() : Double.NaN;
@@ -71,7 +82,7 @@ class NearPureCrystalStepTest {
             }
             assertTrue(rule(r), r.detail());
             assertEquals(z[N2], fluidNitrogen(r), 1e-12 * z[N2]);
-            // D21: the pressure about 1.3 f off the pure answer's (1.37 f at 1e-6), the crystal about 2 f.
+            // D21: the pressure about 1.3 f off the pure answer's (1.37 f at 1e-6 and 1e-5), the crystal about 2 f.
             assertEquals(pure.phases().get(0).pressure(), p, 1.5 * f * pure.phases().get(0).pressure());
             assertEquals(crystal(pure), crystal(r), 3.0 * f * crystal(pure));
         }
@@ -79,7 +90,8 @@ class NearPureCrystalStepTest {
 
     /**
      * PH at 101.325 kPa across the sublimation line, from the vapour above it to a 95 % crystal: on the line every trace
-     * takes the pure step's temperature, its crystal within the trace of the pure answer's.
+     * takes the pure step's temperature, its crystal within the trace of the pure answer's (2e-6 included, see
+     * {@link #PH_TRACES}).
      */
     @Test
     void ambientPressureCrossesTheSublimationLineAtThePureTemperature() {
@@ -87,7 +99,7 @@ class NearPureCrystalStepTest {
         double p = 101325.0;
         double[] steps = {-150, -1000, -12000, -24000};
         EquilibriumResult[] pure = new EquilibriumResult[steps.length];
-        for (double f : TRACES) {
+        for (double f : PH_TRACES) {
             double[] z = feed(1.0, f);
             double h0 = SERVICE.tp(EquilibriumRequest.tp(200.0, p, BASIS, z, CRYSTALS), ws).enthalpy();
             for (int k = 0; k < steps.length; k++) {
@@ -115,24 +127,25 @@ class NearPureCrystalStepTest {
         }
     }
 
-    /** Just above the threshold (2e-6) the general solve answers, without the rule and next to its answer at 1e-6. */
+    /** Just above the threshold (2e-5) the general solve answers, without the rule and next to its answer at 1e-5. */
     @Test
     void justAboveTheThresholdTheGeneralSolveAnswers() {
         var ws = SERVICE.newWorkspace();
         double u = -9.972099514183599e7, v = 1.0;
-        var atTheta = SERVICE.uv(EquilibriumRequest.uv(u, v, BASIS, feed(249.1435, 1e-6), CRYSTALS), ws);
-        var above = SERVICE.uv(EquilibriumRequest.uv(u, v, BASIS, feed(249.1435, 2e-6), CRYSTALS), ws);
-        System.out.println("row A at 1e-6: " + atTheta.phases().get(0).pressure() + " Pa; at 2e-6: " + above);
+        double f = 2.0 * THETA;
+        var atTheta = SERVICE.uv(EquilibriumRequest.uv(u, v, BASIS, feed(249.1435, THETA), CRYSTALS), ws);
+        var above = SERVICE.uv(EquilibriumRequest.uv(u, v, BASIS, feed(249.1435, f), CRYSTALS), ws);
+        System.out.println("row A at 1e-5: " + atTheta.phases().get(0).pressure() + " Pa; at 2e-5: " + above);
         assertTrue(rule(atTheta), atTheta.detail());
         assertEquals(Status.CONVERGED, above.status(), above.toString());
         assertFalse(rule(above), above.detail());
         assertEquals(Classification.VAPOR_SOLID, above.classification());
-        assertEquals(atTheta.phases().get(0).pressure(), above.phases().get(0).pressure(), 2e-6 * atTheta.phases().get(0).pressure());
+        assertEquals(atTheta.phases().get(0).pressure(), above.phases().get(0).pressure(), f * atTheta.phases().get(0).pressure());
         double p = 101325.0;
-        double[] z = feed(1.0, 2e-6);
+        double[] z = feed(1.0, f);
         double h0 = SERVICE.tp(EquilibriumRequest.tp(200.0, p, BASIS, z, CRYSTALS), ws).enthalpy();
         var ph = SERVICE.ph(EquilibriumRequest.ph(p, h0 - 5000.0, BASIS, z, CRYSTALS), ws);
-        System.out.println("PH at 2e-6: " + ph);
+        System.out.println("PH at 2e-5: " + ph);
         assertEquals(Status.CONVERGED, ph.status(), ph.toString());
         assertFalse(rule(ph), ph.detail());
         assertEquals(Classification.VAPOR_SOLID, ph.classification());

@@ -274,17 +274,20 @@ public final class FluidTpEquilibrium implements EquilibriumService {
      * major species has a competing crystal, PH and UV answer its crystal steps (sublimation, melting, triple point) as
      * a pure feed's, from the balances at the pure species' equal-chemical-potential point, the other species carried as
      * traces in the fluid phase the step leaves (see {@link #STEP_FLUID_TRACES}); the pure species' pressure (UV) or
-     * temperature (PH) is then about 1.3 times the trace fraction off. Below this TP cannot resolve the feed's own
-     * vapour-solid region (about the trace fraction wide in pressure, P6B_RUNTIME_FAILURE_DIAGNOSIS section 1). It takes
-     * precedence over the pseudo-binary rule of {@link #TRACE_FRACTION}.
+     * temperature (PH) is then about 1.3 times the trace fraction off (at this bound about 1.4e-5 of the pressure, or
+     * 0.1 mK at 101 kPa). TP cannot resolve the feed's own vapour-solid region, about the trace fraction wide in pressure
+     * (P6B_RUNTIME_FAILURE_DIAGNOSIS section 1), up to about 1e-6, and not reliably just above: at 101.325 kPa a PH target
+     * at 2e-6 closed on a 0.57 J step of H(T) over 6e-10 K, while 45 targets from 5e-6 to 1e-3 converged (M1). The bound
+     * was 1e-6 until the owner's D21 follow-up of 2026-10-15. It takes precedence over the pseudo-binary rule of
+     * {@link #TRACE_FRACTION}.
      */
-    private static final double NEAR_PURE_TRACES = 1.0e-6;
+    private static final double NEAR_PURE_TRACES = 1.0e-5;
     /**
      * D21: the largest share of a near-pure step's fluid its traces may take. The step at the pure species' point leaves
      * out the traces' dilution of that fluid, which moves the real step by about this share in ln P (12 K times it in T
      * for CO2 sublimation at 101 kPa, R T^2 over the step's enthalpy); a step needing a smaller fluid (deep deposition) is
      * the general solve's, whose vapour-solid region is then at least this share wide in drive, five decades above
-     * {@link #DEPOSITION_TOLERANCE}. At 100 times {@link #NEAR_PURE_TRACES} every near-pure feed keeps at least 99 % of
+     * {@link #DEPOSITION_TOLERANCE}. At 10 times {@link #NEAR_PURE_TRACES} every near-pure feed keeps at least 90 % of
      * its step on the rule (fluid shares from traces/1e-4 of the feed to 1), and the handover moves the answer by at most
      * 1e-4 in ln P. Bounding the share by the trace fraction itself leaves a feed at that fraction no step; leaving it
      * unbounded (only the fluid of nothing but traces refused) claims the pure point where the traces make most of the
@@ -714,8 +717,8 @@ public final class FluidTpEquilibrium implements EquilibriumService {
         private EquilibriumResult innerResult;
         private boolean innerCoexistence;
         private String innerFailure;
-        // The nested UV search's pressure solves: accepted residual, whether the last was inexact, the last slope,
-        // whether the last answer was one phase.
+        // The nested UV search's pressure solves: accepted residual, whether the last was inexact, the last secant (of one
+        // classification), whether the last answer was one phase.
         private double innerLooseness, innerSlope;
         private boolean innerLoose, innerSingle;
         // The last two pressure solves at different temperatures, (T, ln P): the next solve's start.
@@ -1890,10 +1893,11 @@ public final class FluidTpEquilibrium implements EquilibriumService {
      * {@code ln P}, bracketed like PH. Started from the cubic's own pressure of the dry feed as one phase when the last
      * answer was one phase (exact for a stable single phase), otherwise from the pressures found at earlier
      * temperatures, extrapolated linearly in {@code (1/T, ln P)} (a vapour-pressure line; with one earlier answer at
-     * the slope of Trouton's rule, {@code -10 T}); the first slope without a compressibility is the last search's
-     * two-phase secant. Accepted within {@code innerLooseness} in {@code ln V} (the nested search's inexact solves far
-     * from the answer) or else at the specification. A step of {@code V(P)} is a pure component's coexistence or free
-     * water boiling (answered from the volume balance) or a typed failure.
+     * the slope of Trouton's rule, {@code -10 T}); the first slope without a compressibility is the last secant measured
+     * between two answers of one classification, also by an earlier temperature's search. Accepted within
+     * {@code innerLooseness} in {@code ln V} (the nested search's inexact solves far from the answer) or else at the
+     * specification. A step of {@code V(P)} is a pure component's coexistence or free water boiling (answered from the
+     * volume balance) or a typed failure.
      */
     private int innerUv(double t, double v, PhaseCompetition competition, Workspace w) {
         Search s = w.inner;
@@ -1916,6 +1920,7 @@ public final class FluidTpEquilibrium implements EquilibriumService {
         double previousY = Double.NaN;
         double previousResidual = Double.NaN;
         int previousPhases = -1;
+        Classification previousClassification = null;
         double lastY = Double.NaN;
         int retreats = 0;
         w.innerResult = null;
@@ -1959,13 +1964,19 @@ public final class FluidTpEquilibrium implements EquilibriumService {
             s.record(y, residual, result, coexistence);
             double slope = result == null ? Double.NaN : dryCompressibility(result, t, p, w);
             int phases = result == null ? -1 : result.phases().size();
+            Classification classification = result == null ? null : result.classification();
             if (!(slope > 0.0) || !Double.isFinite(slope)) {
-                // A secant only between answers with the same phases: across a bubble or dew point V(P) has a kink.
-                slope = Double.isNaN(previousY) || previousY == y || phases != previousPhases ? Double.NaN
-                        : (residual - previousResidual) / (y - previousY);
+                // A secant only between answers on one piece of V(P), the same classification and phases (free water's
+                // classification spans several phase sets): across a bubble or dew point V(P) has a kink, and across a
+                // three-phase pressure, where a vapour-solid answer meets a vapour-liquid or liquid-solid one of the same
+                // phase count, a step whose secant is no slope. Stored, such a secant started the next temperature's
+                // search with steps below the spacing of ln P, 100 TP equilibria at one point (D21 follow-up, 2026-10-15).
+                slope = Double.isNaN(previousY) || previousY == y || phases != previousPhases
+                        || classification != previousClassification ? Double.NaN : (residual - previousResidual) / (y - previousY);
                 if (slope > 0.0 && Double.isFinite(slope)) w.innerSlope = slope; else slope = w.innerSlope;
             }
             previousPhases = phases;
+            previousClassification = classification;
             double step = -residual / slope;
             boolean exact = Math.abs(residual) <= SPECIFICATION_TOLERANCE && Math.abs(step) <= tolerance;
             if (result != null && (exact || Math.abs(residual) <= w.innerLooseness)) {
