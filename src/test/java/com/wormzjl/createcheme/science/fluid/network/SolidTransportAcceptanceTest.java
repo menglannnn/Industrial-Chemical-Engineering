@@ -11,6 +11,8 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class SolidTransportAcceptanceTest {
     private final FluidThermodynamics model=FluidTestSupport.networkModel();
+    /** The mobility check of a bulk withdrawal from {@code donor}, as the solid event integrator makes it. */
+    private SolidMobility.Check check(FluidThermodynamics.State donor,PassiveNetwork.Pipe pipe,double massFlow,SolidMobility.Outlet outlet){return SolidMobility.check(SolidMobility.donor(model,donor),donor,pipe,massFlow,outlet,donor.mass());}
     private SolidInventory stock(int count,double total) {
         var entries=new ArrayList<SolidInventory.Population>();
         for(int i=0;i<count;i++)entries.add(new SolidInventory.Population(model.solids.require("createcheme:demo_particle"),ParticleSize.micrometres(Integer.toString(i+1)),total/count));
@@ -24,18 +26,18 @@ class SolidTransportAcceptanceTest {
     private PassiveNetwork.Pipe pipe(){return new PassiveNetwork.Pipe(3,0,1,new PipeResistance.Geometry(100,.05,.000045,0));}
     @Test void suspensionBoundaryIsStrictAndReversalUsesTheSameLiquidVelocity() {
         var state=water(160000).withSolids(stock(1,100));var pipe=pipe();
-        double dep=SolidMobility.check(model,state,pipe,0,SolidMobility.Outlet.MIXED).minimumVelocity();
+        double dep=check(state,pipe,0,SolidMobility.Outlet.MIXED).minimumVelocity();
         double q=dep*pipe.maximumArea()*state.mass()/state.waterVolume();
-        assertFalse(SolidMobility.check(model,state,pipe,q*(1-1e-10),SolidMobility.Outlet.MIXED).allowed());
-        assertTrue(SolidMobility.check(model,state,pipe,q*(1+1e-10),SolidMobility.Outlet.MIXED).allowed());
-        assertTrue(SolidMobility.check(model,state,pipe,-q*(1+1e-10),SolidMobility.Outlet.MIXED).allowed());
-        assertEquals(SolidMobility.Reason.DEPOSITION,SolidMobility.check(model,state,pipe,0,SolidMobility.Outlet.MIXED).reason());
+        assertFalse(check(state,pipe,q*(1-1e-10),SolidMobility.Outlet.MIXED).allowed());
+        assertTrue(check(state,pipe,q*(1+1e-10),SolidMobility.Outlet.MIXED).allowed());
+        assertTrue(check(state,pipe,-q*(1+1e-10),SolidMobility.Outlet.MIXED).allowed());
+        assertEquals(SolidMobility.Reason.DEPOSITION,check(state,pipe,0,SolidMobility.Outlet.MIXED).reason());
     }
     @Test void dryParticlesBlockGasButTracesStillTravelAndRetainTheirSlots() {
         var gas=model.initialNitrogenCharge(1,298.15,101325,()->{});
-        assertEquals(SolidMobility.Reason.NO_LIQUID_CARRIER,SolidMobility.check(model,gas.withSolids(stock(1,1)),pipe(),1,SolidMobility.Outlet.MIXED).reason());
+        assertEquals(SolidMobility.Reason.NO_LIQUID_CARRIER,check(gas.withSolids(stock(1,1)),pipe(),1,SolidMobility.Outlet.MIXED).reason());
         var traces=gas.withSolids(stock(64,1e-12));
-        assertTrue(SolidMobility.check(model,traces,pipe(),1,SolidMobility.Outlet.MIXED).allowed());
+        assertTrue(check(traces,pipe(),1,SolidMobility.Outlet.MIXED).allowed());
         assertEquals(64,traces.solids().populations().size());assertTrue(traces.mass()>gas.mass());
     }
     @Test void reverseFiltrationCapturesTheOtherDonorAndConservesEnergy() {
@@ -75,9 +77,9 @@ class SolidTransportAcceptanceTest {
     @Test void highViscosityBlocksTheMixedOutletBeforeSlurryThickening() {
         var n=new double[model.componentCount()];n[model.components().indexOf("crude_pc12")]=1;
         var cold=model.flashTP(330,150000,n,()->{});var hot=model.flashTP(340,150000,n,()->{});
-        assertEquals(SolidMobility.Reason.IMMOBILE_LIQUID,SolidMobility.check(model,cold,pipe(),1,SolidMobility.Outlet.MIXED).reason());
-        assertTrue(SolidMobility.check(model,hot,pipe(),1,SolidMobility.Outlet.MIXED).allowed());
-        assertTrue(SolidMobility.check(model,cold,pipe(),1,SolidMobility.Outlet.GAS).allowed());
+        assertEquals(SolidMobility.Reason.IMMOBILE_LIQUID,check(cold,pipe(),1,SolidMobility.Outlet.MIXED).reason());
+        assertTrue(check(hot,pipe(),1,SolidMobility.Outlet.MIXED).allowed());
+        assertTrue(check(cold,pipe(),1,SolidMobility.Outlet.GAS).allowed());
         assertTrue(SolidMobility.requiresFull(model,new PassiveNetwork(List.of(new PassiveNetwork.Reservoir(1,0,cold)),List.of())));
     }
     @Test void populationCountDoesNotIncreaseTheNonlinearDimension() throws Exception {

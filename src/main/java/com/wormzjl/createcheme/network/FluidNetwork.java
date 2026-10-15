@@ -89,7 +89,6 @@ public final class FluidNetwork {
         /** Joins what a menu received: its last static payload and the live payload just delivered. */
         public static MenuData of(StaticData fixed,LiveData live){return new MenuData(fixed.kind(),live.view(),live.controls(),fixed.components(),fixed.presets(),live.message(),fixed.materialNames(),fixed.molecularWeights());}
         public StaticData staticData(long revision){return new StaticData(kind,revision,components,presets,materialNames,molecularWeights);}
-        public LiveData liveData(){return new LiveData(view,controls,message);}
     }
     /** The static payload: what changes only with the device's registration revision (and never within one server run otherwise). */
     public record StaticData(TopologyCompiler.Kind kind,long revision,List<String> components,List<FluidPresetCatalog.Preset> presets,Map<String,com.wormzjl.createcheme.science.material.MaterialName> materialNames,List<Double> molecularWeights) {

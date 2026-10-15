@@ -727,26 +727,12 @@ public final class IslandCoordinator {
         public Replacement {if(id<=0)throw new IllegalArgumentException("Invalid replacement identity");Objects.requireNonNull(graph);}
     }
     /**
-     * Atomically merges/splits aligned islands without changing any owned reservoir inventory.
-     * Placement, destruction and material delivery require their own explicitly balanced transactions.
-     * Topology changes require a new full solve; they cannot renew an approximate grace period.
-     */
-    public void repartition(UUID event,Set<Long> affected,List<Replacement> replacements) {
-        owned();if(affected.isEmpty()||replacements.isEmpty())throw new IllegalStateException("Empty repartition");var first=require(affected.iterator().next());
-        topology(event,affected,replacements,first.model,first.clock.committedTick(),first.clock.snapshot().onlineTick(),Map.of(),Set.of(),()->{});
-    }
-    /** Placement/destruction extension: declared additions and removals must exactly match the stock delta.
-     * metadataCommit publishes the already-prepared construction/destruction ledger and registry atomically. */
-    public void topology(UUID event,Set<Long> affected,List<Replacement> replacements,FluidThermodynamics model,
-            long committed,long online,Map<Long,PassiveNetwork.Reservoir> additions,Set<Long> removals,Runnable metadataCommit) {
-        topology(event,affected,replacements,model,committed,online,additions,removals,Map.of(),metadataCommit);
-    }
-    public void topology(UUID event,Set<Long> affected,List<Replacement> replacements,FluidThermodynamics model,long committed,long online,Map<Long,PassiveNetwork.Reservoir> additions,Set<Long> removals,Map<Long,com.wormzjl.createcheme.science.fluid.network.InlineFilter> releasedFilters,Runnable metadataCommit) {
-        topology(Set.of(event),affected,replacements,model,committed,online,additions,removals,releasedFilters,metadataCommit);
-    }
-    /**
      * A batch of events of one tick applied as one change: every affected island holds a fence of at least one of them,
-     * each at its committed tick, and none of them survives into a replacement. The rest is as for one event.
+     * each at its committed tick, and none of them survives into a replacement. Declared additions and removals must
+     * exactly match the stock delta; metadataCommit publishes the already-prepared construction/destruction ledger and
+     * registry atomically. A merge or split without placement or destruction changes no owned reservoir inventory;
+     * placement, destruction and material delivery need their own explicitly balanced transactions. Topology changes
+     * require a new full solve; they cannot renew an approximate grace period.
      */
     public void topology(Set<UUID> events,Set<Long> affected,List<Replacement> replacements,FluidThermodynamics model,long committed,long online,Map<Long,PassiveNetwork.Reservoir> additions,Set<Long> removals,Map<Long,com.wormzjl.createcheme.science.fluid.network.InlineFilter> releasedFilters,Runnable metadataCommit) {
         owned();Objects.requireNonNull(model);Objects.requireNonNull(metadataCommit);if(events.isEmpty())throw new IllegalArgumentException("A topology change needs its events");

@@ -37,7 +37,7 @@ class BoundedCpuSolveServiceTest {
         JobStamp<Owner> secondStamp = stamp(7L, 2L, "second");
 
         try (BoundedCpuSolveService<Owner, Snapshot, SolveResult> service =
-                new BoundedCpuSolveService<>(7L, config)) {
+                new BoundedCpuSolveService<>(7L, config, () -> {})) {
             assertEquals(Admission.ACCEPTED, service.trySubmit(
                     firstStamp,
                     new Snapshot("first"),
@@ -93,7 +93,7 @@ class BoundedCpuSolveServiceTest {
                 12L, 41L, new Owner("failure"), 9L, "dataset-v5", Long.MAX_VALUE);
 
         try (BoundedCpuSolveService<Owner, Snapshot, SolveResult> service =
-                new BoundedCpuSolveService<>(12L, testConfig(1, 1, true))) {
+                new BoundedCpuSolveService<>(12L, testConfig(1, 1, true), () -> {})) {
             assertEquals(Admission.ACCEPTED, service.trySubmit(
                     successStamp,
                     new Snapshot("ok"),
@@ -137,7 +137,7 @@ class BoundedCpuSolveServiceTest {
         JobStamp<Owner> queuedStamp = stamp(20L, 2L, "queued");
 
         try (BoundedCpuSolveService<Owner, Snapshot, SolveResult> service =
-                new BoundedCpuSolveService<>(20L, testConfig(1, 1, true))) {
+                new BoundedCpuSolveService<>(20L, testConfig(1, 1, true), () -> {})) {
             assertEquals(Admission.ACCEPTED, service.trySubmit(
                     runningStamp,
                     new Snapshot("running"),
@@ -178,7 +178,7 @@ class BoundedCpuSolveServiceTest {
         JobStamp<Owner> runningStamp = stamp(30L, 1L, "running");
 
         try (BoundedCpuSolveService<Owner, Snapshot, SolveResult> service =
-                new BoundedCpuSolveService<>(30L, testConfig(1, 1, true))) {
+                new BoundedCpuSolveService<>(30L, testConfig(1, 1, true), () -> {})) {
             assertEquals(Admission.ACCEPTED, service.trySubmit(
                     runningStamp,
                     new Snapshot("running"),
@@ -302,7 +302,7 @@ class BoundedCpuSolveServiceTest {
         JobStamp<Owner> queuedStamp = stamp(60L, 2L, "queued");
         Config config = testConfig(1, 1, false);
         BoundedCpuSolveService<Owner, Snapshot, SolveResult> service =
-                new BoundedCpuSolveService<>(60L, config);
+                new BoundedCpuSolveService<>(60L, config, () -> {});
         try {
             assertEquals(Admission.ACCEPTED, service.trySubmit(
                     runningStamp,
@@ -347,7 +347,7 @@ class BoundedCpuSolveServiceTest {
 
     @Test void parallelismCanGrowAndShrinkWithoutCancellingActiveOwnersOrLosingQueuedWork() throws Exception {
         var release=new CountDownLatch(1);var firstStarted=new CountDownLatch(1);var secondStarted=new CountDownLatch(1);
-        try(var service=new BoundedCpuSolveService<Owner,Snapshot,SolveResult>(81,testConfig(4,4,true))) {
+        try(var service=new BoundedCpuSolveService<Owner,Snapshot,SolveResult>(81,testConfig(4,4,true),()->{})) {
             service.setWorkerLimit(1);
             assertEquals(Admission.ACCEPTED,service.trySubmit(stamp(81,1,"first"),new Snapshot("one"),(s,t)->{firstStarted.countDown();release.await();return new SolveResult(s.value());}));
             await(firstStarted);

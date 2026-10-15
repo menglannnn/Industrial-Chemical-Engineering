@@ -453,7 +453,7 @@ class IslandCertificateTest {
         long at=rig.certifiedAt(1,2_000);assertTrue(at>0);double before=rig.stored(1).certificate().orElseThrow().largestFlow();
         rig.run(250);
         var event=UUID.randomUUID();long tick=rig.epoch[0];rig.coordinator.fence(event,tick,List.of(1L));assertTrue(rig.coordinator.aligned(event,List.of(1L)));
-        rig.coordinator.topology(event,Set.of(1L),List.of(new IslandCoordinator.Replacement(2,generatorToVoid(200000))),model,tick,tick,Map.of(),Set.of(),()->{});
+        rig.coordinator.topology(Set.of(event),Set.of(1L),List.of(new IslandCoordinator.Replacement(2,generatorToVoid(200000))),model,tick,tick,Map.of(),Set.of(),Map.of(),()->{});
         assertTrue(rig.stored(2).certificate().isEmpty(),"a replaced island starts awake");
         assertTrue(rig.coordinator.retainsSolver(2));
         int solves=rig.solves;long again=rig.certifiedAt(2,2_000);

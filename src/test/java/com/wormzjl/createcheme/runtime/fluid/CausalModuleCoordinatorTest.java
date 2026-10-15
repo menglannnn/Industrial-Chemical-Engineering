@@ -109,7 +109,7 @@ class CausalModuleCoordinatorTest {
             assertEquals(0,active);var snapshot=islands.snapshot(islandId);var removed=snapshot.graph().reservoirs().getFirst().inventory();
             var n=removed.moles();for(int c=0;c<com.wormzjl.createcheme.science.material.MaterialTestBasis.NETWORK+1;c++)initial[c]-=n[c];initial[22]-=removed.internalEnergy();
             var event=UUID.randomUUID();long tick=snapshot.clock().committedTick();islands.fence(event,tick,Set.of((long)islandId));
-            islands.topology(event,Set.of((long)islandId),List.of(),model,tick,snapshot.clock().onlineTick(),Map.of(),Set.of((long)islandId),()->{});
+            islands.topology(Set.of(event),Set.of((long)islandId),List.of(),model,tick,snapshot.clock().onlineTick(),Map.of(),Set.of((long)islandId),Map.of(),()->{});
         }
         private static FluidCheckpointCodec.Checkpoint initialCheckpoint(List<PassiveNetwork> graphs,List<FixedSplitModule.Snapshot> definitions) {
             var bindings=new ArrayList<CausalModuleCoordinator.Binding>();var buffers=new HashMap<UUID,BufferedTransfers.Buffer>();

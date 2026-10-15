@@ -13,6 +13,12 @@ import static org.junit.jupiter.api.Assertions.*;
 
 /** The deadline heap and the scheduling properties of the coordinator built on it. */
 class IslandSchedulerTest {
+    /** Merges or splits aligned islands without changing any owned inventory: a topology change with no additions or
+     * removals, at the first affected island's committed and online ticks. */
+    private static void repartition(IslandCoordinator coordinator,UUID event,Set<Long> affected,List<IslandCoordinator.Replacement> replacements) {
+        var clock=coordinator.observe(affected.iterator().next()).clock();
+        coordinator.topology(Set.of(event),affected,replacements,MODEL,clock.committedTick(),clock.onlineTick(),Map.of(),Set.of(),Map.of(),()->{});
+    }
     private static final FluidThermodynamics MODEL=FluidTestSupport.networkModel();
     private static final PassiveNetwork.Reservoir TANK=new PassiveNetwork.Reservoir(1,0,MODEL.initialNitrogenCharge(1,298.15,101325,()->{}));
 
@@ -82,9 +88,9 @@ class IslandSchedulerTest {
         assertEquals(3,coordinator.scheduledDeadlines(),"one live deadline per island");
         var merge=UUID.randomUUID();coordinator.fence(merge,0,List.of(1L,2L));assertTrue(coordinator.aligned(merge,List.of(1L,2L)));
         var first=coordinator.snapshot(1).graph().reservoirs().getFirst();var second=coordinator.snapshot(2).graph().reservoirs().getFirst();
-        coordinator.repartition(merge,Set.of(1L,2L),List.of(new IslandCoordinator.Replacement(4,new PassiveNetwork(List.of(first,second),List.of()))));
+        repartition(coordinator,merge,Set.of(1L,2L),List.of(new IslandCoordinator.Replacement(4,new PassiveNetwork(List.of(first,second),List.of()))));
         var removal=UUID.randomUUID();coordinator.fence(removal,0,List.of(3L));
-        coordinator.topology(removal,Set.of(3L),List.of(),MODEL,0,0,Map.of(),Set.of(3L),()->{});
+        coordinator.topology(Set.of(removal),Set.of(3L),List.of(),MODEL,0,0,Map.of(),Set.of(3L),Map.of(),()->{});
         assertEquals(Set.of(4L),coordinator.snapshots().stream().map(IslandCoordinator.Snapshot::id).collect(java.util.stream.Collectors.toSet()));
         // The replacement starts cold (IslandCoordinator.topology): one-tick first slice, doubling as each is accepted,
         // so it fires one slice deadline per dispatch; the replaced islands' entries, due at tick 100, fire nothing.

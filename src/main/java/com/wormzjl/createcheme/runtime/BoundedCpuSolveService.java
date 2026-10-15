@@ -36,8 +36,6 @@ import java.util.function.LongSupplier;
  * @param <R> immutable solve-result type
  */
 public final class BoundedCpuSolveService<O, S, R> implements AutoCloseable {
-    public static final int DEFAULT_WORKER_COUNT = 1;
-    public static final int DEFAULT_READY_CAPACITY = 8;
     public static final long NO_DEADLINE = Long.MAX_VALUE;
 
     private static final long NOT_STARTED = -1L;
@@ -62,17 +60,8 @@ public final class BoundedCpuSolveService<O, S, R> implements AutoCloseable {
     private int activeWorkers;
     private int workerLimit;
 
-    /** Creates a service with one daemon platform worker and an eight-job ready queue. */
-    public BoundedCpuSolveService(long serverEpoch) {
-        this(serverEpoch, Config.defaults());
-    }
-
-    /** Creates a service owned by the calling thread. */
-    public BoundedCpuSolveService(long serverEpoch, Config config) {
-        this(serverEpoch, config, System::nanoTime);
-    }
-
-    /** The signal may run on a worker or owner; it must only enqueue a bounded owner-thread wakeup. */
+    /** Creates a service owned by the calling thread. The signal may run on a worker or owner; it must only enqueue a
+     * bounded owner-thread wakeup. */
     public BoundedCpuSolveService(long serverEpoch,Config config,Runnable completionSignal) {
         this(serverEpoch,config,System::nanoTime,completionSignal);
     }
@@ -669,16 +658,6 @@ public final class BoundedCpuSolveService<O, S, R> implements AutoCloseable {
             if (gracefulShutdownTimeout.isNegative() || forcedShutdownTimeout.isNegative()) {
                 throw new IllegalArgumentException("shutdown timeouts must not be negative");
             }
-        }
-
-        public static Config defaults() {
-            return new Config(
-                    DEFAULT_WORKER_COUNT,
-                    DEFAULT_READY_CAPACITY,
-                    "createcheme-cpu-solve-",
-                    true,
-                    Duration.ofSeconds(1),
-                    Duration.ofSeconds(1));
         }
     }
 

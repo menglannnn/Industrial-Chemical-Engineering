@@ -83,16 +83,6 @@ public final class FluidThermodynamics {
         return flashTP(temperature,pressure,n,checkpoint);
     }
 
-    public FluidThermodynamics(MaterialCatalog catalog,String packageId,double liquidCompressibility) {
-        this(catalog,packageId,liquidCompressibility,DEFAULT_MAXIMUM_VELOCITY);
-    }
-    public FluidThermodynamics(MaterialCatalog catalog,String packageId,double liquidCompressibility,double maximumVelocity) {
-        this(catalog,packageId,liquidCompressibility,maximumVelocity,TraceTruncationPolicy.OFF);
-    }
-    public FluidThermodynamics(MaterialCatalog catalog,String packageId,double liquidCompressibility,double maximumVelocity,
-                               TraceTruncationPolicy tracePolicy) {
-        this(catalog,packageId,liquidCompressibility,maximumVelocity,tracePolicy,com.wormzjl.createcheme.science.fluid.transport.SlurryTransport.Settings.defaults());
-    }
     public FluidThermodynamics(MaterialCatalog catalog,String packageId,double liquidCompressibility,double maximumVelocity,TraceTruncationPolicy tracePolicy,com.wormzjl.createcheme.science.fluid.transport.SlurryTransport.Settings solidSettings) {
         this.solidSettings=Objects.requireNonNull(solidSettings);
         if(!Double.isFinite(maximumVelocity)||maximumVelocity<=0)throw new IllegalArgumentException("Positive finite maximum velocity required");

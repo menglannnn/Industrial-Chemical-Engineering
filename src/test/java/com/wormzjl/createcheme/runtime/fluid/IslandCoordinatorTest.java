@@ -11,6 +11,12 @@ import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
 
 class IslandCoordinatorTest {
+    /** Merges or splits aligned islands without changing any owned inventory: a topology change with no additions or
+     * removals, at the first affected island's committed and online ticks. */
+    private void repartition(IslandCoordinator coordinator,UUID event,Set<Long> affected,List<IslandCoordinator.Replacement> replacements) {
+        var clock=coordinator.observe(affected.iterator().next()).clock();
+        coordinator.topology(Set.of(event),affected,replacements,model,clock.committedTick(),clock.onlineTick(),Map.of(),Set.of(),Map.of(),()->{});
+    }
     private final FluidThermodynamics model=FluidTestSupport.networkModel();
     private final AtomicLong time=new AtomicLong();
     private final FakeDispatch dispatch=new FakeDispatch();
@@ -108,12 +114,12 @@ class IslandCoordinatorTest {
         register(1,200,150);register(2,200,150);var merge=UUID.randomUUID();coordinator.fence(merge,150,List.of(1L,2L));
         var first=coordinator.snapshot(1).graph().reservoirs().getFirst();var second=coordinator.snapshot(2).graph().reservoirs().getFirst();
         var combined=new PassiveNetwork(List.of(first,second),List.of(new PassiveNetwork.Pipe(9,0,1,new PipeResistance.Geometry(1,.05,.000045,0))));
-        coordinator.repartition(merge,Set.of(1L,2L),List.of(new IslandCoordinator.Replacement(3,combined)));
+        repartition(coordinator,merge,Set.of(1L,2L),List.of(new IslandCoordinator.Replacement(3,combined)));
         assertEquals(1,coordinator.snapshots().size());assertEquals(150,coordinator.snapshot(3).clock().committedTick());assertEquals(200,coordinator.snapshot(3).clock().onlineTick());
         var split=UUID.randomUUID();coordinator.fence(split,150,List.of(3L));
-        assertThrows(IllegalStateException.class,()->coordinator.repartition(split,Set.of(3L),List.of(new IslandCoordinator.Replacement(4,new PassiveNetwork(List.of(first),List.of())))));
+        assertThrows(IllegalStateException.class,()->repartition(coordinator,split,Set.of(3L),List.of(new IslandCoordinator.Replacement(4,new PassiveNetwork(List.of(first),List.of())))));
         assertEquals(1,coordinator.snapshots().size());assertEquals(combined,coordinator.snapshot(3).graph());
-        coordinator.repartition(split,Set.of(3L),List.of(new IslandCoordinator.Replacement(4,new PassiveNetwork(List.of(first),List.of())),new IslandCoordinator.Replacement(5,new PassiveNetwork(List.of(second),List.of()))));
+        repartition(coordinator,split,Set.of(3L),List.of(new IslandCoordinator.Replacement(4,new PassiveNetwork(List.of(first),List.of())),new IslandCoordinator.Replacement(5,new PassiveNetwork(List.of(second),List.of()))));
         assertEquals(first.inventory(),coordinator.snapshot(4).graph().reservoirs().getFirst().inventory());
         assertEquals(second.inventory(),coordinator.snapshot(5).graph().reservoirs().getFirst().inventory());
         assertEquals(2,coordinator.snapshot(4).revision());

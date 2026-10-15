@@ -5,6 +5,8 @@ import com.wormzjl.createcheme.science.column.v3.thermo.V3PengRobinsonThermo;
 import com.wormzjl.createcheme.science.fluid.network.PassiveNetwork;
 import com.wormzjl.createcheme.science.fluid.network.PassiveStepSolver;
 import com.wormzjl.createcheme.science.fluid.thermo.FluidThermodynamics;
+import com.wormzjl.createcheme.science.fluid.transport.SlurryTransport;
+import com.wormzjl.createcheme.science.thermo.TraceTruncationPolicy;
 import com.wormzjl.createcheme.science.material.MaterialCatalog;
 import java.util.Arrays;
 import java.util.List;
@@ -34,6 +36,14 @@ public final class FluidTestSupport {
     public static FluidThermodynamics networkModel() {
         return FluidThermodynamics.forNetwork(
                 MaterialCatalog.bundled(), NETWORK_PACKAGE, DEFAULT_COMPRESSIBILITY);
+    }
+
+    /** A model of any bundled or test package at the given liquid compressibility: the default velocity cap, no trace
+     * truncation and the default solid settings. Not the network model ({@link #networkModel}), whose trace cutoff and
+     * package resolution are the configured ones. */
+    public static FluidThermodynamics model(MaterialCatalog catalog, String packageId, double liquidCompressibility) {
+        return new FluidThermodynamics(catalog, packageId, liquidCompressibility, FluidThermodynamics.DEFAULT_MAXIMUM_VELOCITY,
+                TraceTruncationPolicy.OFF, SlurryTransport.Settings.defaults());
     }
 
     /** Returns a fresh gameplay-basis composition for the named qualification fixture. */

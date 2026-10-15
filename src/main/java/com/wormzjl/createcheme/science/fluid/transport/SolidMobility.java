@@ -74,28 +74,15 @@ public final class SolidMobility {
         }
         return new Donor(immobileOrganic,immobileWater,active,liquidVolume,state.solidMoments().volume(),largest,required);
     }
-    public static Check check(FluidThermodynamics model, FluidThermodynamics.State donor,
-                              PassiveNetwork.Pipe pipe, double massFlow, Outlet outlet) {
-        if(outlet==Outlet.GAS)return new Check(Reason.MOBILE,0,0);
-        return check(donor(model,donor),donor,pipe,massFlow,outlet);
-    }
     /**
-     * {@code prepared} must be {@link #donor} of this same state. The largest active population
-     * decides the bore refusal and the suspension velocity alike: the original walked the
-     * populations in order and refused on the first one too wide for the bore, which reports no
-     * suspension velocity at all, so taking the largest refuses on exactly the same donors and
-     * reports the same velocity everywhere it is read.
-     */
-    public static Check check(Donor prepared, FluidThermodynamics.State donor,
-                              PassiveNetwork.Pipe pipe, double massFlow, Outlet outlet) {
-        return check(prepared,donor,pipe,massFlow,outlet,donor.mass());
-    }
-    /**
-     * {@link #check} of a connection that draws {@code drawnMass} kilograms of stream per the donor's whole liquid and
-     * solid content: the donor's own mass for a bulk withdrawal, and for a phase port drawing one liquid that liquid's
-     * stream mass over its share of the liquid (it carries its volume share of the donor's liquid and solids). The liquid
-     * velocity is
-     * {@code |q| / drawnMass * liquidVolume / area}.
+     * Whether a connection drawing {@code massFlow} from {@code donor} keeps its solids moving. {@code prepared} must be
+     * {@link #donor} of this same state. The connection draws {@code drawnMass} kilograms of stream per the donor's whole
+     * liquid and solid content: the donor's own mass for a bulk withdrawal, and for a phase port drawing one liquid that
+     * liquid's stream mass over its share of the liquid (it carries its volume share of the donor's liquid and solids).
+     * The liquid velocity is {@code |q| / drawnMass * liquidVolume / area}. The largest active population decides the bore
+     * refusal and the suspension velocity alike: the original walked the populations in order and refused on the first
+     * one too wide for the bore, which reports no suspension velocity at all, so taking the largest refuses on exactly the
+     * same donors and reports the same velocity everywhere it is read.
      */
     public static Check check(Donor prepared, FluidThermodynamics.State donor,
                               PassiveNetwork.Pipe pipe, double massFlow, Outlet outlet, double drawnMass) {

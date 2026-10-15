@@ -12,6 +12,8 @@ import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
 
 class FluidPacketCodecTest {
+    /** The live payload a menu receives for {@code data} when no input reply is pending. */
+    private static FluidNetwork.LiveData live(FluidNetwork.MenuData data){return new FluidNetwork.LiveData(data.view(),data.controls(),data.message());}
     private static List<Double> weights(int count){return java.util.stream.IntStream.range(0,count).mapToObj(i->0.01+i*0.002).toList();}
     @Test void editWirePreservesItsExactMenuPositionIdentityAndRevisionAndRejectsOversizedText() {
         var buffer=new RegistryFriendlyByteBuf(Unpooled.buffer(),RegistryAccess.EMPTY);
@@ -61,7 +63,7 @@ class FluidPacketCodecTest {
         var buffer=new RegistryFriendlyByteBuf(Unpooled.buffer(),RegistryAccess.EMPTY);
         try {
             // fluid-6: the static part (axis, presets, names) and the live part (view, controls, reply) each fit on their own.
-            String fixed=new Gson().toJson(data.staticData(7)),live=new Gson().toJson(data.liveData());
+            String fixed=new Gson().toJson(data.staticData(7)),live=new Gson().toJson(live(data));
             assertTrue(fixed.length()<FluidNetwork.MAX_JSON&&live.length()<FluidNetwork.MAX_JSON,"static "+fixed.length()+", live "+live.length());
             var s=new FluidNetwork.StaticPayload(1,1,fixed);FluidNetwork.StaticPayload.STREAM_CODEC.encode(buffer,s);var l=new FluidNetwork.LivePayload(1,1,live);FluidNetwork.LivePayload.STREAM_CODEC.encode(buffer,l);
             assertTrue(buffer.readableBytes()<1048576);assertEquals(s,FluidNetwork.StaticPayload.STREAM_CODEC.decode(buffer));assertEquals(l,FluidNetwork.LivePayload.STREAM_CODEC.decode(buffer));
@@ -79,7 +81,7 @@ class FluidPacketCodecTest {
         var data=new FluidNetwork.MenuData(TopologyCompiler.Kind.PIPE,view.withPipeInfo(FluidView.PipeInfo.empty(view.pipeHistory().getFirst().forward().componentMoles().length)),controls,names,List.of(),"",Map.of(),weights(names.size()));var gson=new Gson();String json=gson.toJson(data);assertTrue(json.length()<FluidNetwork.MAX_JSON);
         var buffer=new RegistryFriendlyByteBuf(Unpooled.buffer(),RegistryAccess.EMPTY);
         try {
-            String live=gson.toJson(data.liveData());assertTrue(live.length()<FluidNetwork.MAX_JSON);
+            String live=gson.toJson(live(data));assertTrue(live.length()<FluidNetwork.MAX_JSON);
             var packet=new FluidNetwork.LivePayload(3,42,live);FluidNetwork.LivePayload.STREAM_CODEC.encode(buffer,packet);var decoded=FluidNetwork.LivePayload.STREAM_CODEC.decode(buffer);
             assertEquals(packet,decoded);var roundTrip=FluidNetwork.MenuData.of(data.staticData(0),FluidNetwork.decodeLive(decoded.json()));
             assertEquals(12,roundTrip.view().pipeHistory().size());assertArrayEquals(amounts[2],roundTrip.view().pipeHistory().get(11).reverse().phaseMoles()[2]);assertEquals(250,roundTrip.view().onlineTick());
@@ -106,7 +108,7 @@ class FluidPacketCodecTest {
     /** The static part carries the axis, presets, names and kind only; the live part the view, controls and reply only; joined they are the menu state. */
     @Test void theStaticAndLivePayloadsSplitAndRejoinIntoTheSameMenuState() {
         var data=generatorMenu(FluidPresentation.QUEUED+"1250");var gson=new Gson();
-        String fixed=gson.toJson(data.staticData(4)),live=gson.toJson(data.liveData());
+        String fixed=gson.toJson(data.staticData(4)),live=gson.toJson(live(data));
         for(String key:new String[]{"\"view\"","\"controls\"","\"message\""})assertFalse(fixed.contains(key),"static payload carries "+key);
         for(String key:new String[]{"\"components\"","\"presets\"","\"materialNames\""})assertFalse(live.contains(key),"live payload carries "+key);
         var decodedStatic=FluidNetwork.decodeStatic(fixed);var decodedLive=FluidNetwork.decodeLive(live);
@@ -123,7 +125,7 @@ class FluidPacketCodecTest {
     @Test void aLivePayloadMustMatchItsStaticAxisAndABoundedReply() {
         var data=generatorMenu("");
         var shortAxis=new FluidNetwork.StaticData(TopologyCompiler.Kind.GENERATOR,0,List.of("only"),List.of(),Map.of(),weights(1));
-        assertThrows(IllegalArgumentException.class,()->FluidNetwork.MenuData.of(shortAxis,data.liveData()));
+        assertThrows(IllegalArgumentException.class,()->FluidNetwork.MenuData.of(shortAxis,live(data)));
         assertThrows(IllegalArgumentException.class,()->new FluidNetwork.LiveData(data.view(),data.controls(),"x".repeat(1025)));
         assertThrows(IllegalArgumentException.class,()->new FluidNetwork.StaticData(TopologyCompiler.Kind.GENERATOR,-1,data.components(),List.of(),Map.of(),weights(data.components().size())));
     }
@@ -141,7 +143,7 @@ class FluidPacketCodecTest {
             List.of(new FluidView.PipeConnection(17,1,2,3,true)),true,true);
         var data=new FluidNetwork.MenuData(TopologyCompiler.Kind.PIPE,base.view().withPipeInfo(info),base.controls(),
             base.components(),base.presets(),"",base.materialNames(),base.molecularWeights());
-        var gson=new Gson();var copy=FluidNetwork.MenuData.of(data.staticData(0),FluidNetwork.decodeLive(gson.toJson(data.liveData())));
+        var gson=new Gson();var copy=FluidNetwork.MenuData.of(data.staticData(0),FluidNetwork.decodeLive(gson.toJson(live(data))));
         assertEquals(info.connections(),copy.view().pipeInfo().connections());
         assertTrue(copy.view().pipeInfo().junction());assertTrue(copy.view().pipeInfo().changedDirection());
         assertArrayEquals(info.contents().componentMoles(),copy.view().pipeInfo().contents().componentMoles());
@@ -190,17 +192,17 @@ class FluidPacketCodecTest {
                 new FluidView.Outlet(13,PhysicalFluidTopology.Direction.DOWN,com.wormzjl.createcheme.science.fluid.network.PassiveNetwork.PhasePort.LIQUID,1.25,69.4,1,2931.5));
         var view=base.view().withOutlets(outlets);
         var data=new FluidNetwork.MenuData(TopologyCompiler.Kind.RESERVOIR,view,base.controls(),base.components(),base.presets(),"",base.materialNames(),base.molecularWeights());
-        var copy=FluidNetwork.MenuData.of(data.staticData(0),FluidNetwork.decodeLive(new Gson().toJson(data.liveData())));
+        var copy=FluidNetwork.MenuData.of(data.staticData(0),FluidNetwork.decodeLive(new Gson().toJson(live(data))));
         assertEquals(outlets,copy.view().outlets());
         assertThrows(IllegalArgumentException.class,()->new FluidNetwork.MenuData(TopologyCompiler.Kind.GENERATOR,view,base.controls(),base.components(),base.presets(),"",base.materialNames(),base.molecularWeights()));
         assertThrows(IllegalArgumentException.class,()->base.view().withOutlets(java.util.Collections.nCopies(7,outlets.getFirst())));
         assertThrows(IllegalArgumentException.class,()->new FluidView.Outlet(1,PhysicalFluidTopology.Direction.DOWN,com.wormzjl.createcheme.science.fluid.network.PassiveNetwork.PhasePort.LIQUID,Double.NaN,0,1,0));
         assertThrows(IllegalArgumentException.class,()->new FluidView.Outlet(1,PhysicalFluidTopology.Direction.DOWN,com.wormzjl.createcheme.science.fluid.network.PassiveNetwork.PhasePort.LIQUID,1,1,3,0));
         assertThrows(IllegalArgumentException.class,()->new FluidView.Outlet(1,PhysicalFluidTopology.Direction.DOWN,com.wormzjl.createcheme.science.fluid.network.PassiveNetwork.PhasePort.LIQUID,1,1,1,-1));
-        var json=com.google.gson.JsonParser.parseString(new Gson().toJson(data.liveData())).getAsJsonObject();json.getAsJsonObject("view").remove("outlets");
+        var json=com.google.gson.JsonParser.parseString(new Gson().toJson(live(data))).getAsJsonObject();json.getAsJsonObject("view").remove("outlets");
         assertThrows(RuntimeException.class,()->FluidNetwork.decodeLive(json.toString()),"a live view without its outlet list is refused");
         // The face (fluid-8, GUI fix F4): required on the wire, and it must be the face the port compiles from.
-        var faceless=com.google.gson.JsonParser.parseString(new Gson().toJson(data.liveData())).getAsJsonObject();
+        var faceless=com.google.gson.JsonParser.parseString(new Gson().toJson(live(data))).getAsJsonObject();
         faceless.getAsJsonObject("view").getAsJsonArray("outlets").get(1).getAsJsonObject().remove("face");
         assertThrows(RuntimeException.class,()->FluidNetwork.decodeLive(faceless.toString()),"an outlet without its face is refused");
         assertThrows(IllegalArgumentException.class,()->new FluidView.Outlet(1,PhysicalFluidTopology.Direction.NORTH,com.wormzjl.createcheme.science.fluid.network.PassiveNetwork.PhasePort.VAPOR,1,1,2,0),"a side face is a BULK port");

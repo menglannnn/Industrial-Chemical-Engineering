@@ -103,7 +103,7 @@ class ThermoDomainViolationTest {
         String pkg="data/createcheme/materials/packages/tjl20.json";
         var o=JsonParser.parseString(resources.get(pkg)).getAsJsonObject();String id=o.get("id").getAsString();o.remove("fluid_domain");resources.put(pkg,o.toString());
         var withoutEnvelope=MaterialCatalog.parse(resources);
-        var missing=assertThrows(IllegalArgumentException.class,()->new FluidThermodynamics(withoutEnvelope,id,1e-9));
+        var missing=assertThrows(IllegalArgumentException.class,()->com.wormzjl.createcheme.fluid.support.FluidTestSupport.model(withoutEnvelope,id,1e-9));
         assertTrue(missing.getMessage().contains("declares no fluid_domain"),missing.getMessage());
 
         var outside=new HashMap<>(catalog.resources());String nitrogen="data/createcheme/materials/properties/nitrogen.json";

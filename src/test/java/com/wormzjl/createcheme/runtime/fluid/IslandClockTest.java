@@ -4,30 +4,34 @@ import static org.junit.jupiter.api.Assertions.*;
 import org.junit.jupiter.api.Test;
 
 class IslandClockTest {
+    /** A clock at online tick {@code online}, nothing committed, on an epoch that does not move. */
+    private static IslandClock at(long online){return new IslandClock(new IslandClock.Snapshot(online,0,0,100),()->0);}
+    /** Online minus committed ticks. */
+    private static long debt(IslandClock clock){var s=clock.snapshot();return s.onlineTick()-s.committedTick();}
     @Test void idleCatchupCanConsumeNineIntervalsWithoutWaitingForNineMoreCadences() {
-        var clock=IslandClock.fresh();clock.accrueOnlineTicks(900);
+        var clock=at(900);
         for(int request=1;request<=9;request++){var slice=clock.nextSlice(request,Long.MAX_VALUE).orElseThrow();clock.admitted(slice);clock.completed(slice,true);}
-        assertEquals(0,clock.debtTicks());assertEquals(900,clock.committedTick());assertTrue(clock.nextSlice(10,Long.MAX_VALUE).isEmpty());
+        assertEquals(0,debt(clock));assertEquals(900,clock.committedTick());assertTrue(clock.nextSlice(10,Long.MAX_VALUE).isEmpty());
     }
     @Test void heldResultsKeepDebtAndNeverReplayAnAcceptedApproximateInterval() {
-        var clock=IslandClock.fresh();clock.accrueOnlineTicks(200);var first=clock.nextSlice(1,Long.MAX_VALUE).orElseThrow();clock.admitted(first);clock.completed(first,true);
+        var clock=at(200);var first=clock.nextSlice(1,Long.MAX_VALUE).orElseThrow();clock.admitted(first);clock.completed(first,true);
         var second=clock.nextSlice(2,Long.MAX_VALUE).orElseThrow();clock.admitted(second);clock.completed(second,false);
-        assertEquals(100,clock.committedTick());assertEquals(100,clock.debtTicks());assertTrue(clock.nextSlice(3,Long.MAX_VALUE).isEmpty());
+        assertEquals(100,clock.committedTick());assertEquals(100,debt(clock));assertTrue(clock.nextSlice(3,Long.MAX_VALUE).isEmpty());
         clock.inputsChanged();assertEquals(100,clock.nextSlice(3,Long.MAX_VALUE).orElseThrow().startTick());
         assertThrows(IllegalStateException.class,()->clock.completed(first,true));
     }
     @Test void causalFencesAndRestartPreserveOnlineDebtWithoutAddingOfflineTime() {
-        var clock=IslandClock.fresh();clock.accrueOnlineTicks(500);var slice=clock.nextSlice(1,60).orElseThrow();assertEquals(3,slice.seconds());
+        var clock=at(500);var slice=clock.nextSlice(1,60).orElseThrow();assertEquals(3,slice.seconds());
         clock.admitted(slice);clock.completed(slice,true);assertTrue(clock.nextSlice(2,60).isEmpty());
-        var restored=new IslandClock(clock.snapshot());assertEquals(440,restored.debtTicks());assertEquals(60,restored.nextSlice(2,Long.MAX_VALUE).orElseThrow().startTick());
+        var restored=new IslandClock(clock.snapshot(),()->0);assertEquals(440,debt(restored));assertEquals(60,restored.nextSlice(2,Long.MAX_VALUE).orElseThrow().startTick());
     }
     @Test void cadenceChangesAreBoundedAndDoNotEraseAccruedTime() {
-        var clock=IslandClock.fresh();clock.accrueOnlineTicks(1000);
+        var clock=at(1000);
         for(int i=0;i<100;i++)clock.performanceSample(true,false);assertEquals(400,clock.snapshot().cadenceTicks());
-        for(int i=0;i<300;i++)clock.performanceSample(false,true);assertEquals(20,clock.snapshot().cadenceTicks());assertEquals(1000,clock.debtTicks());
+        for(int i=0;i<300;i++)clock.performanceSample(false,true);assertEquals(20,clock.snapshot().cadenceTicks());assertEquals(1000,debt(clock));
     }
     @Test void measuredOverloadAndRecoveryFollowThePlannedHysteresis() {
-        var clock=IslandClock.fresh();
+        var clock=at(0);
         for(int i=0;i<2;i++)clock.performanceSample(true,false);assertEquals(100,clock.snapshot().cadenceTicks());
         clock.performanceSample(true,false);assertEquals(125,clock.snapshot().cadenceTicks());
         for(int i=0;i<9;i++)clock.performanceSample(false,true);assertEquals(125,clock.snapshot().cadenceTicks());
@@ -42,22 +46,20 @@ class IslandClockTest {
         var behind=new IslandClock(new IslandClock.Snapshot(250,200,0,100),()->epoch[0]);
         assertEquals(0,fresh.snapshot().onlineTick());assertEquals(250,behind.snapshot().onlineTick());
         epoch[0]+=150;
-        assertEquals(150,fresh.snapshot().onlineTick());assertEquals(400,behind.snapshot().onlineTick());assertEquals(200,behind.debtTicks());
+        assertEquals(150,fresh.snapshot().onlineTick());assertEquals(400,behind.snapshot().onlineTick());assertEquals(200,debt(behind));
         assertEquals(1100,fresh.epochTickAt(100),"online 100 on a clock restored at epoch 1000 with online 0");
         assertEquals(950,behind.epochTickAt(200));
-        assertThrows(IllegalArgumentException.class,()->fresh.accrueOnlineTicks(-1));
-        fresh.accrueOnlineTicks(5);assertEquals(155,fresh.snapshot().onlineTick(),"a clock driven directly still accrues relative to its epoch");
     }
     @Test void restartOnAnotherEpochKeepsTheSavedDebtExactlyAndAddsNoOfflineTime() {
         long[] epoch={0};var clock=new IslandClock(new IslandClock.Snapshot(0,0,0,100),()->epoch[0]);epoch[0]=540;
         var slice=clock.nextSlice(1,Long.MAX_VALUE).orElseThrow();clock.admitted(slice);clock.completed(slice,true);
-        var saved=clock.snapshot();assertEquals(new IslandClock.Snapshot(540,100,0,100),saved);assertEquals(440,clock.debtTicks());
+        var saved=clock.snapshot();assertEquals(new IslandClock.Snapshot(540,100,0,100),saved);assertEquals(440,debt(clock));
         // The server is down for any length of time; the restored world epoch resumes from its saved value.
         long[] restored={540};var sameWorld=new IslandClock(saved,()->restored[0]);
-        assertEquals(saved,sameWorld.snapshot());assertEquals(440,sameWorld.debtTicks());assertEquals(100,sameWorld.nextSlice(2,Long.MAX_VALUE).orElseThrow().startTick());
+        assertEquals(saved,sameWorld.snapshot());assertEquals(440,debt(sameWorld));assertEquals(100,sameWorld.nextSlice(2,Long.MAX_VALUE).orElseThrow().startTick());
         // A clock restored onto an unrelated epoch value reads the same saved clock and moves only with it.
         long[] other={9000};var elsewhere=new IslandClock(saved,()->other[0]);assertEquals(saved,elsewhere.snapshot());
-        other[0]+=20;assertEquals(560,elsewhere.snapshot().onlineTick());assertEquals(460,elsewhere.debtTicks());
+        other[0]+=20;assertEquals(560,elsewhere.snapshot().onlineTick());assertEquals(460,debt(elsewhere));
     }
     @Test void aFenceAtTheCommittedTickHasNoTimeDeadlineAndALaterFenceShortensTheSlice() {
         long[] epoch={0};var clock=new IslandClock(new IslandClock.Snapshot(300,100,0,100),()->epoch[0]);
@@ -71,7 +73,7 @@ class IslandClockTest {
         long[] epoch={0};var clock=new IslandClock(new IslandClock.Snapshot(100,0,0,100),()->epoch[0]);
         var slice=clock.nextSlice(1,Long.MAX_VALUE).orElseThrow();clock.admitted(slice);
         assertEquals(Long.MAX_VALUE,clock.readyAtTick(Long.MAX_VALUE,Integer.MAX_VALUE),"an outstanding slice waits for its completion");
-        epoch[0]=7;clock.completed(slice,false);assertEquals(207,clock.retryAtTick());assertEquals(107,clock.debtTicks());
+        epoch[0]=7;clock.completed(slice,false);assertEquals(207,clock.retryAtTick());assertEquals(107,debt(clock));
         assertEquals(207,clock.readyAtTick(Long.MAX_VALUE,Integer.MAX_VALUE));
         assertEquals(207,clock.readyAtTick(Long.MAX_VALUE,50),"a shorter retry span shortens the slice, not the backoff");
         assertEquals(107,clock.epochTickAt(207));
@@ -105,7 +107,7 @@ class IslandClockTest {
         assertEquals(200,clock.committedTick());assertEquals(650,clock.retryAtTick());
         clock.rest(200,200);assertEquals(200,clock.committedTick(),"a zero advance at a fence is allowed");
         clock.rest(450,450);assertEquals(450,clock.committedTick());assertEquals(0,clock.retryAtTick(),"a commit clears the retry");
-        epoch[0]+=100;clock.rest(800,Long.MAX_VALUE);assertEquals(800,clock.committedTick());assertEquals(0,clock.debtTicks());
+        epoch[0]+=100;clock.rest(800,Long.MAX_VALUE);assertEquals(800,clock.committedTick());assertEquals(0,debt(clock));
         epoch[0]+=100;var slice=clock.nextSlice(1,Long.MAX_VALUE).orElseThrow();clock.admitted(slice);
         assertThrows(IllegalStateException.class,()->clock.rest(850,Long.MAX_VALUE),"nothing commits around an outstanding slice");
         clock.completed(slice,true);assertEquals(900,clock.committedTick());

@@ -30,7 +30,7 @@ class HydrocarbonModelTest {
 
     // ---------------- from HybridDerivativeTest ----------------
     @Test void sharedWaterResponsePreservesHeatAndPressureIdentities() {
-        var model=new FluidThermodynamics(MaterialCatalog.bundled(),"createcheme:tjl20_methane",1e-9);
+        var model=com.wormzjl.createcheme.fluid.support.FluidTestSupport.model(MaterialCatalog.bundled(),"createcheme:tjl20_methane",1e-9);
         for(double t:new double[]{298.15,350,375})for(double p:new double[]{101325,1e6,2e6}) {
             var s=model.waterLiquid(t,p);double dt=.001,dp=10;
             double vp=(model.waterLiquid(t,p+dp).molarVolume()-model.waterLiquid(t,p-dp).molarVolume())/(2*dp);

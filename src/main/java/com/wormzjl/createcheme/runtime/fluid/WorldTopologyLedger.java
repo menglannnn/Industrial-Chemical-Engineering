@@ -160,11 +160,6 @@ public final class WorldTopologyLedger {
         var event=new Event(UUID.randomUUID(),onlineTick,edits,touched,recovery);
         return new Prepared(version,onlineTick,nextIdentity,event,List.of(),null,null,Map.of());
     }
-    /** Returns an application with accounting staged; nothing is removed from the history until commit. */
-    public Prepared applyFirst(Collection<PassiveNetwork.Reservoir> additions,Collection<PassiveNetwork.Reservoir> removals,double[] weights,long nextIdentity) {
-        owned();if(events.isEmpty())throw new IllegalStateException("No applicable topology event");
-        return applyReady(events.getFirst().id,additions,removals,weights,nextIdentity);
-    }
     /** What every queued event reads and writes, in queue order. A position is the one the last queued edit gives an
      * identity, else its applied one; only the identities the queued events name are looked up, so the cost follows the
      * queue, not the size of the world. */
@@ -180,24 +175,10 @@ public final class WorldTopologyLedger {
         }
         return result;
     }
-    /** Events may pass an earlier event only when physical identities AND positions are disjoint.
-     * Position dependencies keep removal/replacement ordered even though identities differ. */
-    public List<Event> readyEvents() {
-        owned();var earlierIds=new HashSet<Long>();var earlierPositions=new HashSet<PhysicalFluidTopology.Position>();var ready=new ArrayList<Event>();
-        for(var footprint:footprints()) {
-            if(!footprint.meets(earlierIds,earlierPositions))ready.add(footprint.event);
-            earlierIds.addAll(footprint.ids);earlierPositions.addAll(footprint.positions);
-        }
-        return List.copyOf(ready);
-    }
-    /** Stage one independent event at its original timestamp; the caller still aligns its owners. */
-    public Prepared applyReady(UUID eventId,Collection<PassiveNetwork.Reservoir> additions,Collection<PassiveNetwork.Reservoir> removals,double[] weights,long nextIdentity) {
-        return applyBatch(List.of(eventId),additions,removals,weights,nextIdentity);
-    }
     /**
      * Stage a batch of queued events applied together, in queue order, with the batch's construction and destruction
      * accounting. Every event of the batch must meet no earlier queued event outside the batch (identities and
-     * positions, as {@link #readyEvents()} decides); events of the batch may depend on earlier ones in it. The caller
+     * positions, as {@link Footprint#meets} decides); events of the batch may depend on earlier ones in it. The caller
      * aligns their owners and applies them at one tick.
      */
     public Prepared applyBatch(List<UUID> eventIds,Collection<PassiveNetwork.Reservoir> additions,Collection<PassiveNetwork.Reservoir> removals,double[] weights,long nextIdentity) {

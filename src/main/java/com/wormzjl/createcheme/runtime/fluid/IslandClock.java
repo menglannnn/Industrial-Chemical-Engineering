@@ -12,13 +12,12 @@ import java.util.function.LongSupplier;
  * world's online tick, as {@code onlineTick = epoch - base}; advancing the epoch advances every clock on it
  * at once, so no island has to be visited on a tick where nothing is due. Restoring a snapshot fixes the base
  * so the restored online tick, and with it the saved debt (online minus committed), is exactly the saved one;
- * the epoch itself only advances while the server runs, so there is no offline progress. A clock built
- * without an epoch reads a constant one and moves only through {@link #accrueOnlineTicks(long)}.
+ * the epoch itself only advances while the server runs, so there is no offline progress.
  */
 public final class IslandClock {
-    private static final LongSupplier DETACHED=()->0;
     private final LongSupplier epoch;
-    private long base,committedTick,retryAtTick;
+    private final long base;
+    private long committedTick,retryAtTick;
     private int cadenceTicks;
     private Slice outstanding;
     private int highLoadSamples,lowLoadSamples;
@@ -31,18 +30,12 @@ public final class IslandClock {
         public Slice {if(startTick<0||endTick<=startTick||requestId<=0)throw new IllegalArgumentException("Invalid simulation slice");}
         public double seconds(){return (endTick-startTick)/20.0;}
     }
-    public IslandClock(Snapshot saved){this(saved,DETACHED);}
     /** Restores the saved clock on a shared epoch: its online tick reads exactly the saved one now. */
     public IslandClock(Snapshot saved,LongSupplier epoch) {
         this.epoch=Objects.requireNonNull(epoch);base=Math.subtractExact(epoch.getAsLong(),saved.onlineTick);
         committedTick=saved.committedTick;retryAtTick=saved.retryAtTick;cadenceTicks=saved.cadenceTicks;
     }
-    public static IslandClock fresh(){return new IslandClock(new Snapshot(0,0,0,100));}
     private long online(){return Math.subtractExact(epoch.getAsLong(),base);}
-    /** Moves this clock's online time forward relative to its epoch. Not on the tick path: a clock on a shared
-     * epoch advances with the epoch. Kept for clocks driven directly, such as a detached test clock. */
-    public void accrueOnlineTicks(long elapsed){if(elapsed<0)throw new IllegalArgumentException("Negative elapsed ticks");base=Math.subtractExact(base,elapsed);}
-    public long debtTicks(){return online()-committedTick;}
     public long onlineTick(){return online();}
     public long committedTick(){return committedTick;}
     public long retryAtTick(){return retryAtTick;}

@@ -9,7 +9,7 @@ import org.junit.jupiter.api.Test;
 
 class PhaseLayoutTest {
     @Test void sparseTwoPhaseEncodingKeepsPhasePropertySnapshotsIsolated() {
-        var model=new FluidThermodynamics(MaterialCatalog.bundled(),"createcheme:tjl20_methane",1e-9);
+        var model=com.wormzjl.createcheme.fluid.support.FluidTestSupport.model(MaterialCatalog.bundled(),"createcheme:tjl20_methane",1e-9);
         double[] liquid=new double[com.wormzjl.createcheme.science.material.MaterialTestBasis.CRUDE],vapor=new double[com.wormzjl.createcheme.science.material.MaterialTestBasis.CRUDE];liquid[6]=1;vapor[0]=1;
         var state=model.state(350,101325,liquid,vapor,0,0,101325);var layout=new PhaseLayout(model,state);
         var expected=layout.encode(state);
@@ -18,7 +18,7 @@ class PhaseLayoutTest {
         assertTrue(Arrays.stream(expected).allMatch(Double::isFinite));
     }
     @Test void coupledVolumeEnergyAndPhaseEquationsRecoverIndependentTpTargets() {
-        String id="createcheme:tjl20_methane";var model=new FluidThermodynamics(MaterialCatalog.bundled(),id,1e-9);
+        String id="createcheme:tjl20_methane";var model=com.wormzjl.createcheme.fluid.support.FluidTestSupport.model(MaterialCatalog.bundled(),id,1e-9);
         double[] crude=Arrays.copyOf(V3PengRobinsonThermo.fromRegisteredPackage(id).crudeFeed("createcheme:tia_juana_light_methane").moleFractions(),com.wormzjl.createcheme.science.material.MaterialTestBasis.CRUDE+1);crude[com.wormzjl.createcheme.science.material.MaterialTestBasis.CRUDE]=.2;
         double[] water=new double[com.wormzjl.createcheme.science.material.MaterialTestBasis.CRUDE+1];water[com.wormzjl.createcheme.science.material.MaterialTestBasis.CRUDE]=1;double[] methane=new double[com.wormzjl.createcheme.science.material.MaterialTestBasis.CRUDE+1];methane[0]=1;
         for(double[] n:new double[][]{crude,water,methane}) {
@@ -34,7 +34,7 @@ class PhaseLayoutTest {
     }
     /** Decision A423: the wall row and the bag volume stated on a given branch, as a Jacobian sweep reads them. */
     @Test void theWallRowAndTheBagVolumeAreStatedOnTheBranchASweepIsBuiltOn() {
-        var model=new FluidThermodynamics(MaterialCatalog.bundled(),"createcheme:tjl20_methane_nitrogen",1e-9);
+        var model=com.wormzjl.createcheme.fluid.support.FluidTestSupport.model(MaterialCatalog.bundled(),"createcheme:tjl20_methane_nitrogen",1e-9);
         var air=model.initialNitrogenCharge(1,298.15,101325,()->{});double volume=air.volume();
         var taut=new PhaseLayout.Wall(true,true);var slack=new PhaseLayout.Wall(false,false);
         // The charge in a vessel 1e-8 larger: a slack bag at the ambient. Its own branch reads the slack row, zero; the taut

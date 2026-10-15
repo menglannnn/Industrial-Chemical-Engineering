@@ -22,8 +22,6 @@ public record FallbackAllowance(int acceptedIntervals,long advancedTicks,int cap
         if(!permits(durationTicks,currentCadenceTicks))throw new IllegalStateException("Approximate allowance exhausted");
         return new FallbackAllowance(acceptedIntervals+1,advancedTicks+durationTicks,acceptedIntervals==0?currentCadenceTicks:capturedCadenceTicks);
     }
-    /** Call only after a valid full result commits from the current inventory. */
-    public FallbackAllowance fullRecovery(){return NONE;}
     /** Immutable admission-time policy. Proposed allowance changes take effect only with an island commit. */
     public record Policy(boolean enabled,Optional<ApproximationAnchor> anchor,FallbackAllowance allowance,
                                       int cadenceTicks,long softBudgetNanos) {

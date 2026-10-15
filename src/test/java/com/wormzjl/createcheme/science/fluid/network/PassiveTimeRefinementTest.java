@@ -8,7 +8,7 @@ import org.junit.jupiter.api.Test;
 
 class PassiveTimeRefinementTest {
     @Test void adaptiveGasBlowdownMatchesIndependentlyRefinedFixedSteps() throws Exception {
-        var model=new FluidThermodynamics(MaterialCatalog.bundled(),"createcheme:tjl20_methane",1e-9);
+        var model=com.wormzjl.createcheme.fluid.support.FluidTestSupport.model(MaterialCatalog.bundled(),"createcheme:tjl20_methane",1e-9);
         var reservoirs=new ArrayList<PassiveNetwork.Reservoir>();
         for(double p:new double[]{200000,101325}) {
             double[] n=new double[com.wormzjl.createcheme.science.material.MaterialTestBasis.CRUDE+1];n[0]=1;var unit=model.flashTP(350,p,n,()->{});n[0]/=unit.volume();

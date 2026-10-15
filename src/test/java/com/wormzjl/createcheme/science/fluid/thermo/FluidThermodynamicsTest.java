@@ -7,7 +7,7 @@ import org.junit.jupiter.api.Test;
 import java.util.Arrays;
 
 class FluidThermodynamicsTest {
-    private final FluidThermodynamics model=new FluidThermodynamics(MaterialCatalog.bundled(),"createcheme:tjl20_methane",1e-9);
+    private final FluidThermodynamics model=com.wormzjl.createcheme.fluid.support.FluidTestSupport.model(MaterialCatalog.bundled(),"createcheme:tjl20_methane",1e-9);
     private double[] pure(int i) {double[] n=new double[com.wormzjl.createcheme.science.material.MaterialTestBasis.CRUDE+1];n[i]=1;return n;}
     private void closure(double[] expected,FluidThermodynamics.State state) {
         for(int i=0;i<model.hydrocarbon.componentCount();i++)assertEquals(expected[i],state.liquid()[i]+state.vapor()[i],1e-13);
