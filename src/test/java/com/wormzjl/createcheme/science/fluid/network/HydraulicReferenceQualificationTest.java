@@ -22,7 +22,7 @@ import java.util.*;
 /** Independent P03-P05 references. No production resistance call supplies an oracle. */
 class HydraulicReferenceQualificationTest {
     private final FluidThermodynamics model = FluidThermodynamics.forNetwork(
-            MaterialCatalog.bundled(), "createcheme:tjl20_methane_nitrogen", 1e-9);
+            MaterialCatalog.bundled(), "createcheme:tjl20_methane_nitrogen");
 
     @Test void boundaryFlowsAcrossAllRegimesMatchOfflineDecimalFrictionInBothDirections() throws Exception {
         var rows = new ArrayList<Map<String, Object>>();

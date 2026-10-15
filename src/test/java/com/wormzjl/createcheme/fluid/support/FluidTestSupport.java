@@ -15,7 +15,6 @@ import java.util.Objects;
 /** Shared, independent fixture-basis and finite-ledger calculations for fluid tests. */
 public final class FluidTestSupport {
     private static final String NETWORK_PACKAGE = "createcheme:tjl20_methane_nitrogen";
-    private static final double DEFAULT_COMPRESSIBILITY = 1e-9;
     private static final int NITROGEN = com.wormzjl.createcheme.science.material.MaterialTestBasis.NITROGEN;
     private static final int WATER = com.wormzjl.createcheme.science.material.MaterialTestBasis.NETWORK;
 
@@ -36,17 +35,16 @@ public final class FluidTestSupport {
         public void throwIfCancellationRequested() {}
     };
 
-    /** Creates the bundled gameplay network model at the qualified compressibility. */
+    /** Creates the bundled gameplay network model. */
     public static FluidThermodynamics networkModel() {
-        return FluidThermodynamics.forNetwork(
-                MaterialCatalog.bundled(), NETWORK_PACKAGE, DEFAULT_COMPRESSIBILITY);
+        return FluidThermodynamics.forNetwork(MaterialCatalog.bundled(), NETWORK_PACKAGE);
     }
 
-    /** A model of any bundled or test package at the given liquid compressibility: the default velocity cap, no trace
-     * truncation and the default solid settings. Not the network model ({@link #networkModel}), whose trace cutoff and
-     * package resolution are the configured ones. */
-    public static FluidThermodynamics model(MaterialCatalog catalog, String packageId, double liquidCompressibility) {
-        return new FluidThermodynamics(catalog, packageId, liquidCompressibility, FluidThermodynamics.DEFAULT_MAXIMUM_VELOCITY,
+    /** A model of any bundled or test package: the default velocity cap, no trace truncation and the default solid
+     * settings. Not the network model ({@link #networkModel}), whose trace cutoff and package resolution are the
+     * configured ones. */
+    public static FluidThermodynamics model(MaterialCatalog catalog, String packageId) {
+        return new FluidThermodynamics(catalog, packageId, FluidThermodynamics.DEFAULT_MAXIMUM_VELOCITY,
                 TraceTruncationPolicy.OFF, SlurryTransport.Settings.defaults());
     }
 

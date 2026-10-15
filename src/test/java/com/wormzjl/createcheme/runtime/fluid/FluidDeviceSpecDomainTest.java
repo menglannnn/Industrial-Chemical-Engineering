@@ -17,7 +17,7 @@ import static org.junit.jupiter.api.Assertions.*;
  */
 class FluidDeviceSpecDomainTest {
     private final MaterialCatalog catalog=MaterialCatalog.bundled();
-    private final FluidThermodynamics model=FluidThermodynamics.forNetwork(catalog,"createcheme:tjl20_methane_nitrogen",1e-9);
+    private final FluidThermodynamics model=FluidThermodynamics.forNetwork(catalog,"createcheme:tjl20_methane_nitrogen");
     private PhysicalFluidTopology.Device device(TopologyCompiler.Kind kind) {
         return new PhysicalFluidTopology.Device(1,new PhysicalFluidTopology.Position("minecraft:overworld",0,64,0),kind,PhysicalFluidTopology.Direction.EAST,
                 new PipeResistance.Geometry(1,.05,.000045,0),new FlowControl.Passive());

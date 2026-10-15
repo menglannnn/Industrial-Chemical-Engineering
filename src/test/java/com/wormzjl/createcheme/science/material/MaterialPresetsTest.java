@@ -66,7 +66,7 @@ class MaterialPresetsTest {
         assertEquals(previous.size(),presets.size());
         var target=new ArrayList<>(axis);target.add("Water");var source=new ArrayList<>(original.requirePackage(pkg).components());source.add("Water");
         for(int i=0;i<presets.size();i++)assertArrayEquals(new MaterialAxis(target).project(new MaterialAxis(source),previous.get(i).moleFractions()),presets.get(i).moleFractions());
-        var model=FluidThermodynamics.forNetwork(changed,pkg,1e-9);assertEquals(target,model.components());
+        var model=FluidThermodynamics.forNetwork(changed,pkg);assertEquals(target,model.components());
         var state=model.initialNitrogenCharge(1,298.15,101325,()->{});assertTrue(Double.isFinite(state.mass())&&state.mass()>0);
         assertSame(original,MaterialRuntime.current());
     }

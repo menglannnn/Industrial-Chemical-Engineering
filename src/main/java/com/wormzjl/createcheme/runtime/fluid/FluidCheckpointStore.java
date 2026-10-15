@@ -18,7 +18,7 @@ import java.util.function.Function;
 import java.util.regex.Pattern;
 
 /**
- * Where checkpoint format 8 lives, and what a save writes. The owner's decision (F3): per-island storage with the
+ * Where checkpoint format 9 lives, and what a save writes. The owner's decision (F3): per-island storage with the
  * mod's own dirty tracking, no world-wide size bound, a small core record in the world's saved data.
  *
  * <p><b>Layout.</b> The core record ({@link FluidCheckpointCodec#coreTag}) is the world's saved data file
@@ -177,7 +177,7 @@ public final class FluidCheckpointStore {
         for(var entry:checkpoint.islands()) {
             var s=entry.snapshot();
             if(s.clock().onlineTick()>epoch)throw new IllegalStateException("Island "+s.id()+" at online tick "+s.clock().onlineTick()+" is ahead of the world epoch "+epoch);
-            var key=new FluidCheckpointCodec.PackageKey(entry.packageId(),entry.compressibility());
+            var key=entry.key();
             if(!packages.containsKey(key))packages.put(key,FluidCheckpointCodec.PackageRecord.of(key,Objects.requireNonNull(models.apply(key))));
             var old=islands.get(s.id());Ref ref;
             if(old!=null&&s.payloadGeneration()!=0&&old.revision==s.revision()&&old.payloadGeneration==s.payloadGeneration()) {

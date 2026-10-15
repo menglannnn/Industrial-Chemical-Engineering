@@ -40,11 +40,11 @@ public final class FluidPropertyReloadGameTests {
                 helper.assertTrue(held.clock().committedTick()==before[0].clock().committedTick(),"Reload advanced old scientific state");
                 helper.assertTrue(world.view(id).status().contains("property data changed"),"Loaded view hides the property-data hold");
                 var capture=world.capture();
-                var model=FluidThermodynamics.forNetwork(original,FluidPresetCatalog.NETWORK_PACKAGE,1e-9);
+                var model=FluidThermodynamics.forNetwork(original,FluidPresetCatalog.NETWORK_PACKAGE);
                 var encoded=FluidCheckpointCodec.encode(capture.checkpoint(),capture.world().onlineTick(),key->model);
                 var roundTrip=FluidCheckpointCodec.decode(encoded,key->model);
                 helper.assertTrue(roundTrip.islands().getFirst().snapshot().allowance().equals(held.allowance()),"Save renewed degraded grace");
-                boolean refused=false;try{FluidCheckpointCodec.decode(encoded,key->FluidThermodynamics.forNetwork(changed,key.packageId(),key.compressibility()));}
+                boolean refused=false;try{FluidCheckpointCodec.decode(encoded,key->FluidThermodynamics.forNetwork(changed,key.packageId()));}
                 catch(IllegalArgumentException expected){refused=true;}
                 helper.assertTrue(refused,"Restart could silently reinterpret saved energy under changed science");
                 helper.assertTrue(!held.anchor().orElseThrow().propertyRevision().equals(ApproximationAnchor.revision(model)),"Reload retained an eligible fallback anchor");

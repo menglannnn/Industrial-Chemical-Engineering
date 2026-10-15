@@ -13,7 +13,7 @@ import static org.junit.jupiter.api.Assertions.*;
 class FluidPropertyBenchmarkTest {
     private static volatile double consumed;
     @Test void measureDirectStateAndStandaloneTpInitializationSeparately() throws Exception {
-        String id="createcheme:tjl20_methane";var model=com.wormzjl.createcheme.fluid.support.FluidTestSupport.model(MaterialCatalog.bundled(),id,1e-9);
+        String id="createcheme:tjl20_methane";var model=com.wormzjl.createcheme.fluid.support.FluidTestSupport.model(MaterialCatalog.bundled(),id);
         var n=Arrays.copyOf(V3PengRobinsonThermo.fromRegisteredPackage(id).crudeFeed("createcheme:tia_juana_light_methane").moleFractions(),21);n[20]=.2;
         var seed=model.flashTP(350,101325,n,()->{});
         var output=new LinkedHashMap<String,Object>();output.put("java",System.getProperty("java.version"));

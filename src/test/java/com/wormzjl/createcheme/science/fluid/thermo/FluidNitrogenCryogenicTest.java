@@ -21,7 +21,7 @@ import static org.junit.jupiter.api.Assertions.*;
 class FluidNitrogenCryogenicTest {
     private static final String NETWORK="createcheme:tjl20_methane_nitrogen";
     private final MaterialCatalog catalog=MaterialCatalog.bundled();
-    private final FluidThermodynamics model=FluidThermodynamics.forNetwork(catalog,NETWORK,1e-9);
+    private final FluidThermodynamics model=FluidThermodynamics.forNetwork(catalog,NETWORK);
     private final int nitrogen=model.hydrocarbon.components().indexOf("Nitrogen");
     private final double[] pure=pure();
     private double[] pure(){double[] x=new double[model.hydrocarbon.componentCount()];x[model.hydrocarbon.components().indexOf("Nitrogen")]=1;return x;}

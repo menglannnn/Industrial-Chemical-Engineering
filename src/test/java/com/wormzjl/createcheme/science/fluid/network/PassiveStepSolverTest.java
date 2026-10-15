@@ -9,7 +9,7 @@ import java.util.*;
 import org.junit.jupiter.api.Test;
 
 class PassiveStepSolverTest {
-    private final FluidThermodynamics model=com.wormzjl.createcheme.fluid.support.FluidTestSupport.model(MaterialCatalog.bundled(),"createcheme:tjl20_methane",1e-9);
+    private final FluidThermodynamics model=com.wormzjl.createcheme.fluid.support.FluidTestSupport.model(MaterialCatalog.bundled(),"createcheme:tjl20_methane");
     private FluidThermodynamics.State fill(double pressure,int component) {
         double[] n=new double[com.wormzjl.createcheme.science.material.MaterialTestBasis.CRUDE+1];n[component]=1;var unit=model.flashTP(350,pressure,n,()->{});n[component]/=unit.volume();
         return model.flashTP(350,pressure,n,()->{});

@@ -27,9 +27,19 @@ public final class FluidDomain {
     private final double waterMinimum,waterMaximum;
     /** The intersection of the envelope and of every range: a state inside it needs no per-component look. */
     private final double commonMinimumT,commonMaximumT,commonMinimumP,commonMaximumP;
+    /**
+     * The temperature floor of each component under the crystal competition (P4 stage 2b for a non-liquid phase, P5 for
+     * every phase): its fluid floor, lowered to the crystal competition's floor for the species of a crystal the package
+     * admits (the larger of the crystal record's and the species' ideal-gas floor, as the engine's crystal domain; CO2 to
+     * 90 K on the pilot). Since P5 the engine answers a liquid carrying the crystal's species below that species' fluid
+     * floor (the crystal's liquidus decides whether it freezes), so the liquid takes the same floor. {@code null} when no
+     * crystal widens any range, so every check is the fluid-only one bit for bit.
+     */
+    private final double[] vaporMinimumTemperature;
 
-    private FluidDomain(String packageId,MaterialCatalog.Validity envelope,String[] names,MaterialCatalog.Validity[] ranges,double waterMinimum,double waterMaximum) {
-        this.packageId=packageId;this.envelope=envelope;this.names=names;
+    private FluidDomain(String packageId,MaterialCatalog.Validity envelope,String[] names,MaterialCatalog.Validity[] ranges,double waterMinimum,double waterMaximum,
+                        double[] vaporMinimumTemperature) {
+        this.packageId=packageId;this.envelope=envelope;this.names=names;this.vaporMinimumTemperature=vaporMinimumTemperature;
         int n=ranges.length;minimumTemperature=new double[n];maximumTemperature=new double[n];minimumPressure=new double[n];maximumPressure=new double[n];
         double lowT=Math.max(envelope.minimumTemperature(),waterMinimum),highT=Math.min(envelope.maximumTemperature(),waterMaximum);
         double lowP=envelope.minimumPressure(),highP=envelope.maximumPressure();
@@ -55,7 +65,18 @@ public final class FluidDomain {
             names[i]=p.components().get(i);
             ranges[i]=catalog.fluidValidity(packageId,names[i]).orElseThrow(()->new IllegalArgumentException("Component declares no fluid_domain"));
         }
-        return new FluidDomain(packageId,envelope,names,ranges,p.water().triplePoint(),p.water().maximumTemperature());
+        // The crystal competition's floors (P4 stage 2b): the admitted crystals' species, read here without the contract
+        // (whose domain is built from this one).
+        double[] vapor=null;
+        for(String crystal:com.wormzjl.createcheme.science.thermo.phase.PhaseContract.admittedCrystals(catalog,packageId)) {
+            var record=catalog.crystals().get(crystal);int i=p.components().indexOf(record.component());
+            if(i<0)continue;
+            double floor=Math.max(record.minimumTemperature(),catalog.requireSpine(packageId,record.component()).minimumTemperature());
+            if(!(floor<ranges[i].minimumTemperature()))continue;
+            if(vapor==null){vapor=new double[n];for(int c=0;c<n;c++)vapor[c]=ranges[c].minimumTemperature();}
+            vapor[i]=Math.max(Math.min(vapor[i],floor),envelope.minimumTemperature());
+        }
+        return new FluidDomain(packageId,envelope,names,ranges,p.water().triplePoint(),p.water().maximumTemperature(),vapor);
     }
 
     public String packageId(){return packageId;}
@@ -73,24 +94,32 @@ public final class FluidDomain {
      */
     public void check(double t,double p,double[] liquid,double[] vapor,double water) {
         if(t>=commonMinimumT&&t<=commonMaximumT&&p>=commonMinimumP&&p<=commonMaximumP)return;
-        requireComponents(t,p,true,liquid,vapor,water);
-        requireEnvelope(t,p);
-    }
-    /** An overall composition in conserved order, water last. */
-    public void checkTotals(double t,double p,double[] overall) {
-        if(overall.length!=names.length+1)throw new IllegalArgumentException("Fluid domain basis mismatch");
-        if(t>=commonMinimumT&&t<=commonMaximumT&&p>=commonMinimumP&&p<=commonMaximumP)return;
-        requireComponents(t,p,true,overall,null,overall[names.length]);
+        if(vaporMinimumTemperature!=null)requireSplit(t,p,liquid,vapor==null?new double[names.length]:vapor,water,true);
+        else requireComponents(t,p,true,liquid,vapor,water);
         requireEnvelope(t,p);
     }
     /**
-     * One hydrocarbon phase at {@code t}: every carried component's temperature range and the envelope's. The phase's
-     * pressure is not a state pressure (a vapour is evaluated at its hydrocarbon partial pressure), so it is checked by
-     * the caller that knows the total.
+     * An overall composition in conserved order, water last. Under a crystal competition (P4 stage 2b: a dry overall of
+     * a package that admits crystals) the crystal's species takes its crystal floor, since the engine decides whether it
+     * stays a gas or deposits; with water the fluid ranges apply (crystals do not compete beside water, D8).
+     */
+    public void checkTotals(double t,double p,double[] overall) {
+        if(overall.length!=names.length+1)throw new IllegalArgumentException("Fluid domain basis mismatch");
+        if(t>=commonMinimumT&&t<=commonMaximumT&&p>=commonMinimumP&&p<=commonMaximumP)return;
+        if(vaporMinimumTemperature!=null&&overall[names.length]==0)requireSplit(t,p,new double[names.length],overall,0,true);
+        else requireComponents(t,p,true,overall,null,overall[names.length]);
+        requireEnvelope(t,p);
+    }
+    /**
+     * One hydrocarbon phase at {@code t}: every carried component's temperature range and the envelope's, under a
+     * package's crystal floors, which apply to a liquid as to a vapour (P5; P4 stage 2b applied them to a vapour only).
+     * The phase's pressure is not a state pressure (a vapour is evaluated at its hydrocarbon partial pressure), so it is
+     * checked by the caller that knows the total.
      */
     public void checkPhaseTemperature(double t,double[] amounts) {
         if(t>=commonMinimumT&&t<=commonMaximumT)return;
-        requireComponents(t,Double.NaN,false,amounts,null,0);
+        if(vaporMinimumTemperature!=null)requireSplit(t,Double.NaN,new double[names.length],amounts,0,false);
+        else requireComponents(t,Double.NaN,false,amounts,null,0);
         if(t<envelope.minimumTemperature()||t>envelope.maximumTemperature())throw violation(ThermoDomainViolation.PACKAGE,ThermoDomainViolation.Property.TEMPERATURE,t,envelope.minimumTemperature(),envelope.maximumTemperature());
     }
     /** A state that carries no fluid component (dry solids): the envelope alone. */
@@ -119,6 +148,30 @@ public final class FluidDomain {
         worst=-1;largest=-1;
         for(int i=0;i<names.length;i++) {
             double amount=first[i]+(second==null?0:second[i]);
+            if(amount>0&&(p<minimumPressure[i]||p>maximumPressure[i])&&amount>largest){worst=i;largest=amount;}
+        }
+        if(worst>=0)throw violation(names[worst],ThermoDomainViolation.Property.PRESSURE,p,minimumPressure[worst],maximumPressure[worst]);
+    }
+    /**
+     * {@link #requireComponents} with the liquid's and the vapour's amounts on the crystal floors (P5; P4 stage 2b kept
+     * the liquid on the fluid ranges): the violation of the component the largest out-of-range amount of which is
+     * carried, temperature before pressure (the pressure ranges are the fluid ones for both).
+     */
+    private void requireSplit(double t,double p,double[] liquid,double[] vapor,double water,boolean pressure) {
+        int worst=-1;double largest=-1;
+        for(int i=0;i<names.length;i++) {
+            double amount=liquid[i]+vapor[i];
+            boolean out=amount>0&&(t<vaporMinimumTemperature[i]||t>maximumTemperature[i]);
+            if(out&&amount>largest){worst=i;largest=amount;}
+        }
+        boolean waterOut=water>0&&(t<waterMinimum||t>waterMaximum);
+        if(waterOut&&water>largest)throw violation("Water",ThermoDomainViolation.Property.TEMPERATURE,t,waterMinimum,waterMaximum);
+        if(worst>=0)throw violation(names[worst],ThermoDomainViolation.Property.TEMPERATURE,t,
+                vaporMinimumTemperature[worst],maximumTemperature[worst]);
+        if(!pressure)return;
+        worst=-1;largest=-1;
+        for(int i=0;i<names.length;i++) {
+            double amount=liquid[i]+vapor[i];
             if(amount>0&&(p<minimumPressure[i]||p>maximumPressure[i])&&amount>largest){worst=i;largest=amount;}
         }
         if(worst>=0)throw violation(names[worst],ThermoDomainViolation.Property.PRESSURE,p,minimumPressure[worst],maximumPressure[worst]);

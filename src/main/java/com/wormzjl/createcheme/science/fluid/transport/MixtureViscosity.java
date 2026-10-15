@@ -24,7 +24,7 @@ public final class MixtureViscosity {
         liquidMixture=catalog.liquidMixture(packageId);
         // The catalog is an immutable property snapshot. Compute its transport hash once,
         // not on every server-thread admission, anchor check and worker publication.
-        revision=catalog.viscosityFingerprint(packageId)+":log-liquid-pair-groups-wilke-v2:catalog-conditional-solute-v1";
+        revision=catalog.viscosityFingerprint(packageId)+":log-liquid-pair-groups-wilke-v2:catalog-conditional-solute-v1:supercritical-liquid-slot-dilute-v1";
         int count=propertyPackage.components().size();liquidCorrelations=new ViscosityCorrelation[count];vaporCorrelations=new ViscosityCorrelation[count];
         double[] mw=new double[count+1];
         for(int i=0;i<count;i++) {
@@ -97,6 +97,21 @@ public final class MixtureViscosity {
             prepared.liquidKind[component]=Prepared.CARRIER;
         } else {
             var curve=conditional.get(name);
+            if(correlation!=null&&temperature>correlation.maximumTemperatureKelvin()
+                    &&temperature>=propertyPackage.properties().get(component).pr().criticalTemperature()
+                    &&vaporCorrelations[component]!=null
+                    &&(curve==null||temperature<curve.minimumTemperatureKelvin())) {
+                // A supercritical component in the liquid slot, above its liquid data (whose table ends at its critical
+                // point) and below any dissolved-solute curve: the one-root slot is the phase identification
+                // parameter's, so a dense supercritical fluid (nitrogen above 126.192 K at pressures to 10 MPa) is
+                // liquid-like there. It takes its dilute vapour viscosity, the value the vapour slot gives the same
+                // root, so the slot flip does not jump a pure fluid's viscosity. Declared: no dense-fluid viscosity
+                // model exists; transport of dense states above 2 MPa is unqualified.
+                mu=pureVapor(prepared.temperature,component);
+                prepared.liquidKind[component]=Prepared.CARRIER;
+                prepared.liquidLog[component]=DeterministicMath.log(mu);
+                return;
+            }
             if(curve==null || correlation==null || temperature<correlation.minimumTemperatureKelvin()) {
                 throw new IllegalArgumentException("PROPERTY_UNAVAILABLE: liquid viscosity for "+name);
             }

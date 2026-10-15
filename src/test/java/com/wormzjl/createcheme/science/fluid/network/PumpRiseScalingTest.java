@@ -20,7 +20,7 @@ import static org.junit.jupiter.api.Assertions.*;
 class PumpRiseScalingTest {
     private static final String NETWORK="createcheme:tjl20_methane_nitrogen";
     private static final PipeResistance.Geometry LINE=new PipeResistance.Geometry(1,.05,.000045,0);
-    private final FluidThermodynamics model=FluidThermodynamics.forNetwork(MaterialCatalog.bundled(),NETWORK,1e-9);
+    private final FluidThermodynamics model=FluidThermodynamics.forNetwork(MaterialCatalog.bundled(),NETWORK);
 
     /** The compressor of the transfer: 0.1 m3/s of suction volume, ratio 1.05. */
     private static final double TARGET=.1,RATIO=1.05;
@@ -89,7 +89,7 @@ class PumpRiseScalingTest {
     @Test void aDomainRefusalIsItsOwnRejectionKeyAndTheReasonTheIntervalFails() {
         var resources=new HashMap<>(MaterialCatalog.bundled().resources());String key="data/createcheme/materials/properties/nitrogen.json";
         var o=JsonParser.parseString(resources.get(key)).getAsJsonObject();o.getAsJsonObject("fluid_domain").addProperty("temperature_min_kelvin",298.05);resources.put(key,o.toString());
-        var narrowed=FluidThermodynamics.forNetwork(MaterialCatalog.parse(resources),NETWORK,1e-9);
+        var narrowed=FluidThermodynamics.forNetwork(MaterialCatalog.parse(resources),NETWORK);
         var failure=assertThrows(SparseNewton.Nonconvergence.class,()->{
             // Above the ambient, so the drawn suction tank expands and cools: a slack bag at 1 atm (decision D54) shrinks at
             // the ambient pressure instead and never reaches the narrowed floor.

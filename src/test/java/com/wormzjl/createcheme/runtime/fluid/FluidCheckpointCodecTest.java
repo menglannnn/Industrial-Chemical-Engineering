@@ -11,12 +11,12 @@ import static org.junit.jupiter.api.Assertions.*;
 /** Checkpoint format 8, one island: round trip, field refusals, a changed basis, energy datum or velocity limit. */
 class FluidCheckpointCodecTest {
     private static final String PACKAGE="createcheme:tjl20_methane_nitrogen";
-    private final FluidThermodynamics model=FluidThermodynamics.forNetwork(MaterialCatalog.bundled(),PACKAGE,1e-9);
+    private final FluidThermodynamics model=FluidThermodynamics.forNetwork(MaterialCatalog.bundled(),PACKAGE);
     private FluidCheckpointCodec.Checkpoint fixture() {
         var graph=new PassiveNetwork(List.of(new PassiveNetwork.Reservoir(1,0,model.initialNitrogenCharge(1,298.15,101325,()->{}))),List.of());
         var full=new PassiveIntervalSolver(model).solve(graph,5,PassiveIntervalSolver.Settings.defaults(),()->{});
         var state=new IslandCoordinator.Snapshot(1,4,full.graph(),new IslandClock.Snapshot(350,200,400,100),new FallbackAllowance(2,100,100),Optional.of(ApproximationAnchor.fromFull(model,full)),Optional.of(full),"APPROXIMATE",Map.of(UUID.randomUUID(),300L));
-        return new FluidCheckpointCodec.Checkpoint(List.of(new FluidCheckpointCodec.IslandEntry("minecraft:overworld",PACKAGE,1e-9,state)));
+        return new FluidCheckpointCodec.Checkpoint(List.of(new FluidCheckpointCodec.IslandEntry("minecraft:overworld",PACKAGE,state)));
     }
     private static CompoundTag islands(CompoundTag core){return core.getCompound("Islands");}
     static void assertSameImage(FluidCheckpointCodec.Image a,FluidCheckpointCodec.Image b,String what) {
@@ -46,8 +46,8 @@ class FluidCheckpointCodecTest {
         assertTrue(assertThrows(IllegalArgumentException.class,()->FluidCheckpointCodec.decode(new FluidCheckpointCodec.Image(image.core(),packs),key->model)).getMessage().contains("checksum"),"a flipped unit byte");
         var version=copy(image);version.core().putInt("FluidFormat",999);
         assertThrows(IllegalArgumentException.class,()->FluidCheckpointCodec.decode(version,key->model));
-        var changed=FluidThermodynamics.forNetwork(MaterialCatalog.bundled(),PACKAGE,2e-9);
-        assertThrows(IllegalArgumentException.class,()->FluidCheckpointCodec.decode(image,key->changed));
+        // A changed thermodynamic identity (the package key has no compressibility since format 9) is
+        // aChangedThermodynamicBasisRequiresANewWorldAndNeverReinterpretsStock.
     }
     @Test void aChangedThermodynamicBasisRequiresANewWorldAndNeverReinterpretsStock() {
         var image=FluidCheckpointCodec.encode(fixture(),key->model);
@@ -65,7 +65,7 @@ class FluidCheckpointCodecTest {
             var coefficients=correlation.getAsJsonArray("coefficients");
             coefficients.set(0,new com.google.gson.JsonPrimitive(coefficients.get(0).getAsDouble()*1.001));
             resources.put(path,property.toString());
-            var overridden=FluidThermodynamics.forNetwork(MaterialCatalog.parse(resources),PACKAGE,1e-9);
+            var overridden=FluidThermodynamics.forNetwork(MaterialCatalog.parse(resources),PACKAGE);
             assertTrue(assertThrows(IllegalArgumentException.class,()->FluidCheckpointCodec.decode(image,key->overridden),field).getMessage().contains("fresh development world"),field);
         }
     }
@@ -117,14 +117,14 @@ class FluidCheckpointCodecTest {
     }
     @Test void changingVelocityLimitPreservesSavedStockClocksAndAllowanceButInvalidatesTheOldAnchor() {
         var before=fixture();var image=FluidCheckpointCodec.encode(before,key->model);
-        var loaded=FluidCheckpointCodec.decode(image,key->FluidThermodynamics.forNetwork(MaterialCatalog.bundled(),PACKAGE,1e-9,10));
+        var loaded=FluidCheckpointCodec.decode(image,key->FluidThermodynamics.forNetwork(MaterialCatalog.bundled(),PACKAGE,10, FluidThermodynamics.DEFAULT_TRACE_CUTOFF_MOLE_FRACTION));
         var a=before.islands().getFirst().snapshot();var b=loaded.islands().getFirst().snapshot();
         assertEquals(a.graph().reservoirs().getFirst().inventory(),b.graph().reservoirs().getFirst().inventory());assertEquals(a.clock(),b.clock());assertEquals(a.allowance(),b.allowance());assertEquals(a.fences(),b.fences());
-        assertThrows(ApproximationAnchor.Rejected.class,()->b.anchor().orElseThrow().guard(FluidThermodynamics.forNetwork(MaterialCatalog.bundled(),PACKAGE,1e-9,10),b.graph()));
+        assertThrows(ApproximationAnchor.Rejected.class,()->b.anchor().orElseThrow().guard(FluidThermodynamics.forNetwork(MaterialCatalog.bundled(),PACKAGE,10, FluidThermodynamics.DEFAULT_TRACE_CUTOFF_MOLE_FRACTION),b.graph()));
         // An anchor recorded under the thermodynamic revision alone does not carry the hydraulic acceptance law.
         var thermodynamicOnly=CheckpointImages.withIsland(image,1,key->model,entry->{
             var s=entry.snapshot();var anchor=s.anchor().orElseThrow();
-            return new FluidCheckpointCodec.IslandEntry(entry.dimension(),entry.packageId(),entry.compressibility(),new IslandCoordinator.Snapshot(s.id(),s.revision(),s.graph(),s.clock(),s.allowance(),
+            return new FluidCheckpointCodec.IslandEntry(entry.dimension(),entry.packageId(),new IslandCoordinator.Snapshot(s.id(),s.revision(),s.graph(),s.clock(),s.allowance(),
                     Optional.of(new ApproximationAnchor(ApproximationAnchor.thermodynamicRevision(model),anchor.graph(),anchor.modes())),s.lastResult(),s.status(),s.fences()));
         });
         var restored=FluidCheckpointCodec.decode(thermodynamicOnly,key->model).islands().getFirst().snapshot();
@@ -157,7 +157,7 @@ class FluidCheckpointCodecTest {
         var full=new PassiveIntervalSolver(model).solve(new PassiveNetwork(nodes,pipes),5,PassiveIntervalSolver.Settings.defaults(),()->{});
         assertEquals(FlowControl.Mode.INLET_WRONG_PHASE,full.endpointModes().get(2),"the compressor on the tank's bulk is refused");
         var state=new IslandCoordinator.Snapshot(1,4,full.graph(),new IslandClock.Snapshot(350,200,400,100),new FallbackAllowance(2,100,100),Optional.of(ApproximationAnchor.fromFull(model,full)),Optional.of(full),"FULL");
-        var before=new FluidCheckpointCodec.Checkpoint(List.of(new FluidCheckpointCodec.IslandEntry("minecraft:overworld",PACKAGE,1e-9,state)));
+        var before=new FluidCheckpointCodec.Checkpoint(List.of(new FluidCheckpointCodec.IslandEntry("minecraft:overworld",PACKAGE,state)));
         var image=FluidCheckpointCodec.encode(before,key->model);assertEquals(8,image.core().getInt("FluidFormat"));
         var after=FluidCheckpointCodec.decode(image,key->model).islands().getFirst().snapshot();
         assertEquals(full.graph().pipes(),after.graph().pipes(),"ends, sections, controls, blocked masks and the ports of every pipe");

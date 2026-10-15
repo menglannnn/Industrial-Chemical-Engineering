@@ -87,7 +87,11 @@ class FluidFallbackQualificationTest {
     @Test void topologyPropertyPhaseAndTrustChangesRefuseTheOldAnchor() {
         var full=warm("nitrogen");var anchor=ApproximationAnchor.fromFull(model,full);var graph=full.graph();
         assertThrows(ApproximationAnchor.Rejected.class,()->anchor.guard(model,new PassiveNetwork(graph.reservoirs(),List.of())));
-        assertThrows(ApproximationAnchor.Rejected.class,()->anchor.guard(FluidThermodynamics.forNetwork(MaterialCatalog.bundled(),"createcheme:tjl20_methane_nitrogen",1.1e-9),graph));
+        // A property change: one heat-capacity coefficient of one cut, which moves the thermodynamic revision.
+        var resources=new HashMap<>(MaterialCatalog.bundled().resources());String path="data/createcheme/materials/properties/crude_pc04.json";
+        var property=com.google.gson.JsonParser.parseString(resources.get(path)).getAsJsonObject();var coefficients=property.getAsJsonObject("ideal_gas_cp").getAsJsonArray("coefficients");
+        coefficients.set(0,new com.google.gson.JsonPrimitive(coefficients.get(0).getAsDouble()*1.001));resources.put(path,property.toString());
+        assertThrows(ApproximationAnchor.Rejected.class,()->anchor.guard(FluidThermodynamics.forNetwork(MaterialCatalog.parse(resources),"createcheme:tjl20_methane_nitrogen"),graph));
         var changed=new ArrayList<>(graph.reservoirs());var high=model.initialNitrogenCharge(1,350,160000,()->{});
         changed.set(1,new PassiveNetwork.Reservoir(2,0,high,PassiveNetwork.NodeKind.RESERVOIR,new PassiveNetwork.Inventory(1,com.wormzjl.createcheme.science.fluid.solver.PhaseLayout.totalAmounts(high),high.internalEnergy())));
         assertTrue(assertThrows(ApproximationAnchor.Rejected.class,()->anchor.guard(model,new PassiveNetwork(changed,graph.pipes()))).getMessage().contains("trust region"));

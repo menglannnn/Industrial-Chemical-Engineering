@@ -124,7 +124,7 @@ class ExtremeTopologyIslandTest {
     /** The configuration's largest maximumVelocityMetresPerSecond (CreateChemE's defineInRange). */
     static final double LARGEST_CONFIGURED_VELOCITY=100000;
     private final FluidThermodynamics defaultModel=FluidTestSupport.networkModel();
-    private final FluidThermodynamics uncappedModel=FluidThermodynamics.forNetwork(MaterialCatalog.bundled(),"createcheme:tjl20_methane_nitrogen",1e-9,LARGEST_CONFIGURED_VELOCITY);
+    private final FluidThermodynamics uncappedModel=FluidThermodynamics.forNetwork(MaterialCatalog.bundled(),"createcheme:tjl20_methane_nitrogen",LARGEST_CONFIGURED_VELOCITY, FluidThermodynamics.DEFAULT_TRACE_CUTOFF_MOLE_FRACTION);
 
     enum Geometry{GRID,ALTERNATING,ALTERNATING_BOTH_SIDES}
     record Case(Geometry geometry,int pairs,double spread) {

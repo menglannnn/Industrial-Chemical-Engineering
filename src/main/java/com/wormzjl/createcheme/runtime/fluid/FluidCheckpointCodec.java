@@ -18,12 +18,12 @@ import java.util.*;
 import java.util.function.Function;
 
 /**
- * Checkpoint format 8 of committed science and runtime state: what one storage unit holds and what the core record
+ * Checkpoint format 9 of committed science and runtime state: what one storage unit holds and what the core record
  * holds. Rebuilds properties through the immutable model; it never deserializes implementation caches or creates a
  * nitrogen charge. Where the units live - pack files beside the world's saved data, dirty tracking, atomic writes and
  * orphan cleanup - is {@link FluidCheckpointStore}'s business.
  *
- * <p><b>Core record</b> (one NBT compound, the world's saved data): {@code FluidFormat = 8}; the world {@code Epoch};
+ * <p><b>Core record</b> (one NBT compound, the world's saved data): {@code FluidFormat = 9}; the world {@code Epoch};
  * {@code Strings}, an append-only table of the long texts units refer to (dimensions, packages, property revisions, certificate
  * policies); {@code Packages}, one entry per property package with the thermodynamic revision and energy reference
  * the units were written under; the pack files and their sizes; the topology unit's reference; and {@code Islands},
@@ -45,16 +45,18 @@ import java.util.function.Function;
  * certified island's unit records its certificate base, not its materialised state, so while it stays certified its
  * unit never changes; a load materialises it from the base to the committed tick without a solve.
  *
- * <p>No other format is read: format 7 and older are refused with the instruction to create a fresh world (the
+ * <p>No other format is read: format 8 and older are refused with the instruction to create a fresh world (the
  * owner's standing rule on save compatibility; format 6 added the ports and the compressor of the phase-ports batch,
  * format 7 the end flows of the last interval, format 8 removed the core record's ledger of buffered transfers and
- * modules with the causal module system).
+ * modules with the causal module system). Format 9 (unit format 2) dropped the global liquid compressibility from the
+ * package key, the package table and the island unit: liquids are evaluated at the state pressure by their own
+ * equation of state, so a package is identified by its id and thermodynamic revision alone.
  */
 public final class FluidCheckpointCodec {
-    public static final int VERSION=8;
+    public static final int VERSION=9;
     /** The {@code Base} of an awake island: it carries no certificate. */
     public static final long AWAKE=-1;
-    static final int UNIT_MAGIC=0x43434655,UNIT_FORMAT=1;
+    static final int UNIT_MAGIC=0x43434655,UNIT_FORMAT=2;
     static final byte ISLAND=1,TOPOLOGY=2;
     /** Magic, format, kind, identity, revision, generation. */
     static final int UNIT_HEADER=4+1+1+8+8+8;
@@ -69,8 +71,10 @@ public final class FluidCheckpointCodec {
     private static final PassiveNetwork.PhasePort[] PHASE_PORTS=PassiveNetwork.PhasePort.values();
     private FluidCheckpointCodec() {}
 
-    public record IslandEntry(String dimension,String packageId,double compressibility,IslandCoordinator.Snapshot snapshot) {
-        public IslandEntry {Objects.requireNonNull(dimension);Objects.requireNonNull(packageId);Objects.requireNonNull(snapshot);if(dimension.isBlank()||packageId.isBlank()||!Double.isFinite(compressibility)||compressibility<=0)throw new IllegalArgumentException("Invalid saved package");}
+    public record IslandEntry(String dimension,String packageId,IslandCoordinator.Snapshot snapshot) {
+        public IslandEntry {Objects.requireNonNull(dimension);Objects.requireNonNull(packageId);Objects.requireNonNull(snapshot);if(dimension.isBlank()||packageId.isBlank())throw new IllegalArgumentException("Invalid saved package");}
+        /** The model key this island's package resolves to. */
+        public PackageKey key(){return new PackageKey(packageId);}
     }
     /** The islands a save captures, each owning its reservoirs' inventory in its dimension. */
     public record Checkpoint(List<IslandEntry> islands) {
@@ -83,7 +87,9 @@ public final class FluidCheckpointCodec {
             }
         }
     }
-    public record PackageKey(String packageId,double compressibility) {}
+    public record PackageKey(String packageId) {
+        public PackageKey {Objects.requireNonNull(packageId);if(packageId.isBlank())throw new IllegalArgumentException("Invalid saved package");}
+    }
 
     // ---------------- the world topology ledger (binary, in its own unit) ----------------
 
@@ -276,7 +282,7 @@ public final class FluidCheckpointCodec {
         if(!graph.scheduledTransfers().isEmpty())throw new IllegalArgumentException("Request-scoped transfers must be resolved into the committed ledger before saving");
         var w=new Writer();
         header(w,ISLAND,s.id(),s.revision(),generation);
-        w.varint(strings.ref(entry.dimension));w.varint(strings.ref(entry.packageId));w.f64(entry.compressibility);
+        w.varint(strings.ref(entry.dimension));w.varint(strings.ref(entry.packageId));
         w.text(s.status());
         var a=s.allowance();w.varint(a.acceptedIntervals());w.varlong(a.advancedTicks());w.varint(a.capturedCadenceTicks());
         var fences=new TreeMap<>(s.fences());w.varint(fences.size());
@@ -379,9 +385,9 @@ public final class FluidCheckpointCodec {
     static IslandEntry island(byte[] data,IndexRow row,long epoch,Strings strings,Map<PackageKey,FluidThermodynamics> models) {
         long id=row.id;var r=new Reader(data,(int)row.unit.offset,row.unit.length,"unit of island "+id);
         requireHeader(r,ISLAND,id,row.revision,row.generation,"island "+id);
-        String dimension=strings.get(r.varint(Integer.MAX_VALUE),"unit of island "+id),packageId=strings.get(r.varint(Integer.MAX_VALUE),"unit of island "+id);double compressibility=r.f64();
-        var model=models.get(new PackageKey(packageId,compressibility));
-        if(model==null)throw new IllegalArgumentException("Island "+id+": its package "+packageId+" at compressibility "+compressibility+" is not in the checkpoint's package table");
+        String dimension=strings.get(r.varint(Integer.MAX_VALUE),"unit of island "+id),packageId=strings.get(r.varint(Integer.MAX_VALUE),"unit of island "+id);
+        var model=models.get(new PackageKey(packageId));
+        if(model==null)throw new IllegalArgumentException("Island "+id+": its package "+packageId+" is not in the checkpoint's package table");
         String status=r.text(MAXIMUM_TEXT);
         var allowance=new FallbackAllowance(r.varint(Integer.MAX_VALUE),r.varlong(),r.varint(Integer.MAX_VALUE));
         int fenceCount=r.varint(MAXIMUM_FENCES);var fences=new LinkedHashMap<UUID,Long>();
@@ -424,7 +430,7 @@ public final class FluidCheckpointCodec {
         long generation=IslandCoordinator.freshPayloadGeneration();
         if(row.base==AWAKE) {
             if(row.since!=0||row.start!=0||row.horizon!=0||signature!=null)throw new IllegalArgumentException("Awake island "+id+" carries a certificate");
-            return new IslandEntry(dimension,packageId,compressibility,new IslandCoordinator.Snapshot(id,row.revision,graph,clock,allowance,anchor,result,status,fences,Optional.empty(),generation));
+            return new IslandEntry(dimension,packageId,new IslandCoordinator.Snapshot(id,row.revision,graph,clock,allowance,anchor,result,status,fences,Optional.empty(),generation));
         }
         if(row.base<0)throw new IllegalArgumentException("Island "+id+": invalid certificate base tick "+row.base);
         if(signature==null||result.isEmpty())throw new IllegalArgumentException("Certified island "+id+" lacks its certificate record");
@@ -435,7 +441,7 @@ public final class FluidCheckpointCodec {
         // The island at its saved committed tick: its base inventory plus the replayed fraction, never a solve.
         var rebuilt=IslandCertificate.rebuild(persisted,model.molecularWeights());
         var certified=new IslandCoordinator.Certified(rebuilt.drift(),row.since,row.base,row.horizon,rebuilt.largestFlow(),Optional.of(persisted));
-        return new IslandEntry(dimension,packageId,compressibility,new IslandCoordinator.Snapshot(id,row.revision,rebuilt.graphAt(row.committed),clock,allowance,anchor,result,status,fences,Optional.of(certified),generation));
+        return new IslandEntry(dimension,packageId,new IslandCoordinator.Snapshot(id,row.revision,rebuilt.graphAt(row.committed),clock,allowance,anchor,result,status,fences,Optional.of(certified),generation));
     }
     private static PassiveNetwork related(Reader r,int flag,PassiveNetwork main,Topology topology,FluidThermodynamics model) {
         return switch(flag) {
@@ -514,11 +520,11 @@ public final class FluidCheckpointCodec {
     // ---------------- the core record ----------------
 
     /** The property identity every unit of one package was written under: its thermodynamic revision and energy reference. */
-    record PackageRecord(String packageId,double compressibility,String propertyRevision,String energyRevision,List<String> energyComponents) {
-        PackageKey key(){return new PackageKey(packageId,compressibility);}
+    record PackageRecord(String packageId,String propertyRevision,String energyRevision,List<String> energyComponents) {
+        PackageKey key(){return new PackageKey(packageId);}
         static PackageRecord of(PackageKey key,FluidThermodynamics model) {
             var reference=EnergyReference.sensible(model.components());
-            return new PackageRecord(key.packageId(),key.compressibility(),ApproximationAnchor.thermodynamicRevision(model),reference.revision(),List.copyOf(reference.components()));
+            return new PackageRecord(key.packageId(),ApproximationAnchor.thermodynamicRevision(model),reference.revision(),List.copyOf(reference.components()));
         }
     }
     record CoreRecord(long epoch,Strings strings,List<PackageRecord> packages,long[] packs,long[] packBytes,long nextPack,long nextGeneration,
@@ -531,7 +537,7 @@ public final class FluidCheckpointCodec {
         tag.put("Strings",core.strings.tag());
         var packages=new ListTag();
         for(var p:core.packages) {
-            var entry=new CompoundTag();entry.putString("Package",p.packageId);entry.putDouble("Compressibility",p.compressibility);entry.putString("PropertyRevision",p.propertyRevision);
+            var entry=new CompoundTag();entry.putString("Package",p.packageId);entry.putString("PropertyRevision",p.propertyRevision);
             entry.putString("EnergyRevision",p.energyRevision);var components=new ListTag();for(var c:p.energyComponents)components.add(StringTag.valueOf(c));entry.put("EnergyComponents",components);
             packages.add(entry);
         }
@@ -560,7 +566,7 @@ public final class FluidCheckpointCodec {
     }
     private static final List<String> LONG_COLUMNS=List.of("Id","Revision","Generation","Online","Committed","Retry","Base","Since","Start","Horizon","Pack","Offset");
     /**
-     * Reads and validates a core record: format 8 only (older formats are refused with the instruction to create a
+     * Reads and validates a core record: format 9 only (older formats are refused with the instruction to create a
      * fresh world), every field present and typed, the envelope digest, the string and package tables,
      * the pack list, and every index row's unit reference lying inside a listed pack. The units themselves are read by
      * {@link #island} and {@link #topology}.
@@ -592,7 +598,7 @@ public final class FluidCheckpointCodec {
         for(int i=0;i<packageList.size();i++) {
             var p=packageList.getCompound(i);
             if(!(p.get("EnergyComponents") instanceof ListTag components)||!components.isEmpty()&&components.getElementType()!=Tag.TAG_STRING)throw new IllegalArgumentException("Missing or mistyped fluid package field EnergyComponents");
-            var record=new PackageRecord(requireString(p,"Package","package"),requireDouble(p,"Compressibility","package"),requireString(p,"PropertyRevision","package"),requireString(p,"EnergyRevision","package"),
+            var record=new PackageRecord(requireString(p,"Package","package"),requireString(p,"PropertyRevision","package"),requireString(p,"EnergyRevision","package"),
                     components.stream().map(Tag::getAsString).toList());
             if(!keys.add(record.key()))throw new IllegalArgumentException("Duplicate saved package "+record.packageId);
             packages.add(record);
@@ -646,7 +652,7 @@ public final class FluidCheckpointCodec {
         var packages=(ListTag)tag.get("Packages");d.number(packages.size());
         for(int i=0;i<packages.size();i++) {
             var p=packages.getCompound(i);
-            d.text(requireString(p,"Package","package"));d.number(Double.doubleToRawLongBits(requireDouble(p,"Compressibility","package")));d.text(requireString(p,"PropertyRevision","package"));d.text(requireString(p,"EnergyRevision","package"));
+            d.text(requireString(p,"Package","package"));d.text(requireString(p,"PropertyRevision","package"));d.text(requireString(p,"EnergyRevision","package"));
             if(!(p.get("EnergyComponents") instanceof ListTag components))throw new IllegalArgumentException("Missing or mistyped fluid package field EnergyComponents");
             d.number(components.size());for(int c=0;c<components.size();c++)d.text(components.getString(c));
         }
@@ -677,10 +683,6 @@ public final class FluidCheckpointCodec {
     }
     private static long requireLong(CompoundTag tag,String key,String where){if(!tag.contains(key,Tag.TAG_LONG))throw new IllegalArgumentException("Missing or mistyped fluid "+where+" field "+key);return tag.getLong(key);}
     private static int requireInt(CompoundTag tag,String key,String where){if(!tag.contains(key,Tag.TAG_INT))throw new IllegalArgumentException("Missing or mistyped fluid "+where+" field "+key);return tag.getInt(key);}
-    private static double requireDouble(CompoundTag tag,String key,String where) {
-        if(!tag.contains(key,Tag.TAG_DOUBLE))throw new IllegalArgumentException("Missing or mistyped fluid "+where+" field "+key);
-        double value=tag.getDouble(key);if(!Double.isFinite(value))throw new IllegalArgumentException("Nonfinite fluid "+where+" field "+key);return value;
-    }
     private static String requireString(CompoundTag tag,String key,String where){if(!tag.contains(key,Tag.TAG_STRING))throw new IllegalArgumentException("Missing or mistyped fluid "+where+" field "+key);return tag.getString(key);}
     private static byte[] requireBytes(CompoundTag tag,String key,String where) {
         if(!(tag.get(key) instanceof ByteArrayTag bytes))throw new IllegalArgumentException("Missing or mistyped fluid "+where+" field "+key);return bytes.getAsByteArray();

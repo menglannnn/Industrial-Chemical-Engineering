@@ -17,7 +17,7 @@ import org.junit.jupiter.api.Test;
  */
 class TraceTruncationLayoutTest {
     private static final String PACKAGE=FluidMaterialCatalog.NETWORK_PACKAGE;
-    private final FluidThermodynamics model=FluidThermodynamics.forNetwork(MaterialCatalog.bundled(),PACKAGE,1e-9);
+    private final FluidThermodynamics model=FluidThermodynamics.forNetwork(MaterialCatalog.bundled(),PACKAGE);
 
     /** A wet crude at conditions that carry all three phases, which is the gameplay regime. */
     private FluidThermodynamics.State wetCrude(double temperature,double pressure) {
@@ -183,11 +183,11 @@ class TraceTruncationLayoutTest {
         assertTrue(FluidThermodynamics.MAX_TRACE_CUTOFF_MOLE_FRACTION<TraceTruncationPolicy.MAX_CUTOFF_MOLE_FRACTION);
         var catalog=MaterialCatalog.bundled();
         assertEquals(TraceTruncationPolicy.OFF,
-                FluidThermodynamics.forNetwork(catalog,PACKAGE,1e-9,100,0).traceTruncation());
-        assertEquals(1e-6,FluidThermodynamics.forNetwork(catalog,PACKAGE,1e-9,100,1e-6).traceTruncation().cutoffMoleFraction());
+                FluidThermodynamics.forNetwork(catalog,PACKAGE,100,0).traceTruncation());
+        assertEquals(1e-6,FluidThermodynamics.forNetwork(catalog,PACKAGE,100,1e-6).traceTruncation().cutoffMoleFraction());
         for(double refused:new double[]{1.1e-5,1e-4,1e-2,-1e-9,Double.NaN})
             assertThrows(IllegalArgumentException.class,
-                    ()->FluidThermodynamics.forNetwork(catalog,PACKAGE,1e-9,100,refused),"cutoff "+refused);
+                    ()->FluidThermodynamics.forNetwork(catalog,PACKAGE,100,refused),"cutoff "+refused);
         // The column keeps its own ceiling, which is a thousand times larger.
         assertDoesNotThrow(()->TraceTruncationPolicy.of(1e-2));
     }

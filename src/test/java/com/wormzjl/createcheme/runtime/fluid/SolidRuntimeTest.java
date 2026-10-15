@@ -25,7 +25,7 @@ class SolidRuntimeTest {
     }
     private FluidCheckpointCodec.Checkpoint checkpoint(PassiveNetwork graph){
         var snapshot=new IslandCoordinator.Snapshot(1,0,graph,new IslandClock.Snapshot(0,0,0,100),FallbackAllowance.NONE,Optional.empty(),Optional.empty(),"READY");
-        return new FluidCheckpointCodec.Checkpoint(List.of(new FluidCheckpointCodec.IslandEntry("minecraft:overworld",FluidPresetCatalog.NETWORK_PACKAGE,1e-9,snapshot)));
+        return new FluidCheckpointCodec.Checkpoint(List.of(new FluidCheckpointCodec.IslandEntry("minecraft:overworld",FluidPresetCatalog.NETWORK_PACKAGE,snapshot)));
     }
     @Test void generatorUsesSlurryVolumeFractionWithoutChangingTheFluidAxis(){
         var water=FluidDeviceSpec.water(catalog);
@@ -47,7 +47,7 @@ class SolidRuntimeTest {
         var restored=FluidCheckpointCodec.decode(json,key->model).islands().getFirst().snapshot().graph();
         assertEquals(cake,restored.pipes().getFirst().filter());
         assertEquals(source.solids(),restored.reservoirs().getFirst().inventory().solids());
-        var changed=FluidThermodynamics.forNetwork(catalog,FluidPresetCatalog.NETWORK_PACKAGE,1e-9,100,1e-6,new SlurryTransport.Settings(100,1e-8,12,.0001,2e6));
+        var changed=FluidThermodynamics.forNetwork(catalog,FluidPresetCatalog.NETWORK_PACKAGE,100,1e-6,new SlurryTransport.Settings(100,1e-8,12,.0001,2e6));
         var resized=FluidCheckpointCodec.decode(json,key->changed).islands().getFirst().snapshot().graph().pipes().getFirst().filter();
         assertTrue(resized.clogged());assertEquals(cake.captured(),resized.captured());assertEquals(cake.energyJoule(),resized.energyJoule());
         assertEquals(.0001,resized.capacity());assertEquals(2e6,resized.cleanResistance());

@@ -16,9 +16,9 @@ class TraceTruncationStepTest {
     private static final String PACKAGE=FluidMaterialCatalog.NETWORK_PACKAGE;
     private static final double CUTOFF=1e-6;
     private final FluidThermodynamics truncating=
-            FluidThermodynamics.forNetwork(MaterialCatalog.bundled(),PACKAGE,1e-9,FluidThermodynamics.DEFAULT_MAXIMUM_VELOCITY,CUTOFF);
+            FluidThermodynamics.forNetwork(MaterialCatalog.bundled(),PACKAGE,FluidThermodynamics.DEFAULT_MAXIMUM_VELOCITY,CUTOFF);
     private final FluidThermodynamics exact=
-            FluidThermodynamics.forNetwork(MaterialCatalog.bundled(),PACKAGE,1e-9,FluidThermodynamics.DEFAULT_MAXIMUM_VELOCITY,0);
+            FluidThermodynamics.forNetwork(MaterialCatalog.bundled(),PACKAGE,FluidThermodynamics.DEFAULT_MAXIMUM_VELOCITY,0);
 
     private double[] wetCrude() {
         double[] n=Arrays.copyOf(V3PengRobinsonThermo.fromRegisteredPackage(PACKAGE)

@@ -77,7 +77,7 @@ final class SolverRegressionHarness {
      * measured; absent, the harness measures what the network ships with. */
     static FluidThermodynamics model() {
         String cutoff=System.getProperty("fluid.regression.traceCutoff");
-        return FluidThermodynamics.forNetwork(MaterialCatalog.bundled(),FluidPresetCatalog.NETWORK_PACKAGE,1e-9,
+        return FluidThermodynamics.forNetwork(MaterialCatalog.bundled(),FluidPresetCatalog.NETWORK_PACKAGE,
                 FluidThermodynamics.DEFAULT_MAXIMUM_VELOCITY,
                 cutoff==null||cutoff.isBlank()?FluidThermodynamics.DEFAULT_TRACE_CUTOFF_MOLE_FRACTION:Double.parseDouble(cutoff));
     }

@@ -19,7 +19,7 @@ import org.junit.jupiter.api.Test;
  */
 class PumpJunctionStartupTest {
     @Test void waterAndAmbientCrudeStartThroughAZeroStoragePumpInletWithoutInventingUpstreamNitrogen() {
-        var catalog=MaterialCatalog.bundled();var model=FluidThermodynamics.forNetwork(catalog,FluidMaterialCatalog.networkPackage(catalog),1e-9);
+        var catalog=MaterialCatalog.bundled();var model=FluidThermodynamics.forNetwork(catalog,FluidMaterialCatalog.networkPackage(catalog));
         for(String id:List.of("water","createcheme:tia_juana_light_methane")) {
             var composition=FluidPresetCatalog.resolve(catalog).stream().filter(p->p.id().equals(id)).findFirst().orElseThrow().moleFractions();
             double pressure=id.equals("water")?101325:150000;

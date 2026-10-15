@@ -46,7 +46,7 @@ class FluidCheckpointFormatTest extends CertifyingRig.Islands {
         var result=new PassiveIntervalSolver.Result(base.apply(r.graph()),r.advancedSeconds(),r.averageMassFlows(),r.acceptedSubsteps(),r.rejectedSubsteps(),r.pumpWorkJoule(),r.boundaries(),r.rejectionReasons(),r.endpointModes(),r.endpointHeads(),r.endpointFlows(),r.acceptance(),r.pipeTransfers());
         var edited=new IslandCertificate.Saved(saved.sinceTick(),saved.horizonTick(),new IslandCertificate.Interval(interval.startTick(),interval.endTick(),before.apply(interval.before()),result),saved.signature());
         var certified=new IslandCoordinator.Certified(c.drift(),c.sinceTick(),c.baseTick(),c.horizonTick(),c.largestFlow(),Optional.of(edited));
-        return new FluidCheckpointCodec.IslandEntry(entry.dimension(),entry.packageId(),entry.compressibility(),new IslandCoordinator.Snapshot(s.id(),s.revision(),s.graph(),s.clock(),s.allowance(),s.anchor(),Optional.of(result),s.status(),s.fences(),Optional.of(certified)));
+        return new FluidCheckpointCodec.IslandEntry(entry.dimension(),entry.packageId(),new IslandCoordinator.Snapshot(s.id(),s.revision(),s.graph(),s.clock(),s.allowance(),s.anchor(),Optional.of(result),s.status(),s.fences(),Optional.of(certified)));
     }
     private static PassiveNetwork withNodeEnergy(PassiveNetwork graph,double energy) {
         var nodes=new ArrayList<>(graph.reservoirs());
@@ -138,7 +138,7 @@ class FluidCheckpointFormatTest extends CertifyingRig.Islands {
         assertTrue(assertThrows(IllegalArgumentException.class,()->FluidCheckpointCodec.decode(overflow,key->model)).getMessage().contains("nonfinite energy delta"));
         // A fence before the committed tick: a fence at the committed tick, then the committed tick moved past it.
         var event=UUID.randomUUID();
-        var fenced=CheckpointImages.withIsland(image,2,key->model,entry->{var s=entry.snapshot();return new FluidCheckpointCodec.IslandEntry(entry.dimension(),entry.packageId(),entry.compressibility(),
+        var fenced=CheckpointImages.withIsland(image,2,key->model,entry->{var s=entry.snapshot();return new FluidCheckpointCodec.IslandEntry(entry.dimension(),entry.packageId(),
                 new IslandCoordinator.Snapshot(s.id(),s.revision(),s.graph(),s.clock(),s.allowance(),s.anchor(),s.lastResult(),s.status(),Map.of(event,committed),s.certificate()));});
         assertEquals(1,FluidCheckpointCodec.decode(fenced,key->model).islands().getFirst().snapshot().fences().size(),"the fence itself reads back");
         set(fenced.core(),2,"Committed",committed+1);CheckpointImages.reseal(fenced.core());
@@ -184,7 +184,7 @@ class FluidCheckpointFormatTest extends CertifyingRig.Islands {
         // A graph-identity change: every run of pipe one metre longer, in the base and in the interval's start alike.
         var longer=CheckpointImages.withIsland(image,2,key->model,entry->withCertificateGraphs(entry,FluidCheckpointFormatTest::withLongerSections,FluidCheckpointFormatTest::withLongerSections));
         var cases=List.of(
-                new Case("property revision",FluidThermodynamics.forNetwork(MaterialCatalog.bundled(),PACKAGE,1e-9,10),defaults,image),
+                new Case("property revision",FluidThermodynamics.forNetwork(MaterialCatalog.bundled(),PACKAGE,10, FluidThermodynamics.DEFAULT_TRACE_CUTOFF_MOLE_FRACTION),defaults,image),
                 new Case("certificate policy",model,new CertificatePolicy(true,1e-8,1e-6,17_280,2,0),image),
                 new Case("certificate policy",model,new CertificatePolicy(true,1e-7,1e-5,17_280,2,0),image),
                 new Case("certificate policy",model,new CertificatePolicy(true,1e-7,1e-6,17_279,2,0),image),
@@ -303,7 +303,7 @@ class FluidCheckpointFormatTest extends CertifyingRig.Islands {
             assertEquals(hold+1_000,decoded.clock().onlineTick(),"the online time accrued during the hold is kept as debt");
             assertEquals(during.status(),decoded.status(),"the hold's status line is kept");
             assertTrue(decoded.certificate().isEmpty());assertInventories(during.graph(),decoded.graph(),"held inventory");
-            var restarted=rig(policy,model,rig.epoch[0]);restarted.load(new FluidCheckpointCodec.Checkpoint(List.of(new FluidCheckpointCodec.IslandEntry("minecraft:overworld",PACKAGE,1e-9,decoded))));
+            var restarted=rig(policy,model,rig.epoch[0]);restarted.load(new FluidCheckpointCodec.Checkpoint(List.of(new FluidCheckpointCodec.IslandEntry("minecraft:overworld",PACKAGE,decoded))));
             assertTrue(restarted.coordinator.retainsSolver(1));assertEquals(1,restarted.coordinator.readyCount(),"awake with debt, ready at once");
             restarted.coordinator.pump();restarted.drain();
             var again=restarted.stored(1).certificate().orElseThrow();

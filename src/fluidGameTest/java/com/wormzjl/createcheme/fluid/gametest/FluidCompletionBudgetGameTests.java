@@ -22,7 +22,7 @@ public final class FluidCompletionBudgetGameTests {
     @GameTest(template="empty",timeoutTicks=10000,batch="fluid-completion-budget")
     public static void sixtyFifthTerminalWaitsForTheNextTickWithoutAZeroBudgetDrain(GameTestHelper helper) {
         var server=helper.getLevel().getServer();
-        var model=FluidThermodynamics.forNetwork(MaterialCatalog.bundled(),FluidPresetCatalog.NETWORK_PACKAGE,1e-9);
+        var model=FluidThermodynamics.forNetwork(MaterialCatalog.bundled(),FluidPresetCatalog.NETWORK_PACKAGE);
         var graph=new PassiveNetwork(List.of(new PassiveNetwork.Reservoir(1,0,
                 model.initialNitrogenCharge(1,298.15,101325,()->{}))),List.of());
         var command=new ProcessSolveServices.FluidIslandCommand(model,graph,5,
@@ -101,7 +101,7 @@ public final class FluidCompletionBudgetGameTests {
     @GameTest(template="empty",timeoutTicks=10000,batch="fluid-completion-continuation")
     public static void anExhaustedBudgetOwesOneContinuationThatNeverReentersItsTick(GameTestHelper helper) {
         var server=helper.getLevel().getServer();
-        var model=FluidThermodynamics.forNetwork(MaterialCatalog.bundled(),FluidPresetCatalog.NETWORK_PACKAGE,1e-9);
+        var model=FluidThermodynamics.forNetwork(MaterialCatalog.bundled(),FluidPresetCatalog.NETWORK_PACKAGE);
         var graph=new PassiveNetwork(List.of(new PassiveNetwork.Reservoir(1,0,
                 model.initialNitrogenCharge(1,298.15,101325,()->{}))),List.of());
         var command=new ProcessSolveServices.FluidIslandCommand(model,graph,5,

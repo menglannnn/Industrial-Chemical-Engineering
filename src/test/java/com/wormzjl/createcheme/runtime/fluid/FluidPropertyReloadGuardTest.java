@@ -10,7 +10,7 @@ import static org.junit.jupiter.api.Assertions.*;
 class FluidPropertyReloadGuardTest {
     private final MaterialCatalog original=MaterialCatalog.bundled();
     private final String packageId=FluidPresetCatalog.NETWORK_PACKAGE;
-    private FluidPropertyReloadGuard guard(){return new FluidPropertyReloadGuard(original,packageId,1e-9,FluidThermodynamics.forNetwork(original,packageId,1e-9));}
+    private FluidPropertyReloadGuard guard(){return new FluidPropertyReloadGuard(original,packageId,FluidThermodynamics.forNetwork(original,packageId));}
     private MaterialCatalog changed(String path,java.util.function.Consumer<com.google.gson.JsonObject> edit) {
         var resources=new HashMap<>(original.resources());var full="data/createcheme/materials/"+path;
         var json=JsonParser.parseString(resources.get(full)).getAsJsonObject();edit.accept(json);resources.put(full,json.toString());return MaterialCatalog.parse(resources);

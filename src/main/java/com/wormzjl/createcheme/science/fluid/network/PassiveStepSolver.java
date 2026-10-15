@@ -2060,7 +2060,7 @@ public final class PassiveStepSolver {
             // Missing-phase stability and unsuccessful Newton passes still require the outer check.
             boolean hydroComplete=state.liquidProperties()!=null&&state.vaporProperties()!=null||state.liquidProperties()==null&&state.vaporProperties()==null;
             boolean waterComplete=state.waterLiquid()>0&&state.waterVapor()>0||state.waterLiquid()+state.waterVapor()==0;
-            if(converged&&hydroComplete&&waterComplete&&(state.vaporProperties()==null||state.vaporProperties().vaporBranch())){corrected.add(state);continue;}
+            if(converged&&hydroComplete&&waterComplete&&(state.vaporProperties()==null||state.vaporProperties().vaporLike())){corrected.add(state);continue;}
             FluidThermodynamics.State split,equilibrium;
             try{split=model.equilibriumTP(state.temperature(),state.pressure(),PhaseLayout.totalAmounts(state),checkpoint,prepared==null?null:prepared[i]).withSolidState(state.solids(),state.solidMoments());
                 equilibrium=model.folded(split,graph.reservoirs().get(i).junction());}

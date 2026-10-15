@@ -42,7 +42,7 @@ class FluidCheckpointStoreTest extends CertifyingRig.Islands {
         if(Files.isDirectory(units))try(var list=Files.list(units)){list.forEach(f->names.add(f.getFileName().toString()));}
         return names;
     }
-    private static FluidCheckpointCodec.IslandEntry entry(IslandCoordinator.Snapshot snapshot){return new FluidCheckpointCodec.IslandEntry("minecraft:overworld",PACKAGE,1e-9,snapshot);}
+    private static FluidCheckpointCodec.IslandEntry entry(IslandCoordinator.Snapshot snapshot){return new FluidCheckpointCodec.IslandEntry("minecraft:overworld",PACKAGE,snapshot);}
     private static FluidCheckpointCodec.Checkpoint checkpoint(List<IslandCoordinator.Snapshot> snapshots){return new FluidCheckpointCodec.Checkpoint(snapshots.stream().map(FluidCheckpointStoreTest::entry).toList());}
     private static void assertInventories(PassiveNetwork expected,PassiveNetwork actual,String what) {
         assertEquals(expected.reservoirs().size(),actual.reservoirs().size(),what);

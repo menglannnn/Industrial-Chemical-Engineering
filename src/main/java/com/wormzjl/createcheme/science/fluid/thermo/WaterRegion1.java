@@ -4,7 +4,17 @@ import com.wormzjl.createcheme.science.column.v3.thermo.V3WaterProperties;
 import com.wormzjl.createcheme.science.material.MaterialCatalog;
 import com.wormzjl.createcheme.science.material.MaterialRuntime;
 
-/** IF97 Region 1 in SI units, with its original datum. Hybrid-reference offsets are applied by the caller. */
+/**
+ * IF97 Region 1 in SI units, with its original datum. Hybrid-reference offsets are applied by the caller.
+ *
+ * <p>Two entries. {@link #evaluate(String, MaterialCatalog.Water, double, double)} is the stable liquid of the
+ * region's own range of validity, {@code ps(T) <= p <= 100 MPa} (IAPWS R7-97(2012), section 5.1), and refuses a
+ * pressure below saturation. {@link #evaluateLiquid} is the fluid network's liquid water at the state pressure: it
+ * also admits the metastable superheated liquid below saturation, which the release covers qualitatively ("In
+ * addition to the properties in the stable single-phase liquid region, Eq. (7) also yields reasonable values in the
+ * metastable superheated-liquid region close to the saturated liquid line", section 5.1) with no quantitative limit,
+ * so the admission carries the declared bound {@link #METASTABLE_MARGIN_PASCAL}.
+ */
 public final class WaterRegion1 {
     private static final double R = 461.526, P_STAR = 16.53e6, T_STAR = 1386;
     // IAPWS Region 1 table, expressed in (pi - 7.1): odd-I coefficients have reversed signs.
@@ -21,6 +31,16 @@ public final class WaterRegion1 {
             -2.6335781662795e-23,-1.1947622640071e-23,-1.8228094581404e-24,-9.3537087292458e-26};
     // Exponent span the 34 terms and their first two derivatives reach: x^0..x^32 and y^-43..y^17.
     private static final int HIGHEST_X = 32, LOWEST_Y = -43, HIGHEST_Y = 17;
+    /**
+     * The declared bound of the metastable admission: liquid water is evaluated down to {@code ps(T) - 2 MPa} (and the
+     * package envelope's minimum, which the state's own domain check applies). 2 MPa is the span the retired
+     * reference-pressure path covered: it evaluated Region 1 at 2 MPa for every state and so admitted every envelope
+     * pressure wherever {@code ps(T) <= 2 MPa} (T up to 485.5 K); this bound admits exactly those states there and
+     * keeps the same pressure distance from the saturated liquid line above it, where the release's "close to the
+     * saturated liquid line" is the only statement of validity. Below the bound a trial is a
+     * {@link ThermoDomainViolation} naming water, as a pressure below saturation was.
+     */
+    public static final double METASTABLE_MARGIN_PASCAL = 2e6;
 
     private WaterRegion1() {}
 
@@ -35,26 +55,70 @@ public final class WaterRegion1 {
     /** IF97 Region 1's own upper temperature boundary: a boundary of the formulation, not a property-package range. */
     public static final double REGION_1_MAXIMUM_TEMPERATURE=623.15,REGION_1_MAXIMUM_PRESSURE=100e6;
     /**
-     * Liquid water outside the stable Region 1 - below the water model's triple point (ice is not modelled), above
-     * the region's 623.15 K boundary, or below its saturation pressure - is a {@link ThermoDomainViolation} naming
-     * water, reported against {@code scope} (the fluid model's package). A non-finite input stays a plain refusal.
+     * The stable liquid of Region 1's range of validity. Liquid water outside it - below the water model's triple
+     * point (ice is not modelled), above the region's 623.15 K boundary, or below its saturation pressure - is a
+     * {@link ThermoDomainViolation} naming water, reported against {@code scope} (the fluid model's package). A
+     * non-finite input stays a plain refusal.
      */
     public static State evaluate(String scope,MaterialCatalog.Water water,double temperatureKelvin,double pressurePascal) {
+        requireTemperature(scope,water,temperatureKelvin,pressurePascal);
+        double saturation=V3WaterProperties.saturationPressurePascal(water,temperatureKelvin);
+        if (pressurePascal < saturation || pressurePascal > REGION_1_MAXIMUM_PRESSURE)
+            throw new ThermoDomainViolation(scope,"Water",ThermoDomainViolation.Property.PRESSURE,pressurePascal,saturation,REGION_1_MAXIMUM_PRESSURE);
+        var workspace=new Workspace();
+        fill(workspace,temperatureKelvin,pressurePascal);
+        return workspace.state();
+    }
+
+    /**
+     * The first half of {@link #evaluateLiquid}'s checks, so a caller can refuse a temperature outside Region 1 before
+     * it evaluates the saturation pressure the second half needs: a finite positive state, and a temperature from the
+     * water model's triple point to the region's 623.15 K boundary.
+     */
+    public static void requireTemperature(String scope,MaterialCatalog.Water water,double temperatureKelvin,double pressurePascal) {
         if (!Double.isFinite(temperatureKelvin) || !Double.isFinite(pressurePascal) || pressurePascal <= 0)
             throw new IllegalArgumentException("Water state is not finite and positive");
         if (temperatureKelvin < water.triplePoint() || temperatureKelvin > REGION_1_MAXIMUM_TEMPERATURE)
             throw new ThermoDomainViolation(scope,"Water",ThermoDomainViolation.Property.TEMPERATURE,temperatureKelvin,water.triplePoint(),REGION_1_MAXIMUM_TEMPERATURE);
-        double saturation=V3WaterProperties.saturationPressurePascal(water,temperatureKelvin);
-        if (pressurePascal < saturation || pressurePascal > REGION_1_MAXIMUM_PRESSURE)
-            throw new ThermoDomainViolation(scope,"Water",ThermoDomainViolation.Property.PRESSURE,pressurePascal,saturation,REGION_1_MAXIMUM_PRESSURE);
-        double pi = pressurePascal/P_STAR, tau=T_STAR/temperatureKelvin, x=pi-7.1,y=tau-1.222;
+    }
+
+    /**
+     * Liquid water at the state pressure, into {@code workspace}, without allocating. {@code saturation} is the
+     * network's saturation pressure at {@code temperatureKelvin} (the water model's, which the free-water rule also
+     * uses). A pressure at or above it is the stable liquid; below it, down to {@code saturation -}
+     * {@link #METASTABLE_MARGIN_PASCAL}, the metastable superheated liquid; below that, and above the
+     * region's 100 MPa, a {@link ThermoDomainViolation} naming water. The temperature checks of
+     * {@link #requireTemperature} apply too.
+     */
+    public static void evaluateLiquid(String scope,MaterialCatalog.Water water,double temperatureKelvin,double pressurePascal,
+                                      double saturation,Workspace workspace) {
+        requireTemperature(scope,water,temperatureKelvin,pressurePascal);
+        double minimum=saturation-METASTABLE_MARGIN_PASCAL;
+        if (pressurePascal < minimum || pressurePascal > REGION_1_MAXIMUM_PRESSURE)
+            throw new ThermoDomainViolation(scope,"Water",ThermoDomainViolation.Property.PRESSURE,pressurePascal,minimum,REGION_1_MAXIMUM_PRESSURE);
+        fill(workspace,temperatureKelvin,pressurePascal);
+    }
+
+    /**
+     * The Gibbs-function sums at (T, p), with no range check. The powers of {@code tau - 1.222} depend on the
+     * temperature alone and are kept for the workspace's last temperature; the powers of {@code pi - 7.1} are
+     * rebuilt per call. The arithmetic and its order are fixed, so a reused workspace and a fresh one give the same
+     * bits.
+     */
+    private static void fill(Workspace w,double temperatureKelvin,double pressurePascal) {
+        double tau=T_STAR/temperatureKelvin;
+        if (temperatureKelvin!=w.temperature) {
+            double y=tau-1.222;double[] yp=w.yp;
+            yp[-LOWEST_Y]=1;
+            for (int k=-LOWEST_Y+1;k<yp.length;k++) yp[k]=yp[k-1]*y;
+            double inverse=1/y;
+            for (int k=-LOWEST_Y-1;k>=0;k--) yp[k]=yp[k+1]*inverse;
+            w.temperature=temperatureKelvin;
+        }
+        double pi = pressurePascal/P_STAR, x=pi-7.1;
         // The integer powers, built once by multiplication instead of six Math.pow calls per term.
-        double[] xp=new double[HIGHEST_X+1];xp[0]=1;
+        double[] xp=w.xp,yp=w.yp;xp[0]=1;
         for (int k=1;k<xp.length;k++) xp[k]=xp[k-1]*x;
-        double[] yp=new double[HIGHEST_Y-LOWEST_Y+1];yp[-LOWEST_Y]=1;
-        for (int k=-LOWEST_Y+1;k<yp.length;k++) yp[k]=yp[k-1]*y;
-        double inverse=1/y;
-        for (int k=-LOWEST_Y-1;k>=0;k--) yp[k]=yp[k+1]*inverse;
         double gp=0,gpp=0,gt=0,gtt=0,gpt=0,gptt=0;
         for (int k=0;k<N.length;k++) {
             int i=I[k],j=J[k]-LOWEST_Y; double n=N[k];
@@ -71,7 +135,29 @@ public final class WaterRegion1 {
         double vt=R/P_STAR*(gp-tau*gpt);
         double vp=R*temperatureKelvin*gpp/(P_STAR*P_STAR);
         if (!(v>0) || !(cp>0) || !(vp<0) || !Double.isFinite(h)) throw new IllegalArgumentException("Invalid Region 1 result");
-        return new State(v,h,h-pressurePascal*v,cp,vt,vp,v-temperatureKelvin*vt,R*tau*tau*gptt/(P_STAR*temperatureKelvin));
+        w.specificVolume=v;w.specificEnthalpy=h;w.specificInternalEnergy=h-pressurePascal*v;w.specificHeatCapacity=cp;
+        w.volumeTemperatureDerivative=vt;w.volumePressureDerivative=vp;w.enthalpyPressureDerivative=v-temperatureKelvin*vt;
+        w.volumeSecondTemperatureDerivative=R*tau*tau*gptt/(P_STAR*temperatureKelvin);
+    }
+
+    /**
+     * Caller-owned Region 1 scratch and result: the two power tables and the last evaluation's properties. Mutable,
+     * so - like the Peng-Robinson workspace a node's prepared temperature holds - it belongs to one solving thread.
+     */
+    public static final class Workspace {
+        private final double[] xp=new double[HIGHEST_X+1],yp=new double[HIGHEST_Y-LOWEST_Y+1];
+        private double temperature=Double.NaN;
+        private double specificVolume,specificEnthalpy,specificInternalEnergy,specificHeatCapacity,
+                volumeTemperatureDerivative,volumePressureDerivative,enthalpyPressureDerivative,volumeSecondTemperatureDerivative;
+        public Workspace() {}
+        public double specificVolume(){return specificVolume;}
+        public double specificEnthalpy(){return specificEnthalpy;}
+        public double volumePressureDerivative(){return volumePressureDerivative;}
+        /** A copy of the last evaluation as the immutable record. */
+        public State state() {
+            return new State(specificVolume,specificEnthalpy,specificInternalEnergy,specificHeatCapacity,volumeTemperatureDerivative,
+                    volumePressureDerivative,enthalpyPressureDerivative,volumeSecondTemperatureDerivative);
+        }
     }
 
     /** IAPWS 2008 dilute-gas viscosity term (Pa.s); not a liquid or dense-steam correlation. */

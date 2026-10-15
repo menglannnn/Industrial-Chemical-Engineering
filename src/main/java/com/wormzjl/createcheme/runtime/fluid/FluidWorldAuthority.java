@@ -23,7 +23,6 @@ public final class FluidWorldAuthority implements AutoCloseable {
     private final FluidPropertyReloadGuard propertyReload;
     private String propertyHold;
     private final CreateChemE.FluidOptions options;
-    private final double compressibility;
     private final List<FluidPresetCatalog.Preset> presetCache;
     private final List<String> componentNames;
     private final FluidSavedData data;
@@ -53,9 +52,8 @@ public final class FluidWorldAuthority implements AutoCloseable {
     private FluidWorldAuthority(MinecraftServer server) {
         this.server=server;owned();catalog=MaterialRuntime.active();
         options=CreateChemE.fluidOptions();data=FluidSavedData.open(server,this::model);
-        compressibility=data.checkpoint().islands().isEmpty()?options.compressibility():data.checkpoint().islands().getFirst().compressibility();
-        model=model(new FluidCheckpointCodec.PackageKey(com.wormzjl.createcheme.science.fluid.thermo.FluidMaterialCatalog.networkPackage(catalog),compressibility));
-        propertyReload=new FluidPropertyReloadGuard(catalog,com.wormzjl.createcheme.science.fluid.thermo.FluidMaterialCatalog.networkPackage(catalog),compressibility,model);
+        model=model(new FluidCheckpointCodec.PackageKey(com.wormzjl.createcheme.science.fluid.thermo.FluidMaterialCatalog.networkPackage(catalog)));
+        propertyReload=new FluidPropertyReloadGuard(catalog,com.wormzjl.createcheme.science.fluid.thermo.FluidMaterialCatalog.networkPackage(catalog),model);
         presetCache=FluidPresetCatalog.resolve(catalog);componentNames=model.components();
         var savedTopology=data.world().orElseGet(()->WorldTopologyLedger.Snapshot.empty(catalog));savedTopology.basis().requireCurrent(catalog);
         FluidPropertyReloadGuard.validateSolids(catalog.solids(),data.checkpoint(),savedTopology);observedSolidData=catalog;
@@ -67,7 +65,7 @@ public final class FluidWorldAuthority implements AutoCloseable {
         runtime.coordinator().onReplayed(this::replayed);
         runtime.coordinator().onDomainHold(this::domainHeld);runtime.coordinator().nodeNames(this::deviceLabel);
         registry=new PhysicalRegistry(topology,model,new InlineFilter(options.solids().filterCapacity(),options.solids().filterResistance(),com.wormzjl.createcheme.science.fluid.state.SolidInventory.EMPTY,0),new RegistryHost());
-        for(var entry:data.checkpoint().islands())runtime.register(dimension(entry.dimension()),entry.snapshot(),model(new FluidCheckpointCodec.PackageKey(entry.packageId(),entry.compressibility())));
+        for(var entry:data.checkpoint().islands())runtime.register(dimension(entry.dimension()),entry.snapshot(),model(entry.key()));
         logLoad();
         registry.load();data.bindCapture(this::capture);
         // Block entities whose chunks loaded before this authority existed never reported themselves: every device
@@ -110,7 +108,7 @@ public final class FluidWorldAuthority implements AutoCloseable {
     /** Every island of this world solves on a model built from the same captured options, so the
      * configured trace cutoff is one value for every worker and every retained solver: a retained
      * solver is replaced whenever its model identity changes, and the model is the cutoff's home. */
-    private FluidThermodynamics model(FluidCheckpointCodec.PackageKey key){return models.computeIfAbsent(key,k->FluidThermodynamics.forNetwork(catalog,k.packageId(),k.compressibility(),options.maximumVelocity(),options.traceCutoffMoleFraction(),options.solids()));}
+    private FluidThermodynamics model(FluidCheckpointCodec.PackageKey key){return models.computeIfAbsent(key,k->FluidThermodynamics.forNetwork(catalog,k.packageId(),options.maximumVelocity(),options.traceCutoffMoleFraction(),options.solids()));}
     private static ResourceKey<Level> dimension(String name){return ResourceKey.create(Registries.DIMENSION,ResourceLocation.parse(name));}
     public List<FluidPresetCatalog.Preset> presets(){owned();return presetCache;}
     public List<String> components(){owned();return componentNames;}
@@ -249,7 +247,7 @@ public final class FluidWorldAuthority implements AutoCloseable {
         owned();flush();var islands=new ArrayList<FluidCheckpointCodec.IslandEntry>();var world=topology.snapshot();
         for(var snapshot:runtime.coordinator().snapshots()) {
             String dimension=world.active().get(registry.members(snapshot.id()).getFirst()).device().position().dimension();
-            islands.add(new FluidCheckpointCodec.IslandEntry(dimension,com.wormzjl.createcheme.science.fluid.thermo.FluidMaterialCatalog.networkPackage(catalog),compressibility,snapshot));
+            islands.add(new FluidCheckpointCodec.IslandEntry(dimension,com.wormzjl.createcheme.science.fluid.thermo.FluidMaterialCatalog.networkPackage(catalog),snapshot));
         }
         return new FluidSavedData.Capture(new FluidCheckpointCodec.Checkpoint(islands),world);
     }

@@ -28,7 +28,7 @@ class FluidThermoDomainHoldTest {
     private static FluidThermodynamics narrowed(double maximum) {
         var resources=new HashMap<>(MaterialCatalog.bundled().resources());String key="data/createcheme/materials/properties/nitrogen.json";
         var o=JsonParser.parseString(resources.get(key)).getAsJsonObject();o.getAsJsonObject("fluid_domain").addProperty("temperature_max_kelvin",maximum);resources.put(key,o.toString());
-        return FluidThermodynamics.forNetwork(MaterialCatalog.parse(resources),NETWORK,1e-9);
+        return FluidThermodynamics.forNetwork(MaterialCatalog.parse(resources),NETWORK);
     }
     /** R P C P R along +x, the WP5 rig's transfer with a compressor: devices 1 (tank), 2 (pipe), 3 (compressor), 4 (pipe), 5 (tank)
      * (the pipe between the suction tank and the compressor since only pipes connect, decision D20). */

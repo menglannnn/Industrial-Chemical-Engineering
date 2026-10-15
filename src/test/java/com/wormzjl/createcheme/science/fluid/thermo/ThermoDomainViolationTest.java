@@ -14,7 +14,7 @@ import static org.junit.jupiter.api.Assertions.*;
 class ThermoDomainViolationTest {
     private static final String NETWORK="createcheme:tjl20_methane_nitrogen";
     private final MaterialCatalog catalog=MaterialCatalog.bundled();
-    private final FluidThermodynamics model=FluidThermodynamics.forNetwork(catalog,NETWORK,1e-9);
+    private final FluidThermodynamics model=FluidThermodynamics.forNetwork(catalog,NETWORK);
     private int index(String component){return model.components().indexOf(component);}
     private double[] overall(Object... pairs){double[] n=new double[model.componentCount()];for(int i=0;i<pairs.length;i+=2)n[index((String)pairs[i])]=(Double)pairs[i+1];return n;}
 
@@ -103,7 +103,7 @@ class ThermoDomainViolationTest {
         String pkg="data/createcheme/materials/packages/tjl20.json";
         var o=JsonParser.parseString(resources.get(pkg)).getAsJsonObject();String id=o.get("id").getAsString();o.remove("fluid_domain");resources.put(pkg,o.toString());
         var withoutEnvelope=MaterialCatalog.parse(resources);
-        var missing=assertThrows(IllegalArgumentException.class,()->com.wormzjl.createcheme.fluid.support.FluidTestSupport.model(withoutEnvelope,id,1e-9));
+        var missing=assertThrows(IllegalArgumentException.class,()->com.wormzjl.createcheme.fluid.support.FluidTestSupport.model(withoutEnvelope,id));
         assertTrue(missing.getMessage().contains("declares no fluid_domain"),missing.getMessage());
 
         var outside=new HashMap<>(catalog.resources());String nitrogen="data/createcheme/materials/properties/nitrogen.json";

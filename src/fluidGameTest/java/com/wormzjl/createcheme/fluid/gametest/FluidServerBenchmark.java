@@ -318,7 +318,7 @@ public final class FluidServerBenchmark {
         var server=event.getServer();String profile=System.getProperty("createcheme.fluid.benchmark.profile","one");
         if(!Set.of("one","many","contention").contains(profile)&&!TIMED_PROFILES.contains(profile))throw new IllegalArgumentException("Unknown benchmark profile "+profile);
         if(Files.exists(server.getWorldPath(LevelResource.ROOT).resolve("data/"+FluidSavedData.DATA_NAME+".dat")))throw new IllegalStateException("Benchmark requires a fresh disposable world");
-        var model=FluidThermodynamics.forNetwork(MaterialRuntime.active(),FluidPresetCatalog.NETWORK_PACKAGE,1e-9);
+        var model=FluidThermodynamics.forNetwork(MaterialRuntime.active(),FluidPresetCatalog.NETWORK_PACKAGE);
         var composition=Arrays.copyOf(MaterialRuntime.with(MaterialRuntime.active(),FluidPresetCatalog.NETWORK_PACKAGE,()->V3PengRobinsonThermo.fromRegisteredPackage(FluidPresetCatalog.NETWORK_PACKAGE).crudeFeed("createcheme:tia_juana_light_methane").moleFractions()),com.wormzjl.createcheme.science.fluid.thermo.FluidMaterialCatalog.conservedCount());composition[com.wormzjl.createcheme.science.fluid.thermo.FluidMaterialCatalog.nitrogenIndex()]=.1;composition[com.wormzjl.createcheme.science.fluid.thermo.FluidMaterialCatalog.waterIndex()]=.2;
         var devices=new ArrayList<PhysicalFluidTopology.Device>();var registrations=new LinkedHashMap<Long,WorldTopologyLedger.Registration>();var stocks=new LinkedHashMap<Long,PassiveNetwork.Reservoir>();var reservoirs=new ArrayList<Long>();
         var ladderOf=new HashMap<Long,Ladder>();
@@ -390,7 +390,7 @@ public final class FluidServerBenchmark {
             if(timed&&kinds.size()!=1)throw new IllegalStateException("A fixture island must come from exactly one ladder");
             if(timed)islandLadders.put(id,kinds.getFirst());
             var snapshot=new IslandCoordinator.Snapshot(id,0,island.graph(),new IslandClock.Snapshot(0,0,0,100),FallbackAllowance.NONE,Optional.empty(),Optional.empty(),"READY");
-            entries.add(new FluidCheckpointCodec.IslandEntry("minecraft:overworld",FluidPresetCatalog.NETWORK_PACKAGE,1e-9,snapshot));
+            entries.add(new FluidCheckpointCodec.IslandEntry("minecraft:overworld",FluidPresetCatalog.NETWORK_PACKAGE,snapshot));
         }
         double[] weights=weights(model);var finite=stocks.values().stream().filter(n->n.kind()==PassiveNetwork.NodeKind.RESERVOIR).toList();
         var topology=new WorldTopologyLedger.Snapshot(0,next,registrations,List.of(),WorldTopologyLedger.MaterialTotal.empty().plus(finite,weights),WorldTopologyLedger.MaterialTotal.empty());
@@ -519,7 +519,7 @@ public final class FluidServerBenchmark {
         report.put("measuredIntervalsPerIsland",r.samples.stream().collect(java.util.stream.Collectors.groupingBy(Sample::island,java.util.stream.Collectors.counting())));
         report.put("workers",ProcessSolveServices.diagnostics(r.server).workerCount());report.put("cadenceSeconds",5);report.put("adaptiveCadence",false);report.put("warmupTicks",r.warmupTicks);report.put("warmupSeconds",r.warmupTicks/20.0);report.put("measurementSecondsConfigured",r.stressMeasurementNanos/1e9);report.put("elapsedSeconds",(now-r.startNanos)/1e9);report.put("measuredSeconds",(now-r.measuredStarted)/1e9);
         report.put("reservoirs",100);report.put("physicalPipes",fixture.physicalPipes);report.put("compiledPipes",fixture.compressedPipes);report.put("components",r.external.length);report.put("islands",fixture.checkpoint.islands().size());report.put("loadedFixtureChunks",fixture.chunks.size());report.put("chunkTickets","Explicit test-harness tickets only; simulation engine creates none");
-        report.put("propertyRevision",ApproximationAnchor.revision(fixture.model));report.put("compressibility",1e-9);report.put("heldIntervals",held);report.put("componentBalanceToleranceUnits",maximumBalance);report.put("energyBalanceToleranceUnits",energyError);
+        report.put("propertyRevision",ApproximationAnchor.revision(fixture.model));report.put("heldIntervals",held);report.put("componentBalanceToleranceUnits",maximumBalance);report.put("energyBalanceToleranceUnits",energyError);
         report.put("workerMilliseconds",statistics(worker));report.put("dispatchToPublicationMilliseconds",statistics(latency));report.put("engineServerMillisecondsPerTick",statistics(r.engineMillis));report.put("wholeTickMilliseconds",statistics(r.tickMillis));report.put("tickSpacingMilliseconds",statistics(r.tickSpacingMillis));
         report.put("readyToPublicationMilliseconds",statistics(endToEnd));report.put("latencyDefinition","Start of the eligible server tick to atomic publication; includes readiness queue/debt and the cohort barrier. Missing bounded timing history fails qualification.");
         report.put("samples",r.samples);report.put("rawEngineMillisecondsPerTick",r.engineMillis);report.put("rawTickSpacingMilliseconds",r.tickSpacingMillis);

@@ -11,7 +11,7 @@ import org.junit.jupiter.api.Test;
 
 class ConservativeTransportTest {
     @Test void simultaneousBranchTransfersRemainPositiveAndCannotInventAnAbsentComponent() {
-        var model=com.wormzjl.createcheme.fluid.support.FluidTestSupport.model(MaterialCatalog.bundled(),"createcheme:tjl20_methane",1e-9);
+        var model=com.wormzjl.createcheme.fluid.support.FluidTestSupport.model(MaterialCatalog.bundled(),"createcheme:tjl20_methane");
         var nodes=new ArrayList<PassiveNetwork.Reservoir>();
         for(int component:new int[]{0,1,1}) {
             double[] n=new double[com.wormzjl.createcheme.science.material.MaterialTestBasis.NETWORK];n[component]=1/model.hydrocarbon.molecularWeight(component);

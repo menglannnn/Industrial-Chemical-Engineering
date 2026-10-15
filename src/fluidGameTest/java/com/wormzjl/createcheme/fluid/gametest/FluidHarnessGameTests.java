@@ -77,9 +77,9 @@ public final class FluidHarnessGameTests {
                 var view=world.view(tankId);helper.assertTrue(view.state()!=null&&view.state().phaseMoles()[1][com.wormzjl.createcheme.science.fluid.thermo.FluidMaterialCatalog.waterIndex()]>0,"Waiting for pressure-driven water filling");
                 helper.assertTrue(Math.abs(view.state().phaseMoles()[2][com.wormzjl.createcheme.science.fluid.thermo.FluidMaterialCatalog.nitrogenIndex()]-nitrogen)<1e-8,"Initial nitrogen was lost or recreated");
                 helper.assertTrue(!world.view(pipeId).pipeHistory().isEmpty(),"Pipe has no committed phase/flow history");
-                var capture=world.capture();var data=new com.wormzjl.createcheme.runtime.fluid.FluidSavedData(capture.checkpoint(),capture.world(),key->com.wormzjl.createcheme.science.fluid.thermo.FluidThermodynamics.forNetwork(com.wormzjl.createcheme.science.material.MaterialRuntime.active(),key.packageId(),key.compressibility()));
+                var capture=world.capture();var data=new com.wormzjl.createcheme.runtime.fluid.FluidSavedData(capture.checkpoint(),capture.world(),key->com.wormzjl.createcheme.science.fluid.thermo.FluidThermodynamics.forNetwork(com.wormzjl.createcheme.science.material.MaterialRuntime.active(),key.packageId()));
                 var tag=data.save(new net.minecraft.nbt.CompoundTag(),level.registryAccess());
-                var restored=com.wormzjl.createcheme.runtime.fluid.FluidSavedData.load(tag,key->com.wormzjl.createcheme.science.fluid.thermo.FluidThermodynamics.forNetwork(com.wormzjl.createcheme.science.material.MaterialRuntime.active(),key.packageId(),key.compressibility()),data.store().reopen());
+                var restored=com.wormzjl.createcheme.runtime.fluid.FluidSavedData.load(tag,key->com.wormzjl.createcheme.science.fluid.thermo.FluidThermodynamics.forNetwork(com.wormzjl.createcheme.science.material.MaterialRuntime.active(),key.packageId()),data.store().reopen());
                 helper.assertTrue(restored.world().orElseThrow().active().size()==3,"Physical registry was not saved with inventory");
                 level.removeBlock(source,false);level.removeBlock(pipe,false);level.removeBlock(reservoir,false);phase[0]=1;
                 helper.assertTrue(false,"Waiting for removal event alignment");
@@ -91,10 +91,10 @@ public final class FluidHarnessGameTests {
     }
     @GameTest(template="empty",timeoutTicks=10000,batch="fluid-persistence")
     public static void savedDataKeepsADepletedNitrogenChargeAndAtomicWritesKeepThePreviousCheckpoint(GameTestHelper helper) throws java.io.IOException {
-        var model=com.wormzjl.createcheme.science.fluid.thermo.FluidThermodynamics.forNetwork(com.wormzjl.createcheme.science.material.MaterialCatalog.bundled(),"createcheme:tjl20_methane_nitrogen",1e-9);
+        var model=com.wormzjl.createcheme.science.fluid.thermo.FluidThermodynamics.forNetwork(com.wormzjl.createcheme.science.material.MaterialCatalog.bundled(),"createcheme:tjl20_methane_nitrogen");
         var graph=new com.wormzjl.createcheme.science.fluid.network.PassiveNetwork(java.util.List.of(new com.wormzjl.createcheme.science.fluid.network.PassiveNetwork.Reservoir(1,0,model.initialNitrogenCharge(1,298.15,65000,()->{}))),java.util.List.of());
         var island=new com.wormzjl.createcheme.runtime.fluid.IslandCoordinator.Snapshot(1,0,graph,new com.wormzjl.createcheme.runtime.fluid.IslandClock.Snapshot(250,100,0,100),com.wormzjl.createcheme.runtime.fluid.FallbackAllowance.NONE,java.util.Optional.empty(),java.util.Optional.empty(),"HELD");
-        var checkpoint=new com.wormzjl.createcheme.runtime.fluid.FluidCheckpointCodec.Checkpoint(java.util.List.of(new com.wormzjl.createcheme.runtime.fluid.FluidCheckpointCodec.IslandEntry("minecraft:overworld","createcheme:tjl20_methane_nitrogen",1e-9,island)));
+        var checkpoint=new com.wormzjl.createcheme.runtime.fluid.FluidCheckpointCodec.Checkpoint(java.util.List.of(new com.wormzjl.createcheme.runtime.fluid.FluidCheckpointCodec.IslandEntry("minecraft:overworld","createcheme:tjl20_methane_nitrogen",island)));
         // Format 5 through Minecraft's own save path: the core record and a pack written on NeoForge's IO worker, in a
         // folder of their own under the GameTest world's data.
         var folder=helper.getLevel().getServer().getWorldPath(net.minecraft.world.level.storage.LevelResource.ROOT).resolve("data/fluid-checkpoint-tests/"+java.util.UUID.randomUUID());java.nio.file.Files.createDirectories(folder);
@@ -126,7 +126,7 @@ public final class FluidHarnessGameTests {
     }
     @GameTest(template="empty",timeoutTicks=10000,batch="fluid-coordinator")
     public static void worldRuntimeCatchesUpNineIntervalsThroughSharedWorkers(GameTestHelper helper) {
-        var model=com.wormzjl.createcheme.science.fluid.thermo.FluidThermodynamics.forNetwork(com.wormzjl.createcheme.science.material.MaterialCatalog.bundled(),"createcheme:tjl20_methane_nitrogen",1e-9);
+        var model=com.wormzjl.createcheme.science.fluid.thermo.FluidThermodynamics.forNetwork(com.wormzjl.createcheme.science.material.MaterialCatalog.bundled(),"createcheme:tjl20_methane_nitrogen");
         var graph=new com.wormzjl.createcheme.science.fluid.network.PassiveNetwork(java.util.List.of(new com.wormzjl.createcheme.science.fluid.network.PassiveNetwork.Reservoir(1,0,model.initialNitrogenCharge(1,298.15,101325,()->{}))),java.util.List.of());
         int[] publications={0};
         var runtime=new com.wormzjl.createcheme.runtime.fluid.MinecraftFluidRuntime(helper.getLevel().getServer(),changed->{
@@ -168,7 +168,7 @@ public final class FluidHarnessGameTests {
     public static void fluidSnapshotRunsThroughTheSharedServiceAndReturnsOnServerThread(GameTestHelper helper) {
         var server=helper.getLevel().getServer();
         var model=com.wormzjl.createcheme.science.fluid.thermo.FluidThermodynamics.forNetwork(
-                com.wormzjl.createcheme.science.material.MaterialCatalog.bundled(),"createcheme:tjl20_methane_nitrogen",1e-9);
+                com.wormzjl.createcheme.science.material.MaterialCatalog.bundled(),"createcheme:tjl20_methane_nitrogen");
         var state=model.initialNitrogenCharge(1,298.15,101325,()->{});
         var graph=new com.wormzjl.createcheme.science.fluid.network.PassiveNetwork(java.util.List.of(
                 new com.wormzjl.createcheme.science.fluid.network.PassiveNetwork.Reservoir(1,0,model.initialNitrogenCharge(1,298.15,200000,()->{})),
@@ -196,7 +196,7 @@ public final class FluidHarnessGameTests {
     @GameTest(template="empty",timeoutTicks=10000,batch="fluid-wakeup")
     public static void shortJobsResumeBetweenTicksWithoutExceedingTheDrainBudget(GameTestHelper helper) {
         var server=helper.getLevel().getServer();
-        var model=com.wormzjl.createcheme.science.fluid.thermo.FluidThermodynamics.forNetwork(com.wormzjl.createcheme.science.material.MaterialCatalog.bundled(),"createcheme:tjl20_methane_nitrogen",1e-9);
+        var model=com.wormzjl.createcheme.science.fluid.thermo.FluidThermodynamics.forNetwork(com.wormzjl.createcheme.science.material.MaterialCatalog.bundled(),"createcheme:tjl20_methane_nitrogen");
         var graph=new com.wormzjl.createcheme.science.fluid.network.PassiveNetwork(java.util.List.of(new com.wormzjl.createcheme.science.fluid.network.PassiveNetwork.Reservoir(1,0,model.initialNitrogenCharge(1,298.15,101325,()->{}))),java.util.List.of());
         var command=new com.wormzjl.createcheme.runtime.ProcessSolveServices.FluidIslandCommand(model,graph,5,com.wormzjl.createcheme.science.fluid.network.PassiveIntervalSolver.Settings.defaults(),2_000_000_000L);
         long started=System.nanoTime();
