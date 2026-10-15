@@ -847,10 +847,12 @@ public final class FluidThermodynamics {
      *
      * <p>Crystals. On a package that admits crystals a dry request carrying a crystal's species at or below the
      * crystals' ceiling is made under the crystal competition ({@link #crystalsCompete}). A TP answer never moves
-     * material into a crystal: where a crystal forms, the mobile phases of these amounts are the fluid the crystal leaves
-     * with the crystal's amount kept in it (a gas in the vapour slot; a liquid in the liquid slot; a vapour and a liquid
-     * in their slots, the liquid taking the rest). A crystal beside a phase set the engine does not implement (two
-     * liquids, three fluid phases, two crystals) is the typed {@link UnsupportedPhases.Kind#CRYSTAL_PHASES} hold.</p>
+     * material into a crystal: crystal mass moves only in a vessel's refresh (owner decision D23,
+     * {@code InventoryEquilibrium}), so a step, a transport node and a boundary carry a supersaturated fluid, and the
+     * receiving vessel's next refresh precipitates it. Where a crystal forms, the answer's vapour is the vapour and the
+     * liquid slot takes the rest, the crystal's share condensed in it (see {@link #adopt}). A crystal beside a phase set
+     * the engine does not implement (two liquids, three fluid phases, two crystals) is the typed
+     * {@link UnsupportedPhases.Kind#CRYSTAL_PHASES} hold.</p>
      */
     public State equilibriumTP(double t,double p,double[] overall,Runnable checkpoint,Prepared prepared) {
         TranslatedPengRobinson.Workspace given=prepared!=null&&prepared.temperature()==t?prepared.pengRobinson():null;
@@ -943,18 +945,18 @@ public final class FluidThermodynamics {
             // not take the vapour slot; a typed hold, never adopted with fewer phases.
             case LIQUID_LIQUID->throw new UnsupportedPhases(domain.packageId(),t,p,UnsupportedPhases.Kind.LIQUID_LIQUID,
                     "a liquid-liquid split (two liquid-like hydrocarbon phases); the fluid network carries one hydrocarbon liquid");
-            // A crystal forms from a gas: the fluid the deposition leaves is one non-liquid phase, so the mobile phases of
-            // these amounts are a gas. A TP phase decision never moves material into a crystal: the amounts stay the
-            // caller's, as a (supersaturated) vapour, and are conserved.
-            case VAPOR_SOLID,SOLID_PRESENT->System.arraycopy(overall,0,vapor,0,n);
-            // A crystal out of a liquid (or a liquid-like one-root fluid, which the one-root slot rule puts in the liquid
-            // slot): the amounts are that liquid, the crystal's share kept in it (a supersaturated liquid).
-            case LIQUID_SOLID->System.arraycopy(overall,0,liquid,0,n);
-            // A crystal beside a vapour and a liquid: the vapour is the answer's vapour, the liquid the rest of the amounts
-            // (with the crystal's share in it). Per component the liquid is taken by difference, never negative, so the
-            // amounts are conserved exactly.
-            case VAPOR_LIQUID_SOLID->{
-                for(var phase:result.phases())if(phase.kind()==PhaseKind.VAPOR||phase.kind()==PhaseKind.FLUID)System.arraycopy(phase.amountsView(),0,vapor,0,n);
+            // A crystal in the answer. A TP phase decision never moves material into a crystal (owner decision D23: only a
+            // vessel's refresh does), so the mobile phases of these amounts carry the crystal's share until then, and that
+            // share is condensed matter: the vapour is the answer's vapour (none beside a crystal out of a liquid, or a
+            // crystal alone) and the liquid slot takes the rest, a supersaturated liquid, per component by difference and
+            // never negative, so the amounts are conserved exactly. In the vapour slot the crystal's mass would take a
+            // gas's volume and energy: a CO2 let-down below the triple point, stated all vapour, ran to CO2's 90 K floor.
+            // Its own fluid split with the crystal held out is a CO2-rich liquid, beside a methane liquid a third fluid
+            // phase: row E of the pilot world held at its first step.
+            case VAPOR_SOLID,LIQUID_SOLID,VAPOR_LIQUID_SOLID,SOLID_PRESENT->{
+                var classification=result.classification();
+                if(classification==EquilibriumResult.Classification.VAPOR_SOLID||classification==EquilibriumResult.Classification.VAPOR_LIQUID_SOLID)
+                    for(var phase:result.phases())if(phase.kind()==PhaseKind.VAPOR||phase.kind()==PhaseKind.FLUID)System.arraycopy(phase.amountsView(),0,vapor,0,n);
                 for(int i=0;i<n;i++) {
                     liquid[i]=Math.max(overall[i]-vapor[i],0.0);
                     vapor[i]=overall[i]-liquid[i];
