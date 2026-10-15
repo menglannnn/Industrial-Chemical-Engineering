@@ -102,7 +102,7 @@ class FluidPumpedFillLineTest {
      */
     @Test void everyPumpedChainCommitsItsFirstTickFromAColdSolver() {
         for(String layout:List.of("GPUPRPRPR","GPUPRPRPRPRPRPR","GPUPRPRPRPRPRPRPV")) {
-            var result=new PassiveIntervalSolver(model).solve(line(layout),.05,PassiveIntervalSolver.Settings.defaults(),()->{},RetainedSolver.COLD_START_SECONDS);
+            var result=new PassiveIntervalSolver(model).solve(line(layout),.05,PassiveIntervalSolver.Settings.defaults(),()->{},FluidTestSupport.COLD_START_SECONDS);
             System.out.println(layout+": first tick accepted="+result.acceptedSubsteps()+" rejected="+result.rejectedSubsteps()+" reasons="+result.rejectionReasons());
             var first=tanks(result.graph()).getFirst().state();
             assertTrue(liquidFraction(first)>0&&first.temperature()<298.15-5,layout+": water entering dry nitrogen evaporates and cools the first tank to its wet bulb: "+first.temperature());
@@ -116,7 +116,7 @@ class FluidPumpedFillLineTest {
      * residual 0.10479353009252752} (in game after the first committed tick: {@code 0.10479996312241754}).
      */
     @Test void aPumpedFillPassesTheSecondTanksBackflowWithoutAHold() {
-        var result=new PassiveIntervalSolver(model).solve(line("GPUPRPRPR"),.6,PassiveIntervalSolver.Settings.defaults(),()->{},RetainedSolver.COLD_START_SECONDS);
+        var result=new PassiveIntervalSolver(model).solve(line("GPUPRPRPR"),.6,PassiveIntervalSolver.Settings.defaults(),()->{},FluidTestSupport.COLD_START_SECONDS);
         System.out.println("three-tank fill, 0.6 s: accepted="+result.acceptedSubsteps()+" rejected="+result.rejectedSubsteps()+" reasons="+result.rejectionReasons());
         assertEquals(.6,result.advancedSeconds(),1e-12);
     }

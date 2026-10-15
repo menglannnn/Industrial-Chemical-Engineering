@@ -31,10 +31,6 @@ import java.util.Objects;
  * Workers therefore still touch only the immutable snapshot and this handle.
  */
 public final class RetainedSolver {
-    /** Step a trial starts from: small enough that a transient does not begin with an oversized attempt, and the
-     * controller doubles out of it within a few substeps. */
-    public static final double COLD_START_SECONDS=.05;
-
     private final SolverOwnership ownership=SolverOwnership.released();
     private PassiveIntervalSolver solver;
     private FluidThermodynamics model;

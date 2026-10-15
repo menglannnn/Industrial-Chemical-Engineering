@@ -22,7 +22,7 @@ import static org.junit.jupiter.api.Assertions.*;
  * resistance the configuration supplies. These build exactly that.
  *
  * <p>They also run it the way the world runs it: consecutive five-second intervals on one retained
- * solver, starting from {@link RetainedSolver#COLD_START_SECONDS}. Both defects these cover need
+ * solver, starting from {@link com.wormzjl.createcheme.fluid.support.FluidTestSupport#COLD_START_SECONDS}. Both defects these cover need
  * more than one interval or a settled island to appear at all, which is why a single-interval
  * fixture never saw them.
  */

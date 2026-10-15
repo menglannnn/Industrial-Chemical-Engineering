@@ -111,7 +111,7 @@ abstract class BlockLineHarness {
     Run run(PassiveNetwork graph,int count){return run(graph,count,null);}
     /** The same, the line's name in the outcome. */
     Run run(PassiveNetwork graph,int count,String tag) {
-        var solver=new PassiveIntervalSolver(model);double step=RetainedSolver.COLD_START_SECONDS;
+        var solver=new PassiveIntervalSolver(model);double step=FluidTestSupport.COLD_START_SECONDS;
         List<FlowControl.Mode> modes=List.of();double[] flows=new double[0];String name=tag==null?"":" ("+tag+")";
         for(int i=0;i<count;i++) {
             try {

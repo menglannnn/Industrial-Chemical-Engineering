@@ -24,6 +24,10 @@ public final class FluidTestSupport {
 
     private FluidTestSupport() {}
 
+    /** First step of the multi-interval line rigs: small enough that a transient does not begin with an oversized
+     * attempt; the controller doubles out of it within a few substeps. */
+    public static final double COLD_START_SECONDS = .05;
+
     /** A token for a worker that is never cancelled and has no deadline: tests solve every admitted slice to its end. */
     public static final BoundedCpuSolveService.CancellationToken NEVER = new BoundedCpuSolveService.CancellationToken() {
         public long deadlineNanos() { return Long.MAX_VALUE; }

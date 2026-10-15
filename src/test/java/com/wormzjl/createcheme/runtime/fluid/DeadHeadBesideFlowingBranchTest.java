@@ -71,7 +71,7 @@ class DeadHeadBesideFlowingBranchTest {
     @Test void aDeadHeadedFilterRunBesideAFlowingBranchCarriesExactlyZero() {
         var graph=island(120000);
         int water=indexOf(graph,1),tank=indexOf(graph,5),feed=indexOf(graph,12),drain=indexOf(graph,9);
-        var solver=new PassiveIntervalSolver(model);double step=RetainedSolver.COLD_START_SECONDS;
+        var solver=new PassiveIntervalSolver(model);double step=FluidTestSupport.COLD_START_SECONDS;
         int intervals=40;double[] flows=null;
         for(int i=0;i<intervals;i++) {
             PassiveIntervalSolver.Result result;

@@ -25,7 +25,7 @@ import static org.junit.jupiter.api.Assertions.*;
  * a column stated once per pass by {@code PassiveStepSolver.Equations.headDensities}.
  *
  * <p>They run the way the world runs a placed island - consecutive five-second intervals on one
- * retained solver from {@link RetainedSolver#COLD_START_SECONDS} - because an elevated line only
+ * retained solver from {@link com.wormzjl.createcheme.fluid.support.FluidTestSupport#COLD_START_SECONDS} - because an elevated line only
  * reaches the interesting point after it has filled its tank and settled against it.
  */
 class ElevatedBlockLineIslandTest extends BlockLineHarness {
