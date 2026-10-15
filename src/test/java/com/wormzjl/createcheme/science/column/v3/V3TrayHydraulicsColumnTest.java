@@ -31,7 +31,7 @@ class V3TrayHydraulicsColumnTest {
         assertEquals(V3ColumnInput.DEFAULT_COLUMN_DIAMETER_METRES, input.columnDiameterMetres());
         assertEquals(0.0, input.stagePressureDropPascal(), "the authored nominal is only the first guess");
 
-        V3ColumnOutcome outcome = V3ColumnCalculator.calculate(input);
+        V3ColumnOutcome outcome = V3TestInputs.calculate(input);
         V3ColumnOutcome.Success success = assertInstanceOf(V3ColumnOutcome.Success.class, outcome, outcome::toString);
         V3TrayHydraulicsSummary hydraulics = success.result().trayHydraulics().orElseThrow();
 
@@ -68,7 +68,7 @@ class V3TrayHydraulicsColumnTest {
     void anUndersizedColumnStillPublishesAndCarriesTheFloodingWarning() {
         V3ColumnInput input = V3TestInputs.methaneCduInput().withColumnDiameter(5.0);
 
-        V3ColumnOutcome outcome = V3ColumnCalculator.calculate(input);
+        V3ColumnOutcome outcome = V3TestInputs.calculate(input);
         V3ColumnOutcome.Success success = assertInstanceOf(V3ColumnOutcome.Success.class, outcome, outcome::toString);
         V3TrayHydraulicsSummary hydraulics = success.result().trayHydraulics().orElseThrow();
 
@@ -96,12 +96,12 @@ class V3TrayHydraulicsColumnTest {
      */
     @Test
     void aNominalProfileWithinTheToleranceRunsNoCorrection() {
-        V3ColumnOutcome first = V3ColumnCalculator.calculate(smallColumn(0.0, 8.0));
+        V3ColumnOutcome first = V3TestInputs.calculate(smallColumn(0.0, 8.0));
         V3TrayHydraulicsSummary marched = assertInstanceOf(V3ColumnOutcome.Success.class, first, first::toString)
                 .result().trayHydraulics().orElseThrow();
         assertTrue(marched.correctionApplied());
 
-        V3ColumnOutcome second = V3ColumnCalculator.calculate(
+        V3ColumnOutcome second = V3TestInputs.calculate(
                 smallColumn(marched.meanTrayPressureDropPascal(), 8.0));
         V3ColumnOutcome.Success success = assertInstanceOf(V3ColumnOutcome.Success.class, second, second::toString);
         V3TrayHydraulicsSummary hydraulics = success.result().trayHydraulics().orElseThrow();
@@ -130,7 +130,7 @@ class V3TrayHydraulicsColumnTest {
         V3ColumnInput input = withSumpSteam(smallColumn(0.0, 8.0), marginal);
         V3ColumnProblemResolver.validateInput(input);
 
-        V3ColumnOutcome outcome = V3ColumnCalculator.calculate(input);
+        V3ColumnOutcome outcome = V3TestInputs.calculate(input);
         V3ColumnOutcome.Success success = assertInstanceOf(V3ColumnOutcome.Success.class, outcome, outcome::toString);
         V3TrayHydraulicsSummary hydraulics = success.result().trayHydraulics().orElseThrow();
 
@@ -153,7 +153,7 @@ class V3TrayHydraulicsColumnTest {
     @Test
     void prescribedDropModePublishesNoHydraulicsAndKeepsItsDigest() {
         V3ColumnInput legacy = smallColumn(750.0, V3ColumnInput.PRESCRIBED_DROP_DIAMETER);
-        V3ColumnOutcome outcome = V3ColumnCalculator.calculate(legacy);
+        V3ColumnOutcome outcome = V3TestInputs.calculate(legacy);
         V3ColumnOutcome.Success success = assertInstanceOf(V3ColumnOutcome.Success.class, outcome, outcome::toString);
 
         assertTrue(success.result().trayHydraulics().isEmpty());

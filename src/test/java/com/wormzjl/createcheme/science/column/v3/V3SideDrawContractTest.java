@@ -34,7 +34,7 @@ class V3SideDrawContractTest {
         assertThrows(IllegalArgumentException.class, () -> resolve(input(List.of(new V3SideDrawSpec(5, 1)))));
         V3ColumnInput impossible = input(List.of(new V3SideDrawSpec(2, 100)));
         assertThrows(IllegalArgumentException.class, () -> resolve(impossible));
-        V3ColumnOutcome.Failure failure = assertInstanceOf(V3ColumnOutcome.Failure.class, V3ColumnCalculator.calculate(impossible));
+        V3ColumnOutcome.Failure failure = assertInstanceOf(V3ColumnOutcome.Failure.class, V3TestInputs.calculate(impossible));
         assertEquals(V3SolverFailureCode.INFEASIBLE_SPECIFICATION, failure.code());
     }
 

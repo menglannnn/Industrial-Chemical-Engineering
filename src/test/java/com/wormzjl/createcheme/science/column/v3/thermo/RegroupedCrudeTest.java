@@ -83,7 +83,7 @@ class RegroupedCrudeTest {
                 var row=element.getAsJsonObject();var preset=ColumnInputPreset.fromId(row.get("preset").getAsString());
                 // Captured in the prescribed-drop mode; the shipped diameter marches a per-tray profile that
                 // moves every product volume, and is covered by V3TrayHydraulicsColumnTest.
-                var input=preset.input(catalog).withColumnDiameter(0.0);var success=assertInstanceOf(V3ColumnOutcome.Success.class,V3ColumnCalculator.calculate(input));
+                var input=preset.input(catalog).withColumnDiameter(0.0);var success=assertInstanceOf(V3ColumnOutcome.Success.class,com.wormzjl.createcheme.science.column.v3.V3TestInputs.calculate(input));
                 var properties=catalog.requirePackage(input.packageId());
                 for(var target:row.getAsJsonObject("targets_m3_per_second").entrySet()) {
                     var product=success.result().streams().stream().filter(v->v.streamId().equals(target.getKey())).findFirst().orElseThrow();

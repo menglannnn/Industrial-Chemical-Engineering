@@ -14,7 +14,7 @@ class V3NeuralInitializationTest {
         var thermo = V3PengRobinsonThermo.fromRegisteredPackage("createcheme:tjl19_dwsim");
         double[] feed = new double[thermo.componentBasis().componentCount()];
         feed[7] = 50; feed[15] = 50;
-        return new V3ColumnInput(1,thermo.packageId(),"test:neural",thermo.componentBasis(),feed,550,2,1,250_000,750,
+        return V3TestInputs.dry(1,thermo.packageId(),"test:neural",thermo.componentBasis(),feed,550,2,1,250_000,750,
                 List.of(new V3ColumnSpecification.CondenserOutletTemperature(300),
                         new V3ColumnSpecification.OrganicRefluxRatio(2),new V3ColumnSpecification.ReboilerDuty(0)));
     }
@@ -28,7 +28,7 @@ class V3NeuralInitializationTest {
         V3ColumnInput input = input();
         var forced = V3ColumnCalculator.calculate(input,()->{},0,0,options(V3InitializationOptions.Mode.LNN_ONLY),V3NeuralInitializer.UNAVAILABLE, V3ColumnCalculator.DEFAULT_LIQUID_SUPPLY_SCREEN_RATIO);
         assertEquals(V3SolverFailureCode.INITIALIZATION_FAILURE,assertInstanceOf(V3ColumnOutcome.Failure.class,forced).code());
-        var direct = assertInstanceOf(V3ColumnOutcome.Success.class,V3ColumnCalculator.calculate(input));
+        var direct = assertInstanceOf(V3ColumnOutcome.Success.class,V3TestInputs.calculate(input));
         var backup = assertInstanceOf(V3ColumnOutcome.Success.class,V3ColumnCalculator.calculate(input,()->{},0,0,
                 options(V3InitializationOptions.Mode.LNN_FIRST),V3NeuralInitializer.UNAVAILABLE, V3ColumnCalculator.DEFAULT_LIQUID_SUPPLY_SCREEN_RATIO));
         assertEquals(direct.result().inputDigest(),backup.result().inputDigest());
@@ -42,7 +42,7 @@ class V3NeuralInitializationTest {
             public String modelId(){throw new AssertionError("CURRENT_ONLY touched model");}
             public Optional<V3NeuralSeed> predict(V3ColumnInput i,V3SolveControl c){throw new AssertionError();}
         };
-        var expected = V3ColumnCalculator.calculate(input);
+        var expected = V3TestInputs.calculate(input);
         var actual = V3ColumnCalculator.calculate(input,()->{},0,0,V3InitializationOptions.CURRENT,model, V3ColumnCalculator.DEFAULT_LIQUID_SUPPLY_SCREEN_RATIO);
         assertEquals(expected.diagnostics(),actual.diagnostics());
         assertEquals(((V3ColumnOutcome.Success)expected).result().streams(),((V3ColumnOutcome.Success)actual).result().streams());
@@ -61,7 +61,7 @@ class V3NeuralInitializationTest {
         assertTrue(predicted.diagnostics().events().getFirst().contains("initializer=LNN;"));
         double actual=seed.temperatures()[1]; double[] mutable=seed.temperatures(); mutable[1]=1;
         assertEquals(actual,seed.temperatures()[1]);
-        var wrong=new V3ColumnInput(request.schemaVersion(),request.packageId(),request.assayId(),request.componentBasis(),
+        var wrong=V3TestInputs.dry(request.schemaVersion(),request.packageId(),request.assayId(),request.componentBasis(),
                 request.feedComponentMolarFlowsMolPerSecond(),551,request.stageCount(),request.feedStageNumber(),
                 request.topPressurePascal(),request.stagePressureDropPascal(),request.specifications());
         assertInstanceOf(V3ColumnOutcome.Failure.class,V3ColumnCalculator.calculate(wrong,()->{},0,0,

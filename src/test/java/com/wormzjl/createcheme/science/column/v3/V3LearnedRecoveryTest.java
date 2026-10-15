@@ -101,7 +101,7 @@ class V3LearnedRecoveryTest {
     @Test void aFailedLearnedCorrectionLeavesLnnFirstItsUnchangedClassicalBackup() {
         V3ColumnInput input = plainInput();
         V3NeuralInitializer model = fixed(displaced(acceptedProfile(input)));
-        var direct = assertInstanceOf(V3ColumnOutcome.Success.class, V3ColumnCalculator.calculate(input));
+        var direct = assertInstanceOf(V3ColumnOutcome.Success.class, V3TestInputs.calculate(input));
         var backup = assertInstanceOf(V3ColumnOutcome.Success.class, V3ColumnCalculator.calculate(input, () -> {},
                 0, 0, learned(V3InitializationOptions.Mode.LNN_FIRST, 1), model, V3ColumnCalculator.DEFAULT_LIQUID_SUPPLY_SCREEN_RATIO));
         assertEquals(direct.result().streams(), backup.result().streams());
@@ -125,7 +125,7 @@ class V3LearnedRecoveryTest {
 
     @Test void anUnavailableRegroupedModelKeepsClassicalFallbackAvailable() {
         var input=plainInput();
-        var classical=assertInstanceOf(V3ColumnOutcome.Success.class,V3ColumnCalculator.calculate(input));
+        var classical=assertInstanceOf(V3ColumnOutcome.Success.class,V3TestInputs.calculate(input));
         var fallback=assertInstanceOf(V3ColumnOutcome.Success.class,V3ColumnCalculator.calculate(input,()->{},0,0,
                 V3TestInputs.LEARNED,V3NeuralInitializer.UNAVAILABLE, V3ColumnCalculator.DEFAULT_LIQUID_SUPPLY_SCREEN_RATIO));
         assertEquals(classical.result().streams(),fallback.result().streams());

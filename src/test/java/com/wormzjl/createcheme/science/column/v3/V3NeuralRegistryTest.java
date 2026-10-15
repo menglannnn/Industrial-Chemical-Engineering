@@ -15,7 +15,7 @@ class V3NeuralRegistryTest {
     private static V3ColumnInput input() {
         var p=MaterialCatalog.bundled().requirePackage(MAIN);double[] feed=new double[p.components().size()];
         feed[feed.length-2]=50;feed[feed.length-8]=50;
-        return new V3ColumnInput(1,MAIN,"test:reader",new V3ComponentBasis(p.components()),feed,550,2,1,250000,750,
+        return V3TestInputs.dry(1,MAIN,"test:reader",new V3ComponentBasis(p.components()),feed,550,2,1,250000,750,
                 List.of(new V3ColumnSpecification.CondenserOutletTemperature(300),new V3ColumnSpecification.OrganicRefluxRatio(2),
                         new V3ColumnSpecification.ReboilerDuty(0)));
     }
@@ -53,7 +53,7 @@ class V3NeuralRegistryTest {
             assertArrayEquals(Arrays.copyOf(base.vapor()[n],network.componentBasis().componentCount()),prediction.vapor()[n]);
         }
         double[] contaminated=network.feedComponentMolarFlowsMolPerSecond();contaminated[contaminated.length-1]=1e-100;
-        var bad=new V3ColumnInput(1,NETWORK,network.assayId(),network.componentBasis(),contaminated,550,2,1,250000,750,network.specifications());
+        var bad=V3TestInputs.dry(1,NETWORK,network.assayId(),network.componentBasis(),contaminated,550,2,1,250000,750,network.specifications());
         assertSame(V3NeuralInitializer.UNAVAILABLE,qualified.bind(catalog,bad));
         var axis=new ArrayList<>(input.componentBasis().componentIds());axis.remove("Methane");
         var reduced=catalog.inferenceView(MAIN,axis,MAIN,false);var fewer=on(input,MAIN,axis);

@@ -70,7 +70,7 @@ class V3ColumnInputDraftTest {
     }
 
     private static V3ColumnInput base() {
-        return new V3ColumnInput(V3ColumnInput.SCHEMA_VERSION, "test:gui", "test:draft",
+        return com.wormzjl.createcheme.science.column.v3.V3TestInputs.dry(V3ColumnInput.SCHEMA_VERSION, "test:gui", "test:draft",
                 new V3ComponentBasis(List.of("a", "b")), new double[] {4.0, 6.0}, 450.0, 24, 12, 250_000.0, 750.0,
                 List.of(new V3ColumnSpecification.CondenserOutletTemperature(332.15),
                         new V3ColumnSpecification.OrganicRefluxRatio(4.17),

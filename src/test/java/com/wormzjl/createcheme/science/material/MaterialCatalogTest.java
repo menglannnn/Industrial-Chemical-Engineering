@@ -114,7 +114,7 @@ class MaterialCatalogTest {
         var c=MaterialCatalog.bundled();var p=c.requirePackage(ID);var ids=new ArrayList<>(p.components());
         int index=ids.indexOf("crude_pc07");ids.set(index,"TJL_PC07");Collections.reverse(ids);
         double[] values=new double[ids.size()];for(int i=0;i<values.length;i++)values[i]=i+1;
-        var input=new V3ColumnInput(1,ID,"createcheme:tia_juana_light_methane",new V3ComponentBasis(ids),values,638.15,4,2,250000,0,
+        var input=com.wormzjl.createcheme.science.column.v3.V3TestInputs.dry(1,ID,"createcheme:tia_juana_light_methane",new V3ComponentBasis(ids),values,638.15,4,2,250000,0,
                 List.of(new V3ColumnSpecification.CondenserOutletTemperature(332.15),new V3ColumnSpecification.OrganicRefluxRatio(4.17),new V3ColumnSpecification.ReboilerDuty(0)));
         assertThrows(IllegalArgumentException.class,()->com.wormzjl.createcheme.world.level.block.entity.ColumnCalculatorV3BlockEntity.requireCurrent(input,c));
         assertArrayEquals(values,input.feedComponentMolarFlowsMolPerSecond());

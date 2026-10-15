@@ -46,7 +46,7 @@ class V3OperatingDomainValidatorTest {
     @Test
     void calculatorReturnsTheTypedPreflightFailureWithoutEnteringTheSolver() {
         V3ColumnOutcome.Failure failure = assertInstanceOf(V3ColumnOutcome.Failure.class,
-                V3ColumnCalculator.calculate(input(49_999.0, 0.0)));
+                V3TestInputs.calculate(input(49_999.0, 0.0)));
 
         assertEquals(V3SolverFailureCode.PROPERTY_OUT_OF_RANGE, failure.code());
         assertEquals("admission", failure.diagnostics().solvePath());
@@ -72,7 +72,7 @@ class V3OperatingDomainValidatorTest {
         V3PengRobinsonThermo thermo = V3PengRobinsonThermo.fromRegisteredPackage(PACKAGE_ID);
         double[] feed = new double[thermo.componentBasis().componentCount()];
         feed[6] = 1.0;
-        return new V3ColumnInput(V3ColumnInput.SCHEMA_VERSION, PACKAGE_ID, "test:hybrid-admission",
+        return V3TestInputs.dry(V3ColumnInput.SCHEMA_VERSION, PACKAGE_ID, "test:hybrid-admission",
                 thermo.componentBasis(), feed, 550.0, 30, 24, topPressurePascal, stageDropPascal, List.of(
                         new V3ColumnSpecification.CondenserOutletTemperature(323.15),
                         new V3ColumnSpecification.OrganicRefluxRatio(2.0),

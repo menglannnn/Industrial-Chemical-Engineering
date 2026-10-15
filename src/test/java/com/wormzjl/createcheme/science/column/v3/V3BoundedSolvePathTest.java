@@ -70,7 +70,7 @@ class V3BoundedSolvePathTest {
      */
     @Test
     void aLongContinuationPathPublishesTheSolvesOwnOutcome() {
-        V3ColumnOutcome outcome = V3ColumnCalculator.calculate(longPathInput());
+        V3ColumnOutcome outcome = V3TestInputs.calculate(longPathInput());
 
         String path = outcome.diagnostics().solvePath();
         assertTrue(path.length() <= LIMIT, path);

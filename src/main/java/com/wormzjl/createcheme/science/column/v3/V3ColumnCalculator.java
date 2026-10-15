@@ -142,7 +142,7 @@ public final class V3ColumnCalculator {
      *
      * <p>See {@link V3LiquidSupplyScreen}. Zero disables the calibrated tier and leaves only the physically
      * necessary {@code rho >= 1} rejection; a caller that wants the raw solver on a draw-wall specification
-     * passes zero through the screen-ratio overloads.</p>
+     * passes zero as the screen ratio.</p>
      */
     public static final double DEFAULT_LIQUID_SUPPLY_SCREEN_RATIO = V3LiquidSupplyScreen.DEFAULT_CALIBRATED_RATIO;
 
@@ -153,17 +153,6 @@ public final class V3ColumnCalculator {
     }
 
     private V3ColumnCalculator() {}
-
-    /**
-     * Calculates one dry V3 problem without sharing mutable numerical state across callers.
-     *
-     * <p>The entries that take a {@link V3SolveControl} run with caller-owned cooperative cancellation: a
-     * cancellation exception from {@code control} intentionally escapes unchanged so an outer service can
-     * publish its own typed deadline or cancellation completion.</p>
-     */
-    public static V3ColumnOutcome calculate(V3ColumnInput input) {
-        return calculate(input, V3SolveControl.UNBOUNDED, SolvePolicy.OFF, DEFAULT_LIQUID_SUPPLY_SCREEN_RATIO);
-    }
 
     /** Offline export hook: called only after the requested state passes every publication gate. */
     public static V3ColumnOutcome calculateWithAcceptedProfile(V3ColumnInput input, V3SolveControl control,
@@ -729,18 +718,14 @@ public final class V3ColumnCalculator {
     }
 
     /**
-     * Calculates with frozen per-attempt stage support and an audited molar defect. The cutoff is a mole
-     * fraction in [0, 0.01], not a feed filter. Zero uses the exact legacy path. A failed truncated chain
-     * retries once untruncated, except for admission failures and caller-owned cancellation.
+     * Calculates one dry V3 problem without sharing mutable numerical state across callers.
      *
-     * @throws IllegalArgumentException if the cutoff is nonfinite or outside [0, 0.01]
-     */
-    public static V3ColumnOutcome calculate(V3ColumnInput input, V3SolveControl control, double stageTraceCutoffMoleFraction) {
-        return calculate(input, control, stageTraceCutoffMoleFraction, 0.0);
-    }
-
-    /**
-     * Calculates at an authored convergence closure.
+     * <p>{@code control} is caller-owned cooperative cancellation: a cancellation exception from it intentionally
+     * escapes unchanged so an outer service can publish its own typed deadline or cancellation completion.</p>
+     *
+     * <p>{@code stageTraceCutoffMoleFraction} freezes per-attempt stage support with an audited molar defect. It
+     * is a mole fraction in [0, 0.01], not a feed filter. Zero uses the exact untruncated path. A failed truncated
+     * chain retries once untruncated, except for admission failures and caller-owned cancellation.</p>
      *
      * <p>{@code convergenceClosureFraction} is the relative closure every residual row must reach: a component
      * balance closes to that fraction of its own local throughput, an equilibrium row to that difference in log
@@ -750,19 +735,6 @@ public final class V3ColumnCalculator {
      * gate, the equilibrium and condenser-split audit limits and the two energy-closure audit limits together,
      * and appends a closure suffix to the formulation label so an accepted result at one closure can never be
      * mistaken for one at another.</p>
-     *
-     * @throws IllegalArgumentException if the cutoff is nonfinite or outside [0, 0.01], or if the closure is
-     *         nonfinite or outside [0, {@link V3ConvergenceEvidence#MAXIMUM_CLOSURE_TOLERANCE}]
-     */
-    public static V3ColumnOutcome calculate(
-            V3ColumnInput input, V3SolveControl control, double stageTraceCutoffMoleFraction,
-            double convergenceClosureFraction) {
-        return calculate(input, control, stageTraceCutoffMoleFraction, convergenceClosureFraction,
-                DEFAULT_LIQUID_SUPPLY_SCREEN_RATIO);
-    }
-
-    /**
-     * Calculates at an authored liquid-supply screen ratio.
      *
      * <p>{@code liquidSupplyScreenRatio} is the calibrated tier of {@link V3LiquidSupplyScreen}: a request
      * whose authored side draws withdraw at least that fraction of the liquid reflux, feed and authored

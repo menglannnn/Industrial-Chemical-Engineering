@@ -44,7 +44,7 @@ class V3DecoderPresenceFloorTest {
     private static V3ColumnInput input() {
         var base = V3TestInputs.methaneCduInput();
         double[] feed = base.feedComponentMolarFlowsMolPerSecond(); feed[0] = 0;
-        return new V3ColumnInput(base.schemaVersion(), base.packageId(), base.assayId(), base.componentBasis(), feed,
+        return V3TestInputs.dry(base.schemaVersion(), base.packageId(), base.assayId(), base.componentBasis(), feed,
                 base.feedTemperatureKelvin(), STAGES, Math.max(1, STAGES/2), 200_000, 100,
                 List.of(new V3ColumnSpecification.CondenserOutletTemperature(313.15),
                         new V3ColumnSpecification.OrganicRefluxRatio(2), new V3ColumnSpecification.ReboilerDuty(1e6)));

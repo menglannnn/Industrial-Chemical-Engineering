@@ -129,7 +129,7 @@ class V3DegreeOfFreedomLedgerTest {
     }
 
     private static V3ColumnInput input(double refluxRatio, List<V3ColumnSpecification> specifications) {
-        return new V3ColumnInput(V3ColumnInput.SCHEMA_VERSION, "test:ideal_binary", "test:baseline",
+        return V3TestInputs.dry(V3ColumnInput.SCHEMA_VERSION, "test:ideal_binary", "test:baseline",
                 new V3ComponentBasis(List.of("methane", "ethane")), new double[] {40.0, 60.0}, 450.0,
                 4, 2, 250_000.0, 750.0, specifications);
     }

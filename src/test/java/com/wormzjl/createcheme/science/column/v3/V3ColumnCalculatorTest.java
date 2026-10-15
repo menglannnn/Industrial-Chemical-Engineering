@@ -22,7 +22,7 @@ class V3ColumnCalculatorTest {
     @Test
     void registeredPrBinaryPilotPublishesOnlyAFreshlyAuditedSuccess() {
         V3ColumnOutcome.Success success = assertInstanceOf(
-                V3ColumnOutcome.Success.class, V3ColumnCalculator.calculate(registeredBinaryPilot()));
+                V3ColumnOutcome.Success.class, V3TestInputs.calculate(registeredBinaryPilot()));
 
         assertTrue(success.result().acceptanceAudit().accepted());
         assertTrue(success.result().convergenceEvidence().satisfiesGates());
@@ -35,14 +35,14 @@ class V3ColumnCalculatorTest {
 
     @Test
     void unknownPropertyPackageIsAStableTypedFailure() {
-        V3ColumnInput invalid = new V3ColumnInput(V3ColumnInput.SCHEMA_VERSION, "test:missing", "test:missing",
+        V3ColumnInput invalid = V3TestInputs.dry(V3ColumnInput.SCHEMA_VERSION, "test:missing", "test:missing",
                 new V3ComponentBasis(List.of("component-a")), new double[] {1.0}, 400.0, 2, 1, 250_000.0, 0.0,
                 List.of(new V3ColumnSpecification.CondenserOutletTemperature(300.0),
                         new V3ColumnSpecification.OrganicRefluxRatio(1.0),
                         new V3ColumnSpecification.ReboilerDuty(0.0)));
 
         V3ColumnOutcome.Failure failure = assertInstanceOf(V3ColumnOutcome.Failure.class,
-                V3ColumnCalculator.calculate(invalid));
+                V3TestInputs.calculate(invalid));
 
         assertEquals(V3SolverFailureCode.INVALID_INPUT, failure.code());
         assertTrue(failure.diagnostics().acceptanceAudit().checks().stream().noneMatch(V3AcceptanceAudit.Check::passed));
@@ -271,7 +271,7 @@ class V3ColumnCalculatorTest {
         double[] feedFlows = crude.moleFractions();
         double totalFlow = 2_610.7 * 1_000.0 / 3_600.0;
         for (int component = 0; component < feedFlows.length; component++) feedFlows[component] *= totalFlow;
-        return new V3ColumnInput(V3ColumnInput.SCHEMA_VERSION, crude.packageId(), crude.assayId(), crude.componentBasis(),
+        return V3TestInputs.dry(V3ColumnInput.SCHEMA_VERSION, crude.packageId(), crude.assayId(), crude.componentBasis(),
                 feedFlows, 638.15, 30, 24, 250_000.0, 750.0, List.of(
                         new V3ColumnSpecification.CondenserOutletTemperature(400.0),
                         new V3ColumnSpecification.OrganicRefluxRatio(2.0),
@@ -293,7 +293,7 @@ class V3ColumnCalculatorTest {
         double totalFlow = 2_610.7 * 1_000.0 / 3_600.0;
         for (int component = 0; component < feedFlows.length; component++) feedFlows[component] *= totalFlow;
         feedFlows[0] = methaneFeedFlow;
-        return new V3ColumnInput(V3ColumnInput.SCHEMA_VERSION, crude.packageId(), crude.assayId(), crude.componentBasis(),
+        return V3TestInputs.dry(V3ColumnInput.SCHEMA_VERSION, crude.packageId(), crude.assayId(), crude.componentBasis(),
                 feedFlows, 638.15, 30, 24, 250_000.0, 750.0, List.of(
                         new V3ColumnSpecification.CondenserOutletTemperature(condenserTemperatureKelvin),
                         new V3ColumnSpecification.OrganicRefluxRatio(2.0),

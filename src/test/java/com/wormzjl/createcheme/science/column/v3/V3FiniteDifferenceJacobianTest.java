@@ -18,7 +18,7 @@ class V3FiniteDifferenceJacobianTest {
     void compactStorageMatchesEveryDenseBitForCentralAndColoredPaths() {
         for (int trays : new int[] {4, 20}) {
             for (var branch : V3CondenserPhaseBranch.values()) {
-                V3ColumnProblem problem = V3ColumnProblemResolver.resolve(new V3ColumnInput(
+                V3ColumnProblem problem = V3ColumnProblemResolver.resolve(V3TestInputs.dry(
                         V3ColumnInput.SCHEMA_VERSION, "test:compact", "test:compact",
                         new V3ComponentBasis(List.of("component-a", "component-b")), new double[] {30, 60},
                         450, trays, 2, 250_000, 750, List.of(
@@ -51,7 +51,7 @@ class V3FiniteDifferenceJacobianTest {
 
     @Test
     void compactStorageRetainsOffStageNoiseAndSignedZeroForExistingBandGuards() throws Exception {
-        var problem = V3ColumnProblemResolver.resolve(new V3ColumnInput(
+        var problem = V3ColumnProblemResolver.resolve(V3TestInputs.dry(
                 V3ColumnInput.SCHEMA_VERSION, "test:compact-noise", "test:compact-noise",
                 new V3ComponentBasis(List.of("component-a", "component-b")), new double[] {30, 60},
                 450, 4, 2, 250_000, 750, List.of(
@@ -123,7 +123,7 @@ class V3FiniteDifferenceJacobianTest {
 
     @Test
     void stageColoredFiniteDifferenceMatchesIndependentCentralColumns() {
-        V3ColumnProblem problem = V3ColumnProblemResolver.resolve(new V3ColumnInput(
+        V3ColumnProblem problem = V3ColumnProblemResolver.resolve(V3TestInputs.dry(
                 V3ColumnInput.SCHEMA_VERSION, "test:colored", "test:colored",
                 new V3ComponentBasis(List.of("component-a", "component-b")), new double[] {30.0, 60.0},
                 450.0, 4, 2, 250_000.0, 750.0, List.of(

@@ -134,7 +134,7 @@ class V3CondenserPhaseTransitionTest {
     }
 
     private static V3ColumnProblem sourceProblem() {
-        V3ColumnInput input = new V3ColumnInput(V3ColumnInput.SCHEMA_VERSION, "test:phase-transition", "test:binary",
+        V3ColumnInput input = V3TestInputs.dry(V3ColumnInput.SCHEMA_VERSION, "test:phase-transition", "test:binary",
                 new V3ComponentBasis(List.of("component-a", "inactive", "component-b")), new double[] {10.0, 0.0, 5.0},
                 638.15, 2, 1, 110000.0, 750.0, List.of(new V3ColumnSpecification.CondenserOutletTemperature(323.15),
                         new V3ColumnSpecification.OrganicRefluxRatio(2.0), new V3ColumnSpecification.ReboilerDuty(0.0)));
@@ -186,7 +186,7 @@ class V3CondenserPhaseTransitionTest {
         V3CrudeFeed crude = thermo.crudeFeed("createcheme:tia_juana_light");
         double[] flows = crude.moleFractions();
         for (int component = 0; component < flows.length; component++) flows[component] *= 2610.7 * 1000.0 / 3600.0;
-        V3ColumnInput input = new V3ColumnInput(V3ColumnInput.SCHEMA_VERSION, crude.packageId(), crude.assayId(),
+        V3ColumnInput input = V3TestInputs.dry(V3ColumnInput.SCHEMA_VERSION, crude.packageId(), crude.assayId(),
                 crude.componentBasis(), flows, 638.15, 30, 24, 110000.0, 750.0, List.of(
                         new V3ColumnSpecification.CondenserOutletTemperature(323.15),
                         new V3ColumnSpecification.OrganicRefluxRatio(2.0),
@@ -196,7 +196,7 @@ class V3CondenserPhaseTransitionTest {
             if (System.nanoTime() - started >= 45_000_000_000L) {
                 throw new CancellationException("110 kPa phase continuation exceeded the client deadline");
             }
-        }, cutoff);
+        }, cutoff, 0.0, V3ColumnCalculator.DEFAULT_LIQUID_SUPPLY_SCREEN_RATIO);
         V3ColumnOutcome.Success success = assertInstanceOf(V3ColumnOutcome.Success.class, outcome, outcome::toString);
         V3ColumnProblem selected = success.result().problem();
         assertEquals(V3CondenserPhaseBranch.TWO_PHASE, selected.topology().condenserPhaseBranch());

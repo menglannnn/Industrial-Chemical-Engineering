@@ -15,7 +15,7 @@ class V3RegroupedTransformerTest {
         var p = MaterialCatalog.bundled().requirePackage(packageId);
         double[] feed = new double[p.components().size()];
         feed[feed.length-2] = 50; feed[feed.length-8] = 50;
-        return new V3ColumnInput(1, packageId, "test:reader", new V3ComponentBasis(p.components()),
+        return V3TestInputs.dry(1, packageId, "test:reader", new V3ComponentBasis(p.components()),
                 feed, 550, 2, 1, 250000, 750, List.of(
                 new V3ColumnSpecification.CondenserOutletTemperature(300),
                 new V3ColumnSpecification.OrganicRefluxRatio(2), new V3ColumnSpecification.ReboilerDuty(0)));

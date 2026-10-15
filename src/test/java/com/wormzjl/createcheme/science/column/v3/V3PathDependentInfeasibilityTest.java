@@ -72,7 +72,7 @@ class V3PathDependentInfeasibilityTest {
     /** Draws that remove the whole feed close no material balance on any path. */
     @Test
     void theRequestOnlyDrawGateStillTypesAnInfeasibleSpecification() {
-        V3ColumnOutcome outcome = V3ColumnCalculator.calculate(
+        V3ColumnOutcome outcome = V3TestInputs.calculate(
                 V3SideDrawContractTest.input(List.of(new V3SideDrawSpec(2, 100))));
 
         V3ColumnOutcome.Failure failure = assertInstanceOf(V3ColumnOutcome.Failure.class, outcome, outcome::toString);

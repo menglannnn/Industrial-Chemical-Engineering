@@ -17,7 +17,7 @@ class V3FlashTruncationColumnTest {
         V3CrudeFeed crude = thermo.crudeFeed("createcheme:tia_juana_light");
         double[] flows = crude.moleFractions();
         for (int component = 0; component < flows.length; component++) flows[component] *= 2610.7 * 1000.0 / 3600.0;
-        V3ColumnInput input = new V3ColumnInput(V3ColumnInput.SCHEMA_VERSION, crude.packageId(), crude.assayId(),
+        V3ColumnInput input = V3TestInputs.dry(V3ColumnInput.SCHEMA_VERSION, crude.packageId(), crude.assayId(),
                 crude.componentBasis(), flows, 638.15, 30, 24, 110000.0, 750.0, List.of(
                         new V3ColumnSpecification.CondenserOutletTemperature(323.15),
                         new V3ColumnSpecification.OrganicRefluxRatio(2.0),
@@ -27,7 +27,7 @@ class V3FlashTruncationColumnTest {
             if (System.nanoTime() - started >= 45_000_000_000L) {
                 throw new CancellationException("flash-trace column integration exceeded the client deadline");
             }
-        }, 1.0e-6);
+        }, 1.0e-6, 0.0, V3ColumnCalculator.DEFAULT_LIQUID_SUPPLY_SCREEN_RATIO);
         V3ColumnOutcome.Success success = assertInstanceOf(V3ColumnOutcome.Success.class, outcome, outcome::toString);
 
         assertTrue(success.result().acceptanceAudit().accepted());
@@ -51,9 +51,9 @@ class V3FlashTruncationColumnTest {
     @Test
     void zeroCutoffKeepsTheLegacyCallResultsAndHasNoFlashTraceEvents() {
         V3ColumnInput input = binaryInput();
-        V3ColumnOutcome.Success strict = assertInstanceOf(V3ColumnOutcome.Success.class, V3ColumnCalculator.calculate(input));
+        V3ColumnOutcome.Success strict = assertInstanceOf(V3ColumnOutcome.Success.class, V3TestInputs.calculate(input));
         V3ColumnOutcome.Success zero = assertInstanceOf(V3ColumnOutcome.Success.class,
-                V3ColumnCalculator.calculate(input, V3SolveControl.UNBOUNDED, 0.0));
+                V3ColumnCalculator.calculate(input, V3SolveControl.UNBOUNDED, 0.0, 0.0, V3ColumnCalculator.DEFAULT_LIQUID_SUPPLY_SCREEN_RATIO));
         assertEquals(strict.result().inputDigest(), zero.result().inputDigest());
         assertEquals(strict.result().streams(), zero.result().streams());
         assertEquals(strict.diagnostics(), zero.diagnostics());

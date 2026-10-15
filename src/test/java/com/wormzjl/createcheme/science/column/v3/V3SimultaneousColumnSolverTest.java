@@ -312,7 +312,7 @@ class V3SimultaneousColumnSolverTest {
     }
 
     private static V3ColumnProblem problem() {
-        V3ColumnInput input = new V3ColumnInput(V3ColumnInput.SCHEMA_VERSION, "test:newton", "test:binary",
+        V3ColumnInput input = V3TestInputs.dry(V3ColumnInput.SCHEMA_VERSION, "test:newton", "test:binary",
                 new V3ComponentBasis(List.of("component-a", "component-b")), new double[] {30.0, 60.0}, 400.0,
                 4, 2, 250_000.0, 750.0, List.of(
                         new V3ColumnSpecification.CondenserOutletTemperature(400.0),
@@ -324,7 +324,7 @@ class V3SimultaneousColumnSolverTest {
     private static V3ColumnInput realCrudeInput(V3CrudeFeed crude) {
         double[] feedFlows = crude.moleFractions();
         for (int component = 0; component < feedFlows.length; component++) feedFlows[component] *= 100.0;
-        return new V3ColumnInput(V3ColumnInput.SCHEMA_VERSION, crude.packageId(), crude.assayId(),
+        return V3TestInputs.dry(V3ColumnInput.SCHEMA_VERSION, crude.packageId(), crude.assayId(),
                 crude.componentBasis(), feedFlows, 638.15, 4, 2, 266_500.0, 750.0, List.of(
                         new V3ColumnSpecification.CondenserOutletTemperature(332.15),
                         new V3ColumnSpecification.OrganicRefluxRatio(4.17),

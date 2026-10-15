@@ -21,7 +21,7 @@ class V3SideDrawCalculatorTest {
         long started = System.nanoTime();
         V3ColumnOutcome outcome = V3ColumnCalculator.calculate(input, () -> {
             if (System.nanoTime() - started > 45_000_000_000L) throw new AssertionError("side-draw solve exceeded 45 seconds");
-        }, cutoff);
+        }, cutoff, 0.0, V3ColumnCalculator.DEFAULT_LIQUID_SUPPLY_SCREEN_RATIO);
         System.out.println("Qualified side draws: pressure=" + pressure + ", cutoff=" + cutoff + "; "
                 + (System.nanoTime() - started) / 1e9 + " s; " + outcome);
         V3ColumnOutcome.Success success = assertInstanceOf(V3ColumnOutcome.Success.class, outcome, outcome::toString);
@@ -83,7 +83,7 @@ class V3SideDrawCalculatorTest {
     @Test
     void anOverSpecifiedProductSlateAttemptsRequestedGeometryAndNamesAnAuthoredTray() {
         V3ColumnOutcome.Failure screened = assertInstanceOf(V3ColumnOutcome.Failure.class,
-                V3ColumnCalculator.calculate(canonicalInput(150_000)));
+                V3TestInputs.calculate(canonicalInput(150_000)));
         assertEquals(V3SolverFailureCode.INFEASIBLE_SPECIFICATION, screened.code());
         assertEquals(0, screened.diagnostics().newtonIterations(), "the screen may not precede itself with a solve");
         assertTrue(screened.summary().contains("liquid that reflux"), screened::summary);
@@ -187,7 +187,7 @@ class V3SideDrawCalculatorTest {
                 new V3ColumnSpecification.ReboilerDuty(100_000)), List.of(new V3SideDrawSpec(1, 99)));
 
         V3ColumnOutcome.Failure screened = assertInstanceOf(V3ColumnOutcome.Failure.class,
-                V3ColumnCalculator.calculate(input));
+                V3TestInputs.calculate(input));
         assertNotEquals(V3SolverFailureCode.INVALID_INPUT, screened.code());
         assertEquals(V3SolverFailureCode.INFEASIBLE_SPECIFICATION, screened.code());
         assertTrue(screened.summary().contains("tray 2"), screened::summary);

@@ -62,11 +62,6 @@ public record V3InitializationOptions(Mode mode, WetStart wetStart, int maximumI
     public static final V3InitializationOptions CURRENT =
             new V3InitializationOptions(Mode.CURRENT_ONLY, WetStart.DRY_START, 16, 2_000, Correction.PROGRESS);
 
-    /** The qualified progress rule; kept for the runtime command test, which states no correction. */
-    public V3InitializationOptions(Mode mode, WetStart wetStart, int maximumIterations, int budgetMilliseconds) {
-        this(mode, wetStart, maximumIterations, budgetMilliseconds, Correction.PROGRESS);
-    }
-
     public V3InitializationOptions {
         Objects.requireNonNull(mode, "mode");
         Objects.requireNonNull(wetStart, "wetStart");

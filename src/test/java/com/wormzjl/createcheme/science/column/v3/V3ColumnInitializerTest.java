@@ -26,7 +26,7 @@ class V3ColumnInitializerTest {
         V3CrudeFeed crude = thermo.crudeFeed("createcheme:tia_juana_light");
         double[] feedFlows = crude.moleFractions();
         for (int component = 0; component < feedFlows.length; component++) feedFlows[component] *= 100.0;
-        V3ColumnInput input = new V3ColumnInput(V3ColumnInput.SCHEMA_VERSION, crude.packageId(), crude.assayId(),
+        V3ColumnInput input = V3TestInputs.dry(V3ColumnInput.SCHEMA_VERSION, crude.packageId(), crude.assayId(),
                 crude.componentBasis(), feedFlows, 638.15, 4, 2, 266_500.0, 750.0, List.of(
                         new V3ColumnSpecification.CondenserOutletTemperature(332.15),
                         new V3ColumnSpecification.OrganicRefluxRatio(4.17),
@@ -183,7 +183,7 @@ class V3ColumnInitializerTest {
     }
 
     private static V3ColumnProblem problem(double refluxRatio, V3CondenserPhaseBranch branch, double[] feed) {
-        V3ColumnInput input = new V3ColumnInput(V3ColumnInput.SCHEMA_VERSION, "test:initializer", "test:binary",
+        V3ColumnInput input = V3TestInputs.dry(V3ColumnInput.SCHEMA_VERSION, "test:initializer", "test:binary",
                 new V3ComponentBasis(List.of("component-a", "component-b")), feed, 460.0, 4, 2, 250_000.0, 750.0,
                 List.of(new V3ColumnSpecification.CondenserOutletTemperature(400.0),
                         new V3ColumnSpecification.OrganicRefluxRatio(refluxRatio),

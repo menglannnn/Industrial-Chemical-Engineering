@@ -20,7 +20,7 @@ class V3TruncationStructureTest {
             for (int trays = V3ColumnInput.MIN_STAGE_COUNT; trays <= 8; trays++) {
                 for (int feedTray = 1; feedTray <= trays; feedTray++) {
                     V3ColumnInput template = V3TruncationSupportTest.problem(branch, 0.0, 2).input();
-                    V3ColumnInput input = new V3ColumnInput(template.schemaVersion(), template.packageId(),
+                    V3ColumnInput input = V3TestInputs.dry(template.schemaVersion(), template.packageId(),
                             template.assayId(), template.componentBasis(), template.feedComponentMolarFlowsMolPerSecond(),
                             template.feedTemperatureKelvin(), trays, feedTray, template.topPressurePascal(),
                             template.stagePressureDropPascal(), template.specifications());

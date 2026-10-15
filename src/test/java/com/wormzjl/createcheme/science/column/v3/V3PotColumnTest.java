@@ -14,7 +14,7 @@ class V3PotColumnTest {
                 interior,interior+1,250000,750,List.of(new V3ColumnSpecification.CondenserOutletTemperature(300),
                     new V3ColumnSpecification.OrganicRefluxRatio(2),new V3ColumnSpecification.ReboilerDuty(0)),
                 List.of(),wet?List.of(new V3SteamFeedSpec(interior+1,10,600)):List.of(),List.of(),8);
-            var outcome=V3ColumnCalculator.calculate(input);
+            var outcome=V3TestInputs.calculate(input);
             var success=assertInstanceOf(V3ColumnOutcome.Success.class,outcome,()->outcome.toString());
             assertTrue(success.result().acceptanceAudit().accepted());
             var problem=success.result().problem();

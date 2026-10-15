@@ -50,7 +50,7 @@ class V3ConvergenceClosureTest {
     void theDefaultClosureLeavesEveryEvaluationCaseExactlyWhereItWas(
             String label, String kind, int newtonIterations, String solvePath) {
         V3ColumnInput input = evaluationCase(label);
-        V3ColumnOutcome outcome = V3ColumnCalculator.calculate(input, boundedControl(), 0.0, 0.0);
+        V3ColumnOutcome outcome = V3ColumnCalculator.calculate(input, boundedControl(), 0.0, 0.0, V3ColumnCalculator.DEFAULT_LIQUID_SUPPLY_SCREEN_RATIO);
         assertEquals(kind, outcomeKind(outcome), label);
         assertEquals(solvePath, outcome.diagnostics().solvePath(), label);
         assertEquals(newtonIterations, outcome.diagnostics().newtonIterations(), label);
@@ -77,7 +77,7 @@ class V3ConvergenceClosureTest {
     @CsvSource({"A, 0", "B, 2", "C, 3", "D, 7", "E, 3"})
     void aLooseClosureAcceptsEveryCaseWithinItsOwnScaledLimits(String label, int defaultNewtonIterations) {
         V3ColumnInput input = evaluationCase(label);
-        V3ColumnOutcome outcome = V3ColumnCalculator.calculate(input, boundedControl(), 0.0, LOOSE_CLOSURE);
+        V3ColumnOutcome outcome = V3ColumnCalculator.calculate(input, boundedControl(), 0.0, LOOSE_CLOSURE, V3ColumnCalculator.DEFAULT_LIQUID_SUPPLY_SCREEN_RATIO);
         V3ColumnOutcome.Success success = assertInstanceOf(V3ColumnOutcome.Success.class, outcome, outcome::toString);
         V3ColumnResult result = success.result();
 
@@ -116,7 +116,7 @@ class V3ConvergenceClosureTest {
     void theGlobalEnergyClosureLimitIsTheSumOfTheTrayClosures() {
         V3ColumnInput input = evaluationCase("B");
         V3ColumnOutcome.Success success = assertInstanceOf(V3ColumnOutcome.Success.class,
-                V3ColumnCalculator.calculate(input, boundedControl(), 0.0, LOOSE_CLOSURE));
+                V3ColumnCalculator.calculate(input, boundedControl(), 0.0, LOOSE_CLOSURE, V3ColumnCalculator.DEFAULT_LIQUID_SUPPLY_SCREEN_RATIO));
         V3ColumnResult result = success.result();
         double energyScale = Math.max(1.0,
                 result.problem().activeComponentBasis().totalFeedFlowMolPerSecond() * 100_000.0);
@@ -126,7 +126,7 @@ class V3ConvergenceClosureTest {
         assertTrue(global.passed(), global::toString);
 
         V3ColumnOutcome.Success tight = assertInstanceOf(V3ColumnOutcome.Success.class,
-                V3ColumnCalculator.calculate(input, boundedControl(), 0.0, 0.0));
+                V3ColumnCalculator.calculate(input, boundedControl(), 0.0, 0.0, V3ColumnCalculator.DEFAULT_LIQUID_SUPPLY_SCREEN_RATIO));
         V3AcceptanceAudit.Check frozen = check(tight.result(), "GLOBAL_ENERGY_BALANCE");
         assertTrue(frozen.limit() < global.limit(), "the default closure must not widen the boundary closure");
     }
@@ -149,7 +149,7 @@ class V3ConvergenceClosureTest {
         for (double invalid : new double[] {-1.0e-9, 1.0000001e-3, 1.0, Double.NaN, Double.POSITIVE_INFINITY}) {
             assertThrows(IllegalArgumentException.class, () -> V3ColumnCalculator.closureTolerance(invalid));
             assertThrows(IllegalArgumentException.class,
-                    () -> V3ColumnCalculator.calculate(binaryInput(), V3SolveControl.UNBOUNDED, 0.0, invalid));
+                    () -> V3ColumnCalculator.calculate(binaryInput(), V3SolveControl.UNBOUNDED, 0.0, invalid, V3ColumnCalculator.DEFAULT_LIQUID_SUPPLY_SCREEN_RATIO));
         }
         assertThrows(IllegalArgumentException.class, () -> V3ConvergenceEvidence.requireClosure(1.0e-9));
         assertThrows(IllegalArgumentException.class, () -> V3ConvergenceEvidence.requireClosure(1.0e-2));

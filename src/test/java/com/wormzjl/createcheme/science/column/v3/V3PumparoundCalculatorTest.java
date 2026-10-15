@@ -104,7 +104,7 @@ class V3PumparoundCalculatorTest {
     @Test
     void impossibleCoolingIsRejectedByTheStaticAdmissionGateWithoutASolve() {
         long started = System.nanoTime();
-        V3ColumnOutcome outcome = V3ColumnCalculator.calculate(v1ScaleInput("createcheme:cdu17_tjl_acs2018",
+        V3ColumnOutcome outcome = V3TestInputs.calculate(v1ScaleInput("createcheme:cdu17_tjl_acs2018",
                 List.of(new V3PumparoundSpec(8, 12, -200.0e6, V3PumparoundSpec.Split.UNIFORM))));
         System.out.printf(Locale.ROOT, "static gate: %.3f s; %s%n", (System.nanoTime() - started) / 1.0e9, outcome);
 
@@ -124,7 +124,7 @@ class V3PumparoundCalculatorTest {
      */
     @Test
     void aHeaterCreditWidensTheStaticGateWithoutWaivingIt() {
-        V3ColumnOutcome outcome = V3ColumnCalculator.calculate(v1ScaleInput("createcheme:cdu17_tjl_acs2018", List.of(
+        V3ColumnOutcome outcome = V3TestInputs.calculate(v1ScaleInput("createcheme:cdu17_tjl_acs2018", List.of(
                 new V3PumparoundSpec(8, 12, -200.0e6, V3PumparoundSpec.Split.UNIFORM),
                 new V3PumparoundSpec(8, 13, 1.0e6, V3PumparoundSpec.Split.RETURN_TRAY))));
 
@@ -217,7 +217,7 @@ class V3PumparoundCalculatorTest {
         Run base = run("base", v1ScaleInput("createcheme:cdu17_tjl_acs2018", List.of()));
         double baseCondenser = Math.abs(base.success().result().dutyLedger().orElseThrow().condenserWatts());
         long started = System.nanoTime();
-        V3ColumnOutcome outcome = V3ColumnCalculator.calculate(v1ScaleInput("createcheme:cdu17_tjl_acs2018",
+        V3ColumnOutcome outcome = V3TestInputs.calculate(v1ScaleInput("createcheme:cdu17_tjl_acs2018",
                 List.of(new V3PumparoundSpec(8, 12, -1.02 * baseCondenser, V3PumparoundSpec.Split.UNIFORM))));
         System.out.printf(Locale.ROOT, "condenser-bound gate: %.3f s; Q_cond0=%.4g MW; %s%n",
                 (System.nanoTime() - started) / 1.0e9, baseCondenser / 1.0e6, outcome);

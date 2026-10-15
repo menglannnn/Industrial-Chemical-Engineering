@@ -12,7 +12,7 @@ class V3ColumnDisplayResultTest {
         V3ColumnInput input = V3TestInputs.cdu17Binary("test:registered-pr-binary");
         double[] feedFlows = input.feedComponentMolarFlowsMolPerSecond();
 
-        V3ColumnOutcome.Success success = (V3ColumnOutcome.Success) V3ColumnCalculator.calculate(input);
+        V3ColumnOutcome.Success success = (V3ColumnOutcome.Success) V3TestInputs.calculate(input);
         V3ColumnDisplayResult view = V3ColumnDisplayResult.fromAccepted(success);
 
         assertEquals(success.result().inputDigest().hexadecimalSha256(), view.inputDigest());

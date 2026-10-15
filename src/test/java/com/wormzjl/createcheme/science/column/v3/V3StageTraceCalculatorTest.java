@@ -12,9 +12,9 @@ class V3StageTraceCalculatorTest {
     @Test
     void zeroCutoffPreservesLegacyDigestStreamsAuditAndDiagnosticsExactly() {
         V3ColumnInput input = binaryInput();
-        V3ColumnOutcome.Success original = assertInstanceOf(V3ColumnOutcome.Success.class, V3ColumnCalculator.calculate(input));
+        V3ColumnOutcome.Success original = assertInstanceOf(V3ColumnOutcome.Success.class, V3TestInputs.calculate(input));
         V3ColumnOutcome.Success zero = assertInstanceOf(V3ColumnOutcome.Success.class,
-                V3ColumnCalculator.calculate(input, V3SolveControl.UNBOUNDED, 0.0));
+                V3ColumnCalculator.calculate(input, V3SolveControl.UNBOUNDED, 0.0, 0.0, V3ColumnCalculator.DEFAULT_LIQUID_SUPPLY_SCREEN_RATIO));
         assertEquals(original.result().inputDigest(), zero.result().inputDigest());
         assertEquals(original.result().streams(), zero.result().streams());
         assertEquals(original.diagnostics(), zero.diagnostics());
@@ -31,7 +31,7 @@ class V3StageTraceCalculatorTest {
         V3ColumnInput input = binaryInput();
         double cutoff = 1.0e-300;
         V3ColumnOutcome.Success success = assertInstanceOf(V3ColumnOutcome.Success.class,
-                V3ColumnCalculator.calculate(input, V3SolveControl.UNBOUNDED, cutoff));
+                V3ColumnCalculator.calculate(input, V3SolveControl.UNBOUNDED, cutoff, 0.0, V3ColumnCalculator.DEFAULT_LIQUID_SUPPLY_SCREEN_RATIO));
         assertTrue(success.result().problem().truncationSupport().isIdentity());
         assertEquals(V3ColumnCalculator.FORMULATION_REVISION, success.result().formulationRevision());
         assertEquals(success.result().formulationRevision(), V3ColumnDisplayResult.fromAccepted(success).formulationRevision());
@@ -44,7 +44,7 @@ class V3StageTraceCalculatorTest {
     void thirtyStageTruncatedSolvePublishesExactZerosAndItsAuditedDefect() {
         double condenserTemperature = 323.15;
         V3ColumnInput input = crudeInput(condenserTemperature);
-        V3ColumnOutcome outcome = V3ColumnCalculator.calculate(input, V3SolveControl.UNBOUNDED, 1.0e-6);
+        V3ColumnOutcome outcome = V3ColumnCalculator.calculate(input, V3SolveControl.UNBOUNDED, 1.0e-6, 0.0, V3ColumnCalculator.DEFAULT_LIQUID_SUPPLY_SCREEN_RATIO);
         System.out.println("stage trace " + condenserTemperature + ": " + outcome);
         V3ColumnOutcome.Success success = assertInstanceOf(V3ColumnOutcome.Success.class, outcome, outcome::toString);
         V3TruncationSupport support = success.result().problem().truncationSupport();
@@ -83,7 +83,7 @@ class V3StageTraceCalculatorTest {
     void hotCondenserPhasePathKeepsItsFrozenMaskInsideTheRecomputedMassBudget() {
         V3ColumnInput input = crudeInput(400.0);
         V3ColumnOutcome.Success success = assertInstanceOf(V3ColumnOutcome.Success.class,
-                V3ColumnCalculator.calculate(input, V3SolveControl.UNBOUNDED, 1.0e-6));
+                V3ColumnCalculator.calculate(input, V3SolveControl.UNBOUNDED, 1.0e-6, 0.0, V3ColumnCalculator.DEFAULT_LIQUID_SUPPLY_SCREEN_RATIO));
 
         // A mask is still not entitled to acceptance: the defect is recomputed from the candidate and must
         // sit inside the cutoff budget plus the floor's own per-sink-edge construction bound.
@@ -107,7 +107,7 @@ class V3StageTraceCalculatorTest {
     void publicCutoffValidationPrecedesAnyScientificAttempt() {
         for (double invalid : new double[] {-1.0, 0.01001, Double.NaN, Double.POSITIVE_INFINITY}) {
             assertThrows(IllegalArgumentException.class, () -> V3ColumnCalculator.calculate(binaryInput(),
-                    () -> fail("invalid cutoff must not reach an attempt"), invalid));
+                    () -> fail("invalid cutoff must not reach an attempt"), invalid, 0.0, V3ColumnCalculator.DEFAULT_LIQUID_SUPPLY_SCREEN_RATIO));
         }
     }
 
@@ -116,7 +116,7 @@ class V3StageTraceCalculatorTest {
         V3CrudeFeed crude = thermo.crudeFeed("createcheme:tia_juana_light");
         double[] flows = crude.moleFractions();
         for (int component = 0; component < flows.length; component++) flows[component] *= 2_610.7 * 1_000.0 / 3_600.0;
-        return new V3ColumnInput(V3ColumnInput.SCHEMA_VERSION, crude.packageId(), crude.assayId(), crude.componentBasis(),
+        return V3TestInputs.dry(V3ColumnInput.SCHEMA_VERSION, crude.packageId(), crude.assayId(), crude.componentBasis(),
                 flows, 638.15, 30, 24, 250_000.0, 750.0, List.of(
                 new V3ColumnSpecification.CondenserOutletTemperature(condenserTemperature),
                 new V3ColumnSpecification.OrganicRefluxRatio(2.0), new V3ColumnSpecification.ReboilerDuty(8_000_000.0)));

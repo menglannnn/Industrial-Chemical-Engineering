@@ -181,7 +181,7 @@ class V3ExactWarmStartSweepTest {
         double[] feedFlows = new double[thermo.componentBasis().componentCount()];
         feedFlows[6] = feedFlow / 2.0;
         feedFlows[13] = feedFlow / 2.0;
-        return new V3ColumnInput(V3ColumnInput.SCHEMA_VERSION, thermo.packageId(), "test:registered-pr-binary",
+        return V3TestInputs.dry(V3ColumnInput.SCHEMA_VERSION, thermo.packageId(), "test:registered-pr-binary",
                 thermo.componentBasis(), feedFlows, feedTemperature, 2, 1, topPressure, pressureDrop, List.of(
                         new V3ColumnSpecification.CondenserOutletTemperature(condenserTemperature),
                         new V3ColumnSpecification.OrganicRefluxRatio(reflux),

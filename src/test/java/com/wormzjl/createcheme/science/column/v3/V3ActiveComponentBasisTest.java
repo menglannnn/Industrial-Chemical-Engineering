@@ -9,7 +9,7 @@ import org.junit.jupiter.api.Test;
 class V3ActiveComponentBasisTest {
     @Test
     void exactZeroPublicComponentsAreRemovedFromTheNumericalLedgerAndRetainStablePublicIndices() {
-        V3ColumnInput input = new V3ColumnInput(V3ColumnInput.SCHEMA_VERSION, "test:active", "test:three",
+        V3ColumnInput input = V3TestInputs.dry(V3ColumnInput.SCHEMA_VERSION, "test:active", "test:three",
                 new V3ComponentBasis(List.of("component-a", "component-b", "component-c")), new double[] {4.0, 0.0, 6.0},
                 400.0, 4, 2, 250_000.0, 750.0, List.of(
                         new V3ColumnSpecification.CondenserOutletTemperature(350.0),

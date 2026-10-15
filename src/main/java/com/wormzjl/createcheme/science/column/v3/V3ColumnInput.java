@@ -46,17 +46,6 @@ public record V3ColumnInput(
     public static final double DEFAULT_COLUMN_DIAMETER_METRES = 8.0;
     public static final double MAX_COLUMN_DIAMETER_METRES = 15.0;
 
-    /** Shorthand: no side draws, steam, pumparounds or tray hydraulics (prescribed uniform drop). */
-    public V3ColumnInput(
-            int schemaVersion, String packageId, String assayId, V3ComponentBasis componentBasis,
-            double[] feedComponentMolarFlowsMolPerSecond, double feedTemperatureKelvin, int stageCount,
-            int feedStageNumber, double topPressurePascal, double stagePressureDropPascal,
-            List<V3ColumnSpecification> specifications) {
-        this(schemaVersion, packageId, assayId, componentBasis, feedComponentMolarFlowsMolPerSecond,
-                feedTemperatureKelvin, stageCount, feedStageNumber, topPressurePascal, stagePressureDropPascal,
-                specifications, List.of(), List.of(), List.of(), PRESCRIBED_DROP_DIAMETER);
-    }
-
     /** Shorthand: side draws only; no steam, pumparounds or tray hydraulics. */
     public V3ColumnInput(
             int schemaVersion, String packageId, String assayId, V3ComponentBasis componentBasis,

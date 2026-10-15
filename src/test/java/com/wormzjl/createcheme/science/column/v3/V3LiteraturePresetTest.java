@@ -49,7 +49,7 @@ class V3LiteraturePresetTest {
     @Test
     void theLiteraturePresetPublishesWithATrayOneWaterDewPointWarning() {
         V3ColumnOutcome outcome = V3ColumnCalculator.calculate(
-                V3TestInputs.literatureCduInput().withColumnDiameter(0.0), () -> {}, 0.0);
+                V3TestInputs.literatureCduInput().withColumnDiameter(0.0), () -> {}, 0.0, 0.0, V3ColumnCalculator.DEFAULT_LIQUID_SUPPLY_SCREEN_RATIO);
         V3ColumnOutcome.Success success = assertInstanceOf(V3ColumnOutcome.Success.class, outcome, outcome::toString);
         assertTrue(outcome.diagnostics().maximumScaledResidual() < 1.0e-10, outcome::toString);
         V3AcceptanceAudit audit = success.diagnostics().acceptanceAudit();
@@ -87,7 +87,7 @@ class V3LiteraturePresetTest {
                 preset.specifications(), preset.sideDraws(), preset.steamFeeds(), List.of(
                         new V3PumparoundSpec(8, 10, -6.42e6, V3PumparoundSpec.Split.UNIFORM),
                         preset.pumparounds().get(1), preset.pumparounds().get(2)), V3ColumnInput.PRESCRIBED_DROP_DIAMETER);
-        V3ColumnOutcome outcome = V3ColumnCalculator.calculate(halved, () -> {}, 0.0);
+        V3ColumnOutcome outcome = V3ColumnCalculator.calculate(halved, () -> {}, 0.0, 0.0, V3ColumnCalculator.DEFAULT_LIQUID_SUPPLY_SCREEN_RATIO);
         V3ColumnOutcome.Success success = assertInstanceOf(V3ColumnOutcome.Success.class, outcome, outcome::toString);
         V3AcceptanceAudit.Check dewPoint = success.diagnostics().acceptanceAudit().checks().stream()
                 .filter(check -> check.family().equals("WATER_DEW_POINT")).findFirst().orElseThrow();

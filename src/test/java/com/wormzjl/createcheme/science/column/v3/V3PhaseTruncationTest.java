@@ -355,7 +355,7 @@ class V3PhaseTruncationTest {
     }
 
     private static V3ColumnProblem original() {
-        V3ColumnInput input = new V3ColumnInput(V3ColumnInput.SCHEMA_VERSION, "test:truncation", "test:ternary",
+        V3ColumnInput input = V3TestInputs.dry(V3ColumnInput.SCHEMA_VERSION, "test:truncation", "test:ternary",
                 new V3ComponentBasis(List.of("component-a", "dormant", "component-b", "trace")),
                 new double[] {30.0, 0.0, 60.0, TRACE_FEED}, 400.0, 4, 2, 250_000.0, 750.0, List.of(
                 new V3ColumnSpecification.CondenserOutletTemperature(400.0),

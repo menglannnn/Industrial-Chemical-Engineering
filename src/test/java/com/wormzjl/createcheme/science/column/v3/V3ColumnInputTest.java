@@ -16,7 +16,7 @@ class V3ColumnInputTest {
     void inputDefensivelyCopiesMutableFeedAndSpecificationRepresentations() {
         double[] feed = {40.0, 60.0};
         List<V3ColumnSpecification> specifications = new ArrayList<>(specifications(4.17));
-        V3ColumnInput input = new V3ColumnInput(V3ColumnInput.SCHEMA_VERSION, "test:ideal_binary", "test:baseline",
+        V3ColumnInput input = V3TestInputs.dry(V3ColumnInput.SCHEMA_VERSION, "test:ideal_binary", "test:baseline",
                 basis(), feed, 450.0, 4, 2, 250_000.0, 750.0, specifications);
 
         feed[0] = 0.0;
@@ -46,9 +46,9 @@ class V3ColumnInputTest {
 
     @Test
     void resolverRejectsUnsupportedSchemaAndFeedBelowTheLastTray() {
-        V3ColumnInput unsupportedSchema = new V3ColumnInput(2, "test:ideal_binary", "test:baseline", basis(),
+        V3ColumnInput unsupportedSchema = V3TestInputs.dry(2, "test:ideal_binary", "test:baseline", basis(),
                 new double[] {40.0, 60.0}, 450.0, 4, 2, 250_000.0, 750.0, specifications(4.17));
-        V3ColumnInput invalidFeedTray = new V3ColumnInput(V3ColumnInput.SCHEMA_VERSION, "test:ideal_binary",
+        V3ColumnInput invalidFeedTray = V3TestInputs.dry(V3ColumnInput.SCHEMA_VERSION, "test:ideal_binary",
                 "test:baseline", basis(), new double[] {40.0, 60.0}, 450.0, 4, 6, 250_000.0, 750.0,
                 specifications(4.17));
 
@@ -85,7 +85,7 @@ class V3ColumnInputTest {
     }
 
     private static V3ColumnInput input(double refluxRatio) {
-        return new V3ColumnInput(V3ColumnInput.SCHEMA_VERSION, "test:ideal_binary", "test:baseline", basis(),
+        return V3TestInputs.dry(V3ColumnInput.SCHEMA_VERSION, "test:ideal_binary", "test:baseline", basis(),
                 new double[] {40.0, 60.0}, 450.0, 4, 2, 250_000.0, 750.0, specifications(refluxRatio));
     }
 

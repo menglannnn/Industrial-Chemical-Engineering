@@ -16,7 +16,7 @@ class V3InspectionCodecTest {
         List<String> axis = new ArrayList<>();
         double[] flows = new double[components];
         for (int c=0;c<components;c++) {axis.add("c"+c);flows[c]=1;}
-        var input = new V3ColumnInput(1,"test:package","test:case",new V3ComponentBasis(axis),flows,500,
+        var input = com.wormzjl.createcheme.science.column.v3.V3TestInputs.dry(1,"test:package","test:case",new V3ComponentBasis(axis),flows,500,
                 trays,1,250000,0,List.of(new V3ColumnSpecification.CondenserOutletTemperature(350),
                 new V3ColumnSpecification.OrganicRefluxRatio(2),new V3ColumnSpecification.ReboilerDuty(0)));
         var x = Collections.nCopies(components,1.0/components);

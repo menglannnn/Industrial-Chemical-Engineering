@@ -451,26 +451,6 @@ public final class ProcessSolveServices {
             V3InitializationOptions initialization, V3NeuralInitializer model, double liquidSupplyScreenRatio,
             com.wormzjl.createcheme.science.material.MaterialCatalog catalog)
             implements ProcessSolveCommand {
-        V3ColumnCommand(V3ColumnInput input, double cutoff, double closure,
-                V3InitializationOptions initialization, V3NeuralInitializer model, double screen) {
-            this(input, cutoff, closure, initialization, model, screen,
-                    com.wormzjl.createcheme.science.material.MaterialRuntime.current());
-        }
-        /** Existing initializer-explicit callers retain the default request-only liquid-supply screen. */
-        V3ColumnCommand(V3ColumnInput input, double cutoff, double closure,
-                V3InitializationOptions initialization, V3NeuralInitializer model) {
-            this(input, cutoff, closure, initialization, model,
-                    V3ColumnCalculator.DEFAULT_LIQUID_SUPPLY_SCREEN_RATIO);
-        }
-        /** Existing explicit numerical callers retain their classical behavior. */
-        V3ColumnCommand(V3ColumnInput input, double cutoff, double closure) {
-            this(input, cutoff, closure, V3InitializationOptions.CURRENT, V3NeuralInitializer.UNAVAILABLE);
-        }
-        /** Cutoff-only snapshot at the frozen default convergence closure. */
-        V3ColumnCommand(V3ColumnInput input, double stageTraceCutoffMoleFraction) {
-            this(input, stageTraceCutoffMoleFraction, 0.0);
-        }
-
         V3ColumnCommand {
             Objects.requireNonNull(catalog, "catalog");
             Objects.requireNonNull(input, "input");

@@ -36,7 +36,7 @@ class V3LiquidSupplyScreenTest {
         V3ColumnInput input = input(20.0, List.of());
         assertEquals(0.5, V3LiquidSupplyScreen.evaluate(input).ratio(), 1.0e-12);
 
-        V3ColumnOutcome.Failure failure = failure(V3ColumnCalculator.calculate(input));
+        V3ColumnOutcome.Failure failure = failure(V3TestInputs.calculate(input));
 
         assertEquals(V3SolverFailureCode.INFEASIBLE_SPECIFICATION, failure.code());
         assertTrue(failure.summary().contains("0.5000 of"), failure::summary);
@@ -52,7 +52,7 @@ class V3LiquidSupplyScreenTest {
     void theLearnedRouteIsScreenedAtTheSameEntryAsTheClassicalOne() {
         V3ColumnInput input = input(20.0, List.of());
 
-        V3ColumnOutcome.Failure classical = failure(V3ColumnCalculator.calculate(input));
+        V3ColumnOutcome.Failure classical = failure(V3TestInputs.calculate(input));
         V3ColumnOutcome.Failure learned = failure(V3ColumnCalculator.calculate(input, V3SolveControl.UNBOUNDED,
                 0.0, 0.0, lnnOnly(), V3NeuralInitializer.UNAVAILABLE,
                 V3ColumnCalculator.DEFAULT_LIQUID_SUPPLY_SCREEN_RATIO));
@@ -119,7 +119,7 @@ class V3LiquidSupplyScreenTest {
                 new V3ComponentBasis(List.of("methane", "n-pentane")), new double[] {40.0, 60.0}, 450.0, 4, 3,
                 250_000.0, 750.0, specifications(), List.of(new V3SideDrawSpec(DRAW_TRAY, 20.0)));
 
-        V3ColumnOutcome.Failure failure = failure(V3ColumnCalculator.calculate(unregistered));
+        V3ColumnOutcome.Failure failure = failure(V3TestInputs.calculate(unregistered));
 
         assertEquals(V3SolverFailureCode.INFEASIBLE_SPECIFICATION, failure.code());
         assertEquals("input/liquid-supply-1", failure.diagnostics().solvePath());
@@ -149,7 +149,7 @@ class V3LiquidSupplyScreenTest {
         assertTrue(expected < V3LiquidSupplyScreen.DEFAULT_CALIBRATED_RATIO,
                 () -> String.format(Locale.ROOT, "cooled ratio %.4f must clear the calibrated threshold", expected));
 
-        assertEquals(V3SolverFailureCode.INFEASIBLE_SPECIFICATION, failure(V3ColumnCalculator.calculate(without)).code());
+        assertEquals(V3SolverFailureCode.INFEASIBLE_SPECIFICATION, failure(V3TestInputs.calculate(without)).code());
         V3ColumnOutcome.Failure admitted = failure(V3ColumnCalculator.calculate(cooled, V3SolveControl.UNBOUNDED,
                 0.0, 0.0, lnnOnly(), V3NeuralInitializer.UNAVAILABLE,
                 V3ColumnCalculator.DEFAULT_LIQUID_SUPPLY_SCREEN_RATIO));

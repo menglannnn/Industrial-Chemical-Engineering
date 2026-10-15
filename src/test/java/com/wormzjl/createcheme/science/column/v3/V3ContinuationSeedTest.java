@@ -188,7 +188,7 @@ class V3ContinuationSeedTest {
 
     /** The topology of one continuation grid of a 40-stage, feed-tray-37 request. */
     private static V3ColumnTopology grid(int stageCount) {
-        V3ColumnInput input = new V3ColumnInput(V3ColumnInput.SCHEMA_VERSION, "test:continuation", "test:ternary",
+        V3ColumnInput input = V3TestInputs.dry(V3ColumnInput.SCHEMA_VERSION, "test:continuation", "test:ternary",
                 new V3ComponentBasis(List.of("component-a", "component-b")), new double[] {30.0, 60.0}, 400.0,
                 REQUESTED_STAGES, REQUESTED_FEED_TRAY, 250_000.0, 750.0, List.of(
                 new V3ColumnSpecification.CondenserOutletTemperature(400.0),
@@ -201,7 +201,7 @@ class V3ContinuationSeedTest {
 
     /** The manufactured ternary column of {@link V3TruncationNumericsTest}: four trays, feed on tray two. */
     private static V3ColumnProblem ternary(V3CondenserPhaseBranch branch) {
-        V3ColumnInput input = new V3ColumnInput(V3ColumnInput.SCHEMA_VERSION, "test:continuation", "test:ternary",
+        V3ColumnInput input = V3TestInputs.dry(V3ColumnInput.SCHEMA_VERSION, "test:continuation", "test:ternary",
                 new V3ComponentBasis(List.of("component-a", "dormant", "component-b", "trace")),
                 new double[] {30.0, 0.0, 60.0, TRACE_FEED}, 400.0, 4, 2, 250_000.0, 750.0, List.of(
                 new V3ColumnSpecification.CondenserOutletTemperature(400.0),

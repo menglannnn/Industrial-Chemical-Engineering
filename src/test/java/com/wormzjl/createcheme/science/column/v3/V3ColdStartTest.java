@@ -36,7 +36,7 @@ class V3ColdStartTest {
         Map<String, V3ColumnOutcome> outcomes = new LinkedHashMap<>();
         StringBuilder report = new StringBuilder("V3 cold-start sweep\n");
         for (Case sample : matrix) {
-            V3ColumnOutcome outcome = V3ColumnCalculator.calculate(sample.input());
+            V3ColumnOutcome outcome = V3TestInputs.calculate(sample.input());
             outcomes.put(sample.name(), outcome);
             report.append(sample.name()).append(" | ").append(summary(outcome)).append('\n');
             if (outcome instanceof V3ColumnOutcome.Success success) {
@@ -60,7 +60,7 @@ class V3ColdStartTest {
     void nearby551KelvinColdInputPassesTheSameFreshAcceptanceGate() {
         V3ColumnInput input = binaryPilot(100.0, 551.0, 250.0, 750.0, 300.0, 2.0, 0.0);
 
-        V3ColumnOutcome outcome = V3ColumnCalculator.calculate(input);
+        V3ColumnOutcome outcome = V3TestInputs.calculate(input);
         V3ColumnOutcome.Success success = assertInstanceOf(V3ColumnOutcome.Success.class, outcome, outcome::toString);
 
         assertTrue(success.result().acceptanceAudit().accepted());
@@ -138,7 +138,7 @@ class V3ColdStartTest {
         double[] flows = crude.moleFractions();
         double totalFlowMolPerSecond = 2_000.0 * 1_000.0 / 3_600.0;
         for (int component = 0; component < flows.length; component++) flows[component] *= totalFlowMolPerSecond;
-        return new V3ColumnInput(V3ColumnInput.SCHEMA_VERSION, crude.packageId(), crude.assayId(),
+        return V3TestInputs.dry(V3ColumnInput.SCHEMA_VERSION, crude.packageId(), crude.assayId(),
                 crude.componentBasis(), flows, 638.15, 30, 24, topPressurePascal, 750.0, List.of(
                         new V3ColumnSpecification.CondenserOutletTemperature(323.15),
                         new V3ColumnSpecification.OrganicRefluxRatio(2.0),
@@ -182,7 +182,7 @@ class V3ColdStartTest {
         double[] feedFlows = new double[thermo.componentBasis().componentCount()];
         feedFlows[6] = feedFlow / 2.0;
         feedFlows[13] = feedFlow / 2.0;
-        return new V3ColumnInput(V3ColumnInput.SCHEMA_VERSION, thermo.packageId(), "test:registered-pr-binary",
+        return V3TestInputs.dry(V3ColumnInput.SCHEMA_VERSION, thermo.packageId(), "test:registered-pr-binary",
                 thermo.componentBasis(), feedFlows, feedTemperature, 2, 1, topPressureKpa * 1_000.0, dropPascal,
                 List.of(new V3ColumnSpecification.CondenserOutletTemperature(condenserTemperature),
                         new V3ColumnSpecification.OrganicRefluxRatio(reflux),
@@ -237,7 +237,7 @@ class V3ColdStartTest {
         double[] flows = crude.moleFractions();
         double totalFlow = 2_610.7 * 1_000.0 / 3_600.0;
         for (int component = 0; component < flows.length; component++) flows[component] *= totalFlow;
-        return new V3ColumnInput(V3ColumnInput.SCHEMA_VERSION, crude.packageId(), crude.assayId(), crude.componentBasis(),
+        return V3TestInputs.dry(V3ColumnInput.SCHEMA_VERSION, crude.packageId(), crude.assayId(), crude.componentBasis(),
                 flows, 365.0 + 273.15, stages, feedStage, 250_000.0, 750.0, List.of(
                         new V3ColumnSpecification.CondenserOutletTemperature(332.15),
                         new V3ColumnSpecification.OrganicRefluxRatio(4.17),

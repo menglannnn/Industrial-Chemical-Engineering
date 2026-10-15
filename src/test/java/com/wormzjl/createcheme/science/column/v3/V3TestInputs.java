@@ -36,16 +36,35 @@ public final class V3TestInputs {
         return catalog.presets().column("tia_juana").input(catalog);
     }
 
+    /** A dry request: no side draws, steam, pumparounds or tray hydraulics (prescribed uniform drop). */
+    public static V3ColumnInput dry(int schemaVersion, String packageId, String assayId, V3ComponentBasis componentBasis,
+            double[] feedComponentMolarFlowsMolPerSecond, double feedTemperatureKelvin, int stageCount,
+            int feedStageNumber, double topPressurePascal, double stagePressureDropPascal,
+            List<V3ColumnSpecification> specifications) {
+        return new V3ColumnInput(schemaVersion, packageId, assayId, componentBasis, feedComponentMolarFlowsMolPerSecond,
+                feedTemperatureKelvin, stageCount, feedStageNumber, topPressurePascal, stagePressureDropPascal,
+                specifications, List.of(), List.of(), List.of(), V3ColumnInput.PRESCRIBED_DROP_DIAMETER);
+    }
+
+    /**
+     * The default classical request: unbounded control, no stage-trace cutoff, the frozen closure and the
+     * calibrated liquid-supply screen.
+     */
+    public static V3ColumnOutcome calculate(V3ColumnInput input) {
+        return V3ColumnCalculator.calculate(input, V3SolveControl.UNBOUNDED, 0.0, 0.0,
+                V3ColumnCalculator.DEFAULT_LIQUID_SUPPLY_SCREEN_RATIO);
+    }
+
     /**
      * The registered cdu17 PC03/PC10 binary (50 mol/s each) at 550 K: two interior trays, feed on tray 1,
      * 250 kPa top, 750 Pa per tray, a 300 K condenser, reflux ratio 2 and no reboiler duty.
      */
-    static V3ColumnInput cdu17Binary(String assayId) {
+    public static V3ColumnInput cdu17Binary(String assayId) {
         V3PengRobinsonThermo thermo = V3PengRobinsonThermo.fromRegisteredPackage("createcheme:cdu17_tjl_acs2018");
         double[] feed = new double[thermo.componentBasis().componentCount()];
         feed[6] = 50.0; // PC03
         feed[13] = 50.0; // PC10
-        return new V3ColumnInput(V3ColumnInput.SCHEMA_VERSION, thermo.packageId(), assayId, thermo.componentBasis(),
+        return dry(V3ColumnInput.SCHEMA_VERSION, thermo.packageId(), assayId, thermo.componentBasis(),
                 feed, 550.0, 2, 1, 250_000.0, 750.0, List.of(
                         new V3ColumnSpecification.CondenserOutletTemperature(300.0),
                         new V3ColumnSpecification.OrganicRefluxRatio(2.0),
