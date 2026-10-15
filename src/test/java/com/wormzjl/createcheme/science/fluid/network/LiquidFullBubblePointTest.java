@@ -19,9 +19,10 @@ import static org.junit.jupiter.api.Assertions.*;
  * ... active-set pass", about 500 accepted and 530 rejected substeps, no partial commit), while pure methane passed: the
  * outer check seeded the two-phase layout with the TP split at the single phase's overshot (T, P), several vessel volumes
  * of vapour a rigid vessel cannot hold, and the two-phase Newton's last iterate (a trace of vapour) was one phase again,
- * repeating the first pass's active set. On main the outer phase check of owner decision D25 answers it
- * ({@link FluidThermodynamics#phaseCheck}): the vapour enters the liquid-full vessel as a nucleus beside the liquid it
- * keeps, and the two-phase rows grow it to the vessel's own split; no TP verdict takes a phase away. Each vessel: 1 L
+ * repeating the first pass's active set. On main the outer phase check of owner decisions D25 and D26 answers it
+ * ({@link FluidThermodynamics#phaseCheck}): the vapour enters the liquid-full vessel at the vessel's own split, its closure
+ * of what it holds ({@link InventoryEquilibrium#split}: the small vapour of its energy and volume beside the liquid it
+ * keeps), and no TP verdict takes a phase away. Each vessel: 1 L
  * charged liquid-full at 5 MPa, cooled by -200 W through the network's energy input (a 1e-12 mol/s methane trace), 5 s
  * intervals; the rigid liquid's pressure falls about 0.9 to 1 MPa per interval and crosses the bubble pressure (about
  * 2.0 MPa at 166 K with 2 % C2H6 or CO2, 1.4 MPa at 154 K with 2 % N2) in the fourth.

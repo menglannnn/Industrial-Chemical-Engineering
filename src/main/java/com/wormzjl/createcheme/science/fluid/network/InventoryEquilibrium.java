@@ -4,6 +4,7 @@ import com.wormzjl.createcheme.science.fluid.solver.*;
 import com.wormzjl.createcheme.science.fluid.thermo.FluidThermodynamics;
 import com.wormzjl.createcheme.science.thermo.PhaseSupport;
 import java.util.*;
+import java.util.function.UnaryOperator;
 
 /** Refreshes a derived state from conserved inventory before an interval, never inside a network residual. */
 public final class InventoryEquilibrium {
@@ -36,12 +37,14 @@ public final class InventoryEquilibrium {
         // seed 707 booked 1e-42 mol of crude and 1e-84 mol of water vapour into an empty 1 m3 tank; the closure's Newton,
         // differencing that water with a step 1e19 times the vessel's contents, found no finite trial at any step size.
         if(PassiveStepSolver.holdsNothing(inventory,state))return state;
-        // Owner decision D25: the regime test is the outer phase check (FluidThermodynamics.phaseCheck). A phase leaves only
-        // when the closure empties it (the trace fold of its point, also of a failed closure's last iterate), the phases
-        // the TP answer finds missing are added, and no populated phase set is swapped for another on a TP verdict: a
-        // vessel of pure water at its saturation line keeps its liquid and gains its steam, and its volume and energy set
-        // the split. A phase the fold removed is not added again within this solve (A85), so the regimes only grow.
+        // Owner decisions D25 and D26: the regime test is the outer phase check (FluidThermodynamics.phaseCheck). A phase
+        // leaves only when the closure empties it (the trace fold of its point, also of a failed closure's last iterate);
+        // where the TP answer finds a phase missing, the vessel is seeded at its own split, this closure of its inventory
+        // (split below) started from the TP answer with the phases the vessel holds, and no populated phase set is
+        // swapped for another on a TP verdict: a vessel of pure water at its saturation line keeps its liquid and gains
+        // the steam its volume and energy give. A phase the check removed is not added again within this solve (A85).
         var seen=new HashSet<String>();int excluded=0;
+        UnaryOperator<FluidThermodynamics.State> own=start->split(model,start,inventory,workFrom,checkpoint);
         for(int pass=0;pass<16;pass++) {
             checkpoint.run();if(!seen.add(regime(state)))throw new SparseNewton.Nonconvergence("Inventory equilibrium phase cycle");
             FluidThermodynamics.State candidate;
@@ -49,12 +52,12 @@ public final class InventoryEquilibrium {
             catch(SparseNewton.Nonconvergence failure) {
                 if(failure.lastVariables()==null)throw failure;
                 var trial=layout(model,state,null).decode(failure.lastVariables(),0);
-                var checked=model.phaseCheck(trial,false,excluded,null,checkpoint);
+                var checked=model.phaseCheck(trial,false,excluded,null,own,checkpoint);
                 if(regime(checked).equals(regime(state)))throw failure;
                 excluded|=FluidThermodynamics.phaseBits(trial)&~FluidThermodynamics.phaseBits(checked);state=checked.withSolids(inventory.solids());continue;
             }
             if(candidate==state)return state;
-            var checked=model.phaseCheck(candidate,false,excluded,null,checkpoint);
+            var checked=model.phaseCheck(candidate,false,excluded,null,own,checkpoint);
             if(checked!=candidate){excluded|=FluidThermodynamics.phaseBits(candidate)&~FluidThermodynamics.phaseBits(checked);state=checked;continue;}
             return candidate;
         }
@@ -113,6 +116,28 @@ public final class InventoryEquilibrium {
         check.residual(closed,n,energy,volume,workFrom,residual,0,x);
         if(norm(residual)>1e-8)throw new SparseNewton.Nonconvergence("Inventory closure does not meet full equation closure");
         return closed;
+    }
+    /**
+     * Owner decision D26: a vessel's own split, the seed of a phase the outer phase check adds
+     * ({@code FluidThermodynamics.phaseCheck}): its closure ({@link #close}) at {@code inventory}, from {@code start} (a state
+     * holding the phases to lay the vessel out with), the wall's work booked from the bag volume {@code workFrom}: the
+     * equilibrium of its energy and volume while the wall is taut, of its enthalpy at the ambient pressure while slack (of
+     * its energy there with {@code workFrom} {@code NaN}, as at the interval's refresh, {@link #solve}).
+     * It is only a seed, so where the closure stops short of its tolerance its last iterate, the nearest it came, is the
+     * split, given the inventory's amounts ({@link ConservativeTransport#repartition}): from the TP split of a liquid-full
+     * vessel cooled past its bubble point (several vessel volumes of vapour) the closure's 24 iterations end within about
+     * 1e-5 of the bubble it holds. {@code null} where the closure leaves no iterate or refuses the state; the check then
+     * seeds its TP-based state.
+     */
+    static FluidThermodynamics.State split(FluidThermodynamics model,FluidThermodynamics.State start,PassiveNetwork.Inventory inventory,double workFrom,
+                                           Runnable checkpoint) {
+        try{return close(model,start,inventory,null,workFrom,checkpoint);}
+        catch(SparseNewton.Nonconvergence failure) {
+            if(failure.lastVariables()==null)return null;
+            try{return ConservativeTransport.repartition(model,layout(model,start,null).decode(failure.lastVariables(),0),inventory.moles());}
+            catch(IllegalArgumentException refused){return null;}
+        }
+        catch(IllegalArgumentException refused){return null;}
     }
     /**
      * The vessel's own layout of {@code state} under {@code support}, or under the support the model's trace truncation

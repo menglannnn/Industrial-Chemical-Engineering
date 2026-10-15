@@ -110,6 +110,10 @@ public final class SolverDiagnostics {
      * solved again because the reconstruction folded a phase the pass had solved. */
     public static final LongAdder traceFolds=new LongAdder();
     public static final LongAdder traceFoldPasses=new LongAdder();
+    /** Outer phase checks that seeded a phase a node lacks at the node's own split ({@code FluidThermodynamics.phaseCheck},
+     * decision D26: a vessel's closure of its inventory, a junction's PH answer), and those that seeded the TP-based state
+     * instead because the node's own flash failed or none was given. */
+    public static final LongAdder phaseSeeds=new LongAdder(),phaseSeedFallbacks=new LongAdder();
     // ---- properties ----
     public static final LongAdder stateCalls=new LongAdder();
     /** The subset of {@link #stateCalls} performed while building a Jacobian: the node decodes a
@@ -216,6 +220,7 @@ public final class SolverDiagnostics {
         map.put("equationGatePolishesAccepted",equationGatePolishesAccepted);map.put("traceFlushes",traceFlushes);
         map.put("restIntervals",restIntervals);map.put("restStops",restStops);
         map.put("traceFolds",traceFolds);map.put("traceFoldPasses",traceFoldPasses);
+        map.put("phaseSeeds",phaseSeeds);map.put("phaseSeedFallbacks",phaseSeedFallbacks);
         map.put("luFactorizations",luFactorizations);map.put("luFactorNanos",luFactorNanos);
         map.put("luSolves",luSolves);map.put("luSolveNanos",luSolveNanos);
         map.put("luChecks",luChecks);map.put("luRefinements",luRefinements);

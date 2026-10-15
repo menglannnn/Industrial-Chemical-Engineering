@@ -19,7 +19,8 @@ import java.util.List;
 /**
  * The equilibrium engine of one network model: {@link FluidTpEquilibrium} on the network package's contract, with the
  * network's own free water, as the one service that decides a node's phases ({@link FluidThermodynamics#equilibriumTP}:
- * the outer active-set check, the inventory refresh, placement and boundary charges).
+ * the outer active-set check, the inventory refresh, placement and boundary charges), and of a pipe junction's own split
+ * where the outer check adds a phase ({@link #ph}, D26).
  *
  * <p>The evaluator carries the network's exact equation of state: on a package with a reference spine
  * {@link CubicPhaseEvaluator#forPackage} (the same {@link SpinePackageData} as {@link HydrocarbonModel}); on a package
@@ -27,8 +28,9 @@ import java.util.List;
  * (they enter the vapour branch's shift and the gas volume of the free-water rule, so a translation-free evaluator would
  * put the partial pressure elsewhere). Volume and {@code ln phi} are then bit for bit the network's. The ideal-gas
  * functions of a spine-less package are its {@code shifted_polynomial_5} fits on the network's sensible datum (zero
- * enthalpy and entropy at 298.15 K and 1e5 Pa): the engine needs them only for the states it reports, which the network
- * does not read; phase decisions are the cubic's and the water rule's.</p>
+ * enthalpy and entropy at 298.15 K and 1e5 Pa, the network's own ideal-gas enthalpy): the engine needs them for the
+ * states it reports, which the network does not read, and for a junction's PH seed (its own rows then solve it); TP phase
+ * decisions are the cubic's and the water rule's.</p>
  *
  * <p>The engine's workspaces are per-thread scratch ({@link FluidTpEquilibrium.Workspace}), kept in a thread-local of
  * this instance so a model shared by several island workers never shares one; the engine carries nothing between calls
@@ -88,6 +90,11 @@ final class NetworkPhaseEngine {
      * otherwise. */
     EquilibriumResult tp(double t,double p,double[] overall,boolean crystals) {
         return engine.tp(EquilibriumRequest.tp(t,p,species,overall,crystals?PhaseCompetition.FLUID_AND_CRYSTALS:PhaseCompetition.FLUID_ONLY),workspaces.get());
+    }
+    /** The PH equilibrium of {@code overall} at {@code p} with enthalpy {@code h} (J, on the engine's datum), under the
+     * competition {@code crystals} selects as for {@link #tp}: a pipe junction's own split (D26). */
+    EquilibriumResult ph(double p,double h,double[] overall,boolean crystals) {
+        return engine.ph(EquilibriumRequest.ph(p,h,species,overall,crystals?PhaseCompetition.FLUID_AND_CRYSTALS:PhaseCompetition.FLUID_ONLY),workspaces.get());
     }
 
     /**
