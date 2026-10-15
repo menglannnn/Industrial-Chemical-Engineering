@@ -121,8 +121,11 @@ public final class NetworkReduction {
      * returns {@link #restInterval}; the island then certifies as at rest through the existing certificate path). Decided
      * from the structure and the present states only, before any Newton:
      * <ul>
-     * <li>Only islands holding no solids, no trace an accepted step would flush (decision D16) and no module transfer in the
-     * interval are asked. A pressure valve passes only from its first end and only while that end stands
+     * <li>Only islands holding no trace an accepted step would flush (decision D16) and no module transfer in the interval
+     * are asked. Solids do not keep an island awake (owner decision D23 (6)): a particle moves only with the flow that
+     * carries it and grows or melts only in a vessel's refresh, which {@link PassiveIntervalSolver#solve} runs before this
+     * test, so an unchanged stock of solids at no drive stays as it is; at an interval start its solid closures are read as
+     * open, since that interval re-decides them. A pressure valve passes only from its first end and only while that end stands
      * above its set point, so it drives forward by the smaller of its static drive and that excess, and never back (A211);
      * the rest interval reports it CLOSED. An empty vessel stands at the ambient and gives nothing (decision D54): its
      * pressure is the ambient's, and every drive out of it is forbidden ({@link PassiveStepSolver#boundaryAllowed}).</li>
@@ -153,11 +156,11 @@ public final class NetworkReduction {
     public static boolean atRest(PassiveNetwork graph,FluidThermodynamics model,double[] flows,boolean[] refused) {
         // Material a module delivers or withdraws in the interval moves stock whatever the hydraulics do.
         if(!graph.scheduledTransfers().isEmpty())return false;
-        boolean stock=false;
+        boolean stock=false,solids=false;
         for(var node:graph.reservoirs()) {
             if(node.kind()==PassiveNetwork.NodeKind.PORT)return false;
-            if(!node.inventory().solids().empty())return false;
             stock|=node.kind()==PassiveNetwork.NodeKind.GENERATOR||node.kind()==PassiveNetwork.NodeKind.RESERVOIR&&!PassiveStepSolver.holdsNothing(node);
+            solids|=!node.inventory().solids().empty();
             if(!node.fixed()&&flushable(node))return false;
         }
         // Nothing to move: no generator, no vessel holding anything (voids only receive, and a junction's buffer is its
@@ -165,7 +168,11 @@ public final class NetworkReduction {
         if(!stock)return true;
         boolean[] closed=closedMovers(graph,refused);
         for(int i=0;i<closed.length;i++)if(!closed[i]&&graph.pipes().get(i).control() instanceof FlowControl.Mover)return false;
-        var drives=drives(graph,model);
+        // A connection the solid events closed stands for the rest of its interval only: the next interval re-decides every
+        // closure at its start (SolidEventIntegrator), and a deposition closure, the one the drive decides, reopens under a
+        // drive that suspends the particles. So at an interval start an island holding solids reads its closed connections
+        // as open: a drive across one is a drive, and the island is solved and the closure re-decided.
+        var drives=drives(solids&&flows==null?reopened(graph):graph,model);
         for(int i=0;i<drives.length;i++) {
             // A closed mover carries nothing either way.
             if(closed[i]){drives[i][0]=drives[i][1]=Double.NEGATIVE_INFINITY;continue;}
@@ -188,6 +195,11 @@ public final class NetworkReduction {
             for(int i=0;i<flows.length;i++)if(Math.abs(flows[i])>resolutionFlow(graph,model,i,scratch))return false;
         }
         return true;
+    }
+    /** {@code graph} with every solid closure lifted ({@link PassiveNetwork.Pipe#blockedDirections} zero). */
+    private static PassiveNetwork reopened(PassiveNetwork graph) {
+        if(graph.pipes().stream().allMatch(p->p.blockedDirections()==0))return graph;
+        return new PassiveNetwork(graph.reservoirs(),graph.pipes().stream().map(p->p.withBlockedDirections(0)).toList(),graph.scheduledTransfers());
     }
     /** {@link #atRest} with no mover refused. */
     public static boolean atRest(PassiveNetwork graph,FluidThermodynamics model,double[] flows){return atRest(graph,model,flows,null);}
