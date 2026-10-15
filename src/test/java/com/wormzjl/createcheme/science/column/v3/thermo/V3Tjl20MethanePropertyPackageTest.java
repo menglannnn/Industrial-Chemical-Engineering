@@ -6,9 +6,9 @@ import org.junit.jupiter.api.Test;
 
 class V3Tjl20MethanePropertyPackageTest {
     @Test void extendsTheFrozenDatasetWithoutChangingItsPropertiesOrInteractions() {
-        var base = V3PropertyPackageRegistry.require(V3Tjl19PropertyPackage.PACKAGE_ID);
-        var extended = V3PropertyPackageRegistry.require(V3Tjl20MethanePropertyPackage.PACKAGE_ID);
-        assertEquals(extended.componentBasis(), V3PropertyPackageRegistry.require(extended.packageId()).componentBasis());
+        var base = V3CatalogPropertyPackage.require(V3Tjl19PropertyPackage.PACKAGE_ID);
+        var extended = V3CatalogPropertyPackage.require(V3Tjl20MethanePropertyPackage.PACKAGE_ID);
+        assertEquals(extended.componentBasis(), V3CatalogPropertyPackage.require(extended.packageId()).componentBasis());
         assertEquals(base.componentBasis().componentCount()+1, extended.componentBasis().componentCount());
         assertNotEquals(base.packageId(), extended.packageId());
         double[][] original = base.binaryInteractions();
@@ -30,7 +30,7 @@ class V3Tjl20MethanePropertyPackageTest {
     }
 
     @Test void methaneThermalFitMatchesIndependentNistShomateAndDifferentiatesConsistently() {
-        var methane = V3PropertyPackageRegistry.require(V3Tjl20MethanePropertyPackage.PACKAGE_ID).component(0);
+        var methane = V3CatalogPropertyPackage.require(V3Tjl20MethanePropertyPackage.PACKAGE_ID).component(0);
         assertEquals(190.564, methane.criticalTemperatureKelvin());
         assertEquals(4_599_200, methane.criticalPressurePascal());
         assertEquals(0.01142, methane.acentricFactor());

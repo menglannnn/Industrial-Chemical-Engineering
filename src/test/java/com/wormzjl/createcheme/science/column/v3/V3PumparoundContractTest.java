@@ -59,8 +59,8 @@ class V3PumparoundContractTest {
                 V3CondenserPhaseBranch.TWO_PHASE);
 
         assertArrayEqualsExactly(new double[] {0.0, -300.0, -1_000.0, -500.0, -900.0, 0.0},
-                V3Pumparounds.nodeDutyWatts(heated.input(), heated.topology()));
-        assertEquals(-2_700.0, V3Pumparounds.totalDutyWatts(heated.input()));
+                V3PumparoundSpec.nodeDutyWatts(heated.input(), heated.topology()));
+        assertEquals(-2_700.0, V3PumparoundSpec.totalDutyWatts(heated.input()));
         assertEquals(plain.degreeOfFreedomLedger().unknowns(), heated.degreeOfFreedomLedger().unknowns());
         assertEquals(plain.degreeOfFreedomLedger().equations(), heated.degreeOfFreedomLedger().equations());
         assertTrue(heated.degreeOfFreedomLedger().isValid());
@@ -70,11 +70,11 @@ class V3PumparoundContractTest {
     void expansionPlacesTheWholeDutyOnOneTraySpreadsItUniformlyAndAddsOverlappingZones() {
         V3ColumnTopology topology = V3ColumnTopology.twoPhase(4, 2);
 
-        double[] single = V3Pumparounds.nodeDutyWatts(
+        double[] single = V3PumparoundSpec.nodeDutyWatts(
                 input(List.of(new V3PumparoundSpec(2, 4, -900.0, V3PumparoundSpec.Split.RETURN_TRAY))), topology);
-        double[] uniform = V3Pumparounds.nodeDutyWatts(
+        double[] uniform = V3PumparoundSpec.nodeDutyWatts(
                 input(List.of(new V3PumparoundSpec(2, 4, -900.0, V3PumparoundSpec.Split.UNIFORM))), topology);
-        double[] overlapping = V3Pumparounds.nodeDutyWatts(input(List.of(
+        double[] overlapping = V3PumparoundSpec.nodeDutyWatts(input(List.of(
                 new V3PumparoundSpec(2, 4, -900.0, V3PumparoundSpec.Split.UNIFORM),
                 new V3PumparoundSpec(3, 4, -400.0, V3PumparoundSpec.Split.UNIFORM))), topology);
 
@@ -82,7 +82,7 @@ class V3PumparoundContractTest {
         assertArrayEqualsExactly(new double[] {0.0, 0.0, -900.0, 0.0, 0.0, 0.0}, single);
         assertArrayEqualsExactly(new double[] {0.0, 0.0, -300.0, -300.0, -300.0, 0.0}, uniform);
         assertArrayEqualsExactly(new double[] {0.0, 0.0, -300.0, -500.0, -500.0, 0.0}, overlapping);
-        assertEquals(-1_300.0, V3Pumparounds.totalCoolingWatts(input(List.of(
+        assertEquals(-1_300.0, V3PumparoundSpec.totalCoolingWatts(input(List.of(
                 new V3PumparoundSpec(2, 4, -900.0, V3PumparoundSpec.Split.UNIFORM),
                 new V3PumparoundSpec(3, 4, -400.0, V3PumparoundSpec.Split.UNIFORM)))));
     }
@@ -100,17 +100,17 @@ class V3PumparoundContractTest {
                 new V3PumparoundSpec(2, 4, -900.0, V3PumparoundSpec.Split.UNIFORM),
                 new V3PumparoundSpec(3, 4, 400.0, V3PumparoundSpec.Split.RETURN_TRAY)));
 
-        assertEquals(-900.0, V3Pumparounds.totalCoolingWatts(mixed));
-        assertEquals(400.0, V3Pumparounds.totalHeatingWatts(mixed));
-        assertEquals(-500.0, V3Pumparounds.totalDutyWatts(mixed), 1.0e-12);
+        assertEquals(-900.0, V3PumparoundSpec.totalCoolingWatts(mixed));
+        assertEquals(400.0, V3PumparoundSpec.totalHeatingWatts(mixed));
+        assertEquals(-500.0, V3PumparoundSpec.totalDutyWatts(mixed), 1.0e-12);
         assertEquals(400.0, V3HeatFeasibility.heatingCreditWatts(mixed));
-        assertEquals(0.0, V3Pumparounds.totalHeatingWatts(input(List.of(
+        assertEquals(0.0, V3PumparoundSpec.totalHeatingWatts(input(List.of(
                 new V3PumparoundSpec(2, 4, -900.0, V3PumparoundSpec.Split.UNIFORM)))));
-        assertEquals(0.0, V3Pumparounds.totalCoolingWatts(input(List.of(
+        assertEquals(0.0, V3PumparoundSpec.totalCoolingWatts(input(List.of(
                 new V3PumparoundSpec(2, 4, 900.0, V3PumparoundSpec.Split.UNIFORM)))));
 
         // Two distinct return/draw pairs that both place their whole duty on tray two cancel node by node.
-        assertArrayEqualsExactly(new double[] {0.0, 0.0, 0.0, 0.0, 0.0, 0.0}, V3Pumparounds.nodeDutyWatts(
+        assertArrayEqualsExactly(new double[] {0.0, 0.0, 0.0, 0.0, 0.0, 0.0}, V3PumparoundSpec.nodeDutyWatts(
                 input(List.of(new V3PumparoundSpec(2, 3, -900.0, V3PumparoundSpec.Split.RETURN_TRAY),
                         new V3PumparoundSpec(2, 4, 900.0, V3PumparoundSpec.Split.RETURN_TRAY))), topology));
     }

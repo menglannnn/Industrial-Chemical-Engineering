@@ -25,7 +25,7 @@ class V3RegroupedTransformerTest {
         var d=new JsonObject();
         d.addProperty("featureRevision","v3-anchor-augmented-regrouped-2");
         d.addProperty("modelType","anchor-augmented"); d.addProperty("anchorLayout","full");
-        d.addProperty("baselineRevision",V3NativeAnchor.REVISION); d.addProperty("modelId","test:synthetic");
+        d.addProperty("baselineRevision",V3AnchorTransformerInitializer.NativeAnchor.REVISION); d.addProperty("modelId","test:synthetic");
         d.addProperty("packageId",input.packageId());
         var p=MaterialCatalog.bundled().requirePackage(input.packageId());
         d.addProperty("propertyRevision",p.scientificRevision()); d.addProperty("physicsFingerprint",MaterialCatalog.bundled().physicsFingerprint(input.packageId(),p.components()));
@@ -110,12 +110,12 @@ class V3RegroupedTransformerTest {
         for(String key:List.of("featureRevision","modelType","anchorLayout","baselineRevision","components","normalization","weights"))payload.add(key,d.remove(key));
         payload.addProperty("schemaVersion",1); d.addProperty("schemaVersion",2);
         d.addProperty("allowExtraZeroComponents",false);d.addProperty("allowMissingZeroComponents",false);
-        d.addProperty("payloadSha256",V3TransformerArtifact.sha256(payload.toString().getBytes(StandardCharsets.UTF_8)));
+        d.addProperty("payloadSha256",V3NeuralRegistry.TransformerArtifact.sha256(payload.toString().getBytes(StandardCharsets.UTF_8)));
         d.addProperty("decoder","ZERO_PHASE_FLOOR_10"); d.addProperty("candidateRule","SINGLE"); d.addProperty("correctionRule","PROGRESS");
-        assertEquals(88852,V3TransformerArtifact.read(stream(payload),stream(d)).initializer().parameterCount());
+        assertEquals(88852,V3NeuralRegistry.TransformerArtifact.read(stream(payload),stream(d)).initializer().parameterCount());
         payload.addProperty("baselineRevision","changed");
-        assertThrows(IllegalArgumentException.class,()->V3TransformerArtifact.read(stream(payload),stream(d)));
-        payload.addProperty("baselineRevision",V3NativeAnchor.REVISION); d.add("weights",payload.get("weights"));
-        assertThrows(IllegalArgumentException.class,()->V3TransformerArtifact.read(stream(payload),stream(d)));
+        assertThrows(IllegalArgumentException.class,()->V3NeuralRegistry.TransformerArtifact.read(stream(payload),stream(d)));
+        payload.addProperty("baselineRevision",V3AnchorTransformerInitializer.NativeAnchor.REVISION); d.add("weights",payload.get("weights"));
+        assertThrows(IllegalArgumentException.class,()->V3NeuralRegistry.TransformerArtifact.read(stream(payload),stream(d)));
     }
 }

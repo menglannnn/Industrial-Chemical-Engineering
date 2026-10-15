@@ -18,7 +18,7 @@ class V3TruncatedFlashNumericsTest {
 
     @Test
     void phaseOnlyRachfordRiceTermsConserveEveryComponentWithoutInfiniteLogK() {
-        V3FlashPhaseSupport support = support();
+        V3TruncatedFlash.Support support = support();
         double[] logK = {0.0, 0.0, 0.0}; // Inactive phase ratios are deliberately irrelevant finite values.
         double beta = V3TruncatedFlash.rachfordRiceRoot(OVERALL, logK, support);
         double[] liquid = new double[3];
@@ -39,7 +39,7 @@ class V3TruncatedFlashNumericsTest {
 
     @Test
     void retainedFiniteKDeterminesTheSplitInsidePhaseOnlyMaterialBounds() {
-        V3FlashPhaseSupport support = support();
+        V3TruncatedFlash.Support support = support();
         double[] logK = {0.0, Math.log(2.0), 0.0};
         double beta = V3TruncatedFlash.rachfordRiceRoot(OVERALL, logK, support);
         assertTrue(beta > 0.4 && beta < 0.6);
@@ -163,8 +163,8 @@ class V3TruncatedFlashNumericsTest {
         return V3TruncatedFlash.assess(OVERALL, reference(), candidate, support(), POLICY, targetLogK);
     }
 
-    private static V3FlashPhaseSupport support() {
-        return V3FlashPhaseSupport.derive(OVERALL, reference(), POLICY);
+    private static V3TruncatedFlash.Support support() {
+        return V3TruncatedFlash.Support.derive(OVERALL, reference(), POLICY);
     }
 
     private static V3FlashResult reference() {

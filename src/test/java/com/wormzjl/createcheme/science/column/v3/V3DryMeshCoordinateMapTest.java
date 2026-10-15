@@ -7,9 +7,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.wormzjl.createcheme.science.column.v3.thermo.V3FlashResult;
 import com.wormzjl.createcheme.science.column.v3.thermo.V3FugacityResult;
-import com.wormzjl.createcheme.science.column.v3.thermo.V3Phase;
 import com.wormzjl.createcheme.science.column.v3.thermo.V3ThermoModel;
 import com.wormzjl.createcheme.science.column.v3.thermo.V3ThermoWorkspace;
+import com.wormzjl.createcheme.science.thermo.PengRobinsonKernel.Root;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 
@@ -111,12 +111,12 @@ class V3DryMeshCoordinateMapTest {
 
         @Override
         public V3FugacityResult fugacity(
-                double temperatureKelvin, double pressurePascal, double[] composition, V3Phase phase,
+                double temperatureKelvin, double pressurePascal, double[] composition, Root phase,
                 V3ThermoWorkspace workspace) {
             int node = (int) Math.round((temperatureKelvin - 400.0) / 10.0);
             if (node < 0 || node >= K.length) throw new IllegalArgumentException("Manufactured VLE temperature is outside its grid");
             double[] logPhi = new double[2];
-            if (phase == V3Phase.LIQUID) {
+            if (phase == Root.LIQUID) {
                 double referenceTemperature = 400.0 + 10.0 * node;
                 for (int component = 0; component < 2; component++) {
                     logPhi[component] = Math.log(K[node][component])
@@ -128,7 +128,7 @@ class V3DryMeshCoordinateMapTest {
 
         @Override
         public double molarEnthalpy(
-                double temperatureKelvin, double pressurePascal, double[] composition, V3Phase phase,
+                double temperatureKelvin, double pressurePascal, double[] composition, Root phase,
                 V3ThermoWorkspace workspace) {
             return 0.0;
         }

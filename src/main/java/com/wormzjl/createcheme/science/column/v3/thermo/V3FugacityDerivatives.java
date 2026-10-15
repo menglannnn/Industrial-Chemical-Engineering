@@ -1,5 +1,6 @@
 package com.wormzjl.createcheme.science.column.v3.thermo;
 
+import com.wormzjl.createcheme.science.thermo.PengRobinsonKernel.Root;
 import java.util.Objects;
 
 /**
@@ -24,7 +25,7 @@ import java.util.Objects;
  * phase heat capacity, ideal gas plus residual.</p>
  */
 public final class V3FugacityDerivatives {
-    private final V3Phase phase;
+    private final Root phase;
     private final double[] logFugacityCoefficients;
     private final double[] dLogFugacityCoefficientDT;
     private final double[][] dLogFugacityCoefficientDMoles;
@@ -33,7 +34,7 @@ public final class V3FugacityDerivatives {
     private final double[] partialMolarEnthalpyJoulesPerMol;
 
     public V3FugacityDerivatives(
-            V3Phase phase,
+            Root phase,
             double[] logFugacityCoefficients,
             double[] dLogFugacityCoefficientDT,
             double[][] dLogFugacityCoefficientDMoles,
@@ -70,7 +71,7 @@ public final class V3FugacityDerivatives {
         }
     }
 
-    public V3Phase phase() {
+    public Root phase() {
         return phase;
     }
 

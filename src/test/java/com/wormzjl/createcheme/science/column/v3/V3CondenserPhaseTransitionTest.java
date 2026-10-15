@@ -5,9 +5,9 @@ import static org.junit.jupiter.api.Assertions.*;
 import com.wormzjl.createcheme.science.column.v3.thermo.V3FeedPhase;
 import com.wormzjl.createcheme.science.column.v3.thermo.V3FlashResult;
 import com.wormzjl.createcheme.science.column.v3.thermo.V3FugacityResult;
-import com.wormzjl.createcheme.science.column.v3.thermo.V3Phase;
 import com.wormzjl.createcheme.science.column.v3.thermo.V3ThermoModel;
 import com.wormzjl.createcheme.science.column.v3.thermo.V3ThermoWorkspace;
+import com.wormzjl.createcheme.science.thermo.PengRobinsonKernel.Root;
 import java.util.List;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -168,11 +168,11 @@ class V3CondenserPhaseTransitionTest {
             return result;
         }
         @Override public V3FugacityResult fugacity(double temperature, double pressure, double[] composition,
-                                                  V3Phase phase, V3ThermoWorkspace workspace) {
+                                                  Root phase, V3ThermoWorkspace workspace) {
             throw new UnsupportedOperationException("seed transition needs only the TP flash");
         }
         @Override public double molarEnthalpy(double temperature, double pressure, double[] composition,
-                                              V3Phase phase, V3ThermoWorkspace workspace) {
+                                              Root phase, V3ThermoWorkspace workspace) {
             throw new UnsupportedOperationException("seed transition needs only the TP flash");
         }
     }

@@ -1,6 +1,7 @@
 package com.wormzjl.createcheme.science.column.v3.thermo;
 
 import com.wormzjl.createcheme.science.material.MaterialCatalog;
+import com.wormzjl.createcheme.science.material.MaterialRuntime;
 import com.wormzjl.createcheme.science.column.v3.V3ComponentBasis;
 import java.util.*;
 
@@ -9,6 +10,10 @@ final class V3CatalogPropertyPackage implements V3PropertyPackage {
     private final MaterialCatalog.Package data;
     private final V3ComponentBasis basis;
     private final List<V3PropertyComponent> components;
+    /** Resolves immutable package data from the current calculation's catalog snapshot. */
+    static V3PropertyPackage require(String packageId) {
+        return new V3CatalogPropertyPackage(MaterialRuntime.current(),packageId);
+    }
     V3CatalogPropertyPackage(MaterialCatalog catalog,String id) {
         data=catalog.requirePackage(id);
         if(!data.model().equals("pr78")) throw new IllegalArgumentException("Thermodynamic solver unavailable: " + data.model());

@@ -5,9 +5,9 @@ import static org.junit.jupiter.api.Assertions.*;
 import com.wormzjl.createcheme.science.column.v3.linalg.V3BandedMatrix;
 import com.wormzjl.createcheme.science.column.v3.thermo.V3FlashResult;
 import com.wormzjl.createcheme.science.column.v3.thermo.V3FugacityResult;
-import com.wormzjl.createcheme.science.column.v3.thermo.V3Phase;
 import com.wormzjl.createcheme.science.column.v3.thermo.V3ThermoModel;
 import com.wormzjl.createcheme.science.column.v3.thermo.V3ThermoWorkspace;
+import com.wormzjl.createcheme.science.thermo.PengRobinsonKernel.Root;
 import java.util.Arrays;
 import java.util.List;
 import org.junit.jupiter.api.Test;
@@ -261,13 +261,13 @@ class V3TruncationNumericsTest {
         @Override public V3ThermoWorkspace newWorkspace() { return new V3ThermoWorkspace(4); }
 
         @Override public V3FugacityResult fugacity(double temperature, double pressure, double[] composition,
-                                                 V3Phase phase, V3ThermoWorkspace workspace) {
+                                                 Root phase, V3ThermoWorkspace workspace) {
             int node = (int) Math.round((temperature - 400.0) / 10.0);
             assertEquals(0.0, composition[1]);
             if (!traceNodes[node]) assertEquals(0.0, composition[3]);
             assertEquals(1.0, Arrays.stream(composition).sum(), 1.0e-12);
             double[] logPhi = new double[4];
-            if (phase == V3Phase.LIQUID) {
+            if (phase == Root.LIQUID) {
                 for (int component = 0; component < 4; component++) {
                     logPhi[component] = logK[node][component] + (component + 1) * 1.0e-3 * (temperature - (400 + 10 * node));
                 }
@@ -277,7 +277,7 @@ class V3TruncationNumericsTest {
         }
 
         @Override public double molarEnthalpy(double temperature, double pressure, double[] composition,
-                                              V3Phase phase, V3ThermoWorkspace workspace) {
+                                              Root phase, V3ThermoWorkspace workspace) {
             int node = (int) Math.round((temperature - 400.0) / 10.0);
             return (temperature - (400 + 10 * node)) * (30 * composition[0] + 40 * composition[2] + 50 * composition[3]);
         }

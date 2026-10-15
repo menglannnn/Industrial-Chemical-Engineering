@@ -2,6 +2,7 @@ package com.wormzjl.createcheme.science.column.v3.thermo;
 
 import com.wormzjl.createcheme.science.column.v3.V3ComponentBasis;
 import com.wormzjl.createcheme.science.thermo.PengRobinsonKernel;
+import com.wormzjl.createcheme.science.thermo.PengRobinsonKernel.Root;
 import java.util.List;
 import java.util.Objects;
 
@@ -48,7 +49,7 @@ final class V3PengRobinsonSession {
     }
 
     static V3PengRobinsonSession registeredPackage(String packageId) {
-        return new V3PengRobinsonSession(V3PropertyPackageRegistry.require(packageId));
+        return new V3PengRobinsonSession(V3CatalogPropertyPackage.require(packageId));
     }
 
     String packageId() { return propertyPackage.packageId(); }
@@ -100,10 +101,9 @@ final class V3PengRobinsonSession {
     }
 
     void evaluate(
-            double temperatureKelvin, double pressurePascal, double[] composition, V3Phase phase, Session session) {
+            double temperatureKelvin, double pressurePascal, double[] composition, Root phase, Session session) {
         try {
-            kernel.evaluate(temperatureKelvin, pressurePascal, composition,
-                    phase == V3Phase.LIQUID ? PengRobinsonKernel.Root.LIQUID : PengRobinsonKernel.Root.VAPOR,
+            kernel.evaluate(temperatureKelvin, pressurePascal, composition, phase,
                     session.workspace, session.evaluation(phase));
         } catch (IllegalArgumentException exception) {
             throw new V3ThermoException(V3ThermoException.Code.DOMAIN, phase,
@@ -116,10 +116,9 @@ final class V3PengRobinsonSession {
 
     /** Differentiates the same evaluation {@link #evaluate} performs, with the same failure classification. */
     void evaluateDerivatives(
-            double temperatureKelvin, double pressurePascal, double[] composition, V3Phase phase, Session session) {
+            double temperatureKelvin, double pressurePascal, double[] composition, Root phase, Session session) {
         try {
-            kernel.evaluateDerivatives(temperatureKelvin, pressurePascal, composition,
-                    phase == V3Phase.LIQUID ? PengRobinsonKernel.Root.LIQUID : PengRobinsonKernel.Root.VAPOR,
+            kernel.evaluateDerivatives(temperatureKelvin, pressurePascal, composition, phase,
                     session.workspace, session.derivatives(phase));
         } catch (IllegalArgumentException exception) {
             throw new V3ThermoException(V3ThermoException.Code.DOMAIN, phase,
@@ -171,13 +170,13 @@ final class V3PengRobinsonSession {
             vapor = kernel.newEvaluation();
         }
 
-        private PengRobinsonKernel.Evaluation evaluation(V3Phase phase) {
-            return phase == V3Phase.LIQUID ? liquid : vapor;
+        private PengRobinsonKernel.Evaluation evaluation(Root phase) {
+            return phase == Root.LIQUID ? liquid : vapor;
         }
 
         /** Allocated on first use: a solve that never asks for derivatives never pays for their storage. */
-        private PengRobinsonKernel.Derivatives derivatives(V3Phase phase) {
-            if (phase == V3Phase.LIQUID) {
+        private PengRobinsonKernel.Derivatives derivatives(Root phase) {
+            if (phase == Root.LIQUID) {
                 if (liquidDerivatives == null) liquidDerivatives = kernel.newDerivatives();
                 return liquidDerivatives;
             }
@@ -185,22 +184,22 @@ final class V3PengRobinsonSession {
             return vaporDerivatives;
         }
 
-        PengRobinsonKernel.Derivatives derivativesOf(V3Phase phase) {
+        PengRobinsonKernel.Derivatives derivativesOf(Root phase) {
             return derivatives(phase);
         }
 
-        double logFugacityCoefficient(V3Phase phase, int component) {
+        double logFugacityCoefficient(Root phase, int component) {
             return evaluation(phase).logFugacityCoefficient(component);
         }
 
-        double[] logFugacityCoefficients(V3Phase phase) {
+        double[] logFugacityCoefficients(Root phase) {
             return evaluation(phase).logFugacityCoefficients();
         }
 
-        double compressibilityFactor(V3Phase phase) { return evaluation(phase).compressibility(); }
-        double residualEnthalpyJoulesPerMol(V3Phase phase) { return evaluation(phase).residualEnthalpyJoulesPerMol(); }
-        int physicalRootCount(V3Phase phase) { return evaluation(phase).physicalRootCount(); }
-        double rootSeparation(V3Phase phase) { return evaluation(phase).rootSeparation(); }
+        double compressibilityFactor(Root phase) { return evaluation(phase).compressibility(); }
+        double residualEnthalpyJoulesPerMol(Root phase) { return evaluation(phase).residualEnthalpyJoulesPerMol(); }
+        int physicalRootCount(Root phase) { return evaluation(phase).physicalRootCount(); }
+        double rootSeparation(Root phase) { return evaluation(phase).rootSeparation(); }
         void clear() { workspace.clear(); }
     }
 }

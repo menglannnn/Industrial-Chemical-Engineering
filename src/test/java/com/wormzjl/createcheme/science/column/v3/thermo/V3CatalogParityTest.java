@@ -9,7 +9,7 @@ import java.util.List;
 class V3CatalogParityTest {
     @Test void unchangedChemicalsAndFirstSevenCutsMatchIndependentOriginalTables() {
         for(var original:List.of(V3Cdu17TiaJuanaPackage.INSTANCE,V3Tjl19PropertyPackage.INSTANCE,V3Tjl20MethanePropertyPackage.INSTANCE)) {
-            var loaded=V3PropertyPackageRegistry.require(original.packageId());
+            var loaded=V3CatalogPropertyPackage.require(original.packageId());
             int retained=original instanceof V3Cdu17TiaJuanaPackage?16:original instanceof V3Tjl20MethanePropertyPackage?14:13;
             for(int i=0;i<retained;i++) {
                 var a=original.component(i);var b=loaded.component(i);

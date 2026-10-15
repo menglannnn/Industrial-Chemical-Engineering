@@ -4,7 +4,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 import com.google.gson.GsonBuilder;
 import com.wormzjl.createcheme.science.column.v3.thermo.V3FlashResult;
-import com.wormzjl.createcheme.science.column.v3.thermo.V3Phase;
+import com.wormzjl.createcheme.science.thermo.PengRobinsonKernel.Root;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -310,7 +310,7 @@ class HollandExample32BenchmarkTest {
         }
         for (int component = 0; component < flows.length; component++) flows[component] /= total;
         return total * result.thermo().molarEnthalpy(state.temperatureKelvin(node),
-                result.problem().nodePressurePascal(node), flows, liquid ? V3Phase.LIQUID : V3Phase.VAPOR,
+                result.problem().nodePressurePascal(node), flows, liquid ? Root.LIQUID : Root.VAPOR,
                 result.thermo().newWorkspace());
     }
 

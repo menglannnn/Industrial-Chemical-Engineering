@@ -1,5 +1,6 @@
 package com.wormzjl.createcheme.science.column.v3;
 
+import com.wormzjl.createcheme.science.column.v3.V3SimultaneousColumnSolver.NewtonTrace;
 import com.wormzjl.createcheme.science.math.DeterministicMath;
 
 import com.wormzjl.createcheme.science.column.v3.thermo.V3FlashResult;
@@ -229,18 +230,18 @@ public final class V3ColumnCalculator {
      * Offline diagnostic seam: the unchanged learned path with a caller-owned Newton observation trace.
      *
      * <p>The trace only observes. It cannot change a step, a support, a budget or an outcome, and every
-     * production entry point above passes {@link V3NewtonTrace#NONE}, so the traced and untraced paths
+     * production entry point above passes {@link NewtonTrace#NONE}, so the traced and untraced paths
      * run the same arithmetic in the same order. It exists because the correction trajectory of a seed
      * that runs out of iterations or budget is not recoverable from the published evidence.</p>
      */
     static V3ColumnOutcome calculateWithNeuralTrace(V3ColumnInput input, V3SolveControl control,
-            V3InitializationOptions options, V3NeuralInitializer model, V3NewtonTrace trace) {
+            V3InitializationOptions options, V3NeuralInitializer model, NewtonTrace trace) {
         return calculateWithNeuralTrace(input, control, options, model, trace, null);
     }
 
     /** The same seam, also exporting the accepted profile, so a traced request can be audited like any other. */
     static V3ColumnOutcome calculateWithNeuralTrace(V3ColumnInput input, V3SolveControl control,
-            V3InitializationOptions options, V3NeuralInitializer model, V3NewtonTrace trace,
+            V3InitializationOptions options, V3NeuralInitializer model, NewtonTrace trace,
             java.util.function.Consumer<V3NeuralSeed> observer) {
         // The seam observes the production learned entry, so it screens on the same terms as that entry.
         return calculate(input, control, 0, 0, options, model, observer, DEFAULT_LIQUID_SUPPLY_SCREEN_RATIO,
@@ -251,13 +252,13 @@ public final class V3ColumnCalculator {
             double cutoff, double closureFraction, V3InitializationOptions options, V3NeuralInitializer model,
             java.util.function.Consumer<V3NeuralSeed> observer, double liquidSupplyScreenRatio) {
         return calculate(input, control, cutoff, closureFraction, options, model, observer,
-                liquidSupplyScreenRatio, V3NewtonTrace.NONE);
+                liquidSupplyScreenRatio, NewtonTrace.NONE);
     }
 
     private static V3ColumnOutcome calculate(V3ColumnInput input, V3SolveControl control,
             double cutoff, double closureFraction, V3InitializationOptions options, V3NeuralInitializer model,
             java.util.function.Consumer<V3NeuralSeed> observer, double liquidSupplyScreenRatio,
-            V3NewtonTrace trace) {
+            NewtonTrace trace) {
         return com.wormzjl.createcheme.science.material.MaterialRuntime.pinned(input.packageId(),
                 () -> calculateInCatalog(input, control, cutoff, closureFraction, options, model, observer, liquidSupplyScreenRatio, trace));
     }
@@ -265,7 +266,7 @@ public final class V3ColumnCalculator {
     private static V3ColumnOutcome calculateInCatalog(V3ColumnInput input, V3SolveControl control,
             double cutoff, double closureFraction, V3InitializationOptions options, V3NeuralInitializer model,
             java.util.function.Consumer<V3NeuralSeed> observer, double liquidSupplyScreenRatio,
-            V3NewtonTrace trace) {
+            NewtonTrace trace) {
         Objects.requireNonNull(input, "input");
         Objects.requireNonNull(control, "control");
         Objects.requireNonNull(options, "options");
@@ -786,8 +787,8 @@ public final class V3ColumnCalculator {
      * <p>It is written only from the request's own thread, only on the learned path, and it is read only
      * after the pass has ended. No step, support, budget, tolerance or acceptance decision consults it.</p>
      */
-    private static final class NeuralProgress implements V3NewtonTrace {
-        private final V3NewtonTrace observer;
+    private static final class NeuralProgress implements NewtonTrace {
+        private final NewtonTrace observer;
         /**
          * Whether this pass keeps the last state it observed for a recovery. Off by default, so the frozen
          * path does not even write the reference, and no recovery can read a state nobody asked to keep.
@@ -803,7 +804,7 @@ public final class V3ColumnCalculator {
         private V3DryMeshState terminalState;
         private V3CondenserPhaseBranch terminalBranch;
 
-        private NeuralProgress(V3NewtonTrace observer, boolean capturesTerminalState) {
+        private NeuralProgress(NewtonTrace observer, boolean capturesTerminalState) {
             this.observer = Objects.requireNonNull(observer, "observer");
             this.capturesTerminalState = capturesTerminalState;
         }
@@ -1105,7 +1106,7 @@ public final class V3ColumnCalculator {
      */
     private static V3ColumnOutcome.Failure staticCoolingAdmission(V3ColumnInput input) {
         if (input.pumparounds().isEmpty()) return null;
-        double cooling = -V3Pumparounds.totalCoolingWatts(input);
+        double cooling = -V3PumparoundSpec.totalCoolingWatts(input);
         if (!(cooling > 0.0)) return null;
         double heating = V3HeatFeasibility.heatingCreditWatts(input);
         double available;
@@ -1998,7 +1999,7 @@ public final class V3ColumnCalculator {
                     .map(feed -> new V3SteamFeedSpec(feed.stageNumber(),
                             rampStep.steamFraction() * feed.molarFlowMolPerSecond(),
                             feed.temperatureKelvin())).toList();
-            List<V3PumparoundSpec> heat = V3Pumparounds.scaled(input, rampStep.heatFraction());
+            List<V3PumparoundSpec> heat = V3PumparoundSpec.scaled(input, rampStep.heatFraction());
             double reboilerDuty = reboilerDutyWatts(input)
                     + (1.0 - rampStep.steamFraction()) * surrogateSteamDutyWatts(input);
             V3ColumnInput rampInput = new V3ColumnInput(input.schemaVersion(), input.packageId(), input.assayId(),
@@ -2477,7 +2478,7 @@ public final class V3ColumnCalculator {
      */
     private static void requireCoolingBelowBaseCondenserDuty(
             V3ColumnInput input, V3PengRobinsonThermo thermo, V3SolvePass heatFreeBase) {
-        double cooling = -V3Pumparounds.totalCoolingWatts(input);
+        double cooling = -V3PumparoundSpec.totalCoolingWatts(input);
         if (!(cooling > 0.0)) return;
         double heating = V3HeatFeasibility.heatingCreditWatts(input);
         V3ColumnProblem base = heatFreeBase.prepared().problem();
@@ -2617,7 +2618,7 @@ public final class V3ColumnCalculator {
         double worstLiquid = 0.0;
         double largestFraction = -1.0;
         for (V3SideDrawSpec draw : problem.input().sideDraws()) {
-            double liquid = V3SideDraws.liquidTotal(state, draw.trayNumber());
+            double liquid = V3SideDrawSpec.liquidTotal(state, draw.trayNumber());
             double fraction = liquid > 0.0 && Double.isFinite(liquid)
                     ? draw.molarFlowMolPerSecond() / liquid : Double.MAX_VALUE;
             if (fraction > largestFraction) {
@@ -3020,8 +3021,8 @@ public final class V3ColumnCalculator {
         }
 
         /** The trace a solve on this policy reports through; unobserved classical solves report nowhere. */
-        private V3NewtonTrace trace() {
-            return progress == null ? V3NewtonTrace.NONE : progress;
+        private NewtonTrace trace() {
+            return progress == null ? NewtonTrace.NONE : progress;
         }
     }
 
@@ -3441,7 +3442,7 @@ public final class V3ColumnCalculator {
     }
 
     /** Bounded per-solve direction counters, surfaced through the existing diagnostics event contract. */
-    private static final class SolveTelemetry implements V3NewtonTrace {
+    private static final class SolveTelemetry implements NewtonTrace {
         private final V3ColumnProblem problem;
         /** Where a learned pass keeps its in-flight evidence; null on every classical solve. */
         private final NeuralProgress progress;

@@ -11,10 +11,10 @@ import com.wormzjl.createcheme.science.column.v3.V3TrayHydraulicsSummary;
 import com.wormzjl.createcheme.science.column.v3.V3ColumnProblemResolver;
 import com.wormzjl.createcheme.science.column.v3.V3ColumnOutcome;
 import com.wormzjl.createcheme.science.column.v3.V3ColumnSpecification;
+import com.wormzjl.createcheme.science.column.v3.V3ColumnSpecification.ControlledQuantity;
 import com.wormzjl.createcheme.science.column.v3.V3ColumnStreamProperties;
 import com.wormzjl.createcheme.science.column.v3.V3ComponentBasis;
 import com.wormzjl.createcheme.science.column.v3.V3ConvergenceEvidence;
-import com.wormzjl.createcheme.science.column.v3.V3ControlledQuantity;
 import com.wormzjl.createcheme.science.column.v3.V3HollandExample32;
 import com.wormzjl.createcheme.science.column.v3.thermo.V3PengRobinsonThermo;
 import com.wormzjl.createcheme.science.column.v3.thermo.V3CrudeFeed;
@@ -453,7 +453,7 @@ public final class ColumnCalculatorV3BlockEntity extends BlockEntity implements 
         List<V3ColumnSpecification> specifications = new ArrayList<>(specificationTags.size());
         for (int index = 0; index < specificationTags.size(); index++) {
             CompoundTag specification = specificationTags.getCompound(index);
-            specifications.add(specification(V3ControlledQuantity.valueOf(specification.getString("Kind")),
+            specifications.add(specification(ControlledQuantity.valueOf(specification.getString("Kind")),
                     specification.getDouble("Value")));
         }
         ListTag flowTags = tag.getList("FeedFlows", Tag.TAG_DOUBLE);
@@ -667,7 +667,7 @@ public final class ColumnCalculatorV3BlockEntity extends BlockEntity implements 
                 tag.getInt("AcceptanceChecks"), streams, ledger, closure, hydraulics, inspection);
     }
 
-    private static V3ColumnSpecification specification(V3ControlledQuantity quantity, double value) {
+    private static V3ColumnSpecification specification(ControlledQuantity quantity, double value) {
         return switch (quantity) {
             case CONDENSER_OUTLET_TEMPERATURE -> new V3ColumnSpecification.CondenserOutletTemperature(value);
             case ORGANIC_REFLUX_RATIO -> new V3ColumnSpecification.OrganicRefluxRatio(value);

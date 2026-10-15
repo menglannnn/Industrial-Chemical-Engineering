@@ -115,7 +115,6 @@ class V3TruncationStructureTest {
         assertEquals(original.unknowns(), explicitIdentity.unknowns());
         assertEquals(original.equations(), explicitIdentity.equations());
         assertEquals(original.diagnostics(), explicitIdentity.diagnostics());
-        assertEquals(original.calculatedQuantities(), explicitIdentity.calculatedQuantities());
         assertEquals(original.humanReadableDiagnostic(), explicitIdentity.humanReadableDiagnostic());
     }
 

@@ -81,7 +81,7 @@ public record V3InputDigest(String hexadecimalSha256) {
         }
         // Empty-list placement is intentional: heat-free digests retain their historical byte stream.
         if (!input.pumparounds().isEmpty()) {
-            put(digest, "pumparound-split-rule-revision", V3Pumparounds.SPLIT_RULE_REVISION);
+            put(digest, "pumparound-split-rule-revision", V3PumparoundSpec.SPLIT_RULE_REVISION);
             for (V3PumparoundSpec pumparound : input.pumparounds()) {
                 put(digest, "pumparound-return", pumparound.returnTray());
                 put(digest, "pumparound-draw", pumparound.drawTray());

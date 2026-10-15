@@ -1,5 +1,6 @@
 package com.wormzjl.createcheme.science.column.v3.thermo;
 
+import com.wormzjl.createcheme.science.thermo.PengRobinsonKernel.Root;
 import com.wormzjl.createcheme.science.thermo.TraceTruncationPolicy;
 import com.wormzjl.createcheme.science.column.v3.V3ComponentBasis;
 import com.wormzjl.createcheme.science.thermo.PengRobinsonKernel;
@@ -93,7 +94,7 @@ public final class V3PengRobinsonThermo implements V3ThermoModel, V3ThermoDeriva
 
     @Override
     public V3FugacityResult fugacity(
-            double temperatureKelvin, double pressurePascal, double[] composition, V3Phase phase,
+            double temperatureKelvin, double pressurePascal, double[] composition, Root phase,
             V3ThermoWorkspace workspace) {
         phase = Objects.requireNonNull(phase, "phase");
         normalizeInto(composition, workspace.normalizedOverall, workspace);
@@ -116,7 +117,7 @@ public final class V3PengRobinsonThermo implements V3ThermoModel, V3ThermoDeriva
      */
     @Override
     public V3FugacityDerivatives fugacityDerivatives(
-            double temperatureKelvin, double pressurePascal, double[] composition, V3Phase phase,
+            double temperatureKelvin, double pressurePascal, double[] composition, Root phase,
             V3ThermoWorkspace workspace) {
         phase = Objects.requireNonNull(phase, "phase");
         requireWorkspace(workspace);
@@ -139,7 +140,7 @@ public final class V3PengRobinsonThermo implements V3ThermoModel, V3ThermoDeriva
 
     @Override
     public double molarEnthalpy(
-            double temperatureKelvin, double pressurePascal, double[] composition, V3Phase phase,
+            double temperatureKelvin, double pressurePascal, double[] composition, Root phase,
             V3ThermoWorkspace workspace) {
         phase = Objects.requireNonNull(phase, "phase");
         normalizeInto(composition, workspace.normalizedOverall, workspace);
@@ -199,7 +200,7 @@ public final class V3PengRobinsonThermo implements V3ThermoModel, V3ThermoDeriva
     }
 
     void evaluateInto(
-            double temperatureKelvin, double pressurePascal, double[] normalizedComposition, V3Phase phase,
+            double temperatureKelvin, double pressurePascal, double[] normalizedComposition, Root phase,
             V3ThermoWorkspace workspace) {
         requireWorkspace(workspace);
         session.evaluate(temperatureKelvin, pressurePascal, normalizedComposition, phase, workspace.prSession);
@@ -213,13 +214,13 @@ public final class V3PengRobinsonThermo implements V3ThermoModel, V3ThermoDeriva
         session.wilsonK(temperatureKelvin, pressurePascal, output);
     }
 
-    double logFugacityCoefficient(V3Phase phase, int component, V3ThermoWorkspace workspace) {
+    double logFugacityCoefficient(Root phase, int component, V3ThermoWorkspace workspace) {
         requireWorkspace(workspace);
         return workspace.prSession.logFugacityCoefficient(phase, component);
     }
 
     double phaseMolarEnthalpy(
-            double temperatureKelvin, double[] normalizedComposition, V3Phase phase, V3ThermoWorkspace workspace) {
+            double temperatureKelvin, double[] normalizedComposition, Root phase, V3ThermoWorkspace workspace) {
         requireWorkspace(workspace);
         return session.idealGasMolarEnthalpy(temperatureKelvin, normalizedComposition)
                 + workspace.prSession.residualEnthalpyJoulesPerMol(phase);

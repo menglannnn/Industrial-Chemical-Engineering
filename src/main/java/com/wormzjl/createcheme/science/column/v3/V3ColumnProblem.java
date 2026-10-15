@@ -15,7 +15,7 @@ public final class V3ColumnProblem {
     private final double[] nodeSteamFeedEnthalpyWatts;
     private final double[] nodeHeatDutyWatts;
     private final double[] waterVaporFlowMolPerSecond;
-    private final V3WaterCondenserRegime waterCondenserRegime;
+    private final WaterCondenserRegime waterCondenserRegime;
     private final double waterVaporSlipCoefficient;
     private final double freeWaterFlowScaleMolPerSecond;
     private final V3WetTraySet wetTraySet;
@@ -37,14 +37,14 @@ public final class V3ColumnProblem {
         for (V3SideDrawSpec draw : input.sideDraws()) {
             this.nodeSideDrawMolPerSecond[draw.trayNumber()] = draw.molarFlowMolPerSecond();
         }
-        this.nodeSteamFeedMolPerSecond = V3SteamFeeds.nodeFeedFlows(input, topology);
+        this.nodeSteamFeedMolPerSecond = V3SteamFeedSpec.nodeFeedFlows(input, topology);
         this.nodeSteamFeedEnthalpyWatts = new double[topology.nodeCount()];
         for (V3SteamFeedSpec feed : input.steamFeeds()) {
             this.nodeSteamFeedEnthalpyWatts[feed.stageNumber()] = feed.molarFlowMolPerSecond()
                     * V3WaterProperties.vaporMolarEnthalpy(feed.temperatureKelvin());
         }
-        this.nodeHeatDutyWatts = V3Pumparounds.nodeDutyWatts(input, topology);
-        this.waterVaporFlowMolPerSecond = V3SteamFeeds.upwardVaporProfile(nodeSteamFeedMolPerSecond, topology);
+        this.nodeHeatDutyWatts = V3PumparoundSpec.nodeDutyWatts(input, topology);
+        this.waterVaporFlowMolPerSecond = V3SteamFeedSpec.upwardVaporProfile(nodeSteamFeedMolPerSecond, topology);
         this.waterCondenserRegime = waterCondenserRegime(input, topology, this.nodePressuresPascal);
         this.waterVaporSlipCoefficient = condenserSlipCoefficient(topology, waterCondenserRegime, input,
                 this.nodePressuresPascal);
@@ -199,16 +199,16 @@ public final class V3ColumnProblem {
         return waterVaporSlipCoefficient;
     }
 
-    V3WaterCondenserRegime waterCondenserRegime() {
+    WaterCondenserRegime waterCondenserRegime() {
         return waterCondenserRegime;
     }
 
     boolean hasFreeWaterCondenser() {
-        return waterCondenserRegime == V3WaterCondenserRegime.FREE_WATER;
+        return waterCondenserRegime == WaterCondenserRegime.FREE_WATER;
     }
 
     boolean hasAllVaporWaterCondenser() {
-        return waterCondenserRegime == V3WaterCondenserRegime.ALL_VAPOR;
+        return waterCondenserRegime == WaterCondenserRegime.ALL_VAPOR;
     }
 
     /**
@@ -247,26 +247,36 @@ public final class V3ColumnProblem {
     /** Candidate-derived molecular-vapor/free-water allocation at the condenser. */
     record WaterCondenserSplit(double vaporFlowMolPerSecond, double freeWaterFlowMolPerSecond) {}
 
-    private static V3WaterCondenserRegime waterCondenserRegime(
+    /** Free-water outcome at the condenser, independent of the hydrocarbon condenser phase branch. */
+    enum WaterCondenserRegime {
+        /** No stripping-steam feed is authored. */
+        NONE,
+        /** A separate pure-water boot exists; any remaining water joins the hydrocarbon vapor as a slip. */
+        FREE_WATER,
+        /** Water saturation pressure exceeds the drum pressure, so all stripping steam remains in the mixed vapor. */
+        ALL_VAPOR
+    }
+
+    private static WaterCondenserRegime waterCondenserRegime(
             V3ColumnInput input, V3ColumnTopology topology, double[] pressures) {
-        if (input.steamFeeds().isEmpty()) return V3WaterCondenserRegime.NONE;
+        if (input.steamFeeds().isEmpty()) return WaterCondenserRegime.NONE;
         double temperature = input.specifications().stream()
                 .filter(V3ColumnSpecification.CondenserOutletTemperature.class::isInstance)
                 .map(V3ColumnSpecification.CondenserOutletTemperature.class::cast).findFirst().orElseThrow().kelvin();
         if (topology.condenserPhaseBranch() == V3CondenserPhaseBranch.VAPOR_ONLY
                 || temperature >= V3WaterProperties.criticalTemperature()) {
-            return V3WaterCondenserRegime.ALL_VAPOR;
+            return WaterCondenserRegime.ALL_VAPOR;
         }
         double waterFraction = V3WaterProperties.saturationPressurePascal(temperature) / pressures[topology.condenserNode()];
         if (!(waterFraction >= 0.0) || !Double.isFinite(waterFraction)) {
             throw new IllegalArgumentException("V3 condenser water saturation ratio is not finite and nonnegative");
         }
-        return waterFraction >= 1.0 ? V3WaterCondenserRegime.ALL_VAPOR : V3WaterCondenserRegime.FREE_WATER;
+        return waterFraction >= 1.0 ? WaterCondenserRegime.ALL_VAPOR : WaterCondenserRegime.FREE_WATER;
     }
 
     private static double condenserSlipCoefficient(
-            V3ColumnTopology topology, V3WaterCondenserRegime regime, V3ColumnInput input, double[] pressures) {
-        if (regime != V3WaterCondenserRegime.FREE_WATER
+            V3ColumnTopology topology, WaterCondenserRegime regime, V3ColumnInput input, double[] pressures) {
+        if (regime != WaterCondenserRegime.FREE_WATER
                 || topology.condenserPhaseBranch() != V3CondenserPhaseBranch.TWO_PHASE) return 0.0;
         double temperature = input.specifications().stream()
                 .filter(V3ColumnSpecification.CondenserOutletTemperature.class::isInstance)
@@ -279,6 +289,6 @@ public final class V3ColumnProblem {
     double liquidWithdrawalFraction(V3DryMeshState state, int node) {
         double rate = nodeSideDrawMolPerSecond[node];
         if (rate == 0.0) return 0.0;
-        return V3SideDraws.withdrawal(state, node, rate).fraction();
+        return V3SideDrawSpec.withdrawal(state, node, rate).fraction();
     }
 }

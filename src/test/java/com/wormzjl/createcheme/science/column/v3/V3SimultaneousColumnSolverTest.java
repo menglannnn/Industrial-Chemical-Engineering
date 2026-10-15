@@ -10,9 +10,9 @@ import com.wormzjl.createcheme.science.column.v3.thermo.V3CrudeFeed;
 import com.wormzjl.createcheme.science.column.v3.thermo.V3FlashResult;
 import com.wormzjl.createcheme.science.column.v3.thermo.V3FugacityResult;
 import com.wormzjl.createcheme.science.column.v3.thermo.V3PengRobinsonThermo;
-import com.wormzjl.createcheme.science.column.v3.thermo.V3Phase;
 import com.wormzjl.createcheme.science.column.v3.thermo.V3ThermoModel;
 import com.wormzjl.createcheme.science.column.v3.thermo.V3ThermoWorkspace;
+import com.wormzjl.createcheme.science.thermo.PengRobinsonKernel.Root;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
@@ -212,14 +212,14 @@ class V3SimultaneousColumnSolverTest {
         V3SimultaneousColumnSolver.Attempt.Converged full = assertInstanceOf(
                 V3SimultaneousColumnSolver.Attempt.Converged.class,
                 V3SimultaneousColumnSolver.solveWithContinuationLocalBlocks(problem, evaluator, coordinates, perturbed,
-                        counting(thermo, fullWorkspaces), 32, 1.0e-9, V3SolveControl.UNBOUNDED, V3NewtonTrace.NONE,
+                        counting(thermo, fullWorkspaces), 32, 1.0e-9, V3SolveControl.UNBOUNDED, V3SimultaneousColumnSolver.NewtonTrace.NONE,
                         V3SimultaneousColumnSolver.RungBudget.DEFAULT));
 
         AtomicInteger rampWorkspaces = new AtomicInteger();
         V3SimultaneousColumnSolver.Attempt.Converged ramp = assertInstanceOf(
                 V3SimultaneousColumnSolver.Attempt.Converged.class,
                 V3SimultaneousColumnSolver.solveWithContinuationLocalBlocks(problem, evaluator, coordinates, perturbed,
-                        counting(thermo, rampWorkspaces), 32, 1.0e-9, V3SolveControl.UNBOUNDED, V3NewtonTrace.NONE,
+                        counting(thermo, rampWorkspaces), 32, 1.0e-9, V3SolveControl.UNBOUNDED, V3SimultaneousColumnSolver.NewtonTrace.NONE,
                         new V3SimultaneousColumnSolver.RungBudget(2, false, 8, 0, 0.0, 0.0)));
         assertEquals(full.evidence().iterations(), ramp.evidence().iterations());
         assertEquals(full.evidence().maximumScaledResidual(), ramp.evidence().maximumScaledResidual(), 0.0);
@@ -229,7 +229,7 @@ class V3SimultaneousColumnSolverTest {
         AtomicInteger cappedWorkspaces = new AtomicInteger();
         V3SimultaneousColumnSolver.Attempt capped =
                 V3SimultaneousColumnSolver.solveWithContinuationLocalBlocks(problem, evaluator, coordinates, perturbed,
-                        counting(thermo, cappedWorkspaces), 32, 1.0e-9, V3SolveControl.UNBOUNDED, V3NewtonTrace.NONE,
+                        counting(thermo, cappedWorkspaces), 32, 1.0e-9, V3SolveControl.UNBOUNDED, V3SimultaneousColumnSolver.NewtonTrace.NONE,
                         new V3SimultaneousColumnSolver.RungBudget(0, false, 8, 0, 0.0, 0.0));
         if (capped instanceof V3SimultaneousColumnSolver.Attempt.Failure failure) {
             assertTrue(cappedWorkspaces.get() < fullWorkspaces.get(),
@@ -247,7 +247,7 @@ class V3SimultaneousColumnSolverTest {
         V3SimultaneousColumnSolver.Attempt uncertified =
                 V3SimultaneousColumnSolver.solveWithContinuationLocalBlocks(problem, evaluator, coordinates, perturbed,
                         counting(thermo, uncertifiedWorkspaces), 32, 1.0e-9, V3SolveControl.UNBOUNDED,
-                        V3NewtonTrace.NONE, V3SimultaneousColumnSolver.RungBudget.DEFAULT.withoutVerificationCascade());
+                        V3SimultaneousColumnSolver.NewtonTrace.NONE, V3SimultaneousColumnSolver.RungBudget.DEFAULT.withoutVerificationCascade());
         if (uncertified instanceof V3SimultaneousColumnSolver.Attempt.Converged certified) {
             assertTrue(certified.evidence().convergenceEvidence().satisfiesGates());
         } else {
@@ -287,7 +287,7 @@ class V3SimultaneousColumnSolverTest {
             V3ColumnProblem problem, V3MeshResidualEvaluator evaluator, V3DryMeshCoordinateMap coordinates,
             V3DryMeshState seed, NewtonManufacturedThermo thermo, V3SimultaneousColumnSolver.RungBudget budget) {
         return V3SimultaneousColumnSolver.solveWithContinuationLocalBlocks(problem, evaluator, coordinates, seed,
-                thermo::newWorkspace, 32, 1.0e-9, V3SolveControl.UNBOUNDED, V3NewtonTrace.NONE, budget);
+                thermo::newWorkspace, 32, 1.0e-9, V3SolveControl.UNBOUNDED, V3SimultaneousColumnSolver.NewtonTrace.NONE, budget);
     }
 
     private static V3FiniteDifferenceJacobian.V3ThermoWorkspaceFactory counting(
@@ -370,11 +370,11 @@ class V3SimultaneousColumnSolverTest {
 
         @Override
         public V3FugacityResult fugacity(
-                double temperatureKelvin, double pressurePascal, double[] composition, V3Phase phase,
+                double temperatureKelvin, double pressurePascal, double[] composition, Root phase,
                 V3ThermoWorkspace workspace) {
             int node = nodeForTemperature(temperatureKelvin);
             double[] logPhi = new double[2];
-            if (phase == V3Phase.LIQUID) {
+            if (phase == Root.LIQUID) {
                 double referenceTemperature = 400.0 + 10.0 * node;
                 for (int component = 0; component < 2; component++) logPhi[component] = Math.log(K[node][component])
                         + (component + 1) * 1.0e-3 * (temperatureKelvin - referenceTemperature);
@@ -384,7 +384,7 @@ class V3SimultaneousColumnSolverTest {
 
         @Override
         public double molarEnthalpy(
-                double temperatureKelvin, double pressurePascal, double[] composition, V3Phase phase,
+                double temperatureKelvin, double pressurePascal, double[] composition, Root phase,
                 V3ThermoWorkspace workspace) {
             return temperatureKelvin - (400.0 + 10.0 * nodeForTemperature(temperatureKelvin));
         }

@@ -9,27 +9,27 @@ import org.junit.jupiter.api.Test;
 class V3PumparoundDraftTest {
     @Test
     void authoredCoolingIsNegatedIntoTheScienceDutyAndRoundTrips() {
-        assertEquals(-5.0e6, V3PumparoundDraft.coolingMegawattsToDutyWatts(5.0));
-        assertEquals(5.0, V3PumparoundDraft.dutyWattsToCoolingMegawatts(-5.0e6));
-        assertEquals(-1.0e6, V3PumparoundDraft.coolingMegawattsToDutyWatts(1.0));
+        assertEquals(-5.0e6, V3EditorDraft.PumparoundDraft.coolingMegawattsToDutyWatts(5.0));
+        assertEquals(5.0, V3EditorDraft.PumparoundDraft.dutyWattsToCoolingMegawatts(-5.0e6));
+        assertEquals(-1.0e6, V3EditorDraft.PumparoundDraft.coolingMegawattsToDutyWatts(1.0));
         for (double megawatts : List.of(0.1, 0.5, 3.3, 5.0, 12.75, 250.0)) {
-            assertEquals(megawatts, V3PumparoundDraft.dutyWattsToCoolingMegawatts(
-                    V3PumparoundDraft.coolingMegawattsToDutyWatts(megawatts)), () -> "round trip " + megawatts);
+            assertEquals(megawatts, V3EditorDraft.PumparoundDraft.dutyWattsToCoolingMegawatts(
+                    V3EditorDraft.PumparoundDraft.coolingMegawattsToDutyWatts(megawatts)), () -> "round trip " + megawatts);
         }
         // A server-authored heater is positive in the contract and therefore shows as negative cooling.
-        assertEquals(-2.0, V3PumparoundDraft.dutyWattsToCoolingMegawatts(2.0e6));
+        assertEquals(-2.0, V3EditorDraft.PumparoundDraft.dutyWattsToCoolingMegawatts(2.0e6));
     }
 
     @Test
     void bothTraysBlankDisablesTheRowWithoutReadingTheDuty() {
-        assertEquals(List.of(), V3PumparoundDraft.parse(List.of(
+        assertEquals(List.of(), V3EditorDraft.PumparoundDraft.parse(List.of(
                 row("", "", "", V3PumparoundSpec.Split.UNIFORM),
                 row("  ", " ", "5", V3PumparoundSpec.Split.RETURN_TRAY)), 24));
     }
 
     @Test
     void completeRowsBecomeSignedSpecificationsInRowOrder() {
-        List<V3PumparoundSpec> coolers = V3PumparoundDraft.parse(List.of(
+        List<V3PumparoundSpec> coolers = V3EditorDraft.PumparoundDraft.parse(List.of(
                 row("20", "16", "5.0", V3PumparoundSpec.Split.UNIFORM),
                 row("", "", "", V3PumparoundSpec.Split.UNIFORM),
                 row("12", "9", "2.5", V3PumparoundSpec.Split.RETURN_TRAY)), 24);
@@ -73,10 +73,10 @@ class V3PumparoundDraftTest {
     @Test
     void repeatedTrayPairsAndOverlongRowListsAreRejected() {
         assertEquals("Cooler 2 repeats an existing draw and return tray pair",
-                assertThrows(IllegalArgumentException.class, () -> V3PumparoundDraft.parse(List.of(
+                assertThrows(IllegalArgumentException.class, () -> V3EditorDraft.PumparoundDraft.parse(List.of(
                         row("20", "16", "5", V3PumparoundSpec.Split.UNIFORM),
                         row("20", "16", "3", V3PumparoundSpec.Split.RETURN_TRAY)), 24)).getMessage());
-        assertThrows(IllegalArgumentException.class, () -> V3PumparoundDraft.parse(List.of(
+        assertThrows(IllegalArgumentException.class, () -> V3EditorDraft.PumparoundDraft.parse(List.of(
                 row("20", "16", "5", V3PumparoundSpec.Split.UNIFORM),
                 row("19", "15", "5", V3PumparoundSpec.Split.UNIFORM),
                 row("18", "14", "5", V3PumparoundSpec.Split.UNIFORM),
@@ -86,7 +86,7 @@ class V3PumparoundDraftTest {
 
     @Test
     void fourthCoolerIsRetainedIncludingItsSplitAndDuty() {
-        List<V3PumparoundSpec> coolers = V3PumparoundDraft.parse(List.of(
+        List<V3PumparoundSpec> coolers = V3EditorDraft.PumparoundDraft.parse(List.of(
                 row("20", "16", "5", V3PumparoundSpec.Split.UNIFORM),
                 row("19", "15", "4", V3PumparoundSpec.Split.UNIFORM),
                 row("18", "14", "3", V3PumparoundSpec.Split.UNIFORM),
@@ -99,16 +99,16 @@ class V3PumparoundDraftTest {
     @Test
     void aSingleTrayZoneIsAllowedForBothSplits() {
         assertEquals(List.of(new V3PumparoundSpec(16, 16, -1.0e6, V3PumparoundSpec.Split.RETURN_TRAY)),
-                V3PumparoundDraft.parse(List.of(row("16", "16", "1", V3PumparoundSpec.Split.RETURN_TRAY)), 24));
+                V3EditorDraft.PumparoundDraft.parse(List.of(row("16", "16", "1", V3PumparoundSpec.Split.RETURN_TRAY)), 24));
     }
 
-    private static String message(V3PumparoundDraft.Row row) {
-        return assertThrows(IllegalArgumentException.class, () -> V3PumparoundDraft.parse(List.of(row), 24))
+    private static String message(V3EditorDraft.PumparoundDraft.Row row) {
+        return assertThrows(IllegalArgumentException.class, () -> V3EditorDraft.PumparoundDraft.parse(List.of(row), 24))
                 .getMessage();
     }
 
-    private static V3PumparoundDraft.Row row(
+    private static V3EditorDraft.PumparoundDraft.Row row(
             String drawTray, String returnTray, String cooling, V3PumparoundSpec.Split split) {
-        return new V3PumparoundDraft.Row(drawTray, returnTray, cooling, split);
+        return new V3EditorDraft.PumparoundDraft.Row(drawTray, returnTray, cooling, split);
     }
 }

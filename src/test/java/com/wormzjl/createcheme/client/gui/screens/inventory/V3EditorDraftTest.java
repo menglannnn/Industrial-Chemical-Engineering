@@ -1,5 +1,6 @@
 package com.wormzjl.createcheme.client.gui.screens.inventory;
 import com.wormzjl.createcheme.science.column.v3.*;
+import com.wormzjl.createcheme.science.column.v3.V3ColumnSpecification.ControlledQuantity;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
@@ -23,8 +24,8 @@ class V3EditorDraftTest {
         assertEquals(input.feedTemperatureKelvin(),edited.feedTemperatureKelvin());
         assertEquals(input.topPressurePascal(),edited.topPressurePascal());
         assertEquals(input.stagePressureDropPascal(),edited.stagePressureDropPascal());
-        assertEquals(3,V3EditorDraft.value(edited,V3ControlledQuantity.ORGANIC_REFLUX_RATIO));
-        assertEquals(V3EditorDraft.value(input,V3ControlledQuantity.REBOILER_DUTY),V3EditorDraft.value(edited,V3ControlledQuantity.REBOILER_DUTY));
+        assertEquals(3,V3EditorDraft.value(edited,ControlledQuantity.ORGANIC_REFLUX_RATIO));
+        assertEquals(V3EditorDraft.value(input,ControlledQuantity.REBOILER_DUTY),V3EditorDraft.value(edited,ControlledQuantity.REBOILER_DUTY));
     }
     @Test void invalidDraftRemainsEditableAndCanReturnToItsOriginalValue() {
         var draft=new V3EditorDraft(input());var old=draft.get("s2");draft.set("s2","67");

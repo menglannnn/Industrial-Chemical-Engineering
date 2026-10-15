@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import com.wormzjl.createcheme.science.thermo.PengRobinsonKernel.Root;
 import java.util.Arrays;
 import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
@@ -74,8 +75,8 @@ class V3PengRobinsonThermoTest {
         V3CrudeFeed crude = thermo.crudeFeed(ASSAY_ID);
         V3ThermoWorkspace workspace = thermo.newWorkspace();
 
-        V3FugacityResult fugacity = thermo.fugacity(500.0, 250_000.0, crude.moleFractions(), V3Phase.LIQUID, workspace);
-        double enthalpy = thermo.molarEnthalpy(500.0, 250_000.0, crude.moleFractions(), V3Phase.LIQUID, workspace);
+        V3FugacityResult fugacity = thermo.fugacity(500.0, 250_000.0, crude.moleFractions(), Root.LIQUID, workspace);
+        double enthalpy = thermo.molarEnthalpy(500.0, 250_000.0, crude.moleFractions(), Root.LIQUID, workspace);
         double[] copy = fugacity.logFugacityCoefficients();
         copy[0] = Double.NaN;
 
@@ -115,8 +116,8 @@ class V3PengRobinsonThermoTest {
         assertEquals(0.7855276025697608, flash.vaporFraction(), 1.0e-9);
         double[] x = flash.liquidComposition();
         double[] y = flash.vaporComposition();
-        V3FugacityResult liquid = thermo.fugacity(638.15, 137250.0, x, V3Phase.LIQUID, thermo.newWorkspace());
-        V3FugacityResult vapor = thermo.fugacity(638.15, 137250.0, y, V3Phase.VAPOR, thermo.newWorkspace());
+        V3FugacityResult liquid = thermo.fugacity(638.15, 137250.0, x, Root.LIQUID, thermo.newWorkspace());
+        V3FugacityResult vapor = thermo.fugacity(638.15, 137250.0, y, Root.VAPOR, thermo.newWorkspace());
         for (int component = 0; component < CAPTURED_FEED.length; component++) {
             assertEquals(CAPTURED_FEED[component], (1.0 - flash.vaporFraction()) * x[component]
                     + flash.vaporFraction() * y[component], 1.0e-12);

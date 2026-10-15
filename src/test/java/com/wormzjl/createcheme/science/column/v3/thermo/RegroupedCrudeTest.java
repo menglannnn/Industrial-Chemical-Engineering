@@ -33,7 +33,7 @@ class RegroupedCrudeTest {
         assertEquals(159.65286000000003,mass,1e-9);
         assertEquals(.18401666666666672,volume,1e-12);
         var original=V3Tjl19PropertyPackage.INSTANCE;var oldFractions=original.crudeFeed("createcheme:tia_juana_light").moleFractions();
-        var loaded=V3PropertyPackageRegistry.require(current.id());
+        var loaded=V3CatalogPropertyPackage.require(current.id());
         for(double t:new double[]{293.15,298.15,500,638.15,900}) {
             double oldCp=0,newCp=0,oldH=0,newH=0;
             for(int i=0;i<oldFractions.length;i++) {

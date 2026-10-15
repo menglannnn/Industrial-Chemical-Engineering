@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.wormzjl.createcheme.science.column.v3.thermo.V3WaterProperties;
+import com.wormzjl.createcheme.science.thermo.PengRobinsonKernel.Root;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 
@@ -392,7 +393,7 @@ class V3FreeWaterTrayTest {
         @Override
         public com.wormzjl.createcheme.science.column.v3.thermo.V3FugacityResult fugacity(
                 double temperatureKelvin, double pressurePascal, double[] composition,
-                com.wormzjl.createcheme.science.column.v3.thermo.V3Phase phase,
+                Root phase,
                 com.wormzjl.createcheme.science.column.v3.thermo.V3ThermoWorkspace workspace) {
             return new com.wormzjl.createcheme.science.column.v3.thermo.V3FugacityResult(phase,
                     new double[] {0.0, 0.0}, 1.0,
@@ -402,7 +403,7 @@ class V3FreeWaterTrayTest {
         @Override
         public double molarEnthalpy(
                 double temperatureKelvin, double pressurePascal, double[] composition,
-                com.wormzjl.createcheme.science.column.v3.thermo.V3Phase phase,
+                Root phase,
                 com.wormzjl.createcheme.science.column.v3.thermo.V3ThermoWorkspace workspace) {
             return temperatureKelvin * (30.0 * composition[0] + 40.0 * composition[1]);
         }

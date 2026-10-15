@@ -1,6 +1,7 @@
 package com.wormzjl.createcheme.client.gui.screens.inventory;
 
 import com.wormzjl.createcheme.science.column.v3.*;
+import com.wormzjl.createcheme.science.column.v3.V3ColumnSpecification.ControlledQuantity;
 import java.util.*;
 
 /** Widget-independent draft; one-decimal displays never round untouched physical inputs. */
@@ -17,8 +18,8 @@ final class V3EditorDraft {
         this.base=base;
         double[] scalars={Arrays.stream(base.feedComponentMolarFlowsMolPerSecond()).sum()*3.6,
             base.feedTemperatureKelvin()-273.15,base.stageCount()+2,base.feedStageNumber()+1,
-            value(base,V3ControlledQuantity.CONDENSER_OUTLET_TEMPERATURE)-273.15,
-            value(base,V3ControlledQuantity.REBOILER_DUTY)/1e6,value(base,V3ControlledQuantity.ORGANIC_REFLUX_RATIO),
+            value(base,ControlledQuantity.CONDENSER_OUTLET_TEMPERATURE)-273.15,
+            value(base,ControlledQuantity.REBOILER_DUTY)/1e6,value(base,ControlledQuantity.ORGANIC_REFLUX_RATIO),
             base.topPressurePascal()/1e5,base.stagePressureDropPascal()/1000,base.columnDiameterMetres()};
         for(int i=0;i<scalars.length;i++)putNumber("s"+i,scalars[i],i==2||i==3);
         for(int i=0;i<3;i++){
@@ -124,13 +125,13 @@ final class V3EditorDraft {
     private V3ColumnInput assemble(boolean withComposition){
         if(!dirty())return base;
         List<String> scalar=new ArrayList<>();for(int i=0;i<10;i++)scalar.add(i==2?index("s2",-2):i==3?index("s3",-1):precise("s"+i));
-        List<V3SideDrawDraft.Row> draws=new ArrayList<>();
-        for(int i=0;i<3;i++)draws.add(new V3SideDrawDraft.Row(index("d"+i+"stage",-1),precise("d"+i+"rate")));
-        List<V3PumparoundDraft.Row> coolers=new ArrayList<>();
-        for(int i=0;i<V3ColumnInput.MAX_PUMPAROUNDS;i++)coolers.add(new V3PumparoundDraft.Row(
+        List<SideDrawDraft.Row> draws=new ArrayList<>();
+        for(int i=0;i<3;i++)draws.add(new SideDrawDraft.Row(index("d"+i+"stage",-1),precise("d"+i+"rate")));
+        List<PumparoundDraft.Row> coolers=new ArrayList<>();
+        for(int i=0;i<V3ColumnInput.MAX_PUMPAROUNDS;i++)coolers.add(new PumparoundDraft.Row(
             index("c"+i+"draw",-1),index("c"+i+"return",-1),precise("c"+i+"duty"),V3PumparoundSpec.Split.valueOf(get("c"+i+"split"))));
-        var parsed=V3ColumnInputDraft.assemble(base,scalar,draws,
-            new V3SteamFeedDraft.Row("","",""),new V3SteamFeedDraft.Row("","",""),coolers);
+        var parsed=ColumnInputDraft.assemble(base,scalar,draws,
+            new SteamFeedDraft.Row("","",""),new SteamFeedDraft.Row("","",""),coolers);
         List<V3SteamFeedSpec> steam=new ArrayList<>();
         for(int i=0;i<2;i++)if(!get("t"+i+"stage").isBlank())steam.add(new V3SteamFeedSpec(Integer.parseInt(index("t"+i+"stage",-1)),Double.parseDouble(precise("t"+i+"rate"))/3.6,Double.parseDouble(precise("t"+i+"T"))+273.15));
         var source=!withComposition||composition==null?base:composition.source();
@@ -143,9 +144,9 @@ final class V3EditorDraft {
             !columnChanged&&fields.get("s1").equals(original.get("s1"))?base.feedTemperatureKelvin():parsed.feedTemperatureKelvin(),
             parsed.stageCount(),parsed.feedStageNumber(),unchanged("s7")?base.topPressurePascal():parsed.topPressurePascal(),
             unchanged("s8")?base.stagePressureDropPascal():parsed.stagePressureDropPascal(),
-            List.of(new V3ColumnSpecification.CondenserOutletTemperature(unchanged("s4")?value(base,V3ControlledQuantity.CONDENSER_OUTLET_TEMPERATURE):value(parsed,V3ControlledQuantity.CONDENSER_OUTLET_TEMPERATURE)),
-                new V3ColumnSpecification.OrganicRefluxRatio(unchanged("s6")?value(base,V3ControlledQuantity.ORGANIC_REFLUX_RATIO):value(parsed,V3ControlledQuantity.ORGANIC_REFLUX_RATIO)),
-                new V3ColumnSpecification.ReboilerDuty(unchanged("s5")?value(base,V3ControlledQuantity.REBOILER_DUTY):value(parsed,V3ControlledQuantity.REBOILER_DUTY))),
+            List.of(new V3ColumnSpecification.CondenserOutletTemperature(unchanged("s4")?value(base,ControlledQuantity.CONDENSER_OUTLET_TEMPERATURE):value(parsed,ControlledQuantity.CONDENSER_OUTLET_TEMPERATURE)),
+                new V3ColumnSpecification.OrganicRefluxRatio(unchanged("s6")?value(base,ControlledQuantity.ORGANIC_REFLUX_RATIO):value(parsed,ControlledQuantity.ORGANIC_REFLUX_RATIO)),
+                new V3ColumnSpecification.ReboilerDuty(unchanged("s5")?value(base,ControlledQuantity.REBOILER_DUTY):value(parsed,ControlledQuantity.REBOILER_DUTY))),
             parsed.sideDraws(),steam,parsed.pumparounds(),unchanged("s9")?base.columnDiameterMetres():parsed.columnDiameterMetres());
         V3ColumnProblemResolver.validateInput(precise);
         return withComposition&&V3HollandExample32.isPackage(precise.packageId())?canonicalBenchmark(precise):precise;
@@ -158,7 +159,7 @@ final class V3EditorDraft {
                 ||input.sideDraws().size()!=fixed.sideDraws().size())return input;
         if(!roundoff(input.feedTemperatureKelvin(),fixed.feedTemperatureKelvin())||!roundoff(input.topPressurePascal(),fixed.topPressurePascal())
                 ||!roundoff(input.stagePressureDropPascal(),fixed.stagePressureDropPascal())||!roundoff(input.columnDiameterMetres(),fixed.columnDiameterMetres()))return input;
-        for(var quantity:V3ControlledQuantity.values())if(!roundoff(value(input,quantity),value(fixed,quantity)))return input;
+        for(var quantity:ControlledQuantity.values())if(!roundoff(value(input,quantity),value(fixed,quantity)))return input;
         double[] actual=input.feedComponentMolarFlowsMolPerSecond(),expected=fixed.feedComponentMolarFlowsMolPerSecond();
         for(int i=0;i<actual.length;i++)if(!roundoff(actual[i],expected[i]))return input;
         for(int i=0;i<input.sideDraws().size();i++){
@@ -169,11 +170,287 @@ final class V3EditorDraft {
     }
     private static boolean roundoff(double actual,double expected){return actual==expected||Math.abs(actual-expected)<=16*Math.ulp(expected);}
     private boolean unchanged(String key){return !columnChanged&&Objects.equals(fields.get(key),original.get(key));}
-    static double value(V3ColumnInput input,V3ControlledQuantity quantity){
+    static double value(V3ColumnInput input,ControlledQuantity quantity){
         return input.specifications().stream().filter(s->s.controlledQuantity()==quantity).mapToDouble(s->switch(s){
             case V3ColumnSpecification.CondenserOutletTemperature t->t.kelvin();
             case V3ColumnSpecification.OrganicRefluxRatio r->r.ratio();
             case V3ColumnSpecification.ReboilerDuty d->d.watts();
         }).findFirst().orElseThrow();
+    }
+
+    /** Pure draft parsing kept separate from widgets so disabled-row and unit semantics are testable. */
+    static final class SideDrawDraft {
+        private SideDrawDraft() {}
+
+        static List<V3SideDrawSpec> parse(List<Row> rows, int stageCount, double feedMolPerSecond) {
+            if (rows.size() > V3ColumnInput.MAX_SIDE_DRAWS) throw new IllegalArgumentException("Too many side draw rows");
+            List<V3SideDrawSpec> draws = new ArrayList<>();
+            Set<Integer> trays = new HashSet<>();
+            double total = 0.0;
+            for (Row row : rows) {
+                if (row.rateKmolPerHour().isBlank()) continue;
+                double rate = Double.parseDouble(row.rateKmolPerHour().trim()) / 3.6;
+                if (rate == 0.0) continue;
+                int tray = Integer.parseInt(row.tray().trim());
+                if (tray > stageCount || !trays.add(tray)) throw new IllegalArgumentException("Draw trays must be distinct and in range");
+                draws.add(new V3SideDrawSpec(tray, rate));
+                total += rate;
+            }
+            if (!Double.isFinite(feedMolPerSecond) || feedMolPerSecond <= 0 || total >= feedMolPerSecond) {
+                throw new IllegalArgumentException("Total side draws must be below the feed rate");
+            }
+            draws.sort(Comparator.comparingInt(V3SideDrawSpec::trayNumber));
+            return List.copyOf(draws);
+        }
+
+        record Row(String tray, String rateKmolPerHour) {}
+    }
+
+    /** Pure player-unit steam parser, kept independent of widgets and server-only pressure validation. */
+    static final class SteamFeedDraft {
+        private static final double KMOL_PER_HOUR_TO_MOL_PER_SECOND = 1_000.0 / 3_600.0;
+        private static final double CELSIUS_TO_KELVIN = 273.15;
+
+        private SteamFeedDraft() {}
+
+        static List<V3SteamFeedSpec> parse(Row sump, Row tray, int stageCount, double feedMolPerSecond) {
+            List<V3SteamFeedSpec> result = new ArrayList<>(V3ColumnInput.MAX_STEAM_FEEDS);
+            add(result, stageCount + 1, sump.rateKmolPerHour(), sump.temperatureCelsius(), "Sump steam");
+            if (!tray.rateKmolPerHour().isBlank() && Double.parseDouble(tray.rateKmolPerHour().trim()) != 0.0) {
+                int stage = Integer.parseInt(tray.stage().trim());
+                if (stage < 1 || stage > stageCount) throw new IllegalArgumentException("Tray steam stage must be within the tray range");
+                add(result, stage, tray.rateKmolPerHour(), tray.temperatureCelsius(), "Tray steam");
+            }
+            if (result.size() > 1 && result.get(0).stageNumber() == result.get(1).stageNumber()) {
+                throw new IllegalArgumentException("Steam feeds must address distinct stages");
+            }
+            double total = result.stream().mapToDouble(V3SteamFeedSpec::molarFlowMolPerSecond).sum();
+            if (!Double.isFinite(feedMolPerSecond) || feedMolPerSecond <= 0.0 || total > feedMolPerSecond) {
+                throw new IllegalArgumentException("Total steam rate must not exceed the feed rate");
+            }
+            return List.copyOf(result);
+        }
+
+        private static void add(List<V3SteamFeedSpec> result, int stage, String rateText, String temperatureText, String label) {
+            if (rateText.isBlank()) return;
+            double rate = Double.parseDouble(rateText.trim()) * KMOL_PER_HOUR_TO_MOL_PER_SECOND;
+            if (rate == 0.0) return;
+            if (temperatureText.isBlank()) throw new IllegalArgumentException(label + " temperature is required when rate is set");
+            result.add(new V3SteamFeedSpec(stage, rate, Double.parseDouble(temperatureText.trim()) + CELSIUS_TO_KELVIN));
+        }
+
+        record Row(String stage, String rateKmolPerHour, String temperatureCelsius) {}
+    }
+
+    /**
+     * Pure pumparound-row parsing kept separate from widgets so the sign convention stays testable.
+     *
+     * <p>The editor authors a cooler as a <em>positive</em> number of megawatts removed, while the science contract
+     * stores a signed watt duty that is positive when heat is added to the column. Cooling therefore crosses this
+     * boundary as a negation, and this class is the only place that performs it.</p>
+     */
+    static final class PumparoundDraft {
+        static final double MEGAWATT_TO_WATT = 1_000_000.0;
+
+        private PumparoundDraft() {}
+
+        /** Player-authored cooling in MW to the signed science duty in W; cooling is always negative. */
+        static double coolingMegawattsToDutyWatts(double coolingMegawatts) {
+            return -coolingMegawatts * MEGAWATT_TO_WATT;
+        }
+
+        /** Signed science duty in W back to displayed cooling in MW; a server-authored heater shows negative. */
+        static double dutyWattsToCoolingMegawatts(double dutyWatts) {
+            return -dutyWatts / MEGAWATT_TO_WATT;
+        }
+
+        /**
+         * Parses the editor rows in display order.
+         *
+         * <p>A row whose draw and return tray are both blank is switched off and contributes no specification;
+         * every other row must be complete, in range, and cooling-signed.</p>
+         */
+        static List<V3PumparoundSpec> parse(List<Row> rows, int stageCount) {
+            if (rows.size() > V3ColumnInput.MAX_PUMPAROUNDS) {
+                throw new IllegalArgumentException("At most " + V3ColumnInput.MAX_PUMPAROUNDS + " coolers are supported");
+            }
+            List<V3PumparoundSpec> coolers = new ArrayList<>(rows.size());
+            for (int index = 0; index < rows.size(); index++) {
+                V3PumparoundSpec cooler = parseRow(rows.get(index), index + 1, stageCount);
+                if (cooler == null) continue;
+                for (V3PumparoundSpec existing : coolers) {
+                    if (existing.returnTray() == cooler.returnTray() && existing.drawTray() == cooler.drawTray()) {
+                        throw invalid(index + 1, "repeats an existing draw and return tray pair");
+                    }
+                }
+                coolers.add(cooler);
+            }
+            return List.copyOf(coolers);
+        }
+
+        private static V3PumparoundSpec parseRow(Row row, int number, int stageCount) {
+            String draw = row.drawTray().trim();
+            String returned = row.returnTray().trim();
+            String cooling = row.coolingMegawatts().trim();
+            if (draw.isBlank() && returned.isBlank()) return null;
+            if (draw.isBlank() || returned.isBlank()) throw invalid(number, "needs both a draw tray and a return tray");
+            int drawTray = integer(draw, number, "draw tray");
+            int returnTray = integer(returned, number, "return tray");
+            if (returnTray < 1 || drawTray > stageCount) throw invalid(number, "must stay within trays 1.." + stageCount);
+            if (returnTray > drawTray) throw invalid(number, "must return above the tray it draws from");
+            if (cooling.isBlank()) throw invalid(number, "needs a cooling duty in MW");
+            double megawatts;
+            try {
+                megawatts = Double.parseDouble(cooling);
+            } catch (NumberFormatException notANumber) {
+                throw invalid(number, "cooling must be a number of MW");
+            }
+            if (!Double.isFinite(megawatts) || megawatts <= 0.0) {
+                throw invalid(number, "cooling must be a positive number of MW");
+            }
+            return new V3PumparoundSpec(returnTray, drawTray, coolingMegawattsToDutyWatts(megawatts), row.split());
+        }
+
+        private static int integer(String value, int number, String field) {
+            try {
+                return Integer.parseInt(value);
+            } catch (NumberFormatException notAnInteger) {
+                throw invalid(number, field + " must be a whole tray number");
+            }
+        }
+
+        private static IllegalArgumentException invalid(int number, String reason) {
+            return new IllegalArgumentException("Cooler " + number + " " + reason);
+        }
+
+        record Row(String drawTray, String returnTray, String coolingMegawatts, V3PumparoundSpec.Split split) {}
+    }
+
+    /** Pure parser for the ten scalar GUI fields, with field-specific diagnostics and SI conversion. */
+    static final class ColumnScalarDraft {
+        private static final double KMOL_PER_HOUR_TO_MOL_PER_SECOND = 1_000.0 / 3_600.0;
+        private static final double CELSIUS_TO_KELVIN = 273.15;
+        static final int FIELD_COUNT = 10;
+
+        private ColumnScalarDraft() {}
+
+        static Values parse(List<String> fields) {
+            if (fields.size() != FIELD_COUNT) throw new IllegalArgumentException("V3 scalar draft requires ten fields");
+            double feed = number(fields, 0, "Feed flow") * KMOL_PER_HOUR_TO_MOL_PER_SECOND;
+            double feedTemperature = number(fields, 1, "Feed temperature") + CELSIUS_TO_KELVIN;
+            int stages = integer(fields, 2, "Stage count");
+            int feedStage = integer(fields, 3, "Feed stage");
+            double condenserTemperature = number(fields, 4, "Condenser temperature") + CELSIUS_TO_KELVIN;
+            double duty = number(fields, 5, "Reboiler duty") * 1_000_000.0;
+            double reflux = number(fields, 6, "Reflux ratio");
+            double pressure = number(fields, 7, "Top pressure") * 100_000.0;
+            double pressureDrop = number(fields, 8, "Pressure drop") * 1_000.0;
+            double diameter = number(fields, 9, "Column diameter");
+            if (!(feed > 0.0)) throw invalid("Feed flow", "must be positive");
+            if (!(feedTemperature > 0.0)) throw invalid("Feed temperature", "must be above absolute zero");
+            if (stages < V3ColumnInput.MIN_STAGE_COUNT || stages > V3ColumnInput.MAX_STAGE_COUNT) {
+                throw invalid("Stage count", "is outside " + V3ColumnInput.MIN_STAGE_COUNT + ".." + V3ColumnInput.MAX_STAGE_COUNT);
+            }
+            if (feedStage < 1 || feedStage > stages + 1) throw invalid("Feed stage", "must be within the column");
+            if (!(condenserTemperature > 0.0)) throw invalid("Condenser temperature", "must be above absolute zero");
+            if (duty < 0.0) throw invalid("Reboiler duty", "must be nonnegative");
+            if (reflux < 0.0) throw invalid("Reflux ratio", "must be nonnegative");
+            if (!(pressure > 0.0)) throw invalid("Top pressure", "must be positive");
+            if (pressureDrop < 0.0) throw invalid("Pressure drop", "must be nonnegative");
+            // Zero is the prescribed-drop column this contract has always had; anything positive asks for
+            // flow-dependent sieve-tray hydraulics and is bounded by the schema's diameter range.
+            if (diameter < 0.0 || diameter > V3ColumnInput.MAX_COLUMN_DIAMETER_METRES) {
+                throw invalid("Column diameter", "must be within 0.." + V3ColumnInput.MAX_COLUMN_DIAMETER_METRES + " m");
+            }
+            return new Values(feed, feedTemperature, stages, feedStage, condenserTemperature,
+                    duty, reflux, pressure, pressureDrop, diameter);
+        }
+
+        private static double number(List<String> fields, int index, String name) {
+            try {
+                double value = Double.parseDouble(fields.get(index));
+                if (!Double.isFinite(value)) throw invalid(name, "must be finite");
+                return value;
+            } catch (NumberFormatException invalid) {
+                throw invalid(name, "must be numeric");
+            }
+        }
+
+        private static int integer(List<String> fields, int index, String name) {
+            try {
+                return Integer.parseInt(fields.get(index));
+            } catch (NumberFormatException invalid) {
+                throw invalid(name, "must be an integer");
+            }
+        }
+
+        private static IllegalArgumentException invalid(String name, String reason) {
+            return new IllegalArgumentException(name + " " + reason);
+        }
+
+        record Values(
+                double feedMolPerSecond, double feedTemperatureKelvin, int stageCount, int feedStage,
+                double condenserTemperatureKelvin, double reboilerDutyWatts, double refluxRatio,
+                double topPressurePascal, double pressureDropPascal, double columnDiameterMetres) {}
+    }
+
+    /**
+     * Widget-free assembly of one candidate {@link V3ColumnInput} from the editor drafts.
+     *
+     * <p>The screen owns only the text; every unit conversion, diagnostic message and contract check lives here so
+     * the exact input the Run button would send can be pinned by a unit test. The feed composition is never edited
+     * in the GUI: the authored total rescales the server-owned component vector.</p>
+     */
+    static final class ColumnInputDraft {
+        private ColumnInputDraft() {}
+
+        static V3ColumnInput assemble(
+                V3ColumnInput base,
+                List<String> scalarFields,
+                List<SideDrawDraft.Row> sideDraws,
+                SteamFeedDraft.Row sumpSteam,
+                SteamFeedDraft.Row traySteam,
+                List<PumparoundDraft.Row> coolers) {
+            ColumnScalarDraft.Values scalar = ColumnScalarDraft.parse(scalarFields);
+            double[] scaledFlows = scaledFeed(base, scalar.feedMolPerSecond());
+            List<V3SideDrawSpec> draws;
+            try {
+                draws = SideDrawDraft.parse(sideDraws, scalar.stageCount(), scalar.feedMolPerSecond());
+            } catch (IllegalArgumentException invalidDraws) {
+                throw new IllegalArgumentException("Side draws: " + invalidDraws.getMessage(), invalidDraws);
+            }
+            List<V3SteamFeedSpec> steam;
+            try {
+                steam = SteamFeedDraft.parse(sumpSteam, traySteam, scalar.stageCount(), scalar.feedMolPerSecond());
+            } catch (IllegalArgumentException invalidSteam) {
+                throw new IllegalArgumentException("Steam: " + invalidSteam.getMessage(), invalidSteam);
+            }
+            List<V3PumparoundSpec> pumparounds;
+            try {
+                pumparounds = PumparoundDraft.parse(coolers, scalar.stageCount());
+            } catch (IllegalArgumentException invalidCoolers) {
+                throw new IllegalArgumentException("Heat: " + invalidCoolers.getMessage(), invalidCoolers);
+            }
+            return new V3ColumnInput(
+                    V3ColumnInput.SCHEMA_VERSION, base.packageId(), base.assayId(), base.componentBasis(), scaledFlows,
+                    scalar.feedTemperatureKelvin(), scalar.stageCount(), scalar.feedStage(),
+                    scalar.topPressurePascal(), scalar.pressureDropPascal(), List.of(
+                            new V3ColumnSpecification.CondenserOutletTemperature(scalar.condenserTemperatureKelvin()),
+                            new V3ColumnSpecification.OrganicRefluxRatio(scalar.refluxRatio()),
+                            new V3ColumnSpecification.ReboilerDuty(scalar.reboilerDutyWatts())),
+                    draws, steam, pumparounds, scalar.columnDiameterMetres());
+        }
+
+        private static double[] scaledFeed(V3ColumnInput base, double feedMolPerSecond) {
+            double[] flows = base.feedComponentMolarFlowsMolPerSecond();
+            double total = 0.0;
+            for (double flow : flows) total += flow;
+            if (!Double.isFinite(total) || total <= 0.0) {
+                throw new IllegalArgumentException("Server feed composition cannot be rescaled");
+            }
+            double scale = feedMolPerSecond / total;
+            for (int index = 0; index < flows.length; index++) flows[index] *= scale;
+            return flows;
+        }
     }
 }

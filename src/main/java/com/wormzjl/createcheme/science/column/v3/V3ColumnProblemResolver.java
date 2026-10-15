@@ -165,7 +165,7 @@ public final class V3ColumnProblemResolver {
         double reboilerDuty = input.specifications().stream().filter(V3ColumnSpecification.ReboilerDuty.class::isInstance)
                 .map(V3ColumnSpecification.ReboilerDuty.class::cast).findFirst()
                 .orElseThrow(() -> new IllegalArgumentException("V3 input is missing a reboiler-duty specification")).watts();
-        if (!input.steamFeeds().isEmpty() && reboilerDuty == 0.0 && !V3SteamFeeds.hasSumpFeed(input)) {
+        if (!input.steamFeeds().isEmpty() && reboilerDuty == 0.0 && !V3SteamFeedSpec.hasSumpFeed(input)) {
             throw new IllegalArgumentException("V3 zero reboiler duty requires steam injection at the last tray or positive duty");
         }
         if (!input.steamFeeds().isEmpty()) {

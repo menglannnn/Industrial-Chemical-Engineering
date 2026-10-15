@@ -3,7 +3,7 @@ package com.wormzjl.createcheme.science.column.v3;
 import com.wormzjl.createcheme.science.math.DeterministicMath;
 
 import com.wormzjl.createcheme.science.column.v3.thermo.V3FlashResult;
-import com.wormzjl.createcheme.science.column.v3.thermo.V3Phase;
+import com.wormzjl.createcheme.science.thermo.PengRobinsonKernel.Root;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
@@ -233,7 +233,7 @@ public final class V3HollandExample32 {
         }
         for (int component = 0; component < composition.length; component++) composition[component] /= total;
         return total * thermo.molarEnthalpy(state.temperatureKelvin(node), problem.nodePressurePascal(node),
-                composition, liquid ? V3Phase.LIQUID : V3Phase.VAPOR, thermo.newWorkspace());
+                composition, liquid ? Root.LIQUID : Root.VAPOR, thermo.newWorkspace());
     }
 
     private static V3ColumnOutcome.Failure failure(V3SolverFailureCode code, String summary) {

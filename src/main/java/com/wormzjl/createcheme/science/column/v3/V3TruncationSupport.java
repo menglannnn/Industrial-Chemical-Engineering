@@ -395,7 +395,7 @@ final class V3TruncationSupport {
 
     private double liquidDownflowFraction(V3DryMeshState state, int node) {
         if (nodeSideDrawRates[node] == 0.0) return 1.0;
-        return 1.0 - V3SideDraws.withdrawal(state, node, nodeSideDrawRates[node]).fraction();
+        return 1.0 - V3SideDrawSpec.withdrawal(state, node, nodeSideDrawRates[node]).fraction();
     }
 
     private void requireState(V3DryMeshState state) {

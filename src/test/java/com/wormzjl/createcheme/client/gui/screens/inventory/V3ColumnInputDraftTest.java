@@ -18,11 +18,11 @@ class V3ColumnInputDraftTest {
 
     @Test
     void assembledInputCarriesTheAuthoredCoolersWithTheirSplits() {
-        V3ColumnInput assembled = V3ColumnInputDraft.assemble(base(), SCALARS, blankDraws(), blankSteam(), blankSteam(),
+        V3ColumnInput assembled = V3EditorDraft.ColumnInputDraft.assemble(base(), SCALARS, blankDraws(), blankSteam(), blankSteam(),
                 List.of(
-                        new V3PumparoundDraft.Row("12", "9", "2.5", V3PumparoundSpec.Split.RETURN_TRAY),
-                        new V3PumparoundDraft.Row("20", "16", "5", V3PumparoundSpec.Split.UNIFORM),
-                        new V3PumparoundDraft.Row("", "", "", V3PumparoundSpec.Split.UNIFORM)));
+                        new V3EditorDraft.PumparoundDraft.Row("12", "9", "2.5", V3PumparoundSpec.Split.RETURN_TRAY),
+                        new V3EditorDraft.PumparoundDraft.Row("20", "16", "5", V3PumparoundSpec.Split.UNIFORM),
+                        new V3EditorDraft.PumparoundDraft.Row("", "", "", V3PumparoundSpec.Split.UNIFORM)));
         assertEquals(List.of(
                 new V3PumparoundSpec(9, 12, -2.5e6, V3PumparoundSpec.Split.RETURN_TRAY),
                 new V3PumparoundSpec(16, 20, -5.0e6, V3PumparoundSpec.Split.UNIFORM)), assembled.pumparounds());
@@ -34,24 +34,24 @@ class V3ColumnInputDraftTest {
 
     @Test
     void emptyCoolerRowsKeepTheDryPumparoundContract() {
-        V3ColumnInput assembled = V3ColumnInputDraft.assemble(base(), SCALARS, blankDraws(), blankSteam(), blankSteam(),
-                List.of(new V3PumparoundDraft.Row("", "", "", V3PumparoundSpec.Split.UNIFORM)));
+        V3ColumnInput assembled = V3EditorDraft.ColumnInputDraft.assemble(base(), SCALARS, blankDraws(), blankSteam(), blankSteam(),
+                List.of(new V3EditorDraft.PumparoundDraft.Row("", "", "", V3PumparoundSpec.Split.UNIFORM)));
         assertEquals(List.of(), assembled.pumparounds());
     }
 
     @Test
     void coolerRowsAreAssembledAlongsideSideDrawsAndReportTheirOwnDiagnostics() {
-        V3ColumnInput assembled = V3ColumnInputDraft.assemble(base(), SCALARS,
-                List.of(new V3SideDrawDraft.Row("18", "36"), new V3SideDrawDraft.Row("", ""),
-                        new V3SideDrawDraft.Row("", "")),
+        V3ColumnInput assembled = V3EditorDraft.ColumnInputDraft.assemble(base(), SCALARS,
+                List.of(new V3EditorDraft.SideDrawDraft.Row("18", "36"), new V3EditorDraft.SideDrawDraft.Row("", ""),
+                        new V3EditorDraft.SideDrawDraft.Row("", "")),
                 blankSteam(), blankSteam(),
-                List.of(new V3PumparoundDraft.Row("20", "16", "5", V3PumparoundSpec.Split.UNIFORM)));
+                List.of(new V3EditorDraft.PumparoundDraft.Row("20", "16", "5", V3PumparoundSpec.Split.UNIFORM)));
         assertEquals(List.of(new V3SideDrawSpec(18, 10.0)), assembled.sideDraws());
         assertEquals(1, assembled.pumparounds().size());
         assertEquals("Heat: Cooler 1 cooling must be a positive number of MW",
-                assertThrows(IllegalArgumentException.class, () -> V3ColumnInputDraft.assemble(base(), SCALARS,
+                assertThrows(IllegalArgumentException.class, () -> V3EditorDraft.ColumnInputDraft.assemble(base(), SCALARS,
                         blankDraws(), blankSteam(), blankSteam(),
-                        List.of(new V3PumparoundDraft.Row("20", "16", "-5", V3PumparoundSpec.Split.UNIFORM))))
+                        List.of(new V3EditorDraft.PumparoundDraft.Row("20", "16", "-5", V3PumparoundSpec.Split.UNIFORM))))
                         .getMessage());
     }
 
@@ -61,12 +61,12 @@ class V3ColumnInputDraftTest {
         return total;
     }
 
-    private static List<V3SideDrawDraft.Row> blankDraws() {
-        return List.of(new V3SideDrawDraft.Row("", ""), new V3SideDrawDraft.Row("", ""), new V3SideDrawDraft.Row("", ""));
+    private static List<V3EditorDraft.SideDrawDraft.Row> blankDraws() {
+        return List.of(new V3EditorDraft.SideDrawDraft.Row("", ""), new V3EditorDraft.SideDrawDraft.Row("", ""), new V3EditorDraft.SideDrawDraft.Row("", ""));
     }
 
-    private static V3SteamFeedDraft.Row blankSteam() {
-        return new V3SteamFeedDraft.Row("", "", "");
+    private static V3EditorDraft.SteamFeedDraft.Row blankSteam() {
+        return new V3EditorDraft.SteamFeedDraft.Row("", "", "");
     }
 
     private static V3ColumnInput base() {
@@ -80,33 +80,33 @@ class V3ColumnInputDraftTest {
     // Merged from V3SideDrawDraftTest.
     @Test
     void blankAndZeroRatesDisableRowsWithoutRequiringATray() {
-        assertEquals(List.of(), V3SideDrawDraft.parse(List.of(row("", ""), row("invalid", "0"), row("-1", "-0")), 4, 100));
-        assertEquals(List.of(new V3SideDrawSpec(2, 10)), V3SideDrawDraft.parse(List.of(row(" 2 ", " 36 ")), 4, 100));
+        assertEquals(List.of(), V3EditorDraft.SideDrawDraft.parse(List.of(row("", ""), row("invalid", "0"), row("-1", "-0")), 4, 100));
+        assertEquals(List.of(new V3SideDrawSpec(2, 10)), V3EditorDraft.SideDrawDraft.parse(List.of(row(" 2 ", " 36 ")), 4, 100));
     }
 
     @Test
     void rejectsInvalidOrDuplicateTraysNonfiniteRatesAndExcessiveTotal() {
         for (String tray : List.of("0", "5", "2.5", "")) {
-            assertThrows(IllegalArgumentException.class, () -> V3SideDrawDraft.parse(List.of(row(tray, "1")), 4, 100));
+            assertThrows(IllegalArgumentException.class, () -> V3EditorDraft.SideDrawDraft.parse(List.of(row(tray, "1")), 4, 100));
         }
         for (String rate : List.of("NaN", "Infinity", "-1", "360")) {
-            assertThrows(IllegalArgumentException.class, () -> V3SideDrawDraft.parse(List.of(row("1", rate)), 4, 100));
+            assertThrows(IllegalArgumentException.class, () -> V3EditorDraft.SideDrawDraft.parse(List.of(row("1", rate)), 4, 100));
         }
-        assertThrows(IllegalArgumentException.class, () -> V3SideDrawDraft.parse(List.of(row("2", "1"), row("2", "2")), 4, 100));
+        assertThrows(IllegalArgumentException.class, () -> V3EditorDraft.SideDrawDraft.parse(List.of(row("2", "1"), row("2", "2")), 4, 100));
     }
 
-    private static V3SideDrawDraft.Row row(String tray, String rate) { return new V3SideDrawDraft.Row(tray, rate); }
+    private static V3EditorDraft.SideDrawDraft.Row row(String tray, String rate) { return new V3EditorDraft.SideDrawDraft.Row(tray, rate); }
 
     // Merged from V3DiagramLayoutTest.
     @Test void largerWindowFitsEverySupportedTrayCountWithoutScrolling(){
         for(int trays=0;trays<=64;trays++)for(int available:new int[]{740,920,1300}){
-            assertTrue(V3DiagramLayout.contentHeight(trays,available)<=available,"trays="+trays);
-            assertTrue(V3DiagramLayout.trayPitch(trays,available)>=3);
+            assertTrue(ColumnCalculatorV3Screen.DiagramLayout.contentHeight(trays,available)<=available,"trays="+trays);
+            assertTrue(ColumnCalculatorV3Screen.DiagramLayout.trayPitch(trays,available)>=3);
         }
     }
     @Test void smallWindowsScrollInsteadOfMakingTraysUnclickable(){
-        assertTrue(V3DiagramLayout.contentHeight(64,320)>320);
-        assertEquals(3,V3DiagramLayout.trayPitch(64,320));
+        assertTrue(ColumnCalculatorV3Screen.DiagramLayout.contentHeight(64,320)>320);
+        assertEquals(3,ColumnCalculatorV3Screen.DiagramLayout.trayPitch(64,320));
     }
 
     // Merged from V3ColumnScalarDraftTest.
@@ -115,7 +115,7 @@ class V3ColumnInputDraftTest {
 
     @Test
     void parsesUnitsIndependentlyOfSideDrawRows() {
-        V3ColumnScalarDraft.Values values = V3ColumnScalarDraft.parse(VALID);
+        V3EditorDraft.ColumnScalarDraft.Values values = V3EditorDraft.ColumnScalarDraft.parse(VALID);
         assertEquals(2610.7 / 3.6, values.feedMolPerSecond(), 1e-12);
         assertEquals(638.15, values.feedTemperatureKelvin(), 1e-12);
         assertEquals(30, values.stageCount());
@@ -150,7 +150,7 @@ class V3ColumnInputDraftTest {
                 fields.set(7, stages == 2 ? "1" : "3");
                 fields.set(8, "0");
                 fields.set(9, "0");
-                V3ColumnScalarDraft.Values values = V3ColumnScalarDraft.parse(fields);
+                V3EditorDraft.ColumnScalarDraft.Values values = V3EditorDraft.ColumnScalarDraft.parse(fields);
                 assertEquals(stages, values.stageCount());
                 assertEquals(reflux, values.refluxRatio());
                 assertEquals(stages == 2 ? 100_000.0 : 300_000.0, values.topPressurePascal());
@@ -164,7 +164,7 @@ class V3ColumnInputDraftTest {
         List<String> fields = new ArrayList<>(VALID);
         fields.set(index, value);
         IllegalArgumentException failure = assertThrows(
-                IllegalArgumentException.class, () -> V3ColumnScalarDraft.parse(fields));
+                IllegalArgumentException.class, () -> V3EditorDraft.ColumnScalarDraft.parse(fields));
         assertTrue(failure.getMessage().contains(expectedField), failure::getMessage);
         assertFalse(failure.getMessage().contains("draw"), failure::getMessage);
     }
@@ -172,22 +172,22 @@ class V3ColumnInputDraftTest {
     // Merged from V3SteamFeedDraftTest.
     @Test
     void blankAndZeroRatesDisableSteamGroups() {
-        assertEquals(List.of(), V3SteamFeedDraft.parse(steamRow("", "", ""), steamRow("invalid", "0", ""), 4, 100));
+        assertEquals(List.of(), V3EditorDraft.SteamFeedDraft.parse(steamRow("", "", ""), steamRow("invalid", "0", ""), 4, 100));
         assertEquals(List.of(new V3SteamFeedSpec(5, 10.0, 450.0)),
-                V3SteamFeedDraft.parse(steamRow("", "36", "176.85"), steamRow("", "", ""), 4, 100));
+                V3EditorDraft.SteamFeedDraft.parse(steamRow("", "36", "176.85"), steamRow("", "", ""), 4, 100));
     }
 
     @Test
     void rejectsIncompleteAndOutOfRangeTraySteam() {
         assertThrows(IllegalArgumentException.class,
-                () -> V3SteamFeedDraft.parse(steamRow("", "1", ""), steamRow("", "", ""), 4, 100));
+                () -> V3EditorDraft.SteamFeedDraft.parse(steamRow("", "1", ""), steamRow("", "", ""), 4, 100));
         assertThrows(IllegalArgumentException.class,
-                () -> V3SteamFeedDraft.parse(steamRow("", "", ""), steamRow("5", "1", "200"), 4, 100));
+                () -> V3EditorDraft.SteamFeedDraft.parse(steamRow("", "", ""), steamRow("5", "1", "200"), 4, 100));
         assertThrows(IllegalArgumentException.class,
-                () -> V3SteamFeedDraft.parse(steamRow("", "", ""), steamRow("2", "Infinity", "200"), 4, 100));
+                () -> V3EditorDraft.SteamFeedDraft.parse(steamRow("", "", ""), steamRow("2", "Infinity", "200"), 4, 100));
     }
 
-    private static V3SteamFeedDraft.Row steamRow(String stage, String rate, String temperature) {
-        return new V3SteamFeedDraft.Row(stage, rate, temperature);
+    private static V3EditorDraft.SteamFeedDraft.Row steamRow(String stage, String rate, String temperature) {
+        return new V3EditorDraft.SteamFeedDraft.Row(stage, rate, temperature);
     }
 }

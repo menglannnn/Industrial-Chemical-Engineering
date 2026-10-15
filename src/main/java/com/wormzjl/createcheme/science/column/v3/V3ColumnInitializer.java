@@ -4,10 +4,10 @@ import com.wormzjl.createcheme.science.math.DeterministicMath;
 
 import com.wormzjl.createcheme.science.column.v3.thermo.V3FlashResult;
 import com.wormzjl.createcheme.science.column.v3.thermo.V3FugacityResult;
-import com.wormzjl.createcheme.science.column.v3.thermo.V3Phase;
 import com.wormzjl.createcheme.science.column.v3.thermo.V3ThermoException;
 import com.wormzjl.createcheme.science.column.v3.thermo.V3ThermoModel;
 import com.wormzjl.createcheme.science.column.v3.thermo.V3ThermoWorkspace;
+import com.wormzjl.createcheme.science.thermo.PengRobinsonKernel.Root;
 import java.util.Objects;
 
 /**
@@ -362,9 +362,9 @@ final class V3ColumnInitializer {
         double[] vaporComposition = publicComposition(active, vaporFlows);
         double pressure = problem.nodePressurePascal(node);
         V3FugacityResult liquid = thermo.fugacity(
-                temperatureKelvin, pressure, liquidComposition, V3Phase.LIQUID, workspace);
+                temperatureKelvin, pressure, liquidComposition, Root.LIQUID, workspace);
         V3FugacityResult vapor = thermo.fugacity(
-                temperatureKelvin, pressure, vaporComposition, V3Phase.VAPOR, workspace);
+                temperatureKelvin, pressure, vaporComposition, Root.VAPOR, workspace);
         double sum = 0.0;
         for (int component = 0; component < active.componentCount(); component++) {
             int publicComponent = active.publicIndex(component);
@@ -517,10 +517,10 @@ final class V3ColumnInitializer {
             try {
                 double pressure = problem.nodePressurePascal(node);
                 liquidEnthalpy[node] = thermo.molarEnthalpy(temperatures[node], pressure,
-                        publicComposition(active, reference.liquidFlows()[node]), V3Phase.LIQUID, workspace);
+                        publicComposition(active, reference.liquidFlows()[node]), Root.LIQUID, workspace);
                 if (problem.topology().hasVaporPhase(node)) {
                     vaporEnthalpy[node] = thermo.molarEnthalpy(temperatures[node], pressure,
-                            publicComposition(active, reference.vaporFlows()[node]), V3Phase.VAPOR, workspace);
+                            publicComposition(active, reference.vaporFlows()[node]), Root.VAPOR, workspace);
                 }
             } catch (V3ThermoException | IllegalArgumentException unavailable) {
                 return null;
@@ -760,10 +760,10 @@ final class V3ColumnInitializer {
             double[] vaporComposition = publicComposition(active, vapor[node]);
             V3FugacityResult liquidResult = thermo.fugacity(
                     temperatures[node], problem.nodePressurePascal(node), liquidComposition,
-                    V3Phase.LIQUID, workspace);
+                    Root.LIQUID, workspace);
             V3FugacityResult vaporResult = thermo.fugacity(
                     temperatures[node], problem.nodePressurePascal(node), vaporComposition,
-                    V3Phase.VAPOR, workspace);
+                    Root.VAPOR, workspace);
             for (int component = 0; component < active.componentCount(); component++) {
                 int publicComponent = active.publicIndex(component);
                 ratios[node][component] = boundedRatio(DeterministicMath.exp(

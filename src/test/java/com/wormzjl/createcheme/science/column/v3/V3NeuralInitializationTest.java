@@ -129,7 +129,7 @@ class V3NeuralInitializationTest {
         V3NeuralInitializer model = fixed(displaced(captured.get()));
         int[] checkpoints = {0};
         List<int[]> samples = new java.util.ArrayList<>();
-        V3NewtonTrace calibration = (iteration,residual,merit) -> samples.add(new int[]{iteration,checkpoints[0]});
+        V3SimultaneousColumnSolver.NewtonTrace calibration = (iteration,residual,merit) -> samples.add(new int[]{iteration,checkpoints[0]});
         V3ColumnCalculator.calculateWithNeuralTrace(input,()->checkpoints[0]++,
                 new V3InitializationOptions(V3InitializationOptions.Mode.LNN_ONLY,V3InitializationOptions.WetStart.AUTO,16,60_000),
                 model,calibration);

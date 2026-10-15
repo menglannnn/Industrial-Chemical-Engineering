@@ -47,11 +47,6 @@ class V3DegreeOfFreedomLedgerTest {
                         V3DegreeOfFreedomLedger.UnknownFamily.LIQUID_COMPONENT_FLOW, 0, 0))));
         assertTrue(ledger.unknowns().stream().noneMatch(unknown -> unknown.id().equals(
                 new V3DegreeOfFreedomLedger.UnknownId(V3DegreeOfFreedomLedger.UnknownFamily.TEMPERATURE, 0, -1))));
-        assertEquals(List.of(V3CalculatedQuantity.CONDENSER_DUTY,
-                V3CalculatedQuantity.EXTERNAL_OVERHEAD_COMPONENT_FLOWS,
-                V3CalculatedQuantity.BOTTOMS_COMPONENT_FLOWS,
-                V3CalculatedQuantity.STAGE_LIQUID_COMPONENT_FLOWS,
-                V3CalculatedQuantity.STAGE_VAPOR_COMPONENT_FLOWS), ledger.calculatedQuantities());
         assertTrue(ledger.humanReadableDiagnostic().contains("unknowns=29"));
     }
 

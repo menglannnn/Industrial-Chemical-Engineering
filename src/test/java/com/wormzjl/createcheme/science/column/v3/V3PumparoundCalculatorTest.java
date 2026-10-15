@@ -154,7 +154,7 @@ class V3PumparoundCalculatorTest {
                 new V3PumparoundSpec(8, 11, 1.0e9, V3PumparoundSpec.Split.RETURN_TRAY)));
         V3ColumnTopology topology = V3ColumnProblemResolver
                 .resolve(cancelling, V3CondenserPhaseBranch.TWO_PHASE).topology();
-        for (double duty : V3Pumparounds.nodeDutyWatts(cancelling, topology)) {
+        for (double duty : V3PumparoundSpec.nodeDutyWatts(cancelling, topology)) {
             assertEquals(0.0, duty, 0.0, "the authored pair leaves no net stage heat on any node");
         }
 

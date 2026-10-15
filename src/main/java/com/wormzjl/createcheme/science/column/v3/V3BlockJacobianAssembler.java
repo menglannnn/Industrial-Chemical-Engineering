@@ -260,7 +260,7 @@ final class V3BlockJacobianAssembler {
             int component = equation.component();
             if (node > 1 && problem.nodeSideDrawMolPerSecond(node - 1) > 0.0) {
                 double withdrawal = problem.liquidWithdrawalFraction(state, node - 1);
-                double total = V3SideDraws.liquidTotal(state, node - 1);
+                double total = V3SideDrawSpec.liquidTotal(state, node - 1);
                 for (int k = 0; k < state.componentCount(); k++) {
                     addLogFlowDerivative(problem, state, rows.get(row), coordinateIndexes, layout,
                             lower, diagonal, upper, row,
@@ -479,7 +479,7 @@ final class V3BlockJacobianAssembler {
             double splitDerivative = problem.nodeSideDrawMolPerSecond(node) > 0.0
                     && unknown.family() == V3DegreeOfFreedomLedger.UnknownFamily.LIQUID_COMPONENT_FLOW
                     ? problem.liquidWithdrawalFraction(state, node) * state.liquidFlow(node, unknown.component())
-                            / V3SideDraws.liquidTotal(state, node) * base.liquidPhaseEnergy() : 0.0;
+                            / V3SideDrawSpec.liquidTotal(state, node) * base.liquidPhaseEnergy() : 0.0;
             addEnergyDerivative(problem, baseResidual, equationIndexes, layout, lower, diagonal, upper,
                     node + 1, column, node, liquidInCoefficient * liquidDerivative + splitDerivative);
         }

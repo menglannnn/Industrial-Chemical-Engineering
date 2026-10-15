@@ -1,8 +1,6 @@
 package com.wormzjl.createcheme.client.gui.screens.inventory;
 
-import com.wormzjl.createcheme.client.MaterialNames;
 import com.wormzjl.createcheme.client.gui.common.ProcessUi;
-import com.wormzjl.createcheme.client.gui.common.TemperatureUnit;
 import com.wormzjl.createcheme.client.gui.common.ComponentDropdown;
 import com.wormzjl.createcheme.client.gui.common.ComponentSearch;
 import static com.wormzjl.createcheme.client.gui.common.ProcessUi.*;
@@ -47,7 +45,6 @@ public final class ColumnCalculatorV3Screen extends AbstractContainerScreen<Colu
     private int page,results,offset,selectedNode=1,selectedStream,metric,lineCount,pointerX,pointerY,selectedDraw=-1,selectedPA=-1,selectedSteam=-1;
     private Button solve;
     private ComponentDropdown componentDropdown;
-    private record Label(String text,int x,int y,int width){}
     private record Hit(int x,int y,int w,int h,Runnable action,String hint){}
     private static final class Scroll {
         int x,y,length,visible,total,value;boolean horizontal;
@@ -123,7 +120,7 @@ public final class ColumnCalculatorV3Screen extends AbstractContainerScreen<Colu
     private int trayX(){return solverX()+solverWidth()+12;}
     private int virtualWidth(){return Math.max(330,canvasWidth());}
     private int cx(){return virtualWidth()/2;}
-    private int pitch(){return V3DiagramLayout.trayPitch(stageCount(),bodyBottom()-CONTENT-12);}
+    private int pitch(){return DiagramLayout.trayPitch(stageCount(),bodyBottom()-CONTENT-12);}
     private int trayY(int tray){return 52+tray*pitch();}
     private int columnBottom(){return trayY(stageCount()+1)+12;}
     private int canvasHeight(){return Math.max(columnBottom()+67,trayY(feedTray())+78);}
@@ -132,9 +129,7 @@ public final class ColumnCalculatorV3Screen extends AbstractContainerScreen<Colu
     private int sx(int x){return 10+x-canvasX.value;}
     private int sy(int y){return CONTENT+y-canvasY.value;}
     private Button button(String text,int x,int y,int w,Runnable action){
-        var b=addRenderableWidget(Button.builder(Component.literal(text),v->action.run())
-            .bounds(leftPos+x,topPos+y,Math.max(20,w),18).build());
-        b.setTooltip(Tooltip.create(Component.literal(text)));return b;
+        return addRenderableWidget(ProcessUi.button(text,leftPos+x,topPos+y,Math.max(20,w),action));
     }
     private Button action(String key,int x,int y,int w,Runnable action){
         var b=button(tr(key),x,y,w,action);b.setTooltip(Tooltip.create(Component.literal(tr(key+".hint"))));return b;
@@ -377,7 +372,7 @@ public final class ColumnCalculatorV3Screen extends AbstractContainerScreen<Colu
         else if(page==1)composition(g);
         else if(page==2){if(results==0)profile(g);else if(results==1)streams(g);else heat(g);}
         else diagnostics(g);
-        for(var l:labels)text(g,l.text,l.x,l.y,MUTED,l.width);
+        for(var l:labels)text(g,l.text(),l.x(),l.y(),MUTED,l.width());
         g.disableScissor();
         for(var s:scrolls)drawScroll(g,s);
         for(var hit:hits)if(pointerX>=hit.x&&pointerX<hit.x+hit.w&&pointerY>=hit.y&&pointerY<hit.y+hit.h){
@@ -645,7 +640,7 @@ public final class ColumnCalculatorV3Screen extends AbstractContainerScreen<Colu
         offset=listScroll.value;
         for(int i=offset;i<Math.min(lines.size(),offset+rows());i++)text(g,lines.get(i),x,y+(i-offset)*15,i==0?TEXT:MUTED,w-12);
     }
-    private String material(String id){return state==null?id:MaterialNames.localized(state.materialNames().getOrDefault(id,MaterialName.chemical(id)));}
+    private String material(String id){return state==null?id:materialName(state.materialNames().getOrDefault(id,MaterialName.chemical(id)));}
     private void text(GuiGraphics g,String value,int x,int y,int color,int max){
         if(max<=0)return;
         String shown=font.width(value)>max?font.plainSubstrByWidth(value,Math.max(1,max-8))+"...":value;
@@ -702,5 +697,15 @@ public final class ColumnCalculatorV3Screen extends AbstractContainerScreen<Colu
             }
         }
         return super.keyPressed(key,scan,modifiers);
+    }
+
+    /** Compact geometry in GUI units; three-pixel tray targets are nine physical pixels at scale 3. */
+    static final class DiagramLayout {
+        private DiagramLayout(){}
+        static int trayPitch(int interiorTrays,int viewportHeight){
+            if(interiorTrays<0||interiorTrays>64)throw new IllegalArgumentException("Tray count outside diagram bounds");
+            return Math.max(3,Math.max(96,viewportHeight-131)/(interiorTrays+1));
+        }
+        static int contentHeight(int interiorTrays,int viewportHeight){return 131+(interiorTrays+1)*trayPitch(interiorTrays,viewportHeight);}
     }
 }

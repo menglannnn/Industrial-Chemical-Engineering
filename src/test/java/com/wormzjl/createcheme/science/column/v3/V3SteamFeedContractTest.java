@@ -4,10 +4,10 @@ import static org.junit.jupiter.api.Assertions.*;
 
 import com.wormzjl.createcheme.science.column.v3.thermo.V3FlashResult;
 import com.wormzjl.createcheme.science.column.v3.thermo.V3FugacityResult;
-import com.wormzjl.createcheme.science.column.v3.thermo.V3Phase;
 import com.wormzjl.createcheme.science.column.v3.thermo.V3ThermoModel;
 import com.wormzjl.createcheme.science.column.v3.thermo.V3ThermoWorkspace;
 import com.wormzjl.createcheme.science.column.v3.thermo.V3WaterProperties;
+import com.wormzjl.createcheme.science.thermo.PengRobinsonKernel.Root;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 
@@ -71,7 +71,7 @@ class V3SteamFeedContractTest {
                 List.of(), List.of(new V3SteamFeedSpec(5, 4.0, 450.0)));
         V3ColumnProblem problem = V3ColumnProblemResolver.resolve(input, V3CondenserPhaseBranch.TWO_PHASE);
 
-        assertEquals(V3WaterCondenserRegime.ALL_VAPOR, problem.waterCondenserRegime());
+        assertEquals(V3ColumnProblem.WaterCondenserRegime.ALL_VAPOR, problem.waterCondenserRegime());
         assertTrue(problem.hasAllVaporWaterCondenser());
         assertEquals(0.0, problem.waterVaporSlipCoefficient());
     }
@@ -133,7 +133,7 @@ class V3SteamFeedContractTest {
                         new V3ColumnSpecification.OrganicRefluxRatio(2.0), new V3ColumnSpecification.ReboilerDuty(0.0)),
                 List.of(), List.of(new V3SteamFeedSpec(5, 4.0, 450.0)));
         V3ColumnProblem problem = V3ColumnProblemResolver.resolve(input, V3CondenserPhaseBranch.LIQUID_ONLY);
-        assertEquals(V3WaterCondenserRegime.ALL_VAPOR, problem.waterCondenserRegime());
+        assertEquals(V3ColumnProblem.WaterCondenserRegime.ALL_VAPOR, problem.waterCondenserRegime());
         assertEquals(V3CondenserPhaseBranch.LIQUID_ONLY, problem.topology().condenserPhaseBranch());
         assertFalse(problem.topology().hasVaporPhase(problem.topology().condenserNode()));
         V3DryMeshState state = manufacturedWetState(problem, condenserTemperature);
@@ -189,7 +189,7 @@ class V3SteamFeedContractTest {
                         new V3ColumnSpecification.OrganicRefluxRatio(2.0), new V3ColumnSpecification.ReboilerDuty(0.0)),
                 List.of(), List.of(new V3SteamFeedSpec(5, 4.0, 450.0)));
         V3ColumnProblem problem = V3ColumnProblemResolver.resolve(input, V3CondenserPhaseBranch.LIQUID_ONLY);
-        assertEquals(V3WaterCondenserRegime.ALL_VAPOR, problem.waterCondenserRegime());
+        assertEquals(V3ColumnProblem.WaterCondenserRegime.ALL_VAPOR, problem.waterCondenserRegime());
         V3DryMeshState state = manufacturedWetState(problem, condenserTemperature);
         ZeroEnthalpyThermo thermo = new ZeroEnthalpyThermo(input.componentBasis());
         V3MeshResidualEvaluator evaluator = new V3MeshResidualEvaluator(problem, thermo, 0.0);
@@ -228,12 +228,12 @@ class V3SteamFeedContractTest {
         @Override public V3ThermoWorkspace newWorkspace() { return new V3ThermoWorkspace(basis.componentCount()); }
 
         @Override
-        public V3FugacityResult fugacity(double t, double p, double[] z, V3Phase phase, V3ThermoWorkspace workspace) {
+        public V3FugacityResult fugacity(double t, double p, double[] z, Root phase, V3ThermoWorkspace workspace) {
             return new V3FugacityResult(phase, new double[basis.componentCount()], 1.0, 0.0, 1, 0.0);
         }
 
         @Override
-        public double molarEnthalpy(double t, double p, double[] z, V3Phase phase, V3ThermoWorkspace workspace) {
+        public double molarEnthalpy(double t, double p, double[] z, Root phase, V3ThermoWorkspace workspace) {
             return 0.0;
         }
 

@@ -7,9 +7,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import com.wormzjl.createcheme.science.column.v3.thermo.V3FeedPhase;
 import com.wormzjl.createcheme.science.column.v3.thermo.V3FlashResult;
 import com.wormzjl.createcheme.science.column.v3.thermo.V3FugacityResult;
-import com.wormzjl.createcheme.science.column.v3.thermo.V3Phase;
 import com.wormzjl.createcheme.science.column.v3.thermo.V3ThermoModel;
 import com.wormzjl.createcheme.science.column.v3.thermo.V3ThermoWorkspace;
+import com.wormzjl.createcheme.science.thermo.PengRobinsonKernel.Root;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 
@@ -204,17 +204,17 @@ class V3FiniteDifferenceJacobianTest {
 
         @Override
         public V3FugacityResult fugacity(
-                double temperatureKelvin, double pressurePascal, double[] composition, V3Phase phase,
+                double temperatureKelvin, double pressurePascal, double[] composition, Root phase,
                 V3ThermoWorkspace workspace) {
             return new V3FugacityResult(phase, new double[] {0.0, 0.0}, 1.0,
-                    temperatureKelvin * (phase == V3Phase.LIQUID ? 100.0 : 120.0), 1, 0.1);
+                    temperatureKelvin * (phase == Root.LIQUID ? 100.0 : 120.0), 1, 0.1);
         }
 
         @Override
         public double molarEnthalpy(
-                double temperatureKelvin, double pressurePascal, double[] composition, V3Phase phase,
+                double temperatureKelvin, double pressurePascal, double[] composition, Root phase,
                 V3ThermoWorkspace workspace) {
-            return temperatureKelvin * (phase == V3Phase.LIQUID ? 100.0 : 120.0);
+            return temperatureKelvin * (phase == Root.LIQUID ? 100.0 : 120.0);
         }
 
         @Override

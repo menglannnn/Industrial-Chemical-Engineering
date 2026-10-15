@@ -4,11 +4,11 @@ import com.wormzjl.createcheme.science.math.DeterministicMath;
 
 import com.wormzjl.createcheme.science.column.v3.thermo.V3FugacityDerivatives;
 import com.wormzjl.createcheme.science.column.v3.thermo.V3FugacityResult;
-import com.wormzjl.createcheme.science.column.v3.thermo.V3Phase;
 import com.wormzjl.createcheme.science.column.v3.thermo.V3ThermoDerivatives;
 import com.wormzjl.createcheme.science.column.v3.thermo.V3ThermoModel;
 import com.wormzjl.createcheme.science.column.v3.thermo.V3ThermoWorkspace;
 import com.wormzjl.createcheme.science.column.v3.thermo.V3WaterProperties;
+import com.wormzjl.createcheme.science.thermo.PengRobinsonKernel.Root;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -158,13 +158,13 @@ final class V3MeshResidualEvaluator {
         V3FugacityDerivatives vapor = null;
         if (topology.hasVaporPhase(node)) {
             vaporComposition = normalizedPublicPhaseComposition(state, node, false);
-            vapor = differentiable.fugacityDerivatives(temperature, pressure, vaporComposition, V3Phase.VAPOR, workspace);
+            vapor = differentiable.fugacityDerivatives(temperature, pressure, vaporComposition, Root.VAPOR, workspace);
         }
         double[] liquidComposition = null;
         V3FugacityDerivatives liquid = null;
         if (topology.hasLiquidPhase(node)) {
             liquidComposition = normalizedPublicPhaseComposition(state, node, true);
-            liquid = differentiable.fugacityDerivatives(temperature, pressure, liquidComposition, V3Phase.LIQUID, workspace);
+            liquid = differentiable.fugacityDerivatives(temperature, pressure, liquidComposition, Root.LIQUID, workspace);
         }
         double water = problem.hasSteamFeeds() ? waterVaporFlow(state, node) : 0.0;
         double[] waterByVaporFlow = condenserWaterByVaporFlow(state, node, vaporTotal);
@@ -423,13 +423,13 @@ final class V3MeshResidualEvaluator {
         V3FugacityResult vaporResult = null;
         if (problem.topology().hasVaporPhase(node)) {
             vaporComposition = normalizedPublicPhaseComposition(state, node, false);
-            vaporResult = thermo.fugacity(temperature, pressure, vaporComposition, V3Phase.VAPOR, workspace);
+            vaporResult = thermo.fugacity(temperature, pressure, vaporComposition, Root.VAPOR, workspace);
         }
         double[] liquidComposition = null;
         V3FugacityResult liquidResult = null;
         if (problem.topology().hasLiquidPhase(node)) {
             liquidComposition = normalizedPublicPhaseComposition(state, node, true);
-            liquidResult = thermo.fugacity(temperature, pressure, liquidComposition, V3Phase.LIQUID, workspace);
+            liquidResult = thermo.fugacity(temperature, pressure, liquidComposition, Root.LIQUID, workspace);
         }
         return new NodeProperties(liquidComposition, vaporComposition, liquidResult, vaporResult,
                 problem.topology().hasVaporPhase(node) ? phaseTotal(state, node, false) : 0.0, new double[2]);

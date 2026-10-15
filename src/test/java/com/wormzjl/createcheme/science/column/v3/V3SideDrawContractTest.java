@@ -96,9 +96,9 @@ class V3SideDrawContractTest {
             vapor[node] = new double[] {40, 60};
         }
         V3DryMeshState state = new V3DryMeshState(problem.topology(), 2, liquid, vapor, temperatures);
-        V3SideDraws.Withdrawal withdrawal = V3SideDraws.withdrawal(state, 2, 25);
+        V3SideDrawSpec.Withdrawal withdrawal = V3SideDrawSpec.withdrawal(state, 2, 25);
         assertEquals(100, withdrawal.liquidTotalMolPerSecond());
         assertEquals(0.25, withdrawal.fraction());
-        assertThrows(IllegalArgumentException.class, () -> V3SideDraws.withdrawal(state, 2, -1));
+        assertThrows(IllegalArgumentException.class, () -> V3SideDrawSpec.withdrawal(state, 2, -1));
     }
 }

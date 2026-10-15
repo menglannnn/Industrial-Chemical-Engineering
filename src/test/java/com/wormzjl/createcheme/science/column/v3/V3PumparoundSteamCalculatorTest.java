@@ -6,9 +6,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.wormzjl.createcheme.science.column.v3.thermo.V3CrudeFeed;
 import com.wormzjl.createcheme.science.column.v3.thermo.V3PengRobinsonThermo;
-import com.wormzjl.createcheme.science.column.v3.thermo.V3Phase;
 import com.wormzjl.createcheme.science.column.v3.thermo.V3ThermoWorkspace;
 import com.wormzjl.createcheme.science.column.v3.thermo.V3WaterProperties;
+import com.wormzjl.createcheme.science.thermo.PengRobinsonKernel.Root;
 import com.wormzjl.createcheme.world.level.block.entity.ColumnCalculatorV3BlockEntity;
 import java.util.List;
 import java.util.Locale;
@@ -219,7 +219,7 @@ class V3PumparoundSteamCalculatorTest {
         for (int component = 0; component < componentCount; component++) {
             composition[component] = fractions.get(component).moleFraction() / (1.0 - waterFraction);
         }
-        V3Phase phase = stream.vaporMoleFraction() == 1.0 ? V3Phase.VAPOR : V3Phase.LIQUID;
+        Root phase = stream.vaporMoleFraction() == 1.0 ? Root.VAPOR : Root.LIQUID;
         return water + hydrocarbonFlow
                 * thermo.molarEnthalpy(stream.temperatureKelvin(), stream.pressurePascal(), composition, phase, workspace);
     }

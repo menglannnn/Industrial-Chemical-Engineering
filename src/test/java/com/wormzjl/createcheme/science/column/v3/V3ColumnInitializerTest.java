@@ -9,9 +9,9 @@ import com.wormzjl.createcheme.science.column.v3.thermo.V3FeedPhase;
 import com.wormzjl.createcheme.science.column.v3.thermo.V3FlashResult;
 import com.wormzjl.createcheme.science.column.v3.thermo.V3FugacityResult;
 import com.wormzjl.createcheme.science.column.v3.thermo.V3PengRobinsonThermo;
-import com.wormzjl.createcheme.science.column.v3.thermo.V3Phase;
 import com.wormzjl.createcheme.science.column.v3.thermo.V3ThermoModel;
 import com.wormzjl.createcheme.science.column.v3.thermo.V3ThermoWorkspace;
+import com.wormzjl.createcheme.science.thermo.PengRobinsonKernel.Root;
 import java.util.List;
 import java.util.concurrent.CancellationException;
 import org.junit.jupiter.api.Test;
@@ -211,14 +211,14 @@ class V3ColumnInitializerTest {
 
         @Override
         public V3FugacityResult fugacity(
-                double temperatureKelvin, double pressurePascal, double[] composition, V3Phase phase,
+                double temperatureKelvin, double pressurePascal, double[] composition, Root phase,
                 V3ThermoWorkspace workspace) {
             return new V3FugacityResult(phase, new double[] {0.0, 0.0}, 1.0, 0.0, 1, 0.0);
         }
 
         @Override
         public double molarEnthalpy(
-                double temperatureKelvin, double pressurePascal, double[] composition, V3Phase phase,
+                double temperatureKelvin, double pressurePascal, double[] composition, Root phase,
                 V3ThermoWorkspace workspace) {
             return 0.0;
         }

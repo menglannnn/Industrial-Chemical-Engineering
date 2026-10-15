@@ -15,9 +15,9 @@ import com.wormzjl.createcheme.science.column.v3.V3SteamFeedSpec;
 import com.wormzjl.createcheme.science.column.v3.V3ColumnProblemResolver;
 import com.wormzjl.createcheme.science.column.v3.V3ColumnOutcome;
 import com.wormzjl.createcheme.science.column.v3.V3ColumnSpecification;
+import com.wormzjl.createcheme.science.column.v3.V3ColumnSpecification.ControlledQuantity;
 import com.wormzjl.createcheme.science.column.v3.V3ColumnStreamProperties;
 import com.wormzjl.createcheme.science.column.v3.V3ComponentBasis;
-import com.wormzjl.createcheme.science.column.v3.V3ControlledQuantity;
 import com.wormzjl.createcheme.science.column.v3.V3HollandExample32;
 import com.wormzjl.createcheme.science.column.v3.thermo.V3PengRobinsonThermo;
 import com.wormzjl.createcheme.world.inventory.ColumnCalculatorV3Menu;
@@ -213,9 +213,9 @@ public final class ColumnV3Network {
         if (!thermo.componentBasis().equals(input.componentBasis())) {
             throw new IllegalArgumentException("V3 component axis does not match the server property package");
         }
-        EnumSet<V3ControlledQuantity> controls = EnumSet.noneOf(V3ControlledQuantity.class);
+        EnumSet<ControlledQuantity> controls = EnumSet.noneOf(ControlledQuantity.class);
         for (V3ColumnSpecification specification : input.specifications()) controls.add(specification.controlledQuantity());
-        if (controls.size() != 3 || !controls.containsAll(EnumSet.allOf(V3ControlledQuantity.class))) {
+        if (controls.size() != 3 || !controls.containsAll(EnumSet.allOf(ControlledQuantity.class))) {
             throw new IllegalArgumentException("V3 input must provide exactly the supported condenser, reflux, and duty controls");
         }
         V3ColumnProblemResolver.validateInput(input);
@@ -299,9 +299,9 @@ public final class ColumnV3Network {
                 totalSteamFlow(input) * 3.6,
                 input.topPressurePascal() / 1_000.0,
                 input.stagePressureDropPascal() / 1_000.0,
-                specifiedValue(input, V3ControlledQuantity.CONDENSER_OUTLET_TEMPERATURE),
-                specifiedValue(input, V3ControlledQuantity.ORGANIC_REFLUX_RATIO),
-                specifiedValue(input, V3ControlledQuantity.REBOILER_DUTY) / 1_000_000.0,
+                specifiedValue(input, ControlledQuantity.CONDENSER_OUTLET_TEMPERATURE),
+                specifiedValue(input, ControlledQuantity.ORGANIC_REFLUX_RATIO),
+                specifiedValue(input, ControlledQuantity.REBOILER_DUTY) / 1_000_000.0,
                 detail);
         job.completion().result().ifPresent(outcome -> {
             for (String event : outcome.diagnostics().events()) {
@@ -322,7 +322,7 @@ public final class ColumnV3Network {
         return input.steamFeeds().stream().mapToDouble(V3SteamFeedSpec::molarFlowMolPerSecond).sum();
     }
 
-    private static double specifiedValue(V3ColumnInput input, V3ControlledQuantity wanted) {
+    private static double specifiedValue(V3ColumnInput input, ControlledQuantity wanted) {
         for (V3ColumnSpecification specification : input.specifications()) {
             if (specification.controlledQuantity() == wanted) return specificationValue(specification);
         }
@@ -591,7 +591,7 @@ public final class ColumnV3Network {
             if (specificationCount != 3) throw new DecoderException("V3 specification count must be three");
             List<V3ColumnSpecification> specifications = new ArrayList<>(specificationCount);
             for (int index = 0; index < specificationCount; index++) {
-                V3ControlledQuantity quantity = V3ControlledQuantity.valueOf(
+                ControlledQuantity quantity = ControlledQuantity.valueOf(
                         buffer.readUtf(MAX_COMPONENT_IDENTIFIER_LENGTH));
                 specifications.add(specification(quantity, finite(buffer.readDouble(), "specification")));
             }
@@ -762,7 +762,7 @@ public final class ColumnV3Network {
         }
     }
 
-    private static V3ColumnSpecification specification(V3ControlledQuantity quantity, double value) {
+    private static V3ColumnSpecification specification(ControlledQuantity quantity, double value) {
         return switch (quantity) {
             case CONDENSER_OUTLET_TEMPERATURE -> new V3ColumnSpecification.CondenserOutletTemperature(value);
             case ORGANIC_REFLUX_RATIO -> new V3ColumnSpecification.OrganicRefluxRatio(value);
