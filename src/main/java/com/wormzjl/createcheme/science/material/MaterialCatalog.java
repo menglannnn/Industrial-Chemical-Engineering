@@ -17,11 +17,16 @@ public final class MaterialCatalog {
      * {@link CpSegment#belowKelvin()} with the enthalpy continued from the main fit's value there; {@code null} for a
      * record with one fit (every record but nitrogen), which keeps their serialized form, and so every physics
      * fingerprint that hashes it, exactly what it was.
+     *
+     * <p>{@code cp} is empty for a record without {@code ideal_gas_cp}, which only a package with a reference spine may
+     * use (D6: its ideal gas comes from the spine; {@code referenceTemperature} is then 298.15). {@code volumeTranslation}
+     * is the record's Tr = 0.8 saturated-liquid anchor ({@link VolumeTranslation}, P3), {@code null} when absent, which
+     * again keeps every existing serialized form and fingerprint unchanged.</p>
      */
     public record Property(String id, String component, double molecularWeight, double normalBoilingPoint,
             double density, double standardTemperature, double standardPressure, double minimumTemperature,
             double maximumTemperature, double referenceTemperature, List<Double> cp, Pr78 pr, boolean estimated,
-            CpSegment lowTemperatureCp) {
+            CpSegment lowTemperatureCp, VolumeTranslation volumeTranslation) {
         public Property { cp = List.copyOf(cp); }
     }
     /** Six coefficients in powers of {@code (T - 298.15 K)}, the main fit's form, valid below {@code belowKelvin}. */
@@ -59,15 +64,31 @@ public final class MaterialCatalog {
             double volumeScale, double amountTotal) {
         public Assay { components = List.copyOf(components); amounts = List.copyOf(amounts); }
     }
+    /**
+     * {@code spine} lists the reference-spine record of each component in component order, or is empty for a package
+     * without one; {@code crystals} lists the crystal records the package admits. {@code spineFingerprint} hashes the
+     * numeric content of both ({@link ReferenceSpine}, {@link CrystalReference}); it is empty when the package has
+     * neither, and it is kept apart from {@code fingerprint}, which does not see these records, so adding a spine to a
+     * package never moves its physics fingerprint.
+     *
+     * <p>{@code groupContributions} is {@code null} unless the package's interactions record carries a {@code rule}
+     * (E-PPR78, P3): it then holds the temperature-dependent pairs resolved from the group matrix and the spines'
+     * group counts ({@link GroupContributionInteractions}). For such a pair the constant {@code interactions} entry is
+     * 0.0 and is not the pair's kij: a consumer takes kij(T) from {@code groupContributions} for every pair it lists
+     * and the constant matrix for the others. Its content is hashed into {@code fingerprint} and
+     * {@link #physicsFingerprint} only when it is present, so packages without a rule keep their pins.</p>
+     */
     public record Package(String id, String revision, String fingerprint, String model, List<String> components,
             List<Property> properties, List<List<Double>> interactions, List<NrtlPair> nrtlPairs,
             Map<String, String> aliases, Map<String, Assay> assays, Water water,
             double minimumTemperature, double maximumTemperature, double minimumPressure,
-            double maximumPressure, List<String> evidence) {
+            double maximumPressure, List<String> evidence, List<String> spine, List<String> crystals, String spineFingerprint,
+            GroupContributionInteractions groupContributions) {
         public Package {
             components = List.copyOf(components); properties = List.copyOf(properties);
             interactions = interactions.stream().map(List::copyOf).toList(); nrtlPairs = List.copyOf(nrtlPairs);
             aliases = Map.copyOf(aliases); assays = Map.copyOf(assays); evidence = List.copyOf(evidence);
+            spine = List.copyOf(spine); crystals = List.copyOf(crystals); Objects.requireNonNull(spineFingerprint);
         }
         public String canonicalId(String id) { return aliases.getOrDefault(id, id); }
         public String scientificRevision() { return revision + ":" + fingerprint; }
@@ -86,11 +107,16 @@ public final class MaterialCatalog {
     private final Map<String, FluidAppearance> componentAppearances;
     /** Fluid-network validity by property record id and by package id; see {@link Validity}. */
     private final Map<String, Validity> propertyValidity, packageValidity;
+    /** Reference-spine and crystal records by record id (kinds {@code spine} and {@code crystals}). */
+    private final Map<String, ReferenceSpine> spines;
+    private final Map<String, CrystalReference> crystals;
     private MaterialCatalog(Map<String, MaterialName> names, Map<String, Package> packages, Map<String, String> resources,
             Map<String, Map<ViscosityCorrelation.Phase, ViscosityCorrelation>> viscosities, Map<String, String> waterModels,
             Map<String, FluidAppearance> assayAppearances, Map<String, FluidAppearance> componentAppearances, Map<String, LiquidMixtureCorrection> liquidMixtures, MaterialPresets presets, FluidData fluidData,
-            Map<String, Validity> propertyValidity, Map<String, Validity> packageValidity) {
+            Map<String, Validity> propertyValidity, Map<String, Validity> packageValidity,
+            Map<String, ReferenceSpine> spines, Map<String, CrystalReference> crystals) {
         this.propertyValidity = Map.copyOf(propertyValidity); this.packageValidity = Map.copyOf(packageValidity);
+        this.spines = Map.copyOf(spines); this.crystals = Map.copyOf(crystals);
         this.solids=SolidMaterialCatalog.parse(resources);
         this.fluidData=Objects.requireNonNull(fluidData);
         this.liquidMixtures = Map.copyOf(liquidMixtures);
@@ -107,7 +133,23 @@ public final class MaterialCatalog {
     }
     public MaterialName name(String id) { MaterialName n=names.get(id); return n==null?MaterialName.chemical(id):n; }
     public Map<String, Package> packages() { return packages; }
+    /** Crystal records by id. */
+    public Map<String, CrystalReference> crystals() { return crystals; }
+    /** The reference spine of a component in a package that declares one. */
+    public ReferenceSpine requireSpine(String packageId, String componentId) {
+        var p=requirePackage(packageId);
+        if(p.spine().isEmpty())throw new IllegalArgumentException("Package declares no reference spine: "+packageId);
+        int i=p.components().indexOf(p.canonicalId(componentId));
+        if(i<0)throw new IllegalArgumentException("Component outside package: "+componentId);
+        return spines.get(p.spine().get(i));
+    }
     public FluidData fluidData(){return fluidData;}
+    /** A component's Tr = 0.8 volume anchor in a package: its property record's {@code volume_translation}, if any (P3). */
+    public Optional<VolumeTranslation> volumeTranslation(String packageId,String componentId) {
+        var p=requirePackage(packageId);int i=p.components().indexOf(p.canonicalId(componentId));
+        if(i<0)throw new IllegalArgumentException("Component outside package: "+componentId);
+        return Optional.ofNullable(p.properties().get(i).volumeTranslation());
+    }
     /**
      * The fluid network's thermodynamic identity of a package: its physics fingerprint, the liquid volume references,
      * and the fluid-network validity of the package and of every component ({@link Validity}), so a changed domain is a
@@ -115,7 +157,12 @@ public final class MaterialCatalog {
      */
     public String fluidThermoFingerprint(String packageId) {
         var p=requirePackage(packageId);var points=new TreeMap<String,FluidData.VolumeReference>();
-        for(String id:p.components())if(fluidData.volumeReferences().containsKey(id))points.put(id,fluidData.volumeReferences().get(id));
+        // A component whose property record carries its own volume_translation is anchored by it (hashed through the
+        // physics fingerprint), not by the global calibration point: one anchor per species per package.
+        for(int i=0;i<p.components().size();i++) {
+            String id=p.components().get(i);
+            if(p.properties().get(i).volumeTranslation()==null&&fluidData.volumeReferences().containsKey(id))points.put(id,fluidData.volumeReferences().get(id));
+        }
         var domains=new ArrayList<Object>();
         domains.add(fluidValidity(packageId).map(Validity::numbers).orElse(List.of()));
         for(String id:p.components())domains.add(fluidValidity(packageId,id).map(Validity::numbers).orElse(List.of()));
@@ -179,8 +226,11 @@ public final class MaterialCatalog {
         var nrtl=p.nrtlPairs().stream().filter(pair->axis.contains(pair.first())&&axis.contains(pair.second()))
                 .sorted(Comparator.comparing(NrtlPair::first).thenComparing(NrtlPair::second)).toList();
         var water=new Gson().toJsonTree(p.water()).getAsJsonObject();water.remove("revision");
-        return hash(new Gson().toJson(List.of(p.model(),axis,properties,matrix,nrtl,water,
-                p.minimumTemperature(),p.maximumTemperature(),p.minimumPressure(),p.maximumPressure())));
+        var hashed=new ArrayList<Object>(List.of(p.model(),axis,properties,matrix,nrtl,water,
+                p.minimumTemperature(),p.maximumTemperature(),p.minimumPressure(),p.maximumPressure()));
+        // Only a package with a group-contribution rule hashes it, so every other package keeps its exact pin.
+        if(p.groupContributions()!=null)hashed.add(p.groupContributions().science(p.components(),axis));
+        return hash(new Gson().toJson(hashed));
     }
 
     /**
@@ -191,7 +241,11 @@ public final class MaterialCatalog {
     public MaterialCatalog inferenceView(String packageId,List<String> axis,String referencePackage,boolean allowMissing) {
         var source=requirePackage(packageId);new MaterialAxis(axis);
         if(source.components().equals(axis))return this;
+        // A projection is a PR78 axis without crystal records (P6): a package that admits crystals is refused, never
+        // projected fluid-only.
+        if(!source.crystals().isEmpty())throw new CrystalPhasesUnavailable(packageId,source.crystals(),"a neural inference projection");
         if(!source.model().equals("pr78"))throw new IllegalArgumentException("Inference projection requires PR78");
+        if(source.groupContributions()!=null)throw new IllegalArgumentException("Inference projection of a package with temperature-dependent interactions is not supported: "+packageId);
         var reference=requirePackage(referencePackage);
         var properties=new ArrayList<Property>();
         for(String id:axis) {
@@ -217,12 +271,13 @@ public final class MaterialCatalog {
             }
             interactions.add(row);
         }
+        // A projected inference view is a PR78 axis only: it carries no reference spine or crystals.
         var view=new Package(source.id(),source.revision(),source.fingerprint(),source.model(),axis,properties,
                 interactions,List.of(),Map.of(),Map.of(),source.water(),source.minimumTemperature(),
-                source.maximumTemperature(),source.minimumPressure(),source.maximumPressure(),source.evidence());
+                source.maximumTemperature(),source.minimumPressure(),source.maximumPressure(),source.evidence(),List.of(),List.of(),"",null);
         var projected=new HashMap<>(packages);projected.put(packageId,view);
         return new MaterialCatalog(names,projected,resources,viscosities,waterModels,assayAppearances,
-                componentAppearances,liquidMixtures,presets,fluidData,propertyValidity,packageValidity);
+                componentAppearances,liquidMixtures,presets,fluidData,propertyValidity,packageValidity,spines,crystals);
     }
 
     /** Presets may share a network only when the selected sub-basis has the same physics and transport. */
@@ -283,7 +338,7 @@ public final class MaterialCatalog {
                 String path = entry.getKey(); int start = path.indexOf("materials/");
                 if (start < 0) throw new IllegalArgumentException("Expected materials resource path");
                 String kind = path.substring(start + 10).split("/")[0];
-                if (!Set.of("components","properties","interactions","packages","assays","water","bases","transport","presets","networks","solids").contains(kind))
+                if (!Set.of("components","properties","interactions","packages","assays","water","bases","transport","presets","networks","solids","spine","crystals","group_interactions").contains(kind))
                     throw new IllegalArgumentException("Unknown record kind: " + kind);
                 String id = text(o, "id");
                 if (!kind.equals("components") && !id.matches("[a-z][a-z0-9_.:-]{0,127}"))
@@ -308,6 +363,8 @@ public final class MaterialCatalog {
         var componentAppearances = new HashMap<String, FluidAppearance>();
         var propertyValidity = new HashMap<String, Validity>();
         var packageValidity = new HashMap<String, Validity>();
+        var spines = new HashMap<String, ReferenceSpine>();
+        var crystals = new HashMap<String, CrystalReference>();
         for (var o : group(groups,"components").values()) checked(origins,o,() -> {
             JsonObject cut = o.has("cut") ? object(o,"cut") : null;
             String id=text(o,"id"), kind=text(o,"kind");
@@ -321,15 +378,30 @@ public final class MaterialCatalog {
                     cut != null && cut.has("upper_kelvin") ? number(cut,"upper_kelvin") : null,
                     cut != null && bool(cut,"estimated")));
         });
+        for (var o : group(groups,"spine").values()) checked(origins,o,() -> {
+            var spine=ReferenceSpine.read(o); require(names,spine.component(),"component"); spines.put(spine.id(),spine);
+        });
+        for (var o : group(groups,"crystals").values()) checked(origins,o,() -> {
+            var crystal=CrystalReference.read(o); require(names,crystal.component(),"component"); crystals.put(crystal.id(),crystal);
+        });
+        var matrices = new HashMap<String, GroupInteractionMatrix>();
+        for (var o : group(groups,"group_interactions").values()) checked(origins,o,() -> {
+            var matrix=GroupInteractionMatrix.read(o); matrices.put(matrix.id(),matrix);
+        });
         for (var o : group(groups,"properties").values()) checked(origins,o,() -> {
             String id=text(o,"id"), component=text(o,"component"); require(names,component,"component");
             viscosities.put("properties/" + id, readViscosities(o));
             descriptors.put(id,LiquidMixtureCorrection.Descriptor.read(o));
             text(o,"revision"); text(o,"source");
-            JsonObject cp=object(o,"ideal_gas_cp");
-            if (!text(cp,"type").equals("shifted_polynomial_5")) throw new IllegalArgumentException("Unsupported ideal_gas_cp.type");
-            List<Double> coefficients=counted(cp,"coefficients",6); double reference=positive(cp,"reference_kelvin");
-            if (reference != 298.15) throw new IllegalArgumentException("shifted_polynomial_5.reference_kelvin must be 298.15");
+            // ideal_gas_cp is optional: a record without it is usable only in a package that declares a reference
+            // spine (D6, one ideal-gas source per species; checked per package below). Its cp is then empty.
+            JsonObject cp=o.has("ideal_gas_cp")?object(o,"ideal_gas_cp"):null;
+            List<Double> coefficients=List.of(); double reference=298.15;
+            if (cp!=null) {
+                if (!text(cp,"type").equals("shifted_polynomial_5")) throw new IllegalArgumentException("Unsupported ideal_gas_cp.type");
+                coefficients=counted(cp,"coefficients",6); reference=positive(cp,"reference_kelvin");
+                if (reference != 298.15) throw new IllegalArgumentException("shifted_polynomial_5.reference_kelvin must be 298.15");
+            }
             JsonObject models=object(o,"models"); Pr78 pr=null;
             for (String model : models.keySet()) if (!model.equals("pr78")) throw new IllegalArgumentException("Unsupported pure-component model: " + model);
             if (models.has("pr78")) {
@@ -338,15 +410,16 @@ public final class MaterialCatalog {
             }
             double min=positive(o,"temperature_min_kelvin"), max=positive(o,"temperature_max_kelvin"); range(min,max,"temperature");
             CpSegment low=null;
-            if (cp.has("below")) {
+            if (cp!=null && cp.has("below")) {
                 JsonObject segment=object(cp,"below"); text(segment,"source");
                 double joint=positive(segment,"temperature_kelvin");
                 if (joint<=min || joint>max || joint>reference) throw new IllegalArgumentException("ideal_gas_cp.below.temperature_kelvin must lie in (temperature_min_kelvin, 298.15]");
                 low=new CpSegment(joint,counted(segment,"coefficients",6));
             }
+            VolumeTranslation translation=o.has("volume_translation")?VolumeTranslation.read(o,pr):null;
             properties.put(id,new Property(id,component,positive(o,"molecular_weight_kg_per_mol"),positive(o,"normal_boiling_point_kelvin"),
                     positive(o,"standard_liquid_density_kg_per_m3"),positive(o,"standard_temperature_kelvin"),positive(o,"standard_pressure_pascal"),
-                    min,max,reference,coefficients,pr,bool(o,"estimated_heavy_residue"),low));
+                    min,max,reference,coefficients,pr,bool(o,"estimated_heavy_residue"),low,translation));
             if (o.has("fluid_domain")) {
                 var domain=validity(object(o,"fluid_domain"));
                 // The vapour viscosity the network evaluates for every vapour it carries must cover the range the
@@ -369,7 +442,7 @@ public final class MaterialCatalog {
             range(w.triplePoint(),w.boilingTemperature(),"water boiling"); range(w.boilingTemperature(),w.criticalTemperature(),"water critical");
             range(w.triplePoint(),w.maximumTemperature(),"water enthalpy"); require(names,"Water","component"); waters.put(text(o,"id"),w);
         });
-        for (var o : group(groups,"interactions").values()) checked(origins,o,() -> validateInteractions(o,names));
+        for (var o : group(groups,"interactions").values()) checked(origins,o,() -> validateInteractions(o,names,matrices));
         for (var o : group(groups,"packages").values()) checked(origins,o,() -> {
             String id=text(o,"id"), model=text(o,"model"), policy=text(o,"missing_interactions");
             if(text(o,"revision").length()>63)throw new IllegalArgumentException("revision: maximum 63 characters with fingerprint");
@@ -388,20 +461,50 @@ public final class MaterialCatalog {
                 require(names,ids.get(i),"component"); Property p=require(properties,refs.get(i),"property");
                 if(!p.component().equals(ids.get(i)) || model.equals("pr78") && p.pr()==null) throw new IllegalArgumentException("Property/model does not match component " + ids.get(i));
                 if(tmin<p.minimumTemperature() || tmax>p.maximumTemperature()) throw new IllegalArgumentException("Package temperature outside property validity: " + p.id());
+                // D6, one ideal-gas source per species: a package with a reference spine takes every component's ideal
+                // gas from it, a package without one from the property's shifted_polynomial_5 fit.
+                if(p.cp().isEmpty() && !o.has("spine"))
+                    throw new IllegalArgumentException("Property "+p.id()+" has no ideal_gas_cp: a package without a reference spine needs a shifted_polynomial_5 fit for "+ids.get(i));
+                if(!p.cp().isEmpty() && o.has("spine"))
+                    throw new IllegalArgumentException("Property "+p.id()+" carries ideal_gas_cp in a package with a reference spine: one ideal-gas source per species (D6), "+ids.get(i));
                 ps.add(p);
+            }
+            List<String> spineIds=o.has("spine")?strings(o,"spine"):List.of(), crystalIds=o.has("crystals")?strings(o,"crystals"):List.of();
+            var spineRecords=new ArrayList<ReferenceSpine>();var spineScience=new ArrayList<Object>();
+            if(o.has("spine")) {
+                if(spineIds.size()!=ids.size())throw new IllegalArgumentException("spine: expected one reference-spine record per component ("+ids.size()+"), got "+spineIds.size());
+                for(int i=0;i<ids.size();i++) {
+                    var spine=require(spines,spineIds.get(i),"spine");
+                    if(!spine.component().equals(ids.get(i)))throw new IllegalArgumentException("spine: "+spine.id()+" is for "+spine.component()+", not component "+ids.get(i));
+                    double difference=Math.abs(spine.molarMass()/ps.get(i).molecularWeight()-1);
+                    if(difference>1e-4)throw new IllegalArgumentException("spine: molar mass of "+spine.id()+" ("+spine.molarMass()+" kg/mol) differs from property "
+                            +ps.get(i).id()+" ("+ps.get(i).molecularWeight()+" kg/mol) by "+difference+" relative, above 1e-4");
+                    spineRecords.add(spine);spineScience.add(spine.science());
+                }
             }
             liquidMixtures.put(id,LiquidMixtureCorrection.read(o,refs.stream().map(descriptors::get).toList()));
             JsonObject interaction=require(group(groups,"interactions"),text(o,"interactions"),"interactions");
             if(!model.equals(text(interaction,"model"))) throw new IllegalArgumentException("Interaction model mismatch");
             double[][] matrix=new double[ids.size()][ids.size()]; var nrtl=new ArrayList<NrtlPair>(); var seen=new HashSet<String>();
+            boolean[][] constant=new boolean[ids.size()][ids.size()];
             for(var value:array(interaction,"pairs")) {
                 JsonObject pair=value.getAsJsonObject(); String a=text(pair,"first"), b=text(pair,"second");
                 int i=ids.indexOf(a),j=ids.indexOf(b); if(i<0 || j<0) throw new IllegalArgumentException("Interaction component outside package");
-                seen.add(pairKey(a,b));
+                seen.add(pairKey(a,b));constant[i][j]=constant[j][i]=true;
                 if(model.equals("pr78")) matrix[i][j]=matrix[j][i]=number(pair,"kij");
                 else {
                     NrtlPair n=nrtl(pair); if(tmin<n.minimumTemperature() || tmax>n.maximumTemperature()) throw new IllegalArgumentException("NRTL temperature validity"); nrtl.add(n);
                 }
+            }
+            GroupContributionInteractions groupContributions=null;
+            if(interaction.has("rule")) {
+                // Every pair without an explicit constant is resolved by the group-contribution rule from the spines'
+                // group counts; its constant matrix entry stays 0.0 and is not its kij (see Package).
+                JsonObject rule=object(interaction,"rule");
+                if(spineRecords.isEmpty())throw new IllegalArgumentException("interactions rule "+text(rule,"type")+": the package declares no spine, whose groups decompose each component");
+                groupContributions=GroupContributionInteractions.resolve(text(rule,"type"),require(matrices,text(rule,"group_interactions"),"rule.group_interactions"),
+                        ids,spineRecords,constant);
+                for(var resolved:groupContributions.pairs())seen.add(pairKey(ids.get(resolved.first()),ids.get(resolved.second())));
             }
             if(policy.equals("error")) for(int i=0;i<ids.size();i++) for(int j=i+1;j<ids.size();j++)
                 if(!seen.contains(pairKey(ids.get(i),ids.get(j)))) throw new IllegalArgumentException("Missing interaction: " + ids.get(i)+" / "+ids.get(j));
@@ -450,13 +553,29 @@ public final class MaterialCatalog {
                         a.has("amount_total")?positive(a,"amount_total"):1));
             });
             var rows=new ArrayList<List<Double>>(); for(double[] row:matrix) rows.add(Arrays.stream(row).boxed().toList());
-            String fingerprint=hash(new Gson().toJson(List.of(model,ids,ps,rows,nrtl,new TreeMap<>(assays),water,tmin,tmax,pmin,pmax)));
-            packages.put(id,new Package(id,text(o,"revision"),fingerprint,model,ids,ps,rows,nrtl,aliases,assays,water,tmin,tmax,pmin,pmax,strings(o,"advisory_evidence")));
+            var hashed=new ArrayList<Object>(List.of(model,ids,ps,rows,nrtl,new TreeMap<>(assays),water,tmin,tmax,pmin,pmax));
+            // Only a package with a group-contribution rule hashes it, so every other package keeps its exact pin.
+            if(groupContributions!=null)hashed.add(groupContributions.science(ids,ids));
+            String fingerprint=hash(new Gson().toJson(hashed));
+            var crystalScience=new ArrayList<Object>();
+            if(new HashSet<>(crystalIds).size()!=crystalIds.size())throw new IllegalArgumentException("crystals: duplicate crystal record");
+            // A crystal is anchored at its triple point to the spine family's liquid and moved to a consumer's datum by the
+            // spine's formation enthalpies (P2, D10): a package without a spine cannot carry one, and a consumer would run it
+            // fluid-only where a crystal could form (P6).
+            if(!crystalIds.isEmpty()&&spineIds.isEmpty())throw new IllegalArgumentException("crystals: package "+id+" declares crystals without a reference spine, which anchors them");
+            for(String crystalId:crystalIds) {
+                var crystal=require(crystals,crystalId,"crystals");
+                if(!ids.contains(crystal.component()))throw new IllegalArgumentException("crystals: "+crystalId+" is for "+crystal.component()+", outside the package components");
+                crystalScience.add(crystal.science());
+            }
+            String spineFingerprint=spineIds.isEmpty()&&crystalIds.isEmpty()?"":hash(new Gson().toJson(List.of(spineScience,crystalScience)));
+            packages.put(id,new Package(id,text(o,"revision"),fingerprint,model,ids,ps,rows,nrtl,aliases,assays,water,tmin,tmax,pmin,pmax,strings(o,"advisory_evidence"),
+                    spineIds,crystalIds,spineFingerprint,groupContributions));
         });
         for(var a:group(groups,"assays").values()) checked(origins,a,() -> require(packages,text(a,"package"),"assay package"));
         if(packages.isEmpty()) throw new IllegalArgumentException("Material catalog has no packages");
         var result=new MaterialCatalog(names,packages,resources,viscosities,waterModels,assayAppearances,componentAppearances,liquidMixtures,MaterialPresets.read(group(groups,"presets"),group(groups,"networks"),origins,packages,names.keySet()),FluidData.read(group(groups,"transport"),origins,names.keySet()),
-                propertyValidity,packageValidity);
+                propertyValidity,packageValidity,spines,crystals);
         for(var row:group(groups,"presets").values())if(text(row,"kind").equals("column"))checked(origins,row,()->
                 MaterialRuntime.with(result,text(row,"package"),()->{com.wormzjl.createcheme.science.column.v3.V3ColumnProblemResolver.validateInput(result.presets().column(text(row,"id")).input(result));return null;}));
         for(var row:group(groups,"networks").values())checked(origins,row,()->{
@@ -520,9 +639,16 @@ public final class MaterialCatalog {
         }
         return Map.copyOf(result);
     }
-    private static void validateInteractions(JsonObject o,Map<String,MaterialName> names) {
+    private static void validateInteractions(JsonObject o,Map<String,MaterialName> names,Map<String,GroupInteractionMatrix> matrices) {
         String model=text(o,"model"); text(o,"source");
         if(!Set.of("pr78","nrtl").contains(model)) throw new IllegalArgumentException("Unknown interaction model");
+        if(o.has("rule")) {
+            // A group-contribution rule resolves, per package, every pair without an explicit constant (P3 E-PPR78).
+            if(!model.equals("pr78"))throw new IllegalArgumentException("rule: a group-contribution kij rule needs model pr78");
+            JsonObject rule=object(o,"rule");String type=text(rule,"type");
+            if(!type.equals(GroupContributionInteractions.RULE_EPPR78))throw new IllegalArgumentException("rule.type: expected "+GroupContributionInteractions.RULE_EPPR78+", got "+type);
+            require(matrices,text(rule,"group_interactions"),"rule.group_interactions");
+        }
         var seen=new HashSet<String>();
         for(var value:array(o,"pairs")) {
             JsonObject p=value.getAsJsonObject(); String a=text(p,"first"),b=text(p,"second"); require(names,a,"first"); require(names,b,"second");

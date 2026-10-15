@@ -4,6 +4,7 @@
   "material.createcheme.nbp_below": "%s, NBP below %s°C",
   "material.createcheme.nbp_above": "%s, NBP above %s°C",
   "material.createcheme.estimated": " (estimated)",
+  "material.createcheme.carbon_dioxide": "Carbon dioxide",
   "material.createcheme.ethane": "Ethane",
   "material.createcheme.isobutane": "Isobutane",
   "material.createcheme.isopentane": "Isopentane",
