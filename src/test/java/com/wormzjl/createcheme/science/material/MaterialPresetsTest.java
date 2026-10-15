@@ -9,6 +9,13 @@ import java.io.*;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
 import org.junit.jupiter.api.Test;
+import com.google.gson.JsonArray;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
+import com.wormzjl.createcheme.science.column.v3.thermo.V3FeedPhase;
+import com.wormzjl.createcheme.science.column.v3.thermo.V3PengRobinsonThermo;
+import java.io.IOException;
+import java.io.InputStreamReader;
 
 class MaterialPresetsTest {
     private static final String ROOT="data/createcheme/materials/";
@@ -62,5 +69,53 @@ class MaterialPresetsTest {
         var model=FluidThermodynamics.forNetwork(changed,pkg,1e-9);assertEquals(target,model.components());
         var state=model.initialNitrogenCharge(1,298.15,101325,()->{});assertTrue(Double.isFinite(state.mass())&&state.mass()>0);
         assertSame(original,MaterialRuntime.current());
+    }
+
+    // ---------------- from CrudeAssayConversionTest ----------------
+    @Test
+    void allFivePublishedConversionsLoadWithTheSameOrderAndMassBasis() throws IOException {
+        JsonObject report;
+        try (var stream = getClass().getResourceAsStream("/materials/crude-assay-conversion-fixture.json")) {
+            assertNotNull(stream, "Missing independent assay conversion fixture");
+            report = JsonParser.parseReader(new InputStreamReader(stream, StandardCharsets.UTF_8)).getAsJsonObject();
+        }
+        var catalog = MaterialCatalog.bundled();
+        var original = catalog.requirePackage("createcheme:tjl20_methane");
+        assertEquals(5, report.getAsJsonArray("crudes").size());
+        for (var element : report.getAsJsonArray("crudes")) {
+            var row = element.getAsJsonObject();
+            String packageId = row.get("package_id").getAsString();
+            String assayId = row.get("assay_id").getAsString();
+            var resolved = catalog.requirePackage(packageId);
+            assertEquals(original.components(), resolved.components());
+            assertEquals(original.properties(), resolved.properties());
+            assertEquals("mass", resolved.assays().get(assayId).basis());
+            MaterialRuntime.with(catalog, packageId, () -> {
+                var thermo = V3PengRobinsonThermo.fromRegisteredPackage(packageId);
+                double[] feed = thermo.crudeFeed(assayId).moleFractions();
+                assertArrayEquals(vector(row.getAsJsonArray("mole_fractions")), feed, 1e-14);
+                double totalMass = 0;
+                for (int i = 0; i < feed.length; i++) totalMass += feed[i] * resolved.properties().get(i).molecularWeight();
+                for (int i = 0; i < feed.length; i++) {
+                    assertEquals(row.getAsJsonArray("mass_fractions").get(i).getAsDouble(),
+                            feed[i] * resolved.properties().get(i).molecularWeight() / totalMass, 1e-14);
+                }
+                assertTrue(thermo.advisoryEvidence().stream().anyMatch(s -> s.startsWith("ESTIMATED_HEAVY_TAIL:")));
+                var flash = thermo.flashTP(638.15, 267_250, feed, thermo.newWorkspace());
+                assertEquals(V3FeedPhase.TWO_PHASE, flash.phase(), packageId + ": " + flash.detail());
+                assertTrue(Double.isFinite(flash.molarEnthalpyJoulesPerMol()));
+                for (int i = 0; i < feed.length; i++) {
+                    assertEquals(feed[i], (1 - flash.vaporFraction()) * flash.liquidComposition()[i]
+                            + flash.vaporFraction() * flash.vaporComposition()[i], 1e-9, packageId);
+                }
+                return null;
+            });
+        }
+    }
+
+    private static double[] vector(JsonArray array) {
+        double[] values = new double[array.size()];
+        for (int i = 0; i < values.length; i++) values[i] = array.get(i).getAsDouble();
+        return values;
     }
 }

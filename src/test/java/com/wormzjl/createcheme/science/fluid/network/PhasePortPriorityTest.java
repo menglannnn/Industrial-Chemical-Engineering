@@ -326,24 +326,6 @@ class PhasePortPriorityTest extends PortFixture {
         return new PassiveNetwork(nodes,List.of(new PassiveNetwork.Pipe(10,0,1,List.of(g),new FlowControl.Passive(),3,null,vaporLine,PhasePort.BULK),
                 new PassiveNetwork.Pipe(11,0,2,List.of(g),new FlowControl.Passive(),3,null,liquidLine,PhasePort.BULK),new PassiveNetwork.Pipe(12,0,3,g)));
     }
-    private List<Long> steps(PassiveNetwork graph,double dt,int count) {
-        var bits=new ArrayList<Long>();var solver=new PassiveStepSolver(model);
-        for(int step=0;step<count;step++) {
-            var result=solver.solve(graph,dt,NOOP);
-            var nodes=new ArrayList<PassiveNetwork.Reservoir>();
-            for(int i=0;i<graph.reservoirs().size();i++){var node=graph.reservoirs().get(i);
-                nodes.add(node.fixed()?node:new PassiveNetwork.Reservoir(node.id(),node.elevation(),result.states().get(i),node.kind(),result.inventories().get(i)));}
-            graph=new PassiveNetwork(nodes,graph.pipes(),graph.scheduledTransfers());
-            for(var node:graph.reservoirs()){var s=node.state();
-                for(double v:new double[]{s.temperature(),s.pressure(),s.mass(),s.volume(),s.liquidVolume(),s.waterVolume(),s.vaporVolume(),node.inventory().internalEnergy()})bits.add(bits(v));
-                for(double n:node.inventory().moles())bits.add(bits(n));}
-            for(double q:result.massFlows())bits.add(bits(q));
-            for(var b:result.boundaries()){bits.add(b.nodeId());bits.add(bits(b.totalEnergyJoule()));for(double n:b.moles())bits.add(bits(n));}
-            for(var t:result.pipeTransfers())for(var s:List.of(t.forward(),t.reverse())){bits.add(bits(s.massKg()));for(var p:s.phaseMoles())for(double n:p)bits.add(bits(n));for(double v:s.phaseVolumes())bits.add(bits(v));}
-        }
-        return bits;
-    }
-    private static long bits(double v){return Double.doubleToRawLongBits(v==0?0:v);}
 
     // ---- 7. Two bottom ports share each phase's capacity -----------------------------------------------------------
 

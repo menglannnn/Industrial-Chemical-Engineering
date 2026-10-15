@@ -13,6 +13,7 @@ import java.util.*;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
+import java.util.Map;
 
 /**
  * Rest and steady-flow certificates (plan sections 3.2, 3.3 and 4; section 5 items 3, 5 and 6): the entry
@@ -771,5 +772,11 @@ class IslandCertificateTest {
             System.out.println(fixture.getKey()+": "+on.coordinator.certificationRefusal(1));
             assertEquals(publications(off.published),publications(on.published),fixture.getKey());
         }
+    }
+
+    // ---------------- from IslandCertificateDomainTest ----------------
+    @Test void aThermoDomainRejectionKeepsTheIntervalFromCertifying() {
+        assertTrue(IslandCertificate.transitionFree(Map.of("Embedded pipe error #",3)));
+        assertFalse(IslandCertificate.transitionFree(Map.of("Embedded pipe error #",3,"thermo-domain: Nitrogen temperature < 63.151 K",1)));
     }
 }

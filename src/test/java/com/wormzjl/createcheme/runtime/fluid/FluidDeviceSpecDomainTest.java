@@ -52,4 +52,11 @@ class FluidDeviceSpecDomainTest {
         assertThrows(IllegalArgumentException.class,()->new FluidDeviceSpec(1,0,101325,n));
         assertEquals(ThermoDomainViolation.PACKAGE,assertThrows(ThermoDomainViolation.class,()->model.domain().checkPressure(50)).component(),"a valve target outside the envelope");
     }
+
+    // ---------------- from FluidDeviceSpecTest ----------------
+    @Test void allRequiredCrudePresetsShareTheExactQualifiedPropertyBasis() {
+        var presets=FluidPresetCatalog.resolve(MaterialCatalog.bundled());assertEquals(6,presets.size());assertTrue(presets.stream().anyMatch(p->p.id().equals("createcheme:demo_slurry")&&p.solids().volumeFraction()==.1));
+        for(var preset:presets){assertEquals(com.wormzjl.createcheme.science.material.MaterialTestBasis.NETWORK+1,preset.moleFractions().length);assertEquals(1,java.util.Arrays.stream(preset.moleFractions()).sum(),1e-12);}
+        assertTrue(presets.stream().anyMatch(p->p.name().equals("Cold Lake Blend")));assertTrue(presets.stream().anyMatch(p->p.name().equals("WTI Light Export")));
+    }
 }

@@ -17,6 +17,7 @@ import java.util.Map;
 import java.util.Objects;
 
 import static org.junit.jupiter.api.Assertions.*;
+import java.util.*;
 
 /** Independent P03-P05 references. No production resistance call supplies an oracle. */
 class HydraulicReferenceQualificationTest {
@@ -127,5 +128,40 @@ class HydraulicReferenceQualificationTest {
         var unit = model.flashTP(350, pressure, n, () -> {});
         n[water ? com.wormzjl.createcheme.science.material.MaterialTestBasis.NETWORK : com.wormzjl.createcheme.science.material.MaterialTestBasis.NITROGEN] /= unit.volume();
         return model.flashTP(350, pressure, n, () -> {});
+    }
+
+    // ---------------- from PipeResistanceTest ----------------
+    @Test void poiseuilleReferenceAndZeroFlowSlope() {
+        var pipe=new PipeResistance.Geometry(1,.01,0,0);
+        var loss=PipeResistance.evaluate(pipe,.001,1000,.001);
+        // 1 mL/s through a 1 m x 10 mm tube, water-like mu=1 mPa.s: hand-evaluated Poiseuille relation.
+        assertEquals(4.07436654315252,loss.pressureDrop(),1e-12);
+        assertEquals(127.323954473516,loss.reynolds(),1e-10);
+        assertEquals(loss.pressureDrop(),-PipeResistance.evaluate(pipe,-.001,1000,.001).pressureDrop(),1e-12);
+        assertEquals(0,PipeResistance.evaluate(pipe,0,1000,.001).pressureDrop());
+        assertTrue(PipeResistance.evaluate(pipe,0,1000,.001).massFlowDerivative()>0);
+    }
+    @Test void frictionDerivativeIsContinuousAcrossTransitionAndPositiveInBothDirections() {
+        var pipe=new PipeResistance.Geometry(20,.05,.000045,2);
+        for(double reynolds:new double[]{0,1999.99,2000,2000.01,3000,3999.99,4000,4000.01,1e5,1e6}) {
+            double flow=reynolds*Math.PI*.001*.05/4,h=1e-7;
+            for(double sign:new double[]{-1,1}) {
+                double q=sign*flow;var loss=PipeResistance.evaluate(pipe,q,900,.001);
+                double derivative=(PipeResistance.evaluate(pipe,q+h,900,.001).pressureDrop()-PipeResistance.evaluate(pipe,q-h,900,.001).pressureDrop())/(2*h);
+                assertEquals(derivative,loss.massFlowDerivative(),1e-5*Math.abs(derivative)+1e-4,"Re="+reynolds);
+            }
+        }
+    }
+
+    // ---------------- from PipeSectionAggregationTest ----------------
+    @Test void manyPhysicalSectionsPreserveLossDerivativeAndMinimumAreaAcrossFlowRegimes() {
+        var sections=new ArrayList<PipeResistance.Geometry>();
+        for(int i=0;i<1000;i++)sections.add(new PipeResistance.Geometry(.5,i%3==0?.02:.05,i%3==0?.0001:.000045,.03));
+        var pipe=new PassiveNetwork.Pipe(1,0,1,sections,new FlowControl.Passive());assertEquals(2,pipe.sections().size());
+        assertEquals(500,pipe.sections().stream().mapToDouble(PipeResistance.Geometry::length).sum());assertEquals(Math.PI*.02*.02/4,pipe.minimumArea());
+        for(double flow:new double[]{-.2,-1e-5,0,1e-5,.2,4}) {
+            double loss=0,derivative=0;for(var section:sections){var part=PipeResistance.evaluate(section,flow,850,.003);loss+=part.pressureDrop();derivative+=part.massFlowDerivative();}
+            var compact=pipe.loss(flow,850,.003);assertEquals(loss,compact.pressureDrop(),1e-11*Math.max(1,Math.abs(loss)));assertEquals(derivative,compact.massFlowDerivative(),1e-11*derivative);
+        }
     }
 }

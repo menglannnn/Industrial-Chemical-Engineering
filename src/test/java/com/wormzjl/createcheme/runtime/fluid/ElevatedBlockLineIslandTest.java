@@ -75,13 +75,6 @@ class ElevatedBlockLineIslandTest extends BlockLineHarness {
         devices.add(device(1+LIFT,LIFT,BOTTOM,TopologyCompiler.Kind.RESERVOIR));
         return island(devices,Map.of(1L,generatorSpec(generatorPressure),(long)(1+LIFT),tankSpec(tankPressure)));
     }
-    /** The flat filter control, for the same comparison. */
-    private PassiveNetwork flatFilterLine(double generatorPressure,double tankPressure) {
-        var devices=List.of(device(1,0,BOTTOM,TopologyCompiler.Kind.GENERATOR),device(2,1,BOTTOM,TopologyCompiler.Kind.PIPE),
-                device(3,2,BOTTOM,TopologyCompiler.Kind.FILTER,PhysicalFluidTopology.Direction.EAST),
-                device(4,3,BOTTOM,TopologyCompiler.Kind.PIPE),device(5,4,BOTTOM,TopologyCompiler.Kind.RESERVOIR));
-        return island(devices,Map.of(1L,generatorSpec(generatorPressure),5L,tankSpec(tankPressure)));
-    }
 
     private double head(double pressure,int lift){return waterDensity(pressure)*PassiveStepSolver.GRAVITY*lift;}
     /** The level head of a tank's bottom (LIQUID) port on its final state (decision D9 of the phase-ports batch):
@@ -188,40 +181,13 @@ class ElevatedBlockLineIslandTest extends BlockLineHarness {
     }
 
     /**
-     * The boundary of what the static-head rule buys, stated as an invariant rather than as a
-     * recorded failure.
-     *
-     * <p>A water generator with a nitrogen tank four blocks above it at the same pressure cannot
-     * lift the column, and the only direction left - gas down into the generator - is one
-     * {@code PassiveStepSolver.boundaryAllowed} forbids. That line still holds, and so does the
-     * inline-filter version of it, but not for any reason involving elevation: the identical
-     * dead-headed situation at one y, made by charging the tank above the generator instead of
-     * lifting it, holds in exactly the same way and did so before the head was ever frozen -
-     * measured at 1 Pa, 8.7 kPa, 39.1 kPa and 98.7 kPa of adverse pressure, all four stalling on
-     * the friction kink at zero flow with a phantom water trace in a nitrogen tank pinning the step
-     * length. See documentation/ELEVATED_LINE_PROBE.md section 6; the defect is recorded there and
-     * is not this one.
-     *
-     * <p>So what this asserts is the equivalence, which is true now and stays true when that defect
-     * is fixed: lifting a line four blocks does not change whether it can be integrated, and the
-     * tank's endpoint is offset by exactly the column.
+     * A water generator at 1 atm with a nitrogen tank four blocks above it at the same pressure cannot lift the column;
+     * that line, its flat equivalent and their filter versions rest at zero flow (DeadHeadedLineIslandTest). The same
+     * line the other way up carries the column and runs: gravity is not the obstacle, and the tank's endpoint is offset
+     * by exactly the column.
      */
-    @Test void aDeadHeadedElevatedLineBehavesLikeItsFlatEquivalent() {
+    @Test void aFallingLineCarriesTheColumnADeadHeadedRisingLineCannotLift() {
         double pressure=101325,column=head(pressure,LIFT);
-        var rising=run(risingLine(pressure,pressure),40);
-        var flat=run(flatLine(pressure,pressure+column),40);
-        var risingFilter=run(risingFilterLine(pressure,pressure),40);
-        var flatFilter=run(flatFilterLine(pressure,pressure+column),40);
-        System.out.println("\n=== dead-headed at "+(long)pressure+" Pa, adverse column "+column+" Pa ===");
-        System.out.println("(rising plain)  "+rising.detail());
-        System.out.println("(flat  plain)   "+flat.detail());
-        System.out.println("(rising filter) "+risingFilter.detail());
-        System.out.println("(flat  filter)  "+flatFilter.detail());
-        assertEquals(flat.ok(),rising.ok(),
-                "A lifted line and a flat line against the same adverse pressure must integrate alike");
-        assertEquals(flatFilter.ok(),risingFilter.ok(),
-                "And so must the two filter lines");
-        // The same line the other way up carries the column and runs: gravity is not the obstacle.
         var falling=run(fallingLine(pressure),40);
         System.out.println("(falling plain) "+falling.detail()
                 +(falling.ok()?"\n   tank P="+falling.tank().pressure()+" mass="+falling.tank().mass():""));

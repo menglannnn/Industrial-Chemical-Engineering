@@ -55,10 +55,11 @@ class RestIslandTest {
         assertTrue(Arrays.stream(end.lastResult().orElseThrow().averageMassFlows()).anyMatch(q->Math.abs(q)>1e-3),"the generator's water flows: "+end.status());
     }
 
-    /** Owner decision D22 (P3): a tank already at the pressure its source can reach, with nothing able to drive flow, is at
-     * rest; the same tank below that pressure fills. A 150 kPa water generator piped to a nitrogen tank beside it. */
-    @Test void aTankAtThePressureItsSourceReachesIsAtRestAndOneBelowItFills() {
-        for(double tankPressure:new double[]{150000,101325}) {
+    /** Owner decision D22 (P3), restated by decision D54: a 150 kPa water generator piped to a nitrogen tank beside it. A
+     * placed tank holds nothing whatever pressure it is set to (FluidDeviceSpec.initialize), so a tank set to the source's
+     * pressure and one set below it are the same world: it fills to the source's pressure and rests. */
+    @Test void aPlacedTankFillsToThePressureItsSourceReachesAndRests() {
+        for(double tankPressure:new double[]{150000}) {
             var w=new EventPathWorld();w.runTo(100);var passive=new FlowControl.Passive();
             w.place(0,0,0,Kind.GENERATOR,NORTH,passive,EventPathWorld.pure(MaterialTestBasis.NETWORK,298.15,150000),.05);w.place(1,0,0,Kind.PIPE,NORTH,.05);
             long tank=w.place(2,0,0,Kind.RESERVOIR,NORTH,passive,EventPathWorld.pure(MaterialTestBasis.NITROGEN,298.15,tankPressure),.05);w.runTo(102);
