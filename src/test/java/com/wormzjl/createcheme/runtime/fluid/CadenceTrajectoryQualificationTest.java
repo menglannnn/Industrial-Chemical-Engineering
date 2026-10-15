@@ -13,9 +13,12 @@ import static org.junit.jupiter.api.Assertions.*;
 /** P31 physical cadence qualification. CPU samples are injected to exercise clock policy;
  * this test does not claim that the aggregate-load classifier measures actual CPU saturation. */
 class CadenceTrajectoryQualificationTest {
-    /** Backward Euler (WP1 of the mixed-gas junction batch): the references are first order too, 0.5 s against 0.25 s
-     * ceilings differ by up to 0.18 % in cumulative flow (water; TR-BDF2 bound 0.1 %), and the fixed and adaptive cadences
-     * lag the refined trajectory by up to 1.5 % (water, 20 s cadence; TR-BDF2 bound 0.5 %). */
+    /** Backward Euler (WP1 of the mixed-gas junction batch): the references are first order too, 0.25 s against 0.125 s
+     * ceilings differ by up to 0.16 % in cumulative flow (water; TR-BDF2 bound 0.1 %), and the fixed and adaptive cadences
+     * lag the refined trajectory by up to 1.8 % (water, 20 s cadence; TR-BDF2 bound 0.5 %). The pair was 0.5 s against
+     * 0.25 s while liquid water had a flat compressibility of 1e-9 1/Pa. The engine's water (M2) is stiffer, 4.56e-10 1/Pa
+     * at 350 K, so the two rigid tanks equalise through the pipe with a time constant of 25 s instead of 56 s, and a
+     * first-order step's error grows with the step over that time constant (0.5 s against 0.25 s now differ by 0.33 %). */
     private static final double REFERENCE_TOLERANCE=.0025,CADENCE_TOLERANCE=.02;
     private final FluidThermodynamics model=FluidTestSupport.networkModel();
     private final double[] molecularWeights=FluidTestSupport.molecularWeights(model);
@@ -29,7 +32,7 @@ class CadenceTrajectoryQualificationTest {
         var rows=new ArrayList<Map<String,Object>>();var digests=new TreeMap<String,String>();
         for(String fluid:List.of("nitrogen","water","wet-crude")) {
             var initial=initial(fluid);
-            var coarse=reference(initial,.5);var fine=reference(initial,.25);
+            var coarse=reference(initial,.25);var fine=reference(initial,.125);
             compare(fluid,"reference-refinement",coarse,fine,REFERENCE_TOLERANCE,rows);
             for(int cadence:new int[]{1,5,20}){var fixed=runFixed(initial,cadence);digests.put(fluid+"/fixed-"+cadence,digest(fixed));compare(fluid,"fixed-"+cadence,fixed,fine,CADENCE_TOLERANCE,rows);}
             var adaptive=runAdaptive(initial);digests.put(fluid+"/adaptive-controlled-cpu",digest(adaptive));
@@ -40,7 +43,7 @@ class CadenceTrajectoryQualificationTest {
         // Ordered maps throughout, so an unchanged trajectory writes a byte-identical report.
         var output=Path.of("build/reports/fluid/P31-cadence-trajectories.json");Files.createDirectories(output.getParent());
         var report=new LinkedHashMap<String,Object>();
-        report.put("reference","backward Euler with 0.5/0.25 s ceilings; refinement <=0.25%");
+        report.put("reference","backward Euler with 0.25/0.125 s ceilings; refinement <=0.25%");
         report.put("scope","Fixed 1/5/20 s and production clock with injected CPU observations; not aggregate-load performance qualification");
         report.put("trajectoryDigests",digests);report.put("rows",rows);
         Files.writeString(output,new GsonBuilder().setPrettyPrinting().create().toJson(report));

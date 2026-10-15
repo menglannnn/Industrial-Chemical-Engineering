@@ -10,9 +10,10 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class McpGameplayRegressionTest {
     /**
-     * The first island of an archived gameplay capture (see mcp-held-drain-checkpoint.md), a checkpoint saved on
-     * 2026-09-16 and kept byte for byte for reproducibility. It is solver input, not a save that is loaded: no
-     * checkpoint format reads it any more, so only its graph is taken, in the shape the payloads still use.
+     * The first island of an archived gameplay capture (see mcp-held-drain-checkpoint.md). It is solver input, not a save
+     * that is loaded: no checkpoint format reads it any more, so only its graph is taken, in the shape the payloads still
+     * use. The held drain is the checkpoint saved on 2026-09-16, kept byte for byte for reproducibility; the clamped
+     * liquid-full island was re-archived under the engine's liquid water (D27).
      */
     private com.google.gson.JsonObject archivedIsland(String resource) throws java.io.IOException {
         try(var input=Objects.requireNonNull(getClass().getResourceAsStream(resource))) {
@@ -43,6 +44,8 @@ class McpGameplayRegressionTest {
             case "valve"->new FlowControl.PressureValve(p.control().target());default->throw new IllegalArgumentException("Unknown saved control");
         },0,null,PassiveNetwork.PhasePort.BULK,PassiveNetwork.PhasePort.BULK)).toList());
     }
+    /** The tank holds the capture's nitrogen trace and the water that fills its 1 m3 at the captured 298.16 K and
+     * 150.66 kPa (997.06 kg, D27); 31.1 kg/s flows through it from the 200 kPa generator to the 1 atm void. */
     @Test void clampedDrainContinuesAfterTheTankBecomesAlmostLiquidFull() throws Exception {
         var model=FluidTestSupport.networkModel();
         var graph=archivedGraph(archivedIsland("/fluid/mcp-clamped-liquid-full-checkpoint.json"),model);
