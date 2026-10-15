@@ -316,7 +316,7 @@ public final class FluidServerBenchmark {
 
     public static void installFixture(ServerStartingEvent event) {
         var server=event.getServer();String profile=System.getProperty("createcheme.fluid.benchmark.profile","one");
-        if(!Set.of("one","many","module","contention").contains(profile)&&!TIMED_PROFILES.contains(profile))throw new IllegalArgumentException("Unknown benchmark profile "+profile);
+        if(!Set.of("one","many","contention").contains(profile)&&!TIMED_PROFILES.contains(profile))throw new IllegalArgumentException("Unknown benchmark profile "+profile);
         if(Files.exists(server.getWorldPath(LevelResource.ROOT).resolve("data/"+FluidSavedData.DATA_NAME+".dat")))throw new IllegalStateException("Benchmark requires a fresh disposable world");
         var model=FluidThermodynamics.forNetwork(MaterialRuntime.active(),FluidPresetCatalog.NETWORK_PACKAGE,1e-9);
         var composition=Arrays.copyOf(MaterialRuntime.with(MaterialRuntime.active(),FluidPresetCatalog.NETWORK_PACKAGE,()->V3PengRobinsonThermo.fromRegisteredPackage(FluidPresetCatalog.NETWORK_PACKAGE).crudeFeed("createcheme:tia_juana_light_methane").moleFractions()),com.wormzjl.createcheme.science.fluid.thermo.FluidMaterialCatalog.conservedCount());composition[com.wormzjl.createcheme.science.fluid.thermo.FluidMaterialCatalog.nitrogenIndex()]=.1;composition[com.wormzjl.createcheme.science.fluid.thermo.FluidMaterialCatalog.waterIndex()]=.2;
@@ -374,15 +374,14 @@ public final class FluidServerBenchmark {
         else {
             int x=0;builder.add(x,0,Kind.GENERATOR,150100);
             for(int i=0;i<100;i++) {
-                if(profile.equals("module")&&i==50)x+=3;
-                else for(int pipe=0;pipe<(i==0?(profile.equals("module")?15:5):10);pipe++)builder.add(++x,0,Kind.PIPE,150050);
+                for(int pipe=0;pipe<(i==0?5:10);pipe++)builder.add(++x,0,Kind.PIPE,150050);
                 builder.add(++x,0,Kind.RESERVOIR,150100-100*(i+.5)/100.0);
             }
             for(int pipe=0;pipe<5;pipe++)builder.add(++x,0,Kind.PIPE,150050);builder.add(++x,0,Kind.VOID,150000);
         }
         boolean timed=TIMED_PROFILES.contains(profile);
         if(!timed&&(builder.pipes!=1000||reservoirs.size()!=100))throw new IllegalStateException("Benchmark component count mismatch");
-        var compiled=PhysicalFluidTopology.compile(devices,stocks);var entries=new ArrayList<FluidCheckpointCodec.IslandEntry>();var ownerByNode=new HashMap<Long,Long>();long next=builder.next;
+        var compiled=PhysicalFluidTopology.compile(devices,stocks);var entries=new ArrayList<FluidCheckpointCodec.IslandEntry>();long next=builder.next;
         if(timed&&(compiled.islands().size()!=100||compiled.islands().stream().anyMatch(i->{long count=i.graph().reservoirs().stream().filter(n->n.kind()==PassiveNetwork.NodeKind.RESERVOIR).count();return count<10||count>30;})))throw new IllegalStateException("Timed fixture must contain 100 isolated 10-30-reservoir islands");
         var islandLadders=new HashMap<Long,Ladder>();
         for(var island:compiled.islands()) {
@@ -391,18 +390,11 @@ public final class FluidServerBenchmark {
             if(timed&&kinds.size()!=1)throw new IllegalStateException("A fixture island must come from exactly one ladder");
             if(timed)islandLadders.put(id,kinds.getFirst());
             var snapshot=new IslandCoordinator.Snapshot(id,0,island.graph(),new IslandClock.Snapshot(0,0,0,100),FallbackAllowance.NONE,Optional.empty(),Optional.empty(),"READY");
-            entries.add(new FluidCheckpointCodec.IslandEntry("minecraft:overworld",FluidPresetCatalog.NETWORK_PACKAGE,1e-9,snapshot));for(var node:island.graph().reservoirs())ownerByNode.put(node.id(),id);
-        }
-        var buffers=new LinkedHashMap<UUID,BufferedTransfers.Buffer>();var bindings=new ArrayList<CausalModuleCoordinator.Binding>();var modules=new ArrayList<FixedSplitModule.Snapshot>();
-        if(profile.equals("module")) {
-            for(int index:new int[]{49,50,51}){long node=reservoirs.get(index);var id=new UUID(9,node);buffers.put(id,new BufferedTransfers.Buffer(id,10000,stocks.get(node).state().mass(),Map.of()));bindings.add(new CausalModuleCoordinator.Binding(id,ownerByNode.get(node),node));}
-            double[] fractions=new double[com.wormzjl.createcheme.science.fluid.thermo.FluidMaterialCatalog.conservedCount()];Arrays.fill(fractions,1);
-            var definition=new FixedSplitModule.Definition(new UUID(9,999999),List.of(new FixedSplitModule.Feed(bindings.getFirst().buffer(),.02)),bindings.get(1).buffer(),bindings.get(2).buffer(),300,fractions);
-            modules.add(new FixedSplitModule.Snapshot(definition,0,0,false,null));
+            entries.add(new FluidCheckpointCodec.IslandEntry("minecraft:overworld",FluidPresetCatalog.NETWORK_PACKAGE,1e-9,snapshot));
         }
         double[] weights=weights(model);var finite=stocks.values().stream().filter(n->n.kind()==PassiveNetwork.NodeKind.RESERVOIR).toList();
         var topology=new WorldTopologyLedger.Snapshot(0,next,registrations,List.of(),WorldTopologyLedger.MaterialTotal.empty().plus(finite,weights),WorldTopologyLedger.MaterialTotal.empty());
-        var checkpoint=new FluidCheckpointCodec.Checkpoint(entries,new BufferedTransfers.Snapshot(0,buffers,Map.of()),modules,bindings);
+        var checkpoint=new FluidCheckpointCodec.Checkpoint(entries);
         var chunks=new HashSet<Long>();var level=server.overworld();
         for(var device:devices) {
             // The timed profiles isolate the persistent engine and keep every fixture chunk unloaded; viewers loads them all.
@@ -484,7 +476,7 @@ public final class FluidServerBenchmark {
         result.put("totalMilliseconds",timing.totalNanos()/1e6);result.put("captureMilliseconds",timing.captureNanos()/1e6);result.put("encodeMilliseconds",timing.encodeNanos()/1e6);
         result.put("writeMilliseconds",timing.writeNanos()/1e6);
         result.put("islands",timing.islands());result.put("payloadsEncoded",timing.payloadsEncoded());result.put("payloadsReused",timing.payloadsReused());result.put("unitsCopied",timing.unitsCopied());
-        result.put("payloadBytes",timing.payloadBytes());result.put("encodedBytes",stats.encodedBytes());result.put("ledgerBytes",timing.ledgerBytes());result.put("topologyBytes",timing.topologyBytes());result.put("topologyEncoded",timing.topologyEncoded());
+        result.put("payloadBytes",timing.payloadBytes());result.put("encodedBytes",stats.encodedBytes());result.put("topologyBytes",timing.topologyBytes());result.put("topologyEncoded",timing.topologyEncoded());
         result.put("packBytesWritten",stats.packBytes());result.put("coreBytes",stats.coreBytes());result.put("packsReferenced",stats.packs());result.put("bytes",timing.bytes());
         try {
             var data=r.server.getWorldPath(LevelResource.ROOT).resolve("data");result.put("coreFileBytes",Files.size(data.resolve(FluidCheckpointStore.CORE_NAME)));
@@ -563,8 +555,7 @@ public final class FluidServerBenchmark {
         if(heapAfterForcedGc!=null)certified.put("heapAfterForcedGcBytes",heapAfterForcedGc);
         report.put("certificates",certified);
         report.put("warmupSamples",r.warmupSamples);report.put("warmupHeldIntervals",r.warmupSamples.stream().filter(s->!s.timing().accepted()).count());
-        report.put("moduleCommittedTicks",finalState.modules().stream().map(FixedSplitModule.Snapshot::committedTick).toList());report.put("pendingTransferRecords",finalState.transfers().pending().size());report.put("plannedCapacityRecords",finalState.transfers().planned().size());
-        report.put("qualificationNote","One fresh-JVM replicate only. Three replicates and one/many/module, worker-count, contention and soak coverage are required. Queue debt is present in each sample and is not hidden in worker timing.");
+        report.put("qualificationNote","One fresh-JVM replicate only. Three replicates and one/many, worker-count, contention and soak coverage are required. Queue debt is present in each sample and is not hidden in worker timing.");
         if(r.stress) {
             long reservoirCount=fixture.checkpoint.islands().stream().flatMap(i->i.snapshot().graph().reservoirs().stream()).filter(n->n.kind()==PassiveNetwork.NodeKind.RESERVOIR).count();
             boolean allAdvanced=finalState.islands().stream().allMatch(i->i.snapshot().clock().committedTick()>0);
@@ -742,7 +733,6 @@ public final class FluidServerBenchmark {
         double[] sum=new double[com.wormzjl.createcheme.science.fluid.thermo.FluidMaterialCatalog.conservedCount()+1],weights=weights(model);for(var island:checkpoint.islands())for(var node:island.snapshot().graph().reservoirs())if(node.kind()==PassiveNetwork.NodeKind.RESERVOIR) {
             var n=node.inventory().moles();double mass=0;for(int c=0;c<model.componentCount();c++){sum[c]+=n[c];mass+=n[c]*weights[c];}sum[sum.length-1]+=node.inventory().internalEnergy()+mass*PassiveStepSolver.GRAVITY*node.elevation();
         }
-        for(var p:checkpoint.transfers().pending().values())add(sum,p.remaining());for(var module:checkpoint.modules())if(module.cycle()!=null)for(var input:module.cycle().inputs().values())add(sum,input.owned());return sum;
+        return sum;
     }
-    private static void add(double[] sum,MaterialParcel parcel){var n=parcel.moles();for(int c=0;c<n.length;c++)sum[c]+=n[c];sum[sum.length-1]+=parcel.energyJoule();}
 }

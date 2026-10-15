@@ -25,11 +25,9 @@ public final class IslandScheduler {
         ROUND_TIMEOUT,
         /** The shared worker allocator's lower-demand shrink becomes due. */
         ALLOCATOR_SHRINK,
-        /** A module cycle end or pending input due tick, or a dependency change the module host must see. */
-        MODULE_HORIZON,
         /** An undelivered solid recovery (offline player, full inventory, unloaded chunk) is retried. */
         RECOVERY_RETRY,
-        /** A certified island's horizon or next module drive (rest and steady-flow certificates). */
+        /** A certified island's horizon (rest and steady-flow certificates). */
         CERTIFICATE_HORIZON
         // Presentation buckets are not entries here: FluidPresentation keeps its one next-bucket tick, checked in
         // O(1) at the end of the world tick so that a bucket sees the events applied in its own tick.

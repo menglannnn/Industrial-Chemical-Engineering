@@ -4,7 +4,6 @@ import com.wormzjl.createcheme.runtime.ProcessSolveServices;
 import com.wormzjl.createcheme.science.fluid.network.*;
 import com.wormzjl.createcheme.science.fluid.thermo.FluidThermodynamics;
 import java.util.*;
-import java.util.function.LongConsumer;
 import java.util.function.LongSupplier;
 
 /**
@@ -23,10 +22,10 @@ import java.util.function.LongSupplier;
  *
  * <p>An island whose solved intervals repeat (an exact identity, or stationary within the policy's tolerance)
  * is <em>certified</em> ({@link IslandCertificate}): it is never ready, releases its solver
- * caches, and holds at most one deadline, at its certificate horizon or its next module drive. Its committed
+ * caches, and holds at most one deadline, at its certificate horizon. Its committed
  * time is not stored per tick but materialised on demand - at a read of its snapshot, an event alignment, a
  * property hold, its own deadline - by the identity or by scaled replay of its last solved interval, never past
- * the online clock, a fence or a hold. A module drive or the horizon wakes it; a property resume or a topology
+ * the online clock, a fence or a hold. The horizon wakes it; a property resume or a topology
  * event discards the certificate. A snapshot carries the certificate in its saved form; {@link #register}
  * restores it while its signature holds and otherwise discards it, keeping the materialised inventory.
  *
@@ -47,12 +46,6 @@ public final class IslandCoordinator {
         void cancel(long requestId);
     }
     @FunctionalInterface public interface Publisher {void published(List<Snapshot> changed);}
-    /** Preparation may refuse a stale transaction. The returned action must only publish prevalidated
-     * owner-thread state, without throwing, callbacks, IO, or another solver invocation. */
-    @FunctionalInterface public interface CommitHook {
-        Optional<Runnable> prepare(Attempt attempt,ProcessSolveServices.FluidIslandSolveResult result);
-        CommitHook NO_MATERIAL=(attempt,result)->result.materialTransfers().isPresent()?Optional.empty():Optional.of(()->{});
-    }
     /**
      * {@code certificates} is the rest and steady-flow policy. The constructors without one keep the scheduling
      * of an island that solves every interval (certificates off); {@link #defaults()} and the world use the
@@ -219,7 +212,6 @@ public final class IslandCoordinator {
     private final Publisher publisher;
     private final LongSupplier nanoClock;
     private final Settings settings;
-    private final CommitHook commitHook;
     private final LongSupplier epoch;
     private final boolean ownsEpoch;
     private long ownEpoch;
@@ -237,14 +229,6 @@ public final class IslandCoordinator {
     private long roundSequence,generations,shrinkTick=Long.MAX_VALUE;
     private final EnumMap<IslandScheduler.Kind,Runnable> externalActions=new EnumMap<>(IslandScheduler.Kind.class);
     private final EnumMap<IslandScheduler.Kind,Long> externalTicks=new EnumMap<>(IslandScheduler.Kind.class);
-    private LongConsumer released=island->{};
-    /** Module drives: the earliest tick in [from, to] at which the module host needs this island solving
-     * (a pending input's due tick, a positive withdrawal), or {@link Long#MAX_VALUE}; no side effects. */
-    @FunctionalInterface public interface Drives {
-        long earliest(long island,long from,long to);
-        Drives NONE=(island,from,to)->Long.MAX_VALUE;
-    }
-    private Drives drives=Drives.NONE;
     /**
      * Told once per island per thermo-domain hold (the first held attempt of an episode, and again only for a different
      * violation or after {@link #DOMAIN_WARNING_TICKS} online ticks): the world logs it. {@code where} is the node's
@@ -268,16 +252,13 @@ public final class IslandCoordinator {
 
     /** A coordinator with its own epoch, advanced once per {@link #tick()}. */
     public IslandCoordinator(Dispatcher dispatcher,Publisher publisher,LongSupplier nanoClock,Settings settings) {
-        this(dispatcher,publisher,nanoClock,settings,CommitHook.NO_MATERIAL);
-    }
-    public IslandCoordinator(Dispatcher dispatcher,Publisher publisher,LongSupplier nanoClock,Settings settings,CommitHook commitHook) {
-        this(dispatcher,publisher,nanoClock,settings,commitHook,null);
+        this(dispatcher,publisher,nanoClock,settings,null);
     }
     /** {@code epoch} is the shared online tick (the world's), which its owner advances before calling
      * {@link #tick()}; null gives the coordinator its own epoch, advanced by {@link #tick()}. */
-    public IslandCoordinator(Dispatcher dispatcher,Publisher publisher,LongSupplier nanoClock,Settings settings,CommitHook commitHook,LongSupplier epoch) {
+    public IslandCoordinator(Dispatcher dispatcher,Publisher publisher,LongSupplier nanoClock,Settings settings,LongSupplier epoch) {
         this.dispatcher=Objects.requireNonNull(dispatcher);this.publisher=Objects.requireNonNull(publisher);
-        this.nanoClock=Objects.requireNonNull(nanoClock);this.settings=Objects.requireNonNull(settings);this.commitHook=Objects.requireNonNull(commitHook);
+        this.nanoClock=Objects.requireNonNull(nanoClock);this.settings=Objects.requireNonNull(settings);
         ownsEpoch=epoch==null;this.epoch=ownsEpoch?()->ownEpoch:epoch;
     }
     private void owned(){if(Thread.currentThread()!=owner)throw new IllegalStateException("Island coordinator belongs to its server thread");}
@@ -293,7 +274,7 @@ public final class IslandCoordinator {
      * A saved certificate (plan section 3.5). The snapshot's graph is already its island at the saved committed tick,
      * materialised from the base without a solve. Restored when certificates are on and its signature is the island's
      * current one: the island is certified again with its saved since tick, keeps no solver caches, and holds only its
-     * horizon (or module drive) deadline. Otherwise the certificate is discarded and the island starts awake from that
+     * horizon deadline. Otherwise the certificate is discarded and the island starts awake from that
      * inventory, to solve its debt and qualify again.
      */
     private void restore(Island island,IslandCertificate.Saved saved) {
@@ -307,12 +288,12 @@ public final class IslandCoordinator {
             FluidRuntimeDiagnostics.count(FluidRuntimeDiagnostics.certificatesDiscarded);
         }
     }
-    /** A certified island is materialised first, so what is read (a view, a save, a module decision) is current. */
+    /** A certified island is materialised first, so what is read (a view, a save) is current. */
     public Snapshot snapshot(long id){owned();var island=require(id);materialise(island);return island.snapshot();}
     public Optional<Metrics> metrics(long id){owned();return Optional.ofNullable(require(id).metrics);}
     /**
      * A presentation read, for a view of a loaded device or an open menu: a certified island is materialised as by
-     * {@link #snapshot(long)}, but never onto a wake it has not acted on yet (a module drive or its horizon), so a
+     * {@link #snapshot(long)}, but never onto a wake it has not acted on yet (its horizon), so a
      * view can never move an island's schedule. The island's own deadline acts on the wake at the same tick with or
      * without viewers, and the materialised state is the certificate's state at that tick whatever the reads
      * before it: presentation cadence never drives scientific progress.
@@ -329,8 +310,7 @@ public final class IslandCoordinator {
     /** Every island as it is stored, without materialising a certified one: a diagnostic read that must not
      * itself advance anything. A certified island's committed tick here may lag the tick it would read as. */
     public List<Snapshot> observe(){owned();return islands.values().stream().map(Island::snapshot).toList();}
-    /** One island as it is stored, without materialising it: for a caller in the middle of a decision that must
-     * not see the island move (the module host between releasing one fence and installing the next). */
+    /** One island as it is stored, without materialising it: a diagnostic read that must not itself advance it. */
     public Snapshot observe(long id){owned();return require(id).snapshot();}
     /** Whether the island keeps solver caches; a certified island has released them. For tests. */
     boolean retainsSolver(long id){owned();return require(id).retained!=null;}
@@ -346,14 +326,10 @@ public final class IslandCoordinator {
      */
     public record Evidence(long endTick,IslandCertificate.Stationarity stationarity,double drift) {}
     public Evidence certificationEvidence(long id){owned();return require(id).evidence;}
-    /** Installs the module host's drive index; see {@link Drives}. */
-    public void drives(Drives index){owned();drives=Objects.requireNonNull(index);}
     /** Installs the listener told of thermo-domain holds; see {@link DomainHolds}. */
     public void onDomainHold(DomainHolds listener){owned();domainHolds=Objects.requireNonNull(listener);}
     /** Installs how a node is named in a status line (a device's kind and position in the world). */
     public void nodeNames(java.util.function.LongFunction<String> names){owned();nodeNames=Objects.requireNonNull(names);}
-    /** The module host changed this island's drives: a certified island may have to wake earlier or at once. */
-    public void drivesChanged(long island){owned();var value=islands.get(island);if(value!=null&&value.certificate!=null)reconsider(value);}
     /** Told of every certificate materialisation, with the replayed interval as the island's last result. Only
      * accounting listens here: a replay changes no dependency and needs no view refresh of its own. */
     public void onReplayed(Publisher listener){owned();replayed=Objects.requireNonNull(listener);}
@@ -372,17 +348,13 @@ public final class IslandCoordinator {
     public boolean hasFence(long island,UUID event){owned();return require(island).fences.containsKey(event);}
     /** Islands holding a fence for this event, from the fence index rather than a scan. */
     public Set<Long> fencedIslands(UUID event){owned();return Set.copyOf(fenceOwners.getOrDefault(event,Set.of()));}
-    /** Told when an island's last attempt drains after its round already closed: its ownership changed
-     * without a publication, which a dependency (the module host) may have to see. */
-    public void onReleased(LongConsumer listener){owned();released=Objects.requireNonNull(listener);}
     /**
-     * Schedules the one deadline of an external kind ({@link IslandScheduler.Kind#MODULE_HORIZON},
-     * {@link IslandScheduler.Kind#RECOVERY_RETRY}) at an epoch tick, replacing any earlier one of that kind;
+     * Schedules the one deadline of an external kind ({@link IslandScheduler.Kind#RECOVERY_RETRY}) at an epoch tick, replacing any earlier one of that kind;
      * {@link Long#MAX_VALUE} cancels it. The action runs on this thread from {@link #tick()} once due.
      */
     public void schedule(IslandScheduler.Kind kind,long epochTick,Runnable action) {
         owned();Objects.requireNonNull(action);
-        if(kind!=IslandScheduler.Kind.MODULE_HORIZON&&kind!=IslandScheduler.Kind.RECOVERY_RETRY)throw new IllegalArgumentException("Not an external deadline kind: "+kind);
+        if(kind!=IslandScheduler.Kind.RECOVERY_RETRY)throw new IllegalArgumentException("Not an external deadline kind: "+kind);
         if(stopped)return;
         externalActions.put(kind,action);
         if(Objects.equals(externalTicks.get(kind),epochTick))return;
@@ -445,7 +417,7 @@ public final class IslandCoordinator {
         for(var due=scheduler.poll(now);due!=null;due=scheduler.poll(now)) {
             switch(due.kind()) {
                 case SLICE_DUE,RETRY,CERTIFICATE_HORIZON->{
-                    // For a certified island this is its horizon or the next module drive: materialise and act.
+                    // For a certified island this is its horizon: materialise and act.
                     var island=islands.get(due.id());if(island==null||island.generation!=due.generation())continue;
                     FluidRuntimeDiagnostics.count(FluidRuntimeDiagnostics.deadlinesFired);island.deadline=Long.MAX_VALUE;
                     materialise(island);reconsider(island);
@@ -461,7 +433,7 @@ public final class IslandCoordinator {
                     if(shrinkTick!=due.tick())continue;
                     FluidRuntimeDiagnostics.count(FluidRuntimeDiagnostics.deadlinesFired);shrinkTick=Long.MAX_VALUE;shrinkDue=true;
                 }
-                case MODULE_HORIZON,RECOVERY_RETRY->{
+                case RECOVERY_RETRY->{
                     var tick=externalTicks.get(due.kind());if(tick==null||tick!=due.tick())continue;
                     FluidRuntimeDiagnostics.count(FluidRuntimeDiagnostics.deadlinesFired);externalTicks.remove(due.kind());externalActions.get(due.kind()).run();
                 }
@@ -530,7 +502,7 @@ public final class IslandCoordinator {
         completionsSincePump=true;
         if(entry.closed) {
             pending.remove(attempt.slice.requestId());var island=islands.get(attempt.islandId);
-            if(island!=null){island.pendingEntries--;reconsider(island);released.accept(island.id);}
+            if(island!=null){island.pendingEntries--;reconsider(island);}
             return;
         }
         // The completion router calls pump after its entire bounded drain, avoiding recursive dispatch here.
@@ -545,15 +517,8 @@ public final class IslandCoordinator {
             if(accept) {
                 var candidate=outcome.candidate().orElseThrow();
                 accept=validCandidate(island,attempt,candidate);
-                Optional<Runnable> materialCommit=Optional.empty();
-                if(accept) {
-                    try{materialCommit=commitHook.prepare(attempt,outcome);}
-                    catch(IllegalArgumentException|IllegalStateException stale){refusal=stale.getMessage();}
-                    if(materialCommit.isEmpty()&&refusal==null)refusal="material transaction not ready";
-                } else refusal="candidate identity or interval mismatch";
-                accept&=materialCommit.isPresent();
-                if(accept) {
-                    materialCommit.orElseThrow().run();
+                if(!accept)refusal="candidate identity or interval mismatch";
+                else {
                     island.graph=candidate.graph();island.lastResult=Optional.of(candidate);
                     island.pipeSpeed.accepted(attempt.slice.startTick(),attempt.slice.endTick(),candidate.pipeTransfers());
                     island.allowance=outcome.proposedAllowance();island.anchor=outcome.proposedAnchor();island.status=outcome.detail();
@@ -607,7 +572,7 @@ public final class IslandCoordinator {
      * failed, and a hold at one tick waits {@code cadence * 2^k} ticks for its retry, k the number of such holds in a
      * row, at most {@link #MAXIMUM_RETRY_DOUBLINGS}. A budget hold at one tick is retried too, because a warmer or
      * less loaded worker can pass it; it just stops being retried every cadence. Anything that changes the island's
-     * inputs (a fence, a released fence, a resolved delivery, a property resume) clears the wait and the count; a
+     * inputs (a fence, a released fence, a property resume) clears the wait and the count; a
      * topology change makes a new island. Online ticks only: no wall clock decides a delay.
      *
      * <p>A hold whose soft budget ran out and whose approximate fallback then refused the slice spent a quarter of
@@ -811,15 +776,13 @@ public final class IslandCoordinator {
         FluidRuntimeDiagnostics.count(FluidRuntimeDiagnostics.islandVisits);
         boolean eligible=false;long due=Long.MAX_VALUE;var kind=IslandScheduler.Kind.SLICE_DUE;
         if(island.certificate!=null) {
-            // A certified island is never ready and holds at most one entry, at its horizon or its next module
-            // drive. Blocked behind an earlier fence it holds none: the fence's release re-examines it. It is
+            // A certified island is never ready and holds at most one entry, at its horizon. Blocked behind an earlier fence it holds none: the fence's release re-examines it. It is
             // never materialised from here, even when that tick has passed: the caller may be in the middle of a
-            // decision (the module host between releasing one fence and installing the next) and must not see
-            // the island move. A wake already reached fires on the next pass over due deadlines, and the
+            // decision and must not see the island move. A wake already reached fires on the next pass over due deadlines, and the
             // materialisation it makes still stops exactly at the wake tick.
             kind=IslandScheduler.Kind.CERTIFICATE_HORIZON;
             if(!stopped&&suspension==null) {
-                long wake=certifiedWake(island);
+                long wake=island.certificate.horizonTick();
                 if(wake!=Long.MAX_VALUE&&island.fence()>=wake)due=island.clock.epochTickAt(wake);
             }
         }
@@ -844,13 +807,10 @@ public final class IslandCoordinator {
 
     // ---- certificates (plan section 3.2 and 3.3) ----
 
-    /** A certified island's next own event, as an online tick: its horizon or its earliest module drive. */
-    private long certifiedWake(Island island){return Math.min(island.certificate.horizonTick(),drives.earliest(island.id,island.clock.committedTick(),Long.MAX_VALUE));}
     /**
-     * Advances a certified island to {@code target = min(online, nearest fence, hold tick, horizon, earliest
-     * drive)} and acts on what it reached: a module drive wakes it, the horizon wakes it to solve one
-     * revalidating slice. On demand only: a fence or event alignment, a module horizon, a read of its snapshot
-     * (a save, a module decision), a view (a presentation read, which never wakes), its own deadline. Each
+     * Advances a certified island to {@code target = min(online, nearest fence, hold tick, horizon)} and acts on
+     * what it reached: the horizon wakes it to solve one revalidating slice. On demand only: a fence or event
+     * alignment, a read of its snapshot (a save), a view (a presentation read, which never wakes), its own deadline. Each
      * advance is reported to the replay listener with
      * the replayed span as the island's last result, so boundary and pump accounting stays exact.
      */
@@ -859,7 +819,7 @@ public final class IslandCoordinator {
     private void materialise(Island island,boolean presentation) {
         var certificate=island.certificate;if(certificate==null)return;
         long committed=island.clock.committedTick(),online=island.clock.onlineTick();
-        long drive=drives.earliest(island.id,committed,online),wake=Math.min(certificate.horizonTick(),drive);
+        long wake=certificate.horizonTick();
         long target=Math.min(Math.min(online,island.fence()),Math.min(island.holdTick,wake));
         if(presentation&&target==wake)target=wake-1;
         if(target>committed) {
@@ -879,38 +839,37 @@ public final class IslandCoordinator {
             replayed.published(List.of(new Snapshot(stored.id(),stored.revision(),stored.graph(),stored.clock(),stored.allowance(),stored.anchor(),Optional.of(replay),stored.status(),stored.fences(),stored.certificate(),stored.payloadGeneration())));
         }
         if(presentation||stopped||suspension!=null)return;
-        if(drive!=Long.MAX_VALUE&&target==drive)wake(island,null,"WAITING: module drive at "+drive);
-        else if(target==certificate.horizonTick())wake(island,certificate,"REVALIDATING: certificate horizon at "+certificate.horizonTick()/20.0+" s");
+        if(target==wake)revalidate(island,certificate);
     }
-    /** Ends a certificate: fresh solver caches, no evidence; revalidating keeps the certificate its first slice is compared with. */
-    private void wake(Island island,IslandCertificate revalidating,String status) {
-        island.certificate=null;island.revalidating=revalidating;island.retained=new RetainedSolver();
-        island.lastInterval=null;island.streak=0;if(revalidating==null)island.certifiedSince=-1;
-        island.status=status;island.signature=null;island.touch();FluidRuntimeDiagnostics.count(FluidRuntimeDiagnostics.certificateWakes);
-        reconsider(island);released.accept(island.id);
+    /** Ends a certificate at its horizon: fresh solver caches, no evidence; the island keeps the certificate its first
+     * slice is compared with. */
+    private void revalidate(Island island,IslandCertificate certificate) {
+        island.certificate=null;island.revalidating=certificate;island.retained=new RetainedSolver();
+        island.lastInterval=null;island.streak=0;
+        island.status="REVALIDATING: certificate horizon at "+certificate.horizonTick()/20.0+" s";island.signature=null;island.touch();FluidRuntimeDiagnostics.count(FluidRuntimeDiagnostics.certificateWakes);
+        reconsider(island);
     }
     /**
      * The entry evidence of plan section 3.3, evaluated after each round closure on the server thread. An
-     * accepted FULL interval with no material transfers and no degraded episode extends the stationary streak
+     * accepted FULL interval with no degraded episode extends the stationary streak
      * when it repeats the previous interval within the tolerance, or starts a new one; once the streak reaches the
-     * confirm count and no module drive falls in the coming cadence, the last interval is certified. A horizon's
+     * confirm count, the last interval is certified. A horizon's
      * revalidating slice renews the certificate from its solved state if it repeats the certified interval, and
      * otherwise starts a fresh streak.
      */
     private void qualify(Island island,ProcessSolveServices.FluidIslandSolveResult accepted,PassiveNetwork before,Attempt attempt) {
         var revalidation=island.revalidating;island.revalidating=null;var policy=settings.certificates();
-        boolean usable=policy.enabled()&&!stopped&&suspension==null&&accepted!=null&&accepted.materialTransfers().isEmpty()
+        boolean usable=policy.enabled()&&!stopped&&suspension==null&&accepted!=null
                 &&island.allowance.acceptedIntervals()==0&&accepted.candidate().orElseThrow().acceptance()==PassiveStepSolver.Acceptance.FULL;
         if(!usable) {
             island.lastInterval=null;island.streak=0;island.evidence=null;if(revalidation!=null)island.certifiedSince=-1;
-            island.refusal=!policy.enabled()?null:accepted==null?"no accepted interval":"not a FULL interval without material transfers or a degraded episode";return;
+            island.refusal=!policy.enabled()?null:accepted==null?"no accepted interval":"not a FULL interval without a degraded episode";return;
         }
         var summary=new IslandCertificate.Summary(new IslandCertificate.Interval(attempt.slice.startTick(),attempt.slice.endTick(),before,accepted.candidate().orElseThrow()),island.model.molecularWeights());
         if(revalidation!=null) {
             var measured=IslandCertificate.stationarity(revalidation.summary(),summary);
             island.evidence=new Evidence(summary.endTick,measured,summary.drift());
             String refusal=measured.refusal(policy.stationaryTolerance());
-            if(refusal==null&&!noDrive(island))refusal="a module drive is due";
             if(refusal==null) {
                 var issued=IslandCertificate.issue(summary,policy);
                 if(issued.certificate()!=null){certify(island,issued.certificate());FluidRuntimeDiagnostics.count(FluidRuntimeDiagnostics.certificatesRenewed);return;}
@@ -925,14 +884,9 @@ public final class IslandCoordinator {
         island.streak=refusal==null?island.streak+1:1;island.lastInterval=summary;
         int needed=summary.exactZero?policy.confirmIntervals():Math.max(2,policy.confirmIntervals());
         if(island.streak<needed){island.refusal=refusal!=null?refusal:"stationary for "+island.streak+" of "+needed+" intervals";return;}
-        if(!noDrive(island)){island.refusal="a module drive is due";return;}
         var issued=IslandCertificate.issue(summary,policy);
         if(issued.certificate()!=null){island.certifiedSince=-1;certify(island,issued.certificate());}
         else island.refusal=issued.refusal();
-    }
-    private boolean noDrive(Island island) {
-        long committed=island.clock.committedTick();
-        return drives.earliest(island.id,committed,Math.addExact(committed,island.clock.snapshot().cadenceTicks()))==Long.MAX_VALUE;
     }
     private void certify(Island island,IslandCertificate certificate) {
         island.certificate=certificate;if(island.certifiedSince<0)island.certifiedSince=certificate.baseTick();
@@ -958,7 +912,7 @@ public final class IslandCoordinator {
             case SLICE_DUE,RETRY,CERTIFICATE_HORIZON->{var island=islands.get(entry.id());yield island!=null&&island.generation==entry.generation();}
             case ROUND_TIMEOUT->rounds.stream().anyMatch(round->round.id==entry.id());
             case ALLOCATOR_SHRINK->shrinkTick==entry.tick();
-            case MODULE_HORIZON,RECOVERY_RETRY->Objects.equals(externalTicks.get(entry.kind()),entry.tick());
+            case RECOVERY_RETRY->Objects.equals(externalTicks.get(entry.kind()),entry.tick());
             default->false;
         };
     }
@@ -991,7 +945,7 @@ public final class IslandCoordinator {
             if(island.certificate!=null) {
                 if(island.pendingEntries!=0||island.retained!=null)throw new IllegalStateException("Certified island "+island.id+" owns an attempt or solver caches");
                 if(!stopped&&suspension==null) {
-                    long wake=certifiedWake(island);
+                    long wake=island.certificate.horizonTick();
                     if(wake!=Long.MAX_VALUE&&island.fence()>=wake)due=island.clock.epochTickAt(wake);
                 }
             }

@@ -1,6 +1,5 @@
 package com.wormzjl.createcheme.runtime.fluid;
 
-import com.google.gson.*;
 import com.wormzjl.createcheme.science.fluid.network.*;
 import com.wormzjl.createcheme.science.fluid.state.EnergyReference;
 import com.wormzjl.createcheme.science.fluid.state.ParticleSize;
@@ -9,7 +8,6 @@ import com.wormzjl.createcheme.science.fluid.thermo.FluidThermodynamics;
 import com.wormzjl.createcheme.science.fluid.topology.TopologyCompiler;
 import com.wormzjl.createcheme.science.material.SolidMaterialCatalog.SolidMaterial;
 import net.minecraft.nbt.*;
-import java.lang.reflect.*;
 import java.nio.ByteBuffer;
 import java.nio.charset.CharacterCodingException;
 import java.nio.charset.CodingErrorAction;
@@ -20,14 +18,13 @@ import java.util.*;
 import java.util.function.Function;
 
 /**
- * Checkpoint format 7 of committed science and runtime state: what one storage unit holds and what the core record
+ * Checkpoint format 8 of committed science and runtime state: what one storage unit holds and what the core record
  * holds. Rebuilds properties through the immutable model; it never deserializes implementation caches or creates a
  * nitrogen charge. Where the units live - pack files beside the world's saved data, dirty tracking, atomic writes and
  * orphan cleanup - is {@link FluidCheckpointStore}'s business.
  *
- * <p><b>Core record</b> (one NBT compound, the world's saved data): {@code FluidFormat = 7}; the world {@code Epoch};
- * the {@code Ledger} of buffered transfers, pending material and module states as checksummed JSON; {@code Strings},
- * an append-only table of the long texts units refer to (dimensions, packages, property revisions, certificate
+ * <p><b>Core record</b> (one NBT compound, the world's saved data): {@code FluidFormat = 8}; the world {@code Epoch};
+ * {@code Strings}, an append-only table of the long texts units refer to (dimensions, packages, property revisions, certificate
  * policies); {@code Packages}, one entry per property package with the thermodynamic revision and energy reference
  * the units were written under; the pack files and their sizes; the topology unit's reference; and {@code Islands},
  * the island index in columns: identity, revision and unit generation, the clock ({@code Online}, {@code Committed},
@@ -48,12 +45,13 @@ import java.util.function.Function;
  * certified island's unit records its certificate base, not its materialised state, so while it stays certified its
  * unit never changes; a load materialises it from the base to the committed tick without a solve.
  *
- * <p>No other format is read: format 6 and older are refused with the instruction to create a fresh world (the
+ * <p>No other format is read: format 7 and older are refused with the instruction to create a fresh world (the
  * owner's standing rule on save compatibility; format 6 added the ports and the compressor of the phase-ports batch,
- * format 7 the end flows of the last interval).
+ * format 7 the end flows of the last interval, format 8 removed the core record's ledger of buffered transfers and
+ * modules with the causal module system).
  */
 public final class FluidCheckpointCodec {
-    public static final int VERSION=7;
+    public static final int VERSION=8;
     /** The {@code Base} of an awake island: it carries no certificate. */
     public static final long AWAKE=-1;
     static final int UNIT_MAGIC=0x43434655,UNIT_FORMAT=1;
@@ -62,12 +60,9 @@ public final class FluidCheckpointCodec {
     static final int UNIT_HEADER=4+1+1+8+8+8;
     private static final int MAXIMUM_NODES=10000,MAXIMUM_PIPES=100000,MAXIMUM_SECTIONS=100000,MAXIMUM_ARRAY=4096,MAXIMUM_TEXT=1<<20,
             MAXIMUM_FENCES=1<<16,MAXIMUM_BOUNDARIES=1<<20,MAXIMUM_REASONS=1<<16,MAXIMUM_STRINGS=1<<20;
-    /** Bound on the JSON of the ledger of transfers and modules (the topology has none but its unit's length). */
-    private static final int LEDGER_ELEMENTS=2_000_000;
     /** Tests and GameTests (the scheduler's self-verification switch) also re-encode every reused unit and fail if
      * the stored one differs. */
     private static final boolean VERIFY=Boolean.getBoolean("createcheme.fluid.scheduler.verify");
-    private static final Gson GSON=new GsonBuilder().serializeNulls().disableHtmlEscaping().create();
     private static final PassiveStepSolver.Acceptance[] ACCEPTANCES=PassiveStepSolver.Acceptance.values();
     private static final FlowControl.Mode[] MODES=FlowControl.Mode.values();
     private static final PassiveNetwork.NodeKind[] NODE_KINDS=PassiveNetwork.NodeKind.values();
@@ -77,23 +72,10 @@ public final class FluidCheckpointCodec {
     public record IslandEntry(String dimension,String packageId,double compressibility,IslandCoordinator.Snapshot snapshot) {
         public IslandEntry {Objects.requireNonNull(dimension);Objects.requireNonNull(packageId);Objects.requireNonNull(snapshot);if(dimension.isBlank()||packageId.isBlank()||!Double.isFinite(compressibility)||compressibility<=0)throw new IllegalArgumentException("Invalid saved package");}
     }
-    public record Checkpoint(List<IslandEntry> islands,BufferedTransfers.Snapshot transfers,List<FixedSplitModule.Snapshot> modules,List<CausalModuleCoordinator.Binding> moduleBindings) {
-        public Checkpoint(List<IslandEntry> islands,BufferedTransfers.Snapshot transfers){this(islands,transfers,List.of(),List.of());}
-        public Checkpoint(List<IslandEntry> islands,BufferedTransfers.Snapshot transfers,List<FixedSplitModule.Snapshot> modules){this(islands,transfers,modules,List.of());}
+    /** The islands a save captures, each owning its reservoirs' inventory in its dimension. */
+    public record Checkpoint(List<IslandEntry> islands) {
         public Checkpoint {
-            islands=List.copyOf(islands);Objects.requireNonNull(transfers);modules=List.copyOf(modules);moduleBindings=List.copyOf(moduleBindings);
-            if(modules.size()>4096||modules.stream().map(m->m.definition().id()).distinct().count()!=modules.size())throw new IllegalArgumentException("Invalid saved module identities/count");
-            for(var module:modules)new FixedSplitModule(module,new BufferedTransfers(transfers),BufferBackpressure.defaults());
-            var bufferIds=new HashSet<UUID>();var boundNodes=new HashSet<String>();
-            for(var binding:moduleBindings) {
-                if(!bufferIds.add(binding.buffer())||!boundNodes.add(binding.island()+":"+binding.reservoir())||!transfers.buffers().containsKey(binding.buffer()))throw new IllegalArgumentException("Invalid saved buffer binding");
-                if(binding.island()==0)continue;
-                var owner=islands.stream().filter(i->i.snapshot().id()==binding.island()).findFirst().orElseThrow(()->new IllegalArgumentException("Missing buffer island"));
-                if(owner.snapshot().graph().reservoirs().stream().noneMatch(n->n.id()==binding.reservoir()&&n.kind()==PassiveNetwork.NodeKind.RESERVOIR))throw new IllegalArgumentException("Missing finite buffer reservoir");
-            }
-            if(!moduleBindings.isEmpty())for(var module:modules) {
-                var d=module.definition();if(!bufferIds.contains(d.firstProduct())||!bufferIds.contains(d.secondProduct())||d.feeds().stream().anyMatch(f->!bufferIds.contains(f.buffer())))throw new IllegalArgumentException("Incomplete module bindings");
-            }
+            islands=List.copyOf(islands);
             var ids=new HashSet<Long>();var stock=new HashSet<String>();
             for(var entry:islands) {
                 if(!ids.add(entry.snapshot.id()))throw new IllegalArgumentException("Duplicate saved island identity");
@@ -102,44 +84,6 @@ public final class FluidCheckpointCodec {
         }
     }
     public record PackageKey(String packageId,double compressibility) {}
-
-    // ---------------- the ledger of transfers and modules (JSON, in the core record) ----------------
-
-    private record Energy(String revision,List<String> components,double[] offsets,boolean formationQualified) {}
-    private record Parcel(double[] moles,double[] weights,double energy,Energy reference,SolidInventory solids) {}
-    private record Pending(UUID id,UUID producer,UUID receiver,long dueTick,long revision,Parcel remaining) {}
-    private record ProductionCapacity(int version,List<BufferedTransfers.CapacityReservation> reservations) {}
-    private record Ledger(long revision,List<BufferedTransfers.Buffer> buffers,List<Pending> pending,ProductionCapacity productionCapacity) {}
-    private record ModuleInput(UUID withdrawalId,long throughTick,double targetKg,Parcel owned) {}
-    private record ModuleCycle(long startTick,long endTick,Map<UUID,ModuleInput> inputs,List<FixedSplitModule.Promise> promises,String status) {}
-    private record ModuleState(String type,String scientificRevision,FixedSplitModule.Definition definition,long revision,long committedTick,boolean running,ModuleCycle cycle) {}
-    private record Modules(int version,List<ModuleState> states,List<CausalModuleCoordinator.Binding> bindings) {}
-    private record Core(Ledger transfers,Modules modules) {}
-    /** The world-level ledger a core record carries: transfers with their pending material, modules and bindings. */
-    record LedgerState(BufferedTransfers.Snapshot transfers,List<FixedSplitModule.Snapshot> modules,List<CausalModuleCoordinator.Binding> bindings) {}
-
-    static byte[] ledger(Checkpoint checkpoint) {
-        var pending=checkpoint.transfers.pending().values().stream().sorted(Comparator.comparing(p->p.id().toString())).map(p->new Pending(p.id(),p.producer(),p.receiver(),p.dueTick(),p.revision(),parcel(p.remaining()))).toList();
-        var buffers=checkpoint.transfers.buffers().values().stream().sorted(Comparator.comparing(b->b.id().toString())).toList();
-        var capacity=new ProductionCapacity(1,checkpoint.transfers.planned().values().stream().sorted(Comparator.comparing(r->r.id().toString())).toList());
-        var core=new Core(new Ledger(checkpoint.transfers.revision(),buffers,pending,capacity),new Modules(1,checkpoint.modules.stream().map(FluidCheckpointCodec::module).toList(),checkpoint.moduleBindings));
-        return GSON.toJson(core).getBytes(StandardCharsets.UTF_8);
-    }
-    static LedgerState ledger(byte[] bytes) {
-        var tree=JsonParser.parseString(new String(bytes,StandardCharsets.UTF_8));
-        if(!tree.isJsonObject())throw new IllegalArgumentException("Invalid saved ledger");
-        strictShape(tree,Core.class,0,new int[]{0},LEDGER_ELEMENTS);var core=GSON.fromJson(tree,Core.class);
-        if(core.transfers==null||core.modules==null||core.transfers.productionCapacity==null)throw new IllegalArgumentException("Incomplete saved ledger");
-        var buffers=new HashMap<UUID,BufferedTransfers.Buffer>();var pending=new HashMap<UUID,PendingTransfers.Pending>();
-        for(var buffer:core.transfers.buffers)if(buffers.putIfAbsent(buffer.id(),buffer)!=null)throw new IllegalArgumentException("Duplicate saved buffer");
-        for(var p:core.transfers.pending)if(pending.putIfAbsent(p.id,new PendingTransfers.Pending(p.id,p.producer,p.receiver,p.dueTick,p.revision,parcel(p.remaining)))!=null)throw new IllegalArgumentException("Duplicate saved pending material");
-        var planned=new HashMap<UUID,BufferedTransfers.CapacityReservation>();var capacity=core.transfers.productionCapacity;
-        if(capacity.version!=1)throw new IllegalArgumentException("Unsupported production-capacity version");
-        for(var reservation:capacity.reservations)if(planned.putIfAbsent(reservation.id(),reservation)!=null)throw new IllegalArgumentException("Duplicate saved production reservation");
-        if(core.modules.version!=1)throw new IllegalArgumentException("Unsupported module-state version");
-        var modules=new ArrayList<FixedSplitModule.Snapshot>();for(var saved:core.modules.states)modules.add(module(saved));
-        return new LedgerState(new BufferedTransfers.Snapshot(core.transfers.revision,buffers,pending,planned),modules,core.modules.bindings);
-    }
 
     // ---------------- the world topology ledger (binary, in its own unit) ----------------
 
@@ -577,14 +521,13 @@ public final class FluidCheckpointCodec {
             return new PackageRecord(key.packageId(),key.compressibility(),ApproximationAnchor.thermodynamicRevision(model),reference.revision(),List.copyOf(reference.components()));
         }
     }
-    record CoreRecord(long epoch,byte[] ledger,Strings strings,List<PackageRecord> packages,long[] packs,long[] packBytes,long nextPack,long nextGeneration,
+    record CoreRecord(long epoch,Strings strings,List<PackageRecord> packages,long[] packs,long[] packBytes,long nextPack,long nextGeneration,
                       long topologyGeneration,UnitRef topology,List<IndexRow> islands) {}
 
     /** Builds and seals a core record. */
     static CompoundTag coreTag(CoreRecord core) {
         var tag=new CompoundTag();
         tag.putInt("FluidFormat",VERSION);tag.putLong("Epoch",core.epoch);
-        tag.putByteArray("Ledger",core.ledger);tag.putByteArray("LedgerSHA256",sha256(core.ledger));
         tag.put("Strings",core.strings.tag());
         var packages=new ListTag();
         for(var p:core.packages) {
@@ -617,8 +560,8 @@ public final class FluidCheckpointCodec {
     }
     private static final List<String> LONG_COLUMNS=List.of("Id","Revision","Generation","Online","Committed","Retry","Base","Since","Start","Horizon","Pack","Offset");
     /**
-     * Reads and validates a core record: format 7 only (older formats are refused with the instruction to create a
-     * fresh world), every field present and typed, the envelope and ledger digests, the string and package tables,
+     * Reads and validates a core record: format 8 only (older formats are refused with the instruction to create a
+     * fresh world), every field present and typed, the envelope digest, the string and package tables,
      * the pack list, and every index row's unit reference lying inside a listed pack. The units themselves are read by
      * {@link #island} and {@link #topology}.
      */
@@ -629,7 +572,6 @@ public final class FluidCheckpointCodec {
         if(format!=VERSION)throw new IllegalArgumentException("Fluid checkpoint format "+format+" cannot be read: this build reads format "+VERSION
                 +" only and has no upgrade from older formats. Create a fresh world for this development build.");
         long epoch=requireLong(tag,"Epoch","checkpoint");if(epoch<0)throw new IllegalArgumentException("Negative world epoch");
-        byte[] ledger=requireBytes(tag,"Ledger","checkpoint");requireDigest(ledger,requireBytes(tag,"LedgerSHA256","checkpoint"),"ledger");
         if(!(tag.get("Strings") instanceof ListTag stringList)||!stringList.isEmpty()&&stringList.getElementType()!=Tag.TAG_STRING)throw new IllegalArgumentException("Missing or mistyped fluid checkpoint field Strings");
         if(!(tag.get("Packages") instanceof ListTag packageList)||!packageList.isEmpty()&&packageList.getElementType()!=Tag.TAG_COMPOUND)throw new IllegalArgumentException("Missing or mistyped fluid checkpoint field Packages");
         long[] packs=requireLongs(tag,"Packs","checkpoint"),packBytes=requireLongs(tag,"PackBytes","checkpoint");
@@ -680,7 +622,7 @@ public final class FluidCheckpointCodec {
             generation(generations,row.generation,nextGeneration,"island "+row.id);
             rows.add(row);
         }
-        return new CoreRecord(epoch,ledger,strings,packages,packs,packBytes,nextPack,nextGeneration,topologyGeneration,topology,rows);
+        return new CoreRecord(epoch,strings,packages,packs,packBytes,nextPack,nextGeneration,topologyGeneration,topology,rows);
     }
     private static UnitRef unit(Map<Long,Long> sizes,long pack,long offset,int length,byte[] sha256,String what) {
         Long size=sizes.get(pack);
@@ -699,7 +641,7 @@ public final class FluidCheckpointCodec {
 
     /** The envelope digest: every field of the core record in a fixed order, every text with its length. */
     static byte[] manifest(CompoundTag tag) {
-        var d=new Digest();d.text("createcheme-fluid-checkpoint-5");d.number(requireLong(tag,"Epoch","checkpoint"));d.bytes(requireBytes(tag,"LedgerSHA256","checkpoint"));
+        var d=new Digest();d.text("createcheme-fluid-checkpoint-5");d.number(requireLong(tag,"Epoch","checkpoint"));
         var strings=(ListTag)tag.get("Strings");d.number(strings.size());for(int i=0;i<strings.size();i++)d.text(strings.getString(i));
         var packages=(ListTag)tag.get("Packages");d.number(packages.size());
         for(int i=0;i<packages.size();i++) {
@@ -733,7 +675,6 @@ public final class FluidCheckpointCodec {
     static byte[] sha256(byte[] bytes,int offset,int length) {
         try{var sha=MessageDigest.getInstance("SHA-256");sha.update(bytes,offset,length);return sha.digest();}catch(NoSuchAlgorithmException impossible){throw new AssertionError(impossible);}
     }
-    private static void requireDigest(byte[] bytes,byte[] digest,String what){if(!MessageDigest.isEqual(sha256(bytes),digest))throw new IllegalArgumentException("Fluid checkpoint checksum mismatch in the "+what);}
     private static long requireLong(CompoundTag tag,String key,String where){if(!tag.contains(key,Tag.TAG_LONG))throw new IllegalArgumentException("Missing or mistyped fluid "+where+" field "+key);return tag.getLong(key);}
     private static int requireInt(CompoundTag tag,String key,String where){if(!tag.contains(key,Tag.TAG_INT))throw new IllegalArgumentException("Missing or mistyped fluid "+where+" field "+key);return tag.getInt(key);}
     private static double requireDouble(CompoundTag tag,String key,String where) {
@@ -767,54 +708,6 @@ public final class FluidCheckpointCodec {
     /** Reads an in-memory checkpoint with every validation a world load makes. */
     public static Checkpoint decode(Image image,Function<PackageKey,FluidThermodynamics> models) {
         return FluidCheckpointStore.memory(image).load(image.core(),models).checkpoint();
-    }
-    // ---------------- shared record conversions ----------------
-
-    private static ModuleState module(FixedSplitModule.Snapshot state) {
-        ModuleCycle cycle=null;
-        if(state.cycle()!=null) {
-            var c=state.cycle();var inputs=new LinkedHashMap<UUID,ModuleInput>();
-            for(var feed:state.definition().feeds()){var input=c.inputs().get(feed.buffer());inputs.put(feed.buffer(),new ModuleInput(input.withdrawalId(),input.throughTick(),input.targetKg(),parcel(input.owned())));}
-            cycle=new ModuleCycle(c.startTick(),c.endTick(),inputs,c.promises(),c.status());
-        }
-        return new ModuleState(FixedSplitModule.TYPE,FixedSplitModule.SCIENTIFIC_REVISION,state.definition(),state.revision(),state.committedTick(),state.running(),cycle);
-    }
-    private static FixedSplitModule.Snapshot module(ModuleState state) {
-        if(!FixedSplitModule.TYPE.equals(state.type)||!FixedSplitModule.SCIENTIFIC_REVISION.equals(state.scientificRevision))throw new IllegalArgumentException("Saved module type or scientific revision is not this build's; use a fresh development world");
-        FixedSplitModule.Cycle cycle=null;
-        if(state.cycle!=null) {
-            var c=state.cycle;var inputs=new HashMap<UUID,FixedSplitModule.Input>();
-            c.inputs.forEach((id,input)->inputs.put(id,new FixedSplitModule.Input(input.withdrawalId,input.throughTick,input.targetKg,parcel(input.owned))));
-            cycle=new FixedSplitModule.Cycle(c.startTick,c.endTick,inputs,c.promises,c.status);
-        }
-        return new FixedSplitModule.Snapshot(state.definition,state.revision,state.committedTick,state.running,cycle);
-    }
-    private static Energy energy(EnergyReference ref){double[] offsets=new double[ref.components().size()];for(int c=0;c<offsets.length;c++)offsets[c]=ref.offsetJoulesPerMole(c);return new Energy(ref.revision(),ref.components(),offsets,ref.formationDataQualified());}
-    private static EnergyReference reference(Energy ref){return new EnergyReference(ref.revision,ref.components,ref.offsets,ref.formationQualified);}
-    private static Parcel parcel(MaterialParcel p){return new Parcel(p.moles(),p.molecularWeights(),p.internalEnergy(),energy(p.reference()),p.solids());}
-    private static MaterialParcel parcel(Parcel p){return new MaterialParcel(p.moles,p.weights,p.energy,reference(p.reference),p.solids);}
-
-    /** Reject missing fields and fractional integer stamps instead of allowing Gson's zero/coercion defaults. */
-    private static void strictShape(JsonElement value,Type type,int depth,int[] count,int maximum) {
-        if(depth>48||++count[0]>maximum)throw new IllegalArgumentException("Checkpoint structure exceeds bound");
-        if(value==null)throw new IllegalArgumentException("Missing checkpoint field");
-        if(value.isJsonNull()) {
-            if(type instanceof Class<?> c&&c.isPrimitive())throw new IllegalArgumentException("Null primitive checkpoint field");
-            return;
-        }
-        if(type instanceof ParameterizedType p) {
-            if(p.getRawType()==List.class)for(var entry:value.getAsJsonArray())strictShape(entry,p.getActualTypeArguments()[0],depth+1,count,maximum);
-            else if(p.getRawType()==Map.class)for(var entry:value.getAsJsonObject().entrySet())strictShape(entry.getValue(),p.getActualTypeArguments()[1],depth+1,count,maximum);
-            return;
-        }
-        if(!(type instanceof Class<?> c))throw new IllegalArgumentException("Unknown checkpoint field type");
-        if(c.isArray()){for(var entry:value.getAsJsonArray())strictShape(entry,c.getComponentType(),depth+1,count,maximum);return;}
-        if(c.isRecord()) {
-            var object=value.getAsJsonObject();
-            for(var field:c.getRecordComponents())strictShape(object.get(field.getName()),field.getGenericType(),depth+1,count,maximum);
-        } else if(c==long.class||c==Long.class)value.getAsBigDecimal().longValueExact();
-        else if(c==int.class||c==Integer.class)value.getAsBigDecimal().intValueExact();
-        else if(c==double.class||c==Double.class){if(!Double.isFinite(value.getAsDouble()))throw new IllegalArgumentException("Nonfinite checkpoint number");}
     }
     // ---------------- unit binary primitives ----------------
 

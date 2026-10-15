@@ -50,49 +50,25 @@ public final class RetainedSolver {
         replayPending=false;solver.replayStart(snapshot,committed);
     }
 
-    /** One job's exclusive use of this island's solver. A job may integrate its interval more than
-     * once - the module planner searches feasible transfer sizes - and every attempt then shares
-     * the retained structure instead of rebuilding it per attempt. */
-    public interface Job {
-        PassiveIntervalSolver.Result solve(PassiveNetwork snapshot,double duration,PassiveIntervalSolver.Settings settings,Runnable checkpoint);
-        /** For an attempt that introduces a boundary change rather than continuing the island's
-         * trajectory - a trial source or sink term. It starts from the cold step. The retained
-         * pattern, colouring and ordering are still shared. */
-        PassiveIntervalSolver.Result solveTrial(PassiveNetwork snapshot,double duration,PassiveIntervalSolver.Settings settings,Runnable checkpoint);
-        PassiveIntervalSolver.Result solveApproximate(PassiveNetwork snapshot,double duration,PassiveIntervalSolver.Settings settings,
-                                                      Runnable checkpoint,StageGuard guard);
-    }
-    /** Claims the latch for the whole job and returns it in a {@code finally}, including on
-     * cancellation and on the wall/soft deadlines. */
-    public <T>T run(FluidThermodynamics model,java.util.function.Function<Job,T> job) {
-        Objects.requireNonNull(job);var solver=acquire(model);replayPending=true;
-        try{return job.apply(new Leased(solver));}
-        finally{ownership.release();}
-    }
+    /** One job's exclusive use of this island's solver: claims the latch and returns it in a {@code finally}, including
+     * on cancellation and on the wall/soft deadlines. */
     public PassiveIntervalSolver.Result solve(FluidThermodynamics model,PassiveNetwork snapshot,double duration,
                                               PassiveIntervalSolver.Settings settings,Runnable checkpoint) {
-        return run(model,job->job.solve(snapshot,duration,settings,checkpoint));
-    }
-    public PassiveIntervalSolver.Result solveApproximate(FluidThermodynamics model,PassiveNetwork snapshot,double duration,
-                                                         PassiveIntervalSolver.Settings settings,Runnable checkpoint,StageGuard guard) {
-        return run(model,job->job.solveApproximate(snapshot,duration,settings,checkpoint,guard));
-    }
-    private final class Leased implements Job {
-        private final PassiveIntervalSolver solver;
-        private Leased(PassiveIntervalSolver solver){this.solver=solver;}
-        @Override public PassiveIntervalSolver.Result solve(PassiveNetwork snapshot,double duration,PassiveIntervalSolver.Settings settings,Runnable checkpoint) {
+        var solver=acquire(model);replayPending=true;
+        try {
             begin(solver,snapshot);
             return solver.solve(snapshot,duration,settings,checkpoint,Math.min(settings.initialStep(),duration));
         }
-        @Override public PassiveIntervalSolver.Result solveTrial(PassiveNetwork snapshot,double duration,PassiveIntervalSolver.Settings settings,Runnable checkpoint) {
-            begin(solver,snapshot);
-            return solver.solve(snapshot,duration,settings,checkpoint,Math.min(COLD_START_SECONDS,duration));
-        }
-        @Override public PassiveIntervalSolver.Result solveApproximate(PassiveNetwork snapshot,double duration,PassiveIntervalSolver.Settings settings,
-                                                                       Runnable checkpoint,StageGuard guard) {
+        finally{ownership.release();}
+    }
+    public PassiveIntervalSolver.Result solveApproximate(FluidThermodynamics model,PassiveNetwork snapshot,double duration,
+                                                         PassiveIntervalSolver.Settings settings,Runnable checkpoint,StageGuard guard) {
+        var solver=acquire(model);replayPending=true;
+        try {
             begin(solver,snapshot);
             return solver.solveApproximate(snapshot,duration,settings,checkpoint,guard);
         }
+        finally{ownership.release();}
     }
     private PassiveIntervalSolver acquire(FluidThermodynamics model) {
         Objects.requireNonNull(model);ownership.acquire();

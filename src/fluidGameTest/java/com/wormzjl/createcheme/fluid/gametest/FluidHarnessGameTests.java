@@ -94,7 +94,7 @@ public final class FluidHarnessGameTests {
         var model=com.wormzjl.createcheme.science.fluid.thermo.FluidThermodynamics.forNetwork(com.wormzjl.createcheme.science.material.MaterialCatalog.bundled(),"createcheme:tjl20_methane_nitrogen",1e-9);
         var graph=new com.wormzjl.createcheme.science.fluid.network.PassiveNetwork(java.util.List.of(new com.wormzjl.createcheme.science.fluid.network.PassiveNetwork.Reservoir(1,0,model.initialNitrogenCharge(1,298.15,65000,()->{}))),java.util.List.of());
         var island=new com.wormzjl.createcheme.runtime.fluid.IslandCoordinator.Snapshot(1,0,graph,new com.wormzjl.createcheme.runtime.fluid.IslandClock.Snapshot(250,100,0,100),com.wormzjl.createcheme.runtime.fluid.FallbackAllowance.NONE,java.util.Optional.empty(),java.util.Optional.empty(),"HELD");
-        var checkpoint=new com.wormzjl.createcheme.runtime.fluid.FluidCheckpointCodec.Checkpoint(java.util.List.of(new com.wormzjl.createcheme.runtime.fluid.FluidCheckpointCodec.IslandEntry("minecraft:overworld","createcheme:tjl20_methane_nitrogen",1e-9,island)),new com.wormzjl.createcheme.runtime.fluid.BufferedTransfers.Snapshot(0,java.util.Map.of(),java.util.Map.of()));
+        var checkpoint=new com.wormzjl.createcheme.runtime.fluid.FluidCheckpointCodec.Checkpoint(java.util.List.of(new com.wormzjl.createcheme.runtime.fluid.FluidCheckpointCodec.IslandEntry("minecraft:overworld","createcheme:tjl20_methane_nitrogen",1e-9,island)));
         // Format 5 through Minecraft's own save path: the core record and a pack written on NeoForge's IO worker, in a
         // folder of their own under the GameTest world's data.
         var folder=helper.getLevel().getServer().getWorldPath(net.minecraft.world.level.storage.LevelResource.ROOT).resolve("data/fluid-checkpoint-tests/"+java.util.UUID.randomUUID());java.nio.file.Files.createDirectories(folder);
@@ -133,7 +133,7 @@ public final class FluidHarnessGameTests {
             helper.assertTrue(helper.getLevel().getServer().isSameThread(),"Publication left server thread");publications[0]++;
         // This fixture counts nine solved catch-up intervals, so it runs with certificates off: an idle charge
         // would otherwise certify REST after two intervals and advance the rest of its debt by identity.
-        },com.wormzjl.createcheme.runtime.fluid.IslandCoordinator.Settings.defaults().withCertificates(com.wormzjl.createcheme.runtime.fluid.CertificatePolicy.disabled()));
+        },com.wormzjl.createcheme.runtime.fluid.IslandCoordinator.Settings.defaults().withCertificates(com.wormzjl.createcheme.runtime.fluid.CertificatePolicy.disabled()),null);
         long id=com.wormzjl.createcheme.runtime.ProcessSolveServices.nextRequestId();
         runtime.register(helper.getLevel().dimension(),new com.wormzjl.createcheme.runtime.fluid.IslandCoordinator.Snapshot(id,0,graph,
                 new com.wormzjl.createcheme.runtime.fluid.IslandClock.Snapshot(900,0,0,100),com.wormzjl.createcheme.runtime.fluid.FallbackAllowance.NONE,

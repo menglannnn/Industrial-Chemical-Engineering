@@ -111,14 +111,14 @@ public final class ProcessSolveServices {
     }
 
     /** Fluid islands share the existing workers and queue with V3; their wall budget starts on the worker. */
-    public static AdmissionResult submitFluidIsland(MinecraftServer server,FluidIslandRequest request,FluidSolveCommand command) {
+    public static AdmissionResult submitFluidIsland(MinecraftServer server,FluidIslandRequest request,FluidIslandCommand command) {
         requireServerThread(server);Objects.requireNonNull(request);Objects.requireNonNull(command);
         var state=STATES.get(server);
         if(state!=null) {
             var diagnostics=Diagnostics.from(state.service.diagnostics());
             if(state.requestsBySequence.values().stream().anyMatch(context->context.request().target().equals(request.target())))return new AdmissionResult(Admission.OWNER_BUSY,diagnostics);
             // Fluid readiness stays in the coordinator's owner set. Fill all idle workers, but do not
-            // occupy every queue slot with catch-up jobs ahead of newly arriving calculator/module work.
+            // occupy every queue slot with catch-up jobs ahead of newly arriving calculator work.
             if(diagnostics.readyJobs()>0||diagnostics.activeWorkers()>=diagnostics.workerCount())return new AdmissionResult(Admission.QUEUE_FULL,diagnostics);
         }
         return submit(server,request,command,command.model().hydrocarbon.revision()+":"+command.model().viscosity.revision());
@@ -127,8 +127,8 @@ public final class ProcessSolveServices {
     public static Diagnostics diagnostics(MinecraftServer server) {
         requireServerThread(server);var state=STATES.get(server);return state==null?Diagnostics.EMPTY:Diagnostics.from(state.service.diagnostics());
     }
-    /** Independent fluid owners report readiness without queueing their snapshots. Other module
-     * and calculator jobs already owned by the service share the same demand budget. */
+    /** Independent fluid owners report readiness without queueing their snapshots. Other
+     * calculator jobs already owned by the service share the same demand budget. */
     public static void fluidWorkerDemand(MinecraftServer server,int eligibleOwners) {
         requireServerThread(server);if(eligibleOwners<0)throw new IllegalArgumentException("Negative fluid demand");
         var state=STATES.get(server);if(state==null||state.stopResult!=null)return;
@@ -360,21 +360,17 @@ public final class ProcessSolveServices {
     }
 
     /** Immutable worker envelope. Adding a job family extends this sealed protocol, never the executor count. */
-    public sealed interface ProcessSolveCommand permits V3ColumnCommand,FluidSolveCommand {
+    public sealed interface ProcessSolveCommand permits V3ColumnCommand,FluidIslandCommand {
         ProcessSolveResult solve(BoundedCpuSolveService.CancellationToken cancellationToken);
     }
 
     /** Immutable worker result envelope routed only after main-thread completion draining. */
     public sealed interface ProcessSolveResult permits V3ColumnSolveResult,FluidIslandSolveResult {}
 
-    public sealed interface FluidSolveCommand extends ProcessSolveCommand permits FluidIslandCommand,BufferedIslandCommand {
-        FluidThermodynamics model();
-    }
-
     /** Contains no live level, block entity, callback, or mutable server-owned collection. */
     public record FluidIslandCommand(FluidThermodynamics model,PassiveNetwork snapshot,double durationSeconds,
                                      PassiveIntervalSolver.Settings settings,long wallBudgetNanos,FallbackAllowance.Policy fallback,
-                                     com.wormzjl.createcheme.runtime.fluid.RetainedSolver retained) implements FluidSolveCommand {
+                                     com.wormzjl.createcheme.runtime.fluid.RetainedSolver retained) implements ProcessSolveCommand {
         public FluidIslandCommand(FluidThermodynamics model,PassiveNetwork snapshot,double durationSeconds,PassiveIntervalSolver.Settings settings,long wallBudgetNanos) {
             this(model,snapshot,durationSeconds,settings,wallBudgetNanos,FallbackAllowance.Policy.disabled());
         }
@@ -392,7 +388,7 @@ public final class ProcessSolveServices {
             long cpuStart=WorkerAllocation.CpuTime.sample();
             var result=(FluidIslandSolveResult)solve(cancellationToken,System::nanoTime);
             long cpu=WorkerAllocation.CpuTime.elapsed(cpuStart,WorkerAllocation.CpuTime.sample());
-            return new FluidIslandSolveResult(result.candidate(),result.detail(),result.workerNanos(),cpu,result.proposedAllowance(),result.proposedAnchor(),Optional.empty(),result.domain());
+            return new FluidIslandSolveResult(result.candidate(),result.detail(),result.workerNanos(),cpu,result.proposedAllowance(),result.proposedAnchor(),result.domain());
         }
         ProcessSolveResult solve(BoundedCpuSolveService.CancellationToken cancellationToken,java.util.function.LongSupplier nanoClock) {
             Objects.requireNonNull(cancellationToken);Objects.requireNonNull(nanoClock);long start=nanoClock.getAsLong();
@@ -424,7 +420,7 @@ public final class ProcessSolveServices {
                 // A failure the property domain decided carries the violation itself, so the coordinator can hold the island
                 // with the dedicated status and tell a reproduced violation from a numerical one (IslandCoordinator.hold).
                 var domain=Optional.ofNullable(com.wormzjl.createcheme.science.fluid.solver.SparseNewton.domainViolation(failed));
-                return new FluidIslandSolveResult(Optional.empty(),domain.map(v->THERMO_DOMAIN+v.getMessage()).orElse("HELD: "+failed.getMessage()),elapsed[0],-1,fallback.allowance(),fallback.anchor(),Optional.empty(),domain);
+                return new FluidIslandSolveResult(Optional.empty(),domain.map(v->THERMO_DOMAIN+v.getMessage()).orElse("HELD: "+failed.getMessage()),elapsed[0],-1,fallback.allowance(),fallback.anchor(),domain);
             }
         }
     }
@@ -439,51 +435,14 @@ public final class ProcessSolveServices {
     private static final class FluidSoftDeadline extends RuntimeException {}
     public record FluidIslandSolveResult(Optional<PassiveIntervalSolver.Result> candidate,String detail,long workerNanos,long workerCpuNanos,
                                         FallbackAllowance proposedAllowance,Optional<ApproximationAnchor> proposedAnchor,
-                                        Optional<com.wormzjl.createcheme.runtime.fluid.ModuleTransferPlanner.Proposal> materialTransfers,
                                         Optional<com.wormzjl.createcheme.science.fluid.thermo.ThermoDomainViolation> domain) implements ProcessSolveResult {
         public FluidIslandSolveResult(Optional<PassiveIntervalSolver.Result> candidate,String detail,long workerNanos,long workerCpuNanos,FallbackAllowance allowance,Optional<ApproximationAnchor> anchor) {
             this(candidate,detail,workerNanos,workerCpuNanos,allowance,anchor,Optional.empty());
         }
-        public FluidIslandSolveResult(Optional<PassiveIntervalSolver.Result> candidate,String detail,long workerNanos,long workerCpuNanos,FallbackAllowance allowance,Optional<ApproximationAnchor> anchor,
-                                      Optional<com.wormzjl.createcheme.runtime.fluid.ModuleTransferPlanner.Proposal> materialTransfers) {
-            this(candidate,detail,workerNanos,workerCpuNanos,allowance,anchor,materialTransfers,Optional.empty());
-        }
         public FluidIslandSolveResult(Optional<PassiveIntervalSolver.Result> candidate,String detail,long workerNanos,FallbackAllowance allowance,Optional<ApproximationAnchor> anchor) {
             this(candidate,detail,workerNanos,-1,allowance,anchor);
         }
-        public FluidIslandSolveResult {Objects.requireNonNull(domain);if(domain.isPresent()&&candidate.isPresent())throw new IllegalArgumentException("An accepted interval has no domain failure");Objects.requireNonNull(candidate);Objects.requireNonNull(detail);Objects.requireNonNull(proposedAllowance);Objects.requireNonNull(proposedAnchor);Objects.requireNonNull(materialTransfers);if(workerNanos<0||workerCpuNanos < -1)throw new IllegalArgumentException("Invalid worker elapsed time");if(materialTransfers.isPresent()&&(candidate.isEmpty()||materialTransfers.orElseThrow().candidate()!=candidate.orElseThrow()))throw new IllegalArgumentException("Material ledger/result mismatch");}
-    }
-    /** New material boundaries require full qualification; failed probes never consume pending inputs. */
-    public record BufferedIslandCommand(FluidThermodynamics model,PassiveNetwork snapshot,long startTick,int durationTicks,
-            List<com.wormzjl.createcheme.runtime.fluid.ModuleTransferPlanner.Input> inputs,
-            List<com.wormzjl.createcheme.runtime.fluid.ModuleTransferPlanner.Withdrawal> withdrawals,
-            long wallBudgetNanos,FallbackAllowance previousAllowance,Optional<ApproximationAnchor> previousAnchor,
-            com.wormzjl.createcheme.runtime.fluid.RetainedSolver retained) implements FluidSolveCommand {
-        /** Without a retained handle the job gets its own, which is the per-job solver of before. */
-        public BufferedIslandCommand(FluidThermodynamics model,PassiveNetwork snapshot,long startTick,int durationTicks,
-                List<com.wormzjl.createcheme.runtime.fluid.ModuleTransferPlanner.Input> inputs,
-                List<com.wormzjl.createcheme.runtime.fluid.ModuleTransferPlanner.Withdrawal> withdrawals,
-                long wallBudgetNanos,FallbackAllowance previousAllowance,Optional<ApproximationAnchor> previousAnchor) {
-            this(model,snapshot,startTick,durationTicks,inputs,withdrawals,wallBudgetNanos,previousAllowance,previousAnchor,
-                    new com.wormzjl.createcheme.runtime.fluid.RetainedSolver());
-        }
-        public BufferedIslandCommand {
-            Objects.requireNonNull(model);Objects.requireNonNull(snapshot);inputs=List.copyOf(inputs);withdrawals=List.copyOf(withdrawals);Objects.requireNonNull(previousAllowance);Objects.requireNonNull(previousAnchor);Objects.requireNonNull(retained);
-            if(startTick<0||durationTicks<1||wallBudgetNanos<1||inputs.size()+withdrawals.size()>4096)throw new IllegalArgumentException("Invalid buffered interval");
-        }
-        @Override public ProcessSolveResult solve(BoundedCpuSolveService.CancellationToken token) {
-            long started=System.nanoTime(),cpuStart=WorkerAllocation.CpuTime.sample();
-            Runnable checkpoint=()->{token.throwIfCancellationRequested();if(System.nanoTime()-started>=wallBudgetNanos)throw new FluidWallDeadline();};
-            Optional<com.wormzjl.createcheme.runtime.fluid.ModuleTransferPlanner.Proposal> proposal=Optional.empty();String detail;Optional<com.wormzjl.createcheme.science.fluid.thermo.ThermoDomainViolation> domain=Optional.empty();
-            try {
-                proposal=Optional.of(new com.wormzjl.createcheme.runtime.fluid.ModuleTransferPlanner(model).prepare(snapshot,startTick,durationTicks,inputs,withdrawals,checkpoint,retained));checkpoint.run();detail="FULL: buffered transfers";
-            }catch(FluidWallDeadline cut){proposal=Optional.empty();detail=WALL_DEADLINE+" (buffered interval)";}
-            catch(com.wormzjl.createcheme.science.fluid.solver.SparseNewton.Nonconvergence|IllegalArgumentException held){proposal=Optional.empty();domain=Optional.ofNullable(com.wormzjl.createcheme.science.fluid.solver.SparseNewton.domainViolation(held));detail=domain.map(v->THERMO_DOMAIN+v.getMessage()).orElse("HELD: buffered interval "+held.getMessage());}
-            token.throwIfCancellationRequested();long elapsed=System.nanoTime()-started;
-            long cpu=WorkerAllocation.CpuTime.elapsed(cpuStart,WorkerAllocation.CpuTime.sample());
-            var candidate=proposal.map(com.wormzjl.createcheme.runtime.fluid.ModuleTransferPlanner.Proposal::candidate);
-            return new FluidIslandSolveResult(candidate,detail,elapsed,cpu,candidate.isPresent()?FallbackAllowance.NONE:previousAllowance,candidate.map(r->ApproximationAnchor.fromFull(model,r)).or(()->previousAnchor),proposal,domain);
-        }
+        public FluidIslandSolveResult {Objects.requireNonNull(domain);if(domain.isPresent()&&candidate.isPresent())throw new IllegalArgumentException("An accepted interval has no domain failure");Objects.requireNonNull(candidate);Objects.requireNonNull(detail);Objects.requireNonNull(proposedAllowance);Objects.requireNonNull(proposedAnchor);if(workerNanos<0||workerCpuNanos < -1)throw new IllegalArgumentException("Invalid worker elapsed time");}
     }
 
     /** Immutable worker snapshot; configuration has already been read and converted by server-thread admission. */

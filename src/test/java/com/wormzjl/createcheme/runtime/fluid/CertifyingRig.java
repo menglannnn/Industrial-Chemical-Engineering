@@ -36,7 +36,7 @@ final class CertifyingRig {
             public long nextRequestId(){return ++requests;}
             public boolean submit(IslandCoordinator.Attempt attempt,ProcessSolveServices.FluidIslandCommand command){attempts.put(attempt.slice().requestId(),attempt);commands.put(attempt.slice().requestId(),command);return true;}
             public void cancel(long request){throw new AssertionError("no deadlines here");}
-        },changed->{if(recording)published.addAll(changed);onPublished.accept(changed);},()->0L,new IslandCoordinator.Settings(30_000_000_000L,20_000_000_000L,64,false,100,policy),IslandCoordinator.CommitHook.NO_MATERIAL,()->epoch[0]);
+        },changed->{if(recording)published.addAll(changed);onPublished.accept(changed);},()->0L,new IslandCoordinator.Settings(30_000_000_000L,20_000_000_000L,64,false,100,policy),()->epoch[0]);
         coordinator.onReplayed(changed->{if(recording)replayed.addAll(changed);});
     }
     /** Records what the coordinator publishes and replays from here on. */
@@ -70,9 +70,8 @@ final class CertifyingRig {
     IslandCoordinator.Snapshot stored(long id){return coordinator.observe(id);}
     IslandCoordinator.Snapshot read(long id){return coordinator.snapshot(id);}
     /** What a save captures: every island materialised to now. */
-    FluidCheckpointCodec.Checkpoint checkpoint(){return checkpoint(new BufferedTransfers.Snapshot(0,Map.of(),Map.of()),List.of());}
-    FluidCheckpointCodec.Checkpoint checkpoint(BufferedTransfers.Snapshot transfers,List<FixedSplitModule.Snapshot> modules) {
-        return new FluidCheckpointCodec.Checkpoint(coordinator.snapshots().stream().map(s->new FluidCheckpointCodec.IslandEntry("minecraft:overworld",PACKAGE,1e-9,s)).toList(),transfers,modules);
+    FluidCheckpointCodec.Checkpoint checkpoint() {
+        return new FluidCheckpointCodec.Checkpoint(coordinator.snapshots().stream().map(s->new FluidCheckpointCodec.IslandEntry("minecraft:overworld",PACKAGE,1e-9,s)).toList());
     }
 
     /** Islands with distinct identities on the network model, the diagnostics counters, and rigs on that model. */

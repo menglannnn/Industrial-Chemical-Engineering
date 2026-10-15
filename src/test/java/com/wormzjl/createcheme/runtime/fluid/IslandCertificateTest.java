@@ -410,43 +410,6 @@ class IslandCertificateTest {
         assertEquals(rig.epoch[0],rig.read(1).clock().committedTick());
     }
 
-    /**
-     * Plan section 3.3: a module drive (a positive withdrawal, a due input) wakes a certified island exactly at its
-     * tick; a drive in the coming cadence keeps an island from certifying; and a drive announced after its tick
-     * has passed is not answered in the announcing call (the host may be mid-decision) but on the next pass over
-     * due deadlines, still at its own tick.
-     */
-    @Test void aModuleDriveWakesACertifiedIslandAtItsExactTick() {
-        var rig=rig(CertificatePolicy.defaults());rig.register(1,deadHeadedLine());
-        long[] drive={Long.MAX_VALUE};
-        rig.coordinator.drives((island,from,to)->drive[0]>=from&&drive[0]<=to?drive[0]:Long.MAX_VALUE);
-        long at=rig.certifiedAt(1,2_000);assertEquals(200,at);
-        rig.run(300);
-        drive[0]=rig.epoch[0]+250;rig.coordinator.drivesChanged(1);
-        rig.run(249);assertTrue(rig.stored(1).certificate().isPresent());assertEquals(at,rig.stored(1).clock().committedTick());
-        rig.run(1);
-        assertTrue(rig.stored(1).certificate().isEmpty(),"woken by the drive");
-        assertEquals(drive[0],rig.stored(1).clock().committedTick(),"materialised exactly to the drive");
-        assertTrue(rig.stored(1).status().startsWith("WAITING: module drive at "+drive[0]),rig.stored(1).status());
-        assertTrue(rig.coordinator.retainsSolver(1));
-        // While the drive is within the coming cadence the island does not certify again.
-        int solves=rig.solves;rig.run(100);assertEquals(solves+1,rig.solves);
-        drive[0]=rig.stored(1).clock().committedTick()+130;rig.coordinator.drivesChanged(1);
-        rig.run(100);assertTrue(rig.stored(1).certificate().isEmpty(),"a drive in the coming cadence blocks certification");
-        assertEquals("a module drive is due",rig.coordinator.certificationRefusal(1));
-        drive[0]=Long.MAX_VALUE;rig.coordinator.drivesChanged(1);
-        long again=rig.certifiedAt(1,1_000);assertTrue(again>0);long base=rig.stored(1).clock().committedTick();
-        rig.run(500);
-        // Announced late: nothing moves in the announcing call; the next tick materialises exactly to it.
-        drive[0]=rig.epoch[0]-120;rig.coordinator.drivesChanged(1);
-        assertEquals(base,rig.stored(1).clock().committedTick());assertTrue(rig.stored(1).certificate().isPresent());
-        rig.tick();
-        assertTrue(rig.stored(1).certificate().isEmpty());
-        // Woken at the drive with more than a cadence of debt, it solves its first slice from exactly that tick.
-        var metrics=rig.coordinator.metrics(1).orElseThrow();
-        assertEquals(IslandCoordinator.Advance.SOLVED,metrics.advance());assertEquals(drive[0],metrics.startTick());
-    }
-
     /** Plan section 5 item 6: a configuration event replaces the island; the new one solves and qualifies afresh. */
     @Test void changedControlsReplaceACertifiedIslandWithAnAwakeOne() {
         var rig=rig(CertificatePolicy.defaults());rig.register(1,generatorToVoid(150000));

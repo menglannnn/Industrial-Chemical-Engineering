@@ -93,11 +93,11 @@ public final class FluidCheckpointStore {
     private record NewPack(long number,long size,List<Segment> segments) {}
     /**
      * What one save costs and writes: islands, units encoded afresh, reused in place and moved by compaction, their
-     * bytes, the island units' and the ledger's and topology's bytes, whether every unit was written afresh, the first
+     * bytes, the island units' and the topology's bytes, whether every unit was written afresh, the first
      * new pack (0 when nothing but the core record was written), how many new packs and their bytes, the packs the core
      * record references, and its size.
      */
-    public record Stats(int islands,int encoded,int reused,int copied,long encodedBytes,long copiedBytes,long islandBytes,long ledgerBytes,
+    public record Stats(int islands,int encoded,int reused,int copied,long encodedBytes,long copiedBytes,long islandBytes,
                         long topologyBytes,boolean topologyEncoded,boolean full,long pack,int newPacks,long packBytes,int packs,long coreBytes) {}
     /** One prepared save: its new packs and the sealed core record, in commit order. */
     public static final class Plan {
@@ -235,12 +235,11 @@ public final class FluidCheckpointStore {
                     FluidCheckpointCodec.AWAKE,0,0,0,ref.unit)));
         }
         if(topologyRef!=null)topologyBytes=topologyRef.unit.length();
-        byte[] ledger=FluidCheckpointCodec.ledger(checkpoint);
         long[] packs=referenced.stream().mapToLong(Long::longValue).toArray();long[] sizes=Arrays.stream(packs).map(packSizes::get).toArray();
-        var core=FluidCheckpointCodec.coreTag(new FluidCheckpointCodec.CoreRecord(epoch,ledger,strings,List.copyOf(packages.values()),packs,sizes,nextPack,nextGeneration,
+        var core=FluidCheckpointCodec.coreTag(new FluidCheckpointCodec.CoreRecord(epoch,strings,List.copyOf(packages.values()),packs,sizes,nextPack,nextGeneration,
                 topologyRef==null?0:topologyRef.generation,topologyRef==null?null:topologyRef.unit,rows));
         long packBytes=newPacks.stream().mapToLong(NewPack::size).sum();
-        var stats=new Stats(rows.size(),encoded,reused,copied,encodedBytes,copiedBytes,islandBytes,ledger.length,topologyBytes,topologyEncoded,full,
+        var stats=new Stats(rows.size(),encoded,reused,copied,encodedBytes,copiedBytes,islandBytes,topologyBytes,topologyEncoded,full,
                 newPacks.isEmpty()?0:newPacks.getFirst().number,newPacks.size(),packBytes,packs.length,core.sizeInBytes());
         FluidRuntimeDiagnostics.count(FluidRuntimeDiagnostics.payloadsEncoded,encoded);FluidRuntimeDiagnostics.count(FluidRuntimeDiagnostics.payloadsReused,reused);
         return new Plan(seq,basedOn,List.copyOf(newPacks),core,packs,stats);
@@ -353,8 +352,7 @@ public final class FluidCheckpointStore {
         }
         var refs=new LinkedHashMap<Long,Ref>();
         for(int i=0;i<entries.length;i++){var row=core.islands().get(i);refs.put(row.id(),new Ref(row.revision(),entries[i].snapshot().payloadGeneration(),row.generation(),row.unit()));}
-        var ledger=FluidCheckpointCodec.ledger(core.ledger());
-        var checkpoint=new FluidCheckpointCodec.Checkpoint(Arrays.asList(entries),ledger.transfers(),ledger.modules(),ledger.bindings());
+        var checkpoint=new FluidCheckpointCodec.Checkpoint(Arrays.asList(entries));
         // Seed the dirty tracking: an island registered with the payload generation its decoded snapshot carries keeps
         // its unit where it is until something it records changes.
         islands.clear();islands.putAll(refs);topology=core.topology()==null?null:new Ref(0,0,core.topologyGeneration(),core.topology());topologySource=world.orElse(null);

@@ -28,13 +28,9 @@ public final class FluidWorldAuthority implements AutoCloseable {
     private final List<String> componentNames;
     private final FluidSavedData data;
     private final WorldTopologyLedger topology;
-    private final BufferedTransfers transfers;
     private final MinecraftFluidRuntime runtime;
-    private final CausalModuleCoordinator moduleHost;
     /** Island ownership, compiler diagnostics and chunk membership of the registered devices, and the event path. */
     private final PhysicalRegistry registry;
-    /** The ownership version the module host was last rebound to; every topology commit changes the registry's. */
-    private long boundOwnersVersion=-1;
     /**
      * Queued topology events apply as one batch at the next tick's hook, or earlier when something reads what they
      * change (a view, a capture, a filter recovery). A run of events inside one tick (a command placing thousands of
@@ -63,14 +59,12 @@ public final class FluidWorldAuthority implements AutoCloseable {
         presetCache=FluidPresetCatalog.resolve(catalog);componentNames=model.components();
         var savedTopology=data.world().orElseGet(()->WorldTopologyLedger.Snapshot.empty(catalog));savedTopology.basis().requireCurrent(catalog);
         FluidPropertyReloadGuard.validateSolids(catalog.solids(),data.checkpoint(),savedTopology);observedSolidData=catalog;
-        topology=new WorldTopologyLedger(savedTopology);transfers=new BufferedTransfers(data.checkpoint().transfers());
+        topology=new WorldTopologyLedger(savedTopology);
         presentation=new FluidPresentation<>(new PresentationHost(),topology.onlineTick());
-        moduleHost=data.checkpoint().modules().isEmpty()?null:new CausalModuleCoordinator(model,data.checkpoint().moduleBindings(),data.checkpoint().transfers(),data.checkpoint().modules());
         var settings=new IslandCoordinator.Settings(options.wallBudgetNanos(),options.wallBudgetNanos()*3/4,64,options.adaptiveCadence(),options.initialCadenceTicks(),options.certificates());
         // Island clocks read the world's online tick: one epoch increment per tick advances every island.
-        runtime=moduleHost==null?new MinecraftFluidRuntime(server,this::published,settings,(attempt,command)->command,IslandCoordinator.CommitHook.NO_MATERIAL,topology::onlineTick)
-                :new MinecraftFluidRuntime(server,this::published,settings,moduleHost::command,moduleHost::prepare,topology::onlineTick);
-        runtime.coordinator().onReleased(this::released);runtime.coordinator().onReplayed(this::replayed);
+        runtime=new MinecraftFluidRuntime(server,this::published,settings,topology::onlineTick);
+        runtime.coordinator().onReplayed(this::replayed);
         runtime.coordinator().onDomainHold(this::domainHeld);runtime.coordinator().nodeNames(this::deviceLabel);
         registry=new PhysicalRegistry(topology,model,new InlineFilter(options.solids().filterCapacity(),options.solids().filterResistance(),com.wormzjl.createcheme.science.fluid.state.SolidInventory.EMPTY,0),new RegistryHost());
         for(var entry:data.checkpoint().islands())runtime.register(dimension(entry.dimension()),entry.snapshot(),model(new FluidCheckpointCodec.PackageKey(entry.packageId(),entry.compressibility())));
@@ -80,7 +74,6 @@ public final class FluidWorldAuthority implements AutoCloseable {
         // in an already loaded chunk is marked once, and its bucket binds and presents it. Nothing is pushed here.
         registry.forEachChunk((name,chunk,devices)->{var level=server.getLevel(dimension(name));var at=new net.minecraft.world.level.ChunkPos(chunk);
             if(level!=null&&level.hasChunk(at.x,at.z))for(long id:devices)presentation.markDirty(id);});
-        if(moduleHost!=null){moduleHost.attach(runtime.coordinator());advanceModules();}
         // Saved recoveries are first attempted on the first tick, as before, then on their retry deadline.
         if(topology.hasRecoveries())scheduleRecoveryRetry(1);
     }
@@ -183,10 +176,10 @@ public final class FluidWorldAuthority implements AutoCloseable {
     /**
      * The per-tick hook does only what is due. The epoch increment advances every island clock at once; the
      * coordinator's tick resets the dispatch budget and pops due deadlines (island slices and retries, round
-     * timeouts, the allocator shrink, module horizons, recovery retries) and pumps only if that would act;
+     * timeouts, the allocator shrink, recovery retries) and pumps only if that would act;
      * queued topology events are tried while any exist - everything queued since the last tick applies here as
      * batches, each compiling only the components it touches - and an island an event created or released is
-     * offered to the pump in the same tick. No island, module or registry is visited otherwise. Last, the
+     * offered to the pump in the same tick. No island or registry is visited otherwise. Last, the
      * presentation bucket of this tick is flushed if one is due (an O(1) check otherwise), after the tick's
      * events, so its replies and views include them.
      */
@@ -258,7 +251,7 @@ public final class FluidWorldAuthority implements AutoCloseable {
             String dimension=world.active().get(registry.members(snapshot.id()).getFirst()).device().position().dimension();
             islands.add(new FluidCheckpointCodec.IslandEntry(dimension,com.wormzjl.createcheme.science.fluid.thermo.FluidMaterialCatalog.networkPackage(catalog),compressibility,snapshot));
         }
-        return new FluidSavedData.Capture(new FluidCheckpointCodec.Checkpoint(islands,moduleHost==null?transfers.snapshot():moduleHost.transfers(),moduleHost==null?data.checkpoint().modules():moduleHost.snapshots(),moduleHost==null?data.checkpoint().moduleBindings():moduleHost.bindings()),world);
+        return new FluidSavedData.Capture(new FluidCheckpointCodec.Checkpoint(islands),world);
     }
     /** A device's view, as a presentation read: queued events are not applied (they apply on the engine's tick), and a
      * certified island is materialised to now but never woken by it. */
@@ -308,7 +301,6 @@ public final class FluidWorldAuthority implements AutoCloseable {
         if(registry.diagnostic(id)!=null)status=registry.diagnostic(id)+" / "+status;
         var active=topology.active().get(id);if(active==null||active.revision()!=registration.revision())status="WAITING: configuration event / "+status;
         if(unboundBindings.contains(id))status="UNBOUND: saved inventory retained / "+status;
-        if(moduleHost!=null){var reason=moduleHost.waitingReason(owner);if(!reason.isEmpty())status=reason+" / "+status;}
         var routes=new ArrayList<FluidView.PipeRoute>();
         for(var historyEntry:history)for(var pipe:snapshot.graph().pipes())if(pipe.id()==historyEntry.pipeId()) {
             routes.add(new FluidView.PipeRoute(pipe.id(),nodeLabel(snapshot.graph().reservoirs().get(pipe.first()).id()),nodeLabel(snapshot.graph().reservoirs().get(pipe.second()).id())));
@@ -441,18 +433,12 @@ public final class FluidWorldAuthority implements AutoCloseable {
         }
     }
     /** A certified island's materialisation: only accounting (the diagnostic observer) and the save mark need it.
-     * It changes no dependency, so modules are not advanced, and it queues no view refresh of its own. */
+     * It queues no view refresh of its own. */
     private void replayed(List<IslandCoordinator.Snapshot> changed) {
         if(observer!=null){var timings=new HashMap<Long,IslandCoordinator.Metrics>();for(var island:changed)runtime.coordinator().metrics(island.id()).ifPresent(m->timings.put(island.id(),m));observer.accept(changed,Map.copyOf(timings));}
         data.setDirty();
     }
     private void published(List<IslandCoordinator.Snapshot> changed) {
-        if(moduleHost!=null&&propertyHold==null) {
-            // Rebind only when a topology commit changed the owners; advance only when the publication
-            // can change what the modules decide.
-            long version=registry.ownersVersion();boolean rebound=boundOwnersVersion!=version;if(rebound){moduleHost.rebind(registry.owners());boundOwnersVersion=version;}
-            if(rebound||moduleHost.dependsOnAny(changed))advanceModules();
-        }
         if(observer!=null){var timings=new HashMap<Long,IslandCoordinator.Metrics>();for(var island:changed)runtime.coordinator().metrics(island.id()).ifPresent(m->timings.put(island.id(),m));observer.accept(changed,Map.copyOf(timings));}
         // A thermo-domain hold has its own, rate-limited line with the full detail (domainHeld); every other hold keeps this one.
         data.setDirty();var ids=new HashSet<Long>();for(var snapshot:changed){ids.add(snapshot.id());if(snapshot.status().startsWith("HELD")&&!snapshot.status().startsWith(com.wormzjl.createcheme.runtime.ProcessSolveServices.THERMO_DOMAIN))CreateChemE.LOGGER.warn("fluid_island={} committed_tick={} status={}",snapshot.id(),snapshot.clock().committedTick(),snapshot.status());}
@@ -464,17 +450,6 @@ public final class FluidWorldAuthority implements AutoCloseable {
                 var text=net.minecraft.network.chat.Component.literal(message);for(var player:server.getPlayerList().getPlayers())player.sendSystemMessage(text);
             });
         }
-    }
-    /** Advances the modules and books their next own horizon as the one module deadline. */
-    private void advanceModules() {
-        moduleHost.advance();var coordinator=runtime.coordinator();
-        coordinator.schedule(IslandScheduler.Kind.MODULE_HORIZON,moduleHost.nextHorizon(coordinator::epochTick,coordinator.now()),this::moduleDeadline);
-    }
-    private void moduleDeadline(){if(!closed&&moduleHost!=null&&propertyHold==null)advanceModules();}
-    /** An attempt drained after its round closed changes an island's ownership without a publication; a module
-     * bound to that island sees it at once through an immediate module deadline, before the next dispatch. */
-    private void released(long island) {
-        if(moduleHost!=null&&moduleHost.dependsOn(island)){var coordinator=runtime.coordinator();coordinator.schedule(IslandScheduler.Kind.MODULE_HORIZON,coordinator.now(),this::moduleDeadline);}
     }
     @Override public void close(){owned();if(closed)return;closed=true;publishedMenuData.clear();runtime.close();data.setDirty();}
 }

@@ -56,7 +56,7 @@ class IslandSchedulerTest {
 
     @Test void deadlinesComeOutByTickThenInSchedulingOrderAndNextDueIsAPeek() {
         var scheduler=new IslandScheduler();assertEquals(Long.MAX_VALUE,scheduler.nextDue());assertNull(scheduler.poll(Long.MAX_VALUE-1));
-        scheduler.schedule(50,SLICE_DUE,1,1);scheduler.schedule(10,RETRY,2,1);scheduler.schedule(50,ROUND_TIMEOUT,3,0);scheduler.schedule(10,MODULE_HORIZON,4,7);
+        scheduler.schedule(50,SLICE_DUE,1,1);scheduler.schedule(10,RETRY,2,1);scheduler.schedule(50,ROUND_TIMEOUT,3,0);scheduler.schedule(10,RECOVERY_RETRY,4,7);
         for(int i=0;i<1000;i++)assertEquals(10,scheduler.nextDue());
         assertEquals(4,scheduler.size(),"nextDue must not pop");assertNull(scheduler.poll(9));
         assertEquals(2,scheduler.poll(10).id());assertEquals(4,scheduler.poll(10).id());assertNull(scheduler.poll(10));
@@ -121,7 +121,7 @@ class IslandSchedulerTest {
             for(long id=1;id<=count;id++)coordinator.register(island(id,0,0,Map.of(event,0L)),MODEL);
             assertEquals(Long.MAX_VALUE,coordinator.nextDue());assertEquals(0,coordinator.scheduledDeadlines());assertEquals(0,coordinator.readyCount());
             count();for(int tick=0;tick<10_000;tick++)coordinator.tick();
-            for(var name:List.of("islandVisits","readinessPumps","solvesDispatched","deadlinesFired","islandSnapshots","moduleScans","topologySnapshots"))
+            for(var name:List.of("islandVisits","readinessPumps","solvesDispatched","deadlinesFired","islandSnapshots","topologySnapshots"))
                 assertEquals(0,counted(name),count+" idle islands: "+name+" over 10,000 ticks");
             assertTrue(dispatch.submitted.isEmpty());assertEquals(Long.MAX_VALUE,coordinator.nextDue());
             for(var snapshot:coordinator.snapshots())assertEquals(new IslandClock.Snapshot(10_000,0,0,100),snapshot.clock(),"online time still accrues");
@@ -153,7 +153,7 @@ class IslandSchedulerTest {
             assertEquals(0,coordinator.readyCount());assertEquals(0,coordinator.pendingCount());assertEquals(2L*count,dispatch.submitted.size(),"two exact-zero intervals each");
             count();
             for(int idle=0;idle<10_000;idle++){coordinator.tick();tick++;if(!dispatch.attempts.isEmpty())dispatch.finishAll();}
-            for(var name:List.of("islandVisits","readinessPumps","solvesDispatched","deadlinesFired","islandSnapshots","moduleScans","topologySnapshots","materialisations","certificateWakes"))
+            for(var name:List.of("islandVisits","readinessPumps","solvesDispatched","deadlinesFired","islandSnapshots","topologySnapshots","materialisations","certificateWakes"))
                 assertEquals(0,counted(name),count+" certified islands: "+name+" over 10,000 ticks");
             assertEquals(Long.MAX_VALUE,coordinator.nextDue());assertEquals(2L*count,dispatch.submitted.size());
             final long now=tick;

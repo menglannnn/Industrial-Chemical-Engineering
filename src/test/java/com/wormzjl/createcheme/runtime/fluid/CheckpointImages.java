@@ -1,9 +1,6 @@
 package com.wormzjl.createcheme.runtime.fluid;
 
-import com.google.gson.JsonObject;
-import com.google.gson.JsonParser;
 import com.wormzjl.createcheme.science.fluid.thermo.FluidThermodynamics;
-import java.nio.charset.StandardCharsets;
 import java.util.*;
 import java.util.function.Function;
 import java.util.function.UnaryOperator;
@@ -15,18 +12,12 @@ import net.minecraft.nbt.CompoundTag;
  */
 final class CheckpointImages {
     private CheckpointImages(){}
-    /** Recomputes the envelope and ledger digests of a core record from its current fields. */
-    static void reseal(CompoundTag core) {
-        core.putByteArray("LedgerSHA256",FluidCheckpointCodec.sha256(core.getByteArray("Ledger")));core.putByteArray("SHA256",FluidCheckpointCodec.manifest(core));
-    }
+    /** Recomputes the envelope digest of a core record from its current fields. */
+    static void reseal(CompoundTag core){core.putByteArray("SHA256",FluidCheckpointCodec.manifest(core));}
     /** The index position of island {@code id} in a core record. */
     static int row(CompoundTag core,long id) {
         var ids=core.getCompound("Islands").getLongArray("Id");for(int i=0;i<ids.length;i++)if(ids[i]==id)return i;throw new IllegalArgumentException("no island "+id);
     }
-    /** The ledger JSON of a checkpoint. */
-    static JsonObject ledgerJson(FluidCheckpointCodec.Image image){return JsonParser.parseString(new String(image.core().getByteArray("Ledger"),StandardCharsets.UTF_8)).getAsJsonObject();}
-    /** A copy of a checkpoint with its ledger JSON replaced and every digest recomputed. */
-    static FluidCheckpointCodec.Image withLedger(FluidCheckpointCodec.Image image,JsonObject ledger){var core=image.core().copy();core.putByteArray("Ledger",ledger.toString().getBytes(StandardCharsets.UTF_8));reseal(core);return new FluidCheckpointCodec.Image(core,image.packs());}
     /** The raw unit bytes of island {@code id}. */
     static byte[] unitBytes(FluidCheckpointCodec.Image image,long id) {
         var islands=image.core().getCompound("Islands");int i=row(image.core(),id);

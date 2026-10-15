@@ -38,8 +38,6 @@ public final class FluidPropertyReloadGuard {
             for(var node:island.snapshot().graph().reservoirs())catalog.validate(node.inventory().solids());
             for(var pipe:island.snapshot().graph().pipes())if(pipe.filter()!=null)catalog.validate(pipe.filter().captured());
         }
-        for(var pending:checkpoint.transfers().pending().values())catalog.validate(pending.remaining().solids());
-        for(var module:checkpoint.modules())if(module.cycle()!=null)for(var input:module.cycle().inputs().values())catalog.validate(input.owned().solids());
         for(var recovery:world.recoveries().values())catalog.validate(recovery.solids());
     }
 }

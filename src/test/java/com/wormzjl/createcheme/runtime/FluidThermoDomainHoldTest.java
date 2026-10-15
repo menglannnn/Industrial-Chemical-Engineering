@@ -91,7 +91,7 @@ class FluidThermoDomainHoldTest {
         for(int t=0;t<1000;t++)tick.run();
         assertEquals(jobsWhenParked,jobs[0],"no solver dispatch for 1,000 ticks");
         assertEquals(1,warnings.size());
-        // A control or topology edit makes a new island; a fence (a queued edit, a module drive) wakes this one at once.
+        // A control or topology edit makes a new island; a fence (a queued edit) wakes this one at once.
         long committed=coordinator.snapshot(1).clock().committedTick();
         coordinator.fence(UUID.randomUUID(),committed+1,List.of(1L));coordinator.pump();
         assertFalse(waiting(coordinator));assertEquals(1,attempts.size(),"the input change dispatches it");

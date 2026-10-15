@@ -4,7 +4,6 @@ import com.wormzjl.createcheme.fluid.support.FluidTestSupport;
 import com.wormzjl.createcheme.runtime.BoundedCpuSolveService;
 import com.wormzjl.createcheme.runtime.ProcessSolveServices;
 import com.wormzjl.createcheme.science.fluid.network.*;
-import com.wormzjl.createcheme.science.fluid.state.EnergyReference;
 import com.wormzjl.createcheme.science.fluid.thermo.FluidThermodynamics;
 import com.wormzjl.createcheme.science.fluid.topology.TopologyCompiler.Kind;
 import com.wormzjl.createcheme.science.material.MaterialCatalog;
@@ -18,12 +17,13 @@ import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
- * Checkpoint format 6 (format 5 plus the pipe ports and the compressor control of the phase-ports batch; format 5 was F3's format 4, which replaced format 3 of plan section 3.5, less its kind column): clocks, material, fences, pending events, modules
- * and certificates round-trip exactly through the core record and the island units; every index and certificate
- * field is validated; certificates are discarded, keeping inventory, when certificates are off or their signature
+ * Checkpoint format 8 (format 5, F3's format 4 less its kind column, plus the pipe ports and the compressor control of
+ * the phase-ports batch in 6, the end flows in 7, and without the ledger of transfers and modules in 8): a restored
+ * certificate continues exactly (the full round trip is FluidCheckpointStoreTest's, through the files); every index
+ * and certificate field is validated; certificates are discarded, keeping inventory, when certificates are off or their signature
  * changed; a certified island's unit is reused in place, never re-encoded, while it stays certified; a thousand
  * certified islands load without a solve burst; and a save taken during a property hold restarts awake from the held
- * state. Format 3 and older are refused with the instruction to create a fresh world; nothing reads them.
+ * state. Older formats are refused with the instruction to create a fresh world; nothing reads them.
  */
 class FluidCheckpointFormatTest extends CertifyingRig.Islands {
     private static long[] column(CompoundTag core,String name){return core.getCompound("Islands").getLongArray(name);}
@@ -60,73 +60,6 @@ class FluidCheckpointFormatTest extends CertifyingRig.Islands {
     }
 
     // ---------------- round trips ----------------
-
-    /** Every saved island, the pending material, a module, a queued topology event and the certificates come back exactly. */
-    @Test void clocksMaterialFencesPendingEventsModulesAndCertificatesRoundTripExactly() {
-        var rig=rig(CertificatePolicy.defaults());
-        rig.register(1,deadHeadedLine(100,0));rig.register(2,closedPair(200,4));rig.register(3,generatorToVoid(300,8));rig.register(4,slowFill(400,12));
-        rig.runUntilCertified(List.of(1L,2L,3L),2_000);
-        rig.run(1_234-rig.epoch[0]);
-        assertTrue(rig.stored(4).certificate().isEmpty(),"the slow fill stays awake");
-        var fence=UUID.randomUUID();rig.coordinator.fence(fence,1_500,List.of(4L));
-        // Pending material, capacity and a module in the ledger.
-        var outA=UUID.randomUUID();var outB=UUID.randomUUID();var feed=UUID.randomUUID();var pendingId=UUID.randomUUID();
-        var ledger=new BufferedTransfers(new BufferedTransfers.Snapshot(0,Map.of(outA,new BufferedTransfers.Buffer(outA,1000,0,Map.of()),outB,new BufferedTransfers.Buffer(outB,1000,0,Map.of())),Map.of()));
-        var parcel=new MaterialParcel(new double[]{2000,2000},new double[]{.018,.032},123456,EnergyReference.sensible(List.of("Water","Oxygen")));
-        ledger.commit(ledger.reserve(List.of(new PendingTransfers.Pending(pendingId,UUID.randomUUID(),outA,1_300,0,parcel))));
-        var module=new FixedSplitModule.Snapshot(new FixedSplitModule.Definition(UUID.randomUUID(),List.of(new FixedSplitModule.Feed(feed,2)),outA,outB,300,new double[]{1,0}),3,1_200,false,null);
-        var checkpoint=rig.checkpoint(ledger.snapshot(),List.of(module));
-        // A queued topology event, pending in the world ledger at the save.
-        var topology=new WorldTopologyLedger(world(0));for(int i=0;i<1_234;i++)topology.tick();
-        var device=new PhysicalFluidTopology.Device(5_000,new PhysicalFluidTopology.Position("minecraft:overworld",40,0,40),Kind.RESERVOIR,PhysicalFluidTopology.Direction.EAST,BLOCK,new FlowControl.Passive());
-        topology.commit(topology.queue(List.of(new WorldTopologyLedger.Edit(5_000,new WorldTopologyLedger.Registration(device,new FluidDeviceSpec(1,298.15,101325,pure(nitrogen)),0))),Set.of(5_000L),5_001));
-        var world=topology.snapshot();assertEquals(1,world.events().size());
-
-        var data=new FluidSavedData(checkpoint,world,key->model);var tag=data.save(new CompoundTag(),null);
-        assertEquals(7,tag.getInt("FluidFormat"));assertEquals(1_234,tag.getLong("Epoch"));
-        assertEquals(FluidCheckpointCodec.AWAKE,index(tag,4,"Base"));
-        assertEquals(checkpoint.islands().get(1).snapshot().certificate().orElseThrow().baseTick(),index(tag,2,"Base"));
-        assertFalse(tag.getCompound("Islands").contains("Kind"),"format 7, like 5 and 6, has one certificate kind and no kind column");
-        assertEquals(0.0,checkpoint.islands().get(1).snapshot().certificate().orElseThrow().drift(),"the closed pair's certificate is the identity map, drift 0");
-        var loaded=FluidSavedData.load(tag,key->model,data.store().reopen());
-        for(int i=0;i<4;i++) {
-            var a=checkpoint.islands().get(i).snapshot();var b=loaded.checkpoint().islands().get(i).snapshot();String what="island "+a.id();
-            assertEquals(a.id(),b.id());assertEquals(a.revision(),b.revision(),what);assertEquals(a.clock(),b.clock(),what+" clock, exact");
-            assertEquals(a.fences(),b.fences(),what);assertEquals(a.status(),b.status(),what);assertEquals(a.allowance(),b.allowance(),what);
-            assertInventories(a.graph(),b.graph(),what);
-            assertEquals(a.certificate().isPresent(),b.certificate().isPresent(),what);
-            if(a.certificate().isPresent()) {
-                var x=a.certificate().orElseThrow();var y=b.certificate().orElseThrow();
-                assertEquals(x.drift(),y.drift(),what);assertEquals(x.sinceTick(),y.sinceTick(),what);assertEquals(x.baseTick(),y.baseTick(),what);
-                assertEquals(x.horizonTick(),y.horizonTick(),what);assertEquals(x.largestFlow(),y.largestFlow(),what);
-                var s=x.saved().orElseThrow();var t=y.saved().orElseThrow();
-                assertEquals(s.signature(),t.signature(),what+" signature");
-                assertEquals(s.interval().startTick(),t.interval().startTick(),what);assertEquals(s.interval().endTick(),t.interval().endTick(),what);
-                assertInventories(s.interval().before(),t.interval().before(),what+" certified interval start");
-                assertInventories(s.interval().result().graph(),t.interval().result().graph(),what+" certificate base");
-                assertArrayEquals(s.interval().result().averageMassFlows(),t.interval().result().averageMassFlows(),what);
-            }
-        }
-        assertEquals(Map.of(fence,1_500L),loaded.checkpoint().islands().get(3).snapshot().fences());
-        var a=checkpoint.transfers();var b=loaded.checkpoint().transfers();
-        assertEquals(a.revision(),b.revision());assertEquals(a.buffers(),b.buffers(),"buffers and their reservations");assertEquals(a.planned(),b.planned());
-        assertEquals(a.pending().keySet(),b.pending().keySet(),"pending material");
-        for(var id:a.pending().keySet()) {
-            var x=a.pending().get(id);var y=b.pending().get(id);
-            assertEquals(List.of(x.producer(),x.receiver(),x.dueTick(),x.revision()),List.of(y.producer(),y.receiver(),y.dueTick(),y.revision()));
-            assertArrayEquals(x.remaining().moles(),y.remaining().moles());assertArrayEquals(x.remaining().molecularWeights(),y.remaining().molecularWeights());
-            assertEquals(x.remaining().internalEnergy(),y.remaining().internalEnergy());assertEquals(x.remaining().solids(),y.remaining().solids());
-        }
-        var m=checkpoint.modules().getFirst();var n=loaded.checkpoint().modules().getFirst();var d=m.definition();var e=n.definition();
-        assertEquals(List.of(d.id(),d.feeds(),d.firstProduct(),d.secondProduct(),d.cadenceTicks()),List.of(e.id(),e.feeds(),e.firstProduct(),e.secondProduct(),e.cadenceTicks()),"module definition");
-        assertArrayEquals(d.firstFractions(),e.firstFractions());assertEquals(List.of(m.revision(),m.committedTick(),m.running()),List.of(n.revision(),n.committedTick(),n.running()),"module state");assertNull(n.cycle());
-        var events=loaded.world().orElseThrow().events();
-        assertEquals(world.onlineTick(),loaded.world().orElseThrow().onlineTick());assertEquals(1,events.size());
-        assertEquals(world.events().getFirst().id(),events.getFirst().id());assertEquals(world.events().getFirst().tick(),events.getFirst().tick());assertEquals(world.events().getFirst().touched(),events.getFirst().touched());
-        // Seeded by the load, the store writes nothing but the same core record again: every unit stays where it is.
-        assertEquals(tag,loaded.save(new CompoundTag(),null),"a loaded checkpoint saves back to the same core record");
-        assertEquals(0,loaded.lastSave().payloadsEncoded());assertEquals(4,loaded.lastSave().payloadsReused());assertFalse(loaded.lastSave().topologyEncoded());assertEquals(0,loaded.lastSave().stats().pack(),"no pack written");
-    }
 
     /**
      * A certified island is saved at its base and loaded at its committed tick, materialised without a solve; restored,
@@ -370,7 +303,7 @@ class FluidCheckpointFormatTest extends CertifyingRig.Islands {
             assertEquals(hold+1_000,decoded.clock().onlineTick(),"the online time accrued during the hold is kept as debt");
             assertEquals(during.status(),decoded.status(),"the hold's status line is kept");
             assertTrue(decoded.certificate().isEmpty());assertInventories(during.graph(),decoded.graph(),"held inventory");
-            var restarted=rig(policy,model,rig.epoch[0]);restarted.load(new FluidCheckpointCodec.Checkpoint(List.of(new FluidCheckpointCodec.IslandEntry("minecraft:overworld",PACKAGE,1e-9,decoded)),new BufferedTransfers.Snapshot(0,Map.of(),Map.of())));
+            var restarted=rig(policy,model,rig.epoch[0]);restarted.load(new FluidCheckpointCodec.Checkpoint(List.of(new FluidCheckpointCodec.IslandEntry("minecraft:overworld",PACKAGE,1e-9,decoded))));
             assertTrue(restarted.coordinator.retainsSolver(1));assertEquals(1,restarted.coordinator.readyCount(),"awake with debt, ready at once");
             restarted.coordinator.pump();restarted.drain();
             var again=restarted.stored(1).certificate().orElseThrow();
@@ -383,9 +316,10 @@ class FluidCheckpointFormatTest extends CertifyingRig.Islands {
 
     // ---------------- other formats ----------------
 
-    /** Format 3 and older are refused with the instruction to create a fresh world, and nothing in the tag is changed. */
-    @Test void formatThreeAndOlderAreRefusedWithAFreshWorldInstructionAndLeftUntouched() {
-        for(int format:new int[]{1,2,3}) {
+    /** Older formats (3 and before, and 7 with its ledger) are refused with the instruction to create a fresh world, and
+     * nothing in the tag is changed. */
+    @Test void olderFormatsAreRefusedWithAFreshWorldInstructionAndLeftUntouched() {
+        for(int format:new int[]{1,2,3,7}) {
             var old=new CompoundTag();old.putInt("FluidFormat",format);old.putLong("Epoch",40);
             byte[] json=("{\"version\":"+format+",\"islands\":[],\"transfers\":{\"revision\":0,\"buffers\":[],\"pending\":[]}}").getBytes(StandardCharsets.UTF_8);
             old.putByteArray(format==3?"Ledger":"Checkpoint",json);old.put("Islands",new ListTag());old.putByteArray("SHA256",new byte[32]);var before=old.copy();
@@ -393,7 +327,7 @@ class FluidCheckpointFormatTest extends CertifyingRig.Islands {
             assertTrue(refusal.getMessage().contains("format "+format)&&refusal.getMessage().contains("Create a fresh world"),refusal.getMessage());
             assertEquals(before,old,"a refused save is left exactly as it was");
         }
-        var data=new FluidSavedData(new FluidCheckpointCodec.Checkpoint(List.of(),new BufferedTransfers.Snapshot(0,Map.of(),Map.of())),world(40),key->{throw new AssertionError("no model needed");});
+        var data=new FluidSavedData(new FluidCheckpointCodec.Checkpoint(List.of()),world(40),key->{throw new AssertionError("no model needed");});
         var current=data.save(new CompoundTag(),null);var packs=Map.copyOf(((FluidCheckpointStore.Memory)data.store().backend()).packs);
         assertTrue(FluidSavedData.load(current,key->{throw new AssertionError();},data.store().reopen()).world().isPresent());
         // The topology is saved without its online tick: the checkpoint's epoch is the one clock of the world.

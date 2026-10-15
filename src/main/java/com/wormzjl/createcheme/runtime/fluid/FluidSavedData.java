@@ -45,7 +45,6 @@ public final class FluidSavedData extends SavedData {
         public int unitsCopied(){return stats.copied();}
         /** Bytes of every island unit the core record references, written now or before. */
         public long payloadBytes(){return stats.islandBytes();}
-        public long ledgerBytes(){return stats.ledgerBytes();}
         public long topologyBytes(){return stats.topologyBytes();}
         public boolean topologyEncoded(){return stats.topologyEncoded();}
         /** Bytes this save wrote: the new pack (0 when none) and the core record. */
@@ -125,12 +124,12 @@ public final class FluidSavedData extends SavedData {
         var dataFolder=server.getWorldPath(LevelResource.ROOT).resolve("data");
         var store=FluidCheckpointStore.directory(dataFolder,net.neoforged.neoforge.common.IOUtilities::withIOWorker,true);
         var storage=server.overworld().getDataStorage();
-        var factory=new SavedData.Factory<>(()->new FluidSavedData(new FluidCheckpointCodec.Checkpoint(List.of(),new BufferedTransfers.Snapshot(0,Map.of(),Map.of())),models,store),(tag,registries)->load(tag,models,store));
+        var factory=new SavedData.Factory<>(()->new FluidSavedData(new FluidCheckpointCodec.Checkpoint(List.of()),models,store),(tag,registries)->load(tag,models,store));
         var existing=storage.get(factory,DATA_NAME);
         var path=dataFolder.resolve(FluidCheckpointStore.CORE_NAME);
         if(existing!=null) {
             // A world save always carries its topology unit; islands without one are a fixture image (the regression
-            // harness and module tests load those through load), never a world. No compatibility path: refused.
+            // harness loads those through load), never a world. No compatibility path: refused.
             if(existing.world.isEmpty()&&!existing.checkpoint.islands().isEmpty())
                 throw new IllegalStateException("Fluid checkpoint holds islands but no world topology unit: it is a fixture image, not a world save. Create a fresh world for this development build. Refusing to open: "+path);
             existing.store.cleanOrphans();return existing;

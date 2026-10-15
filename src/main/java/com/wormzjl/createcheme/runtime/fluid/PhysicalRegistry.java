@@ -53,7 +53,6 @@ public final class PhysicalRegistry {
     private final Map<Long,Map<Long,PhysicalFluidTopology.Direction>> tankFaces=new HashMap<>();
     /** Each owned device's island; for a fixed boundary (a generator or a void), the lowest of its islands. */
     private final Map<Long,Long> owners=new HashMap<>();
-    private final Map<Long,Long> ownersView=Collections.unmodifiableMap(owners);
     /**
      * Every island of each owned fixed boundary. A generator or a void belongs to every island that reaches it (owner
      * decision D17): islands that meet only at one are separate, and an edit near one changes only the islands its walk
@@ -62,7 +61,6 @@ public final class PhysicalRegistry {
     private final Map<Long,TreeSet<Long>> fixedOwners=new HashMap<>();
     /** The state of every applied fixed boundary, the one every island holding it carries (nothing changes it). */
     private final Map<Long,PassiveNetwork.Reservoir> fixedStates=new HashMap<>();
-    private long ownersVersion;
     private final Map<Long,List<Long>> members=new HashMap<>();
     private final Map<ChunkKey,Set<Long>> chunkMembers=new HashMap<>();
     private int unapplied;
@@ -102,7 +100,6 @@ public final class PhysicalRegistry {
             long saved=ids.getFirst();if(members.containsKey(saved))throw new IllegalStateException("Saved topology and hydraulic ownership disagree");
             var devices=island.physicalIds().stream().sorted().toList();members.put(saved,devices);for(long id:devices)bind(id,saved);
         }
-        ownersVersion++;
         var registered=new HashSet<Long>();for(var r:active.values())if(r.device().kind()==TopologyCompiler.Kind.RESERVOIR)registered.add(r.device().id());
         var owned=new HashSet<Long>();for(var s:islands)for(var n:s.graph().reservoirs())if(n.kind()==PassiveNetwork.NodeKind.RESERVOIR)owned.add(n.id());
         if(!registered.equals(owned))throw new IllegalStateException("Physical registry would lose or duplicate saved reservoir ownership");
@@ -119,9 +116,6 @@ public final class PhysicalRegistry {
     public Long owner(long device){return owners.get(device);}
     /** Every island a device belongs to (several only for a generator or a void, owner decision D17), in identity order. */
     public Set<Long> islands(long device){return Collections.unmodifiableSet(new TreeSet<>(islandsOf(device)));}
-    /** Device to owning island: a live, unmodifiable view; {@link #ownersVersion()} changes with every application. */
-    public Map<Long,Long> owners(){return ownersView;}
-    public long ownersVersion(){return ownersVersion;}
     /** The devices an island owns, in identity order. */
     public List<Long> members(long island){return members.getOrDefault(island,List.of());}
     /** What the compiler said about a device (a dead end, no boundary, an invalid pump), or null. */
@@ -331,7 +325,7 @@ public final class PhysicalRegistry {
             diagnostics.putAll(compiled.diagnostics());pipeViews.putAll(compiled.pipeViews());tankFaces.putAll(compiled.tankFaces());
             for(var entry:componentStock.entrySet())if(fixedDevice(entry.getKey()))fixedStates.put(entry.getKey(),entry.getValue());
             for(long island:affected){var devices=members.remove(island);if(devices!=null)for(long device:devices)unbind(device,island);}
-            replacementMembers.forEach((island,devices)->{members.put(island,devices);for(long device:devices)bind(device,island);});ownersVersion++;
+            replacementMembers.forEach((island,devices)->{members.put(island,devices);for(long device:devices)bind(device,island);});
             for(var record:removedRecords)chunkRemove(record);for(var record:addedRecords)chunkAdd(record);
             host.committed(Set.copyOf(removedDevices));
         });

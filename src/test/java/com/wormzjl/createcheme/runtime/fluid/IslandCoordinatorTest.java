@@ -192,7 +192,7 @@ class IslandCoordinatorTest {
      * The hold policy (IslandCoordinator.hold). A failed solve on the same committed state, slice and a fresh solver is
      * the same computation, so every hold hands the retry a fresh retained solver and a different problem: half the
      * slice, down to one tick, and at one tick a wait of cadence * 2^k ticks, at most 64 cadences. A fence, a released
-     * fence, a resolved delivery or a property resume clears the wait and the count.
+     * fence or a property resume clears the wait and the count.
      */
     @Test void aHeldOwnerRetriesAFreshSolverOnHalvedSlicesAndThenWaitsLongerAtOneTick() {
         register(1,1_000_000,0);coordinator.pump();
@@ -277,7 +277,7 @@ class IslandCoordinatorTest {
             public void cancel(long request){}
         };
         // A shared epoch: the owner advances it before each tick, as the world does.
-        var shared=new IslandCoordinator(elastic,changed->{},time::get,new IslandCoordinator.Settings(1000,750,64,false),IslandCoordinator.CommitHook.NO_MATERIAL,()->epoch[0]);
+        var shared=new IslandCoordinator(elastic,changed->{},time::get,new IslandCoordinator.Settings(1000,750,64,false),()->epoch[0]);
         for(long id=1;id<=3;id++){var graph=new PassiveNetwork(List.of(new PassiveNetwork.Reservoir(id,0,model.initialNitrogenCharge(1,298.15,101325,()->{}))),List.of());
             shared.register(new IslandCoordinator.Snapshot(id,0,graph,new IslandClock.Snapshot(100,0,0,100),FallbackAllowance.NONE,Optional.empty(),Optional.empty(),"READY"),model);}
         shared.pump();assertEquals(3,limit[0]);assertEquals(3,attempts.size());
@@ -302,14 +302,14 @@ class IslandCoordinatorTest {
     private void domainHold(IslandCoordinator.Attempt attempt,com.wormzjl.createcheme.science.fluid.thermo.ThermoDomainViolation v) {
         dispatch.attempts.remove(attempt.slice().requestId());dispatch.commands.remove(attempt.slice().requestId());
         coordinator.completed(attempt,Optional.of(new ProcessSolveServices.FluidIslandSolveResult(Optional.empty(),ProcessSolveServices.THERMO_DOMAIN+v.getMessage(),10,-1,
-                FallbackAllowance.NONE,Optional.empty(),Optional.empty(),Optional.of(v))));
+                FallbackAllowance.NONE,Optional.empty(),Optional.of(v))));
         coordinator.pump();
     }
     /**
      * F4, T4: a thermo-domain failure is retried once on a fresh solver (and the halved slice of every hold); when the
      * retry reproduces the same violation - component, property, side and node - no retry on the back-off ladder can pass
      * it, so the island waits for an input change and dispatches nothing. The status line is the dedicated one and the
-     * world is told once. A fence (an edit, a module drive, a resolved delivery) wakes it at once.
+     * world is told once. A fence (an edit) wakes it at once.
      */
     @Test void aReproducedThermoDomainViolationWaitsForAnInputChangeInsteadOfTheLadder() {
         var warned=new ArrayList<String>();
@@ -344,7 +344,7 @@ class IslandCoordinatorTest {
             assertEquals(2,FluidRuntimeDiagnostics.sample().get("numericalHolds"));assertEquals(1,FluidRuntimeDiagnostics.sample().get("domainHolds"));
             assertEquals(0,FluidRuntimeDiagnostics.sample().get("retriesDeferred"));
         } finally {FluidRuntimeDiagnostics.ENABLED=false;FluidRuntimeDiagnostics.reset();}
-        // An input change (here a fence, which is how an edit or a module drive reaches the island) wakes it at once.
+        // An input change (here a fence, which is how an edit reaches the island) wakes it at once.
         long committed=coordinator.snapshot(1).clock().committedTick();
         coordinator.fence(UUID.randomUUID(),committed+10_000,List.of(1L));coordinator.pump();
         assertEquals(1,dispatch.attempts.size(),"an input change retries the waiting island at once");

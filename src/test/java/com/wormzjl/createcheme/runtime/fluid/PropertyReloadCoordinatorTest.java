@@ -44,7 +44,7 @@ class PropertyReloadCoordinatorTest {
         coordinator.suspendForPropertyChange(FluidPropertyReloadGuard.HOLD);assertEquals(8,coordinator.snapshot(1).revision());
         attempts.remove(2L);coordinator.completed(second,Optional.of(new ProcessSolveServices.FluidIslandSolveResult(Optional.of(oldResult),"FULL",10,FallbackAllowance.NONE,Optional.of(ApproximationAnchor.fromFull(model,oldResult)))));
         assertEquals(0,coordinator.pendingCount());coordinator.pump();assertTrue(attempts.isEmpty());
-        var saved=coordinator.snapshot(1);var checkpoint=new FluidCheckpointCodec.Checkpoint(List.of(new FluidCheckpointCodec.IslandEntry("minecraft:overworld",FluidPresetCatalog.NETWORK_PACKAGE,1e-9,saved)),new BufferedTransfers.Snapshot(0,Map.of(),Map.of()));
+        var saved=coordinator.snapshot(1);var checkpoint=new FluidCheckpointCodec.Checkpoint(List.of(new FluidCheckpointCodec.IslandEntry("minecraft:overworld",FluidPresetCatalog.NETWORK_PACKAGE,1e-9,saved)));
         var restored=FluidCheckpointCodec.decode(FluidCheckpointCodec.encode(checkpoint,key->model),key->model).islands().getFirst().snapshot();
         assertEquals(saved.allowance(),restored.allowance());assertEquals(saved.clock(),restored.clock());assertEquals(saved.anchor().orElseThrow().propertyRevision(),restored.anchor().orElseThrow().propertyRevision());
         coordinator.resumeQualifiedProperties();coordinator.pump();assertEquals(2,attempts.size());

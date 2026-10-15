@@ -1,7 +1,6 @@
 package com.wormzjl.createcheme.runtime.fluid;
 
 import com.wormzjl.createcheme.science.fluid.network.*;
-import com.wormzjl.createcheme.science.fluid.state.EnergyReference;
 import com.wormzjl.createcheme.science.fluid.thermo.FluidThermodynamics;
 import com.wormzjl.createcheme.science.material.MaterialCatalog;
 import net.minecraft.nbt.*;
@@ -9,7 +8,7 @@ import java.util.*;
 import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
 
-/** Checkpoint format 6, one island: round trip, field refusals, a changed basis, energy datum or velocity limit. */
+/** Checkpoint format 8, one island: round trip, field refusals, a changed basis, energy datum or velocity limit. */
 class FluidCheckpointCodecTest {
     private static final String PACKAGE="createcheme:tjl20_methane_nitrogen";
     private final FluidThermodynamics model=FluidThermodynamics.forNetwork(MaterialCatalog.bundled(),PACKAGE,1e-9);
@@ -17,11 +16,7 @@ class FluidCheckpointCodecTest {
         var graph=new PassiveNetwork(List.of(new PassiveNetwork.Reservoir(1,0,model.initialNitrogenCharge(1,298.15,101325,()->{}))),List.of());
         var full=new PassiveIntervalSolver(model).solve(graph,5,PassiveIntervalSolver.Settings.defaults(),()->{});
         var state=new IslandCoordinator.Snapshot(1,4,full.graph(),new IslandClock.Snapshot(350,200,400,100),new FallbackAllowance(2,100,100),Optional.of(ApproximationAnchor.fromFull(model,full)),Optional.of(full),"APPROXIMATE",Map.of(UUID.randomUUID(),300L));
-        var buffer=UUID.randomUUID();var id=UUID.randomUUID();var material=new MaterialParcel(new double[]{2000,2000},new double[]{.018,.032},123456,EnergyReference.sensible(List.of("Water","Oxygen")));
-        var ledger=new BufferedTransfers(new BufferedTransfers.Snapshot(0,Map.of(buffer,new BufferedTransfers.Buffer(buffer,100,0,Map.of())),Map.of()));
-        ledger.commit(ledger.reserve(List.of(new PendingTransfers.Pending(id,UUID.randomUUID(),buffer,200,0,material))));
-        ledger.commit(ledger.deliver(200,List.of(new BufferedTransfers.Feasible(id,0,20))));
-        return new FluidCheckpointCodec.Checkpoint(List.of(new FluidCheckpointCodec.IslandEntry("minecraft:overworld",PACKAGE,1e-9,state)),ledger.snapshot());
+        return new FluidCheckpointCodec.Checkpoint(List.of(new FluidCheckpointCodec.IslandEntry("minecraft:overworld",PACKAGE,1e-9,state)));
     }
     private static CompoundTag islands(CompoundTag core){return core.getCompound("Islands");}
     static void assertSameImage(FluidCheckpointCodec.Image a,FluidCheckpointCodec.Image b,String what) {
@@ -30,15 +25,13 @@ class FluidCheckpointCodecTest {
     }
     private static FluidCheckpointCodec.Image copy(FluidCheckpointCodec.Image image){return new FluidCheckpointCodec.Image(image.core().copy(),image.packs());}
 
-    @Test void roundTripRetainsStockDebtFencesFallbackAndTheUndeliveredEightyKg() {
+    @Test void roundTripRetainsStockDebtFencesAndFallback() {
         var before=fixture();var image=FluidCheckpointCodec.encode(before,key->model);
         assertEquals(FluidCheckpointCodec.VERSION,image.core().getInt("FluidFormat"));assertEquals(350,FluidCheckpointCodec.epoch(image.core()),"epoch of a core-only checkpoint: its most advanced island");
         var loaded=FluidCheckpointCodec.decode(image,key->model);var a=before.islands().getFirst().snapshot();var b=loaded.islands().getFirst().snapshot();
         assertEquals(a.graph().reservoirs().getFirst().inventory(),b.graph().reservoirs().getFirst().inventory());assertEquals(a.clock(),b.clock());assertEquals(a.fences(),b.fences());assertEquals(a.allowance(),b.allowance());
         assertEquals(a.anchor().orElseThrow().propertyRevision(),b.anchor().orElseThrow().propertyRevision());assertEquals(a.revision(),b.revision());assertEquals(a.status(),b.status());
         assertSame(b.graph(),b.anchor().orElseThrow().graph(),"the anchor is stored as the island's own graph");
-        var remainder=loaded.transfers().pending().values().iterator().next();assertEquals(80,remainder.remaining().massKg());assertEquals(1,remainder.revision());
-        assertEquals(20,loaded.transfers().buffers().get(remainder.receiver()).occupiedKg());assertEquals(80,loaded.transfers().buffers().get(remainder.receiver()).reservedKg());
         assertSameImage(image,FluidCheckpointCodec.encode(loaded,key->model),"a reloaded checkpoint re-encodes to the same bytes");
     }
     @Test void missingClocksMistypedStampsCorruptionUnknownVersionsAndChangedPropertiesAreRejected() {
@@ -164,18 +157,18 @@ class FluidCheckpointCodecTest {
         var full=new PassiveIntervalSolver(model).solve(new PassiveNetwork(nodes,pipes),5,PassiveIntervalSolver.Settings.defaults(),()->{});
         assertEquals(FlowControl.Mode.INLET_WRONG_PHASE,full.endpointModes().get(2),"the compressor on the tank's bulk is refused");
         var state=new IslandCoordinator.Snapshot(1,4,full.graph(),new IslandClock.Snapshot(350,200,400,100),new FallbackAllowance(2,100,100),Optional.of(ApproximationAnchor.fromFull(model,full)),Optional.of(full),"FULL");
-        var before=new FluidCheckpointCodec.Checkpoint(List.of(new FluidCheckpointCodec.IslandEntry("minecraft:overworld",PACKAGE,1e-9,state)),new BufferedTransfers.Snapshot(0,Map.of(),Map.of()));
-        var image=FluidCheckpointCodec.encode(before,key->model);assertEquals(7,image.core().getInt("FluidFormat"));
+        var before=new FluidCheckpointCodec.Checkpoint(List.of(new FluidCheckpointCodec.IslandEntry("minecraft:overworld",PACKAGE,1e-9,state)));
+        var image=FluidCheckpointCodec.encode(before,key->model);assertEquals(8,image.core().getInt("FluidFormat"));
         var after=FluidCheckpointCodec.decode(image,key->model).islands().getFirst().snapshot();
         assertEquals(full.graph().pipes(),after.graph().pipes(),"ends, sections, controls, blocked masks and the ports of every pipe");
         assertEquals(PassiveNetwork.PhasePort.LIQUID,after.graph().pipes().get(0).firstPort());assertEquals(PassiveNetwork.PhasePort.VAPOR,after.graph().pipes().get(3).firstPort());
         assertEquals(new FlowControl.Compressor(.01,2.5,.9),after.graph().pipes().get(2).control());
         assertEquals(full.endpointModes(),after.lastResult().orElseThrow().endpointModes(),"the refused mover's committed mode, the hysteresis input of the next slice (A38)");
         assertArrayEquals(full.averageMassFlows(),after.lastResult().orElseThrow().averageMassFlows());
-        // Format 7: the end flows the island's next job starts from round-trip bit for bit.
+        // Since format 7: the end flows the island's next job starts from round-trip bit for bit.
         assertArrayEquals(full.endpointFlows(),after.lastResult().orElseThrow().endpointFlows(),"the committed end flows (format 7)");
         assertEquals(full.graph().pipes(),after.anchor().orElseThrow().graph().pipes());
-        assertSameImage(image,FluidCheckpointCodec.encode(FluidCheckpointCodec.decode(image,key->model),key->model),"a reloaded format-6 checkpoint re-encodes to the same bytes");
+        assertSameImage(image,FluidCheckpointCodec.encode(FluidCheckpointCodec.decode(image,key->model),key->model),"a reloaded checkpoint re-encodes to the same bytes");
     }
     /** The world ledger's compressor registration (control tag 3) comes back exactly; an unknown control tag is refused. */
     @Test void aCompressorRegistrationRoundTripsInTheTopologyUnit() {
