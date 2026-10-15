@@ -14,8 +14,8 @@
     "temperature_min_kelvin": 273.16,
     "temperature_max_kelvin": 900,
     "pressure_min_pascal": 100,
-    "pressure_max_pascal": 2000000,
-    "evidence": "Fluid network envelope: from the water model triple point (273.16 K; ice is not modelled), the lowest minimum of any component of this package, to the 900 K of the caloric fits; 100 Pa..2 MPa is the span the fluid network evaluates (liquid reference 2 MPa). Every component declares its own range inside it."
+    "pressure_max_pascal": 10000000,
+    "evidence": "Fluid network envelope: from the water model triple point (273.16 K; ice is not modelled), the lowest minimum of any component of this package, to the 900 K of the caloric fits; 100 Pa..10 MPa holds the methane record's declared range (P3 WP7); every other component keeps its own 2 MPa, and a state is valid only inside the range of every component it carries. Every phase at its own pressure (P3 WP4). Every component declares its own range inside it."
   },
   "aliases": {},
   "advisory_evidence": [

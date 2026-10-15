@@ -14,8 +14,8 @@
     "temperature_min_kelvin": 63.151,
     "temperature_max_kelvin": 900,
     "pressure_min_pascal": 100,
-    "pressure_max_pascal": 2000000,
-    "evidence": "Fluid network envelope: from the nitrogen triple point (63.151 K, the lowest minimum of any component) to the 900 K of the caloric fits; 100 Pa..2 MPa is the span the network evaluates (liquid reference 2 MPa). The crude components keep 293.15 K and water its 273.16 K triple point inside it."
+    "pressure_max_pascal": 10000000,
+    "evidence": "Fluid network envelope: from the nitrogen triple point (63.151 K, the lowest minimum of any component) to the 900 K of the caloric fits; 100 Pa..10 MPa since P3 WP7 (design section 8.1): nitrogen and methane are declared to 10 MPa, the crude components, ethane and the light ends keep their own 2 MPa, and a state is valid only inside the range of every component it carries. Every phase at its own pressure (P3 WP4). The crude components keep 293.15 K and water its 273.16 K triple point inside it."
   },
   "aliases": {},
   "advisory_evidence": [
@@ -26,7 +26,7 @@
     "METHANE_EXTENSION: NIST ideal-gas Cp fit; CoolProp PR constants; methane binary interactions assumed zero, not fitted",
     "METHANE_ASSAY: synthetic 0.5 mol% methane blend; hypothetical liquid-density metadata is unused by the molar feed and PR equations",
     "NITROGEN_EXTENSION: initial charge is conserved inventory; nitrogen/hydrocarbon PR interactions estimated zero; no nitrogen dissolution in the separate free-water phase.",
-    "NITROGEN_CRYOGENIC: valid from its 63.151 K triple point (Cp segment below 273.16 K, NIST viscosity tables); PR78 Psat at 77.355 K +1.23 %, liquid density +0.34 % against NIST (F4)",
+    "NITROGEN_CRYOGENIC: valid from its 63.151 K triple point (Cp segment below 273.16 K, NIST viscosity tables); PR78 Psat at 77.355 K +1.21 %, liquid density -0.07 % against NIST (F4, P3 WP4 direct liquid path)",
     "ESTIMATED_REGROUPING: PC08-12 mass/volume-constrained Tia Juana reconstruction; heavy Tc/Pc extrapolated; global Dalia transport"
   ],
   "liquid_mixture": {
