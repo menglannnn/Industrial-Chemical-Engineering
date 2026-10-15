@@ -147,7 +147,7 @@ public final class FluidServerBenchmark {
             }
         }
         Run(GameTestHelper helper){
-            this.helper=helper;server=helper.getLevel().getServer();world=FluidWorldAuthority.find(server).orElseThrow();startTick=world.onlineTick();FluidRuntimeMeter.enable(server);world.observe(this::published);
+            this.helper=helper;server=helper.getLevel().getServer();world=FluidWorldAuthority.find(server).orElseThrow();startTick=world.onlineTick();FluidRuntimeDiagnostics.Meter.enable(server);world.observe(this::published);
             // Every fixture island was loaded together, so one offset maps the world tick to each island's online tick.
             var islands=world.diagnosticSnapshots();long offset=islands.getFirst().clock().onlineTick()-world.onlineTick();
             if(islands.stream().anyMatch(s->s.clock().onlineTick()-world.onlineTick()!=offset))throw new IllegalStateException("Fixture islands do not share one online clock");
@@ -441,7 +441,7 @@ public final class FluidServerBenchmark {
             if(run.world.onlineTick()>=run.probeTick){run.probing=false;run.saves.put("nextCadence",save(run,false));run.probed=true;return;}
             pace(run,event.getServer());return;
         }
-        run.referenceTick();long now=System.nanoTime(),meter=FluidRuntimeMeter.totalNanos(event.getServer());
+        run.referenceTick();long now=System.nanoTime(),meter=FluidRuntimeDiagnostics.Meter.totalNanos(event.getServer());
         if(run.measuring()) {
             if(run.measuredStarted==0) {
                 run.measuredStarted=now;run.measureStartTick=run.world.onlineTick();run.measuredStartEpochMillis=System.currentTimeMillis();
@@ -616,7 +616,7 @@ public final class FluidServerBenchmark {
         try {var path=Path.of(System.getProperty("createcheme.fluid.benchmark.output"));Files.createDirectories(path.getParent());Files.writeString(path,new GsonBuilder().setPrettyPrinting().create().toJson(r.report));
             if(recording!=null){recording.stop();recording.dump(path.resolveSibling("stress.jfr"));recording.close();recording=null;}}
         catch(java.io.IOException failure){throw new IllegalStateException("Could not write benchmark evidence",failure);}
-        for(long chunk:fixture.chunks){var p=new ChunkPos(chunk);r.server.overworld().setChunkForced(p.x,p.z,false);}FluidRuntimeMeter.forget(r.server);
+        for(long chunk:fixture.chunks){var p=new ChunkPos(chunk);r.server.overworld().setChunkForced(p.x,p.z,false);}FluidRuntimeDiagnostics.Meter.forget(r.server);
         r.helper.assertTrue(r.pass,"Paced benchmark failed; inspect the complete raw report");
     }
     /**

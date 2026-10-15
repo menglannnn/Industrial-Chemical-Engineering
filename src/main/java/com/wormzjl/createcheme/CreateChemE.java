@@ -279,7 +279,7 @@ public final class CreateChemE {
     }
 
     private static void onServerTickPost(ServerTickEvent.Post event) {
-        com.wormzjl.createcheme.runtime.fluid.FluidRuntimeMeter.enter(event.getServer());
+        com.wormzjl.createcheme.runtime.fluid.FluidRuntimeDiagnostics.Meter.enter(event.getServer());
         try {
             var materialCatalog=com.wormzjl.createcheme.science.material.MaterialRuntime.active();
             if (lastMaterialCatalog != materialCatalog) {
@@ -292,7 +292,7 @@ public final class CreateChemE {
             LOGGER.error("process_solver lifecycle=DRAIN_FAILED", exception);
             throw exception;
         } finally {
-            com.wormzjl.createcheme.runtime.fluid.FluidRuntimeMeter.exit(event.getServer());
+            com.wormzjl.createcheme.runtime.fluid.FluidRuntimeDiagnostics.Meter.exit(event.getServer());
         }
     }
 
@@ -312,7 +312,7 @@ public final class CreateChemE {
         try {
             // ServerStopped can still fire after an abnormal lifecycle path that skipped ServerStopping.
             com.wormzjl.createcheme.runtime.fluid.FluidWorldAuthority.forget(event.getServer());
-            com.wormzjl.createcheme.runtime.fluid.FluidRuntimeMeter.forget(event.getServer());
+            com.wormzjl.createcheme.runtime.fluid.FluidRuntimeDiagnostics.Meter.forget(event.getServer());
             ProcessSolveCoordinator.stopCalculations(event.getServer());
             int remainingContexts = ProcessSolveServices.removeStoppedServer(event.getServer());
             com.wormzjl.createcheme.science.material.MaterialRuntime.reset();

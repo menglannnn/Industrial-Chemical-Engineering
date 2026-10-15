@@ -3,7 +3,9 @@ package com.wormzjl.createcheme.runtime.fluid;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.LongAdder;
+import net.minecraft.server.MinecraftServer;
 
 /**
  * Opt-in counters of the scheduling work the fluid runtime does on the logical server thread: how often the
@@ -115,4 +117,18 @@ public final class FluidRuntimeDiagnostics {
         return Collections.unmodifiableMap(values);
     }
     public static void reset(){COUNTERS.values().forEach(LongAdder::reset);}
+
+    /** Opt-in measurement of logical-server work, including completion wakeups between ticks.
+     * Nested scopes count once. Counters are not simulation state and are never persisted. */
+    public static final class Meter {
+        private static final ConcurrentHashMap<MinecraftServer,Counter> TIMERS=new ConcurrentHashMap<>();
+        private static final class Counter {int depth;long started,total;}
+        private Meter() {}
+        private static void owned(MinecraftServer server){if(!server.isSameThread())throw new IllegalStateException("Runtime timing belongs to the logical server thread");}
+        public static void enable(MinecraftServer server){owned(server);if(TIMERS.putIfAbsent(server,new Counter())!=null)throw new IllegalStateException("Runtime timing already enabled");}
+        public static void enter(MinecraftServer server){var c=TIMERS.get(server);if(c==null)return;owned(server);if(c.depth++==0)c.started=System.nanoTime();}
+        public static void exit(MinecraftServer server){var c=TIMERS.get(server);if(c==null)return;owned(server);if(c.depth<=0)throw new IllegalStateException("Unbalanced timing scope");if(--c.depth==0)c.total+=System.nanoTime()-c.started;}
+        public static long totalNanos(MinecraftServer server){owned(server);var c=TIMERS.get(server);if(c==null)throw new IllegalStateException("Runtime timing not enabled");return c.total+(c.depth==0?0:System.nanoTime()-c.started);}
+        public static void forget(MinecraftServer server){owned(server);var c=TIMERS.get(server);if(c!=null&&c.depth!=0)throw new IllegalStateException("Timing scope still active");TIMERS.remove(server);}
+    }
 }

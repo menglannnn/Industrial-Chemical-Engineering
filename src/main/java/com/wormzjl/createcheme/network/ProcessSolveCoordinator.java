@@ -24,13 +24,13 @@ public final class ProcessSolveCoordinator {
     /** Drains and routes at most the configured bounded number of terminal worker messages. */
     public static void drainCompletedCalculations(MinecraftServer server) {
         Objects.requireNonNull(server, "server");
-        com.wormzjl.createcheme.runtime.fluid.FluidRuntimeMeter.enter(server);
+        com.wormzjl.createcheme.runtime.fluid.FluidRuntimeDiagnostics.Meter.enter(server);
         try {
         com.wormzjl.createcheme.runtime.fluid.FluidWorldAuthority.refreshProperties(server);
         route(server, ProcessSolveServices.drainCompletions(
                 server, ProcessSolveServices.MAXIMUM_COMPLETIONS_PER_TICK));
         ProcessSolveServices.pumpReady(server);
-        } finally {com.wormzjl.createcheme.runtime.fluid.FluidRuntimeMeter.exit(server);}
+        } finally {com.wormzjl.createcheme.runtime.fluid.FluidRuntimeDiagnostics.Meter.exit(server);}
     }
 
     /** Stops the one owned service and routes every terminal/abandoned job family before lifecycle teardown. */
