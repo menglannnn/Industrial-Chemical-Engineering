@@ -578,7 +578,7 @@ public final class PassiveStepSolver {
                 // at a stalled point are -1.14e-6 kg/s on a line whose generator drives it
                 // forwards, and reading them as backflow let the tank's nitrogen into both of the
                 // filter's zero-holdup junctions; see documentation/JUNCTION_PHANTOM_TRACE.md.
-                var changedSeeds=phaseCorrection(graph,equations.states(failure.lastVariables()),checkpoint,false,null,foldedPhases);
+                var changedSeeds=phaseCorrection(graph,equations.states(failure.lastVariables()),checkpoint,null,foldedPhases);
                 // Decision D11: a phase a vessel's ports draw at their full capacity leaves the vessel within the step; a
                 // pass whose seed still holds it may have no root (see drainedSeeds).
                 if(changedSeeds==null)changedSeeds=equations.drainedSeeds(checkpoint);
@@ -683,7 +683,7 @@ public final class PassiveStepSolver {
             // so the pass is solved again from the folded states: the Newton, the reconstruction and the equation gate then
             // read the same phases.
             if(recordFolds(graph,states,projection.states(),foldedPhases)){SolverDiagnostics.count(SolverDiagnostics.traceFoldPasses);seeds=projection.states();continue;}
-            var changedSeeds=phaseCorrection(graph,projection.states(),checkpoint,true,equations.cachedPrepared,foldedPhases);if(changedSeeds!=null){seeds=changedSeeds;continue;}
+            var changedSeeds=phaseCorrection(graph,projection.states(),checkpoint,equations.cachedPrepared,foldedPhases);if(changedSeeds!=null){seeds=changedSeeds;continue;}
             var reconstructed=x.clone();
             for(int node=0;node<projection.states().size();node++)if(equations.layout[node]!=null){var encoded=equations.layout[node].encode(projection.states().get(node));System.arraycopy(encoded,0,reconstructed,equations.offsets[node],encoded.length);}
             SolverDiagnostics.count(SolverDiagnostics.verificationResiduals);
@@ -820,7 +820,7 @@ public final class PassiveStepSolver {
         var draws=equations.draws(flows,states);
         var projection=ConservativeTransport.reconstruct(graph,states,flows,heads,dt,model,checkpoint,transport,rateOnly,draws,equations.supports,emptyings);
         if(phaseAppeared(graph,states,projection.states())||phaseFolded(graph,states,projection.states())
-                ||phaseCorrection(graph,projection.states(),checkpoint,true,equations.cachedPrepared,foldedPhases.clone())!=null)return null;
+                ||phaseCorrection(graph,projection.states(),checkpoint,equations.cachedPrepared,foldedPhases.clone())!=null)return null;
         var reconstructed=variables.clone();
         for(int node=0;node<projection.states().size();node++)if(equations.layout[node]!=null){var encoded=equations.layout[node].encode(projection.states().get(node));System.arraycopy(encoded,0,reconstructed,equations.offsets[node],encoded.length);}
         SolverDiagnostics.count(SolverDiagnostics.verificationResiduals);
@@ -1006,7 +1006,7 @@ public final class PassiveStepSolver {
     private void checkApproximation(Equations equations,double[] point,List<FluidThermodynamics.State> candidate,double[] flows,SparseNewton.Workspace workspace,Runnable checkpoint,double tolerance) {
         var estimate=SparseNewton.estimateCorrection(equations,point,checkpoint,workspace);var probe=estimate.probe();var corrected=equations.states(probe);
         double inflation=estimate.initialResidual()>1e-12?1/(1-Math.min(.5,estimate.probeResidual()/estimate.initialResidual())):1;
-        if(phaseCorrection(equations.graph,corrected,checkpoint,true)!=null)throw new ApproximationAnchor.Rejected("Error probe changes a phase regime");
+        if(phaseCorrection(equations.graph,corrected,checkpoint)!=null)throw new ApproximationAnchor.Rejected("Error probe changes a phase regime");
         for(int i=0;i<candidate.size();i++) {
             var a=candidate.get(i);var b=corrected.get(i);
             if(inflation*Math.abs(a.pressure()-b.pressure())>.001*b.pressure()+.1
@@ -2042,33 +2042,35 @@ public final class PassiveStepSolver {
     private static boolean capMode(FlowControl.Mode mode) {
         return mode==FlowControl.Mode.VELOCITY_LIMITED||mode==FlowControl.Mode.PUMP_VELOCITY_LIMIT||mode==FlowControl.Mode.VALVE_VELOCITY_LIMIT;
     }
-    /** Outer active-set stability check; never runs inside a Newton residual or Jacobian evaluation. */
-    private List<FluidThermodynamics.State> phaseCorrection(PassiveNetwork graph,List<FluidThermodynamics.State> states,Runnable checkpoint,boolean converged) {
-        return phaseCorrection(graph,states,checkpoint,converged,null,null);
+    /** {@link #phaseCorrection(PassiveNetwork, List, Runnable, FluidThermodynamics.Prepared[], int[])} with no prepared
+     * temperatures and no record of folded phases. */
+    private List<FluidThermodynamics.State> phaseCorrection(PassiveNetwork graph,List<FluidThermodynamics.State> states,Runnable checkpoint) {
+        return phaseCorrection(graph,states,checkpoint,null,null);
     }
-    /** {@code prepared}, when given, is the pass's per-node prepared temperature state: a node's flash at exactly that
+    /**
+     * The outer phase check of a pass's point, node by node ({@link FluidThermodynamics#phaseCheck}, owner decision D25):
+     * a phase leaves a node only when the solve empties it (the trace fold of the point, at a converged point whose
+     * reconstruction already folded it as at an unsuccessful pass's last iterate), a phase the node's TP answer holds and
+     * the node does not is added, and no populated phase set is swapped for another on a TP verdict. Never inside a Newton
+     * residual or Jacobian evaluation. One node is corrected per call, as one active-set change per pass; null when none
+     * changes.
+     *
+     * <p>{@code prepared}, when given, is the pass's per-node prepared temperature state: a node's flash at exactly that
      * temperature reuses its Peng-Robinson workspace instead of preparing a new one (the arithmetic is the same).
-     * {@code foldedPhases}, when given, holds per node the phases the trace rule removed in this solve (A85): a
-     * difference in those phases alone is not a correction, and a correction that removes a phase of the state because
-     * its flash folds it (the equilibrium has it, below the trace share) adds that phase to the record. */
-    private List<FluidThermodynamics.State> phaseCorrection(PassiveNetwork graph,List<FluidThermodynamics.State> states,Runnable checkpoint,boolean converged,FluidThermodynamics.Prepared[] prepared,int[] foldedPhases) {
+     * {@code foldedPhases}, when given, holds per node the phases ({@link #phaseCode} bits) the trace rule removed in this
+     * solve (A85): the check does not add them back, and a phase its fold removes joins them, so the sequence of passes
+     * stays finite.
+     */
+    private List<FluidThermodynamics.State> phaseCorrection(PassiveNetwork graph,List<FluidThermodynamics.State> states,Runnable checkpoint,FluidThermodynamics.Prepared[] prepared,int[] foldedPhases) {
         var corrected=new ArrayList<FluidThermodynamics.State>();boolean changed=false;
         for(int i=0;i<states.size();i++) {
-            var state=states.get(i);if(graph.reservoirs().get(i).fixed()){corrected.add(state);continue;}
-            // When all allowed phases are populated, the simultaneous fugacity/saturation rows
-            // already enforce their equilibrium. An additional TP flash repeats the same work.
-            // Missing-phase stability and unsuccessful Newton passes still require the outer check.
-            boolean hydroComplete=state.liquidProperties()!=null&&state.vaporProperties()!=null||state.liquidProperties()==null&&state.vaporProperties()==null;
-            boolean waterComplete=state.waterLiquid()>0&&state.waterVapor()>0||state.waterLiquid()+state.waterVapor()==0;
-            if(converged&&hydroComplete&&waterComplete&&(state.vaporProperties()==null||state.vaporProperties().vaporLike())){corrected.add(state);continue;}
-            FluidThermodynamics.State split,equilibrium;
-            try{split=model.equilibriumTP(state.temperature(),state.pressure(),PhaseLayout.totalAmounts(state),checkpoint,prepared==null?null:prepared[i]).withSolidState(state.solids(),state.solidMoments());
-                equilibrium=model.folded(split,graph.reservoirs().get(i).junction());}
-            catch(com.wormzjl.createcheme.science.fluid.thermo.ThermoDomainViolation violation){throw violation.at(graph.reservoirs().get(i).id());}
-            int ignored=foldedPhases==null?0:foldedPhases[i];
-            if((phaseCode(state)&~ignored)!=(phaseCode(equilibrium)&~ignored)&&!changed) {
-                changed=true;corrected.add(equilibrium);
-                if(foldedPhases!=null)foldedPhases[i]|=phaseCode(state)&phaseCode(split)&~phaseCode(equilibrium)&15;
+            var state=states.get(i);var node=graph.reservoirs().get(i);if(node.fixed()){corrected.add(state);continue;}
+            FluidThermodynamics.State checked;
+            try{checked=model.phaseCheck(state,node.junction(),foldedPhases==null?0:foldedPhases[i],prepared==null?null:prepared[i],checkpoint);}
+            catch(com.wormzjl.createcheme.science.fluid.thermo.ThermoDomainViolation violation){throw violation.at(node.id());}
+            if(checked!=state&&!changed) {
+                changed=true;corrected.add(checked);
+                if(foldedPhases!=null)foldedPhases[i]|=phaseCode(state)&~phaseCode(checked)&15;
             }else corrected.add(state);
         }
         return changed?corrected:null;
@@ -2126,11 +2128,10 @@ public final class PassiveStepSolver {
         }
         return false;
     }
-    /** Which phases this state carries, as four flags: hydrocarbon liquid, hydrocarbon vapor, free
-     * water and steam. Only ever compared for equality, so it needs no rendering. */
+    /** Which phases this state carries: the four fluid flags of {@link FluidThermodynamics#phaseBits} (hydrocarbon liquid 1,
+     * hydrocarbon vapour 2, free water 4, steam 8) and 16 for solids. */
     private static int phaseCode(FluidThermodynamics.State state) {
-        return (state.solidMoments().mass()>0?16:0)|(state.liquidVolume()>0?1:0)|(state.vaporProperties()!=null?2:0)
-                |(state.waterLiquid()>0?4:0)|(state.waterVapor()>0?8:0);
+        return (state.solidMoments().mass()>0?16:0)|FluidThermodynamics.phaseBits(state);
     }
     /**
      * Closes, before the first pass, every passive connection whose own starting point leaves it no

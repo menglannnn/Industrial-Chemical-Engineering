@@ -165,14 +165,36 @@ class NetworkPhaseEngineTest {
     }
 
     /**
-     * A pure component at its own coexistence pressure: the engine leaves the split undetermined, and a standalone flash
-     * states the liquid. (The node's own layout at coexistence is the outer phase check's, decision D25.)
+     * Owner decision D25 where T and P leave the split undetermined. At a pure component's coexistence pressure a standalone
+     * flash states the liquid; the network's outer phase check ({@link FluidThermodynamics#phaseCheck}) keeps a node's
+     * populated phases and adds the one that answer finds missing, for one component as for any material: a node holding
+     * both phases keeps itself, a vapour-only node gains a liquid nucleus of {@code PHASE_NUCLEUS_FRACTION} of its amount
+     * beside its vapour, the totals its own, and a phase the trace rule removed in this solve is not added back. Pure water
+     * just below its saturation pressure (all steam by the flash) keeps its liquid and gains a steam nucleus.
      */
     @Test
-    void aStandaloneFlashAtPureCoexistenceStatesTheLiquid() {
+    void theOuterCheckKeepsThePopulatedPhasesAndAddsTheMissingOneWhereTAndPLeaveTheSplitOpen() {
         double t = 100, p = saturationPressure(t);
         var flash = model.flashTP(t, p, pure(nitrogen, 40, 0), () -> {});
         assertEquals(40, sum(flash.liquidView()), 0, "a standalone flash at coexistence states the liquid");
+        double[] liquid = new double[n - 1], vapor = new double[n - 1], none = new double[n - 1];
+        liquid[nitrogen] = 30;vapor[nitrogen] = 10;
+        var both = model.state(t, p, liquid, vapor, 0, 0, p);
+        assertSame(both, model.phaseCheck(both, false, 0, null, () -> {}), "a node holding both phases keeps its layout");
+        vapor[nitrogen] = 40;
+        var gas = model.state(t, p, none, vapor, 0, 0, p);
+        var checked = model.phaseCheck(gas, false, 0, null, () -> {});
+        assertEquals(40 * FluidThermodynamics.PHASE_NUCLEUS_FRACTION, sum(checked.liquidView()), 1e-18, "a liquid nucleus");
+        assertEquals(40, sum(checked.liquidView()) + sum(checked.vaporView()), 1e-12, "the node's own amount");
+        assertNotNull(checked.vaporProperties(), "the vapour stays");
+        assertSame(gas, model.phaseCheck(gas, false, FluidThermodynamics.phaseBits(flash), null, () -> {}),
+                "a phase the trace rule removed in this solve is not added back");
+        double tw = 350, pw = model.saturationPressure(tw) * (1 - 1e-9);
+        var water = model.state(tw, pw, none, none, 1, 0, pw);
+        assertEquals(0, model.flashTP(tw, pw, pure(nitrogen, 0, 1), () -> {}).waterLiquid(), 0, "the flash: all steam");
+        var wet = model.phaseCheck(water, false, 0, null, () -> {});
+        assertEquals(FluidThermodynamics.PHASE_NUCLEUS_FRACTION, wet.waterVapor(), 1e-21, "a steam nucleus");
+        assertEquals(1, wet.waterLiquid() + wet.waterVapor(), 1e-15, "the liquid stays, the water its own");
     }
 
     /**

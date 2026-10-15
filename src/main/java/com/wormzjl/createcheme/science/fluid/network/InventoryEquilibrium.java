@@ -27,8 +27,8 @@ public final class InventoryEquilibrium {
         var old=PhaseLayout.totalAmounts(previous);boolean changedBasis=false;
         if(n.length!=old.length||n.length!=model.hydrocarbon.componentCount()+1)throw new IllegalArgumentException("Inventory equilibrium basis mismatch");
         for(int c=0;c<n.length;c++)changedBasis|=(n[c]==0)!=(old[c]==0)||Math.abs(n[c]-old[c])>1e-12+1e-10*Math.max(n[c],old[c]);
-        // Decision D34: the phase set each pass below is laid out for is the flash's, trace phases folded; a candidate that
-        // ends with a phase its flash folds is restated from that flash (the regime test) and its last split is folded by
+        // Decision D34: the phase set each pass below is laid out for has its trace phases folded; a candidate that ends
+        // with a phase below the trace share is restated folded (the regime test) and its last split is folded by
         // repartition, so this energy-volume flash returns no trace phase either.
         var state=(changedBasis?model.flashTP(previous.temperature(),previous.pressure(),n,checkpoint):model.folded(previous)).withSolids(inventory.solids());
         // Owner decision D59 (2): a vessel that holds nothing at the bag's resolution holds a residue, booked exactly in its
@@ -36,19 +36,26 @@ public final class InventoryEquilibrium {
         // seed 707 booked 1e-42 mol of crude and 1e-84 mol of water vapour into an empty 1 m3 tank; the closure's Newton,
         // differencing that water with a step 1e19 times the vessel's contents, found no finite trial at any step size.
         if(PassiveStepSolver.holdsNothing(inventory,state))return state;
-        var seen=new HashSet<String>();
+        // Owner decision D25: the regime test is the outer phase check (FluidThermodynamics.phaseCheck). A phase leaves only
+        // when the closure empties it (the trace fold of its point, also of a failed closure's last iterate), the phases
+        // the TP answer finds missing are added, and no populated phase set is swapped for another on a TP verdict: a
+        // vessel of pure water at its saturation line keeps its liquid and gains its steam, and its volume and energy set
+        // the split. A phase the fold removed is not added again within this solve (A85), so the regimes only grow.
+        var seen=new HashSet<String>();int excluded=0;
         for(int pass=0;pass<16;pass++) {
             checkpoint.run();if(!seen.add(regime(state)))throw new SparseNewton.Nonconvergence("Inventory equilibrium phase cycle");
             FluidThermodynamics.State candidate;
             try{candidate=close(model,state,inventory,null,workFrom,checkpoint);}
             catch(SparseNewton.Nonconvergence failure) {
                 if(failure.lastVariables()==null)throw failure;
-                var trial=layout(model,state,null).decode(failure.lastVariables(),0);var phase=model.flashTP(trial.temperature(),trial.pressure(),n,checkpoint).withSolids(inventory.solids());
-                if(regime(phase).equals(regime(state)))throw failure;state=phase;continue;
+                var trial=layout(model,state,null).decode(failure.lastVariables(),0);
+                var checked=model.phaseCheck(trial,false,excluded,null,checkpoint);
+                if(regime(checked).equals(regime(state)))throw failure;
+                excluded|=FluidThermodynamics.phaseBits(trial)&~FluidThermodynamics.phaseBits(checked);state=checked.withSolids(inventory.solids());continue;
             }
             if(candidate==state)return state;
-            var stable=model.flashTP(candidate.temperature(),candidate.pressure(),n,checkpoint).withSolids(inventory.solids());
-            if(!regime(stable).equals(regime(candidate))){state=stable;continue;}
+            var checked=model.phaseCheck(candidate,false,excluded,null,checkpoint);
+            if(checked!=candidate){excluded|=FluidThermodynamics.phaseBits(candidate)&~FluidThermodynamics.phaseBits(checked);state=checked;continue;}
             return candidate;
         }
         throw new SparseNewton.Nonconvergence("Inventory equilibrium phase limit");

@@ -617,6 +617,81 @@ public final class FluidThermodynamics {
                 foldedHydrocarbonPressure(state.pressure(),state.hydrocarbonPartialPressure(),v,water[1]),terms,null);
     }
 
+    /** A state's fluid phases as bits: hydrocarbon liquid 1, hydrocarbon vapour 2, free water 4, water vapour 8. */
+    public static int phaseBits(State state) {
+        return (state.liquidVolume()>0?1:0)|(state.vaporProperties()!=null?2:0)|(state.waterLiquid()>0?4:0)|(state.waterVapor()>0?8:0);
+    }
+    /**
+     * Owner decision D25: the share of a node's fluid amount the phases {@link #phaseCheck} adds enter with, together (a
+     * nucleus; the TP answer's whole amount of them when that is less). Three orders above the trace share
+     * ({@link #PHASE_TRACE_FRACTION}), so the node's rows resolve it and grow it to the node's own equilibrium or empty it;
+     * small enough that the seed keeps the populated phases' volume and energy (a vapour nucleus beside a liquid at the
+     * ambient pressure adds about 0.2 % of its volume).
+     */
+    public static final double PHASE_NUCLEUS_FRACTION=1e-6;
+    /**
+     * The outer phase check of one node of the fluid network (owner decision D25), never inside a residual. A node at
+     * fixed amounts, energy and volume has one equilibrium (a pipe junction: at its mixing rows' enthalpy and the network's
+     * pressure); the node's own rows find it once its layout holds every phase that equilibrium needs, while a TP answer
+     * at the node's temperature and pressure tells which phases are missing but not how much of each the node holds. So
+     * the check never swaps one populated phase set for another on a TP verdict:
+     * <ul>
+     * <li>a phase leaves only when the solve empties it: the trace fold ({@link #folded}, D34) removes a phase {@code state}
+     * holds below the trace share, also where {@code state} is an unsuccessful solve's last iterate;</li>
+     * <li>a phase the TP answer ({@link #flashTP}: {@link #equilibriumTP} with its fold) holds and the node does not is
+     * added, unless it is among {@code excluded} ({@link #phaseBits}: the phases the trace rule removed from the node in
+     * this solve, A85): it enters at the TP answer's composition as a nucleus of {@link #PHASE_NUCLEUS_FRACTION} of the
+     * node's amount (the TP answer's whole amount when less), taken per component from the populated phases in
+     * proportion, so the populated phases stay with their compositions and the totals are the node's to rounding;</li>
+     * <li>a node holding every phase its material can form (both hydrocarbon phases or none, both water phases or none)
+     * has none to add, and no TP answer is formed.</li>
+     * </ul>
+     * The rule decides which phases a node is laid out with; how much of each it holds is its rows' answer. It holds for
+     * any material: a pure water node at its saturation pressure, whose TP answer is all liquid on one side and all steam
+     * on the other, keeps its liquid and gains the steam, and a rigid vessel cooled past its bubble point gains a vapour
+     * nucleus instead of the TP split, whose vapour the vessel cannot hold.
+     *
+     * <p>{@code junction}: whether the node is a pipe junction (the carried gas of D41 in the fold); {@code prepared}, when
+     * given, is the node's prepared temperature state (used only at exactly that temperature).
+     *
+     * @return {@code state} itself when it keeps its phases and gains none; otherwise the node's new seed
+     */
+    public State phaseCheck(State state,boolean junction,int excluded,Prepared prepared,Runnable checkpoint) {
+        var kept=folded(state,junction);
+        boolean hydrocarbonComplete=(kept.liquidProperties()==null)==(kept.vaporProperties()==null);
+        boolean waterComplete=kept.waterLiquid()>0&&kept.waterVapor()>0||kept.waterLiquid()+kept.waterVapor()==0;
+        if(hydrocarbonComplete&&waterComplete)return kept;
+        if(prepared!=null&&prepared.temperature()!=kept.temperature())prepared=null;
+        int n=hydrocarbon.componentCount();double[] totals=new double[n+1];
+        for(int i=0;i<n;i++)totals[i]=kept.liquidView()[i]+kept.vaporView()[i];
+        totals[n]=kept.waterLiquid()+kept.waterVapor();
+        var equilibrium=folded(equilibriumTP(kept.temperature(),kept.pressure(),totals,checkpoint,prepared).withSolidState(kept.solids(),kept.solidMoments()),junction);
+        int added=phaseBits(equilibrium)&~phaseBits(kept)&~excluded;
+        return added==0?kept:nucleated(kept,equilibrium,added,prepared);
+    }
+    /** {@code state} with the phases {@code added} ({@link #phaseBits}) of {@code equilibrium} entering as a nucleus; see
+     * {@link #phaseCheck}. A hydrocarbon vapour the node did not hold is at the equilibrium's partial pressure. */
+    private State nucleated(State state,State equilibrium,int added,Prepared prepared) {
+        boolean liquid=(added&1)!=0,vapour=(added&2)!=0,water=(added&4)!=0,steam=(added&8)!=0;
+        double[] l=state.liquid(),v=state.vapor(),el=equilibrium.liquidView(),ev=equilibrium.vaporView();
+        double entering=(liquid?sum(el):0)+(vapour?sum(ev):0)+(water?equilibrium.waterLiquid():0)+(steam?equilibrium.waterVapor():0);
+        double total=sum(l)+sum(v)+state.waterLiquid()+state.waterVapor();
+        double scale=Math.min(1,PHASE_NUCLEUS_FRACTION*total/entering);
+        for(int c=0;c<l.length;c++) {
+            double enter=(liquid?scale*el[c]:0)+(vapour?scale*ev[c]:0);
+            if(!(enter>0))continue;
+            double keep=Math.max(0,1-enter/(l[c]+v[c]));
+            l[c]=liquid?scale*el[c]:l[c]*keep;v[c]=vapour?scale*ev[c]:v[c]*keep;
+        }
+        double wl=state.waterLiquid(),wv=state.waterVapor(),enter=(water?scale*equilibrium.waterLiquid():0)+(steam?scale*equilibrium.waterVapor():0);
+        if(enter>0) {
+            double keep=Math.max(0,1-enter/(wl+wv));
+            wl=water?scale*equilibrium.waterLiquid():wl*keep;wv=steam?scale*equilibrium.waterVapor():wv*keep;
+        }
+        double pc=vapour?equilibrium.hydrocarbonPartialPressure():state.hydrocarbonPartialPressure();
+        return adoptingState(state.temperature(),state.pressure(),l,v,wl,wv,pc,prepared).withSolidState(state.solids(),state.solidMoments());
+    }
+
     /**
      * Initializer, boundary and outer-check flash; the time-step solver never calls it in a residual evaluation: the
      * equilibrium of {@link #equilibriumTP} with its trace phases folded ({@link #folded}).
