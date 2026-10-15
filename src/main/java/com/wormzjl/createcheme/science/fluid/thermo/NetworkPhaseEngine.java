@@ -96,6 +96,20 @@ final class NetworkPhaseEngine {
     EquilibriumResult ph(double p,double h,double[] overall,boolean crystals) {
         return engine.ph(EquilibriumRequest.ph(p,h,species,overall,crystals?PhaseCompetition.FLUID_AND_CRYSTALS:PhaseCompetition.FLUID_ONLY),workspaces.get());
     }
+    /**
+     * The equilibrium of {@code overall} with the package's crystals competing, at internal energy {@code u} (J, the
+     * engine's datum) and volume {@code v} (m3): the crystal test of a taut vessel's refresh ({@code InventoryEquilibrium},
+     * D23), D21's near-pure step included. Warm-started at {@code (hintT, hintP)} when both are finite
+     * ({@link FluidTpEquilibrium#uv(EquilibriumRequest, com.wormzjl.createcheme.science.thermo.phase.EquilibriumService.Workspace, double, double)}).
+     */
+    EquilibriumResult crystalUv(double u,double v,double[] overall,double hintT,double hintP) {
+        var request=EquilibriumRequest.uv(u,v,species,overall,PhaseCompetition.FLUID_AND_CRYSTALS);
+        return Double.isFinite(hintT)&&Double.isFinite(hintP)?engine.uv(request,workspaces.get(),hintT,hintP):engine.uv(request,workspaces.get());
+    }
+    /** The engine itself: the crystal evaluators and the onset functions the network's crystal records are built from. */
+    FluidTpEquilibrium engine(){return engine;}
+    /** The engine's basis: the network's conserved components, water last. */
+    List<String> species(){return species;}
 
     /**
      * The network's free water as the engine's {@link FreeWaterModel}: the very methods {@link FluidThermodynamics#state}

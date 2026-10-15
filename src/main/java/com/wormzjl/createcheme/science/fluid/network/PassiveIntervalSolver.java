@@ -70,10 +70,21 @@ public final class PassiveIntervalSolver {
         // Owner decisions D19, D42 and D58: an island nothing can drive by more than the gauge reads is at rest and is not
         // solved (NetworkReduction step 6); a mover refused for the slice moves nothing.
         boolean[] refused=decideInlets(initial,duration);
-        if(Double.isFinite(duration)&&duration>0&&NetworkReduction.atRest(initial,model,null,refused)){SolverDiagnostics.count(SolverDiagnostics.restIntervals);return committedInlets(NetworkReduction.restInterval(initial,duration,refused));}
+        // Owner decision D23 (6): on a package with crystals the refresh runs before the rest test, because a supersaturated
+        // closed tank is not at rest: an island whose refresh froze or melted a crystal (or merged a stock's sizes) is
+        // solved from the refreshed state, its boundaries kept.
+        var refreshed=model.crystalSolids().isEmpty()?null:InventoryEquilibrium.refresh(initial,model,checkpoint);
+        boolean converted=refreshed!=null&&refreshed.converted();
+        if(Double.isFinite(duration)&&duration>0&&!converted&&NetworkReduction.atRest(initial,model,null,refused)){SolverDiagnostics.count(SolverDiagnostics.restIntervals);return committedInlets(NetworkReduction.restInterval(initial,duration,refused));}
+        if(converted)initial=refreshed.graph();
         Result result;
         if(com.wormzjl.createcheme.science.fluid.transport.SolidMobility.monitored(initial)||model.solidSettings.immobileViscosity()<.002&&initial.reservoirs().stream().anyMatch(n->n.state().waterVolume()>0))result=new SolidEventIntegrator(model,this).solve(initial,duration,settings,checkpoint,startingStep);
         else result=integrate(initial,duration,settings,checkpoint,PassiveStepSolver.Acceptance.FULL,StageGuard.NONE,startingStep);
+        if(converted&&!refreshed.boundaries().isEmpty()) {
+            var boundaries=new ArrayList<>(refreshed.boundaries());boundaries.addAll(result.boundaries());
+            result=new Result(result.graph(),result.advancedSeconds(),result.averageMassFlows(),result.acceptedSubsteps(),result.rejectedSubsteps(),result.pumpWorkJoule(),
+                    boundaries,result.rejectionReasons(),result.endpointModes(),result.endpointHeads(),result.endpointFlows(),result.acceptance(),result.pipeTransfers());
+        }
         return committedInlets(result);
     }
     public Result solveApproximate(PassiveNetwork initial,double duration,Settings settings,Runnable checkpoint,StageGuard guard) {
@@ -181,11 +192,13 @@ public final class PassiveIntervalSolver {
         if(!Double.isFinite(duration)||duration<=0)throw new IllegalArgumentException("Positive finite interval required");
         initial=PassiveNetwork.sizeJunctionHoldups(initial,model);
         if(!Double.isFinite(startingStep)||startingStep<=0)throw new IllegalArgumentException("Positive finite starting step required");
-        PassiveNetwork accepted=acceptance==PassiveStepSolver.Acceptance.FULL?InventoryEquilibrium.refresh(initial,model,checkpoint):initial;
+        var refreshed=acceptance==PassiveStepSolver.Acceptance.FULL?InventoryEquilibrium.refresh(initial,model,checkpoint):null;
+        PassiveNetwork accepted=refreshed==null?initial:refreshed.graph();
         // h is the controller's estimate; each attempt uses it truncated to the rest of the interval.
         double elapsed=0,h=Math.min(startingStep,settings.maximumStep);int acceptedCount=0,rejectedCount=0,consecutiveRejects=0;PassiveStepSolver.Result last=null;
         double[] transferred=new double[initial.pipes().size()];
         double work=0;var boundaries=new ArrayList<ConservativeTransport.BoundaryTransfer>();
+        if(refreshed!=null)boundaries.addAll(refreshed.boundaries());
         var pipeTransfers=new PipeTransfer.Accumulator();
         var rejectionReasons=new LinkedHashMap<String,Integer>();
         String lastRejection="";

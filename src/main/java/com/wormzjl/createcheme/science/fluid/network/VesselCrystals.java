@@ -1,0 +1,351 @@
+package com.wormzjl.createcheme.science.fluid.network;
+
+import com.wormzjl.createcheme.science.fluid.solver.PhaseLayout;
+import com.wormzjl.createcheme.science.fluid.solver.SparseNewton;
+import com.wormzjl.createcheme.science.fluid.state.ParticleSize;
+import com.wormzjl.createcheme.science.fluid.state.SolidInventory;
+import com.wormzjl.createcheme.science.fluid.thermo.FluidThermodynamics;
+import com.wormzjl.createcheme.science.fluid.thermo.NetworkCrystals;
+import com.wormzjl.createcheme.science.math.DeterministicMath;
+import com.wormzjl.createcheme.science.thermo.PhaseSupport;
+import java.math.BigDecimal;
+import java.math.MathContext;
+import java.math.RoundingMode;
+import java.util.ArrayList;
+import java.util.List;
+
+/**
+ * The crystal part of a vessel's refresh (owner decisions D22 (5) and D23; plan
+ * {@code documentation/2026-09-24-coolprop-low-temperature/PRECIPITATED_SOLIDS_PLAN.md}): the one place crystal mass
+ * moves. A crystal is a population of the vessel's solids ({@link NetworkCrystals}); inside a step it is inert, and at
+ * each interval and solid-event segment start the vessel's refresh ({@link InventoryEquilibrium#refresh}) equilibrates it
+ * with the vessel's fluid, about 5 s of lag, which the owner accepted.
+ *
+ * <p>Physics. A well-mixed closed tank at fixed energy and volume (a taut wall), or at the ambient pressure and fixed
+ * enthalpy (a slack bag, D54), has one equilibrium; where a crystal is in it, the crystal's chemical potential equals its
+ * component's in the fluid, and the latent heat of the mass that froze or melted is in the tank's energy. So:
+ * <ol>
+ * <li><b>Presence.</b> At the vessel's own closed state (its fluid at its energy and volume, the crystals inert) the
+ * fluid's drive to each crystal, {@code D = ln f_i(fluid) - ln f_s}, is read. A vessel holding no crystal with no positive
+ * drive, or holding its crystals at zero drive ({@link #DEADBAND}), is at its equilibrium and keeps every bit; a vessel at
+ * rest is a fixed point. Otherwise the equilibrium engine's crystal test decides which crystals are present: its answer for
+ * the vessel's fluid and crystals together at fixed volume while the wall is taut and at the ambient pressure while it is
+ * slack (D21's near-pure step in both), switching to the other when a fixed-volume answer lies below the ambient or a
+ * constant-pressure one above the capacity.</li>
+ * <li><b>Amount.</b> Each present crystal's amount is one more unknown of the vessel's own closure, beside its fluid's
+ * ({@link Joint}): the crystal's chemical potential equal to its component's is its row, and the energy and wall rows hold
+ * the crystal's mass at its record's constants (its stored energy and the offset the record carries, its volume). A
+ * crystal the closure would hold below zero mass is absent (it melts entirely), and the closure is solved again without
+ * it.</li>
+ * <li><b>Booking.</b> The vessel's stored energy is its true energy less the crystals' offsets
+ * ({@link com.wormzjl.createcheme.science.material.SolidMaterialCatalog.SolidMaterial.Crystal}), so the offset of the mass
+ * that froze or melted is booked here, and the ambient's work on a moving bag, {@code -P_amb (V_bag - V_bag,0)}, is booked
+ * as the step's transport books it (D54): a boundary transfer of energy alone at the vessel.</li>
+ * <li><b>Size</b> (D23, amended: one size per solid in each stock). Mass that freezes enters at
+ * {@link #precipitateDiameter} of the liquids it stands in after the refresh (the vessel's fluid beside its crystals) and
+ * is merged into the stock's one population of that crystal at the mass-weighted mean
+ * ({@link SolidInventory#oneSizePerSolid}); mass that melts leaves at the stock's size. Not the liquids before the
+ * refresh: there the step carried the crystal's share condensed in the liquid slot ({@code FluidThermodynamics.adopt}),
+ * so frost from a gas would read as a freezing liquid of its own species.</li>
+ * </ol>
+ * A vessel with free water, or above the crystals' ceiling, holds no crystal (D20 (3), D8): its crystals melt into the
+ * fluid. A vessel holding no fluid is main's dry-solids vessel (OD-P4): its crystals have no fluid to exchange with.
+ */
+final class VesselCrystals {
+    private VesselCrystals() {}
+
+    /**
+     * The drive {@code D = ln f_i(fluid) - ln f_s} (owner decision D23) within which a vessel's crystals are at their
+     * equilibrium: a supersaturation of 1e-8 of the fluid's fugacity, three orders above the closure's resolution
+     * ({@link InventoryEquilibrium#CLOSURE}) and far below anything a gauge could tell, so a vessel exactly on its frost
+     * line does not cycle between holding a trace of crystal and none.
+     */
+    static final double DEADBAND=1e-8;
+    /** d_dilute (owner decision D23 (2)): the diameter of a crystal formed in a dilute liquid or from a gas, m. */
+    static final double DILUTE_DIAMETER=2.5e-4;
+    /** The cap of the freezing component's volume share of the liquids (owner decision D23 (1)): the slush. */
+    static final double SLUSH_SHARE=0.5;
+
+    /** A vessel after its crystal refresh: its state, its inventory, and the ambient's work on its wall (J into the vessel). */
+    record Settled(FluidThermodynamics.State state,PassiveNetwork.Inventory inventory,double wallWork) {}
+
+    /**
+     * The crystal refresh of a vessel whose inventory (one size per solid) is {@code inventory} and whose closed state, its
+     * crystals inert, is {@code closed}; null when the vessel is at its crystal equilibrium (or the package admits no
+     * crystal), which leaves it bit for bit.
+     */
+    static Settled settle(FluidThermodynamics model,PassiveNetwork.Inventory inventory,FluidThermodynamics.State closed,Runnable checkpoint) {
+        return settle(model,inventory,closed,true,checkpoint);
+    }
+    /**
+     * Whether crystals compete in a vessel holding {@code inventory} near {@code state}: the package admits them and the
+     * vessel's species, its crystals' included, are dry and carry a crystal's species at or below the crystals' ceiling.
+     */
+    static boolean competes(FluidThermodynamics model,PassiveNetwork.Inventory inventory,FluidThermodynamics.State state) {
+        var crystals=model.crystalSolids();
+        if(crystals.isEmpty()||PhaseLayout.sum(inventory.moles())==0)return false;
+        return model.crystalsCompete(state.temperature(),totals(crystals,inventory,held(crystals,inventory)));
+    }
+    private static double[] held(NetworkCrystals crystals,PassiveNetwork.Inventory inventory) {
+        var all=crystals.all();double[] held=new double[all.size()];
+        for(var population:inventory.solids().crystals())held[all.indexOf(crystals.of(population.material()))]+=population.massKg();
+        return held;
+    }
+    private static double[] totals(NetworkCrystals crystals,PassiveNetwork.Inventory inventory,double[] held) {
+        var all=crystals.all();double[] totals=inventory.moles();
+        for(int k=0;k<all.size();k++)totals[all.get(k).component()]+=all.get(k).moles(held[k]);
+        return totals;
+    }
+    /**
+     * {@link #settle(FluidThermodynamics, PassiveNetwork.Inventory, FluidThermodynamics.State, Runnable)} of a vessel whose
+     * fluid could not be closed on its own ({@code isClosed} false; {@code closed} is then its last state): a fluid far
+     * past its saturation, which the network carries only until this refresh (D23 (5)), may have no fluid-only state the
+     * network can carry (two liquids, a third phase). The crystal test then decides from the inventory alone, with no
+     * drive test, and its answer states the vessel; null where it holds no crystal (the caller keeps the closure's failure).
+     */
+    static Settled settle(FluidThermodynamics model,PassiveNetwork.Inventory inventory,FluidThermodynamics.State closed,boolean isClosed,Runnable checkpoint) {
+        var crystals=model.crystalSolids();
+        if(crystals.isEmpty())return null;
+        var all=crystals.all();int count=all.size();
+        double[] held=held(crystals,inventory);boolean holds=!inventory.solids().crystals().isEmpty();
+        // Main's dry-solids vessel (OD-P4): no fluid for a crystal to exchange its mass with.
+        if(PhaseLayout.sum(inventory.moles())==0)return null;
+        double[] totals=totals(crystals,inventory,held);
+        double t=closed.temperature(),p=closed.pressure(),capacity=inventory.volume();
+        double trueEnergy=inventory.internalEnergy();for(int k=0;k<count;k++)trueEnergy+=held[k]*all.get(k).material().crystal().energyOffset();
+        // Free water or a temperature above the crystals' ceiling: no crystal competes, and what a vessel holds melts.
+        if(!model.crystalsCompete(t,totals))return holds&&isClosed?melt(model,inventory,closed,totals,trueEnergy,checkpoint):null;
+        boolean drive=!isClosed;
+        for(int k=0;k<count&&!drive;k++) {
+            var crystal=all.get(k);
+            double d=crystal.covers(t,p)?drive(closed,crystal,t,p):Double.NEGATIVE_INFINITY;
+            if(held[k]>0?!(Math.abs(d)<=DEADBAND):d>DEADBAND)drive=true;
+        }
+        if(!drive)return null;
+        // The engine decides which crystals are present: fixed volume while the wall is taut, the ambient pressure while it
+        // is slack, switching once to the other where the answer says the wall is on the other branch.
+        var inert=inventory.solids().withoutCrystals();var inertMoments=inert.moments();
+        double crystalEnergy=trueEnergy-inertMoments.internalEnergy(t),bag=PhaseLayout.bagVolume(closed,capacity);
+        boolean warm=holds&&(closed.liquidProperties()==null||closed.vaporProperties()==null||majorSpecies(totals)>=3);
+        boolean taut=PhaseLayout.taut(closed,capacity);FluidThermodynamics.CrystalAnswer answer=null;
+        for(int attempt=0;attempt<2;attempt++) {
+            answer=taut?model.crystalsAtVolume(totals,crystalEnergy,capacity-inertMoments.volume(),warm?t:Double.NaN,warm?p:Double.NaN,checkpoint)
+                    :model.crystalsAtPressure(totals,crystalEnergy+PhaseLayout.AMBIENT_PRESSURE*(bag-inertMoments.volume()),PhaseLayout.AMBIENT_PRESSURE,checkpoint);
+            boolean other=taut?answer.pressure()<PhaseLayout.AMBIENT_PRESSURE:answer.volume()+inertMoments.volume()>capacity;
+            if(!other)break;
+            taut=!taut;
+        }
+        if(!answer.holdsCrystal())return holds&&isClosed?melt(model,inventory,closed,totals,trueEnergy,checkpoint):null;
+        double[] moles=answer.crystalMoles();
+        // The engine's answer holds no fluid: the crystal holds all of its species, which must be all the vessel holds
+        // (traces leave a fluid, D21), and the vessel is a dry-solids vessel.
+        if(answer.fluid()==null)return frozen(model,inventory,closed,all,held,moles,totals,trueEnergy,inert,checkpoint);
+        var present=new ArrayList<NetworkCrystals.Crystal>();var seeds=new ArrayList<Double>();
+        for(int k=0;k<count;k++)if(moles[k]>0){present.add(all.get(k));seeds.add(moles[k]);}
+        while(!present.isEmpty()) {
+            checkpoint.run();
+            var joint=new Joint(model,answer.fluid(),present,seeds,totals,trueEnergy,capacity,bag,inert);
+            var solved=SparseNewton.solve(joint,joint.start(answer.fluid(),seeds),new SparseNewton.Settings(24,InventoryEquilibrium.CLOSURE,1e-6,24),checkpoint).variables();
+            var absent=new ArrayList<NetworkCrystals.Crystal>();
+            for(int j=0;j<present.size();j++)if(!(joint.crystalMoles(solved,j)>0))absent.add(present.get(j));
+            if(absent.isEmpty())return settled(model,inventory,closed,all,held,joint,solved,totals,trueEnergy,bag,inert,checkpoint);
+            // A crystal the closure holds below zero mass is absent: it melts entirely, and the rest are solved again.
+            for(var crystal:absent){int j=present.indexOf(crystal);present.remove(j);seeds.remove(j);}
+        }
+        return holds&&isClosed?melt(model,inventory,closed,totals,trueEnergy,checkpoint):null;
+    }
+
+    /** The fluid's drive to {@code crystal} at {@code state}: {@code ln f_i(fluid) - ln f_s(T, P)}, read in the gas where
+     * the state holds the component there, else in the liquid; minus infinity where the fluid holds none of it. */
+    static double drive(FluidThermodynamics.State state,NetworkCrystals.Crystal crystal,double t,double p) {
+        return logFugacity(state,crystal.component(),state.vaporView()[crystal.component()]>0)-crystal.logFugacityCoefficient(t,p);
+    }
+    /** {@code ln (f_i / P)} of component {@code i} in the state's gas ({@code vapour}) or liquid. */
+    private static double logFugacity(FluidThermodynamics.State state,int i,boolean vapour) {
+        double[] amounts=vapour?state.vaporView():state.liquidView();
+        var phase=vapour?state.vaporProperties():state.liquidProperties();
+        if(phase==null||!(amounts[i]>0))return Double.NEGATIVE_INFINITY;
+        double lnf=DeterministicMath.log(amounts[i]/PhaseLayout.sum(amounts))+phase.logFugacityView()[i];
+        return vapour?lnf+DeterministicMath.log(state.hydrocarbonPartialPressure()/state.pressure()):lnf;
+    }
+
+    /**
+     * The diameter of crystal mass forming beside {@code fluid} (owner decision D23 (1) and (2), Brauner 2001's
+     * dispersed-drop size): {@code d_dilute max(1, 4.04 (phi / (1 - phi))^0.6)}, {@code phi} the crystal component's volume
+     * share of {@code fluid}'s liquids as the crystal ({@code n_i,liquid v_s / V_liquids}), capped at {@link #SLUSH_SHARE},
+     * 0 where no liquid holds it (frost from a gas) or where no fluid is left (null). 0.25 mm up to phi = 0.09, 1.01 mm at the slush. Rounded to
+     * {@link SolidInventory#SIZE_DIGITS} significant digits from the exact double, as a merged size is.
+     */
+    static ParticleSize precipitateDiameter(FluidThermodynamics.State fluid,NetworkCrystals.Crystal crystal) {
+        double liquids=fluid==null?0:fluid.liquidVolume()+fluid.waterVolume(),phi=0;
+        if(liquids>0)phi=Math.min(SLUSH_SHARE,fluid.liquidView()[crystal.component()]*crystal.molarMass()/crystal.material().density()/liquids);
+        double factor=phi>0?4.04*DeterministicMath.pow(phi/(1-phi),.6):0;
+        return size(DILUTE_DIAMETER*Math.max(1,factor));
+    }
+    private static ParticleSize size(double metres) {
+        return new ParticleSize(new BigDecimal(metres).round(new MathContext(SolidInventory.SIZE_DIGITS,RoundingMode.HALF_EVEN)).toString());
+    }
+
+    /** The hydrocarbon species of {@code totals} (water last) above the engine's pseudo-binary trace share, 1e-8 of the
+     * hydrocarbons (P5; the P6b warm start's rule, {@code 4c21104}). */
+    static int majorSpecies(double[] totals) {
+        double sum=0;for(int i=0;i<totals.length-1;i++)sum+=totals[i];
+        int majors=0;for(int i=0;i<totals.length-1;i++)if(totals[i]>1e-8*sum)majors++;
+        return majors;
+    }
+
+    /** Every crystal the vessel holds melts into its fluid: the fluid's closure at the true energy, the ambient's work booked
+     * from the bag volume of {@code closed}. */
+    private static Settled melt(FluidThermodynamics model,PassiveNetwork.Inventory inventory,FluidThermodynamics.State closed,double[] totals,
+                                double trueEnergy,Runnable checkpoint) {
+        double capacity=inventory.volume(),bag=PhaseLayout.bagVolume(closed,capacity);
+        var inert=inventory.solids().withoutCrystals();
+        var state=InventoryEquilibrium.solve(model,closed.withSolids(inert),new PassiveNetwork.Inventory(capacity,totals,trueEnergy,inert),bag,checkpoint);
+        double work=PhaseLayout.AMBIENT_PRESSURE*(PhaseLayout.bagVolume(state,capacity)-bag);
+        return new Settled(state,new PassiveNetwork.Inventory(capacity,totals,trueEnergy-work,inert),-work);
+    }
+
+    /** The engine froze every amount of the vessel into its crystals: a dry-solids vessel at the energy that leaves. */
+    private static Settled frozen(FluidThermodynamics model,PassiveNetwork.Inventory inventory,FluidThermodynamics.State closed,List<NetworkCrystals.Crystal> all,
+                                  double[] held,double[] moles,double[] totals,double trueEnergy,SolidInventory inert,Runnable checkpoint) {
+        double[] left=totals.clone();double[] mass=new double[all.size()];
+        for(int k=0;k<all.size();k++)if(moles[k]>0){int c=all.get(k).component();mass[k]=left[c]*all.get(k).molarMass();left[c]=0;}
+        for(double n:left)if(n!=0)throw new IllegalArgumentException("Crystal equilibrium froze a vessel whose other species need a fluid");
+        var solids=stock(inventory.solids(),inert,null,all,held,mass);
+        double capacity=inventory.volume(),bag=PhaseLayout.bagVolume(closed,capacity);
+        double stored=trueEnergy;for(int k=0;k<all.size();k++)stored-=mass[k]*all.get(k).material().crystal().energyOffset();
+        // A bag holding only solids carries no load: slack at the ambient around the solids' own volume (D54), and the
+        // ambient works on it as it shrinks there.
+        double work=PhaseLayout.AMBIENT_PRESSURE*(solids.volume()-bag);
+        var dry=new PassiveNetwork.Inventory(capacity,left,stored-work,solids);
+        var state=InventoryEquilibrium.close(model,model.solidState(closed.temperature(),PhaseLayout.AMBIENT_PRESSURE,solids),dry,null,Double.NaN,checkpoint);
+        return new Settled(state,dry,-work);
+    }
+
+    /** The converged closure {@code solved} of {@code joint} as the vessel's new inventory and state. */
+    private static Settled settled(FluidThermodynamics model,PassiveNetwork.Inventory inventory,FluidThermodynamics.State closed,List<NetworkCrystals.Crystal> all,
+                                   double[] held,Joint joint,double[] solved,double[] totals,double trueEnergy,double bag,SolidInventory inert,Runnable checkpoint) {
+        double[] left=totals.clone();double[] mass=new double[all.size()];
+        for(int j=0;j<joint.crystals.size();j++) {
+            var crystal=joint.crystals.get(j);int c=crystal.component();
+            double kept=Math.max(0,totals[c]-joint.crystalMoles(solved,j));
+            mass[all.indexOf(crystal)]=(totals[c]-kept)*crystal.molarMass();left[c]=kept;
+        }
+        var beside=ConservativeTransport.repartition(model,joint.fluid(solved),left);
+        var solids=stock(inventory.solids(),inert,beside,all,held,mass);
+        double capacity=inventory.volume();
+        var fluid=beside.withSolids(solids);
+        double work=PhaseLayout.AMBIENT_PRESSURE*(PhaseLayout.bagVolume(fluid,capacity)-bag);
+        double stored=trueEnergy-work;for(int k=0;k<all.size();k++)stored-=mass[k]*all.get(k).material().crystal().energyOffset();
+        var settled=new PassiveNetwork.Inventory(capacity,left,stored,solids);
+        // Restated as every refresh states a vessel, so the next refresh finds it at its fixed point.
+        return new Settled(InventoryEquilibrium.solve(model,fluid,settled,Double.NaN,checkpoint),settled,-work);
+    }
+
+    /**
+     * The stock after the refresh: its inert solids, and each crystal at its new mass {@code mass} (kg): mass that froze
+     * enters at {@link #precipitateDiameter} of {@code fluid}, the fluid beside the crystals after the refresh (null: none),
+     * and is merged into the crystal's population at the stock's mean ({@link SolidInventory#oneSizePerSolid}); mass that
+     * melted leaves at the population's size.
+     */
+    private static SolidInventory stock(SolidInventory before,SolidInventory inert,FluidThermodynamics.State fluid,List<NetworkCrystals.Crystal> all,
+                                        double[] held,double[] mass) {
+        var populations=new ArrayList<>(inert.populations());
+        for(int k=0;k<all.size();k++) {
+            var crystal=all.get(k);ParticleSize size=before.size(crystal.material().id());
+            if(mass[k]<=held[k]){if(mass[k]>0)populations.add(new SolidInventory.Population(crystal.material(),size,mass[k]));continue;}
+            if(held[k]>0)populations.add(new SolidInventory.Population(crystal.material(),size,held[k]));
+            populations.add(new SolidInventory.Population(crystal.material(),precipitateDiameter(fluid,crystal),mass[k]-held[k]));
+        }
+        return new SolidInventory(populations).oneSizePerSolid();
+    }
+
+    /**
+     * A vessel's closure with its present crystals' amounts as unknowns (owner decision D23): the fluid's own layout
+     * ({@link PhaseLayout}, no solid unknowns) and one amount per crystal (moles over the layout's amount scale); the
+     * layout's rows (component balances, energy with the wall's work, the wall, phase equilibrium) stated for a vessel
+     * holding the inert solids and the crystals at those amounts, the fluid's targets less the crystals' moles and the
+     * stored energy's target less their offsets, then one row per crystal: its chemical potential equal to its
+     * component's, {@code ln f_i(fluid) - ln f_s = 0} ({@link #drive}). A crystal amount may go below zero in a trial (the
+     * crystal is then absent, which the caller reads).
+     */
+    private static final class Joint implements SparseNewton.Equations {
+        private final FluidThermodynamics model;
+        private final PhaseLayout layout;
+        final List<NetworkCrystals.Crystal> crystals;
+        private final double[] totals,crystalScale;
+        private final boolean[] vapourRow;
+        private final double trueEnergy,capacity,workFrom;
+        private final SolidInventory inert;
+        private final SolidInventory.Moments inertMoments;
+        private final int fluidSize;
+        private volatile FluidThermodynamics.Prepared prepared;
+        /** The wall's branches of the Jacobian in use (decision A423), as {@link PhaseLayout#wallClosure} keeps them. */
+        private PhaseLayout.Wall sweeping,built;
+
+        Joint(FluidThermodynamics model,FluidThermodynamics.State seed,List<NetworkCrystals.Crystal> crystals,List<Double> seeds,double[] totals,
+              double trueEnergy,double capacity,double workFrom,SolidInventory inert) {
+            this.model=model;this.crystals=List.copyOf(crystals);this.totals=totals;this.trueEnergy=trueEnergy;this.capacity=capacity;this.workFrom=workFrom;
+            this.inert=inert;inertMoments=inert.moments();
+            layout=new PhaseLayout(model,seed,null,null,PhaseLayout.support(seed,null,model.traceTruncation(),null),false);
+            fluidSize=layout.size();crystalScale=new double[crystals.size()];vapourRow=new boolean[crystals.size()];
+            for(int j=0;j<crystals.size();j++) {
+                int c=crystals.get(j).component();var support=layout.support(c);
+                if(support==PhaseSupport.ABSENT)throw new IllegalArgumentException("Crystal "+crystals.get(j).material().id()+" beside a fluid that holds none of its species");
+                vapourRow[j]=support.vapor();crystalScale[j]=Math.max(1e-6,seeds.get(j)/layout.amountScale());
+            }
+        }
+        double[] start(FluidThermodynamics.State seed,List<Double> seeds) {
+            double[] x=new double[size()];System.arraycopy(layout.encode(seed),0,x,0,fluidSize);
+            for(int j=0;j<seeds.size();j++)x[fluidSize+j]=seeds.get(j)/layout.amountScale();
+            return x;
+        }
+        double crystalMoles(double[] x,int j){return x[fluidSize+j]*layout.amountScale();}
+        FluidThermodynamics.State fluid(double[] x){return layout.decode(x,0,prepare(x));}
+        @Override public int size(){return fluidSize+crystals.size();}
+        @Override public double differenceScale(int column,double value) {
+            return column<fluidSize?layout.differenceStepScale(column,value):Math.max(Math.abs(value),crystalScale[column-fluidSize]);
+        }
+        @Override public double maximumStep(double[] x,double[] direction) {
+            double alpha=1;for(int c=0;c<fluidSize;c++)if(layout.totalAmountVariable(c)&&x[c]>0&&direction[c]<0)alpha=Math.min(alpha,.99*x[c]/-direction[c]);
+            return alpha;
+        }
+        @Override public int[][] columnRows(){int[][] rows=new int[size()][size()];for(int[] column:rows)for(int i=0;i<column.length;i++)column[i]=i;return rows;}
+        @Override public void linearising(double[] x){built=sweeping=PhaseLayout.wall(trial(fluid(x),x),capacity);}
+        @Override public void linearised(){sweeping=null;}
+        @Override public boolean linearisationHolds(double[] builtAt,double[] now){return built==null||built.equals(PhaseLayout.wall(trial(fluid(now),now),capacity));}
+        @Override public double[] residual(double[] x) {
+            var local=prepare(x);var fluid=layout.decode(x,0,local);var state=trial(fluid,x);
+            double[] targets=totals.clone();double energy=trueEnergy;
+            for(int j=0;j<crystals.size();j++) {
+                var crystal=crystals.get(j);double moles=crystalMoles(x,j);
+                targets[crystal.component()]-=moles;energy-=moles*crystal.molarMass()*crystal.material().crystal().energyOffset();
+            }
+            double[] f=new double[size()];
+            layout.residual(state,targets,energy,capacity,workFrom,f,0,x,local,sweeping);
+            double t=fluid.temperature(),p=fluid.pressure();
+            for(int j=0;j<crystals.size();j++)f[fluidSize+j]=logFugacity(fluid,crystals.get(j).component(),vapourRow[j])-crystals.get(j).logFugacityCoefficient(t,p);
+            return f;
+        }
+        /** The vessel of fluid {@code fluid} holding its inert solids and the crystals at the amounts of {@code x}: a trial only,
+         * whose volume, energies and mass carry the crystals (a crystal amount below zero included) and whose solid record
+         * the inert solids'. */
+        private FluidThermodynamics.State trial(FluidThermodynamics.State fluid,double[] x) {
+            var base=inert.empty()?fluid:fluid.withSolidState(inert,inertMoments);
+            double t=fluid.temperature(),p=fluid.pressure(),volume=0,energy=0,mass=0;
+            for(int j=0;j<crystals.size();j++) {
+                var material=crystals.get(j).material();double m=crystalMoles(x,j)*crystals.get(j).molarMass();
+                volume+=m/material.density();energy+=m*material.specificInternalEnergy(t);mass+=m;
+            }
+            return new FluidThermodynamics.State(t,p,base.liquidView(),base.vaporView(),base.waterLiquid(),base.waterVapor(),base.hydrocarbonPartialPressure(),
+                    base.waterPartialPressure(),base.volume()+volume,base.enthalpy()+energy+p*volume,base.internalEnergy()+energy,base.mass()+mass,
+                    base.liquidVolume(),base.waterVolume(),base.vaporVolume(),base.liquidProperties(),base.vaporProperties(),base.solids(),base.solidMoments(),
+                    base.waterCompressibility());
+        }
+        private FluidThermodynamics.Prepared prepare(double[] x) {
+            double temperature=layout.temperature(x,0);var local=prepared;
+            if(local==null||local.temperature()!=temperature)prepared=local=model.prepare(temperature);
+            return local;
+        }
+    }
+}

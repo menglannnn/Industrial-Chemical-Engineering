@@ -608,6 +608,16 @@ public final class FluidTpEquilibrium implements EquilibriumService {
     }
 
     /**
+     * The anchored crystal {@code id} of this service (its integration constants solved once at construction), or
+     * {@code null} when the service has no evaluator for it: the one view of the crystal a consumer compares chemical
+     * potentials with, so its answers and this service's agree (the fluid network's vessel refresh, D23).
+     */
+    public CrystalPhaseEvaluator.Anchored anchoredCrystal(String id) {
+        Crystal c = crystalById(id);
+        return c == null ? null : c.anchored();
+    }
+
+    /**
      * The range of a crystal's species under a competition with that crystal: the fluid range's pressure bounds and
      * temperature ceiling intersected with the crystal's range, and the temperature floor lowered to the larger of the
      * crystal's and the species' ideal-gas floor (P4 stage 2a: below its triple point the species is admitted because

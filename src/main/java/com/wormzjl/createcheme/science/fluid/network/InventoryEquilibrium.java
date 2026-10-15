@@ -1,6 +1,7 @@
 package com.wormzjl.createcheme.science.fluid.network;
 
 import com.wormzjl.createcheme.science.fluid.solver.*;
+import com.wormzjl.createcheme.science.fluid.state.SolidInventory;
 import com.wormzjl.createcheme.science.fluid.thermo.FluidThermodynamics;
 import com.wormzjl.createcheme.science.thermo.PhaseSupport;
 import java.util.*;
@@ -9,16 +10,71 @@ import java.util.function.UnaryOperator;
 /** Refreshes a derived state from conserved inventory before an interval, never inside a network residual. */
 public final class InventoryEquilibrium {
     private InventoryEquilibrium() {}
-    public static PassiveNetwork refresh(PassiveNetwork graph,FluidThermodynamics model,Runnable checkpoint) {
-        var nodes=new ArrayList<PassiveNetwork.Reservoir>();boolean changed=false;
+    /**
+     * An island after its refresh: {@code graph}, the island itself where nothing moved; {@code boundaries}, the ambient's
+     * work on the bags whose crystals froze or melted (decision D54, booked at the vessel as the step's transport books
+     * it); {@code converted}, whether any stock changed (a crystal froze or melted, or a stock's sizes of one solid were
+     * merged), in which case the island is not at rest.
+     */
+    public record Refreshed(PassiveNetwork graph,List<ConservativeTransport.BoundaryTransfer> boundaries,boolean converted) {
+        public Refreshed{boundaries=List.copyOf(boundaries);}
+    }
+    /**
+     * The island's states from what it holds, at an interval or solid-event segment start: each vessel's state closed to
+     * its inventory ({@link #solve}), then its crystals equilibrated with its fluid ({@link VesselCrystals}, owner decision
+     * D23: the one place crystal mass moves), and every stock reduced to one size per solid (D23, amended 2026-10-15:
+     * {@link SolidInventory#oneSizePerSolid}): the vessels, the junction buffers and the filter cakes. A stock already
+     * holding one size per solid, a vessel at its crystal equilibrium and an island of fluids only keep every bit.
+     */
+    public static Refreshed refresh(PassiveNetwork graph,FluidThermodynamics model,Runnable checkpoint) {
+        var nodes=new ArrayList<PassiveNetwork.Reservoir>();var boundaries=new ArrayList<ConservativeTransport.BoundaryTransfer>();
+        boolean changed=false,converted=false;
         for(var node:graph.reservoirs()) {
-            checkpoint.run();FluidThermodynamics.State state;
-            // A committed inventory the property domain refuses names its node; see ThermoDomainViolation.
-            try{state=node.fixed()||node.junction()||node.empty()?node.state():solve(model,node.state(),node.inventory(),Double.NaN,checkpoint);}
-            catch(com.wormzjl.createcheme.science.fluid.thermo.ThermoDomainViolation violation){throw violation.at(node.id());}
-            changed|=state!=node.state();nodes.add(new PassiveNetwork.Reservoir(node.id(),node.elevation(),state,node.kind(),node.inventory()));
+            checkpoint.run();PassiveNetwork.Reservoir refreshed;
+            // A committed inventory the property domain refuses, or whose phases the network holds on, names its node;
+            // see ThermoHold.
+            try{refreshed=refresh(node,model,boundaries,checkpoint);}
+            catch(com.wormzjl.createcheme.science.fluid.thermo.ThermoHold hold){throw hold.at(node.id());}
+            changed|=refreshed!=node;converted|=refreshed.inventory()!=node.inventory();nodes.add(refreshed);
         }
-        return changed?new PassiveNetwork(nodes,graph.pipes(),graph.scheduledTransfers()):graph;
+        var pipes=graph.pipes();List<PassiveNetwork.Pipe> merged=null;
+        for(int i=0;i<pipes.size();i++) {
+            var filter=pipes.get(i).filter();if(filter==null)continue;
+            var cake=filter.captured().oneSizePerSolid();if(cake==filter.captured())continue;
+            if(merged==null)merged=new ArrayList<>(pipes);
+            merged.set(i,pipes.get(i).withFilter(new InlineFilter(filter.capacity(),filter.cleanResistance(),cake,filter.energyJoule(),filter.stoppedAtCapacity())));
+        }
+        if(merged!=null)changed=converted=true;
+        return new Refreshed(changed?new PassiveNetwork(nodes,merged==null?pipes:merged,graph.scheduledTransfers()):graph,boundaries,converted);
+    }
+    /** One node of {@link #refresh}; the ambient's work on a vessel whose bag moved is added to {@code boundaries}. */
+    private static PassiveNetwork.Reservoir refresh(PassiveNetwork.Reservoir node,FluidThermodynamics model,List<ConservativeTransport.BoundaryTransfer> boundaries,
+                                                    Runnable checkpoint) {
+        if(node.fixed()||node.empty())return node;
+        var inventory=node.inventory();var solids=inventory.solids().oneSizePerSolid();
+        if(solids!=inventory.solids())inventory=new PassiveNetwork.Inventory(inventory.volume(),inventory.moles(),inventory.internalEnergy(),solids);
+        if(node.junction()) {
+            // A junction's buffer is a stock of its solids; its state carries the same populations at its own amount scale.
+            if(inventory==node.inventory())return node;
+            var held=node.state().solids();
+            var state=held.empty()?node.state():node.state().withSolids(solids.scale(held.massKg()/solids.massKg()));
+            return new PassiveNetwork.Reservoir(node.id(),node.elevation(),state,node.kind(),inventory);
+        }
+        FluidThermodynamics.State state=null;RuntimeException unclosed=null;
+        try{state=solve(model,node.state(),inventory,Double.NaN,checkpoint);}
+        catch(SparseNewton.Nonconvergence|FluidThermodynamics.PhaseHold failure) {
+            // A fluid far past a crystal's saturation (it arrived within the interval, D23 (5)) may have no fluid-only state
+            // the network carries: the crystal test states the vessel from its inventory, or the failure stands.
+            if(!VesselCrystals.competes(model,inventory,node.state()))throw failure;
+            unclosed=failure;
+        }
+        var settled=state!=null?VesselCrystals.settle(model,inventory,state,checkpoint):VesselCrystals.settle(model,inventory,node.state(),false,checkpoint);
+        if(state==null){if(settled==null)throw unclosed;state=settled.state();}
+        if(settled!=null) {
+            state=settled.state();inventory=settled.inventory();
+            if(settled.wallWork()!=0)boundaries.add(new ConservativeTransport.BoundaryTransfer(node.id(),new double[inventory.moles().length],settled.wallWork()));
+        }
+        return state==node.state()&&inventory==node.inventory()?node:new PassiveNetwork.Reservoir(node.id(),node.elevation(),state,node.kind(),inventory);
     }
     /** The state of a vessel's inventory, with the wall work of a step booked from the bag volume {@code workFrom}
      * ({@link PhaseLayout#balanceRows}; {@code NaN}: none). */

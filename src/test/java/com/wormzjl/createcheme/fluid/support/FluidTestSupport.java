@@ -109,7 +109,7 @@ public final class FluidTestSupport {
                                                            PassiveNetwork.Inventory inventory) {
         var vessel = new PassiveNetwork.Reservoir(1, 0, previous, PassiveNetwork.NodeKind.RESERVOIR, inventory);
         return com.wormzjl.createcheme.science.fluid.network.InventoryEquilibrium
-                .refresh(new PassiveNetwork(List.of(vessel), List.of()), model, () -> {}).reservoirs().getFirst().state();
+                .refresh(new PassiveNetwork(List.of(vessel), List.of()), model, () -> {}).graph().reservoirs().getFirst().state();
     }
 
     /** Retains the production nitrogen-initialization path used by world fixtures. */

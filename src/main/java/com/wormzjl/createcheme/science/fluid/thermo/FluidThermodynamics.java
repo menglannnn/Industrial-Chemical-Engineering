@@ -135,6 +135,103 @@ public final class FluidThermodynamics {
         }
         return engine;
     }
+    /** The package's crystals as solids ({@link NetworkCrystals}); built with the phase engine on first use, empty (and no
+     * engine built) on a package without a crystal competition. */
+    private volatile NetworkCrystals crystalSolids;
+    public NetworkCrystals crystalSolids() {
+        if(crystalIds.isEmpty())return NetworkCrystals.NONE;
+        var crystals=crystalSolids;
+        if(crystals==null)synchronized(this) {
+            crystals=crystalSolids;
+            if(crystals==null)crystalSolids=crystals=NetworkCrystals.of(this,phaseEngine(),crystalIds,hydrocarbon.propertyPackage().id());
+        }
+        return crystals;
+    }
+    /**
+     * The crystal answer of a vessel's refresh (owner decision D23): the equilibrium engine's answer for the vessel's fluid
+     * and crystals together, the package's crystals competing, as the network states it. {@code temperature} and
+     * {@code pressure} are the answer's; {@code fluid} its fluid phases as a network state without solids (null where the
+     * crystals hold everything); {@code crystalMoles} the moles each of the package's crystals holds
+     * ({@link NetworkCrystals#all} order, all zero where no crystal is stable); {@code volume} the fluid's and the
+     * crystals' volume, the crystals in the engine's own model.
+     */
+    public record CrystalAnswer(double temperature,double pressure,State fluid,double[] crystalMoles,double volume) {
+        public CrystalAnswer{crystalMoles=crystalMoles.clone();}
+        @Override public double[] crystalMoles(){return crystalMoles.clone();}
+        /** Whether a crystal is stable in this answer. */
+        public boolean holdsCrystal(){for(double n:crystalMoles)if(n>0)return true;return false;}
+    }
+    /**
+     * The crystal test of a taut vessel (D23, with D21's near-pure step): the equilibrium of {@code totals} (the conserved
+     * basis, water last; dry) with the crystals competing at internal energy {@code energy} (J, the network's datum: the
+     * fluid's and the crystals' true energy, every inert solid's excluded) and volume {@code volume} (m3, the bag less the
+     * inert solids), warm-started at {@code (hintT, hintP)} when both are finite. {@code checkpoint} runs as for
+     * {@link #equilibriumTP}. Refusals are typed where the engine types them: outside the domain the
+     * {@link ThermoDomainViolation}, a phase set the engine does not implement or a crystal step it does not answer the
+     * {@link UnsupportedPhases} of kind {@code CRYSTAL_PHASES} or {@code CRYSTAL_STEP}, the critical band's
+     * {@link CriticalBandHold}; any other failure is a plain {@link IllegalArgumentException}.
+     */
+    public CrystalAnswer crystalsAtVolume(double[] totals,double energy,double volume,double hintT,double hintP,Runnable checkpoint) {
+        checkpoint.run();
+        var result=phaseEngine().crystalUv(engineEnergy(energy,totals),volume,totals,hintT,hintP);
+        for(int evaluation=result.diagnostics().kernelEvaluations();evaluation>0;evaluation--)checkpoint.run();
+        return crystalAnswer(result,totals);
+    }
+    /** {@link #crystalsAtVolume} for a slack vessel: the equilibrium at {@code pressure} (the ambient) with enthalpy
+     * {@code enthalpy} (J, the network's datum, the fluid's and the crystals' only). */
+    public CrystalAnswer crystalsAtPressure(double[] totals,double enthalpy,double pressure,Runnable checkpoint) {
+        checkpoint.run();
+        var result=phaseEngine().ph(pressure,engineEnergy(enthalpy,totals),totals,true);
+        for(int evaluation=result.diagnostics().kernelEvaluations();evaluation>0;evaluation--)checkpoint.run();
+        return crystalAnswer(result,totals);
+    }
+    /** A network-datum energy of {@code totals} on the engine's datum (D10): the formation enthalpies added per species. */
+    private double engineEnergy(double energy,double[] totals) {
+        var spine=hydrocarbon.spine().orElseThrow(()->new IllegalStateException("Crystals compete on a spine package only"));
+        var formation=spine.formationReference();
+        return EnergyReference.sensible(formation.components()).rebase(energy,Arrays.copyOf(totals,hydrocarbon.componentCount()),formation);
+    }
+    private CrystalAnswer crystalAnswer(EquilibriumResult result,double[] totals) {
+        var crystals=crystalSolids();
+        switch(result.status()) {
+            case CONVERGED->{}
+            case OUT_OF_DOMAIN->throw result.violation();
+            case UNSUPPORTED->{
+                if(result.detail().startsWith(EquilibriumResult.CRYSTAL_PHASES))throw new UnsupportedPhases(domain.packageId(),Double.NaN,Double.NaN,
+                        UnsupportedPhases.Kind.CRYSTAL_PHASES,"a crystal beside a phase set the engine does not implement ("+result.detail()+")");
+                throw new IllegalStateException("The network's equilibrium engine refused a crystal request it must answer: "+result.detail());
+            }
+            case NOT_CONVERGED->{
+                if(result.detail().startsWith(EquilibriumResult.CRYSTAL_STEP))throw new UnsupportedPhases(domain.packageId(),Double.NaN,Double.NaN,
+                        UnsupportedPhases.Kind.CRYSTAL_STEP,"a near-pure feed's crystal step the pure species' step does not answer ("+result.detail()+")");
+                if(result.diagnostics().criticalBand())throw new CriticalBandHold(domain.packageId(),Double.NaN,Double.NaN,result.detail());
+                throw new IllegalArgumentException("Crystal equilibrium did not converge: "+result.detail());
+            }
+        }
+        var first=result.phases().getFirst();double t=first.temperature(),p=first.pressure();
+        if(result.classification()==EquilibriumResult.Classification.LIQUID_LIQUID)throw new UnsupportedPhases(domain.packageId(),t,p,UnsupportedPhases.Kind.LIQUID_LIQUID,
+                "a liquid-liquid split (two liquid-like hydrocarbon phases); the fluid network carries one hydrocarbon liquid");
+        var all=crystals.all();double[] moles=new double[all.size()];double volume=0;
+        int n=hydrocarbon.componentCount();double[] liquid=new double[n],vapor=new double[n];boolean fluid=false,liquidSlot=false,vaporSlot=false;
+        var terms=hydrocarbon.prepare(t);
+        for(var phase:result.phases()) {
+            if(phase.kind()==PhaseKind.SOLID) {
+                int k=-1;for(int i=0;i<all.size();i++)if(all.get(i).material().id().equals(phase.crystal()))k=i;
+                if(k<0)throw new IllegalStateException("The engine answered crystal "+phase.crystal()+", which the network does not carry");
+                moles[k]+=phase.amount(all.get(k).component());volume+=phase.total()*phase.state().molarVolume();continue;
+            }
+            boolean toLiquid=switch(phase.kind()) {
+                case LIQUID->true;
+                case VAPOR->false;
+                default->HydrocarbonModel.liquidLike(hydrocarbon.translated().evaluateValues(t,p,Arrays.copyOf(phase.amountsView(),n),phase.state().root(),terms));
+            };
+            if(toLiquid?liquidSlot:vaporSlot)throw new UnsupportedPhases(domain.packageId(),t,p,UnsupportedPhases.Kind.CRYSTAL_PHASES,"two fluid phases of one slot beside a crystal");
+            if(toLiquid)liquidSlot=true;else vaporSlot=true;
+            System.arraycopy(phase.amountsView(),0,toLiquid?liquid:vapor,0,n);fluid=true;
+        }
+        State state=fluid?state(t,p,liquid,vapor,0,0,p,terms,null):null;
+        return new CrystalAnswer(t,p,state,moles,volume+(state==null?0:state.volume()));
+    }
     /** Where this model may evaluate a state: the package envelope and every component's range, from the package's data. */
     public FluidDomain domain(){return domain;}
     private final FluidDomain domain;
@@ -803,7 +900,7 @@ public final class FluidThermodynamics {
      * 10 MPa envelope), and {@code t} is at or below the crystals' ceiling (above it the fluid ranges apply and no
      * crystal is stable). Otherwise fluid-only.
      */
-    boolean crystalsCompete(double t,double[] overall) {
+    public boolean crystalsCompete(double t,double[] overall) {
         if(crystalIds.isEmpty()||overall[overall.length-1]!=0||!(t<=crystalCeiling))return false;
         for(int i=0;i<crystalSpecies.length;i++)if(crystalSpecies[i]&&overall[i]>0)return true;
         return false;
@@ -962,10 +1059,14 @@ public final class FluidThermodynamics {
             /** The engine's typed {@link EquilibriumResult#CRYSTAL_PHASES} hold under the crystal competition (two liquids
              * beside the crystal, three fluid phases beside it, two crystals); the engine's reason is
              * {@code NOT_IMPLEMENTED}. */
-            CRYSTAL_PHASES;
+            CRYSTAL_PHASES,
+            /** The engine's typed {@link EquilibriumResult#CRYSTAL_STEP} hold of a vessel refresh's crystal answer (D21 option
+             * C): a near-pure feed's crystal step the pure species' step does not answer; another attempt at the same
+             * material meets the same step, so the island holds at once. */
+            CRYSTAL_STEP;
             /** The equilibrium service's reason for this kind. */
             EquilibriumResult.UnsupportedReason reason() {
-                return this==CRYSTAL_PHASES?EquilibriumResult.UnsupportedReason.NOT_IMPLEMENTED:EquilibriumResult.UnsupportedReason.PHASE_COMPETITION_NOT_QUALIFIED;
+                return this==CRYSTAL_PHASES||this==CRYSTAL_STEP?EquilibriumResult.UnsupportedReason.NOT_IMPLEMENTED:EquilibriumResult.UnsupportedReason.PHASE_COMPETITION_NOT_QUALIFIED;
             }
         }
         private final Kind kind;
@@ -991,6 +1092,7 @@ public final class FluidThermodynamics {
                 case LIQUID_LIQUID->"two hydrocarbon liquids, which the network does not carry";
                 case THREE_PHASES->"a third fluid phase, which the network does not carry";
                 case CRYSTAL_PHASES->"a crystal beside a phase set the equilibrium engine does not implement";
+                case CRYSTAL_STEP->"a near-pure crystal step the equilibrium engine does not answer";
             };
         }
     }
