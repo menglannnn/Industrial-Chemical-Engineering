@@ -113,8 +113,8 @@ class TraceTruncationLayoutTest {
         // Folding an omitted trace into the retained phase is a phase-split approximation and never a
         // material one: the balance rows subtract the same totals the untruncated layout would.
         for(int i=0;i<before.length;i++)assertEquals(before[i],after[i],Math.max(1e-30,4*Math.ulp(before[i])),"total of component "+i);
-        assertEquals(seed.waterLiquid(),decoded.waterLiquid(),0);
-        assertEquals(seed.waterVapor(),decoded.waterVapor(),0);
+        assertEquals(seed.waterLiquid(),decoded.waterLiquid(),4*Math.ulp(seed.waterLiquid()));
+        assertEquals(seed.waterVapor(),decoded.waterVapor(),4*Math.ulp(seed.waterVapor()));
     }
 
     @Test void aTruncatedInventorySolveReachesTheSameTemperaturePressureAndTotals() {

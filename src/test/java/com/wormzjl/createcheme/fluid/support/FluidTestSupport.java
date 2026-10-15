@@ -100,6 +100,18 @@ public final class FluidTestSupport {
                 new PassiveNetwork.Inventory(spec.volume(),com.wormzjl.createcheme.science.fluid.solver.PhaseLayout.totalAmounts(state),state.internalEnergy(),state.solids()));
     }
 
+    /**
+     * The state a closed vessel holds at {@code inventory} (its amounts, internal energy and capacity), started from
+     * {@code previous}: the network's own energy-volume solve, through its public entry, the interval-start refresh
+     * ({@code InventoryEquilibrium.refresh}) of a one-vessel graph.
+     */
+    public static FluidThermodynamics.State inventoryState(FluidThermodynamics model, FluidThermodynamics.State previous,
+                                                           PassiveNetwork.Inventory inventory) {
+        var vessel = new PassiveNetwork.Reservoir(1, 0, previous, PassiveNetwork.NodeKind.RESERVOIR, inventory);
+        return com.wormzjl.createcheme.science.fluid.network.InventoryEquilibrium
+                .refresh(new PassiveNetwork(List.of(vessel), List.of()), model, () -> {}).reservoirs().getFirst().state();
+    }
+
     /** Retains the production nitrogen-initialization path used by world fixtures. */
     public static FluidThermodynamics.State nitrogenCharge(
             FluidThermodynamics model, double volume, double temperature, double pressure) {

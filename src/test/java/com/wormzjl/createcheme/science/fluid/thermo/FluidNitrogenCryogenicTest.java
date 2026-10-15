@@ -10,11 +10,14 @@ import static org.junit.jupiter.api.Assertions.*;
  * Nitrogen is valid - not merely allowed - from its triple point to the package maximum (F4, T1.3). Every reference is
  * the NIST WebBook (Span et al. 2000 equation of state; Lemmon and Jacobsen 2004 transport) as fetched into
  * {@code documentation/fluid-followups/f4-logs/nist/}. The model is the network's own: PR78 with CoolProp constants, the
- * liquid at the 2 MPa reference carried to the state by the global compressibility (1e-9 1/Pa), the translation anchored
- * at the NIST liquid volume at 90 K and 2 MPa, the NIST Shomate-based fit above 273.16 K and the F4 segment below it.
+ * liquid at the state pressure (the direct liquid path of P3 WP4; before it, the 2 MPa reference carried by a global
+ * 1e-9 1/Pa compressibility), the translation anchored at the NIST liquid volume at 90 K and 2 MPa at that state, the
+ * NIST Shomate-based fit above 273.16 K and the F4 segment below it.
  *
- * <p>Tolerances are chosen from the measured numbers, not beyond them: saturation pressure measured +1.23 % (PR78 with
- * CoolProp's acentric factor; tolerance 1.5 %), saturated liquid density +0.34 % (tolerance 0.5 %), vapour Cp at 1 atm
+ * <p>Tolerances are chosen from the measured numbers, not beyond them: saturation pressure measured +1.21 % (PR78 with
+ * CoolProp's acentric factor; tolerance 1.5 %; +1.23 % on the retired 2 MPa path), saturated liquid density -0.07 %
+ * (tolerance 0.5 %; +0.34 % on the retired path, whose global 1e-9 1/Pa expanded the liquid too little from 2 MPa to
+ * 101 kPa), vapour Cp at 1 atm
  * -0.99 % at 100 K and +0.03 % at 200 K (tolerance 1 %, the brief's; at 100 K PR78's residual heat capacity near
  * saturation is 0.3 J/mol/K low, the ideal-gas part matches NIST to 0.01 %).
  */
@@ -105,7 +108,8 @@ class FluidNitrogenCryogenicTest {
     @Test void theNetworkPackageDeclaresTheNitrogenTriplePointAsItsMinimum() {
         var envelope=catalog.fluidValidity(NETWORK).orElseThrow();var own=catalog.fluidValidity(NETWORK,"Nitrogen").orElseThrow();
         assertEquals(63.151,envelope.minimumTemperature());assertEquals(63.151,own.minimumTemperature());
-        assertEquals(900,envelope.maximumTemperature());assertEquals(100,envelope.minimumPressure());assertEquals(2e6,envelope.maximumPressure());
+        // 10 MPa since P3 WP7 (design section 8.1: nitrogen and the network envelope widened; the cuts keep 2 MPa).
+        assertEquals(900,envelope.maximumTemperature());assertEquals(100,envelope.minimumPressure());assertEquals(1e7,envelope.maximumPressure());
         assertEquals(63.151,catalog.requirePackage(NETWORK).properties().get(nitrogen).minimumTemperature(),"the record's own range starts at its triple point");
         // A vapour just above the triple point at 5 kPa (below its 12.5 kPa saturation pressure) is a state; just below is not.
         double[] n=new double[model.componentCount()];n[nitrogen]=1;

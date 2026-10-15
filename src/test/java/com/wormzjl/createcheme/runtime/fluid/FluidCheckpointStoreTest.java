@@ -18,7 +18,7 @@ import org.junit.jupiter.api.io.TempDir;
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
- * Checkpoint format 8 through its real layout on a temporary directory (F3): the core record as the world's saved
+ * Checkpoint format 9 through its real layout on a temporary directory (F3): the core record as the world's saved
  * data file, the island and topology units in pack files beside it. Minecraft's save path round-trips clocks,
  * inventories, fences, pending events, certificates and held islands; a save writes only the units of islands
  * that changed; a crash between a pack and its core record leaves the previous checkpoint in force; a commit built on
@@ -77,7 +77,7 @@ class FluidCheckpointStoreTest extends CertifyingRig.Islands {
     /**
      * Minecraft's save path (SavedData.save(File)) writes the core record and one pack; a fresh store reading the files
      * gives back clocks (the held island's retry tick too), inventories bit for bit, fences, statuses, the last results,
-     * a queued topology event and the no-flow and moving certificates exactly; the core record carries format 8, the
+     * a queued topology event and the no-flow and moving certificates exactly; the core record carries format 9, the
      * epoch and one certificate kind; and the loaded checkpoint saves back to the same core record without encoding.
      */
     @Test void clocksFencesEventsCertificatesAndHeldIslandsRoundTripThroughTheFiles() throws IOException {
@@ -103,11 +103,11 @@ class FluidCheckpointStoreTest extends CertifyingRig.Islands {
         assertEquals(Set.of("fluid-1.pack"),packs(folder),"one pack: every unit of the first save");assertTrue(Files.exists(core(folder)));
         assertEquals(5,data.lastSave().payloadsEncoded());assertTrue(data.lastSave().topologyEncoded());
         var tag=NbtIo.readCompressed(core(folder),NbtAccounter.unlimitedHeap()).getCompound("data");
-        assertEquals(8,tag.getInt("FluidFormat"));assertEquals(1_234,tag.getLong("Epoch"));
+        assertEquals(9,tag.getInt("FluidFormat"));assertEquals(1_234,tag.getLong("Epoch"));
         var rows=tag.getCompound("Islands");
         assertEquals(FluidCheckpointCodec.AWAKE,rows.getLongArray("Base")[CheckpointImages.row(tag,4)]);
         assertEquals(checkpoint.islands().get(1).snapshot().certificate().orElseThrow().baseTick(),rows.getLongArray("Base")[CheckpointImages.row(tag,2)]);
-        assertFalse(rows.contains("Kind"),"format 8, like 5 to 7, has one certificate kind and no kind column");
+        assertFalse(rows.contains("Kind"),"format 9, like 5 to 8, has one certificate kind and no kind column");
         assertEquals(0.0,checkpoint.islands().get(1).snapshot().certificate().orElseThrow().drift(),"the closed pair's certificate is the identity map, drift 0");
 
         var loaded=FluidSavedData.read(directory(folder),key->model).orElseThrow();

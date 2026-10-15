@@ -149,9 +149,9 @@ class FluidCheckpointFormatTest extends CertifyingRig.Islands {
         assertTrue(assertThrows(IllegalArgumentException.class,()->FluidCheckpointCodec.decode(truncated,key->model)).getMessage().contains("Invalid saved unit of island 2"));
         var trailing=CheckpointImages.withUnit(image,2,Arrays.copyOf(bytes,bytes.length+3));
         assertTrue(assertThrows(IllegalArgumentException.class,()->FluidCheckpointCodec.decode(trailing,key->model)).getMessage().contains("trailing bytes"));
-        var otherFormat=bytes.clone();otherFormat[4]=2;
+        var otherFormat=bytes.clone();otherFormat[4]=1;
         var refused=assertThrows(IllegalArgumentException.class,()->FluidCheckpointCodec.decode(CheckpointImages.withUnit(image,2,otherFormat),key->model)).getMessage();
-        assertTrue(refused.contains("unit format 2")&&refused.contains("Create a fresh world"),refused);
+        assertTrue(refused.contains("unit format 1")&&refused.contains("Create a fresh world"),refused);
     }
 
     /** restDetection=false discards every saved certificate; the island keeps its materialised inventory and solves again. */

@@ -107,7 +107,7 @@ class ThermoDomainViolationTest {
         assertTrue(missing.getMessage().contains("declares no fluid_domain"),missing.getMessage());
 
         var outside=new HashMap<>(catalog.resources());String nitrogen="data/createcheme/materials/properties/nitrogen.json";
-        var n=JsonParser.parseString(outside.get(nitrogen)).getAsJsonObject();n.getAsJsonObject("fluid_domain").addProperty("pressure_max_pascal",3e6);outside.put(nitrogen,n.toString());
+        var n=JsonParser.parseString(outside.get(nitrogen)).getAsJsonObject();n.getAsJsonObject("fluid_domain").addProperty("pressure_max_pascal",2e7);outside.put(nitrogen,n.toString());
         var envelope=assertThrows(IllegalArgumentException.class,()->MaterialCatalog.parse(outside));
         assertTrue(envelope.getMessage().contains("lies outside the package envelope"),envelope.getMessage());
 

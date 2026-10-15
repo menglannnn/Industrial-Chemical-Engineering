@@ -161,8 +161,8 @@ class FluidTpEquilibriumTest {
             assertThrows(IllegalStateException.class, () -> result.conservationDefect(pure));
             assertThrows(IllegalStateException.class, result::enthalpy);
         }
-        // Above its critical point pure nitrogen is a supercritical fluid (open research contract: 6 MPa is outside
-        // the network domain).
+        // Above its critical point pure nitrogen is a supercritical fluid: on the open research contract, and since WP7
+        // (nitrogen and the network envelope to 10 MPa) on the network contract too.
         var evaluator = PhaseTestSupport.methaneNitrogen();
         var open = new FluidTpEquilibrium(PhaseTestSupport.openContract(evaluator), evaluator, FluidTpEquilibrium.Settings.DEFAULT, null);
         var supercritical = open.tp(EquilibriumRequest.tp(150.0, 6.0e6, BINARY, new double[] {0.0, 1.0}, PhaseCompetition.FLUID_ONLY));
@@ -170,10 +170,17 @@ class FluidTpEquilibriumTest {
         assertEquals(PhaseKind.FLUID, supercritical.phases().get(0).kind());
         var dense = open.tp(EquilibriumRequest.tp(400.0, 3.0e6, BINARY, new double[] {0.5, 0.5}, PhaseCompetition.FLUID_ONLY));
         assertEquals(Classification.SINGLE_FLUID, dense.classification());
-        // Outside the network domain the network contract refuses the same pure nitrogen state.
-        var refused = service.tp(EquilibriumRequest.tp(150.0, 6.0e6, contract.components(), pure, PhaseCompetition.FLUID_ONLY));
+        var network = service.tp(EquilibriumRequest.tp(150.0, 6.0e6, contract.components(), pure, PhaseCompetition.FLUID_ONLY));
+        assertEquals(Status.CONVERGED, network.status(), network.toString());
+        assertEquals(Classification.SUPERCRITICAL_FLUID, network.classification());
+        assertEquals(PhaseKind.FLUID, network.phases().get(0).kind());
+        // Above the 10 MPa ceiling the open contract still answers and the network contract refuses the same state.
+        var beyond = open.tp(EquilibriumRequest.tp(150.0, 12.0e6, BINARY, new double[] {0.0, 1.0}, PhaseCompetition.FLUID_ONLY));
+        assertEquals(Classification.SUPERCRITICAL_FLUID, beyond.classification());
+        var refused = service.tp(EquilibriumRequest.tp(150.0, 12.0e6, contract.components(), pure, PhaseCompetition.FLUID_ONLY));
         assertEquals(Status.OUT_OF_DOMAIN, refused.status());
         assertEquals(ThermoDomainViolation.Code.THERMO_DOMAIN_PRESSURE_ABOVE, refused.violation().code());
+        assertEquals(10.0e6, refused.violation().maximum());
     }
 
     /** The 20-component network basis: Tia Juana light assay plus 5 mol% nitrogen, as in the stability test. */
@@ -288,7 +295,8 @@ class FluidTpEquilibriumTest {
         assertEquals(UnsupportedReason.PHASE_COMPETITION_NOT_QUALIFIED, crystal.reason());
         refused.add(crystal);
 
-        // Outside the domain: methane below its 293.15 K network range, and above the 2 MPa ceiling.
+        // Outside the domain: methane below its 293.15 K network range, and above its 10 MPa ceiling (WP7 widened methane,
+        // nitrogen and the network envelope from 2 to 10 MPa: 3 MPa, this test's example before, is answered now).
         var cold = service.tp(EquilibriumRequest.tp(200.0, 1.0e6, List.of("Methane", "Nitrogen"), new double[] {1.0, 1.0},
                 PhaseCompetition.FLUID_ONLY));
         assertEquals(Status.OUT_OF_DOMAIN, cold.status());
@@ -297,8 +305,12 @@ class FluidTpEquilibriumTest {
         assertEquals(293.15, cold.violation().minimum());
         assertEquals(CoverageGrade.OUT_OF_DOMAIN, cold.coverage().grade());
         refused.add(cold);
-        var dense = service.tp(EquilibriumRequest.tp(350.0, 3.0e6, List.of("Methane"), new double[] {1.0}, PhaseCompetition.FLUID_ONLY));
+        var inside = service.tp(EquilibriumRequest.tp(350.0, 3.0e6, List.of("Methane"), new double[] {1.0}, PhaseCompetition.FLUID_ONLY));
+        assertEquals(Status.CONVERGED, inside.status(), inside.toString());
+        var dense = service.tp(EquilibriumRequest.tp(350.0, 12.0e6, List.of("Methane"), new double[] {1.0}, PhaseCompetition.FLUID_ONLY));
+        assertEquals(Status.OUT_OF_DOMAIN, dense.status(), dense.toString());
         assertEquals(ThermoDomainViolation.Code.THERMO_DOMAIN_PRESSURE_ABOVE, dense.violation().code());
+        assertEquals(10.0e6, dense.violation().maximum());
         refused.add(dense);
         // Water below its triple point is outside the water model's domain before it is unimplemented.
         var ice = service.tp(EquilibriumRequest.tp(250.0, 1.0e6, List.of("Nitrogen", "Water"), new double[] {1.0, 2.0},

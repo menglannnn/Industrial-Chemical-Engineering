@@ -35,8 +35,9 @@ class PumpRiseScalingTest {
     @Test void theReferenceIsThisModelsOwnWaterAtRoomConditions() {
         double rho=model.waterMolecularWeight/model.waterLiquid(298.15,101325).molarVolume();
         assertEquals(rho,model.pumpReferenceDensity(),1e-12*rho);
-        // IF97 Region 1 at the 2 MPa reference carried to 1 atm by the global 1e-9 1/Pa compressibility: 996.0 kg/m3.
-        assertEquals(996.0,model.pumpReferenceDensity(),.1);
+        // IF97 Region 1 at 298.15 K and 1 atm itself: 997.048 kg/m3 (NIST 997.05; the retired 2 MPa reference carried to
+        // 1 atm by the global 1e-9 1/Pa compressibility gave 996.0).
+        assertEquals(997.048,model.pumpReferenceDensity(),.001);
     }
 
     /**

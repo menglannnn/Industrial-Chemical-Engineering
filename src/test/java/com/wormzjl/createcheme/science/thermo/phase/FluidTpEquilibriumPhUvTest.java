@@ -201,12 +201,17 @@ class FluidTpEquilibriumPhUvTest {
             String at = "beta " + beta;
             double h = n * ((1.0 - beta) * liquid.molarEnthalpy() + beta * vapour.molarEnthalpy());
             var ph = service.ph(EquilibriumRequest.ph(p, h, species, pure, PhaseCompetition.FLUID_ONLY), workspace);
-            assertCoexistence(ph, saturation, p, beta, n, k, pure, at + " PH");
+            assertCoexistence(ph, saturation, 1.0e-12, p, beta, n, k, pure, at + " PH");
             assertEquals(h, ph.enthalpy(), 1.0e-9 * Math.abs(h), at);
             double u = n * ((1.0 - beta) * liquid.molarInternalEnergy() + beta * vapour.molarInternalEnergy());
             double v = n * ((1.0 - beta) * liquid.molarVolume() + beta * vapour.molarVolume());
             var uv = service.uv(EquilibriumRequest.uv(u, v, species, pure, PhaseCompetition.FLUID_ONLY), workspace);
-            assertCoexistence(uv, saturation, p, beta, n, k, pure, at + " UV");
+            // PH solves the equal-fugacity temperature at its fixed pressure directly (to 1e-14); UV's temperature is the
+            // outer energy search's last TP-verified point, which stops once the next secant step is at most
+            // outerTolerance T = 1e-11 T without taking it. Measured since WP7's 10 MPa window (the window changes the
+            // search's path): beta 5e-4 stops one 7.6e-12 T step short of the root (the 2 MPa path took one more step,
+            // 3e-16). The tolerance is 1e-10, ten times the search's own step tolerance.
+            assertCoexistence(uv, saturation, 1.0e-10, p, beta, n, k, pure, at + " UV");
             System.out.println("WP6b pure N2 coexistence beta " + beta + ": PH " + ph.diagnostics().outerIterations()
                     + " TP calls, T error " + (temperature(ph) / saturation - 1.0) + "; UV " + uv.diagnostics().outerIterations()
                     + " TP calls, T error " + (temperature(uv) / saturation - 1.0) + ", P error " + (pressure(uv) / p - 1.0));
@@ -227,8 +232,8 @@ class FluidTpEquilibriumPhUvTest {
         assertEquals(below, liquidSide.enthalpy(), 1.0e-6 * n * R * saturation);
     }
 
-    private static void assertCoexistence(EquilibriumResult result, double saturation, double p, double beta, double n,
-                                          int k, double[] overall, String at) {
+    private static void assertCoexistence(EquilibriumResult result, double saturation, double temperatureTolerance, double p,
+                                          double beta, double n, int k, double[] overall, String at) {
         assertEquals(Status.CONVERGED, result.status(), at + ": " + result);
         assertEquals(Classification.VAPOR_LIQUID, result.classification(), at);
         assertTrue(result.diagnostics().coexistenceFromBalance(), at);
@@ -236,7 +241,7 @@ class FluidTpEquilibriumPhUvTest {
         assertEquals(2, result.phases().size(), at);
         assertEquals(PhaseKind.VAPOR, result.phases().get(0).kind(), at);
         assertEquals(PhaseKind.LIQUID, result.phases().get(1).kind(), at);
-        assertEquals(saturation, temperature(result), 1.0e-12 * saturation, at + " temperature");
+        assertEquals(saturation, temperature(result), temperatureTolerance * saturation, at + " temperature");
         assertEquals(p, pressure(result), 1.0e-9 * p, at + " pressure");
         assertEquals(beta * n, result.phases().get(0).amount(k), 1.0e-8 * n, at + " vapour amount");
         assertTrue(result.conservationDefect(overall) < CONSERVATION, at);
@@ -490,8 +495,8 @@ class FluidTpEquilibriumPhUvTest {
         }
         assertTrue(typed > 0, "no budget ended inside the band");
 
-        // Beyond the domain: methane's 293.15 K minimum (an enthalpy only a colder state has), the 2 MPa ceiling, a volume
-        // only a pressure above the ceiling gives.
+        // Beyond the domain: methane's 293.15 K minimum (an enthalpy only a colder state has), the 10 MPa ceiling (WP7
+        // widened methane, nitrogen and the network envelope from 2 MPa), a volume only a pressure above the ceiling gives.
         double[] methane = new double[species.size()];
         methane[contract.index("Methane")] = 1.0;
         var reference = service.tp(EquilibriumRequest.tp(300.0, 1.0e6, species, methane, PhaseCompetition.FLUID_ONLY), workspace);
@@ -502,10 +507,18 @@ class FluidTpEquilibriumPhUvTest {
         assertEquals(ThermoDomainViolation.Code.THERMO_DOMAIN_TEMPERATURE_BELOW, cold.violation().code());
         assertEquals(CoverageGrade.OUT_OF_DOMAIN, cold.coverage().grade());
         assertTrue(cold.diagnostics().outerIterations() > 0);
-        var dense = service.ph(EquilibriumRequest.ph(3.0e6, reference.enthalpy(), species, methane, PhaseCompetition.FLUID_ONLY),
+        // The examples before WP7 (3 MPa, a fifth of the volume) lie inside the widened domain and are answered.
+        var inside = service.ph(EquilibriumRequest.ph(3.0e6, reference.enthalpy(), species, methane, PhaseCompetition.FLUID_ONLY),
                 workspace);
+        assertEquals(Status.CONVERGED, inside.status(), inside.toString());
+        var insideUv = service.uv(EquilibriumRequest.uv(reference.internalEnergy(), 0.2 * reference.volume(), species, methane,
+                PhaseCompetition.FLUID_ONLY), workspace);
+        assertEquals(Status.CONVERGED, insideUv.status(), insideUv.toString());
+        var dense = service.ph(EquilibriumRequest.ph(12.0e6, reference.enthalpy(), species, methane, PhaseCompetition.FLUID_ONLY),
+                workspace);
+        assertEquals(Status.OUT_OF_DOMAIN, dense.status(), dense.toString());
         assertEquals(ThermoDomainViolation.Code.THERMO_DOMAIN_PRESSURE_ABOVE, dense.violation().code(), dense.toString());
-        var small = service.uv(EquilibriumRequest.uv(reference.internalEnergy(), 0.2 * reference.volume(), species, methane,
+        var small = service.uv(EquilibriumRequest.uv(reference.internalEnergy(), 0.05 * reference.volume(), species, methane,
                 PhaseCompetition.FLUID_ONLY), workspace);
         assertEquals(Status.OUT_OF_DOMAIN, small.status(), small.toString());
         assertEquals(ThermoDomainViolation.Property.PRESSURE, small.violation().property());

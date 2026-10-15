@@ -63,7 +63,8 @@ class RestResolutionWorldTest {
         var a=graph.reservoirs().stream().filter(n->n.id()==south).findFirst().orElseThrow().state();
         var b=graph.reservoirs().stream().filter(n->n.id()==north).findFirst().orElseThrow().state();
         assertTrue(a.waterVolume()>.1&&b.waterVolume()>.1,"both tanks took water before they came to rest: "+a.waterVolume()+", "+b.waterVolume()+" m3");
-        assertEquals(120860,a.pressure(),5,"1 atm plus the water column");
+        // 1 atm plus a 2 m column of water at 997.05 kg/m3 (Region 1 at the state pressure; 120860 Pa at the retired 996.0).
+        assertEquals(120880,a.pressure(),5,"1 atm plus the water column");
         assertEquals(a.pressure(),b.pressure(),NetworkReduction.REST_RESOLUTION,"the two tanks read the same on a gauge");
     }
 
