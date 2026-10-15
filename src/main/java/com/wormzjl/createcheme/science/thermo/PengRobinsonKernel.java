@@ -42,10 +42,18 @@ public final class PengRobinsonKernel {
     private final double[][] binaryInteractions;
     private final boolean rankOneMixing;
     private final Mixing mixing;
-    /** The {@code i < j} entries with {@code k_ij != 0}, for {@link Mixing#SPARSE_PAIRS}; empty otherwise. */
+    /**
+     * The {@code i < j} entries with {@code k_ij != 0}, for {@link Mixing#SPARSE_PAIRS}; for
+     * {@link Mixing#TEMPERATURE_DEPENDENT_PAIRS} the declared pairs of {@link #interactions}, whose values live in the
+     * workspace ({@link #pairInteraction} is then empty).
+     */
     private final int[] pairFirst;
     private final int[] pairSecond;
     private final double[] pairInteraction;
+    /** The interaction model of {@link Mixing#TEMPERATURE_DEPENDENT_PAIRS}; null for the matrix plans. */
+    private final PairInteractions interactions;
+    /** {@code pairIndex[i][j]}: the pair of {@code (i, j)} in {@link #interactions}, or -1; null for the matrix plans. */
+    private final int[][] pairIndex;
     private final double minimumTemperatureKelvin;
     private final double maximumTemperatureKelvin;
     private final double minimumPressurePascal;
@@ -71,7 +79,18 @@ public final class PengRobinsonKernel {
          * accumulated with the identical expressions {@link #CLASSICAL}'s dense branch uses, so the two
          * differ only in how each {@code S_i} was summed.
          */
-        SPARSE_PAIRS
+        SPARSE_PAIRS,
+        /**
+         * {@link #SPARSE_PAIRS}'s structure with pair values that depend on temperature: the pair list is the
+         * {@link PairInteractions} model's, fixed at construction, and {@link #prepareTemperature} fills
+         * {@code k_ij(T)}, {@code dk_ij/dT} and {@code d^2k_ij/dT^2} per pair into the workspace. The value sums are
+         * {@link #SPARSE_PAIRS}'s expressions on those values; every temperature derivative gains the interactions' own
+         * terms ({@code -2 sum_pairs q_i q_j dk_ij/dT} in {@code da_mix/dT}, and their counterparts in
+         * {@code d^2a_mix/dT^2} and {@code dS_i/dT}). On a model whose pairs are all constant those terms are exact
+         * zeros and the plan reproduces {@link #SPARSE_PAIRS} on the same matrix bit for bit. Only the constructor that
+         * takes a {@link PairInteractions} selects it.
+         */
+        TEMPERATURE_DEPENDENT_PAIRS
     }
 
     /**
@@ -93,7 +112,35 @@ public final class PengRobinsonKernel {
             double[][] binaryInteractions,
             double minimumTemperatureKelvin, double maximumTemperatureKelvin,
             double minimumPressurePascal, double maximumPressurePascal, Mixing mixing) {
+        this(criticalTemperaturesKelvin, criticalPressuresPascal, acentricFactors, binaryInteractions, null,
+                minimumTemperatureKelvin, maximumTemperatureKelvin, minimumPressurePascal, maximumPressurePascal, mixing);
+    }
+
+    /**
+     * The kernel on a pair-interaction model, with {@link Mixing#TEMPERATURE_DEPENDENT_PAIRS}.
+     *
+     * @param interactions over the same basis, in the caller's order
+     */
+    public PengRobinsonKernel(
+            double[] criticalTemperaturesKelvin, double[] criticalPressuresPascal, double[] acentricFactors,
+            PairInteractions interactions,
+            double minimumTemperatureKelvin, double maximumTemperatureKelvin,
+            double minimumPressurePascal, double maximumPressurePascal) {
+        this(criticalTemperaturesKelvin, criticalPressuresPascal, acentricFactors,
+                zeroMatrix(criticalTemperaturesKelvin), Objects.requireNonNull(interactions, "interactions"),
+                minimumTemperatureKelvin, maximumTemperatureKelvin, minimumPressurePascal, maximumPressurePascal,
+                Mixing.TEMPERATURE_DEPENDENT_PAIRS);
+    }
+
+    private PengRobinsonKernel(
+            double[] criticalTemperaturesKelvin, double[] criticalPressuresPascal, double[] acentricFactors,
+            double[][] binaryInteractions, PairInteractions interactions,
+            double minimumTemperatureKelvin, double maximumTemperatureKelvin,
+            double minimumPressurePascal, double maximumPressurePascal, Mixing mixing) {
         this.mixing = Objects.requireNonNull(mixing, "mixing");
+        if ((mixing == Mixing.TEMPERATURE_DEPENDENT_PAIRS) != (interactions != null)) {
+            throw new IllegalArgumentException("TEMPERATURE_DEPENDENT_PAIRS is selected by, and only by, a PairInteractions model");
+        }
         Objects.requireNonNull(criticalTemperaturesKelvin, "criticalTemperaturesKelvin");
         Objects.requireNonNull(criticalPressuresPascal, "criticalPressuresPascal");
         Objects.requireNonNull(acentricFactors, "acentricFactors");
@@ -133,6 +180,27 @@ public final class PengRobinsonKernel {
                 allZero &= value == 0.0;
             }
         }
+        this.interactions = interactions;
+        if (interactions != null) {
+            // The model path: the matrix above is the zero placeholder the delegating constructor passed, so only the
+            // critical constants were read from this loop; the pairs are the model's own, in its row-major order.
+            if (interactions.componentCount() != count) throw new IllegalArgumentException("Interaction model basis does not match the components");
+            int pairs = interactions.pairCount();
+            this.rankOneMixing = pairs == 0;
+            this.pairFirst = new int[pairs];
+            this.pairSecond = new int[pairs];
+            this.pairInteraction = new double[0];
+            this.pairIndex = new int[count][count];
+            for (int[] row : pairIndex) Arrays.fill(row, -1);
+            for (int pair = 0; pair < pairs; pair++) {
+                pairFirst[pair] = interactions.first(pair);
+                pairSecond[pair] = interactions.second(pair);
+                pairIndex[pairFirst[pair]][pairSecond[pair]] = pair;
+                pairIndex[pairSecond[pair]][pairFirst[pair]] = pair;
+            }
+            return;
+        }
+        this.pairIndex = null;
         this.rankOneMixing = allZero;
         int pairs = 0;
         for (int i = 0; i < count; i++) for (int j = i + 1; j < count; j++) if (this.binaryInteractions[i][j] != 0.0) pairs++;
@@ -148,12 +216,19 @@ public final class PengRobinsonKernel {
         }
     }
 
+    private static double[][] zeroMatrix(double[] criticalTemperaturesKelvin) {
+        int count = Objects.requireNonNull(criticalTemperaturesKelvin, "criticalTemperaturesKelvin").length;
+        return new double[count][count];
+    }
+
     public int componentCount() { return count; }
     /** True when the package has no nonzero interaction at all, whatever plan is selected. */
     public boolean usesRankOneMixing() { return rankOneMixing; }
     /** {@code 0.07780 R Tc / Pc} for one component; the co-volume the mixture rule sums. */
     public double coVolume(int component) { return coVolumes[component]; }
-    public Workspace newWorkspace() { return new Workspace(count); }
+    public Workspace newWorkspace() {
+        return interactions == null ? new Workspace(count) : new Workspace(count, interactions.pairCount());
+    }
     public Evaluation newEvaluation() { return new Evaluation(count); }
     public Derivatives newDerivatives() { return new Derivatives(count); }
 
@@ -192,7 +267,30 @@ public final class PengRobinsonKernel {
                     / Math.sqrt(temperatureKelvin * criticalTemperatures[i]);
             workspace.sqrtA[i] = Math.sqrt(workspace.a[i]);
         }
+        if (interactions != null) prepareInteractions(temperatureKelvin, workspace);
         workspace.preparedTemperature = Double.doubleToLongBits(temperatureKelvin);
+    }
+
+    /**
+     * {@code k_ij(T)} and its two temperature derivatives per pair of {@link #interactions}, on the pure-component
+     * values the loop above just filled: O(pairs) per temperature, one {@code pow} per group term. A value that is not
+     * finite (the Soave {@code sqrt(a_i)} vanishes at {@code Tr = (1 + 1/kappa)^2}) is refused before the temperature is
+     * recorded as prepared, so the workspace never caches it.
+     */
+    private void prepareInteractions(double temperatureKelvin, Workspace workspace) {
+        workspace.preparedTemperature = Long.MIN_VALUE;
+        if (interactions.temperatureDependent()) {
+            prepareRootDerivatives(temperatureKelvin, workspace, workspace.interactionRootDt, workspace.interactionRootDt2);
+        }
+        interactions.evaluate(temperatureKelvin, workspace.sqrtA, workspace.interactionRootDt,
+                workspace.interactionRootDt2, coVolumes, workspace.pairK, workspace.pairKDt, workspace.pairKDt2);
+        for (int pair = 0; pair < pairFirst.length; pair++) {
+            if (!Double.isFinite(workspace.pairK[pair]) || !Double.isFinite(workspace.pairKDt[pair])
+                    || !Double.isFinite(workspace.pairKDt2[pair])) {
+                throw new IllegalArgumentException("Pair interaction of components " + pairFirst[pair] + " and "
+                        + pairSecond[pair] + " is not finite at " + temperatureKelvin + " K");
+            }
+        }
     }
 
     private void evaluatePrepared(
@@ -231,6 +329,32 @@ public final class PengRobinsonKernel {
                 double dq = workspace.composition[i] * workspace.daDt[i] / (2.0 * workspace.sqrtA[i]);
                 daMixDt += 2.0 * dq * workspace.g[i];
             }
+        } else if (mixing == Mixing.TEMPERATURE_DEPENDENT_PAIRS) {
+            // SPARSE_PAIRS's expressions on the prepared k_ij(T), then the interactions' own temperature derivative.
+            double qSum = 0.0;
+            for (int i = 0; i < count; i++) qSum += workspace.q[i];
+            for (int i = 0; i < count; i++) workspace.g[i] = qSum;
+            for (int pair = 0; pair < pairFirst.length; pair++) {
+                int i = pairFirst[pair];
+                int j = pairSecond[pair];
+                double interaction = workspace.pairK[pair];
+                workspace.g[i] -= interaction * workspace.q[j];
+                workspace.g[j] -= interaction * workspace.q[i];
+            }
+            aMix = 0.0;
+            daMixDt = 0.0;
+            for (int i = 0; i < count; i++) {
+                workspace.sumA[i] = workspace.sqrtA[i] * workspace.g[i];
+                aMix += workspace.q[i] * workspace.g[i];
+                double dq = workspace.composition[i] * workspace.daDt[i] / (2.0 * workspace.sqrtA[i]);
+                daMixDt += 2.0 * dq * workspace.g[i];
+            }
+            // d/dT of -sum_ij q_i q_j k_ij at fixed q: -2 sum_pairs q_i q_j dk_ij/dT (an exact zero for constant pairs).
+            double interactionDt = 0.0;
+            for (int pair = 0; pair < pairFirst.length; pair++) {
+                interactionDt += workspace.pairKDt[pair] * workspace.q[pairFirst[pair]] * workspace.q[pairSecond[pair]];
+            }
+            daMixDt -= 2.0 * interactionDt;
         } else if (rankOneMixing) {
             double qSum = 0.0;
             double dqSum = 0.0;
@@ -360,7 +484,9 @@ public final class PengRobinsonKernel {
             double rootAj = workspace.sqrtA[j];
             for (int i = 0; i < count; i++) {
                 double bRatioDn = -output.coVolumeRatio[i] * coVolumeShift;
-                double crossA = (rankOneMixing ? 1.0 : 1.0 - binaryInteractions[i][j])
+                // A composition derivative at fixed T: k_ij(T) enters by value only.
+                double crossA = (pairIndex != null ? 1.0 - workspace.interaction(pairIndex[i][j])
+                        : rankOneMixing ? 1.0 : 1.0 - binaryInteractions[i][j])
                         * workspace.sqrtA[i] * rootAj;
                 double attractionRatioDn = 2.0 * ((crossA - workspace.sumA[i]) * a
                         - workspace.sumA[i] * attractionShift) / (a * a) - bRatioDn;
@@ -382,7 +508,8 @@ public final class PengRobinsonKernel {
     /**
      * {@code d^2 a_mix / dT^2} of the mixture the preceding evaluation left in {@code workspace}, filling the
      * three caller-owned scratch vectors it needs on the way: {@code d sqrt(a_i)/dT}, its own derivative, and
-     * the interaction-weighted composition sum {@code sum_j (1-k_ij) x_j d sqrt(a_j)/dT}.
+     * the interaction-weighted composition sum {@code sum_j (1-k_ij) x_j d sqrt(a_j)/dT} (with
+     * {@link Mixing#TEMPERATURE_DEPENDENT_PAIRS} also {@code - sum_j q_j dk_ij/dT}, the whole {@code d(S_i/sqrt(a_i))/dT}).
      *
      * <p>One expression, two callers: {@link #evaluateDerivatives} needs the two root vectors and the cross
      * sum again for {@code d ln phi_i/dT}, and the network's volumetric block needs only the scalar. Splitting
@@ -428,6 +555,17 @@ public final class PengRobinsonKernel {
                 crossDt[i] -= interaction * x[j] * rootDt[j];
                 crossDt[j] -= interaction * x[i] * rootDt[i];
             }
+        } else if (mixing == Mixing.TEMPERATURE_DEPENDENT_PAIRS) {
+            double interactionSum = 0.0;
+            for (int i = 0; i < count; i++) interactionSum += x[i] * rootDt[i];
+            for (int i = 0; i < count; i++) crossDt[i] = interactionSum;
+            for (int pair = 0; pair < pairFirst.length; pair++) {
+                int i = pairFirst[pair];
+                int j = pairSecond[pair];
+                double interaction = workspace.pairK[pair];
+                crossDt[i] -= interaction * x[j] * rootDt[j];
+                crossDt[j] -= interaction * x[i] * rootDt[i];
+            }
         } else if (rankOneMixing) {
             double interactionSum = 0.0;
             for (int i = 0; i < count; i++) interactionSum += x[i] * rootDt[i];
@@ -444,7 +582,37 @@ public final class PengRobinsonKernel {
             secondDaDt += 2.0 * x[i] * (rootDt2[i] * (workspace.sumA[i] / workspace.sqrtA[i])
                     + rootDt[i] * crossDt[i]);
         }
+        if (mixing == Mixing.TEMPERATURE_DEPENDENT_PAIRS) {
+            secondDaDt = addInteractionTemperatureTerms(workspace, rootDt, crossDt, secondDaDt);
+        }
         return secondDaDt;
+    }
+
+    /**
+     * The terms {@link Mixing#TEMPERATURE_DEPENDENT_PAIRS} adds once the constant-interaction sums above are formed,
+     * with {@code q_i = x_i sqrt(a_i)} and {@code dq_i = x_i d sqrt(a_i)/dT}:
+     * {@code d^2a_mix/dT^2 -= 4 sum_pairs (dq_i q_j + q_i dq_j) dk_ij/dT + 2 sum_pairs q_i q_j d^2k_ij/dT^2}, and
+     * {@code crossDt_i -= sum_(j paired with i) q_j dk_ij/dT}, which makes {@code crossDt_i} the whole
+     * {@code d g_i/dT} of {@code g_i = S_i/sqrt(a_i)}, so {@link #evaluateDerivatives}'s
+     * {@code dS_i/dT = (d sqrt(a_i)/dT) g_i + sqrt(a_i) crossDt_i} carries the interactions' own derivative. For a
+     * constant pair every added term is an exact zero.
+     */
+    private double addInteractionTemperatureTerms(
+            Workspace workspace, double[] rootDt, double[] crossDt, double secondDaDt) {
+        double[] x = workspace.composition;
+        double[] q = workspace.q;
+        double firstOrder = 0.0;
+        double secondOrder = 0.0;
+        for (int pair = 0; pair < pairFirst.length; pair++) {
+            int i = pairFirst[pair];
+            int j = pairSecond[pair];
+            double kDt = workspace.pairKDt[pair];
+            firstOrder += kDt * (x[i] * rootDt[i] * q[j] + q[i] * x[j] * rootDt[j]);
+            secondOrder += workspace.pairKDt2[pair] * q[i] * q[j];
+            crossDt[i] -= kDt * q[j];
+            crossDt[j] -= kDt * q[i];
+        }
+        return secondDaDt - (4.0 * firstOrder + 2.0 * secondOrder);
     }
 
     /** Precision qualifier; the EOS owns phase selection and its coalescence policy. */
@@ -627,6 +795,13 @@ public final class PengRobinsonKernel {
         private final double[] q;
         private final double[] g;
         private final double[] sumA;
+        /** Per pair of a {@link PairInteractions} model, filled by {@link #prepareTemperature}; empty otherwise. */
+        private final double[] pairK;
+        private final double[] pairKDt;
+        private final double[] pairKDt2;
+        /** {@code d sqrt(a_i)/dT} and its derivative for the interaction model; empty unless it has group pairs. */
+        private final double[] interactionRootDt;
+        private final double[] interactionRootDt2;
         private long preparedTemperature = Long.MIN_VALUE;
 
         private Workspace(int count) {
@@ -637,7 +812,25 @@ public final class PengRobinsonKernel {
             q = new double[count];
             g = new double[count];
             sumA = new double[count];
+            pairK = pairKDt = pairKDt2 = interactionRootDt = interactionRootDt2 = new double[0];
         }
+
+        private Workspace(int count, int pairs) {
+            composition = new double[count];
+            a = new double[count];
+            daDt = new double[count];
+            sqrtA = new double[count];
+            q = new double[count];
+            g = new double[count];
+            sumA = new double[count];
+            pairK = new double[pairs];
+            pairKDt = new double[pairs];
+            pairKDt2 = new double[pairs];
+            interactionRootDt = new double[count];
+            interactionRootDt2 = new double[count];
+        }
+
+        private double interaction(int pair) { return pair < 0 ? 0.0 : pairK[pair]; }
 
         /** The normalized composition of the last evaluation. The caller must not mutate it. */
         public double[] compositionView() { return composition; }
