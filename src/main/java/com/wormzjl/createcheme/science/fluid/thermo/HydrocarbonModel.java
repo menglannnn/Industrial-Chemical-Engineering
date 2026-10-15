@@ -3,8 +3,7 @@ package com.wormzjl.createcheme.science.fluid.thermo;
 import com.wormzjl.createcheme.science.math.DeterministicMath;
 
 import com.wormzjl.createcheme.science.material.MaterialCatalog;
-import com.wormzjl.createcheme.science.thermo.PengRobinson78;
-import com.wormzjl.createcheme.science.thermo.PhaseRoot;
+import com.wormzjl.createcheme.science.thermo.PengRobinsonKernel;
 import com.wormzjl.createcheme.science.thermo.ThermoComponent;
 import java.util.List;
 
@@ -40,7 +39,6 @@ public final class HydrocarbonModel {
             joints[i]=segment==null?Double.NEGATIVE_INFINITY:segment.belowKelvin();
             if(segment!=null){low[i]=new double[6];for(int j=0;j<6;j++)low[i][j]=segment.coefficients().get(j);}
         }
-        var raw=new PengRobinson78(components,interactions);
         var calibrations=catalog.fluidData().volumeReferences();
         double[] shifts=new double[count];
         for(int i=0;i<count;i++) {
@@ -49,9 +47,8 @@ public final class HydrocarbonModel {
             double t=point==null?property.standardTemperature():point.temperatureKelvin();
             double targetVolume=point==null?property.molecularWeight()/property.density():point.molarVolumeCubicMetres();
             double referenceP=point==null?property.standardPressure():point.pressurePascal();
-            double[] pure=new double[count];pure[i]=1;
-            double rawVolume=raw.evaluate(t,REFERENCE_PRESSURE,pure,PhaseRoot.LIQUID).compressibilityFactor()
-                    *PengRobinson78.GAS_CONSTANT*t/REFERENCE_PRESSURE;
+            double rawVolume=pureLiquidCompressibility(components.get(i),interactions[i][i],t,REFERENCE_PRESSURE)
+                    *FluidThermodynamics.R*t/REFERENCE_PRESSURE;
             shifts[i]=targetVolume*DeterministicMath.exp(compressibility*(referenceP-REFERENCE_PRESSURE))-rawVolume;
         }
         translated=new TranslatedPengRobinson(components,interactions,cp,shifts,joints,low);
@@ -66,7 +63,7 @@ public final class HydrocarbonModel {
     public double molecularWeight(int i) { return propertyPackage.properties().get(i).molecularWeight(); }
     public MaterialCatalog.Package propertyPackage() { return propertyPackage; }
 
-    public Phase phase(double t,double p,double[] amounts,PhaseRoot root) {
+    public Phase phase(double t,double p,double[] amounts,PengRobinsonKernel.Root root) {
         return phase(t,p,amounts,root,translated.prepare(t));
     }
     public TranslatedPengRobinson.Workspace prepare(double t){return translated.prepare(t);}
@@ -82,7 +79,7 @@ public final class HydrocarbonModel {
      * {@link GlobalLiquidResponse}; a caller assembling a liquid node block must differentiate that
      * correction itself, because nothing here applies it.</p>
      */
-    public void differentiate(double t,double p,double[] amounts,PhaseRoot root,
+    public void differentiate(double t,double p,double[] amounts,PengRobinsonKernel.Root root,
                               TranslatedPengRobinson.Workspace terms,TranslatedPengRobinson.Derivatives output) {
         if(amounts.length!=componentCount())throw new IllegalArgumentException("Hydrocarbon basis mismatch");
         translated.differentiate(t,p,amounts,root,terms,output);
@@ -92,14 +89,14 @@ public final class HydrocarbonModel {
      * the same domain checks, and the vapor-branch flag; no {@link Phase} record and no coefficient copies. For the
      * flash's equilibrium iteration.
      */
-    public boolean logFugacityInto(double t,double p,double[] amounts,PhaseRoot root,TranslatedPengRobinson.Workspace terms,double[] out) {
+    public boolean logFugacityInto(double t,double p,double[] amounts,PengRobinsonKernel.Root root,TranslatedPengRobinson.Workspace terms,double[] out) {
         checkPhase(t,p,amounts,root);
-        if(root==PhaseRoot.VAPOR) {
+        if(root==PengRobinsonKernel.Root.VAPOR) {
             var gas=translated.evaluateValues(t,p,amounts,root,terms);
             System.arraycopy(gas.logFugacityCoefficientsView(),0,out,0,out.length);
             return gas.vaporBranch();
         }
-        var reference=translated.evaluateValues(t,REFERENCE_PRESSURE,amounts,PhaseRoot.LIQUID,terms);
+        var reference=translated.evaluateValues(t,REFERENCE_PRESSURE,amounts,PengRobinsonKernel.Root.LIQUID,terms);
         var liquid=liquidResponse.evaluate(t,p,REFERENCE_PRESSURE,reference.molarVolume(),
                 reference.volumeTemperatureDerivative(),reference.volumeSecondTemperatureDerivative(),
                 reference.molarEnthalpy(),reference.heatCapacity());
@@ -113,25 +110,25 @@ public final class HydrocarbonModel {
      * must lie in the range of every component it carries; a vapour at its hydrocarbon partial pressure, which is only
      * guarded numerically here and capped by the envelope, since the state that carries it checks the total pressure.
      */
-    private void checkPhase(double t,double p,double[] amounts,PhaseRoot root) {
+    private void checkPhase(double t,double p,double[] amounts,PengRobinsonKernel.Root root) {
         if(amounts.length!=componentCount())throw new IllegalArgumentException("Hydrocarbon basis mismatch");
         if(!Double.isFinite(t)||!Double.isFinite(p))throw new IllegalArgumentException("Fluid hydrocarbon state is not finite");
         domain.checkPhaseTemperature(t,amounts);
-        if(root==PhaseRoot.VAPOR) {
+        if(root==PengRobinsonKernel.Root.VAPOR) {
             if(p<VAPOR_PARTIAL_PRESSURE_FLOOR)throw new IllegalArgumentException("Hydrocarbon vapour partial pressure below the numerical floor");
             if(p>domain.envelope().maximumPressure())domain.checkEnvelope(t,p);
         } else domain.check(t,p,amounts,null,0);
     }
-    public Phase phase(double t,double p,double[] amounts,PhaseRoot root,TranslatedPengRobinson.Workspace terms) {
+    public Phase phase(double t,double p,double[] amounts,PengRobinsonKernel.Root root,TranslatedPengRobinson.Workspace terms) {
         checkPhase(t,p,amounts,root);
         // The same numbers from the workspace's own buffer, copying only the coefficients the returned record keeps (the
         // vapor's ln phi; the liquid's is the response's own array).
-        if(root==PhaseRoot.VAPOR) {
+        if(root==PengRobinsonKernel.Root.VAPOR) {
             var gas=translated.evaluateValues(t,p,amounts,root,terms);
             return new Phase(gas.molarVolume(),gas.molarEnthalpy(),gas.molarInternalEnergy(),
                     gas.volumePressureDerivative(),gas.logFugacityCoefficientsView().clone(),gas.vaporBranch());
         }
-        var reference=translated.evaluateValues(t,REFERENCE_PRESSURE,amounts,PhaseRoot.LIQUID,terms);
+        var reference=translated.evaluateValues(t,REFERENCE_PRESSURE,amounts,PengRobinsonKernel.Root.LIQUID,terms);
         var liquid=liquidResponse.evaluate(t,p,REFERENCE_PRESSURE,reference.molarVolume(),
                 reference.volumeTemperatureDerivative(),reference.volumeSecondTemperatureDerivative(),
                 reference.molarEnthalpy(),reference.heatCapacity());
@@ -150,4 +147,52 @@ public final class HydrocarbonModel {
         /** The coefficients themselves, for the solver packages. The caller must not mutate them. */
         public double[] logFugacityView() { return logFugacity; }
     }
+    /**
+     * The liquid-root compressibility factor of pure component {@code c} at {@code t} and {@code p} on the Peng-Robinson
+     * 1978 cubic with classical quadratic mixing, written operation for operation as the reference {@code PengRobinson78}
+     * (test tree, pinned by {@code PengRobinson78Test}) evaluates a pure composition: for one component the mixing rules
+     * give {@code a_mix = sqrt(a a) (1 - k_cc)} and {@code b_mix = b} exactly, so the result is the reference's bit for bit.
+     */
+    private static double pureLiquidCompressibility(ThermoComponent c,double kcc,double t,double p) {
+        if(!Double.isFinite(t)||t<=0.0||!Double.isFinite(p)||p<=0.0)throw new IllegalArgumentException("Temperature and pressure must be finite and positive");
+        double r=FluidThermodynamics.R,tc=c.criticalTemperatureKelvin(),pc=c.criticalPressurePascal(),omega=c.acentricFactor();
+        double criticalA=0.45724*square(r)*square(tc)/pc;
+        double coVolume=0.07780*r*tc/pc;
+        double kappa=omega<=0.491?0.37464+1.54226*omega-0.26992*square(omega)
+                :0.379642+1.48503*omega-0.164423*square(omega)+0.016666*omega*square(omega);
+        double sqrtReducedTemperature=Math.sqrt(t/tc);
+        double alphaTerm=1.0+kappa*(1.0-sqrtReducedTemperature);
+        double a=criticalA*square(alphaTerm);
+        double aMix=Math.sqrt(a*a)*(1.0-kcc),bMix=coVolume;
+        double reducedA=aMix*p/(square(r)*square(t));
+        double reducedB=bMix*p/(r*t);
+        if(Math.abs(reducedA)<1.0e-14&&Math.abs(reducedB)<1.0e-14)return 1.0;
+        double c2=-(1.0-reducedB);
+        double c1=reducedA-3.0*square(reducedB)-2.0*reducedB;
+        double c0=-(reducedA*reducedB-square(reducedB)-reducedB*square(reducedB));
+        double[] roots=realCubicRoots(c2,c1,c0);
+        java.util.Arrays.sort(roots);
+        for(double root:roots)if(root>reducedB+1.0e-12)return root;
+        throw new IllegalStateException("Peng-Robinson equation has no physical liquid root");
+    }
+    /** The real roots of z^3 + c2 z^2 + c1 z + c0 = 0, as {@code PengRobinson78} finds them. */
+    private static double[] realCubicRoots(double c2,double c1,double c0) {
+        double p=c1-square(c2)/3.0;
+        double q=2.0*c2*square(c2)/27.0-c2*c1/3.0+c0;
+        double discriminant=square(q)/4.0+p*p*p/27.0;
+        double offset=c2/3.0;
+        if(discriminant>1.0e-16) {
+            double root=Math.sqrt(discriminant);
+            return new double[]{DeterministicMath.cbrt(-q/2.0+root)+DeterministicMath.cbrt(-q/2.0-root)-offset};
+        }
+        if(Math.abs(discriminant)<=1.0e-16) {
+            double u=DeterministicMath.cbrt(-q/2.0);
+            return new double[]{2.0*u-offset,-u-offset};
+        }
+        double radius=2.0*Math.sqrt(-p/3.0);
+        double angle=DeterministicMath.acos(Math.clamp((3.0*q/(2.0*p))*Math.sqrt(-3.0/p),-1.0,1.0))/3.0;
+        return new double[]{radius*DeterministicMath.cos(angle)-offset,radius*DeterministicMath.cos(angle-2.0*Math.PI/3.0)-offset,
+                radius*DeterministicMath.cos(angle-4.0*Math.PI/3.0)-offset};
+    }
+    private static double square(double value){return value*value;}
 }

@@ -1,6 +1,6 @@
 package com.wormzjl.createcheme.science.fluid.state;
 
-import com.wormzjl.createcheme.science.material.SolidMaterial;
+import com.wormzjl.createcheme.science.material.SolidMaterialCatalog.SolidMaterial;
 import java.util.*;
 
 /** Immutable exact conserved populations. Trace masking never deletes an entry or frees a slot. */

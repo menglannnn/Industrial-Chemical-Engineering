@@ -90,7 +90,7 @@ public final class InventoryEquilibrium {
         if(Arrays.stream(n).sum()==0) {
             if(inventory.solids().empty())throw new IllegalArgumentException("Empty inventory has no initialized thermodynamic state");
             if(inventory.solids().volume()>volume)throw new IllegalArgumentException("Dry solids exceed vessel capacity");
-            double temperature=com.wormzjl.createcheme.science.material.SolidMaterial.REFERENCE_TEMPERATURE+energy/inventory.solids().moments().heatCapacity();
+            double temperature=com.wormzjl.createcheme.science.material.SolidMaterialCatalog.SolidMaterial.REFERENCE_TEMPERATURE+energy/inventory.solids().moments().heatCapacity();
             return model.solidState(temperature,state.pressure(),inventory.solids());
         }
         var layout=layout(model,state,support);var x=layout.encode(state);

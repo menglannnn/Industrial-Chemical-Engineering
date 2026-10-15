@@ -73,7 +73,7 @@ public final class MaterialCatalog {
     }
     private final SolidMaterialCatalog solids;
     public SolidMaterialCatalog solids(){return solids;}
-    private final MaterialFluidData fluidData;
+    private final FluidData fluidData;
     private final Map<String, MaterialName> names;
     private final Map<String, Package> packages;
     private final Map<String, String> resources;
@@ -87,7 +87,7 @@ public final class MaterialCatalog {
     private final Map<String, Validity> propertyValidity, packageValidity;
     private MaterialCatalog(Map<String, MaterialName> names, Map<String, Package> packages, Map<String, String> resources,
             Map<String, Map<ViscosityCorrelation.Phase, ViscosityCorrelation>> viscosities, Map<String, String> waterModels,
-            Map<String, FluidAppearance> assayAppearances, Map<String, FluidAppearance> componentAppearances, Map<String, LiquidMixtureCorrection> liquidMixtures, MaterialPresets presets, MaterialFluidData fluidData,
+            Map<String, FluidAppearance> assayAppearances, Map<String, FluidAppearance> componentAppearances, Map<String, LiquidMixtureCorrection> liquidMixtures, MaterialPresets presets, FluidData fluidData,
             Map<String, Validity> propertyValidity, Map<String, Validity> packageValidity) {
         this.propertyValidity = Map.copyOf(propertyValidity); this.packageValidity = Map.copyOf(packageValidity);
         this.solids=SolidMaterialCatalog.parse(resources);
@@ -106,14 +106,14 @@ public final class MaterialCatalog {
     }
     public MaterialName name(String id) { MaterialName n=names.get(id); return n==null?MaterialName.chemical(id):n; }
     public Map<String, Package> packages() { return packages; }
-    public MaterialFluidData fluidData(){return fluidData;}
+    public FluidData fluidData(){return fluidData;}
     /**
      * The fluid network's thermodynamic identity of a package: its physics fingerprint, the liquid volume references,
      * and the fluid-network validity of the package and of every component ({@link Validity}), so a changed domain is a
      * changed thermodynamic revision (a fresh world, like any other property change).
      */
     public String fluidThermoFingerprint(String packageId) {
-        var p=requirePackage(packageId);var points=new TreeMap<String,MaterialFluidData.VolumeReference>();
+        var p=requirePackage(packageId);var points=new TreeMap<String,FluidData.VolumeReference>();
         for(String id:p.components())if(fluidData.volumeReferences().containsKey(id))points.put(id,fluidData.volumeReferences().get(id));
         var domains=new ArrayList<Object>();
         domains.add(fluidValidity(packageId).map(Validity::numbers).orElse(List.of()));
@@ -309,7 +309,7 @@ public final class MaterialCatalog {
                 origins.put(o,path);
             } catch (RuntimeException e) { throw error(entry.getKey(), e); }
         }
-        MaterialAuthoring.expand(groups,origins);
+        Authoring.expand(groups,origins);
         var names = new HashMap<String, MaterialName>();
         var properties = new HashMap<String, Property>();
         var waters = new HashMap<String, Water>();
@@ -469,7 +469,7 @@ public final class MaterialCatalog {
         });
         for(var a:group(groups,"assays").values()) checked(origins,a,() -> require(packages,string(a,"package"),"assay package"));
         if(packages.isEmpty()) throw new IllegalArgumentException("Material catalog has no packages");
-        var result=new MaterialCatalog(names,packages,resources,viscosities,waterModels,assayAppearances,componentAppearances,liquidMixtures,MaterialPresets.read(group(groups,"presets"),group(groups,"networks"),origins,packages,names.keySet()),MaterialFluidData.read(group(groups,"transport"),origins,names.keySet()),
+        var result=new MaterialCatalog(names,packages,resources,viscosities,waterModels,assayAppearances,componentAppearances,liquidMixtures,MaterialPresets.read(group(groups,"presets"),group(groups,"networks"),origins,packages,names.keySet()),FluidData.read(group(groups,"transport"),origins,names.keySet()),
                 propertyValidity,packageValidity);
         for(var row:group(groups,"presets").values())if(string(row,"kind").equals("column"))checked(origins,row,()->
                 MaterialRuntime.with(result,string(row,"package"),()->{com.wormzjl.createcheme.science.column.v3.V3ColumnProblemResolver.validateInput(result.presets().column(string(row,"id")).input(result));return null;}));
@@ -626,5 +626,116 @@ public final class MaterialCatalog {
                 return new String(in.readAllBytes(),StandardCharsets.UTF_8);
             }catch(IOException e){throw new UncheckedIOException(path,e);}
         }
+    }
+    /** Explicit shared-basis references resolve to whole ordered records before scientific validation. */
+    private static final class Authoring {
+        private record Basis(List<String> components,List<String> properties) {}
+        private Authoring() {}
+        static void expand(Map<String,Map<String,JsonObject>> groups,Map<JsonObject,String> origins) {
+            var bases=groups.getOrDefault("bases",Map.of());var resolved=new HashMap<String,Basis>();
+            for(String id:bases.keySet())resolve(id,bases,resolved,new LinkedHashSet<>(),origins);
+            for(var entry:resolved.entrySet()) {
+                var axis=entry.getValue();var row=bases.get(entry.getKey());
+                for(int i=0;i<axis.components().size();i++) {
+                    String component=axis.components().get(i),property=axis.properties().get(i);
+                    var definition=groups.getOrDefault("properties",Map.of()).get(property);
+                    if(!groups.getOrDefault("components",Map.of()).containsKey(component)||definition==null
+                            ||!definition.has("component")||!component.equals(definition.get("component").getAsString()))
+                        throw error(origins,row,"basis.properties: missing or mismatched component/property "+component+" / "+property);
+                }
+            }
+            for(var p:groups.getOrDefault("packages",Map.of()).values())if(p.has("basis")) {
+                if(p.has("components")||p.has("properties"))throw error(origins,p,"basis: cannot combine a reference with inline components/properties");
+                var basis=resolved.get(p.get("basis").getAsString());
+                if(basis==null)throw error(origins,p,"basis: missing reference "+p.get("basis"));
+                p.add("components",new Gson().toJsonTree(basis.components()));p.add("properties",new Gson().toJsonTree(basis.properties()));
+            }
+        }
+        private static Basis resolve(String id,Map<String,JsonObject> source,Map<String,Basis> resolved,
+                Set<String> visiting,Map<JsonObject,String> origins) {
+            if(resolved.containsKey(id))return resolved.get(id);
+            var row=source.get(id);if(row==null)throw new IllegalArgumentException("basis.extends: missing reference "+id);
+            if(!visiting.add(id))throw error(origins,row,"basis.extends: cycle "+visiting+" -> "+id);
+            var components=new ArrayList<String>();var properties=new ArrayList<String>();
+            try {
+                if(row.has("extends")) {
+                    var parent=resolve(row.get("extends").getAsString(),source,resolved,visiting,origins);
+                    components.addAll(parent.components());properties.addAll(parent.properties());
+                }
+                components.addAll(strings(row,"components"));properties.addAll(strings(row,"properties"));
+                if(components.size()>64||components.size()!=properties.size())throw new IllegalArgumentException("basis: invalid ordered components/properties");
+                new MaterialAxis(components);
+                var result=new Basis(List.copyOf(components),List.copyOf(properties));resolved.put(id,result);return result;
+            }catch(RuntimeException invalid){throw error(origins,row,invalid.getMessage());}
+            finally {visiting.remove(id);}
+        }
+        private static List<String> strings(JsonObject o,String key) {
+            if(!o.has(key)||!o.get(key).isJsonArray())throw new IllegalArgumentException("basis."+key+": required array");
+            var values=new ArrayList<String>();
+            for(var value:o.getAsJsonArray(key)) {
+                if(!value.isJsonPrimitive()||!value.getAsJsonPrimitive().isString()||value.getAsString().isBlank())throw new IllegalArgumentException("basis."+key+": string required");
+                values.add(value.getAsString());
+            }
+            return values;
+        }
+        private static IllegalArgumentException error(Map<JsonObject,String> origins,JsonObject row,String message) {
+            return new IllegalArgumentException(origins.get(row)+": "+message);
+        }
+    }
+    /** Validated, immutable reference data used by fluid EOS volume translation and dissolved-solute transport. */
+    public static final class FluidData {
+        public record VolumeReference(double temperatureKelvin,double pressurePascal,double molarVolumeCubicMetres) {}
+        private final Map<String,VolumeReference> volumes;
+        private final Map<String,ViscosityCorrelation> conditional;
+        private FluidData(Map<String,VolumeReference> volumes,Map<String,ViscosityCorrelation> conditional) {
+            this.volumes=Map.copyOf(volumes);this.conditional=Map.copyOf(conditional);
+        }
+        public Map<String,VolumeReference> volumeReferences(){return volumes;}
+        public Map<String,ViscosityCorrelation> conditionalLiquidViscosities(){return conditional;}
+        static FluidData read(Map<String,JsonObject> records,Map<JsonObject,String> origins,Set<String> components) {
+            var volumes=new HashMap<String,VolumeReference>();var curves=new HashMap<String,ViscosityCorrelation>();
+            for(var row:records.values())try {
+                String type=text(row,"type"),revision=text(row,"revision"),source=text(row,"source");
+                if(type.equals("liquid_volume_reference_points")) {
+                    for(var entry:array(row,"points")) {
+                        var point=entry.getAsJsonObject();String id=component(point,components);
+                        text(point,"source");
+                        var value=new VolumeReference(positive(point,"temperatureKelvin"),positive(point,"pressurePascal"),positive(point,"molarVolumeCubicMetres"));
+                        if(volumes.putIfAbsent(id,value)!=null)throw new IllegalArgumentException("points: duplicate component "+id);
+                    }
+                } else if(type.equals("conditional_solute_log_tables")) {
+                    double pressure=positive(row,"reference_pressure_pascal");
+                    for(var entry:array(row,"curves")) {
+                        var curve=entry.getAsJsonObject();String id=component(curve,components);
+                        var t=numbers(curve,"temperatures_kelvin");var mu=numbers(curve,"viscosities_pascal_seconds");
+                        if(t.size()<2||t.size()!=mu.size())throw new IllegalArgumentException("curves: temperature/value count mismatch");
+                        var value=new ViscosityCorrelation(ViscosityCorrelation.Model.LOG_TABLE,t.getFirst(),t.getLast(),pressure,pressure,t.getFirst(),mu,List.of(),revision,source,true,t);
+                        if(curves.putIfAbsent(id,value)!=null)throw new IllegalArgumentException("curves: duplicate component "+id);
+                        if(curve.has("checks"))for(var check:array(curve,"checks")) {
+                            var sample=check.getAsJsonObject();double temperature=positive(sample,"temperature_kelvin");positive(sample,"viscosity_pascal_seconds");
+                            if(temperature<t.getFirst()||temperature>t.getLast())throw new IllegalArgumentException("checks: temperature outside sampled domain");
+                        }
+                    }
+                } else throw new IllegalArgumentException("type: unsupported fluid reference record "+type);
+            } catch(RuntimeException invalid) {throw new IllegalArgumentException(origins.get(row)+": "+invalid.getMessage(),invalid);}
+            return new FluidData(volumes,curves);
+        }
+        private static String component(JsonObject row,Set<String> components){String id=text(row,"component");if(!components.contains(id))throw new IllegalArgumentException("component: unknown "+id);return id;}
+        private static String text(JsonObject row,String key){var e=row.get(key);if(e==null||!e.isJsonPrimitive()||!e.getAsJsonPrimitive().isString()||e.getAsString().isBlank())throw new IllegalArgumentException(key+": string required");return e.getAsString();}
+        private static JsonArray array(JsonObject row,String key){var e=row.get(key);if(e==null||!e.isJsonArray())throw new IllegalArgumentException(key+": array required");return e.getAsJsonArray();}
+        private static double positive(JsonObject row,String key){var e=row.get(key);if(e==null||!e.isJsonPrimitive()||!e.getAsJsonPrimitive().isNumber())throw new IllegalArgumentException(key+": number required");double v=e.getAsDouble();if(!Double.isFinite(v)||v<=0)throw new IllegalArgumentException(key+": positive finite value required");return v;}
+        private static List<Double> numbers(JsonObject row,String key){var values=new ArrayList<Double>();for(var e:array(row,key)){if(!e.isJsonPrimitive()||!e.getAsJsonPrimitive().isNumber())throw new IllegalArgumentException(key+": number required");double v=e.getAsDouble();if(!Double.isFinite(v)||v<=0)throw new IllegalArgumentException(key+": positive finite values required");values.add(v);}return List.copyOf(values);}
+    }
+    /** Liquid render tint, independent of thermodynamic and optical properties. */
+    public record FluidAppearance(int rgb, double transparency, boolean estimated) {
+        public FluidAppearance {
+            if (rgb < 0 || rgb > 0xFFFFFF) throw new IllegalArgumentException("appearance.color must be 24-bit RGB");
+            if (!Double.isFinite(transparency) || transparency < 0 || transparency > 1)
+                throw new IllegalArgumentException("appearance.transparency must be finite and between 0 and 1");
+        }
+
+        /** Packed AARRGGBB tint. Transparency 0 is opaque; 1 is invisible. */
+        public int argb() { return ((int) Math.round((1 - transparency) * 255) << 24) | rgb; }
+
     }
 }

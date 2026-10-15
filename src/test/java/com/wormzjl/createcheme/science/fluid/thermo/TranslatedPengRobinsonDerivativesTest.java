@@ -5,7 +5,7 @@ import com.wormzjl.createcheme.science.math.DeterministicMath;
 import static org.junit.jupiter.api.Assertions.*;
 
 import com.wormzjl.createcheme.science.material.MaterialCatalog;
-import com.wormzjl.createcheme.science.thermo.PhaseRoot;
+import com.wormzjl.createcheme.science.thermo.PengRobinsonKernel;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -45,7 +45,7 @@ class TranslatedPengRobinsonDerivativesTest {
         var output=eos.newDerivatives();
         var worst=new LinkedHashMap<String,Worst>();
         int compared=0,identities=0;
-        for(var state:states(model.hydrocarbon.componentCount()))for(PhaseRoot root:PhaseRoot.values()) {
+        for(var state:states(model.hydrocarbon.componentCount()))for(PengRobinsonKernel.Root root:PengRobinsonKernel.Root.values()) {
             var base=eos.prepare(state.temperature);
             TranslatedPengRobinson.Phase phase;
             try {
@@ -165,7 +165,7 @@ class TranslatedPengRobinsonDerivativesTest {
             return fractions;
         }
         /** {@code component} is a signed one-based index; zero means no composition perturbation. */
-        TranslatedPengRobinson.Phase at(TranslatedPengRobinson eos,PhaseRoot root,
+        TranslatedPengRobinson.Phase at(TranslatedPengRobinson eos,PengRobinsonKernel.Root root,
                                        double temperatureStep,double pressureStep,int component) {
             double[] moles=amounts;
             if(component!=0) {
@@ -175,7 +175,7 @@ class TranslatedPengRobinsonDerivativesTest {
             double temperature=this.temperature+temperatureStep;
             return eos.evaluate(temperature,pressure+pressureStep,moles,root,eos.prepare(temperature));
         }
-        boolean keepsRoot(TranslatedPengRobinson eos,PhaseRoot root,double temperatureStep,double pressureStep,int component) {
+        boolean keepsRoot(TranslatedPengRobinson eos,PengRobinsonKernel.Root root,double temperatureStep,double pressureStep,int component) {
             try {
                 var base=eos.evaluate(temperature,pressure,amounts,root,eos.prepare(temperature));
                 var higher=at(eos,root,temperatureStep,pressureStep,component);

@@ -51,7 +51,7 @@ class AmbientCrudePresetTest {
         var catalog=MaterialCatalog.bundled();
         var original=new HydrocarbonModel(catalog,FluidPresetCatalog.NETWORK_PACKAGE,1e-9);
         double[] n=new double[original.componentCount()];n[10]=1;
-        var colder=assertThrows(ThermoDomainViolation.class,()->original.phase(293,101325,n,com.wormzjl.createcheme.science.thermo.PhaseRoot.LIQUID));
+        var colder=assertThrows(ThermoDomainViolation.class,()->original.phase(293,101325,n,com.wormzjl.createcheme.science.thermo.PengRobinsonKernel.Root.LIQUID));
         assertEquals(original.components().get(10),colder.component());assertEquals(293.15,colder.minimum());
         var resources=new java.util.HashMap<>(catalog.resources());
         String path="data/createcheme/materials/properties/crude_pc04.json";
@@ -61,8 +61,8 @@ class AmbientCrudePresetTest {
         // The override's author qualifies the new fit over its own range only, and says so in its data.
         p.getAsJsonObject("fluid_domain").addProperty("temperature_min_kelvin",298.15);resources.put(path,p.toString());
         var edited=new HydrocarbonModel(MaterialCatalog.parse(resources),FluidPresetCatalog.NETWORK_PACKAGE,1e-9);
-        var refused=assertThrows(ThermoDomainViolation.class,()->edited.phase(298,101325,n,com.wormzjl.createcheme.science.thermo.PhaseRoot.LIQUID));
+        var refused=assertThrows(ThermoDomainViolation.class,()->edited.phase(298,101325,n,com.wormzjl.createcheme.science.thermo.PengRobinsonKernel.Root.LIQUID));
         assertEquals("crude_pc04",refused.component());assertEquals(298.15,refused.minimum());
-        assertDoesNotThrow(()->edited.phase(300,101325,n,com.wormzjl.createcheme.science.thermo.PhaseRoot.LIQUID));
+        assertDoesNotThrow(()->edited.phase(300,101325,n,com.wormzjl.createcheme.science.thermo.PengRobinsonKernel.Root.LIQUID));
     }
 }

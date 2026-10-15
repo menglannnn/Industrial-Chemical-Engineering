@@ -32,7 +32,7 @@ class FluidAppearanceTest {
             assertTrue(MaterialRuntime.with(changed, PACKAGE, () -> MaterialRuntime.isBundledScience(PACKAGE)));
             var result = path.startsWith("components") ? changed.componentAppearance(PACKAGE, "crude_pc07")
                     : changed.assayAppearance(PACKAGE, "createcheme:tia_juana_light_methane");
-            assertEquals(new FluidAppearance(0x123456, .4, true), result);
+            assertEquals(new MaterialCatalog.FluidAppearance(0x123456, .4, true), result);
         }
     }
 
@@ -54,14 +54,14 @@ class FluidAppearanceTest {
                 assertSame(original, MaterialRuntime.active());
             }
         }
-        assertThrows(IllegalArgumentException.class, () -> new FluidAppearance(0, Double.NaN, true));
-        assertThrows(IllegalArgumentException.class, () -> new FluidAppearance(0, Double.POSITIVE_INFINITY, true));
+        assertThrows(IllegalArgumentException.class, () -> new MaterialCatalog.FluidAppearance(0, Double.NaN, true));
+        assertThrows(IllegalArgumentException.class, () -> new MaterialCatalog.FluidAppearance(0, Double.POSITIVE_INFINITY, true));
     }
 
     @Test void transparencyHasExplicitOpaqueAndInvisibleEndpoints() {
-        assertEquals(0xFF123456, new FluidAppearance(0x123456, 0, true).argb());
-        assertEquals(0x00123456, new FluidAppearance(0x123456, 1, true).argb());
-        assertEquals(0x80123456, new FluidAppearance(0x123456, .5, true).argb());
+        assertEquals(0xFF123456, new MaterialCatalog.FluidAppearance(0x123456, 0, true).argb());
+        assertEquals(0x00123456, new MaterialCatalog.FluidAppearance(0x123456, 1, true).argb());
+        assertEquals(0x80123456, new MaterialCatalog.FluidAppearance(0x123456, .5, true).argb());
     }
 
     private static JsonObject appearance(String color, double transparency) {

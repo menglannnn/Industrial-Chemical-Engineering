@@ -3,9 +3,7 @@ package com.wormzjl.createcheme.science.fluid.thermo;
 import com.wormzjl.createcheme.science.math.DeterministicMath;
 
 import com.wormzjl.createcheme.science.fluid.diagnostics.SolverDiagnostics;
-import com.wormzjl.createcheme.science.thermo.PengRobinson78;
 import com.wormzjl.createcheme.science.thermo.PengRobinsonKernel;
-import com.wormzjl.createcheme.science.thermo.PhaseRoot;
 import com.wormzjl.createcheme.science.thermo.ThermoComponent;
 import java.util.List;
 
@@ -21,7 +19,7 @@ import java.util.List;
  * {@code (v, a, b, da/dT, d2a/dT2, S_i)} and is unchanged.
  */
 public final class TranslatedPengRobinson {
-    private static final double R = PengRobinson78.GAS_CONSTANT;
+    private static final double R = FluidThermodynamics.R;
     private static final double SQRT_TWO = Math.sqrt(2);
     private static final double REFERENCE_T = 298.15;
     private final List<ThermoComponent> components;
@@ -97,7 +95,7 @@ public final class TranslatedPengRobinson {
                 PengRobinsonKernel.Mixing.SPARSE_PAIRS);
     }
 
-    public Phase evaluate(double temperature, double pressure, double[] amounts, PhaseRoot root) {
+    public Phase evaluate(double temperature, double pressure, double[] amounts, PengRobinsonKernel.Root root) {
         return evaluate(temperature,pressure,amounts,root,prepare(temperature));
     }
 
@@ -245,15 +243,15 @@ public final class TranslatedPengRobinson {
 
     /** {@link #evaluate} without the record and its two
      * array copies; the returned buffer is the workspace's own and is refilled by the next evaluation. */
-    public Values evaluateValues(double temperature,double pressure,double[] amounts,PhaseRoot root,Workspace workspace) {
+    public Values evaluateValues(double temperature,double pressure,double[] amounts,PengRobinsonKernel.Root root,Workspace workspace) {
         requireState(temperature,pressure,amounts,workspace);
-        kernel.evaluate(temperature,pressure,amounts,kernelRoot(root),workspace.mixture,workspace.evaluation);
+        kernel.evaluate(temperature,pressure,amounts,root,workspace.mixture,workspace.evaluation);
         fill(temperature,pressure,workspace,workspace.evaluation,workspace.values);
         return workspace.values;
     }
-    public Phase evaluate(double temperature,double pressure,double[] amounts,PhaseRoot root,Workspace workspace) {
+    public Phase evaluate(double temperature,double pressure,double[] amounts,PengRobinsonKernel.Root root,Workspace workspace) {
         requireState(temperature,pressure,amounts,workspace);
-        kernel.evaluate(temperature,pressure,amounts,kernelRoot(root),workspace.mixture,workspace.evaluation);
+        kernel.evaluate(temperature,pressure,amounts,root,workspace.mixture,workspace.evaluation);
         fill(temperature,pressure,workspace,workspace.evaluation,workspace.values);
         return workspace.values.phase();
     }
@@ -264,11 +262,11 @@ public final class TranslatedPengRobinson {
      * molar residual enthalpies, and the pressure derivative and partial molar enthalpies that the volume
      * translation and the volumetric block add to them. Allocates nothing.
      */
-    public void differentiate(double temperature,double pressure,double[] amounts,PhaseRoot root,
+    public void differentiate(double temperature,double pressure,double[] amounts,PengRobinsonKernel.Root root,
                               Workspace workspace,Derivatives output) {
         requireState(temperature,pressure,amounts,workspace);
         if(output.owner!=this)throw new IllegalArgumentException("Derivative bundle belongs to another model");
-        kernel.evaluateDerivatives(temperature,pressure,amounts,kernelRoot(root),workspace.mixture,output.mixture);
+        kernel.evaluateDerivatives(temperature,pressure,amounts,root,workspace.mixture,output.mixture);
         fill(temperature,pressure,workspace,output.mixture.evaluation(),output.values);
         double rt=R*temperature;
         double[] mixtureDt=output.mixture.dLogPhiDtView(),residual=output.mixture.partialMolarResidualEnthalpyView();
@@ -292,9 +290,6 @@ public final class TranslatedPengRobinson {
         }
         if(workspace.owner!=this||temperature!=workspace.temperature)throw new IllegalArgumentException("Temperature coefficients belong to another state/model");
         if(amounts.length!=components.size())throw new IllegalArgumentException("Composition basis mismatch");
-    }
-    private static PengRobinsonKernel.Root kernelRoot(PhaseRoot root) {
-        return root==PhaseRoot.VAPOR?PengRobinsonKernel.Root.VAPOR:PengRobinsonKernel.Root.LIQUID;
     }
 
     /** The translation, the caloric terms and the volumetric block, on the mixture the kernel just evaluated. */

@@ -103,7 +103,7 @@ class FluidCheckpointCodecTest {
         var player=UUID.randomUUID();
         var events=List.of(new WorldTopologyLedger.Event(UUID.randomUUID(),10,List.of(new WorldTopologyLedger.Edit(3,retuned),new WorldTopologyLedger.Edit(4,null)),Set.of(2L,3L,4L)),
                 new WorldTopologyLedger.Event(UUID.randomUUID(),12,List.of(new WorldTopologyLedger.Edit(2,null)),Set.of(2L),new WorldTopologyLedger.Recovery(2,player)));
-        var particle=new com.wormzjl.createcheme.science.material.SolidMaterial("createcheme:demo_particle","r1",2500,800);
+        var particle=new com.wormzjl.createcheme.science.material.SolidMaterialCatalog.SolidMaterial("createcheme:demo_particle","r1",2500,800);
         var solids=new com.wormzjl.createcheme.science.fluid.state.SolidInventory(List.of(new com.wormzjl.createcheme.science.fluid.state.SolidInventory.Population(particle,com.wormzjl.createcheme.science.fluid.state.ParticleSize.micrometres("100"),.25)));
         var recoveries=Map.of(UUID.randomUUID(),new WorldTopologyLedger.RecoveredSolid(new PhysicalFluidTopology.Position("minecraft:overworld",3,65,-3),player,solids,12.5),
                 UUID.randomUUID(),new WorldTopologyLedger.RecoveredSolid(new PhysicalFluidTopology.Position("minecraft:the_nether",9,70,1),null,solids,-4));

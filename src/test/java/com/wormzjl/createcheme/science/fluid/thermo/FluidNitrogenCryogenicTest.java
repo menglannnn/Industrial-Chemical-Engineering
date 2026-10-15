@@ -1,7 +1,7 @@
 package com.wormzjl.createcheme.science.fluid.thermo;
 
 import com.wormzjl.createcheme.science.material.MaterialCatalog;
-import com.wormzjl.createcheme.science.thermo.PhaseRoot;
+import com.wormzjl.createcheme.science.thermo.PengRobinsonKernel;
 import java.util.Locale;
 import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
@@ -28,11 +28,11 @@ class FluidNitrogenCryogenicTest {
     /** NIST at 77.355 K: saturation 101,325.059 Pa, saturated liquid 806.0844 kg/m3 (isotherm-77.355K.tsv). */
     private static final double NBP=77.355,NIST_SATURATION=101325.059474,NIST_LIQUID_DENSITY=806.084401826;
 
-    private double logFugacity(double t,double p,PhaseRoot root){return model.hydrocarbon.phase(t,p,pure,root).logFugacityView()[nitrogen];}
+    private double logFugacity(double t,double p,PengRobinsonKernel.Root root){return model.hydrocarbon.phase(t,p,pure,root).logFugacityView()[nitrogen];}
     /** The pressure where the network's liquid and vapour fugacities of pure nitrogen agree, by bisection in log P. */
     private double saturation(double t) {
         double low=2e4,high=4e5;
-        for(int k=0;k<200;k++){double p=Math.sqrt(low*high);if(logFugacity(t,p,PhaseRoot.LIQUID)>logFugacity(t,p,PhaseRoot.VAPOR))low=p;else high=p;}
+        for(int k=0;k<200;k++){double p=Math.sqrt(low*high);if(logFugacity(t,p,PengRobinsonKernel.Root.LIQUID)>logFugacity(t,p,PengRobinsonKernel.Root.VAPOR))low=p;else high=p;}
         return Math.sqrt(low*high);
     }
 
@@ -43,7 +43,7 @@ class FluidNitrogenCryogenicTest {
     }
 
     @Test void saturatedLiquidDensityAtTheNormalBoilingPointAgreesWithNist() {
-        double density=model.hydrocarbon.molecularWeight(nitrogen)/model.hydrocarbon.phase(NBP,NIST_SATURATION,pure,PhaseRoot.LIQUID).molarVolume();
+        double density=model.hydrocarbon.molecularWeight(nitrogen)/model.hydrocarbon.phase(NBP,NIST_SATURATION,pure,PengRobinsonKernel.Root.LIQUID).molarVolume();
         System.out.printf(Locale.ROOT,"nitrogen saturated liquid density (77.355 K): model %.4f kg/m3, NIST %.4f, %+.3f %%%n",density,NIST_LIQUID_DENSITY,100*(density/NIST_LIQUID_DENSITY-1));
         assertEquals(1,density/NIST_LIQUID_DENSITY,.005,"translated PR78 liquid density");
     }
@@ -69,7 +69,7 @@ class FluidNitrogenCryogenicTest {
                 {198.16,29.1074493210},{248.16,29.1114752464},{273.16,29.1163251898}};
         var eos=model.hydrocarbon.translated();var d=eos.newDerivatives();
         for(double[] row:nist) {
-            eos.differentiate(row[0],100,pure,PhaseRoot.VAPOR,eos.prepare(row[0]),d);
+            eos.differentiate(row[0],100,pure,PengRobinsonKernel.Root.VAPOR,eos.prepare(row[0]),d);
             double cp0=d.values().idealGasHeatCapacity();
             assertEquals(1,cp0/row[1],5e-4,"ideal-gas Cp at "+row[0]+" K: "+cp0);
         }
@@ -83,13 +83,13 @@ class FluidNitrogenCryogenicTest {
     @Test void enthalpyAndHeatCapacityAreContinuousAt273Point16Kelvin() {
         double joint=273.16,below=Math.nextDown(joint);
         var eos=model.hydrocarbon.translated();
-        var above=eos.evaluate(joint,1000,pure,PhaseRoot.VAPOR,eos.prepare(joint));var under=eos.evaluate(below,1000,pure,PhaseRoot.VAPOR,eos.prepare(below));
+        var above=eos.evaluate(joint,1000,pure,PengRobinsonKernel.Root.VAPOR,eos.prepare(joint));var under=eos.evaluate(below,1000,pure,PengRobinsonKernel.Root.VAPOR,eos.prepare(below));
         System.out.printf(Locale.ROOT,"H(273.16) - H(273.16-ulp) = %.3e J/mol, Cp difference %.3e J/mol/K%n",above.molarEnthalpy()-under.molarEnthalpy(),above.heatCapacity()-under.heatCapacity());
         assertEquals(above.molarEnthalpy(),under.molarEnthalpy(),1e-9,"enthalpy continuous at the joint");
         assertEquals(above.heatCapacity(),under.heatCapacity(),1e-9,"heat capacity continuous at the joint");
         // One millikelvin either side: the enthalpy moves by Cp times the step, on both segments alike.
-        double hPlus=eos.evaluate(joint+1e-3,1000,pure,PhaseRoot.VAPOR,eos.prepare(joint+1e-3)).molarEnthalpy();
-        double hMinus=eos.evaluate(joint-1e-3,1000,pure,PhaseRoot.VAPOR,eos.prepare(joint-1e-3)).molarEnthalpy();
+        double hPlus=eos.evaluate(joint+1e-3,1000,pure,PengRobinsonKernel.Root.VAPOR,eos.prepare(joint+1e-3)).molarEnthalpy();
+        double hMinus=eos.evaluate(joint-1e-3,1000,pure,PengRobinsonKernel.Root.VAPOR,eos.prepare(joint-1e-3)).molarEnthalpy();
         assertEquals(hPlus-above.molarEnthalpy(),above.molarEnthalpy()-hMinus,1e-7,"no kink: equal slopes across the joint");
     }
 
@@ -99,7 +99,7 @@ class FluidNitrogenCryogenicTest {
         var eos=model.hydrocarbon.translated();var d=eos.newDerivatives();
         for(double t:new double[]{273.16,298.15,300,450,600,900}) {
             double delta=t-298.15,cp=0;for(int term=5;term>=0;term--)cp=cp*delta+property.cp().get(term);
-            eos.differentiate(t,101325,pure,PhaseRoot.VAPOR,eos.prepare(t),d);
+            eos.differentiate(t,101325,pure,PengRobinsonKernel.Root.VAPOR,eos.prepare(t),d);
             assertEquals(cp,d.values().idealGasHeatCapacity(),0,"ideal-gas Cp at "+t+" K");
         }
     }

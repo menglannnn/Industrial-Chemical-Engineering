@@ -2,7 +2,7 @@ package com.wormzjl.createcheme.science.fluid.thermo;
 
 import static org.junit.jupiter.api.Assertions.*;
 import com.wormzjl.createcheme.science.material.MaterialCatalog;
-import com.wormzjl.createcheme.science.thermo.PhaseRoot;
+import com.wormzjl.createcheme.science.thermo.PengRobinsonKernel;
 import org.junit.jupiter.api.Test;
 
 class HybridDerivativeTest {
@@ -21,8 +21,8 @@ class HybridDerivativeTest {
         var model=new HydrocarbonModel(MaterialCatalog.bundled(),"createcheme:tjl20_methane",1e-9);
         double[] n=new double[com.wormzjl.createcheme.science.material.MaterialTestBasis.CRUDE];n[0]=.01;n[6]=.09;n[12]=.4;n[com.wormzjl.createcheme.science.material.MaterialTestBasis.CRUDE-1]=.5;
         double t=350,p=1e6,dp=10;
-        var mid=model.phase(t,p,n,PhaseRoot.LIQUID);
-        var a=model.phase(t,p-dp,n,PhaseRoot.LIQUID).logFugacity();var b=model.phase(t,p+dp,n,PhaseRoot.LIQUID).logFugacity();
+        var mid=model.phase(t,p,n,PengRobinsonKernel.Root.LIQUID);
+        var a=model.phase(t,p-dp,n,PengRobinsonKernel.Root.LIQUID).logFugacity();var b=model.phase(t,p+dp,n,PengRobinsonKernel.Root.LIQUID).logFugacity();
         double v=0;for(int i=0;i<n.length;i++)v+=n[i]*(b[i]-a[i]+Math.log((p+dp)/(p-dp)))/(2*dp)*FluidThermodynamics.R*t;
         assertEquals(mid.molarVolume(),v,1e-9*mid.molarVolume()+1e-12);
     }

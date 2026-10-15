@@ -2,7 +2,7 @@ package com.wormzjl.createcheme.science.fluid.thermo;
 
 import static org.junit.jupiter.api.Assertions.*;
 import com.google.gson.GsonBuilder;
-import com.wormzjl.createcheme.science.thermo.PhaseRoot;
+import com.wormzjl.createcheme.science.thermo.PengRobinsonKernel;
 import com.wormzjl.createcheme.science.thermo.ThermoComponent;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -25,12 +25,12 @@ class LiquidCompressionQualificationTest {
             double referenceSlope = (rows.get(2)[3]-rows.get(0)[3])*.001 / ((rows.get(2)[1]-rows.get(0)[1])*1000);
             double referenceCompression = -referenceSlope/referenceVolume;
             var raw = TranslatedPengRobinsonTest.model(component,0);
-            double shift = referenceVolume - raw.evaluate(300,1e6,new double[] {1},PhaseRoot.LIQUID).molarVolume();
+            double shift = referenceVolume - raw.evaluate(300,1e6,new double[] {1},PengRobinsonKernel.Root.LIQUID).molarVolume();
             var translated = TranslatedPengRobinsonTest.model(component,shift);
-            var prediction = translated.evaluate(300,1e6,new double[] {1},PhaseRoot.LIQUID);
+            var prediction = translated.evaluate(300,1e6,new double[] {1},PengRobinsonKernel.Root.LIQUID);
             double worstDensityError = 0;
             for (double[] row : rows) {
-                double v = translated.evaluate(row[0],row[1]*1000,new double[] {1},PhaseRoot.LIQUID).molarVolume();
+                double v = translated.evaluate(row[0],row[1]*1000,new double[] {1},PengRobinsonKernel.Root.LIQUID).molarVolume();
                 worstDensityError = Math.max(worstDensityError,Math.abs((row[3]*.001)/v-1));
             }
             results.add(new Result(component.id(),shift,referenceCompression,prediction.isothermalCompressibility(),

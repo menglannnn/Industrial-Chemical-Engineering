@@ -6,7 +6,7 @@ import com.wormzjl.createcheme.science.column.v3.thermo.V3WaterProperties;
 import com.wormzjl.createcheme.science.fluid.diagnostics.SolverDiagnostics;
 import com.wormzjl.createcheme.science.fluid.transport.MixtureViscosity;
 import com.wormzjl.createcheme.science.material.MaterialCatalog;
-import com.wormzjl.createcheme.science.thermo.PhaseRoot;
+import com.wormzjl.createcheme.science.thermo.PengRobinsonKernel;
 import com.wormzjl.createcheme.science.thermo.TraceTruncationPolicy;
 import com.wormzjl.createcheme.science.fluid.state.SolidInventory;
 import java.util.Arrays;
@@ -429,8 +429,8 @@ public final class FluidThermodynamics {
         double nl=sum(liquid),nv=sum(vapor),volume=0,h=0,mass=0,gasVolume=0,vl=0,vw=0;
         if(terms==null&&(nl>0||nv>0))terms=prepared==null?hydrocarbon.prepare(t):prepared.pengRobinson();
         HydrocarbonModel.Phase lp=null,vp=null;
-        if(nl>0) {lp=hydrocarbon.phase(t,p,liquid,PhaseRoot.LIQUID,terms);vl=nl*lp.molarVolume();volume+=vl;h+=nl*lp.molarEnthalpy();}
-        if(nv>0) {vp=hydrocarbon.phase(t,hydrocarbonPressure,vapor,PhaseRoot.VAPOR,terms);gasVolume=nv*vp.molarVolume();h+=nv*vp.molarEnthalpy();}
+        if(nl>0) {lp=hydrocarbon.phase(t,p,liquid,PengRobinsonKernel.Root.LIQUID,terms);vl=nl*lp.molarVolume();volume+=vl;h+=nl*lp.molarEnthalpy();}
+        if(nv>0) {vp=hydrocarbon.phase(t,hydrocarbonPressure,vapor,PengRobinsonKernel.Root.VAPOR,terms);gasVolume=nv*vp.molarVolume();h+=nv*vp.molarEnthalpy();}
         if(waterLiquid<0||waterVapor<0||!Double.isFinite(waterLiquid+waterVapor))throw new IllegalArgumentException("Invalid water split");
         if(waterLiquid>0) {var w=waterLiquid(t,p,prepared);vw=waterLiquid*w.molarVolume;volume+=vw;h+=waterLiquid*w.molarEnthalpy;}
         if(waterVapor>0) {if(nv==0)gasVolume=waterVapor*R*t/p;h+=waterVapor*(prepared==null?vaporWaterEnthalpy(t):prepared.vaporEnthalpy());}
@@ -602,14 +602,14 @@ public final class FluidThermodynamics {
         if(p>ps+1e-6) {
             terms=given!=null?given:hydrocarbon.prepare(t);
             double pc=p-ps;var split=splitHydrocarbon(t,p,pc,hc,checkpoint,terms);
-            double nv=sum(split[1]);double vg=nv>0?nv*hydrocarbon.phase(t,pc,split[1],PhaseRoot.VAPOR,terms).molarVolume():0;
+            double nv=sum(split[1]);double vg=nv>0?nv*hydrocarbon.phase(t,pc,split[1],PengRobinsonKernel.Root.VAPOR,terms).molarVolume():0;
             double required=ps*vg/(R*t);
             if(required<=w)return state(t,p,split[0],split[1],w-required,required,pc,terms);
         }
         double low=1e-6,high=p;double[][] split=null;double pc=high;
         for(int iteration=0;iteration<70;iteration++) {
             checkpoint.run();pc=(low+high)*.5;if(terms==null)terms=given!=null?given:hydrocarbon.prepare(t);split=splitHydrocarbon(t,p,pc,hc,checkpoint,terms);
-            double nv=sum(split[1]);double vg=nv>0?nv*hydrocarbon.phase(t,pc,split[1],PhaseRoot.VAPOR,terms).molarVolume():0;
+            double nv=sum(split[1]);double vg=nv>0?nv*hydrocarbon.phase(t,pc,split[1],PengRobinsonKernel.Root.VAPOR,terms).molarVolume():0;
             double residual=vg>0?pc+w*R*t/vg-p:Double.POSITIVE_INFINITY;
             if(Math.abs(residual)<1e-8*p)break;
             if(residual>0)high=pc;else low=pc;
@@ -636,8 +636,8 @@ public final class FluidThermodynamics {
             double xs=0,ys=0;
             for(int i=0;i<n;i++){x[i]=z[i]/((1-beta)+beta*k[i]);y[i]=k[i]*x[i];xs+=x[i];ys+=y[i];}
             for(int i=0;i<n;i++){x[i]/=xs;y[i]/=ys;}
-            hydrocarbon.logFugacityInto(t,liquidPressure,x,PhaseRoot.LIQUID,terms,liquidLogPhi);
-            boolean vaporBranch=hydrocarbon.logFugacityInto(t,vaporPressure,y,PhaseRoot.VAPOR,terms,vaporLogPhi);
+            hydrocarbon.logFugacityInto(t,liquidPressure,x,PengRobinsonKernel.Root.LIQUID,terms,liquidLogPhi);
+            boolean vaporBranch=hydrocarbon.logFugacityInto(t,vaporPressure,y,PengRobinsonKernel.Root.VAPOR,terms,vaporLogPhi);
             double[] fl=liquidLogPhi,fv=vaporLogPhi;
             double error=0;
             for(int i=0;i<n;i++) {
@@ -685,7 +685,7 @@ public final class FluidThermodynamics {
      * correction itself. {@link #state} composes the phases, the free water and the ideal water vapor on top
      * of this, and their derivatives are the caller's too - this exposes the equation of state, not the node.</p>
      */
-    public void hydrocarbonDerivatives(double t,double p,double[] amounts,PhaseRoot root,Prepared prepared,
+    public void hydrocarbonDerivatives(double t,double p,double[] amounts,PengRobinsonKernel.Root root,Prepared prepared,
                                        TranslatedPengRobinson.Derivatives output) {
         hydrocarbon.differentiate(t,p,amounts,root,match(prepared,t).pengRobinson(),output);
     }

@@ -7,7 +7,7 @@ import com.wormzjl.createcheme.science.fluid.state.ParticleSize;
 import com.wormzjl.createcheme.science.fluid.state.SolidInventory;
 import com.wormzjl.createcheme.science.fluid.thermo.FluidThermodynamics;
 import com.wormzjl.createcheme.science.fluid.topology.TopologyCompiler;
-import com.wormzjl.createcheme.science.material.SolidMaterial;
+import com.wormzjl.createcheme.science.material.SolidMaterialCatalog.SolidMaterial;
 import net.minecraft.nbt.*;
 import java.lang.reflect.*;
 import java.nio.ByteBuffer;
