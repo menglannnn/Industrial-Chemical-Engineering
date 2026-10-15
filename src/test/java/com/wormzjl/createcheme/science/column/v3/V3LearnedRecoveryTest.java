@@ -13,24 +13,19 @@ import java.nio.charset.StandardCharsets;
 import java.util.*;
 
 /**
- * The two opt-in learned follow-ups: the ramp handoff and the second decode candidate.
+ * The learned route's failure and fallback paths, and the coarse recovery that must never publish a surrogate.
  *
- * <p>Both exist because the promoted path leaves coverage on the table that the same frozen weights can
- * reach. Both are off by default, and the first thing these tests assert is that being off means the
- * historical path, not a path that merely happens to agree today.</p>
- *
- * <p>The learned failure these tests hand to the recovery is produced by a cap, not by a clock: an accepted
- * profile displaced off its own solution and corrected under a one-iteration budget fails deterministically
- * and still leaves the terminal iterate the recovery is supposed to pick up.</p>
+ * <p>The learned failures here are produced by a cap, not by a clock: an accepted profile displaced off its
+ * own solution and corrected under a one-iteration budget fails deterministically.</p>
  */
 class V3LearnedRecoveryTest {
 
-    /** A column the classical route solves, with one small authored side draw, so a ramp exists. */
+    /** A column the classical route solves, with one small authored side draw. */
     private static V3ColumnInput drawInput() {
         return column(8, 4, List.of(new V3SideDrawSpec(6, 2.0)));
     }
 
-    /** The same column with no authored feature at all, so no ramp exists to hand anything to. */
+    /** The same column with no authored feature at all. */
     private static V3ColumnInput plainInput() {
         return column(8, 4, List.of());
     }
@@ -62,207 +57,70 @@ class V3LearnedRecoveryTest {
                 draws, List.of(), List.of());
     }
 
-    private static V3InitializationOptions learned(V3InitializationOptions.Mode mode, int iterations,
-            V3InitializationOptions.Recovery recovery) {
+    private static V3InitializationOptions learned(V3InitializationOptions.Mode mode, int iterations) {
         return new V3InitializationOptions(mode, V3InitializationOptions.WetStart.AUTO, iterations, 30_000,
-                V3InitializationOptions.Correction.WALLS, recovery);
+                V3InitializationOptions.Correction.PROGRESS);
     }
 
-    /** The handoff's sub-wall is a stated allowance, and a caller that states none gets the default. */
-    @Test void theRecoveryBudgetIsStatedOrDefaulted() {
-        assertEquals(V3ColumnCalculator.NEURAL_RAMP_HANDOFF_BUDGET_MILLIS,
-                V3InitializationOptions.DEFAULT.recoveryBudgetMilliseconds());
-        var stated = new V3InitializationOptions(V3InitializationOptions.Mode.LNN_ONLY,
-                V3InitializationOptions.WetStart.AUTO, 16, 2_000, V3InitializationOptions.Correction.PROGRESS,
-                V3InitializationOptions.Recovery.RAMP_HANDOFF, 2_500);
-        assertEquals(2_500, stated.recoveryBudgetMilliseconds());
-        assertThrows(IllegalArgumentException.class,
-                () -> new V3InitializationOptions(V3InitializationOptions.Mode.LNN_ONLY,
-                        V3InitializationOptions.WetStart.AUTO, 16, 2_000,
-                        V3InitializationOptions.Correction.PROGRESS,
-                        V3InitializationOptions.Recovery.RAMP_HANDOFF, 0));
-    }
-
-    @Test void theShippedDefaultsCarryNoRecovery() {
-        assertEquals(V3InitializationOptions.Recovery.NONE, V3InitializationOptions.DEFAULT.recovery());
-        assertEquals(V3InitializationOptions.Recovery.NONE, V3InitializationOptions.CURRENT.recovery());
-        // Every historical constructor keeps the historical rule; nothing opts in by omission.
-        assertEquals(V3InitializationOptions.Recovery.NONE,
-                new V3InitializationOptions(V3InitializationOptions.Mode.LNN_FIRST,
-                        V3InitializationOptions.WetStart.AUTO, 16, 2_000).recovery());
-        assertEquals(V3InitializationOptions.Recovery.NONE,
-                new V3InitializationOptions(V3InitializationOptions.Mode.LNN_FIRST,
-                        V3InitializationOptions.WetStart.AUTO, 16, 2_000,
-                        V3InitializationOptions.Correction.PROGRESS).recovery());
-        assertThrows(NullPointerException.class,
-                () -> new V3InitializationOptions(V3InitializationOptions.Mode.LNN_FIRST,
-                        V3InitializationOptions.WetStart.AUTO, 16, 2_000,
-                        V3InitializationOptions.Correction.PROGRESS, null));
-    }
-
-    /**
-     * A learned correction that closes by itself is untouched by the recovery rule.
-     *
-     * <p>The recovery is reached only after the candidate loop has given up, so an accepted correction must
-     * publish the same digest, the same streams and the same Newton evidence whichever rule is selected.</p>
-     */
-    @Test void anAcceptedLearnedCorrectionIsIdenticalUnderEitherRecoveryRule() {
+    /** A learned correction that closes by itself publishes the learned initializer event. */
+    @Test void anAcceptedLearnedCorrectionPublishesTheLearnedEvent() {
         V3ColumnInput input = boiledDrawInput();
         V3NeuralInitializer model = fixed(acceptedProfile(input));
-        var none = assertInstanceOf(V3ColumnOutcome.Success.class, V3ColumnCalculator.calculate(input, () -> {},
-                0, 0, learned(V3InitializationOptions.Mode.LNN_ONLY, 16, V3InitializationOptions.Recovery.NONE), model));
-        var handoff = assertInstanceOf(V3ColumnOutcome.Success.class, V3ColumnCalculator.calculate(input, () -> {},
-                0, 0, learned(V3InitializationOptions.Mode.LNN_ONLY, 16, V3InitializationOptions.Recovery.RAMP_HANDOFF), model));
-        assertEquals(none.result().inputDigest(), handoff.result().inputDigest());
-        assertEquals(none.result().streams(), handoff.result().streams());
-        assertEquals(none.diagnostics().newtonIterations(), handoff.diagnostics().newtonIterations());
-        assertEquals(none.diagnostics().solvePath(), handoff.diagnostics().solvePath());
-        assertTrue(handoff.diagnostics().events().getFirst().contains("initializer=LNN;"),
-                handoff.diagnostics().events().toString());
-        assertFalse(handoff.diagnostics().events().getFirst().contains("handoffMs="),
-                "an accepted correction never reaches the recovery");
+        var accepted = assertInstanceOf(V3ColumnOutcome.Success.class, V3ColumnCalculator.calculate(input, () -> {},
+                0, 0, learned(V3InitializationOptions.Mode.LNN_ONLY, 16), model));
+        assertTrue(accepted.diagnostics().events().getFirst().contains("initializer=LNN;"),
+                accepted.diagnostics().events().toString());
     }
 
     /**
-     * The handoff closes a capped learned correction the classical ramp can close.
-     *
-     * <p>The learned seed here is displaced far enough that one Newton iteration cannot recover it, which is
-     * the shape of the failures the recovery targets: a terminal iterate that is not a solution and is not
-     * junk either. Under {@code NONE} the request fails; under {@code RAMP_HANDOFF} the same request reaches
-     * the same audited solution the classical route reaches, and says what the handoff cost.</p>
+     * A learned seed displaced far enough that one Newton iteration cannot recover it fails as an
+     * initialization failure under {@code LNN_ONLY}; the learned route publishes no partial state.
      */
-    @Test void theRampHandoffRecoversACappedCorrectionOnAnAuthoredDrawColumn() {
+    @Test void aCappedLearnedCorrectionFailsAsAnInitializationFailure() {
         V3ColumnInput input = drawInput();
         V3NeuralInitializer model = fixed(displaced(acceptedProfile(input)));
         var capped = V3ColumnCalculator.calculate(input, () -> {}, 0, 0,
-                learned(V3InitializationOptions.Mode.LNN_ONLY, 1, V3InitializationOptions.Recovery.NONE), model);
+                learned(V3InitializationOptions.Mode.LNN_ONLY, 1), model);
         assertEquals(V3SolverFailureCode.INITIALIZATION_FAILURE,
                 assertInstanceOf(V3ColumnOutcome.Failure.class, capped).code(),
-                "the premise of this test is a learned correction that runs out of iterations");
-
-        var recovered = assertInstanceOf(V3ColumnOutcome.Success.class, V3ColumnCalculator.calculate(input, () -> {},
-                0, 0, learned(V3InitializationOptions.Mode.LNN_ONLY, 1, V3InitializationOptions.Recovery.RAMP_HANDOFF), model));
-        String event = recovered.diagnostics().events().getFirst();
-        assertTrue(event.contains("initializer=LNN_RAMP_HANDOFF;"), event);
-        assertTrue(event.contains("handoffMs="), event);
-        assertTrue(recovered.diagnostics().solvePath().contains("lnn/ramp-handoff/"),
-                recovered.diagnostics().solvePath());
-        assertTrue(recovered.diagnostics().solvePath().contains("draw-ramp"), recovered.diagnostics().solvePath());
-        assertTrue(recovered.result().acceptanceAudit().accepted());
-        assertTrue(recovered.result().convergenceEvidence().satisfiesGates());
-
-        // A recovered result is the authored request's own solution, not the surrogate's.
-        var classical = assertInstanceOf(V3ColumnOutcome.Success.class, V3ColumnCalculator.calculate(input));
-        assertEquals(classical.result().inputDigest(), recovered.result().inputDigest());
+                "a learned correction that runs out of iterations fails");
     }
 
-    /** Without an authored draw, steam feed or stage heat there is no ramp, so the rule does nothing. */
-    @Test void theRampHandoffIsSkippedWhenTheRequestCarriesNoAuthoredFeature() {
-        V3ColumnInput input = plainInput();
-        V3NeuralInitializer model = fixed(displaced(acceptedProfile(input)));
-        var none = assertInstanceOf(V3ColumnOutcome.Failure.class, V3ColumnCalculator.calculate(input, () -> {},
-                0, 0, learned(V3InitializationOptions.Mode.LNN_ONLY, 1, V3InitializationOptions.Recovery.NONE), model));
-        var handoff = assertInstanceOf(V3ColumnOutcome.Failure.class, V3ColumnCalculator.calculate(input, () -> {},
-                0, 0, learned(V3InitializationOptions.Mode.LNN_ONLY, 1, V3InitializationOptions.Recovery.RAMP_HANDOFF), model));
-        assertEquals(none.code(), handoff.code());
-        assertEquals(none.diagnostics().newtonIterations(), handoff.diagnostics().newtonIterations());
-        assertEquals(none.diagnostics().maximumScaledResidual(), handoff.diagnostics().maximumScaledResidual());
-        assertEquals(none.diagnostics().solvePath(), handoff.diagnostics().solvePath());
-        assertFalse(String.join(" | ", handoff.diagnostics().events()).contains("handoffMs="),
-                handoff.diagnostics().events().toString());
-    }
-
-    /** A seed the model never corrected leaves no terminal state, so there is nothing to hand over. */
-    @Test void theRampHandoffIsSkippedWhenNoCorrectionEverRan() {
+    /** A model that never produces a seed leaves {@code LNN_ONLY} an initialization failure. */
+    @Test void anUnavailableModelFailsLnnOnlyAsAnInitializationFailure() {
         V3ColumnInput input = drawInput();
         var failed = assertInstanceOf(V3ColumnOutcome.Failure.class, V3ColumnCalculator.calculate(input, () -> {},
-                0, 0, learned(V3InitializationOptions.Mode.LNN_ONLY, 16, V3InitializationOptions.Recovery.RAMP_HANDOFF),
-                V3NeuralInitializer.UNAVAILABLE));
+                0, 0, learned(V3InitializationOptions.Mode.LNN_ONLY, 16), V3NeuralInitializer.UNAVAILABLE));
         assertEquals(V3SolverFailureCode.INITIALIZATION_FAILURE, failed.code());
-        assertFalse(String.join(" | ", failed.diagnostics().events()).contains("handoffMs="),
-                failed.diagnostics().events().toString());
     }
 
     /**
-     * A recovered result is an audited solution of the authored request, and it need not be the classical one.
-     *
-     * <p>The two routes reach the ramp through different arithmetic — from a failed learned iterate rather
-     * than from a cold stage continuation — and on this fixture they land on **different roots** of the same
-     * MESH system: the classical route publishes a 67.9 mol/s liquid distillate and the recovered one
-     * 10.3 mol/s, both fully certified at closure 1e-8 and both accepted by the independent audit. That is
-     * not new behaviour introduced here. The learned route already publishes whichever root its own seed
-     * reaches whenever it succeeds, and the classical route's own root is a property of its continuation
-     * path; multiplicity on a condenser-temperature, reflux-ratio and reboiler-duty specification is a
-     * property of the problem. So what is asserted is what the route actually promises: the authored
-     * request's own geometry, the authored draw rate, a passed audit and a real final Newton certificate.</p>
+     * When the learned correction fails, {@code LNN_FIRST} publishes the unchanged classical backup: the
+     * classical solution exactly, down to the streams, under the backup event.
      */
-    @Test void theHandoffPublishesAnAuditedSolutionOfTheAuthoredRequest() {
-        V3ColumnInput input = drawInput();
-        V3NeuralInitializer model = fixed(displaced(acceptedProfile(input)));
-        var direct = assertInstanceOf(V3ColumnOutcome.Success.class, V3ColumnCalculator.calculate(input));
-        var recovered = assertInstanceOf(V3ColumnOutcome.Success.class, V3ColumnCalculator.calculate(input, () -> {},
-                0, 0, learned(V3InitializationOptions.Mode.LNN_FIRST, 1, V3InitializationOptions.Recovery.RAMP_HANDOFF), model));
-        // The digest is the request's identity and its formulation, so it must match whatever root is found.
-        assertEquals(direct.result().inputDigest(), recovered.result().inputDigest());
-        assertEquals(direct.result().streams().stream().map(V3ColumnStreamProperties::streamId).toList(),
-                recovered.result().streams().stream().map(V3ColumnStreamProperties::streamId).toList());
-        var draw = recovered.result().streams().stream()
-                .filter(stream -> stream.streamId().startsWith("side_liquid_tray")).findFirst().orElseThrow();
-        assertEquals(2.0, draw.molarFlowMolPerSecond(), 1e-9, "the ramp must reach the authored draw rate");
-        assertTrue(recovered.result().acceptanceAudit().accepted());
-        assertTrue(recovered.result().convergenceEvidence().satisfiesGates());
-        String event = recovered.diagnostics().events().getFirst();
-        assertTrue(event.contains("handoffMs="), event);
-        assertTrue(event.contains("initializer=LNN_RAMP_HANDOFF;") || event.contains("initializer=CURRENT_BACKUP;"), event);
-    }
-
-    /**
-     * Where the handoff does not apply, {@code LNN_FIRST} still gets its unchanged classical backup.
-     *
-     * <p>This is the whole risk the rule carries — a recovery that runs before a restart it does not replace
-     * — so on a request the rule declines, the restart has to publish the classical solution exactly, down
-     * to the streams, and say nothing about a handoff that never happened.</p>
-     */
-    @Test void aDeclinedHandoffLeavesLnnFirstItsUnchangedClassicalBackup() {
+    @Test void aFailedLearnedCorrectionLeavesLnnFirstItsUnchangedClassicalBackup() {
         V3ColumnInput input = plainInput();
         V3NeuralInitializer model = fixed(displaced(acceptedProfile(input)));
         var direct = assertInstanceOf(V3ColumnOutcome.Success.class, V3ColumnCalculator.calculate(input));
-        var none = assertInstanceOf(V3ColumnOutcome.Success.class, V3ColumnCalculator.calculate(input, () -> {},
-                0, 0, learned(V3InitializationOptions.Mode.LNN_FIRST, 1, V3InitializationOptions.Recovery.NONE), model));
-        var handoff = assertInstanceOf(V3ColumnOutcome.Success.class, V3ColumnCalculator.calculate(input, () -> {},
-                0, 0, learned(V3InitializationOptions.Mode.LNN_FIRST, 1, V3InitializationOptions.Recovery.RAMP_HANDOFF), model));
-        assertEquals(direct.result().streams(), none.result().streams());
-        assertEquals(direct.result().streams(), handoff.result().streams());
-        assertEquals(none.diagnostics().solvePath(), handoff.diagnostics().solvePath());
-        assertEquals(none.diagnostics().newtonIterations(), handoff.diagnostics().newtonIterations());
-        String event = handoff.diagnostics().events().getFirst();
+        var backup = assertInstanceOf(V3ColumnOutcome.Success.class, V3ColumnCalculator.calculate(input, () -> {},
+                0, 0, learned(V3InitializationOptions.Mode.LNN_FIRST, 1), model));
+        assertEquals(direct.result().streams(), backup.result().streams());
+        String event = backup.diagnostics().events().getFirst();
         assertTrue(event.contains("initializer=CURRENT_BACKUP;"), event);
-        assertFalse(event.contains("handoffMs="), event);
     }
 
     /**
-     * A progress extension without an early stop must extend, not stop at iteration zero.
+     * A correction rule always extends and always stops early.
      *
-     * <p>The solver allocates its residual history when either the stall stop or the extension asks for one,
-     * and the stop used to test only whether the window reached back far enough. With the extension on and
-     * the stop off the window is zero, so the test compared each residual to itself and declared every
-     * attempt stalled on its first iteration. The combination is legal through the public options record and
-     * it destroyed the learned route: the campaign arm registered to measure what the abort costs read
-     * LNN_ONLY 0 of 330 instead of a number near the baseline's 162.</p>
+     * <p>An extension without an early stop once compared each residual to itself and declared every attempt
+     * stalled on its first iteration (LNN_ONLY 0 of 330 in the campaign arm that registered it). The rule now
+     * has no zero window and no walls-only form, so that combination cannot be stated.</p>
      */
-    @Test void anExtensionWithoutAnEarlyStopStillTakesItsIterations() {
-        V3ColumnInput input = drawInput();
-        V3NeuralInitializer model = fixed(displaced(acceptedProfile(input)));
-        var abortOff = new V3InitializationOptions(V3InitializationOptions.Mode.LNN_ONLY,
-                V3InitializationOptions.WetStart.AUTO, 16, 30_000,
-                new V3InitializationOptions.Correction(8, 48, 8, 0.5, 0, 0.0, 0.0));
-        assertFalse(abortOff.correction().stopsEarly());
-        assertTrue(abortOff.correction().extendsAttempts());
-        var outcome = V3ColumnCalculator.calculate(input, () -> {}, 0, 0, abortOff, model);
-        String events = String.join(" | ", outcome.diagnostics().events());
-        assertFalse(events.contains("at iteration 0 and"), "the stall stop fired with no stall window: " + events);
-        assertTrue(outcome.diagnostics().newtonIterations() > 0 || outcome.isSuccess(),
-                "the correction took no iterations at all: " + events);
+    @Test void aCorrectionRuleWithoutAnExtensionOrAnEarlyStopIsRejected() {
+        assertThrows(IllegalArgumentException.class,
+                () -> new V3InitializationOptions.Correction(8, 48, 8, 0.5, 0, 0.0, 0.0));
+        assertThrows(IllegalArgumentException.class,
+                () -> new V3InitializationOptions.Correction(0, 0, 0, 0.0, 0, 0.0, 0.0));
     }
 
     @Test void anUnavailableRegroupedModelKeepsClassicalFallbackAvailable() {

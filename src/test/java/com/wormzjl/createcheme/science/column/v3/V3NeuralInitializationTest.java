@@ -20,7 +20,8 @@ class V3NeuralInitializationTest {
     }
 
     private static V3InitializationOptions options(V3InitializationOptions.Mode mode) {
-        return new V3InitializationOptions(mode,V3InitializationOptions.WetStart.AUTO,16,5_000);
+        return new V3InitializationOptions(mode,V3InitializationOptions.WetStart.AUTO,16,5_000,
+                V3InitializationOptions.Correction.PROGRESS);
     }
 
     @Test void missingModelHonorsForcedModeAndCurrentBackup() {
@@ -106,7 +107,8 @@ class V3NeuralInitializationTest {
                 while(true)control.checkpoint();
             }
         };
-        var policy=new V3InitializationOptions(V3InitializationOptions.Mode.LNN_FIRST,V3InitializationOptions.WetStart.AUTO,1,1);
+        var policy=new V3InitializationOptions(V3InitializationOptions.Mode.LNN_FIRST,V3InitializationOptions.WetStart.AUTO,1,1,
+                V3InitializationOptions.Correction.PROGRESS);
         var result=assertInstanceOf(V3ColumnOutcome.Success.class,V3ColumnCalculator.calculate(input(),()->{},0,0,policy,model));
         assertTrue(result.diagnostics().events().getFirst().contains("budget exhausted"));
     }
@@ -131,7 +133,8 @@ class V3NeuralInitializationTest {
         List<int[]> samples = new java.util.ArrayList<>();
         V3SimultaneousColumnSolver.NewtonTrace calibration = (iteration,residual,merit) -> samples.add(new int[]{iteration,checkpoints[0]});
         V3ColumnCalculator.calculateWithNeuralTrace(input,()->checkpoints[0]++,
-                new V3InitializationOptions(V3InitializationOptions.Mode.LNN_ONLY,V3InitializationOptions.WetStart.AUTO,16,60_000),
+                new V3InitializationOptions(V3InitializationOptions.Mode.LNN_ONLY,V3InitializationOptions.WetStart.AUTO,16,60_000,
+                        V3InitializationOptions.Correction.PROGRESS),
                 model,calibration);
         // A Newton attempt restarts its iteration counter from zero, so the first run of increasing indices
         // is the first attempt. Arming inside it keeps the stall away from an attempt boundary.
@@ -144,7 +147,7 @@ class V3NeuralInitializationTest {
         int[] seen = {0};
         // The production two-second allowance, spent by a stall the checkpoint sequence places inside the solve.
         var budgeted = new V3InitializationOptions(V3InitializationOptions.Mode.LNN_ONLY,
-                V3InitializationOptions.WetStart.AUTO,16,2_000);
+                V3InitializationOptions.WetStart.AUTO,16,2_000,V3InitializationOptions.Correction.PROGRESS);
         var failure = assertInstanceOf(V3ColumnOutcome.Failure.class,V3ColumnCalculator.calculate(input,
                 ()->{ if (seen[0]++==stallAt) pause(2_500); },0,0,budgeted,model));
         String events = String.join(" | ",failure.diagnostics().events());
@@ -153,33 +156,6 @@ class V3NeuralInitializationTest {
         assertTrue(failure.diagnostics().maximumScaledResidual()>0,events);
         assertTrue(events.contains("iterations="+failure.diagnostics().newtonIterations()+"/"),events);
         assertFalse(events.contains("unmeasured"),events);
-    }
-
-    /**
-     * The progress rule is opt-in: the default correction reproduces the frozen walls exactly.
-     *
-     * <p>Both requests below run the same displaced seed on the same input. The first uses the production
-     * rule and the second adds an extension it can never earn, because its contraction factor is zero, and
-     * a stall stop it can never trigger, because its floor is above any residual. A rule that is genuinely
-     * inert has to produce the same published evidence, not merely the same outcome.</p>
-     */
-    @Test void theProgressCorrectionRuleIsInertUntilItsTestsCanFire() {
-        V3ColumnInput input = input();
-        var captured = new AtomicReference<V3NeuralSeed>();
-        assertInstanceOf(V3ColumnOutcome.Success.class,
-                V3ColumnCalculator.calculateWithAcceptedProfile(input,()->{},captured::set));
-        V3NeuralInitializer model = fixed(displaced(captured.get()));
-        var walls = options(V3InitializationOptions.Mode.LNN_ONLY);
-        var inert = new V3InitializationOptions(V3InitializationOptions.Mode.LNN_ONLY,
-                V3InitializationOptions.WetStart.AUTO,16,5_000,
-                new V3InitializationOptions.Correction(8,48,8,0.0,8,0.0,1e30));
-        assertEquals(V3InitializationOptions.Correction.WALLS,walls.correction());
-        var reference = V3ColumnCalculator.calculate(input,()->{},0,0,walls,model);
-        var candidate = V3ColumnCalculator.calculate(input,()->{},0,0,inert,model);
-        assertEquals(reference.isSuccess(),candidate.isSuccess());
-        assertEquals(reference.diagnostics().newtonIterations(),candidate.diagnostics().newtonIterations());
-        assertEquals(reference.diagnostics().maximumScaledResidual(),candidate.diagnostics().maximumScaledResidual());
-        assertEquals(reference.diagnostics().convergenceEvidence(),candidate.diagnostics().convergenceEvidence());
     }
 
     /** A zero decoded phase total stays empty by default and is seeded at the declared floors when asked. */
