@@ -67,10 +67,9 @@ class FluidNitrogenCryogenicTest {
     @Test void idealGasHeatCapacityBelow273KelvinFollowsNist() {
         double[][] nist={{63.16,29.1025374159},{78.16,29.1030121811},{98.16,29.1036606132},{148.16,29.1054103345},
                 {198.16,29.1074493210},{248.16,29.1114752464},{273.16,29.1163251898}};
-        var eos=model.hydrocarbon.translated();var d=eos.newDerivatives();
+        var eos=model.hydrocarbon.translated();
         for(double[] row:nist) {
-            eos.differentiate(row[0],100,pure,PengRobinsonKernel.Root.VAPOR,eos.prepare(row[0]),d);
-            double cp0=d.values().idealGasHeatCapacity();
+            double cp0=eos.evaluateValues(row[0],100,pure,PengRobinsonKernel.Root.VAPOR,eos.prepare(row[0])).idealGasHeatCapacity();
             assertEquals(1,cp0/row[1],5e-4,"ideal-gas Cp at "+row[0]+" K: "+cp0);
         }
     }
@@ -96,11 +95,10 @@ class FluidNitrogenCryogenicTest {
     /** Above the joint the heat capacity is the main fit's polynomial to the last bit, so nothing above 273.16 K moved. */
     @Test void theFitAboveTheJointIsUnchanged() {
         var property=catalog.requirePackage(NETWORK).properties().get(nitrogen);
-        var eos=model.hydrocarbon.translated();var d=eos.newDerivatives();
+        var eos=model.hydrocarbon.translated();
         for(double t:new double[]{273.16,298.15,300,450,600,900}) {
             double delta=t-298.15,cp=0;for(int term=5;term>=0;term--)cp=cp*delta+property.cp().get(term);
-            eos.differentiate(t,101325,pure,PengRobinsonKernel.Root.VAPOR,eos.prepare(t),d);
-            assertEquals(cp,d.values().idealGasHeatCapacity(),0,"ideal-gas Cp at "+t+" K");
+            assertEquals(cp,eos.evaluateValues(t,101325,pure,PengRobinsonKernel.Root.VAPOR,eos.prepare(t)).idealGasHeatCapacity(),0,"ideal-gas Cp at "+t+" K");
         }
     }
 

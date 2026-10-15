@@ -127,8 +127,8 @@ public final class TranslatedPengRobinson {
 
     /**
      * The same numbers a {@link Phase} carries, in a buffer the caller keeps instead of a record it allocates.
-     * {@link #evaluate} fills the workspace's own and copies out of it; {@link #differentiate} fills the one
-     * inside a {@link Derivatives} and copies nothing.
+     * {@link #evaluate} fills the workspace's own and copies out of it; {@link #evaluateValues} returns that buffer
+     * itself.
      */
     public static final class Values {
         private final double[] logFugacityCoefficients,partialMolarVolumes;
@@ -162,49 +162,6 @@ public final class TranslatedPengRobinson {
                     partialMolarVolumes.clone(),vaporBranch);
         }
     }
-
-    /**
-     * Every first derivative of one phase, filled into caller-owned storage: the value block, the kernel's
-     * {@code d ln phi_i/dn_j}, {@code d ln phi_i/dT} and {@code dH^R/dT}, and the two the translation and the
-     * volumetric block add - {@code d ln phi_i/dP} and the partial molar enthalpies. Allocate one per solve
-     * with {@link TranslatedPengRobinson#newDerivatives()} and refill it per node; it carries an n x n block,
-     * so it is deliberately not part of a prepared temperature.
-     *
-     * <p>This is the bundle an analytic node Jacobian assembles from. It describes the equation of state at
-     * the pressure it was evaluated at, so a caller building a Jacobian for a liquid phase - which
-     * {@link HydrocarbonModel} evaluates at its 2 MPa reference and then corrects with
-     * {@link GlobalLiquidResponse} - must chain that correction itself; nothing here applies it.</p>
-     */
-    public static final class Derivatives {
-        private final TranslatedPengRobinson owner;
-        private final PengRobinsonKernel.Derivatives mixture;
-        private final Values values;
-        private final double[] dLogPhiDt,dLogPhiDp,partialMolarEnthalpy;
-        private double residualEnthalpyTemperatureDerivative;
-        private Derivatives(TranslatedPengRobinson owner) {
-            this.owner=owner;int count=owner.components.size();
-            mixture=owner.kernel.newDerivatives();values=new Values(count);
-            dLogPhiDt=new double[count];dLogPhiDp=new double[count];partialMolarEnthalpy=new double[count];
-        }
-        /** The phase itself, evaluated on the very root these derivatives describe. */
-        public Values values(){return values;}
-        /** {@code d ln phi_i / dn_j} at the evaluated composition normalised to one mole. */
-        public double logFugacityCompositionDerivative(int component,int respectTo) {
-            return mixture.dLogPhiDnRowView(component)[respectTo];
-        }
-        /** {@code d ln phi_i / dT} at constant pressure and composition, including the volume translation. */
-        public double[] logFugacityTemperatureDerivativeView(){return dLogPhiDt;}
-        /** {@code d ln phi_i / dP} at constant temperature and composition: {@code v_i/(RT) - 1/P}. */
-        public double[] logFugacityPressureDerivativeView(){return dLogPhiDp;}
-        /** {@code dH/dn_i}: the ideal-gas, residual and translation parts, so these sum to the molar enthalpy. */
-        public double[] partialMolarEnthalpyView(){return partialMolarEnthalpy;}
-        /** {@code dH^R/dT} at constant pressure; {@link Values#heatCapacity()} is the whole {@code dH/dT}. */
-        public double residualEnthalpyTemperatureDerivative(){return residualEnthalpyTemperatureDerivative;}
-        /** {@code dH^R/dn_i}, which is {@code -R T^2 d ln phi_i/dT} of the untranslated EOS. */
-        public double[] partialMolarResidualEnthalpyView(){return mixture.partialMolarResidualEnthalpyView();}
-    }
-
-    public Derivatives newDerivatives() { return new Derivatives(this); }
 
     public Workspace newWorkspace() { return new Workspace(this); }
 
@@ -254,34 +211,6 @@ public final class TranslatedPengRobinson {
         kernel.evaluate(temperature,pressure,amounts,root,workspace.mixture,workspace.evaluation);
         fill(temperature,pressure,workspace,workspace.evaluation,workspace.values);
         return workspace.values.phase();
-    }
-
-    /**
-     * Fills {@code output} with the phase and every first derivative of it, on the very same root: the
-     * kernel's composition and temperature derivatives of {@code ln phi}, its {@code dH^R/dT} and partial
-     * molar residual enthalpies, and the pressure derivative and partial molar enthalpies that the volume
-     * translation and the volumetric block add to them. Allocates nothing.
-     */
-    public void differentiate(double temperature,double pressure,double[] amounts,PengRobinsonKernel.Root root,
-                              Workspace workspace,Derivatives output) {
-        requireState(temperature,pressure,amounts,workspace);
-        if(output.owner!=this)throw new IllegalArgumentException("Derivative bundle belongs to another model");
-        kernel.evaluateDerivatives(temperature,pressure,amounts,root,workspace.mixture,output.mixture);
-        fill(temperature,pressure,workspace,output.mixture.evaluation(),output.values);
-        double rt=R*temperature;
-        double[] mixtureDt=output.mixture.dLogPhiDtView(),residual=output.mixture.partialMolarResidualEnthalpyView();
-        for(int i=0;i<translations.length;i++) {
-            // ln phi_i carries +P c_i/(RT) from the translation, whose T and P derivatives are these two terms.
-            output.dLogPhiDt[i]=mixtureDt[i]-pressure*translations[i]/(rt*temperature);
-            output.dLogPhiDp[i]=output.values.partialMolarVolumes[i]/rt-1/pressure;
-            // h_i = ideal + residual + the translation's P c_i, so these sum to the molar enthalpy above.
-            output.partialMolarEnthalpy[i]=workspace.enthalpy[i]+residual[i]+pressure*translations[i];
-            if(!Double.isFinite(output.dLogPhiDt[i])||!Double.isFinite(output.dLogPhiDp[i])
-                    ||!Double.isFinite(output.partialMolarEnthalpy[i])) {
-                throw new IllegalArgumentException("Nonfinite chemical-potential derivative");
-            }
-        }
-        output.residualEnthalpyTemperatureDerivative=output.mixture.dResidualEnthalpyDt();
     }
 
     private void requireState(double temperature,double pressure,double[] amounts,Workspace workspace) {
