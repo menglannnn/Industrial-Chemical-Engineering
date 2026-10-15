@@ -50,7 +50,7 @@ class V3DryMeshCoordinateMapTest {
         V3MeshResidualEvaluator evaluator = new V3MeshResidualEvaluator(problem, thermo, 0.0);
         V3DryMeshCoordinateMap map = new V3DryMeshCoordinateMap(problem);
 
-        V3FiniteDifferenceJacobian.Jacobian jacobian = V3FiniteDifferenceJacobian.evaluate(
+        V3FiniteDifferenceJacobian.Jacobian jacobian = V3JacobianOracle.evaluate(
                 evaluator, map, state(problem.topology()), thermo::newWorkspace);
 
         assertEquals(29, jacobian.equations().size());

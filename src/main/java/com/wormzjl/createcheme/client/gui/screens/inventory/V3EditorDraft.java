@@ -105,9 +105,6 @@ final class V3EditorDraft {
         return -1;
     }
     void removeSteam(int i){set("t"+i+"stage","");set("t"+i+"rate","");set("t"+i+"T","");}
-    Map<String,String> columnFields(){
-        Map<String,String> result=new LinkedHashMap<>();for(String key:fields.keySet())result.put(key,precise(key));return result;
-    }
     void loadColumn(Map<String,String> data){
         if(!data.keySet().equals(fields.keySet()))throw new IllegalArgumentException("Invalid column preset fields");
         data.forEach((key,value)->{

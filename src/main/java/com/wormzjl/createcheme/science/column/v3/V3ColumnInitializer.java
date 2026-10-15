@@ -24,7 +24,6 @@ final class V3ColumnInitializer {
     private static final double VAPOR_ONLY_EXTERNAL_VAPOR_FRACTION = 0.30;
     private static final double ZERO_REFLUX_TRAFFIC_FRACTION = 0.10;
     private static final int COLD_TRAFFIC_GRID_DIVISIONS = 8;
-    private static final int MAXIMUM_COLD_TRAFFIC_SWEEPS = 20;
     private static final int MAXIMUM_PARTIAL_CONDENSER_TEAR_SWEEPS = 100;
     private static final double MINIMUM_PHASE_RATIO = 1.0e-12;
     private static final double MAXIMUM_PHASE_RATIO = 1.0e12;

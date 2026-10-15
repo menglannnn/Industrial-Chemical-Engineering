@@ -558,7 +558,7 @@ public final class ColumnV3Network {
         buffer.writeVarLong(state.operationId());
         buffer.writeVarLong(state.inputRevision());
         buffer.writeVarLong(state.resultRevision() + 1L);
-        buffer.writeUtf(state.status().serializedName(), MAX_REJECTION_LENGTH);
+        buffer.writeUtf(state.status().name(), MAX_REJECTION_LENGTH);
         writeInput(buffer, state.input());
         buffer.writeBoolean(state.displayResult().isPresent());
         state.displayResult().ifPresent(result -> writeDisplayResult(buffer, result));
@@ -591,7 +591,7 @@ public final class ColumnV3Network {
         if (resultRevision < -1L) throw new DecoderException("Invalid V3 result revision");
         V3Status status;
         try {
-            status = V3Status.fromSerializedName(buffer.readUtf(MAX_REJECTION_LENGTH));
+            status = V3Status.valueOf(buffer.readUtf(MAX_REJECTION_LENGTH));
         } catch (IllegalArgumentException invalid) {
             throw new DecoderException("Unknown V3 status", invalid);
         }

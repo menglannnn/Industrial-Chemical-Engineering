@@ -129,9 +129,9 @@ class V3TruncationNumericsTest {
         V3DryMeshCoordinateMap coordinates = new V3DryMeshCoordinateMap(problem);
         assertTrue(coordinates.coordinateCount() < 96, "the reference must select the uncolored central path");
         for (V3FiniteDifferenceJacobian.DifferenceScale scale : V3FiniteDifferenceJacobian.DifferenceScale.values()) {
-            double[][] full = V3FiniteDifferenceJacobian.evaluate(evaluator, coordinates, state,
+            double[][] full = V3JacobianOracle.evaluate(evaluator, coordinates, state,
                     fixture.thermo()::newWorkspace, scale).values();
-            double[][] colored = V3FiniteDifferenceJacobian.evaluateStageColored(evaluator, coordinates, state,
+            double[][] colored = V3JacobianOracle.evaluateStageColored(evaluator, coordinates, state,
                     fixture.thermo()::newWorkspace, scale).values();
             var compact = V3FiniteDifferenceJacobian.evaluateCompact(evaluator, coordinates, state,
                     fixture.thermo()::newWorkspace, scale, V3SolveControl.UNBOUNDED);
@@ -149,7 +149,7 @@ class V3TruncationNumericsTest {
             }
             assertTrue(local.maximumOffBandMagnitude() <= 1.0e-10);
         }
-        assertTrue(V3BlockJacobianAssembler.assemble(problem, evaluator, coordinates, state,
+        assertTrue(V3JacobianOracle.assemble(problem, evaluator, coordinates, state,
                 fixture.thermo()::newWorkspace).maximumOffBandMagnitude() <= 1.0e-10);
     }
 

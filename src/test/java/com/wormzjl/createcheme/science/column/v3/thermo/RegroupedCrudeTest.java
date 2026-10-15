@@ -98,7 +98,7 @@ class RegroupedCrudeTest {
     }
 
     @Test void previouslyDifficultCrudesPublishAuditedClassicalSolutionsWithoutLearnedSeeds() {
-        for(var preset:List.of(ColumnInputPreset.BONGA,ColumnInputPreset.COLD_LAKE)) {
+        for(var preset:List.of(ColumnInputPreset.fromId(MaterialCatalog.bundled(),"bonga"),ColumnInputPreset.fromId(MaterialCatalog.bundled(),"cold_lake_blend"))) {
             var input=preset.input(MaterialCatalog.bundled());long start=System.nanoTime();
             var result=V3ColumnCalculator.calculate(input,()->{
                 if(System.nanoTime()-start>45_000_000_000L)throw new java.util.concurrent.CancellationException("Regrouped preset deadline");

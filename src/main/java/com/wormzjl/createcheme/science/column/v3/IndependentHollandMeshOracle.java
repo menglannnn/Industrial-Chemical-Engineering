@@ -102,26 +102,6 @@ final class IndependentHollandMeshOracle {
         return totals(state.vaporComponentFlows());
     }
 
-    double[] vaporDistillate(State state) {
-        return state.vaporComponentFlows()[0].clone();
-    }
-
-    double[] sideDraw(State state) {
-        int tray = data.sideDrawTray();
-        double total = sum(state.liquidComponentFlows()[tray]);
-        double[] product = state.liquidComponentFlows()[tray].clone();
-        for (int component = 0; component < product.length; component++) product[component] *= 25.0 / total;
-        return product;
-    }
-
-    double[] bottoms(State state) {
-        return state.liquidComponentFlows()[NODE_COUNT - 1].clone();
-    }
-
-    double emergentRefluxToVaporDistillate(State state) {
-        return refluxFraction * sum(state.liquidComponentFlows()[0]) / sum(state.vaporComponentFlows()[0]);
-    }
-
     double condenserDutyBtuPerHour(State state) {
         return componentEnergy(state.vaporComponentFlows()[1], state.temperaturesFahrenheit()[1], true)
                 - componentEnergy(state.liquidComponentFlows()[0], state.temperaturesFahrenheit()[0], false)

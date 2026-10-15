@@ -103,11 +103,6 @@ final class V3WetTraySet {
         return new V3WetTraySet(topology, wet, Objects.requireNonNull(freeWaterMolPerSecond, "freeWaterMolPerSecond"));
     }
 
-    /** The same wet trays with their free water back as unknowns, for the certifying solve. */
-    V3WetTraySet asSolved() {
-        return parametricFreeWater == null ? this : new V3WetTraySet(topology, wet, null);
-    }
-
     V3ColumnTopology topology() {
         return topology;
     }

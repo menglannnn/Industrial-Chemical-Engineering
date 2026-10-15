@@ -660,43 +660,6 @@ public final class V3ColumnCalculator {
     private static final class HydraulicBudgetExceeded extends RuntimeException {}
 
     /**
-     * Offline validation seam: one warm correction of the requested problem on a caller-supplied per-tray
-     * pressure profile.
-     *
-     * <p>It is {@link #hydraulicCorrection} with the profile chosen by the caller instead of by the march, and
-     * nothing else: the same resolve, the same operating-domain admission, the same solve, the same three
-     * publication gates. It exists because the converged hydraulic reference a validation campaign measures
-     * against is a fixed point of "march, re-solve, march again", and only the caller can drive that loop. No
-     * production entry point reaches it, and a request that authors a diameter is not what it is for: pass the
-     * prescribed-drop form of the input, so the published state stays on the supplied profile.</p>
-     */
-    static V3ColumnOutcome calculateOnSuppliedProfile(V3ColumnInput input, V3NeuralSeed seed, double[] profile,
-            V3SolveControl control, java.util.function.Consumer<V3NeuralSeed> observer) {
-        return com.wormzjl.createcheme.science.material.MaterialRuntime.pinned(input.packageId(), () -> {
-            V3PengRobinsonThermo thermo = V3PengRobinsonThermo.fromRegisteredPackage(input.packageId());
-            V3ColumnProblem problem = V3ColumnProblemResolver.resolve(input, seed.branch(), profile);
-            if (V3OperatingDomainValidator.assess(problem, thermo)
-                    instanceof V3OperatingDomainValidator.Assessment.Rejected rejected) {
-                return terminalFailure(V3SolverFailureCode.PROPERTY_OUT_OF_RANGE, rejected.detail(),
-                        "offline/supplied-profile", thermo.advisoryEvidence());
-            }
-            SolvePolicy policy = new SolvePolicy(0.0, 0.0, V3ConvergenceEvidence.MAXIMUM_LOG_FLOW_CHANGE, observer);
-            V3SolvePass pass = solveSingleProblem(problem, thermo, seed.stateFor(problem), control,
-                    "offline/supplied-profile", ContinuationJacobianPolicy.STAGE_LOCAL_BLOCKS,
-                    HYDRAULIC_CORRECTION_MAXIMUM_ITERATIONS, policy,
-                    V3SimultaneousColumnSolver.RungBudget.DEFAULT,
-                    seed.wetSetFor(problem, V3InitializationOptions.WetStart.AUTO));
-            if (publishesSuccess(pass.attempt(), pass.audit()) && publishesRequestedGeometry(pass, input)
-                    && pass.attempt().evidence().convergenceEvidence().satisfiesGates(policy.closureTolerance())) {
-                return publishAccepted(input, pass, thermo, policy, control, pass.solvePath(), pass.solverEvents());
-            }
-            return new V3ColumnOutcome.Failure(V3SolverFailureCode.NONCONVERGENCE,
-                    "Offline supplied-profile correction did not reach an audited requested solution",
-                    diagnostics(pass.attempt(), pass.audit(), pass.solvePath(), pass.solverEvents(), policy));
-        });
-    }
-
-    /**
      * Continues a failed learned correction onto the classical authored-feature ramp.
      *
      * <p>The classical route never solves a column carrying side draws, stage heat or steam directly. It
@@ -3205,10 +3168,6 @@ public final class V3ColumnCalculator {
                 input.sideDraws(), input.steamFeeds(), input.pumparounds(), input.columnDiameterMetres());
     }
 
-    private static List<Double> continuationPressureSteps(double requestedTopPressurePascal) {
-        return continuationPressureSteps(requestedTopPressurePascal, false);
-    }
-
     private static List<Double> continuationPressureSteps(
             double requestedTopPressurePascal, boolean fineStepsFromAnchor) {
         List<Double> pressures = new java.util.ArrayList<>();
@@ -3220,10 +3179,6 @@ public final class V3ColumnCalculator {
             pressures.add(pressure);
         }
         return List.copyOf(pressures);
-    }
-
-    private static String continuationPressurePath(double requestedTopPressurePascal) {
-        return continuationPressurePath(requestedTopPressurePascal, false);
     }
 
     private static String continuationPressurePath(double requestedTopPressurePascal, boolean fineStepsFromAnchor) {

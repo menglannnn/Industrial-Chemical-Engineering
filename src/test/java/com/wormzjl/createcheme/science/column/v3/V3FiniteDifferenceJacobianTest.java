@@ -30,10 +30,10 @@ class V3FiniteDifferenceJacobianTest {
                 var evaluator = new V3MeshResidualEvaluator(problem, thermo, 0);
                 var coordinates = new V3DryMeshCoordinateMap(problem);
                 for (var scale : V3FiniteDifferenceJacobian.DifferenceScale.values()) {
-                    var dense = V3FiniteDifferenceJacobian.evaluate(evaluator, coordinates, state, thermo::newWorkspace, scale);
+                    var dense = V3JacobianOracle.evaluate(evaluator, coordinates, state, thermo::newWorkspace, scale);
                     var compact = V3FiniteDifferenceJacobian.evaluateCompact(evaluator, coordinates, state,
                             thermo::newWorkspace, scale, V3SolveControl.UNBOUNDED);
-                    assertTrue(compact.storedValueCount() < dense.storedValueCount() * 0.6);
+                    assertTrue(V3JacobianOracle.storedValueCount(compact) < V3JacobianOracle.storedValueCount(dense) * 0.6);
                     double[][] snapshot = compact.values();
                     for (int row = 0; row < snapshot.length; row++) {
                         for (int column = 0; column < snapshot.length; column++) {
@@ -135,9 +135,9 @@ class V3FiniteDifferenceJacobianTest {
         V3MeshResidualEvaluator evaluator = new V3MeshResidualEvaluator(problem, thermo, 0.0);
         V3DryMeshCoordinateMap coordinates = new V3DryMeshCoordinateMap(problem);
 
-        V3FiniteDifferenceJacobian.Jacobian central = V3FiniteDifferenceJacobian.evaluate(
+        V3FiniteDifferenceJacobian.Jacobian central = V3JacobianOracle.evaluate(
                 evaluator, coordinates, state, thermo::newWorkspace, V3FiniteDifferenceJacobian.DifferenceScale.FINE);
-        V3FiniteDifferenceJacobian.Jacobian colored = V3FiniteDifferenceJacobian.evaluateStageColored(
+        V3FiniteDifferenceJacobian.Jacobian colored = V3JacobianOracle.evaluateStageColored(
                 evaluator, coordinates, state, thermo::newWorkspace, V3FiniteDifferenceJacobian.DifferenceScale.FINE);
 
         double[][] expected = central.values();

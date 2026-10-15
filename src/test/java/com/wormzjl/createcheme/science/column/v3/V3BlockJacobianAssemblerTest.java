@@ -75,9 +75,9 @@ class V3BlockJacobianAssemblerTest {
         V3MeshResidualEvaluator evaluator = new V3MeshResidualEvaluator(problem, thermo, 0.0);
         V3DryMeshCoordinateMap coordinates = new V3DryMeshCoordinateMap(problem);
 
-        V3FiniteDifferenceJacobian.Jacobian full = V3FiniteDifferenceJacobian.evaluate(
+        V3FiniteDifferenceJacobian.Jacobian full = V3JacobianOracle.evaluate(
                 evaluator, coordinates, state, thermo::newWorkspace);
-        V3BlockJacobian referenceBlocks = V3BlockJacobianAssembler.assemble(
+        V3BlockJacobian referenceBlocks = V3JacobianOracle.assemble(
                 problem, evaluator, coordinates, state, thermo::newWorkspace);
         V3BlockJacobianAssembler.AnalyticTally tally = new V3BlockJacobianAssembler.AnalyticTally();
         V3BlockJacobian localBlocks = V3BlockJacobianAssembler.assembleLocal(
@@ -148,7 +148,7 @@ class V3BlockJacobianAssemblerTest {
         V3MeshResidualEvaluator evaluator = new V3MeshResidualEvaluator(problem, thermo, feed.molarEnthalpyJoulesPerMol());
         V3DryMeshCoordinateMap coordinates = new V3DryMeshCoordinateMap(problem);
 
-        V3FiniteDifferenceJacobian.Jacobian reference = V3FiniteDifferenceJacobian.evaluateStageColored(
+        V3FiniteDifferenceJacobian.Jacobian reference = V3JacobianOracle.evaluateStageColored(
                 evaluator, coordinates, state, thermo::newWorkspace, V3FiniteDifferenceJacobian.DifferenceScale.COARSE);
         V3BlockJacobianAssembler.AnalyticTally tally = new V3BlockJacobianAssembler.AnalyticTally();
         V3BlockJacobian local = V3BlockJacobianAssembler.assembleLocal(
@@ -221,7 +221,7 @@ class V3BlockJacobianAssemblerTest {
                     "the condenser split of " + feature + " must exercise the intended side of its cap");
         }
 
-        V3FiniteDifferenceJacobian.Jacobian reference = V3FiniteDifferenceJacobian.evaluateStageColored(
+        V3FiniteDifferenceJacobian.Jacobian reference = V3JacobianOracle.evaluateStageColored(
                 evaluator, coordinates, state, thermo::newWorkspace, V3FiniteDifferenceJacobian.DifferenceScale.COARSE);
         V3BlockJacobianAssembler.AnalyticTally tally = new V3BlockJacobianAssembler.AnalyticTally();
         V3BandedMatrix flattened = V3BlockJacobianAssembler.assembleLocal(problem, evaluator, coordinates, state,
@@ -262,7 +262,7 @@ class V3BlockJacobianAssemblerTest {
                 new V3MeshResidualEvaluator(problem, thermo, feed.molarEnthalpyJoulesPerMol());
         V3DryMeshCoordinateMap coordinates = new V3DryMeshCoordinateMap(problem);
 
-        V3FiniteDifferenceJacobian.Jacobian reference = V3FiniteDifferenceJacobian.evaluateStageColored(
+        V3FiniteDifferenceJacobian.Jacobian reference = V3JacobianOracle.evaluateStageColored(
                 evaluator, coordinates, state, thermo::newWorkspace, V3FiniteDifferenceJacobian.DifferenceScale.COARSE);
         V3BlockJacobianAssembler.AnalyticTally tally = new V3BlockJacobianAssembler.AnalyticTally();
         V3BandedMatrix flattened = V3BlockJacobianAssembler.assembleLocal(problem, evaluator, coordinates, state,

@@ -78,9 +78,6 @@ public record V3InitializationOptions(Mode mode, WetStart wetStart, int maximumI
          */
         public static final Correction PROGRESS = new Correction(8, 48, 8, 1.0, 8, 0.9, 1e-6);
 
-        /** The rule the Transformer promotion shipped; kept so the archived studies can state their own. */
-        public static final Correction PROMOTED_2026_09_14 = new Correction(8, 48, 8, 0.5, 8, 0.9, 1e-6);
-
         public Correction {
             if (extensionBlock < 0 || extensionMaximumIterations < 0 || contractionWindow < 0 || stallWindow < 0
                     || extensionMaximumIterations > V3ColumnCalculator.MAXIMUM_NEWTON_ITERATIONS

@@ -148,7 +148,7 @@ class V3PhaseTruncationTest {
         V3DryMeshState state = perturb(coordinates, fixture.state());
 
         for (V3FiniteDifferenceJacobian.DifferenceScale scale : V3FiniteDifferenceJacobian.DifferenceScale.values()) {
-            double[][] full = V3FiniteDifferenceJacobian.evaluate(evaluator, coordinates, state,
+            double[][] full = V3JacobianOracle.evaluate(evaluator, coordinates, state,
                     fixture.thermo()::newWorkspace, scale).values();
             V3BandedMatrix banded = V3BlockJacobianAssembler.assembleLocal(problem, evaluator, coordinates, state,
                     fixture.thermo()::newWorkspace, scale, V3SolveControl.UNBOUNDED).toBandedMatrix();

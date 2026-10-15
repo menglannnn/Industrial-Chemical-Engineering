@@ -148,10 +148,4 @@ final class V3DryMeshCoordinateMap {
         return problem.input().specifications().stream().filter(type::isInstance).map(type::cast).findFirst()
                 .orElseThrow(() -> new IllegalArgumentException("V3 MESH problem is missing " + type.getSimpleName()));
     }
-
-    private static double sum(double[] values) {
-        double total = 0.0;
-        for (double value : values) total += value;
-        return total;
-    }
 }

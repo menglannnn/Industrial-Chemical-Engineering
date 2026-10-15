@@ -37,7 +37,7 @@ class V3SideDrawAuditTest {
         assertEquals(expected / 90.01, check(audit, "TRUNCATION_MASS_DEFECT").value(), 1e-14);
         V3MeshResidualEvaluator evaluator = new V3MeshResidualEvaluator(problem, fixture.thermo(), 0);
         V3DryMeshCoordinateMap coordinates = new V3DryMeshCoordinateMap(problem);
-        var reference = V3BlockJacobianAssembler.assemble(problem, evaluator, coordinates, fixture.exact(), fixture.thermo()::newWorkspace);
+        var reference = V3JacobianOracle.assemble(problem, evaluator, coordinates, fixture.exact(), fixture.thermo()::newWorkspace);
         var local = V3BlockJacobianAssembler.assembleLocal(problem, evaluator, coordinates, fixture.exact(), fixture.thermo()::newWorkspace,
                 V3FiniteDifferenceJacobian.DifferenceScale.FINE, V3SolveControl.UNBOUNDED).toBandedMatrix();
         var dense = reference.toBandedMatrix();

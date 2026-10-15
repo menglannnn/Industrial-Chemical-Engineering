@@ -14,39 +14,21 @@ final class V3FiniteDifferenceJacobian {
 
     private V3FiniteDifferenceJacobian() {}
 
-    static Jacobian evaluate(
-            V3MeshResidualEvaluator evaluator, V3DryMeshCoordinateMap coordinates, V3DryMeshState state,
-            V3ThermoWorkspaceFactory workspaceFactory) {
-        return evaluate(evaluator, coordinates, state, workspaceFactory, DifferenceScale.FINE);
-    }
-
-    static Jacobian evaluate(
-            V3MeshResidualEvaluator evaluator, V3DryMeshCoordinateMap coordinates, V3DryMeshState state,
-            V3ThermoWorkspaceFactory workspaceFactory, DifferenceScale differenceScale) {
-        return evaluate(evaluator, coordinates, state, workspaceFactory, differenceScale, V3SolveControl.UNBOUNDED);
-    }
-
-    static Jacobian evaluate(
-            V3MeshResidualEvaluator evaluator,
-            V3DryMeshCoordinateMap coordinates,
-            V3DryMeshState state,
-            V3ThermoWorkspaceFactory workspaceFactory,
-            DifferenceScale differenceScale,
-            V3SolveControl control) {
-        return evaluate(evaluator, coordinates, state, workspaceFactory, differenceScale, control, false);
-    }
-
     /** Production storage: stage-local row windows, retaining unexpected off-stage entries without thresholding. */
     static Jacobian evaluateCompact(
             V3MeshResidualEvaluator evaluator, V3DryMeshCoordinateMap coordinates, V3DryMeshState state,
             V3ThermoWorkspaceFactory workspaceFactory, DifferenceScale differenceScale, V3SolveControl control) {
-        return evaluate(evaluator, coordinates, state, workspaceFactory, differenceScale, control, true);
+        return evaluate(evaluator, coordinates, state, workspaceFactory, differenceScale, control, true, false);
     }
 
-    private static Jacobian evaluate(
+    /**
+     * Shared evaluation. {@code compact = false} keeps the dense matrix and {@code stageColored = true} forces the
+     * stage-colored path below its size threshold; both serve only the test-tree verification oracle.
+     */
+    static Jacobian evaluate(
             V3MeshResidualEvaluator evaluator, V3DryMeshCoordinateMap coordinates, V3DryMeshState state,
             V3ThermoWorkspaceFactory workspaceFactory, DifferenceScale differenceScale, V3SolveControl control,
-            boolean compact) {
+            boolean compact, boolean stageColored) {
         evaluator = Objects.requireNonNull(evaluator, "evaluator");
         coordinates = Objects.requireNonNull(coordinates, "coordinates");
         state = Objects.requireNonNull(state, "state");
@@ -58,23 +40,10 @@ final class V3FiniteDifferenceJacobian {
         V3MeshResidual baseResidual = evaluator.evaluate(state, workspaceFactory.newWorkspace());
         int rows = baseResidual.rows().size();
         if (rows != base.length) throw new IllegalArgumentException("V3 MESH Jacobian requires a square residual/coordinate map");
-        if (base.length >= STAGE_COLORED_MINIMUM_COORDINATES) {
+        if (stageColored || base.length >= STAGE_COLORED_MINIMUM_COORDINATES) {
             return stageColoredJacobian(evaluator, coordinates, base, baseResidual, workspaceFactory, differenceScale, control, compact);
         }
         return centralJacobian(evaluator, coordinates, base, baseResidual, workspaceFactory, differenceScale, control, compact);
-    }
-
-    /** Package-private deterministic qualifier for the stage-colored high-dimensional path. */
-    static Jacobian evaluateStageColored(
-            V3MeshResidualEvaluator evaluator,
-            V3DryMeshCoordinateMap coordinates,
-            V3DryMeshState state,
-            V3ThermoWorkspaceFactory workspaceFactory,
-            DifferenceScale differenceScale) {
-        double[] base = coordinates.encode(state);
-        V3MeshResidual baseResidual = evaluator.evaluate(state, workspaceFactory.newWorkspace());
-        return stageColoredJacobian(evaluator, coordinates, base, baseResidual, workspaceFactory, differenceScale,
-                V3SolveControl.UNBOUNDED, false);
     }
 
     private static Jacobian centralJacobian(
@@ -299,13 +268,6 @@ final class V3FiniteDifferenceJacobian {
         /** Entries outside this stored window are exactly positive zero, never discarded FD noise. */
         int firstStoredColumn(int row) { return values.starts[row]; }
         int storedColumnEnd(int row) { return values.starts[row] + values.rows[row].length; }
-
-        /** Diagnostic storage count, excluding object headers and the small row-offset array. */
-        long storedValueCount() {
-            long count = 0;
-            for (double[] row : values.rows) count += row.length;
-            return count;
-        }
     }
 
     /** Mutable only while being assembled; the finished Jacobian exclusively owns it. */

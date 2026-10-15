@@ -339,14 +339,6 @@ final class V3TruncationSupport {
                 V3ColumnInitializer.freeWaterFlows(seed));
     }
 
-    /** Support floor of one active component: {@link #TRACE_FLOOR_FRACTION} of its flow scale. */
-    double componentFloorMolPerSecond(int component) {
-        if (component < 0 || component >= componentCount) {
-            throw new IndexOutOfBoundsException("V3 truncation component is outside the basis");
-        }
-        return componentFloors[component];
-    }
-
     boolean sameRetention(V3TruncationSupport other) {
         Objects.requireNonNull(other, "other");
         if (other.topology != topology || other.componentCount != componentCount) return false;

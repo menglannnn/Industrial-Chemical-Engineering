@@ -628,7 +628,7 @@ public final class ColumnCalculatorV3Screen extends AbstractContainerScreen<Colu
         drawLines(g,lines,10,CONTENT,imageWidth-20);
     }
     private void diagnostics(GuiGraphics g){
-        List<String> lines=new ArrayList<>();lines.add(tr("diagnostic_status",state==null?tr("waiting"):tr("status."+state.status().serializedName().toLowerCase(Locale.ROOT))));
+        List<String> lines=new ArrayList<>();lines.add(tr("diagnostic_status",state==null?tr("waiting"):tr("status."+state.status().name().toLowerCase(Locale.ROOT))));
         if(!rejection.isBlank())wrap(lines,rejection,imageWidth-35);
         if(!invalidated&&state!=null)state.displayResult().ifPresent(r->{
             lines.add(tr("iterations",r.newtonIterations()));lines.add(tr("residual",fraction(r.maximumScaledResidual())));

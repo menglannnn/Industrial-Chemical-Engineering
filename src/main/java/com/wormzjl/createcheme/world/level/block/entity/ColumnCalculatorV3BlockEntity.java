@@ -230,16 +230,6 @@ public final class ColumnCalculatorV3BlockEntity extends BlockEntity implements 
         }
     }
 
-    public int statusCode() {
-        return status.code();
-    }
-
-    public Optional<V3Operation> activeOperation(long operationId, long expectedInputRevision) {
-        return activeOperation != null && activeOperation.operationId() == operationId
-                && activeOperation.inputRevision() == expectedInputRevision
-                ? Optional.of(activeOperation) : Optional.empty();
-    }
-
     @Override
     protected void saveAdditional(CompoundTag tag, HolderLookup.Provider registries) {
         super.saveAdditional(tag, registries);
@@ -378,38 +368,8 @@ public final class ColumnCalculatorV3BlockEntity extends BlockEntity implements 
         }
     }
 
-    /** Persisted status uses stable names; only current runtime states are ever sent over the wire. */
-    public enum V3Status {
-        IDLE("IDLE", 0),
-        CALCULATING("CALCULATING", 1),
-        SUCCESS("SUCCESS", 2),
-        FAILED("FAILED", 3),
-        STALE("STALE", 4),
-        DIRTY("DIRTY", 5);
-
-        private final String serializedName;
-        private final int code;
-
-        V3Status(String serializedName, int code) {
-            this.serializedName = serializedName;
-            this.code = code;
-        }
-
-        public String serializedName() {
-            return serializedName;
-        }
-
-        public int code() {
-            return code;
-        }
-
-        public static V3Status fromSerializedName(String name) {
-            for (V3Status status : values()) {
-                if (status.serializedName.equals(name)) return status;
-            }
-            throw new IllegalArgumentException("Unknown V3 status");
-        }
-    }
+    /** Sent over the wire by {@code name()}; never saved. */
+    public enum V3Status { CALCULATING, SUCCESS, FAILED, STALE, DIRTY }
 
     /**
      * Original methane-free reference: the Ledezma-Martinez (2019) no-preflash atmospheric column. Forty

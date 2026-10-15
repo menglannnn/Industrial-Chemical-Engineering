@@ -29,10 +29,6 @@ final class V3CondenserComponentPhases {
                 || (topology.hasLiquidPhase(node) && liquidAtCondenser[component]);
     }
 
-    boolean hasVaporLiquidEquilibrium(V3ColumnTopology topology, int node, int component) {
-        return hasLiquid(topology, node, component) && topology.hasVaporPhase(node);
-    }
-
     boolean isVaporOnlyAtCondenser(int component) {
         requireComponent(component);
         return !liquidAtCondenser[component];

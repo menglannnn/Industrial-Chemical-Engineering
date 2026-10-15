@@ -879,10 +879,6 @@ final class V3AcceptanceAuditor {
         return result;
     }
 
-    private double independentWaterSlipCoefficient() {
-        return independentWaterSlipCoefficient(problem);
-    }
-
     private static double independentWaterSlipCoefficient(V3ColumnProblem problem) {
         int condenser = problem.topology().condenserNode();
         double temperature = condenserTemperatureKelvin(problem);
