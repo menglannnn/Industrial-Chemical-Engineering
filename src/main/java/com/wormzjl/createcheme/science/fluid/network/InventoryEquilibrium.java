@@ -93,24 +93,51 @@ public final class InventoryEquilibrium {
         // seed 707 booked 1e-42 mol of crude and 1e-84 mol of water vapour into an empty 1 m3 tank; the closure's Newton,
         // differencing that water with a step 1e19 times the vessel's contents, found no finite trial at any step size.
         if(PassiveStepSolver.holdsNothing(inventory,state))return state;
-        // Owner decisions D25 and D26: the regime test is the outer phase check (FluidThermodynamics.phaseCheck). A phase
-        // leaves only when the closure empties it (the trace fold of its point, also of a failed closure's last iterate);
-        // where the TP answer finds a phase missing, the vessel is seeded at its own split, this closure of its inventory
-        // (split below) started from the TP answer with the phases the vessel holds, and no populated phase set is
-        // swapped for another on a TP verdict: a vessel of pure water at its saturation line keeps its liquid and gains
-        // the steam its volume and energy give. A phase the check removed is not added again within this solve (A85).
+        return passes(model,state,new Closure(){
+            @Override public FluidThermodynamics.State close(FluidThermodynamics.State start){return InventoryEquilibrium.close(model,start,inventory,null,workFrom,checkpoint);}
+            @Override public FluidThermodynamics.State iterate(FluidThermodynamics.State start,double[] variables){return layout(model,start,null).decode(variables,0);}
+            @Override public FluidThermodynamics.State split(FluidThermodynamics.State start){return InventoryEquilibrium.split(model,start,inventory,workFrom,checkpoint);}
+        },checkpoint);
+    }
+    /**
+     * A vessel's closure in the phase layout of a state: the inner step of the pass loop ({@link #passes}). The vessel's
+     * own ({@link #close}: its fluid and inert solids at what it holds), or the crystal refresh's joint closure (its fluid
+     * beside its crystals, their amounts unknowns, {@code VesselCrystals}, decision D30).
+     */
+    interface Closure {
+        /** The vessel closed, laid out with {@code start}'s phases; a {@link SparseNewton.Nonconvergence}, with its last
+         * iterate where it has one, where it stops short. */
+        FluidThermodynamics.State close(FluidThermodynamics.State start);
+        /** The fluid at {@code variables}, an iterate of {@link #close} from {@code start}, as its layout decodes it. */
+        FluidThermodynamics.State iterate(FluidThermodynamics.State start,double[] variables);
+        /** The vessel's own split from {@code start} (owner decision D26, {@link InventoryEquilibrium#split}): the closure, or
+         * where it stops short its last iterate given the amounts it holds; {@code null} where it leaves neither. */
+        FluidThermodynamics.State split(FluidThermodynamics.State start);
+    }
+    /**
+     * The vessel's equilibrium from {@code state}: {@code closure} solved in a phase layout, and the layout decided by the
+     * outer phase check (owner decisions D25 and D26, {@code FluidThermodynamics.phaseCheck}). A phase leaves only when the
+     * closure empties it (the trace fold of its point, also of a failed closure's last iterate); where the TP answer finds
+     * a phase missing, the vessel is seeded at its own split, the closure started from the TP answer with the phases the
+     * vessel holds, and no populated phase set is swapped for another on a TP verdict: a vessel of pure water at its
+     * saturation line keeps its liquid and gains the steam its volume and energy give. A phase the check removed is not
+     * added again within this solve (A85). One rule for a vessel's own closure ({@link #solve}) and for the crystal
+     * refresh's joint closure (decision D30), so a phase that has no room leaves both.
+     */
+    static FluidThermodynamics.State passes(FluidThermodynamics model,FluidThermodynamics.State state,Closure closure,Runnable checkpoint) {
         var seen=new HashSet<String>();int excluded=0;
-        UnaryOperator<FluidThermodynamics.State> own=start->split(model,start,inventory,workFrom,checkpoint);
+        UnaryOperator<FluidThermodynamics.State> own=closure::split;
         for(int pass=0;pass<16;pass++) {
             checkpoint.run();if(!seen.add(regime(state)))throw new SparseNewton.Nonconvergence("Inventory equilibrium phase cycle");
             FluidThermodynamics.State candidate;
-            try{candidate=close(model,state,inventory,null,workFrom,checkpoint);}
+            try{candidate=closure.close(state);}
             catch(SparseNewton.Nonconvergence failure) {
                 if(failure.lastVariables()==null)throw failure;
-                var trial=layout(model,state,null).decode(failure.lastVariables(),0);
+                var trial=closure.iterate(state,failure.lastVariables());
                 var checked=model.phaseCheck(trial,false,excluded,null,own,checkpoint);
                 if(regime(checked).equals(regime(state)))throw failure;
-                excluded|=FluidThermodynamics.phaseBits(trial)&~FluidThermodynamics.phaseBits(checked);state=checked.withSolids(inventory.solids());continue;
+                // Laid out again with the solids the pass's state carried (the vessel's own closure: its inventory's).
+                excluded|=FluidThermodynamics.phaseBits(trial)&~FluidThermodynamics.phaseBits(checked);state=checked.withSolids(state.solids());continue;
             }
             if(candidate==state)return state;
             var checked=model.phaseCheck(candidate,false,excluded,null,own,checkpoint);

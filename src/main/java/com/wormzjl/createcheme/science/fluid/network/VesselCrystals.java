@@ -34,9 +34,10 @@ import java.util.List;
  * constant-pressure one above the capacity.</li>
  * <li><b>Amount.</b> Each present crystal's amount is one more unknown of the vessel's own closure, beside its fluid's
  * ({@link Joint}): the crystal's chemical potential equal to its component's is its row, and the energy and wall rows hold
- * the crystal's mass at its record's constants (its stored energy and the offset the record carries, its volume). A
- * crystal the closure would hold below zero mass is absent (it melts entirely), and the closure is solved again without
- * it.</li>
+ * the crystal's mass at its record's constants (its stored energy and the offset the record carries, its volume). The
+ * vessel's pass loop lays its fluid out ({@link JointClosure}, decision D30), so a phase the closure empties leaves and a
+ * missing one is added at the vessel's own split, as in the closure without crystals. A crystal the closure would hold
+ * below zero mass is absent (it melts entirely), and the closure is solved again without it.</li>
  * <li><b>Booking.</b> The vessel's stored energy is its true energy less the crystals' offsets
  * ({@link com.wormzjl.createcheme.science.material.SolidMaterialCatalog.SolidMaterial.Crystal}), so the offset of the mass
  * that froze or melted is booked here, and the ambient's work on a moving bag, {@code -P_amb (V_bag - V_bag,0)}, is booked
@@ -143,9 +144,11 @@ final class VesselCrystals {
         var present=new ArrayList<NetworkCrystals.Crystal>();var seeds=new ArrayList<Double>();
         for(int k=0;k<count;k++)if(moles[k]>0){present.add(all.get(k));seeds.add(moles[k]);}
         while(!present.isEmpty()) {
-            checkpoint.run();
-            var joint=new Joint(model,answer.fluid(),present,seeds,totals,trueEnergy,capacity,bag,inert);
-            var solved=SparseNewton.solve(joint,joint.start(answer.fluid(),seeds),new SparseNewton.Settings(24,InventoryEquilibrium.CLOSURE,1e-6,24),checkpoint).variables();
+            // The vessel's pass loop lays the fluid beside the crystals out (decision D30), from the engine's answer: a phase
+            // the record's crystal leaves no room for leaves, as in the vessel's own closure. Each pass runs the checkpoint.
+            var closure=new JointClosure(model,present,seeds,totals,trueEnergy,capacity,bag,inert,checkpoint);
+            InventoryEquilibrium.passes(model,answer.fluid(),closure,checkpoint);
+            var joint=closure.joint;var solved=closure.solved;
             var absent=new ArrayList<NetworkCrystals.Crystal>();
             for(int j=0;j<present.size();j++)if(!(joint.crystalMoles(solved,j)>0))absent.add(present.get(j));
             if(absent.isEmpty())return settled(model,inventory,closed,all,held,joint,solved,totals,trueEnergy,bag,inert,checkpoint);
@@ -225,12 +228,8 @@ final class VesselCrystals {
     /** The converged closure {@code solved} of {@code joint} as the vessel's new inventory and state. */
     private static Settled settled(FluidThermodynamics model,PassiveNetwork.Inventory inventory,FluidThermodynamics.State closed,List<NetworkCrystals.Crystal> all,
                                    double[] held,Joint joint,double[] solved,double[] totals,double trueEnergy,double bag,SolidInventory inert,Runnable checkpoint) {
-        double[] left=totals.clone();double[] mass=new double[all.size()];
-        for(int j=0;j<joint.crystals.size();j++) {
-            var crystal=joint.crystals.get(j);int c=crystal.component();
-            double kept=Math.max(0,totals[c]-joint.crystalMoles(solved,j));
-            mass[all.indexOf(crystal)]=(totals[c]-kept)*crystal.molarMass();left[c]=kept;
-        }
+        double[] left=joint.fluidAmounts(solved);double[] mass=new double[all.size()];
+        for(var crystal:joint.crystals){int c=crystal.component();mass[all.indexOf(crystal)]=(totals[c]-left[c])*crystal.molarMass();}
         var beside=ConservativeTransport.repartition(model,joint.fluid(solved),left);
         var solids=stock(inventory.solids(),inert,beside,all,held,mass);
         double capacity=inventory.volume();
@@ -258,6 +257,57 @@ final class VesselCrystals {
             populations.add(new SolidInventory.Population(crystal.material(),precipitateDiameter(fluid,crystal),mass[k]-held[k]));
         }
         return new SolidInventory(populations).oneSizePerSolid();
+    }
+
+    /**
+     * The joint closure ({@link Joint}) as the inner closure of the vessel's pass loop ({@link InventoryEquilibrium#passes},
+     * decision D30): each pass lays the fluid out with the phases of its start, the crystals at the engine's amounts.
+     * {@link #joint} and {@link #solved} are the last converged closure, the one the loop answers with (its own split, a
+     * seed of the phase check, records nothing).
+     *
+     * <p>Physics: the engine's answer states its own crystal, whose volume differs from the record's constant one (CO2-I in
+     * LNG at 143.8 K: 1625 against 1571 kg/m3, so 37 kg take 0.79 L more as the record's). In a rigid tank full of LNG the
+     * engine's answer holds a 0.45 L bubble that the record's crystal leaves no room for: the tank stays liquid-full, and
+     * the closure started in the answer's layout empties the bubble (cold fuzz seeds 35, 72 and 148). The loop's trace fold
+     * of that iterate removes the phase, and the closure is solved again without it.</p>
+     */
+    private static final class JointClosure implements InventoryEquilibrium.Closure {
+        private final FluidThermodynamics model;
+        private final List<NetworkCrystals.Crystal> present;
+        private final List<Double> seeds;
+        private final double[] totals;
+        private final double trueEnergy,capacity,workFrom;
+        private final SolidInventory inert;
+        private final Runnable checkpoint;
+        Joint joint;
+        double[] solved;
+
+        JointClosure(FluidThermodynamics model,List<NetworkCrystals.Crystal> present,List<Double> seeds,double[] totals,double trueEnergy,double capacity,
+                     double workFrom,SolidInventory inert,Runnable checkpoint) {
+            this.model=model;this.present=List.copyOf(present);this.seeds=List.copyOf(seeds);this.totals=totals;this.trueEnergy=trueEnergy;
+            this.capacity=capacity;this.workFrom=workFrom;this.inert=inert;this.checkpoint=checkpoint;
+        }
+        private Joint joint(FluidThermodynamics.State start){return new Joint(model,start,present,seeds,totals,trueEnergy,capacity,workFrom,inert);}
+        private double[] solve(Joint joint,FluidThermodynamics.State start) {
+            return SparseNewton.solve(joint,joint.start(start,seeds),new SparseNewton.Settings(24,InventoryEquilibrium.CLOSURE,1e-6,24),checkpoint).variables();
+        }
+        @Override public FluidThermodynamics.State close(FluidThermodynamics.State start) {
+            var closing=joint(start);var x=solve(closing,start);
+            joint=closing;solved=x;
+            return ConservativeTransport.repartition(model,closing.fluid(x),closing.fluidAmounts(x));
+        }
+        @Override public FluidThermodynamics.State iterate(FluidThermodynamics.State start,double[] variables){return joint(start).fluid(variables);}
+        @Override public FluidThermodynamics.State split(FluidThermodynamics.State start) {
+            Joint closing;
+            try{closing=joint(start);}catch(IllegalArgumentException refused){return null;}
+            try{var x=solve(closing,start);return ConservativeTransport.repartition(model,closing.fluid(x),closing.fluidAmounts(x));}
+            catch(SparseNewton.Nonconvergence failure) {
+                if(failure.lastVariables()==null)return null;
+                try{return ConservativeTransport.repartition(model,closing.fluid(failure.lastVariables()),closing.fluidAmounts(failure.lastVariables()));}
+                catch(IllegalArgumentException refused){return null;}
+            }
+            catch(IllegalArgumentException refused){return null;}
+        }
     }
 
     /**
@@ -301,6 +351,12 @@ final class VesselCrystals {
             return x;
         }
         double crystalMoles(double[] x,int j){return x[fluidSize+j]*layout.amountScale();}
+        /** The amounts the fluid holds at {@code x}: the vessel's totals less its crystals' moles, never below zero. */
+        double[] fluidAmounts(double[] x) {
+            double[] left=totals.clone();
+            for(int j=0;j<crystals.size();j++){int c=crystals.get(j).component();left[c]=Math.max(0,totals[c]-crystalMoles(x,j));}
+            return left;
+        }
         FluidThermodynamics.State fluid(double[] x){return layout.decode(x,0,prepare(x));}
         @Override public int size(){return fluidSize+crystals.size();}
         @Override public double differenceScale(int column,double value) {
