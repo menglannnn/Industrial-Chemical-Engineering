@@ -8,6 +8,13 @@ import com.wormzjl.createcheme.science.math.DeterministicMath;
  */
 public final class SlurryTransport {
     public static final double MAXIMUM_PACKING_FRACTION = 0.62;
+    /**
+     * The solid share of a slurry's condensed volume at which an outlet stops carrying it: a slush (owner decision D23,
+     * PRECIPITATED_SOLIDS_PLAN section 5 item 3). One rule for every solid. It keeps the steep end of
+     * {@link #effectiveViscosity} (13 times the carrier's at 0.5, 200 times at 0.6) out of every open line; the
+     * viscosity law itself keeps its packing limit {@link #MAXIMUM_PACKING_FRACTION}.
+     */
+    public static final double SLUSH_FRACTION = 0.5;
     public static final double DEFAULT_TRACE_VOLUME_FRACTION = 1e-8;
     private static final double GRAVITY = 9.80665;
 

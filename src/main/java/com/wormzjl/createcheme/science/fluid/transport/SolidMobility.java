@@ -35,8 +35,14 @@ public final class SolidMobility {
     }
     /**
      * Everything {@link #check} decides from the donor alone: the two carrier-viscosity tests,
-     * whether any of its populations is large enough to matter for blockage, the largest of those
-     * and the suspension velocity the largest of them asks for.
+     * whether any of its solids is large enough to matter for blockage, the largest of their sizes
+     * and the largest suspension velocity they ask for.
+     *
+     * <p>One size per solid (owner decision D23, amended 2026-10-15). A solid's populations are read as one: its total
+     * volume decides whether it matters for blockage, and its size is the stock's size of it
+     * ({@link SolidInventory#size}, the mass-weighted mean diameter), the size the next refresh merges them into. So the
+     * outlet follows where the mass is, and a merge never changes an outlet decision: 99 % of a solid at 0.25 mm with 1 % at
+     * 1 mm is a 0.26 mm stock, not a 1 mm one.</p>
      *
      * <p>A stage guard asks the same donor about every connection leaving it, in both directions,
      * several times per step. Every one of those asked the carrier viscosities again - two
@@ -48,7 +54,7 @@ public final class SolidMobility {
      */
     public record Donor(boolean immobileOrganic, boolean immobileWater, boolean active,
                         double liquidVolume, double solidVolume, double largestDiameter, double requiredVelocity) {}
-    /** {@link Donor} for one state. A donor with no population above the trace volume fraction
+    /** {@link Donor} for one state. A donor with no solid above the trace volume fraction
      * costs the two carrier tests and nothing else: no deposition velocity, no mixture viscosity. */
     public static Donor donor(FluidThermodynamics model, FluidThermodynamics.State state) {
         boolean immobileOrganic=state.liquidVolume()>0
@@ -57,8 +63,13 @@ public final class SolidMobility {
                 &&SlurryTransport.immobile(model.viscosity.waterLiquid(state.temperature()),model.solidSettings.immobileViscosity());
         double liquidVolume=state.liquidVolume()+state.waterVolume();
         boolean active=false;double largest=0,required=0,carrierDensity=0,carrierViscosity=0;
-        for(var population:state.solids().populations()) {
-            if(!SlurryTransport.activeForBlockage(population.volume(),state.volume(),model.solidSettings.traceVolumeFraction()))continue;
+        var solids=state.solids();var populations=solids.populations();
+        // A solid's populations are adjacent in key order (material first).
+        for(int first=0,next;first<populations.size();first=next) {
+            var material=populations.get(first).material();double volume=0;
+            for(next=first;next<populations.size()&&populations.get(next).material().id().equals(material.id());next++)volume+=populations.get(next).volume();
+            if(!SlurryTransport.activeForBlockage(volume,state.volume(),model.solidSettings.traceVolumeFraction()))continue;
+            double diameter=(next==first+1?populations.get(first).size():solids.size(material.id())).diameterMetres();
             if(!active&&liquidVolume>0) {
                 double liquidMass=state.waterLiquid()*model.waterMolecularWeight;
                 var n=state.liquidView();for(int c=0;c<n.length;c++)liquidMass+=n[c]*model.molecularWeight(c);
@@ -68,9 +79,9 @@ public final class SolidMobility {
                 carrierDensity=liquidMass/liquidVolume;carrierViscosity=mu/liquidVolume;
             }
             active=true;
-            largest=Math.max(largest,population.size().diameterMetres());
-            if(liquidVolume>0)required=Math.max(required,SlurryTransport.depositionVelocity(population.size().diameterMetres(),
-                    population.material().density(),carrierDensity,carrierViscosity,model.solidSettings.suspensionMultiplier()));
+            largest=Math.max(largest,diameter);
+            if(liquidVolume>0)required=Math.max(required,SlurryTransport.depositionVelocity(diameter,
+                    material.density(),carrierDensity,carrierViscosity,model.solidSettings.suspensionMultiplier()));
         }
         return new Donor(immobileOrganic,immobileWater,active,liquidVolume,state.solidMoments().volume(),largest,required);
     }
@@ -79,10 +90,11 @@ public final class SolidMobility {
      * {@link #donor} of this same state. The connection draws {@code drawnMass} kilograms of stream per the donor's whole
      * liquid and solid content: the donor's own mass for a bulk withdrawal, and for a phase port drawing one liquid that
      * liquid's stream mass over its share of the liquid (it carries its volume share of the donor's liquid and solids).
-     * The liquid velocity is {@code |q| / drawnMass * liquidVolume / area}. The largest active population decides the bore
-     * refusal and the suspension velocity alike: the original walked the populations in order and refused on the first
-     * one too wide for the bore, which reports no suspension velocity at all, so taking the largest refuses on exactly the
-     * same donors and reports the same velocity everywhere it is read.
+     * The liquid velocity is {@code |q| / drawnMass * liquidVolume / area}. The largest active solid's size decides the bore
+     * refusal and the largest suspension velocity the deposition test: the original walked the populations in order and
+     * refused on the first one too wide for the bore, which reports no suspension velocity at all, so taking the largest
+     * refuses on exactly the same donors and reports the same velocity everywhere it is read. A slurry whose solids fill
+     * {@link SlurryTransport#SLUSH_FRACTION} of its condensed volume is a slush and does not flow (owner decision D23).
      */
     public static Check check(Donor prepared, FluidThermodynamics.State donor,
                               PassiveNetwork.Pipe pipe, double massFlow, Outlet outlet, double drawnMass) {
@@ -96,7 +108,7 @@ public final class SolidMobility {
             if(prepared.largestDiameter>=pipe.minimumDiameter())return new Check(Reason.PARTICLE_TOO_LARGE,velocity,0);
         }
         double required=prepared.requiredVelocity;
-        if(prepared.active&&prepared.solidVolume/(liquidVolume+prepared.solidVolume)>=SlurryTransport.MAXIMUM_PACKING_FRACTION)
+        if(prepared.active&&prepared.solidVolume/(liquidVolume+prepared.solidVolume)>=SlurryTransport.SLUSH_FRACTION)
             return new Check(Reason.PACKED_SLURRY,velocity,required);
         return new Check(pipe.filter()==null&&prepared.active&&velocity<=required?Reason.DEPOSITION:Reason.MOBILE,velocity,required);
     }
