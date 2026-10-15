@@ -23,6 +23,23 @@ public final class ModBlockEntities {
                     ).build(null)
             );
 
+    public static final DeferredHolder<BlockEntityType<?>, BlockEntityType<com.wormzjl.createcheme.world.level.block.entity.EquipmentShellBlockEntity>>
+            EQUIPMENT_SHELL = BLOCK_ENTITY_TYPES.register(
+                    "equipment_shell",
+                    () -> BlockEntityType.Builder.of(
+                            com.wormzjl.createcheme.world.level.block.entity.EquipmentShellBlockEntity::new,
+                            ModBlocks.EQUIPMENT_SHELL.get()
+                    ).build(null)
+            );
+    public static final DeferredHolder<BlockEntityType<?>, BlockEntityType<com.wormzjl.createcheme.world.level.block.entity.EquipmentConstructorBlockEntity>>
+            EQUIPMENT_CONSTRUCTOR = BLOCK_ENTITY_TYPES.register(
+                    "equipment_constructor",
+                    () -> BlockEntityType.Builder.of(
+                            com.wormzjl.createcheme.world.level.block.entity.EquipmentConstructorBlockEntity::new,
+                            ModBlocks.EQUIPMENT_CONSTRUCTOR.get()
+                    ).build(null)
+            );
+
     private ModBlockEntities() {
     }
 

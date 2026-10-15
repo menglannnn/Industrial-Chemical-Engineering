@@ -1,0 +1,9 @@
+{
+  "loader": "createcheme:equipment_shell",
+  "textures": {
+    "shell": "createcheme:block/vessel_shell",
+    "head": "createcheme:block/vessel_head",
+    "support": "createcheme:block/vessel_support",
+    "particle": "createcheme:block/vessel_shell"
+  }
+}

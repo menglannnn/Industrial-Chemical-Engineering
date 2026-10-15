@@ -1,0 +1,10 @@
+{
+  "parent": "minecraft:block/orientable_with_bottom",
+  "textures": {
+    "top": "create:block/schematic_table_top",
+    "bottom": "create:block/andesite_casing",
+    "side": "create:block/andesite_casing",
+    "front": "create:block/brass_casing",
+    "particle": "create:block/andesite_casing"
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "variants": {
+    "facing=north": { "model": "createcheme:block/equipment_constructor" },
+    "facing=east": { "model": "createcheme:block/equipment_constructor", "y": 90 },
+    "facing=south": { "model": "createcheme:block/equipment_constructor", "y": 180 },
+    "facing=west": { "model": "createcheme:block/equipment_constructor", "y": 270 }
+  }
+}

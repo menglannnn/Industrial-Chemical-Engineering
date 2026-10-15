@@ -8,6 +8,9 @@
     "createcheme:pressure_control_valve",
     "createcheme:fluid_generator",
     "createcheme:fluid_void",
-    "createcheme:inline_filter"
+    "createcheme:inline_filter",
+    "createcheme:equipment_shell",
+    "createcheme:equipment_interior",
+    "createcheme:equipment_constructor"
   ]
 }

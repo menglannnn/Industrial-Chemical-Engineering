@@ -37,6 +37,25 @@ public final class ModBlocks {
                     .requiresCorrectToolForDrops()
     );
 
+    // Parametric vessels (batch 2026-10-15-custom-equipment-rendering): placed whole by EquipmentStructure, no items, no drops.
+    public static final DeferredBlock<com.wormzjl.createcheme.world.level.block.EquipmentShellBlock> EQUIPMENT_SHELL = BLOCKS.registerBlock(
+            "equipment_shell",
+            com.wormzjl.createcheme.world.level.block.EquipmentShellBlock::new,
+            BlockBehaviour.Properties.of().mapColor(MapColor.METAL).strength(3.5F).sound(SoundType.METAL)
+                    .pushReaction(net.minecraft.world.level.material.PushReaction.BLOCK).noOcclusion().dynamicShape().noLootTable()
+    );
+    public static final DeferredBlock<com.wormzjl.createcheme.world.level.block.EquipmentInteriorBlock> EQUIPMENT_INTERIOR = BLOCKS.registerBlock(
+            "equipment_interior",
+            com.wormzjl.createcheme.world.level.block.EquipmentInteriorBlock::new,
+            BlockBehaviour.Properties.of().mapColor(MapColor.METAL).strength(3.5F).sound(SoundType.METAL)
+                    .pushReaction(net.minecraft.world.level.material.PushReaction.BLOCK).noLootTable()
+    );
+    public static final DeferredBlock<com.wormzjl.createcheme.world.level.block.EquipmentConstructorBlock> EQUIPMENT_CONSTRUCTOR = BLOCKS.registerBlock(
+            "equipment_constructor",
+            com.wormzjl.createcheme.world.level.block.EquipmentConstructorBlock::new,
+            BlockBehaviour.Properties.of().mapColor(MapColor.WOOD).strength(2.5F).sound(SoundType.WOOD)
+    );
+
     private ModBlocks() {
     }
 

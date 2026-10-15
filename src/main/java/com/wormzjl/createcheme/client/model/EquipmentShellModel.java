@@ -1,0 +1,147 @@
+package com.wormzjl.createcheme.client.model;
+
+import com.wormzjl.createcheme.CreateChemE;
+import com.wormzjl.createcheme.science.equipment.ShapeRasterizer;
+import com.wormzjl.createcheme.world.level.block.entity.EquipmentShellBlockEntity;
+import net.minecraft.client.renderer.RenderType;
+import net.minecraft.client.renderer.block.model.BakedQuad;
+import net.minecraft.client.renderer.block.model.ItemOverrides;
+import net.minecraft.client.renderer.texture.TextureAtlasSprite;
+import net.minecraft.client.resources.model.BakedModel;
+import net.minecraft.client.resources.model.Material;
+import net.minecraft.client.resources.model.ModelBaker;
+import net.minecraft.client.resources.model.ModelState;
+import net.minecraft.core.Direction;
+import net.minecraft.resources.ResourceLocation;
+import net.minecraft.util.RandomSource;
+import net.minecraft.world.level.block.state.BlockState;
+import net.neoforged.neoforge.client.ChunkRenderTypeSet;
+import net.neoforged.neoforge.client.model.IDynamicBakedModel;
+import net.neoforged.neoforge.client.model.data.ModelData;
+import net.neoforged.neoforge.client.model.geometry.IGeometryBakingContext;
+import net.neoforged.neoforge.client.model.geometry.IGeometryLoader;
+import net.neoforged.neoforge.client.model.geometry.IUnbakedGeometry;
+import net.neoforged.neoforge.client.model.pipeline.QuadBakingVertexConsumer;
+import org.jetbrains.annotations.Nullable;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Function;
+
+/**
+ * Chunk-meshed model of a vessel shell cell (batch 2026-10-15-custom-equipment-rendering, route A1). The cell's key
+ * arrives as model data from its block entity; the quads of a key are built once from {@link ShapeRasterizer#surface}
+ * and cached, and body cells share one key per column. Quads stay inside the cell, carry smooth vertex normals and have
+ * no ambient occlusion: vanilla shades them by their nearest axis, Sodium by their normal, Iris by its own lighting.
+ * Without model data (Distant Horizons asks that way) the model is empty and the particle sprite gives the colour.
+ */
+public final class EquipmentShellModel implements IDynamicBakedModel {
+    public static final ResourceLocation LOADER_ID = ResourceLocation.fromNamespaceAndPath(CreateChemE.MOD_ID, "equipment_shell");
+    public static final IGeometryLoader<Geometry> LOADER = (json, context) -> new Geometry();
+    private static final int CACHE = 4096;
+    private static final ChunkRenderTypeSet SOLID = ChunkRenderTypeSet.of(RenderType.solid());
+    private final TextureAtlasSprite shell, head, support, particle;
+    /** Rebuilt with the model on every resource reload, since quads embed atlas coordinates. Meshing threads share it. */
+    private final Map<ShapeRasterizer.CellKey, List<BakedQuad>> quads = new ConcurrentHashMap<>();
+
+    private EquipmentShellModel(TextureAtlasSprite shell, TextureAtlasSprite head, TextureAtlasSprite support, TextureAtlasSprite particle) {
+        this.shell = shell;
+        this.head = head;
+        this.support = support;
+        this.particle = particle;
+    }
+
+    @Override
+    public List<BakedQuad> getQuads(@Nullable BlockState state, @Nullable Direction side, RandomSource random, ModelData data, @Nullable RenderType renderType) {
+        var key = data.get(EquipmentShellBlockEntity.CELL);
+        if (side != null || key == null) return List.of();
+        var cached = quads.get(key);
+        if (cached != null) return cached;
+        if (quads.size() >= CACHE) quads.clear();
+        return quads.computeIfAbsent(key, this::bake);
+    }
+
+    /** Each convex polygon becomes a fan of quads; a last single triangle repeats its final vertex. */
+    private List<BakedQuad> bake(ShapeRasterizer.CellKey key) {
+        var out = new ArrayList<BakedQuad>();
+        for (var polygon : ShapeRasterizer.surface(key))
+            for (int first = 1; first + 1 < polygon.size(); first += 2)
+                out.add(quad(polygon, 0, first, first + 1, Math.min(first + 2, polygon.size() - 1)));
+        return List.copyOf(out);
+    }
+
+    private BakedQuad quad(ShapeRasterizer.Polygon polygon, int... corners) {
+        double[] p = polygon.positions(), uv = polygon.uvs(), n = polygon.normals();
+        // Face direction from the corners' winding (Newell), for vanilla's directional shade.
+        double fx = 0, fy = 0, fz = 0;
+        for (int i = 0; i < 4; i++) {
+            int a = 3 * corners[i], b = 3 * corners[(i + 1) % 4];
+            fx += (p[a + 1] - p[b + 1]) * (p[a + 2] + p[b + 2]);
+            fy += (p[a + 2] - p[b + 2]) * (p[a] + p[b]);
+            fz += (p[a] - p[b]) * (p[a + 1] + p[b + 1]);
+        }
+        var sprite = switch (polygon.material()) {
+            case SHELL -> shell;
+            case HEAD -> head;
+            case SUPPORT -> support;
+        };
+        var baker = new QuadBakingVertexConsumer();
+        baker.setSprite(sprite);
+        baker.setTintIndex(-1);
+        baker.setDirection(Direction.getNearest(fx, fy, fz));
+        baker.setShade(true);
+        baker.setHasAmbientOcclusion(false);
+        for (int c : corners)
+            baker.addVertex((float) p[3 * c], (float) p[3 * c + 1], (float) p[3 * c + 2])
+                    .setColor(255, 255, 255, 255)
+                    .setUv(sprite.getU((float) uv[2 * c]), sprite.getV((float) uv[2 * c + 1]))
+                    .setNormal((float) n[3 * c], (float) n[3 * c + 1], (float) n[3 * c + 2]);
+        return baker.bakeQuad();
+    }
+
+    @Override
+    public ChunkRenderTypeSet getRenderTypes(BlockState state, RandomSource random, ModelData data) {
+        return SOLID;
+    }
+
+    @Override
+    public boolean useAmbientOcclusion() {
+        return false;
+    }
+
+    @Override
+    public boolean isGui3d() {
+        return false;
+    }
+
+    @Override
+    public boolean usesBlockLight() {
+        return true;
+    }
+
+    @Override
+    public boolean isCustomRenderer() {
+        return false;
+    }
+
+    @Override
+    public TextureAtlasSprite getParticleIcon() {
+        return particle;
+    }
+
+    @Override
+    public ItemOverrides getOverrides() {
+        return ItemOverrides.EMPTY;
+    }
+
+    /** {@code "loader": "createcheme:equipment_shell"} with textures {@code shell}, {@code head}, {@code support} and {@code particle}. */
+    public record Geometry() implements IUnbakedGeometry<Geometry> {
+        @Override
+        public BakedModel bake(IGeometryBakingContext context, ModelBaker baker, Function<Material, TextureAtlasSprite> sprites, ModelState state, ItemOverrides overrides) {
+            return new EquipmentShellModel(sprites.apply(context.getMaterial("shell")), sprites.apply(context.getMaterial("head")),
+                    sprites.apply(context.getMaterial("support")), sprites.apply(context.getMaterial("particle")));
+        }
+    }
+}
