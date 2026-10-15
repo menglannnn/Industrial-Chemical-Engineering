@@ -1,5 +1,6 @@
 package com.wormzjl.createcheme.science.fluid.network;
 
+import com.wormzjl.createcheme.fluid.support.FluidTestSupport;
 import com.wormzjl.createcheme.science.fluid.thermo.FluidThermodynamics;
 import com.wormzjl.createcheme.science.material.MaterialCatalog;
 import java.util.*;
@@ -7,7 +8,7 @@ import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
 
 class ScheduledTransferTest {
-    private final FluidThermodynamics model=FluidThermodynamics.forNetwork(MaterialCatalog.bundled(),"createcheme:tjl20_methane_nitrogen",1e-9);
+    private final FluidThermodynamics model=FluidTestSupport.networkModel();
     private PassiveNetwork.Reservoir gas(long id,double p,double z){return new PassiveNetwork.Reservoir(id,z,model.initialNitrogenCharge(1,298.15,p,()->{}));}
     private double mass(PassiveNetwork.Inventory inventory){var n=inventory.moles();double mass=0;for(int c=0;c<n.length;c++)mass+=n[c]*(c==com.wormzjl.createcheme.science.material.MaterialTestBasis.NETWORK?model.waterMolecularWeight:model.hydrocarbon.molecularWeight(c));return mass;}
     private double energy(PassiveNetwork graph){double total=0;for(var node:graph.reservoirs())if(node.kind()==PassiveNetwork.NodeKind.RESERVOIR)total+=node.inventory().internalEnergy()+mass(node.inventory())*PassiveStepSolver.GRAVITY*node.elevation();return total;}

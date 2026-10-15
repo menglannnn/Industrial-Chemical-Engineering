@@ -17,28 +17,30 @@ import static org.junit.jupiter.api.Assertions.*;
  * {@code FluidWorldAuthority.place} places them, with the control, spec and bore a player set at placement. The same world
  * as the placement-sequence fuzz ({@code tools/phase-ports-probes/hold-fuzz/}), which found the classes.
  */
-final class EventPathWorld {
+class EventPathWorld {
     static final String DIM="minecraft:overworld";
     static final MaterialCatalog CATALOG=MaterialCatalog.bundled();
-    static final BoundedCpuSolveService.CancellationToken NEVER=new BoundedCpuSolveService.CancellationToken() {
-        public long deadlineNanos(){return Long.MAX_VALUE;}public boolean isDeadlineExceeded(){return false;}
-        public boolean isCancellationRequested(){return false;}public void throwIfCancellationRequested(){}
-    };
     record Held(long tick,long island,long committed,String status) {}
 
     final FluidThermodynamics model=FluidTestSupport.networkModel();
     final WorldTopologyLedger ledger=new WorldTopologyLedger(WorldTopologyLedger.Snapshot.empty(CATALOG));
     final Map<Long,IslandCoordinator.Attempt> attempts=new LinkedHashMap<>();
     final Map<Long,ProcessSolveServices.FluidIslandCommand> commands=new HashMap<>();
-    long requests;
+    final int workers;long requests;
     /** Every published HELD status, with the online tick it was published at. */
     final List<Held> held=new ArrayList<>();
     final IslandCoordinator coordinator;
     final PhysicalRegistry registry;
+    /** The removals of every committed topology batch, in order. */
+    final List<Set<Long>> committedRemovals=new ArrayList<>();
 
-    EventPathWorld() {
+    /** A world with one synchronous worker. */
+    EventPathWorld(){this(1);}
+    /** A world whose worker pool has {@code workers} slots: 0 (no solve) or 1 (a synchronous worker). */
+    EventPathWorld(int workers) {
+        this.workers=workers;
         coordinator=new IslandCoordinator(new IslandCoordinator.Dispatcher() {
-            public int availableWorkers(){return 1-attempts.size();}
+            public int availableWorkers(){return workers-attempts.size();}
             public long nextRequestId(){return ++requests;}
             public boolean submit(IslandCoordinator.Attempt attempt,ProcessSolveServices.FluidIslandCommand command){attempts.put(attempt.slice().requestId(),attempt);commands.put(attempt.slice().requestId(),command);return true;}
             public void cancel(long request){}
@@ -48,11 +50,11 @@ final class EventPathWorld {
             public IslandCoordinator coordinator(){return coordinator;}
             public void topology(String dimension,Set<UUID> events,Set<Long> affected,List<IslandCoordinator.Replacement> replacements,long committed,long online,
                                  Map<Long,PassiveNetwork.Reservoir> additions,Set<Long> removals,Map<Long,InlineFilter> releasedFilters,Runnable commit) {
-                coordinator.topology(events,affected,replacements,model,committed,online,additions,removals,releasedFilters,commit);
+                assertEquals(DIM,dimension);coordinator.topology(events,affected,replacements,model,committed,online,additions,removals,releasedFilters,commit);
             }
             public boolean acceptsRecovery(UUID player){return true;}
             public void refused(UUID event,String reason){}
-            public void committed(Set<Long> removed){}
+            public void committed(Set<Long> removed){committedRemovals.add(removed);}
         });
         registry.load();
     }
@@ -75,18 +77,33 @@ final class EventPathWorld {
     }
     /** A block with its kind's default control and a nitrogen spec (boundaries: a 1 m3 charge at 298.15 K, 1 atm). */
     long place(int x,int y,int z,Kind kind,PhysicalFluidTopology.Direction facing,double bore){return place(x,y,z,kind,facing,defaultControl(kind),null,bore);}
+    /** A block with its kind's default control and a player's spec and bore set at placement. */
+    long place(int x,int y,int z,Kind kind,PhysicalFluidTopology.Direction facing,FluidDeviceSpec spec,double bore){return place(x,y,z,kind,facing,defaultControl(kind),spec,bore);}
+    /** A block as FluidWorldAuthority.place places it: its kind's default control, a 1 m block of 0.05 m bore, water for a
+     * generator and a 1 m3 nitrogen charge at 298.15 K and 1 atm for everything else. */
+    long place(int x,int y,int z,Kind kind,PhysicalFluidTopology.Direction facing){return place(x,y,z,kind,facing,kind==Kind.GENERATOR?FluidDeviceSpec.water(CATALOG):nitrogen(),.05);}
     /** One online tick as FluidWorldAuthority.tick runs it, with the worker's jobs run to completion in the tick. */
     void tick() {
         ledger.tick();coordinator.tick();
         if(ledger.hasPendingEvents()){registry.applyPending();coordinator.pumpIfUseful();}
         for(long request:List.copyOf(attempts.keySet())) {
             var attempt=attempts.remove(request);var command=commands.remove(request);
-            var result=(ProcessSolveServices.FluidIslandSolveResult)command.solve(NEVER);
+            var result=(ProcessSolveServices.FluidIslandSolveResult)command.solve(FluidTestSupport.NEVER);
             coordinator.completed(attempt,Optional.of(result));
         }
         coordinator.pump();
     }
     void runTo(long tick){while(ledger.onlineTick()<tick)tick();}
+    /** The island's committed tick, status, nodes and pipes, one per line. */
+    String describe(long island) {
+        var s=coordinator.observe(island);var b=new StringBuilder("island "+island+" committed="+s.clock().committedTick()+" status="+s.status()+"\n");
+        var g=s.graph();
+        for(int i=0;i<g.reservoirs().size();i++){var n=g.reservoirs().get(i);var st=n.state();
+            b.append("  node ").append(i).append(" id=").append(n.id()).append(' ').append(n.kind()).append(" z=").append(n.elevation()).append(" P=").append(st.pressure()).append(" T=").append(st.temperature()).append(" m=").append(st.mass()).append('\n');}
+        for(int i=0;i<g.pipes().size();i++){var p=g.pipes().get(i);
+            b.append("  pipe ").append(i).append(' ').append(p.first()).append("->").append(p.second()).append(' ').append(p.control()).append(" blocked=").append(p.blockedDirections()).append(" filter=").append(p.filter()!=null).append('\n');}
+        return b.toString();
+    }
     /** No hold, every placement applied, and every island within one cadence of the online tick. */
     void assertKeptUp(String label) {
         for(var h:held)System.out.println("EVENT_PATH_HELD "+label+" "+h);

@@ -33,28 +33,10 @@ import static org.junit.jupiter.api.Assertions.*;
  * {@code documentation/ELEVATED_LINE_PROBE.md} section 6 recorded the same digits on the unmodified
  * solver, so they are the defect's fingerprint rather than one branch's accident.
  */
-class DeadHeadedLineIslandTest {
-    private static final String DIMENSION="minecraft:overworld";
-    /** The world floor the in-game confirmation builds on. */
-    private static final int BOTTOM=-59;
+class DeadHeadedLineIslandTest extends BlockLineHarness {
     /** The elevation a stack of pipe blocks puts between the generator and the tank. */
     private static final int LIFT=4;
-    /** The world's own defaults; see FluidWorldAuthority.place. */
-    private static final PipeResistance.Geometry BLOCK=new PipeResistance.Geometry(1,.05,.000045,0);
-    private static final double FILTER_CAPACITY=.01,FILTER_RESISTANCE=1e6;
     private static final double GENERATOR=101325;
-    private final FluidThermodynamics model=FluidTestSupport.networkModel();
-
-    private PhysicalFluidTopology.Device device(long id,int x,int y,TopologyCompiler.Kind kind,PhysicalFluidTopology.Direction facing) {
-        return new PhysicalFluidTopology.Device(id,new PhysicalFluidTopology.Position(DIMENSION,x,y,0),kind,facing,BLOCK,new FlowControl.Passive());
-    }
-    private PhysicalFluidTopology.Device device(long id,int x,int y,TopologyCompiler.Kind kind) {
-        return device(id,x,y,kind,PhysicalFluidTopology.Direction.NORTH);
-    }
-    private double[] water(){double[] n=new double[MaterialTestBasis.NETWORK+1];n[n.length-1]=1;return n;}
-    private double[] nitrogen(){double[] n=new double[MaterialTestBasis.NETWORK+1];n[MaterialTestBasis.NITROGEN]=1;return n;}
-    private FluidDeviceSpec generatorSpec(double pressure){return new FluidDeviceSpec(1,298.15,pressure,water());}
-    private FluidDeviceSpec tankSpec(double pressure){return new FluidDeviceSpec(1,298.15,pressure,nitrogen());}
 
     /* ---------------- the block lines ---------------- */
 
@@ -84,22 +66,13 @@ class DeadHeadedLineIslandTest {
                 device(4,0,BOTTOM+3,TopologyCompiler.Kind.PIPE),device(5,0,BOTTOM+LIFT,TopologyCompiler.Kind.RESERVOIR));
     }
 
-    /** The compiled island the world would hand a worker for this line of blocks. */
-    private PassiveNetwork island(List<PhysicalFluidTopology.Device> devices,Map<Long,PassiveNetwork.Reservoir> stock) {
-        var cakes=new LinkedHashMap<Long,InlineFilter>();
-        for(var d:devices)if(d.kind()==TopologyCompiler.Kind.FILTER)cakes.put(d.id(),new InlineFilter(FILTER_CAPACITY,FILTER_RESISTANCE,SolidInventory.EMPTY,0));
-        var compiled=PhysicalFluidTopology.compile(devices,stock,cakes,model.initialNitrogenCharge(1,298.15,101325,()->{}));
-        var connected=compiled.islands().stream().filter(i->i.physicalIds().size()==devices.size()).toList();
-        assertEquals(1,connected.size(),"Expected exactly one connected island: "+compiled.diagnostics());
-        return connected.getFirst().graph();
-    }
     /** The island as the world first activates it, both boundaries freshly initialized. */
     private PassiveNetwork line(List<PhysicalFluidTopology.Device> devices,double generator,double tank) {
         var stock=new LinkedHashMap<Long,PassiveNetwork.Reservoir>();
         long last=devices.getLast().id();
         stock.put(1L,generatorSpec(generator).initialize(devices.getFirst(),model,()->{}));
         stock.put(last,FluidTestSupport.chargedBoundary(tankSpec(tank),devices.getLast(),model));
-        return island(devices,stock);
+        return compile(devices,stock,emptyFilters(devices));
     }
     /**
      * A configuration event on a live island, driven the way {@link FullTankSolidsEventTest} drives
@@ -110,43 +83,9 @@ class DeadHeadedLineIslandTest {
         var stock=new LinkedHashMap<Long,PassiveNetwork.Reservoir>();
         for(var node:live.reservoirs())if(!node.junction()&&node.id()>0)stock.put(node.id(),node);
         stock.put(1L,generatorSpec(pressure).initialize(devices.getFirst(),model,()->{}));
-        return island(devices,stock);
+        return compile(devices,stock,emptyFilters(devices));
     }
 
-    /* ---------------- running them ---------------- */
-
-    private static PassiveNetwork.Reservoir tankOf(PassiveNetwork graph) {
-        for(int i=graph.reservoirs().size()-1;i>=0;i--) {
-            var node=graph.reservoirs().get(i);
-            if(node.kind()==PassiveNetwork.NodeKind.RESERVOIR)return node;
-        }
-        throw new AssertionError("No reservoir in this island");
-    }
-    private record Run(int survived,String detail,PassiveNetwork finished,List<FlowControl.Mode> modes,double[] flows) {
-        FluidThermodynamics.State tank(){return tankOf(finished).state();}
-        boolean ok(){return detail.startsWith("OK");}
-    }
-    /** Consecutive five-second intervals on one retained solver, as the island worker runs them. */
-    private Run run(PassiveNetwork graph,int count) {
-        var solver=new PassiveIntervalSolver(model);double step=RetainedSolver.COLD_START_SECONDS;
-        List<FlowControl.Mode> modes=List.of();double[] flows=new double[0];
-        for(int i=0;i<count;i++) {
-            try {
-                var result=solver.solve(graph,5,PassiveIntervalSolver.Settings.defaults(),()->{},Math.min(step,5));
-                graph=result.graph();step=solver.nextStepEstimate();modes=result.endpointModes();flows=result.averageMassFlows();
-                if(i==count-1)return new Run(count,"OK intervals="+count+" accepted="+result.acceptedSubsteps()
-                        +" rejected="+result.rejectedSubsteps(),graph,modes,flows);
-            }catch(RuntimeException held) {
-                return new Run(i,"HELD at interval "+(i+1)+"/"+count+": "+held.getMessage(),graph,modes,flows);
-            }
-        }
-        throw new AssertionError("unreachable");
-    }
-    /** The density of the generator's own charge: the column a line fed from below stands in. */
-    private double waterDensity(double pressure) {
-        var state=model.flashTP(298.15,pressure,water(),()->{});
-        return state.mass()/state.volume();
-    }
     private double column(double pressure){return waterDensity(pressure)*PassiveStepSolver.GRAVITY*LIFT;}
     /** The level head of the tank's bottom (LIQUID) port on a run's final state (decision D9 of the phase-ports batch). */
     private double levelHead(Run run) {

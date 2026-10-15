@@ -1,5 +1,6 @@
 package com.wormzjl.createcheme.science.fluid.network;
 
+import com.wormzjl.createcheme.fluid.support.FluidTestSupport;
 import com.google.gson.GsonBuilder;
 import com.wormzjl.createcheme.science.fluid.thermo.FluidThermodynamics;
 import com.wormzjl.createcheme.science.material.MaterialCatalog;
@@ -10,7 +11,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 /** P02/P07/P09 and seeded graph-order coverage. Fixed steps isolate ordering from adaptation. */
 class HydraulicMatrixQualificationTest {
-    private final FluidThermodynamics model=FluidThermodynamics.forNetwork(MaterialCatalog.bundled(),"createcheme:tjl20_methane_nitrogen",1e-9);
+    private final FluidThermodynamics model=FluidTestSupport.networkModel();
     private FluidThermodynamics.State state(boolean water,double pressure) {
         double[] n=new double[com.wormzjl.createcheme.science.material.MaterialTestBasis.NETWORK+1];n[water?com.wormzjl.createcheme.science.material.MaterialTestBasis.NETWORK:com.wormzjl.createcheme.science.material.MaterialTestBasis.NITROGEN]=1;var unit=model.flashTP(350,pressure,n,()->{});n[water?com.wormzjl.createcheme.science.material.MaterialTestBasis.NETWORK:com.wormzjl.createcheme.science.material.MaterialTestBasis.NITROGEN]/=unit.volume();
         return model.flashTP(350,pressure,n,()->{});

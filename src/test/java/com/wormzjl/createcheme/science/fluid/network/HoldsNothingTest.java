@@ -1,5 +1,6 @@
 package com.wormzjl.createcheme.science.fluid.network;
 
+import com.wormzjl.createcheme.fluid.support.FluidTestSupport;
 import com.wormzjl.createcheme.science.fluid.solver.PhaseLayout;
 import com.wormzjl.createcheme.science.fluid.thermo.FluidThermodynamics;
 import com.wormzjl.createcheme.science.material.MaterialCatalog;
@@ -13,7 +14,7 @@ import static org.junit.jupiter.api.Assertions.*;
  * nothing, and the rest test does not count it as stock. The residue stays booked in the inventory.
  */
 class HoldsNothingTest {
-    private final FluidThermodynamics model=FluidThermodynamics.forNetwork(MaterialCatalog.bundled(),"createcheme:tjl20_methane_nitrogen",1e-9);
+    private final FluidThermodynamics model=FluidTestSupport.networkModel();
 
     /** A 1 m3 vessel holding nitrogen at 298.15 K and 1 atm whose bag is {@code share} of its capacity. */
     private PassiveNetwork.Reservoir vessel(double share) {

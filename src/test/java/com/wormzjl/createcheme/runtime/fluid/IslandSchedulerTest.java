@@ -1,5 +1,6 @@
 package com.wormzjl.createcheme.runtime.fluid;
 
+import com.wormzjl.createcheme.fluid.support.FluidTestSupport;
 import com.wormzjl.createcheme.runtime.ProcessSolveServices;
 import com.wormzjl.createcheme.science.fluid.network.*;
 import com.wormzjl.createcheme.science.fluid.thermo.FluidThermodynamics;
@@ -12,7 +13,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 /** The deadline heap and the scheduling properties of the coordinator built on it. */
 class IslandSchedulerTest {
-    private static final FluidThermodynamics MODEL=FluidThermodynamics.forNetwork(MaterialCatalog.bundled(),"createcheme:tjl20_methane_nitrogen",1e-9);
+    private static final FluidThermodynamics MODEL=FluidTestSupport.networkModel();
     private static final PassiveNetwork.Reservoir TANK=new PassiveNetwork.Reservoir(1,0,MODEL.initialNitrogenCharge(1,298.15,101325,()->{}));
 
     @AfterEach void disableCounters(){FluidRuntimeDiagnostics.ENABLED=false;FluidRuntimeDiagnostics.reset();}

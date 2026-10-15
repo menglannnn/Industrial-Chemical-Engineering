@@ -1,5 +1,6 @@
 package com.wormzjl.createcheme.science.fluid.network;
 
+import com.wormzjl.createcheme.fluid.support.FluidTestSupport;
 import com.wormzjl.createcheme.science.fluid.diagnostics.SolverDiagnostics;
 import com.wormzjl.createcheme.science.fluid.network.PassiveNetwork.PhasePort;
 import com.wormzjl.createcheme.science.fluid.thermo.FluidThermodynamics;
@@ -23,11 +24,7 @@ import static org.junit.jupiter.api.Assertions.*;
  * line with its solver counters (Newton solves and iterations, active-set passes, Jacobian builds; rejections by reason)
  * and its measured numbers; the numbers are recorded in PHASE_PORTS_REVIEW.md, section "D9".
  */
-class LevelHeadTest {
-    private static final Runnable NOOP=()->{};
-    private final FluidThermodynamics model=FluidThermodynamics.forNetwork(MaterialCatalog.bundled(),"createcheme:tjl20_methane_nitrogen",1e-9);
-    private final double[] mw=model.molecularWeights();
-    private final int water=index("Water"),nitrogen=index("Nitrogen");
+class LevelHeadTest extends PortFixture {
     private static final double COMPONENT_LEDGER=1e-12,ENERGY_LEDGER=1e-10;
     private static final double G=PassiveStepSolver.GRAVITY,H=PassiveStepSolver.LEVEL_HEAD_HEIGHT;
     private static final String REOPEN="Backward-Euler boundary reopened";
@@ -36,17 +33,8 @@ class LevelHeadTest {
         return new PassiveNetwork.Pipe(id,a,b,List.of(g),new FlowControl.Passive(),0,null,pa,pb);
     }
 
-    private int index(String component){int i=model.components().indexOf(component);assertTrue(i>=0,component);return i;}
     /** A 1 m3 vessel at 298.15 K and {@code pressure} holding {@code waterVolume} m3 of water under nitrogen, flashed and
      * scaled to exactly the vessel volume. */
-    private FluidThermodynamics.State waterUnderNitrogen(double waterVolume,double pressure) {
-        double t=298.15;double[] n=new double[mw.length];
-        n[water]=waterVolume*997/mw[water];n[nitrogen]=pressure*(1-waterVolume)/(FluidThermodynamics.R*t);
-        var unit=model.flashTP(t,pressure,n,NOOP);for(int c=0;c<n.length;c++)n[c]/=unit.volume();
-        return model.flashTP(t,pressure,n,NOOP);
-    }
-    private FluidThermodynamics.State waterSupply(double pressure){var n=new double[mw.length];n[water]=1;return model.flashTP(298.15,pressure,n,NOOP);}
-    private FluidThermodynamics.State nitrogenAt(double pressure){return model.initialNitrogenCharge(1,298.15,pressure,NOOP);}
     /** The level head of a vessel's LIQUID port, restated from the formula of decision D9. */
     private double head(PassiveNetwork.Reservoir vessel){return G*model.liquidMass(vessel.state())*H/vessel.inventory().volume();}
     /** The bottom (LIQUID) port's driving pressure of a vessel. */
@@ -90,18 +78,6 @@ class LevelHeadTest {
         SolverDiagnostics.reset();
         return run;
     }
-    private double[] owned(PassiveNetwork graph) {
-        var totals=new double[mw.length];
-        for(var node:graph.reservoirs())if(node.kind()==PassiveNetwork.NodeKind.RESERVOIR||node.junction()){var n=node.inventory().moles();for(int c=0;c<n.length;c++)totals[c]+=n[c];}
-        return totals;
-    }
-    private double ownedEnergy(PassiveNetwork graph) {
-        double energy=0;
-        for(var node:graph.reservoirs())if(node.kind()==PassiveNetwork.NodeKind.RESERVOIR||node.junction())
-            energy+=node.inventory().internalEnergy()+mass(node.inventory().moles())*G*node.elevation();
-        return energy;
-    }
-    private double mass(double[] moles){double m=0;for(int c=0;c<moles.length;c++)m+=moles[c]*mw[c];return m;}
     private static double outOf(PassiveIntervalSolver.Result result,long pipe,boolean first) {
         var t=result.pipeTransfers().stream().filter(x->x.pipeId()==pipe).findFirst().orElseThrow();
         return first?t.forward().massKg():t.reverse().massKg();

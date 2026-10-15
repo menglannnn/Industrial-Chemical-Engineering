@@ -7,6 +7,8 @@ import com.wormzjl.createcheme.science.fluid.topology.TopologyCompiler.Kind;
 import com.wormzjl.createcheme.science.material.MaterialTestBasis;
 import java.util.*;
 import org.junit.jupiter.api.Test;
+import static com.wormzjl.createcheme.fluid.support.FluidTestSupport.nitrogen;
+import static com.wormzjl.createcheme.fluid.support.FluidTestSupport.water;
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
@@ -30,8 +32,6 @@ class PumpBottomPortDrainTest {
     static PhysicalFluidTopology.Device device(long id,int x,int y,Kind kind) {
         return device(id,x,y,kind,PhysicalFluidTopology.Direction.NORTH,new FlowControl.Passive());
     }
-    static double[] water(){double[] n=new double[MaterialTestBasis.NETWORK+1];n[n.length-1]=1;return n;}
-    static double[] nitrogen(){double[] n=new double[MaterialTestBasis.NETWORK+1];n[MaterialTestBasis.NITROGEN]=1;return n;}
 
     /** The world's compile of a set of blocks; {@code carried} are boundary states kept from an earlier island. */
     PassiveNetwork island(List<PhysicalFluidTopology.Device> devices,Map<Long,FluidDeviceSpec> specs,Map<Long,PassiveNetwork.Reservoir> carried) {

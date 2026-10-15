@@ -1,6 +1,7 @@
 package com.wormzjl.createcheme.runtime;
 
 import com.google.gson.JsonParser;
+import com.wormzjl.createcheme.fluid.support.FluidTestSupport;
 import com.wormzjl.createcheme.runtime.fluid.*;
 import com.wormzjl.createcheme.science.fluid.network.*;
 import com.wormzjl.createcheme.science.fluid.thermo.FluidThermodynamics;
@@ -23,10 +24,6 @@ import static org.junit.jupiter.api.Assertions.*;
  */
 class FluidThermoDomainHoldTest {
     private static final String NETWORK="createcheme:tjl20_methane_nitrogen";
-    private static final BoundedCpuSolveService.CancellationToken NEVER=new BoundedCpuSolveService.CancellationToken() {
-        public long deadlineNanos(){return Long.MAX_VALUE;}public boolean isDeadlineExceeded(){return false;}
-        public boolean isCancellationRequested(){return false;}public void throwIfCancellationRequested(){}
-    };
 
     private static FluidThermodynamics narrowed(double maximum) {
         var resources=new HashMap<>(MaterialCatalog.bundled().resources());String key="data/createcheme/materials/properties/nitrogen.json";
@@ -71,7 +68,7 @@ class FluidThermoDomainHoldTest {
             coordinator.tick();
             for(long request:List.copyOf(attempts.keySet())) {
                 var attempt=attempts.remove(request);var command=commands.remove(request);long[] clock={0};
-                var result=(ProcessSolveServices.FluidIslandSolveResult)command.solve(NEVER,()->clock[0]+=1_000);
+                var result=(ProcessSolveServices.FluidIslandSolveResult)command.solve(FluidTestSupport.NEVER,()->clock[0]+=1_000);
                 jobs[0]++;if(result.candidate().isEmpty())failures.add(result);coordinator.completed(attempt,Optional.of(result));
             }
             coordinator.pump();

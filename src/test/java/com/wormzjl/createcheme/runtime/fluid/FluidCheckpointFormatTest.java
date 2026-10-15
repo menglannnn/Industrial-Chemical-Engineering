@@ -25,109 +25,7 @@ import static org.junit.jupiter.api.Assertions.*;
  * certified islands load without a solve burst; and a save taken during a property hold restarts awake from the held
  * state. Format 3 and older are refused with the instruction to create a fresh world; nothing reads them.
  */
-class FluidCheckpointFormatTest {
-    private static final String PACKAGE="createcheme:tjl20_methane_nitrogen";
-    private static final PipeResistance.Geometry BLOCK=new PipeResistance.Geometry(1,.05,.000045,0);
-    private static final BoundedCpuSolveService.CancellationToken NEVER=new BoundedCpuSolveService.CancellationToken() {
-        public long deadlineNanos(){return Long.MAX_VALUE;}public boolean isDeadlineExceeded(){return false;}
-        public boolean isCancellationRequested(){return false;}public void throwIfCancellationRequested(){}
-    };
-    private final FluidThermodynamics model=FluidTestSupport.networkModel();
-    private final int components=model.components().size();
-    private final int water=components-1,nitrogen=MaterialTestBasis.NITROGEN;
-
-    @AfterEach void counters(){FluidRuntimeDiagnostics.ENABLED=false;FluidRuntimeDiagnostics.reset();}
-    private static long counter(String name){return FluidRuntimeDiagnostics.sample().get(name);}
-    private static void countFromHere(){FluidRuntimeDiagnostics.reset();FluidRuntimeDiagnostics.ENABLED=true;}
-
-    // ---------------- fixtures: islands with distinct identities ----------------
-
-    private double[] pure(int component){var n=new double[components];n[component]=1;return n;}
-    /** A line of blocks along x in row z, identities first, first + 1, ...; pipes between the ends. */
-    private static List<PhysicalFluidTopology.Device> line(long first,int z,Kind... kinds) {
-        var devices=new ArrayList<PhysicalFluidTopology.Device>();
-        for(int i=0;i<kinds.length;i++)devices.add(new PhysicalFluidTopology.Device(first+i,new PhysicalFluidTopology.Position("minecraft:overworld",i,0,z),kinds[i],PhysicalFluidTopology.Direction.EAST,BLOCK,new FlowControl.Passive()));
-        return devices;
-    }
-    private PassiveNetwork island(List<PhysicalFluidTopology.Device> devices,Map<Long,FluidDeviceSpec> specs) {
-        var stock=new LinkedHashMap<Long,PassiveNetwork.Reservoir>();
-        for(var d:devices){var spec=specs.get(d.id());if(spec!=null)stock.put(d.id(),FluidTestSupport.chargedBoundary(spec,d,model));}
-        var connected=PhysicalFluidTopology.compile(devices,stock).islands().stream().filter(i->i.physicalIds().size()==devices.size()).toList();
-        assertEquals(1,connected.size());return connected.getFirst().graph();
-    }
-    /** Water at 1 atm against nitrogen at 2 bar: the line cannot flow, it certifies REST. */
-    private PassiveNetwork deadHeadedLine(long first,int z) {
-        return island(line(first,z,Kind.GENERATOR,Kind.PIPE,Kind.PIPE,Kind.PIPE,Kind.RESERVOIR),
-                Map.of(first,new FluidDeviceSpec(1,298.15,101325,pure(water)),first+4,new FluidDeviceSpec(1,298.15,200000,pure(nitrogen))));
-    }
-    /** Two nitrogen tanks a kilopascal apart: they settle, and every job starting from the committed interval, they certify the identity map (drift 0). */
-    private PassiveNetwork closedPair(long first,int z) {
-        return island(line(first,z,Kind.RESERVOIR,Kind.PIPE,Kind.PIPE,Kind.PIPE,Kind.RESERVOIR),
-                Map.of(first,new FluidDeviceSpec(1,298.15,150000,pure(nitrogen)),first+4,new FluidDeviceSpec(1,298.15,149000,pure(nitrogen))));
-    }
-    /** A nitrogen generator feeding a void: a certified through-flow with no finite node, rechecked at its horizon. */
-    private PassiveNetwork generatorToVoid(long first,int z) {
-        return island(line(first,z,Kind.GENERATOR,Kind.PIPE,Kind.PIPE,Kind.PIPE,Kind.PIPE,Kind.VOID),
-                Map.of(first,new FluidDeviceSpec(1,298.15,150000,pure(nitrogen)),first+5,new FluidDeviceSpec(1,298.15,101325,pure(nitrogen))));
-    }
-    /** A 1000 m3 tank filling from a 150 kPa generator: it stays awake for hours. */
-    private PassiveNetwork slowFill(long first,int z) {
-        return island(line(first,z,Kind.GENERATOR,Kind.PIPE,Kind.PIPE,Kind.PIPE,Kind.PIPE,Kind.RESERVOIR),
-                Map.of(first,new FluidDeviceSpec(1,298.15,150000,pure(nitrogen)),first+5,new FluidDeviceSpec(1000,298.15,101325,pure(nitrogen))));
-    }
-    private PassiveNetwork loneTank(long node) {
-        return new PassiveNetwork(List.of(new PassiveNetwork.Reservoir(node,0,model.initialNitrogenCharge(1,298.15,101325,()->{}))),List.of());
-    }
-
-    // ---------------- a coordinator whose worker solves each admitted slice at once ----------------
-
-    private final class Rig {
-        final long[] epoch;final FluidThermodynamics model;
-        final Map<Long,IslandCoordinator.Attempt> attempts=new LinkedHashMap<>();
-        final Map<Long,ProcessSolveServices.FluidIslandCommand> commands=new HashMap<>();
-        final IslandCoordinator coordinator;
-        long requests;int solves;
-        Rig(CertificatePolicy policy){this(policy,FluidCheckpointFormatTest.this.model,0);}
-        Rig(CertificatePolicy policy,FluidThermodynamics model,long start) {
-            this.model=model;epoch=new long[]{start};
-            coordinator=new IslandCoordinator(new IslandCoordinator.Dispatcher() {
-                public int availableWorkers(){return 64-attempts.size();}
-                public long nextRequestId(){return ++requests;}
-                public boolean submit(IslandCoordinator.Attempt attempt,ProcessSolveServices.FluidIslandCommand command){attempts.put(attempt.slice().requestId(),attempt);commands.put(attempt.slice().requestId(),command);return true;}
-                public void cancel(long request){throw new AssertionError("no deadlines here");}
-            },changed->{},()->0L,new IslandCoordinator.Settings(30_000_000_000L,20_000_000_000L,64,false,100,policy),IslandCoordinator.CommitHook.NO_MATERIAL,()->epoch[0]);
-        }
-        void register(long id,PassiveNetwork graph) {
-            coordinator.register(new IslandCoordinator.Snapshot(id,0,graph,new IslandClock.Snapshot(epoch[0],epoch[0],0,100),FallbackAllowance.NONE,Optional.empty(),Optional.empty(),"READY"),model);
-        }
-        void load(FluidCheckpointCodec.Checkpoint checkpoint){for(var entry:checkpoint.islands())coordinator.register(entry.snapshot(),model);}
-        void drain() {
-            while(!attempts.isEmpty()) {
-                for(long request:List.copyOf(attempts.keySet())) {
-                    var attempt=attempts.remove(request);var command=commands.remove(request);solves++;
-                    coordinator.completed(attempt,Optional.of((ProcessSolveServices.FluidIslandSolveResult)command.solve(NEVER)));
-                }
-                coordinator.pump();
-            }
-        }
-        void tick(){epoch[0]++;coordinator.tick();drain();}
-        void run(long ticks){for(long i=0;i<ticks;i++)tick();}
-        void runUntilCertified(Collection<Long> ids,int ticks) {
-            for(int i=0;i<ticks&&!ids.stream().allMatch(id->stored(id).certificate().isPresent());i++)tick();
-            for(long id:ids)assertTrue(stored(id).certificate().isPresent(),"island "+id+" did not certify: "+coordinator.certificationRefusal(id));
-        }
-        IslandCoordinator.Snapshot stored(long id){return coordinator.observe(id);}
-        IslandCoordinator.Snapshot read(long id){return coordinator.snapshot(id);}
-        /** What a save captures: every island materialised to now. */
-        FluidCheckpointCodec.Checkpoint checkpoint(){return checkpoint(new BufferedTransfers.Snapshot(0,Map.of(),Map.of()),List.of());}
-        FluidCheckpointCodec.Checkpoint checkpoint(BufferedTransfers.Snapshot transfers,List<FixedSplitModule.Snapshot> modules) {
-            return new FluidCheckpointCodec.Checkpoint(coordinator.snapshots().stream().map(s->new FluidCheckpointCodec.IslandEntry("minecraft:overworld",PACKAGE,1e-9,s)).toList(),transfers,modules);
-        }
-    }
-    private WorldTopologyLedger.Snapshot world(long onlineTick) {
-        var empty=WorldTopologyLedger.Snapshot.empty(MaterialCatalog.bundled());
-        return new WorldTopologyLedger.Snapshot(onlineTick,empty.nextIdentity(),empty.active(),empty.events(),empty.constructed(),empty.destroyed(),empty.basis(),empty.recoveries());
-    }
+class FluidCheckpointFormatTest extends CertifyingRig.Islands {
     private static long[] column(CompoundTag core,String name){return core.getCompound("Islands").getLongArray(name);}
     private static long index(CompoundTag core,long island,String name){return column(core,name)[CheckpointImages.row(core,island)];}
     private static void set(CompoundTag core,long island,String name,long value){column(core,name)[CheckpointImages.row(core,island)]=value;}
@@ -165,7 +63,7 @@ class FluidCheckpointFormatTest {
 
     /** Every saved island, the pending material, a module, a queued topology event and the certificates come back exactly. */
     @Test void clocksMaterialFencesPendingEventsModulesAndCertificatesRoundTripExactly() {
-        var rig=new Rig(CertificatePolicy.defaults());
+        var rig=rig(CertificatePolicy.defaults());
         rig.register(1,deadHeadedLine(100,0));rig.register(2,closedPair(200,4));rig.register(3,generatorToVoid(300,8));rig.register(4,slowFill(400,12));
         rig.runUntilCertified(List.of(1L,2L,3L),2_000);
         rig.run(1_234-rig.epoch[0]);
@@ -235,7 +133,7 @@ class FluidCheckpointFormatTest {
      * it keeps its since tick and holds only its horizon, and it continues bit for bit as if it had never been saved.
      */
     @Test void aRestoredCertificateContinuesWithoutASolveExactlyAsIfNeverSaved() {
-        var original=new Rig(CertificatePolicy.defaults());
+        var original=rig(CertificatePolicy.defaults());
         original.register(1,deadHeadedLine(100,0));original.register(2,closedPair(200,4));
         original.runUntilCertified(List.of(1L,2L),2_000);original.run(1_234-original.epoch[0]);
         var image=FluidCheckpointCodec.encode(original.checkpoint(),1_234,key->model);
@@ -247,7 +145,7 @@ class FluidCheckpointFormatTest {
         assertInventories(base,decoded.islands().get(1).snapshot().certificate().orElseThrow().saved().orElseThrow().interval().result().graph(),"the unit records the base");
         assertInventories(original.read(2).graph(),decoded.islands().get(1).snapshot().graph(),"materialised at load");
         countFromHere();
-        var restored=new Rig(CertificatePolicy.defaults(),model,1_234);restored.load(decoded);
+        var restored=rig(CertificatePolicy.defaults(),model,1_234);restored.load(decoded);
         assertEquals(2,counter("certificatesRestored"));assertEquals(0,counter("certificatesDiscarded"));
         for(long id:List.of(1L,2L)) {
             assertFalse(restored.coordinator.retainsSolver(id),"a restored certified island keeps no solver caches");
@@ -269,7 +167,7 @@ class FluidCheckpointFormatTest {
 
     /** Every index and certificate field is validated on load, and an invalid one refuses the load with a clear reason. */
     @Test void everyInvalidCertificateFieldIsRefused() {
-        var rig=new Rig(CertificatePolicy.defaults());rig.register(2,closedPair(200,4));
+        var rig=rig(CertificatePolicy.defaults());rig.register(2,closedPair(200,4));
         rig.runUntilCertified(List.of(2L),2_000);rig.run(1_234-rig.epoch[0]);
         var image=FluidCheckpointCodec.encode(rig.checkpoint(),1_234,key->model);var core=image.core();
         long base=index(core,2,"Base"),committed=index(core,2,"Committed"),horizon=index(core,2,"Horizon"),start=index(core,2,"Start");
@@ -325,11 +223,11 @@ class FluidCheckpointFormatTest {
 
     /** restDetection=false discards every saved certificate; the island keeps its materialised inventory and solves again. */
     @Test void restDetectionOffDiscardsEverySavedCertificateAndKeepsTheInventory() {
-        var rig=new Rig(CertificatePolicy.defaults());rig.register(1,deadHeadedLine(100,0));rig.register(2,closedPair(200,4));
+        var rig=rig(CertificatePolicy.defaults());rig.register(1,deadHeadedLine(100,0));rig.register(2,closedPair(200,4));
         rig.runUntilCertified(List.of(1L,2L),2_000);rig.run(1_234-rig.epoch[0]);
         var decoded=FluidCheckpointCodec.decode(FluidCheckpointCodec.encode(rig.checkpoint(),1_234,key->model),key->model);
         countFromHere();
-        var off=new Rig(CertificatePolicy.disabled(),model,1_234);off.load(decoded);
+        var off=rig(CertificatePolicy.disabled(),model,1_234);off.load(decoded);
         assertEquals(0,counter("certificatesRestored"));assertEquals(2,counter("certificatesDiscarded"));
         for(int i=0;i<2;i++) {
             var saved=decoded.islands().get(i).snapshot();var now=off.stored(saved.id());
@@ -344,7 +242,7 @@ class FluidCheckpointFormatTest {
 
     /** A saved certificate whose signature is not its island's current one is discarded, and the inventory kept. */
     @Test void aSignatureMismatchDiscardsTheCertificateAndKeepsTheInventory() {
-        var rig=new Rig(CertificatePolicy.defaults());rig.register(2,closedPair(200,4));
+        var rig=rig(CertificatePolicy.defaults());rig.register(2,closedPair(200,4));
         rig.runUntilCertified(List.of(2L),2_000);rig.run(1_234-rig.epoch[0]);
         var expected=rig.read(2).graph();
         var image=FluidCheckpointCodec.encode(rig.checkpoint(),1_234,key->model);
@@ -365,7 +263,7 @@ class FluidCheckpointFormatTest {
         for(var c:cases) {
             var decoded=FluidCheckpointCodec.decode(c.image(),key->c.model());
             countFromHere();
-            var loaded=new Rig(c.policy(),c.model(),1_234);loaded.load(decoded);
+            var loaded=rig(c.policy(),c.model(),1_234);loaded.load(decoded);
             assertEquals(1,counter("certificatesDiscarded"),c.reason());assertEquals(0,counter("certificatesRestored"),c.reason());
             var now=loaded.stored(2);
             assertTrue(now.certificate().isEmpty(),c.reason());assertTrue(loaded.coordinator.retainsSolver(2));
@@ -388,7 +286,7 @@ class FluidCheckpointFormatTest {
         assertTrue(Boolean.getBoolean("createcheme.fluid.scheduler.verify"),"the reused units are verified against a fresh encoding");
         // A 25 s recheck gives the resting islands a finite horizon (the closed pair rests exactly since every job starts
         // from its committed interval, review 8.9 (d)), so the test can run to it.
-        var rig=new Rig(new CertificatePolicy(true,1e-9,1e-6,5,2,25));
+        var rig=rig(new CertificatePolicy(true,1e-9,1e-6,5,2,25));
         rig.register(1,deadHeadedLine(100,0));rig.register(2,closedPair(200,4));rig.register(3,slowFill(300,8));
         rig.runUntilCertified(List.of(1L,2L),2_000);
         // The world ledger, advanced with the islands' epoch as the world advances it; captured as the world captures it.
@@ -425,14 +323,14 @@ class FluidCheckpointFormatTest {
     @Test void aThousandCertifiedIslandsLoadWithoutASolveBurst() {
         // A 60 s recheck gives each resting tank a horizon, so the test can see the first solve come exactly there.
         var policy=new CertificatePolicy(true,1e-9,1e-6,17_280,2,60);
-        var original=new Rig(policy);for(long id=1;id<=1_000;id++)original.register(id,loneTank(100_000+id));
+        var original=rig(policy);for(long id=1;id<=1_000;id++)original.register(id,loneTank(100_000+id));
         original.run(300);
         var checkpoint=original.checkpoint();
         assertTrue(checkpoint.islands().stream().allMatch(i->i.snapshot().certificate().map(c->c.drift()==0&&c.horizonTick()==1_400).orElse(false)),"every tank rests with its horizon at 1400");
         long started=System.nanoTime();var image=FluidCheckpointCodec.encode(checkpoint,300,key->model);long encoded=System.nanoTime();
         var decoded=FluidCheckpointCodec.decode(image,key->model);long decodedAt=System.nanoTime();
         countFromHere();
-        var loaded=new Rig(policy,model,300);loaded.load(decoded);long registered=System.nanoTime();
+        var loaded=rig(policy,model,300);loaded.load(decoded);long registered=System.nanoTime();
         assertEquals(1_000,counter("certificatesRestored"));assertEquals(0,counter("certificatesDiscarded"));
         assertEquals(0,loaded.coordinator.readyCount(),"no island is ready at the load");
         System.out.printf(Locale.ROOT,"1000 certified islands: encode %.1f ms, decode %.1f ms, register %.1f ms, %d unit bytes, core record %d bytes%n",(encoded-started)/1e6,(decodedAt-encoded)/1e6,(registered-decodedAt)/1e6,
@@ -459,7 +357,7 @@ class FluidCheckpointFormatTest {
     @Test void holdSaveAndRestartKeepsCommittedFrozenAndDebtAndRequalifiesOverTheConfirmCount() {
         for(int confirm:new int[]{2,3}) {
             var policy=new CertificatePolicy(true,1e-9,1e-6,17_280,confirm,0);
-            var rig=new Rig(policy);rig.register(1,deadHeadedLine(100,0));
+            var rig=rig(policy);rig.register(1,deadHeadedLine(100,0));
             rig.runUntilCertified(List.of(1L),2_000);rig.run(537);
             rig.coordinator.suspendForPropertyChange("HELD: test property change");
             long hold=rig.epoch[0];rig.run(1_000);
@@ -472,7 +370,7 @@ class FluidCheckpointFormatTest {
             assertEquals(hold+1_000,decoded.clock().onlineTick(),"the online time accrued during the hold is kept as debt");
             assertEquals(during.status(),decoded.status(),"the hold's status line is kept");
             assertTrue(decoded.certificate().isEmpty());assertInventories(during.graph(),decoded.graph(),"held inventory");
-            var restarted=new Rig(policy,model,rig.epoch[0]);restarted.load(new FluidCheckpointCodec.Checkpoint(List.of(new FluidCheckpointCodec.IslandEntry("minecraft:overworld",PACKAGE,1e-9,decoded)),new BufferedTransfers.Snapshot(0,Map.of(),Map.of())));
+            var restarted=rig(policy,model,rig.epoch[0]);restarted.load(new FluidCheckpointCodec.Checkpoint(List.of(new FluidCheckpointCodec.IslandEntry("minecraft:overworld",PACKAGE,1e-9,decoded)),new BufferedTransfers.Snapshot(0,Map.of(),Map.of())));
             assertTrue(restarted.coordinator.retainsSolver(1));assertEquals(1,restarted.coordinator.readyCount(),"awake with debt, ready at once");
             restarted.coordinator.pump();restarted.drain();
             var again=restarted.stored(1).certificate().orElseThrow();

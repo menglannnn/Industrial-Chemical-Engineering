@@ -1,5 +1,6 @@
 package com.wormzjl.createcheme.science.fluid.network;
 
+import com.wormzjl.createcheme.fluid.support.FluidTestSupport;
 import static org.junit.jupiter.api.Assertions.*;
 import com.wormzjl.createcheme.science.fluid.thermo.FluidThermodynamics;
 import com.wormzjl.createcheme.science.fluid.solver.PhaseLayout;
@@ -27,7 +28,7 @@ class ConservativeTransportTest {
         assertThrows(SparseNewton.Nonconvergence.class,()->ConservativeTransport.reconstruct(graph,states,new double[]{.6,.6},new double[]{0,0},1,model,()->{}));
     }
     @Test void repeatedStepsKeepTheDeclaredVolumeBitForBitWhileCheckingTheDerivedVolume() {
-        var model=FluidThermodynamics.forNetwork(MaterialCatalog.bundled(),"createcheme:tjl20_methane_nitrogen",1e-9);
+        var model=FluidTestSupport.networkModel();
         var a=model.initialNitrogenCharge(1,320,110000,()->{});var b=model.initialNitrogenCharge(1,320,101325,()->{});
         var graph=new PassiveNetwork(List.of(new PassiveNetwork.Reservoir(1,0,a,PassiveNetwork.NodeKind.RESERVOIR,new PassiveNetwork.Inventory(1,PhaseLayout.totalAmounts(a),a.internalEnergy())),
                 new PassiveNetwork.Reservoir(2,0,b,PassiveNetwork.NodeKind.RESERVOIR,new PassiveNetwork.Inventory(1,PhaseLayout.totalAmounts(b),b.internalEnergy()))),

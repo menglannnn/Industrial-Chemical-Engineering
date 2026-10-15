@@ -7,6 +7,8 @@ import com.wormzjl.createcheme.science.fluid.topology.TopologyCompiler.Kind;
 import com.wormzjl.createcheme.science.material.MaterialTestBasis;
 import java.util.*;
 import org.junit.jupiter.api.Test;
+import static com.wormzjl.createcheme.fluid.support.FluidTestSupport.nitrogen;
+import static com.wormzjl.createcheme.fluid.support.FluidTestSupport.water;
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
@@ -29,8 +31,6 @@ class TraceFlushLiquidFullTankTest {
     static PhysicalFluidTopology.Device device(long id,int x,int y,Kind kind,PipeResistance.Geometry geometry) {
         return new PhysicalFluidTopology.Device(id,new PhysicalFluidTopology.Position(DIMENSION,x,y,0),kind,PhysicalFluidTopology.Direction.NORTH,geometry,new FlowControl.Passive());
     }
-    static double[] water(){double[] n=new double[MaterialTestBasis.NETWORK+1];n[n.length-1]=1;return n;}
-    static double[] nitrogen(){double[] n=new double[MaterialTestBasis.NETWORK+1];n[MaterialTestBasis.NITROGEN]=1;return n;}
     static int node(PassiveNetwork graph,long id){for(int i=0;i<graph.reservoirs().size();i++)if(graph.reservoirs().get(i).id()==id)return i;throw new AssertionError(id);}
     static int edge(PassiveNetwork graph,int a,int b) {
         for(int i=0;i<graph.pipes().size();i++){var p=graph.pipes().get(i);if(p.first()==a&&p.second()==b||p.first()==b&&p.second()==a)return i;}

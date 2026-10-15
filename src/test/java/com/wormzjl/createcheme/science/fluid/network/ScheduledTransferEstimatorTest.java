@@ -1,5 +1,6 @@
 package com.wormzjl.createcheme.science.fluid.network;
 
+import com.wormzjl.createcheme.fluid.support.FluidTestSupport;
 import com.wormzjl.createcheme.science.fluid.thermo.FluidThermodynamics;
 import com.wormzjl.createcheme.science.column.v3.thermo.V3PengRobinsonThermo;
 import com.wormzjl.createcheme.science.material.MaterialCatalog;
@@ -8,7 +9,7 @@ import java.util.*;
 import static org.junit.jupiter.api.Assertions.*;
 
 class ScheduledTransferEstimatorTest {
-    private final FluidThermodynamics model=FluidThermodynamics.forNetwork(MaterialCatalog.bundled(),"createcheme:tjl20_methane_nitrogen",1e-9);
+    private final FluidThermodynamics model=FluidTestSupport.networkModel();
     @Test void changingGasCompositionAndWithdrawnEnergyMatchTighterStepDoubling() {
         var gas=model.initialNitrogenCharge(1,320,300000,()->{});double[] methane=new double[com.wormzjl.createcheme.science.material.MaterialTestBasis.NETWORK+1];methane[0]=1;
         var injected=model.flashTP(320,300000,methane,()->{});

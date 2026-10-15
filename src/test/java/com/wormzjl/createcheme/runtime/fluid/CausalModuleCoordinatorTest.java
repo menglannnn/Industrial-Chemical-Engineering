@@ -1,5 +1,6 @@
 package com.wormzjl.createcheme.runtime.fluid;
 
+import com.wormzjl.createcheme.fluid.support.FluidTestSupport;
 import com.wormzjl.createcheme.runtime.*;
 import com.wormzjl.createcheme.science.fluid.network.*;
 import com.wormzjl.createcheme.science.fluid.thermo.FluidThermodynamics;
@@ -9,7 +10,7 @@ import java.util.*;
 import static org.junit.jupiter.api.Assertions.*;
 
 class CausalModuleCoordinatorTest {
-    private final FluidThermodynamics model=FluidThermodynamics.forNetwork(MaterialCatalog.bundled(),"createcheme:tjl20_methane_nitrogen",1e-9);
+    private final FluidThermodynamics model=FluidTestSupport.networkModel();
     private FluidThermodynamics.State state(boolean wet) {
         var nitrogen=model.initialNitrogenCharge(1,298.15,101325,()->{});if(!wet)return nitrogen;
         var n=new double[com.wormzjl.createcheme.science.material.MaterialTestBasis.NETWORK+1];System.arraycopy(nitrogen.vapor(),0,n,0,model.hydrocarbon.componentCount());n[com.wormzjl.createcheme.science.material.MaterialTestBasis.NETWORK]=100/model.waterMolecularWeight;

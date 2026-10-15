@@ -1,5 +1,6 @@
 package com.wormzjl.createcheme.science.fluid.network;
 
+import com.wormzjl.createcheme.fluid.support.FluidTestSupport;
 import static org.junit.jupiter.api.Assertions.*;
 import com.wormzjl.createcheme.science.fluid.thermo.FluidThermodynamics;
 import com.wormzjl.createcheme.science.material.MaterialCatalog;
@@ -29,7 +30,7 @@ class BackwardEulerStepTest {
         for(int i=0;i<steps;i++){var result=solver.solve(graph,.2/steps,()->{});graph=PassiveIntervalSolver.replace(graph,result);mass+=result.massFlows()[0]*.2/steps;}
         return mass;
     }
-    private final FluidThermodynamics model=FluidThermodynamics.forNetwork(MaterialCatalog.bundled(),"createcheme:tjl20_methane_nitrogen",1e-9);
+    private final FluidThermodynamics model=FluidTestSupport.networkModel();
     private PassiveNetwork.Reservoir gas(long id,double pressure,double elevation) {
         return new PassiveNetwork.Reservoir(id,elevation,model.initialNitrogenCharge(1,298.15,pressure,()->{}));
     }

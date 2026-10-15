@@ -29,95 +29,8 @@ import static org.junit.jupiter.api.Assertions.*;
  * client log's nine held lines at committed tick 11283. Every island must commit to the end without a hold.
  */
 class InlineFilterLineHoldTest {
-    static final String DIM="minecraft:overworld";
     static final int Y=-59,Z=40;
-    final FluidThermodynamics model=FluidTestSupport.networkModel();
     final MaterialCatalog catalog=MaterialCatalog.bundled();
-    static final BoundedCpuSolveService.CancellationToken NEVER=new BoundedCpuSolveService.CancellationToken() {
-        public long deadlineNanos(){return Long.MAX_VALUE;}public boolean isDeadlineExceeded(){return false;}
-        public boolean isCancellationRequested(){return false;}public void throwIfCancellationRequested(){}
-    };
-    record Held(long tick,long island,long committed,String status) {}
-
-    /** A world: its ledger, a coordinator on the ledger's online epoch with one synchronous worker, and the registry. */
-    final class World {
-        final WorldTopologyLedger ledger;
-        final Map<Long,IslandCoordinator.Attempt> attempts=new LinkedHashMap<>();
-        final Map<Long,ProcessSolveServices.FluidIslandCommand> commands=new HashMap<>();
-        long requests;
-        /** Every published HELD status, with the online tick it was published at. */
-        final List<Held> held=new ArrayList<>();
-        final IslandCoordinator coordinator;
-        final PhysicalRegistry registry;
-        World(){this(WorldTopologyLedger.Snapshot.empty(catalog),List.of());}
-        /** A world loaded from a save: its topology and its islands, registered as FluidWorldAuthority's constructor does. */
-        World(WorldTopologyLedger.Snapshot topology,List<IslandCoordinator.Snapshot> islands) {
-            ledger=new WorldTopologyLedger(topology);
-            coordinator=new IslandCoordinator(new IslandCoordinator.Dispatcher() {
-                public int availableWorkers(){return 1-attempts.size();}
-                public long nextRequestId(){return ++requests;}
-                public boolean submit(IslandCoordinator.Attempt attempt,ProcessSolveServices.FluidIslandCommand command){attempts.put(attempt.slice().requestId(),attempt);commands.put(attempt.slice().requestId(),command);return true;}
-                public void cancel(long request){}
-            },changed->{for(var s:changed)if(s.status().startsWith("HELD"))held.add(new Held(ledger.onlineTick(),s.id(),s.clock().committedTick(),s.status()));},
-                    ()->0L,new IslandCoordinator.Settings(2_000_000_000L,1_500_000_000L,64,false,100,CertificatePolicy.defaults()),IslandCoordinator.CommitHook.NO_MATERIAL,ledger::onlineTick);
-            registry=new PhysicalRegistry(ledger,model,InlineFilter.empty(),new PhysicalRegistry.Host() {
-                public IslandCoordinator coordinator(){return coordinator;}
-                public void topology(String dimension,Set<UUID> events,Set<Long> affected,List<IslandCoordinator.Replacement> replacements,long committed,long online,
-                                     Map<Long,PassiveNetwork.Reservoir> additions,Set<Long> removals,Map<Long,InlineFilter> releasedFilters,Runnable commit) {
-                    coordinator.topology(events,affected,replacements,model,committed,online,additions,removals,releasedFilters,commit);
-                }
-                public boolean acceptsRecovery(UUID player){return true;}
-                public void refused(UUID event,String reason){}
-                public void committed(Set<Long> removed){}
-            });
-            for(var island:islands)coordinator.register(island,model);
-            registry.load();
-        }
-        /** FluidWorldAuthority.place: the block's default control, a 1 m block of 0.05 m bore, water for a generator,
-         * nitrogen for everything else, a 1 m3 tank at 298.15 K and 1 atm. */
-        long place(int x,int y,int z,Kind kind,PhysicalFluidTopology.Direction facing) {
-            var spec=kind==Kind.GENERATOR?FluidDeviceSpec.water(catalog):FluidDeviceSpec.nitrogen(catalog);
-            if(kind==Kind.RESERVOIR)spec=new FluidDeviceSpec(1,298.15,101325,spec.composition());
-            return place(x,y,z,kind,facing,spec,.05);
-        }
-        /** The same with a player's settings made at placement: the device's spec and the block's bore. */
-        long place(int x,int y,int z,Kind kind,PhysicalFluidTopology.Direction facing,FluidDeviceSpec spec,double bore) {
-            long id=ledger.nextIdentity();
-            var control=switch(kind){case PUMP->new FlowControl.Pump(.01,500000,1);case COMPRESSOR->new FlowControl.Compressor(.05,3.0,1);case VALVE->new FlowControl.PressureValve(200000);default->new FlowControl.Passive();};
-            var device=new PhysicalFluidTopology.Device(id,new PhysicalFluidTopology.Position(DIM,x,y,z),kind,facing,new PipeResistance.Geometry(1,bore,PipeResistance.DEFAULT_ROUGHNESS_METRES,0),control);
-            registry.submit(List.of(new WorldTopologyLedger.Edit(id,new WorldTopologyLedger.Registration(device,spec,0))),id+1,null);
-            return id;
-        }
-        /** One online tick as FluidWorldAuthority.tick runs it, with the worker's jobs run to completion in the tick. */
-        void tick() {
-            ledger.tick();coordinator.tick();
-            if(ledger.hasPendingEvents()){registry.applyPending();coordinator.pumpIfUseful();}
-            for(long request:List.copyOf(attempts.keySet())) {
-                var attempt=attempts.remove(request);var command=commands.remove(request);
-                var result=(ProcessSolveServices.FluidIslandSolveResult)command.solve(NEVER);
-                coordinator.completed(attempt,Optional.of(result));
-            }
-            coordinator.pump();
-        }
-        void runTo(long tick){while(ledger.onlineTick()<tick)tick();}
-        String describe(long island) {
-            var s=coordinator.observe(island);var b=new StringBuilder("island "+island+" committed="+s.clock().committedTick()+" status="+s.status()+"\n");
-            var g=s.graph();
-            for(int i=0;i<g.reservoirs().size();i++){var n=g.reservoirs().get(i);var st=n.state();
-                b.append("  node ").append(i).append(" id=").append(n.id()).append(' ').append(n.kind()).append(" z=").append(n.elevation()).append(" P=").append(st.pressure()).append(" T=").append(st.temperature()).append(" m=").append(st.mass()).append('\n');}
-            for(int i=0;i<g.pipes().size();i++){var p=g.pipes().get(i);
-                b.append("  pipe ").append(i).append(' ').append(p.first()).append("->").append(p.second()).append(' ').append(p.control()).append(" blocked=").append(p.blockedDirections()).append(" filter=").append(p.filter()!=null).append('\n');}
-            return b.toString();
-        }
-        /** No hold, every placement applied, and every island (a certified one materialised) within one cadence of the
-         * online tick (a flowing island's next slice falls due at its committed tick plus the cadence). */
-        void assertKeptUp(String label) {
-            for(var h:held)System.out.println("F8_HELD "+label+" "+h);
-            assertTrue(held.isEmpty(),label+": holds "+held);
-            assertTrue(ledger.events().isEmpty(),label+": every placement applied");
-            for(var s:coordinator.snapshots())assertTrue(ledger.onlineTick()-s.clock().committedTick()<s.clock().cadenceTicks(),label+": island "+s.id()+" keeps up: committed "+s.clock().committedTick()+" at "+ledger.onlineTick()+", "+s.status());
-        }
-    }
 
     /** The client log's line in its order and at its ticks (the filter at 11283, the committed tick of every held line):
      * tick, x, kind, facing, z offset. */
@@ -135,7 +48,7 @@ class InlineFilterLineHoldTest {
             {11436,8,Kind.VOID,PhysicalFluidTopology.Direction.NORTH,0}};
 
     /** Places the first {@code blocks} of the line at their ticks and runs {@code after} ticks past the last one. */
-    void run(World w,int blocks,long after) {
+    void run(EventPathWorld w,int blocks,long after) {
         long end=0;
         for(int i=0;i<blocks;i++) {
             var b=LINE[i];long tick=((Integer)b[0]).longValue();w.runTo(tick);
@@ -146,7 +59,7 @@ class InlineFilterLineHoldTest {
 
     /** The whole line, in the client's order: no hold, and the pump runs at its target through the regulating valve. */
     @Test void theInGameLineNeverHolds() {
-        var w=new World();run(w,LINE.length,2400);w.assertKeptUp("in-game line");
+        var w=new EventPathWorld();run(w,LINE.length,2400);w.assertKeptUp("in-game line");
         var island=w.coordinator.snapshots().stream().filter(s->s.graph().pipes().size()>=6).findFirst().orElseThrow();
         var modes=island.lastResult().orElseThrow().endpointModes();
         System.out.println("F8_END "+w.describe(island.id())+" modes="+modes);
@@ -155,7 +68,7 @@ class InlineFilterLineHoldTest {
     /** Every intermediate dead end the line passes through (the pump into one pipe, into the filter alone, into the
      * filter and a pipe, into the valve with nothing past it), each run for two minutes on its own. */
     @Test void everyPrefixOfTheLineNeverHolds() {
-        for(int blocks=1;blocks<=LINE.length;blocks++){var w=new World();run(w,blocks,2400);w.assertKeptUp(blocks+" blocks");}
+        for(int blocks=1;blocks<=LINE.length;blocks++){var w=new EventPathWorld();run(w,blocks,2400);w.assertKeptUp(blocks+" blocks");}
     }
     /**
      * Straight lines along +x, every block placed in one tick with the world's defaults and run 3000 ticks. Letters: G
@@ -166,7 +79,7 @@ class InlineFilterLineHoldTest {
     @Test void pumpLinesIntoValvesAndFiltersNeverHold() {
         var ends=new LinkedHashMap<String,List<FlowControl.Mode>>();var pumpOwners=new LinkedHashMap<String,Long>();
         for(String layout:List.of("GPMPVPO","GPMPFPO","GPMPF","GPMPV","GPMPVP","GPMPFPVPO","GPMPFP","GPMP","GPMPPO","GPMPFPT","GPMPVPT","GPMPFPVPT")) {
-            var w=new World();w.runTo(100);long pump=0;
+            var w=new EventPathWorld();w.runTo(100);long pump=0;
             for(int i=0;i<layout.length();i++) {
                 var kind=switch(layout.charAt(i)){case 'G'->Kind.GENERATOR;case 'P'->Kind.PIPE;case 'M'->Kind.PUMP;case 'F'->Kind.FILTER;case 'V'->Kind.VALVE;case 'O'->Kind.VOID;case 'T'->Kind.RESERVOIR;default->throw new IllegalArgumentException(layout);};
                 long id=w.place(i,0,0,kind,kind==Kind.PUMP||kind==Kind.FILTER||kind==Kind.VALVE?PhysicalFluidTopology.Direction.EAST:PhysicalFluidTopology.Direction.NORTH);
@@ -194,7 +107,7 @@ class InlineFilterLineHoldTest {
      * singular. The pocket forces that pipe's flow to zero, so the pipe is a dead end for the cap, like a single junction's.
      */
     @Test void aFilterPocketFedThroughASmallPipeNeverHolds() {
-        var w=new World();w.runTo(100);var east=PhysicalFluidTopology.Direction.EAST;var north=PhysicalFluidTopology.Direction.NORTH;
+        var w=new EventPathWorld();w.runTo(100);var east=PhysicalFluidTopology.Direction.EAST;var north=PhysicalFluidTopology.Direction.NORTH;
         double[] n2=new double[FluidDeviceSpec.nitrogen(catalog).composition().length];n2[com.wormzjl.createcheme.science.material.MaterialTestBasis.NITROGEN]=1;
         double[] water=FluidDeviceSpec.water(catalog).composition();
         w.place(0,0,0,Kind.GENERATOR,north,new FluidDeviceSpec(1,272.66,405737.6,n2),.05);

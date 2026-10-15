@@ -1,5 +1,6 @@
 package com.wormzjl.createcheme.runtime.fluid;
 
+import com.wormzjl.createcheme.fluid.support.FluidTestSupport;
 import com.wormzjl.createcheme.science.fluid.network.*;
 import com.wormzjl.createcheme.science.fluid.thermo.FluidThermodynamics;
 import com.wormzjl.createcheme.science.material.MaterialCatalog;
@@ -27,7 +28,7 @@ import static org.junit.jupiter.api.Assertions.*;
  * {@code scratch-t17-ownership-restored.patch}); it is printed, not asserted, so it never needs re-recording.
  */
 class VirtualJunctionHoldupTest {
-    private final FluidThermodynamics model=FluidThermodynamics.forNetwork(MaterialCatalog.bundled(),"createcheme:tjl20_methane_nitrogen",1e-9);
+    private final FluidThermodynamics model=FluidTestSupport.networkModel();
     private final double[] mw=model.molecularWeights();
     private static final double LEDGER=1e-12,MASS_DRIFT=1e-12;
 

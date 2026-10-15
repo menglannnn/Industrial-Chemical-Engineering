@@ -24,43 +24,13 @@ class PhysicalRegistryTest {
     private static final int Y=64;
     private final FluidThermodynamics model=FluidTestSupport.networkModel();
     private final MaterialCatalog catalog=MaterialCatalog.bundled();
-    private static final BoundedCpuSolveService.CancellationToken NEVER=new BoundedCpuSolveService.CancellationToken() {
-        public long deadlineNanos(){return Long.MAX_VALUE;}public boolean isDeadlineExceeded(){return false;}
-        public boolean isCancellationRequested(){return false;}public void throwIfCancellationRequested(){}
-    };
 
     @AfterEach void counters(){FluidRuntimeDiagnostics.ENABLED=false;FluidRuntimeDiagnostics.reset();}
 
-    /** A world: its ledger, a coordinator on the ledger's online epoch, and the registry. {@code workers} is 0 (no
+    /** The event-path world with this test's placement records and batch helpers. {@code workers} is 0 (no
      * solve) or 1 (a synchronous worker, as FluidPumpedFillLineTest, on the wall clock: rest lines solve in milliseconds). */
-    private final class World {
-        final WorldTopologyLedger ledger=new WorldTopologyLedger(WorldTopologyLedger.Snapshot.empty(catalog));
-        final Map<Long,IslandCoordinator.Attempt> attempts=new LinkedHashMap<>();
-        final Map<Long,ProcessSolveServices.FluidIslandCommand> commands=new HashMap<>();
-        final int workers;long requests;
-        final IslandCoordinator coordinator;
-        final PhysicalRegistry registry;
-        final List<Set<Long>> committedRemovals=new ArrayList<>();
-        World(int workers) {
-            this.workers=workers;
-            coordinator=new IslandCoordinator(new IslandCoordinator.Dispatcher() {
-                public int availableWorkers(){return workers-attempts.size();}
-                public long nextRequestId(){return ++requests;}
-                public boolean submit(IslandCoordinator.Attempt attempt,ProcessSolveServices.FluidIslandCommand command){attempts.put(attempt.slice().requestId(),attempt);commands.put(attempt.slice().requestId(),command);return true;}
-                public void cancel(long request){}
-            },changed->{},()->0L,new IslandCoordinator.Settings(2_000_000_000L,1_500_000_000L,64,false,100,CertificatePolicy.defaults()),IslandCoordinator.CommitHook.NO_MATERIAL,ledger::onlineTick);
-            registry=new PhysicalRegistry(ledger,model,InlineFilter.empty(),new PhysicalRegistry.Host() {
-                public IslandCoordinator coordinator(){return coordinator;}
-                public void topology(String dimension,Set<UUID> events,Set<Long> affected,List<IslandCoordinator.Replacement> replacements,long committed,long online,
-                                     Map<Long,PassiveNetwork.Reservoir> additions,Set<Long> removals,Map<Long,InlineFilter> releasedFilters,Runnable commit) {
-                    assertEquals(DIM,dimension);coordinator.topology(events,affected,replacements,model,committed,online,additions,removals,releasedFilters,commit);
-                }
-                public boolean acceptsRecovery(UUID player){return true;}
-                public void refused(UUID event,String reason){}
-                public void committed(Set<Long> removed){committedRemovals.add(removed);}
-            });
-            registry.load();
-        }
+    private final class World extends EventPathWorld {
+        World(int workers){super(workers);}
         WorldTopologyLedger.Registration record(long id,int x,int z,Kind kind,PhysicalFluidTopology.Direction facing) {
             var control=kind==Kind.PUMP?new FlowControl.Pump(.01,500000,1):new FlowControl.Passive();
             var device=new PhysicalFluidTopology.Device(id,new PhysicalFluidTopology.Position(DIM,x,Y,z),kind,facing,new PipeResistance.Geometry(1,.05,.000045,0),control);
@@ -92,7 +62,7 @@ class PhysicalRegistryTest {
                 ledger.tick();coordinator.tick();apply();coordinator.pumpIfUseful();
                 for(long request:List.copyOf(attempts.keySet())) {
                     var attempt=attempts.remove(request);var command=commands.remove(request);
-                    var result=(ProcessSolveServices.FluidIslandSolveResult)command.solve(NEVER);
+                    var result=(ProcessSolveServices.FluidIslandSolveResult)command.solve(FluidTestSupport.NEVER);
                     coordinator.completed(attempt,Optional.of(result));
                 }
                 coordinator.pump();

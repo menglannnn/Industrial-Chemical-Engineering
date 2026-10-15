@@ -1,5 +1,6 @@
 package com.wormzjl.createcheme.runtime;
 
+import com.wormzjl.createcheme.fluid.support.FluidTestSupport;
 import com.google.gson.GsonBuilder;
 import com.wormzjl.createcheme.runtime.fluid.*;
 import com.wormzjl.createcheme.science.fluid.network.*;
@@ -13,7 +14,7 @@ import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
 
 class FluidFallbackQualificationTest {
-    private final FluidThermodynamics model=FluidThermodynamics.forNetwork(MaterialCatalog.bundled(),"createcheme:tjl20_methane_nitrogen",1e-9);
+    private final FluidThermodynamics model=FluidTestSupport.networkModel();
     private final BoundedCpuSolveService.CancellationToken token=new BoundedCpuSolveService.CancellationToken(){
         public long deadlineNanos(){return Long.MAX_VALUE;}public boolean isDeadlineExceeded(){return false;}public boolean isCancellationRequested(){return false;}public void throwIfCancellationRequested(){}
     };

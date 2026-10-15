@@ -1,5 +1,6 @@
 package com.wormzjl.createcheme.science.fluid.network;
 
+import com.wormzjl.createcheme.fluid.support.FluidTestSupport;
 import com.wormzjl.createcheme.science.fluid.network.PassiveNetwork.PhasePort;
 import com.wormzjl.createcheme.science.fluid.thermo.FluidThermodynamics;
 import com.wormzjl.createcheme.science.material.MaterialCatalog;
@@ -17,11 +18,8 @@ import static org.junit.jupiter.api.Assertions.*;
  * The bulk line is bitwise the bulk: at step level against the bulk sampling of the same donor state, and against a
  * bulk-only graph whose phase lines are closed.
  */
-class PhasePortTest {
-    private static final Runnable NOOP=()->{};
-    private final FluidThermodynamics model=FluidThermodynamics.forNetwork(MaterialCatalog.bundled(),"createcheme:tjl20_methane_nitrogen",1e-9);
-    private final double[] mw=model.molecularWeights();
-    private final int water=index("Water"),nitrogen=index("Nitrogen"),methane=index("Methane"),pentane=index("N-pentane");
+class PhasePortTest extends PortFixture {
+    private final int methane=index("Methane"),pentane=index("N-pentane");
     /** Ledger bounds: the reconstruction is exact, so these are roundoff (relative to max(1, initial)). */
     private static final double COMPONENT_LEDGER=1e-12,ENERGY_LEDGER=1e-10;
     private static final PipeResistance.Geometry LINE=new PipeResistance.Geometry(10,.01,PipeResistance.DEFAULT_ROUGHNESS_METRES,0);
@@ -29,7 +27,6 @@ class PhasePortTest {
 
     private enum Vessel { WATER_UNDER_NITROGEN, PENTANE_UNDER_METHANE }
 
-    private int index(String component){int i=model.components().indexOf(component);assertTrue(i>=0,component);return i;}
     /** 1 m3 at 298.15 K: half water and half nitrogen at 200 kPa, or 0.4 m3 of n-pentane under 0.6 m3 of methane at 300 kPa,
      * flashed and scaled to exactly the vessel volume. */
     private FluidThermodynamics.State vessel(Vessel kind) {
@@ -226,17 +223,6 @@ class PhasePortTest {
         }
     }
     /** Tank and junction inventories (the junctions' owned holdups count like a tank's). */
-    private double[] owned(PassiveNetwork graph) {
-        var totals=new double[mw.length];
-        for(var node:graph.reservoirs())if(node.kind()==PassiveNetwork.NodeKind.RESERVOIR||node.junction()){var n=node.inventory().moles();for(int c=0;c<n.length;c++)totals[c]+=n[c];}
-        return totals;
-    }
-    private double ownedEnergy(PassiveNetwork graph) {
-        double energy=0;
-        for(var node:graph.reservoirs())if(node.kind()==PassiveNetwork.NodeKind.RESERVOIR||node.junction())
-            energy+=node.inventory().internalEnergy()+mass(node.inventory().moles())*PassiveStepSolver.GRAVITY*node.elevation();
-        return energy;
-    }
 
     /**
      * Solids leave through a liquid port and never through a vapour port (plan 3.8): a vessel of water carrying 100 kg of
@@ -338,7 +324,6 @@ class PhasePortTest {
         var node=graph.reservoirs().getFirst();
         return node.inventory().internalEnergy()+mass(node.inventory().moles())*PassiveStepSolver.GRAVITY*node.elevation();
     }
-    private double mass(double[] moles){double m=0;for(int c=0;c<moles.length;c++)m+=moles[c]*mw[c];return m;}
     private static double sum(double[] v){double s=0;for(double x:v)s+=x;return s;}
     private static double[] add(double[] a,double[] b){var r=a.clone();for(int i=0;i<r.length;i++)r[i]+=b[i];return r;}
     private static void assertZero(double[] values,String what){for(double v:values)assertEquals(0,v,what);}

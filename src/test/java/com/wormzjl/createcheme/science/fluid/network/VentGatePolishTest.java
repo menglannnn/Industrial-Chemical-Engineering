@@ -1,5 +1,6 @@
 package com.wormzjl.createcheme.science.fluid.network;
 
+import com.wormzjl.createcheme.fluid.support.FluidTestSupport;
 import com.wormzjl.createcheme.science.fluid.diagnostics.SolverDiagnostics;
 import com.wormzjl.createcheme.science.fluid.network.PassiveNetwork.PhasePort;
 import com.wormzjl.createcheme.science.fluid.thermo.FluidThermodynamics;
@@ -29,7 +30,7 @@ class VentGatePolishTest {
     private static final Runnable NOOP=()->{};
     private static final String GATE="Conservative reconstruction fails equation gate";
     private static final double COMPONENT_LEDGER=1e-12,ENERGY_LEDGER=1e-10;
-    private final FluidThermodynamics model=FluidThermodynamics.forNetwork(MaterialCatalog.bundled(),"createcheme:tjl20_methane_nitrogen",1e-9);
+    private final FluidThermodynamics model=FluidTestSupport.networkModel();
     private final double[] mw=model.molecularWeights();
     private final int water=model.components().indexOf("Water"),nitrogen=model.components().indexOf("Nitrogen");
 

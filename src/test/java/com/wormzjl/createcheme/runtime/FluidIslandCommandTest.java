@@ -1,5 +1,6 @@
 package com.wormzjl.createcheme.runtime;
 
+import com.wormzjl.createcheme.fluid.support.FluidTestSupport;
 import static org.junit.jupiter.api.Assertions.*;
 import com.wormzjl.createcheme.science.fluid.network.*;
 import com.wormzjl.createcheme.science.fluid.thermo.FluidThermodynamics;
@@ -12,7 +13,7 @@ import com.wormzjl.createcheme.runtime.fluid.*;
 
 class FluidIslandCommandTest {
     @Test void aSoftTimeoutCanProduceAUsefulConservativeApproximationAndThenRecover() {
-        var model=FluidThermodynamics.forNetwork(MaterialCatalog.bundled(),"createcheme:tjl20_methane_nitrogen",1e-9);
+        var model=FluidTestSupport.networkModel();
         var graph=new PassiveNetwork(List.of(new PassiveNetwork.Reservoir(1,0,model.initialNitrogenCharge(1,350,150000,()->{}),PassiveNetwork.NodeKind.GENERATOR),
                 new PassiveNetwork.Reservoir(2,0,model.initialNitrogenCharge(1,350,149000,()->{}))),List.of(new PassiveNetwork.Pipe(1,0,1,new PipeResistance.Geometry(100,.01,.000045,0))));
         var warm=new PassiveIntervalSolver(model).solve(graph,.05,PassiveIntervalSolver.Settings.defaults(),()->{});graph=warm.graph();
@@ -30,7 +31,7 @@ class FluidIslandCommandTest {
         assertTrue(recovered.candidate().orElseThrow().graph().reservoirs().get(1).inventory().moles()[com.wormzjl.createcheme.science.material.MaterialTestBasis.NITROGEN]>=current.reservoirs().get(1).inventory().moles()[com.wormzjl.createcheme.science.material.MaterialTestBasis.NITROGEN]);
     }
     private ProcessSolveServices.FluidIslandCommand command() {
-        var model=FluidThermodynamics.forNetwork(MaterialCatalog.bundled(),"createcheme:tjl20_methane_nitrogen",1e-9);
+        var model=FluidTestSupport.networkModel();
         var state=model.initialNitrogenCharge(1,298.15,101325,()->{});
         return new ProcessSolveServices.FluidIslandCommand(model,new PassiveNetwork(List.of(new PassiveNetwork.Reservoir(1,0,state)),List.of()),5,PassiveIntervalSolver.Settings.defaults(),100);
     }

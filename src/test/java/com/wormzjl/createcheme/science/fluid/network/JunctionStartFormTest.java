@@ -1,5 +1,6 @@
 package com.wormzjl.createcheme.science.fluid.network;
 
+import com.wormzjl.createcheme.fluid.support.FluidTestSupport;
 import static org.junit.jupiter.api.Assertions.*;
 import com.wormzjl.createcheme.science.fluid.thermo.FluidMaterialCatalog;
 import com.wormzjl.createcheme.science.fluid.thermo.FluidThermodynamics;
@@ -15,7 +16,7 @@ import org.junit.jupiter.api.Test;
  * The start chain (D37, D39, D40) and the start switch of D48 (A280-A284) are gone.
  */
 class JunctionStartFormTest {
-    private final FluidThermodynamics model=FluidThermodynamics.forNetwork(MaterialCatalog.bundled(),"createcheme:tjl20_methane_nitrogen",1e-9);
+    private final FluidThermodynamics model=FluidTestSupport.networkModel();
     private final PipeResistance.Geometry geometry=new PipeResistance.Geometry(1,.05,PipeResistance.DEFAULT_ROUGHNESS_METRES,0);
 
     @Test void theAmbientIsNitrogenAt298KAnd101325Pa() {

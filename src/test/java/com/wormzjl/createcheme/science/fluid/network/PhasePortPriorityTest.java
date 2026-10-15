@@ -1,5 +1,6 @@
 package com.wormzjl.createcheme.science.fluid.network;
 
+import com.wormzjl.createcheme.fluid.support.FluidTestSupport;
 import com.wormzjl.createcheme.science.fluid.network.PassiveNetwork.PhasePort;
 import com.wormzjl.createcheme.science.fluid.thermo.FluidThermodynamics;
 import com.wormzjl.createcheme.science.material.MaterialCatalog;
@@ -22,11 +23,8 @@ import static org.junit.jupiter.api.Assertions.*;
  * what entered, the step counts and rejections) and a summary line; the measured numbers are in PHASE_PORTS_REVIEW.md,
  * section "D11".
  */
-class PhasePortPriorityTest {
-    private static final Runnable NOOP=()->{};
-    private final FluidThermodynamics model=FluidThermodynamics.forNetwork(MaterialCatalog.bundled(),"createcheme:tjl20_methane_nitrogen",1e-9);
-    private final double[] mw=model.molecularWeights();
-    private final int water=index("Water"),nitrogen=index("Nitrogen"),pentane=index("N-pentane");
+class PhasePortPriorityTest extends PortFixture {
+    private final int pentane=index("N-pentane");
     private static final double COMPONENT_LEDGER=1e-12,ENERGY_LEDGER=1e-10;
     private static final String REOPEN="Backward-Euler boundary reopened";
     private static final int GAS=FluidThermodynamics.GAS,OIL=FluidThermodynamics.OIL,WATER=FluidThermodynamics.WATER;
@@ -35,7 +33,6 @@ class PhasePortPriorityTest {
         return new PassiveNetwork.Pipe(id,a,b,List.of(g),new FlowControl.Passive(),0,null,pa,pb);
     }
 
-    private int index(String component){int i=model.components().indexOf(component);assertTrue(i>=0,component);return i;}
     /** A 1 m3 vessel at 298.15 K and {@code pressure}: {@code oilVolume} m3 of n-pentane and {@code waterVolume} m3 of water
      * under nitrogen, flashed and scaled to exactly the vessel volume. */
     private FluidThermodynamics.State vessel(double oilVolume,double waterVolume,double pressure) {
@@ -44,12 +41,9 @@ class PhasePortPriorityTest {
         var unit=model.flashTP(t,pressure,n,NOOP);for(int c=0;c<n.length;c++)n[c]/=unit.volume();
         return model.flashTP(t,pressure,n,NOOP);
     }
-    private FluidThermodynamics.State waterSupply(double pressure){var n=new double[mw.length];n[water]=1;return model.flashTP(298.15,pressure,n,NOOP);}
-    private FluidThermodynamics.State nitrogenAt(double pressure){return model.initialNitrogenCharge(1,298.15,pressure,NOOP);}
     private static double share(FluidThermodynamics.State s,int phase) {
         return (phase==GAS?s.vaporVolume():phase==OIL?s.liquidVolume():s.waterVolume())/s.volume();
     }
-    private double mass(double[] moles){double m=0;for(int c=0;c<moles.length;c++)m+=moles[c]*mw[c];return m;}
     /** The mass of each phase a transferred stream carries: [gas, hydrocarbon liquid, free water]. */
     private double[] phases(PipeTransfer.Stream stream) {
         var n=stream.phaseMoles();return new double[]{mass(n[2]),mass(n[0]),mass(n[1])};
@@ -99,17 +93,6 @@ class PhasePortPriorityTest {
         return slices;
     }
     /** Tank and junction inventories (a junction's owned holdup counts like a tank's). */
-    private double[] owned(PassiveNetwork graph) {
-        var totals=new double[mw.length];
-        for(var node:graph.reservoirs())if(node.kind()==PassiveNetwork.NodeKind.RESERVOIR||node.junction()){var n=node.inventory().moles();for(int c=0;c<n.length;c++)totals[c]+=n[c];}
-        return totals;
-    }
-    private double ownedEnergy(PassiveNetwork graph) {
-        double energy=0;
-        for(var node:graph.reservoirs())if(node.kind()==PassiveNetwork.NodeKind.RESERVOIR||node.junction())
-            energy+=node.inventory().internalEnergy()+mass(node.inventory().moles())*PassiveStepSolver.GRAVITY*node.elevation();
-        return energy;
-    }
 
     // ---- 1. A bottom port drains its water to zero, then vents the gas ----------------------------------------------
 

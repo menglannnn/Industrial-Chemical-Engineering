@@ -1,5 +1,6 @@
 package com.wormzjl.createcheme.runtime.fluid;
 
+import com.wormzjl.createcheme.fluid.support.FluidTestSupport;
 import com.wormzjl.createcheme.science.fluid.diagnostics.SolverDiagnostics;
 import com.wormzjl.createcheme.science.fluid.network.*;
 import com.wormzjl.createcheme.science.fluid.thermo.FluidThermodynamics;
@@ -21,7 +22,7 @@ import static org.junit.jupiter.api.Assertions.*;
  * chain failed the 50 mm six-port restart.
  */
 class MixedGasJunctionTransientTest {
-    private final FluidThermodynamics model=FluidThermodynamics.forNetwork(MaterialCatalog.bundled(),"createcheme:tjl20_methane_nitrogen",1e-9);
+    private final FluidThermodynamics model=FluidTestSupport.networkModel();
     private final double[] mw=model.molecularWeights();
     /** Newton solves per case at the 5 s cycle in HANDOFF_REVIEW.md 8.9 run 115 (281 in all), keyed bore:ports:unequal. */
     private static final Map<String,Integer> RUN_115_NEWTON_SOLVES=Map.ofEntries(

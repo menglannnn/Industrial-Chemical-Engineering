@@ -1,5 +1,6 @@
 package com.wormzjl.createcheme.science.fluid.network;
 
+import com.wormzjl.createcheme.fluid.support.FluidTestSupport;
 import static org.junit.jupiter.api.Assertions.*;
 import com.wormzjl.createcheme.science.fluid.thermo.FluidThermodynamics;
 import com.wormzjl.createcheme.science.fluid.solver.PhaseLayout;
@@ -19,7 +20,7 @@ class NetworkRegimeTest {
         assertEquals(expected,pipe.loss(q,rho,mu).pressureDrop(),1e-12);
         assertEquals(-expected,pipe.loss(-q,rho,mu).pressureDrop(),1e-12);
     }
-    private final FluidThermodynamics model=FluidThermodynamics.forNetwork(MaterialCatalog.bundled(),"createcheme:tjl20_methane_nitrogen",1e-9);
+    private final FluidThermodynamics model=FluidTestSupport.networkModel();
     private final PipeResistance.Geometry geometry=new PipeResistance.Geometry(100,.02,.000045,0);
     private PassiveNetwork.Reservoir gas(long id,double t,double p,int component,PassiveNetwork.NodeKind kind) {
         var n=new double[com.wormzjl.createcheme.science.material.MaterialTestBasis.NETWORK+1];n[component]=1;var unit=model.flashTP(t,p,n,()->{});n[component]/=unit.volume();

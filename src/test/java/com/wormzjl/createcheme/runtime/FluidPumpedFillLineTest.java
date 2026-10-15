@@ -29,10 +29,6 @@ class FluidPumpedFillLineTest {
      * outside the 3 Pa this test states the ratio limit to; the wide block adds no measurable drop. */
     private static final PipeResistance.Geometry WIDE=new PipeResistance.Geometry(1,.1,.000045,0);
     private static final long NANOS_PER_CHECKPOINT=1_000;
-    private static final BoundedCpuSolveService.CancellationToken NEVER=new BoundedCpuSolveService.CancellationToken() {
-        public long deadlineNanos(){return Long.MAX_VALUE;}public boolean isDeadlineExceeded(){return false;}
-        public boolean isCancellationRequested(){return false;}public void throwIfCancellationRequested(){}
-    };
     private final FluidThermodynamics model=FluidTestSupport.networkModel();
 
     private double[] pure(int component){double[] n=new double[MaterialTestBasis.NETWORK+1];n[component]=1;return n;}
@@ -83,7 +79,7 @@ class FluidPumpedFillLineTest {
                 coordinator.tick();online++;
                 for(long request:List.copyOf(attempts.keySet())) {
                     var attempt=attempts.remove(request);var command=commands.remove(request);long[] clock={0};
-                    var result=(ProcessSolveServices.FluidIslandSolveResult)command.solve(NEVER,()->clock[0]+=NANOS_PER_CHECKPOINT);
+                    var result=(ProcessSolveServices.FluidIslandSolveResult)command.solve(FluidTestSupport.NEVER,()->clock[0]+=NANOS_PER_CHECKPOINT);
                     jobs++;work+=clock[0];coordinator.completed(attempt,Optional.of(result));
                 }
                 coordinator.pump();

@@ -1,5 +1,6 @@
 package com.wormzjl.createcheme.science.fluid.network;
 
+import com.wormzjl.createcheme.fluid.support.FluidTestSupport;
 import static org.junit.jupiter.api.Assertions.*;
 import com.wormzjl.createcheme.science.fluid.thermo.FluidThermodynamics;
 import com.wormzjl.createcheme.science.fluid.transport.MixtureViscosity;
@@ -14,7 +15,7 @@ import org.junit.jupiter.api.Test;
  * {@code runtime.fluid.RestResolutionWorldTest}.
  */
 class RestResolutionTest {
-    private final FluidThermodynamics model=FluidThermodynamics.forNetwork(MaterialCatalog.bundled(),"createcheme:tjl20_methane_nitrogen",1e-9);
+    private final FluidThermodynamics model=FluidTestSupport.networkModel();
     private final PipeResistance.Geometry run=new PipeResistance.Geometry(1,.05,PipeResistance.DEFAULT_ROUGHNESS_METRES,0);
     private FluidThermodynamics.State water(double pressure) {
         double[] n=new double[model.hydrocarbon.componentCount()+1];n[n.length-1]=1;

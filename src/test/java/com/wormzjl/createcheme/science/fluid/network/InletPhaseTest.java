@@ -1,5 +1,6 @@
 package com.wormzjl.createcheme.science.fluid.network;
 
+import com.wormzjl.createcheme.fluid.support.FluidTestSupport;
 import com.wormzjl.createcheme.science.fluid.network.PassiveNetwork.PhasePort;
 import com.wormzjl.createcheme.science.fluid.thermo.FluidThermodynamics;
 import com.wormzjl.createcheme.science.material.MaterialCatalog;
@@ -16,11 +17,7 @@ import static org.junit.jupiter.api.Assertions.*;
  * interval), commits whole, and closes the component ledger to 1e-12 and the energy ledger to 1e-10. Each fixture prints
  * an {@code INLET_PHASE_RUN} line; the numbers are recorded in PHASE_PORTS_REVIEW.md, section "WP3".
  */
-class InletPhaseTest {
-    private static final Runnable NOOP=()->{};
-    private final FluidThermodynamics model=FluidThermodynamics.forNetwork(MaterialCatalog.bundled(),"createcheme:tjl20_methane_nitrogen",1e-9);
-    private final double[] mw=model.molecularWeights();
-    private final int water=index("Water"),nitrogen=index("Nitrogen");
+class InletPhaseTest extends PortFixture {
     private static final double COMPONENT_LEDGER=1e-12,ENERGY_LEDGER=1e-10,G=PassiveStepSolver.GRAVITY;
     private static PipeResistance.Geometry line(double length,double diameter){return new PipeResistance.Geometry(length,diameter,PipeResistance.DEFAULT_ROUGHNESS_METRES,0);}
     private static PassiveNetwork.Pipe pipe(long id,int a,int b,PipeResistance.Geometry g,FlowControl control,PhasePort pa,PhasePort pb) {
@@ -28,16 +25,7 @@ class InletPhaseTest {
     }
     private static PassiveNetwork.Pipe pipe(long id,int a,int b,PipeResistance.Geometry g,FlowControl control){return pipe(id,a,b,g,control,PhasePort.BULK,PhasePort.BULK);}
 
-    private int index(String component){int i=model.components().indexOf(component);assertTrue(i>=0,component);return i;}
     /** A 1 m3 vessel at 298.15 K and {@code pressure} holding {@code waterVolume} m3 of water under nitrogen. */
-    private FluidThermodynamics.State waterUnderNitrogen(double waterVolume,double pressure) {
-        double t=298.15;double[] n=new double[mw.length];
-        n[water]=waterVolume*997/mw[water];n[nitrogen]=pressure*(1-waterVolume)/(FluidThermodynamics.R*t);
-        var unit=model.flashTP(t,pressure,n,NOOP);for(int c=0;c<n.length;c++)n[c]/=unit.volume();
-        return model.flashTP(t,pressure,n,NOOP);
-    }
-    private FluidThermodynamics.State waterSupply(double pressure){var n=new double[mw.length];n[water]=1;return model.flashTP(298.15,pressure,n,NOOP);}
-    private FluidThermodynamics.State nitrogenAt(double pressure){return model.initialNitrogenCharge(1,298.15,pressure,NOOP);}
     /** Vapour share of a state's fluid volume. */
     private static double share(FluidThermodynamics.State s){return s.vaporVolume()/(s.vaporVolume()+s.liquidVolume()+s.waterVolume());}
     /** Water with nitrogen at 298.15 K and {@code pressure} whose vapour fills {@code target} of its fluid volume (bisection
@@ -78,18 +66,6 @@ class InletPhaseTest {
         }
         return new Run(slices,graphs,reasons,accepted,rejected);
     }
-    private double[] owned(PassiveNetwork graph) {
-        var totals=new double[mw.length];
-        for(var node:graph.reservoirs())if(node.kind()==PassiveNetwork.NodeKind.RESERVOIR||node.junction()){var n=node.inventory().moles();for(int c=0;c<n.length;c++)totals[c]+=n[c];}
-        return totals;
-    }
-    private double ownedEnergy(PassiveNetwork graph) {
-        double energy=0;
-        for(var node:graph.reservoirs())if(node.kind()==PassiveNetwork.NodeKind.RESERVOIR||node.junction())
-            energy+=node.inventory().internalEnergy()+mass(node.inventory().moles())*G*node.elevation();
-        return energy;
-    }
-    private double mass(double[] moles){double m=0;for(int c=0;c<moles.length;c++)m+=moles[c]*mw[c];return m;}
     private static void assertSameDoubles(String label,PassiveIntervalSolver.Result a,PassiveIntervalSolver.Result b,int nodes,int edges) {
         for(int e=0;e<edges;e++)assertEquals(Double.doubleToLongBits(a.averageMassFlows()[e]),Double.doubleToLongBits(b.averageMassFlows()[e]),label+" edge "+e+" flow");
         assertEquals(a.acceptedSubsteps(),b.acceptedSubsteps(),label+" accepted");

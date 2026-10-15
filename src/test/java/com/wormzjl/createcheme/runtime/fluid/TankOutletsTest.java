@@ -1,5 +1,6 @@
 package com.wormzjl.createcheme.runtime.fluid;
 
+import com.wormzjl.createcheme.fluid.support.FluidTestSupport;
 import com.wormzjl.createcheme.science.fluid.network.*;
 import com.wormzjl.createcheme.science.fluid.thermo.FluidThermodynamics;
 import com.wormzjl.createcheme.science.fluid.topology.TopologyCompiler.Kind;
@@ -14,7 +15,7 @@ import static org.junit.jupiter.api.Assertions.*;
  * water/nitrogen tank with a pipe on its top, one side and its bottom, each to a void at 1 atm.
  */
 class TankOutletsTest {
-    private final FluidThermodynamics model=FluidThermodynamics.forNetwork(MaterialCatalog.bundled(),"createcheme:tjl20_methane_nitrogen",1e-9);
+    private final FluidThermodynamics model=FluidTestSupport.networkModel();
     private static final PhysicalFluidTopology.Direction N=PhysicalFluidTopology.Direction.NORTH;
     private int component(String name){int i=model.components().indexOf(name);assertTrue(i>=0,name);return i;}
     private PhysicalFluidTopology.Device at(long id,int x,int y,int z,Kind kind) {

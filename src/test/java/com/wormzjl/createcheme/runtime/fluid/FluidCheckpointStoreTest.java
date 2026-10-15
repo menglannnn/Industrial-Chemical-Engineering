@@ -27,110 +27,8 @@ import static org.junit.jupiter.api.Assertions.*;
  * they were; units of removed or replaced islands are dropped and their packs compacted and deleted; ten thousand
  * islands save and load through the index; and the first save after a load encodes nothing that did not change.
  */
-class FluidCheckpointStoreTest {
-    private static final String PACKAGE="createcheme:tjl20_methane_nitrogen";
-    private static final PipeResistance.Geometry BLOCK=new PipeResistance.Geometry(1,.05,.000045,0);
-    private static final BoundedCpuSolveService.CancellationToken NEVER=new BoundedCpuSolveService.CancellationToken() {
-        public long deadlineNanos(){return Long.MAX_VALUE;}public boolean isDeadlineExceeded(){return false;}
-        public boolean isCancellationRequested(){return false;}public void throwIfCancellationRequested(){}
-    };
-    private final FluidThermodynamics model=FluidTestSupport.networkModel();
-    private final int components=model.components().size();
-    private final int water=components-1,nitrogen=MaterialTestBasis.NITROGEN;
-
-    @AfterEach void counters(){FluidRuntimeDiagnostics.ENABLED=false;FluidRuntimeDiagnostics.reset();}
-    private static long counter(String name){return FluidRuntimeDiagnostics.sample().get(name);}
-    private static void countFromHere(){FluidRuntimeDiagnostics.reset();FluidRuntimeDiagnostics.ENABLED=true;}
-
-    // ---------------- fixtures: islands with distinct identities ----------------
-
-    private double[] pure(int component){var n=new double[components];n[component]=1;return n;}
-    /** A line of blocks along x in row z, identities first, first + 1, ...; pipes between the ends. */
-    private static List<PhysicalFluidTopology.Device> line(long first,int z,Kind... kinds) {
-        var devices=new ArrayList<PhysicalFluidTopology.Device>();
-        for(int i=0;i<kinds.length;i++)devices.add(new PhysicalFluidTopology.Device(first+i,new PhysicalFluidTopology.Position("minecraft:overworld",i,0,z),kinds[i],PhysicalFluidTopology.Direction.EAST,BLOCK,new FlowControl.Passive()));
-        return devices;
-    }
-    private PassiveNetwork island(List<PhysicalFluidTopology.Device> devices,Map<Long,FluidDeviceSpec> specs) {
-        var stock=new LinkedHashMap<Long,PassiveNetwork.Reservoir>();
-        for(var d:devices){var spec=specs.get(d.id());if(spec!=null)stock.put(d.id(),FluidTestSupport.chargedBoundary(spec,d,model));}
-        var connected=PhysicalFluidTopology.compile(devices,stock).islands().stream().filter(i->i.physicalIds().size()==devices.size()).toList();
-        assertEquals(1,connected.size());return connected.getFirst().graph();
-    }
-    /** Water at 1 atm against nitrogen at 2 bar: the line cannot flow, it certifies REST. */
-    private PassiveNetwork deadHeadedLine(long first,int z) {
-        return island(line(first,z,Kind.GENERATOR,Kind.PIPE,Kind.PIPE,Kind.PIPE,Kind.RESERVOIR),
-                Map.of(first,new FluidDeviceSpec(1,298.15,101325,pure(water)),first+4,new FluidDeviceSpec(1,298.15,200000,pure(nitrogen))));
-    }
-    /** Two nitrogen tanks a kilopascal apart: they settle to solver-noise flows and certify STEADY with finite deltas. */
-    private PassiveNetwork closedPair(long first,int z) {
-        return island(line(first,z,Kind.RESERVOIR,Kind.PIPE,Kind.PIPE,Kind.PIPE,Kind.RESERVOIR),
-                Map.of(first,new FluidDeviceSpec(1,298.15,150000,pure(nitrogen)),first+4,new FluidDeviceSpec(1,298.15,149000,pure(nitrogen))));
-    }
-    /** A nitrogen generator feeding a void: STEADY through-flow with no finite node. */
-    private PassiveNetwork generatorToVoid(long first,int z) {
-        return island(line(first,z,Kind.GENERATOR,Kind.PIPE,Kind.PIPE,Kind.PIPE,Kind.PIPE,Kind.VOID),
-                Map.of(first,new FluidDeviceSpec(1,298.15,150000,pure(nitrogen)),first+5,new FluidDeviceSpec(1,298.15,101325,pure(nitrogen))));
-    }
-    /** A 1000 m3 tank filling from a 150 kPa generator: it stays awake for hours. */
-    private PassiveNetwork slowFill(long first,int z) {
-        return island(line(first,z,Kind.GENERATOR,Kind.PIPE,Kind.PIPE,Kind.PIPE,Kind.PIPE,Kind.RESERVOIR),
-                Map.of(first,new FluidDeviceSpec(1,298.15,150000,pure(nitrogen)),first+5,new FluidDeviceSpec(1000,298.15,101325,pure(nitrogen))));
-    }
-    private PassiveNetwork loneTank(long node) {
-        return new PassiveNetwork(List.of(new PassiveNetwork.Reservoir(node,0,model.initialNitrogenCharge(1,298.15,101325,()->{}))),List.of());
-    }
-
-    // ---------------- a coordinator whose worker solves each admitted slice at once ----------------
-
-    private final class Rig {
-        final long[] epoch;final FluidThermodynamics model;
-        final Map<Long,IslandCoordinator.Attempt> attempts=new LinkedHashMap<>();
-        final Map<Long,ProcessSolveServices.FluidIslandCommand> commands=new HashMap<>();
-        final IslandCoordinator coordinator;
-        long requests;int solves;
-        Rig(CertificatePolicy policy){this(policy,FluidCheckpointStoreTest.this.model,0);}
-        Rig(CertificatePolicy policy,FluidThermodynamics model,long start) {
-            this.model=model;epoch=new long[]{start};
-            coordinator=new IslandCoordinator(new IslandCoordinator.Dispatcher() {
-                public int availableWorkers(){return 64-attempts.size();}
-                public long nextRequestId(){return ++requests;}
-                public boolean submit(IslandCoordinator.Attempt attempt,ProcessSolveServices.FluidIslandCommand command){attempts.put(attempt.slice().requestId(),attempt);commands.put(attempt.slice().requestId(),command);return true;}
-                public void cancel(long request){throw new AssertionError("no deadlines here");}
-            },changed->{},()->0L,new IslandCoordinator.Settings(30_000_000_000L,20_000_000_000L,64,false,100,policy),IslandCoordinator.CommitHook.NO_MATERIAL,()->epoch[0]);
-        }
-        void register(long id,PassiveNetwork graph) {
-            coordinator.register(new IslandCoordinator.Snapshot(id,0,graph,new IslandClock.Snapshot(epoch[0],epoch[0],0,100),FallbackAllowance.NONE,Optional.empty(),Optional.empty(),"READY"),model);
-        }
-        void load(FluidCheckpointCodec.Checkpoint checkpoint){for(var entry:checkpoint.islands())coordinator.register(entry.snapshot(),model);}
-        void drain() {
-            while(!attempts.isEmpty()) {
-                for(long request:List.copyOf(attempts.keySet())) {
-                    var attempt=attempts.remove(request);var command=commands.remove(request);solves++;
-                    coordinator.completed(attempt,Optional.of((ProcessSolveServices.FluidIslandSolveResult)command.solve(NEVER)));
-                }
-                coordinator.pump();
-            }
-        }
-        void tick(){epoch[0]++;coordinator.tick();drain();}
-        void run(long ticks){for(long i=0;i<ticks;i++)tick();}
-        void runUntilCertified(Collection<Long> ids,int ticks) {
-            for(int i=0;i<ticks&&!ids.stream().allMatch(id->stored(id).certificate().isPresent());i++)tick();
-            for(long id:ids)assertTrue(stored(id).certificate().isPresent(),"island "+id+" did not certify: "+coordinator.certificationRefusal(id));
-        }
-        IslandCoordinator.Snapshot stored(long id){return coordinator.observe(id);}
-        IslandCoordinator.Snapshot read(long id){return coordinator.snapshot(id);}
-        /** What a save captures: every island materialised to now. */
-        FluidCheckpointCodec.Checkpoint checkpoint(){return checkpoint(new BufferedTransfers.Snapshot(0,Map.of(),Map.of()),List.of());}
-        FluidCheckpointCodec.Checkpoint checkpoint(BufferedTransfers.Snapshot transfers,List<FixedSplitModule.Snapshot> modules) {
-            return new FluidCheckpointCodec.Checkpoint(coordinator.snapshots().stream().map(s->new FluidCheckpointCodec.IslandEntry("minecraft:overworld",PACKAGE,1e-9,s)).toList(),transfers,modules);
-        }
-    }
+class FluidCheckpointStoreTest extends CertifyingRig.Islands {
     @TempDir Path temporary;
-    private WorldTopologyLedger.Snapshot world(long onlineTick) {
-        var empty=WorldTopologyLedger.Snapshot.empty(MaterialCatalog.bundled());
-        return new WorldTopologyLedger.Snapshot(onlineTick,empty.nextIdentity(),empty.active(),empty.events(),empty.constructed(),empty.destroyed(),empty.basis(),empty.recoveries());
-    }
     private static FluidCheckpointStore directory(Path folder){return FluidCheckpointStore.directory(folder,Runnable::run,false);}
     private static Path core(Path folder){return folder.resolve(FluidCheckpointStore.CORE_NAME);}
     private static Path pack(Path folder,long number){return folder.resolve(FluidCheckpointStore.UNIT_DIRECTORY).resolve("fluid-"+number+".pack");}
@@ -183,7 +81,7 @@ class FluidCheckpointStoreTest {
      * a module, a queued topology event and the no-flow and moving certificates exactly.
      */
     @Test void clocksMaterialFencesPendingEventsModulesCertificatesAndHeldIslandsRoundTripThroughTheFiles() throws IOException {
-        var rig=new Rig(CertificatePolicy.defaults());
+        var rig=rig(CertificatePolicy.defaults());
         rig.register(1,deadHeadedLine(100,0));rig.register(2,closedPair(200,4));rig.register(3,generatorToVoid(300,8));rig.register(4,slowFill(400,12));
         rig.runUntilCertified(List.of(1L,2L,3L),2_000);rig.run(1_234-rig.epoch[0]);
         var fence=UUID.randomUUID();rig.coordinator.fence(fence,1_500,List.of(4L));
@@ -239,7 +137,7 @@ class FluidCheckpointStoreTest {
 
     /** A save after no change writes no unit and no pack; after one island's solve, one new pack of exactly that unit. */
     @Test void aSaveWritesOnlyTheUnitsOfIslandsThatChanged() throws IOException {
-        var rig=new Rig(new CertificatePolicy(true,1e-9,1e-6,5,2,0));
+        var rig=rig(new CertificatePolicy(true,1e-9,1e-6,5,2,0));
         rig.register(1,deadHeadedLine(100,0));rig.register(2,closedPair(200,4));rig.register(3,slowFill(300,8));
         rig.runUntilCertified(List.of(1L,2L),2_000);
         var ledger=new WorldTopologyLedger(world(0));
@@ -269,7 +167,7 @@ class FluidCheckpointStoreTest {
      * failed writes every unit afresh at its next save.
      */
     @Test void aCrashBetweenAPackAndItsCoreRecordLeavesThePreviousCheckpointAndAnOrphanTheLoadDeletes() throws IOException {
-        var rig=new Rig(CertificatePolicy.defaults());rig.register(1,deadHeadedLine(100,0));rig.register(2,slowFill(200,4));
+        var rig=rig(CertificatePolicy.defaults());rig.register(1,deadHeadedLine(100,0));rig.register(2,slowFill(200,4));
         rig.runUntilCertified(List.of(1L),2_000);
         var folder=temporary.resolve("crash");var failing=new Failing(new FluidCheckpointStore.Directory(folder,false));var store=FluidCheckpointStore.of(failing,Runnable::run);
         var data=new FluidSavedData(rig.checkpoint(),world(rig.epoch[0]),key->model,store);
@@ -296,7 +194,7 @@ class FluidCheckpointStoreTest {
 
     /** Commits run in order on the IO executor; one whose predecessor failed is not written, and the next save is whole. */
     @Test void aCommitWhosePredecessorFailedIsNotWrittenAndTheNextSaveWritesEverythingAfresh() throws IOException {
-        var rig=new Rig(CertificatePolicy.defaults());rig.register(1,slowFill(100,0));rig.register(2,deadHeadedLine(200,4));
+        var rig=rig(CertificatePolicy.defaults());rig.register(1,slowFill(100,0));rig.register(2,deadHeadedLine(200,4));
         rig.runUntilCertified(List.of(2L),2_000);
         var folder=temporary.resolve("chain");var queue=new ArrayDeque<Runnable>();
         var failing=new Failing(new FluidCheckpointStore.Directory(folder,false));var store=FluidCheckpointStore.of(failing,queue::add);
@@ -406,7 +304,7 @@ class FluidCheckpointStoreTest {
     /** Ten thousand certified islands: the index saves and loads without a world-wide bound, and warm saves write nothing. */
     @Test void tenThousandIslandsSaveAndLoadThroughTheIndex() throws IOException {
         var policy=CertificatePolicy.defaults();
-        var template=new Rig(policy);template.register(1,loneTank(1_000_000));template.runUntilCertified(List.of(1L),2_000);
+        var template=rig(policy);template.register(1,loneTank(1_000_000));template.runUntilCertified(List.of(1L),2_000);
         var t=template.read(1);var certified=t.certificate().orElseThrow();var saved=certified.saved().orElseThrow();
         var snapshots=new ArrayList<IslandCoordinator.Snapshot>(10_000);
         for(long id=1;id<=10_000;id++) {
@@ -421,7 +319,7 @@ class FluidCheckpointStoreTest {
                     Optional.of(new IslandCoordinator.Certified(certified.drift(),certified.sinceTick(),certified.baseTick(),certified.horizonTick(),certified.largestFlow(),Optional.of(copy)))));
         }
         countFromHere();
-        var rig=new Rig(policy,model,template.epoch[0]);for(var s:snapshots)rig.coordinator.register(s,model);
+        var rig=rig(policy,model,template.epoch[0]);for(var s:snapshots)rig.coordinator.register(s,model);
         assertEquals(10_000,counter("certificatesRestored"));
         var folder=temporary.resolve("ten-thousand");var world=world(template.epoch[0]);
         var data=new FluidSavedData(rig.checkpoint(),world,key->model,directory(folder));data.bindCapture(()->new FluidSavedData.Capture(rig.checkpoint(),world));
@@ -429,7 +327,7 @@ class FluidCheckpointStoreTest {
         data.save(new CompoundTag(),null);var warm=data.lastSave();
         assertEquals(10_000,cold.payloadsEncoded());assertEquals(0,warm.payloadsEncoded());assertEquals(10_000,warm.payloadsReused());assertEquals(0,warm.stats().pack());
         long read0=System.nanoTime();var loaded=FluidSavedData.read(directory(folder),key->model).orElseThrow();long read1=System.nanoTime();
-        var restarted=new Rig(policy,model,template.epoch[0]);long register0=System.nanoTime();restarted.load(loaded.checkpoint());long register1=System.nanoTime();
+        var restarted=rig(policy,model,template.epoch[0]);long register0=System.nanoTime();restarted.load(loaded.checkpoint());long register1=System.nanoTime();
         loaded.bindCapture(()->new FluidSavedData.Capture(restarted.checkpoint(),loaded.world().orElseThrow()));
         loaded.save(new CompoundTag(),null);var seeded=loaded.lastSave();
         assertEquals(0,seeded.payloadsEncoded(),"the first save after the load encodes nothing");assertEquals(10_000,seeded.payloadsReused());
@@ -449,13 +347,13 @@ class FluidCheckpointStoreTest {
      */
     @Test void theFirstSaveAfterALoadEncodesNothingThatDidNotChange() throws IOException {
         var policy=CertificatePolicy.defaults();
-        var rig=new Rig(policy);rig.register(1,deadHeadedLine(100,0));rig.register(2,closedPair(200,4));rig.register(3,generatorToVoid(300,8));rig.register(4,slowFill(400,12));
+        var rig=rig(policy);rig.register(1,deadHeadedLine(100,0));rig.register(2,closedPair(200,4));rig.register(3,generatorToVoid(300,8));rig.register(4,slowFill(400,12));
         rig.runUntilCertified(List.of(1L,2L,3L),2_000);
         var folder=temporary.resolve("seeded");var world=world(rig.epoch[0]);
         new FluidSavedData(rig.checkpoint(),world,key->model,directory(folder)).save(new CompoundTag(),null);
         for(var restartPolicy:List.of(policy,CertificatePolicy.disabled())) {
             var loaded=FluidSavedData.read(directory(folder),key->model).orElseThrow();
-            var restarted=new Rig(restartPolicy,model,rig.epoch[0]);restarted.load(loaded.checkpoint());
+            var restarted=rig(restartPolicy,model,rig.epoch[0]);restarted.load(loaded.checkpoint());
             loaded.bindCapture(()->new FluidSavedData.Capture(restarted.checkpoint(),loaded.world().orElseThrow()));
             loaded.save(new CompoundTag(),null);var first=loaded.lastSave();
             assertFalse(first.topologyEncoded(),"the topology unit stays");

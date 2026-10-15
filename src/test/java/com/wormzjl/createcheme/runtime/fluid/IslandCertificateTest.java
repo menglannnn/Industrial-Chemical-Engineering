@@ -22,16 +22,14 @@ import static org.junit.jupiter.api.Assertions.*;
  */
 class IslandCertificateTest {
     private static final PipeResistance.Geometry BLOCK=new PipeResistance.Geometry(1,.05,.000045,0);
-    private static final BoundedCpuSolveService.CancellationToken NEVER=new BoundedCpuSolveService.CancellationToken() {
-        public long deadlineNanos(){return Long.MAX_VALUE;}public boolean isDeadlineExceeded(){return false;}
-        public boolean isCancellationRequested(){return false;}public void throwIfCancellationRequested(){}
-    };
     private final FluidThermodynamics model=FluidTestSupport.networkModel();
     private final int components=model.components().size();
     private final int water=components-1,nitrogen=MaterialTestBasis.NITROGEN;
     private final int methane=MaterialCatalog.bundled().requirePackage("createcheme:tjl20_methane_nitrogen").components().indexOf("Methane");
 
     @AfterEach void counters(){FluidRuntimeDiagnostics.ENABLED=false;FluidRuntimeDiagnostics.reset();}
+    /** A rig on this model that records what it publishes and replays. */
+    private CertifyingRig rig(CertificatePolicy policy){return new CertifyingRig(policy,model,0).recording();}
 
     // ---------------- fixtures ----------------
 
@@ -102,46 +100,6 @@ class IslandCertificateTest {
 
     // ---------------- the coordinator with real solves ----------------
 
-    /** A coordinator on a shared epoch whose worker solves each admitted slice at once, as the pool would. */
-    private final class Rig {
-        final long[] epoch={0};
-        final Map<Long,IslandCoordinator.Attempt> attempts=new LinkedHashMap<>();
-        final Map<Long,ProcessSolveServices.FluidIslandCommand> commands=new HashMap<>();
-        final List<IslandCoordinator.Snapshot> published=new ArrayList<>(),replayed=new ArrayList<>();
-        final IslandCoordinator coordinator;
-        long requests;int solves;
-        Rig(CertificatePolicy policy) {
-            coordinator=new IslandCoordinator(new IslandCoordinator.Dispatcher() {
-                public int availableWorkers(){return 64-attempts.size();}
-                public long nextRequestId(){return ++requests;}
-                public boolean submit(IslandCoordinator.Attempt attempt,ProcessSolveServices.FluidIslandCommand command){attempts.put(attempt.slice().requestId(),attempt);commands.put(attempt.slice().requestId(),command);return true;}
-                public void cancel(long request){throw new AssertionError("no deadlines here");}
-            },published::addAll,()->0L,new IslandCoordinator.Settings(30_000_000_000L,20_000_000_000L,64,false,100,policy),IslandCoordinator.CommitHook.NO_MATERIAL,()->epoch[0]);
-            coordinator.onReplayed(replayed::addAll);
-        }
-        void register(long id,PassiveNetwork graph) {
-            coordinator.register(new IslandCoordinator.Snapshot(id,0,graph,new IslandClock.Snapshot(0,0,0,100),FallbackAllowance.NONE,Optional.empty(),Optional.empty(),"READY"),model);
-        }
-        /** Solves and completes everything admitted, then pumps, until nothing is outstanding: one completion drain. */
-        void drain() {
-            while(!attempts.isEmpty()) {
-                for(long request:List.copyOf(attempts.keySet())) {
-                    var attempt=attempts.remove(request);var command=commands.remove(request);solves++;
-                    coordinator.completed(attempt,Optional.of((ProcessSolveServices.FluidIslandSolveResult)command.solve(NEVER)));
-                }
-                coordinator.pump();
-            }
-        }
-        void tick(){epoch[0]++;coordinator.tick();drain();}
-        void run(int ticks){for(int i=0;i<ticks;i++)tick();}
-        /** Runs until the island certifies, at most the given number of ticks; the tick it certified at, or -1. */
-        long runUntilCertified(long id,int ticks) {
-            for(int i=0;i<ticks;i++){tick();if(stored(id).certificate().isPresent())return epoch[0];}
-            return -1;
-        }
-        IslandCoordinator.Snapshot stored(long id){return coordinator.observe(id);}
-        IslandCoordinator.Snapshot read(long id){return coordinator.snapshot(id);}
-    }
     private static long counter(String name){return FluidRuntimeDiagnostics.sample().get(name);}
     private static void countFromHere(){FluidRuntimeDiagnostics.reset();FluidRuntimeDiagnostics.ENABLED=true;}
     private static PassiveNetwork.Reservoir node(PassiveNetwork graph,long id){return graph.reservoirs().stream().filter(n->n.id()==id).findFirst().orElseThrow();}
@@ -154,8 +112,8 @@ class IslandCertificateTest {
     /** Plan section 5 item 5: the dead-headed line and the dead-headed pump carry exactly nothing and certify the identity (drift 0). */
     @Test void deadHeadedLinesCertifyRestAndThenCostNothing() {
         for(var fixture:List.of(Map.entry("dead-headed line",deadHeadedLine()),Map.entry("dead-headed pump",deadHeadedPump()))) {
-            var rig=new Rig(CertificatePolicy.defaults());rig.register(1,fixture.getValue());
-            long at=rig.runUntilCertified(1,2_000);
+            var rig=rig(CertificatePolicy.defaults());rig.register(1,fixture.getValue());
+            long at=rig.certifiedAt(1,2_000);
             System.out.println(fixture.getKey()+": certified at tick "+at+" "+rig.stored(1).certificate()+" refusal="+rig.coordinator.certificationRefusal(1));
             assertTrue(at>0,fixture.getKey()+" did not certify: "+rig.coordinator.certificationRefusal(1));
             var certified=rig.stored(1).certificate().orElseThrow();
@@ -181,8 +139,8 @@ class IslandCertificateTest {
 
     /** Plan section 5 item 5: a settled closed pair is stationary to eps_s and certifies with a long horizon. */
     @Test void aSettledClosedPairCertifiesWithALongHorizon() {
-        var rig=new Rig(CertificatePolicy.defaults());rig.register(1,closedPair());
-        long at=rig.runUntilCertified(1,40_000);
+        var rig=rig(CertificatePolicy.defaults());rig.register(1,closedPair());
+        long at=rig.certifiedAt(1,40_000);
         System.out.println("closed pair: certified at tick "+at+" "+rig.stored(1).certificate()+" refusal="+rig.coordinator.certificationRefusal(1));
         assertTrue(at>0,"closed pair did not certify: "+rig.coordinator.certificationRefusal(1));
         var certified=rig.stored(1).certificate().orElseThrow();
@@ -193,8 +151,8 @@ class IslandCertificateTest {
         assertFalse(rig.coordinator.retainsSolver(1));
         // With a short window its noise flows need not repeat at the revalidation (a fresh solver finds other noise);
         // then the island drops and certifies again from two fresh intervals, and never strays from its inventory.
-        var shortWindow=new Rig(new CertificatePolicy(true,1e-9,1e-6,3,2,0));shortWindow.register(1,closedPair());
-        long first=shortWindow.runUntilCertified(1,40_000);assertTrue(first>0);
+        var shortWindow=rig(new CertificatePolicy(true,1e-9,1e-6,3,2,0));shortWindow.register(1,closedPair());
+        long first=shortWindow.certifiedAt(1,40_000);assertTrue(first>0);
         var inventory=node(shortWindow.read(1).graph(),5).inventory().moles();
         int solves=shortWindow.solves;shortWindow.run(4_000);
         System.out.println("closed pair, three-interval window: "+(shortWindow.solves-solves)+" solves in 40 intervals, "+shortWindow.stored(1).certificate()+" refusal="+shortWindow.coordinator.certificationRefusal(1));
@@ -205,9 +163,9 @@ class IslandCertificateTest {
 
     /** Plan section 5 item 6: generator to void replays STEADY with exactly conserved totals and within delta_budget of solving. */
     @Test void generatorToVoidReplaysWithinBudgetOfTheSolvedTrajectory() {
-        var reference=new Rig(CertificatePolicy.disabled());reference.register(1,generatorToVoid(150000));
-        var certified=new Rig(CertificatePolicy.defaults());certified.register(1,generatorToVoid(150000));
-        long at=certified.runUntilCertified(1,2_000);
+        var reference=rig(CertificatePolicy.disabled());reference.register(1,generatorToVoid(150000));
+        var certified=rig(CertificatePolicy.defaults());certified.register(1,generatorToVoid(150000));
+        long at=certified.certifiedAt(1,2_000);
         System.out.println("generator to void: certified at tick "+at+" "+certified.stored(1).certificate()+" refusal="+certified.coordinator.certificationRefusal(1));
         assertTrue(at>0,certified.coordinator.certificationRefusal(1));
         assertTrue(certified.stored(1).certificate().orElseThrow().horizonTick()<Long.MAX_VALUE,"a through-flow is rechecked at its horizon");
@@ -233,9 +191,9 @@ class IslandCertificateTest {
 
     /** Plan section 5 item 6: a tank passing a matched throughput certifies, its inventory within delta_budget of solving. */
     @Test void aMatchedThroughputTankReplaysWithinBudgetAndConservesExactly() {
-        var reference=new Rig(CertificatePolicy.disabled());var certified=new Rig(CertificatePolicy.defaults());
+        var reference=rig(CertificatePolicy.disabled());var certified=rig(CertificatePolicy.defaults());
         for(var rig:List.of(reference,certified))rig.register(1,throughTank(pure(nitrogen),pure(nitrogen),1,113000));
-        long at=certified.runUntilCertified(1,20_000);
+        long at=certified.certifiedAt(1,20_000);
         System.out.println("matched throughput: certified at tick "+at+" "+certified.stored(1).certificate()+" refusal="+certified.coordinator.certificationRefusal(1));
         assertTrue(at>0,certified.coordinator.certificationRefusal(1));
         var initial=totals(certified.stored(1).graph());long base=certified.stored(1).clock().committedTick();
@@ -264,7 +222,7 @@ class IslandCertificateTest {
         // The flush decays exponentially, so what is left of it when an interval first changes by less than eps_s
         // scales with eps_s: under 1e-6 of the feed fraction at 1e-9, under 1e-4 at the default 1e-7.
         for(var policy:List.of(new CertificatePolicy(true,1e-9,1e-6,17_280,2,0),CertificatePolicy.defaults())) {
-            var rig=new Rig(policy);rig.register(1,throughTank(mix(.6),mix(.4),10,113000));
+            var rig=rig(policy);rig.register(1,throughTank(mix(.6),mix(.4),10,113000));
             double largest=0,allowed=1000*policy.stationaryTolerance();String refusal=null;
             for(int tick=1;tick<=40_000&&rig.stored(1).certificate().isEmpty();tick++) {
                 rig.tick();if(tick%100!=0)continue;
@@ -283,7 +241,7 @@ class IslandCertificateTest {
     /** Plan section 5 item 5: slow monotonic evolution (a generator filling a large tank) fails stationarity. */
     @Test void aSlowlyFillingTankNeverCertifies() {
         var devices=line(Kind.GENERATOR,Kind.PIPE,Kind.PIPE,Kind.PIPE,Kind.PIPE,Kind.RESERVOIR);
-        var rig=new Rig(CertificatePolicy.defaults());
+        var rig=rig(CertificatePolicy.defaults());
         rig.register(1,island(devices,Map.of(1L,new FluidDeviceSpec(1,298.15,150000,pure(nitrogen)),6L,new FluidDeviceSpec(1000,298.15,101325,pure(nitrogen)))));
         rig.run(20_000);
         System.out.println("slow fill: "+rig.stored(1).certificate()+" refusal="+rig.coordinator.certificationRefusal(1));
@@ -293,7 +251,7 @@ class IslandCertificateTest {
 
     /** Plan section 5 item 6: a pump heating the gas it circulates must not certify. */
     @Test void aPumpHeatingItsLoopDoesNotCertify() {
-        var rig=new Rig(CertificatePolicy.defaults());rig.register(1,pumpedLoop());
+        var rig=rig(CertificatePolicy.defaults());rig.register(1,pumpedLoop());
         rig.run(20_000);
         var last=rig.stored(1).lastResult().orElseThrow();
         System.out.println("pumped loop: pump work "+last.pumpWorkJoule()+" J per interval, "+rig.stored(1).certificate()+" refusal="+rig.coordinator.certificationRefusal(1));
@@ -304,8 +262,8 @@ class IslandCertificateTest {
     /** Plan section 5 item 5: at the horizon one slice is solved; a repeat renews the certificate, keeping its since tick. */
     @Test void aHorizonRevalidationRenewsAStationaryCertificate() {
         var policy=new CertificatePolicy(true,1e-9,1e-6,3,2,0);
-        var rig=new Rig(policy);rig.register(1,generatorToVoid(150000));
-        long at=rig.runUntilCertified(1,40_000);assertTrue(at>0,rig.coordinator.certificationRefusal(1));
+        var rig=rig(policy);rig.register(1,generatorToVoid(150000));
+        long at=rig.certifiedAt(1,40_000);assertTrue(at>0,rig.coordinator.certificationRefusal(1));
         var first=rig.stored(1).certificate().orElseThrow();assertEquals(first.baseTick()+300,first.horizonTick(),"three intervals");
         countFromHere();int solves=rig.solves;
         // Woken at the horizon, the island's one slice [horizon, horizon + 100] is due a cadence later.
@@ -325,8 +283,8 @@ class IslandCertificateTest {
     @Test void aHorizonRevalidationThatNoLongerRepeatsDropsTheCertificate() {
         // A loose tolerance lets the flush certify while its composition still moves; at the horizon it has moved on.
         var policy=new CertificatePolicy(true,1e-6,1e-3,5,2,0);
-        var rig=new Rig(policy);rig.register(1,throughTank(mix(.6),mix(.4),10,113000));
-        long at=rig.runUntilCertified(1,40_000);assertTrue(at>0,rig.coordinator.certificationRefusal(1));
+        var rig=rig(policy);rig.register(1,throughTank(mix(.6),mix(.4),10,113000));
+        long at=rig.certifiedAt(1,40_000);assertTrue(at>0,rig.coordinator.certificationRefusal(1));
         var first=rig.stored(1).certificate().orElseThrow();
         countFromHere();
         rig.run((int)(first.horizonTick()+100-rig.epoch[0]));
@@ -349,8 +307,8 @@ class IslandCertificateTest {
      * vessels and junction holdups - changes by exactly what crossed the boundaries in the replayed spans.
      */
     @Test void aCertifiedIslandReplaysItsJunctionHoldupsExactly() {
-        var rig=new Rig(new CertificatePolicy(true,1e-6,1e-3,5,2,0));rig.register(1,flushThroughJunction(mix(.6),mix(.4)));
-        long at=rig.runUntilCertified(1,40_000);assertTrue(at>0,rig.coordinator.certificationRefusal(1));
+        var rig=rig(new CertificatePolicy(true,1e-6,1e-3,5,2,0));rig.register(1,flushThroughJunction(mix(.6),mix(.4)));
+        long at=rig.certifiedAt(1,40_000);assertTrue(at>0,rig.coordinator.certificationRefusal(1));
         var certified=rig.stored(1).certificate().orElseThrow();var saved=certified.saved().orElseThrow();
         var before=saved.interval().before();var base=saved.interval().result().graph();
         long baseTick=saved.baseTick(),duration=saved.interval().endTick()-saved.interval().startTick();
@@ -391,8 +349,8 @@ class IslandCertificateTest {
     /** Plan sections 3.6 and 5 item 5: a hold freezes committed time; resume discards the certificate and requalifies. */
     @Test void aPropertyHoldFreezesACertifiedIslandAndResumeRequalifiesOverTheConfirmCount() {
         for(int confirm:new int[]{2,3}) {
-            var rig=new Rig(new CertificatePolicy(true,1e-9,1e-6,17_280,confirm,0));rig.register(1,deadHeadedLine());
-            long at=rig.runUntilCertified(1,2_000);assertEquals(100L*confirm,at,"exact rest certifies after the confirm count");
+            var rig=rig(new CertificatePolicy(true,1e-9,1e-6,17_280,confirm,0));rig.register(1,deadHeadedLine());
+            long at=rig.certifiedAt(1,2_000);assertEquals(100L*confirm,at,"exact rest certifies after the confirm count");
             rig.run(537);
             rig.coordinator.suspendForPropertyChange("HELD: test property change");
             long hold=rig.epoch[0];var held=rig.stored(1);
@@ -417,8 +375,8 @@ class IslandCertificateTest {
 
     /** Plan section 5 item 3: events while certified are answered by materialisation to their exact tick, in order. */
     @Test void eventsInsideACertifiedWindowAlignByMaterialisationAtTheirExactTicks() {
-        var rig=new Rig(CertificatePolicy.defaults());rig.register(1,generatorToVoid(150000));
-        long at=rig.runUntilCertified(1,2_000);assertTrue(at>0);
+        var rig=rig(CertificatePolicy.defaults());rig.register(1,generatorToVoid(150000));
+        long at=rig.certifiedAt(1,2_000);assertTrue(at>0);
         long base=rig.stored(1).certificate().orElseThrow().baseTick();
         var recorded=rig.stored(1).lastResult().orElseThrow();double[] rate=recorded.boundaries().stream().filter(b->b.nodeId()==6).findFirst().orElseThrow().moles();
         // A fence at the committed tick: aligned at once, nothing materialised.
@@ -458,10 +416,10 @@ class IslandCertificateTest {
      * due deadlines, still at its own tick.
      */
     @Test void aModuleDriveWakesACertifiedIslandAtItsExactTick() {
-        var rig=new Rig(CertificatePolicy.defaults());rig.register(1,deadHeadedLine());
+        var rig=rig(CertificatePolicy.defaults());rig.register(1,deadHeadedLine());
         long[] drive={Long.MAX_VALUE};
         rig.coordinator.drives((island,from,to)->drive[0]>=from&&drive[0]<=to?drive[0]:Long.MAX_VALUE);
-        long at=rig.runUntilCertified(1,2_000);assertEquals(200,at);
+        long at=rig.certifiedAt(1,2_000);assertEquals(200,at);
         rig.run(300);
         drive[0]=rig.epoch[0]+250;rig.coordinator.drivesChanged(1);
         rig.run(249);assertTrue(rig.stored(1).certificate().isPresent());assertEquals(at,rig.stored(1).clock().committedTick());
@@ -476,7 +434,7 @@ class IslandCertificateTest {
         rig.run(100);assertTrue(rig.stored(1).certificate().isEmpty(),"a drive in the coming cadence blocks certification");
         assertEquals("a module drive is due",rig.coordinator.certificationRefusal(1));
         drive[0]=Long.MAX_VALUE;rig.coordinator.drivesChanged(1);
-        long again=rig.runUntilCertified(1,1_000);assertTrue(again>0);long base=rig.stored(1).clock().committedTick();
+        long again=rig.certifiedAt(1,1_000);assertTrue(again>0);long base=rig.stored(1).clock().committedTick();
         rig.run(500);
         // Announced late: nothing moves in the announcing call; the next tick materialises exactly to it.
         drive[0]=rig.epoch[0]-120;rig.coordinator.drivesChanged(1);
@@ -490,14 +448,14 @@ class IslandCertificateTest {
 
     /** Plan section 5 item 6: a configuration event replaces the island; the new one solves and qualifies afresh. */
     @Test void changedControlsReplaceACertifiedIslandWithAnAwakeOne() {
-        var rig=new Rig(CertificatePolicy.defaults());rig.register(1,generatorToVoid(150000));
-        long at=rig.runUntilCertified(1,2_000);assertTrue(at>0);double before=rig.stored(1).certificate().orElseThrow().largestFlow();
+        var rig=rig(CertificatePolicy.defaults());rig.register(1,generatorToVoid(150000));
+        long at=rig.certifiedAt(1,2_000);assertTrue(at>0);double before=rig.stored(1).certificate().orElseThrow().largestFlow();
         rig.run(250);
         var event=UUID.randomUUID();long tick=rig.epoch[0];rig.coordinator.fence(event,tick,List.of(1L));assertTrue(rig.coordinator.aligned(event,List.of(1L)));
         rig.coordinator.topology(event,Set.of(1L),List.of(new IslandCoordinator.Replacement(2,generatorToVoid(200000))),model,tick,tick,Map.of(),Set.of(),()->{});
         assertTrue(rig.stored(2).certificate().isEmpty(),"a replaced island starts awake");
         assertTrue(rig.coordinator.retainsSolver(2));
-        int solves=rig.solves;long again=rig.runUntilCertified(2,2_000);
+        int solves=rig.solves;long again=rig.certifiedAt(2,2_000);
         assertTrue(again>0);assertTrue(rig.solves-solves>=2,"it qualifies over fresh solved intervals");
         assertTrue(rig.stored(2).certificate().orElseThrow().largestFlow()>before*1.1,"the new control's flow");
     }
@@ -754,8 +712,8 @@ class IslandCertificateTest {
      * have refused the qualifying pair.
      */
     @Test void aSettledBenchmarkClosedLadderCertifiesOnceItsQuietPipesAreExempt() {
-        var rig=new Rig(CertificatePolicy.defaults());rig.register(1,benchmarkLadder(65,false));
-        long at=rig.runUntilCertified(1,6_000);
+        var rig=rig(CertificatePolicy.defaults());rig.register(1,benchmarkLadder(65,false));
+        long at=rig.certifiedAt(1,6_000);
         var evidence=rig.coordinator.certificationEvidence(1);
         System.out.println("closed ladder 65: certified at tick "+at+" "+rig.stored(1).certificate()+" refusal="+rig.coordinator.certificationRefusal(1)+" evidence="+evidence);
         assertTrue(at>0,"did not certify: "+rig.coordinator.certificationRefusal(1));
@@ -804,7 +762,7 @@ class IslandCertificateTest {
         var devices=line(Kind.GENERATOR,Kind.PIPE,Kind.PIPE,Kind.PIPE,Kind.PIPE,Kind.RESERVOIR);
         var slowFill=island(devices,Map.of(1L,new FluidDeviceSpec(1,298.15,150000,pure(nitrogen)),6L,new FluidDeviceSpec(1000,298.15,101325,pure(nitrogen))));
         for(var fixture:List.of(Map.entry("slow fill",slowFill),Map.entry("pumped loop",pumpedLoop()),Map.entry("stress100 ladder 7",benchmarkLadder(7,true)))) {
-            var off=new Rig(CertificatePolicy.disabled());var on=new Rig(new CertificatePolicy(true,1e-9,1e-6,17_280,2,0));
+            var off=rig(CertificatePolicy.disabled());var on=rig(new CertificatePolicy(true,1e-9,1e-6,17_280,2,0));
             for(var rig:List.of(off,on)){rig.register(1,fixture.getValue());rig.run(4_000);}
             assertTrue(on.stored(1).certificate().isEmpty(),fixture.getKey()+" certified");
             assertNotNull(on.coordinator.certificationEvidence(1),fixture.getKey()+": the evidence ran");

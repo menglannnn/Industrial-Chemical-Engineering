@@ -1,5 +1,6 @@
 package com.wormzjl.createcheme.runtime.fluid;
 
+import com.wormzjl.createcheme.fluid.support.FluidTestSupport;
 import com.wormzjl.createcheme.runtime.ProcessSolveServices;
 import com.wormzjl.createcheme.science.fluid.network.*;
 import com.wormzjl.createcheme.science.fluid.thermo.FluidThermodynamics;
@@ -10,7 +11,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class PropertyReloadCoordinatorTest {
     @Test void reloadDiscardsReadyAndLateProposalsPreservesOwnershipAndResumesOnlyWithFullScience() {
-        var model=FluidThermodynamics.forNetwork(MaterialCatalog.bundled(),FluidPresetCatalog.NETWORK_PACKAGE,1e-9);
+        var model=FluidTestSupport.networkModel();
         var attempts=new LinkedHashMap<Long,IslandCoordinator.Attempt>();var commands=new HashMap<Long,ProcessSolveServices.FluidIslandCommand>();var cancelled=new HashSet<Long>();
         var dispatcher=new IslandCoordinator.Dispatcher() {
             long sequence;

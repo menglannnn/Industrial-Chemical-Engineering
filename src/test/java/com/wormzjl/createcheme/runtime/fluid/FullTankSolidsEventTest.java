@@ -29,30 +29,8 @@ import static org.junit.jupiter.api.Assertions.*;
  * generator was set to a 5 % {@code createcheme:demo_particle} feed. See
  * {@code documentation/FULL_TANK_SOLIDS_EVENT.md}.
  */
-class FullTankSolidsEventTest {
-    private static final String DIMENSION="minecraft:overworld";
-    private static final int Y=-59;
-    /** The world's own defaults; see FluidWorldAuthority.place and SlurryTransport.Settings.defaults. */
-    private static final PipeResistance.Geometry BLOCK=new PipeResistance.Geometry(1,.05,.000045,0);
-    private static final double FILTER_CAPACITY=.01,FILTER_RESISTANCE=1e6;
+class FullTankSolidsEventTest extends BlockLineHarness {
     private static final long FILTER_ID=3;
-    private final FluidThermodynamics model=FluidTestSupport.networkModel();
-
-    private PhysicalFluidTopology.Device device(long id,int x,TopologyCompiler.Kind kind,PhysicalFluidTopology.Direction facing) {
-        return new PhysicalFluidTopology.Device(id,new PhysicalFluidTopology.Position(DIMENSION,x,Y,0),kind,facing,BLOCK,new FlowControl.Passive());
-    }
-    private PhysicalFluidTopology.Device device(long id,int x,TopologyCompiler.Kind kind) {
-        return device(id,x,kind,PhysicalFluidTopology.Direction.NORTH);
-    }
-    private double[] water(){double[] n=new double[MaterialTestBasis.NETWORK+1];n[n.length-1]=1;return n;}
-    private double[] nitrogen(){double[] n=new double[MaterialTestBasis.NETWORK+1];n[MaterialTestBasis.NITROGEN]=1;return n;}
-    /** The generator panel's own settings: pressure, water, and a solids volume fraction. */
-    private FluidDeviceSpec generatorSpec(double pressure,double solidFraction) {
-        var feed=solidFraction<=0?SlurryFeed.NONE:new SlurryFeed(solidFraction,
-                List.of(new SlurryFeed.Grade("createcheme:demo_particle",ParticleSize.micrometres("100"),1)));
-        return new FluidDeviceSpec(1,298.15,pressure,water(),feed);
-    }
-    private FluidDeviceSpec vesselSpec(){return new FluidDeviceSpec(1,298.15,101325,nitrogen());}
 
     /** generator - pipe - filter - pipe - reservoir, the line the report reproduces. */
     private List<PhysicalFluidTopology.Device> line() {
@@ -66,17 +44,6 @@ class FullTankSolidsEventTest {
         devices.add(device(6,5,TopologyCompiler.Kind.PIPE));
         devices.add(device(7,6,TopologyCompiler.Kind.VOID));
         return List.copyOf(devices);
-    }
-    /**
-     * One island built exactly as {@code FluidWorldAuthority.applyPending} builds it: the live
-     * boundary stock, the live filter cakes, and the world's own nitrogen idle seed - never the
-     * generator's state, which is what the single-shot fixtures elsewhere pass.
-     */
-    private PassiveNetwork compile(List<PhysicalFluidTopology.Device> devices,Map<Long,PassiveNetwork.Reservoir> stock,Map<Long,InlineFilter> cakes) {
-        var compiled=PhysicalFluidTopology.compile(devices,stock,cakes,model.initialNitrogenCharge(1,298.15,101325,()->{}));
-        var connected=compiled.islands().stream().filter(i->i.physicalIds().size()==devices.size()).toList();
-        assertEquals(1,connected.size(),"Expected one connected island, diagnostics="+compiled.diagnostics());
-        return connected.getFirst().graph();
     }
     /** {@code FluidWorldAuthority.boundaries()}: the live, non-junction, positive-identity nodes. */
     private Map<Long,PassiveNetwork.Reservoir> boundaries(PassiveNetwork graph) {
@@ -95,7 +62,7 @@ class FullTankSolidsEventTest {
     private PassiveNetwork activate(double pressure,double solidFraction) {
         var devices=line();var stock=new HashMap<Long,PassiveNetwork.Reservoir>();
         stock.put(1L,generatorSpec(pressure,solidFraction).initialize(devices.get(0),model,()->{}));
-        stock.put(5L,FluidTestSupport.chargedBoundary(vesselSpec(),devices.get(4),model));
+        stock.put(5L,FluidTestSupport.chargedBoundary(tankSpec(101325),devices.get(4),model));
         return compile(devices,stock,Map.of(FILTER_ID,new InlineFilter(FILTER_CAPACITY,FILTER_RESISTANCE,SolidInventory.EMPTY,0)));
     }
     /**
@@ -105,39 +72,10 @@ class FullTankSolidsEventTest {
     private PassiveNetwork event(PassiveNetwork live,List<PhysicalFluidTopology.Device> devices,long edited,FluidDeviceSpec spec) {
         var stock=boundaries(live);
         for(var d:devices)if(d.id()==edited)stock.put(edited,FluidTestSupport.chargedBoundary(spec,d,model));
-        for(var d:devices)if(d.boundary()&&!stock.containsKey(d.id()))stock.put(d.id(),FluidTestSupport.chargedBoundary(vesselSpec(),d,model));
+        for(var d:devices)if(d.boundary()&&!stock.containsKey(d.id()))stock.put(d.id(),FluidTestSupport.chargedBoundary(tankSpec(101325),d,model));
         return compile(devices,stock,cakes(live));
     }
 
-    private record Run(PassiveNetwork graph,String detail) {
-        boolean ok(){return detail.startsWith("OK");}
-    }
-    /** Consecutive five-second intervals on one retained solver, as the island worker runs them. */
-    private Run run(PassiveNetwork graph,int count,String tag) {
-        var solver=new PassiveIntervalSolver(model);double step=RetainedSolver.COLD_START_SECONDS;
-        for(int i=0;i<count;i++) {
-            try {
-                var result=solver.solve(graph,5,PassiveIntervalSolver.Settings.defaults(),()->{},Math.min(step,5));
-                graph=result.graph();step=solver.nextStepEstimate();
-            }catch(RuntimeException held) {
-                return new Run(graph,"HELD at interval "+(i+1)+"/"+count+" ("+tag+"): "+held.getMessage()+shape(graph));
-            }
-        }
-        return new Run(graph,"OK "+count+" intervals ("+tag+")");
-    }
-    private static String shape(PassiveNetwork graph) {
-        var text=new StringBuilder();
-        for(int n=0;n<graph.reservoirs().size();n++) {
-            var node=graph.reservoirs().get(n);
-            text.append("\n  node[").append(n).append("] id=").append(node.id()).append(' ').append(node.kind())
-                    .append(" P=").append(node.state().pressure()).append(" mass=").append(node.state().mass())
-                    .append(" solidKg=").append(node.state().solidMoments().mass())
-                    .append(" storedSolidKg=").append(node.inventory().solids().massKg());
-        }
-        for(var pipe:graph.pipes())text.append("\n  pipe ").append(pipe.first()).append("->").append(pipe.second())
-                .append(pipe.filter()==null?" plain":" filter captured="+pipe.filter().captured().massKg());
-        return text.toString();
-    }
     private static PassiveNetwork.Reservoir node(PassiveNetwork graph,long id) {
         for(var n:graph.reservoirs())if(n.id()==id)return n;
         throw new AssertionError("No node "+id+" in"+shape(graph));

@@ -1,5 +1,6 @@
 package com.wormzjl.createcheme.runtime.fluid;
 
+import com.wormzjl.createcheme.fluid.support.FluidTestSupport;
 import com.wormzjl.createcheme.science.fluid.network.*;
 import com.wormzjl.createcheme.science.fluid.thermo.FluidThermodynamics;
 import com.wormzjl.createcheme.science.material.MaterialCatalog;
@@ -43,7 +44,7 @@ class McpGameplayRegressionTest {
         },0,null,PassiveNetwork.PhasePort.BULK,PassiveNetwork.PhasePort.BULK)).toList());
     }
     @Test void clampedDrainContinuesAfterTheTankBecomesAlmostLiquidFull() throws Exception {
-        var model=FluidThermodynamics.forNetwork(MaterialCatalog.bundled(),"createcheme:tjl20_methane_nitrogen",1e-9);
+        var model=FluidTestSupport.networkModel();
         var graph=archivedGraph(archivedIsland("/fluid/mcp-clamped-liquid-full-checkpoint.json"),model);
         var result=new PassiveIntervalSolver(model).solve(graph,1,PassiveIntervalSolver.Settings.defaults(),()->{});
         assertEquals(1,result.advancedSeconds());assertTrue(result.graph().reservoirs().getFirst().inventory().moles()[com.wormzjl.createcheme.science.material.MaterialTestBasis.NITROGEN]>0);
@@ -61,7 +62,7 @@ class McpGameplayRegressionTest {
         assertTrue(continuing.reservoirs().getFirst().inventory().moles()[com.wormzjl.createcheme.science.material.MaterialTestBasis.NITROGEN]>0);
     }
     @Test void savedSonicRefusalAdvancesWithVelocityClampingAndKeepsCanonicalBalances() throws Exception {
-        var model=FluidThermodynamics.forNetwork(MaterialCatalog.bundled(),"createcheme:tjl20_methane_nitrogen",1e-9);
+        var model=FluidTestSupport.networkModel();
         var saved=archivedIsland("/fluid/mcp-held-drain-checkpoint.json");var graph=archivedGraph(saved,model);
         assertTrue(saved.get("status").getAsString().contains("Unsupported sonic flow"));var result=new PassiveIntervalSolver(model).solve(graph,5,PassiveIntervalSolver.Settings.defaults(),()->{});
         assertEquals(5,result.advancedSeconds());assertTrue(Arrays.stream(result.averageMassFlows()).anyMatch(q->Math.abs(q)>1e-6));
@@ -76,7 +77,7 @@ class McpGameplayRegressionTest {
         assertEquals(beforeEnergy+externalEnergy+result.pumpWorkJoule(),afterEnergy,1e-4+1e-6*(Math.abs(beforeEnergy)+Math.abs(externalEnergy)));
     }
     @Test void belowSeaLevelNitrogenTankAcceptsWaterAfterAnIdlePeriodAndPressureEdit() {
-        var model=FluidThermodynamics.forNetwork(MaterialCatalog.bundled(),"createcheme:tjl20_methane_nitrogen",1e-9);
+        var model=FluidTestSupport.networkModel();
         var nitrogen=model.initialNitrogenCharge(1,298.15,101325,()->{});
         var spec=FluidDeviceSpec.water();
         var device=new PhysicalFluidTopology.Device(3,new PhysicalFluidTopology.Position("minecraft:overworld",0,-60,3),com.wormzjl.createcheme.science.fluid.topology.TopologyCompiler.Kind.GENERATOR,PhysicalFluidTopology.Direction.NORTH,new PipeResistance.Geometry(1,.05,.000045,0),new FlowControl.Passive());

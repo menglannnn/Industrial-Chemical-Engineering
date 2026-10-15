@@ -1,5 +1,6 @@
 package com.wormzjl.createcheme.science.fluid.network;
 
+import com.wormzjl.createcheme.fluid.support.FluidTestSupport;
 import static org.junit.jupiter.api.Assertions.*;
 import com.google.gson.GsonBuilder;
 import com.wormzjl.createcheme.science.fluid.thermo.FluidThermodynamics;
@@ -50,7 +51,7 @@ class TransientQualificationTest {
         }
         assertEquals(0,candidate.reservoirs().get(1).state().waterLiquid(),1e-9);
     }
-    private final FluidThermodynamics model=FluidThermodynamics.forNetwork(MaterialCatalog.bundled(),"createcheme:tjl20_methane_nitrogen",1e-9);
+    private final FluidThermodynamics model=FluidTestSupport.networkModel();
     private PassiveNetwork.Reservoir tank(long id,double pressure,double[] composition) {
         var n=composition.clone();var unit=model.flashTP(350,pressure,n,()->{});for(int c=0;c<n.length;c++)n[c]/=unit.volume();
         var state=model.flashTP(350,pressure,n,()->{});

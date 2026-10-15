@@ -1,5 +1,6 @@
 package com.wormzjl.createcheme.fluid.support;
 
+import com.wormzjl.createcheme.runtime.BoundedCpuSolveService;
 import com.wormzjl.createcheme.science.column.v3.thermo.V3PengRobinsonThermo;
 import com.wormzjl.createcheme.science.fluid.network.PassiveNetwork;
 import com.wormzjl.createcheme.science.fluid.network.PassiveStepSolver;
@@ -20,6 +21,14 @@ public final class FluidTestSupport {
     public enum Mixture { NITROGEN, WATER, WET_CRUDE }
 
     private FluidTestSupport() {}
+
+    /** A token for a worker that is never cancelled and has no deadline: tests solve every admitted slice to its end. */
+    public static final BoundedCpuSolveService.CancellationToken NEVER = new BoundedCpuSolveService.CancellationToken() {
+        public long deadlineNanos() { return Long.MAX_VALUE; }
+        public boolean isDeadlineExceeded() { return false; }
+        public boolean isCancellationRequested() { return false; }
+        public void throwIfCancellationRequested() {}
+    };
 
     /** Creates the bundled gameplay network model at the qualified compressibility. */
     public static FluidThermodynamics networkModel() {
@@ -42,6 +51,16 @@ public final class FluidTestSupport {
             }
         }
         return amounts;
+    }
+
+    /** One mole of pure water on the network basis. */
+    public static double[] water() {
+        return composition(Mixture.WATER);
+    }
+
+    /** One mole of pure nitrogen on the network basis. */
+    public static double[] nitrogen() {
+        return composition(Mixture.NITROGEN);
     }
 
     /** Builds the existing one-cubic-metre fixture without bypassing EOS/flash closure. */

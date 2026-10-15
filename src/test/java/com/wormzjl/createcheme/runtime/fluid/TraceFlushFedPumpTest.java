@@ -17,8 +17,8 @@ class TraceFlushFedPumpTest {
                 PumpBottomPortDrainTest.device(tankId,0,y,Kind.RESERVOIR),
                 PumpBottomPortDrainTest.device(9,0,y-1,Kind.PIPE),PumpBottomPortDrainTest.device(4,0,y-2,Kind.PUMP,PhysicalFluidTopology.Direction.DOWN,new FlowControl.Pump(.001,500000,1)),
                 PumpBottomPortDrainTest.device(5,0,y-3,Kind.PIPE),PumpBottomPortDrainTest.device(6,0,y-4,Kind.VOID));
-        var graph=base.island(devices,Map.of(7L,new com.wormzjl.createcheme.runtime.fluid.FluidDeviceSpec(1,298.15,130000,PumpBottomPortDrainTest.water()),
-                6L,new com.wormzjl.createcheme.runtime.fluid.FluidDeviceSpec(1,298.15,101325,PumpBottomPortDrainTest.nitrogen())),Map.of(tankId,tank));
+        var graph=base.island(devices,Map.of(7L,new com.wormzjl.createcheme.runtime.fluid.FluidDeviceSpec(1,298.15,130000,com.wormzjl.createcheme.fluid.support.FluidTestSupport.water()),
+                6L,new com.wormzjl.createcheme.runtime.fluid.FluidDeviceSpec(1,298.15,101325,com.wormzjl.createcheme.fluid.support.FluidTestSupport.nitrogen())),Map.of(tankId,tank));
         var retained=new RetainedSolver();PassiveIntervalSolver.Result last=null;
         for(int slice=0;slice<400;slice++) {
             retained.committed(last);PassiveIntervalSolver.Result result;

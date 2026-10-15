@@ -23,15 +23,13 @@ import static org.junit.jupiter.api.Assertions.*;
  */
 class PresentationBucketTest {
     private static final PipeResistance.Geometry BLOCK=new PipeResistance.Geometry(1,.05,.000045,0);
-    private static final BoundedCpuSolveService.CancellationToken NEVER=new BoundedCpuSolveService.CancellationToken() {
-        public long deadlineNanos(){return Long.MAX_VALUE;}public boolean isDeadlineExceeded(){return false;}
-        public boolean isCancellationRequested(){return false;}public void throwIfCancellationRequested(){}
-    };
     private final FluidThermodynamics model=FluidTestSupport.networkModel();
     private final int components=model.components().size();
     private final int water=components-1,nitrogen=MaterialTestBasis.NITROGEN;
 
     @AfterEach void counters(){FluidRuntimeDiagnostics.ENABLED=false;FluidRuntimeDiagnostics.reset();}
+    /** The coordinator on a shared epoch, solving each admitted slice at once, recording what it publishes and replays. */
+    private CertifyingRig rig(CertificatePolicy policy){return new CertifyingRig(policy,model,0).recording();}
     private static long counter(String name){return FluidRuntimeDiagnostics.sample().get(name);}
     private static void countFromHere(){FluidRuntimeDiagnostics.reset();FluidRuntimeDiagnostics.ENABLED=true;}
 
@@ -59,38 +57,6 @@ class PresentationBucketTest {
 
     // ---------------- the rig and the world around it ----------------
 
-    /** The coordinator on a shared epoch, solving each admitted slice at once, as in IslandCertificateTest. */
-    private final class Rig {
-        final long[] epoch={0};
-        final Map<Long,IslandCoordinator.Attempt> attempts=new LinkedHashMap<>();
-        final Map<Long,ProcessSolveServices.FluidIslandCommand> commands=new HashMap<>();
-        final List<IslandCoordinator.Snapshot> published=new ArrayList<>(),replayed=new ArrayList<>();
-        Consumer<List<IslandCoordinator.Snapshot>> onPublished=changed->{};
-        final IslandCoordinator coordinator;
-        long requests;int solves;
-        Rig(CertificatePolicy policy) {
-            coordinator=new IslandCoordinator(new IslandCoordinator.Dispatcher() {
-                public int availableWorkers(){return 64-attempts.size();}
-                public long nextRequestId(){return ++requests;}
-                public boolean submit(IslandCoordinator.Attempt attempt,ProcessSolveServices.FluidIslandCommand command){attempts.put(attempt.slice().requestId(),attempt);commands.put(attempt.slice().requestId(),command);return true;}
-                public void cancel(long request){throw new AssertionError("no deadlines here");}
-            },changed->{published.addAll(changed);onPublished.accept(changed);},()->0L,new IslandCoordinator.Settings(30_000_000_000L,20_000_000_000L,64,false,100,policy),IslandCoordinator.CommitHook.NO_MATERIAL,()->epoch[0]);
-            coordinator.onReplayed(replayed::addAll);
-        }
-        void register(long id,PassiveNetwork graph) {
-            coordinator.register(new IslandCoordinator.Snapshot(id,0,graph,new IslandClock.Snapshot(0,0,0,100),FallbackAllowance.NONE,Optional.empty(),Optional.empty(),"READY"),model);
-        }
-        void drain() {
-            while(!attempts.isEmpty()) {
-                for(long request:List.copyOf(attempts.keySet())) {
-                    var attempt=attempts.remove(request);var command=commands.remove(request);solves++;
-                    coordinator.completed(attempt,Optional.of((ProcessSolveServices.FluidIslandSolveResult)command.solve(NEVER)));
-                }
-                coordinator.pump();
-            }
-        }
-        void tick(){epoch[0]++;coordinator.tick();drain();}
-    }
     /** An open menu: what it received, bucket by bucket. */
     private static final class Menu {
         final long device;boolean open=true;final List<Received> received=new ArrayList<>();
@@ -100,13 +66,13 @@ class PresentationBucketTest {
     private record Received(long tick,boolean withStatic,String reply,FluidView view) {}
     /** The world side: device ownership, loaded block entities, registration revisions, queued events, views. */
     private final class World implements FluidPresentation.Host<Menu> {
-        final Rig rig;final FluidPresentation<Menu> presentation;
+        final CertifyingRig rig;final FluidPresentation<Menu> presentation;
         final Map<Long,Long> owners=new HashMap<>();final Map<Long,List<Long>> members=new HashMap<>();
         final Set<Long> loadedBlocks=new HashSet<>();final Map<Long,Long> revisions=new HashMap<>();final Set<UUID> pending=new HashSet<>();
         final Map<Long,List<Long>> presentedAt=new TreeMap<>();final Map<Long,Integer> viewsOf=new TreeMap<>();
         int islandReads;
         final Map<Long,FluidView> cached=new HashMap<>();
-        World(Rig rig) {
+        World(CertifyingRig rig) {
             this.rig=rig;presentation=new FluidPresentation<>(this,rig.epoch[0]);
             // As FluidWorldAuthority.published: a publication marks the island's loaded devices, nothing more.
             rig.onPublished=changed->{for(var s:changed)for(long device:members.getOrDefault(s.id(),List.of()))presentation.markIfLoaded(device);};
@@ -140,7 +106,7 @@ class PresentationBucketTest {
     }
 
     @Test void firstRequestedOpeningReplaysLastBucketWithoutAnyScienceWorkOrDeadlineShift(){
-        var rig=new Rig(CertificatePolicy.defaults());rig.register(1,deadHeadedLine());
+        var rig=rig(CertificatePolicy.defaults());rig.register(1,deadHeadedLine());
         var world=new World(rig).device(101,1);world.loadedBlocks.add(101L);world.presentation.deviceLoaded(101);
         world.run(150);var snapshot=world.cached.get(101L);assertNotNull(snapshot);
         int reads=world.islandReads,solves=rig.solves,builds=world.viewsOf.get(101L);
@@ -157,7 +123,7 @@ class PresentationBucketTest {
         assertFalse(menu.received.getLast().withStatic(),"the opening snapshot already included its metadata");
     }
     @Test void cachedReplayDoesNotConsumePendingInputRepliesOrUseANewerUnpublishedRevision(){
-        var rig=new Rig(CertificatePolicy.defaults());rig.register(1,deadHeadedLine());
+        var rig=rig(CertificatePolicy.defaults());rig.register(1,deadHeadedLine());
         var world=new World(rig).device(101,1);world.loadedBlocks.add(101L);world.presentation.deviceLoaded(101);
         world.run(150);var snapshot=world.cached.get(101L);var menu=world.open(101);
         world.revisions.put(101L,9L);
@@ -169,7 +135,7 @@ class PresentationBucketTest {
         assertEquals("Not applied: Stale controls",next.reply());
     }
     @Test void noPublishedSnapshotOrNoActiveRequestCannotTriggerAReplayOrNewView(){
-        var rig=new Rig(CertificatePolicy.defaults());rig.register(1,deadHeadedLine());
+        var rig=rig(CertificatePolicy.defaults());rig.register(1,deadHeadedLine());
         var world=new World(rig).device(101,1);var menu=world.open(101);
         assertFalse(world.presentation.replayOnOpen(menu));assertTrue(menu.received.isEmpty());assertTrue(world.viewsOf.isEmpty());
         world.run(101);int count=menu.received.size();menu.open=false;
@@ -181,7 +147,7 @@ class PresentationBucketTest {
 
     /** Zero, one and many open menus on a transient and a steady island: one delivery per 100 ticks per menu, at the island's bucket. */
     @Test void openMenusReceiveOneLivePayloadPerBucketAndTheStaticPartOnlyWhenTheRevisionChanges() {
-        var rig=new Rig(CertificatePolicy.defaults());rig.register(1,slowFill());rig.register(2,generatorToVoid());
+        var rig=rig(CertificatePolicy.defaults());rig.register(1,slowFill());rig.register(2,generatorToVoid());
         var world=new World(rig);for(long d=101;d<=104;d++)world.device(d,1);for(long d=201;d<=204;d++)world.device(d,2);
         // Zero menus, nothing loaded: no bucket is ever due and nothing is built.
         countFromHere();world.run(1_000);
@@ -217,7 +183,7 @@ class PresentationBucketTest {
 
     /** A publication marks the island's loaded devices only; the bucket presents them; unloaded devices never build a view. */
     @Test void loadedDevicesArePresentedOnTheirIslandsBucketAndUnloadedOnesNever() {
-        var rig=new Rig(CertificatePolicy.defaults());rig.register(1,slowFill());rig.register(2,generatorToVoid());
+        var rig=rig(CertificatePolicy.defaults());rig.register(1,slowFill());rig.register(2,generatorToVoid());
         var world=new World(rig).device(101,1).device(102,1).device(201,2).device(202,2);
         world.loadedBlocks.addAll(List.of(101L,201L));world.presentation.deviceLoaded(101);world.presentation.deviceLoaded(201);
         world.run(3_000);
@@ -248,7 +214,7 @@ class PresentationBucketTest {
 
     /** Every reply arrives with the menu's first bucket after the tick its input arrived, never with an earlier delivery. */
     @Test void anInputIsAnsweredOnTheFollowingBucketAndNeverBefore() {
-        var rig=new Rig(CertificatePolicy.disabled());rig.register(1,slowFill());
+        var rig=rig(CertificatePolicy.disabled());rig.register(1,slowFill());
         var world=new World(rig).device(101,1);var menu=world.open(101);
         world.run(150);
         // Refused: the reply is the refusal, at the next bucket (201), not in between.
@@ -293,7 +259,7 @@ class PresentationBucketTest {
         // Exact rest, steady through-flow, a settled pair revalidated at short horizons, and a transient fill.
         var shortWindow=new CertificatePolicy(true,1e-9,1e-6,3,2,0);
         var fixtures=List.<Supplier<PassiveNetwork>>of(this::deadHeadedLine,this::generatorToVoid,this::closedPair,this::slowFill);
-        Rig quiet=new Rig(shortWindow),viewed=new Rig(shortWindow);
+        CertifyingRig quiet=rig(shortWindow),viewed=rig(shortWindow);
         for(var rig:List.of(quiet,viewed))for(int i=0;i<fixtures.size();i++)rig.register(i+1,fixtures.get(i).get());
         var world=new World(viewed);var menus=new ArrayList<Menu>();
         for(long island=1;island<=4;island++)for(long d=0;d<4;d++){long device=island*100+d;world.device(device,island);world.loadedBlocks.add(device);world.presentation.deviceLoaded(device);menus.add(world.open(device));}
@@ -333,7 +299,7 @@ class PresentationBucketTest {
         // A 15 s recheck: the closed pair rests exactly (every job starts from its committed interval, review 8.9 (d)),
         // and the view must meet a horizon the test can reach.
         var policy=new CertificatePolicy(true,1e-9,1e-6,3,2,15);
-        Rig plain=new Rig(policy),read=new Rig(policy);
+        CertifyingRig plain=rig(policy),read=rig(policy);
         for(var rig:List.of(plain,read)){rig.register(1,closedPair());for(int i=0;i<40_000&&rig.coordinator.observe(1).certificate().isEmpty();i++)rig.tick();}
         assertEquals(plain.epoch[0],read.epoch[0]);var certificate=read.coordinator.observe(1).certificate().orElseThrow();
         long horizon=certificate.horizonTick();assertTrue(horizon>read.epoch[0]);
@@ -354,7 +320,7 @@ class PresentationBucketTest {
 
     /** Nothing loaded and no menu: no bucket is due. A loaded device of a resting island: nothing after it rests. A menu: one flush per 100 ticks. */
     @Test void presentationCostsNothingPerTickUnlessABucketHasWork() {
-        var rig=new Rig(CertificatePolicy.defaults());rig.register(7,deadHeadedLine());
+        var rig=rig(CertificatePolicy.defaults());rig.register(7,deadHeadedLine());
         var world=new World(rig).device(701,7);world.loadedBlocks.add(701L);world.presentation.deviceLoaded(701);
         for(int i=0;i<4_000&&rig.coordinator.observe(7).certificate().isEmpty();i++)world.tick();
         assertEquals(0.0,rig.coordinator.observe(7).certificate().orElseThrow().drift());
@@ -371,7 +337,7 @@ class PresentationBucketTest {
     }
     /** A topology change moves a menu with its device to the replacement island's bucket. */
     @Test void aMenuFollowsItsDeviceToItsNewIslandsBucket() {
-        var rig=new Rig(CertificatePolicy.disabled());rig.register(1,slowFill());rig.register(7,deadHeadedLine());
+        var rig=rig(CertificatePolicy.disabled());rig.register(1,slowFill());rig.register(7,deadHeadedLine());
         var world=new World(rig).device(101,1);var menu=world.open(101);
         world.run(300);assertEquals(1,menu.received.getLast().tick()%100);
         world.owners.put(101L,7L);world.presentation.rekey();world.run(300);

@@ -1,5 +1,6 @@
 package com.wormzjl.createcheme.runtime.fluid;
 
+import com.wormzjl.createcheme.fluid.support.FluidTestSupport;
 import static org.junit.jupiter.api.Assertions.*;
 import com.wormzjl.createcheme.science.fluid.diagnostics.SolverDiagnostics;
 import com.wormzjl.createcheme.science.fluid.network.*;
@@ -11,7 +12,7 @@ import org.junit.jupiter.api.Test;
 
 class RetainedSolverTest {
     private static FluidThermodynamics model() {
-        return FluidThermodynamics.forNetwork(MaterialCatalog.bundled(),"createcheme:tjl20_methane_nitrogen",1e-9);
+        return FluidTestSupport.networkModel();
     }
     private static PassiveNetwork graph(FluidThermodynamics model) {
         return new PassiveNetwork(List.of(

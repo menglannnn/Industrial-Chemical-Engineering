@@ -1,5 +1,6 @@
 package com.wormzjl.createcheme.science.fluid.network;
 
+import com.wormzjl.createcheme.fluid.support.FluidTestSupport;
 import com.wormzjl.createcheme.science.fluid.network.PassiveNetwork.PhasePort;
 import com.wormzjl.createcheme.science.fluid.thermo.FluidThermodynamics;
 import com.wormzjl.createcheme.science.material.MaterialCatalog;
@@ -19,11 +20,7 @@ import static org.junit.jupiter.api.Assertions.*;
  * boundaries) closes to 1e-12 and the energy ledger to 1e-10, the junction's own inventory starts dry (the trace is a seed,
  * never stock), and the water reaches the void.
  */
-class JunctionWaterTraceTest {
-    private static final Runnable NOOP=()->{};
-    private final FluidThermodynamics model=FluidThermodynamics.forNetwork(MaterialCatalog.bundled(),"createcheme:tjl20_methane_nitrogen",1e-9);
-    private final double[] mw=model.molecularWeights();
-    private final int water=model.components().indexOf("Water"),nitrogen=model.components().indexOf("Nitrogen");
+class JunctionWaterTraceTest extends PortFixture {
     private static final double COMPONENT_LEDGER=1e-12,ENERGY_LEDGER=1e-10;
     private static final PipeResistance.Geometry LINE=new PipeResistance.Geometry(10,.01,PipeResistance.DEFAULT_ROUGHNESS_METRES,0);
 
@@ -82,18 +79,6 @@ class JunctionWaterTraceTest {
             assertTrue(voidWater>0,label+" at "+interval+" s: the water passes the junction to the void");
             assertTrue(junction.waterVapor()>0,label+" at "+interval+" s: the junction carries the water it receives");
         }
-    }
-    private double[] owned(PassiveNetwork graph) {
-        var totals=new double[mw.length];
-        for(var node:graph.reservoirs())if(node.kind()==PassiveNetwork.NodeKind.RESERVOIR||node.junction()){var n=node.inventory().moles();for(int c=0;c<n.length;c++)totals[c]+=n[c];}
-        return totals;
-    }
-    private double ownedEnergy(PassiveNetwork graph) {
-        double energy=0;
-        for(var node:graph.reservoirs())if(node.kind()==PassiveNetwork.NodeKind.RESERVOIR||node.junction()){
-            double m=0;var n=node.inventory().moles();for(int c=0;c<n.length;c++)m+=n[c]*mw[c];
-            energy+=node.inventory().internalEnergy()+m*PassiveStepSolver.GRAVITY*node.elevation();}
-        return energy;
     }
     /** A state's water mole fraction. */
     private double waterFraction(FluidThermodynamics.State s) {

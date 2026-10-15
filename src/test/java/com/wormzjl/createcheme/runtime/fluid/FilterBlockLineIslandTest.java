@@ -26,74 +26,14 @@ import static org.junit.jupiter.api.Assertions.*;
  * more than one interval or a settled island to appear at all, which is why a single-interval
  * fixture never saw them.
  */
-class FilterBlockLineIslandTest {
-    private static final String DIMENSION="minecraft:overworld";
-    private static final int Y=-59;
-    /** The world's own defaults; see FluidWorldAuthority.place and SlurryTransport.Settings.defaults. */
-    private static final PipeResistance.Geometry BLOCK=new PipeResistance.Geometry(1,.05,.000045,0);
-    private static final double FILTER_CAPACITY=.01,FILTER_RESISTANCE=1e6;
-    private final FluidThermodynamics model=FluidTestSupport.networkModel();
-
-    private PhysicalFluidTopology.Device device(long id,int x,TopologyCompiler.Kind kind,PhysicalFluidTopology.Direction facing) {
-        var control=switch(kind) {
-            case PUMP->new FlowControl.Pump(.01,500000,1);
-            case VALVE->new FlowControl.PressureValve(200000);
-            default->new FlowControl.Passive();
-        };
-        return new PhysicalFluidTopology.Device(id,new PhysicalFluidTopology.Position(DIMENSION,x,Y,0),kind,facing,BLOCK,control);
-    }
-    private PhysicalFluidTopology.Device device(long id,int x,TopologyCompiler.Kind kind) {
-        return device(id,x,kind,PhysicalFluidTopology.Direction.NORTH);
-    }
-    private double[] water(){double[] n=new double[MaterialTestBasis.NETWORK+1];n[n.length-1]=1;return n;}
-    private double[] nitrogen(){double[] n=new double[MaterialTestBasis.NETWORK+1];n[MaterialTestBasis.NITROGEN]=1;return n;}
-    private FluidDeviceSpec generatorSpec(double pressure,double solidFraction) {
-        var feed=solidFraction<=0?SlurryFeed.NONE:new SlurryFeed(solidFraction,
-                List.of(new SlurryFeed.Grade("createcheme:demo_particle",ParticleSize.micrometres("100"),1)));
-        return new FluidDeviceSpec(1,298.15,pressure,water(),feed);
-    }
-    private FluidDeviceSpec boundarySpec(){return new FluidDeviceSpec(1,298.15,101325,nitrogen());}
-
-    /** The compiled island the world would hand a worker for this line of blocks. */
-    private PassiveNetwork island(List<PhysicalFluidTopology.Device> devices,Map<Long,FluidDeviceSpec> specs) {
-        var boundaries=new LinkedHashMap<Long,PassiveNetwork.Reservoir>();
-        for(var d:devices)if(specs.containsKey(d.id()))boundaries.put(d.id(),FluidTestSupport.chargedBoundary(specs.get(d.id()),d,model));
-        var stock=new LinkedHashMap<Long,InlineFilter>();
-        for(var d:devices)if(d.kind()==TopologyCompiler.Kind.FILTER)
-            stock.put(d.id(),new InlineFilter(FILTER_CAPACITY,FILTER_RESISTANCE,SolidInventory.EMPTY,0));
-        var seed=boundaries.values().iterator().next().state();
-        var compiled=PhysicalFluidTopology.compile(devices,boundaries,stock,seed);
-        var connected=compiled.islands().stream().filter(i->i.physicalIds().size()==devices.size()).toList();
-        assertEquals(1,connected.size(),"Expected exactly one connected island: "+describe(compiled));
-        return connected.getFirst().graph();
-    }
-    private static String describe(PhysicalFluidTopology.Compiled compiled) {
-        var text=new StringBuilder();
-        for(int i=0;i<compiled.islands().size();i++) {
-            var graph=compiled.islands().get(i).graph();
-            text.append("\n island ").append(i).append(" ids=").append(compiled.islands().get(i).physicalIds());
-            for(int n=0;n<graph.reservoirs().size();n++) {
-                var node=graph.reservoirs().get(n);
-                text.append("\n  node[").append(n).append("] id=").append(node.id()).append(' ').append(node.kind())
-                        .append(" y=").append(node.elevation()).append(" P=").append((long)node.state().pressure())
-                        .append(" liq=").append(node.state().liquidVolume()+node.state().waterVolume())
-                        .append(" vap=").append(node.state().vaporVolume())
-                        .append(" solids=").append(node.state().solidMoments().mass());
-            }
-            for(var pipe:graph.pipes())text.append("\n  pipe id=").append(pipe.id()).append(' ').append(pipe.first()).append("->").append(pipe.second())
-                    .append(" control=").append(pipe.control().getClass().getSimpleName())
-                    .append(" blocked=").append(pipe.blockedDirections()).append(" filter=").append(pipe.filter()!=null);
-        }
-        text.append("\n diagnostics=").append(compiled.diagnostics());
-        return text.toString();
-    }
+class FilterBlockLineIslandTest extends BlockLineHarness {
 
     /** generator - pipe - filter - pipe - reservoir, the line that is HELD from creation. */
     private PassiveNetwork reservoirLine(double generatorPressure,double solidFraction) {
         var devices=List.of(device(1,0,TopologyCompiler.Kind.GENERATOR),device(2,1,TopologyCompiler.Kind.PIPE),
                 device(3,2,TopologyCompiler.Kind.FILTER,PhysicalFluidTopology.Direction.EAST),
                 device(4,3,TopologyCompiler.Kind.PIPE),device(5,4,TopologyCompiler.Kind.RESERVOIR));
-        return island(devices,Map.of(1L,generatorSpec(generatorPressure,solidFraction),5L,boundarySpec()));
+        return island(devices,Map.of(1L,generatorSpec(generatorPressure,solidFraction),5L,tankSpec(101325)));
     }
     /** generator - pipe - pump - pipe - filter - pipe - reservoir (a pipe block before the pump since only pipes connect, decision D20). */
     private PassiveNetwork pumpLine(double generatorPressure,double solidFraction) {
@@ -102,14 +42,14 @@ class FilterBlockLineIslandTest {
                 device(3,3,TopologyCompiler.Kind.PIPE),
                 device(4,4,TopologyCompiler.Kind.FILTER,PhysicalFluidTopology.Direction.EAST),
                 device(5,5,TopologyCompiler.Kind.PIPE),device(6,6,TopologyCompiler.Kind.RESERVOIR));
-        return island(devices,Map.of(1L,generatorSpec(generatorPressure,solidFraction),6L,boundarySpec()));
+        return island(devices,Map.of(1L,generatorSpec(generatorPressure,solidFraction),6L,tankSpec(101325)));
     }
     /** generator - pipe - filter - pipe - void, the line that stayed healthy without solids. */
     private PassiveNetwork voidLine(double generatorPressure,double solidFraction) {
         var devices=List.of(device(1,0,TopologyCompiler.Kind.GENERATOR),device(2,1,TopologyCompiler.Kind.PIPE),
                 device(3,2,TopologyCompiler.Kind.FILTER,PhysicalFluidTopology.Direction.EAST),
                 device(4,3,TopologyCompiler.Kind.PIPE),device(5,4,TopologyCompiler.Kind.VOID));
-        return island(devices,Map.of(1L,generatorSpec(generatorPressure,solidFraction),5L,boundarySpec()));
+        return island(devices,Map.of(1L,generatorSpec(generatorPressure,solidFraction),5L,tankSpec(101325)));
     }
     /** generator - pipe - pressure valve - two pipes - reservoir: a tank behind a device junction
      * with no filter in it, and the shape {@code documentation/PUMP_SHUTOFF_ACTIVE_SET.md} section
@@ -119,7 +59,7 @@ class FilterBlockLineIslandTest {
                 device(3,2,TopologyCompiler.Kind.VALVE,PhysicalFluidTopology.Direction.EAST),
                 device(4,3,TopologyCompiler.Kind.PIPE),device(5,4,TopologyCompiler.Kind.PIPE),
                 device(6,5,TopologyCompiler.Kind.RESERVOIR));
-        return island(devices,Map.of(1L,generatorSpec(generatorPressure,0),6L,boundarySpec()));
+        return island(devices,Map.of(1L,generatorSpec(generatorPressure,0),6L,tankSpec(101325)));
     }
     /** generator - pipe - pump - three pipes - reservoir: the pump control, with no filter in it (the pipe before the pump: decision D20). */
     private PassiveNetwork pumpControlLine(double generatorPressure,double solidFraction) {
@@ -127,14 +67,14 @@ class FilterBlockLineIslandTest {
                 device(7,1,TopologyCompiler.Kind.PIPE),device(2,2,TopologyCompiler.Kind.PUMP,PhysicalFluidTopology.Direction.EAST),
                 device(3,3,TopologyCompiler.Kind.PIPE),device(4,4,TopologyCompiler.Kind.PIPE),
                 device(5,5,TopologyCompiler.Kind.PIPE),device(6,6,TopologyCompiler.Kind.RESERVOIR));
-        return island(devices,Map.of(1L,generatorSpec(generatorPressure,solidFraction),6L,boundarySpec()));
+        return island(devices,Map.of(1L,generatorSpec(generatorPressure,solidFraction),6L,tankSpec(101325)));
     }
     /** generator - four pipes - reservoir: the filter-free control that ran a whole session. */
     private PassiveNetwork clearLine(double generatorPressure,double solidFraction) {
         var devices=List.of(device(1,0,TopologyCompiler.Kind.GENERATOR),device(2,1,TopologyCompiler.Kind.PIPE),
                 device(3,2,TopologyCompiler.Kind.PIPE),device(4,3,TopologyCompiler.Kind.PIPE),
                 device(5,4,TopologyCompiler.Kind.PIPE),device(6,5,TopologyCompiler.Kind.RESERVOIR));
-        return island(devices,Map.of(1L,generatorSpec(generatorPressure,solidFraction),6L,boundarySpec()));
+        return island(devices,Map.of(1L,generatorSpec(generatorPressure,solidFraction),6L,tankSpec(101325)));
     }
 
     /** One island interval exactly as the worker requests it: 5 s at the shared defaults. */
@@ -147,48 +87,6 @@ class FilterBlockLineIslandTest {
      */
     private String intervals(PassiveNetwork graph,int count) {
         return run(graph,count).detail();
-    }
-    /** How far a line got, why it stopped if it did, and the graph it finished on. */
-    private record Run(int survived,String detail,PassiveNetwork finished) {
-        /** The terminating vessel: every line here ends on its tank or its void. */
-        FluidThermodynamics.State last(){return finished.reservoirs().getLast().state();}
-        /** The tank by kind rather than by position: a device mints its outlet junction after it,
-         * so on a filter or valve island the last node is a junction and not the vessel. */
-        FluidThermodynamics.State tank() {
-            for(int i=finished.reservoirs().size()-1;i>=0;i--) {
-                var node=finished.reservoirs().get(i);
-                if(node.kind()==PassiveNetwork.NodeKind.RESERVOIR)return node.state();
-            }
-            throw new AssertionError("No reservoir in "+shape(finished));
-        }
-    }
-    private Run run(PassiveNetwork graph,int count) {
-        var solver=new PassiveIntervalSolver(model);double step=RetainedSolver.COLD_START_SECONDS;
-        for(int i=0;i<count;i++) {
-            try {
-                var result=solver.solve(graph,5,PassiveIntervalSolver.Settings.defaults(),()->{},Math.min(step,5));
-                graph=result.graph();step=solver.nextStepEstimate();
-                if(i==count-1)return new Run(count,"OK intervals="+count+" advanced="+result.advancedSeconds()+" accepted="+result.acceptedSubsteps()
-                        +" rejected="+result.rejectedSubsteps()+" reasons="+result.rejectionReasons(),graph);
-            }catch(RuntimeException held) {
-                return new Run(i,"HELD at interval "+(i+1)+"/"+count+" (t="+(5*i)+" s): "+held.getMessage()+shape(graph),graph);
-            }
-        }
-        throw new AssertionError("unreachable");
-    }
-    private static String shape(PassiveNetwork graph) {
-        var text=new StringBuilder();
-        for(int n=0;n<graph.reservoirs().size();n++) {
-            var node=graph.reservoirs().get(n);
-            text.append("\n  node[").append(n).append("] id=").append(node.id()).append(' ').append(node.kind())
-                    .append(" P=").append(node.state().pressure())
-                    .append(" liquid=").append(node.state().liquidVolume()+node.state().waterVolume())
-                    .append(" vapour=").append(node.state().vaporVolume())
-                    .append(" solidKg=").append(node.state().solidMoments().mass());
-        }
-        for(var pipe:graph.pipes())text.append("\n  pipe id=").append(pipe.id()).append(' ').append(pipe.first()).append("->").append(pipe.second())
-                .append(" ").append(pipe.control().getClass().getSimpleName()).append(" filter=").append(pipe.filter()!=null);
-        return text.toString();
     }
 
     /**

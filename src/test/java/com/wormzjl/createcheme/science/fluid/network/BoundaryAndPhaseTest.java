@@ -1,5 +1,6 @@
 package com.wormzjl.createcheme.science.fluid.network;
 
+import com.wormzjl.createcheme.fluid.support.FluidTestSupport;
 import static org.junit.jupiter.api.Assertions.*;
 import com.wormzjl.createcheme.science.fluid.thermo.FluidThermodynamics;
 import com.wormzjl.createcheme.science.fluid.solver.PhaseLayout;
@@ -9,7 +10,7 @@ import java.util.*;
 import org.junit.jupiter.api.Test;
 
 class BoundaryAndPhaseTest {
-    private final FluidThermodynamics model=FluidThermodynamics.forNetwork(MaterialCatalog.bundled(),"createcheme:tjl20_methane_nitrogen",1e-9);
+    private final FluidThermodynamics model=FluidTestSupport.networkModel();
     private PassiveNetwork.Pipe pipe(){return new PassiveNetwork.Pipe(3,0,1,new PipeResistance.Geometry(10,.05,.000045,0));}
     private PassiveNetwork.Reservoir source(double pressure) {
         double[] n=new double[model.hydrocarbon.componentCount()+1];n[n.length-1]=1;

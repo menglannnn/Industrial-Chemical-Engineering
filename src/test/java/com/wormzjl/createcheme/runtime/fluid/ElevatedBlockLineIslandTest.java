@@ -28,48 +28,9 @@ import static org.junit.jupiter.api.Assertions.*;
  * retained solver from {@link RetainedSolver#COLD_START_SECONDS} - because an elevated line only
  * reaches the interesting point after it has filled its tank and settled against it.
  */
-class ElevatedBlockLineIslandTest {
-    private static final String DIMENSION="minecraft:overworld";
-    /** The world floor the in-game confirmation builds on; see documentation/ELEVATED_LINE_PROBE.md. */
-    private static final int BOTTOM=-59;
+class ElevatedBlockLineIslandTest extends BlockLineHarness {
     /** The elevation a stack of pipe blocks puts between the generator and the tank. */
     private static final int LIFT=4;
-    /** The world's own defaults; see FluidWorldAuthority.place and SlurryTransport.Settings.defaults. */
-    private static final PipeResistance.Geometry BLOCK=new PipeResistance.Geometry(1,.05,.000045,0);
-    private static final double FILTER_CAPACITY=.01,FILTER_RESISTANCE=1e6;
-    /** The pump every pumped fixture in the tree uses; see FilterBlockLineIslandTest. */
-    private static final double PUMP_HEAD=500000;
-    private final FluidThermodynamics model=FluidTestSupport.networkModel();
-
-    private PhysicalFluidTopology.Device device(long id,int x,int y,TopologyCompiler.Kind kind,PhysicalFluidTopology.Direction facing) {
-        var control=switch(kind) {
-            case PUMP->new FlowControl.Pump(.01,PUMP_HEAD,1);
-            case VALVE->new FlowControl.PressureValve(200000);
-            default->new FlowControl.Passive();
-        };
-        return new PhysicalFluidTopology.Device(id,new PhysicalFluidTopology.Position(DIMENSION,x,y,0),kind,facing,BLOCK,control);
-    }
-    private PhysicalFluidTopology.Device device(long id,int x,int y,TopologyCompiler.Kind kind) {
-        return device(id,x,y,kind,PhysicalFluidTopology.Direction.NORTH);
-    }
-    private double[] water(){double[] n=new double[MaterialTestBasis.NETWORK+1];n[n.length-1]=1;return n;}
-    private double[] nitrogen(){double[] n=new double[MaterialTestBasis.NETWORK+1];n[MaterialTestBasis.NITROGEN]=1;return n;}
-    private FluidDeviceSpec generatorSpec(double pressure){return new FluidDeviceSpec(1,298.15,pressure,water());}
-    private FluidDeviceSpec tankSpec(double pressure){return new FluidDeviceSpec(1,298.15,pressure,nitrogen());}
-
-    /** The compiled island the world would hand a worker for this line of blocks. */
-    private PassiveNetwork island(List<PhysicalFluidTopology.Device> devices,Map<Long,FluidDeviceSpec> specs) {
-        var boundaries=new LinkedHashMap<Long,PassiveNetwork.Reservoir>();
-        for(var d:devices)if(specs.containsKey(d.id()))boundaries.put(d.id(),FluidTestSupport.chargedBoundary(specs.get(d.id()),d,model));
-        var stock=new LinkedHashMap<Long,InlineFilter>();
-        for(var d:devices)if(d.kind()==TopologyCompiler.Kind.FILTER)
-            stock.put(d.id(),new InlineFilter(FILTER_CAPACITY,FILTER_RESISTANCE,SolidInventory.EMPTY,0));
-        var seed=boundaries.values().iterator().next().state();
-        var compiled=PhysicalFluidTopology.compile(devices,boundaries,stock,seed);
-        var connected=compiled.islands().stream().filter(i->i.physicalIds().size()==devices.size()).toList();
-        assertEquals(1,connected.size(),"Expected exactly one connected island: "+compiled.diagnostics());
-        return connected.getFirst().graph();
-    }
 
     /** generator at the bottom - pipes straight up - tank {@link #LIFT} blocks above it. */
     private PassiveNetwork risingLine(double generatorPressure,double tankPressure) {
@@ -122,11 +83,6 @@ class ElevatedBlockLineIslandTest {
         return island(devices,Map.of(1L,generatorSpec(generatorPressure),5L,tankSpec(tankPressure)));
     }
 
-    /** The density of the generator's own charge: the column a line fed from below stands in. */
-    private double waterDensity(double pressure) {
-        var state=model.flashTP(298.15,pressure,water(),()->{});
-        return state.mass()/state.volume();
-    }
     private double head(double pressure,int lift){return waterDensity(pressure)*PassiveStepSolver.GRAVITY*lift;}
     /** The level head of a tank's bottom (LIQUID) port on its final state (decision D9 of the phase-ports batch):
      * {@code g m_c H / V}, the condensed mass over a fixed 1 m height. */
@@ -134,47 +90,6 @@ class ElevatedBlockLineIslandTest {
         var tank=run.tankNode();return PassiveStepSolver.GRAVITY*model.liquidMass(tank.state())*PassiveStepSolver.LEVEL_HEAD_HEIGHT/tank.inventory().volume();
     }
 
-    /** How far a line got, why it stopped if it did, and the graph it finished on. */
-    private record Run(int survived,String detail,PassiveNetwork finished) {
-        FluidThermodynamics.State tank(){return tankNode().state();}
-        PassiveNetwork.Reservoir tankNode() {
-            for(int i=finished.reservoirs().size()-1;i>=0;i--) {
-                var node=finished.reservoirs().get(i);
-                if(node.kind()==PassiveNetwork.NodeKind.RESERVOIR)return node;
-            }
-            throw new AssertionError("No reservoir in this island");
-        }
-        boolean ok(){return detail.startsWith("OK");}
-    }
-    private Run run(PassiveNetwork graph,int count) {
-        var solver=new PassiveIntervalSolver(model);double step=RetainedSolver.COLD_START_SECONDS;
-        for(int i=0;i<count;i++) {
-            try {
-                var result=solver.solve(graph,5,PassiveIntervalSolver.Settings.defaults(),()->{},Math.min(step,5));
-                graph=result.graph();step=solver.nextStepEstimate();
-                if(i==count-1)return new Run(count,"OK intervals="+count+" advanced="+result.advancedSeconds()
-                        +" accepted="+result.acceptedSubsteps()+" rejected="+result.rejectedSubsteps(),graph);
-            }catch(RuntimeException held) {
-                return new Run(i,"HELD at interval "+(i+1)+"/"+count+" (t="+(5*i)+" s): "+held.getMessage()+shape(graph),graph);
-            }
-        }
-        throw new AssertionError("unreachable");
-    }
-    private static String shape(PassiveNetwork graph) {
-        var text=new StringBuilder();
-        for(int n=0;n<graph.reservoirs().size();n++) {
-            var node=graph.reservoirs().get(n);
-            text.append("\n  node[").append(n).append("] id=").append(node.id()).append(' ').append(node.kind())
-                    .append(" y=").append(node.elevation()).append(" P=").append(node.state().pressure())
-                    .append(" rho=").append(node.state().mass()/node.state().volume())
-                    .append(" liquid=").append(node.state().liquidVolume()+node.state().waterVolume())
-                    .append(" vapour=").append(node.state().vaporVolume());
-        }
-        for(var pipe:graph.pipes())text.append("\n  pipe id=").append(pipe.id()).append(' ').append(pipe.first()).append("->").append(pipe.second())
-                .append(" ").append(pipe.control().getClass().getSimpleName()).append(" filter=").append(pipe.filter()!=null)
-                .append(" blocked=").append(pipe.blockedDirections());
-        return text.toString();
-    }
 
     /**
      * What a vertical line compiles to, which is the statement the rest of this file rests on: the
