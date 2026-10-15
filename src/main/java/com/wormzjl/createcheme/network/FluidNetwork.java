@@ -29,7 +29,7 @@ import java.util.*;
  * the next bucket.
  */
 public final class FluidNetwork {
-    public static final String PROTOCOL="fluid-8";
+    public static final String PROTOCOL="fluid-9";
     private static final Gson JSON=new Gson();
     public static final int MAX_JSON=262144;
     public static final int MAX_EDIT_JSON=4096;

@@ -9,19 +9,19 @@ import com.wormzjl.createcheme.science.fluid.network.InlineFilter;
 /** Read-only presentation of a committed interval; a null state denotes a zero-holdup pipe segment. */
 public record FluidView(long identity,long inputRevision,long committedTick,long onlineTick,String status,State state,
                         double massFlow,List<PipeTransfer> pipeHistory,Double devicePressureChange,
-                        boolean hydraulicOwner,double intervalSeconds,String intervalQuality,List<PipeRoute> pipeRoutes,InlineFilter filter,PipeInfo pipeInfo,
+                        double intervalSeconds,List<PipeRoute> pipeRoutes,InlineFilter filter,PipeInfo pipeInfo,
                         List<Outlet> outlets) {
     /** A tank has six faces and each face one neighbour, so it has at most six connections. */
     public static final int MAXIMUM_OUTLETS=6;
     /** Source-side convenience for devices without pipe inspection, not a wire-format fallback. */
-    public FluidView(long identity,long inputRevision,long committedTick,long onlineTick,String status,State state,double massFlow,List<PipeTransfer> pipeHistory,Double devicePressureChange,boolean hydraulicOwner,double intervalSeconds,String intervalQuality,List<PipeRoute> pipeRoutes,InlineFilter filter){
-        this(identity,inputRevision,committedTick,onlineTick,status,state,massFlow,pipeHistory,devicePressureChange,hydraulicOwner,intervalSeconds,intervalQuality,pipeRoutes,filter,null,List.of());
+    public FluidView(long identity,long inputRevision,long committedTick,long onlineTick,String status,State state,double massFlow,List<PipeTransfer> pipeHistory,Double devicePressureChange,double intervalSeconds,List<PipeRoute> pipeRoutes,InlineFilter filter){
+        this(identity,inputRevision,committedTick,onlineTick,status,state,massFlow,pipeHistory,devicePressureChange,intervalSeconds,pipeRoutes,filter,null,List.of());
     }
     public FluidView withPipeInfo(PipeInfo info){
-        return new FluidView(identity,inputRevision,committedTick,onlineTick,status,state,massFlow,pipeHistory,devicePressureChange,hydraulicOwner,intervalSeconds,intervalQuality,pipeRoutes,filter,info,outlets);
+        return new FluidView(identity,inputRevision,committedTick,onlineTick,status,state,massFlow,pipeHistory,devicePressureChange,intervalSeconds,pipeRoutes,filter,info,outlets);
     }
     public FluidView withOutlets(List<Outlet> list){
-        return new FluidView(identity,inputRevision,committedTick,onlineTick,status,state,massFlow,pipeHistory,devicePressureChange,hydraulicOwner,intervalSeconds,intervalQuality,pipeRoutes,filter,pipeInfo,list);
+        return new FluidView(identity,inputRevision,committedTick,onlineTick,status,state,massFlow,pipeHistory,devicePressureChange,intervalSeconds,pipeRoutes,filter,pipeInfo,list);
     }
     /**
      * One connection of a tank, as its page lists it (plan 4.3 under decision D11): the port the connection's end at the
@@ -58,16 +58,12 @@ public record FluidView(long identity,long inputRevision,long committedTick,long
                 if(!Double.isFinite(value)||value<0)throw new IllegalArgumentException("Invalid pipe inspection metric");
         }
     }
-    public FluidView(long identity,long inputRevision,long committedTick,long onlineTick,String status,State state,double massFlow,List<PipeTransfer> pipeHistory,Double devicePressureChange,boolean hydraulicOwner,double intervalSeconds,String intervalQuality,List<PipeRoute> pipeRoutes){this(identity,inputRevision,committedTick,onlineTick,status,state,massFlow,pipeHistory,devicePressureChange,hydraulicOwner,intervalSeconds,intervalQuality,pipeRoutes,null);}
     public record PipeRoute(long pipeId,String first,String second) {}
-    public FluidView(long identity,long inputRevision,long committedTick,long onlineTick,String status,State state,double massFlow,List<PipeTransfer> pipeHistory,Double devicePressureChange) {
-        this(identity,inputRevision,committedTick,onlineTick,status,state,massFlow,pipeHistory,devicePressureChange,true,0,"",List.of());
-    }
     public FluidView(long identity,long inputRevision,long committedTick,long onlineTick,String status,State state,double massFlow,List<PipeTransfer> pipeHistory) {
-        this(identity,inputRevision,committedTick,onlineTick,status,state,massFlow,pipeHistory,null);
+        this(identity,inputRevision,committedTick,onlineTick,status,state,massFlow,pipeHistory,null,0,List.of(),null);
     }
     public FluidView {
-        Objects.requireNonNull(status);Objects.requireNonNull(intervalQuality);pipeHistory=List.copyOf(pipeHistory);pipeRoutes=List.copyOf(pipeRoutes);outlets=List.copyOf(outlets);
+        Objects.requireNonNull(status);pipeHistory=List.copyOf(pipeHistory);pipeRoutes=List.copyOf(pipeRoutes);outlets=List.copyOf(outlets);
         if(outlets.size()>MAXIMUM_OUTLETS)throw new IllegalArgumentException("Too many tank outlets");
     }
     /** {@code volume} is what the node holds; {@code capacity} the volume its wall holds (decision D54: a vessel is a bag

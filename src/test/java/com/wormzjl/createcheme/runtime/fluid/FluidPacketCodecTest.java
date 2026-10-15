@@ -95,10 +95,11 @@ class FluidPacketCodecTest {
         var view=new FluidView(9,4,1200,1300,"RESTING: no flow since 55.0 s",null,0,List.of());
         return new FluidNetwork.MenuData(TopologyCompiler.Kind.GENERATOR,view,new FluidNetwork.Controls(298.15,150000,.05,.000045,.01,500000,amounts),names,presets,message,Map.of("component_0",descriptor),weights(names.size()));
     }
-    /** The protocol is fluid-8 (fluid-6 plus the compressor's ratio control and a tank's outlets, phase-ports WP5; fluid-8
-     * adds each outlet's face, GUI fix F4) and every payload has its own wire identity. Test name kept. */
+    /** The protocol is fluid-9 (fluid-6 plus the compressor's ratio control and a tank's outlets, phase-ports WP5; fluid-8
+     * adds each outlet's face, GUI fix F4; fluid-9 drops the unread hydraulicOwner and intervalQuality view fields) and every
+     * payload has its own wire identity. Test name kept. */
     @Test void theProtocolIsFluidSixWithDistinctStaticAndLivePayloads() {
-        assertEquals("fluid-8",FluidNetwork.PROTOCOL);
+        assertEquals("fluid-9",FluidNetwork.PROTOCOL);
         var ids=java.util.Set.of(FluidNetwork.EditPayload.TYPE.id(),FluidNetwork.RecoverPayload.TYPE.id(),FluidNetwork.StaticPayload.TYPE.id(),FluidNetwork.LivePayload.TYPE.id());
         assertEquals(4,ids.size());
     }
