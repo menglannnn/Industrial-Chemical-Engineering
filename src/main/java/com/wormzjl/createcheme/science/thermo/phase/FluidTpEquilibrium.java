@@ -267,6 +267,35 @@ public final class FluidTpEquilibrium implements EquilibriumService {
     private static final double THREE_PHASE_TOLERANCE = 1.0e-11;
     /** A species below this fraction of the feed is a trace of a pseudo-binary's three-phase step (P5). */
     private static final double TRACE_FRACTION = 1.0e-8;
+    /**
+     * D21: a dry feed whose species other than its largest total at most this fraction of it is near-pure. When that
+     * major species has a competing crystal, PH and UV answer its crystal steps (sublimation, melting, triple point) as
+     * a pure feed's, from the balances at the pure species' equal-chemical-potential point, the other species carried as
+     * traces in the fluid phase the step leaves (see {@link #STEP_FLUID_TRACES}); the pure species' pressure (UV) or
+     * temperature (PH) is then about 1.3 times the trace fraction off. Below this TP cannot resolve the feed's own
+     * vapour-solid region (about the trace fraction wide in pressure, P6B_RUNTIME_FAILURE_DIAGNOSIS section 1). It takes
+     * precedence over the pseudo-binary rule of {@link #TRACE_FRACTION}.
+     */
+    private static final double NEAR_PURE_TRACES = 1.0e-6;
+    /**
+     * D21: the largest share of a near-pure step's fluid its traces may take. The step at the pure species' point leaves
+     * out the traces' dilution of that fluid, which moves the real step by about this share in ln P (12 K times it in T
+     * for CO2 sublimation at 101 kPa, R T^2 over the step's enthalpy); a step needing a smaller fluid (deep deposition) is
+     * the general solve's, whose vapour-solid region is then at least this share wide in drive, five decades above
+     * {@link #DEPOSITION_TOLERANCE}. At 100 times {@link #NEAR_PURE_TRACES} every near-pure feed keeps at least 99 % of
+     * its step on the rule (fluid shares from traces/1e-4 of the feed to 1), and the handover moves the answer by at most
+     * 1e-4 in ln P. Bounding the share by the trace fraction itself leaves a feed at that fraction no step; leaving it
+     * unbounded (only the fluid of nothing but traces refused) claims the pure point where the traces make most of the
+     * fluid, and the rule and the general solve then alternate along {@code H(T)} (measured, M1_ENGINE_PORT).
+     */
+    private static final double STEP_FLUID_TRACES = 1.0e-4;
+    /**
+     * The margin of the triple-point screen, a fraction of the feed: the feed's own phases (a near-pure feed's traces in
+     * one fluid) move the triangle's balances by about the trace fraction, far inside it.
+     */
+    private static final double TRIANGLE_SCREEN = 1.0e-3;
+    /** Evaluations of the fluid at its own composition while a near-pure step's split converges (D21). */
+    private static final int NEAR_PURE_ITERATIONS = 8;
     /** A PH (relative in T) or UV (in ln P) bracket this narrow that straddles a binary's three-phase step is solved there (P5). */
     private static final double THREE_PHASE_BRACKET = 0.02;
 
@@ -498,7 +527,27 @@ public final class FluidTpEquilibrium implements EquilibriumService {
         String evidence = solid.crystal() + " (" + solid.record().revision() + ", " + coverage.grade().key() + ": " + coverage.evidence() + ")";
         double[] triple = familyTriplePoint(anchored, component);
         return new Crystal(anchored, solid.crystal(), component, slot, fluidRange[0], gradeOf(coverage.grade()), evidence,
-                triple[0], triple[1]);
+                triple[0], triple[1], tripleTriangle(anchored, component, triple[0], triple[1]));
+    }
+
+    /**
+     * The molar internal energies and volumes of the pure species' vapour, liquid and crystal at its family's triple
+     * point, {@code (u_V, v_V, u_L, v_L, u_s, v_s)}: the corners of the triple point's triangle in UV (P5), evaluated once;
+     * null when the family refuses that point (no triple-point answers then).
+     */
+    private double[] tripleTriangle(CrystalPhaseEvaluator.Anchored crystal, int component, double t, double p) {
+        double[] pure = new double[count];
+        pure[component] = 1.0;
+        var scratch = evaluator.newWorkspace();
+        try {
+            PhaseState vapour = evaluator.evaluate(t, p, pure, Root.VAPOR, scratch, evaluator.newState());
+            PhaseState liquid = evaluator.evaluate(t, p, pure, Root.LIQUID, scratch, evaluator.newState());
+            PhaseState solid = crystal.evaluate(t, p, new PhaseState(1));
+            return new double[] {vapour.molarInternalEnergy(), vapour.molarVolume(), liquid.molarInternalEnergy(), liquid.molarVolume(),
+                    solid.molarInternalEnergy(), solid.molarVolume()};
+        } catch (IllegalArgumentException | IllegalStateException | ArithmeticException refused) {
+            return null;
+        }
     }
 
     /**
@@ -582,11 +631,12 @@ public final class FluidTpEquilibrium implements EquilibriumService {
      * construction), the species' EOS index and contract slot, the species' own fluid-range floor, the record's grade
      * and its evidence line, and the family's own triple point (P5: where the crystal and the family's vapour and liquid
      * of the pure species have equal chemical potentials; the anchor's triple point pins the crystal to the liquid only,
-     * and the cubic's saturation pressure there differs slightly).
+     * and the cubic's saturation pressure there differs slightly), with the corners of its triangle in UV
+     * ({@link #tripleTriangle}).
      */
     private record Crystal(CrystalPhaseEvaluator.Anchored anchored, String id, int component, int slot,
                            double fluidMinimumTemperature, EquilibriumResult.CoverageGrade grade, String evidence,
-                           double tripleTemperature, double triplePressure) {
+                           double tripleTemperature, double triplePressure, double[] triangle) {
         /** The anchor's fusion enthalpy, J/mol (the record's effective value on this family, D16). */
         double fusionEnthalpy() { return anchored.record().anchor().fusionEnthalpy(); }
     }
@@ -671,6 +721,8 @@ public final class FluidTpEquilibrium implements EquilibriumService {
         private final Crystal[] active;
         private int activeCount;
         private final double[] savedFeed, savedBasis, pure;
+        /** D21: the fluid a near-pure crystal step leaves, the traces with it. */
+        private final double[] stepFluid;
         private final PhaseState solidState = new PhaseState(1);
         private final PhaseState pureState;
         private final PhaseDerivatives reduced;
@@ -731,6 +783,7 @@ public final class FluidTpEquilibrium implements EquilibriumService {
             savedFeed = new double[n];
             savedBasis = new double[owner.basis];
             pure = new double[n];
+            stepFluid = new double[n];
             pureState = owner.evaluator.newState();
             reduced = owner.evaluator.newDerivatives();
             threeLiquid = owner.evaluator.newState();
@@ -817,15 +870,13 @@ public final class FluidTpEquilibrium implements EquilibriumService {
         }
 
         /**
-         * Whether one end is a crystal alone and the other one fluid phase (P4 stage 2a): for the pure species of a
-         * competing crystal, the jump of its sublimation lies between them.
+         * Whether one end holds a crystal and the other is fluid alone (P4 stage 2a, D21): for the one major species of a
+         * competing crystal, the jump of its crystal step lies between them. A pure feed's ends are each one phase (the
+         * crystal alone against one fluid phase); a near-pure feed's crystal end also holds the fluid with the traces.
          */
-        boolean straddlesSublimation() {
+        boolean straddlesCrystalStep() {
             if (lowerResult == null || upperResult == null) return false;
-            if (lowerResult.phases().size() != 1 || upperResult.phases().size() != 1) return false;
-            boolean a = lowerResult.phases().get(0).kind() == PhaseKind.SOLID;
-            boolean b = upperResult.phases().get(0).kind() == PhaseKind.SOLID;
-            return a != b;
+            return holdsSolid(lowerResult) != holdsSolid(upperResult);
         }
 
         /** Whether an end's answer holds a crystal (P4 stage 2a). */
@@ -1362,8 +1413,8 @@ public final class FluidTpEquilibrium implements EquilibriumService {
                     && Math.abs(step) <= tolerance * t) {
                 return outerAnswer(Specification.PH, result, target, Double.NaN, false, null, w);
             }
-            if (s.bracketed() && (s.width() <= tolerance * t || !w.wet && w.presentCount == 1 && (s.straddlesPureCoexistence()
-                    || pureCrystal(w) != null && s.straddlesSublimation())
+            if (s.bracketed() && (s.width() <= tolerance * t || !w.wet && (w.presentCount == 1 && s.straddlesPureCoexistence()
+                    || pureCrystal(w) != null && s.straddlesCrystalStep())
                     || w.wet && waterStep(s.lowerResult, s.upperResult)
                     || binaryCrystal(w) != null && threePhaseDue(s, s.width() / t))) {
                 EquilibriumResult closed = closedPh(p, target, competition, w);
@@ -1409,9 +1460,9 @@ public final class FluidTpEquilibrium implements EquilibriumService {
         if (closed && jump <= SPECIFICATION_TOLERANCE * w.total * R * t && s.best() != null) {
             return outerAnswer(Specification.PH, s.best(), target, Double.NaN, s.bestCoexistence(), null, w);
         }
-        if (!w.wet && w.presentCount == 1) {
-            EquilibriumResult answer = pureCrystal(w) != null && s.endHoldsSolid()
-                    ? pureCrystalStep(Specification.PH, t, p, target, closed, competition, w)
+        boolean crystalStep = !w.wet && pureCrystal(w) != null && s.endHoldsSolid();
+        if (crystalStep || !w.wet && w.presentCount == 1) {
+            EquilibriumResult answer = crystalStep ? pureCrystalStep(Specification.PH, t, p, target, closed, competition, w)
                     : pureCoexistence(Specification.PH, t, p, target, closed, competition, w);
             if (answer != null) return outerAnswer(Specification.PH, answer, target, Double.NaN, true, null, w);
             if (!Double.isNaN(w.coexistenceX) || !closed) return null;
@@ -1429,14 +1480,22 @@ public final class FluidTpEquilibrium implements EquilibriumService {
         }
         // Not closed yet: the search goes on (the step is not where the enthalpy lies).
         if (!closed) return null;
-        return searchFailure(Specification.PH, competition, "the specified enthalpy " + target + " J lies in a step of H(T) at "
-                + p + " Pa between " + s.lower + " and " + s.upper + " K (from " + (target + s.lowerResidual) + " to "
-                + (target + s.upperResidual) + " J): no state of the model has it", s.lowerResult, w);
+        return searchFailure(Specification.PH, competition, crystalStepType(crystalStep) + "the specified enthalpy " + target
+                + " J lies in a step of H(T) at " + p + " Pa between " + s.lower + " and " + s.upper + " K (from "
+                + (target + s.lowerResidual) + " to " + (target + s.upperResidual) + " J): no state of the model has it",
+                s.lowerResult, w);
     }
 
     // UV.
 
     private EquilibriumResult solveUv(double u, double v, double hintT, double hintP, PhaseCompetition competition, Workspace w) {
+        // P5, D21: inside the triple point's triangle of the feed's one major species the answer is that triple point (or,
+        // near-pure with too little fluid for its traces, the typed hold), whatever a search would meet on its way there.
+        Crystal major = w.wet ? null : pureCrystal(w);
+        if (major != null && nearTriangle(u, v, w.hydrocarbonTotal, major)) {
+            EquilibriumResult triple = pureTriplePoint(u, v, competition, w);
+            if (triple != null) return triple;
+        }
         if (hintT >= w.minimumT && hintT <= w.maximumT && hintP >= w.minimumP && hintP <= w.maximumP) {
             // P6 warm start: the Newton phase from the previous answer, on a short budget; the cold search otherwise.
             EquilibriumResult warm = newtonUv(hintT, hintP, null, u, v, competition, w, WARM_UV_EVALUATIONS);
@@ -1797,11 +1856,11 @@ public final class FluidTpEquilibrium implements EquilibriumService {
                     return outsideWindow(Specification.UV, ThermoDomainViolation.Property.PRESSURE, belowWindow, t, Double.NaN,
                             "the specified volume " + v + " m3 at the specified internal energy " + u + " J", competition, last, w);
                 }
-                // P5: a pure crystal species at its family's triple point, the vapour, the liquid and the crystal together.
-                EquilibriumResult triple = pureTriplePoint(u, v, s.lower, s.upper, competition, w);
-                if (triple != null) return triple;
-                return searchFailure(Specification.UV, competition, "the specified internal energy " + u + " J lies in a step"
-                        + " of U(T) at the specified volume between " + s.lower + " and " + s.upper + " K", last, w);
+                // A target inside a one-major feed's triple-point triangle was answered before the search (solveUv).
+                boolean crystalStep = !w.wet && pureCrystal(w) != null && s.endHoldsSolid();
+                return searchFailure(Specification.UV, competition, crystalStepType(crystalStep) + "the specified internal energy "
+                        + u + " J lies in a step of U(T) at the specified volume between " + s.lower + " and " + s.upper + " K",
+                        last, w);
             }
             if (!s.bracketed()) {
                 if (t <= s.minimum && residual > 0.0) {
@@ -1907,8 +1966,8 @@ public final class FluidTpEquilibrium implements EquilibriumService {
                 w.innerLoose = !exact;
                 return found(result, false, w);
             }
-            if (s.bracketed() && (s.width() <= tolerance || !w.wet && w.presentCount == 1 && (s.straddlesPureCoexistence()
-                    || pureCrystal(w) != null && s.straddlesSublimation())
+            if (s.bracketed() && (s.width() <= tolerance || !w.wet && (w.presentCount == 1 && s.straddlesPureCoexistence()
+                    || pureCrystal(w) != null && s.straddlesCrystalStep())
                     || w.wet && waterStep(s.upperResult, s.lowerResult)
                     || binaryCrystal(w) != null && threePhaseDue(s, s.width()))) {
                 int closed = closedInner(t, v, competition, w);
@@ -1962,9 +2021,9 @@ public final class FluidTpEquilibrium implements EquilibriumService {
             return found(s.best(), s.bestCoexistence(), w);
         }
         double p = DeterministicMath.exp(0.5 * (s.lower + s.upper));
-        if (!w.wet && w.presentCount == 1) {
-            EquilibriumResult answer = pureCrystal(w) != null && s.endHoldsSolid()
-                    ? pureCrystalStep(Specification.UV, t, p, v, closed, competition, w)
+        boolean crystalStep = !w.wet && pureCrystal(w) != null && s.endHoldsSolid();
+        if (crystalStep || !w.wet && w.presentCount == 1) {
+            EquilibriumResult answer = crystalStep ? pureCrystalStep(Specification.UV, t, p, v, closed, competition, w)
                     : pureCoexistence(Specification.UV, t, p, v, closed, competition, w);
             if (answer != null) return foundOrHeld(answer, w);
             if (!Double.isNaN(w.coexistenceX) || !closed) return INNER_BELOW;
@@ -1985,9 +2044,19 @@ public final class FluidTpEquilibrium implements EquilibriumService {
         }
         // Not closed yet: the search goes on (the step is not where the volume lies).
         if (!closed) return INNER_BELOW;
-        w.innerFailure = "the specified volume " + v + " m3 lies in a step of V(P) at " + t + " K between "
-                + DeterministicMath.exp(s.lower) + " and " + DeterministicMath.exp(s.upper) + " Pa: no state of the model has it";
+        w.innerFailure = crystalStepType(crystalStep) + "the specified volume " + v + " m3 lies in a step of V(P) at " + t
+                + " K between " + DeterministicMath.exp(s.lower) + " and " + DeterministicMath.exp(s.upper)
+                + " Pa: no state of the model has it";
         return INNER_FAILED;
+    }
+
+    /**
+     * The {@link EquilibriumResult#CRYSTAL_STEP} prefix of a closed search's failure when the step it closed on is the
+     * crystal step of the feed's one major species ({@code crystalStep}: a pure or near-pure feed, an end holding the
+     * crystal; D21 option C), otherwise nothing.
+     */
+    private static String crystalStepType(boolean crystalStep) {
+        return crystalStep ? EquilibriumResult.CRYSTAL_STEP + ": " : "";
     }
 
     // Coexistences TP leaves undetermined.
@@ -2785,20 +2854,42 @@ public final class FluidTpEquilibrium implements EquilibriumService {
         return false;
     }
 
-    /** The competing crystal of the only species present (a pure feed), or null. */
+    /**
+     * The competing crystal of the feed's one major species, or null: the only species present (a pure feed), or the
+     * largest of a dry near-pure feed whose other species total at most {@link #NEAR_PURE_TRACES} of it (D21).
+     */
     private Crystal pureCrystal(Workspace w) {
-        if (w.activeCount == 0 || w.presentCount != 1) return null;
-        for (int a = 0; a < w.activeCount; a++) if (w.active[a].component() == w.present[0]) return w.active[a];
+        if (w.activeCount == 0) return null;
+        int major = majorSpecies(w);
+        if (major < 0) return null;
+        for (int a = 0; a < w.activeCount; a++) if (w.active[a].component() == major) return w.active[a];
         return null;
+    }
+
+    /** The feed's one major species (see {@link #pureCrystal}), or -1. */
+    private static int majorSpecies(Workspace w) {
+        if (w.presentCount == 1) return w.present[0];
+        if (w.wet || w.presentCount == 0) return -1;
+        int major = w.present[0];
+        for (int a = 1; a < w.presentCount; a++) if (w.feed[w.present[a]] > w.feed[major]) major = w.present[a];
+        return traces(major, w) <= NEAR_PURE_TRACES * w.hydrocarbonTotal ? major : -1;
+    }
+
+    /** The feed's amount of every species but {@code major}, mol: the traces of a near-pure feed (D21), 0 for a pure one. */
+    private static double traces(int major, Workspace w) {
+        double others = 0.0;
+        for (int a = 0; a < w.presentCount; a++) if (w.present[a] != major) others += w.feed[w.present[a]];
+        return others;
     }
 
     /**
      * The competing crystal of a dry binary that carries its species (and no other crystal's), or null (P5). A
      * pseudo-binary counts: two species above {@link #TRACE_FRACTION} of the feed, the others traces (a network vessel
-     * carries the nitrogen trace of an injection), whose three-phase region at fixed T and P is as thin as their share.
+     * carries the nitrogen trace of an injection), whose three-phase region at fixed T and P is as thin as their share. A
+     * near-pure feed whose major species has the crystal is not one (D21: its pure species' steps take precedence).
      */
     private Crystal binaryCrystal(Workspace w) {
-        if (w.wet || w.activeCount == 0 || w.presentCount < 2) return null;
+        if (w.wet || w.activeCount == 0 || w.presentCount < 2 || pureCrystal(w) != null) return null;
         int majors = 0;
         for (int a = 0; a < w.presentCount; a++) if (w.feed[w.present[a]] > TRACE_FRACTION * w.hydrocarbonTotal) majors++;
         if (majors != 2) return null;
@@ -2895,6 +2986,13 @@ public final class FluidTpEquilibrium implements EquilibriumService {
      * {@code target = N [(1 - beta) x_s + beta x_F]}. As {@link #pureCoexistence}: the answer when {@code beta} lies in
      * {@code [0, 1]} (within the specification tolerance, or always when {@code clamp}), otherwise null with the jump's
      * end on the target's side in {@code coexistenceX} and {@code coexistenceResidual}.
+     *
+     * <p>A near-pure feed (D21) takes the same step at the same point, its traces in the fluid: {@code beta} is then the
+     * fluid's share of all the moles, the fluid's {@code x_F} is evaluated at its own composition (the traces and
+     * {@code beta N} less them of the species; a few re-evaluations converge the split), and the step holds while the
+     * traces are at most {@link #STEP_FLUID_TRACES} of that fluid, {@code beta >= traces / (Y N)}. A target beyond that
+     * end is the general solve's (the search goes on); a closed search there is the typed
+     * {@link EquilibriumResult#CRYSTAL_STEP} hold, never a crystal stretched over the traces' own pressure.
      */
     private EquilibriumResult pureCrystalStep(Specification specification, double t, double p, double target, boolean clamp,
                                               PhaseCompetition competition, Workspace w) {
@@ -2912,23 +3010,45 @@ public final class FluidTpEquilibrium implements EquilibriumService {
         PhaseState solid = c.anchored().evaluate(t, p, w.solidState);
         w.outerKernel++;
         double n = w.hydrocarbonTotal;
+        double traces = traces(i, w);
         double solidValue = energy ? solid.molarEnthalpy() : solid.molarVolume();
         double fluidValue = energy ? fluid.molarEnthalpy() : fluid.molarVolume();
         double gap = fluidValue - solidValue;
         double beta = (target / n - solidValue) / gap;
+        // D21: the smallest fluid share that keeps the traces within STEP_FLUID_TRACES of it (0 for a pure feed).
+        double lowest = traces / (STEP_FLUID_TRACES * n);
+        if (traces > 0.0) {
+            for (int k = 0; k < NEAR_PURE_ITERATIONS && beta >= lowest && beta <= 1.0; k++) {
+                fluid = stepFluid(t, p, i, beta * n - traces, root, w);
+                fluidValue = energy ? fluid.molarEnthalpy() : fluid.molarVolume();
+                gap = fluidValue - solidValue;
+                double next = (target / n - solidValue) / gap;
+                boolean converged = Math.abs(next - beta) <= 4.0 * Math.ulp(beta);
+                beta = next;
+                if (converged) break;
+            }
+        }
         double belowAllowance = Math.abs(SPECIFICATION_TOLERANCE * (energy ? R * t : solidValue) / gap);
         double aboveAllowance = Math.abs(SPECIFICATION_TOLERANCE * (energy ? R * t : fluidValue) / gap);
-        if (!clamp && (beta < -belowAllowance || beta > 1.0 + aboveAllowance) || !Double.isFinite(beta)) {
-            boolean solidEnd = beta < 0.0;
-            double value = n * (solidEnd ? solidValue : fluidValue);
+        if (!clamp && (beta < lowest - belowAllowance || beta > 1.0 + aboveAllowance) || !Double.isFinite(beta)) {
+            boolean solidEnd = beta < lowest;
+            double value = !solidEnd ? n * fluidValue
+                    : traces > 0.0 ? n * ((1.0 - lowest) * solidValue + lowest * fluidValue) : n * solidValue;
             w.coexistenceX = energy ? t : DeterministicMath.log(p);
             w.coexistenceResidual = energy ? value - target : DeterministicMath.log(target / value);
             return null;
         }
-        beta = Math.clamp(beta, 0.0, 1.0);
+        if (traces > 0.0 && beta < lowest - belowAllowance) {
+            // A closed search on the crystal step with the target beyond the traces' end of it (D21 option C).
+            return crystalStepHold("the specified " + (energy ? "enthalpy " + target + " J" : "volume " + target + " m3")
+                    + " needs a fluid of more than " + STEP_FLUID_TRACES + " traces beside the crystal at the pure " + species
+                    + " step (" + t + " K, " + p + " Pa; fluid share " + beta + ", the traces' end " + lowest + ")", competition, w);
+        }
+        beta = Math.clamp(beta, lowest, 1.0);
         String note = "pure " + (melting ? "melting" : "sublimation") + " of " + species + " at the equal-chemical-potential point ("
                 + t + " K, " + p + " Pa): " + (melting ? "liquid" : "vapour") + " fraction " + beta + " from the "
-                + (energy ? "energy" : "volume") + " balance";
+                + (energy ? "energy" : "volume") + " balance"
+                + (traces > 0.0 ? "; near-pure (D21): " + traces + " mol of other species in the " + (melting ? "liquid" : "vapour") : "");
         int slot = c.slot();
         double amount = w.feed[i];
         PhaseKind fluidKind = melting ? PhaseKind.LIQUID : PhaseKind.VAPOR;
@@ -2936,6 +3056,7 @@ public final class FluidTpEquilibrium implements EquilibriumService {
         Classification classification;
         EquilibriumResult.Deposition deposition = null;
         if (beta == 1.0) {
+            if (traces > 0.0) fluid = stepFluid(t, p, i, amount, root, w);
             classification = !melting ? Classification.SINGLE_VAPOR
                     : fluid.physicalRootCount() > 1 ? Classification.SINGLE_LIQUID : Classification.SINGLE_FLUID;
             phases = List.of(new PhaseAmounts(fluidKind, null, t, p, w.basisAmounts, fluid.copy()));
@@ -2946,12 +3067,17 @@ public final class FluidTpEquilibrium implements EquilibriumService {
         } else {
             double[] fluidAmounts = new double[basis];
             double[] solidAmounts = new double[basis];
+            // The traces stay in the fluid (D21; none for a pure feed, whose n is the species' amount).
+            for (int a = 0; a < w.presentCount; a++) {
+                int j = w.present[a];
+                if (j != i) fluidAmounts[basisOfComponent[j]] = w.feed[j];
+            }
             // The smaller share by its own formula, the larger by difference: conserved to rounding.
             if (beta <= 0.5) {
-                fluidAmounts[slot] = beta * amount;
+                fluidAmounts[slot] = beta * n - traces;
                 solidAmounts[slot] = amount - fluidAmounts[slot];
             } else {
-                solidAmounts[slot] = (1.0 - beta) * amount;
+                solidAmounts[slot] = (1.0 - beta) * n;
                 fluidAmounts[slot] = amount - solidAmounts[slot];
             }
             classification = melting ? Classification.LIQUID_SOLID : Classification.VAPOR_SOLID;
@@ -2963,6 +3089,23 @@ public final class FluidTpEquilibrium implements EquilibriumService {
         return new EquilibriumResult(Specification.TP, EquilibriumResult.Status.CONVERGED, null, CONVERGED + "; " + note, null,
                 contract.identity(), competition, classification, phases, List.of(), solidCoverage(convergedCoverage, w),
                 diagnostics(w, null, false), null, deposition);
+    }
+
+    /**
+     * The fluid a near-pure crystal step leaves (D21): the feed's traces with {@code amount} of species {@code i},
+     * evaluated at (t, p) on {@code root} into the workspace's vapour state.
+     */
+    private PhaseState stepFluid(double t, double p, int i, double amount, Root root, Workspace w) {
+        System.arraycopy(w.feed, 0, w.stepFluid, 0, count);
+        w.stepFluid[i] = amount;
+        w.outerKernel++;
+        return evaluator.evaluate(t, p, w.stepFluid, root, w.phases, w.vaporState);
+    }
+
+    /** The typed hold of a crystal step the near-pure rule does not answer (D21 option C, {@link EquilibriumResult#CRYSTAL_STEP}). */
+    private EquilibriumResult crystalStepHold(String why, PhaseCompetition competition, Workspace w) {
+        return EquilibriumResult.notConverged(Specification.TP, contract.identity(), competition,
+                EquilibriumResult.CRYSTAL_STEP + ": " + why, diagnostics(w, null, false));
     }
 
     /**
@@ -3060,54 +3203,136 @@ public final class FluidTpEquilibrium implements EquilibriumService {
     }
 
     /**
-     * The pure species of a competing crystal at its family's triple point in UV (P5): at a volume inside the triple
-     * point's triangle {@code U(T)} at the fixed volume has a step at the triple temperature (the vapour-solid split just
-     * below, the vapour-liquid split just above), which the nested search closes on. The vapour, the liquid and the
+     * The pure species of a competing crystal at its family's triple point in UV (P5): the vapour, the liquid and the
      * crystal at the family's triple point ({@link Crystal#tripleTemperature()}, {@link Crystal#triplePressure()}), with
-     * the amounts from the three balances (moles, energy, volume); the answer when every amount is nonnegative within the
-     * specification tolerance, {@link Classification#VAPOR_LIQUID_SOLID} from the balance; otherwise null.
+     * the amounts from the three balances (moles, energy, volume). A target inside the triple point's triangle (every
+     * amount nonnegative within the specification tolerance) has this answer, {@link Classification#VAPOR_LIQUID_SOLID}
+     * from the balance, before any search (at that volume {@code U(T)} has its step at the triple temperature, where a
+     * search could only close on it); otherwise null.
+     *
+     * <p>A near-pure feed (D21) at the same point carries its traces in the larger fluid phase of the balances (the
+     * smaller trace share, so the smaller departure from the pure point), that fluid evaluated at its own composition, the
+     * other one pure, and the balances solved again until the amounts settle (its own three-phase region lies within
+     * about the trace fraction of the pure point, where the volume at a temperature can fall in a step no search
+     * resolves). Inside the triangle with more than {@link #STEP_FLUID_TRACES} of traces in the larger fluid the answer
+     * is the typed {@link EquilibriumResult#CRYSTAL_STEP} hold (D21 option C): no other rule answers that state.
      */
-    private EquilibriumResult pureTriplePoint(double u, double v, double lower, double upper, PhaseCompetition competition, Workspace w) {
+    private EquilibriumResult pureTriplePoint(double u, double v, PhaseCompetition competition, Workspace w) {
         Crystal c = pureCrystal(w);
         if (c == null || w.wet) return null;
         double t = c.tripleTemperature();
         double p = c.triplePressure();
-        double slack = 1.0e-9 * t;
-        if (!(t >= Math.min(lower, upper) - slack && t <= Math.max(lower, upper) + slack)) return null;
         int i = c.component();
         PhaseState vapour = evaluator.evaluate(t, p, w.feed, Root.VAPOR, w.phases, w.threeVapour);
         PhaseState liquid = evaluator.evaluate(t, p, w.feed, Root.LIQUID, w.phases, w.threeLiquid);
         PhaseState solid = c.anchored().evaluate(t, p, w.solidState);
         w.outerKernel += 2;
         double n = w.hydrocarbonTotal;
+        double traces = traces(i, w);
         // n_V + n_L + n_S = N; n_V u_V + n_L u_L + n_S u_s = U; n_V v_V + n_L v_L + n_S v_s = V.
-        double[] a = {1.0, 1.0, 1.0, vapour.molarInternalEnergy(), liquid.molarInternalEnergy(), solid.molarInternalEnergy(),
-                vapour.molarVolume(), liquid.molarVolume(), solid.molarVolume()};
         double[] b = {n, u, v};
-        double[] amounts = solve3(a, b);
+        double[] amounts = insideTriangle(solve3(tripleBalances(vapour, liquid, solid), b), n);
         if (amounts == null) return null;
-        double allowance = SPECIFICATION_TOLERANCE * n;
-        for (double amount : amounts) if (!(amount >= -allowance)) return null;
-        double nv = Math.max(amounts[0], 0.0);
-        double ns = Math.max(amounts[2], 0.0);
-        double nl = n - nv - ns;
-        if (!(nl >= -allowance)) return null;
-        nl = Math.max(nl, 0.0);
+        boolean inVapour = amounts[0] >= amounts[1];
+        String species = evaluator.components().get(i);
+        if (traces > 0.0) {
+            // D21: the traces in the larger fluid at its own composition, the other fluid the pure species.
+            if (!((inVapour ? amounts[0] : amounts[1]) * STEP_FLUID_TRACES >= traces)) return tripleHold(u, v, amounts, traces, species, competition, w);
+            Arrays.fill(w.pure, 0.0);
+            w.pure[i] = 1.0;
+            for (int k = 0; k < NEAR_PURE_ITERATIONS; k++) {
+                System.arraycopy(w.feed, 0, w.stepFluid, 0, count);
+                w.stepFluid[i] = (inVapour ? amounts[0] : amounts[1]) - traces;
+                vapour = evaluator.evaluate(t, p, inVapour ? w.stepFluid : w.pure, Root.VAPOR, w.phases, w.threeVapour);
+                liquid = evaluator.evaluate(t, p, inVapour ? w.pure : w.stepFluid, Root.LIQUID, w.phases, w.threeLiquid);
+                w.outerKernel += 2;
+                double[] next = insideTriangle(solve3(tripleBalances(vapour, liquid, solid), b), n);
+                if (next == null) return null;
+                boolean settled = Math.abs(next[0] - amounts[0]) <= 4.0 * Math.ulp(n) && Math.abs(next[2] - amounts[2]) <= 4.0 * Math.ulp(n);
+                amounts = next;
+                if (settled) break;
+            }
+            if (!((inVapour ? amounts[0] : amounts[1]) * STEP_FLUID_TRACES >= traces)) return tripleHold(u, v, amounts, traces, species, competition, w);
+        }
+        double nv = amounts[0];
+        double nl = amounts[1];
+        double ns = amounts[2];
         int slot = c.slot();
         List<PhaseAmounts> phases = new ArrayList<>(3);
-        if (nv > 0.0) phases.add(new PhaseAmounts(PhaseKind.VAPOR, null, t, p, single(slot, nv), vapour.copy()));
-        if (nl > 0.0) phases.add(new PhaseAmounts(PhaseKind.LIQUID, null, t, p, single(slot, nl), liquid.copy()));
+        if (nv > 0.0) phases.add(new PhaseAmounts(PhaseKind.VAPOR, null, t, p, tripleAmounts(slot, nv, traces > 0.0 && inVapour, i, w), vapour.copy()));
+        if (nl > 0.0) phases.add(new PhaseAmounts(PhaseKind.LIQUID, null, t, p, tripleAmounts(slot, nl, traces > 0.0 && !inVapour, i, w), liquid.copy()));
         if (ns > 0.0) phases.add(new PhaseAmounts(PhaseKind.SOLID, c.id(), t, p, single(slot, ns), solid.copy()));
         Classification classification = crystalClassification(nv > 0.0, nl > 0.0, ns > 0.0);
         if (classification == null) return null;
-        String species = evaluator.components().get(i);
         String note = "pure " + species + " at its family's triple point (" + t + " K, " + p + " Pa): vapour " + nv + ", liquid " + nl
-                + ", " + c.id() + " " + ns + " mol from the mole, energy and volume balances";
+                + ", " + c.id() + " " + ns + " mol from the mole, energy and volume balances"
+                + (traces > 0.0 ? "; near-pure (D21): " + traces + " mol of other species in the " + (inVapour ? "vapour" : "liquid") : "");
         var deposition = ns > 0.0 ? new EquilibriumResult.Deposition(c.id(), species, Double.NaN, Double.NaN, ns, false, DEPOSITION_TRACE, 0, 0) : null;
         EquilibriumResult answer = new EquilibriumResult(Specification.TP, EquilibriumResult.Status.CONVERGED, null, CONVERGED + "; " + note,
                 null, contract.identity(), competition, classification, phases, List.of(), solidCoverage(convergedCoverage, w),
                 diagnostics(w, null, false), null, deposition);
         return outerAnswer(Specification.UV, answer, u, v, true, null, w);
+    }
+
+    /**
+     * The triple point's amounts (vapour, liquid, crystal) from {@link #solve3}'s (vapour, crystal) and the mole balance,
+     * when every one is nonnegative within the specification tolerance (those within it set to 0); otherwise null.
+     */
+    private static double[] insideTriangle(double[] solved, double n) {
+        if (solved == null) return null;
+        double allowance = SPECIFICATION_TOLERANCE * n;
+        for (double amount : solved) if (!(amount >= -allowance)) return null;
+        double nv = Math.max(solved[0], 0.0);
+        double ns = Math.max(solved[2], 0.0);
+        double nl = n - nv - ns;
+        if (!(nl >= -allowance)) return null;
+        return new double[] {nv, Math.max(nl, 0.0), ns};
+    }
+
+    /** The UV hold of a near-pure triple point whose fluids are too small for its traces (D21 option C), typed. */
+    private EquilibriumResult tripleHold(double u, double v, double[] amounts, double traces, String species, PhaseCompetition competition,
+                                         Workspace w) {
+        return outerAnswer(Specification.UV, crystalStepHold("the specified energy and volume put near-pure " + species + " at its family's triple point with vapour "
+                + amounts[0] + ", liquid " + amounts[1] + " and crystal " + amounts[2] + " mol, too little fluid for the " + traces
+                + " mol of other species within " + STEP_FLUID_TRACES + " of it", competition, w), u, v, false, null, w);
+    }
+
+    /**
+     * Whether {@code (N, U, V)} may lie inside crystal {@code c}'s triple-point triangle: the balances over its pure
+     * corners ({@link Crystal#triangle()}) leave no amount below {@link #TRIANGLE_SCREEN} of {@code N} (a screen that
+     * spares a search the triple point's evaluations; {@link #pureTriplePoint} decides on the feed's own states).
+     */
+    private static boolean nearTriangle(double u, double v, double n, Crystal c) {
+        double[] m = c.triangle();
+        if (m == null) return false;
+        double[] amounts = solve3(new double[] {1.0, 1.0, 1.0, m[0], m[2], m[4], m[1], m[3], m[5]}, new double[] {n, u, v});
+        if (amounts == null) return false;
+        for (double amount : amounts) if (!(amount >= -TRIANGLE_SCREEN * n)) return false;
+        return true;
+    }
+
+    /** The triple point's mole, energy and volume balances over (vapour, liquid, crystal), row-major for {@link #solve3}. */
+    private static double[] tripleBalances(PhaseState vapour, PhaseState liquid, PhaseState solid) {
+        return new double[] {1.0, 1.0, 1.0, vapour.molarInternalEnergy(), liquid.molarInternalEnergy(), solid.molarInternalEnergy(),
+                vapour.molarVolume(), liquid.molarVolume(), solid.molarVolume()};
+    }
+
+    /**
+     * A triple-point fluid phase's amounts: {@code amount} of the species alone, or (D21, {@code carrier}) the feed's
+     * traces with the rest of {@code amount} of species {@code i}.
+     */
+    private double[] tripleAmounts(int slot, double amount, boolean carrier, int i, Workspace w) {
+        if (!carrier) return single(slot, amount);
+        double[] amounts = new double[basis];
+        double traces = 0.0;
+        for (int a = 0; a < w.presentCount; a++) {
+            int j = w.present[a];
+            if (j == i) continue;
+            amounts[basisOfComponent[j]] = w.feed[j];
+            traces += w.feed[j];
+        }
+        amounts[slot] = amount - traces;
+        return amounts;
     }
 
     /** The classification of a crystal answer by its phases (vapour, liquid, crystal), or null for none of the known sets. */

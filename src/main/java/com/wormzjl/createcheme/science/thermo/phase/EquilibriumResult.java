@@ -239,6 +239,14 @@ public final class EquilibriumResult {
      */
     public static final String CRYSTAL_PHASES = "CRYSTAL_PHASES";
 
+    /**
+     * The prefix of the detail of a not-converged PH or UV result (D21 option C) at a crystal step of the feed's one major
+     * species (a pure feed, or a near-pure one) that the pure species' step does not answer: the search closed on that
+     * step, or a near-pure feed's triple point leaves too little fluid for its traces. TP resolves no state there, so
+     * another attempt at the same material meets the same step. The network holds on it at once instead of retrying.
+     */
+    public static final String CRYSTAL_STEP = "CRYSTAL_STEP";
+
     private final EquilibriumRequest.Specification specification;
     private final Status status;
     private final UnsupportedReason reason;
