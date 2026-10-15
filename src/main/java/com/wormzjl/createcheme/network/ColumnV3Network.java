@@ -248,16 +248,14 @@ public final class ColumnV3Network {
 
     private static void validateResolvedInput(V3ColumnInput input) {
         input = Objects.requireNonNull(input, "input");
-        if (input.schemaVersion() != V3ColumnInput.SCHEMA_VERSION) {
-            throw new IllegalArgumentException("Unsupported V3 scientific input schema");
-        }
         if (V3HollandExample32.isPackage(input.packageId())) {
+            // The fixed benchmark preset: equality with it and the resolver validation are checked there.
             V3HollandExample32.validateInput(input);
-        } else {
-            V3PengRobinsonThermo thermo = V3PengRobinsonThermo.fromRegisteredPackage(input.packageId());
-            if (!thermo.componentBasis().equals(input.componentBasis())) {
-                throw new IllegalArgumentException("V3 component axis does not match the server property package");
-            }
+            return;
+        }
+        V3PengRobinsonThermo thermo = V3PengRobinsonThermo.fromRegisteredPackage(input.packageId());
+        if (!thermo.componentBasis().equals(input.componentBasis())) {
+            throw new IllegalArgumentException("V3 component axis does not match the server property package");
         }
         EnumSet<V3ControlledQuantity> controls = EnumSet.noneOf(V3ControlledQuantity.class);
         for (V3ColumnSpecification specification : input.specifications()) controls.add(specification.controlledQuantity());

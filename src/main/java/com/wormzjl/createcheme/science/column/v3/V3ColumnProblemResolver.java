@@ -50,7 +50,7 @@ public final class V3ColumnProblemResolver {
         }
         return new V3ColumnProblem(input, topology, activeComponentBasis, condenserComponentPhases,
                 nodePressuresPascal == null ? pressureProfile(input, topology)
-                        : requireProfile(nodePressuresPascal, input, topology),
+                        : nodePressuresPascal.clone(),
                 ledger, ledger.truncationSupport(), ledger.wetTraySet());
     }
 
@@ -78,6 +78,9 @@ public final class V3ColumnProblemResolver {
         support.requireCompatible(problem);
         if (!problem.truncationSupport().isIdentity() || problem.hasWetTrays()) {
             throw new IllegalArgumentException("V3 truncation requires the original untruncated problem");
+        }
+        if (wetTraySet.hasWetTrays() && !problem.hasSteamFeeds()) {
+            throw new IllegalArgumentException("V3 free water requires an authored steam feed");
         }
         if (support.isIdentity() && !wetTraySet.hasWetTrays()) return problem;
         V3DegreeOfFreedomLedger ledger = V3DegreeOfFreedomLedger.create(problem.topology(),
@@ -205,15 +208,6 @@ public final class V3ColumnProblemResolver {
         if (nodePressuresPascal[trayCount + 1] != nodePressuresPascal[trayCount]) {
             throw new IllegalArgumentException("V3 supplied pressure profile must put the sump on the bottom tray");
         }
-    }
-
-    private static double[] requireProfile(
-            double[] nodePressuresPascal, V3ColumnInput input, V3ColumnTopology topology) {
-        if (nodePressuresPascal.length != topology.nodeCount()
-                || topology.condenserNode() != 0 || topology.reboilerNode() != input.stageCount() + 1) {
-            throw new IllegalArgumentException("V3 supplied pressure profile does not match the resolved topology");
-        }
-        return nodePressuresPascal.clone();
     }
 
     private static double[] pressureProfile(V3ColumnInput input, V3ColumnTopology topology) {

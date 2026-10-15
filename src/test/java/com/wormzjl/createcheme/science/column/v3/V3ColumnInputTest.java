@@ -76,7 +76,7 @@ class V3ColumnInputTest {
                 () -> V3ColumnResult.accepted(
                         inputProblem(), new V3InputDigest("0".repeat(64)), passed, oversizedFinalStep));
         V3ColumnOutcome.Failure failure = new V3ColumnOutcome.Failure(
-                V3SolverFailureCode.DOF_MISMATCH, "fixture failure", diagnostics);
+                V3SolverFailureCode.NONCONVERGENCE, "fixture failure", diagnostics);
         assertFalse(failure.isSuccess());
     }
 

@@ -13,9 +13,6 @@ final class V3SteamFeeds {
     }
 
     static double[] upwardVaporProfile(double[] nodeFeedFlows, V3ColumnTopology topology) {
-        if (nodeFeedFlows.length != topology.nodeCount()) {
-            throw new IllegalArgumentException("V3 steam-feed profile does not match the topology");
-        }
         double[] profile = new double[nodeFeedFlows.length];
         double upward = 0.0;
         for (int node = topology.reboilerNode(); node >= 1; node--) {

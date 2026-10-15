@@ -22,6 +22,7 @@ public final class V3ColumnProblem {
     private final V3DegreeOfFreedomLedger degreeOfFreedomLedger;
     private final V3TruncationSupport truncationSupport;
 
+    /** Built only by {@link V3ColumnProblemResolver}, which validates every argument and builds the ledger from them. */
     V3ColumnProblem(
             V3ColumnInput input, V3ColumnTopology topology, V3ActiveComponentBasis activeComponentBasis,
             V3CondenserComponentPhases condenserComponentPhases, double[] nodePressuresPascal,
@@ -53,25 +54,6 @@ public final class V3ColumnProblem {
         this.wetTraySet = Objects.requireNonNull(wetTraySet, "wetTraySet");
         this.degreeOfFreedomLedger = Objects.requireNonNull(degreeOfFreedomLedger, "degreeOfFreedomLedger");
         this.truncationSupport = Objects.requireNonNull(truncationSupport, "truncationSupport");
-        if (this.nodePressuresPascal.length != topology.nodeCount()) {
-            throw new IllegalArgumentException("V3 pressure profile does not match the resolved topology");
-        }
-        for (double pressure : this.nodePressuresPascal) {
-            if (!Double.isFinite(pressure) || pressure <= 0.0) {
-                throw new IllegalArgumentException("V3 pressure profile must be finite and physically positive");
-            }
-        }
-        if (!degreeOfFreedomLedger.topology().equals(topology)
-                || degreeOfFreedomLedger.componentCount() != activeComponentBasis.componentCount()
-                || !degreeOfFreedomLedger.specifications().equals(input.specifications())
-                || degreeOfFreedomLedger.truncationSupport() != truncationSupport
-                || degreeOfFreedomLedger.wetTraySet() != wetTraySet) {
-            throw new IllegalArgumentException("V3 degree-of-freedom ledger does not describe this resolved problem");
-        }
-        if (wetTraySet.hasWetTrays() && !hasSteamFeeds()) {
-            throw new IllegalArgumentException("V3 free water requires an authored steam feed");
-        }
-        truncationSupport.requireCompatible(this);
     }
 
     public V3ColumnInput input() {
