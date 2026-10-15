@@ -8,8 +8,6 @@ import com.wormzjl.createcheme.science.material.MaterialCatalog;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
-import java.util.concurrent.atomic.AtomicLong;
-import java.util.function.LongSupplier;
 
 /** Shared, independent fixture-basis and finite-ledger calculations for fluid tests. */
 public final class FluidTestSupport {
@@ -154,34 +152,5 @@ public final class FluidTestSupport {
         }
 
         @Override public double[] components() { return components.clone(); }
-    }
-
-    /** Immutable SI inventory fixture; supplies no invented thermodynamic closure. */
-    public record ReservoirFixture(double volumeCubicMetres, double[] componentMoles,
-                                   double internalEnergyJoules, double elevationMetres) {
-        public ReservoirFixture {
-            if (!Double.isFinite(volumeCubicMetres) || volumeCubicMetres <= 0
-                    || !Double.isFinite(internalEnergyJoules) || !Double.isFinite(elevationMetres)) {
-                throw new IllegalArgumentException("Invalid SI fixture values");
-            }
-            componentMoles = componentMoles.clone();
-            for (double amount : componentMoles) {
-                if (!Double.isFinite(amount) || amount < 0) throw new IllegalArgumentException("Invalid mole inventory");
-            }
-        }
-
-        @Override public double[] componentMoles() { return componentMoles.clone(); }
-    }
-
-    /** Controlled monotonic clock for deterministic deadline tests. */
-    public static final class ManualNanoClock implements LongSupplier {
-        private final AtomicLong now = new AtomicLong(1);
-
-        @Override public long getAsLong() { return now.get(); }
-
-        public long advance(long nanos) {
-            if (nanos < 0) throw new IllegalArgumentException("Clock cannot move backward");
-            return now.updateAndGet(previous -> Math.addExact(previous, nanos));
-        }
     }
 }

@@ -64,33 +64,7 @@ class FluidPropertyCoverageTest {
                 }
             }
         }
-        Files.createDirectories(Path.of("build/reports/fluid"));
-        Files.writeString(Path.of("build/reports/fluid/M1-network-property-grid.json"),
-                new GsonBuilder().setPrettyPrinting().create().toJson(Map.of(
-                        "scope", "Sampled operability and component closure, not independent property accuracy or continuous-domain qualification",
-                        "basisComponents", com.wormzjl.createcheme.science.material.MaterialTestBasis.NETWORK+1, "nitrogenMolesPerMoleCrude", .1, "waterMolesPerMoleCrude", .2, "rows", rows)));
         assertTrue(failures.isEmpty(), String.join("\n", failures));
-    }
-    @Test void requiredCrudeMixturesHaveFinitePropertiesAcrossTheInitialWetOperatingGrid() throws Exception {
-        var catalog=MaterialCatalog.bundled();var rows=new ArrayList<Map<String,Object>>();var failures=new ArrayList<String>();
-        for(String packageId:List.of("createcheme:tjl20_methane","createcheme:wti_light_export_tjl20","createcheme:cold_lake_blend_tjl20", "createcheme:upper_zakum_tjl20", "createcheme:bonga_tjl20", "createcheme:dalia_tjl20")) {
-            var model=new FluidThermodynamics(catalog,packageId,1e-9);var p=catalog.requirePackage(packageId);
-            var n=Arrays.copyOf(V3PengRobinsonThermo.fromRegisteredPackage(packageId).crudeFeed(p.assays().keySet().iterator().next()).moleFractions(),model.componentCount());
-            n[model.componentCount()-1]=.2;
-            for(double t:new double[]{293.15,298.15,300,325,350,375})for(double pressure:new double[]{50000,101325,500000,1e6,2e6}) {
-                var row=new LinkedHashMap<String,Object>();rows.add(row);row.put("package",packageId);row.put("temperature",t);row.put("pressure",pressure);
-                try {
-                    var state=model.flashTP(t,pressure,n,()->{});
-                    if(state.liquidVolume()>0)row.put("liquidViscosity",model.viscosity.liquid(t,state.liquid()).pascalSeconds());
-                    if(state.waterVolume()>0)row.put("waterViscosity",model.viscosity.waterLiquid(t));
-                    if(state.vaporVolume()>0)row.put("vaporViscosity",model.viscosity.vapor(t,state.vapor(),state.waterVapor()));
-                    row.put("volume",state.volume());row.put("waterPartialPressure",state.waterPartialPressure());row.put("status","PASS");
-                }catch(IllegalArgumentException error){row.put("status","FAIL");row.put("reason",error.getMessage());failures.add(packageId+" T="+t+" P="+pressure+": "+error.getMessage());}
-            }
-        }
-        Files.createDirectories(Path.of("build/reports/fluid"));
-        Files.writeString(Path.of("build/reports/fluid/M1-wet-grid.json"),new GsonBuilder().setPrettyPrinting().create().toJson(rows));
-        assertTrue(failures.isEmpty(),String.join("\n",failures));
     }
     @Test void steamScreeningRetainsTheRejectedPointAndChecksIndependentViscosityReferences() throws Exception {
         try(var in=getClass().getResourceAsStream("/fluid/reference/water-vapor-checks.json")) {

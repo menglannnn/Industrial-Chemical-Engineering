@@ -366,14 +366,12 @@ tasks.register('fluidServerBenchmark') {
 }
 tasks.register('fluidSolverRegression', Test) {
     group = 'verification'
-    description = 'Replays saved islands against the captured solver reference states and reports solver cost.'
+    description = 'Replays the chain-100 fixture against its captured solver reference states and reports solver cost.'
     testClassesDirs = sourceSets.test.output.classesDirs
     classpath = sourceSets.test.runtimeClasspath
     filter { includeTestsMatching 'com.wormzjl.createcheme.fluid.benchmark.FluidSolverRegressionTest'; failOnNoMatchingTests = true }
     maxParallelForks = 1
     testLogging { showStandardStreams = true }
-    if (providers.gradleProperty('fluidRegressionSnapshot').isPresent())
-        systemProperty 'fluid.regression.snapshot', providers.gradleProperty('fluidRegressionSnapshot').get()
     if (providers.gradleProperty('fluidRegressionReferences').isPresent())
         systemProperty 'fluid.regression.references', providers.gradleProperty('fluidRegressionReferences').get()
     systemProperty 'fluid.regression.capture', providers.gradleProperty('fluidRegressionCapture').getOrElse('false')

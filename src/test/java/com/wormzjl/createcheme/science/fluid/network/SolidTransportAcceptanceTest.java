@@ -96,8 +96,6 @@ class SolidTransportAcceptanceTest {
             assertEquals(result.inventories().get(1).solids().moments(),result.states().get(1).solidMoments());
             report.add(Map.of("populations",count,"layout",dimension,"nonlinearUnknowns",unknowns,"jacobianColors",colors,"warmMilliseconds",times));
         }
-        java.nio.file.Files.createDirectories(java.nio.file.Path.of("build/reports/fluid"));
-        java.nio.file.Files.writeString(java.nio.file.Path.of("build/reports/fluid/solid-populations.json"),new com.google.gson.GsonBuilder().setPrettyPrinting().create().toJson(report));
     }
     /** {@code count} distinct grades from {@code from} micrometres up, each so light that its
      * volume fraction is orders below the trace cutoff: conserved and transported, never active

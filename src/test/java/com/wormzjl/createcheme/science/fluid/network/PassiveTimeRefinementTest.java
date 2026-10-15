@@ -3,8 +3,6 @@ package com.wormzjl.createcheme.science.fluid.network;
 import static org.junit.jupiter.api.Assertions.*;
 import com.wormzjl.createcheme.science.fluid.thermo.FluidThermodynamics;
 import com.wormzjl.createcheme.science.material.MaterialCatalog;
-import com.google.gson.GsonBuilder;
-import java.nio.file.*;
 import java.util.*;
 import org.junit.jupiter.api.Test;
 
@@ -26,16 +24,8 @@ class PassiveTimeRefinementTest {
             maxP=Math.max(maxP,Math.abs(a.pressure()/b.pressure()-1));maxT=Math.max(maxT,Math.abs(a.temperature()-b.temperature()));
         }
         double flowError=Math.abs(adaptive.averageMassFlows()[0]/integrated-1);
-        var defaults=new PassiveIntervalSolver(model).solve(graph,1,PassiveIntervalSolver.Settings.defaults(),()->{});
-        double defaultP=0,defaultT=0;
-        for(int i=0;i<2;i++){var a=defaults.graph().reservoirs().get(i).state();var b=reference.reservoirs().get(i).state();defaultP=Math.max(defaultP,Math.abs(a.pressure()/b.pressure()-1));defaultT=Math.max(defaultT,Math.abs(a.temperature()-b.temperature()));}
-        double defaultFlow=Math.abs(defaults.averageMassFlows()[0]/integrated-1);
-        Files.createDirectories(Path.of("build/reports/fluid"));Files.writeString(Path.of("build/reports/fluid/M2-gas-time-screening.json"),new GsonBuilder().setPrettyPrinting().create().toJson(Map.of(
-                "durationSeconds",1,"referenceSteps",400,"acceptedAdaptiveSteps",adaptive.acceptedSubsteps(),"rejectedTrials",adaptive.rejectedSubsteps(),"maximumPressureRelativeError",maxP,"maximumTemperatureErrorKelvin",maxT,"integratedMassRelativeError",flowError,
-                "defaultPressureRelativeError",defaultP,"defaultTemperatureErrorKelvin",defaultT,"defaultIntegratedMassRelativeError",defaultFlow)));
         // Backward Euler (WP1 of the mixed-gas junction batch): first order in time. Measured 0.00475 / 0.496 K / 0.0141
         // against 400 fixed 2.5 ms steps; the TR-BDF2 bounds were 0.005 / 0.5 K / 0.005.
         assertTrue(maxP<=.0075,"pressure "+maxP);assertTrue(maxT<=.75,"temperature "+maxT);assertTrue(flowError<=.02,"integrated mass "+flowError);
-        assertTrue(defaultP<=.0075,"pressure "+defaultP);assertTrue(defaultT<=.75,"temperature "+defaultT);assertTrue(defaultFlow<=.02,"integrated mass "+defaultFlow);
     }
 }

@@ -75,6 +75,5 @@ class HydraulicMatrixQualificationTest {
             assertEquals(before,after,1e-10+1e-8*before);assertEquals(beforeU,afterU,1e-4+1e-6*Math.abs(beforeU));assertTrue(maximumPressureDifference<=1+1e-4*150000);
             rows.add(Map.of("seed",seed,"fluid",water?"water":"nitrogen","reservoirs",6,"pipes",6,"fixedStepSeconds",.05,"maximumOrderPressureDifferencePa",maximumPressureDifference,"componentBalanceMoles",after-before,"energyBalanceJoules",afterU-beforeU,"status","PASS"));
         }
-        var path=Path.of("build/reports/fluid/M9-random-graphs.json");Files.createDirectories(path.getParent());Files.writeString(path,new GsonBuilder().setPrettyPrinting().create().toJson(rows));
     }
 }

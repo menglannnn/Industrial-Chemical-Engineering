@@ -29,7 +29,6 @@ class TransientQualificationTest {
         // The state cap measures change relative to max(100 Pa, P), so a 1 Pa signal in 1000 Pa tanks never binds it and the
         // interval takes few steps. Measured 0.0166 / 0.0398; the TR-BDF2 bounds were 0.01 / 0.01.
         assertTrue(pressureError<.025,"pressure difference "+pressureError);assertTrue(massError<.06,"integrated mass "+massError);
-        Files.createDirectories(Path.of("build/reports/fluid"));Files.writeString(Path.of("build/reports/fluid/M3-analytic-gas-limit.json"),new GsonBuilder().setPrettyPrinting().create().toJson(Map.of("pressureDifferenceRelativeError",pressureError,"integratedMassRelativeError",massError,"reference","adiabatic ideal-gas small-signal Poiseuille relaxation; 1000 Pa, 350 K, 1 Pa initial difference")));
     }
     @Test void freeWaterDisappearanceMatchesRefinedTrajectoriesAcrossThreeIntervals() throws Exception {
         double[] n=new double[com.wormzjl.createcheme.science.material.MaterialTestBasis.NETWORK+1];n[com.wormzjl.createcheme.science.material.MaterialTestBasis.NITROGEN]=40;n[com.wormzjl.createcheme.science.material.MaterialTestBasis.NETWORK]=5;var unit=model.flashTP(298.15,150000,n,()->{});for(int i=0;i<n.length;i++)n[i]/=unit.volume();
@@ -50,7 +49,6 @@ class TransientQualificationTest {
             assertEquals(n[com.wormzjl.createcheme.science.material.MaterialTestBasis.NETWORK],candidate.reservoirs().get(1).inventory().moles()[com.wormzjl.createcheme.science.material.MaterialTestBasis.NETWORK],1e-8);
         }
         assertEquals(0,candidate.reservoirs().get(1).state().waterLiquid(),1e-9);
-        Files.createDirectories(Path.of("build/reports/fluid"));Files.writeString(Path.of("build/reports/fluid/M3-phase-time-screening.json"),new GsonBuilder().setPrettyPrinting().create().toJson(rows));
     }
     private final FluidThermodynamics model=FluidThermodynamics.forNetwork(MaterialCatalog.bundled(),"createcheme:tjl20_methane_nitrogen",1e-9);
     private PassiveNetwork.Reservoir tank(long id,double pressure,double[] composition) {
@@ -101,7 +99,6 @@ class TransientQualificationTest {
                 row.put("status","PASS");
             }catch(RuntimeException failure){failure.printStackTrace();row.put("status","FAIL");row.put("failure",failure.toString()+" cause="+failure.getCause());failures.add(name+": "+failure);}
         }
-        Files.createDirectories(Path.of("build/reports/fluid"));Files.writeString(Path.of("build/reports/fluid/M3-transient-screening.json"),new GsonBuilder().setPrettyPrinting().create().toJson(rows));
         assertTrue(failures.isEmpty(),String.join("\n",failures));
     }
 }

@@ -7,15 +7,13 @@ import com.wormzjl.createcheme.science.fluid.network.PassiveNetwork;
 import com.wormzjl.createcheme.science.fluid.thermo.FluidThermodynamics;
 import java.nio.file.Files;
 import java.util.*;
-import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * Cost and trajectory regression for the solver optimization work packages. Excluded from the
  * ordinary {@code test} task (all of {@code fluid/benchmark} is); run it with
- * {@code gradlew fluidSolverRegression}. Fixtures that need the stress-world snapshot are skipped
- * when it is absent, so a checkout without {@code build/probe} stays green.
+ * {@code gradlew fluidSolverRegression}. The one fixture is chain-100, built in code.
  */
 class FluidSolverRegressionTest {
     /**
@@ -41,10 +39,7 @@ class FluidSolverRegressionTest {
 
     @Test void replaySavedIslandsAgainstCapturedReferences() {
         var model=SolverRegressionHarness.model();
-        var skipped=new ArrayList<String>();
-        var fixtures=fixtures(model,skipped);
-        skipped.forEach(reason->System.out.println("Fluid solver regression SKIP "+reason));
-        Assumptions.assumeFalse(fixtures.isEmpty(),"No solver regression fixture is available: "+skipped);
+        var fixtures=fixtures(model);
         boolean capture=Boolean.getBoolean("fluid.regression.capture");
         var report=new JsonObject();var measured=new JsonArray();report.add("fixtures",measured);
         report.addProperty("capture",capture);report.addProperty("mode",System.getProperty("fluid.regression.mode","declared"));
@@ -77,25 +72,10 @@ class FluidSolverRegressionTest {
         };
     }
 
-    private static List<Fixture> fixtures(FluidThermodynamics model,List<String> skipped) {
-        var fixtures=new ArrayList<Fixture>();
-        island(model,"core.dat",11312,"quiet-11312","quiescent 30-reservoir / 45-pipe island",2,5).ifPresentOrElse(fixtures::add,
-                ()->skipped.add("quiet-11312 (no readable core.dat island 11312)"));
-        island(model,"core.dat",11324,"quiet-11324","quiescent 18-reservoir / 27-pipe island",2,5).ifPresentOrElse(fixtures::add,
-                ()->skipped.add("quiet-11324 (no readable core.dat island 11324)"));
-        island(model,"core-fallback.dat",11312,"cold-11312","unadvanced 30-reservoir island, the transient case",0,1).ifPresentOrElse(fixtures::add,
-                ()->skipped.add("cold-11312 (no readable core-fallback.dat island 11312)"));
-        fixtures.add(new Fixture("chain-100","100-reservoir cosine-pressure chain",
+    private static List<Fixture> fixtures(FluidThermodynamics model) {
+        return List.of(new Fixture("chain-100","100-reservoir cosine-pressure chain",
                 SolverRegressionHarness.cosineChain(model,100),0,1,DECLARED));
-        return List.copyOf(fixtures);
     }
-    private static Optional<Fixture> island(FluidThermodynamics model,String file,long id,String name,String description,int warmup,int intervals) {
-        var snapshot=SolverRegressionHarness.snapshot(file);
-        if(snapshot.isEmpty())return Optional.empty();
-        PassiveNetwork graph=SolverRegressionHarness.islands(model,snapshot.get()).get(id);
-        return graph==null?Optional.empty():Optional.of(new Fixture(name,description,graph,warmup,intervals,DECLARED));
-    }
-
     private static void print(Fixture fixture,List<IntervalReport> intervals) {
         System.out.println("\n### "+fixture.name()+" - "+fixture.description()+" ("+fixture.intervals()+" x 5 s)");
         var names=SolverDiagnostics.names();

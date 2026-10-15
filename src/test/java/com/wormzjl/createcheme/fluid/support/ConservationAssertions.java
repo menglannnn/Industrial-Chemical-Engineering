@@ -1,8 +1,5 @@
 package com.wormzjl.createcheme.fluid.support;
 
-import java.util.HashSet;
-import java.util.List;
-
 /** BAL/STATE assertions shared by fluid science and runtime tests; all quantities are SI. */
 public final class ConservationAssertions {
     private ConservationAssertions() {}
@@ -31,14 +28,6 @@ public final class ConservationAssertions {
         close(after - before, netExternal, 1e-4 + 1e-6 * scale, "total energy");
     }
 
-    /** Portions share a transfer identity, but cannot share the same committed delivery revision. */
-    public static void uniqueDeliveries(List<DeliveryKey> deliveries) {
-        var seen = new HashSet<DeliveryKey>();
-        for (DeliveryKey delivery : deliveries) {
-            if (delivery == null || !seen.add(delivery)) throw new AssertionError("Duplicate/null delivery: " + delivery);
-        }
-    }
-
     private static void close(double actual, double expected, double tolerance, String label) {
         finite(actual, label);
         finite(expected, label);
@@ -54,5 +43,4 @@ public final class ConservationAssertions {
     private static void finite(double value, String label) {
         if (!Double.isFinite(value)) throw new AssertionError(label + " is not finite");
     }
-    public record DeliveryKey(long transferId, int revision) {}
 }

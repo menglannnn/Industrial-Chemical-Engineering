@@ -3,10 +3,7 @@ package com.wormzjl.createcheme.fluid.benchmark;
 import com.wormzjl.createcheme.science.math.DeterministicMath;
 
 import com.google.gson.*;
-import com.wormzjl.createcheme.runtime.fluid.FluidCheckpointCodec;
 import com.wormzjl.createcheme.runtime.fluid.FluidPresetCatalog;
-import com.wormzjl.createcheme.runtime.fluid.FluidSavedData;
-import com.wormzjl.createcheme.runtime.fluid.FluidCheckpointStore;
 import com.wormzjl.createcheme.runtime.fluid.RetainedSolver;
 import com.wormzjl.createcheme.science.column.v3.thermo.V3PengRobinsonThermo;
 import com.wormzjl.createcheme.science.fluid.diagnostics.SolverDiagnostics;
@@ -17,28 +14,20 @@ import com.wormzjl.createcheme.science.material.MaterialCatalog;
 import java.lang.management.ManagementFactory;
 import java.nio.file.*;
 import java.util.*;
-import net.minecraft.nbt.NbtAccounter;
-import net.minecraft.nbt.NbtIo;
 
 /**
  * Saved-island replay harness for the solver optimization work packages: it re-solves fixed
  * fixtures, records cost (wall time, allocation, {@link SolverDiagnostics} counters) and compares
  * the resulting trajectory against committed reference states.
  *
- * <p>Fixtures come from a stress-world snapshot resolved as: the system property or environment
- * variable {@code fluid.regression.snapshot} (a directory, or the primary {@code core.dat} file
- * itself), otherwise {@code build/probe/core.dat} and {@code build/probe/core-fallback.dat}
- * relative to the project directory. Those files are build output and are not committed; a missing
- * snapshot skips its fixtures instead of failing.
+ * <p>The one fixture is {@code chain-100}, built in code ({@link #cosineChain}). The stress-world island fixtures
+ * (quiet-11312, quiet-11324, cold-11312) left with their snapshot (references deleted in b5ed4079).
  *
  * <p>References live in {@code src/test/resources/fluid/regression} and are captured on the
  * configured network basis ({@code tjl20_methane_nitrogen}). Regenerate with
- * {@code gradlew fluidSolverRegression -PfluidRegressionCapture=true}; the island fixtures also
- * need a current-basis stress-world snapshot in {@code build/probe}, without which they are skipped.
+ * {@code gradlew fluidSolverRegression -PfluidRegressionCapture=true}.
  */
 final class SolverRegressionHarness {
-    static final String SNAPSHOT_PROPERTY="fluid.regression.snapshot";
-    static final Path DEFAULT_DIRECTORY=Path.of("build","probe");
     static final Path REFERENCES=Path.of("src","test","resources","fluid","regression");
     static final Path REPORT=Path.of("build","reports","fluid","solver-optimization.json");
     /** Every fixture replays the production interval length. */
@@ -93,33 +82,6 @@ final class SolverRegressionHarness {
                 cutoff==null||cutoff.isBlank()?FluidThermodynamics.DEFAULT_TRACE_CUTOFF_MOLE_FRACTION:Double.parseDouble(cutoff));
     }
 
-    // ---- snapshot resolution -------------------------------------------------------------
-
-    private static Optional<Path> configured() {
-        String value=System.getProperty(SNAPSHOT_PROPERTY);
-        if(value==null||value.isBlank())value=System.getenv(SNAPSHOT_PROPERTY);
-        if(value==null||value.isBlank())value=System.getenv("FLUID_REGRESSION_SNAPSHOT");
-        return value==null||value.isBlank()?Optional.empty():Optional.of(Path.of(value));
-    }
-    /** {@code name} is the conventional file name ({@code core.dat} / {@code core-fallback.dat}). */
-    static Optional<Path> snapshot(String name) {
-        var override=configured();
-        Path candidate;
-        if(override.isEmpty())candidate=DEFAULT_DIRECTORY.resolve(name);
-        else if(Files.isDirectory(override.get()))candidate=override.get().resolve(name);
-        else candidate=name.equals("core.dat")?override.get():override.get().resolveSibling(name);
-        return Files.isReadable(candidate)?Optional.of(candidate):Optional.empty();
-    }
-    /** Every island of one snapshot, by island id. */
-    static Map<Long,PassiveNetwork> islands(FluidThermodynamics model,Path path) {
-        try {
-            var tag=NbtIo.readCompressed(path,NbtAccounter.unlimitedHeap()).getCompound("data");
-            var checkpoint=FluidSavedData.load(tag,key->model,FluidCheckpointStore.directory(path.getParent(),Runnable::run,false)).checkpoint();
-            var result=new LinkedHashMap<Long,PassiveNetwork>();
-            for(FluidCheckpointCodec.IslandEntry entry:checkpoint.islands())result.put(entry.snapshot().id(),entry.snapshot().graph());
-            return result;
-        }catch(java.io.IOException failure){throw new IllegalStateException("Cannot read "+path,failure);}
-    }
     /**
      * The 100-reservoir cosine-pressure chain of {@link FluidNetworkBenchmarkTest}, on the
      * configured network basis: the Tia Juana Light + methane assay placed by component name into

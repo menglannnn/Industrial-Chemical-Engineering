@@ -168,15 +168,6 @@ class SharedSourceDepletionQualificationTest {
                         1e-8 + 1e-8 * Math.abs(a.flows().get(pipeId)));
             }
         }
-        writeJson("build/reports/fluid/P08-shared-source-depletion.json", Map.of(
-                "status", "PASS",
-                "model", "createcheme:tjl20_methane",
-                "compressibility", 1e-9,
-                "components", model.hydrocarbon.componentCount() + 1,
-                "permutations", branchReports,
-                "maximumPermutationComponentErrorMole", maximumPermutationComponentError,
-                "maximumPermutationEnergyErrorJoule", maximumPermutationEnergyError,
-                "maximumPermutationFlowErrorKgPerSecond", maximumPermutationFlowError));
     }
 
     @Test
@@ -239,20 +230,6 @@ class SharedSourceDepletionQualificationTest {
         var adequateBalance = auditFiniteLedger(adequate, after, transferred);
         assertTrue(after.reservoirs().get(1).inventory().moles()[NITROGEN]
                 > adequate.reservoirs().get(1).inventory().moles()[NITROGEN]);
-        writeJson("build/reports/fluid/P24-finite-pump-suction.json", Map.of(
-                "status", "PASS",
-                "model", "createcheme:tjl20_methane",
-                "compressibility", 1e-9,
-                "components", model.hydrocarbon.componentCount() + 1,
-                "requestedOutcome", insufficientOutcome,
-                "insufficientSuction", insufficientReport,
-                "adequateSuction", Map.of(
-                        "acceptedIntervals", transferred.acceptedSubsteps(),
-                        "acceptedSeconds", transferred.advancedSeconds(),
-                        "averageFlowKgPerSecond", transferred.averageMassFlows()[0],
-                        "pumpWorkJoule", transferred.pumpWorkJoule(),
-                        "maximumComponentBalanceToleranceUnits", adequateBalance.componentToleranceUnits(),
-                        "maximumEnergyBalanceToleranceUnits", adequateBalance.energyToleranceUnits())));
     }
 
     private PassiveNetwork competingBranches(boolean permutedInputs, double sourceVolume) {
@@ -357,15 +334,6 @@ class SharedSourceDepletionQualificationTest {
             for (int c = 0; c < total.length; c++) total[c] += moles[c];
         }
         return total;
-    }
-
-    private void writeJson(String file, Object value) {
-        try {
-            Files.createDirectories(Path.of(file).getParent());
-            Files.writeString(Path.of(file), new GsonBuilder().setPrettyPrinting().create().toJson(value));
-        } catch (Exception failure) {
-            throw new AssertionError("Could not write physical evidence " + file, failure);
-        }
     }
 
     private double mass(double[] moles) {

@@ -70,7 +70,6 @@ class HydraulicReferenceQualificationTest {
                 }
             }
         }
-        write("M2-turbulent-reference.json", rows);
     }
 
     @Test void individualGeometryChangesMatchPoiseuilleAndFittingReferencesIncludingNearZero() throws Exception {
@@ -93,7 +92,6 @@ class HydraulicReferenceQualificationTest {
                     "massFlowKgPerSecond", massFlow, "expectedPressureDropPa", expected,
                     "actualPressureDropPa", actual, "status", "PASS"));
         }
-        write("M2-geometry-reference.json", rows);
     }
 
     @Test void transitionHasMatchingOneSidedSlopesAndNoNegativeDifferentialResistance() throws Exception {
@@ -116,7 +114,6 @@ class HydraulicReferenceQualificationTest {
                 assertTrue(Double.isFinite(value.massFlowDerivative()) && value.massFlowDerivative() > 0);
             }
         }
-        write("M2-transition-reference.json", rows);
     }
 
     // Retired with owner decision D54 (every vessel a bag with a stiff wall), thread t24, 2026-10-14:
@@ -130,10 +127,5 @@ class HydraulicReferenceQualificationTest {
         var unit = model.flashTP(350, pressure, n, () -> {});
         n[water ? com.wormzjl.createcheme.science.material.MaterialTestBasis.NETWORK : com.wormzjl.createcheme.science.material.MaterialTestBasis.NITROGEN] /= unit.volume();
         return model.flashTP(350, pressure, n, () -> {});
-    }
-
-    private static void write(String name, Object rows) throws Exception {
-        var path = Path.of("build/reports/fluid", name); Files.createDirectories(path.getParent());
-        Files.writeString(path, new GsonBuilder().setPrettyPrinting().create().toJson(rows));
     }
 }
