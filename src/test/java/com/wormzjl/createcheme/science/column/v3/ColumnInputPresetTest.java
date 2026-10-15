@@ -1,6 +1,7 @@
 package com.wormzjl.createcheme.science.column.v3;
 
 import com.google.gson.JsonParser;
+import com.wormzjl.createcheme.network.ColumnCodecs;
 import com.wormzjl.createcheme.science.material.MaterialCatalog;
 import com.wormzjl.createcheme.science.column.v3.thermo.V3PengRobinsonThermo;
 import com.wormzjl.createcheme.science.material.MaterialRuntime;
@@ -15,14 +16,11 @@ import static org.junit.jupiter.api.Assertions.*;
 class ColumnInputPresetTest {
     @Test void everySelectablePresetIsValidAndSurvivesSaving() throws Exception {
         var catalog=MaterialCatalog.bundled();
-        var write=ColumnCalculatorV3BlockEntity.class.getDeclaredMethod("writeInput",V3ColumnInput.class);
-        var read=ColumnCalculatorV3BlockEntity.class.getDeclaredMethod("readInput",CompoundTag.class);
-        write.setAccessible(true);read.setAccessible(true);
         for (var choice : ColumnInputPreset.values()) {
             var input=choice.input(catalog);
             assertTrue(choice.matches(input));
             V3ColumnProblemResolver.validateInput(input);
-            assertEquals(input,read.invoke(null,write.invoke(null,input)));
+            assertEquals(input,ColumnCodecs.readInputNbt(ColumnCodecs.writeInputNbt(input)));
             if (choice==ColumnInputPreset.HOLLAND) continue;
             var thermo=V3PengRobinsonThermo.fromRegisteredPackage(input.packageId());
             double[] expected=thermo.crudeFeed(input.assayId()).moleFractions();

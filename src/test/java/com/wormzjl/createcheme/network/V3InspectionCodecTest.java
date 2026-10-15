@@ -52,19 +52,10 @@ class V3InspectionCodecTest {
         var profile=inspection(0,1);
         var result=new V3ColumnDisplayResult("0".repeat(64),"mesh","assumptions","data",3,1e-12,1,
                 List.of(),Optional.empty(),V3ConvergenceEvidence.MAXIMUM_LOG_FLOW_CHANGE,Optional.empty(),Optional.of(profile));
-        var buffer=new RegistryFriendlyByteBuf(Unpooled.buffer(),RegistryAccess.EMPTY);
-        try {
-            var write=ColumnV3Network.class.getDeclaredMethod("writeDisplayResult",RegistryFriendlyByteBuf.class,V3ColumnDisplayResult.class);
-            var read=ColumnV3Network.class.getDeclaredMethod("readDisplayResult",RegistryFriendlyByteBuf.class);
-            write.setAccessible(true);read.setAccessible(true);write.invoke(null,buffer,result);
-            assertEquals(result,read.invoke(null,buffer));assertEquals(0,buffer.readableBytes());
-        } finally {buffer.release();}
-        var write=ColumnCalculatorV3BlockEntity.class.getDeclaredMethod("writeDisplayResult",V3ColumnDisplayResult.class);
-        var read=ColumnCalculatorV3BlockEntity.class.getDeclaredMethod("readDisplayResult",CompoundTag.class);
-        write.setAccessible(true);read.setAccessible(true);
-        var tag=(CompoundTag)write.invoke(null,result);
-        assertEquals(result,read.invoke(null,tag));
+        assertEquals(result,ColumnCodecs.wireRoundTrip(result));
+        var tag=ColumnCodecs.writeResultNbt(result);
+        assertEquals(result,ColumnCodecs.readResultNbt(tag));
         tag.remove("Inspection");
-        assertThrows(java.lang.reflect.InvocationTargetException.class,()->read.invoke(null,tag));
+        assertThrows(java.lang.reflect.InvocationTargetException.class,()->ColumnCodecs.readResultNbt(tag));
     }
 }

@@ -3,6 +3,7 @@ package com.wormzjl.createcheme.science.column.v3;
 import static org.junit.jupiter.api.Assertions.*;
 
 import com.google.gson.GsonBuilder;
+import com.wormzjl.createcheme.network.ColumnCodecs;
 import com.wormzjl.createcheme.world.level.block.entity.ColumnCalculatorV3BlockEntity;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -10,18 +11,12 @@ import org.junit.jupiter.api.Test;
 
 class V3MethaneColumnTest {
     @Test void freshPresetAndSavedInputRetainTheMethaneAxis() throws Exception {
-        var owner = ColumnCalculatorV3BlockEntity.class;
-        var fresh = owner.getDeclaredMethod("freshInput");
-        fresh.setAccessible(true);
         var input = ColumnCalculatorV3BlockEntity.methaneCduInput();
-        assertEquals(input, fresh.invoke(null));
-        var write = owner.getDeclaredMethod("writeInput", V3ColumnInput.class);
-        var read = owner.getDeclaredMethod("readInput", net.minecraft.nbt.CompoundTag.class);
-        write.setAccessible(true);
-        read.setAccessible(true);
-        assertEquals(input, read.invoke(null, write.invoke(null, input)));
+        assertEquals(input, ColumnCodecs.invoke(ColumnCalculatorV3BlockEntity.class, "freshInput", new Class<?>[0]));
+        assertEquals(input, ColumnCodecs.readInputNbt(ColumnCodecs.writeInputNbt(input)));
         var original = ColumnCalculatorV3BlockEntity.literatureCduInput();
-        assertEquals(original, read.invoke(null, write.invoke(null, original)), "old saved feeds retain their 19-component axis");
+        assertEquals(original, ColumnCodecs.readInputNbt(ColumnCodecs.writeInputNbt(original)),
+                "old saved feeds retain their 19-component axis");
         assertEquals(original.specifications(), input.specifications());
         assertEquals(com.wormzjl.createcheme.science.material.MaterialCatalog.bundled().columnSideDrawRates(input.packageId()),input.sideDraws().stream().map(V3SideDrawSpec::molarFlowMolPerSecond).toList());
         assertEquals(original.steamFeeds(), input.steamFeeds());
