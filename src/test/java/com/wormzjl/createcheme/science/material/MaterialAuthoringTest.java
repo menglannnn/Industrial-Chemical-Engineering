@@ -18,8 +18,8 @@ class MaterialAuthoringTest {
   p.addProperty("standard_liquid_density_kg_per_m3",913);resources.put(ROOT+"properties/crude_pc08.json",p.toString());
   changed=MaterialCatalog.parse(resources);
   assertNotEquals(c.physicsFingerprint(ID,axis),changed.physicsFingerprint(ID,axis));
-  assertEquals(c.propertyPhysicsFingerprint(ID,"crude_pc07"),changed.propertyPhysicsFingerprint(ID,"crude_pc07"));
-  assertNotEquals(c.propertyPhysicsFingerprint(ID,"crude_pc08"),changed.propertyPhysicsFingerprint(ID,"crude_pc08"));
+  assertEquals(c.physicsFingerprint(ID,List.of("crude_pc07")),changed.physicsFingerprint(ID,List.of("crude_pc07")));
+  assertNotEquals(c.physicsFingerprint(ID,List.of("crude_pc08")),changed.physicsFingerprint(ID,List.of("crude_pc08")));
  }
  @Test void basisCyclesAndUnusedBadReferencesFailWithResourceContext() {
   var records=new HashMap<>(MaterialCatalog.bundled().resources());String path=ROOT+"bases/bad.json";

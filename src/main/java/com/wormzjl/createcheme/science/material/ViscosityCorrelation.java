@@ -70,14 +70,6 @@ public record ViscosityCorrelation(Model model, double minimumTemperatureKelvin,
         return value;
     }
 
-    /** Returns m²/s using the supplied density at the same state, never the catalog's standard-liquid density. */
-    public double kinematicViscositySquareMetresPerSecond(double temperatureKelvin, double pressurePascal, double densityKgPerCubicMetre) {
-        requirePositive(densityKgPerCubicMetre, "densityKgPerCubicMetre");
-        double value = dynamicViscosityPascalSeconds(temperatureKelvin, pressurePascal) / densityKgPerCubicMetre;
-        requirePositive(value, "kinematic viscosity");
-        return value;
-    }
-
     private static double evaluate(Model model, double t, double reference, List<Double> c, List<Double> powers, List<Double> nodes) {
         return switch (model) {
             case ANDRADE -> DeterministicMath.exp(DeterministicMath.log(c.get(0)) + c.get(1) / t);

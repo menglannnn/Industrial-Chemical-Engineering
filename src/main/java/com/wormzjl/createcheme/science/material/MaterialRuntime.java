@@ -11,10 +11,6 @@ public final class MaterialRuntime {
     private MaterialRuntime() {}
     public static MaterialCatalog active() { MaterialCatalog c=active; return c==null?MaterialCatalog.bundled():c; }
     public static MaterialCatalog current() { Context c=CONTEXT.get(); return c==null?active():c.catalog(); }
-    /** Resolves transport data from the same immutable snapshot as the calling calculation. */
-    public static java.util.Optional<ViscosityCorrelation> viscosity(String packageId, String componentId, ViscosityCorrelation.Phase phase) {
-        return current().viscosity(packageId, componentId, phase);
-    }
     /** Only the server reload adapter publishes; parse/validation must already have succeeded. */
     public static void publish(MaterialCatalog catalog) { active=Objects.requireNonNull(catalog); }
     public static void reset() { active=null; }
@@ -31,10 +27,6 @@ public final class MaterialRuntime {
     }
     public static <T> T pinned(String packageId,Supplier<T> action) {
         return with(current(),packageId,action);
-    }
-    public static boolean isBundledScience(String packageId) {
-        var baseline=MaterialCatalog.bundled().packages().get(packageId);
-        return baseline!=null && baseline.fingerprint().equals(current().requirePackage(packageId).fingerprint());
     }
     /** Cached and completed results are current only for the exact resolved scientific dataset. */
     public static boolean isCurrent(String packageId, String scientificRevision) {

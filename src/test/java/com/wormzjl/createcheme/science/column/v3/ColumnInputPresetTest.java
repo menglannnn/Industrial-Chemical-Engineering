@@ -43,14 +43,14 @@ class ColumnInputPresetTest {
             assertEquals(base.feedTemperatureKelvin(),input.feedTemperatureKelvin());
             assertEquals(base.topPressurePascal(),input.topPressurePascal());
             assertEquals(base.specifications(),input.specifications());
-            var rates=catalog.columnSideDrawRates(input.packageId());
+            var rates=V3TestInputs.packagePreset(catalog,input.packageId()).draws().stream().map(V3SideDrawSpec::molarFlowMolPerSecond).toList();
             if(!rates.isEmpty())assertEquals(rates,input.sideDraws().stream().map(V3SideDrawSpec::molarFlowMolPerSecond).toList());
             assertEquals(base.steamFeeds(),input.steamFeeds());
             assertEquals(base.pumparounds(),input.pumparounds());
             double volume=0;var properties=catalog.requirePackage(input.packageId()).properties();
             var amounts=input.feedComponentMolarFlowsMolPerSecond();
             for(int i=0;i<amounts.length;i++)volume+=amounts[i]*properties.get(i).molecularWeight()/properties.get(i).density();
-            assertEquals(catalog.columnFeedStandardVolume(input.packageId()),volume,1e-14);
+            assertEquals(V3TestInputs.packagePreset(catalog,input.packageId()).feedVolume(),volume,1e-14);
             assertFalse(Arrays.equals(base.feedComponentMolarFlowsMolPerSecond(),input.feedComponentMolarFlowsMolPerSecond()));
         }
     }

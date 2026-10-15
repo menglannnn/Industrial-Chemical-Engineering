@@ -132,15 +132,6 @@ public final class MaterialCatalog {
         return Optional.ofNullable(propertyValidity.get(p.properties().get(i).id()));
     }
     public MaterialPresets presets(){return presets;}
-    /** Convenience for the unique authored preset of a package; multiple choices require an explicit preset ID. */
-    private MaterialPresets.Column packagePreset(String packageId) {
-        requirePackage(packageId);
-        var choices=presets.columns().values().stream().filter(c->c.descriptor().packageId().equals(packageId)).toList();
-        if(choices.size()!=1)throw new IllegalArgumentException("Select an explicit column preset for "+packageId);
-        return choices.getFirst();
-    }
-    public List<Double> columnSideDrawRates(String packageId) {return packagePreset(packageId).draws().stream().map(com.wormzjl.createcheme.science.column.v3.V3SideDrawSpec::molarFlowMolPerSecond).toList();}
-    public double columnFeedStandardVolume(String packageId) {return packagePreset(packageId).feedVolume();}
     public LiquidMixtureCorrection liquidMixture(String packageId) { requirePackage(packageId); return liquidMixtures.get(packageId); }
     /** Immutable source strings for tooling and isolated override tests. */
     public Map<String, String> resources() { return resources; }
@@ -176,12 +167,6 @@ public final class MaterialCatalog {
         return Optional.ofNullable(viscosities.getOrDefault(key, Map.of()).get(phase));
     }
 
-    /** Numeric property identity; authoring record IDs and provenance text do not alter physics. */
-    public String propertyPhysicsFingerprint(String packageId,String componentId) {
-        var p=requirePackage(packageId);int i=p.components().indexOf(componentId);
-        if(i<0)throw new IllegalArgumentException("Component outside package: "+componentId);
-        return hash(propertyScience(p.properties().get(i)).toString());
-    }
     private static JsonObject propertyScience(Property property) {
         var json=new Gson().toJsonTree(property).getAsJsonObject();json.remove("id");return json;
     }

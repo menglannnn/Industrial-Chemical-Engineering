@@ -20,8 +20,6 @@ class ViscosityTest {
         assertEquals(276.207245e-6, v.dynamicViscosityPascalSeconds(375, 100000), 5e-13);
         assertFalse(v.estimated());
         assertTrue(v.source().contains("IAPWS"));
-        assertEquals(889.996774e-6 / 997.047013,
-                v.kinematicViscositySquareMetresPerSecond(298.15, 100000, 997.047013), 1e-15);
     }
 
     @Test void validityLimitsAndMissingDataAreExplicit() {
@@ -34,8 +32,6 @@ class ViscosityTest {
         for (double t : new double[] {253.14, 383.16, Double.NaN, Double.POSITIVE_INFINITY})
             assertThrows(IllegalArgumentException.class, () -> v.dynamicViscosityPascalSeconds(t, 100000));
         assertThrows(IllegalArgumentException.class, () -> v.dynamicViscosityPascalSeconds(300, 250000));
-        assertThrows(IllegalArgumentException.class, () -> v.kinematicViscositySquareMetresPerSecond(300, 100000, 0));
-        assertThrows(IllegalArgumentException.class, () -> v.kinematicViscositySquareMetresPerSecond(300, 100000, Double.NaN));
         assertTrue(v.dynamicViscosityPascalSeconds(253.15, 100000) > v.dynamicViscosityPascalSeconds(383.15, 100000));
         assertThrows(UnsupportedOperationException.class, () -> v.coefficients().set(0, 1.0));
     }
@@ -95,11 +91,11 @@ class ViscosityTest {
             MaterialRuntime.with(original, PACKAGE, () -> {
                 MaterialRuntime.publish(replacement);
                 assertSame(original.viscosity(PACKAGE, "Water", ViscosityCorrelation.Phase.LIQUID).orElseThrow(),
-                        MaterialRuntime.viscosity(PACKAGE, "Water", ViscosityCorrelation.Phase.LIQUID).orElseThrow());
+                        MaterialRuntime.current().viscosity(PACKAGE, "Water", ViscosityCorrelation.Phase.LIQUID).orElseThrow());
                 return null;
             });
             assertSame(replacement.viscosity(PACKAGE, "Water", ViscosityCorrelation.Phase.LIQUID).orElseThrow(),
-                    MaterialRuntime.viscosity(PACKAGE, "Water", ViscosityCorrelation.Phase.LIQUID).orElseThrow());
+                    MaterialRuntime.current().viscosity(PACKAGE, "Water", ViscosityCorrelation.Phase.LIQUID).orElseThrow());
             var invalid = waterChange(v -> v.addProperty("temperature_min_kelvin", -1));
             assertThrows(IllegalArgumentException.class, () -> MaterialRuntime.publish(MaterialCatalog.parse(invalid)));
             assertSame(replacement, MaterialRuntime.active());

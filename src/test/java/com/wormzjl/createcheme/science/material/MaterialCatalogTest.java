@@ -35,7 +35,6 @@ class MaterialCatalogTest {
         var science=MaterialCatalog.parse(changed("properties/crude_pc07.json",o->o.addProperty("molecular_weight_kg_per_mol",.31)));
         assertEquals(before.revision(),science.requirePackage(ID).revision());
         assertNotEquals(before.fingerprint(),science.requirePackage(ID).fingerprint());
-        assertFalse(MaterialRuntime.with(science,ID,()->MaterialRuntime.isBundledScience(ID)));
         assertFalse(MaterialRuntime.with(science,ID,()->MaterialRuntime.isCurrent(ID,before.scientificRevision())));
         assertTrue(MaterialRuntime.with(names,ID,()->MaterialRuntime.isCurrent(ID,before.scientificRevision())));
         var input=com.wormzjl.createcheme.science.column.v3.V3TestInputs.methaneCduInput();

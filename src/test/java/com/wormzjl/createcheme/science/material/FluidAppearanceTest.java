@@ -29,7 +29,6 @@ class FluidAppearanceTest {
             var changed = MaterialCatalog.parse(MaterialCatalogTest.changed(path, o -> o.add("appearance", appearance("#123456", .4))));
             assertEquals(original.requirePackage(PACKAGE).fingerprint(), changed.requirePackage(PACKAGE).fingerprint());
             assertEquals(original.viscosityFingerprint(PACKAGE), changed.viscosityFingerprint(PACKAGE));
-            assertTrue(MaterialRuntime.with(changed, PACKAGE, () -> MaterialRuntime.isBundledScience(PACKAGE)));
             var result = path.startsWith("components") ? changed.componentAppearance(PACKAGE, "crude_pc07")
                     : changed.assayAppearance(PACKAGE, "createcheme:tia_juana_light_methane");
             assertEquals(new MaterialCatalog.FluidAppearance(0x123456, .4, true), result);

@@ -36,6 +36,16 @@ public final class V3TestInputs {
         return catalog.presets().column("tia_juana").input(catalog);
     }
 
+    /** The unique authored column preset of a package. */
+    static com.wormzjl.createcheme.science.material.MaterialPresets.Column packagePreset(
+            com.wormzjl.createcheme.science.material.MaterialCatalog catalog, String packageId) {
+        catalog.requirePackage(packageId);
+        var choices = catalog.presets().columns().values().stream()
+                .filter(c -> c.descriptor().packageId().equals(packageId)).toList();
+        if (choices.size() != 1) throw new IllegalArgumentException("Select an explicit column preset for " + packageId);
+        return choices.getFirst();
+    }
+
     /** A dry request: no side draws, steam, pumparounds or tray hydraulics (prescribed uniform drop). */
     public static V3ColumnInput dry(int schemaVersion, String packageId, String assayId, V3ComponentBasis componentBasis,
             double[] feedComponentMolarFlowsMolPerSecond, double feedTemperatureKelvin, int stageCount,

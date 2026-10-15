@@ -18,7 +18,7 @@ class V3MethaneColumnTest {
         assertEquals(original, ColumnCodecs.readInputNbt(ColumnCodecs.writeInputNbt(original)),
                 "old saved feeds retain their 19-component axis");
         assertEquals(original.specifications(), input.specifications());
-        assertEquals(com.wormzjl.createcheme.science.material.MaterialCatalog.bundled().columnSideDrawRates(input.packageId()),input.sideDraws().stream().map(V3SideDrawSpec::molarFlowMolPerSecond).toList());
+        assertEquals(V3TestInputs.packagePreset(com.wormzjl.createcheme.science.material.MaterialCatalog.bundled(),input.packageId()).draws().stream().map(V3SideDrawSpec::molarFlowMolPerSecond).toList(),input.sideDraws().stream().map(V3SideDrawSpec::molarFlowMolPerSecond).toList());
         assertEquals(original.steamFeeds(), input.steamFeeds());
         assertEquals(original.pumparounds(), input.pumparounds());
     }

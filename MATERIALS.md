@@ -221,10 +221,9 @@ is an offline input; neither it nor the DWSIM runtime is required by Minecraft. 
 flowsheets and never saves the supplied source simulation.
 
 Use `catalog.viscosity(packageId, componentId, Phase.LIQUID)` to retrieve an `Optional<ViscosityCorrelation>`;
-package aliases and the package's selected water model are respected. `MaterialRuntime.viscosity(...)` uses the
-calling calculation's pinned catalog. Call `dynamicViscosityPascalSeconds(T, P)` to evaluate μ.
-`kinematicViscositySquareMetresPerSecond(T, P, density)` returns ν = μ/ρ in m²/s and requires the density at the
-same state; the standard-liquid density is never substituted. For display, 1 mPa·s = 10⁻³ Pa·s and 1 cSt = 10⁻⁶ m²/s.
+package aliases and the package's selected water model are respected. `MaterialRuntime.current().viscosity(...)` uses
+the calling calculation's pinned catalog. Call `dynamicViscosityPascalSeconds(T, P)` to evaluate μ; a kinematic
+viscosity ν = μ/ρ needs the density at the same state, never the standard-liquid density. For display, 1 mPa·s = 10⁻³ Pa·s and 1 cSt = 10⁻⁶ m²/s.
 
 Viscosity is a transport property and is not consumed by the current equilibrium/enthalpy solver. A separate
 `catalog.viscosityFingerprint(packageId)` tracks selected viscosity parameters, phase assignments, limits, and
