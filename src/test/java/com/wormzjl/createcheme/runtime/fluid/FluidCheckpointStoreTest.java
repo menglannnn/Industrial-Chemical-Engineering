@@ -258,7 +258,7 @@ class FluidCheckpointStoreTest {
         assertEquals(Set.of("fluid-1.pack","fluid-2.pack"),packs(folder));
         assertEquals(FluidCheckpointStore.PACK_HEADER+third.stats().encodedBytes(),Files.size(pack(folder,2)),"the new pack holds exactly that island's unit");
         var core=NbtIo.readCompressed(core(folder),NbtAccounter.unlimitedHeap()).getCompound("data");var islands=core.getCompound("Islands");
-        assertEquals(2,islands.getLongArray("Pack")[FluidCheckpointCodec.row(core,3)]);assertEquals(1,islands.getLongArray("Pack")[FluidCheckpointCodec.row(core,1)]);assertEquals(1,islands.getLongArray("Pack")[FluidCheckpointCodec.row(core,2)]);
+        assertEquals(2,islands.getLongArray("Pack")[CheckpointImages.row(core,3)]);assertEquals(1,islands.getLongArray("Pack")[CheckpointImages.row(core,1)]);assertEquals(1,islands.getLongArray("Pack")[CheckpointImages.row(core,2)]);
     }
 
     // ---------------- atomic writes and recovery ----------------

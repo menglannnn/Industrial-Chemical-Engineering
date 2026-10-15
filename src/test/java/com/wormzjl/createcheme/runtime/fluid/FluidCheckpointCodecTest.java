@@ -60,7 +60,7 @@ class FluidCheckpointCodecTest {
         var image=FluidCheckpointCodec.encode(fixture(),key->model);
         var retired=copy(image);
         ((ListTag)retired.core().get("Packages")).getCompound(0).putString("PropertyRevision","fluid-trbdf2-r1:fluid-nitrogen-r1:7781afaaad17de4926015ebf321c0b106766dd5c131668f54962a8825ed25bd5:fluid-shared-k-v1:nist-liquid-calibration-20260915:k=0x1.12e0be826d695p-30:cb6773ed32b52aefb268f9c5610e288c8cecdbc6c682522b54d0be703c92b533:log-liquid-wilke-v1:dwsim-conditional-solute-v1");
-        FluidCheckpointCodec.reseal(retired.core());
+        CheckpointImages.reseal(retired.core());
         var refusal=assertThrows(IllegalArgumentException.class,()->FluidCheckpointCodec.decode(retired,key->model));
         assertTrue(refusal.getMessage().contains("fresh development world"));
         for(String field:List.of("ideal_gas_cp","viscosity")) {
@@ -78,9 +78,9 @@ class FluidCheckpointCodecTest {
     }
     @Test void anEnergyDatumChangeIsRefused() {
         var image=FluidCheckpointCodec.encode(fixture(),key->model);
-        var revision=copy(image);var entry=((ListTag)revision.core().get("Packages")).getCompound(0);entry.putString("EnergyRevision",entry.getString("EnergyRevision")+"-offset");FluidCheckpointCodec.reseal(revision.core());
+        var revision=copy(image);var entry=((ListTag)revision.core().get("Packages")).getCompound(0);entry.putString("EnergyRevision",entry.getString("EnergyRevision")+"-offset");CheckpointImages.reseal(revision.core());
         assertTrue(assertThrows(IllegalArgumentException.class,()->FluidCheckpointCodec.decode(revision,key->model)).getMessage().contains("fresh development world"));
-        var components=copy(image);((ListTag)((ListTag)components.core().get("Packages")).getCompound(0).get("EnergyComponents")).remove(0);FluidCheckpointCodec.reseal(components.core());
+        var components=copy(image);((ListTag)((ListTag)components.core().get("Packages")).getCompound(0).get("EnergyComponents")).remove(0);CheckpointImages.reseal(components.core());
         assertTrue(assertThrows(IllegalArgumentException.class,()->FluidCheckpointCodec.decode(components,key->model)).getMessage().contains("fresh development world"));
     }
     /** The topology unit: every field of the world ledger comes back exactly and re-encodes to the same bytes. */
@@ -129,7 +129,7 @@ class FluidCheckpointCodecTest {
         assertEquals(a.graph().reservoirs().getFirst().inventory(),b.graph().reservoirs().getFirst().inventory());assertEquals(a.clock(),b.clock());assertEquals(a.allowance(),b.allowance());assertEquals(a.fences(),b.fences());
         assertThrows(ApproximationRejected.class,()->b.anchor().orElseThrow().guard(FluidThermodynamics.forNetwork(MaterialCatalog.bundled(),PACKAGE,1e-9,10),b.graph()));
         // An anchor recorded under the thermodynamic revision alone does not carry the hydraulic acceptance law.
-        var thermodynamicOnly=FluidCheckpointCodec.withIsland(image,1,key->model,entry->{
+        var thermodynamicOnly=CheckpointImages.withIsland(image,1,key->model,entry->{
             var s=entry.snapshot();var anchor=s.anchor().orElseThrow();
             return new FluidCheckpointCodec.IslandEntry(entry.dimension(),entry.packageId(),entry.compressibility(),new IslandCoordinator.Snapshot(s.id(),s.revision(),s.graph(),s.clock(),s.allowance(),
                     Optional.of(new ApproximationAnchor(ApproximationAnchor.thermodynamicRevision(model),anchor.graph(),anchor.modes())),s.lastResult(),s.status(),s.fences()));
@@ -192,30 +192,5 @@ class FluidCheckpointCodecTest {
         for(int i=0;i<bytes.length&&!refused;i++)if(bytes[i]==3){var corrupt=bytes.clone();corrupt[i]=4;
             try{FluidCheckpointCodec.decodeTopology(corrupt,12);}catch(IllegalArgumentException e){refused=e.getMessage().contains("unknown control");}}
         assertTrue(refused,"an unknown control tag is refused");
-    }
-    /**
-     * The JSON graph shape (archived gameplay captures) with the format-6 fields: every pipe names its two ports, and a
-     * "compressor" control reads target, limit (the ratio) and efficiency. A pipe without its ports is refused (no absent-field
-     * default), and so is a phase port on a node that is not a tank.
-     */
-    @Test void theJsonGraphShapeReadsPortsAndACompressorAndRefusesAPipeWithoutPorts() throws Exception {
-        com.google.gson.JsonObject graph;
-        try(var input=Objects.requireNonNull(getClass().getResourceAsStream("/fluid/mcp-held-drain-checkpoint.json"))) {
-            graph=com.google.gson.JsonParser.parseString(new String(input.readAllBytes(),java.nio.charset.StandardCharsets.UTF_8)).getAsJsonObject().getAsJsonArray("islands").get(0).getAsJsonObject().getAsJsonObject("graph");
-        }
-        for(var node:graph.getAsJsonArray("nodes")){var empty=new com.google.gson.JsonObject();empty.add("populations",new com.google.gson.JsonArray());node.getAsJsonObject().getAsJsonObject("inventory").add("solids",empty);}
-        var pipes=graph.getAsJsonArray("pipes");
-        for(var pipe:pipes){var p=pipe.getAsJsonObject();p.addProperty("blockedDirections",0);p.add("filter",com.google.gson.JsonNull.INSTANCE);p.addProperty("firstPort","BULK");p.addProperty("secondPort","BULK");}
-        // Pipe 0 runs from the tank (node 0) to the void, pipe 1 from the tank to the generator.
-        pipes.get(0).getAsJsonObject().addProperty("firstPort","LIQUID");
-        var compressor=new com.google.gson.JsonObject();compressor.addProperty("kind","compressor");compressor.addProperty("target",.02);compressor.addProperty("limit",2.5);compressor.addProperty("efficiency",.9);
-        pipes.get(1).getAsJsonObject().add("control",compressor);pipes.get(1).getAsJsonObject().addProperty("firstPort","VAPOR");
-        var decoded=FluidCheckpointCodec.decodeGraph(graph,model);
-        assertEquals(PassiveNetwork.PhasePort.LIQUID,decoded.pipes().get(0).firstPort());assertEquals(PassiveNetwork.PhasePort.BULK,decoded.pipes().get(0).secondPort());
-        assertEquals(PassiveNetwork.PhasePort.VAPOR,decoded.pipes().get(1).firstPort());assertEquals(new FlowControl.Compressor(.02,2.5,.9),decoded.pipes().get(1).control());
-        var generatorPort=graph.deepCopy();generatorPort.getAsJsonArray("pipes").get(1).getAsJsonObject().addProperty("secondPort","LIQUID");
-        assertThrows(IllegalArgumentException.class,()->FluidCheckpointCodec.decodeGraph(generatorPort,model),"a phase port on the generator's end");
-        var withoutPorts=graph.deepCopy();withoutPorts.getAsJsonArray("pipes").get(0).getAsJsonObject().remove("secondPort");
-        assertThrows(IllegalArgumentException.class,()->FluidCheckpointCodec.decodeGraph(withoutPorts,model),"a pipe without its ports");
     }
 }

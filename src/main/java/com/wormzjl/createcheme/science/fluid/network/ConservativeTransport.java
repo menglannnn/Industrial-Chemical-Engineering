@@ -530,7 +530,7 @@ public final class ConservativeTransport {
             checkpoint.run();var state=states.get(node);double capacity=reservoir.inventory().volume();
             double workFrom=reservoir.empty()?0:PhaseLayout.bagVolume(reservoir.state(),capacity);
             var booked=new PassiveNetwork.Inventory(capacity,moles[node],energy[node],state.solids());
-            try{states.set(node,dryVessel(reservoir,supports,node)?InventoryEquilibrium.solve(model,state,booked,false,workFrom,checkpoint)
+            try{states.set(node,dryVessel(reservoir,supports,node)?InventoryEquilibrium.solve(model,state,booked,workFrom,checkpoint)
                     :InventoryEquilibrium.close(model,state,booked,supports==null?null:supports[node],workFrom,checkpoint));}
             catch(com.wormzjl.createcheme.science.fluid.thermo.ThermoDomainViolation violation){throw violation.at(reservoir.id());}
             double moved=PhaseLayout.bagVolume(states.get(node),capacity)-workFrom;

@@ -31,13 +31,13 @@ class ProductionCapacityTest {
         var ledger=ledger();ledger.commit(ledger.reserveCapacity(List.of(new BufferedTransfers.CapacityReservation(id,producer,receiver,300,100))));
         var tag=FluidCheckpointCodec.encode(new FluidCheckpointCodec.Checkpoint(List.of(),ledger.snapshot()),key->{throw new AssertionError();});
         var loaded=FluidCheckpointCodec.decode(tag,key->{throw new AssertionError();});assertEquals(ledger.snapshot(),loaded.transfers());
-        var bad=FluidCheckpointCodec.ledgerJson(tag);bad.getAsJsonObject("transfers").getAsJsonObject("productionCapacity").addProperty("version",99);
-        assertThrows(IllegalArgumentException.class,()->FluidCheckpointCodec.decode(FluidCheckpointCodec.withLedger(tag,bad),key->{throw new AssertionError();}));
+        var bad=CheckpointImages.ledgerJson(tag);bad.getAsJsonObject("transfers").getAsJsonObject("productionCapacity").addProperty("version",99);
+        assertThrows(IllegalArgumentException.class,()->FluidCheckpointCodec.decode(CheckpointImages.withLedger(tag,bad),key->{throw new AssertionError();}));
         ledger.commit(ledger.produce(Set.of(id),List.of(new PendingTransfers.Pending(id,producer,receiver,300,0,material(40)))));
         var produced=FluidCheckpointCodec.encode(new FluidCheckpointCodec.Checkpoint(List.of(),ledger.snapshot()),key->{throw new AssertionError();});
         var restored=FluidCheckpointCodec.decode(produced,key->{throw new AssertionError();});assertTrue(restored.transfers().planned().isEmpty());
         assertEquals(40,restored.transfers().pending().get(id).remaining().massKg());assertEquals(4000,restored.transfers().pending().get(id).remaining().energyJoule());
-        var incomplete=FluidCheckpointCodec.ledgerJson(produced);incomplete.getAsJsonObject("transfers").remove("productionCapacity");
-        assertThrows(RuntimeException.class,()->FluidCheckpointCodec.decode(FluidCheckpointCodec.withLedger(produced,incomplete),key->{throw new AssertionError();}),"format 3 has no absent-field defaults");
+        var incomplete=CheckpointImages.ledgerJson(produced);incomplete.getAsJsonObject("transfers").remove("productionCapacity");
+        assertThrows(RuntimeException.class,()->FluidCheckpointCodec.decode(CheckpointImages.withLedger(produced,incomplete),key->{throw new AssertionError();}),"format 3 has no absent-field defaults");
     }
 }

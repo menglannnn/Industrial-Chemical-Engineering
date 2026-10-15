@@ -68,14 +68,14 @@ class FixedSplitModuleTest {
         var saved=decoded.modules().getFirst();assertEquals(300,saved.cycle().endTick());assertEquals(100,saved.cycle().inputs().get(feedA).throughTick());assertEquals(0,saved.cycle().inputs().get(feedB).throughTick());
         assertArrayEquals(material(7).moles(),saved.cycle().inputs().get(feedA).owned().moles());assertEquals(700,saved.cycle().inputs().get(feedA).owned().energyJoule());
         assertEquals(2,decoded.transfers().planned().size());assertTrue(decoded.transfers().pending().isEmpty());
-        var typed=FluidCheckpointCodec.ledgerJson(tag);var typedState=typed.getAsJsonObject("modules").getAsJsonArray("states").get(0).getAsJsonObject();
+        var typed=CheckpointImages.ledgerJson(tag);var typedState=typed.getAsJsonObject("modules").getAsJsonArray("states").get(0).getAsJsonObject();
         typedState.addProperty("scientificRevision","unknown-revision");
-        assertThrows(IllegalArgumentException.class,()->FluidCheckpointCodec.decode(FluidCheckpointCodec.withLedger(tag,typed),key->{throw new AssertionError();}));
+        assertThrows(IllegalArgumentException.class,()->FluidCheckpointCodec.decode(CheckpointImages.withLedger(tag,typed),key->{throw new AssertionError();}));
         typedState.remove("scientificRevision");
-        assertThrows(RuntimeException.class,()->FluidCheckpointCodec.decode(FluidCheckpointCodec.withLedger(tag,typed),key->{throw new AssertionError();}));
+        assertThrows(RuntimeException.class,()->FluidCheckpointCodec.decode(CheckpointImages.withLedger(tag,typed),key->{throw new AssertionError();}));
         typedState.remove("type");
-        assertThrows(RuntimeException.class,()->FluidCheckpointCodec.decode(FluidCheckpointCodec.withLedger(tag,typed),key->{throw new AssertionError();}),"format 3 names every module's type");
-        var incomplete=FluidCheckpointCodec.ledgerJson(tag);incomplete.remove("modules");
-        assertThrows(RuntimeException.class,()->FluidCheckpointCodec.decode(FluidCheckpointCodec.withLedger(tag,incomplete),key->{throw new AssertionError();}),"format 3 has no absent-field defaults");
+        assertThrows(RuntimeException.class,()->FluidCheckpointCodec.decode(CheckpointImages.withLedger(tag,typed),key->{throw new AssertionError();}),"format 3 names every module's type");
+        var incomplete=CheckpointImages.ledgerJson(tag);incomplete.remove("modules");
+        assertThrows(RuntimeException.class,()->FluidCheckpointCodec.decode(CheckpointImages.withLedger(tag,incomplete),key->{throw new AssertionError();}),"format 3 has no absent-field defaults");
     }
 }

@@ -16,7 +16,6 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.*;
 import java.util.function.Function;
-import java.util.function.UnaryOperator;
 
 /**
  * Checkpoint format 7 of committed science and runtime state: what one storage unit holds and what the core record
@@ -697,7 +696,7 @@ public final class FluidCheckpointCodec {
     // ---------------- integrity ----------------
 
     /** The envelope digest: every field of the core record in a fixed order, every text with its length. */
-    private static byte[] manifest(CompoundTag tag) {
+    static byte[] manifest(CompoundTag tag) {
         var d=new Digest();d.text("createcheme-fluid-checkpoint-5");d.number(requireLong(tag,"Epoch","checkpoint"));d.bytes(requireBytes(tag,"LedgerSHA256","checkpoint"));
         var strings=(ListTag)tag.get("Strings");d.number(strings.size());for(int i=0;i<strings.size();i++)d.text(strings.getString(i));
         var packages=(ListTag)tag.get("Packages");d.number(packages.size());
@@ -750,7 +749,7 @@ public final class FluidCheckpointCodec {
         if(!(tag.get(key) instanceof IntArrayTag values))throw new IllegalArgumentException("Missing or mistyped fluid "+where+" field "+key);return values.getAsIntArray();
     }
 
-    // ---------------- in-memory checkpoints, for tests and tools ----------------
+    // ---------------- in-memory checkpoints, for tests and tools (edits: test CheckpointImages) ----------------
 
     /** A checkpoint as its core record and its packs, held in memory: what a world's storage holds, without files. */
     public record Image(CompoundTag core,Map<Long,byte[]> packs) {
@@ -767,52 +766,6 @@ public final class FluidCheckpointCodec {
     public static Checkpoint decode(Image image,Function<PackageKey,FluidThermodynamics> models) {
         return FluidCheckpointStore.memory(image).load(image.core(),models).checkpoint();
     }
-    /** Recomputes the envelope and ledger digests of a core record from its current fields: for tests that alter a
-     * field and must reach the validation of that field rather than the checksum. */
-    static void reseal(CompoundTag core) {
-        core.putByteArray("LedgerSHA256",sha256(core.getByteArray("Ledger")));core.putByteArray("SHA256",manifest(core));
-    }
-    /** The index position of island {@code id} in a core record, for tests. */
-    static int row(CompoundTag core,long id) {
-        var ids=core.getCompound("Islands").getLongArray("Id");for(int i=0;i<ids.length;i++)if(ids[i]==id)return i;throw new IllegalArgumentException("no island "+id);
-    }
-    /** The ledger JSON of a checkpoint, for tests. */
-    static JsonObject ledgerJson(Image image){return JsonParser.parseString(new String(image.core().getByteArray("Ledger"),StandardCharsets.UTF_8)).getAsJsonObject();}
-    /** A copy of a checkpoint with its ledger JSON replaced and every digest recomputed, for tests. */
-    static Image withLedger(Image image,JsonObject ledger){var core=image.core().copy();core.putByteArray("Ledger",ledger.toString().getBytes(StandardCharsets.UTF_8));reseal(core);return new Image(core,image.packs());}
-    /** The raw unit bytes of island {@code id}, for tests. */
-    static byte[] unitBytes(Image image,long id) {
-        var islands=image.core().getCompound("Islands");int i=row(image.core(),id);
-        int offset=(int)islands.getLongArray("Offset")[i];return Arrays.copyOfRange(image.packs().get(islands.getLongArray("Pack")[i]),offset,offset+islands.getIntArray("Length")[i]);
-    }
-    /**
-     * A copy of a checkpoint whose island {@code id} was decoded (as a load decodes it, before registration), edited
-     * and written again under the same identity, revision and generation, in a new pack, with every digest
-     * recomputed; the edit may also change the index row's clock and certificate summary through the edited snapshot.
-     * For tests that must reach the validation of a unit field.
-     */
-    static Image withIsland(Image image,long id,Function<PackageKey,FluidThermodynamics> models,UnaryOperator<IslandEntry> edit) {
-        var core=readCore(image.core());var strings=core.strings;
-        var models2=new HashMap<PackageKey,FluidThermodynamics>();for(var p:core.packages)models2.put(p.key(),models.apply(p.key()));
-        var row=core.islands.stream().filter(x->x.id==id).findFirst().orElseThrow();
-        var entry=edit.apply(island(image.packs().get(row.unit.pack),row,core.epoch,strings,models2));
-        return withUnit(image,id,islandUnit(entry,row.generation,strings),strings);
-    }
-    /** A copy of a checkpoint with island {@code id}'s unit replaced by {@code unit} in a new pack and every digest recomputed. */
-    static Image withUnit(Image image,long id,byte[] unit){return withUnit(image,id,unit,null);}
-    private static Image withUnit(Image image,long id,byte[] unit,Strings strings) {
-        var tag=image.core().copy();if(strings!=null)tag.put("Strings",strings.tag());
-        long pack=tag.getLong("NextPack");var bytes=FluidCheckpointStore.pack(pack,List.of(unit));
-        var islands=tag.getCompound("Islands");int i=row(tag,id);
-        islands.getLongArray("Pack")[i]=pack;islands.getLongArray("Offset")[i]=FluidCheckpointStore.PACK_HEADER;islands.getIntArray("Length")[i]=unit.length;
-        System.arraycopy(sha256(unit),0,islands.getByteArray("SHA256"),32*i,32);
-        var packs=new TreeMap<Long,Long>();var list=tag.getLongArray("Packs");var sizes=tag.getLongArray("PackBytes");for(int p=0;p<list.length;p++)packs.put(list[p],sizes[p]);
-        packs.put(pack,(long)bytes.length);
-        tag.putLongArray("Packs",packs.keySet().stream().mapToLong(Long::longValue).toArray());tag.putLongArray("PackBytes",packs.values().stream().mapToLong(Long::longValue).toArray());
-        tag.putLong("NextPack",pack+1);reseal(tag);
-        var all=new HashMap<>(image.packs());all.put(pack,bytes);return new Image(tag,all);
-    }
-
     // ---------------- shared record conversions ----------------
 
     private static ModuleState module(FixedSplitModule.Snapshot state) {
@@ -838,36 +791,6 @@ public final class FluidCheckpointCodec {
     private static EnergyReference reference(Energy ref){return new EnergyReference(ref.revision,ref.components,ref.offsets,ref.formationQualified);}
     private static Parcel parcel(MaterialParcel p){return new Parcel(p.moles(),p.molecularWeights(),p.internalEnergy(),energy(p.reference()),p.solids());}
     private static MaterialParcel parcel(Parcel p){return new MaterialParcel(p.moles,p.weights,p.energy,reference(p.reference),p.solids);}
-
-    // ---------------- archived gameplay captures (format-3 payload JSON graphs; read-only) ----------------
-
-    private record Phase(double temperature,double pressure,double[] liquid,double[] vapor,double waterLiquid,double waterVapor,double hydrocarbonPressure) {}
-    private record Node(long id,double elevation,String kind,PassiveNetwork.Inventory inventory,Phase phase) {}
-    private record Control(String kind,double target,double limit,double efficiency) {}
-    /** A pipe; {@code firstPort}/{@code secondPort} name its ends' {@link PassiveNetwork.PhasePort} (checkpoint format 6). */
-    private record Pipe(long id,int first,int second,List<PipeResistance.Geometry> sections,Control control,int blockedDirections,InlineFilter filter,String firstPort,String secondPort) {}
-    private record Graph(List<Node> nodes,List<Pipe> pipes) {}
-    /** A graph in the format-3 payload's JSON shape, for the archived gameplay states that keep one, extended with the
-     * format-6 fields: every pipe names its two ports ({@code "BULK"}, {@code "VAPOR"}, {@code "LIQUID"}), and a control of
-     * kind {@code "compressor"} reads {@code target} as its suction volume flow, {@code limit} as its maximum pressure ratio
-     * and {@code efficiency} as its efficiency. A missing field is refused like every other. */
-    static PassiveNetwork decodeGraph(JsonElement json,FluidThermodynamics model) {
-        strictShape(json,Graph.class,0,new int[]{0},LEDGER_ELEMENTS);var saved=GSON.fromJson(json,Graph.class);
-        if(saved.nodes.isEmpty()||saved.nodes.size()>MAXIMUM_NODES||saved.pipes.size()>MAXIMUM_PIPES)throw new IllegalArgumentException("Invalid saved graph size");
-        var nodes=new ArrayList<PassiveNetwork.Reservoir>();
-        for(var n:saved.nodes) {
-            var kind=PassiveNetwork.NodeKind.valueOf(n.kind);if(kind==PassiveNetwork.NodeKind.PORT)throw new IllegalArgumentException("Internal port cannot be persisted");
-            var p=n.phase;var state=Arrays.stream(n.inventory.moles()).sum()==0&&!n.inventory.solids().empty()?model.solidState(p.temperature,p.pressure,n.inventory.solids()):model.state(p.temperature,p.pressure,p.liquid,p.vapor,p.waterLiquid,p.waterVapor,p.hydrocarbonPressure).withSolids(n.inventory.solids());
-            model.solids.validate(n.inventory.solids());
-            nodes.add(new PassiveNetwork.Reservoir(n.id,n.elevation,state,kind,n.inventory));
-        }
-        for(var pipe:saved.pipes)if(pipe.filter!=null)model.solids.validate(pipe.filter.captured());
-        return new PassiveNetwork(nodes,saved.pipes.stream().map(p->new PassiveNetwork.Pipe(p.id,p.first,p.second,p.sections,switch(p.control.kind) {
-            case "passive"->new FlowControl.Passive();case "pump"->new FlowControl.Pump(p.control.target,p.control.limit,p.control.efficiency);case "valve"->new FlowControl.PressureValve(p.control.target);
-            case "compressor"->new FlowControl.Compressor(p.control.target,p.control.limit,p.control.efficiency);default->throw new IllegalArgumentException("Unknown saved control");
-        },p.blockedDirections,p.filter==null?null:currentFilter(p.filter.capacity(),p.filter.captured(),p.filter.energyJoule(),p.filter.stoppedAtCapacity(),model),
-                PassiveNetwork.PhasePort.valueOf(p.firstPort),PassiveNetwork.PhasePort.valueOf(p.secondPort))).toList());
-    }
 
     /** Reject missing fields and fractional integer stamps instead of allowing Gson's zero/coercion defaults. */
     private static void strictShape(JsonElement value,Type type,int depth,int[] count,int maximum) {

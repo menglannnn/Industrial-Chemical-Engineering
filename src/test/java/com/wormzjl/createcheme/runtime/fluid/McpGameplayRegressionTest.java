@@ -18,19 +18,29 @@ class McpGameplayRegressionTest {
             return com.google.gson.JsonParser.parseString(new String(input.readAllBytes(),java.nio.charset.StandardCharsets.UTF_8)).getAsJsonObject().getAsJsonArray("islands").get(0).getAsJsonObject();
         }
     }
-    /** The capture predates solids, blocked masks, filters and phase ports (checkpoint format 6) and holds none of them,
-     * so they are empty here and every pipe end is a BULK end. */
+    private record Phase(double temperature,double pressure,double[] liquid,double[] vapor,double waterLiquid,double waterVapor,double hydrocarbonPressure) {}
+    private record Inventory(double volume,double[] moles,double internalEnergy) {}
+    private record Node(long id,double elevation,String kind,Inventory inventory,Phase phase) {}
+    private record Control(String kind,double target,double limit,double efficiency) {}
+    private record Pipe(long id,int first,int second,List<PipeResistance.Geometry> sections,Control control) {}
+    private record Graph(List<Node> nodes,List<Pipe> pipes) {}
+    /** The graph of a capture in its format-3 payload JSON shape. The capture predates solids, blocked masks, filters and
+     * phase ports (checkpoint format 6) and holds none of them, so they are empty here and every pipe end is a BULK end. */
     private static PassiveNetwork archivedGraph(com.google.gson.JsonObject island,FluidThermodynamics model) {
-        var graph=island.getAsJsonObject("graph").deepCopy();
-        for(var node:graph.getAsJsonArray("nodes")) {
-            var inventory=node.getAsJsonObject().getAsJsonObject("inventory");assertFalse(inventory.has("solids"));
-            var empty=new com.google.gson.JsonObject();empty.add("populations",new com.google.gson.JsonArray());inventory.add("solids",empty);
+        var json=island.getAsJsonObject("graph");
+        for(var node:json.getAsJsonArray("nodes"))assertFalse(node.getAsJsonObject().getAsJsonObject("inventory").has("solids"));
+        for(var pipe:json.getAsJsonArray("pipes")){var p=pipe.getAsJsonObject();assertFalse(p.has("blockedDirections")||p.has("filter")||p.has("firstPort")||p.has("secondPort"));}
+        var saved=new com.google.gson.Gson().fromJson(json,Graph.class);
+        var nodes=new ArrayList<PassiveNetwork.Reservoir>();
+        for(var n:saved.nodes()) {
+            var p=n.phase();var inventory=new PassiveNetwork.Inventory(n.inventory().volume(),n.inventory().moles(),n.inventory().internalEnergy(),com.wormzjl.createcheme.science.fluid.state.SolidInventory.EMPTY);
+            nodes.add(new PassiveNetwork.Reservoir(n.id(),n.elevation(),model.state(p.temperature(),p.pressure(),p.liquid(),p.vapor(),p.waterLiquid(),p.waterVapor(),p.hydrocarbonPressure()).withSolids(inventory.solids()),
+                    PassiveNetwork.NodeKind.valueOf(n.kind()),inventory));
         }
-        for(var pipe:graph.getAsJsonArray("pipes")) {
-            var p=pipe.getAsJsonObject();assertFalse(p.has("blockedDirections")||p.has("filter")||p.has("firstPort")||p.has("secondPort"));
-            p.addProperty("blockedDirections",0);p.add("filter",com.google.gson.JsonNull.INSTANCE);p.addProperty("firstPort","BULK");p.addProperty("secondPort","BULK");
-        }
-        return FluidCheckpointCodec.decodeGraph(graph,model);
+        return new PassiveNetwork(nodes,saved.pipes().stream().map(p->new PassiveNetwork.Pipe(p.id(),p.first(),p.second(),p.sections(),switch(p.control().kind()) {
+            case "passive"->new FlowControl.Passive();case "pump"->new FlowControl.Pump(p.control().target(),p.control().limit(),p.control().efficiency());
+            case "valve"->new FlowControl.PressureValve(p.control().target());default->throw new IllegalArgumentException("Unknown saved control");
+        },0,null,PassiveNetwork.PhasePort.BULK,PassiveNetwork.PhasePort.BULK)).toList());
     }
     @Test void clampedDrainContinuesAfterTheTankBecomesAlmostLiquidFull() throws Exception {
         var model=FluidThermodynamics.forNetwork(MaterialCatalog.bundled(),"createcheme:tjl20_methane_nitrogen",1e-9);

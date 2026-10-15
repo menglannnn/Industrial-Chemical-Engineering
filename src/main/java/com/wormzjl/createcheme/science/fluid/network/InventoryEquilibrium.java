@@ -13,17 +13,15 @@ public final class InventoryEquilibrium {
         for(var node:graph.reservoirs()) {
             checkpoint.run();FluidThermodynamics.State state;
             // A committed inventory the property domain refuses names its node; see ThermoDomainViolation.
-            try{state=node.fixed()||node.junction()||node.empty()?node.state():solve(model,node.state(),node.inventory(),false,checkpoint);}
+            try{state=node.fixed()||node.junction()||node.empty()?node.state():solve(model,node.state(),node.inventory(),Double.NaN,checkpoint);}
             catch(com.wormzjl.createcheme.science.fluid.thermo.ThermoDomainViolation violation){throw violation.at(node.id());}
             changed|=state!=node.state();nodes.add(new PassiveNetwork.Reservoir(node.id(),node.elevation(),state,node.kind(),node.inventory()));
         }
         return changed?new PassiveNetwork(nodes,graph.pipes(),graph.scheduledTransfers()):graph;
     }
-    public static FluidThermodynamics.State solve(FluidThermodynamics model,FluidThermodynamics.State previous,PassiveNetwork.Inventory inventory,boolean forceProperties,Runnable checkpoint) {
-        return solve(model,previous,inventory,forceProperties,Double.NaN,checkpoint);
-    }
-    /** {@link #solve} with the wall work of a step booked from the bag volume {@code workFrom} ({@link PhaseLayout#balanceRows}). */
-    static FluidThermodynamics.State solve(FluidThermodynamics model,FluidThermodynamics.State previous,PassiveNetwork.Inventory inventory,boolean forceProperties,
+    /** The state of a vessel's inventory, with the wall work of a step booked from the bag volume {@code workFrom}
+     * ({@link PhaseLayout#balanceRows}; {@code NaN}: none). */
+    static FluidThermodynamics.State solve(FluidThermodynamics model,FluidThermodynamics.State previous,PassiveNetwork.Inventory inventory,
                                            double workFrom,Runnable checkpoint) {
         var n=inventory.moles();if(Arrays.stream(n).sum()==0)return close(model,previous,inventory,null,workFrom,checkpoint);
         var old=PhaseLayout.totalAmounts(previous);boolean changedBasis=false;
@@ -32,7 +30,7 @@ public final class InventoryEquilibrium {
         // Decision D34: the phase set each pass below is laid out for is the flash's, trace phases folded; a candidate that
         // ends with a phase its flash folds is restated from that flash (the regime test) and its last split is folded by
         // repartition, so this energy-volume flash returns no trace phase either.
-        var state=(forceProperties||changedBasis?model.flashTP(previous.temperature(),previous.pressure(),n,checkpoint):model.folded(previous)).withSolids(inventory.solids());
+        var state=(changedBasis?model.flashTP(previous.temperature(),previous.pressure(),n,checkpoint):model.folded(previous)).withSolids(inventory.solids());
         // Owner decision D59 (2): a vessel that holds nothing at the bag's resolution holds a residue, booked exactly in its
         // inventory, and no state to close: it is stated at its flash, at the temperature and pressure it had. Random fuzz
         // seed 707 booked 1e-42 mol of crude and 1e-84 mol of water vapour into an empty 1 m3 tank; the closure's Newton,
