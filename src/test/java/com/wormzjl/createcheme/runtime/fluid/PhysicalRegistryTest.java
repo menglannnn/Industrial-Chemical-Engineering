@@ -105,6 +105,17 @@ class PhysicalRegistryTest {
         assertFalse(w.coordinator.observe().stream().anyMatch(s->s.id()==old),"the replaced island is gone");
     }
 
+    /** Owner decision 2026-10-15: an event fences only the islands it shares a flow path with. Two lines whose end tanks
+     * touch (two tanks never join): removing one tank fences its own line, not the line beside it. */
+    @Test void anEventDoesNotFenceAnAdjacentIslandItIsNotJoinedTo() {
+        var w=new World(0);
+        long tankA=w.queue(0,0,Kind.RESERVOIR);w.queue(1,0,Kind.PIPE);long pipeA=w.queue(2,0,Kind.PIPE);long endA=w.queue(3,0,Kind.RESERVOIR);
+        long endB=w.queue(4,0,Kind.RESERVOIR);w.queue(5,0,Kind.PIPE);w.queue(6,0,Kind.PIPE);w.queue(7,0,Kind.RESERVOIR);w.apply();
+        long lineA=w.owner(pipeA),lineB=w.owner(endB);assertNotEquals(lineA,lineB);assertEquals(lineA,w.owner(tankA));
+        var event=w.queueRemove(endA);
+        assertEquals(Set.of(lineA),w.coordinator.fencedIslands(event.id()),"the neighbouring line is not fenced");
+        w.apply();assertNull(w.registry.owner(endA));assertEquals(lineB,w.owner(endB),"the untouched line keeps its island");
+    }
     @Test void mergesAndSplitsProduceTheRightIslandsAndRevisions() {
         var w=new World(0);w.lines(2);
         long leftTank=w.registry.at(new PhysicalFluidTopology.Position(DIM,20,Y,16)).orElseThrow().device().id();

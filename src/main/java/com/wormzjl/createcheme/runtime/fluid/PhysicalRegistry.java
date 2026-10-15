@@ -143,7 +143,7 @@ public final class PhysicalRegistry {
 
     /**
      * Queues edits as one ledger event and fences it on the islands it touches; {@link #applyPending()} applies it. The
-     * touched set is the edited devices, every device beside an edited position, and every device reached from them
+     * touched set is the edited devices, every device joined to an edited position before or after the edit, and every device reached from them
      * through applied devices that no island owns and no queued event edits (a dead-end branch, a line with no tank). An
      * owned device stands for its island, which the fence covers whole, and a queued device for the event that edits it,
      * which this event now follows; the walk stops at both, so its cost is the neighbourhood, not the island. A fixed
@@ -167,8 +167,13 @@ public final class PhysicalRegistry {
             var mine=proposedAt.get(p);if(mine!=null)return mine;var record=topology.latestAt(p);return record==null||proposed.containsKey(record.device().id())?null:record;
         };
         var queue=new ArrayDeque<PhysicalFluidTopology.Position>(starts);var seen=new HashSet<PhysicalFluidTopology.Position>();
-        // Both sides of a removed link are visited, then connections are followed in the proposed registry.
-        for(var start:starts)for(var d:PhysicalFluidTopology.Direction.values())queue.add(start.offset(d));
+        // Both sides of a removed link are visited, then connections are followed in the proposed registry. A neighbour
+        // the edited position joins neither before nor after the edit is not touched: it shares no flow path with the
+        // edit, and fencing its island would make the event wait on an unrelated network (a held one, for good).
+        for(var start:starts)for(var d:PhysicalFluidTopology.Direction.values()) {
+            var next=start.offset(d);
+            if(joined(topology.latestAt(start),topology.latestAt(next),d)||joined(at.apply(start),at.apply(next),d))queue.add(next);
+        }
         while(!queue.isEmpty()) {
             var position=queue.removeFirst();if(!seen.add(position))continue;var record=at.apply(position);if(record==null)continue;long id=record.device().id();touched.add(id);
             // A fixed boundary the event does not edit is never walked through: what lies beyond it is another island.
@@ -182,6 +187,7 @@ public final class PhysicalRegistry {
         host.coordinator().fence(prepared.event().id(),prepared.event().tick(),affected);topology.commit(prepared);unapplied++;
         return prepared.event();
     }
+    private static boolean joined(WorldTopologyLedger.Registration a,WorldTopologyLedger.Registration b,PhysicalFluidTopology.Direction d){return a!=null&&b!=null&&a.device().joins(b.device(),d);}
     /** Applies what is ready, at most sixteen batches (see the class comment); returns whether one queued a solid recovery. */
     public boolean applyPending() {
         unapplied=0;boolean queuedRecovery=false;

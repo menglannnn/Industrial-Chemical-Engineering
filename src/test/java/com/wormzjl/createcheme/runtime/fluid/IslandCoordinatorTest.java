@@ -104,6 +104,25 @@ class IslandCoordinatorTest {
         dispatch.finish(3);coordinator.pump();assertTrue(coordinator.aligned(event,List.of(1L,2L)));assertTrue(dispatch.attempts.isEmpty());
         coordinator.releaseFence(event,List.of(1L,2L));assertEquals(150,coordinator.snapshot(1).clock().committedTick());
     }
+    /** Owner decision 2026-10-15: a held owner accepts a fenced event at its committed tick; its inventory stands still
+     * over the dropped span and the replacement starts there. An owner that is not held still aligns by solving. */
+    @Test void aHeldOwnerAcceptsAFencedEventAtItsCommittedTickWithItsInventoryUnchanged() {
+        register(1,200,0);coordinator.pump();
+        var attempt=dispatch.attempts.values().stream().filter(a->a.islandId()==1).findFirst().orElseThrow();
+        dispatch.attempts.remove(attempt.slice().requestId());dispatch.commands.remove(attempt.slice().requestId());
+        coordinator.completed(attempt,Optional.of(new ProcessSolveServices.FluidIslandSolveResult(Optional.empty(),"HELD: test refusal",10,FallbackAllowance.NONE,Optional.empty())));
+        coordinator.pump();assertTrue(dispatch.attempts.isEmpty());
+        assertTrue(coordinator.snapshot(1).status().startsWith("HELD"),coordinator.snapshot(1).status());assertEquals(0,coordinator.snapshot(1).clock().committedTick());
+        var before=coordinator.snapshot(1).graph();
+        var event=UUID.randomUUID();coordinator.fence(event,150,List.of(1L));
+        assertTrue(coordinator.aligned(event,List.of(1L)),"the held owner accepts the event without a solve");
+        assertEquals(150,coordinator.snapshot(1).clock().committedTick());assertEquals(before,coordinator.snapshot(1).graph());
+        assertEquals("WAITING: event alignment",coordinator.snapshot(1).status());
+        repartition(coordinator,event,Set.of(1L),List.of(new IslandCoordinator.Replacement(7,before)));
+        assertEquals(150,coordinator.snapshot(7).clock().committedTick());assertEquals(before.reservoirs(),coordinator.snapshot(7).graph().reservoirs());
+        register(2,200,0);var solving=UUID.randomUUID();coordinator.fence(solving,150,List.of(2L));
+        assertFalse(coordinator.aligned(solving,List.of(2L)),"an owner that was not held solves to the fence");
+    }
     @Test void staleStampAndStopCannotPublishAnUncommittedCandidate() {
         register(1,100,0);coordinator.pump();var actual=dispatch.attempts.get(1L);
         coordinator.completed(new IslandCoordinator.Attempt(1,1,actual.slice()),Optional.empty());assertEquals(1,coordinator.pendingCount());

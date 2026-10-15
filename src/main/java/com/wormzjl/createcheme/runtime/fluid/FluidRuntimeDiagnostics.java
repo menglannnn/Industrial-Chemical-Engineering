@@ -76,6 +76,8 @@ public final class FluidRuntimeDiagnostics {
     public static final LongAdder retriesDeferred=new LongAdder();
     /** Thermo-domain holds whose fresh-solver retry reproduced the same violation: the island waits for an input change. */
     public static final LongAdder domainHolds=new LongAdder();
+    /** Held islands that accepted a topology event at their committed tick, and the unsolved online ticks they dropped. */
+    public static final LongAdder heldEventAcceptances=new LongAdder(),droppedHeldTicks=new LongAdder();
     /** Topology events (PhysicalRegistry): batches applied, events they applied, and devices they compiled - the
      * connected components the batches touched, never the rest of the registry. */
     public static final LongAdder topologyBatches=new LongAdder();
@@ -99,6 +101,7 @@ public final class FluidRuntimeDiagnostics {
         map.put("certificatesRestored",certificatesRestored);map.put("certificatesDiscarded",certificatesDiscarded);
         map.put("payloadsEncoded",payloadsEncoded);map.put("payloadsReused",payloadsReused);
         map.put("budgetHolds",budgetHolds);map.put("numericalHolds",numericalHolds);map.put("retriesDeferred",retriesDeferred);map.put("domainHolds",domainHolds);
+        map.put("heldEventAcceptances",heldEventAcceptances);map.put("droppedHeldTicks",droppedHeldTicks);
         map.put("topologyBatches",topologyBatches);map.put("topologyEvents",topologyEvents);map.put("compiledDevices",compiledDevices);
         return Collections.unmodifiableMap(map);
     }

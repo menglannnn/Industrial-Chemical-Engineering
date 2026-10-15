@@ -158,6 +158,9 @@ public final class IslandCoordinator {
         // change. With the last warned violation's key and online tick, for the rate limit on the log. Ephemeral.
         private com.wormzjl.createcheme.science.fluid.thermo.ThermoDomainViolation domainFailure;
         private boolean domainParked;
+        // The last attempt that closed was held (not accepted): a topology event fenced on the island is accepted at its
+        // committed tick instead of waiting for a solve (acceptAtFence). Cleared by an accepted interval. Ephemeral.
+        private boolean held;
         private String warnedDomainKey;
         private long warnedDomainAt=Long.MIN_VALUE;
         // Ephemeral solver caches for this island's jobs; replaced, never mutated, on a revision
@@ -527,7 +530,7 @@ public final class IslandCoordinator {
             if(!accept)island.status=refusal!=null?"HELD: "+refusal:outcome==null?"HELD: round deadline or worker failure"
                     :outcome.domain().isPresent()?domainStatus(outcome.domain().orElseThrow(),false)
                     :outcome.detail().startsWith("HELD")?outcome.detail():"HELD: "+outcome.detail();
-            island.clock.completed(attempt.slice,accept);
+            island.clock.completed(attempt.slice,accept);island.held=!accept&&suspension==null&&attempt.revision==island.revision;
             if(suspension!=null)island.status=suspension;
             if(suspension==null&&!accept&&refusal==null&&attempt.revision==island.revision)hold(island,attempt.slice,outcome);
             else if(accept) {
@@ -661,21 +664,39 @@ public final class IslandCoordinator {
         }
         for(long id:affected){var island=require(id);island.fences.put(event,tick);fenceOwners.computeIfAbsent(event,ignored->new HashSet<>()).add(id);inputsChanged(island);island.touch();reconsider(island);}
     }
-    /** A certified owner answers by materialisation: it advances to the fence and is then aligned like any other. */
+    /** A certified owner answers by materialisation and a held one by {@link #acceptAtFence}: each advances to the
+     * fence and is then aligned like any other. */
     public boolean aligned(UUID event,Collection<Long> affected) {
-        owned();for(long id:affected)materialise(require(id));
+        owned();for(long id:affected){var island=require(id);materialise(island);acceptAtFence(island);}
         return affected.stream().allMatch(id->{var i=require(id);var tick=i.fences.get(event);return tick!=null&&i.clock.committedTick()==tick&&i.pendingEntries==0;});
     }
     /** A batch's owners: each affected island holds a fence of at least one of the events, every one of them at its
      * committed tick, and runs no attempt; certified ones are materialised first, as for one event. */
     private boolean aligned(Set<UUID> events,Collection<Long> affected) {
-        for(long id:affected)materialise(require(id));
+        for(long id:affected){var island=require(id);materialise(island);acceptAtFence(island);}
         for(long id:affected) {
             var island=require(id);if(island.pendingEntries!=0)return false;boolean fenced=false;
             for(var event:events){var tick=island.fences.get(event);if(tick==null)continue;if(tick!=island.clock.committedTick())return false;fenced=true;}
             if(!fenced)return false;
         }
         return true;
+    }
+    /**
+     * A held owner accepts the event fenced on it at its committed tick (owner decision 2026-10-15): a held island
+     * cannot solve its way to the fence, and a world change - a broken pipe, a new valve setting - is often the very
+     * thing that frees it. Its inventory stands still over the unsolved span (no flow, so mass and energy are exact)
+     * and the clock moves to the fence without a solve, as a certified island's materialisation does; the topology
+     * change then replaces the island with a fresh one that starts its own full solve. Only an island whose last
+     * attempt was held, with no attempt in flight, outside a suspension; anything else aligns by solving.
+     */
+    private void acceptAtFence(Island island) {
+        if(!island.held||island.certificate!=null||island.pendingEntries!=0||island.clock.busy()||suspension!=null)return;
+        long committed=island.clock.committedTick(),fence=island.fence();
+        if(fence==Long.MAX_VALUE||fence<=committed||fence>island.clock.onlineTick())return;
+        island.clock.rest(fence,fence);island.held=false;
+        FluidRuntimeDiagnostics.count(FluidRuntimeDiagnostics.heldEventAcceptances);
+        FluidRuntimeDiagnostics.count(FluidRuntimeDiagnostics.droppedHeldTicks,fence-committed);
+        island.touch();reconsider(island);
     }
     public void releaseFence(UUID event,Collection<Long> affected) {
         owned();if(!aligned(event,affected))throw new IllegalStateException("Event owners have not aligned");
