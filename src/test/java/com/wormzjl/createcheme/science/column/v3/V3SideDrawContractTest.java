@@ -25,8 +25,8 @@ class V3SideDrawContractTest {
         assertThrows(IllegalArgumentException.class, () -> input(null));
         assertThrows(IllegalArgumentException.class, () -> input(Arrays.asList((V3SideDrawSpec) null)));
         assertThrows(IllegalArgumentException.class, () -> input(List.of(new V3SideDrawSpec(2, 1), new V3SideDrawSpec(2, 2))));
-        assertThrows(IllegalArgumentException.class, () -> input(List.of(new V3SideDrawSpec(1, 1), new V3SideDrawSpec(2, 1),
-                new V3SideDrawSpec(3, 1), new V3SideDrawSpec(4, 1))));
+        var tooMany = java.util.stream.IntStream.rangeClosed(1, V3ColumnInput.MAX_SIDE_DRAWS + 1).mapToObj(tray -> new V3SideDrawSpec(tray, 1)).toList();
+        assertTrue(assertThrows(IllegalArgumentException.class, () -> input(tooMany)).getMessage().contains("at most " + V3ColumnInput.MAX_SIDE_DRAWS));
     }
 
     @Test
