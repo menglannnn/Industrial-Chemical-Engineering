@@ -5,9 +5,12 @@ import static org.junit.jupiter.api.Assertions.*;
 import org.junit.jupiter.api.Test;
 
 class V3Tjl20MethanePropertyPackageTest {
+    private static final String TJL19 = "createcheme:tjl19_dwsim", TJL19_ASSAY = "createcheme:tia_juana_light";
+    private static final String TJL20 = "createcheme:tjl20_methane", TJL20_ASSAY = "createcheme:tia_juana_light_methane";
+
     @Test void extendsTheFrozenDatasetWithoutChangingItsPropertiesOrInteractions() {
-        var base = V3CatalogPropertyPackage.require(V3Tjl19PropertyPackage.PACKAGE_ID);
-        var extended = V3CatalogPropertyPackage.require(V3Tjl20MethanePropertyPackage.PACKAGE_ID);
+        var base = V3CatalogPropertyPackage.require(TJL19);
+        var extended = V3CatalogPropertyPackage.require(TJL20);
         assertEquals(extended.componentBasis(), V3CatalogPropertyPackage.require(extended.packageId()).componentBasis());
         assertEquals(base.componentBasis().componentCount()+1, extended.componentBasis().componentCount());
         assertNotEquals(base.packageId(), extended.packageId());
@@ -23,14 +26,14 @@ class V3Tjl20MethanePropertyPackageTest {
         }
         interactions[1][2] = 123;
         assertEquals(original[0][1], extended.binaryInteractions()[1][2]);
-        double[] feed = extended.crudeFeed(V3Tjl20MethanePropertyPackage.ASSAY_ID).moleFractions();
-        double[] oldFeed = base.crudeFeed(V3Tjl19PropertyPackage.ASSAY_ID).moleFractions();
+        double[] feed = extended.crudeFeed(TJL20_ASSAY).moleFractions();
+        double[] oldFeed = base.crudeFeed(TJL19_ASSAY).moleFractions();
         assertEquals(0.005, feed[0], 1e-15);
         for (int component = 0; component < base.componentBasis().componentCount(); component++) assertEquals(oldFeed[component] * 0.995, feed[component + 1], 1e-15);
     }
 
     @Test void methaneThermalFitMatchesIndependentNistShomateAndDifferentiatesConsistently() {
-        var methane = V3CatalogPropertyPackage.require(V3Tjl20MethanePropertyPackage.PACKAGE_ID).component(0);
+        var methane = V3CatalogPropertyPackage.require(TJL20).component(0);
         assertEquals(190.564, methane.criticalTemperatureKelvin());
         assertEquals(4_599_200, methane.criticalPressurePascal());
         assertEquals(0.01142, methane.acentricFactor());
@@ -50,9 +53,9 @@ class V3Tjl20MethanePropertyPackageTest {
     }
 
     @Test void zeroMethaneRetainsTheOriginalFlashAndMethaneEntersTheVaporPhase() {
-        var base = V3PengRobinsonThermo.fromRegisteredPackage(V3Tjl19PropertyPackage.PACKAGE_ID);
-        var extended = V3PengRobinsonThermo.fromRegisteredPackage(V3Tjl20MethanePropertyPackage.PACKAGE_ID);
-        double[] oldFeed = base.crudeFeed(V3Tjl19PropertyPackage.ASSAY_ID).moleFractions();
+        var base = V3PengRobinsonThermo.fromRegisteredPackage(TJL19);
+        var extended = V3PengRobinsonThermo.fromRegisteredPackage(TJL20);
+        double[] oldFeed = base.crudeFeed(TJL19_ASSAY).moleFractions();
         double[] zeroMethane = new double[extended.componentBasis().componentCount()];
         System.arraycopy(oldFeed, 0, zeroMethane, 1, oldFeed.length);
         var expected = base.flashTP(638.15, 250_000, oldFeed, base.newWorkspace());
@@ -60,7 +63,7 @@ class V3Tjl20MethanePropertyPackageTest {
         assertEquals(expected.phase(), actual.phase());
         assertEquals(expected.vaporFraction(), actual.vaporFraction(), 1e-10);
         assertEquals(expected.molarEnthalpyJoulesPerMol(), actual.molarEnthalpyJoulesPerMol(), 1e-6);
-        double[] feed = extended.crudeFeed(V3Tjl20MethanePropertyPackage.ASSAY_ID).moleFractions();
+        double[] feed = extended.crudeFeed(TJL20_ASSAY).moleFractions();
         var flash = extended.flashTP(638.15, 250_000, feed, extended.newWorkspace());
         assertEquals(V3FeedPhase.TWO_PHASE, flash.phase());
         double[] x = flash.liquidComposition();

@@ -32,7 +32,9 @@ class RegroupedCrudeTest {
         }
         assertEquals(159.65286000000003,mass,1e-9);
         assertEquals(.18401666666666672,volume,1e-12);
-        var original=V3Tjl19PropertyPackage.INSTANCE;var oldFractions=original.crudeFeed("createcheme:tia_juana_light").moleFractions();
+        // The independent original is the frozen TJL19 table the reference catalog carries.
+        var original=MaterialRuntime.with(V3TjlReferenceCatalog.catalog(),current.id(),()->V3CatalogPropertyPackage.require(current.id()));
+        var oldFractions=original.crudeFeed("createcheme:tia_juana_light").moleFractions();
         var loaded=V3CatalogPropertyPackage.require(current.id());
         for(double t:new double[]{293.15,298.15,500,638.15,900}) {
             double oldCp=0,newCp=0,oldH=0,newH=0;
