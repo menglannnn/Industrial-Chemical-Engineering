@@ -214,7 +214,7 @@ public final class ColumnCalculatorV3BlockEntity extends BlockEntity implements 
                 status,
                 currentInput,
                 Optional.ofNullable(displayResult),
-                diagnostics, names,ColumnInputPreset.descriptors(catalog),editorCatalog);
+                diagnostics, names, editorCatalog);
     }
 
     private void refreshMaterialFreshness() {
@@ -327,29 +327,9 @@ public final class ColumnCalculatorV3BlockEntity extends BlockEntity implements 
             Optional<V3ColumnDisplayResult> displayResult,
             List<String> diagnostics,
             java.util.Map<String, com.wormzjl.createcheme.science.material.MaterialName> materialNames,
-            List<com.wormzjl.createcheme.science.material.MaterialPresets.Descriptor> presets,
             com.wormzjl.createcheme.science.column.v3.V3EditorCatalog editorCatalog) {
-        public V3State(long clientNonce,long stateRevision,long operationId,long inputRevision,long resultRevision,
-                V3Status status,V3ColumnInput input,Optional<V3ColumnDisplayResult> displayResult,List<String> diagnostics,
-                java.util.Map<String,com.wormzjl.createcheme.science.material.MaterialName> names,
-                List<com.wormzjl.createcheme.science.material.MaterialPresets.Descriptor> presets) {
-            this(clientNonce,stateRevision,operationId,inputRevision,resultRevision,status,input,displayResult,diagnostics,
-                    names,presets,com.wormzjl.createcheme.science.column.v3.V3EditorCatalog.EMPTY);
-        }
-        public V3State(long clientNonce, long stateRevision, long operationId, long inputRevision, long resultRevision,
-                V3Status status, V3ColumnInput input, Optional<V3ColumnDisplayResult> displayResult, List<String> diagnostics) {
-            this(clientNonce,stateRevision,operationId,inputRevision,resultRevision,status,input,displayResult,diagnostics,java.util.Map.of(),List.of());
-        }
-        public V3State(long clientNonce,long stateRevision,long operationId,long inputRevision,long resultRevision,
-                V3Status status,V3ColumnInput input,Optional<V3ColumnDisplayResult> displayResult,List<String> diagnostics,
-                java.util.Map<String,com.wormzjl.createcheme.science.material.MaterialName> materialNames) {
-            this(clientNonce,stateRevision,operationId,inputRevision,resultRevision,status,input,displayResult,diagnostics,materialNames,List.of());
-        }
         public V3State {
             Objects.requireNonNull(editorCatalog,"editorCatalog");
-            presets=List.copyOf(presets);
-            if(presets.size()>com.wormzjl.createcheme.science.material.MaterialPresets.MAX_PRESETS||presets.stream().map(p->p.id()).distinct().count()!=presets.size())
-                throw new IllegalArgumentException("Invalid column preset descriptor list");
             materialNames = java.util.Map.copyOf(materialNames);
             if (materialNames.size() > 2 * V3ColumnStreamProperties.MAX_COMPONENTS
                     || materialNames.keySet().stream().anyMatch(id -> !id.matches("[A-Za-z][A-Za-z0-9_.:-]{0,63}")))

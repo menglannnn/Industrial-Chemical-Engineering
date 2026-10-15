@@ -24,7 +24,7 @@ class V3EditorCatalogCodecTest {
     }
     @Test void realStatePacketCarriesTemplatesAndPreciseMolecularWeights() throws Exception {
         var c=catalog();var input=c.templates().values().iterator().next();
-        var state=new V3State(1,2,0,3,-1,V3Status.DIRTY,input,Optional.empty(),List.of("Ready"),Map.of(),List.of(),c);
+        var state=new V3State(1,2,0,3,-1,V3Status.DIRTY,input,Optional.empty(),List.of("Ready"),Map.of(),c);
         var b=new RegistryFriendlyByteBuf(Unpooled.buffer(),RegistryAccess.EMPTY);
         try{
             var write=ColumnV3Network.class.getDeclaredMethod("writeState",RegistryFriendlyByteBuf.class,V3State.class);
