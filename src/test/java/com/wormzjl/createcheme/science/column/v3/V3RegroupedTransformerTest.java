@@ -67,7 +67,7 @@ class V3RegroupedTransformerTest {
     private static InputStream stream(JsonObject d) {return new ByteArrayInputStream(d.toString().getBytes(StandardCharsets.UTF_8));}
     @Test void widthsFollowBothActiveHydrocarbonAxes() throws Exception {
         for(String p:List.of("createcheme:tjl19_dwsim","createcheme:tjl20_methane")) {
-            var input=input(p); var model=V3AnchorTransformerInitializer.read(stream(document(input)));
+            var input=input(p); var model=V3AnchorTransformerInitializer.read(stream(document(input)), V3FactorizedNeuralFeatures.DecodeOptions.NONE);
             assertTrue(model.supported(input));
             assertEquals(input.componentBasis().componentCount()==19?88852:88208,model.parameterCount());
             assertEquals(4*input.componentBasis().componentCount()+5,model.raw(input,V3SolveControl.UNBOUNDED).values()[0].length);
@@ -75,13 +75,13 @@ class V3RegroupedTransformerTest {
     }
     @Test void rejectsRetiredEncodingAndWrongTensors() {
         var d=document(input("createcheme:tjl20_methane")); d.addProperty("featureRevision","v3-anchor-augmented-1");
-        assertThrows(IllegalArgumentException.class,()->V3AnchorTransformerInitializer.read(stream(d)));
+        assertThrows(IllegalArgumentException.class,()->V3AnchorTransformerInitializer.read(stream(d), V3FactorizedNeuralFeatures.DecodeOptions.NONE));
         d.addProperty("featureRevision","v3-anchor-augmented-regrouped-2");
         d.getAsJsonObject("weights").getAsJsonObject("embed.weight").add("shape",JSON.toJsonTree(new int[]{64,185}));
-        assertThrows(IllegalArgumentException.class,()->V3AnchorTransformerInitializer.read(stream(d)));
+        assertThrows(IllegalArgumentException.class,()->V3AnchorTransformerInitializer.read(stream(d), V3FactorizedNeuralFeatures.DecodeOptions.NONE));
     }
     @Test void cancellationAndSharedWeightsAreDeterministic() throws Exception {
-        var input=input("createcheme:tjl20_methane"); var model=V3AnchorTransformerInitializer.read(stream(document(input)));
+        var input=input("createcheme:tjl20_methane"); var model=V3AnchorTransformerInitializer.read(stream(document(input)), V3FactorizedNeuralFeatures.DecodeOptions.NONE);
         assertThrows(CancellationException.class,()->model.raw(input,()->{throw new CancellationException();}));
         var expected=model.raw(input,V3SolveControl.UNBOUNDED);
         try(var workers=Executors.newFixedThreadPool(2)) {
@@ -95,7 +95,7 @@ class V3RegroupedTransformerTest {
     }
     @Test void editedPhysicsIsExcludedWhileCapturedCatalogRemainsEligible() throws Exception {
         var input=input("createcheme:tjl20_methane"); var original=MaterialCatalog.bundled();
-        var model=V3AnchorTransformerInitializer.read(stream(document(input)));
+        var model=V3AnchorTransformerInitializer.read(stream(document(input)), V3FactorizedNeuralFeatures.DecodeOptions.NONE);
         var records=new HashMap<>(original.resources());
         String key=records.keySet().stream().filter(k->k.endsWith("properties/crude_pc08.json")).findFirst().orElseThrow();
         var edited=JsonParser.parseString(records.get(key)).getAsJsonObject();

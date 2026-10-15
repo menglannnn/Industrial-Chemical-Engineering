@@ -17,13 +17,10 @@ class V3DecoderPresenceFloorTest {
 
     @Test void defaultDecodeStillPrunesAKeptComponentThatFallsBelowItsFloor() {
         var input = input(); double[][] raw = belowFloor(input, 8);
-        var explicit = decode(input, raw, V3FactorizedNeuralFeatures.DecodeOptions.NONE);
-        var implicit = V3FactorizedNeuralFeatures.decode(input, "test", V3CondenserPhaseBranch.TWO_PHASE, raw, PRESENCE_THRESHOLD);
-        assertEquals(0, explicit.liquid()[NODE][COMPONENT]);
-        for (int n = 0; n < STAGES + 2; n++) {
-            assertArrayEquals(implicit.liquid()[n], explicit.liquid()[n]);
-            assertArrayEquals(implicit.vapor()[n], explicit.vapor()[n]);
-        }
+        assertEquals(0, decode(input, raw, V3FactorizedNeuralFeatures.DecodeOptions.NONE).liquid()[NODE][COMPONENT]);
+        // The shipped zero-phase floor only seeds empty phases; a below-floor trace of a populated phase is pruned.
+        assertEquals(0, decode(input, raw, V3FactorizedNeuralFeatures.DecodeOptions.zeroPhaseFloor(10))
+                .liquid()[NODE][COMPONENT]);
     }
 
     @Test void malformedDecodeOptionsFailClosed() {

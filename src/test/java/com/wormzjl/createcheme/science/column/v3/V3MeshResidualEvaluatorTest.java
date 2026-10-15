@@ -120,7 +120,7 @@ class V3MeshResidualEvaluatorTest {
                 input.assayId(), input.componentBasis(), input.feedComponentMolarFlowsMolPerSecond(), input.feedTemperatureKelvin(),
                 input.stageCount(), input.feedStageNumber(), input.topPressurePascal(), input.stagePressureDropPascal(),
                 input.specifications(), List.of(), List.of(),
-                List.of(new V3PumparoundSpec(tray, tray, duty, V3PumparoundSpec.Split.RETURN_TRAY))),
+                List.of(new V3PumparoundSpec(tray, tray, duty, V3PumparoundSpec.Split.RETURN_TRAY)), V3ColumnInput.PRESCRIBED_DROP_DIAMETER),
                 V3CondenserPhaseBranch.TWO_PHASE);
         AffineEnthalpyThermo thermo = new AffineEnthalpyThermo();
         V3DryMeshState state = manufacturedState(plain.topology());

@@ -58,7 +58,7 @@ class ColumnV3NetworkCodecTest {
             if (System.nanoTime() - started > 45_000_000_000L) {
                 throw new AssertionError("rounded GUI default exceeded 45 seconds");
             }
-        });
+        }, 0, 0, V3ColumnCalculator.DEFAULT_LIQUID_SUPPLY_SCREEN_RATIO);
         V3ColumnOutcome.Success success = assertInstanceOf(V3ColumnOutcome.Success.class, outcome, outcome::toString);
         assertTrue(success.result().acceptanceAudit().accepted());
         assertTrue(success.result().convergenceEvidence().satisfiesGates());

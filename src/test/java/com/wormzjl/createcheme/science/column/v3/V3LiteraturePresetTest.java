@@ -87,7 +87,7 @@ class V3LiteraturePresetTest {
                 preset.stageCount(), preset.feedStageNumber(), preset.topPressurePascal(), preset.stagePressureDropPascal(),
                 preset.specifications(), preset.sideDraws(), preset.steamFeeds(), List.of(
                         new V3PumparoundSpec(8, 10, -6.42e6, V3PumparoundSpec.Split.UNIFORM),
-                        preset.pumparounds().get(1), preset.pumparounds().get(2)));
+                        preset.pumparounds().get(1), preset.pumparounds().get(2)), V3ColumnInput.PRESCRIBED_DROP_DIAMETER);
         V3ColumnOutcome outcome = V3ColumnCalculator.calculate(halved, () -> {}, 0.0);
         V3ColumnOutcome.Success success = assertInstanceOf(V3ColumnOutcome.Success.class, outcome, outcome::toString);
         V3AcceptanceAudit.Check dewPoint = success.diagnostics().acceptanceAudit().checks().stream()

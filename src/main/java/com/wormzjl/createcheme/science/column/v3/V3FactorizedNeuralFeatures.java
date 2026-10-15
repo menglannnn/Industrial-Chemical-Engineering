@@ -83,11 +83,6 @@ public final class V3FactorizedNeuralFeatures {
     }
 
     static V3NeuralSeed decode(V3ColumnInput input, String revision, V3CondenserPhaseBranch branch,
-            double[][] outputs, double presenceThreshold) {
-        return decode(input, revision, branch, outputs, presenceThreshold, DecodeOptions.NONE);
-    }
-
-    static V3NeuralSeed decode(V3ColumnInput input, String revision, V3CondenserPhaseBranch branch,
             double[][] outputs, double presenceThreshold, DecodeOptions options) {
         if (options == null) throw new IllegalArgumentException("Missing learned seed decode options");
         if (!Double.isFinite(presenceThreshold) || presenceThreshold < 0 || presenceThreshold > .5)

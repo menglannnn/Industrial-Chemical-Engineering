@@ -169,7 +169,7 @@ class V3PhaseTruncationTest {
     void phaseDefectBoundsTheEquilibriumImpliedAbsentFlowAndFiniteTopologyAcceptsItsExactZeros() {
         Fixture fixture = onePhaseFixture();
         V3AcceptanceAudit audit = new V3AcceptanceAuditor(fixture.problem(), fixture.thermo(), 0.0)
-                .audit(fixture.state(), fixture.thermo().newWorkspace());
+                .audit(fixture.state(), fixture.thermo().newWorkspace(), V3SolveControl.UNBOUNDED);
 
         assertTrue(check(audit, "FINITE_TOPOLOGY").passed(), () -> audit.checks().toString());
         V3AcceptanceAudit.Check phaseDefect = check(audit, "PHASE_TRUNCATION_DEFECT");
@@ -193,7 +193,7 @@ class V3PhaseTruncationTest {
         V3DryMeshState inflated = new V3DryMeshState(fixture.problem().topology(), 3, liquid, vapor,
                 V3TruncationNumericsTest.temperatures());
         V3AcceptanceAudit audit = new V3AcceptanceAuditor(fixture.problem(), fixture.thermo(), 0.0)
-                .audit(inflated, fixture.thermo().newWorkspace());
+                .audit(inflated, fixture.thermo().newWorkspace(), V3SolveControl.UNBOUNDED);
 
         V3AcceptanceAudit.Check phaseDefect = check(audit, "PHASE_TRUNCATION_DEFECT");
         assertFalse(phaseDefect.passed(), phaseDefect::toString);
@@ -225,7 +225,7 @@ class V3PhaseTruncationTest {
         assertEquals(0, pointOnly.problem().truncationSupport().onePhasePointCount());
         assertTrue(pointOnly.problem().truncationSupport().truncatedPointCount() > 0);
         V3AcceptanceAudit pointOnlyAudit = new V3AcceptanceAuditor(pointOnly.problem(), pointOnly.thermo(), 0.0)
-                .audit(pointOnly.exact(), pointOnly.thermo().newWorkspace());
+                .audit(pointOnly.exact(), pointOnly.thermo().newWorkspace(), V3SolveControl.UNBOUNDED);
         assertTrue(pointOnlyAudit.checks().stream().anyMatch(check -> check.family().equals("TRUNCATION_MASS_DEFECT")));
         assertTrue(pointOnlyAudit.checks().stream().noneMatch(check -> check.family().equals("PHASE_TRUNCATION_DEFECT")));
     }
@@ -384,7 +384,7 @@ class V3PhaseTruncationTest {
         V3DryMeshState raw = new V3DryMeshState(original.topology(), 3, liquid, vapor,
                 V3TruncationNumericsTest.temperatures());
         V3TruncationSupport support = V3TruncationSupport.derive(original, 0.0, raw);
-        V3ColumnProblem problem = V3ColumnProblemResolver.withTruncation(original, support);
+        V3ColumnProblem problem = V3ColumnProblemResolver.withTruncation(original, support, V3WetTraySet.dry(original.topology()));
         return new Fixture(problem, support, support.projectSeed(original, raw),
                 new V3TruncationNumericsTest.ManufacturedThermo(original.input().componentBasis(), raw));
     }

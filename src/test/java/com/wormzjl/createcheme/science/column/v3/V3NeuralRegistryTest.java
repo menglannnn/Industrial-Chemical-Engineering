@@ -22,13 +22,13 @@ class V3NeuralRegistryTest {
     private static V3ColumnInput on(V3ColumnInput input,String packageId,List<String> ids) {
         double[] feed=new MaterialAxis(ids).project(new MaterialAxis(input.componentBasis().componentIds()),input.feedComponentMolarFlowsMolPerSecond());
         return new V3ColumnInput(1,packageId,input.assayId(),new V3ComponentBasis(ids),feed,input.feedTemperatureKelvin(),input.stageCount(),
-                input.feedStageNumber(),input.topPressurePascal(),input.stagePressureDropPascal(),input.specifications(),input.sideDraws(),input.steamFeeds(),input.pumparounds());
+                input.feedStageNumber(),input.topPressurePascal(),input.stagePressureDropPascal(),input.specifications(),input.sideDraws(),input.steamFeeds(),input.pumparounds(), V3ColumnInput.PRESCRIBED_DROP_DIAMETER);
     }
     private static V3NeuralRegistry.Entry entry(String name,int priority,boolean extra,boolean missing) throws Exception {
         var d=V3RegroupedTransformerTest.document(input());d.addProperty("modelId",name);
         // Explicit equivalent reference supplies only absent, qualified zero components.
         d.addProperty("packageId","createcheme:wti_light_export_tjl20");
-        var model=V3AnchorTransformerInitializer.read(stream(d.toString()));
+        var model=V3AnchorTransformerInitializer.read(stream(d.toString()), V3FactorizedNeuralFeatures.DecodeOptions.NONE);
         return new V3NeuralRegistry.Entry(priority,model,"0".repeat(64),extra,missing);
     }
     private static InputStream stream(String s){return new ByteArrayInputStream(s.getBytes(StandardCharsets.UTF_8));}

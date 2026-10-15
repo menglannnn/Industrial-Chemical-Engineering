@@ -83,15 +83,7 @@ class V3ColumnInitializerTest {
     }
 
     private static V3ColumnInput bubblePointInput() {
-        V3PengRobinsonThermo thermo = V3PengRobinsonThermo.fromRegisteredPackage(CDU17);
-        double[] feed = new double[thermo.componentBasis().componentCount()];
-        feed[6] = 50.0;
-        feed[13] = 50.0;
-        return new V3ColumnInput(V3ColumnInput.SCHEMA_VERSION, CDU17, "test:bubble-point",
-                thermo.componentBasis(), feed, 550.0, 2, 1, 250_000.0, 750.0, List.of(
-                        new V3ColumnSpecification.CondenserOutletTemperature(300.0),
-                        new V3ColumnSpecification.OrganicRefluxRatio(2.0),
-                        new V3ColumnSpecification.ReboilerDuty(0.0)));
+        return V3TestInputs.cdu17Binary("test:bubble-point");
     }
 
     @Test
@@ -167,7 +159,7 @@ class V3ColumnInitializerTest {
             V3DryMeshCoordinateMap coordinates = new V3DryMeshCoordinateMap(problem);
             V3DryMeshState restored = coordinates.decode(coordinates.encode(seed));
             V3AcceptanceAudit audit = new V3AcceptanceAuditor(problem, thermo, 0.0)
-                    .audit(restored, thermo.newWorkspace());
+                    .audit(restored, thermo.newWorkspace(), V3SolveControl.UNBOUNDED);
 
             for (int component = 0; component < restored.componentCount(); component++) {
                 assertEquals(0.0, restored.vaporFlow(0, component));

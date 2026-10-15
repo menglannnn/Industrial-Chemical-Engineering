@@ -29,14 +29,6 @@ final class V3SimultaneousColumnSolver {
     static Attempt solve(
             V3ColumnProblem problem, V3MeshResidualEvaluator evaluator, V3DryMeshCoordinateMap coordinates,
             V3DryMeshState initialState, V3FiniteDifferenceJacobian.V3ThermoWorkspaceFactory workspaceFactory,
-            int maximumIterations, double scaledTolerance) {
-        return solve(problem, evaluator, coordinates, initialState, workspaceFactory, V3ConvergenceEvidence.unavailable(),
-                maximumIterations, scaledTolerance, V3FiniteDifferenceJacobian.DifferenceScale.FINE, V3SolveControl.UNBOUNDED);
-    }
-
-    static Attempt solve(
-            V3ColumnProblem problem, V3MeshResidualEvaluator evaluator, V3DryMeshCoordinateMap coordinates,
-            V3DryMeshState initialState, V3FiniteDifferenceJacobian.V3ThermoWorkspaceFactory workspaceFactory,
             int maximumIterations, double scaledTolerance, V3SolveControl control) {
         return solve(problem, evaluator, coordinates, initialState, workspaceFactory, V3ConvergenceEvidence.unavailable(),
                 maximumIterations, scaledTolerance, V3FiniteDifferenceJacobian.DifferenceScale.FINE, control);
@@ -54,15 +46,6 @@ final class V3SimultaneousColumnSolver {
         initialConvergenceEvidence = Objects.requireNonNull(initialConvergenceEvidence, "initialConvergenceEvidence");
         return solve(problem, evaluator, coordinates, initialState, workspaceFactory, initialConvergenceEvidence,
                 maximumIterations, scaledTolerance, V3FiniteDifferenceJacobian.DifferenceScale.FINE, V3SolveControl.UNBOUNDED);
-    }
-
-    static Attempt solve(
-            V3ColumnProblem problem, V3MeshResidualEvaluator evaluator, V3DryMeshCoordinateMap coordinates,
-            V3DryMeshState initialState, V3FiniteDifferenceJacobian.V3ThermoWorkspaceFactory workspaceFactory,
-            V3ConvergenceEvidence initialConvergenceEvidence, int maximumIterations, double scaledTolerance,
-            V3FiniteDifferenceJacobian.DifferenceScale differenceScale) {
-        return solve(problem, evaluator, coordinates, initialState, workspaceFactory, initialConvergenceEvidence,
-                maximumIterations, scaledTolerance, differenceScale, V3SolveControl.UNBOUNDED);
     }
 
     static Attempt solve(
@@ -103,19 +86,6 @@ final class V3SimultaneousColumnSolver {
      * <p>Each local step remains Armijo-gated. Rejected local directions fall through to the authoritative full
      * coloured finite-difference correction; final convergence certification remains fresh Newton.</p>
      */
-    static Attempt solveWithContinuationLocalBlocks(
-            V3ColumnProblem problem,
-            V3MeshResidualEvaluator evaluator,
-            V3DryMeshCoordinateMap coordinates,
-            V3DryMeshState initialState,
-            V3FiniteDifferenceJacobian.V3ThermoWorkspaceFactory workspaceFactory,
-            int maximumIterations,
-            double scaledTolerance,
-            V3SolveControl control) {
-        return solveWithContinuationLocalBlocks(problem, evaluator, coordinates, initialState, workspaceFactory,
-                maximumIterations, scaledTolerance, control, NewtonTrace.NONE);
-    }
-
     static Attempt solveWithContinuationLocalBlocks(
             V3ColumnProblem problem,
             V3MeshResidualEvaluator evaluator,
@@ -535,11 +505,6 @@ final class V3SimultaneousColumnSolver {
 
     /** Keeps every coefficient in the declared adjacent-stage coupling, independent of its magnitude. */
     static V3BandedMatrix toBandedMatrix(
-            V3FiniteDifferenceJacobian.Jacobian jacobian, V3StageBlockLayout layout) {
-        return toBandedMatrix(jacobian, layout, null);
-    }
-
-    private static V3BandedMatrix toBandedMatrix(
             V3FiniteDifferenceJacobian.Jacobian jacobian, V3StageBlockLayout layout,
             V3BandedPivotedSolver.Workspace workspace) {
         int lastNode = layout.nodeCount() - 1;
@@ -797,12 +762,6 @@ final class V3SimultaneousColumnSolver {
                     || !Double.isFinite(stallResidualFloor) || stallResidualFloor < 0.0) {
                 throw new IllegalArgumentException("V3 Newton rung budget is invalid");
             }
-        }
-
-        /** Same fallbacks, no damped certificate cascade: for a rung whose state is a seed, not a published result. */
-        RungBudget withoutVerificationCascade() {
-            return new RungBudget(maximumDampingSteps, gradientFallback, 0,
-                    stallWindow, stallFactor, stallResidualFloor);
         }
     }
 

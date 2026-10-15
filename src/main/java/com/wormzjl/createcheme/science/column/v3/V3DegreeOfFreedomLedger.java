@@ -45,12 +45,6 @@ public final class V3DegreeOfFreedomLedger {
         this.structuralRank = structuralRank;
     }
 
-    public static V3DegreeOfFreedomLedger create(
-            V3ColumnTopology topology, int componentCount, List<V3ColumnSpecification> specifications) {
-        V3CondenserComponentPhases phases = V3CondenserComponentPhases.allLiquid(componentCount);
-        return create(topology, componentCount, specifications, phases);
-    }
-
     static V3DegreeOfFreedomLedger create(
             V3ColumnTopology topology,
             int componentCount,

@@ -56,7 +56,7 @@ class V3ColumnCalculatorTest {
             if (checkpoints.incrementAndGet() >= 6) {
                 throw new CancellationException("test cancellation");
             }
-        }));
+        }, 0, 0, V3ColumnCalculator.DEFAULT_LIQUID_SUPPLY_SCREEN_RATIO));
 
         assertTrue(checkpoints.get() >= 6);
     }
@@ -69,7 +69,7 @@ class V3ColumnCalculatorTest {
                     if (System.nanoTime() - started >= 60_000_000_000L) {
                         throw new AssertionError("production 30-stage Stage continuation exceeded its cold-test budget");
                     }
-                }));
+                }, 0, 0, V3ColumnCalculator.DEFAULT_LIQUID_SUPPLY_SCREEN_RATIO));
 
         assertTrue(success.result().acceptanceAudit().accepted());
         assertTrue(success.result().convergenceEvidence().satisfiesGates());
@@ -85,7 +85,7 @@ class V3ColumnCalculatorTest {
                     if (System.nanoTime() - started >= 60_000_000_000L) {
                         throw new AssertionError("registered steam-stripping pilot exceeded its cold-test budget");
                     }
-                });
+                }, 0, 0, V3ColumnCalculator.DEFAULT_LIQUID_SUPPLY_SCREEN_RATIO);
         V3ColumnOutcome.Success success = assertInstanceOf(V3ColumnOutcome.Success.class, outcome, outcome::toString);
 
         assertTrue(success.result().acceptanceAudit().accepted());
@@ -109,12 +109,12 @@ class V3ColumnCalculatorTest {
                 List.of(new V3ColumnSpecification.CondenserOutletTemperature(323.15),
                         new V3ColumnSpecification.OrganicRefluxRatio(2.0),
                         new V3ColumnSpecification.ReboilerDuty(8_000_000.0)), preset.sideDraws(),
-                List.of(new V3SteamFeedSpec(preset.stageCount() + 1, 8.0, 450.0)));
+                List.of(new V3SteamFeedSpec(preset.stageCount() + 1, 8.0, 450.0)), List.of(), V3ColumnInput.PRESCRIBED_DROP_DIAMETER);
         V3ColumnOutcome outcome = V3ColumnCalculator.calculate(cold, () -> {
             if (System.nanoTime() - started >= 60_000_000_000L) {
                 throw new AssertionError("registered cold steam-stripping pilot exceeded its cold-test budget");
             }
-        });
+        }, 0, 0, V3ColumnCalculator.DEFAULT_LIQUID_SUPPLY_SCREEN_RATIO);
         V3ColumnOutcome.Success success = assertInstanceOf(V3ColumnOutcome.Success.class, outcome, outcome::toString);
 
         assertTrue(success.result().acceptanceAudit().accepted());
@@ -132,12 +132,12 @@ class V3ColumnCalculatorTest {
                 base.stageCount(), base.feedStageNumber(), base.topPressurePascal(), base.stagePressureDropPascal(),
                 List.of(new V3ColumnSpecification.CondenserOutletTemperature(343.15),
                         new V3ColumnSpecification.OrganicRefluxRatio(2.0),
-                        new V3ColumnSpecification.ReboilerDuty(8_000_000.0)), base.sideDraws(), base.steamFeeds());
+                        new V3ColumnSpecification.ReboilerDuty(8_000_000.0)), base.sideDraws(), base.steamFeeds(), List.of(), V3ColumnInput.PRESCRIBED_DROP_DIAMETER);
         V3ColumnOutcome outcome = V3ColumnCalculator.calculate(waterLimited, () -> {
             if (System.nanoTime() - started >= 60_000_000_000L) {
                 throw new AssertionError("registered water-limited steam pilot exceeded its cold-test budget");
             }
-        });
+        }, 0, 0, V3ColumnCalculator.DEFAULT_LIQUID_SUPPLY_SCREEN_RATIO);
         V3ColumnOutcome.Success success = assertInstanceOf(V3ColumnOutcome.Success.class, outcome, outcome::toString);
 
         assertTrue(success.result().acceptanceAudit().accepted());
@@ -157,12 +157,12 @@ class V3ColumnCalculatorTest {
                 base.stageCount(), base.feedStageNumber(), base.topPressurePascal(), base.stagePressureDropPascal(),
                 List.of(new V3ColumnSpecification.CondenserOutletTemperature(353.15),
                         new V3ColumnSpecification.OrganicRefluxRatio(2.0),
-                        new V3ColumnSpecification.ReboilerDuty(8_000_000.0)), base.sideDraws(), base.steamFeeds());
+                        new V3ColumnSpecification.ReboilerDuty(8_000_000.0)), base.sideDraws(), base.steamFeeds(), List.of(), V3ColumnInput.PRESCRIBED_DROP_DIAMETER);
         V3ColumnOutcome outcome = V3ColumnCalculator.calculate(hotter, () -> {
             if (System.nanoTime() - started >= 60_000_000_000L) {
                 throw new AssertionError("registered water-limited steam pilot exceeded its cold-test budget");
             }
-        });
+        }, 0, 0, V3ColumnCalculator.DEFAULT_LIQUID_SUPPLY_SCREEN_RATIO);
         V3ColumnOutcome.Success success = assertInstanceOf(V3ColumnOutcome.Success.class, outcome, outcome::toString);
 
         assertTrue(success.result().acceptanceAudit().accepted());
@@ -183,12 +183,12 @@ class V3ColumnCalculatorTest {
                 List.of(new V3ColumnSpecification.CondenserOutletTemperature(343.15),
                         new V3ColumnSpecification.OrganicRefluxRatio(2.0),
                         new V3ColumnSpecification.ReboilerDuty(8_000_000.0)), base.sideDraws(),
-                List.of(new V3SteamFeedSpec(base.stageCount() + 1, 80.0 / 3.6, 450.0)));
+                List.of(new V3SteamFeedSpec(base.stageCount() + 1, 80.0 / 3.6, 450.0)), List.of(), V3ColumnInput.PRESCRIBED_DROP_DIAMETER);
         V3ColumnOutcome outcome = V3ColumnCalculator.calculate(highSteam, () -> {
             if (System.nanoTime() - started >= 60_000_000_000L) {
                 throw new AssertionError("80 kmol/h steam pilot exceeded its cold-test budget");
             }
-        });
+        }, 0, 0, V3ColumnCalculator.DEFAULT_LIQUID_SUPPLY_SCREEN_RATIO);
         V3ColumnOutcome.Success success = assertInstanceOf(V3ColumnOutcome.Success.class, outcome, outcome::toString);
 
         assertTrue(success.result().acceptanceAudit().accepted());
@@ -216,7 +216,7 @@ class V3ColumnCalculatorTest {
             if (System.nanoTime() - started >= 45_000_000_000L) {
                 throw new AssertionError("cold total-condenser solve exceeded its cold-test budget");
             }
-        });
+        }, 0, 0, V3ColumnCalculator.DEFAULT_LIQUID_SUPPLY_SCREEN_RATIO);
         V3ColumnOutcome.Success success = assertInstanceOf(V3ColumnOutcome.Success.class, outcome, outcome::toString);
 
         assertTrue(success.result().acceptanceAudit().accepted());
@@ -262,15 +262,7 @@ class V3ColumnCalculatorTest {
     }
 
     private static V3ColumnInput registeredBinaryPilot() {
-        V3PengRobinsonThermo thermo = V3PengRobinsonThermo.fromRegisteredPackage("createcheme:cdu17_tjl_acs2018");
-        double[] feedFlows = new double[thermo.componentBasis().componentCount()];
-        feedFlows[6] = 50.0;
-        feedFlows[13] = 50.0;
-        return new V3ColumnInput(V3ColumnInput.SCHEMA_VERSION, thermo.packageId(), "test:registered-pr-binary",
-                thermo.componentBasis(), feedFlows, 550.0, 2, 1, 250_000.0, 750.0, List.of(
-                        new V3ColumnSpecification.CondenserOutletTemperature(300.0),
-                        new V3ColumnSpecification.OrganicRefluxRatio(2.0),
-                        new V3ColumnSpecification.ReboilerDuty(0.0)));
+        return V3TestInputs.cdu17Binary("test:registered-pr-binary");
     }
 
     private static V3ColumnInput registeredRealCrudeThirtyStagePilot() {
@@ -291,7 +283,7 @@ class V3ColumnCalculatorTest {
         return new V3ColumnInput(dryPilot.schemaVersion(), dryPilot.packageId(), dryPilot.assayId(),
                 dryPilot.componentBasis(), dryPilot.feedComponentMolarFlowsMolPerSecond(), dryPilot.feedTemperatureKelvin(),
                 dryPilot.stageCount(), dryPilot.feedStageNumber(), dryPilot.topPressurePascal(), dryPilot.stagePressureDropPascal(),
-                dryPilot.specifications(), dryPilot.sideDraws(), List.of(new V3SteamFeedSpec(dryPilot.stageCount() + 1, 8.0, 450.0)));
+                dryPilot.specifications(), dryPilot.sideDraws(), List.of(new V3SteamFeedSpec(dryPilot.stageCount() + 1, 8.0, 450.0)), List.of(), V3ColumnInput.PRESCRIBED_DROP_DIAMETER);
     }
 
     private static V3ColumnInput realCrudePilot(double condenserTemperatureKelvin, double methaneFeedFlow) {

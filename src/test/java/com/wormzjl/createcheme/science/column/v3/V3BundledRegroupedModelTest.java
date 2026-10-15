@@ -67,6 +67,6 @@ class V3BundledRegroupedModelTest {
                 json.get("stagePressureDropPascal").getAsDouble(),specs,
                 Arrays.asList(JSON.fromJson(json.get("sideDraws"),V3SideDrawSpec[].class)),
                 Arrays.asList(JSON.fromJson(json.get("steamFeeds"),V3SteamFeedSpec[].class)),
-                Arrays.asList(JSON.fromJson(json.get("pumparounds"),V3PumparoundSpec[].class)));
+                Arrays.asList(JSON.fromJson(json.get("pumparounds"),V3PumparoundSpec[].class)), V3ColumnInput.PRESCRIBED_DROP_DIAMETER);
     }
 }

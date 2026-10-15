@@ -238,7 +238,7 @@ class V3PumparoundSteamCalculatorTest {
             if (System.nanoTime() - started >= BUDGET_NANOS) {
                 throw new AssertionError("wet pumparound case " + label + " exceeded its cold budget");
             }
-        });
+        }, 0, 0, V3ColumnCalculator.DEFAULT_LIQUID_SUPPLY_SCREEN_RATIO);
         double seconds = (System.nanoTime() - started) / 1.0e9;
         System.out.printf(Locale.ROOT, "wet pumparound case %-38s %7.2f s  %s%n", label, seconds,
                 outcome instanceof V3ColumnOutcome.Success success
@@ -266,7 +266,7 @@ class V3PumparoundSteamCalculatorTest {
                         new V3ColumnSpecification.OrganicRefluxRatio(4.17),
                         new V3ColumnSpecification.ReboilerDuty(reboilerDutyWatts)), sideDraws,
                 List.of(new V3SteamFeedSpec(STAGE_COUNT + 1, SUMP_STEAM_MOL_PER_SECOND,
-                        SUMP_STEAM_TEMPERATURE_KELVIN)), pumparounds);
+                        SUMP_STEAM_TEMPERATURE_KELVIN)), pumparounds, V3ColumnInput.PRESCRIBED_DROP_DIAMETER);
     }
 
     private record Run(String label, V3ColumnOutcome outcome, double seconds) {

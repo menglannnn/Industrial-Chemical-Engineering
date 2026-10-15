@@ -26,11 +26,11 @@ class V3TruncationSupportTest {
 
         assertSame(problem.truncationSupport(), support);
         assertSame(support, V3TruncationSupport.derive(problem, -0.0, populated));
-        assertSame(problem, V3ColumnProblemResolver.withTruncation(problem, support));
+        assertSame(problem, V3ColumnProblemResolver.withTruncation(problem, support, V3WetTraySet.dry(problem.topology())));
         assertSame(problem.degreeOfFreedomLedger(),
-                V3ColumnProblemResolver.withTruncation(problem, support).degreeOfFreedomLedger());
+                V3ColumnProblemResolver.withTruncation(problem, support, V3WetTraySet.dry(problem.topology())).degreeOfFreedomLedger());
         assertSame(problem, V3ColumnProblemResolver.withTruncation(problem,
-                V3TruncationSupport.identity(problem.topology(), 2)));
+                V3TruncationSupport.identity(problem.topology(), 2), V3WetTraySet.dry(problem.topology())));
         assertEquals(12, support.totalPointCount());
         assertEquals(0, support.truncatedPointCount());
         assertEquals(0, support.closurePrunedCount());
@@ -133,7 +133,7 @@ class V3TruncationSupportTest {
             assertEquals(0.0, projected.vaporFlow(node, 0));
         }
         assertThrows(IllegalArgumentException.class,
-                () -> V3ColumnProblemResolver.withTruncation(noReflux, withReflux));
+                () -> V3ColumnProblemResolver.withTruncation(noReflux, withReflux, V3WetTraySet.dry(noReflux.topology())));
     }
 
     @ParameterizedTest
@@ -155,7 +155,7 @@ class V3TruncationSupportTest {
             assertEquals(0.0, projected.liquidFlow(node, 0));
             assertEquals(0.0, projected.vaporFlow(node, 0));
         }
-        assertTrue(V3ColumnProblemResolver.withTruncation(problem, support).degreeOfFreedomLedger().isValid());
+        assertTrue(V3ColumnProblemResolver.withTruncation(problem, support, V3WetTraySet.dry(problem.topology())).degreeOfFreedomLedger().isValid());
     }
 
     /**
@@ -183,7 +183,7 @@ class V3TruncationSupportTest {
         assertEquals(0, support.closurePrunedCount());
         assertEquals(4, support.truncatedPointCount());
         assertEquals(1, support.onePhasePointCount());
-        assertTrue(V3ColumnProblemResolver.withTruncation(problem, support).degreeOfFreedomLedger().isValid());
+        assertTrue(V3ColumnProblemResolver.withTruncation(problem, support, V3WetTraySet.dry(problem.topology())).degreeOfFreedomLedger().isValid());
     }
 
     @Test
@@ -216,7 +216,7 @@ class V3TruncationSupportTest {
         assertEquals(0.01, support.cutoffMoleFraction());
         assertTrue(support.note().contains("identity"));
         assertTrue(support.note().length() <= 256);
-        assertSame(problem, V3ColumnProblemResolver.withTruncation(problem, support));
+        assertSame(problem, V3ColumnProblemResolver.withTruncation(problem, support, V3WetTraySet.dry(problem.topology())));
     }
 
     @Test
@@ -292,7 +292,7 @@ class V3TruncationSupportTest {
         V3TruncationNumericsTest.Fixture fixture = V3TruncationNumericsTest.fixture(V3CondenserPhaseBranch.TWO_PHASE, 0.01);
         V3TruncationSupport support = fixture.problem().truncationSupport();
         V3AcceptanceAudit audit = new V3AcceptanceAuditor(fixture.problem(), fixture.thermo(), 0.0)
-                .audit(fixture.exact(), fixture.thermo().newWorkspace());
+                .audit(fixture.exact(), fixture.thermo().newWorkspace(), V3SolveControl.UNBOUNDED);
         assertTrue(audit.accepted(), audit::toString);
         V3AcceptanceAudit.Check defect = defectCheck(audit);
         assertEquals(0.01 / 90.01, defect.value(), 1.0e-16);
@@ -306,7 +306,7 @@ class V3TruncationSupportTest {
     void auditRejectsAnOversizedDefectEvenWhenAllRetainedMeshRowsClose() {
         V3TruncationNumericsTest.Fixture fixture = V3TruncationNumericsTest.fixture(V3CondenserPhaseBranch.TWO_PHASE, 10.0);
         V3AcceptanceAudit audit = new V3AcceptanceAuditor(fixture.problem(), fixture.thermo(), 0.0)
-                .audit(fixture.exact(), fixture.thermo().newWorkspace());
+                .audit(fixture.exact(), fixture.thermo().newWorkspace(), V3SolveControl.UNBOUNDED);
         assertFalse(audit.accepted());
         assertEquals(0.1, defectCheck(audit).value(), 1.0e-15);
         assertFalse(defectCheck(audit).passed());

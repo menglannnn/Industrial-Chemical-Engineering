@@ -26,11 +26,11 @@ class V3NeuralInitializationTest {
 
     @Test void missingModelHonorsForcedModeAndCurrentBackup() {
         V3ColumnInput input = input();
-        var forced = V3ColumnCalculator.calculate(input,()->{},0,0,options(V3InitializationOptions.Mode.LNN_ONLY),V3NeuralInitializer.UNAVAILABLE);
+        var forced = V3ColumnCalculator.calculate(input,()->{},0,0,options(V3InitializationOptions.Mode.LNN_ONLY),V3NeuralInitializer.UNAVAILABLE, V3ColumnCalculator.DEFAULT_LIQUID_SUPPLY_SCREEN_RATIO);
         assertEquals(V3SolverFailureCode.INITIALIZATION_FAILURE,assertInstanceOf(V3ColumnOutcome.Failure.class,forced).code());
         var direct = assertInstanceOf(V3ColumnOutcome.Success.class,V3ColumnCalculator.calculate(input));
         var backup = assertInstanceOf(V3ColumnOutcome.Success.class,V3ColumnCalculator.calculate(input,()->{},0,0,
-                options(V3InitializationOptions.Mode.LNN_FIRST),V3NeuralInitializer.UNAVAILABLE));
+                options(V3InitializationOptions.Mode.LNN_FIRST),V3NeuralInitializer.UNAVAILABLE, V3ColumnCalculator.DEFAULT_LIQUID_SUPPLY_SCREEN_RATIO));
         assertEquals(direct.result().inputDigest(),backup.result().inputDigest());
         assertEquals(direct.result().streams(),backup.result().streams());
         assertTrue(backup.diagnostics().events().getFirst().contains("CURRENT_BACKUP"));
@@ -43,7 +43,7 @@ class V3NeuralInitializationTest {
             public Optional<V3NeuralSeed> predict(V3ColumnInput i,V3SolveControl c){throw new AssertionError();}
         };
         var expected = V3ColumnCalculator.calculate(input);
-        var actual = V3ColumnCalculator.calculate(input,()->{},0,0,V3InitializationOptions.CURRENT,model);
+        var actual = V3ColumnCalculator.calculate(input,()->{},0,0,V3InitializationOptions.CURRENT,model, V3ColumnCalculator.DEFAULT_LIQUID_SUPPLY_SCREEN_RATIO);
         assertEquals(expected.diagnostics(),actual.diagnostics());
         assertEquals(((V3ColumnOutcome.Success)expected).result().streams(),((V3ColumnOutcome.Success)actual).result().streams());
     }
@@ -54,7 +54,7 @@ class V3NeuralInitializationTest {
         var cold=assertInstanceOf(V3ColumnOutcome.Success.class,V3ColumnCalculator.calculateWithAcceptedProfile(request,()->{},captured::set));
         V3NeuralSeed seed=captured.get(); assertNotNull(seed);
         var predicted=assertInstanceOf(V3ColumnOutcome.Success.class,V3ColumnCalculator.calculate(request,()->{},0,0,
-                options(V3InitializationOptions.Mode.LNN_ONLY),fixed(seed)));
+                options(V3InitializationOptions.Mode.LNN_ONLY),fixed(seed), V3ColumnCalculator.DEFAULT_LIQUID_SUPPLY_SCREEN_RATIO));
         assertTrue(predicted.result().acceptanceAudit().accepted());
         assertTrue(predicted.result().convergenceEvidence().satisfiesGates());
         assertEquals(cold.result().inputDigest(),predicted.result().inputDigest());
@@ -65,13 +65,13 @@ class V3NeuralInitializationTest {
                 request.feedComponentMolarFlowsMolPerSecond(),551,request.stageCount(),request.feedStageNumber(),
                 request.topPressurePascal(),request.stagePressureDropPascal(),request.specifications());
         assertInstanceOf(V3ColumnOutcome.Failure.class,V3ColumnCalculator.calculate(wrong,()->{},0,0,
-                options(V3InitializationOptions.Mode.LNN_ONLY),fixed(seed)));
+                options(V3InitializationOptions.Mode.LNN_ONLY),fixed(seed), V3ColumnCalculator.DEFAULT_LIQUID_SUPPLY_SCREEN_RATIO));
     }
 
     @Test void globalCancellationEscapesWithoutBackup() {
         var cancelled=new CancellationException("caller cancelled");
         assertSame(cancelled,assertThrows(CancellationException.class,()->V3ColumnCalculator.calculate(input(),()->{throw cancelled;},0,0,
-                V3TestInputs.LEARNED,V3NeuralInitializer.UNAVAILABLE)));
+                V3TestInputs.LEARNED,V3NeuralInitializer.UNAVAILABLE, V3ColumnCalculator.DEFAULT_LIQUID_SUPPLY_SCREEN_RATIO)));
     }
 
     @Test void predictedWetAndLegacyDryProduceDifferentConsistentLedgers() {
@@ -79,7 +79,7 @@ class V3NeuralInitializationTest {
         var steamInput=new V3ColumnInput(base.schemaVersion(),base.packageId(),base.assayId(),base.componentBasis(),
                 base.feedComponentMolarFlowsMolPerSecond(),base.feedTemperatureKelvin(),base.stageCount(),base.feedStageNumber(),
                 base.topPressurePascal(),base.stagePressureDropPascal(),base.specifications(),List.of(),
-                List.of(new V3SteamFeedSpec(3,10,450)));
+                List.of(new V3SteamFeedSpec(3,10,450)), List.of(), V3ColumnInput.PRESCRIBED_DROP_DIAMETER);
         var dry=V3ColumnProblemResolver.resolve(steamInput,V3CondenserPhaseBranch.LIQUID_ONLY);
         int count=base.componentBasis().componentCount();
         double[][] l=new double[4][count],v=new double[4][count];
@@ -109,7 +109,7 @@ class V3NeuralInitializationTest {
         };
         var policy=new V3InitializationOptions(V3InitializationOptions.Mode.LNN_FIRST,V3InitializationOptions.WetStart.AUTO,1,1,
                 V3InitializationOptions.Correction.PROGRESS);
-        var result=assertInstanceOf(V3ColumnOutcome.Success.class,V3ColumnCalculator.calculate(input(),()->{},0,0,policy,model));
+        var result=assertInstanceOf(V3ColumnOutcome.Success.class,V3ColumnCalculator.calculate(input(),()->{},0,0,policy,model, V3ColumnCalculator.DEFAULT_LIQUID_SUPPLY_SCREEN_RATIO));
         assertTrue(result.diagnostics().events().getFirst().contains("budget exhausted"));
     }
 
@@ -135,7 +135,7 @@ class V3NeuralInitializationTest {
         V3ColumnCalculator.calculateWithNeuralTrace(input,()->checkpoints[0]++,
                 new V3InitializationOptions(V3InitializationOptions.Mode.LNN_ONLY,V3InitializationOptions.WetStart.AUTO,16,60_000,
                         V3InitializationOptions.Correction.PROGRESS),
-                model,calibration);
+                model,calibration, null);
         // A Newton attempt restarts its iteration counter from zero, so the first run of increasing indices
         // is the first attempt. Arming inside it keeps the stall away from an attempt boundary.
         int first = 1;
@@ -149,7 +149,7 @@ class V3NeuralInitializationTest {
         var budgeted = new V3InitializationOptions(V3InitializationOptions.Mode.LNN_ONLY,
                 V3InitializationOptions.WetStart.AUTO,16,2_000,V3InitializationOptions.Correction.PROGRESS);
         var failure = assertInstanceOf(V3ColumnOutcome.Failure.class,V3ColumnCalculator.calculate(input,
-                ()->{ if (seen[0]++==stallAt) pause(2_500); },0,0,budgeted,model));
+                ()->{ if (seen[0]++==stallAt) pause(2_500); },0,0,budgeted,model, V3ColumnCalculator.DEFAULT_LIQUID_SUPPLY_SCREEN_RATIO));
         String events = String.join(" | ",failure.diagnostics().events());
         assertTrue(events.contains("neural budget exhausted"),events);
         assertTrue(failure.diagnostics().newtonIterations()>=1,events);
@@ -175,7 +175,7 @@ class V3NeuralInitializationTest {
             }
         }
         var branch = V3CondenserPhaseBranch.LIQUID_ONLY;
-        var plain = V3FactorizedNeuralFeatures.decode(request,"test-revision",branch,outputs,0.02);
+        var plain = V3FactorizedNeuralFeatures.decode(request,"test-revision",branch,outputs,0.02, V3FactorizedNeuralFeatures.DecodeOptions.NONE);
         for (int n = 0; n < nodes; n++) {
             assertEquals(0.0,java.util.Arrays.stream(plain.liquid()[n]).sum());
             assertEquals(0.0,java.util.Arrays.stream(plain.vapor()[n]).sum());

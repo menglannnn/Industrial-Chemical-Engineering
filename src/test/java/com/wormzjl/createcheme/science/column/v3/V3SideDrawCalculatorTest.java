@@ -133,14 +133,14 @@ class V3SideDrawCalculatorTest {
                 draws, List.of(), List.of(
                         new V3PumparoundSpec(6, 8, -0.40 * 12.84e6, V3PumparoundSpec.Split.UNIFORM),
                         new V3PumparoundSpec(13, 15, -0.40 * 17.89e6, V3PumparoundSpec.Split.UNIFORM),
-                        new V3PumparoundSpec(20, 22, -0.40 * 11.20e6, V3PumparoundSpec.Split.UNIFORM)));
+                        new V3PumparoundSpec(20, 22, -0.40 * 11.20e6, V3PumparoundSpec.Split.UNIFORM)), V3ColumnInput.PRESCRIBED_DROP_DIAMETER);
 
         long started = System.nanoTime();
         V3ColumnOutcome outcome = V3ColumnCalculator.calculate(input, () -> {
             if (System.nanoTime() - started > 90_000_000_000L) {
                 throw new AssertionError("the thesis-arranged 0.40x case exceeded 90 seconds");
             }
-        });
+        }, 0, 0, V3ColumnCalculator.DEFAULT_LIQUID_SUPPLY_SCREEN_RATIO);
         System.out.println("Thesis-arranged 0.40x draws: " + (System.nanoTime() - started) / 1e9 + " s; " + outcome);
 
         V3ColumnOutcome.Success success = assertInstanceOf(V3ColumnOutcome.Success.class, outcome, outcome::toString);

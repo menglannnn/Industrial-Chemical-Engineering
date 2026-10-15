@@ -39,10 +39,6 @@ final class V3AnchorTransformerInitializer implements V3NeuralInitializer {
         this.model = model; this.decode = decode;
     }
 
-    static V3AnchorTransformerInitializer read(InputStream stream) throws IOException {
-        return read(stream, V3FactorizedNeuralFeatures.DecodeOptions.NONE);
-    }
-
     static V3AnchorTransformerInitializer read(InputStream stream, V3FactorizedNeuralFeatures.DecodeOptions decode) throws IOException {
         if (decode == null) throw new IllegalArgumentException("Missing pipeline decode options");
         byte[] bytes = stream.readNBytes(8 * 1024 * 1024 + 1);

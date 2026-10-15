@@ -123,13 +123,6 @@ class V3StageTraceCalculatorTest {
     }
 
     private static V3ColumnInput binaryInput() {
-        V3PengRobinsonThermo thermo = V3PengRobinsonThermo.fromRegisteredPackage("createcheme:cdu17_tjl_acs2018");
-        double[] flows = new double[thermo.componentBasis().componentCount()];
-        flows[6] = 50;
-        flows[13] = 50;
-        return new V3ColumnInput(V3ColumnInput.SCHEMA_VERSION, thermo.packageId(), "test:registered-pr-binary",
-                thermo.componentBasis(), flows, 550, 2, 1, 250_000, 750, List.of(
-                new V3ColumnSpecification.CondenserOutletTemperature(300),
-                new V3ColumnSpecification.OrganicRefluxRatio(2), new V3ColumnSpecification.ReboilerDuty(0)));
+        return V3TestInputs.cdu17Binary("test:registered-pr-binary");
     }
 }

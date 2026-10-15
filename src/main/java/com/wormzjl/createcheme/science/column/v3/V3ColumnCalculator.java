@@ -154,20 +154,15 @@ public final class V3ColumnCalculator {
 
     private V3ColumnCalculator() {}
 
-    /** Calculates one dry V3 problem without sharing mutable numerical state across callers. */
-    public static V3ColumnOutcome calculate(V3ColumnInput input) {
-        return calculate(input, V3SolveControl.UNBOUNDED);
-    }
-
     /**
-     * Calculates one dry V3 problem with caller-owned cooperative cancellation.
+     * Calculates one dry V3 problem without sharing mutable numerical state across callers.
      *
-     * <p>A cancellation exception from {@code control} intentionally escapes unchanged so an outer service can
-     * publish its own typed deadline or cancellation completion. Direct callers that do not need cancellation use
-     * {@link #calculate(V3ColumnInput)}.</p>
+     * <p>The entries that take a {@link V3SolveControl} run with caller-owned cooperative cancellation: a
+     * cancellation exception from {@code control} intentionally escapes unchanged so an outer service can
+     * publish its own typed deadline or cancellation completion.</p>
      */
-    public static V3ColumnOutcome calculate(V3ColumnInput input, V3SolveControl control) {
-        return calculate(input, control, SolvePolicy.OFF, DEFAULT_LIQUID_SUPPLY_SCREEN_RATIO);
+    public static V3ColumnOutcome calculate(V3ColumnInput input) {
+        return calculate(input, V3SolveControl.UNBOUNDED, SolvePolicy.OFF, DEFAULT_LIQUID_SUPPLY_SCREEN_RATIO);
     }
 
     /** Offline export hook: called only after the requested state passes every publication gate. */
@@ -184,16 +179,8 @@ public final class V3ColumnCalculator {
     }
 
     /**
-     * Explicit initializer strategy. Old overloads remain the unchanged classical numerical boundary.
-     * The learned path never calls a classical initializer before deciding whether backup is allowed.
-     */
-    public static V3ColumnOutcome calculate(V3ColumnInput input, V3SolveControl control,
-            double cutoff, double closureFraction, V3InitializationOptions options, V3NeuralInitializer model) {
-        return calculate(input, control, cutoff, closureFraction, options, model, DEFAULT_LIQUID_SUPPLY_SCREEN_RATIO);
-    }
-
-    /**
-     * Learned-first entry at an authored liquid-supply screen ratio.
+     * Explicit initializer strategy at an authored liquid-supply screen ratio. The learned path never calls a
+     * classical initializer before deciding whether backup is allowed.
      *
      * <p>Screening is a property of the request, so it happens once at this entry, before the neural
      * candidates and before any flash: the learned and classical routes publish the identical typed failure
@@ -220,14 +207,9 @@ public final class V3ColumnCalculator {
      * <p>The trace only observes. It cannot change a step, a support, a budget or an outcome, and every
      * production entry point above passes {@link NewtonTrace#NONE}, so the traced and untraced paths
      * run the same arithmetic in the same order. It exists because the correction trajectory of a seed
-     * that runs out of iterations or budget is not recoverable from the published evidence.</p>
+     * that runs out of iterations or budget is not recoverable from the published evidence. A non-null
+     * {@code observer} also exports the accepted profile, so a traced request can be audited like any other.</p>
      */
-    static V3ColumnOutcome calculateWithNeuralTrace(V3ColumnInput input, V3SolveControl control,
-            V3InitializationOptions options, V3NeuralInitializer model, NewtonTrace trace) {
-        return calculateWithNeuralTrace(input, control, options, model, trace, null);
-    }
-
-    /** The same seam, also exporting the accepted profile, so a traced request can be audited like any other. */
     static V3ColumnOutcome calculateWithNeuralTrace(V3ColumnInput input, V3SolveControl control,
             V3InitializationOptions options, V3NeuralInitializer model, NewtonTrace trace,
             java.util.function.Consumer<V3NeuralSeed> observer) {
@@ -2232,13 +2214,6 @@ public final class V3ColumnCalculator {
      * <p>The rung that reaches the authored input publishes the result, so it keeps every fallback and the full
      * final-Newton certificate cascade unchanged. See {@link #INTERMEDIATE_RUNG_BUDGET} for why heat and draw
      * rungs keep it too.</p>
-     */
-    static V3SimultaneousColumnSolver.RungBudget rampRungBudget(boolean steamRung, boolean requested) {
-        return rampRungBudget(steamRung, requested, false);
-    }
-
-    /**
-     * The same choice, with the second sweep's override.
      *
      * <p>Once the ramp has resumed on the full budget there is no reduced rung left anywhere in the schedule:
      * the whole point of the resumed sweep is that the fallbacks the first sweep declined are what it is

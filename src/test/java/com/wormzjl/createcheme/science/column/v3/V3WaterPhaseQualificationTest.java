@@ -23,7 +23,7 @@ class V3WaterPhaseQualificationTest {
                     base.feedStageNumber(), base.topPressurePascal(), base.stagePressureDropPascal(),
                     base.specifications().stream().map(s -> s instanceof V3ColumnSpecification.CondenserOutletTemperature
                             ? (V3ColumnSpecification)new V3ColumnSpecification.CondenserOutletTemperature(tc) : s).toList(),
-                    base.sideDraws(), base.steamFeeds(), base.pumparounds());
+                    base.sideDraws(), base.steamFeeds(), base.pumparounds(), V3ColumnInput.PRESCRIBED_DROP_DIAMETER);
             var gson = new Gson();
             return new V3NeuralSeed(input, com.wormzjl.createcheme.science.material.MaterialRuntime.current().requirePackage(input.packageId()).scientificRevision(),
                     V3CondenserPhaseBranch.valueOf(seed.get("branch").getAsString()),

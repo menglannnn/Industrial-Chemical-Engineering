@@ -185,6 +185,6 @@ class V3PumparoundContractTest {
                 250_000.0, 750.0, List.of(
                         new V3ColumnSpecification.CondenserOutletTemperature(332.15),
                         new V3ColumnSpecification.OrganicRefluxRatio(4.17),
-                        new V3ColumnSpecification.ReboilerDuty(8_000_000.0)), List.of(), List.of(), pumparounds);
+                        new V3ColumnSpecification.ReboilerDuty(8_000_000.0)), List.of(), List.of(), pumparounds, V3ColumnInput.PRESCRIBED_DROP_DIAMETER);
     }
 }

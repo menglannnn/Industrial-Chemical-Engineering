@@ -55,16 +55,9 @@ public final class V3ColumnProblemResolver {
     }
 
     /**
-     * Attaches fixed support without changing authored inputs. Identity returns the original problem
-     * and ledger. An invalid reduced ledger is rejected for the attempt orchestrator to retry unmasked.
-     */
-    static V3ColumnProblem withTruncation(V3ColumnProblem problem, V3TruncationSupport support) {
-        return withTruncation(problem, support, V3WetTraySet.dry(
-                Objects.requireNonNull(problem, "problem").topology()));
-    }
-
-    /**
-     * Attaches this attempt's frozen truncation support and free-water tray set together.
+     * Attaches this attempt's frozen truncation support and free-water tray set together, without changing
+     * authored inputs. Identity returns the original problem and ledger. An invalid reduced ledger is rejected
+     * for the attempt orchestrator to retry unmasked.
      *
      * <p>Both are attempt-local decisions taken from a seed and refreshed from a solved state, and both change
      * the ledger, so they are attached in one step: a problem never carries a support that its wet set has not

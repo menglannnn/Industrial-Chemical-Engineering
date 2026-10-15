@@ -25,7 +25,7 @@ class V3NormalEquationsTest {
             V3CondenserPhaseBranch branch) {
         V3ColumnProblem original = V3TruncationSupportTest.problem(branch, 0.0, 2);
         V3ColumnProblem truncated = V3ColumnProblemResolver.withTruncation(
-                original, V3TruncationSupportTest.topTailSupport(original));
+                original, V3TruncationSupportTest.topTailSupport(original), V3WetTraySet.dry(original.topology()));
         for (V3ColumnProblem problem : List.of(original, truncated)) {
             V3StageBlockLayout layout = new V3StageBlockLayout(problem);
             double[][] values = stagePattern(layout);
@@ -73,7 +73,7 @@ class V3NormalEquationsTest {
             double[][] values = noisyWideBandPattern(layout, noise);
             V3NormalEquations prepared = V3NormalEquations.prepare(
                     jacobian(problem, values), residual, layout, V3SolveControl.UNBOUNDED);
-            V3BandedMatrix actual = prepared.dampedMatrix(1.0e-8, V3SolveControl.UNBOUNDED);
+            V3BandedMatrix actual = prepared.dampedMatrix(1.0e-8, V3SolveControl.UNBOUNDED, null);
 
             assertTrue(actual.upperBandwidth() >= distant - first);
             assertBits(noise, actual.get(first, distant), "retained off-span noise");
@@ -94,7 +94,7 @@ class V3NormalEquationsTest {
                     () -> denseOracle(values, residual, layout, 1.0e-8));
             IllegalStateException actual = assertThrows(IllegalStateException.class,
                     () -> V3NormalEquations.prepare(jacobian(problem, values), residual, layout,
-                            V3SolveControl.UNBOUNDED).dampedMatrix(1.0e-8, V3SolveControl.UNBOUNDED));
+                            V3SolveControl.UNBOUNDED).dampedMatrix(1.0e-8, V3SolveControl.UNBOUNDED, null));
             assertEquals(OFF_BAND_MESSAGE, expected.getMessage());
             assertEquals(expected.getMessage(), actual.getMessage());
         }
@@ -110,7 +110,7 @@ class V3NormalEquationsTest {
         V3MeshResidual residual = residual(problem, false);
         V3NormalEquations prepared = V3NormalEquations.prepare(
                 jacobian, residual, layout, V3SolveControl.UNBOUNDED);
-        V3BandedMatrix first = prepared.dampedMatrix(1.0e-8, V3SolveControl.UNBOUNDED);
+        V3BandedMatrix first = prepared.dampedMatrix(1.0e-8, V3SolveControl.UNBOUNDED, null);
         first.set(0, 0, 12345.0);
         prepared.negativeGradient()[0] = 12345.0;
         values[0][0] = -12345.0;
@@ -132,7 +132,7 @@ class V3NormalEquationsTest {
         V3MeshResidual residual = residual(problem, false);
         V3NormalEquations prepared = V3NormalEquations.prepare(
                 jacobian(problem, values), residual, layout, V3SolveControl.UNBOUNDED);
-        V3BandedMatrix actual = prepared.dampedMatrix(1.0e-8, V3SolveControl.UNBOUNDED);
+        V3BandedMatrix actual = prepared.dampedMatrix(1.0e-8, V3SolveControl.UNBOUNDED, null);
 
         assertEquals(0, actual.lowerBandwidth());
         assertEquals(0, actual.upperBandwidth());
@@ -168,7 +168,7 @@ class V3NormalEquationsTest {
             for (int stopAt : new int[] {1, 2}) {
                 CancellationException cancelled = new CancellationException("normal materialization cancelled");
                 assertSame(cancelled, assertThrows(CancellationException.class,
-                        () -> prepared.dampedMatrix(1.0e-8, cancellingControl(stopAt, cancelled))));
+                        () -> prepared.dampedMatrix(1.0e-8, cancellingControl(stopAt, cancelled), null)));
                 assertMatchesOracle(values, residual, layout, 1.0e-8, prepared);
             }
         }
@@ -185,7 +185,7 @@ class V3NormalEquationsTest {
         assertThrows(IllegalArgumentException.class, () -> denseOracle(values, residual, layout, 1.0e-8));
         assertThrows(IllegalArgumentException.class,
                 () -> V3NormalEquations.prepare(jacobian(problem, values), residual, layout,
-                        V3SolveControl.UNBOUNDED).dampedMatrix(1.0e-8, V3SolveControl.UNBOUNDED));
+                        V3SolveControl.UNBOUNDED).dampedMatrix(1.0e-8, V3SolveControl.UNBOUNDED, null));
     }
 
     private static V3ColumnProblem problem() {
@@ -251,7 +251,7 @@ class V3NormalEquationsTest {
     private static void assertMatchesOracle(double[][] values, V3MeshResidual residual,
             V3StageBlockLayout layout, double damping, V3NormalEquations prepared) {
         Oracle expected = denseOracle(values, residual, layout, damping);
-        V3BandedMatrix actual = prepared.dampedMatrix(damping, V3SolveControl.UNBOUNDED);
+        V3BandedMatrix actual = prepared.dampedMatrix(damping, V3SolveControl.UNBOUNDED, null);
         assertEquals(expected.matrix().size(), actual.size());
         assertEquals(expected.matrix().lowerBandwidth(), actual.lowerBandwidth());
         assertEquals(expected.matrix().upperBandwidth(), actual.upperBandwidth());

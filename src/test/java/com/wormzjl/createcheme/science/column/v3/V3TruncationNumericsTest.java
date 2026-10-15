@@ -159,7 +159,7 @@ class V3TruncationNumericsTest {
         V3MeshResidualEvaluator evaluator = new V3MeshResidualEvaluator(fixture.problem(), fixture.thermo(), 0.0);
         assertTrue(evaluator.evaluate(fixture.exact(), fixture.thermo().newWorkspace()).maximumAbsoluteScaledResidual() < 1.0e-12);
         V3SimultaneousColumnSolver.Attempt attempt = V3SimultaneousColumnSolver.solve(fixture.problem(), evaluator,
-                new V3DryMeshCoordinateMap(fixture.problem()), perturb(fixture), fixture.thermo()::newWorkspace, 32, 1.0e-9);
+                new V3DryMeshCoordinateMap(fixture.problem()), perturb(fixture), fixture.thermo()::newWorkspace, V3ConvergenceEvidence.unavailable(), 32, 1.0e-9, V3FiniteDifferenceJacobian.DifferenceScale.FINE, V3SolveControl.UNBOUNDED);
         V3SimultaneousColumnSolver.Attempt.Converged converged = assertInstanceOf(
                 V3SimultaneousColumnSolver.Attempt.Converged.class, attempt, attempt::toString);
         assertTrue(converged.evidence().iterations() > 0);
@@ -200,7 +200,7 @@ class V3TruncationNumericsTest {
         if (!original.topology().hasVaporPhase(0)) vapor[0] = new double[3];
         V3DryMeshState exact = new V3DryMeshState(original.topology(), 3, liquid, vapor, temperatures());
         V3TruncationSupport support = V3TruncationSupport.derive(original, 0.01, exact);
-        V3ColumnProblem masked = V3ColumnProblemResolver.withTruncation(original, support);
+        V3ColumnProblem masked = V3ColumnProblemResolver.withTruncation(original, support, V3WetTraySet.dry(original.topology()));
         return new Fixture(original, masked, exact, new ManufacturedThermo(input.componentBasis(), exact));
     }
 

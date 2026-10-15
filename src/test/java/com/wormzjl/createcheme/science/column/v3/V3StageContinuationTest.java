@@ -31,7 +31,7 @@ class V3StageContinuationTest {
                                 V3ColumnInitializer.Mode.SEQUENTIAL_MATERIAL_VLE).state(), V3SolveControl.UNBOUNDED));
         V3FlashResult fourFeedFlash = feedFlash(thermo, fourStage);
         assertTrue(new V3AcceptanceAuditor(fourStage, thermo, fourFeedFlash.molarEnthalpyJoulesPerMol())
-                .audit(acceptedFourStage.state(), thermo.newWorkspace()).accepted());
+                .audit(acceptedFourStage.state(), thermo.newWorkspace(), V3SolveControl.UNBOUNDED).accepted());
 
         V3ColumnProblem eightStage = V3ColumnProblemResolver.resolve(input(crude, 8, 6), V3CondenserPhaseBranch.TWO_PHASE);
         V3DryMeshState continuationSeed = interpolate(acceptedFourStage.state(), eightStage);
@@ -44,7 +44,7 @@ class V3StageContinuationTest {
                 }));
         V3FlashResult eightFeedFlash = feedFlash(thermo, eightStage);
         V3AcceptanceAudit audit = new V3AcceptanceAuditor(eightStage, thermo,
-                eightFeedFlash.molarEnthalpyJoulesPerMol()).audit(converged.state(), thermo.newWorkspace());
+                eightFeedFlash.molarEnthalpyJoulesPerMol()).audit(converged.state(), thermo.newWorkspace(), V3SolveControl.UNBOUNDED);
         System.out.println("V3 Stage continuation 4->8: " + converged + "; audit=" + audit);
         assertTrue(converged.evidence().convergenceEvidence().satisfiesGates());
         assertTrue(audit.accepted());
@@ -72,7 +72,7 @@ class V3StageContinuationTest {
                         FIFTEEN_STAGE_BUDGET_NANOS));
         V3FlashResult fifteenFeedFlash = feedFlash(thermo, fifteenStage);
         V3AcceptanceAudit audit = new V3AcceptanceAuditor(fifteenStage, thermo,
-                fifteenFeedFlash.molarEnthalpyJoulesPerMol()).audit(convergedFifteenStage.state(), thermo.newWorkspace());
+                fifteenFeedFlash.molarEnthalpyJoulesPerMol()).audit(convergedFifteenStage.state(), thermo.newWorkspace(), V3SolveControl.UNBOUNDED);
         System.out.println("V3 Stage continuation 4->8->15: " + convergedFifteenStage + "; audit=" + audit);
         assertTrue(convergedFifteenStage.evidence().convergenceEvidence().satisfiesGates());
         assertTrue(audit.accepted());
@@ -104,7 +104,7 @@ class V3StageContinuationTest {
                         THIRTY_STAGE_BUDGET_NANOS));
         V3FlashResult thirtyFeedFlash = feedFlash(thermo, thirtyStage);
         V3AcceptanceAudit audit = new V3AcceptanceAuditor(thirtyStage, thermo,
-                thirtyFeedFlash.molarEnthalpyJoulesPerMol()).audit(convergedThirtyStage.state(), thermo.newWorkspace());
+                thirtyFeedFlash.molarEnthalpyJoulesPerMol()).audit(convergedThirtyStage.state(), thermo.newWorkspace(), V3SolveControl.UNBOUNDED);
         System.out.println("V3 Stage continuation 4->8->15->30: " + convergedThirtyStage + "; audit=" + audit);
         assertTrue(convergedThirtyStage.evidence().convergenceEvidence().satisfiesGates());
         assertTrue(audit.accepted());
@@ -170,11 +170,11 @@ class V3StageContinuationTest {
     @Test
     void onlyAnIntermediateSteamRungGivesUpItsFallbacksAndItsCertificateCascade() {
         V3SimultaneousColumnSolver.RungBudget full = V3SimultaneousColumnSolver.RungBudget.DEFAULT;
-        assertEquals(full, V3ColumnCalculator.rampRungBudget(true, true), "the requested steam rung publishes");
-        assertEquals(full, V3ColumnCalculator.rampRungBudget(false, false), "a heat or draw rung is never reduced");
-        assertEquals(full, V3ColumnCalculator.rampRungBudget(false, true));
+        assertEquals(full, V3ColumnCalculator.rampRungBudget(true, true, false), "the requested steam rung publishes");
+        assertEquals(full, V3ColumnCalculator.rampRungBudget(false, false, false), "a heat or draw rung is never reduced");
+        assertEquals(full, V3ColumnCalculator.rampRungBudget(false, true, false));
 
-        V3SimultaneousColumnSolver.RungBudget reduced = V3ColumnCalculator.rampRungBudget(true, false);
+        V3SimultaneousColumnSolver.RungBudget reduced = V3ColumnCalculator.rampRungBudget(true, false, false);
         assertEquals(2, reduced.maximumDampingSteps());
         assertFalse(reduced.gradientFallback());
         assertEquals(0, reduced.verificationDampingSteps(),
@@ -251,7 +251,7 @@ class V3StageContinuationTest {
             if (System.nanoTime() - started >= FORTY_STAGE_BUDGET_NANOS) {
                 throw new AssertionError("the half-steam wet literature preset exceeded its 60-second cold budget");
             }
-        });
+        }, 0, 0, V3ColumnCalculator.DEFAULT_LIQUID_SUPPLY_SCREEN_RATIO);
         System.out.println("V3 wet literature preset at half steam: " + (System.nanoTime() - started) / 1.0e9 + " s; "
                 + outcome.diagnostics().solvePath());
         outcome.diagnostics().events().forEach(event -> System.out.println("  event: " + event));
@@ -289,7 +289,7 @@ class V3StageContinuationTest {
             if (System.nanoTime() - started >= FORTY_STAGE_BUDGET_NANOS) {
                 throw new AssertionError("the wet literature preset exceeded its 60-second cold budget");
             }
-        });
+        }, 0, 0, V3ColumnCalculator.DEFAULT_LIQUID_SUPPLY_SCREEN_RATIO);
         System.out.println("V3 wet literature preset: " + (System.nanoTime() - started) / 1.0e9 + " s; "
                 + outcome.diagnostics().solvePath());
 
@@ -318,7 +318,7 @@ class V3StageContinuationTest {
                 List.of(new V3SteamFeedSpec(41, steamScale * 1_200.0 / 3.6, 533.15)),
                 List.of(new V3PumparoundSpec(8, 10, -12.84e6, V3PumparoundSpec.Split.UNIFORM),
                         new V3PumparoundSpec(16, 18, -17.89e6, V3PumparoundSpec.Split.UNIFORM),
-                        new V3PumparoundSpec(26, 28, -11.20e6, V3PumparoundSpec.Split.UNIFORM)));
+                        new V3PumparoundSpec(26, 28, -11.20e6, V3PumparoundSpec.Split.UNIFORM)), V3ColumnInput.PRESCRIBED_DROP_DIAMETER);
     }
 
     /** A stopped stall is a nonconvergence, like every other bounded Newton stop. */
@@ -351,7 +351,7 @@ class V3StageContinuationTest {
             if (System.nanoTime() - started >= FORTY_STAGE_BUDGET_NANOS) {
                 throw new AssertionError("the plain 40-tray literature column exceeded its 60-second cold budget");
             }
-        });
+        }, 0, 0, V3ColumnCalculator.DEFAULT_LIQUID_SUPPLY_SCREEN_RATIO);
         System.out.println("V3 plain 40-tray literature column: " + (System.nanoTime() - started) / 1.0e9 + " s; " + outcome);
 
         V3ColumnOutcome.Success success = assertInstanceOf(V3ColumnOutcome.Success.class, outcome, outcome::toString);
@@ -366,7 +366,7 @@ class V3StageContinuationTest {
                 problem, thermo, feedFlash.molarEnthalpyJoulesPerMol());
         return V3SimultaneousColumnSolver.solveWithContinuationLocalBlocks(problem, evaluator, new V3DryMeshCoordinateMap(problem), seed,
                 thermo::newWorkspace, V3ColumnCalculator.MAXIMUM_NEWTON_ITERATIONS,
-                V3ColumnCalculator.SCALED_RESIDUAL_TOLERANCE, control);
+                V3ColumnCalculator.SCALED_RESIDUAL_TOLERANCE, control, V3SimultaneousColumnSolver.NewtonTrace.NONE);
     }
 
     private static V3SimultaneousColumnSolver.Attempt solveWithin(

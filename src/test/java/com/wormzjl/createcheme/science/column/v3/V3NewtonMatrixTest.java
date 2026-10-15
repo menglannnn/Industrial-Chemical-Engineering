@@ -18,7 +18,7 @@ class V3NewtonMatrixTest {
     void smallEssentialCouplingsSurviveBeforeLinearScaling(V3CondenserPhaseBranch branch) {
         V3ColumnProblem original = V3TruncationSupportTest.problem(branch, 0.0, 2);
         V3ColumnProblem reduced = V3ColumnProblemResolver.withTruncation(
-                original, V3TruncationSupportTest.topTailSupport(original));
+                original, V3TruncationSupportTest.topTailSupport(original), V3WetTraySet.dry(original.topology()));
         for (V3ColumnProblem problem : List.of(original, reduced)) {
             V3StageBlockLayout layout = new V3StageBlockLayout(problem);
             int size = problem.degreeOfFreedomLedger().unknownCount();
@@ -32,7 +32,7 @@ class V3NewtonMatrixTest {
             values[0][adjacent] = rhs[0] = 1.0e-12;
             values[adjacent][0] = 1.0;
 
-            var matrix = V3SimultaneousColumnSolver.toBandedMatrix(jacobian(problem, values), layout);
+            var matrix = V3SimultaneousColumnSolver.toBandedMatrix(jacobian(problem, values), layout, null);
             var solved = assertInstanceOf(V3BandedPivotedSolver.Result.Success.class,
                     V3BandedPivotedSolver.solve(matrix, rhs));
 
@@ -52,7 +52,7 @@ class V3NewtonMatrixTest {
         values[0][layout.start(2)] = 1.0;
 
         assertThrows(IllegalStateException.class,
-                () -> V3SimultaneousColumnSolver.toBandedMatrix(jacobian(problem, values), layout));
+                () -> V3SimultaneousColumnSolver.toBandedMatrix(jacobian(problem, values), layout, null));
     }
 
     private static V3FiniteDifferenceJacobian.Jacobian jacobian(V3ColumnProblem problem, double[][] values) {

@@ -171,7 +171,7 @@ class V3FreeWaterTrayTest {
                 new double[] {30.0, 60.0}, 400.0, 3, 2, TOP_PRESSURE_PASCAL, 750.0, List.of(
                         new V3ColumnSpecification.CondenserOutletTemperature(400.0),
                         new V3ColumnSpecification.OrganicRefluxRatio(1.0),
-                        new V3ColumnSpecification.ReboilerDuty(1.0)), List.of(), List.of()),
+                        new V3ColumnSpecification.ReboilerDuty(1.0)), List.of(), List.of(), List.of(), V3ColumnInput.PRESCRIBED_DROP_DIAMETER),
                 V3CondenserPhaseBranch.TWO_PHASE);
 
         assertFalse(problem.hasWetTrays());
@@ -358,7 +358,7 @@ class V3FreeWaterTrayTest {
                         new V3ColumnSpecification.CondenserOutletTemperature(400.0),
                         new V3ColumnSpecification.OrganicRefluxRatio(1.0),
                         new V3ColumnSpecification.ReboilerDuty(0.0)), List.of(),
-                List.of(new V3SteamFeedSpec(4, STEAM_MOL_PER_SECOND, 520.0))),
+                List.of(new V3SteamFeedSpec(4, STEAM_MOL_PER_SECOND, 520.0)), List.of(), V3ColumnInput.PRESCRIBED_DROP_DIAMETER),
                 V3CondenserPhaseBranch.TWO_PHASE);
     }
 

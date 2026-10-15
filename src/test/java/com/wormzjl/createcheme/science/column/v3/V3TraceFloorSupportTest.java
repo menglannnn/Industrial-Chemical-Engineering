@@ -84,14 +84,14 @@ class V3TraceFloorSupportTest {
 
         V3TruncationSupport support = V3TruncationSupport.derive(untruncated, 0.0, fixture.state());
         assertTrue(support.truncatedPointCount() > 0, "the floor must remove the trace tail of this state");
-        V3ColumnProblem problem = V3ColumnProblemResolver.withTruncation(untruncated, support);
+        V3ColumnProblem problem = V3ColumnProblemResolver.withTruncation(untruncated, support, V3WetTraySet.dry(untruncated.topology()));
         V3DryMeshState seed = support.projectSeed(untruncated, fixture.state());
         V3MeshResidualEvaluator evaluator = new V3MeshResidualEvaluator(problem, thermo, fixture.feedMolarEnthalpy());
 
         long started = System.nanoTime();
         V3SimultaneousColumnSolver.Attempt attempt = V3SimultaneousColumnSolver.solveWithContinuationLocalBlocks(
                 problem, evaluator, new V3DryMeshCoordinateMap(problem), seed, thermo::newWorkspace,
-                32, V3ColumnCalculator.SCALED_RESIDUAL_TOLERANCE, V3SolveControl.UNBOUNDED);
+                32, V3ColumnCalculator.SCALED_RESIDUAL_TOLERANCE, V3SolveControl.UNBOUNDED, V3SimultaneousColumnSolver.NewtonTrace.NONE);
         System.out.printf(Locale.ROOT,
                 "  floor-supported restart: %s residual=%.4g iterations=%d truncated=%d/%d in %.1f s (%s)%n",
                 attempt.getClass().getSimpleName(), attempt.evidence().maximumScaledResidual(),
@@ -103,7 +103,7 @@ class V3TraceFloorSupportTest {
         assertTrue(attempt.evidence().convergenceEvidence().satisfiesGates(),
                 () -> "the restart must end on a verified final Newton correction: " + attempt.evidence());
         V3AcceptanceAudit audit = new V3AcceptanceAuditor(problem, thermo, fixture.feedMolarEnthalpy())
-                .audit(attempt.state(), thermo.newWorkspace());
+                .audit(attempt.state(), thermo.newWorkspace(), V3SolveControl.UNBOUNDED);
         assertTrue(audit.checks().stream().filter(check -> check.family().equals("TRUNCATION_MASS_DEFECT"))
                 .allMatch(V3AcceptanceAudit.Check::passed), audit::toString);
     }
@@ -175,7 +175,7 @@ class V3TraceFloorSupportTest {
                 List.of(new V3SteamFeedSpec(STAGE_COUNT + 1, SUMP_STEAM_MOL_PER_SECOND, SUMP_STEAM_TEMPERATURE_KELVIN)),
                 List.of(new V3PumparoundSpec(6, 9, -5.0e6, V3PumparoundSpec.Split.UNIFORM),
                         new V3PumparoundSpec(13, 16, -6.0e6, V3PumparoundSpec.Split.UNIFORM),
-                        new V3PumparoundSpec(20, 23, -4.0e6, V3PumparoundSpec.Split.UNIFORM)));
+                        new V3PumparoundSpec(20, 23, -4.0e6, V3PumparoundSpec.Split.UNIFORM)), V3ColumnInput.PRESCRIBED_DROP_DIAMETER);
     }
 
     private record Fixture(V3DryMeshState state, double feedMolarEnthalpy) {}

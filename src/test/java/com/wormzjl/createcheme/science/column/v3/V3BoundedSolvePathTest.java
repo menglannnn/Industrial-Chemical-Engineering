@@ -95,6 +95,6 @@ class V3BoundedSolvePathTest {
                 new V3ColumnSpecification.ReboilerDuty(6_000_000.0)),
                 List.of(new V3SideDrawSpec(9, 0.03 * total)),
                 List.of(new V3SteamFeedSpec(19, 0.10 * total, 533.15)),
-                List.of(new V3PumparoundSpec(7, 9, -2_000_000.0, V3PumparoundSpec.Split.UNIFORM)));
+                List.of(new V3PumparoundSpec(7, 9, -2_000_000.0, V3PumparoundSpec.Split.UNIFORM)), V3ColumnInput.PRESCRIBED_DROP_DIAMETER);
     }
 }

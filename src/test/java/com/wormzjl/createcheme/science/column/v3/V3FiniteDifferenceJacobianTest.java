@@ -79,9 +79,9 @@ class V3FiniteDifferenceJacobianTest {
             var layout = new V3StageBlockLayout(problem);
             if (noise > 1e-10) {
                 assertEquals(assertThrows(IllegalStateException.class,
-                        () -> V3SimultaneousColumnSolver.toBandedMatrix(dense, layout)).getMessage(),
+                        () -> V3SimultaneousColumnSolver.toBandedMatrix(dense, layout, null)).getMessage(),
                         assertThrows(IllegalStateException.class,
-                                () -> V3SimultaneousColumnSolver.toBandedMatrix(compact, layout)).getMessage());
+                                () -> V3SimultaneousColumnSolver.toBandedMatrix(compact, layout, null)).getMessage());
             } else {
                 var residual = evaluator.evaluate(state, thermo.newWorkspace());
                 var expected = V3NormalEquations.prepare(dense, residual, layout, V3SolveControl.UNBOUNDED);
@@ -111,8 +111,8 @@ class V3FiniteDifferenceJacobianTest {
                                 Double.doubleToRawLongBits(compactDirection[index]));
                     }
                 }
-                var expectedMatrix = expected.dampedMatrix(1e-3, V3SolveControl.UNBOUNDED);
-                var actualMatrix = actual.dampedMatrix(1e-3, V3SolveControl.UNBOUNDED);
+                var expectedMatrix = expected.dampedMatrix(1e-3, V3SolveControl.UNBOUNDED, null);
+                var actualMatrix = actual.dampedMatrix(1e-3, V3SolveControl.UNBOUNDED, null);
                 for (int row = 0; row <= column; row++) for (int col = 0; col <= column; col++) {
                     assertEquals(Double.doubleToRawLongBits(expectedMatrix.get(row, col)),
                             Double.doubleToRawLongBits(actualMatrix.get(row, col)));

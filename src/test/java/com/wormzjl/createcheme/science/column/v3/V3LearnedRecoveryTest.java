@@ -54,7 +54,7 @@ class V3LearnedRecoveryTest {
                 List.of(new V3ColumnSpecification.CondenserOutletTemperature(300),
                         new V3ColumnSpecification.OrganicRefluxRatio(2),
                         new V3ColumnSpecification.ReboilerDuty(reboilerDutyWatts)),
-                draws, List.of(), List.of());
+                draws, List.of(), List.of(), V3ColumnInput.PRESCRIBED_DROP_DIAMETER);
     }
 
     private static V3InitializationOptions learned(V3InitializationOptions.Mode mode, int iterations) {
@@ -67,7 +67,7 @@ class V3LearnedRecoveryTest {
         V3ColumnInput input = boiledDrawInput();
         V3NeuralInitializer model = fixed(acceptedProfile(input));
         var accepted = assertInstanceOf(V3ColumnOutcome.Success.class, V3ColumnCalculator.calculate(input, () -> {},
-                0, 0, learned(V3InitializationOptions.Mode.LNN_ONLY, 16), model));
+                0, 0, learned(V3InitializationOptions.Mode.LNN_ONLY, 16), model, V3ColumnCalculator.DEFAULT_LIQUID_SUPPLY_SCREEN_RATIO));
         assertTrue(accepted.diagnostics().events().getFirst().contains("initializer=LNN;"),
                 accepted.diagnostics().events().toString());
     }
@@ -80,7 +80,7 @@ class V3LearnedRecoveryTest {
         V3ColumnInput input = drawInput();
         V3NeuralInitializer model = fixed(displaced(acceptedProfile(input)));
         var capped = V3ColumnCalculator.calculate(input, () -> {}, 0, 0,
-                learned(V3InitializationOptions.Mode.LNN_ONLY, 1), model);
+                learned(V3InitializationOptions.Mode.LNN_ONLY, 1), model, V3ColumnCalculator.DEFAULT_LIQUID_SUPPLY_SCREEN_RATIO);
         assertEquals(V3SolverFailureCode.INITIALIZATION_FAILURE,
                 assertInstanceOf(V3ColumnOutcome.Failure.class, capped).code(),
                 "a learned correction that runs out of iterations fails");
@@ -90,7 +90,7 @@ class V3LearnedRecoveryTest {
     @Test void anUnavailableModelFailsLnnOnlyAsAnInitializationFailure() {
         V3ColumnInput input = drawInput();
         var failed = assertInstanceOf(V3ColumnOutcome.Failure.class, V3ColumnCalculator.calculate(input, () -> {},
-                0, 0, learned(V3InitializationOptions.Mode.LNN_ONLY, 16), V3NeuralInitializer.UNAVAILABLE));
+                0, 0, learned(V3InitializationOptions.Mode.LNN_ONLY, 16), V3NeuralInitializer.UNAVAILABLE, V3ColumnCalculator.DEFAULT_LIQUID_SUPPLY_SCREEN_RATIO));
         assertEquals(V3SolverFailureCode.INITIALIZATION_FAILURE, failed.code());
     }
 
@@ -103,7 +103,7 @@ class V3LearnedRecoveryTest {
         V3NeuralInitializer model = fixed(displaced(acceptedProfile(input)));
         var direct = assertInstanceOf(V3ColumnOutcome.Success.class, V3ColumnCalculator.calculate(input));
         var backup = assertInstanceOf(V3ColumnOutcome.Success.class, V3ColumnCalculator.calculate(input, () -> {},
-                0, 0, learned(V3InitializationOptions.Mode.LNN_FIRST, 1), model));
+                0, 0, learned(V3InitializationOptions.Mode.LNN_FIRST, 1), model, V3ColumnCalculator.DEFAULT_LIQUID_SUPPLY_SCREEN_RATIO));
         assertEquals(direct.result().streams(), backup.result().streams());
         String event = backup.diagnostics().events().getFirst();
         assertTrue(event.contains("initializer=CURRENT_BACKUP;"), event);
@@ -127,7 +127,7 @@ class V3LearnedRecoveryTest {
         var input=plainInput();
         var classical=assertInstanceOf(V3ColumnOutcome.Success.class,V3ColumnCalculator.calculate(input));
         var fallback=assertInstanceOf(V3ColumnOutcome.Success.class,V3ColumnCalculator.calculate(input,()->{},0,0,
-                V3TestInputs.LEARNED,V3NeuralInitializer.UNAVAILABLE));
+                V3TestInputs.LEARNED,V3NeuralInitializer.UNAVAILABLE, V3ColumnCalculator.DEFAULT_LIQUID_SUPPLY_SCREEN_RATIO));
         assertEquals(classical.result().streams(),fallback.result().streams());
     }
 
@@ -194,6 +194,6 @@ class V3LearnedRecoveryTest {
                 json.get("stagePressureDropPascal").getAsDouble(),specs,
                 Arrays.asList(JSON.fromJson(json.get("sideDraws"),V3SideDrawSpec[].class)),
                 Arrays.asList(JSON.fromJson(json.get("steamFeeds"),V3SteamFeedSpec[].class)),
-                Arrays.asList(JSON.fromJson(json.get("pumparounds"),V3PumparoundSpec[].class)));
+                Arrays.asList(JSON.fromJson(json.get("pumparounds"),V3PumparoundSpec[].class)), V3ColumnInput.PRESCRIBED_DROP_DIAMETER);
     }
 }

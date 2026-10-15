@@ -234,19 +234,11 @@ class V3ConvergenceClosureTest {
                         new V3ColumnSpecification.ReboilerDuty(8_000_000.0)),
                 draws,
                 wet ? List.of(new V3SteamFeedSpec(31, STEAM_MOL_PER_SECOND, 533.15)) : List.of(),
-                pumparounds);
+                pumparounds, V3ColumnInput.PRESCRIBED_DROP_DIAMETER);
     }
 
     /** Cheap admission-only fixture; the range checks reject before any property call. */
     private static V3ColumnInput binaryInput() {
-        V3PengRobinsonThermo thermo = V3PengRobinsonThermo.fromRegisteredPackage(CDU);
-        double[] feed = new double[thermo.componentBasis().componentCount()];
-        feed[6] = 50.0;
-        feed[13] = 50.0;
-        return new V3ColumnInput(1, thermo.packageId(), "test:closure-range", thermo.componentBasis(), feed,
-                550.0, 2, 1, 250_000.0, 750.0, List.of(
-                new V3ColumnSpecification.CondenserOutletTemperature(300.0),
-                new V3ColumnSpecification.OrganicRefluxRatio(2.0),
-                new V3ColumnSpecification.ReboilerDuty(0.0)));
+        return V3TestInputs.cdu17Binary("test:closure-range");
     }
 }

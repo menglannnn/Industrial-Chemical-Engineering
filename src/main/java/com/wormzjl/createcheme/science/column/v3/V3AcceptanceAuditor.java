@@ -61,10 +61,6 @@ final class V3AcceptanceAuditor {
         return Math.max(1.0, problem.activeComponentBasis().totalFeedFlowMolPerSecond() * 100_000.0);
     }
 
-    V3AcceptanceAudit audit(V3DryMeshState state, V3ThermoWorkspace workspace) {
-        return audit(state, workspace, V3SolveControl.UNBOUNDED);
-    }
-
     V3AcceptanceAudit audit(V3DryMeshState state, V3ThermoWorkspace workspace, V3SolveControl control) {
         state = Objects.requireNonNull(state, "state");
         workspace = Objects.requireNonNull(workspace, "workspace");
@@ -189,13 +185,6 @@ final class V3AcceptanceAuditor {
      * evaluator's condenser terms, so a condenser vapor outlet that drops or double-counts the water it
      * publishes fails this check instead of silently shifting the duty the ledger reports.</p>
      */
-    static V3AcceptanceAudit.Check condenserEnergyBalance(
-            V3ColumnProblem problem, V3ThermoModel thermo, V3DryMeshState state, V3ThermoWorkspace workspace,
-            double publishedCondenserWatts) {
-        return condenserEnergyBalance(problem, thermo, state, workspace, publishedCondenserWatts,
-                V3ConvergenceEvidence.MAXIMUM_LOG_FLOW_CHANGE);
-    }
-
     static V3AcceptanceAudit.Check condenserEnergyBalance(
             V3ColumnProblem problem, V3ThermoModel thermo, V3DryMeshState state, V3ThermoWorkspace workspace,
             double publishedCondenserWatts, double closureTolerance) {

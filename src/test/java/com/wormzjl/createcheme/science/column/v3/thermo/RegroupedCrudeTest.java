@@ -104,7 +104,7 @@ class RegroupedCrudeTest {
             var input=preset.input(MaterialCatalog.bundled());long start=System.nanoTime();
             var result=V3ColumnCalculator.calculate(input,()->{
                 if(System.nanoTime()-start>45_000_000_000L)throw new java.util.concurrent.CancellationException("Regrouped preset deadline");
-            },0,0,V3InitializationOptions.CURRENT,V3NeuralInitializer.UNAVAILABLE);
+            },0,0,V3InitializationOptions.CURRENT,V3NeuralInitializer.UNAVAILABLE, V3ColumnCalculator.DEFAULT_LIQUID_SUPPLY_SCREEN_RATIO);
             var success=assertInstanceOf(V3ColumnOutcome.Success.class,result,result::toString);
             assertTrue(success.result().convergenceEvidence().satisfiesGates());
             assertTrue(success.result().acceptanceAudit().accepted());

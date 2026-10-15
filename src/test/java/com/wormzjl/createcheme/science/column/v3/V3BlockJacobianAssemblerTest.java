@@ -61,7 +61,7 @@ class V3BlockJacobianAssemblerTest {
                 plain.packageId(), plain.assayId(), plain.componentBasis(), plain.feedComponentMolarFlowsMolPerSecond(),
                 plain.feedTemperatureKelvin(), plain.stageCount(), plain.feedStageNumber(), plain.topPressurePascal(),
                 plain.stagePressureDropPascal(), plain.specifications(), List.of(), List.of(),
-                List.of(new V3PumparoundSpec(2, 4, -750_000.0, V3PumparoundSpec.Split.UNIFORM))),
+                List.of(new V3PumparoundSpec(2, 4, -750_000.0, V3PumparoundSpec.Split.UNIFORM)), V3ColumnInput.PRESCRIBED_DROP_DIAMETER),
                 V3CondenserPhaseBranch.TWO_PHASE);
 
         assertLocalBlocksMatchFiniteDifference(problem);
@@ -315,7 +315,7 @@ class V3BlockJacobianAssemblerTest {
                 crude.componentBasis(), flows, 638.15, 30, 24, 250_000.0, 750.0, List.of(
                         new V3ColumnSpecification.CondenserOutletTemperature(323.15),
                         new V3ColumnSpecification.OrganicRefluxRatio(2.0),
-                        new V3ColumnSpecification.ReboilerDuty(8_000_000.0)), draws, steam, pumparounds);
+                        new V3ColumnSpecification.ReboilerDuty(8_000_000.0)), draws, steam, pumparounds, V3ColumnInput.PRESCRIBED_DROP_DIAMETER);
     }
 
     /**
@@ -544,7 +544,7 @@ class V3BlockJacobianAssemblerTest {
                 4, 2, steamFeeds.isEmpty() ? 250_000.0 : 150_000.0, 750.0, List.of(
                         new V3ColumnSpecification.CondenserOutletTemperature(400.0),
                         new V3ColumnSpecification.OrganicRefluxRatio(1.0),
-                        new V3ColumnSpecification.ReboilerDuty(0.0)), List.of(), steamFeeds);
+                        new V3ColumnSpecification.ReboilerDuty(0.0)), List.of(), steamFeeds, List.of(), V3ColumnInput.PRESCRIBED_DROP_DIAMETER);
         return V3ColumnProblemResolver.resolve(input, V3CondenserPhaseBranch.TWO_PHASE);
     }
 
@@ -560,7 +560,7 @@ class V3BlockJacobianAssemblerTest {
                         new V3ColumnSpecification.CondenserOutletTemperature(400.0),
                         new V3ColumnSpecification.OrganicRefluxRatio(1.0),
                         new V3ColumnSpecification.ReboilerDuty(0.0)), List.of(),
-                List.of(new V3SteamFeedSpec(5, 10.0, 520.0)));
+                List.of(new V3SteamFeedSpec(5, 10.0, 520.0)), List.of(), V3ColumnInput.PRESCRIBED_DROP_DIAMETER);
         V3ColumnProblem dry = V3ColumnProblemResolver.resolve(input, V3CondenserPhaseBranch.TWO_PHASE);
         boolean[] wet = new boolean[dry.topology().nodeCount()];
         wet[1] = true;

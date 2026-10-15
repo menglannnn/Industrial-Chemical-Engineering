@@ -36,7 +36,7 @@ class V3MethaneColumnTest {
             @Override public java.util.Optional<V3NeuralSeed> predict(V3ColumnInput ignored, V3SolveControl control) {
                 throw new AssertionError("CURRENT_ONLY must not infer");
             }
-        });
+        }, V3ColumnCalculator.DEFAULT_LIQUID_SUPPLY_SCREEN_RATIO);
         var directory = Path.of("build", "methane-qualification");
         Files.createDirectories(directory);
         var json = new GsonBuilder().setPrettyPrinting().serializeSpecialFloatingPointValues().create();
@@ -64,7 +64,7 @@ class V3MethaneColumnTest {
         long start = System.nanoTime();
         var outcome = V3ColumnCalculator.calculate(input, () -> {
             if (System.nanoTime() - start > 60_000_000_000L) throw new java.util.concurrent.CancellationException("methane fallback deadline");
-        }, 0, 0, V3TestInputs.LEARNED, V3NeuralModels.bundled());
+        }, 0, 0, V3TestInputs.LEARNED, V3NeuralModels.bundled(), V3ColumnCalculator.DEFAULT_LIQUID_SUPPLY_SCREEN_RATIO);
         var success = assertInstanceOf(V3ColumnOutcome.Success.class, outcome, outcome::toString);
         assertTrue(success.result().convergenceEvidence().satisfiesGates());
         // One model ships, so the initialization event names it whichever route won. Which route wins on

@@ -127,7 +127,7 @@ class V3ColdStartTest {
             if (System.nanoTime() - started >= LOW_PRESSURE_CASE_BUDGET_NANOS) {
                 throw new AssertionError("low-pressure partial-condenser cold solve exceeded its budget");
             }
-        });
+        }, 0, 0, V3ColumnCalculator.DEFAULT_LIQUID_SUPPLY_SCREEN_RATIO);
         V3ColumnOutcome.Success success = assertInstanceOf(V3ColumnOutcome.Success.class, outcome, outcome::toString);
         assertTrue(System.nanoTime() - started < LOW_PRESSURE_CASE_BUDGET_NANOS);
         return success;
@@ -205,7 +205,7 @@ class V3ColdStartTest {
                 if (System.nanoTime() - started >= REAL_CRUDE_CASE_BUDGET_NANOS) {
                     throw new CancellationException("cold diagnostic budget exceeded");
                 }
-            });
+            }, 0, 0, V3ColumnCalculator.DEFAULT_LIQUID_SUPPLY_SCREEN_RATIO);
             return new Probe(outcome, System.nanoTime() - started, false);
         } catch (CancellationException expectedBudgetExpiry) {
             return new Probe(null, System.nanoTime() - started, true);
