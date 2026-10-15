@@ -17,12 +17,6 @@ java {
     withSourcesJar()
 }
 
-sourceSets.main.resources {
-    srcDir 'src/generated/resources'
-    exclude '**/*.bbmodel'
-    exclude 'src/generated/**/.cache'
-}
-
 sourceSets {
     mcpCompat {
         compileClasspath += sourceSets.main.output
@@ -72,18 +66,11 @@ neoForge {
     runs {
         client {
             client()
-            systemProperty 'neoforge.enabledGameTestNamespaces', mod_id
         }
 
         server {
             server()
             programArgument '--nogui'
-            systemProperty 'neoforge.enabledGameTestNamespaces', mod_id
-        }
-
-        gameTestServer {
-            type = 'gameTestServer'
-            systemProperty 'neoforge.enabledGameTestNamespaces', mod_id
         }
 
         fluidGameTestServer {
@@ -140,17 +127,6 @@ neoForge {
             def mcpHeight = providers.gradleProperty('mcpClientHeight').getOrElse('480')
             if (!(mcpWidth ==~ /[0-9]{3,4}/ && mcpHeight ==~ /[0-9]{3,4}/)) throw new GradleException('mcpClientWidth and mcpClientHeight must be 3- or 4-digit pixel counts')
             programArguments.addAll('--username', 'FluidMcpTester', '--width', mcpWidth, '--height', mcpHeight)
-            systemProperty 'neoforge.enabledGameTestNamespaces', mod_id
-        }
-
-        data {
-            data()
-            programArguments.addAll(
-                '--mod', mod_id,
-                '--all',
-                '--output', file('src/generated/resources').absolutePath,
-                '--existing', file('src/main/resources').absolutePath
-            )
         }
 
         configureEach {
@@ -266,6 +242,9 @@ if (configuredTestForks < 1 || configuredTestForks > 8) throw new GradleExceptio
 tasks.withType(Test).configureEach {
     useJUnitPlatform()
     maxParallelForks = configuredTestForks
+}
+// Only PackagedSparseLuTest reads the packaged jar; it runs under test and fluidScienceTest.
+tasks.withType(Test).matching { it.name in ['test', 'fluidScienceTest'] }.configureEach {
     dependsOn tasks.named('jar')
     systemProperty 'fluid.modJar', tasks.named('jar', Jar).flatMap { it.archiveFile }.get().asFile.absolutePath
 }
@@ -287,12 +266,12 @@ tasks.withType(Test).configureEach {
     }
 }
 
-// Milestone-specific fixtures arrive in M1/M2/M9. Missing fixtures fail instead of reporting an empty benchmark.
+// The property and network benchmark fixtures. A missing fixture fails instead of reporting an empty benchmark.
 ['fluidPropertyBenchmark': 'FluidPropertyBenchmarkTest',
  'fluidNetworkBenchmark': 'FluidNetworkBenchmarkTest'].each { taskName, fixture ->
     tasks.register(taskName, Test) {
         group = 'verification'
-        description = "Runs ${fixture}; fails until that milestone supplies an executable fixture."
+        description = "Runs ${fixture}; no matching fixture is a failure."
         testClassesDirs = sourceSets.test.output.classesDirs
         classpath = sourceSets.test.runtimeClasspath
         filter {
