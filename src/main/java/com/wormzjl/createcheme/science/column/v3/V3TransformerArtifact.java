@@ -45,8 +45,7 @@ final class V3TransformerArtifact {
                     .forEach(e -> document.add(e.getKey(), e.getValue()));
             var model = V3AnchorTransformerInitializer.read(new ByteArrayInputStream(
                     document.toString().getBytes(StandardCharsets.UTF_8)),
-                    V3FactorizedNeuralFeatures.DecodeOptions.zeroPhaseFloor(10),
-                    V3AnchorTransformerInitializer.CandidateRule.SINGLE);
+                    V3FactorizedNeuralFeatures.DecodeOptions.zeroPhaseFloor(10));
             return new Loaded(model, sha256((sha256(payload) + ":" + sha256(sidecar)).getBytes(StandardCharsets.US_ASCII)),
                     policy.get("allowExtraZeroComponents").getAsBoolean(), policy.get("allowMissingZeroComponents").getAsBoolean());
         } catch (com.google.gson.JsonParseException | IllegalStateException | NullPointerException invalid) {

@@ -178,7 +178,7 @@ public final class V3ColumnCalculator {
      * {@link #calculate(V3ColumnInput)}.</p>
      */
     public static V3ColumnOutcome calculate(V3ColumnInput input, V3SolveControl control) {
-        return calculate(input, control, V3ColumnInitializer.Mode.SEQUENTIAL_MATERIAL_VLE);
+        return calculate(input, control, SolvePolicy.OFF, DEFAULT_LIQUID_SUPPLY_SCREEN_RATIO);
     }
 
     /** Offline export hook: called only after the requested state passes every publication gate. */
@@ -189,7 +189,7 @@ public final class V3ColumnCalculator {
 
     private static V3ColumnOutcome calculateWithAcceptedProfile(V3ColumnInput input, V3SolveControl control,
             java.util.function.Consumer<V3NeuralSeed> observer, double liquidSupplyScreenRatio) {
-        return calculate(input, control, V3ColumnInitializer.Mode.SEQUENTIAL_MATERIAL_VLE,
+        return calculate(input, control,
                 new SolvePolicy(0.0, 0.0, V3ConvergenceEvidence.MAXIMUM_LOG_FLOW_CHANGE,
                         Objects.requireNonNull(observer, "observer")), liquidSupplyScreenRatio);
     }
@@ -963,14 +963,12 @@ public final class V3ColumnCalculator {
         double closure = closureTolerance(convergenceClosureFraction);
         if (stageTraceCutoffMoleFraction == 0.0) {
             return closure == V3ConvergenceEvidence.MAXIMUM_LOG_FLOW_CHANGE
-                    ? calculate(input, control, V3ColumnInitializer.Mode.SEQUENTIAL_MATERIAL_VLE,
-                            SolvePolicy.OFF, liquidSupplyScreenRatio)
-                    : calculate(input, control, V3ColumnInitializer.Mode.SEQUENTIAL_MATERIAL_VLE,
-                            new SolvePolicy(0.0, 0.0, closure), liquidSupplyScreenRatio);
+                    ? calculate(input, control, SolvePolicy.OFF, liquidSupplyScreenRatio)
+                    : calculate(input, control, new SolvePolicy(0.0, 0.0, closure), liquidSupplyScreenRatio);
         }
         return V3TruncationFallback.calculate(stageTraceCutoffMoleFraction, attemptCutoff -> calculate(
-                input, control, V3ColumnInitializer.Mode.SEQUENTIAL_MATERIAL_VLE,
-                new SolvePolicy(stageTraceCutoffMoleFraction, attemptCutoff, closure), liquidSupplyScreenRatio));
+                input, control, new SolvePolicy(stageTraceCutoffMoleFraction, attemptCutoff, closure),
+                liquidSupplyScreenRatio));
     }
 
     /**
@@ -987,33 +985,21 @@ public final class V3ColumnCalculator {
         return Math.max(V3ConvergenceEvidence.MAXIMUM_LOG_FLOW_CHANGE, convergenceClosureFraction);
     }
 
-    /** Package-private cold-start qualifier for reviewed initializer modes; production uses the sequential MESH path. */
-    static V3ColumnOutcome calculate(
-            V3ColumnInput input, V3SolveControl control, V3ColumnInitializer.Mode initializerMode) {
-        return calculate(input, control, initializerMode, SolvePolicy.OFF, DEFAULT_LIQUID_SUPPLY_SCREEN_RATIO);
-    }
-
     private static V3ColumnOutcome calculate(
-            V3ColumnInput input, V3SolveControl control, V3ColumnInitializer.Mode initializerMode, SolvePolicy policy,
-            double liquidSupplyScreenRatio) {
+            V3ColumnInput input, V3SolveControl control, SolvePolicy policy, double liquidSupplyScreenRatio) {
         return com.wormzjl.createcheme.science.material.MaterialRuntime.pinned(input.packageId(),
-                () -> calculateInCatalog(input, control, initializerMode, policy, liquidSupplyScreenRatio));
+                () -> calculateInCatalog(input, control, policy, liquidSupplyScreenRatio));
     }
 
     private static V3ColumnOutcome calculateInCatalog(
-            V3ColumnInput input, V3SolveControl control, V3ColumnInitializer.Mode initializerMode, SolvePolicy policy,
-            double liquidSupplyScreenRatio) {
+            V3ColumnInput input, V3SolveControl control, SolvePolicy policy, double liquidSupplyScreenRatio) {
         Objects.requireNonNull(input, "input");
         Objects.requireNonNull(control, "control");
-        Objects.requireNonNull(initializerMode, "initializerMode");
         RequestAdmission admission = requestOnlyAdmission(input, liquidSupplyScreenRatio);
         if (admission.typed()) return admission.failure();
         CondenserAttempts condenserAttempts = new CondenserAttempts();
-        if (initializerMode != V3ColumnInitializer.Mode.SEQUENTIAL_MATERIAL_VLE) {
-            return calculateBranch(input, control, initializerMode, V3CondenserPhaseBranch.TWO_PHASE, policy, condenserAttempts);
-        }
         V3CondenserPhaseBranch preferred = preferredCondenserBranch(input, control);
-        V3ColumnOutcome outcome = calculateBranch(input, control, initializerMode, preferred, policy, condenserAttempts);
+        V3ColumnOutcome outcome = calculateBranch(input, control, preferred, policy, condenserAttempts);
         if (outcome instanceof V3ColumnOutcome.Success
                 || outcome instanceof V3ColumnOutcome.Failure failure
                 && (failure.code() == V3SolverFailureCode.INVALID_INPUT
@@ -1024,7 +1010,7 @@ public final class V3ColumnCalculator {
         // A known phase mismatch has its bounded same-rung warm correction. Restarting either branch
         // from the smallest grid discards that useful profile and can revisit an inappropriate phase.
         if (!condenserAttempts.allowsColdRecovery() || condenserAttempts.hasAttempted(alternate)) return outcome;
-        V3ColumnOutcome alternative = calculateBranch(input, control, initializerMode, alternate, policy, condenserAttempts);
+        V3ColumnOutcome alternative = calculateBranch(input, control, alternate, policy, condenserAttempts);
         return alternative instanceof V3ColumnOutcome.Success ? alternative : outcome;
     }
 
@@ -1162,12 +1148,8 @@ public final class V3ColumnCalculator {
         }
     }
 
-    private static V3ColumnOutcome calculateBranch(
-            V3ColumnInput input, V3SolveControl control, V3ColumnInitializer.Mode initializerMode,
+    private static V3ColumnOutcome calculateBranch(V3ColumnInput input, V3SolveControl control,
             V3CondenserPhaseBranch condenserBranch, SolvePolicy policy, CondenserAttempts condenserAttempts) {
-        input = Objects.requireNonNull(input, "input");
-        control = Objects.requireNonNull(control, "control");
-        initializerMode = Objects.requireNonNull(initializerMode, "initializerMode");
         List<String> advisoryEvidence = List.of();
         boolean admitted = false;
         try {
@@ -1182,57 +1164,51 @@ public final class V3ColumnCalculator {
             }
             admitted = true;
             V3SolvePass pass;
-            if (initializerMode == V3ColumnInitializer.Mode.SEQUENTIAL_MATERIAL_VLE) {
-                pass = requiresPressureContinuation(admission)
-                        ? solvePressureContinuation(input, thermo, control, condenserBranch, policy, condenserAttempts)
-                        : solveStageContinuation(input, thermo, control, condenserBranch, policy, condenserAttempts);
+            pass = requiresPressureContinuation(admission)
+                    ? solvePressureContinuation(input, thermo, control, condenserBranch, policy, condenserAttempts)
+                    : solveStageContinuation(input, thermo, control, condenserBranch, policy, condenserAttempts);
+            if (!publishesSuccess(pass.attempt(), pass.audit())
+                    && !hasCondenserPhaseMismatch(pass)
+                    && condenserAttempts.allowsColdRecovery()
+                    && pass.attemptedRequestedProblem()
+                    && pass.terminalStageCount() >= input.stageCount()
+                    && pass.allowsFreshMaterialClosedFallback()) {
+                problem = originalProblem(pass);
+                // The sequential material/VLE preconditioner is deliberately optional. It must not turn an
+                // otherwise solvable MESH problem into a failure; this is a fresh V3 material-closed seed,
+                // no approximation or retained warm state is used.
+                V3DryMeshState fallbackSeed = initializeForSolve(
+                        problem, thermo, V3ColumnInitializer.Mode.MATERIAL_CLOSED);
+                pass = withPriorSupportNotes(pass, solveSingleProblem(problem, thermo, fallbackSeed,
+                        control, "cold/material-closed-fallback/fine-fd", policy));
+                PhaseCorrection fallbackPhase = correctCondenserPhase(pass, thermo, control, policy, condenserAttempts);
+                pass = fallbackPhase.pass();
                 if (!publishesSuccess(pass.attempt(), pass.audit())
-                        && !hasCondenserPhaseMismatch(pass)
-                        && condenserAttempts.allowsColdRecovery()
-                        && pass.attemptedRequestedProblem()
-                        && pass.terminalStageCount() >= input.stageCount()
-                        && pass.allowsFreshMaterialClosedFallback()) {
-                    problem = originalProblem(pass);
-                    // The sequential material/VLE preconditioner is deliberately optional. It must not turn an
-                    // otherwise solvable MESH problem into a failure; this is a fresh V3 material-closed seed,
-                    // no approximation or retained warm state is used.
-                    V3DryMeshState fallbackSeed = initializeForSolve(
-                            problem, thermo, V3ColumnInitializer.Mode.MATERIAL_CLOSED);
-                    pass = withPriorSupportNotes(pass, solveSingleProblem(problem, thermo, fallbackSeed,
-                            control, "cold/material-closed-fallback/fine-fd", policy));
-                    PhaseCorrection fallbackPhase = correctCondenserPhase(pass, thermo, control, policy, condenserAttempts);
-                    pass = fallbackPhase.pass();
-                    if (!publishesSuccess(pass.attempt(), pass.audit())
-                            && !fallbackPhase.attempted() && !hasCondenserPhaseMismatch(pass)) {
-                        V3SolvePass recovered = recoverWithBubblePointProjection(
-                                problem, thermo, pass.attempt().state(), control,
-                                "cold/material-closed-fallback/material-vle-recovery/fine-fd",
-                                ContinuationJacobianPolicy.STAGE_LOCAL_BLOCKS, MAXIMUM_NEWTON_ITERATIONS, policy);
-                        recovered = correctCondenserPhase(recovered, thermo, control, policy, condenserAttempts).pass();
-                        if (publishesSuccess(recovered.attempt(), recovered.audit())
-                                || recovered.attempt().evidence().maximumScaledResidual()
-                                < pass.attempt().evidence().maximumScaledResidual()) {
-                            pass = withPriorSupportNotes(pass, recovered);
-                        }
-                    }
-                    // The material-closed fallback may rescue the dry surrogate after an early stage rung
-                    // fails. It is still only a seed for an authored request that carries draws, steam or
-                    // stage heat, and must never publish a no-draw, dry surrogate in place of that ramp.
-                    if ((!input.steamFeeds().isEmpty() || !input.pumparounds().isEmpty()
-                            || !input.sideDraws().isEmpty())
-                            && publishesSuccess(pass.attempt(), pass.audit())
-                            && !pass.prepared().problem().hasSideDraws()
-                            && !pass.prepared().problem().hasSteamFeeds()
-                            && !pass.prepared().problem().hasPumparounds()) {
-                        V3ColumnProblem requested = V3ColumnProblemResolver.resolve(input,
-                                pass.prepared().problem().topology().condenserPhaseBranch());
-                        pass = recoverWithDrawRamp(requested, thermo, pass, control, policy, condenserAttempts);
+                        && !fallbackPhase.attempted() && !hasCondenserPhaseMismatch(pass)) {
+                    V3SolvePass recovered = recoverWithBubblePointProjection(
+                            problem, thermo, pass.attempt().state(), control,
+                            "cold/material-closed-fallback/material-vle-recovery/fine-fd",
+                            ContinuationJacobianPolicy.STAGE_LOCAL_BLOCKS, MAXIMUM_NEWTON_ITERATIONS, policy);
+                    recovered = correctCondenserPhase(recovered, thermo, control, policy, condenserAttempts).pass();
+                    if (publishesSuccess(recovered.attempt(), recovered.audit())
+                            || recovered.attempt().evidence().maximumScaledResidual()
+                            < pass.attempt().evidence().maximumScaledResidual()) {
+                        pass = withPriorSupportNotes(pass, recovered);
                     }
                 }
-            } else {
-                pass = solveSingleProblem(problem, thermo,
-                        initializeForSolve(problem, thermo, initializerMode),
-                        control, "cold/fine-fd", policy);
+                // The material-closed fallback may rescue the dry surrogate after an early stage rung
+                // fails. It is still only a seed for an authored request that carries draws, steam or
+                // stage heat, and must never publish a no-draw, dry surrogate in place of that ramp.
+                if ((!input.steamFeeds().isEmpty() || !input.pumparounds().isEmpty()
+                        || !input.sideDraws().isEmpty())
+                        && publishesSuccess(pass.attempt(), pass.audit())
+                        && !pass.prepared().problem().hasSideDraws()
+                        && !pass.prepared().problem().hasSteamFeeds()
+                        && !pass.prepared().problem().hasPumparounds()) {
+                    V3ColumnProblem requested = V3ColumnProblemResolver.resolve(input,
+                            pass.prepared().problem().topology().condenserPhaseBranch());
+                    pass = recoverWithDrawRamp(requested, thermo, pass, control, policy, condenserAttempts);
+                }
             }
             V3SimultaneousColumnSolver.Attempt attempt = pass.attempt();
             V3AcceptanceAudit audit = pass.audit();
