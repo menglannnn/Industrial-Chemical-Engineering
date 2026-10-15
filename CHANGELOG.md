@@ -15,6 +15,12 @@ All notable changes to CreateChemE are recorded in this file. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- Custom equipment rendering, proof of concept (owner decisions D1–D5 2026-10-15, batch folder: `2026-10-15-custom-equipment-rendering`): parametric vertical vessels with 2:1 heads (D 0.5–10 m in 0.5 m steps, T/T 1–64 m) built from `equipment_shell` cells with a block entity and invisible `equipment_interior` cells; the shell is a per-cell procedural baked model (`createcheme:equipment_shell` geometry loader) in the chunk mesh, collision is the 1/8-block solid of each cell, and the selection outline is the vessel silhouette; breaking any cell removes the whole vessel; placed by `/createcheme equipment place` until the constructor exists. Shape core in `science/equipment` (`EquipmentShape`, `ShapeRasterizer`, `ShapeRasterizerTest`). Measured with 20 columns of 6 × 40 m: no FPS cost on the vanilla pipeline or Sodium, +0.06 ms per frame under Iris with a shader pack.
+- Equipment constructor (owner decisions 2026-10-15, same batch folder): the `equipment_constructor` block builds a vessel in front of itself. Its screen sets diameter, tangent length and offsets (`VesselPlacement`), shows the derived datasheet (overall height, volume, outside area, cells) and the vessel's translucent ghost with blocked cells outlined red (Catnip outliner), and builds on request (protocol `equipment-1`, one `ConstructorPayload`; the server checks reach, build rights and every cell). The controller is a role of the vessel's lowest, westmost, northmost shell cell; using any cell opens the vessel's datasheet screen. Test lane: `UseItemMixin` in `src/mcpCompat` runs the bridge's `use_item` on the render thread.
+- Vessel supports and horizontal vessels (owner decisions 2026-10-15, requests 2026-10-16, same batch folder): skirts (default ⌈D/4 + 1⌉ m, base ring and anchor chairs) and vessels lying along x or z on two saddles at 0.2·T/T (top plate, web, ribs, base plate); the constructor chooses Vertical, Lengthwise or Crosswise and the support height (protocol `equipment-2`). The shell gets the mod's own sprites (2 m plate courses with staggered seams, seamless pressed heads, painted support steel) and finer facets (at most about 1/3 m; heads with n/4 bands).
+
 ## [0.8.0] - 2026-10-15
 
 ### Changed
