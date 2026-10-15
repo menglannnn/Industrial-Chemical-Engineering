@@ -15,7 +15,6 @@ package com.wormzjl.createcheme.science.thermo;
  */
 public record TraceTruncationPolicy(double cutoffMoleFraction) {
     public static final double MAX_CUTOFF_MOLE_FRACTION = 1.0e-2;
-    public static final double MAX_CUTOFF = MAX_CUTOFF_MOLE_FRACTION;
     public static final TraceTruncationPolicy OFF = new TraceTruncationPolicy(0.0);
     /**
      * Hysteresis for putting an omitted phase back: an omitted amount is restored once the point's

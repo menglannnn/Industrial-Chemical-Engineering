@@ -177,15 +177,6 @@ public final class PengRobinsonKernel {
         evaluatePrepared(temperatureKelvin, pressurePascal, composition, root, workspace, output);
     }
 
-    /** Shares temperature-dependent pure-component values between two phase evaluations. */
-    public void evaluatePair(
-            double temperatureKelvin, double pressurePascal, double[] liquidComposition, double[] vaporComposition,
-            Workspace workspace, Evaluation liquidOutput, Evaluation vaporOutput) {
-        prepareTemperature(temperatureKelvin, workspace);
-        evaluatePrepared(temperatureKelvin, pressurePascal, liquidComposition, Root.LIQUID, workspace, liquidOutput);
-        evaluatePrepared(temperatureKelvin, pressurePascal, vaporComposition, Root.VAPOR, workspace, vaporOutput);
-    }
-
     public void prepareTemperature(double temperatureKelvin, Workspace workspace) {
         Objects.requireNonNull(workspace, "workspace");
         if (!Double.isFinite(temperatureKelvin) || temperatureKelvin < minimumTemperatureKelvin

@@ -20,7 +20,7 @@ class PengRobinson78Test {
         PengRobinson78 model = PengRobinson78.withoutBinaryInteractions(List.of(METHANE));
 
         PhaseProperties properties = model.evaluate(
-                300.0, 5_000_000.0, new double[] {1.0}, PhaseRoot.VAPOR);
+                300.0, 5_000_000.0, new double[] {1.0}, PengRobinsonKernel.Root.VAPOR);
 
         assertEquals(0.9018307109528809, properties.compressibilityFactor(), 1.0e-12);
         assertEquals(-0.10383585031450415, properties.logFugacityCoefficient(0), 1.0e-12);
@@ -32,9 +32,9 @@ class PengRobinson78Test {
         PengRobinson78 model = PengRobinson78.withoutBinaryInteractions(List.of(PROPANE));
 
         PhaseProperties liquid = model.evaluate(
-                300.0, 1_000_000.0, new double[] {1.0}, PhaseRoot.LIQUID);
+                300.0, 1_000_000.0, new double[] {1.0}, PengRobinsonKernel.Root.LIQUID);
         PhaseProperties vapor = model.evaluate(
-                300.0, 1_000_000.0, new double[] {1.0}, PhaseRoot.VAPOR);
+                300.0, 1_000_000.0, new double[] {1.0}, PengRobinsonKernel.Root.VAPOR);
 
         assertEquals(0.03478320039102689, liquid.compressibilityFactor(), 1.0e-12);
         assertEquals(0.8146036935018395, vapor.compressibilityFactor(), 1.0e-12);
@@ -46,7 +46,7 @@ class PengRobinson78Test {
         PengRobinson78 model = PengRobinson78.withoutBinaryInteractions(List.of(METHANE, N_BUTANE));
 
         PhaseProperties properties = model.evaluate(
-                500.0, 1.0, new double[] {0.7, 0.3}, PhaseRoot.VAPOR);
+                500.0, 1.0, new double[] {0.7, 0.3}, PengRobinsonKernel.Root.VAPOR);
 
         assertEquals(1.0, properties.compressibilityFactor(), 1.0e-7);
         assertEquals(0.0, properties.logFugacityCoefficient(0), 1.0e-7);
@@ -64,11 +64,11 @@ class PengRobinson78Test {
         double[] composition = {0.4, 0.6};
 
         PhaseProperties properties = model.evaluate(
-                temperature, pressure, composition, PhaseRoot.VAPOR);
+                temperature, pressure, composition, PengRobinsonKernel.Root.VAPOR);
         PhaseProperties above = model.evaluate(
-                temperature + temperatureStep, pressure, composition, PhaseRoot.VAPOR);
+                temperature + temperatureStep, pressure, composition, PengRobinsonKernel.Root.VAPOR);
         PhaseProperties below = model.evaluate(
-                temperature - temperatureStep, pressure, composition, PhaseRoot.VAPOR);
+                temperature - temperatureStep, pressure, composition, PengRobinsonKernel.Root.VAPOR);
         double weightedLogPhiDerivative = 0.0;
         for (int i = 0; i < composition.length; i++) {
             weightedLogPhiDerivative += composition[i]
@@ -89,7 +89,7 @@ class PengRobinson78Test {
         PengRobinson78 model = PengRobinson78.withoutBinaryInteractions(List.of(METHANE, N_BUTANE));
 
         PhaseProperties properties = model.evaluate(
-                500.0, 1.0, new double[] {0.7, 0.3}, PhaseRoot.VAPOR);
+                500.0, 1.0, new double[] {0.7, 0.3}, PengRobinsonKernel.Root.VAPOR);
 
         assertEquals(0.0, properties.residualEnthalpyJoulesPerMol(), 1.0e-3);
     }
@@ -99,9 +99,9 @@ class PengRobinson78Test {
         PengRobinson78 model = PengRobinson78.withoutBinaryInteractions(List.of(PROPANE));
 
         PhaseProperties liquid = model.evaluate(
-                300.0, 1_000_000.0, new double[] {1.0}, PhaseRoot.LIQUID);
+                300.0, 1_000_000.0, new double[] {1.0}, PengRobinsonKernel.Root.LIQUID);
         PhaseProperties vapor = model.evaluate(
-                300.0, 1_000_000.0, new double[] {1.0}, PhaseRoot.VAPOR);
+                300.0, 1_000_000.0, new double[] {1.0}, PengRobinsonKernel.Root.VAPOR);
 
         assertTrue(liquid.residualEnthalpyJoulesPerMol() < vapor.residualEnthalpyJoulesPerMol());
     }
@@ -110,7 +110,7 @@ class PengRobinson78Test {
     void returnedFugacityVectorCannotMutateTheResult() {
         PengRobinson78 model = PengRobinson78.withoutBinaryInteractions(List.of(METHANE));
         PhaseProperties properties = model.evaluate(
-                300.0, 5_000_000.0, new double[] {1.0}, PhaseRoot.VAPOR);
+                300.0, 5_000_000.0, new double[] {1.0}, PengRobinsonKernel.Root.VAPOR);
 
         double[] copy = properties.logFugacityCoefficients();
         copy[0] = 123.0;

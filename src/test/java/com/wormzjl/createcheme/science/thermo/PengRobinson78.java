@@ -58,7 +58,7 @@ public final class PengRobinson78 {
             double temperatureKelvin,
             double pressurePascal,
             double[] moleFractions,
-            PhaseRoot phaseRoot) {
+            PengRobinsonKernel.Root phaseRoot) {
         requireState(temperatureKelvin, pressurePascal);
         Objects.requireNonNull(phaseRoot, "phaseRoot");
         double[] composition = normalizedComposition(moleFractions);
@@ -143,14 +143,14 @@ public final class PengRobinson78 {
         return normalized;
     }
 
-    private static double selectRoot(double reducedA, double reducedB, PhaseRoot phaseRoot) {
+    private static double selectRoot(double reducedA, double reducedB, PengRobinsonKernel.Root phaseRoot) {
         double c2 = -(1.0 - reducedB);
         double c1 = reducedA - 3.0 * square(reducedB) - 2.0 * reducedB;
         double c0 = -(reducedA * reducedB - square(reducedB) - reducedB * square(reducedB));
         double[] roots = realCubicRoots(c2, c1, c0);
         Arrays.sort(roots);
 
-        if (phaseRoot == PhaseRoot.VAPOR) {
+        if (phaseRoot == PengRobinsonKernel.Root.VAPOR) {
             return roots[roots.length - 1];
         }
         for (double root : roots) {

@@ -16,8 +16,8 @@ class V3FlashTruncationValuesTest {
 
     @Test
     void policyAcceptsBothBoundsAndCanonicalizesNegativeZero() {
-        assertEquals(1.0e-2, TraceTruncationPolicy.MAX_CUTOFF);
-        for (double cutoff : new double[]{0.0, -0.0, TraceTruncationPolicy.MAX_CUTOFF}) {
+        assertEquals(1.0e-2, TraceTruncationPolicy.MAX_CUTOFF_MOLE_FRACTION);
+        for (double cutoff : new double[]{0.0, -0.0, TraceTruncationPolicy.MAX_CUTOFF_MOLE_FRACTION}) {
             TraceTruncationPolicy policy = new TraceTruncationPolicy(cutoff);
             assertDoesNotThrow(() -> TraceTruncationPolicy.requireCutoff(cutoff));
             assertEquals(policy, TraceTruncationPolicy.of(cutoff));
@@ -34,7 +34,7 @@ class V3FlashTruncationValuesTest {
     @Test
     void policyRejectsOutOfRangeAndNonfiniteCutoffsAtEveryEntryPoint() {
         for (double cutoff : new double[]{-Double.MIN_VALUE,
-                Math.nextUp(TraceTruncationPolicy.MAX_CUTOFF), Double.NaN,
+                Math.nextUp(TraceTruncationPolicy.MAX_CUTOFF_MOLE_FRACTION), Double.NaN,
                 Double.NEGATIVE_INFINITY, Double.POSITIVE_INFINITY}) {
             assertThrows(IllegalArgumentException.class, () -> new TraceTruncationPolicy(cutoff));
             assertThrows(IllegalArgumentException.class, () -> TraceTruncationPolicy.of(cutoff));
@@ -381,7 +381,7 @@ class V3FlashTruncationValuesTest {
                     V3FlashTruncationEvidence.Status.APPLIED, CUTOFF, 1, 0, 7, 3, true,
                     0.0, 0.0, 0.0, 0.0, 0.0, enthalpy, "invalid enthalpy"));
         }
-        for (double cutoff : new double[]{-Double.MIN_VALUE, Math.nextUp(TraceTruncationPolicy.MAX_CUTOFF),
+        for (double cutoff : new double[]{-Double.MIN_VALUE, Math.nextUp(TraceTruncationPolicy.MAX_CUTOFF_MOLE_FRACTION),
                 Double.NaN, Double.NEGATIVE_INFINITY, Double.POSITIVE_INFINITY}) {
             assertThrows(IllegalArgumentException.class, () -> new V3FlashTruncationEvidence(
                     V3FlashTruncationEvidence.Status.APPLIED, cutoff, 1, 0, 7, 3, true,

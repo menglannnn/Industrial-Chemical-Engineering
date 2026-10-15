@@ -7,7 +7,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import com.wormzjl.createcheme.science.thermo.PengRobinsonKernel;
 import com.wormzjl.createcheme.science.thermo.PengRobinson78;
 import com.wormzjl.createcheme.science.thermo.PhaseProperties;
-import com.wormzjl.createcheme.science.thermo.PhaseRoot;
 import com.wormzjl.createcheme.science.thermo.ThermoComponent;
 import org.junit.jupiter.api.Test;
 
@@ -20,7 +19,8 @@ class V3PengRobinsonKernelTest {
         PengRobinsonKernel.Workspace workspace = kernel.newWorkspace();
         PengRobinsonKernel.Evaluation liquid = kernel.newEvaluation();
         PengRobinsonKernel.Evaluation vapor = kernel.newEvaluation();
-        kernel.evaluatePair(500.0, 250_000.0, feed, feed, workspace, liquid, vapor);
+        kernel.evaluate(500.0, 250_000.0, feed, PengRobinsonKernel.Root.LIQUID, workspace, liquid);
+        kernel.evaluate(500.0, 250_000.0, feed, PengRobinsonKernel.Root.VAPOR, workspace, vapor);
 
         PengRobinson78 reference = PengRobinson78.withoutBinaryInteractions(java.util.stream.IntStream
                 .range(0, propertyPackage.componentBasis().componentCount())
@@ -28,8 +28,8 @@ class V3PengRobinsonKernelTest {
                 .map(component -> new ThermoComponent(component.id(), component.criticalTemperatureKelvin(),
                         component.criticalPressurePascal(), component.acentricFactor(), component.molecularWeightKgPerMol()))
                 .toList());
-        PhaseProperties expectedLiquid = reference.evaluate(500.0, 250_000.0, feed, PhaseRoot.LIQUID);
-        PhaseProperties expectedVapor = reference.evaluate(500.0, 250_000.0, feed, PhaseRoot.VAPOR);
+        PhaseProperties expectedLiquid = reference.evaluate(500.0, 250_000.0, feed, PengRobinsonKernel.Root.LIQUID);
+        PhaseProperties expectedVapor = reference.evaluate(500.0, 250_000.0, feed, PengRobinsonKernel.Root.VAPOR);
 
         assertTrue(kernel.usesRankOneMixing());
         assertEquals(expectedLiquid.compressibilityFactor(), liquid.compressibility(), 1e-11);
@@ -51,7 +51,8 @@ class V3PengRobinsonKernelTest {
         PengRobinsonKernel.Evaluation liquid = kernel.newEvaluation();
         PengRobinsonKernel.Evaluation vapor = kernel.newEvaluation();
 
-        kernel.evaluatePair(450.0, 300_000.0, composition, composition, workspace, liquid, vapor);
+        kernel.evaluate(450.0, 300_000.0, composition, PengRobinsonKernel.Root.LIQUID, workspace, liquid);
+        kernel.evaluate(450.0, 300_000.0, composition, PengRobinsonKernel.Root.VAPOR, workspace, vapor);
         assertTrue(Double.isFinite(liquid.residualEnthalpyJoulesPerMol()));
         assertTrue(Double.isFinite(vapor.residualEnthalpyJoulesPerMol()));
     }
