@@ -15,6 +15,8 @@ All notable changes to CreateChemE are recorded in this file. The format follows
 
 ## [Unreleased]
 
+## [0.7.2] - 2026-10-15
+
 ### Changed
 
 - Code consolidation (owner request 2026-10-15, batch folder: `2026-10-15-code-consolidation`, commits `fd32fcac`..`c083a302`): column wire schema 16 (server preset packet removed), fluid checkpoint format 8 (causal modules removed; format 7 is refused), fluid protocol fluid-9 (`FluidView.hydraulicOwner`/`intervalQuality` removed); single-use types nested in their owners; shared test fixtures (`V3TestInputs`, `ColumnCodecs`, `HoldClassWorldsTest`, `CertifyingRig`). Main 245 → 192 Java files, tests 314 → 235 files and 1260 → 1183 tests (merged tests keep all their assertions; new G1 baseline 111 classes / 534 tests); results bitwise identical (G2 exact 0, 33 junction lines unchanged, column digest unchanged).
