@@ -478,6 +478,9 @@ class SpineNetworkPathTest {
         double before = model.phase(300, 2e6, x, Root.VAPOR).molarEnthalpy();
         double after = shifted.phase(300, 2e6, x, Root.VAPOR).molarEnthalpy();
         assertEquals(before, after, 1e-9 * Math.abs(before) + 1e-9, "the sensible datum does not see the formation enthalpy");
+        // The coefficient path keeps its own layout (LegacyNetworkPathPinTest holds it bit for bit).
+        var legacy = new HydrocarbonModel(catalog, "createcheme:tjl20_methane_nitrogen");
+        assertEquals(LegacyNetworkPathPinTest.REVISION, legacy.revision());
     }
 
     /** The kind a typed hold names in its message (main's hold carries it in its message only). */
