@@ -174,7 +174,7 @@ class V3ConvergenceClosureTest {
         assertFalse(V3ConvergenceEvidence.unavailable(closure).satisfiesGates());
         assertEquals(closure, V3ConvergenceEvidence.unavailable(closure).closureTolerance(), 0.0);
         assertEquals(V3ConvergenceEvidence.MAXIMUM_LOG_FLOW_CHANGE,
-                new V3ConvergenceEvidence(true, 0.0, 0.0, 0.0, 0.0).closureTolerance(), 0.0,
+                new V3ConvergenceEvidence(true, 0.0, 0.0, 0.0, 0.0, V3ConvergenceEvidence.MAXIMUM_LOG_FLOW_CHANGE).closureTolerance(), 0.0,
                 "the five-component form is the frozen default");
     }
 

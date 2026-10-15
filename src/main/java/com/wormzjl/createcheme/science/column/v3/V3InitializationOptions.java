@@ -58,9 +58,6 @@ public record V3InitializationOptions(Mode mode, WetStart wetStart, int maximumI
         }
     }
 
-    /** The learned default: the bundled Transformer's qualified walls and progress rule. */
-    public static final V3InitializationOptions DEFAULT =
-            new V3InitializationOptions(Mode.LNN_FIRST, WetStart.AUTO, 16, 2_000, Correction.PROGRESS);
     /** The classical route. It runs no learned correction, so its progress rule is never consulted. */
     public static final V3InitializationOptions CURRENT =
             new V3InitializationOptions(Mode.CURRENT_ONLY, WetStart.DRY_START, 16, 2_000, Correction.PROGRESS);

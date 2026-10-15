@@ -51,7 +51,7 @@ class V3SimultaneousColumnSolverTest {
         V3AcceptanceAudit audit = new V3AcceptanceAuditor(problem, thermo, 0.0).audit(converged.state(), thermo.newWorkspace());
         assertTrue(audit.accepted());
         V3ConvergenceEvidence convergenceEvidence = converged.evidence().convergenceEvidence();
-        V3ColumnResult result = V3ColumnResult.accepted(
+        V3ColumnResult result = V3TestInputs.stateless(
                 problem, new V3InputDigest("0".repeat(64)), audit, convergenceEvidence);
         V3SolverDiagnostics diagnostics = new V3SolverDiagnostics(
                 0, converged.evidence().iterations(), 1, 1, converged.evidence().maximumScaledResidual(), 0.0,
@@ -132,7 +132,7 @@ class V3SimultaneousColumnSolverTest {
         assertFalse(audit.accepted());
         assertTrue(audit.checks().stream().anyMatch(check -> check.family().equals("CONDENSER_PHASE")
                 && !check.passed() && check.detail().contains("LIQUID")));
-        assertThrows(IllegalArgumentException.class, () -> V3ColumnResult.accepted(
+        assertThrows(IllegalArgumentException.class, () -> V3TestInputs.stateless(
                 problem, new V3InputDigest("1".repeat(64)), audit, convergenceEvidence));
 
         V3SimultaneousColumnSolver.Attempt.Converged warmConverged = assertInstanceOf(
@@ -412,7 +412,7 @@ class V3SimultaneousColumnSolverTest {
     }
 
     // Merged from V3VerificationAcceptanceTest.
-    private static final V3ConvergenceEvidence SMALL_STEP = new V3ConvergenceEvidence(true, 1e-14, 1e-12, 1e-12, 1e-6);
+    private static final V3ConvergenceEvidence SMALL_STEP = new V3ConvergenceEvidence(true, 1e-14, 1e-12, 1e-12, 1e-6, V3ConvergenceEvidence.MAXIMUM_LOG_FLOW_CHANGE);
 
     @Test
     void allowanceRequiresBothStatesWithinFixedCeilingAndADirectCorrection() {
@@ -430,9 +430,9 @@ class V3SimultaneousColumnSolverTest {
     void nearRootMeritCannotOverrideAnyActualCorrectionGateOrNonfiniteValues() {
         for (V3ConvergenceEvidence invalid : new V3ConvergenceEvidence[]{
                 V3ConvergenceEvidence.unavailable(),
-                new V3ConvergenceEvidence(true, Math.nextUp(1e-12), 0, 0, 0),
-                new V3ConvergenceEvidence(true, 0, Math.nextUp(1e-8), 0, 0),
-                new V3ConvergenceEvidence(true, 0, 0, 1e-5, Math.nextUp(1.0))}) {
+                new V3ConvergenceEvidence(true, Math.nextUp(1e-12), 0, 0, 0, V3ConvergenceEvidence.MAXIMUM_LOG_FLOW_CHANGE),
+                new V3ConvergenceEvidence(true, 0, Math.nextUp(1e-8), 0, 0, V3ConvergenceEvidence.MAXIMUM_LOG_FLOW_CHANGE),
+                new V3ConvergenceEvidence(true, 0, 0, 1e-5, Math.nextUp(1.0), V3ConvergenceEvidence.MAXIMUM_LOG_FLOW_CHANGE)}) {
             assertFalse(accept(1e-27, 2e-27, 1e-14, 1e-14, 1e-8, true, invalid));
         }
         for (double nonfinite : new double[]{Double.NaN, Double.POSITIVE_INFINITY}) {

@@ -78,8 +78,8 @@ class V3TruncationFallbackTest {
     private static V3ColumnOutcome.Success success() {
         V3ColumnProblem problem = V3TruncationSupportTest.problem(V3CondenserPhaseBranch.TWO_PHASE, 1.0, 2);
         V3AcceptanceAudit audit = new V3AcceptanceAudit(List.of(V3AcceptanceAudit.Check.pass("TEST", 0, 0, "fixture")));
-        V3ConvergenceEvidence evidence = new V3ConvergenceEvidence(true, 0, 0, 0, 0);
-        V3ColumnResult result = V3ColumnResult.accepted(problem, new V3InputDigest("0".repeat(64)), audit, evidence);
+        V3ConvergenceEvidence evidence = new V3ConvergenceEvidence(true, 0, 0, 0, 0, V3ConvergenceEvidence.MAXIMUM_LOG_FLOW_CHANGE);
+        V3ColumnResult result = V3TestInputs.stateless(problem, new V3InputDigest("0".repeat(64)), audit, evidence);
         List<String> events = new ArrayList<>();
         for (int index = 0; index < 32; index++) events.add("existing event " + index);
         V3SolverDiagnostics diagnostics = new V3SolverDiagnostics(0, 3, 0, 0, 0.0, 0.0,

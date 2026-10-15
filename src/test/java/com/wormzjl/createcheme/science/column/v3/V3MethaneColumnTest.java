@@ -64,7 +64,7 @@ class V3MethaneColumnTest {
         long start = System.nanoTime();
         var outcome = V3ColumnCalculator.calculate(input, () -> {
             if (System.nanoTime() - start > 60_000_000_000L) throw new java.util.concurrent.CancellationException("methane fallback deadline");
-        }, 0, 0, V3InitializationOptions.DEFAULT, V3NeuralModels.bundled());
+        }, 0, 0, V3TestInputs.LEARNED, V3NeuralModels.bundled());
         var success = assertInstanceOf(V3ColumnOutcome.Success.class, outcome, outcome::toString);
         assertTrue(success.result().convergenceEvidence().satisfiesGates());
         // One model ships, so the initialization event names it whichever route won. Which route wins on

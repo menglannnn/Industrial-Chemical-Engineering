@@ -127,7 +127,7 @@ class V3LearnedRecoveryTest {
         var input=plainInput();
         var classical=assertInstanceOf(V3ColumnOutcome.Success.class,V3ColumnCalculator.calculate(input));
         var fallback=assertInstanceOf(V3ColumnOutcome.Success.class,V3ColumnCalculator.calculate(input,()->{},0,0,
-                V3InitializationOptions.DEFAULT,V3NeuralInitializer.UNAVAILABLE));
+                V3TestInputs.LEARNED,V3NeuralInitializer.UNAVAILABLE));
         assertEquals(classical.result().streams(),fallback.result().streams());
     }
 

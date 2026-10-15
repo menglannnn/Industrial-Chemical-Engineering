@@ -71,7 +71,7 @@ class V3NeuralInitializationTest {
     @Test void globalCancellationEscapesWithoutBackup() {
         var cancelled=new CancellationException("caller cancelled");
         assertSame(cancelled,assertThrows(CancellationException.class,()->V3ColumnCalculator.calculate(input(),()->{throw cancelled;},0,0,
-                V3InitializationOptions.DEFAULT,V3NeuralInitializer.UNAVAILABLE)));
+                V3TestInputs.LEARNED,V3NeuralInitializer.UNAVAILABLE)));
     }
 
     @Test void predictedWetAndLegacyDryProduceDifferentConsistentLedgers() {

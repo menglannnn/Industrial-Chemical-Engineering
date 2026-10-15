@@ -67,13 +67,13 @@ class V3ColumnInputTest {
 
         assertFalse(failed.accepted());
         assertThrows(IllegalArgumentException.class,
-                () -> V3ColumnResult.accepted(
+                () -> V3TestInputs.stateless(
                         inputProblem(), new V3InputDigest("0".repeat(64)), failed, V3ConvergenceEvidence.unavailable()));
         V3AcceptanceAudit passed = new V3AcceptanceAudit(List.of(
                 V3AcceptanceAudit.Check.pass("EQUILIBRIUM", 0.0, 1.0e-8, "fixture pass")));
-        V3ConvergenceEvidence oversizedFinalStep = new V3ConvergenceEvidence(true, 1.0e-13, 1.0e-7, 0.0, 0.0);
+        V3ConvergenceEvidence oversizedFinalStep = new V3ConvergenceEvidence(true, 1.0e-13, 1.0e-7, 0.0, 0.0, V3ConvergenceEvidence.MAXIMUM_LOG_FLOW_CHANGE);
         assertThrows(IllegalArgumentException.class,
-                () -> V3ColumnResult.accepted(
+                () -> V3TestInputs.stateless(
                         inputProblem(), new V3InputDigest("0".repeat(64)), passed, oversizedFinalStep));
         V3ColumnOutcome.Failure failure = new V3ColumnOutcome.Failure(
                 V3SolverFailureCode.NONCONVERGENCE, "fixture failure", diagnostics);
