@@ -517,8 +517,8 @@ def validate_ordinary_report(report):
         or report["warmupTicks"] < 2400
         or report["cadenceSeconds"] != 5
         or report["adaptiveCadence"] is not False
-        or report["profile"] not in ("one", "many", "module")
-        or report["islands"] != {"one": 1, "many": 100, "module": 2}.get(report["profile"])
+        or report["profile"] not in ("one", "many")
+        or report["islands"] != {"one": 1, "many": 100}.get(report["profile"])
         or (report["reservoirs"], report["physicalPipes"], report["components"]) != (100, 1000, 22)
         or report["heldIntervals"] != 0
         or report["approximateIntervals"] != 0
@@ -688,7 +688,7 @@ def summarize_ordinary(root, candidate_artifact=None, runtime_root=Path("run/flu
         missing = [
             {"workers": workers, "profile": profile}
             for workers in (2, 1, 0)
-            for profile in ("one", "many", "module")
+            for profile in ("one", "many")
             if (workers, profile) not in covered
         ]
         complete.append(

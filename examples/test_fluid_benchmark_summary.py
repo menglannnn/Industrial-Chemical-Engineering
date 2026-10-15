@@ -21,14 +21,14 @@ def fixture():
     samples = [{"island": island, "acceptance": "FULL", "readyToPublicationMillis": 500.0,
                 "timing": {"accepted": True, "startTick": 2400 + step * 100,
                            "endTick": 2500 + step * 100, "workerNanos": 400_000_000}}
-               for island in (1, 2) for step in range(200)]
-    return {"status": "REPLICATE_PASSED", "gatesPassed": True, "profile": "module", "processId": 1,
+               for island in (1,) for step in range(200)]
+    return {"status": "REPLICATE_PASSED", "gatesPassed": True, "profile": "one", "processId": 1,
             "manifest": {"runId": "r1", "artifactSha256": "artifact", "configuredWorkers": 2,
                          "configSha256": "config", "fixtureClassesSha256": "fixture"},
             "propertyRevision": "science", "workers": 2, "cadenceSeconds": 5, "adaptiveCadence": False,
             "warmupTicks": 2400, "elapsedSeconds": 1120.1, "measuredSeconds": 1000.1,
-            "reservoirs": 100, "physicalPipes": 1000, "components": 22, "islands": 2,
-            "measuredIntervalsPerIsland": {"1": 200, "2": 200}, "heldIntervals": 0,
+            "reservoirs": 100, "physicalPipes": 1000, "components": 22, "islands": 1,
+            "measuredIntervalsPerIsland": {"1": 200}, "heldIntervals": 0,
             "approximateIntervals": 0, "componentBalanceToleranceUnits": 0.01,
             "energyBalanceToleranceUnits": 0.01, "samples": samples,
             "rawEngineMillisecondsPerTick": [0.2] * 20001}
@@ -189,7 +189,7 @@ class BenchmarkEvidenceTest(unittest.TestCase):
         self.assertEqual("INCOMPLETE", result["status"])
         self.assertEqual([], result["excludedReports"])
         self.assertTrue(result["ordinaryGroups"][0]["repetitionsComplete"])
-        self.assertEqual(1200, result["ordinaryGroups"][0]["readyToPublicationMilliseconds"]["count"])
+        self.assertEqual(600, result["ordinaryGroups"][0]["readyToPublicationMilliseconds"]["count"])
 
     def test_raw_gates_override_nominal_pass(self):
         for field, value in (("componentBalanceToleranceUnits", 1.1), ("energyBalanceToleranceUnits", float("nan")),
