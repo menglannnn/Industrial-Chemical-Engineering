@@ -151,7 +151,6 @@ public final class PengRobinsonKernel {
     public int componentCount() { return count; }
     /** True when the package has no nonzero interaction at all, whatever plan is selected. */
     public boolean usesRankOneMixing() { return rankOneMixing; }
-    public Mixing mixing() { return mixing; }
     /** {@code 0.07780 R Tc / Pc} for one component; the co-volume the mixture rule sums. */
     public double coVolume(int component) { return coVolumes[component]; }
     public Workspace newWorkspace() { return new Workspace(count); }

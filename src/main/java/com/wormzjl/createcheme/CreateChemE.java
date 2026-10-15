@@ -206,8 +206,6 @@ public final class CreateChemE {
         return CALCULATION_LOGGING.getAsBoolean();
     }
     public record FluidOptions(int initialCadenceTicks,long wallBudgetNanos,double compressibility,double volume,boolean debugChat,boolean adaptiveCadence,double maximumVelocity,double traceCutoffMoleFraction,com.wormzjl.createcheme.science.fluid.transport.SolidTransportSettings solids,com.wormzjl.createcheme.runtime.fluid.CertificatePolicy certificates) {
-        public FluidOptions(int initialCadenceTicks,long wallBudgetNanos,double compressibility,double volume,boolean debugChat,boolean adaptiveCadence,double maximumVelocity,double traceCutoffMoleFraction){this(initialCadenceTicks,wallBudgetNanos,compressibility,volume,debugChat,adaptiveCadence,maximumVelocity,traceCutoffMoleFraction,com.wormzjl.createcheme.science.fluid.transport.SolidTransportSettings.defaults());}
-        public FluidOptions(int initialCadenceTicks,long wallBudgetNanos,double compressibility,double volume,boolean debugChat,boolean adaptiveCadence,double maximumVelocity,double traceCutoffMoleFraction,com.wormzjl.createcheme.science.fluid.transport.SolidTransportSettings solids){this(initialCadenceTicks,wallBudgetNanos,compressibility,volume,debugChat,adaptiveCadence,maximumVelocity,traceCutoffMoleFraction,solids,com.wormzjl.createcheme.runtime.fluid.CertificatePolicy.defaults());}
         public FluidOptions {java.util.Objects.requireNonNull(solids);java.util.Objects.requireNonNull(certificates);}
     }
     public static FluidOptions fluidOptions() {

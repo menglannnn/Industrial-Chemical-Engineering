@@ -56,20 +56,6 @@ public final class MinecraftFluidRuntime implements AutoCloseable {
         owned();Objects.requireNonNull(dimension);if(closed||dimensions.containsKey(snapshot.id()))throw new IllegalStateException("Closed/duplicate runtime island");
         coordinator.register(snapshot,model);dimensions.put(snapshot.id(),dimension);
     }
-    public void repartition(UUID event,Set<Long> affected,List<IslandCoordinator.Replacement> replacements) {
-        owned();if(affected.isEmpty())throw new IllegalArgumentException("Empty topology event");
-        var dimension=Objects.requireNonNull(dimensions.get(affected.iterator().next()));
-        if(affected.stream().anyMatch(id->!dimension.equals(dimensions.get(id))))throw new IllegalStateException("Cross-dimension pipe connection");
-        coordinator.repartition(event,affected,replacements);
-        affected.forEach(dimensions::remove);for(var replacement:replacements)dimensions.put(replacement.id(),dimension);
-    }
-    public void topology(ResourceKey<Level> dimension,UUID event,Set<Long> affected,List<IslandCoordinator.Replacement> replacements,
-            FluidThermodynamics model,long committed,long online,Map<Long,com.wormzjl.createcheme.science.fluid.network.PassiveNetwork.Reservoir> additions,Set<Long> removals,Runnable metadataCommit) {
-        topology(dimension,event,affected,replacements,model,committed,online,additions,removals,Map.of(),metadataCommit);
-    }
-    public void topology(ResourceKey<Level> dimension,UUID event,Set<Long> affected,List<IslandCoordinator.Replacement> replacements,FluidThermodynamics model,long committed,long online,Map<Long,com.wormzjl.createcheme.science.fluid.network.PassiveNetwork.Reservoir> additions,Set<Long> removals,Map<Long,com.wormzjl.createcheme.science.fluid.network.InlineFilter> releasedFilters,Runnable metadataCommit) {
-        topology(dimension,Set.of(event),affected,replacements,model,committed,online,additions,removals,releasedFilters,metadataCommit);
-    }
     /** A batch of events of one tick in one dimension, applied as one change (see {@link IslandCoordinator#topology(Set,Set,List,FluidThermodynamics,long,long,Map,Set,Map,Runnable)}). */
     public void topology(ResourceKey<Level> dimension,Set<UUID> events,Set<Long> affected,List<IslandCoordinator.Replacement> replacements,FluidThermodynamics model,long committed,long online,Map<Long,com.wormzjl.createcheme.science.fluid.network.PassiveNetwork.Reservoir> additions,Set<Long> removals,Map<Long,com.wormzjl.createcheme.science.fluid.network.InlineFilter> releasedFilters,Runnable metadataCommit) {
         owned();Objects.requireNonNull(dimension);

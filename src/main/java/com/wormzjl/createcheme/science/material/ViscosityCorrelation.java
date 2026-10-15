@@ -13,13 +13,6 @@ public record ViscosityCorrelation(Model model, double minimumTemperatureKelvin,
     public enum Phase { LIQUID, VAPOR }
     public enum Model { ANDRADE, SUTHERLAND, POWER_SUM, LOG_TABLE }
 
-    public ViscosityCorrelation(Model model, double minimumTemperatureKelvin, double maximumTemperatureKelvin,
-            double minimumPressurePascal, double maximumPressurePascal, double referenceTemperatureKelvin,
-            List<Double> coefficients, List<Double> exponents, String revision, String source, boolean estimated) {
-        this(model,minimumTemperatureKelvin,maximumTemperatureKelvin,minimumPressurePascal,maximumPressurePascal,
-                referenceTemperatureKelvin,coefficients,exponents,revision,source,estimated,List.of());
-    }
-
     public ViscosityCorrelation {
         Objects.requireNonNull(model, "model");
         coefficients = List.copyOf(coefficients);

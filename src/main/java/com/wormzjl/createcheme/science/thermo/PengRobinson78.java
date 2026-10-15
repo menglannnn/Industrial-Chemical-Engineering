@@ -54,28 +54,6 @@ public final class PengRobinson78 {
         return new PengRobinson78(components, new double[components.size()][components.size()]);
     }
 
-    public int componentCount() {
-        return components.size();
-    }
-
-    public List<ThermoComponent> components() {
-        return components;
-    }
-
-    /** Wilson correlation used only to initialize phase-equilibrium iterations. */
-    public double[] initialEquilibriumRatios(double temperatureKelvin, double pressurePascal) {
-        requireState(temperatureKelvin, pressurePascal);
-        double[] ratios = new double[components.size()];
-        for (int i = 0; i < ratios.length; i++) {
-            ThermoComponent component = components.get(i);
-            double logRatio = DeterministicMath.log(component.criticalPressurePascal() / pressurePascal)
-                    + 5.373 * (1.0 + component.acentricFactor())
-                    * (1.0 - component.criticalTemperatureKelvin() / temperatureKelvin);
-            ratios[i] = DeterministicMath.exp(Math.clamp(logRatio, -40.0, 40.0));
-        }
-        return ratios;
-    }
-
     public PhaseProperties evaluate(
             double temperatureKelvin,
             double pressurePascal,

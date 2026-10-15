@@ -32,7 +32,6 @@ public record TraceTruncationPolicy(double cutoffMoleFraction) {
     }
 
     public static TraceTruncationPolicy of(double cutoffMoleFraction) {
-        requireCutoff(cutoffMoleFraction);
         return cutoffMoleFraction == 0.0 ? OFF : new TraceTruncationPolicy(cutoffMoleFraction);
     }
 

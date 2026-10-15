@@ -55,44 +55,8 @@ public final class DeterministicMath {
         return StrictMath.cos(x);
     }
 
-    public static double sin(double x) {
-        return StrictMath.sin(x);
-    }
-
-    public static double tan(double x) {
-        return StrictMath.tan(x);
-    }
-
     public static double acos(double x) {
         return StrictMath.acos(x);
-    }
-
-    public static double asin(double x) {
-        return StrictMath.asin(x);
-    }
-
-    public static double atan(double x) {
-        return StrictMath.atan(x);
-    }
-
-    public static double atan2(double y, double x) {
-        return StrictMath.atan2(y, x);
-    }
-
-    public static double sinh(double x) {
-        return StrictMath.sinh(x);
-    }
-
-    public static double cosh(double x) {
-        return StrictMath.cosh(x);
-    }
-
-    public static double tanh(double x) {
-        return StrictMath.tanh(x);
-    }
-
-    public static double hypot(double x, double y) {
-        return StrictMath.hypot(x, y);
     }
 
     /**

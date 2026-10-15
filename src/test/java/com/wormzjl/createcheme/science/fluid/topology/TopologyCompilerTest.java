@@ -9,11 +9,10 @@ import static com.wormzjl.createcheme.science.fluid.topology.TopologyCompiler.Ki
 class TopologyCompilerTest {
     private TopologyCompiler.Node node(long id,TopologyCompiler.Kind kind){return new TopologyCompiler.Node(id,kind,id);}
     private TopologyCompiler.Link edge(long id,long a,long b){return new TopologyCompiler.Link(id,a,b,new PipeResistance.Geometry(1,.05,.000045,0));}
-    @Test void seriesCompressionRetainsEveryGeometryElevationAndDebugDirection() {
+    @Test void seriesCompressionRetainsEveryGeometryAndDirection() {
         var result=TopologyCompiler.compile(List.of(node(1,RESERVOIR),node(2,PIPE),node(3,PIPE),node(4,RESERVOIR)),List.of(edge(10,1,2),edge(11,3,2),edge(12,3,4)));
         assertEquals(1,result.runs().size());var run=result.runs().getFirst();assertEquals(3,run.segments().size());
-        assertEquals(1,run.first());assertEquals(4,run.second());assertFalse(result.views().get(11L).forward());
-        assertEquals(1,run.segments().getFirst().startElevation());assertEquals(4,run.segments().getLast().endElevation());
+        assertEquals(1,run.first());assertEquals(4,run.second());assertFalse(run.segments().get(1).forward());
     }
     @Test void parallelPipesAndBranchesSurviveButDeadLegsDoNotCarryFlow() {
         var result=TopologyCompiler.compile(List.of(node(1,RESERVOIR),node(2,RESERVOIR),node(3,PIPE),node(4,PIPE)),

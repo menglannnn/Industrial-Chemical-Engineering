@@ -8,9 +8,7 @@ import com.wormzjl.createcheme.science.math.DeterministicMath;
  */
 public final class SlurryTransport {
     public static final double MAXIMUM_PACKING_FRACTION = 0.62;
-    public static final double DEFAULT_SUSPENSION_MULTIPLIER = 10;
     public static final double DEFAULT_TRACE_VOLUME_FRACTION = 1e-8;
-    public static final double DEFAULT_IMMOBILE_VISCOSITY = 100;
     private static final double GRAVITY = 9.80665;
 
     private SlurryTransport() {}

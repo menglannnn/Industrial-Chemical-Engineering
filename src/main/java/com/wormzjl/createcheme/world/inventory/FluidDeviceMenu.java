@@ -26,13 +26,12 @@ public final class FluidDeviceMenu extends AbstractContainerMenu {
     private long lastEditTick=Long.MIN_VALUE;
     private FluidNetwork.MenuData clientData;
     private FluidNetwork.StaticData staticData;
-    private boolean lastDelivered;
     private String message="";
     private long messageRevision;
     /** The client's menu: shows the last state delivered for this device, if this session has one, until its first bucket. */
     public FluidDeviceMenu(int id,Inventory inventory,RegistryFriendlyByteBuf buffer) {
         this(id,inventory,buffer.readBlockPos(),buffer.readLong(),buffer.readBoolean());
-        clientData=FluidNetwork.lastDelivered(identity);lastDelivered=clientData!=null;
+        clientData=FluidNetwork.lastDelivered(identity);
     }
     public FluidDeviceMenu(int id,Inventory inventory,BlockPos position,long identity,boolean debug) {
         super(ModMenus.FLUID_DEVICE.get(),id);this.position=position.immutable();this.identity=identity;this.debug=debug;serverPlayer=inventory.player instanceof ServerPlayer p?p:null;
@@ -45,8 +44,6 @@ public final class FluidDeviceMenu extends AbstractContainerMenu {
     /** The server player this menu belongs to, or null on the client. */
     public ServerPlayer serverPlayer(){return serverPlayer;}
     public FluidNetwork.MenuData clientData(){return clientData;}
-    /** Client: true while the menu shows the state delivered to an earlier menu on this device, before its own first bucket. */
-    public boolean showingLastDelivered(){return lastDelivered;}
     public String message(){return message;}
     public long messageRevision(){return messageRevision;}
     /** Client: the static payload of a bucket; the live payload that follows it is joined with it. */
@@ -54,7 +51,7 @@ public final class FluidDeviceMenu extends AbstractContainerMenu {
     /** Client: the live payload of a bucket, with the engine's reply to this player's inputs when it has one. */
     public void acceptLive(FluidNetwork.LiveData live) {
         if(staticData==null)return;
-        var data=FluidNetwork.MenuData.of(staticData,live);clientData=data;lastDelivered=false;FluidNetwork.remember(identity,data);
+        var data=FluidNetwork.MenuData.of(staticData,live);clientData=data;FluidNetwork.remember(identity,data);
         if(!live.message().isEmpty()){message=live.message();messageRevision++;}
     }
     public boolean admitEdit(long tick){if(lastEditTick!=Long.MIN_VALUE&&tick-lastEditTick<5)return false;lastEditTick=tick;return true;}

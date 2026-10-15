@@ -3742,9 +3742,6 @@ public final class PassiveStepSolver {
         int nodeSize(int node){return layout[node]==null?0:layout[node].size();}
         public int[][] columnRows(){if(sparsity==null)buildSparsity();return sparsity;}
         double[] initial(){return initialPoint.clone();}
-        /** The connection flows this pass starts from: the edge columns of {@link #initialPoint},
-         * which is the same array {@link #junctionDonorFirst} is read off. */
-        double[] startFlows(){return Arrays.copyOfRange(initialPoint,edgeOffset,edgeOffset+graph.pipes().size());}
         private double[] buildInitial() {
             double[] x=new double[size];for(int i=0;i<layout.length;i++)if(layout[i]!=null){var encoded=layout[i].encode(seeds.get(i));System.arraycopy(encoded,0,x,offsets[i],encoded.length);}
             int edges=graph.pipes().size();

@@ -682,9 +682,6 @@ public final class ProcessSolveServices {
             Duration solveDeadline,
             Duration gracefulShutdown,
             Duration forcedShutdown,boolean dynamicWorkers) {
-        public Config(int workerCount,int readyCapacity,Duration solveDeadline,Duration gracefulShutdown,Duration forcedShutdown) {
-            this(workerCount,readyCapacity,solveDeadline,gracefulShutdown,forcedShutdown,false);
-        }
         public Config {
             if (workerCount < 1 || readyCapacity < 1) {
                 throw new IllegalArgumentException("Worker and ready capacities must be positive");

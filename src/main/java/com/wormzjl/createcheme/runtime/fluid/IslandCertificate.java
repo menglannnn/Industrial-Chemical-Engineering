@@ -450,7 +450,6 @@ public final class IslandCertificate {
     public long baseTick(){return baseTick;}
     /** The last tick replay may reach; {@link Long#MAX_VALUE} for an identity map that is never rechecked. */
     public long horizonTick(){return horizonTick;}
-    public int intervalTicks(){return summary.durationTicks;}
     Summary summary(){return summary;}
     /** The island's largest pipe flow in kg/s, which the certificate keeps replaying (zero at rest). */
     public double largestFlow(){return summary.largestFlow();}

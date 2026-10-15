@@ -24,7 +24,7 @@ import com.wormzjl.createcheme.science.fluid.transport.MixtureViscosity;
  * <li><b>Split at fixed boundaries</b> ({@link #splitAtFixedBoundaries}, D17): a generator's or a void's state is not
  * something the network can change, so the parts of a network that meet only at one are separate islands; the boundary
  * belongs to each.</li>
- * <li><b>Direction feasibility</b> ({@link #directions}): per connection, the directions its one-way rules allow and its
+ * <li><b>Direction feasibility</b> ({@link #drives}): per connection, the directions its one-way rules allow and its
  * static drive pushes on the island's present states.</li>
  * <li><b>Rest</b> ({@link #atRest}, D19): an island nothing can drive is not solved; its interval is the identity.</li>
  * </ol>
@@ -96,29 +96,11 @@ public final class NetworkReduction {
         return islands;
     }
 
-    /** {@link #directions}: the connection can carry flow from its first end to its second, and the reverse. */
-    public static final int FORWARD=1,REVERSE=2;
-    /**
-     * Step 5, direction feasibility: for every connection of an island, the directions in which its own static drive
-     * pushes flow on the island's present states and its one-way rules allow it (decisions D12 and D21: a generator only
-     * supplies, a void only receives; a blocked direction carries nothing; {@link PassiveStepSolver#boundaryAllowed}, the
-     * rule the solver already enforces in every pass; owner decision D21 names it here and extends it only where a
-     * remaining hold class shows a generator receiving or a void supplying). A direction
-     * is driven when the end pressures less the column between the ends, in the density of the fluid the donor end would
-     * send, is strictly positive that way: the static test the solver's start closures read
-     * ({@code PassiveStepSolver.closeDeadHeads}), with no band, read through the solver's own end pressure (a tank's bottom
-     * port with its level head, decision D9) and end density (the phase a port draws first, decision D11).
-     */
-    public static int[] directions(PassiveNetwork graph,FluidThermodynamics model) {
-        var drive=drives(graph,model);int[] driven=new int[drive.length];
-        for(int i=0;i<driven.length;i++){if(drive[i][0]>0)driven[i]|=FORWARD;if(drive[i][1]>0)driven[i]|=REVERSE;}
-        return driven;
-    }
     /**
      * The static drive of every connection, in Pa, as {forward, reverse}: the end pressures (a tank's bottom port with its
      * level head) less the column between the ends in the density of the fluid the donor end would send, positive when it
-     * pushes that way; {@link Double#NEGATIVE_INFINITY} for a direction the one-way rules forbid. {@link #directions} reads
-     * its signs, the rest step ({@link #atRest}) its size against {@link #REST_RESOLUTION}.
+     * pushes that way; {@link Double#NEGATIVE_INFINITY} for a direction the one-way rules forbid. The rest step
+     * ({@link #atRest}) reads its size against {@link #REST_RESOLUTION}.
      */
     static double[][] drives(PassiveNetwork graph,FluidThermodynamics model) {
         var drive=new double[graph.pipes().size()][2];

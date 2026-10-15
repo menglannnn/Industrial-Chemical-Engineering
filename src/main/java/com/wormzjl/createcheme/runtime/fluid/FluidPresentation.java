@@ -20,7 +20,7 @@ import java.util.function.Supplier;
  * and recorded here without a reply. The reply is composed at the first bucket of the menu after the online tick
  * the input arrived in: {@value #REFUSED}{@code <reason>} for a refusal, {@value #APPLIED} once its event has been
  * applied, otherwise {@value #QUEUED}{@code N}, followed by {@value #APPLIED} at the first bucket after the event
- * applies. Until the reply the menu shows {@value #WAITING}.
+ * applies.
  *
  * <p>Cost. The per-tick check is one comparison with the next due bucket tick. A flush visits only its own
  * bucket's dirty devices and menus, and the next due tick is found over a 100-bit mask of non-empty buckets. A
@@ -31,7 +31,7 @@ import java.util.function.Supplier;
  */
 public final class FluidPresentation<C> {
     public static final int BUCKET_TICKS=100;
-    public static final String QUEUED="Queued for simulation event at tick ",APPLIED="Applied",REFUSED="Not applied: ",WAITING="Waiting for the engine";
+    public static final String QUEUED="Queued for simulation event at tick ",APPLIED="Applied",REFUSED="Not applied: ";
     /** Bounds on per-menu memory: queued inputs awaiting a reply, and the diagnostic delivery log. */
     private static final int MAXIMUM_INPUTS=64,MAXIMUM_LOG=256,MAXIMUM_REPLY=1024;
 

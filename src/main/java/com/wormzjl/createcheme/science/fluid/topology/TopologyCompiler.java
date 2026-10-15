@@ -15,15 +15,14 @@ public final class TopologyCompiler {
         public Link{Objects.requireNonNull(geometry);if(first==second)throw new IllegalArgumentException("Self-connected physical link");}
         long other(long id){if(first==id)return second;if(second==id)return first;throw new IllegalArgumentException("Not an endpoint");}
     }
-    public record Segment(long linkId,boolean forward,PipeResistance.Geometry geometry,double startElevation,double endElevation) {}
+    public record Segment(long linkId,boolean forward,PipeResistance.Geometry geometry) {}
     public record Run(long first,long second,List<Segment> segments) {
         public Run{segments=List.copyOf(segments);if(segments.isEmpty())throw new IllegalArgumentException("Empty pipe run");}
     }
-    public record PipeView(int runIndex,int segmentIndex,boolean forward) {}
-    public record Compiled(List<Node> retainedNodes,List<Run> runs,Map<Long,PipeView> views,Set<Long> deadEndLinks,
+    public record Compiled(List<Node> retainedNodes,List<Run> runs,Set<Long> deadEndLinks,
                            Set<Long> unanchoredLinks,Set<Long> invalidPumpCycles,List<Set<Long>> islands) {
         public Compiled {
-            retainedNodes=List.copyOf(retainedNodes);runs=List.copyOf(runs);views=Map.copyOf(views);deadEndLinks=Set.copyOf(deadEndLinks);
+            retainedNodes=List.copyOf(retainedNodes);runs=List.copyOf(runs);deadEndLinks=Set.copyOf(deadEndLinks);
             unanchoredLinks=Set.copyOf(unanchoredLinks);invalidPumpCycles=Set.copyOf(invalidPumpCycles);islands=islands.stream().map(Set::copyOf).toList();
         }
     }
@@ -42,16 +41,15 @@ public final class TopologyCompiler {
         var dead=NetworkReduction.pruneDeadEnds(adjacent,other,id->destination(nodes.get(id).kind),active);
         var retained=new TreeMap<Long,Node>();
         for(var node:nodes.values())if(node.kind!=Kind.PIPE||adjacent.get(node.id).stream().filter(active::contains).count()!=2)retained.put(node.id,node);
-        var visited=new HashSet<Long>();var runs=new ArrayList<Run>();var views=new HashMap<Long,PipeView>();
+        var visited=new HashSet<Long>();var runs=new ArrayList<Run>();
         for(var start:retained.values())for(long firstLink:adjacent.get(start.id)) {
             if(!active.contains(firstLink)||visited.contains(firstLink))continue;
             long current=start.id,edgeId=firstLink;var segments=new ArrayList<Segment>();
             while(true) {
                 var edge=links.get(edgeId);long next=edge.other(current);visited.add(edgeId);
-                segments.add(new Segment(edge.id,edge.first==current,edge.geometry,nodes.get(current).elevation,nodes.get(next).elevation));
+                segments.add(new Segment(edge.id,edge.first==current,edge.geometry));
                 if(retained.containsKey(next)) {
-                    int run=runs.size();runs.add(new Run(start.id,next,segments));
-                    for(int i=0;i<segments.size();i++){var segment=segments.get(i);views.put(segment.linkId,new PipeView(run,i,segment.forward));}
+                    runs.add(new Run(start.id,next,segments));
                     break;
                 }
                 long previous=edgeId;current=next;
@@ -60,7 +58,7 @@ public final class TopologyCompiler {
         }
         var unanchored=new TreeSet<>(active);unanchored.removeAll(visited);
         var islands=NetworkReduction.splitAtFixedBoundaries(retained.keySet(),adjacent,other,id->fixed(nodes.get(id).kind),visited);
-        return new Compiled(new ArrayList<>(retained.values()),runs,views,dead,unanchored,invalidPumps(nodes,links,adjacent),islands);
+        return new Compiled(new ArrayList<>(retained.values()),runs,dead,unanchored,invalidPumps(nodes,links,adjacent),islands);
     }
     /** A boundary whose state nothing in the network changes: a generator or a void (a tank's state is its inventory). */
     public static boolean fixed(Kind kind){return kind==Kind.GENERATOR||kind==Kind.VOID;}

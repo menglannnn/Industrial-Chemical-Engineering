@@ -42,7 +42,6 @@ public final class MaterialRuntime {
         return p!=null && p.scientificRevision().equals(scientificRevision);
     }
     public static MaterialName name(String packageId,String componentId) {
-        if(componentId.equals("h2o"))return current().name("Water");
         var p=current().packages().get(packageId);
         return current().name(p==null?componentId:p.canonicalId(componentId));
     }

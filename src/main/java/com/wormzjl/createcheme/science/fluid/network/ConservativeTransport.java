@@ -88,19 +88,16 @@ public final class ConservativeTransport {
     }
     public record Projection(List<PassiveNetwork.Inventory> inventories,List<FluidThermodynamics.State> states,
                              List<BoundaryTransfer> boundaries,double[] externalMoles,double externalEnergy,double pumpWork,Map<Long,InlineFilter> filters,HeldJunctions held) {
-        public Projection(List<PassiveNetwork.Inventory> inventories,List<FluidThermodynamics.State> states,List<BoundaryTransfer> boundaries,double[] externalMoles,double externalEnergy,double pumpWork){this(inventories,states,boundaries,externalMoles,externalEnergy,pumpWork,Map.of(),HeldJunctions.none(externalMoles.length));}
         public Projection{filters=Map.copyOf(filters);inventories=List.copyOf(inventories);states=List.copyOf(states);boundaries=List.copyOf(boundaries);externalMoles=externalMoles.clone();Objects.requireNonNull(held);}
         @Override public double[] externalMoles(){return externalMoles.clone();}
     }
     /** One-shot: a caller with no retained island workspace builds fresh linear algebra, as before. */
     public static Projection reconstruct(PassiveNetwork graph,List<FluidThermodynamics.State> candidate,double[] flows,double[] heads,
                                          double dt,FluidThermodynamics model,Runnable checkpoint) {
-        return reconstruct(graph,candidate,flows,heads,dt,model,checkpoint,null);
+        return reconstruct(graph,candidate,flows,heads,dt,model,checkpoint,null,false,null,null,null);
     }
-    public static Projection reconstruct(PassiveNetwork graph,List<FluidThermodynamics.State> candidate,double[] flows,double[] heads,
-                                         double dt,FluidThermodynamics model,Runnable checkpoint,Workspace workspace) {
-        return reconstruct(graph,candidate,flows,heads,dt,model,checkpoint,workspace,false,null,null);
-    }
+    /** A vessel that runs dry within the step (decision D54): its stock's mass {@code drain} and the ambient's {@code work}. */
+    public record Emptying(double drain,double work) {}
     /**
      * {@code frozenJunctions} (rate evaluations only): every junction is held at its buffer's composition, as the
      * rate-only rows of {@code PassiveStepSolver.Equations.junctionInflow} hold it, and its accumulation over dt is held
@@ -114,20 +111,13 @@ public final class ConservativeTransport {
      *
      * <p>{@code supports}: per node, the frozen phase support the step solved it with (null for a node, or altogether,
      * when there is none); each vessel is closed to its booked inventory in that equilibrium ({@link InventoryEquilibrium#close}).
-     */
-    public static Projection reconstruct(PassiveNetwork graph,List<FluidThermodynamics.State> candidate,double[] flows,double[] heads,
-                                         double dt,FluidThermodynamics model,Runnable checkpoint,Workspace workspace,boolean frozenJunctions,double[][] draws,
-                                         PhaseSupport[][] supports) {
-        return reconstruct(graph,candidate,flows,heads,dt,model,checkpoint,workspace,frozenJunctions,draws,supports,null);
-    }
-    /**
-     * {@code emptying} (null: none): per node, a vessel that runs dry within the step and stands in {@code graph} as a
+     *
+     * <p>{@code emptying} (null: none): per node, a vessel that runs dry within the step and stands in {@code graph} as a
      * junction holding its stock (decision D54, {@code PassiveStepSolver.emptyingGraph}): {@link Emptying#drain} its
      * stock's mass over dt and {@link Emptying#work} the ambient's work on its collapsing bag, {@code P_ambient V_bag}
      * (already in the junction's energy field). Its booking pins its end mass to zero, its energy's residual at the end of
      * the step leaves to the ambient boundary at the vessel, and it ends holding nothing.
      */
-    public record Emptying(double drain,double work) {}
     public static Projection reconstruct(PassiveNetwork graph,List<FluidThermodynamics.State> candidate,double[] flows,double[] heads,
                                          double dt,FluidThermodynamics model,Runnable checkpoint,Workspace workspace,boolean frozenJunctions,double[][] draws,
                                          PhaseSupport[][] supports,Emptying[] emptying) {

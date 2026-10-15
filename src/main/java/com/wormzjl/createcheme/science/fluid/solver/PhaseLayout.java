@@ -317,11 +317,7 @@ public final class PhaseLayout {
      * is the vessel's {@code V_max} ({@link #wallRow}); {@code workFrom} is the bag volume the step starts from, whose wall work
      * the energy row books ({@code NaN}: none, the state is closed to the energy it holds). */
     public void residual(FluidThermodynamics.State state,double[] targetAmounts,double targetEnergy,double capacity,double workFrom,double[] result,int offset,double[] variables) {
-        residual(state,targetAmounts,targetEnergy,capacity,workFrom,result,offset,variables,null);
-    }
-    public void residual(FluidThermodynamics.State state,double[] targetAmounts,double targetEnergy,double capacity,double workFrom,double[] result,int offset,
-                         double[] variables,FluidThermodynamics.Prepared prepared) {
-        residual(state,targetAmounts,targetEnergy,capacity,workFrom,result,offset,variables,prepared,null);
+        residual(state,targetAmounts,targetEnergy,capacity,workFrom,result,offset,variables,null,null);
     }
     /** {@code branch}: the wall's branches the rows are stated on in a Jacobian sweep ({@link Wall}, decision A423); null, the state's own. */
     public void residual(FluidThermodynamics.State state,double[] targetAmounts,double targetEnergy,double capacity,double workFrom,double[] result,int offset,
@@ -340,12 +336,9 @@ public final class PhaseLayout {
      * <p>The energy balance of a vessel whose wall moves is {@code dU = sum(h_in dm_in) - P_ambient dV_bag}
      * ({@link #bagVolume}): with {@code workFrom} the start's bag volume the row states
      * {@code U + P_ambient (V_bag - workFrom) = target}, which between two taut states is {@code U = target} to the bit.
+     *
+     * <p>{@code branch}: the wall's branches the energy row's bag volume and the wall row are stated on ({@link Wall}); null, the state's own.
      */
-    public int balanceRows(FluidThermodynamics.State state,double[] targetAmounts,double targetEnergy,double capacity,double workFrom,
-                           double[] result,int offset,double[] variables) {
-        return balanceRows(state,targetAmounts,targetEnergy,capacity,workFrom,result,offset,variables,null);
-    }
-    /** {@code branch}: the wall's branches the energy row's bag volume and the wall row are stated on ({@link Wall}); null, the state's own. */
     public int balanceRows(FluidThermodynamics.State state,double[] targetAmounts,double targetEnergy,double capacity,double workFrom,
                            double[] result,int offset,double[] variables,Wall branch) {
         double[] l=state.liquidView(),v=state.vaporView();int row=offset;

@@ -80,12 +80,8 @@ public final class InventoryEquilibrium {
      * model's truncation policy. Closed in full equilibrium instead, a crude tank at rest stood 0.71 Pa (3.2e-6) above
      * the truncated equilibrium the step and its equation gate state, every reconstruction moved it there, the gate refused
      * it at every step size and the polish could not bring it back (review "G2 follow-up", random seeds 400 and 737).
-     */
-    public static FluidThermodynamics.State close(FluidThermodynamics model,FluidThermodynamics.State state,PassiveNetwork.Inventory inventory,Runnable checkpoint) {
-        return close(model,state,inventory,null,Double.NaN,checkpoint);
-    }
-    /**
-     * {@code workFrom}: the bag volume a step started from ({@link PhaseLayout#bagVolume}), when {@code inventory}'s energy
+     *
+     * <p>{@code workFrom}: the bag volume a step started from ({@link PhaseLayout#bagVolume}), when {@code inventory}'s energy
      * is the step's booked energy before the wall's work; the closed state then holds that energy less
      * {@code P_ambient (V_bag - workFrom)} ({@link PhaseLayout#balanceRows}). {@code NaN}: the inventory's energy is the
      * state's.
