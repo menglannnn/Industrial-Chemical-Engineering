@@ -336,7 +336,8 @@ public final class FluidDeviceScreen extends AbstractContainerScreen<FluidDevice
         var data=menu.clientData();
         if(data==null){text(g,tr("waiting"),10,62,MUTED,imageWidth-20);return;}
         // A refused mover's reason ("ERROR: pump inlet not liquid ...") and a hold read in the warning colour.
-        var view=data.view();if(!pipe())text(g,view.status(),10,59,warning(view.status())?WARN:MUTED,imageWidth-20);
+        // A pipe and a tank show their status on the rail (renderStatus).
+        var view=data.view();if(!pipe()&&!tank())text(g,view.status(),10,59,warning(view.status())?WARN:MUTED,imageWidth-20);
         g.vLine(rail()+14,pipe()?60:78,imageHeight-52,LINE);g.hLine(8,imageWidth-8,imageHeight-49,LINE);
         text(g,tr("operating"),12,pipe()?62:77,ACCENT,rail());
         for(var label:labels)if(label.x()>=tableX())text(g,label.text(),label.x(),label.y(),MUTED,label.width());
@@ -387,6 +388,11 @@ public final class FluidDeviceScreen extends AbstractContainerScreen<FluidDevice
         // The compressor's rise over its suction (its own junction, the state this rail shows): the quantity its ratio limits.
         if(data.kind()==TopologyCompiler.Kind.COMPRESSOR&&view.devicePressureChange()!=null&&view.state()!=null&&view.state().pressure()>0){
             railLine(g,"pressure_ratio",number((view.state().pressure()+view.devicePressureChange())/view.state().pressure()),y);y+=RAIL_LINE;}
+        // A tank reads like a pipe below its values: the phase ratio of what it holds, then the full status (its errors).
+        if(tank()){
+            y+=2;if(view.state()!=null)y=renderPhaseRatio(g,hoverX,hoverY,y,view.state().phaseVolumes(),view.state().solids().volume(),"phase_ratio.tank_hint");
+            return renderStatus(g,hoverX,hoverY,y,statusText(view.status()),view.status());
+        }
         return y-(RAIL_LINE-21);
     }
     private static boolean warning(String status){return status.contains("HELD")||status.contains("ERROR");}
@@ -437,23 +443,32 @@ public final class FluidDeviceScreen extends AbstractContainerScreen<FluidDevice
         y+=30;
         railLine(g,"gradient",metricRange(info.connections(),com.wormzjl.createcheme.runtime.fluid.FluidView.PipeConnection::pressureDropPascalPerMetre," Pa/m"),y);
         if(railHover(mx,my,y,y+27))hovered=tr("gradient.hint");
-        y+=32;text(g,tr("phase_ratio"),12,y,MUTED,rail());y+=14;
-        double[] volumes=Arrays.copyOf(info.contents().phaseVolumes(),4);volumes[3]=info.contents().solids().volume();
+        y+=32;y=renderPhaseRatio(g,mx,my,y,info.contents().phaseVolumes(),info.contents().solids().volume(),"phase_ratio.hint");
+        return renderStatus(g,mx,my,y,(info.changedDirection()?tr("reversed_interval")+" ":"")+statusText(view.status()),view.status());
+    }
+    /**
+     * The phase ratio block (pipe and tank rail) from y: a bar of the organic, aqueous, vapor and solid volumes and their
+     * percentages; returns the y below it. A pipe's volumes are what it carried over the last interval, a tank's what it holds.
+     */
+    private int renderPhaseRatio(GuiGraphics g,int mx,int my,int y,double[] phaseVolumes,double solidsVolume,String hint){
+        text(g,tr("phase_ratio"),12,y,MUTED,rail());y+=14;
+        double[] volumes=Arrays.copyOf(phaseVolumes,4);volumes[3]=solidsVolume;
         double total=Arrays.stream(volumes).sum();int at=12;int[] colors={0xffd6a65a,0xff549bd2,0xffb3c0ca,0xffa28565};
         for(int i=0;i<4;i++){int end=i==3?rail()+8:at+(total>0?(int)Math.round((rail()-4)*volumes[i]/total):0);if(total>0)g.fill(at,y,end,y+5,colors[i]);at=end;}
         y+=10;
-        for(int i=0;i<4;i++){int col=i%2,row=i/2;text(g,tr("phase."+i)+" "+(total>0?number(100*volumes[i]/total)+"%":"—"),12+col*rail()/2,y+row*13,TEXT,rail()/2-4);}
-        if(railHover(mx,my,y-24,y+26))hovered=tr("phase_ratio.hint");
-        y+=34;text(g,tr("pipe_status"),12,y,ACCENT,rail());y+=14;
-        String status=pipeStatus(view.status());
-        if(info.changedDirection())status=tr("reversed_interval")+" "+status;
-        // Every line of the status: the rail scrolls when they do not fit (they were cut at the separator before).
-        var lines=font.split(Component.literal(status),rail()-4);
-        for(int i=0;i<lines.size();i++)g.drawString(font,lines.get(i),12,y+i*10,view.status().contains("HELD")||view.status().contains("ERROR")?WARN:MUTED,false);
-        if(railHover(mx,my,y-14,y+lines.size()*10))hovered=view.status();
+        for(int i=0;i<4;i++){int col=i%2,row=i/2;text(g,tr("phase_short."+i)+" "+(total>0?number(100*volumes[i]/total)+"%":"—"),12+col*rail()/2,y+row*13,TEXT,rail()/2-4);}
+        if(railHover(mx,my,y-24,y+26))hovered=tr(hint);
+        return y+34;
+    }
+    /** The "Status / errors" block from y: every line of the shown text (the rail scrolls); hover reads the raw engine status. */
+    private int renderStatus(GuiGraphics g,int mx,int my,int y,String shown,String status){
+        text(g,tr("pipe_status"),12,y,ACCENT,rail());y+=14;
+        var lines=font.split(Component.literal(shown),rail()-4);
+        for(int i=0;i<lines.size();i++)g.drawString(font,lines.get(i),12,y+i*10,warning(status)?WARN:MUTED,false);
+        if(railHover(mx,my,y-14,y+lines.size()*10))hovered=status;
         return y+Math.max(1,lines.size())*10-1;
     }
-    private String pipeStatus(String status){
+    private String statusText(String status){
         if(status.contains("HELD")||status.contains("ERROR")||status.contains("WAITING")||status.contains("closed")||status.contains("UNBOUND"))return status;
         if(status.startsWith("STEADY: no flow"))return tr("no_flow");
         if(status.startsWith("STEADY:"))return tr(status.contains("VELOCITY_LIMIT")?"velocity_limited":"flowing");
@@ -500,13 +515,15 @@ public final class FluidDeviceScreen extends AbstractContainerScreen<FluidDevice
         var data=menu.clientData();boolean rates=transport();double[] values=amounts()[phase];
         double[] weights=data.molecularWeights().stream().mapToDouble(Double::doubleValue).toArray();
         double total=0;for(int i=0;i<values.length;i++)total+=values[i]*(mass?weights[i]:1);
-        ProcessUi.tableRow(g,font,new String[]{tr("component"),tr(mass?"mass_percent":"mole_percent"),tr(rates?(mass?"kg_h":"kmol_h"):(mass?"kg":"kmol"))},x,tableTop()-16,w,true);
+        // The percentage follows the basis toggle; the amount (or rate) shows on both bases, kmol and kg, side by side.
+        ProcessUi.tableRow(g,font,new String[]{tr("component"),tr(mass?"mass_percent":"mole_percent"),tr(rates?"kmol_h":"kmol"),tr(rates?"kg_h":"kg")},x,tableTop()-16,w,true);
         var ids=present();configureScroll(ids.size());
+        double perInterval=!rates?1:data.view().intervalSeconds()>0?3600/data.view().intervalSeconds():Double.NaN;
         for(int i=scroll.value();i<Math.min(ids.size(),scroll.value()+visibleRows());i++){
             int id=ids.get(i),y=tableTop()+(i-scroll.value())*18;double amount=values[id]*(mass?weights[id]:1);
-            double quantity=mass?amount:amount/1000;
-            if(rates)quantity=data.view().intervalSeconds()>0?quantity*3600/data.view().intervalSeconds():Double.NaN;
-            ProcessUi.tableRow(g,font,new String[]{material(id),number(100*amount/total),Double.isFinite(quantity)?number(quantity):"—"},x,y,w,false);
+            // values are mol and the molecular weights kg/mol (FluidThermodynamics), so mol x weight is already kg.
+            double kmol=values[id]/1000*perInterval,kg=values[id]*weights[id]*perInterval;
+            ProcessUi.tableRow(g,font,new String[]{material(id),number(100*amount/total),Double.isFinite(kmol)?number(kmol):"—",Double.isFinite(kg)?number(kg):"—"},x,y,w,false);
             if(mx>=x&&mx<x+w/2&&my>=y-2&&my<y+16)hovered=material(id)+"\n"+data.components().get(id);
         }
         if(ids.isEmpty())text(g,tr("absent"),x,tableTop()+8,MUTED,w);

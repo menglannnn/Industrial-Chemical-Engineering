@@ -341,7 +341,9 @@ public final class ColumnCalculatorV3Screen extends AbstractContainerScreen<Colu
         }
         configure(listScroll,imageWidth-18,CONTENT+51,bodyBottom()-CONTENT-63,count,ids.size(),false);
     }
-    private int amountX(){return Math.max(120,imageWidth-310);}
+    // A wide panel moves the amount columns left by one column so the feed rate shows on both bases (bothRates).
+    private boolean bothRates(){return imageWidth>=660;}
+    private int amountX(){return Math.max(120,imageWidth-(bothRates()?406:310));}
     private V3ColumnInspection inspection(){return invalidated||conflict||state==null?null:state.displayResult().flatMap(V3ColumnDisplayResult::inspection).orElse(null);}
     private String freshness(){return inspection()!=null?tr("accepted"):invalidated?tr("draft_cleared"):tr("no_result");}
     private String status(){
@@ -504,10 +506,13 @@ public final class ColumnCalculatorV3Screen extends AbstractContainerScreen<Colu
     }
     private void composition(GuiGraphics g){
         if(draft==null)return;
-        int amount=amountX(),norm=amount+74,flow=amount+156;
+        int amount=amountX(),norm=amount+74,flow=amount+156,other=flow+96;
+        // The feed rate on the toggled basis, then (when the panel has room) on the other one: kmol/h and kg/h together.
+        boolean both=bothRates();
         text(g,tr("component"),10,CONTENT+34,TEXT,amount-18);text(g,tr("relative_amount"),amount,CONTENT+34,TEXT,68);
         text(g,tr(draft.composition().mass()?"mass_percent":"mole_percent"),norm,CONTENT+34,TEXT,76);
         text(g,tr(massRate?"mass_rate":"molar_rate"),flow,CONTENT+34,TEXT,95);
+        if(both)text(g,tr(massRate?"molar_rate":"mass_rate"),other,CONTENT+34,TEXT,95);
         double[] fractions=null;double total=Double.NaN;
         try{fractions=draft.composition().displayFractions();total=Arrays.stream(draft.assembleOperating().feedComponentMolarFlowsMolPerSecond()).sum();}catch(IllegalArgumentException ignored){}
         var ids=draft.composition().rows();int count=Math.max(1,(bodyBottom()-CONTENT-66)/25);
@@ -516,6 +521,7 @@ public final class ColumnCalculatorV3Screen extends AbstractContainerScreen<Colu
             text(g,material(draft.composition().source().componentBasis().componentId(id)),12,y+5,MUTED,amount-20);
             text(g,fractions==null?"—":percent(fractions[id]*100),norm,y+5,TEXT,74);
             text(g,fractions==null||!Double.isFinite(total)?"—":percent(draft.composition().componentFlow(id,total,massRate)),flow,y+5,TEXT,90);
+            if(both)text(g,fractions==null||!Double.isFinite(total)?"—":percent(draft.composition().componentFlow(id,total,!massRate)),other,y+5,TEXT,80);
         }
         if(ids.isEmpty())text(g,tr("empty_mixture"),10,CONTENT+58,MUTED,imageWidth-35);
     }
@@ -573,10 +579,12 @@ public final class ColumnCalculatorV3Screen extends AbstractContainerScreen<Colu
         if(inspection()==null){text(g,tr("solve_products"),10,CONTENT+27,MUTED,imageWidth-25);return;}
         var products=state.displayResult().orElseThrow().streams();if(products.isEmpty())return;
         var stream=products.get(Math.clamp(selectedStream,0,products.size()-1));
-        text(g,tr("product_tp",fmt(massRate?stream.massFlowKgPerSecond()*3600:stream.molarFlowMolPerSecond()*3.6),massRate?"kg/h":"kmol/h",fmt(temperature(stream.temperatureKelvin())),unit(),fmt(stream.pressurePascal()/1000)),10,CONTENT+26,MUTED,imageWidth-30);
+        // Both rates side by side, kmol/h and kg/h, for the stream and for each component.
+        text(g,tr("product_tp",fmt(stream.molarFlowMolPerSecond()*3.6)+" kmol/h  ·  "+fmt(stream.massFlowKgPerSecond()*3600),"kg/h",fmt(temperature(stream.temperatureKelvin())),unit(),fmt(stream.pressurePascal()/1000)),10,CONTENT+26,MUTED,imageWidth-30);
         List<String[]> data=new ArrayList<>();
-        for(var c:stream.moleFractions())data.add(new String[]{material(c.componentId()),percent(c.moleFraction()*100),percent(c.massFraction()*100),percent(massRate?stream.massFlowKgPerSecond()*c.massFraction()*3600:stream.molarFlowMolPerSecond()*c.moleFraction()*3.6)});
-        table(g,new String[]{tr("component"),tr("mole_percent"),tr("mass_percent"),tr(massRate?"mass_rate":"molar_rate")},data,CONTENT+46);
+        for(var c:stream.moleFractions())data.add(new String[]{material(c.componentId()),percent(c.moleFraction()*100),percent(c.massFraction()*100),
+            percent(stream.molarFlowMolPerSecond()*c.moleFraction()*3.6),percent(stream.massFlowKgPerSecond()*c.massFraction()*3600)});
+        table(g,new String[]{tr("component"),tr("mole_percent"),tr("mass_percent"),tr("molar_rate"),tr("mass_rate")},data,CONTENT+46);
     }
     private void table(GuiGraphics g,String[] headers,List<String[]> data,int y){
         int visible=Math.max(1,(bodyBottom()-y-32)/17);
