@@ -156,7 +156,7 @@ public final class IslandCoordinator {
         // The thermo-domain violation the last held attempt failed on, awaiting its fresh-solver retry, and whether that
         // retry reproduced it (the island then waits for an input change); cleared by an accepted interval or an input
         // change. With the last warned violation's key and online tick, for the rate limit on the log. Ephemeral.
-        private com.wormzjl.createcheme.science.fluid.thermo.ThermoDomainViolation domainFailure;
+        private com.wormzjl.createcheme.science.fluid.thermo.ThermoHold domainFailure;
         private boolean domainParked;
         // The last attempt that closed was held (not accepted): a topology event fenced on the island is accepted at its
         // committed tick instead of waiting for a solve (acceptAtFence). Cleared by an accepted interval. Ephemeral.
@@ -238,7 +238,7 @@ public final class IslandCoordinator {
      * label, {@code parked} whether the island now waits for an input change.
      */
     @FunctionalInterface public interface DomainHolds {
-        void held(long island,com.wormzjl.createcheme.science.fluid.thermo.ThermoDomainViolation violation,String where,boolean parked);
+        void held(long island,com.wormzjl.createcheme.science.fluid.thermo.ThermoHold violation,String where,boolean parked);
         DomainHolds NONE=(island,violation,where,parked)->{};
     }
     /** Repeats of the same island and violation are logged at most once per this many online ticks (five minutes). */
@@ -586,10 +586,11 @@ public final class IslandCoordinator {
         FluidRuntimeDiagnostics.count(budgetHold(outcome)?FluidRuntimeDiagnostics.budgetHolds:FluidRuntimeDiagnostics.numericalHolds);
         var domain=outcome==null?null:outcome.domain().orElse(null);
         if(domain!=null) {
-            // A thermo-domain failure is retried once, on a fresh solver like every hold (and on the halved slice the ladder
-            // below gives it). When that retry fails on the same boundary at the same node, the failure is the model's
-            // and deterministic - the committed state, or where the island's physics takes it, lies outside the property
-            // package's data - so no retry on the ladder can pass it: the island waits, dispatching nothing, until its
+            // A thermo-domain failure (a domain violation, or a typed phase hold: owner decision D21 option C) is retried
+            // once, on a fresh solver like every hold (and on the halved slice the ladder below gives it). When that retry
+            // fails on the same boundary or phase set at the same node, the failure is the model's and deterministic - the
+            // committed state, or where the island's physics takes it, lies outside the property package's data or holds
+            // phases the network does not carry - so no retry on the ladder can pass it: the island waits, dispatching nothing, until its
             // inputs change (a fence, a released or resolved one, a property resume; a topology or control edit makes a
             // new island). Every other failure keeps the ladder.
             boolean reproduced=domain.sameAs(island.domainFailure);
@@ -621,16 +622,17 @@ public final class IslandCoordinator {
     /** Something the island solves against changed: a held island is retried at once, from its first retry again - a
      * thermo-domain hold included, which starts a new episode. */
     private static void inputsChanged(Island island){island.clock.inputsChanged();island.holdStreak=0;island.domainFailure=null;island.domainParked=false;}
-    /** The dedicated status line of a thermo-domain hold; see {@link com.wormzjl.createcheme.science.fluid.thermo.ThermoDomainViolation}. */
-    private String domainStatus(com.wormzjl.createcheme.science.fluid.thermo.ThermoDomainViolation violation,boolean parked) {
-        return ProcessSolveServices.THERMO_DOMAIN+violation.sentence(where(violation))+" (valid "+violation.range()+", package "+violation.packageId()+")"
+    /** The dedicated status line of a thermo-domain hold: a domain violation or a phase hold, see
+     * {@link com.wormzjl.createcheme.science.fluid.thermo.ThermoHold}. */
+    private String domainStatus(com.wormzjl.createcheme.science.fluid.thermo.ThermoHold violation,boolean parked) {
+        return ProcessSolveServices.THERMO_DOMAIN+violation.status(where(violation))
                 +(parked?"; the retry failed the same way, so the island waits for a change to its network":"");
     }
-    private String where(com.wormzjl.createcheme.science.fluid.thermo.ThermoDomainViolation violation) {
-        return violation.node()==com.wormzjl.createcheme.science.fluid.thermo.ThermoDomainViolation.NO_NODE?"":nodeNames.apply(violation.node());
+    private String where(com.wormzjl.createcheme.science.fluid.thermo.ThermoHold violation) {
+        return violation.node()==com.wormzjl.createcheme.science.fluid.thermo.ThermoHold.NO_NODE?"":nodeNames.apply(violation.node());
     }
     /** One log line per island per hold: a new violation, or the same one again after the rate limit's online ticks. */
-    private void warnDomain(Island island,com.wormzjl.createcheme.science.fluid.thermo.ThermoDomainViolation violation,boolean parked) {
+    private void warnDomain(Island island,com.wormzjl.createcheme.science.fluid.thermo.ThermoHold violation,boolean parked) {
         String key=violation.reasonKey()+"@"+violation.node();long now=island.clock.onlineTick();
         if(key.equals(island.warnedDomainKey)&&now-island.warnedDomainAt<DOMAIN_WARNING_TICKS)return;
         island.warnedDomainKey=key;island.warnedDomainAt=now;

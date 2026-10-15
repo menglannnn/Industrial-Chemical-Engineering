@@ -1140,7 +1140,7 @@ public final class PassiveStepSolver {
             }
             for(int i=0;i<count;i++)if(available[i]&&n[i]==0)n[i]=total*1e-12;
             try{seeds.add(changed?model.flashTP(weightedTemperature/seedMass,state.pressure(),n,checkpoint).withSolidState(state.solids(),state.solidMoments()):state);}
-            catch(com.wormzjl.createcheme.science.fluid.thermo.ThermoDomainViolation violation){throw violation.at(graph.reservoirs().get(nodeIndex).id());}
+            catch(com.wormzjl.createcheme.science.fluid.thermo.ThermoHold hold){throw hold.at(graph.reservoirs().get(nodeIndex).id());}
         }
         return arrivingPhases(graph,seeds,modes,boundaryClosed,dt,checkpoint);
     }
@@ -1149,7 +1149,7 @@ public final class PassiveStepSolver {
     private FluidThermodynamics.State waterTraceSeed(FluidThermodynamics.State state,Runnable checkpoint) {
         var n=PhaseLayout.totalAmounts(state);n[n.length-1]=Arrays.stream(n).sum()*1e-12;
         try{return model.flashTP(state.temperature(),state.pressure(),n,checkpoint).withSolidState(state.solids(),state.solidMoments());}
-        catch(com.wormzjl.createcheme.science.fluid.thermo.ThermoDomainViolation outside){return state;}
+        catch(com.wormzjl.createcheme.science.fluid.thermo.ThermoHold outside){return state;}
     }
     /**
      * Group L (A300-A303): {@code seeds} with every junction laid out for the phases the step's inflow leaves in it. A
@@ -1198,7 +1198,7 @@ public final class PassiveStepSolver {
                     if(!arrives||!(mass>0))continue;
                     FluidThermodynamics.State delivered;
                     try{delivered=model.folded(model.flashTP(weighted/mass,PhaseLayout.AMBIENT_PRESSURE,n,checkpoint),false);}
-                    catch(com.wormzjl.createcheme.science.fluid.thermo.ThermoDomainViolation outside){continue;}
+                    catch(com.wormzjl.createcheme.science.fluid.thermo.ThermoHold outside){continue;}
                     // What arrives may itself be nothing at the bag's resolution: the vessel then stays dry.
                     if(PhaseLayout.bagVolume(delivered,node.inventory().volume())<=HOLDS_NOTHING*node.inventory().volume())continue;
                     if(result==null)result=new ArrayList<>(seeds);
@@ -1208,7 +1208,7 @@ public final class PassiveStepSolver {
                 for(int c=0;c<n.length;c++)n[c]*=seed.mass()/mass;
                 FluidThermodynamics.State mixture;
                 try{mixture=model.folded(model.flashTP(weighted/mass,seed.pressure(),n,checkpoint),true);}
-                catch(com.wormzjl.createcheme.science.fluid.thermo.ThermoDomainViolation outside){continue;}
+                catch(com.wormzjl.createcheme.science.fluid.thermo.ThermoHold outside){continue;}
                 if((phaseCode(mixture)&~phaseCode(seed)&15)==0)continue;
                 if(result==null)result=new ArrayList<>(seeds);
                 result.set(j,mixture.withSolidState(seed.solids(),seed.solidMoments()));changed=true;
@@ -2068,7 +2068,7 @@ public final class PassiveStepSolver {
             FluidThermodynamics.State checked;
             try{checked=model.phaseCheck(state,node.junction(),foldedPhases==null?0:foldedPhases[i],prepared==null?null:prepared[i],
                     node.junction()?null:start->vesselSplit(node,state,start,checkpoint),checkpoint);}
-            catch(com.wormzjl.createcheme.science.fluid.thermo.ThermoDomainViolation violation){throw violation.at(node.id());}
+            catch(com.wormzjl.createcheme.science.fluid.thermo.ThermoHold hold){throw hold.at(node.id());}
             if(checked==state)continue;
             if(foldedPhases!=null)foldedPhases[i]|=phaseCode(state)&~phaseCode(checked)&15;
             var corrected=new ArrayList<>(states);corrected.set(i,checked);return corrected;
@@ -2096,7 +2096,7 @@ public final class PassiveStepSolver {
             if(graph.reservoirs().get(i).fixed())continue;
             var seed=seeds.get(i);FluidThermodynamics.State folded;
             try{folded=model.folded(seed,graph.reservoirs().get(i).junction());}
-            catch(com.wormzjl.createcheme.science.fluid.thermo.ThermoDomainViolation violation){throw violation.at(graph.reservoirs().get(i).id());}
+            catch(com.wormzjl.createcheme.science.fluid.thermo.ThermoHold hold){throw hold.at(graph.reservoirs().get(i).id());}
             if(folded==seed)continue;
             if(result==null)result=new ArrayList<>(seeds);
             result.set(i,folded);
@@ -2523,7 +2523,7 @@ public final class PassiveStepSolver {
             if(!node.junction()||Double.isNaN(pressures[i]))continue;
             var state=node.state();
             try{seeded.set(i,new PassiveNetwork.Reservoir(node.id(),node.elevation(),model.flashTP(state.temperature(),pressures[i],PhaseLayout.totalAmounts(state),checkpoint),node.kind(),node.inventory()));}
-            catch(com.wormzjl.createcheme.science.fluid.thermo.ThermoDomainViolation outside){/* keeps its guess */}
+            catch(com.wormzjl.createcheme.science.fluid.thermo.ThermoHold outside){/* keeps its guess */}
         }
         return new PassiveNetwork(seeded,graph.pipes(),graph.scheduledTransfers());
     }
@@ -3446,7 +3446,7 @@ public final class PassiveStepSolver {
                 if(!any||!(PhaseLayout.sum(amounts)>0))continue;
                 FluidThermodynamics.State drained;
                 try{drained=model.flashTP(seed.temperature(),seed.pressure(),amounts,checkpoint).withSolidState(seed.solids(),seed.solidMoments());}
-                catch(com.wormzjl.createcheme.science.fluid.thermo.ThermoDomainViolation outside){continue;}
+                catch(com.wormzjl.createcheme.science.fluid.thermo.ThermoHold outside){continue;}
                 if(phaseCode(drained)==phaseCode(seed))continue;
                 if(result==null)result=new ArrayList<>(seeds);
                 result.set(node,drained);
@@ -3783,9 +3783,9 @@ public final class PassiveStepSolver {
                     if(cachedPrepared[i]==null||cachedPrepared[i].temperature()!=temperature)cachedPrepared[i]=model.prepare(temperature);
                 }
                 FluidThermodynamics.State state;
-                // A trial outside the property domain names the node it was refused at; see ThermoDomainViolation.
+                // A trial a typed thermodynamic hold refused names the node it was refused at; see ThermoHold.
                 try{state=layout[i]==null?graph.reservoirs().get(i).state():layout[i].decode(x,offsets[i],cachedPrepared[i]);}
-                catch(com.wormzjl.createcheme.science.fluid.thermo.ThermoDomainViolation violation){throw violation.at(graph.reservoirs().get(i).id());}
+                catch(com.wormzjl.createcheme.science.fluid.thermo.ThermoHold hold){throw hold.at(graph.reservoirs().get(i).id());}
                 var transport=transport(i,state,cachedPrepared[i]);
                 cachedStates[i]=state;cachedTransport[i]=transport;
                 if(layout[i]!=null)System.arraycopy(x,offsets[i],cachedVariables[i],0,layout[i].size());

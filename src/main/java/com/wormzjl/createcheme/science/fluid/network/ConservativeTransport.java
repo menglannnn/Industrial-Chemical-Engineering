@@ -409,7 +409,7 @@ public final class ConservativeTransport {
             try{var restated=dryVessel(reservoir,supports,node)?model.flashTP(candidate.get(node).temperature(),candidate.get(node).pressure(),moles[node],checkpoint)
                     :repartition(model,candidate.get(node),moles[node]);if(reservoir.junction())restated=model.folded(restated,true);
                 states.add(restated.withSolids(new SolidInventory(populations)));}
-            catch(com.wormzjl.createcheme.science.fluid.thermo.ThermoDomainViolation violation){throw violation.at(reservoir.id());}
+            catch(com.wormzjl.createcheme.science.fluid.thermo.ThermoHold hold){throw hold.at(reservoir.id());}
         }
         double[] energy=new double[nodes];for(int node=0;node<nodes;node++)energy[node]=graph.reservoirs().get(node).inventory().internalEnergy();
         double[] external=new double[components];double externalEnergy=0,pumpWork=0;var boundaries=new ArrayList<BoundaryTransfer>();
@@ -532,7 +532,7 @@ public final class ConservativeTransport {
             var booked=new PassiveNetwork.Inventory(capacity,moles[node],energy[node],state.solids());
             try{states.set(node,dryVessel(reservoir,supports,node)?InventoryEquilibrium.solve(model,state,booked,workFrom,checkpoint)
                     :InventoryEquilibrium.close(model,state,booked,supports==null?null:supports[node],workFrom,checkpoint));}
-            catch(com.wormzjl.createcheme.science.fluid.thermo.ThermoDomainViolation violation){throw violation.at(reservoir.id());}
+            catch(com.wormzjl.createcheme.science.fluid.thermo.ThermoHold hold){throw hold.at(reservoir.id());}
             double moved=PhaseLayout.bagVolume(states.get(node),capacity)-workFrom;
             if(moved!=0) {
                 double work=PhaseLayout.AMBIENT_PRESSURE*moved;energy[node]-=work;externalEnergy-=work;

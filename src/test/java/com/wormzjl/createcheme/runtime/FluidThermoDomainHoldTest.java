@@ -77,7 +77,7 @@ class FluidThermoDomainHoldTest {
         assertTrue(waiting(coordinator),"the retry reproduced the violation: "+coordinator.snapshot(1).status());
         assertEquals(2,failures.size(),"one failure and one fresh-solver retry: "+failures);
         for(var failure:failures) {
-            var v=failure.domain().orElseThrow(()->new AssertionError("the failure carries the violation: "+failure.detail()));
+            var v=(ThermoDomainViolation)failure.domain().orElseThrow(()->new AssertionError("the failure carries the violation: "+failure.detail()));
             assertEquals("Nitrogen",v.component());assertEquals(ThermoDomainViolation.Code.THERMO_DOMAIN_TEMPERATURE_ABOVE,v.code());assertEquals(300,v.maximum());
             assertTrue(failure.detail().startsWith(ProcessSolveServices.THERMO_DOMAIN+"Thermo domain: Nitrogen at "),failure.detail());
         }

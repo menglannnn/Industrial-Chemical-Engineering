@@ -417,8 +417,9 @@ public final class ProcessSolveServices {
             }catch(FluidWallDeadline deadline){return new FluidIslandSolveResult(Optional.empty(),WALL_DEADLINE,elapsed[0],fallback.allowance(),fallback.anchor());}
             catch(com.wormzjl.createcheme.science.fluid.solver.SparseNewton.Nonconvergence|IllegalArgumentException|ApproximationAnchor.Rejected failed) {
                 cancellationToken.throwIfCancellationRequested();
-                // A failure the property domain decided carries the violation itself, so the coordinator can hold the island
-                // with the dedicated status and tell a reproduced violation from a numerical one (IslandCoordinator.hold).
+                // A failure a typed thermodynamic hold decided (the property domain, or a phase set the network cannot carry)
+                // carries the hold itself, so the coordinator can hold the island with the dedicated status and tell a
+                // reproduced hold from a numerical failure (IslandCoordinator.hold).
                 var domain=Optional.ofNullable(com.wormzjl.createcheme.science.fluid.solver.SparseNewton.domainViolation(failed));
                 return new FluidIslandSolveResult(Optional.empty(),domain.map(v->THERMO_DOMAIN+v.getMessage()).orElse("HELD: "+failed.getMessage()),elapsed[0],-1,fallback.allowance(),fallback.anchor(),domain);
             }
@@ -435,7 +436,7 @@ public final class ProcessSolveServices {
     private static final class FluidSoftDeadline extends RuntimeException {}
     public record FluidIslandSolveResult(Optional<PassiveIntervalSolver.Result> candidate,String detail,long workerNanos,long workerCpuNanos,
                                         FallbackAllowance proposedAllowance,Optional<ApproximationAnchor> proposedAnchor,
-                                        Optional<com.wormzjl.createcheme.science.fluid.thermo.ThermoDomainViolation> domain) implements ProcessSolveResult {
+                                        Optional<com.wormzjl.createcheme.science.fluid.thermo.ThermoHold> domain) implements ProcessSolveResult {
         public FluidIslandSolveResult(Optional<PassiveIntervalSolver.Result> candidate,String detail,long workerNanos,long workerCpuNanos,FallbackAllowance allowance,Optional<ApproximationAnchor> anchor) {
             this(candidate,detail,workerNanos,workerCpuNanos,allowance,anchor,Optional.empty());
         }

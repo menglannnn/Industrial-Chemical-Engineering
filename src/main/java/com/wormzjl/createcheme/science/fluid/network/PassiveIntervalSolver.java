@@ -201,8 +201,9 @@ public final class PassiveIntervalSolver {
         double previousStateChange=0,previousStateStep=0;
         // Runs already reopened for the attempted step (same t0 and step).
         var reopened=new HashSet<PassiveNetwork.Pipe.Identity>();double reopenElapsed=-1,reopenStep=-1;
-        // Rejections the property domain decided: the last one, how many, and whether the latest rejection was one.
-        com.wormzjl.createcheme.science.fluid.thermo.ThermoDomainViolation lastDomain=null;int domainRejections=0;boolean lastWasDomain=false;
+        // Rejections a typed thermodynamic hold decided (a domain violation or a phase hold): the last one, how many, and
+        // whether the latest rejection was one.
+        com.wormzjl.createcheme.science.fluid.thermo.ThermoHold lastDomain=null;int domainRejections=0;boolean lastWasDomain=false;
         for(int attempt=0;attempt<settings.maximumAttempts&&elapsed<duration&&declared==null;attempt++) {
             checkpoint.run();double step=Math.min(h,duration-elapsed);
             try {
@@ -274,9 +275,9 @@ public final class PassiveIntervalSolver {
             }catch(SparseNewton.Nonconvergence|IllegalArgumentException|StateChangeRejection rejected) {
                 lastRejection=String.valueOf(rejected.getMessage());
                 if(!(rejected instanceof StateChangeRejection))SolverDiagnostics.attempt(attempt,step,false,diagnosticReason(rejected),Double.NaN);
-                // A trial the property domain refused - directly, or a Newton pass whose failing line search it
-                // stopped - is counted under its own key (one per component, property and side, never folded into
-                // "Other"), so a checkpoint, a view and the certificate's transition check all see it.
+                // A trial a typed thermodynamic hold refused - directly, or a Newton pass whose failing line search it
+                // stopped - is counted under its own key (one per component, property and side, or per phase set; never
+                // folded into "Other"), so a checkpoint, a view and the certificate's transition check all see it.
                 var domain=SparseNewton.domainViolation(rejected);
                 if(domain!=null){rejectionReasons.merge(domain.reasonKey(),1,Integer::sum);lastDomain=domain;domainRejections++;}
                 else count(rejectionReasons,String.valueOf(rejected.getMessage()).replaceAll("[-+]?[0-9]+(?:\\.[0-9]+)?(?:[Ee][-+]?[0-9]+)?","#"));
@@ -345,12 +346,12 @@ public final class PassiveIntervalSolver {
         if(reasons.size()<8||reasons.containsKey(reason))reasons.merge(reason,1,Integer::sum);else reasons.merge("Other",1,Integer::sum);
     }
     /**
-     * The domain violation an interval that could not commit failed on, or null: its last rejection was a domain
-     * refusal, or domain refusals were the dominant reason (more than half of the interval's rejections). An interval
-     * that only met the domain on the way, and failed for another reason, is a numerical failure.
+     * The typed hold an interval that could not commit failed on, or null: its last rejection was a typed hold, or typed
+     * holds were the dominant reason (more than half of the interval's rejections). An interval that only met one on
+     * the way, and failed for another reason, is a numerical failure.
      */
-    static com.wormzjl.createcheme.science.fluid.thermo.ThermoDomainViolation domainCause(boolean lastWasDomain,
-            com.wormzjl.createcheme.science.fluid.thermo.ThermoDomainViolation lastDomain,int domainRejections,int rejected) {
+    static com.wormzjl.createcheme.science.fluid.thermo.ThermoHold domainCause(boolean lastWasDomain,
+            com.wormzjl.createcheme.science.fluid.thermo.ThermoHold lastDomain,int domainRejections,int rejected) {
         return lastWasDomain||2*domainRejections>rejected?lastDomain:null;
     }
     /** The diagnostic reason of an attempt that threw ("newton|message" with numbers masked). */

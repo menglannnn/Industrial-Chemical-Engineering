@@ -351,14 +351,19 @@ public final class FluidWorldAuthority implements AutoCloseable {
     }
     /**
      * One WARN per island per thermo-domain hold (the coordinator rate-limits repeats of the same island and violation):
-     * where, which package, component, property, value and range, and what to do about it.
+     * where, which package, component, property, value and range, and what to do about it; for a phase hold (D21 option
+     * C), its reason key and state instead of a range.
      */
-    private void domainHeld(long island,com.wormzjl.createcheme.science.fluid.thermo.ThermoDomainViolation violation,String where,boolean parked) {
+    private void domainHeld(long island,com.wormzjl.createcheme.science.fluid.thermo.ThermoHold hold,String where,boolean parked) {
         String dimension="unknown";
         var members=registry.members(island);if(!members.isEmpty()){var record=topology.active().get(members.getFirst());if(record!=null)dimension=record.device().position().dimension();}
-        CreateChemE.LOGGER.warn("fluid_island={} dimension={} node={} device={} status=THERMO_DOMAIN code={} package={} component={} property={} value={} range={} waits_for_inputs={} detail={} action=Extend the component's validity range in its data file only with data validated for it; see documentation/fluid-followups/THERMO_DOMAIN_ERROR.md and FLUID_PUMP_AND_THERMO_DOMAIN_REVIEW.md",
-                island,dimension,violation.node()==com.wormzjl.createcheme.science.fluid.thermo.ThermoDomainViolation.NO_NODE?"unknown":violation.node(),where.isEmpty()?"unknown":where,
-                violation.code(),violation.packageId(),violation.component(),violation.property().label(),violation.value(),violation.range(),parked,violation.getMessage());
+        Object node=hold.node()==com.wormzjl.createcheme.science.fluid.thermo.ThermoHold.NO_NODE?"unknown":hold.node();String device=where.isEmpty()?"unknown":where;
+        switch(hold) {
+            case com.wormzjl.createcheme.science.fluid.thermo.ThermoDomainViolation violation->CreateChemE.LOGGER.warn("fluid_island={} dimension={} node={} device={} status=THERMO_DOMAIN code={} package={} component={} property={} value={} range={} waits_for_inputs={} detail={} action=Extend the component's validity range in its data file only with data validated for it; see documentation/fluid-followups/THERMO_DOMAIN_ERROR.md and FLUID_PUMP_AND_THERMO_DOMAIN_REVIEW.md",
+                    island,dimension,node,device,violation.code(),violation.packageId(),violation.component(),violation.property().label(),violation.value(),violation.range(),parked,violation.getMessage());
+            case com.wormzjl.createcheme.science.fluid.thermo.FluidThermodynamics.PhaseHold phases->CreateChemE.LOGGER.warn("fluid_island={} dimension={} node={} device={} status=THERMO_DOMAIN code={} package={} temperature={} pressure={} waits_for_inputs={} detail={} action=Change what the island mixes or the conditions it holds: the network carries one hydrocarbon liquid, one vapour, water and the package's crystals",
+                    island,dimension,node,device,phases.reasonKey().substring(com.wormzjl.createcheme.science.fluid.thermo.ThermoHold.REASON_PREFIX.length()),phases.packageId(),phases.temperature(),phases.pressure(),parked,phases.getMessage());
+        }
     }
     /**
      * Why a mover is refused (decision D6), as the solver's inlet check states it on the committed state the next slice

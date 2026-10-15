@@ -9,7 +9,7 @@ import java.util.Objects;
  * envelope, is outside the temperature or pressure range its data declares. See
  * {@code documentation/fluid-followups/THERMO_DOMAIN_ERROR.md} for where it surfaces and how a range is declared.
  *
- * <p>It is an {@link IllegalArgumentException}, so every existing refusal path (a rejected Newton trial, a rejected
+ * <p>It is a {@link ThermoHold}, an {@link IllegalArgumentException}, so every existing refusal path (a rejected Newton trial, a rejected
  * substep, a held interval) still treats it as a state outside the property domain; it is its own type so it is
  * never mistaken for malformed input (a wrong array length, a non-finite number), which stays a plain
  * {@code IllegalArgumentException}, and so a solver failure it caused can say so.
@@ -19,12 +19,12 @@ import java.util.Objects;
  * stable machine-readable code; {@link #node()} is the network node whose state was refused, or {@link #NO_NODE}
  * where the property evaluation does not know it (the solver attaches it with {@link #at}).
  */
-public final class ThermoDomainViolation extends IllegalArgumentException {
+public final class ThermoDomainViolation extends ThermoHold {
     /** The component name of a violation of the package envelope rather than of one component's range. */
     public static final String PACKAGE="package";
     /** The prefix of every rejection-reason key this violation produces. */
-    public static final String REASON_PREFIX="thermo-domain: ";
-    public static final long NO_NODE=Long.MIN_VALUE;
+    public static final String REASON_PREFIX=ThermoHold.REASON_PREFIX;
+    public static final long NO_NODE=ThermoHold.NO_NODE;
     public enum Property {
         TEMPERATURE("temperature","K"),PRESSURE("pressure","Pa");
         private final String label,unit;
@@ -59,17 +59,17 @@ public final class ThermoDomainViolation extends IllegalArgumentException {
         code=Code.of(property,value<minimum);
     }
     /** The same violation at a known network node; a violation that already names a node keeps it. */
-    public ThermoDomainViolation at(long node) {
+    @Override public ThermoDomainViolation at(long node) {
         return this.node!=NO_NODE||node==NO_NODE?this:new ThermoDomainViolation(packageId,component,property,value,minimum,maximum,node);
     }
-    public String packageId(){return packageId;}
+    @Override public String packageId(){return packageId;}
     public String component(){return component;}
     public Property property(){return property;}
     public double value(){return value;}
     public double minimum(){return minimum;}
     public double maximum(){return maximum;}
     public Code code(){return code;}
-    public long node(){return node;}
+    @Override public long node(){return node;}
     /** The bound the value crossed. */
     public double bound(){return code.below()?minimum:maximum;}
     /**
@@ -77,7 +77,7 @@ public final class ThermoDomainViolation extends IllegalArgumentException {
      * same boundary a thousand times counts it under one key instead of a thousand. The value is not part of the key;
      * it is in {@link #getMessage()} and in the island's status line.
      */
-    public String reasonKey() {
+    @Override public String reasonKey() {
         return REASON_PREFIX+component+" "+property.label()+" "+(code.below()?"<":">")+" "+number(bound())+" "+property.unit();
     }
     /** What happened, for a status line: {@code Nitrogen at 270.12 K is below 273.16 K in <where>}. */
@@ -87,9 +87,11 @@ public final class ThermoDomainViolation extends IllegalArgumentException {
     }
     /** The declared range as the data states it: {@code 63.151..900 K}. */
     public String range(){return number(minimum)+".."+number(maximum)+" "+property.unit();}
+    /** The status line's sentence: {@link #sentence} with the declared range and the package. */
+    @Override public String status(String where){return sentence(where)+" (valid "+range()+", package "+packageId+")";}
     /** Whether two violations are the same boundary at the same node: a retry reproduced this failure. */
-    public boolean sameAs(ThermoDomainViolation other) {
-        return other!=null&&component.equals(other.component)&&property==other.property&&code==other.code&&node==other.node&&packageId.equals(other.packageId);
+    @Override public boolean sameAs(ThermoHold hold) {
+        return hold instanceof ThermoDomainViolation other&&component.equals(other.component)&&property==other.property&&code==other.code&&node==other.node&&packageId.equals(other.packageId);
     }
 
     private static String message(String packageId,String component,Property property,double value,double minimum,double maximum,long node) {

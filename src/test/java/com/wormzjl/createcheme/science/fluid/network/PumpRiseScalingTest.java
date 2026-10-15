@@ -97,7 +97,7 @@ class PumpRiseScalingTest {
             var graph=transfer(narrowed,150000);var solver=new PassiveIntervalSolver(narrowed);
             for(int k=0;k<40;k++)graph=solver.solve(graph,.05,PassiveIntervalSolver.Settings.defaults(),()->{},solver.nextStepEstimate()>0?solver.nextStepEstimate():.05).graph();
         });
-        var violation=failure.domainViolation();
+        var violation=(ThermoDomainViolation)failure.domainViolation();
         assertNotNull(violation,"the failed interval names the domain, not the Newton symptom: "+failure.getMessage());
         assertEquals("Nitrogen",violation.component());assertEquals(ThermoDomainViolation.Code.THERMO_DOMAIN_TEMPERATURE_BELOW,violation.code());
         assertEquals(298.05,violation.minimum());assertEquals(1,violation.node(),"the suction tank");

@@ -158,9 +158,10 @@ public final class IslandCertificate {
     static boolean transitionFree(Map<String,Integer> reasons) {
         for(var key:reasons.keySet()) {
             if(key.startsWith("Solid transport transition"))return false;
-            // An interval whose step control met the property domain's boundary is not replayed: the replay would carry
-            // the island along a trajectory the solve itself could only just keep inside the data.
-            if(key.startsWith(com.wormzjl.createcheme.science.fluid.thermo.ThermoDomainViolation.REASON_PREFIX))return false;
+            // An interval whose step control met the property domain's boundary (or a phase set the network cannot carry,
+            // a typed hold under the same key prefix) is not replayed: the replay would carry the island along a
+            // trajectory the solve itself could only just keep inside the data.
+            if(key.startsWith(com.wormzjl.createcheme.science.fluid.thermo.ThermoHold.REASON_PREFIX))return false;
             int at=key.lastIndexOf("; t=");if(at<0)continue;
             try{if(Double.parseDouble(key.substring(at+4))>0)return false;}catch(NumberFormatException unreadable){return false;}
         }

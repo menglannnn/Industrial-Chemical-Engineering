@@ -899,12 +899,31 @@ public final class FluidThermodynamics {
     /**
      * A node's phases the network holds on with a typed reason: the engine's typed failure inside the declared critical
      * band ({@link CriticalBandHold}), or a phase set the network cannot carry ({@link UnsupportedPhases}: a liquid-liquid
-     * split, a third fluid phase, a crystal beside a phase set the engine does not implement). It is an
-     * {@link IllegalArgumentException}, so a substep that meets it is rejected like any unevaluable state. No split is
-     * fabricated and no phase set is answered with fewer phases.
+     * split, a third fluid phase, a crystal beside a phase set the engine does not implement). It is a {@link ThermoHold},
+     * an {@link IllegalArgumentException}, so a substep that meets it is rejected like any unevaluable state, and a caller
+     * that knows the node names it ({@link #at}). No split is fabricated and no phase set is answered with fewer phases.
      */
-    public abstract static sealed class PhaseHold extends IllegalArgumentException permits CriticalBandHold,UnsupportedPhases {
-        PhaseHold(String message){super(message);}
+    public abstract static sealed class PhaseHold extends ThermoHold permits CriticalBandHold,UnsupportedPhases {
+        final String packageId,detail;
+        final double temperature,pressure;
+        private final long node;
+        PhaseHold(String message,String packageId,double temperature,double pressure,String detail,long node) {
+            super(message+ThermoHold.where(node));
+            this.packageId=Objects.requireNonNull(packageId);this.temperature=temperature;this.pressure=pressure;this.detail=detail;this.node=node;
+        }
+        @Override public long node(){return node;}
+        @Override public String packageId(){return packageId;}
+        /** The state's temperature (K), NaN where the request had none (a crystal answer the engine refused). */
+        public double temperature(){return temperature;}
+        /** The state's pressure (Pa), NaN where the request had none. */
+        public double pressure(){return pressure;}
+        /** The hold's own words, without its state: what the network cannot carry or the engine could not converge. */
+        abstract String what();
+        @Override public String status(String where) {
+            String state=Double.isFinite(temperature)&&Double.isFinite(pressure)
+                    ?String.format(java.util.Locale.ROOT," at %.2f K, %.0f Pa",temperature,pressure):"";
+            return what()+state+(where==null||where.isEmpty()?"":" in "+where)+" (package "+packageId+")";
+        }
     }
 
     /**
@@ -913,9 +932,20 @@ public final class FluidThermodynamics {
      */
     public static final class CriticalBandHold extends PhaseHold {
         public CriticalBandHold(String packageId,double temperature,double pressure,String detail) {
-            super("Critical band: the phases at "+temperature+" K, "+pressure+" Pa (package "+packageId+")"
-                    +" did not converge inside the declared critical band; "+detail);
+            this(packageId,temperature,pressure,detail,NO_NODE);
         }
+        private CriticalBandHold(String packageId,double temperature,double pressure,String detail,long node) {
+            super("Critical band: the phases at "+temperature+" K, "+pressure+" Pa (package "+packageId+")"
+                    +" did not converge inside the declared critical band; "+detail,packageId,temperature,pressure,detail,node);
+        }
+        @Override public CriticalBandHold at(long node) {
+            return node()!=NO_NODE||node==NO_NODE?this:new CriticalBandHold(packageId,temperature,pressure,detail,node);
+        }
+        @Override public String reasonKey(){return REASON_PREFIX+"critical band";}
+        @Override public boolean sameAs(ThermoHold other) {
+            return other instanceof CriticalBandHold band&&band.node()==node()&&band.packageId.equals(packageId);
+        }
+        @Override String what(){return "the phases did not converge inside the declared critical band";}
     }
 
     /**
@@ -938,8 +968,30 @@ public final class FluidThermodynamics {
                 return this==CRYSTAL_PHASES?EquilibriumResult.UnsupportedReason.NOT_IMPLEMENTED:EquilibriumResult.UnsupportedReason.PHASE_COMPETITION_NOT_QUALIFIED;
             }
         }
+        private final Kind kind;
         public UnsupportedPhases(String packageId,double temperature,double pressure,Kind kind,String detail) {
-            super("Unsupported phases: "+kind.reason()+" ("+kind+") at "+temperature+" K, "+pressure+" Pa (package "+packageId+"): "+detail);
+            this(packageId,temperature,pressure,kind,detail,NO_NODE);
+        }
+        private UnsupportedPhases(String packageId,double temperature,double pressure,Kind kind,String detail,long node) {
+            super("Unsupported phases: "+kind.reason()+" ("+kind+") at "+temperature+" K, "+pressure+" Pa (package "+packageId+"): "+detail,
+                    packageId,temperature,pressure,detail,node);
+            this.kind=Objects.requireNonNull(kind);
+        }
+        /** What the network cannot carry. */
+        public Kind kind(){return kind;}
+        @Override public UnsupportedPhases at(long node) {
+            return node()!=NO_NODE||node==NO_NODE?this:new UnsupportedPhases(packageId,temperature,pressure,kind,detail,node);
+        }
+        @Override public String reasonKey(){return REASON_PREFIX+"phases "+kind;}
+        @Override public boolean sameAs(ThermoHold other) {
+            return other instanceof UnsupportedPhases phases&&phases.kind==kind&&phases.node()==node()&&phases.packageId.equals(packageId);
+        }
+        @Override String what() {
+            return switch(kind) {
+                case LIQUID_LIQUID->"two hydrocarbon liquids, which the network does not carry";
+                case THREE_PHASES->"a third fluid phase, which the network does not carry";
+                case CRYSTAL_PHASES->"a crystal beside a phase set the equilibrium engine does not implement";
+            };
         }
     }
     private static double sum(double[] values) {double total=0;for(double value:values){if(value<0||!Double.isFinite(value))throw new IllegalArgumentException("Invalid phase amount");total+=value;}return total;}
