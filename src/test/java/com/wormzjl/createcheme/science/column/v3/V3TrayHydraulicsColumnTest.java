@@ -10,7 +10,6 @@ import com.wormzjl.createcheme.science.column.v3.thermo.V3CrudeFeed;
 import com.wormzjl.createcheme.science.column.v3.thermo.V3PengRobinsonThermo;
 import com.wormzjl.createcheme.science.column.v3.thermo.V3WaterProperties;
 import com.wormzjl.createcheme.science.material.MaterialCatalog;
-import com.wormzjl.createcheme.world.level.block.entity.ColumnCalculatorV3BlockEntity;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 
@@ -23,13 +22,12 @@ import org.junit.jupiter.api.Test;
  * production publication seam rather than through the study harness.</p>
  */
 class V3TrayHydraulicsColumnTest {
-    private static final String LITERATURE_PACKAGE = "createcheme:tjl19_dwsim";
     private static final String LITERATURE_ASSAY = "createcheme:tia_juana_light";
     private static final double LITERATURE_FEED_MOL_PER_SECOND = 737.6996333000835;
 
     @Test
     void theDefaultPresetPublishesItsMarchedProfileAfterOneCorrection() {
-        V3ColumnInput input = ColumnCalculatorV3BlockEntity.methaneCduInput();
+        V3ColumnInput input = V3TestInputs.methaneCduInput();
         assertEquals(V3ColumnInput.DEFAULT_COLUMN_DIAMETER_METRES, input.columnDiameterMetres());
         assertEquals(0.0, input.stagePressureDropPascal(), "the authored nominal is only the first guess");
 
@@ -68,7 +66,7 @@ class V3TrayHydraulicsColumnTest {
      */
     @Test
     void anUndersizedColumnStillPublishesAndCarriesTheFloodingWarning() {
-        V3ColumnInput input = ColumnCalculatorV3BlockEntity.methaneCduInput().withColumnDiameter(5.0);
+        V3ColumnInput input = V3TestInputs.methaneCduInput().withColumnDiameter(5.0);
 
         V3ColumnOutcome outcome = V3ColumnCalculator.calculate(input);
         V3ColumnOutcome.Success success = assertInstanceOf(V3ColumnOutcome.Success.class, outcome, outcome::toString);
@@ -202,7 +200,7 @@ class V3TrayHydraulicsColumnTest {
 
     /** A twelve-tray feature-free literature column; cheap enough to solve three times in one test class. */
     private static V3ColumnInput smallColumn(double stagePressureDropPascal, double diameterMetres) {
-        V3CrudeFeed crude = V3PengRobinsonThermo.fromRegisteredPackage(LITERATURE_PACKAGE).crudeFeed(LITERATURE_ASSAY);
+        V3CrudeFeed crude = V3PengRobinsonThermo.fromRegisteredPackage(V3TestInputs.LITERATURE_PACKAGE).crudeFeed(LITERATURE_ASSAY);
         double[] feed = crude.moleFractions();
         for (int component = 0; component < feed.length; component++) {
             feed[component] *= LITERATURE_FEED_MOL_PER_SECOND;

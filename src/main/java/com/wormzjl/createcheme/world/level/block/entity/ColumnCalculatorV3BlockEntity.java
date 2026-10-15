@@ -51,7 +51,6 @@ import org.jetbrains.annotations.Nullable;
 public final class ColumnCalculatorV3BlockEntity extends BlockEntity implements MenuProvider {
     /** The only readable format; other saved data is refused and replaced by a fresh input (no migration). */
     public static final int DATA_VERSION = 12;
-    public static final String LITERATURE_PACKAGE = "createcheme:tjl19_dwsim";
     private static final String TAG_DATA_VERSION = "V3DataVersion";
     private static final String TAG_INPUT_REVISION = "InputRevision";
     private static final String TAG_RESULT_REVISION = "ResultRevision";
@@ -350,31 +349,6 @@ public final class ColumnCalculatorV3BlockEntity extends BlockEntity implements 
 
     /** Sent over the wire by {@code name()}; never saved. */
     public enum V3Status { CALCULATING, SUCCESS, FAILED, STALE, DIRTY }
-
-    /**
-     * Original methane-free reference: the Ledezma-Martinez (2019) no-preflash atmospheric column. Forty
-     * trays plus the steam-stripped bottom stage, three direct side products at stages 10/18/28 (491/515/165 kmol/h),
-     * each paired with a pumparound cooler drawn at the draw stage and returned two stages above at the published
-     * 12.84/17.89/11.20 MW, 1,200 kmol/h of stripping steam at the bottom, condenser 59 C, reflux ratio 4.17, no
-     * external reboiler.
-     *
-     * <p>This reconstruction carries no side-stripper reboiler heat (18.1 MW in the source), so its top is about
-     * 10 C colder than the source's 93.7 C and tray 1 sits below the water dew point of its steam-laden overhead
-     * (83 C against 87 C). The column still solves; the condition is published as a warning on the result rather
-     * than a rejection, because it is an operating state the real column can be in, a bad one that water on the
-     * top trays makes corrosive. No steady free-water phase exists for that tray under these specifications (see
-     * V3_FREE_WATER_CONTINUATION_REVIEW); the fix that removes the warning is the side strippers
-     * (V3_LITERATURE_TOP_TEMPERATURE_CHECK).</p>
-     */
-    public static V3ColumnInput literatureCduInput() {
-        var catalog=com.wormzjl.createcheme.science.material.MaterialRuntime.current();
-        return catalog.presets().column("literature_tia_juana").input(catalog);
-    }
-
-    public static V3ColumnInput methaneCduInput() {
-        var catalog=com.wormzjl.createcheme.science.material.MaterialRuntime.current();
-        return catalog.presets().column("tia_juana").input(catalog);
-    }
 
     private static V3ColumnInput freshInput() {
         var catalog=com.wormzjl.createcheme.science.material.MaterialRuntime.current();

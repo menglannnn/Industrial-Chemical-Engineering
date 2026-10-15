@@ -2,7 +2,6 @@ package com.wormzjl.createcheme.network;
 
 import com.wormzjl.createcheme.science.material.*;
 import com.wormzjl.createcheme.science.column.v3.*;
-import com.wormzjl.createcheme.world.level.block.entity.ColumnCalculatorV3BlockEntity;
 import com.wormzjl.createcheme.world.level.block.entity.ColumnCalculatorV3BlockEntity.*;
 import io.netty.buffer.Unpooled;
 import net.minecraft.core.RegistryAccess;
@@ -15,13 +14,13 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class MaterialNamesCodecTest {
     @Test void serverNamingDescriptorsRoundTripWithoutClientCatalogLookup() throws Exception {
-        var input=ColumnCalculatorV3BlockEntity.methaneCduInput();
+        var input=V3TestInputs.methaneCduInput();
         var descriptor=new MaterialName("custom_cut","custom.translation","Crude oil","petroleum_fraction",600.,650.,true);
         var state=new V3State(1,2,0,1,-1,V3Status.DIRTY,input,Optional.empty(),List.of(),Map.of("custom_cut",descriptor),V3EditorCatalog.EMPTY);
         assertEquals(state,ColumnCodecs.wireRoundTrip(state));
     }
     @Test void retiredAxesAreRejectedByTheActualNbtReader() throws Exception {
-        var input=ColumnCalculatorV3BlockEntity.methaneCduInput();
+        var input=V3TestInputs.methaneCduInput();
         var tag=ColumnCodecs.writeInputNbt(input);
         var axis=tag.getList("Axis",Tag.TAG_STRING);
         for(int i=0;i<axis.size();i++) {

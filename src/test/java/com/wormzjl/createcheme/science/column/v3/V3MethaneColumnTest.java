@@ -11,10 +11,10 @@ import org.junit.jupiter.api.Test;
 
 class V3MethaneColumnTest {
     @Test void freshPresetAndSavedInputRetainTheMethaneAxis() throws Exception {
-        var input = ColumnCalculatorV3BlockEntity.methaneCduInput();
+        var input = V3TestInputs.methaneCduInput();
         assertEquals(input, ColumnCodecs.invoke(ColumnCalculatorV3BlockEntity.class, "freshInput", new Class<?>[0]));
         assertEquals(input, ColumnCodecs.readInputNbt(ColumnCodecs.writeInputNbt(input)));
-        var original = ColumnCalculatorV3BlockEntity.literatureCduInput();
+        var original = V3TestInputs.literatureCduInput();
         assertEquals(original, ColumnCodecs.readInputNbt(ColumnCodecs.writeInputNbt(original)),
                 "old saved feeds retain their 19-component axis");
         assertEquals(original.specifications(), input.specifications());
@@ -24,7 +24,7 @@ class V3MethaneColumnTest {
     }
 
     @Test void methaneFeedConvergesWithCurrentInitializer() throws Exception {
-        var input = ColumnCalculatorV3BlockEntity.methaneCduInput();
+        var input = V3TestInputs.methaneCduInput();
         assertEquals("Methane", input.componentBasis().componentId(0));
         assertEquals(com.wormzjl.createcheme.science.material.MaterialTestBasis.CRUDE, input.componentBasis().componentCount());
         assertEquals(java.util.Arrays.stream(input.feedComponentMolarFlowsMolPerSecond()).sum() * 0.005, input.feedComponentMolarFlowsMolPerSecond()[0], 1e-12);
@@ -60,7 +60,7 @@ class V3MethaneColumnTest {
     }
 
     @Test void defaultNeuralFirstModeSolvesTheMethaneColumnThroughTheBundledModel() {
-        var input = ColumnCalculatorV3BlockEntity.methaneCduInput();
+        var input = V3TestInputs.methaneCduInput();
         long start = System.nanoTime();
         var outcome = V3ColumnCalculator.calculate(input, () -> {
             if (System.nanoTime() - start > 60_000_000_000L) throw new java.util.concurrent.CancellationException("methane fallback deadline");

@@ -38,7 +38,7 @@ class MaterialCatalogTest {
         assertFalse(MaterialRuntime.with(science,ID,()->MaterialRuntime.isBundledScience(ID)));
         assertFalse(MaterialRuntime.with(science,ID,()->MaterialRuntime.isCurrent(ID,before.scientificRevision())));
         assertTrue(MaterialRuntime.with(names,ID,()->MaterialRuntime.isCurrent(ID,before.scientificRevision())));
-        var input=com.wormzjl.createcheme.world.level.block.entity.ColumnCalculatorV3BlockEntity.methaneCduInput();
+        var input=com.wormzjl.createcheme.science.column.v3.V3TestInputs.methaneCduInput();
         assertTrue(MaterialRuntime.with(science,ID,()->V3NeuralModels.bundled().predict(input,V3SolveControl.UNBOUNDED).isEmpty()));
     }
     @Test void invalidReloadCannotPublishPartialCatalog() {

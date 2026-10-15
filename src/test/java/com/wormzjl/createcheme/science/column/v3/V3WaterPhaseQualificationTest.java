@@ -3,7 +3,6 @@ package com.wormzjl.createcheme.science.column.v3;
 import static org.junit.jupiter.api.Assertions.*;
 import com.google.gson.Gson;
 import com.google.gson.JsonParser;
-import com.wormzjl.createcheme.world.level.block.entity.ColumnCalculatorV3BlockEntity;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.util.Optional;
@@ -16,7 +15,7 @@ class V3WaterPhaseQualificationTest {
         try (var stream = V3WaterPhaseQualificationTest.class.getResourceAsStream("/science/column/v3/neural/tjl20-wet-boundary.json")) {
             var json = JsonParser.parseReader(new InputStreamReader(stream, StandardCharsets.UTF_8)).getAsJsonObject();
             var seed = json.getAsJsonObject("seed");
-            var base = ColumnCalculatorV3BlockEntity.methaneCduInput();
+            var base = V3TestInputs.methaneCduInput();
             double tc = json.getAsJsonObject("input").getAsJsonArray("specifications").get(0).getAsJsonObject().get("kelvin").getAsDouble();
             var input = new V3ColumnInput(base.schemaVersion(), base.packageId(), base.assayId(), base.componentBasis(),
                     base.feedComponentMolarFlowsMolPerSecond(), base.feedTemperatureKelvin(), base.stageCount(),

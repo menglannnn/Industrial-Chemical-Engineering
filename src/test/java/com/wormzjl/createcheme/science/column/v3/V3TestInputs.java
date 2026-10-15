@@ -9,7 +9,32 @@ public final class V3TestInputs {
     static final V3InitializationOptions LEARNED = new V3InitializationOptions(V3InitializationOptions.Mode.LNN_FIRST,
             V3InitializationOptions.WetStart.AUTO, 16, 2_000, V3InitializationOptions.Correction.PROGRESS);
 
+    /** The registered TJL19 DWSIM package of the literature CDU preset. */
+    public static final String LITERATURE_PACKAGE = "createcheme:tjl19_dwsim";
+
     private V3TestInputs() {}
+
+    /**
+     * Original methane-free reference: the Ledezma-Martinez (2019) no-preflash atmospheric column (preset
+     * {@code literature_tia_juana}). Forty trays plus the steam-stripped bottom stage, three direct side products at
+     * stages 10/18/28 (491/515/165 kmol/h), each paired with a pumparound cooler drawn at the draw stage and returned
+     * two stages above at the published 12.84/17.89/11.20 MW, 1,200 kmol/h of stripping steam at the bottom,
+     * condenser 59 C, reflux ratio 4.17, no external reboiler.
+     *
+     * <p>This reconstruction carries no side-stripper reboiler heat (18.1 MW in the source), so its top is about
+     * 10 C colder than the source and tray 1 sits below the water dew point of its steam-laden overhead; the
+     * condition is a result warning, not a rejection.</p>
+     */
+    public static V3ColumnInput literatureCduInput() {
+        var catalog = com.wormzjl.createcheme.science.material.MaterialRuntime.current();
+        return catalog.presets().column("literature_tia_juana").input(catalog);
+    }
+
+    /** The methane-enriched Tia Juana CDU preset ({@code tia_juana}). */
+    public static V3ColumnInput methaneCduInput() {
+        var catalog = com.wormzjl.createcheme.science.material.MaterialRuntime.current();
+        return catalog.presets().column("tia_juana").input(catalog);
+    }
 
     /**
      * The registered cdu17 PC03/PC10 binary (50 mol/s each) at 550 K: two interior trays, feed on tray 1,

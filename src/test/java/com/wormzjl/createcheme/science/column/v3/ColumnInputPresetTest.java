@@ -5,7 +5,6 @@ import com.wormzjl.createcheme.network.ColumnCodecs;
 import com.wormzjl.createcheme.science.material.MaterialCatalog;
 import com.wormzjl.createcheme.science.column.v3.thermo.V3PengRobinsonThermo;
 import com.wormzjl.createcheme.science.material.MaterialRuntime;
-import com.wormzjl.createcheme.world.level.block.entity.ColumnCalculatorV3BlockEntity;
 import com.wormzjl.createcheme.world.level.block.entity.ColumnInputPreset;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -28,7 +27,7 @@ class ColumnInputPresetTest {
             for (int i=0;i<expected.length;i++)
                 assertEquals(expected[i],input.feedComponentMolarFlowsMolPerSecond()[i]/total,1e-14);
         }
-        assertEquals(ColumnCalculatorV3BlockEntity.methaneCduInput(),ColumnInputPreset.fromId(catalog,"tia_juana").input(catalog));
+        assertEquals(V3TestInputs.methaneCduInput(),ColumnInputPreset.fromId(catalog,"tia_juana").input(catalog));
         assertThrows(IllegalArgumentException.class,()->ColumnInputPreset.fromId("arbitrary:package"));
     }
 

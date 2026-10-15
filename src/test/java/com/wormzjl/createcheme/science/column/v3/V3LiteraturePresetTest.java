@@ -4,7 +4,6 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import com.wormzjl.createcheme.world.level.block.entity.ColumnCalculatorV3BlockEntity;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 
@@ -12,9 +11,9 @@ import org.junit.jupiter.api.Test;
 class V3LiteraturePresetTest {
     @Test
     void theLiteraturePresetIsTheFortyTrayThesisColumnWithItsCoolersAtTheDraws() {
-        V3ColumnInput input = ColumnCalculatorV3BlockEntity.literatureCduInput();
+        V3ColumnInput input = V3TestInputs.literatureCduInput();
         V3ColumnProblemResolver.validateInput(input);
-        assertEquals(ColumnCalculatorV3BlockEntity.LITERATURE_PACKAGE, input.packageId());
+        assertEquals(V3TestInputs.LITERATURE_PACKAGE, input.packageId());
         assertEquals(40, input.stageCount());
         assertEquals(37, input.feedStageNumber());
         assertEquals(250_000.0, input.topPressurePascal());
@@ -50,7 +49,7 @@ class V3LiteraturePresetTest {
     @Test
     void theLiteraturePresetPublishesWithATrayOneWaterDewPointWarning() {
         V3ColumnOutcome outcome = V3ColumnCalculator.calculate(
-                ColumnCalculatorV3BlockEntity.literatureCduInput().withColumnDiameter(0.0), () -> {}, 0.0);
+                V3TestInputs.literatureCduInput().withColumnDiameter(0.0), () -> {}, 0.0);
         V3ColumnOutcome.Success success = assertInstanceOf(V3ColumnOutcome.Success.class, outcome, outcome::toString);
         assertTrue(outcome.diagnostics().maximumScaledResidual() < 1.0e-10, outcome::toString);
         V3AcceptanceAudit audit = success.diagnostics().acceptanceAudit();
@@ -81,7 +80,7 @@ class V3LiteraturePresetTest {
     /** With the top cooler halved the same column clears the dew point and carries no warning. */
     @Test
     void aHalvedTopCoolerClearsTheDewPointWithoutAWarning() {
-        V3ColumnInput preset = ColumnCalculatorV3BlockEntity.literatureCduInput();
+        V3ColumnInput preset = V3TestInputs.literatureCduInput();
         V3ColumnInput halved = new V3ColumnInput(preset.schemaVersion(), preset.packageId(), preset.assayId(),
                 preset.componentBasis(), preset.feedComponentMolarFlowsMolPerSecond(), preset.feedTemperatureKelvin(),
                 preset.stageCount(), preset.feedStageNumber(), preset.topPressurePascal(), preset.stagePressureDropPascal(),

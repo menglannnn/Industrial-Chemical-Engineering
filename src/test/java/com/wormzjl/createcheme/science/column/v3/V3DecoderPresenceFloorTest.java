@@ -2,7 +2,6 @@ package com.wormzjl.createcheme.science.column.v3;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-import com.wormzjl.createcheme.world.level.block.entity.ColumnCalculatorV3BlockEntity;
 import java.util.Arrays;
 import java.util.List;
 import org.junit.jupiter.api.Test;
@@ -43,7 +42,7 @@ class V3DecoderPresenceFloorTest {
     }
 
     private static V3ColumnInput input() {
-        var base = ColumnCalculatorV3BlockEntity.methaneCduInput();
+        var base = V3TestInputs.methaneCduInput();
         double[] feed = base.feedComponentMolarFlowsMolPerSecond(); feed[0] = 0;
         return new V3ColumnInput(base.schemaVersion(), base.packageId(), base.assayId(), base.componentBasis(), feed,
                 base.feedTemperatureKelvin(), STAGES, Math.max(1, STAGES/2), 200_000, 100,

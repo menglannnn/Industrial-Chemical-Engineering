@@ -11,7 +11,7 @@ class ProcessSolveServicesRequestTest {
         var replacement=com.wormzjl.createcheme.science.material.MaterialCatalog.parse(original.resources());
         try {
             com.wormzjl.createcheme.science.material.MaterialRuntime.publish(original);
-            var input=com.wormzjl.createcheme.world.level.block.entity.ColumnCalculatorV3BlockEntity.methaneCduInput();
+            var input=com.wormzjl.createcheme.science.column.v3.V3TestInputs.methaneCduInput();
             var command=new ProcessSolveServices.V3ColumnCommand(input,0);
             com.wormzjl.createcheme.science.material.MaterialRuntime.publish(replacement);
             org.junit.jupiter.api.Assertions.assertSame(original,command.catalog());
