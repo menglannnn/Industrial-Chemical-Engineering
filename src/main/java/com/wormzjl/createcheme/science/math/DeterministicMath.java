@@ -55,6 +55,10 @@ public final class DeterministicMath {
         return StrictMath.cos(x);
     }
 
+    public static double sin(double x) {
+        return StrictMath.sin(x);
+    }
+
     public static double acos(double x) {
         return StrictMath.acos(x);
     }
