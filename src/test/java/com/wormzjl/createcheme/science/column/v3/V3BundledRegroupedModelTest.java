@@ -31,7 +31,7 @@ class V3BundledRegroupedModelTest {
             var expectedRaw=JSON.fromJson(row.get("raw"),double[][].class);
             for(int n=0;n<expectedRaw.length;n++)assertArrayEquals(expectedRaw[n],raw.values()[n],1e-4);
             assertArrayEquals(JSON.fromJson(row.get("branchLogits"),double[].class),raw.branchLogits(),1e-5);
-            var actual=V3NeuralModels.bundled().predict(input,V3SolveControl.UNBOUNDED).orElseThrow();
+            var actual=V3NeuralRegistry.bundled().predict(input,V3SolveControl.UNBOUNDED).orElseThrow();
             var expected=row.getAsJsonObject("expected");
             assertEquals(expected.get("branch").getAsString(),actual.branch().name());
             assertArrayEquals(JSON.fromJson(expected.get("temperatures"),double[].class),actual.temperatures(),1e-4);

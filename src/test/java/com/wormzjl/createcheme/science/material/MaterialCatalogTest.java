@@ -39,7 +39,7 @@ class MaterialCatalogTest {
         assertFalse(MaterialRuntime.with(science,ID,()->MaterialRuntime.isCurrent(ID,before.scientificRevision())));
         assertTrue(MaterialRuntime.with(names,ID,()->MaterialRuntime.isCurrent(ID,before.scientificRevision())));
         var input=com.wormzjl.createcheme.science.column.v3.V3TestInputs.methaneCduInput();
-        assertTrue(MaterialRuntime.with(science,ID,()->V3NeuralModels.bundled().predict(input,V3SolveControl.UNBOUNDED).isEmpty()));
+        assertTrue(MaterialRuntime.with(science,ID,()->V3NeuralRegistry.bundled().predict(input,V3SolveControl.UNBOUNDED).isEmpty()));
     }
     @Test void invalidReloadCannotPublishPartialCatalog() {
         MaterialRuntime.publish(MaterialCatalog.bundled());
@@ -116,7 +116,7 @@ class MaterialCatalogTest {
         double[] values=new double[ids.size()];for(int i=0;i<values.length;i++)values[i]=i+1;
         var input=new V3ColumnInput(1,ID,"createcheme:tia_juana_light_methane",new V3ComponentBasis(ids),values,638.15,4,2,250000,0,
                 List.of(new V3ColumnSpecification.CondenserOutletTemperature(332.15),new V3ColumnSpecification.OrganicRefluxRatio(4.17),new V3ColumnSpecification.ReboilerDuty(0)));
-        assertThrows(IllegalArgumentException.class,()->V3MaterialInputs.requireCurrent(input,c));
+        assertThrows(IllegalArgumentException.class,()->com.wormzjl.createcheme.world.level.block.entity.ColumnCalculatorV3BlockEntity.requireCurrent(input,c));
         assertArrayEquals(values,input.feedComponentMolarFlowsMolPerSecond());
     }
 }

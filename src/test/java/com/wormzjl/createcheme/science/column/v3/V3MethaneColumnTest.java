@@ -64,12 +64,12 @@ class V3MethaneColumnTest {
         long start = System.nanoTime();
         var outcome = V3ColumnCalculator.calculate(input, () -> {
             if (System.nanoTime() - start > 60_000_000_000L) throw new java.util.concurrent.CancellationException("methane fallback deadline");
-        }, 0, 0, V3TestInputs.LEARNED, V3NeuralModels.bundled(), V3ColumnCalculator.DEFAULT_LIQUID_SUPPLY_SCREEN_RATIO);
+        }, 0, 0, V3TestInputs.LEARNED, V3NeuralRegistry.bundled(), V3ColumnCalculator.DEFAULT_LIQUID_SUPPLY_SCREEN_RATIO);
         var success = assertInstanceOf(V3ColumnOutcome.Success.class, outcome, outcome::toString);
         assertTrue(success.result().convergenceEvidence().satisfiesGates());
         // One model ships, so the initialization event names it whichever route won. Which route wins on
         // this preset is a coverage question the 405-input campaign answers, not an invariant of this test.
         String event = success.diagnostics().events().getFirst();
-        assertTrue(event.contains("model=" + V3NeuralModels.bundled().bind(com.wormzjl.createcheme.science.material.MaterialRuntime.current(), input).modelId()), event);
+        assertTrue(event.contains("model=" + V3NeuralRegistry.bundled().bind(com.wormzjl.createcheme.science.material.MaterialRuntime.current(), input).modelId()), event);
     }
 }

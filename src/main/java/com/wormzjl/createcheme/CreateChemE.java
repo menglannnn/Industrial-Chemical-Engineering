@@ -12,7 +12,7 @@ import com.wormzjl.createcheme.runtime.WorkerAllocation;
 import com.wormzjl.createcheme.science.column.v3.V3ColumnCalculator;
 import com.wormzjl.createcheme.science.fluid.thermo.FluidThermodynamics;
 import com.wormzjl.createcheme.science.column.v3.V3InitializationOptions;
-import com.wormzjl.createcheme.science.column.v3.V3NeuralModels;
+import com.wormzjl.createcheme.science.column.v3.V3NeuralRegistry;
 import com.wormzjl.createcheme.science.column.v3.V3NeuralInitializer;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.world.item.CreativeModeTabs;
@@ -228,7 +228,7 @@ public final class CreateChemE {
 
     /** Resolve the safely published immutable bundled model on the admission thread. */
     public static V3NeuralInitializer columnV3NeuralModel() {
-        return V3NeuralModels.bundled();
+        return V3NeuralRegistry.bundled();
     }
 
     /** Read on the server thread when admitting a V3 request, never from its worker. */

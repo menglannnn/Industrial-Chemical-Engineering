@@ -18,6 +18,7 @@ import com.wormzjl.createcheme.science.column.v3.V3ConvergenceEvidence;
 import com.wormzjl.createcheme.science.column.v3.V3HollandExample32;
 import com.wormzjl.createcheme.science.column.v3.thermo.V3PengRobinsonThermo;
 import com.wormzjl.createcheme.science.column.v3.thermo.V3CrudeFeed;
+import com.wormzjl.createcheme.science.material.MaterialCatalog;
 import com.wormzjl.createcheme.world.inventory.ColumnCalculatorV3Menu;
 import java.util.ArrayList;
 import java.util.List;
@@ -260,7 +261,7 @@ public final class ColumnCalculatorV3BlockEntity extends BlockEntity implements 
             if (!tag.contains(TAG_DATA_VERSION, Tag.TAG_INT) || tag.getInt(TAG_DATA_VERSION) != DATA_VERSION)
                 throw new IllegalArgumentException("saved data version is not " + DATA_VERSION);
             if (!tag.contains(TAG_INPUT, Tag.TAG_COMPOUND)) throw new IllegalArgumentException("saved input is missing");
-            currentInput = com.wormzjl.createcheme.science.column.v3.V3MaterialInputs.requireCurrent(readInput(tag.getCompound(TAG_INPUT)),com.wormzjl.createcheme.science.material.MaterialRuntime.current());
+            currentInput = requireCurrent(readInput(tag.getCompound(TAG_INPUT)),com.wormzjl.createcheme.science.material.MaterialRuntime.current());
             inputRevision = nonNegative(requiredLong(tag, TAG_INPUT_REVISION));
             resultRevision = requiredLong(tag, TAG_RESULT_REVISION);
             if (resultRevision < -1L) throw new IllegalArgumentException("Invalid V3 result revision");
@@ -349,6 +350,17 @@ public final class ColumnCalculatorV3BlockEntity extends BlockEntity implements 
 
     /** Sent over the wire by {@code name()}; never saved. */
     public enum V3Status { CALCULATING, SUCCESS, FAILED, STALE, DIRTY }
+
+    /**
+     * Exact current-format identity check of a saved input: its component axis must equal the registered package
+     * axis. No legacy aliases, additive padding or saved-axis migration.
+     */
+    public static V3ColumnInput requireCurrent(V3ColumnInput input, MaterialCatalog catalog) {
+        if (V3HollandExample32.isPackage(input.packageId())) return input;
+        if (!catalog.requirePackage(input.packageId()).components().equals(input.componentBasis().componentIds()))
+            throw new IllegalArgumentException("Unsupported persisted component axis");
+        return input;
+    }
 
     private static V3ColumnInput freshInput() {
         var catalog=com.wormzjl.createcheme.science.material.MaterialRuntime.current();

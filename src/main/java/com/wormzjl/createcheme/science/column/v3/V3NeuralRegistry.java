@@ -16,7 +16,21 @@ public final class V3NeuralRegistry implements V3NeuralInitializer {
         Entry { Objects.requireNonNull(model);Objects.requireNonNull(pipelineSha256); }
     }
     @FunctionalInterface interface Resources { InputStream open(String path) throws IOException; }
+    /** Classpath path of the bundled registry manifest. */
+    public static final String REGISTRY="/data/createcheme/neural/registry.json";
     private final List<Entry> entries;
+    /** Bundled qualified models; an absent or invalid registry preserves classical fallback. */
+    public static V3NeuralInitializer bundled(){return Bundled.MODEL;}
+    private static V3NeuralInitializer loadBundled() {
+        try(var stream=V3NeuralRegistry.class.getResourceAsStream(REGISTRY)) {
+            return read(stream,V3NeuralRegistry.class::getResourceAsStream);
+        } catch(IOException|IllegalArgumentException invalid) {
+            System.getLogger(V3NeuralRegistry.class.getName()).log(System.Logger.Level.WARNING,
+                    "Bundled neural registry unavailable; using classical initialization",invalid);
+            return V3NeuralInitializer.UNAVAILABLE;
+        }
+    }
+    private static final class Bundled {private static final V3NeuralInitializer MODEL=loadBundled();}
     V3NeuralRegistry(List<Entry> entries) {
         if(entries.size()>MAX_ENTRIES)throw new IllegalArgumentException("Too many neural registry entries");
         if(entries.stream().map(e->e.model().modelId()).distinct().count()!=entries.size())

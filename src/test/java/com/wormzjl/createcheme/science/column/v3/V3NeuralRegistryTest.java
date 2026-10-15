@@ -91,7 +91,7 @@ class V3NeuralRegistryTest {
     @Test void boundedRegistryRejectsPathsAndMismatchedPipelineAndAcceptsEmptyFallback() throws Exception {
         assertSame(V3NeuralInitializer.UNAVAILABLE,V3NeuralRegistry.read(stream("{\"schemaVersion\":1,\"entries\":[]}"),p->null).bind(MaterialCatalog.bundled(),input()));
         String manifest;
-        try(var s=getClass().getResourceAsStream(V3NeuralModels.REGISTRY)){manifest=new String(s.readAllBytes(),StandardCharsets.UTF_8);}
+        try(var s=getClass().getResourceAsStream(V3NeuralRegistry.REGISTRY)){manifest=new String(s.readAllBytes(),StandardCharsets.UTF_8);}
         var data=JsonParser.parseString(manifest).getAsJsonObject();var row=data.getAsJsonArray("entries").get(0).getAsJsonObject();
         row.addProperty("pipelineSha256","0".repeat(64));
         assertThrows(IllegalArgumentException.class,()->V3NeuralRegistry.read(stream(data.toString()),getClass()::getResourceAsStream));
