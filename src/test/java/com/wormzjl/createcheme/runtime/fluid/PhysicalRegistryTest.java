@@ -116,6 +116,32 @@ class PhysicalRegistryTest {
         assertEquals(Set.of(lineA),w.coordinator.fencedIslands(event.id()),"the neighbouring line is not fenced");
         w.apply();assertNull(w.registry.owner(endA));assertEquals(lineB,w.owner(endB),"the untouched line keeps its island");
     }
+    /** The player's report "breaking a block does not remove it from the network": a network whose every solve holds
+     * (here a worker that refuses its island) applies a pipe's removal within two ticks, with its tanks' inventory intact: the
+     * fence gives the island one fresh attempt (the edit may free it), that attempt holds, and the island accepts the event. */
+    @Test void aPipeBrokenInAHeldNetworkLeavesItAtOnce() {
+        var w=new EventPathWorld();
+        w.place(0,Y,0,Kind.RESERVOIR,PhysicalFluidTopology.Direction.EAST);w.place(1,Y,0,Kind.PIPE,PhysicalFluidTopology.Direction.EAST);
+        long pipe=w.place(2,Y,0,Kind.PIPE,PhysicalFluidTopology.Direction.EAST);w.place(3,Y,0,Kind.RESERVOIR,PhysicalFluidTopology.Direction.EAST);
+        w.runTo(200);long island=Objects.requireNonNull(w.registry.owner(pipe));
+        Runnable heldTick=()->{
+            w.ledger.tick();w.coordinator.tick();if(w.ledger.hasPendingEvents()){w.registry.applyPending();w.coordinator.pumpIfUseful();}
+            for(long request:List.copyOf(w.attempts.keySet())){var attempt=w.attempts.remove(request);var command=w.commands.remove(request);
+                var result=attempt.islandId()==island?new ProcessSolveServices.FluidIslandSolveResult(Optional.empty(),"HELD: test refusal",10,FallbackAllowance.NONE,Optional.empty())
+                        :(ProcessSolveServices.FluidIslandSolveResult)command.solve(FluidTestSupport.NEVER);
+                w.coordinator.completed(attempt,Optional.of(result));}
+            w.coordinator.pump();
+        };
+        for(int tick=0;tick<400;tick++)heldTick.run();
+        assertTrue(w.coordinator.observe(island).status().startsWith("HELD"),w.coordinator.observe(island).status());
+        double mass=w.coordinator.observe(island).graph().reservoirs().stream().filter(n->n.kind()==PassiveNetwork.NodeKind.RESERVOIR).mapToDouble(n->n.state().mass()).sum();
+        w.registry.submit(List.of(new WorldTopologyLedger.Edit(pipe,null)),w.ledger.nextIdentity(),null);
+        heldTick.run();heldTick.run();
+        assertTrue(w.ledger.events().isEmpty(),"the removal applied");assertNull(w.registry.owner(pipe));
+        assertTrue(w.coordinator.snapshots().stream().noneMatch(s->s.id()==island),"the held island was replaced");
+        double after=w.coordinator.snapshots().stream().flatMap(s->s.graph().reservoirs().stream()).filter(n->n.kind()==PassiveNetwork.NodeKind.RESERVOIR).mapToDouble(n->n.state().mass()).sum();
+        assertEquals(mass,after,0,"the tanks keep their inventory");
+    }
     @Test void mergesAndSplitsProduceTheRightIslandsAndRevisions() {
         var w=new World(0);w.lines(2);
         long leftTank=w.registry.at(new PhysicalFluidTopology.Position(DIM,20,Y,16)).orElseThrow().device().id();
