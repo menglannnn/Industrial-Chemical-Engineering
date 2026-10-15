@@ -43,7 +43,9 @@ import java.util.Objects;
  *   <li>Unstable: two-phase Rachford-Rice with successive substitution on {@code ln K_i = ln phi_i^L - ln phi_i^V},
  *   started from the stability test's stationary composition, each phase on its own lower-Gibbs root, with a
  *   dominant-eigenvalue extrapolation every {@link Settings#accelerationCycle()} plain steps; converged when a plain
- *   step moves no {@code ln K_i} by {@link Settings#lnKTolerance()}.</li>
+ *   step moves no {@code ln K_i} by {@link Settings#lnKTolerance()}. Rachford-Rice is solved in the minor phase's
+ *   fraction (D24): the vapour fraction {@code beta} up to one half, above it the liquid fraction
+ *   {@code delta = 1 - beta}, each to full relative precision, so a trace phase keeps its amount and its shares.</li>
  *   <li>Second-order finish (P3): when substitution has run {@link Settings#slowSubstitutionSteps()} steps with the
  *   dominant eigenvalue estimate above {@link Settings#slowEigenvalue()}, after {@link Settings#substitutionLimit()}
  *   steps, or when it collapses onto the feed or loses the split, Newton minimises the Gibbs energy over the vapour mole
@@ -677,8 +679,12 @@ public final class FluidTpEquilibrium implements EquilibriumService {
         private final double[] vaporMoles, liquidMoles, trialVapor, trialLiquid, step, gradient, scale, reference, trial;
         private final double[] hessian, factor, direction;
         private final PengRobinsonKernel.Derivatives vaporDerivatives, liquidDerivatives;
-        private double lambda, beta, tieLine, seedDistance, gibbsScale;
+        private double lambda, tieLine, seedDistance, gibbsScale;
         private boolean trialIsVapour;
+        // The split Rachford-Rice found last (D24): each phase's fraction of the feed, the minor one solved for and the
+        // major one its complement; liquidMinor when the liquid is the minor phase.
+        private double vapourFraction, liquidFraction;
+        private boolean liquidMinor;
         // The kernel evaluation lowerGibbsRoot chose last; whether each product of a dry split is liquid-like and denser than
         // the cubic's critical volume (P3 WP7d, WP11).
         private PengRobinsonKernel.Evaluation chosen;
@@ -4249,7 +4255,7 @@ public final class FluidTpEquilibrium implements EquilibriumService {
         w.lambda = 0.0;
         int steps = 0;
         while (true) {
-            if (Double.isNaN(split(w))) {
+            if (!split(w)) {
                 newton = true;
                 fromSubstitution = false;
                 break;
@@ -4331,12 +4337,10 @@ public final class FluidTpEquilibrium implements EquilibriumService {
         if (newton) {
             if (!newtonFinish(t, feed, fromSubstitution, w)) return FAILED;
         } else {
-            double beta = split(w);
-            if (!(beta > 0.0 && beta < 1.0)) {
+            if (!twoPhaseSplit(w)) {
                 // A converged ratio set with no admissible split: the finish decides from the stability test's phase.
                 if (!newtonFinish(t, feed, false, w)) return FAILED;
             } else {
-                w.beta = beta;
                 double tie = 0.0;
                 Arrays.fill(w.vaporAmounts, 0.0);
                 Arrays.fill(w.liquidAmounts, 0.0);
@@ -4345,9 +4349,9 @@ public final class FluidTpEquilibrium implements EquilibriumService {
                     tie += w.z[i] * w.logK[i] * w.logK[i];
                     // The smaller share by its own formula, the larger by difference: conserved to rounding, and a
                     // component almost entirely in one phase keeps its trace in the other to full relative precision.
-                    double denominator = 1.0 + beta * (w.k[i] - 1.0);
-                    double vapourShare = beta * w.k[i] / denominator;
-                    double liquidShare = (1.0 - beta) / denominator;
+                    double denominator = splitDenominator(w, i);
+                    double vapourShare = w.vapourFraction * w.k[i] / denominator;
+                    double liquidShare = w.liquidFraction / denominator;
                     if (vapourShare <= liquidShare) {
                         w.vaporAmounts[i] = Math.min(w.feed[i], w.feed[i] * vapourShare);
                         w.liquidAmounts[i] = w.feed[i] - w.vaporAmounts[i];
@@ -4454,13 +4458,12 @@ public final class FluidTpEquilibrium implements EquilibriumService {
         }
         double gibbs = Double.NaN;
         if (fromSubstitution) {
-            double beta = split(w);
-            if (beta > 0.0 && beta < 1.0) {
+            if (twoPhaseSplit(w)) {
                 for (int a = 0; a < w.presentCount; a++) {
                     int i = w.present[a];
-                    double denominator = 1.0 + beta * (w.k[i] - 1.0);
-                    w.vaporMoles[i] = w.z[i] * (beta * w.k[i] / denominator);
-                    w.liquidMoles[i] = w.z[i] * ((1.0 - beta) / denominator);
+                    double denominator = splitDenominator(w, i);
+                    w.vaporMoles[i] = w.z[i] * (w.vapourFraction * w.k[i] / denominator);
+                    w.liquidMoles[i] = w.z[i] * (w.liquidFraction / denominator);
                 }
                 gibbs = gibbs(t, w.vaporMoles, w.liquidMoles, w);
                 if (!(gibbs < -GIBBS_ROUNDOFF * w.gibbsScale)) gibbs = Double.NaN;
@@ -4574,14 +4577,12 @@ public final class FluidTpEquilibrium implements EquilibriumService {
             w.newtonIterations++;
         }
         // The amounts: each component's smaller share by its own mole number, the larger by difference.
-        double vapourTotal = 0.0;
         Arrays.fill(w.vaporAmounts, 0.0);
         Arrays.fill(w.liquidAmounts, 0.0);
         for (int a = 0; a < m; a++) {
             int i = w.present[a];
             double v = w.vaporMoles[i];
             double l = w.liquidMoles[i];
-            vapourTotal += v;
             if (v <= l) {
                 w.vaporAmounts[i] = Math.min(w.feed[i], w.feed[i] * (v / (v + l)));
                 w.liquidAmounts[i] = w.feed[i] - w.vaporAmounts[i];
@@ -4590,7 +4591,6 @@ public final class FluidTpEquilibrium implements EquilibriumService {
                 w.vaporAmounts[i] = w.feed[i] - w.liquidAmounts[i];
             }
         }
-        w.beta = vapourTotal;
         return true;
     }
 
@@ -4732,11 +4732,17 @@ public final class FluidTpEquilibrium implements EquilibriumService {
     }
 
     /**
-     * Rachford-Rice for the current {@code ln K}: {@code sum z_i (K_i - 1)/(1 + beta (K_i - 1)) = 0} on the window
-     * between its poles (a negative flash is allowed while iterating), safeguarded Newton with bisection. Fills
-     * {@code k}, and the normalised {@code x} and {@code y}. Returns {@code NaN} when the K-values straddle no split.
+     * Rachford-Rice for the current {@code ln K}, solved in the minor phase's fraction (D24): the vapour fraction
+     * {@code beta} of {@code sum z_i (K_i - 1)/(1 + beta (K_i - 1)) = 0} when the root lies at or below one half, and
+     * otherwise the liquid fraction {@code delta = 1 - beta} of the same equation, {@code 1 + beta (K_i - 1) =
+     * K_i - delta (K_i - 1)}. The minor fraction then carries full relative precision: a liquid of 1e-14 of the feed is
+     * {@code delta = 1e-14}, of which {@code 1 - beta} keeps two digits, and it is a split while {@code delta > 0}, also
+     * where {@code 1 - delta} rounds to one. The first evaluation, at one half, tells which phase is minor; safeguarded
+     * Newton with bisection on the window between that fraction's pole and one half (a negative flash is allowed while
+     * iterating), stopped when a step moves the fraction by at most 1e-15 of itself. Fills {@code k}, the normalised
+     * {@code x} and {@code y}, and both fractions; false when the K-values straddle no split.
      */
-    private double split(Workspace w) {
+    private boolean split(Workspace w) {
         double smallest = Double.POSITIVE_INFINITY;
         double largest = Double.NEGATIVE_INFINITY;
         for (int a = 0; a < w.presentCount; a++) {
@@ -4745,39 +4751,54 @@ public final class FluidTpEquilibrium implements EquilibriumService {
             smallest = Math.min(smallest, w.k[i]);
             largest = Math.max(largest, w.k[i]);
         }
-        if (!(smallest < 1.0 && largest > 1.0)) return Double.NaN;
+        if (!(smallest < 1.0 && largest > 1.0)) return false;
+        boolean liquidMinor = false;
         double lower = 1.0 / (1.0 - largest);
         double upper = 1.0 / (1.0 - smallest);
-        double beta = 0.5;
+        double fraction = 0.5;
         for (int step = 0; step < MAXIMUM_RACHFORD_RICE_STEPS; step++) {
             double f = 0.0;
             double slope = 0.0;
             for (int a = 0; a < w.presentCount; a++) {
                 int i = w.present[a];
                 double d = w.k[i] - 1.0;
-                double denominator = 1.0 + beta * d;
+                double denominator = liquidMinor ? w.k[i] - fraction * d : 1.0 + fraction * d;
                 f += w.z[i] * d / denominator;
                 slope -= w.z[i] * d * d / (denominator * denominator);
             }
             w.rachfordRiceSteps++;
             if (f == 0.0) break;
-            // f decreases in beta: a positive value puts the root above beta.
-            if (f > 0.0) lower = beta; else upper = beta;
-            double next = beta - f / slope;
+            if (liquidMinor) {
+                // The sum increases in delta; its negative decreases like the vapour form's, with the slope above.
+                f = -f;
+            } else if (step == 0 && f > 0.0) {
+                // The root lies above one half: the liquid is the minor phase. At one half the delta form's negated sum
+                // is -f with this slope; its window runs from the pole of the smallest K.
+                liquidMinor = true;
+                f = -f;
+                lower = smallest / (smallest - 1.0);
+                upper = largest / (largest - 1.0);
+            }
+            // f decreases in the fraction: a positive value puts the root above it.
+            if (f > 0.0) lower = fraction; else upper = fraction;
+            double next = fraction - f / slope;
             if (!(next > lower && next < upper)) next = 0.5 * (lower + upper);
-            if (next == beta || Math.abs(next - beta) <= 1.0e-15 * Math.max(1.0, Math.abs(beta))) {
-                beta = next;
+            if (next == fraction || Math.abs(next - fraction) <= 1.0e-15 * Math.abs(fraction)) {
+                fraction = next;
                 break;
             }
-            beta = next;
+            fraction = next;
         }
+        w.liquidMinor = liquidMinor;
+        w.vapourFraction = liquidMinor ? 1.0 - fraction : fraction;
+        w.liquidFraction = liquidMinor ? fraction : 1.0 - fraction;
         double sumX = 0.0;
         double sumY = 0.0;
         Arrays.fill(w.x, 0.0);
         Arrays.fill(w.y, 0.0);
         for (int a = 0; a < w.presentCount; a++) {
             int i = w.present[a];
-            double xi = w.z[i] / (1.0 + beta * (w.k[i] - 1.0));
+            double xi = w.z[i] / splitDenominator(w, i);
             w.x[i] = xi;
             w.y[i] = w.k[i] * xi;
             sumX += w.x[i];
@@ -4788,7 +4809,22 @@ public final class FluidTpEquilibrium implements EquilibriumService {
             w.x[i] /= sumX;
             w.y[i] /= sumY;
         }
-        return beta;
+        return true;
+    }
+
+    /** {@link #split} with both fractions positive: the K-values divide the feed into two populated phases. */
+    private boolean twoPhaseSplit(Workspace w) {
+        return split(w) && w.vapourFraction > 0.0 && w.liquidFraction > 0.0;
+    }
+
+    /**
+     * Component {@code i}'s {@code 1 + beta (K_i - 1)} of the last {@link #split}, written in the minor phase's fraction
+     * ({@code K_i - delta (K_i - 1)} when the liquid is minor), so that it keeps that fraction's precision: component
+     * {@code i}'s liquid share is {@code delta} over it and its vapour share {@code beta K_i} over it.
+     */
+    private static double splitDenominator(Workspace w, int i) {
+        double d = w.k[i] - 1.0;
+        return w.liquidMinor ? w.k[i] - w.liquidFraction * d : 1.0 + w.vapourFraction * d;
     }
 
     /** Evaluates {@code composition} on its lower-Gibbs root (the preferred one at a tie), copying its {@code ln phi}. */
