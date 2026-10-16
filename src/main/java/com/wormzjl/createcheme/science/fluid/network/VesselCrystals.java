@@ -337,7 +337,7 @@ final class VesselCrystals {
               double trueEnergy,double capacity,double workFrom,SolidInventory inert) {
             this.model=model;this.crystals=List.copyOf(crystals);this.totals=totals;this.trueEnergy=trueEnergy;this.capacity=capacity;this.workFrom=workFrom;
             this.inert=inert;inertMoments=inert.moments();
-            layout=new PhaseLayout(model,seed,null,null,PhaseLayout.support(seed,null,model.traceTruncation(),null),false);
+            layout=new PhaseLayout(model,seed,null,null,PhaseLayout.support(model,seed,null,null,false),false);
             fluidSize=layout.size();crystalScale=new double[crystals.size()];vapourRow=new boolean[crystals.size()];
             for(int j=0;j<crystals.size();j++) {
                 int c=crystals.get(j).component();var support=layout.support(c);

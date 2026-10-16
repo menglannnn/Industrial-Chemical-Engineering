@@ -232,7 +232,7 @@ public final class InventoryEquilibrium {
      * hands over a state the pass loop solves again, laid out from it.
      */
     private static PhaseLayout layout(FluidThermodynamics model,FluidThermodynamics.State state,PhaseSupport[] support) {
-        return new PhaseLayout(model,state,null,null,support!=null&&fits(support,state)?support:PhaseLayout.support(state,null,model.traceTruncation(),null));
+        return new PhaseLayout(model,state,null,null,support!=null&&fits(support,state)?support:PhaseLayout.support(model,state,null,null,false));
     }
     /** Whether every component {@code state} holds has a phase under {@code support} that {@code state} holds. */
     private static boolean fits(PhaseSupport[] support,FluidThermodynamics.State state) {

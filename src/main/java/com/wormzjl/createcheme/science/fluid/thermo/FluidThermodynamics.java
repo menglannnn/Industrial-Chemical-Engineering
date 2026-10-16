@@ -908,6 +908,20 @@ public final class FluidThermodynamics {
         return false;
     }
 
+    /**
+     * Owner decision D29 A: whether {@code state}'s hydrocarbon liquid is the stand-in's condensed share alone (see
+     * {@link #adopt}): a liquid holding crystal species only, beside a vapour, as a frost answer's crystal is carried. It is
+     * no phase of the answer, so its composition says nothing of which components a liquid there holds: the trace support
+     * reads the answer's own fluid phase, the vapour, and the stand-in admits every component the node holds, as the
+     * supersaturated solution it stands for ({@code PhaseLayout.support}). Never on a package without crystals.
+     */
+    public boolean condensedShareOnly(State state) {
+        if(crystalIds.isEmpty()||!(state.liquidVolume()>0)||state.vaporProperties()==null)return false;
+        double[] l=state.liquidView();
+        for(int i=0;i<l.length;i++)if(l[i]>0&&!crystalSpecies[i])return false;
+        return true;
+    }
+
     /** The engine's answer as a network state (see {@link #equilibriumTP}), or its typed refusal; {@code terms}, when
      * given, is the prepared Peng-Robinson workspace of exactly {@code t}. */
     State adopt(double t,double p,double[] overall,EquilibriumResult result,TranslatedPengRobinson.Workspace terms) {

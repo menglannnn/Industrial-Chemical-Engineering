@@ -947,7 +947,7 @@ public final class PassiveStepSolver {
         var supports=new PhaseSupport[seeds.size()][];
         for(int node=0;node<supports.length;node++)
             if(!graph.reservoirs().get(node).fixed()&&!dry(graph.reservoirs().get(node),seeds.get(node)))
-                supports[node]=PhaseLayout.support(seeds.get(node),Arrays.copyOf(reachable[node],model.hydrocarbon.componentCount()),model.traceTruncation(),promoted[node],
+                supports[node]=PhaseLayout.support(model,seeds.get(node),Arrays.copyOf(reachable[node],model.hydrocarbon.componentCount()),promoted[node],
                         graph.reservoirs().get(node).junction());
         return supports;
     }

@@ -509,6 +509,24 @@ public final class PhaseLayout {
         if(junction&&FluidThermodynamics.carriedTrace(seed))for(int i=0;i<support.length;i++)if(support[i]==PhaseSupport.VAPOR_ONLY)support[i]=PhaseSupport.ABSENT;
         return support;
     }
+    /**
+     * {@link #support(FluidThermodynamics.State, boolean[], TraceTruncationPolicy, boolean[], boolean)} of a node of
+     * {@code model}'s network, under its trace truncation policy, with the support read from the fluid phases of the
+     * answer the seed was adopted from (owner decision D29 A). Where the seed's liquid is a crystal's condensed share
+     * alone ({@link FluidThermodynamics#condensedShareOnly}: a frost answer's crystal carried by the stand-in), that liquid
+     * is no phase of the answer and its composition (the crystal's species only) says nothing of what a liquid there
+     * holds: the answer's one fluid phase is the vapour, and every component the vapour holds is admitted to the liquid
+     * too ({@link PhaseSupport#BOTH} where the rule gives {@link PhaseSupport#VAPOR_ONLY}). The supersaturated liquid then
+     * takes up the species that arrive with it: LNG flowing into an empty tank at the ambient condenses its methane into
+     * it as the tank pressurises, where methane held in the vapour only cooled the tank to methane's 90.69 K floor (cold
+     * fuzz seeds 34 and 75). On a package without crystals, and wherever a seed's liquid is a phase of its own, the same
+     * support as without the model.
+     */
+    public static PhaseSupport[] support(FluidThermodynamics model,FluidThermodynamics.State seed,boolean[] componentMask,boolean[] promoted,boolean junction) {
+        var support=support(seed,componentMask,model.traceTruncation(),promoted,junction);
+        if(model.condensedShareOnly(seed))for(int i=0;i<support.length;i++)if(support[i]==PhaseSupport.VAPOR_ONLY)support[i]=PhaseSupport.BOTH;
+        return support;
+    }
     private static PhaseSupport[] supportOf(FluidThermodynamics.State seed,boolean[] componentMask,TraceTruncationPolicy policy,boolean[] promoted) {
         Objects.requireNonNull(seed);Objects.requireNonNull(policy);
         double[] l=seed.liquidView(),v=seed.vaporView();
