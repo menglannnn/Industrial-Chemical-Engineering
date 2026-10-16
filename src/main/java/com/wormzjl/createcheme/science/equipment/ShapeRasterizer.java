@@ -53,6 +53,25 @@ public final class ShapeRasterizer {
     private static final int CODE_BITS = 7, KEYED_NOZZLES = 9;
     private static final int GEOMETRY_CACHE = 64, GEOMETRY_FACETS = 300_000;
     private static final Map<EquipmentShape, Geometry> GEOMETRIES = new ConcurrentHashMap<>();
+    /**
+     * Whether geometries keep their facets to draw cells ({@link #surface}, {@link #facetArea}). A dedicated server never draws:
+     * once a vessel's layout is known it keeps only the cell tables, the ports and the solid test ({@link #serverOnly}).
+     */
+    private static volatile boolean drawing = true;
+
+    /**
+     * For a dedicated server, at startup: geometries drop their facets once laid out (about 750 bytes each, tens of
+     * thousands on a large column), so the cache holds only what layout, keys, ports and collision read.
+     */
+    public static void serverOnly() {
+        drawing(false);
+    }
+
+    /** Whether geometries keep their facets from now on; the cache starts afresh. */
+    static void drawing(boolean on) {
+        drawing = on;
+        GEOMETRIES.clear();
+    }
 
     public record Cell(int x, int y, int z) {
     }
@@ -226,6 +245,7 @@ public final class ShapeRasterizer {
 
     /** Surface polygons of the cell at its actual position, without key normalization; {@code codes} as {@link #cellCodes}. */
     static List<Polygon> surface(EquipmentShape shape, int x, int y, int z, long codes) {
+        if (!drawing) throw new IllegalStateException("A dedicated server keeps no surfaces");
         var g = geometry(shape);
         var out = new ArrayList<Polygon>();
         var cell = new Cell(x, y, z);
@@ -432,6 +452,11 @@ public final class ShapeRasterizer {
                 fluidCell = new Cell(floor(low[0]), floor(low[1]), floor(low[2]));
             } else fluidCell = null;
             layout = buildLayout();
+            if (!drawing) {
+                mesh.facets().clear();
+                facetsByCell.clear();
+                nozzleMeshes.clear();
+            }
         }
 
         /** A head's rings from its tangent line (k = 0) to its apex: {height over the line, radius} at equal latitude steps. */

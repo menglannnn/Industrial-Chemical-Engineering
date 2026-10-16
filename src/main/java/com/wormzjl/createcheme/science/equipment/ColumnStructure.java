@@ -414,20 +414,25 @@ final class ColumnStructure {
         }
     }
 
-    /** Posts along the outer edge and at closed ends; top and mid rails along the edge and across a closed end. */
+    /**
+     * Posts along the outer edge and at closed ends; top and mid rails along the edge (mitred where they bend) and across a
+     * closed end. Posts stand in the deck with their tops flush in the top rail, and rails end inside the posts at an arc's
+     * ends: those bar ends are never seen and not drawn.
+     */
     private void handrail(Mesh m, Platform p) {
         double base = p.level() + DECK, r = plan.deckRadius() - .03, inner = outer + .12;
-        for (double a : posts(p.from(), p.to())) m.bar(at(r, a, base), at(r, a, base + RAIL + BAR / 2), BAR, radial(a), Material.HANDRAIL);
+        for (double a : posts(p.from(), p.to())) m.bar(at(r, a, base), at(r, a, base + RAIL + BAR / 2), BAR, radial(a), Mesh.NO_ENDS, Material.HANDRAIL);
         int segments = segments(p.from(), p.to());
-        for (int j = 0; j < segments; j++) {
-            double a0 = p.from() + (p.to() - p.from()) * j / segments, a1 = p.from() + (p.to() - p.from()) * (j + 1) / segments;
-            for (double h : new double[]{RAIL, MID_RAIL}) m.bar(at(r, a0, base + h), at(r, a1, base + h), BAR, UP, Material.HANDRAIL);
+        for (double h : new double[]{RAIL, MID_RAIL}) {
+            var points = new ArrayList<double[]>(segments + 1);
+            for (int j = 0; j <= segments; j++) points.add(at(r, p.from() + (p.to() - p.from()) * j / segments, base + h));
+            m.rail(points, BAR, UP, Mesh.NO_ENDS, Material.HANDRAIL);
         }
         for (int e = 0; e < 2; e++) {
             if (!(e == 0 ? p.closedFrom() : p.closedTo())) continue;
             double a = e == 0 ? p.from() : p.to();
-            m.bar(at(inner, a, base), at(inner, a, base + RAIL + BAR / 2), BAR, radial(a), Material.HANDRAIL);
-            for (double h : new double[]{RAIL, MID_RAIL}) m.bar(at(inner, a, base + h), at(r, a, base + h), BAR, UP, Material.HANDRAIL);
+            m.bar(at(inner, a, base), at(inner, a, base + RAIL + BAR / 2), BAR, radial(a), Mesh.NO_ENDS, Material.HANDRAIL);
+            for (double h : new double[]{RAIL, MID_RAIL}) m.bar(at(inner, a, base + h), at(r, a, base + h), BAR, UP, Mesh.NO_ENDS, Material.HANDRAIL);
         }
     }
 
@@ -453,24 +458,28 @@ final class ColumnStructure {
     /**
      * A caged ladder: two rails stood off the cladding on brackets, rungs every {@link #RUNG} up to the landing, and from
      * {@link #CAGE_START} over the foot a cage of hoops every {@link #HOOP} with five vertical bars, to the rails' top.
+     * Rungs and hoops (mitred where they bend) end inside the rails, cage bars start inside the first hoop (the last may sit below the rails' top), brackets against the rails and the cladding, and
+     * the rails stand on a deck or the ground: only the rails' tops and the hoops' bends show their ends.
      */
     private void ladder(Mesh m, Ladder l) {
         double a = l.angle(), landing = l.top() - LANDING;
         for (double side : new double[]{-LADDER_HALF, LADDER_HALF}) {
-            m.bar(at(rung, a, side, l.base()), at(rung, a, side, l.top()), BAR, radial(a), Material.HANDRAIL);
+            m.bar(at(rung, a, side, l.base()), at(rung, a, side, l.top()), BAR, radial(a), Mesh.END, Material.HANDRAIL);
             for (double y = l.base() + 1; y < l.top() - .3; y += 2)
-                m.bar(at(outer + .01, a, side, y), at(rung - BAR / 2, a, side, y), BAR, UP, Material.STEELWORK);
+                m.bar(at(outer + .01, a, side, y), at(rung - BAR / 2, a, side, y), BAR, UP, Mesh.NO_ENDS, Material.STEELWORK);
         }
         for (double y = l.base() + RUNG; y <= landing + 1e-9; y += RUNG)
-            m.bar(at(rung, a, -LADDER_HALF, y), at(rung, a, LADDER_HALF, y), BAR * .8, UP, Material.HANDRAIL);
+            m.bar(at(rung, a, -LADDER_HALF, y), at(rung, a, LADDER_HALF, y), BAR * .8, UP, Mesh.NO_ENDS, Material.HANDRAIL);
         if (!l.caged()) return;
         var hoop = hoop();
         double first = l.base() + CAGE_START;
-        for (double y = first; y <= l.top() + 1e-9; y = y + HOOP > l.top() && y < l.top() - .2 ? l.top() : y + HOOP)
-            for (int k = 0; k + 1 < hoop.size(); k++)
-                m.bar(at(rung + hoop.get(k)[0], a, hoop.get(k)[1], y), at(rung + hoop.get(k + 1)[0], a, hoop.get(k + 1)[1], y), BAR, UP, Material.HANDRAIL);
+        for (double y = first; y <= l.top() + 1e-9; y = y + HOOP > l.top() && y < l.top() - .2 ? l.top() : y + HOOP) {
+            var points = new ArrayList<double[]>(hoop.size());
+            for (var point : hoop) points.add(at(rung + point[0], a, point[1], y));
+            m.rail(points, BAR, UP, Mesh.NO_ENDS, Material.HANDRAIL);
+        }
         for (int k : new int[]{2, 3, 4, 5, 6})
-            m.bar(at(rung + hoop.get(k)[0], a, hoop.get(k)[1], first), at(rung + hoop.get(k)[0], a, hoop.get(k)[1], l.top()), BAR, radial(a), Material.HANDRAIL);
+            m.bar(at(rung + hoop.get(k)[0], a, hoop.get(k)[1], first), at(rung + hoop.get(k)[0], a, hoop.get(k)[1], l.top()), BAR, radial(a), Mesh.END, Material.HANDRAIL);
     }
 
     /** A cage hoop as (out from the rung plane, across) points: from one rail out and round the back to the other. */

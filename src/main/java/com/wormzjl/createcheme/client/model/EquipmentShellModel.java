@@ -40,7 +40,8 @@ import java.util.function.Function;
  * no ambient occlusion; their directional shade is baked into the vertex colour from the smooth normal (owner report
  * 2026-10-16: the per-quad six-step shade banded a round shell), so vanilla and Sodium shade them alike.
  * Without model data (Distant Horizons asks that way) the model is empty and the particle sprite gives the colour.
- * While air coolers' fans turn ({@link FanAnimation}) their rotors are left out; a cache is kept for each state.
+ * While air coolers' fans turn ({@link FanAnimation}) their rotors are left out: a cell holding a rotor keeps both lists,
+ * every other cell one list for both states.
  */
 public final class EquipmentShellModel implements IDynamicBakedModel {
     public static final ResourceLocation LOADER_ID = ResourceLocation.fromNamespaceAndPath(CreateChemE.MOD_ID, "equipment_shell");
@@ -49,11 +50,8 @@ public final class EquipmentShellModel implements IDynamicBakedModel {
     private static final ChunkRenderTypeSet SOLID = ChunkRenderTypeSet.of(RenderType.solid());
     private final TextureAtlasSprite[] sprites;
     private final TextureAtlasSprite particle;
-    /**
-     * Rebuilt with the model on every resource reload, since quads embed atlas coordinates. Meshing threads share them:
-     * the quads with the still rotors, and without them while the fans turn.
-     */
-    private final Map<ShapeRasterizer.CellKey, List<BakedQuad>> quads = new ConcurrentHashMap<>(), turning = new ConcurrentHashMap<>();
+    /** Rebuilt with the model on every resource reload, since quads embed atlas coordinates. Meshing threads share them. */
+    private final Map<ShapeRasterizer.CellKey, Baked> quads = new ConcurrentHashMap<>();
     /** The sprites of the model last baked, for parts drawn outside the chunk mesh ({@link #sprite}). */
     private static volatile TextureAtlasSprite @Nullable [] current;
 
@@ -73,22 +71,27 @@ public final class EquipmentShellModel implements IDynamicBakedModel {
     public List<BakedQuad> getQuads(@Nullable BlockState state, @Nullable Direction side, RandomSource random, ModelData data, @Nullable RenderType renderType) {
         var key = data.get(EquipmentShellBlockEntity.CELL);
         if (side != null || key == null) return List.of();
-        boolean turn = FanAnimation.enabled();
-        var cache = turn ? turning : quads;
-        var cached = cache.get(key);
-        if (cached != null) return cached;
-        if (cache.size() >= CACHE) cache.clear();
-        return cache.computeIfAbsent(key, k -> bake(k, turn));
+        var baked = quads.get(key);
+        if (baked == null) {
+            if (quads.size() >= CACHE) quads.clear();
+            baked = quads.computeIfAbsent(key, this::bake);
+        }
+        return FanAnimation.enabled() ? baked.turning() : baked.still();
+    }
+
+    /** A cell's quads with its rotors at rest, and without them while the fans turn: one list where it holds none. */
+    private record Baked(List<BakedQuad> still, List<BakedQuad> turning) {
     }
 
     /**
      * Each convex polygon becomes a fan of quads; a last single triangle repeats its final vertex. A painted material's
      * quads carry its paint channel as their tint index, so the cell's paint colours them as the chunk is meshed.
      */
-    private List<BakedQuad> bake(ShapeRasterizer.CellKey key, boolean turn) {
+    private Baked bake(ShapeRasterizer.CellKey key) {
         var polygons = ShapeRasterizer.surface(key);
-        if (turn) polygons = polygons.stream().filter(p -> p.material() != Mesh.Material.AC_FAN).toList();
-        return bake(polygons, sprites, true);
+        var still = bake(polygons, sprites, true);
+        if (polygons.stream().noneMatch(p -> p.material() == Mesh.Material.AC_FAN)) return new Baked(still, still);
+        return new Baked(still, bake(polygons.stream().filter(p -> p.material() != Mesh.Material.AC_FAN).toList(), sprites, true));
     }
 
     /**

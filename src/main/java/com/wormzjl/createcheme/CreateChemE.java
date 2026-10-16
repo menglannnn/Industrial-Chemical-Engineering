@@ -21,6 +21,7 @@ import net.neoforged.bus.api.IEventBus;
 import net.neoforged.fml.ModContainer;
 import net.neoforged.fml.common.Mod;
 import net.neoforged.fml.config.ModConfig;
+import net.neoforged.fml.loading.FMLEnvironment;
 import net.neoforged.neoforge.common.ModConfigSpec;
 import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.event.BuildCreativeModeTabContentsEvent;
@@ -199,6 +200,8 @@ public final class CreateChemE {
         modEventBus.addListener(com.wormzjl.createcheme.network.EquipmentNetwork::register);
         modEventBus.addListener(CreateChemE::addCreativeTabItem);
         modContainer.registerConfig(ModConfig.Type.COMMON, CONFIG_SPEC, "createcheme-common.toml");
+        // A dedicated server never draws equipment: its geometries keep no facets once laid out.
+        if (FMLEnvironment.dist.isDedicatedServer()) com.wormzjl.createcheme.science.equipment.ShapeRasterizer.serverOnly();
 
         // ProcessSolveServices is thread-confined to the logical server. Pin every lifecycle edge to the GAME bus.
         IEventBus gameEventBus = NeoForge.EVENT_BUS;

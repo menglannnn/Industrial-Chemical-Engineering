@@ -690,16 +690,20 @@ public final class ProcessUnit {
         for (int k = 0; k < 4; k++) segment(outline[k], outline[(k + 1) % 4]);
     }
 
+    /** Sides of the Blender fan ring's polygon ({@code ac_fan_ring}), a multiple of 4 for the hopper's quadrants. */
+    static final int RING_SIDES = 24;
+
     /**
      * A bay's plenum (owner report 2026-10-16 with a photo: "the metal sheets lack a bottom casing"): a sheet-metal hopper
      * per fan, from the bundle's frame (x0 to x1, the fan's share of z0 to z1, at {@code top}) down to its ring's top
      * flange (radius {@code ring} round each of {@code centres}) at {@code bottom}. Each hopper is a square-to-round
      * transition: a triangle from each side of the frame to the circle's point facing it, a fan of triangles from each
-     * corner to the quarter of the circle between. Sheets are drawn on both faces, so the casing also shows from inside a
-     * ring; looking up through a ring one sees the bundle's fins.
+     * corner to the quarter of the circle between, at the ring's {@link #RING_SIDES} corners. Sheets are drawn on both
+     * faces, so the casing also shows from inside a ring; looking up through a ring one sees the bundle's fins.
      */
     private void plenum(double x0, double x1, double z0, double z1, double top, double bottom, double[] centres, double ring) {
-        int n = 32, quarter = n / 4;
+        // The ring part's top flange is a 24-gon at these angles (ac_parts.py, lathe n = 24): the hopper meets its corners.
+        int n = RING_SIDES, quarter = n / 4;
         double cx = (x0 + x1) / 2;
         for (int f = 0; f < centres.length; f++) {
             double za = f == 0 ? z0 : (centres[f - 1] + centres[f]) / 2, zb = f + 1 == centres.length ? z1 : (centres[f] + centres[f + 1]) / 2, cz = centres[f];

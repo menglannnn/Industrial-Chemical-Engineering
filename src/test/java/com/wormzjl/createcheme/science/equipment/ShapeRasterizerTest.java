@@ -18,6 +18,37 @@ import static com.wormzjl.createcheme.science.equipment.EquipmentShape.drum;
 import static org.junit.jupiter.api.Assertions.*;
 
 class ShapeRasterizerTest {
+    @Test
+    void aDedicatedServerLaysOutKeysAndCollidesWithoutFacets() {
+        // ShapeRasterizer.serverOnly (2026-10-16): a dedicated server drops a geometry's facets once it is laid out. Its
+        // layout, cell keys, ports and solids must be the drawing side's, and it must refuse to draw a cell.
+        var shapes = List.of(drum(3, 9, Orientation.VERTICAL, Heading.NORTH, 2), drum(2, 6, Orientation.HORIZONTAL, Heading.EAST, 1),
+                EquipmentShape.column(3, ColumnTrays.simple(12, 6), Heading.NORTH, 3), EquipmentShape.unit(Kind.AIR_COOLER, 3, 6, Heading.NORTH, 4));
+        var drawn = new java.util.ArrayList<Object>();
+        for (var shape : shapes) drawn.add(serverView(shape));
+        try {
+            ShapeRasterizer.drawing(false);
+            for (int k = 0; k < shapes.size(); k++) assertEquals(drawn.get(k), serverView(shapes.get(k)), shapes.get(k).toString());
+            var cell = ShapeRasterizer.layout(shapes.getFirst()).shell().getFirst();
+            assertThrows(IllegalStateException.class, () -> ShapeRasterizer.surface(ShapeRasterizer.key(shapes.getFirst(), cell.x(), cell.y(), cell.z())));
+        } finally {
+            ShapeRasterizer.drawing(true);
+        }
+    }
+
+    /** What a server reads of a vessel: its layout, each shell cell's key and solid with a 0.1 m pipe on every nozzle, and its ports. */
+    private static List<Object> serverView(EquipmentShape shape) {
+        var layout = ShapeRasterizer.layout(shape);
+        var keys = new java.util.ArrayList<Object>();
+        var piped = new double[shape.nozzles().size()];
+        java.util.Arrays.fill(piped, .1);
+        for (var cell : layout.shell()) {
+            var key = ShapeRasterizer.key(shape, cell.x(), cell.y(), cell.z(), ShapeRasterizer.cellCodes(shape, cell, piped));
+            keys.add(List.of(key, ShapeRasterizer.solid(key)));
+        }
+        return List.of(layout, keys, ShapeRasterizer.ports(shape));
+    }
+
     /**
      * Bare drums (small, odd, half-metre and largest), drums on skirts, lying drums on saddles facing each way, columns
      * (a crude column with two pumparounds on its least skirt, and the smallest diameter with four pumparounds, two draws

@@ -4,6 +4,7 @@ import com.wormzjl.createcheme.science.math.DeterministicMath;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Locale;
 
@@ -232,6 +233,40 @@ public final class Mesh {
         }
     }
 
+    /**
+     * Box-axis projections by material and facing ({@link #projection}): the sprite upright on side faces and unmirrored
+     * seen from outside. Shared by every facet without a texture frame of its own (two records and four arrays a facet
+     * saved; never changed).
+     */
+    private static final Uv[][][] BOX_UVS = new Uv[Material.values().length][6][];
+
+    static {
+        var origin = new double[3];
+        for (var material : Material.values())
+            for (int k = 0; k < 6; k++) {
+                double[] uAxis, vAxis;
+                if (k < 2) {
+                    uAxis = new double[]{1, 0, 0};
+                    vAxis = new double[]{0, 0, k == 0 ? -1 : 1};
+                } else if (k < 4) {
+                    uAxis = new double[]{0, 0, k == 2 ? -1 : 1};
+                    vAxis = new double[]{0, 1, 0};
+                } else {
+                    uAxis = new double[]{k == 4 ? 1 : -1, 0, 0};
+                    vAxis = new double[]{0, 1, 0};
+                }
+                BOX_UVS[material.ordinal()][k] = new Uv[]{new Uv(origin, uAxis, 0, material.period()), new Uv(origin, vAxis, 0, material.period())};
+            }
+    }
+
+    /** A facing's box projection: 0 up, 1 down, 2 +x, 3 -x, 4 +z, 5 -z, by its largest component (y, then x, first on ties). */
+    private static int projection(double[] facing) {
+        double ax = Math.abs(facing[0]), ay = Math.abs(facing[1]), az = Math.abs(facing[2]);
+        if (ay >= ax && ay >= az) return facing[1] > 0 ? 0 : 1;
+        if (ax >= az) return facing[0] > 0 ? 2 : 3;
+        return facing[2] > 0 ? 4 : 5;
+    }
+
     /** A planar convex facet in box coordinates, counter-clockwise seen from outside, with its texture frame. */
     record Facet(List<double[]> positions, double[] normal, double[] min, double[] max, Shading shading, Material material, Uv u, Uv v) {
     }
@@ -318,30 +353,21 @@ public final class Mesh {
             worldU = u.map(transform);
             worldV = v.map(transform);
         } else {
-            // Box-axis projection, the sprite upright on side faces and unmirrored seen from outside.
-            double ax = Math.abs(facing[0]), ay = Math.abs(facing[1]), az = Math.abs(facing[2]);
-            double[] uAxis, vAxis;
-            if (ay >= ax && ay >= az) {
-                uAxis = new double[]{1, 0, 0};
-                vAxis = new double[]{0, 0, facing[1] > 0 ? -1 : 1};
-            } else if (ax >= az) {
-                uAxis = new double[]{0, 0, facing[0] > 0 ? -1 : 1};
-                vAxis = new double[]{0, 1, 0};
-            } else {
-                uAxis = new double[]{facing[2] > 0 ? 1 : -1, 0, 0};
-                vAxis = new double[]{0, 1, 0};
-            }
-            worldU = new Uv(new double[3], uAxis, 0, material.period());
-            worldV = new Uv(new double[3], vAxis, 0, material.period());
+            var projection = BOX_UVS[material.ordinal()][projection(facing)];
+            worldU = projection[0];
+            worldV = projection[1];
         }
         facets.add(new Facet(List.copyOf(positions), facing, min, max, shading.map(transform), material, worldU, worldV));
     }
 
     /**
      * Adds the facets of {@code source}, built in this mesh's local frame without a transform of their own, turned by
-     * this mesh's transform: a part built once in its frame (a column's auxiliaries) placed in any box.
+     * this mesh's transform: a part built once in its frame (a unit) placed in any box. Texture frames and shadings the
+     * source's facets share stay shared, each mapped once.
      */
     void include(Mesh source) {
+        var uvs = new IdentityHashMap<Uv, Uv>();
+        var shadings = new IdentityHashMap<Shading, Shading>();
         for (var f : source.facets) {
             var positions = new ArrayList<double[]>(f.positions().size());
             double[] min = {Double.MAX_VALUE, Double.MAX_VALUE, Double.MAX_VALUE}, max = {-Double.MAX_VALUE, -Double.MAX_VALUE, -Double.MAX_VALUE};
@@ -353,8 +379,8 @@ public final class Mesh {
                     max[a] = Math.max(max[a], w[a]);
                 }
             }
-            facets.add(new Facet(List.copyOf(positions), transform.direction(f.normal()), min, max, f.shading().map(transform), f.material(), f.u().map(transform),
-                    f.v().map(transform)));
+            facets.add(new Facet(List.copyOf(positions), transform.direction(f.normal()), min, max, shadings.computeIfAbsent(f.shading(), s -> s.map(transform)), f.material(),
+                    uvs.computeIfAbsent(f.u(), u -> u.map(transform)), uvs.computeIfAbsent(f.v(), v -> v.map(transform))));
         }
     }
 
@@ -379,11 +405,13 @@ public final class Mesh {
     }
 
     /**
-     * A triangle with its own texture coordinates (in its material's sprite, 0 to 1, v down) and a normal at each corner,
-     * counter-clockwise seen from outside: an imported part's ({@link Part}). Each coordinate is the affine map of the
-     * triangle's plane that meets the three corners, so a cell's piece of it samples the same texels.
+     * An imported part's convex face {@code corners} ({@link Part}: a triangle, or a quad of two triangles merged because
+     * their texture coordinates and normals are one affine field), counter-clockwise seen from outside. Its texture
+     * coordinates (in its material's sprite, 0 to 1, v down) and normals are those of the reference triangle {@code p} at
+     * its corners, extended affinely over the face's plane, so a cell's piece of it samples the same texels; drawn as one
+     * facet, a quad costs one chunk quad, not two.
      */
-    void triangle(double[][] p, double[][] uv, double[][] n, Material material) {
+    void imported(double[][] corners, double[][] p, double[][] uv, double[][] n, Material material) {
         double[] e1 = sub(p[1], p[0]), e2 = sub(p[2], p[0]);
         double a = dot(e1, e1), b = dot(e1, e2), c = dot(e2, e2), det = a * c - b * b;
         if (det < 4 * MIN_AREA * MIN_AREA) return;
@@ -391,8 +419,10 @@ public final class Mesh {
         var v = affine(p[0], e1, e2, a, b, c, det, uv[0][1], uv[1][1] - uv[0][1], uv[2][1] - uv[0][1]);
         var outward = cross(e1, e2);
         double[] inside = new double[3];
-        for (int k = 0; k < 3; k++) inside[k] = (p[0][k] + p[1][k] + p[2][k]) / 3 - outward[k];
-        add(List.of(p[0], p[1], p[2]), inside, new Interpolated(p[0], p[1], p[2], n[0], n[1], n[2]), material, u, v);
+        for (var corner : corners)
+            for (int k = 0; k < 3; k++) inside[k] += corner[k] / corners.length;
+        for (int k = 0; k < 3; k++) inside[k] -= outward[k];
+        add(List.of(corners), inside, new Interpolated(p[0], p[1], p[2], n[0], n[1], n[2]), material, u, v);
     }
 
     /** The coordinate {@code at0} + d at the triangle's corners (d1, d2 at its second and third), affine over its plane. */
@@ -473,7 +503,8 @@ public final class Mesh {
      * across its flats and, with its stud's end, 1.2 d high, a closed hexagonal prism standing on the flange's surface at
      * {@code z} towards {@code sign} along the axis. They sit on a bolt circle half way from {@code inner} (the hub, the
      * neck or a cover's edge) to {@code outer} (the rim), straddling the frame's reference direction as flange bolt holes
-     * do; a flange whose land is narrower than a nut shows none.
+     * do; a flange whose land is narrower than a nut shows none. The seat stays drawn: a large device's flange does not
+     * cover it everywhere (LineGeometryTest found its inside seen from outside without it).
      */
     void bolts(Frame f, double od, double inner, double outer, double z, int sign, Material material) {
         double d = PipeSizes.boltDiameter(od), across = Math.max(1.6 * d, MIN_NUT);
@@ -554,9 +585,15 @@ public final class Mesh {
 
     /** A box spanned by a centre and three half-extent vectors (orthogonal), every face drawn. */
     void block(double[] centre, double[] ex, double[] ey, double[] ez, Material material) {
+        block(centre, ex, ey, ez, ALL_FACES, material);
+    }
+
+    /** A box spanned by a centre and three half-extent vectors; {@code faces} masks its faces (bits -ex, +ex, -ey, +ey, -ez, +ez). */
+    void block(double[] centre, double[] ex, double[] ey, double[] ez, int faces, Material material) {
         double[][] e = {ex, ey, ez};
         for (int axis = 0; axis < 3; axis++)
             for (int sign = -1; sign <= 1; sign += 2) {
+                if ((faces & (1 << (2 * axis + (sign + 1) / 2))) == 0) continue;
                 double[] a = e[(axis + 1) % 3], b = e[(axis + 2) % 3], n = e[axis];
                 double[] c = {centre[0] + sign * n[0], centre[1] + sign * n[1], centre[2] + sign * n[2]};
                 var polygon = List.of(add3(c, -1, a, -1, b), add3(c, 1, a, -1, b), add3(c, 1, a, 1, b), add3(c, -1, a, 1, b));
@@ -566,6 +603,17 @@ public final class Mesh {
 
     /** A bar of square section {@code width} from {@code a} to {@code b} (handrails, rungs, cage bars), its ends drawn. */
     void bar(double[] a, double[] b, double width, double[] up, Material material) {
+        bar(a, b, width, up, BOTH_ENDS, material);
+    }
+
+    /** Which ends of a {@link #bar} are drawn: none where both are buried in other parts, its start, its end, or both. */
+    static final int NO_ENDS = 0, START = 1, END = 2, BOTH_ENDS = 3;
+
+    /**
+     * A bar whose {@code ends} ({@link #START}, {@link #END}) are drawn: an end buried in a rail, a deck or a hoop is never
+     * seen, and leaving it out saves a third of a bar's quads (rungs, posts and cage bars are most of a column's).
+     */
+    void bar(double[] a, double[] b, double width, double[] up, int ends, Material material) {
         var axis = sub(b, a);
         double length = Math.sqrt(dot(axis, axis));
         if (length < EPS) return;
@@ -575,7 +623,78 @@ public final class Mesh {
         side = unit(side);
         var normal = cross(side, dir);
         double h = width / 2;
-        block(new double[]{(a[0] + b[0]) / 2, (a[1] + b[1]) / 2, (a[2] + b[2]) / 2}, scale(dir, length / 2), scale(side, h), scale(normal, h), material);
+        block(new double[]{(a[0] + b[0]) / 2, (a[1] + b[1]) / 2, (a[2] + b[2]) / 2}, scale(dir, length / 2), scale(side, h), scale(normal, h), ALL_FACES & ~3 | ends, material);
+    }
+
+    /**
+     * A bar of square section {@code width} along the polyline {@code points} (handrails along a deck's edge, a cage's
+     * hoops), its section turned about {@code up} as {@link #bar}'s. Where it bends its faces meet on the bisecting plane
+     * (a mitre), so no end face is drawn there: two quads a bend fewer than a bar per segment, the same outline. A bend
+     * sharper than {@link #MITRE_LIMIT}, or one that tilts the section, ends one bar and starts the next. {@code ends}
+     * masks the polyline's first and last end faces ({@link #START}, {@link #END}).
+     */
+    void rail(List<double[]> points, double width, double[] up, int ends, Material material) {
+        int m = points.size();
+        if (m < 2) return;
+        var dirs = new double[m - 1][];
+        var sides = new double[m - 1][];
+        var normals = new double[m - 1][];
+        for (int k = 0; k + 1 < m; k++) {
+            var axis = sub(points.get(k + 1), points.get(k));
+            double length = Math.sqrt(dot(axis, axis));
+            if (length < EPS) throw new IllegalArgumentException("Rail points " + k + " and " + (k + 1) + " coincide");
+            dirs[k] = scale(axis, 1 / length);
+            var side = cross(dirs[k], up);
+            if (dot(side, side) < EPS) side = cross(dirs[k], Math.abs(dirs[k][0]) < .9 ? new double[]{1, 0, 0} : new double[]{0, 1, 0});
+            sides[k] = unit(side);
+            normals[k] = cross(sides[k], dirs[k]);
+        }
+        double h = width / 2;
+        // The section's corner offsets (side sign a, normal sign b) at each point: a mitre where the bar bends smoothly.
+        var offsets = new double[m][][];
+        var joined = new boolean[m];
+        for (int j = 0; j < m; j++) {
+            int before = Math.max(0, j - 1), after = Math.min(m - 2, j);
+            double[] side = sides[after], normal = normals[after];
+            if (j > 0 && j < m - 1) {
+                double bend = dot(sides[before], sides[after]);
+                var tilt = sub(normals[before], normals[after]);
+                joined[j] = bend > MITRE_LIMIT && dot(tilt, tilt) < EPS;
+                if (joined[j]) side = scale(plus(sides[before], sides[after]), 1 / (1 + bend));
+            }
+            offsets[j] = new double[4][];
+            for (int c = 0; c < 4; c++) {
+                double a = c == 0 || c == 3 ? -h : h, b = c < 2 ? -h : h;
+                offsets[j][c] = new double[]{a * side[0] + b * normal[0], a * side[1] + b * normal[1], a * side[2] + b * normal[2]};
+            }
+        }
+        for (int k = 0; k + 1 < m; k++) {
+            // A segment's corners: its own section where a bend is not joined.
+            double[][] from = joined[k] || k == 0 ? offsets[k] : section(sides[k], normals[k], h);
+            double[][] to = joined[k + 1] || k + 2 == m ? offsets[k + 1] : section(sides[k], normals[k], h);
+            double[] p = points.get(k), q = points.get(k + 1);
+            for (int c = 0; c < 4; c++) {
+                int d = (c + 1) % 4;
+                var outward = plus(from[c], from[d]);
+                flat(List.of(plus(p, from[c]), plus(p, from[d]), plus(q, to[d]), plus(q, to[c])), outward, material);
+            }
+            boolean first = k == 0 ? (ends & START) != 0 : !joined[k], last = k + 2 == m ? (ends & END) != 0 : !joined[k + 1];
+            if (first) flat(List.of(plus(p, from[0]), plus(p, from[1]), plus(p, from[2]), plus(p, from[3])), neg(dirs[k]), material);
+            if (last) flat(List.of(plus(q, to[0]), plus(q, to[1]), plus(q, to[2]), plus(q, to[3])), dirs[k], material);
+        }
+    }
+
+    /** The sharpest bend a {@link #rail} mitres, as the cosine between its sides: about 140 degrees. */
+    static final double MITRE_LIMIT = -.75;
+
+    /** A square section's corner offsets, as {@link #rail} orders them. */
+    private static double[][] section(double[] side, double[] normal, double h) {
+        var out = new double[4][];
+        for (int c = 0; c < 4; c++) {
+            double a = c == 0 || c == 3 ? -h : h, b = c < 2 ? -h : h;
+            out[c] = new double[]{a * side[0] + b * normal[0], a * side[1] + b * normal[1], a * side[2] + b * normal[2]};
+        }
+        return out;
     }
 
     /** An elbow: a quarter (or any arc) of torus of bend radius {@code bend} and tube radius {@code r} from angle a0 to a1. */
@@ -787,6 +906,10 @@ public final class Mesh {
 
     static double[] neg(double[] a) {
         return new double[]{-a[0], -a[1], -a[2]};
+    }
+
+    static double[] plus(double[] a, double[] b) {
+        return new double[]{a[0] + b[0], a[1] + b[1], a[2] + b[2]};
     }
 
     static double[] sub(double[] a, double[] b) {
