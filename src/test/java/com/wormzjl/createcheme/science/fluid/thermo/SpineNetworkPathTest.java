@@ -483,6 +483,22 @@ class SpineNetworkPathTest {
         assertEquals(LegacyNetworkPathPinTest.REVISION, legacy.revision());
     }
 
+    @Test
+    void theColumnRefusesASpinePackageTyped() {
+        // The pilot without its crystal list (P6: with it, the column refuses the crystals first, CrystalPackageConsumersTest).
+        var spineOnly = PilotCryogenicTestCatalog.parseWith("data/createcheme/materials/packages/pilot_cryogenic.json", o -> o.remove("crystals"));
+        var refused = assertThrows(com.wormzjl.createcheme.science.material.IdealGasFitUnavailable.class,
+                () -> com.wormzjl.createcheme.science.material.MaterialRuntime.with(spineOnly, PILOT,
+                        () -> com.wormzjl.createcheme.science.column.v3.thermo.V3PengRobinsonThermo.fromRegisteredPackage(PILOT)));
+        assertEquals(PILOT, refused.packageId());
+        assertEquals("the V3 column", refused.consumer());
+        assertTrue(refused.getMessage().contains("reference spine"), refused.getMessage());
+        // A column package is unaffected.
+        var column = com.wormzjl.createcheme.science.material.MaterialRuntime.with(MaterialCatalog.bundled(), "createcheme:tjl20_methane",
+                () -> com.wormzjl.createcheme.science.column.v3.thermo.V3PengRobinsonThermo.fromRegisteredPackage("createcheme:tjl20_methane"));
+        assertEquals("createcheme:tjl20_methane", column.packageId());
+    }
+
     /** The kind a typed hold names in its message (main's hold carries it in its message only). */
     static FluidThermodynamics.UnsupportedPhases.Kind kindOf(FluidThermodynamics.UnsupportedPhases hold) {
         for (var kind : FluidThermodynamics.UnsupportedPhases.Kind.values()) if (hold.getMessage().contains("(" + kind + ")")) return kind;

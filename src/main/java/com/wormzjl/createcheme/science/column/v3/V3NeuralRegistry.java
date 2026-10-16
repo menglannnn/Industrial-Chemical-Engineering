@@ -79,6 +79,9 @@ public final class V3NeuralRegistry implements V3NeuralInitializer {
         Objects.requireNonNull(catalog);Objects.requireNonNull(input);
         var source=catalog.packages().get(input.packageId());
         if(source==null||!source.components().equals(input.componentBasis().componentIds()))return UNAVAILABLE;
+        // A package that admits crystals (P6) is outside every model's physics: classical initialization, never a
+        // fluid-only projection of it.
+        if(!source.crystals().isEmpty())return UNAVAILABLE;
         for(var entry:entries) {
             var model=entry.model();var axis=new MaterialAxis(model.componentIds());
             var original=new MaterialAxis(source.components());

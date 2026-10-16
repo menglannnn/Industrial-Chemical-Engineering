@@ -1,5 +1,7 @@
 package com.wormzjl.createcheme.science.column.v3.thermo;
 
+import com.wormzjl.createcheme.science.material.CrystalPhasesUnavailable;
+import com.wormzjl.createcheme.science.material.IdealGasFitUnavailable;
 import com.wormzjl.createcheme.science.material.MaterialCatalog;
 import com.wormzjl.createcheme.science.material.MaterialRuntime;
 import com.wormzjl.createcheme.science.column.v3.V3ComponentBasis;
@@ -17,6 +19,10 @@ final class V3CatalogPropertyPackage implements V3PropertyPackage {
     V3CatalogPropertyPackage(MaterialCatalog catalog,String id) {
         data=catalog.requirePackage(id);
         if(!data.model().equals("pr78")) throw new IllegalArgumentException("Thermodynamic solver unavailable: " + data.model());
+        // A package that admits crystals (P6): the column is a vapour-liquid algorithm without crystal equations.
+        if(!data.crystals().isEmpty()) throw new CrystalPhasesUnavailable(data.id(),data.crystals(),"the V3 column");
+        // A spine package's records carry no shifted_polynomial_5 fits (D6); the column reads them.
+        if(!data.spine().isEmpty()) throw new IdealGasFitUnavailable(data.id(),"the V3 column");
         basis=new V3ComponentBasis(data.components());
         components=data.properties().stream().map(p -> {
             var cp=p.cp(); var pr=p.pr();
