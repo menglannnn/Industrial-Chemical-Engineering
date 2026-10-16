@@ -374,6 +374,29 @@ class NetworkPhaseEngineTest {
         assertTrue(sum(state.liquidView()) > 0 && sum(state.vaporView()) > 0, "both slots");
     }
 
+    /**
+     * The design review's E9 (cold fuzz seed 55 under its form A): a junction's arrival mixture, methane with 5.3 mol of CO2
+     * per 17.8 of methane and traces of nitrogen and ethane, at 186 K and 2.86 MPa under the CO2 crystal's competition. The
+     * engine converges a two-phase split, but the stability re-check leaves both products unresolved: a third fluid phase is
+     * not excluded, so the split is no answer. That is the proved indication's typed hold short of the proof
+     * ({@code THREE_PHASES}), never a plain refusal: a seed that meets it keeps its guess, a substep counts it under its key,
+     * and an island holding on it names the node.
+     */
+    @Test
+    void aSplitWhoseProductStabilityIsUnresolvedIsHeldTyped() {
+        var pilot = FluidTestSupport.model(MaterialCatalog.bundled(), PILOT);
+        double t = 185.98296668278303, p = 2861811.264201872;
+        double[] arrival = {0.3324767803012572, 17.82807635831462, 0.2742249567265616, 5.342048217743187, 0};
+        var answer = pilot.phaseEngine().tp(t, p, arrival, pilot.crystalsCompete(t, arrival));
+        assertEquals(EquilibriumResult.Status.NOT_CONVERGED, answer.status(), answer.toString());
+        assertFalse(answer.diagnostics().criticalBand(), "outside the band");
+        assertTrue(answer.detail().startsWith(EquilibriumResult.UNRESOLVED_PRODUCT), answer.detail());
+        var hold = assertThrows(FluidThermodynamics.UnsupportedPhases.class, () -> pilot.flashTP(t, p, arrival, () -> {}));
+        assertEquals(FluidThermodynamics.UnsupportedPhases.Kind.THREE_PHASES, hold.kind());
+        assertTrue(hold.getMessage().contains("not excluded"), hold.getMessage());
+        assertEquals(22, hold.at(22).node(), "a caller that knows the node names it");
+    }
+
     /** The model's own saturation pressure of pure nitrogen, where its liquid and vapour fugacities agree. */
     private double saturationPressure(double t) {
         double[] pure = new double[n - 1];pure[nitrogen] = 1;

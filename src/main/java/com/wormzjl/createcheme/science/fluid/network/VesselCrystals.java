@@ -213,7 +213,10 @@ final class VesselCrystals {
                                   double[] held,double[] moles,double[] totals,double trueEnergy,SolidInventory inert,Runnable checkpoint) {
         double[] left=totals.clone();double[] mass=new double[all.size()];
         for(int k=0;k<all.size();k++)if(moles[k]>0){int c=all.get(k).component();mass[k]=left[c]*all.get(k).molarMass();left[c]=0;}
-        for(double n:left)if(n!=0)throw new IllegalArgumentException("Crystal equilibrium froze a vessel whose other species need a fluid");
+        // Traces of the other species leave a fluid (D21): an answer that froze them too is a crystal step the engine does
+        // not answer for this vessel, a typed hold the refresh names the vessel with (review section 5).
+        for(double n:left)if(n!=0)throw new FluidThermodynamics.UnsupportedPhases(model.domain().packageId(),Double.NaN,Double.NaN,FluidThermodynamics.UnsupportedPhases.Kind.CRYSTAL_STEP,
+                "the crystals would hold every amount of a vessel whose other species need a fluid");
         var solids=stock(inventory.solids(),inert,null,all,held,mass);
         double capacity=inventory.volume(),bag=PhaseLayout.bagVolume(closed,capacity);
         double stored=trueEnergy;for(int k=0;k<all.size();k++)stored-=mass[k]*all.get(k).material().crystal().energyOffset();

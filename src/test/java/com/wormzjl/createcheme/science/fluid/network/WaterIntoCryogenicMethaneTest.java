@@ -22,8 +22,9 @@ import static org.junit.jupiter.api.Assertions.*;
  * implicit stage, and a vessel's wall goes slack at the ambient instead of below it (D54), so a vessel the methane cools
  * stands at or above 101.325 kPa and a water generator at the ambient has no drive into it: the rows commit and no water
  * enters. The typed water-domain hold remains the outcome wherever water is driven into a vessel that falls below
- * 273.16 K: with the water generator at 1 MPa. That hold names no node: the step's line search captures the violation
- * unnamed, as on the port head (open item of milestone M3, main's own).</p>
+ * 273.16 K: with the water generator at 1 MPa. That hold names the vessel: the water domain refuses the line search of the
+ * vessel's closure, and the reconstruction that closes the vessel names the failed closure as it names a hold (the design
+ * review's section 5; before it the hold named no node, an open item of milestone M3).</p>
  */
 class WaterIntoCryogenicMethaneTest {
     private static final String PILOT = "createcheme:pilot_cryogenic";
@@ -79,7 +80,7 @@ class WaterIntoCryogenicMethaneTest {
         commitsWithNoWaterEntering(115, 2.0e5);
     }
 
-    /** Water driven in at 1 MPa while the methane cools the vessel below 273.16 K: the typed water-domain hold. */
+    /** Water driven in at 1 MPa while the methane cools the vessel below 273.16 K: the typed water-domain hold, naming the vessel. */
     @Test
     void waterDrivenIntoTheCooledVesselHoldsOnTheWaterDomain() {
         var solver = new PassiveIntervalSolver(model);
@@ -93,5 +94,6 @@ class WaterIntoCryogenicMethaneTest {
         assertEquals("Water", domain.component());
         assertEquals(ThermoDomainViolation.Property.TEMPERATURE, domain.property());
         assertTrue(domain.code().below(), domain.getMessage());
+        assertEquals(VESSEL, domain.node(), "the hold names the vessel: " + domain.getMessage());
     }
 }

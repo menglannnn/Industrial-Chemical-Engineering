@@ -1027,9 +1027,12 @@ public final class FluidThermodynamics {
             case NOT_CONVERGED->{
                 if(result.diagnostics().criticalBand())throw new CriticalBandHold(domain.packageId(),t,p,result.detail());
                 // A converged split with a product proved unstable: a third fluid phase is indicated, which a node cannot
-                // carry; a typed hold like the critical band's, never adopted with fewer phases.
-                if(result.detail().startsWith(EquilibriumResult.UNSTABLE_PRODUCT))throw new UnsupportedPhases(domain.packageId(),t,p,
-                        UnsupportedPhases.Kind.THREE_PHASES,"a third fluid phase is indicated ("+result.detail()
+                // carry; a typed hold like the critical band's, never adopted with fewer phases. A product whose stability
+                // the re-check left unresolved is the same hold short of the proof: the split is no answer, and a third
+                // phase is not excluded (the design review's E9: a junction's arrival flash held untyped, naming no node).
+                boolean unstable=result.detail().startsWith(EquilibriumResult.UNSTABLE_PRODUCT);
+                if(unstable||result.detail().startsWith(EquilibriumResult.UNRESOLVED_PRODUCT))throw new UnsupportedPhases(domain.packageId(),t,p,
+                        UnsupportedPhases.Kind.THREE_PHASES,"a third fluid phase is "+(unstable?"indicated":"not excluded")+" ("+result.detail()
                         +"); the fluid network carries one hydrocarbon liquid and one hydrocarbon vapour");
                 throw new IllegalArgumentException("Fluid TP equilibrium did not converge: "+result.detail());
             }
@@ -1155,13 +1158,17 @@ public final class FluidThermodynamics {
     /**
      * An equilibrium answer the network cannot carry, typed with the equilibrium service's reason: a node has one
      * hydrocarbon liquid slot and one vapour slot (D8: a phase set outside the qualified ones is refused, never answered
-     * with fewer phases). Three kinds: a liquid-liquid split, a third fluid phase (indicated by a converged split whose
-     * product the stability re-check proved unstable), and a crystal beside a phase set the engine does not implement.
+     * with fewer phases). The kinds: a liquid-liquid split, a third fluid phase (indicated by a converged split whose
+     * product the stability re-check proved unstable, or not excluded where it left one unresolved), a crystal beside a
+     * phase set the engine does not implement, and a crystal step the engine does not answer.
      */
     public static final class UnsupportedPhases extends PhaseHold {
         /** What the network cannot carry. */
         public enum Kind {
             LIQUID_LIQUID,
+            /** A converged split whose product the stability re-check proved unstable ({@link EquilibriumResult#UNSTABLE_PRODUCT})
+             * or left unresolved ({@link EquilibriumResult#UNRESOLVED_PRODUCT}): a third fluid phase indicated or not
+             * excluded. */
             THREE_PHASES,
             /** The engine's typed {@link EquilibriumResult#CRYSTAL_PHASES} hold under the crystal competition (two liquids
              * beside the crystal, three fluid phases beside it, two crystals); the engine's reason is
@@ -1169,7 +1176,9 @@ public final class FluidThermodynamics {
             CRYSTAL_PHASES,
             /** The engine's typed {@link EquilibriumResult#CRYSTAL_STEP} hold of a vessel refresh's crystal answer (D21 option
              * C): a near-pure feed's crystal step the pure species' step does not answer; another attempt at the same
-             * material meets the same step, so the island holds at once. */
+             * material meets the same step, so the island holds at once. Also an answer that froze a vessel's other species
+             * with its crystals ({@code VesselCrystals}: their traces leave a fluid, D21), which the refresh names the vessel
+             * with. */
             CRYSTAL_STEP;
             /** The equilibrium service's reason for this kind. */
             EquilibriumResult.UnsupportedReason reason() {

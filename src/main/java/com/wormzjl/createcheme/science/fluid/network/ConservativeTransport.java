@@ -534,7 +534,10 @@ public final class ConservativeTransport {
             var booked=new PassiveNetwork.Inventory(capacity,moles[node],energy[node],state.solids());
             try{states.set(node,dryVessel(reservoir,supports,node)?InventoryEquilibrium.solve(model,state,booked,workFrom,checkpoint)
                     :InventoryEquilibrium.close(model,state,booked,supports==null?null:supports[node],workFrom,checkpoint));}
+            // A hold the closure meets names the vessel, directly or through the failed solve it stopped (water driven into a
+            // vessel cooled below 273.16 K: the closure's line search is refused by the water domain).
             catch(com.wormzjl.createcheme.science.fluid.thermo.ThermoHold hold){throw hold.at(reservoir.id());}
+            catch(SparseNewton.Nonconvergence failure){throw failure.at(reservoir.id());}
             double moved=PhaseLayout.bagVolume(states.get(node),capacity)-workFrom;
             if(moved!=0) {
                 double work=PhaseLayout.AMBIENT_PRESSURE*moved;energy[node]-=work;externalEnergy-=work;

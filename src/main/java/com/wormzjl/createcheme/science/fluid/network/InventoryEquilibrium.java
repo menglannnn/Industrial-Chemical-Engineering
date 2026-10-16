@@ -31,10 +31,11 @@ public final class InventoryEquilibrium {
         boolean changed=false,converted=false;
         for(var node:graph.reservoirs()) {
             checkpoint.run();PassiveNetwork.Reservoir refreshed;
-            // A committed inventory the property domain refuses, or whose phases the network holds on, names its node;
-            // see ThermoHold.
+            // A committed inventory the property domain refuses, or whose phases the network holds on, names its node,
+            // directly or through the failed closure such a hold stopped; see ThermoHold.
             try{refreshed=refresh(node,model,boundaries,checkpoint);}
             catch(com.wormzjl.createcheme.science.fluid.thermo.ThermoHold hold){throw hold.at(node.id());}
+            catch(SparseNewton.Nonconvergence failure){throw failure.at(node.id());}
             changed|=refreshed!=node;converted|=refreshed.inventory()!=node.inventory();nodes.add(refreshed);
         }
         var pipes=graph.pipes();List<PassiveNetwork.Pipe> merged=null;

@@ -66,7 +66,8 @@ import java.util.Objects;
  *   {@link Classification#SINGLE_FLUID} labelled {@link PhaseKind#FLUID}, inside the critical band, its detail saying
  *   it was merged. Otherwise both products are re-tested for stability; an unstable product (a third phase, or a wrong
  *   split) is {@link EquilibriumResult.Status#NOT_CONVERGED}, its detail prefixed {@link EquilibriumResult#UNSTABLE_PRODUCT}
- *   when a product was proved unstable (P3 WP11).</li>
+ *   when a product was proved unstable (P3 WP11), {@link EquilibriumResult#UNRESOLVED_PRODUCT} when the re-check left a
+ *   product's stability unresolved and proved none unstable.</li>
  *   <li>Labels of a split: the denser phase {@link PhaseKind#LIQUID}, the lighter {@link PhaseKind#VAPOR}
  *   ({@link Classification#VAPOR_LIQUID}); when both products are liquid-like by the phase identification parameter on
  *   their own roots ({@link PhaseIdentification#liquidLike(double, double)}) and both are denser than the cubic's
@@ -4433,10 +4434,11 @@ public final class FluidTpEquilibrium implements EquilibriumService {
         if (liquidCheck.verdict() != TangentPlaneStability.Verdict.STABLE
                 || vapourCheck.verdict() != TangentPlaneStability.Verdict.STABLE) {
             // A product proved unstable is the typed indication of a third phase (P3 WP11): the split's common tangent
-            // plane is crossed, so it is not the global minimum; a consumer holds on it with that reason.
+            // plane is crossed, so it is not the global minimum; a consumer holds on it with that reason. A product the
+            // re-check left unresolved is the same failure short of the proof, typed as such.
             boolean unstable = liquidCheck.verdict() == TangentPlaneStability.Verdict.UNSTABLE
                     || vapourCheck.verdict() == TangentPlaneStability.Verdict.UNSTABLE;
-            w.failure = (unstable ? EquilibriumResult.UNSTABLE_PRODUCT + ": " : "") + "a product phase is not stable (liquid "
+            w.failure = (unstable ? EquilibriumResult.UNSTABLE_PRODUCT : EquilibriumResult.UNRESOLVED_PRODUCT) + ": a product phase is not stable (liquid "
                     + liquidCheck.verdict() + ", vapour " + vapourCheck.verdict()
                     + "): a third phase or another split; three-phase equilibrium is not implemented";
             return FAILED;

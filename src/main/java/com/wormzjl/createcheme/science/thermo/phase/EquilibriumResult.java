@@ -230,6 +230,14 @@ public final class EquilibriumResult {
     public static final String UNSTABLE_PRODUCT = "UNSTABLE_PRODUCT";
 
     /**
+     * The prefix of the detail of a not-converged TP result (outside the band; inside it the detail starts with
+     * {@link #CRITICAL_BAND} first) whose converged two-phase split has a product whose stability the re-check left
+     * unresolved, none proved unstable: a third fluid phase (or another split) is not excluded, so the split is no answer
+     * either. The same failure as {@link #UNSTABLE_PRODUCT}, short of the proof.
+     */
+    public static final String UNRESOLVED_PRODUCT = "UNRESOLVED_PRODUCT";
+
+    /**
      * The prefix of the detail of the typed hold of a crystal competition whose answer needs a phase set the engine
      * does not implement (P5; it replaces P4's {@code SOLID_LIQUID} hold, whose crystal-beside-a-liquid cases P5
      * answers): two liquids beside a crystal (the fluid the crystal leaves is {@link Classification#LIQUID_LIQUID}),

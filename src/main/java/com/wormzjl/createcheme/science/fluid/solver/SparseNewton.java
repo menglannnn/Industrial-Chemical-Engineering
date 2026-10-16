@@ -88,6 +88,13 @@ public final class SparseNewton {
         public double[] lastVariables(){return lastVariables==null?null:lastVariables.clone();}
         /** The typed hold that stopped this solve, or {@code null} when the failure was numerical. */
         public ThermoHold domainViolation(){return domainViolation;}
+        /** This failure with the hold that stopped it at a known network node ({@link ThermoHold#at}): a caller that knows
+         * the node a failed solve belongs to names it as it names a hold. Itself where no hold stopped the solve or the
+         * hold already names a node. */
+        public Nonconvergence at(long node) {
+            var named=domainViolation==null?null:domainViolation.at(node);
+            return named==domainViolation?this:new Nonconvergence(getMessage(),lastVariables,named);
+        }
     }
     /** The typed hold a refusal stands for: the hold itself, or the one a failed solve carries; else null. */
     public static ThermoHold domainViolation(Throwable refusal) {
