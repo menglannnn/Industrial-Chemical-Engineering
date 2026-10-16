@@ -1,6 +1,7 @@
 package com.wormzjl.createcheme.science.fluid.network;
 
 import com.wormzjl.createcheme.fluid.support.FluidTestSupport;
+import com.wormzjl.createcheme.science.fluid.diagnostics.SolverDiagnostics;
 import com.wormzjl.createcheme.science.fluid.solver.PhaseLayout;
 import com.wormzjl.createcheme.science.fluid.state.ParticleSize;
 import com.wormzjl.createcheme.science.fluid.state.SolidInventory;
@@ -291,6 +292,30 @@ class PrecipitatedSolidsTest {
         assertEquals(FluidThermodynamics.phaseBits(answer)&~FluidThermodynamics.phaseBits(tank),record[0],"the vapour is refused for the solve");
         assertSame(tank,pilot.phaseCheck(tank,false,record,0,null,own,()->{}),"the solve's next pass");
         assertEquals(1,splits[0],"no second own split in the solve");
+    }
+
+    /**
+     * Form 4 (ii), the D26 amendment by direction: a liquid-full LNG tank beside dry ice whose own closure stops short of
+     * nothing holds no vapour. Seed 48's tank a moment earlier (157.3903 K, 1.3811 MPa): the TP answer proposes 87 mol of
+     * vapour, and the tank's closure, with no room for it, has driven it down to 6.0e-5 mol (2.8e-9 of the moles, still
+     * falling) when its 24 iterations end. That is above the trace share, which kept it and seeded it; the next pass
+     * folded it, the pass key cycled and the step halved (seed 48's storm). The closure is driving the vapour to nothing:
+     * the check refuses it, and one step of the tank fed its own LNG at its own pressure takes one pass and one own split.
+     */
+    @Test void aLiquidFullLngTankWhoseClosureStopsShortOfNothingHoldsNoVapour() {
+        var dryIce=new SolidInventory(List.of(new SolidInventory.Population(co2().material(),new ParticleSize("0.00025"),27.681970836122474)));
+        double t=157.39032741149214,p=1381057.0648888762;double[] lng={169.40129908820836,19565.177187575668,1285.9959066479023,393.12480966757914};
+        var state=pilot.state(t,p,lng,new double[lng.length],0,0,p).withSolids(dryIce);
+        double capacity=state.liquidVolume()+dryIce.volume();
+        var tank=new PassiveNetwork.Reservoir(1,0,state,PassiveNetwork.NodeKind.RESERVOIR,new PassiveNetwork.Inventory(capacity,PhaseLayout.totalAmounts(state),state.internalEnergy(),dryIce));
+        var feed=new PassiveNetwork.Reservoir(2,0,pilot.state(t,p,lng,new double[lng.length],0,0,p),PassiveNetwork.NodeKind.GENERATOR);
+        var graph=new PassiveNetwork(List.of(tank,feed),List.of(new PassiveNetwork.Pipe(10,0,1,new PipeResistance.Geometry(10,.02,.000045,0))));
+        SolverDiagnostics.reset();SolverDiagnostics.ENABLED=true;PassiveStepSolver.Result step;
+        try{step=new PassiveStepSolver(pilot).solve(graph,.05,()->{});}finally{SolverDiagnostics.ENABLED=false;}
+        assertNull(step.states().getFirst().vaporProperties(),"no vapour");
+        assertEquals(1,SolverDiagnostics.activeSetPasses.sum(),"one pass: no cycle");
+        assertEquals(1,SolverDiagnostics.phaseSeeds.sum(),"one own split");
+        assertEquals(1,SolverDiagnostics.phaseRefusals.sum(),"the vapour is refused");
     }
 
     /**

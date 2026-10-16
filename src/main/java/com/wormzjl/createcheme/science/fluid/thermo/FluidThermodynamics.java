@@ -638,6 +638,14 @@ public final class FluidThermodynamics {
      */
     public static final double PHASE_TRACE_FRACTION=1e-9;
     /**
+     * The share under which a vessel's own closure that is shrinking a proposed phase is driving it to nothing, converged
+     * or not ({@link #vanishing}; the D26 amendment by direction, owner decision of 2026-10-16, form 4). It is what a
+     * closure that stops short resolves: its 24 iterations end at a residual near 1e-6 of the node's amount, and cold seed
+     * 48's liquid-full tank beside dry ice stalls with its vapour at 1e-9 to 3e-9 of the moles and still falling, which the
+     * trace share alone keeps or drops at rounding.
+     */
+    public static final double VANISHING_SHARE=1e-6;
+    /**
      * Folds the trace phases of one split in place (owner decisions D33, D34): nothing leaves the node and nothing is
      * booked, so every component amount, and with it the node's mass, is unchanged. The rule (A84):
      * <ul>
@@ -770,13 +778,14 @@ public final class FluidThermodynamics {
      * while slack), started from the TP answer with the node's populated phases it lacks ({@link #tpSeed}). Where the
      * node's own flash fails, or none is given, that TP-based state seeds instead; it is only a seed, the node's rows give
      * the answer;</li>
-     * <li>the own split decides by where its closure went, converged or not (the D26 amendment of 2026-10-16): a proposed
-     * phase it drove under the trace share, which the seed's fold (D34, and D41's carried gas at a junction) then removes,
-     * is refused, and the refusal is written to the record, so the TP answer does not propose it again in this solve: a
-     * boiling liquid in a vessel with no room for a bubble pressurises and stays liquid, a drop formed in a gas at its dew
-     * point re-evaporates. A proposed phase that stands seeds the node, and the seed is taken only when it then holds a
-     * phase the node lacks that is not in the record: nothing the fold removes is added, so the check and the fold
-     * agree.</li>
+     * <li>the own split decides by where its closure went, converged or not (the D26 amendment of 2026-10-16, by its
+     * direction in form 4): a proposed phase it drove under the trace share, which the seed's fold (D34, and D41's carried
+     * gas at a junction) then removes, or that a vessel's closure is driving to nothing ({@link #vanishing}), is refused,
+     * and the refusal is written to the record, so the TP answer does not propose it again in this solve: a boiling liquid
+     * in a vessel with no room for a bubble pressurises and stays liquid, a drop formed in a gas at its dew point
+     * re-evaporates. A proposed phase that stands seeds the node, and the seed is taken only when it then holds a phase the
+     * node lacks that is not in the record and none that was refused: nothing the fold removes is added, so the check and
+     * the fold agree.</li>
      * </ul>
      * The rule decides which phases a node is laid out with; how much of each it holds is its rows' answer. It holds for
      * any material: a pure water node at its saturation pressure, whose TP answer is all liquid on one side and all steam
@@ -817,9 +826,10 @@ public final class FluidThermodynamics {
                 var seed=folded(own==null?start:own.withSolidState(kept.solids(),kept.solidMoments()),junction);
                 // The D26 amendment: the own split's verdict on a proposed phase is where its closure took it; the TP-based
                 // fallback seed is no closure and refuses nothing.
-                if(own!=null)refused=proposed&~lacking(kept,seed);
+                if(own!=null)refused=proposed&(~lacking(kept,seed)|(junction?0:vanishing(start,own)));
                 if(refused!=0)SolverDiagnostics.count(SolverDiagnostics.phaseRefusals);
-                if((lacking(kept,seed)&~excluded)!=0)checked=seed;
+                int added=lacking(kept,seed)&~excluded;
+                if(added!=0&&(added&refused)==0)checked=seed;
             }
         }
         if(record!=null)record[at]|=phaseBits(state)&~phaseBits(checked)|refused;
@@ -840,6 +850,19 @@ public final class FluidThermodynamics {
      * nothing (a supersaturated gas whose CO2 has no liquid to stand in).
      */
     private int lacking(State node,State answer){return ownPhaseBits(answer)&~ownPhaseBits(node)|phaseBits(answer)&~phaseBits(node);}
+    /**
+     * The phases ({@link #phaseBits}) a vessel's own closure from {@code start} is driving to nothing at {@code end}, its
+     * answer or the last iterate it stopped at (the D26 amendment by direction, owner decision of 2026-10-16, form 4): each
+     * holds less than {@link #VANISHING_SHARE} of {@code end}'s fluid amount and a smaller share than it held at
+     * {@code start}. A phase the closure grows, however small, is not among them.
+     */
+    static int vanishing(State start,State end) {
+        double[] s=phaseAmounts(start),e=phaseAmounts(end);double ts=sum(s),te=sum(e);int bits=0;
+        for(int k=0;k<4;k++)if(e[k]<VANISHING_SHARE*te&&e[k]*ts<s[k]*te)bits|=1<<k;
+        return bits;
+    }
+    /** A state's fluid amount by phase, in {@link #phaseBits} order: hydrocarbon liquid, vapour, free water, water vapour. */
+    private static double[] phaseAmounts(State state){return new double[]{sum(state.liquidView()),sum(state.vaporView()),state.waterLiquid(),state.waterVapor()};}
     /**
      * The TP-based state of {@link #phaseCheck} (decision D26): the TP answer {@code equilibrium} at {@code kept}'s
      * temperature and pressure, for {@code kept}'s totals, with the populated phases of {@code kept} it lacks, so that no

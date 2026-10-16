@@ -215,7 +215,8 @@ public final class InventoryEquilibrium {
      * inventory's amounts and restated with the trace fold ({@link ConservativeTransport#repartition}): from the TP split of
      * a liquid-full vessel cooled past its bubble point (several vessel volumes of vapour) the closure's 24 iterations end
      * within about 1e-5 of the bubble it holds. Converged or not, the split answers by where the closure went: a phase it
-     * drove under the trace share is not in it, and the check refuses that phase for the solve (the D26 amendment).
+     * drove under the trace share is not in it, and the check refuses that phase for the solve (the D26 amendment), as it
+     * refuses one the closure is still driving to nothing ({@code FluidThermodynamics.vanishing}, form 4).
      * {@code null} where the closure leaves no iterate or refuses the state; the check then seeds its TP-based state.
      */
     static FluidThermodynamics.State split(FluidThermodynamics model,FluidThermodynamics.State start,PassiveNetwork.Inventory inventory,double workFrom,

@@ -114,8 +114,9 @@ public final class SolverDiagnostics {
      * decision D26: a vessel's closure of its inventory, a junction's PH answer), and those that seeded the TP-based state
      * instead because the node's own flash failed or none was given. */
     public static final LongAdder phaseSeeds=new LongAdder(),phaseSeedFallbacks=new LongAdder();
-    /** Outer phase checks whose own split refused a proposed phase, its closure having driven it under the trace share
-     * (the D26 amendment of 2026-10-16): the refusal is written to the solve's A85 record. */
+    /** Outer phase checks whose own split refused a proposed phase, its closure having driven it under the trace share or
+     * driving it to nothing (the D26 amendment of 2026-10-16, by direction in form 4): the refusal is written to the
+     * solve's A85 record. */
     public static final LongAdder phaseRefusals=new LongAdder();
     // ---- properties ----
     public static final LongAdder stateCalls=new LongAdder();
