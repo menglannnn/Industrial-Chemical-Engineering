@@ -199,8 +199,10 @@ public final class NetworkReduction {
         return true;
     }
     /** {@code graph} with every transport closure lifted ({@link PassiveNetwork.Pipe#blockedDirections} zero) except a
-     * filter's stopped at its capacity ({@link InlineFilter#stoppedAtCapacity}), which stands until the cake is cleared. */
-    private static PassiveNetwork reopened(PassiveNetwork graph) {
+     * filter's stopped at its capacity ({@link InlineFilter#stoppedAtCapacity}), which stands until the cake is cleared:
+     * the closures as an interval start reads them (owner decision D33), for the rest test and for the slice's inlet
+     * decision ({@code PassiveIntervalSolver}) and its device view. */
+    public static PassiveNetwork reopened(PassiveNetwork graph) {
         if(graph.pipes().stream().allMatch(p->p.blockedDirections()==0||stopped(p)))return graph;
         return new PassiveNetwork(graph.reservoirs(),graph.pipes().stream().map(p->stopped(p)?p:p.withBlockedDirections(0)).toList(),graph.scheduledTransfers());
     }

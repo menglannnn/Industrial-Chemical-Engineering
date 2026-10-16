@@ -369,11 +369,12 @@ public final class FluidWorldAuthority implements AutoCloseable {
     /**
      * Why a mover is refused (decision D6), as the solver's inlet check states it on the committed state the next slice
      * decides on ({@link InletPhase#reason}), with the node the supply walk ended at named as a device. Pure arithmetic on
-     * the committed state's stored phase amounts: no solve and no flash.
+     * the committed state's stored phase amounts: no solve and no flash. Its transport closures read as open, as that
+     * slice reads them (owner decision D33, {@link NetworkReduction#reopened}).
      */
     private String inletReason(PassiveNetwork graph,int edge,double seconds) {
         var mover=(FlowControl.Mover)graph.pipes().get(edge).control();
-        var supply=InletPhase.supply(model,graph,edge,mover.targetVolumeFlow(),seconds);
+        var supply=InletPhase.supply(model,NetworkReduction.reopened(graph),edge,mover.targetVolumeFlow(),seconds);
         return InletPhase.reason(mover,supply).replace("from node "+supply.nodeId()+")","from "+deviceLabel(supply.nodeId())+")");
     }
     private String nodeLabel(long id) {

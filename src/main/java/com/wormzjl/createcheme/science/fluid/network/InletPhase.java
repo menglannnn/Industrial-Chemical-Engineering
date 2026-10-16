@@ -47,7 +47,9 @@ import static com.wormzjl.createcheme.science.fluid.thermo.FluidThermodynamics.W
  * a junction never do; a vessel feeds by the share of its capacity its contents fill. The suction is dry when the
  * largest such share is below {@link #DRY_REFUSE}, the share a drained port's throttle lands on (plan Appendix B, A4), and
  * a device refused on it runs again once that share reaches {@link #DRY_RESUME}, the share at which a port opens. A dry
- * device is refused like a wrong phase (decision D6), with its own reason.
+ * device is refused like a wrong phase (decision D6), with its own reason. A slice decides on its committed graph with
+ * the transport closures read as open, as every interval start reads them ({@code PassiveIntervalSolver}, owner decision
+ * D33): a closure is the solid events' to decide again, so it never leaves a suction dry by itself.
  */
 public final class InletPhase {
     private InletPhase() {}

@@ -112,11 +112,15 @@ public final class PassiveIntervalSolver {
      * ({@link InletPhase#decide} over the slice {@code duration}); handed to the step solver, which holds them in
      * {@link FlowControl.Mode#INLET_WRONG_PHASE} (closed) in every step, rate seed and segment of the slice. The input is
      * the committed endpoint mode, never solver-local history, so a certified island woken with a fresh solver decides
-     * exactly as the island that solved every interval.
+     * exactly as the island that solved every interval. The state's transport closures are read as an interval start
+     * reads them, open (owner decision D33, {@link NetworkReduction#reopened}): the solid events decide them again at the
+     * interval's t0, with the movers this decision leaves free. Read as they stood, a suction line the last interval
+     * closed left its pump "inlet dry", and a refused pump cannot drive the flow that would suspend the crystals again
+     * (the owner's fix A of F2, 2026-10-16).
      */
     private boolean[] decideInlets(PassiveNetwork initial,double duration) {
         var modes=inletKey.equals(pipeIds(initial))?inletModes:null;
-        boolean[] refused=InletPhase.decide(model,initial,modes,duration);
+        boolean[] refused=InletPhase.decide(model,NetworkReduction.reopened(initial),modes,duration);
         var ids=new HashSet<Long>();for(int i=0;i<refused.length;i++)if(refused[i])ids.add(initial.pipes().get(i).id());
         implicit.refuseInlets(ids);
         return refused;

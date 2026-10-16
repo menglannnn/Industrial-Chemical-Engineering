@@ -1449,13 +1449,37 @@ public final class PassiveStepSolver {
      * those. The ambient is the pressure of an empty node, never a fluid: a junction no source reaches (an island that
      * holds no stock) keeps the state it was built with as a placeholder, and nothing moves there
      * ({@link NetworkReduction#atRest}).
+     *
+     * <p>A mover's suction line is seeded first, from the stream it draws (owner's fix A of F2, 2026-10-16): the junctions
+     * its supply walk crosses ({@link InletPhase#walk}: the device's own junction and the run of junctions beyond it) take
+     * the stream of the supplier the walk ends at, as that end draws it ({@link #endStream}): the supplier's own phase at
+     * its own temperature and pressure. That is already a state, so it is neither flashed nor moved to a balance pressure.
+     * A mover's target row converts its volume flow at its suction junction's density, so that junction must hold what
+     * the mover draws: a pump under a vented LNG tank kept the 298 K nitrogen placeholder (1.1 kg/m3 for 447 kg/m3), its
+     * first rate solve moved 0.006 kg/s for 2.24 kg/s, and the suction line closed on deposition at every interval start.
      */
     private List<FluidThermodynamics.State> supplierSeeds(PassiveNetwork graph,Runnable checkpoint) {
         int nodes=graph.reservoirs().size(),count=model.hydrocarbon.componentCount()+1;
         var states=new ArrayList<FluidThermodynamics.State>(nodes);
         for(var node:graph.reservoirs())states.add(node.junction()?node.state():null);
         double[][] amounts=new double[nodes][count];double[] mass=new double[nodes],heat=new double[nodes],tLow=new double[nodes],tHigh=new double[nodes];
-        boolean[] seeded=new boolean[nodes];double[] weight=new double[nodes];
+        boolean[] seeded=new boolean[nodes],drawn=new boolean[nodes];double[] weight=new double[nodes];
+        for(int e=0;e<graph.pipes().size();e++) {
+            if(!(graph.pipes().get(e).control() instanceof FlowControl.Mover))continue;
+            var walk=InletPhase.walk(graph,e);
+            if(walk.via()<0||graph.reservoirs().get(walk.node()).junction())continue;
+            boolean supplies=true;
+            for(int k=0;k<walk.links().length&&supplies;k++){var link=graph.pipes().get(walk.links()[k]);supplies=boundaryAllowed(graph,link,link.first()==walk.donors()[k]?1:-1);}
+            var supplier=graph.reservoirs().get(walk.node());var last=graph.pipes().get(walk.via());
+            var seed=supplies?endStream(supplier.state(),last.portAt(walk.node())):null;
+            if(seed==null)continue;
+            double q=supplyFlow(graph,last,walk.node());if(!(q>0))q=1;
+            for(int k=-1;k<walk.links().length-1;k++) {
+                int j=k<0?graph.pipes().get(e).first():walk.donors()[k];
+                if(seeded[j])continue;
+                states.set(j,seed);seeded[j]=drawn[j]=true;weight[j]=q;
+            }
+        }
         for(boolean driven:new boolean[]{true,false}) {
             Arrays.fill(mass,0);Arrays.fill(heat,0);Arrays.fill(tLow,Double.POSITIVE_INFINITY);Arrays.fill(tHigh,Double.NEGATIVE_INFINITY);
             for(var row:amounts)Arrays.fill(row,0);
@@ -1491,13 +1515,13 @@ public final class PassiveStepSolver {
             }
         }
         // The seeds' pressure: each seeded junction where the start estimate's flows into and out of it balance
-        // ({@link #balancePressure}), over the seeds of the sweep before, its mixture kept.
+        // ({@link #balancePressure}), over the seeds of the sweep before, its mixture kept. A drawn stream keeps its own.
         var trial=new ArrayList<>(graph.reservoirs());
         for(int sweep=0;sweep<8;sweep++) {
             for(int j=0;j<nodes;j++)if(seeded[j]){var node=graph.reservoirs().get(j);trial.set(j,new PassiveNetwork.Reservoir(node.id(),node.elevation(),states.get(j),PassiveNetwork.NodeKind.JUNCTION));}
             var network=new PassiveNetwork(trial,graph.pipes());boolean moved=false;
             for(int j=0;j<nodes;j++) {
-                if(!seeded[j])continue;var s=states.get(j);double pressure=balancePressure(network,j);
+                if(!seeded[j]||drawn[j])continue;var s=states.get(j);double pressure=balancePressure(network,j);
                 if(Math.abs(pressure-s.pressure())>1e-9*s.pressure()
                         &&seedAt(states,j,PhaseLayout.totalAmounts(s),s.mass(),s.enthalpy(),s.temperature(),s.temperature(),pressure,checkpoint))moved=true;
             }
@@ -1554,7 +1578,10 @@ public final class PassiveStepSolver {
     /** {@link #supplierSeeds}' flash of junction {@code j}'s mixture (amounts and enthalpy summed over {@code mass}) at
      * {@code pressure}, per kilogram: the temperature at which the mixture has the mixed enthalpy, bisected within 20 K of
      * its streams' temperatures and the property domain. False, the junction left as it was, where the domain leaves no
-     * range or the flash leaves it. */
+     * range or the flash leaves it. The window is each carried component's fluid range ({@code FluidDomain.range}): under a
+     * crystal competition that is narrower than the domain, whose floor for a crystal's species is the crystal's (carbon
+     * dioxide: 216.59 K against 90 K on the pilot), so a cold stream carrying that species (LNG with CO2 dissolved, at
+     * 111.6 K) has no window and is declined before any flash. A mover's suction line does not come here (see above). */
     private boolean seedAt(List<FluidThermodynamics.State> states,int j,double[] amounts,double mass,double heat,double tLow,double tHigh,double pressure,Runnable checkpoint) {
         double[] y=new double[amounts.length];for(int c=0;c<y.length;c++)y[c]=amounts[c]/mass;
         double lower=Math.max(tLow-20,model.domain().envelope().minimumTemperature()),upper=Math.min(tHigh+20,model.domain().envelope().maximumTemperature());
@@ -2022,6 +2049,22 @@ public final class PassiveStepSolver {
     private double endSpecificEnthalpy(FluidThermodynamics.State s,PassiveNetwork.PhasePort port) {
         int phase=PhaseDraw.leading(model,s,port);
         return phase<0?s.enthalpy()/s.mass():model.phaseSpecificEnthalpy(s,phase,null);
+    }
+    /**
+     * The fluid of {@link #endMoles}' stream as a state: the phase amounts {@code port} draws from {@code s} at a vanishing
+     * flow (all of them at a BULK end and when the state holds none of the phases), per kilogram of fluid, at the node's
+     * own temperature and pressure, its solids left behind. Built from the node's own amounts ({@link FluidThermodynamics#state}):
+     * no flash, so nothing a flash's window or answer could refuse. Null when the stream carries no fluid (dry solids).
+     */
+    private FluidThermodynamics.State endStream(FluidThermodynamics.State s,PassiveNetwork.PhasePort port) {
+        int phase=PhaseDraw.leading(model,s,port),n=model.hydrocarbon.componentCount();
+        boolean gas=phase<0||phase==FluidThermodynamics.GAS,oil=phase<0||phase==FluidThermodynamics.OIL,water=phase<0||phase==FluidThermodynamics.WATER;
+        double[] liquid=new double[n],vapour=new double[n],l=s.liquidView(),v=s.vaporView();
+        double waterLiquid=water?s.waterLiquid():0,waterVapour=gas?s.waterVapor():0,mass=(waterLiquid+waterVapour)*model.molecularWeight(n);
+        for(int c=0;c<n;c++){liquid[c]=oil?l[c]:0;vapour[c]=gas?v[c]:0;mass+=(liquid[c]+vapour[c])*model.molecularWeight(c);}
+        if(!(mass>0))return null;
+        for(int c=0;c<n;c++){liquid[c]/=mass;vapour[c]/=mass;}
+        return model.state(s.temperature(),s.pressure(),liquid,vapour,waterLiquid/mass,waterVapour/mass,gas?s.hydrocarbonPartialPressure():0);
     }
     /**
      * The head this connection demands of its device at the point one active-set pass converged
