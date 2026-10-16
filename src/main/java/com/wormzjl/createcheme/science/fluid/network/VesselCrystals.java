@@ -43,11 +43,14 @@ import java.util.List;
  * that froze or melted is booked here, and the ambient's work on a moving bag, {@code -P_amb (V_bag - V_bag,0)}, is booked
  * as the step's transport books it (D54): a boundary transfer of energy alone at the vessel.</li>
  * <li><b>Size</b> (D23, amended: one size per solid in each stock). Mass that freezes enters at
- * {@link #precipitateDiameter} of the liquids it stands in after the refresh (the vessel's fluid beside its crystals) and
- * is merged into the stock's one population of that crystal at the mass-weighted mean
- * ({@link SolidInventory#oneSizePerSolid}); mass that melts leaves at the stock's size. Not the liquids before the
- * refresh: there the step carried the crystal's share condensed in the liquid slot ({@code FluidThermodynamics.adopt}),
- * so frost from a gas would read as a freezing liquid of its own species.</li>
+ * {@link #precipitateDiameter} of the liquids it freezes from, the vessel's own before the refresh ({@link #freezing}),
+ * and is merged into the stock's one population of that crystal at the mass-weighted mean
+ * ({@link SolidInventory#oneSizePerSolid}); mass that melts leaves at the stock's size. The step carried the crystal's
+ * share condensed in the liquid slot ({@code FluidThermodynamics.adopt}), as the supersaturated solution it stands for:
+ * methane with 30 % CO2 freezes at about 0.5 mm. Where the refresh leaves no liquid beside the crystals, the liquid was
+ * the crystal's own condensate (frost from a gas, carried as the stand-in or condensed by the closure without crystals;
+ * the snow of a let-down): 0.25 mm. Not the liquids after the refresh: the crystal has left them at its solubility, so
+ * every freeze read as dilute (the test world's F4: 250 um in a 30 % CO2 slush).</li>
  * </ol>
  * A vessel with free water, or above the crystals' ceiling, holds no crystal (D20 (3), D8): its crystals melt into the
  * fluid. A vessel holding no fluid is main's dry-solids vessel (OD-P4): its crystals have no fluid to exchange with.
@@ -173,17 +176,27 @@ final class VesselCrystals {
     }
 
     /**
-     * The diameter of crystal mass forming beside {@code fluid} (owner decision D23 (1) and (2), Brauner 2001's
+     * The diameter of crystal mass freezing from {@code fluid} (owner decision D23 (1) and (2), Brauner 2001's
      * dispersed-drop size): {@code d_dilute max(1, 4.04 (phi / (1 - phi))^0.6)}, {@code phi} the crystal component's volume
      * share of {@code fluid}'s liquids as the crystal ({@code n_i,liquid v_s / V_liquids}), capped at {@link #SLUSH_SHARE},
-     * 0 where no liquid holds it (frost from a gas) or where no fluid is left (null). 0.25 mm up to phi = 0.09, 1.01 mm at the slush. Rounded to
-     * {@link SolidInventory#SIZE_DIGITS} significant digits from the exact double, as a merged size is.
+     * 0 where no liquid holds it (frost from a gas) or where there is no fluid (null). 0.25 mm up to phi = 0.09, 1.01 mm at
+     * the slush. Rounded to {@link SolidInventory#SIZE_DIGITS} significant digits from the exact double, as a merged size is.
      */
     static ParticleSize precipitateDiameter(FluidThermodynamics.State fluid,NetworkCrystals.Crystal crystal) {
         double liquids=fluid==null?0:fluid.liquidVolume()+fluid.waterVolume(),phi=0;
         if(liquids>0)phi=Math.min(SLUSH_SHARE,fluid.liquidView()[crystal.component()]*crystal.molarMass()/crystal.material().density()/liquids);
         double factor=phi>0?4.04*DeterministicMath.pow(phi/(1-phi),.6):0;
         return size(DILUTE_DIAMETER*Math.max(1,factor));
+    }
+    /**
+     * The fluid a refresh's crystal mass freezes from (D23 (1)): the vessel's own before the freeze, {@code closed}, its
+     * liquid holding the crystal's share the step carried condensed; none (null) where no liquid is left beside the
+     * crystals ({@code beside}; null: no fluid), whose liquid was then the crystal's own condensate: frost from a gas,
+     * the stand-in the step carried it as or the metastable liquid the closure without crystals condenses it to, and the
+     * snow of a let-down. phi is 0 there (D23 (1)).
+     */
+    private static FluidThermodynamics.State freezing(FluidThermodynamics.State closed,FluidThermodynamics.State beside) {
+        return beside!=null&&beside.liquidVolume()+beside.waterVolume()>0?closed:null;
     }
     private static ParticleSize size(double metres) {
         return new ParticleSize(new BigDecimal(metres).round(new MathContext(SolidInventory.SIZE_DIGITS,RoundingMode.HALF_EVEN)).toString());
@@ -234,7 +247,7 @@ final class VesselCrystals {
         double[] left=joint.fluidAmounts(solved);double[] mass=new double[all.size()];
         for(var crystal:joint.crystals){int c=crystal.component();mass[all.indexOf(crystal)]=(totals[c]-left[c])*crystal.molarMass();}
         var beside=ConservativeTransport.repartition(model,joint.fluid(solved),left);
-        var solids=stock(inventory.solids(),inert,beside,all,held,mass);
+        var solids=stock(inventory.solids(),inert,freezing(closed,beside),all,held,mass);
         double capacity=inventory.volume();
         var fluid=beside.withSolids(solids);
         double work=PhaseLayout.AMBIENT_PRESSURE*(PhaseLayout.bagVolume(fluid,capacity)-bag);
@@ -246,7 +259,7 @@ final class VesselCrystals {
 
     /**
      * The stock after the refresh: its inert solids, and each crystal at its new mass {@code mass} (kg): mass that froze
-     * enters at {@link #precipitateDiameter} of {@code fluid}, the fluid beside the crystals after the refresh (null: none),
+     * enters at {@link #precipitateDiameter} of {@code fluid}, the fluid it froze from ({@link #freezing}; null: none),
      * and is merged into the crystal's population at the stock's mean ({@link SolidInventory#oneSizePerSolid}); mass that
      * melted leaves at the population's size.
      */

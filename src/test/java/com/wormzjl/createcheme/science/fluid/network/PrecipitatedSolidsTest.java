@@ -76,6 +76,38 @@ class PrecipitatedSolidsTest {
         assertTrue(phi(rich,crystal)>.5,"pure liquid CO2: its share as crystal exceeds the cap");
         assertEquals(new ParticleSize("0.00101"),VesselCrystals.precipitateDiameter(rich,crystal),"the slush: 0.25 mm times 4.04");
     }
+    /**
+     * The test world's F4: a refresh freezes crystal mass at the size of the liquid it froze from, not of the liquid it
+     * leaves. Ten litres of methane with 30 % CO2 at 110 K in a slack 2 m3 bag at the ambient (the test world's vented
+     * slush tank), the CO2 carried condensed in the liquid: its refresh freezes nearly all of the CO2 (its heat boils
+     * methane at 1 atm), from a liquid whose CO2 share as crystal is about 0.24, so at about 0.5 mm. The liquid left beside
+     * the crystals holds the CO2's solubility only and read 0.25 mm. A gas's frost leaves no liquid beside its crystals: it
+     * forms from the gas, 0.25 mm, though the closure without crystals holds the gas's supersaturated CO2 as a metastable
+     * liquid (nitrogen with 10 % CO2 at 170 K and 1 MPa: 0.2 L, phi 0.85), which would read as the slush, 1.01 mm.
+     */
+    @Test void aRefreshFreezesCrystalMassAtTheSizeOfTheLiquidItFrozeFrom() {
+        var crystal=co2();
+        var slush=charge(pilot,110,PhaseLayout.AMBIENT_PRESSURE,new double[]{0,.7,0,.3,0},.01);
+        var tank=vessel(1,slush,2);
+        var closed=InventoryEquilibrium.solve(pilot,slush,tank.inventory(),Double.NaN,()->{});
+        double phi=Math.min(VesselCrystals.SLUSH_SHARE,phi(closed,crystal)),co2Kg=tank.inventory().moles()[CO2]*crystal.molarMass();
+        var frozen=InventoryEquilibrium.refresh(new PassiveNetwork(List.of(tank),List.of()),pilot,()->{}).graph().reservoirs().getFirst();
+        var size=frozen.inventory().solids().size(crystal.material().id());
+        System.out.printf(Locale.ROOT,"30 %% CO2 in methane at 110 K, 1 atm: phi %.5f before the freeze, %.5f after; %.4f kg of %.4f kg CO2 froze at %s m (%.3f K)%n",phi,
+                phi(frozen.state(),crystal),crystalKg(frozen),co2Kg,size.metres(),frozen.state().temperature());
+        assertTrue(crystalKg(frozen)>.9*co2Kg,"nearly all of the CO2 freezes");
+        assertTrue(phi>.15&&phi<.35,"the liquid it froze from: "+phi);
+        assertEquals(size(2.5e-4*4.04*Math.pow(phi/(1-phi),.6)),size,"the size of the liquid it froze from");
+        var gas=charge(pilot,170,1e6,new double[]{.9,0,0,.1,0},.1);
+        var frostTank=new PassiveNetwork.Reservoir(1,0,gas);
+        var condensed=InventoryEquilibrium.solve(pilot,gas,frostTank.inventory(),Double.NaN,()->{});
+        var frost=InventoryEquilibrium.refresh(new PassiveNetwork(List.of(frostTank),List.of()),pilot,()->{}).graph().reservoirs().getFirst();
+        System.out.printf(Locale.ROOT,"10 %% CO2 in nitrogen at 170 K, 1 MPa: before the freeze %.4e m3 of liquid (N2 %.4e mol, CO2 %.4e mol, the stand-in %s), phi %.4f;"
+                +" after %.4e m3; %.4f kg of frost at %s m%n",condensed.liquidVolume(),condensed.liquidView()[NITROGEN],condensed.liquidView()[CO2],pilot.condensedShareOnly(condensed),
+                phi(condensed,crystal),frost.state().liquidVolume(),crystalKg(frost),frost.inventory().solids().size(crystal.material().id()).metres());
+        assertTrue(crystalKg(frost)>0);
+        assertEquals(new ParticleSize("0.00025"),frost.inventory().solids().size(crystal.material().id()),"frost from a gas: d_dilute");
+    }
     /** The CO2's volume share of the state's liquids as crystal, uncapped. */
     private static double phi(FluidThermodynamics.State state,NetworkCrystals.Crystal crystal) {
         double liquids=state.liquidVolume()+state.waterVolume();
