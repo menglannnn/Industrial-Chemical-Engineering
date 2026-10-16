@@ -1169,9 +1169,16 @@ public final class PassiveStepSolver {
      * its seed to the bit, as does every vessel that holds something. A rate-only solve holds a junction's composition at
      * its stock, so it lays out the stock's phases and this does nothing there.
      *
-     * <p>A vessel that holds nothing (decision D54) is laid out the same way from what its connections deliver over
-     * {@code dt}, nothing held: the delivered amounts themselves (a vessel's rows are its amounts), at the mass-weighted
-     * temperature and the ambient pressure (a slack bag), flashed and folded as a vessel. One nothing reaches stays dry.
+     * <p>A vessel that holds nothing (decision D54) is laid out from what its connections deliver over {@code dt}, nothing
+     * held: the delivered amounts themselves (a vessel's rows are its amounts) at the bag's own split (decision D26,
+     * {@link #emptyBagSplit}), the equilibrium of what arrives with the enthalpy it brings, at the ambient pressure while
+     * the bag is slack and at the capacity once what arrives overfills it, folded as a vessel: the root of the vessel's
+     * own rows at the start flows. Where the engine answers nothing the network carries, the TP flash of the delivered
+     * amounts at their mass-weighted temperature and the ambient pressure seeds it. That flash is an isothermal let-down,
+     * which no throttled stream is: LNG arriving at 139 K and 1.14 MPa is, at 139 K and 1 atm, a vapour of several bag
+     * volumes beside its CO2 frost, where the bag holds boiling LNG near 112 K, and a first pass laid out without that
+     * liquid cooled the methane vapour to its 90.69 K floor at every step size (cold seeds 34 and 114). One nothing reaches
+     * stays dry.
      */
     private List<FluidThermodynamics.State> arrivingPhases(PassiveNetwork graph,List<FluidThermodynamics.State> seeds,List<FlowControl.Mode> modes,
                                                            boolean[] boundaryClosed,double dt,Runnable checkpoint) {
@@ -1185,7 +1192,7 @@ public final class PassiveStepSolver {
                 var node=graph.reservoirs().get(j);boolean empty=holdsNothingVessel(node);if(!(node.junction()&&!node.fixed()||empty))continue;
                 var current=result==null?seeds:result;var seed=current.get(j);
                 if(empty&&!dry(node,seed))continue;
-                double[] n=node.inventory().moles().clone();double heldMass=molarMass(n),mass=heldMass,weighted=heldMass*node.state().temperature();boolean arrives=false;
+                double[] n=node.inventory().moles().clone();double heldMass=molarMass(n),mass=heldMass,weighted=heldMass*node.state().temperature(),heat=0;boolean arrives=false;
                 for(int edge=0;edge<flows.length;edge++) {
                     var pipe=graph.pipes().get(edge);double flow=flows[edge];
                     if(!(Math.abs(flow)>0)||(flow>=0?pipe.second():pipe.first())!=j||!boundaryAllowed(graph,pipe,flow))continue;
@@ -1193,6 +1200,7 @@ public final class PassiveStepSolver {
                     double delivered=dt*Math.abs(flow),streamMass=endMass(stream,port);double[] moles=endMoles(stream,port);
                     for(int c=0;c<n.length;c++)n[c]+=delivered*moles[c]/streamMass;
                     mass+=delivered;weighted+=delivered*stream.temperature();arrives=true;
+                    heat+=delivered*(endSpecificEnthalpy(stream,port)+GRAVITY*(graph.reservoirs().get(donor).elevation()-node.elevation()));
                 }
                 if(empty) {
                     if(!arrives||!(mass>0))continue;
@@ -1201,8 +1209,9 @@ public final class PassiveStepSolver {
                     catch(com.wormzjl.createcheme.science.fluid.thermo.ThermoHold outside){continue;}
                     // What arrives may itself be nothing at the bag's resolution: the vessel then stays dry.
                     if(PhaseLayout.bagVolume(delivered,node.inventory().volume())<=HOLDS_NOTHING*node.inventory().volume())continue;
+                    var own=emptyBagSplit(node,weighted/mass,n,heat,checkpoint);
                     if(result==null)result=new ArrayList<>(seeds);
-                    result.set(j,delivered);changed=true;continue;
+                    result.set(j,own==null?delivered:own);changed=true;continue;
                 }
                 if(!arrives||!(heldMass>0))continue;
                 for(int c=0;c<n.length;c++)n[c]*=seed.mass()/mass;
@@ -1216,6 +1225,26 @@ public final class PassiveStepSolver {
             if(!changed)break;
         }
         return result==null?seeds:result;
+    }
+    /**
+     * Decisions D54 and D26: an empty bag's own split of what arrives over a step, the amounts {@code n} with the enthalpy
+     * {@code h} they bring (J, the network's datum, each stream's drop in potential included, as the vessel's energy row
+     * books it). The engine's PH answer at the ambient pressure ({@code FluidThermodynamics.equilibriumPH}, under the
+     * competition at the arrival's mass-weighted temperature {@code t}) holds the phases; the vessel's closure from it
+     * ({@link InventoryEquilibrium#split}, the bag empty at the step's start, so the wall's work is booked from a zero
+     * volume) is the equilibrium of that enthalpy at the ambient while the bag is slack and of its energy at the capacity
+     * once what arrives overfills it; the PH answer itself where the closure leaves nothing. Folded as a vessel.
+     * {@code null} where the engine answers nothing the network carries.
+     */
+    private FluidThermodynamics.State emptyBagSplit(PassiveNetwork.Reservoir node,double t,double[] n,double h,Runnable checkpoint) {
+        try {
+            var answer=model.equilibriumPH(t,PhaseLayout.AMBIENT_PRESSURE,h,n,checkpoint);
+            if(answer==null)return null;
+            var start=model.folded(answer,false);
+            var own=InventoryEquilibrium.split(model,start,new PassiveNetwork.Inventory(node.inventory().volume(),n.clone(),h),0,checkpoint);
+            return own==null?start:model.folded(own,false);
+        }
+        catch(IllegalArgumentException refused){return null;}
     }
     /** Value identity of two node-state lists (T, P, amounts, mass, volume, enthalpy). */
     private static boolean sameStates(List<FluidThermodynamics.State> a,List<FluidThermodynamics.State> b) {

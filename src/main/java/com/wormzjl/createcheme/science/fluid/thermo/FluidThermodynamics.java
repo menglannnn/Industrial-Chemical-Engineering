@@ -885,7 +885,8 @@ public final class FluidThermodynamics {
         return adopt(t,p,overall,result,given);
     }
     /**
-     * A pipe junction's own split (owner decision D26, {@link #phaseCheck}): the engine's PH equilibrium of {@code overall}
+     * A pipe junction's own split (owner decision D26, {@link #phaseCheck}), and the phases of an empty bag's
+     * ({@code PassiveStepSolver.emptyBagSplit}, D54): the engine's PH equilibrium of {@code overall}
      * (the conserved basis, water last) at the junction's pressure {@code p} and its fluid enthalpy {@code h} (J, the
      * network's datum), under the competition of the junction's TP request at {@code t} ({@link #crystalsCompete}), as a
      * network state ({@link #adopt}, unfolded); {@code null} where the engine does not converge or answers a phase set the
@@ -893,7 +894,7 @@ public final class FluidThermodynamics {
      * its sensible one (D10), so the target moves by the formation enthalpies; a spine-less package's engine is on the
      * network's datum. {@code checkpoint} runs as for {@link #equilibriumTP}. Never inside a residual.
      */
-    State equilibriumPH(double t,double p,double h,double[] overall,Runnable checkpoint) {
+    public State equilibriumPH(double t,double p,double h,double[] overall,Runnable checkpoint) {
         var spine=hydrocarbon.spine();double target=h;
         if(spine.isPresent()) {
             var formation=spine.get().formationReference();
