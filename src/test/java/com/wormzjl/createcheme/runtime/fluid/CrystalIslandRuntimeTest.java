@@ -21,7 +21,9 @@ import static org.junit.jupiter.api.Assertions.*;
  * <li>a crystal beside two liquids (N2 + C2H6 of type III with CO2 at 95 K) is a thermo hold like a domain one: retried
  * once, then parked until the island's inputs change, naming the vessel; a fenced event is accepted at the island's
  * committed tick with its inventory unchanged (main's rule for a held owner, which replaces the branch's pending
- * fence).</li>
+ * fence);</li>
+ * <li>a vessel whose crystal has formed rests and certifies with it; replay and a checkpoint carry the crystal stock bit
+ * for bit, and an interval that changed the crystal does not qualify (milestone M4).</li>
  * </ul>
  */
 class CrystalIslandRuntimeTest {
@@ -95,5 +97,37 @@ class CrystalIslandRuntimeTest {
         assertTrue(rig.coordinator.aligned(event,List.of(1L)),"the held owner accepts the event without a solve");
         assertEquals(150,rig.coordinator.snapshot(1).clock().committedTick());
         assertEquals(before,rig.coordinator.snapshot(1).graph(),"the held inventory is kept");
+    }
+
+    /**
+     * A closed tank of 10 % CO2 in N2 at 170 K and 1 MPa deposits CO2-I at its first refresh and then sits at equilibrium
+     * with its dry ice: nothing moves, so it rests (D23 (6), the refresh before the rest test) and certifies holding the
+     * crystal. Replay carries the crystal stock bit for bit, and a checkpoint taken while certified restores the
+     * certificate and the crystal record. Node solids are evidence: the certified interval with 1 % less dry ice before
+     * it, all else equal, does not qualify.
+     */
+    @Test void aDepositedVesselCertifiesAndReplaysItsCrystalsExactly() {
+        double[] z={.9,0,0,.1,0};var unit=model.flashTP(170,1e6,z,()->{});double[] n=z.clone();for(int i=0;i<n.length;i++)n[i]*=.1/unit.volume();
+        var rig=new CertifyingRig(CertificatePolicy.defaults(),model,0);rig.register(1,vessel(model.flashTP(170,1e6,n,()->{})));
+        rig.runUntilCertified(List.of(1L),2_000);
+        var saved=rig.stored(1).certificate().orElseThrow().saved().orElseThrow();var base=saved.interval().result().graph().reservoirs().getFirst().inventory();
+        System.out.println("certified at tick "+rig.epoch[0]+" after "+rig.solves+" solves: "+saved+" | "+base.solids());
+        assertTrue(crystal(base)>0,"the vessel certified holding its CO2-I: "+base.solids());
+        int solves=rig.solves;rig.run(1_000);
+        assertEquals(solves,rig.solves,"a resting vessel solves nothing");
+        assertEquals(base.solids(),rig.read(1).graph().reservoirs().getFirst().inventory().solids(),"the crystal stock 1000 ticks into the replay, bit for bit");
+        var image=FluidCheckpointCodec.encode(rig.checkpoint(),key->model);
+        var restored=new CertifyingRig(CertificatePolicy.defaults(),model,rig.epoch[0]);restored.load(FluidCheckpointCodec.decode(image,key->model));
+        assertTrue(restored.stored(1).certificate().isPresent(),"the certificate is restored: "+restored.stored(1).status());
+        assertEquals(rig.read(1).graph().reservoirs().getFirst().inventory(),restored.read(1).graph().reservoirs().getFirst().inventory(),"the restored vessel, its crystal included");
+        var interval=saved.interval();var node=interval.before().reservoirs().getFirst();var inventory=node.inventory();
+        var less=new com.wormzjl.createcheme.science.fluid.state.SolidInventory(inventory.solids().populations().stream().map(p->new com.wormzjl.createcheme.science.fluid.state.SolidInventory.Population(
+                p.material(),p.size(),p.material().crystal()!=null?.99*p.massKg():p.massKg())).toList());
+        var changed=new PassiveNetwork(List.of(new PassiveNetwork.Reservoir(node.id(),node.elevation(),node.state(),node.kind(),
+                new PassiveNetwork.Inventory(inventory.volume(),inventory.moles(),inventory.internalEnergy(),less))),interval.before().pipes());
+        var refused=IslandCertificate.issue(new IslandCertificate.Summary(new IslandCertificate.Interval(interval.startTick(),interval.endTick(),changed,interval.result()),
+                model.molecularWeights()),CertificatePolicy.defaults());
+        assertNull(refused.certificate(),"an interval that changed the crystal does not qualify");
+        assertTrue(refused.refusal().contains("node solids"),refused.refusal());
     }
 }

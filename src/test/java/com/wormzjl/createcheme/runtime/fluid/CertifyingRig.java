@@ -69,9 +69,9 @@ final class CertifyingRig {
     }
     IslandCoordinator.Snapshot stored(long id){return coordinator.observe(id);}
     IslandCoordinator.Snapshot read(long id){return coordinator.snapshot(id);}
-    /** What a save captures: every island materialised to now. */
+    /** What a save captures: every island materialised to now, under the rig's model's package. */
     FluidCheckpointCodec.Checkpoint checkpoint() {
-        return new FluidCheckpointCodec.Checkpoint(coordinator.snapshots().stream().map(s->new FluidCheckpointCodec.IslandEntry("minecraft:overworld",PACKAGE,s)).toList());
+        return new FluidCheckpointCodec.Checkpoint(coordinator.snapshots().stream().map(s->new FluidCheckpointCodec.IslandEntry("minecraft:overworld",model.domain().packageId(),s)).toList());
     }
 
     /** Islands with distinct identities on the network model, the diagnostics counters, and rigs on that model. */
