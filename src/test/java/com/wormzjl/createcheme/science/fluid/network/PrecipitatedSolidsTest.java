@@ -25,8 +25,8 @@ import static org.junit.jupiter.api.Assertions.*;
  * {@code documentation/2026-09-24-coolprop-low-temperature/PRECIPITATED_SOLIDS_PLAN.md}): the unit gates of the plan's
  * section 4 and the three gates M3 adds. A crystal is a population of main's {@code SolidInventory}; only a vessel's refresh
  * moves its mass; every stock holds one size per solid after its refresh; the outlet check reads that size; a slurry stops
- * at half solids; transport nodes never precipitate; and an island of unchanged solids rests. The design review's three
- * gates (2026-10-16): the D26 amendment, D31 B and D33.
+ * at half solids; transport nodes never precipitate; and an island of unchanged solids rests. The design review's gates
+ * (2026-10-16): the D26 amendment, D31 B with form 4 and D33.
  */
 class PrecipitatedSolidsTest {
     static final String PILOT="createcheme:pilot_cryogenic";
@@ -294,12 +294,14 @@ class PrecipitatedSolidsTest {
     }
 
     /**
-     * D31 B: a frosted gas tank's stand-in proposes nothing. Nitrogen with 10 % CO2 at 1 MPa, frosted at its refresh, a
-     * kelvin colder at a step's point (its outflow expands it): the gas is supersaturated again, and its TP answer freezes
-     * more CO2, carried condensed as the stand-in liquid beside the vapour. That liquid is the frost's share, no fluid
-     * phase the tank lacks: the check proposes nothing and runs no own split.
+     * Form 4 (i): a frosted gas tank's stand-in is decided by its own split, and refused. Nitrogen with 10 % CO2 at 1 MPa,
+     * frosted at its refresh, a kelvin colder at a step's point (its outflow expands it): the gas is supersaturated again,
+     * and its TP answer freezes more CO2, carried condensed as the stand-in beside the vapour. The stand-in is proposed like
+     * any phase the tank lacks; the tank's own closure, where no crystal mass moves, has no liquid for that CO2 to stand in
+     * beside 1 MPa of nitrogen and drives it to nothing, so the check refuses it for the solve, and the solve's next pass
+     * runs no own split. (Liquid CO2 let down into a tank of its gas keeps its stand-in: gate 5 above.)
      */
-    @Test void aFrostedGasTanksStandInProposesNothing() {
+    @Test void aFrostedGasTanksStandInIsDecidedByItsOwnSplitAndRefused() {
         var tank=new PassiveNetwork(List.of(new PassiveNetwork.Reservoir(1,0,charge(pilot,170,1e6,new double[]{.9,0,0,.1,0},.1))),List.of());
         var frosted=InventoryEquilibrium.refresh(tank,pilot,()->{}).graph().reservoirs().getFirst();
         assertTrue(crystalKg(frosted)>0);assertNull(frosted.state().liquidProperties(),"a gas beside its frost");
@@ -307,10 +309,12 @@ class PrecipitatedSolidsTest {
         var point=pilot.state(t,gas.pressure(),new double[4],gas.vaporView(),0,0,gas.pressure()).withSolids(gas.solids());
         var answer=pilot.flashTP(t,point.pressure(),PhaseLayout.totalAmounts(point),()->{});
         assertTrue(pilot.condensedShareOnly(answer),"the TP answer carries frost as the stand-in");
-        int[] splits={0},record={0};
-        assertSame(point,pilot.phaseCheck(point,false,record,0,null,ownSplit(point,frosted.inventory().volume(),splits),()->{}),"no phase added");
-        assertEquals(0,splits[0],"no own split");
-        assertEquals(0,record[0],"nothing refused");
+        int[] splits={0},record={0};var own=ownSplit(point,frosted.inventory().volume(),splits);
+        assertSame(point,pilot.phaseCheck(point,false,record,0,null,own,()->{}),"no phase added");
+        assertEquals(1,splits[0],"its own split decides the stand-in");
+        assertEquals(1,record[0],"the stand-in is refused for the solve");
+        assertSame(point,pilot.phaseCheck(point,false,record,0,null,own,()->{}),"the solve's next pass");
+        assertEquals(1,splits[0],"no second own split");
     }
 
     /**
