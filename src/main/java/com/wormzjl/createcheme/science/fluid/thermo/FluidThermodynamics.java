@@ -151,11 +151,10 @@ public final class FluidThermodynamics {
         }
         return engine;
     }
-    /** The package's crystals as solids ({@link NetworkCrystals}); built with the phase engine on first use, empty (and no
-     * engine built) on a package without a crystal competition. */
+    /** The package's crystals as solids ({@link NetworkCrystals}): the crystals it admits and, on every package, the free
+     * water's ice (WP4); built with the phase engine on first use. */
     private volatile NetworkCrystals crystalSolids;
     public NetworkCrystals crystalSolids() {
-        if(crystalIds.isEmpty())return NetworkCrystals.NONE;
         var crystals=crystalSolids;
         if(crystals==null)synchronized(this) {
             crystals=crystalSolids;
@@ -165,24 +164,25 @@ public final class FluidThermodynamics {
     }
     /**
      * The record a solid population's material id names (owner decision D23: crystals are solids): a crystal this package
-     * admits ({@link #crystalSolids}), else a custom solid of the catalog ({@link #solids}); the catalog keeps the two kinds'
-     * ids apart, so an id names one record. An id that names neither is refused: nothing read back (a checkpoint's
-     * population, a pending recovery) can carry a solid this package does not define. Builds the crystals (and the
-     * phase engine) only for an id among the package's crystals.
+     * admits or the free water's ice ({@link #crystalSolids}), else a custom solid of the catalog ({@link #solids}); the
+     * catalog keeps the two kinds' ids apart, so an id names one record. An id that names neither is refused: nothing read
+     * back (a checkpoint's population, a pending recovery) can carry a solid this package does not define. Builds the
+     * crystals (and the phase engine) only for an id among the package's crystals.
      */
     public SolidMaterialCatalog.SolidMaterial solid(String id) {
-        if(crystalIds.contains(id))for(var crystal:crystalSolids().all())if(crystal.material().id().equals(id))return crystal.material();
+        if(crystalIds.contains(id)||id.equals(freeWaterIce.crystal()))for(var crystal:crystalSolids().all())if(crystal.material().id().equals(id))return crystal.material();
         var custom=solids.materials().get(id);
         if(custom==null)throw new IllegalArgumentException("Unknown solid material: "+id+" names no crystal of package "+domain.packageId()+" and no solid material record");
         return custom;
     }
     /**
      * The crystal answer of a vessel's refresh (owner decision D23): the equilibrium engine's answer for the vessel's fluid
-     * and crystals together, the package's crystals competing, as the network states it. {@code temperature} and
-     * {@code pressure} are the answer's; {@code fluid} its fluid phases as a network state without solids (null where the
-     * crystals hold everything); {@code crystalMoles} the moles each of the package's crystals holds
-     * ({@link NetworkCrystals#all} order, all zero where no crystal is stable); {@code volume} the fluid's and the
-     * crystals' volume, the crystals in the engine's own model.
+     * and crystals together, the package's crystals competing where they compete and the free water's ice by water's own
+     * rule (WP4), as the network states it. {@code temperature} and {@code pressure} are the answer's; {@code fluid} its
+     * fluid phases, the free water and its steam included, as a network state without solids (null where the crystals hold
+     * everything); {@code crystalMoles} the moles each of the package's crystals holds ({@link NetworkCrystals#all} order,
+     * all zero where no crystal is stable); {@code volume} the fluid's and the crystals' volume, the crystals in the
+     * engine's own model.
      */
     public record CrystalAnswer(double temperature,double pressure,State fluid,double[] crystalMoles,double volume) {
         public CrystalAnswer{crystalMoles=crystalMoles.clone();}
@@ -192,32 +192,35 @@ public final class FluidThermodynamics {
     }
     /**
      * The crystal test of a taut vessel (D23, with D21's near-pure step): the equilibrium of {@code totals} (the conserved
-     * basis, water last; dry) with the crystals competing at internal energy {@code energy} (J, the network's datum: the
-     * fluid's and the crystals' true energy, every inert solid's excluded) and volume {@code volume} (m3, the bag less the
-     * inert solids), warm-started at {@code (hintT, hintP)} when both are finite. {@code checkpoint} runs as for
+     * basis, water last) at internal energy {@code energy} (J, the network's datum: the fluid's and the crystals' true
+     * energy, every inert solid's excluded) and volume {@code volume} (m3, the bag less the inert solids), the package's
+     * crystals competing where {@code competing} ({@link #crystalsCompete}), the free water freezing by its own rule
+     * everywhere, warm-started at {@code (hintT, hintP)} when both are finite. {@code checkpoint} runs as for
      * {@link #equilibriumTP}. Refusals are typed where the engine types them: a phase set the engine does not implement or
      * a crystal step it does not answer the {@link UnsupportedPhases} of kind {@code CRYSTAL_PHASES} or
      * {@code CRYSTAL_STEP}, the critical band's {@link CriticalBandHold}; any other failure is a plain
      * {@link IllegalArgumentException}.
      */
-    public CrystalAnswer crystalsAtVolume(double[] totals,double energy,double volume,double hintT,double hintP,Runnable checkpoint) {
+    public CrystalAnswer crystalsAtVolume(double[] totals,double energy,double volume,double hintT,double hintP,boolean competing,Runnable checkpoint) {
         checkpoint.run();
-        var result=phaseEngine().crystalUv(engineEnergy(energy,totals),volume,totals,hintT,hintP);
+        var result=phaseEngine().crystalUv(engineEnergy(energy,totals),volume,totals,competing,hintT,hintP);
         for(int evaluation=result.diagnostics().kernelEvaluations();evaluation>0;evaluation--)checkpoint.run();
         return crystalAnswer(result,totals);
     }
     /** {@link #crystalsAtVolume} for a slack vessel: the equilibrium at {@code pressure} (the ambient) with enthalpy
      * {@code enthalpy} (J, the network's datum, the fluid's and the crystals' only). */
-    public CrystalAnswer crystalsAtPressure(double[] totals,double enthalpy,double pressure,Runnable checkpoint) {
+    public CrystalAnswer crystalsAtPressure(double[] totals,double enthalpy,double pressure,boolean competing,Runnable checkpoint) {
         checkpoint.run();
-        var result=phaseEngine().ph(pressure,engineEnergy(enthalpy,totals),totals,true);
+        var result=phaseEngine().ph(pressure,engineEnergy(enthalpy,totals),totals,competing);
         for(int evaluation=result.diagnostics().kernelEvaluations();evaluation>0;evaluation--)checkpoint.run();
         return crystalAnswer(result,totals);
     }
-    /** A network-datum energy of {@code totals} on the engine's datum (D10): the formation enthalpies added per species. */
+    /** A network-datum energy of {@code totals} on the engine's datum (D10): the formation enthalpies added per species on a
+     * spine package; the network's own datum elsewhere ({@link NetworkPhaseEngine}). Water is on the network's datum in both. */
     private double engineEnergy(double energy,double[] totals) {
-        var spine=hydrocarbon.spine().orElseThrow(()->new IllegalStateException("Crystals compete on a spine package only"));
-        var formation=spine.formationReference();
+        var spine=hydrocarbon.spine();
+        if(spine.isEmpty())return energy;
+        var formation=spine.get().formationReference();
         return EnergyReference.sensible(formation.components()).rebase(energy,Arrays.copyOf(totals,hydrocarbon.componentCount()),formation);
     }
     private CrystalAnswer crystalAnswer(EquilibriumResult result,double[] totals) {
@@ -237,10 +240,14 @@ public final class FluidThermodynamics {
             }
         }
         var first=result.phases().getFirst();double t=first.temperature(),p=first.pressure();
-        if(result.classification()==EquilibriumResult.Classification.LIQUID_LIQUID)throw new UnsupportedPhases(domain.packageId(),t,p,UnsupportedPhases.Kind.LIQUID_LIQUID,
+        // With free water the hydrocarbons' own classification decides (WP4): the free water and its ice are water's rule.
+        var split=result.freeWater();
+        var hydrocarbons=split==null?result.classification():split.hydrocarbon();
+        if(hydrocarbons==EquilibriumResult.Classification.LIQUID_LIQUID)throw new UnsupportedPhases(domain.packageId(),t,p,UnsupportedPhases.Kind.LIQUID_LIQUID,
                 "a liquid-liquid split (two liquid-like hydrocarbon phases); the fluid network carries one hydrocarbon liquid");
         var all=crystals.all();double[] moles=new double[all.size()];double volume=0;
         int n=hydrocarbon.componentCount();double[] liquid=new double[n],vapor=new double[n];boolean fluid=false,liquidSlot=false,vaporSlot=false;
+        double waterLiquid=0,waterVapor=0;
         var terms=hydrocarbon.prepare(t);
         for(var phase:result.phases()) {
             if(phase.kind()==PhaseKind.SOLID) {
@@ -248,16 +255,17 @@ public final class FluidThermodynamics {
                 if(k<0)throw new IllegalStateException("The engine answered crystal "+phase.crystal()+", which the network does not carry");
                 moles[k]+=phase.amount(all.get(k).component());volume+=phase.total()*phase.state().molarVolume();continue;
             }
+            if(phase.kind()==PhaseKind.FREE_WATER){waterLiquid+=phase.amount(n);fluid=true;continue;}
             boolean toLiquid=switch(phase.kind()) {
                 case LIQUID->true;
                 case VAPOR->false;
                 default->HydrocarbonModel.liquidLike(hydrocarbon.translated().evaluateValues(t,p,Arrays.copyOf(phase.amountsView(),n),phase.state().root(),terms));
             };
             if(toLiquid?liquidSlot:vaporSlot)throw new UnsupportedPhases(domain.packageId(),t,p,UnsupportedPhases.Kind.CRYSTAL_PHASES,"two fluid phases of one slot beside a crystal");
-            if(toLiquid)liquidSlot=true;else vaporSlot=true;
+            if(toLiquid)liquidSlot=true;else{vaporSlot=true;waterVapor+=phase.amount(n);}
             System.arraycopy(phase.amountsView(),0,toLiquid?liquid:vapor,0,n);fluid=true;
         }
-        State state=fluid?state(t,p,liquid,vapor,0,0,p,terms,null):null;
+        State state=fluid?state(t,p,liquid,vapor,waterLiquid,waterVapor,split==null?p:split.hydrocarbonPressure(),terms,null):null;
         return new CrystalAnswer(t,p,state,moles,volume+(state==null?0:state.volume()));
     }
     /** The package's data ranges: its envelope, the input box of a device setting ({@link FluidDomain}). */
@@ -652,10 +660,9 @@ public final class FluidThermodynamics {
         // No data range bounds a state (owner rule of 2026-10-16: every property continues past its data, and the
         // interval's notice reports it); only the numerical box refuses a trial, a plain IllegalArgumentException.
         NumericalBox.require(t,p);
-        // Free liquid water below its triple point would freeze; ice is not modelled yet: a capability hold. Water vapour
-        // there is carried (a humid gas continues).
-        if(waterLiquid>0&&t<water.triplePoint())throw new UnsupportedPhases(domain.packageId(),t,p,UnsupportedPhases.Kind.ICE,
-                waterLiquid+" mol of free liquid water below the water model's triple point "+water.triplePoint()+" K");
+        // Free liquid water below its melting line is the stand-in of its ice (WP4, decision 3 A): a step carries the water
+        // a TP answer states as ice as supercooled liquid, Region 1 held at its 273.16 K values, until a vessel's refresh
+        // freezes it (owner decision D23: crystal mass moves only there).
         double nl=sum(liquid),nv=sum(vapor),volume=0,h=0,mass=0,gasVolume=0,vl=0,vw=0;
         if(terms==null&&(nl>0||nv>0))terms=prepared==null?hydrocarbon.prepare(t):prepared.pengRobinson();
         HydrocarbonModel.Phase lp=null,vp=null;
@@ -981,20 +988,22 @@ public final class FluidThermodynamics {
      * liquid here (the split is undetermined by T and P).</p>
      *
      * <p>Refusals: a state outside the numerical box is a plain {@link IllegalArgumentException} (checked before the
-     * engine runs; no data range bounds a state); free liquid water below its triple point is the typed
-     * {@link UnsupportedPhases.Kind#ICE} hold, as in {@link #state}, decided before the engine runs where the water exceeds
-     * what the hydrocarbons carry as vapour at its saturation pressure; an answer the engine could not converge inside the
-     * declared critical band is the typed
-     * {@link CriticalBandHold}; a liquid-liquid split (two liquid-like hydrocarbon phases) and a split with a product proved
-     * unstable (a third fluid phase indicated) are {@link UnsupportedPhases}, since a node carries one hydrocarbon liquid
-     * and one vapour; any other failure is a plain {@link IllegalArgumentException}. Pure water needs no phase decision
-     * (all liquid at or above its saturation pressure, all steam below).</p>
+     * engine runs; no data range bounds a state); an answer the engine could not converge inside the declared critical
+     * band is the typed {@link CriticalBandHold}; a liquid-liquid split (two liquid-like hydrocarbon phases) and a split
+     * with a product proved unstable (a third fluid phase indicated) are {@link UnsupportedPhases}, since a node carries one
+     * hydrocarbon liquid and one vapour; any other failure is a plain {@link IllegalArgumentException}. Pure water needs no
+     * phase decision: all condensed at or above the condensed water's vapour pressure (the liquid's saturation pressure,
+     * below its melting line its ice's, WP4), all steam below.</p>
+     *
+     * <p>Ice (WP4). Below its melting line the engine states the free water's condensed part as ice; a TP answer never
+     * moves material into a crystal (owner decision D23), so the network carries it as free liquid water, the stand-in
+     * ({@link #state}), until a vessel's refresh freezes it.</p>
      *
      * <p>{@code checkpoint} runs once before the engine and once per equation-of-state evaluation the engine reports, so
      * a budget clock counts the flash's work (the engine itself has no checkpoint; one call is bounded).</p>
      *
-     * <p>Crystals. On a package that admits crystals a dry request carrying a crystal's species at or below the
-     * crystals' ceiling is made under the crystal competition ({@link #crystalsCompete}). A TP answer never moves
+     * <p>Crystals. On a package that admits crystals a request carrying a crystal's species at or below the crystals'
+     * ceiling is made under the crystal competition ({@link #crystalsCompete}). A TP answer never moves
      * material into a crystal: crystal mass moves only in a vessel's refresh (owner decision D23,
      * {@code InventoryEquilibrium}), so a step, a transport node and a boundary carry a supersaturated fluid, and the
      * receiving vessel's next refresh precipitates it. Where a crystal forms, the answer's vapour is the vapour and the
@@ -1011,14 +1020,10 @@ public final class FluidThermodynamics {
         if(!Double.isFinite(t)||!Double.isFinite(p))throw new IllegalArgumentException("Fluid initialization is not finite");
         // Refused before any equilibrium is formed: outside the numerical box no model is trusted at all.
         NumericalBox.require(t,p);
-        if(nh==0)return state(t,p,hc,hc,p>=saturationPressure(t)?w:0,p>=saturationPressure(t)?0:w,0);
-        // Free liquid water below its triple point is certain where the water exceeds what the hydrocarbons, all vapour, carry
-        // at its saturation pressure: the ice hold (a capability limit, ice is not modelled yet) comes before the hydrocarbon
-        // phases are decided, whatever limit they would meet.
-        if(w>0&&t<water.triplePoint()) {
-            double psat=saturationPressure(t),carried=p>psat?nh*psat/(p-psat):Double.POSITIVE_INFINITY;
-            if(w>carried)throw new UnsupportedPhases(domain.packageId(),t,p,UnsupportedPhases.Kind.ICE,
-                    (w-carried)+" mol or more of free liquid water below the water model's triple point "+water.triplePoint()+" K");
+        if(nh==0) {
+            // Below the melting line the condensed water is ice (its stand-in here), whose vapour pressure is the ice's.
+            boolean condensed=p>=(t<freeWaterIce.meltingTemperature(p)?freeWaterIce.fugacity(t,p):saturationPressure(t));
+            return state(t,p,hc,hc,condensed?w:0,condensed?0:w,0);
         }
         checkpoint.run();
         var result=phaseEngine().tp(t,p,overall,crystalsCompete(t,overall));
@@ -1053,13 +1058,13 @@ public final class FluidThermodynamics {
     List<String> crystals(){return crystalIds;}
     /**
      * Whether a request on {@code overall} (conserved basis, water last) at {@code t} is made under the crystal competition:
-     * the package admits crystals, the request carries a crystal's species and no water (crystals beside water would
-     * compete with hydrates, D8; free liquid water below 273.16 K holds as ice not modelled yet), and {@code t} is at or
-     * below the crystals' ceiling (the competition's existence limit, not a data range: above it no crystal is stable).
-     * Otherwise fluid-only.
+     * the package admits crystals, the request carries a crystal's species, and {@code t} is at or below the crystals'
+     * ceiling (the competition's existence limit, not a data range: above it no crystal is stable). Otherwise fluid-only.
+     * Water takes no part: its ice is its own rule's (WP4), and gas hydrates are not modelled (decision 6 A), so ice and a
+     * competing crystal coexist.
      */
     public boolean crystalsCompete(double t,double[] overall) {
-        if(crystalIds.isEmpty()||overall[overall.length-1]!=0||!(t<=crystalCeiling))return false;
+        if(crystalIds.isEmpty()||!(t<=crystalCeiling))return false;
         for(int i=0;i<crystalSpecies.length;i++)if(crystalSpecies[i]&&overall[i]>0)return true;
         return false;
     }
@@ -1197,8 +1202,8 @@ public final class FluidThermodynamics {
      * hydrocarbon liquid slot and one vapour slot (D8: a phase set outside the qualified ones is refused, never answered
      * with fewer phases). The kinds: a liquid-liquid split, a third fluid phase (indicated by a converged split whose
      * product the stability re-check proved unstable, or not excluded where it left one unresolved), a crystal beside a
-     * phase set the engine does not implement, a crystal step the engine does not answer, and free liquid water below
-     * its melting point while ice is not modelled.
+     * phase set the engine does not implement, and a crystal step the engine does not answer. Free water below its melting
+     * line is no hold: it is ice (WP4).
      */
     public static final class UnsupportedPhases extends ThermoHold {
         /** What the network cannot carry. */
@@ -1217,14 +1222,10 @@ public final class FluidThermodynamics {
              * material meets the same step, so the island holds at once. Also an answer that froze a vessel's other species
              * with its crystals ({@code VesselCrystals}: their traces leave a fluid, D21), which the refresh names the vessel
              * with. */
-            CRYSTAL_STEP,
-            /** Free liquid water below the water model's triple point, 273.16 K: the liquid would freeze, and ice is not
-             * modelled yet (an interim capability limit of the range-extrapolation batch, until its ice crystal exists).
-             * Water vapour below it is carried: a humid gas continues. */
-            ICE;
+            CRYSTAL_STEP;
             /** The equilibrium service's reason for this kind. */
             EquilibriumResult.UnsupportedReason reason() {
-                return this==CRYSTAL_PHASES||this==CRYSTAL_STEP||this==ICE?EquilibriumResult.UnsupportedReason.NOT_IMPLEMENTED
+                return this==CRYSTAL_PHASES||this==CRYSTAL_STEP?EquilibriumResult.UnsupportedReason.NOT_IMPLEMENTED
                         :EquilibriumResult.UnsupportedReason.PHASE_COMPETITION_NOT_QUALIFIED;
             }
         }
@@ -1252,7 +1253,6 @@ public final class FluidThermodynamics {
                 case THREE_PHASES->"a third fluid phase, which the network does not carry";
                 case CRYSTAL_PHASES->"a crystal beside a phase set the equilibrium engine does not implement";
                 case CRYSTAL_STEP->"a near-pure crystal step the equilibrium engine does not answer";
-                case ICE->"free water below its melting point: ice not modelled yet";
             };
         }
     }

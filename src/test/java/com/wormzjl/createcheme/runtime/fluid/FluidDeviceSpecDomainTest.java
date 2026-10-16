@@ -42,14 +42,14 @@ class FluidDeviceSpecDomainTest {
     }
 
     /** A generator's settings are checked against the package envelope only: a crude fraction below its data at 280 K is
-     * accepted and continued. Water at 260 K passes the input box and meets the interim ice hold (free liquid water below
-     * its melting point) when the generator is first activated, until ice is modelled. */
+     * accepted and continued. Water at 260 K passes the input box and the generator supplies it, the stand-in of its ice
+     * (WP4: free liquid water, which a vessel's refresh freezes), with no hold. */
     @Test void aGeneratorIsCheckedAgainstTheEnvelopeAndControlsAreOnlyStructural() {
         int water=model.componentCount()-1;double[] n=new double[model.componentCount()];n[water]=1;
         var ice=new FluidDeviceSpec(1,260,101325,n);
         assertDoesNotThrow(()->ice.validate(model,TopologyCompiler.Kind.GENERATOR));
-        var frozen=assertThrows(FluidThermodynamics.UnsupportedPhases.class,()->ice.initialize(device(TopologyCompiler.Kind.GENERATOR),model,()->{}));
-        assertEquals(FluidThermodynamics.UnsupportedPhases.Kind.ICE,frozen.kind());
+        var source=assertDoesNotThrow(()->ice.initialize(device(TopologyCompiler.Kind.GENERATOR),model,()->{}));
+        assertTrue(source.state().waterLiquid()>0&&source.state().waterVapor()==0,"condensed below the melting line, carried as its stand-in");
         double[] crude=new double[model.componentCount()];crude[model.components().indexOf("crude_pc02")]=1;
         assertDoesNotThrow(()->new FluidDeviceSpec(1,280,101325,crude).validate(model,TopologyCompiler.Kind.GENERATOR));
         assertThrows(IllegalArgumentException.class,()->new FluidDeviceSpec(1,950,101325,crude).validate(model,TopologyCompiler.Kind.GENERATOR),"above the 900 K envelope");

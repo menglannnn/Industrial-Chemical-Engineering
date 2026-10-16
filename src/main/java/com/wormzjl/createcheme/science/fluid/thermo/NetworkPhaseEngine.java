@@ -98,13 +98,14 @@ final class NetworkPhaseEngine {
         return engine.ph(EquilibriumRequest.ph(p,h,species,overall,crystals?PhaseCompetition.FLUID_AND_CRYSTALS:PhaseCompetition.FLUID_ONLY),workspaces.get());
     }
     /**
-     * The equilibrium of {@code overall} with the package's crystals competing, at internal energy {@code u} (J, the
-     * engine's datum) and volume {@code v} (m3): the crystal test of a taut vessel's refresh ({@code InventoryEquilibrium},
-     * D23), D21's near-pure step included. Warm-started at {@code (hintT, hintP)} when both are finite
+     * The equilibrium of {@code overall} at internal energy {@code u} (J, the engine's datum) and volume {@code v} (m3), the
+     * package's crystals competing where {@code crystals} (as for {@link #tp}) and the free water's ice by water's own rule
+     * (WP4): the crystal test of a taut vessel's refresh ({@code InventoryEquilibrium}, D23), D21's near-pure step included.
+     * Warm-started at {@code (hintT, hintP)} when both are finite
      * ({@link FluidTpEquilibrium#uv(EquilibriumRequest, com.wormzjl.createcheme.science.thermo.phase.EquilibriumService.Workspace, double, double)}).
      */
-    EquilibriumResult crystalUv(double u,double v,double[] overall,double hintT,double hintP) {
-        var request=EquilibriumRequest.uv(u,v,species,overall,PhaseCompetition.FLUID_AND_CRYSTALS);
+    EquilibriumResult crystalUv(double u,double v,double[] overall,boolean crystals,double hintT,double hintP) {
+        var request=EquilibriumRequest.uv(u,v,species,overall,crystals?PhaseCompetition.FLUID_AND_CRYSTALS:PhaseCompetition.FLUID_ONLY);
         return Double.isFinite(hintT)&&Double.isFinite(hintP)?engine.uv(request,workspaces.get(),hintT,hintP):engine.uv(request,workspaces.get());
     }
     /** The engine itself: the crystal evaluators and the onset functions the network's crystal records are built from. */

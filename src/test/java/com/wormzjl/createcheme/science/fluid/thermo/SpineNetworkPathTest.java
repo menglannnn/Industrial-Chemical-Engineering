@@ -100,9 +100,9 @@ class SpineNetworkPathTest {
     /**
      * Pure and mixed states through the network's flash and state at 0.1 to 10 MPa: conserved and finite. Since the owner
      * rule of 2026-10-16 no state is refused for leaving a data range (a species below its spine, the steam partial-pressure
-     * limit, the envelope's 900 K): each is carried on its continuation. The wet feed below 273.16 K meets a capability
-     * hold: free liquid water is the interim ice hold, and its CO2-bearing hydrocarbons, fluid-only beside water (D8), may
-     * first show a third fluid phase the network does not carry. A CO2 gas below its triple point that deposits is stated as its gas, and since P5 a CO2-bearing liquid that
+     * limit, the envelope's 900 K): each is carried on its continuation. Since WP4 the wet feed below 273.16 K is evaluated
+     * too: its water is ice, carried as its stand-in, beside hydrocarbons under the crystal competition (no hydrates,
+     * decision 6 A). A CO2 gas below its triple point that deposits is stated as its gas, and since P5 a CO2-bearing liquid that
      * freezes as its liquid (the crystal is the vessel's inventory, moved by the engine's UV answer). P4 stage 2b held 69
      * states of this grid typed (65 SOLID_LIQUID, 4 THREE_PHASES); P5 answers all of them. Until P3 WP7 the network's initializer was a Wilson flash that did not converge once on this grid (CH4/CO2
      * 80/20 at 230 K and 2 MPa, next to its dew point); the equilibrium engine answers every state.
@@ -126,16 +126,11 @@ class SpineNetworkPathTest {
                     try {
                         state = model.flashTP(t, p, feed, () -> { });
                     } catch (FluidThermodynamics.UnsupportedPhases hold) {
-                        if (feed[4] > 0 && t < 273.16) {
-                            // The wet feed below 273.16 K: a capability hold (ice not modelled, or a third fluid phase first).
-                            wetCold++;
-                            continue;
-                        }
-                        assertTrue(hold.kind() != FluidThermodynamics.UnsupportedPhases.Kind.ICE, "the ice hold only on water below 273.16 K");
                         // P4 stage 2b held a crystal beside a liquid (SOLID_LIQUID) and a fluid answer with a third fluid
                         // phase (THREE_PHASES) here; P5 answers both. A typed hold may only remain where the crystal
-                        // competition newly admits CO2 (two liquids or three fluid phases beside the crystal); none is met.
-                        assertTrue(feed[3] > 0 && feed[4] == 0 && t < 216.592, "a typed hold only where the crystal competition newly admits CO2: "
+                        // competition newly admits CO2 (two liquids or three fluid phases beside the crystal), with or without
+                        // free water beside it (WP4: the hydrocarbons answered as the dry feed's); none is met.
+                        assertTrue(feed[3] > 0 && t < 216.592, "a typed hold only where the crystal competition newly admits CO2: "
                                 + t + " K, " + p + " Pa, " + java.util.Arrays.toString(feed) + ": " + hold.getMessage());
                         holds.merge(hold.kind(), 1, Integer::sum);
                         continue;
@@ -145,6 +140,11 @@ class SpineNetworkPathTest {
                         continue;
                     }
                     evaluated++;
+                    if (feed[4] > 0 && t < 273.16) {
+                        // WP4: below the melting line the condensed water is ice, which a TP answer carries as its stand-in.
+                        wetCold++;
+                        assertTrue(state.waterLiquid() > 0, "the wet feed's ice at " + t + " K, " + p + " Pa");
+                    }
                     double[] liquid = state.liquidView(), vapor = state.vaporView();
                     for (int i = 0; i < 4; i++) {
                         assertEquals(feed[i], liquid[i] + vapor[i], 1e-12, "conserved " + SPECIES[i] + " at " + t + " K, " + p + " Pa");
@@ -156,17 +156,18 @@ class SpineNetworkPathTest {
                 }
             }
         }
-        System.out.printf("WP5 pilot flash grid: %d states evaluated (%d two-phase), %d wet holds below 273.16 K, typed holds %s"
+        System.out.printf("WP5 pilot flash grid: %d states evaluated (%d two-phase), %d wet states below 273.16 K, typed holds %s"
                 + " (P4 stage 2b), %d non-convergence%n", evaluated, twoPhase, wetCold, holds, failures.size());
         failures.forEach(failure -> System.out.println("  did not converge: " + failure));
         assertEquals(List.of(), failures, "the equilibrium engine answers every state of the grid");
         assertTrue(evaluated >= 500 && twoPhase > 10, evaluated + " states, " + twoPhase + " two-phase");
         // P5: the 69 typed holds of P4 stage 2b are answers (551 evaluated then, 620 at P5). Since the owner rule of
-        // 2026-10-16 the 106 states P5 refused for a data range are answered too, except the wet feed below 273.16 K
-        // (7 temperatures by 6 pressures), a capability hold: 684.
+        // 2026-10-16 the 106 states P5 refused for a data range are answered too (684), and since WP4 the wet feed below
+        // 273.16 K (7 temperatures by 6 pressures), the ice hold before: its water is ice beside the dry feed's answer,
+        // CO2-I where it forms: 726, the whole grid.
         assertTrue(holds.isEmpty(), "no typed hold on the grid since P5: " + holds);
         assertEquals(42, wetCold);
-        assertEquals(684, evaluated);
+        assertEquals(726, evaluated);
     }
 
     /** A P1 row: species, T [K], P [Pa], and the printed density, cp (%) and h (J/mol) deviations, anchor (b). */

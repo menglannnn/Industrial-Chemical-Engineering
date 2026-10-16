@@ -114,7 +114,9 @@ public final class HydrocarbonModel {
         // An anchor is a liquid volume, so the equation of state must have a liquid root at the anchor's state: a
         // single vapour-like root there would translate the component by a gas volume.
         for(int i=0;i<count;i++)requireLiquidRoot(packageId,components.get(i),i,anchorT[i],anchorP[i]);
-        revision=catalog.fluidThermoFingerprint(packageId)+":"+FORMULATION+":fluid-domain-data-v1:cp-segments-v1:catalog-volume-reference-v1";
+        // The free water's formulation and revision, as a spine package's identity carries them (WP4: its ice).
+        revision=catalog.fluidThermoFingerprint(packageId)+":"+FORMULATION+":"+ThermoIdentity.SEPARATE_FREE_WATER_FORMULATION+":"+propertyPackage.water().revision()
+                +":fluid-domain-data-v1:cp-segments-v1:catalog-volume-reference-v1";
     }
 
     /** A liquid root of pure component {@code i} at its volume anchor's own state ({@code t}, {@code p}), on either path. */
@@ -128,7 +130,7 @@ public final class HydrocarbonModel {
 
     /**
      * The network's thermodynamic revision. For a package without a reference spine it is the coefficient path's
-     * string (the fluid thermodynamic fingerprint and the formulation tags); for a spine package it is its
+     * string (the fluid thermodynamic fingerprint, the formulation tags and the free-water revision); for a spine package it is its
      * {@link ThermoIdentity}'s revision: the fluid thermodynamic fingerprint, the {@link #NETWORK_FAMILY}, the spine
      * fingerprint and the free-water revision.
      */

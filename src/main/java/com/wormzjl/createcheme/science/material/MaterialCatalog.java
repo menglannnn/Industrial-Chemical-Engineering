@@ -179,7 +179,10 @@ public final class MaterialCatalog {
         var domains=new ArrayList<Object>();
         domains.add(fluidValidity(packageId).map(Validity::numbers).orElse(List.of()));
         for(String id:p.components())domains.add(fluidValidity(packageId,id).map(Validity::numbers).orElse(List.of()));
-        return hash(new Gson().toJson(List.of(physicsFingerprint(packageId,p.components()),points,domains)));
+        // The free water's ice (WP4), which the physics fingerprint leaves out: the network's numbers below the melting line.
+        var ice=p.water().ice();
+        List<Object> iceScience=ice==null?List.of():List.of(crystals.get(ice.crystal()).science(),ice.coefficients(),ice.exponents());
+        return hash(new Gson().toJson(List.of(physicsFingerprint(packageId,p.components()),points,domains,iceScience)));
     }
     /** The fluid network's envelope for a package: its {@code fluid_domain}, absent for a package the network cannot be built on. */
     public Optional<Validity> fluidValidity(String packageId) {

@@ -76,11 +76,11 @@ public final class PassiveIntervalSolver {
         // Owner decisions D19, D42 and D58: an island nothing can drive by more than the gauge reads is at rest and is not
         // solved (NetworkReduction step 6); a mover refused for the slice moves nothing.
         boolean[] refused=decideInlets(initial,duration);
-        // Owner decision D23 (6): on a package with crystals the refresh runs before the rest test, because a supersaturated
-        // closed tank is not at rest: an island whose refresh froze or melted a crystal (or merged a stock's sizes) is
-        // solved from the refreshed state, its boundaries kept.
-        var refreshed=model.crystalSolids().isEmpty()?null:InventoryEquilibrium.refresh(initial,model,checkpoint);
-        boolean converted=refreshed!=null&&refreshed.converted();
+        // Owner decision D23 (6): the refresh runs before the rest test, because a supersaturated closed tank is not at rest:
+        // an island whose refresh froze or melted a crystal (or merged a stock's sizes) is solved from the refreshed state,
+        // its boundaries kept. Every package has a crystal: the free water's ice (WP4).
+        var refreshed=InventoryEquilibrium.refresh(initial,model,checkpoint);
+        boolean converted=refreshed.converted();
         if(Double.isFinite(duration)&&duration>0&&!converted&&NetworkReduction.atRest(initial,model,null,refused)){SolverDiagnostics.count(SolverDiagnostics.restIntervals);return committedInlets(NetworkReduction.restInterval(committed,duration,refused));}
         if(converted)initial=refreshed.graph();
         Result result;

@@ -107,7 +107,7 @@ class PumpRiseScalingTest {
 
     /** The cause of a failed interval is a phase hold met at its last trial or at most of its rejections (D21 option C). */
     @Test void anIntervalFailsOnTheDomainWhenItsLastOrMostRejectionsWereDomainOnes() {
-        var v=new FluidThermodynamics.UnsupportedPhases(NETWORK,260,101325,FluidThermodynamics.UnsupportedPhases.Kind.ICE,"free liquid water at 260 K");
+        var v=new FluidThermodynamics.UnsupportedPhases(NETWORK,260,101325,FluidThermodynamics.UnsupportedPhases.Kind.THREE_PHASES,"a third fluid phase at 260 K");
         assertSame(v,PassiveIntervalSolver.domainCause(true,v,1,20),"the last rejection");
         assertSame(v,PassiveIntervalSolver.domainCause(false,v,11,20),"most rejections");
         assertNull(PassiveIntervalSolver.domainCause(false,v,10,20),"met on the way, failed for another reason");

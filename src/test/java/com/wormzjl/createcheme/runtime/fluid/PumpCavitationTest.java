@@ -20,7 +20,10 @@ class PumpCavitationTest {
      * tools/phase-ports-probes/hold-classes logs cc04). A 1 atm water generator 2 m above the pump's suction feeds it through
      * a vertical line; the pump discharges towards a second 1 atm generator and a placed tank 3 m below. The head-limit trial
      * pulls the suction junction to the data's 100 Pa floor, where the water flashes to its triple point: without the suction
-     * limit the island held at tick 1570 (water at 273.1599 K at the suction junction). With it the failed trial puts the pump
+     * limit the island held at tick 1570 (water at 273.1599 K at the suction junction, the ice hold of the time; since WP4 of
+     * the range-extrapolation plan such a flash freezes, 83 % ice and 17 % steam at 252.8 K from 25 °C at 100 Pa,
+     * FreeWaterIceTest, which a step carries as the stand-in, supercooled liquid, until a vessel's refresh freezes it). With
+     * it the failed trial puts the pump
      * on its suction limit, that pass converges with the suction line giving more than the target (22.5 kg/s), the pump
      * returns to its target and then its head limit as the full tank's pressure rises, and stands at its shutoff once the
      * tank is pressed to it; the island keeps up for 120 slices.

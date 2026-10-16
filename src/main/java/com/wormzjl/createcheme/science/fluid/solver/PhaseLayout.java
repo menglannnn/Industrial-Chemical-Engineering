@@ -23,7 +23,7 @@ public final class PhaseLayout {
      * it, so it is built with the layout instead of boxed into a list on every evaluation. */
     private final int[] junctionBasis;
     private final int waterLiquidIndex,waterVaporIndex,temperatureIndex,pressureIndex,partialPressureIndex,size;
-    private final double amountScale,energyScale;
+    private final double amountScale,energyScale,steamSeed;
     private final double[] componentScales,differenceScales;
     private final boolean liquidActive,vaporActive;
     private final int solidIndex;
@@ -99,11 +99,41 @@ public final class PhaseLayout {
             for(int c:components)if(conservedReference[c]==0){int at=amountIndex[c];differenceScales[at]=Math.max(1e-4,differenceScales[at]);}
             if(conservedReference[l.length]==0){if(waterLiquidIndex>=0)differenceScales[waterLiquidIndex]=Math.max(1e-4,differenceScales[waterLiquidIndex]);if(waterVaporIndex>=0)differenceScales[waterVaporIndex]=Math.max(1e-4,differenceScales[waterVaporIndex]);}
         }
+        // The steam beside its liquid water, which the saturation row reads through a logarithm: the floors above are capped
+        // at LOG_READ_SPAN of its own seed amount.
+        steamSeed=waterVaporIndex>=0?seed.waterVapor()/amountScale:0;
+        if(waterLiquidIndex>=0&&waterVaporIndex>=0)differenceScales[waterVaporIndex]=logReadFloor(differenceScales[waterVaporIndex]);
     }
+    /**
+     * The span by which the bulk difference floor of an amount may exceed the amount where a row reads it through a
+     * logarithm: 1e4, so its step (the Newton's 1e-6 of the scale) stays within 1 % of the amount and the logarithm's secant
+     * within 0.5 % of its tangent. The bulk floor of a gas-rich vessel (1e-4 of its amount, as of an entry trace) is kept
+     * wherever such an amount is at least 1e-8 of its vessel, as the steam of every free water at or above 0 °C under a gas
+     * cap of 1 % or more is. The stand-in of ice in a cold gas (WP4) holds steam of about 1e-5 Pa at 150 K, 1e-11 of its
+     * vessel: the floor's step was 8 times the steam, its secant 70 % below the tangent, and the Newton on the saturation
+     * row (and on a refresh's ice row) overshot and alternated without converging.
+     */
+    public static final double LOG_READ_SPAN=1e4;
+    private double logReadFloor(double floored){return Math.min(floored,Math.max(steamSeed,LOG_READ_SPAN*steamSeed));}
+    /** The local column of the free water's steam, -1 where the layout carries none. */
+    public int waterVaporVariable(){return waterVaporIndex;}
+    /**
+     * {@link #differenceStepScale} of the steam column where a row reads the steam through a logarithm, with the floor
+     * capped at {@link #LOG_READ_SPAN} of the seed's steam: this layout's saturation row (the column carries the cap
+     * already), and a vessel refresh's ice row (WP4) beside a layout without liquid water.
+     */
+    public double steamLogReadScale(double value){return traceDifferenceScale(Math.max(Math.abs(value),logReadFloor(differenceScales[waterVaporIndex])));}
     public int size(){return size;}
     /** The local column of the pressure unknown, {@code ln(P / 1e5)}; every layout has one. */
     public int pressureVariable(){return pressureIndex;}
     public int componentBalanceCount(){return components.length+(waterLiquidIndex>=0||waterVaporIndex>=0?1:0);}
+    /** Whether this layout carries free liquid water, and water vapour, as unknowns (the free water's phases). */
+    public boolean carriesWaterLiquid(){return waterLiquidIndex>=0;}
+    public boolean carriesWaterVapor(){return waterVaporIndex>=0;}
+    /** The water balance's row among {@link #balanceRows}' (from their offset), or -1 where the layout carries no water. */
+    public int waterBalanceRow(){return waterLiquidIndex>=0||waterVaporIndex>=0?components.length:-1;}
+    /** The amount a component's balance row is stated over ({@link #balanceRows}), mol; water's at the basis's last index. */
+    public double componentScale(int component){return componentScales[component];}
     /** This layout's frozen per-component support, in the conserved hydrocarbon basis. */
     public PhaseSupport support(int component){return support[component];}
     /** Components whose omitted phase this layout holds at exactly zero, for the diagnostics counters. */

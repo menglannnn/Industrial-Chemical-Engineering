@@ -3,7 +3,6 @@ package com.wormzjl.createcheme.science.thermo.qualification;
 import static com.wormzjl.createcheme.science.thermo.qualification.G3Support.*;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
-import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.wormzjl.createcheme.science.fluid.thermo.FluidThermodynamics;
@@ -24,8 +23,8 @@ import org.junit.jupiter.api.Test;
  * ({@code RANGE_EXTRAPOLATION_PLAN.md}): just outside each data boundary the request is answered on the models'
  * continuations, next to the answer just inside (the enthalpy within 100 J/mol, the volume within 2 %, for steps of at
  * most 0.5 K or 0.5 %), where it was refused typed before. The engine's network contract grades an answer outside its
- * envelope {@code EXTRAPOLATED}; only its competition rules (D8) refuse, and free liquid water below 273.16 K is the
- * interim ice hold (a capability limit until ice is modelled). Paths: the pilot network ({@code createcheme:pilot_cryogenic}),
+ * envelope {@code EXTRAPOLATED}; only its competition rules (D8) refuse. Free water across its melting line freezes (WP4):
+ * the network carries the engine's ice as its stand-in, continuously. Paths: the pilot network ({@code createcheme:pilot_cryogenic}),
  * the bundled network ({@code createcheme:tjl20_methane_nitrogen}), the pilot evaluator (spine ranges) and the pilot
  * engine's contract.
  */
@@ -86,15 +85,12 @@ class G3F9DataRangeBoundaryTest {
         var hotOut = pilot.waterLiquid(623.2, 2e7);
         row("Region 1 623.15 K, liquid water", "pilot network waterLiquid", 623.1, 2e7, 623.2, 2e7,
                 hotOut.molarEnthalpy() - hotIn.molarEnthalpy(), hotOut.molarVolume() / hotIn.molarVolume() - 1);
-        // Free liquid water below its triple point would freeze: the interim ice hold, a capability limit.
+        // Free water across its melting line (273.1526 K at 0.1 MPa, 273.0859 K at 1 MPa; WP4): below it the engine states
+        // ice, which the network carries as its stand-in (free liquid water held at its 273.16 K values) until a vessel's
+        // refresh freezes it: no hold, and continuous (the interim ice hold before WP4).
         double[] wet = {0.5, 0, 0, 0, 0.5};
-        pilot.flashTP(273.2, 1e5, wet, () -> { });
-        var ice = assertThrows(FluidThermodynamics.UnsupportedPhases.class, () -> pilot.flashTP(273.1, 1e5, wet, () -> { }));
-        assertEquals(FluidThermodynamics.UnsupportedPhases.Kind.ICE, ice.kind());
-        net.flashTP(273.2, 1e6, netWater, () -> { });
-        var netIce = assertThrows(FluidThermodynamics.UnsupportedPhases.class, () -> net.flashTP(273.1, 1e6, netWater, () -> { }));
-        assertEquals(FluidThermodynamics.UnsupportedPhases.Kind.ICE, netIce.kind());
-        table.row("273.16 K, free water", "pilot and bundled networks", "273.2 K", "273.1 K", "interim ice hold (" + ice.kind() + ")");
+        continued("melting line, free water (WP4)", pilot, "pilot network", wet, 273.2, 1e5, 273.1, 1e5);
+        continued("melting line, free water (bundled, WP4)", net, "bundled network", netWater, 273.1, 1e6, 273.05, 1e6);
 
         // The spine ranges through the evaluator: methane 90.6941-1200 K (D13), CO2 from 90 K (WP3), N2 to 6000 K.
         var evaluator = CubicPhaseEvaluator.forPackage(MaterialCatalog.bundled(), PILOT);

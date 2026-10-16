@@ -314,10 +314,10 @@ class IslandCoordinatorTest {
         assertEquals(before+1,observed.size());assertEquals(1,limit[0],"the shrink applied exactly at its deadline");
         assertEquals(-1,allocator.shrinkTick());assertEquals(Long.MAX_VALUE,shared.nextDue());
     }
-    /** A phase hold (D21 option C): free liquid water below its triple point, the interim ice hold of the range batch. */
+    /** A phase hold (D21 option C): a third fluid phase, a capability limit (the interim ice hold it replaced is gone, WP4). */
     private static com.wormzjl.createcheme.science.fluid.thermo.ThermoHold violation(double value,long node) {
         return new com.wormzjl.createcheme.science.fluid.thermo.FluidThermodynamics.UnsupportedPhases("createcheme:tjl20_methane_nitrogen",value,101325,
-                com.wormzjl.createcheme.science.fluid.thermo.FluidThermodynamics.UnsupportedPhases.Kind.ICE,"1.0 mol of free liquid water below the water model's triple point 273.16 K").at(node);
+                com.wormzjl.createcheme.science.fluid.thermo.FluidThermodynamics.UnsupportedPhases.Kind.THREE_PHASES,"a third fluid phase is indicated").at(node);
     }
     private void domainHold(IslandCoordinator.Attempt attempt,com.wormzjl.createcheme.science.fluid.thermo.ThermoHold v) {
         dispatch.attempts.remove(attempt.slice().requestId());dispatch.commands.remove(attempt.slice().requestId());
@@ -341,14 +341,14 @@ class IslandCoordinatorTest {
             var first=dispatch.attempts.values().iterator().next();var firstSolver=dispatch.commands.get(first.slice().requestId()).retained();
             domainHold(first,violation(260.12,1));
             var status=coordinator.snapshot(1).status();
-            assertEquals("HELD (thermo domain): free water below its melting point: ice not modelled yet at 260.12 K, 101325 Pa in tank at 1, 64, 0 (package createcheme:tjl20_methane_nitrogen)",status);
+            assertEquals("HELD (thermo domain): a third fluid phase, which the network does not carry at 260.12 K, 101325 Pa in tank at 1, 64, 0 (package createcheme:tjl20_methane_nitrogen)",status);
             assertFalse(coordinator.waitsForInputs(1),"the first domain failure is retried");
             var retry=nextAttempt();assertEquals(100,retry.getKey(),"the retry comes a cadence later");
             assertEquals(50,retry.getValue().slice().endTick()-retry.getValue().slice().startTick(),"on the halved slice every hold gives");
             assertNotSame(firstSolver,dispatch.commands.get(retry.getValue().slice().requestId()).retained(),"on a fresh solver");
             domainHold(retry.getValue(),violation(258.4,1));
             assertTrue(coordinator.waitsForInputs(1),"the retry reproduced it: the island waits for its inputs");
-            assertTrue(coordinator.snapshot(1).status().startsWith("HELD (thermo domain): free water below its melting point: ice not modelled yet at 258.40 K, 101325 Pa in tank at 1, 64, 0"),coordinator.snapshot(1).status());
+            assertTrue(coordinator.snapshot(1).status().startsWith("HELD (thermo domain): a third fluid phase, which the network does not carry at 258.40 K, 101325 Pa in tank at 1, 64, 0"),coordinator.snapshot(1).status());
             assertTrue(coordinator.snapshot(1).status().endsWith("the retry failed the same way, so the island waits for a change to its network"));
             assertEquals(Long.MAX_VALUE,coordinator.snapshot(1).clock().retryAtTick());
             for(int tick=0;tick<1000;tick++)coordinator.tick();
@@ -360,7 +360,7 @@ class IslandCoordinatorTest {
             for(int tick=0;tick<200;tick++)restored.tick();
             assertTrue(dispatch.attempts.isEmpty(),"a restored waiting island dispatches nothing");restored.stop();
             assertEquals(1,warned.size(),"one warning for the hold, not one per attempt: "+warned);
-            assertEquals("1 thermo-domain: phases ICE tank at 1, 64, 0 false",warned.getFirst());
+            assertEquals("1 thermo-domain: phases THREE_PHASES tank at 1, 64, 0 false",warned.getFirst());
             assertEquals(2,FluidRuntimeDiagnostics.sample().get("numericalHolds"));assertEquals(1,FluidRuntimeDiagnostics.sample().get("domainHolds"));
             assertEquals(0,FluidRuntimeDiagnostics.sample().get("retriesDeferred"));
         } finally {FluidRuntimeDiagnostics.ENABLED=false;FluidRuntimeDiagnostics.reset();}
