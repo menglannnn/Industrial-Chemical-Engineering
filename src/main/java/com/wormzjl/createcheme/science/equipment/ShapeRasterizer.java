@@ -45,7 +45,7 @@ public final class ShapeRasterizer {
     public static final double COURSE = 2, PLATE_LENGTH = 4, SUPPORT_TILE = 2;
     /** Bits per nozzle in a cell key, and the most nozzles a key carries. */
     private static final int CODE_BITS = 7, KEYED_NOZZLES = 9;
-    private static final int GEOMETRY_CACHE = 64;
+    private static final int GEOMETRY_CACHE = 64, GEOMETRY_FACETS = 300_000;
     private static final Map<EquipmentShape, Geometry> GEOMETRIES = new ConcurrentHashMap<>();
 
     public record Cell(int x, int y, int z) {
@@ -110,7 +110,7 @@ public final class ShapeRasterizer {
         for (int k = 0; k < g.nozzleCells.size() && k < KEYED_NOZZLES; k++)
             if (g.nozzleCells.get(k).contains(new Cell(x, y, z))) reaching |= nozzles & (127L << (CODE_BITS * k));
         int bodyClass = g.bodyClass(cell[g.axial]);
-        if (bodyClass >= 0 && reaching == 0 && !g.ladderColumns.contains(column(x, z))) cell[g.axial] = CellKey.BODY - bodyClass;
+        if (bodyClass >= 0 && reaching == 0 && !g.irregularColumns.contains(column(x, z))) cell[g.axial] = CellKey.BODY - bodyClass;
         return new CellKey(shape, cell[0], cell[1], cell[2], reaching);
     }
 
@@ -168,10 +168,12 @@ public final class ShapeRasterizer {
         return false;
     }
 
-    /** Whether a box-local point lies where one of a column's ladders is climbed. */
+    /** Whether a box-local point lies where one of a column's ladders, or its auxiliaries' structure's, is climbed. */
     public static boolean climbable(EquipmentShape shape, double x, double y, double z) {
         var g = geometry(shape);
-        return g.column != null && g.column.climbable(g.transform.local(new double[]{x, y, z}));
+        if (g.column == null) return false;
+        var p = g.transform.local(new double[]{x, y, z});
+        return g.column.climbable(p) || g.auxiliaries.climbable(p);
     }
 
     /** A box column (x, z) of a standing vessel as one number. */
@@ -212,8 +214,8 @@ public final class ShapeRasterizer {
     static List<Polygon> surface(EquipmentShape shape, int x, int y, int z, long nozzles) {
         var g = geometry(shape);
         var out = new ArrayList<Polygon>();
-        for (var facet : g.mesh.facets()) g.mesh.cell(facet, x, y, z, out);
         var cell = new Cell(x, y, z);
+        for (var facet : g.facetsIn(cell)) g.mesh.cell(facet, x, y, z, out);
         for (int k = 0; k < g.nozzleCells.size(); k++)
             if (g.nozzleCells.get(k).contains(cell)) {
                 var mesh = g.nozzle(k, code(nozzles, k));
@@ -258,7 +260,10 @@ public final class ShapeRasterizer {
     private static Geometry geometry(EquipmentShape shape) {
         var g = GEOMETRIES.get(shape);
         if (g != null) return g;
-        if (GEOMETRIES.size() >= GEOMETRY_CACHE) GEOMETRIES.clear();
+        // A column with its auxiliaries holds 20 to 50 thousand facets (15 to 40 MB): the cache is bounded by facets too.
+        long facets = 0;
+        for (var cached : GEOMETRIES.values()) facets += cached.mesh.facets().size();
+        if (GEOMETRIES.size() >= GEOMETRY_CACHE || facets >= GEOMETRY_FACETS) GEOMETRIES.clear();
         return GEOMETRIES.computeIfAbsent(shape, Geometry::new);
     }
 
@@ -273,10 +278,17 @@ public final class ShapeRasterizer {
         private int[] bodyClasses, representatives;
         /** The shell's radius, and its outside's (a column's cladding; the shell's for a drum). */
         private final double axis, radius, outer, apothemFactor, ground, plateLength;
-        /** A column's access structure, or null. */
+        /** A column's access structure and its auxiliaries, or null. */
         private final ColumnStructure column;
-        /** Box columns (x, z) a column's ladders pass through: their cells differ row by row, so they never share a body key. */
-        private final Set<Long> ladderColumns = new HashSet<>();
+        private final ColumnAuxiliaries auxiliaries;
+        /**
+         * Box columns (x, z) a column's ladders or auxiliaries pass through: their cells differ row by row, so they never
+         * share a body key. Filled from the facets from {@link #irregularFrom} on, with the facets by cell.
+         */
+        private final Set<Long> irregularColumns = new HashSet<>();
+        private int irregularFrom = Integer.MAX_VALUE;
+        /** The facets reaching each cell, in mesh order. */
+        private final Map<Cell, List<Facet>> facetsByCell = new HashMap<>();
         /** Outer radii (vertex) of a saddle's top plate and a skirt's base ring; a saddle's half width across the axis. */
         private final double saddleRadius, ringRadius, saddleLateral;
         /** A skirt's access opening: centre height and radius (0: none). */
@@ -307,6 +319,7 @@ public final class ShapeRasterizer {
             radius = shape.radius();
             outer = shape.outerRadius();
             column = shape.column() ? new ColumnStructure(shape) : null;
+            auxiliaries = shape.column() ? ColumnAuxiliaries.of(shape) : null;
             var along = transform.direction(new double[]{0, 1, 0});
             axial = along[0] != 0 ? 0 : along[1] != 0 ? 1 : 2;
             // A lying vessel's frame has the ground below it at x = -support (world y = 0).
@@ -364,10 +377,9 @@ public final class ShapeRasterizer {
                 var ladders = new Mesh();
                 ladders.transform(transform);
                 column.build(mesh, ladders, nozzles);
-                var cells = new HashSet<Cell>();
-                for (var facet : ladders.facets()) cells(facet, cells);
-                for (var cell : cells) ladderColumns.add(column(cell.x(), cell.z()));
+                irregularFrom = mesh.facets().size();
                 mesh.facets().addAll(ladders.facets());
+                mesh.include(auxiliaries.mesh());
             }
             for (int k = 0; k < nozzles.size(); k++) {
                 var nozzle = nozzles.get(k);
@@ -765,8 +777,17 @@ public final class ShapeRasterizer {
          */
         private Layout buildLayout() {
             int sx = shape.sizeX(), sy = shape.sizeY(), sz = shape.sizeZ();
-            var cells = new HashSet<Cell>();
-            for (var facet : mesh.facets()) cells(facet, cells);
+            var facets = mesh.facets();
+            var reached = new HashSet<Cell>();
+            for (int i = 0; i < facets.size(); i++) {
+                reached.clear();
+                cells(facets.get(i), reached);
+                for (var cell : reached) {
+                    facetsByCell.computeIfAbsent(cell, c -> new ArrayList<>()).add(facets.get(i));
+                    if (i >= irregularFrom) irregularColumns.add(column(cell.x(), cell.z()));
+                }
+            }
+            var cells = new HashSet<>(facetsByCell.keySet());
             for (var nozzle : nozzleCells) cells.addAll(nozzle);
             if (!shape.column()) cells.add(fluidCell);
             var shellCells = new ArrayList<Cell>();
@@ -776,9 +797,16 @@ public final class ShapeRasterizer {
                     for (int z = 0; z < sz; z++) {
                         var cell = new Cell(x, y, z);
                         if (cells.contains(cell)) shellCells.add(cell);
-                        else if (inVessel(transform.local(new double[]{x + .5, y + .5, z + .5}))) interiorCells.add(cell);
+                        else {
+                            var p = transform.local(new double[]{x + .5, y + .5, z + .5});
+                            if (inVessel(p) || auxiliaries != null && auxiliaries.filled(p)) interiorCells.add(cell);
+                        }
                     }
             return new Layout(shape, shellCells, interiorCells);
+        }
+
+        List<Facet> facetsIn(Cell cell) {
+            return facetsByCell.getOrDefault(cell, List.of());
         }
 
         /** Body rows along the axis and their texture classes: rows wholly in the cylinder, clear of supports, opening and nozzles. */
@@ -845,7 +873,7 @@ public final class ShapeRasterizer {
 
         boolean inside(double x, double y, double z, long codes) {
             var p = transform.local(new double[]{x, y, z});
-            if (inVessel(p) || column != null && column.inside(p)) return true;
+            if (inVessel(p) || column != null && (column.inside(p) || auxiliaries.inside(p))) return true;
             for (int k = 0; k < nozzles.size(); k++) if (inNozzle(p, k, code(codes, k))) return true;
             return false;
         }
@@ -962,6 +990,7 @@ public final class ShapeRasterizer {
                                 new double[]{axis + r * DeterministicMath.cos(a1), y, axis + r * DeterministicMath.sin(a1)});
                     }
                 }
+            if (auxiliaries != null) for (var edge : auxiliaries.edges()) segment(segments, new double[]{edge[0], edge[1], edge[2]}, new double[]{edge[3], edge[4], edge[5]});
             if (shape.skirt())
                 for (int i = 0; i < n; i++) segment(segments, rim(i, plate), rim(i + 1, plate));
             double deck = ground + plate;

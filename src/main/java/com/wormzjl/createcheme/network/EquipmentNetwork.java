@@ -1,6 +1,7 @@
 package com.wormzjl.createcheme.network;
 
 import com.wormzjl.createcheme.CreateChemE;
+import com.wormzjl.createcheme.science.equipment.ColumnOptions;
 import com.wormzjl.createcheme.science.equipment.ColumnTrays;
 import com.wormzjl.createcheme.science.equipment.EquipmentShape;
 import com.wormzjl.createcheme.science.equipment.VesselPlacement;
@@ -26,7 +27,7 @@ import net.neoforged.neoforge.network.registration.HandlerThread;
  * import reads the calculator's stored input (nothing is solved) and comes back as the constructor's synced design.
  */
 public final class EquipmentNetwork {
-    public static final String PROTOCOL = "equipment-4";
+    public static final String PROTOCOL = "equipment-5";
     /** A player edits or builds only within this distance of the constructor, blocks. */
     private static final double REACH = 8;
     /** A column calculator is imported from within this many blocks of the constructor. */
@@ -37,16 +38,17 @@ public final class EquipmentNetwork {
 
     /**
      * Client to server: a constructor's design ({@code form} is the ordinal of its {@link VesselPlacement.Form},
-     * {@code trays} its column's {@link ColumnTrays#encode()}, {@code connections} its drum's
+     * {@code trays} and {@code options} its column's {@link ColumnTrays#encode()} and {@link ColumnOptions#encode()},
+     * {@code connections} its drum's
      * {@link EquipmentShape.Connection#encode}), and whether to build it now.
      */
     public record ConstructorPayload(BlockPos position, double diameter, int tangentLength, int form, int support, int forward, int right, int up,
-                                     int[] trays, int[] connections, boolean build) implements CustomPacketPayload {
+                                     int[] trays, int options, int[] connections, boolean build) implements CustomPacketPayload {
         public static final Type<ConstructorPayload> TYPE = new Type<>(ResourceLocation.fromNamespaceAndPath(CreateChemE.MOD_ID, "equipment_constructor"));
         public static final StreamCodec<RegistryFriendlyByteBuf, ConstructorPayload> STREAM_CODEC = new StreamCodec<>() {
             public ConstructorPayload decode(RegistryFriendlyByteBuf b) {
                 return new ConstructorPayload(b.readBlockPos(), b.readDouble(), b.readVarInt(), b.readVarInt(), b.readVarInt(), b.readVarInt(), b.readVarInt(),
-                        b.readVarInt(), b.readVarIntArray(ColumnTrays.MAX_ENCODED), b.readVarIntArray(3 * EquipmentShape.MAX_CONNECTIONS), b.readBoolean());
+                        b.readVarInt(), b.readVarIntArray(ColumnTrays.MAX_ENCODED), b.readVarInt(), b.readVarIntArray(3 * EquipmentShape.MAX_CONNECTIONS), b.readBoolean());
             }
 
             public void encode(RegistryFriendlyByteBuf b, ConstructorPayload p) {
@@ -59,6 +61,7 @@ public final class EquipmentNetwork {
                 b.writeVarInt(p.right);
                 b.writeVarInt(p.up);
                 b.writeVarIntArray(p.trays);
+                b.writeVarInt(p.options);
                 b.writeVarIntArray(p.connections);
                 b.writeBoolean(p.build);
             }
@@ -67,7 +70,7 @@ public final class EquipmentNetwork {
         public static ConstructorPayload of(BlockPos position, EquipmentConstructorBlockEntity.Design design, boolean build) {
             var p = design.placement();
             return new ConstructorPayload(position, design.diameter(), design.tangentLength(), design.form().ordinal(), design.support(), p.forward(), p.right(), p.up(),
-                    design.trays().encode(), EquipmentShape.Connection.encode(design.connections()), build);
+                    design.trays().encode(), design.options().encode(), EquipmentShape.Connection.encode(design.connections()), build);
         }
 
         @Override
@@ -122,7 +125,7 @@ public final class EquipmentNetwork {
             if (payload.form() < 0 || payload.form() >= forms.length) throw new IllegalArgumentException("Unknown form " + payload.form());
             design = new EquipmentConstructorBlockEntity.Design(payload.diameter(), payload.tangentLength(), forms[payload.form()], payload.support(),
                     new VesselPlacement(payload.forward(), payload.right(), payload.up()), ColumnTrays.decode(payload.trays()),
-                    EquipmentShape.Connection.decode(payload.connections()));
+                    ColumnOptions.decode(payload.options()), EquipmentShape.Connection.decode(payload.connections()));
         } catch (IllegalArgumentException invalid) {
             player.sendSystemMessage(Component.translatable("message.createcheme.equipment.invalid", invalid.getMessage()).withStyle(ChatFormatting.RED));
             return;

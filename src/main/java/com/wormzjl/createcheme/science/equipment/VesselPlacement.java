@@ -47,12 +47,22 @@ public record VesselPlacement(int forward, int right, int up) {
      * step (stepX, stepZ).
      */
     public int[] origin(int x, int y, int z, int stepX, int stepZ, int sizeX, int sizeZ) {
+        return origin(x, y, z, stepX, stepZ, sizeX, sizeZ, new int[]{0, 0, sizeX, sizeZ});
+    }
+
+    /**
+     * The same for a box whose part {@code body} = {x0, z0, x1, z1} (box cells, upper bounds exclusive) is what the
+     * constructor builds in front of itself: across its line it centres that part (a column's own square, its auxiliaries
+     * standing beside it), along its line the whole box starts at the near face.
+     */
+    public int[] origin(int x, int y, int z, int stepX, int stepZ, int sizeX, int sizeZ, int[] body) {
         if (Math.abs(stepX) + Math.abs(stepZ) != 1) throw new IllegalArgumentException("Facing must be a horizontal unit step");
         // The constructor's right is its facing turned clockwise seen from above (north -> east). On each axis the box
-        // extends either along the facing (from the near face) or across it (centred), never both.
+        // extends either along the facing (from the near face) or across it (centred on the body), never both.
         int rightX = -stepZ, rightZ = stepX;
-        return new int[]{x + stepX * forward + rightX * right + Math.min(0, stepX * (sizeX - 1)) + across(rightX, sizeX), y + up,
-                z + stepZ * forward + rightZ * right + Math.min(0, stepZ * (sizeZ - 1)) + across(rightZ, sizeZ)};
+        int acrossX = stepX == 0 ? across(rightX, body[2] - body[0]) - body[0] : 0, acrossZ = stepZ == 0 ? across(rightZ, body[3] - body[1]) - body[1] : 0;
+        return new int[]{x + stepX * forward + rightX * right + Math.min(0, stepX * (sizeX - 1)) + acrossX, y + up,
+                z + stepZ * forward + rightZ * right + Math.min(0, stepZ * (sizeZ - 1)) + acrossZ};
     }
 
     /** Offset of the box's lower corner from the line through the constructor, on an axis the line crosses ({@code right} ≠ 0). */

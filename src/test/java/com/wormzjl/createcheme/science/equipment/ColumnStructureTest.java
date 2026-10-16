@@ -135,7 +135,7 @@ class ColumnStructureTest {
     void nozzlesFaceThePipingSideAndEndInsideTheHandrail() {
         var crude = COLUMNS.get(1);
         var roles = crude.nozzles().stream().map(EquipmentShape.Nozzle::role).toList();
-        assertEquals(List.of(1L, 1L, 1L, 1L, 4L, 2L, 1L), List.of(Role.VAPOUR_OUTLET, Role.REFLUX, Role.FEED, Role.BOTTOMS, Role.DRAW, Role.RETURN, Role.STEAM).stream()
+        assertEquals(List.of(1L, 1L, 1L, 1L, 2L, 2L, 2L, 1L), List.of(Role.VAPOUR_OUTLET, Role.REFLUX, Role.FEED, Role.BOTTOMS, Role.DRAW, Role.PUMPAROUND_DRAW, Role.RETURN, Role.STEAM).stream()
                 .map(r -> roles.stream().filter(r::equals).count()).toList(), "every process connection has its nozzle: " + roles);
         for (var shape : COLUMNS) {
             double edge = ColumnStructure.plan(shape).deckRadius();

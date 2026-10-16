@@ -19,14 +19,18 @@ import static org.junit.jupiter.api.Assertions.*;
 class ShapeRasterizerTest {
     /**
      * Bare drums (small, odd, half-metre and largest), drums on skirts, lying drums on saddles facing each way, and a
-     * column. (0.5, 5) lying puts a saddle face exactly on a cell plane; (10, 60) is the report's largest vessel.
+     * column with its default units and one with every unit, two pumparounds and the most skirt a kettle needs. (0.5, 5)
+     * lying puts a saddle face exactly on a cell plane; (10, 60) is the report's largest vessel.
      */
     private static final List<EquipmentShape> SHAPES = List.of(new EquipmentShape(.5, 1), new EquipmentShape(2, 3),
             new EquipmentShape(2.5, 2), new EquipmentShape(3, 9), new EquipmentShape(4, 5), new EquipmentShape(10, 60),
             drum(2, 3, Orientation.VERTICAL, Heading.NORTH, 2), drum(6, 10, Orientation.VERTICAL, Heading.EAST, 3),
             drum(2.5, 2, Orientation.HORIZONTAL, Heading.WEST, 1), drum(3, 9, Orientation.HORIZONTAL, Heading.NORTH, 2),
             drum(.5, 5, Orientation.HORIZONTAL, Heading.SOUTH, 1), drum(4, 12, Orientation.HORIZONTAL, Heading.EAST, 1),
-            EquipmentShape.column(3, ColumnTrays.simple(12, 6), Heading.SOUTH, 2));
+            EquipmentShape.column(3, ColumnTrays.simple(12, 6), Heading.SOUTH, 2),
+            EquipmentShape.column(1.5, new ColumnTrays(25, 13, List.of(8), List.of(26), List.of(new ColumnTrays.Pumparound(6, 4), new ColumnTrays.Pumparound(15, 13))),
+                    new ColumnOptions(ColumnOptions.Condenser.AIR, true, ColumnOptions.Reboiler.KETTLE), Heading.EAST,
+                    EquipmentShape.minimumSkirt(1.5, new ColumnOptions(ColumnOptions.Condenser.AIR, true, ColumnOptions.Reboiler.KETTLE))));
 
     @Test
     void rejectsShapesOffTheGrid() {
@@ -40,7 +44,7 @@ class ShapeRasterizerTest {
         assertDoesNotThrow(() -> EquipmentShape.column(12, ColumnTrays.simple(20, 10), Heading.NORTH, 3));
         assertThrows(IllegalArgumentException.class, () -> drum(12, 5, Orientation.VERTICAL, Heading.NORTH, 3));
         assertThrows(IllegalArgumentException.class, () -> EquipmentShape.column(3, ColumnTrays.simple(12, 6), Heading.NORTH, 0));
-        assertThrows(IllegalArgumentException.class, () -> new EquipmentShape(EquipmentShape.Kind.COLUMN, 3, 4, Orientation.VERTICAL, Heading.NORTH, 2, ColumnTrays.simple(12, 6), List.of()));
+        assertThrows(IllegalArgumentException.class, () -> new EquipmentShape(EquipmentShape.Kind.COLUMN, 3, 4, Orientation.VERTICAL, Heading.NORTH, 2, ColumnTrays.simple(12, 6), ColumnOptions.DEFAULT, List.of()));
         assertEquals(2, EquipmentShape.minimumSkirt(6));
         assertEquals(3, EquipmentShape.defaultSupport(6, Orientation.VERTICAL));
         assertEquals(4, EquipmentShape.defaultSupport(10, Orientation.VERTICAL));
@@ -136,7 +140,8 @@ class ShapeRasterizerTest {
         int s = ShapeRasterizer.SOLID_RESOLUTION;
         for (var shape : SHAPES) {
             var layout = ShapeRasterizer.layout(shape);
-            double volume = layout.interior().size();
+            // A column's auxiliaries fill their units' insides too: only the vessel's interior counts here.
+            double volume = layout.interior().stream().filter(c -> ShapeRasterizer.insideVessel(shape, c.x() + .5, c.y() + .5, c.z() + .5)).count();
             for (var cell : layout.shell()) {
                 int parts = 0, sampled = 0;
                 for (var box : ShapeRasterizer.solid(ShapeRasterizer.key(shape, cell.x(), cell.y(), cell.z()))) {
@@ -396,7 +401,7 @@ class ShapeRasterizerTest {
                 java.util.Collections.nCopies(EquipmentShape.MAX_CONNECTIONS + 1, new Connection(0, 3, 0))));
         var trays = ColumnTrays.simple(12, 6);
         assertThrows(IllegalArgumentException.class, () -> new EquipmentShape(EquipmentShape.Kind.COLUMN, 3, trays.tangentLength(3), Orientation.VERTICAL,
-                Heading.NORTH, 2, trays, List.of(new Connection(0, 3, 0))));
+                Heading.NORTH, 2, trays, ColumnOptions.DEFAULT, List.of(new Connection(0, 3, 0))));
         // Right, left and a hillside nozzle at the back: clear of each other and of the outlets, the hillside one off centre.
         var drum = drum(3, 4, Orientation.VERTICAL, Heading.NORTH, 2, placed);
         assertEquals(List.of(), drum.clashes());

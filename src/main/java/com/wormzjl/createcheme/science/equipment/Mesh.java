@@ -302,6 +302,39 @@ public final class Mesh {
         facets.add(new Facet(List.copyOf(positions), facing, min, max, shading.map(transform), material, worldU, worldV));
     }
 
+    /**
+     * Adds the facets of {@code source}, built in this mesh's local frame without a transform of their own, turned by
+     * this mesh's transform: a part built once in its frame (a column's auxiliaries) placed in any box.
+     */
+    void include(Mesh source) {
+        for (var f : source.facets) {
+            var positions = new ArrayList<double[]>(f.positions().size());
+            double[] min = {Double.MAX_VALUE, Double.MAX_VALUE, Double.MAX_VALUE}, max = {-Double.MAX_VALUE, -Double.MAX_VALUE, -Double.MAX_VALUE};
+            for (var p : f.positions()) {
+                var w = transform.point(p);
+                positions.add(w);
+                for (int a = 0; a < 3; a++) {
+                    min[a] = Math.min(min[a], w[a]);
+                    max[a] = Math.max(max[a], w[a]);
+                }
+            }
+            facets.add(new Facet(List.copyOf(positions), transform.direction(f.normal()), min, max, f.shading().map(transform), f.material(), f.u().map(transform),
+                    f.v().map(transform)));
+        }
+    }
+
+    /** {min, max} corners of every facet, {x0, y0, z0, x1, y1, z1}; null when there is none. */
+    double[] bounds() {
+        if (facets.isEmpty()) return null;
+        double[] out = {Double.MAX_VALUE, Double.MAX_VALUE, Double.MAX_VALUE, -Double.MAX_VALUE, -Double.MAX_VALUE, -Double.MAX_VALUE};
+        for (var f : facets)
+            for (int a = 0; a < 3; a++) {
+                out[a] = Math.min(out[a], f.min()[a]);
+                out[a + 3] = Math.max(out[a + 3], f.max()[a]);
+            }
+        return out;
+    }
+
     /** A flat polygon whose front faces along {@code outward}. */
     void flat(List<double[]> polygon, double[] outward, Material material) {
         var centroid = new double[3];

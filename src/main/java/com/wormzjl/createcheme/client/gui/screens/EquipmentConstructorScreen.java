@@ -4,6 +4,7 @@ import com.wormzjl.createcheme.client.EquipmentGhost;
 import com.wormzjl.createcheme.client.gui.common.ColumnDiagram;
 import com.wormzjl.createcheme.client.gui.common.ProcessUi;
 import com.wormzjl.createcheme.network.EquipmentNetwork;
+import com.wormzjl.createcheme.science.equipment.ColumnOptions;
 import com.wormzjl.createcheme.science.equipment.ColumnTrays;
 import com.wormzjl.createcheme.science.equipment.EquipmentShape;
 import com.wormzjl.createcheme.science.equipment.ShapeRasterizer;
@@ -29,15 +30,16 @@ import java.util.function.IntUnaryOperator;
 /**
  * The equipment constructor's screen: first what to build (a vertical drum, a horizontal drum or a distillation column;
  * owner request 2026-10-16), then its design, in a panel on the left beside the world and the vessel's ghost; a drum's
- * side connections have a page of their own (owner request 2026-10-16). It edits a local draft; the server receives the
+ * side connections have a page of their own (owner request 2026-10-16), and so have a column's units: its condenser,
+ * ejector and reboiler (owner decisions 2026-10-16). It edits a local draft; the server receives the
  * design when the screen closes, or with a build request on Build. A column is designed here by its trays and feed, or
  * imported whole (draws, pumparounds and steam too) from the nearest column calculator; its schematic is the
  * calculator's ({@link ColumnDiagram}).
  */
 public final class EquipmentConstructorScreen extends Screen {
-    /** The screen's pages: what to build, its design, and a drum's side connections. */
+    /** The screen's pages: what to build, its design, a drum's side connections and a column's units. */
     private enum Page {
-        CHOOSE, DESIGN, CONNECTIONS
+        CHOOSE, DESIGN, CONNECTIONS, UNITS
     }
 
     /** Panel layout in GUI pixels, top-down, so it fits a 240-pixel-high GUI (854×480 at scale 2). */
@@ -70,6 +72,8 @@ public final class EquipmentConstructorScreen extends Screen {
     /** Diameter in half metres, so every step stays on the D5 grid. */
     private int halfMetres, tangentLength, support, forward, right, up;
     private ColumnTrays trays;
+    /** A column's condenser, ejector and reboiler. */
+    private ColumnOptions options;
     /** A drum's side connections, kept within the drum's ranges ({@link #fitConnections}), and the one the page edits. */
     private final List<EquipmentShape.Connection> connections = new ArrayList<>();
     private int selected;
@@ -91,6 +95,7 @@ public final class EquipmentConstructorScreen extends Screen {
         form = design.form();
         halfMetres = (int) Math.round(design.diameter() * 2);
         tangentLength = design.tangentLength();
+        options = design.options();
         support = Math.max(design.support(), minimumSupport());
         forward = design.placement().forward();
         right = design.placement().right();
@@ -105,7 +110,7 @@ public final class EquipmentConstructorScreen extends Screen {
 
     /** The draft; always valid, because every stepper is clamped to the bounds of its parameter. */
     public Design design() {
-        return new Design(halfMetres / 2.0, tangentLength, form, support, new VesselPlacement(forward, right, up), trays, List.copyOf(connections));
+        return new Design(halfMetres / 2.0, tangentLength, form, support, new VesselPlacement(forward, right, up), trays, options, List.copyOf(connections));
     }
 
     /** The vessel the draft would build, for the ghost; null on the choice page and once the constructor is gone. */
@@ -147,6 +152,7 @@ public final class EquipmentConstructorScreen extends Screen {
             }
             case DESIGN -> designPage();
             case CONNECTIONS -> connectionsPage();
+            case UNITS -> unitsPage();
         }
     }
 
@@ -180,10 +186,34 @@ public final class EquipmentConstructorScreen extends Screen {
         stepper(next + 1, step -> forward = clamp(forward + step, 1, VesselPlacement.MAX_FORWARD));
         stepper(next + 2, step -> right = clamp(right + step, -VesselPlacement.MAX_SHIFT, VesselPlacement.MAX_SHIFT));
         stepper(next + 3, step -> up = clamp(up + step, -VesselPlacement.MAX_SHIFT, VesselPlacement.MAX_SHIFT));
-        // A column imports its design; a drum's side connections have their own page.
-        bottomRow(form.column()
-                ? Button.builder(Component.translatable(KEY + "import"), b -> importColumn()).tooltip(Tooltip.create(Component.translatable(KEY + "import.hint", EquipmentNetwork.IMPORT_REACH)))
-                : Button.builder(Component.translatable(KEY + "nozzles"), b -> show(Page.CONNECTIONS)).tooltip(Tooltip.create(Component.translatable(KEY + "connections.hint"))));
+        // A column imports its design and has a page for its units; a drum's side connections have their own page.
+        if (form.column())
+            bottomRow(Button.builder(Component.translatable(KEY + "import"), b -> importColumn()).tooltip(Tooltip.create(Component.translatable(KEY + "import.hint", EquipmentNetwork.IMPORT_REACH))),
+                    Button.builder(Component.translatable(KEY + "units.open"), b -> show(Page.UNITS)).tooltip(Tooltip.create(Component.translatable(KEY + "units.hint"))));
+        else bottomRow(Button.builder(Component.translatable(KEY + "nozzles"), b -> show(Page.CONNECTIONS)).tooltip(Tooltip.create(Component.translatable(KEY + "connections.hint"))));
+    }
+
+    /**
+     * The units page: the column's condenser (water or air cooled, with its reflux drum), the steam ejector before it and
+     * the reboiler, each a button that turns to the next choice. Its pumparound coolers follow the trays.
+     */
+    private void unitsPage() {
+        toggle(1, "condenser." + options.condenser().name().toLowerCase(Locale.ROOT), () -> options = options.withCondenser(
+                options.condenser() == ColumnOptions.Condenser.WATER ? ColumnOptions.Condenser.AIR : ColumnOptions.Condenser.WATER));
+        toggle(2, options.ejector() ? "ejector.on" : "ejector.off", () -> options = options.withEjector(!options.ejector()));
+        toggle(3, "reboiler." + options.reboiler().name().toLowerCase(Locale.ROOT), () -> options = options.withReboiler(
+                options.reboiler() == ColumnOptions.Reboiler.NONE ? ColumnOptions.Reboiler.KETTLE : ColumnOptions.Reboiler.NONE));
+        bottomRow(Button.builder(Component.translatable(KEY + "back"), b -> show(Page.DESIGN)).tooltip(Tooltip.create(Component.translatable(KEY + "back.hint"))));
+    }
+
+    /** A row whose button shows the choice {@code value} and turns it with {@code next}; the skirt rises to the least the choice needs. */
+    private void toggle(int row, String value, Runnable next) {
+        addRenderableWidget(Button.builder(Component.translatable(KEY + value), b -> {
+            next.run();
+            support = Math.max(support, minimumSupport());
+            refresh();
+            rebuildWidgets();
+        }).bounds(PANEL - 80, TOP + row * ROW, 74, 16).tooltip(Tooltip.create(hint(row))).build());
     }
 
     /**
@@ -231,12 +261,12 @@ public final class EquipmentConstructorScreen extends Screen {
         bottomRow(Button.builder(Component.translatable(KEY + "back"), b -> show(Page.DESIGN)).tooltip(Tooltip.create(Component.translatable(KEY + "back.hint"))));
     }
 
-    /** The bottom row: the page's own button beside Build and Done. Build waits while a side connection clashes. */
-    private void bottomRow(Button.Builder first) {
-        int gap = 4, span = (PANEL - 16 - 2 * gap) / 3;
-        addRenderableWidget(first.bounds(8, BUTTONS, span, 20).build());
-        build = addRenderableWidget(Button.builder(Component.translatable(KEY + "build"), b -> build()).bounds(8 + span + gap, BUTTONS, span, 20).build());
-        addRenderableWidget(Button.builder(Component.translatable(KEY + "done"), b -> onClose()).bounds(8 + 2 * (span + gap), BUTTONS, span, 20).build());
+    /** The bottom row: the page's own buttons beside Build and Done. Build waits while a side connection clashes. */
+    private void bottomRow(Button.Builder... own) {
+        int gap = 4, count = own.length + 2, span = (PANEL - 16 - (count - 1) * gap) / count;
+        for (int i = 0; i < own.length; i++) addRenderableWidget(own[i].bounds(8 + i * (span + gap), BUTTONS, span, 20).build());
+        build = addRenderableWidget(Button.builder(Component.translatable(KEY + "build"), b -> build()).bounds(8 + own.length * (span + gap), BUTTONS, span, 20).build());
+        addRenderableWidget(Button.builder(Component.translatable(KEY + "done"), b -> onClose()).bounds(8 + (own.length + 1) * (span + gap), BUTTONS, span, 20).build());
         build.active = clash() == null;
     }
 
@@ -320,6 +350,7 @@ public final class EquipmentConstructorScreen extends Screen {
     private String[] rows() {
         if (page == Page.CONNECTIONS)
             return new String[]{"connections", "connection", "faces", form.orientation().horizontal() ? "along" : "height", "offset"};
+        if (page == Page.UNITS) return new String[]{"units", "condenser", "ejector", "reboiler"};
         return switch (Equipment.of(form)) {
             case VERTICAL_DRUM -> new String[]{"equipment", "diameter", "tangent_length", "skirt", "forward", "right", "up"};
             case HORIZONTAL_DRUM -> new String[]{"equipment", "diameter", "tangent_length", "axis", "saddles", "forward", "right", "up"};
@@ -350,12 +381,15 @@ public final class EquipmentConstructorScreen extends Screen {
         refresh();
     }
 
-    /** A skirt left at its default follows the diameter's default; any skirt stays tall enough to enclose the bottom head. */
+    /**
+     * A skirt left at its default follows the diameter's default; any skirt stays tall enough to enclose the bottom head
+     * (and a column's to take its kettle's lines).
+     */
     private void diameter(int value) {
         boolean standing = form.orientation() == EquipmentShape.Orientation.VERTICAL;
-        boolean followed = standing && support == EquipmentShape.defaultSupport(halfMetres / 2.0, EquipmentShape.Orientation.VERTICAL);
+        boolean followed = standing && support == Math.max(EquipmentShape.defaultSupport(halfMetres / 2.0, EquipmentShape.Orientation.VERTICAL), minimumSupport());
         halfMetres = clamp(value, (int) (EquipmentShape.MIN_DIAMETER * 2), (int) (maximumDiameter() * 2));
-        support = followed ? EquipmentShape.defaultSupport(halfMetres / 2.0, EquipmentShape.Orientation.VERTICAL) : Math.max(support, minimumSupport());
+        support = Math.max(followed ? EquipmentShape.defaultSupport(halfMetres / 2.0, EquipmentShape.Orientation.VERTICAL) : support, minimumSupport());
     }
 
     private double maximumDiameter() {
@@ -388,6 +422,7 @@ public final class EquipmentConstructorScreen extends Screen {
     }
 
     private int minimumSupport() {
+        if (form.column()) return EquipmentShape.minimumSkirt(halfMetres / 2.0, options);
         return form.orientation() == EquipmentShape.Orientation.VERTICAL ? EquipmentShape.minimumSkirt(halfMetres / 2.0) : 1;
     }
 
@@ -451,7 +486,37 @@ public final class EquipmentConstructorScreen extends Screen {
             case CHOOSE -> choices(graphics);
             case DESIGN -> designRows(graphics, mouseX, mouseY);
             case CONNECTIONS -> connectionRows(graphics, mouseX, mouseY);
+            case UNITS -> unitRows(graphics, mouseX, mouseY);
         }
+    }
+
+    /** The units page: each row's label (its button shows the choice), the footprint and least skirt they make, and the ghost's status. */
+    private void unitRows(GuiGraphics graphics, int mouseX, int mouseY) {
+        String[] names = rows();
+        graphics.drawString(font, Component.translatable(KEY + "units"), 8, TOP + 4, ProcessUi.ACCENT);
+        for (int row = 1; row < names.length; row++) graphics.drawString(font, Component.translatable(KEY + names[row]), 8, TOP + row * ROW + 4, ProcessUi.TEXT);
+        var shape = layout.shape();
+        int y = LINES;
+        for (var line : new Component[]{
+                Component.translatable(KEY + "footprint", shape.sizeX(), shape.sizeZ(), shape.sizeY()),
+                Component.translatable(KEY + "coolers", trays.pumparounds().size()),
+                Component.translatable(KEY + "least_skirt", minimumSupport())}) {
+            graphics.drawString(font, line, 8, y, ProcessUi.MUTED);
+            y += LINE;
+        }
+        status(graphics);
+        describe(mouseX, mouseY, names.length, new String[]{"footprint", "coolers", "least_skirt"});
+    }
+
+    /** The status line: an import under way, the first clash, or whether the ghost's cells are free. */
+    private void status(GuiGraphics graphics) {
+        int blocked = EquipmentGhost.blockedCount();
+        var clash = clash();
+        var status = importing != null ? Component.translatable(KEY + "importing")
+                : clash != null ? clashText(clash)
+                : EquipmentGhost.standing() ? Component.translatable(KEY + "standing")
+                : blocked == 0 ? Component.translatable(KEY + "clear") : Component.translatable(KEY + "blocked", blocked);
+        graphics.drawString(font, status, 8, STATUS, clash == null && blocked == 0 && !EquipmentGhost.standing() ? ProcessUi.ACCENT : ProcessUi.WARN);
     }
 
     private void designRows(GuiGraphics graphics, int mouseX, int mouseY) {
@@ -478,13 +543,7 @@ public final class EquipmentConstructorScreen extends Screen {
             graphics.drawString(font, line, 8, y, ProcessUi.MUTED);
             y += LINE;
         }
-        int blocked = EquipmentGhost.blockedCount();
-        var clash = clash();
-        var status = importing != null ? Component.translatable(KEY + "importing")
-                : clash != null ? clashText(clash)
-                : EquipmentGhost.standing() ? Component.translatable(KEY + "standing")
-                : blocked == 0 ? Component.translatable(KEY + "clear") : Component.translatable(KEY + "blocked", blocked);
-        graphics.drawString(font, status, 8, STATUS, clash == null && blocked == 0 && !EquipmentGhost.standing() ? ProcessUi.ACCENT : ProcessUi.WARN);
+        status(graphics);
         if (form.column()) schematic(graphics);
         describe(mouseX, mouseY, names.length, new String[]{"extent", "volume", "cells"});
     }

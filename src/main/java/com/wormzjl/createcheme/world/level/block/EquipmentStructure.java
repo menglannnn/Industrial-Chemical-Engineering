@@ -9,6 +9,7 @@ import com.wormzjl.createcheme.registry.ModBlocks;
 import com.wormzjl.createcheme.runtime.fluid.FluidWorldAuthority;
 import com.wormzjl.createcheme.runtime.fluid.PhysicalFluidTopology;
 import com.wormzjl.createcheme.science.fluid.network.PassiveNetwork;
+import com.wormzjl.createcheme.science.equipment.ColumnOptions;
 import com.wormzjl.createcheme.science.equipment.ColumnTrays;
 import com.wormzjl.createcheme.science.equipment.EquipmentShape;
 import com.wormzjl.createcheme.science.equipment.PipeSizes;
@@ -265,11 +266,26 @@ public final class EquipmentStructure {
         }
         var diameter = Commands.argument("diameter", DoubleArgumentType.doubleArg(EquipmentShape.MIN_DIAMETER, EquipmentShape.MAX_DIAMETER)).then(tangentLength);
         var place = Commands.literal("place").then(Commands.argument("position", BlockPosArgument.blockPos()).then(diameter));
-        // A column: diameter, tray count (feed at the middle tray) and skirt height; its piping side faces the front.
+        // A column: diameter, tray count (feed at the middle tray) and skirt height; its feed side faces the front; then its
+        // units, the condenser (water or air), the ejector (or none) and the reboiler (none or kettle).
         var skirt = Commands.argument("skirt", IntegerArgumentType.integer(1, EquipmentShape.MAX_SUPPORT))
-                .executes(context -> placeColumn(context, EquipmentShape.Heading.NORTH));
-        for (var front : EquipmentShape.Heading.values())
-            skirt.then(Commands.literal(front.name().toLowerCase(Locale.ROOT)).executes(context -> placeColumn(context, front)));
+                .executes(context -> placeColumn(context, EquipmentShape.Heading.NORTH, ColumnOptions.DEFAULT));
+        for (var front : EquipmentShape.Heading.values()) {
+            var facing = Commands.literal(front.name().toLowerCase(Locale.ROOT)).executes(context -> placeColumn(context, front, ColumnOptions.DEFAULT));
+            for (var condenser : ColumnOptions.Condenser.values()) {
+                var cooled = Commands.literal(condenser.name().toLowerCase(Locale.ROOT));
+                for (boolean ejector : new boolean[]{false, true}) {
+                    var drawn = Commands.literal(ejector ? "ejector" : "no_ejector");
+                    for (var reboiler : ColumnOptions.Reboiler.values()) {
+                        var options = new ColumnOptions(condenser, ejector, reboiler);
+                        drawn.then(Commands.literal(reboiler.name().toLowerCase(Locale.ROOT)).executes(context -> placeColumn(context, front, options)));
+                    }
+                    cooled.then(drawn);
+                }
+                facing.then(cooled);
+            }
+            skirt.then(facing);
+        }
         var column = Commands.literal("column").then(Commands.argument("position", BlockPosArgument.blockPos())
                 .then(Commands.argument("diameter", DoubleArgumentType.doubleArg(EquipmentShape.MIN_DIAMETER, EquipmentShape.MAX_DIAMETER))
                         .then(Commands.argument("trays", IntegerArgumentType.integer(1, ColumnTrays.MAX_TRAYS)).then(skirt))));
@@ -288,11 +304,11 @@ public final class EquipmentStructure {
         return place(context, shape, rows, shape.diameter() + " m x " + (int) shape.tangentLength() + " m drum");
     }
 
-    private static int placeColumn(CommandContext<CommandSourceStack> context, EquipmentShape.Heading front) throws CommandSyntaxException {
+    private static int placeColumn(CommandContext<CommandSourceStack> context, EquipmentShape.Heading front, ColumnOptions options) throws CommandSyntaxException {
         int trays = IntegerArgumentType.getInteger(context, "trays");
         EquipmentShape shape;
         try {
-            shape = EquipmentShape.column(DoubleArgumentType.getDouble(context, "diameter"), ColumnTrays.simple(trays, (trays + 1) / 2), front,
+            shape = EquipmentShape.column(DoubleArgumentType.getDouble(context, "diameter"), ColumnTrays.simple(trays, (trays + 1) / 2), options, front,
                     IntegerArgumentType.getInteger(context, "skirt"));
         } catch (IllegalArgumentException invalid) {
             context.getSource().sendFailure(Component.literal(invalid.getMessage()));
