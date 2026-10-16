@@ -10,6 +10,7 @@ import com.wormzjl.createcheme.science.thermo.PengRobinsonKernel;
 import com.wormzjl.createcheme.science.thermo.TraceTruncationPolicy;
 import com.wormzjl.createcheme.science.thermo.phase.EquilibriumResult;
 import com.wormzjl.createcheme.science.thermo.phase.FluidTpEquilibrium;
+import com.wormzjl.createcheme.science.thermo.phase.FreeWaterIce;
 import com.wormzjl.createcheme.science.thermo.phase.PhaseContract;
 import com.wormzjl.createcheme.science.thermo.phase.PhaseKind;
 import com.wormzjl.createcheme.science.fluid.state.EnergyReference;
@@ -126,8 +127,18 @@ public final class FluidThermodynamics {
         var reference=WaterRegion1.evaluate(water,298.15,101325);
         waterEnthalpyOffset=V3WaterProperties.liquidMolarEnthalpy(water,298.15)-reference.specificEnthalpy()*waterMolecularWeight;
         pumpReferenceDensity=waterMolecularWeight/(reference.specificVolume()*waterMolecularWeight);
+        // The free water's ice (WP4): its record anchored to this model's liquid water at the triple point, on the network's
+        // water datum, with this model's steam; below the melting line the free water is ice, on every package.
+        var ice=water.ice();
+        if(ice==null)throw new IllegalArgumentException("Package "+packageId+": water model "+water.revision()+" has no ice, which the fluid network needs");
+        var iceRecord=catalog.crystals().get(ice.crystal());
+        var triple=waterLiquid(iceRecord.anchor().temperature(),iceRecord.anchor().pressure());
+        freeWaterIce=FreeWaterIce.of(iceRecord,ice.coefficients(),ice.exponents(),this::saturationPressure,triple.molarVolume(),triple.molarEnthalpy(),steam);
         this.catalog=catalog;
     }
+    /** The free water's ice below its melting line (WP4, {@link FreeWaterIce}): the phase engine's and the vessels' ice. */
+    private final FreeWaterIce freeWaterIce;
+    public FreeWaterIce freeWaterIce(){return freeWaterIce;}
     /** The catalog this model was built from; the phase engine is built from it on first use. */
     private final MaterialCatalog catalog;
     /** The equilibrium engine that decides this model's phases; built on the first phase decision. */
@@ -1127,13 +1138,18 @@ public final class FluidThermodynamics {
                 boolean sublimation=false;for(var state:result.coexisting())sublimation|=state.kind()==PhaseKind.SOLID;
                 System.arraycopy(overall,0,sublimation?vapor:liquid,0,n);
             }
+            // Free water beside the hydrocarbons. Its ice (WP4), which a TP answer never freezes (D23), is carried as its
+            // stand-in, free liquid water, until a vessel's refresh. Beside a competing crystal the hydrocarbons are stated as
+            // a dry crystal answer is: the vapour is the answer's and the liquid slot takes the rest.
             case FREE_WATER->{
                 var split=result.freeWater();
-                waterLiquid=split.liquidWater();waterVapor=split.waterVapor();hydrocarbonPressure=split.hydrocarbonPressure();
+                waterLiquid=split.condensed();waterVapor=split.waterVapor();hydrocarbonPressure=split.hydrocarbonPressure();
+                boolean crystal=split.hydrocarbon().holdsCrystal();
                 for(var phase:result.phases()) {
                     if(phase.kind()==PhaseKind.VAPOR)System.arraycopy(phase.amountsView(),0,vapor,0,n);
-                    else if(phase.kind()==PhaseKind.LIQUID)System.arraycopy(phase.amountsView(),0,liquid,0,n);
+                    else if(phase.kind()==PhaseKind.LIQUID&&!crystal)System.arraycopy(phase.amountsView(),0,liquid,0,n);
                 }
+                if(crystal)for(int i=0;i<n;i++){liquid[i]=Math.max(overall[i]-vapor[i],0.0);vapor[i]=overall[i]-liquid[i];}
             }
             default->{
                 for(var phase:result.phases()) {

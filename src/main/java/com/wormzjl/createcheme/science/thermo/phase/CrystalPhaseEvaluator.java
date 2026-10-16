@@ -146,7 +146,7 @@ public final class CrystalPhaseEvaluator implements SolidPhaseEvaluator {
      * evaluation per state), a segment record through {@link CrystalReference#state}. Callers pass their own
      * {@link PhaseState} and {@link PhaseDerivatives} (one component); a state allocates its property records only.
      */
-    public final class Anchored {
+    public final class Anchored implements CrystalFugacity {
         private final TriplePointAnchor anchor;
         private final JaegerSpanGibbsFunction function;
         private final double g0;
@@ -187,6 +187,13 @@ public final class CrystalPhaseEvaluator implements SolidPhaseEvaluator {
         public double chemicalPotential(double temperature, double pressure) {
             if (function == null) return properties(temperature, pressure).gibbs();
             return function.evaluate(temperature, pressure, g0, g1).gibbs();
+        }
+
+        /** {@code ln phi_s = (g_s(T, P) - g_ig(T, P)) / (R T)}: the chemical potential against the species' ideal gas at P. */
+        @Override
+        public double logFugacityCoefficient(double temperature, double pressure) {
+            double ideal = idealGas.enthalpy(temperature) - temperature * idealGas.entropy(temperature, pressure);
+            return (chemicalPotential(temperature, pressure) - ideal) / (R * temperature);
         }
 
         /** Fills {@code out} (one component) with the crystal at (T, P), as the evaluator does. */

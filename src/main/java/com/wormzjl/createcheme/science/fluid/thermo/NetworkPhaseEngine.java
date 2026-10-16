@@ -10,6 +10,7 @@ import com.wormzjl.createcheme.science.thermo.phase.CubicPhaseEvaluator;
 import com.wormzjl.createcheme.science.thermo.phase.EquilibriumRequest;
 import com.wormzjl.createcheme.science.thermo.phase.EquilibriumResult;
 import com.wormzjl.createcheme.science.thermo.phase.FluidTpEquilibrium;
+import com.wormzjl.createcheme.science.thermo.phase.FreeWaterIce;
 import com.wormzjl.createcheme.science.thermo.phase.FreeWaterModel;
 import com.wormzjl.createcheme.science.thermo.phase.PhaseCompetition;
 import com.wormzjl.createcheme.science.thermo.phase.PhaseContract;
@@ -113,7 +114,8 @@ final class NetworkPhaseEngine {
 
     /**
      * The network's free water as the engine's {@link FreeWaterModel}: the very methods {@link FluidThermodynamics#state}
-     * uses (its saturation pressure, its liquid water at the state pressure, its steam partial-pressure limit), and its
+     * uses (its saturation pressure, its liquid water at the state pressure, its steam partial-pressure limit), its
+     * ice below the melting line ({@link FluidThermodynamics#freeWaterIce}, WP4) and its
      * ideal steam ({@link Steam}).
      */
     static final class NetworkFreeWater implements FreeWaterModel {
@@ -129,6 +131,7 @@ final class NetworkPhaseEngine {
             var liquid=fluid.waterLiquid(t,p);out[0]=liquid.molarVolume();out[1]=liquid.molarEnthalpy();
         }
         @Override public IdealGasFunction vapor(){return fluid.steam();}
+        @Override public FreeWaterIce ice(){return fluid.freeWaterIce();}
     }
 
     /**

@@ -17,7 +17,8 @@ public interface FreeWaterModel {
 
     /**
      * Saturation pressure of pure water, Pa; {@code +infinity} at or above the critical temperature (no liquid). Below
-     * the triple point the supercooled liquid's (the model continues past its data, owner rule of 2026-10-16).
+     * the triple point the supercooled liquid's (the model continues past its data, owner rule of 2026-10-16): the liquid's
+     * fugacity where the liquid is the condensed phase, above the ice's melting line ({@link #ice()}).
      */
     double saturationPressure(double temperature);
 
@@ -35,4 +36,10 @@ public interface FreeWaterModel {
 
     /** Ideal steam: heat capacity, enthalpy and entropy of water vapour as an ideal gas. */
     IdealGasFunction vapor();
+
+    /**
+     * The water's ice (ice Ih, WP4): below its melting line the free water's condensed phase, with the steam over it at
+     * the ice's fugacity. Its enthalpies are on this model's datum.
+     */
+    FreeWaterIce ice();
 }

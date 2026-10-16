@@ -213,6 +213,7 @@ final class PhaseTestSupport {
                 out[1] = liquid.molarEnthalpy();
             }
             @Override public IdealGasFunction vapor() { return steam; }
+            @Override public FreeWaterIce ice() { return fluid.freeWaterIce(); }
         };
     }
 

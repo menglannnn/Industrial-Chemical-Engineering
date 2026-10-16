@@ -15,10 +15,10 @@ public enum WaterParticipation {
     NONE,
     /**
      * Water is a basis component that forms its own pure liquid, never dissolved in the hydrocarbon phases and never
-     * dissolving them (the fluid network's model since the free-water batch). Qualified only inside the water model's
-     * declared domain (from its triple point, 273.16 K, ice not modelled, to its enthalpy correlation's limit) and
-     * only for species declared immiscible with water; it describes no ammonia dissolution, no aqueous non-ideality
-     * and no hydrates.
+     * dissolving them (the fluid network's model since the free-water batch). Below its melting line the pure condensed
+     * water is its ice Ih (WP4 of batch 2026-09-24-coolprop-low-temperature), past its data the models continue (owner
+     * rule of 2026-10-16). Only for species declared immiscible with water; it describes no ammonia dissolution, no
+     * aqueous non-ideality and no hydrates (decision 6 A: ice and a competing crystal coexist).
      */
     SEPARATE_FREE_WATER
 }

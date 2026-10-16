@@ -577,6 +577,7 @@ class FluidTpEquilibriumP3Test {
             @Override public double vaporPartialPressureLimit(double temperature) { return inner.vaporPartialPressureLimit(temperature); }
             @Override public void liquid(double temperature, double pressure, double[] out) { inner.liquid(temperature, pressure, out); }
             @Override public IdealGasFunction vapor() { return inner.vapor(); }
+            @Override public FreeWaterIce ice() { return inner.ice(); }
         };
         assertThrows(IllegalArgumentException.class, () -> new FluidTpEquilibrium(contract, service.evaluator(),
                 FluidTpEquilibrium.Settings.DEFAULT, other));

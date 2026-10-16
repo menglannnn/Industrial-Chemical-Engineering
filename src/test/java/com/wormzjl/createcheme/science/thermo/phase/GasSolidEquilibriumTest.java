@@ -633,11 +633,14 @@ class GasSolidEquilibriumTest {
         System.out.println("50 % CO2 in N2 at 250 K, the onset past 10 MPa: " + compressed);
         assertTrue(compressed.converged() ? compressed.pressure() > 1.0e7 && compressed.coverage().grade() == CoverageGrade.EXTRAPOLATED
                 : compressed.detail().contains("window"), compressed.toString());
-        // Water with a crystal competition: hydrates, refused as water chemistry; with fluid-only competition unchanged.
+        // Water with a crystal competition is no longer refused as water chemistry (WP4; decision 6 A: gas hydrates are not
+        // modelled, so the free water's ice and CO2 frost coexist): this service has no free-water model, so a wet request
+        // is the free-water phase it cannot state, with a crystal competition as without one. The network's service answers
+        // it (FreeWaterIceTest, SpineNetworkPathTest's wet grid).
         var wet = SERVICE.tp(EquilibriumRequest.tp(150.0, 1.0e6, BASIS, new double[] {0.9, 0, 0, 0.1, 0.01}, CRYSTALS), ws);
-        assertEquals(UnsupportedReason.WATER_CHEMISTRY_NOT_MODELLED, wet.reason(), wet.toString());
+        assertEquals(UnsupportedReason.NOT_IMPLEMENTED, wet.reason(), wet.toString());
         var wetOnset = SERVICE.depositionTemperature(null, 1.0e6, BASIS, new double[] {0.9, 0, 0, 0.1, 0.01}, ws);
-        assertEquals(UnsupportedReason.WATER_CHEMISTRY_NOT_MODELLED, wetOnset.reason());
+        assertEquals(UnsupportedReason.NOT_IMPLEMENTED, wetOnset.reason());
         var wetFluid = SERVICE.tp(EquilibriumRequest.tp(300.0, 1.0e6, BASIS, new double[] {0.9, 0, 0, 0.1, 0.01}, PhaseCompetition.FLUID_ONLY), ws);
         assertEquals(UnsupportedReason.NOT_IMPLEMENTED, wetFluid.reason());
         // A crystal the package does not have.

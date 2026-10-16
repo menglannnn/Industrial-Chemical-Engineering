@@ -32,8 +32,9 @@ public final class ThermoIdentity {
     public static final String NO_SPINE = "spine:none";
     /** The water model revision of a package without water. */
     public static final String NO_WATER = "water:none";
-    /** The formulation label of the separate free-water approximation; bumped when its equations change. */
-    public static final String SEPARATE_FREE_WATER_FORMULATION = "separate-free-water-v1";
+    /** The formulation label of the separate free-water approximation; bumped when its equations change (v2: ice Ih below
+     * the melting line, WP4 of batch 2026-09-24-coolprop-low-temperature). */
+    public static final String SEPARATE_FREE_WATER_FORMULATION = "separate-free-water-v2";
     private static final String FORMAT = "thermo-identity-v1";
 
     private final String packageFingerprint;

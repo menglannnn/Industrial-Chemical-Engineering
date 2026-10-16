@@ -2,6 +2,7 @@ package com.wormzjl.createcheme.science.thermo.phase;
 
 import com.wormzjl.createcheme.science.math.DeterministicMath;
 
+import com.wormzjl.createcheme.science.material.CrystalReference;
 import com.wormzjl.createcheme.science.material.MaterialCatalog;
 import com.wormzjl.createcheme.science.material.MaterialCoverage;
 import com.wormzjl.createcheme.science.thermo.IdealGasFunction;
@@ -105,6 +106,12 @@ import java.util.Objects;
  * shift {@code ln(pc/P) + (pc - P) c_i/(R T)} in the flash (the translation does not cancel between two pressures), with
  * the vapour on the vapour root at {@code pc} and the liquid on the liquid root at {@code P}.</p>
  *
+ * <p>Ice (WP4, {@link FreeWaterIce}): below the melting line {@code T_m(P)} the free water's condensed phase is its ice,
+ * a solid phase naming the water model's ice record, and the rule above runs with the ice's fugacity in place of
+ * {@code p_sat} (the steam over ice, R14-08's sublimation pressure meeting the liquid's on the line). Ice is water's own
+ * rule, never a crystal of a competition: it forms under every competition, beside a competing crystal too (decision 6 A,
+ * no hydrates). PH and UV answer its freeze at {@code T_m(P)} from the balance, as water's boiling.</p>
+ *
  * <p>PH and UV (P3 work package WP6b) are outer searches over these TP answers, never extrapolations of them:</p>
  * <ul>
  *   <li>The search window is the numerical box ({@link NumericalBox}, 10 to 6000 K and 1 Pa to 1 GPa; owner rule of
@@ -124,14 +131,16 @@ import java.util.Objects;
  *   (inexact while the energy is far off). A temperature whose isochore leaves the pressure window closes the bracket
  *   from that side; when the bracket closes there with the energy still short of the specification, the answer lies
  *   beyond the box's pressure bound: {@code NOT_CONVERGED} naming that bound, not a step of {@code U(T)}.</li>
- *   <li>Steps: a pure hydrocarbon at its equal-fugacity point, and free water boiling at the state pressure, are
- *   coexistences TP leaves undetermined ({@link Classification#PURE_COEXISTENCE_UNDERDETERMINED}, or the free-water
- *   rule's jump from all liquid to all steam); PH and UV determine them: once a bracket straddles the jump, the phase
- *   fraction follows from {@code target = (1 - beta) x_L + beta x_V} (enthalpy in PH, volume at the fixed temperature
- *   in UV), at the kernel's equal-fugacity temperature (PH) or pressure (UV), or the water model's saturation. The pure
- *   coexistence is {@link Classification#VAPOR_LIQUID}, free water boiling {@link Classification#FREE_WATER}, both with
- *   {@link Diagnostics#coexistenceFromBalance()} and the balance in the detail. A target inside any other step (a
- *   fraction outside [0, 1]) is typed {@code NOT_CONVERGED}: no state of the model has it.</li>
+ *   <li>Steps: a pure hydrocarbon at its equal-fugacity point, free water boiling (or, below its melting line,
+ *   subliming) at the state pressure, and free water freezing at its melting line (WP4) are coexistences TP leaves
+ *   undetermined ({@link Classification#PURE_COEXISTENCE_UNDERDETERMINED}, or the free-water rule's jump from all
+ *   condensed to all steam, or from liquid to ice); PH and UV determine them: once a bracket straddles the jump, the
+ *   phase fraction follows from {@code target = (1 - beta) x_1 + beta x_2} (enthalpy in PH, volume at the fixed
+ *   temperature in UV), at the kernel's equal-fugacity temperature (PH) or pressure (UV), the water model's saturation,
+ *   or the melting line's temperature (PH) or pressure (UV). The pure coexistence is {@link Classification#VAPOR_LIQUID},
+ *   the free water's steps {@link Classification#FREE_WATER}, all with {@link Diagnostics#coexistenceFromBalance()} and
+ *   the balance in the detail. A target inside any other step (a fraction outside [0, 1]) is typed
+ *   {@code NOT_CONVERGED}: no state of the model has it.</li>
  *   <li>Every search is bounded ({@link Settings#maximumOuterIterations()}); its failure is {@code NOT_CONVERGED}, typed
  *   {@link EquilibriumResult#CRITICAL_BAND} when its last TP answer lies in the band. Near a critical point, where the
  *   kernel refuses derivatives, the searches take secants and brackets: no finite slope is needed. The result is the
@@ -147,8 +156,10 @@ import java.util.Objects;
  * {@link CrystalPhaseEvaluator.Anchored} view: no flash solves its integration constants again). A crystal's record
  * continues past its data range like every model (an answer with the crystal outside it is graded extrapolated); the
  * lowest record ceiling of a competition ({@link #crystalCeiling}, 300 K for CO2-I) is where its crystals cease to
- * exist: the onset searches stay below it and a PH or UV start that fails restarts there. Water with crystals is
- * refused as water chemistry (hydrates).</p>
+ * exist: the onset searches stay below it and a PH or UV start that fails restarts there. With free water the crystals
+ * compete against the free-water rule's hydrocarbon phases and are solved at the hydrocarbon partial pressure
+ * ({@link #solveWetWithCrystals}, WP4; decision 6 A: gas hydrates are not modelled, so ice and CO2 frost coexist); the
+ * pure species' and binary steps below are taken by dry feeds only.</p>
  * <ul>
  *   <li>TP: the fluid answer of the feed, then each crystal against it by fugacity,
  *   {@code D = (mu_i - mu_s)/(R T)}; above {@link #DEPOSITION_TOLERANCE} the solid amount is solved so that the fluid
@@ -461,6 +472,7 @@ public final class FluidTpEquilibrium implements EquilibriumService {
                 throw new IllegalArgumentException("The contract identity names water model "
                         + contract.identity().waterModelRevision() + ", the free-water model is " + expected);
             }
+            Objects.requireNonNull(freeWater.ice(), "the free-water rule needs its ice below the melting line (WP4)");
         }
         count = evaluator.componentCount();
         basis = contract.components().size();
@@ -684,8 +696,8 @@ public final class FluidTpEquilibrium implements EquilibriumService {
         private Root singleRoot;
         private String failure;
         private double residual, productDistance;
-        // Free water.
-        private final PhaseState gasState, waterState;
+        // Free water: the gas, the liquid water and the ice (WP4) of a wet answer.
+        private final PhaseState gasState, waterState, iceState = new PhaseState(1);
         private final double[] gasComposition, gasLogPhi, gasIdealGibbs, waterProperties;
         private final double[] one = {1.0}, oneLogPhi = new double[1], oneIdealGibbs = new double[1];
         // The request's material, set before any calculation.
@@ -1110,6 +1122,30 @@ public final class FluidTpEquilibrium implements EquilibriumService {
 
     /** One TP equilibrium at (t, p) of the workspace's material, the checks done; its own counters. */
     private EquilibriumResult evaluateTp(double t, double p, PhaseCompetition competition, Workspace w) {
+        return evaluateTp(t, p, competition, w.wet && frozen(t, p), w);
+    }
+
+    /**
+     * Whether free water at {@code (t, p)} is ice: below its melting line {@code T_m(P)} (WP4). On the line the liquid
+     * is the condensed phase; the freeze there is a step a PH or UV balance splits ({@link #waterFreezing}).
+     */
+    private boolean frozen(double t, double p) {
+        return t < freeWater.ice().meltingTemperature(p);
+    }
+
+    /**
+     * The fugacity of the condensed free water at {@code (t, p)}, Pa: the ice's below the melting line, the liquid's
+     * saturation pressure on and above it. Continuous across the line and increasing with {@code t}.
+     */
+    private double condensedPressure(double t, double p) {
+        return frozen(t, p) ? freeWater.ice().fugacity(t, p) : freeWater.saturationPressure(t);
+    }
+
+    /**
+     * {@link #evaluateTp(double, double, PhaseCompetition, Workspace)} with the free water's condensed phase given:
+     * {@code frozen} ice, else liquid (a freeze step evaluates its liquid side on the melting line itself).
+     */
+    private EquilibriumResult evaluateTp(double t, double p, PhaseCompetition competition, boolean frozen, Workspace w) {
         w.kernelEvaluations = 0;
         w.derivativeEvaluations = 0;
         w.rachfordRiceSteps = 0;
@@ -1123,9 +1159,11 @@ public final class FluidTpEquilibrium implements EquilibriumService {
         w.productDistance = Double.NaN;
         w.fluidEquilibria = 0;
         try {
-            if (w.activeCount > 0) return solveWithCrystals(t, p, competition, w);
-            return w.wet ? solveWet(t, p, w.hydrocarbonTotal, w.waterTotal, competition, w)
-                    : solveDry(t, p, competition, w);
+            if (w.wet) {
+                return w.activeCount > 0 ? solveWetWithCrystals(t, p, frozen, competition, w)
+                        : solveWet(t, p, w.hydrocarbonTotal, w.waterTotal, frozen, competition, w);
+            }
+            return w.activeCount > 0 ? solveWithCrystals(t, p, competition, w) : solveDry(t, p, competition, w);
         } catch (IllegalArgumentException | IllegalStateException | ArithmeticException refusedByModel) {
             // The equation of state refused a state (no physical root, a mechanically unstable root): no answer.
             return EquilibriumResult.notConverged(Specification.TP, contract.identity(), competition,
@@ -1478,7 +1516,7 @@ public final class FluidTpEquilibrium implements EquilibriumService {
             }
             if (s.bracketed() && (s.width() <= tolerance * t || !w.wet && (w.presentCount == 1 && s.straddlesPureCoexistence()
                     || pureCrystal(w) != null && s.straddlesCrystalStep())
-                    || w.wet && waterStep(s.lowerResult, s.upperResult)
+                    || w.wet && (condensedStep(s.lowerResult, s.upperResult) || freezeStep(s.lowerResult, s.upperResult))
                     || binaryCrystal(w) != null && threePhaseDue(s, s.width() / t))) {
                 EquilibriumResult closed = closedPh(p, target, competition, w);
                 if (closed != null) return closed;
@@ -1534,10 +1572,18 @@ public final class FluidTpEquilibrium implements EquilibriumService {
             EquilibriumResult answer = binaryThreePhase(Specification.PH, s, t, p, target, closed, competition, w);
             if (answer != null) return outerAnswer(Specification.PH, answer, target, Double.NaN, true, null, w);
             if (!Double.isNaN(w.coexistenceX) || !closed) return null;
-        } else if (w.wet && waterStep(s.lowerResult, s.upperResult)) {
+        } else if (w.wet && condensedStep(s.lowerResult, s.upperResult)) {
             double saturation = saturationTemperature(p, s.lower, s.upper, w);
             if (!Double.isNaN(saturation)) {
                 EquilibriumResult answer = waterBoiling(Specification.PH, saturation, p, target, s.lowerResult, competition, w);
+                if (answer != null) return outerAnswer(Specification.PH, answer, target, Double.NaN, true, null, w);
+            }
+        } else if (w.wet && freezeStep(s.lowerResult, s.upperResult)) {
+            // WP4: the free water freezes at its melting temperature at this pressure, on the line itself.
+            double melting = freeWater.ice().meltingTemperature(p);
+            double margin = 1.0e-6 * s.upper;
+            if (melting >= s.lower - margin && melting <= s.upper + margin) {
+                EquilibriumResult answer = waterFreezing(Specification.PH, melting, p, target, competition, w);
                 if (answer != null) return outerAnswer(Specification.PH, answer, target, Double.NaN, true, null, w);
             }
         }
@@ -2045,7 +2091,7 @@ public final class FluidTpEquilibrium implements EquilibriumService {
             }
             if (s.bracketed() && (s.width() <= tolerance || !w.wet && (w.presentCount == 1 && s.straddlesPureCoexistence()
                     || pureCrystal(w) != null && s.straddlesCrystalStep())
-                    || w.wet && waterStep(s.upperResult, s.lowerResult)
+                    || w.wet && (condensedStep(s.upperResult, s.lowerResult) || freezeStep(s.lowerResult, s.upperResult))
                     || binaryCrystal(w) != null && threePhaseDue(s, s.width()))) {
                 int closed = closedInner(t, v, competition, w);
                 if (closed != INNER_BELOW) return closed;
@@ -2109,14 +2155,25 @@ public final class FluidTpEquilibrium implements EquilibriumService {
             EquilibriumResult answer = binaryThreePhase(Specification.UV, s, t, p, v, closed, competition, w);
             if (answer != null) return foundOrHeld(answer, w);
             if (!Double.isNaN(w.coexistenceX) || !closed) return INNER_BELOW;
-        } else if (w.wet && waterStep(s.upperResult, s.lowerResult)) {
-            // At fixed temperature the liquid water lies at the high-pressure end, the steam at the low one.
-            double saturation = freeWater.saturationPressure(t);
+        } else if (w.wet && condensedStep(s.upperResult, s.lowerResult)) {
+            // At fixed temperature the condensed water lies at the high-pressure end, the steam at the low one.
+            double saturation = condensedSaturationPressure(t);
             double y = DeterministicMath.log(saturation);
             if (saturation >= w.minimumP && saturation <= w.maximumP
                     && y >= Math.min(s.lower, s.upper) - 1.0e-6 && y <= Math.max(s.lower, s.upper) + 1.0e-6) {
                 EquilibriumResult answer = waterBoiling(Specification.UV, t, saturation, v, s.upperResult, competition, w);
                 if (answer != null) return found(answer, true, w);
+            }
+        } else if (w.wet && freezeStep(s.lowerResult, s.upperResult)) {
+            // WP4: at fixed temperature below the triple point the ice lies at the low-pressure end, the liquid at the high
+            // one; the free water freezes at the melting line's pressure for this temperature.
+            double melting = freeWater.ice().meltingPressure(t);
+            if (melting >= w.minimumP && melting <= w.maximumP) {
+                double y = DeterministicMath.log(melting);
+                if (y >= Math.min(s.lower, s.upper) - 1.0e-6 && y <= Math.max(s.lower, s.upper) + 1.0e-6) {
+                    EquilibriumResult answer = waterFreezing(Specification.UV, t, melting, v, competition, w);
+                    if (answer != null) return found(answer, true, w);
+                }
             }
         }
         // Not closed yet: the search goes on (the step is not where the volume lies).
@@ -2281,48 +2338,79 @@ public final class FluidTpEquilibrium implements EquilibriumService {
     }
 
     /**
-     * A step of the free-water rule where the water boils at the state pressure: one side has all water liquid and no
-     * gas at all (no hydrocarbons, or a hydrocarbon liquid without vapour), the other all water as steam.
+     * A step of the free-water rule where the water boils (or, below its melting line, sublimes) at the state pressure:
+     * one side has all water condensed (liquid or ice) and no gas at all (no hydrocarbons, or a hydrocarbon liquid
+     * without vapour), the other all water as steam.
      */
-    private static boolean waterStep(EquilibriumResult liquidSide, EquilibriumResult steamSide) {
-        if (liquidSide == null || steamSide == null) return false;
-        EquilibriumResult.FreeWater liquid = liquidSide.freeWater();
+    private static boolean condensedStep(EquilibriumResult condensedSide, EquilibriumResult steamSide) {
+        if (condensedSide == null || steamSide == null) return false;
+        EquilibriumResult.FreeWater condensed = condensedSide.freeWater();
         EquilibriumResult.FreeWater steam = steamSide.freeWater();
-        if (liquid == null || steam == null) return false;
-        if (!(liquid.liquidWater() > 0.0) || liquid.waterVapor() != 0.0 || steam.liquidWater() != 0.0) return false;
-        for (PhaseAmounts phase : liquidSide.phases()) if (phase.kind() == PhaseKind.VAPOR) return false;
+        if (condensed == null || steam == null) return false;
+        if (!(condensed.condensed() > 0.0) || condensed.waterVapor() != 0.0 || steam.condensed() != 0.0) return false;
+        for (PhaseAmounts phase : condensedSide.phases()) if (phase.kind() == PhaseKind.VAPOR) return false;
         return true;
     }
 
     /**
-     * Water's saturation temperature at {@code p} near the closed bracket {@code [low, high]}, by bisection on the water
-     * model's saturation pressure; NaN unless it lies within 1e-6 (relative) of the bracket, where the step is then
-     * water boiling at the state pressure.
+     * A step of the free-water rule where the water freezes at its melting temperature (WP4): the colder side holds the
+     * condensed water as ice, the warmer as liquid; the gas and the hydrocarbons are continuous across the line (the
+     * ice's fugacity meets the liquid's on it, {@link FreeWaterIce}), so the step is the condensed water's alone.
+     */
+    private static boolean freezeStep(EquilibriumResult iceSide, EquilibriumResult liquidSide) {
+        if (iceSide == null || liquidSide == null) return false;
+        EquilibriumResult.FreeWater ice = iceSide.freeWater();
+        EquilibriumResult.FreeWater liquid = liquidSide.freeWater();
+        if (ice == null || liquid == null) return false;
+        return ice.ice() > 0.0 && ice.liquidWater() == 0.0 && liquid.liquidWater() > 0.0 && liquid.ice() == 0.0;
+    }
+
+    /**
+     * Water's saturation temperature at {@code p} near the closed bracket {@code [low, high]}, by bisection on the
+     * condensed water's vapour pressure ({@link #condensedPressure}: the ice's below the melting line, the liquid's above);
+     * NaN unless it lies within 1e-6 (relative) of the bracket, where the step is then water boiling (or subliming) at the
+     * state pressure.
      */
     private double saturationTemperature(double p, double low, double high, Workspace w) {
         double margin = 1.0e-6 * high;
         double a = Math.max(w.minimumT, low - margin);
         double b = Math.min(w.maximumT, high + margin);
-        if (!(freeWater.saturationPressure(a) < p) || !(freeWater.saturationPressure(b) >= p)) return Double.NaN;
+        if (!(condensedPressure(a, p) < p) || !(condensedPressure(b, p) >= p)) return Double.NaN;
         for (int k = 0; k < 200 && Math.nextUp(a) < b; k++) {
             double middle = 0.5 * (a + b);
-            if (freeWater.saturationPressure(middle) < p) a = middle; else b = middle;
+            if (condensedPressure(middle, p) < p) a = middle; else b = middle;
         }
         return 0.5 * (a + b);
     }
 
     /**
-     * Free water boiling at the state pressure {@code p = p_sat(t)}: the hydrocarbons as on the liquid-water side (their
-     * liquid at {@code (t, p)}, no vapour), the water split into steam at {@code p_w = p} and free liquid water, the steam
-     * fraction from the energy (PH) or volume (UV) balance. The free-water rule's own limit of both water phases
-     * ({@code p_w = p_sat}), which its TP answer leaves on one side of the step. Null when the balance puts the
-     * fraction outside [0, 1] by more than the specification tolerance: the target lies in a part of the step no state
-     * of the rule spans (hydrocarbon vapour appearing with the steam), which the caller types as not converged.
+     * The pressure at which free water at {@code t} boils or sublimes, Pa: the liquid's saturation pressure, or below the
+     * melting line the ice's fugacity at that pressure itself (two fixed-point steps; the ice's fugacity moves by 7e-10 per
+     * pascal, so the second leaves it to rounding).
+     */
+    private double condensedSaturationPressure(double t) {
+        double p = freeWater.saturationPressure(t);
+        if (!frozen(t, p)) return p;
+        p = freeWater.ice().fugacity(t, p);
+        return freeWater.ice().fugacity(t, p);
+    }
+
+    /**
+     * Free water boiling (or subliming) at the state pressure {@code p}, the condensed water's vapour pressure at
+     * {@code t}: the hydrocarbons as on the condensed side (their liquid at {@code (t, p)}, no vapour), the water split into
+     * steam at {@code p_w = p} and condensed water (its liquid, or its ice below the melting line), the steam fraction from
+     * the energy (PH) or volume (UV) balance. The free-water rule's own limit of both water phases ({@code p_w = p_sat}),
+     * which its TP answer leaves on one side of the step. Null when the balance puts the fraction outside [0, 1] by more
+     * than the specification tolerance: the target lies in a part of the step no state of the rule spans (hydrocarbon
+     * vapour appearing with the steam), which the caller types as not converged; null as well beside a competing crystal,
+     * whose hydrocarbons are not one liquid.
      */
     private EquilibriumResult waterBoiling(Specification specification, double t, double p, double target,
-                                           EquilibriumResult liquidSide, PhaseCompetition competition, Workspace w) {
+                                           EquilibriumResult condensedSide, PhaseCompetition competition, Workspace w) {
+        if (condensedSide.freeWater().hydrocarbon().holdsCrystal()) return null;
         boolean energy = specification == Specification.PH;
-        double saturation = freeWater.saturationPressure(t);
+        boolean frozen = frozen(t, p);
+        double saturation = frozen ? freeWater.ice().fugacity(t, p) : freeWater.saturationPressure(t);
         PhaseState liquid = null;
         double hydrocarbonValue = 0.0;
         if (w.hydrocarbonTotal > 0.0) {
@@ -2330,33 +2418,91 @@ public final class FluidTpEquilibrium implements EquilibriumService {
             w.outerKernel++;
             hydrocarbonValue = w.hydrocarbonTotal * (energy ? liquid.molarEnthalpy() : liquid.molarVolume());
         }
-        freeWater.liquid(t, p, w.waterProperties);
+        double waterValue;
+        if (frozen) {
+            CrystalReference.State ice = freeWater.ice().properties(t, p);
+            waterValue = energy ? ice.enthalpy() : ice.volume();
+        } else {
+            freeWater.liquid(t, p, w.waterProperties);
+            waterValue = energy ? w.waterProperties[1] : w.waterProperties[0];
+        }
         double water = w.waterTotal;
         double steamValue = energy ? freeWater.vapor().enthalpy(t) : R * t / p;
-        double waterValue = energy ? w.waterProperties[1] : w.waterProperties[0];
         double span = water * (steamValue - waterValue);
         double beta = (target - hydrocarbonValue - water * waterValue) / span;
         double allowance = SPECIFICATION_TOLERANCE * (energy ? w.total * R * t : Math.abs(target)) / Math.abs(span);
         if (!(beta >= -allowance && beta <= 1.0 + allowance)) return null;
         beta = Math.clamp(beta, 0.0, 1.0);
         double steam;
-        double liquidWater;
+        double condensed;
         if (beta <= 0.5) {
             steam = beta * water;
-            liquidWater = water - steam;
+            condensed = water - steam;
         } else {
-            liquidWater = (1.0 - beta) * water;
-            steam = water - liquidWater;
+            condensed = (1.0 - beta) * water;
+            steam = water - condensed;
         }
         List<PhaseAmounts> phases = new ArrayList<>(3);
         if (steam > 0.0) phases.add(gasPhase(t, p, p, 0.0, steam, null, w));
         if (liquid != null) phases.add(new PhaseAmounts(PhaseKind.LIQUID, null, t, p, expand(w.feed), liquid.copy()));
-        if (liquidWater > 0.0) phases.add(freeWaterPhase(t, p, saturation, liquidWater, w));
-        var split = new EquilibriumResult.FreeWater(liquidSide.freeWater().hydrocarbon(), saturation, p,
-                steam > 0.0 ? p : 0.0, liquidWater, steam);
-        String note = "free water boiling at the state pressure (" + t + " K, p_sat " + saturation + " Pa): steam fraction "
-                + beta + " from the " + (energy ? "energy" : "volume") + " balance";
+        if (condensed > 0.0) phases.add(condensedPhase(t, p, saturation, condensed, frozen, w));
+        var split = freeWaterSplit(condensedSide.freeWater().hydrocarbon(), saturation, p, steam > 0.0 ? p : 0.0, condensed,
+                steam, frozen);
+        String note = "free water " + (frozen ? "subliming" : "boiling") + " at the state pressure (" + t + " K, "
+                + (frozen ? "f_ice " : "p_sat ") + saturation + " Pa): steam fraction " + beta + " from the "
+                + (energy ? "energy" : "volume") + " balance";
         return converged(competition, Classification.FREE_WATER, phases, List.of(), diagnostics(w, null, false), null, split, note);
+    }
+
+    /**
+     * Free water freezing at its melting line (WP4), {@code t = T_m(p)}: the TP answer there with its condensed water
+     * liquid (the gas, the hydrocarbons and the steam are the same on both sides of the line), the condensed water split
+     * into ice and liquid by the energy (PH) or volume (UV) balance, {@code target = X_L - beta n_c (x_L - x_s)}: the ice
+     * fraction {@code beta}. Null where the liquid side has no condensed liquid, or the balance puts {@code beta} outside
+     * [0, 1] by more than the specification tolerance (the search goes on).
+     */
+    private EquilibriumResult waterFreezing(Specification specification, double t, double p, double target,
+                                            PhaseCompetition competition, Workspace w) {
+        boolean energy = specification == Specification.PH;
+        EquilibriumResult warm = evaluateTp(t, p, competition, false, w);
+        w.outerEvaluations++;
+        w.outerKernel += w.kernelEvaluations;
+        w.outerDerivative += w.derivativeEvaluations;
+        if (!warm.converged() || warm.freeWater() == null) return null;
+        EquilibriumResult.FreeWater split = warm.freeWater();
+        double condensed = split.liquidWater();
+        if (!(condensed > 0.0) || split.ice() != 0.0) return null;
+        freeWater.liquid(t, p, w.waterProperties);
+        CrystalReference.State solid = freeWater.ice().properties(t, p);
+        double liquidValue = energy ? w.waterProperties[1] : w.waterProperties[0];
+        double iceValue = energy ? solid.enthalpy() : solid.volume();
+        double value = energy ? warm.enthalpy() : warm.volume();
+        double span = condensed * (iceValue - liquidValue);
+        double beta = (target - value) / span;
+        double allowance = SPECIFICATION_TOLERANCE * (energy ? w.total * R * t : Math.abs(target)) / Math.abs(span);
+        if (!(beta >= -allowance && beta <= 1.0 + allowance)) return null;
+        beta = Math.clamp(beta, 0.0, 1.0);
+        double ice;
+        double liquid;
+        if (beta <= 0.5) {
+            ice = beta * condensed;
+            liquid = condensed - ice;
+        } else {
+            liquid = (1.0 - beta) * condensed;
+            ice = condensed - liquid;
+        }
+        double saturation = split.saturationPressure();
+        List<PhaseAmounts> phases = new ArrayList<>(warm.phases().size() + 1);
+        for (PhaseAmounts phase : warm.phases()) if (phase.kind() != PhaseKind.FREE_WATER) phases.add(phase);
+        if (liquid > 0.0) phases.add(freeWaterPhase(t, p, saturation, liquid, w));
+        if (ice > 0.0) phases.add(icePhase(t, p, saturation, ice, w));
+        var frozen = new EquilibriumResult.FreeWater(split.hydrocarbon(), saturation, split.hydrocarbonPressure(),
+                split.waterPartialPressure(), liquid, split.waterVapor(), ice);
+        String note = "free water freezing at its melting temperature (" + t + " K at " + p + " Pa): ice fraction " + beta
+                + " from the " + (energy ? "energy" : "volume") + " balance";
+        return new EquilibriumResult(Specification.TP, EquilibriumResult.Status.CONVERGED, null, warm.detail() + "; " + note,
+                warm.identity(), warm.competition(), Classification.FREE_WATER, phases, List.of(), warm.coverage(),
+                warm.diagnostics(), frozen, warm.deposition());
     }
 
     // Results of a search.
@@ -2419,7 +2565,8 @@ public final class FluidTpEquilibrium implements EquilibriumService {
     // and UV, and the onset functions.
 
     /**
-     * TP with competing crystals (dry material; water with crystals is refused by the contract checks). The fluid answer
+     * TP with competing crystals (dry material; with free water {@link #solveWetWithCrystals} runs this on the
+     * hydrocarbons at their partial pressure). The fluid answer
      * of the whole feed first; each competing crystal whose species is carried is tested against it:
      * {@code D = (mu_i - mu_s)/(R T)}, the species' chemical potential in the fluid answer (fugacity, never partial
      * pressure; equal in every phase of it) against the crystal's. A fluid answer whose split has a product proved
@@ -2508,6 +2655,156 @@ public final class FluidTpEquilibrium implements EquilibriumService {
         } finally {
             restoreFeed(w);
         }
+    }
+
+    /**
+     * TP with competing crystals and free water (WP4; decision 6 A: gas hydrates are not modelled, so the free water and a
+     * competing crystal coexist, ice beside CO2 frost): the free-water rule's answer of the whole feed first
+     * ({@link #solveWet}, exact at its branch pressures), each competing crystal tested against its hydrocarbon phases
+     * ({@code D = (mu_i - mu_s)/(R T)}, as {@link #solveWithCrystals}). No crystal forms: that answer, the solids assessed.
+     * Otherwise, and where the rule's hydrocarbon split has no answer of its own (a third fluid phase indicated, two
+     * liquids: the dry feed's crystal replaces the subcooled liquid of its species there, P5), the hydrocarbons and their
+     * crystal are solved as a dry feed ({@link #solveWithCrystals}) at the hydrocarbon partial pressure {@code pc = P - p_w},
+     * where their vapour lies, and the water is laid around them by its rule: the steam in their vapour at the condensed
+     * water's vapour pressure and the rest condensed, or all of it steam where that leaves the gas unsaturated; {@code pc}
+     * then follows the new gas (the fixed point of {@link #solveWet}, accepted on its stop test), started at the rule's own
+     * {@code pc}, else at the saturated gas's {@code P - p_w}. The liquid and the crystal are restated at the state
+     * pressure. Solving them at {@code pc} instead of {@code P} moves their chemical potentials by {@code v p_w / (R T)}:
+     * below 1e-7 where a crystal forms beside ice (R14-08: 1.6 Pa at CO2's triple point, 216.6 K), 2e-5 for a liquid
+     * beside liquid water at 280 K. A wet pure hydrocarbon at its crystal's own coexistence (undetermined by T and P) is the
+     * typed {@link EquilibriumResult#CRYSTAL_STEP} failure.
+     */
+    private EquilibriumResult solveWetWithCrystals(double t, double p, boolean frozen, PhaseCompetition competition, Workspace w) {
+        EquilibriumResult fluid = solveWet(t, p, w.hydrocarbonTotal, w.waterTotal, frozen, competition, w);
+        w.fluidEquilibria = 1;
+        double rt = R * t;
+        StringBuilder forces = new StringBuilder();
+        EquilibriumResult.FreeWater wet = fluid.converged() ? fluid.freeWater() : null;
+        if (wet != null) {
+            boolean forms = false;
+            for (int a = 0; a < w.activeCount; a++) {
+                Crystal c = w.active[a];
+                if (!(w.feed[c.component()] > 0.0)) continue;
+                double d = (wetChemicalPotential(fluid, c.component()) - c.anchored().chemicalPotential(t, p)) / rt;
+                forces.append(forces.isEmpty() ? "" : ", ").append(c.id()).append(": (mu - mu_s)/RT = ").append(d);
+                if (d > DEPOSITION_TOLERANCE) forms = true;
+            }
+            if (!forms) {
+                return assessed(fluid, forces.isEmpty() ? "solids assessed: no competing crystal's species is carried"
+                        : "solids assessed: no crystal forms (" + forces + ")", w);
+            }
+        }
+        double saturation = wet != null ? wet.saturationPressure() : frozen ? freeWater.ice().fugacity(t, p) : freeWater.saturationPressure(t);
+        double water = w.waterTotal;
+        double pc = wet != null ? wet.hydrocarbonPressure() : p > saturation + SATURATION_MARGIN ? p - saturation : p;
+        for (int step = 0; ; step++) {
+            EquilibriumResult dry = dryWithCrystals(t, pc, competition, w);
+            if (!dry.converged()) return dry;
+            if (dry.classification() == Classification.PURE_COEXISTENCE_UNDERDETERMINED) {
+                return EquilibriumResult.notConverged(Specification.TP, contract.identity(), competition, EquilibriumResult.CRYSTAL_STEP
+                        + ": the pure hydrocarbon beside free water lies at its crystal's own coexistence, undetermined by T and P ("
+                        + dry.detail() + ")", dry.diagnostics());
+            }
+            if (wet != null && !dry.classification().holdsCrystal()) {
+                return assessed(fluid, "solids assessed: no crystal forms at the hydrocarbon partial pressure " + pc + " Pa (" + forces + ")", w);
+            }
+            PhaseAmounts vapour = null;
+            for (PhaseAmounts phase : dry.phases()) if (phase.kind() == PhaseKind.VAPOR || phase.kind() == PhaseKind.FLUID) vapour = phase;
+            double gasVolume = vapour == null ? 0.0 : vapour.total() * vapour.state().molarVolume();
+            double steam;
+            double partial;
+            double next;
+            if (!(gasVolume > 0.0)) {
+                // No hydrocarbon gas: the water by the pure water's rule, condensed at or above its vapour pressure.
+                steam = p >= saturation ? 0.0 : water;
+                partial = steam > 0.0 ? p : 0.0;
+                next = pc;
+            } else {
+                double required = saturation * gasVolume / rt;
+                steam = required <= water ? required : water;
+                partial = steam * rt / gasVolume;
+                next = p - partial;
+            }
+            if (Math.abs(next - pc) > PARTIAL_PRESSURE_TOLERANCE * p) {
+                if (step >= PARTIAL_PRESSURE_FIXED_POINT_STEPS || !(next > PARTIAL_PRESSURE_FLOOR)) {
+                    w.failure = "the hydrocarbon partial pressure beside the crystal and the steam was not found (pc " + pc + " Pa, next "
+                            + next + " Pa at " + p + " Pa)";
+                    return failed(t, p, competition, w);
+                }
+                pc = next;
+                continue;
+            }
+            return wetAround(dry, vapour, t, p, pc, saturation, partial, steam, water - steam, frozen, competition, w);
+        }
+    }
+
+    /**
+     * The dry crystal solve of {@link #solveWetWithCrystals} at the single pressure {@code pc}: the workspace's hydrocarbons
+     * with the water held out, put back after.
+     */
+    private EquilibriumResult dryWithCrystals(double t, double pc, PhaseCompetition competition, Workspace w) {
+        double water = w.basisAmounts[waterIndex];
+        w.basisAmounts[waterIndex] = 0.0;
+        w.wet = false;
+        try {
+            return solveWithCrystals(t, pc, competition, w);
+        } finally {
+            w.wet = true;
+            w.basisAmounts[waterIndex] = water;
+        }
+    }
+
+    /**
+     * The answer of {@link #solveWetWithCrystals}: the dry answer's phases restated at the state pressure (its vapour
+     * {@code vapour}, null without one, as the gas with {@code steam} moles of steam at {@code pc} and {@code partial}),
+     * {@code condensed} moles of condensed water (ice where {@code frozen}) at the vapour pressure {@code saturation}.
+     */
+    private EquilibriumResult wetAround(EquilibriumResult dry, PhaseAmounts vapour, double t, double p, double pc, double saturation,
+                                        double partial, double steam, double condensed, boolean frozen, PhaseCompetition competition,
+                                        Workspace w) {
+        List<PhaseAmounts> phases = new ArrayList<>(dry.phases().size() + 2);
+        double vapourAmount = 0.0;
+        Arrays.fill(w.vaporAmounts, 0.0);
+        if (vapour != null) {
+            for (int i = 0; i < count; i++) w.vaporAmounts[i] = vapour.amount(basisOfComponent[i]);
+            vapourAmount = vapour.total();
+        }
+        if (vapourAmount > 0.0 || steam > 0.0) {
+            phases.add(gasPhase(t, p, vapourAmount > 0.0 ? pc : p, vapourAmount, steam, vapourAmount > 0.0 ? vapour.state() : null, w));
+        }
+        for (PhaseAmounts phase : dry.phases()) {
+            if (phase == vapour) continue;
+            if (phase.kind() == PhaseKind.SOLID) {
+                Crystal c = crystalById(phase.crystal());
+                phases.add(new PhaseAmounts(PhaseKind.SOLID, c.id(), t, p, phase.amountsView(), c.anchored().evaluate(t, p, w.solidState).copy()));
+                continue;
+            }
+            for (int i = 0; i < count; i++) w.liquidAmounts[i] = phase.amount(basisOfComponent[i]);
+            PhaseState state = evaluator.evaluate(t, p, w.liquidAmounts, phase.state().root(), w.phases, w.liquidState);
+            w.kernelEvaluations++;
+            phases.add(new PhaseAmounts(phase.kind(), null, t, p, phase.amountsView(), state.copy()));
+        }
+        if (condensed > 0.0) phases.add(condensedPhase(t, p, saturation, condensed, frozen, w));
+        var split = freeWaterSplit(dry.classification(), saturation, vapourAmount > 0.0 || !(steam > 0.0) ? pc : p, partial,
+                condensed, steam, frozen);
+        String note = "free water beside the crystal answer at the hydrocarbon partial pressure " + pc + " Pa: " + condensed
+                + " mol " + (frozen ? "ice" : "liquid water") + " and " + steam + " mol steam at " + partial + " Pa";
+        return new EquilibriumResult(Specification.TP, EquilibriumResult.Status.CONVERGED, null, dry.detail() + "; " + note,
+                contract.identity(), competition, Classification.FREE_WATER, phases, List.of(), dry.coverage(), dry.diagnostics(),
+                split, dry.deposition());
+    }
+
+    /**
+     * {@code mu_i} of EOS component {@code i} in a free-water answer: in its hydrocarbon liquid where that holds it, else in
+     * its gas, whose state is on the contract basis (equal in both phases of a converged split).
+     */
+    private double wetChemicalPotential(EquilibriumResult fluid, int i) {
+        PhaseState gas = null;
+        for (PhaseAmounts phase : fluid.phases()) {
+            if (phase.kind() == PhaseKind.LIQUID && phase.amount(basisOfComponent[i]) > 0.0) return phase.state().chemicalPotential(i);
+            if (phase.kind() == PhaseKind.VAPOR) gas = phase.state();
+        }
+        return gas == null ? Double.NEGATIVE_INFINITY : gas.chemicalPotential(basisOfComponent[i]);
     }
 
     /**
@@ -4037,12 +4334,6 @@ public final class FluidTpEquilibrium implements EquilibriumService {
                                     + contract.water() + " approximation cannot describe its dissolution");
                 }
             }
-            if (competition.crystalsCompete()) {
-                // P4 stage 2a: crystals with water would compete with hydrates, which no water participation models.
-                return unsupported(specification, competition, UnsupportedReason.WATER_CHEMISTRY_NOT_MODELLED,
-                        "crystals competing with water present need gas hydrates; the " + contract.water()
-                                + " approximation models none");
-            }
         }
         competition = contract.resolve(competition);
         if (!contract.qualifies(competition)) {
@@ -4936,19 +5227,24 @@ public final class FluidTpEquilibrium implements EquilibriumService {
 
     // Free water.
 
-    private EquilibriumResult solveWet(double t, double p, double hydrocarbons, double water, PhaseCompetition competition,
-                                       Workspace w) {
-        double saturation = freeWater.saturationPressure(t);
+    /**
+     * The free-water rule at {@code (t, p)}: the water's condensed phase is its ice where {@code frozen} (below the melting
+     * line, WP4), its liquid otherwise, with the fugacity {@code saturation} either way (the ice's or the liquid's
+     * saturation pressure, {@link #condensedPressure}); the rule is the same for both.
+     */
+    private EquilibriumResult solveWet(double t, double p, double hydrocarbons, double water, boolean frozen,
+                                       PhaseCompetition competition, Workspace w) {
+        double saturation = frozen ? freeWater.ice().fugacity(t, p) : freeWater.saturationPressure(t);
         if (!(hydrocarbons > 0.0)) {
-            // Pure water: all liquid at or above its saturation pressure, all steam below.
+            // Pure water: all condensed at or above the condensed water's vapour pressure, all steam below.
             if (p >= saturation) {
-                PhaseAmounts liquidWater = freeWaterPhase(t, p, saturation, water, w);
-                var split = new EquilibriumResult.FreeWater(Classification.NONE, saturation, p, 0.0, water, 0.0);
-                return converged(competition, Classification.FREE_WATER, List.of(liquidWater), List.of(),
+                PhaseAmounts condensed = condensedPhase(t, p, saturation, water, frozen, w);
+                var split = freeWaterSplit(Classification.NONE, saturation, p, 0.0, water, 0.0, frozen);
+                return converged(competition, Classification.FREE_WATER, List.of(condensed), List.of(),
                         diagnostics(w, null, false), null, split);
             }
             PhaseAmounts gas = gasPhase(t, p, p, 0.0, water, null, w);
-            var split = new EquilibriumResult.FreeWater(Classification.NONE, saturation, p, p, 0.0, water);
+            var split = freeWaterSplit(Classification.NONE, saturation, p, p, 0.0, water, frozen);
             return converged(competition, Classification.FREE_WATER, List.of(gas), List.of(), diagnostics(w, null, false), null, split);
         }
         double saturatedPc = Double.NaN;
@@ -4962,7 +5258,7 @@ public final class FluidTpEquilibrium implements EquilibriumService {
             double required = saturation * gasVolume / (R * t);
             if (required <= water) {
                 double partial = gasVolume > 0.0 ? required * R * t / gasVolume : 0.0;
-                return wetResult(t, p, pc, outcome, required, water - required, saturation, partial, competition, w);
+                return wetResult(t, p, pc, outcome, required, water - required, saturation, partial, frozen, competition, w);
             }
             saturatedPc = pc;
             saturatedGas = gasVolume;
@@ -4982,7 +5278,7 @@ public final class FluidTpEquilibrium implements EquilibriumService {
                 if (!(gasVolume > 0.0)) break;
                 double partial = water * R * t / gasVolume;
                 if (Math.abs(guess + partial - p) < PARTIAL_PRESSURE_TOLERANCE * p) {
-                    return wetResult(t, p, guess, outcome, water, 0.0, saturation, partial, competition, w);
+                    return wetResult(t, p, guess, outcome, water, 0.0, saturation, partial, frozen, competition, w);
                 }
                 guess = p - partial;
             }
@@ -5009,7 +5305,7 @@ public final class FluidTpEquilibrium implements EquilibriumService {
                     + partial + " Pa at " + p + " Pa)";
             return failed(t, p, competition, w);
         }
-        return wetResult(t, p, pc, outcome, water, 0.0, saturation, partial, competition, w);
+        return wetResult(t, p, pc, outcome, water, 0.0, saturation, partial, frozen, competition, w);
     }
 
     /**
@@ -5036,7 +5332,8 @@ public final class FluidTpEquilibrium implements EquilibriumService {
     }
 
     private EquilibriumResult wetResult(double t, double p, double pc, int outcome, double steam, double liquidWater,
-                                        double saturation, double partial, PhaseCompetition competition, Workspace w) {
+                                        double saturation, double partial, boolean frozen, PhaseCompetition competition,
+                                        Workspace w) {
         double vapour = 0.0;
         double liquid = 0.0;
         for (int i = 0; i < count; i++) {
@@ -5053,7 +5350,7 @@ public final class FluidTpEquilibrium implements EquilibriumService {
             if (outcome != SPLIT) w.kernelEvaluations++;
             phases.add(new PhaseAmounts(PhaseKind.LIQUID, null, t, p, expand(w.liquidAmounts), state.copy()));
         }
-        if (liquidWater > 0.0) phases.add(freeWaterPhase(t, p, saturation, liquidWater, w));
+        if (liquidWater > 0.0) phases.add(condensedPhase(t, p, saturation, liquidWater, frozen, w));
         Classification hydrocarbon = switch (outcome) {
             case SPLIT -> Classification.VAPOR_LIQUID;
             case MERGED -> Classification.SINGLE_FLUID;
@@ -5064,8 +5361,20 @@ public final class FluidTpEquilibrium implements EquilibriumService {
                 && w.feedResult.nearestStationaryDistance() < settings.bandStationaryDistance();
         String why = band ? bandReason(t, p, w, w.feedResult.nearestStationaryDistance())
                 + (outcome == MERGED ? "; " + mergedDetail(w) : "") : null;
-        var split = new EquilibriumResult.FreeWater(hydrocarbon, saturation, pc, partial, liquidWater, steam);
+        var split = freeWaterSplit(hydrocarbon, saturation, pc, partial, liquidWater, steam, frozen);
         return converged(competition, Classification.FREE_WATER, phases, List.of(), diagnostics(w, w.feedResult, band), why, split);
+    }
+
+    /** The rule's split with {@code condensed} moles of condensed water: ice where {@code frozen}, liquid otherwise. */
+    private static EquilibriumResult.FreeWater freeWaterSplit(Classification hydrocarbon, double saturation, double pc,
+                                                            double partial, double condensed, double steam, boolean frozen) {
+        return new EquilibriumResult.FreeWater(hydrocarbon, saturation, pc, partial, frozen ? 0.0 : condensed, steam,
+                frozen ? condensed : 0.0);
+    }
+
+    /** The condensed free water: its ice where {@code frozen} ({@link #icePhase}), its liquid otherwise ({@link #freeWaterPhase}). */
+    private PhaseAmounts condensedPhase(double t, double p, double saturation, double amount, boolean frozen, Workspace w) {
+        return frozen ? icePhase(t, p, saturation, amount, w) : freeWaterPhase(t, p, saturation, amount, w);
     }
 
     /**
@@ -5159,6 +5468,31 @@ public final class FluidTpEquilibrium implements EquilibriumService {
         double[] amounts = new double[basis];
         amounts[waterIndex] = amount;
         return new PhaseAmounts(PhaseKind.FREE_WATER, null, t, p, amounts, w.waterState.copy());
+    }
+
+    /**
+     * The free water's ice at (T, P) (WP4): a solid phase naming the ice record, its volume and enthalpy the record's
+     * ({@link FreeWaterIce#properties}), with the rule's fugacity {@code fugacity} as the liquid's is {@code p_sat}
+     * ({@code ln phi = ln(f_s/P)}, {@code mu = g_ig(T, f_s)}): the steam it coexists with has its chemical potential
+     * exactly when {@code p_w = f_s}.
+     */
+    private PhaseAmounts icePhase(double t, double p, double fugacity, double amount, Workspace w) {
+        FreeWaterIce ice = freeWater.ice();
+        CrystalReference.State solid = ice.properties(t, p);
+        IdealGasFunction steamGas = freeWater.vapor();
+        double idealEnthalpy = steamGas.enthalpy(t);
+        double idealEntropy = steamGas.entropy(t, p);
+        double idealGibbs = idealEnthalpy - t * idealEntropy;
+        double logPhi = DeterministicMath.log(fugacity / p);
+        double gibbs = idealGibbs + R * t * logPhi;
+        double entropy = (solid.enthalpy() - gibbs) / t;
+        w.oneLogPhi[0] = logPhi;
+        w.oneIdealGibbs[0] = idealGibbs;
+        w.iceState.set(PhaseKind.SOLID, ice.crystal(), null, 0, t, p, solid.volume(), idealEnthalpy,
+                solid.enthalpy() - idealEnthalpy, idealEntropy, entropy - idealEntropy, gibbs, w.one, w.oneLogPhi, w.oneIdealGibbs);
+        double[] amounts = new double[basis];
+        amounts[waterIndex] = amount;
+        return new PhaseAmounts(PhaseKind.SOLID, ice.crystal(), t, p, amounts, w.iceState.copy());
     }
 
     // Results.
