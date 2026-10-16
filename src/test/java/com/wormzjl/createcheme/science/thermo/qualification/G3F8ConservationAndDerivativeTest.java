@@ -32,10 +32,10 @@ import org.junit.jupiter.api.Test;
  *   {@code d ln phi/dT}, {@code d ln phi/dP}, {@code d ln phi/dn}, {@code dv/dT}, {@code dv/dP}, {@code c_p = dh/dT} at 24
  *   binary and quaternary states on both roots, within 1e-6 of scale.</li>
  *   <li>Closed vessels: CH4/C2H6 heated at fixed volume across its bubble and its dew point on the engine's UV
- *   (conservation, specification closure, T and P monotone; the liquid-full vessel's first request beyond 10 MPa is
- *   {@code OUT_OF_DOMAIN} naming the ceiling, since P3 WP7d); N2 heated from 300 to 1143 K at fixed volume through the
- *   network's own inventory solve ({@code InventoryEquilibrium}) at the network gates (components exact to 1e-10 + 1e-8
- *   scale, energy 1e-4 J + 1e-6 scale), cross-checked with the engine's UV. The closed liquid-nitrogen compression
+ *   (conservation, specification closure, T and P monotone; the liquid-full vessel's first answer beyond the 10 MPa
+ *   envelope converges graded {@code EXTRAPOLATED}, owner rule of 2026-10-16, a typed out-of-domain answer before); N2
+ *   heated from 300 to 1143 K at fixed volume through the network's own inventory solve ({@code InventoryEquilibrium})
+ *   at the network gates (components exact to 1e-10 + 1e-8 scale, energy 1e-4 J + 1e-6 scale), cross-checked with the engine's UV. The closed liquid-nitrogen compression
  *   0.5-8 MPa is WP4's {@code DirectLiquidContinuityTest} (not repeated).</li>
  * </ul>
  */
@@ -203,17 +203,17 @@ class G3F8ConservationAndDerivativeTest {
             String edge = "-";
             for (int k = 1; k <= 120 && t < 330; k++) {
                 var r = engine.uv(EquilibriumRequest.uv(energy + k * 120.0, volume, engine.contract().components(), z, PhaseCompetition.FLUID_ONLY), ws);
-                if (!r.converged() && p > 9e6) {
-                    // The liquid-full vessel reaches the 10 MPa envelope: a typed out-of-domain answer in pressure, the
-                    // ceiling named (the G3 finding, NOT_CONVERGED "a step of U(T)" before P3 WP7d).
-                    edge = r.status() + (r.status() == EquilibriumResult.Status.OUT_OF_DOMAIN ? "" : " (G3 finding, expected OUT_OF_DOMAIN): " + r.detail());
-                    System.out.println("G3 F8 vessel edge at " + f("%.2f K %.3f MPa", t, p / 1e6) + ": " + edge
-                            + (r.violation() == null ? "" : "; " + r.violation().getMessage()));
-                    assertEquals(EquilibriumResult.Status.OUT_OF_DOMAIN, r.status(), r.detail());
-                    assertEquals(1e7, r.violation().maximum(), "the 10 MPa ceiling named");
+                assertTrue(r.converged(), "UV step " + k + ": " + r.detail());
+                if (r.phases().get(0).pressure() > 1e7) {
+                    // The liquid-full vessel passes the package's 10 MPa envelope: the answer continues, graded extrapolated
+                    // (owner rule of 2026-10-16; a typed out-of-domain answer before, NOT_CONVERGED "a step of U(T)" before
+                    // P3 WP7d). The vessel stops there.
+                    edge = r.status() + " " + r.coverage().grade();
+                    System.out.println("G3 F8 vessel edge at " + f("%.2f K %.3f MPa", r.phases().get(0).temperature(),
+                            r.phases().get(0).pressure() / 1e6) + ": " + edge + "; " + r.coverage().evidence());
+                    assertEquals(EquilibriumResult.CoverageGrade.EXTRAPOLATED, r.coverage().grade(), r.coverage().evidence());
                     break;
                 }
-                assertTrue(r.converged(), "UV step " + k + ": " + r.detail());
                 t = r.phases().get(0).temperature();
                 p = r.phases().get(0).pressure();
                 assertTrue(t > previousT && p > previousP, "T and P rise with the energy at fixed volume");

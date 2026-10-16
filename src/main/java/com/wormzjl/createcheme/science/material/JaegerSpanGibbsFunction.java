@@ -28,8 +28,8 @@ import java.util.List;
  * anchored to whichever fluid family evaluates its triple point. The record's published values are kept only for the
  * check against the paper's Table 5.</p>
  *
- * <p>Validity (paper, "Range of Validity"): 80 to 300 K and 0 to 500 MPa, as declared by the record; every evaluation
- * outside is refused ({@link IllegalArgumentException}), never extrapolated.</p>
+ * <p>Validity (paper, "Range of Validity"): 80 to 300 K and 0 to 500 MPa, as declared by the record: the data range a
+ * notice reports. Past it {@link #evaluate} continues with the end's heat capacity, {@code dv/dT} and {@code dv/dP}.</p>
  */
 public final class JaegerSpanGibbsFunction {
     public static final String TYPE = "jaeger_span_2012";
@@ -173,14 +173,44 @@ public final class JaegerSpanGibbsFunction {
     }
 
     /**
-     * g and its derivatives at (T, P) with the integration constants {@code g0} and {@code g1}.
+     * g and its derivatives at (T, P) with the integration constants {@code g0} and {@code g1}: the function inside its
+     * declared range, continued past it (owner rule of 2026-10-16) with the heat capacity, {@code dv/dT} and
+     * {@code dv/dP} held at the nearer end. Above the pressure range {@code g} is quadratic in P with the end's
+     * volume and {@code dv/dP}; past a temperature end it continues with the end's {@code c_p}
+     * ({@code s = s_e + c_p ln(T/T_e)}) and the volume linear in T with the end's {@code dv/dT}. Value and first
+     * derivatives are continuous at the ends; the pressure derivative of the held heat capacity is dropped, a
+     * second-order term in the distance from the range (a solid's {@code c_p} barely depends on P).
      *
-     * @throws IllegalArgumentException outside the declared range, or for a non-finite argument
+     * @throws IllegalArgumentException for a temperature or pressure that is not positive and finite, or a non-finite
+     *         integration constant
      */
     public State evaluate(double temperatureKelvin, double pressurePascal, double g0, double g1) {
-        if (!covers(temperatureKelvin, pressurePascal) || !Double.isFinite(g0) || !Double.isFinite(g1))
-            throw new IllegalArgumentException("Jaeger-Span solid: (" + temperatureKelvin + " K, " + pressurePascal + " Pa) outside "
-                    + minimumTemperature + ".." + maximumTemperature + " K and (" + minimumPressure + ", " + maximumPressure + "] Pa");
+        if (!(temperatureKelvin > 0) || !Double.isFinite(temperatureKelvin) || !(pressurePascal > 0) || !Double.isFinite(pressurePascal)
+                || !Double.isFinite(g0) || !Double.isFinite(g1))
+            throw new IllegalArgumentException("Jaeger-Span solid: (" + temperatureKelvin + " K, " + pressurePascal + " Pa) is not a positive finite state");
+        double te = Math.min(Math.max(temperatureKelvin, minimumTemperature), maximumTemperature);
+        double pe = Math.min(Math.max(pressurePascal, minimumPressure), maximumPressure);
+        State end = inside(te, pe, g0, g1);
+        if (te == temperatureKelvin && pe == pressurePascal) return end;
+        double gibbs = end.gibbs(), dT = end.dT(), dP = end.dP(), dTT = end.dTT(), dTP = end.dTP(), dPP = end.dPP();
+        if (pe != pressurePascal) {
+            double step = pressurePascal - pe;
+            gibbs += dP * step + 0.5 * dPP * step * step;
+            dT += dTP * step;
+            dP += dPP * step;
+        }
+        if (te != temperatureKelvin) {
+            double step = temperatureKelvin - te, heatCapacity = -te * dTT, log = DeterministicMath.log(temperatureKelvin / te);
+            gibbs += dT * step - heatCapacity * (temperatureKelvin * log - step);
+            dT -= heatCapacity * log;
+            dP += dTP * step;
+            dTT = -heatCapacity / temperatureKelvin;
+        }
+        return new State(temperatureKelvin, pressurePascal, gibbs, dT, dP, dTT, dTP, dPP);
+    }
+
+    /** The function itself at (T, P), which lie in its declared range. */
+    private State inside(double temperatureKelvin, double pressurePascal, double g0, double g1) {
         double t = temperatureKelvin / referenceTemperature;
         double pi = pressurePascal / referencePressure;
         double dt = t - 1;

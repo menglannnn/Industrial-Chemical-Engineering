@@ -5,7 +5,6 @@ import com.wormzjl.createcheme.science.fluid.solver.SparseNewton;
 import com.wormzjl.createcheme.science.fluid.state.EnergyReference;
 import com.wormzjl.createcheme.science.fluid.thermo.FluidThermodynamics;
 import com.wormzjl.createcheme.science.fluid.thermo.NetworkCrystals;
-import com.wormzjl.createcheme.science.fluid.thermo.ThermoDomainViolation;
 import com.wormzjl.createcheme.science.material.MaterialCatalog;
 import com.wormzjl.createcheme.science.material.SolidMaterialCatalog.SolidMaterial;
 import com.wormzjl.createcheme.science.thermo.phase.EquilibriumRequest;
@@ -264,8 +263,8 @@ class CrystalDepositionIslandTest {
     /**
      * (d) A CO2-rich charge below CO2's triple point whose deposition leaves a liquid (70 % CO2 in ethane at 200 K: the
      * fluid the crystal leaves is ethane-rich, a liquid at 200 K). Charged at 2 MPa the rigid liquid-full vessel's answer
-     * lies above the 10 MPa ceiling (the latent heat of the freezing CO2 warms a nearly incompressible liquid), the typed
-     * domain hold naming its node; charged at 0.5 MPa the vessel freezes CO2 beside the liquid at its first refresh: CO2
+     * lies above the package's 10 MPa envelope (the latent heat of the freezing CO2 warms a nearly incompressible liquid):
+     * carried on the equation of state's continuation, a notice and not a hold (owner rule of 2026-10-16); charged at 0.5 MPa the vessel freezes CO2 beside the liquid at its first refresh: CO2
      * conserved to 1e-12, the engine's UV answer reproduced to the record's constants, and the next interval changes
      * nothing.
      */
@@ -273,9 +272,10 @@ class CrystalDepositionIslandTest {
         double[] feed={0,0,.3,.7,0};
         var direct=model.flashTP(200,2e6,feed,()->{});
         assertNotNull(direct.liquidProperties(),"the TP adapter states the supersaturated liquid in the liquid slot");
-        var rigid=assertThrows(ThermoDomainViolation.class,()->interval(closed(charge(200,2e6,feed,1e-3))));
-        System.out.println("(d) charged at 2 MPa: "+rigid.getMessage());
-        assertEquals(1,rigid.node(),"names its node");
+        var rigid=interval(closed(charge(200,2e6,feed,1e-3))).graph().reservoirs().getFirst();
+        System.out.printf(Locale.ROOT,"(d) charged at 2 MPa: %.6f K, %.0f Pa, crystal %.9f mol%n",rigid.state().temperature(),rigid.state().pressure(),crystal(rigid.inventory()));
+        assertTrue(rigid.state().pressure()>1e7,"above the 10 MPa envelope, carried: "+rigid.state().pressure());
+        assertTrue(crystal(rigid.inventory())>0,"CO2 froze beside the liquid");
         var island=closed(charge(200,5e5,feed,1e-3));var before=island.reservoirs().getFirst().inventory();
         var result=interval(island);
         var node=result.graph().reservoirs().getFirst();var after=node.inventory();var state=node.state();

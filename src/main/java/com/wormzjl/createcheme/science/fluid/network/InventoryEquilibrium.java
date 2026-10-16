@@ -3,6 +3,7 @@ package com.wormzjl.createcheme.science.fluid.network;
 import com.wormzjl.createcheme.science.fluid.solver.*;
 import com.wormzjl.createcheme.science.fluid.state.SolidInventory;
 import com.wormzjl.createcheme.science.fluid.thermo.FluidThermodynamics;
+import com.wormzjl.createcheme.science.fluid.thermo.ThermoHold;
 import com.wormzjl.createcheme.science.thermo.PhaseSupport;
 import java.util.*;
 import java.util.function.UnaryOperator;
@@ -63,7 +64,7 @@ public final class InventoryEquilibrium {
         }
         FluidThermodynamics.State state=null;RuntimeException unclosed=null;
         try{state=solve(model,node.state(),inventory,Double.NaN,checkpoint);}
-        catch(SparseNewton.Nonconvergence|FluidThermodynamics.PhaseHold failure) {
+        catch(SparseNewton.Nonconvergence|ThermoHold failure) {
             // A fluid far past a crystal's saturation (it arrived within the interval, D23 (5)) may have no fluid-only state
             // the network carries: the crystal test states the vessel from its inventory, or the failure stands.
             if(!VesselCrystals.competes(model,inventory,node.state()))throw failure;

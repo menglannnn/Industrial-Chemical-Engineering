@@ -7,7 +7,6 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import com.wormzjl.createcheme.science.fluid.thermo.ThermoDomainViolation;
 import com.wormzjl.createcheme.science.material.MaterialCatalog;
 import com.wormzjl.createcheme.science.material.PilotCryogenicTestCatalog;
 import com.wormzjl.createcheme.science.thermo.phase.EquilibriumResult.Classification;
@@ -109,11 +108,11 @@ class GasSolidEquilibriumTest {
         assertEquals(UnsupportedReason.PHASE_COMPETITION_NOT_QUALIFIED, refused.reason(), refused.toString());
         var namedRefused = research.tp(EquilibriumRequest.tp(150.0, 1.0e6, BASIS, inNitrogen(0.01), named));
         assertEquals(UnsupportedReason.PHASE_COMPETITION_NOT_QUALIFIED, namedRefused.reason());
-        // A crystal the contract names without its evaluator here: not implemented (P2 rule kept), after the domain check (at
-        // 150 K CO2 is outside its fluid range, which a service without the crystal keeps).
+        // A crystal the contract names without its evaluator here: not implemented (P2 rule kept), at 150 K as at 250 K (no
+        // fluid range of CO2 is checked first since the owner rule of 2026-10-16).
         var withoutEvaluator = new FluidTpEquilibrium(contract, SERVICE.evaluator(), FluidTpEquilibrium.Settings.DEFAULT, null);
-        var outside = withoutEvaluator.tp(EquilibriumRequest.tp(150.0, 1.0e6, BASIS, inNitrogen(0.01), CRYSTALS));
-        assertEquals(Status.OUT_OF_DOMAIN, outside.status(), outside.toString());
+        var cold = withoutEvaluator.tp(EquilibriumRequest.tp(150.0, 1.0e6, BASIS, inNitrogen(0.01), CRYSTALS));
+        assertEquals(UnsupportedReason.NOT_IMPLEMENTED, cold.reason(), cold.toString());
         var missing = withoutEvaluator.tp(EquilibriumRequest.tp(250.0, 1.0e6, BASIS, inNitrogen(0.01), CRYSTALS));
         assertEquals(UnsupportedReason.NOT_IMPLEMENTED, missing.reason());
         assertTrue(missing.detail().contains("P4"), missing.detail());
@@ -148,10 +147,11 @@ class GasSolidEquilibriumTest {
                 }
             }
         }
-        // A fluid-only request still refuses CO2 below its fluid range: only the crystal competition admits it.
+        // A fluid-only request answers CO2 below its triple point as a fluid (no freezing-point floor since the owner rule of
+        // 2026-10-16); only the crystal competition lets it freeze.
         var cold = SERVICE.tp(EquilibriumRequest.tp(150.0, 1.0e6, BASIS, inNitrogen(0.01), PhaseCompetition.FLUID_ONLY), a);
-        assertEquals(Status.OUT_OF_DOMAIN, cold.status());
-        assertEquals("CarbonDioxide", cold.violation().component());
+        assertEquals(Status.CONVERGED, cold.status(), cold.toString());
+        assertFalse(cold.solidsAssessed());
         System.out.println("fluid-only requests compared bit for bit: " + compared);
     }
 
@@ -311,7 +311,7 @@ class GasSolidEquilibriumTest {
                     System.out.printf(Locale.ROOT, "%.3f | %.1f | | %.4f | | %s: %s%n", y, p / 1e6, onset.approximation(), onset.status(), onset.detail());
                     if (onset.status() == Status.UNSUPPORTED) holds++; else outside++;
                     assertTrue(onset.status() == Status.UNSUPPORTED && onset.detail().startsWith(EquilibriumResult.CRYSTAL_PHASES)
-                            || onset.status() == Status.OUT_OF_DOMAIN, onset.toString());
+                            || onset.status() == Status.NOT_CONVERGED && onset.detail().contains("window"), onset.toString());
                     continue;
                 }
                 double d = onset.approximation() - onset.temperature();
@@ -324,7 +324,7 @@ class GasSolidEquilibriumTest {
                 n++;
             }
         }
-        System.out.printf(Locale.ROOT, "onsets %d, holds %d, out of domain %d; |approx - onset| mean %.3f K, worst %.3f K%n", n, holds, outside, sum / n, worst);
+        System.out.printf(Locale.ROOT, "onsets %d, holds %d, beyond the window %d; |approx - onset| mean %.3f K, worst %.3f K%n", n, holds, outside, sum / n, worst);
         assertTrue(n >= 25);
     }
 
@@ -574,7 +574,8 @@ class GasSolidEquilibriumTest {
 
     /**
      * (f) Typed refusals: the crystal-phase holds that remain after P5 (two liquids, three fluid phases beside the crystal),
-     * packages without crystals, the domain, water. P4's solid-liquid holds are answers since P5 (checked here as such).
+     * packages without crystals, water; past the data the answers continue, graded extrapolated (owner rule of 2026-10-16).
+     * P4's solid-liquid holds are answers since P5 (checked here as such).
      */
     @Test
     void refusalsAreTyped() {
@@ -605,23 +606,33 @@ class GasSolidEquilibriumTest {
         var methane = tp(130.0, 1.0e6, feed(0, 1, 0, 0), ws);
         assertEquals(Classification.SINGLE_LIQUID, methane.classification(), methane.toString());
         assertTrue(methane.solidsAssessed() && methane.detail().contains("no competing crystal's species"));
-        // The domain of the crystal competition: 90 to 300 K for CO2 (the crystal and the spine), 10 MPa.
-        for (double[] state : new double[][] {{85, 1.0e5}, {310, 1.0e6}, {150, 1.2e7}}) {
+        // Past the data of the crystal competition (CO2's spine and crystal record from 90 K, the 10 MPa envelope) the answers
+        // continue, graded extrapolated (owner rule of 2026-10-16; out of domain before). Above the crystal's 300 K ceiling,
+        // where it ceases to exist, the fluid answers alone.
+        for (double[] state : new double[][] {{85, 1.0e5}, {150, 1.2e7}}) {
             var r = tp(state[0], state[1], inNitrogen(0.01), ws);
-            assertEquals(Status.OUT_OF_DOMAIN, r.status(), r.toString());
-            assertEquals(CoverageGrade.OUT_OF_DOMAIN, r.coverage().grade());
-            System.out.println("out of domain at " + state[0] + " K, " + state[1] + " Pa: " + r.violation().getMessage());
+            assertEquals(Status.CONVERGED, r.status(), r.toString());
+            assertEquals(CoverageGrade.EXTRAPOLATED, r.coverage().grade(), r.coverage().evidence());
+            System.out.println("extrapolated at " + state[0] + " K, " + state[1] + " Pa: " + r.coverage().evidence());
         }
+        var warm = tp(310.0, 1.0e6, inNitrogen(0.01), ws);
+        assertEquals(Status.CONVERGED, warm.status(), warm.toString());
+        assertTrue(warm.phases().stream().noneMatch(phase -> phase.kind() == PhaseKind.SOLID), warm.toString());
+        // The onsets: past the data an extrapolated answer; a fixed temperature above the ceiling has no crystal to search.
         var ceiling = SERVICE.depositionTemperature(null, 1.2e7, BASIS, inNitrogen(0.01), ws);
-        assertEquals(Status.OUT_OF_DOMAIN, ceiling.status(), ceiling.toString());
+        assertEquals(Status.CONVERGED, ceiling.status(), ceiling.toString());
+        assertEquals(CoverageGrade.EXTRAPOLATED, ceiling.coverage().grade());
         var tooCold = SERVICE.depositionTemperature(null, 1.0e5, BASIS, inNitrogen(1.0e-9), ws);
-        assertEquals(Status.OUT_OF_DOMAIN, tooCold.status(), tooCold.toString());
-        assertEquals(ThermoDomainViolation.Code.THERMO_DOMAIN_TEMPERATURE_BELOW, tooCold.violation().code());
+        assertEquals(Status.CONVERGED, tooCold.status(), tooCold.toString());
+        assertTrue(tooCold.temperature() < 90.0, "below CO2's 90 K data: " + tooCold.temperature());
+        assertEquals(CoverageGrade.EXTRAPOLATED, tooCold.coverage().grade());
         var tooWarm = SERVICE.depositionPressure(null, 305.0, BASIS, inNitrogen(0.5), ws);
-        assertEquals(Status.OUT_OF_DOMAIN, tooWarm.status(), tooWarm.toString());
-        var noOnsetBelowCeiling = SERVICE.depositionPressure(null, 250.0, BASIS, inNitrogen(0.5), ws);
-        assertEquals(Status.OUT_OF_DOMAIN, noOnsetBelowCeiling.status(), noOnsetBelowCeiling.toString());
-        assertEquals(ThermoDomainViolation.Code.THERMO_DOMAIN_PRESSURE_ABOVE, noOnsetBelowCeiling.violation().code());
+        assertEquals(Status.NOT_CONVERGED, tooWarm.status(), tooWarm.toString());
+        assertTrue(tooWarm.detail().contains("crystals cease to exist"), tooWarm.detail());
+        var compressed = SERVICE.depositionPressure(null, 250.0, BASIS, inNitrogen(0.5), ws);
+        System.out.println("50 % CO2 in N2 at 250 K, the onset past 10 MPa: " + compressed);
+        assertTrue(compressed.converged() ? compressed.pressure() > 1.0e7 && compressed.coverage().grade() == CoverageGrade.EXTRAPOLATED
+                : compressed.detail().contains("window"), compressed.toString());
         // Water with a crystal competition: hydrates, refused as water chemistry; with fluid-only competition unchanged.
         var wet = SERVICE.tp(EquilibriumRequest.tp(150.0, 1.0e6, BASIS, new double[] {0.9, 0, 0, 0.1, 0.01}, CRYSTALS), ws);
         assertEquals(UnsupportedReason.WATER_CHEMISTRY_NOT_MODELLED, wet.reason(), wet.toString());

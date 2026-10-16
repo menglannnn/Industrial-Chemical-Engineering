@@ -24,8 +24,9 @@ import java.util.TreeMap;
  * constants are fixed at load so that h(298.15 K) equals the formation enthalpy and s(298.15 K, 1e5 Pa) the standard
  * entropy in the segment holding 298.15 K, and are chained across the joins so h and s are continuous. The CEA
  * constants b1 and b2 are carried for provenance and not used. The Cp step at each join is measured at load and a
- * step above {@code maximum_cp_step_fraction} (default 0.005) refuses the record. A call outside the segments is
- * refused; the function never extrapolates.</p>
+ * step above {@code maximum_cp_step_fraction} (default 0.005) refuses the record. Past either end of the segments the
+ * Cp is held at the end value and h and s integrate it, so value and slope stay continuous (owner rule of 2026-10-16,
+ * plan RANGE_EXTRAPOLATION_PLAN section 3); only a temperature that is not positive and finite is refused.</p>
  *
  * <p>Evaluation is allocation-free and deterministic: a linear scan over at most 16 segments and closed-form sums over
  * primitive arrays. At a join the lower segment is used; the upper one agrees there by construction.</p>
@@ -161,26 +162,35 @@ public final class ReferenceSpine implements IdealGasFunction {
         return segments.length - 1;
     }
 
+    /** The segment holding a temperature inside the segments; the end segment past either end. */
     private int segment(double t) {
-        if (!(t >= minimumTemperature && t <= maximumTemperature))
-            throw new IllegalArgumentException(id + ": temperature " + t + " K outside the ideal-gas segments "
-                    + minimumTemperature + ".." + maximumTemperature + " K");
-        return locate(t);
+        if (!(t > 0) || !Double.isFinite(t))
+            throw new IllegalArgumentException(id + ": temperature " + t + " K must be positive and finite");
+        return t < minimumTemperature ? 0 : locate(t);
     }
 
+    /** The temperature the segments are evaluated at: {@code t} inside them, the nearer end outside. */
+    private double edge(double t) { return t < minimumTemperature ? minimumTemperature : t > maximumTemperature ? maximumTemperature : t; }
+
     @Override public double heatCapacity(double temperatureKelvin) {
-        return segments[segment(temperatureKelvin)].heatCapacity(temperatureKelvin);
+        return segments[segment(temperatureKelvin)].heatCapacity(edge(temperatureKelvin));
     }
 
     @Override public double enthalpy(double temperatureKelvin) {
-        return segmentEnthalpy(segment(temperatureKelvin), temperatureKelvin);
+        int k = segment(temperatureKelvin);
+        double end = edge(temperatureKelvin);
+        double h = segmentEnthalpy(k, end);
+        return end == temperatureKelvin ? h : h + segments[k].heatCapacity(end) * (temperatureKelvin - end);
     }
 
     @Override public double entropy(double temperatureKelvin, double pressurePascal) {
         int k = segment(temperatureKelvin);
         if (!(pressurePascal > 0) || !Double.isFinite(pressurePascal))
             throw new IllegalArgumentException(id + ": pressure " + pressurePascal + " Pa must be positive and finite");
-        return segmentEntropy(k, temperatureKelvin) - GAS_CONSTANT * DeterministicMath.log(pressurePascal / REFERENCE_PRESSURE);
+        double end = edge(temperatureKelvin);
+        double s = segmentEntropy(k, end);
+        if (end != temperatureKelvin) s += segments[k].heatCapacity(end) * DeterministicMath.log(temperatureKelvin / end);
+        return s - GAS_CONSTANT * DeterministicMath.log(pressurePascal / REFERENCE_PRESSURE);
     }
 
     @Override public double minimumTemperature() { return minimumTemperature; }

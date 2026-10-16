@@ -34,12 +34,14 @@ public final class MaterialCatalog {
         public CpSegment { coefficients = List.copyOf(coefficients); }
     }
     /**
-     * A temperature and pressure range the fluid network may evaluate a component (or, for a package, any state) in,
-     * with the evidence it rests on. Read from the {@code fluid_domain} object of a property or package record. It is
-     * kept beside the records rather than in them: the records' own ranges are the column's, and they and every other
-     * numeric field are hashed into the physics fingerprints the column's neural initializer and the fluid presets
-     * pin, which this must not move. The fluid network's thermodynamic revision hashes it instead
-     * ({@link #fluidThermoFingerprint}).
+     * The data range of a component (or, for a package, its envelope) as the fluid network reads it, with the evidence it
+     * rests on: a component's is the data range of a coefficient record's ideal-gas fit on the network (a spine has its own),
+     * a package's the envelope of its states and the input box of device settings. Leaving either never holds a state
+     * (owner rule of 2026-10-16: the models continue and a notice reports it). Read from the {@code fluid_domain} object
+     * of a property or package record. It is kept beside the records rather than in them: the records' own ranges are the
+     * column's, and they and every other numeric field are hashed into the physics fingerprints the column's neural
+     * initializer and the fluid presets pin, which this must not move. The fluid network's thermodynamic revision hashes
+     * it instead ({@link #fluidThermoFingerprint}).
      */
     public record Validity(double minimumTemperature, double maximumTemperature, double minimumPressure, double maximumPressure,
             String evidence) {
@@ -48,10 +50,6 @@ public final class MaterialCatalog {
                     || !(minimumPressure > 0) || !(maximumPressure > minimumPressure) || !Double.isFinite(maximumPressure))
                 throw new IllegalArgumentException("fluid_domain: invalid temperature or pressure range");
             Objects.requireNonNull(evidence);
-        }
-        public boolean within(Validity envelope) {
-            return minimumTemperature >= envelope.minimumTemperature && maximumTemperature <= envelope.maximumTemperature
-                    && minimumPressure >= envelope.minimumPressure && maximumPressure <= envelope.maximumPressure;
         }
         List<Double> numbers() { return List.of(minimumTemperature, maximumTemperature, minimumPressure, maximumPressure); }
     }
@@ -175,7 +173,7 @@ public final class MaterialCatalog {
     public Optional<Validity> fluidValidity(String packageId) {
         requirePackage(packageId);return Optional.ofNullable(packageValidity.get(packageId));
     }
-    /** A component's own fluid-network range in a package: its property record's {@code fluid_domain}, if it declares one. */
+    /** A component's own fluid-network data range in a package: its property record's {@code fluid_domain}, if it declares one. */
     public Optional<Validity> fluidValidity(String packageId,String componentId) {
         var p=requirePackage(packageId);int i=p.components().indexOf(p.canonicalId(componentId));
         if(i<0)throw new IllegalArgumentException("Component outside package: "+componentId);
@@ -425,11 +423,6 @@ public final class MaterialCatalog {
                     min,max,reference,coefficients,pr,bool(o,"estimated_heavy_residue"),low,translation));
             if (o.has("fluid_domain")) {
                 var domain=validity(object(o,"fluid_domain"));
-                // The vapour viscosity the network evaluates for every vapour it carries must cover the range the
-                // component claims, or a state inside it would still fail on a property it has no data for.
-                var vapor=viscosities.get("properties/"+id).get(ViscosityCorrelation.Phase.VAPOR);
-                if (vapor!=null && (vapor.minimumTemperatureKelvin()>domain.minimumTemperature() || vapor.maximumTemperatureKelvin()<domain.maximumTemperature()))
-                    throw new IllegalArgumentException("fluid_domain: temperature range exceeds the vapor viscosity data ("+vapor.minimumTemperatureKelvin()+".."+vapor.maximumTemperatureKelvin()+" K)");
                 if (low!=null && domain.minimumTemperature()<min)
                     throw new IllegalArgumentException("fluid_domain: below temperature_min_kelvin of a record with its own low-temperature fit");
                 propertyValidity.put(id,domain);
@@ -521,18 +514,10 @@ public final class MaterialCatalog {
             Water water=require(waters,text(o,"water_model"),"water_model");
             waterModels.put(id, text(o,"water_model"));
             if(o.has("fluid_domain")) {
-                // The fluid network's rule: the package range is the outer envelope, every component's own range - and
-                // the water model's, from its triple point to its enthalpy limit - lies inside it, and a state is valid
-                // only inside the range of every component it carries (science.fluid.thermo.FluidDomain).
-                var envelope=validity(object(o,"fluid_domain"));
-                for(var p:ps) {
-                    var own=propertyValidity.get(p.id());
-                    if(own==null)throw new IllegalArgumentException("fluid_domain: component "+p.component()+" ("+p.id()+") declares no fluid_domain");
-                    if(!own.within(envelope))throw new IllegalArgumentException("fluid_domain: component "+p.component()+" range lies outside the package envelope");
-                }
-                if(water.triplePoint()<envelope.minimumTemperature()||water.maximumTemperature()>envelope.maximumTemperature())
-                    throw new IllegalArgumentException("fluid_domain: the water model's range "+water.triplePoint()+".."+water.maximumTemperature()+" K lies outside the package envelope");
-                packageValidity.put(id,envelope);
+                // The package's envelope: the data range of the package as a whole and the input box of device settings
+                // (science.fluid.thermo.FluidDomain). Leaving it, or a component's range, never holds a state (owner rule of
+                // 2026-10-16): no range has to lie inside another.
+                packageValidity.put(id,validity(object(o,"fluid_domain")));
             }
             var assays=new HashMap<String,Assay>();
             for(var a:group(groups,"assays").values()) if(text(a,"package").equals(id)) checked(origins,a,() -> {

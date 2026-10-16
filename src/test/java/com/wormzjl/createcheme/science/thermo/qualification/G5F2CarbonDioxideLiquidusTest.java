@@ -45,7 +45,7 @@ class G5F2CarbonDioxideLiquidusTest {
             System.out.printf(Locale.ROOT, "  %s: MAD %.3f K against the P0 target %.1f K: %s%n", e.getKey(), e.getValue().mad(), TARGET,
                     e.getValue().mad() <= TARGET ? "met" : "missed");
         }
-        assertTrue(all.holds.isEmpty() && all.outOfDomain.isEmpty() && all.failures.isEmpty(), all.holds + " " + all.outOfDomain + " " + all.failures);
+        assertTrue(all.holds.isEmpty() && all.extrapolated.isEmpty() && all.failures.isEmpty(), all.holds + " " + all.extrapolated + " " + all.failures);
         assertTrue(datasets.get("Shen 2012").mad() <= SHEN_MAD, "Shen MAD " + datasets.get("Shen 2012").mad());
         assertTrue(datasets.get("Davis 1962").mad() <= DAVIS_MAD, "Davis MAD " + datasets.get("Davis 1962").mad());
         assertTrue(all.max() <= POINT_MAX, "max " + all.max());

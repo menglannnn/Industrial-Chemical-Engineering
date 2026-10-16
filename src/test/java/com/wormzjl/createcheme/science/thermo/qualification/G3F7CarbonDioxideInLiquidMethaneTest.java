@@ -3,7 +3,6 @@ package com.wormzjl.createcheme.science.thermo.qualification;
 import static com.wormzjl.createcheme.science.thermo.qualification.G3Support.*;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.wormzjl.createcheme.science.material.MaterialCatalog;
@@ -20,12 +19,12 @@ import org.junit.jupiter.api.Test;
  * G3 fixture family F7 (plan {@code P3_PILOT_ENGINE_PLAN.md} sections 5 and 8.2; D2, D8): CO2 in liquid methane, the
  * fluid states of the P5 freeze-out case at 91 to 120 K on the pilot package's evaluator. The fluid-only states are
  * <b>research-only</b> and recorded as before (the phase the engine finds, its label, density and the CO2 fugacity
- * coefficient, on an open research contract); the fluid-only network contract still refuses them (CO2's fluid range
- * starts at its 216.592 K triple point). Since P5 the pilot's crystal competition <b>answers</b> them (P4 stage 2b held
- * them typed): the CO2 beyond its solubility freezes as the CO2-I crystal beside the methane liquid
- * ({@code LIQUID_SOLID}), the rest stays one liquid, and the pilot network adopts every state (the supersaturated liquid
- * in its liquid slot). Its own bound: every state answered, the crystal's species conserved to 1e-13 and at the
- * crystal's chemical potential to 1e-9 in the liquid, the liquid beside the crystal on the engine's own liquidus
+ * coefficient, on an open research contract); the fluid-only network contract answers them the same since the owner rule
+ * of 2026-10-16 (it refused them below CO2's 216.592 K triple point before: a freezing point is no validity floor).
+ * Since P5 the pilot's crystal competition <b>answers</b> them (P4 stage 2b held them typed): the CO2 beyond its
+ * solubility freezes as the CO2-I crystal beside the methane liquid ({@code LIQUID_SOLID}), the rest stays one liquid,
+ * and the pilot network adopts every state (the supersaturated liquid in its liquid slot). Its own bound: every state
+ * answered, the crystal's species conserved to 1e-13 and at the crystal's chemical potential to 1e-9 in the liquid, the liquid beside the crystal on the engine's own liquidus
  * ({@code freezingTemperature} of the liquid's composition at the state's pressure within 1e-6 K of the state), and the
  * solubility at 112 and 120 K within a factor 1.6 of Shen 2012 / Gao 2012 (the accuracy itself is G5 family 2). CO2's
  * ideal gas below the triple point is the spine's extended alpha0 segment, graded estimated-with-declared-error (WP3).
@@ -74,18 +73,18 @@ class G3F7CarbonDioxideInLiquidMethaneTest {
                     double mw = 0;
                     for (int i = 0; i < 4; i++) mw += z[i] * evaluator.component(i).molarMassKilogramPerMol();
                     double lnPhi = state.logFugacityCoefficient(3);
-                    // The engine on the fluid-only network contract refuses CO2 below its range; the pilot network (its
-                    // crystal competition) answers since P5 (checked for every state below).
+                    // The engine on the fluid-only network contract answers the same phase (no freezing-point floor since the
+                    // owner rule of 2026-10-16); the pilot network (its crystal competition) answers since P5 (checked below).
                     var contract = production.tp(EquilibriumRequest.tp(t, p, production.contract().components(), new double[] {0, 1 - x, 0, x, 0},
                             PhaseCompetition.FLUID_ONLY), productionWs);
-                    assertEquals(EquilibriumResult.Status.OUT_OF_DOMAIN, contract.status());
-                    assertEquals("CarbonDioxide", contract.violation().component());
+                    assertTrue(contract.converged(), contract.detail());
+                    assertEquals(result.classification(), contract.classification());
                     var grade = spine.coverageAt(t).grade();
                     assertEquals(MaterialCoverage.Grade.ESTIMATED_DECLARED_ERROR, grade);
                     if (p == 2e6 || x == 1e-3) {
                         table.row(number(t), f("%.1f", p / 1e6), f("%.0e", x), result.classification() + " (" + phase.kind() + ")",
                                 result.diagnostics().feedVerdict(), f("%.1f", mw / state.molarVolume()), f("%+.4f", lnPhi),
-                                f("%.4g", x * p * Math.exp(lnPhi)), result.coverage().grade(), grade, "network: answered (P5); contract: CarbonDioxide below 216.592 K");
+                                f("%.4g", x * p * Math.exp(lnPhi)), result.coverage().grade(), grade, "network: answered (P5); contract: " + contract.coverage().grade());
                     }
                     states++;
                 }

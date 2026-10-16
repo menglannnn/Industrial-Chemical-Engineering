@@ -44,14 +44,12 @@ public final class NetworkCrystals {
                           CrystalPhaseEvaluator.Anchored anchored) {
         public Crystal{Objects.requireNonNull(material);Objects.requireNonNull(anchored);}
         /** {@code ln phi_s = (g_s(T, P) - g_ig(T, P)) / (R T)}: the crystal's chemical potential against its species' ideal gas
-         * (the package's spine), the reference the fluid's {@code ln (x phi P)} is stated on; refused outside the record's range. */
+         * (the package's spine), the reference the fluid's {@code ln (x phi P)} is stated on (continued past the record's range). */
         public double logFugacityCoefficient(double temperature,double pressure) {
             var gas=anchored.idealGas();
             double ideal=gas.enthalpy(temperature)-temperature*gas.entropy(temperature,pressure);
             return (anchored.chemicalPotential(temperature,pressure)-ideal)/(com.wormzjl.createcheme.science.thermo.PengRobinsonKernel.GAS_CONSTANT*temperature);
         }
-        /** Whether the crystal's model covers (T, P): its record's range and its ideal gas's. */
-        public boolean covers(double temperature,double pressure){return anchored.covers(temperature,pressure);}
         /** Moles of the component in {@code massKg} of this crystal. */
         public double moles(double massKg){return massKg/molarMass;}
     }

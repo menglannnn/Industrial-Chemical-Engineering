@@ -26,7 +26,7 @@ class MixtureViscosityTest {
                     double[] n=new double[p.components().size()];n[solute]=.05;n[carrierIndex]=.95;
                     checked++;
                     double expected=Math.exp(.05*Math.log(row.get("viscosity_pascal_seconds").getAsDouble())
-                            +.95*Math.log(carrier.dynamicViscosityPascalSeconds(t,carrier.minimumPressurePascal())));
+                            +.95*Math.log(carrier.dynamicViscosityPascalSeconds(t,ViscosityCorrelation.Phase.LIQUID)));
                     var actual=model.liquid(t,n);
                     assertTrue(actual.conditionalSoluteApproximation());
                     assertEquals(expected,actual.pascalSeconds(),expected*.0005);
@@ -46,6 +46,8 @@ class MixtureViscosityTest {
         var catalog=MaterialCatalog.bundled();var model=new MixtureViscosity(catalog,"createcheme:tjl20_methane");
         double[] light=new double[com.wormzjl.createcheme.science.material.MaterialTestBasis.CRUDE],heavy=new double[com.wormzjl.createcheme.science.material.MaterialTestBasis.CRUDE];light[6]=.99;light[1]=.01;heavy[com.wormzjl.createcheme.science.material.MaterialTestBasis.CRUDE-1]=.99;heavy[1]=.01;
         assertTrue(model.liquid(300,heavy).pascalSeconds()>model.liquid(300,light).pascalSeconds());
-        assertThrows(IllegalArgumentException.class,()->model.liquid(1000,heavy));
+        // Past its tables a crude liquid is continued, its table's end value held (owner rule of 2026-10-16), not refused.
+        double hot=model.liquid(1000,heavy).pascalSeconds();
+        assertTrue(hot>0&&Double.isFinite(hot),"continued crude liquid viscosity "+hot);
     }
 }

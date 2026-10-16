@@ -18,12 +18,26 @@ class WaterRegion1Test {
         relative(s.specificHeatCapacity(),(th.specificEnthalpy()-tl.specificEnthalpy())/.02);
         relative(s.enthalpyPressureDerivative(),(ph.specificEnthalpy()-pl.specificEnthalpy())/200);
     }
-    @Test void refusesVaporAndOutOfRegionStates() {
-        assertThrows(IllegalArgumentException.class,()->WaterRegion1.evaluate(500,1e5));
-        assertThrows(IllegalArgumentException.class,()->WaterRegion1.evaluate(650,80e6));
-        assertThrows(IllegalArgumentException.class,()->WaterRegion1.evaluate(300,101e6));
+    /**
+     * Owner rule of 2026-10-16: the liquid continues past Region 1 (the metastable liquid below saturation, the region's
+     * sums above 100 MPa, the held slopes past 623.15 K) and only a state that is not positive and finite is refused.
+     */
+    @Test void continuesPastItsRegionAndRefusesOnlyAStateThatIsNotPositive() {
+        var edge=WaterRegion1.evaluate(WaterRegion1.REGION_1_MAXIMUM_TEMPERATURE,80e6);
+        var hot=WaterRegion1.evaluate(650,80e6);
+        double step=650-WaterRegion1.REGION_1_MAXIMUM_TEMPERATURE;
+        assertEquals(edge.specificVolume()+edge.volumeTemperatureDerivative()*step,hot.specificVolume(),1e-15);
+        assertEquals(edge.specificEnthalpy()+edge.specificHeatCapacity()*step,hot.specificEnthalpy(),1e-6);
+        assertTrue(WaterRegion1.evaluate(500,1e5).specificVolume()>0,"the metastable liquid below saturation");
+        assertTrue(WaterRegion1.evaluate(300,101e6).specificVolume()>0,"the region's sums above 100 MPa");
+        assertThrows(IllegalArgumentException.class,()->WaterRegion1.evaluate(0,1e5));
+        assertThrows(IllegalArgumentException.class,()->WaterRegion1.evaluate(300,0));
+        assertThrows(IllegalArgumentException.class,()->WaterRegion1.evaluate(Double.NaN,1e5));
         assertThrows(IllegalArgumentException.class,()->WaterRegion1.diluteVaporViscosity(Double.NaN));
+        assertThrows(IllegalArgumentException.class,()->WaterRegion1.diluteVaporViscosity(0));
         assertTrue(WaterRegion1.diluteVaporViscosity(300)>9e-6);
+        double cold=WaterRegion1.diluteVaporViscosity(200);
+        assertTrue(cold>0&&cold<WaterRegion1.diluteVaporViscosity(WaterRegion1.VISCOSITY_LOW),"the power-law continuation");
     }
     private static void checkpoint(double t,double p,double v,double h,double u,double cp) {
         var s=WaterRegion1.evaluate(t,p);

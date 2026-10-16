@@ -7,7 +7,6 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.wormzjl.createcheme.fluid.support.FluidTestSupport;
-import com.wormzjl.createcheme.science.fluid.thermo.ThermoDomainViolation;
 import com.wormzjl.createcheme.science.material.MaterialCatalog;
 import com.wormzjl.createcheme.science.thermo.PengRobinsonKernel;
 import com.wormzjl.createcheme.science.thermo.PengRobinsonKernel.Root;
@@ -104,7 +103,9 @@ class FluidTpEquilibriumPhUvTest {
         assertEquals(EquilibriumRequest.Specification.UV, uv.specification());
         assertEquals(tp.classification(), uv.classification(), at + " UV");
         assertEquals(t, temperature(uv), ROUND_TRIP * t, at + " UV temperature");
-        assertEquals(p, pressure(uv), ROUND_TRIP * p, at + " UV pressure");
+        // The pressure follows from the recovered temperature at the specified volume: a stiff answer (a liquid) moves its
+        // pressure by T (dP/dT)_V / P times the temperature's relative error (about 230 for liquid water at 320 K, 1 MPa).
+        assertEquals(p, pressure(uv), isochoricStiffness(service, workspace, species, amounts, t, p) * ROUND_TRIP * p, at + " UV pressure");
         assertEquals(u, uv.internalEnergy(), 1.0e-6 * n * R * t, at + " UV energy");
         assertEquals(v, uv.volume(), 1.0e-6 * v, at + " UV volume");
         assertTrue(uv.diagnostics().specificationResidual() <= FluidTpEquilibrium.SPECIFICATION_TOLERANCE, at);
@@ -114,6 +115,24 @@ class FluidTpEquilibriumPhUvTest {
         assertTrue(uv.conservationDefect(overall) < CONSERVATION, at + " UV defect " + uv.conservationDefect(overall));
         tally.add(ph, uv, t, p, overall);
         return new EquilibriumResult[] {tp, ph, uv};
+    }
+
+    /**
+     * {@code max(1, T (dP/dT)_V / P)} of the TP answer at (t, p), from central differences of its volume (0.01 %); 1 where
+     * they do not give a positive finite slope (a step of V across a phase boundary).
+     */
+    private static double isochoricStiffness(FluidTpEquilibrium service, EquilibriumService.Workspace workspace, List<String> species,
+                                             double[] amounts, double t, double p) {
+        double dt = 1.0e-4 * t, dp = 1.0e-4 * p;
+        double[] v = new double[4];
+        double[][] states = {{t + dt, p}, {t - dt, p}, {t, p + dp}, {t, p - dp}};
+        for (int k = 0; k < 4; k++) {
+            var r = service.tp(EquilibriumRequest.tp(states[k][0], states[k][1], species, amounts, PhaseCompetition.FLUID_ONLY), workspace);
+            if (!r.converged()) return 1.0;
+            v[k] = r.volume();
+        }
+        double stiffness = -t / p * ((v[0] - v[1]) / (2.0 * dt)) / ((v[2] - v[3]) / (2.0 * dp));
+        return Double.isFinite(stiffness) ? Math.max(1.0, stiffness) : 1.0;
     }
 
     /** The 60 methane/nitrogen states of the P2 test (110 and 120 K, 0.5 to 3 MPa, x_N2 0.1 to 0.9). */
@@ -351,7 +370,13 @@ class FluidTpEquilibriumPhUvTest {
                     double[] amounts = PhaseTestSupport.crudeWithNitrogen(contract);
                     amounts[water] = ratio * PhaseTestSupport.sum(amounts);
                     var tp = service.tp(EquilibriumRequest.tp(t, p, species, amounts, PhaseCompetition.FLUID_ONLY), workspace);
-                    if (tp.status() == Status.OUT_OF_DOMAIN) continue;
+                    // Every state is answered: steam past its qualified partial pressure is graded extrapolated (owner rule of
+                    // 2026-10-16; out of domain before), and the round trips stay pinned on the qualified states as before.
+                    assertTrue(tp.converged(), t + " K " + p + " Pa: " + tp.detail());
+                    if (tp.coverage().grade() == CoverageGrade.EXTRAPOLATED) {
+                        assertTrue(tp.coverage().evidence().contains("the ideal steam's qualified partial pressure"), tp.coverage().evidence());
+                        continue;
+                    }
                     var results = roundTrip(service, workspace, species, amounts, t, p, tally);
                     var split = results[0].freeWater();
                     assertNotNull(split);
@@ -495,17 +520,18 @@ class FluidTpEquilibriumPhUvTest {
         }
         assertTrue(typed > 0, "no budget ended inside the band");
 
-        // Beyond the domain: methane's 293.15 K minimum (an enthalpy only a colder state has), the 10 MPa ceiling (WP7
-        // widened methane, nitrogen and the network envelope from 2 MPa), a volume only a pressure above the ceiling gives.
+        // Beyond the data (owner rule of 2026-10-16: answered, graded extrapolated): methane's 293.15 K ideal-gas fit (an
+        // enthalpy only a colder state has), the 10 MPa envelope (WP7 widened methane, nitrogen and the network envelope
+        // from 2 MPa), a volume only a pressure above the envelope gives.
         double[] methane = new double[species.size()];
         methane[contract.index("Methane")] = 1.0;
         var reference = service.tp(EquilibriumRequest.tp(300.0, 1.0e6, species, methane, PhaseCompetition.FLUID_ONLY), workspace);
         var cold = service.ph(EquilibriumRequest.ph(1.0e6, reference.enthalpy() - 5.0e3, species, methane,
                 PhaseCompetition.FLUID_ONLY), workspace);
-        assertEquals(Status.OUT_OF_DOMAIN, cold.status(), cold.toString());
-        assertEquals("Methane", cold.violation().component());
-        assertEquals(ThermoDomainViolation.Code.THERMO_DOMAIN_TEMPERATURE_BELOW, cold.violation().code());
-        assertEquals(CoverageGrade.OUT_OF_DOMAIN, cold.coverage().grade());
+        assertEquals(Status.CONVERGED, cold.status(), cold.toString());
+        assertTrue(temperature(cold) < 293.15, "colder than the fit: " + temperature(cold));
+        assertEquals(CoverageGrade.EXTRAPOLATED, cold.coverage().grade());
+        assertTrue(cold.coverage().evidence().contains("the ideal gas of Methane"), cold.coverage().evidence());
         assertTrue(cold.diagnostics().outerIterations() > 0);
         // The examples before WP7 (3 MPa, a fifth of the volume) lie inside the widened domain and are answered.
         var inside = service.ph(EquilibriumRequest.ph(3.0e6, reference.enthalpy(), species, methane, PhaseCompetition.FLUID_ONLY),
@@ -516,12 +542,13 @@ class FluidTpEquilibriumPhUvTest {
         assertEquals(Status.CONVERGED, insideUv.status(), insideUv.toString());
         var dense = service.ph(EquilibriumRequest.ph(12.0e6, reference.enthalpy(), species, methane, PhaseCompetition.FLUID_ONLY),
                 workspace);
-        assertEquals(Status.OUT_OF_DOMAIN, dense.status(), dense.toString());
-        assertEquals(ThermoDomainViolation.Code.THERMO_DOMAIN_PRESSURE_ABOVE, dense.violation().code(), dense.toString());
+        assertEquals(Status.CONVERGED, dense.status(), dense.toString());
+        assertEquals(CoverageGrade.EXTRAPOLATED, dense.coverage().grade(), dense.toString());
         var small = service.uv(EquilibriumRequest.uv(reference.internalEnergy(), 0.05 * reference.volume(), species, methane,
                 PhaseCompetition.FLUID_ONLY), workspace);
-        assertEquals(Status.OUT_OF_DOMAIN, small.status(), small.toString());
-        assertEquals(ThermoDomainViolation.Property.PRESSURE, small.violation().property());
+        assertEquals(Status.CONVERGED, small.status(), small.toString());
+        assertTrue(pressure(small) > 1.0e7, "above the envelope: " + pressure(small));
+        assertEquals(CoverageGrade.EXTRAPOLATED, small.coverage().grade());
 
         // Outside the contract: before any search.
         var crystal = service.ph(EquilibriumRequest.ph(1.0e6, 0.0, List.of("Methane"), new double[] {1.0},
@@ -606,17 +633,17 @@ class FluidTpEquilibriumPhUvTest {
     }
 
     /**
-     * P3 WP7d: a closed vessel whose state lies above the package's 10 MPa pressure ceiling is {@code OUT_OF_DOMAIN} in
-     * pressure with the ceiling named, well inside the search budget, whichever way the nested search's temperature
-     * bracket closes against the window (the G3 F8 finding: the liquid-full CH4/C2H6 0.5/0.5 vessel heated at fixed volume
-     * passes 10 MPa at 282.2 K, and the next UV request came back {@code NOT_CONVERGED} "a step of U(T)", or
-     * {@code OUT_OF_DOMAIN}, depending on which branch saw the closed bracket). Just outside and just inside, as the G3 F9
+     * P3 WP7d, since the owner rule of 2026-10-16: a closed vessel whose state lies above the package's 10 MPa envelope is
+     * answered and recovered, graded {@code EXTRAPOLATED}, well inside the search budget. It was {@code OUT_OF_DOMAIN} in
+     * pressure before (the G3 F8 finding: the liquid-full CH4/C2H6 0.5/0.5 vessel heated at fixed volume passes 10 MPa at
+     * 282.2 K, and the next UV request came back {@code NOT_CONVERGED} "a step of U(T)", or {@code OUT_OF_DOMAIN},
+     * depending on which branch saw the closed bracket against the window). Just outside and just inside, as the G3 F9
      * family places its boundaries: the {@code (U, V)} of CH4/C2H6 0.5/0.5 at 283 K and 10.05 MPa, at 285 K and 10.3 MPa and
-     * at 300 K and 12 MPa (one liquid-like phase each, on an open research contract over the same evaluator) are refused on
-     * the pilot's network contract; at 283 K and 9.95 MPa the state is answered and recovered.
+     * at 300 K and 12 MPa (one liquid-like phase each, on an open research contract over the same evaluator) are answered on
+     * the pilot's network contract, graded extrapolated; at 283 K and 9.95 MPa the state is answered and recovered as before.
      */
     @Test
-    void aClosedVesselBeyondThePressureCeilingIsOutOfDomain() {
+    void aClosedVesselBeyondThePressureEnvelopeIsAnsweredExtrapolated() {
         var catalog = MaterialCatalog.bundled();
         String pilot = "createcheme:pilot_cryogenic";
         var evaluator = CubicPhaseEvaluator.forPackage(catalog, pilot);
@@ -631,16 +658,15 @@ class FluidTpEquilibriumPhUvTest {
             assertEquals(1, state.phases().size());
             var uv = network.uv(EquilibriumRequest.uv(state.internalEnergy(), state.volume(), network.contract().components(), zNetwork,
                     PhaseCompetition.FLUID_ONLY), ws);
-            assertEquals(Status.OUT_OF_DOMAIN, uv.status(), uv.detail());
-            assertEquals(ThermoDomainViolation.Property.PRESSURE, uv.violation().property());
-            assertEquals(1.0e7, uv.violation().maximum(), "the ceiling named");
-            assertTrue(uv.violation().value() > 1.0e7);
-            assertTrue(uv.detail().contains("above the pressure window"), uv.detail());
-            assertEquals(CoverageGrade.OUT_OF_DOMAIN, uv.coverage().grade());
+            assertEquals(Status.CONVERGED, uv.status(), uv.detail());
+            assertEquals(s[0], temperature(uv), s[0] * ROUND_TRIP);
+            assertEquals(s[1], pressure(uv), s[1] * ROUND_TRIP);
+            assertEquals(CoverageGrade.EXTRAPOLATED, uv.coverage().grade());
+            assertTrue(uv.coverage().evidence().contains("extrapolated past the package envelope"), uv.coverage().evidence());
             assertTrue(uv.diagnostics().outerIterations() < network.settings().maximumOuterIterations(),
-                    "bracketed against the domain, not the budget: " + uv.diagnostics().outerIterations());
-            System.out.println("WP7d UV beyond the ceiling, " + s[0] + " K " + s[1] + " Pa: " + uv.status() + " after "
-                    + uv.diagnostics().outerIterations() + " TP equilibria: " + uv.violation().getMessage());
+                    "inside the budget: " + uv.diagnostics().outerIterations());
+            System.out.println("WP7d UV beyond the envelope, " + s[0] + " K " + s[1] + " Pa: " + uv.status() + " " + uv.coverage().grade()
+                    + " after " + uv.diagnostics().outerIterations() + " TP equilibria");
         }
         var inside = open.tp(EquilibriumRequest.tp(283.0, 9.95e6, open.contract().components(), z, PhaseCompetition.FLUID_ONLY));
         var uv = network.uv(EquilibriumRequest.uv(inside.internalEnergy(), inside.volume(), network.contract().components(), zNetwork,

@@ -98,9 +98,11 @@ class SpineNetworkPathTest {
     }
 
     /**
-     * Pure and mixed states through the network's flash and state at 0.1 to 10 MPa: conserved and finite. A state is
-     * refused only by the fluid domain (a species below its range) or by the free-water rule's steam partial-pressure
-     * limit; a CO2 gas below its triple point that deposits is stated as its gas, and since P5 a CO2-bearing liquid that
+     * Pure and mixed states through the network's flash and state at 0.1 to 10 MPa: conserved and finite. Since the owner
+     * rule of 2026-10-16 no state is refused for leaving a data range (a species below its spine, the steam partial-pressure
+     * limit, the envelope's 900 K): each is carried on its continuation. The wet feed below 273.16 K meets a capability
+     * hold: free liquid water is the interim ice hold, and its CO2-bearing hydrocarbons, fluid-only beside water (D8), may
+     * first show a third fluid phase the network does not carry. A CO2 gas below its triple point that deposits is stated as its gas, and since P5 a CO2-bearing liquid that
      * freezes as its liquid (the crystal is the vessel's inventory, moved by the engine's UV answer). P4 stage 2b held 69
      * states of this grid typed (65 SOLID_LIQUID, 4 THREE_PHASES); P5 answers all of them. Until P3 WP7 the network's initializer was a Wilson flash that did not converge once on this grid (CH4/CO2
      * 80/20 at 230 K and 2 MPa, next to its dew point); the equilibrium engine answers every state.
@@ -114,7 +116,7 @@ class SpineNetworkPathTest {
                 {0.05, 0.8, 0.1, 0.05, 0}, {0.1, 0.6, 0.1, 0.1, 0.1}};
         double[] temperatures = {80, 100, 120, 150, 180, 230, 260, 300, 400, 700, 1100};
         double[] pressures = {1.0e5, 3.0e5, 1.0e6, 2.0e6, 5.0e6, 1.0e7};
-        int evaluated = 0, domain = 0, steam = 0, twoPhase = 0;
+        int evaluated = 0, wetCold = 0, twoPhase = 0;
         var holds = new java.util.TreeMap<FluidThermodynamics.UnsupportedPhases.Kind, Integer>();
         List<String> failures = new ArrayList<>();
         for (double t : temperatures) {
@@ -123,22 +125,21 @@ class SpineNetworkPathTest {
                     FluidThermodynamics.State state;
                     try {
                         state = model.flashTP(t, p, feed, () -> { });
-                    } catch (ThermoDomainViolation outside) {
-                        domain++;
-                        continue;
                     } catch (FluidThermodynamics.UnsupportedPhases hold) {
+                        if (feed[4] > 0 && t < 273.16) {
+                            // The wet feed below 273.16 K: a capability hold (ice not modelled, or a third fluid phase first).
+                            wetCold++;
+                            continue;
+                        }
+                        assertTrue(hold.kind() != FluidThermodynamics.UnsupportedPhases.Kind.ICE, "the ice hold only on water below 273.16 K");
                         // P4 stage 2b held a crystal beside a liquid (SOLID_LIQUID) and a fluid answer with a third fluid
                         // phase (THREE_PHASES) here; P5 answers both. A typed hold may only remain where the crystal
                         // competition newly admits CO2 (two liquids or three fluid phases beside the crystal); none is met.
                         assertTrue(feed[3] > 0 && feed[4] == 0 && t < 216.592, "a typed hold only where the crystal competition newly admits CO2: "
                                 + t + " K, " + p + " Pa, " + java.util.Arrays.toString(feed) + ": " + hold.getMessage());
-                        holds.merge(kindOf(hold), 1, Integer::sum);
+                        holds.merge(hold.kind(), 1, Integer::sum);
                         continue;
                     } catch (IllegalArgumentException failed) {
-                        if (failed.getMessage().startsWith("Water-vapor approximation outside")) {
-                            steam++;
-                            continue;
-                        }
                         assertTrue(failed.getMessage().startsWith("Fluid TP equilibrium did not converge"), failed.getMessage());
                         failures.add(t + " K, " + p + " Pa, " + java.util.Arrays.toString(feed));
                         continue;
@@ -155,15 +156,17 @@ class SpineNetworkPathTest {
                 }
             }
         }
-        System.out.printf("WP5 pilot flash grid: %d states evaluated (%d two-phase), refused: %d by the fluid domain, %d by the steam"
-                + " partial-pressure limit, typed holds %s (P4 stage 2b), %d non-convergence%n", evaluated, twoPhase, domain, steam,
-                holds, failures.size());
+        System.out.printf("WP5 pilot flash grid: %d states evaluated (%d two-phase), %d wet holds below 273.16 K, typed holds %s"
+                + " (P4 stage 2b), %d non-convergence%n", evaluated, twoPhase, wetCold, holds, failures.size());
         failures.forEach(failure -> System.out.println("  did not converge: " + failure));
         assertEquals(List.of(), failures, "the equilibrium engine answers every state of the grid");
         assertTrue(evaluated >= 500 && twoPhase > 10, evaluated + " states, " + twoPhase + " two-phase");
-        // P5: the 69 typed holds of P4 stage 2b are answers (551 evaluated then, 620 now).
+        // P5: the 69 typed holds of P4 stage 2b are answers (551 evaluated then, 620 at P5). Since the owner rule of
+        // 2026-10-16 the 106 states P5 refused for a data range are answered too, except the wet feed below 273.16 K
+        // (7 temperatures by 6 pressures), a capability hold: 684.
         assertTrue(holds.isEmpty(), "no typed hold on the grid since P5: " + holds);
-        assertEquals(620, evaluated);
+        assertEquals(42, wetCold);
+        assertEquals(684, evaluated);
     }
 
     /** A P1 row: species, T [K], P [Pa], and the printed density, cp (%) and h (J/mol) deviations, anchor (b). */
@@ -412,24 +415,21 @@ class SpineNetworkPathTest {
     }
 
     @Test
-    void aSpeciesOutsideItsSpineIsRefusedTypedAndAnAbsentOneIsNotEvaluated() {
+    void aSpeciesBelowItsSpineIsCarriedOnItsHeldHeatCapacity() {
         var model = pilot();
         var eos = model.translated();
-        // Methane's spine starts at its triple point, 90.6941 K; CO2's r2 spine at 90 K.
-        var methane = assertThrows(ThermoDomainViolation.class, () -> eos.evaluateValues(85, 1e5, new double[] {0, 1, 0, 0}, Root.LIQUID, eos.prepare(85)));
-        assertEquals(PILOT, methane.packageId());
-        assertEquals("Methane", methane.component());
-        assertEquals(ThermoDomainViolation.Code.THERMO_DOMAIN_TEMPERATURE_BELOW, methane.code());
-        assertEquals(90.6941, methane.minimum(), 0.0);
-        var largest = assertThrows(ThermoDomainViolation.class,
-                () -> eos.evaluateValues(80, 1e5, new double[] {0.6, 0.1, 0, 0.3}, Root.LIQUID, eos.prepare(80)));
-        assertEquals("CarbonDioxide", largest.component(), "the carried species outside its spine with the largest amount");
-        // Pure nitrogen at 70 K: below every other spine, which is not evaluated for an absent species.
-        var terms = eos.prepare(70);
-        var values = eos.evaluateValues(70, 1e5, new double[] {1, 0, 0, 0}, Root.LIQUID, terms);
+        // Methane's spine starts at its triple point, 90.6941 K; CO2's r2 spine at 90 K. Below them the ideal-gas cp is held
+        // (owner rule of 2026-10-16): liquid methane at 85 K and an LNG with 30 % CO2 at 80 K are states, not refusals.
+        var methane = eos.evaluateValues(85, 1e5, new double[] {0, 1, 0, 0}, Root.LIQUID, eos.prepare(85));
+        assertTrue(Double.isFinite(methane.molarEnthalpy()) && methane.heatCapacity() > 0);
+        var mixed = eos.evaluateValues(80, 1e5, new double[] {0.6, 0.1, 0, 0.3}, Root.LIQUID, eos.prepare(80));
+        assertTrue(Double.isFinite(mixed.molarEnthalpy()) && mixed.heatCapacity() > 0);
+        // Pure nitrogen at 70 K, inside its own spine.
+        var values = eos.evaluateValues(70, 1e5, new double[] {1, 0, 0, 0}, Root.LIQUID, eos.prepare(70));
         assertTrue(Double.isFinite(values.molarEnthalpy()) && values.heatCapacity() > 0);
-        // The network's own entry refuses a carried species below its fluid range first, with the same type.
-        assertThrows(ThermoDomainViolation.class, () -> model.phase(85, 1e5, new double[] {0, 1, 0, 0}, Root.LIQUID));
+        // The network's own entry carries it too, with the same values.
+        var phase = model.phase(85, 1e5, new double[] {0, 1, 0, 0}, Root.LIQUID);
+        assertEquals(methane.molarEnthalpy(), phase.molarEnthalpy(), 1e-9 * Math.abs(methane.molarEnthalpy()));
     }
 
     @Test
@@ -442,7 +442,7 @@ class SpineNetworkPathTest {
         assertEquals(identity.revision(), model.revision());
         assertEquals(catalog.fluidThermoFingerprint(PILOT), identity.packageFingerprint());
         assertEquals(HydrocarbonModel.NETWORK_FAMILY, identity.evaluatorFamily());
-        assertEquals("pr78_translated_v1:direct-liquid-v1:tp-engine-v1:spine-sensible-datum-v1", identity.evaluatorFamily());
+        assertEquals("pr78_translated_v1:direct-liquid-v1:tp-engine-v1:range-continuation-v1:spine-sensible-datum-v1", identity.evaluatorFamily());
         assertEquals(catalog.requirePackage(PILOT).spineFingerprint(), identity.spineFingerprint());
         assertEquals(ThermoIdentity.SEPARATE_FREE_WATER_FORMULATION + ":" + catalog.requirePackage(PILOT).water().revision(),
                 identity.waterModelRevision());
@@ -497,12 +497,6 @@ class SpineNetworkPathTest {
         var column = com.wormzjl.createcheme.science.material.MaterialRuntime.with(MaterialCatalog.bundled(), "createcheme:tjl20_methane",
                 () -> com.wormzjl.createcheme.science.column.v3.thermo.V3PengRobinsonThermo.fromRegisteredPackage("createcheme:tjl20_methane"));
         assertEquals("createcheme:tjl20_methane", column.packageId());
-    }
-
-    /** The kind a typed hold names in its message (main's hold carries it in its message only). */
-    static FluidThermodynamics.UnsupportedPhases.Kind kindOf(FluidThermodynamics.UnsupportedPhases hold) {
-        for (var kind : FluidThermodynamics.UnsupportedPhases.Kind.values()) if (hold.getMessage().contains("(" + kind + ")")) return kind;
-        throw new AssertionError("no kind in " + hold.getMessage());
     }
 
     private static double sum(double[] values) {

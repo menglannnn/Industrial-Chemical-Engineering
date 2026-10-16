@@ -1,6 +1,5 @@
 package com.wormzjl.createcheme.science.thermo.phase;
 
-import com.wormzjl.createcheme.science.fluid.thermo.ThermoDomainViolation;
 import com.wormzjl.createcheme.science.thermo.TangentPlaneStability;
 import java.util.List;
 import java.util.Objects;
@@ -16,7 +15,6 @@ import java.util.Objects;
  *   {@link #coexisting()} states (the split of a pure component at its own coexistence pressure is not determined by
  *   T and P, and none is invented); a coverage grade an answer can have.</li>
  *   <li>{@link Status#UNSUPPORTED}: a typed {@link UnsupportedReason}, no phases, grade {@link CoverageGrade#UNAVAILABLE}.</li>
- *   <li>{@link Status#OUT_OF_DOMAIN}: the {@link ThermoDomainViolation}, no phases, grade {@link CoverageGrade#OUT_OF_DOMAIN}.</li>
  *   <li>{@link Status#NOT_CONVERGED}: no phases, grade {@link CoverageGrade#UNAVAILABLE}, diagnostics of the attempt.</li>
  * </ul>
  * <p>A solid phase must name a crystal of {@link #competition()}; a {@link PhaseCompetition#FLUID_ONLY} result
@@ -24,7 +22,7 @@ import java.util.Objects;
  * equilibrium.</p>
  */
 public final class EquilibriumResult {
-    public enum Status { CONVERGED, UNSUPPORTED, OUT_OF_DOMAIN, NOT_CONVERGED }
+    public enum Status { CONVERGED, UNSUPPORTED, NOT_CONVERGED }
 
     public enum UnsupportedReason {
         /** The request needs a phase competition the package is not qualified for. */
@@ -158,12 +156,16 @@ public final class EquilibriumResult {
         }
     }
 
-    /** The plan's coverage vocabulary (section 3, decision D7). */
+    /**
+     * The plan's coverage vocabulary (section 3, decision D7), with {@link #EXTRAPOLATED} (owner rule of 2026-10-16): a
+     * converged answer whose state lies outside a data range of the models it used (the package envelope, an ideal-gas
+     * function's, the steam's or a crystal record's), on their continuations.
+     */
     public enum CoverageGrade {
-        QUALIFIED, ESTIMATED_DECLARED_ERROR, RESEARCH_ONLY, UNAVAILABLE, OUT_OF_DOMAIN;
+        QUALIFIED, ESTIMATED_DECLARED_ERROR, RESEARCH_ONLY, EXTRAPOLATED, UNAVAILABLE;
 
         /** Whether a converged answer may carry this grade. */
-        public boolean answer() { return this == QUALIFIED || this == ESTIMATED_DECLARED_ERROR || this == RESEARCH_ONLY; }
+        public boolean answer() { return this == QUALIFIED || this == ESTIMATED_DECLARED_ERROR || this == RESEARCH_ONLY || this == EXTRAPOLATED; }
     }
 
     public record Coverage(CoverageGrade grade, String evidence) {
@@ -259,7 +261,6 @@ public final class EquilibriumResult {
     private final Status status;
     private final UnsupportedReason reason;
     private final String detail;
-    private final ThermoDomainViolation violation;
     private final ThermoIdentity identity;
     private final PhaseCompetition competition;
     private final Classification classification;
@@ -271,10 +272,10 @@ public final class EquilibriumResult {
     private final Deposition deposition;
 
     public EquilibriumResult(EquilibriumRequest.Specification specification, Status status, UnsupportedReason reason,
-                             String detail, ThermoDomainViolation violation, ThermoIdentity identity,
+                             String detail, ThermoIdentity identity,
                              PhaseCompetition competition, Classification classification, List<PhaseAmounts> phases,
                              List<PhaseState> coexisting, Coverage coverage, Diagnostics diagnostics) {
-        this(specification, status, reason, detail, violation, identity, competition, classification, phases, coexisting,
+        this(specification, status, reason, detail, identity, competition, classification, phases, coexisting,
                 coverage, diagnostics, null);
     }
 
@@ -282,11 +283,11 @@ public final class EquilibriumResult {
      * @param freeWater the free-water rule's numbers, exactly for a {@link Classification#FREE_WATER} result
      */
     public EquilibriumResult(EquilibriumRequest.Specification specification, Status status, UnsupportedReason reason,
-                             String detail, ThermoDomainViolation violation, ThermoIdentity identity,
+                             String detail, ThermoIdentity identity,
                              PhaseCompetition competition, Classification classification, List<PhaseAmounts> phases,
                              List<PhaseState> coexisting, Coverage coverage, Diagnostics diagnostics,
                              FreeWater freeWater) {
-        this(specification, status, reason, detail, violation, identity, competition, classification, phases, coexisting,
+        this(specification, status, reason, detail, identity, competition, classification, phases, coexisting,
                 coverage, diagnostics, freeWater, null);
     }
 
@@ -296,7 +297,7 @@ public final class EquilibriumResult {
      *        the engine attaches one to every such answer), otherwise {@code null}
      */
     public EquilibriumResult(EquilibriumRequest.Specification specification, Status status, UnsupportedReason reason,
-                             String detail, ThermoDomainViolation violation, ThermoIdentity identity,
+                             String detail, ThermoIdentity identity,
                              PhaseCompetition competition, Classification classification, List<PhaseAmounts> phases,
                              List<PhaseState> coexisting, Coverage coverage, Diagnostics diagnostics,
                              FreeWater freeWater, Deposition deposition) {
@@ -309,7 +310,6 @@ public final class EquilibriumResult {
         this.status = Objects.requireNonNull(status, "status");
         this.reason = reason;
         this.detail = Objects.requireNonNull(detail, "detail");
-        this.violation = violation;
         this.identity = Objects.requireNonNull(identity, "identity");
         this.competition = Objects.requireNonNull(competition, "competition");
         this.classification = Objects.requireNonNull(classification, "classification");
@@ -318,7 +318,6 @@ public final class EquilibriumResult {
         this.coverage = Objects.requireNonNull(coverage, "coverage");
         this.diagnostics = Objects.requireNonNull(diagnostics, "diagnostics");
         if ((status == Status.UNSUPPORTED) != (reason != null)) throw new IllegalArgumentException("Exactly an unsupported result has a reason");
-        if ((status == Status.OUT_OF_DOMAIN) != (violation != null)) throw new IllegalArgumentException("Exactly an out-of-domain result has a violation");
         for (PhaseState state : this.coexisting) {
             if (!state.frozen()) throw new IllegalArgumentException("A result holds frozen phase states");
         }
@@ -351,29 +350,27 @@ public final class EquilibriumResult {
             if (!this.phases.isEmpty() || !this.coexisting.isEmpty() || classification != Classification.NONE || deposition != null) {
                 throw new IllegalArgumentException("Only a converged result has phases and a classification");
             }
-            CoverageGrade expected = status == Status.OUT_OF_DOMAIN ? CoverageGrade.OUT_OF_DOMAIN : CoverageGrade.UNAVAILABLE;
-            if (coverage.grade() != expected) throw new IllegalArgumentException(status + " is graded " + expected);
+            if (coverage.grade() != CoverageGrade.UNAVAILABLE) throw new IllegalArgumentException(status + " is graded " + CoverageGrade.UNAVAILABLE);
         }
     }
 
     public static EquilibriumResult unsupported(EquilibriumRequest.Specification specification, ThermoIdentity identity,
                                                 PhaseCompetition competition, UnsupportedReason reason, String detail) {
-        return new EquilibriumResult(specification, Status.UNSUPPORTED, Objects.requireNonNull(reason), detail, null,
+        return new EquilibriumResult(specification, Status.UNSUPPORTED, Objects.requireNonNull(reason), detail,
                 identity, competition, Classification.NONE, List.of(), List.of(),
                 new Coverage(CoverageGrade.UNAVAILABLE, reason + ": " + detail), Diagnostics.NONE);
     }
 
-    public static EquilibriumResult outOfDomain(EquilibriumRequest.Specification specification, ThermoIdentity identity,
-                                                PhaseCompetition competition, ThermoDomainViolation violation) {
-        return new EquilibriumResult(specification, Status.OUT_OF_DOMAIN, null, violation.getMessage(), violation,
-                identity, competition, Classification.NONE, List.of(), List.of(),
-                new Coverage(CoverageGrade.OUT_OF_DOMAIN, violation.getMessage()), Diagnostics.NONE);
-    }
-
     public static EquilibriumResult notConverged(EquilibriumRequest.Specification specification, ThermoIdentity identity,
                                                  PhaseCompetition competition, String detail, Diagnostics diagnostics) {
-        return new EquilibriumResult(specification, Status.NOT_CONVERGED, null, detail, null, identity, competition,
+        return new EquilibriumResult(specification, Status.NOT_CONVERGED, null, detail, identity, competition,
                 Classification.NONE, List.of(), List.of(), new Coverage(CoverageGrade.UNAVAILABLE, detail), diagnostics);
+    }
+
+    /** This result with another coverage (the engine grades an answer outside a data range, owner rule of 2026-10-16). */
+    EquilibriumResult withCoverage(Coverage coverage) {
+        return new EquilibriumResult(specification, status, reason, detail, identity, competition, classification, phases,
+                coexisting, coverage, diagnostics, freeWater, deposition);
     }
 
     public EquilibriumRequest.Specification specification() { return specification; }
@@ -382,8 +379,6 @@ public final class EquilibriumResult {
     /** The typed reason of an {@link Status#UNSUPPORTED} result, {@code null} otherwise. */
     public UnsupportedReason reason() { return reason; }
     public String detail() { return detail; }
-    /** The domain violation of an {@link Status#OUT_OF_DOMAIN} result, {@code null} otherwise. */
-    public ThermoDomainViolation violation() { return violation; }
     public ThermoIdentity identity() { return identity; }
     /** The competition the answer covers; a fluid-only answer says nothing about solids. */
     public PhaseCompetition competition() { return competition; }

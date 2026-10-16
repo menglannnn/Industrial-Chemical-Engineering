@@ -85,7 +85,7 @@ class CrystalPhaseEvaluatorTest {
     }
 
     @Test
-    void refusesForeignAnchorsAndStatesOutsideItsRange() {
+    void refusesForeignAnchorsAndContinuesPastItsRange() {
         MaterialCatalog catalog = MaterialCatalog.bundled();
         var fluid = CubicPhaseEvaluator.forPackage(catalog, PILOT);
         var solid = CrystalPhaseEvaluator.forPackage(catalog, PILOT, CRYSTAL);
@@ -95,12 +95,14 @@ class CrystalPhaseEvaluatorTest {
         var elsewhere = new SolidPhaseEvaluator.TriplePointAnchor("CarbonDioxide", 216.0, TRIPLE_PRESSURE, anchor.chemicalPotential(), anchor.liquidEnthalpy());
         var moved = assertThrows(IllegalArgumentException.class, () -> solid.evaluate(180, 1e5, elsewhere, new PhaseState(1)));
         assertTrue(moved.getMessage().contains("not at the record's triple point"), moved.getMessage());
-        // The crystal's range (80 to 300 K, to 500 MPa), then the spine's (CO2 from 90 K), are refused, never extrapolated.
-        assertThrows(IllegalArgumentException.class, () -> solid.evaluate(79.9, 1e5, anchor, new PhaseState(1)));
-        assertThrows(IllegalArgumentException.class, () -> solid.evaluate(301, 1e5, anchor, new PhaseState(1)));
-        assertThrows(IllegalArgumentException.class, () -> solid.evaluate(200, 5.1e8, anchor, new PhaseState(1)));
-        var spine = assertThrows(IllegalArgumentException.class, () -> solid.evaluate(85, 1e-3, anchor, new PhaseState(1)));
-        System.out.println("CO2-I at 85 K refused by the spine: " + spine.getMessage());
+        // Past the crystal's range (80 to 300 K, to 500 MPa) and the spine's (CO2 from 90 K) both continue (owner rule of
+        // 2026-10-16); only a state that is not positive is refused.
+        for (double[] state : new double[][] {{79.9, 1e5}, {301, 1e5}, {200, 5.1e8}, {85, 1e-3}}) {
+            var continued = solid.evaluate(state[0], state[1], anchor, new PhaseState(1));
+            assertTrue(Double.isFinite(continued.chemicalPotential(0)), "continued at " + state[0] + " K, " + state[1] + " Pa");
+        }
+        assertThrows(IllegalArgumentException.class, () -> solid.evaluate(200, 0, anchor, new PhaseState(1)));
+        assertThrows(IllegalArgumentException.class, () -> solid.evaluate(0, 1e5, anchor, new PhaseState(1)));
         assertThrows(IllegalArgumentException.class, () -> solid.evaluate(180, 1e5, anchor, new PhaseState(2)));
         assertThrows(IllegalArgumentException.class, () -> CrystalPhaseEvaluator.forPackage(catalog, "createcheme:tjl20_methane_nitrogen", CRYSTAL));
         // An unusable record is refused at construction.

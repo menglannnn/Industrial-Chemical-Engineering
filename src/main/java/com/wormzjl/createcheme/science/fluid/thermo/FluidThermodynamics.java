@@ -5,6 +5,7 @@ import com.wormzjl.createcheme.science.fluid.diagnostics.SolverDiagnostics;
 import com.wormzjl.createcheme.science.fluid.transport.MixtureViscosity;
 import com.wormzjl.createcheme.science.material.MaterialCatalog;
 import com.wormzjl.createcheme.science.material.SolidMaterialCatalog;
+import com.wormzjl.createcheme.science.thermo.NumericalBox;
 import com.wormzjl.createcheme.science.thermo.PengRobinsonKernel;
 import com.wormzjl.createcheme.science.thermo.TraceTruncationPolicy;
 import com.wormzjl.createcheme.science.thermo.phase.EquilibriumResult;
@@ -50,6 +51,8 @@ public final class FluidThermodynamics {
      * and a {@code ThreadLocal} set/remove per call, and a coefficient read inside costs a
      * {@code ThreadLocal} lookup and two immutable-map probes. */
     private final MaterialCatalog.Water water;
+    /** The free water's ideal steam, continued past the water record's range ({@link NetworkPhaseEngine.Steam}). */
+    private final NetworkPhaseEngine.Steam steam;
     private final double waterEnthalpyOffset;
     private final double maximumVelocity;
     /** Carried on the model, like {@link #maximumVelocity}, because every retained solver, workspace
@@ -105,6 +108,7 @@ public final class FluidThermodynamics {
         // The same resolution the context form performs, including its fallback package.
         water=com.wormzjl.createcheme.science.material.MaterialRuntime.with(catalog,packageId,
                 com.wormzjl.createcheme.science.material.MaterialRuntime::water);
+        steam=new NetworkPhaseEngine.Steam(water);
         domain=hydrocarbon.domain();
         // The crystal competition: the package's admitted crystals, on a spine package only (a crystal is anchored to the
         // spine family's liquid, and its enthalpy is moved to the network datum by the spine's formation enthalpies). None
@@ -119,7 +123,7 @@ public final class FluidThermodynamics {
         }
         crystalCeiling=ceiling;
         // Region 1 at 298.15 K and 1 atm itself, the stable liquid: the network's water datum and the pump's density.
-        var reference=WaterRegion1.evaluate(domain.packageId(),water,298.15,101325);
+        var reference=WaterRegion1.evaluate(water,298.15,101325);
         waterEnthalpyOffset=V3WaterProperties.liquidMolarEnthalpy(water,298.15)-reference.specificEnthalpy()*waterMolecularWeight;
         pumpReferenceDensity=waterMolecularWeight/(reference.specificVolume()*waterMolecularWeight);
         this.catalog=catalog;
@@ -180,10 +184,10 @@ public final class FluidThermodynamics {
      * basis, water last; dry) with the crystals competing at internal energy {@code energy} (J, the network's datum: the
      * fluid's and the crystals' true energy, every inert solid's excluded) and volume {@code volume} (m3, the bag less the
      * inert solids), warm-started at {@code (hintT, hintP)} when both are finite. {@code checkpoint} runs as for
-     * {@link #equilibriumTP}. Refusals are typed where the engine types them: outside the domain the
-     * {@link ThermoDomainViolation}, a phase set the engine does not implement or a crystal step it does not answer the
-     * {@link UnsupportedPhases} of kind {@code CRYSTAL_PHASES} or {@code CRYSTAL_STEP}, the critical band's
-     * {@link CriticalBandHold}; any other failure is a plain {@link IllegalArgumentException}.
+     * {@link #equilibriumTP}. Refusals are typed where the engine types them: a phase set the engine does not implement or
+     * a crystal step it does not answer the {@link UnsupportedPhases} of kind {@code CRYSTAL_PHASES} or
+     * {@code CRYSTAL_STEP}, the critical band's {@link CriticalBandHold}; any other failure is a plain
+     * {@link IllegalArgumentException}.
      */
     public CrystalAnswer crystalsAtVolume(double[] totals,double energy,double volume,double hintT,double hintP,Runnable checkpoint) {
         checkpoint.run();
@@ -209,7 +213,6 @@ public final class FluidThermodynamics {
         var crystals=crystalSolids();
         switch(result.status()) {
             case CONVERGED->{}
-            case OUT_OF_DOMAIN->throw result.violation();
             case UNSUPPORTED->{
                 if(result.detail().startsWith(EquilibriumResult.CRYSTAL_PHASES))throw new UnsupportedPhases(domain.packageId(),Double.NaN,Double.NaN,
                         UnsupportedPhases.Kind.CRYSTAL_PHASES,"a crystal beside a phase set the engine does not implement ("+result.detail()+")");
@@ -246,7 +249,7 @@ public final class FluidThermodynamics {
         State state=fluid?state(t,p,liquid,vapor,0,0,p,terms,null):null;
         return new CrystalAnswer(t,p,state,moles,volume+(state==null?0:state.volume()));
     }
-    /** Where this model may evaluate a state: the package envelope and every component's range, from the package's data. */
+    /** The package's data ranges: its envelope, the input box of a device setting ({@link FluidDomain}). */
     public FluidDomain domain(){return domain;}
     private final FluidDomain domain;
     /** The crystals the package admits, in declaration order; empty without a crystal competition. */
@@ -285,20 +288,24 @@ public final class FluidThermodynamics {
         for(int c=0;c<weights.length;c++)weights[c]=molecularWeight(c);
         return weights;
     }
-    /** Below the water model's triple point there is no liquid-vapour saturation (ice is not modelled): a
-     * thermo-domain violation naming water, before the column's correlation is reached. */
+    /**
+     * The free water's saturation pressure: the Wagner-Pruss equation, below the water model's triple point the
+     * supercooled liquid's ({@link V3WaterProperties#wagnerPruss}), infinite from the critical temperature on (water there
+     * is steam).
+     */
     public double saturationPressure(double t) {
         if(!Double.isFinite(t))throw new IllegalArgumentException("Non-finite water temperature");
-        if(t<water.triplePoint())domain.checkWaterTemperature(t);
-        return t>=water.criticalTemperature()?Double.POSITIVE_INFINITY:V3WaterProperties.saturationPressurePascal(water,t);
+        return t>=water.criticalTemperature()?Double.POSITIVE_INFINITY:V3WaterProperties.wagnerPruss(water,t);
     }
     /** The saturation pressure of a prepared node temperature, evaluated once for that temperature. */
     public double saturationPressure(Prepared prepared) { return own(prepared).saturationPressure(); }
+    /** The molar enthalpy of the free water's ideal steam, J/mol ({@link NetworkPhaseEngine.Steam}). */
     public double vaporWaterEnthalpy(double t) {
         if(!Double.isFinite(t))throw new IllegalArgumentException("Non-finite water temperature");
-        domain.checkWaterTemperature(t);
-        return V3WaterProperties.vaporMolarEnthalpy(water,t);
+        return steam.enthalpy(t);
     }
+    /** The free water's ideal steam: the phase engine's water vapour and the notices' data range. */
+    NetworkPhaseEngine.Steam steam(){return steam;}
     public double maximumVelocityMetresPerSecond(){return maximumVelocity;}
     /** The per-node phase support the step solver freezes its Newton unknowns with. */
     public TraceTruncationPolicy traceTruncation(){return tracePolicy;}
@@ -539,21 +546,22 @@ public final class FluidThermodynamics {
     }
     /** The amount sum {@link #state} forms ({@code sum}), without its validation: a state's own amounts are valid. */
     private static double total(double[] values){double total=0;for(double value:values)total+=value;return total;}
+    /**
+     * The partial pressure up to which the free water's steam is qualified as an ideal gas, Pa (0.125 MPa near ambient
+     * to 2 MPa from 900 K): a data range, which a notice reports (owner rule of 2026-10-16); above it the ideal steam
+     * continues.
+     */
     public static double waterVaporPressureLimit(double t) {
         if(t>=900)return 2e6;if(t>=750)return 1.5e6;if(t>=600)return .8e6;
         if(t>=500)return .4e6;if(t>=450)return .25e6;if(t>=400)return .15e6;return .125e6;
     }
     /**
      * Liquid water at the state pressure, into the prepared temperature's Region 1 workspace (a fresh one for a
-     * standalone call): the stable liquid at or above the saturation pressure, the metastable liquid below it within
-     * {@link WaterRegion1#METASTABLE_MARGIN_PASCAL}. A temperature outside Region 1 is refused before the
-     * saturation pressure is evaluated, naming water.
+     * standalone call): Region 1 and its continuation past its range ({@link WaterRegion1#evaluateLiquid}).
      */
     private WaterRegion1.Workspace waterAt(double t,double p,Prepared prepared) {
-        WaterRegion1.requireTemperature(domain.packageId(),water,t,p);
         var workspace=prepared==null?new WaterRegion1.Workspace():prepared.water();
-        double saturation=prepared==null?saturationPressure(t):prepared.saturationPressure();
-        WaterRegion1.evaluateLiquid(domain.packageId(),water,t,p,saturation,workspace);
+        WaterRegion1.evaluateLiquid(water,t,p,workspace);
         return workspace;
     }
     public WaterLiquid waterLiquid(double t,double p) { return waterLiquid(t,p,null); }
@@ -590,9 +598,13 @@ public final class FluidThermodynamics {
         int n=hydrocarbon.componentCount();
         if(liquid.length!=n||vapor.length!=n)throw new IllegalArgumentException("Fluid state basis mismatch");
         if(!Double.isFinite(t)||!Double.isFinite(p)||!Double.isFinite(waterLiquid)||!Double.isFinite(waterVapor))throw new IllegalArgumentException("Fluid state is not finite");
-        // The package's domain, from its data: a ThermoDomainViolation names the carried component whose range the
-        // state leaves, or the package envelope. Malformed input above stays a plain IllegalArgumentException.
-        domain.check(t,p,liquid,vapor,waterLiquid+waterVapor);
+        // No data range bounds a state (owner rule of 2026-10-16: every property continues past its data, and the
+        // interval's notice reports it); only the numerical box refuses a trial, a plain IllegalArgumentException.
+        NumericalBox.require(t,p);
+        // Free liquid water below its triple point would freeze; ice is not modelled yet: a capability hold. Water vapour
+        // there is carried (a humid gas continues).
+        if(waterLiquid>0&&t<water.triplePoint())throw new UnsupportedPhases(domain.packageId(),t,p,UnsupportedPhases.Kind.ICE,
+                waterLiquid+" mol of free liquid water below the water model's triple point "+water.triplePoint()+" K");
         double nl=sum(liquid),nv=sum(vapor),volume=0,h=0,mass=0,gasVolume=0,vl=0,vw=0;
         if(terms==null&&(nl>0||nv>0))terms=prepared==null?hydrocarbon.prepare(t):prepared.pengRobinson();
         HydrocarbonModel.Phase lp=null,vp=null;
@@ -608,7 +620,6 @@ public final class FluidThermodynamics {
         }
         if(waterVapor>0) {if(nv==0)gasVolume=waterVapor*R*t/p;h+=waterVapor*(prepared==null?vaporWaterEnthalpy(t):prepared.vaporEnthalpy());}
         double pw=waterVapor>0?waterVapor*R*t/gasVolume:0;
-        if(pw>waterVaporPressureLimit(t))throw new IllegalArgumentException(STEAM_LIMIT);
         volume+=gasVolume;
         for(int i=0;i<n;i++)mass+=(liquid[i]+vapor[i])*hydrocarbon.molecularWeight(i);
         mass+=(waterLiquid+waterVapor)*waterMolecularWeight;
@@ -620,14 +631,11 @@ public final class FluidThermodynamics {
     /** Stationary dry inventory. Pressure is retained as an initialization hint, not a gas pressure. */
     public State solidState(double temperature,double pressure,com.wormzjl.createcheme.science.fluid.state.SolidInventory solids) {
         if(solids.empty()||!Double.isFinite(temperature)||!Double.isFinite(pressure))throw new IllegalArgumentException("Dry solid state needs solids and a finite temperature and pressure");
-        domain.checkEnvelope(temperature,pressure);
+        NumericalBox.require(temperature,pressure);
         var moments=solids.moments();var empty=new double[hydrocarbon.componentCount()];
         return new State(temperature,pressure,empty,empty,0,0,0,0,moments.volume(),
                 moments.enthalpy(temperature,pressure),moments.internalEnergy(temperature),moments.mass(),0,0,0,null,null,solids,moments,0);
     }
-
-    /** The refusal {@link #state} throws for a gas whose steam exceeds the approximation's qualified partial pressure. */
-    static final String STEAM_LIMIT="Water-vapor approximation outside qualified partial-pressure range";
 
     /**
      * Owner decision D34 (phase-ports batch, 2026-09-28): a fluid phase holding less than this share of its node's fluid
@@ -921,9 +929,11 @@ public final class FluidThermodynamics {
      * hydrocarbon vapour's partial pressure. A pure component exactly at its own coexistence pressure is a single
      * liquid here (the split is undetermined by T and P).</p>
      *
-     * <p>Refusals: a state outside the domain is the {@link ThermoDomainViolation} it always was (checked before the
-     * engine runs, naming the component); steam above its qualified partial pressure is {@link #STEAM_LIMIT}, as in
-     * {@link #state}; an answer the engine could not converge inside the declared critical band is the typed
+     * <p>Refusals: a state outside the numerical box is a plain {@link IllegalArgumentException} (checked before the
+     * engine runs; no data range bounds a state); free liquid water below its triple point is the typed
+     * {@link UnsupportedPhases.Kind#ICE} hold, as in {@link #state}, decided before the engine runs where the water exceeds
+     * what the hydrocarbons carry as vapour at its saturation pressure; an answer the engine could not converge inside the
+     * declared critical band is the typed
      * {@link CriticalBandHold}; a liquid-liquid split (two liquid-like hydrocarbon phases) and a split with a product proved
      * unstable (a third fluid phase indicated) are {@link UnsupportedPhases}, since a node carries one hydrocarbon liquid
      * and one vapour; any other failure is a plain {@link IllegalArgumentException}. Pure water needs no phase decision
@@ -948,10 +958,17 @@ public final class FluidThermodynamics {
         double[] hc=Arrays.copyOf(overall,n);double nh=sum(hc),w=overall[n];
         if(!Double.isFinite(w)||w<0||nh+w<=0)throw new IllegalArgumentException("Empty fluid initialization");
         if(!Double.isFinite(t)||!Double.isFinite(p))throw new IllegalArgumentException("Fluid initialization is not finite");
-        // Refused before any equilibrium is formed: outside a component's range the numbers mean nothing, and the
-        // violation says which component, not which intermediate overflowed.
-        domain.checkTotals(t,p,overall);
+        // Refused before any equilibrium is formed: outside the numerical box no model is trusted at all.
+        NumericalBox.require(t,p);
         if(nh==0)return state(t,p,hc,hc,p>=saturationPressure(t)?w:0,p>=saturationPressure(t)?0:w,0);
+        // Free liquid water below its triple point is certain where the water exceeds what the hydrocarbons, all vapour, carry
+        // at its saturation pressure: the ice hold (a capability limit, ice is not modelled yet) comes before the hydrocarbon
+        // phases are decided, whatever limit they would meet.
+        if(w>0&&t<water.triplePoint()) {
+            double psat=saturationPressure(t),carried=p>psat?nh*psat/(p-psat):Double.POSITIVE_INFINITY;
+            if(w>carried)throw new UnsupportedPhases(domain.packageId(),t,p,UnsupportedPhases.Kind.ICE,
+                    (w-carried)+" mol or more of free liquid water below the water model's triple point "+water.triplePoint()+" K");
+        }
         checkpoint.run();
         var result=phaseEngine().tp(t,p,overall,crystalsCompete(t,overall));
         for(int evaluation=result.diagnostics().kernelEvaluations();evaluation>0;evaluation--)checkpoint.run();
@@ -986,9 +1003,9 @@ public final class FluidThermodynamics {
     /**
      * Whether a request on {@code overall} (conserved basis, water last) at {@code t} is made under the crystal competition:
      * the package admits crystals, the request carries a crystal's species and no water (crystals beside water would
-     * compete with hydrates, D8; water is out of domain below 273.16 K anyway, where no CO2 crystal is stable within the
-     * 10 MPa envelope), and {@code t} is at or below the crystals' ceiling (above it the fluid ranges apply and no
-     * crystal is stable). Otherwise fluid-only.
+     * compete with hydrates, D8; free liquid water below 273.16 K holds as ice not modelled yet), and {@code t} is at or
+     * below the crystals' ceiling (the competition's existence limit, not a data range: above it no crystal is stable).
+     * Otherwise fluid-only.
      */
     public boolean crystalsCompete(double t,double[] overall) {
         if(crystalIds.isEmpty()||overall[overall.length-1]!=0||!(t<=crystalCeiling))return false;
@@ -1018,12 +1035,6 @@ public final class FluidThermodynamics {
     State adopt(double t,double p,double[] overall,EquilibriumResult result,TranslatedPengRobinson.Workspace terms) {
         switch(result.status()) {
             case CONVERGED->{}
-            case OUT_OF_DOMAIN->{
-                var violation=result.violation();
-                if(violation.component().equals("Water")&&violation.property()==ThermoDomainViolation.Property.PRESSURE
-                        &&violation.maximum()==waterVaporPressureLimit(t))throw new IllegalArgumentException(STEAM_LIMIT);
-                throw violation;
-            }
             case NOT_CONVERGED->{
                 if(result.diagnostics().criticalBand())throw new CriticalBandHold(domain.packageId(),t,p,result.detail());
                 // A converged split with a product proved unstable: a third fluid phase is indicated, which a node cannot
@@ -1104,40 +1115,10 @@ public final class FluidThermodynamics {
     }
 
     /**
-     * A node's phases the network holds on with a typed reason: the engine's typed failure inside the declared critical
-     * band ({@link CriticalBandHold}), or a phase set the network cannot carry ({@link UnsupportedPhases}: a liquid-liquid
-     * split, a third fluid phase, a crystal beside a phase set the engine does not implement). It is a {@link ThermoHold},
-     * an {@link IllegalArgumentException}, so a substep that meets it is rejected like any unevaluable state, and a caller
-     * that knows the node names it ({@link #at}). No split is fabricated and no phase set is answered with fewer phases.
+     * A node's phases the engine could not converge inside the declared critical band: the engine's typed
+     * {@code CRITICAL_BAND} failure, a {@link ThermoHold}; no split is fabricated and no single phase is claimed stable.
      */
-    public abstract static sealed class PhaseHold extends ThermoHold permits CriticalBandHold,UnsupportedPhases {
-        final String packageId,detail;
-        final double temperature,pressure;
-        private final long node;
-        PhaseHold(String message,String packageId,double temperature,double pressure,String detail,long node) {
-            super(message+ThermoHold.where(node));
-            this.packageId=Objects.requireNonNull(packageId);this.temperature=temperature;this.pressure=pressure;this.detail=detail;this.node=node;
-        }
-        @Override public long node(){return node;}
-        @Override public String packageId(){return packageId;}
-        /** The state's temperature (K), NaN where the request had none (a crystal answer the engine refused). */
-        public double temperature(){return temperature;}
-        /** The state's pressure (Pa), NaN where the request had none. */
-        public double pressure(){return pressure;}
-        /** The hold's own words, without its state: what the network cannot carry or the engine could not converge. */
-        abstract String what();
-        @Override public String status(String where) {
-            String state=Double.isFinite(temperature)&&Double.isFinite(pressure)
-                    ?String.format(java.util.Locale.ROOT," at %.2f K, %.0f Pa",temperature,pressure):"";
-            return what()+state+(where==null||where.isEmpty()?"":" in "+where)+" (package "+packageId+")";
-        }
-    }
-
-    /**
-     * A node's phases the equilibrium engine could not converge inside the declared critical band: the engine's typed
-     * {@code CRITICAL_BAND} failure, a {@link PhaseHold}; no split is fabricated and no single phase is claimed stable.
-     */
-    public static final class CriticalBandHold extends PhaseHold {
+    public static final class CriticalBandHold extends ThermoHold {
         public CriticalBandHold(String packageId,double temperature,double pressure,String detail) {
             this(packageId,temperature,pressure,detail,NO_NODE);
         }
@@ -1160,9 +1141,10 @@ public final class FluidThermodynamics {
      * hydrocarbon liquid slot and one vapour slot (D8: a phase set outside the qualified ones is refused, never answered
      * with fewer phases). The kinds: a liquid-liquid split, a third fluid phase (indicated by a converged split whose
      * product the stability re-check proved unstable, or not excluded where it left one unresolved), a crystal beside a
-     * phase set the engine does not implement, and a crystal step the engine does not answer.
+     * phase set the engine does not implement, a crystal step the engine does not answer, and free liquid water below
+     * its melting point while ice is not modelled.
      */
-    public static final class UnsupportedPhases extends PhaseHold {
+    public static final class UnsupportedPhases extends ThermoHold {
         /** What the network cannot carry. */
         public enum Kind {
             LIQUID_LIQUID,
@@ -1179,10 +1161,15 @@ public final class FluidThermodynamics {
              * material meets the same step, so the island holds at once. Also an answer that froze a vessel's other species
              * with its crystals ({@code VesselCrystals}: their traces leave a fluid, D21), which the refresh names the vessel
              * with. */
-            CRYSTAL_STEP;
+            CRYSTAL_STEP,
+            /** Free liquid water below the water model's triple point, 273.16 K: the liquid would freeze, and ice is not
+             * modelled yet (an interim capability limit of the range-extrapolation batch, until its ice crystal exists).
+             * Water vapour below it is carried: a humid gas continues. */
+            ICE;
             /** The equilibrium service's reason for this kind. */
             EquilibriumResult.UnsupportedReason reason() {
-                return this==CRYSTAL_PHASES||this==CRYSTAL_STEP?EquilibriumResult.UnsupportedReason.NOT_IMPLEMENTED:EquilibriumResult.UnsupportedReason.PHASE_COMPETITION_NOT_QUALIFIED;
+                return this==CRYSTAL_PHASES||this==CRYSTAL_STEP||this==ICE?EquilibriumResult.UnsupportedReason.NOT_IMPLEMENTED
+                        :EquilibriumResult.UnsupportedReason.PHASE_COMPETITION_NOT_QUALIFIED;
             }
         }
         private final Kind kind;
@@ -1209,6 +1196,7 @@ public final class FluidThermodynamics {
                 case THREE_PHASES->"a third fluid phase, which the network does not carry";
                 case CRYSTAL_PHASES->"a crystal beside a phase set the equilibrium engine does not implement";
                 case CRYSTAL_STEP->"a near-pure crystal step the equilibrium engine does not answer";
+                case ICE->"free water below its melting point: ice not modelled yet";
             };
         }
     }
@@ -1233,9 +1221,8 @@ public final class FluidThermodynamics {
      *
      * <p>A colored Jacobian perturbs a node's composition and pressure columns dozens of times at an
      * unchanged temperature, and every residual at that temperature repeats them, so this is where
-     * those evaluations meet. Each member is computed when it is first asked for, because a trial
-     * point can be outside the domain of a property it does not use - free water above Region 1's
-     * temperature boundary, for instance - and must fail on the property it does use.</p>
+     * those evaluations meet. Each member is computed when it is first asked for: a state evaluates
+     * only the properties of the phases it holds.</p>
      */
     public static final class Prepared {
         private final FluidThermodynamics owner;

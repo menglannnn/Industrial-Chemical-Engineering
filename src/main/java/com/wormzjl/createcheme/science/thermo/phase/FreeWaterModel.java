@@ -16,13 +16,15 @@ public interface FreeWaterModel {
     String revision();
 
     /**
-     * Saturation pressure of pure water, Pa; {@code +infinity} at or above the critical temperature (no liquid).
-     *
-     * @throws com.wormzjl.createcheme.science.fluid.thermo.ThermoDomainViolation below the triple point
+     * Saturation pressure of pure water, Pa; {@code +infinity} at or above the critical temperature (no liquid). Below
+     * the triple point the supercooled liquid's (the model continues past its data, owner rule of 2026-10-16).
      */
     double saturationPressure(double temperature);
 
-    /** Largest partial pressure of ideal steam the approximation is qualified for at this temperature, Pa. */
+    /**
+     * Largest partial pressure of ideal steam the approximation is qualified for at this temperature, Pa: a data range,
+     * past which a converged answer is graded extrapolated.
+     */
     double vaporPartialPressureLimit(double temperature);
 
     /**

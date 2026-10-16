@@ -110,16 +110,21 @@ class JaegerSpanGibbsFunctionTest {
     }
 
     @Test
-    void refusesOutsideItsRange() {
+    void continuesPastItsRangeAndRefusesOnlyAStateThatIsNotPositive() {
         var js = function();
         assertEquals(80, js.minimumTemperature(), 0.0);
         assertEquals(300, js.maximumTemperature(), 0.0);
         assertEquals(0, js.minimumPressure(), 0.0);
         assertEquals(5e8, js.maximumPressure(), 0.0);
-        for (double[] state : new double[][] {{79.999, 1e5}, {300.001, 1e5}, {200, 0}, {200, -1}, {200, 5.00001e8}, {Double.NaN, 1e5}, {200, Double.NaN}}) {
+        // Past the declared range (a data range since the owner rule of 2026-10-16) the function continues.
+        for (double[] state : new double[][] {{79.999, 1e5}, {300.001, 1e5}, {200, 5.00001e8}, {20, 1e5}, {350, 6e8}}) {
             assertFalse(js.covers(state[0], state[1]));
+            var s = js.evaluate(state[0], state[1], 0, 0);
+            assertTrue(Double.isFinite(s.gibbs()) && s.volume() > 0 && s.heatCapacity() > 0, java.util.Arrays.toString(state));
+        }
+        for (double[] state : new double[][] {{200, 0}, {200, -1}, {0, 1e5}, {Double.NaN, 1e5}, {200, Double.NaN}}) {
             var error = assertThrows(IllegalArgumentException.class, () -> js.evaluate(state[0], state[1], 0, 0));
-            assertTrue(error.getMessage().contains("80.0..300.0 K"), error.getMessage());
+            assertTrue(error.getMessage().contains("not a positive finite state"), error.getMessage());
         }
         assertTrue(js.covers(80, 1e-3));
         assertTrue(js.covers(300, 5e8));

@@ -41,6 +41,18 @@ public final class V3WaterProperties {
 
     public static double saturationPressurePascal(MaterialCatalog.Water water, double temperatureKelvin) {
         requireSaturationTemperature(water, temperatureKelvin);
+        return wagnerPruss(water, temperatureKelvin);
+    }
+
+    /**
+     * The Wagner--Pruss equation itself at any positive temperature up to the critical point: below the triple point it
+     * is the supercooled liquid's saturation pressure (1.10 times the ice sublimation pressure at 263 K, the measured
+     * ratio). The fluid network's free water continues there (owner rule of 2026-10-16); the column keeps the checked
+     * {@link #saturationPressurePascal(MaterialCatalog.Water, double)}.
+     */
+    public static double wagnerPruss(MaterialCatalog.Water water, double temperatureKelvin) {
+        if (!(temperatureKelvin > 0) || !(temperatureKelvin <= water.criticalTemperature()))
+            throw new IllegalArgumentException("Water saturation temperature must be positive and at most critical: " + temperatureKelvin);
         if (temperatureKelvin == water.criticalTemperature()) return water.criticalPressure();
         double theta = 1.0 - temperatureKelvin / water.criticalTemperature();
         // Half-integer powers as products with the correctly rounded sqrt, not pow (batch 2026-09-27-jdk-determinism).

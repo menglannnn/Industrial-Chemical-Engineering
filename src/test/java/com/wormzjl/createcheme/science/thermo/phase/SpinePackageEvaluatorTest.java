@@ -11,7 +11,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import com.wormzjl.createcheme.science.fluid.state.EnergyReference;
 import com.wormzjl.createcheme.science.fluid.thermo.FluidThermodynamics;
 import com.wormzjl.createcheme.science.fluid.thermo.HydrocarbonModel;
-import com.wormzjl.createcheme.science.fluid.thermo.ThermoDomainViolation;
 import com.wormzjl.createcheme.science.material.MaterialCatalog;
 import com.wormzjl.createcheme.science.thermo.PengRobinsonKernel.Root;
 import java.util.Set;
@@ -55,22 +54,15 @@ class SpinePackageEvaluatorTest {
         var workspace = evaluator.newWorkspace();
         var state = new PhaseState(n);
         var derivatives = new PhaseDerivatives(n);
-        int compared = 0, refused = 0;
+        int compared = 0;
         double worstEnthalpy = 0, worstHeatCapacity = 0, worstRebase = 0;
         for (double t : temperatures) {
             var terms = network.prepare(t);
             for (double p : pressures) {
                 for (double[] x : compositions) {
                     for (Root root : Root.values()) {
-                        HydrocarbonModel.Phase phase;
-                        try {
-                            phase = network.phase(t, p, x, root, terms);
-                        } catch (ThermoDomainViolation outside) {
-                            // Below a carried species' range (CO2 below 216.592 K): the evaluator refuses the ideal gas too
-                            // only below the spine's own 90 K, so here only the network's domain is asked.
-                            refused++;
-                            continue;
-                        }
+                        // Below a carried species' data (CO2 below its spine's range) both continue on the same held cp.
+                        HydrocarbonModel.Phase phase = network.phase(t, p, x, root, terms);
                         evaluator.evaluate(t, p, x, root, workspace, state);
                         String at = t + " K, " + p + " Pa, " + java.util.Arrays.toString(x) + ", " + root;
                         assertEquals(Double.doubleToRawLongBits(state.molarVolume()), Double.doubleToRawLongBits(phase.molarVolume()), "v at " + at);
@@ -107,14 +99,14 @@ class SpinePackageEvaluatorTest {
                 }
             }
         }
-        System.out.printf("WP5 evaluator parity: %d phases (%d refused by the network domain), worst |h_eval - sum x DfH - h_net|/scale %.2e,"
-                + " rebase %.2e, cp %.2e; v, ln phi, dv/dT, dv/dP bit for bit%n", compared, refused, worstEnthalpy, worstRebase,
+        System.out.printf("WP5 evaluator parity: %d phases, worst |h_eval - sum x DfH - h_net|/scale %.2e,"
+                + " rebase %.2e, cp %.2e; v, ln phi, dv/dT, dv/dP bit for bit%n", compared, worstEnthalpy, worstRebase,
                 worstHeatCapacity);
         assertTrue(compared > 1000, "compared " + compared);
     }
 
     @Test
-    void theEvaluatorNeedsASpineAndRefusesOutsideIt() {
+    void theEvaluatorNeedsASpineAndContinuesOutsideIt() {
         var catalog = MaterialCatalog.bundled();
         var refused = assertThrows(IllegalArgumentException.class,
                 () -> CubicPhaseEvaluator.forPackage(catalog, PhaseTestSupport.NETWORK));
@@ -122,10 +114,14 @@ class SpinePackageEvaluatorTest {
         var evaluator = CubicPhaseEvaluator.forPackage(catalog, PILOT);
         var workspace = evaluator.newWorkspace();
         var out = new PhaseState(4);
-        var violation = assertThrows(ThermoDomainViolation.class,
-                () -> evaluator.evaluate(85.0, 1.0e5, new double[] {0, 1, 0, 0}, Root.LIQUID, workspace, out));
-        assertEquals("Methane", violation.component());
-        assertEquals(PILOT, violation.packageId());
+        // Liquid methane at 85 K, below its spine's data: evaluated on the held cp (owner rule of 2026-10-16), not refused.
+        var methane = evaluator.idealGas(1);
+        double end = methane.minimumTemperature();
+        assertTrue(85.0 < end, "the spine's methane starts at " + end + " K");
+        evaluator.evaluate(85.0, 1.0e5, new double[] {0, 1, 0, 0}, Root.LIQUID, workspace, out);
+        assertTrue(Double.isFinite(out.molarEnthalpy()) && out.molarVolume() > 0);
+        assertEquals(methane.enthalpy(end) + methane.heatCapacity(end) * (85.0 - end), methane.enthalpy(85.0),
+                1.0e-12 * Math.abs(methane.enthalpy(end)), "h continues on cp held at " + end + " K");
         // Absent species are not evaluated: pure nitrogen at 70 K is below every other spine.
         evaluator.evaluate(70.0, 1.0e5, new double[] {1, 0, 0, 0}, Root.LIQUID, workspace, out);
         assertTrue(Double.isFinite(out.molarEnthalpy()));

@@ -93,9 +93,12 @@ class CrystalReferenceTest {
                 assertEquals(sS + crystal.entropyChange(t, p), s.entropy(), 1e-9);
             }
         }
-        var outside = assertThrows(IllegalArgumentException.class, () -> crystal.heatCapacity(79, 1e5));
-        assertTrue(outside.getMessage().contains("outside 80.0..300.0 K"), outside.getMessage());
-        assertThrows(IllegalArgumentException.class, () -> crystal.state(200, 6e8, muL, hL));
+        // Past its 80..300 K and 500 MPa data the record continues on the end's heat capacity, dv/dT and dv/dP (owner rule of
+        // 2026-10-16); only a state that is not positive and finite is refused.
+        assertEquals(crystal.heatCapacity(80, 1e5), crystal.heatCapacity(79, 1e5), 1e-12 * crystal.heatCapacity(80, 1e5));
+        assertTrue(Double.isFinite(crystal.state(200, 6e8, muL, hL).gibbs()));
+        assertThrows(IllegalArgumentException.class, () -> crystal.heatCapacity(0, 1e5));
+        assertThrows(IllegalArgumentException.class, () -> crystal.state(200, 0, muL, hL));
     }
 
     @Test

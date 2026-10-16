@@ -122,7 +122,7 @@ final class VesselCrystals {
         boolean drive=!isClosed;
         for(int k=0;k<count&&!drive;k++) {
             var crystal=all.get(k);
-            double d=crystal.covers(t,p)?drive(closed,crystal,t,p):Double.NEGATIVE_INFINITY;
+            double d=drive(closed,crystal,t,p);
             if(held[k]>0?!(Math.abs(d)<=DEADBAND):d>DEADBAND)drive=true;
         }
         if(!drive)return null;

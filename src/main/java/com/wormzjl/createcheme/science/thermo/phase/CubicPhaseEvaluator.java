@@ -3,7 +3,6 @@ package com.wormzjl.createcheme.science.thermo.phase;
 import com.wormzjl.createcheme.science.math.DeterministicMath;
 
 import com.wormzjl.createcheme.science.fluid.thermo.SpinePackageData;
-import com.wormzjl.createcheme.science.fluid.thermo.ThermoDomainViolation;
 import com.wormzjl.createcheme.science.fluid.thermo.TranslatedPengRobinson;
 import com.wormzjl.createcheme.science.material.MaterialCatalog;
 import com.wormzjl.createcheme.science.thermo.IdealGasFunction;
@@ -47,7 +46,7 @@ public final class CubicPhaseEvaluator implements PhaseEvaluator {
     private final double[] translations;
 
     /**
-     * @param sourceId the package the constants come from; named in a {@link ThermoDomainViolation}
+     * @param sourceId the package the constants come from
      * @param interactions square, symmetric PR78 {@code k_ij}
      * @param translations constant volume translation per component, m3/mol ({@code v = v_PR + c})
      * @param idealGas one ideal-gas function per component, in basis order
@@ -209,26 +208,6 @@ public final class CubicPhaseEvaluator implements PhaseEvaluator {
         return out;
     }
 
-    /**
-     * The carried component, with the largest amount, whose ideal-gas function does not cover {@code temperature};
-     * {@code null} when every carried component is covered. The amounts must already be valid.
-     */
-    public ThermoDomainViolation idealGasViolation(double temperature, double[] amounts) {
-        int worst = -1;
-        double largest = -1.0;
-        for (int i = 0; i < idealGas.length; i++) {
-            double amount = amounts[i];
-            if (amount > 0.0 && (temperature < idealGas[i].minimumTemperature()
-                    || temperature > idealGas[i].maximumTemperature()) && amount > largest) {
-                worst = i;
-                largest = amount;
-            }
-        }
-        if (worst < 0) return null;
-        return new ThermoDomainViolation(sourceId, names.get(worst), ThermoDomainViolation.Property.TEMPERATURE,
-                temperature, idealGas[worst].minimumTemperature(), idealGas[worst].maximumTemperature());
-    }
-
     private Workspace own(PhaseEvaluator.Workspace workspace) {
         if (!(Objects.requireNonNull(workspace, "workspace") instanceof Workspace w) || w.owner != this) {
             throw new IllegalArgumentException("Workspace belongs to another evaluator");
@@ -250,8 +229,6 @@ public final class CubicPhaseEvaluator implements PhaseEvaluator {
         }
         if (!(total > 0.0)) throw new IllegalArgumentException("Composition has no material");
         for (int i = 0; i < amounts.length; i++) w.composition[i] = amounts[i] / total;
-        ThermoDomainViolation violation = idealGasViolation(temperature, amounts);
-        if (violation != null) throw violation;
         if (w.terms.temperature() != temperature) eos.prepare(temperature, w.terms);
     }
 

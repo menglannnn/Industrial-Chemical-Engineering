@@ -3,12 +3,12 @@ package com.wormzjl.createcheme.science.thermo.phase;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import com.wormzjl.createcheme.science.fluid.thermo.ThermoDomainViolation;
 import com.wormzjl.createcheme.science.thermo.PengRobinsonKernel;
 import com.wormzjl.createcheme.science.thermo.PengRobinsonKernel.Root;
 import com.wormzjl.createcheme.science.thermo.TangentPlaneStability;
@@ -174,13 +174,15 @@ class FluidTpEquilibriumTest {
         assertEquals(Status.CONVERGED, network.status(), network.toString());
         assertEquals(Classification.SUPERCRITICAL_FLUID, network.classification());
         assertEquals(PhaseKind.FLUID, network.phases().get(0).kind());
-        // Above the 10 MPa ceiling the open contract still answers and the network contract refuses the same state.
+        // Above the 10 MPa envelope the open contract answers, and the network contract answers the same state graded
+        // extrapolated, the envelope named (owner rule of 2026-10-16; it refused the state before).
         var beyond = open.tp(EquilibriumRequest.tp(150.0, 12.0e6, BINARY, new double[] {0.0, 1.0}, PhaseCompetition.FLUID_ONLY));
         assertEquals(Classification.SUPERCRITICAL_FLUID, beyond.classification());
-        var refused = service.tp(EquilibriumRequest.tp(150.0, 12.0e6, contract.components(), pure, PhaseCompetition.FLUID_ONLY));
-        assertEquals(Status.OUT_OF_DOMAIN, refused.status());
-        assertEquals(ThermoDomainViolation.Code.THERMO_DOMAIN_PRESSURE_ABOVE, refused.violation().code());
-        assertEquals(10.0e6, refused.violation().maximum());
+        var extrapolated = service.tp(EquilibriumRequest.tp(150.0, 12.0e6, contract.components(), pure, PhaseCompetition.FLUID_ONLY));
+        assertEquals(Status.CONVERGED, extrapolated.status(), extrapolated.toString());
+        assertEquals(Classification.SUPERCRITICAL_FLUID, extrapolated.classification());
+        assertEquals(CoverageGrade.EXTRAPOLATED, extrapolated.coverage().grade());
+        assertTrue(extrapolated.coverage().evidence().contains("extrapolated past the package envelope"), extrapolated.coverage().evidence());
     }
 
     /** The 20-component network basis: Tia Juana light assay plus 5 mol% nitrogen, as in the stability test. */
@@ -295,27 +297,23 @@ class FluidTpEquilibriumTest {
         assertEquals(UnsupportedReason.PHASE_COMPETITION_NOT_QUALIFIED, crystal.reason());
         refused.add(crystal);
 
-        // Outside the domain: methane below its 293.15 K network range, and above its 10 MPa ceiling (WP7 widened methane,
-        // nitrogen and the network envelope from 2 to 10 MPa: 3 MPa, this test's example before, is answered now).
+        // Outside a data range nothing is refused (owner rule of 2026-10-16): methane below its 293.15 K ideal-gas fit and
+        // above the 10 MPa envelope are answered, graded extrapolated with the range named.
         var cold = service.tp(EquilibriumRequest.tp(200.0, 1.0e6, List.of("Methane", "Nitrogen"), new double[] {1.0, 1.0},
                 PhaseCompetition.FLUID_ONLY));
-        assertEquals(Status.OUT_OF_DOMAIN, cold.status());
-        assertEquals("Methane", cold.violation().component());
-        assertEquals(ThermoDomainViolation.Code.THERMO_DOMAIN_TEMPERATURE_BELOW, cold.violation().code());
-        assertEquals(293.15, cold.violation().minimum());
-        assertEquals(CoverageGrade.OUT_OF_DOMAIN, cold.coverage().grade());
-        refused.add(cold);
+        assertEquals(Status.CONVERGED, cold.status(), cold.toString());
+        assertEquals(CoverageGrade.EXTRAPOLATED, cold.coverage().grade());
+        assertTrue(cold.coverage().evidence().contains("the ideal gas of Methane 293.15"), cold.coverage().evidence());
         var inside = service.tp(EquilibriumRequest.tp(350.0, 3.0e6, List.of("Methane"), new double[] {1.0}, PhaseCompetition.FLUID_ONLY));
         assertEquals(Status.CONVERGED, inside.status(), inside.toString());
+        assertNotEquals(CoverageGrade.EXTRAPOLATED, inside.coverage().grade());
         var dense = service.tp(EquilibriumRequest.tp(350.0, 12.0e6, List.of("Methane"), new double[] {1.0}, PhaseCompetition.FLUID_ONLY));
-        assertEquals(Status.OUT_OF_DOMAIN, dense.status(), dense.toString());
-        assertEquals(ThermoDomainViolation.Code.THERMO_DOMAIN_PRESSURE_ABOVE, dense.violation().code());
-        assertEquals(10.0e6, dense.violation().maximum());
-        refused.add(dense);
-        // Water below its triple point is outside the water model's domain before it is unimplemented.
+        assertEquals(Status.CONVERGED, dense.status(), dense.toString());
+        assertEquals(CoverageGrade.EXTRAPOLATED, dense.coverage().grade());
+        // Free water below its triple point without a water model: unimplemented, as above it.
         var ice = service.tp(EquilibriumRequest.tp(250.0, 1.0e6, List.of("Nitrogen", "Water"), new double[] {1.0, 2.0},
                 PhaseCompetition.FLUID_ONLY));
-        assertEquals("Water", ice.violation().component());
+        assertEquals(UnsupportedReason.NOT_IMPLEMENTED, ice.reason());
         refused.add(ice);
 
         // PH and UV (P3 WP6b) run the same contract checks first; free water without a water model stays unimplemented.
@@ -338,8 +336,7 @@ class FluidTpEquilibriumTest {
             assertEquals(Classification.NONE, result.classification());
             assertFalse(result.solidsAssessed());
             assertEquals(contract.identity(), result.identity());
-            assertTrue(result.status() == Status.OUT_OF_DOMAIN ? result.coverage().grade() == CoverageGrade.OUT_OF_DOMAIN
-                    : result.coverage().grade() == CoverageGrade.UNAVAILABLE, result.toString());
+            assertEquals(CoverageGrade.UNAVAILABLE, result.coverage().grade(), result.toString());
             assertThrows(IllegalStateException.class, () -> result.conservationDefect(new double[contract.components().size()]));
             if (result.status() == Status.UNSUPPORTED) assertNotNull(result.reason()); else assertNull(result.reason());
         }

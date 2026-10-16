@@ -28,8 +28,8 @@ import java.util.Set;
  * {@code h = h_ig(T) + (h - h_ig)} and {@code s = s_ig(T, P) + (s - s_ig)}, and
  * {@code ln phi = (g_s - g_ig(T, P)) / (R T)} with the kernel's gas constant, so that
  * {@link PhaseState#chemicalPotential(int)} equals g_s and compares directly with a fluid phase's chemical potential.
- * Outside the record's range, or outside the ideal-gas function's range, the evaluation is refused
- * ({@link IllegalArgumentException}); an unusable record is refused at construction.</p>
+ * Past the record's range and the ideal-gas function's, both continue (owner rule of 2026-10-16); an unusable record
+ * is refused at construction.</p>
  *
  * <p>Anchored view (P4 stage 2a). {@link #anchored(TriplePointAnchor)} solves the integration constants once and returns
  * an immutable {@link Anchored} crystal that evaluates its function once per state; an equilibrium service holds one per
@@ -175,17 +175,10 @@ public final class CrystalPhaseEvaluator implements SolidPhaseEvaluator {
         /** The solved integration constants {g0, g1} of a Gibbs-function record; NaN for a segment record. */
         public double[] integrationConstants() { return new double[] {g0, g1}; }
 
-        /** Whether (T, P) lies in the record's range and the species' ideal-gas range (P strictly positive). */
-        public boolean covers(double temperature, double pressure) {
-            return temperature >= crystal.minimumTemperature() && temperature <= crystal.maximumTemperature()
-                    && pressure > 0.0 && !(pressure < crystal.minimumPressure()) && !(pressure > crystal.maximumPressure())
-                    && temperature >= idealGas.minimumTemperature() && temperature <= idealGas.maximumTemperature();
-        }
-
-        /** g, h, s, v, c_p, alpha and kappa at (T, P); refused outside the record's range. */
+        /** g, h, s, v, c_p, alpha and kappa at (T, P), continued past the record's range ({@link CrystalReference}). */
         public CrystalReference.State properties(double temperature, double pressure) {
             if (function == null) return crystal.state(temperature, pressure, anchor.chemicalPotential(), anchor.liquidEnthalpy());
-            var s = function.evaluate(checked(temperature), pressure, g0, g1);
+            var s = function.evaluate(temperature, pressure, g0, g1);
             return new CrystalReference.State(temperature, pressure, s.gibbs(), s.enthalpy(), s.entropy(), s.volume(),
                     s.heatCapacity(), s.expansion(), s.compressibility());
         }
@@ -193,7 +186,7 @@ public final class CrystalPhaseEvaluator implements SolidPhaseEvaluator {
         /** {@code g_s(T, P)}, J/mol on the spine's reference: the crystal's chemical potential. */
         public double chemicalPotential(double temperature, double pressure) {
             if (function == null) return properties(temperature, pressure).gibbs();
-            return function.evaluate(checked(temperature), pressure, g0, g1).gibbs();
+            return function.evaluate(temperature, pressure, g0, g1).gibbs();
         }
 
         /** Fills {@code out} (one component) with the crystal at (T, P), as the evaluator does. */
@@ -219,13 +212,6 @@ public final class CrystalPhaseEvaluator implements SolidPhaseEvaluator {
             out.setVolumetric(s.expansion() * volume, -s.compressibility() * volume);
             out.setCaloric(s.heatCapacity(), volume * (1.0 - s.expansion() * temperature));
             return out;
-        }
-
-        private double checked(double temperature) {
-            if (!(temperature >= crystal.minimumTemperature() && temperature <= crystal.maximumTemperature()))
-                throw new IllegalArgumentException(crystal.id() + ": temperature " + temperature + " K outside "
-                        + crystal.minimumTemperature() + ".." + crystal.maximumTemperature() + " K");
-            return temperature;
         }
 
         private PhaseState fill(CrystalReference.State s, PhaseState out) {

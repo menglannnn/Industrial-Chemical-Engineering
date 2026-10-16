@@ -14,7 +14,8 @@ import org.junit.jupiter.api.Test;
  * pilot's 90 K CO2 floor), Sampson et al. 2023 (52 to 500 ppm CO2 in compressed liquid CH4 at 7 to 10 MPa, temperature
  * uncertainty 1.7 to 2.4 K, k = 1; Maltby et al. 2025 report every model at 3 % of T or worse there) and Kurata and Im 1971
  * Table VI (the three-phase x and y of Davis 1962, interpolated). Printed; the only checks are the counts and that every
- * point inside the domain is answered (above 10 MPa or below 90 K a point is out of domain, counted).
+ * point is answered (above the 10 MPa envelope or below CO2's 90 K spine a point is extrapolated, counted apart: owner
+ * rule of 2026-10-16, out of domain before).
  *
  * <p>Measured 2026-09-25 (9019 J/mol): Gao binary 2.58 K MAD (bias -2.58 K, as Shen), 10 % N2 0.77 K, 30 % 2.80 K,
  * 50 % 4.13 K (one point below 90 K), 70 % 6.13 K (bias +6.1 K: the N2-rich liquids freeze warm on this family);
@@ -31,7 +32,7 @@ class G5F5ReportOnlyLiquidusTest {
         points.addAll(sampson);
         var datasets = G5Support.summary("G5F5 report only", G5Support.score(G5Support.SERVICE, points, true), Double.NaN);
         for (var s : datasets.values()) assertTrue(s.holds.isEmpty() && s.failures.isEmpty(), s.holds + " " + s.failures);
-        assertEquals(3, datasets.get("Sampson 2023").outOfDomain.size(), "three of Sampson's points lie above 10 MPa");
+        assertEquals(3, datasets.get("Sampson 2023").extrapolated.size(), "three of Sampson's points lie above 10 MPa");
         // Kurata-Im Table VI: the three-phase x and y at their temperature.
         var ws = G5Support.SERVICE.newWorkspace();
         System.out.println("Kurata-Im Table VI | T K | P data MPa | P model MPa | x data | x model | y data | y model");

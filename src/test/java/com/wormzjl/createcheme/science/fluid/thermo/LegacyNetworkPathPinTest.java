@@ -39,14 +39,23 @@ class LegacyNetworkPathPinTest {
      * derivative part is the engine evaluator's {@link PhaseDerivatives} instead of the branch's translated derivative
      * object (OD-P2: not on main), main's phase record carries no liquid-root-absent flag, and the engine's flash solves
      * Rachford-Rice in the minor phase's fraction (D24).
+     *
+     * <p>Re-pinned for the owner rule of 2026-10-16 (every data range continued; M2's value
+     * {@code dc9a89199a46e4f1662925d27e18ffd1bd037acb2757e455c92950bd17d99e02}). Point by point, every probe state inside
+     * the data ranges keeps its bits (293.15, 350, 450 and 700 K); what moved is what the old rule refused: below the
+     * fits' 293.15 K lower ends (77, 110, 150 K) the phases are answered with each ideal-gas heat capacity held at its
+     * end, where the translated equation of state's values had run the polynomial past it; a wet flash below the water
+     * model's triple point is the ice hold instead of a range refusal; and the 450 K, 2 MPa wet mixture past the steam's
+     * qualified partial pressure is carried.</p>
      */
-    static final String DIGEST = "dc9a89199a46e4f1662925d27e18ffd1bd037acb2757e455c92950bd17d99e02";
+    static final String DIGEST = "1e75c5c55a42a8d064eadee7a59d9130b49033886b3945e589bc83dffa27ee8f";
     /**
-     * The revision string: the formulation tag {@code direct-liquid-v1:tp-engine-v1} (the phases decided by the
-     * equilibrium engine) and the fluid thermodynamic fingerprint of the widened {@code fluid_domain} (nitrogen, methane
-     * and the envelope to 10 MPa, P3 WP7 data) replace main 0.8.0's: a fresh world.
+     * The revision string: the formulation tag {@code direct-liquid-v1:tp-engine-v1:range-continuation-v1} (the phases
+     * decided by the equilibrium engine, every data range continued since the owner rule of 2026-10-16) and the fluid
+     * thermodynamic fingerprint of the widened {@code fluid_domain} (nitrogen, methane and the envelope to 10 MPa, P3 WP7
+     * data) replace main 0.8.0's: a fresh world.
      */
-    static final String REVISION = "95cd8e6d4b4d4af2dfb8e712e443eda42acb0c93b4218635e7ebf462e21829cd:direct-liquid-v1:tp-engine-v1"
+    static final String REVISION = "95cd8e6d4b4d4af2dfb8e712e443eda42acb0c93b4218635e7ebf462e21829cd:direct-liquid-v1:tp-engine-v1:range-continuation-v1"
             + ":fluid-domain-data-v1:cp-segments-v1:catalog-volume-reference-v1";
 
     @Test

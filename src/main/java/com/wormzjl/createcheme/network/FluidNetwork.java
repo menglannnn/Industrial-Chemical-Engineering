@@ -52,9 +52,8 @@ public final class FluidNetwork {
             Objects.requireNonNull(solids);composition=composition.clone();
             for(double value:new double[]{temperature,pressure,diameter,roughness,volumeFlow,maximumAddedPressure,maximumPressureRatio})if(!Double.isFinite(value))throw new IllegalArgumentException("All controls must be finite numbers");
             if(!pressureRatioAllowed(maximumPressureRatio))throw new IllegalArgumentException("The pressure ratio must lie between "+MINIMUM_PRESSURE_RATIO+" and "+MAXIMUM_PRESSURE_RATIO);
-            // Temperature and pressure are only required to be physical here: the range the fluid model can evaluate
-            // is the property package's and depends on the composition, so the server checks it against the model when
-            // the edit arrives and refuses it with the thermo-domain error (see edit below).
+            // Temperature and pressure are only required to be physical here: the input box is the property package's
+            // envelope, so the server checks it against the model when the edit arrives (see edit below).
             if(!(temperature>0)||!(pressure>0)||diameter<.001||diameter>1||roughness<0||roughness>=diameter||volumeFlow<0||volumeFlow>10||maximumAddedPressure<=0||maximumAddedPressure>2e6||(composition.length<1||composition.length>com.wormzjl.createcheme.science.material.MaterialAxis.MAX_CONSERVED_COMPONENTS))throw new IllegalArgumentException("Controls are outside the supported range");
             double sum=0;for(double n:composition){if(!Double.isFinite(n)||n<0)throw new IllegalArgumentException("Composition entries must be nonnegative");sum+=n;}if(!Double.isFinite(sum)||sum<=0)throw new IllegalArgumentException("Composition cannot be empty");
         }
@@ -238,11 +237,11 @@ public final class FluidNetwork {
                     case VOID->spec=new FluidDeviceSpec(spec.volume(),spec.temperature(),controls.pressure,spec.composition());
                     case RESERVOIR->throw new IllegalArgumentException("Reservoir initialization is fixed; existing fluid is conserved.");
                 }
-                // Refused here, before anything is queued, with the dedicated thermo-domain error: the reply with the
-                // next bucket reads "Not applied: Thermo domain: ...".
+                // Refused here, before anything is queued, outside the package envelope (the input box, plan decision 9):
+                // the reply with the next bucket reads "Not applied: ..." with the envelope named.
                 switch(d.kind()) {
                     case GENERATOR,VOID->spec.validate(world.model(),d.kind());
-                    case VALVE->world.model().domain().checkPressure(controls.pressure);
+                    case VALVE->world.model().domain().requireInputPressure(controls.pressure);
                     default->{}
                 }
                 event=world.edit(d.id(),payload.revision,new PhysicalFluidTopology.Device(d.id(),d.position(),d.kind(),d.facing(),geometry,control),spec);

@@ -226,8 +226,9 @@ class NetworkPhaseEngineTest {
      * was refused {@code CRITICAL_BAND}. Compositions: pure nitrogen and the lean N2/CH4 to 10 MPa (their domain), the
      * eight light components (nitrogen to n-pentane) and the 20-component mixture of the legacy digest (every crude cut:
      * a real split, whose heavy liquid stays in the liquid slot) to 2 MPa; 600, 750 and 900 K; dry and with 0.1 mol water
-     * per mol. Every state is answered except where the steam's partial pressure passes the steam approximation's limit
-     * (typed). At 1200 K, beyond the package's 900 K, every composition is refused as out of domain.
+     * per mol. Every state is answered: a steam partial pressure past the steam approximation's qualified limit was a
+     * typed refusal and is a notice since the owner rule of 2026-10-16, and at 1200 K, beyond the package's 900 K, every
+     * composition is carried on its ideal-gas cp held at 900 K.
      */
     @Test
     void hotGasesTakeTheVapourSlotDryAndWet() {
@@ -244,7 +245,7 @@ class NetworkPhaseEngineTest {
         List<Feed> feeds = List.of(new Feed("N2", pureNitrogen, 1e7, true), new Feed("N2/CH4 90/10", lean, 1e7, true),
                 new Feed("light gas", light, 2e6, true), new Feed("20-component mixture", mixture, 2e6, false));
         double[] pressures = {1e5, 5e5, 1e6, 2e6, 5e6, 1e7};
-        int answered = 0, steamLimited = 0, wetGas = 0;
+        int answered = 0, steamBeyond = 0, wetGas = 0;
         double worstRatio = 0;
         var terms = new java.util.HashMap<Double, TranslatedPengRobinson.Workspace>();
         for (double t : new double[] {600, 750, 900}) {
@@ -255,15 +256,9 @@ class NetworkPhaseEngineTest {
                         double[] overall = Arrays.copyOf(feed.x(), n);
                         overall[water] = waterAmount;
                         String at = feed.name() + (waterAmount > 0 ? " wet" : " dry") + " at " + t + " K, " + p + " Pa";
-                        FluidThermodynamics.State state;
-                        try {
-                            state = model.flashTP(t, p, overall, () -> {});
-                        } catch (IllegalArgumentException refused) {
-                            assertTrue(waterAmount > 0 && FluidThermodynamics.STEAM_LIMIT.equals(refused.getMessage()), at + ": " + refused.getMessage());
-                            steamLimited++;
-                            continue;
-                        }
+                        FluidThermodynamics.State state = model.flashTP(t, p, overall, () -> {});
                         answered++;
+                        if (waterAmount > 0 && state.waterPartialPressure() > FluidThermodynamics.waterVaporPressureLimit(t)) steamBeyond++;
                         for (int i = 0; i < hydrocarbons; i++) {
                             assertEquals(overall[i], state.liquidView()[i] + state.vaporView()[i], 1e-13, at + " conserves " + model.components().get(i));
                         }
@@ -303,8 +298,8 @@ class NetworkPhaseEngineTest {
                 }
             }
         }
-        System.out.printf("WP7c hot network states: %d answered, %d refused by the steam limit; the gases' p_w within %.4f of y_w P over %d wet states%n",
-                answered, steamLimited, worstRatio, wetGas);
+        System.out.printf("WP7c hot network states: %d answered, %d past the steam's qualified partial pressure; the gases' p_w within %.4f of y_w P over %d wet states%n",
+                answered, steamBeyond, worstRatio, wetGas);
         assertTrue(answered > 100 && wetGas > 40, answered + " answered, " + wetGas + " wet gases");
         // The gases' Z lies within 4 % of one here (nitrogen 1.036 at 600 K and 10 MPa, the light gas 0.977 at 2 MPa).
         assertTrue(worstRatio < 0.04, "the gases' steam partial pressure is the ideal-mixing one to 4 %: " + worstRatio);
@@ -314,7 +309,8 @@ class NetworkPhaseEngineTest {
         double[] leanWet = Arrays.copyOf(lean, n);leanWet[water] = 0.1;
         assertTrue(model.flashTP(700, 1e5, leanWet, () -> {}).hydrocarbonPartialPressure() > 9e4);
         for (Feed feed : feeds) {
-            assertThrows(ThermoDomainViolation.class, () -> model.flashTP(1200, 1e5, Arrays.copyOf(feed.x(), n), () -> {}), feed.name());
+            var hot = assertDoesNotThrow(() -> model.flashTP(1200, 1e5, Arrays.copyOf(feed.x(), n), () -> {}), feed.name());
+            assertTrue(Double.isFinite(hot.enthalpy()) && hot.vaporVolume() > 0, feed.name() + " at 1200 K");
         }
     }
 
@@ -326,7 +322,7 @@ class NetworkPhaseEngineTest {
      * near-critical N2/CH4 split inside the band (both phases liquid-like by the parameter, tie line 0.010) is still a
      * vapour-liquid split with both slots.
      *
-     * <p>P3 WP11: the refusal is a typed {@link FluidThermodynamics.PhaseHold} with its own rejection key (the island
+     * <p>P3 WP11: the refusal is a typed {@link ThermoHold} (a phase hold) with its own rejection key (the island
      * holds with it, {@code UnsupportedPhasesIslandTest}), and so is a split whose products the stability re-check proves
      * unstable, the engine's three-phase indication: N2/C2H6 at x_N2 0.94, 125 K and 3 MPa (type III, outside the band;
      * before WP11 a plain rejection). At x_N2 exactly 0.95 the same state is a pure fluid by the band's 0.95 rule (nitrogen

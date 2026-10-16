@@ -6,6 +6,7 @@ import com.wormzjl.createcheme.science.fluid.linalg.SparseLuSolver;
 import com.wormzjl.createcheme.science.fluid.solver.*;
 import com.wormzjl.createcheme.science.fluid.thermo.FluidThermodynamics;
 import com.wormzjl.createcheme.science.math.DeterministicMath;
+import com.wormzjl.createcheme.science.thermo.NumericalBox;
 import com.wormzjl.createcheme.science.thermo.PhaseSupport;
 import java.util.*;
 import com.wormzjl.createcheme.science.fluid.state.SolidInventory;
@@ -1333,12 +1334,9 @@ public final class PassiveStepSolver {
             }
             if(!(mass>0))return seed;
             double total=PhaseLayout.sum(amounts);for(int c=0;c<amounts.length;c++)amounts[c]*=stock/total;
-            double lower=Math.max(tLow-20,model.domain().envelope().minimumTemperature());
-            double upper=Math.min(tHigh+20,model.domain().envelope().maximumTemperature());
-            for(int c=0;c<amounts.length;c++)if(amounts[c]>0) {
-                var range=model.domain().range(c);lower=Math.max(lower,range[0]);upper=Math.min(upper,range[1]);
-            }
-            if(!(lower<upper))return seed;
+            // The streams' own window, 20 K either side, inside the numerical box (owner rule of 2026-10-16: no data range
+            // narrows a seed).
+            double lower=Math.max(tLow-20,NumericalBox.MINIMUM_TEMPERATURE),upper=Math.min(tHigh+20,NumericalBox.MAXIMUM_TEMPERATURE);
             for(int k=0;k<30;k++) {
                 double t=lower+(upper-lower)*.5;
                 var point=model.flashTP(t,pressure,amounts,checkpoint);
@@ -1414,9 +1412,7 @@ public final class PassiveStepSolver {
                     var old=states.get(j);double pressure=rate.states().get(j).pressure();FluidThermodynamics.State state;
                     if(!(inflow[j]>0))state=model.flashTP(old.temperature(),pressure,PhaseLayout.totalAmounts(old),none);
                     else {
-                        double lower=Math.max(tLow[j]-20,model.domain().envelope().minimumTemperature()),upper=Math.min(tHigh[j]+20,model.domain().envelope().maximumTemperature());
-                        for(int c=0;c<count;c++)if(y[j][c]>0){var range=model.domain().range(c);lower=Math.max(lower,range[0]);upper=Math.min(upper,range[1]);}
-                        if(!(lower<upper))return states;
+                        double lower=Math.max(tLow[j]-20,NumericalBox.MINIMUM_TEMPERATURE),upper=Math.min(tHigh[j]+20,NumericalBox.MAXIMUM_TEMPERATURE);
                         for(int k=0;k<60&&upper-lower>1e-9;k++) {
                             double t=.5*(lower+upper);var point=model.flashTP(t,pressure,y[j].clone(),none);
                             if(point.enthalpy()/point.mass()<h[j])lower=t;else upper=t;
@@ -1431,7 +1427,7 @@ public final class PassiveStepSolver {
                 states=next;
                 if(!moved)return states;
             }
-        } catch(SparseNewton.Nonconvergence|IllegalArgumentException outside){return states;} // a ThermoDomainViolation included
+        } catch(SparseNewton.Nonconvergence|IllegalArgumentException refused){return states;} // a rejected state: the numerical box, a phase hold
         return states;
     }
     /**
@@ -1533,7 +1529,7 @@ public final class PassiveStepSolver {
      * Owner decision D55: the pressure of junction {@code j} at which the start estimate's flows into and out of it
      * ({@link #initialMassFlow}: each connection against its other end's own pressure, on the column its rule states, as
      * far as {@link #boundaryAllowed} lets it) balance, bisected between the lowest and highest of its neighbours' end
-     * pressures referred to its height through either end's column, within the property domain. A junction is a node of
+     * pressures referred to its height through either end's column, within the numerical box. A junction is a node of
      * the pipework, so its pressure is what its connections' flows make it, never the ambient's: seeded at the ambient a
      * liquid junction stood 9.8 kPa above a 1 m spill and 240 kPa below its two generators, and its first Newton did not
      * converge (logs es36).
@@ -1547,8 +1543,7 @@ public final class PassiveStepSolver {
                 low=Math.min(low,end-rho*GRAVITY*dz);high=Math.max(high,end-rho*GRAVITY*dz);
             }
         }
-        var envelope=model.domain().envelope();
-        low=Math.max(low,envelope.minimumPressure());high=Math.min(high,envelope.maximumPressure());
+        low=Math.max(low,NumericalBox.MINIMUM_PRESSURE);high=Math.min(high,NumericalBox.MAXIMUM_PRESSURE);
         if(!(high>low))return junction.state().pressure();
         for(int k=0;k<60&&high-low>1e-9*high;k++) {
             double pressure=.5*(low+high),net=0;
@@ -1577,23 +1572,19 @@ public final class PassiveStepSolver {
     }
     /** {@link #supplierSeeds}' flash of junction {@code j}'s mixture (amounts and enthalpy summed over {@code mass}) at
      * {@code pressure}, per kilogram: the temperature at which the mixture has the mixed enthalpy, bisected within 20 K of
-     * its streams' temperatures and the property domain. False, the junction left as it was, where the domain leaves no
-     * range or the flash leaves it. The window is each carried component's fluid range ({@code FluidDomain.range}): under a
-     * crystal competition that is narrower than the domain, whose floor for a crystal's species is the crystal's (carbon
-     * dioxide: 216.59 K against 90 K on the pilot), so a cold stream carrying that species (LNG with CO2 dissolved, at
-     * 111.6 K) has no window and is declined before any flash. A mover's suction line does not come here (see above). */
+     * its streams' temperatures inside the numerical box (owner rule of 2026-10-16: no data range narrows the window, so a
+     * cold stream carrying a species below its data, LNG with CO2 dissolved at 111.6 K, is seeded like any other). False,
+     * the junction left as it was, where a flash is refused. A mover's suction line does not come here (see above). */
     private boolean seedAt(List<FluidThermodynamics.State> states,int j,double[] amounts,double mass,double heat,double tLow,double tHigh,double pressure,Runnable checkpoint) {
         double[] y=new double[amounts.length];for(int c=0;c<y.length;c++)y[c]=amounts[c]/mass;
-        double lower=Math.max(tLow-20,model.domain().envelope().minimumTemperature()),upper=Math.min(tHigh+20,model.domain().envelope().maximumTemperature());
-        for(int c=0;c<y.length;c++)if(y[c]>0){var range=model.domain().range(c);lower=Math.max(lower,range[0]);upper=Math.min(upper,range[1]);}
-        if(!(lower<upper))return false;
+        double lower=Math.max(tLow-20,NumericalBox.MINIMUM_TEMPERATURE),upper=Math.min(tHigh+20,NumericalBox.MAXIMUM_TEMPERATURE);
         try {
             for(int k=0;k<60&&upper-lower>1e-9;k++) {
                 double t=.5*(lower+upper);var point=model.flashTP(t,pressure,y.clone(),checkpoint);
                 if(point.enthalpy()/point.mass()<heat/mass)lower=t;else upper=t;
             }
             states.set(j,model.flashTP(.5*(lower+upper),pressure,y.clone(),checkpoint));
-        } catch(IllegalArgumentException outside){return false;} // a ThermoDomainViolation included
+        } catch(IllegalArgumentException refused){return false;} // a rejected state: the numerical box, a phase hold
         return true;
     }
     /**

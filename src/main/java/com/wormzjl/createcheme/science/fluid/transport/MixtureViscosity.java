@@ -24,7 +24,7 @@ public final class MixtureViscosity {
         liquidMixture=catalog.liquidMixture(packageId);
         // The catalog is an immutable property snapshot. Compute its transport hash once,
         // not on every server-thread admission, anchor check and worker publication.
-        revision=catalog.viscosityFingerprint(packageId)+":log-liquid-pair-groups-wilke-v2:catalog-conditional-solute-v1:supercritical-liquid-slot-dilute-v1";
+        revision=catalog.viscosityFingerprint(packageId)+":log-liquid-pair-groups-wilke-v2:catalog-conditional-solute-v1:supercritical-liquid-slot-dilute-v1:range-continuation-v1";
         int count=propertyPackage.components().size();liquidCorrelations=new ViscosityCorrelation[count];vaporCorrelations=new ViscosityCorrelation[count];
         double[] mw=new double[count+1];
         for(int i=0;i<count;i++) {
@@ -48,9 +48,9 @@ public final class MixtureViscosity {
      * stays per evaluation, but nothing here depends on composition or pressure.
      *
      * <p>Each component is filled the first time a mixture actually contains it, never in advance:
-     * the correlations refuse temperatures outside their own range and the conditional-solute
-     * curves refuse temperatures outside their sampled domain, and which of those a caller meets
-     * must stay exactly what the composition it passed would have produced.
+     * a component without data is refused, and which refusal a caller meets must stay exactly what
+     * the composition it passed would have produced. Past its data range a correlation continues
+     * ({@link ViscosityCorrelation#dynamicViscosityPascalSeconds}).
      */
     public static final class Prepared {
         private static final byte UNFILLED=0,CARRIER=1,CONDITIONAL_SOLUTE=2;
@@ -88,41 +88,55 @@ public final class MixtureViscosity {
         }
         return prepared;
     }
+    private static final int LIQUID_TABLE=0,VAPOR_DATA=1,SOLUTE_CURVE=2;
+    /**
+     * Which data a component's liquid viscosity comes from at {@code temperature}. Up to the end of its liquid table, the
+     * table (continued below it). Above it: a supercritical component (at or above its critical temperature, with vapour
+     * data, below any dissolved-solute curve) takes its dilute vapour viscosity, because the one-root slot is the phase
+     * identification parameter's, so a dense supercritical fluid (nitrogen above 126.192 K at pressures to 10 MPa) is
+     * liquid-like there; the vapour slot gives the same root that value, so the slot flip does not jump a pure fluid's
+     * viscosity (declared: no dense-fluid viscosity model exists; transport of dense states above 2 MPa is unqualified).
+     * Else its dissolved-solute curve from the curve's start, and else the liquid table's end value, held. A component
+     * without a liquid table is refused: no data.
+     */
+    private int liquidSource(int component,double temperature) {
+        var correlation=liquidCorrelations[component];
+        if(correlation==null)throw new IllegalArgumentException("PROPERTY_UNAVAILABLE: liquid viscosity for "+propertyPackage.components().get(component));
+        if(temperature<=correlation.maximumTemperatureKelvin())return LIQUID_TABLE;
+        var curve=conditional.get(propertyPackage.components().get(component));
+        if(temperature>=propertyPackage.properties().get(component).pr().criticalTemperature()&&vaporCorrelations[component]!=null
+                &&(curve==null||temperature<curve.minimumTemperatureKelvin()))return VAPOR_DATA;
+        return curve!=null&&temperature>=curve.minimumTemperatureKelvin()?SOLUTE_CURVE:LIQUID_TABLE;
+    }
+    /** The correlation a component's liquid viscosity is read from at {@code temperature} ({@link #liquidSource}): the data
+     * range a notice compares the temperature with. */
+    public ViscosityCorrelation liquidData(int component,double temperature) {
+        return switch(liquidSource(component,temperature)) {
+            case VAPOR_DATA->vaporCorrelations[component];
+            case SOLUTE_CURVE->conditional.get(propertyPackage.components().get(component));
+            default->liquidCorrelations[component];
+        };
+    }
+    /** A hydrocarbon component's vapour viscosity correlation, or null without one. */
+    public ViscosityCorrelation vaporData(int component){return vaporCorrelations[component];}
+    /** The water liquid viscosity correlation, or null without one. */
+    public ViscosityCorrelation waterLiquidData(){return waterLiquidCorrelation;}
     private void fillLiquid(Prepared prepared,int component) {
-        String name=propertyPackage.components().get(component);
-        var correlation=liquidCorrelations[component];double temperature=prepared.temperature,mu;
-        if(correlation!=null && temperature>=correlation.minimumTemperatureKelvin()
-                && temperature<=correlation.maximumTemperatureKelvin()) {
-            mu=correlation.dynamicViscosityPascalSeconds(temperature,correlation.minimumPressurePascal());
-            prepared.liquidKind[component]=Prepared.CARRIER;
-        } else {
-            var curve=conditional.get(name);
-            if(correlation!=null&&temperature>correlation.maximumTemperatureKelvin()
-                    &&temperature>=propertyPackage.properties().get(component).pr().criticalTemperature()
-                    &&vaporCorrelations[component]!=null
-                    &&(curve==null||temperature<curve.minimumTemperatureKelvin())) {
-                // A supercritical component in the liquid slot, above its liquid data (whose table ends at its critical
-                // point) and below any dissolved-solute curve: the one-root slot is the phase identification
-                // parameter's, so a dense supercritical fluid (nitrogen above 126.192 K at pressures to 10 MPa) is
-                // liquid-like there. It takes its dilute vapour viscosity, the value the vapour slot gives the same
-                // root, so the slot flip does not jump a pure fluid's viscosity. Declared: no dense-fluid viscosity
-                // model exists; transport of dense states above 2 MPa is unqualified.
-                mu=pureVapor(prepared.temperature,component);
-                prepared.liquidKind[component]=Prepared.CARRIER;
-                prepared.liquidLog[component]=DeterministicMath.log(mu);
-                return;
+        double temperature=prepared.temperature,mu;
+        switch(liquidSource(component,temperature)) {
+            case VAPOR_DATA->{mu=pureVapor(temperature,component);prepared.liquidKind[component]=Prepared.CARRIER;}
+            case SOLUTE_CURVE->{
+                mu=conditional.get(propertyPackage.components().get(component)).dynamicViscosityPascalSeconds(temperature,ViscosityCorrelation.Phase.LIQUID);
+                prepared.liquidKind[component]=Prepared.CONDITIONAL_SOLUTE;
             }
-            if(curve==null || correlation==null || temperature<correlation.minimumTemperatureKelvin()) {
-                throw new IllegalArgumentException("PROPERTY_UNAVAILABLE: liquid viscosity for "+name);
-            }
-            mu=curve.dynamicViscosityPascalSeconds(temperature,curve.minimumPressurePascal());prepared.liquidKind[component]=Prepared.CONDITIONAL_SOLUTE;
+            default->{mu=liquidCorrelations[component].dynamicViscosityPascalSeconds(temperature,ViscosityCorrelation.Phase.LIQUID);prepared.liquidKind[component]=Prepared.CARRIER;}
         }
         prepared.liquidLog[component]=DeterministicMath.log(mu);
     }
     private double pureVapor(double temperature,int component) {
         if(component==liquidCorrelations.length)return WaterRegion1.diluteVaporViscosity(temperature);
         var c=vaporCorrelations[component];if(c==null)throw new IllegalArgumentException("PROPERTY_UNAVAILABLE: vapor viscosity");
-        return c.dynamicViscosityPascalSeconds(temperature,c.minimumPressurePascal());
+        return c.dynamicViscosityPascalSeconds(temperature,ViscosityCorrelation.Phase.VAPOR);
     }
 
     /** Conditional solute factors are only used in a mixture with a supported liquid carrier. */
@@ -147,11 +161,17 @@ public final class MixtureViscosity {
     public double waterLiquid(double temperature) {
         return waterLiquid(temperature,null);
     }
+    /**
+     * Liquid water's viscosity: its correlation at the temperature held inside Region 1's liquid, from the water model's
+     * triple point to 623.15 K, as the free water's other properties are ({@code WaterRegion1}; SR6's own sum diverges
+     * below about 230 K, 5.3 Pa s at 200 K).
+     */
     public double waterLiquid(double temperature,Prepared prepared) {
         own(prepared,temperature);
         if(prepared!=null&&!Double.isNaN(prepared.water))return prepared.water;
         var c=waterLiquidCorrelation;if(c==null)throw new IllegalArgumentException("PROPERTY_UNAVAILABLE: water liquid viscosity");
-        double value=c.dynamicViscosityPascalSeconds(temperature,c.minimumPressurePascal());
+        double held=Math.min(Math.max(temperature,propertyPackage.water().triplePoint()),WaterRegion1.REGION_1_MAXIMUM_TEMPERATURE);
+        double value=c.dynamicViscosityPascalSeconds(held,ViscosityCorrelation.Phase.LIQUID);
         if(prepared!=null)prepared.water=value;
         return value;
     }

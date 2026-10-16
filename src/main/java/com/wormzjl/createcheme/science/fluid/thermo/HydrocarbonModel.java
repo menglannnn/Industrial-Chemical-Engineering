@@ -31,15 +31,16 @@ import java.util.List;
  */
 public final class HydrocarbonModel {
     /** A numerical guard on the hydrocarbon <em>partial</em> pressure a vapour is evaluated at, which in a gas that is
-     * nearly all steam can be arbitrarily small; the state's own pressure is bounded by the package's domain. */
+     * nearly all steam can be arbitrarily small; the state's own pressure is inside the numerical box. */
     public static final double VAPOR_PARTIAL_PRESSURE_FLOOR = 1e-6;
     /**
      * The formulation tag this model's revision carries: liquids at the state pressure, anchors at their own
      * ({@code direct-liquid}), and the network's phases decided by the equilibrium engine with the phase identification
      * parameter as the one liquid/vapour rule ({@code tp-engine}: the Wilson-started flash and the root heuristic
-     * retired). Both paths' revisions carry it, so a change here is a fresh world.
+     * retired), and every property continued past its data range ({@code range-continuation}: owner rule of 2026-10-16).
+     * Both paths' revisions carry it, so a change here is a fresh world.
      */
-    public static final String FORMULATION="direct-liquid-v1:tp-engine-v1";
+    public static final String FORMULATION="direct-liquid-v1:tp-engine-v1:range-continuation-v1";
     /**
      * The datum and anchor rule of a spine package: each spine's formation enthalpy subtracted per species (D10, so a
      * species' ideal-gas enthalpy is 0 at 298.15 K as on the coefficient path), and a record's {@code volume_translation}
@@ -68,7 +69,7 @@ public final class HydrocarbonModel {
             // The spine path: spine ideal gas on the sensible datum, E-PPR78 pairs, one anchor per species.
             var data=SpinePackageData.of(catalog,packageId);
             spine=data;
-            translated=new TranslatedPengRobinson(packageId,data.components(),data.interactions(),data.idealGas(),
+            translated=new TranslatedPengRobinson(data.components(),data.interactions(),data.idealGas(),
                     data.formationEnthalpies(),data.translations());
             for(int i=0;i<data.anchors().size();i++)
                 requireLiquidRoot(packageId,data.components().get(i),i,data.anchors().get(i).temperature(),data.anchors().get(i).pressure());
@@ -80,7 +81,7 @@ public final class HydrocarbonModel {
                 p.component(),p.pr().criticalTemperature(),p.pr().criticalPressure(),p.pr().acentricFactor(),p.molecularWeight())).toList();
         int count=components.size();
         double[][] interactions=new double[count][count], cp=new double[count][6], low=new double[count][];
-        double[] joints=new double[count];
+        double[] joints=new double[count],fitMinimum=new double[count],fitMaximum=new double[count];
         for(int i=0;i<count;i++) {
             for(int j=0;j<count;j++) interactions[i][j]=propertyPackage.interactions().get(i).get(j);
             var property=propertyPackage.properties().get(i);
@@ -88,6 +89,11 @@ public final class HydrocarbonModel {
             var segment=property.lowTemperatureCp();
             joints[i]=segment==null?Double.NEGATIVE_INFINITY:segment.belowKelvin();
             if(segment!=null){low[i]=new double[6];for(int j=0;j<6;j++)low[i][j]=segment.coefficients().get(j);}
+            // The fit's range: the component's fluid range where it declares one (the fit qualified there), its record's
+            // otherwise, as the phase engine's ideal gas of the same fit (NetworkPhaseEngine.CoefficientIdealGas).
+            var range=catalog.fluidValidity(packageId,property.component());
+            fitMinimum[i]=range.map(MaterialCatalog.Validity::minimumTemperature).orElse(property.minimumTemperature());
+            fitMaximum[i]=range.map(MaterialCatalog.Validity::maximumTemperature).orElse(property.maximumTemperature());
         }
         var calibrations=catalog.fluidData().volumeReferences();
         double[] shifts=new double[count],anchorT=new double[count],anchorP=new double[count];
@@ -104,7 +110,7 @@ public final class HydrocarbonModel {
             shifts[i]=targetVolume-rawVolume;
             anchorT[i]=t;anchorP[i]=referenceP;
         }
-        translated=new TranslatedPengRobinson(components,interactions,cp,shifts,joints,low);
+        translated=new TranslatedPengRobinson(components,interactions,cp,shifts,joints,low,fitMinimum,fitMaximum);
         // An anchor is a liquid volume, so the equation of state must have a liquid root at the anchor's state: a
         // single vapour-like root there would translate the component by a gas volume.
         for(int i=0;i<count;i++)requireLiquidRoot(packageId,components.get(i),i,anchorT[i],anchorP[i]);
@@ -129,7 +135,7 @@ public final class HydrocarbonModel {
     public String revision() { return revision; }
     /** The resolved spine inputs; empty for a package without a spine. */
     public java.util.Optional<SpinePackageData> spine() { return java.util.Optional.ofNullable(spine); }
-    /** The package's fluid domain: the envelope and every component's range. */
+    /** The package's data ranges ({@link FluidDomain}). */
     public FluidDomain domain() { return domain; }
     public int componentCount() { return propertyPackage.components().size(); }
     public List<String> components() { return propertyPackage.components(); }
@@ -162,16 +168,11 @@ public final class HydrocarbonModel {
     public Phase phase(double t,double p,double[] amounts,PengRobinsonKernel.Root root,TranslatedPengRobinson.Workspace terms,boolean vaporCoexists) {
         if(amounts.length!=componentCount())throw new IllegalArgumentException("Hydrocarbon basis mismatch");
         if(!Double.isFinite(t)||!Double.isFinite(p))throw new IllegalArgumentException("Fluid hydrocarbon state is not finite");
-        // Every carried component within its own temperature range (a thermo-domain violation otherwise). A liquid is
-        // evaluated at the state pressure, which must lie in the range of every component it carries; a vapour at its
-        // hydrocarbon partial pressure, which is only guarded numerically here and capped by the envelope, since the
-        // state that carries it checks the total pressure. A phase takes the crystal competition's floors of a package
-        // that admits crystals (the fluid floors otherwise, bit for bit).
-        domain.checkPhaseTemperature(t,amounts);
-        if(root==PengRobinsonKernel.Root.VAPOR) {
-            if(p<VAPOR_PARTIAL_PRESSURE_FLOOR)throw new IllegalArgumentException("Hydrocarbon vapour partial pressure below the numerical floor");
-            if(p>domain.envelope().maximumPressure())domain.checkEnvelope(t,p);
-        } else domain.check(t,p,amounts,null,0);
+        // No data range bounds a phase (owner rule of 2026-10-16; the state that carries it is inside the numerical box).
+        // A vapour is evaluated at its hydrocarbon partial pressure, which in a gas that is nearly all steam can be
+        // arbitrarily small: a numerical floor guards it.
+        if(root==PengRobinsonKernel.Root.VAPOR&&p<VAPOR_PARTIAL_PRESSURE_FLOOR)
+            throw new IllegalArgumentException("Hydrocarbon vapour partial pressure below the numerical floor");
         var values=translated.evaluateValues(t,p,amounts,root,terms);
         if(vaporCoexists&&root==PengRobinsonKernel.Root.LIQUID&&values.physicalRootCount()==1&&!liquidLike(values))throw new LiquidRootAbsent(t,p);
         return new Phase(values.molarVolume(),values.molarEnthalpy(),values.molarInternalEnergy(),
@@ -192,8 +193,7 @@ public final class HydrocarbonModel {
     /**
      * A liquid trial whose equation of state has no liquid root at the state pressure while its node also carries a
      * hydrocarbon vapour. It is an {@link IllegalArgumentException}, so a Newton trial or a Jacobian column that meets
-     * it is refused like any state outside the evaluable domain; it is not a {@link ThermoDomainViolation}, because the
-     * state is inside every declared range and only the phase layout is wrong.
+     * it is refused like any unevaluable trial; it is not a {@link ThermoHold}, because only the phase layout is wrong.
      */
     public static final class LiquidRootAbsent extends IllegalArgumentException {
         public LiquidRootAbsent(double temperature,double pressure) {

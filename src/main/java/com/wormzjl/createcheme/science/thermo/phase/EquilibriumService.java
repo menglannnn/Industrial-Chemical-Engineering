@@ -8,10 +8,11 @@ package com.wormzjl.createcheme.science.thermo.phase;
  * species outside the package ({@link EquilibriumResult.UnsupportedReason#SPECIES_NOT_IN_PACKAGE}); water chemistry
  * ({@link EquilibriumResult.UnsupportedReason#WATER_CHEMISTRY_NOT_MODELLED}: a hydrate competition, or water together
  * with a declared water-chemistry species); the phase competition
- * ({@link EquilibriumResult.UnsupportedReason#PHASE_COMPETITION_NOT_QUALIFIED}); the domain
- * ({@link EquilibriumResult.Status#OUT_OF_DOMAIN}); then what this implementation does not yet do
- * ({@link EquilibriumResult.UnsupportedReason#NOT_IMPLEMENTED}). Malformed requests are refused when the request is
- * built.</p>
+ * ({@link EquilibriumResult.UnsupportedReason#PHASE_COMPETITION_NOT_QUALIFIED}); then what this implementation does not
+ * yet do ({@link EquilibriumResult.UnsupportedReason#NOT_IMPLEMENTED}). Malformed requests are refused when the request
+ * is built. No data range refuses a state (owner rule of 2026-10-16): the models continue past their data, a converged
+ * answer outside one is graded {@link EquilibriumResult.CoverageGrade#EXTRAPOLATED}, and only the numerical box
+ * ({@link com.wormzjl.createcheme.science.thermo.NumericalBox}) bounds a search.</p>
  *
  * <p>A {@link Workspace} is caller-owned scratch for one thread; reusing it makes a call allocate little more than its
  * result, and results do not depend on what the workspace computed before.</p>

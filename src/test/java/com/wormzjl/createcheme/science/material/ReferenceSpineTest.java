@@ -223,19 +223,25 @@ class ReferenceSpineTest {
     }
 
     @Test
-    void evaluationOutsideTheSegmentsIsRefused() {
+    void evaluationOutsideTheSegmentsContinuesOnTheEndsHeatCapacity() {
+        // Past its segments (63.151..6000 K for nitrogen) the spine holds the end's cp and integrates it (owner rule of
+        // 2026-10-16): h and s continue with value and slope; only a state that is not positive and finite is refused.
         var nitrogen = spine("nitrogen");
-        var low = assertThrows(IllegalArgumentException.class, () -> nitrogen.heatCapacity(50));
-        assertTrue(low.getMessage().contains("63.151..6000.0 K"), low.getMessage());
-        assertThrows(IllegalArgumentException.class, () -> nitrogen.enthalpy(6000.5));
+        assertEquals(63.151, nitrogen.minimumTemperature(), 0.0);
+        assertEquals(6000, nitrogen.maximumTemperature(), 0.0);
+        double cpLow = nitrogen.heatCapacity(63.151);
+        assertEquals(cpLow, nitrogen.heatCapacity(50), 0.0);
+        assertEquals(nitrogen.enthalpy(63.151) + cpLow * (50 - 63.151), nitrogen.enthalpy(50), 1e-9);
+        assertEquals(nitrogen.entropy(63.151, 1e5) + cpLow * Math.log(50 / 63.151), nitrogen.entropy(50, 1e5), 1e-9);
+        assertEquals(nitrogen.heatCapacity(6000), nitrogen.heatCapacity(6000.5), 0.0);
         assertThrows(IllegalArgumentException.class, () -> nitrogen.entropy(Double.NaN, 1e5));
         assertThrows(IllegalArgumentException.class, () -> nitrogen.entropy(300, 0));
-        assertEquals(nitrogen.heatCapacity(6000), nitrogen.heatCapacity(6000));
-        // Methane's ideal gas ends at 1200 K (D13): nothing is extrapolated above it.
+        assertThrows(IllegalArgumentException.class, () -> nitrogen.heatCapacity(0));
+        // Methane's ideal-gas data end at 1200 K (D13): past it the cp is held, a notice and no refusal.
         var methane = spine("methane");
-        var high = assertThrows(IllegalArgumentException.class, () -> methane.heatCapacity(1200.5));
-        assertTrue(high.getMessage().contains("90.6941..1200.0 K"), high.getMessage());
-        assertTrue(methane.heatCapacity(1200) > 0);
+        assertEquals(1200, methane.maximumTemperature(), 0.0);
+        assertEquals(methane.heatCapacity(1200), methane.heatCapacity(1200.5), 0.0);
+        assertEquals(methane.enthalpy(1200) + 0.5 * methane.heatCapacity(1200), methane.enthalpy(1200.5), 1e-9 * Math.abs(methane.enthalpy(1200)));
     }
 
     @Test

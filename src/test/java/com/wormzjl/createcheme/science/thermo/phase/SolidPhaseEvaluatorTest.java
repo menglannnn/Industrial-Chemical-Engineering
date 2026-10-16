@@ -115,7 +115,7 @@ class SolidPhaseEvaluatorTest {
         var vapour = new PhaseAmounts(PhaseKind.VAPOR, null, t, p, vapourAmounts, vapourState);
         var frost = new PhaseAmounts(PhaseKind.SOLID, "co2_solid_i", t, p, solidAmounts, solidState);
         var result = new EquilibriumResult(EquilibriumRequest.Specification.TP, EquilibriumResult.Status.CONVERGED, null,
-                "test", null, identity, competition, Classification.SOLID_PRESENT, List.of(vapour, frost), List.of(),
+                "test", identity, competition, Classification.SOLID_PRESENT, List.of(vapour, frost), List.of(),
                 new EquilibriumResult.Coverage(CoverageGrade.RESEARCH_ONLY, "test double"), EquilibriumResult.Diagnostics.NONE);
         assertTrue(result.solidsAssessed());
         assertEquals(0.0, result.conservationDefect(overall), 1.0e-16);
@@ -131,11 +131,11 @@ class SolidPhaseEvaluatorTest {
 
         // A solid outside the competition, a solid in a fluid-only answer, and a fluid-only SOLID_PRESENT are refused.
         assertThrows(IllegalArgumentException.class, () -> new EquilibriumResult(EquilibriumRequest.Specification.TP,
-                EquilibriumResult.Status.CONVERGED, null, "test", null, identity, PhaseCompetition.FLUID_ONLY,
+                EquilibriumResult.Status.CONVERGED, null, "test", identity, PhaseCompetition.FLUID_ONLY,
                 Classification.SOLID_PRESENT, List.of(vapour, frost), List.of(),
                 new EquilibriumResult.Coverage(CoverageGrade.RESEARCH_ONLY, "t"), EquilibriumResult.Diagnostics.NONE));
         assertThrows(IllegalArgumentException.class, () -> new EquilibriumResult(EquilibriumRequest.Specification.TP,
-                EquilibriumResult.Status.CONVERGED, null, "test", null, identity, competition,
+                EquilibriumResult.Status.CONVERGED, null, "test", identity, competition,
                 Classification.SOLID_PRESENT, List.of(vapour), List.of(),
                 new EquilibriumResult.Coverage(CoverageGrade.RESEARCH_ONLY, "t"), EquilibriumResult.Diagnostics.NONE));
         // Phase amounts are nonnegative and a phase holds material.

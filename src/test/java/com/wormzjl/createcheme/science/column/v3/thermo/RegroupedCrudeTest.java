@@ -70,9 +70,9 @@ class RegroupedCrudeTest {
         double residueError=Math.abs(viscosity.liquid(333.15,residue).pascalSeconds()/residueObserved-1);
         assertTrue((wholeError+residueError)/2<=.1);assertTrue(Math.max(wholeError,residueError)<=.2);
         for(double t:new double[]{293.15,298.15,373.15,773.15,900}) {
-            double last=catalog.viscosity(id,"crude_pc12",ViscosityCorrelation.Phase.LIQUID).orElseThrow().dynamicViscosityPascalSeconds(t,100000);
-            assertEquals(last,catalog.viscosity(id,"crude_pc11",ViscosityCorrelation.Phase.LIQUID).orElseThrow().dynamicViscosityPascalSeconds(t,100000),last*1e-12);
-            assertEquals(last,catalog.viscosity(id,"crude_pc10",ViscosityCorrelation.Phase.LIQUID).orElseThrow().dynamicViscosityPascalSeconds(t,100000),last*1e-12);
+            double last=catalog.viscosity(id,"crude_pc12",ViscosityCorrelation.Phase.LIQUID).orElseThrow().dynamicViscosityPascalSeconds(t,ViscosityCorrelation.Phase.LIQUID);
+            assertEquals(last,catalog.viscosity(id,"crude_pc11",ViscosityCorrelation.Phase.LIQUID).orElseThrow().dynamicViscosityPascalSeconds(t,ViscosityCorrelation.Phase.LIQUID),last*1e-12);
+            assertEquals(last,catalog.viscosity(id,"crude_pc10",ViscosityCorrelation.Phase.LIQUID).orElseThrow().dynamicViscosityPascalSeconds(t,ViscosityCorrelation.Phase.LIQUID),last*1e-12);
         }
     }
     @Test void gameplayDrawsRetainTheCapturedPhysicalVolumeTargets() throws Exception {

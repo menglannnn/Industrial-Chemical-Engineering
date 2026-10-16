@@ -2,11 +2,10 @@ package com.wormzjl.createcheme.science.thermo.qualification;
 
 import static com.wormzjl.createcheme.science.thermo.qualification.G3Support.*;
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.wormzjl.createcheme.science.fluid.thermo.FluidThermodynamics;
-import com.wormzjl.createcheme.science.fluid.thermo.ThermoDomainViolation;
 import com.wormzjl.createcheme.science.thermo.PengRobinsonKernel.Root;
 import com.wormzjl.createcheme.science.thermo.TangentPlaneStability;
 import com.wormzjl.createcheme.science.thermo.phase.EquilibriumRequest;
@@ -30,8 +29,8 @@ import org.junit.jupiter.api.Test;
  *   literature preset's 638.15 K and 250 kPa.</li>
  *   <li>Coking 739-783 K at 0.20-0.52 MPa: the assay through the network's flash; the engine's feed stability verdict
  *   agrees with the phase count.</li>
- *   <li>Hydrotreating 589-713 K at 6.1 and 9.1 MPa: refused by the network (the cuts keep 2 MPa, a typed
- *   {@link ThermoDomainViolation}); the same states on a research contract of the engine (open domain): phase count,
+ *   <li>Hydrotreating 589-713 K at 6.1 and 9.1 MPa: carried by the network past the cuts' 2 MPa data on their
+ *   continuations (a notice since the owner rule of 2026-10-16, a typed refusal before); the same states on a research contract of the engine (open domain): phase count,
  *   labels, verdict (H2 absent until P7).</li>
  *   <li>Cut and light-end liquid densities at 300 K from 0.1 to 10 MPa: the root is liquid-like at every pressure
  *   (the NIST 300 K isotherms of {@code LiquidCompressionQualificationTest} end at 1.1 MPa; no reference above).</li>
@@ -150,13 +149,14 @@ class G3F6CurrentCutProbeTest {
     }
 
     @Test
-    void hydrotreatingPressureIsRefusedByTheNetworkAndProbedOnAResearchContract() {
+    void hydrotreatingPressureIsCarriedByTheNetworkAndProbedOnAResearchContract() {
         var model = network();
         double[] z = assay(model);
-        var refused = assertThrows(ThermoDomainViolation.class, () -> model.flashTP(623, 9.1e6, z, () -> { }));
-        assertTrue(refused.component().startsWith("crude_") || List.of("Ethane", "Propane", "Isobutane", "N-butane", "Isopentane", "N-pentane")
-                .contains(refused.component()), refused.getMessage());
-        System.out.println("G3 F6 hydrotreating on the network: refused, " + refused.getMessage());
+        // Past the crude records' 2 MPa data the network carries the state on their continuations (owner rule of
+        // 2026-10-16): no refusal, a notice.
+        var carried = assertDoesNotThrow(() -> model.flashTP(623, 9.1e6, z, () -> { }));
+        assertTrue(Double.isFinite(carried.enthalpy()) && carried.volume() > 0);
+        System.out.println("G3 F6 hydrotreating on the network: carried, vapour " + f("%.4f", java.util.Arrays.stream(carried.vaporView()).sum() / java.util.Arrays.stream(z).sum()));
         var engine = researchEngine(networkEvaluator(), "tjl20-hydrotreating-probe");
         var ws = engine.newWorkspace();
         var table = new Table("G3 F6 hydrotreating", "T K", "P MPa", "Status", "Classification", "Phases (labels)", "Vapour fraction",

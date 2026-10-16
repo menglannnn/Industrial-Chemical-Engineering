@@ -26,7 +26,8 @@ final class PhaseTestSupport {
 
     /**
      * A stub ideal-gas function: {@code c_p = sum a_k (T - 298.15)^k}, {@code h = h0 + integral c_p},
-     * {@code s = s0 + integral c_p/T - R ln(P/1e5)}, refused outside {@code [minimum, maximum]}.
+     * {@code s = s0 + integral c_p/T - R ln(P/1e5)}, continued outside {@code [minimum, maximum]} as the interface
+     * states: c_p held at the nearer end, h and s integrating it.
      */
     static final class StubIdealGas implements IdealGasFunction {
         static final double REFERENCE_T = 298.15;
@@ -66,7 +67,7 @@ final class PhaseTestSupport {
 
         @Override public double heatCapacity(double t) {
             check(t);
-            double delta = t - REFERENCE_T;
+            double delta = end(t) - REFERENCE_T;
             double cp = 0.0;
             for (int k = a.length - 1; k >= 0; k--) cp = cp * delta + a[k];
             return cp;
@@ -75,18 +76,19 @@ final class PhaseTestSupport {
         /** The Horner form the translated model uses, so its ideal part is reproduced to rounding. */
         @Override public double enthalpy(double t) {
             check(t);
-            double delta = t - REFERENCE_T;
+            double e = end(t), delta = e - REFERENCE_T;
             double h = 0.0;
             for (int k = a.length - 1; k >= 0; k--) h = h * delta + a[k] / (k + 1);
-            return formationEnthalpy + h * delta;
+            return formationEnthalpy + h * delta + heatCapacity(e) * (t - e);
         }
 
         @Override public double entropy(double t, double p) {
             check(t);
             if (!(p > 0.0)) throw new IllegalArgumentException("pressure");
-            double integral = powers[0] * Math.log(t / REFERENCE_T);
-            for (int m = 1; m < powers.length; m++) integral += powers[m] * (Math.pow(t, m) - Math.pow(REFERENCE_T, m)) / m;
-            return standardEntropy + integral - R * Math.log(p / 1.0e5);
+            double e = end(t);
+            double integral = powers[0] * Math.log(e / REFERENCE_T);
+            for (int m = 1; m < powers.length; m++) integral += powers[m] * (Math.pow(e, m) - Math.pow(REFERENCE_T, m)) / m;
+            return standardEntropy + integral + heatCapacity(e) * Math.log(t / e) - R * Math.log(p / 1.0e5);
         }
 
         @Override public double minimumTemperature() { return minimum; }
@@ -94,8 +96,11 @@ final class PhaseTestSupport {
         @Override public String revision() { return "test-stub"; }
 
         private void check(double t) {
-            if (!(t >= minimum && t <= maximum)) throw new IllegalArgumentException("Outside the stub's range: " + t);
+            if (!(t > 0.0 && Double.isFinite(t))) throw new IllegalArgumentException("temperature " + t);
         }
+
+        /** The nearer end of the data for {@code t} outside it, else {@code t}. */
+        private double end(double t) { return Math.max(minimum, Math.min(maximum, t)); }
 
         private static double binomial(int n, int k) {
             double value = 1.0;
@@ -169,12 +174,17 @@ final class PhaseTestSupport {
      * and {@code state} use: its saturation pressure, its liquid water at (T, P), its ideal-gas steam enthalpy and its
      * steam partial-pressure limit. The steam's heat capacity is the same Shomate polynomial's derivative
      * ({@code V3WaterProperties.dVaporMolarEnthalpyDT}); its entropy is that polynomial's Shomate entropy, anchored at the
-     * standard entropy of water vapour, 188.835 J/(mol K) at 298.15 K and 1e5 Pa (JANAF), minus {@code R ln(P/1e5)}.
+     * standard entropy of water vapour, 188.835 J/(mol K) at 298.15 K and 1e5 Pa (JANAF), minus {@code R ln(P/1e5)}. Past the
+     * record's range the heat capacity is held at the end value and the entropy integrates it, as the network's steam
+     * (owner rule of 2026-10-16).
      */
     static FreeWaterModel networkFreeWater(FluidThermodynamics fluid) {
         MaterialCatalog.Water water = network().water();
         IdealGasFunction steam = new IdealGasFunction() {
             private final double offset = 188.835 - shomateEntropy(298.15);
+            private final double minimum = water.triplePoint(), maximum = water.maximumTemperature();
+
+            private double end(double t) { return Math.max(minimum, Math.min(maximum, t)); }
 
             private double shomateEntropy(double t) {
                 double x = t / 1000.0;
@@ -183,11 +193,14 @@ final class PhaseTestSupport {
                         - c.get(4) / (2.0 * x * x);
             }
 
-            @Override public double heatCapacity(double t) { return V3WaterProperties.dVaporMolarEnthalpyDT(water, t); }
+            @Override public double heatCapacity(double t) { return V3WaterProperties.dVaporMolarEnthalpyDT(water, end(t)); }
             @Override public double enthalpy(double t) { return fluid.vaporWaterEnthalpy(t); }
-            @Override public double entropy(double t, double p) { return shomateEntropy(t) + offset - R * Math.log(p / 1.0e5); }
-            @Override public double minimumTemperature() { return water.triplePoint(); }
-            @Override public double maximumTemperature() { return water.maximumTemperature(); }
+            @Override public double entropy(double t, double p) {
+                double e = end(t);
+                return shomateEntropy(e) + offset + heatCapacity(e) * Math.log(t / e) - R * Math.log(p / 1.0e5);
+            }
+            @Override public double minimumTemperature() { return minimum; }
+            @Override public double maximumTemperature() { return maximum; }
             @Override public String revision() { return water.revision(); }
         };
         return new FreeWaterModel() {

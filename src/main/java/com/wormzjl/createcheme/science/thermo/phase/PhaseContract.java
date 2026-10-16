@@ -12,15 +12,15 @@ import java.util.Set;
 
 /**
  * What a package promises the equilibrium engine: its shared component basis, how water takes part, which phase
- * competitions it is qualified for, which species need water chemistry, where it may be evaluated, how good a fluid
- * answer inside that domain is, and its thermodynamic identity.
+ * competitions it is qualified for, which species need water chemistry, the envelope of its data (outside it an answer is
+ * graded extrapolated, never refused), how good a fluid answer inside that envelope is, and its thermodynamic identity.
  *
  * <p>Rules the constructor enforces:</p>
  * <ul>
  *   <li>Water: {@link WaterParticipation#NONE} names no water component; {@link WaterParticipation#SEPARATE_FREE_WATER}
  *   names one in the basis. {@link #waterChemistrySpecies()} lie in the basis and are not the water itself.</li>
  *   <li>Competitions: at least one; none with gas hydrates, because no P2 water participation models them.</li>
- *   <li>The domain covers exactly the basis.</li>
+ *   <li>The domain names exactly the basis.</li>
  *   <li>The fluid coverage grade is one an answer can have ({@code QUALIFIED}, {@code ESTIMATED_DECLARED_ERROR} or
  *   {@code RESEARCH_ONLY}).</li>
  * </ul>
@@ -30,7 +30,7 @@ import java.util.Set;
  * @param qualifiedCompetitions each competition the package is qualified for, as a whole
  * @param waterChemistrySpecies species whose presence together with water needs aqueous chemistry (ammonia and the
  *        like), refused under {@link WaterParticipation#SEPARATE_FREE_WATER}
- * @param fluidCoverage the grade and evidence of a converged fluid-phase answer inside the domain
+ * @param fluidCoverage the grade and evidence of a converged fluid-phase answer inside the envelope
  */
 public record PhaseContract(String packageId, ThermoIdentity identity, List<String> components,
                             WaterParticipation water, String waterComponent,
@@ -69,7 +69,7 @@ public record PhaseContract(String packageId, ThermoIdentity identity, List<Stri
 
     /**
      * The fluid network package: its PR78 components followed by {@code Water} as separate free water, qualified for
-     * fluid-only competition, the network's {@link FluidDomain}, no water-chemistry species (the bundled packages hold
+     * fluid-only competition, the network's envelope ({@link FluidDomain}), no water-chemistry species (the bundled packages hold
      * hydrocarbons and nitrogen only), graded estimated-with-declared-error.
      */
     public static PhaseContract forNetworkPackage(MaterialCatalog catalog, String packageId, String spineFingerprint) {

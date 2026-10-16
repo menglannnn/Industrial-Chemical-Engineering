@@ -111,11 +111,12 @@ class FluidNitrogenCryogenicTest {
         // 10 MPa since P3 WP7 (design section 8.1: nitrogen and the network envelope widened; the cuts keep 2 MPa).
         assertEquals(900,envelope.maximumTemperature());assertEquals(100,envelope.minimumPressure());assertEquals(1e7,envelope.maximumPressure());
         assertEquals(63.151,catalog.requirePackage(NETWORK).properties().get(nitrogen).minimumTemperature(),"the record's own range starts at its triple point");
-        // A vapour just above the triple point at 5 kPa (below its 12.5 kPa saturation pressure) is a state; just below is not.
+        // A vapour at 5 kPa (below its 12.5 kPa saturation pressure) is a state just above the triple point and, since the
+        // owner rule of 2026-10-16 (a freezing point is never a validity bound), just below it too.
         double[] n=new double[model.componentCount()];n[nitrogen]=1;
         assertDoesNotThrow(()->model.flashTP(63.2,5000,n,()->{}));
-        var refused=assertThrows(ThermoDomainViolation.class,()->model.flashTP(63.1,5000,n,()->{}));
-        assertEquals("Nitrogen",refused.component());assertEquals(63.151,refused.minimum());
+        var below=assertDoesNotThrow(()->model.flashTP(63.1,5000,n,()->{}));
+        assertTrue(below.vaporVolume()>0&&below.liquidVolume()==0,"a gas below the triple point");
     }
 
     /** Liquid nitrogen at its normal boiling point is a whole network state, with a viscosity from the NIST table. */

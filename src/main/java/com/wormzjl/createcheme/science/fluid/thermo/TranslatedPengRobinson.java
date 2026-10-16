@@ -23,13 +23,13 @@ import java.util.Objects;
  * {@code (v, a, b, da/dT, d2a/dT2, S_i)} and is unchanged.
  *
  * <p>Two ideal-gas sources, one per model. The coefficient path (every constructor taking heat-capacity coefficients)
- * evaluates the {@code shifted_polynomial_5} fits exactly as before. The spine variant
- * ({@link #TranslatedPengRobinson(String, List, PairInteractions, List, double[], double[])}) takes one
- * {@link IdealGasFunction} per component (the package's reference spine) and a datum offset per component that is
- * subtracted from the function's enthalpy: the network passes the formation enthalpy, so its energies stay on the
- * sensible datum (zero at 298.15 K, decision D10) while its heat capacity, volume and fugacities are the spine's and the
- * cubic's. A component the state carries at a temperature its function does not cover is refused with a typed
- * {@link ThermoDomainViolation}; an absent one is not evaluated.</p>
+ * evaluates the {@code shifted_polynomial_5} fits; past a fit's range (by default none) the heat capacity is held at the
+ * end value and the enthalpy integrates it, as every ideal-gas function continues (owner rule of 2026-10-16). The spine
+ * variant ({@link #TranslatedPengRobinson(List, PairInteractions, List, double[], double[])}) takes one
+ * {@link IdealGasFunction} per component (the package's reference spine, which continues past its segments itself) and a
+ * datum offset per component that is subtracted from the function's enthalpy: the network passes the formation enthalpy,
+ * so its energies stay on the sensible datum (zero at 298.15 K, decision D10) while its heat capacity, volume and
+ * fugacities are the spine's and the cubic's.</p>
  */
 public final class TranslatedPengRobinson {
     private static final double R = FluidThermodynamics.R;
@@ -54,8 +54,11 @@ public final class TranslatedPengRobinson {
     private final IdealGasFunction[] idealGas;
     /** Subtracted from each spine enthalpy (the network's formation-enthalpy offsets); {@code null} on the coefficient path. */
     private final double[] datumOffsets;
-    /** The package named in a spine-range refusal; {@code null} on the coefficient path. */
-    private final String sourceId;
+    /**
+     * The coefficient path's fit ranges, K: past {@code [fitMinimum[i], fitMaximum[i]]} component {@code i}'s heat
+     * capacity is held at the end value and its enthalpy integrates it. Infinite (no continuation) unless given.
+     */
+    private final double[] fitMinimum,fitMaximum;
 
     /** Cp coefficients are powers of (T - 298.15 K); each component has exactly six coefficients. */
     public TranslatedPengRobinson(List<ThermoComponent> components, double[][] interactions,
@@ -70,7 +73,17 @@ public final class TranslatedPengRobinson {
     public TranslatedPengRobinson(List<ThermoComponent> components, double[][] interactions,
                                  double[][] heatCapacityCoefficients, double[] translations,
                                  double[] joints, double[][] lowCoefficients) {
-        this(components,interactions,null,heatCapacityCoefficients,translations,joints,lowCoefficients,false);
+        this(components,interactions,heatCapacityCoefficients,translations,joints,lowCoefficients,null,null);
+    }
+    /**
+     * As {@link #TranslatedPengRobinson(List, double[][], double[][], double[], double[], double[][])}, with each
+     * component's fit range {@code [fitMinimum[i], fitMaximum[i]]} (K; both {@code null} for none): past it the heat
+     * capacity is held at the end value and the enthalpy integrates it, so both are continuous at the ends.
+     */
+    public TranslatedPengRobinson(List<ThermoComponent> components, double[][] interactions,
+                                 double[][] heatCapacityCoefficients, double[] translations,
+                                 double[] joints, double[][] lowCoefficients, double[] fitMinimum, double[] fitMaximum) {
+        this(components,interactions,null,heatCapacityCoefficients,translations,joints,lowCoefficients,false,null,null,fitMinimum,fitMaximum);
     }
 
     /**
@@ -101,36 +114,33 @@ public final class TranslatedPengRobinson {
      * The spine variant: the ideal-gas heat capacity and enthalpy of component {@code i} are
      * {@code idealGas.get(i).heatCapacity(T)} and {@code idealGas.get(i).enthalpy(T) - datumOffsets[i]}; the residual
      * parts, the translation and the volumetric block are the coefficient path's expressions on the same kernel
-     * ({@link PengRobinsonKernel.Mixing#TEMPERATURE_DEPENDENT_PAIRS} on {@code interactions}). A component carried at a
-     * temperature outside its function's {@code [minimumTemperature(), maximumTemperature()]} is refused with a
-     * {@link ThermoDomainViolation} naming {@code sourceId} and the component (the carried one with the largest amount);
-     * nothing is extrapolated. An absent component's function is not evaluated there.
+     * ({@link PengRobinsonKernel.Mixing#TEMPERATURE_DEPENDENT_PAIRS} on {@code interactions}).
      *
-     * @param sourceId the package the data comes from, named in a refusal
      * @param datumOffsets subtracted from each function's enthalpy, J/mol (the formation enthalpy for the network's
      *        sensible datum; zeros keep the functions' own formation datum)
      */
-    public TranslatedPengRobinson(String sourceId, List<ThermoComponent> components, PairInteractions interactions,
+    public TranslatedPengRobinson(List<ThermoComponent> components, PairInteractions interactions,
                                   List<? extends IdealGasFunction> idealGas, double[] datumOffsets, double[] translations) {
         this(components,null,Objects.requireNonNull(interactions,"interactions"),new double[components.size()][6],
-                translations,null,null,false,Objects.requireNonNull(sourceId,"sourceId"),
-                Objects.requireNonNull(idealGas,"idealGas").toArray(new IdealGasFunction[0]),Objects.requireNonNull(datumOffsets,"datumOffsets"));
+                translations,null,null,false,Objects.requireNonNull(idealGas,"idealGas").toArray(new IdealGasFunction[0]),
+                Objects.requireNonNull(datumOffsets,"datumOffsets"),null,null);
     }
 
     /** Exactly one of {@code interactions} (the constant matrix, {@code SPARSE_PAIRS}) and {@code pairModel} is set. */
     private TranslatedPengRobinson(List<ThermoComponent> components, double[][] interactions, PairInteractions pairModel,
                                    double[][] heatCapacityCoefficients, double[] translations,
                                    double[] joints, double[][] lowCoefficients, boolean residualOnly) {
-        this(components,interactions,pairModel,heatCapacityCoefficients,translations,joints,lowCoefficients,residualOnly,null,null,null);
+        this(components,interactions,pairModel,heatCapacityCoefficients,translations,joints,lowCoefficients,residualOnly,null,null,null,null);
     }
 
-    /** {@code idealGas}, {@code datumOffsets} and {@code sourceId} are all set (the spine variant) or all {@code null}. */
+    /** {@code idealGas} and {@code datumOffsets} are both set (the spine variant) or both {@code null}; so are the fit
+     * ranges, which only the coefficient path takes. */
     private TranslatedPengRobinson(List<ThermoComponent> components, double[][] interactions, PairInteractions pairModel,
                                    double[][] heatCapacityCoefficients, double[] translations,
                                    double[] joints, double[][] lowCoefficients, boolean residualOnly,
-                                   String sourceId, IdealGasFunction[] idealGas, double[] datumOffsets) {
+                                   IdealGasFunction[] idealGas, double[] datumOffsets, double[] fitMinimum, double[] fitMaximum) {
         this.residualOnly = residualOnly;
-        if ((idealGas == null) != (datumOffsets == null) || (idealGas == null) != (sourceId == null))
+        if ((idealGas == null) != (datumOffsets == null))
             throw new IllegalArgumentException("Inconsistent ideal-gas functions");
         if (idealGas != null) {
             if (idealGas.length != components.size() || datumOffsets.length != components.size())
@@ -138,7 +148,17 @@ public final class TranslatedPengRobinson {
             for (IdealGasFunction function : idealGas) Objects.requireNonNull(function, "idealGas");
             for (double offset : datumOffsets) finite(offset);
         }
-        this.sourceId = sourceId;
+        if ((fitMinimum == null) != (fitMaximum == null) || fitMinimum != null
+                && (idealGas != null || fitMinimum.length != components.size() || fitMaximum.length != components.size()))
+            throw new IllegalArgumentException("Inconsistent ideal-gas fit ranges");
+        this.fitMinimum = new double[components.size()];
+        this.fitMaximum = new double[components.size()];
+        for (int i = 0; i < components.size(); i++) {
+            this.fitMinimum[i] = fitMinimum == null ? Double.NEGATIVE_INFINITY : fitMinimum[i];
+            this.fitMaximum[i] = fitMaximum == null ? Double.POSITIVE_INFINITY : fitMaximum[i];
+            if (!(this.fitMinimum[i] < this.fitMaximum[i]) || this.fitMaximum[i] <= 0)
+                throw new IllegalArgumentException("Invalid ideal-gas fit range " + this.fitMinimum[i] + ".." + this.fitMaximum[i] + " K");
+        }
         this.idealGas = idealGas == null ? null : idealGas.clone();
         this.datumOffsets = datumOffsets == null ? null : datumOffsets.clone();
         this.components = List.copyOf(components);
@@ -287,26 +307,25 @@ public final class TranslatedPengRobinson {
         SolverDiagnostics.count(SolverDiagnostics.temperatureTermsCalls);
         if(workspace.owner!=this)throw new IllegalArgumentException("Temperature coefficients belong to another state/model");
         if(!Double.isFinite(temperature)||temperature<=0)throw new IllegalArgumentException("Invalid coefficient temperature");
-        int count=components.size();double delta=temperature-REFERENCE_T;
-        // The spine variant: each function where it is declared, NaN where it is not (refused in fill() only for a
-        // component the state carries). The coefficient path below is unchanged.
+        int count=components.size();
+        // The spine variant: each function, which continues past its own data. The coefficient path: each fit at the
+        // temperature held inside its range, the enthalpy continued with the held heat capacity past it.
         if(idealGas!=null)for(int i=0;i<count;i++) {
-            var function=idealGas[i];
-            if(temperature>=function.minimumTemperature()&&temperature<=function.maximumTemperature()) {
-                workspace.heatCapacity[i]=function.heatCapacity(temperature);
-                workspace.enthalpy[i]=function.enthalpy(temperature)-datumOffsets[i];
-            } else {workspace.heatCapacity[i]=Double.NaN;workspace.enthalpy[i]=Double.NaN;}
+            workspace.heatCapacity[i]=idealGas[i].heatCapacity(temperature);
+            workspace.enthalpy[i]=idealGas[i].enthalpy(temperature)-datumOffsets[i];
         }
         else for(int i=0;i<count;i++) {
-            double cp=0,h=0;
-            if(temperature<joints[i]) {
+            double fit=temperature<fitMinimum[i]?fitMinimum[i]:temperature>fitMaximum[i]?fitMaximum[i]:temperature;
+            double delta=fit-REFERENCE_T,cp=0,h=0;
+            if(fit<joints[i]) {
                 double[] low=lowCoefficients[i];
                 for(int term=5;term>=0;term--){cp=cp*delta+low[term];h=h*delta+low[term]/(term+1);}
                 workspace.heatCapacity[i]=cp;workspace.enthalpy[i]=jointEnthalpies[i]+(h*delta-jointAntiderivatives[i]);
-                continue;
+            } else {
+                for(int term=5;term>=0;term--){cp=cp*delta+heatCapacityCoefficients[i][term];h=h*delta+heatCapacityCoefficients[i][term]/(term+1);}
+                workspace.heatCapacity[i]=cp;workspace.enthalpy[i]=h*delta;
             }
-            for(int term=5;term>=0;term--){cp=cp*delta+heatCapacityCoefficients[i][term];h=h*delta+heatCapacityCoefficients[i][term]/(term+1);}
-            workspace.heatCapacity[i]=cp;workspace.enthalpy[i]=h*delta;
+            if(fit!=temperature)workspace.enthalpy[i]+=cp*(temperature-fit);
         }
         kernel.prepareTemperature(temperature,workspace.mixture);
         // sqrt(a_i) vanishes exactly where the PR alpha term does, which is where every d/dT below divides
@@ -349,24 +368,9 @@ public final class TranslatedPengRobinson {
         double a=evaluation.aMix(),b=evaluation.bMix(),da=evaluation.daMixDt();
         double dda=kernel.mixtureSecondTemperatureDerivative(workspace.mixture,workspace.rootDt,workspace.rootDt2,workspace.crossDt);
         double shift = 0, idealH = 0, idealCp = 0;
-        if (idealGas == null) for (int i = 0; i < x.length; i++) {
+        for (int i = 0; i < x.length; i++) {
             shift += x[i] * translations[i];
             idealCp+=x[i]*workspace.heatCapacity[i];idealH+=x[i]*workspace.enthalpy[i];
-        }
-        else {
-            // Spine variant: an absent component contributes nothing (its function is not evaluated at every T); a
-            // carried one outside its function's range refuses the state, the largest such amount named.
-            int uncovered = -1;
-            for (int i = 0; i < x.length; i++) {
-                shift += x[i] * translations[i];
-                if (x[i] == 0) continue;
-                if (Double.isNaN(workspace.heatCapacity[i])) {
-                    if (uncovered < 0 || x[i] > x[uncovered]) uncovered = i;
-                    continue;
-                }
-                idealCp+=x[i]*workspace.heatCapacity[i];idealH+=x[i]*workspace.enthalpy[i];
-            }
-            if (uncovered >= 0) throw idealGasViolation(uncovered, temperature);
         }
         double rt=R*temperature;
         double z=evaluation.compressibility(),v=z*rt/pressure;
@@ -411,14 +415,9 @@ public final class TranslatedPengRobinson {
 
     private double coVolume(int component) { return kernel.coVolume(component); }
 
-    private ThermoDomainViolation idealGasViolation(int component,double temperature) {
-        var function=idealGas[component];
-        return new ThermoDomainViolation(sourceId,components.get(component).id(),ThermoDomainViolation.Property.TEMPERATURE,
-                temperature,function.minimumTemperature(),function.maximumTemperature());
-    }
-
     /** The constant volume translation of a component, m3/mol ({@code v = v_PR + c}). */
     public double translation(int component) { return translations[component]; }
+
 
     private static void finite(double value) {
         if (!Double.isFinite(value)) throw new IllegalArgumentException("Nonfinite property coefficient");

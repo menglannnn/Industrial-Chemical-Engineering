@@ -37,7 +37,7 @@ class G5F4TernarySolidLiquidVapourTest {
         for (var e : datasets.entrySet()) {
             var s = e.getValue();
             System.out.printf(Locale.ROOT, "  %s: MAD %.3f K against the P0 target %.1f K: %s%n", e.getKey(), s.mad(), TARGET, s.mad() <= TARGET ? "met" : "missed");
-            assertTrue(s.holds.isEmpty() && s.outOfDomain.isEmpty() && s.failures.isEmpty(), s.holds + " " + s.outOfDomain + " " + s.failures);
+            assertTrue(s.holds.isEmpty() && s.extrapolated.isEmpty() && s.failures.isEmpty(), s.holds + " " + s.extrapolated + " " + s.failures);
         }
         var c = datasets.get("Campestrini 2022");
         var r = datasets.get("Riva-Stringari 2018");

@@ -283,9 +283,13 @@ class G4F1CarbonDioxideFrostPointHoldoutTest {
                 holds++;
                 continue;
             }
-            if (onset.status() == EquilibriumResult.Status.OUT_OF_DOMAIN) {
-                // No onset below the 10 MPa ceiling at this temperature: the gas condenses first on this family, and its liquid
-                // does not freeze below the ceiling (P4 held these at the window's end; P5 continues the search through the liquid).
+            if (!onset.converged() || onset.pressure() > 1e7) {
+                // No onset below the 10 MPa envelope at this temperature: the gas condenses first on this family, and its liquid
+                // does not freeze below the envelope (P4 held these at the window's end; P5 continues the search through the liquid).
+                // Past the envelope the search goes on in the numerical box on the continued models (owner rule of 2026-10-16):
+                // an extrapolated onset of the compressed liquid, or none below 1 GPa.
+                assertTrue(onset.converged() ? onset.coverage().grade() == EquilibriumResult.CoverageGrade.EXTRAPOLATED
+                        : onset.detail().contains("lies above the pressure window"), onset.toString());
                 beyond++;
                 System.out.printf(Locale.ROOT, "set %d, %.2f K, %.1f kPa, y_CO2 %.4f: %s%n", p.set(), p.temperature(), p.pressure() / 1e3, p.co2(), onset.detail());
                 continue;
@@ -305,9 +309,10 @@ class G4F1CarbonDioxideFrostPointHoldoutTest {
                     d.stream().mapToDouble(Math::abs).max().orElse(Double.NaN), a.stream().mapToDouble(Math::abs).average().orElse(Double.NaN),
                     a.stream().mapToDouble(Math::abs).max().orElse(Double.NaN));
         }
-        System.out.println("holds " + holds + ", no onset below the ceiling " + beyond);
+        System.out.println("holds " + holds + ", no onset below the envelope " + beyond);
         // Measured: 14 points whose gas condenses on this family before the crystal forms; P4 held them typed, P5 finds their
-        // liquid does not freeze below the ceiling (out of domain). No typed hold remains.
+        // liquid does not freeze below the 10 MPa envelope (out of domain until the owner rule of 2026-10-16, an extrapolated
+        // onset or none in the box since). No typed hold remains.
         assertTrue(holds == 0 && beyond <= 14, "holds " + holds + ", beyond " + beyond);
     }
 

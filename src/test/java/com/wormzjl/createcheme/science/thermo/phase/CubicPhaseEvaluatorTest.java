@@ -1,12 +1,12 @@
 package com.wormzjl.createcheme.science.thermo.phase;
 
 import static com.wormzjl.createcheme.science.thermo.phase.PhaseTestSupport.R;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import com.wormzjl.createcheme.science.fluid.thermo.ThermoDomainViolation;
 import com.wormzjl.createcheme.science.fluid.thermo.TranslatedPengRobinson;
 import com.wormzjl.createcheme.science.thermo.IdealGasFunction;
 import com.wormzjl.createcheme.science.thermo.PengRobinsonKernel.Root;
@@ -362,18 +362,19 @@ class CubicPhaseEvaluatorTest {
     }
 
     @Test
-    void refusesStatesOutsideTheIdealGasRangeAndForeignWorkspaces() {
+    void continuesStatesOutsideTheIdealGasRangeAndRefusesForeignWorkspaces() {
         var pkg = PhaseTestSupport.network();
         List<IdealGasFunction> gas = List.of(StubIdealGas.constant(35.7, 200.0, 1000.0), StubIdealGas.constant(29.1, 60.0, 1000.0));
         var evaluator = CubicPhaseEvaluator.fromPackage(pkg, List.of("Methane", "Nitrogen"), new double[2], gas);
         var w = evaluator.newWorkspace();
-        var violation = assertThrows(ThermoDomainViolation.class,
-                () -> evaluator.evaluate(150.0, 1.0e6, new double[] {0.5, 0.5}, Root.VAPOR, w, evaluator.newState()));
-        assertEquals("Methane", violation.component());
-        assertEquals(ThermoDomainViolation.Code.THERMO_DOMAIN_TEMPERATURE_BELOW, violation.code());
-        assertEquals(200.0, violation.minimum());
-        // An absent component's range does not matter.
-        evaluator.evaluate(150.0, 1.0e6, new double[] {0.0, 1.0}, Root.VAPOR, w, evaluator.newState());
+        // Below methane's 200 K data the state is evaluated on the held cp (owner rule of 2026-10-16), not refused: its
+        // ideal part is the stub's continuation, so the residual is the same as with a range that reaches 150 K.
+        var wide = CubicPhaseEvaluator.fromPackage(pkg, List.of("Methane", "Nitrogen"), new double[2],
+                List.of(StubIdealGas.constant(35.7, 100.0, 1000.0), StubIdealGas.constant(29.1, 60.0, 1000.0)));
+        var cold = assertDoesNotThrow(() -> evaluator.evaluate(150.0, 1.0e6, new double[] {0.5, 0.5}, Root.VAPOR, w, evaluator.newState()));
+        var reference = wide.evaluate(150.0, 1.0e6, new double[] {0.5, 0.5}, Root.VAPOR, wide.newWorkspace(), wide.newState());
+        assertEquals(reference.molarEnthalpy(), cold.molarEnthalpy(), 1.0e-9 * Math.abs(reference.molarEnthalpy()) + 1.0e-9);
+        assertEquals(reference.molarVolume(), cold.molarVolume(), 1.0e-12 * reference.molarVolume());
         var other = PhaseTestSupport.methaneNitrogen();
         assertThrows(IllegalArgumentException.class,
                 () -> evaluator.evaluate(300.0, 1.0e6, new double[] {0.5, 0.5}, Root.VAPOR, other.newWorkspace(), evaluator.newState()));

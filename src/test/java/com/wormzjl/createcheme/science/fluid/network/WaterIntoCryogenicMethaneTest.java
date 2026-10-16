@@ -4,7 +4,6 @@ import com.wormzjl.createcheme.fluid.support.FluidTestSupport;
 import com.wormzjl.createcheme.science.fluid.solver.PhaseLayout;
 import com.wormzjl.createcheme.science.fluid.solver.SparseNewton;
 import com.wormzjl.createcheme.science.fluid.thermo.FluidThermodynamics;
-import com.wormzjl.createcheme.science.fluid.thermo.ThermoDomainViolation;
 import com.wormzjl.createcheme.science.material.MaterialCatalog;
 import java.util.List;
 import java.util.Locale;
@@ -21,9 +20,10 @@ import static org.junit.jupiter.api.Assertions.*;
  * stage, whose companion was a negative amount (fixed there by clipping it). Main has neither: backward Euler has one
  * implicit stage, and a vessel's wall goes slack at the ambient instead of below it (D54), so a vessel the methane cools
  * stands at or above 101.325 kPa and a water generator at the ambient has no drive into it: the rows commit and no water
- * enters. The typed water-domain hold remains the outcome wherever water is driven into a vessel that falls below
- * 273.16 K: with the water generator at 1 MPa. That hold names the vessel: the water domain refuses the line search of the
- * vessel's closure, and the reconstruction that closes the vessel names the failed closure as it names a hold (the design
+ * enters. Wherever water is driven into a vessel that falls below 273.16 K (the water generator at 1 MPa) the liquid water
+ * would freeze: until ice is modelled (WP4 of the range-extrapolation plan) that is the interim ice hold, a phase hold
+ * (leaving the water model's data is none since the owner rule of 2026-10-16). That hold names the vessel: it refuses
+ * the line search of the vessel's closure, and the reconstruction that closes the vessel names the failed closure as it names a hold (the design
  * review's section 5; before it the hold named no node, an open item of milestone M3).</p>
  */
 class WaterIntoCryogenicMethaneTest {
@@ -80,9 +80,9 @@ class WaterIntoCryogenicMethaneTest {
         commitsWithNoWaterEntering(115, 2.0e5);
     }
 
-    /** Water driven in at 1 MPa while the methane cools the vessel below 273.16 K: the typed water-domain hold, naming the vessel. */
+    /** Water driven in at 1 MPa while the methane cools the vessel below 273.16 K: the interim ice hold, naming the vessel. */
     @Test
-    void waterDrivenIntoTheCooledVesselHoldsOnTheWaterDomain() {
+    void waterDrivenIntoTheCooledVesselHoldsOnTheInterimIceHold() {
         var solver = new PassiveIntervalSolver(model);
         RuntimeException refused = assertThrows(RuntimeException.class, () -> {
             var graph = island(120, 1.2e6, 1e6);
@@ -90,10 +90,9 @@ class WaterIntoCryogenicMethaneTest {
         });
         System.out.println("water at 1 MPa: " + refused.getMessage());
         assertFalse(refused.getMessage().contains("Negative/nonfinite inventory"), "no untyped inventory refusal: " + refused.getMessage());
-        var domain = assertInstanceOf(ThermoDomainViolation.class, SparseNewton.domainViolation(refused), "a typed domain hold: " + refused.getMessage());
-        assertEquals("Water", domain.component());
-        assertEquals(ThermoDomainViolation.Property.TEMPERATURE, domain.property());
-        assertTrue(domain.code().below(), domain.getMessage());
-        assertEquals(VESSEL, domain.node(), "the hold names the vessel: " + domain.getMessage());
+        var hold = assertInstanceOf(FluidThermodynamics.UnsupportedPhases.class, SparseNewton.domainViolation(refused), "a typed phase hold: " + refused.getMessage());
+        assertEquals(FluidThermodynamics.UnsupportedPhases.Kind.ICE, hold.kind(), hold.getMessage());
+        assertTrue(hold.temperature() < 273.16, hold.getMessage());
+        assertEquals(VESSEL, hold.node(), "the hold names the vessel: " + hold.getMessage());
     }
 }

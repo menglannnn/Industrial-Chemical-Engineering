@@ -195,7 +195,9 @@ final class G5Support {
     static final class Score {
         final List<Double> deviations = new ArrayList<>();
         final List<String> holds = new ArrayList<>();
-        final List<String> outOfDomain = new ArrayList<>();
+        /** Answers outside the package's data ranges, graded extrapolated (owner rule of 2026-10-16; out of domain before):
+         * reported apart, not scored. */
+        final List<String> extrapolated = new ArrayList<>();
         final List<String> failures = new ArrayList<>();
         double mad() { return deviations.stream().mapToDouble(Math::abs).average().orElse(Double.NaN); }
         double bias() { return deviations.stream().mapToDouble(d -> d).average().orElse(Double.NaN); }
@@ -203,7 +205,7 @@ final class G5Support {
         void add(Score other) {
             deviations.addAll(other.deviations);
             holds.addAll(other.holds);
-            outOfDomain.addAll(other.outOfDomain);
+            extrapolated.addAll(other.extrapolated);
             failures.addAll(other.failures);
         }
     }
@@ -226,16 +228,18 @@ final class G5Support {
             switch (onset.status()) {
                 case CONVERGED -> {
                     double d = onset.temperature() - point.t();
-                    s.deviations.add(d);
-                    if (print) System.out.printf(Locale.ROOT, "%s | %.3f | %+.3f | %s%n", where, onset.temperature(), d, onset.fluid().classification());
+                    if (onset.coverage().grade() == EquilibriumResult.CoverageGrade.EXTRAPOLATED) {
+                        s.extrapolated.add(where + ": " + String.format(Locale.ROOT, "%+.3f K", d));
+                        if (print) System.out.printf(Locale.ROOT, "%s | %.3f | %+.3f | %s, extrapolated%n", where, onset.temperature(), d,
+                                onset.fluid().classification());
+                    } else {
+                        s.deviations.add(d);
+                        if (print) System.out.printf(Locale.ROOT, "%s | %.3f | %+.3f | %s%n", where, onset.temperature(), d, onset.fluid().classification());
+                    }
                 }
                 case UNSUPPORTED -> {
                     s.holds.add(where + ": " + onset.detail());
                     if (print) System.out.println(where + " | typed hold: " + onset.detail());
-                }
-                case OUT_OF_DOMAIN -> {
-                    s.outOfDomain.add(where + ": " + onset.detail());
-                    if (print) System.out.println(where + " | out of domain: " + onset.detail());
                 }
                 default -> {
                     s.failures.add(where + ": " + onset.status() + " " + onset.detail());
@@ -248,18 +252,18 @@ final class G5Support {
 
     /** One summary row per group and the dataset totals; returns the per-dataset totals. */
     static Map<String, Score> summary(String title, Map<String, Score> scores, double target) {
-        System.out.println(title + ": dataset | group | scored | holds | out of domain | failures | MAD K | bias K | max K | target K");
+        System.out.println(title + ": dataset | group | scored | holds | extrapolated | failures | MAD K | bias K | max K | target K");
         Map<String, Score> datasets = new LinkedHashMap<>();
         for (var e : scores.entrySet()) {
             Score s = e.getValue();
             System.out.printf(Locale.ROOT, "%s | %d | %d | %d | %d | %.3f | %+.3f | %.3f | %s%n", e.getKey(), s.deviations.size(), s.holds.size(),
-                    s.outOfDomain.size(), s.failures.size(), s.mad(), s.bias(), s.max(), Double.isNaN(target) ? "report" : String.valueOf(target));
+                    s.extrapolated.size(), s.failures.size(), s.mad(), s.bias(), s.max(), Double.isNaN(target) ? "report" : String.valueOf(target));
             datasets.computeIfAbsent(e.getKey().substring(0, e.getKey().indexOf(" | ")), k -> new Score()).add(s);
         }
         for (var e : datasets.entrySet()) {
             Score s = e.getValue();
             System.out.printf(Locale.ROOT, "%s (dataset) | all | %d | %d | %d | %d | %.3f | %+.3f | %.3f | %s%n", e.getKey(), s.deviations.size(),
-                    s.holds.size(), s.outOfDomain.size(), s.failures.size(), s.mad(), s.bias(), s.max(), Double.isNaN(target) ? "report" : String.valueOf(target));
+                    s.holds.size(), s.extrapolated.size(), s.failures.size(), s.mad(), s.bias(), s.max(), Double.isNaN(target) ? "report" : String.valueOf(target));
         }
         return datasets;
     }

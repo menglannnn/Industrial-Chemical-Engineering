@@ -24,6 +24,10 @@ import java.util.List;
  * are not taken from the paper but solved from the anchor, so the crystal follows whichever fluid family evaluates it.
  * A Gibbs-function record carries no heat-capacity segments, molar volume or transitions.</p>
  *
+ * <p>The declared ranges are data ranges (a notice reports a state outside them), not bounds: past them both kinds
+ * continue with the heat capacity, {@code dv/dT} and {@code dv/dP} held at the nearer end (owner rule of 2026-10-16;
+ * the segments' volume is linear in T and P already).</p>
+ *
  * <p>A record whose data do not reach its anchor, or that lacks the expansion, compressibility or volume range, is
  * loaded only with the grade research_only or unavailable, and every evaluation refuses it
  * ({@link IllegalStateException} naming what is missing): missing data are never filled with guesses.</p>
@@ -135,12 +139,11 @@ public final class CrystalReference {
     /** Numeric content for the package spine fingerprint. */
     Object science() { return science; }
 
+    /** A usable record at a positive finite state; its data range is not a bound (the models continue past it). */
     private void check(double t, double p) {
         if (!missing.isEmpty()) throw new IllegalStateException(id + ": crystal record is not usable, missing " + missing);
-        if (!(t >= model.minimumTemperature() && t <= model.maximumTemperature()))
-            throw new IllegalArgumentException(id + ": temperature " + t + " K outside " + model.minimumTemperature() + ".." + model.maximumTemperature() + " K");
-        if (!(p >= model.minimumPressure() && p <= model.maximumPressure() && p > 0))
-            throw new IllegalArgumentException(id + ": pressure " + p + " Pa outside " + model.minimumPressure() + ".." + model.maximumPressure() + " Pa");
+        if (!(t > 0) || !Double.isFinite(t) || !(p > 0) || !Double.isFinite(p))
+            throw new IllegalArgumentException(id + ": (" + t + " K, " + p + " Pa) is not a positive finite state");
     }
 
     /** Solid isobaric heat capacity, J/(mol K). */
@@ -397,9 +400,22 @@ public final class CrystalReference {
             return cp.length - 1;
         }
 
-        private double enthalpyFromStart(double t) { int k = segment(t); return cumulativeEnthalpy[k] + cp[k].enthalpyIntegral(t); }
+        /** {@code t} inside the heat-capacity segments, the nearer end outside: past them Cp is held at the end value. */
+        private double edge(double t) { return t < cpMinimum ? cpMinimum : t > cpMaximum ? cpMaximum : t; }
 
-        private double entropyFromStart(double t) { int k = segment(t); return cumulativeEntropy[k] + cp[k].entropyIntegral(t); }
+        private double enthalpyFromStart(double t) {
+            double e = edge(t);
+            int k = segment(e);
+            double h = cumulativeEnthalpy[k] + cp[k].enthalpyIntegral(e);
+            return e == t ? h : h + cp[k].heatCapacity(e) * (t - e);
+        }
+
+        private double entropyFromStart(double t) {
+            double e = edge(t);
+            int k = segment(e);
+            double s = cumulativeEntropy[k] + cp[k].entropyIntegral(e);
+            return e == t ? s : s + cp[k].heatCapacity(e) * DeterministicMath.log(t / e);
+        }
 
         /** Transition sums between {@code from} and {@code to}: a transition counts once T is strictly above it. */
         private double transitionSum(double[] values, double from, double to, boolean perTemperature) {
@@ -424,7 +440,7 @@ public final class CrystalReference {
 
         private double pressureEntropy(double p) { return -volume * expansion * (p - volumePressure); }
 
-        @Override public double heatCapacity(double t, double p) { return cp[segment(t)].heatCapacity(t); }
+        @Override public double heatCapacity(double t, double p) { double e = edge(t); return cp[segment(e)].heatCapacity(e); }
 
         @Override public double molarVolume(double t, double p) { return baseVolume(t) - volume * compressibility * (p - volumePressure); }
 

@@ -1,19 +1,23 @@
 package com.wormzjl.createcheme.science.fluid.thermo;
 
-import com.wormzjl.createcheme.science.column.v3.thermo.V3WaterProperties;
 import com.wormzjl.createcheme.science.material.MaterialCatalog;
 import com.wormzjl.createcheme.science.material.MaterialRuntime;
+import com.wormzjl.createcheme.science.math.DeterministicMath;
 
 /**
  * IF97 Region 1 in SI units, with its original datum. Hybrid-reference offsets are applied by the caller.
  *
- * <p>Two entries. {@link #evaluate(String, MaterialCatalog.Water, double, double)} is the stable liquid of the
- * region's own range of validity, {@code ps(T) <= p <= 100 MPa} (IAPWS R7-97(2012), section 5.1), and refuses a
- * pressure below saturation. {@link #evaluateLiquid} is the fluid network's liquid water at the state pressure: it
- * also admits the metastable superheated liquid below saturation, which the release covers qualitatively ("In
- * addition to the properties in the stable single-phase liquid region, Eq. (7) also yields reasonable values in the
- * metastable superheated-liquid region close to the saturated liquid line", section 5.1) with no quantitative limit,
- * so the admission carries the declared bound {@link #METASTABLE_MARGIN_PASCAL}.
+ * <p>The fluid network's liquid water at the state pressure, at any positive pressure: the stable liquid of the
+ * region's range of validity, {@code ps(T) <= p <= 100 MPa} (IAPWS R7-97(2012), section 5.1), and its continuation
+ * past it (owner rule of 2026-10-16, plan RANGE_EXTRAPOLATION_PLAN section 3). Below saturation it is the metastable
+ * superheated liquid, which the release covers qualitatively ("In addition to the properties in the stable
+ * single-phase liquid region, Eq. (7) also yields reasonable values in the metastable superheated-liquid region close
+ * to the saturated liquid line", section 5.1); above 100 MPa the region's own sums. Outside the temperatures from the
+ * water model's triple point to the region's 623.15 K boundary every property is held at the nearer end and the
+ * volume and enthalpy continue with the held slopes {@code dv/dT} and {@code c_p}, so both are continuous with their
+ * slopes: the region's own sums pass their check down to about 100 K but diverge below about 230 K (c_p 911 J/(mol K)
+ * and 664 kg/m3 at 200 K). The data ranges are what a notice reports. A result that fails the sums' own check
+ * ({@code v > 0}, {@code c_p > 0}, {@code dv/dp < 0}) stays a refusal, a rejected trial.
  */
 public final class WaterRegion1 {
     private static final double R = 461.526, P_STAR = 16.53e6, T_STAR = 1386;
@@ -32,13 +36,10 @@ public final class WaterRegion1 {
     // Exponent span the 34 terms and their first two derivatives reach: x^0..x^32 and y^-43..y^17.
     private static final int HIGHEST_X = 32, LOWEST_Y = -43, HIGHEST_Y = 17;
     /**
-     * The declared bound of the metastable admission: liquid water is evaluated down to {@code ps(T) - 2 MPa} (and the
-     * package envelope's minimum, which the state's own domain check applies). 2 MPa is the span the retired
-     * reference-pressure path covered: it evaluated Region 1 at 2 MPa for every state and so admitted every envelope
-     * pressure wherever {@code ps(T) <= 2 MPa} (T up to 485.5 K); this bound admits exactly those states there and
-     * keeps the same pressure distance from the saturated liquid line above it, where the release's "close to the
-     * saturated liquid line" is the only statement of validity. Below the bound a trial is a
-     * {@link ThermoDomainViolation} naming water, as a pressure below saturation was.
+     * The declared bound of the metastable liquid's data: the release's "close to the saturated liquid line" is its only
+     * statement of validity, and liquid water down to {@code ps(T) - 2 MPa} is what the retired reference-pressure path
+     * covered (it evaluated Region 1 at 2 MPa for every state, so every envelope pressure wherever {@code ps(T) <= 2 MPa},
+     * T up to 485.5 K). Below it the liquid continues on the region's own sums; a notice reports it.
      */
     public static final double METASTABLE_MARGIN_PASCAL = 2e6;
 
@@ -48,55 +49,32 @@ public final class WaterRegion1 {
         return evaluate(MaterialRuntime.water(),temperatureKelvin,pressurePascal);
     }
 
-    /** The water record is only the saturation domain check's; a caller evaluating in a loop resolves it once. */
+    /** Liquid water at {@code (T, p)} as a record; {@code water} supplies the triple point the low end holds at. */
     public static State evaluate(MaterialCatalog.Water water,double temperatureKelvin,double pressurePascal) {
-        return evaluate("water model "+water.revision(),water,temperatureKelvin,pressurePascal);
-    }
-    /** IF97 Region 1's own upper temperature boundary: a boundary of the formulation, not a property-package range. */
-    public static final double REGION_1_MAXIMUM_TEMPERATURE=623.15,REGION_1_MAXIMUM_PRESSURE=100e6;
-    /**
-     * The stable liquid of Region 1's range of validity. Liquid water outside it - below the water model's triple
-     * point (ice is not modelled), above the region's 623.15 K boundary, or below its saturation pressure - is a
-     * {@link ThermoDomainViolation} naming water, reported against {@code scope} (the fluid model's package). A
-     * non-finite input stays a plain refusal.
-     */
-    public static State evaluate(String scope,MaterialCatalog.Water water,double temperatureKelvin,double pressurePascal) {
-        requireTemperature(scope,water,temperatureKelvin,pressurePascal);
-        double saturation=V3WaterProperties.saturationPressurePascal(water,temperatureKelvin);
-        if (pressurePascal < saturation || pressurePascal > REGION_1_MAXIMUM_PRESSURE)
-            throw new ThermoDomainViolation(scope,"Water",ThermoDomainViolation.Property.PRESSURE,pressurePascal,saturation,REGION_1_MAXIMUM_PRESSURE);
         var workspace=new Workspace();
-        fill(workspace,temperatureKelvin,pressurePascal);
+        evaluateLiquid(water,temperatureKelvin,pressurePascal,workspace);
         return workspace.state();
     }
+    /** IF97 Region 1's own upper temperature boundary: a boundary of the formulation, where its properties are held. */
+    public static final double REGION_1_MAXIMUM_TEMPERATURE=623.15,REGION_1_MAXIMUM_PRESSURE=100e6;
 
     /**
-     * The first half of {@link #evaluateLiquid}'s checks, so a caller can refuse a temperature outside Region 1 before
-     * it evaluates the saturation pressure the second half needs: a finite positive state, and a temperature from the
-     * water model's triple point to the region's 623.15 K boundary.
+     * Liquid water at the state pressure, into {@code workspace}, without allocating: Region 1 at the temperature held
+     * inside {@code [triple point, 623.15 K]}, continued past it (class comment). A non-finite or non-positive state
+     * is refused.
      */
-    public static void requireTemperature(String scope,MaterialCatalog.Water water,double temperatureKelvin,double pressurePascal) {
-        if (!Double.isFinite(temperatureKelvin) || !Double.isFinite(pressurePascal) || pressurePascal <= 0)
+    public static void evaluateLiquid(MaterialCatalog.Water water,double temperatureKelvin,double pressurePascal,Workspace workspace) {
+        if (!(temperatureKelvin > 0) || !Double.isFinite(temperatureKelvin) || !Double.isFinite(pressurePascal) || pressurePascal <= 0)
             throw new IllegalArgumentException("Water state is not finite and positive");
-        if (temperatureKelvin < water.triplePoint() || temperatureKelvin > REGION_1_MAXIMUM_TEMPERATURE)
-            throw new ThermoDomainViolation(scope,"Water",ThermoDomainViolation.Property.TEMPERATURE,temperatureKelvin,water.triplePoint(),REGION_1_MAXIMUM_TEMPERATURE);
-    }
-
-    /**
-     * Liquid water at the state pressure, into {@code workspace}, without allocating. {@code saturation} is the
-     * network's saturation pressure at {@code temperatureKelvin} (the water model's, which the free-water rule also
-     * uses). A pressure at or above it is the stable liquid; below it, down to {@code saturation -}
-     * {@link #METASTABLE_MARGIN_PASCAL}, the metastable superheated liquid; below that, and above the
-     * region's 100 MPa, a {@link ThermoDomainViolation} naming water. The temperature checks of
-     * {@link #requireTemperature} apply too.
-     */
-    public static void evaluateLiquid(String scope,MaterialCatalog.Water water,double temperatureKelvin,double pressurePascal,
-                                      double saturation,Workspace workspace) {
-        requireTemperature(scope,water,temperatureKelvin,pressurePascal);
-        double minimum=saturation-METASTABLE_MARGIN_PASCAL;
-        if (pressurePascal < minimum || pressurePascal > REGION_1_MAXIMUM_PRESSURE)
-            throw new ThermoDomainViolation(scope,"Water",ThermoDomainViolation.Property.PRESSURE,pressurePascal,minimum,REGION_1_MAXIMUM_PRESSURE);
-        fill(workspace,temperatureKelvin,pressurePascal);
+        double held=temperatureKelvin<water.triplePoint()?water.triplePoint():Math.min(temperatureKelvin,REGION_1_MAXIMUM_TEMPERATURE);
+        fill(workspace,held,pressurePascal);
+        if (held!=temperatureKelvin) {
+            double step=temperatureKelvin-held;
+            workspace.specificVolume+=workspace.volumeTemperatureDerivative*step;
+            workspace.specificEnthalpy+=workspace.specificHeatCapacity*step;
+            workspace.specificInternalEnergy=workspace.specificEnthalpy-pressurePascal*workspace.specificVolume;
+        }
+        if (!(workspace.specificVolume>0)) throw new IllegalArgumentException("Invalid Region 1 result");
     }
 
     /**
@@ -160,13 +138,32 @@ public final class WaterRegion1 {
         }
     }
 
-    /** IAPWS 2008 dilute-gas viscosity term (Pa.s); not a liquid or dense-steam correlation. */
+    /** The dilute-gas term's data range, K, and its value (Pa.s) and log slope {@code d ln mu / d ln T} at the lower end. */
+    public static final double VISCOSITY_LOW = 273.16, VISCOSITY_HIGH = 900;
+    private static final double VISCOSITY_AT_LOW = diluteFormula(VISCOSITY_LOW / 647.096);
+    private static final double VISCOSITY_EXPONENT_AT_LOW = diluteExponent(VISCOSITY_LOW / 647.096);
+
+    /**
+     * IAPWS 2008 dilute-gas viscosity term (Pa.s); not a liquid or dense-steam correlation. Its data range is 273.16 to
+     * 900 K. Above it the formula continues itself; below it the viscosity goes as a power of the temperature with the
+     * formula's own exponent at 273.16 K ({@code d ln mu / d ln T}, 0.876), value and slope continuous, because
+     * the formula's denominator has a root near 134.5 K.
+     */
     public static double diluteVaporViscosity(double temperatureKelvin) {
-        if (!Double.isFinite(temperatureKelvin) || temperatureKelvin<273.16 || temperatureKelvin>900) {
-            throw new IllegalArgumentException("Vapor viscosity outside v1 temperature envelope");
-        }
-        double reduced=temperatureKelvin/647.096;
+        if (!(temperatureKelvin > 0) || !Double.isFinite(temperatureKelvin))
+            throw new IllegalArgumentException("Vapor viscosity temperature must be positive and finite: " + temperatureKelvin);
+        if (temperatureKelvin < VISCOSITY_LOW)
+            return VISCOSITY_AT_LOW * DeterministicMath.pow(temperatureKelvin / VISCOSITY_LOW, VISCOSITY_EXPONENT_AT_LOW);
+        return diluteFormula(temperatureKelvin / 647.096);
+    }
+
+    private static double diluteFormula(double reduced) {
         return 1e-4*Math.sqrt(reduced)/(1.67752+2.20462/reduced+.6366564/(reduced*reduced)-.241605/(reduced*reduced*reduced));
+    }
+    /** {@code d ln mu / d ln T} of {@link #diluteFormula}: {@code 1/2 + (a1/x + 2 a2/x^2 + 3 a3/x^3) / D(x)}. */
+    private static double diluteExponent(double reduced) {
+        double denominator=1.67752+2.20462/reduced+.6366564/(reduced*reduced)-.241605/(reduced*reduced*reduced);
+        return .5+(2.20462/reduced+2*.6366564/(reduced*reduced)-3*.241605/(reduced*reduced*reduced))/denominator;
     }
 
     public record State(double specificVolume,double specificEnthalpy,double specificInternalEnergy,

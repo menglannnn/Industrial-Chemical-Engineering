@@ -19,10 +19,10 @@ import java.util.Set;
  * {@link PhaseDerivatives} refuses to hand out a block its family did not provide.</p>
  *
  * <p>Errors: malformed input (wrong length, negative or non-finite amounts, no material, non-positive T or P) is an
- * {@link IllegalArgumentException}; a state outside the declared range of a carried component's data is a
- * {@link com.wormzjl.createcheme.science.fluid.thermo.ThermoDomainViolation}; a state the model itself cannot
- * evaluate (no physical root, a mechanically unstable root, a derivative at root coalescence) is an
- * {@link IllegalArgumentException} or {@link IllegalStateException} from the model.</p>
+ * {@link IllegalArgumentException}; a state outside the declared range of a carried component's data is evaluated
+ * on the data's continuation (owner rule of 2026-10-16), never refused; a state the model itself cannot evaluate (no
+ * physical root, a mechanically unstable root, a derivative at root coalescence) is an {@link IllegalArgumentException}
+ * or {@link IllegalStateException} from the model.</p>
  */
 public interface PhaseEvaluator {
     /** Derivative blocks a family may provide; see {@link PhaseDerivatives}. */

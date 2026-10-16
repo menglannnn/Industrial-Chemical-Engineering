@@ -3,7 +3,6 @@ package com.wormzjl.createcheme.science.thermo.qualification;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import com.wormzjl.createcheme.science.fluid.thermo.ThermoDomainViolation;
 import com.wormzjl.createcheme.science.thermo.phase.DepositionOnset;
 import com.wormzjl.createcheme.science.thermo.phase.EquilibriumResult;
 import java.util.ArrayList;
@@ -20,7 +19,8 @@ import org.junit.jupiter.api.Test;
  * 200 atm at 190 K; the 48 rows he reprints from Sonntag and the 6 where both agree are Sonntag's, and the 2 values read
  * from a plot are excluded). Each point (T, P, y_CO2) on an isotherm is scored as {@code depositionTemperature(P, y)} on
  * the pilot package against the isotherm temperature, as G4F1 scores the methane-gas frost points. Pressures above the
- * pilot's 10 MPa ceiling (about 98.7 atm) are {@code OUT_OF_DOMAIN}: counted, not failures. The 14 points P4 held typed
+ * pilot's 10 MPa envelope (about 98.7 atm) are answered on the continued models, graded {@code EXTRAPOLATED} (owner rule
+ * of 2026-10-16; {@code OUT_OF_DOMAIN} before): reported apart, not scored. The 14 points P4 held typed
  * (the onset lies in dense supercritical N2 that the phase identification parameter labels liquid-like, 140 to 160 K and
  * 6 to 9.1 MPa) are answered since P5 (the dense one-root fluid carries the crystal as a vapour does) and scored as their
  * own group, the dense carrier: the original caps stay on the 51 vapour-carrier points and are not loosened, the dense
@@ -53,7 +53,8 @@ class G4F2CarbonDioxideNitrogenFrostPointHoldoutTest {
     static final int DENSE_POINTS = 14;
     static final double DENSE_MAD = 4.0;
     static final double DENSE_MAX = 6.5;
-    /** Points above the pilot's 10 MPa: 5 of Sonntag's (100 atm) and 63 of Smith's (100 to 200 atm), fixed by the data. */
+    /** Points above the pilot's 10 MPa envelope: 5 of Sonntag's (100 atm) and 63 of Smith's (100 to 200 atm), fixed by the
+     * data; extrapolated, reported apart. */
     static final int ABOVE_CEILING = 68;
 
     /** One frost point: dataset, isotherm T (K), P (Pa), y_CO2 and the transcription's origin or flag. */
@@ -81,10 +82,11 @@ class G4F2CarbonDioxideNitrogenFrostPointHoldoutTest {
         return points;
     }
 
-    /** Scores of one dataset: deviations inside the domain, typed holds, points above the pilot's pressure ceiling. */
+    /** Scores of one dataset: deviations inside the envelope, typed holds, points above the pilot's 10 MPa envelope. */
     static final class Tally {
         final G4F1CarbonDioxideFrostPointHoldoutTest.Score score = new G4F1CarbonDioxideFrostPointHoldoutTest.Score();
-        final List<String> outOfDomain = new ArrayList<>();
+        final List<String> extrapolated = new ArrayList<>();
+        final List<Double> extrapolatedDeviations = new ArrayList<>();
         final List<Double> dense = new ArrayList<>();
         final Map<Double, List<Double>> byIsotherm = new LinkedHashMap<>();
     }
@@ -99,6 +101,20 @@ class G4F2CarbonDioxideNitrogenFrostPointHoldoutTest {
             DepositionOnset onset = service.depositionTemperature(null, point.pressure(), G4F1CarbonDioxideFrostPointHoldoutTest.BASIS, point.feed(), ws);
             String where = String.format(Locale.ROOT, "%s | %.0f | %.1f | %.5f | %s", point.dataset(), point.temperature(), point.pressure() / 1e3,
                     point.y(), point.origin());
+            if (point.pressure() > 1e7) {
+                // Above the pilot's 10 MPa envelope: answered on the continued models since the owner rule of 2026-10-16
+                // (out of domain before), reported apart and not scored (the qualification covers the envelope).
+                tally.extrapolated.add(where);
+                if (onset.converged()) {
+                    assertEquals(EquilibriumResult.CoverageGrade.EXTRAPOLATED, onset.coverage().grade(), where + ": " + onset.coverage().evidence());
+                    double d = onset.temperature() - point.temperature();
+                    tally.extrapolatedDeviations.add(d);
+                    System.out.printf(Locale.ROOT, "%s | %.3f | %+.3f | extrapolated (above 10 MPa)%n", where, onset.temperature(), d);
+                } else {
+                    System.out.println(where + " | above 10 MPa, " + onset.status() + ": " + onset.detail());
+                }
+                continue;
+            }
             switch (onset.status()) {
                 case CONVERGED -> {
                     double d = onset.temperature() - point.temperature();
@@ -118,16 +134,6 @@ class G4F2CarbonDioxideNitrogenFrostPointHoldoutTest {
                     tally.score.holds.add(where);
                     System.out.println(where + " | typed hold: " + onset.detail());
                 }
-                case OUT_OF_DOMAIN -> {
-                    ThermoDomainViolation v = onset.violation();
-                    if (point.pressure() > 1e7 && v != null && v.code() == ThermoDomainViolation.Code.THERMO_DOMAIN_PRESSURE_ABOVE) {
-                        tally.outOfDomain.add(where);
-                        System.out.println(where + " | out of domain (above 10 MPa)");
-                    } else {
-                        tally.score.failures.add(where + ": " + onset.detail());
-                        System.out.println(where + " | OUT_OF_DOMAIN: " + onset.detail());
-                    }
-                }
                 default -> {
                     tally.score.failures.add(where + ": " + onset.status() + " " + onset.detail());
                     System.out.println(where + " | " + onset.status() + ": " + onset.detail());
@@ -138,7 +144,7 @@ class G4F2CarbonDioxideNitrogenFrostPointHoldoutTest {
         for (var e : tallies.entrySet()) {
             var s = e.getValue().score;
             System.out.printf(Locale.ROOT, "%s | %d | %d | %d | %d | %.3f | %+.3f | %.3f | 1.5 | %.3f | %.3f%n", e.getKey(), s.deviations.size(), s.holds.size(),
-                    e.getValue().outOfDomain.size(), s.failures.size(), s.mean(), s.bias(), s.max(), s.approximationMean(), s.approximationMax());
+                    e.getValue().extrapolated.size(), s.failures.size(), s.mean(), s.bias(), s.max(), s.approximationMean(), s.approximationMax());
             for (var iso : e.getValue().byIsotherm.entrySet()) {
                 double mad = iso.getValue().stream().mapToDouble(Math::abs).average().orElse(Double.NaN);
                 double bias = iso.getValue().stream().mapToDouble(d -> d).average().orElse(Double.NaN);
@@ -163,7 +169,8 @@ class G4F2CarbonDioxideNitrogenFrostPointHoldoutTest {
         for (Point p : points) assertTrue(p.y() > 0 && p.y() < 0.1 && p.temperature() >= 140 && p.temperature() <= 190, p.toString());
         var tallies = score(points);
         var pooled = new G4F1CarbonDioxideFrostPointHoldoutTest.Score();
-        int outOfDomain = 0;
+        int extrapolated = 0;
+        List<Double> beyond = new ArrayList<>();
         List<Double> dense = new ArrayList<>();
         for (var tally : tallies.values()) {
             dense.addAll(tally.dense);
@@ -171,10 +178,11 @@ class G4F2CarbonDioxideNitrogenFrostPointHoldoutTest {
             pooled.approximations.addAll(tally.score.approximations);
             pooled.holds.addAll(tally.score.holds);
             pooled.failures.addAll(tally.score.failures);
-            outOfDomain += tally.outOfDomain.size();
+            extrapolated += tally.extrapolated.size();
+            beyond.addAll(tally.extrapolatedDeviations);
         }
         System.out.printf(Locale.ROOT, "CO2 + N2 pooled: %d scored, %d holds, %d above 10 MPa, %d failures; MAD %.3f K, bias %+.3f K, max %.3f K (P0 target 1.5 K);"
-                + " partial-pressure MAD %.3f K, max %.3f K%n", pooled.deviations.size(), pooled.holds.size(), outOfDomain, pooled.failures.size(),
+                + " partial-pressure MAD %.3f K, max %.3f K%n", pooled.deviations.size(), pooled.holds.size(), extrapolated, pooled.failures.size(),
                 pooled.mean(), pooled.bias(), pooled.max(), pooled.approximationMean(), pooled.approximationMax());
         double denseMad = dense.stream().mapToDouble(Math::abs).average().orElse(Double.NaN);
         double denseMax = dense.stream().mapToDouble(Math::abs).max().orElse(Double.NaN);
@@ -184,12 +192,15 @@ class G4F2CarbonDioxideNitrogenFrostPointHoldoutTest {
                 dense.size(), denseMad, dense.stream().mapToDouble(d -> d).average().orElse(Double.NaN), denseMax,
                 pooled.deviations.size() + dense.size(), allMad);
         assertTrue(pooled.failures.isEmpty(), pooled.failures.toString());
-        assertEquals(points.size(), pooled.deviations.size() + dense.size() + pooled.holds.size() + outOfDomain);
+        System.out.printf(Locale.ROOT, "above 10 MPa (extrapolated, not scored): %d points, %d onsets, MAD %.3f K, bias %+.3f K%n", extrapolated,
+                beyond.size(), beyond.stream().mapToDouble(Math::abs).average().orElse(Double.NaN),
+                beyond.stream().mapToDouble(d -> d).average().orElse(Double.NaN));
+        assertEquals(points.size(), pooled.deviations.size() + dense.size() + pooled.holds.size() + extrapolated);
         assertEquals(DENSE_POINTS, dense.size());
         assertTrue(denseMad <= DENSE_MAD && denseMax <= DENSE_MAX, "dense carrier MAD " + denseMad + ", max " + denseMax);
         assertTrue(allMad <= POOLED_MAD, "all scored points MAD " + allMad);
-        assertEquals(ABOVE_CEILING, outOfDomain, "every point above 10 MPa, and only those, is out of the pilot's domain");
-        assertEquals(points.stream().filter(p -> p.pressure() > 1e7).count(), outOfDomain);
+        assertEquals(ABOVE_CEILING, extrapolated, "every point above 10 MPa, and only those, is beyond the pilot's envelope");
+        assertEquals(points.stream().filter(p -> p.pressure() > 1e7).count(), extrapolated);
         assertTrue(pooled.holds.size() <= HOLDS, pooled.holds.toString());
         assertTrue(pooled.mean() <= POOLED_MAD, "pooled MAD " + pooled.mean());
         for (var e : tallies.entrySet()) {

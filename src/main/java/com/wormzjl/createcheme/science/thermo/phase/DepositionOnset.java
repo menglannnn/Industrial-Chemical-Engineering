@@ -1,6 +1,5 @@
 package com.wormzjl.createcheme.science.thermo.phase;
 
-import com.wormzjl.createcheme.science.fluid.thermo.ThermoDomainViolation;
 import java.util.Objects;
 
 /**
@@ -21,9 +20,9 @@ import java.util.Objects;
  *
  * <p>Status rules as {@link EquilibriumResult}'s: {@code CONVERGED} carries the onset state and the fluid answer at it;
  * {@code UNSUPPORTED} a typed reason (the contract's refusals, or {@link EquilibriumResult#CRYSTAL_PHASES} when the fluid
- * at the onset is two liquids);
- * {@code OUT_OF_DOMAIN} the violation (the onset lies beyond the window of the crystal competition's domain, the
- * crystal's range or the package ceiling); {@code NOT_CONVERGED} the search's failure.</p>
+ * at the onset is two liquids); {@code NOT_CONVERGED} the search's failure (an onset beyond the search window: below
+ * the numerical box's floor, above the crystal competition's ceiling, or past the box's pressure). A converged onset
+ * outside a data range of the models it used is graded {@link EquilibriumResult.CoverageGrade#EXTRAPOLATED}.</p>
  *
  * @param crystal the crystal whose onset this is ({@code null} when the request was refused before one was chosen)
  * @param temperature K: the onset's for {@code depositionTemperature}, the given one for {@code depositionPressure}
@@ -35,7 +34,7 @@ import java.util.Objects;
  * @param fluid the fluid answer of the whole feed at the onset, {@code null} without one
  */
 public record DepositionOnset(EquilibriumResult.Status status, EquilibriumResult.UnsupportedReason reason, String detail,
-                              ThermoDomainViolation violation, String crystal, double temperature, double pressure,
+                              String crystal, double temperature, double pressure,
                               double approximation, double residual, int fluidEquilibria, EquilibriumResult fluid,
                               EquilibriumResult.Coverage coverage) {
     public DepositionOnset {
@@ -44,9 +43,6 @@ public record DepositionOnset(EquilibriumResult.Status status, EquilibriumResult
         Objects.requireNonNull(coverage, "coverage");
         if ((status == EquilibriumResult.Status.UNSUPPORTED) != (reason != null)) {
             throw new IllegalArgumentException("Exactly an unsupported onset has a reason");
-        }
-        if ((status == EquilibriumResult.Status.OUT_OF_DOMAIN) != (violation != null)) {
-            throw new IllegalArgumentException("Exactly an out-of-domain onset has a violation");
         }
         boolean converged = status == EquilibriumResult.Status.CONVERGED;
         if (converged != (fluid != null) || converged && (!Double.isFinite(temperature) || !Double.isFinite(pressure)
@@ -59,11 +55,9 @@ public record DepositionOnset(EquilibriumResult.Status status, EquilibriumResult
 
     /** A refusal or failure: no onset. */
     static DepositionOnset without(EquilibriumResult.Status status, EquilibriumResult.UnsupportedReason reason, String detail,
-                                   ThermoDomainViolation violation, String crystal, double temperature, double pressure,
+                                   String crystal, double temperature, double pressure,
                                    double approximation, int fluidEquilibria) {
-        EquilibriumResult.CoverageGrade grade = status == EquilibriumResult.Status.OUT_OF_DOMAIN
-                ? EquilibriumResult.CoverageGrade.OUT_OF_DOMAIN : EquilibriumResult.CoverageGrade.UNAVAILABLE;
-        return new DepositionOnset(status, reason, detail, violation, crystal, temperature, pressure, approximation, Double.NaN,
-                fluidEquilibria, null, new EquilibriumResult.Coverage(grade, detail));
+        return new DepositionOnset(status, reason, detail, crystal, temperature, pressure, approximation, Double.NaN,
+                fluidEquilibria, null, new EquilibriumResult.Coverage(EquilibriumResult.CoverageGrade.UNAVAILABLE, detail));
     }
 }

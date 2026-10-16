@@ -25,8 +25,8 @@ class DirectLiquidDeterminismTest {
             double[] s=states[pass==0?k:states.length-1-k];
             double saturation=model.saturationPressure(s[0]);
             var fresh=new WaterRegion1.Workspace();
-            WaterRegion1.evaluateLiquid(NETWORK,water,s[0],s[1],saturation,reused);
-            WaterRegion1.evaluateLiquid(NETWORK,water,s[0],s[1],saturation,fresh);
+            WaterRegion1.evaluateLiquid(water,s[0],s[1],reused);
+            WaterRegion1.evaluateLiquid(water,s[0],s[1],fresh);
             String at=s[0]+" K "+s[1]+" Pa";
             assertEquals(bits(fresh.specificVolume()),bits(reused.specificVolume()),at);
             assertEquals(bits(fresh.specificEnthalpy()),bits(reused.specificEnthalpy()),at);
@@ -35,7 +35,7 @@ class DirectLiquidDeterminismTest {
             assertEquals(bits(fresh.state().volumeTemperatureDerivative()),bits(reused.state().volumeTemperatureDerivative()),at);
             assertEquals(bits(fresh.state().volumeSecondTemperatureDerivative()),bits(reused.state().volumeSecondTemperatureDerivative()),at);
             // The stable-liquid record path is the same arithmetic.
-            if(s[1]>=saturation)assertEquals(bits(fresh.specificVolume()),bits(WaterRegion1.evaluate(NETWORK,water,s[0],s[1]).specificVolume()),at);
+            if(s[1]>=saturation)assertEquals(bits(fresh.specificVolume()),bits(WaterRegion1.evaluate(water,s[0],s[1]).specificVolume()),at);
         }
     }
 

@@ -1,6 +1,7 @@
 package com.wormzjl.createcheme.science.thermo.phase;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -9,7 +10,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.wormzjl.createcheme.fluid.support.FluidTestSupport;
 import com.wormzjl.createcheme.science.fluid.thermo.FluidThermodynamics;
-import com.wormzjl.createcheme.science.fluid.thermo.ThermoDomainViolation;
 import com.wormzjl.createcheme.science.material.MaterialCatalog;
 import com.wormzjl.createcheme.science.thermo.IdealGasFunction;
 import com.wormzjl.createcheme.science.thermo.PengRobinsonKernel;
@@ -290,13 +290,13 @@ class FluidTpEquilibriumP3Test {
      * WP7c, the hot-gas grid: nitrogen and methane on the network contract (300 to 900 K, their domain) and on the pilot
      * contract (nitrogen 300 to 1200 K), ethane and carbon dioxide on the pilot contract, methane, ethane and carbon
      * dioxide from the first 50 K step above their critical temperatures to 1200 K, each at 0.1, 0.5, 1, 2, 5 and 10 MPa
-     * up to the contract's own pressure ceiling for the species (the bundled network package keeps nitrogen and methane
-     * to 2 MPa; the pilot reaches 10 MPa). Every state converges to one phase, never labelled {@code LIQUID} ({@code VAPOR} below the critical pressure,
-     * {@code FLUID} above it), and is vapour-like by the rule except where it is denser than the cubic's critical volume
-     * ({@code v < 3.95 b}): only methane at 200 K and ethane at 350 K, both at 10 MPa, dense supercritical fluids that
-     * are liquid-like by their parameter as nitrogen at 130 K and 6 MPa is. Before WP7c the bare {@code PIP > 1} labelled
-     * 95 of these states {@code LIQUID} (nitrogen from 650 K, methane on the pilot kernel from 1000 K, carbon dioxide at
-     * 1150 and 1200 K). Each isotherm's parameter and {@code Z} are printed, and each species' largest parameter.
+     * up to the contract's 10 MPa envelope. Every state converges to one phase, never labelled {@code LIQUID}
+     * ({@code VAPOR} below the critical pressure, {@code FLUID} above it), and is vapour-like by the rule except where it
+     * is denser than the cubic's critical volume ({@code v < 3.95 b}): only methane at 200 K and ethane at 350 K, both
+     * at 10 MPa, dense supercritical fluids that are liquid-like by their parameter as nitrogen at 130 K and 6 MPa is.
+     * Before WP7c the bare {@code PIP > 1} labelled 95 of these states {@code LIQUID} (nitrogen from 650 K, methane on
+     * the pilot kernel from 1000 K, carbon dioxide at 1150 and 1200 K). Each isotherm's parameter and {@code Z} are
+     * printed, and each species' largest parameter.
      */
     @Test
     void hotGasesAreVapourLikeOverTheGrid() {
@@ -323,7 +323,7 @@ class FluidTpEquilibriumP3Test {
             var workspace = kernel.newWorkspace();
             var evaluation = kernel.newEvaluation();
             var tc = g.service().evaluator().component(g.service().evaluator().components().indexOf(g.species())).criticalTemperatureKelvin();
-            double ceiling = Math.min(contract.domain().range(contract.index(g.species()))[3], contract.domain().envelope()[3]);
+            double ceiling = contract.domain().envelope()[3];
             assertTrue(g.from() > tc, g + " starts above Tc " + tc);
             double worstParameter = Double.NEGATIVE_INFINITY;
             double worstZ = Double.NaN;
@@ -561,12 +561,13 @@ class FluidTpEquilibriumP3Test {
 
         double[] hot = crude.clone();
         hot[water] = 10.0;
-        var refused = service.tp(EquilibriumRequest.tp(450.0, 2.0e6, contract.components(), hot, PhaseCompetition.FLUID_ONLY));
-        assertEquals(Status.OUT_OF_DOMAIN, refused.status(), refused.toString());
-        assertEquals("Water", refused.violation().component());
-        assertEquals(ThermoDomainViolation.Property.PRESSURE, refused.violation().property());
-        assertThrows(IllegalArgumentException.class, () -> fluid.flashTP(450.0, 2.0e6, hot.clone(), () -> { }),
-                "the network refuses the same steam partial pressure");
+        // Steam past the ideal steam's qualified partial pressure (p_sat 0.93 MPa at 450 K): answered, graded extrapolated
+        // with the limit named (owner rule of 2026-10-16; refused before), and the network carries the same state.
+        var wetHot = service.tp(EquilibriumRequest.tp(450.0, 2.0e6, contract.components(), hot, PhaseCompetition.FLUID_ONLY));
+        assertEquals(Status.CONVERGED, wetHot.status(), wetHot.toString());
+        assertEquals(CoverageGrade.EXTRAPOLATED, wetHot.coverage().grade());
+        assertTrue(wetHot.coverage().evidence().contains("the ideal steam's qualified partial pressure"), wetHot.coverage().evidence());
+        assertDoesNotThrow(() -> fluid.flashTP(450.0, 2.0e6, hot.clone(), () -> { }), "the network carries the same steam partial pressure");
 
         // The model must be the one the contract identity names.
         FreeWaterModel inner = PhaseTestSupport.networkFreeWater(fluid);
@@ -586,7 +587,8 @@ class FluidTpEquilibriumP3Test {
      * hydrocarbon liquid, its free water) on the P2 network grid with water added, pinned to the states where the water
      * rule decides: the two agree on the hydrocarbon phases (which the liquid path, not the water rule, decides) and the
      * rule's decision has a margin (free water holding more than 5 % of the water, or unsaturated steam below
-     * 0.95 {@code p_sat}, and the state pressure more than 5 % from {@code p_sat}). Both refusing is agreement.
+     * 0.95 {@code p_sat}, and the state pressure more than 5 % from {@code p_sat}). Both refusing is agreement; since the
+     * owner rule of 2026-10-16 neither refuses a state of the grid.
      */
     @Test
     void freeWaterPhaseCountEqualsTheNetworkFlash() {
@@ -673,7 +675,9 @@ class FluidTpEquilibriumP3Test {
         }
         assertEquals(672, states);
         assertTrue(pinned >= 0.9 * answered, "pinned " + pinned + " of " + answered);
-        assertTrue(threePhase > 0 && refusedByBoth > 0, "three phases " + threePhase + ", refused " + refusedByBoth);
+        assertTrue(threePhase > 0, "three phases " + threePhase);
+        // Since the owner rule of 2026-10-16 no state of the grid is refused (the steam partial-pressure limit refused some).
+        assertEquals(0, refusedByBoth, "refused " + refusedByBoth);
         System.out.println("P3 free water vs flashTP: " + states + " states, " + answered + " answered by both (" + threePhase
                 + " with gas, hydrocarbon liquid and free water), " + refusedByBoth + " refused by both; phase counts equal on all "
                 + pinned + " pinned states; hydrocarbon phases differ on " + hydrocarbonDiffers);

@@ -113,29 +113,14 @@ final class NetworkPhaseEngine {
 
     /**
      * The network's free water as the engine's {@link FreeWaterModel}: the very methods {@link FluidThermodynamics#state}
-     * uses (its saturation pressure, its liquid water at the state pressure, its steam partial-pressure limit), and ideal
-     * steam from the water record's Shomate polynomial (the network's {@code vaporWaterEnthalpy}), its entropy anchored at
-     * {@link #STEAM_STANDARD_ENTROPY}.
+     * uses (its saturation pressure, its liquid water at the state pressure, its steam partial-pressure limit), and its
+     * ideal steam ({@link Steam}).
      */
     static final class NetworkFreeWater implements FreeWaterModel {
         private final FluidThermodynamics fluid;
         private final MaterialCatalog.Water water;
-        private final IdealGasFunction steam;
         NetworkFreeWater(FluidThermodynamics fluid,MaterialCatalog.Water water) {
             this.fluid=fluid;this.water=water;
-            steam=new IdealGasFunction() {
-                private final double offset=STEAM_STANDARD_ENTROPY-shomateEntropy(298.15);
-                private double shomateEntropy(double t) {
-                    double x=t/1000.0;var c=water.shomate();
-                    return c.get(0)*DeterministicMath.log(x)+c.get(1)*x+c.get(2)*x*x/2.0+c.get(3)*x*x*x/3.0-c.get(4)/(2.0*x*x);
-                }
-                @Override public double heatCapacity(double t){return V3WaterProperties.dVaporMolarEnthalpyDT(water,t);}
-                @Override public double enthalpy(double t){return fluid.vaporWaterEnthalpy(t);}
-                @Override public double entropy(double t,double p){return shomateEntropy(t)+offset-FluidThermodynamics.R*DeterministicMath.log(p/1.0e5);}
-                @Override public double minimumTemperature(){return water.triplePoint();}
-                @Override public double maximumTemperature(){return water.maximumTemperature();}
-                @Override public String revision(){return water.revision();}
-            };
         }
         @Override public String revision(){return water.revision();}
         @Override public double saturationPressure(double t){return fluid.saturationPressure(t);}
@@ -143,14 +128,56 @@ final class NetworkPhaseEngine {
         @Override public void liquid(double t,double p,double[] out) {
             var liquid=fluid.waterLiquid(t,p);out[0]=liquid.molarVolume();out[1]=liquid.molarEnthalpy();
         }
-        @Override public IdealGasFunction vapor(){return steam;}
+        @Override public IdealGasFunction vapor(){return fluid.steam();}
+    }
+
+    /**
+     * The network's ideal steam: the water record's Shomate polynomial (the column's {@code vaporMolarEnthalpy}, the
+     * network's {@code vaporWaterEnthalpy}), its entropy anchored at {@link #STEAM_STANDARD_ENTROPY}. Past the record's
+     * range, from its triple point to its maximum temperature, the heat capacity is held at the end value and the enthalpy
+     * and entropy integrate it (owner rule of 2026-10-16), so value and slope are continuous at both ends.
+     */
+    static final class Steam implements IdealGasFunction {
+        private final MaterialCatalog.Water water;
+        private final double minimum,maximum,offset,lowCp,highCp,lowEnthalpy,highEnthalpy,lowEntropy,highEntropy;
+        Steam(MaterialCatalog.Water water) {
+            this.water=water;minimum=water.triplePoint();maximum=water.maximumTemperature();
+            offset=STEAM_STANDARD_ENTROPY-shomateEntropy(298.15);
+            lowCp=V3WaterProperties.dVaporMolarEnthalpyDT(water,minimum);highCp=V3WaterProperties.dVaporMolarEnthalpyDT(water,maximum);
+            lowEnthalpy=V3WaterProperties.vaporMolarEnthalpy(water,minimum);highEnthalpy=V3WaterProperties.vaporMolarEnthalpy(water,maximum);
+            lowEntropy=shomateEntropy(minimum)+offset;highEntropy=shomateEntropy(maximum)+offset;
+        }
+        private double shomateEntropy(double t) {
+            double x=t/1000.0;var c=water.shomate();
+            return c.get(0)*DeterministicMath.log(x)+c.get(1)*x+c.get(2)*x*x/2.0+c.get(3)*x*x*x/3.0-c.get(4)/(2.0*x*x);
+        }
+        private static void require(double t) {
+            if(!(t>0)||!Double.isFinite(t))throw new IllegalArgumentException("Steam temperature must be positive and finite: "+t);
+        }
+        @Override public double heatCapacity(double t) {
+            require(t);return t<minimum?lowCp:t>maximum?highCp:V3WaterProperties.dVaporMolarEnthalpyDT(water,t);
+        }
+        @Override public double enthalpy(double t) {
+            require(t);
+            return t<minimum?lowEnthalpy+lowCp*(t-minimum):t>maximum?highEnthalpy+highCp*(t-maximum):V3WaterProperties.vaporMolarEnthalpy(water,t);
+        }
+        @Override public double entropy(double t,double p) {
+            require(t);if(!(p>0)||!Double.isFinite(p))throw new IllegalArgumentException("Steam entropy needs a positive finite pressure");
+            double s=t<minimum?lowEntropy+lowCp*DeterministicMath.log(t/minimum):t>maximum?highEntropy+highCp*DeterministicMath.log(t/maximum):shomateEntropy(t)+offset;
+            return s-FluidThermodynamics.R*DeterministicMath.log(p/1.0e5);
+        }
+        @Override public double minimumTemperature(){return minimum;}
+        @Override public double maximumTemperature(){return maximum;}
+        @Override public String revision(){return water.revision();}
     }
 
     /**
      * A {@code shifted_polynomial_5} ideal-gas fit (and its optional low-temperature segment) as an
      * {@link IdealGasFunction} on the network's sensible datum: {@code c_p = sum a_k (T - 298.15)^k}, the enthalpy its
      * integral from 298.15 K (the network's own ideal-gas enthalpy), the entropy {@code integral c_p/T dT} from 298.15 K
-     * minus {@code R ln(P/1e5)}; below a segment's joint the segment continues both from their values there.
+     * minus {@code R ln(P/1e5)}; below a segment's joint the segment continues both from their values there. Past the fit's
+     * range {@code [minimum, maximum]} the heat capacity is held at the end value and the enthalpy and entropy integrate it
+     * (owner rule of 2026-10-16), as {@link TranslatedPengRobinson}'s coefficient path does.
      */
     static final class CoefficientIdealGas implements IdealGasFunction {
         private static final double REFERENCE=298.15;
@@ -168,23 +195,30 @@ final class NetworkPhaseEngine {
             this.minimum=minimum;this.maximum=maximum;revision=property.id()+":shifted_polynomial_5";
         }
         @Override public double heatCapacity(double t) {
-            check(t);double[] a=t<joint?low:main;double delta=t-REFERENCE,cp=0;
-            for(int k=a.length-1;k>=0;k--)cp=cp*delta+a[k];
-            return cp;
+            return fitHeatCapacity(edge(t));
         }
         @Override public double enthalpy(double t) {
-            check(t);return t<joint?antiderivative(low,t)+jointEnthalpy:antiderivative(main,t);
+            double e=edge(t),h=e<joint?antiderivative(low,e)+jointEnthalpy:antiderivative(main,e);
+            return e==t?h:h+fitHeatCapacity(e)*(t-e);
         }
         @Override public double entropy(double t,double p) {
-            check(t);if(!(p>0))throw new IllegalArgumentException("Ideal-gas entropy needs a positive pressure");
-            double integral=t<joint?entropyIntegral(lowPowers,t)+jointEntropy:entropyIntegral(mainPowers,t);
+            double e=edge(t);if(!(p>0))throw new IllegalArgumentException("Ideal-gas entropy needs a positive pressure");
+            double integral=e<joint?entropyIntegral(lowPowers,e)+jointEntropy:entropyIntegral(mainPowers,e);
+            if(e!=t)integral+=fitHeatCapacity(e)*DeterministicMath.log(t/e);
             return integral-FluidThermodynamics.R*DeterministicMath.log(p/1.0e5);
         }
         @Override public double minimumTemperature(){return minimum;}
         @Override public double maximumTemperature(){return maximum;}
         @Override public String revision(){return revision;}
-        private void check(double t) {
-            if(!(t>=minimum&&t<=maximum))throw new IllegalArgumentException("Ideal-gas fit outside "+minimum+".."+maximum+" K: "+t);
+        private double fitHeatCapacity(double t) {
+            double[] a=t<joint?low:main;double delta=t-REFERENCE,cp=0;
+            for(int k=a.length-1;k>=0;k--)cp=cp*delta+a[k];
+            return cp;
+        }
+        /** {@code t} inside the fit's range, the nearer end outside it; a temperature that is not positive is refused. */
+        private double edge(double t) {
+            if(!(t>0)||!Double.isFinite(t))throw new IllegalArgumentException("Ideal-gas temperature must be positive and finite: "+t);
+            return t<minimum?minimum:t>maximum?maximum:t;
         }
         /** {@code integral_298.15^T c_p dT}, the Horner form the translated model uses. */
         private static double antiderivative(double[] a,double t) {
