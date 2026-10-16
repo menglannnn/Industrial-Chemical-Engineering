@@ -144,7 +144,8 @@ class InletPhaseTest extends PortFixture {
      * tank), a pump between two nitrogen tanks, and a pump on a two-phase generator (30 % vapour by volume) into a
      * nitrogen tank. Both pumps are refused ({@code INLET_WRONG_PHASE}), carry exactly zero, every slice commits FULL (no
      * hold), at 5 s and 0.1 s. The water line integrates bit for bit as in the same island whose nitrogen line is a
-     * compressor closed both ways (the existing closed-device path, mode CLOSED): a refusal is exactly a closed device.
+     * compressor set to no flow (a closed device, mode CLOSED): a refusal is exactly a closed device. (The control was a
+     * compressor closed both ways by a block until every interval start read the closures open, owner decision D33.)
      * Against the water line alone (no device lines at all) it is bit for bit at 5 s; at 0.1 s a closed device's head
      * unknown moves the water line's flow by a few units in the last place in some slices, as the pre-existing
      * closed-device path does (measured: the refused and the closed-compressor islands agree bitwise, both 1-2 ulp from
@@ -161,9 +162,9 @@ class InletPhaseTest extends PortFixture {
             nodes.add(new PassiveNetwork.Reservoir(5,0,twoPhase,PassiveNetwork.NodeKind.GENERATOR));nodes.add(new PassiveNetwork.Reservoir(6,0,nitrogenAt(101325)));
             var island=new PassiveNetwork(nodes,List.of(pipe(10,0,1,line(10,.02),new FlowControl.Passive()),
                     pipe(11,2,3,line(1,.05),new FlowControl.Pump(.01,500000,1)),pipe(12,4,5,line(1,.05),new FlowControl.Pump(.001,500000,1))));
-            // The control: the nitrogen line's device a compressor (a gas is its phase) closed both ways; the two-phase line as is.
+            // The control: the nitrogen line's device a compressor (a gas is its phase) set to no flow; the two-phase line as is.
             var closedControl=new PassiveNetwork(nodes,List.of(pipe(10,0,1,line(10,.02),new FlowControl.Passive()),
-                    pipe(11,2,3,line(1,.05),new FlowControl.Compressor(.01,1.5,1)).withBlockedDirections(3),pipe(12,4,5,line(1,.05),new FlowControl.Pump(.001,500000,1))));
+                    pipe(11,2,3,line(1,.05),new FlowControl.Compressor(0,1.5,1)),pipe(12,4,5,line(1,.05),new FlowControl.Pump(.001,500000,1))));
             var reference=drive("alone@"+interval,alone,interval,count);var run=drive("island@"+interval,island,interval,count);
             var control=drive("closed@"+interval,closedControl,interval,count);
             int worstUlps=0;

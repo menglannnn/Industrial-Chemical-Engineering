@@ -66,7 +66,13 @@ public final class PassiveIntervalSolver {
      * of the interval alone, so that a certified replay is bitwise (see {@link #replayStart}).
      */
     public Result solve(PassiveNetwork initial,double duration,Settings settings,Runnable checkpoint,double startingStep) {
-        initial=PassiveNetwork.sizeJunctionHoldups(initial,model);
+        var committed=PassiveNetwork.sizeJunctionHoldups(initial,model);
+        // Owner decision D33: a transport closure stands for its own interval only, so the interval starts with every one
+        // read open, and every path reads that start: the rest test, the slice's inlet decision, the refresh, the solid
+        // events (which decide the closures again at t0) and the plain integrate of an island with no filter, solids or
+        // liquid, where nothing decides one again (a gas carries no solid). A rest interval changes nothing: it keeps the
+        // committed graph.
+        initial=NetworkReduction.reopened(committed);
         // Owner decisions D19, D42 and D58: an island nothing can drive by more than the gauge reads is at rest and is not
         // solved (NetworkReduction step 6); a mover refused for the slice moves nothing.
         boolean[] refused=decideInlets(initial,duration);
@@ -75,7 +81,7 @@ public final class PassiveIntervalSolver {
         // solved from the refreshed state, its boundaries kept.
         var refreshed=model.crystalSolids().isEmpty()?null:InventoryEquilibrium.refresh(initial,model,checkpoint);
         boolean converted=refreshed!=null&&refreshed.converted();
-        if(Double.isFinite(duration)&&duration>0&&!converted&&NetworkReduction.atRest(initial,model,null,refused)){SolverDiagnostics.count(SolverDiagnostics.restIntervals);return committedInlets(NetworkReduction.restInterval(initial,duration,refused));}
+        if(Double.isFinite(duration)&&duration>0&&!converted&&NetworkReduction.atRest(initial,model,null,refused)){SolverDiagnostics.count(SolverDiagnostics.restIntervals);return committedInlets(NetworkReduction.restInterval(committed,duration,refused));}
         if(converted)initial=refreshed.graph();
         Result result;
         if(com.wormzjl.createcheme.science.fluid.transport.SolidMobility.monitored(initial)||model.solidSettings.immobileViscosity()<.002&&initial.reservoirs().stream().anyMatch(n->n.state().waterVolume()>0))result=new SolidEventIntegrator(model,this).solve(initial,duration,settings,checkpoint,startingStep);
@@ -88,7 +94,8 @@ public final class PassiveIntervalSolver {
         return committedInlets(result);
     }
     public Result solveApproximate(PassiveNetwork initial,double duration,Settings settings,Runnable checkpoint,StageGuard guard) {
-        initial=PassiveNetwork.sizeJunctionHoldups(initial,model);
+        // The interval starts with every transport closure read open (owner decision D33; see solve).
+        initial=NetworkReduction.reopened(PassiveNetwork.sizeJunctionHoldups(initial,model));
         if(com.wormzjl.createcheme.science.fluid.transport.SolidMobility.requiresFull(model,initial))throw new ApproximationAnchor.Rejected("Solid/filter intervals require a full solve");
         StageGuard checked=(states,modes)->{
             for(var state:states)if(state.solidMoments().mass()>0||com.wormzjl.createcheme.science.fluid.transport.SolidMobility.immobileLiquid(model,state))throw new ApproximationAnchor.Rejected("Solid transition requires a full solve");
@@ -112,15 +119,15 @@ public final class PassiveIntervalSolver {
      * ({@link InletPhase#decide} over the slice {@code duration}); handed to the step solver, which holds them in
      * {@link FlowControl.Mode#INLET_WRONG_PHASE} (closed) in every step, rate seed and segment of the slice. The input is
      * the committed endpoint mode, never solver-local history, so a certified island woken with a fresh solver decides
-     * exactly as the island that solved every interval. The state's transport closures are read as an interval start
-     * reads them, open (owner decision D33, {@link NetworkReduction#reopened}): the solid events decide them again at the
+     * exactly as the island that solved every interval. {@code initial} is the interval start, its transport closures
+     * read open (owner decision D33, {@link NetworkReduction#reopened}): the solid events decide them again at the
      * interval's t0, with the movers this decision leaves free. Read as they stood, a suction line the last interval
      * closed left its pump "inlet dry", and a refused pump cannot drive the flow that would suspend the crystals again
      * (the owner's fix A of F2, 2026-10-16).
      */
     private boolean[] decideInlets(PassiveNetwork initial,double duration) {
         var modes=inletKey.equals(pipeIds(initial))?inletModes:null;
-        boolean[] refused=InletPhase.decide(model,NetworkReduction.reopened(initial),modes,duration);
+        boolean[] refused=InletPhase.decide(model,initial,modes,duration);
         var ids=new HashSet<Long>();for(int i=0;i<refused.length;i++)if(refused[i])ids.add(initial.pipes().get(i).id());
         implicit.refuseInlets(ids);
         return refused;

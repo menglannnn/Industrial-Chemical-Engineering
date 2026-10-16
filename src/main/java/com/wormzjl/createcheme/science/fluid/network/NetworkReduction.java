@@ -125,8 +125,12 @@ public final class NetworkReduction {
      * are asked. Solids do not keep an island awake (owner decision D23 (6)): a particle moves only with the flow that
      * carries it and grows or melts only in a vessel's refresh, which {@link PassiveIntervalSolver#solve} runs before this
      * test, so an unchanged stock of solids at no drive stays as it is. At an interval start every transport closure is read
-     * as open, solids or not (owner decision D33), since that interval re-decides them; a filter stopped at its capacity
-     * stays closed. A pressure valve passes only from its first end and only while that end stands
+     * as open, solids or not (owner decision D33), since that interval re-decides them: the interval solver hands this test
+     * the interval start ({@link #reopened}), as it hands it to every path of the interval; a filter stopped at its capacity
+     * stays closed. A connection the solid events closed stands for the rest of its interval only, and a deposition closure,
+     * the one the drive decides, reopens under a drive that suspends the particles; read only while the island held solids,
+     * a closure outlived the frost that caused it (M4's island at rest 199 kPa across one). A drive across one is a drive,
+     * and the island is solved. A pressure valve passes only from its first end and only while that end stands
      * above its set point, so it drives forward by the smaller of its static drive and that excess, and never back (A211);
      * the rest interval reports it CLOSED. An empty vessel stands at the ambient and gives nothing (decision D54): its
      * pressure is the ambient's, and every drive out of it is forbidden ({@link PassiveStepSolver#boundaryAllowed}).</li>
@@ -168,13 +172,9 @@ public final class NetworkReduction {
         if(!stock)return true;
         boolean[] closed=closedMovers(graph,refused);
         for(int i=0;i<closed.length;i++)if(!closed[i]&&graph.pipes().get(i).control() instanceof FlowControl.Mover)return false;
-        // A connection the solid events closed stands for the rest of its interval only: the next interval re-decides every
-        // closure at its start (SolidEventIntegrator), and a deposition closure, the one the drive decides, reopens under a
-        // drive that suspends the particles. So at an interval start every closed connection reads as open, whether or not
-        // the island still holds solids (owner decision D33; read only while it held them, a closure outlived the frost that
-        // caused it, M4's island at rest 199 kPa across one): a drive across one is a drive, and the island is solved and the
-        // closure re-decided. A filter stopped at its capacity stays closed ({@link #reopened}): its cake passes nothing.
-        var drives=drives(flows==null?reopened(graph):graph,model);
+        // The closures are read as the caller hands them: at an interval start every one but a stopped filter's is open
+        // (owner decision D33, {@link #reopened}), at a step's end those its interval decided stand.
+        var drives=drives(graph,model);
         for(int i=0;i<drives.length;i++) {
             // A closed mover carries nothing either way.
             if(closed[i]){drives[i][0]=drives[i][1]=Double.NEGATIVE_INFINITY;continue;}
@@ -200,8 +200,9 @@ public final class NetworkReduction {
     }
     /** {@code graph} with every transport closure lifted ({@link PassiveNetwork.Pipe#blockedDirections} zero) except a
      * filter's stopped at its capacity ({@link InlineFilter#stoppedAtCapacity}), which stands until the cake is cleared:
-     * the closures as an interval start reads them (owner decision D33), for the rest test and for the slice's inlet
-     * decision ({@code PassiveIntervalSolver}) and its device view. */
+     * the closures as an interval start reads them (owner decision D33). {@link PassiveIntervalSolver#solve} starts every
+     * interval from it, so the rest test, the slice's inlet decision and both integrations read it; so do the device view
+     * of a mover's supply and {@link #atRest(PassiveNetwork, FluidThermodynamics)}. */
     public static PassiveNetwork reopened(PassiveNetwork graph) {
         if(graph.pipes().stream().allMatch(p->p.blockedDirections()==0||stopped(p)))return graph;
         return new PassiveNetwork(graph.reservoirs(),graph.pipes().stream().map(p->stopped(p)?p:p.withBlockedDirections(0)).toList(),graph.scheduledTransfers());
@@ -209,8 +210,8 @@ public final class NetworkReduction {
     private static boolean stopped(PassiveNetwork.Pipe pipe){return pipe.filter()!=null&&pipe.filter().stoppedAtCapacity();}
     /** {@link #atRest} with no mover refused. */
     public static boolean atRest(PassiveNetwork graph,FluidThermodynamics model,double[] flows){return atRest(graph,model,flows,null);}
-    /** {@link #atRest} at an interval start: the committed state, no flows. */
-    public static boolean atRest(PassiveNetwork graph,FluidThermodynamics model){return atRest(graph,model,null,null);}
+    /** {@link #atRest} at an interval start: the committed state, its closures read open ({@link #reopened}), no flows. */
+    public static boolean atRest(PassiveNetwork graph,FluidThermodynamics model){return atRest(reopened(graph),model,null,null);}
     /** The movers that move nothing this slice: set to no flow, or refused ({@code refused}, null for none). */
     private static boolean[] closedMovers(PassiveNetwork graph,boolean[] refused) {
         boolean[] closed=new boolean[graph.pipes().size()];

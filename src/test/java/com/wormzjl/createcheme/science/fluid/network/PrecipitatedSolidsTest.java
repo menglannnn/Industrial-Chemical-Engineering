@@ -411,7 +411,13 @@ class PrecipitatedSolidsTest {
      * rest certificate. The frosted tank above vents through its bulk end into the atmosphere: the gas leaves, every
      * crystal stays (solids ride the liquid, and it holds none). The same tank once its frost sublimed, at 300 kPa with
      * the closure the frost era left on its outlet: a closure stands for its interval only, so at the next interval start
-     * the rest test reads it as open, and 199 kPa across it is a drive, not a rest.
+     * the rest test reads it as open, and 199 kPa across it is a drive, not a rest. The interval reads it open on its path
+     * too (D33's gap, M4c): an island of two gas tanks holds no filter, solids or liquid, so it is the plain integrate, where
+     * nothing decides a closure again (a gas carries no solid). The physics: 0.1 m3 at 300 kPa into 0.1 m3 at 101 kPa through
+     * 10 m of 4 mm line, about 1.5e-3 kg/s (isothermal line flow, A sqrt((P1^2 - P2^2) D / (f L R T / M)) with f near
+     * 0.03): about 8 g in 5 s, which moves each tank's pressure about 7.7 kPa (adiabatic, dP/P = gamma dm/m, of 0.43 and
+     * 0.14 kg), the start of an equalisation at about 200 kPa that takes minutes. The solve gives 1.56e-3 kg/s, 292.4 and
+     * 108.5 kPa. Kept closed, nothing moves (the head's plain integrate: 0 kg/s, 300 and 101.3 kPa, the closure still on).
      */
     @Test void aFrostingTanksSideOutletPassesGasAndKeepsTheFrost() {
         var tank=new PassiveNetwork(List.of(new PassiveNetwork.Reservoir(1,0,charge(pilot,170,1e6,new double[]{.9,0,0,.1,0},.1))),List.of());
@@ -429,5 +435,13 @@ class PrecipitatedSolidsTest {
         var stuck=new PassiveNetwork(List.of(new PassiveNetwork.Reservoir(1,0,warm),new PassiveNetwork.Reservoir(2,0,receiver)),List.of(outlet.withBlockedDirections(3)));
         assertTrue(stuck.reservoirs().stream().allMatch(r->r.inventory().solids().empty()),"no solids left");
         assertFalse(NetworkReduction.atRest(stuck,pilot),"199 kPa across a closure is a drive at an interval start, not a rest");
+        assertFalse(SolidMobility.monitored(stuck),"a gas island: the plain integrate solves it");
+        var thaw=new PassiveIntervalSolver(pilot).solve(stuck,5,PassiveIntervalSolver.Settings.defaults(),()->{},1);
+        var donor=thaw.graph().reservoirs().get(0).state();var taker=thaw.graph().reservoirs().get(1).state();
+        System.out.printf(Locale.ROOT,"the thawed outlet: %.6e kg/s for 5 s, %.1f Pa and %.1f Pa after, closures %d%n",thaw.averageMassFlows()[0],
+                donor.pressure(),taker.pressure(),thaw.graph().pipes().getFirst().blockedDirections());
+        assertTrue(thaw.averageMassFlows()[0]>0,"the gas flows through the outlet the frost era closed");
+        assertTrue(donor.pressure()<warm.pressure()&&taker.pressure()>receiver.pressure(),"the tanks' pressures draw together");
+        assertEquals(0,thaw.graph().pipes().getFirst().blockedDirections(),"no closure survives the interval");
     }
 }
