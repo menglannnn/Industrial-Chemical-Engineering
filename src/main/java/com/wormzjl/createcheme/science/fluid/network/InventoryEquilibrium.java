@@ -166,8 +166,9 @@ public final class InventoryEquilibrium {
      * D54: a bag with a stiff wall, {@link PhaseLayout#wallRow}), so the energy and wall equations
      * are solved, in the phase layout of {@code state} and from it, to {@link #CLOSURE}, and the result is given exactly
      * the inventory's amounts ({@link ConservativeTransport#repartition}). A state already within the closure is returned
-     * as it is (an island at rest stays bit for bit). The phase set is {@code state}'s: whether it holds is the caller's
-     * question (the refresh's regime test above; in a step, the pass loop's phase correction of the reconstructed state).
+     * as it is (an island at rest stays bit for bit). The phase set is {@code state}'s less any phase the restatement folds
+     * away (decision D34), the vessel then closed again without it (E8): whether the set holds is the caller's question
+     * (the refresh's pass loop, {@link #passes}; in a step, the pass loop's phase correction of the reconstructed state).
      * One closure for the interval-start refresh and every reconstruction ({@code ConservativeTransport.reconstruct0}).
      * A vessel holding dry solids only is at the temperature its energy gives the solids, at {@code state}'s pressure.
      *
@@ -198,11 +199,20 @@ public final class InventoryEquilibrium {
         var solved=SparseNewton.solve(layout.wallClosure(n,energy,volume,workFrom),x,new SparseNewton.Settings(24,CLOSURE,1e-6,24),checkpoint);
         var closed=ConservativeTransport.repartition(model,layout.decode(solved.variables(),0),n);
         // The restatement applies the flash's trace-phase rule (decision D34), so a phase the closure left as a trace is
-        // folded away and the closed state is checked in its own layout. A step that folded a phase is solved again from
-        // the folded state (the pass loop's recordFolds); the refresh asks its regime test.
-        var check=regime(closed).equals(regime(state))?layout:layout(model,closed,null);
-        x=check.encode(closed);residual=new double[check.size()];
-        check.residual(closed,n,energy,volume,workFrom,residual,0,x);
+        // folded away; the vessel is then closed again without it, in the folded state's own layout (decision D30's form:
+        // the fold, then the closure again without the phase; E8). Folded and only checked, a liquid-full LNG tank beside its
+        // dry ice whose closure left its last bubble just under the trace share (1e-9 of its moles, 2e-8 of its volume at
+        // 1.14 MPa) missed its volume by that bubble, 1.9e-8 against the 1e-8 check, and its step was refused at every size
+        // (cold seed 48, 10 224 times). A fold only removes a phase (a restatement adds one only to a state the closure left
+        // with no hydrocarbon phase, ConservativeTransport.repartition), so this ends. A step whose reconstruction folded a
+        // phase is solved again from the folded state (the pass loop's recordFolds).
+        if(!regime(closed).equals(regime(state))) {
+            try{return close(model,closed,inventory,null,workFrom,checkpoint);}
+            // Its iterate is one of the folded layout, which a caller decoding in the layout of {@code state} cannot read.
+            catch(SparseNewton.Nonconvergence failure){throw new SparseNewton.Nonconvergence(failure.getMessage(),null,failure.domainViolation());}
+        }
+        x=layout.encode(closed);residual=new double[layout.size()];
+        layout.residual(closed,n,energy,volume,workFrom,residual,0,x);
         if(norm(residual)>1e-8)throw new SparseNewton.Nonconvergence("Inventory closure does not meet full equation closure");
         return closed;
     }

@@ -351,6 +351,38 @@ class PrecipitatedSolidsTest {
     }
 
     /**
+     * E8: a liquid-full tank whose closure folds its last bubble is closed again without it. Cold seed 48's tank under form
+     * 4: 21 874 mol of LNG at 153.08 K and 1.1413 MPa beside 35.09 kg of dry ice, at its bubble point with a last bubble of
+     * 2.19e-5 mol (1.001e-9 of its moles, the trace share 1e-9, but 2.0e-8 of its 1 m3), fed its own liquid 100 Pa above.
+     * In a step of 1e-6 s, 2.3e-8 kg flow in; the reconstruction's closure condenses the bubble just under the trace share
+     * and the restatement folds it (decision D34). The folded tank misses its volume by that bubble, 1.9e-8 against the 1e-8 check,
+     * which refused the step at every size (10 224 times in the seed). Closed again without the bubble, the liquid takes
+     * the 2e-8 m3 the bubble left (its pressure falls about 5 Pa), the step is accepted after one pass for the fold, and
+     * the tank's state meets its inventory to the closure.
+     */
+    @Test void aLiquidFullTankWhoseClosureFoldsItsLastBubbleIsClosedAgainWithoutIt() {
+        var dryIce=new SolidInventory(List.of(new SolidInventory.Population(co2().material(),new ParticleSize("0.00025"),35.09036214684682)));
+        double t=153.07858326704772,p=1141313.268432868;
+        double[] lng={127.94664170820322,20017.721696299337,1419.2160471398552,308.7325517796933};
+        double[] bubble={8.685458618914788e-7,2.094236045700818e-5,4.4530891574445825e-8,3.930257238466825e-8};
+        var state=pilot.state(t,p,lng,bubble,0,0,p).withSolids(dryIce);
+        double capacity=state.liquidVolume()+state.vaporVolume()+dryIce.volume();
+        var tank=new PassiveNetwork.Reservoir(1,0,state,PassiveNetwork.NodeKind.RESERVOIR,new PassiveNetwork.Inventory(capacity,PhaseLayout.totalAmounts(state),state.internalEnergy(),dryIce));
+        var feed=new PassiveNetwork.Reservoir(2,0,pilot.state(t,p+100,lng,new double[lng.length],0,0,p+100),PassiveNetwork.NodeKind.GENERATOR);
+        var graph=new PassiveNetwork(List.of(tank,feed),List.of(new PassiveNetwork.Pipe(10,0,1,new PipeResistance.Geometry(10,.02,.000045,0))));
+        SolverDiagnostics.reset();SolverDiagnostics.ENABLED=true;PassiveStepSolver.Result step;
+        try{step=new PassiveStepSolver(pilot).solve(graph,1e-6,()->{});}finally{SolverDiagnostics.ENABLED=false;}
+        var end=step.states().getFirst();
+        System.out.printf(Locale.ROOT,"E8: the bubble %.4e mol (%.4e of the moles, %.4e m3); after the step %.9f K, %.3f Pa, %.4e kg/s in, vapour %s, %d fold pass(es)%n",
+                Arrays.stream(bubble).sum(),Arrays.stream(bubble).sum()/Arrays.stream(PhaseLayout.totalAmounts(state)).sum(),state.vaporVolume(),end.temperature(),end.pressure(),
+                -step.massFlows()[0],end.vaporProperties()==null?"none":"held",SolverDiagnostics.traceFoldPasses.sum());
+        assertTrue(step.massFlows()[0]<0,"the feed flows in");
+        assertEquals(1,SolverDiagnostics.traceFoldPasses.sum(),"the reconstruction folded the bubble once");
+        assertNull(end.vaporProperties(),"no vapour");
+        assertSame(end,InventoryEquilibrium.close(pilot,end,step.inventories().getFirst(),null,Double.NaN,()->{}),"the tank's state meets its inventory to the closure");
+    }
+
+    /**
      * Form 4 (i): a frosted gas tank's stand-in is decided by its own split, and refused. Nitrogen with 10 % CO2 at 1 MPa,
      * frosted at its refresh, a kelvin colder at a step's point (its outflow expands it): the gas is supersaturated again,
      * and its TP answer freezes more CO2, carried condensed as the stand-in beside the vapour. The stand-in is proposed like
