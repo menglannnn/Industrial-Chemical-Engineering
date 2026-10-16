@@ -161,16 +161,21 @@ configurations {
 }
 
 // Optional MCP test-client tooling never enters the production jar or ordinary test runtime.
+// The bridge is upstream 0.4.7 plus the local background-input fix (it never moves the OS cursor
+// while the game window is in the background); jar and build notes: tools/minecraft-mcp-bridge/ (main checkout).
+def mcpControlModJar = 'minecraft-mcp-1.21.1-neoforge-v0.4.7-osguard.jar'
 def prepareMcpControlMod = tasks.register('prepareMcpControlMod', Copy) {
-    from layout.projectDirectory.file('run/mcp-client-mods/minecraft-mcp-1.21.1-neoforge-v0.3.0.jar')
+    from layout.projectDirectory.file("run/mcp-client-mods/${mcpControlModJar}")
     into layout.projectDirectory.dir('run/mcp-client/mods')
     doFirst {
         def jar = inputs.files.singleFile
-        if (!jar.isFile()) throw new GradleException('Download the pinned Minecraft MCP control mod listed in documentation/2026-09-15-fluid-network/FLUID_NETWORK_PROGRESS.md (main checkout) first.')
+        if (!jar.isFile()) throw new GradleException("Copy ${mcpControlModJar} from tools/minecraft-mcp-bridge/ (main checkout) into run/mcp-client-mods/ first.")
         def digest = java.security.MessageDigest.getInstance('SHA-256').digest(jar.bytes).encodeHex().toString()
-        if (digest != 'c6cc12c960490e72a83fd5c2f8169294cd1adda4d838ad69d188e8b7d3b73695') {
+        if (digest != 'd71b35aa220c2f62dae36e60dd76402edeee27fdf76bca06c64e9df2560ec4e7') {
             throw new GradleException('Minecraft MCP control mod checksum mismatch')
         }
+        // One bridge jar in the client: drop earlier pinned versions, leave every other mod alone.
+        project.delete(project.fileTree('run/mcp-client/mods') { include 'minecraft-mcp-*.jar'; exclude mcpControlModJar })
     }
 }
 tasks.matching { it.name == 'runMcpClient' }.configureEach { dependsOn prepareMcpControlMod }
