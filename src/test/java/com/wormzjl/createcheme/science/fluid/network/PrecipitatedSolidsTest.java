@@ -13,8 +13,10 @@ import com.wormzjl.createcheme.science.material.SolidMaterialCatalog.SolidMateri
 import java.math.BigDecimal;
 import java.math.MathContext;
 import java.math.RoundingMode;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
+import java.util.function.UnaryOperator;
 import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -23,7 +25,8 @@ import static org.junit.jupiter.api.Assertions.*;
  * {@code documentation/2026-09-24-coolprop-low-temperature/PRECIPITATED_SOLIDS_PLAN.md}): the unit gates of the plan's
  * section 4 and the three gates M3 adds. A crystal is a population of main's {@code SolidInventory}; only a vessel's refresh
  * moves its mass; every stock holds one size per solid after its refresh; the outlet check reads that size; a slurry stops
- * at half solids; transport nodes never precipitate; and an island of unchanged solids rests.
+ * at half solids; transport nodes never precipitate; and an island of unchanged solids rests. The design review's three
+ * gates (2026-10-16): the D26 amendment, D31 B and D33.
  */
 class PrecipitatedSolidsTest {
     static final String PILOT="createcheme:pilot_cryogenic";
@@ -254,5 +257,84 @@ class PrecipitatedSolidsTest {
         assertEquals(0,after.inventory().moles()[METHANE],"the trace is flushed");
         assertTrue(result.boundaries().stream().anyMatch(b->b.nodeId()==1&&b.moles()[METHANE]==-1e-25),"and booked at the vessel: "+result.boundaries());
         assertEquals(crystals,after.inventory().solids(),"the crystal is kept to the bit");
+    }
+
+    // ---- The design review's gates (2026-10-16): the D26 amendment, D31 B, D33 ----
+
+    /** A vessel's own split ({@link InventoryEquilibrium#split}) of the point {@code state} in {@code capacity}, as a step's
+     * phase check asks it, counting the calls in {@code calls}. */
+    private UnaryOperator<FluidThermodynamics.State> ownSplit(FluidThermodynamics.State state,double capacity,int[] calls) {
+        var inventory=new PassiveNetwork.Inventory(capacity,PhaseLayout.totalAmounts(state),state.internalEnergy(),state.solids());
+        return start->{calls[0]++;return InventoryEquilibrium.split(pilot,start,inventory,PhaseLayout.bagVolume(state,capacity),()->{});};
+    }
+
+    /**
+     * The D26 amendment (cold seed 48's tank at a step's point): a liquid-full LNG tank beside its dry ice at its bubble
+     * point holds no vapour. 21 414 mol of LNG with 1.8 % CO2 dissolved at 157.39 K and 1.382 MPa beside 27.7 kg of dry ice,
+     * liquid and solids filling the 1 m3. The TP answer under the crystal competition freezes 33 mol of the dissolved CO2,
+     * which a step cannot (crystal mass moves only at the refresh, D23), and with that CO2 gone the rest of the liquid boils:
+     * it proposes 55 mol of vapour. The vessel's own closure keeps the CO2 dissolved and has no room for a bubble: no vapour.
+     * The check refuses the vapour for the solve, so the solve's next pass neither proposes it nor runs the closure again.
+     */
+    @Test void aLiquidFullLngTankBesideDryIceAtItsBubblePointHoldsNoVapour() {
+        var dryIce=new SolidInventory(List.of(new SolidInventory.Population(co2().material(),new ParticleSize("0.00025"),27.682029902383036)));
+        double t=157.39079577144585,p=1381705.5110999327;double[] lng={169.4018947211584,19565.23151661761,1285.9992875806702,393.1261466989467};
+        var tank=pilot.state(t,p,lng,new double[lng.length],0,0,p).withSolids(dryIce);
+        double capacity=tank.liquidVolume()+dryIce.volume();
+        var answer=pilot.flashTP(t,p,PhaseLayout.totalAmounts(tank),()->{});
+        System.out.printf(Locale.ROOT,"LNG beside dry ice: %.6f m3 of liquid and %.6f m3 of dry ice in %.6f m3; the TP answer: %.4e mol of vapour%n",
+                tank.liquidVolume(),dryIce.volume(),capacity,Arrays.stream(answer.vaporView()).sum());
+        assertNotNull(answer.vaporProperties(),"the TP answer proposes a vapour");
+        int[] splits={0},record={0};var own=ownSplit(tank,capacity,splits);
+        assertSame(tank,pilot.phaseCheck(tank,false,record,0,null,own,()->{}),"no vapour: the tank keeps its liquid");
+        assertEquals(1,splits[0]);
+        assertEquals(FluidThermodynamics.phaseBits(answer)&~FluidThermodynamics.phaseBits(tank),record[0],"the vapour is refused for the solve");
+        assertSame(tank,pilot.phaseCheck(tank,false,record,0,null,own,()->{}),"the solve's next pass");
+        assertEquals(1,splits[0],"no second own split in the solve");
+    }
+
+    /**
+     * D31 B: a frosted gas tank's stand-in proposes nothing. Nitrogen with 10 % CO2 at 1 MPa, frosted at its refresh, a
+     * kelvin colder at a step's point (its outflow expands it): the gas is supersaturated again, and its TP answer freezes
+     * more CO2, carried condensed as the stand-in liquid beside the vapour. That liquid is the frost's share, no fluid
+     * phase the tank lacks: the check proposes nothing and runs no own split.
+     */
+    @Test void aFrostedGasTanksStandInProposesNothing() {
+        var tank=new PassiveNetwork(List.of(new PassiveNetwork.Reservoir(1,0,charge(pilot,170,1e6,new double[]{.9,0,0,.1,0},.1))),List.of());
+        var frosted=InventoryEquilibrium.refresh(tank,pilot,()->{}).graph().reservoirs().getFirst();
+        assertTrue(crystalKg(frosted)>0);assertNull(frosted.state().liquidProperties(),"a gas beside its frost");
+        var gas=frosted.state();double t=gas.temperature()-1;
+        var point=pilot.state(t,gas.pressure(),new double[4],gas.vaporView(),0,0,gas.pressure()).withSolids(gas.solids());
+        var answer=pilot.flashTP(t,point.pressure(),PhaseLayout.totalAmounts(point),()->{});
+        assertTrue(pilot.condensedShareOnly(answer),"the TP answer carries frost as the stand-in");
+        int[] splits={0},record={0};
+        assertSame(point,pilot.phaseCheck(point,false,record,0,null,ownSplit(point,frosted.inventory().volume(),splits),()->{}),"no phase added");
+        assertEquals(0,splits[0],"no own split");
+        assertEquals(0,record[0],"nothing refused");
+    }
+
+    /**
+     * D33: a frosting tank's side outlet passes gas and keeps the frost, and after sublimation no closure survives to a
+     * rest certificate. The frosted tank above vents through its bulk end into the atmosphere: the gas leaves, every
+     * crystal stays (solids ride the liquid, and it holds none). The same tank once its frost sublimed, at 300 kPa with
+     * the closure the frost era left on its outlet: a closure stands for its interval only, so at the next interval start
+     * the rest test reads it as open, and 199 kPa across it is a drive, not a rest.
+     */
+    @Test void aFrostingTanksSideOutletPassesGasAndKeepsTheFrost() {
+        var tank=new PassiveNetwork(List.of(new PassiveNetwork.Reservoir(1,0,charge(pilot,170,1e6,new double[]{.9,0,0,.1,0},.1))),List.of());
+        var frosted=InventoryEquilibrium.refresh(tank,pilot,()->{}).graph().reservoirs().getFirst();
+        var air=new PassiveNetwork.Reservoir(2,0,charge(pilot,250,PhaseLayout.AMBIENT_PRESSURE,new double[]{1,0,0,0,0},.05),PassiveNetwork.NodeKind.VOID);
+        var outlet=new PassiveNetwork.Pipe(10,0,1,new PipeResistance.Geometry(10,.004,.000045,0));
+        var vent=new PassiveIntervalSolver(pilot).solve(new PassiveNetwork(List.of(frosted,air),List.of(outlet)),5,PassiveIntervalSolver.Settings.defaults(),()->{},1);
+        var after=vent.graph().reservoirs().getFirst();
+        System.out.printf(Locale.ROOT,"frosted tank vents: %.6e kg/s for 5 s, %.1f Pa left, frost %.6f kg kept of %.6f kg, closures %d%n",vent.averageMassFlows()[0],
+                after.state().pressure(),crystalKg(after),crystalKg(frosted),vent.graph().pipes().getFirst().blockedDirections());
+        assertTrue(vent.averageMassFlows()[0]>0,"the gas leaves");
+        assertEquals(frosted.inventory().solids(),after.inventory().solids(),"every crystal stays");
+        assertTrue(vent.boundaries().stream().allMatch(b->b.solids().empty()),"none leaves with the gas");
+        var warm=charge(pilot,250,3e5,new double[]{.9,0,0,.1,0},.1);var receiver=charge(pilot,250,101e3,new double[]{1,0,0,0,0},.1);
+        var stuck=new PassiveNetwork(List.of(new PassiveNetwork.Reservoir(1,0,warm),new PassiveNetwork.Reservoir(2,0,receiver)),List.of(outlet.withBlockedDirections(3)));
+        assertTrue(stuck.reservoirs().stream().allMatch(r->r.inventory().solids().empty()),"no solids left");
+        assertFalse(NetworkReduction.atRest(stuck,pilot),"199 kPa across a closure is a drive at an interval start, not a rest");
     }
 }
