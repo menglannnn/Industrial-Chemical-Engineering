@@ -195,7 +195,8 @@ public final class PassiveIntervalSolver {
      * guard that can declare something, first step) on one rate solve of the port graph; {@code checkFilters} runs on
      * every step's end. A declared transition is searched onto by halving, exactly as before.</li>
      * <li><b>Limits.</b> The attempt cap and the twenty-consecutive-rejection limit; transition refusals have their own
-     * bound. An exhausted interval states its rejection map (a domain approach ends on twenty rejections, review 8.8 (a)).</li>
+     * bound. An exhausted interval states its rejection map (an approach to a phase hold ends on twenty rejections, review
+     * 8.8 (a)).</li>
      * </ul>
      */
     private Prefix run(PassiveNetwork initial,double duration,Settings settings,Runnable checkpoint,PassiveStepSolver.Acceptance acceptance,
@@ -225,9 +226,8 @@ public final class PassiveIntervalSolver {
         double previousStateChange=0,previousStateStep=0;
         // Runs already reopened for the attempted step (same t0 and step).
         var reopened=new HashSet<PassiveNetwork.Pipe.Identity>();double reopenElapsed=-1,reopenStep=-1;
-        // Rejections a typed thermodynamic hold decided (a domain violation or a phase hold): the last one, how many, and
-        // whether the latest rejection was one.
-        com.wormzjl.createcheme.science.fluid.thermo.ThermoHold lastDomain=null;int domainRejections=0;boolean lastWasDomain=false;
+        // Rejections a phase hold decided: the last one, how many, and whether the latest rejection was one.
+        com.wormzjl.createcheme.science.fluid.thermo.ThermoHold lastHold=null;int holdRejections=0;boolean lastWasHold=false;
         for(int attempt=0;attempt<settings.maximumAttempts&&elapsed<duration&&declared==null;attempt++) {
             checkpoint.run();double step=Math.min(h,duration-elapsed);
             try {
@@ -299,19 +299,19 @@ public final class PassiveIntervalSolver {
             }catch(SparseNewton.Nonconvergence|IllegalArgumentException|StateChangeRejection rejected) {
                 lastRejection=String.valueOf(rejected.getMessage());
                 if(!(rejected instanceof StateChangeRejection))SolverDiagnostics.attempt(attempt,step,false,diagnosticReason(rejected),Double.NaN);
-                // A trial a typed thermodynamic hold refused - directly, or a Newton pass whose failing line search it
-                // stopped - is counted under its own key (one per component, property and side, or per phase set; never
-                // folded into "Other"), so a checkpoint, a view and the certificate's transition check all see it.
-                var domain=SparseNewton.domainViolation(rejected);
-                if(domain!=null){rejectionReasons.merge(domain.reasonKey(),1,Integer::sum);lastDomain=domain;domainRejections++;}
+                // A trial a phase hold refused - directly, or a Newton pass whose failing line search it stopped - is
+                // counted under its own key (one per phase set; never folded into "Other"), so a checkpoint, a view and the
+                // certificate's transition check all see it.
+                var hold=SparseNewton.phaseHold(rejected);
+                if(hold!=null){rejectionReasons.merge(hold.reasonKey(),1,Integer::sum);lastHold=hold;holdRejections++;}
                 else count(rejectionReasons,String.valueOf(rejected.getMessage()).replaceAll("[-+]?[0-9]+(?:\\.[0-9]+)?(?:[Ee][-+]?[0-9]+)?","#"));
-                lastWasDomain=domain!=null;
+                lastWasHold=hold!=null;
                 rejectedCount++;consecutiveRejects++;h=step*.5;
-                if(consecutiveRejects>=20||elapsed+h==elapsed)throw new SparseNewton.Nonconvergence("Substep refinement exhausted: "+rejected.getMessage()+"; reasons="+rejectionReasons,null,domainCause(lastWasDomain,lastDomain,domainRejections,rejectedCount));
+                if(consecutiveRejects>=20||elapsed+h==elapsed)throw new SparseNewton.Nonconvergence("Substep refinement exhausted: "+rejected.getMessage()+"; reasons="+rejectionReasons,null,phaseHoldCause(lastWasHold,lastHold,holdRejections,rejectedCount));
             }
         }
         if(declared==null&&elapsed<duration)throw new SparseNewton.Nonconvergence("Interval substep limit; no partial interval may commit: advanced="+elapsed+" of "+duration+" s, accepted="+acceptedCount+", rejected="+rejectedCount+", reasons="+rejectionReasons+", last="+lastRejection,
-                null,domainCause(lastWasDomain,lastDomain,domainRejections,rejectedCount));
+                null,phaseHoldCause(lastWasHold,lastHold,holdRejections,rejectedCount));
         // A segment that ended on a declared transition hands the next one the estimate it held
         // before the search, not the micro-step the search finished on.
         nextStepEstimate=declared!=null&&transitionRejects>0?beforeTransition:h;
@@ -370,13 +370,13 @@ public final class PassiveIntervalSolver {
         if(reasons.size()<8||reasons.containsKey(reason))reasons.merge(reason,1,Integer::sum);else reasons.merge("Other",1,Integer::sum);
     }
     /**
-     * The typed hold an interval that could not commit failed on, or null: its last rejection was a typed hold, or typed
+     * The phase hold an interval that could not commit failed on, or null: its last rejection was a phase hold, or phase
      * holds were the dominant reason (more than half of the interval's rejections). An interval that only met one on
      * the way, and failed for another reason, is a numerical failure.
      */
-    static com.wormzjl.createcheme.science.fluid.thermo.ThermoHold domainCause(boolean lastWasDomain,
-            com.wormzjl.createcheme.science.fluid.thermo.ThermoHold lastDomain,int domainRejections,int rejected) {
-        return lastWasDomain||2*domainRejections>rejected?lastDomain:null;
+    static com.wormzjl.createcheme.science.fluid.thermo.ThermoHold phaseHoldCause(boolean lastWasHold,
+            com.wormzjl.createcheme.science.fluid.thermo.ThermoHold lastHold,int holdRejections,int rejected) {
+        return lastWasHold||2*holdRejections>rejected?lastHold:null;
     }
     /** The diagnostic reason of an attempt that threw ("newton|message" with numbers masked). */
     private static String diagnosticReason(RuntimeException rejected) {

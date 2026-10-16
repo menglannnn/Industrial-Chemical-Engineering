@@ -584,7 +584,7 @@ public final class PassiveStepSolver {
                 // Decision D11: a phase a vessel's ports draw at their full capacity leaves the vessel within the step; a
                 // pass whose seed still holds it may have no root (see drainedSeeds).
                 if(changedSeeds==null)changedSeeds=equations.drainedSeeds(checkpoint);
-                if(changedSeeds==null)throw new SparseNewton.Nonconvergence(failure.getMessage()+"; active-set pass="+pass,failure.lastVariables(),failure.domainViolation());
+                if(changedSeeds==null)throw new SparseNewton.Nonconvergence(failure.getMessage()+"; active-set pass="+pass,failure.lastVariables(),failure.phaseHold());
                 seeds=changedSeeds;continue;
             }
             double[] x=numerical.variables();var states=equations.states(x);double[] flows=new double[graph.pipes().size()],heads=new double[flows.length];
@@ -2441,7 +2441,8 @@ public final class PassiveStepSolver {
      * ({@code Equations.retainedPressures}). Starting it at its head limit instead also has a root, but one that places
      * the pocket at the mover's shutoff pressure, which for a compressor or a strong pump lies outside the property
      * package's range (the placement-sequence fuzz: a dead-ended compressor's pocket at 2.5 MPa of nitrogen, a pump's
-     * dead-ended suction pulled below 100 Pa), and the island waited on a thermo-domain hold a zero flow never reaches.</li>
+     * dead-ended suction pulled below 100 Pa), where the island then held on the data range (before the owner rule of
+     * 2026-10-16) though a zero flow never reaches it.</li>
      * </ul>
      * Repeated until no pocket is left without a root (each round changes at least one mode and never undoes one). An
      * island without such a pocket keeps its start modes exactly.

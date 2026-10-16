@@ -63,7 +63,7 @@ public final class FluidWorldAuthority implements AutoCloseable {
         // Island clocks read the world's online tick: one epoch increment per tick advances every island.
         runtime=new MinecraftFluidRuntime(server,this::published,settings,topology::onlineTick);
         runtime.coordinator().onReplayed(this::replayed);
-        runtime.coordinator().onDomainHold(this::domainHeld);runtime.coordinator().nodeNames(this::deviceLabel);
+        runtime.coordinator().onPhaseHold(this::phaseHeld);runtime.coordinator().nodeNames(this::deviceLabel);
         registry=new PhysicalRegistry(topology,model,new InlineFilter(options.solids().filterCapacity(),options.solids().filterResistance(),com.wormzjl.createcheme.science.fluid.state.SolidInventory.EMPTY,0),new RegistryHost());
         for(var entry:data.checkpoint().islands())runtime.register(dimension(entry.dimension()),entry.snapshot(),model(entry.key()));
         logLoad();
@@ -351,15 +351,15 @@ public final class FluidWorldAuthority implements AutoCloseable {
         var p=registration.device().position();return registration.device().kind().name().toLowerCase(java.util.Locale.ROOT)+" at "+p.x()+", "+p.y()+", "+p.z();
     }
     /**
-     * One WARN per island per thermo-domain hold, a phase set the network cannot carry (D21 option C; the coordinator
+     * One WARN per island per phase hold, a phase set the network cannot carry (D21 option C; the coordinator
      * rate-limits repeats of the same island and hold): where, which package, its reason key and state, and what to do
      * about it. Leaving a data range is no hold (owner rule of 2026-10-16).
      */
-    private void domainHeld(long island,com.wormzjl.createcheme.science.fluid.thermo.ThermoHold hold,String where,boolean parked) {
+    private void phaseHeld(long island,com.wormzjl.createcheme.science.fluid.thermo.ThermoHold hold,String where,boolean parked) {
         String dimension="unknown";
         var members=registry.members(island);if(!members.isEmpty()){var record=topology.active().get(members.getFirst());if(record!=null)dimension=record.device().position().dimension();}
         Object node=hold.node()==com.wormzjl.createcheme.science.fluid.thermo.ThermoHold.NO_NODE?"unknown":hold.node();String device=where.isEmpty()?"unknown":where;
-        CreateChemE.LOGGER.warn("fluid_island={} dimension={} node={} device={} status=THERMO_DOMAIN code={} package={} temperature={} pressure={} waits_for_inputs={} detail={} action=Change what the island mixes or the conditions it holds: the network carries one hydrocarbon liquid, one vapour, water and the package's crystals",
+        CreateChemE.LOGGER.warn("fluid_island={} dimension={} node={} device={} status=PHASE_HOLD code={} package={} temperature={} pressure={} waits_for_inputs={} detail={} action=Change what the island mixes or the conditions it holds: the network carries one hydrocarbon liquid, one vapour, water and the package's crystals",
                 island,dimension,node,device,hold.reasonKey().substring(com.wormzjl.createcheme.science.fluid.thermo.ThermoHold.REASON_PREFIX.length()),hold.packageId(),hold.temperature(),hold.pressure(),parked,hold.getMessage());
     }
     /**
@@ -445,8 +445,8 @@ public final class FluidWorldAuthority implements AutoCloseable {
     }
     private void published(List<IslandCoordinator.Snapshot> changed) {
         if(observer!=null){var timings=new HashMap<Long,IslandCoordinator.Metrics>();for(var island:changed)runtime.coordinator().metrics(island.id()).ifPresent(m->timings.put(island.id(),m));observer.accept(changed,Map.copyOf(timings));}
-        // A thermo-domain hold has its own, rate-limited line with the full detail (domainHeld); every other hold keeps this one.
-        data.setDirty();var ids=new HashSet<Long>();for(var snapshot:changed){ids.add(snapshot.id());if(snapshot.status().startsWith("HELD")&&!snapshot.status().startsWith(com.wormzjl.createcheme.runtime.ProcessSolveServices.THERMO_DOMAIN))CreateChemE.LOGGER.warn("fluid_island={} committed_tick={} status={}",snapshot.id(),snapshot.clock().committedTick(),snapshot.status());}
+        // A phase hold has its own, rate-limited line with the full detail (phaseHeld); every other hold keeps this one.
+        data.setDirty();var ids=new HashSet<Long>();for(var snapshot:changed){ids.add(snapshot.id());if(snapshot.status().startsWith("HELD")&&!snapshot.status().startsWith(com.wormzjl.createcheme.runtime.ProcessSolveServices.PHASE_HOLD))CreateChemE.LOGGER.warn("fluid_island={} committed_tick={} status={}",snapshot.id(),snapshot.clock().committedTick(),snapshot.status());}
         // Only loaded devices are marked; their bucket presents them. A publication itself pushes nothing.
         for(long island:ids)for(long physical:registry.members(island))presentation.markIfLoaded(physical);
         if(options.debugChat()&&(lastDebugChat==Long.MIN_VALUE||topology.onlineTick()-lastDebugChat>=20)) {

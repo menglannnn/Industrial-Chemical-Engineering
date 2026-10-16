@@ -388,7 +388,7 @@ public final class ProcessSolveServices {
             long cpuStart=WorkerAllocation.CpuTime.sample();
             var result=(FluidIslandSolveResult)solve(cancellationToken,System::nanoTime);
             long cpu=WorkerAllocation.CpuTime.elapsed(cpuStart,WorkerAllocation.CpuTime.sample());
-            return new FluidIslandSolveResult(result.candidate(),result.detail(),result.workerNanos(),cpu,result.proposedAllowance(),result.proposedAnchor(),result.domain(),result.notices());
+            return new FluidIslandSolveResult(result.candidate(),result.detail(),result.workerNanos(),cpu,result.proposedAllowance(),result.proposedAnchor(),result.phaseHold(),result.notices());
         }
         ProcessSolveResult solve(BoundedCpuSolveService.CancellationToken cancellationToken,java.util.function.LongSupplier nanoClock) {
             Objects.requireNonNull(cancellationToken);Objects.requireNonNull(nanoClock);long start=nanoClock.getAsLong();
@@ -419,11 +419,11 @@ public final class ProcessSolveServices {
             }catch(FluidWallDeadline deadline){return new FluidIslandSolveResult(Optional.empty(),WALL_DEADLINE,elapsed[0],fallback.allowance(),fallback.anchor());}
             catch(com.wormzjl.createcheme.science.fluid.solver.SparseNewton.Nonconvergence|IllegalArgumentException|ApproximationAnchor.Rejected failed) {
                 cancellationToken.throwIfCancellationRequested();
-                // A failure a typed thermodynamic hold decided (the property domain, or a phase set the network cannot carry)
-                // carries the hold itself, so the coordinator can hold the island with the dedicated status and tell a
-                // reproduced hold from a numerical failure (IslandCoordinator.hold).
-                var domain=Optional.ofNullable(com.wormzjl.createcheme.science.fluid.solver.SparseNewton.domainViolation(failed));
-                return new FluidIslandSolveResult(Optional.empty(),domain.map(v->THERMO_DOMAIN+v.getMessage()).orElse("HELD: "+failed.getMessage()),elapsed[0],-1,fallback.allowance(),fallback.anchor(),domain);
+                // A failure a phase hold decided (a phase set the network cannot carry, or the critical band) carries the
+                // hold itself, so the coordinator can hold the island with the dedicated status and tell a reproduced hold
+                // from a numerical failure (IslandCoordinator.hold).
+                var hold=Optional.ofNullable(com.wormzjl.createcheme.science.fluid.solver.SparseNewton.phaseHold(failed));
+                return new FluidIslandSolveResult(Optional.empty(),hold.map(v->PHASE_HOLD+v.getMessage()).orElse("HELD: "+failed.getMessage()),elapsed[0],-1,fallback.allowance(),fallback.anchor(),hold);
             }
         }
     }
@@ -439,8 +439,8 @@ public final class ProcessSolveServices {
     }
     /** The detail of an island interval the hard wall budget cut. */
     public static final String WALL_DEADLINE="HELD: wall deadline";
-    /** The detail prefix of an island interval the property domain refused; the result carries the violation. */
-    public static final String THERMO_DOMAIN="HELD (thermo domain): ";
+    /** The detail prefix of an island interval a phase hold refused; the result carries the hold. */
+    public static final String PHASE_HOLD="HELD (phases): ";
     /** The detail prefix of an island interval whose full solve ran out of the soft budget and whose approximate
      * fallback then refused the interval. */
     public static final String SOFT_BUDGET_REFUSED="HELD: soft budget; approximate fallback refused: ";
@@ -448,11 +448,11 @@ public final class ProcessSolveServices {
     private static final class FluidSoftDeadline extends RuntimeException {}
     public record FluidIslandSolveResult(Optional<PassiveIntervalSolver.Result> candidate,String detail,long workerNanos,long workerCpuNanos,
                                         FallbackAllowance proposedAllowance,Optional<ApproximationAnchor> proposedAnchor,
-                                        Optional<com.wormzjl.createcheme.science.fluid.thermo.ThermoHold> domain,
+                                        Optional<com.wormzjl.createcheme.science.fluid.thermo.ThermoHold> phaseHold,
                                         List<com.wormzjl.createcheme.science.fluid.thermo.DataRangeNotices.Notice> notices) implements ProcessSolveResult {
         public FluidIslandSolveResult(Optional<PassiveIntervalSolver.Result> candidate,String detail,long workerNanos,long workerCpuNanos,
-                                      FallbackAllowance allowance,Optional<ApproximationAnchor> anchor,Optional<com.wormzjl.createcheme.science.fluid.thermo.ThermoHold> domain) {
-            this(candidate,detail,workerNanos,workerCpuNanos,allowance,anchor,domain,List.of());
+                                      FallbackAllowance allowance,Optional<ApproximationAnchor> anchor,Optional<com.wormzjl.createcheme.science.fluid.thermo.ThermoHold> phaseHold) {
+            this(candidate,detail,workerNanos,workerCpuNanos,allowance,anchor,phaseHold,List.of());
         }
         public FluidIslandSolveResult(Optional<PassiveIntervalSolver.Result> candidate,String detail,long workerNanos,long workerCpuNanos,FallbackAllowance allowance,Optional<ApproximationAnchor> anchor) {
             this(candidate,detail,workerNanos,workerCpuNanos,allowance,anchor,Optional.empty());
@@ -461,7 +461,7 @@ public final class ProcessSolveServices {
             this(candidate,detail,workerNanos,-1,allowance,anchor);
         }
         /** {@code notices}: the data ranges the accepted interval's end state lies outside, empty for a held one. */
-        public FluidIslandSolveResult {Objects.requireNonNull(domain);notices=List.copyOf(notices);if(!notices.isEmpty()&&candidate.isEmpty())throw new IllegalArgumentException("Only an accepted interval carries data-range notices");if(domain.isPresent()&&candidate.isPresent())throw new IllegalArgumentException("An accepted interval has no domain failure");Objects.requireNonNull(candidate);Objects.requireNonNull(detail);Objects.requireNonNull(proposedAllowance);Objects.requireNonNull(proposedAnchor);if(workerNanos<0||workerCpuNanos < -1)throw new IllegalArgumentException("Invalid worker elapsed time");}
+        public FluidIslandSolveResult {Objects.requireNonNull(phaseHold);notices=List.copyOf(notices);if(!notices.isEmpty()&&candidate.isEmpty())throw new IllegalArgumentException("Only an accepted interval carries data-range notices");if(phaseHold.isPresent()&&candidate.isPresent())throw new IllegalArgumentException("An accepted interval has no phase hold");Objects.requireNonNull(candidate);Objects.requireNonNull(detail);Objects.requireNonNull(proposedAllowance);Objects.requireNonNull(proposedAnchor);if(workerNanos<0||workerCpuNanos < -1)throw new IllegalArgumentException("Invalid worker elapsed time");}
     }
 
     /** Immutable worker snapshot; configuration has already been read and converted by server-thread admission. */

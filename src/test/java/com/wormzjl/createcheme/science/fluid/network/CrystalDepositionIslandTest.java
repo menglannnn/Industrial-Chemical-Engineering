@@ -37,10 +37,10 @@ import static org.junit.jupiter.api.Assertions.*;
  * <li>a bulk withdrawal takes the crystal at its share of the vessel's mass, as main's withdrawal takes every solid;</li>
  * <li>(c) a pipe chain carrying CO2-laden N2 into a cold vessel deposits there only;</li>
  * <li>(d) a CO2-rich charge below the triple point freezes CO2 beside the ethane-rich liquid it leaves; liquid-full and
- * rigid, it would pass the 10 MPa ceiling, the typed domain hold naming its node;</li>
+ * rigid, it passes the package's 10 MPa envelope, carried with a notice, not a hold (owner rule of 2026-10-16);</li>
  * <li>(h) liquid methane with dissolved CO2, with its vapour and liquid-full, freezes when cooled and dissolves when
  * warmed;</li>
- * <li>a crystal beside two liquids is the typed CRYSTAL_PHASES hold naming its node, a thermo hold like a domain one.</li>
+ * <li>a crystal beside two liquids is the typed CRYSTAL_PHASES hold naming its node, a phase hold like any other.</li>
  * </ul>
  */
 class CrystalDepositionIslandTest {
@@ -384,8 +384,8 @@ class CrystalDepositionIslandTest {
      * The crystal-phase hold that remains (two liquids beside the crystal: N2 + C2H6 of type III with 5 % CO2 at 95 K and
      * 2 MPa): the network's TP adapter and the vessel's refresh meet the typed CRYSTAL_PHASES hold, the refresh naming its
      * node.
-     * Both are thermo holds ({@link com.wormzjl.createcheme.science.fluid.thermo.ThermoHold}), which an island parks on
-     * like a domain hold.
+     * Both are phase holds ({@link com.wormzjl.createcheme.science.fluid.thermo.ThermoHold}), which an island parks on
+     * when its retry meets the same one.
      */
     @Test void aCrystalBesideTwoLiquidsIsTheTypedCrystalPhasesHold() {
         double[] feed={40,0,55,5,0};double[] none=new double[4];
@@ -400,7 +400,7 @@ class CrystalDepositionIslandTest {
         var hold=(FluidThermodynamics.UnsupportedPhases)refused;
         assertEquals(FluidThermodynamics.UnsupportedPhases.Kind.CRYSTAL_PHASES,hold.kind());assertEquals(1,hold.node(),"names its node");
         assertTrue(hold.getMessage().contains("NOT_IMPLEMENTED (CRYSTAL_PHASES)"),hold.getMessage());
-        assertTrue(hold.reasonKey().startsWith("thermo-domain: phases CRYSTAL_PHASES"),hold.reasonKey());
-        assertSame(hold,SparseNewton.domainViolation(refused),"a thermo hold, parked like a domain hold");
+        assertTrue(hold.reasonKey().startsWith("phase-hold: phases CRYSTAL_PHASES"),hold.reasonKey());
+        assertSame(hold,SparseNewton.phaseHold(refused),"a phase hold, which an island parks on");
     }
 }

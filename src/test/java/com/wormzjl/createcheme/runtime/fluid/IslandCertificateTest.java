@@ -738,8 +738,8 @@ class IslandCertificateTest {
     }
 
     // ---------------- from IslandCertificateDomainTest ----------------
-    @Test void aThermoDomainRejectionKeepsTheIntervalFromCertifying() {
+    @Test void aPhaseHoldRejectionKeepsTheIntervalFromCertifying() {
         assertTrue(IslandCertificate.transitionFree(Map.of("Embedded pipe error #",3)));
-        assertFalse(IslandCertificate.transitionFree(Map.of("Embedded pipe error #",3,"thermo-domain: Nitrogen temperature < 63.151 K",1)));
+        assertFalse(IslandCertificate.transitionFree(Map.of("Embedded pipe error #",3,"phase-hold: phases THREE_PHASES",1)));
     }
 }

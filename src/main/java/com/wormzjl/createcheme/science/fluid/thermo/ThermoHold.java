@@ -19,7 +19,7 @@ public abstract sealed class ThermoHold extends IllegalArgumentException
     /** The node id of a hold whose node is not known. */
     public static final long NO_NODE=Long.MIN_VALUE;
     /** The prefix of every rejection-reason key a hold produces ({@link #reasonKey}). */
-    public static final String REASON_PREFIX="thermo-domain: ";
+    public static final String REASON_PREFIX="phase-hold: ";
     final String packageId,detail;
     final double temperature,pressure;
     private final long node;

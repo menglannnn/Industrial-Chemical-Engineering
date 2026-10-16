@@ -85,7 +85,7 @@ class CrystalIslandRuntimeTest {
         rig.run(300);
         var held=rig.coordinator.snapshot(1);
         System.out.println("held island: "+held.status()+" | solves "+rig.solves);
-        assertTrue(held.status().startsWith(ProcessSolveServices.THERMO_DOMAIN),held.status());
+        assertTrue(held.status().startsWith(ProcessSolveServices.PHASE_HOLD),held.status());
         assertTrue(held.status().contains("a crystal beside a phase set the equilibrium engine does not implement")&&held.status().contains("in node 101"),
                 "the typed reason and the node: "+held.status());
         assertTrue(rig.coordinator.waitsForInputs(1),"retried once, the same hold: the island waits for its inputs to change");

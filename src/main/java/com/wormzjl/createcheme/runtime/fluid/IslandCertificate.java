@@ -158,9 +158,9 @@ public final class IslandCertificate {
     static boolean transitionFree(Map<String,Integer> reasons) {
         for(var key:reasons.keySet()) {
             if(key.startsWith("Solid transport transition"))return false;
-            // An interval whose step control met the property domain's boundary (or a phase set the network cannot carry,
-            // a typed hold under the same key prefix) is not replayed: the replay would carry the island along a
-            // trajectory the solve itself could only just keep inside the data.
+            // An interval whose step control met a phase hold (a phase set the network cannot carry, or the critical band,
+            // counted under the hold's key prefix) is not replayed: the replay would carry the island along a trajectory
+            // the solve itself could only just keep inside what the network carries.
             if(key.startsWith(com.wormzjl.createcheme.science.fluid.thermo.ThermoHold.REASON_PREFIX))return false;
             int at=key.lastIndexOf("; t=");if(at<0)continue;
             try{if(Double.parseDouble(key.substring(at+4))>0)return false;}catch(NumberFormatException unreadable){return false;}
@@ -247,7 +247,7 @@ public final class IslandCertificate {
     private static String discreteDifference(Summary a,Summary b) {
         if(a.durationTicks!=b.durationTicks)return "interval lengths differ";
         if(!a.fullAcceptance||!b.fullAcceptance)return "an interval was not FULL";
-        if(!a.transitionFree||!b.transitionFree)return "a solid transport transition or a thermo-domain rejection";
+        if(!a.transitionFree||!b.transitionFree)return "a solid transport transition or a phase-hold rejection";
         if(!a.closuresUnchanged||!b.closuresUnchanged)return "a closure or filter cake changed";
         if(!a.solidsUnchanged||!b.solidsUnchanged)return "node solids changed";
         if(!a.phasesUnchanged||!b.phasesUnchanged||!Arrays.equals(a.phases,b.phases))return "a phase appeared or disappeared";

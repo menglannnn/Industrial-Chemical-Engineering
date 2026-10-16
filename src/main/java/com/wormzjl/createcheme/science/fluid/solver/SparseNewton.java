@@ -76,30 +76,30 @@ public final class SparseNewton {
     }
     public static final class Nonconvergence extends RuntimeException {
         private final double[] lastVariables;
-        private final ThermoHold domainViolation;
+        private final ThermoHold phaseHold;
         public Nonconvergence(String message){this(message,null);}
         public Nonconvergence(String message,double[] lastVariables){this(message,lastVariables,null);}
-        /** {@code domainViolation}: a typed thermodynamic hold stopped this solve ({@link ThermoHold}: a state outside the
-         * property domain or a phase set the network cannot carry) - the failing iteration's line search was refused by it -
-         * and a rejection count or a held island should name it rather than the Newton symptom. */
-        public Nonconvergence(String message,double[] lastVariables,ThermoHold domainViolation) {
-            super(message);this.lastVariables=lastVariables==null?null:lastVariables.clone();this.domainViolation=domainViolation;
+        /** {@code phaseHold}: a phase hold stopped this solve ({@link ThermoHold}: a phase set the network cannot carry, or
+         * one the engine could not converge inside the declared critical band) - the failing iteration's line search was
+         * refused by it - and a rejection count or a held island should name it rather than the Newton symptom. */
+        public Nonconvergence(String message,double[] lastVariables,ThermoHold phaseHold) {
+            super(message);this.lastVariables=lastVariables==null?null:lastVariables.clone();this.phaseHold=phaseHold;
         }
         public double[] lastVariables(){return lastVariables==null?null:lastVariables.clone();}
-        /** The typed hold that stopped this solve, or {@code null} when the failure was numerical. */
-        public ThermoHold domainViolation(){return domainViolation;}
+        /** The phase hold that stopped this solve, or {@code null} when the failure was numerical. */
+        public ThermoHold phaseHold(){return phaseHold;}
         /** This failure with the hold that stopped it at a known network node ({@link ThermoHold#at}): a caller that knows
          * the node a failed solve belongs to names it as it names a hold. Itself where no hold stopped the solve or the
          * hold already names a node. */
         public Nonconvergence at(long node) {
-            var named=domainViolation==null?null:domainViolation.at(node);
-            return named==domainViolation?this:new Nonconvergence(getMessage(),lastVariables,named);
+            var named=phaseHold==null?null:phaseHold.at(node);
+            return named==phaseHold?this:new Nonconvergence(getMessage(),lastVariables,named);
         }
     }
-    /** The typed hold a refusal stands for: the hold itself, or the one a failed solve carries; else null. */
-    public static ThermoHold domainViolation(Throwable refusal) {
+    /** The phase hold a refusal stands for: the hold itself, or the one a failed solve carries; else null. */
+    public static ThermoHold phaseHold(Throwable refusal) {
         if(refusal instanceof ThermoHold hold)return hold;
-        if(refusal instanceof Nonconvergence failure)return failure.domainViolation();
+        if(refusal instanceof Nonconvergence failure)return failure.phaseHold();
         return null;
     }
 
@@ -166,14 +166,14 @@ public final class SparseNewton {
         boolean openedPreconditioned=!refresh;
         if(openedPreconditioned)SolverDiagnostics.count(SolverDiagnostics.newtonSolvesPreconditioned);
         checkpoint.run();double[] f=evaluate(equations,x,n);double norm=norm(f);
-        // The property-domain refusal the current iteration's line search met, if any: when that iteration is the one
-        // that fails, the failure is the domain's and says so.
-        ThermoHold domain=null;
+        // The phase hold the current iteration's line search met, if any: when that iteration is the one that fails, the
+        // failure is the hold's and says so.
+        ThermoHold hold=null;
         for(int iteration=0;iteration<=settings.iterations();iteration++) {
             checkpoint.run();
             if(norm<=settings.tolerance())return new Result(x,norm,iteration,calls,lastNonzeros,pattern.groups.size());
             if(iteration==settings.iterations())break;
-            domain=null;
+            hold=null;
             SolverDiagnostics.count(SolverDiagnostics.newtonIterations);
             if(openedPreconditioned)SolverDiagnostics.count(SolverDiagnostics.newtonIterationsPreconditioned);
             // A chord step reuses the Jacobian only while the equations say it still describes them.
@@ -221,7 +221,7 @@ public final class SparseNewton {
                     }
                 }catch(IllegalArgumentException outsideDomain){
                     // A smaller Newton step may stay in the valid domain.
-                    if(outsideDomain instanceof ThermoHold hold)domain=hold;
+                    if(outsideDomain instanceof ThermoHold met)hold=met;
                 }
             }
             if(!accepted) {
@@ -233,11 +233,11 @@ public final class SparseNewton {
                     workspace.invalidate();throw new Nonconvergence("Singular Newton Jacobian: "+failure.getMessage(),x);
                 }
                 if(!fresh){SolverDiagnostics.count(SolverDiagnostics.newtonRefreshesFailed);refresh=true;continue;}
-                workspace.invalidate();throw new Nonconvergence("Newton line search stalled at residual "+norm,x,domain);
+                workspace.invalidate();throw new Nonconvergence("Newton line search stalled at residual "+norm,x,hold);
             }
         }
         workspace.invalidate();
-        throw new Nonconvergence("Newton iteration limit at residual "+norm,x,domain);
+        throw new Nonconvergence("Newton iteration limit at residual "+norm,x,hold);
     }
     public record CorrectionEstimate(double[] probe,double initialResidual,double probeResidual) {
         public CorrectionEstimate{probe=probe.clone();}

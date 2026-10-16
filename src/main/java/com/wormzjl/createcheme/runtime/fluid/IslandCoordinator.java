@@ -156,17 +156,17 @@ public final class IslandCoordinator {
         // Set by a hold whose soft budget ran out and whose approximate fallback refused the slice: the retry runs the
         // full solve on the whole budget instead; cleared by the next accepted interval. See {@link #hold}.
         private boolean fullOnly;
-        // The thermo hold (a phase set the network cannot carry; leaving a data range is never one, owner rule of
+        // The phase hold (a phase set the network cannot carry; leaving a data range is never one, owner rule of
         // 2026-10-16) the last held attempt failed on, awaiting its fresh-solver retry, and whether that
         // retry reproduced it (the island then waits for an input change); cleared by an accepted interval or an input
-        // change. With the last warned violation's key and online tick, for the rate limit on the log. Ephemeral.
-        private com.wormzjl.createcheme.science.fluid.thermo.ThermoHold domainFailure;
-        private boolean domainParked;
+        // change. With the last warned hold's key and online tick, for the rate limit on the log. Ephemeral.
+        private com.wormzjl.createcheme.science.fluid.thermo.ThermoHold phaseHold;
+        private boolean phaseParked;
         // The last attempt that closed was held (not accepted): a topology event fenced on the island is accepted at its
         // committed tick instead of waiting for a solve (acceptAtFence). Cleared by an accepted interval. Ephemeral.
         private boolean held;
-        private String warnedDomainKey;
-        private long warnedDomainAt=Long.MIN_VALUE;
+        private String warnedHoldKey;
+        private long warnedHoldAt=Long.MIN_VALUE;
         // Ephemeral solver caches for this island's jobs; replaced, never mutated, on a revision
         // bump, so a job still running under the old revision keeps its own handle.
         private RetainedSolver retained=new RetainedSolver();
@@ -238,17 +238,17 @@ public final class IslandCoordinator {
     private final EnumMap<IslandScheduler.Kind,Runnable> externalActions=new EnumMap<>(IslandScheduler.Kind.class);
     private final EnumMap<IslandScheduler.Kind,Long> externalTicks=new EnumMap<>(IslandScheduler.Kind.class);
     /**
-     * Told once per island per thermo-domain hold (the first held attempt of an episode, and again only for a different
-     * violation or after {@link #DOMAIN_WARNING_TICKS} online ticks): the world logs it. {@code where} is the node's
-     * label, {@code parked} whether the island now waits for an input change.
+     * Told once per island per phase hold (the first held attempt of an episode, and again only for a different hold or
+     * after {@link #PHASE_HOLD_WARNING_TICKS} online ticks): the world logs it. {@code where} is the node's label,
+     * {@code parked} whether the island now waits for an input change.
      */
-    @FunctionalInterface public interface DomainHolds {
-        void held(long island,com.wormzjl.createcheme.science.fluid.thermo.ThermoHold violation,String where,boolean parked);
-        DomainHolds NONE=(island,violation,where,parked)->{};
+    @FunctionalInterface public interface PhaseHolds {
+        void held(long island,com.wormzjl.createcheme.science.fluid.thermo.ThermoHold hold,String where,boolean parked);
+        PhaseHolds NONE=(island,hold,where,parked)->{};
     }
-    /** Repeats of the same island and violation are logged at most once per this many online ticks (five minutes). */
-    static final long DOMAIN_WARNING_TICKS=6000;
-    private DomainHolds domainHolds=DomainHolds.NONE;
+    /** Repeats of the same island and hold are logged at most once per this many online ticks (five minutes). */
+    static final long PHASE_HOLD_WARNING_TICKS=6000;
+    private PhaseHolds phaseHolds=PhaseHolds.NONE;
     /** How a network node is named in a status line: the world names a device by kind and position. */
     private java.util.function.LongFunction<String> nodeNames=id->"node "+id;
     private Publisher replayed=changed->{};
@@ -322,8 +322,8 @@ public final class IslandCoordinator {
     public Snapshot observe(long id){owned();return require(id).snapshot();}
     /** Whether the island keeps solver caches; a certified island has released them. For tests. */
     boolean retainsSolver(long id){owned();return require(id).retained!=null;}
-    /** Whether a thermo-domain hold reproduced on its retry and the island now waits for an input change. For tests. */
-    boolean waitsForInputs(long id){owned();return require(id).domainParked;}
+    /** Whether a phase hold reproduced on its retry and the island now waits for an input change. For tests. */
+    boolean waitsForInputs(long id){owned();return require(id).phaseParked;}
     /** Why the island's last closed interval did not certify it, or null; diagnostics only, never a decision. */
     public String certificationRefusal(long id){owned();return require(id).refusal;}
     /**
@@ -334,8 +334,8 @@ public final class IslandCoordinator {
      */
     public record Evidence(long endTick,IslandCertificate.Stationarity stationarity,double drift) {}
     public Evidence certificationEvidence(long id){owned();return require(id).evidence;}
-    /** Installs the listener told of thermo-domain holds; see {@link DomainHolds}. */
-    public void onDomainHold(DomainHolds listener){owned();domainHolds=Objects.requireNonNull(listener);}
+    /** Installs the listener told of phase holds; see {@link PhaseHolds}. */
+    public void onPhaseHold(PhaseHolds listener){owned();phaseHolds=Objects.requireNonNull(listener);}
     /** Installs how a node is named in a status line (a device's kind and position in the world). */
     public void nodeNames(java.util.function.LongFunction<String> names){owned();nodeNames=Objects.requireNonNull(names);}
     /** Told of every certificate materialisation, with the replayed interval as the island's last result. Only
@@ -535,13 +535,13 @@ public final class IslandCoordinator {
                 }
             }
             if(!accept)island.status=refusal!=null?"HELD: "+refusal:outcome==null?"HELD: round deadline or worker failure"
-                    :outcome.domain().isPresent()?domainStatus(outcome.domain().orElseThrow(),false)
+                    :outcome.phaseHold().isPresent()?phaseHoldStatus(outcome.phaseHold().orElseThrow(),false)
                     :outcome.detail().startsWith("HELD")?outcome.detail():"HELD: "+outcome.detail();
             island.clock.completed(attempt.slice,accept);island.held=!accept&&suspension==null&&attempt.revision==island.revision;
             if(suspension!=null)island.status=suspension;
             if(suspension==null&&!accept&&refusal==null&&attempt.revision==island.revision)hold(island,attempt.slice,outcome);
             else if(accept) {
-                island.holdStreak=0;island.fullOnly=false;island.domainFailure=null;island.domainParked=false;
+                island.holdStreak=0;island.fullOnly=false;island.phaseHold=null;island.phaseParked=false;
                 if(outcome.candidate().orElseThrow().acceptance()==PassiveStepSolver.Acceptance.FULL&&island.maximumSliceTicks!=Integer.MAX_VALUE) {
                     int cadence=island.clock.snapshot().cadenceTicks();
                     island.maximumSliceTicks=island.maximumSliceTicks>=cadence/2?Integer.MAX_VALUE:island.maximumSliceTicks*2;
@@ -591,21 +591,21 @@ public final class IslandCoordinator {
      */
     private void hold(Island island,IslandClock.Slice slice,ProcessSolveServices.FluidIslandSolveResult outcome) {
         FluidRuntimeDiagnostics.count(budgetHold(outcome)?FluidRuntimeDiagnostics.budgetHolds:FluidRuntimeDiagnostics.numericalHolds);
-        var domain=outcome==null?null:outcome.domain().orElse(null);
-        if(domain!=null) {
-            // A thermo hold (a typed phase hold, owner decision D21 option C; leaving a data range is never one since the
+        var hold=outcome==null?null:outcome.phaseHold().orElse(null);
+        if(hold!=null) {
+            // A phase hold (a capability limit, owner decision D21 option C; leaving a data range is never one since the
             // owner rule of 2026-10-16) is retried once, on a fresh solver like every hold (and on the halved slice the
             // ladder below gives it). When that retry fails on the same phase set at the same node, the failure is the
             // model's and deterministic - the committed state, or where the island's physics takes it, holds phases the
             // network does not carry - so no retry on the ladder can pass it: the island waits, dispatching nothing, until its
             // inputs change (a fence, a released or resolved one, a property resume; a topology or control edit makes a
             // new island). Every other failure keeps the ladder.
-            boolean reproduced=domain.sameAs(island.domainFailure);
-            island.domainFailure=domain;
-            warnDomain(island,domain,reproduced);
+            boolean reproduced=hold.sameAs(island.phaseHold);
+            island.phaseHold=hold;
+            warnPhaseHold(island,hold,reproduced);
             if(reproduced) {
-                island.domainParked=true;island.status=domainStatus(domain,true);
-                island.clock.holdUntilInputsChange();FluidRuntimeDiagnostics.count(FluidRuntimeDiagnostics.domainHolds);
+                island.phaseParked=true;island.status=phaseHoldStatus(hold,true);
+                island.clock.holdUntilInputsChange();FluidRuntimeDiagnostics.count(FluidRuntimeDiagnostics.phaseHolds);
                 if(island.certificate==null)island.retained=new RetainedSolver();
                 return;
             }
@@ -627,23 +627,23 @@ public final class IslandCoordinator {
         return outcome==null||outcome.detail().startsWith(ProcessSolveServices.WALL_DEADLINE)||outcome.detail().startsWith(ProcessSolveServices.SOFT_BUDGET_REFUSED);
     }
     /** Something the island solves against changed: a held island is retried at once, from its first retry again - a
-     * thermo-domain hold included, which starts a new episode. */
-    private static void inputsChanged(Island island){island.clock.inputsChanged();island.holdStreak=0;island.domainFailure=null;island.domainParked=false;}
-    /** The dedicated status line of a thermo hold: a phase set the network cannot carry, see
+     * phase hold included, which starts a new episode. */
+    private static void inputsChanged(Island island){island.clock.inputsChanged();island.holdStreak=0;island.phaseHold=null;island.phaseParked=false;}
+    /** The dedicated status line of a phase hold: a phase set the network cannot carry, see
      * {@link com.wormzjl.createcheme.science.fluid.thermo.ThermoHold}. */
-    private String domainStatus(com.wormzjl.createcheme.science.fluid.thermo.ThermoHold violation,boolean parked) {
-        return ProcessSolveServices.THERMO_DOMAIN+violation.status(where(violation))
+    private String phaseHoldStatus(com.wormzjl.createcheme.science.fluid.thermo.ThermoHold hold,boolean parked) {
+        return ProcessSolveServices.PHASE_HOLD+hold.status(where(hold))
                 +(parked?"; the retry failed the same way, so the island waits for a change to its network":"");
     }
-    private String where(com.wormzjl.createcheme.science.fluid.thermo.ThermoHold violation) {
-        return violation.node()==com.wormzjl.createcheme.science.fluid.thermo.ThermoHold.NO_NODE?"":nodeNames.apply(violation.node());
+    private String where(com.wormzjl.createcheme.science.fluid.thermo.ThermoHold hold) {
+        return hold.node()==com.wormzjl.createcheme.science.fluid.thermo.ThermoHold.NO_NODE?"":nodeNames.apply(hold.node());
     }
-    /** One log line per island per hold: a new violation, or the same one again after the rate limit's online ticks. */
-    private void warnDomain(Island island,com.wormzjl.createcheme.science.fluid.thermo.ThermoHold violation,boolean parked) {
-        String key=violation.reasonKey()+"@"+violation.node();long now=island.clock.onlineTick();
-        if(key.equals(island.warnedDomainKey)&&now-island.warnedDomainAt<DOMAIN_WARNING_TICKS)return;
-        island.warnedDomainKey=key;island.warnedDomainAt=now;
-        domainHolds.held(island.id,violation,where(violation),parked);
+    /** One log line per island per hold: a new hold, or the same one again after the rate limit's online ticks. */
+    private void warnPhaseHold(Island island,com.wormzjl.createcheme.science.fluid.thermo.ThermoHold hold,boolean parked) {
+        String key=hold.reasonKey()+"@"+hold.node();long now=island.clock.onlineTick();
+        if(key.equals(island.warnedHoldKey)&&now-island.warnedHoldAt<PHASE_HOLD_WARNING_TICKS)return;
+        island.warnedHoldKey=key;island.warnedHoldAt=now;
+        phaseHolds.held(island.id,hold,where(hold),parked);
     }
     private static boolean sameConnections(List<PassiveNetwork.Pipe> before,List<PassiveNetwork.Pipe> after){
         if(before.size()!=after.size())return false;

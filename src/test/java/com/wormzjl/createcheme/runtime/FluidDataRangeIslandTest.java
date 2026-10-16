@@ -60,7 +60,7 @@ class FluidDataRangeIslandTest {
                 public boolean submit(IslandCoordinator.Attempt attempt,ProcessSolveServices.FluidIslandCommand command){attempts.put(attempt.slice().requestId(),attempt);commands.put(attempt.slice().requestId(),command);return true;}
                 public void cancel(long request){}
             },changed->{},()->0L,new IslandCoordinator.Settings(2_000_000_000L,1_500_000_000L,64,false,100,CertificatePolicy.defaults()));
-            coordinator.onDomainHold((island,v,where,parked)->warnings.add(v.getMessage()+" | "+where));
+            coordinator.onPhaseHold((island,v,where,parked)->warnings.add(v.getMessage()+" | "+where));
             coordinator.nodeNames(names);
             coordinator.register(new IslandCoordinator.Snapshot(1,0,graph,new IslandClock.Snapshot(0,0,0,100),FallbackAllowance.NONE,Optional.empty(),Optional.empty(),"READY"),model);
         }
@@ -89,7 +89,7 @@ class FluidDataRangeIslandTest {
         System.out.println("data range left: hottest "+hottest+" K | "+status);
         assertTrue(hottest>300,"the discharge left the record's 300 K: "+hottest);
         assertFalse(rig.results.isEmpty());
-        for(var result:rig.results)assertTrue(result.candidate().isPresent()&&result.domain().isEmpty(),"every interval accepted: "+result.detail());
+        for(var result:rig.results)assertTrue(result.candidate().isPresent()&&result.phaseHold().isEmpty(),"every interval accepted: "+result.detail());
         assertFalse(status.startsWith("HELD"),status);
         assertTrue(rig.warnings.isEmpty(),"no hold is warned: "+rig.warnings);
         assertTrue(rig.results.stream().anyMatch(result->!result.notices().isEmpty()),"an accepted interval carries the notice");
