@@ -164,11 +164,12 @@ public final class NetworkReduction {
         boolean stock=false;
         for(var node:graph.reservoirs()) {
             if(node.kind()==PassiveNetwork.NodeKind.PORT)return false;
-            stock|=node.kind()==PassiveNetwork.NodeKind.GENERATOR||node.kind()==PassiveNetwork.NodeKind.RESERVOIR&&!PassiveStepSolver.holdsNothing(node);
+            stock|=node.kind()==PassiveNetwork.NodeKind.GENERATOR||node.kind()==PassiveNetwork.NodeKind.RESERVOIR&&!PassiveStepSolver.holdsNoFluid(node);
             if(!node.fixed()&&flushable(node))return false;
         }
-        // Nothing to move: no generator, no vessel holding anything (voids only receive, and a junction's buffer is its
-        // relaxation row's state, never material, D46; a minted one no source reaches holds a placeholder, D55).
+        // Nothing to move: no generator, no vessel holding fluid (solids alone do not move, D33: they ride the liquid; voids
+        // only receive, and a junction's buffer is its relaxation row's state, never material, D46; a minted one no source
+        // reaches holds a placeholder, D55).
         if(!stock)return true;
         boolean[] closed=closedMovers(graph,refused);
         for(int i=0;i<closed.length;i++)if(!closed[i]&&graph.pipes().get(i).control() instanceof FlowControl.Mover)return false;
@@ -349,8 +350,11 @@ public final class NetworkReduction {
     /** The game's ambient: air (the network's nitrogen) at 298.15 K and {@link PhaseLayout#AMBIENT_PRESSURE} (A280). The
      * state an empty vessel shows (decision D54: its pressure, nothing it holds) and the ports of a disconnected filter. */
     public static FluidThermodynamics.State ambient(FluidThermodynamics model){return model.initialNitrogenCharge(1,298.15,PhaseLayout.AMBIENT_PRESSURE,()->{});}
-    /** A stream's viscosity: its phases' own, volume-weighted (the solver's bulk average, without solids). */
+    /** A stream's viscosity: its phases' own, volume-weighted (the solver's bulk average, without solids). A state holding
+     * no fluid has no stream (its ends are dry); its end reads an empty vessel's, the ambient's ({@code PassiveStepSolver}'s
+     * bulk viscosity). */
     private static double viscosity(FluidThermodynamics model,FluidThermodynamics.State s,MixtureViscosity.Workspace scratch) {
+        if(!FluidThermodynamics.holdsFluid(s))return viscosity(model,ambient(model),scratch);
         double value=0,volume=0;
         for(int phase:new int[]{FluidThermodynamics.GAS,FluidThermodynamics.OIL,FluidThermodynamics.WATER})
             if(FluidThermodynamics.holdsPhase(s,phase)){double v=FluidThermodynamics.phaseVolume(s,phase);value+=v*model.phaseViscosity(s,phase,scratch,null);volume+=v;}

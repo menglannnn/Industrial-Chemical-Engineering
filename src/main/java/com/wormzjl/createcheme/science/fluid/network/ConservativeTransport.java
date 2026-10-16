@@ -238,15 +238,15 @@ public final class ConservativeTransport {
         double[] molecularWeight=model.molecularWeights();
         double[][] old=new double[nodes][],fractions=new double[nodes][conserved];
         double[] endMass=new double[nodes],incoming=new double[nodes],outgoing=new double[nodes];
-        // Decision D54: a vessel holding nothing (at the bag's resolution, D59 (2)) that nothing reaches in this step keeps
-        // what it holds (it has no state to restate), as a fixed node keeps its inventory; one that receives is booked like
-        // every vessel.
+        // Decision D54: a vessel holding no fluid (at the bag's resolution, D59 (2)) that nothing reaches in this step keeps
+        // what it holds, its solids included (it has no fluid to restate, and solids without one do not change, D33), as a
+        // fixed node keeps its inventory; one that receives is booked like every vessel.
         boolean[] reached=new boolean[nodes],kept=new boolean[nodes];
         for(int edge=0;edge<flows.length;edge++)if(flows[edge]!=0){var pipe=graph.pipes().get(edge);reached[flows[edge]>0?pipe.second():pipe.first()]=true;}
         for(var transfer:graph.scheduledTransfers())if(transfer instanceof ScheduledTransfer.Injection)reached[transfer.node()]=true;
         for(int node=0;node<nodes;node++) {
             var reservoir=graph.reservoirs().get(node);old[node]=reservoir.inventory().moles();
-            if(PassiveStepSolver.holdsNothingVessel(reservoir)&&!reached[node]){kept[node]=true;continue;}
+            if(PassiveStepSolver.holdsNoFluidVessel(reservoir)&&!reached[node]){kept[node]=true;continue;}
             for(int c=0;c<components;c++)endMass[node]+=old[node][c]*molecularWeight[c];
             endMass[node]+=reservoir.inventory().solids().massKg();
             if(frozen&&reservoir.junction()) {
@@ -389,7 +389,7 @@ public final class ConservativeTransport {
             var reservoir=graph.reservoirs().get(node);
             if(index[node]<0) {
                 moles[node]=old[node];
-                // A kept vessel is stated with the solids it holds (none: it holds nothing), not with the candidate's. A pass
+                // A kept vessel is stated with the solids it holds, not with the candidate's. A pass
                 // that laid it out from an arrival the pinned flows then booked as nothing leaves the candidate a roundoff of
                 // that arrival, solids included, and the vessel's inventory takes its state's solids below: cold fuzz seed 85
                 // put 3.4e-93 kg of CO2-I and no fluid in an empty tank, which then stood as a dry-solids vessel whose bulk
@@ -414,9 +414,9 @@ public final class ConservativeTransport {
             for(int c=0;c<populationKeys.size();c++){var source=populationBasis.get(populationKeys.get(c));populations.add(new SolidInventory.Population(source.material(),source.size(),mass*fractions[node][components+c]));}
             // A junction is restated with its carried gas (decision D41) as every pass seeds it (PassiveStepSolver.foldedSeeds),
             // so the reconstruction, the pass loop's phase tests and the next pass read one statement of its phases.
-            // A vessel the pass left dry (it held nothing and nothing was laid out for it, decision D54) has no phases to
-            // restate the booked amounts in: they are flashed where its state stands (the ambient), and its closure below
-            // solves the rest.
+            // A vessel the pass left dry (it held no fluid and nothing was laid out for it, decision D54) has no phases to
+            // restate the booked amounts in: they are flashed where its state stands (the ambient, or its solids' temperature),
+            // and its closure below solves the rest.
             try{var restated=dryVessel(reservoir,supports,node)?model.flashTP(candidate.get(node).temperature(),candidate.get(node).pressure(),moles[node],checkpoint)
                     :repartition(model,candidate.get(node),moles[node]);if(reservoir.junction())restated=model.folded(restated,true);
                 states.add(restated.withSolids(new SolidInventory(populations)));}
@@ -658,10 +658,10 @@ public final class ConservativeTransport {
         if(model.foldTracePhases(l,v,split)){SolverDiagnostics.count(SolverDiagnostics.traceFolds);pc=FluidThermodynamics.foldedHydrocarbonPressure(state.pressure(),pc,v,split[1]);}
         return model.adoptingState(state.temperature(),state.pressure(),l,v,split[0],split[1],pc,null).withSolidState(state.solids(),state.solidMoments());
     }
-    /** A vessel that held nothing at the step start and that the step solved with no phase support: no unknowns, its state
-     * the ambient (decision D54, {@code PassiveStepSolver.dry}). One the step laid out holds its own phases. */
+    /** A vessel that held no fluid at the step start and that the step solved with no phase support: no unknowns, its state
+     * the ambient or its solids' (decision D54, {@code PassiveStepSolver.dry}). One the step laid out holds its own phases. */
     private static boolean dryVessel(PassiveNetwork.Reservoir reservoir,PhaseSupport[][] supports,int node) {
-        return PassiveStepSolver.holdsNothingVessel(reservoir)&&(supports==null||supports[node]==null);
+        return PassiveStepSolver.holdsNoFluidVessel(reservoir)&&(supports==null||supports[node]==null);
     }
     /** Whether {@code moles} book a hydrocarbon into a state that holds no hydrocarbon phase (see {@link #repartition}). */
     static boolean appearsWithoutPhase(FluidThermodynamics.State state,double[] moles) {

@@ -532,11 +532,11 @@ public final class PassiveStepSolver {
             // water saturation row near 1.03e-10 - and the island refined its step to nothing.
             //
             // Decision D54: only a vessel whose wall carries it has a headspace that amplifies anything. A slack vessel is at
-            // the ambient whatever it holds, and a dry one holds nothing.
+            // the ambient whatever it holds, and a dry one holds no fluid.
             boolean smallHeadspace=false;
             for(int i=0;i<seeds.size();i++) {
                 var node=graph.reservoirs().get(i);var kind=node.kind();
-                if(kind!=PassiveNetwork.NodeKind.RESERVOIR&&kind!=PassiveNetwork.NodeKind.PORT||dry(node,seeds.get(i))||holdsNothing(node))continue;
+                if(kind!=PassiveNetwork.NodeKind.RESERVOIR&&kind!=PassiveNetwork.NodeKind.PORT||dry(node,seeds.get(i))||holdsNoFluid(node))continue;
                 if(seeds.get(i).vaporVolume()/seeds.get(i).volume()<.01&&PhaseLayout.taut(seeds.get(i),node.inventory().volume())){smallHeadspace=true;break;}
             }
             // 1e-11 stalls on caloric cancellation in nearly liquid-full water with trace N2.
@@ -1120,9 +1120,9 @@ public final class PassiveStepSolver {
             var node=graph.reservoirs().get(nodeIndex);var available=reachable[nodeIndex];
             var state=node.state();
             if(node.junction()&&available[count-1]&&state.waterLiquid()+state.waterVapor()==0){seeds.add(waterTraceSeed(state,checkpoint));continue;}
-            // A vessel that holds nothing keeps its own state, which lays it out dry (decision D54, see dry); what arrives
+            // A vessel that holds no fluid keeps its own state, which lays it out dry (decision D54, see dry); what arrives
             // in it is laid out by arrivingPhases.
-            if(node.fixed()||node.junction()||holdsNothingVessel(node)){seeds.add(state);continue;}
+            if(node.fixed()||node.junction()||holdsNoFluidVessel(node)){seeds.add(state);continue;}
             var n=PhaseLayout.totalAmounts(state);double total=Arrays.stream(n).sum();boolean changed=false;
             // This is only a trial guess. The accumulation equations still start from the exact original inventory.
             for(int i=0;i<count;i++)if(available[i]&&n[i]==0)changed=true;
@@ -1171,8 +1171,8 @@ public final class PassiveStepSolver {
      * its seed to the bit, as does every vessel that holds something. A rate-only solve holds a junction's composition at
      * its stock, so it lays out the stock's phases and this does nothing there.
      *
-     * <p>A vessel that holds nothing (decision D54) is laid out from what its connections deliver over {@code dt}, nothing
-     * held: the delivered amounts themselves (a vessel's rows are its amounts) at the bag's own split (decision D26,
+     * <p>A vessel that holds no fluid (decision D54) is laid out from what its connections deliver over {@code dt}, no fluid
+     * held, beside whatever solids it holds: the delivered amounts themselves (a vessel's rows are its amounts) at the bag's own split (decision D26,
      * {@link #emptyBagSplit}), the equilibrium of what arrives with the enthalpy it brings, at the ambient pressure while
      * the bag is slack and at the capacity once what arrives overfills it, folded as a vessel: the root of the vessel's
      * own rows at the start flows. Where the engine answers nothing the network carries, the TP flash of the delivered
@@ -1184,14 +1184,14 @@ public final class PassiveStepSolver {
      */
     private List<FluidThermodynamics.State> arrivingPhases(PassiveNetwork graph,List<FluidThermodynamics.State> seeds,List<FlowControl.Mode> modes,
                                                            boolean[] boundaryClosed,double dt,Runnable checkpoint) {
-        if(rateOnly||graph.reservoirs().stream().noneMatch(node->node.junction()&&!node.fixed()||holdsNothingVessel(node)))return seeds;
+        if(rateOnly||graph.reservoirs().stream().noneMatch(node->node.junction()&&!node.fixed()||holdsNoFluidVessel(node)))return seeds;
         int nodes=graph.reservoirs().size(),edges=graph.pipes().size();double[] flows=new double[edges];
         startPoint(graph,modes,boundaryClosed,identities(graph),null,flows,new double[edges],new boolean[edges]);
         List<FluidThermodynamics.State> result=null;
         for(int round=0;round<=nodes;round++) {
             boolean changed=false;
             for(int j=0;j<nodes;j++) {
-                var node=graph.reservoirs().get(j);boolean empty=holdsNothingVessel(node);if(!(node.junction()&&!node.fixed()||empty))continue;
+                var node=graph.reservoirs().get(j);boolean empty=holdsNoFluidVessel(node);if(!(node.junction()&&!node.fixed()||empty))continue;
                 var current=result==null?seeds:result;var seed=current.get(j);
                 if(empty&&!dry(node,seed))continue;
                 double[] n=node.inventory().moles().clone();double heldMass=molarMass(n),mass=heldMass,weighted=heldMass*node.state().temperature(),heat=0;boolean arrives=false;
@@ -1213,7 +1213,8 @@ public final class PassiveStepSolver {
                     if(PhaseLayout.bagVolume(delivered,node.inventory().volume())<=HOLDS_NOTHING*node.inventory().volume())continue;
                     var own=emptyBagSplit(node,weighted/mass,n,heat,checkpoint);
                     if(result==null)result=new ArrayList<>(seeds);
-                    result.set(j,own==null?delivered:own);changed=true;continue;
+                    var arrived=own==null?delivered:own;var held=node.inventory().solids();
+                    result.set(j,held.empty()?arrived:arrived.withSolids(held));changed=true;continue;
                 }
                 if(!arrives||!(heldMass>0))continue;
                 for(int c=0;c<n.length;c++)n[c]*=seed.mass()/mass;
@@ -1433,13 +1434,13 @@ public final class PassiveStepSolver {
     /**
      * Owner decision D55, round 0 of {@link #fixedPointStarts}: a junction's start guess is what its connected suppliers
      * would send it. A supplier is a node that is not a junction and holds something (a vessel holding contents, a
-     * generator, a port); a void, a dry end and a vessel that holds nothing send nothing ({@link #boundaryAllowed}). Each
+     * generator, a port); a void and a dry end (a vessel that holds no fluid among them) send nothing ({@link #boundaryAllowed}). Each
      * supplier joined to a junction sends the stream its end draws ({@link #endMoles}, as the rate estimate reads it) at
      * the flow its static drive gives against the ambient ({@link #supplyFlow}); a junction is the flow-weighted mixture
      * of what reaches it (amounts per kilogram, enthalpy per kilogram with its height gain), flashed at the pressure where
      * the start estimate's flows into and out of it balance ({@link #balancePressure}). A junction no supplier drives into
      * takes it hop by hop from the junctions that have it (a breadth-first sweep, each hop the mixture of the neighbours
-     * seeded before it, weighted by the flow that seeded them; a vessel that holds nothing passes the sweep through). A
+     * seeded before it, weighted by the flow that seeded them; a vessel that holds no fluid passes the sweep through). A
      * junction neither reaches (every drive towards it points away, as at a rest, or a vessel holding contents lies
      * between) takes the streams of the suppliers joined to it, one share per supplier, and the sweep runs again from
      * those. The ambient is the pressure of an empty node, never a fluid: a junction no source reaches (an island that
@@ -1482,7 +1483,8 @@ public final class PassiveStepSolver {
             for(var pipe:graph.pipes())for(int end=0;end<2;end++) {
                 int supplier=end==0?pipe.first():pipe.second(),junction=end==0?pipe.second():pipe.first();
                 var s=graph.reservoirs().get(supplier);
-                if(!graph.reservoirs().get(junction).junction()||seeded[junction]||s.junction()||holdsNothing(s))continue;
+                // A supplier whose end is dry (one holding no fluid, dryEnd) sends nothing: both flows below are zero.
+                if(!graph.reservoirs().get(junction).junction()||seeded[junction]||s.junction())continue;
                 double q=driven?supplyFlow(graph,pipe,supplier):boundaryAllowed(graph,pipe,end==0?1:-1)?1:0;
                 if(!(q>0))continue;
                 var port=pipe.portAt(supplier);double[] n=endMoles(s.state(),port);double m=endMass(s.state(),port);
@@ -1491,7 +1493,7 @@ public final class PassiveStepSolver {
                 mass[junction]+=q;tLow[junction]=Math.min(tLow[junction],s.state().temperature());tHigh[junction]=Math.max(tHigh[junction],s.state().temperature());
             }
             for(int j=0;j<nodes;j++)if(mass[j]>0&&seedAt(states,j,amounts[j],mass[j],heat[j],tLow[j],tHigh[j],PhaseLayout.AMBIENT_PRESSURE,checkpoint)){seeded[j]=true;weight[j]=mass[j];}
-            // The sweep: hop by hop from the junctions seeded so far; a vessel that holds nothing passes it through.
+            // The sweep: hop by hop from the junctions seeded so far; a vessel that holds no fluid passes it through.
             for(boolean grew=true;grew;) {
                 grew=false;var next=new boolean[nodes];
                 Arrays.fill(mass,0);Arrays.fill(heat,0);Arrays.fill(tLow,Double.POSITIVE_INFINITY);Arrays.fill(tHigh,Double.NEGATIVE_INFINITY);
@@ -1556,7 +1558,7 @@ public final class PassiveStepSolver {
         return .5*(low+high);
     }
     /** The junctions one hop from junction {@code j} for {@link #supplierSeeds}' sweep: joined to it by a connection, or
-     * through one or more vessels that hold nothing. */
+     * through one or more vessels that hold no fluid ({@link #holdsNoFluid}: none of their own to send). */
     private static List<Integer> sweepNeighbours(PassiveNetwork graph,int j) {
         var found=new ArrayList<Integer>();var seen=new HashSet<Integer>();var open=new ArrayDeque<Integer>();open.add(j);seen.add(j);
         while(!open.isEmpty()) {
@@ -1565,7 +1567,7 @@ public final class PassiveStepSolver {
                 int other=pipe.first()==at?pipe.second():pipe.second()==at?pipe.first():-1;
                 if(other<0||!seen.add(other))continue;
                 var node=graph.reservoirs().get(other);
-                if(node.junction())found.add(other);else if(holdsNothing(node))open.add(other);
+                if(node.junction())found.add(other);else if(holdsNoFluid(node))open.add(other);
             }
         }
         Collections.sort(found);return found;
@@ -2356,7 +2358,7 @@ public final class PassiveStepSolver {
      * ({@link #illegalWithEitherDensity}). {@code keep} names the connections the interval solver reopened.
      */
     private void closeIllegalStarts(PassiveNetwork graph,List<FlowControl.Mode> modes,boolean[] boundaryClosed,boolean[] keep) {
-        // Decision D54: a passive run whose static drive points out of a dry end (a vessel holding nothing, the top port of a
+        // Decision D54: a passive run whose static drive points out of a dry end (a vessel holding no fluid, the top port of a
         // slack vessel holding no gas) carries nothing: the end gives nothing and the run stands in what its other end would
         // send (the column of a dry end is the other end's), so the drive is no guess. Closed for this solve, on every solve.
         for(int i=0;i<graph.pipes().size();i++) {
@@ -2834,51 +2836,56 @@ public final class PassiveStepSolver {
         return flow>0&&dryEnd(graph.reservoirs().get(pipe.first()),pipe.firstPort())||flow<0&&dryEnd(graph.reservoirs().get(pipe.second()),pipe.secondPort());
     }
     /**
-     * Decision D54 (every vessel a bag with a stiff wall): an end with nothing behind it to draw. A vessel that holds
-     * nothing (placed empty, or its rate-solve copy) has no contents, so all its ports are dry; a top (VAPOR) port of a
-     * slack vessel that holds no gas is dry too: the liquid stands below it at the ambient, and what is above it is the
-     * atmosphere the model does not carry. The model never draws air.
+     * Decision D54 (every vessel a bag with a stiff wall): an end with nothing behind it to draw. A vessel that holds no
+     * fluid ({@link #holdsNoFluid}: placed empty, or holding only solids, which ride the liquid while a dry gas carries
+     * none, decision D33) has nothing to carry anything out, so all its ports are dry; a top (VAPOR) port of a slack vessel
+     * that holds no gas is dry too: the liquid stands below it at the ambient, and what is above it is the atmosphere the
+     * model does not carry. The model never draws air.
      */
     static boolean dryEnd(PassiveNetwork.Reservoir node,PassiveNetwork.PhasePort port) {
         if(node.kind()!=PassiveNetwork.NodeKind.RESERVOIR&&node.kind()!=PassiveNetwork.NodeKind.PORT)return false;
-        if(holdsNothing(node))return true;
+        if(holdsNoFluid(node))return true;
         return port==PassiveNetwork.PhasePort.VAPOR&&!FluidThermodynamics.holdsPhase(node.state(),FluidThermodynamics.GAS)
                 &&!PhaseLayout.taut(node.state(),node.inventory().volume());
     }
     /**
-     * A vessel, or its rate-solve copy, that holds nothing (decision D54: placed empty): no solids, and its bag at most the
-     * bag's resolution, {@link #HOLDS_NOTHING} of its capacity (owner decision D59 (2), t28). That resolution is the one at
-     * which the bag's volume is already snapped to the capacity (A311, {@link PhaseLayout#bagVolume}); below it a vessel's
-     * contents are roundoff, typically a residue a junction's buffer leaves in an emptied tank (world defaults 322: 1.3e-71
-     * kg; 333: 2.2e-17 kg), and such a residue is neither a feed nor stock: an end holding it gives nothing ({@link #dryEnd}),
-     * its column is the other end's, the rest test does not count it, a step lays the vessel out dry ({@link #dry}), and
-     * the booking states it at its flash with no closure ({@link InventoryEquilibrium#solve}).
-     * The residue stays booked in the vessel's inventory (the ledger is exact, D46): nothing is deleted or flushed. A
-     * mover's dry suction keeps its port band (A334, {@link InletPhase}).
+     * A vessel, or its rate-solve copy, that holds no fluid (decision D54: placed empty, or holding only solids): its fluid,
+     * the bag less its solids, at most the bag's resolution, {@link #HOLDS_NOTHING} of its capacity (owner decision D59 (2),
+     * t28). That resolution is the one at which the bag's volume is already snapped to the capacity (A311,
+     * {@link PhaseLayout#bagVolume}); below it a vessel's fluid is roundoff, typically a residue a junction's buffer leaves in
+     * an emptied tank (world defaults 322: 1.3e-71 kg; 333: 2.2e-17 kg). Solids ride the liquid and a dry gas carries none
+     * (owner decision D33), and without a fluid they have nothing to exchange with (OD-P4), so whatever solids it holds,
+     * such a vessel is neither a feed nor stock and has no fluid to state: an end of it gives nothing ({@link #dryEnd}), its
+     * column is the other end's, a junction seed's sweep passes through it, the rest test does not count it, a step lays it
+     * out dry ({@link #dry}), and the booking states it at its flash with no closure ({@link InventoryEquilibrium#solve}).
+     * One rule where holding nothing was the test before (decision D54 of a vessel placed empty). The residue stays booked
+     * in the vessel's inventory (the ledger is exact, D46): nothing is deleted or flushed. A mover's dry suction keeps its
+     * port band (A334, {@link InletPhase}).
      */
-    static boolean holdsNothing(PassiveNetwork.Reservoir node) {
+    static boolean holdsNoFluid(PassiveNetwork.Reservoir node) {
         if(node.kind()!=PassiveNetwork.NodeKind.RESERVOIR&&node.kind()!=PassiveNetwork.NodeKind.PORT)return false;
-        return holdsNothing(node.inventory(),node.state());
+        return holdsNoFluid(node.inventory(),node.state());
     }
-    /** {@link #holdsNothing(PassiveNetwork.Reservoir)} for a vessel's {@code inventory} at {@code state}. */
-    static boolean holdsNothing(PassiveNetwork.Inventory inventory,FluidThermodynamics.State state) {
-        if(!inventory.solids().empty())return false;
+    /** {@link #holdsNoFluid(PassiveNetwork.Reservoir)} for a vessel's {@code inventory} at {@code state}. */
+    static boolean holdsNoFluid(PassiveNetwork.Inventory inventory,FluidThermodynamics.State state) {
         boolean none=true;for(double n:inventory.moles())if(n!=0){none=false;break;}
         if(none)return true;
-        double capacity=inventory.volume();
-        return PhaseLayout.bagVolume(state,capacity)<=HOLDS_NOTHING*capacity;
+        double capacity=inventory.volume(),bag=PhaseLayout.bagVolume(state,capacity);
+        return (inventory.solids().empty()?bag:bag-inventory.solids().volume())<=HOLDS_NOTHING*capacity;
     }
     /**
      * A vessel a step lays out dry when nothing arrives in it (decision D54) and books nothing for when nothing reaches it:
-     * one that holds nothing at the bag's resolution (owner decision D59 (2)). A residue below it has no phases worth
-     * stating: random seed 708 kept a 4e-33 kg crude residue in a tank and a pass laid out another tank from a 2e-29 kg
-     * roundoff arrival, both as two phases, and their fugacity rows, stated for that roundoff, stalled the line search at
-     * every step size.
+     * one that holds no fluid at the bag's resolution (owner decision D59 (2)), whatever solids it holds. A residue below
+     * it has no phases worth stating: random seed 708 kept a 4e-33 kg crude residue in a tank and a pass laid out another
+     * tank from a 2e-29 kg roundoff arrival, both as two phases, and their fugacity rows, stated for that roundoff, stalled
+     * the line search at every step size. Solids without a fluid neither move nor change in a step (they ride the liquid,
+     * decision D33, and have no fluid to exchange with, OD-P4): a bed of them has no unknowns until a fluid arrives, and a
+     * layout of it with none found no state to decode at all ("Empty/nonfinite fluid properties").
      */
-    static boolean holdsNothingVessel(PassiveNetwork.Reservoir node) {
-        return node.kind()==PassiveNetwork.NodeKind.RESERVOIR&&holdsNothing(node);
+    static boolean holdsNoFluidVessel(PassiveNetwork.Reservoir node) {
+        return node.kind()==PassiveNetwork.NodeKind.RESERVOIR&&holdsNoFluid(node);
     }
-    /** The bag's resolution as a share of its capacity: the share below which a vessel holds nothing (D59 (2), A311). */
+    /** The bag's resolution as a share of its capacity: the share below which a vessel holds no fluid (D59 (2), A311). */
     static final double HOLDS_NOTHING=1e-12;
     /**
      * Decision D54 (a vessel is a bag; a bag can be emptied): {@code graph} with every vessel that runs dry within the step
@@ -2938,18 +2945,18 @@ public final class PassiveStepSolver {
     /** The phase code of a dry vessel in a pass's structure key: it carries no unknowns. */
     private static final int DRY=32;
     /**
-     * Decision D54: whether a pass lays {@code node} out as dry, with no unknowns. A vessel that holds nothing at the step
-     * start, whose seed is still its own state (nothing has been laid out for it), is a receiver at the ambient with no
-     * contents: its state is its pressure and nothing else, and it gives nothing (its ends are dry, {@link #dryEnd}). Once
-     * the start flows deliver into it ({@link #arrivingPhases}) or a pass's flows reach it ({@link #filled}), its seed is
-     * what arrives and it is laid out like every vessel.
+     * Decision D54: whether a pass lays {@code node} out as dry, with no unknowns. A vessel that holds no fluid at the step
+     * start ({@link #holdsNoFluidVessel}), whose seed is still its own state (nothing has been laid out for it), is a
+     * receiver at the ambient with no fluid: its state is its pressure and the solids it holds, if any, and it gives
+     * nothing (its ends are dry, {@link #dryEnd}). Once the start flows deliver into it ({@link #arrivingPhases}) or a pass's
+     * flows reach it ({@link #filled}), its seed is what arrives and it is laid out like every vessel.
      */
-    static boolean dry(PassiveNetwork.Reservoir node,FluidThermodynamics.State seed){return holdsNothingVessel(node)&&seed==node.state();}
-    /** Whether a converged pass's reconstruction books something into a vessel the pass laid out dry: more than nothing at the
-     * bag's resolution ({@link #holdsNothing}); a roundoff it receives stays booked and the vessel stays dry. */
+    static boolean dry(PassiveNetwork.Reservoir node,FluidThermodynamics.State seed){return holdsNoFluidVessel(node)&&seed==node.state();}
+    /** Whether a converged pass's reconstruction books a fluid into a vessel the pass laid out dry: more than none at the
+     * bag's resolution ({@link #holdsNoFluid}); a roundoff it receives stays booked and the vessel stays dry. */
     private static boolean filled(Equations equations,ConservativeTransport.Projection projection) {
         for(int node=0;node<equations.dry.length;node++)
-            if(equations.dry[node]&&!holdsNothing(projection.inventories().get(node),projection.states().get(node)))return true;
+            if(equations.dry[node]&&!holdsNoFluid(projection.inventories().get(node),projection.states().get(node)))return true;
         return false;
     }
     /**
@@ -2998,6 +3005,7 @@ public final class PassiveStepSolver {
         if(Math.abs(ea-eb+junctionEnergy-projection.pumpWork()-projection.externalEnergy())>1e-4+1e-6*(energyScale+Math.abs(projection.pumpWork())))throw new SparseNewton.Nonconvergence("Total energy balance failed");
     }
     private double carrierViscosity(FluidThermodynamics.State s) {
+        if(!FluidThermodynamics.holdsFluid(s))return carrierViscosity(ambient());
         double value=0,volume=s.liquidVolume()+s.waterVolume()+s.vaporVolume();
         if(s.liquidVolume()>0)value+=s.liquidVolume()*model.viscosity.liquid(s.temperature(),s.liquidView()).pascalSeconds();
         if(s.waterVolume()>0)value+=s.waterVolume()*model.viscosity.waterLiquid(s.temperature());
@@ -3011,9 +3019,18 @@ public final class PassiveStepSolver {
     private double viscosity(FluidThermodynamics.State s) {
         return viscosity(s,null);
     }
+    /** The ambient's state ({@link NetworkReduction#ambient}), read for an end that holds no fluid ({@link #viscosity}). */
+    private FluidThermodynamics.State ambient;
+    private FluidThermodynamics.State ambient(){if(ambient==null)ambient=NetworkReduction.ambient(model);return ambient;}
     /** {@code prepared} must be this state's own temperature bundle, or {@code null} to evaluate
-     * the pure-component terms here as the standalone paths do. */
+     * the pure-component terms here as the standalone paths do.
+     *
+     * <p>A state holding no fluid (a vessel holding only solids, decision D33) has no stream: its ends are dry and pass
+     * nothing ({@link #dryEnd}). The solver still reads a stream at every end where no flow passes (each node's at every
+     * decode, a closed connection's row, a start estimate, a row's scale), and there it reads an empty vessel's, the
+     * ambient's (decision D54: the state an empty vessel holds), not the 0/0 of no fluid ({@link #carrierViscosity} too). */
     private double viscosity(FluidThermodynamics.State s,FluidThermodynamics.Prepared prepared) {
+        if(!FluidThermodynamics.holdsFluid(s))return viscosity(ambient(),null);
         var terms=prepared==null?null:prepared.viscosities();
         double value=0;
         if(s.liquidVolume()>0)value+=s.liquidVolume()*model.viscosity.liquid(s.temperature(),s.liquidView(),terms).pascalSeconds();

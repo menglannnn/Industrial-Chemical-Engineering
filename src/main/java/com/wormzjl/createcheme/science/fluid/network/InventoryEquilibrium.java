@@ -90,11 +90,12 @@ public final class InventoryEquilibrium {
         // with a phase below the trace share is restated folded (the regime test) and its last split is folded by
         // repartition, so this energy-volume flash returns no trace phase either.
         var state=(changedBasis?model.flashTP(previous.temperature(),previous.pressure(),n,checkpoint):model.folded(previous)).withSolids(inventory.solids());
-        // Owner decision D59 (2): a vessel that holds nothing at the bag's resolution holds a residue, booked exactly in its
-        // inventory, and no state to close: it is stated at its flash, at the temperature and pressure it had. Random fuzz
-        // seed 707 booked 1e-42 mol of crude and 1e-84 mol of water vapour into an empty 1 m3 tank; the closure's Newton,
-        // differencing that water with a step 1e19 times the vessel's contents, found no finite trial at any step size.
-        if(PassiveStepSolver.holdsNothing(inventory,state))return state;
+        // Owner decision D59 (2): a vessel that holds no fluid at the bag's resolution holds a residue, booked exactly in its
+        // inventory, and no fluid state to close: it is stated at its flash with its solids, at the temperature and pressure
+        // it had. Random fuzz seed 707 booked 1e-42 mol of crude and 1e-84 mol of water vapour into an empty 1 m3 tank; the
+        // closure's Newton, differencing that water with a step 1e19 times the vessel's contents, found no finite trial at
+        // any step size.
+        if(PassiveStepSolver.holdsNoFluid(inventory,state))return state;
         return passes(model,state,new Closure(){
             @Override public FluidThermodynamics.State close(FluidThermodynamics.State start){return InventoryEquilibrium.close(model,start,inventory,null,workFrom,checkpoint);}
             @Override public FluidThermodynamics.State iterate(FluidThermodynamics.State start,double[] variables){return layout(model,start,null).decode(variables,0);}

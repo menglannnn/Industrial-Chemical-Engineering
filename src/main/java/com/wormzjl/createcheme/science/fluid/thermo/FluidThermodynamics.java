@@ -383,6 +383,9 @@ public final class FluidThermodynamics {
             if(state.vaporProperties()!=null){var gas=state.vaporProperties();stiffness+=-gas.molarVolume()/gas.volumePressureDerivative();}
             compliance+=state.vaporVolume()/stiffness;
         }
+        // Solids are incompressible here: a state holding no fluid (a vessel holding only solids, D33) has no acoustic
+        // bound, and the configured clamp alone limits what would leave it (nothing does: its ends are dry).
+        if(compliance==0&&!holdsFluid(state))return Double.POSITIVE_INFINITY;
         double speed=state.volume()/Math.sqrt(state.mass()*compliance);
         if(!Double.isFinite(speed)||speed<=0)throw new IllegalArgumentException("Invalid acoustic flow-domain bound");
         return speed;
@@ -497,6 +500,10 @@ public final class FluidThermodynamics {
      * volume of it. */
     public static boolean holdsPhase(State state,int phase) {
         return switch(phase){case GAS->state.vaporVolume()>0;case OIL->state.liquidVolume()>0;case WATER->state.waterVolume()>0;default->throw new IllegalArgumentException("phase "+phase);};
+    }
+    /** Whether the state holds any fluid phase: not a vessel holding only solids ({@link #solidState}). */
+    public static boolean holdsFluid(State state) {
+        return state.vaporVolume()>0||state.liquidVolume()>0||state.waterVolume()>0;
     }
     /**
      * Owner decision D33 (2026-10-16): solids ride the liquid. A connection's BULK end draws a uniform share of what its
