@@ -468,9 +468,10 @@ public final class PassiveStepSolver {
         // key monotone and the pass sequence finite; demotion happens at the next solve's seed.
         boolean[][] promoted=new boolean[seeds.size()][];
         // Decision D34 with A85: the phases (phaseCode bits) the trace rule removed at each node in this solve, by the
-        // reconstruction's fold or by a phase correction whose flash folded them. Monotone like the reactivations above: the
-        // phase correction does not give such a phase back within this solve, and the next solve decides from its own start
-        // state. Without it, a condensate that converges just below the trace share
+        // reconstruction's fold or by a phase correction whose flash folded them, and those a node's own split refused at a
+        // converged point (the D26 amendment: its closure drove the TP answer's phase under the trace share). Monotone like
+        // the reactivations above: the phase correction does not give such a phase back within this solve, and the next
+        // solve decides from its own start state. Without it, a condensate that converges just below the trace share
         // is folded, the gas left behind is cooler by the condensate's latent heat, its flash condenses more than the share
         // again, and the pass sequence repeats (a humid vented tank: 1.0e-9 folded, 2.4e-9 given back).
         int[] foldedPhases=new int[seeds.size()];
@@ -928,9 +929,9 @@ public final class PassiveStepSolver {
      * every column entry whatever it draws), so it is not part of the workspace key and a re-decided segment keeps the
      * workspace and its preconditioner; it is part of the cycle key, because the pass loop revises it, and a pass
      * sequence that returns to a segment it has already solved under cannot make progress. It also carries the phases the
-     * trace rule has removed so far in the solve (decision D34, A85): that record only grows, so a pass that returns to
-     * an earlier structure after a fold is a pass under a different phase-correction rule, not a cycle, and the sequence
-     * stays finite.
+     * trace rule has removed and the own splits have refused so far in the solve (decision D34, A85; the D26 amendment):
+     * that record only grows, so a pass that returns to an earlier structure after a fold or a refusal is a pass under a
+     * different phase-correction rule, not a cycle, and the sequence stays finite.
      */
     private record PassKey(WorkspaceKey structure,byte[] segments,int[] folded,byte[] caps) {
         @Override public boolean equals(Object other){return other instanceof PassKey key&&structure.equals(key.structure)&&Arrays.equals(segments,key.segments)&&Arrays.equals(folded,key.folded)&&Arrays.equals(caps,key.caps);}
@@ -2088,19 +2089,19 @@ public final class PassiveStepSolver {
      * <p>{@code prepared}, when given, is the pass's per-node prepared temperature state: a node's flash at exactly that
      * temperature reuses its Peng-Robinson workspace instead of preparing a new one (the arithmetic is the same).
      * {@code foldedPhases}, when given, holds per node the phases ({@link #phaseCode} bits) the trace rule removed in this
-     * solve (A85): the check does not add them back, and a phase its fold removes from a converged point joins them, so
-     * the sequence of passes stays finite. A failed pass's iterate is checked on a copy (decision D28 A'): its fold is a
-     * trial layout, which reads the record and never writes to it.
+     * solve and those a node's own split refused (A85; the D26 amendment): the check does not add them back, and writes
+     * there a phase its fold removes from a converged point and a phase its own split refuses there, so the sequence of
+     * passes stays finite and a refused phase costs one own split per solve. A failed pass's iterate is checked on a copy
+     * (decision D28 A'): its check is a trial layout, which reads the record and never writes to it.
      */
     private List<FluidThermodynamics.State> phaseCorrection(PassiveNetwork graph,List<FluidThermodynamics.State> states,Runnable checkpoint,FluidThermodynamics.Prepared[] prepared,int[] foldedPhases) {
         for(int i=0;i<states.size();i++) {
             var state=states.get(i);var node=graph.reservoirs().get(i);if(node.fixed())continue;
             FluidThermodynamics.State checked;
-            try{checked=model.phaseCheck(state,node.junction(),foldedPhases==null?0:foldedPhases[i],prepared==null?null:prepared[i],
+            try{checked=model.phaseCheck(state,node.junction(),foldedPhases,i,prepared==null?null:prepared[i],
                     node.junction()?null:start->vesselSplit(node,state,start,checkpoint),checkpoint);}
             catch(com.wormzjl.createcheme.science.fluid.thermo.ThermoHold hold){throw hold.at(node.id());}
             if(checked==state)continue;
-            if(foldedPhases!=null)foldedPhases[i]|=phaseCode(state)&~phaseCode(checked)&15;
             var corrected=new ArrayList<>(states);corrected.set(i,checked);return corrected;
         }
         return null;

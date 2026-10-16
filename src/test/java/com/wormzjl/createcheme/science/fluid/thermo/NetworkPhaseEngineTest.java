@@ -183,12 +183,12 @@ class NetworkPhaseEngineTest {
         double[] liquid = new double[n - 1], vapor = new double[n - 1], none = new double[n - 1];
         liquid[nitrogen] = 30;vapor[nitrogen] = 10;
         var both = model.state(t, p, liquid, vapor, 0, 0, p);
-        assertSame(both, model.phaseCheck(both, false, 0, null, null, () -> {}), "a node holding both phases keeps its layout");
+        assertSame(both, model.phaseCheck(both, false, null, 0, null, null, () -> {}), "a node holding both phases keeps its layout");
         // A junction: the PH answer at its pressure and enthalpy.
         double above = 1.01 * p;
         vapor[nitrogen] = 40;
         var supersaturated = model.state(t, above, none, vapor, 0, 0, above);
-        var condensed = model.phaseCheck(supersaturated, true, 0, null, null, () -> {});
+        var condensed = model.phaseCheck(supersaturated, true, null, 0, null, null, () -> {});
         System.out.printf("N2 vapour at %.6f Pa, 100 K: junction seed %.6f K, liquid %.6e of 40 mol%n", above, condensed.temperature(), sum(condensed.liquidView()));
         assertTrue(sum(condensed.liquidView()) > 0 && sum(condensed.vaporView()) > 0, "the liquid its enthalpy condenses beside the vapour");
         assertEquals(above, condensed.pressure(), 0, "at the junction's pressure");
@@ -198,24 +198,24 @@ class NetworkPhaseEngineTest {
         // A vessel whose own flash fails: the TP answer (all liquid) with the vapour the node holds.
         var gas = model.state(t, p, none, vapor, 0, 0, p);
         var starts = new ArrayList<FluidThermodynamics.State>();
-        var seeded = model.phaseCheck(gas, false, 0, null, start -> {starts.add(start);return null;}, () -> {});
+        var seeded = model.phaseCheck(gas, false, null, 0, null, start -> {starts.add(start);return null;}, () -> {});
         assertEquals(1, starts.size(), "the vessel's own split is asked once");
         assertSame(starts.getFirst(), seeded, "its failure seeds the TP-based state");
         assertEquals(20, sum(seeded.liquidView()), 1e-12, "the answer's liquid");
         assertEquals(20, sum(seeded.vaporView()), 1e-12, "beside the node's vapour");
-        assertSame(gas, model.phaseCheck(gas, false, FluidThermodynamics.phaseBits(flash), null, null, () -> {}),
+        assertSame(gas, model.phaseCheck(gas, false, new int[]{FluidThermodynamics.phaseBits(flash)}, 0, null, null, () -> {}),
                 "a phase the trace rule removed in this solve is not added back");
         double tw = 350, saturation = model.saturationPressure(tw);
         assertEquals(0, model.flashTP(tw, .99 * saturation, pure(nitrogen, 0, 1), () -> {}).waterLiquid(), 0, "the flash: all steam");
         var superheated = model.state(tw, .99 * saturation, none, none, 1, 0, .99 * saturation);
-        var boiled = model.phaseCheck(superheated, true, 0, null, null, () -> {});
+        var boiled = model.phaseCheck(superheated, true, null, 0, null, null, () -> {});
         System.out.printf("water at %.3f Pa, 350 K: junction seed %.6f K, steam %.6e of 1 mol%n", .99 * saturation, boiled.temperature(), boiled.waterVapor());
         assertTrue(boiled.waterLiquid() > 0 && boiled.waterVapor() > 0, "the liquid stays and the steam its enthalpy gives enters");
         assertEquals(.99 * saturation, model.saturationPressure(boiled.temperature()), 1e-7 * saturation, "at the saturation temperature");
         assertEquals(superheated.enthalpy(), boiled.enthalpy(), 1e-9 * Math.abs(superheated.enthalpy()), "at the junction's enthalpy");
         assertEquals(1, boiled.waterLiquid() + boiled.waterVapor(), 1e-15, "the water its own");
         var barely = model.state(tw, saturation * (1 - 1e-9), none, none, 1, 0, saturation * (1 - 1e-9));
-        assertSame(barely, model.phaseCheck(barely, true, 0, null, null, () -> {}), "a trace of steam is not added");
+        assertSame(barely, model.phaseCheck(barely, true, null, 0, null, null, () -> {}), "a trace of steam is not added");
     }
 
     /**

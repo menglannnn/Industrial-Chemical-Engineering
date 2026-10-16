@@ -121,13 +121,14 @@ public final class InventoryEquilibrium {
      * the TP answer finds a phase missing, the vessel is seeded at its own split, the closure started from the TP answer
      * with the phases the vessel holds, and no populated phase set is swapped for another on a TP verdict: a vessel of pure
      * water at its saturation line keeps its liquid and gains the steam its volume and energy give. A phase the check
-     * removed from a converged answer is not added again within this solve (A85); a failed iterate's fold reads that record
-     * and never writes it (decision D28 A'), so a phase it removed comes back where a converged answer finds it missing,
-     * and a repeated regime is the cycle that refuses the solve. One rule for a vessel's own closure ({@link #solve}) and
-     * for the crystal refresh's joint closure (decision D30), so a phase that has no room leaves both.
+     * removed from a converged answer, or the own split refused (the D26 amendment), is not added again within this solve
+     * (A85); a failed iterate's check reads that record and never writes it (decision D28 A'), so a phase it removed comes
+     * back where a converged answer finds it missing, and a repeated regime is the cycle that refuses the solve. One rule
+     * for a vessel's own closure ({@link #solve}) and for the crystal refresh's joint closure (decision D30), so a phase
+     * that has no room leaves both.
      */
     static FluidThermodynamics.State passes(FluidThermodynamics model,FluidThermodynamics.State state,Closure closure,Runnable checkpoint) {
-        var seen=new HashSet<String>();int excluded=0;
+        var seen=new HashSet<String>();int[] excluded={0};
         UnaryOperator<FluidThermodynamics.State> own=closure::split;
         for(int pass=0;pass<16;pass++) {
             checkpoint.run();if(!seen.add(regime(state)))throw new SparseNewton.Nonconvergence("Inventory equilibrium phase cycle");
@@ -136,15 +137,16 @@ public final class InventoryEquilibrium {
             catch(SparseNewton.Nonconvergence failure) {
                 if(failure.lastVariables()==null)throw failure;
                 var trial=closure.iterate(state,failure.lastVariables());
-                var checked=model.phaseCheck(trial,false,excluded,null,own,checkpoint);
+                // Decision D28 A': a failed closure's check is a trial layout, not a verdict: it reads the A85 record and never
+                // writes to it (a copy). Laid out again with the solids of the pass's state (the vessel's own closure: its
+                // inventory's).
+                var checked=model.phaseCheck(trial,false,excluded.clone(),0,null,own,checkpoint);
                 if(regime(checked).equals(regime(state)))throw failure;
-                // Decision D28 A': a failed closure's fold is a trial layout, not a verdict: it reads the A85 record and never
-                // writes to it. Laid out again with the solids of the pass's state (the vessel's own closure: its inventory's).
                 state=checked.withSolids(state.solids());continue;
             }
             if(candidate==state)return state;
-            var checked=model.phaseCheck(candidate,false,excluded,null,own,checkpoint);
-            if(checked!=candidate){excluded|=FluidThermodynamics.phaseBits(candidate)&~FluidThermodynamics.phaseBits(checked);state=checked;continue;}
+            var checked=model.phaseCheck(candidate,false,excluded,0,null,own,checkpoint);
+            if(checked!=candidate){state=checked;continue;}
             return candidate;
         }
         throw new SparseNewton.Nonconvergence("Inventory equilibrium phase limit");
@@ -209,11 +211,12 @@ public final class InventoryEquilibrium {
      * holding the phases to lay the vessel out with), the wall's work booked from the bag volume {@code workFrom}: the
      * equilibrium of its energy and volume while the wall is taut, of its enthalpy at the ambient pressure while slack (of
      * its energy there with {@code workFrom} {@code NaN}, as at the interval's refresh, {@link #solve}).
-     * It is only a seed, so where the closure stops short of its tolerance its last iterate, the nearest it came, is the
-     * split, given the inventory's amounts ({@link ConservativeTransport#repartition}): from the TP split of a liquid-full
-     * vessel cooled past its bubble point (several vessel volumes of vapour) the closure's 24 iterations end within about
-     * 1e-5 of the bubble it holds. {@code null} where the closure leaves no iterate or refuses the state; the check then
-     * seeds its TP-based state.
+     * Where the closure stops short of its tolerance its last iterate, the nearest it came, is the split, given the
+     * inventory's amounts and restated with the trace fold ({@link ConservativeTransport#repartition}): from the TP split of
+     * a liquid-full vessel cooled past its bubble point (several vessel volumes of vapour) the closure's 24 iterations end
+     * within about 1e-5 of the bubble it holds. Converged or not, the split answers by where the closure went: a phase it
+     * drove under the trace share is not in it, and the check refuses that phase for the solve (the D26 amendment).
+     * {@code null} where the closure leaves no iterate or refuses the state; the check then seeds its TP-based state.
      */
     static FluidThermodynamics.State split(FluidThermodynamics model,FluidThermodynamics.State start,PassiveNetwork.Inventory inventory,double workFrom,
                                            Runnable checkpoint) {

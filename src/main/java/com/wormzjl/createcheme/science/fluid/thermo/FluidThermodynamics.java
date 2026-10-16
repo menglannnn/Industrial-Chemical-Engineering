@@ -747,14 +747,19 @@ public final class FluidThermodynamics {
      * <li>a node holding every phase its material can form (both hydrocarbon phases or none, both water phases or none)
      * has none to add, and no TP answer is formed;</li>
      * <li>where the TP answer ({@link #flashTP}: {@link #equilibriumTP} with its fold) holds a phase the node lacks that is
-     * not among {@code excluded} ({@link #phaseBits}: the phases the trace rule removed from the node in this solve, A85),
-     * the node is seeded at its own split (D26), the equilibrium of what it holds: a pipe junction's PH answer at its
-     * pressure and enthalpy ({@link #equilibriumPH}), a vessel's {@code vesselSplit}, the network's closure of its
-     * inventory (UV while its wall is taut, PH at the ambient pressure while slack), started from the TP answer with the
-     * node's populated phases it lacks ({@link #tpSeed}). Where the node's own flash fails, or none is given, that
-     * TP-based state seeds instead; it is only a seed, the node's rows give the answer;</li>
-     * <li>the seed is restated with the fold (D34, and D41's carried gas at a junction) and taken only when it then holds a
-     * phase the node lacks that is not excluded: nothing the fold removes is added, so the check and the fold agree.</li>
+     * not in the solve's record ({@code record}, A85), the node's own split decides it (D26), the equilibrium of what it
+     * holds: a pipe junction's PH answer at its pressure and enthalpy ({@link #equilibriumPH}), a vessel's
+     * {@code vesselSplit}, the network's closure of its inventory (UV while its wall is taut, PH at the ambient pressure
+     * while slack), started from the TP answer with the node's populated phases it lacks ({@link #tpSeed}). Where the
+     * node's own flash fails, or none is given, that TP-based state seeds instead; it is only a seed, the node's rows give
+     * the answer;</li>
+     * <li>the own split decides by where its closure went, converged or not (the D26 amendment of 2026-10-16): a proposed
+     * phase it drove under the trace share, which the seed's fold (D34, and D41's carried gas at a junction) then removes,
+     * is refused, and the refusal is written to the record, so the TP answer does not propose it again in this solve: a
+     * boiling liquid in a vessel with no room for a bubble pressurises and stays liquid, a drop formed in a gas at its dew
+     * point re-evaporates. A proposed phase that stands seeds the node, and the seed is taken only when it then holds a
+     * phase the node lacks that is not in the record: nothing the fold removes is added, so the check and the fold
+     * agree.</li>
      * </ul>
      * The rule decides which phases a node is laid out with; how much of each it holds is its rows' answer. It holds for
      * any material: a pure water node at its saturation pressure, whose TP answer is all liquid on one side and all steam
@@ -764,31 +769,44 @@ public final class FluidThermodynamics {
      * start with the gas saturated with steam where that makes the gas the larger phase (the bubbles grow), as a dry
      * carried gas where it does not.
      *
-     * <p>{@code junction}: whether the node is a pipe junction (the carried gas of D41 in the fold, its own split the PH
-     * answer); {@code prepared}, when given, is the node's prepared temperature state (used only at exactly that
-     * temperature); {@code vesselSplit}, a vessel's own split from a start holding the phases to lay it out with, or
-     * {@code null} where the vessel's flash fails (ignored for a junction).
+     * <p>{@code record}, {@code at}: the solve's A85 record of the node's phases ({@link #phaseBits}), {@code record[at]}:
+     * read as the phases the solve removed or refused, which are not added, and written with the phases this check removes
+     * (the fold, a phase the seed lacks) and refuses; {@code null} reads none and writes nothing. A trial check (a failed
+     * iterate, decision D28 A') passes a copy. {@code junction}: whether the node is a pipe junction (the carried gas of
+     * D41 in the fold, its own split the PH answer); {@code prepared}, when given, is the node's prepared temperature state
+     * (used only at exactly that temperature); {@code vesselSplit}, a vessel's own split from a start holding the phases to
+     * lay it out with, or {@code null} where the vessel's flash fails (ignored for a junction).
      *
      * @return {@code state} itself when it keeps its phases and gains none; otherwise the node's new seed
      */
-    public State phaseCheck(State state,boolean junction,int excluded,Prepared prepared,UnaryOperator<State> vesselSplit,Runnable checkpoint) {
-        var kept=folded(state,junction);
+    public State phaseCheck(State state,boolean junction,int[] record,int at,Prepared prepared,UnaryOperator<State> vesselSplit,Runnable checkpoint) {
+        var kept=folded(state,junction);var checked=kept;
+        int excluded=record==null?0:record[at],refused=0;
         boolean hydrocarbonComplete=(kept.liquidProperties()==null)==(kept.vaporProperties()==null);
         boolean waterComplete=kept.waterLiquid()>0&&kept.waterVapor()>0||kept.waterLiquid()+kept.waterVapor()==0;
-        if(hydrocarbonComplete&&waterComplete)return kept;
-        if(prepared!=null&&prepared.temperature()!=kept.temperature())prepared=null;
-        int n=hydrocarbon.componentCount();double[] totals=new double[n+1];
-        for(int i=0;i<n;i++)totals[i]=kept.liquidView()[i]+kept.vaporView()[i];
-        totals[n]=kept.waterLiquid()+kept.waterVapor();
-        var equilibrium=folded(equilibriumTP(kept.temperature(),kept.pressure(),totals,checkpoint,prepared).withSolidState(kept.solids(),kept.solidMoments()),junction);
-        if((phaseBits(equilibrium)&~phaseBits(kept)&~excluded)==0)return kept;
-        var start=tpSeed(kept,equilibrium,prepared);
-        // A junction's energy is its enthalpy (its mixing rows, D46): the solve's, before the fold restated it.
-        State own=junction?equilibriumPH(kept.temperature(),kept.pressure(),state.enthalpy()-state.solidMoments().enthalpy(state.temperature(),state.pressure()),totals,checkpoint)
-                :vesselSplit==null?null:vesselSplit.apply(start);
-        SolverDiagnostics.count(own==null?SolverDiagnostics.phaseSeedFallbacks:SolverDiagnostics.phaseSeeds);
-        var seed=folded(own==null?start:own.withSolidState(kept.solids(),kept.solidMoments()),junction);
-        return (phaseBits(seed)&~phaseBits(kept)&~excluded)==0?kept:seed;
+        if(!(hydrocarbonComplete&&waterComplete)) {
+            if(prepared!=null&&prepared.temperature()!=kept.temperature())prepared=null;
+            int n=hydrocarbon.componentCount();double[] totals=new double[n+1];
+            for(int i=0;i<n;i++)totals[i]=kept.liquidView()[i]+kept.vaporView()[i];
+            totals[n]=kept.waterLiquid()+kept.waterVapor();
+            var equilibrium=folded(equilibriumTP(kept.temperature(),kept.pressure(),totals,checkpoint,prepared).withSolidState(kept.solids(),kept.solidMoments()),junction);
+            int proposed=phaseBits(equilibrium)&~phaseBits(kept)&~excluded;
+            if(proposed!=0) {
+                var start=tpSeed(kept,equilibrium,prepared);
+                // A junction's energy is its enthalpy (its mixing rows, D46): the solve's, before the fold restated it.
+                State own=junction?equilibriumPH(kept.temperature(),kept.pressure(),state.enthalpy()-state.solidMoments().enthalpy(state.temperature(),state.pressure()),totals,checkpoint)
+                        :vesselSplit==null?null:vesselSplit.apply(start);
+                SolverDiagnostics.count(own==null?SolverDiagnostics.phaseSeedFallbacks:SolverDiagnostics.phaseSeeds);
+                var seed=folded(own==null?start:own.withSolidState(kept.solids(),kept.solidMoments()),junction);
+                // The D26 amendment: the own split's verdict on a proposed phase is where its closure took it; the TP-based
+                // fallback seed is no closure and refuses nothing.
+                if(own!=null)refused=proposed&~phaseBits(seed);
+                if(refused!=0)SolverDiagnostics.count(SolverDiagnostics.phaseRefusals);
+                if((phaseBits(seed)&~phaseBits(kept)&~excluded)!=0)checked=seed;
+            }
+        }
+        if(record!=null)record[at]|=phaseBits(state)&~phaseBits(checked)|refused;
+        return checked;
     }
     /**
      * The TP-based state of {@link #phaseCheck} (decision D26): the TP answer {@code equilibrium} at {@code kept}'s
