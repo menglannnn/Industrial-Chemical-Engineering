@@ -745,7 +745,10 @@ public final class FluidThermodynamics {
      * <li>a phase leaves only when the solve empties it: the trace fold ({@link #folded}, D34) removes a phase {@code state}
      * holds below the trace share, also where {@code state} is an unsuccessful solve's last iterate;</li>
      * <li>a node holding every phase its material can form (both hydrocarbon phases or none, both water phases or none)
-     * has none to add, and no TP answer is formed;</li>
+     * has none to add, and no TP answer is formed. A stand-in liquid ({@link #condensedShareOnly}: a crystal's share
+     * carried condensed between refreshes, crystal species only beside a vapour) is no phase of the node's own (owner
+     * decision D31 B, for every node): it carries the frost's energy as a liquid's, and it counts neither towards the
+     * node's liquid nor, in a TP answer, as a liquid the node lacks ({@link #ownPhaseBits});</li>
      * <li>where the TP answer ({@link #flashTP}: {@link #equilibriumTP} with its fold) holds a phase the node lacks that is
      * not in the solve's record ({@code record}, A85), the node's own split decides it (D26), the equilibrium of what it
      * holds: a pipe junction's PH answer at its pressure and enthalpy ({@link #equilibriumPH}), a vessel's
@@ -781,8 +784,8 @@ public final class FluidThermodynamics {
      */
     public State phaseCheck(State state,boolean junction,int[] record,int at,Prepared prepared,UnaryOperator<State> vesselSplit,Runnable checkpoint) {
         var kept=folded(state,junction);var checked=kept;
-        int excluded=record==null?0:record[at],refused=0;
-        boolean hydrocarbonComplete=(kept.liquidProperties()==null)==(kept.vaporProperties()==null);
+        int excluded=record==null?0:record[at],refused=0,held=ownPhaseBits(kept);
+        boolean hydrocarbonComplete=held==phaseBits(kept)&&(kept.liquidProperties()==null)==(kept.vaporProperties()==null);
         boolean waterComplete=kept.waterLiquid()>0&&kept.waterVapor()>0||kept.waterLiquid()+kept.waterVapor()==0;
         if(!(hydrocarbonComplete&&waterComplete)) {
             if(prepared!=null&&prepared.temperature()!=kept.temperature())prepared=null;
@@ -790,7 +793,7 @@ public final class FluidThermodynamics {
             for(int i=0;i<n;i++)totals[i]=kept.liquidView()[i]+kept.vaporView()[i];
             totals[n]=kept.waterLiquid()+kept.waterVapor();
             var equilibrium=folded(equilibriumTP(kept.temperature(),kept.pressure(),totals,checkpoint,prepared).withSolidState(kept.solids(),kept.solidMoments()),junction);
-            int proposed=phaseBits(equilibrium)&~phaseBits(kept)&~excluded;
+            int proposed=ownPhaseBits(equilibrium)&~held&~excluded;
             if(proposed!=0) {
                 var start=tpSeed(kept,equilibrium,prepared);
                 // A junction's energy is its enthalpy (its mixing rows, D46): the solve's, before the fold restated it.
@@ -800,14 +803,21 @@ public final class FluidThermodynamics {
                 var seed=folded(own==null?start:own.withSolidState(kept.solids(),kept.solidMoments()),junction);
                 // The D26 amendment: the own split's verdict on a proposed phase is where its closure took it; the TP-based
                 // fallback seed is no closure and refuses nothing.
-                if(own!=null)refused=proposed&~phaseBits(seed);
+                if(own!=null)refused=proposed&~ownPhaseBits(seed);
                 if(refused!=0)SolverDiagnostics.count(SolverDiagnostics.phaseRefusals);
-                if((phaseBits(seed)&~phaseBits(kept)&~excluded)!=0)checked=seed;
+                if((ownPhaseBits(seed)&~held&~excluded)!=0)checked=seed;
             }
         }
         if(record!=null)record[at]|=phaseBits(state)&~phaseBits(checked)|refused;
         return checked;
     }
+    /**
+     * {@link #phaseBits} of the phases a node holds as its own, for {@link #phaseCheck} (owner decision D31 B, for every
+     * node): a stand-in liquid ({@link #condensedShareOnly}) is a crystal's condensed share, no fluid phase, so its liquid
+     * bit is not set. The stand-in stays the energy carrier of the frost between refreshes; it has no vote on which phases
+     * the node holds or lacks.
+     */
+    private int ownPhaseBits(State state){return condensedShareOnly(state)?phaseBits(state)&~1:phaseBits(state);}
     /**
      * The TP-based state of {@link #phaseCheck} (decision D26): the TP answer {@code equilibrium} at {@code kept}'s
      * temperature and pressure, for {@code kept}'s totals, with the populated phases of {@code kept} it lacks, so that no
@@ -946,7 +956,9 @@ public final class FluidThermodynamics {
      * {@link #adopt}): a liquid holding crystal species only, beside a vapour, as a frost answer's crystal is carried. It is
      * no phase of the answer, so its composition says nothing of which components a liquid there holds: the trace support
      * reads the answer's own fluid phase, the vapour, and the stand-in admits every component the node holds, as the
-     * supersaturated solution it stands for ({@code PhaseLayout.support}). Never on a package without crystals.
+     * supersaturated solution it stands for ({@code PhaseLayout.support}). Nor does it vote in the outer phase check
+     * (owner decision D31 B, {@link #phaseCheck}): it is neither a liquid the node holds nor one a TP answer proposes.
+     * Never on a package without crystals.
      */
     public boolean condensedShareOnly(State state) {
         if(crystalIds.isEmpty()||!(state.liquidVolume()>0)||state.vaporProperties()==null)return false;
