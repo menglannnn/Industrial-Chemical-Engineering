@@ -10,6 +10,8 @@ import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
 
 class WorldTopologyLedgerTest {
+    /** The models a decoded topology reads its pending recoveries with: none of these ledgers has one. */
+    private static final java.util.function.Function<FluidCheckpointCodec.PackageKey,FluidThermodynamics> NO_RECOVERIES=key->{throw new AssertionError("no pending recovery to read");};
     /** The queued events a batch may take, in queue order: those that meet no earlier queued event (identities and
      * positions), as PhysicalRegistry decides from the footprints. */
     private static List<WorldTopologyLedger.Event> ready(WorldTopologyLedger ledger) {
@@ -34,7 +36,7 @@ class WorldTopologyLedgerTest {
         assertEquals(List.of(first.event(),second.event()),ready(ledger));
         var applied=ledger.applyBatch(List.of(second.event().id()),List.of(),List.of(),new double[com.wormzjl.createcheme.science.material.MaterialTestBasis.NETWORK+1],3);ledger.commit(applied);
         assertEquals(Set.of(2L),ledger.active().keySet());assertEquals(List.of(first.event()),ledger.snapshot().events());assertEquals(1,ledger.snapshot().events().getFirst().tick());
-        var saved=ledger.snapshot();var restored=new WorldTopologyLedger(FluidCheckpointCodec.decodeTopology(FluidCheckpointCodec.encodeTopology(saved),saved.onlineTick()));
+        var saved=ledger.snapshot();var restored=new WorldTopologyLedger(FluidCheckpointCodec.decodeTopology(FluidCheckpointCodec.encodeTopology(saved),saved.onlineTick(),NO_RECOVERIES));
         assertEquals(Set.of(1L,2L),restored.latest().keySet());restored.commit(applyFirst(restored,List.of(),List.of(),new double[com.wormzjl.createcheme.science.material.MaterialTestBasis.NETWORK+1],3));assertEquals(Set.of(1L,2L),restored.active().keySet());
         assertThrows(IllegalStateException.class,()->ledger.commit(applied));
     }
@@ -55,7 +57,7 @@ class WorldTopologyLedgerTest {
     @Test void pendingPhysicalEventsRoundTripWithControlSettingsAndTheirOriginalTimestamps() {
         var ledger=new WorldTopologyLedger(WorldTopologyLedger.Snapshot.empty());for(int i=0;i<40;i++)ledger.tick();
         var registration=record(1,Kind.PUMP);var edit=ledger.queue(List.of(new WorldTopologyLedger.Edit(1,registration)),Set.of(1L),2);ledger.commit(edit);
-        for(int i=0;i<10;i++)ledger.tick();var saved=ledger.snapshot();var restored=new WorldTopologyLedger(FluidCheckpointCodec.decodeTopology(FluidCheckpointCodec.encodeTopology(saved),saved.onlineTick()));
+        for(int i=0;i<10;i++)ledger.tick();var saved=ledger.snapshot();var restored=new WorldTopologyLedger(FluidCheckpointCodec.decodeTopology(FluidCheckpointCodec.encodeTopology(saved),saved.onlineTick(),NO_RECOVERIES));
         assertEquals(50,restored.onlineTick());assertEquals(40,restored.snapshot().events().getFirst().tick());assertEquals(registration,restored.latest().get(1L));assertTrue(restored.snapshot().active().isEmpty());
     }
     @Test void constructionAndDestructionCountOnceAndNeverReuseTheOldIdentity() {
@@ -86,12 +88,12 @@ class WorldTopologyLedgerTest {
     }
     @Test void topologyWithoutAnyIslandStillRejectsAChangedIdentityAxis() {
         var original=MaterialCatalog.bundled();var saved=WorldTopologyLedger.Snapshot.empty(original);
-        var decoded=FluidCheckpointCodec.decodeTopology(FluidCheckpointCodec.encodeTopology(saved),saved.onlineTick());assertEquals(saved.basis(),decoded.basis());
+        var decoded=FluidCheckpointCodec.decodeTopology(FluidCheckpointCodec.encodeTopology(saved),saved.onlineTick(),NO_RECOVERIES);assertEquals(saved.basis(),decoded.basis());
         decoded.basis().requireCurrent(original);
         assertThrows(IllegalArgumentException.class,()->decoded.basis().requireCurrent(reordered()));
         // The basis lies near the end of the topology: one cut short of it is refused, never read without it.
         var bytes=FluidCheckpointCodec.encodeTopology(saved);
-        assertThrows(IllegalArgumentException.class,()->FluidCheckpointCodec.decodeTopology(Arrays.copyOf(bytes,bytes.length-2),0));
+        assertThrows(IllegalArgumentException.class,()->FluidCheckpointCodec.decodeTopology(Arrays.copyOf(bytes,bytes.length-2),0,NO_RECOVERIES));
     }
     @Test void capturedAccountingAndSerializationNeverReadTheReloadedGlobalAxis() {
         var basis=new WorldTopologyLedger.FluidBasis("test:nitrogen",List.of("Nitrogen","Water"),"0".repeat(64)+":"+"0".repeat(64));
@@ -100,6 +102,6 @@ class WorldTopologyLedgerTest {
         var saved=ledger.snapshot();assertEquals(basis,saved.basis());assertEquals(2,saved.constructed().moles().length);
         var next=saved.constructed().plus(List.of(),new double[saved.basis().components().size()]);
         assertArrayEquals(saved.constructed().moles(),next.moles());
-        var decoded=FluidCheckpointCodec.decodeTopology(FluidCheckpointCodec.encodeTopology(saved),saved.onlineTick());assertEquals(saved.basis(),decoded.basis());
+        var decoded=FluidCheckpointCodec.decodeTopology(FluidCheckpointCodec.encodeTopology(saved),saved.onlineTick(),NO_RECOVERIES);assertEquals(saved.basis(),decoded.basis());
     }
 }

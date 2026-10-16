@@ -1,14 +1,19 @@
 package com.wormzjl.createcheme.runtime.fluid;
 
+import com.wormzjl.createcheme.fluid.support.FluidTestSupport;
 import com.wormzjl.createcheme.science.fluid.network.*;
+import com.wormzjl.createcheme.science.fluid.state.ParticleSize;
+import com.wormzjl.createcheme.science.fluid.state.SolidInventory;
 import com.wormzjl.createcheme.science.fluid.thermo.FluidThermodynamics;
 import com.wormzjl.createcheme.science.material.MaterialCatalog;
+import com.wormzjl.createcheme.science.material.SolidMaterialCatalog.SolidMaterial;
 import net.minecraft.nbt.*;
 import java.util.*;
 import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
 
-/** Checkpoint format 9, one island: round trip, field refusals, a changed basis, energy datum or velocity limit. */
+/** Checkpoint format 9, one island: round trip, field refusals, a changed basis, energy datum or velocity limit, and
+ * solids read back as their records (crystals beside custom solids). */
 class FluidCheckpointCodecTest {
     private static final String PACKAGE="createcheme:tjl20_methane_nitrogen";
     private final FluidThermodynamics model=FluidThermodynamics.forNetwork(MaterialCatalog.bundled(),PACKAGE);
@@ -96,14 +101,15 @@ class FluidCheckpointCodecTest {
         var player=UUID.randomUUID();
         var events=List.of(new WorldTopologyLedger.Event(UUID.randomUUID(),10,List.of(new WorldTopologyLedger.Edit(3,retuned),new WorldTopologyLedger.Edit(4,null)),Set.of(2L,3L,4L)),
                 new WorldTopologyLedger.Event(UUID.randomUUID(),12,List.of(new WorldTopologyLedger.Edit(2,null)),Set.of(2L),new WorldTopologyLedger.Recovery(2,player)));
-        var particle=new com.wormzjl.createcheme.science.material.SolidMaterialCatalog.SolidMaterial("createcheme:demo_particle","r1",2500,800);
+        // A recovery's solids are read back as records of the basis package, so its particles are the catalog's.
+        var particle=MaterialCatalog.bundled().solids().require("createcheme:demo_particle");
         var solids=new com.wormzjl.createcheme.science.fluid.state.SolidInventory(List.of(new com.wormzjl.createcheme.science.fluid.state.SolidInventory.Population(particle,com.wormzjl.createcheme.science.fluid.state.ParticleSize.micrometres("100"),.25)));
         var recoveries=Map.of(UUID.randomUUID(),new WorldTopologyLedger.RecoveredSolid(new PhysicalFluidTopology.Position("minecraft:overworld",3,65,-3),player,solids,12.5),
                 UUID.randomUUID(),new WorldTopologyLedger.RecoveredSolid(new PhysicalFluidTopology.Position("minecraft:the_nether",9,70,1),null,solids,-4));
         var moles=new double[count];moles[0]=3.5;moles[count-1]=-0.0+1e-9;
         var constructed=new WorldTopologyLedger.MaterialTotal(moles,4.25e6,Map.of("createcheme:demo_particle",.75));
         var world=new WorldTopologyLedger.Snapshot(12,9,Map.of(1L,reservoir,2L,pump,3L,valve,4L,pipe,5L,generator),events,constructed,WorldTopologyLedger.MaterialTotal.empty(count),empty.basis(),recoveries);
-        var bytes=FluidCheckpointCodec.encodeTopology(world);var decoded=FluidCheckpointCodec.decodeTopology(bytes,77);
+        var bytes=FluidCheckpointCodec.encodeTopology(world);var decoded=FluidCheckpointCodec.decodeTopology(bytes,77,key->model);
         assertEquals(77,decoded.onlineTick());assertEquals(9,decoded.nextIdentity());
         assertEquals(world.active(),decoded.active(),"devices, positions, kinds, geometries, controls, specs, slurries, revisions");
         assertEquals(world.events(),decoded.events(),"events: edits, removals, touched sets, recovery");
@@ -112,8 +118,8 @@ class FluidCheckpointCodecTest {
         assertEquals(world.basis(),decoded.basis());assertEquals(world.recoveries(),decoded.recoveries());
         assertArrayEquals(bytes,FluidCheckpointCodec.encodeTopology(decoded),"a decoded topology re-encodes to the same bytes");
         assertTrue(bytes.length<2_000,"binary topology of five devices: "+bytes.length+" bytes");
-        assertTrue(assertThrows(IllegalArgumentException.class,()->FluidCheckpointCodec.decodeTopology(Arrays.copyOf(bytes,bytes.length+1),0)).getMessage().contains("trailing bytes"));
-        assertThrows(IllegalArgumentException.class,()->FluidCheckpointCodec.decodeTopology(Arrays.copyOf(bytes,bytes.length/2),0));
+        assertTrue(assertThrows(IllegalArgumentException.class,()->FluidCheckpointCodec.decodeTopology(Arrays.copyOf(bytes,bytes.length+1),0,key->model)).getMessage().contains("trailing bytes"));
+        assertThrows(IllegalArgumentException.class,()->FluidCheckpointCodec.decodeTopology(Arrays.copyOf(bytes,bytes.length/2),0,key->model));
     }
     @Test void changingVelocityLimitPreservesSavedStockClocksAndAllowanceButInvalidatesTheOldAnchor() {
         var before=fixture();var image=FluidCheckpointCodec.encode(before,key->model);
@@ -178,12 +184,66 @@ class FluidCheckpointCodecTest {
                 PhysicalFluidTopology.Direction.UP,new PipeResistance.Geometry(1,.05,.000045,0),new FlowControl.Compressor(.05,3,1));
         var world=new WorldTopologyLedger.Snapshot(12,9,Map.of(4L,new WorldTopologyLedger.Registration(device,new FluidDeviceSpec(1,298.15,101325,nitrogen),2)),List.of(),
                 WorldTopologyLedger.MaterialTotal.empty(count),WorldTopologyLedger.MaterialTotal.empty(count),empty.basis(),Map.of());
-        var bytes=FluidCheckpointCodec.encodeTopology(world);var decoded=FluidCheckpointCodec.decodeTopology(bytes,12);
+        var bytes=FluidCheckpointCodec.encodeTopology(world);var decoded=FluidCheckpointCodec.decodeTopology(bytes,12,key->model);
         assertEquals(world.active(),decoded.active());assertArrayEquals(bytes,FluidCheckpointCodec.encodeTopology(decoded));
         // The control tag follows the facing byte and the geometry reference; find the one byte 3 whose change to 4 is refused.
         boolean refused=false;
         for(int i=0;i<bytes.length&&!refused;i++)if(bytes[i]==3){var corrupt=bytes.clone();corrupt[i]=4;
-            try{FluidCheckpointCodec.decodeTopology(corrupt,12);}catch(IllegalArgumentException e){refused=e.getMessage().contains("unknown control");}}
+            try{FluidCheckpointCodec.decodeTopology(corrupt,12,key->model);}catch(IllegalArgumentException e){refused=e.getMessage().contains("unknown control");}}
         assertTrue(refused,"an unknown control tag is refused");
+    }
+
+    // ---------------- solids name their records: crystals beside custom solids (D23, milestone M4) ----------------
+
+    private static final String PILOT="createcheme:pilot_cryogenic";
+    /** One pilot vessel, 0.1 m3 of 10 % CO2 in N2 at 170 K and 1 MPa (below its 192.75 K frost point) with 1 kg of the
+     * demo particle, after one 5 s interval: its refresh has deposited CO2-I beside the particles. */
+    private static PassiveNetwork depositedVessel(FluidThermodynamics pilot) {
+        double[] z={.9,0,0,.1,0};var unit=pilot.flashTP(170,1e6,z,()->{});double[] n=z.clone();for(int i=0;i<n.length;i++)n[i]*=.1/unit.volume();
+        var particles=new SolidInventory(List.of(new SolidInventory.Population(pilot.solids.require("createcheme:demo_particle"),ParticleSize.micrometres("100"),1)));
+        var vessel=new PassiveNetwork(List.of(new PassiveNetwork.Reservoir(101,0,pilot.flashTP(170,1e6,n,()->{}).withSolids(particles))),List.of());
+        return new PassiveIntervalSolver(pilot).solve(vessel,5,PassiveIntervalSolver.Settings.defaults(),()->{}).graph();
+    }
+    /** {@code graph} with its vessel holding {@code solids}: a stock the codec writes as it is given. */
+    private static PassiveNetwork holding(PassiveNetwork graph,SolidInventory solids) {
+        var node=graph.reservoirs().getFirst();var inventory=node.inventory();
+        return new PassiveNetwork(List.of(new PassiveNetwork.Reservoir(node.id(),node.elevation(),node.state().withSolids(solids),node.kind(),
+                new PassiveNetwork.Inventory(inventory.volume(),inventory.moles(),inventory.internalEnergy(),solids))),graph.pipes());
+    }
+    private static SolidInventory replaced(SolidInventory solids,SolidMaterial from,SolidMaterial to) {
+        return new SolidInventory(solids.populations().stream().map(p->p.material().equals(from)?new SolidInventory.Population(to,p.size(),p.massKg()):p).toList());
+    }
+    private static FluidCheckpointCodec.Checkpoint island(PassiveNetwork graph) {
+        var state=new IslandCoordinator.Snapshot(1,4,graph,new IslandClock.Snapshot(350,200,400,100),FallbackAllowance.NONE,Optional.empty(),Optional.empty(),"READY");
+        return new FluidCheckpointCodec.Checkpoint(List.of(new FluidCheckpointCodec.IslandEntry("minecraft:overworld",PILOT,state)));
+    }
+    /**
+     * Crystals ride the solids encoding (owner decision D23): a population's id names its record in the island's package,
+     * a crystal it admits or a custom solid. An id naming no record of the package, or saved constants that are not the
+     * record's, are refused with the fresh-world instruction; a deposited CO2-I comes back as the package's crystal
+     * record (component and energy offset included) beside the custom particles, bit for bit, and re-encodes to the same
+     * bytes. A crystal record and a custom solid never share an id, so an id names one record.
+     */
+    @Test void aCrystalIsReadBackAsItsRecordBesideACustomSolidAndAnIdNamingNoRecordIsRefused() {
+        var pilot=FluidTestSupport.model(MaterialCatalog.bundled(),PILOT);
+        var graph=depositedVessel(pilot);var solids=graph.reservoirs().getFirst().inventory().solids();
+        assertEquals(1,solids.crystals().size(),"the refresh deposited CO2-I: "+solids);assertEquals(2,solids.populations().size(),"beside the particles: "+solids);
+        var crystal=solids.crystals().getFirst().material();assertEquals("createcheme:crystal_carbon_dioxide_i",crystal.id());
+        var foreign=new SolidMaterial("createcheme:crystal_methane_i",crystal.revision(),crystal.density(),crystal.heatCapacity(),new SolidMaterial.Crystal("Methane",crystal.crystal().energyOffset()));
+        var unknown=FluidCheckpointCodec.encode(island(holding(graph,replaced(solids,crystal,foreign))),key->pilot);
+        var refusal=assertThrows(IllegalArgumentException.class,()->FluidCheckpointCodec.decode(unknown,key->pilot)).getMessage();
+        assertTrue(refusal.contains("createcheme:crystal_methane_i")&&refusal.contains(PILOT)&&refusal.contains("create a fresh world"),refusal);
+        var denser=new SolidMaterial(crystal.id(),crystal.revision(),crystal.density()*1.001,crystal.heatCapacity(),crystal.crystal());
+        var changed=FluidCheckpointCodec.encode(island(holding(graph,replaced(solids,crystal,denser))),key->pilot);
+        refusal=assertThrows(IllegalArgumentException.class,()->FluidCheckpointCodec.decode(changed,key->pilot)).getMessage();
+        assertTrue(refusal.contains("Saved solid properties differ")&&refusal.contains(crystal.id()),refusal);
+        var image=FluidCheckpointCodec.encode(island(graph),key->pilot);var loaded=FluidCheckpointCodec.decode(image,key->pilot);
+        var back=loaded.islands().getFirst().snapshot().graph().reservoirs().getFirst().inventory();
+        assertEquals(graph.reservoirs().getFirst().inventory(),back,"the vessel's stock, crystal and particles, bit for bit");
+        assertEquals(crystal.crystal(),back.solids().crystals().getFirst().material().crystal(),"the crystal's component and energy offset");
+        assertSameImage(image,FluidCheckpointCodec.encode(loaded,key->pilot),"a reloaded crystal checkpoint re-encodes to the same bytes");
+        var resources=new HashMap<>(MaterialCatalog.bundled().resources());
+        resources.put("data/createcheme/materials/solids/dry_ice.json","{\"schema_version\":1,\"id\":\""+crystal.id()+"\",\"revision\":\"r1\",\"density_kg_per_m3\":1562,\"heat_capacity_j_per_kg_kelvin\":1200}");
+        assertTrue(assertThrows(IllegalArgumentException.class,()->MaterialCatalog.parse(resources)).getMessage().contains("a solid id names one record"));
     }
 }

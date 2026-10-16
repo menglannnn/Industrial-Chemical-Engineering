@@ -45,6 +45,12 @@ import java.util.function.Function;
  * certified island's unit records its certificate base, not its materialised state, so while it stays certified its
  * unit never changes; a load materialises it from the base to the committed tick without a solve.
  *
+ * <p><b>Solids</b> (every stock, stream, cake and pending recovery): each population as its material's id, revision,
+ * density and heat capacity, then its size and mass. The id names the population's record in the island's package (the
+ * topology unit's: its basis package), a crystal the package admits or a custom solid (owner decision D23: crystals are
+ * solids); the reader takes the record, so a crystal comes back with its component and energy offset, and refuses an
+ * id that names no record of the package or saved constants that are not the record's.
+ *
  * <p>No other format is read: format 8 and older are refused with the instruction to create a fresh world (the
  * owner's standing rule on save compatibility; format 6 added the ports and the compressor of the phase-ports batch,
  * format 7 the end flows of the last interval, format 8 removed the core record's ledger of buffered transfers and
@@ -139,9 +145,15 @@ public final class FluidCheckpointCodec {
         w.varint(tables.compositionValues.size());for(var c:tables.compositionValues)w.sparse(c);
         w.append(body,0,body.size());return w.toByteArray();
     }
-    /** A topology {@link #encodeTopology} wrote, at {@code onlineTick}, validated as the ledger itself validates it. */
-    public static WorldTopologyLedger.Snapshot decodeTopology(byte[] bytes,long onlineTick){return topologyBody(new Reader(bytes,0,bytes.length,"topology unit"),onlineTick);}
-    private static WorldTopologyLedger.Snapshot topologyBody(Reader r,long onlineTick) {
+    /**
+     * A topology {@link #encodeTopology} wrote, at {@code onlineTick}, validated as the ledger itself validates it. Its
+     * pending recoveries' solids are read as records of its basis package, whose model {@code models} gives (asked only
+     * when a recovery is pending).
+     */
+    public static WorldTopologyLedger.Snapshot decodeTopology(byte[] bytes,long onlineTick,Function<PackageKey,FluidThermodynamics> models) {
+        return topologyBody(new Reader(bytes,0,bytes.length,"topology unit"),onlineTick,models);
+    }
+    private static WorldTopologyLedger.Snapshot topologyBody(Reader r,long onlineTick,Function<PackageKey,FluidThermodynamics> models) {
         long nextIdentity=r.varlong();
         int textCount=r.varint(MAXIMUM_STRINGS);var texts=new String[textCount];for(int i=0;i<textCount;i++)texts[i]=r.text(MAXIMUM_TEXT);
         int geometryCount=r.varint(MAXIMUM_PIPES);var geometries=new PipeResistance.Geometry[geometryCount];for(int i=0;i<geometryCount;i++)geometries[i]=new PipeResistance.Geometry(r.f64(),r.f64(),r.f64(),r.f64());
@@ -162,9 +174,10 @@ public final class FluidCheckpointCodec {
         String packageId=text(r,texts);int componentCount=r.varint(MAXIMUM_ARRAY);var components=new ArrayList<String>(componentCount);for(int i=0;i<componentCount;i++)components.add(text(r,texts));
         var basis=new WorldTopologyLedger.FluidBasis(packageId,components,text(r,texts));
         int recoveryCount=r.varint(WorldTopologyLedger.MAXIMUM_EVENTS);var recoveries=new HashMap<UUID,WorldTopologyLedger.RecoveredSolid>();
+        var model=recoveryCount==0?null:Objects.requireNonNull(models.apply(new PackageKey(basis.packageId())));
         for(int i=0;i<recoveryCount;i++) {
             var id=uuid(r);var position=position(r,texts);var player=r.bool()?uuid(r):null;
-            if(recoveries.put(id,new WorldTopologyLedger.RecoveredSolid(position,player,solids(r,null),r.f64()))!=null)throw r.invalid("duplicate recovery "+id);
+            if(recoveries.put(id,new WorldTopologyLedger.RecoveredSolid(position,player,solids(r,model),r.f64()))!=null)throw r.invalid("duplicate recovery "+id);
         }
         r.end();
         var snapshot=new WorldTopologyLedger.Snapshot(onlineTick,nextIdentity,active,events,constructed,destroyed,basis,recoveries);
@@ -218,10 +231,10 @@ public final class FluidCheckpointCodec {
     static byte[] topologyUnit(WorldTopologyLedger.Snapshot world,long generation) {
         var w=new Writer();header(w,TOPOLOGY,0,0,generation);w.raw(encodeTopology(world));return w.toByteArray();
     }
-    static WorldTopologyLedger.Snapshot topology(byte[] data,int offset,int length,long generation,long epoch) {
+    static WorldTopologyLedger.Snapshot topology(byte[] data,int offset,int length,long generation,long epoch,Function<PackageKey,FluidThermodynamics> models) {
         var r=new Reader(data,offset,length,"topology unit");
         requireHeader(r,TOPOLOGY,0,0,generation,"the topology");
-        return topologyBody(r,epoch);
+        return topologyBody(r,epoch,models);
     }
     static boolean verifying(){return VERIFY;}
 
@@ -497,13 +510,22 @@ public final class FluidCheckpointCodec {
         int count=r.varint(SolidInventory.MAXIMUM_POPULATIONS);if(count==0)return SolidInventory.EMPTY;
         var populations=new ArrayList<SolidInventory.Population>(count);
         for(int i=0;i<count;i++) {
-            var material=new SolidMaterial(r.text(MAXIMUM_TEXT),r.text(MAXIMUM_TEXT),r.f64(),r.f64());
-            populations.add(new SolidInventory.Population(material,new ParticleSize(r.text(MAXIMUM_TEXT)),r.f64()));
+            var saved=new SolidMaterial(r.text(MAXIMUM_TEXT),r.text(MAXIMUM_TEXT),r.f64(),r.f64());
+            populations.add(new SolidInventory.Population(record(saved,model),new ParticleSize(r.text(MAXIMUM_TEXT)),r.f64()));
         }
         var solids=new SolidInventory(populations);
         if(solids.populations().size()!=count)throw r.invalid("solid populations not in canonical form");
-        // A topology unit's recoveries are validated against the solid catalog when the world starts (FluidPropertyReloadGuard.validateSolids).
-        if(model!=null)model.solids.validate(solids);return solids;
+        return solids;
+    }
+    /** The record a saved population's id names in the model's package ({@link FluidThermodynamics#solid}), whose
+     * constants the saved ones must equal exactly: a population is read back as its record, crystal or custom solid. */
+    private static SolidMaterial record(SolidMaterial saved,FluidThermodynamics model) {
+        SolidMaterial record;
+        try{record=model.solid(saved.id());}
+        catch(IllegalArgumentException unknown){throw new IllegalArgumentException(unknown.getMessage()+" (no migration; create a fresh world)",unknown);}
+        if(!saved.revision().equals(record.revision())||Double.compare(saved.density(),record.density())!=0||Double.compare(saved.heatCapacity(),record.heatCapacity())!=0)
+            throw new IllegalArgumentException("Saved solid properties differ from the loaded data (no migration; create a fresh world): "+saved.id());
+        return record;
     }
     private static List<FlowControl.Mode> modes(Reader r,int maximum) {
         int count=r.varint(maximum);var modes=new ArrayList<FlowControl.Mode>(count);

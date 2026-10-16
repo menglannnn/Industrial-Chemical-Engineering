@@ -347,7 +347,10 @@ public final class FluidCheckpointStore {
             var unit=core.topology();
             if(unit!=null&&unit.pack()==p) {
                 if(!MessageDigest.isEqual(FluidCheckpointCodec.sha256(bytes,(int)unit.offset(),unit.length()),unit.sha256()))throw new IllegalArgumentException("Topology checkpoint checksum mismatch");
-                world=Optional.of(FluidCheckpointCodec.topology(bytes,(int)unit.offset(),unit.length(),core.topologyGeneration(),core.epoch()));
+                // Pending recoveries read their solids as records of the topology's basis package: the model checked
+                // against the package table when an island uses it, else the world's own.
+                world=Optional.of(FluidCheckpointCodec.topology(bytes,(int)unit.offset(),unit.length(),core.topologyGeneration(),core.epoch(),
+                        key->{var known=byKey.get(key);return known!=null?known:models.apply(key);}));
             }
         }
         var refs=new LinkedHashMap<Long,Ref>();

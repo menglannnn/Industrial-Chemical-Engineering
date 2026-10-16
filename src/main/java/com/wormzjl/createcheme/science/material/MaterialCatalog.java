@@ -118,6 +118,9 @@ public final class MaterialCatalog {
         this.propertyValidity = Map.copyOf(propertyValidity); this.packageValidity = Map.copyOf(packageValidity);
         this.spines = Map.copyOf(spines); this.crystals = Map.copyOf(crystals);
         this.solids=SolidMaterialCatalog.parse(resources);
+        // A solid population names its record by id (owner decision D23: crystals are solids), a crystal or a custom solid:
+        // the two kinds never share an id.
+        for(String id:this.crystals.keySet())if(solids.materials().containsKey(id))throw new IllegalArgumentException("crystals: "+id+" is also a solid material record; a solid id names one record");
         this.fluidData=Objects.requireNonNull(fluidData);
         this.liquidMixtures = Map.copyOf(liquidMixtures);
         this.presets=Objects.requireNonNull(presets);

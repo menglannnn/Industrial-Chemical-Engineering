@@ -4,6 +4,7 @@ import com.wormzjl.createcheme.science.column.v3.thermo.V3WaterProperties;
 import com.wormzjl.createcheme.science.fluid.diagnostics.SolverDiagnostics;
 import com.wormzjl.createcheme.science.fluid.transport.MixtureViscosity;
 import com.wormzjl.createcheme.science.material.MaterialCatalog;
+import com.wormzjl.createcheme.science.material.SolidMaterialCatalog;
 import com.wormzjl.createcheme.science.thermo.PengRobinsonKernel;
 import com.wormzjl.createcheme.science.thermo.TraceTruncationPolicy;
 import com.wormzjl.createcheme.science.thermo.phase.EquilibriumResult;
@@ -42,7 +43,7 @@ public final class FluidThermodynamics {
     public final HydrocarbonModel hydrocarbon;
     public final com.wormzjl.createcheme.science.fluid.transport.SlurryTransport.Settings solidSettings;
     public final MixtureViscosity viscosity;
-    public final com.wormzjl.createcheme.science.material.SolidMaterialCatalog solids;
+    public final SolidMaterialCatalog solids;
     public final double waterMolecularWeight;
     /** Resolved once from the catalog and package this model was built for, instead of through the
      * calculation context on every water evaluation: the context costs a {@code Context} allocation
@@ -146,6 +147,19 @@ public final class FluidThermodynamics {
             if(crystals==null)crystalSolids=crystals=NetworkCrystals.of(this,phaseEngine(),crystalIds,hydrocarbon.propertyPackage().id());
         }
         return crystals;
+    }
+    /**
+     * The record a solid population's material id names (owner decision D23: crystals are solids): a crystal this package
+     * admits ({@link #crystalSolids}), else a custom solid of the catalog ({@link #solids}); the catalog keeps the two kinds'
+     * ids apart, so an id names one record. An id that names neither is refused: nothing read back (a checkpoint's
+     * population, a pending recovery) can carry a solid this package does not define. Builds the crystals (and the
+     * phase engine) only for an id among the package's crystals.
+     */
+    public SolidMaterialCatalog.SolidMaterial solid(String id) {
+        if(crystalIds.contains(id))for(var crystal:crystalSolids().all())if(crystal.material().id().equals(id))return crystal.material();
+        var custom=solids.materials().get(id);
+        if(custom==null)throw new IllegalArgumentException("Unknown solid material: "+id+" names no crystal of package "+domain.packageId()+" and no solid material record");
+        return custom;
     }
     /**
      * The crystal answer of a vessel's refresh (owner decision D23): the equilibrium engine's answer for the vessel's fluid
