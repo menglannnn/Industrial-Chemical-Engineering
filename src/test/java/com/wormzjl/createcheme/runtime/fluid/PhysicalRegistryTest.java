@@ -310,7 +310,7 @@ class PhysicalRegistryTest {
         }
         var tanks=graph.reservoirs().stream().filter(n->n.kind()==PassiveNetwork.NodeKind.RESERVOIR).toList();
         assertEquals(2,tanks.size());
-        assertBooked(empty.plus(tanks,weights),placed.constructed(),start.constructed(),"the placement books both tanks as constructed, and no junction (D46)");
+        assertBooked(empty.plus(tanks,model.components(),weights),placed.constructed(),start.constructed(),"the placement books both tanks as constructed, and no junction (D46)");
         assertBooked(empty,placed.destroyed(),start.destroyed(),"a placement into an empty world destroys nothing");
         // Ten intervals of flow move the junctions' composition away from the mint.
         w.run(1_000);

@@ -76,6 +76,33 @@ class WorldTopologyLedgerTest {
         var ledger=new WorldTopologyLedger(snapshot);var changed=new WorldTopologyLedger.Registration(registration.device(),new FluidDeviceSpec(1,298.15,200000,registration.spec().composition()),1);
         assertThrows(IllegalStateException.class,()->ledger.queue(List.of(new WorldTopologyLedger.Edit(1,changed)),Set.of(1L),2));assertSame(snapshot,ledger.snapshot());
     }
+    /**
+     * A crystal is its component in another phase (owner decision D23): a pilot tank placed holding CO2 in N2 below its
+     * frost point and broken after its refresh deposited CO2-I books the same component moles and total energy destroyed
+     * as constructed. The dry ice enters the destroyed totals as CO2 moles with its true energy (its stored sensible part
+     * plus its energy offset times its mass), never as a solid's mass.
+     */
+    @Test void aTankBrokenHoldingDryIceBooksItsCrystalAsItsComponent() {
+        var catalog=com.wormzjl.createcheme.science.material.PilotCryogenicTestCatalog.catalog();
+        var pilot=FluidTestSupport.model(catalog,com.wormzjl.createcheme.science.material.PilotCryogenicTestCatalog.PACKAGE_ID);
+        // 10 % CO2 in N2 at 170 K and 1 MPa (frost point 192.75 K), 0.1 m3 at 12 m: placed as gas, its first refresh deposits CO2-I.
+        double[] z={.9,0,0,.1,0};var unit=pilot.flashTP(170,1e6,z,()->{});double[] n=z.clone();for(int i=0;i<n.length;i++)n[i]*=.1/unit.volume();
+        var placed=new PassiveNetwork.Reservoir(1,12,pilot.flashTP(170,1e6,n,()->{}));
+        var broken=new PassiveIntervalSolver(pilot).solve(new PassiveNetwork(List.of(placed),List.of()),5,PassiveIntervalSolver.Settings.defaults(),()->{}).graph().reservoirs().getFirst();
+        var crystals=broken.inventory().solids().crystals();assertEquals(1,crystals.size(),"the refresh deposited CO2-I: "+broken.inventory().solids());
+        var ledger=new WorldTopologyLedger(WorldTopologyLedger.Snapshot.empty(catalog));var weights=pilot.molecularWeights();
+        var device=new PhysicalFluidTopology.Device(1,new PhysicalFluidTopology.Position("minecraft:overworld",0,12,0),Kind.RESERVOIR,PhysicalFluidTopology.Direction.EAST,new PipeResistance.Geometry(1,.05,.000045,0),new FlowControl.Passive());
+        ledger.commit(ledger.queue(List.of(new WorldTopologyLedger.Edit(1,new WorldTopologyLedger.Registration(device,new FluidDeviceSpec(.1,170,1e6,z),0))),Set.of(1L),2));
+        ledger.commit(applyFirst(ledger,List.of(placed),List.of(),weights,2));
+        ledger.commit(ledger.queue(List.of(new WorldTopologyLedger.Edit(1,null)),Set.of(1L),2));ledger.commit(applyFirst(ledger,List.of(),List.of(broken),weights,2));
+        var constructed=ledger.snapshot().constructed();var destroyed=ledger.snapshot().destroyed();
+        double kg=crystals.getFirst().massKg(),offset=kg*crystals.getFirst().material().crystal().energyOffset();
+        System.out.println("dry ice "+kg+" kg, u0 m "+offset+" J; constructed "+Arrays.toString(constructed.moles())+" mol, "+constructed.totalEnergy()+" J; destroyed "
+                +Arrays.toString(destroyed.moles())+" mol, "+destroyed.totalEnergy()+" J");
+        for(int c=0;c<weights.length;c++)assertEquals(constructed.moles()[c],destroyed.moles()[c],1e-12*Math.max(1,constructed.moles()[c]),pilot.components().get(c)+": what was placed as gas leaves as gas and dry ice");
+        assertEquals(constructed.totalEnergy(),destroyed.totalEnergy(),1e-9*Math.abs(offset),"the true energy, the dry ice's offset included");
+        assertTrue(destroyed.solidMasses().isEmpty(),"the crystal is booked as CO2, not as a solid's mass: "+destroyed.solidMasses());
+    }
     // The fluid basis (merged from FluidBasisTest).
     @org.junit.jupiter.api.AfterEach void resetMaterials(){com.wormzjl.createcheme.science.material.MaterialRuntime.reset();}
     private static MaterialCatalog reordered() {
@@ -100,7 +127,7 @@ class WorldTopologyLedgerTest {
         var ledger=new WorldTopologyLedger(new WorldTopologyLedger.Snapshot(0,1,Map.of(),List.of(),WorldTopologyLedger.MaterialTotal.empty(2),WorldTopologyLedger.MaterialTotal.empty(2),basis));
         com.wormzjl.createcheme.science.material.MaterialRuntime.publish(reordered());ledger.tick();
         var saved=ledger.snapshot();assertEquals(basis,saved.basis());assertEquals(2,saved.constructed().moles().length);
-        var next=saved.constructed().plus(List.of(),new double[saved.basis().components().size()]);
+        var next=saved.constructed().plus(List.of(),saved.basis().components(),new double[saved.basis().components().size()]);
         assertArrayEquals(saved.constructed().moles(),next.moles());
         var decoded=FluidCheckpointCodec.decodeTopology(FluidCheckpointCodec.encodeTopology(saved),saved.onlineTick(),NO_RECOVERIES);assertEquals(saved.basis(),decoded.basis());
     }

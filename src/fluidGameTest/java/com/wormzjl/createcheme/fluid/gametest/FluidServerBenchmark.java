@@ -393,7 +393,7 @@ public final class FluidServerBenchmark {
             entries.add(new FluidCheckpointCodec.IslandEntry("minecraft:overworld",FluidPresetCatalog.NETWORK_PACKAGE,snapshot));
         }
         double[] weights=weights(model);var finite=stocks.values().stream().filter(n->n.kind()==PassiveNetwork.NodeKind.RESERVOIR).toList();
-        var topology=new WorldTopologyLedger.Snapshot(0,next,registrations,List.of(),WorldTopologyLedger.MaterialTotal.empty().plus(finite,weights),WorldTopologyLedger.MaterialTotal.empty());
+        var topology=new WorldTopologyLedger.Snapshot(0,next,registrations,List.of(),WorldTopologyLedger.MaterialTotal.empty().plus(finite,model.components(),weights),WorldTopologyLedger.MaterialTotal.empty());
         var checkpoint=new FluidCheckpointCodec.Checkpoint(entries);
         var chunks=new HashSet<Long>();var level=server.overworld();
         for(var device:devices) {
