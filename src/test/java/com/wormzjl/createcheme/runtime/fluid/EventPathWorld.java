@@ -23,7 +23,7 @@ class EventPathWorld {
     record Held(long tick,long island,long committed,String status) {}
 
     final FluidThermodynamics model=FluidTestSupport.networkModel();
-    final WorldTopologyLedger ledger=new WorldTopologyLedger(WorldTopologyLedger.Snapshot.empty(CATALOG));
+    final WorldTopologyLedger ledger;
     final Map<Long,IslandCoordinator.Attempt> attempts=new LinkedHashMap<>();
     final Map<Long,ProcessSolveServices.FluidIslandCommand> commands=new HashMap<>();
     final int workers;long requests;
@@ -37,8 +37,11 @@ class EventPathWorld {
     /** A world with one synchronous worker. */
     EventPathWorld(){this(1);}
     /** A world whose worker pool has {@code workers} slots: 0 (no solve) or 1 (a synchronous worker). */
-    EventPathWorld(int workers) {
-        this.workers=workers;
+    EventPathWorld(int workers){this(workers,WorldTopologyLedger.Snapshot.empty(CATALOG),List.of());}
+    /** The world {@code saved} ({@code world.ledger.snapshot()}) and {@code islands} ({@code world.coordinator.snapshots()})
+     * reload to, as {@code FluidWorldAuthority} starts: the ledger, every saved island registered, then the registry loaded. */
+    EventPathWorld(int workers,WorldTopologyLedger.Snapshot saved,List<IslandCoordinator.Snapshot> islands) {
+        this.workers=workers;ledger=new WorldTopologyLedger(saved);
         coordinator=new IslandCoordinator(new IslandCoordinator.Dispatcher() {
             public int availableWorkers(){return workers-attempts.size();}
             public long nextRequestId(){return ++requests;}
@@ -56,6 +59,7 @@ class EventPathWorld {
             public void refused(UUID event,String reason){}
             public void committed(Set<Long> removed,Set<Long> recompiled){committedRemovals.add(removed);}
         });
+        for(var island:islands)coordinator.register(island,model);
         registry.load();
     }
     /** The world's default control of a device kind (FluidWorldAuthority.place). */

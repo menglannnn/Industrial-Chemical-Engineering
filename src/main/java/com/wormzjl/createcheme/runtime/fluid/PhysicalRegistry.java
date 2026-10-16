@@ -101,6 +101,9 @@ public final class PhysicalRegistry {
             long saved=ids.getFirst();if(members.containsKey(saved))throw new IllegalStateException("Saved topology and hydraulic ownership disagree");
             var devices=island.physicalIds().stream().sorted().toList();members.put(saved,devices);for(long id:devices)bind(id,saved);
         }
+        // Every island the checkpoint restored holds a device: one that compiles to none would be saved again with nothing
+        // to name it by (D32, the island of one a join left behind).
+        for(var island:islands)if(!members.containsKey(island.id()))throw new IllegalStateException("Saved island "+island.id()+" holds no device");
         var registered=new HashSet<Long>();for(var r:active.values())if(r.device().kind()==TopologyCompiler.Kind.RESERVOIR)registered.add(r.device().id());
         var owned=new HashSet<Long>();for(var s:islands)for(var n:s.graph().reservoirs())if(n.kind()==PassiveNetwork.NodeKind.RESERVOIR)owned.add(n.id());
         if(!registered.equals(owned))throw new IllegalStateException("Physical registry would lose or duplicate saved reservoir ownership");
@@ -399,11 +402,20 @@ public final class PhysicalRegistry {
     /**
      * The islands an event's touched device stands for: every island of a device the event edits, the island of any other
      * owned device, and none for a fixed boundary it only passes (a device beside an edit, a member of an island the walk
-     * stopped at): islands that share a generator or a void are independent of each other (owner decision D17).
+     * stopped at): islands that share a generator or a void are independent of each other (owner decision D17). A lone
+     * boundary is the exception: an edit that touches it joins it (or would), and the batch that puts it into the joined
+     * island ends its island of one, so that island is fenced and replaced with the rest (D32; left alone it stayed in the
+     * coordinator beside the joined island, was saved, and came back from a reload with no device).
      */
     private Set<Long> standsFor(long device,Set<Long> edited) {
         if(edited.contains(device))return islandsOf(device);
-        return fixedDevice(device)?Set.of():islandsOf(device);
+        if(!fixedDevice(device))return islandsOf(device);
+        Long lone=loneIsland(device);return lone==null?Set.of():Set.of(lone);
+    }
+    /** The island of one of a fixed boundary no connection reaches (its only member), or null. */
+    private Long loneIsland(long device) {
+        for(long island:islandsOf(device))if(members.getOrDefault(island,List.of()).equals(List.of(device)))return island;
+        return null;
     }
     private static Set<Long> edited(WorldTopologyLedger.Event event){var ids=new HashSet<Long>();for(var edit:event.edits())ids.add(edit.id());return ids;}
     private void bind(long device,long island) {
