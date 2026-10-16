@@ -159,13 +159,21 @@ public final class HydrocarbonModel {
     /**
      * One hydrocarbon phase at {@code p}: the state pressure for a liquid, the hydrocarbon partial pressure for a vapour.
      *
-     * <p>The liquid-root rule. At the state pressure the cubic can have one physical root, and it can be vapour-like
-     * (the phase identification parameter of Venkatarathnam and Oellrich 2011 at most one, or at most its {@code Z}:
-     * {@link PhaseIdentification#vapourLike(double, double)}): the liquid root is absent.
-     * If the phase's node also carries a hydrocarbon vapour ({@code vaporCoexists}), the two slots would evaluate the
-     * same kind of root, a trial collapsing onto the trivial solution, so the evaluation is refused with the typed
-     * {@link LiquidRootAbsent} (an {@link IllegalArgumentException}: the line search backtracks and the outer check
-     * re-decides the regime). In a liquid-only node the single root is the same fluid continuing and is accepted.
+     * <p>The root rule: the slot's root must exist, of the slot's kind, or the evaluation is refused with the typed
+     * {@link RootAbsent} (an {@link IllegalArgumentException}: the line search backtracks, and for a liquid slot the outer
+     * check re-decides the regime). A root is absent in two ways.
+     * <ul>
+     * <li>Floating point loses the cubic's physical root ({@link PengRobinsonKernel.NoPhysicalRoot}): a trial far outside
+     * any physical state. A vapour is evaluated at its hydrocarbon partial pressure, an unknown of its own that no data
+     * range bounds any more (owner rule of 2026-10-16), and a Newton trial can take it anywhere: bundled fuzz seeds 145,
+     * 157 and 164 put a trace of nitrogen in steam, or a crude vapour, at 1.5e292, 1.2e183 and 6.6e25 Pa, where the cubic's
+     * coefficients overflow or its root's distance above the co-volume falls below one ulp of it.</li>
+     * <li>At the state pressure the cubic can have one physical root, and it can be vapour-like (the phase identification
+     * parameter of Venkatarathnam and Oellrich 2011 at most one, or at most its {@code Z}:
+     * {@link PhaseIdentification#vapourLike(double, double)}): the liquid root is absent. If the phase's node also carries
+     * a hydrocarbon vapour ({@code vaporCoexists}), the two slots would evaluate the same kind of root, a trial collapsing
+     * onto the trivial solution. In a liquid-only node the single root is the same fluid continuing and is accepted.</li>
+     * </ul>
      */
     public Phase phase(double t,double p,double[] amounts,PengRobinsonKernel.Root root,TranslatedPengRobinson.Workspace terms,boolean vaporCoexists) {
         if(amounts.length!=componentCount())throw new IllegalArgumentException("Hydrocarbon basis mismatch");
@@ -175,8 +183,10 @@ public final class HydrocarbonModel {
         // arbitrarily small: a numerical floor guards it.
         if(root==PengRobinsonKernel.Root.VAPOR&&p<VAPOR_PARTIAL_PRESSURE_FLOOR)
             throw new IllegalArgumentException("Hydrocarbon vapour partial pressure below the numerical floor");
-        var values=translated.evaluateValues(t,p,amounts,root,terms);
-        if(vaporCoexists&&root==PengRobinsonKernel.Root.LIQUID&&values.physicalRootCount()==1&&!liquidLike(values))throw new LiquidRootAbsent(t,p);
+        TranslatedPengRobinson.Values values;
+        try{values=translated.evaluateValues(t,p,amounts,root,terms);}
+        catch(PengRobinsonKernel.NoPhysicalRoot lost){throw RootAbsent.lost(root,t,p,lost);}
+        if(vaporCoexists&&root==PengRobinsonKernel.Root.LIQUID&&values.physicalRootCount()==1&&!liquidLike(values))throw RootAbsent.liquidBesideVapour(t,p);
         return new Phase(values.molarVolume(),values.molarEnthalpy(),values.molarInternalEnergy(),
                 values.volumePressureDerivative(),values.logFugacityCoefficientsView().clone(),
                 root==PengRobinsonKernel.Root.VAPOR&&PhaseIdentification.vapourLike(values.phaseIdentificationParameter(),values.compressibility()));
@@ -193,14 +203,22 @@ public final class HydrocarbonModel {
     }
 
     /**
-     * A liquid trial whose equation of state has no liquid root at the state pressure while its node also carries a
-     * hydrocarbon vapour. It is an {@link IllegalArgumentException}, so a Newton trial or a Jacobian column that meets
-     * it is refused like any unevaluable trial; it is not a {@link ThermoHold}, because only the phase layout is wrong.
+     * A trial phase slot whose equation of state has no root of the slot's kind ({@link #phase}): the numerical guard "no
+     * equation-of-state root" of the owner rule of 2026-10-16. It is an {@link IllegalArgumentException}, so a Newton trial
+     * or a Jacobian column that meets it is refused like any unevaluable trial and the step backtracks; it is not a
+     * {@link ThermoHold}, because only the trial is wrong.
      */
-    public static final class LiquidRootAbsent extends IllegalArgumentException {
-        public LiquidRootAbsent(double temperature,double pressure) {
-            super("Liquid root absent: the hydrocarbon liquid of a two-phase node has only a vapour-like root at "
-                    +temperature+" K, "+pressure+" Pa");
+    public static final class RootAbsent extends IllegalArgumentException {
+        private RootAbsent(String message,Throwable cause){super(message,cause);}
+        /** Floating point lost the cubic's physical root at this trial ({@link PengRobinsonKernel.NoPhysicalRoot}). */
+        static RootAbsent lost(PengRobinsonKernel.Root root,double temperature,double pressure,PengRobinsonKernel.NoPhysicalRoot cause) {
+            return new RootAbsent("Root absent: the hydrocarbon "+(root==PengRobinsonKernel.Root.LIQUID?"liquid":"vapour")
+                    +"'s cubic has no physical root in floating point at "+temperature+" K, "+pressure+" Pa",cause);
+        }
+        /** A liquid slot whose node also carries a hydrocarbon vapour, on a single vapour-like root. */
+        static RootAbsent liquidBesideVapour(double temperature,double pressure) {
+            return new RootAbsent("Liquid root absent: the hydrocarbon liquid of a two-phase node has only a vapour-like root at "
+                    +temperature+" K, "+pressure+" Pa",null);
         }
     }
 

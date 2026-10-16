@@ -276,7 +276,7 @@ class NetworkPhaseEngineTest {
                             assertTrue(HydrocarbonModel.liquidLike(values) == false
                                     && PhaseIdentification.vapourLike(values.phaseIdentificationParameter(), values.compressibility()), at);
                             assertTrue(model.hydrocarbon.phase(t, p, feed.x(), Root.VAPOR, prepared).vaporLike(), at);
-                            assertThrows(HydrocarbonModel.LiquidRootAbsent.class, () -> model.hydrocarbon.phase(t, p, feed.x(), Root.LIQUID, prepared, true), at);
+                            assertThrows(HydrocarbonModel.RootAbsent.class, () -> model.hydrocarbon.phase(t, p, feed.x(), Root.LIQUID, prepared, true), at);
                         }
                         if (waterAmount > 0) {
                             assertEquals(0, state.waterLiquid(), 0, at + ": all steam");

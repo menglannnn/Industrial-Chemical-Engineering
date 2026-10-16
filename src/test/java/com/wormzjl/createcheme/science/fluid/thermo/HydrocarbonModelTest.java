@@ -76,4 +76,31 @@ class HydrocarbonModelTest {
         double v=0;for(int i=0;i<n.length;i++)v+=n[i]*(b[i]-a[i]+Math.log((p+dp)/(p-dp)))/(2*dp)*FluidThermodynamics.R*t;
         assertEquals(mid.molarVolume(),v,1e-9*mid.molarVolume()+1e-12);
     }
+    /**
+     * The numerical guard "no equation-of-state root" (owner rule of 2026-10-16) refuses a trial; it never escapes. The PR
+     * cubic has a physical root above {@code B} at every finite state, but floating point loses it far outside the
+     * numerical box. A vapour is evaluated at its hydrocarbon partial pressure, which no data range bounds any more:
+     * bundled fuzz seed 164's Newton trial put that of a nitrogen trace in steam at 6.6e25 Pa ({@code B = 2.7e17}: the
+     * root's distance of about one above {@code B} is below one ulp of it), seed 145's at 1.5e292 Pa ({@code A B}
+     * overflows). The kernel's {@link IllegalStateException} escaped the network's solvers, which refuse a trial on an
+     * {@link IllegalArgumentException}, and ended both worlds; the property layer now refuses the trial with the typed
+     * {@link HydrocarbonModel.RootAbsent}, and the line search backtracks.
+     */
+    @Test void aTrialWhoseCubicLosesItsRootIsARefusedTrial() {
+        var model=com.wormzjl.createcheme.fluid.support.FluidTestSupport.networkModel();
+        int n=model.hydrocarbon.componentCount();
+        double[] none=new double[n],nitrogen=new double[n];
+        nitrogen[com.wormzjl.createcheme.science.material.MaterialTestBasis.NITROGEN]=0.5192913739164029;
+        // {T, the hydrocarbon partial pressure} of the trials of seeds 164 and 145.
+        double[][] trials={{695.9367657695016,6.556000279082378E25},{350.2058835382443,1.5164818447497963E292}};
+        for(double[] trial:trials) {
+            double t=trial[0],pc=trial[1];String at=t+" K, "+pc+" Pa";
+            var lost=assertThrows(HydrocarbonModel.RootAbsent.class,()->model.hydrocarbon.phase(t,pc,nitrogen,PengRobinsonKernel.Root.VAPOR),at);
+            assertInstanceOf(PengRobinsonKernel.NoPhysicalRoot.class,lost.getCause(),at);
+            // The network's own read of the trial, a node inside the numerical box: the type its solvers refuse a trial on.
+            assertThrows(IllegalArgumentException.class,()->model.state(t,4e5,none,nitrogen,0,1,pc),at);
+            // The same vapour at a partial pressure a gas can stand at is answered.
+            assertTrue(model.hydrocarbon.phase(t,1e4,nitrogen,PengRobinsonKernel.Root.VAPOR).molarVolume()>0,at);
+        }
+    }
 }

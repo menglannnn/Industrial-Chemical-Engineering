@@ -615,7 +615,10 @@ public final class PengRobinsonKernel {
         return secondDaDt - (4.0 * firstOrder + 2.0 * secondOrder);
     }
 
-    /** Precision qualifier; the EOS owns phase selection and its coalescence policy. */
+    /**
+     * Precision qualifier; the EOS owns phase selection and its coalescence policy. Where floating point loses the
+     * physical root the requested one stands on, the selection fails with the typed {@link NoPhysicalRoot}.
+     */
     public static RootSelection selectRoot(double reducedA, double reducedB, Root root) {
         Objects.requireNonNull(root, "root");
         if (!Double.isFinite(reducedA) || reducedA < 0.0 || !Double.isFinite(reducedB) || reducedB < 0.0) {
@@ -690,9 +693,7 @@ public final class PengRobinsonKernel {
             }
         }
         double selected = root == Root.VAPOR ? largest : smallestPhysical;
-        if (!Double.isFinite(selected) || selected <= reducedB) {
-            throw new IllegalStateException("Peng-Robinson equation has no physical " + root + " root");
-        }
+        if (!Double.isFinite(selected) || selected <= reducedB) throw new NoPhysicalRoot(root);
         return new RootSelection(selected, physicalRootCount, Math.max(0.0, largest - smallestPhysical));
     }
 
@@ -786,6 +787,21 @@ public final class PengRobinsonKernel {
     }
 
     public enum Root { LIQUID, VAPOR }
+
+    /**
+     * No physical root (one above {@code B}) found for the requested slot. Mathematically the cubic always has one, since
+     * it is {@code -2 B^2 < 0} at {@code Z = B} and grows without bound; floating point loses it only where the reduced
+     * parameters are far outside any physical state: {@code A B} or {@code p^3} overflow (a hydrocarbon partial pressure of
+     * 1e183 Pa), or the root's distance above {@code B}, about one, falls below one ulp of {@code B} (6.6e25 Pa,
+     * {@code B = 2.7e17}). It is an {@link IllegalStateException}, the type every caller of the kernel has always caught
+     * (the column's sessions, the phase engine, the stability test); the fluid network's property layer turns it into its
+     * refused trial ({@code HydrocarbonModel.RootAbsent}).
+     */
+    public static final class NoPhysicalRoot extends IllegalStateException {
+        public NoPhysicalRoot(Root root) {
+            super("Peng-Robinson equation has no physical " + root + " root");
+        }
+    }
 
     public static final class Workspace {
         private final double[] composition;
