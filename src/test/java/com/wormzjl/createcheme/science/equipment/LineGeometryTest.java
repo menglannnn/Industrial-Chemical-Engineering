@@ -106,6 +106,39 @@ class LineGeometryTest {
     }
 
     @Test
+    void aViewerOutsideTheBlockSeesOnlyOuterFaces() {
+        // The first polygon a sight line from outside meets must face the viewer; a back face there is a hole in game,
+        // where back faces are culled (an open flange, an open body end, a missing base). Sight lines entering through a
+        // connected face are skipped: the next block covers that face.
+        var random = new java.util.Random(7);
+        var holes = new ArrayList<String>();
+        for (var key : keys()) {
+            var polygons = LineGeometry.polygons(key);
+            for (int ray = 0; ray < 200; ray++) {
+                double[] target = {.02 + .96 * random.nextDouble(), .02 + .96 * random.nextDouble(), .02 + .96 * random.nextDouble()};
+                double[] dir = {random.nextGaussian(), random.nextGaussian(), random.nextGaussian()};
+                double length = Math.sqrt(dir[0] * dir[0] + dir[1] * dir[1] + dir[2] * dir[2]);
+                for (int c = 0; c < 3; c++) dir[c] /= length;
+                double[] origin = {target[0] - 3 * dir[0], target[1] - 3 * dir[1], target[2] - 3 * dir[2]};
+                if (key.connected(entryFace(origin, dir))) continue;
+                double front = Double.POSITIVE_INFINITY, back = Double.POSITIVE_INFINITY;
+                for (var polygon : polygons) {
+                    double t = hit(polygon, origin, dir);
+                    if (Double.isNaN(t)) continue;
+                    var n = newell(polygon);
+                    if (n[0] * dir[0] + n[1] * dir[1] + n[2] * dir[2] < 0) front = Math.min(front, t);
+                    else back = Math.min(back, t);
+                }
+                if (back < front - 1e-7) {
+                    holes.add(key.kind() + " facing " + key.facing() + " outside " + key.outside() + " connections " + key.connections() + " towards " + round(target));
+                    break;
+                }
+            }
+        }
+        assertTrue(holes.isEmpty(), holes.size() + " keys show a back face from outside: " + String.join("; ", holes));
+    }
+
+    @Test
     void aReducerNarrowsTheLargerPipeToTheSmallerAtTheFace() {
         // A 0.4 m pipe meeting a 0.15 m one: the large block ends at 0.15 m on the shared face, the small one is straight.
         var large = key(Kind.PIPE, EAST, .4, new int[]{WEST, EAST}, .15, 0, false);
@@ -177,6 +210,40 @@ class LineGeometryTest {
         assertTrue(n > 0, material + " drawn");
         for (int a = 0; a < 3; a++) c[a] /= n;
         return c;
+    }
+
+    /** The face (in {@link LineGeometry#STEPS} order) through which a line from outside enters the unit cell. */
+    private static int entryFace(double[] origin, double[] dir) {
+        int face = -1;
+        double enter = Double.NEGATIVE_INFINITY;
+        int[][] faces = {{4, 5}, {0, 1}, {2, 3}};
+        for (int a = 0; a < 3; a++) {
+            if (Math.abs(dir[a]) < 1e-12) continue;
+            double t = ((dir[a] > 0 ? 0 : 1) - origin[a]) / dir[a];
+            if (t > enter) {
+                enter = t;
+                face = faces[a][dir[a] > 0 ? 0 : 1];
+            }
+        }
+        return face;
+    }
+
+    /** Distance along the line to the convex polygon, or NaN where it misses. */
+    private static double hit(Mesh.Polygon polygon, double[] o, double[] d) {
+        double[] p = polygon.positions(), n = newell(polygon);
+        double along = n[0] * d[0] + n[1] * d[1] + n[2] * d[2];
+        if (Math.abs(along) < 1e-12) return Double.NaN;
+        double t = (n[0] * (p[0] - o[0]) + n[1] * (p[1] - o[1]) + n[2] * (p[2] - o[2])) / along;
+        double[] q = {o[0] + t * d[0], o[1] + t * d[1], o[2] + t * d[2]};
+        int m = polygon.size();
+        for (int i = 0; i < m; i++) {
+            int j = (i + 1) % m;
+            double[] e = {p[3 * j] - p[3 * i], p[3 * j + 1] - p[3 * i + 1], p[3 * j + 2] - p[3 * i + 2]};
+            double[] w = {q[0] - p[3 * i], q[1] - p[3 * i + 1], q[2] - p[3 * i + 2]};
+            double[] c = {e[1] * w[2] - e[2] * w[1], e[2] * w[0] - e[0] * w[2], e[0] * w[1] - e[1] * w[0]};
+            if (c[0] * n[0] + c[1] * n[1] + c[2] * n[2] < -1e-12) return Double.NaN;
+        }
+        return t;
     }
 
     private static boolean onFacePlane(double[] p) {

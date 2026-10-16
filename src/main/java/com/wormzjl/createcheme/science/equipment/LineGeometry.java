@@ -30,6 +30,8 @@ public final class LineGeometry {
     public static final int[][] STEPS = {{0, -1, 0}, {0, 1, 0}, {0, 0, -1}, {0, 0, 1}, {-1, 0, 0}, {1, 0, 0}};
     /** A line nozzle with no pipe met and no size of its own: 0.1 m, a 3" line. */
     public static final double NOZZLE = .1;
+    /** The largest device nozzle: 0.6 m, a 24" line. */
+    public static final double MAX_NOZZLE = .6;
     private static final double[] CENTRE = {.5, .5, .5};
     private static final int UP = 1, NORTH = 2, SOUTH = 3;
 
@@ -114,7 +116,7 @@ public final class LineGeometry {
     }
 
     private static void pipe(Mesh m, Key key) {
-        double od = PipeSizes.outsideOf(key.outside()), r = od / 2;
+        double od = PipeSizes.outsideOf(key.outside());
         int sides = PipeSizes.sides(od);
         var arms = new ArrayList<Integer>();
         for (int i = 0; i < 6; i++) if (key.connected(i)) arms.add(i);
@@ -124,10 +126,10 @@ public final class LineGeometry {
             return;
         }
         if (arms.size() == 1) {
-            // A dead end: the arm closes in a cap at the block's centre.
+            // A dead end: the arm closes in a ball at the block's centre.
             int i = arms.getFirst();
-            arm(m, i, 0, od, end(key, i, od), ref(i), sides);
-            m.sphere(CENTRE, r / DeterministicMath.cos(Math.PI / sides), sides, Material.PIPE);
+            ball(m, od, sides);
+            arm(m, i, 0, od, end(key, i, od), ref(i), sides, true);
             return;
         }
         if (arms.size() == 2) {
@@ -140,10 +142,18 @@ public final class LineGeometry {
         int through = -1;
         for (int i : new int[]{key.facing() & ~1, 4, 2, 0})
             if (through < 0 && key.connected(i) && key.connected(i ^ 1)) through = i;
-        if (through < 0) m.sphere(CENTRE, r / DeterministicMath.cos(Math.PI / sides), sides, Material.PIPE);
+        if (through < 0) ball(m, od, sides);
         else run(m, key, through, od, sides, false);
         for (int i : arms)
-            if (through < 0 || (i & ~1) != through) arm(m, i, 0, od, end(key, i, od), ref(i), sides);
+            if (through < 0 || (i & ~1) != through) arm(m, i, 0, od, end(key, i, od), ref(i), sides, true);
+    }
+
+    /**
+     * The ball a dead end, a corner or a core ends its arms in: around the pipe's facets, but inside the block, so a line
+     * of one block across keeps its ball whole; the arms ending in it close their start (see {@link #arm}).
+     */
+    private static void ball(Mesh m, double od, int sides) {
+        m.sphere(CENTRE, Math.min(.5, od / 2 / DeterministicMath.cos(Math.PI / sides)), sides, Material.PIPE);
     }
 
     /** A straight length through faces {@code i} and its opposite, with a flange pair in the middle at a spool end. */
@@ -160,8 +170,8 @@ public final class LineGeometry {
             }
             from = t + hub;
         }
-        arm(m, i, from, od, end(key, i, od), ref(i), sides);
-        arm(m, i ^ 1, from, od, end(key, i ^ 1, od), ref(i ^ 1), sides);
+        arm(m, i, from, od, end(key, i, od), ref(i), sides, false);
+        arm(m, i ^ 1, from, od, end(key, i ^ 1, od), ref(i ^ 1), sides, false);
     }
 
     /**
@@ -186,9 +196,9 @@ public final class LineGeometry {
         End ea = fit(end(key, a, od), room), eb = fit(end(key, b, od), room);
         double bend = bend(ea, eb, od);
         if (bend == 0) {
-            m.sphere(CENTRE, r / DeterministicMath.cos(Math.PI / sides), sides, Material.PIPE);
-            arm(m, a, 0, od, ea, ref(a), sides);
-            arm(m, b, 0, od, eb, ref(b), sides);
+            ball(m, od, sides);
+            arm(m, a, 0, od, ea, ref(a), sides, true);
+            arm(m, b, 0, od, eb, ref(b), sides, true);
             return;
         }
         double[] da = step(a), db = step(b);
@@ -198,17 +208,22 @@ public final class LineGeometry {
         int segments = Math.max(3, (int) Math.ceil(Math.PI / 2 * bend / .08));
         m.torus(f, bend, r, 0, Math.PI / 2, segments, sides, Material.PIPE);
         // Each arm's prism starts its facets where the torus's cross-section does, so the rims meet vertex to vertex.
-        arm(m, a, bend, od, ea, neg(db), sides);
-        arm(m, b, bend, od, eb, neg(da), sides);
+        arm(m, a, bend, od, ea, neg(db), sides, false);
+        arm(m, b, bend, od, eb, neg(da), sides, false);
     }
 
     /**
      * A line from {@code from} (metres from the block's centre along face {@code i}) to the face, at outside {@code od},
-     * ending as {@code end} says: a reducer, then a weld-neck flange, or a square cut where nothing connects.
+     * ending as {@code end} says: a reducer, then a weld-neck flange, or a square cut where nothing connects. A
+     * {@code closed} arm also closes its start: it starts inside a ball or a device body whose facets need not cover its
+     * rim, and as a closed solid it shows no opening wherever it pokes out. An arm starting within its flange is the
+     * flange alone, closed by the flange's own back.
      */
-    static void arm(Mesh m, int i, double from, double od, End end, double[] ref, int sides) {
+    static void arm(Mesh m, int i, double from, double od, End end, double[] ref, int sides, boolean closed) {
         var f = frame(i, ref);
         double r = od / 2, z = Math.max(from, .5 - end.tail());
+        double body = end.flange() ? .5 - PipeSizes.flangeThickness(end.outside()) : .5;
+        if (closed && from < body - EPS) m.annulus(f, 0, r, from, sides, -1, Material.PIPE);
         if (z > from + EPS) m.prism(f, r, from, z, sides, Material.PIPE);
         if (end.reducer() > 0) {
             double z1 = Math.max(z, .5 - end.tail() + end.reducer());
@@ -220,41 +235,56 @@ public final class LineGeometry {
     }
 
     /**
-     * A weld-neck flange whose face lies on the block face: its hub from {@code z}, the back of the flange and its rim. The
-     * face itself is not drawn: the flange met there covers it.
+     * A weld-neck flange whose face lies on the block face: its hub from {@code z}, the back of the flange, its rim and its
+     * face, a blind flange where nothing meets it. Where a flange of one size meets it, the two faces lie in one plane
+     * and look opposite ways, so only one is ever towards the viewer, and it lies inside the other flange. Without a hub
+     * (the line starts within the flange) its back is a whole disc.
      */
     private static void flange(Mesh m, Frame f, double od, double z, int sides) {
         double t = PipeSizes.flangeThickness(od), flange = PipeSizes.flange(od) / 2, hubR = PipeSizes.hubOutside(od) / 2;
-        if (.5 - t > z + EPS) m.frustum(f, od / 2, hubR, z, .5 - t, sides, Material.PIPE);
-        m.annulus(f, hubR, flange, .5 - t, sides, -1, Material.FLANGE);
+        boolean hub = .5 - t > z + EPS;
+        if (hub) m.frustum(f, od / 2, hubR, z, .5 - t, sides, Material.PIPE);
+        m.annulus(f, hub ? hubR : 0, flange, .5 - t, sides, -1, Material.FLANGE);
         m.prism(f, flange, .5 - t, .5, sides, Material.FLANGE);
+        m.annulus(f, 0, flange, .5, sides, 1, Material.FLANGE);
     }
 
     // ---- Pipeline devices ------------------------------------------------------------------------------------------
+
+    /**
+     * The outside of a device's nozzle to a line of outside {@code line}: the line's own, at most 0.6 m (24"), where a
+     * larger line narrows in a reducer at the device. A pipe meeting a device flanges at this size too.
+     */
+    public static double nozzle(double line) {
+        return Math.min(MAX_NOZZLE, line);
+    }
 
     /** The size of the line through an in-line device: the larger pipe met on its axis, else its own size (at least a 3" stub). */
     private static double line(Key key) {
         int a = key.facing() & ~1;
         double od = Math.max(key.face(a), key.face(a ^ 1)) > 0 ? PipeSizes.outsideOf(Math.max(key.face(a), key.face(a ^ 1)))
                 : Math.max(NOZZLE, PipeSizes.outsideOf(key.outside()));
-        return Math.min(od, .6);
+        return nozzle(od);
     }
 
-    /** An in-line device's two nozzles, flanged at the face, at the size of the line met at each (or the device's line size). */
+    /**
+     * An in-line device's two nozzles, flanged at the face, at the size of the line met at each (or the device's line
+     * size); each closes its start inside the body.
+     */
     private static void lineNozzles(Mesh m, Key key, double from, double od) {
         int a = key.facing() & ~1;
         for (int i : new int[]{a, a ^ 1}) {
-            double size = key.face(i) > 0 ? Math.min(.6, PipeSizes.outsideOf(key.face(i))) : od;
-            arm(m, i, from, size, End.flanged(size), ref(i), PipeSizes.sides(size));
+            double size = key.face(i) > 0 ? nozzle(PipeSizes.outsideOf(key.face(i))) : od;
+            arm(m, i, from, size, End.flanged(size), ref(i), PipeSizes.sides(size), true);
         }
     }
 
-    /** A boundary device's nozzles: one per connected face with a line met, from the body's surface at {@code from[face]}. */
+    /** A boundary device's nozzles: one per connected face with a line met, from inside the body at {@code from[face]}. */
     private static void faceNozzles(Mesh m, Key key, double[] from) {
         for (int i = 0; i < 6; i++) {
             if (!key.connected(i) || key.face(i) == 0) continue;
-            double size = Math.min(.6, PipeSizes.outsideOf(key.face(i)));
-            arm(m, i, from[i], size, End.flanged(size), ref(i), PipeSizes.sides(size));
+            double size = nozzle(PipeSizes.outsideOf(key.face(i)));
+            arm(m, i, from[i], size, End.flanged(size), ref(i), PipeSizes.sides(size), true);
         }
     }
 
@@ -271,9 +301,10 @@ public final class LineGeometry {
         int up = vertical == 1 ? (key.facing() == UP ? NORTH : SOUTH) : UP;
         var f = frame(up, ref(up));
         double bonnet = body + .06, yoke = Math.max(.04, Math.min(.2, .3 * body + .06)), casing = Math.min(.7, .3 + .5 * od);
-        double room = .49 - bonnet;
-        if (yoke + .32 * casing > room) {
-            double k = Math.max(0, room) / (yoke + .32 * casing);
+        // The casing stands 0.3 of its diameter plus its 0.02 m rim above the yoke; all of it stays in the block.
+        double room = .49 - bonnet - .02;
+        if (yoke + .3 * casing > room) {
+            double k = Math.max(0, room) / (yoke + .3 * casing);
             yoke *= k;
             casing *= k;
         }
@@ -324,7 +355,7 @@ public final class LineGeometry {
         // Pedestal and its foot plate.
         m.prism(up, .45 * rc, .04, low, n, Material.STEELWORK);
         double foot = .6 * rc;
-        m.box(new double[]{.5 - foot, 0, .5 - foot}, new double[]{.5 + foot, .04, .5 + foot}, ALL_FACES & ~4, Material.STEELWORK);
+        m.box(new double[]{.5 - foot, 0, .5 - foot}, new double[]{.5 + foot, .04, .5 + foot}, ALL_FACES, Material.STEELWORK);
     }
 
     /** A compressor on its skid: a barrel casing on the line, its motor lying above it, pedestals under the barrel. */
@@ -332,7 +363,7 @@ public final class LineGeometry {
         double od = line(key), rb = Math.max(.14, Math.min(.3, .5 * PipeSizes.flange(od) + .05)), half = .32;
         int a = key.facing() & ~1, n = Math.max(12, PipeSizes.sides(2 * rb));
         var f = frame(a, ref(a));
-        m.box(new double[]{.04, 0, .04}, new double[]{.96, .06, .96}, ALL_FACES & ~4, Material.STEELWORK);
+        m.box(new double[]{.04, 0, .04}, new double[]{.96, .06, .96}, ALL_FACES, Material.STEELWORK);
         m.cylinder(f, rb, -half, half, n, Material.MACHINE);
         lineNozzles(m, key, half, od);
         double[] along = step(a);
@@ -354,8 +385,8 @@ public final class LineGeometry {
         int a = key.facing() & ~1, n = Math.max(8, PipeSizes.sides(2 * rb));
         var f = frame(a, ref(a));
         m.prism(f, rb, -half, half, n, Material.MACHINE);
-        m.annulus(f, od / 2, rb, -half, n, -1, Material.MACHINE);
-        m.annulus(f, od / 2, rb, half, n, 1, Material.MACHINE);
+        m.annulus(f, 0, rb, -half, n, -1, Material.MACHINE);
+        m.annulus(f, 0, rb, half, n, 1, Material.MACHINE);
         lineNozzles(m, key, half, od);
         double[] downstream = step(key.facing());
         var axis = unit(downstream[0], -1, downstream[2]);
@@ -392,7 +423,7 @@ public final class LineGeometry {
 
     /** The source or sink: a painted box on the floor with a flanged nozzle to each line met. */
     private static void box(Mesh m, Key key, Material material) {
-        m.box(new double[]{.18, 0, .18}, new double[]{.82, .7, .82}, ALL_FACES & ~4, material);
+        m.box(new double[]{.18, 0, .18}, new double[]{.82, .7, .82}, ALL_FACES, material);
         m.box(new double[]{.15, .7, .15}, new double[]{.85, .76, .85}, ALL_FACES, Material.STEELWORK);
         faceNozzles(m, key, new double[]{.5, .25, .3, .3, .3, .3});
     }

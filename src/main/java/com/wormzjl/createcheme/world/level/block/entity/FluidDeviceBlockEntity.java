@@ -2,6 +2,7 @@ package com.wormzjl.createcheme.world.level.block.entity;
 
 import com.wormzjl.createcheme.registry.ModBlockEntities;
 import com.wormzjl.createcheme.runtime.fluid.*;
+import com.wormzjl.createcheme.science.equipment.LineGeometry;
 import com.wormzjl.createcheme.science.equipment.PipeSizes;
 import com.wormzjl.createcheme.science.fluid.topology.TopologyCompiler;
 import com.wormzjl.createcheme.world.inventory.FluidDeviceMenu;
@@ -117,10 +118,11 @@ public final class FluidDeviceBlockEntity extends BlockEntity implements FluidVi
                 var neighbour=level.getBlockEntity(worldPosition.relative(direction));
                 if(neighbour instanceof FluidDeviceBlockEntity other) {
                     boolean otherPipe=other.kind()==TopologyCompiler.Kind.PIPE;
-                    // A pipe meets the next pipe's size (for its reducer), welded, and draws its own flange at equipment;
-                    // equipment takes the pipe's size and flanges to it.
-                    if(pipe){code=PipeSizes.code(PipeSizes.outside(otherPipe?other.bore:bore));flanged=!otherPipe;}
-                    else if(otherPipe){code=PipeSizes.code(PipeSizes.outside(other.bore));flanged=true;}
+                    // A pipe meets the next pipe's size (for its reducer), welded. At equipment both sides flange at the
+                    // device's nozzle size: the pipe's own, at most 24" (a larger pipe narrows to it); two devices bolt
+                    // together at the larger of their sizes.
+                    if(pipe&&otherPipe)code=PipeSizes.code(PipeSizes.outside(other.bore));
+                    else{code=PipeSizes.code(LineGeometry.nozzle(PipeSizes.outside(pipe?bore:otherPipe?other.bore:Math.max(bore,other.bore))));flanged=true;}
                 } else if(pipe&&neighbour instanceof EquipmentShellBlockEntity shell) {
                     var nozzle=shell.nozzleFacing(direction.getOpposite());
                     if(nozzle!=null){code=PipeSizes.code(Math.min(nozzle.maxOd(),PipeSizes.outside(bore)));flanged=true;}

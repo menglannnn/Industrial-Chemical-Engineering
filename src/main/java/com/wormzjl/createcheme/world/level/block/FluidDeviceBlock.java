@@ -39,9 +39,15 @@ public final class FluidDeviceBlock extends BaseEntityBlock {
     @Override public RenderShape getRenderShape(BlockState state){return RenderShape.MODEL;}
     /** Pipe shapes by drawn outside code and connected faces. */
     private static final java.util.Map<Integer,net.minecraft.world.phys.shapes.VoxelShape> PIPE_SHAPES=new java.util.concurrent.ConcurrentHashMap<>();
-    /** A pipe's shape follows its drawn outside diameter (at least 3/16 block across, so a thin line can be aimed at); devices fill their block. */
+    /**
+     * A device's shape: its block less a texel at the sides. A full cube would make the chunk renderer light every flat
+     * face inside the block from the neighbour it faces (vanilla takes such a block's axis-aligned quads as lying on its
+     * faces), so a pump's underside would take the ground's darkness.
+     */
+    private static final net.minecraft.world.phys.shapes.VoxelShape DEVICE=Block.box(1,0,1,15,16,15);
+    /** A pipe's shape follows its drawn outside diameter (at least 3/16 block across, so a thin line can be aimed at); devices nearly fill their block. */
     @Override protected net.minecraft.world.phys.shapes.VoxelShape getShape(BlockState state,BlockGetter level,BlockPos position,net.minecraft.world.phys.shapes.CollisionContext context) {
-        if(kind!=TopologyCompiler.Kind.PIPE)return super.getShape(state,level,position,context);
+        if(kind!=TopologyCompiler.Kind.PIPE)return DEVICE;
         double bore=level.getBlockEntity(position) instanceof FluidDeviceBlockEntity entity?entity.bore():.05;
         int code=com.wormzjl.createcheme.science.equipment.PipeSizes.code(com.wormzjl.createcheme.science.equipment.PipeSizes.outside(bore)),mask=0;
         for(var direction:Direction.values())if(state.getValue(CONNECTIONS.get(direction)))mask|=1<<direction.ordinal();
@@ -50,7 +56,8 @@ public final class FluidDeviceBlock extends BaseEntityBlock {
         return PIPE_SHAPES.computeIfAbsent(code<<6|mask,FluidDeviceBlock::pipeShape);
     }
     private static net.minecraft.world.phys.shapes.VoxelShape pipeShape(int key) {
-        double h=Math.max(com.wormzjl.createcheme.science.equipment.PipeSizes.outsideOf(key>>6)/2,3/32.0)*16,lo=8-h,hi=8+h;
+        // At most a texel short of the block on each side: a full cube changes how its flat faces are lit (see DEVICE).
+        double h=Math.min(7.5,Math.max(com.wormzjl.createcheme.science.equipment.PipeSizes.outsideOf(key>>6)/2,3/32.0)*16),lo=8-h,hi=8+h;
         var shape=Block.box(lo,lo,lo,hi,hi,hi);
         for(var direction:Direction.values())if((key>>direction.ordinal()&1)!=0) {
             var arm=switch(direction){case DOWN->Block.box(lo,0,lo,hi,8,hi);case UP->Block.box(lo,8,lo,hi,16,hi);case NORTH->Block.box(lo,lo,0,hi,hi,8);
