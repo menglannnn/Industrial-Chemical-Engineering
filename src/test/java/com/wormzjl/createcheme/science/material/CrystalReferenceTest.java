@@ -186,6 +186,32 @@ class CrystalReferenceTest {
         assertEquals(0.5 * (42 + 45) * 50, c.enthalpyChange(250, PT), 1e-9);
     }
 
+    /**
+     * Gate of the owner rule of 2026-10-16 for the segment records (RangeContinuationGateTest has the other models): past
+     * the 50..250 K segments the end's Cp is held and h and s integrate it, the volume stays linear in T and P, so value
+     * and slope are continuous at each end.
+     */
+    @Test
+    void segmentsContinuePastTheirRangeWithValueAndSlope() {
+        var c = synthetic(o -> {});
+        assertEquals(c.heatCapacity(50, 1e5), c.heatCapacity(20, 1e5), 0.0);
+        assertEquals(c.heatCapacity(250, 1e5), c.heatCapacity(400, 1e5), 0.0);
+        for (double e : new double[] {50, 250}) {
+            valueAndSlope(t -> c.enthalpyChange(t, PT), e, "h");
+            valueAndSlope(t -> c.entropyChange(t, PT), e, "s");
+            valueAndSlope(t -> c.molarVolume(t, PT), e, "v(T)");
+        }
+        valueAndSlope(p -> c.enthalpyChange(TT, p), 1e8, "h(P)");
+        valueAndSlope(p -> c.molarVolume(TT, p), 1e8, "v(P)");
+    }
+
+    /** One-sided difference quotients at {@code e} agree: value and slope continuous there. */
+    private static void valueAndSlope(java.util.function.DoubleUnaryOperator f, double e, String what) {
+        double d = 1e-6 * e, at = f.applyAsDouble(e);
+        double below = (at - f.applyAsDouble(e - d)) / d, above = (f.applyAsDouble(e + d) - at) / d;
+        assertEquals(below, above, 1e-3 * Math.max(Math.abs(below), Math.abs(above)) + 64 * Math.ulp(at) / d, what + " at " + e);
+    }
+
     @Test
     void recordRulesAreRefused() {
         refused(o -> o.getAsJsonArray("transitions").get(0).getAsJsonObject().addProperty("temperature_kelvin", 260), "lies outside the heat-capacity range");
