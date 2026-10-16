@@ -4,9 +4,9 @@ import com.wormzjl.createcheme.client.EquipmentGhost;
 import com.wormzjl.createcheme.client.gui.common.ColumnDiagram;
 import com.wormzjl.createcheme.client.gui.common.ProcessUi;
 import com.wormzjl.createcheme.network.EquipmentNetwork;
-import com.wormzjl.createcheme.science.equipment.ColumnOptions;
 import com.wormzjl.createcheme.science.equipment.ColumnTrays;
 import com.wormzjl.createcheme.science.equipment.EquipmentShape;
+import com.wormzjl.createcheme.science.equipment.ProcessUnit;
 import com.wormzjl.createcheme.science.equipment.ShapeRasterizer;
 import com.wormzjl.createcheme.science.equipment.VesselPlacement;
 import com.wormzjl.createcheme.world.level.block.EquipmentStructure;
@@ -28,34 +28,41 @@ import java.util.function.IntConsumer;
 import java.util.function.IntUnaryOperator;
 
 /**
- * The equipment constructor's screen: first what to build (a vertical drum, a horizontal drum or a distillation column;
- * owner request 2026-10-16), then its design, in a panel on the left beside the world and the vessel's ghost; a drum's
- * side connections have a page of their own (owner request 2026-10-16), and so have a column's units: its condenser,
- * ejector and reboiler (owner decisions 2026-10-16). It edits a local draft; the server receives the
- * design when the screen closes, or with a build request on Build. A column is designed here by its trays and feed, or
- * imported whole (draws, pumparounds and steam too) from the nearest column calculator; its schematic is the
- * calculator's ({@link ColumnDiagram}).
+ * The equipment constructor's screen: first what to build (a vertical drum, a horizontal drum, a distillation column, or
+ * a unit: a heat exchanger, a kettle reboiler, an air cooler bay or a steam ejector; owner requests 2026-10-16), then its
+ * design, in a panel on the left beside the world and the vessel's ghost; a drum's side connections have a page of their
+ * own (owner request 2026-10-16). It edits a local draft; the server receives the design when the screen closes, or with
+ * a build request on Build. A column is designed here by its trays and feed, or imported whole (draws, pumparounds and
+ * steam too) from the nearest column calculator; its schematic is the calculator's ({@link ColumnDiagram}).
  */
 public final class EquipmentConstructorScreen extends Screen {
-    /** The screen's pages: what to build, its design, a drum's side connections and a column's units. */
+    /** The screen's pages: what to build, its design and a drum's side connections. */
     private enum Page {
-        CHOOSE, DESIGN, CONNECTIONS, UNITS
+        CHOOSE, DESIGN, CONNECTIONS
     }
 
     /** Panel layout in GUI pixels, top-down, so it fits a 240-pixel-high GUI (854×480 at scale 2). */
     /** The schematic strip's width: the steam lines (90 pixels left of the axis) to the draw marks (39 right of it), and margins. */
     private static final int STRIP = 140;
     private static final int PANEL = 196, TOP = 24, ROW = 17, ROWS = 8, LINE = 11, LINES = TOP + ROWS * ROW + 4, STATUS = LINES + 3 * LINE + 2, BUTTONS = STATUS + 14;
-    /** The choice page: one button and up to three lines of description per kind of equipment. */
-    private static final int CHOICE = 40, CHOICE_PITCH = 56;
+    /** The choice page: one button per kind of equipment, its description in its hover text. */
+    private static final int CHOICE = 38, CHOICE_PITCH = 24;
     private static final String KEY = "gui.createcheme.equipment_constructor.";
 
     /** What the constructor builds; a horizontal drum lies along or across the constructor's facing. */
     private enum Equipment {
-        VERTICAL_DRUM, HORIZONTAL_DRUM, COLUMN;
+        VERTICAL_DRUM, HORIZONTAL_DRUM, COLUMN, EXCHANGER, KETTLE, AIR_COOLER, EJECTOR;
 
         static Equipment of(VesselPlacement.Form form) {
-            return form.column() ? COLUMN : form.orientation() == EquipmentShape.Orientation.HORIZONTAL ? HORIZONTAL_DRUM : VERTICAL_DRUM;
+            return switch (form) {
+                case VERTICAL -> VERTICAL_DRUM;
+                case LENGTHWISE, CROSSWISE -> HORIZONTAL_DRUM;
+                case COLUMN -> COLUMN;
+                case EXCHANGER -> EXCHANGER;
+                case KETTLE -> KETTLE;
+                case AIR_COOLER -> AIR_COOLER;
+                case EJECTOR -> EJECTOR;
+            };
         }
 
         String key() {
@@ -69,11 +76,10 @@ public final class EquipmentConstructorScreen extends Screen {
     /** The screen opens on the choice page. */
     private Page page = Page.CHOOSE;
     private VesselPlacement.Form form;
-    /** Diameter in half metres, so every step stays on the D5 grid. */
-    private int halfMetres, tangentLength, support, forward, right, up;
+    /** The diameter (a unit's size), always on its kind's grid: 0.5 m steps for a vessel ({@link ProcessUnit#snap} for a unit). */
+    private double diameter;
+    private int tangentLength, support, forward, right, up;
     private ColumnTrays trays;
-    /** A column's condenser, ejector and reboiler. */
-    private ColumnOptions options;
     /** A drum's side connections, kept within the drum's ranges ({@link #fitConnections}), and the one the page edits. */
     private final List<EquipmentShape.Connection> connections = new ArrayList<>();
     private int selected;
@@ -93,9 +99,8 @@ public final class EquipmentConstructorScreen extends Screen {
     private void load(Design design) {
         saved = design;
         form = design.form();
-        halfMetres = (int) Math.round(design.diameter() * 2);
+        diameter = design.diameter();
         tangentLength = design.tangentLength();
-        options = design.options();
         support = Math.max(design.support(), minimumSupport());
         forward = design.placement().forward();
         right = design.placement().right();
@@ -110,7 +115,7 @@ public final class EquipmentConstructorScreen extends Screen {
 
     /** The draft; always valid, because every stepper is clamped to the bounds of its parameter. */
     public Design design() {
-        return new Design(halfMetres / 2.0, tangentLength, form, support, new VesselPlacement(forward, right, up), trays, options, List.copyOf(connections));
+        return new Design(diameter, tangentLength, form, support, new VesselPlacement(forward, right, up), trays, List.copyOf(connections));
     }
 
     /** The vessel the draft would build, for the ghost; null on the choice page and once the constructor is gone. */
@@ -121,11 +126,10 @@ public final class EquipmentConstructorScreen extends Screen {
 
     /**
      * Keeps a drum's side connections within its ranges after its size or form changed: each to the nearest station and
-     * offset it may take, or dropped where the shell leaves it none. A column keeps them for when it is a drum again.
+     * offset it may take, or dropped where the shell leaves it none. A column or a unit keeps them for when it is a drum again.
      */
     private void fitConnections() {
-        if (form.column()) return;
-        double diameter = halfMetres / 2.0;
+        if (form.kind() != EquipmentShape.Kind.DRUM) return;
         int[] stations = EquipmentShape.stations(diameter, tangentLength, form.orientation(), support);
         int across = EquipmentShape.maximumOffset(diameter);
         if (stations[0] > stations[1]) connections.clear();
@@ -146,13 +150,13 @@ public final class EquipmentConstructorScreen extends Screen {
                 for (var equipment : Equipment.values()) {
                     Component name = Component.translatable(equipment.key());
                     if (equipment == current) name = Component.translatable(KEY + "current", name);
-                    addRenderableWidget(Button.builder(name, b -> choose(equipment)).bounds(8, CHOICE + equipment.ordinal() * CHOICE_PITCH, PANEL - 16, 20).build());
+                    addRenderableWidget(Button.builder(name, b -> choose(equipment)).bounds(8, CHOICE + equipment.ordinal() * CHOICE_PITCH, PANEL - 16, 20)
+                            .tooltip(Tooltip.create(Component.translatable(equipment.key() + ".hint"))).build());
                 }
                 addRenderableWidget(Button.builder(Component.translatable(KEY + "done"), b -> onClose()).bounds(100, BUTTONS, 88, 20).build());
             }
             case DESIGN -> designPage();
             case CONNECTIONS -> connectionsPage();
-            case UNITS -> unitsPage();
         }
     }
 
@@ -165,7 +169,11 @@ public final class EquipmentConstructorScreen extends Screen {
         var change = Button.builder(Component.translatable(KEY + "change"), b -> show(Page.CHOOSE)).bounds(PANEL - 80, TOP - 1, 74, 16).build();
         change.setTooltip(Tooltip.create(Component.translatable(KEY + "change.hint")));
         addRenderableWidget(change);
-        stepper(1, step -> diameter(halfMetres + step));
+        if (form.unit()) {
+            unitDesign();
+            return;
+        }
+        stepper(1, this::diameter);
         int next = 3;
         if (form.column()) {
             stepper(2, step -> trays = trays.withTrays(clamp(trays.trays() + step, 1, ColumnTrays.MAX_TRAYS)));
@@ -186,34 +194,28 @@ public final class EquipmentConstructorScreen extends Screen {
         stepper(next + 1, step -> forward = clamp(forward + step, 1, VesselPlacement.MAX_FORWARD));
         stepper(next + 2, step -> right = clamp(right + step, -VesselPlacement.MAX_SHIFT, VesselPlacement.MAX_SHIFT));
         stepper(next + 3, step -> up = clamp(up + step, -VesselPlacement.MAX_SHIFT, VesselPlacement.MAX_SHIFT));
-        // A column imports its design and has a page for its units; a drum's side connections have their own page.
+        // A column imports its design; a drum's side connections have their own page.
         if (form.column())
-            bottomRow(Button.builder(Component.translatable(KEY + "import"), b -> importColumn()).tooltip(Tooltip.create(Component.translatable(KEY + "import.hint", EquipmentNetwork.IMPORT_REACH))),
-                    Button.builder(Component.translatable(KEY + "units.open"), b -> show(Page.UNITS)).tooltip(Tooltip.create(Component.translatable(KEY + "units.hint"))));
+            bottomRow(Button.builder(Component.translatable(KEY + "import"), b -> importColumn()).tooltip(Tooltip.create(Component.translatable(KEY + "import.hint", EquipmentNetwork.IMPORT_REACH))));
         else bottomRow(Button.builder(Component.translatable(KEY + "nozzles"), b -> show(Page.CONNECTIONS)).tooltip(Tooltip.create(Component.translatable(KEY + "connections.hint"))));
     }
 
     /**
-     * The units page: the column's condenser (water or air cooled, with its reflux drum), the steam ejector before it and
-     * the reboiler, each a button that turns to the next choice. Its pumparound coolers follow the trays.
+     * A unit's design: its size (an exchanger's shell, a kettle's bundle, an ejector's suction; an air cooler's bay is one
+     * size), its tube length, its support's height and its placement.
      */
-    private void unitsPage() {
-        toggle(1, "condenser." + options.condenser().name().toLowerCase(Locale.ROOT), () -> options = options.withCondenser(
-                options.condenser() == ColumnOptions.Condenser.WATER ? ColumnOptions.Condenser.AIR : ColumnOptions.Condenser.WATER));
-        toggle(2, options.ejector() ? "ejector.on" : "ejector.off", () -> options = options.withEjector(!options.ejector()));
-        toggle(3, "reboiler." + options.reboiler().name().toLowerCase(Locale.ROOT), () -> options = options.withReboiler(
-                options.reboiler() == ColumnOptions.Reboiler.NONE ? ColumnOptions.Reboiler.KETTLE : ColumnOptions.Reboiler.NONE));
-        bottomRow(Button.builder(Component.translatable(KEY + "back"), b -> show(Page.DESIGN)).tooltip(Tooltip.create(Component.translatable(KEY + "back.hint"))));
-    }
-
-    /** A row whose button shows the choice {@code value} and turns it with {@code next}; the skirt rises to the least the choice needs. */
-    private void toggle(int row, String value, Runnable next) {
-        addRenderableWidget(Button.builder(Component.translatable(KEY + value), b -> {
-            next.run();
-            support = Math.max(support, minimumSupport());
-            refresh();
-            rebuildWidgets();
-        }).bounds(PANEL - 80, TOP + row * ROW, 74, 16).tooltip(Tooltip.create(hint(row))).build());
+    private void unitDesign() {
+        var kind = form.kind();
+        int row = 1;
+        if (kind != EquipmentShape.Kind.AIR_COOLER) stepper(row, this::diameter);
+        row++;
+        if (kind == EquipmentShape.Kind.EXCHANGER || kind == EquipmentShape.Kind.KETTLE)
+            stepper(row++, step -> tangentLength = clamp(tangentLength + step, ProcessUnit.minLength(kind, diameter), ProcessUnit.maxLength(kind)));
+        stepper(row, step -> support = clamp(support + step, minimumSupport(), EquipmentShape.MAX_SUPPORT));
+        stepper(row + 1, step -> forward = clamp(forward + step, 1, VesselPlacement.MAX_FORWARD));
+        stepper(row + 2, step -> right = clamp(right + step, -VesselPlacement.MAX_SHIFT, VesselPlacement.MAX_SHIFT));
+        stepper(row + 3, step -> up = clamp(up + step, -VesselPlacement.MAX_SHIFT, VesselPlacement.MAX_SHIFT));
+        bottomRow();
     }
 
     /**
@@ -240,7 +242,7 @@ public final class EquipmentConstructorScreen extends Screen {
             });
             stepper(4, step -> {
                 var c = connection();
-                int across = EquipmentShape.maximumOffset(halfMetres / 2.0);
+                int across = EquipmentShape.maximumOffset(diameter);
                 connections.set(selected, new EquipmentShape.Connection(c.side(), c.station(), clamp(c.offset() + step, -across, across)));
             });
         }
@@ -275,7 +277,7 @@ public final class EquipmentConstructorScreen extends Screen {
     }
 
     private int[] stations() {
-        return EquipmentShape.stations(halfMetres / 2.0, tangentLength, form.orientation(), support);
+        return EquipmentShape.stations(diameter, tangentLength, form.orientation(), support);
     }
 
     /**
@@ -295,7 +297,7 @@ public final class EquipmentConstructorScreen extends Screen {
                 var candidate = new EquipmentShape.Connection(side, station, 0);
                 var trial = new ArrayList<>(connections);
                 trial.add(candidate);
-                if (EquipmentShape.drum(halfMetres / 2.0, tangentLength, form.orientation(), front(), support, trial).clashes().isEmpty()) {
+                if (EquipmentShape.drum(diameter, tangentLength, form.orientation(), front(), support, trial).clashes().isEmpty()) {
                     chosen = candidate;
                     break search;
                 }
@@ -350,11 +352,14 @@ public final class EquipmentConstructorScreen extends Screen {
     private String[] rows() {
         if (page == Page.CONNECTIONS)
             return new String[]{"connections", "connection", "faces", form.orientation().horizontal() ? "along" : "height", "offset"};
-        if (page == Page.UNITS) return new String[]{"units", "condenser", "ejector", "reboiler"};
         return switch (Equipment.of(form)) {
             case VERTICAL_DRUM -> new String[]{"equipment", "diameter", "tangent_length", "skirt", "forward", "right", "up"};
             case HORIZONTAL_DRUM -> new String[]{"equipment", "diameter", "tangent_length", "axis", "saddles", "forward", "right", "up"};
             case COLUMN -> new String[]{"equipment", "diameter", "trays", "feed", "skirt", "forward", "right", "up"};
+            case EXCHANGER -> new String[]{"equipment", "shell", "tubes", "shell_bottom", "forward", "right", "up"};
+            case KETTLE -> new String[]{"equipment", "bundle", "tubes", "kettle_bottom", "forward", "right", "up"};
+            case AIR_COOLER -> new String[]{"equipment", "bay", "bundle_height", "forward", "right", "up"};
+            case EJECTOR -> new String[]{"equipment", "suction", "discharge", "forward", "right", "up"};
         };
     }
 
@@ -382,33 +387,54 @@ public final class EquipmentConstructorScreen extends Screen {
     }
 
     /**
-     * A skirt left at its default follows the diameter's default; any skirt stays tall enough to enclose the bottom head
-     * (and a column's to take its kettle's lines).
+     * The diameter (a unit's size) {@code steps} steps on: 0.5 m for a vessel, whose skirt left at its default follows the
+     * diameter's default and stays tall enough to enclose the bottom head; a unit's step, its tubes kept at least three
+     * bundle diameters long.
      */
-    private void diameter(int value) {
+    private void diameter(int steps) {
+        if (form.unit()) {
+            var kind = form.kind();
+            diameter = ProcessUnit.snap(kind, diameter + steps * ProcessUnit.diameterStep(kind));
+            tangentLength = clamp(tangentLength, ProcessUnit.minLength(kind, diameter), ProcessUnit.maxLength(kind));
+            return;
+        }
         boolean standing = form.orientation() == EquipmentShape.Orientation.VERTICAL;
-        boolean followed = standing && support == Math.max(EquipmentShape.defaultSupport(halfMetres / 2.0, EquipmentShape.Orientation.VERTICAL), minimumSupport());
-        halfMetres = clamp(value, (int) (EquipmentShape.MIN_DIAMETER * 2), (int) (maximumDiameter() * 2));
-        support = Math.max(followed ? EquipmentShape.defaultSupport(halfMetres / 2.0, EquipmentShape.Orientation.VERTICAL) : support, minimumSupport());
+        boolean followed = standing && support == Math.max(EquipmentShape.defaultSupport(diameter, EquipmentShape.Orientation.VERTICAL), minimumSupport());
+        diameter = vesselDiameter(diameter + .5 * steps);
+        support = Math.max(followed ? EquipmentShape.defaultSupport(diameter, EquipmentShape.Orientation.VERTICAL) : support, minimumSupport());
     }
 
-    private double maximumDiameter() {
-        return form.column() ? EquipmentShape.MAX_COLUMN_DIAMETER : EquipmentShape.MAX_DIAMETER;
+    /** {@code value} on the vessels' 0.5 m grid, within this form's range. */
+    private double vesselDiameter(double value) {
+        double maximum = form.column() ? EquipmentShape.MAX_COLUMN_DIAMETER : EquipmentShape.MAX_DIAMETER;
+        return Math.max(EquipmentShape.MIN_DIAMETER, Math.min(maximum, Math.round(value * 2) / 2.0));
     }
 
     /**
-     * Goes to the design of {@code equipment}, keeping the draft's sizes; a horizontal drum keeps its axis. A change
-     * between standing and lying proposes that support's default height.
+     * Goes to the design of {@code equipment}, keeping the draft's sizes within the new kind's ranges; a horizontal drum
+     * keeps its axis. A change between standing and lying, or to or from a unit, proposes that support's default height.
      */
     private void choose(Equipment equipment) {
-        var before = form.orientation();
+        var before = form;
         form = switch (equipment) {
             case VERTICAL_DRUM -> VesselPlacement.Form.VERTICAL;
             case HORIZONTAL_DRUM -> Equipment.of(form) == Equipment.HORIZONTAL_DRUM ? form : VesselPlacement.Form.LENGTHWISE;
             case COLUMN -> VesselPlacement.Form.COLUMN;
+            case EXCHANGER -> VesselPlacement.Form.EXCHANGER;
+            case KETTLE -> VesselPlacement.Form.KETTLE;
+            case AIR_COOLER -> VesselPlacement.Form.AIR_COOLER;
+            case EJECTOR -> VesselPlacement.Form.EJECTOR;
         };
-        halfMetres = Math.min(halfMetres, (int) (maximumDiameter() * 2));
-        if (before != form.orientation()) support = EquipmentShape.defaultSupport(halfMetres / 2.0, form.orientation());
+        if (form.unit()) {
+            var kind = form.kind();
+            diameter = ProcessUnit.snap(kind, diameter);
+            tangentLength = clamp(tangentLength, ProcessUnit.minLength(kind, diameter), ProcessUnit.maxLength(kind));
+            if (before.kind() != kind) support = ProcessUnit.defaultSupport(kind);
+        } else {
+            diameter = vesselDiameter(diameter);
+            tangentLength = clamp(tangentLength, 1, (int) EquipmentShape.MAX_TANGENT_LENGTH);
+            if (before.unit() || before.orientation() != form.orientation()) support = EquipmentShape.defaultSupport(diameter, form.orientation());
+        }
         support = Math.max(support, minimumSupport());
         refresh();
         show(Page.DESIGN);
@@ -422,8 +448,9 @@ public final class EquipmentConstructorScreen extends Screen {
     }
 
     private int minimumSupport() {
-        if (form.column()) return EquipmentShape.minimumSkirt(halfMetres / 2.0, options);
-        return form.orientation() == EquipmentShape.Orientation.VERTICAL ? EquipmentShape.minimumSkirt(halfMetres / 2.0) : 1;
+        if (form.unit()) return ProcessUnit.minSupport(form.kind());
+        if (form.column()) return EquipmentShape.minimumSkirt(diameter);
+        return form.orientation() == EquipmentShape.Orientation.VERTICAL ? EquipmentShape.minimumSkirt(diameter) : 1;
     }
 
     private void refresh() {
@@ -486,26 +513,7 @@ public final class EquipmentConstructorScreen extends Screen {
             case CHOOSE -> choices(graphics);
             case DESIGN -> designRows(graphics, mouseX, mouseY);
             case CONNECTIONS -> connectionRows(graphics, mouseX, mouseY);
-            case UNITS -> unitRows(graphics, mouseX, mouseY);
         }
-    }
-
-    /** The units page: each row's label (its button shows the choice), the footprint and least skirt they make, and the ghost's status. */
-    private void unitRows(GuiGraphics graphics, int mouseX, int mouseY) {
-        String[] names = rows();
-        graphics.drawString(font, Component.translatable(KEY + "units"), 8, TOP + 4, ProcessUi.ACCENT);
-        for (int row = 1; row < names.length; row++) graphics.drawString(font, Component.translatable(KEY + names[row]), 8, TOP + row * ROW + 4, ProcessUi.TEXT);
-        var shape = layout.shape();
-        int y = LINES;
-        for (var line : new Component[]{
-                Component.translatable(KEY + "footprint", shape.sizeX(), shape.sizeZ(), shape.sizeY()),
-                Component.translatable(KEY + "coolers", trays.pumparounds().size()),
-                Component.translatable(KEY + "least_skirt", minimumSupport())}) {
-            graphics.drawString(font, line, 8, y, ProcessUi.MUTED);
-            y += LINE;
-        }
-        status(graphics);
-        describe(mouseX, mouseY, names.length, new String[]{"footprint", "coolers", "least_skirt"});
     }
 
     /** The status line: an import under way, the first clash, or whether the ghost's cells are free. */
@@ -522,11 +530,14 @@ public final class EquipmentConstructorScreen extends Screen {
     private void designRows(GuiGraphics graphics, int mouseX, int mouseY) {
         var equipment = Equipment.of(form);
         String[] names = rows();
-        String place = Integer.toString(forward), shift = Integer.toString(right), lift = Integer.toString(up), across = number(halfMetres / 2.0) + " m";
+        String place = Integer.toString(forward), shift = Integer.toString(right), lift = Integer.toString(up), across = size(diameter) + " m";
         String[] values = switch (equipment) {
             case VERTICAL_DRUM -> new String[]{"", across, tangentLength + " m", support + " m", place, shift, lift};
             case HORIZONTAL_DRUM -> new String[]{"", across, tangentLength + " m", "", support + " m", place, shift, lift};
             case COLUMN -> new String[]{"", across, Integer.toString(trays.trays()), Integer.toString(trays.feed()), support + " m", place, shift, lift};
+            case EXCHANGER, KETTLE -> new String[]{"", across, tangentLength + " m", support + " m", place, shift, lift};
+            case AIR_COOLER -> new String[]{"", size(ProcessUnit.BAY_WIDTH) + " × " + size(ProcessUnit.BAY_LENGTH), support + " m", place, shift, lift};
+            case EJECTOR -> new String[]{"", across, support + " m", place, shift, lift};
         };
         graphics.drawString(font, Component.translatable(equipment.key()), 8, TOP + 4, ProcessUi.ACCENT);
         for (int row = 1; row < names.length; row++) {
@@ -535,17 +546,33 @@ public final class EquipmentConstructorScreen extends Screen {
             if (!values[row].isEmpty()) graphics.drawCenteredString(font, values[row], PANEL - 43, y, ProcessUi.ACCENT);
         }
         var shape = layout.shape();
+        // The middle line says what the equipment holds or does: a vessel's volume, an exchanger's or a kettle's tube
+        // surface, an air cooler bay's face, an ejector's length.
+        String middle = switch (equipment) {
+            case VERTICAL_DRUM, HORIZONTAL_DRUM, COLUMN -> "volume";
+            case EXCHANGER -> "surface";
+            case KETTLE -> "kettle_surface";
+            case AIR_COOLER -> "bay_face";
+            case EJECTOR -> "ejector_length";
+        };
+        Component held = switch (equipment) {
+            case VERTICAL_DRUM, HORIZONTAL_DRUM, COLUMN -> Component.translatable(KEY + middle, number(shape.volume()), number(shape.surfaceArea()));
+            case EXCHANGER -> Component.translatable(KEY + middle, number(ProcessUnit.tubeSurface(diameter, tangentLength)));
+            case KETTLE -> Component.translatable(KEY + middle, size(ProcessUnit.kettleShell(diameter)), number(ProcessUnit.tubeSurface(diameter, tangentLength)));
+            case AIR_COOLER -> Component.translatable(KEY + middle, number(ProcessUnit.bundleFace()), size(ProcessUnit.FAN));
+            case EJECTOR -> Component.translatable(KEY + middle, number(ProcessUnit.ejectorLength(diameter)));
+        };
         int y = LINES;
         for (var line : new Component[]{
                 Component.translatable(KEY + "extent", number(shape.topElevation()), number(shape.overallLength())),
-                Component.translatable(KEY + "volume", number(shape.volume()), number(shape.surfaceArea())),
+                held,
                 Component.translatable(KEY + "cells", layout.shell().size(), layout.interior().size())}) {
             graphics.drawString(font, line, 8, y, ProcessUi.MUTED);
             y += LINE;
         }
         status(graphics);
         if (form.column()) schematic(graphics);
-        describe(mouseX, mouseY, names.length, new String[]{"extent", "volume", "cells"});
+        describe(mouseX, mouseY, names.length, new String[]{"extent", middle, "cells"});
     }
 
     /**
@@ -596,14 +623,9 @@ public final class EquipmentConstructorScreen extends Screen {
         if (text != null) setTooltipForNextRenderPass(font.split(text, 200));
     }
 
-    /** The choice page: what each kind of equipment is, under its button (the draft's kind is marked on it). */
+    /** The choice page's heading; what each kind of equipment is shows over its button (the draft's kind is marked on it). */
     private void choices(GuiGraphics g) {
         g.drawString(font, Component.translatable(KEY + "choose"), 8, TOP + 4, ProcessUi.TEXT);
-        for (var equipment : Equipment.values()) {
-            int y = CHOICE + equipment.ordinal() * CHOICE_PITCH + 23;
-            var lines = font.split(Component.translatable(equipment.key() + ".hint"), PANEL - 16);
-            for (int i = 0; i < Math.min(3, lines.size()); i++) g.drawString(font, lines.get(i), 8, y + i * 10, ProcessUi.MUTED);
-        }
     }
 
     /**
@@ -632,5 +654,11 @@ public final class EquipmentConstructorScreen extends Screen {
 
     private static String number(double value) {
         return String.format(Locale.ROOT, "%.1f", value);
+    }
+
+    /** A size on a 0.25 m or 0.1 m grid: one decimal where it has one, two where it has two (0.75). */
+    private static String size(double value) {
+        double tenths = value * 10;
+        return Math.abs(tenths - Math.rint(tenths)) < 1e-6 ? number(value) : String.format(Locale.ROOT, "%.2f", value);
     }
 }

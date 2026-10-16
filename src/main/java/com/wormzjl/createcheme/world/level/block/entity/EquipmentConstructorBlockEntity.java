@@ -2,7 +2,6 @@ package com.wormzjl.createcheme.world.level.block.entity;
 
 import com.wormzjl.createcheme.CreateChemE;
 import com.wormzjl.createcheme.registry.ModBlockEntities;
-import com.wormzjl.createcheme.science.equipment.ColumnOptions;
 import com.wormzjl.createcheme.science.equipment.ColumnTrays;
 import com.wormzjl.createcheme.science.equipment.EquipmentShape;
 import com.wormzjl.createcheme.science.equipment.EquipmentShape.Orientation;
@@ -28,13 +27,13 @@ import java.util.Objects;
 public final class EquipmentConstructorBlockEntity extends BlockEntity {
     /**
      * A vessel relative to its constructor: diameter, tangent length, which way it lies, its support height and where it
-     * stands, and a drum's side connections; a column's height follows its trays instead of the tangent length, and its
-     * options choose its condenser, ejector and reboiler. Like the placement, the form only becomes a world direction with
-     * the constructor's facing. The drum's length and connections and the column's trays and options are all kept, so
-     * changing the form loses none of them.
+     * stands, and a drum's side connections; a column's height follows its trays instead of the tangent length; a unit
+     * reads diameter, length and support as its own sizes ({@link ProcessUnit}). Like the placement, the form only becomes
+     * a world direction with the constructor's facing. The drum's length and connections and the column's trays are all
+     * kept, so changing the form loses none of them.
      */
     public record Design(double diameter, int tangentLength, VesselPlacement.Form form, int support, VesselPlacement placement, ColumnTrays trays,
-                         ColumnOptions options, List<EquipmentShape.Connection> connections) {
+                         List<EquipmentShape.Connection> connections) {
         /** A new column's trays: twenty, fed in the middle. */
         public static final ColumnTrays TRAYS = ColumnTrays.simple(20, 10);
         /**
@@ -42,26 +41,26 @@ public final class EquipmentConstructorBlockEntity extends BlockEntity {
          * new drum's side connection.
          */
         public static final Design DEFAULT = new Design(2, 4, VesselPlacement.Form.VERTICAL, EquipmentShape.defaultSupport(2, Orientation.VERTICAL),
-                VesselPlacement.DEFAULT, TRAYS, ColumnOptions.DEFAULT, EquipmentShape.defaultConnections(2, 4, Orientation.VERTICAL, EquipmentShape.defaultSupport(2, Orientation.VERTICAL)));
+                VesselPlacement.DEFAULT, TRAYS, EquipmentShape.defaultConnections(2, 4, Orientation.VERTICAL, EquipmentShape.defaultSupport(2, Orientation.VERTICAL)));
 
         public Design {
             Objects.requireNonNull(form, "form");
             Objects.requireNonNull(placement, "placement");
             Objects.requireNonNull(trays, "trays");
-            Objects.requireNonNull(options, "options");
             connections = List.copyOf(connections);
             // Validates the shape from the parameters (a compact constructor assigns the fields after its body); the
             // facing does not change what is valid.
-            shape(diameter, tangentLength, form, support, trays, options, connections, EquipmentShape.Heading.NORTH);
+            shape(diameter, tangentLength, form, support, trays, connections, EquipmentShape.Heading.NORTH);
         }
 
         public EquipmentShape shape(Direction facing) {
-            return shape(diameter, tangentLength, form, support, trays, options, connections, form.front(facing.getStepX(), facing.getStepZ()));
+            return shape(diameter, tangentLength, form, support, trays, connections, form.front(facing.getStepX(), facing.getStepZ()));
         }
 
         private static EquipmentShape shape(double diameter, int tangentLength, VesselPlacement.Form form, int support, ColumnTrays trays,
-                                            ColumnOptions options, List<EquipmentShape.Connection> connections, EquipmentShape.Heading front) {
-            return form.column() ? EquipmentShape.column(diameter, trays, options, front, support)
+                                            List<EquipmentShape.Connection> connections, EquipmentShape.Heading front) {
+            if (form.unit()) return EquipmentShape.unit(form.kind(), diameter, tangentLength, front, support);
+            return form.column() ? EquipmentShape.column(diameter, trays, front, support)
                     : EquipmentShape.drum(diameter, tangentLength, form.orientation(), front, support, connections);
         }
     }
@@ -88,15 +87,12 @@ public final class EquipmentConstructorBlockEntity extends BlockEntity {
         if (level != null) level.sendBlockUpdated(worldPosition, getBlockState(), getBlockState(), 3);
     }
 
-    /**
-     * The vessel this constructor would build for a design: its orientation and origin follow the constructor's facing. A
-     * column is placed by its own square, its auxiliaries standing aside of the constructor's line.
-     */
+    /** The vessel this constructor would build for a design: its orientation and origin follow the constructor's facing. */
     public EquipmentStructure.Vessel vessel(Design design) {
         var facing = facing();
         var shape = design.shape(facing);
         int[] origin = design.placement().origin(worldPosition.getX(), worldPosition.getY(), worldPosition.getZ(),
-                facing.getStepX(), facing.getStepZ(), shape.sizeX(), shape.sizeZ(), shape.columnBox());
+                facing.getStepX(), facing.getStepZ(), shape.sizeX(), shape.sizeZ());
         return new EquipmentStructure.Vessel(new BlockPos(origin[0], origin[1], origin[2]), shape);
     }
 
@@ -116,7 +112,7 @@ public final class EquipmentConstructorBlockEntity extends BlockEntity {
             if (offsets.length != 3) throw new IllegalArgumentException("Offsets must hold forward, right and up");
             design = new Design(tag.getDouble("Diameter"), tag.getInt("TangentLength"), VesselPlacement.Form.valueOf(tag.getString("Form").toUpperCase(Locale.ROOT)),
                     tag.getInt("Support"), new VesselPlacement(offsets[0], offsets[1], offsets[2]), ColumnTrays.decode(tag.getIntArray("Trays")),
-                    ColumnOptions.decode(tag.getInt("Options")), EquipmentShape.Connection.decode(tag.getIntArray("Connections")));
+                    EquipmentShape.Connection.decode(tag.getIntArray("Connections")));
         } catch (IllegalArgumentException invalid) {
             CreateChemE.LOGGER.warn("Equipment constructor at {} has an invalid design and proposes the default: {}", worldPosition, invalid.getMessage());
         }
@@ -130,13 +126,12 @@ public final class EquipmentConstructorBlockEntity extends BlockEntity {
         var p = design.placement();
         tag.putIntArray("Offsets", new int[]{p.forward(), p.right(), p.up()});
         tag.putIntArray("Trays", design.trays().encode());
-        tag.putInt("Options", design.options().encode());
         tag.putIntArray("Connections", EquipmentShape.Connection.encode(design.connections()));
     }
 
     /**
      * Server: the design of the column calculator nearest this constructor within {@code reach} blocks, as a column with
-     * this design's support (at least the column's least skirt), options and placement; its diameter where the calculator sizes
+     * this design's support (at least the column's least skirt) and placement; its diameter where the calculator sizes
      * its trays (otherwise this design's). A read of the calculator's stored input: nothing is solved.
      */
     public java.util.Optional<Design> importColumn(int reach) {
@@ -156,8 +151,8 @@ public final class EquipmentConstructorBlockEntity extends BlockEntity {
         double sized = input.columnDiameterMetres();
         double diameter = sized > 0 ? Math.max(EquipmentShape.MIN_DIAMETER, Math.min(EquipmentShape.MAX_COLUMN_DIAMETER, Math.round(sized * 2) / 2.0))
                 : Math.min(EquipmentShape.MAX_COLUMN_DIAMETER, design.diameter());
-        return java.util.Optional.of(new Design(diameter, design.tangentLength(), VesselPlacement.Form.COLUMN, Math.max(design.support(), EquipmentShape.minimumSkirt(diameter, design.options())),
-                design.placement(), ColumnTrays.of(input), design.options(), design.connections()));
+        return java.util.Optional.of(new Design(diameter, design.tangentLength(), VesselPlacement.Form.COLUMN, Math.max(design.support(), EquipmentShape.minimumSkirt(diameter)),
+                design.placement(), ColumnTrays.of(input), design.connections()));
     }
 
     @Override

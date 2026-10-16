@@ -23,10 +23,13 @@ import static com.wormzjl.createcheme.science.equipment.Mesh.*;
  * slots, its inside drawn), and, lying down, two saddles below it. {@link EquipmentShape#transform()} then turns it into
  * the box; a rotation keeps every polygon counter-clockwise seen from outside.
  *
+ * <p>A unit ({@link EquipmentShape.Kind#unit()}) has no body of revolution: its parts ({@link ProcessUnit}) give its
+ * facets, collision and interior, and every cell it reaches is its own.
+ *
  * <p>Nozzles are built apart: their drawn size follows the pipe connected to them (owner decision 2026-10-16), which the
- * cell's {@link CellKey#nozzles()} carries as 1/64 m codes, seven bits per nozzle (0: unconnected, drawn at its default
- * size under a blind flange). The cells a nozzle may touch are those of its largest size, so the layout never depends
- * on what is connected.
+ * cell's {@link CellKey#nozzles()} carries as 1/64 m codes, seven bits for each nozzle reaching that cell, in nozzle order
+ * (0: unconnected, drawn at its default size under a blind flange; {@link #cellCodes}), so a column takes any number of
+ * nozzles. The cells a nozzle may touch are those of its largest size, so the layout never depends on what is connected.
  *
  * <p>Texture follows a fabricated vessel. The shell is rolled plate in {@link #COURSE} courses from the bottom tangent
  * line, each course closed by plates about {@link #PLATE_LENGTH} long fitted to the circumference; one shell sprite
@@ -43,7 +46,7 @@ public final class ShapeRasterizer {
     public static final int SOLID_RESOLUTION = 8;
     /** Texture layout, m: a shell course, the nominal shell plate length, a support sprite's repeat. */
     public static final double COURSE = 2, PLATE_LENGTH = 4, SUPPORT_TILE = 2;
-    /** Bits per nozzle in a cell key, and the most nozzles a key carries. */
+    /** Bits per nozzle in a cell key, and the most nozzles that may reach one cell. */
     private static final int CODE_BITS = 7, KEYED_NOZZLES = 9;
     private static final int GEOMETRY_CACHE = 64, GEOMETRY_FACETS = 300_000;
     private static final Map<EquipmentShape, Geometry> GEOMETRIES = new ConcurrentHashMap<>();
@@ -73,7 +76,7 @@ public final class ShapeRasterizer {
     /**
      * Geometry key of one shell cell. Its coordinate along the vessel's axis is {@link #BODY} minus a texture class (0 to
      * 7) where the cell lies wholly in the cylindrical shell or skirt; all such cells of one class are identical.
-     * {@code nozzles} holds the drawn size codes of the nozzles that reach this cell (zero for the others).
+     * {@code nozzles} holds the drawn size codes of the nozzles that reach this cell, seven bits each in nozzle order.
      */
     public record CellKey(EquipmentShape shape, int x, int y, int z, long nozzles) {
         public static final int BODY = -1;
@@ -102,23 +105,29 @@ public final class ShapeRasterizer {
         return key(shape, x, y, z, 0);
     }
 
-    /** The key of a cell whose nozzles are drawn at {@code nozzles} (seven bits each; see {@link #withNozzle}). */
-    public static CellKey key(EquipmentShape shape, int x, int y, int z, long nozzles) {
+    /** The key of a cell whose reaching nozzles are drawn at {@code codes}, as {@link #cellCodes} packs them. */
+    public static CellKey key(EquipmentShape shape, int x, int y, int z, long codes) {
         var g = geometry(shape);
         int[] cell = {x, y, z};
-        long reaching = 0;
-        for (int k = 0; k < g.nozzleCells.size() && k < KEYED_NOZZLES; k++)
-            if (g.nozzleCells.get(k).contains(new Cell(x, y, z))) reaching |= nozzles & (127L << (CODE_BITS * k));
+        int reaching = g.reaching(new Cell(x, y, z)).length;
+        long kept = reaching == 0 ? 0 : codes & (-1L >>> (64 - CODE_BITS * reaching));
         int bodyClass = g.bodyClass(cell[g.axial]);
         if (bodyClass >= 0 && reaching == 0 && !g.irregularColumns.contains(column(x, z))) cell[g.axial] = CellKey.BODY - bodyClass;
-        return new CellKey(shape, cell[0], cell[1], cell[2], reaching);
+        return new CellKey(shape, cell[0], cell[1], cell[2], kept);
     }
 
-    /** {@code nozzles} with nozzle {@code k} drawn at {@code outside} metres (0: unconnected). */
-    public static long withNozzle(long nozzles, int k, double outside) {
-        if (k >= KEYED_NOZZLES) return nozzles;
-        long code = outside <= 0 ? 0 : PipeSizes.code(outside);
-        return nozzles & ~(127L << (CODE_BITS * k)) | code << (CODE_BITS * k);
+    /**
+     * The codes a cell's key carries for nozzles drawn at {@code outside} (m, by nozzle index; 0: unconnected): seven
+     * bits for each nozzle reaching the cell, in nozzle order.
+     */
+    public static long cellCodes(EquipmentShape shape, Cell cell, double[] outside) {
+        long codes = 0;
+        var reaching = geometry(shape).reaching(cell);
+        for (int j = 0; j < reaching.length; j++) {
+            double od = outside[reaching[j]];
+            codes |= (long) (od <= 0 ? 0 : PipeSizes.code(od)) << (CODE_BITS * j);
+        }
+        return codes;
     }
 
     public static List<Polygon> surface(CellKey key) {
@@ -168,12 +177,11 @@ public final class ShapeRasterizer {
         return false;
     }
 
-    /** Whether a box-local point lies where one of a column's ladders, or its auxiliaries' structure's, is climbed. */
+    /** Whether a box-local point lies where one of a column's ladders is climbed. */
     public static boolean climbable(EquipmentShape shape, double x, double y, double z) {
         var g = geometry(shape);
         if (g.column == null) return false;
-        var p = g.transform.local(new double[]{x, y, z});
-        return g.column.climbable(p) || g.auxiliaries.climbable(p);
+        return g.column.climbable(g.transform.local(new double[]{x, y, z}));
     }
 
     /** A box column (x, z) of a standing vessel as one number. */
@@ -205,22 +213,25 @@ public final class ShapeRasterizer {
         return geometry(shape).nozzleCells.get(k);
     }
 
-    /** The shell cell at the vessel's lowest inside point, where its fluid node stands: the bottom apex, or a lying vessel's bottom line. */
-    public static Cell fluidCell(EquipmentShape shape) {
+    /**
+     * A drum's shell cell at its lowest inside point, where its fluid node stands: the bottom apex, or a lying drum's
+     * bottom line; null for a column or a unit, which are not fluid devices yet.
+     */
+    public static @org.jetbrains.annotations.Nullable Cell fluidCell(EquipmentShape shape) {
         return geometry(shape).fluidCell;
     }
 
-    /** Surface polygons of the cell at its actual position, without key normalization. */
-    static List<Polygon> surface(EquipmentShape shape, int x, int y, int z, long nozzles) {
+    /** Surface polygons of the cell at its actual position, without key normalization; {@code codes} as {@link #cellCodes}. */
+    static List<Polygon> surface(EquipmentShape shape, int x, int y, int z, long codes) {
         var g = geometry(shape);
         var out = new ArrayList<Polygon>();
         var cell = new Cell(x, y, z);
         for (var facet : g.facetsIn(cell)) g.mesh.cell(facet, x, y, z, out);
-        for (int k = 0; k < g.nozzleCells.size(); k++)
-            if (g.nozzleCells.get(k).contains(cell)) {
-                var mesh = g.nozzle(k, code(nozzles, k));
-                for (var facet : mesh.facets()) mesh.cell(facet, x, y, z, out);
-            }
+        var reaching = g.reaching(cell);
+        for (int j = 0; j < reaching.length; j++) {
+            var mesh = g.nozzle(reaching[j], code(codes, j));
+            for (var facet : mesh.facets()) mesh.cell(facet, x, y, z, out);
+        }
         return List.copyOf(out);
     }
 
@@ -237,8 +248,9 @@ public final class ShapeRasterizer {
         return total;
     }
 
-    private static int code(long nozzles, int k) {
-        return k < KEYED_NOZZLES ? (int) (nozzles >>> (CODE_BITS * k) & 127) : 0;
+    /** The code of the {@code j}-th nozzle reaching a cell. */
+    private static int code(long codes, int j) {
+        return (int) (codes >>> (CODE_BITS * j) & 127);
     }
 
     /** The cell a key stands for: a body key stands for the first body cell of its class along the axis. */
@@ -260,7 +272,7 @@ public final class ShapeRasterizer {
     private static Geometry geometry(EquipmentShape shape) {
         var g = GEOMETRIES.get(shape);
         if (g != null) return g;
-        // A column with its auxiliaries holds 20 to 50 thousand facets (15 to 40 MB): the cache is bounded by facets too.
+        // A large column holds tens of thousands of facets (about 750 bytes each): the cache is bounded by facets too.
         long facets = 0;
         for (var cached : GEOMETRIES.values()) facets += cached.mesh.facets().size();
         if (GEOMETRIES.size() >= GEOMETRY_CACHE || facets >= GEOMETRY_FACETS) GEOMETRIES.clear();
@@ -278,12 +290,12 @@ public final class ShapeRasterizer {
         private int[] bodyClasses, representatives;
         /** The shell's radius, and its outside's (a column's cladding; the shell's for a drum). */
         private final double axis, radius, outer, apothemFactor, ground, plateLength;
-        /** A column's access structure and its auxiliaries, or null. */
+        /** A column's access structure, or null; a unit's parts, or null. */
         private final ColumnStructure column;
-        private final ColumnAuxiliaries auxiliaries;
+        private final ProcessUnit unit;
         /**
-         * Box columns (x, z) a column's ladders or auxiliaries pass through: their cells differ row by row, so they never
-         * share a body key. Filled from the facets from {@link #irregularFrom} on, with the facets by cell.
+         * Box columns (x, z) a column's ladders pass through: their cells differ row by row, so they never share a body key.
+         * Filled from the facets from {@link #irregularFrom} on, with the facets by cell.
          */
         private final Set<Long> irregularColumns = new HashSet<>();
         private int irregularFrom = Integer.MAX_VALUE;
@@ -294,17 +306,22 @@ public final class ShapeRasterizer {
         /** A skirt's access opening: centre height and radius (0: none). */
         private final double openingHeight, openingRadius;
         /**
-         * A drum's skirt is hollow: drawn on both faces, with its bottom head, its outlet line and a floor plate inside
-         * (owner report 2026-10-16). Its slots, from {@code slotLow} to {@code slotHigh} (0: none), are one facet wide and
-         * centred on the shell vertices at frame +x, +z and -x: the left, the back and the right.
+         * A skirt is hollow: drawn on both faces, with its bottom head (a column's bare, under its cladding), its outlet
+         * line and a floor plate inside (owner report 2026-10-16; a column's too, owner request 2026-10-16). Its slots, from
+         * {@code slotLow} to {@code slotHigh} (0: none), are one facet wide and centred on the shell vertices at frame +x, +z
+         * and -x: the left, the back and the right.
          */
         private final boolean hollow;
         private final double slotLow, slotHigh, innerRadius;
-        private final double[] normalCos, normalSin, vertexCos, vertexSin, saddles, meridian;
-        private final double[][] rings;
+        private final double[] normalCos, normalSin, vertexCos, vertexSin, saddles;
+        /** Each head's rings, {height over the tangent line, radius}, and its meridian lengths to them: the top head's (clad on a column) and the bottom head's (bare). */
+        private final double[][] rings, bottomRings;
+        private final double[] meridian, bottomMeridian;
         private final Mesh mesh = new Mesh();
         private final List<EquipmentShape.Nozzle> nozzles;
         private final List<Set<Cell>> nozzleCells = new ArrayList<>();
+        /** The nozzles reaching each cell, in nozzle order. */
+        private final Map<Cell, int[]> reaching = new HashMap<>();
         private final Map<Integer, Mesh> nozzleMeshes = new ConcurrentHashMap<>();
         private final List<Port> ports = new ArrayList<>();
         private final Layout layout;
@@ -319,7 +336,7 @@ public final class ShapeRasterizer {
             radius = shape.radius();
             outer = shape.outerRadius();
             column = shape.column() ? new ColumnStructure(shape) : null;
-            auxiliaries = shape.column() ? ColumnAuxiliaries.of(shape) : null;
+            unit = shape.unit() ? ProcessUnit.of(shape) : null;
             var along = transform.direction(new double[]{0, 1, 0});
             axial = along[0] != 0 ? 0 : along[1] != 0 ? 1 : 2;
             // A lying vessel's frame has the ground below it at x = -support (world y = 0).
@@ -339,18 +356,11 @@ public final class ShapeRasterizer {
                 vertexCos[i] = DeterministicMath.cos(angle);
                 vertexSin[i] = DeterministicMath.sin(angle);
             }
-            int bands = shape.bands();
-            rings = new double[bands + 1][];
-            for (int k = 0; k <= bands; k++) {
-                double phi = Math.PI / 2 * k / bands;
-                rings[k] = new double[]{shape.outerHeadDepth() * DeterministicMath.sin(phi), k == bands ? 0 : outer * DeterministicMath.cos(phi)};
-            }
-            // Meridian distance from the tangent line to each head ring, measured between facet centre lines.
-            meridian = new double[bands + 1];
-            for (int k = 0; k < bands; k++) {
-                double dh = rings[k + 1][0] - rings[k][0], dr = (rings[k][1] - rings[k + 1][1]) * apothemFactor;
-                meridian[k + 1] = meridian[k] + Math.sqrt(dh * dh + dr * dr);
-            }
+            rings = rings(outer, shape.outerHeadDepth());
+            meridian = meridian(rings);
+            // Inside a skirt the bottom head is bare: a column's cladding ends at the bottom tangent line.
+            bottomRings = rings(radius, shape.headDepth());
+            bottomMeridian = meridian(bottomRings);
             double chord = 2 * radius * DeterministicMath.sin(Math.PI / n), circumference = n * chord;
             plateLength = circumference / Math.max(1, Math.round(circumference / PLATE_LENGTH));
             // Saddles cradle the shell vertices within half the contact angle of the bottom vertex (n/2, angle π, towards the ground).
@@ -361,7 +371,7 @@ public final class ShapeRasterizer {
             saddles = shape.saddleCentres();
             openingHeight = shape.openingHeight();
             openingRadius = shape.openingRadius();
-            hollow = shape.skirt() && !shape.column();
+            hollow = shape.skirt();
             innerRadius = radius - EquipmentShape.SKIRT_WALL / apothemFactor;
             double slotTop = Math.min(shape.bottomTangent() - .2, .4 + 1.6);
             boolean slots = hollow && shape.diameter() >= 1 && slotTop - .4 >= .4;
@@ -369,18 +379,22 @@ public final class ShapeRasterizer {
             slotHigh = slots ? slotTop : 0;
             nozzles = shape.nozzles();
 
-            build();
-            if (shape.skirt()) skirtBase();
-            if (openingRadius > 0) openingSleeve();
-            for (double c : saddles) saddle(c);
+            if (unit != null) mesh.include(unit.mesh());
+            else {
+                build();
+                if (shape.skirt()) skirtBase();
+                if (openingRadius > 0) openingSleeve();
+                for (double c : saddles) saddle(c);
+            }
             if (column != null) {
                 var ladders = new Mesh();
                 ladders.transform(transform);
                 column.build(mesh, ladders, nozzles);
                 irregularFrom = mesh.facets().size();
                 mesh.facets().addAll(ladders.facets());
-                mesh.include(auxiliaries.mesh());
             }
+            // Every nozzle is a port: a drum's are its fluid ports; a column's and a unit's only take the pipe's size.
+            var byCell = new HashMap<Cell, List<Integer>>();
             for (int k = 0; k < nozzles.size(); k++) {
                 var nozzle = nozzles.get(k);
                 var cells = new HashSet<Cell>();
@@ -388,20 +402,54 @@ public final class ShapeRasterizer {
                 var largest = nozzle(k, PipeSizes.code(PipeSizes.MAX_OUTSIDE));
                 for (var facet : largest.facets()) cells(facet, cells);
                 nozzleCells.add(Set.copyOf(cells));
+                for (var cell : cells) byCell.computeIfAbsent(cell, c -> new ArrayList<>()).add(k);
                 var face = nozzle.face();
                 var inner = transform.point(new double[]{face[0] - nozzle.direction()[0] * .01, face[1] - nozzle.direction()[1] * .01, face[2] - nozzle.direction()[2] * .01});
                 var out = transform.direction(nozzle.direction());
-                // A column's nozzles are drawn only: it is not a fluid device (yet).
-                if (!shape.column())
-                    ports.add(new Port(new Cell(floor(inner[0]), floor(inner[1]), floor(inner[2])), (int) out[0], (int) out[1], (int) out[2], nozzle.role().port, k));
+                ports.add(new Port(new Cell(floor(inner[0]), floor(inner[1]), floor(inner[2])), (int) out[0], (int) out[1], (int) out[2], nozzle.role().port, k));
+            }
+            for (var entry : byCell.entrySet()) {
+                if (entry.getValue().size() > KEYED_NOZZLES)
+                    throw new IllegalStateException(entry.getValue().size() + " nozzles reach cell " + entry.getKey() + " of " + shape + ": a key carries " + KEYED_NOZZLES);
+                reaching.put(entry.getKey(), entry.getValue().stream().mapToInt(Integer::intValue).toArray());
             }
             classify();
-            var low = shape.orientation().horizontal()
-                    ? transform.point(new double[]{axis - radius + .01, (shape.bottomTangent() + shape.topTangent()) / 2, axis})
-                    : transform.point(new double[]{axis, shape.bottomTangent() - shape.headDepth() + .01, axis});
-            fluidCell = new Cell(floor(low[0]), floor(low[1]), floor(low[2]));
+            if (shape.drum()) {
+                var low = shape.orientation().horizontal()
+                        ? transform.point(new double[]{axis - radius + .01, (shape.bottomTangent() + shape.topTangent()) / 2, axis})
+                        : transform.point(new double[]{axis, shape.bottomTangent() - shape.headDepth() + .01, axis});
+                fluidCell = new Cell(floor(low[0]), floor(low[1]), floor(low[2]));
+            } else fluidCell = null;
             layout = buildLayout();
         }
+
+        /** A head's rings from its tangent line (k = 0) to its apex: {height over the line, radius} at equal latitude steps. */
+        private double[][] rings(double r, double depth) {
+            int bands = shape.bands();
+            var out = new double[bands + 1][];
+            for (int k = 0; k <= bands; k++) {
+                double phi = Math.PI / 2 * k / bands;
+                out[k] = new double[]{depth * DeterministicMath.sin(phi), k == bands ? 0 : r * DeterministicMath.cos(phi)};
+            }
+            return out;
+        }
+
+        /** Meridian distance from the tangent line to each head ring, measured between facet centre lines. */
+        private double[] meridian(double[][] rings) {
+            var out = new double[rings.length];
+            for (int k = 0; k + 1 < rings.length; k++) {
+                double dh = rings[k + 1][0] - rings[k][0], dr = (rings[k][1] - rings[k + 1][1]) * apothemFactor;
+                out[k + 1] = out[k] + Math.sqrt(dh * dh + dr * dr);
+            }
+            return out;
+        }
+
+        /** The nozzles reaching a cell, in nozzle order. */
+        int[] reaching(Cell cell) {
+            return reaching.getOrDefault(cell, NONE);
+        }
+
+        private static final int[] NONE = new int[0];
 
         /**
          * The shell, the skirt (with its opening cut out) and the heads. A column's shell and top head are clad: the
@@ -438,21 +486,22 @@ public final class ShapeRasterizer {
                     }
                 }
                 for (int side = 0; side < 2; side++) {
-                    if (side == 0 && shape.skirt() && !hollow) continue; // a column's skirt hides its bottom head
                     double base = side == 0 ? yB : yT, sign = side == 0 ? -1 : 1;
+                    double[][] h = side == 0 ? bottomRings : rings;
+                    double[] m = side == 0 ? bottomMeridian : meridian;
                     var apex = new double[]{axis, base, axis};
-                    var spheroid = new Spheroid(apex, up, outer, shape.outerHeadDepth());
-                    for (int k = 0; k < rings.length - 1; k++) {
+                    var spheroid = new Spheroid(apex, up, h[0][1], h[h.length - 1][0]);
+                    for (int k = 0; k < h.length - 1; k++) {
                         var polygon = new ArrayList<double[]>(4);
-                        polygon.add(head(i, k, base, sign));
-                        polygon.add(head(i + 1, k, base, sign));
-                        polygon.add(head(i + 1, k + 1, base, sign));
-                        if (rings[k + 1][1] > 0) polygon.add(head(i, k + 1, base, sign));
+                        polygon.add(head(h, i, k, base, sign));
+                        polygon.add(head(h, i + 1, k, base, sign));
+                        polygon.add(head(h, i + 1, k + 1, base, sign));
+                        if (h[k + 1][1] > 0) polygon.add(head(h, i, k + 1, base, sign));
                         // v runs from the tangent line weld (sprite top) to the apex (bottom), once over the head.
-                        double[] outer = lerp(head(i, k, base, sign), head(i + 1, k, base, sign), .5);
-                        double[] inner = lerp(head(i, k + 1, base, sign), head(i + 1, k + 1, base, sign), .5);
+                        double[] outer = lerp(head(h, i, k, base, sign), head(h, i + 1, k, base, sign), .5);
+                        double[] inner = lerp(head(h, i, k + 1, base, sign), head(h, i + 1, k + 1, base, sign), .5);
                         var towardsTangent = unit(outer[0] - inner[0], outer[1] - inner[1], outer[2] - inner[2]);
-                        mesh.add(polygon, apex, spheroid, Material.HEAD, plates, new Uv(outer, towardsTangent, -meridian[k], meridian[rings.length - 1]));
+                        mesh.add(polygon, apex, spheroid, Material.HEAD, plates, new Uv(outer, towardsTangent, -m[k], m[h.length - 1]));
                     }
                 }
             }
@@ -789,7 +838,7 @@ public final class ShapeRasterizer {
             }
             var cells = new HashSet<>(facetsByCell.keySet());
             for (var nozzle : nozzleCells) cells.addAll(nozzle);
-            if (!shape.column()) cells.add(fluidCell);
+            if (fluidCell != null) cells.add(fluidCell);
             var shellCells = new ArrayList<Cell>();
             var interiorCells = new ArrayList<Cell>();
             for (int x = 0; x < sx; x++)
@@ -799,7 +848,7 @@ public final class ShapeRasterizer {
                         if (cells.contains(cell)) shellCells.add(cell);
                         else {
                             var p = transform.local(new double[]{x + .5, y + .5, z + .5});
-                            if (inVessel(p) || auxiliaries != null && auxiliaries.filled(p)) interiorCells.add(cell);
+                            if (unit != null ? unit.filled(p) : inVessel(p)) interiorCells.add(cell);
                         }
                     }
             return new Layout(shape, shellCells, interiorCells);
@@ -840,6 +889,7 @@ public final class ShapeRasterizer {
          * (a column's: the cladding's lower edge, its flashing rings, and its platforms with their manways).
          */
         private boolean body(double low) {
+            if (unit != null) return false;
             double high = low + 1, start = shape.skirt() ? 1 : shape.bottomTangent(), half = EquipmentShape.SADDLE_WIDTH / 2;
             if (low < start - EPS || high > shape.topTangent() + EPS) return false;
             if (column != null) {
@@ -871,16 +921,22 @@ public final class ShapeRasterizer {
             return a >= 0 && a < bodyClasses.length ? bodyClasses[a] : -1;
         }
 
+        /** Whether a box point lies in the solid, the nozzles reaching its cell drawn at {@code codes} ({@link #cellCodes}). */
         boolean inside(double x, double y, double z, long codes) {
             var p = transform.local(new double[]{x, y, z});
-            if (inVessel(p) || column != null && (column.inside(p) || auxiliaries.inside(p))) return true;
-            for (int k = 0; k < nozzles.size(); k++) if (inNozzle(p, k, code(codes, k))) return true;
+            if (inVessel(p) || column != null && column.inside(p) || unit != null && unit.inside(p)) return true;
+            var reaching = reaching(new Cell(floor(x), floor(y), floor(z)));
+            for (int k = 0, j = 0; k < nozzles.size(); k++) {
+                boolean keyed = j < reaching.length && reaching[j] == k;
+                if (inNozzle(p, k, keyed ? code(codes, j) : 0)) return true;
+                if (keyed) j++;
+            }
             return false;
         }
 
-        /** Inside the vessel and its supports, at a frame point: what the interior cells fill. */
+        /** Inside the vessel and its supports, at a frame point: what the interior cells fill. A unit has no vessel. */
         private boolean inVessel(double[] p) {
-            return inBody(p) || shape.skirt() && inSkirtBase(p) || saddles.length > 0 && inSaddle(p);
+            return unit == null && (inBody(p) || shape.skirt() && inSkirtBase(p) || saddles.length > 0 && inSaddle(p));
         }
 
         private boolean inBody(double[] p) {
@@ -956,6 +1012,12 @@ public final class ShapeRasterizer {
          */
         void silhouette(double[] eye, List<double[]> out) {
             var e = transform.local(eye);
+            if (unit != null) {
+                var lines = new ArrayList<double[]>();
+                unit.silhouette(e, lines);
+                for (var l : lines) segment(out, new double[]{l[0], l[1], l[2]}, new double[]{l[3], l[4], l[5]});
+                return;
+            }
             double dx = e[0] - axis, dz = e[2] - axis, d = Math.sqrt(dx * dx + dz * dz);
             if (d <= outer) {
                 double y = e[1] >= (shape.bottomTangent() + shape.topTangent()) / 2 ? shape.topTangent() : shape.bottomTangent();
@@ -972,8 +1034,8 @@ public final class ShapeRasterizer {
             double yB = shape.bottomTangent(), yT = shape.topTangent();
             var points = new ArrayList<double[]>();
             if (shape.skirt()) points.add(ring(i, EquipmentShape.PLATE));
-            else for (int k = rings.length - 1; k >= 0; k--) points.add(head(i, k, yB, -1));
-            for (int k = 0; k < rings.length; k++) points.add(head(i, k, yT, 1));
+            else for (int k = bottomRings.length - 1; k >= 0; k--) points.add(head(bottomRings, i, k, yB, -1));
+            for (int k = 0; k < rings.length; k++) points.add(head(rings, i, k, yT, 1));
             for (int p = 0; p + 1 < points.size(); p++) segment(out, points.get(p), points.get(p + 1));
         }
 
@@ -990,7 +1052,7 @@ public final class ShapeRasterizer {
                                 new double[]{axis + r * DeterministicMath.cos(a1), y, axis + r * DeterministicMath.sin(a1)});
                     }
                 }
-            if (auxiliaries != null) for (var edge : auxiliaries.edges()) segment(segments, new double[]{edge[0], edge[1], edge[2]}, new double[]{edge[3], edge[4], edge[5]});
+            if (unit != null) for (var edge : unit.edges()) segment(segments, new double[]{edge[0], edge[1], edge[2]}, new double[]{edge[3], edge[4], edge[5]});
             if (shape.skirt())
                 for (int i = 0; i < n; i++) segment(segments, rim(i, plate), rim(i + 1, plate));
             double deck = ground + plate;
@@ -1049,9 +1111,9 @@ public final class ShapeRasterizer {
             return new double[]{axis + ringRadius * vertexCos[i], y, axis + ringRadius * vertexSin[i]};
         }
 
-        /** Point of head ring {@code k} at shell vertex {@code i}, on the head that leaves its tangent line {@code base} in direction {@code sign}. */
-        private double[] head(int i, int k, double base, double sign) {
-            return new double[]{axis + rings[k][1] * vertexCos[i], base + sign * rings[k][0], axis + rings[k][1] * vertexSin[i]};
+        /** Point of ring {@code k} of head {@code h} at shell vertex {@code i}, the head leaving its tangent line {@code base} in direction {@code sign}. */
+        private double[] head(double[][] h, int i, int k, double base, double sign) {
+            return new double[]{axis + h[k][1] * vertexCos[i], base + sign * h[k][0], axis + h[k][1] * vertexSin[i]};
         }
     }
 }

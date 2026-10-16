@@ -5,7 +5,9 @@ import com.wormzjl.createcheme.science.math.DeterministicMath;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.TreeSet;
+import java.util.concurrent.ConcurrentHashMap;
 
 import static com.wormzjl.createcheme.science.equipment.Mesh.*;
 
@@ -76,12 +78,14 @@ final class ColumnStructure {
         }
     }
 
+    private static final int CACHE = 64;
+    /** The nozzles of each shape: every box and transform reads them, and placing them tests the structure row by row. */
+    private static final Map<EquipmentShape, List<EquipmentShape.Nozzle>> NOZZLES = new ConcurrentHashMap<>();
+
     private final EquipmentShape shape;
     private final Plan plan;
     private final double axis, outer, apothem, rung;
     private final int n;
-    /** Each platform's arc in pieces (see {@link #pieces}), in the order of the plan's platforms. */
-    private final List<List<double[]>> pieces = new ArrayList<>();
 
     ColumnStructure(EquipmentShape shape) {
         this.shape = shape;
@@ -90,45 +94,12 @@ final class ColumnStructure {
         n = shape.facets();
         apothem = outer * DeterministicMath.cos(Math.PI / n);
         rung = outer + STANDOFF;
-        var nozzles = shape.nozzles();
-        var planned = plan(shape);
-        var platforms = new ArrayList<Platform>();
-        for (var p : planned.platforms()) platforms.add(p.ring() ? p : carried(p, nozzles));
-        plan = new Plan(List.copyOf(platforms), planned.ladders(), planned.deckRadius(), planned.davitAngle(), planned.davitTop());
-        for (var p : plan.platforms()) pieces.add(pieces(p, nozzles));
-    }
-
-    /**
-     * A part ring whose end lies beside a line to the auxiliaries crossing its rail: carried on past the line, so the line
-     * passes through a gap in the rail as round the top ring, and the closed end, a radial fence, clears the line's flange
-     * from the shell out. Lined nozzles leave on the sides and the front, away from the ladders over the back, so an end
-     * carried on moves away from its ladder.
-     */
-    private Platform carried(Platform p, List<EquipmentShape.Nozzle> nozzles) {
-        double from = p.from(), to = p.to(), span = p.to() - p.from();
-        for (var nozzle : nozzles) {
-            if (!crosses(p, nozzle)) continue;
-            double s = Math.min(1, (PipeSizes.flange(nozzle.maxOd()) / 2 + .15) / (outer + GAP));
-            double clear = DeterministicMath.atan2(s, Math.sqrt(1 - s * s));
-            double u = heading(nozzle) - p.from();
-            u -= 2 * Math.PI * Math.floor(u / (2 * Math.PI));
-            if (Math.abs(u - span) <= clear) to = Math.max(to, p.from() + u + clear);
-            else if (u <= clear) from = Math.min(from, p.from() + u - clear);
-            else if (2 * Math.PI - u <= clear) from = Math.min(from, p.from() + u - 2 * Math.PI - clear);
-        }
-        return new Platform(p.level(), from, to, false, p.closedFrom(), p.closedTo(), p.manway());
-    }
-
-    /** Whether a lined side nozzle's line crosses a platform's edge within its drawn rail's height. */
-    private boolean crosses(Platform p, EquipmentShape.Nozzle nozzle) {
-        if (nozzle.axis() == 1 || !ColumnAuxiliaries.lined(shape, nozzle)) return false;
-        double y = nozzle.base()[1], half = nozzle.maxOd() / 2 + .03;
-        return y - half < p.level() + DECK + RAIL + BAR && y + half > p.level();
+        plan = plan(shape);
     }
 
     /** A side nozzle's heading in the frame, from +x towards +z. */
-    private static double heading(EquipmentShape.Nozzle nozzle) {
-        return nozzle.axis() == 0 ? (nozzle.sign() > 0 ? 0 : Math.PI) : (nozzle.sign() > 0 ? Math.PI / 2 : 3 * Math.PI / 2);
+    private static double heading(int axis, int sign) {
+        return axis == 0 ? (sign > 0 ? 0 : Math.PI) : (sign > 0 ? Math.PI / 2 : 3 * Math.PI / 2);
     }
 
     /**
@@ -199,59 +170,159 @@ final class ColumnStructure {
     // ---- Nozzles ------------------------------------------------------------------------------------------------
 
     /**
-     * The process nozzles (shape only: a column is not a fluid device yet), each centred on a cell row so its flange face
-     * lies on a block face: the vapour outlet on the top head; on the front the feed over its tray and the bottoms just
-     * over the bottom tangent line; on the right, the side of the auxiliaries' structure (owner decision 2026-10-16), the
-     * reflux over tray 1 and each pumparound's draw under its draw tray and return over its return tray, whose lines run
-     * to the structure; on the left the side draws under their trays, the stripping steam under its stage and a kettle
-     * reboiler's vapour return between the sump and the bottom tray. Sizes follow the column diameter. A nozzle that would
-     * cross another on its side or the top ring's deck moves up or down a row; the lined ones are placed first.
+     * The process nozzles at fixed sides (owner decision 2026-10-16: the player places the units and runs the pipes), each
+     * centred on a cell row so its flange face lies on a block face: the vapour outlet on the top head; on the front,
+     * towards the constructor and the pipe rack, the feed over its tray and the bottoms through the skirt's port (on the
+     * shell just over the bottom tangent line where the skirt leaves it no room); on the right the reflux over tray 1 and
+     * each pumparound's draw under its draw tray and return over its return tray; on the left the reboiler's vapour return
+     * between the sump's level and the bottom tray, the side draws under their trays and the stripping steam under its
+     * stage. Sizes follow the column diameter; each takes any pipe. A nozzle moves to the nearest row where it meets no
+     * other nozzle on its side and leaves its neck and the block beyond its flange clear of the access structure
+     * ({@link Clearance}), so a pipe can always meet it. Cached per shape.
      */
     static void nozzles(EquipmentShape s, List<EquipmentShape.Nozzle> out) {
-        var t = s.trays();
-        double d = s.diameter(), a = s.axis(), yB = s.bottomTangent(), yT = s.topTangent();
-        double apothem = s.outerRadius() * DeterministicMath.cos(Math.PI / s.facets());
-        int topDeck = plan(s).top().level();
-        double topOd = size(.4 * d, 1);
-        double start = s.headSurface(topOd / 2) - .03;
-        out.add(new EquipmentShape.Nozzle(EquipmentShape.Role.VAPOUR_OUTLET, new double[]{a, start, a}, 1, 1, Math.ceil(s.top() + EquipmentShape.STAND_OUT) - start, topOd, topOd));
-        double sump = ColumnTrays.bottomSpace(d);
-        var placed = new ArrayList<EquipmentShape.Nozzle>();
-        side(s, placed, EquipmentShape.Role.REFLUX, yB + t.trayHeight(d, 1) + .45, 0, -1, size(d / 8, .5), apothem, topDeck);
-        side(s, placed, EquipmentShape.Role.FEED, yB + (t.feed() > t.trays() ? sump - .3 : t.trayHeight(d, t.feed()) + .3), 2, -1, size(d / 5, .8), apothem, topDeck);
-        for (var p : t.pumparounds()) {
-            side(s, placed, EquipmentShape.Role.PUMPAROUND_DRAW, yB + t.trayHeight(d, p.draw()) - .2, 0, -1, size(d / 6, .6), apothem, topDeck);
-            side(s, placed, EquipmentShape.Role.RETURN, yB + t.trayHeight(d, p.ret()) + .3, 0, -1, size(d / 6, .6), apothem, topDeck);
+        var cached = NOZZLES.get(s);
+        if (cached == null) {
+            if (NOZZLES.size() >= CACHE) NOZZLES.clear();
+            cached = NOZZLES.computeIfAbsent(s, ColumnStructure::place);
         }
-        if (s.options().reboiler() == ColumnOptions.Reboiler.KETTLE)
-            side(s, placed, EquipmentShape.Role.VAPOUR_RETURN, ColumnAuxiliaries.vapourReturnHeight(d, yB), 0, 1, size(.27 * d, 1), apothem, topDeck);
-        for (int draw : t.draws()) side(s, placed, EquipmentShape.Role.DRAW, yB + t.trayHeight(d, draw) - .2, 0, 1, size(d / 8, .5), apothem, topDeck);
+        out.addAll(cached);
+    }
+
+    private static List<EquipmentShape.Nozzle> place(EquipmentShape s) {
+        var t = s.trays();
+        double d = s.diameter(), a = s.axis(), yB = s.bottomTangent();
+        double topOd = size(.4 * d, 1), start = s.headSurface(topOd / 2) - .03;
+        var out = new ArrayList<EquipmentShape.Nozzle>();
+        out.add(new EquipmentShape.Nozzle(EquipmentShape.Role.VAPOUR_OUTLET, new double[]{a, start, a}, 1, 1, Math.ceil(s.top() + EquipmentShape.STAND_OUT) - start,
+                topOd, topOd, 0, s.headSurface(0) - start));
+        double sump = ColumnTrays.bottomSpace(d);
+        var clearance = new Clearance(s);
+        var placed = new ArrayList<EquipmentShape.Nozzle>();
+        side(s, clearance, placed, EquipmentShape.Role.REFLUX, yB + t.trayHeight(d, 1) + .45, 0, -1, size(d / 8, .5));
+        side(s, clearance, placed, EquipmentShape.Role.FEED, yB + (t.feed() > t.trays() ? sump - .3 : t.trayHeight(d, t.feed()) + .3), 2, -1, size(d / 5, .8));
+        for (var p : t.pumparounds()) {
+            side(s, clearance, placed, EquipmentShape.Role.PUMPAROUND_DRAW, yB + t.trayHeight(d, p.draw()) - .2, 0, -1, size(d / 6, .6));
+            side(s, clearance, placed, EquipmentShape.Role.RETURN, yB + t.trayHeight(d, p.ret()) + .3, 0, -1, size(d / 6, .6));
+        }
+        side(s, clearance, placed, EquipmentShape.Role.VAPOUR_RETURN, yB + .75 * sump, 0, 1, size(.27 * d, 1));
+        for (int draw : t.draws()) side(s, clearance, placed, EquipmentShape.Role.DRAW, yB + t.trayHeight(d, draw) - .2, 0, 1, size(d / 8, .5));
         for (int stage : t.steam())
-            side(s, placed, EquipmentShape.Role.STEAM, yB + (stage > t.trays() ? sump : t.trayHeight(d, stage)) - .3, 0, 1, size(d / 8, .5), apothem, topDeck);
-        side(s, placed, EquipmentShape.Role.BOTTOMS, yB + .3, 2, -1, size(d / 6, .6), apothem, topDeck);
+            side(s, clearance, placed, EquipmentShape.Role.STEAM, yB + (stage > t.trays() ? sump : t.trayHeight(d, stage)) - .3, 0, 1, size(d / 8, .5));
+        var bottoms = s.skirtOutlet(EquipmentShape.Role.BOTTOMS, size(d / 6, .6));
+        if (bottoms == null) side(s, clearance, placed, EquipmentShape.Role.BOTTOMS, yB + .3, 2, -1, size(d / 6, .6));
         out.addAll(placed);
+        if (bottoms != null) out.add(bottoms);
+        return List.copyOf(out);
     }
 
-    /** A nozzle or line size from a fraction of the diameter: to the next 5 cm, at least 0.1 m, at most {@code max}. */
+    /**
+     * A nozzle or line size from a fraction of the diameter: to the next 5 cm, at least 0.1 m, at most {@code max} (which
+     * wins: a neck narrower than 0.1 m, a small ejector's, defaults to its largest size).
+     */
     static double size(double od, double max) {
-        return Math.max(.1, Math.min(max, Math.round(od * 20) / 20.0));
+        return Math.min(max, Math.max(.1, Math.round(od * 20) / 20.0));
     }
 
-    /** Adds a radial nozzle at the free cell row nearest {@code y} on its side, or nothing when none is free within 4 m. */
-    private static void side(EquipmentShape s, List<EquipmentShape.Nozzle> placed, EquipmentShape.Role role, double y, int axis, int sign, double od,
-                             double apothem, int topDeck) {
-        double half = PipeSizes.flange(od) / 2, yB = s.bottomTangent(), yT = s.topTangent();
+    /**
+     * Adds a radial nozzle at the cell row nearest {@code y} on its side where it meets no other nozzle there and the
+     * structure leaves its neck and pipe block clear; nothing when the shell has no such row.
+     */
+    private static void side(EquipmentShape s, Clearance clearance, List<EquipmentShape.Nozzle> placed, EquipmentShape.Role role, double y, int axis, int sign,
+                             double od) {
+        double half = PipeSizes.flange(od) / 2, yB = s.bottomTangent(), yT = s.topTangent(), heading = heading(axis, sign);
         double wanted = Math.floor(y) + .5;
-        for (int step = 0; step <= 8; step++) {
+        int rows = (int) Math.ceil(yT - yB) + 2;
+        for (int step = 0; step <= 2 * rows; step++) {
             double at = wanted + (step % 2 == 0 ? step / 2 : -(step + 1) / 2);
             if (at - half < yB + .05 || at + half > yT - .05) continue;
-            if (at - half < topDeck + DECK + .02 && at + half > topDeck - .02) continue;
             boolean free = true;
             for (var other : placed)
                 if (other.axis() == axis && other.sign() == sign && Math.abs(other.base()[1] - at) < half + PipeSizes.flange(other.maxOd()) / 2 + .05) free = false;
-            if (!free) continue;
-            placed.add(s.side(role, s.axis(), at, axis, sign, apothem, od, od));
+            if (!free || clearance.blocked(Math.floor(at), heading)) continue;
+            placed.add(s.side(role, s.axis(), at, axis, sign, s.outerRadius() * DeterministicMath.cos(Math.PI / s.facets()), od, od));
             return;
+        }
+    }
+
+    /**
+     * What a side nozzle must keep clear of the access structure: from the cladding out to the far side of the block
+     * beyond its flange face (where its pipe stands), {@link #REACH} to each side of its centre line, over its cell row.
+     * The structure's parts there, seen from above: each platform's deck, rail and braces over its rows (from its knee
+     * braces up to its top rail), each ladder with its cage between its foot and top, and the davit's mast. Each is a
+     * convex outline (a deck in arcs of at most {@link #ARC}), tested against the clear box by separating axes.
+     */
+    private static final class Clearance {
+        /** Half the width kept clear beside a nozzle's centre line: half a block and a margin. */
+        static final double REACH = .55, ARC = Math.PI / 12;
+        private final Plan plan;
+        private final double outer, face;
+
+        Clearance(EquipmentShape s) {
+            plan = plan(s);
+            outer = s.outerRadius();
+            // The flange face's plane, from the axis (the axis runs through a cell centre).
+            face = Math.ceil(s.axis() + outer + EquipmentShape.STAND_OUT) - s.axis();
+        }
+
+        /** Whether a nozzle in cell row [row, row + 1) heading {@code heading} meets a part. */
+        boolean blocked(double row, double heading) {
+            double[][] clear = {{outer, -REACH}, {face + 1, -REACH}, {face + 1, REACH}, {outer, REACH}};
+            double edge = plan.deckRadius();
+            for (var p : plan.platforms()) {
+                if (row >= p.level() + DECK + RAIL + BAR || row + 1 <= p.level() - .65) continue;
+                int pieces = Math.max(1, (int) Math.ceil((p.to() - p.from()) / ARC));
+                for (int k = 0; k < pieces; k++) {
+                    double a0 = p.from() + (p.to() - p.from()) * k / pieces, a1 = p.from() + (p.to() - p.from()) * (k + 1) / pieces;
+                    var piece = new double[][]{local(outer, a0, 0, heading), local(edge, a0, 0, heading), local(edge, (a0 + a1) / 2, 0, heading),
+                            local(edge, a1, 0, heading), local(outer, a1, 0, heading)};
+                    if (overlap(clear, piece)) return true;
+                }
+            }
+            for (var l : plan.ladders()) {
+                if (row >= l.top() || row + 1 <= l.base()) continue;
+                double r = outer + STANDOFF;
+                var cage = new double[][]{local(outer, l.angle(), -CAGE_HALF, heading), local(r + 2 * CAGE_HALF, l.angle(), -CAGE_HALF, heading),
+                        local(r + 2 * CAGE_HALF, l.angle(), CAGE_HALF, heading), local(outer, l.angle(), CAGE_HALF, heading)};
+                if (overlap(clear, cage)) return true;
+            }
+            if (row + 1 > plan.top().level() && row < plan.davitTop()) {
+                var mast = local(outer + .35, plan.davitAngle(), 0, heading);
+                var square = new double[][]{{mast[0] - .1, mast[1] - .1}, {mast[0] + .1, mast[1] - .1}, {mast[0] + .1, mast[1] + .1}, {mast[0] - .1, mast[1] + .1}};
+                return overlap(clear, square);
+            }
+            return false;
+        }
+
+        /** The point {@code r} out at angle {@code a}, {@code t} across, as (along, across) the heading {@code heading}. */
+        private static double[] local(double r, double a, double t, double heading) {
+            double d = a - heading, c = DeterministicMath.cos(d), s = DeterministicMath.sin(d);
+            return new double[]{r * c - t * s, r * s + t * c};
+        }
+
+        /** Whether two convex outlines overlap: no edge normal of either separates them. */
+        private static boolean overlap(double[][] a, double[][] b) {
+            return !separates(a, b) && !separates(b, a);
+        }
+
+        private static boolean separates(double[][] edges, double[][] other) {
+            for (int i = 0; i < edges.length; i++) {
+                double[] p = edges[i], q = edges[(i + 1) % edges.length];
+                double nx = q[1] - p[1], nz = p[0] - q[0];
+                double minA = Double.MAX_VALUE, maxA = -Double.MAX_VALUE, minB = Double.MAX_VALUE, maxB = -Double.MAX_VALUE;
+                for (var v : edges) {
+                    double d = v[0] * nx + v[1] * nz;
+                    minA = Math.min(minA, d);
+                    maxA = Math.max(maxA, d);
+                }
+                for (var v : other) {
+                    double d = v[0] * nx + v[1] * nz;
+                    minB = Math.min(minB, d);
+                    maxB = Math.max(maxB, d);
+                }
+                if (maxA <= minB + 1e-9 || maxB <= minA + 1e-9) return true;
+            }
+            return false;
         }
     }
 
@@ -260,45 +331,13 @@ final class ColumnStructure {
     /** Draws the cladding's flashing rings, the platforms, the manways and the lifting davit into {@code mesh}, the ladders into {@code ladders}. */
     void build(Mesh mesh, Mesh ladders, List<EquipmentShape.Nozzle> nozzles) {
         flashing(mesh, nozzles);
-        for (int i = 0; i < plan.platforms().size(); i++) {
-            var p = plan.platforms().get(i);
-            deck(mesh, p, pieces.get(i));
-            handrail(mesh, p, pieces.get(i));
+        for (var p : plan.platforms()) {
+            deck(mesh, p);
+            handrail(mesh, p);
             if (p.manway()) manway(mesh, p.manwayHeight());
         }
         for (var l : plan.ladders()) ladder(ladders, l);
         davit(mesh);
-    }
-
-    /**
-     * A platform's arc in pieces {from, to, railed}: railed 1, or 0 where a line to the auxiliaries crosses the deck's edge
-     * within the handrail's height. There the toe board, the rails and the fence's collision stop at a post on each side, as
-     * round a pipe through a plant handrail: the gap left beside the line is too narrow for a player.
-     */
-    private List<double[]> pieces(Platform p, List<EquipmentShape.Nozzle> nozzles) {
-        double edge = plan.deckRadius();
-        var gaps = new ArrayList<double[]>();
-        for (var nozzle : nozzles) {
-            if (!crosses(p, nozzle)) continue;
-            double heading = heading(nozzle);
-            double at = p.from() + (heading - p.from()) - 2 * Math.PI * Math.floor((heading - p.from()) / (2 * Math.PI));
-            double w = (nozzle.maxOd() / 2 + .12) / edge;
-            if (at - w > p.from() && at + w < p.to()) gaps.add(new double[]{at - w, at + w});
-        }
-        gaps.sort((g, h) -> Double.compare(g[0], h[0]));
-        var out = new ArrayList<double[]>();
-        double from = p.from();
-        for (var gap : gaps) {
-            if (gap[0] <= from) {
-                from = Math.max(from, gap[1]);
-                continue;
-            }
-            out.add(new double[]{from, gap[0], 1});
-            out.add(new double[]{gap[0], gap[1], 0});
-            from = gap[1];
-        }
-        out.add(new double[]{from, p.to(), 1});
-        return out;
     }
 
     /** Rows of the cladding crossed by a flashing ring: their lower heights. */
@@ -351,36 +390,23 @@ final class ColumnStructure {
         return Math.min(d, 2 * Math.PI - d);
     }
 
-    /**
-     * A deck of grating with its toe board (stopping at a line's gap), inner rim and ends, and a knee-braced bracket at
-     * every post.
-     */
-    private void deck(Mesh m, Platform p, List<double[]> pieces) {
+    /** A deck of grating with its toe board, inner rim and ends, and a knee-braced bracket at every post. */
+    private void deck(Mesh m, Platform p) {
         double y0 = p.level(), y1 = y0 + DECK, inner = outer + GAP, edge = plan.deckRadius(), toe = edge - 1 / 32.0;
-        for (var piece : pieces) {
-            boolean railed = piece[2] > 0;
-            int segments = segments(piece[0], piece[1]);
-            for (int j = 0; j < segments; j++) {
-                double a0 = piece[0] + (piece[1] - piece[0]) * j / segments, a1 = piece[0] + (piece[1] - piece[0]) * (j + 1) / segments, mid = (a0 + a1) / 2;
-                double top = railed ? y1 + TOE : y1;
-                m.flat(List.of(at(inner, a0, y1), at(inner, a1, y1), at(edge, a1, y1), at(edge, a0, y1)), UP, Material.GRATING);
-                m.flat(List.of(at(inner, a0, y0), at(inner, a1, y0), at(edge, a1, y0), at(edge, a0, y0)), DOWN, Material.GRATING);
-                m.flat(List.of(at(inner, a0, y0), at(inner, a1, y0), at(inner, a1, y1), at(inner, a0, y1)), neg(radial(mid)), Material.GRATING);
-                m.flat(List.of(at(edge, a0, y0), at(edge, a1, y0), at(edge, a1, top), at(edge, a0, top)), radial(mid), Material.HANDRAIL);
-                if (!railed) continue;
-                m.flat(List.of(at(toe, a0, y1), at(toe, a1, y1), at(toe, a1, y1 + TOE), at(toe, a0, y1 + TOE)), neg(radial(mid)), Material.HANDRAIL);
-                m.flat(List.of(at(toe, a0, y1 + TOE), at(toe, a1, y1 + TOE), at(edge, a1, y1 + TOE), at(edge, a0, y1 + TOE)), UP, Material.HANDRAIL);
-            }
-            // The toe board's ends at a gap; the deck's own ends at the arc's.
-            if (!railed) continue;
-            for (double end : new double[]{piece[0], piece[1]}) {
-                var along = end == piece[0] ? neg(tangent(end)) : tangent(end);
-                m.flat(List.of(at(toe, end, y1), at(edge, end, y1), at(edge, end, y1 + TOE), at(toe, end, y1 + TOE)), along, Material.HANDRAIL);
-            }
+        int segments = segments(p.from(), p.to());
+        for (int j = 0; j < segments; j++) {
+            double a0 = p.from() + (p.to() - p.from()) * j / segments, a1 = p.from() + (p.to() - p.from()) * (j + 1) / segments, mid = (a0 + a1) / 2;
+            m.flat(List.of(at(inner, a0, y1), at(inner, a1, y1), at(edge, a1, y1), at(edge, a0, y1)), UP, Material.GRATING);
+            m.flat(List.of(at(inner, a0, y0), at(inner, a1, y0), at(edge, a1, y0), at(edge, a0, y0)), DOWN, Material.GRATING);
+            m.flat(List.of(at(inner, a0, y0), at(inner, a1, y0), at(inner, a1, y1), at(inner, a0, y1)), neg(radial(mid)), Material.GRATING);
+            m.flat(List.of(at(edge, a0, y0), at(edge, a1, y0), at(edge, a1, y1 + TOE), at(edge, a0, y1 + TOE)), radial(mid), Material.HANDRAIL);
+            m.flat(List.of(at(toe, a0, y1), at(toe, a1, y1), at(toe, a1, y1 + TOE), at(toe, a0, y1 + TOE)), neg(radial(mid)), Material.HANDRAIL);
+            m.flat(List.of(at(toe, a0, y1 + TOE), at(toe, a1, y1 + TOE), at(edge, a1, y1 + TOE), at(edge, a0, y1 + TOE)), UP, Material.HANDRAIL);
         }
         for (double end : new double[]{p.from(), p.to()}) {
             var along = end == p.from() ? neg(tangent(end)) : tangent(end);
             m.flat(List.of(at(inner, end, y0), at(edge, end, y0), at(edge, end, y1), at(inner, end, y1)), along, Material.GRATING);
+            m.flat(List.of(at(toe, end, y1), at(edge, end, y1), at(edge, end, y1 + TOE), at(toe, end, y1 + TOE)), along, Material.HANDRAIL);
         }
         for (double a : posts(p.from(), p.to())) {
             m.bar(at(outer + .02, a, y0 - .04), at(edge - .05, a, y0 - .04), BAR * 1.5, UP, Material.STEELWORK);
@@ -388,17 +414,14 @@ final class ColumnStructure {
         }
     }
 
-    /** Posts along the outer edge, at a gap's sides and at closed ends; top and mid rails along the edge and across a closed end. */
-    private void handrail(Mesh m, Platform p, List<double[]> pieces) {
+    /** Posts along the outer edge and at closed ends; top and mid rails along the edge and across a closed end. */
+    private void handrail(Mesh m, Platform p) {
         double base = p.level() + DECK, r = plan.deckRadius() - .03, inner = outer + .12;
-        for (var piece : pieces) {
-            if (piece[2] <= 0) continue;
-            for (double a : posts(piece[0], piece[1])) m.bar(at(r, a, base), at(r, a, base + RAIL + BAR / 2), BAR, radial(a), Material.HANDRAIL);
-            int segments = segments(piece[0], piece[1]);
-            for (int j = 0; j < segments; j++) {
-                double a0 = piece[0] + (piece[1] - piece[0]) * j / segments, a1 = piece[0] + (piece[1] - piece[0]) * (j + 1) / segments;
-                for (double h : new double[]{RAIL, MID_RAIL}) m.bar(at(r, a0, base + h), at(r, a1, base + h), BAR, UP, Material.HANDRAIL);
-            }
+        for (double a : posts(p.from(), p.to())) m.bar(at(r, a, base), at(r, a, base + RAIL + BAR / 2), BAR, radial(a), Material.HANDRAIL);
+        int segments = segments(p.from(), p.to());
+        for (int j = 0; j < segments; j++) {
+            double a0 = p.from() + (p.to() - p.from()) * j / segments, a1 = p.from() + (p.to() - p.from()) * (j + 1) / segments;
+            for (double h : new double[]{RAIL, MID_RAIL}) m.bar(at(r, a0, base + h), at(r, a1, base + h), BAR, UP, Material.HANDRAIL);
         }
         for (int e = 0; e < 2; e++) {
             if (!(e == 0 ? p.closedFrom() : p.closedTo())) continue;
@@ -499,22 +522,12 @@ final class ColumnStructure {
      * or the davit's mast. Walls are 0.2 m thick so the collision sampling cannot miss them; cages and braces do not collide.
      */
     boolean inside(double[] p) {
-        return inside(p, FENCE);
-    }
-
-    /** As {@link #inside}, the fences to their top rail only: the parts drawn (tests: a line through the structure). */
-    boolean insideDrawn(double[] p) {
-        return inside(p, RAIL + BAR);
-    }
-
-    private boolean inside(double[] p, double fence) {
         double dx = p[0] - axis, dz = p[2] - axis, y = p[1], rho = Math.sqrt(dx * dx + dz * dz), edge = plan.deckRadius();
-        for (int i = 0; i < plan.platforms().size(); i++) {
-            var platform = plan.platforms().get(i);
+        for (var platform : plan.platforms()) {
             double level = platform.level();
-            if (y < level || y > level + DECK + fence) continue;
+            if (y < level || y > level + DECK + FENCE) continue;
             boolean within = within(dx, dz, platform.from(), platform.to());
-            if (within && rho >= outer + GAP && rho <= edge && (y <= level + DECK || rho >= edge - RAIL_BAND && railed(i, dx, dz))) return true;
+            if (within && rho >= outer + GAP && rho <= edge && (y <= level + DECK || rho >= edge - RAIL_BAND)) return true;
             if (y > level + DECK)
                 for (int e = 0; e < 2; e++) {
                     if (!(e == 0 ? platform.closedFrom() : platform.closedTo())) continue;
@@ -548,13 +561,6 @@ final class ColumnStructure {
     }
 
     /** Whether the direction (dx, dz) from the axis lies in the arc [from, to] (counter-clockwise from +x towards +z). */
-    /** Whether platform {@code i}'s rail stands at the heading of (dx, dz): outside the gaps left for lines. */
-    private boolean railed(int i, double dx, double dz) {
-        for (var piece : pieces.get(i))
-            if (piece[2] == 0 && within(dx, dz, piece[0], piece[1])) return false;
-        return true;
-    }
-
     private static boolean within(double dx, double dz, double from, double to) {
         double c0 = DeterministicMath.cos(from), s0 = DeterministicMath.sin(from), c1 = DeterministicMath.cos(to), s1 = DeterministicMath.sin(to);
         boolean afterFrom = c0 * dz - s0 * dx >= 0, beforeTo = dx * s1 - dz * c1 >= 0;

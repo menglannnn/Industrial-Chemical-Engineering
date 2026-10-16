@@ -12,13 +12,27 @@ public record VesselPlacement(int forward, int right, int up) {
     public static final VesselPlacement DEFAULT = new VesselPlacement(1, 0, 0);
 
     /**
-     * A drum standing, or lying with its axis along the constructor's facing (lengthwise) or across it (crosswise); or a
-     * distillation column (owner request 2026-10-16).
+     * A drum standing, or lying with its axis along the constructor's facing (lengthwise) or across it (crosswise); a
+     * distillation column; or a unit (owner requests 2026-10-16): a heat exchanger, a kettle reboiler, an air cooler bay or
+     * a steam ejector, lying lengthwise or standing.
      */
     public enum Form {
-        VERTICAL, LENGTHWISE, CROSSWISE, COLUMN;
+        VERTICAL, LENGTHWISE, CROSSWISE, COLUMN, EXCHANGER, KETTLE, AIR_COOLER, EJECTOR;
+
+        /** The kind of equipment this form builds. */
+        public EquipmentShape.Kind kind() {
+            return switch (this) {
+                case VERTICAL, LENGTHWISE, CROSSWISE -> EquipmentShape.Kind.DRUM;
+                case COLUMN -> EquipmentShape.Kind.COLUMN;
+                case EXCHANGER -> EquipmentShape.Kind.EXCHANGER;
+                case KETTLE -> EquipmentShape.Kind.KETTLE;
+                case AIR_COOLER -> EquipmentShape.Kind.AIR_COOLER;
+                case EJECTOR -> EquipmentShape.Kind.EJECTOR;
+            };
+        }
 
         public EquipmentShape.Orientation orientation() {
+            if (unit()) return ProcessUnit.orientation(kind());
             return this == LENGTHWISE || this == CROSSWISE ? EquipmentShape.Orientation.HORIZONTAL : EquipmentShape.Orientation.VERTICAL;
         }
 
@@ -26,10 +40,14 @@ public record VesselPlacement(int forward, int right, int up) {
             return this == COLUMN;
         }
 
+        public boolean unit() {
+            return kind().unit();
+        }
+
         /**
          * The vessel's front for a constructor facing the horizontal unit step (stepX, stepZ): back towards the constructor
-         * (a standing drum's liquid outlet, a lengthwise drum's front head, a column's piping side), or a crosswise drum's
-         * front head to the constructor's right.
+         * (a standing drum's liquid outlet, a lengthwise drum's front head, a column's piping side, a unit's channel, inlet
+         * header or suction), or a crosswise drum's front head to the constructor's right.
          */
         public EquipmentShape.Heading front(int stepX, int stepZ) {
             if (Math.abs(stepX) + Math.abs(stepZ) != 1) throw new IllegalArgumentException("Facing must be a horizontal unit step");
@@ -47,22 +65,12 @@ public record VesselPlacement(int forward, int right, int up) {
      * step (stepX, stepZ).
      */
     public int[] origin(int x, int y, int z, int stepX, int stepZ, int sizeX, int sizeZ) {
-        return origin(x, y, z, stepX, stepZ, sizeX, sizeZ, new int[]{0, 0, sizeX, sizeZ});
-    }
-
-    /**
-     * The same for a box whose part {@code body} = {x0, z0, x1, z1} (box cells, upper bounds exclusive) is what the
-     * constructor builds in front of itself: across its line it centres that part (a column's own square, its auxiliaries
-     * standing beside it), along its line the whole box starts at the near face.
-     */
-    public int[] origin(int x, int y, int z, int stepX, int stepZ, int sizeX, int sizeZ, int[] body) {
         if (Math.abs(stepX) + Math.abs(stepZ) != 1) throw new IllegalArgumentException("Facing must be a horizontal unit step");
         // The constructor's right is its facing turned clockwise seen from above (north -> east). On each axis the box
-        // extends either along the facing (from the near face) or across it (centred on the body), never both.
+        // extends either along the facing (from the near face) or across it (centred), never both.
         int rightX = -stepZ, rightZ = stepX;
-        int acrossX = stepX == 0 ? across(rightX, body[2] - body[0]) - body[0] : 0, acrossZ = stepZ == 0 ? across(rightZ, body[3] - body[1]) - body[1] : 0;
-        return new int[]{x + stepX * forward + rightX * right + Math.min(0, stepX * (sizeX - 1)) + acrossX, y + up,
-                z + stepZ * forward + rightZ * right + Math.min(0, stepZ * (sizeZ - 1)) + acrossZ};
+        return new int[]{x + stepX * forward + rightX * right + Math.min(0, stepX * (sizeX - 1)) + across(rightX, sizeX), y + up,
+                z + stepZ * forward + rightZ * right + Math.min(0, stepZ * (sizeZ - 1)) + across(rightZ, sizeZ)};
     }
 
     /** Offset of the box's lower corner from the line through the constructor, on an axis the line crosses ({@code right} ≠ 0). */

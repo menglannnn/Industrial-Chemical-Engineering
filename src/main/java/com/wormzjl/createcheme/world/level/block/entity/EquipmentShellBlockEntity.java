@@ -13,7 +13,6 @@ import net.minecraft.world.MenuProvider;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.inventory.AbstractContainerMenu;
-import com.wormzjl.createcheme.science.equipment.ColumnOptions;
 import com.wormzjl.createcheme.science.equipment.ColumnTrays;
 import com.wormzjl.createcheme.science.equipment.EquipmentShape;
 import com.wormzjl.createcheme.science.equipment.ShapeRasterizer;
@@ -236,7 +235,7 @@ public final class EquipmentShellBlockEntity extends BlockEntity implements Flui
         tag.putLong("Nozzles", nozzles);
     }
 
-    /** A shape's NBT: kind, diameter, tangent length, orientation, front, support, a column's trays and options, a drum's side connections. */
+    /** A shape's NBT: kind, diameter, tangent length, orientation, front, support, a column's trays, a drum's side connections. */
     public static void writeShape(CompoundTag tag, EquipmentShape shape) {
         tag.putString("Kind", shape.kind().name().toLowerCase(Locale.ROOT));
         tag.putDouble("Diameter", shape.diameter());
@@ -244,10 +243,8 @@ public final class EquipmentShellBlockEntity extends BlockEntity implements Flui
         tag.putString("Orientation", shape.orientation().name().toLowerCase(Locale.ROOT));
         tag.putString("Front", shape.front().name().toLowerCase(Locale.ROOT));
         tag.putInt("Support", shape.support());
-        if (shape.trays() != null) {
-            tag.putIntArray("Trays", shape.trays().encode());
-            tag.putInt("Options", shape.options().encode());
-        } else tag.putIntArray("Connections", EquipmentShape.Connection.encode(shape.connections()));
+        if (shape.trays() != null) tag.putIntArray("Trays", shape.trays().encode());
+        else if (shape.drum()) tag.putIntArray("Connections", EquipmentShape.Connection.encode(shape.connections()));
     }
 
     /** @throws IllegalArgumentException for a missing or invalid field */
@@ -255,8 +252,8 @@ public final class EquipmentShellBlockEntity extends BlockEntity implements Flui
         var kind = EquipmentShape.Kind.valueOf(tag.getString("Kind").toUpperCase(Locale.ROOT));
         var front = EquipmentShape.Heading.valueOf(tag.getString("Front").toUpperCase(Locale.ROOT));
         if (kind == EquipmentShape.Kind.COLUMN)
-            return EquipmentShape.column(tag.getDouble("Diameter"), ColumnTrays.decode(tag.getIntArray("Trays")), ColumnOptions.decode(tag.getInt("Options")), front,
-                    tag.getInt("Support"));
+            return EquipmentShape.column(tag.getDouble("Diameter"), ColumnTrays.decode(tag.getIntArray("Trays")), front, tag.getInt("Support"));
+        if (kind.unit()) return EquipmentShape.unit(kind, tag.getDouble("Diameter"), tag.getDouble("TangentLength"), front, tag.getInt("Support"));
         if (!tag.contains("Connections")) throw new IllegalArgumentException("A drum lists its side connections");
         return EquipmentShape.drum(tag.getDouble("Diameter"), tag.getDouble("TangentLength"),
                 EquipmentShape.Orientation.valueOf(tag.getString("Orientation").toUpperCase(Locale.ROOT)), front, tag.getInt("Support"),

@@ -9,7 +9,6 @@ import com.wormzjl.createcheme.registry.ModBlocks;
 import com.wormzjl.createcheme.runtime.fluid.FluidWorldAuthority;
 import com.wormzjl.createcheme.runtime.fluid.PhysicalFluidTopology;
 import com.wormzjl.createcheme.science.fluid.network.PassiveNetwork;
-import com.wormzjl.createcheme.science.equipment.ColumnOptions;
 import com.wormzjl.createcheme.science.equipment.ColumnTrays;
 import com.wormzjl.createcheme.science.equipment.EquipmentShape;
 import com.wormzjl.createcheme.science.equipment.PipeSizes;
@@ -108,7 +107,7 @@ public final class EquipmentStructure {
             placed++;
         }
         var vessel = new Vessel(origin, shape);
-        if (!shape.column() && rows >= shape.sizeY()) register(level, vessel);
+        if (shape.drum() && rows >= shape.sizeY()) register(level, vessel);
         reconnect(level, vessel);
         refreshNozzles(level, vessel);
         return placed;
@@ -164,13 +163,13 @@ public final class EquipmentStructure {
     /**
      * Server: each nozzle drawn at the size of the pipe connected to it (owner decisions 2026-10-16: its flange always the
      * pipe's, a reducer where the vessel cannot carry the pipe's size); an unconnected nozzle shows its default size under
-     * a blind flange. Only the cells the nozzle reaches change.
+     * a blind flange. Only the cells the nozzles reach change, each keeping the sizes of the nozzles reaching it.
      */
     public static void refreshNozzles(Level level, Vessel vessel) {
         if (level.isClientSide()) return;
         var shape = vessel.shape();
         var nozzles = shape.nozzles();
-        long codes = 0;
+        var outside = new double[nozzles.size()];
         for (var port : ShapeRasterizer.ports(shape)) {
             var at = vessel.origin().offset(port.cell().x() + port.dx(), port.cell().y() + port.dy(), port.cell().z() + port.dz());
             var towards = Direction.fromDelta(-port.dx(), -port.dy(), -port.dz());
@@ -178,14 +177,15 @@ public final class EquipmentStructure {
             var state = level.getBlockState(at);
             if (state.getBlock() instanceof FluidDeviceBlock block && block.kind() == TopologyCompiler.Kind.PIPE && state.getValue(FluidDeviceBlock.connection(towards))
                     && level.getBlockEntity(at) instanceof FluidDeviceBlockEntity pipe)
-                codes = ShapeRasterizer.withNozzle(codes, port.nozzle(), PipeSizes.outside(pipe.bore()));
+                outside[port.nozzle()] = PipeSizes.outside(pipe.bore());
         }
-        for (int k = 0; k < nozzles.size(); k++)
-            for (var cell : ShapeRasterizer.nozzleCells(shape, k)) {
-                var position = vessel.origin().offset(cell.x(), cell.y(), cell.z());
-                if (level.isLoaded(position) && level.getBlockEntity(position) instanceof EquipmentShellBlockEntity entity && vessel.origin().equals(entity.origin()))
-                    entity.nozzles(codes);
-            }
+        var cells = new java.util.HashSet<ShapeRasterizer.Cell>();
+        for (int k = 0; k < nozzles.size(); k++) cells.addAll(ShapeRasterizer.nozzleCells(shape, k));
+        for (var cell : cells) {
+            var position = vessel.origin().offset(cell.x(), cell.y(), cell.z());
+            if (level.isLoaded(position) && level.getBlockEntity(position) instanceof EquipmentShellBlockEntity entity && vessel.origin().equals(entity.origin()))
+                entity.nozzles(ShapeRasterizer.cellCodes(shape, cell, outside));
+        }
     }
 
     /** Server: when a pipe beside {@code position} changed, redraw the nozzles of the vessel whose port cell it is. */
@@ -222,7 +222,7 @@ public final class EquipmentStructure {
         if (dismantling || level.isClientSide()) return;
         dismantling = true;
         try {
-            if (level instanceof ServerLevel server && !vessel.shape().column()) unregister(server, vessel);
+            if (level instanceof ServerLevel server && vessel.shape().drum()) unregister(server, vessel);
             var layout = ShapeRasterizer.layout(vessel.shape());
             for (var list : java.util.List.of(layout.shell(), layout.interior()))
                 for (var cell : list) {
@@ -248,7 +248,9 @@ public final class EquipmentStructure {
      * [front] | horizontal <saddle m> [front]]} (operators only). Without a support the drum is bare: vertical, on its
      * lower head. The front (north, east, south, west; north by default) is where a standing drum's liquid outlet and a
      * lying drum's front head face. {@code /createcheme equipment column <bottom centre> <diameter m> <trays> <skirt m>
-     * [front]} places a column fed at its middle tray, its piping side to the front.
+     * [front]} places a column fed at its middle tray, its piping side to the front. {@code /createcheme equipment unit
+     * <bottom centre> exchanger|kettle|air_cooler|ejector <size m> <length m> <support m> [front]} places a unit (an air
+     * cooler's size and length are 3 and 6, an ejector's length 1), its channel or suction to the front.
      */
     @SubscribeEvent
     public static void registerCommands(RegisterCommandsEvent event) {
@@ -266,31 +268,29 @@ public final class EquipmentStructure {
         }
         var diameter = Commands.argument("diameter", DoubleArgumentType.doubleArg(EquipmentShape.MIN_DIAMETER, EquipmentShape.MAX_DIAMETER)).then(tangentLength);
         var place = Commands.literal("place").then(Commands.argument("position", BlockPosArgument.blockPos()).then(diameter));
-        // A column: diameter, tray count (feed at the middle tray) and skirt height; its feed side faces the front; then its
-        // units, the condenser (water or air), the ejector (or none) and the reboiler (none or kettle).
+        // A column: diameter, tray count (feed at the middle tray) and skirt height; its feed side faces the front.
         var skirt = Commands.argument("skirt", IntegerArgumentType.integer(1, EquipmentShape.MAX_SUPPORT))
-                .executes(context -> placeColumn(context, EquipmentShape.Heading.NORTH, ColumnOptions.DEFAULT));
-        for (var front : EquipmentShape.Heading.values()) {
-            var facing = Commands.literal(front.name().toLowerCase(Locale.ROOT)).executes(context -> placeColumn(context, front, ColumnOptions.DEFAULT));
-            for (var condenser : ColumnOptions.Condenser.values()) {
-                var cooled = Commands.literal(condenser.name().toLowerCase(Locale.ROOT));
-                for (boolean ejector : new boolean[]{false, true}) {
-                    var drawn = Commands.literal(ejector ? "ejector" : "no_ejector");
-                    for (var reboiler : ColumnOptions.Reboiler.values()) {
-                        var options = new ColumnOptions(condenser, ejector, reboiler);
-                        drawn.then(Commands.literal(reboiler.name().toLowerCase(Locale.ROOT)).executes(context -> placeColumn(context, front, options)));
-                    }
-                    cooled.then(drawn);
-                }
-                facing.then(cooled);
-            }
-            skirt.then(facing);
-        }
+                .executes(context -> placeColumn(context, EquipmentShape.Heading.NORTH));
+        for (var front : EquipmentShape.Heading.values())
+            skirt.then(Commands.literal(front.name().toLowerCase(Locale.ROOT)).executes(context -> placeColumn(context, front)));
         var column = Commands.literal("column").then(Commands.argument("position", BlockPosArgument.blockPos())
                 .then(Commands.argument("diameter", DoubleArgumentType.doubleArg(EquipmentShape.MIN_DIAMETER, EquipmentShape.MAX_DIAMETER))
                         .then(Commands.argument("trays", IntegerArgumentType.integer(1, ColumnTrays.MAX_TRAYS)).then(skirt))));
+        // A unit: its kind, size (shell, bundle or suction; an air cooler's 3), length (tubes; an air cooler's 6, an
+        // ejector's 1) and support (shell bottom, bundle or discharge height); its channel or suction faces the front.
+        var at = Commands.argument("position", BlockPosArgument.blockPos());
+        for (var kind : EquipmentShape.Kind.values()) {
+            if (!kind.unit()) continue;
+            var support = Commands.argument("support", IntegerArgumentType.integer(1, EquipmentShape.MAX_SUPPORT))
+                    .executes(context -> placeUnit(context, kind, EquipmentShape.Heading.NORTH));
+            for (var front : EquipmentShape.Heading.values())
+                support.then(Commands.literal(front.name().toLowerCase(Locale.ROOT)).executes(context -> placeUnit(context, kind, front)));
+            at.then(Commands.literal(kind.name().toLowerCase(Locale.ROOT)).then(Commands.argument("size", DoubleArgumentType.doubleArg(.1, 3))
+                    .then(Commands.argument("length", IntegerArgumentType.integer(1, 12)).then(support))));
+        }
+        var unit = Commands.literal("unit").then(at);
         event.getDispatcher().register(Commands.literal("createcheme").requires(source -> source.hasPermission(2))
-                .then(Commands.literal("equipment").then(place).then(column)));
+                .then(Commands.literal("equipment").then(place).then(column).then(unit)));
     }
 
     private static int place(CommandContext<CommandSourceStack> context, int rows, EquipmentShape.Orientation orientation, int support, EquipmentShape.Heading front) throws CommandSyntaxException {
@@ -304,17 +304,29 @@ public final class EquipmentStructure {
         return place(context, shape, rows, shape.diameter() + " m x " + (int) shape.tangentLength() + " m drum");
     }
 
-    private static int placeColumn(CommandContext<CommandSourceStack> context, EquipmentShape.Heading front, ColumnOptions options) throws CommandSyntaxException {
+    private static int placeColumn(CommandContext<CommandSourceStack> context, EquipmentShape.Heading front) throws CommandSyntaxException {
         int trays = IntegerArgumentType.getInteger(context, "trays");
         EquipmentShape shape;
         try {
-            shape = EquipmentShape.column(DoubleArgumentType.getDouble(context, "diameter"), ColumnTrays.simple(trays, (trays + 1) / 2), options, front,
+            shape = EquipmentShape.column(DoubleArgumentType.getDouble(context, "diameter"), ColumnTrays.simple(trays, (trays + 1) / 2), front,
                     IntegerArgumentType.getInteger(context, "skirt"));
         } catch (IllegalArgumentException invalid) {
             context.getSource().sendFailure(Component.literal(invalid.getMessage()));
             return 0;
         }
         return place(context, shape, Integer.MAX_VALUE, shape.diameter() + " m column of " + trays + " trays");
+    }
+
+    private static int placeUnit(CommandContext<CommandSourceStack> context, EquipmentShape.Kind kind, EquipmentShape.Heading front) throws CommandSyntaxException {
+        EquipmentShape shape;
+        try {
+            shape = EquipmentShape.unit(kind, DoubleArgumentType.getDouble(context, "size"), IntegerArgumentType.getInteger(context, "length"), front,
+                    IntegerArgumentType.getInteger(context, "support"));
+        } catch (IllegalArgumentException invalid) {
+            context.getSource().sendFailure(Component.literal(invalid.getMessage()));
+            return 0;
+        }
+        return place(context, shape, Integer.MAX_VALUE, kind.name().toLowerCase(Locale.ROOT) + " of " + shape.diameter() + " m");
     }
 
     private static int place(CommandContext<CommandSourceStack> context, EquipmentShape shape, int rows, String name) throws CommandSyntaxException {

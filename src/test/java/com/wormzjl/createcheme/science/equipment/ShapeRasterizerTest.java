@@ -3,6 +3,7 @@ package com.wormzjl.createcheme.science.equipment;
 import com.wormzjl.createcheme.science.equipment.EquipmentShape.Clash;
 import com.wormzjl.createcheme.science.equipment.EquipmentShape.Connection;
 import com.wormzjl.createcheme.science.equipment.EquipmentShape.Heading;
+import com.wormzjl.createcheme.science.equipment.EquipmentShape.Kind;
 import com.wormzjl.createcheme.science.equipment.EquipmentShape.Orientation;
 import com.wormzjl.createcheme.science.equipment.Mesh.Material;
 import com.wormzjl.createcheme.science.math.DeterministicMath;
@@ -18,9 +19,10 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class ShapeRasterizerTest {
     /**
-     * Bare drums (small, odd, half-metre and largest), drums on skirts, lying drums on saddles facing each way, and a
-     * column with its default units and one with every unit, two pumparounds and the most skirt a kettle needs. (0.5, 5)
-     * lying puts a saddle face exactly on a cell plane; (10, 60) is the report's largest vessel.
+     * Bare drums (small, odd, half-metre and largest), drums on skirts, lying drums on saddles facing each way, columns
+     * (a crude column with two pumparounds on its least skirt, and the smallest diameter with four pumparounds, two draws
+     * and steam), and units at their smallest, odd and largest sizes. (0.5, 5) lying puts a saddle face exactly on a cell
+     * plane; (10, 60) is the report's largest vessel.
      */
     private static final List<EquipmentShape> SHAPES = List.of(new EquipmentShape(.5, 1), new EquipmentShape(2, 3),
             new EquipmentShape(2.5, 2), new EquipmentShape(3, 9), new EquipmentShape(4, 5), new EquipmentShape(10, 60),
@@ -29,8 +31,14 @@ class ShapeRasterizerTest {
             drum(.5, 5, Orientation.HORIZONTAL, Heading.SOUTH, 1), drum(4, 12, Orientation.HORIZONTAL, Heading.EAST, 1),
             EquipmentShape.column(3, ColumnTrays.simple(12, 6), Heading.SOUTH, 2),
             EquipmentShape.column(1.5, new ColumnTrays(25, 13, List.of(8), List.of(26), List.of(new ColumnTrays.Pumparound(6, 4), new ColumnTrays.Pumparound(15, 13))),
-                    new ColumnOptions(ColumnOptions.Condenser.AIR, true, ColumnOptions.Reboiler.KETTLE), Heading.EAST,
-                    EquipmentShape.minimumSkirt(1.5, new ColumnOptions(ColumnOptions.Condenser.AIR, true, ColumnOptions.Reboiler.KETTLE))));
+                    Heading.EAST, EquipmentShape.minimumSkirt(1.5)),
+            EquipmentShape.column(.5, new ColumnTrays(30, 15, List.of(8, 20), List.of(31), List.of(new ColumnTrays.Pumparound(6, 4),
+                    new ColumnTrays.Pumparound(12, 10), new ColumnTrays.Pumparound(18, 16), new ColumnTrays.Pumparound(26, 24))), Heading.NORTH, EquipmentShape.minimumSkirt(.5)),
+            EquipmentShape.unit(Kind.EXCHANGER, .5, 2, Heading.NORTH, 2), EquipmentShape.unit(Kind.EXCHANGER, .75, 3, Heading.EAST, 2),
+            EquipmentShape.unit(Kind.EXCHANGER, 2.5, 12, Heading.WEST, 3), EquipmentShape.unit(Kind.KETTLE, .5, 2, Heading.SOUTH, 2),
+            EquipmentShape.unit(Kind.KETTLE, 2, 10, Heading.EAST, 2), EquipmentShape.unit(Kind.AIR_COOLER, 3, 6, Heading.NORTH, 5),
+            EquipmentShape.unit(Kind.EJECTOR, .1, 1, Heading.NORTH, 1), EquipmentShape.unit(Kind.EJECTOR, .3, 1, Heading.EAST, 5),
+            EquipmentShape.unit(Kind.EJECTOR, 1, 1, Heading.WEST, 2));
 
     @Test
     void rejectsShapesOffTheGrid() {
@@ -44,7 +52,7 @@ class ShapeRasterizerTest {
         assertDoesNotThrow(() -> EquipmentShape.column(12, ColumnTrays.simple(20, 10), Heading.NORTH, 3));
         assertThrows(IllegalArgumentException.class, () -> drum(12, 5, Orientation.VERTICAL, Heading.NORTH, 3));
         assertThrows(IllegalArgumentException.class, () -> EquipmentShape.column(3, ColumnTrays.simple(12, 6), Heading.NORTH, 0));
-        assertThrows(IllegalArgumentException.class, () -> new EquipmentShape(EquipmentShape.Kind.COLUMN, 3, 4, Orientation.VERTICAL, Heading.NORTH, 2, ColumnTrays.simple(12, 6), ColumnOptions.DEFAULT, List.of()));
+        assertThrows(IllegalArgumentException.class, () -> new EquipmentShape(EquipmentShape.Kind.COLUMN, 3, 4, Orientation.VERTICAL, Heading.NORTH, 2, ColumnTrays.simple(12, 6), List.of()));
         assertEquals(2, EquipmentShape.minimumSkirt(6));
         assertEquals(3, EquipmentShape.defaultSupport(6, Orientation.VERTICAL));
         assertEquals(4, EquipmentShape.defaultSupport(10, Orientation.VERTICAL));
@@ -57,10 +65,11 @@ class ShapeRasterizerTest {
             double area = 0;
             for (var cell : ShapeRasterizer.layout(shape).shell())
                 for (var polygon : ShapeRasterizer.surface(ShapeRasterizer.key(shape, cell.x(), cell.y(), cell.z()))) area += area(polygon);
-            // Every facet is drawn once, whole: clipping to cells and splitting at texture tiles neither lose nor double area.
+            // Every facet is drawn once, whole: clipping to cells and splitting at texture tiles neither lose nor double area,
+            // but for a few slivers under Mesh.MIN_AREA, which are not drawn.
             double facets = ShapeRasterizer.facetArea(shape);
-            assertEquals(facets, area, 1e-9 * facets, shape.toString());
-            if (!shape.skirt() && !shape.saddles())
+            assertEquals(facets, area, 1e-9 * facets + 20 * Mesh.MIN_AREA, shape.toString());
+            if (shape.drum() && !shape.skirt() && !shape.saddles())
                 assertEquals(vesselArea(shape), facets - ShapeRasterizer.nozzleArea(shape), 1e-9 * facets, shape.toString());
         }
     }
@@ -118,7 +127,8 @@ class ShapeRasterizerTest {
                 for (int i = 0; i < actual.size(); i++)
                     assertTrue(sameUpToRotation(actual.get(i), shared.get(i)), shape + " " + cell + " polygon " + i);
             }
-            if (shape.tangentLength() >= 9) assertTrue(bodies > 0, shape + " has no body rows");
+            // A long drum has plain rows; a column only where its platforms and nozzles leave some, a unit none.
+            if (shape.drum() && shape.tangentLength() >= 9) assertTrue(bodies > 0, shape + " has no body rows");
         }
     }
 
@@ -140,7 +150,6 @@ class ShapeRasterizerTest {
         int s = ShapeRasterizer.SOLID_RESOLUTION;
         for (var shape : SHAPES) {
             var layout = ShapeRasterizer.layout(shape);
-            // A column's auxiliaries fill their units' insides too: only the vessel's interior counts here.
             double volume = layout.interior().stream().filter(c -> ShapeRasterizer.insideVessel(shape, c.x() + .5, c.y() + .5, c.z() + .5)).count();
             for (var cell : layout.shell()) {
                 int parts = 0, sampled = 0;
@@ -157,6 +166,8 @@ class ShapeRasterizerTest {
                     if (ShapeRasterizer.insideVessel(shape, cell.x() + (a + .5) / s, cell.y() + (b + .5) / s, cell.z() + (c + .5) / s)) vessel++;
                 volume += vessel / (double) (s * s * s);
             }
+            // A unit has no vessel formula: its boxes match its samples above, its parts are checked by ProcessUnitTest.
+            if (shape.unit()) continue;
             // A misclassified sample lies within half a sample diagonal of the surface.
             double exact = facetedVolume(shape) + nozzleVolume(shape), band = ShapeRasterizer.facetArea(shape) * Math.sqrt(3) / (2 * s);
             assertEquals(exact, volume, band, shape.toString());
@@ -169,7 +180,8 @@ class ShapeRasterizerTest {
     @Test
     void aDrumsFluidNodeIsAShellCell() {
         for (var shape : SHAPES)
-            if (!shape.column()) assertTrue(ShapeRasterizer.layout(shape).shell().contains(ShapeRasterizer.fluidCell(shape)), shape.toString());
+            if (shape.drum()) assertTrue(ShapeRasterizer.layout(shape).shell().contains(ShapeRasterizer.fluidCell(shape)), shape.toString());
+            else assertNull(ShapeRasterizer.fluidCell(shape), shape.toString());
     }
 
     @Test
@@ -248,7 +260,7 @@ class ShapeRasterizerTest {
                 var p = transform.point(beside);
                 assertFalse(ShapeRasterizer.inside(shape, p[0], p[1], p[2]), shape + " " + nozzle.role() + " flange against the vessel");
             }
-            assertEquals(shape.column() ? 0 : shape.nozzles().size(), ShapeRasterizer.ports(shape).size(), shape.toString());
+            assertEquals(shape.nozzles().size(), ShapeRasterizer.ports(shape).size(), shape.toString());
         }
     }
 
@@ -288,26 +300,68 @@ class ShapeRasterizerTest {
         int k = 0;
         while (standing.nozzles().get(k).role() != EquipmentShape.Role.LIQUID_OUTLET) k++;
         var nozzle = standing.nozzles().get(k);
-        long small = ShapeRasterizer.withNozzle(0, k, .1), medium = ShapeRasterizer.withNozzle(0, k, .3), large = ShapeRasterizer.withNozzle(0, k, 2);
-        assertEquals(0, ShapeRasterizer.withNozzle(small, k, 0));
+        double[][] outside = new double[3][standing.nozzles().size()];
+        outside[0][k] = .1;
+        outside[1][k] = .3;
+        outside[2][k] = 2;
         double[] area = new double[3];
         int[] solid = new int[3];
-        long[] codes = {small, medium, large};
-        for (var cell : ShapeRasterizer.nozzleCells(standing, k))
+        long large = 0;
+        for (var cell : ShapeRasterizer.nozzleCells(standing, k)) {
+            // Unconnected nozzles carry no code.
+            assertEquals(0, ShapeRasterizer.cellCodes(standing, cell, new double[standing.nozzles().size()]), cell.toString());
             for (int i = 0; i < 3; i++) {
-                var key = ShapeRasterizer.key(standing, cell.x(), cell.y(), cell.z(), codes[i]);
-                assertEquals(codes[i], key.nozzles(), cell.toString());
+                long codes = ShapeRasterizer.cellCodes(standing, cell, outside[i]);
+                assertNotEquals(0, codes, cell.toString());
+                if (i == 2) large = codes;
+                var key = ShapeRasterizer.key(standing, cell.x(), cell.y(), cell.z(), codes);
+                assertEquals(codes, key.nozzles(), cell.toString());
                 for (var polygon : ShapeRasterizer.surface(key)) area[i] += area(polygon);
                 for (var box : ShapeRasterizer.solid(key)) solid[i] += (box.x1() - box.x0()) * (box.y1() - box.y0()) * (box.z1() - box.z0());
             }
+        }
         // Bigger pipes draw bigger nozzles: the neck up to its largest size, the flange (and beyond the neck, a reducer) at the pipe's.
         assertTrue(area[0] < area[1] && area[1] < area[2], List.of(area[0], area[1], area[2]).toString());
         assertTrue(solid[0] < solid[1] && solid[1] < solid[2]);
         assertTrue(nozzle.maxOd() < 2);
-        // A cell no nozzle reaches drops the codes, so body rows still share one key.
-        var top = new ShapeRasterizer.Cell(standing.width() / 2, standing.sizeY() - 1, standing.width() / 2);
-        assertFalse(ShapeRasterizer.nozzleCells(standing, k).contains(top));
-        assertEquals(ShapeRasterizer.key(standing, top.x(), top.y(), top.z()), ShapeRasterizer.key(standing, top.x(), top.y(), top.z(), large));
+        // A cell no nozzle reaches drops any codes, so body rows still share one key.
+        int unreached = 0;
+        for (var cell : ShapeRasterizer.layout(standing).shell())
+            if (!reachedByNozzle(standing, cell)) {
+                unreached++;
+                assertEquals(ShapeRasterizer.key(standing, cell.x(), cell.y(), cell.z()), ShapeRasterizer.key(standing, cell.x(), cell.y(), cell.z(), large), cell.toString());
+            }
+        assertTrue(unreached > 0);
+    }
+
+    /**
+     * Owner request 2026-10-16: every nozzle takes the size of its pipe, also where several reach one cell. A cell's key
+     * keeps one code per reaching nozzle in nozzle order, so two nozzles in one cell draw at their own pipes' sizes; a
+     * column's nozzles scale too, though only a drum is a reservoir.
+     */
+    @Test
+    void nozzlesSharingACellEachKeepTheirPipeSize() {
+        for (var shape : SHAPES) {
+            int n = shape.nozzles().size();
+            var shared = new java.util.HashMap<ShapeRasterizer.Cell, List<Integer>>();
+            for (int k = 0; k < n; k++)
+                for (var cell : ShapeRasterizer.nozzleCells(shape, k)) shared.computeIfAbsent(cell, c -> new java.util.ArrayList<>()).add(k);
+            for (var entry : shared.entrySet()) {
+                var cell = entry.getKey();
+                var reaching = entry.getValue();
+                assertTrue(reaching.size() <= 9, shape + " " + cell + " reached by " + reaching.size());
+                // Each nozzle alone at a pipe of 0.3 m sets its own seven bits only.
+                for (int j = 0; j < reaching.size(); j++) {
+                    double[] outside = new double[n];
+                    outside[reaching.get(j)] = .3;
+                    long codes = ShapeRasterizer.cellCodes(shape, cell, outside);
+                    assertEquals(codes, codes & (0x7FL << (7 * j)), shape + " " + cell + " nozzle " + reaching.get(j));
+                    assertNotEquals(0, codes);
+                }
+            }
+            // A column's nozzles are ports that scale, but only a drum is a reservoir.
+            if (shape.column()) assertTrue(n > 0 && ShapeRasterizer.ports(shape).size() == n, shape.toString());
+        }
     }
 
     @Test
@@ -320,10 +374,11 @@ class ShapeRasterizerTest {
         while (standing.nozzles().get(k).role() != EquipmentShape.Role.LIQUID_OUTLET) k++;
         var nozzle = standing.nozzles().get(k);
         assertTrue(nozzle.maxOd() < .7, nozzle.toString());
-        long line = ShapeRasterizer.withNozzle(0, k, 1);
+        double[] line = new double[standing.nozzles().size()];
+        line[k] = 1;
         double flange = 0, neck = 0, reducer = 0;
         for (var cell : ShapeRasterizer.nozzleCells(standing, k))
-            for (var polygon : ShapeRasterizer.surface(ShapeRasterizer.key(standing, cell.x(), cell.y(), cell.z(), line)))
+            for (var polygon : ShapeRasterizer.surface(ShapeRasterizer.key(standing, cell.x(), cell.y(), cell.z(), ShapeRasterizer.cellCodes(standing, cell, line))))
                 for (int i = 0; i < polygon.size(); i++) {
                     var pos = polygon.positions();
                     var f = standing.transform().local(new double[]{cell.x() + pos[3 * i], cell.y() + pos[3 * i + 1], cell.z() + pos[3 * i + 2]});
@@ -365,15 +420,17 @@ class ShapeRasterizerTest {
             int k = 0;
             while (standing.nozzles().get(k).role() != EquipmentShape.Role.LIQUID_OUTLET) k++;
             assertTrue(ShapeRasterizer.layout(standing).shell().containsAll(ShapeRasterizer.nozzleCells(standing, k)), heading.toString());
-            // A column's skirt keeps its opening's dark back, on its front under the head.
+            // Owner request 2026-10-16: a column's bottoms leave through its skirt's port on the front, like the drum's
+            // outlet, and a sight line between the default line and the port crosses nothing.
             var column = EquipmentShape.column(3, ColumnTrays.simple(12, 6), heading, 2);
-            var axis = column.transform().point(new double[]{column.axis(), 0, column.axis()});
-            var centres = openingCentres(column);
-            assertFalse(centres.isEmpty(), heading.toString());
-            for (var centre : centres) {
-                assertTrue((centre[0] - axis[0]) * heading.dx + (centre[2] - axis[2]) * heading.dz > 1, heading + " opening off the front");
-                assertTrue(centre[1] > .4 && centre[1] < 1.4, heading + " opening at " + centre[1]);
-            }
+            var bottoms = column.nozzles().stream().filter(n -> n.role() == EquipmentShape.Role.BOTTOMS).findFirst().orElseThrow();
+            assertEquals(EquipmentShape.SKIRT_OUTLET, bottoms.base()[1], 0, heading.toString());
+            assertEquals(2, bottoms.axis());
+            assertEquals(-1, bottoms.sign());
+            assertTrue(column.openingRadius() > bottoms.maxOd() / 2, heading.toString());
+            double c0 = column.axis(), wall = column.radius() + .05, gap = (bottoms.defaultOd() / 2 + column.openingRadius()) / 2;
+            assertEquals(0, crossings(column, new double[]{c0 + gap, .5, c0}, new double[]{c0 + gap, .5, c0 - wall}), heading + " column port");
+            assertTrue(openingCentres(column).isEmpty(), heading + " the column's access opening gave way to its port");
         }
         // A port only where a bottom outlet line leaves a skirt: none on a bare or lying drum, nor on a skirt too low for the
         // line (D3 on 1 m: its pole at 0.25 m); a small drum's is only its line's (D 0.5: a 0.25 m line plus clearance).
@@ -401,7 +458,7 @@ class ShapeRasterizerTest {
                 java.util.Collections.nCopies(EquipmentShape.MAX_CONNECTIONS + 1, new Connection(0, 3, 0))));
         var trays = ColumnTrays.simple(12, 6);
         assertThrows(IllegalArgumentException.class, () -> new EquipmentShape(EquipmentShape.Kind.COLUMN, 3, trays.tangentLength(3), Orientation.VERTICAL,
-                Heading.NORTH, 2, trays, ColumnOptions.DEFAULT, List.of(new Connection(0, 3, 0))));
+                Heading.NORTH, 2, trays, List.of(new Connection(0, 3, 0))));
         // Right, left and a hillside nozzle at the back: clear of each other and of the outlets, the hillside one off centre.
         var drum = drum(3, 4, Orientation.VERTICAL, Heading.NORTH, 2, placed);
         assertEquals(List.of(), drum.clashes());
@@ -483,6 +540,7 @@ class ShapeRasterizerTest {
         assertEquals(2, drum(2, 3, Orientation.HORIZONTAL, Heading.NORTH, 1).levelHeight(), 0);
         // The faceted vessel is inscribed in the smooth one: smaller, and closer for finer facets. Supports are not vessel.
         for (var shape : SHAPES) {
+            if (shape.unit()) continue;
             double volume = vesselVolume(shape), area = vesselArea(shape);
             assertTrue(volume < shape.volume() && volume > .88 * shape.volume(), shape + " volume " + volume + " of " + shape.volume());
             assertTrue(area < shape.surfaceArea() && area > .9 * shape.surfaceArea(), shape + " area " + area + " of " + shape.surfaceArea());

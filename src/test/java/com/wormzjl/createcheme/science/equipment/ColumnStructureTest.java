@@ -135,15 +135,40 @@ class ColumnStructureTest {
     void nozzlesFaceThePipingSideAndEndInsideTheHandrail() {
         var crude = COLUMNS.get(1);
         var roles = crude.nozzles().stream().map(EquipmentShape.Nozzle::role).toList();
-        assertEquals(List.of(1L, 1L, 1L, 1L, 2L, 2L, 2L, 1L), List.of(Role.VAPOUR_OUTLET, Role.REFLUX, Role.FEED, Role.BOTTOMS, Role.DRAW, Role.PUMPAROUND_DRAW, Role.RETURN, Role.STEAM).stream()
+        assertEquals(List.of(1L, 1L, 1L, 1L, 2L, 2L, 2L, 1L, 1L), List.of(Role.VAPOUR_OUTLET, Role.REFLUX, Role.FEED, Role.BOTTOMS, Role.DRAW, Role.PUMPAROUND_DRAW, Role.RETURN, Role.STEAM,
+                        Role.VAPOUR_RETURN).stream()
                 .map(r -> roles.stream().filter(r::equals).count()).toList(), "every process connection has its nozzle: " + roles);
+        // Owner decision 2026-10-16 (fixed sides): feed and bottoms face the front, reflux and pumparounds the right, draws,
+        // steam and the reboiler's vapour return the left (frame +x); the overhead vapour leaves upwards.
+        var sides = java.util.Map.of(Role.FEED, "2-", Role.BOTTOMS, "2-", Role.REFLUX, "0-", Role.PUMPAROUND_DRAW, "0-", Role.RETURN, "0-",
+                Role.DRAW, "0+", Role.STEAM, "0+", Role.VAPOUR_RETURN, "0+", Role.VAPOUR_OUTLET, "1+");
         for (var shape : COLUMNS) {
             double edge = ColumnStructure.plan(shape).deckRadius();
             for (var nozzle : shape.nozzles()) {
-                if (nozzle.axis() == 1) continue;
-                assertFalse(nozzle.axis() == 2 && nozzle.sign() > 0, shape + " " + nozzle.role() + " faces the back, where the platforms are");
+                assertEquals(sides.get(nozzle.role()), nozzle.axis() + (nozzle.sign() > 0 ? "+" : "-"), shape + " " + nozzle.role());
+                // The bottoms leave at grade through the skirt's port, under every platform.
+                if (nozzle.axis() == 1 || nozzle.role() == Role.BOTTOMS) continue;
                 double reach = Math.abs(nozzle.face()[nozzle.axis()] - shape.axis());
                 assertTrue(reach < edge - .1, shape + " " + nozzle.role() + " flange at " + reach + " past the handrail at " + edge);
+            }
+        }
+    }
+
+    /**
+     * Owner request 2026-10-16 ("let users arrange them"): every nozzle leaves a free block beyond its flange for the
+     * player's pipe, clear of platforms, cages and the davit, whatever the diameter.
+     */
+    @Test
+    void everyNozzleLeavesAFreeBlockForItsPipe() {
+        for (var shape : COLUMNS) {
+            var layout = ShapeRasterizer.layout(shape);
+            var occupied = new java.util.HashSet<ShapeRasterizer.Cell>(layout.shell());
+            occupied.addAll(layout.interior());
+            var ports = ShapeRasterizer.ports(shape);
+            assertEquals(shape.nozzles().size(), ports.size(), shape.toString());
+            for (var port : ports) {
+                var pipe = new ShapeRasterizer.Cell(port.cell().x() + port.dx(), port.cell().y() + port.dy(), port.cell().z() + port.dz());
+                assertFalse(occupied.contains(pipe), shape + " " + shape.nozzles().get(port.nozzle()).role() + ": no room for a pipe at " + pipe);
             }
         }
     }
