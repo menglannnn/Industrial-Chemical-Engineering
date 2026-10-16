@@ -137,7 +137,9 @@ import java.util.Objects;
  *   condensed to all steam, or from liquid to ice); PH and UV determine them: once a bracket straddles the jump, the
  *   phase fraction follows from {@code target = (1 - beta) x_1 + beta x_2} (enthalpy in PH, volume at the fixed
  *   temperature in UV), at the kernel's equal-fugacity temperature (PH) or pressure (UV), the water model's saturation,
- *   or the melting line's temperature (PH) or pressure (UV). The pure coexistence is {@link Classification#VAPOR_LIQUID},
+ *   or the melting line's temperature (PH) or pressure (UV). At a fixed volume and energy the freeze is answered on the
+ *   line itself once a step of the UV search crosses it ({@link #freezingAtVolume}): {@code T = T_m(P)}, the ice from
+ *   the energy balance and {@code P} from the volume's. The pure coexistence is {@link Classification#VAPOR_LIQUID},
  *   the free water's steps {@link Classification#FREE_WATER}, all with {@link Diagnostics#coexistenceFromBalance()} and
  *   the balance in the detail. A target inside any other step (a fraction outside [0, 1]) is typed
  *   {@code NOT_CONVERGED}: no state of the model has it.</li>
@@ -252,6 +254,15 @@ public final class FluidTpEquilibrium implements EquilibriumService {
     private static final int COEXISTENCE_ITERATIONS = 100;
     /** The nested UV search's loosest volume solve, in {@code ln V}, while the energy is still far off. */
     private static final double INNER_LOOSENESS = 1.0e-3;
+    /**
+     * The free water's freeze at a fixed volume ({@link #freezingAtVolume}): TP equilibria of one solve on the melting line;
+     * solves of one UV search (each step of the search that crosses the line may try one, until one finds that the line
+     * holds no answer); the condensed phases' compressibility of its first step, 1/Pa (liquid water's at 0 °C, 5.1e-10;
+     * ice's 1.2e-10).
+     */
+    private static final int FREEZE_EVALUATIONS = 12;
+    private static final int FREEZE_ATTEMPTS = 2;
+    private static final double CONDENSED_COMPRESSIBILITY = 5.0e-10;
     // Outcomes of the UV pressure search at one temperature.
     private static final int INNER_FOUND = 0;
     private static final int INNER_ABOVE = 1;
@@ -714,6 +725,8 @@ public final class FluidTpEquilibrium implements EquilibriumService {
         private final double[] jacobian = new double[4];
         private boolean jacobianValid;
         private double coexistenceX, coexistenceResidual, bestT, bestResidual, innerPressure;
+        /** Solves of the free water's freeze at a fixed volume in this UV search ({@link #FREEZE_ATTEMPTS}). */
+        private int freezeAttempts;
         private EquilibriumResult innerResult;
         private boolean innerCoexistence;
         private String innerFailure;
@@ -1598,6 +1611,7 @@ public final class FluidTpEquilibrium implements EquilibriumService {
     // UV.
 
     private EquilibriumResult solveUv(double u, double v, double hintT, double hintP, PhaseCompetition competition, Workspace w) {
+        w.freezeAttempts = 0;
         // P5, D21: inside the triple point's triangle of the feed's one major species the answer is that triple point (or,
         // near-pure with too little fluid for its traces, the typed hold), whatever a search would meet on its way there.
         Crystal major = w.wet ? null : pureCrystal(w);
@@ -1786,6 +1800,13 @@ public final class FluidTpEquilibrium implements EquilibriumService {
                 if (!usable(trial)) continue;
                 g0 = energyResidual(trial, u, tt, w);
                 g1 = DeterministicMath.log(trial.volume() / v);
+                if (w.wet && f0 * g0 <= 0.0 && (straddlesFreeze(trial, current) || straddlesFreeze(current, trial))) {
+                    // WP4: the step crosses the free water's melting line with the specified energy between its ends, as a
+                    // PH bracket does: U(T) at the fixed volume rises by the latent heat over a fraction of a microkelvin
+                    // there, so the target is answered on the line itself.
+                    EquilibriumResult frozen = freezingAtVolume(u, v, p, competition, w);
+                    if (frozen != null) return frozen.converged() ? outerAnswer(Specification.UV, frozen, u, v, true, null, w) : frozen;
+                }
                 noteBest(tt, g0, g1, w);
                 if (g0 * g0 + g1 * g1 <= (1.0 - 1.0e-4 * alpha) * norm) {
                     accepted = true;
@@ -1901,6 +1922,13 @@ public final class FluidTpEquilibrium implements EquilibriumService {
             // side and closed it on a false step.
             w.innerLooseness = strict || w.activeCount > 0 ? 0.0 : Double.isNaN(previousResidual) ? INNER_LOOSENESS
                     : Math.min(INNER_LOOSENESS, 0.01 * Math.abs(previousResidual) / (w.total * R * t));
+            if (w.wet && last != null && crossesMelting(last, t, last.phases().get(0).pressure())) {
+                // WP4: the step crosses the free water's melting line, where U(T) at the fixed volume rises by the latent
+                // heat over a fraction of a microkelvin (no temperature resolves it): answered on the line itself, before a
+                // volume solve on its far side.
+                EquilibriumResult frozen = freezingAtVolume(u, v, last.phases().get(0).pressure(), competition, w);
+                if (frozen != null) return frozen.converged() ? outerAnswer(Specification.UV, frozen, u, v, true, null, w) : frozen;
+            }
             int outcome = innerUv(t, v, competition, w);
             if (outcome == INNER_FAILED) {
                 if (Double.isNaN(lastT) && w.activeCount > 0 && t < crystalCeiling(w)) {
@@ -2464,14 +2492,9 @@ public final class FluidTpEquilibrium implements EquilibriumService {
     private EquilibriumResult waterFreezing(Specification specification, double t, double p, double target,
                                             PhaseCompetition competition, Workspace w) {
         boolean energy = specification == Specification.PH;
-        EquilibriumResult warm = evaluateTp(t, p, competition, false, w);
-        w.outerEvaluations++;
-        w.outerKernel += w.kernelEvaluations;
-        w.outerDerivative += w.derivativeEvaluations;
-        if (!warm.converged() || warm.freeWater() == null) return null;
-        EquilibriumResult.FreeWater split = warm.freeWater();
-        double condensed = split.liquidWater();
-        if (!(condensed > 0.0) || split.ice() != 0.0) return null;
+        EquilibriumResult warm = meltingLine(t, p, competition, w);
+        if (warm == null) return null;
+        double condensed = warm.freeWater().liquidWater();
         freeWater.liquid(t, p, w.waterProperties);
         CrystalReference.State solid = freeWater.ice().properties(t, p);
         double liquidValue = energy ? w.waterProperties[1] : w.waterProperties[0];
@@ -2481,7 +2504,32 @@ public final class FluidTpEquilibrium implements EquilibriumService {
         double beta = (target - value) / span;
         double allowance = SPECIFICATION_TOLERANCE * (energy ? w.total * R * t : Math.abs(target)) / Math.abs(span);
         if (!(beta >= -allowance && beta <= 1.0 + allowance)) return null;
-        beta = Math.clamp(beta, 0.0, 1.0);
+        return frozenAt(warm, t, p, Math.clamp(beta, 0.0, 1.0), energy ? "energy balance" : "volume balance", w);
+    }
+
+    /**
+     * The warm side of the free water's melting line at {@code (t, p)}, {@code t = T_m(p)}: the TP answer with the
+     * condensed water liquid, counted as one TP equilibrium of the search. Null unless it converged with condensed liquid
+     * water and no ice.
+     */
+    private EquilibriumResult meltingLine(double t, double p, PhaseCompetition competition, Workspace w) {
+        EquilibriumResult warm = evaluateTp(t, p, competition, false, w);
+        w.outerEvaluations++;
+        w.outerKernel += w.kernelEvaluations;
+        w.outerDerivative += w.derivativeEvaluations;
+        if (!warm.converged() || warm.freeWater() == null) return null;
+        EquilibriumResult.FreeWater split = warm.freeWater();
+        return split.liquidWater() > 0.0 && split.ice() == 0.0 ? warm : null;
+    }
+
+    /**
+     * {@code warm}, the melting line's warm side at {@code (t, p)}, with the fraction {@code beta} of its condensed water
+     * ice (the gas, the hydrocarbons and the steam are the same on both sides of the line), {@code balance} naming what
+     * gave {@code beta} in the detail.
+     */
+    private EquilibriumResult frozenAt(EquilibriumResult warm, double t, double p, double beta, String balance, Workspace w) {
+        EquilibriumResult.FreeWater split = warm.freeWater();
+        double condensed = split.liquidWater();
         double ice;
         double liquid;
         if (beta <= 0.5) {
@@ -2499,10 +2547,130 @@ public final class FluidTpEquilibrium implements EquilibriumService {
         var frozen = new EquilibriumResult.FreeWater(split.hydrocarbon(), saturation, split.hydrocarbonPressure(),
                 split.waterPartialPressure(), liquid, split.waterVapor(), ice);
         String note = "free water freezing at its melting temperature (" + t + " K at " + p + " Pa): ice fraction " + beta
-                + " from the " + (energy ? "energy" : "volume") + " balance";
+                + " from the " + balance;
         return new EquilibriumResult(Specification.TP, EquilibriumResult.Status.CONVERGED, null, warm.detail() + "; " + note,
                 warm.identity(), warm.competition(), Classification.FREE_WATER, phases, List.of(), warm.coverage(),
                 warm.diagnostics(), frozen, warm.deposition());
+    }
+
+    /**
+     * The free water's freeze at a fixed volume and energy (WP4; the lead's direction of 2026-10-17): a rigid vessel of gas
+     * over water cooled below its melting line freezes on the line, ice and liquid water at {@code T_m(P)}. At each
+     * pressure {@code P} of the line the warm side's TP answer at {@code (T_m(P), P)} ({@link #meltingLine}) gives the ice
+     * fraction from the energy balance, {@code beta = (U - U_L) / (n_c (u_s - u_L))}, and with it the volume
+     * {@code V = V_L + beta n_c (v_s - v_L)}: ice is 9 % less dense than the water and compresses the gas cushion, and
+     * {@code T_m} moves with {@code P} at -7.42e-8 K/Pa. The volume balance sets {@code P}: {@code V_spec / V - 1} rises
+     * with {@code P}, linearly for an ideal gas and to first order for the condensed phases (a liquid-full vessel's
+     * pressure moves by megapascals where a gas cushion's moves by pascals), so a secant in {@code P} from {@code p0}, its
+     * first slope from the phases' compressibility and bisection once bracketed, closes it in two to six TP equilibria.
+     * {@code beta} falls with {@code P} (the line is colder at higher pressure), so a {@code beta} beyond [0, 1] on the
+     * side the root lies ends the solve: the line holds no answer, all of the water is ice below it or liquid above it.
+     * Returns the answer; null where the line holds none or its warm side has no liquid water at {@code p0} (the search
+     * goes on); {@code NOT_CONVERGED} where the root lies beyond the pressure window (the numerical box: a liquid-full
+     * vessel's freeze pressurises it beyond).
+     */
+    private EquilibriumResult freezingAtVolume(double u, double v, double p0, PhaseCompetition competition, Workspace w) {
+        if (w.freezeAttempts >= FREEZE_ATTEMPTS) return null;
+        w.freezeAttempts++;
+        double tolerance = settings.outerTolerance();
+        double floor = DeterministicMath.exp(-PRESSURE_STEP_CAP);
+        double p = Math.clamp(p0, w.minimumP, w.maximumP);
+        double answered = Double.NaN;
+        double previousP = Double.NaN;
+        double previousGap = Double.NaN;
+        double low = Double.NaN;
+        double high = Double.NaN;
+        int retreats = 0;
+        EquilibriumResult last = null;
+        for (int k = 0; k < FREEZE_EVALUATIONS; k++) {
+            double t = freeWater.ice().meltingTemperature(p);
+            EquilibriumResult warm = meltingLine(t, p, competition, w);
+            if (warm == null) {
+                // No liquid water on the warm side (or no TP answer) at this pressure: a rejected step, halved back.
+                if (Double.isNaN(answered) || ++retreats > MAXIMUM_RETREATS) return null;
+                p = Math.sqrt(p * answered);
+                continue;
+            }
+            retreats = 0;
+            answered = p;
+            last = warm;
+            double condensed = warm.freeWater().liquidWater();
+            freeWater.liquid(t, p, w.waterProperties);
+            CrystalReference.State solid = freeWater.ice().properties(t, p);
+            double span = condensed * (solid.enthalpy() - p * solid.volume() - (w.waterProperties[1] - p * w.waterProperties[0]));
+            double beta = (u - warm.internalEnergy()) / span;
+            double volume = warm.volume() + beta * condensed * (solid.volume() - w.waterProperties[0]);
+            double gap = v / volume - 1.0;
+            if (beta < 0.0 && gap < 0.0 || beta > 1.0 && gap > 0.0) {
+                w.freezeAttempts = FREEZE_ATTEMPTS;
+                return null;
+            }
+            if (gap < 0.0) low = p; else high = p;
+            double slope = Double.isNaN(previousP) || gap == previousGap ? Double.NaN : (gap - previousGap) / (p - previousP);
+            if (!(slope > 0.0) || !Double.isFinite(slope)) slope = (v / volume) * lineCompressibility(warm, p, volume) / p;
+            double next = p - gap / slope;
+            // Converged when the next step moves P by at most the tolerance, or where the volume balance closes to the
+            // rounding of a TP answer's volume: a liquid-full vessel (d ln V / d ln P 4e-5 at 1 bar) resolves P no
+            // further, to about 1e-5 Pa.
+            if (Math.abs(DeterministicMath.log(v / volume)) <= SPECIFICATION_TOLERANCE
+                    && (Math.abs(next - p) <= tolerance * p || Math.abs(gap) <= 16.0 * Math.ulp(1.0))) {
+                double allowance = SPECIFICATION_TOLERANCE * w.total * R * t / Math.abs(span);
+                if (!(beta >= -allowance && beta <= 1.0 + allowance)) {
+                    w.freezeAttempts = FREEZE_ATTEMPTS;
+                    return null;
+                }
+                return frozenAt(warm, t, p, Math.clamp(beta, 0.0, 1.0), "energy balance, its pressure from the volume balance", w);
+            }
+            next = Math.max(next, floor * p);
+            if (!Double.isNaN(low) && !Double.isNaN(high) && !(next > Math.min(low, high) && next < Math.max(low, high))) {
+                next = Math.sqrt(low * high);
+            }
+            next = Math.clamp(next, w.minimumP, w.maximumP);
+            if (next == p) {
+                // The root lies beyond the window's bound the solve stands on; elsewhere the solve is stuck.
+                if (p != w.minimumP && p != w.maximumP) return null;
+                return outsideWindow(Specification.UV, false, p == w.minimumP, "the free water's freeze at the specified volume "
+                        + v + " m3 and internal energy " + u + " J", competition, last, w);
+            }
+            previousP = p;
+            previousGap = gap;
+            p = next;
+        }
+        return null;
+    }
+
+    /**
+     * {@code -(d ln V / d ln P)} along the melting line at the warm side {@code warm} whose volume with its ice is
+     * {@code volume}: its gas phases as ideal, its condensed phases at {@link #CONDENSED_COMPRESSIBILITY}; the first step
+     * of {@link #freezingAtVolume}, which secants take over.
+     */
+    private static double lineCompressibility(EquilibriumResult warm, double p, double volume) {
+        double gas = 0.0;
+        for (PhaseAmounts phase : warm.phases()) if (phase.kind() == PhaseKind.VAPOR) gas += phase.total() * phase.state().molarVolume();
+        return (gas + p * CONDENSED_COMPRESSIBILITY * Math.max(0.0, volume - gas)) / volume;
+    }
+
+    /**
+     * Whether the free water's freeze lies between {@code colder}, which holds ice, and {@code warmer}, which holds liquid
+     * water (either may hold both): a UV Newton step between two TP answers that crosses the line.
+     */
+    private static boolean straddlesFreeze(EquilibriumResult colder, EquilibriumResult warmer) {
+        EquilibriumResult.FreeWater ice = colder.freeWater();
+        EquilibriumResult.FreeWater liquid = warmer.freeWater();
+        return ice != null && liquid != null && ice.ice() > 0.0 && liquid.liquidWater() > 0.0;
+    }
+
+    /**
+     * Whether a step of the nested UV search from the answer {@code from} to temperature {@code t} crosses the free
+     * water's melting line at {@code from}'s pressure {@code p}: from liquid water to below the line, or from ice to above
+     * it. Decided before the volume solve at {@code t}, which on the far side of a liquid-full vessel's line costs a dozen
+     * TP equilibria the line itself does not need.
+     */
+    private boolean crossesMelting(EquilibriumResult from, double t, double p) {
+        EquilibriumResult.FreeWater split = from.freeWater();
+        if (split == null) return false;
+        double melting = freeWater.ice().meltingTemperature(p);
+        return split.liquidWater() > 0.0 && t < melting || split.ice() > 0.0 && t > melting;
     }
 
     // Results of a search.

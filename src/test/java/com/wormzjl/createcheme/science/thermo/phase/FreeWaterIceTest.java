@@ -133,9 +133,74 @@ class FreeWaterIceTest {
                 assertFreezing(uv, melting, p, beta, pure, water, "UV at " + p + " Pa");
                 System.out.printf(Locale.ROOT, "WP4 gate (b) UV at 1 bar: %.6f K, %.3f Pa, ice %.8f (%d TP calls)%n",
                         uv.phases().get(0).temperature(), uv.phases().get(0).pressure(), uv.freeWater().ice(), uv.diagnostics().outerIterations());
+                // Answered on the line itself (FluidTpEquilibrium.freezingAtVolume) once the search's first step from its
+                // 273.16 K start crosses it: 11 TP calls of volume solves at the start, 4 on the line (85 before).
+                assertTrue(uv.diagnostics().outerIterations() <= 15, "TP calls: " + uv.diagnostics().outerIterations());
             }
             System.out.printf(Locale.ROOT, "WP4 gate (b) PH at %.0f Pa: %.6f K (T_m %.6f K), ice %.8f (%d TP calls)%n", p,
                     ph.phases().get(0).temperature(), melting, ph.freeWater().ice(), ph.diagnostics().outerIterations());
+        }
+    }
+
+    /**
+     * The free water's freeze at a fixed volume (the lead's direction of 2026-10-17): a rigid 1 m3 vessel of nitrogen over
+     * water, equal moles at 1 atm, whose water was cooled as a liquid to 263.15 K or 272 K. Physics: it freezes on its
+     * melting line, ice and liquid water at T_m(P); the latent heat of the ice warms the vessel back to the line, so the ice
+     * fraction is the energy balance's, about C (T_m - T) / (n_w L) with C about 4.4 kJ/K and L 6.0 kJ/mol: 0.16 from
+     * 263.15 K, 0.02 from 272 K. The ice's 9 % more volume compresses the gas cushion, which sets P (a few pascals), and
+     * T_m moves with P at -7.42e-8 K/Pa. Answered on the line in a handful of TP equilibria; before, the UV search closed
+     * on the freeze as a step of U(T) and refused it.
+     */
+    @Test
+    void aRigidVesselOfNitrogenOverWaterFreezesOnTheMeltingLine() {
+        var service = service();
+        var contract = service.contract();
+        var workspace = service.newWorkspace();
+        List<String> species = contract.components();
+        int water = contract.waterIndex();
+        var model = service.freeWater();
+        var ice = model.ice();
+        double p0 = 101325.0;
+        for (double t0 : new double[] {263.15, 272.0}) {
+            double[] feed = new double[species.size()];
+            feed[contract.index("Nitrogen")] = 0.5;
+            feed[water] = 0.5;
+            double scale = 1.0 / service.tp(EquilibriumRequest.tp(t0, p0, species, feed, PhaseCompetition.FLUID_ONLY)).volume();
+            for (int i = 0; i < feed.length; i++) feed[i] *= scale;
+            var cold = service.tp(EquilibriumRequest.tp(t0, p0, species, feed, PhaseCompetition.FLUID_ONLY));
+            // The vessel with its water cooled as a liquid: the TP answer's ice as supercooled liquid water at (t0, p0).
+            double frozen = cold.freeWater().ice();
+            double[] liquid = new double[2];
+            model.liquid(t0, p0, liquid);
+            var solid = ice.properties(t0, p0);
+            double u = cold.internalEnergy() + frozen * (liquid[1] - p0 * liquid[0] - solid.enthalpy() + p0 * solid.volume());
+            double v = cold.volume() + frozen * (liquid[0] - solid.volume());
+            var uv = service.uv(EquilibriumRequest.uv(u, v, species, feed, PhaseCompetition.FLUID_ONLY), workspace);
+            String at = "UV from " + t0 + " K";
+            assertEquals(Status.CONVERGED, uv.status(), at + ": " + uv);
+            assertEquals(Classification.FREE_WATER, uv.classification(), at);
+            assertTrue(uv.diagnostics().coexistenceFromBalance(), at);
+            double t = uv.phases().get(0).temperature();
+            double p = uv.phases().get(0).pressure();
+            assertEquals(ice.meltingTemperature(p), t, 1e-9, at + ": on the melting line at its pressure");
+            var split = uv.freeWater();
+            assertNotNull(icePhase(uv), at);
+            assertTrue(split.ice() > 0.0 && split.liquidWater() > 0.0, at + ": ice and liquid water coexist");
+            double total = uv.totalAmount();
+            assertEquals(u, uv.internalEnergy(), 1e-6 * total * 8.314462618 * t, at + ": the energy");
+            assertEquals(v, uv.volume(), 1e-6 * v, at + ": the volume");
+            // The ice fraction is the energy balance's at the answer's pressure: the warm side there, TP on the line.
+            var warm = service.tp(EquilibriumRequest.tp(t, p, species, feed, PhaseCompetition.FLUID_ONLY));
+            double condensed = warm.freeWater().liquidWater();
+            model.liquid(t, p, liquid);
+            var line = ice.properties(t, p);
+            double beta = (u - warm.internalEnergy()) / (condensed * (line.enthalpy() - p * line.volume() - liquid[1] + p * liquid[0]));
+            assertEquals(beta * condensed, split.ice(), 1e-9 * condensed, at + ": the ice from the energy balance");
+            double expected = t0 < 270 ? 0.16 : 0.02;
+            assertEquals(expected, beta, 0.3 * expected, at + ": C (T_m - T) / (n_w L)");
+            assertTrue(uv.diagnostics().outerIterations() <= 10, at + ": TP calls " + uv.diagnostics().outerIterations());
+            System.out.printf(Locale.ROOT, "rigid vessel of N2 over water from %.2f K: %.9f K (T_m %.9f K) at %.3f Pa, ice fraction %.6f, %d TP calls%n",
+                    t0, t, ice.meltingTemperature(p), p, beta, uv.diagnostics().outerIterations());
         }
     }
 

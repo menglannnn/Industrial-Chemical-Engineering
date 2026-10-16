@@ -311,6 +311,37 @@ class PrecipitatedSolidsTest {
         assertTrue(tank.state().temperature()>before.state().temperature()&&tank.state().temperature()<melting,"the latent heat warms it, below its melting line");
     }
 
+    /**
+     * A taut vessel of nitrogen over water cooled through its freeze (the lead's direction of 2026-10-17): 1 m3 of
+     * nitrogen over 0.83 kg of water at 275 K and 1 atm, filled from a generator of nitrogen at 150 K and 3 bar. Physics:
+     * the vessel fills to 3 bar in about a second, and the cold nitrogen would take it to about 255 K (its 4.4 kJ/K and
+     * 92 mol of nitrogen at 150 K); the water freezes instead, on its melting line, until the latent heat holds the vessel
+     * there: about 0.4 of it, ice and liquid water at T_m(3 bar), 273.137 K. The steps carry the water as its stand-in, the
+     * next interval's refresh freezes it at the vessel's fixed volume, and no interval fails (the refresh's crystal test
+     * refused that freeze as a step of U(T) before).
+     */
+    @Test void aTautVesselOfNitrogenOverWaterCooledThroughItsFreezeFreezesOnTheMeltingLine() {
+        double[] z=new double[water.componentCount()];z[MaterialTestBasis.NITROGEN]=.5;z[z.length-1]=.5;
+        var cold=new PassiveNetwork.Reservoir(1,0,charge(water,150,3e5,unit(water,MaterialTestBasis.NITROGEN),1),PassiveNetwork.NodeKind.GENERATOR);
+        var tank=vessel(2,charge(water,275,PhaseLayout.AMBIENT_PRESSURE,z,1),1);
+        var graph=new PassiveNetwork(List.of(cold,tank),List.of(new PassiveNetwork.Pipe(10,0,1,new PipeResistance.Geometry(1,.05,.000045,0))));
+        double waterMoles=tank.inventory().moles()[z.length-1];
+        var solver=new PassiveIntervalSolver(water);double step=.05;
+        for(int k=0;k<4;k++) {
+            var result=solver.solve(graph,5,PassiveIntervalSolver.Settings.defaults(),()->{},step);
+            step=solver.nextStepEstimate();graph=result.graph();
+            var node=graph.reservoirs().get(1);var s=node.state();
+            System.out.printf(Locale.ROOT,"N2 over water cooled through its freeze, interval %d: %.6f K (T_m %.6f K) %.1f Pa, ice %.6f kg, stand-in %.4f mol of %.4f mol (%d substeps, %d rejected)%n",
+                    k+1,s.temperature(),water.freeWaterIce().meltingTemperature(s.pressure()),s.pressure(),crystalKg(node),s.waterLiquid(),waterMoles,
+                    result.acceptedSubsteps(),result.rejectedSubsteps());
+        }
+        var node=graph.reservoirs().get(1);var s=node.state();
+        assertTrue(s.pressure()>PhaseLayout.AMBIENT_PRESSURE+1e5,"filled to about 3 bar: taut");
+        assertTrue(crystalKg(node)>0,"the water froze");
+        assertTrue(s.waterLiquid()>0,"and some stays liquid beside the ice");
+        assertEquals(water.freeWaterIce().meltingTemperature(s.pressure()),s.temperature(),1e-6,"on the melting line at its pressure");
+    }
+
     /** The trace flush never deletes crystal mass: a vessel at its crystal equilibrium holding a 1e-25 mol methane trace
      * steps, the flush removes the trace (booked at the vessel) and the crystal population is kept to the bit. */
     @Test void theTraceFlushKeepsCrystalMass() {
