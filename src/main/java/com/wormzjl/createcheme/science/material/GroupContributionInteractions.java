@@ -140,15 +140,6 @@ public final class GroupContributionInteractions {
         return Optional.ofNullable(byComponents[i][j]);
     }
 
-    /**
-     * k_ij from E_ij and the pure-component attraction and co-volume, the formula's second line; a reference helper
-     * for tests and tools (the kernel evaluates the equivalent cross term, plan section 4.1).
-     */
-    public static double kij(double energyPascal, double ai, double bi, double aj, double bj) {
-        double difference = Math.sqrt(ai) / bi - Math.sqrt(aj) / bj;
-        return (energyPascal - difference * difference) / (2.0 * Math.sqrt(ai * aj) / (bi * bj));
-    }
-
     /** The hashed content restricted to pairs of {@code axis} (component ids), for the physics fingerprints. */
     Object science(List<String> components, Collection<String> axis) {
         var hashed = new ArrayList<Object>();

@@ -899,7 +899,7 @@ public final class FluidThermodynamics {
                 // A junction's energy is its enthalpy (its mixing rows, D46): the solve's, before the fold restated it.
                 State own=junction?equilibriumPH(kept.temperature(),kept.pressure(),state.enthalpy()-state.solidMoments().enthalpy(state.temperature(),state.pressure()),totals,checkpoint)
                         :vesselSplit==null?null:vesselSplit.apply(start);
-                SolverDiagnostics.count(own==null?SolverDiagnostics.phaseSeedFallbacks:SolverDiagnostics.phaseSeeds);
+                if(own!=null)SolverDiagnostics.count(SolverDiagnostics.phaseSeeds);
                 var seed=folded(own==null?start:own.withSolidState(kept.solids(),kept.solidMoments()),junction);
                 // The D26 amendment: the own split's verdict on a proposed phase is where its closure took it; the TP-based
                 // fallback seed is no closure and refuses nothing.

@@ -149,7 +149,7 @@ class GroupContributionInteractionsTest {
                 for (int k = 0; k < APPENDIX_TEMPERATURES.length; k++) {
                     double t = APPENDIX_TEMPERATURES[k];
                     double[] i = attraction(p, pair.first(), t, appendixConstants), j = attraction(p, pair.second(), t, appendixConstants);
-                    double kij = GroupContributionInteractions.kij(pair.energy(t), i[0], i[1], j[0], j[1]);
+                    double kij = kij(pair.energy(t), i[0], i[1], j[0], j[1]);
                     row.append(String.format(" %.4f", kij));
                     if (Math.abs(kij - expected[k]) <= 5e-5 + 1e-12) exact++;
                     assertEquals(expected[k], kij, appendixConstants ? 5e-5 + 1e-12 : 1e-4, name(p, pair) + " at " + t + " K");
@@ -160,6 +160,15 @@ class GroupContributionInteractionsTest {
                     appendixConstants ? "appendix" : "pilot record");
             assertEquals(appendixConstants ? 48 : 46, exact);
         }
+    }
+
+    /**
+     * k_ij from E_ij and the pure-component attraction and co-volume, the formula's second line (plan section 4.1; the
+     * kernel evaluates the equivalent cross term). The reference for appendix A; only this test reads it.
+     */
+    private static double kij(double energyPascal, double ai, double bi, double aj, double bj) {
+        double difference = Math.sqrt(ai) / bi - Math.sqrt(aj) / bj;
+        return (energyPascal - difference * difference) / (2.0 * Math.sqrt(ai * aj) / (bi * bj));
     }
 
     /** Soave PR78 a(T) and b of a package component, with the ethane constants of the appendix when asked. */

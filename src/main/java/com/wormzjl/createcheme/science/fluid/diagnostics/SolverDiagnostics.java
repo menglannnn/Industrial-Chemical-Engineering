@@ -111,9 +111,8 @@ public final class SolverDiagnostics {
     public static final LongAdder traceFolds=new LongAdder();
     public static final LongAdder traceFoldPasses=new LongAdder();
     /** Outer phase checks that seeded a phase a node lacks at the node's own split ({@code FluidThermodynamics.phaseCheck},
-     * decision D26: a vessel's closure of its inventory, a junction's PH answer), and those that seeded the TP-based state
-     * instead because the node's own flash failed or none was given. */
-    public static final LongAdder phaseSeeds=new LongAdder(),phaseSeedFallbacks=new LongAdder();
+     * decision D26: a vessel's closure of its inventory, a junction's PH answer). */
+    public static final LongAdder phaseSeeds=new LongAdder();
     /** Outer phase checks whose own split refused a proposed phase, its closure having driven it under the trace share or
      * driving it to nothing (the D26 amendment of 2026-10-16, by direction in form 4): the refusal is written to the
      * solve's A85 record. */
@@ -224,7 +223,7 @@ public final class SolverDiagnostics {
         map.put("equationGatePolishesAccepted",equationGatePolishesAccepted);map.put("traceFlushes",traceFlushes);
         map.put("restIntervals",restIntervals);map.put("restStops",restStops);
         map.put("traceFolds",traceFolds);map.put("traceFoldPasses",traceFoldPasses);
-        map.put("phaseSeeds",phaseSeeds);map.put("phaseSeedFallbacks",phaseSeedFallbacks);map.put("phaseRefusals",phaseRefusals);
+        map.put("phaseSeeds",phaseSeeds);map.put("phaseRefusals",phaseRefusals);
         map.put("luFactorizations",luFactorizations);map.put("luFactorNanos",luFactorNanos);
         map.put("luSolves",luSolves);map.put("luSolveNanos",luSolveNanos);
         map.put("luChecks",luChecks);map.put("luRefinements",luRefinements);
