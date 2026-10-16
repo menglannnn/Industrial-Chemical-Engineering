@@ -418,6 +418,18 @@ public final class TranslatedPengRobinson {
     /** The constant volume translation of a component, m3/mol ({@code v = v_PR + c}). */
     public double translation(int component) { return translations[component]; }
 
+    /**
+     * The lower end of a component's ideal-gas data, K: its spine function's, or its fit's range on the coefficient path
+     * (minus infinity where none was given). The model continues past it; a notice reports it.
+     */
+    public double idealGasMinimumTemperature(int component) {
+        return idealGas != null ? idealGas[component].minimumTemperature() : fitMinimum[component];
+    }
+
+    /** The upper end of a component's ideal-gas data, K, as {@link #idealGasMinimumTemperature}. */
+    public double idealGasMaximumTemperature(int component) {
+        return idealGas != null ? idealGas[component].maximumTemperature() : fitMaximum[component];
+    }
 
     private static void finite(double value) {
         if (!Double.isFinite(value)) throw new IllegalArgumentException("Nonfinite property coefficient");

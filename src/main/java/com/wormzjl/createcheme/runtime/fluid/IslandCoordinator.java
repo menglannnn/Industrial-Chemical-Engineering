@@ -143,6 +143,9 @@ public final class IslandCoordinator {
         private Optional<PassiveIntervalSolver.Result> lastResult;
         private final PipePresentation.SpeedWindow pipeSpeed = new PipePresentation.SpeedWindow();
         private String status;
+        // The data-range notice of the last accepted interval (DataRangeNotices.line, empty for none): an accepted or certified
+        // island's status line carries it after its own words, and a saved status line with it, which restores it.
+        private String notice="";
         private Metrics metrics;
         private boolean suspended;
         // Ephemeral cost hint, not material state or a renewed fallback allowance. A restart
@@ -193,6 +196,7 @@ public final class IslandCoordinator {
         private Island(Snapshot saved,FluidThermodynamics model,LongSupplier epoch) {
             id=saved.id;revision=saved.revision;this.model=Objects.requireNonNull(model);graph=saved.graph;
             clock=new IslandClock(saved.clock,epoch);allowance=saved.allowance;anchor=saved.anchor;lastResult=saved.lastResult;status=saved.status;fences.putAll(saved.fences);
+            notice=com.wormzjl.createcheme.science.fluid.thermo.DataRangeNotices.suffix(saved.status);
             payloadGeneration=saved.payloadGeneration!=0?saved.payloadGeneration:PAYLOAD_GENERATIONS.incrementAndGet();
         }
         private Snapshot snapshot(){return new Snapshot(id,revision,graph,clock.snapshot(),allowance,anchor,lastResult,
@@ -525,7 +529,9 @@ public final class IslandCoordinator {
                 else {
                     island.graph=candidate.graph();island.lastResult=Optional.of(candidate);
                     island.pipeSpeed.accepted(attempt.slice.startTick(),attempt.slice.endTick(),candidate.pipeTransfers());
-                    island.allowance=outcome.proposedAllowance();island.anchor=outcome.proposedAnchor();island.status=outcome.detail();
+                    island.allowance=outcome.proposedAllowance();island.anchor=outcome.proposedAnchor();
+                    island.notice=com.wormzjl.createcheme.science.fluid.thermo.DataRangeNotices.line(outcome.notices(),nodeNames);
+                    island.status=outcome.detail()+island.notice;
                 }
             }
             if(!accept)island.status=refusal!=null?"HELD: "+refusal:outcome==null?"HELD: round deadline or worker failure"
@@ -924,7 +930,7 @@ public final class IslandCoordinator {
         // One certificate kind (BE_INTEGRATOR_PLAN.md section 4): the line names what it replays, and its recheck if it has one.
         String what=certificate.largestFlow()==0?"no flow":String.format(Locale.ROOT,"replaying %.4g kg/s",certificate.largestFlow());
         String next=certificate.horizonTick()==Long.MAX_VALUE?"":String.format(Locale.ROOT,", next check at %.1f s",certificate.horizonTick()/20.0);
-        return String.format(Locale.ROOT,"STEADY: %s since %.1f s%s",what,since,next);
+        return String.format(Locale.ROOT,"STEADY: %s since %.1f s%s",what,since,next)+island.notice;
     }
     private void schedule(long tick,IslandScheduler.Kind kind,long id,long generation) {
         scheduler.schedule(tick,kind,id,generation);

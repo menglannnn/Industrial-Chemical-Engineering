@@ -251,6 +251,46 @@ public final class FluidThermodynamics {
     }
     /** The package's data ranges: its envelope, the input box of a device setting ({@link FluidDomain}). */
     public FluidDomain domain(){return domain;}
+    /**
+     * The data ranges the state at network node {@code node} lies outside, into {@code notices} (owner rule of
+     * 2026-10-16: every model continues past its data and the island's status line reports it, RANGE_EXTRAPOLATION_PLAN
+     * section 5): the package envelope; each carried component's ideal-gas data and the viscosity data of each phase it
+     * is in; free liquid water's Region 1 range (its viscosity's too) and the pressure its metastable liquid has data to;
+     * the steam's range and qualified partial pressure; and each crystal's record. Reads the state and the declared ranges
+     * only: no model is evaluated but the water's saturation pressure.
+     */
+    public void dataRanges(State state,long node,DataRangeNotices notices) {
+        double t=state.temperature(),p=state.pressure();
+        var envelope=domain.envelope();
+        notices.check("package envelope temperature",t,envelope.minimumTemperature(),envelope.maximumTemperature(),"K",node);
+        notices.check("package envelope pressure",p,envelope.minimumPressure(),envelope.maximumPressure(),"Pa",node);
+        var eos=hydrocarbon.translated();var names=hydrocarbon.components();
+        double[] liquid=state.liquidView(),vapor=state.vaporView();
+        for(int i=0;i<liquid.length;i++) {
+            if(!(liquid[i]>0)&&!(vapor[i]>0))continue;
+            String name=names.get(i);
+            notices.check(name+" ideal-gas heat capacity",t,eos.idealGasMinimumTemperature(i),eos.idealGasMaximumTemperature(i),"K",node);
+            var liquidData=liquid[i]>0?viscosity.liquidData(i,t):null;
+            if(liquidData!=null)notices.check(name+" liquid viscosity",t,liquidData.minimumTemperatureKelvin(),liquidData.maximumTemperatureKelvin(),"K",node);
+            var vaporData=vapor[i]>0?viscosity.vaporData(i):null;
+            if(vaporData!=null)notices.check(name+" vapour viscosity",t,vaporData.minimumTemperatureKelvin(),vaporData.maximumTemperatureKelvin(),"K",node);
+        }
+        if(state.waterLiquid()>0) {
+            notices.check("liquid water",t,water.triplePoint(),WaterRegion1.REGION_1_MAXIMUM_TEMPERATURE,"K",node);
+            if(t>=water.triplePoint()&&t<=WaterRegion1.REGION_1_MAXIMUM_TEMPERATURE)notices.check("liquid water pressure",p,
+                    saturationPressure(t)-WaterRegion1.METASTABLE_MARGIN_PASCAL,WaterRegion1.REGION_1_MAXIMUM_PRESSURE,"Pa",node);
+        }
+        if(state.waterVapor()>0) {
+            notices.check("water vapour",t,steam.minimumTemperature(),steam.maximumTemperature(),"K",node);
+            notices.check("water vapour partial pressure",state.waterPartialPressure(),0,waterVaporPressureLimit(t),"Pa",node);
+        }
+        for(var population:state.solids().populations()) {
+            if(population.material().crystal()==null)continue;
+            var record=crystalSolids().of(population.material()).anchored().record();
+            notices.check(record.component()+" solid",t,record.minimumTemperature(),record.maximumTemperature(),"K",node);
+            notices.check(record.component()+" solid pressure",p,record.minimumPressure(),record.maximumPressure(),"Pa",node);
+        }
+    }
     private final FluidDomain domain;
     /** The crystals the package admits, in declaration order; empty without a crystal competition. */
     private final List<String> crystalIds;

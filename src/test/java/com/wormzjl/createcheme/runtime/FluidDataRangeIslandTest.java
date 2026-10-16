@@ -4,6 +4,7 @@ import com.google.gson.JsonParser;
 import com.wormzjl.createcheme.fluid.support.FluidTestSupport;
 import com.wormzjl.createcheme.runtime.fluid.*;
 import com.wormzjl.createcheme.science.fluid.network.*;
+import com.wormzjl.createcheme.science.fluid.thermo.DataRangeNotices;
 import com.wormzjl.createcheme.science.fluid.thermo.FluidThermodynamics;
 import com.wormzjl.createcheme.science.fluid.topology.TopologyCompiler;
 import com.wormzjl.createcheme.science.material.MaterialCatalog;
@@ -17,7 +18,8 @@ import static org.junit.jupiter.api.Assertions.*;
  * whose nitrogen record is narrowed to 300 K at the top, so the discharge's heating (302.3 K at the compressor's ratio
  * 1.05) leaves the record's ideal-gas data. Physics: nitrogen's cp at 300 K is 29.1 J/mol K and rises by 0.005 J/mol K
  * per kelvin, so holding it past the record changes the discharge enthalpy by about 0.01 J/mol: the transfer runs as it
- * would with the wider record. Every interval is accepted and no hold is warned (a hold would park the island until an input changes).
+ * would with the wider record. Every interval is accepted and no hold is warned (a hold would park the island until an input changes);
+ * the status line carries the advisory notice, read by the worker on each accepted interval's end state (plan section 5).
  */
 class FluidDataRangeIslandTest {
     private static final String NETWORK="createcheme:tjl20_methane_nitrogen";
@@ -90,5 +92,7 @@ class FluidDataRangeIslandTest {
         for(var result:rig.results)assertTrue(result.candidate().isPresent()&&result.domain().isEmpty(),"every interval accepted: "+result.detail());
         assertFalse(status.startsWith("HELD"),status);
         assertTrue(rig.warnings.isEmpty(),"no hold is warned: "+rig.warnings);
+        assertTrue(rig.results.stream().anyMatch(result->!result.notices().isEmpty()),"an accepted interval carries the notice");
+        assertTrue(status.contains(DataRangeNotices.STATUS_MARKER+"Nitrogen ideal-gas heat capacity extrapolated above 300 K at "),status);
     }
 }

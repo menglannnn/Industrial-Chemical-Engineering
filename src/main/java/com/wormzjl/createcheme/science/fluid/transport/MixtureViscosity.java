@@ -109,8 +109,9 @@ public final class MixtureViscosity {
         return curve!=null&&temperature>=curve.minimumTemperatureKelvin()?SOLUTE_CURVE:LIQUID_TABLE;
     }
     /** The correlation a component's liquid viscosity is read from at {@code temperature} ({@link #liquidSource}): the data
-     * range a notice compares the temperature with. */
+     * range a notice compares the temperature with; null for a component without liquid viscosity data. */
     public ViscosityCorrelation liquidData(int component,double temperature) {
+        if(liquidCorrelations[component]==null)return null;
         return switch(liquidSource(component,temperature)) {
             case VAPOR_DATA->vaporCorrelations[component];
             case SOLUTE_CURVE->conditional.get(propertyPackage.components().get(component));

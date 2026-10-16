@@ -388,7 +388,7 @@ public final class ProcessSolveServices {
             long cpuStart=WorkerAllocation.CpuTime.sample();
             var result=(FluidIslandSolveResult)solve(cancellationToken,System::nanoTime);
             long cpu=WorkerAllocation.CpuTime.elapsed(cpuStart,WorkerAllocation.CpuTime.sample());
-            return new FluidIslandSolveResult(result.candidate(),result.detail(),result.workerNanos(),cpu,result.proposedAllowance(),result.proposedAnchor(),result.domain());
+            return new FluidIslandSolveResult(result.candidate(),result.detail(),result.workerNanos(),cpu,result.proposedAllowance(),result.proposedAnchor(),result.domain(),result.notices());
         }
         ProcessSolveResult solve(BoundedCpuSolveService.CancellationToken cancellationToken,java.util.function.LongSupplier nanoClock) {
             Objects.requireNonNull(cancellationToken);Objects.requireNonNull(nanoClock);long start=nanoClock.getAsLong();
@@ -399,7 +399,8 @@ public final class ProcessSolveServices {
             try {
                 try {
                     var candidate=retained.solve(model,snapshot,durationSeconds,settings,checkpoint);hard.run();
-                    return new FluidIslandSolveResult(Optional.of(candidate),"FULL",elapsed[0],FallbackAllowance.NONE,Optional.of(ApproximationAnchor.fromFull(model,candidate)));
+                    return new FluidIslandSolveResult(Optional.of(candidate),"FULL",elapsed[0],-1,FallbackAllowance.NONE,
+                            Optional.of(ApproximationAnchor.fromFull(model,candidate)),Optional.empty(),notices(model,candidate));
                 }catch(FluidSoftDeadline deadline) {
                     hard.run();
                     // A refused fallback is still the soft budget's decision: the full solve had not finished when it
@@ -408,7 +409,8 @@ public final class ProcessSolveServices {
                         var guard=fallback.anchor().orElseThrow().guard(model,snapshot);
                         var approximateSettings=new PassiveIntervalSolver.Settings(Math.min(1,durationSeconds),20,256);
                         var candidate=retained.solveApproximate(model,snapshot,durationSeconds,approximateSettings,hard,guard);hard.run();
-                        return new FluidIslandSolveResult(Optional.of(candidate),"APPROXIMATE: soft budget",elapsed[0],fallback.allowance().accept(ticks,fallback.cadenceTicks()),fallback.anchor());
+                        return new FluidIslandSolveResult(Optional.of(candidate),"APPROXIMATE: soft budget",elapsed[0],-1,
+                                fallback.allowance().accept(ticks,fallback.cadenceTicks()),fallback.anchor(),Optional.empty(),notices(model,candidate));
                     }catch(com.wormzjl.createcheme.science.fluid.solver.SparseNewton.Nonconvergence|IllegalArgumentException|ApproximationAnchor.Rejected refused) {
                         cancellationToken.throwIfCancellationRequested();
                         return new FluidIslandSolveResult(Optional.empty(),SOFT_BUDGET_REFUSED+refused.getMessage(),elapsed[0],fallback.allowance(),fallback.anchor());
@@ -425,6 +427,16 @@ public final class ProcessSolveServices {
             }
         }
     }
+    /**
+     * The data ranges an accepted interval's end state lies outside, node by node in the network's order (owner rule of
+     * 2026-10-16, RANGE_EXTRAPOLATION_PLAN section 5): read once per committed interval, here in the worker, and published
+     * with the interval's status line. A vessel that holds nothing keeps the ambient as its state and is skipped.
+     */
+    static List<com.wormzjl.createcheme.science.fluid.thermo.DataRangeNotices.Notice> notices(FluidThermodynamics model,PassiveIntervalSolver.Result candidate) {
+        var notices=new com.wormzjl.createcheme.science.fluid.thermo.DataRangeNotices();
+        for(var reservoir:candidate.graph().reservoirs())if(!reservoir.empty())model.dataRanges(reservoir.state(),reservoir.id(),notices);
+        return notices.notices();
+    }
     /** The detail of an island interval the hard wall budget cut. */
     public static final String WALL_DEADLINE="HELD: wall deadline";
     /** The detail prefix of an island interval the property domain refused; the result carries the violation. */
@@ -436,14 +448,20 @@ public final class ProcessSolveServices {
     private static final class FluidSoftDeadline extends RuntimeException {}
     public record FluidIslandSolveResult(Optional<PassiveIntervalSolver.Result> candidate,String detail,long workerNanos,long workerCpuNanos,
                                         FallbackAllowance proposedAllowance,Optional<ApproximationAnchor> proposedAnchor,
-                                        Optional<com.wormzjl.createcheme.science.fluid.thermo.ThermoHold> domain) implements ProcessSolveResult {
+                                        Optional<com.wormzjl.createcheme.science.fluid.thermo.ThermoHold> domain,
+                                        List<com.wormzjl.createcheme.science.fluid.thermo.DataRangeNotices.Notice> notices) implements ProcessSolveResult {
+        public FluidIslandSolveResult(Optional<PassiveIntervalSolver.Result> candidate,String detail,long workerNanos,long workerCpuNanos,
+                                      FallbackAllowance allowance,Optional<ApproximationAnchor> anchor,Optional<com.wormzjl.createcheme.science.fluid.thermo.ThermoHold> domain) {
+            this(candidate,detail,workerNanos,workerCpuNanos,allowance,anchor,domain,List.of());
+        }
         public FluidIslandSolveResult(Optional<PassiveIntervalSolver.Result> candidate,String detail,long workerNanos,long workerCpuNanos,FallbackAllowance allowance,Optional<ApproximationAnchor> anchor) {
             this(candidate,detail,workerNanos,workerCpuNanos,allowance,anchor,Optional.empty());
         }
         public FluidIslandSolveResult(Optional<PassiveIntervalSolver.Result> candidate,String detail,long workerNanos,FallbackAllowance allowance,Optional<ApproximationAnchor> anchor) {
             this(candidate,detail,workerNanos,-1,allowance,anchor);
         }
-        public FluidIslandSolveResult {Objects.requireNonNull(domain);if(domain.isPresent()&&candidate.isPresent())throw new IllegalArgumentException("An accepted interval has no domain failure");Objects.requireNonNull(candidate);Objects.requireNonNull(detail);Objects.requireNonNull(proposedAllowance);Objects.requireNonNull(proposedAnchor);if(workerNanos<0||workerCpuNanos < -1)throw new IllegalArgumentException("Invalid worker elapsed time");}
+        /** {@code notices}: the data ranges the accepted interval's end state lies outside, empty for a held one. */
+        public FluidIslandSolveResult {Objects.requireNonNull(domain);notices=List.copyOf(notices);if(!notices.isEmpty()&&candidate.isEmpty())throw new IllegalArgumentException("Only an accepted interval carries data-range notices");if(domain.isPresent()&&candidate.isPresent())throw new IllegalArgumentException("An accepted interval has no domain failure");Objects.requireNonNull(candidate);Objects.requireNonNull(detail);Objects.requireNonNull(proposedAllowance);Objects.requireNonNull(proposedAnchor);if(workerNanos<0||workerCpuNanos < -1)throw new IllegalArgumentException("Invalid worker elapsed time");}
     }
 
     /** Immutable worker snapshot; configuration has already been read and converted by server-thread admission. */

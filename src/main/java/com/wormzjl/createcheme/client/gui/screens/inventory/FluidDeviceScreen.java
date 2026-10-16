@@ -482,7 +482,10 @@ public final class FluidDeviceScreen extends AbstractContainerScreen<FluidDevice
         if(railHover(mx,my,y-14,y+lines.size()*10))hovered=status;
         return y+Math.max(1,lines.size())*10-1;
     }
+    /** The engine status in words; a data-range notice (an advisory line, never a hold) follows the island's own status. */
     private String statusText(String status){
+        String notice=com.wormzjl.createcheme.science.fluid.thermo.DataRangeNotices.suffix(status);
+        if(!notice.isEmpty())return statusText(status.substring(0,status.length()-notice.length()))+notice;
         if(status.contains("HELD")||status.contains("ERROR")||status.contains("WAITING")||status.contains("closed")||status.contains("UNBOUND"))return status;
         if(status.startsWith("STEADY: no flow"))return tr("no_flow");
         if(status.startsWith("STEADY:"))return tr(status.contains("VELOCITY_LIMIT")?"velocity_limited":"flowing");
