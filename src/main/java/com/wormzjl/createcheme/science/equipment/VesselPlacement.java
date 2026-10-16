@@ -18,10 +18,6 @@ public record VesselPlacement(int forward, int right, int up) {
     public enum Form {
         VERTICAL, LENGTHWISE, CROSSWISE, COLUMN;
 
-        public Form next() {
-            return values()[(ordinal() + 1) % values().length];
-        }
-
         public EquipmentShape.Orientation orientation() {
             return this == LENGTHWISE || this == CROSSWISE ? EquipmentShape.Orientation.HORIZONTAL : EquipmentShape.Orientation.VERTICAL;
         }

@@ -59,11 +59,9 @@ class VesselPlacementTest {
         var lengthwise = EquipmentShape.drum(2, 6, EquipmentShape.Orientation.HORIZONTAL, VesselPlacement.Form.LENGTHWISE.front(0, 1), 1);
         var crosswise = EquipmentShape.drum(2, 6, EquipmentShape.Orientation.HORIZONTAL, VesselPlacement.Form.CROSSWISE.front(0, 1), 1);
         assertTrue(lengthwise.sizeZ() > lengthwise.sizeX() && crosswise.sizeX() > crosswise.sizeZ());
-        // A column stands with its piping side (its nozzles) back to the constructor; the cycle returns to a standing drum.
+        // A column stands with its piping side (its nozzles) back to the constructor.
         assertEquals(EquipmentShape.Orientation.VERTICAL, VesselPlacement.Form.COLUMN.orientation());
         assertEquals(EquipmentShape.Heading.NORTH, VesselPlacement.Form.COLUMN.front(0, 1));
-        assertEquals(VesselPlacement.Form.COLUMN, VesselPlacement.Form.CROSSWISE.next());
-        assertEquals(VesselPlacement.Form.VERTICAL, VesselPlacement.Form.COLUMN.next());
         assertThrows(IllegalArgumentException.class, () -> VesselPlacement.Form.LENGTHWISE.front(1, 1));
     }
 
