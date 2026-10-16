@@ -47,6 +47,12 @@ The owner's words: "try to shorten the tests, they are taking too long/too much 
 - Every issue is first reasoned from real-life physics, with simplifications: what flows where, and what the steady state is, in numbers. The report leads with that expectation, then states what the code did instead in plain words, and ends in a proposition for the owner to validate.
 - Every fix improves the existing code structure. A fix is placed in the stage it belongs to and absorbs the special cases it makes unnecessary; no isolated patches.
 
+## Thermo validity below the freezing point (recorded 2026-10-16)
+
+- The owner's words: "If we have data to the freezing point, the validity of thermo package should be good below that T, that's a general rule for any future implementations."
+- A component whose fluid data reaches its freezing (triple) point stays valid below that temperature, both in mixtures and in supercooled or metastable states. An example of a mixture is a solute dissolved in a colder liquid, such as CO2 in LNG.
+- A freezing point is therefore never a lower validity bound. Seed windows, domain floors, fluid-only ranges and range clips use the package's own domain floor, not a component's freezing point.
+
 ## Documentation, research, tools and versions (recorded 2026-09-23)
 
 - Working documents, research material and offline tooling are local and git-ignored, in three folders of the main checkout (`D:/Minecraft/Modding/1.21/CreateChemE`), which holds the canonical copy:
