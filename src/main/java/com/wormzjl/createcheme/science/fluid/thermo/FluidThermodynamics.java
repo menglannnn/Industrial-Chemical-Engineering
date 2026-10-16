@@ -664,6 +664,10 @@ public final class FluidThermodynamics {
         // a TP answer states as ice as supercooled liquid, Region 1 held at its 273.16 K values, until a vessel's refresh
         // freezes it (owner decision D23: crystal mass moves only there).
         double nl=sum(liquid),nv=sum(vapor),volume=0,h=0,mass=0,gasVolume=0,vl=0,vw=0;
+        // A vapour is evaluated at its hydrocarbon partial pressure, an unknown of its own and a pressure the kernel reads:
+        // the box bounds it too, from its own floor (a trace in a gas that is nearly all steam) to the box's 1 GPa. Bundled
+        // fuzz seeds 145, 157 and 164 took it to 6.6e25 to 1.5e292 Pa, where floating point loses the cubic's root.
+        if(nv>0)NumericalBox.requirePartialPressure(hydrocarbonPressure);
         if(terms==null&&(nl>0||nv>0))terms=prepared==null?hydrocarbon.prepare(t):prepared.pengRobinson();
         HydrocarbonModel.Phase lp=null,vp=null;
         // The liquid at the state pressure; with a vapour beside it, a liquid slot on a single vapour-like root is refused.

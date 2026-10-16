@@ -208,8 +208,8 @@ public final class FluidTpEquilibrium implements EquilibriumService {
     // The fluid network's free-water rule (FluidThermodynamics.flashTP and HydrocarbonModel at commit 5100233).
     /** Liquid water with hydrocarbons needs {@code P > p_sat + SATURATION_MARGIN}. */
     public static final double SATURATION_MARGIN = 1.0e-6;
-    /** Lower end of the hydrocarbon partial-pressure bisection (HydrocarbonModel.VAPOR_PARTIAL_PRESSURE_FLOOR). */
-    public static final double PARTIAL_PRESSURE_FLOOR = 1.0e-6;
+    /** Lower end of the hydrocarbon partial-pressure bisection: the box's floor of a partial pressure. */
+    public static final double PARTIAL_PRESSURE_FLOOR = NumericalBox.MINIMUM_PARTIAL_PRESSURE;
     public static final int PARTIAL_PRESSURE_BISECTIONS = 70;
     /** The bisection stops at {@code |pc + p_w - P| < PARTIAL_PRESSURE_TOLERANCE P}. */
     public static final double PARTIAL_PRESSURE_TOLERANCE = 1.0e-8;

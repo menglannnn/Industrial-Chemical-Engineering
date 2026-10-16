@@ -30,9 +30,6 @@ import java.util.List;
  * {@code sum x_i DeltafH_i}.</p>
  */
 public final class HydrocarbonModel {
-    /** A numerical guard on the hydrocarbon <em>partial</em> pressure a vapour is evaluated at, which in a gas that is
-     * nearly all steam can be arbitrarily small; the state's own pressure is inside the numerical box. */
-    public static final double VAPOR_PARTIAL_PRESSURE_FLOOR = 1e-6;
     /**
      * The formulation tag this model's revision carries: liquids at the state pressure, anchors at their own
      * ({@code direct-liquid}), and the network's phases decided by the equilibrium engine with the phase identification
@@ -164,10 +161,10 @@ public final class HydrocarbonModel {
      * check re-decides the regime). A root is absent in two ways.
      * <ul>
      * <li>Floating point loses the cubic's physical root ({@link PengRobinsonKernel.NoPhysicalRoot}): a trial far outside
-     * any physical state. A vapour is evaluated at its hydrocarbon partial pressure, an unknown of its own that no data
-     * range bounds any more (owner rule of 2026-10-16), and a Newton trial can take it anywhere: bundled fuzz seeds 145,
-     * 157 and 164 put a trace of nitrogen in steam, or a crude vapour, at 1.5e292, 1.2e183 and 6.6e25 Pa, where the cubic's
-     * coefficients overflow or its root's distance above the co-volume falls below one ulp of it.</li>
+     * any physical state, where the cubic's coefficients overflow (1.5e292 Pa) or its root's distance above the co-volume
+     * falls below one ulp of it (6.6e25 Pa). The network's state read keeps the pressure a phase is read at inside the
+     * numerical box, a vapour's hydrocarbon partial pressure included ({@code FluidThermodynamics.state}): this is the
+     * guard for a root lost inside it.</li>
      * <li>At the state pressure the cubic can have one physical root, and it can be vapour-like (the phase identification
      * parameter of Venkatarathnam and Oellrich 2011 at most one, or at most its {@code Z}:
      * {@link PhaseIdentification#vapourLike(double, double)}): the liquid root is absent. If the phase's node also carries
@@ -178,11 +175,8 @@ public final class HydrocarbonModel {
     public Phase phase(double t,double p,double[] amounts,PengRobinsonKernel.Root root,TranslatedPengRobinson.Workspace terms,boolean vaporCoexists) {
         if(amounts.length!=componentCount())throw new IllegalArgumentException("Hydrocarbon basis mismatch");
         if(!Double.isFinite(t)||!Double.isFinite(p))throw new IllegalArgumentException("Fluid hydrocarbon state is not finite");
-        // No data range bounds a phase (owner rule of 2026-10-16; the state that carries it is inside the numerical box).
-        // A vapour is evaluated at its hydrocarbon partial pressure, which in a gas that is nearly all steam can be
-        // arbitrarily small: a numerical floor guards it.
-        if(root==PengRobinsonKernel.Root.VAPOR&&p<VAPOR_PARTIAL_PRESSURE_FLOOR)
-            throw new IllegalArgumentException("Hydrocarbon vapour partial pressure below the numerical floor");
+        // No data range bounds a phase (owner rule of 2026-10-16); the state that carries it is inside the numerical box,
+        // its vapour's partial pressure too (NumericalBox.requirePartialPressure).
         TranslatedPengRobinson.Values values;
         try{values=translated.evaluateValues(t,p,amounts,root,terms);}
         catch(PengRobinsonKernel.NoPhysicalRoot lost){throw RootAbsent.lost(root,t,p,lost);}
