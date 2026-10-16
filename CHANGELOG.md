@@ -25,6 +25,11 @@ All notable changes to CreateChemE are recorded in this file. The format follows
 ### Changed
 
 - Fluid runtime (same batch folder): a RESERVOIR registration may carry ports and a level height (`PassiveNetwork.Inventory.levelHeight`, 1 m for the one-block tank); checkpoint format 8 → 9 (fresh worlds). A pump's, compressor's or valve's half link takes the connected pipe's bore and roughness (OD4); `FluidPumpedFillLineTest`'s gas transfer now has a wide block on both sides of the compressor (RWCWR).
+- Equipment constructor (owner request 2026-10-16, same batch folder, `DEVICE_RENDERING_REVIEW.md`): the screen opens on what to build (vertical drum, horizontal drum, distillation column), then that equipment's design; Change goes back, a horizontal drum's axis is its own row, and a column's Import joins Build and Done.
+
+### Fixed
+
+- Pipeline device rendering (owner report 2026-10-16, same batch folder, `DEVICE_RENDERING_REVIEW.md`): the inline filter no longer occludes as a full cube (it drew black inside and hid the ground under it); every device part is a closed solid (blind flange faces on open nozzles, closed nozzle starts, drawn bases, closed strainer ends, a pipe ball kept inside its block, the valve actuator kept below the block top); devices and the largest pipe are a texel short of a full cube, so vanilla lights their flat faces from the block itself. A pipe meeting a device flanges at the device's nozzle size (at most 24", a reducer on a larger line); two devices bolt together at one size. Test `aViewerOutsideTheBlockSeesOnlyOuterFaces`.
 
 ## [0.8.0] - 2026-10-15
 
