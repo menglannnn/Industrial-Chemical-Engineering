@@ -672,6 +672,34 @@ class GasSolidEquilibriumTest {
         }
     }
 
+    /**
+     * The general crystal solve stops on what its answer is judged on: every fluid phase at the crystal's chemical
+     * potential. A vapour-liquid split's phases agree on {@code mu_i} only to the flash's fugacity tolerance (1e-10), so the
+     * search, stopped on its first phase alone, left the other up to that much past {@link FluidTpEquilibrium#DEPOSITION_TOLERANCE}
+     * and the answer was refused: cold fuzz seed 183's LNG at 140.9 K and 620 kPa freezing its CO2 (the vapour at
+     * 9.9998e-10, the liquid at 1.0046e-9), refused at every step size of the island. The real mixture freezes 1.87 of its
+     * 2.05 mol of CO2 beside its vapour and its liquid.
+     */
+    @Test
+    void aCrystalBesideAVapourAndALiquidMeetsTheToleranceInEach() {
+        double t = 140.90028704290555, p = 619923.0283660815;
+        double[] z = feed(0.17685241566161913, 54.73778258807344, 2.531240191239479, 2.0505124775177914);
+        var r = tp(t, p, z, SERVICE.newWorkspace());
+        assertEquals(Status.CONVERGED, r.status(), r.toString());
+        assertEquals(Classification.VAPOR_LIQUID_SOLID, r.classification(), r.toString());
+        PhaseAmounts crystal = solid(r);
+        double worst = 0.0;
+        for (PhaseAmounts phase : r.phases()) {
+            if (phase.kind() == PhaseKind.SOLID) continue;
+            worst = Math.max(worst, Math.abs(phase.state().chemicalPotential(CO2) - crystal.state().molarGibbsEnergy()) / (R * t));
+        }
+        assertTrue(worst <= FluidTpEquilibrium.DEPOSITION_TOLERANCE, "every fluid phase at the crystal: " + worst);
+        assertEquals(1.87, crystal.amount(CO2), 0.01, describe(r));
+        assertTrue(r.conservationDefect(z) < 1e-12, describe(r));
+        System.out.printf(Locale.ROOT, "seed 183's crystal: %.6f mol of CO2 beside a vapour and a liquid, worst |mu_i - mu_s|/RT %.3e after %d re-flashes%n",
+                crystal.amount(CO2), worst, r.deposition().iterations());
+    }
+
     static String describe(EquilibriumResult r) {
         StringBuilder s = new StringBuilder(r.toString()).append(r.coverage()).append(r.diagnostics());
         for (PhaseAmounts phase : r.phases()) s.append(Arrays.toString(phase.amountsView())).append(phase.state());

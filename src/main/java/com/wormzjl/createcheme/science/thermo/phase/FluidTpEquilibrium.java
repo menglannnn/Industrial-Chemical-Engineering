@@ -2964,12 +2964,16 @@ public final class FluidTpEquilibrium implements EquilibriumService {
      * {@code i}; a binary's vapour-liquid split holds it constant, where the step goes on), with {@code f(0) = D > 0}.
      * Steps: Newton with {@code f' = 1 - y_i + y_i Phi_ii} on a one-phase fluid's root, a secant otherwise, the step
      * {@code s - max(1, |f|)} before a bracket exists, bisection when a step leaves the bracket or two steps fail to halve
-     * {@code |f|}; converged at {@code |f| <= }{@link #DEPOSITION_TOLERANCE} on a converged fluid answer, at most
-     * {@link #CRYSTAL_ITERATIONS} re-flashes. A reduced fluid whose split has a product proved unstable steers the search
-     * with its split's chemical potential but is never an answer. Below the trace floor with {@code f} still positive the
-     * deposition is complete (the fluid is the feed without the species). The answer: the fluid's phases and the crystal,
-     * {@link Classification#VAPOR_SOLID}, {@link Classification#LIQUID_SOLID} or {@link Classification#VAPOR_LIQUID_SOLID}
-     * by the fluid's phases, each fluid phase checked to the tolerance; two liquids beside the crystal (or three fluid
+     * {@code |f|}; at most {@link #CRYSTAL_ITERATIONS} re-flashes. The steps read {@code f} of the fluid's first phase; the
+     * search is converged on a converged fluid answer each of whose phases has {@code |mu_i - mu_s|/(R T) <= }
+     * {@link #DEPOSITION_TOLERANCE}, since the crystal stands beside every one of them and a split's phases agree on
+     * {@code mu_i} only to the flash's own fugacity tolerance (1e-10): stopped on its first phase alone, the search left the
+     * other up to that much outside, and the answer was refused (cold fuzz seed 183, LNG at 140.9 K and 620 kPa freezing
+     * CO2: the vapour at 9.9998e-10, the liquid at 1.0046e-9). A reduced fluid whose split has a product proved unstable
+     * steers the search with its split's chemical potential but is never an answer. Below the trace floor with {@code f}
+     * still positive the deposition is complete (the fluid is the feed without the species). The answer: the fluid's phases
+     * and the crystal, {@link Classification#VAPOR_SOLID}, {@link Classification#LIQUID_SOLID} or
+     * {@link Classification#VAPOR_LIQUID_SOLID} by the fluid's phases; two liquids beside the crystal (or three fluid
      * phases, where the bracket closes on them) are the typed {@link EquilibriumResult#CRYSTAL_PHASES} hold, a search
      * that does not converge the typed {@code NOT_CONVERGED} with its last residual. The solid is {@code -z_i expm1(s)} and
      * the fluid carries {@code z_i e^s}, so the species is conserved to rounding. The caller saves and restores the feed.
@@ -2993,11 +2997,13 @@ public final class FluidTpEquilibrium implements EquilibriumService {
         double previousS = Double.NaN;
         double previousF = Double.NaN;
         double best = Math.abs(f);
+        // The largest |mu_i - mu_s|/RT over the phases of the last converged re-flash: the convergence test.
+        double worst = Double.NaN;
         int stalls = 0;
         int iterations = 0;
         boolean complete = false;
         while (true) {
-            if (reduced != null && iterations > 0 && Math.abs(f) <= DEPOSITION_TOLERANCE) break;
+            if (reduced != null && iterations > 0 && worst <= DEPOSITION_TOLERANCE) break;
             if (iterations >= CRYSTAL_ITERATIONS) {
                 return EquilibriumResult.notConverged(Specification.TP, contract.identity(), competition, "the crystal solve of " + c.id()
                         + " did not converge in " + iterations + " re-flashes (|mu_i - mu_s|/RT = " + Math.abs(f) + ", the fluid "
@@ -3047,10 +3053,15 @@ public final class FluidTpEquilibrium implements EquilibriumService {
             if (answer.converged()) {
                 reduced = answer;
                 f = (fluidChemicalPotential(answer, i) - solidMu) / rt;
+                worst = Math.abs(f);
+                for (PhaseAmounts phase : answer.phases()) {
+                    worst = Math.max(worst, Math.abs((phase.state().chemicalPotential(i) - solidMu) / rt));
+                }
                 slope = answer.phases().size() == 1 ? singlePhaseSlope(t, p, answer, i, w) : Double.NaN;
             } else if (splitChemicalPotentialsUsable(answer, w)) {
                 reduced = null;
                 f = (w.liquidState.chemicalPotential(i) - solidMu) / rt;
+                worst = Double.NaN;
                 slope = Double.NaN;
             } else {
                 return answer;
@@ -3093,18 +3104,8 @@ public final class FluidTpEquilibrium implements EquilibriumService {
                     + c.id() + " is " + reduced.classification() + ", which a crystal answer does not carry", diagnostics(w, w.feedResult,
                     reduced.diagnostics().criticalBand()));
         }
-        double residual = Double.NaN;
-        if (!complete) {
-            residual = 0.0;
-            for (PhaseAmounts phase : reduced.phases()) {
-                residual = Math.max(residual, Math.abs((phase.state().chemicalPotential(i) - solidMu) / rt));
-            }
-            if (!(residual <= DEPOSITION_TOLERANCE)) {
-                return EquilibriumResult.notConverged(Specification.TP, contract.identity(), competition, "the fluid left by "
-                        + c.id() + " disagrees with the crystal (|mu_i - mu_s|/RT = " + residual + " in a fluid phase)",
-                        diagnostics(w, w.feedResult, reduced.diagnostics().criticalBand()));
-            }
-        }
+        // Every fluid phase meets the crystal: the convergence test read them all.
+        double residual = complete ? Double.NaN : worst;
         EquilibriumResult held = secondCrystal(reduced, c, t, p, competition, w);
         if (held != null) return held;
         double[] solidAmounts = new double[basis];
