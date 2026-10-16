@@ -39,4 +39,31 @@ class ConservativeTransportTest {
             for(var node:graph.reservoirs()){assertEquals(1,node.inventory().volume());assertEquals(1,node.state().volume(),1e-8);assertArrayEquals(node.inventory().moles(),PhaseLayout.totalAmounts(node.state()),1e-12);}
         }
     }
+    /**
+     * Decision D54 with D59 (2): a vessel that holds nothing and that nothing reaches in the step keeps what it holds, its
+     * solids included. A pass that laid such a vessel out from an arrival the pinned flows then booked as nothing leaves the
+     * Newton's candidate a roundoff of that arrival: in cold fuzz seed 85, 1.6e-45 mol of LNG vapour and 3.4e-93 kg of CO2-I
+     * in an empty tank. The booking kept the tank's amounts and energy (none) but took the candidate's solids, so the tank
+     * held 3.4e-93 kg of crystal from nowhere and no fluid: a dry-solids vessel at 298.15 K whose bulk end had nothing to
+     * carry (a viscosity of 0/0), and the next interval's start flows were refused at every step size.
+     */
+    @Test void aVesselNothingReachesKeepsWhatItHoldsItsSolidsIncluded() {
+        var model=FluidTestSupport.model(MaterialCatalog.bundled(),"createcheme:pilot_cryogenic");
+        var crystal=model.crystalSolids().all().getFirst();
+        var lng=model.flashTP(120,3e5,new double[]{0,.995,0,.005,0},()->{});
+        var tank=PassiveNetwork.emptyVessel(2,0,1,model);
+        var roundoff=new com.wormzjl.createcheme.science.fluid.state.SolidInventory(List.of(new com.wormzjl.createcheme.science.fluid.state.SolidInventory.Population(
+                crystal.material(),new com.wormzjl.createcheme.science.fluid.state.ParticleSize("0.00025"),3.4255257817720115e-93)));
+        var graph=new PassiveNetwork(List.of(new PassiveNetwork.Reservoir(1,0,lng),tank),
+                List.of(new PassiveNetwork.Pipe(3,0,1,new PipeResistance.Geometry(10,.05,.000045,0))));
+        // The Newton's candidate of the tank: laid out from what was to arrive, it holds a roundoff of it.
+        var projection=ConservativeTransport.reconstruct(graph,List.of(lng,tank.state().withSolids(roundoff)),new double[]{0},new double[]{0},1,model,()->{});
+        var kept=projection.inventories().get(1);
+        assertTrue(kept.solids().empty(),"no crystal from nowhere: "+kept.solids());
+        assertTrue(projection.states().get(1).solids().empty(),"the tank is stated with what it holds");
+        assertArrayEquals(tank.inventory().moles(),kept.moles());
+        assertEquals(tank.inventory().internalEnergy(),kept.internalEnergy());
+        // Its next interval finds the tank empty, a receiver at the ambient: not a dry-solids vessel.
+        assertTrue(new PassiveNetwork.Reservoir(2,0,projection.states().get(1),PassiveNetwork.NodeKind.RESERVOIR,kept).empty());
+    }
 }

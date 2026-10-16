@@ -241,12 +241,12 @@ public final class ConservativeTransport {
         // Decision D54: a vessel holding nothing (at the bag's resolution, D59 (2)) that nothing reaches in this step keeps
         // what it holds (it has no state to restate), as a fixed node keeps its inventory; one that receives is booked like
         // every vessel.
-        boolean[] reached=new boolean[nodes];
+        boolean[] reached=new boolean[nodes],kept=new boolean[nodes];
         for(int edge=0;edge<flows.length;edge++)if(flows[edge]!=0){var pipe=graph.pipes().get(edge);reached[flows[edge]>0?pipe.second():pipe.first()]=true;}
         for(var transfer:graph.scheduledTransfers())if(transfer instanceof ScheduledTransfer.Injection)reached[transfer.node()]=true;
         for(int node=0;node<nodes;node++) {
             var reservoir=graph.reservoirs().get(node);old[node]=reservoir.inventory().moles();
-            if(PassiveStepSolver.holdsNothingVessel(reservoir)&&!reached[node])continue;
+            if(PassiveStepSolver.holdsNothingVessel(reservoir)&&!reached[node]){kept[node]=true;continue;}
             for(int c=0;c<components;c++)endMass[node]+=old[node][c]*molecularWeight[c];
             endMass[node]+=reservoir.inventory().solids().massKg();
             if(frozen&&reservoir.junction()) {
@@ -386,7 +386,18 @@ public final class ConservativeTransport {
         // junction's amount row pins.
         double[][] ownedMoles=new double[nodes][];var ownedSolids=new SolidInventory[nodes];
         for(int node=0;node<nodes;node++) {
-            var reservoir=graph.reservoirs().get(node);if(index[node]<0){moles[node]=old[node];states.add(candidate.get(node));continue;}
+            var reservoir=graph.reservoirs().get(node);
+            if(index[node]<0) {
+                moles[node]=old[node];
+                // A kept vessel is stated with the solids it holds (none: it holds nothing), not with the candidate's. A pass
+                // that laid it out from an arrival the pinned flows then booked as nothing leaves the candidate a roundoff of
+                // that arrival, solids included, and the vessel's inventory takes its state's solids below: cold fuzz seed 85
+                // put 3.4e-93 kg of CO2-I and no fluid in an empty tank, which then stood as a dry-solids vessel whose bulk
+                // end had no fluid to carry anything (a viscosity of 0/0) and refused every step.
+                var state=candidate.get(node);var held=reservoir.inventory().solids();
+                states.add(kept[node]&&!state.solids().equals(held)?state.withSolids(held):state);
+                continue;
+            }
             double total=0,molesPerKg=0;
             for(int c=0;c<components;c++){double w=solved[c][index[node]];if(w<0||!Double.isFinite(w))throw new SparseNewton.Nonconvergence("Negative transport reconstruction");fractions[node][c]=w;total+=w;molesPerKg+=w/molecularWeight[c];}
             for(int c=components;c<conserved;c++){double w=solved[c][index[node]];if(w<0||!Double.isFinite(w))throw new SparseNewton.Nonconvergence("Negative solid reconstruction");fractions[node][c]=w;total+=w;}
