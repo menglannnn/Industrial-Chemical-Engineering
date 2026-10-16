@@ -97,13 +97,30 @@ class FluidPacketCodecTest {
         var view=new FluidView(9,4,1200,1300,"RESTING: no flow since 55.0 s",null,0,List.of());
         return new FluidNetwork.MenuData(TopologyCompiler.Kind.GENERATOR,view,new FluidNetwork.Controls(298.15,150000,.05,.000045,.01,500000,amounts),names,presets,message,Map.of("component_0",descriptor),weights(names.size()));
     }
-    /** The protocol is fluid-9 (fluid-6 plus the compressor's ratio control and a tank's outlets, phase-ports WP5; fluid-8
-     * adds each outlet's face, GUI fix F4; fluid-9 drops the unread hydraulicOwner and intervalQuality view fields) and every
-     * payload has its own wire identity. Test name kept. */
+    /** The protocol is fluid-10 (fluid-6 plus the compressor's ratio control and a tank's outlets, phase-ports WP5; fluid-8
+     * adds each outlet's face, GUI fix F4; fluid-9 drops the unread hydraulicOwner and intervalQuality view fields; fluid-10
+     * carries a crystal's record with its solid, D23) and every payload has its own wire identity. A tank's dry ice crosses
+     * the live payload as a solid with its crystal record and comes back equal; a crystal made of a component off the
+     * menu's axis is refused. Test name kept. */
     @Test void theProtocolIsFluidSixWithDistinctStaticAndLivePayloads() {
-        assertEquals("fluid-9",FluidNetwork.PROTOCOL);
+        assertEquals("fluid-10",FluidNetwork.PROTOCOL);
         var ids=java.util.Set.of(FluidNetwork.EditPayload.TYPE.id(),FluidNetwork.RecoverPayload.TYPE.id(),FluidNetwork.StaticPayload.TYPE.id(),FluidNetwork.LivePayload.TYPE.id());
         assertEquals(4,ids.size());
+        var base=generatorMenu("");int count=base.components().size();
+        java.util.function.Function<String,FluidNetwork.MenuData> tank=component->{
+            var dryIce=new com.wormzjl.createcheme.science.material.SolidMaterialCatalog.SolidMaterial("createcheme:crystal_carbon_dioxide_i","crystal-carbon_dioxide-i-r2@createcheme:pilot_cryogenic",
+                    1571.3607340045514,1254.99435771707,new com.wormzjl.createcheme.science.material.SolidMaterialCatalog.SolidMaterial.Crystal(component,-525945.1827807827));
+            var solids=new com.wormzjl.createcheme.science.fluid.state.SolidInventory(List.of(new com.wormzjl.createcheme.science.fluid.state.SolidInventory.Population(dryIce,
+                    com.wormzjl.createcheme.science.fluid.state.ParticleSize.micrometres("250"),.246103828701677)));
+            var state=new FluidView.State(1.2e6,175.5,.1,6.4,new double[]{0,0,.0998},new double[3][count],solids,.1);
+            var view=new FluidView(9,4,1200,1300,"",state,0,List.of());
+            return new FluidNetwork.MenuData(TopologyCompiler.Kind.RESERVOIR,view,base.controls(),base.components(),base.presets(),"",base.materialNames(),base.molecularWeights());
+        };
+        var data=tank.apply("component_3");
+        var copy=FluidNetwork.MenuData.of(data.staticData(0),FluidNetwork.decodeLive(new Gson().toJson(live(data))));
+        assertEquals(data.view().state().solids(),copy.view().state().solids(),"the dry ice and its crystal record, as sent");
+        assertEquals("component_3",copy.view().state().solids().crystals().getFirst().material().crystal().component());
+        assertTrue(assertThrows(IllegalArgumentException.class,()->tank.apply("CarbonDioxide")).getMessage().contains("off the fluid axis"));
     }
     /** The static part carries the axis, presets, names and kind only; the live part the view, controls and reply only; joined they are the menu state. */
     @Test void theStaticAndLivePayloadsSplitAndRejoinIntoTheSameMenuState() {

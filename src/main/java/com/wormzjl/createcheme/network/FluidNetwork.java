@@ -27,9 +27,13 @@ import java.util.*;
  * revision changed. An edit or recovery packet is validated as before, queued as a ledger event, and its reply -
  * {@code Queued for simulation event at tick N}, {@code Applied} or {@code Not applied: <reason>} - arrives with
  * the next bucket.
+ *
+ * <p>{@code fluid-10} (owner decision D23, crystals are solids): a solid population's material carries its crystal
+ * record (the component it is made of and its energy offset) when it is a crystal, so a tank's dry ice reaches the
+ * Solids tab and the solid share as a solid; a menu refuses a crystal made of a component off its axis.</p>
  */
 public final class FluidNetwork {
-    public static final String PROTOCOL="fluid-9";
+    public static final String PROTOCOL="fluid-10";
     private static final Gson JSON=new Gson();
     public static final int MAX_JSON=262144;
     public static final int MAX_EDIT_JSON=4096;
@@ -83,6 +87,11 @@ public final class FluidNetwork {
             }
             if(view.state()!=null)requirePhaseAxis(view.state().phaseMoles(),components.size());
             for(var transfer:view.pipeHistory()){requirePhaseAxis(transfer.forward().phaseMoles(),components.size());requirePhaseAxis(transfer.reverse().phaseMoles(),components.size());}
+            // A crystal (owner decision D23) is made of a component of the axis, wherever the view shows solids.
+            if(view.state()!=null)requireCrystalAxis(view.state().solids(),components);
+            if(view.pipeInfo()!=null)requireCrystalAxis(view.pipeInfo().contents().solids(),components);
+            if(view.filter()!=null)requireCrystalAxis(view.filter().captured(),components);
+            for(var transfer:view.pipeHistory()){requireCrystalAxis(transfer.forward().solids(),components);requireCrystalAxis(transfer.reverse().solids(),components);}
             for(var p:presets)if(p.moleFractions().length!=components.size())throw new IllegalArgumentException("Fluid preset axis mismatch");
             for(var e:materialNames.entrySet())if(!e.getKey().equals(e.getValue().id()))throw new IllegalArgumentException("Fluid name identity mismatch");
         }
@@ -115,6 +124,9 @@ public final class FluidNetwork {
     private static void requirePhaseAxis(double[][] phases,int components) {
         if(phases.length!=3)throw new IllegalArgumentException("Fluid phase count mismatch");
         for(var phase:phases)if(phase.length!=components)throw new IllegalArgumentException("Fluid phase axis mismatch");
+    }
+    private static void requireCrystalAxis(com.wormzjl.createcheme.science.fluid.state.SolidInventory solids,List<String> components) {
+        for(var p:solids.crystals())if(!components.contains(p.material().crystal().component()))throw new IllegalArgumentException("Crystal off the fluid axis: "+p.material().id());
     }
     public record EditPayload(int menuId,BlockPos position,long identity,long revision,String json) implements CustomPacketPayload {
         public static final Type<EditPayload> TYPE=new Type<>(ResourceLocation.fromNamespaceAndPath(CreateChemE.MOD_ID,"fluid_edit"));
