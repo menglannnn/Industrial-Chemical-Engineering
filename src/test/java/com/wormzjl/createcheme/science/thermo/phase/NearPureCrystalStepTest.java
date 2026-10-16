@@ -82,9 +82,12 @@ class NearPureCrystalStepTest {
             }
             assertTrue(rule(r), r.detail());
             assertEquals(z[N2], fluidNitrogen(r), 1e-12 * z[N2]);
-            // D21: the pressure about 1.3 f off the pure answer's (1.37 f at 1e-6 and 1e-5), the crystal about 2 f.
-            assertEquals(pure.phases().get(0).pressure(), p, 1.5 * f * pure.phases().get(0).pressure());
-            assertEquals(crystal(pure), crystal(r), 3.0 * f * crystal(pure));
+            // D21: the pressure about 1.3 f off the pure answer's (1.37 f at 1e-6 and 1e-5), the crystal about 2 f, down to
+            // the search's own resolution: each answer meets U and V to 1e-9 (above), which places a point of the
+            // sublimation line to about 1e-10 in P and, through the step's lever, the crystal to about 1e-9 (since the
+            // numerical box, the pure feed's search restarts from the crystals' ceiling and lands 9e-11 and 1e-9 off).
+            assertEquals(pure.phases().get(0).pressure(), p, Math.max(1.5 * f, 1e-9) * pure.phases().get(0).pressure());
+            assertEquals(crystal(pure), crystal(r), Math.max(3.0 * f, 1e-8) * crystal(pure));
         }
     }
 
