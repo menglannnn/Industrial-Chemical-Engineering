@@ -8,6 +8,7 @@ import com.wormzjl.createcheme.science.fluid.state.ParticleSize;
 import com.wormzjl.createcheme.science.fluid.state.SolidInventory;
 import com.wormzjl.createcheme.science.fluid.topology.TopologyCompiler;
 import com.wormzjl.createcheme.science.material.MaterialName;
+import com.wormzjl.createcheme.science.material.SolidMaterialCatalog;
 import com.wormzjl.createcheme.world.inventory.FluidDeviceMenu;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.*;
@@ -186,7 +187,7 @@ public final class FluidDeviceScreen extends AbstractContainerScreen<FluidDevice
     private void buildContents(){
         int w=(tableWidth()-12)/4;
         for(int i=0;i<4;i++){int selected=i;button(tr("phase."+i),tableX()+i*(w+4),pipe()?62:82,w,()->{phase=selected;scroll.reset();rebuild();}).active=phase!=i;}
-        configureScroll(phase==3?displayedSolids().populations().size():present().size());
+        configureScroll(phase==3?shownSolids().size():present().size());
     }
     private void configureScroll(int size){scroll.configure(leftPos+imageWidth-16,topPos+tableTop(),imageHeight-64-tableTop(),visibleRows(),size);}
     private void openTemplates(){
@@ -308,6 +309,15 @@ public final class FluidDeviceScreen extends AbstractContainerScreen<FluidDevice
         if(view.filter()!=null)return view.filter().captured();
         if(view.pipeInfo()!=null)return view.pipeInfo().contents().solids();
         return view.state()==null?SolidInventory.EMPTY:view.state().solids();
+    }
+    /** The Solids tab's rows: one per solid at its mean size (owner decision D23: one size per solid in each stock), the
+     * arrivals since the stock's last refresh merged in as its next refresh merges them. Display arithmetic on what the
+     * server sent. */
+    private List<SolidInventory.Population> shownSolids(){return displayedSolids().oneSizePerSolid().populations();}
+    /** A crystal is its component in the solid phase, for example "Carbon dioxide (solid)"; a custom solid is its material id. */
+    private String solidName(SolidMaterialCatalog.SolidMaterial material){
+        var crystal=material.crystal();if(crystal==null)return material.id();
+        return tr("crystal_name",materialName(menu.clientData().materialNames().getOrDefault(crystal.component(),MaterialName.chemical(crystal.component()))));
     }
     private String material(int id){
         var data=menu.clientData();String name=data.components().get(id);
@@ -509,10 +519,12 @@ public final class FluidDeviceScreen extends AbstractContainerScreen<FluidDevice
     private void renderContents(GuiGraphics g,int mx,int my){
         int x=tableX(),w=tableWidth();
         if(phase==3){
-            ProcessUi.tableRow(g,font,new String[]{tr("solid_col.0"),tr("solid_col.1"),tr("mass_kg")},x,tableTop()-16,w,true);
-            var populations=displayedSolids().populations();configureScroll(populations.size());
+            ProcessUi.tableRow(g,font,new String[]{tr("solid"),tr("mean_size"),tr("mass_kg")},x,tableTop()-16,w,true);
+            var populations=shownSolids();configureScroll(populations.size());
             for(int i=scroll.value();i<Math.min(populations.size(),scroll.value()+visibleRows());i++){
-                var p=populations.get(i);ProcessUi.tableRow(g,font,new String[]{p.material().id(),number(p.size().diameterMetres()*1e6),number(p.massKg())},x,tableTop()+(i-scroll.value())*18,w,false);
+                var p=populations.get(i);int y=tableTop()+(i-scroll.value())*18;
+                ProcessUi.tableRow(g,font,new String[]{solidName(p.material()),number(p.size().diameterMetres()*1e6),number(p.massKg())},x,y,w,false);
+                if(mx>=x&&mx<x+w/2&&my>=y-2&&my<y+16)hovered=p.material().crystal()==null?p.material().id():solidName(p.material())+"\n"+p.material().id()+"\n"+tr("crystal.hint");
             }
             if(populations.isEmpty())text(g,tr("absent"),x,tableTop()+8,MUTED,w);return;
         }
