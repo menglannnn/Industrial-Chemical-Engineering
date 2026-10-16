@@ -239,6 +239,123 @@ class FreeWaterIceTest {
                 t, split.waterVapor(), split.ice(), ph.diagnostics().outerIterations());
     }
 
+    /**
+     * Pure water with only its own steam at its triple point (the lead's direction of 2026-10-17): 1 mol in a rigid vessel
+     * twice its liquid's volume there, its energy at ice fractions 0.1, 0.5 and 0.9 with the steam the volume leaves.
+     * Physics: no gas holds the pressure above the steam's, so the freeze stands at the triple point, 273.16 K and
+     * 611.657 Pa, ice, liquid and steam together; the amounts follow from the mole, energy and volume balances (1.66e-5
+     * to 1.79e-5 m3 of vapour space at 3.71 m3 per mole of steam: 4.5e-6 to 4.8e-6 mol). Answered there before any
+     * search; without the rule the UV search refuses the first target as a step of U(T) after 489 TP calls and does not
+     * converge on the others in 2798.
+     */
+    @Test
+    void pureWaterWithItsOwnSteamInARigidVesselStandsAtTheTriplePoint() {
+        var service = service();
+        var contract = service.contract();
+        List<String> species = contract.components();
+        int water = contract.waterIndex();
+        var ice = service.freeWater().ice();
+        double t = ice.tripleTemperature();
+        double p = ice.triplePressure();
+        double[] c = tripleCorners(service);
+        double[] pure = new double[species.size()];
+        pure[water] = 1.0;
+        double v = 2.0 * c[3];
+        for (double beta : new double[] {0.1, 0.5, 0.9}) {
+            double steam = (v - c[3] - beta * (c[5] - c[3])) / (c[1] - c[3]);
+            double liquid = 1.0 - steam - beta;
+            double u = steam * c[0] + liquid * c[2] + beta * c[4];
+            var uv = service.uv(EquilibriumRequest.uv(u, v, species, pure, PhaseCompetition.FLUID_ONLY), service.newWorkspace());
+            String at = "ice fraction " + beta;
+            assertEquals(Status.CONVERGED, uv.status(), at + ": " + uv);
+            assertEquals(Classification.FREE_WATER, uv.classification(), at);
+            assertTrue(uv.diagnostics().coexistenceFromBalance(), at);
+            for (PhaseAmounts phase : uv.phases()) {
+                assertEquals(t, phase.temperature(), 0.0, at + ": the triple temperature");
+                assertEquals(p, phase.pressure(), 0.0, at + ": the triple pressure");
+            }
+            assertNotNull(icePhase(uv), at);
+            var split = uv.freeWater();
+            assertEquals(beta, split.ice(), 1e-12, at + ": the ice");
+            assertEquals(liquid, split.liquidWater(), 1e-12, at + ": the liquid");
+            assertEquals(steam, split.waterVapor(), 1e-9 * steam, at + ": the steam");
+            assertTrue(uv.conservationDefect(pure) < 1e-13, at + ": the moles");
+            assertEquals(u, uv.internalEnergy(), 1e-9 * PhaseTestSupport.R * t, at + ": the energy");
+            assertEquals(v, uv.volume(), 1e-9 * v, at + ": the volume");
+            assertTrue(uv.diagnostics().outerIterations() <= 2, at + ": TP calls " + uv.diagnostics().outerIterations());
+            System.out.printf(Locale.ROOT, "pure water at its triple point, ice fraction %.1f: steam %.6e, liquid %.8f, ice %.8f mol (%d TP calls)%n",
+                    beta, split.waterVapor(), split.liquidWater(), split.ice(), uv.diagnostics().outerIterations());
+        }
+    }
+
+    /**
+     * Just outside pure water's triple-point triangle the existing paths answer (the lead's direction of 2026-10-17), on
+     * the line beside the edge crossed: the same vessel 1e-5 mol beyond the edge without ice boils on its saturation line
+     * just above 273.16 K; 1e-5 mol beyond the edge without liquid sublimes just below it; a vessel 2e-5 smaller than its
+     * ice and liquid at the triple point (1e-10 mol of steam short) compresses them on the melting line to about 53 kPa.
+     * The triangle's test is the specification's in energy and volume: a tolerance of 1e-6 in moles took the last target
+     * in at the triple point with its volume 2e-5 off, the steam's molar volume being 2e5 times the condensed water's.
+     */
+    @Test
+    void pureWaterJustOutsideItsTriplePointIsAnsweredOnTheNeighbouringLine() {
+        var service = service();
+        var contract = service.contract();
+        List<String> species = contract.components();
+        int water = contract.waterIndex();
+        var model = service.freeWater();
+        var ice = model.ice();
+        double t = ice.tripleTemperature();
+        double p = ice.triplePressure();
+        double[] c = tripleCorners(service);
+        double[] pure = new double[species.size()];
+        pure[water] = 1.0;
+        double[][] targets = {{1e-5, 1.0, -1e-5}, {1e-5, -1e-5, 1.0}, {-1e-10, 0.5 + 1e-10, 0.5}};
+        String[] edges = {"no ice", "no liquid", "no steam"};
+        for (int k = 0; k < targets.length; k++) {
+            double[] a = targets[k];
+            double u = a[0] * c[0] + a[1] * c[2] + a[2] * c[4];
+            double v = a[0] * c[1] + a[1] * c[3] + a[2] * c[5];
+            var uv = service.uv(EquilibriumRequest.uv(u, v, species, pure, PhaseCompetition.FLUID_ONLY), service.newWorkspace());
+            String at = "beyond the edge with " + edges[k];
+            assertEquals(Status.CONVERGED, uv.status(), at + ": " + uv);
+            double tk = uv.phases().get(0).temperature();
+            double pk = uv.phases().get(0).pressure();
+            var split = uv.freeWater();
+            assertEquals(u, uv.internalEnergy(), 1e-6 * PhaseTestSupport.R * tk, at + ": the energy");
+            assertEquals(v, uv.volume(), 1e-6 * v, at + ": the volume");
+            assertTrue(uv.conservationDefect(pure) < 1e-13, at + ": the moles");
+            if (k == 0) {
+                assertTrue(split.ice() == 0.0 && split.liquidWater() > 0.0 && split.waterVapor() > 0.0, at + ": liquid and steam");
+                assertTrue(tk > t && tk < t + 0.01, at + ": boiling just above the triple point, " + tk + " K");
+                assertEquals(model.saturationPressure(tk), pk, 1e-9 * pk, at + ": on the saturation line");
+            } else if (k == 1) {
+                assertTrue(split.liquidWater() == 0.0 && split.ice() > 0.0 && split.waterVapor() > 0.0, at + ": ice and steam");
+                assertTrue(tk < t && tk > t - 0.01, at + ": subliming just below the triple point, " + tk + " K");
+                assertEquals(ice.fugacity(tk, pk), pk, 1e-6 * pk, at + ": on the sublimation line");
+            } else {
+                assertTrue(split.waterVapor() == 0.0 && split.ice() > 0.0 && split.liquidWater() > 0.0, at + ": ice and liquid");
+                assertTrue(pk > 2.0e4 && pk < 2.0e5, at + ": compressed on the melting line, " + pk + " Pa");
+                assertEquals(ice.meltingTemperature(pk), tk, 1e-9, at + ": on the melting line");
+            }
+            System.out.printf(Locale.ROOT, "pure water just beyond its triple point's edge with %s: %.6f K, %.4f Pa, steam %.6e, liquid %.8f, ice %.8f (%d TP calls)%n",
+                    edges[k], tk, pk, split.waterVapor(), split.liquidWater(), split.ice(), uv.diagnostics().outerIterations());
+        }
+    }
+
+    /** {@code (u_V, v_V, u_L, v_L, u_s, v_s)}: pure water's steam, liquid and ice at the ice record's triple point. */
+    private static double[] tripleCorners(FluidTpEquilibrium service) {
+        var model = service.freeWater();
+        var ice = model.ice();
+        double t = ice.tripleTemperature();
+        double p = ice.triplePressure();
+        double[] liquid = new double[2];
+        model.liquid(t, p, liquid);
+        var solid = ice.properties(t, p);
+        double rt = PhaseTestSupport.R * t;
+        return new double[] {model.vapor().enthalpy(t) - rt, rt / p, liquid[1] - p * liquid[0], liquid[0],
+                solid.enthalpy() - p * solid.volume(), solid.volume()};
+    }
+
     private static void assertFreezing(EquilibriumResult result, double melting, double p, double beta, double[] overall, int water, String at) {
         assertEquals(Status.CONVERGED, result.status(), at + ": " + result);
         assertEquals(Classification.FREE_WATER, result.classification(), at);

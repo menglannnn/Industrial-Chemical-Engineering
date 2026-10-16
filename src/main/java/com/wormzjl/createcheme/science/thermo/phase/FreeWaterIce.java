@@ -83,6 +83,8 @@ public final class FreeWaterIce implements CrystalFugacity {
     public CrystalPhaseEvaluator.Anchored anchored() { return anchored; }
     /** The record's triple point, K. */
     public double tripleTemperature() { return tripleTemperature; }
+    /** The record's triple-point pressure, Pa, where its melting line starts. */
+    public double triplePressure() { return triplePressure; }
     /** {@code dT_m/dP}, K/Pa: Clapeyron's slope of the melting line from the record. */
     public double meltingSlope() { return slope; }
 

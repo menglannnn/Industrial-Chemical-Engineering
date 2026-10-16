@@ -139,7 +139,9 @@ import java.util.Objects;
  *   temperature in UV), at the kernel's equal-fugacity temperature (PH) or pressure (UV), the water model's saturation,
  *   or the melting line's temperature (PH) or pressure (UV). At a fixed volume and energy the freeze is answered on the
  *   line itself once a step of the UV search crosses it ({@link #freezingAtVolume}): {@code T = T_m(P)}, the ice from
- *   the energy balance and {@code P} from the volume's. The pure coexistence is {@link Classification#VAPOR_LIQUID},
+ *   the energy balance and {@code P} from the volume's; pure water with only its own steam inside its triple point's
+ *   triangle is answered at that point before the search ({@link #waterTriplePoint}), from the mole, energy and volume
+ *   balances as a crystal's pure species. The pure coexistence is {@link Classification#VAPOR_LIQUID},
  *   the free water's steps {@link Classification#FREE_WATER}, all with {@link Diagnostics#coexistenceFromBalance()} and
  *   the balance in the detail. A target inside any other step (a fraction outside [0, 1]) is typed
  *   {@code NOT_CONVERGED}: no state of the model has it.</li>
@@ -425,6 +427,11 @@ public final class FluidTpEquilibrium implements EquilibriumService {
      * their evaluator here, built once.
      */
     private final Map<PhaseCompetition, EquilibriumResult.Coverage> crystalCoverages;
+    /**
+     * The corners of pure water's triple-point triangle in UV, {@code (u_V, v_V, u_L, v_L, u_s, v_s)} of its steam, liquid
+     * and ice ({@link #waterTriangle}), evaluated once; null without free water.
+     */
+    private final double[] waterTriangle;
 
     /**
      * @param evaluator its basis must be the contract's basis without water, in the same order, and its family the
@@ -524,6 +531,7 @@ public final class FluidTpEquilibrium implements EquilibriumService {
             if (set != null) coverages.put(competition, solidCoverage(convergedCoverage, competition, set));
         }
         crystalCoverages = Map.copyOf(coverages);
+        waterTriangle = freeWater == null ? null : waterTriangle(freeWater);
     }
 
     /** The crystal of {@code solid} on this service: checked against the evaluator and the contract, anchored once. */
@@ -565,6 +573,31 @@ public final class FluidTpEquilibrium implements EquilibriumService {
             PhaseState solid = crystal.evaluate(t, p, new PhaseState(1));
             return new double[] {vapour.molarInternalEnergy(), vapour.molarVolume(), liquid.molarInternalEnergy(), liquid.molarVolume(),
                     solid.molarInternalEnergy(), solid.molarVolume()};
+        } catch (IllegalArgumentException | IllegalStateException | ArithmeticException refused) {
+            return null;
+        }
+    }
+
+    /**
+     * The corners of pure water's triple-point triangle in UV, as {@link #tripleTriangle} gives a crystal's species: the
+     * molar internal energies and volumes {@code (u_V, v_V, u_L, v_L, u_s, v_s)} of the free-water rule's ideal steam, the
+     * water model's liquid and the ice at the ice record's triple point ({@link FreeWaterIce#tripleTemperature()},
+     * {@link FreeWaterIce#triplePressure()}), each as its phase states it ({@link #gasPhase}, {@link #freeWaterPhase},
+     * {@link #icePhase}); null when the model refuses that point.
+     */
+    private static double[] waterTriangle(FreeWaterModel water) {
+        FreeWaterIce ice = water.ice();
+        double t = ice.tripleTemperature();
+        double p = ice.triplePressure();
+        try {
+            double[] liquid = new double[2];
+            water.liquid(t, p, liquid);
+            CrystalReference.State solid = ice.properties(t, p);
+            double rt = R * t;
+            double[] corners = {water.vapor().enthalpy(t) - rt, rt / p, liquid[1] - p * liquid[0], liquid[0],
+                    solid.enthalpy() - p * solid.volume(), solid.volume()};
+            for (double corner : corners) if (!Double.isFinite(corner)) return null;
+            return corners;
         } catch (IllegalArgumentException | IllegalStateException | ArithmeticException refused) {
             return null;
         }
@@ -1617,6 +1650,11 @@ public final class FluidTpEquilibrium implements EquilibriumService {
         Crystal major = w.wet ? null : pureCrystal(w);
         if (major != null && nearTriangle(u, v, w.hydrocarbonTotal, major)) {
             EquilibriumResult triple = pureTriplePoint(u, v, competition, w);
+            if (triple != null) return triple;
+        }
+        if (w.wet && !(w.hydrocarbonTotal > 0.0)) {
+            // Pure water with only its own steam likewise: inside its triple point's triangle the answer is that triple point.
+            EquilibriumResult triple = waterTriplePoint(u, v, competition, w);
             if (triple != null) return triple;
         }
         if (hintT >= w.minimumT && hintT <= w.maximumT && hintP >= w.minimumP && hintP <= w.maximumP) {
@@ -3762,7 +3800,7 @@ public final class FluidTpEquilibrium implements EquilibriumService {
         double traces = traces(i, w);
         // n_V + n_L + n_S = N; n_V u_V + n_L u_L + n_S u_s = U; n_V v_V + n_L v_L + n_S v_s = V.
         double[] b = {n, u, v};
-        double[] amounts = insideTriangle(solve3(tripleBalances(vapour, liquid, solid), b), n);
+        double[] amounts = insideTriangle(tripleBalances(vapour, liquid, solid), b, t);
         if (amounts == null) return null;
         boolean inVapour = amounts[0] >= amounts[1];
         String species = evaluator.components().get(i);
@@ -3777,7 +3815,7 @@ public final class FluidTpEquilibrium implements EquilibriumService {
                 vapour = evaluator.evaluate(t, p, inVapour ? w.stepFluid : w.pure, Root.VAPOR, w.phases, w.threeVapour);
                 liquid = evaluator.evaluate(t, p, inVapour ? w.pure : w.stepFluid, Root.LIQUID, w.phases, w.threeLiquid);
                 w.outerKernel += 2;
-                double[] next = insideTriangle(solve3(tripleBalances(vapour, liquid, solid), b), n);
+                double[] next = insideTriangle(tripleBalances(vapour, liquid, solid), b, t);
                 if (next == null) return null;
                 boolean settled = Math.abs(next[0] - amounts[0]) <= 4.0 * Math.ulp(n) && Math.abs(next[2] - amounts[2]) <= 4.0 * Math.ulp(n);
                 amounts = next;
@@ -3806,18 +3844,67 @@ public final class FluidTpEquilibrium implements EquilibriumService {
     }
 
     /**
-     * The triple point's amounts (vapour, liquid, crystal) from {@link #solve3}'s (vapour, crystal) and the mole balance,
-     * when every one is nonnegative within the specification tolerance (those within it set to 0); otherwise null.
+     * Pure water with only its own steam at its triple point (the lead's direction of 2026-10-17), the end of the free
+     * water's melting line where no gas holds the pressure above the steam's: steam, liquid water and ice at the ice
+     * record's triple point, 273.16 K and 611.657 Pa (the network water model's saturation pressure there: 611.65707
+     * Pa), with the amounts from the mole, energy and volume balances over the corners {@link #waterTriangle}, as
+     * {@link #pureTriplePoint} answers a crystal's species. A target inside the triangle, within the specification
+     * ({@link #insideTriangle}), has this answer before any search: at its volume {@code U(T)} rises by the latent
+     * heats within 2e-9 K of the triple temperature, a step the search refuses or does not converge on. A rigid vessel
+     * of water and its steam cooled through 0 °C stands here until its liquid is gone, then cools as ice and steam on
+     * the sublimation line. Otherwise null.
      */
-    private static double[] insideTriangle(double[] solved, double n) {
+    private EquilibriumResult waterTriplePoint(double u, double v, PhaseCompetition competition, Workspace w) {
+        if (waterTriangle == null) return null;
+        FreeWaterIce ice = freeWater.ice();
+        double t = ice.tripleTemperature();
+        double p = ice.triplePressure();
+        double[] amounts = insideTriangle(tripleBalances(waterTriangle), new double[] {w.waterTotal, u, v}, t);
+        if (amounts == null) return null;
+        double saturation = freeWater.saturationPressure(t);
+        double nv = amounts[0];
+        double nl = amounts[1];
+        double ns = amounts[2];
+        List<PhaseAmounts> phases = new ArrayList<>(3);
+        if (nv > 0.0) phases.add(gasPhase(t, p, p, 0.0, nv, null, w));
+        if (nl > 0.0) phases.add(freeWaterPhase(t, p, saturation, nl, w));
+        if (ns > 0.0) phases.add(icePhase(t, p, ice.fugacity(t, p), ns, w));
+        var split = new EquilibriumResult.FreeWater(Classification.NONE, saturation, p, nv > 0.0 ? p : 0.0, nl, nv, ns);
+        String note = "pure water at its triple point (" + t + " K, " + p + " Pa): steam " + nv + ", liquid " + nl + ", ice " + ns
+                + " mol from the mole, energy and volume balances";
+        EquilibriumResult answer = converged(competition, Classification.FREE_WATER, phases, List.of(), diagnostics(w, null, false),
+                null, split, note);
+        return outerAnswer(Specification.UV, answer, u, v, true, null, w);
+    }
+
+    /**
+     * The triple point's amounts (vapour, liquid, crystal) at {@code b = (N, U, V)} over the balances {@code a}
+     * ({@link #tripleBalances}) at the triple temperature {@code t}: {@link #solve3}'s vapour and crystal with the liquid
+     * from the mole balance, when every one is nonnegative within the specification tolerance. An amount below zero is set
+     * to 0, the others keeping the moles, where the answer then still meets the specification: the energy to
+     * {@link #SPECIFICATION_TOLERANCE} of {@code N R T} and the volume in {@code ln V}. A tolerance in moles would not bound
+     * the volume, the vapour's molar volume being the condensed phases' times 1e2 for CO2 and 2e5 for water at 611.657 Pa.
+     * Otherwise null.
+     */
+    private static double[] insideTriangle(double[] a, double[] b, double t) {
+        double[] solved = solve3(a, b);
         if (solved == null) return null;
-        double allowance = SPECIFICATION_TOLERANCE * n;
-        for (double amount : solved) if (!(amount >= -allowance)) return null;
+        double n = b[0];
         double nv = Math.max(solved[0], 0.0);
         double ns = Math.max(solved[2], 0.0);
         double nl = n - nv - ns;
-        if (!(nl >= -allowance)) return null;
-        return new double[] {nv, Math.max(nl, 0.0), ns};
+        if (solved[0] >= 0.0 && solved[2] >= 0.0 && nl >= 0.0) return new double[] {nv, nl, ns};
+        if (nl < 0.0) {
+            double scale = n / (nv + ns);
+            nv *= scale;
+            ns *= scale;
+            nl = 0.0;
+        }
+        double energy = nv * a[3] + nl * a[4] + ns * a[5];
+        double volume = nv * a[6] + nl * a[7] + ns * a[8];
+        if (!(Math.abs(energy - b[1]) <= SPECIFICATION_TOLERANCE * n * R * t)
+                || !(Math.abs(DeterministicMath.log(volume / b[2])) <= SPECIFICATION_TOLERANCE)) return null;
+        return new double[] {nv, nl, ns};
     }
 
     /** The UV hold of a near-pure triple point whose fluids are too small for its traces (D21 option C), typed. */
@@ -3836,7 +3923,7 @@ public final class FluidTpEquilibrium implements EquilibriumService {
     private static boolean nearTriangle(double u, double v, double n, Crystal c) {
         double[] m = c.triangle();
         if (m == null) return false;
-        double[] amounts = solve3(new double[] {1.0, 1.0, 1.0, m[0], m[2], m[4], m[1], m[3], m[5]}, new double[] {n, u, v});
+        double[] amounts = solve3(tripleBalances(m), new double[] {n, u, v});
         if (amounts == null) return false;
         for (double amount : amounts) if (!(amount >= -TRIANGLE_SCREEN * n)) return false;
         return true;
@@ -3846,6 +3933,11 @@ public final class FluidTpEquilibrium implements EquilibriumService {
     private static double[] tripleBalances(PhaseState vapour, PhaseState liquid, PhaseState solid) {
         return new double[] {1.0, 1.0, 1.0, vapour.molarInternalEnergy(), liquid.molarInternalEnergy(), solid.molarInternalEnergy(),
                 vapour.molarVolume(), liquid.molarVolume(), solid.molarVolume()};
+    }
+
+    /** The same balances over a triangle's corners, {@code (u_V, v_V, u_L, v_L, u_s, v_s)}. */
+    private static double[] tripleBalances(double[] corners) {
+        return new double[] {1.0, 1.0, 1.0, corners[0], corners[2], corners[4], corners[1], corners[3], corners[5]};
     }
 
     /**
