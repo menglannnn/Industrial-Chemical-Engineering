@@ -6,6 +6,7 @@ import com.wormzjl.createcheme.science.fluid.thermo.FluidThermodynamics;
 import com.wormzjl.createcheme.science.fluid.thermo.ThermoHold;
 import com.wormzjl.createcheme.science.thermo.PhaseSupport;
 import java.util.*;
+import java.util.function.Predicate;
 import java.util.function.UnaryOperator;
 
 /** Refreshes a derived state from conserved inventory before an interval, never inside a network residual. */
@@ -27,10 +28,33 @@ public final class InventoryEquilibrium {
      * {@link SolidInventory#oneSizePerSolid}): the vessels, the junction buffers and the filter cakes. A stock already
      * holding one size per solid, a vessel at its crystal equilibrium and an island of fluids only keep every bit.
      */
-    public static Refreshed refresh(PassiveNetwork graph,FluidThermodynamics model,Runnable checkpoint) {
+    public static Refreshed refresh(PassiveNetwork graph,FluidThermodynamics model,Runnable checkpoint){return refresh(graph,model,checkpoint,node->true);}
+    /**
+     * The refresh an island's rest test reads (owner decision D23 (6)): {@link #refresh} of the nodes whose stock may
+     * convert ({@link #mayConvert}); every other node is left as it is, with no closure and no checkpoint. Its graph is
+     * used only where it converted, and the interval's run then restates every vessel ({@link #refresh}, decision D36), so
+     * a node it leaves loses nothing. Before the free water's ice (WP4) it ran on packages with crystals only; with the
+     * ice on every package, the test is the vessel's.
+     */
+    public static Refreshed conversions(PassiveNetwork graph,FluidThermodynamics model,Runnable checkpoint) {
+        return refresh(graph,model,checkpoint,node->mayConvert(node,model));
+    }
+    /**
+     * Whether a refresh may convert {@code node}'s stock: a vessel or junction buffer holding solids (a crystal may melt or
+     * grow, a solid's sizes merge), or a vessel in which a crystal may be present ({@link VesselCrystals#competes}). A
+     * vessel holding no solids converts only by a crystal forming in it: none where water is above its melting line and
+     * the package's crystals above their ceiling. A fixed node never converts.
+     */
+    static boolean mayConvert(PassiveNetwork.Reservoir node,FluidThermodynamics model) {
+        if(node.fixed()||node.empty())return false;
+        if(!node.inventory().solids().empty())return true;
+        return !node.junction()&&VesselCrystals.competes(model,node.inventory(),node.state());
+    }
+    private static Refreshed refresh(PassiveNetwork graph,FluidThermodynamics model,Runnable checkpoint,Predicate<PassiveNetwork.Reservoir> visited) {
         var nodes=new ArrayList<PassiveNetwork.Reservoir>();var boundaries=new ArrayList<ConservativeTransport.BoundaryTransfer>();
         boolean changed=false,converted=false;
         for(var node:graph.reservoirs()) {
+            if(!visited.test(node)){nodes.add(node);continue;}
             checkpoint.run();PassiveNetwork.Reservoir refreshed;
             // A committed inventory whose phases the network holds on names its node, directly or through the failed
             // closure such a hold stopped; see ThermoHold.
@@ -66,7 +90,8 @@ public final class InventoryEquilibrium {
         try{state=solve(model,node.state(),inventory,Double.NaN,checkpoint);}
         catch(SparseNewton.Nonconvergence|ThermoHold failure) {
             // A fluid far past a crystal's saturation (it arrived within the interval, D23 (5)) may have no fluid-only state
-            // the network carries: the crystal test states the vessel from its inventory, or the failure stands.
+            // the network carries: the crystal test states the vessel from its inventory, or the failure stands. It stands
+            // at once where no crystal may be present (VesselCrystals.competes): warm water holding no ice cannot freeze.
             if(!VesselCrystals.competes(model,inventory,node.state()))throw failure;
             unclosed=failure;
         }

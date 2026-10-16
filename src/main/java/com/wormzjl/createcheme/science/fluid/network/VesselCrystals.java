@@ -85,15 +85,20 @@ final class VesselCrystals {
         return settle(model,inventory,closed,true,checkpoint);
     }
     /**
-     * Whether a crystal may be present in a vessel holding {@code inventory} near {@code state}: its species, its crystals'
-     * included, hold water (the free water's ice, WP4) or are under the package's crystal competition (a crystal's species
-     * at or below the crystals' ceiling, {@link FluidThermodynamics#crystalsCompete}).
+     * Whether a crystal may be present in a vessel holding {@code inventory} near {@code state}: the free water's ice (WP4)
+     * where the vessel holds ice, or holds water at or below the melting line at the state's pressure ({@code T <= T_m(P)},
+     * {@link com.wormzjl.createcheme.science.thermo.phase.FreeWaterIce#meltingTemperature}), and the package's crystals where
+     * the vessel's species are under their competition (at or below the crystals' ceiling, {@link FluidThermodynamics#crystalsCompete}).
+     * Physics: above its melting line water cannot freeze, since the latent heat a freeze releases would raise the vessel
+     * further above it; ice the vessel holds melts there, and as it melts it cools the vessel, so some may stay at the line.
      */
     static boolean competes(FluidThermodynamics model,PassiveNetwork.Inventory inventory,FluidThermodynamics.State state) {
         var crystals=model.crystalSolids();
         if(PhaseLayout.sum(inventory.moles())==0)return false;
-        double[] totals=totals(crystals,inventory,held(crystals,inventory));
-        return totals[totals.length-1]>0||model.crystalsCompete(state.temperature(),totals);
+        double[] held=held(crystals,inventory),totals=totals(crystals,inventory,held);
+        double t=state.temperature();boolean ice=false;
+        for(int k=0;k<held.length;k++)ice|=held[k]>0&&crystals.all().get(k).water();
+        return ice||totals[totals.length-1]>0&&t<=model.freeWaterIce().meltingTemperature(state.pressure())||model.crystalsCompete(t,totals);
     }
     private static double[] held(NetworkCrystals crystals,PassiveNetwork.Inventory inventory) {
         var all=crystals.all();double[] held=new double[all.size()];

@@ -10,6 +10,7 @@ import com.wormzjl.createcheme.science.fluid.thermo.NetworkCrystals;
 import com.wormzjl.createcheme.science.fluid.transport.SlurryTransport;
 import com.wormzjl.createcheme.science.fluid.transport.SolidMobility;
 import com.wormzjl.createcheme.science.material.MaterialCatalog;
+import com.wormzjl.createcheme.science.material.MaterialTestBasis;
 import com.wormzjl.createcheme.science.material.SolidMaterialCatalog.SolidMaterial;
 import java.math.BigDecimal;
 import java.math.MathContext;
@@ -274,6 +275,40 @@ class PrecipitatedSolidsTest {
                 List.of(new PassiveNetwork.Pipe(10,0,1,new PipeResistance.Geometry(10,.05,.000045,0))));
         var result=new PassiveIntervalSolver(water).solve(graph,5,PassiveIntervalSolver.Settings.defaults(),()->{});
         for(int i=0;i<2;i++)assertSame(graph.reservoirs().get(i).inventory(),result.graph().reservoirs().get(i).inventory(),"node "+i+" kept to the bit: at rest");
+    }
+
+    /**
+     * The refresh the rest test reads visits only a stock that may convert (D23 (6), with the free water's ice on every
+     * package). Physics: free water freezes only at or below its melting line, T_m(P) (273.15 K at 1 atm); above it the
+     * latent heat a freeze releases would raise the vessel further above, so a vessel of warm water holding no solids
+     * converts nothing. 1 m3 of water at 350 K and 160 kPa is left as it is, with no closure and no checkpoint, as on a
+     * package without crystals before the ice; the interval start's refresh still restates it. A tank of nitrogen with
+     * 1 % water at 230 K and 1 atm, its condensed water carried as the stand-in, is below the line: the same refresh
+     * freezes it, and the latent heat (about 0.5 mol at 6 to 8 kJ/mol into 53 mol of nitrogen) warms the tank by 2 K.
+     */
+    @Test void aWarmWaterVesselHasNothingToConvertAndAColdOneFreezes() {
+        var warm=new PassiveNetwork(List.of(vessel(1,hotWater(160000),1)),List.of());
+        int[] checkpoints={0};
+        var rest=InventoryEquilibrium.conversions(warm,water,()->checkpoints[0]++);
+        assertSame(warm,rest.graph(),"warm water above its melting line: nothing to convert");
+        assertFalse(rest.converted());
+        assertEquals(0,checkpoints[0],"no closure and no checkpoint");
+        InventoryEquilibrium.refresh(warm,water,()->checkpoints[0]++);
+        assertTrue(checkpoints[0]>0,"the interval start's refresh restates it");
+        double[] z=new double[water.componentCount()];z[MaterialTestBasis.NITROGEN]=.99;z[z.length-1]=.01;
+        var cold=new PassiveNetwork(List.of(vessel(1,charge(water,230,PhaseLayout.AMBIENT_PRESSURE,z,1),1)),List.of());
+        var before=cold.reservoirs().getFirst();
+        checkpoints[0]=0;
+        var frozen=InventoryEquilibrium.conversions(cold,water,()->checkpoints[0]++);
+        var tank=frozen.graph().reservoirs().getFirst();
+        double melting=water.freeWaterIce().meltingTemperature(tank.state().pressure());
+        System.out.printf(Locale.ROOT,"water below its melting line: %.4f K to %.4f K (T_m %.4f K at %.1f Pa), %.6f kg of ice of %.6f kg of water, %d checkpoints%n",
+                before.state().temperature(),tank.state().temperature(),melting,tank.state().pressure(),crystalKg(tank),
+                before.inventory().moles()[z.length-1]*water.waterMolecularWeight,checkpoints[0]);
+        assertTrue(before.state().waterLiquid()>0,"the stand-in");
+        assertTrue(frozen.converted(),"a freeze is a conversion");
+        assertTrue(crystalKg(tank)>0,"water below its melting line freezes");
+        assertTrue(tank.state().temperature()>before.state().temperature()&&tank.state().temperature()<melting,"the latent heat warms it, below its melting line");
     }
 
     /** The trace flush never deletes crystal mass: a vessel at its crystal equilibrium holding a 1e-25 mol methane trace
