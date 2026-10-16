@@ -22,6 +22,7 @@ import net.neoforged.neoforge.client.model.data.ModelData;
 import net.neoforged.neoforge.client.model.geometry.IGeometryBakingContext;
 import net.neoforged.neoforge.client.model.geometry.IGeometryLoader;
 import net.neoforged.neoforge.client.model.geometry.IUnbakedGeometry;
+import net.neoforged.neoforge.client.model.lighting.QuadLighter;
 import net.neoforged.neoforge.client.model.pipeline.QuadBakingVertexConsumer;
 import org.jetbrains.annotations.Nullable;
 
@@ -35,7 +36,8 @@ import java.util.function.Function;
  * Chunk-meshed model of a vessel shell cell (batch 2026-10-15-custom-equipment-rendering, route A1). The cell's key
  * arrives as model data from its block entity; the quads of a key are built once from {@link ShapeRasterizer#surface}
  * and cached, and body cells share one key per column. Quads stay inside the cell, carry smooth vertex normals and have
- * no ambient occlusion: vanilla shades them by their nearest axis, Sodium by their normal, Iris by its own lighting.
+ * no ambient occlusion; their directional shade is baked into the vertex colour from the smooth normal (owner report
+ * 2026-10-16: the per-quad six-step shade banded a round shell), so vanilla and Sodium shade them alike.
  * Without model data (Distant Horizons asks that way) the model is empty and the particle sprite gives the colour.
  */
 public final class EquipmentShellModel implements IDynamicBakedModel {
@@ -100,13 +102,19 @@ public final class EquipmentShellModel implements IDynamicBakedModel {
         baker.setSprite(sprite);
         baker.setTintIndex(-1);
         baker.setDirection(Direction.getNearest(fx, fy, fz));
-        baker.setShade(true);
+        // The directional shade is baked into each vertex from its smooth normal, by the formula NeoForge uses for its own
+        // normal-based lighting (an axis-facing face shades exactly as a block face does). Vanilla's per-quad shade would
+        // band a round shell in six steps, so the quad asks for none; vanilla and Sodium both multiply the vertex colour.
+        baker.setShade(false);
         baker.setHasAmbientOcclusion(false);
-        for (int c : corners)
+        for (int c : corners) {
+            float nx = (float) n[3 * c], ny = (float) n[3 * c + 1], nz = (float) n[3 * c + 2];
+            int shade = Math.round(255 * QuadLighter.calculateShade(nx, ny, nz, false));
             baker.addVertex((float) p[3 * c], (float) p[3 * c + 1], (float) p[3 * c + 2])
-                    .setColor(255, 255, 255, 255)
+                    .setColor(shade, shade, shade, 255)
                     .setUv(sprite.getU((float) uv[2 * c]), sprite.getV((float) uv[2 * c + 1]))
-                    .setNormal((float) n[3 * c], (float) n[3 * c + 1], (float) n[3 * c + 2]);
+                    .setNormal(nx, ny, nz);
+        }
         return baker.bakeQuad();
     }
 

@@ -235,7 +235,7 @@ public final class EquipmentShellBlockEntity extends BlockEntity implements Flui
         tag.putLong("Nozzles", nozzles);
     }
 
-    /** A shape's NBT: kind, diameter, tangent length, orientation, front, support, and a column's trays. */
+    /** A shape's NBT: kind, diameter, tangent length, orientation, front, support, a column's trays and a drum's side connections. */
     public static void writeShape(CompoundTag tag, EquipmentShape shape) {
         tag.putString("Kind", shape.kind().name().toLowerCase(Locale.ROOT));
         tag.putDouble("Diameter", shape.diameter());
@@ -244,6 +244,7 @@ public final class EquipmentShellBlockEntity extends BlockEntity implements Flui
         tag.putString("Front", shape.front().name().toLowerCase(Locale.ROOT));
         tag.putInt("Support", shape.support());
         if (shape.trays() != null) tag.putIntArray("Trays", shape.trays().encode());
+        else tag.putIntArray("Connections", EquipmentShape.Connection.encode(shape.connections()));
     }
 
     /** @throws IllegalArgumentException for a missing or invalid field */
@@ -251,8 +252,10 @@ public final class EquipmentShellBlockEntity extends BlockEntity implements Flui
         var kind = EquipmentShape.Kind.valueOf(tag.getString("Kind").toUpperCase(Locale.ROOT));
         var front = EquipmentShape.Heading.valueOf(tag.getString("Front").toUpperCase(Locale.ROOT));
         if (kind == EquipmentShape.Kind.COLUMN) return EquipmentShape.column(tag.getDouble("Diameter"), ColumnTrays.decode(tag.getIntArray("Trays")), front, tag.getInt("Support"));
+        if (!tag.contains("Connections")) throw new IllegalArgumentException("A drum lists its side connections");
         return EquipmentShape.drum(tag.getDouble("Diameter"), tag.getDouble("TangentLength"),
-                EquipmentShape.Orientation.valueOf(tag.getString("Orientation").toUpperCase(Locale.ROOT)), front, tag.getInt("Support"));
+                EquipmentShape.Orientation.valueOf(tag.getString("Orientation").toUpperCase(Locale.ROOT)), front, tag.getInt("Support"),
+                EquipmentShape.Connection.decode(tag.getIntArray("Connections")));
     }
 
     @Override

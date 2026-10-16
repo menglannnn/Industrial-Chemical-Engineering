@@ -161,8 +161,9 @@ public final class EquipmentStructure {
     }
 
     /**
-     * Server: each nozzle drawn at the size of the pipe connected to it (owner decision 2026-10-16), at most its largest
-     * size; an unconnected nozzle shows its default size under a blind flange. Only the cells the nozzle reaches change.
+     * Server: each nozzle drawn at the size of the pipe connected to it (owner decisions 2026-10-16: its flange always the
+     * pipe's, a reducer where the vessel cannot carry the pipe's size); an unconnected nozzle shows its default size under
+     * a blind flange. Only the cells the nozzle reaches change.
      */
     public static void refreshNozzles(Level level, Vessel vessel) {
         if (level.isClientSide()) return;
@@ -176,7 +177,7 @@ public final class EquipmentStructure {
             var state = level.getBlockState(at);
             if (state.getBlock() instanceof FluidDeviceBlock block && block.kind() == TopologyCompiler.Kind.PIPE && state.getValue(FluidDeviceBlock.connection(towards))
                     && level.getBlockEntity(at) instanceof FluidDeviceBlockEntity pipe)
-                codes = ShapeRasterizer.withNozzle(codes, port.nozzle(), Math.min(nozzles.get(port.nozzle()).maxOd(), PipeSizes.outside(pipe.bore())));
+                codes = ShapeRasterizer.withNozzle(codes, port.nozzle(), PipeSizes.outside(pipe.bore()));
         }
         for (int k = 0; k < nozzles.size(); k++)
             for (var cell : ShapeRasterizer.nozzleCells(shape, k)) {

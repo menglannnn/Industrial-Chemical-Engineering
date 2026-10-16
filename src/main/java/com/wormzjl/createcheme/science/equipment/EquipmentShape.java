@@ -15,16 +15,20 @@ import java.util.Objects;
  * 2026-10-15-custom-equipment-rendering: diameters in 0.5 m steps, lengths in whole metres; refined 2026-10-16).
  *
  * <p>Two kinds (owner request 2026-10-16). A <b>drum</b> stands on a skirt or lies on two saddles (owner decisions
- * 2026-10-15) and is a fluid reservoir whose standard nozzles are its ports: vertical — a vapour outlet at the top head's
- * centre, a liquid outlet just above the bottom tangent line facing the front and an inlet in the upper shell facing the
- * right; horizontal — two vapour nozzles on the top near the ends and a liquid outlet low on the front head. A
- * <b>column</b> is a tall vertical vessel laid out by its trays ({@link ColumnTrays}), insulated and clad, with its
- * platforms, ladders, manways and process nozzles ({@link ColumnStructure}).
+ * 2026-10-15) and is a fluid reservoir whose nozzles are its ports. Two are fixed: the vapour outlet (a standing drum's at
+ * the top head's centre, a lying drum's on top near its far end) and the liquid outlet (a skirted drum's bottom outlet,
+ * whose line drops from the bottom head inside the skirt and leaves through the access opening towards the front, owner
+ * report 2026-10-16; without room under the head a nozzle just above the bottom tangent line facing the front; a lying
+ * drum's low on its front head). The rest are the player's side {@link Connection}s, up to {@link #MAX_CONNECTIONS}
+ * (owner request 2026-10-16), a new drum's being its former standard inlet. A <b>column</b> is a tall vertical vessel
+ * laid out by its trays ({@link ColumnTrays}), insulated and clad, with its platforms, ladders, manways and process
+ * nozzles ({@link ColumnStructure}).
  *
  * <p>Supports. A vertical vessel stands on a skirt: a cylinder of the shell diameter from the ground to the bottom tangent
- * line, {@code support} metres high, which hides the bottom head (0 = none: the vessel rests on its lower head, the debug
- * command's bare form). The skirt stands on a base ring projecting {@link #BASE_RING} beyond it, with
- * {@link #anchorChairs()} anchor-bolt chairs. A horizontal vessel lies on two saddles centred {@link #SADDLE_POSITION} ×
+ * line, {@code support} metres high (0 = none: the vessel rests on its lower head, the debug command's bare form). A
+ * drum's skirt is a {@link #SKIRT_WALL} plate showing its inside (the bottom head, the outlet line, a floor plate) through
+ * its access opening and three slots; a column's hides its bottom head. The skirt stands on a base ring projecting
+ * {@link #BASE_RING} beyond it, with {@link #anchorChairs()} anchor-bolt chairs. A horizontal vessel lies on two saddles centred {@link #SADDLE_POSITION} ×
  * T/T from each tangent line (Zick), cradling the bottom {@link #SADDLE_CONTACT_DEGREES}° of the shell; {@code support}
  * is the height of the shell's box above the ground.
  *
@@ -36,7 +40,7 @@ import java.util.Objects;
  * the box to start at the origin.
  */
 public record EquipmentShape(Kind kind, double diameter, double tangentLength, Orientation orientation, Heading front, int support,
-                             @Nullable ColumnTrays trays) {
+                             @Nullable ColumnTrays trays, List<Connection> connections) {
     public static final double MIN_DIAMETER = .5, MAX_DIAMETER = 10, MAX_COLUMN_DIAMETER = 15, MAX_TANGENT_LENGTH = 64;
     public static final int MAX_SUPPORT = 16;
     /** Saddles: centred this fraction of T/T from each tangent line, this wide along the axis (m), over this arc of the shell. */
@@ -49,6 +53,27 @@ public record EquipmentShape(Kind kind, double diameter, double tangentLength, O
     public static final double PLATE = 1 / 16.0, SADDLE_WEB = .125, SADDLE_RIB = .125, BASE_RING = .125, CHAIR = .25;
     /** A nozzle's flange face stands at least this far beyond the vessel surface (photo survey: 150-300 mm), on the next block face. */
     public static final double STAND_OUT = .15;
+    /**
+     * Centre height of a skirted drum's bottom outlet line where it leaves the skirt, through the centre of its skirt
+     * port: the lowest cell centre.
+     */
+    public static final double SKIRT_OUTLET = .5;
+    /**
+     * A drum's skirt port, m: its bore leaves this much round the line at the line's drawn size, and a collar this wide
+     * rings the hole cut for the largest line (owner request 2026-10-16: the port scales with the line).
+     */
+    public static final double PORT_CLEARANCE = .05, PORT_COLLAR = 1 / 32.0;
+    /** A drum's skirt plate, m (a texel), drawn on both faces: its inside shows through the opening and the slots. */
+    public static final double SKIRT_WALL = 1 / 16.0;
+    /** The most side connections a drum takes: with its two fixed outlets, every nozzle's size fits in a cell key. */
+    public static final int MAX_CONNECTIONS = 6;
+    /**
+     * The frame directions a side connection faces, as {axis, sign}: -z, +x, +z, -x. A standing drum's front (towards
+     * the constructor), left, back and right; a lying drum's sides and its top (+x) and bottom (-x).
+     */
+    static final int[][] SIDES = {{2, -1}, {0, 1}, {2, 1}, {0, -1}};
+    /** The number of sides a connection may face. */
+    public static final int CONNECTION_SIDES = SIDES.length;
     /** A column's insulation under its aluminium cladding, m (photo survey: 50-150 mm); a drum is bare. */
     public static final double INSULATION = .1;
     /**
@@ -104,7 +129,7 @@ public record EquipmentShape(Kind kind, double diameter, double tangentLength, O
 
     /** What a nozzle is for, and the fluid port its position makes it (owner decision 2026-10-16: fixed class by position). */
     public enum Role {
-        VAPOUR_OUTLET(PortClass.VAPOUR), INLET(PortClass.BULK), LIQUID_OUTLET(PortClass.LIQUID), FEED(PortClass.BULK), REFLUX(PortClass.BULK),
+        VAPOUR_OUTLET(PortClass.VAPOUR), SIDE(PortClass.BULK), LIQUID_OUTLET(PortClass.LIQUID), FEED(PortClass.BULK), REFLUX(PortClass.BULK),
         DRAW(PortClass.BULK), RETURN(PortClass.BULK), STEAM(PortClass.BULK), BOTTOMS(PortClass.LIQUID);
 
         public final PortClass port;
@@ -122,10 +147,20 @@ public record EquipmentShape(Kind kind, double diameter, double tangentLength, O
     /**
      * A nozzle in the vessel frame: its neck runs from {@code base} (inside the vessel, under its surface) along
      * {@code direction} (a frame axis) for {@code length} metres to its flange face, which lies on a block face. Its
-     * outside diameter follows the connected pipe up to {@code maxOd}; unconnected it shows {@code defaultOd} under a blind
-     * flange.
+     * flange and outer end take the connected pipe's size, whatever it is, so a pipe never steps at the flange (owner
+     * decision 2026-10-16: resizing starts at the port-to-vessel connection); unconnected it shows {@code defaultOd} under
+     * a blind flange. The neck takes the pipe's size up to {@code maxOd}, the largest the vessel carries there; a larger
+     * pipe's neck widens in a concentric reducer from {@code exit}, the distance from {@code base} where the neck at
+     * {@code maxOd} has left the vessel (a skirted bottom outlet: its skirt), to the flange. A line coming down from the
+     * vessel ({@code riser} > 0, a skirted drum's bottom outlet) rises to frame height {@code riser} at {@code maxOd} behind
+     * {@code base}, turning into the neck through an elbow of bend radius 1 D of the line drawn and a straight run.
      */
-    public record Nozzle(Role role, double[] base, int axis, int sign, double length, double maxOd, double defaultOd) {
+    public record Nozzle(Role role, double[] base, int axis, int sign, double length, double maxOd, double defaultOd, double riser, double exit) {
+        /** A nozzle that only ever shows its default size (a column's): no riser, no reducer. */
+        public Nozzle(Role role, double[] base, int axis, int sign, double length, double maxOd, double defaultOd) {
+            this(role, base, axis, sign, length, maxOd, defaultOd, 0, 0);
+        }
+
         public double[] direction() {
             var d = new double[3];
             d[axis] = sign;
@@ -140,23 +175,99 @@ public record EquipmentShape(Kind kind, double diameter, double tangentLength, O
         }
     }
 
-    /** A bare vertical drum resting on its lower head, front to the north: the debug command's form. */
-    public EquipmentShape(double diameter, double tangentLength) {
-        this(Kind.DRUM, diameter, tangentLength, Orientation.VERTICAL, Heading.NORTH, 0, null);
+    /**
+     * A side connection the player places on a drum's shell (owner request 2026-10-16): a radial nozzle facing frame
+     * direction {@link #SIDES}[{@code side}], its centre line at frame height {@code station} + 0.5 along the vessel's
+     * axis and {@code offset} whole cells across it, along the frame axis that is neither the vessel's nor its own (a
+     * hillside nozzle when not 0). Its ranges follow the drum ({@link #stations}, {@link #maximumOffset}).
+     */
+    public record Connection(int side, int station, int offset) {
+        public Connection {
+            if (side < 0 || side >= SIDES.length) throw new IllegalArgumentException("A connection faces side 0 to 3, not " + side);
+        }
+
+        public int axis() {
+            return SIDES[side][0];
+        }
+
+        public int sign() {
+            return SIDES[side][1];
+        }
+
+        /** The frame axis the offset runs along. */
+        public int across() {
+            return 2 - axis();
+        }
+
+        /** Encoded for NBT and the network: side, station and offset per connection. */
+        public static int[] encode(List<Connection> connections) {
+            var out = new int[3 * connections.size()];
+            for (int i = 0; i < connections.size(); i++) {
+                var c = connections.get(i);
+                out[3 * i] = c.side;
+                out[3 * i + 1] = c.station;
+                out[3 * i + 2] = c.offset;
+            }
+            return out;
+        }
+
+        /** @throws IllegalArgumentException for a malformed array or side; the ranges are checked with the shape */
+        public static List<Connection> decode(int[] encoded) {
+            if (encoded.length % 3 != 0 || encoded.length > 3 * MAX_CONNECTIONS)
+                throw new IllegalArgumentException("Connections need three numbers each, at most " + MAX_CONNECTIONS);
+            var out = new ArrayList<Connection>(encoded.length / 3);
+            for (int i = 0; i < encoded.length; i += 3) out.add(new Connection(encoded[i], encoded[i + 1], encoded[i + 2]));
+            return List.copyOf(out);
+        }
     }
 
+    /**
+     * A side connection that cannot be built as placed: connection {@code connection} meets {@code other}, another
+     * connection's index or one of {@link #VAPOUR}, {@link #LIQUID}, {@link #SADDLE}, {@link #GROUND}.
+     */
+    public record Clash(int connection, int other) {
+        public static final int VAPOUR = -1, LIQUID = -2, SADDLE = -3, GROUND = -4;
+    }
+
+    /** A bare vertical drum resting on its lower head, front to the north: the debug command's form. */
+    public EquipmentShape(double diameter, double tangentLength) {
+        this(Kind.DRUM, diameter, tangentLength, Orientation.VERTICAL, Heading.NORTH, 0, null, defaultConnections(diameter, tangentLength, Orientation.VERTICAL, 0));
+    }
+
+    /** A drum with a new drum's side connection ({@link #defaultConnections}). */
     public static EquipmentShape drum(double diameter, double tangentLength, Orientation orientation, Heading front, int support) {
-        return new EquipmentShape(Kind.DRUM, diameter, tangentLength, orientation, front, support, null);
+        return drum(diameter, tangentLength, orientation, front, support, defaultConnections(diameter, tangentLength, orientation, support));
+    }
+
+    public static EquipmentShape drum(double diameter, double tangentLength, Orientation orientation, Heading front, int support, List<Connection> connections) {
+        return new EquipmentShape(Kind.DRUM, diameter, tangentLength, orientation, front, support, null, connections);
     }
 
     public static EquipmentShape column(double diameter, ColumnTrays trays, Heading front, int skirt) {
-        return new EquipmentShape(Kind.COLUMN, diameter, trays.tangentLength(diameter), Orientation.VERTICAL, front, skirt, trays);
+        return new EquipmentShape(Kind.COLUMN, diameter, trays.tangentLength(diameter), Orientation.VERTICAL, front, skirt, trays, List.of());
+    }
+
+    /**
+     * A new drum's side connections: its former standard inlet, a standing drum's in the upper shell (0.4 D below the
+     * top tangent line) facing the right, a lying drum's on top near its front end when the drum is long enough for it
+     * beside the vapour outlet.
+     */
+    public static List<Connection> defaultConnections(double diameter, double tangentLength, Orientation orientation, int support) {
+        double bT = orientation.horizontal() || support == 0 ? diameter / 4 : support, tT = bT + tangentLength;
+        if (orientation.horizontal()) {
+            double near = Math.ceil(bT) + .5, far = Math.floor(tT - 1) + .5;
+            return far - near >= 1.5 ? List.of(new Connection(1, (int) Math.floor(near), 0)) : List.of();
+        }
+        double y = Math.floor(Math.max(bT + .25, tT - .4 * diameter)) + .5;
+        if (y > tT - .1) y -= 1;
+        return y > bT + .1 ? List.of(new Connection(3, (int) Math.floor(y), 0)) : List.of();
     }
 
     public EquipmentShape {
         Objects.requireNonNull(kind, "kind");
         Objects.requireNonNull(orientation, "orientation");
         Objects.requireNonNull(front, "front");
+        connections = List.copyOf(connections);
         double maximum = kind == Kind.COLUMN ? MAX_COLUMN_DIAMETER : MAX_DIAMETER;
         if (!(diameter >= MIN_DIAMETER && diameter <= maximum) || diameter * 2 != Math.rint(diameter * 2))
             throw new IllegalArgumentException("Diameter must be 0.5 to " + (int) maximum + " m in 0.5 m steps, not " + diameter);
@@ -172,6 +283,15 @@ public record EquipmentShape(Kind kind, double diameter, double tangentLength, O
             throw new IllegalArgumentException("Saddle height must be 1 to " + MAX_SUPPORT + " m, not " + support);
         if (!orientation.horizontal() && support != 0 && (support < minimumSkirt(diameter) || support > MAX_SUPPORT))
             throw new IllegalArgumentException("Skirt height must be 0 (none) or " + minimumSkirt(diameter) + " to " + MAX_SUPPORT + " m, not " + support);
+        if (kind == Kind.COLUMN && !connections.isEmpty()) throw new IllegalArgumentException("A column's nozzles follow its trays");
+        if (connections.size() > MAX_CONNECTIONS) throw new IllegalArgumentException("A drum takes at most " + MAX_CONNECTIONS + " side connections");
+        int[] range = stations(diameter, tangentLength, orientation, support);
+        int across = maximumOffset(diameter);
+        for (var c : connections) {
+            if (c.station() < range[0] || c.station() > range[1])
+                throw new IllegalArgumentException("A side connection stands at row " + range[0] + " to " + range[1] + ", not " + c.station());
+            if (Math.abs(c.offset()) > across) throw new IllegalArgumentException("A side connection's offset is at most " + across + ", not " + c.offset());
+        }
     }
 
     /** The lowest skirt that still encloses the bottom head, m. */
@@ -339,38 +459,165 @@ public record EquipmentShape(Kind kind, double diameter, double tangentLength, O
         if (!orientation.horizontal()) {
             // Top head centre: the vapour outlet.
             double topOd = Math.min(1, diameter / 2);
-            out.add(new Nozzle(Role.VAPOUR_OUTLET, new double[]{a, headSurface(topOd / 2) - .03, a}, 1, 1,
-                    Math.ceil(top() + STAND_OUT) - (headSurface(topOd / 2) - .03), topOd, clampOd(.2 * diameter, topOd)));
-            // Liquid outlet: the lowest cell centre at least 0.25 m above the bottom tangent, facing the front (frame -z).
-            double yL = Math.ceil(bT + .25 - .5) + .5;
-            double liquidOd = Math.min(Math.min(1, diameter / 2), 2 * (Math.min(yL - bT, tT - yL) - .05));
-            if (yL < tT && liquidOd > .05)
-                out.add(side(Role.LIQUID_OUTLET, a, yL, 2, -1, apothem, liquidOd, clampOd(.1 * diameter, liquidOd)));
-            // Inlet: in the upper shell, 0.4 D below the top tangent, facing the right (frame -x).
-            double yI = Math.floor(Math.max(bT + .25, tT - .4 * diameter)) + .5;
-            if (yI > tT - .1) yI -= 1;
-            double inletOd = Math.min(Math.min(1, diameter / 2), 2 * (Math.min(tT - yI, yI - bT) - .05));
-            if (yI > bT && inletOd > .05) out.add(side(Role.INLET, a, yI, 0, -1, apothem, inletOd, clampOd(.15 * diameter, inletOd)));
+            double topBase = headSurface(topOd / 2) - .03;
+            out.add(new Nozzle(Role.VAPOUR_OUTLET, new double[]{a, topBase, a}, 1, 1, Math.ceil(top() + STAND_OUT) - topBase, topOd, clampOd(.2 * diameter, topOd), 0,
+                    headSurface(0) - topBase));
+            // Liquid outlet. On a skirt it is the bottom outlet (owner report 2026-10-16): its line drops from the bottom
+            // head's lowest point inside the skirt, turns in an elbow of bend radius maxOd, and leaves through its skirt
+            // port towards the front (frame -z) at the lowest cell centre ({@link #skirtOutletOd} sizes all three).
+            double pole = bT - headDepth(), skirtOd = skirtOutletOd();
+            if (skirtOd > 0) {
+                double start = a - skirtOd, plane = Math.floor(a - outerRadius() - STAND_OUT);
+                out.add(new Nozzle(Role.LIQUID_OUTLET, new double[]{a, SKIRT_OUTLET, start}, 2, -1, start - plane, skirtOd, clampOd(.1 * diameter, skirtOd), pole + .03,
+                        radius() + SKIRT_WALL + .02 - skirtOd));
+            } else {
+                // Without room under the head: the lowest cell centre at least 0.25 m above the bottom tangent, facing the front (frame -z).
+                double yL = Math.ceil(bT + .25 - .5) + .5;
+                double liquidOd = Math.min(Math.min(1, diameter / 2), 2 * (Math.min(yL - bT, tT - yL) - .05));
+                if (yL < tT && liquidOd > .05)
+                    out.add(side(Role.LIQUID_OUTLET, a, yL, 2, -1, apothem, liquidOd, clampOd(.1 * diameter, liquidOd)));
+            }
+            for (var c : connections) out.add(connection(c, a, bT, tT, apothem));
             return out;
         }
-        // Horizontal: two vapour nozzles on top (frame +x) near the ends, a liquid outlet low on the front head (frame -y).
+        // Horizontal: the vapour outlet on top (frame +x) near the far end, a liquid outlet low on the front head (frame -y).
         double topOd = Math.min(1, diameter / 2);
-        double near = Math.ceil(bT) + .5, far = Math.floor(tT - 1) + .5;
-        // A drum too short for two: one outlet at the cell centre nearest its middle.
-        if (far < near) far = near = Math.floor((bT + tT) / 2) + .5;
+        // A drum too short for a connection beside it: the outlet at the cell centre nearest its middle.
+        double far = Math.floor(tT - 1) + .5;
+        if (far < Math.ceil(bT) + .5) far = Math.floor((bT + tT) / 2) + .5;
         double rise = Math.ceil(a + r + STAND_OUT) - (Math.sqrt(apothem * apothem - topOd * topOd / 4) + a - .03);
-        out.add(new Nozzle(Role.VAPOUR_OUTLET, new double[]{Math.sqrt(apothem * apothem - topOd * topOd / 4) + a - .03, far, a}, 0, 1, rise, topOd, clampOd(.2 * diameter, topOd)));
-        if (far - near >= 1.5)
-            out.add(new Nozzle(Role.INLET, new double[]{Math.sqrt(apothem * apothem - topOd * topOd / 4) + a - .03, near, a}, 0, 1, rise, topOd, clampOd(.15 * diameter, topOd)));
+        double topStart = Math.sqrt(apothem * apothem - topOd * topOd / 4) - .03;
+        out.add(new Nozzle(Role.VAPOUR_OUTLET, new double[]{topStart + a, far, a}, 0, 1, rise, topOd, clampOd(.2 * diameter, topOd), 0, r - topStart));
         // Low on the front head: the lowest cell centre at least 0.3 m above the shell's bottom.
         double xH = Math.ceil(a - r + .3 - .5) + .5, e = a - xH;
         double headOd = Math.min(Math.min(1, diameter / 2), 2 * (.85 * r - Math.abs(e)));
         if (headOd > .05) {
             double edge = (Math.abs(e) + headOd / 2) / r, depth = headDepth() * Math.sqrt(Math.max(0, 1 - edge * edge));
             double start = bT - depth + .03;
-            out.add(new Nozzle(Role.LIQUID_OUTLET, new double[]{xH, start, a}, 1, -1, start - Math.floor(-STAND_OUT), headOd, clampOd(.1 * diameter, headOd)));
+            double nearest = Math.max(0, Math.abs(e) - headOd / 2) / r, bulge = headDepth() * Math.sqrt(Math.max(0, 1 - nearest * nearest));
+            out.add(new Nozzle(Role.LIQUID_OUTLET, new double[]{xH, start, a}, 1, -1, start - Math.floor(-STAND_OUT), headOd, clampOd(.1 * diameter, headOd), 0,
+                    bulge - depth + .03));
+        }
+        for (var c : connections) out.add(connection(c, a, bT, tT, apothem));
+        return out;
+    }
+
+    /**
+     * Side connection {@code c} as a nozzle. Its largest size keeps its edge 0.05 m inside the tangent lines and within
+     * 0.85 of the radius across; its neck starts under the shell at its edge, its flange face on the next block face.
+     */
+    private Nozzle connection(Connection c, double a, double bT, double tT, double apothem) {
+        double y = c.station() + .5, off = Math.abs(c.offset());
+        double od = Math.min(Math.min(1, diameter / 2), 2 * Math.min(Math.min(y - bT, tT - y) - .05, .85 * radius() - off));
+        double edge = off + od / 2, start = Math.sqrt(Math.max(0, apothem * apothem - edge * edge)) - .03;
+        double surface = a + c.sign() * outerRadius(), plane = c.sign() > 0 ? Math.ceil(surface + STAND_OUT) : Math.floor(surface - STAND_OUT);
+        var base = new double[]{a, y, a};
+        base[c.axis()] = a + c.sign() * start;
+        base[c.across()] = a + c.offset();
+        double nearest = Math.max(0, off - od / 2), exit = Math.sqrt(outerRadius() * outerRadius() - nearest * nearest) - start;
+        return new Nozzle(Role.SIDE, base, c.axis(), c.sign(), Math.abs(plane - base[c.axis()]), od, clampOd(.15 * diameter, od), 0, exit);
+    }
+
+    /**
+     * The frame stations (cell rows along the axis) a drum's side connection may take: its centre line at least 0.1 m
+     * inside both tangent lines, {lowest, highest}.
+     */
+    public static int[] stations(double diameter, double tangentLength, Orientation orientation, int support) {
+        double bT = orientation.horizontal() || support == 0 ? diameter / 4 : support, tT = bT + tangentLength;
+        return new int[]{(int) Math.ceil(bT - .4 - 1e-9), (int) Math.floor(tT - .6 + 1e-9)};
+    }
+
+    /** The largest offset of a side connection across the drum, whole cells: a hillside nozzle's edge stays within 0.85 of the radius. */
+    public static int maximumOffset(double diameter) {
+        return Math.max(0, (int) Math.floor(.85 * diameter / 2 - .05 + 1e-9));
+    }
+
+    /**
+     * Where the side connections cannot be built as placed: one overlapping another or a fixed outlet with the largest
+     * pipe's flange (one block: nozzles on different block lines never meet), one on a lying drum's saddle, or one
+     * facing down with no cell for a pipe above the ground. Building refuses a drum with any; the constructor's screen
+     * shows the first.
+     */
+    public List<Clash> clashes() {
+        if (column() || connections.isEmpty()) return List.of();
+        var all = nozzles();
+        int fixed = all.size() - connections.size();
+        var out = new ArrayList<Clash>();
+        double sr = radius() + PLATE, lateral = sr * DeterministicMath.sin(Math.toRadians(SADDLE_CONTACT_DEGREES / 2)),
+                horn = axis() - sr * DeterministicMath.cos(Math.toRadians(SADDLE_CONTACT_DEGREES / 2));
+        for (int i = fixed; i < all.size(); i++) {
+            var box = reach(all.get(i));
+            for (int j = 0; j < i; j++)
+                if (overlap(box, reach(all.get(j))))
+                    out.add(new Clash(i - fixed, j >= fixed ? j - fixed : all.get(j).role() == Role.VAPOUR_OUTLET ? Clash.VAPOUR : Clash.LIQUID));
+            if (!saddles()) continue;
+            for (double c : saddleCentres())
+                if (overlap(box, new double[]{-support, c - SADDLE_WIDTH / 2, axis() - lateral, horn, c + SADDLE_WIDTH / 2, axis() + lateral}))
+                    out.add(new Clash(i - fixed, Clash.SADDLE));
+            var n = all.get(i);
+            if (n.axis() == 0 && n.sign() < 0 && n.face()[0] - 1 < -support - 1e-9) out.add(new Clash(i - fixed, Clash.GROUND));
         }
         return out;
+    }
+
+    /** A nozzle's room with the largest pipe, {x0, y0, z0, x1, y1, z1} in the frame: its neck and flange, and a riser's line. */
+    private static double[] reach(Nozzle n) {
+        double half = PipeSizes.flange(PipeSizes.MAX_OUTSIDE) / 2;
+        var box = new double[6];
+        for (int a = 0; a < 3; a++) {
+            box[a] = n.base()[a] - half;
+            box[a + 3] = n.base()[a] + half;
+        }
+        double face = n.face()[n.axis()];
+        box[n.axis()] = Math.min(n.base()[n.axis()], face);
+        box[n.axis() + 3] = Math.max(n.base()[n.axis()], face);
+        if (n.riser() > 0) box[4] = Math.max(box[4], n.riser());
+        return box;
+    }
+
+    private static boolean overlap(double[] a, double[] b) {
+        for (int i = 0; i < 3; i++) if (a[i] >= b[i + 3] - 1e-6 || b[i] >= a[i + 3] - 1e-6) return false;
+        return true;
+    }
+
+    /**
+     * Largest size of a skirted drum's bottom outlet line, or 0 when it has none (owner request 2026-10-16: the line from
+     * the drum's bottom to its port follows the pipe): its elbow (bend radius 1 D) stays under the bottom head, and its
+     * skirt port, the line's clearance and collar round it, clears the base plate and the head seam; at most half the
+     * diameter. A larger pipe meets a reducer outside the skirt.
+     */
+    private double skirtOutletOd() {
+        if (column() || orientation.horizontal() || !skirt()) return 0;
+        double ring = PORT_CLEARANCE + PORT_COLLAR, pole = bottomTangent() - headDepth();
+        double od = Math.min(Math.min(diameter / 2, pole - SKIRT_OUTLET - .05),
+                2 * Math.min(SKIRT_OUTLET - PLATE - .01 - ring, bottomTangent() - .1 - SKIRT_OUTLET - ring));
+        return od > .05 ? od : 0;
+    }
+
+    /**
+     * Radius of a skirt's opening, or 0. A drum's is its skirt port, cut for its largest bottom outlet line (the port's
+     * bore follows the line drawn); a column's is an access opening (photo survey: 18"-24"), none under 1 m across or
+     * where it does not pass over the base ring and its chairs.
+     */
+    public double openingRadius() {
+        if (!skirt()) return 0;
+        if (!column()) {
+            double od = skirtOutletOd();
+            return od > 0 ? od / 2 + PORT_CLEARANCE : 0;
+        }
+        if (diameter < 1) return 0;
+        double r = Math.min(.3, .225 * diameter), centre = openingCentre(r);
+        return centre - r >= PLATE + CHAIR + .03 ? r : 0;
+    }
+
+    /** Centre height of a skirt's opening: a drum's on its bottom outlet line, a column's 0.6-1.0 m up under its head. */
+    public double openingHeight() {
+        double r = openingRadius();
+        return r > 0 ? openingCentre(r) : 0;
+    }
+
+    private double openingCentre(double r) {
+        return column() ? Math.min(.9, bottomTangent() - .1 - r) : SKIRT_OUTLET;
     }
 
     /** A radial nozzle on the cylindrical shell (a column's cladding) at height {@code y}, along frame axis {@code axis} in direction {@code sign}. */
@@ -379,7 +626,7 @@ public record EquipmentShape(Kind kind, double diameter, double tangentLength, O
         double surface = a + sign * outerRadius(), plane = sign > 0 ? Math.ceil(surface + STAND_OUT) : Math.floor(surface - STAND_OUT);
         var base = new double[]{a, y, a};
         base[axis] = a + sign * start;
-        return new Nozzle(role, base, axis, sign, Math.abs(plane - base[axis]), maxOd, defaultOd);
+        return new Nozzle(role, base, axis, sign, Math.abs(plane - base[axis]), maxOd, defaultOd, 0, outerRadius() - start);
     }
 
     private static double clampOd(double od, double max) {

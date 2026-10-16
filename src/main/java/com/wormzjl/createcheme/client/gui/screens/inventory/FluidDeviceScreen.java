@@ -35,6 +35,8 @@ public final class FluidDeviceScreen extends AbstractContainerScreen<FluidDevice
     private V3ClientPresets.Snapshot mixtureSnapshot;
     private record Choice(String label,Runnable select){}
     private List<Choice> choices=List.of();
+    /** A drum's datasheet (page 5), from the cells the client has; empty for a one-block tank and every other device. */
+    private List<Component> datasheet=List.of();
 
     public FluidDeviceScreen(FluidDeviceMenu menu,Inventory inventory,Component title){super(menu,inventory,title);}
     private static String tr(String key,Object...args){return Component.translatable("gui.createcheme.fluid."+key,args).getString();}
@@ -45,6 +47,8 @@ public final class FluidDeviceScreen extends AbstractContainerScreen<FluidDevice
             try{return minecraft.getResourceManager().getResource(net.minecraft.resources.ResourceLocation.fromNamespaceAndPath("createcheme",name.substring("assets/createcheme/".length()))).orElseThrow().open();}
             catch(java.io.IOException|NoSuchElementException e){return null;}
         });
+        var vessel=minecraft.level==null?null:com.wormzjl.createcheme.world.level.block.EquipmentStructure.find(minecraft.level,menu.position());
+        datasheet=vessel==null?List.of():com.wormzjl.createcheme.client.gui.screens.VesselScreen.datasheet(vessel);
         refresh();rebuild();
     }
     private boolean generator(){return menu.clientData()!=null&&menu.clientData().kind()==TopologyCompiler.Kind.GENERATOR;}
@@ -67,10 +71,10 @@ public final class FluidDeviceScreen extends AbstractContainerScreen<FluidDevice
     private int tableWidth(){return imageWidth-tableX()-22;}
     // Page 4 is a tank's "Connections by face": one two-line row per connection in the table area, scrolled like the
     // other tables, so the list is readable at every GUI scale (it was on the rail, below the tank's values, and did
-    // not fit below about 323 scaled pixels of height).
+    // not fit below about 323 scaled pixels of height). Page 5 is a drum's datasheet, a line per row, scrolled the same way.
     private boolean tank(){return menu.clientData()!=null&&menu.clientData().kind()==TopologyCompiler.Kind.RESERVOIR;}
-    private int tableTop(){return page==0?(pipe()?110:130):page==1?166:page==3?104:page==4?100:142;}
-    private int rowHeight(){return page==0||page==3?18:page==4?24:25;}
+    private int tableTop(){return page==0?(pipe()?110:130):page==1?166:page==3?104:page==4||page==5?100:142;}
+    private int rowHeight(){return page==0||page==3?18:page==4?24:page==5?12:25;}
     private int visibleRows(){return Math.max(1,(imageHeight-64-tableTop())/rowHeight());}
     private void refresh(){
         if(menu.messageRevision()!=messageRevision){messageRevision=menu.messageRevision();message=menu.message();}
@@ -165,6 +169,7 @@ public final class FluidDeviceScreen extends AbstractContainerScreen<FluidDevice
             action("connections",116,29,112,()->changePage(3)).active=page!=3;
         // The tab's hover hint is the outlets hint (the D11 rule), key "outlets.hint".
         if(tank())action("outlets",116,29,130,()->changePage(4)).active=page!=4;
+        if(tank()&&!datasheet.isEmpty())action("datasheet",252,29,Math.min(100,imageWidth-262),()->changePage(5)).active=page!=5;
         railBuiltOffset=railOffset();int y=railTop()-railBuiltOffset;
         if(canEdit())switch(data.kind()){
             case GENERATOR->{railField("pressure",tr("pressure_input"),y);railField("temperature",tr("temperature_input",temperatureUnit.symbol()),y+RAIL_CONTROL);}
@@ -179,7 +184,8 @@ public final class FluidDeviceScreen extends AbstractContainerScreen<FluidDevice
             recover.active=data.view().filter()!=null&&!data.view().filter().captured().empty();recover.visible=inRail(y,18);
         }
         if(page==0)buildContents();else if(page==1)buildComposition();else if(page==2)buildSolids();
-        else if(page==4)configureScroll(data.view().outlets().size());else configureScroll(data.view().pipeInfo().connections().size());
+        else if(page==4)configureScroll(data.view().outlets().size());else if(page==5)configureScroll(datasheet.size());
+        else configureScroll(data.view().pipeInfo().connections().size());
         if(focused!=null&&editors.containsKey(focused)){setFocused(editors.get(focused));editors.get(focused).setCursorPosition(cursor);}
         if(componentDropdown!=null&&"search".equals(focused))componentDropdown.expanded(dropdownOpen);
     }
@@ -358,6 +364,7 @@ public final class FluidDeviceScreen extends AbstractContainerScreen<FluidDevice
         else if(page==1)renderComposition(g,mouseX-leftPos,mouseY-topPos);
         else if(page==3)renderConnections(g,mouseX-leftPos,mouseY-topPos);
         else if(page==4)renderOutlets(g,mouseX-leftPos,mouseY-topPos);
+        else if(page==5)renderDatasheet(g,mouseX-leftPos,mouseY-topPos);
         else {
             int w=tableWidth();text(g,tr("solid_col.0"),tableX(),128,TEXT,w/2);
             text(g,tr("solid_col.1"),tableX()+w/2,128,TEXT,w/4);text(g,tr("solid_col.2"),tableX()+3*w/4,128,TEXT,w/4);
@@ -415,6 +422,14 @@ public final class FluidDeviceScreen extends AbstractContainerScreen<FluidDevice
             text(g,outletName(outlet),x,y,MUTED,w-4);text(g,outletState(outlet),x,y+11,TEXT,w-4);g.hLine(x,x+w,y+21,LINE);
         }
         if(outlets.isEmpty())text(g,tr("outlets.none"),x,tableTop()+8,MUTED,w);
+    }
+    /** A drum's datasheet, page 5: its geometry and nozzles from the client's cells, one line per row; a cut line reads in full on hover. */
+    private void renderDatasheet(GuiGraphics g,int mx,int my){
+        int x=tableX(),w=tableWidth();
+        text(g,tr("datasheet"),x,82,ACCENT,w);if(mx>=x&&mx<x+w&&my>=80&&my<92)hovered=tr("datasheet.hint");
+        configureScroll(datasheet.size());
+        for(int i=scroll.value();i<Math.min(datasheet.size(),scroll.value()+visibleRows());i++)
+            text(g,datasheet.get(i).getString(),x,tableTop()+(i-scroll.value())*rowHeight(),i==0?MUTED:TEXT,w-4);
     }
     private String outletName(com.wormzjl.createcheme.runtime.fluid.FluidView.Outlet outlet){
         String face=tr("face."+outlet.face().name().toLowerCase(Locale.ROOT));

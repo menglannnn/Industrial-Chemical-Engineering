@@ -63,6 +63,10 @@ public final class DeterministicMath {
         return StrictMath.acos(x);
     }
 
+    public static double atan2(double y, double x) {
+        return StrictMath.atan2(y, x);
+    }
+
     /**
      * x to the power y by {@link DeterministicPow}: the same bits on every JVM, within 1 ulp of {@code StrictMath.pow}
      * (about 0.5 ulp of the exact value), {@code StrictMath.pow} bit for bit on every special case, without allocation.

@@ -1,7 +1,6 @@
 package com.wormzjl.createcheme.world.level.block;
 
 import com.mojang.serialization.MapCodec;
-import com.wormzjl.createcheme.client.EquipmentClient;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.entity.player.Player;
@@ -38,11 +37,10 @@ public final class EquipmentInteriorBlock extends Block {
         return false;
     }
 
-    /** Using any cell opens the vessel's screen; an interior cell finds its vessel through the shell (see {@link EquipmentStructure#find}). */
+    /** Using any cell opens the vessel's screen ({@link EquipmentShellBlock#use}); an interior cell finds its vessel through the shell. */
     @Override
     protected InteractionResult useWithoutItem(BlockState state, Level level, BlockPos position, Player player, BlockHitResult hit) {
-        if (level.isClientSide()) EquipmentClient.openVessel(position);
-        return InteractionResult.sidedSuccess(level.isClientSide());
+        return EquipmentShellBlock.use(level, position, player, false);
     }
 
     @Override

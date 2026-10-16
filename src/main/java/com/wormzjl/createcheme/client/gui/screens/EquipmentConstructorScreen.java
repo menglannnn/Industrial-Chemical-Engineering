@@ -20,18 +20,26 @@ import net.minecraft.core.Direction;
 import net.minecraft.network.chat.Component;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Locale;
 import java.util.function.IntConsumer;
 import java.util.function.IntUnaryOperator;
 
 /**
  * The equipment constructor's screen: first what to build (a vertical drum, a horizontal drum or a distillation column;
- * owner request 2026-10-16), then its design, in a panel on the left beside the world and the vessel's ghost. It edits a
- * local draft; the server receives the design when the screen closes, or with a build request on Build. A column is
- * designed here by its trays and feed, or imported whole (draws, pumparounds and steam too) from the nearest column
- * calculator; its schematic is the calculator's ({@link ColumnDiagram}).
+ * owner request 2026-10-16), then its design, in a panel on the left beside the world and the vessel's ghost; a drum's
+ * side connections have a page of their own (owner request 2026-10-16). It edits a local draft; the server receives the
+ * design when the screen closes, or with a build request on Build. A column is designed here by its trays and feed, or
+ * imported whole (draws, pumparounds and steam too) from the nearest column calculator; its schematic is the
+ * calculator's ({@link ColumnDiagram}).
  */
 public final class EquipmentConstructorScreen extends Screen {
+    /** The screen's pages: what to build, its design, and a drum's side connections. */
+    private enum Page {
+        CHOOSE, DESIGN, CONNECTIONS
+    }
+
     /** Panel layout in GUI pixels, top-down, so it fits a 240-pixel-high GUI (854×480 at scale 2). */
     /** The schematic strip's width: the steam lines (90 pixels left of the axis) to the draw marks (39 right of it), and margins. */
     private static final int STRIP = 140;
@@ -56,12 +64,16 @@ public final class EquipmentConstructorScreen extends Screen {
     private final BlockPos position;
     private final Direction facing;
     private Design saved;
-    /** On the choice page; the screen opens there. */
-    private boolean choosing = true;
+    /** The screen opens on the choice page. */
+    private Page page = Page.CHOOSE;
     private VesselPlacement.Form form;
     /** Diameter in half metres, so every step stays on the D5 grid. */
     private int halfMetres, tangentLength, support, forward, right, up;
     private ColumnTrays trays;
+    /** A drum's side connections, kept within the drum's ranges ({@link #fitConnections}), and the one the page edits. */
+    private final List<EquipmentShape.Connection> connections = new ArrayList<>();
+    private int selected;
+    private @Nullable Button build;
     private ShapeRasterizer.Layout layout;
     /** Set by Import until the constructor's synced design changes; the draft then takes it. */
     private @Nullable Design importing;
@@ -84,18 +96,36 @@ public final class EquipmentConstructorScreen extends Screen {
         right = design.placement().right();
         up = design.placement().up();
         trays = design.trays();
+        connections.clear();
+        connections.addAll(design.connections());
+        selected = 0;
+        fitConnections();
         layout = ShapeRasterizer.layout(design().shape(facing));
     }
 
     /** The draft; always valid, because every stepper is clamped to the bounds of its parameter. */
     public Design design() {
-        return new Design(halfMetres / 2.0, tangentLength, form, support, new VesselPlacement(forward, right, up), trays);
+        return new Design(halfMetres / 2.0, tangentLength, form, support, new VesselPlacement(forward, right, up), trays, List.copyOf(connections));
     }
 
     /** The vessel the draft would build, for the ghost; null on the choice page and once the constructor is gone. */
     public @Nullable EquipmentStructure.Vessel vessel() {
         var constructor = constructor();
-        return constructor != null && !choosing ? constructor.vessel(design()) : null;
+        return constructor != null && page != Page.CHOOSE ? constructor.vessel(design()) : null;
+    }
+
+    /**
+     * Keeps a drum's side connections within its ranges after its size or form changed: each to the nearest station and
+     * offset it may take, or dropped where the shell leaves it none. A column keeps them for when it is a drum again.
+     */
+    private void fitConnections() {
+        if (form.column()) return;
+        double diameter = halfMetres / 2.0;
+        int[] stations = EquipmentShape.stations(diameter, tangentLength, form.orientation(), support);
+        int across = EquipmentShape.maximumOffset(diameter);
+        if (stations[0] > stations[1]) connections.clear();
+        connections.replaceAll(c -> new EquipmentShape.Connection(c.side(), clamp(c.station(), stations[0], stations[1]), clamp(c.offset(), -across, across)));
+        selected = clamp(selected, 0, Math.max(0, connections.size() - 1));
     }
 
     private @Nullable EquipmentConstructorBlockEntity constructor() {
@@ -104,20 +134,29 @@ public final class EquipmentConstructorScreen extends Screen {
 
     @Override
     protected void init() {
-        if (choosing) {
-            var current = Equipment.of(form);
-            for (var equipment : Equipment.values()) {
-                Component name = Component.translatable(equipment.key());
-                if (equipment == current) name = Component.translatable(KEY + "current", name);
-                addRenderableWidget(Button.builder(name, b -> choose(equipment)).bounds(8, CHOICE + equipment.ordinal() * CHOICE_PITCH, PANEL - 16, 20).build());
+        build = null;
+        switch (page) {
+            case CHOOSE -> {
+                var current = Equipment.of(form);
+                for (var equipment : Equipment.values()) {
+                    Component name = Component.translatable(equipment.key());
+                    if (equipment == current) name = Component.translatable(KEY + "current", name);
+                    addRenderableWidget(Button.builder(name, b -> choose(equipment)).bounds(8, CHOICE + equipment.ordinal() * CHOICE_PITCH, PANEL - 16, 20).build());
+                }
+                addRenderableWidget(Button.builder(Component.translatable(KEY + "done"), b -> onClose()).bounds(100, BUTTONS, 88, 20).build());
             }
-            addRenderableWidget(Button.builder(Component.translatable(KEY + "done"), b -> onClose()).bounds(100, BUTTONS, 88, 20).build());
-            return;
+            case DESIGN -> designPage();
+            case CONNECTIONS -> connectionsPage();
         }
-        var change = Button.builder(Component.translatable(KEY + "change"), b -> {
-            choosing = true;
-            rebuildWidgets();
-        }).bounds(PANEL - 80, TOP - 1, 74, 16).build();
+    }
+
+    private void show(Page next) {
+        page = next;
+        rebuildWidgets();
+    }
+
+    private void designPage() {
+        var change = Button.builder(Component.translatable(KEY + "change"), b -> show(Page.CHOOSE)).bounds(PANEL - 80, TOP - 1, 74, 16).build();
         change.setTooltip(Tooltip.create(Component.translatable(KEY + "change.hint")));
         addRenderableWidget(change);
         stepper(1, step -> diameter(halfMetres + step));
@@ -141,22 +180,163 @@ public final class EquipmentConstructorScreen extends Screen {
         stepper(next + 1, step -> forward = clamp(forward + step, 1, VesselPlacement.MAX_FORWARD));
         stepper(next + 2, step -> right = clamp(right + step, -VesselPlacement.MAX_SHIFT, VesselPlacement.MAX_SHIFT));
         stepper(next + 3, step -> up = clamp(up + step, -VesselPlacement.MAX_SHIFT, VesselPlacement.MAX_SHIFT));
-        // A column's Import joins Build and Done on the bottom row.
-        int buttons = form.column() ? 3 : 2, gap = 4, span = (PANEL - 16 - (buttons - 1) * gap) / buttons, x = 8;
-        if (form.column()) {
-            var importButton = Button.builder(Component.translatable(KEY + "import"), b -> importColumn()).bounds(x, BUTTONS, span, 20).build();
-            importButton.setTooltip(Tooltip.create(Component.translatable(KEY + "import.hint", EquipmentNetwork.IMPORT_REACH)));
-            addRenderableWidget(importButton);
-            x += span + gap;
-        }
-        addRenderableWidget(Button.builder(Component.translatable(KEY + "build"), b -> build()).bounds(x, BUTTONS, span, 20).build());
-        addRenderableWidget(Button.builder(Component.translatable(KEY + "done"), b -> onClose()).bounds(x + span + gap, BUTTONS, span, 20).build());
+        // A column imports its design; a drum's side connections have their own page.
+        bottomRow(form.column()
+                ? Button.builder(Component.translatable(KEY + "import"), b -> importColumn()).tooltip(Tooltip.create(Component.translatable(KEY + "import.hint", EquipmentNetwork.IMPORT_REACH)))
+                : Button.builder(Component.translatable(KEY + "nozzles"), b -> show(Page.CONNECTIONS)).tooltip(Tooltip.create(Component.translatable(KEY + "connections.hint"))));
     }
 
-    /** A row of [−] value [+]; shift steps by five. */
+    /**
+     * The connections page: which connection, the side it faces, its height (a lying drum's place along its axis) and its
+     * offset across the shell; Add places a new one where it meets nothing, Remove takes the selected one away.
+     */
+    private void connectionsPage() {
+        stepper(1, step -> {
+            selected = clamp(selected + step, 0, Math.max(0, connections.size() - 1));
+            rebuildWidgets();
+        });
+        if (!connections.isEmpty()) {
+            var side = Button.builder(Component.translatable(KEY + "side." + toward(connection().axis(), connection().sign())), b -> {
+                var c = connection();
+                connections.set(selected, new EquipmentShape.Connection((c.side() + 1) % EquipmentShape.CONNECTION_SIDES, c.station(), c.offset()));
+                refresh();
+                rebuildWidgets();
+            }).bounds(PANEL - 80, TOP + 2 * ROW, 74, 16).tooltip(Tooltip.create(hint(2))).build();
+            addRenderableWidget(side);
+            stepper(3, step -> {
+                var c = connection();
+                int[] stations = stations();
+                connections.set(selected, new EquipmentShape.Connection(c.side(), clamp(c.station() + step, stations[0], stations[1]), c.offset()));
+            });
+            stepper(4, step -> {
+                var c = connection();
+                int across = EquipmentShape.maximumOffset(halfMetres / 2.0);
+                connections.set(selected, new EquipmentShape.Connection(c.side(), c.station(), clamp(c.offset() + step, -across, across)));
+            });
+        }
+        int half = (PANEL - 16 - 4) / 2, y = TOP + 5 * ROW;
+        var add = Button.builder(Component.translatable(KEY + "add"), b -> add()).bounds(8, y, half, 16)
+                .tooltip(Tooltip.create(Component.translatable(KEY + "add.hint", EquipmentShape.MAX_CONNECTIONS))).build();
+        int[] stations = stations();
+        add.active = connections.size() < EquipmentShape.MAX_CONNECTIONS && stations[0] <= stations[1];
+        addRenderableWidget(add);
+        var remove = Button.builder(Component.translatable(KEY + "remove"), b -> {
+            connections.remove(selected);
+            selected = clamp(selected, 0, Math.max(0, connections.size() - 1));
+            refresh();
+            rebuildWidgets();
+        }).bounds(8 + half + 4, y, half, 16).tooltip(Tooltip.create(Component.translatable(KEY + "remove.hint"))).build();
+        remove.active = !connections.isEmpty();
+        addRenderableWidget(remove);
+        bottomRow(Button.builder(Component.translatable(KEY + "back"), b -> show(Page.DESIGN)).tooltip(Tooltip.create(Component.translatable(KEY + "back.hint"))));
+    }
+
+    /** The bottom row: the page's own button beside Build and Done. Build waits while a side connection clashes. */
+    private void bottomRow(Button.Builder first) {
+        int gap = 4, span = (PANEL - 16 - 2 * gap) / 3;
+        addRenderableWidget(first.bounds(8, BUTTONS, span, 20).build());
+        build = addRenderableWidget(Button.builder(Component.translatable(KEY + "build"), b -> build()).bounds(8 + span + gap, BUTTONS, span, 20).build());
+        addRenderableWidget(Button.builder(Component.translatable(KEY + "done"), b -> onClose()).bounds(8 + 2 * (span + gap), BUTTONS, span, 20).build());
+        build.active = clash() == null;
+    }
+
+    private EquipmentShape.Connection connection() {
+        return connections.get(selected);
+    }
+
+    private int[] stations() {
+        return EquipmentShape.stations(halfMetres / 2.0, tangentLength, form.orientation(), support);
+    }
+
+    /**
+     * Adds a side connection where it meets nothing: a standing drum's as high as it goes (an inlet's usual place),
+     * facing your right, left, the back, then the front; a lying drum's nearest its front head, on top, at the sides,
+     * then underneath. Where every place clashes it is added anyway at the first, and the status says what it meets.
+     */
+    private void add() {
+        int[] stations = stations();
+        boolean lying = form.orientation().horizontal();
+        int[] sides = lying ? new int[]{1, 0, 2, 3} : new int[]{3, 1, 2, 0};
+        EquipmentShape.Connection chosen = null;
+        search:
+        for (int k = 0; k <= stations[1] - stations[0]; k++) {
+            int station = lying ? stations[0] + k : stations[1] - k;
+            for (int side : sides) {
+                var candidate = new EquipmentShape.Connection(side, station, 0);
+                var trial = new ArrayList<>(connections);
+                trial.add(candidate);
+                if (EquipmentShape.drum(halfMetres / 2.0, tangentLength, form.orientation(), front(), support, trial).clashes().isEmpty()) {
+                    chosen = candidate;
+                    break search;
+                }
+            }
+        }
+        connections.add(chosen != null ? chosen : new EquipmentShape.Connection(sides[0], lying ? stations[0] : stations[1], 0));
+        selected = connections.size() - 1;
+        refresh();
+        rebuildWidgets();
+    }
+
+    private EquipmentShape.Heading front() {
+        return form.front(facing.getStepX(), facing.getStepZ());
+    }
+
+    /**
+     * The way frame direction {@code sign} along {@code axis} points in the world as seen from the constructor: front
+     * (back towards it), back, left, right, top or bottom.
+     */
+    private String toward(int axis, int sign) {
+        var d = new double[3];
+        d[axis] = sign;
+        var w = layout.shape().transform().direction(d);
+        long x = Math.round(w[0]), y = Math.round(w[1]), z = Math.round(w[2]);
+        if (y != 0) return y > 0 ? "top" : "bottom";
+        int fx = facing.getStepX(), fz = facing.getStepZ();
+        if (x == -fx && z == -fz) return "front";
+        if (x == fx && z == fz) return "back";
+        // The constructor's right is its facing turned clockwise seen from above.
+        return x == -fz && z == fx ? "right" : "left";
+    }
+
+    /** The first clash of the draft's side connections, or null. */
+    private @Nullable EquipmentShape.Clash clash() {
+        var clashes = layout.shape().clashes();
+        return clashes.isEmpty() ? null : clashes.getFirst();
+    }
+
+    /** What clash {@code clash} meets, as the status says it. */
+    private static Component clashText(EquipmentShape.Clash clash) {
+        int k = clash.connection() + 1;
+        return switch (clash.other()) {
+            case EquipmentShape.Clash.VAPOUR -> Component.translatable(KEY + "clash.vapour", k);
+            case EquipmentShape.Clash.LIQUID -> Component.translatable(KEY + "clash.liquid", k);
+            case EquipmentShape.Clash.SADDLE -> Component.translatable(KEY + "clash.saddle", k);
+            case EquipmentShape.Clash.GROUND -> Component.translatable(KEY + "clash.ground", k);
+            default -> Component.translatable(KEY + "clash.connection", k, clash.other() + 1);
+        };
+    }
+
+    /** The page's rows, top-down: its title, then what each row sets. */
+    private String[] rows() {
+        if (page == Page.CONNECTIONS)
+            return new String[]{"connections", "connection", "faces", form.orientation().horizontal() ? "along" : "height", "offset"};
+        return switch (Equipment.of(form)) {
+            case VERTICAL_DRUM -> new String[]{"equipment", "diameter", "tangent_length", "skirt", "forward", "right", "up"};
+            case HORIZONTAL_DRUM -> new String[]{"equipment", "diameter", "tangent_length", "axis", "saddles", "forward", "right", "up"};
+            case COLUMN -> new String[]{"equipment", "diameter", "trays", "feed", "skirt", "forward", "right", "up"};
+        };
+    }
+
+    /** What row {@code row} sets, as its hover text says it. */
+    private Component hint(int row) {
+        String name = rows()[row];
+        return Component.translatable(name.equals("equipment") ? Equipment.of(form).key() + ".hint" : KEY + name + ".hint");
+    }
+
+    /** A row of [−] value [+], each button saying what the row sets; shift steps by five. */
     private void stepper(int row, IntConsumer change) {
         int y = TOP + row * ROW;
-        var hint = Tooltip.create(Component.translatable(KEY + "shift"));
+        var hint = Tooltip.create(hint(row).copy().append("\n").append(Component.translatable(KEY + "shift")));
         var minus = Button.builder(Component.literal("−"), b -> edit(change, -1)).bounds(PANEL - 80, y, 20, 16).build();
         var plus = Button.builder(Component.literal("+"), b -> edit(change, 1)).bounds(PANEL - 26, y, 20, 16).build();
         minus.setTooltip(hint);
@@ -196,9 +376,8 @@ public final class EquipmentConstructorScreen extends Screen {
         halfMetres = Math.min(halfMetres, (int) (maximumDiameter() * 2));
         if (before != form.orientation()) support = EquipmentShape.defaultSupport(halfMetres / 2.0, form.orientation());
         support = Math.max(support, minimumSupport());
-        choosing = false;
         refresh();
-        rebuildWidgets();
+        show(Page.DESIGN);
     }
 
     private void importColumn() {
@@ -213,8 +392,10 @@ public final class EquipmentConstructorScreen extends Screen {
     }
 
     private void refresh() {
+        fitConnections();
         var shape = design().shape(facing);
         if (!shape.equals(layout.shape())) layout = ShapeRasterizer.layout(shape);
+        if (build != null) build.active = clash() == null;
     }
 
     private static int clamp(int value, int low, int high) {
@@ -259,23 +440,23 @@ public final class EquipmentConstructorScreen extends Screen {
     public void renderBackground(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
         graphics.fill(0, 0, PANEL, height, 0xE0202A31);
         graphics.fill(PANEL, 0, PANEL + 1, height, ProcessUi.LINE);
-        if (!choosing && form.column()) graphics.fill(width - 4 - STRIP, 20, width - 4, height - 20, 0xC0202A31);
+        if (page == Page.DESIGN && form.column()) graphics.fill(width - 4 - STRIP, 20, width - 4, height - 20, 0xC0202A31);
     }
 
     @Override
     public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
         super.render(graphics, mouseX, mouseY, partialTick);
         graphics.drawString(font, title, 8, 8, ProcessUi.TEXT);
-        if (choosing) {
-            choices(graphics);
-            return;
+        switch (page) {
+            case CHOOSE -> choices(graphics);
+            case DESIGN -> designRows(graphics, mouseX, mouseY);
+            case CONNECTIONS -> connectionRows(graphics, mouseX, mouseY);
         }
+    }
+
+    private void designRows(GuiGraphics graphics, int mouseX, int mouseY) {
         var equipment = Equipment.of(form);
-        String[] names = switch (equipment) {
-            case VERTICAL_DRUM -> new String[]{"", "diameter", "tangent_length", "skirt", "forward", "right", "up"};
-            case HORIZONTAL_DRUM -> new String[]{"", "diameter", "tangent_length", "axis", "saddles", "forward", "right", "up"};
-            case COLUMN -> new String[]{"", "diameter", "trays", "feed", "skirt", "forward", "right", "up"};
-        };
+        String[] names = rows();
         String place = Integer.toString(forward), shift = Integer.toString(right), lift = Integer.toString(up), across = number(halfMetres / 2.0) + " m";
         String[] values = switch (equipment) {
             case VERTICAL_DRUM -> new String[]{"", across, tangentLength + " m", support + " m", place, shift, lift};
@@ -298,11 +479,62 @@ public final class EquipmentConstructorScreen extends Screen {
             y += LINE;
         }
         int blocked = EquipmentGhost.blockedCount();
+        var clash = clash();
         var status = importing != null ? Component.translatable(KEY + "importing")
+                : clash != null ? clashText(clash)
                 : EquipmentGhost.standing() ? Component.translatable(KEY + "standing")
                 : blocked == 0 ? Component.translatable(KEY + "clear") : Component.translatable(KEY + "blocked", blocked);
-        graphics.drawString(font, status, 8, STATUS, blocked == 0 && !EquipmentGhost.standing() ? ProcessUi.ACCENT : ProcessUi.WARN);
+        graphics.drawString(font, status, 8, STATUS, clash == null && blocked == 0 && !EquipmentGhost.standing() ? ProcessUi.ACCENT : ProcessUi.WARN);
         if (form.column()) schematic(graphics);
+        describe(mouseX, mouseY, names.length, new String[]{"extent", "volume", "cells"});
+    }
+
+    /**
+     * The connections page: the selected connection's side (on its button), height or place along the axis, and offset;
+     * the largest pipe its nozzle takes there and what its port draws; the first clash, if any.
+     */
+    private void connectionRows(GuiGraphics graphics, int mouseX, int mouseY) {
+        String[] names = rows();
+        graphics.drawString(font, Component.translatable(KEY + "connections"), 8, TOP + 4, ProcessUi.ACCENT);
+        graphics.drawString(font, Component.translatable(KEY + "connection"), 8, TOP + ROW + 4, ProcessUi.TEXT);
+        graphics.drawCenteredString(font, connections.isEmpty() ? "0" : (selected + 1) + " / " + connections.size(), PANEL - 43, TOP + ROW + 4, ProcessUi.ACCENT);
+        Component status;
+        if (connections.isEmpty()) {
+            graphics.drawString(font, Component.translatable(KEY + "connections.none"), 8, TOP + 2 * ROW + 4, ProcessUi.MUTED);
+            status = Component.translatable(KEY + "clash.none");
+        } else {
+            var c = connection();
+            graphics.drawString(font, Component.translatable(KEY + "faces"), 8, TOP + 2 * ROW + 4, ProcessUi.TEXT);
+            graphics.drawString(font, Component.translatable(KEY + names[3]), 8, TOP + 3 * ROW + 4, ProcessUi.TEXT);
+            graphics.drawCenteredString(font, number(c.station() + .5) + " m", PANEL - 43, TOP + 3 * ROW + 4, ProcessUi.ACCENT);
+            // The offset's label says which way it runs, as the side's button does.
+            graphics.drawString(font, c.offset() == 0 ? Component.translatable(KEY + "offset")
+                    : Component.translatable(KEY + "offset." + toward(c.across(), Integer.signum(c.offset()))), 8, TOP + 4 * ROW + 4, ProcessUi.TEXT);
+            graphics.drawCenteredString(font, Math.abs(c.offset()) + " m", PANEL - 43, TOP + 4 * ROW + 4, ProcessUi.ACCENT);
+            var nozzles = layout.shape().nozzles();
+            var nozzle = nozzles.get(nozzles.size() - connections.size() + selected);
+            graphics.drawString(font, Component.translatable(KEY + "connection.size", String.format(Locale.ROOT, "%.2f", nozzle.maxOd())), 8, LINES, ProcessUi.MUTED);
+            graphics.drawString(font, Component.translatable(KEY + "connection.port"), 8, LINES + LINE, ProcessUi.MUTED);
+            var clash = clash();
+            status = clash != null ? clashText(clash) : Component.translatable(KEY + "clash.none");
+        }
+        graphics.drawString(font, status, 8, STATUS, clash() == null ? ProcessUi.ACCENT : ProcessUi.WARN);
+        describe(mouseX, mouseY, connections.isEmpty() ? 2 : names.length, connections.isEmpty() ? new String[0] : new String[]{"connection.size", "connection.port"});
+    }
+
+    /**
+     * Hover text for the panel's words: a row's label or value says what the row sets (its buttons say it too), the
+     * datasheet lines ({@code lines}, by key) and the status line what they report.
+     */
+    private void describe(int mouseX, int mouseY, int rows, String[] lines) {
+        if (mouseX < 4 || mouseX >= PANEL - 4) return;
+        Component text = null;
+        int row = Math.floorDiv(mouseY - TOP, ROW);
+        boolean label = mouseX < PANEL - 82, value = mouseX >= PANEL - 60 && mouseX < PANEL - 26;
+        if (mouseY >= TOP && row < rows && (label || value && row > 0)) text = hint(row);
+        else if (mouseY >= LINES && mouseY < LINES + lines.length * LINE) text = Component.translatable(KEY + lines[(mouseY - LINES) / LINE] + ".hint");
+        else if (mouseY >= STATUS - 1 && mouseY < STATUS + 10) text = Component.translatable(KEY + (page == Page.CONNECTIONS ? "clash.hint" : "status.hint"));
+        if (text != null) setTooltipForNextRenderPass(font.split(text, 200));
     }
 
     /** The choice page: what each kind of equipment is, under its button (the draft's kind is marked on it). */

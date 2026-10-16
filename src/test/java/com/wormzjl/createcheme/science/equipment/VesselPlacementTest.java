@@ -45,15 +45,20 @@ class VesselPlacementTest {
         assertEquals(EquipmentShape.Orientation.HORIZONTAL, VesselPlacement.Form.LENGTHWISE.orientation());
         assertEquals(EquipmentShape.Orientation.HORIZONTAL, VesselPlacement.Form.CROSSWISE.orientation());
         for (int[] f : FACINGS) {
-            // A standing drum's liquid outlet and a lengthwise drum's front head face back to the constructor; a crosswise
-            // drum's front head faces the constructor's right.
+            // A standing drum's front and a lengthwise drum's front head face back to the constructor; a crosswise drum's
+            // front head faces the constructor's right. A standing drum's bottom outlet leaves its skirt through the access
+            // opening towards the constructor (owner report 2026-10-16); a new drum's side connection faces the right of a
+            // player looking from the constructor, the facing turned clockwise seen from above.
             var back = EquipmentShape.Heading.of(-f[0], -f[1]);
             assertEquals(back, VesselPlacement.Form.VERTICAL.front(f[0], f[1]));
             assertEquals(back, VesselPlacement.Form.LENGTHWISE.front(f[0], f[1]));
             assertEquals(EquipmentShape.Heading.of(-f[1], f[0]), VesselPlacement.Form.CROSSWISE.front(f[0], f[1]));
             var standing = EquipmentShape.drum(3, 4, EquipmentShape.Orientation.VERTICAL, back, 2);
-            for (var port : ShapeRasterizer.ports(standing))
-                if (port.port() == EquipmentShape.PortClass.LIQUID) assertArrayEquals(new int[]{-f[0], 0, -f[1]}, new int[]{port.dx(), port.dy(), port.dz()});
+            for (var port : ShapeRasterizer.ports(standing)) {
+                int[] d = {port.dx(), port.dy(), port.dz()};
+                if (port.port() == EquipmentShape.PortClass.LIQUID) assertArrayEquals(new int[]{-f[0], 0, -f[1]}, d);
+                if (port.port() == EquipmentShape.PortClass.BULK) assertArrayEquals(new int[]{-f[1], 0, f[0]}, d);
+            }
         }
         // Facing south, a lengthwise drum's box runs away from the constructor and a crosswise one across its line.
         var lengthwise = EquipmentShape.drum(2, 6, EquipmentShape.Orientation.HORIZONTAL, VesselPlacement.Form.LENGTHWISE.front(0, 1), 1);

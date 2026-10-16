@@ -8,13 +8,15 @@ package com.wormzjl.createcheme.science.equipment;
 public final class PipeSizes {
     /** The smallest drawn outside diameter: one texel. */
     public static final double MIN_OUTSIDE = 1 / 16.0;
+    /** The largest drawn outside diameter: one block. */
+    public static final double MAX_OUTSIDE = 1;
 
     private PipeSizes() {
     }
 
     /** Outside diameter of a pipe of bore {@code bore}: the wall adds about a tenth (2" 52.5/60.3 mm, 12" 303/324 mm). */
     public static double outside(double bore) {
-        return Math.max(MIN_OUTSIDE, Math.min(1, 1.1 * bore));
+        return Math.max(MIN_OUTSIDE, Math.min(MAX_OUTSIDE, 1.1 * bore));
     }
 
     /**
@@ -23,6 +25,11 @@ public final class PipeSizes {
      */
     public static double flange(double outside) {
         return Math.min(1, 1.25 * outside + .085);
+    }
+
+    /** The largest pipe whose flange is at most {@code flange} across (the inverse of {@link #flange}). */
+    public static double largestUnder(double flange) {
+        return (flange - .085) / 1.25;
     }
 
     /** One flange of a pair: a pair is one texel thick up to 24", two above. */

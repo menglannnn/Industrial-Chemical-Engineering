@@ -92,35 +92,37 @@ public final class EquipmentShellBlock extends BaseEntityBlock {
         return false;
     }
 
-    /**
-     * Using any cell of a drum opens its tank screen, as a one-block tank's does; sneaking, or using a column, opens the
-     * vessel's datasheet, built on the client from synced cells.
-     */
     @Override
     protected InteractionResult useWithoutItem(BlockState state, Level level, BlockPos position, Player player, BlockHitResult hit) {
-        if (!opensTank(level, position, player) && level.isClientSide()) EquipmentClient.openVessel(position);
-        else if (player instanceof ServerPlayer server && opensTank(level, position, player)) openTank(level, position, server, false);
-        return InteractionResult.sidedSuccess(level.isClientSide());
+        return use(level, position, player, false);
     }
 
     /** The fluid debugger opens the drum's tank screen with its diagnostics. */
     @Override
     protected ItemInteractionResult useItemOn(ItemStack stack, BlockState state, Level level, BlockPos position, Player player, InteractionHand hand, BlockHitResult hit) {
-        if (!stack.is(ModItems.FLUID_DEBUGGER.get()) || !opensTank(level, position, player)) return ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION;
-        if (player instanceof ServerPlayer server) openTank(level, position, server, true);
+        if (!stack.is(ModItems.FLUID_DEBUGGER.get())) return ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION;
+        var vessel = EquipmentStructure.find(level, position);
+        if (vessel == null || vessel.shape().column()) return ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION;
+        use(level, position, player, true);
         return ItemInteractionResult.sidedSuccess(level.isClientSide());
     }
 
-    /** Both sides decide alike: the cells carry the shape, and sneaking is synced. */
-    private static boolean opensTank(Level level, BlockPos position, Player player) {
-        return !player.isSecondaryUseActive() && level.getBlockEntity(position) instanceof EquipmentShellBlockEntity shell && shell.shape() != null && !shell.shape().column();
-    }
-
-    private static void openTank(Level level, BlockPos position, ServerPlayer player, boolean debug) {
-        var shell = (EquipmentShellBlockEntity) level.getBlockEntity(position);
-        var cell = ShapeRasterizer.fluidCell(shell.shape());
-        var node = shell.origin().offset(cell.x(), cell.y(), cell.z());
-        if (level.isLoaded(node) && level.getBlockEntity(node) instanceof EquipmentShellBlockEntity entity) entity.open(player, debug);
+    /**
+     * Using any cell of a vessel, shell or interior: a drum opens its tank screen, as a one-block tank's does, with the
+     * drum's datasheet on a tab (owner request 2026-10-16); a column opens its datasheet, built on the client from synced
+     * cells. Both sides decide alike, since the cells carry the shape.
+     */
+    static InteractionResult use(Level level, BlockPos position, Player player, boolean debug) {
+        var vessel = EquipmentStructure.find(level, position);
+        if (vessel == null) return InteractionResult.PASS;
+        if (vessel.shape().column()) {
+            if (level.isClientSide()) EquipmentClient.openVessel(position);
+        } else if (player instanceof ServerPlayer server) {
+            var cell = ShapeRasterizer.fluidCell(vessel.shape());
+            var node = vessel.origin().offset(cell.x(), cell.y(), cell.z());
+            if (level.isLoaded(node) && level.getBlockEntity(node) instanceof EquipmentShellBlockEntity entity) entity.open(server, debug);
+        }
+        return InteractionResult.sidedSuccess(level.isClientSide());
     }
 
     /** A pipe placed, removed or changed in front of a nozzle: the vessel redraws its nozzles at the pipe's size. */

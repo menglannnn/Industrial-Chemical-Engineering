@@ -15,8 +15,9 @@ import java.util.List;
 import java.util.Locale;
 
 /**
- * A vessel's screen, owned by its controller cell: the datasheet of the drum or column, with its nozzles. It shows
- * geometry only, read from the cells the client already has, so it requests nothing.
+ * A column's screen: its datasheet, with its nozzles. A drum shows the same datasheet on a tab of its tank screen
+ * (owner request 2026-10-16), from {@link #datasheet}. It shows geometry only, read from the cells the client already
+ * has, so it requests nothing.
  */
 public final class VesselScreen extends Screen {
     private static final int WIDTH = 256, LINE = 12;
@@ -26,6 +27,11 @@ public final class VesselScreen extends Screen {
 
     public VesselScreen(EquipmentStructure.Vessel vessel) {
         super(Component.translatable(KEY + "title." + vessel.shape().kind().name().toLowerCase(Locale.ROOT)));
+        lines = datasheet(vessel);
+    }
+
+    /** The vessel's datasheet, a line each: its kind first, then its sizes and cells, then each nozzle. */
+    public static List<Component> datasheet(EquipmentStructure.Vessel vessel) {
         var shape = vessel.shape();
         var layout = ShapeRasterizer.layout(shape);
         var cell = layout.controller();
@@ -34,7 +40,8 @@ public final class VesselScreen extends Screen {
                 ? Component.translatable(KEY + "saddles", shape.support(), number(EquipmentShape.SADDLE_POSITION * shape.tangentLength()))
                 : shape.skirt() ? Component.translatable(KEY + "skirt", shape.support()) : Component.translatable(KEY + "unsupported");
         var lines = new ArrayList<>(List.of(
-                Component.translatable(KEY + (shape.saddles() ? "kind.saddles" : shape.skirt() ? "kind.skirt" : "kind.bare")),
+                shape.column() ? Component.translatable(KEY + "kind.column", shape.trays().trays())
+                        : Component.translatable(KEY + (shape.saddles() ? "kind.saddles" : shape.skirt() ? "kind.skirt" : "kind.bare")),
                 Component.translatable(KEY + "diameter", number(shape.diameter())),
                 Component.translatable(KEY + "tangent_length", number(shape.tangentLength())),
                 Component.translatable(KEY + "length", number(shape.overallLength())),
@@ -44,7 +51,7 @@ public final class VesselScreen extends Screen {
                 Component.translatable(KEY + "area", number(shape.surfaceArea())),
                 Component.translatable(KEY + "cells", layout.shell().size(), layout.interior().size()),
                 Component.translatable(KEY + "controller", controller.toShortString())));
-        // Each nozzle: what it is for, the port its position makes it, where it faces, and the largest pipe it takes.
+        // Each nozzle: what it is for, the port its position makes it, where it faces, and the widest neck the vessel carries there (any pipe connects).
         var transform = shape.transform();
         for (var nozzle : shape.nozzles()) {
             var out = transform.direction(nozzle.direction());
@@ -53,7 +60,7 @@ public final class VesselScreen extends Screen {
                     Component.translatable(KEY + "port." + nozzle.role().port.name().toLowerCase(Locale.ROOT)),
                     Component.translatable(KEY + "facing." + facing), number(nozzle.maxOd())));
         }
-        this.lines = List.copyOf(lines);
+        return List.copyOf(lines);
     }
 
     @Override

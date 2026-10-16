@@ -19,9 +19,9 @@ import static com.wormzjl.createcheme.science.equipment.Mesh.*;
  * block and a vessel needs no lookup across cells or chunks (batch 2026-10-15-custom-equipment-rendering, route A1).
  *
  * <p>The vessel is built in its own frame ({@link EquipmentShape}), axis along +y: a profile of revolution (skirt or
- * bottom head, cylinder, top head), a skirt's base ring, anchor chairs and access opening, and, lying down, two saddles
- * below it. {@link EquipmentShape#transform()} then turns it into the box; a rotation keeps every polygon
- * counter-clockwise seen from outside.
+ * bottom head, cylinder, top head), a skirt's base ring, anchor chairs and access opening (a drum's skirt hollow, with
+ * slots, its inside drawn), and, lying down, two saddles below it. {@link EquipmentShape#transform()} then turns it into
+ * the box; a rotation keeps every polygon counter-clockwise seen from outside.
  *
  * <p>Nozzles are built apart: their drawn size follows the pipe connected to them (owner decision 2026-10-16), which the
  * cell's {@link CellKey#nozzles()} carries as 1/64 m codes, seven bits per nozzle (0: unconnected, drawn at its default
@@ -33,8 +33,8 @@ import static com.wormzjl.createcheme.science.equipment.Mesh.*;
  * holds two courses with staggered seams. Heads are pressed in one piece: their sprite runs once from the tangent line
  * weld to the apex. Supports carry a plain painted sprite repeating every {@link #SUPPORT_TILE}.
  *
- * <p>A cell wholly inside the cylindrical shell or skirt, clear of the skirt base, the opening, the saddles and every
- * nozzle, has the same geometry at every position along the axis and a texture that repeats every two courses; its
+ * <p>A cell wholly inside the cylindrical shell or skirt, clear of the skirt base, the opening, the slots, a hollow
+ * skirt's bottom head, the saddles and every nozzle, has the same geometry at every position along the axis and a texture that repeats every two courses; its
  * {@link CellKey} carries {@link CellKey#BODY} minus its texture class instead of that coordinate, so callers that cache
  * by key build it once per class (at most eight).
  */
@@ -180,11 +180,17 @@ public final class ShapeRasterizer {
     }
 
     /**
-     * Silhouette for the selection outline, as box-local segments {x0, y0, z0, x1, y1, z1}: the shell polygon at the
-     * tangent lines (and the skirt's base ring), four meridians from end to end, and the main edges of each saddle.
+     * The selection outline seen from the box-local point {@code (x, y, z)}, as box-local segments {x0, y0, z0, x1, y1,
+     * z1}. The vessel's silhouette against that eye: the two meridians, end to end, where the shell turns away from it
+     * (seen along the axis, the shell's rim instead). Fixed meridians drew a line down the middle of a drum (owner report
+     * 2026-10-16). Then the fixed edges: a skirt's base ring, a column's decks, each saddle's main edges and each nozzle's
+     * flange face.
      */
-    public static List<double[]> outline(EquipmentShape shape) {
-        return geometry(shape).outline();
+    public static List<double[]> outline(EquipmentShape shape, double x, double y, double z) {
+        var g = geometry(shape);
+        var out = new ArrayList<>(g.edges());
+        g.silhouette(new double[]{x, y, z}, out);
+        return out;
     }
 
     /** The nozzles as fluid ports, in the order of {@link EquipmentShape#nozzles()}. */
@@ -275,6 +281,13 @@ public final class ShapeRasterizer {
         private final double saddleRadius, ringRadius, saddleLateral;
         /** A skirt's access opening: centre height and radius (0: none). */
         private final double openingHeight, openingRadius;
+        /**
+         * A drum's skirt is hollow: drawn on both faces, with its bottom head, its outlet line and a floor plate inside
+         * (owner report 2026-10-16). Its slots, from {@code slotLow} to {@code slotHigh} (0: none), are one facet wide and
+         * centred on the shell vertices at frame +x, +z and -x: the left, the back and the right.
+         */
+        private final boolean hollow;
+        private final double slotLow, slotHigh, innerRadius;
         private final double[] normalCos, normalSin, vertexCos, vertexSin, saddles, meridian;
         private final double[][] rings;
         private final Mesh mesh = new Mesh();
@@ -333,11 +346,14 @@ public final class ShapeRasterizer {
             saddleLateral = saddleRadius * vertexSin[contact];
             ringRadius = radius + EquipmentShape.BASE_RING / apothemFactor;
             saddles = shape.saddleCentres();
-            // Skirt access opening (photo survey: 18"-24", centre 0.6-1.0 m up): over the base ring and chairs, under the head.
-            double opening = Math.min(.6, .45 * shape.diameter()), centre = Math.min(.9, shape.bottomTangent() - .1 - opening / 2);
-            boolean fits = shape.skirt() && shape.diameter() >= 1 && centre - opening / 2 >= EquipmentShape.PLATE + EquipmentShape.CHAIR + .03;
-            openingHeight = fits ? centre : 0;
-            openingRadius = fits ? opening / 2 : 0;
+            openingHeight = shape.openingHeight();
+            openingRadius = shape.openingRadius();
+            hollow = shape.skirt() && !shape.column();
+            innerRadius = radius - EquipmentShape.SKIRT_WALL / apothemFactor;
+            double slotTop = Math.min(shape.bottomTangent() - .2, .4 + 1.6);
+            boolean slots = hollow && shape.diameter() >= 1 && slotTop - .4 >= .4;
+            slotLow = slots ? .4 : 0;
+            slotHigh = slots ? slotTop : 0;
             nozzles = shape.nozzles();
 
             build();
@@ -356,7 +372,8 @@ public final class ShapeRasterizer {
             for (int k = 0; k < nozzles.size(); k++) {
                 var nozzle = nozzles.get(k);
                 var cells = new HashSet<Cell>();
-                var largest = nozzle(k, PipeSizes.code(nozzle.maxOd()));
+                // Every cell the largest pipe's nozzle reaches: a nozzle takes any pipe.
+                var largest = nozzle(k, PipeSizes.code(PipeSizes.MAX_OUTSIDE));
                 for (var facet : largest.facets()) cells(facet, cells);
                 nozzleCells.add(Set.copyOf(cells));
                 var face = nozzle.face();
@@ -397,14 +414,19 @@ public final class ShapeRasterizer {
                 if (clad) mesh.flat(List.of(ring(i, yB), ring(i + 1, yB), shell(i + 1, yB), shell(i, yB)), new double[]{0, -1, 0}, Material.CLADDING);
                 if (shape.skirt()) {
                     var skirtU = new Uv(a, neg(tangent), -i * chord, plateLength / 2);
-                    List<double[]> skirt = List.of(ring(i, plate), ring(i + 1, plate), ring(i + 1, yB), ring(i, yB));
-                    var hole = openingRadius > 0 ? hole(i) : null;
-                    if (hole == null) mesh.add(skirt, centre, round, Material.SUPPORT, skirtU, skirtTiles);
-                    else for (var piece : subtract(skirt, hole, new double[]{normalCos[i], 0, normalSin[i]}))
-                        mesh.add(piece, centre, round, Material.SUPPORT, skirtU, skirtTiles);
+                    double apothem = radius * apothemFactor;
+                    for (var piece : skirtFacet(i, radius, apothem)) mesh.add(piece, centre, round, Material.SUPPORT, skirtU, skirtTiles);
+                    if (hollow) {
+                        // The inside face, seen through the opening and the slots, and the slots' cut edges.
+                        var beyond = new double[]{axis + 2 * radius * normalCos[i], yB / 2, axis + 2 * radius * normalSin[i]};
+                        var inward = new Inward(new double[]{axis, 0, axis}, up);
+                        for (var piece : skirtFacet(i, innerRadius, apothem - EquipmentShape.SKIRT_WALL))
+                            mesh.add(piece, beyond, inward, Material.SUPPORT, skirtU, skirtTiles);
+                        slotEdges(i);
+                    }
                 }
                 for (int side = 0; side < 2; side++) {
-                    if (side == 0 && shape.skirt()) continue; // the skirt hides the bottom head
+                    if (side == 0 && shape.skirt() && !hollow) continue; // a column's skirt hides its bottom head
                     double base = side == 0 ? yB : yT, sign = side == 0 ? -1 : 1;
                     var apex = new double[]{axis, base, axis};
                     var spheroid = new Spheroid(apex, up, outer, shape.outerHeadDepth());
@@ -425,14 +447,35 @@ public final class ShapeRasterizer {
         }
 
         /**
-         * The access opening on skirt facet {@code i}'s plane, or null when it does not reach that facet: the opening's
-         * circle around its horizontal axis towards the front (frame -z), projected along that axis onto the facet.
+         * Skirt facet {@code i} from the base ring to the bottom tangent line, its vertices at radius {@code r} (its plane
+         * at {@code apothem} from the axis), less the access opening and a slot where they reach it.
          */
-        private List<double[]> hole(int i) {
+        private List<List<double[]>> skirtFacet(int i, double r, double apothem) {
+            double plate = EquipmentShape.PLATE, yB = shape.bottomTangent();
+            var normal = new double[]{normalCos[i], 0, normalSin[i]};
+            List<List<double[]>> pieces = List.of(List.of(vertex(i, r, plate), vertex(i + 1, r, plate), vertex(i + 1, r, yB), vertex(i, r, yB)));
+            var hole = openingRadius > 0 ? hole(i, apothem) : null;
+            if (hole != null) pieces = cut(pieces, hole, normal);
+            var slot = slot(i, r);
+            if (slot != null) pieces = cut(pieces, slot, normal);
+            return pieces;
+        }
+
+        private static List<List<double[]>> cut(List<List<double[]>> pieces, List<double[]> hole, double[] normal) {
+            var out = new ArrayList<List<double[]>>();
+            for (var piece : pieces) out.addAll(subtract(piece, hole, normal));
+            return out;
+        }
+
+        /**
+         * The access opening on the plane of skirt facet {@code i} at {@code apothem} from the axis, or null when it does
+         * not reach that facet: the opening's circle around its horizontal axis towards the front (frame -z), projected
+         * along that axis onto the facet.
+         */
+        private List<double[]> hole(int i, double apothem) {
             if (normalSin[i] > -.3) return null;
             double low = Math.min(vertexCos[i], vertexCos[i + 1]) * radius, high = Math.max(vertexCos[i], vertexCos[i + 1]) * radius;
             if (high < -openingRadius || low > openingRadius) return null;
-            double apothem = radius * apothemFactor;
             var hole = new ArrayList<double[]>(16);
             for (int j = 0; j < 16; j++) {
                 double angle = 2 * Math.PI * j / 16, x = openingRadius * DeterministicMath.cos(angle), y = openingHeight + openingRadius * DeterministicMath.sin(angle);
@@ -441,14 +484,82 @@ public final class ShapeRasterizer {
             return hole;
         }
 
-        /** The opening's sleeve: its bore, a rim standing proud of the skirt, and a dark back inside the skirt. */
+        /** The part {s0, s1} of skirt facet {@code i} (0 at vertex i, 1 at vertex i + 1) a slot takes, or null. */
+        private double[] slotSpan(int i) {
+            if (slotHigh <= 0) return null;
+            if (slotVertex(i)) return new double[]{0, .5};
+            if (slotVertex(i + 1)) return new double[]{.5, 1};
+            return null;
+        }
+
+        private boolean slotVertex(int v) {
+            v = Math.floorMod(v, n);
+            return v == 0 || v == n / 4 || v == n / 2;
+        }
+
+        /** The slot's rectangle on skirt facet {@code i} at vertex radius {@code r}, or null. */
+        private List<double[]> slot(int i, double r) {
+            var span = slotSpan(i);
+            if (span == null) return null;
+            double[] a0 = vertex(i, r, slotLow), b0 = vertex(i + 1, r, slotLow), a1 = vertex(i, r, slotHigh), b1 = vertex(i + 1, r, slotHigh);
+            return List.of(lerp(a0, b0, span[0]), lerp(a0, b0, span[1]), lerp(a1, b1, span[1]), lerp(a1, b1, span[0]));
+        }
+
+        /** A slot's cut edges through the skirt plate on facet {@code i}: its sill, its head, and its jamb where the slot ends on this facet. */
+        private void slotEdges(int i) {
+            var span = slotSpan(i);
+            if (span == null) return;
+            for (double y : new double[]{slotLow, slotHigh}) {
+                var edge = List.of(lerp(vertex(i, radius, y), vertex(i + 1, radius, y), span[0]), lerp(vertex(i, radius, y), vertex(i + 1, radius, y), span[1]),
+                        lerp(vertex(i, innerRadius, y), vertex(i + 1, innerRadius, y), span[1]), lerp(vertex(i, innerRadius, y), vertex(i + 1, innerRadius, y), span[0]));
+                mesh.flat(edge, new double[]{0, y == slotLow ? 1 : -1, 0}, Material.SUPPORT);
+            }
+            // The jamb stands where the slot ends inside this facet (s = 0.5); the facet's other end is the slot's middle.
+            double s = span[0] == 0 ? span[1] : span[0];
+            var jamb = List.of(lerp(vertex(i, radius, slotLow), vertex(i + 1, radius, slotLow), s), lerp(vertex(i, radius, slotHigh), vertex(i + 1, radius, slotHigh), s),
+                    lerp(vertex(i, innerRadius, slotHigh), vertex(i + 1, innerRadius, slotHigh), s), lerp(vertex(i, innerRadius, slotLow), vertex(i + 1, innerRadius, slotLow), s));
+            var along = sub(vertex(i + 1, radius, 0), vertex(i, radius, 0));
+            // It faces into the slot: towards vertex i when the slot holds vertex i, the plate lying towards vertex i + 1.
+            mesh.flat(jamb, span[0] == 0 ? neg(along) : along, Material.SUPPORT);
+        }
+
+        /** Vertex {@code i} of a skirt face at radius {@code r} and axial position {@code y}, in the vessel frame. */
+        private double[] vertex(int i, double r, double y) {
+            return new double[]{axis + r * vertexCos[i], y, axis + r * vertexSin[i]};
+        }
+
+        /**
+         * The opening's sleeve: a collar round the hole, standing proud of the skirt. A column's carries its bore and a dark
+         * back; a drum's (a hollow skirt's) is its skirt port, whose bore and faces its bottom outlet draws at the line's
+         * size ({@link #skirtPort}).
+         */
         private void openingSleeve() {
-            var f = new Frame(new double[]{axis, openingHeight, axis}, new double[]{0, 0, -1}, new double[]{1, 0, 0});
-            double apothem = radius * apothemFactor, rim = openingRadius + 1 / 32.0, outer = radius + 1 / 16.0, back = apothem - .12;
+            var f = openingFrame();
+            double apothem = radius * apothemFactor, rim = openingRadius + EquipmentShape.PORT_COLLAR, outer = radius + 1 / 16.0, back = apothem - .12;
+            // A hollow skirt's sleeve is one tube through the plate (inside it the tube is hidden), closed at its inner end.
+            mesh.prism(f, rim, hollow ? back : Math.sqrt(apothem * apothem - rim * rim) - .02, outer, 16, Material.SUPPORT);
+            if (hollow) return;
             mesh.bore(f, openingRadius, back, outer, 16, Material.SUPPORT);
-            mesh.prism(f, rim, Math.sqrt(apothem * apothem - rim * rim) - .02, outer, 16, Material.SUPPORT);
             mesh.annulus(f, openingRadius, rim, outer, 16, 1, Material.SUPPORT);
             mesh.annulus(f, 0, openingRadius, back, 16, 1, Material.OPENING);
+        }
+
+        /**
+         * A drum's skirt port round its outlet line of radius {@code line} (owner request 2026-10-16: the port follows the
+         * line): its bore, the line's clearance wider, and the collar's outer and inner faces out to the hole cut for the
+         * largest line.
+         */
+        private void skirtPort(Mesh m, double line) {
+            var f = openingFrame();
+            double apothem = radius * apothemFactor, rim = openingRadius + EquipmentShape.PORT_COLLAR, outer = radius + 1 / 16.0, back = apothem - .12;
+            double port = Math.min(openingRadius, line + EquipmentShape.PORT_CLEARANCE);
+            m.bore(f, port, back, outer, 16, Material.SUPPORT);
+            m.annulus(f, port, rim, outer, 16, 1, Material.SUPPORT);
+            m.annulus(f, port, rim, back, 16, -1, Material.SUPPORT);
+        }
+
+        private Frame openingFrame() {
+            return new Frame(new double[]{axis, openingHeight, axis}, new double[]{0, 0, -1}, new double[]{1, 0, 0});
         }
 
         /** A skirt's foot: the plate under it and its base ring, the ring's top and rim, and the anchor chairs. */
@@ -459,6 +570,12 @@ public final class ShapeRasterizer {
             var bottom = new ArrayList<double[]>(n);
             for (int i = 0; i < n; i++) bottom.add(rim(i, 0));
             mesh.add(bottom, centre, FLAT, Material.SUPPORT, null, null);
+            if (hollow) {
+                // A hollow skirt's floor: the base plate's top inside the skirt plate.
+                var floor = new ArrayList<double[]>(n);
+                for (int i = 0; i < n; i++) floor.add(vertex(i, innerRadius, plate));
+                mesh.add(floor, new double[]{axis, 0, axis}, FLAT, Material.SUPPORT, null, null);
+            }
             for (int i = 0; i < n; i++) {
                 mesh.add(List.of(rim(i, plate), rim(i + 1, plate), ring(i + 1, plate), ring(i, plate)), centre, FLAT, Material.SUPPORT, null, null);
                 mesh.add(List.of(rim(i, 0), rim(i + 1, 0), rim(i + 1, plate), rim(i, plate)), centre, round, Material.SUPPORT, null, null);
@@ -467,7 +584,7 @@ public final class ShapeRasterizer {
             double apothem = radius * apothemFactor, depth = EquipmentShape.BASE_RING, half = EquipmentShape.CHAIR / 2;
             double low = plate, high = plate + EquipmentShape.CHAIR;
             for (int k = 0; k < chairs; k++) {
-                int i = k * n / chairs;
+                int i = chairFacet(k, chairs);
                 // A box on the ring against shell facet i: corners at radial r and tangential t from the axis.
                 double[] in0 = chair(i, apothem, -half), in1 = chair(i, apothem, half);
                 double[] out0 = chair(i, apothem + depth, -half), out1 = chair(i, apothem + depth, half);
@@ -478,6 +595,15 @@ public final class ShapeRasterizer {
                 mesh.add(List.of(at(in0, low), at(out0, low), at(out0, high), at(in0, high)), middle, FLAT, Material.SUPPORT, null, null);
                 mesh.add(List.of(at(in1, low), at(out1, low), at(out1, high), at(in1, high)), middle, FLAT, Material.SUPPORT, null, null);
             }
+        }
+
+        /**
+         * The shell facet anchor chair {@code k} of {@code chairs} stands against. A drum's skirt is pierced on its axes (the
+         * access opening at the front, slots at the left, back and right), so its chairs stand between them; a column's
+         * ladders come down on the diagonals, so its chairs keep to the axes.
+         */
+        private int chairFacet(int k, int chairs) {
+            return shape.column() ? k * n / chairs : (2 * k + 1) * n / (2 * chairs);
         }
 
         /** Cross-section point at radial distance {@code r} along facet {@code i}'s normal and {@code t} along the facet. */
@@ -565,39 +691,64 @@ public final class ShapeRasterizer {
 
         /**
          * Nozzle {@code k} drawn at size {@code code} (0: unconnected, at its default size): a neck from under the vessel's
-         * surface, a weld-neck hub, and a flange whose face lies on the block face; built once per size.
+         * surface and a flange at the pipe's size whose face lies on the block face. Up to the nozzle's largest size the
+         * neck is the pipe's and meets the flange in a weld-neck hub; a larger pipe's neck keeps that size until it has
+         * left the vessel and widens from there to the flange in a concentric reducer, so the size changes where the port
+         * meets the vessel and never at the flange (owner decision 2026-10-16). A bottom outlet's line also has its riser
+         * from the head and its elbow into the neck, and its skirt port round it, all at the neck's size (owner request
+         * 2026-10-16). Built once per size.
          */
         Mesh nozzle(int k, int code) {
             return nozzleMeshes.computeIfAbsent(k * 128 + code, key -> {
                 var nozzle = nozzles.get(k);
-                double od = code == 0 ? nozzle.defaultOd() : Math.min(nozzle.maxOd(), PipeSizes.outsideOf(code));
+                double od = code == 0 ? nozzle.defaultOd() : PipeSizes.outsideOf(code), neck = Math.min(od, nozzle.maxOd());
                 var m = new Mesh();
                 m.transform(transform);
                 var dir = nozzle.direction();
                 var ref = new double[3];
                 ref[(nozzle.axis() + 1) % 3] = 1;
                 var f = new Frame(nozzle.base(), dir, ref);
-                double r = od / 2, flange = PipeSizes.flange(od) / 2, t = PipeSizes.flangeThickness(od), hub = PipeSizes.hub(od), length = nozzle.length();
+                double r = neck / 2, flange = PipeSizes.flange(od) / 2, t = PipeSizes.flangeThickness(od), hub = PipeSizes.hub(od), length = nozzle.length();
                 double hubR = PipeSizes.hubOutside(od) / 2;
                 int sides = PipeSizes.sides(od);
-                m.prism(f, r, 0, length - t - hub, sides, Material.PIPE);
-                m.frustum(f, r, hubR, length - t - hub, length - t, sides, Material.PIPE);
+                // The neck's taper into the flange: a weld-neck hub, or the reducer from where the neck has left the vessel.
+                double taper = neck < od ? Math.max(0, Math.min(nozzle.exit(), length - t - .02)) : length - t - hub;
+                m.prism(f, r, 0, taper, sides, Material.PIPE);
+                m.frustum(f, r, hubR, taper, length - t, sides, Material.PIPE);
                 m.annulus(f, hubR, flange, length - t, sides, -1, Material.FLANGE);
                 m.prism(f, flange, length - t, length, sides, Material.FLANGE);
                 m.annulus(f, 0, flange, length, sides, 1, Material.FLANGE);
+                if (nozzle.riser() > 0) {
+                    // Back from the neck's start: a straight run, the elbow (bend radius 1 D of the line drawn) and the riser
+                    // up into the head at its pole, maxOd behind the neck's start (owner request 2026-10-16: the line from
+                    // the drum's bottom to its port follows the pipe).
+                    double bend = neck, run = nozzle.maxOd() - bend, lift = nozzle.base()[1] + bend;
+                    var down = new double[]{0, -1, 0};
+                    m.prism(f, r, -run, 0, sides, Material.PIPE);
+                    var corner = new double[]{nozzle.base()[0] - dir[0] * run, lift, nozzle.base()[2] - dir[2] * run};
+                    m.torus(new Frame(corner, cross(down, neg(dir)), down), bend, r, 0, Math.PI / 2, 6, sides, Material.PIPE);
+                    var foot = new double[]{corner[0] - dir[0] * bend, lift, corner[2] - dir[2] * bend};
+                    m.prism(new Frame(foot, new double[]{0, 1, 0}, dir), r, 0, nozzle.riser() - lift, sides, Material.PIPE);
+                }
+                if (nozzle.riser() > 0 && hollow && openingRadius > 0) skirtPort(m, r);
                 return m;
             });
         }
 
-        /** Whether a frame point lies in nozzle {@code k} at size {@code code}: its neck, or its flange. */
+        /** Whether a frame point lies in nozzle {@code k} at size {@code code}: its neck (a larger pipe's reducer too), or its flange. */
         private boolean inNozzle(double[] p, int k, int code) {
             var nozzle = nozzles.get(k);
-            double od = code == 0 ? nozzle.defaultOd() : Math.min(nozzle.maxOd(), PipeSizes.outsideOf(code));
+            double od = code == 0 ? nozzle.defaultOd() : PipeSizes.outsideOf(code), neck = Math.min(od, nozzle.maxOd());
             var base = nozzle.base();
             double s = (p[nozzle.axis()] - base[nozzle.axis()]) * nozzle.sign(), rho2 = 0;
             for (int a = 0; a < 3; a++) if (a != nozzle.axis()) rho2 += (p[a] - base[a]) * (p[a] - base[a]);
             double t = PipeSizes.flangeThickness(od), flange = PipeSizes.flange(od) / 2;
-            return s >= 0 && s <= nozzle.length() - t && rho2 <= od * od / 4 || s > nozzle.length() - t && s <= nozzle.length() && rho2 <= flange * flange;
+            double length = nozzle.length(), radius = neck / 2;
+            if (neck < od) {
+                double taper = Math.max(0, Math.min(nozzle.exit(), length - t - .02));
+                if (s > taper) radius += (PipeSizes.hubOutside(od) / 2 - radius) * Math.min(1, (s - taper) / (length - t - taper));
+            }
+            return s >= 0 && s <= length - t && rho2 <= radius * radius || s > length - t && s <= length && rho2 <= flange * flange;
         }
 
         private void cells(Facet facet, Set<Cell> out) {
@@ -609,7 +760,8 @@ public final class ShapeRasterizer {
 
         /**
          * Shell cells: every cell a facet or a nozzle reaches, and a drum's fluid node, which carries its identity even where
-         * nothing is drawn (a skirt hides the bottom head). The other cells inside the vessel are interior.
+         * nothing is drawn. The other cells inside the vessel are interior, a hollow skirt's too: its collision stays a
+         * full cylinder, so nothing spawns or is placed inside it, and the cells showing its inside are shell cells.
          */
         private Layout buildLayout() {
             int sx = shape.sizeX(), sy = shape.sizeY(), sz = shape.sizeZ();
@@ -670,6 +822,9 @@ public final class ShapeRasterizer {
             }
             for (double centre : saddles) if (low < centre + half + EPS && high > centre - half - EPS) return false;
             if (openingRadius > 0 && low < openingHeight + openingRadius + .1 && high > openingHeight - openingRadius - .1) return false;
+            if (slotHigh > 0 && low < slotHigh + EPS && high > slotLow - EPS) return false;
+            // A hollow skirt shows its bottom head in the rows it reaches.
+            if (hollow && high > shape.bottomTangent() - shape.headDepth() - EPS && low < shape.bottomTangent() + EPS) return false;
             for (var nozzle : nozzles) {
                 double reach = PipeSizes.flange(nozzle.maxOd()) / 2, y0, y1;
                 if (nozzle.axis() == 1) {
@@ -677,7 +832,7 @@ public final class ShapeRasterizer {
                     y1 = Math.max(nozzle.base()[1], nozzle.face()[1]);
                 } else {
                     y0 = nozzle.base()[1] - reach;
-                    y1 = nozzle.base()[1] + reach;
+                    y1 = Math.max(nozzle.base()[1] + reach, nozzle.riser());
                 }
                 if (low < y1 + EPS && high > y0 - EPS) return false;
             }
@@ -719,7 +874,7 @@ public final class ShapeRasterizer {
             int chairs = shape.anchorChairs();
             double apothem = radius * apothemFactor, dx = p[0] - axis, dz = p[2] - axis;
             for (int k = 0; k < chairs; k++) {
-                int i = k * n / chairs;
+                int i = chairFacet(k, chairs);
                 double r = dx * normalCos[i] + dz * normalSin[i], t = -dx * normalSin[i] + dz * normalCos[i];
                 if (r >= apothem && r <= apothem + EquipmentShape.BASE_RING && Math.abs(t) <= EquipmentShape.CHAIR / 2) return true;
             }
@@ -757,11 +912,46 @@ public final class ShapeRasterizer {
             return 0;
         }
 
-        List<double[]> outline() {
+        /** The outline's fixed edges, built once; the silhouette's meridians follow the eye ({@link #silhouette}). */
+        private volatile List<double[]> edges;
+
+        List<double[]> edges() {
+            var built = edges;
+            if (built == null) edges = built = buildEdges();
+            return built;
+        }
+
+        /**
+         * The meridians on the silhouette seen from a box point: where the line from the eye touches the shell's
+         * cross-section, at the shell vertices nearest the two tangent points; from inside that cross-section (looking
+         * along the axis) the shell's rim at the tangent line nearer the eye.
+         */
+        void silhouette(double[] eye, List<double[]> out) {
+            var e = transform.local(eye);
+            double dx = e[0] - axis, dz = e[2] - axis, d = Math.sqrt(dx * dx + dz * dz);
+            if (d <= outer) {
+                double y = e[1] >= (shape.bottomTangent() + shape.topTangent()) / 2 ? shape.topTangent() : shape.bottomTangent();
+                for (int i = 0; i < n; i++) segment(out, shell(i, y), shell(i + 1, y));
+                return;
+            }
+            double towards = DeterministicMath.atan2(dz, dx), spread = DeterministicMath.acos(outer / d);
+            for (double angle : new double[]{towards - spread, towards + spread})
+                meridian(Math.floorMod((int) Math.round(angle * n / (2 * Math.PI)), n), out);
+        }
+
+        /** Meridian {@code i} from the vessel's foot (a skirt's base, or the bottom apex) over the top head to its apex. */
+        private void meridian(int i, List<double[]> out) {
+            double yB = shape.bottomTangent(), yT = shape.topTangent();
+            var points = new ArrayList<double[]>();
+            if (shape.skirt()) points.add(ring(i, EquipmentShape.PLATE));
+            else for (int k = rings.length - 1; k >= 0; k--) points.add(head(i, k, yB, -1));
+            for (int k = 0; k < rings.length; k++) points.add(head(i, k, yT, 1));
+            for (int p = 0; p + 1 < points.size(); p++) segment(out, points.get(p), points.get(p + 1));
+        }
+
+        private List<double[]> buildEdges() {
             var segments = new ArrayList<double[]>();
-            double yB = shape.bottomTangent(), yT = shape.topTangent(), plate = EquipmentShape.PLATE;
-            for (double y : new double[]{yB, yT})
-                for (int i = 0; i < n; i++) segment(segments, shell(i, y), shell(i + 1, y));
+            double plate = EquipmentShape.PLATE;
             if (column != null)
                 for (var p : column.plan().platforms()) {
                     double y = p.level() + ColumnStructure.DECK, r = column.plan().deckRadius();
@@ -774,14 +964,6 @@ public final class ShapeRasterizer {
                 }
             if (shape.skirt())
                 for (int i = 0; i < n; i++) segment(segments, rim(i, plate), rim(i + 1, plate));
-            for (int quarter = 0; quarter < 4; quarter++) {
-                int i = quarter * n / 4;
-                var points = new ArrayList<double[]>();
-                if (shape.skirt()) points.add(ring(i, plate));
-                else for (int k = rings.length - 1; k >= 0; k--) points.add(head(i, k, yB, -1));
-                for (int k = 0; k < rings.length; k++) points.add(head(i, k, yT, 1));
-                for (int p = 0; p + 1 < points.size(); p++) segment(segments, points.get(p), points.get(p + 1));
-            }
             double deck = ground + plate;
             for (double c : saddles) {
                 double y0 = c - EquipmentShape.SADDLE_WIDTH / 2, y1 = c + EquipmentShape.SADDLE_WIDTH / 2;
