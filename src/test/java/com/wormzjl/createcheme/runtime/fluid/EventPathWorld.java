@@ -82,6 +82,14 @@ class EventPathWorld {
     /** A block as FluidWorldAuthority.place places it: its kind's default control, a 1 m block of 0.05 m bore, water for a
      * generator and a 1 m3 nitrogen charge at 298.15 K and 1 atm for everything else. */
     long place(int x,int y,int z,Kind kind,PhysicalFluidTopology.Direction facing){return place(x,y,z,kind,facing,kind==Kind.GENERATOR?FluidDeviceSpec.water(CATALOG):nitrogen(),.05);}
+    /** A drum as FluidWorldAuthority.placeVessel registers it: an empty reservoir at its node cell with its ports, volume and level height. */
+    long placeVessel(PhysicalFluidTopology.Position node,List<PhysicalFluidTopology.Port> ports,double volume,double levelHeight) {
+        long id=ledger.nextIdentity();
+        var device=new PhysicalFluidTopology.Device(id,node,Kind.RESERVOIR,PhysicalFluidTopology.Direction.NORTH,new PipeResistance.Geometry(1,.05,PipeResistance.DEFAULT_ROUGHNESS_METRES,0),new FlowControl.Passive(),ports);
+        var spec=new FluidDeviceSpec(volume,298.15,101325,nitrogen().composition(),SlurryFeed.NONE,levelHeight);
+        registry.submit(List.of(new WorldTopologyLedger.Edit(id,new WorldTopologyLedger.Registration(device,spec,0))),id+1,null);
+        return id;
+    }
     /** One online tick as FluidWorldAuthority.tick runs it, with the worker's jobs run to completion in the tick. */
     void tick() {
         ledger.tick();coordinator.tick();

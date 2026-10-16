@@ -234,7 +234,9 @@ public final class FluidPresentationGameTests {
                 if(entity.fluidIdentity()!=id)failure[0]="The reload changed the identity";
                 if(entity.lastView()!=null)failure[0]="A view was present at the load";
                 var tag=entity.getUpdateTag(level.registryAccess());
-                if(!tag.getAllKeys().equals(Set.of("FluidIdentity")))failure[0]="The binding update carries more than the identity: "+tag;
+                // The identity and the drawn geometry (bore and faces, static like a block state; batch
+                // 2026-10-15-custom-equipment-rendering), no view data.
+                if(!tag.getAllKeys().equals(Set.of("FluidIdentity","Bore","Faces")))failure[0]="The binding update carries more than the identity and the drawn geometry: "+tag;
                 if(!world.viewDirty(id))failure[0]="The load did not mark the device for its bucket";
                 return;
             }

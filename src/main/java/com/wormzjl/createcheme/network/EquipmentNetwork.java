@@ -1,6 +1,7 @@
 package com.wormzjl.createcheme.network;
 
 import com.wormzjl.createcheme.CreateChemE;
+import com.wormzjl.createcheme.science.equipment.ColumnTrays;
 import com.wormzjl.createcheme.science.equipment.VesselPlacement;
 import com.wormzjl.createcheme.world.level.block.EquipmentStructure;
 import com.wormzjl.createcheme.world.level.block.entity.EquipmentConstructorBlockEntity;
@@ -19,25 +20,31 @@ import net.neoforged.neoforge.network.registration.HandlerThread;
 
 /**
  * Equipment protocol {@value #PROTOCOL}: the constructor screen sends its design when it closes, and with a build
- * request when the player presses Build. Placing a vessel is a world edit, like placing blocks; it involves no process
- * state, so the server answers at once in chat.
+ * request when the player presses Build; it asks to import the design of the nearest column calculator. Placing a
+ * vessel is a world edit, like placing blocks; it involves no process state, so the server answers at once in chat. An
+ * import reads the calculator's stored input (nothing is solved) and comes back as the constructor's synced design.
  */
 public final class EquipmentNetwork {
-    public static final String PROTOCOL = "equipment-2";
+    public static final String PROTOCOL = "equipment-3";
     /** A player edits or builds only within this distance of the constructor, blocks. */
     private static final double REACH = 8;
+    /** A column calculator is imported from within this many blocks of the constructor. */
+    public static final int IMPORT_REACH = 16;
 
     private EquipmentNetwork() {
     }
 
-    /** Client to server: a constructor's design ({@code form} is the ordinal of its {@link VesselPlacement.Form}), and whether to build it now. */
+    /**
+     * Client to server: a constructor's design ({@code form} is the ordinal of its {@link VesselPlacement.Form},
+     * {@code trays} its column's {@link ColumnTrays#encode()}), and whether to build it now.
+     */
     public record ConstructorPayload(BlockPos position, double diameter, int tangentLength, int form, int support, int forward, int right, int up,
-                                     boolean build) implements CustomPacketPayload {
+                                     int[] trays, boolean build) implements CustomPacketPayload {
         public static final Type<ConstructorPayload> TYPE = new Type<>(ResourceLocation.fromNamespaceAndPath(CreateChemE.MOD_ID, "equipment_constructor"));
         public static final StreamCodec<RegistryFriendlyByteBuf, ConstructorPayload> STREAM_CODEC = new StreamCodec<>() {
             public ConstructorPayload decode(RegistryFriendlyByteBuf b) {
                 return new ConstructorPayload(b.readBlockPos(), b.readDouble(), b.readVarInt(), b.readVarInt(), b.readVarInt(), b.readVarInt(), b.readVarInt(),
-                        b.readVarInt(), b.readBoolean());
+                        b.readVarInt(), b.readVarIntArray(ColumnTrays.MAX_ENCODED), b.readBoolean());
             }
 
             public void encode(RegistryFriendlyByteBuf b, ConstructorPayload p) {
@@ -49,14 +56,27 @@ public final class EquipmentNetwork {
                 b.writeVarInt(p.forward);
                 b.writeVarInt(p.right);
                 b.writeVarInt(p.up);
+                b.writeVarIntArray(p.trays);
                 b.writeBoolean(p.build);
             }
         };
 
         public static ConstructorPayload of(BlockPos position, EquipmentConstructorBlockEntity.Design design, boolean build) {
             var p = design.placement();
-            return new ConstructorPayload(position, design.diameter(), design.tangentLength(), design.form().ordinal(), design.support(), p.forward(), p.right(), p.up(), build);
+            return new ConstructorPayload(position, design.diameter(), design.tangentLength(), design.form().ordinal(), design.support(), p.forward(), p.right(), p.up(),
+                    design.trays().encode(), build);
         }
+
+        @Override
+        public Type<? extends CustomPacketPayload> type() {
+            return TYPE;
+        }
+    }
+
+    /** Client to server: import the nearest column calculator's design into this constructor. */
+    public record ImportPayload(BlockPos position) implements CustomPacketPayload {
+        public static final Type<ImportPayload> TYPE = new Type<>(ResourceLocation.fromNamespaceAndPath(CreateChemE.MOD_ID, "equipment_import_column"));
+        public static final StreamCodec<RegistryFriendlyByteBuf, ImportPayload> STREAM_CODEC = StreamCodec.composite(BlockPos.STREAM_CODEC, ImportPayload::position, ImportPayload::new);
 
         @Override
         public Type<? extends CustomPacketPayload> type() {
@@ -67,6 +87,7 @@ public final class EquipmentNetwork {
     public static void register(RegisterPayloadHandlersEvent event) {
         var registrar = event.registrar(PROTOCOL).executesOn(HandlerThread.MAIN);
         registrar.playToServer(ConstructorPayload.TYPE, ConstructorPayload.STREAM_CODEC, EquipmentNetwork::constructor);
+        registrar.playToServer(ImportPayload.TYPE, ImportPayload.STREAM_CODEC, EquipmentNetwork::importColumn);
     }
 
     /** Client: send a constructor's design, and build it if asked. */
@@ -74,19 +95,30 @@ public final class EquipmentNetwork {
         PacketDistributor.sendToServer(ConstructorPayload.of(position, design, build));
     }
 
-    private static void constructor(ConstructorPayload payload, IPayloadContext context) {
-        if (!(context.player() instanceof ServerPlayer player)) return;
+    /** Client: ask for the nearest column calculator's design; it arrives as the constructor's synced design. */
+    public static void requestImport(BlockPos position) {
+        PacketDistributor.sendToServer(new ImportPayload(position));
+    }
+
+    /** The constructor a player may edit at {@code position}, or null. */
+    private static EquipmentConstructorBlockEntity editable(ServerPlayer player, BlockPos position) {
         var level = player.serverLevel();
-        var position = payload.position();
         if (!level.isLoaded(position) || !(level.getBlockEntity(position) instanceof EquipmentConstructorBlockEntity constructor)
                 || player.distanceToSqr(position.getCenter()) > REACH * REACH || !player.mayBuild() || player.isSpectator() || !level.mayInteract(player, position))
-            return;
+            return null;
+        return constructor;
+    }
+
+    private static void constructor(ConstructorPayload payload, IPayloadContext context) {
+        if (!(context.player() instanceof ServerPlayer player)) return;
+        var constructor = editable(player, payload.position());
+        if (constructor == null) return;
         EquipmentConstructorBlockEntity.Design design;
         try {
             var forms = VesselPlacement.Form.values();
             if (payload.form() < 0 || payload.form() >= forms.length) throw new IllegalArgumentException("Unknown form " + payload.form());
             design = new EquipmentConstructorBlockEntity.Design(payload.diameter(), payload.tangentLength(), forms[payload.form()], payload.support(),
-                    new VesselPlacement(payload.forward(), payload.right(), payload.up()));
+                    new VesselPlacement(payload.forward(), payload.right(), payload.up()), ColumnTrays.decode(payload.trays()));
         } catch (IllegalArgumentException invalid) {
             player.sendSystemMessage(Component.translatable("message.createcheme.equipment.invalid", invalid.getMessage()).withStyle(ChatFormatting.RED));
             return;
@@ -95,11 +127,26 @@ public final class EquipmentNetwork {
         if (!payload.build()) return;
         var vessel = constructor.vessel(design);
         try {
-            int placed = EquipmentStructure.place(level, vessel.origin(), vessel.shape(), Integer.MAX_VALUE);
-            player.sendSystemMessage(Component.translatable("message.createcheme.equipment.built", design.diameter(),
-                    design.tangentLength(), placed, vessel.origin().toShortString()));
+            int placed = EquipmentStructure.place(player.serverLevel(), vessel.origin(), vessel.shape(), Integer.MAX_VALUE);
+            player.sendSystemMessage(design.form().column()
+                    ? Component.translatable("message.createcheme.equipment.built_column", design.diameter(), design.trays().trays(), placed, vessel.origin().toShortString())
+                    : Component.translatable("message.createcheme.equipment.built", design.diameter(), design.tangentLength(), placed, vessel.origin().toShortString()));
         } catch (IllegalStateException blocked) {
             player.sendSystemMessage(Component.translatable("message.createcheme.equipment.blocked", blocked.getMessage()).withStyle(ChatFormatting.RED));
         }
+    }
+
+    private static void importColumn(ImportPayload payload, IPayloadContext context) {
+        if (!(context.player() instanceof ServerPlayer player)) return;
+        var constructor = editable(player, payload.position());
+        if (constructor == null) return;
+        var imported = constructor.importColumn(IMPORT_REACH);
+        if (imported.isEmpty()) {
+            player.sendSystemMessage(Component.translatable("message.createcheme.equipment.no_calculator", IMPORT_REACH).withStyle(ChatFormatting.RED));
+            return;
+        }
+        var design = imported.get();
+        constructor.apply(design);
+        player.sendSystemMessage(Component.translatable("message.createcheme.equipment.imported", design.trays().trays(), design.trays().feed(), design.diameter()));
     }
 }

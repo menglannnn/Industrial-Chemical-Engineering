@@ -24,9 +24,12 @@ import static org.junit.jupiter.api.Assertions.*;
  */
 class FluidPumpedFillLineTest {
     private static final PipeResistance.Geometry BLOCK=new PipeResistance.Geometry(1,.05,.000045,0);
-    /** W: a 0.1 m pipe block, the suction block the gas transfer needs since only pipes connect (decision D20): with a 0.05 m
-     * block the compressor closes on a suction junction 4.2 Pa below its tank (the block's friction at the closing flow),
-     * outside the 3 Pa this test states the ratio limit to; the wide block adds no measurable drop. */
+    /** W: a 0.1 m pipe block, the blocks the gas transfer needs on both sides of the compressor since only pipes connect
+     * (decision D20): the compressor holds its ratio between its own ends, so a tank misses it by the line's friction at
+     * the closing flow. With a 0.05 m suction block the compressor closed on a suction junction 4.2 Pa below its tank,
+     * outside the 3 Pa this test states the ratio limit to; since the compressor's halves take the line's bore (owner
+     * decision OD4 2026-10-16, batch 2026-10-15-custom-equipment-rendering), a 0.05 m discharge block leaves the
+     * discharge tank 7.2 Pa short. Wide blocks add no measurable drop. */
     private static final PipeResistance.Geometry WIDE=new PipeResistance.Geometry(1,.1,.000045,0);
     private static final long NANOS_PER_CHECKPOINT=1_000;
     private final FluidThermodynamics model=FluidTestSupport.networkModel();
@@ -173,7 +176,7 @@ class FluidPumpedFillLineTest {
      * evacuated the suction tank until it reached the model's 273.16 K floor after 21.9 s.)
      */
     @Test void aGasTransferClosesAtThePumpsScaledLimitAndCertifies() {
-        var rig=new Rig("RWCPR");
+        var rig=new Rig("RWCWR");
         rig.run(20*120,s->s.certificate().isPresent());
         System.out.println("gas transfer (compressor): "+rig.describe());
         var island=rig.island();var suction=tanks(island.graph()).getFirst().state();var discharge=tanks(island.graph()).getLast().state();

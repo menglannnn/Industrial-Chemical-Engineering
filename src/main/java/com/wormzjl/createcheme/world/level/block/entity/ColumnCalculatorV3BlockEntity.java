@@ -186,6 +186,9 @@ public final class ColumnCalculatorV3BlockEntity extends BlockEntity implements 
     private V3State published;
     /** What an opening screen may replay at once: the last published state, a cached read; empty until a bucket published one. */
     public Optional<V3State> published() { return Optional.ofNullable(published); }
+
+    /** The stored column design (an equipment constructor imports its trays): a read, nothing is solved or published. */
+    public V3ColumnInput currentInput() { return currentInput; }
     /** Recorded by the presentation bucket that published {@code state}. */
     public void markPublished(V3State state) {
         if (Objects.requireNonNull(state).clientNonce() != 0L) throw new IllegalArgumentException("A published snapshot acknowledges no client");

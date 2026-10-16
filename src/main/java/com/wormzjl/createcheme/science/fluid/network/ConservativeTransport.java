@@ -529,7 +529,7 @@ public final class ConservativeTransport {
             var reservoir=graph.reservoirs().get(node);if(index[node]<0||reservoir.junction())continue;
             checkpoint.run();var state=states.get(node);double capacity=reservoir.inventory().volume();
             double workFrom=reservoir.empty()?0:PhaseLayout.bagVolume(reservoir.state(),capacity);
-            var booked=new PassiveNetwork.Inventory(capacity,moles[node],energy[node],state.solids());
+            var booked=reservoir.inventory().with(moles[node],energy[node],state.solids());
             try{states.set(node,dryVessel(reservoir,supports,node)?InventoryEquilibrium.solve(model,state,booked,workFrom,checkpoint)
                     :InventoryEquilibrium.close(model,state,booked,supports==null?null:supports[node],workFrom,checkpoint));}
             catch(com.wormzjl.createcheme.science.fluid.thermo.ThermoDomainViolation violation){throw violation.at(reservoir.id());}
@@ -545,8 +545,8 @@ public final class ConservativeTransport {
             if(frozen&&oldNode.junction()){inventories.add(oldNode.inventory());continue;}
             // A junction's buffer record holds endMass*w and its energy field in enthalpy form (m*h, potential energy
             // excluded, as for a vessel's internal energy).
-            if(oldNode.junction()){inventories.add(new PassiveNetwork.Inventory(oldNode.inventory().volume(),ownedMoles[node],energy[node],ownedSolids[node]));continue;}
-            inventories.add(oldNode.fixed()?oldNode.inventory():new PassiveNetwork.Inventory(oldNode.inventory().volume(),moles[node],energy[node],state.solids()));
+            if(oldNode.junction()){inventories.add(oldNode.inventory().with(ownedMoles[node],energy[node],ownedSolids[node]));continue;}
+            inventories.add(oldNode.fixed()?oldNode.inventory():oldNode.inventory().with(moles[node],energy[node],state.solids()));
         }
         return new Projection(inventories,states,boundaries,external,externalEnergy,pumpWork,filters,held);
     }

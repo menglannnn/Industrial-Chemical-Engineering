@@ -1,6 +1,7 @@
 package com.wormzjl.createcheme.client.model;
 
 import com.wormzjl.createcheme.CreateChemE;
+import com.wormzjl.createcheme.science.equipment.Mesh;
 import com.wormzjl.createcheme.science.equipment.ShapeRasterizer;
 import com.wormzjl.createcheme.world.level.block.entity.EquipmentShellBlockEntity;
 import net.minecraft.client.renderer.RenderType;
@@ -42,14 +43,13 @@ public final class EquipmentShellModel implements IDynamicBakedModel {
     public static final IGeometryLoader<Geometry> LOADER = (json, context) -> new Geometry();
     private static final int CACHE = 4096;
     private static final ChunkRenderTypeSet SOLID = ChunkRenderTypeSet.of(RenderType.solid());
-    private final TextureAtlasSprite shell, head, support, particle;
+    private final TextureAtlasSprite[] sprites;
+    private final TextureAtlasSprite particle;
     /** Rebuilt with the model on every resource reload, since quads embed atlas coordinates. Meshing threads share it. */
     private final Map<ShapeRasterizer.CellKey, List<BakedQuad>> quads = new ConcurrentHashMap<>();
 
-    private EquipmentShellModel(TextureAtlasSprite shell, TextureAtlasSprite head, TextureAtlasSprite support, TextureAtlasSprite particle) {
-        this.shell = shell;
-        this.head = head;
-        this.support = support;
+    private EquipmentShellModel(TextureAtlasSprite[] sprites, TextureAtlasSprite particle) {
+        this.sprites = sprites;
         this.particle = particle;
     }
 
@@ -65,14 +65,28 @@ public final class EquipmentShellModel implements IDynamicBakedModel {
 
     /** Each convex polygon becomes a fan of quads; a last single triangle repeats its final vertex. */
     private List<BakedQuad> bake(ShapeRasterizer.CellKey key) {
+        return bake(ShapeRasterizer.surface(key), sprites);
+    }
+
+    /** Each convex polygon as a fan of quads, a last single triangle repeating its final vertex; sprites by material. */
+    public static List<BakedQuad> bake(List<Mesh.Polygon> polygons, TextureAtlasSprite[] sprites) {
         var out = new ArrayList<BakedQuad>();
-        for (var polygon : ShapeRasterizer.surface(key))
+        for (var polygon : polygons)
             for (int first = 1; first + 1 < polygon.size(); first += 2)
-                out.add(quad(polygon, 0, first, first + 1, Math.min(first + 2, polygon.size() - 1)));
+                out.add(quad(polygon, sprites[polygon.material().ordinal()], 0, first, first + 1, Math.min(first + 2, polygon.size() - 1)));
         return List.copyOf(out);
     }
 
-    private BakedQuad quad(ShapeRasterizer.Polygon polygon, int... corners) {
+    /** One sprite per material from the model's textures (named {@link Mesh.Material#texture()}), the particle where one is missing. */
+    public static TextureAtlasSprite[] sprites(IGeometryBakingContext context, Function<Material, TextureAtlasSprite> sprites) {
+        var particle = sprites.apply(context.getMaterial("particle"));
+        var out = new TextureAtlasSprite[Mesh.Material.values().length];
+        for (var material : Mesh.Material.values())
+            out[material.ordinal()] = context.hasMaterial(material.texture()) ? sprites.apply(context.getMaterial(material.texture())) : particle;
+        return out;
+    }
+
+    private static BakedQuad quad(Mesh.Polygon polygon, TextureAtlasSprite sprite, int... corners) {
         double[] p = polygon.positions(), uv = polygon.uvs(), n = polygon.normals();
         // Face direction from the corners' winding (Newell), for vanilla's directional shade.
         double fx = 0, fy = 0, fz = 0;
@@ -82,11 +96,6 @@ public final class EquipmentShellModel implements IDynamicBakedModel {
             fy += (p[a + 2] - p[b + 2]) * (p[a] + p[b]);
             fz += (p[a] - p[b]) * (p[a + 1] + p[b + 1]);
         }
-        var sprite = switch (polygon.material()) {
-            case SHELL -> shell;
-            case HEAD -> head;
-            case SUPPORT -> support;
-        };
         var baker = new QuadBakingVertexConsumer();
         baker.setSprite(sprite);
         baker.setTintIndex(-1);
@@ -136,12 +145,11 @@ public final class EquipmentShellModel implements IDynamicBakedModel {
         return ItemOverrides.EMPTY;
     }
 
-    /** {@code "loader": "createcheme:equipment_shell"} with textures {@code shell}, {@code head}, {@code support} and {@code particle}. */
+    /** {@code "loader": "createcheme:equipment_shell"} with a texture per material ({@link #sprites}) and {@code particle}. */
     public record Geometry() implements IUnbakedGeometry<Geometry> {
         @Override
         public BakedModel bake(IGeometryBakingContext context, ModelBaker baker, Function<Material, TextureAtlasSprite> sprites, ModelState state, ItemOverrides overrides) {
-            return new EquipmentShellModel(sprites.apply(context.getMaterial("shell")), sprites.apply(context.getMaterial("head")),
-                    sprites.apply(context.getMaterial("support")), sprites.apply(context.getMaterial("particle")));
+            return new EquipmentShellModel(sprites(context, sprites), sprites.apply(context.getMaterial("particle")));
         }
     }
 }

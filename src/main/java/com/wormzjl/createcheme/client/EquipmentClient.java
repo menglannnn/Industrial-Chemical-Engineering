@@ -37,6 +37,7 @@ public final class EquipmentClient {
     @SubscribeEvent
     public static void registerGeometryLoaders(ModelEvent.RegisterGeometryLoaders event) {
         event.register(EquipmentShellModel.LOADER_ID, EquipmentShellModel.LOADER);
+        event.register(com.wormzjl.createcheme.client.model.FluidDeviceModel.LOADER_ID, com.wormzjl.createcheme.client.model.FluidDeviceModel.LOADER);
     }
 
     /** Called by the constructor block on the client only: open its design screen. */

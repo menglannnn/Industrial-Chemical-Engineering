@@ -37,29 +37,52 @@ public final class FluidDeviceBlock extends BaseEntityBlock {
     @Override public MapCodec<FluidDeviceBlock> codec(){return CODEC;}
     @Override protected void createBlockStateDefinition(StateDefinition.Builder<Block,BlockState> builder){builder.add(FACING);for(var property:CONNECTIONS.values())builder.add(property);}
     @Override public RenderShape getRenderShape(BlockState state){return RenderShape.MODEL;}
+    /** Pipe shapes by drawn outside code and connected faces. */
+    private static final java.util.Map<Integer,net.minecraft.world.phys.shapes.VoxelShape> PIPE_SHAPES=new java.util.concurrent.ConcurrentHashMap<>();
+    /** A pipe's shape follows its drawn outside diameter (at least 3/16 block across, so a thin line can be aimed at); devices fill their block. */
     @Override protected net.minecraft.world.phys.shapes.VoxelShape getShape(BlockState state,BlockGetter level,BlockPos position,net.minecraft.world.phys.shapes.CollisionContext context) {
         if(kind!=TopologyCompiler.Kind.PIPE)return super.getShape(state,level,position,context);
-        var shape=Block.box(5,5,5,11,11,11);
-        for(var direction:Direction.values())if(state.getValue(CONNECTIONS.get(direction))) {
-            var arm=switch(direction){case DOWN->Block.box(6,0,6,10,6,10);case UP->Block.box(6,10,6,10,16,10);case NORTH->Block.box(6,6,0,10,10,6);case SOUTH->Block.box(6,6,10,10,10,16);case WEST->Block.box(0,6,6,6,10,10);case EAST->Block.box(10,6,6,16,10,10);};
+        double bore=level.getBlockEntity(position) instanceof FluidDeviceBlockEntity entity?entity.bore():.05;
+        int code=com.wormzjl.createcheme.science.equipment.PipeSizes.code(com.wormzjl.createcheme.science.equipment.PipeSizes.outside(bore)),mask=0;
+        for(var direction:Direction.values())if(state.getValue(CONNECTIONS.get(direction)))mask|=1<<direction.ordinal();
+        // Unconnected, it lies along its facing as drawn.
+        if(mask==0)mask=3<<(state.getValue(FACING).ordinal()&~1);
+        return PIPE_SHAPES.computeIfAbsent(code<<6|mask,FluidDeviceBlock::pipeShape);
+    }
+    private static net.minecraft.world.phys.shapes.VoxelShape pipeShape(int key) {
+        double h=Math.max(com.wormzjl.createcheme.science.equipment.PipeSizes.outsideOf(key>>6)/2,3/32.0)*16,lo=8-h,hi=8+h;
+        var shape=Block.box(lo,lo,lo,hi,hi,hi);
+        for(var direction:Direction.values())if((key>>direction.ordinal()&1)!=0) {
+            var arm=switch(direction){case DOWN->Block.box(lo,0,lo,hi,8,hi);case UP->Block.box(lo,8,lo,hi,16,hi);case NORTH->Block.box(lo,lo,0,hi,hi,8);
+                case SOUTH->Block.box(lo,lo,8,hi,hi,16);case WEST->Block.box(0,lo,lo,8,hi,hi);case EAST->Block.box(8,lo,lo,16,hi,hi);};
             shape=net.minecraft.world.phys.shapes.Shapes.or(shape,arm);
         }
-        return shape;
+        return shape.optimize();
     }
     @Override public @Nullable BlockEntity newBlockEntity(BlockPos position,BlockState state){return new FluidDeviceBlockEntity(position,state);}
+    /** Only pipes and valves may stand in a vertical line (owner decision 2026-10-16); every other device faces a horizontal direction. */
+    public static boolean vertical(TopologyCompiler.Kind kind){return kind==TopologyCompiler.Kind.PIPE||kind==TopologyCompiler.Kind.VALVE;}
     @Override public @Nullable BlockState getStateForPlacement(BlockPlaceContext context) {
-        var state=defaultBlockState().setValue(FACING,context.getNearestLookingDirection().getOpposite());
-        for(var direction:Direction.values())state=state.setValue(CONNECTIONS.get(direction),connects(state,context.getLevel().getBlockState(context.getClickedPos().relative(direction)),direction));return state;
+        var facing=vertical(kind)?context.getNearestLookingDirection().getOpposite():context.getHorizontalDirection().getOpposite();
+        var state=defaultBlockState().setValue(FACING,facing);
+        for(var direction:Direction.values()){var at=context.getClickedPos().relative(direction);state=state.setValue(CONNECTIONS.get(direction),connects(state,context.getLevel(),at,context.getLevel().getBlockState(at),direction));}
+        return state;
     }
+    public static BooleanProperty connection(Direction direction){return CONNECTIONS.get(direction);}
     private static boolean boundary(TopologyCompiler.Kind kind){return kind==TopologyCompiler.Kind.RESERVOIR||kind==TopologyCompiler.Kind.GENERATOR||kind==TopologyCompiler.Kind.VOID;}
     private static boolean face(BlockState state,Direction direction) {
         var block=(FluidDeviceBlock)state.getBlock();return block.kind!=TopologyCompiler.Kind.PUMP&&block.kind!=TopologyCompiler.Kind.COMPRESSOR&&block.kind!=TopologyCompiler.Kind.VALVE&&block.kind!=TopologyCompiler.Kind.FILTER||state.getValue(FACING).getAxis()==direction.getAxis();
     }
-    private static boolean connects(BlockState state,BlockState neighbor,Direction direction) {
-        return neighbor.getBlock() instanceof FluidDeviceBlock other&&!(boundary(((FluidDeviceBlock)state.getBlock()).kind)&&boundary(other.kind))&&face(state,direction)&&face(neighbor,direction.getOpposite());
+    /** Whether this block meets its neighbour towards {@code direction}: another device by the rules above, or, for a pipe, a vessel nozzle facing it. */
+    private static boolean connects(BlockState state,BlockGetter level,BlockPos neighborPosition,BlockState neighbor,Direction direction) {
+        if(neighbor.getBlock() instanceof FluidDeviceBlock other)return !(boundary(((FluidDeviceBlock)state.getBlock()).kind)&&boundary(other.kind))&&face(state,direction)&&face(neighbor,direction.getOpposite());
+        return ((FluidDeviceBlock)state.getBlock()).kind==TopologyCompiler.Kind.PIPE&&neighbor.getBlock() instanceof EquipmentShellBlock
+                &&level.getBlockEntity(neighborPosition) instanceof com.wormzjl.createcheme.world.level.block.entity.EquipmentShellBlockEntity shell&&shell.nozzleFacing(direction.getOpposite())!=null;
     }
     @Override protected BlockState updateShape(BlockState state,Direction direction,BlockState neighbor,LevelAccessor level,BlockPos position,BlockPos neighborPosition) {
-        return super.updateShape(state.setValue(CONNECTIONS.get(direction),connects(state,neighbor,direction)),direction,neighbor,level,position,neighborPosition);
+        // The drawn faces follow the new connections once the state is in the world.
+        if(level instanceof ServerLevel server)server.getServer().execute(()->{if(server.getBlockEntity(position) instanceof FluidDeviceBlockEntity entity)entity.refreshFacesAndSync();});
+        return super.updateShape(state.setValue(CONNECTIONS.get(direction),connects(state,level,neighborPosition,neighbor,direction)),direction,neighbor,level,position,neighborPosition);
     }
     @Override protected void onPlace(BlockState state,Level level,BlockPos position,BlockState previous,boolean moved) {
         super.onPlace(state,level,position,previous,moved);if(!(level instanceof ServerLevel serverLevel))return;

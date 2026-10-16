@@ -2,6 +2,12 @@ package com.wormzjl.createcheme.world.level.block;
 
 import com.mojang.serialization.MapCodec;
 import com.wormzjl.createcheme.client.EquipmentClient;
+import com.wormzjl.createcheme.registry.ModItems;
+import com.wormzjl.createcheme.science.equipment.ShapeRasterizer;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.InteractionHand;
+import net.minecraft.world.ItemInteractionResult;
+import net.minecraft.world.item.ItemStack;
 import com.wormzjl.createcheme.world.level.block.entity.EquipmentShellBlockEntity;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.InteractionResult;
@@ -53,6 +59,14 @@ public final class EquipmentShellBlock extends BaseEntityBlock {
                 ? EquipmentStructure.collision(shell.key()) : Shapes.block();
     }
 
+    /** A column's ladder is climbed where the entity stands in front of its rungs, inside its cage (not anywhere in its cells). */
+    @Override
+    public boolean isLadder(BlockState state, net.minecraft.world.level.LevelReader level, BlockPos position, net.minecraft.world.entity.LivingEntity entity) {
+        if (!(level.getBlockEntity(position) instanceof EquipmentShellBlockEntity shell) || shell.shape() == null || !shell.shape().column()) return false;
+        var origin = shell.origin();
+        return ShapeRasterizer.climbable(shell.shape(), entity.getX() - origin.getX(), entity.getY() - origin.getY(), entity.getZ() - origin.getZ());
+    }
+
     @Override
     protected VoxelShape getOcclusionShape(BlockState state, BlockGetter level, BlockPos position) {
         return Shapes.empty();
@@ -78,11 +92,44 @@ public final class EquipmentShellBlock extends BaseEntityBlock {
         return false;
     }
 
-    /** Using any cell opens the vessel's screen (its controller's datasheet), built on the client from synced cells. */
+    /**
+     * Using any cell of a drum opens its tank screen, as a one-block tank's does; sneaking, or using a column, opens the
+     * vessel's datasheet, built on the client from synced cells.
+     */
     @Override
     protected InteractionResult useWithoutItem(BlockState state, Level level, BlockPos position, Player player, BlockHitResult hit) {
-        if (level.isClientSide()) EquipmentClient.openVessel(position);
+        if (!opensTank(level, position, player) && level.isClientSide()) EquipmentClient.openVessel(position);
+        else if (player instanceof ServerPlayer server && opensTank(level, position, player)) openTank(level, position, server, false);
         return InteractionResult.sidedSuccess(level.isClientSide());
+    }
+
+    /** The fluid debugger opens the drum's tank screen with its diagnostics. */
+    @Override
+    protected ItemInteractionResult useItemOn(ItemStack stack, BlockState state, Level level, BlockPos position, Player player, InteractionHand hand, BlockHitResult hit) {
+        if (!stack.is(ModItems.FLUID_DEBUGGER.get()) || !opensTank(level, position, player)) return ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION;
+        if (player instanceof ServerPlayer server) openTank(level, position, server, true);
+        return ItemInteractionResult.sidedSuccess(level.isClientSide());
+    }
+
+    /** Both sides decide alike: the cells carry the shape, and sneaking is synced. */
+    private static boolean opensTank(Level level, BlockPos position, Player player) {
+        return !player.isSecondaryUseActive() && level.getBlockEntity(position) instanceof EquipmentShellBlockEntity shell && shell.shape() != null && !shell.shape().column();
+    }
+
+    private static void openTank(Level level, BlockPos position, ServerPlayer player, boolean debug) {
+        var shell = (EquipmentShellBlockEntity) level.getBlockEntity(position);
+        var cell = ShapeRasterizer.fluidCell(shell.shape());
+        var node = shell.origin().offset(cell.x(), cell.y(), cell.z());
+        if (level.isLoaded(node) && level.getBlockEntity(node) instanceof EquipmentShellBlockEntity entity) entity.open(player, debug);
+    }
+
+    /** A pipe placed, removed or changed in front of a nozzle: the vessel redraws its nozzles at the pipe's size. */
+    @Override
+    protected void neighborChanged(BlockState state, Level level, BlockPos position, net.minecraft.world.level.block.Block neighbor, BlockPos neighborPosition, boolean moved) {
+        super.neighborChanged(state, level, position, neighbor, neighborPosition, moved);
+        if (!level.isClientSide() && level instanceof net.minecraft.server.level.ServerLevel server)
+            // After the pipe's own shape update has taken its connection.
+            server.getServer().execute(() -> EquipmentStructure.refreshNozzlesAt(level, position));
     }
 
     @Override

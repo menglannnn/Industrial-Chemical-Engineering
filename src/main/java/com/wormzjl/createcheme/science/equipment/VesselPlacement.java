@@ -11,23 +11,33 @@ public record VesselPlacement(int forward, int right, int up) {
     public static final int MAX_FORWARD = 16, MAX_SHIFT = 16;
     public static final VesselPlacement DEFAULT = new VesselPlacement(1, 0, 0);
 
-    /** Standing, or lying with its axis along the constructor's facing (lengthwise) or across it (crosswise). */
+    /**
+     * A drum standing, or lying with its axis along the constructor's facing (lengthwise) or across it (crosswise); or a
+     * distillation column (owner request 2026-10-16).
+     */
     public enum Form {
-        VERTICAL, LENGTHWISE, CROSSWISE;
+        VERTICAL, LENGTHWISE, CROSSWISE, COLUMN;
 
         public Form next() {
             return values()[(ordinal() + 1) % values().length];
         }
 
-        /** The vessel's orientation in the world for a constructor facing the horizontal unit step (stepX, stepZ). */
-        public EquipmentShape.Orientation orientation(int stepX, int stepZ) {
+        public EquipmentShape.Orientation orientation() {
+            return this == LENGTHWISE || this == CROSSWISE ? EquipmentShape.Orientation.HORIZONTAL : EquipmentShape.Orientation.VERTICAL;
+        }
+
+        public boolean column() {
+            return this == COLUMN;
+        }
+
+        /**
+         * The vessel's front for a constructor facing the horizontal unit step (stepX, stepZ): back towards the constructor
+         * (a standing drum's liquid outlet, a lengthwise drum's front head, a column's piping side), or a crosswise drum's
+         * front head to the constructor's right.
+         */
+        public EquipmentShape.Heading front(int stepX, int stepZ) {
             if (Math.abs(stepX) + Math.abs(stepZ) != 1) throw new IllegalArgumentException("Facing must be a horizontal unit step");
-            boolean facingX = stepX != 0;
-            return switch (this) {
-                case VERTICAL -> EquipmentShape.Orientation.VERTICAL;
-                case LENGTHWISE -> facingX ? EquipmentShape.Orientation.ALONG_X : EquipmentShape.Orientation.ALONG_Z;
-                case CROSSWISE -> facingX ? EquipmentShape.Orientation.ALONG_Z : EquipmentShape.Orientation.ALONG_X;
-            };
+            return this == CROSSWISE ? EquipmentShape.Heading.of(-stepZ, stepX) : EquipmentShape.Heading.of(-stepX, -stepZ);
         }
     }
 

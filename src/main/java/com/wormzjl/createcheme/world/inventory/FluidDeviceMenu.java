@@ -3,7 +3,7 @@ package com.wormzjl.createcheme.world.inventory;
 import com.wormzjl.createcheme.network.FluidNetwork;
 import com.wormzjl.createcheme.registry.ModMenus;
 import com.wormzjl.createcheme.runtime.fluid.FluidWorldAuthority;
-import com.wormzjl.createcheme.world.level.block.entity.FluidDeviceBlockEntity;
+import com.wormzjl.createcheme.runtime.fluid.FluidView;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.server.level.ServerPlayer;
@@ -22,6 +22,8 @@ public final class FluidDeviceMenu extends AbstractContainerMenu {
     private final BlockPos position;
     private final long identity;
     private final boolean debug;
+    /** How far from {@code position} the player may stand: {@link #REACH} for a block, more for a drum, whose node is one of many cells. */
+    private final double reach;
     private final ServerPlayer serverPlayer;
     private long lastEditTick=Long.MIN_VALUE;
     private FluidNetwork.MenuData clientData;
@@ -30,17 +32,22 @@ public final class FluidDeviceMenu extends AbstractContainerMenu {
     private long messageRevision;
     /** The client's menu: shows the last state delivered for this device, if this session has one, until its first bucket. */
     public FluidDeviceMenu(int id,Inventory inventory,RegistryFriendlyByteBuf buffer) {
-        this(id,inventory,buffer.readBlockPos(),buffer.readLong(),buffer.readBoolean());
+        this(id,inventory,buffer.readBlockPos(),buffer.readLong(),buffer.readBoolean(),buffer.readDouble());
         clientData=FluidNetwork.lastDelivered(identity);
     }
-    public FluidDeviceMenu(int id,Inventory inventory,BlockPos position,long identity,boolean debug) {
-        super(ModMenus.FLUID_DEVICE.get(),id);this.position=position.immutable();this.identity=identity;this.debug=debug;serverPlayer=inventory.player instanceof ServerPlayer p?p:null;
+    /** A one-block device's menu: valid within {@link #REACH} of the block. */
+    public FluidDeviceMenu(int id,Inventory inventory,BlockPos position,long identity,boolean debug){this(id,inventory,position,identity,debug,REACH);}
+    /** A device's menu valid within {@code reach} of {@code position}: a drum's reach grows with its size. */
+    public FluidDeviceMenu(int id,Inventory inventory,BlockPos position,long identity,boolean debug,double reach) {
+        super(ModMenus.FLUID_DEVICE.get(),id);this.position=position.immutable();this.identity=identity;this.debug=debug;this.reach=reach;serverPlayer=inventory.player instanceof ServerPlayer p?p:null;
         // Subscribe first; the block sends cached data after openMenu finishes installing this menu.
         if(serverPlayer!=null&&serverPlayer.server.isSameThread())FluidWorldAuthority.find(serverPlayer.server).ifPresent(world->world.subscribe(this));
     }
     public BlockPos position(){return position;}
     public long identity(){return identity;}
     public boolean debug(){return debug;}
+    /** The reach of a one-block device. */
+    public static final double REACH=8;
     /** The server player this menu belongs to, or null on the client. */
     public ServerPlayer serverPlayer(){return serverPlayer;}
     public FluidNetwork.MenuData clientData(){return clientData;}
@@ -56,8 +63,8 @@ public final class FluidDeviceMenu extends AbstractContainerMenu {
     }
     public boolean admitEdit(long tick){if(lastEditTick!=Long.MIN_VALUE&&tick-lastEditTick<5)return false;lastEditTick=tick;return true;}
     @Override public boolean stillValid(Player player) {
-        var level=player.level();return level.hasChunkAt(position)&&player.distanceToSqr(position.getX()+.5,position.getY()+.5,position.getZ()+.5)<=64
-                &&level.getBlockEntity(position) instanceof FluidDeviceBlockEntity entity&&entity.fluidIdentity()==identity;
+        var level=player.level();return level.hasChunkAt(position)&&player.distanceToSqr(position.getX()+.5,position.getY()+.5,position.getZ()+.5)<=reach*reach
+                &&level.getBlockEntity(position) instanceof FluidView.Receiver receiver&&receiver.fluidIdentity()==identity;
     }
     @Override public ItemStack quickMoveStack(Player player,int index){return ItemStack.EMPTY;}
     /** Closing ends the subscription; a menu that is simply abandoned is dropped at its next bucket. */

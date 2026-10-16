@@ -37,7 +37,7 @@ public final class TankOutlets {
                     if(massFlow>0)drawn=leading(out,weights);
                 }
                 double head=port==PassiveNetwork.PhasePort.LIQUID&&!tank.empty()
-                        ?PassiveStepSolver.GRAVITY*model.liquidMass(tank.state())*PassiveStepSolver.LEVEL_HEAD_HEIGHT/tank.inventory().volume():0;
+                        ?PassiveStepSolver.GRAVITY*model.liquidMass(tank.state())*tank.inventory().levelHeight()/tank.inventory().volume():0;
                 var face=faces.get(pipe.id());
                 if(face==null)throw new IllegalStateException("No compiled face for tank connection "+pipe.id());
                 outlets.add(new FluidView.Outlet(pipe.id(),face,port,massFlow,moleFlow,drawn,head));

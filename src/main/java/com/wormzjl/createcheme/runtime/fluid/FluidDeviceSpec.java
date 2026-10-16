@@ -5,15 +5,22 @@ import com.wormzjl.createcheme.science.fluid.thermo.FluidThermodynamics;
 import com.wormzjl.createcheme.science.fluid.topology.TopologyCompiler;
 import java.util.*;
 
-/** Validated persisted initialization/boundary settings. Finite reservoir contents live only in the world ledger. */
-public record FluidDeviceSpec(double volume,double temperature,double pressure,double[] composition,SlurryFeed solids) {
+/**
+ * Validated persisted initialization/boundary settings. Finite reservoir contents live only in the world ledger. A
+ * reservoir's {@code volume} and {@code levelHeight} are its vessel's (a one-block tank's capacity over 1 m; a drum's
+ * design volume over its height, batch 2026-10-15-custom-equipment-rendering), fixed once it is placed.
+ */
+public record FluidDeviceSpec(double volume,double temperature,double pressure,double[] composition,SlurryFeed solids,double levelHeight) {
+    /** The largest vessel volume, m³ (a 10 m drum 64 m long holds about 5,300 m³), and the tallest level height, m. */
+    public static final double MAX_VOLUME=10_000,MAX_LEVEL_HEIGHT=128;
     public FluidDeviceSpec(double volume,double temperature,double pressure,double[] composition){this(volume,temperature,pressure,composition,SlurryFeed.NONE);}
+    public FluidDeviceSpec(double volume,double temperature,double pressure,double[] composition,SlurryFeed solids){this(volume,temperature,pressure,composition,solids,com.wormzjl.createcheme.science.fluid.network.PassiveStepSolver.LEVEL_HEAD_HEIGHT);}
     public FluidDeviceSpec {
         Objects.requireNonNull(solids);composition=composition.clone();
         // Structural bounds only. Where a temperature and pressure may be evaluated depends on the property package
         // and on what the device holds, so it is checked against the model (validate, initialize), with the dedicated
         // thermo-domain error, not against constants here.
-        if(!Double.isFinite(volume)||volume<=0||volume>1000||!Double.isFinite(temperature)||!(temperature>0)||!Double.isFinite(pressure)||!(pressure>0)||(composition.length<1||composition.length>com.wormzjl.createcheme.science.material.MaterialAxis.MAX_CONSERVED_COMPONENTS))throw new IllegalArgumentException("Device settings outside the fluid model's bounds");
+        if(!Double.isFinite(volume)||volume<=0||volume>MAX_VOLUME||!Double.isFinite(levelHeight)||levelHeight<=0||levelHeight>MAX_LEVEL_HEIGHT||!Double.isFinite(temperature)||!(temperature>0)||!Double.isFinite(pressure)||!(pressure>0)||(composition.length<1||composition.length>com.wormzjl.createcheme.science.material.MaterialAxis.MAX_CONSERVED_COMPONENTS))throw new IllegalArgumentException("Device settings outside the fluid model's bounds");
         double sum=0;for(double amount:composition){if(!Double.isFinite(amount)||amount<0)throw new IllegalArgumentException("Invalid composition");sum+=amount;}
         if(!Double.isFinite(sum)||sum<=0)throw new IllegalArgumentException("Empty composition");
         if(Math.abs(sum-1)>1e-12)for(int i=0;i<composition.length;i++)composition[i]/=sum;
@@ -50,7 +57,7 @@ public record FluidDeviceSpec(double volume,double temperature,double pressure,d
         validate(model,device.kind());
         var kind=switch(device.kind()) {case RESERVOIR->PassiveNetwork.NodeKind.RESERVOIR;case GENERATOR->PassiveNetwork.NodeKind.GENERATOR;case VOID->PassiveNetwork.NodeKind.VOID;default->throw new IllegalArgumentException("Pipes and actuators have no owned reservoir");};
         // Decision D54: a placed reservoir holds nothing; it fills from what its connections deliver.
-        if(kind==PassiveNetwork.NodeKind.RESERVOIR)return PassiveNetwork.emptyVessel(device.id(),device.position().y(),volume,model);
+        if(kind==PassiveNetwork.NodeKind.RESERVOIR)return PassiveNetwork.emptyVessel(device.id(),device.position().y(),volume,levelHeight,model);
         FluidThermodynamics.State state;
         if(kind==PassiveNetwork.NodeKind.VOID)state=model.initialNitrogenCharge(volume,temperature,pressure,checkpoint);
         else {
@@ -63,6 +70,6 @@ public record FluidDeviceSpec(double volume,double temperature,double pressure,d
         }
         return new PassiveNetwork.Reservoir(device.id(),device.position().y(),state,kind,new PassiveNetwork.Inventory(volume,com.wormzjl.createcheme.science.fluid.solver.PhaseLayout.totalAmounts(state),state.internalEnergy(),state.solids()));
     }
-    @Override public boolean equals(Object value){return value instanceof FluidDeviceSpec other&&volume==other.volume&&temperature==other.temperature&&pressure==other.pressure&&Arrays.equals(composition,other.composition)&&solids.equals(other.solids);}
-    @Override public int hashCode(){return 31*Objects.hash(volume,temperature,pressure,solids)+Arrays.hashCode(composition);}
+    @Override public boolean equals(Object value){return value instanceof FluidDeviceSpec other&&volume==other.volume&&levelHeight==other.levelHeight&&temperature==other.temperature&&pressure==other.pressure&&Arrays.equals(composition,other.composition)&&solids.equals(other.solids);}
+    @Override public int hashCode(){return 31*Objects.hash(volume,levelHeight,temperature,pressure,solids)+Arrays.hashCode(composition);}
 }

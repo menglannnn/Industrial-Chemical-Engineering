@@ -1,5 +1,6 @@
 package com.wormzjl.createcheme.client.gui.screens.inventory;
 
+import com.wormzjl.createcheme.client.gui.common.ColumnDiagram;
 import com.wormzjl.createcheme.client.gui.common.ProcessUi;
 import com.wormzjl.createcheme.client.gui.common.ComponentDropdown;
 import com.wormzjl.createcheme.client.gui.common.ComponentSearch;
@@ -403,16 +404,13 @@ public final class ColumnCalculatorV3Screen extends AbstractContainerScreen<Colu
     private void diagram(GuiGraphics g){
         int x=sx(cx()),top=sy(trayY(0)-12),bottom=sy(columnBottom()),n=stageCount();
         g.enableScissor(leftPos+10,topPos+CONTENT,leftPos+10+canvasWidth(),topPos+bodyBottom()-12);
-        g.fill(x-24,top+10,x+25,bottom-10,PANEL);
-        for(int dy=0;dy<10;dy++){int inset=10-(int)Math.sqrt(100-(10-dy)*(10-dy));
-            g.hLine(x-24+inset,x+24-inset,top+dy,LINE);g.hLine(x-24+inset,x+24-inset,bottom-dy,LINE);}
-        g.vLine(x-25,top+10,bottom-10,LINE);g.vLine(x+25,top+10,bottom-10,LINE);
+        ColumnDiagram.shell(g,x,top,bottom,PANEL,LINE);
         var view=inspection();double min=view==null?0:view.nodes().stream().mapToDouble(V3ColumnInspection.Node::temperatureKelvin).min().orElse(0);
         double max=view==null?1:view.nodes().stream().mapToDouble(V3ColumnInspection.Node::temperatureKelvin).max().orElse(1);
         for(int node=0;node<n+2;node++){
             int y=sy(trayY(node)),at=node;
             int color=view==null?MUTED:temperatureColor((view.nodes().get(node).temperatureKelvin()-min)/Math.max(1e-9,max-min));
-            g.hLine(x-20,x+20,y,color);
+            ColumnDiagram.tray(g,x,y,color);
             if(node==selectedNode)g.renderOutline(x-23,y-2,47,5,TEXT);
             if(node==0||node==n+1||(node+1)%5==0&&node<=n-2){
                 int labelY=node==0?y-9:node==n+1?y+2:y-4;
@@ -423,24 +421,22 @@ public final class ColumnCalculatorV3Screen extends AbstractContainerScreen<Colu
             hit(x-24,hitY,49,hitHeight,()->{selectedNode=at;railScroll.value=0;rebuild();},tr(node==0?"inspect_top":node==n+1?"inspect_bottom":"inspect_tray",node+1));
         }
         int fy=sy(trayY(feedTray()));
-        g.hLine(sx(5),x-26,fy,ACCENT);text(g,tr("feed_icon"),sx(5),fy-11,ACCENT,125);
+        ColumnDiagram.feed(g,x,sx(5),fy,ACCENT);text(g,tr("feed_icon"),sx(5),fy-11,ACCENT,125);
         hit(sx(5),fy-13,Math.min(125,font.width(tr("feed_icon"))+8),13,()->changePage(1),tr("feed_icon.hint"));
         for(int i=0;i<V3ColumnInput.MAX_SIDE_DRAWS;i++)if(!draft.get("d"+i+"stage").isBlank()){
             int at=draft.preview("d"+i+"stage",2,2,n+2)-1,y=sy(trayY(at)),id=i;
-            g.hLine(x+26,x+39,y,ACCENT);text(g,tr("draw_icon",i+1),x+27,y-9,ACCENT,26);
+            ColumnDiagram.draw(g,x,y,ACCENT);text(g,tr("draw_icon",i+1),x+27,y-9,ACCENT,26);
             hit(x+26,y-11,28,13,()->{selectedDraw=id;selectedPA=selectedSteam=-1;rebuild();},tr("draw_icon.hint",i+1,at+1));
         }
         for(int i=0;i<4;i++)if(!draft.get("c"+i+"draw").isBlank()){
             int a=sy(trayY(draft.preview("c"+i+"draw",3,2,n+2)-1)),b=sy(trayY(draft.preview("c"+i+"return",2,2,n+2)-1));
-            int lane=x-34-i*7,mid=(a+b)/2,id=i;
-            g.vLine(lane,Math.min(a,b),Math.max(a,b),WARN);g.hLine(lane,x-26,a,WARN);g.hLine(lane,x-26,b,WARN);
+            int lane=ColumnDiagram.pumparound(g,x,i,a,b,WARN),mid=(a+b)/2,id=i;
             text(g,tr("pa_icon",i+1),lane-24,mid-4,WARN,24);
             hit(lane-25,mid-6,29,13,()->{selectedPA=id;selectedDraw=selectedSteam=-1;rebuild();},tr("pa_icon.hint",i+1));
         }
         for(int i=0;i<2;i++)if(!draft.get("t"+i+"stage").isBlank()){
             int at=draft.preview("t"+i+"stage",n+2,2,n+2)-1,y=sy(trayY(at)),id=i;
-            int start=x-82-i*8;
-            for(int dx=start;dx<x-26;dx+=5)g.hLine(dx,Math.min(dx+2,x-26),y,WARN);
+            int start=ColumnDiagram.steam(g,x,i,y,WARN);
             text(g,tr("steam_icon",i+1),start-22,y-10,WARN,26);
             hit(start-24,y-12,32,14,()->{selectedSteam=id;selectedDraw=selectedPA=-1;rebuild();},tr("steam_icon.hint",i+1,at+1));
         }

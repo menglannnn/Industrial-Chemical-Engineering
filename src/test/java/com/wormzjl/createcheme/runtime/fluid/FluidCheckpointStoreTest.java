@@ -103,7 +103,7 @@ class FluidCheckpointStoreTest extends CertifyingRig.Islands {
         assertEquals(Set.of("fluid-1.pack"),packs(folder),"one pack: every unit of the first save");assertTrue(Files.exists(core(folder)));
         assertEquals(5,data.lastSave().payloadsEncoded());assertTrue(data.lastSave().topologyEncoded());
         var tag=NbtIo.readCompressed(core(folder),NbtAccounter.unlimitedHeap()).getCompound("data");
-        assertEquals(8,tag.getInt("FluidFormat"));assertEquals(1_234,tag.getLong("Epoch"));
+        assertEquals(9,tag.getInt("FluidFormat"));assertEquals(1_234,tag.getLong("Epoch"));
         var rows=tag.getCompound("Islands");
         assertEquals(FluidCheckpointCodec.AWAKE,rows.getLongArray("Base")[CheckpointImages.row(tag,4)]);
         assertEquals(checkpoint.islands().get(1).snapshot().certificate().orElseThrow().baseTick(),rows.getLongArray("Base")[CheckpointImages.row(tag,2)]);

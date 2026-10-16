@@ -1906,10 +1906,11 @@ public final class PassiveStepSolver {
         return endPressure(reservoir,pipe.portAt(node),reservoir.state());
     }
     /**
-     * The height every vessel's level head is stated over (decision D9, option B of
-     * documentation/2026-09-26-phase-ports-and-compressor/LEVEL_HEAD_REVIEW.md): one metre, the one-block tank's own
-     * height at the default 1 m3 volume. A constant, not a setting: a prismatic tank of this height over the footprint
-     * {@code V/H}. Multi-block tanks, when they exist, state their structure's height here instead.
+     * The height a one-block tank's level head is stated over (decision D9, option B of
+     * documentation/2026-09-26-phase-ports-and-compressor/LEVEL_HEAD_REVIEW.md): one metre, its own height at the default
+     * 1 m3 volume, a prismatic tank of this height over the footprint {@code V/H}. A drum states its own height in its
+     * inventory ({@link PassiveNetwork.Inventory#levelHeight}; batch 2026-10-15-custom-equipment-rendering): its
+     * apex-to-apex length standing, its diameter lying.
      */
     public static final double LEVEL_HEAD_HEIGHT=1;
     /**
@@ -1919,8 +1920,8 @@ public final class PassiveStepSolver {
      * {@code A = V/H}:
      *
      * <p>{@code h = g * m_c * H / V}, with {@code m_c} the condensed mass of {@code state} (hydrocarbon liquid, free water
-     * and every solid, {@link FluidThermodynamics#liquidMass}), {@code H} = {@link #LEVEL_HEAD_HEIGHT} and {@code V} the
-     * vessel's inventory volume (its identity, not the trial state's EOS volume).
+     * and every solid, {@link FluidThermodynamics#liquidMass}), {@code H} the vessel's level height and {@code V} the
+     * vessel's inventory volume (both its identity, {@link PassiveNetwork.Inventory}, not the trial state's EOS volume).
      *
      * <p>Linear in the decoded condensed amounts and independent of T and P except through the phase split; every caller
      * evaluates it on the state it is stating a pressure for (the hydraulic row on the Newton's trial state, so the block
@@ -1935,7 +1936,7 @@ public final class PassiveStepSolver {
     static double portHead(FluidThermodynamics model,PassiveNetwork.Reservoir node,PassiveNetwork.PhasePort port,FluidThermodynamics.State state) {
         if(port!=PassiveNetwork.PhasePort.LIQUID||node.kind()!=PassiveNetwork.NodeKind.RESERVOIR&&node.kind()!=PassiveNetwork.NodeKind.PORT)return 0;
         double condensed=model.liquidMass(state);
-        return condensed>0?GRAVITY*condensed*LEVEL_HEAD_HEIGHT/node.inventory().volume():0;
+        return condensed>0?GRAVITY*condensed*node.inventory().levelHeight()/node.inventory().volume():0;
     }
     /**
      * The density of what leaves a node through {@code port} at a vanishing flow: the bulk {@code mass/volume} at a BULK
@@ -2806,7 +2807,7 @@ public final class PassiveStepSolver {
             var node=graph.reservoirs().get(i);var stock=node.inventory();
             double work=PhaseLayout.AMBIENT_PRESSURE*PhaseLayout.bagVolume(node.state(),stock.volume());
             nodes.set(i,new PassiveNetwork.Reservoir(node.id(),node.elevation(),node.state(),PassiveNetwork.NodeKind.JUNCTION,
-                    new PassiveNetwork.Inventory(stock.volume(),stock.moles(),stock.internalEnergy()+work,stock.solids())));
+                    stock.with(stock.moles(),stock.internalEnergy()+work,stock.solids())));
         }
         var pipes=new ArrayList<PassiveNetwork.Pipe>(graph.pipes().size());
         for(var pipe:graph.pipes())pipes.add(emptying[pipe.first()]||emptying[pipe.second()]

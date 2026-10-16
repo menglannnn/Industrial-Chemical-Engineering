@@ -233,7 +233,7 @@ public final class FluidNetwork {
                     case VALVE->world.model().domain().checkPressure(controls.pressure);
                     default->{}
                 }
-                event=world.edit(d.id(),payload.revision,new PhysicalFluidTopology.Device(d.id(),d.position(),d.kind(),d.facing(),geometry,control),spec);
+                event=world.edit(d.id(),payload.revision,new PhysicalFluidTopology.Device(d.id(),d.position(),d.kind(),d.facing(),geometry,control,d.ports()),spec);
             }catch(RuntimeException rejected){refusal=reason(rejected);}
             world.input(menu,event,refusal);
         });

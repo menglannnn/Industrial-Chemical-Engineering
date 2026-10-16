@@ -7,14 +7,16 @@ import com.wormzjl.createcheme.world.level.block.EquipmentStructure;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.core.Direction;
 import net.minecraft.network.chat.Component;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 
 /**
- * A vessel's screen, owned by its controller cell: the datasheet of the vessel. It shows geometry only (owner decision
- * D2: no process state in the world yet), read from the cells the client already has, so it requests nothing.
+ * A vessel's screen, owned by its controller cell: the datasheet of the drum or column, with its nozzles. It shows
+ * geometry only, read from the cells the client already has, so it requests nothing.
  */
 public final class VesselScreen extends Screen {
     private static final int WIDTH = 256, LINE = 12;
@@ -23,7 +25,7 @@ public final class VesselScreen extends Screen {
     private int left, top;
 
     public VesselScreen(EquipmentStructure.Vessel vessel) {
-        super(Component.translatable(KEY + "title"));
+        super(Component.translatable(KEY + "title." + vessel.shape().kind().name().toLowerCase(Locale.ROOT)));
         var shape = vessel.shape();
         var layout = ShapeRasterizer.layout(shape);
         var cell = layout.controller();
@@ -31,7 +33,7 @@ public final class VesselScreen extends Screen {
         var support = shape.saddles()
                 ? Component.translatable(KEY + "saddles", shape.support(), number(EquipmentShape.SADDLE_POSITION * shape.tangentLength()))
                 : shape.skirt() ? Component.translatable(KEY + "skirt", shape.support()) : Component.translatable(KEY + "unsupported");
-        lines = List.of(
+        var lines = new ArrayList<>(List.of(
                 Component.translatable(KEY + (shape.saddles() ? "kind.saddles" : shape.skirt() ? "kind.skirt" : "kind.bare")),
                 Component.translatable(KEY + "diameter", number(shape.diameter())),
                 Component.translatable(KEY + "tangent_length", number(shape.tangentLength())),
@@ -41,7 +43,17 @@ public final class VesselScreen extends Screen {
                 Component.translatable(KEY + "volume", number(shape.volume())),
                 Component.translatable(KEY + "area", number(shape.surfaceArea())),
                 Component.translatable(KEY + "cells", layout.shell().size(), layout.interior().size()),
-                Component.translatable(KEY + "controller", controller.toShortString()));
+                Component.translatable(KEY + "controller", controller.toShortString())));
+        // Each nozzle: what it is for, the port its position makes it, where it faces, and the largest pipe it takes.
+        var transform = shape.transform();
+        for (var nozzle : shape.nozzles()) {
+            var out = transform.direction(nozzle.direction());
+            var facing = Direction.getNearest(out[0], out[1], out[2]).getSerializedName();
+            lines.add(Component.translatable(KEY + "nozzle", Component.translatable(KEY + "role." + nozzle.role().name().toLowerCase(Locale.ROOT)),
+                    Component.translatable(KEY + "port." + nozzle.role().port.name().toLowerCase(Locale.ROOT)),
+                    Component.translatable(KEY + "facing." + facing), number(nozzle.maxOd())));
+        }
+        this.lines = List.copyOf(lines);
     }
 
     @Override

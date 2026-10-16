@@ -465,7 +465,7 @@ public final class IslandCertificate {
             var inventory=node.inventory();var moles=inventory.moles();
             for(int c=0;c<moles.length;c++)moles[c]+=f*summary.moles[n][c];
             nodes.add(new PassiveNetwork.Reservoir(node.id(),node.elevation(),node.state(),node.kind(),
-                    new PassiveNetwork.Inventory(inventory.volume(),moles,inventory.internalEnergy()+f*summary.energy[n],inventory.solids())));
+                    inventory.with(moles,inventory.internalEnergy()+f*summary.energy[n],inventory.solids())));
         }
         return new PassiveNetwork(nodes,base.pipes(),base.scheduledTransfers());
     }

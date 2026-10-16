@@ -328,6 +328,22 @@ class PhysicalFluidTopologyTest {
         }
     }
 
+    /** Owner decision 2026-10-16: a pump's or valve's half of each link takes the bore of the pipe on that side. */
+    @Test void anActuatorTakesTheBoreOfThePipeOnEachSide() {
+        var facing=PhysicalFluidTopology.Direction.EAST;
+        for(var kind:List.of(Kind.PUMP,Kind.VALVE)) {
+            var devices=List.of(device(1,0,0,Kind.RESERVOIR,facing),bore(device(2,1,0,Kind.PIPE,facing),.2),device(3,2,0,kind,facing),bore(device(4,3,0,Kind.PIPE,facing),.3),device(5,4,0,Kind.RESERVOIR,facing));
+            var graph=PhysicalFluidTopology.compile(devices,Map.of(1L,reservoir(1),5L,reservoir(5))).islands().getFirst().graph();
+            var bores=graph.pipes().stream().flatMap(p->p.sections().stream()).map(PipeResistance.Geometry::diameter).collect(java.util.stream.Collectors.toSet());
+            assertEquals(Set.of(.2,.3),bores,kind+": no section keeps the fixed 0.05 m bore");
+            double length=graph.pipes().stream().flatMap(p->p.sections().stream()).mapToDouble(PipeResistance.Geometry::length).sum();
+            assertEquals(3,length,1e-12,kind+": two pipes and the actuator's own metre");
+        }
+    }
+    private static PhysicalFluidTopology.Device bore(PhysicalFluidTopology.Device d,double diameter) {
+        return new PhysicalFluidTopology.Device(d.id(),d.position(),d.kind(),d.facing(),new PipeResistance.Geometry(1,diameter,.000045,0),d.control());
+    }
+
     @Test void theRegistryWalksFollowTheSameRule() {
         var w=new EventPathWorld();w.runTo(100);
         long tank=w.place(0,0,0,Kind.RESERVOIR,NORTH,.05);long pump=w.place(1,0,0,Kind.PUMP,EAST,.05);w.place(2,0,0,Kind.PIPE,NORTH,.05);

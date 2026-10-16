@@ -1,8 +1,5 @@
 {
-  "parent": "minecraft:block/orientable",
-  "textures": {
-    "top": "minecraft:block/smooth_stone",
-    "front": "minecraft:block/iron_trapdoor",
-    "side": "minecraft:block/iron_block"
-  }
+  "parent": "createcheme:block/fluid_device",
+  "loader": "createcheme:fluid_device",
+  "kind": "filter"
 }

@@ -147,6 +147,20 @@ public final class FluidWorldAuthority implements AutoCloseable {
         var record=new WorldTopologyLedger.Registration(device,spec,0);
         submit(List.of(new WorldTopologyLedger.Edit(id,record)),Math.addExact(id,1));return record;
     }
+    /**
+     * Registers a vessel that spans several cells (a drum, batch 2026-10-15-custom-equipment-rendering): its node at
+     * {@code node} (its lowest inside cell), its ports, and its design volume and level height. It is placed empty, as a
+     * one-block tank is (decision D54).
+     */
+    public WorldTopologyLedger.Registration placeVessel(PhysicalFluidTopology.Position node,List<PhysicalFluidTopology.Port> ports,double volume,double levelHeight) {
+        owned();
+        long id=topology.nextIdentity();
+        var device=new PhysicalFluidTopology.Device(id,node,TopologyCompiler.Kind.RESERVOIR,PhysicalFluidTopology.Direction.NORTH,
+                new PipeResistance.Geometry(1,.05,PipeResistance.DEFAULT_ROUGHNESS_METRES,0),new FlowControl.Passive(),ports);
+        var spec=new FluidDeviceSpec(volume,298.15,com.wormzjl.createcheme.science.fluid.solver.PhaseLayout.AMBIENT_PRESSURE,FluidDeviceSpec.nitrogen(catalog).composition(),SlurryFeed.NONE,levelHeight);
+        var record=new WorldTopologyLedger.Registration(device,spec,0);
+        submit(List.of(new WorldTopologyLedger.Edit(id,record)),Math.addExact(id,1));return record;
+    }
     /** Queues a configuration change as a ledger event and returns it, or null when nothing would change. */
     public WorldTopologyLedger.Event edit(long id,long expectedRevision,PhysicalFluidTopology.Device device,FluidDeviceSpec spec) {
         owned();var old=registrations().get(id);if(old==null||old.revision()!=expectedRevision||device.id()!=id)throw new IllegalStateException("Stale fluid controls");
@@ -402,6 +416,12 @@ public final class FluidWorldAuthority implements AutoCloseable {
         public boolean present(long id,java.util.function.Supplier<FluidView> view) {
             var record=registrations().get(id);if(record==null)return false;var p=record.device().position();var level=server.getLevel(dimension(p.dimension()));if(level==null)return false;
             var pos=new BlockPos(p.x(),p.y(),p.z());if(!level.hasChunkAt(pos))return false;
+            // A drum's node cell carries the identity it was built with; it is never bound here.
+            if(!record.device().ports().isEmpty()) {
+                if(level.getBlockEntity(pos) instanceof FluidView.Receiver receiver&&receiver.fluidIdentity()==id){unboundBindings.remove(id);receiver.acceptFluidView(view.get());return true;}
+                if(unboundBindings.add(id))CreateChemE.LOGGER.warn("fluid_binding={} status=UNBOUND detail=Loaded vessel cell mismatch; saved inventory and topology retained",id);
+                return false;
+            }
             if(!(level.getBlockState(pos).getBlock() instanceof com.wormzjl.createcheme.world.level.block.FluidDeviceBlock block)||block.kind()!=record.device().kind()) {
                 if(unboundBindings.add(id))CreateChemE.LOGGER.warn("fluid_binding={} status=UNBOUND detail=Loaded block mismatch; saved inventory and topology retained",id);
                 return false;
@@ -434,6 +454,13 @@ public final class FluidWorldAuthority implements AutoCloseable {
             publishedMenuData.keySet().removeAll(recompiled);for(long device:recompiled)presentation.markIfLoaded(device);
             // Open menus follow their devices to the replacement islands' buckets.
             presentation.rekey();
+            // A committed edit is drawn now: a loaded pipe takes its registered bore, and its neighbours their faces.
+            for(long device:recompiled)drawn(device);
+        }
+        private void drawn(long device) {
+            var record=registrations().get(device);if(record==null)return;var p=record.device().position();var level=server.getLevel(dimension(p.dimension()));if(level==null)return;
+            var pos=new BlockPos(p.x(),p.y(),p.z());
+            if(level.isLoaded(pos)&&level.getBlockEntity(pos) instanceof com.wormzjl.createcheme.world.level.block.entity.FluidDeviceBlockEntity entity)entity.refreshGeometry(record.device().geometry().diameter(),false);
         }
     }
     /** A certified island's materialisation: only accounting (the diagnostic observer) and the save mark need it.

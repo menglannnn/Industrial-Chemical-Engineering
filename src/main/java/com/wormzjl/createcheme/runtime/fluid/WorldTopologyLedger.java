@@ -60,7 +60,7 @@ public final class WorldTopologyLedger {
             for(var registration:active.values())if(registration.spec().composition().length!=count)throw new IllegalArgumentException("Topology device axis mismatch");
             for(var event:events)for(var edit:event.edits())if(edit.replacement()!=null&&edit.replacement().spec().composition().length!=count)throw new IllegalArgumentException("Topology event axis mismatch");
             var positions=new HashSet<PhysicalFluidTopology.Position>();
-            for(var entry:active.entrySet())if(entry.getKey()!=entry.getValue().device.id()||entry.getKey()>=nextIdentity||!positions.add(entry.getValue().device.position()))throw new IllegalArgumentException("Invalid active physical identity/position");
+            for(var entry:active.entrySet()){if(entry.getKey()!=entry.getValue().device.id()||entry.getKey()>=nextIdentity)throw new IllegalArgumentException("Invalid active physical identity/position");for(var cell:entry.getValue().device.cells())if(!positions.add(cell))throw new IllegalArgumentException("Invalid active physical identity/position");}
             long last=-1;var ids=new HashSet<UUID>();
             for(var event:events){if(event.tick<last||event.tick>onlineTick||!ids.add(event.id))throw new IllegalArgumentException("Invalid topology event ordering");last=event.tick;}
         }
@@ -111,7 +111,7 @@ public final class WorldTopologyLedger {
     private Snapshot shared;private long sharedVersion;
     public WorldTopologyLedger(Snapshot restored) {
         Objects.requireNonNull(restored);onlineTick=restored.onlineTick;nextIdentity=restored.nextIdentity;basis=restored.basis;constructed=restored.constructed;destroyed=restored.destroyed;
-        for(var r:restored.active.values()){active.put(r.device.id(),r);activeAt.put(r.device.position(),r.device.id());}
+        for(var r:restored.active.values()){active.put(r.device.id(),r);for(var cell:r.device.cells())activeAt.put(cell,r.device.id());}
         latest.putAll(active);latestAt.putAll(activeAt);
         // Every queued event must apply to the registry before it, in order, as when it was queued.
         for(var event:restored.events){check(latest,latestAt,event.edits);apply(latest,latestAt,event.edits);events.add(event);}
@@ -164,13 +164,13 @@ public final class WorldTopologyLedger {
      * identity, else its applied one; only the identities the queued events name are looked up, so the cost follows the
      * queue, not the size of the world. */
     public List<Footprint> footprints() {
-        owned();var edited=new HashMap<Long,PhysicalFluidTopology.Position>();
-        for(var event:events)for(var edit:event.edits)if(edit.replacement!=null)edited.put(edit.id,edit.replacement.device.position());
+        owned();var edited=new HashMap<Long,Set<PhysicalFluidTopology.Position>>();
+        for(var event:events)for(var edit:event.edits)if(edit.replacement!=null)edited.put(edit.id,edit.replacement.device.cells());
         var result=new ArrayList<Footprint>(events.size());
         for(var event:events) {
             var ids=new HashSet<>(event.touched);for(var edit:event.edits)ids.add(edit.id);
             var locations=new HashSet<PhysicalFluidTopology.Position>();
-            for(long id:ids){var position=edited.get(id);if(position==null){var record=active.get(id);if(record!=null)position=record.device.position();}if(position!=null)locations.add(position);}
+            for(long id:ids){var cells=edited.get(id);if(cells==null){var record=active.get(id);if(record!=null)cells=record.device.cells();}if(cells!=null)locations.addAll(cells);}
             result.add(new Footprint(event,ids,locations));
         }
         return result;
@@ -216,8 +216,8 @@ public final class WorldTopologyLedger {
     /** Applies one event's edits, already checked against this registry, in order. */
     private static void apply(Map<Long,Registration> records,Map<PhysicalFluidTopology.Position,Long> at,List<Edit> edits) {
         for(var edit:edits) {
-            var previous=records.get(edit.id);if(previous!=null&&Objects.equals(at.get(previous.device.position()),edit.id))at.remove(previous.device.position());
-            if(edit.replacement==null)records.remove(edit.id);else{records.put(edit.id,edit.replacement);at.put(edit.replacement.device.position(),edit.id);}
+            var previous=records.get(edit.id);if(previous!=null)for(var cell:previous.device.cells())if(Objects.equals(at.get(cell),edit.id))at.remove(cell);
+            if(edit.replacement==null)records.remove(edit.id);else{records.put(edit.id,edit.replacement);for(var cell:edit.replacement.device.cells())at.put(cell,edit.id);}
         }
     }
     private static void check(Map<Long,Registration> records,Map<PhysicalFluidTopology.Position,Long> at,List<Edit> edits){new Overlay(records,at).check(edits);}
@@ -239,12 +239,12 @@ public final class WorldTopologyLedger {
             for(var edit:edits) {
                 if(!seen.add(edit.id))throw new IllegalArgumentException("Duplicate identity in topology event");
                 var previous=get(edit.id);var replacement=edit.replacement;
-                if(replacement==null) {if(previous==null)throw new IllegalStateException("Missing removed device");at(previous.device.position()).remove(edit.id);changed.put(edit.id,Optional.empty());continue;}
+                if(replacement==null) {if(previous==null)throw new IllegalStateException("Missing removed device");for(var cell:previous.device.cells())at(cell).remove(edit.id);changed.put(edit.id,Optional.empty());continue;}
                 if(previous!=null&&(!previous.device.position().equals(replacement.device.position())||previous.device.kind()!=replacement.device.kind()||replacement.revision!=Math.addExact(previous.revision,1)))throw new IllegalStateException("Moved or stale device edit");
                 if(previous==null&&replacement.revision!=0)throw new IllegalStateException("New device has a stale revision");
                 if(previous!=null&&previous.device.kind()==com.wormzjl.createcheme.science.fluid.topology.TopologyCompiler.Kind.RESERVOIR&&!previous.spec.equals(replacement.spec))throw new IllegalStateException("Finite-reservoir initialization cannot be reapplied");
-                if(previous!=null)at(previous.device.position()).remove(edit.id);
-                changed.put(edit.id,Optional.of(replacement));at(replacement.device.position()).add(edit.id);placed.add(replacement.device.position());
+                if(previous!=null)for(var cell:previous.device.cells())at(cell).remove(edit.id);
+                changed.put(edit.id,Optional.of(replacement));for(var cell:replacement.device.cells()){at(cell).add(edit.id);placed.add(cell);}
             }
             for(var position:placed)if(at(position).size()>1)throw new IllegalStateException("Two devices occupy one position");
         }

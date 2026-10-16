@@ -95,6 +95,22 @@ class LevelHeadTest extends PortFixture {
                 new PassiveNetwork.Reservoir(3,0,nitrogenAt(101325),PassiveNetwork.NodeKind.VOID));
         return new PassiveNetwork(nodes,List.of(pipe(90,0,2,drain,drainPort,PhasePort.BULK),pipe(91,1,0,line(2,.05),PhasePort.BULK,PhasePort.VAPOR)));
     }
+    /**
+     * A drum (batch 2026-10-15-custom-equipment-rendering) measures its head over its own liquid height: the same 1 m3 of
+     * water under nitrogen in a vessel four times as tall stands four times as deep, so its bottom outlet sees four times
+     * the head and drains faster into the same void; the inventory the solve rebuilds keeps that height.
+     */
+    @Test void aTallerVesselHasItsOwnLevelHeadAndKeepsItThroughASolve() {
+        var oneMetre=headDrain(PhasePort.LIQUID,line(2,.05));var vessel=oneMetre.reservoirs().getFirst();var i=vessel.inventory();
+        var tall=new PassiveNetwork.Reservoir(vessel.id(),vessel.elevation(),vessel.state(),vessel.kind(),new PassiveNetwork.Inventory(i.volume(),i.moles(),i.internalEnergy(),i.solids(),4*H));
+        var nodes=new ArrayList<>(oneMetre.reservoirs());nodes.set(0,tall);var fourMetres=new PassiveNetwork(nodes,oneMetre.pipes());
+        assertEquals(4*head(vessel),PassiveStepSolver.portHead(model,tall,PhasePort.LIQUID,tall.state()),1e-12*head(vessel));
+        var short_=new PassiveIntervalSolver(model).solve(oneMetre,5,PassiveIntervalSolver.Settings.defaults(),NOOP);
+        var deep=new PassiveIntervalSolver(model).solve(fourMetres,5,PassiveIntervalSolver.Settings.defaults(),NOOP);
+        assertEquals(4*H,deep.graph().reservoirs().getFirst().inventory().levelHeight(),"the solved inventory keeps the drum's height");
+        assertTrue(deep.averageMassFlows()[0]>short_.averageMassFlows()[0]&&short_.averageMassFlows()[0]>0,
+                "the deeper level drains faster: "+deep.averageMassFlows()[0]+" against "+short_.averageMassFlows()[0]+" kg/s");
+    }
     @Test void aTankAtTheVoidsPressureDrainsOnItsHeadAloneAtFiveSecondSlices(){drainOnTheHead(5,40);}
     @Test void aTankAtTheVoidsPressureDrainsOnItsHeadAloneAtTenthSecondSlices(){drainOnTheHead(.1,1500);}
     /**

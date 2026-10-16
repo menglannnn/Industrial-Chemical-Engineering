@@ -124,8 +124,12 @@ public record PassiveNetwork(List<Reservoir> reservoirs,List<Pipe> pipes,List<Sc
      * nothing it holds ({@link Reservoir#empty}).
      */
     public static Reservoir emptyVessel(long id,double elevation,double capacity,FluidThermodynamics model) {
+        return emptyVessel(id,elevation,capacity,PassiveStepSolver.LEVEL_HEAD_HEIGHT,model);
+    }
+    /** {@link #emptyVessel} whose level head stands over {@code levelHeight} metres. */
+    public static Reservoir emptyVessel(long id,double elevation,double capacity,double levelHeight,FluidThermodynamics model) {
         var ambient=NetworkReduction.ambient(model);
-        return new Reservoir(id,elevation,ambient,NodeKind.RESERVOIR,new Inventory(capacity,new double[ambient.componentCount()],0));
+        return new Reservoir(id,elevation,ambient,NodeKind.RESERVOIR,new Inventory(capacity,new double[ambient.componentCount()],0,SolidInventory.EMPTY,levelHeight));
     }
     /** A vessel stores its inventory; a junction carries a small buffer, its relaxation row's state (see
      * {@link #sizeJunctionHoldups}; owner decision D46); a generator, a void and a port hold a prescribed state. */
@@ -141,18 +145,27 @@ public record PassiveNetwork(List<Reservoir> reservoirs,List<Pipe> pipes,List<Sc
          * empty/nonempty ownership. */
         public boolean empty(){if(kind!=NodeKind.RESERVOIR||!inventory.solids.empty())return false;for(double n:inventory.moles)if(n!=0)return false;return true;}
     }
-    /** Conserved kernel values. The enclosing world snapshot supplies the component basis and energy-reference identity. */
-    public record Inventory(double volume,double[] moles,double internalEnergy,SolidInventory solids) {
+    /**
+     * Conserved kernel values. The enclosing world snapshot supplies the component basis and energy-reference identity.
+     * {@code volume} and {@code levelHeight} are the vessel's geometry, not its contents: the height its level head stands
+     * over ({@link PassiveStepSolver#portHead}), {@link PassiveStepSolver#LEVEL_HEAD_HEIGHT} for a one-block tank, a
+     * drum's own height (batch 2026-10-15-custom-equipment-rendering, owner decision 2026-10-16). {@link #with} keeps
+     * both while the contents change.
+     */
+    public record Inventory(double volume,double[] moles,double internalEnergy,SolidInventory solids,double levelHeight) {
         public Inventory(double volume,double[] moles,double internalEnergy){this(volume,moles,internalEnergy,SolidInventory.EMPTY);}
+        public Inventory(double volume,double[] moles,double internalEnergy,SolidInventory solids){this(volume,moles,internalEnergy,solids,PassiveStepSolver.LEVEL_HEAD_HEIGHT);}
         public Inventory {
             Objects.requireNonNull(solids);
-            moles=moles.clone();if(!Double.isFinite(volume)||volume<=0||!Double.isFinite(internalEnergy))throw new IllegalArgumentException("Invalid inventory volume/energy");
+            moles=moles.clone();if(!Double.isFinite(volume)||volume<=0||!Double.isFinite(internalEnergy)||!Double.isFinite(levelHeight)||levelHeight<=0)throw new IllegalArgumentException("Invalid inventory volume/energy/level height");
             double total=0;for(double n:moles){if(!Double.isFinite(n)||n<0)throw new IllegalArgumentException("Negative/nonfinite inventory");total+=n;}
             if(moles.length==0||!Double.isFinite(total)||(total==0&&solids.empty()&&internalEnergy!=0))throw new IllegalArgumentException("Invalid empty/overflowed inventory");
         }
+        /** The same vessel (volume and level height) holding these contents. */
+        public Inventory with(double[] moles,double internalEnergy,SolidInventory solids){return new Inventory(volume,moles,internalEnergy,solids,levelHeight);}
         @Override public double[] moles(){return moles.clone();}
-        @Override public boolean equals(Object other){return other instanceof Inventory value&&Double.doubleToLongBits(volume)==Double.doubleToLongBits(value.volume)&&Double.doubleToLongBits(internalEnergy)==Double.doubleToLongBits(value.internalEnergy)&&Arrays.equals(moles,value.moles)&&solids.equals(value.solids);}
-        @Override public int hashCode(){return 31*Objects.hash(volume,internalEnergy,solids)+Arrays.hashCode(moles);}
+        @Override public boolean equals(Object other){return other instanceof Inventory value&&Double.doubleToLongBits(volume)==Double.doubleToLongBits(value.volume)&&Double.doubleToLongBits(levelHeight)==Double.doubleToLongBits(value.levelHeight)&&Double.doubleToLongBits(internalEnergy)==Double.doubleToLongBits(value.internalEnergy)&&Arrays.equals(moles,value.moles)&&solids.equals(value.solids);}
+        @Override public int hashCode(){return 31*Objects.hash(volume,levelHeight,internalEnergy,solids)+Arrays.hashCode(moles);}
     }
     /**
      * {@code blockedDirections} is a two-bit mask - 1 forbids flow from {@link #first} to

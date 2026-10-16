@@ -35,7 +35,7 @@ import java.util.function.Function;
  *
  * <p><b>Island unit</b> (binary, {@link Writer}, {@link Reader}): a header naming the island, its revision and the unit's
  * generation (all three must match the index), then its dimension and package, status, fallback allowance and fences;
- * the graph's topology once - node identities, elevations, kinds and volumes, pipe ends, sections, controls (tag 0
+ * the graph's topology once - node identities, elevations, kinds, volumes and (since format 9) level heights, pipe ends, sections, controls (tag 0
  * passive, 1 pump, 2 valve, 3 compressor) and, since format 6, the two ends' phase ports - and
  * its state; the approximation anchor, stored as "the same graph" when it is (always, in every fixture measured) or
  * as a state over the same topology; the last solved interval, with (since format 7) its end flows, which the island's
@@ -45,13 +45,14 @@ import java.util.function.Function;
  * certified island's unit records its certificate base, not its materialised state, so while it stays certified its
  * unit never changes; a load materialises it from the base to the committed tick without a solve.
  *
- * <p>No other format is read: format 7 and older are refused with the instruction to create a fresh world (the
+ * <p>No other format is read: format 8 and older are refused with the instruction to create a fresh world (the
  * owner's standing rule on save compatibility; format 6 added the ports and the compressor of the phase-ports batch,
  * format 7 the end flows of the last interval, format 8 removed the core record's ledger of buffered transfers and
- * modules with the causal module system).
+ * modules with the causal module system, format 9 added vessel ports to registrations and level heights to specs and
+ * inventories with the drums of batch 2026-10-15-custom-equipment-rendering).
  */
 public final class FluidCheckpointCodec {
-    public static final int VERSION=8;
+    public static final int VERSION=9;
     /** The {@code Base} of an awake island: it carries no certificate. */
     public static final long AWAKE=-1;
     static final int UNIT_MAGIC=0x43434655,UNIT_FORMAT=1;
@@ -172,9 +173,12 @@ public final class FluidCheckpointCodec {
             case FlowControl.PressureValve valve->{w.u8(2);w.f64(valve.targetPressure());}
             case FlowControl.Compressor compressor->{w.u8(3);w.f64(compressor.targetVolumeFlow());w.f64(compressor.maximumPressureRatio());w.f64(compressor.efficiency());}
         }
+        // Since format 9: a vessel's ports (cell, face, class).
+        w.varint(d.ports().size());for(var port:d.ports()){position(w,port.cell(),tables);w.u8(port.face().ordinal());w.u8(port.port().ordinal());}
         var s=r.spec();w.f64(s.volume());w.f64(s.temperature());w.f64(s.pressure());w.varint(tables.composition(s.composition()));
         w.f64(s.solids().volumeFraction());w.varint(s.solids().grades().size());
         for(var g:s.solids().grades()){w.varint(tables.text(g.material()));w.varint(tables.text(g.size().metres()));w.f64(g.massShare());}
+        w.f64(s.levelHeight());
         w.varlong(r.revision());
     }
     private static WorldTopologyLedger.Registration registration(Reader r,Object[][] tables) {
@@ -184,11 +188,18 @@ public final class FluidCheckpointCodec {
         var geometry=geometries[r.varint(geometries.length-1)];
         FlowControl control=switch(r.u8()){case 0->new FlowControl.Passive();case 1->new FlowControl.Pump(r.f64(),r.f64(),r.f64());case 2->new FlowControl.PressureValve(r.f64());
             case 3->new FlowControl.Compressor(r.f64(),r.f64(),r.f64());default->throw r.invalid("unknown control");};
-        var device=new PhysicalFluidTopology.Device(id,position,DEVICE_KINDS[kind],DIRECTIONS[facing],geometry,control);
+        int portCount=r.varint(PhysicalFluidTopology.MAXIMUM_PORTS);var ports=new ArrayList<PhysicalFluidTopology.Port>(portCount);
+        for(int i=0;i<portCount;i++) {
+            var cell=position(r,texts);int face=r.u8(),port=r.u8();
+            if(face>=DIRECTIONS.length||port>=PHASE_PORTS.length)throw r.invalid("unknown vessel port");
+            ports.add(new PhysicalFluidTopology.Port(cell,DIRECTIONS[face],PHASE_PORTS[port]));
+        }
+        var device=new PhysicalFluidTopology.Device(id,position,DEVICE_KINDS[kind],DIRECTIONS[facing],geometry,control,ports);
         double volume=r.f64(),temperature=r.f64(),pressure=r.f64();var composition=compositions[r.varint(compositions.length-1)];
         double fraction=r.f64();int gradeCount=r.varint(64);var grades=new ArrayList<SlurryFeed.Grade>(gradeCount);
         for(int i=0;i<gradeCount;i++)grades.add(new SlurryFeed.Grade(text(r,texts),new ParticleSize(text(r,texts)),r.f64()));
-        return new WorldTopologyLedger.Registration(device,new FluidDeviceSpec(volume,temperature,pressure,composition,new SlurryFeed(fraction,grades)),r.varlong());
+        double levelHeight=r.f64();
+        return new WorldTopologyLedger.Registration(device,new FluidDeviceSpec(volume,temperature,pressure,composition,new SlurryFeed(fraction,grades),levelHeight),r.varlong());
     }
     private static void position(Writer w,PhysicalFluidTopology.Position p,Tables tables){w.varint(tables.text(p.dimension()));w.i32(p.x());w.i32(p.y());w.i32(p.z());}
     private static PhysicalFluidTopology.Position position(Reader r,String[] texts){return new PhysicalFluidTopology.Position(text(r,texts),r.i32(),r.i32(),r.i32());}
@@ -320,7 +331,7 @@ public final class FluidCheckpointCodec {
     }
     private static void topology(Writer w,PassiveNetwork graph) {
         w.varint(graph.reservoirs().size());
-        for(var n:graph.reservoirs()){w.i64(n.id());w.f64(n.elevation());w.u8(n.kind().ordinal());w.f64(n.inventory().volume());}
+        for(var n:graph.reservoirs()){w.i64(n.id());w.f64(n.elevation());w.u8(n.kind().ordinal());w.f64(n.inventory().volume());w.f64(n.inventory().levelHeight());}
         w.varint(graph.pipes().size());
         for(var p:graph.pipes()) {
             w.i64(p.id());w.varint(p.first());w.varint(p.second());w.varint(p.sections().size());
@@ -365,7 +376,7 @@ public final class FluidCheckpointCodec {
     record IndexRow(long id,long revision,long generation,long online,long committed,long retry,int cadence,long base,long since,long start,long horizon,UnitRef unit) {}
     /** Where a unit lies: its pack, offset, length and SHA-256. */
     record UnitRef(long pack,long offset,int length,byte[] sha256) {}
-    private record Topology(long[] ids,double[] elevations,PassiveNetwork.NodeKind[] kinds,double[] volumes,long[] pipeIds,int[] first,int[] second,
+    private record Topology(long[] ids,double[] elevations,PassiveNetwork.NodeKind[] kinds,double[] volumes,double[] heights,long[] pipeIds,int[] first,int[] second,
                             List<List<PipeResistance.Geometry>> sections,List<FlowControl> controls,PassiveNetwork.PhasePort[] firstPorts,PassiveNetwork.PhasePort[] secondPorts) {}
     private static PassiveNetwork.PhasePort port(Reader r){int port=r.u8();if(port>=PHASE_PORTS.length)throw r.invalid("unknown pipe port "+port);return PHASE_PORTS[port];}
 
@@ -447,10 +458,10 @@ public final class FluidCheckpointCodec {
     }
     private static Topology topology(Reader r) {
         int nodes=r.varint(MAXIMUM_NODES);if(nodes==0)throw new IllegalArgumentException("Invalid saved graph size");
-        var ids=new long[nodes];var elevations=new double[nodes];var kinds=new PassiveNetwork.NodeKind[nodes];var volumes=new double[nodes];
+        var ids=new long[nodes];var elevations=new double[nodes];var kinds=new PassiveNetwork.NodeKind[nodes];var volumes=new double[nodes];var heights=new double[nodes];
         for(int n=0;n<nodes;n++) {
             ids[n]=r.i64();elevations[n]=r.f64();int kind=r.u8();if(kind>=NODE_KINDS.length)throw r.invalid("unknown node kind "+kind);
-            kinds[n]=NODE_KINDS[kind];if(kinds[n]==PassiveNetwork.NodeKind.PORT)throw new IllegalArgumentException("Internal port cannot be persisted");volumes[n]=r.f64();
+            kinds[n]=NODE_KINDS[kind];if(kinds[n]==PassiveNetwork.NodeKind.PORT)throw new IllegalArgumentException("Internal port cannot be persisted");volumes[n]=r.f64();heights[n]=r.f64();
         }
         int pipes=r.varint(MAXIMUM_PIPES);var pipeIds=new long[pipes];var first=new int[pipes];var second=new int[pipes];
         var sections=new ArrayList<List<PipeResistance.Geometry>>(pipes);var controls=new ArrayList<FlowControl>(pipes);
@@ -463,14 +474,14 @@ public final class FluidCheckpointCodec {
                 case 3->new FlowControl.Compressor(r.f64(),r.f64(),r.f64());default->throw new IllegalArgumentException("Unknown saved control");});
             firstPorts[p]=port(r);secondPorts[p]=port(r);
         }
-        return new Topology(ids,elevations,kinds,volumes,pipeIds,first,second,sections,controls,firstPorts,secondPorts);
+        return new Topology(ids,elevations,kinds,volumes,heights,pipeIds,first,second,sections,controls,firstPorts,secondPorts);
     }
     private static PassiveNetwork state(Reader r,Topology t,FluidThermodynamics model) {
         var nodes=new ArrayList<PassiveNetwork.Reservoir>(t.ids.length);
         for(int n=0;n<t.ids.length;n++) {
             var moles=r.sparse(MAXIMUM_ARRAY);double energy=r.f64();var solids=solids(r,model);
             double temperature=r.f64(),pressure=r.f64();var liquid=r.sparse(MAXIMUM_ARRAY);var vapor=r.sparse(MAXIMUM_ARRAY);double waterLiquid=r.f64(),waterVapor=r.f64(),hydrocarbonPressure=r.f64();
-            var inventory=new PassiveNetwork.Inventory(t.volumes[n],moles,energy,solids);
+            var inventory=new PassiveNetwork.Inventory(t.volumes[n],moles,energy,solids,t.heights[n]);
             var state=Arrays.stream(moles).sum()==0&&!solids.empty()?model.solidState(temperature,pressure,solids):model.state(temperature,pressure,liquid,vapor,waterLiquid,waterVapor,hydrocarbonPressure).withSolids(solids);
             nodes.add(new PassiveNetwork.Reservoir(t.ids[n],t.elevations[n],state,t.kinds[n],inventory));
         }

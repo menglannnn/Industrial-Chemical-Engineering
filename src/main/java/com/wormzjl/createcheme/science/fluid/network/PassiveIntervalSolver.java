@@ -335,7 +335,7 @@ public final class PassiveIntervalSolver {
             if(!old.solids().empty())state=state.withSolids(old.solids());
             if(nodes==null){nodes=new ArrayList<>(graph.reservoirs());booked=new ArrayList<>();}
             nodes.set(i,new PassiveNetwork.Reservoir(node.id(),node.elevation(),state,node.kind(),
-                    new PassiveNetwork.Inventory(node.inventory().volume(),kept,node.inventory().internalEnergy(),node.inventory().solids())));
+                    node.inventory().with(kept,node.inventory().internalEnergy(),node.inventory().solids())));
             booked.add(new ConservativeTransport.BoundaryTransfer(node.id(),removed,-removedMass*PassiveStepSolver.GRAVITY*node.elevation()));
             SolverDiagnostics.count(SolverDiagnostics.traceFlushes);
         }

@@ -1,8 +1,5 @@
 {
-  "parent": "createcheme:block/fluid_pump",
-  "textures": {
-    "particle": "minecraft:block/light_gray_concrete",
-    "body": "minecraft:block/light_gray_concrete",
-    "motor": "minecraft:block/oxidized_copper"
-  }
+  "parent": "createcheme:block/fluid_device",
+  "loader": "createcheme:fluid_device",
+  "kind": "compressor"
 }

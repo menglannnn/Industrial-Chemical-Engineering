@@ -41,19 +41,30 @@ class VesselPlacementTest {
 
     @Test
     void formTurnsWithTheConstructor() {
+        assertEquals(EquipmentShape.Orientation.VERTICAL, VesselPlacement.Form.VERTICAL.orientation());
+        assertEquals(EquipmentShape.Orientation.HORIZONTAL, VesselPlacement.Form.LENGTHWISE.orientation());
+        assertEquals(EquipmentShape.Orientation.HORIZONTAL, VesselPlacement.Form.CROSSWISE.orientation());
         for (int[] f : FACINGS) {
-            var along = f[0] != 0 ? EquipmentShape.Orientation.ALONG_X : EquipmentShape.Orientation.ALONG_Z;
-            var across = f[0] != 0 ? EquipmentShape.Orientation.ALONG_Z : EquipmentShape.Orientation.ALONG_X;
-            assertEquals(EquipmentShape.Orientation.VERTICAL, VesselPlacement.Form.VERTICAL.orientation(f[0], f[1]));
-            assertEquals(along, VesselPlacement.Form.LENGTHWISE.orientation(f[0], f[1]));
-            assertEquals(across, VesselPlacement.Form.CROSSWISE.orientation(f[0], f[1]));
+            // A standing drum's liquid outlet and a lengthwise drum's front head face back to the constructor; a crosswise
+            // drum's front head faces the constructor's right.
+            var back = EquipmentShape.Heading.of(-f[0], -f[1]);
+            assertEquals(back, VesselPlacement.Form.VERTICAL.front(f[0], f[1]));
+            assertEquals(back, VesselPlacement.Form.LENGTHWISE.front(f[0], f[1]));
+            assertEquals(EquipmentShape.Heading.of(-f[1], f[0]), VesselPlacement.Form.CROSSWISE.front(f[0], f[1]));
+            var standing = EquipmentShape.drum(3, 4, EquipmentShape.Orientation.VERTICAL, back, 2);
+            for (var port : ShapeRasterizer.ports(standing))
+                if (port.port() == EquipmentShape.PortClass.LIQUID) assertArrayEquals(new int[]{-f[0], 0, -f[1]}, new int[]{port.dx(), port.dy(), port.dz()});
         }
         // Facing south, a lengthwise drum's box runs away from the constructor and a crosswise one across its line.
-        var lengthwise = new EquipmentShape(2, 6, VesselPlacement.Form.LENGTHWISE.orientation(0, 1), 1);
-        var crosswise = new EquipmentShape(2, 6, VesselPlacement.Form.CROSSWISE.orientation(0, 1), 1);
+        var lengthwise = EquipmentShape.drum(2, 6, EquipmentShape.Orientation.HORIZONTAL, VesselPlacement.Form.LENGTHWISE.front(0, 1), 1);
+        var crosswise = EquipmentShape.drum(2, 6, EquipmentShape.Orientation.HORIZONTAL, VesselPlacement.Form.CROSSWISE.front(0, 1), 1);
         assertTrue(lengthwise.sizeZ() > lengthwise.sizeX() && crosswise.sizeX() > crosswise.sizeZ());
-        assertEquals(VesselPlacement.Form.VERTICAL, VesselPlacement.Form.CROSSWISE.next());
-        assertThrows(IllegalArgumentException.class, () -> VesselPlacement.Form.LENGTHWISE.orientation(1, 1));
+        // A column stands with its piping side (its nozzles) back to the constructor; the cycle returns to a standing drum.
+        assertEquals(EquipmentShape.Orientation.VERTICAL, VesselPlacement.Form.COLUMN.orientation());
+        assertEquals(EquipmentShape.Heading.NORTH, VesselPlacement.Form.COLUMN.front(0, 1));
+        assertEquals(VesselPlacement.Form.COLUMN, VesselPlacement.Form.CROSSWISE.next());
+        assertEquals(VesselPlacement.Form.VERTICAL, VesselPlacement.Form.COLUMN.next());
+        assertThrows(IllegalArgumentException.class, () -> VesselPlacement.Form.LENGTHWISE.front(1, 1));
     }
 
     @Test
