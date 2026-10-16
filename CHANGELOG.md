@@ -15,6 +15,10 @@ All notable changes to CreateChemE are recorded in this file. The format follows
 
 ## [Unreleased]
 
+### Changed
+
+- Unified multiphase thermodynamics, ported to main 0.8.0 (batch folder: `2026-09-24-coolprop-low-temperature`, commits `348d06e1`..`7bd5fafc`; P0 to P6b recorded on `claude/coolprop-multiphase-thermo-37f6b0` at `9aaafd4`). **Breaking, fresh world** (checkpoint format 9, unit format 2, protocol `fluid-10`, formulation `direct-liquid-v1:tp-engine-v1:range-continuation-v1` with `separate-free-water-v2`): the fluid network runs on a multiphase equilibrium engine (tangent-plane stability, TP/PH/UV, E-PPR78 kij(T) on the PR78 kernel, every phase at its own pressure, IF97 Region 1 water, nitrogen and methane to 10 MPa); the bundled package `createcheme:pilot_cryogenic` (N2, CH4, C2H6, CO2 with reference spines and the CO2-I crystal; selected by a datapack override of the network record) and ice Ih on every package freeze, melt, deposit and sublime as solids in reservoirs (crystal mass moved at a vessel's refresh about every 5 s, one size per solid from 0.25 mm frost to about 1 mm slush, outlets blocked at 0.5 solids, solids ride the liquid); leaving a data range no longer holds an island (properties continue and the status line notes it; a 10 to 6000 K, 1 Pa to 1 GPa box refuses trials); a phase hold reads "HELD (phases)"; removed: `GlobalLiquidResponse` and the `liquidCompressibility` config entry, `ThermoDomainViolation`, `NO_LIQUID_CARRIER`; chain-100 and eight `LIQUID_JUNCTION` lines re-recorded; fixed: a pipe joining a lone boundary no longer leaves an island of one that crashed every save after a reload (`15220a07`); the MCP lane pins bridge 0.4.7-osguard (`026422fe`); detached material in the `tools/unified-thermo-port-*` folders.
+
 ## [0.8.0] - 2026-10-15
 
 ### Changed
