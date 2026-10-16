@@ -2036,20 +2036,34 @@ public final class PassiveStepSolver {
         return volumeFlow*model.phaseMass(s,phase)/FluidThermodynamics.phaseVolume(s,phase);
     }
     /** The conserved amounts (water last) of what leaves through {@code port} at a vanishing flow; the node's total amounts
-     * at a BULK end and when the state holds none of the phases. Over {@link #endMass} they are the moles per kilogram the
-     * connection carries. */
+     * at a BULK end and when the state holds none of the phases. Over {@link #endMass} they are the moles per kilogram of the
+     * fluid the connection carries: every start guess these three helpers feed is a fluid flash, so the solids a liquid or a
+     * bulk end also draws are left behind, as {@link #endStream} leaves them (their mass and stored energy are not the
+     * fluid's: LNG drawn with 1.3 % of dry ice at its stored energy flashed 1.3 % of its methane to vapour). */
     private double[] endMoles(FluidThermodynamics.State s,PassiveNetwork.PhasePort port) {
         int phase=PhaseDraw.leading(model,s,port);
         return phase<0?PhaseLayout.totalAmounts(s):FluidThermodynamics.phaseMoles(s,phase);
     }
+    /** The fluid mass of {@link #endMoles}' stream, kg: the phase's (or the node's) mass without its solids; a dry end, which
+     * draws no fluid ({@link #endStream} is null there), keeps its whole mass. */
     private double endMass(FluidThermodynamics.State s,PassiveNetwork.PhasePort port) {
         int phase=PhaseDraw.leading(model,s,port);
-        return phase<0?s.mass():model.phaseMass(s,phase);
+        double mass=phase<0?s.mass():model.phaseMass(s,phase),solids=s.solidMoments().mass();
+        if(solids==0)return mass;
+        double fluid=mass-solidShare(s,phase)*solids;
+        return fluid>0?fluid:mass;
     }
+    /** The fluid's specific enthalpy of {@link #endMoles}' stream, J/kg, its solids left behind (see {@link #endMoles}). */
     private double endSpecificEnthalpy(FluidThermodynamics.State s,PassiveNetwork.PhasePort port) {
         int phase=PhaseDraw.leading(model,s,port);
-        return phase<0?s.enthalpy()/s.mass():model.phaseSpecificEnthalpy(s,phase,null);
+        double whole=phase<0?s.enthalpy()/s.mass():model.phaseSpecificEnthalpy(s,phase,null),solids=s.solidMoments().mass();
+        if(solids==0)return whole;
+        double mass=phase<0?s.mass():model.phaseMass(s,phase),fluid=mass-solidShare(s,phase)*solids;
+        if(!(fluid>0))return whole;
+        return (whole*mass-solidShare(s,phase)*s.solidMoments().enthalpy(s.temperature(),s.pressure()))/fluid;
     }
+    /** The share of the node's solids a stream of {@code phase} draws: all of them at a BULK end ({@code phase < 0}). */
+    private static double solidShare(FluidThermodynamics.State s,int phase){return phase<0?1:FluidThermodynamics.phaseSolidShare(s,phase);}
     /**
      * The fluid of {@link #endMoles}' stream as a state: the phase amounts {@code port} draws from {@code s} at a vanishing
      * flow (all of them at a BULK end and when the state holds none of the phases), per kilogram of fluid, at the node's
