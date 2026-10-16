@@ -15,7 +15,7 @@
     "temperature_max_kelvin": 1200,
     "pressure_min_pascal": 100,
     "pressure_max_pascal": 10000000,
-    "evidence": "Pilot envelope of batch 2026-09-24-coolprop-low-temperature (P3 design sections 1.3 and 8.1, decision D9): the nitrogen triple point 63.151 K to 1200 K (1143 K target, 1200 K provisional) and 100 Pa to 10 MPa; every component's own range lies inside, and a state is valid only inside the range of every component it carries. Qualified at G3 (WP9); the declared critical band is research-only. Under the crystal competition (G4, G5; D17 to D19) a gas and a methane-rich liquid carry CO2 below its triple point to 90 K. Selected only by a test or dev datapack override of networks/default.json."
+    "evidence": "Pilot envelope of batch 2026-09-24-coolprop-low-temperature (P3 design sections 1.3 and 8.1, decision D9): the nitrogen triple point 63.151 K to 1200 K (1143 K target, 1200 K provisional) and 100 Pa to 10 MPa; every component's own range lies inside. A state past the range of a component it carries is carried, its properties continued and the island's status line noting it (owner rule of 2026-10-16); free water below its melting line freezes as ice Ih, beside CO2-I (no hydrates, WP4). Qualified at G3 (WP9); the declared critical band is research-only. Under the crystal competition (G4, G5; D17 to D19) a gas and a methane-rich liquid carry CO2 below its triple point, qualified to 90 K. Selected only by a test or dev datapack override of networks/default.json."
   },
   "aliases": {},
   "advisory_evidence": [

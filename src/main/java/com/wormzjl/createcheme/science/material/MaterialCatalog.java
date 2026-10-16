@@ -53,10 +53,22 @@ public final class MaterialCatalog {
         }
         List<Double> numbers() { return List.of(minimumTemperature, maximumTemperature, minimumPressure, maximumPressure); }
     }
+    /**
+     * The free-water model of a package. {@code ice} is its ice below the melting line (WP4 of batch
+     * 2026-09-24-coolprop-low-temperature), null for a record without one (a frozen fixture): the fluid network needs it.
+     */
     public record Water(String revision, double molarMass, double triplePoint, double criticalTemperature,
             double criticalPressure, double maximumTemperature, double boilingTemperature,
-            double vaporizationEnthalpy, double watsonExponent, List<Double> saturation, List<Double> shomate) {
+            double vaporizationEnthalpy, double watsonExponent, List<Double> saturation, List<Double> shomate, Ice ice) {
         public Water { saturation = List.copyOf(saturation); shomate = List.copyOf(shomate); }
+        /**
+         * The water's ice: its crystal record (a usable {@link CrystalReference} of water anchored at the water's triple
+         * point) and the coefficients and exponents of its sublimation pressure, IAPWS R14-08 equation 6
+         * ({@code ln(p_sub/p_t) = (T_t/T) sum a_i (T/T_t)^b_i}, at the record's triple point).
+         */
+        public record Ice(String crystal, List<Double> coefficients, List<Double> exponents) {
+            public Ice { Objects.requireNonNull(crystal); coefficients = List.copyOf(coefficients); exponents = List.copyOf(exponents); }
+        }
     }
     public record Assay(String id, String basis, List<String> components, List<Double> amounts,
             double volumeScale, double amountTotal) {
@@ -226,7 +238,9 @@ public final class MaterialCatalog {
         var matrix=indices.stream().map(i->indices.stream().map(j->p.interactions().get(i).get(j)).toList()).toList();
         var nrtl=p.nrtlPairs().stream().filter(pair->axis.contains(pair.first())&&axis.contains(pair.second()))
                 .sorted(Comparator.comparing(NrtlPair::first).thenComparing(NrtlPair::second)).toList();
-        var water=new Gson().toJsonTree(p.water()).getAsJsonObject();water.remove("revision");
+        // The ice (WP4) is left out with the revision: the column, whose neural sidecars pin this, never reaches the water's
+        // melting line; the fluid network's revision hashes it (fluidThermoFingerprint).
+        var water=new Gson().toJsonTree(p.water()).getAsJsonObject();water.remove("revision");water.remove("ice");
         var hashed=new ArrayList<Object>(List.of(p.model(),axis,properties,matrix,nrtl,water,
                 p.minimumTemperature(),p.maximumTemperature(),p.minimumPressure(),p.maximumPressure()));
         // Only a package with a group-contribution rule hashes it, so every other package keeps its exact pin.
@@ -432,9 +446,23 @@ public final class MaterialCatalog {
             viscosities.put("water/" + text(o,"id"), readViscosities(o));
             if (!text(o,"type").equals("iapws_shomate_watson")) throw new IllegalArgumentException("Unsupported water.type");
             text(o,"source");
+            Water.Ice ice=null;
+            if(o.has("ice")) {
+                // The water's ice (WP4): a usable crystal record of water anchored at the water's own triple point, and its
+                // sublimation pressure, IAPWS R14-08 equation 6 at that point.
+                JsonObject i=object(o,"ice"),sublimation=object(i,"sublimation_pressure");
+                var crystal=require(crystals,text(i,"crystal"),"ice.crystal");
+                if(!crystal.component().equals("Water"))throw new IllegalArgumentException("ice.crystal: "+crystal.id()+" is made of "+crystal.component()+", not Water");
+                if(!crystal.usable())throw new IllegalArgumentException("ice.crystal: "+crystal.id()+" is not usable, missing "+crystal.missing());
+                if(crystal.anchor().temperature()!=positive(o,"triple_point"))
+                    throw new IllegalArgumentException("ice.crystal: "+crystal.id()+" is anchored at "+crystal.anchor().temperature()+" K, not the water's triple point");
+                if(!text(sublimation,"type").equals("iapws_r14_08"))throw new IllegalArgumentException("Unsupported ice.sublimation_pressure.type");
+                text(sublimation,"source");
+                ice=new Water.Ice(crystal.id(),counted(sublimation,"coefficients",3),counted(sublimation,"exponents",3));
+            }
             Water w=new Water(text(o,"revision"),positive(o,"molar_mass"),positive(o,"triple_point"),positive(o,"critical_temperature"),
                     positive(o,"critical_pressure"),positive(o,"max_enthalpy_temperature"),positive(o,"reference_boiling_temperature"),
-                    positive(o,"reference_vaporization_enthalpy"),positive(o,"watson_exponent"),counted(o,"saturation_coefficients",6),counted(o,"shomate_coefficients",7));
+                    positive(o,"reference_vaporization_enthalpy"),positive(o,"watson_exponent"),counted(o,"saturation_coefficients",6),counted(o,"shomate_coefficients",7),ice);
             range(w.triplePoint(),w.boilingTemperature(),"water boiling"); range(w.boilingTemperature(),w.criticalTemperature(),"water critical");
             range(w.triplePoint(),w.maximumTemperature(),"water enthalpy"); require(names,"Water","component"); waters.put(text(o,"id"),w);
         });

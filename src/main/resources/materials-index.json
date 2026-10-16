@@ -33,6 +33,7 @@
   "data/createcheme/materials/components/propane.json",
   "data/createcheme/materials/components/water.json",
   "data/createcheme/materials/crystals/carbon_dioxide_i.json",
+  "data/createcheme/materials/crystals/ice_ih.json",
   "data/createcheme/materials/group_interactions/eppr78_2022.json",
   "data/createcheme/materials/interactions/pilot_cryogenic.json",
   "data/createcheme/materials/interactions/tjl19.json",
