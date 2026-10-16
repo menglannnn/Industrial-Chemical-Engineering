@@ -4,9 +4,11 @@ import com.wormzjl.createcheme.science.fluid.network.PassiveNetwork;
 import com.wormzjl.createcheme.science.fluid.state.SolidInventory;
 import com.wormzjl.createcheme.science.fluid.thermo.FluidThermodynamics;
 
-/** Outlet-specific transport eligibility. A bulk end requests MIXED; a phase port requests the outlet of the phase it
- * draws first ({@code SolidEventIntegrator}; decision D11 of the phase-ports batch, the bottom port a decant): GAS,
- * ORGANIC_LIQUID or WATER. */
+/** Outlet-specific transport eligibility. A bulk end requests MIXED, or GAS on a donor holding solids but no liquid,
+ * whose bulk end draws its gas (owner decision D33: solids ride the liquid, {@code FluidThermodynamics.bulkDrawsGas});
+ * a phase port requests the outlet of the phase it draws first ({@code SolidEventIntegrator}; decision D11 of the
+ * phase-ports batch, the bottom port a decant): GAS, ORGANIC_LIQUID or WATER. So no outlet drawing solids lacks a
+ * liquid to carry them, short of a vessel holding solids and no fluid at all (a dry bed, which does not flow). */
 public final class SolidMobility {
     public enum Outlet { MIXED, ORGANIC_LIQUID, WATER, GAS }
     /**
@@ -15,7 +17,7 @@ public final class SolidMobility {
      * populations, and a connection whose delivery would push what receives it past that has to
      * stop carrying rather than let the reconstruction refuse a step no smaller step can make work.
      */
-    public enum Reason { MOBILE, IMMOBILE_LIQUID, NO_LIQUID_CARRIER, PACKED_SLURRY, PARTICLE_TOO_LARGE, DEPOSITION, FILTER_CLOGGED, POPULATION_LIMIT }
+    public enum Reason { MOBILE, IMMOBILE_LIQUID, PACKED_SLURRY, PARTICLE_TOO_LARGE, DEPOSITION, FILTER_CLOGGED, POPULATION_LIMIT }
     public record Check(Reason reason, double velocity, double minimumVelocity) {
         public boolean allowed(){return reason==Reason.MOBILE;}
     }
@@ -103,10 +105,7 @@ public final class SolidMobility {
         if((outlet==Outlet.MIXED||outlet==Outlet.WATER)&&prepared.immobileWater)return new Check(Reason.IMMOBILE_LIQUID,0,0);
         double liquidVolume=prepared.liquidVolume;
         double velocity=Math.abs(massFlow)/drawnMass*liquidVolume/pipe.maximumArea();
-        if(prepared.active) {
-            if(liquidVolume==0)return new Check(Reason.NO_LIQUID_CARRIER,velocity,0);
-            if(prepared.largestDiameter>=pipe.minimumDiameter())return new Check(Reason.PARTICLE_TOO_LARGE,velocity,0);
-        }
+        if(prepared.active&&prepared.largestDiameter>=pipe.minimumDiameter())return new Check(Reason.PARTICLE_TOO_LARGE,velocity,0);
         double required=prepared.requiredVelocity;
         if(prepared.active&&prepared.solidVolume/(liquidVolume+prepared.solidVolume)>=SlurryTransport.SLUSH_FRACTION)
             return new Check(Reason.PACKED_SLURRY,velocity,required);

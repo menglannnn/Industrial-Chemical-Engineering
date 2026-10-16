@@ -15,7 +15,8 @@ import static com.wormzjl.createcheme.science.fluid.thermo.FluidThermodynamics.W
  * liquids (by their own densities, {@link FluidThermodynamics#heavierLiquid}), then the lighter, then the gas; a top
  * ({@link PassiveNetwork.PhasePort#VAPOR}) port the gas, then the lighter liquid, then the heavier. Each liquid carries
  * its volume share of the solids ({@link FluidThermodynamics#phaseSolidShare}). A BULK end draws the bulk and has no
- * order.
+ * order, except on a donor holding solids but no liquid, whose bulk end draws its gas (owner decision D33: solids ride
+ * the liquid, {@link FluidThermodynamics#bulkDrawsGas}).
  *
  * <p><b>Capacity and the priority stream.</b> A phase can be drawn through a port over one step only up to what the
  * vessel held of it at the step start: {@code c = m_start / (N dt)} (kg/s), {@code N} the vessel's phase-port ends whose
@@ -42,14 +43,17 @@ import static com.wormzjl.createcheme.science.fluid.thermo.FluidThermodynamics.W
 final class PhaseDraw {
     private PhaseDraw() {}
 
-    /** The priority order of {@code port} on {@code state} (phase ids of {@link FluidThermodynamics}), null for BULK. */
+    /** The priority order of {@code port} on {@code state} (phase ids of {@link FluidThermodynamics}): null for BULK, which
+     * draws the bulk, but the gas alone where the bulk end of a donor holding solids but no liquid draws its gas (owner
+     * decision D33, {@link FluidThermodynamics#bulkDrawsGas}). A BULK end has no segment either way: what it carries in a
+     * step is its node's transport ({@code PassiveStepSolver.Equations}). */
     static int[] order(FluidThermodynamics model,FluidThermodynamics.State state,PassiveNetwork.PhasePort port) {
-        if(port==PassiveNetwork.PhasePort.BULK)return null;
+        if(port==PassiveNetwork.PhasePort.BULK)return FluidThermodynamics.bulkDrawsGas(state)?new int[]{GAS}:null;
         int heavy=model.heavierLiquid(state),light=heavy==OIL?WATER:OIL;
         return port==PassiveNetwork.PhasePort.LIQUID?new int[]{heavy,light,GAS}:new int[]{GAS,light,heavy};
     }
-    /** The phase a port draws at a vanishing flow: the first of its order {@code state} holds; -1 for a BULK end and for a
-     * state holding none of the three (then the port draws the bulk). The stream every static reader of a port reads
+    /** The phase a port draws at a vanishing flow: the first of its order {@code state} holds; -1 for a BULK end drawing the
+     * bulk and for a state holding none of the three (then the port draws the bulk). The stream every static reader of a port reads
      * (columns, sign tests, start flows, the mobility check): the priority stream's limit as the flow goes to zero. */
     static int leading(FluidThermodynamics model,FluidThermodynamics.State state,PassiveNetwork.PhasePort port) {
         var order=order(model,state,port);if(order==null)return -1;

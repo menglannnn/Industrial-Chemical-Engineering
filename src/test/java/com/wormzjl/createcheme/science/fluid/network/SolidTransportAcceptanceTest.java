@@ -33,12 +33,26 @@ class SolidTransportAcceptanceTest {
         assertTrue(check(state,pipe,-q*(1+1e-10),SolidMobility.Outlet.MIXED).allowed());
         assertEquals(SolidMobility.Reason.DEPOSITION,check(state,pipe,0,SolidMobility.Outlet.MIXED).reason());
     }
-    @Test void dryParticlesBlockGasButTracesStillTravelAndRetainTheirSlots() {
-        var gas=model.initialNitrogenCharge(1,298.15,101325,()->{});
-        assertEquals(SolidMobility.Reason.NO_LIQUID_CARRIER,check(gas.withSolids(stock(1,1)),pipe(),1,SolidMobility.Outlet.MIXED).reason());
+    /**
+     * Owner decision D33: solids ride the liquid. A gas holding dry particles has nothing to carry them: its bulk end is the
+     * GAS outlet, always mobile (it used to close both ways, NO_LIQUID_CARRIER), the gas leaves and every particle stays,
+     * trace populations keeping their slots; a dry gas without solids draws its bulk, the stream it always was.
+     */
+    @Test void aBulkEndOnDryParticlesPassesTheGasAndKeepsTheParticles() {
+        var gas=model.initialNitrogenCharge(1,298.15,101325,()->{});var dusty=gas.withSolids(stock(1,1));
+        assertTrue(FluidThermodynamics.bulkDrawsGas(dusty));assertFalse(FluidThermodynamics.bulkDrawsGas(gas));
+        assertEquals(FluidThermodynamics.GAS,PhaseDraw.leading(model,dusty,PassiveNetwork.PhasePort.BULK),"the bulk end is the GAS outlet");
+        assertTrue(check(dusty,pipe(),1,SolidMobility.Outlet.GAS).allowed());
         var traces=gas.withSolids(stock(64,1e-12));
-        assertTrue(check(traces,pipe(),1,SolidMobility.Outlet.MIXED).allowed());
+        assertEquals(FluidThermodynamics.GAS,PhaseDraw.leading(model,traces,PassiveNetwork.PhasePort.BULK));
         assertEquals(64,traces.solids().populations().size());assertTrue(traces.mass()>gas.mass());
+        // One step into a void at half the pressure: the gas leaves through the bulk end, the particles stay in the tank.
+        var graph=new PassiveNetwork(List.of(new PassiveNetwork.Reservoir(1,0,dusty),
+                new PassiveNetwork.Reservoir(2,0,model.initialNitrogenCharge(1,298.15,50000,()->{}),PassiveNetwork.NodeKind.VOID)),List.of(pipe()));
+        var result=new PassiveStepSolver(model).solve(graph,.001,()->{});
+        assertTrue(result.massFlows()[0]>0,"the gas leaves");
+        assertEquals(1,result.inventories().getFirst().solids().massKg(),1e-12,"every particle stays");
+        assertTrue(result.boundaries().stream().allMatch(b->b.solids().massKg()==0),"none reaches the void");
     }
     @Test void reverseFiltrationCapturesTheOtherDonorAndConservesEnergy() {
         var source=water(160000).withSolids(stock(8,100));var sink=water(150000);

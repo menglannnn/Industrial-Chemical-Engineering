@@ -3611,17 +3611,26 @@ public final class PassiveStepSolver {
         }
         /** The mass flow each phase supplies on every connection whose outflow end drew phases at the flows {@code flows} on
          * {@code states} (the converged candidate), as {@link PhaseDraw.Segment#rates}' six entries (end-state rates by phase
-         * id, then start-state rates by phase id): what the reconstruction books and the transfer samples; null for an edge
-         * that drew the bulk or carried nothing, and null altogether when no edge drew phases. */
+         * id, then start-state rates by phase id): what the reconstruction books and the transfer samples; the end state's
+         * gas alone where a bulk end drew the gas of a donor holding solids but no liquid (owner decision D33, the stream
+         * {@link #transport} gave it); null for an edge that drew the bulk or carried nothing, and null altogether when no
+         * edge drew phases. */
         double[][] draws(double[] flows,List<FluidThermodynamics.State> states) {
             double[][] result=null;
             for(int edge=0;edge<flows.length;edge++) {
                 double q=flows[edge];if(q==0)continue;
-                int end=q>=0?0:1;var segment=segments[edge][end];if(segment==null)continue;
-                var pipe=graph.pipes().get(edge);int marginal=segment.marginalAt(PhaseDraw.held(states.get(end==0?pipe.first():pipe.second())));
-                if(marginal<0&&segment.pinned().length==0)continue;
+                int end=q>=0?0:1;var segment=segments[edge][end];
+                var pipe=graph.pipes().get(edge);var donor=states.get(end==0?pipe.first():pipe.second());double[] rates;
+                if(segment==null) {
+                    if(!FluidThermodynamics.bulkDrawsGas(donor))continue;
+                    rates=new double[6];rates[FluidThermodynamics.GAS]=Math.abs(q);
+                } else {
+                    int marginal=segment.marginalAt(PhaseDraw.held(donor));
+                    if(marginal<0&&segment.pinned().length==0)continue;
+                    rates=segment.rates(marginal,Math.abs(q));
+                }
                 if(result==null)result=new double[flows.length][];
-                result[edge]=segment.rates(marginal,Math.abs(q));
+                result[edge]=rates;
             }
             return result;
         }
@@ -3826,7 +3835,9 @@ public final class PassiveStepSolver {
          * What a connection carries out of one node, per kilogram and for its loss and cap: the conserved amounts and their
          * mass (the normaliser), the volume and density, the viscosity, the specific enthalpy, the velocity limit and the
          * solid moments. A node's cached entry is its BULK stream, the whole state exactly as the donor terms have always
-         * read it ({@code mass} is {@code state.mass()}, so {@code moles/mass} is the double {@code moles/state.mass()} was);
+         * read it ({@code mass} is {@code state.mass()}, so {@code moles/mass} is the double {@code moles/state.mass()} was),
+         * and on a donor holding solids but no liquid its gas stream, which its bulk end draws (owner decision D33: solids
+         * ride the liquid, {@link FluidThermodynamics#bulkDrawsGas}; {@link #draws} books it as that gas);
          * {@code phases} are its phase streams by phase id ({@link FluidThermodynamics#GAS}, {@link FluidThermodynamics#OIL},
          * {@link FluidThermodynamics#WATER}; null for a phase the state does not hold), built only for a node an end of which
          * is a phase port (plan 3.2; decision D11). What a port end draws of them is {@link Equations#drawn}.
@@ -3836,11 +3847,13 @@ public final class PassiveStepSolver {
             /** Which phases this node's state holds (a phase stream is built exactly for a phase it holds). */
             boolean[] held(){return new boolean[]{phases[0]!=null,phases[1]!=null,phases[2]!=null};}
         }
-        /** This node's transport rows at {@code state}: the bulk stream in the arithmetic it always had, plus its phase
-         * streams where an end of it is a phase port. The one builder for the whole-island decode and the block Jacobian
-         * sweep. */
+        /** This node's transport rows at {@code state}: the bulk stream in the arithmetic it always had (the gas stream where
+         * a bulk end draws the gas, D33), plus its phase streams where an end of it is a phase port. The one builder for the
+         * whole-island decode and the block Jacobian sweep. The gas stream's amounts per kilogram are the fluid's totals over
+         * its mass, so the structural zeros of a BULK end's columns ({@link #buildSparsity}) hold for it as well. */
         private Transport transport(int node,FluidThermodynamics.State state,FluidThermodynamics.Prepared prepared) {
-            var bulk=new Transport(PhaseLayout.totalAmounts(state),state.mass(),state.volume(),state.mass()/state.volume(),viscosity(state,prepared),
+            var bulk=FluidThermodynamics.bulkDrawsGas(state)?phase(model.phaseStream(state,FluidThermodynamics.GAS,prepared,viscosities))
+                    :new Transport(PhaseLayout.totalAmounts(state),state.mass(),state.volume(),state.mass()/state.volume(),viscosity(state,prepared),
                     state.enthalpy()/state.mass(),model.velocityLimit(state),state.solidMoments(),null);
             if(!drawsPhase[node])return bulk;
             var phases=new Transport[3];
@@ -3883,7 +3896,9 @@ public final class PassiveStepSolver {
                 if(transfer.node()!=node)continue;
                 var state=st[node];
                 if(transfer instanceof ScheduledTransfer.Withdrawal withdrawal) {
-                    double withdrawn=dt*withdrawal.massKgPerSecond();var n=tr[node].moles;
+                    // A module's withdrawal takes the vessel's bulk, its solids at their share of the mass (D23 (6)), on the
+                    // state's own amounts: the node's transport is what a connection's bulk end draws (the gas, under D33).
+                    double withdrawn=dt*withdrawal.massKgPerSecond();var n=PhaseLayout.totalAmounts(state);
                     for(int c=0;c<n.length;c++)target[c]-=withdrawn*n[c]/state.mass();
                     stored-=withdrawn*state.enthalpy()/state.mass();
                     var moments=state.solidMoments().values();for(int c=0;c<3;c++)solidTargets[node][c]-=withdrawn*moments[c]/state.mass();

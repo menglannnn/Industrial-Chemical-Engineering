@@ -82,7 +82,9 @@ final class SolidEventIntegrator {
             // first (PhaseDraw.leading, the priority stream at a vanishing flow; this check sees no step and so no capacity):
             // the gas carries no solid and is always mobile; the hydrocarbon liquid or the free water carries its volume share
             // of the solids, checked for its own carrier (ORGANIC_LIQUID, WATER) over its stream's mass per the whole liquid
-            // it carries the solids in; a bulk end, and a phase port on a vessel holding none of the phases, the donor's mix.
+            // it carries the solids in; a bulk end, and a phase port on a vessel holding none of the phases, the donor's mix,
+            // except a bulk end on a donor holding solids but no liquid: nothing carries them, so it draws the gas and the
+            // solids stay (owner decision D33, the GAS outlet through PhaseDraw.leading).
             int phase=PhaseDraw.leading(model,donor,pipe.drawPort(flow));
             SolidMobility.Outlet outlet;double drawnMass;
             if(phase<0){outlet=SolidMobility.Outlet.MIXED;drawnMass=donor.mass();}

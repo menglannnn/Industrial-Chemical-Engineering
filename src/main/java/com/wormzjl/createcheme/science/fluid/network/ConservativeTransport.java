@@ -441,7 +441,9 @@ public final class ConservativeTransport {
             var upstream=states.get(donor);double moved=dt*Math.abs(flows[edge]),upstreamZ=graph.reservoirs().get(donor).elevation();
             // A phase-port outflow carries the frozen stream fractions booked above, and the stream's specific enthalpy on
             // the reconstructed donor (whatever number is booked leaves the donor and reaches the receiver, so the energy
-            // ledger closes exactly either way); a bulk one its donor's end composition and enthalpy, as always.
+            // ledger closes exactly either way); so does a bulk end drawing the gas of a donor holding solids but no liquid
+            // (owner decision D33: its draw is that gas, the solids stay); any other bulk one its donor's end composition and
+            // enthalpy, as always.
             var w=drawn[edge]!=null?drawn[edge]:fractions[donor];var rates=drawn[edge]==null?null:draws[edge];var phases=rates==null?null:drawnPhases(rates);
             var startState=graph.reservoirs().get(donor).state();
             double specificEnthalpy;

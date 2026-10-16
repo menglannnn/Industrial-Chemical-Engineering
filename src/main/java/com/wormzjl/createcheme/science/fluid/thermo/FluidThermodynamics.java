@@ -432,6 +432,20 @@ public final class FluidThermodynamics {
     public static boolean holdsPhase(State state,int phase) {
         return switch(phase){case GAS->state.vaporVolume()>0;case OIL->state.liquidVolume()>0;case WATER->state.waterVolume()>0;default->throw new IllegalArgumentException("phase "+phase);};
     }
+    /**
+     * Owner decision D33 (2026-10-16): solids ride the liquid. A connection's BULK end draws a uniform share of what its
+     * donor holds, the solids carried by the liquid at {@code solids * liquid drawn / liquid held}: wherever a liquid is
+     * held that is the bulk share, the number it always was. Where none is held nothing carries them: the gas leaves
+     * through the end and the solids stay (frost on a tank's walls, a dry bed), zero solid from a dry gas. So the end draws
+     * the donor's gas exactly where that differs from its bulk: a gas beside solids, with no liquid (a stand-in liquid,
+     * D29 A, is a liquid here, as it is booked). The solids are read as the populations the state carries, which a step's
+     * iterates keep from their pass's seed, so the answer is fixed for a pass. The one reading of a bulk end: the stage
+     * guard's outlet (the GAS outlet, {@code SolidEventIntegrator}), the static end reads ({@code PhaseDraw.leading}),
+     * and the step's donor terms and the reconstruction's booking ({@code PassiveStepSolver.Equations}).
+     */
+    public static boolean bulkDrawsGas(State state) {
+        return !(state.liquidVolume()>0)&&!(state.waterVolume()>0)&&state.vaporVolume()>0&&!state.solids().empty();
+    }
     /** The share of the state's solids a phase stream carries: none in the gas, the liquids' in proportion to their
      * volumes ({@code 1.0} exactly for the only liquid held). */
     public static double phaseSolidShare(State state,int phase) {

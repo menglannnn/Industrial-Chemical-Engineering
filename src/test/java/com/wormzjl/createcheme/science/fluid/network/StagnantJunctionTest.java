@@ -18,10 +18,11 @@ import static org.junit.jupiter.api.Assertions.*;
  * inflow, continuously through zero flow, so the cycle is gone without A1. The CO2/N2 chain deposits CO2 in the cold
  * vessel at its refreshes; the CH4/N2 chain is the fluid-only control.
  *
- * <p>The cold vessel's connection draws its gas (a vapour port). Frost formed from a gas has no liquid carrier, and main's
- * outlet check closes a bulk connection drawing from it (NO_LIQUID_CARRIER; plan section 3, item 4: only the gas outlet
- * stays open). On a bulk port that closure came at the ninth interval, when the refresh's latent heat lifted the frosted
- * vessel 45 Pa above the junction and made it the donor: the vessels then stood 45 Pa apart.</p>
+ * <p>The cold vessel's connection draws its gas (a vapour port). Frost formed from a gas has no liquid carrier. Main's
+ * outlet check closed a bulk connection drawing from it both ways (NO_LIQUID_CARRIER; plan section 3, item 4: only the
+ * gas outlet stays open): on a bulk port that closure came at the ninth interval, when the refresh's latent heat lifted the
+ * frosted vessel 45 Pa above the junction and made it the donor, and the vessels then stood 45 Pa apart. Under owner
+ * decision D33 (solids ride the liquid) a bulk end on the frosted vessel draws its gas as the vapour port does.</p>
  */
 class StagnantJunctionTest {
     private static final String PILOT = "createcheme:pilot_cryogenic";
