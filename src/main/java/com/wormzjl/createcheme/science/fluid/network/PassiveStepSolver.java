@@ -578,7 +578,7 @@ public final class PassiveStepSolver {
                 // at a stalled point are -1.14e-6 kg/s on a line whose generator drives it
                 // forwards, and reading them as backflow let the tank's nitrogen into both of the
                 // filter's zero-holdup junctions; see documentation/JUNCTION_PHANTOM_TRACE.md.
-                var changedSeeds=phaseCorrection(graph,equations.states(failure.lastVariables()),checkpoint,null,foldedPhases);
+                var changedSeeds=phaseCorrection(graph,equations.states(failure.lastVariables()),checkpoint,null,foldedPhases.clone());
                 // Decision D11: a phase a vessel's ports draw at their full capacity leaves the vessel within the step; a
                 // pass whose seed still holds it may have no root (see drainedSeeds).
                 if(changedSeeds==null)changedSeeds=equations.drainedSeeds(checkpoint);
@@ -2059,8 +2059,9 @@ public final class PassiveStepSolver {
      * <p>{@code prepared}, when given, is the pass's per-node prepared temperature state: a node's flash at exactly that
      * temperature reuses its Peng-Robinson workspace instead of preparing a new one (the arithmetic is the same).
      * {@code foldedPhases}, when given, holds per node the phases ({@link #phaseCode} bits) the trace rule removed in this
-     * solve (A85): the check does not add them back, and a phase its fold removes joins them, so the sequence of passes
-     * stays finite.
+     * solve (A85): the check does not add them back, and a phase its fold removes from a converged point joins them, so
+     * the sequence of passes stays finite. A failed pass's iterate is checked on a copy (decision D28 A'): its fold is a
+     * trial layout, which reads the record and never writes to it.
      */
     private List<FluidThermodynamics.State> phaseCorrection(PassiveNetwork graph,List<FluidThermodynamics.State> states,Runnable checkpoint,FluidThermodynamics.Prepared[] prepared,int[] foldedPhases) {
         for(int i=0;i<states.size();i++) {

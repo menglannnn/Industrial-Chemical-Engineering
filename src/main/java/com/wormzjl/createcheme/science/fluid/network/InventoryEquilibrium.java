@@ -117,12 +117,14 @@ public final class InventoryEquilibrium {
     /**
      * The vessel's equilibrium from {@code state}: {@code closure} solved in a phase layout, and the layout decided by the
      * outer phase check (owner decisions D25 and D26, {@code FluidThermodynamics.phaseCheck}). A phase leaves only when the
-     * closure empties it (the trace fold of its point, also of a failed closure's last iterate); where the TP answer finds
-     * a phase missing, the vessel is seeded at its own split, the closure started from the TP answer with the phases the
-     * vessel holds, and no populated phase set is swapped for another on a TP verdict: a vessel of pure water at its
-     * saturation line keeps its liquid and gains the steam its volume and energy give. A phase the check removed is not
-     * added again within this solve (A85). One rule for a vessel's own closure ({@link #solve}) and for the crystal
-     * refresh's joint closure (decision D30), so a phase that has no room leaves both.
+     * closure empties it (the trace fold of its point; a failed closure's last iterate is folded as a trial layout); where
+     * the TP answer finds a phase missing, the vessel is seeded at its own split, the closure started from the TP answer
+     * with the phases the vessel holds, and no populated phase set is swapped for another on a TP verdict: a vessel of pure
+     * water at its saturation line keeps its liquid and gains the steam its volume and energy give. A phase the check
+     * removed from a converged answer is not added again within this solve (A85); a failed iterate's fold reads that record
+     * and never writes it (decision D28 A'), so a phase it removed comes back where a converged answer finds it missing,
+     * and a repeated regime is the cycle that refuses the solve. One rule for a vessel's own closure ({@link #solve}) and
+     * for the crystal refresh's joint closure (decision D30), so a phase that has no room leaves both.
      */
     static FluidThermodynamics.State passes(FluidThermodynamics model,FluidThermodynamics.State state,Closure closure,Runnable checkpoint) {
         var seen=new HashSet<String>();int excluded=0;
@@ -136,8 +138,9 @@ public final class InventoryEquilibrium {
                 var trial=closure.iterate(state,failure.lastVariables());
                 var checked=model.phaseCheck(trial,false,excluded,null,own,checkpoint);
                 if(regime(checked).equals(regime(state)))throw failure;
-                // Laid out again with the solids the pass's state carried (the vessel's own closure: its inventory's).
-                excluded|=FluidThermodynamics.phaseBits(trial)&~FluidThermodynamics.phaseBits(checked);state=checked.withSolids(state.solids());continue;
+                // Decision D28 A': a failed closure's fold is a trial layout, not a verdict: it reads the A85 record and never
+                // writes to it. Laid out again with the solids of the pass's state (the vessel's own closure: its inventory's).
+                state=checked.withSolids(state.solids());continue;
             }
             if(candidate==state)return state;
             var checked=model.phaseCheck(candidate,false,excluded,null,own,checkpoint);
