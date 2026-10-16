@@ -6,6 +6,7 @@
     "support": "createcheme:block/vessel_support",
     "pipe": "createcheme:block/equipment_pipe",
     "flange": "createcheme:block/equipment_flange",
+    "bolt": "createcheme:block/equipment_bolt",
     "opening": "createcheme:block/equipment_opening",
     "cladding": "createcheme:block/equipment_cladding",
     "grating": "createcheme:block/equipment_grating",

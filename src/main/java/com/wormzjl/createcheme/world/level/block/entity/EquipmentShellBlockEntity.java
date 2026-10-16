@@ -30,8 +30,11 @@ import net.neoforged.neoforge.client.model.data.ModelProperty;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
+import java.util.Set;
+import java.util.WeakHashMap;
 
 /**
  * One shell cell of a parametric vessel: the vessel's shape, this cell's coordinates inside it, the drawn sizes of the
@@ -56,6 +59,13 @@ public final class EquipmentShellBlockEntity extends BlockEntity implements Flui
     /** The drum's fluid identity, on its node cell only (0 elsewhere and while unregistered). */
     private long identity;
     private @Nullable FluidView lastView;
+    /**
+     * Client: the cells holding an air cooler fan's hub, whose rotors the client turns (owner request 2026-10-16).
+     * Render thread only; weak, so an unloaded level frees them.
+     */
+    private static final Set<EquipmentShellBlockEntity> CLIENT_ROTORS = Collections.newSetFromMap(new WeakHashMap<>());
+    /** Client: the fan rotors whose hubs this cell holds, {x, y, z, diameter} in world coordinates. */
+    private List<double[]> rotors = List.of();
 
     public EquipmentShellBlockEntity(BlockPos position, BlockState state) {
         super(ModBlockEntities.EQUIPMENT_SHELL.get(), position, state);
@@ -90,10 +100,34 @@ public final class EquipmentShellBlockEntity extends BlockEntity implements Flui
         return new PhysicalFluidTopology.Position(level.dimension().location().toString(), worldPosition.getX(), worldPosition.getY(), worldPosition.getZ());
     }
 
-    /** Server: a node cell binds the drum the ledger holds here, as a device block entity binds its registration. */
+    /** Client: the cells holding a fan's hub in the client's level. */
+    public static List<EquipmentShellBlockEntity> clientRotorCells() {
+        return List.copyOf(CLIENT_ROTORS);
+    }
+
+    public List<double[]> rotors() {
+        return rotors;
+    }
+
+    /** Client: lists the fan hubs in this cell ({@link ProcessUnit#rotors}) for the client that turns them. */
+    private void trackRotors() {
+        rotors = List.of();
+        CLIENT_ROTORS.remove(this);
+        if (shape == null || level == null || !level.isClientSide) return;
+        var here = new ArrayList<double[]>();
+        for (var r : ProcessUnit.rotors(shape))
+            if (Math.floor(r[0]) == cellX && Math.floor(r[1]) == cellY && Math.floor(r[2]) == cellZ)
+                here.add(new double[]{worldPosition.getX() - cellX + r[0], worldPosition.getY() - cellY + r[1], worldPosition.getZ() - cellZ + r[2], r[3]});
+        if (here.isEmpty()) return;
+        rotors = List.copyOf(here);
+        CLIENT_ROTORS.add(this);
+    }
+
+    /** Server: a node cell binds the drum the ledger holds here, as a device block entity binds its registration; the client lists its fan hubs. */
     @Override
     public void onLoad() {
         super.onLoad();
+        if (level != null && level.isClientSide) trackRotors();
         if (!(level instanceof ServerLevel serverLevel) || shape == null) return;
         var here = fluidPosition();
         FluidWorldAuthority.find(serverLevel.getServer()).ifPresent(world -> world.at(here)
@@ -116,8 +150,9 @@ public final class EquipmentShellBlockEntity extends BlockEntity implements Flui
         released();
     }
 
-    /** Unloaded or removed: publications stop marking the drum. */
+    /** Unloaded or removed: publications stop marking the drum; the client stops turning its fans. */
     private void released() {
+        CLIENT_ROTORS.remove(this);
         if (identity != 0 && level instanceof ServerLevel serverLevel && serverLevel.getServer().isSameThread())
             FluidWorldAuthority.find(serverLevel.getServer()).ifPresent(world -> world.deviceUnloaded(identity));
     }
@@ -251,7 +286,7 @@ public final class EquipmentShellBlockEntity extends BlockEntity implements Flui
 
     /**
      * A shape's NBT: kind, diameter, tangent length, orientation, front, support, a column's trays, a drum's side
-     * connections, an air cooler's bank.
+     * connections and whether it has a boot, an air cooler's bank.
      */
     public static void writeShape(CompoundTag tag, EquipmentShape shape) {
         tag.putString("Kind", shape.kind().name().toLowerCase(Locale.ROOT));
@@ -261,7 +296,10 @@ public final class EquipmentShellBlockEntity extends BlockEntity implements Flui
         tag.putString("Front", shape.front().name().toLowerCase(Locale.ROOT));
         tag.putInt("Support", shape.support());
         if (shape.trays() != null) tag.putIntArray("Trays", shape.trays().encode());
-        else if (shape.drum()) tag.putIntArray("Connections", EquipmentShape.Connection.encode(shape.connections()));
+        else if (shape.drum()) {
+            tag.putIntArray("Connections", EquipmentShape.Connection.encode(shape.connections()));
+            tag.putBoolean("Boot", shape.boot());
+        }
         if (shape.kind() == EquipmentShape.Kind.AIR_COOLER) tag.putIntArray("Bank", shape.bank().encode());
     }
 
@@ -276,7 +314,7 @@ public final class EquipmentShellBlockEntity extends BlockEntity implements Flui
         if (!tag.contains("Connections")) throw new IllegalArgumentException("A drum lists its side connections");
         return EquipmentShape.drum(tag.getDouble("Diameter"), tag.getDouble("TangentLength"),
                 EquipmentShape.Orientation.valueOf(tag.getString("Orientation").toUpperCase(Locale.ROOT)), front, tag.getInt("Support"),
-                EquipmentShape.Connection.decode(tag.getIntArray("Connections")));
+                EquipmentShape.Connection.decode(tag.getIntArray("Connections")), tag.getBoolean("Boot"));
     }
 
     @Override
@@ -296,6 +334,7 @@ public final class EquipmentShellBlockEntity extends BlockEntity implements Flui
     public void onDataPacket(net.minecraft.network.Connection connection, ClientboundBlockEntityDataPacket packet, HolderLookup.Provider registries) {
         super.onDataPacket(connection, packet, registries);
         requestModelDataUpdate();
+        trackRotors();
         if (level != null) level.sendBlockUpdated(worldPosition, getBlockState(), getBlockState(), 0);
     }
 

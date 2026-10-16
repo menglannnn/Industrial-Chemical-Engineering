@@ -58,6 +58,22 @@ public record Paint(int body, int structure) {
         return null;
     }
 
+    /** {@code rgb} as #RRGGBB, as the config and the Paint page's field write it. */
+    public static String hex(int rgb) {
+        return String.format(java.util.Locale.ROOT, "#%06X", rgb & 0xFFFFFF);
+    }
+
+    /** Whether {@code value} is a colour as #RRGGBB (the # optional). */
+    public static boolean isHex(@Nullable Object value) {
+        return value instanceof String s && s.matches("#?[0-9a-fA-F]{6}");
+    }
+
+    /** @throws IllegalArgumentException unless {@code text} is a colour as #RRGGBB (the # optional) */
+    public static int parseHex(String text) {
+        if (!isHex(text)) throw new IllegalArgumentException("A colour is #RRGGBB, not " + text);
+        return Integer.parseInt(text.startsWith("#") ? text.substring(1) : text, 16);
+    }
+
     /** The tint that shows {@code rgb} on a painted sprite: each channel scaled by 255 / {@link #SPRITE_VALUE}, at most 255. */
     public static int tint(int rgb) {
         int out = 0;

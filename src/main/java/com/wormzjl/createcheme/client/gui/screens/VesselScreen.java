@@ -1,5 +1,6 @@
 package com.wormzjl.createcheme.client.gui.screens;
 
+import com.wormzjl.createcheme.client.FanAnimation;
 import com.wormzjl.createcheme.client.gui.common.ProcessUi;
 import com.wormzjl.createcheme.science.equipment.EquipmentShape;
 import com.wormzjl.createcheme.science.equipment.ProcessUnit;
@@ -7,6 +8,7 @@ import com.wormzjl.createcheme.science.equipment.ShapeRasterizer;
 import com.wormzjl.createcheme.world.level.block.EquipmentStructure;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
+import net.minecraft.client.gui.components.Tooltip;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.core.Direction;
 import net.minecraft.network.chat.Component;
@@ -21,14 +23,17 @@ import java.util.Locale;
  * client already has, so it requests nothing.
  */
 public final class VesselScreen extends Screen {
+    /** The panel's least width; a longer line widens it (a unit's nozzle lines run past 256). */
     private static final int WIDTH = 256, LINE = 12;
     private static final String KEY = "gui.createcheme.vessel.";
     private final List<Component> lines;
-    private int left, top;
+    private final boolean fans;
+    private int left, top, panel;
 
     public VesselScreen(EquipmentStructure.Vessel vessel) {
         super(Component.translatable(KEY + "title." + vessel.shape().kind().name().toLowerCase(Locale.ROOT)));
         lines = datasheet(vessel);
+        fans = vessel.shape().kind() == EquipmentShape.Kind.AIR_COOLER;
     }
 
     /** The vessel's datasheet, a line each: its kind first, then its sizes and cells, then each nozzle. */
@@ -102,17 +107,29 @@ public final class VesselScreen extends Screen {
 
     @Override
     protected void init() {
-        left = (width - WIDTH) / 2;
+        panel = WIDTH;
+        for (var line : lines) panel = Math.max(panel, font.width(line) + 16);
+        left = (width - panel) / 2;
         top = (height - (lines.size() * LINE + 56)) / 2;
+        int y = top + lines.size() * LINE + 30;
+        // An air cooler's debug switch: its fans turn, or stand still in the chunk mesh, to compare frame rates.
+        if (fans) addRenderableWidget(Button.builder(fanLabel(), b -> {
+            FanAnimation.toggle();
+            b.setMessage(fanLabel());
+        }).bounds(left + panel / 2 - 124, y, 120, 20).tooltip(Tooltip.create(Component.translatable(KEY + "fans.hint"))).build());
         addRenderableWidget(Button.builder(Component.translatable("gui.done"), b -> onClose())
-                .bounds(left + (WIDTH - 80) / 2, top + lines.size() * LINE + 30, 80, 20).build());
+                .bounds(fans ? left + panel / 2 + 4 : left + (panel - 80) / 2, y, 80, 20).build());
+    }
+
+    private static Component fanLabel() {
+        return Component.translatable(KEY + (FanAnimation.enabled() ? "fans.turning" : "fans.still"));
     }
 
     @Override
     public void renderBackground(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
         super.renderBackground(graphics, mouseX, mouseY, partialTick);
-        graphics.fill(left, top, left + WIDTH, top + lines.size() * LINE + 56, ProcessUi.BG);
-        graphics.renderOutline(left, top, WIDTH, lines.size() * LINE + 56, ProcessUi.LINE);
+        graphics.fill(left, top, left + panel, top + lines.size() * LINE + 56, ProcessUi.BG);
+        graphics.renderOutline(left, top, panel, lines.size() * LINE + 56, ProcessUi.LINE);
     }
 
     @Override

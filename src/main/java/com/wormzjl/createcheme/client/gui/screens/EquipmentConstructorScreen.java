@@ -1,5 +1,6 @@
 package com.wormzjl.createcheme.client.gui.screens;
 
+import com.wormzjl.createcheme.CreateChemE;
 import com.wormzjl.createcheme.client.EquipmentGhost;
 import com.wormzjl.createcheme.client.gui.common.ColumnDiagram;
 import com.wormzjl.createcheme.client.gui.common.ProcessUi;
@@ -89,18 +90,24 @@ public final class EquipmentConstructorScreen extends Screen {
     private double diameter;
     private int tangentLength, support, forward, right, up;
     private ColumnTrays trays;
-    /** A drum's side connections, kept within the drum's ranges ({@link #fitConnections}), and the one the page edits. */
+    /** A drum's side connections, fitted to the drum ({@link #fitConnections}), and the one the page edits. */
     private final List<EquipmentShape.Connection> connections = new ArrayList<>();
+    /** The drum's diameter, length, support and orientation the connections were last fitted to. */
+    private @Nullable List<Double> fittedFor;
     private int selected;
     /** The paint, and the channel the paint page edits ({@link Paint#BODY} or {@link Paint#STRUCTURE}). */
     private Paint paint;
     /** An air cooler's bays in parallel and in series, kept for the other kinds. */
     private ProcessUnit.Bank bank;
+    /** Whether a lying drum has a boot, the player's choice kept for the other forms ({@link #hasBoot}). */
+    private boolean boot;
     private int channel = Paint.BODY;
     private @Nullable EditBox custom;
     /** The paint page's body and structure buttons (null off that page). */
     private final Button[] channelButtons = new Button[2];
     private @Nullable Button build;
+    /** A lying drum's boot toggle, on the Nozzles page with the drain it carries (null off that page). */
+    private @Nullable Button bootButton;
     private ShapeRasterizer.Layout layout;
     /** Set by Import until the constructor's synced design changes; the draft then takes it. */
     private @Nullable Design importing;
@@ -118,6 +125,7 @@ public final class EquipmentConstructorScreen extends Screen {
         form = design.form();
         diameter = design.diameter();
         tangentLength = design.tangentLength();
+        boot = design.boot();
         support = Math.max(design.support(), minimumSupport());
         forward = design.placement().forward();
         right = design.placement().right();
@@ -139,7 +147,17 @@ public final class EquipmentConstructorScreen extends Screen {
 
     /** The draft; always valid, because every stepper is clamped to the bounds of its parameter. */
     public Design design() {
-        return new Design(diameter, tangentLength, form, support, new VesselPlacement(forward, right, up), trays, List.copyOf(connections), paint, bank);
+        return new Design(diameter, tangentLength, form, support, new VesselPlacement(forward, right, up), trays, List.copyOf(connections), paint, bank, hasBoot());
+    }
+
+    /** Whether the draft has a boot: a lying drum's, where it has room for one. */
+    private boolean hasBoot() {
+        return boot && form.kind() == EquipmentShape.Kind.DRUM && form.orientation().horizontal() && EquipmentShape.bootFor(diameter, tangentLength) != null;
+    }
+
+    /** The draft's drum with no side connections, which fitting and adding them place around. */
+    private EquipmentShape template() {
+        return EquipmentShape.drum(diameter, tangentLength, form.orientation(), front(), support, List.of(), hasBoot());
     }
 
     /** The vessel the draft would build, for the ghost; null on the choice page and once the constructor is gone. */
@@ -149,15 +167,19 @@ public final class EquipmentConstructorScreen extends Screen {
     }
 
     /**
-     * Keeps a drum's side connections within its ranges after its size or form changed: each to the nearest station and
-     * offset it may take, or dropped where the shell leaves it none. A column or a unit keeps them for when it is a drum again.
+     * Fits a drum's side connections to its design once its size, support, form or boot changed ({@link EquipmentShape#fit}):
+     * each stays where it meets nothing, or moves to the nearest free place. Moving one on the Nozzles page changes no
+     * size, so the player may still put it where it clashes and read the status. A column or a unit keeps them for when
+     * it is a drum again.
      */
     private void fitConnections() {
         if (form.kind() != EquipmentShape.Kind.DRUM) return;
-        int[] stations = EquipmentShape.stations(diameter, tangentLength, form.orientation(), support);
-        int across = EquipmentShape.maximumOffset(diameter);
-        if (stations[0] > stations[1]) connections.clear();
-        connections.replaceAll(c -> new EquipmentShape.Connection(c.side(), clamp(c.station(), stations[0], stations[1]), clamp(c.offset(), -across, across)));
+        var drum = List.of(diameter, (double) tangentLength, (double) support, (double) form.orientation().ordinal(), hasBoot() ? 1.0 : 0);
+        if (drum.equals(fittedFor)) return;
+        fittedFor = drum;
+        var fitted = EquipmentShape.fit(connections, template());
+        connections.clear();
+        connections.addAll(fitted);
         selected = clamp(selected, 0, Math.max(0, connections.size() - 1));
     }
 
@@ -168,6 +190,7 @@ public final class EquipmentConstructorScreen extends Screen {
     @Override
     protected void init() {
         build = null;
+        bootButton = null;
         custom = null;
         channelButtons[0] = channelButtons[1] = null;
         switch (page) {
@@ -252,15 +275,14 @@ public final class EquipmentConstructorScreen extends Screen {
         custom = new EditBox(font, PANEL - 80, TOP + 5 * ROW, 74, 16, Component.translatable(KEY + "custom"));
         custom.setMaxLength(7);
         custom.setFilter(text -> text.matches("#?[0-9a-fA-F]{0,6}"));
-        custom.setValue(String.format(Locale.ROOT, "#%06X", paint.colour(channel)));
+        custom.setValue(Paint.hex(paint.colour(channel)));
         custom.setResponder(text -> {
-            var digits = text.startsWith("#") ? text.substring(1) : text;
-            if (digits.length() == 6) colour(Integer.parseInt(digits, 16));
+            if (Paint.isHex(text)) colour(Paint.parseHex(text));
         });
         custom.setTooltip(Tooltip.create(hint(5)));
         addRenderableWidget(custom);
         addRenderableWidget(Button.builder(Component.translatable(KEY + "paint.default"), b -> {
-            paint = Paint.DEFAULT;
+            paint = CreateChemE.defaultPaint();
             refresh();
             rebuildWidgets();
         }).bounds(PANEL - 80, TOP + 6 * ROW, 74, 16).tooltip(Tooltip.create(hint(6))).build());
@@ -273,13 +295,13 @@ public final class EquipmentConstructorScreen extends Screen {
         paint = paint.with(channel, rgb);
         refresh();
         if (channelButtons[channel] != null) channelButtons[channel].setMessage(colourName(rgb));
-        if (custom != null && !custom.isFocused()) custom.setValue(String.format(Locale.ROOT, "#%06X", rgb));
+        if (custom != null && !custom.isFocused()) custom.setValue(Paint.hex(rgb));
     }
 
     /** A colour as the page names it: its palette number, or #RRGGBB for a custom one. */
     private static Component colourName(int rgb) {
         var swatch = Paint.swatch(rgb);
-        return swatch != null ? Component.literal("RAL " + swatch.ral()) : Component.literal(String.format(Locale.ROOT, "#%06X", rgb));
+        return swatch != null ? Component.literal("RAL " + swatch.ral()) : Component.literal(Paint.hex(rgb));
     }
 
     /** A palette colour: a filled square, outlined in white when it is the edited channel's colour. */
@@ -378,6 +400,13 @@ public final class EquipmentConstructorScreen extends Screen {
         }).bounds(8 + half + 4, y, half, 16).tooltip(Tooltip.create(Component.translatable(KEY + "remove.hint"))).build();
         remove.active = !connections.isEmpty();
         addRenderableWidget(remove);
+        if (form.orientation().horizontal()) {
+            bootButton = addRenderableWidget(Button.builder(bootLabel(), b -> {
+                boot = !boot;
+                refresh();
+            }).bounds(PANEL - 80, TOP + 6 * ROW, 74, 16).tooltip(Tooltip.create(Component.translatable(KEY + "boot.hint"))).build());
+            bootButton.active = EquipmentShape.bootFor(diameter, tangentLength) != null;
+        }
         bottomRow(Button.builder(Component.translatable(KEY + "back"), b -> show(Page.DESIGN)).tooltip(Tooltip.create(Component.translatable(KEY + "back.hint"))));
     }
 
@@ -399,29 +428,15 @@ public final class EquipmentConstructorScreen extends Screen {
     }
 
     /**
-     * Adds a side connection where it meets nothing: a standing drum's as high as it goes (an inlet's usual place),
-     * facing your right, left, the back, then the front; a lying drum's nearest its front head, on top, at the sides,
-     * then underneath. Where every place clashes it is added anyway at the first, and the status says what it meets.
+     * Adds a side connection where it meets nothing ({@link EquipmentShape#place}): a standing drum's as high as it goes
+     * (an inlet's usual place), a lying drum's nearest its front head, each on its form's preferred sides. Where every
+     * place clashes it is added anyway at the first, and the status says what it meets.
      */
     private void add() {
         int[] stations = stations();
         boolean lying = form.orientation().horizontal();
-        int[] sides = lying ? new int[]{1, 0, 2, 3} : new int[]{3, 1, 2, 0};
-        EquipmentShape.Connection chosen = null;
-        search:
-        for (int k = 0; k <= stations[1] - stations[0]; k++) {
-            int station = lying ? stations[0] + k : stations[1] - k;
-            for (int side : sides) {
-                var candidate = new EquipmentShape.Connection(side, station, 0);
-                var trial = new ArrayList<>(connections);
-                trial.add(candidate);
-                if (EquipmentShape.drum(diameter, tangentLength, form.orientation(), front(), support, trial).clashes().isEmpty()) {
-                    chosen = candidate;
-                    break search;
-                }
-            }
-        }
-        connections.add(chosen != null ? chosen : new EquipmentShape.Connection(sides[0], lying ? stations[0] : stations[1], 0));
+        var wanted = new EquipmentShape.Connection(EquipmentShape.preferredSides(form.orientation())[0], lying ? stations[0] : stations[1], 0);
+        connections.add(EquipmentShape.place(connections, wanted, template()));
         selected = connections.size() - 1;
         refresh();
         rebuildWidgets();
@@ -462,6 +477,8 @@ public final class EquipmentConstructorScreen extends Screen {
             case EquipmentShape.Clash.LIQUID -> Component.translatable(KEY + "clash.liquid", k);
             case EquipmentShape.Clash.SADDLE -> Component.translatable(KEY + "clash.saddle", k);
             case EquipmentShape.Clash.GROUND -> Component.translatable(KEY + "clash.ground", k);
+            case EquipmentShape.Clash.MANWAY -> Component.translatable(KEY + "clash.manway", k);
+            case EquipmentShape.Clash.BOOT -> Component.translatable(KEY + "clash.boot", k);
             default -> Component.translatable(KEY + "clash.connection", k, clash.other() + 1);
         };
     }
@@ -469,7 +486,8 @@ public final class EquipmentConstructorScreen extends Screen {
     /** The page's rows, top-down: its title, then what each row sets. */
     private String[] rows() {
         if (page == Page.CONNECTIONS)
-            return new String[]{"connections", "connection", "faces", form.orientation().horizontal() ? "along" : "height", "offset"};
+            return form.orientation().horizontal() ? new String[]{"connections", "connection", "faces", "along", "offset", "", "boot"}
+                    : new String[]{"connections", "connection", "faces", "height", "offset"};
         if (page == Page.PAINT) return new String[]{"paint", "paint.body", "paint.structure", "paint.palette", "paint.palette", "custom", "paint.default"};
         return switch (Equipment.of(form)) {
             case VERTICAL_DRUM -> new String[]{"equipment", "diameter", "tangent_length", "skirt", "forward", "right", "up"};
@@ -565,6 +583,13 @@ public final class EquipmentConstructorScreen extends Screen {
             if (before.unit() || before.orientation() != form.orientation()) support = EquipmentShape.defaultSupport(diameter, form.orientation());
         }
         support = Math.max(support, minimumSupport());
+        // A drum laid down or stood up takes that form's connection: its sides face other ways (a standing drum's left
+        // is a lying drum's underside, onto its saddles).
+        if (form.kind() == EquipmentShape.Kind.DRUM && before.orientation() != form.orientation()) {
+            connections.clear();
+            connections.addAll(EquipmentShape.defaultConnections(diameter, tangentLength, form.orientation(), support, hasBoot()));
+            selected = 0;
+        }
         refresh();
         show(Page.DESIGN);
     }
@@ -579,10 +604,22 @@ public final class EquipmentConstructorScreen extends Screen {
     private int minimumSupport() {
         if (form.unit()) return ProcessUnit.minSupport(form.kind());
         if (form.column()) return EquipmentShape.minimumSkirt(diameter);
-        return form.orientation() == EquipmentShape.Orientation.VERTICAL ? EquipmentShape.minimumSkirt(diameter) : 1;
+        if (form.orientation() == EquipmentShape.Orientation.VERTICAL) return EquipmentShape.minimumSkirt(diameter);
+        return hasBoot() ? EquipmentShape.minimumBootSupport(diameter, tangentLength) : 1;
     }
 
+    /** What the boot toggle says: whether the drum has one, or that it is too short for one. */
+    private Component bootLabel() {
+        return Component.translatable(KEY + (EquipmentShape.bootFor(diameter, tangentLength) == null ? "boot.none" : hasBoot() ? "boot.on" : "boot.off"));
+    }
+
+    /** Follows an edit: a boot raises the saddles to what its drain needs; the connections fit the drum again. */
     private void refresh() {
+        support = Math.max(support, minimumSupport());
+        if (bootButton != null) {
+            bootButton.active = EquipmentShape.bootFor(diameter, tangentLength) != null;
+            bootButton.setMessage(bootLabel());
+        }
         fitConnections();
         var shape = design().shape(facing);
         if (!shape.equals(layout.shape())) layout = ShapeRasterizer.layout(shape);
@@ -662,7 +699,7 @@ public final class EquipmentConstructorScreen extends Screen {
         graphics.drawString(font, Component.translatable(KEY + "custom"), 8, TOP + 5 * ROW + 4, ProcessUi.TEXT);
         var swatch = Paint.swatch(paint.colour(channel));
         Component name = swatch != null ? Component.translatable(KEY + "paint.named", swatch.ral(), Component.translatable(PAINT_KEY + swatch.key()))
-                : Component.translatable(KEY + "paint.custom", String.format(Locale.ROOT, "#%06X", paint.colour(channel)));
+                : Component.translatable(KEY + "paint.custom", Paint.hex(paint.colour(channel)));
         graphics.drawString(font, name, 8, LINES, ProcessUi.MUTED);
         graphics.drawString(font, Component.translatable(KEY + (channel == Paint.BODY ? "paint.body.parts" : "paint.structure.parts")), 8, LINES + LINE, ProcessUi.MUTED);
         graphics.drawString(font, Component.translatable(KEY + "paint.unpainted"), 8, LINES + 2 * LINE, ProcessUi.MUTED);
@@ -760,6 +797,7 @@ public final class EquipmentConstructorScreen extends Screen {
             var clash = clash();
             status = clash != null ? clashText(clash) : Component.translatable(KEY + "clash.none");
         }
+        if (form.orientation().horizontal()) graphics.drawString(font, Component.translatable(KEY + "boot"), 8, TOP + 6 * ROW + 4, ProcessUi.TEXT);
         graphics.drawString(font, status, 8, STATUS, clash() == null ? ProcessUi.ACCENT : ProcessUi.WARN);
         describe(mouseX, mouseY, connections.isEmpty() ? 2 : names.length, connections.isEmpty() ? new String[0] : new String[]{"connection.size", "connection.port"});
     }
@@ -773,7 +811,7 @@ public final class EquipmentConstructorScreen extends Screen {
         Component text = null;
         int row = Math.floorDiv(mouseY - TOP, ROW);
         boolean label = mouseX < PANEL - 82, value = mouseX >= PANEL - 60 && mouseX < PANEL - 26;
-        if (mouseY >= TOP && row < rows && (label || value && row > 0)) text = hint(row);
+        if (mouseY >= TOP && row < rows && (label || value && row > 0) && !rows()[row].isEmpty()) text = hint(row);
         else if (mouseY >= LINES && mouseY < LINES + lines.length * LINE) text = Component.translatable(KEY + lines[(mouseY - LINES) / LINE] + ".hint");
         else if (mouseY >= STATUS - 1 && mouseY < STATUS + 10) text = Component.translatable(KEY + (page == Page.CONNECTIONS ? "clash.hint" : "status.hint"));
         if (text != null) setTooltipForNextRenderPass(font.split(text, 200));

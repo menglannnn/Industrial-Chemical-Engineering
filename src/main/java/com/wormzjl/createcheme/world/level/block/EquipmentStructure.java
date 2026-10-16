@@ -248,9 +248,9 @@ public final class EquipmentStructure {
 
     /**
      * {@code /createcheme equipment place <bottom centre> <diameter m> <tangent length m> [rows | vertical <skirt m>
-     * [front] | horizontal <saddle m> [front]]} (operators only). Without a support the drum is bare: vertical, on its
-     * lower head. The front (north, east, south, west; north by default) is where a standing drum's liquid outlet and a
-     * lying drum's front head face. {@code /createcheme equipment column <bottom centre> <diameter m> <trays> <skirt m>
+     * [front] | horizontal <saddle m> [front [boot]]]} (operators only). Without a support the drum is bare: vertical, on
+     * its lower head. The front (north, east, south, west; north by default) is where a standing drum's liquid outlet and a
+     * lying drum's front head face; {@code boot} hangs a water boot under a lying drum's far end. {@code /createcheme equipment column <bottom centre> <diameter m> <trays> <skirt m>
      * [front]} places a column fed at its middle tray, its piping side to the front. {@code /createcheme equipment unit
      * <bottom centre> exchanger|kettle|air_cooler|ejector <size m> <length m> <support m> [front]} places a unit (an air
      * cooler's size and length are 3 and 6, an ejector's length 1), its channel or suction to the front.
@@ -258,15 +258,16 @@ public final class EquipmentStructure {
     @SubscribeEvent
     public static void registerCommands(RegisterCommandsEvent event) {
         var rows = Commands.argument("rows", IntegerArgumentType.integer(1))
-                .executes(context -> place(context, IntegerArgumentType.getInteger(context, "rows"), EquipmentShape.Orientation.VERTICAL, 0, EquipmentShape.Heading.NORTH));
+                .executes(context -> place(context, IntegerArgumentType.getInteger(context, "rows"), EquipmentShape.Orientation.VERTICAL, 0, EquipmentShape.Heading.NORTH, false));
         var tangentLength = Commands.argument("tangentLength", IntegerArgumentType.integer(1, (int) EquipmentShape.MAX_TANGENT_LENGTH))
-                .executes(context -> place(context, Integer.MAX_VALUE, EquipmentShape.Orientation.VERTICAL, 0, EquipmentShape.Heading.NORTH)).then(rows);
+                .executes(context -> place(context, Integer.MAX_VALUE, EquipmentShape.Orientation.VERTICAL, 0, EquipmentShape.Heading.NORTH, false)).then(rows);
         for (var orientation : EquipmentShape.Orientation.values()) {
             var support = Commands.argument("support", IntegerArgumentType.integer(0, EquipmentShape.MAX_SUPPORT))
-                    .executes(context -> place(context, Integer.MAX_VALUE, orientation, IntegerArgumentType.getInteger(context, "support"), EquipmentShape.Heading.NORTH));
+                    .executes(context -> place(context, Integer.MAX_VALUE, orientation, IntegerArgumentType.getInteger(context, "support"), EquipmentShape.Heading.NORTH, false));
             for (var front : EquipmentShape.Heading.values())
                 support.then(Commands.literal(front.name().toLowerCase(Locale.ROOT))
-                        .executes(context -> place(context, Integer.MAX_VALUE, orientation, IntegerArgumentType.getInteger(context, "support"), front)));
+                        .executes(context -> place(context, Integer.MAX_VALUE, orientation, IntegerArgumentType.getInteger(context, "support"), front, false))
+                        .then(Commands.literal("boot").executes(context -> place(context, Integer.MAX_VALUE, orientation, IntegerArgumentType.getInteger(context, "support"), front, true))));
             tangentLength.then(Commands.literal(orientation.name().toLowerCase(Locale.ROOT)).then(support));
         }
         var diameter = Commands.argument("diameter", DoubleArgumentType.doubleArg(EquipmentShape.MIN_DIAMETER, EquipmentShape.MAX_DIAMETER)).then(tangentLength);
@@ -299,10 +300,12 @@ public final class EquipmentStructure {
                 .then(Commands.literal("equipment").then(place).then(column).then(unit)));
     }
 
-    private static int place(CommandContext<CommandSourceStack> context, int rows, EquipmentShape.Orientation orientation, int support, EquipmentShape.Heading front) throws CommandSyntaxException {
+    private static int place(CommandContext<CommandSourceStack> context, int rows, EquipmentShape.Orientation orientation, int support, EquipmentShape.Heading front, boolean boot) throws CommandSyntaxException {
         EquipmentShape shape;
         try {
-            shape = EquipmentShape.drum(DoubleArgumentType.getDouble(context, "diameter"), IntegerArgumentType.getInteger(context, "tangentLength"), orientation, front, support);
+            double diameter = DoubleArgumentType.getDouble(context, "diameter");
+            int length = IntegerArgumentType.getInteger(context, "tangentLength");
+            shape = EquipmentShape.drum(diameter, length, orientation, front, support, EquipmentShape.defaultConnections(diameter, length, orientation, support, boot), boot);
         } catch (IllegalArgumentException invalid) {
             context.getSource().sendFailure(Component.literal(invalid.getMessage()));
             return 0;
@@ -340,7 +343,7 @@ public final class EquipmentStructure {
         var source = context.getSource();
         var origin = BlockPosArgument.getLoadedBlockPos(context, "position").offset(-shape.sizeX() / 2, 0, -shape.sizeZ() / 2);
         try {
-            int placed = place(source.getLevel(), origin, shape, Paint.DEFAULT, rows);
+            int placed = place(source.getLevel(), origin, shape, CreateChemE.defaultPaint(), rows);
             source.sendSuccess(() -> Component.literal("Placed " + placed + " cells of a " + name + " at " + origin.toShortString()), true);
             return placed;
         } catch (IllegalStateException blocked) {

@@ -1,6 +1,7 @@
 package com.wormzjl.createcheme.science.equipment;
 
 import com.wormzjl.createcheme.science.math.DeterministicMath;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -46,6 +47,8 @@ public final class ShapeRasterizer {
     public static final int SOLID_RESOLUTION = 8;
     /** Texture layout, m: a shell course, the nominal shell plate length, a support sprite's repeat. */
     public static final double COURSE = 2, PLATE_LENGTH = 4, SUPPORT_TILE = 2;
+    /** A drum skirt's vent sleeve, outside diameter, m (photo survey B: 2 to 4 in sleeves under the head). */
+    static final double VENT = .1;
     /** Bits per nozzle in a cell key, and the most nozzles that may reach one cell. */
     private static final int CODE_BITS = 7, KEYED_NOZZLES = 9;
     private static final int GEOMETRY_CACHE = 64, GEOMETRY_FACETS = 300_000;
@@ -217,7 +220,7 @@ public final class ShapeRasterizer {
      * A drum's shell cell at its lowest inside point, where its fluid node stands: the bottom apex, or a lying drum's
      * bottom line; null for a column or a unit, which are not fluid devices yet.
      */
-    public static @org.jetbrains.annotations.Nullable Cell fluidCell(EquipmentShape shape) {
+    public static @Nullable Cell fluidCell(EquipmentShape shape) {
         return geometry(shape).fluidCell;
     }
 
@@ -313,6 +316,9 @@ public final class ShapeRasterizer {
          */
         private final boolean hollow;
         private final double slotLow, slotHigh, innerRadius;
+        /** A drum's manway and a lying drum's boot, or null. */
+        private final @Nullable Manway manway;
+        private final EquipmentShape.@Nullable Boot boot;
         private final double[] normalCos, normalSin, vertexCos, vertexSin, saddles;
         /** Each head's rings, {height over the tangent line, radius}, and its meridian lengths to them: the top head's (clad on a column) and the bottom head's (bare). */
         private final double[][] rings, bottomRings;
@@ -378,11 +384,16 @@ public final class ShapeRasterizer {
             slotLow = slots ? .4 : 0;
             slotHigh = slots ? slotTop : 0;
             nozzles = shape.nozzles();
+            manway = shape.manway();
+            boot = shape.bootPlace();
 
             if (unit != null) mesh.include(unit.mesh());
             else {
                 build();
                 if (shape.skirt()) skirtBase();
+                if (shape.skirt() && shape.drum()) junction();
+                if (boot != null) boot();
+                if (manway != null) manway.draw(mesh);
                 if (openingRadius > 0) openingSleeve();
                 for (double c : saddles) saddle(c);
             }
@@ -659,6 +670,54 @@ public final class ShapeRasterizer {
         }
 
         /**
+         * Where a drum's skirt meets its bottom head (owner request 2026-10-16; photo survey EQUIPMENT_DETAILS_PHOTO_SURVEY.md,
+         * section B): the skirt-to-head weld under a bare steel band standing 0.02 m proud round the bottom tangent line, and
+         * the skirt's vent sleeves 0.25 m under it, two (four from 1.25 m) on the diagonals clear of the opening and the
+         * slots, which let out what gathers under the head.
+         */
+        private void junction() {
+            double yB = shape.bottomTangent(), band = .1, rOut = radius + .02 / apothemFactor;
+            var f = new Frame(new double[]{axis, yB - band / 2, axis}, new double[]{0, 1, 0}, new double[]{1, 0, 0});
+            mesh.prism(f, rOut, 0, band, n, Material.FLANGE);
+            mesh.annulus(f, radius, rOut, 0, n, -1, Material.FLANGE);
+            mesh.annulus(f, radius, rOut, band, n, 1, Material.FLANGE);
+            int vents = shape.diameter() >= 1.25 ? 4 : 2;
+            double apothem = radius * apothemFactor, r = VENT / 2, bore = r - .015;
+            for (int k = 0; k < vents; k++) {
+                double angle = Math.PI / 4 + k * 2 * Math.PI / vents;
+                int i = Math.floorMod((int) Math.round(angle * n / (2 * Math.PI) - .5), n);
+                var normal = new double[]{normalCos[i], 0, normalSin[i]};
+                var v = new Frame(new double[]{axis + apothem * normalCos[i], yB - .25, axis + apothem * normalSin[i]}, normal, new double[]{0, 1, 0});
+                mesh.prism(v, r, -.03, .05, 8, Material.SUPPORT);
+                mesh.annulus(v, bore, r, .05, 8, 1, Material.SUPPORT);
+                mesh.bore(v, bore, -.03, .05, 8, Material.SUPPORT);
+                mesh.annulus(v, 0, bore, -.03, 8, 1, Material.OPENING);
+            }
+        }
+
+        /**
+         * A lying drum's boot (photo survey A): its shell from inside the drum's down to its tangent line and its 2:1
+         * bottom head, under the drum's axis at its station.
+         */
+        private void boot() {
+            double rb = boot.diameter() / 2, top = Math.sqrt(Math.max(0, radius * radius - rb * rb)) * apothemFactor - .03, tangent = radius + boot.length();
+            int sides = Math.max(12, 4 * (int) Math.ceil(.75 * Math.PI * boot.diameter()));
+            var f = new Frame(new double[]{axis, boot.station(), axis}, new double[]{-1, 0, 0}, new double[]{0, 0, 1});
+            mesh.prism(f, rb, top, tangent, sides, Material.SHELL);
+            mesh.head(f, rb, tangent, boot.diameter() / 4, sides, Material.HEAD);
+        }
+
+        /** Inside a lying drum's boot, at a frame point: its shell under the drum and its bottom head. */
+        private boolean inBoot(double[] p) {
+            if (boot == null) return false;
+            double rb = boot.diameter() / 2, dy = p[1] - boot.station(), dz = p[2] - axis, across = dy * dy + dz * dz, down = axis - p[0], tangent = radius + boot.length();
+            if (across > rb * rb || down < radius - .1) return false;
+            if (down <= tangent) return true;
+            double off = (down - tangent) / (boot.diameter() / 4);
+            return off <= 1 && across <= rb * rb * (1 - off * off);
+        }
+
+        /**
          * The shell facet anchor chair {@code k} of {@code chairs} stands against. A drum's skirt is pierced on its axes (the
          * access opening at the front, slots at the left, back and right), so its chairs stand between them; a column's
          * ladders come down on the diagonals, so its chairs keep to the axes.
@@ -777,6 +836,7 @@ public final class ShapeRasterizer {
                 m.prism(f, r, 0, taper, sides, Material.PIPE);
                 m.frustum(f, r, hubR, taper, length - t, sides, Material.PIPE);
                 m.annulus(f, hubR, flange, length - t, sides, -1, Material.FLANGE);
+                m.bolts(f, od, hubR, flange, length - t, -1, Material.BOLT);
                 m.prism(f, flange, length - t, length, sides, Material.FLANGE);
                 m.annulus(f, 0, flange, length, sides, 1, Material.FLANGE);
                 if (nozzle.riser() > 0) {
@@ -901,6 +961,13 @@ public final class ShapeRasterizer {
             for (double centre : saddles) if (low < centre + half + EPS && high > centre - half - EPS) return false;
             if (openingRadius > 0 && low < openingHeight + openingRadius + .1 && high > openingHeight - openingRadius - .1) return false;
             if (slotHigh > 0 && low < slotHigh + EPS && high > slotLow - EPS) return false;
+            // A drum's skirt meets its head under a band, with vents below it; a drum's manway and a boot take rows of their own.
+            if (shape.skirt() && shape.drum() && low < shape.bottomTangent() + .1 + EPS && high > shape.bottomTangent() - .35 - EPS) return false;
+            if (manway != null) {
+                var m = manway.box();
+                if (low < m[4] + EPS && high > m[1] - EPS) return false;
+            }
+            if (boot != null && low < boot.station() + boot.diameter() / 2 + .05 + EPS && high > boot.station() - boot.diameter() / 2 - .05 - EPS) return false;
             // A hollow skirt shows its bottom head in the rows it reaches.
             if (hollow && high > shape.bottomTangent() - shape.headDepth() - EPS && low < shape.bottomTangent() + EPS) return false;
             for (var nozzle : nozzles) {
@@ -924,7 +991,7 @@ public final class ShapeRasterizer {
         /** Whether a box point lies in the solid, the nozzles reaching its cell drawn at {@code codes} ({@link #cellCodes}). */
         boolean inside(double x, double y, double z, long codes) {
             var p = transform.local(new double[]{x, y, z});
-            if (inVessel(p) || column != null && column.inside(p) || unit != null && unit.inside(p)) return true;
+            if (inVessel(p) || column != null && column.inside(p) || unit != null && unit.inside(p) || manway != null && manway.inside(p)) return true;
             var reaching = reaching(new Cell(floor(x), floor(y), floor(z)));
             for (int k = 0, j = 0; k < nozzles.size(); k++) {
                 boolean keyed = j < reaching.length && reaching[j] == k;
@@ -936,7 +1003,7 @@ public final class ShapeRasterizer {
 
         /** Inside the vessel and its supports, at a frame point: what the interior cells fill. A unit has no vessel. */
         private boolean inVessel(double[] p) {
-            return unit == null && (inBody(p) || shape.skirt() && inSkirtBase(p) || saddles.length > 0 && inSaddle(p));
+            return unit == null && (inBody(p) || shape.skirt() && inSkirtBase(p) || saddles.length > 0 && inSaddle(p) || inBoot(p));
         }
 
         private boolean inBody(double[] p) {

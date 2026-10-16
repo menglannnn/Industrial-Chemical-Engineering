@@ -10,6 +10,7 @@ import com.wormzjl.createcheme.registry.ModMenus;
 import com.wormzjl.createcheme.runtime.ProcessSolveServices;
 import com.wormzjl.createcheme.runtime.WorkerAllocation;
 import com.wormzjl.createcheme.science.column.v3.V3ColumnCalculator;
+import com.wormzjl.createcheme.science.equipment.Paint;
 import com.wormzjl.createcheme.science.fluid.thermo.FluidThermodynamics;
 import com.wormzjl.createcheme.science.column.v3.V3InitializationOptions;
 import com.wormzjl.createcheme.science.column.v3.V3NeuralRegistry;
@@ -57,6 +58,7 @@ public final class CreateChemE {
     private static final ModConfigSpec.EnumValue<V3InitializationOptions.WetStart> COLUMN_V3_WET_START;
     private static final ModConfigSpec.IntValue COLUMN_V3_LNN_ITERATIONS;
     private static final ModConfigSpec.IntValue COLUMN_V3_LNN_MILLISECONDS;
+    private static final ModConfigSpec.ConfigValue<String> EQUIPMENT_PRIMARY_COLOUR, EQUIPMENT_SECONDARY_COLOUR;
 
     static {
         ModConfigSpec.Builder builder = new ModConfigSpec.Builder();
@@ -174,6 +176,16 @@ public final class CreateChemE {
                 .defineInRange("columnV3LiquidSupplyScreenRatio",
                         V3ColumnCalculator.DEFAULT_LIQUID_SUPPLY_SCREEN_RATIO, 0.0, 1.0);
         builder.pop();
+        builder.push("equipment");
+        EQUIPMENT_PRIMARY_COLOUR = builder
+                .comment("Primary colour of new equipment designs as #RRGGBB: shell, heads, cladding and unit casings.",
+                        "Built-in: RAL 9006 white aluminium. The constructor's Paint page changes it per design.")
+                .define("primaryColour", Paint.hex(Paint.DEFAULT.body()), Paint::isHex);
+        EQUIPMENT_SECONDARY_COLOUR = builder
+                .comment("Secondary colour of new equipment designs as #RRGGBB: skirts, saddles and steelwork.",
+                        "Built-in: RAL 7031 blue grey.")
+                .define("secondaryColour", Paint.hex(Paint.DEFAULT.structure()), Paint::isHex);
+        builder.pop();
         CONFIG_SPEC = builder.build();
     }
 
@@ -202,6 +214,11 @@ public final class CreateChemE {
             var server=level.getServer();var dimension=level.dimension();long chunk=event.getChunk().getPos().toLong();
             server.execute(()->com.wormzjl.createcheme.runtime.fluid.FluidWorldAuthority.find(server).ifPresent(world->world.loadedChunk(dimension,chunk)));
         }
+    }
+
+    /** The paint of a new equipment design: the config's primary and secondary colours. */
+    public static Paint defaultPaint() {
+        return new Paint(Paint.parseHex(EQUIPMENT_PRIMARY_COLOUR.get()), Paint.parseHex(EQUIPMENT_SECONDARY_COLOUR.get()));
     }
 
     public static boolean calculationLoggingEnabled() {

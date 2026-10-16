@@ -160,6 +160,7 @@ public final class LineGeometry {
             m.prism(f, flange, -t, t, sides, Material.FLANGE);
             for (int side = -1; side <= 1; side += 2) {
                 m.annulus(f, hubR, flange, side * t, sides, side, Material.FLANGE);
+                m.bolts(f, od, hubR, flange, side * t, side, Material.BOLT);
                 m.frustum(f, hubR, od / 2, side * t, side * (t + hub), sides, Material.PIPE);
             }
             from = t + hub;
@@ -238,6 +239,7 @@ public final class LineGeometry {
         boolean hub = .5 - t > z + EPS;
         if (hub) m.frustum(f, od / 2, hubR, z, .5 - t, sides, Material.PIPE);
         m.annulus(f, hub ? hubR : 0, flange, .5 - t, sides, -1, Material.FLANGE);
+        m.bolts(f, od, hub ? hubR : od / 2, flange, .5 - t, -1, Material.BOLT);
         m.prism(f, flange, .5 - t, .5, sides, Material.FLANGE);
         m.annulus(f, 0, flange, .5, sides, 1, Material.FLANGE);
     }
@@ -390,6 +392,7 @@ public final class LineGeometry {
         m.annulus(leg, rl, cover, length - .03, n, -1, Material.FLANGE);
         m.prism(leg, cover, length - .03, length, n, Material.FLANGE);
         m.annulus(leg, 0, cover, length, n, 1, Material.FLANGE);
+        m.bolts(leg, 2 * rl, rl, cover, length, 1, Material.BOLT);
         m.cylinder(leg, Math.min(.03, .3 * rl), length, length + .03, 8, Material.FLANGE);
     }
 

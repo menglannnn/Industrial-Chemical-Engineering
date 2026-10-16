@@ -49,7 +49,7 @@ final class ColumnStructure {
      */
     static final double MIN_DECK = Math.ceil((STANDOFF + RUNG_FACE + PLAYER + RAIL_BAND - GAP) * 20) / 20;
     /** Manway: neck and cover diameters (24" class 150), cover face beyond the cladding, centre over the deck, m. */
-    static final double MANWAY = .6, COVER = .8, MANWAY_REACH = .25, MANWAY_HEIGHT = .9;
+    static final double MANWAY = Manway.LARGE, COVER = Manway.COVER_RATIO * MANWAY, MANWAY_REACH = Manway.REACH, MANWAY_HEIGHT = .9;
     /** Rain flashing rings: pitch, band height and projection, m. */
     static final double FLASHING_PITCH = 3, FLASHING = 1 / 16.0;
     /** Platforms: at least this far apart, and no climb longer than {@link #MAX_CLIMB} (old OSHA 1910.27), m. */
@@ -334,7 +334,7 @@ final class ColumnStructure {
         for (var p : plan.platforms()) {
             deck(mesh, p);
             handrail(mesh, p);
-            if (p.manway()) manway(mesh, p.manwayHeight());
+            if (p.manway()) manway(p.manwayHeight()).draw(mesh);
         }
         for (var l : plan.ladders()) ladder(ladders, l);
         davit(mesh);
@@ -444,23 +444,10 @@ final class ColumnStructure {
         return out;
     }
 
-    /**
-     * A manway: a 24" neck through the cladding, its flange and a painted blind cover, and the hinge davit beside it (a
-     * post on two lugs, an arm over the cover centre, a drop to the cover).
-     */
-    private void manway(Mesh m, double y) {
-        var f = new Frame(new double[]{axis, y, axis}, new double[]{0, 0, 1}, new double[]{1, 0, 0});
-        double r = MANWAY / 2, cover = COVER / 2, start = Math.sqrt(apothem * apothem - r * r) - .03, face = outer + MANWAY_REACH, t = .06;
-        m.prism(f, r, start, face - t, 16, Material.PIPE);
-        m.annulus(f, r, cover, face - t, 16, -1, Material.FLANGE);
-        m.prism(f, cover, face - t, face, 16, Material.FLANGE);
-        m.prism(f, cover, face, face + t, 16, Material.ACTUATOR);
-        m.annulus(f, 0, cover, face + t, 16, 1, Material.ACTUATOR);
-        double post = -(cover + .08), postR = outer + .15;
-        m.bar(at(postR, BACK, post, y - .35), at(postR, BACK, post, y + .58), BAR * 1.5, radial(BACK), Material.STEELWORK);
-        for (double h : new double[]{-.22, .22}) m.bar(at(outer + .02, BACK, -r - .02, y + h), at(postR, BACK, post, y + h), BAR, UP, Material.STEELWORK);
-        m.bar(at(postR, BACK, post, y + .55), at(face + t / 2, BACK, 0, y + .55), BAR * 1.5, UP, Material.STEELWORK);
-        m.bar(at(face + t / 2, BACK, 0, y + .55), at(face + t / 2, BACK, 0, y + cover - .02), BAR, radial(BACK), Material.STEELWORK);
+    /** The manway over a platform, at height {@code y}, facing the back ({@link Manway}): its 24" neck through the cladding. */
+    private Manway manway(double y) {
+        double r = MANWAY / 2;
+        return new Manway(new double[]{axis, y, axis}, new double[]{0, 0, 1}, UP, MANWAY, Math.sqrt(apothem * apothem - r * r) - .03, outer, outer + MANWAY_REACH);
     }
 
     /**
@@ -541,9 +528,7 @@ final class ColumnStructure {
         }
         for (var platform : plan.platforms()) {
             if (!platform.manway()) continue;
-            double h = y - platform.manwayHeight(), face = outer + MANWAY_REACH;
-            if (dz >= outer - .1 && dz <= face && dx * dx + h * h <= MANWAY * MANWAY / 4) return true;
-            if (dz >= face - .06 && dz <= face + .06 && dx * dx + h * h <= COVER * COVER / 4) return true;
+            if (manway(platform.manwayHeight()).inside(p)) return true;
         }
         var mast = at(outer + .35, plan.davitAngle(), 0);
         double mx = p[0] - mast[0], mz = p[2] - mast[2];

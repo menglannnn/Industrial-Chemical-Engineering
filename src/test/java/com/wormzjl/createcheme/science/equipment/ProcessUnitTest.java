@@ -37,7 +37,7 @@ class ProcessUnitTest {
             for (int s = 1; s <= ProcessUnit.Bank.MAX_SERIES; s++)
                 shapes.add(EquipmentShape.unit(Kind.AIR_COOLER, 1.5, 4, Heading.NORTH, 5, new ProcessUnit.Bank(p, s)));
         shapes.add(EquipmentShape.unit(Kind.AIR_COOLER, 3, 6, Heading.NORTH, 5, new ProcessUnit.Bank(ProcessUnit.Bank.MAX_PARALLEL, ProcessUnit.Bank.MAX_SERIES)));
-        shapes.add(EquipmentShape.unit(Kind.AIR_COOLER, 2.5, 3, Heading.WEST, 7, new ProcessUnit.Bank(3, 2)));
+        shapes.add(EquipmentShape.unit(Kind.AIR_COOLER, 2.5, 4, Heading.WEST, 7, new ProcessUnit.Bank(3, 2)));
         return shapes;
     }
 
@@ -55,10 +55,10 @@ class ProcessUnitTest {
                 () -> EquipmentShape.unit(Kind.KETTLE, 1, 11, Heading.NORTH, 2),
                 () -> EquipmentShape.unit(Kind.AIR_COOLER, 4, 6, Heading.NORTH, 6),
                 () -> EquipmentShape.unit(Kind.AIR_COOLER, 3, 7, Heading.NORTH, 6),
-                () -> EquipmentShape.unit(Kind.AIR_COOLER, 3, 6, Heading.NORTH, 4),
+                () -> EquipmentShape.unit(Kind.AIR_COOLER, 3, 6, Heading.NORTH, 2),
                 () -> EquipmentShape.unit(Kind.AIR_COOLER, 1, 4, Heading.NORTH, 5),
                 () -> EquipmentShape.unit(Kind.AIR_COOLER, 3, 3, Heading.NORTH, 5),
-                () -> EquipmentShape.unit(Kind.AIR_COOLER, 1.5, 3, Heading.NORTH, 5),
+                () -> EquipmentShape.unit(Kind.AIR_COOLER, 2.5, 3, Heading.NORTH, 5),
                 () -> EquipmentShape.unit(Kind.EXCHANGER, 1, 4, Heading.NORTH, 2, new ProcessUnit.Bank(2, 1)),
                 () -> new ProcessUnit.Bank(ProcessUnit.Bank.MAX_PARALLEL + 1, 1),
                 () -> new ProcessUnit.Bank(1, 0),
@@ -80,18 +80,19 @@ class ProcessUnitTest {
         assertEquals(1.5, ProcessUnit.kettleShell(1), 0);
         assertEquals(3.25, ProcessUnit.kettleShell(2), 0);
         // Owner request 2026-10-16 ("allow smaller ACs"): every bay from 1.5 m wide, each with fans over 40 % of its bundle
-        // face (API 661); 1.5 m wide from 4 m long, 3 m wide from 4 m (a 3 m bay of 3 m has 33 %). The 3 × 6 m bay keeps two
-        // fans of about 2 m.
+        // face (API 661); 1.5 and 2 m wide from 3 m long, 2.5 and 3 m wide from 4 m (a 3 m bay of 3 m has 28 %). The 3 × 6 m bay keeps two
+        // fans of 1.9 m, their rings 2.13 m across (owner report 2026-10-16: the rings of 2.05 m fans overlapped).
         var bays = ProcessUnit.bays();
         assertEquals(14, bays.size());
         for (var bay : bays) {
             assertTrue(ProcessUnit.coverage(bay[0], bay[1]) >= ProcessUnit.FAN_COVERAGE, bay[0] + " x " + bay[1]);
             EquipmentShape.unit(Kind.AIR_COOLER, bay[0], bay[1], Heading.NORTH, 5);
         }
-        assertEquals(4, ProcessUnit.minLength(Kind.AIR_COOLER, 1.5));
+        assertEquals(3, ProcessUnit.minLength(Kind.AIR_COOLER, 1.5));
+        assertEquals(4, ProcessUnit.minLength(Kind.AIR_COOLER, 2.5));
         assertEquals(3, ProcessUnit.minLength(Kind.AIR_COOLER, 2));
         assertEquals(4, ProcessUnit.minLength(Kind.AIR_COOLER, 3));
-        assertEquals(new ProcessUnit.Fans(2, 2.05), new ProcessUnit.Fans(ProcessUnit.fans(3, 6).count(), Math.round(ProcessUnit.fans(3, 6).diameter() * 100) / 100.0));
+        assertEquals(new ProcessUnit.Fans(2, 1.9), new ProcessUnit.Fans(ProcessUnit.fans(3, 6).count(), Math.round(ProcessUnit.fans(3, 6).diameter() * 100) / 100.0));
         assertEquals(2.49, ProcessUnit.ejectorLength(.3), 1e-9);
         // Owner request 2026-10-16 ("allow smaller ejectors"): suction from 0.05 m; one of 0.2 m or less stands on a single
         // post in the cell behind it, so it takes one cell by two; a larger one keeps its four-post frame.
@@ -105,16 +106,24 @@ class ProcessUnitTest {
     }
 
     @Test
-    void theLowestBundleLeavesHeadroomUnderTheFans() {
-        // Every bay on its lowest bundle (5 m) leaves 2.5 m clear above the ground under its fans, motors and beams, between
-        // its legs.
+    void theLowestBundleLeavesFreeAirUnderTheFans() {
+        // A forced-draft fan takes its air from under its ring; half a fan diameter of free air there is a usual least.
+        // Every bay on its lowest bundle (3 m, owner request 2026-10-16) keeps its rings' inlets that high (the 3 x 5 m
+        // bay's 2.48 m fan least, at 0.6 D), and nothing of the unit lies under them between its motor and the ring's rim
+        // but the beams carrying the motors.
+        int lowest = ProcessUnit.minSupport(Kind.AIR_COOLER);
         for (var bay : ProcessUnit.bays()) {
-            var shape = EquipmentShape.unit(Kind.AIR_COOLER, bay[0], bay[1], Heading.NORTH, ProcessUnit.minSupport(Kind.AIR_COOLER));
-            var unit = ProcessUnit.of(shape);
+            var fans = ProcessUnit.fans(bay[0], bay[1]);
+            var stack = ProcessUnit.FanStack.of(lowest, fans.diameter());
+            assertTrue(stack.inlet() >= .5 * fans.diameter(), bay[0] + " x " + bay[1] + ": inlet " + stack.inlet());
+            var unit = ProcessUnit.of(EquipmentShape.unit(Kind.AIR_COOLER, bay[0], bay[1], Heading.NORTH, lowest));
             double[] box = unit.box();
+            // Across the bay at the ring's mid-radius, beside the motor and its beam, under the ring.
+            double x = (box[0] + box[3]) / 2 + .35 * fans.diameter();
             for (double z = .75; z < bay[1] - .7; z += .1)
-                for (double y = .05; y < 2.5; y += .1)
-                    assertFalse(unit.inside(new double[]{(box[0] + box[3]) / 2, y, z}), shape + " at " + y + ", " + z);
+                for (double y = .05; y < stack.inlet() - .02; y += .1)
+                    if (y < stack.motorBottom() - ProcessUnit.BEAM - .01 || y > stack.motorBottom() + .01)
+                        assertFalse(unit.inside(new double[]{x, y, z}), bay[0] + " x " + bay[1] + " at " + y + ", " + z);
         }
     }
 
@@ -192,6 +201,68 @@ class ProcessUnitTest {
         lo[x] = Math.min(face[x], face[x] - nozzle.sign() * t);
         hi[x] = Math.max(face[x], face[x] - nozzle.sign() * t);
         return new double[][]{lo, hi};
+    }
+
+    @Test
+    void fanRingsKeepApartInsideThePlenum() {
+        // Owner report 2026-10-16: two fans' rings overlapped. In every bay of a bank, rings side by side along the tubes
+        // keep 0.02 m apart at their widest (flange and bellmouth, RING_OD rotor diameters), and each ring stays 0.05 m
+        // inside the plenum's frame across the bay.
+        for (var bay : ProcessUnit.bays()) {
+            var shape = EquipmentShape.unit(Kind.AIR_COOLER, bay[0], bay[1], Heading.NORTH, 4, new ProcessUnit.Bank(2, 2));
+            var rotors = ProcessUnit.rotors(shape);
+            double ring = ProcessUnit.RING_OD * rotors.getFirst()[3];
+            assertTrue(ring <= bay[0] - .32 + 1e-9, bay[0] + " x " + bay[1]);
+            for (var a : rotors)
+                for (var b : rotors)
+                    if (a != b && Math.abs(a[0] - b[0]) < 1e-9)
+                        assertTrue(Math.abs(a[2] - b[2]) >= ring + .02 - 1e-9, bay[0] + " x " + bay[1] + ": " + Math.abs(a[2] - b[2]) + " < " + ring);
+        }
+    }
+
+    @Test
+    void fanRotorsTurnAboutTheirHubs() {
+        // Owner request 2026-10-16: the client turns each fan's rotor about its hub. A bank has a rotor per fan per bay,
+        // each hub inside the bank's box; a rotor alone lies within its radius of the hub, and all of them together are
+        // the area of the still rotors the chunk mesh would draw.
+        var bank = new ProcessUnit.Bank(2, 2);
+        var shape = EquipmentShape.unit(Kind.AIR_COOLER, 3, 6, Heading.EAST, 4, bank);
+        var fans = ProcessUnit.fans(3, 6);
+        var rotors = ProcessUnit.rotors(shape);
+        assertEquals(bank.bays() * fans.count(), rotors.size());
+        for (var r : rotors) {
+            assertEquals(fans.diameter(), r[3], 1e-12);
+            assertTrue(r[0] > 0 && r[0] < shape.sizeX() && r[1] > 0 && r[1] < shape.sizeY() && r[2] > 0 && r[2] < shape.sizeZ());
+        }
+        double radius = fans.diameter() / 2, one = 0;
+        for (var polygon : ProcessUnit.rotor(fans.diameter())) {
+            assertEquals(Mesh.Material.AC_FAN, polygon.material());
+            double[] p = polygon.positions();
+            for (int i = 0; i < p.length; i += 3) {
+                assertTrue(p[i] * p[i] + p[i + 2] * p[i + 2] <= radius * radius + 1e-9);
+                assertTrue(Math.abs(p[i + 1]) <= radius);
+            }
+            one += area(polygon);
+        }
+        double still = 0;
+        for (var cell : ShapeRasterizer.layout(shape).shell())
+            for (var polygon : ShapeRasterizer.surface(ShapeRasterizer.key(shape, cell.x(), cell.y(), cell.z())))
+                if (polygon.material() == Mesh.Material.AC_FAN) still += area(polygon);
+        assertTrue(one > 0);
+        assertEquals(rotors.size() * one, still, 1e-6 * still);
+        assertEquals(List.of(), ProcessUnit.rotors(EquipmentShape.unit(Kind.EXCHANGER, 1, 4, Heading.NORTH, 2)));
+    }
+
+    private static double area(Mesh.Polygon polygon) {
+        double[] p = polygon.positions(), n = new double[3];
+        int m = polygon.size();
+        for (int i = 0; i < m; i++) {
+            int j = (i + 1) % m;
+            n[0] += (p[3 * i + 1] - p[3 * j + 1]) * (p[3 * i + 2] + p[3 * j + 2]);
+            n[1] += (p[3 * i + 2] - p[3 * j + 2]) * (p[3 * i] + p[3 * j]);
+            n[2] += (p[3 * i] - p[3 * j]) * (p[3 * i + 1] + p[3 * j + 1]);
+        }
+        return .5 * Math.sqrt(n[0] * n[0] + n[1] * n[1] + n[2] * n[2]);
     }
 
     private static boolean overlap(double[][] p, double[][] q) {

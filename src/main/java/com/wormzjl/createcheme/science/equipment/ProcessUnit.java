@@ -56,6 +56,11 @@ public final class ProcessUnit {
      * deepest a fan ring and guard hang under the plenum (the Blender ring is 0.35 of its fan deep).
      */
     static final double HEADER = .6, HEADER_HEIGHT = .6, BUNDLE = .5, RING_DEPTH = .9;
+    /**
+     * A fan ring's widest parts, its top flange and its bellmouth rim, in rotor diameters (the Blender part
+     * {@code ac_fan_ring}); fans are sized so that rings side by side keep apart (owner report 2026-10-16).
+     */
+    static final double RING_OD = 1.12;
 
     /**
      * An air cooler bank (owner request 2026-10-16: "AC should be able to be built in series & parallel", decided: one bank
@@ -90,6 +95,20 @@ public final class ProcessUnit {
     /** A bay's fans: how many, along its tubes, and their diameter, m. */
     public record Fans(int count, double diameter) {
     }
+
+    /**
+     * Heights under an air cooler's bundle for its fans, m above grade: the plenum's floor 0.2 + 0.4 D under the bundle,
+     * the ring and guard hanging {@code up} (at most {@link #RING_DEPTH}, drawn at 0.35 of it) down to the ring's
+     * {@code inlet}, the {@code rotor} turning a sixth of the way down, and the motor (scaled {@code motor}, smaller for
+     * a small fan) under the guard on its shaft.
+     */
+    public record FanStack(double floor, double up, double rotor, double inlet, double motor, double motorTop, double motorBottom) {
+        public static FanStack of(double bundle, double fan) {
+            double up = Math.min(fan, RING_DEPTH), floor = bundle - (.2 + .4 * fan), motor = Math.max(.45, Math.min(1, fan / 1.9)), motorTop = floor - .35 * up - .03;
+            return new FanStack(floor, up, floor - .15 * up, floor - .35 * up, motor, motorTop, motorTop - .58 * motor);
+        }
+    }
+
     /** Steelwork, m: a post's section, a beam's depth and flange. */
     static final double POST = .2, BEAM = .2, FLANGE_BEAM = .15;
 
@@ -152,19 +171,21 @@ public final class ProcessUnit {
 
     /**
      * The lowest support, m: a lying unit's bottom 2 m up leaves a block under its bottom nozzles for their pipes; an air
-     * cooler's bundle 5 m up leaves 2.5 m under its fan motors; an ejector's discharge 1 m up.
+     * cooler's bundle 3 m up (owner request 2026-10-16) keeps its fans' ring inlets at least 0.6 fan diameters above
+     * grade, more than the half diameter of free air a forced-draft fan usually takes; an ejector's discharge 1 m up.
      */
     public static int minSupport(Kind kind) {
         return switch (kind) {
             case EXCHANGER, KETTLE -> 2;
-            case AIR_COOLER -> 5;
+            case AIR_COOLER -> 3;
             case EJECTOR -> 1;
             default -> throw notUnit(kind);
         };
     }
 
+    /** A new unit's support, m: an air cooler's bundle 4 m up (owner request 2026-10-16), 1.68 m or more under its motor beams. */
     public static int defaultSupport(Kind kind) {
-        return kind == Kind.AIR_COOLER ? 6 : 2;
+        return kind == Kind.AIR_COOLER ? 4 : 2;
     }
 
     /** An ejector stands; the others lie. */
@@ -219,20 +240,30 @@ public final class ProcessUnit {
     }
 
     /**
-     * An air cooler bay's fans: one to three along its tubes, as many as cover its bundle face best, each as large as fits
-     * its share of the plenum's floor (0.42 m narrower than the bay, 0.1 m shorter than the bundle) less 0.1 m.
+     * An air cooler bay's fans: one to three along its tubes, as many as cover its bundle face best, each the largest whose
+     * ring fits its share of the plenum ({@link #fanDiameter}).
      */
     public static Fans fans(double width, double length) {
         Fans best = null;
         double covered = -1;
         for (int k = 1; k <= 3; k++) {
-            double d = Math.min(width - .42, (length - 1.1 - header(length)) / k) - .1, c = d > 0 ? k * Math.PI * d * d / 4 : 0;
+            double d = fanDiameter(width, length, k), c = d > 0 ? k * Math.PI * d * d / 4 : 0;
             if (c > covered + 1e-9) {
                 covered = c;
                 best = new Fans(k, d);
             }
         }
         return best;
+    }
+
+    /**
+     * The largest of {@code k} fans whose rings fit a bay, m, on a 0.05 m grid: each ring ({@link #RING_OD} rotor
+     * diameters) inside its share of the bundle along the tubes with 0.02 m to spare, and 0.1 m inside the plenum's
+     * width (the side beams' 0.22 m off the bay width).
+     */
+    static double fanDiameter(double width, double length, int k) {
+        double ring = Math.min(width - .32, (length - 1.1 - header(length)) / k - .02);
+        return Math.floor(ring / RING_OD * 20 + 1e-9) / 20;
     }
 
     /** Every air cooler bay a player may build, {width, length}, the narrowest and shortest first. */
@@ -252,6 +283,44 @@ public final class ProcessUnit {
     /** An ejector's length from its steam chest to its diffuser's exit, m: 8.3 suction diameters. */
     public static double ejectorLength(double suction) {
         return 8.3 * suction;
+    }
+
+    /**
+     * An air cooler's fan rotors, {x, y, z, diameter} in box coordinates at each hub's centre, for the client that turns
+     * them (owner request 2026-10-16); none for another unit.
+     */
+    public static List<double[]> rotors(EquipmentShape shape) {
+        if (shape.kind() != Kind.AIR_COOLER) return List.of();
+        var out = new ArrayList<double[]>();
+        for (var r : of(shape).rotors) {
+            var p = shape.transform().point(new double[]{r[0], r[1], r[2]});
+            out.add(new double[]{p[0], p[1], p[2], r[3]});
+        }
+        return out;
+    }
+
+    /**
+     * A fan's rotor alone ({@link Material#AC_FAN}), its hub's centre at the origin, as polygons in metres cut where the
+     * static model cuts it, so the turning rotor shows the texels of the still one.
+     */
+    public static List<Mesh.Polygon> rotor(double diameter) {
+        int reach = (int) Math.ceil(diameter / 2) + 1;
+        var mesh = new Mesh();
+        Part.of("ac_fan").place(mesh, new double[]{reach, reach, reach}, diameter, diameter, 0, Material.AC_FAN);
+        var out = new ArrayList<Mesh.Polygon>();
+        for (int x = 0; x < 2 * reach; x++)
+            for (int y = 0; y < 2 * reach; y++)
+                for (int z = 0; z < 2 * reach; z++)
+                    for (var piece : mesh.cell(x, y, z)) {
+                        var p = piece.positions().clone();
+                        for (int i = 0; i < p.length; i += 3) {
+                            p[i] += x - reach;
+                            p[i + 1] += y - reach;
+                            p[i + 2] += z - reach;
+                        }
+                        out.add(new Mesh.Polygon(p, piece.uvs(), piece.normals(), piece.material()));
+                    }
+        return out;
     }
 
     static ProcessUnit of(EquipmentShape shape) {
@@ -311,6 +380,8 @@ public final class ProcessUnit {
     /** The mesh being drawn: the cached unit drops it once built; {@link #mesh()} draws the facets again. */
     private Mesh mesh = new Mesh();
     private final List<Solid> solids = new ArrayList<>(), volumes = new ArrayList<>();
+    /** An air cooler's fan rotors, {x, y, z, diameter} in the frame at each hub's centre. */
+    private final List<double[]> rotors = new ArrayList<>();
     private final Map<Long, List<Solid>> solidCells = new HashMap<>(), volumeCells = new HashMap<>();
     private final List<Nozzle> nozzles = new ArrayList<>();
     /** Fixed outline edges, {x0, y0, z0, x1, y1, z1}; round bodies outlined against the eye, {x, y, z on the axis, axis, radius, lo, hi}. */
@@ -437,11 +508,16 @@ public final class ProcessUnit {
         double c0 = zn - channel / 2 - .08, ch1 = zn + channel / 2, s0 = ch1 + .1, s1 = s0 + .95 * shape.tangentLength(), end = s1 + .1;
         var f = new Frame(new double[]{a, y, 0}, new double[]{0, 0, 1}, new double[]{0, 1, 0});
         mesh.ring(f, 0, 1.1 * r, c0, c0 + .08, n, 3, Material.FLANGE);
+        mesh.bolts(f, d, r, 1.1 * r, c0, -1, Material.BOLT);
         mesh.prism(f, r, c0 + .08, ch1, n, Material.SHELL);
         mesh.ring(f, r, 1.1 * r, ch1, s0, n, 3, Material.FLANGE);
+        mesh.bolts(f, d, r, 1.1 * r, ch1, -1, Material.BOLT);
+        mesh.bolts(f, d, r, 1.1 * r, s0, 1, Material.BOLT);
         mesh.prism(f, r, s0, s1, n, Material.SHELL);
         mesh.ring(f, r, 1.08 * r, s1, end, n, 3, Material.FLANGE);
-        head(f, r, end, d / 4, n, Material.HEAD);
+        mesh.bolts(f, d, r, 1.08 * r, s1, -1, Material.BOLT);
+        mesh.bolts(f, d, r, 1.08 * r, end, 1, Material.BOLT);
+        mesh.head(f, r, end, d / 4, n, Material.HEAD);
         solids.add(Solid.rod(new double[]{a, y, 0}, 2, c0, end, 1.05 * r, d / 4));
         volumes.add(Solid.rod(new double[]{a, y, 0}, 2, c0 + .1, end, .94 * r, .9 * d / 4));
         round(a, y, c0, end, r);
@@ -472,11 +548,13 @@ public final class ProcessUnit {
         double c0 = zn - channel / 2 - .08, ch1 = zn + channel / 2, cone = Math.max(.3, .6 * (dk - db)), s0 = ch1 + .1 + cone, s1 = s0 + .9 * shape.tangentLength() + .3;
         var f = new Frame(new double[]{a, y, 0}, new double[]{0, 0, 1}, new double[]{0, 1, 0});
         mesh.ring(f, 0, 1.1 * rb, c0, c0 + .08, nb, 3, Material.FLANGE);
+        mesh.bolts(f, db, rb, 1.1 * rb, c0, -1, Material.BOLT);
         mesh.prism(f, rb, c0 + .08, ch1, nb, Material.SHELL);
         mesh.ring(f, rb, 1.12 * rb, ch1, ch1 + .1, nb, 3, Material.FLANGE);
+        mesh.bolts(f, db, rb, 1.12 * rb, ch1, -1, Material.BOLT);
         mesh.frustum(f, 1.05 * rb, rk, ch1 + .1, s0, n, Material.SHELL);
         mesh.prism(f, rk, s0, s1, n, Material.SHELL);
-        head(f, rk, s1, dk / 4, n, Material.HEAD);
+        mesh.head(f, rk, s1, dk / 4, n, Material.HEAD);
         // Channel, cone and kettle collide as drawn and enclose their insides.
         var axis = new double[]{a, y, 0};
         solids.add(Solid.rod(axis, 2, c0, ch1 + .1, 1.12 * rb, 0));
@@ -523,11 +601,10 @@ public final class ProcessUnit {
         int trains = bank.parallel(), rows = bank.series();
         double w = shape.diameter(), length = shape.tangentLength(), hb = shape.support(), h = header(length);
         double low = hb - .05, high = low + HEADER_HEIGHT, a = centre(trains * w / 2), x0 = a - trains * w / 2, x1 = x0 + trains * w, end = rows * length;
-        // The fans' parts: the ring and guard hang at most RING_DEPTH m (scaled to 0.35 of it), the rotor turns half way down
-        // the ring, the motor hangs under the guard, its shaft up to the rotor's hub; a small fan's motor is scaled down.
         var fans = fans(w, length);
-        double d = fans.diameter(), up = Math.min(d, RING_DEPTH), bottom = hb - (.2 + .4 * d), rotor = bottom - .15 * up;
-        double motor = Math.max(.45, Math.min(1, d / 1.9)), motorTop = bottom - .35 * up - .03, motorBottom = motorTop - .58 * motor;
+        var stack = FanStack.of(hb, fans.diameter());
+        double d = fans.diameter(), up = stack.up(), bottom = stack.floor(), rotor = stack.rotor();
+        double motor = stack.motor(), motorTop = stack.motorTop(), motorBottom = stack.motorBottom();
         // A bay's nozzles and crossovers by its width; a manifold carries the trains' flow at the same speed.
         double stub = .1 + .04 * w, manifold = Math.min(HEADER_HEIGHT - .1, stub * Math.sqrt(trains));
         var fanZ = new ArrayList<Double>();
@@ -540,13 +617,16 @@ public final class ProcessUnit {
                 box(new double[]{ix0, hb, front1}, new double[]{ix1, hb + BUNDLE, back0}, Material.AC_FINS, true);
                 for (double x : new double[]{bx0 + .05, ix1})
                     box(new double[]{x, hb - .02, front1}, new double[]{x + .06, hb + BUNDLE + .02, back0}, Material.STEELWORK, false);
-                plenum(ix0, ix1, front1, back0, hb, bottom);
                 double share = (back0 - front1 - .1) / fans.count();
+                var centres = new double[fans.count()];
+                for (int f = 0; f < centres.length; f++) centres[f] = front1 + .05 + (f + .5) * share;
+                plenum(ix0, ix1, front1, back0, hb, bottom, centres, RING_OD / 2 * d);
                 for (int f = 0; f < fans.count(); f++) {
                     double zc = front1 + .05 + (f + .5) * share;
                     if (i == 0 && k == 0) fanZ.add(zc);
                     Part.of("ac_fan_ring").place(mesh, new double[]{mid, bottom, zc}, d, up, 0, Material.AC_RING);
                     Part.of("ac_fan").place(mesh, new double[]{mid, rotor, zc}, d, d, 0, Material.AC_FAN);
+                    rotors.add(new double[]{mid, rotor, zc, d});
                     // Terminal boxes face out of the bank.
                     Part.of("ac_motor").place(mesh, new double[]{mid, motorTop, zc}, motor, motor, 2 * i < trains - 1 ? 2 : 0, Material.AC_MOTOR);
                     mesh.cylinder(Frame.of(new double[]{mid, 0, zc}, 1, 1), .025 * motor, motorTop, rotor - .06 * d, 8, Material.FLANGE);
@@ -588,6 +668,7 @@ public final class ProcessUnit {
                 var f = Frame.of(new double[]{x0 + (i + .5) * w, 0, zIn}, 1, 1);
                 mesh.prism(f, stub / 2, high, ym, sides(stub), Material.PIPE);
                 mesh.ring(f, stub / 2, PipeSizes.flange(stub) / 2, high, high + .03, sides(stub), 3, Material.FLANGE);
+                mesh.bolts(f, stub, stub / 2, PipeSizes.flange(stub) / 2, high + .03, 1, Material.BOLT);
             }
             nozzles.add(new Nozzle(Role.PROCESS_INLET, new double[]{a, ym + manifold / 2 - .03, zIn}, 1, 1,
                     Math.ceil(ym + manifold / 2 + EquipmentShape.STAND_OUT) - ym - manifold / 2 + .03, manifold, manifold, 0, .03));
@@ -598,6 +679,7 @@ public final class ProcessUnit {
             var f = Frame.of(new double[]{mid, yo, 0}, 2, 1);
             mesh.prism(f, stub / 2, z0, trains == 1 ? zOut + stub / 2 : zOut, sides(stub), Material.PIPE);
             mesh.ring(f, stub / 2, PipeSizes.flange(stub) / 2, z0, z0 + .03, sides(stub), 3, Material.FLANGE);
+            mesh.bolts(f, stub, stub / 2, PipeSizes.flange(stub) / 2, z0 + .03, 1, Material.BOLT);
             if (trains == 1) mesh.annulus(f, 0, stub / 2, zOut + stub / 2, sides(stub), 1, Material.PIPE);
             solids.add(Solid.rod(new double[]{mid, yo, 0}, 2, z0, zOut, stub / 2, 0));
         }
@@ -608,26 +690,44 @@ public final class ProcessUnit {
         for (int k = 0; k < 4; k++) segment(outline[k], outline[(k + 1) % 4]);
     }
 
-    /** A plenum from a bundle's underside (x0 to x1, z0 to z1 at {@code top}) tapering to its fans' floor at {@code bottom}. */
-    private void plenum(double x0, double x1, double z0, double z1, double top, double bottom) {
-        double inset = .1, gap = .05;
-        double[][] upper = {{x0, z0}, {x1, z0}, {x1, z1}, {x0, z1}};
-        double[][] lower = {{x0 + inset, z0 + gap}, {x1 - inset, z0 + gap}, {x1 - inset, z1 - gap}, {x0 + inset, z1 - gap}};
-        var centre = new double[]{(x0 + x1) / 2, (top + bottom) / 2, (z0 + z1) / 2};
-        for (int c = 0; c < 4; c++) {
-            var p = upper[c];
-            var q = upper[(c + 1) % 4];
-            var r = lower[(c + 1) % 4];
-            var s = lower[c];
-            mesh.add(List.of(new double[]{p[0], top, p[1]}, new double[]{q[0], top, q[1]}, new double[]{r[0], bottom, r[1]}, new double[]{s[0], bottom, s[1]}), centre, FLAT,
-                    Material.AC_PLENUM, null, null);
+    /**
+     * A bay's plenum (owner report 2026-10-16 with a photo: "the metal sheets lack a bottom casing"): a sheet-metal hopper
+     * per fan, from the bundle's frame (x0 to x1, the fan's share of z0 to z1, at {@code top}) down to its ring's top
+     * flange (radius {@code ring} round each of {@code centres}) at {@code bottom}. Each hopper is a square-to-round
+     * transition: a triangle from each side of the frame to the circle's point facing it, a fan of triangles from each
+     * corner to the quarter of the circle between. Sheets are drawn on both faces, so the casing also shows from inside a
+     * ring; looking up through a ring one sees the bundle's fins.
+     */
+    private void plenum(double x0, double x1, double z0, double z1, double top, double bottom, double[] centres, double ring) {
+        int n = 32, quarter = n / 4;
+        double cx = (x0 + x1) / 2;
+        for (int f = 0; f < centres.length; f++) {
+            double za = f == 0 ? z0 : (centres[f - 1] + centres[f]) / 2, zb = f + 1 == centres.length ? z1 : (centres[f] + centres[f + 1]) / 2, cz = centres[f];
+            // The frame's corners in the circle's quadrants, counter-clockwise from +x +z.
+            double[][] corners = {{x1, top, zb}, {x0, top, zb}, {x0, top, za}, {x1, top, za}};
+            var circle = new double[n + 1][];
+            for (int i = 0; i <= n; i++) {
+                double angle = 2 * Math.PI * (i % n) / n;
+                circle[i] = new double[]{cx + ring * DeterministicMath.cos(angle), bottom, cz + ring * DeterministicMath.sin(angle)};
+            }
+            var axis = new double[]{cx, (top + bottom) / 2, cz};
+            for (int q = 0; q < 4; q++) {
+                sheet(List.of(corners[(q + 3) % 4], corners[q], circle[q * quarter]), axis);
+                for (int i = q * quarter; i < (q + 1) * quarter; i++) sheet(List.of(corners[q], circle[i], circle[i + 1]), axis);
+            }
         }
-        var floor = new ArrayList<double[]>();
-        for (int c = 3; c >= 0; c--) floor.add(new double[]{lower[c][0], bottom, lower[c][1]});
-        mesh.flat(floor, new double[]{0, -1, 0}, Material.AC_PLENUM);
-        // Collides as its section at mid-height; encloses its inside.
-        solids.add(Solid.box(new double[]{x0 + inset / 2, bottom, z0 + gap / 2}, new double[]{x1 - inset / 2, top, z1 - gap / 2}));
-        volumes.add(Solid.box(new double[]{x0 + inset + .02, bottom + .02, z0 + gap + .02}, new double[]{x1 - inset - .02, top - .02, z1 - gap - .02}));
+        // Collides as its frame's box; encloses its inside.
+        solids.add(Solid.box(new double[]{x0, bottom, z0}, new double[]{x1, top, z1}));
+        volumes.add(Solid.box(new double[]{x0 + .02, bottom + .02, z0 + .02}, new double[]{x1 - .02, top - .02, z1 - .02}));
+    }
+
+    /** One plenum sheet, facing away from the hopper's {@code axis} point and, as its inner face, towards it. */
+    private void sheet(List<double[]> triangle, double[] axis) {
+        mesh.add(triangle, axis, FLAT, Material.AC_PLENUM, null, null);
+        var centroid = new double[3];
+        for (var p : triangle)
+            for (int a = 0; a < 3; a++) centroid[a] += p[a] / 3;
+        mesh.add(triangle, new double[]{2 * centroid[0] - axis[0], 2 * centroid[1] - axis[1], 2 * centroid[2] - axis[2]}, FLAT, Material.AC_PLENUM, null, null);
     }
 
     /** A crossover spool along z at (x, y) from a back header's face {@code z0} to the next front header's {@code z1}, flanged at both. */
@@ -637,7 +737,9 @@ public final class ProcessUnit {
         double r = PipeSizes.flange(od) / 2;
         mesh.prism(f, od / 2, z0, z1, n, Material.PIPE);
         mesh.ring(f, od / 2, r, z0, z0 + .03, n, 3, Material.FLANGE);
+        mesh.bolts(f, od, od / 2, r, z0 + .03, 1, Material.BOLT);
         mesh.ring(f, od / 2, r, z1 - .03, z1, n, 3, Material.FLANGE);
+        mesh.bolts(f, od, od / 2, r, z1 - .03, -1, Material.BOLT);
         solids.add(Solid.rod(new double[]{x, y, 0}, 2, z0, z1, od / 2, 0));
     }
 
@@ -671,12 +773,14 @@ public final class ProcessUnit {
         int n = sides(1.2 * s);
         double rc = .6 * s, throat = .175 * s, outlet = .375 * s;
         mesh.ring(f, 0, outlet + .05 + .1 * s, -.03, 0, n, 1, Material.FLANGE);
+        mesh.bolts(f, 2 * outlet, outlet, outlet + .05 + .1 * s, 0, 1, Material.BOLT);
         mesh.frustum(f, outlet, throat, 0, 3 * s, n, Material.MACHINE);
         mesh.prism(f, throat, 3 * s, 3.8 * s, n, Material.MACHINE);
         mesh.frustum(f, throat, rc, 3.8 * s, 6 * s, n, Material.MACHINE);
         mesh.prism(f, rc, 6 * s, 7.5 * s, n, Material.MACHINE);
         mesh.annulus(f, .225 * s, rc, 7.5 * s, n, 1, Material.MACHINE);
         mesh.ring(f, .225 * s, .3 * s, 7.5 * s, 7.58 * s, n, 3, Material.FLANGE);
+        mesh.bolts(f, .45 * s, .225 * s, .3 * s, 7.58 * s, 1, Material.BOLT);
         mesh.cylinder(f, .225 * s, 7.5 * s, 8.3 * s, n, Material.MACHINE);
         solids.add(Solid.rod(new double[]{a, 0, a}, 1, exit, chest, rc, 0));
         solids.add(Solid.rod(new double[]{a, 0, a}, 1, chest, top, .225 * s, 0));
@@ -762,32 +866,6 @@ public final class ProcessUnit {
         double across = .8 * r;
         box(new double[]{x - across, 0, z - w / 2}, new double[]{x + across, y - .6 * r, z + w / 2}, Material.SUPPORT, true);
         box(new double[]{x - across - .05, 0, z - w / 2 - .05}, new double[]{x + across + .05, .04, z + w / 2 + .05}, Material.SUPPORT, false);
-    }
-
-    /**
-     * A 2:1 head from its tangent line at frame station {@code at} to its apex {@code depth} beyond, along the frame's
-     * axis, drawn as bands of the ellipsoid.
-     */
-    private void head(Frame f, double r, double at, double depth, int n, Material material) {
-        int bands = Math.max(3, n / 4);
-        var base = f.along(at);
-        var spheroid = new Spheroid(base, f.axis(), r, depth);
-        for (int k = 0; k < bands; k++) {
-            double p0 = Math.PI / 2 * k / bands, p1 = Math.PI / 2 * (k + 1) / bands;
-            double r0 = r * DeterministicMath.cos(p0), r1 = k + 1 == bands ? 0 : r * DeterministicMath.cos(p1);
-            double z0 = at + depth * DeterministicMath.sin(p0), z1 = at + depth * DeterministicMath.sin(p1);
-            for (int i = 0; i < n; i++) {
-                double a0 = 2 * Math.PI * i / n, a1 = 2 * Math.PI * (i + 1) / n;
-                var polygon = new ArrayList<double[]>(4);
-                polygon.add(f.at(a0, r0, z0));
-                polygon.add(f.at(a1, r0, z0));
-                if (r1 > 0) {
-                    polygon.add(f.at(a1, r1, z1));
-                    polygon.add(f.at(a0, r1, z1));
-                } else polygon.add(f.along(z1));
-                mesh.add(polygon, base, spheroid, material, null, null);
-            }
-        }
     }
 
     /** A round body lying along z at (x, y) from {@code lo} to {@code hi}: its rims are fixed edges, its sides outlined against the eye. */

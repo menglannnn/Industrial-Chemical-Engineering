@@ -29,6 +29,9 @@ class ShapeRasterizerTest {
             drum(2, 3, Orientation.VERTICAL, Heading.NORTH, 2), drum(6, 10, Orientation.VERTICAL, Heading.EAST, 3),
             drum(2.5, 2, Orientation.HORIZONTAL, Heading.WEST, 1), drum(3, 9, Orientation.HORIZONTAL, Heading.NORTH, 2),
             drum(.5, 5, Orientation.HORIZONTAL, Heading.SOUTH, 1), drum(4, 12, Orientation.HORIZONTAL, Heading.EAST, 1),
+            drum(3, 9, Orientation.HORIZONTAL, Heading.EAST, EquipmentShape.minimumBootSupport(3, 9),
+                    EquipmentShape.defaultConnections(3, 9, Orientation.HORIZONTAL, EquipmentShape.minimumBootSupport(3, 9), true), true),
+            drum(1, 4, Orientation.HORIZONTAL, Heading.SOUTH, EquipmentShape.minimumBootSupport(1, 4), List.of(), true),
             EquipmentShape.column(3, ColumnTrays.simple(12, 6), Heading.SOUTH, 2),
             EquipmentShape.column(1.5, new ColumnTrays(25, 13, List.of(8), List.of(26), List.of(new ColumnTrays.Pumparound(6, 4), new ColumnTrays.Pumparound(15, 13))),
                     Heading.EAST, EquipmentShape.minimumSkirt(1.5)),
@@ -53,7 +56,7 @@ class ShapeRasterizerTest {
         assertThrows(IllegalArgumentException.class, () -> drum(12, 5, Orientation.VERTICAL, Heading.NORTH, 3));
         assertThrows(IllegalArgumentException.class, () -> EquipmentShape.column(3, ColumnTrays.simple(12, 6), Heading.NORTH, 0));
         assertThrows(IllegalArgumentException.class, () -> new EquipmentShape(EquipmentShape.Kind.COLUMN, 3, 4, Orientation.VERTICAL, Heading.NORTH, 2, ColumnTrays.simple(12, 6), List.of(),
-                ProcessUnit.Bank.ONE));
+                ProcessUnit.Bank.ONE, false));
         assertEquals(2, EquipmentShape.minimumSkirt(6));
         assertEquals(3, EquipmentShape.defaultSupport(6, Orientation.VERTICAL));
         assertEquals(4, EquipmentShape.defaultSupport(10, Orientation.VERTICAL));
@@ -71,17 +74,18 @@ class ShapeRasterizerTest {
             double facets = ShapeRasterizer.facetArea(shape);
             assertEquals(facets, area, 1e-9 * facets + 20 * Mesh.MIN_AREA, shape.toString());
             if (shape.drum() && !shape.skirt() && !shape.saddles())
-                assertEquals(vesselArea(shape), facets - ShapeRasterizer.nozzleArea(shape), 1e-9 * facets, shape.toString());
+                assertEquals(vesselArea(shape), facets - ShapeRasterizer.nozzleArea(shape) - manwayArea(shape), 1e-9 * facets, shape.toString());
         }
     }
 
     @Test
     void partsCarryTheirMaterials() {
-        // Skirt row 0 (base ring, chairs, floor plate, the bottom outlet leaving through the access opening, which a drum
-        // leaves open), a skirt row showing the bottom head inside it, a shell row, the top head with its nozzle.
+        // Skirt row 0 (base ring, chairs, floor plate, the bottom outlet with its flange and bolts leaving through the access
+        // opening, which a drum leaves open), the skirt row under the head seam (the head inside it, the band over the seam,
+        // the vents' dark bores), a shell row, the top head with its nozzle.
         var standing = drum(6, 10, Orientation.VERTICAL, Heading.NORTH, 3);
-        assertEquals(EnumSet.of(Material.SUPPORT, Material.PIPE, Material.FLANGE), materials(standing, 0, 1));
-        assertEquals(EnumSet.of(Material.SUPPORT, Material.HEAD), materials(standing, 2, 3));
+        assertEquals(EnumSet.of(Material.SUPPORT, Material.PIPE, Material.FLANGE, Material.BOLT), materials(standing, 0, 1));
+        assertEquals(EnumSet.of(Material.SUPPORT, Material.HEAD, Material.FLANGE, Material.OPENING), materials(standing, 2, 3));
         assertEquals(Set.of(Material.SHELL), materials(standing, 5, 6));
         assertTrue(materials(standing, standing.sizeY() - 1, standing.sizeY()).containsAll(Set.of(Material.HEAD, Material.PIPE, Material.FLANGE)));
         // A lying drum's lowest row holds only its saddles.
@@ -485,7 +489,7 @@ class ShapeRasterizerTest {
     void sideConnectionsAreValidatedAndClash() {
         // A new drum's side connection is its former inlet: 0.4 D below the top tangent line, facing frame -x.
         assertEquals(List.of(new Connection(3, 4, 0)), drum(3, 4, Orientation.VERTICAL, Heading.NORTH, 2).connections());
-        var placed = List.of(new Connection(3, 4, 0), new Connection(1, 4, 0), new Connection(2, 2, 1));
+        var placed = List.of(new Connection(3, 4, 0), new Connection(1, 4, 0), new Connection(2, 4, 1));
         assertEquals(placed, Connection.decode(Connection.encode(placed)));
         assertThrows(IllegalArgumentException.class, () -> Connection.decode(new int[]{0, 3}));
         assertThrows(IllegalArgumentException.class, () -> Connection.decode(new int[3 * (EquipmentShape.MAX_CONNECTIONS + 1)]));
@@ -499,8 +503,9 @@ class ShapeRasterizerTest {
                 java.util.Collections.nCopies(EquipmentShape.MAX_CONNECTIONS + 1, new Connection(0, 3, 0))));
         var trays = ColumnTrays.simple(12, 6);
         assertThrows(IllegalArgumentException.class, () -> new EquipmentShape(EquipmentShape.Kind.COLUMN, 3, trays.tangentLength(3), Orientation.VERTICAL,
-                Heading.NORTH, 2, trays, List.of(new Connection(0, 3, 0)), ProcessUnit.Bank.ONE));
-        // Right, left and a hillside nozzle at the back: clear of each other and of the outlets, the hillside one off centre.
+                Heading.NORTH, 2, trays, List.of(new Connection(0, 3, 0)), ProcessUnit.Bank.ONE, false));
+        // Right, left and a hillside nozzle at the back over the manway: clear of each other, of the outlets and of the
+        // manway, the hillside one off centre.
         var drum = drum(3, 4, Orientation.VERTICAL, Heading.NORTH, 2, placed);
         assertEquals(List.of(), drum.clashes());
         var nozzles = drum.nozzles();
@@ -509,13 +514,76 @@ class ShapeRasterizerTest {
         var hillside = nozzles.get(4);
         assertEquals(EquipmentShape.Role.SIDE, hillside.role());
         assertEquals(drum.axis() + 1, hillside.base()[0], 0);
-        assertEquals(2.5, hillside.base()[1], 0);
+        assertEquals(4.5, hillside.base()[1], 0);
         // Two on one place; one beside the bare drum's liquid outlet; one on a saddle; one facing a ground too near.
         assertEquals(List.of(new Clash(1, 0)), drum(3, 4, Orientation.VERTICAL, Heading.NORTH, 2, List.of(new Connection(1, 3, 0), new Connection(1, 3, 0))).clashes());
         assertEquals(List.of(new Clash(0, Clash.LIQUID)), drum(3, 4, Orientation.VERTICAL, Heading.NORTH, 0, List.of(new Connection(0, 1, 0))).clashes());
         assertTrue(drum(3, 9, Orientation.HORIZONTAL, Heading.NORTH, 2, List.of(new Connection(3, 2, 0))).clashes().contains(new Clash(0, Clash.SADDLE)));
         assertEquals(List.of(new Clash(0, Clash.GROUND)), drum(3, 9, Orientation.HORIZONTAL, Heading.NORTH, 1, List.of(new Connection(3, 5, 0))).clashes());
         assertEquals(List.of(), drum(3, 9, Orientation.HORIZONTAL, Heading.NORTH, 2, List.of(new Connection(3, 5, 0))).clashes());
+    }
+
+    @Test
+    void connectionsFitEveryDrumDesign() {
+        // Owner report 2026-10-16: the default lying drum's connection met a saddle. Every new drum's connection meets
+        // nothing, and a connection put where a saddle stands moves to the nearest free station on its own side.
+        for (var orientation : List.of(Orientation.VERTICAL, Orientation.HORIZONTAL))
+            for (double d = .5; d <= EquipmentShape.MAX_DIAMETER; d += .5)
+                for (int length = 1; length <= 24; length += length < 8 ? 1 : 4)
+                    for (int support : orientation.horizontal() ? new int[]{1, 2, 3} : new int[]{0, EquipmentShape.minimumSkirt(d), EquipmentShape.defaultSupport(d, orientation)}) {
+                        var drum = drum(d, length, orientation, Heading.NORTH, support);
+                        assertEquals(List.of(), drum.clashes(), drum.toString());
+                    }
+        var onSaddle = List.of(new Connection(3, 2, 0));
+        assertTrue(drum(3, 9, Orientation.HORIZONTAL, Heading.NORTH, 2, onSaddle).clashes().contains(new Clash(0, Clash.SADDLE)));
+        var fitted = EquipmentShape.fit(onSaddle, drum(3, 9, Orientation.HORIZONTAL, Heading.NORTH, 2));
+        assertEquals(List.of(), drum(3, 9, Orientation.HORIZONTAL, Heading.NORTH, 2, fitted).clashes());
+        assertEquals(3, fitted.getFirst().side());
+        // A connection that meets nothing stays where it is; the standing drum's own default fits as it is.
+        var clear = List.of(new Connection(3, 4, 0), new Connection(1, 4, 0), new Connection(2, 4, 1));
+        assertEquals(clear, EquipmentShape.fit(clear, drum(3, 4, Orientation.VERTICAL, Heading.NORTH, 2)));
+        // One put on the standing drum's manway moves up its own side, clear of the cover and the davit.
+        assertEquals(List.of(new Connection(2, 4, 0)), EquipmentShape.fit(List.of(new Connection(2, 2, 1)), drum(3, 4, Orientation.VERTICAL, Heading.NORTH, 2)));
+    }
+
+    @Test
+    void bootsAndManwaysStandClear() {
+        // Owner request 2026-10-16 (photo survey A, D): a boot hangs inboard of the far saddle and 0.15 m clear of it,
+        // its drain facing down with a block for its pipe above the ground; every drum from 0.9 m carries a manway; the
+        // default connections meet neither.
+        int boots = 0;
+        for (var orientation : List.of(Orientation.VERTICAL, Orientation.HORIZONTAL))
+            for (double d = .5; d <= EquipmentShape.MAX_DIAMETER; d += .5)
+                for (int length = 1; length <= 24; length += length < 8 ? 1 : 4) {
+                    var plain = drum(d, length, orientation, Heading.NORTH, EquipmentShape.defaultSupport(d, orientation));
+                    assertEquals(d >= .9 && (orientation.horizontal() || length >= 2), plain.manway() != null, plain.toString());
+                    var boot = EquipmentShape.bootFor(d, length);
+                    if (!orientation.horizontal() || boot == null) continue;
+                    boots++;
+                    int support = EquipmentShape.minimumBootSupport(d, length);
+                    var drum = drum(d, length, orientation, Heading.NORTH, support, EquipmentShape.defaultConnections(d, length, orientation, support, true), true);
+                    assertEquals(List.of(), drum.clashes(), drum.toString());
+                    for (double saddle : drum.saddleCentres())
+                        assertTrue(Math.abs(boot.station() - saddle) >= EquipmentShape.SADDLE_WIDTH / 2 + .15 + boot.diameter() / 2 - 1e-9, drum.toString());
+                    assertEquals(1, drum.nozzles().stream().filter(n -> n.role() == EquipmentShape.Role.BOOT_DRAIN).count(), drum.toString());
+                    if (support > 1) assertThrows(IllegalArgumentException.class, () -> drum(drum.diameter(), drum.tangentLength(), orientation, Heading.NORTH, support - 1, List.of(), true));
+                }
+        assertTrue(boots > 50, "boots checked: " + boots);
+        assertThrows(IllegalArgumentException.class, () -> drum(3, 9, Orientation.VERTICAL, Heading.NORTH, 2, List.of(), true));
+        assertNull(EquipmentShape.bootFor(3, 1));
+        // The boot, its drain's port facing down, and the manways' covers are solid.
+        var lying = drum(3, 9, Orientation.HORIZONTAL, Heading.NORTH, EquipmentShape.minimumBootSupport(3, 9), List.of(), true);
+        var boot = lying.bootPlace();
+        assertTrue(in(lying, lying.axis() - 1.5 - boot.length() / 2, boot.station(), lying.axis()));
+        int drain = 0;
+        while (lying.nozzles().get(drain).role() != EquipmentShape.Role.BOOT_DRAIN) drain++;
+        final int k = drain;
+        assertTrue(ShapeRasterizer.ports(lying).stream().anyMatch(p -> p.nozzle() == k && p.dy() == -1 && p.port() == EquipmentShape.PortClass.LIQUID));
+        for (var shape : List.of(lying, drum(3, 4, Orientation.VERTICAL, Heading.NORTH, 2), drum(1, 3, Orientation.VERTICAL, Heading.EAST, 2))) {
+            var m = shape.manway();
+            var p = m.at(m.face() + .03, 0, 0);
+            assertTrue(in(shape, p[0], p[1], p[2]), "manway cover of " + shape);
+        }
     }
 
     @Test
@@ -651,6 +719,15 @@ class ShapeRasterizerTest {
     }
 
     /** Area of the faceted pressure vessel: the N-gon prism over T/T and two banded heads. */
+    /** The area of a drum's manway, which stands on its shell or head. */
+    private static double manwayArea(EquipmentShape shape) {
+        var manway = shape.manway();
+        if (manway == null) return 0;
+        var mesh = new Mesh();
+        manway.draw(mesh);
+        return mesh.area();
+    }
+
     private static double vesselArea(EquipmentShape shape) {
         return shellArea(shape, shape.tangentLength()) + 2 * headArea(shape);
     }

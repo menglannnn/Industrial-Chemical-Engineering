@@ -44,7 +44,7 @@ import java.util.Objects;
  * the box to start at the origin.
  */
 public record EquipmentShape(Kind kind, double diameter, double tangentLength, Orientation orientation, Heading front, int support,
-                             @Nullable ColumnTrays trays, List<Connection> connections, ProcessUnit.Bank bank) {
+                             @Nullable ColumnTrays trays, List<Connection> connections, ProcessUnit.Bank bank, boolean boot) {
     public static final double MIN_DIAMETER = .5, MAX_DIAMETER = 10, MAX_COLUMN_DIAMETER = 15, MAX_TANGENT_LENGTH = 64;
     public static final int MAX_SUPPORT = 16;
     /** Saddles: centred this fraction of T/T from each tangent line, this wide along the axis (m), over this arc of the shell. */
@@ -142,7 +142,7 @@ public record EquipmentShape(Kind kind, double diameter, double tangentLength, O
      * process line, an ejector's suction, motive steam and discharge).
      */
     public enum Role {
-        VAPOUR_OUTLET(PortClass.VAPOUR), SIDE(PortClass.BULK), LIQUID_OUTLET(PortClass.LIQUID), FEED(PortClass.BULK), REFLUX(PortClass.BULK),
+        VAPOUR_OUTLET(PortClass.VAPOUR), SIDE(PortClass.BULK), LIQUID_OUTLET(PortClass.LIQUID), BOOT_DRAIN(PortClass.LIQUID), FEED(PortClass.BULK), REFLUX(PortClass.BULK),
         DRAW(PortClass.BULK), PUMPAROUND_DRAW(PortClass.BULK), RETURN(PortClass.BULK), STEAM(PortClass.BULK), BOTTOMS(PortClass.LIQUID),
         VAPOUR_RETURN(PortClass.BULK), TUBE_INLET(PortClass.BULK), TUBE_OUTLET(PortClass.BULK), SHELL_INLET(PortClass.BULK), SHELL_OUTLET(PortClass.BULK),
         PROCESS_INLET(PortClass.BULK), PROCESS_OUTLET(PortClass.BULK), SUCTION(PortClass.BULK), MOTIVE(PortClass.BULK), DISCHARGE(PortClass.BULK);
@@ -233,28 +233,39 @@ public record EquipmentShape(Kind kind, double diameter, double tangentLength, O
 
     /**
      * A side connection that cannot be built as placed: connection {@code connection} meets {@code other}, another
-     * connection's index or one of {@link #VAPOUR}, {@link #LIQUID}, {@link #SADDLE}, {@link #GROUND}.
+     * connection's index or one of {@link #VAPOUR}, {@link #LIQUID}, {@link #SADDLE}, {@link #GROUND}, {@link #MANWAY},
+     * {@link #BOOT}.
      */
     public record Clash(int connection, int other) {
-        public static final int VAPOUR = -1, LIQUID = -2, SADDLE = -3, GROUND = -4;
+        public static final int VAPOUR = -1, LIQUID = -2, SADDLE = -3, GROUND = -4, MANWAY = -5, BOOT = -6;
     }
 
     /** A bare vertical drum resting on its lower head, front to the north: the debug command's form. */
     public EquipmentShape(double diameter, double tangentLength) {
-        this(Kind.DRUM, diameter, tangentLength, Orientation.VERTICAL, Heading.NORTH, 0, null, defaultConnections(diameter, tangentLength, Orientation.VERTICAL, 0), ProcessUnit.Bank.ONE);
+        this(Kind.DRUM, diameter, tangentLength, Orientation.VERTICAL, Heading.NORTH, 0, null, defaultConnections(diameter, tangentLength, Orientation.VERTICAL, 0, false), ProcessUnit.Bank.ONE, false);
     }
 
     /** A drum with a new drum's side connection ({@link #defaultConnections}). */
     public static EquipmentShape drum(double diameter, double tangentLength, Orientation orientation, Heading front, int support) {
-        return drum(diameter, tangentLength, orientation, front, support, defaultConnections(diameter, tangentLength, orientation, support));
+        return drum(diameter, tangentLength, orientation, front, support, defaultConnections(diameter, tangentLength, orientation, support, false));
     }
 
     public static EquipmentShape drum(double diameter, double tangentLength, Orientation orientation, Heading front, int support, List<Connection> connections) {
-        return new EquipmentShape(Kind.DRUM, diameter, tangentLength, orientation, front, support, null, connections, ProcessUnit.Bank.ONE);
+        return drum(diameter, tangentLength, orientation, front, support, connections, false);
+    }
+
+    /** A drum; a lying one with a water {@code boot} under its far end ({@link #bootPlace}). */
+    public static EquipmentShape drum(double diameter, double tangentLength, Orientation orientation, Heading front, int support, List<Connection> connections, boolean boot) {
+        return new EquipmentShape(Kind.DRUM, diameter, tangentLength, orientation, front, support, null, connections, ProcessUnit.Bank.ONE, boot);
+    }
+
+    /** This drum with {@code connections} instead of its own. */
+    public EquipmentShape withConnections(List<Connection> connections) {
+        return new EquipmentShape(kind, diameter, tangentLength, orientation, front, support, trays, connections, bank, boot);
     }
 
     public static EquipmentShape column(double diameter, ColumnTrays trays, Heading front, int skirt) {
-        return new EquipmentShape(Kind.COLUMN, diameter, trays.tangentLength(diameter), Orientation.VERTICAL, front, skirt, trays, List.of(), ProcessUnit.Bank.ONE);
+        return new EquipmentShape(Kind.COLUMN, diameter, trays.tangentLength(diameter), Orientation.VERTICAL, front, skirt, trays, List.of(), ProcessUnit.Bank.ONE, false);
     }
 
     /** A standalone unit of kind {@code kind}, its sizes as {@link ProcessUnit} reads them; it lies or stands as its kind does. */
@@ -265,7 +276,7 @@ public record EquipmentShape(Kind kind, double diameter, double tangentLength, O
     /** A unit as {@link #unit(Kind, double, double, Heading, int)}; an air cooler built as a bank of bays. */
     public static EquipmentShape unit(Kind kind, double diameter, double tangentLength, Heading front, int support, ProcessUnit.Bank bank) {
         if (!kind.unit()) throw new IllegalArgumentException(kind + " is not a unit");
-        return new EquipmentShape(kind, diameter, tangentLength, ProcessUnit.orientation(kind), front, support, null, List.of(), bank);
+        return new EquipmentShape(kind, diameter, tangentLength, ProcessUnit.orientation(kind), front, support, null, List.of(), bank, false);
     }
 
     /**
@@ -273,15 +284,72 @@ public record EquipmentShape(Kind kind, double diameter, double tangentLength, O
      * top tangent line) facing the right, a lying drum's on top near its front end when the drum is long enough for it
      * beside the vapour outlet.
      */
-    public static List<Connection> defaultConnections(double diameter, double tangentLength, Orientation orientation, int support) {
+    public static List<Connection> defaultConnections(double diameter, double tangentLength, Orientation orientation, int support, boolean boot) {
+        var drum = new EquipmentShape(Kind.DRUM, diameter, tangentLength, orientation, Heading.NORTH, support, null, List.of(), ProcessUnit.Bank.ONE, boot);
         double bT = orientation.horizontal() || support == 0 ? diameter / 4 : support, tT = bT + tangentLength;
         if (orientation.horizontal()) {
             double near = Math.ceil(bT) + .5, far = Math.floor(tT - 1) + .5;
-            return far - near >= 1.5 ? List.of(new Connection(1, (int) Math.floor(near), 0)) : List.of();
+            return far - near >= 1.5 ? fit(List.of(new Connection(1, (int) Math.floor(near), 0)), drum) : List.of();
         }
         double y = Math.floor(Math.max(bT + .25, tT - .4 * diameter)) + .5;
         if (y > tT - .1) y -= 1;
-        return y > bT + .1 ? List.of(new Connection(3, (int) Math.floor(y), 0)) : List.of();
+        return y > bT + .1 ? fit(List.of(new Connection(3, (int) Math.floor(y), 0)), drum) : List.of();
+    }
+
+    /**
+     * The sides a connection prefers, best first: a standing drum's facing the constructor's right, left, the back, then
+     * the front; a lying drum's on top, at the sides, then underneath.
+     */
+    public static int[] preferredSides(Orientation orientation) {
+        return orientation.horizontal() ? new int[]{1, 0, 2, 3} : new int[]{3, 1, 2, 0};
+    }
+
+    /**
+     * Side connections fitted to a drum's design (owner report 2026-10-16: the default lying drum's connection met a
+     * saddle, "the system needs to adapt the pipe location for different design"). In order, each keeps its place
+     * (within the drum's ranges) where it meets nothing; otherwise it moves to the nearest station, on its own side first
+     * and then the {@link #preferredSides}, centred across, where it meets neither the outlets, the saddles, the ground
+     * nor the connections before it. Where no place is free it stays at its own, and the drum's clashes say so; a shell
+     * with no station for any drops them.
+     */
+    public static List<Connection> fit(List<Connection> wanted, EquipmentShape drum) {
+        int[] range = stations(drum.diameter, drum.tangentLength, drum.orientation, drum.support);
+        if (range[0] > range[1]) return List.of();
+        var out = new ArrayList<Connection>(wanted.size());
+        for (var w : wanted) out.add(place(out, w, drum));
+        return List.copyOf(out);
+    }
+
+    /**
+     * Connection {@code wanted} placed after {@code placed} (which stay as they are), as {@link #fit} places each: where
+     * it is if it meets nothing there, else at the nearest free station on its own side, then on the preferred sides in
+     * turn, else where it is. The drum must have a station for it.
+     */
+    public static Connection place(List<Connection> placed, Connection wanted, EquipmentShape drum) {
+        int[] range = stations(drum.diameter, drum.tangentLength, drum.orientation, drum.support);
+        int across = maximumOffset(drum.diameter);
+        var own = new Connection(wanted.side(), Math.clamp(wanted.station(), range[0], range[1]), Math.clamp(wanted.offset(), -across, across));
+        if (free(placed, own, drum)) return own;
+        var sides = new ArrayList<Integer>(List.of(wanted.side()));
+        for (int side : preferredSides(drum.orientation)) if (side != wanted.side()) sides.add(side);
+        for (int side : sides)
+            for (int step = 0; step <= range[1] - range[0]; step++)
+                for (int station : new int[]{own.station() - step, own.station() + step}) {
+                    if (station < range[0] || station > range[1]) continue;
+                    var candidate = new Connection(side, station, 0);
+                    if (free(placed, candidate, drum)) return candidate;
+                }
+        return own;
+    }
+
+    /** Whether {@code candidate}, added after {@code placed}, meets nothing on the drum. */
+    private static boolean free(List<Connection> placed, Connection candidate, EquipmentShape drum) {
+        var trial = new ArrayList<>(placed);
+        trial.add(candidate);
+        int index = placed.size();
+        for (var clash : drum.withConnections(trial).clashes())
+            if (clash.connection() == index) return false;
+        return true;
     }
 
     public EquipmentShape {
@@ -293,6 +361,7 @@ public record EquipmentShape(Kind kind, double diameter, double tangentLength, O
         if (kind.unit()) {
             if (trays != null || !connections.isEmpty()) throw new IllegalArgumentException("A unit has no trays and no side connections");
             ProcessUnit.validate(kind, diameter, tangentLength, orientation, support, bank);
+            if (boot) throw new IllegalArgumentException("Only a lying drum has a boot");
         } else {
             double maximum = kind == Kind.COLUMN ? MAX_COLUMN_DIAMETER : MAX_DIAMETER;
             if (!(diameter >= MIN_DIAMETER && diameter <= maximum) || diameter * 2 != Math.rint(diameter * 2))
@@ -310,6 +379,13 @@ public record EquipmentShape(Kind kind, double diameter, double tangentLength, O
             if (!orientation.horizontal() && support != 0 && (support < minimumSkirt(diameter) || support > MAX_SUPPORT))
                 throw new IllegalArgumentException("Skirt height must be 0 (none) or " + minimumSkirt(diameter) + " to " + MAX_SUPPORT + " m, not " + support);
             if (!bank.equals(ProcessUnit.Bank.ONE)) throw new IllegalArgumentException("Only air coolers are built in banks");
+            if (boot) {
+                if (kind != Kind.DRUM || !orientation.horizontal()) throw new IllegalArgumentException("Only a lying drum has a boot");
+                if (bootFor(diameter, tangentLength) == null)
+                    throw new IllegalArgumentException("A " + tangentLength + " m drum has no room for a boot between or beyond its saddles");
+                if (support < minimumBootSupport(diameter, tangentLength))
+                    throw new IllegalArgumentException("A drum with a boot stands at least " + minimumBootSupport(diameter, tangentLength) + " m up, not " + support);
+            }
             if (kind == Kind.COLUMN && !connections.isEmpty()) throw new IllegalArgumentException("A column's nozzles follow its trays");
             if (connections.size() > MAX_CONNECTIONS) throw new IllegalArgumentException("A drum takes at most " + MAX_CONNECTIONS + " side connections");
             int[] range = stations(diameter, tangentLength, orientation, support);
@@ -320,6 +396,76 @@ public record EquipmentShape(Kind kind, double diameter, double tangentLength, O
                 if (Math.abs(c.offset()) > across) throw new IllegalArgumentException("A side connection's offset is at most " + across + ", not " + c.offset());
             }
         }
+    }
+
+    /**
+     * A lying drum's water boot (owner request 2026-10-16; photo survey EQUIPMENT_DETAILS_PHOTO_SURVEY.md, section A): a
+     * vertical cylinder of {@code diameter} under the shell's bottom on the drum's axis, its 2:1 bottom head's tangent
+     * {@code length} under the shell, centred at frame height {@code station} along the drum. It hangs from the shell with
+     * no support of its own.
+     */
+    public record Boot(double station, double diameter, double length) {
+    }
+
+    /**
+     * The boot a lying drum of {@code diameter} and {@code tangentLength} takes, or null where it has no room: a third of
+     * the drum's diameter, at least 0.3, 0.4 or 0.5 m (under 0.9, 1.4 m and above) and at most half of it; 0.9 m or 0.6 D
+     * deep, the longer; at the far end, away from the inlet, inboard of the far saddle and 0.15 m clear of it, on the cell
+     * centre that keeps that, else just beyond that saddle, short of the head.
+     */
+    public static @Nullable Boot bootFor(double diameter, double tangentLength) {
+        double low = diameter < .9 ? .3 : diameter < 1.4 ? .4 : .5, size = Math.min(diameter / 2, Math.max(low, diameter / 3)), length = Math.max(.9, .6 * diameter);
+        double bT = diameter / 4, tT = bT + tangentLength, clear = SADDLE_WIDTH / 2 + .15 + size / 2;
+        double near = bT + SADDLE_POSITION * tangentLength, far = tT - SADDLE_POSITION * tangentLength;
+        double inboard = Math.floor(far - clear - .5) + .5;
+        if (inboard >= near + clear) return new Boot(inboard, size, length);
+        double beyond = Math.ceil(far + clear - .5) + .5;
+        return beyond <= tT - size / 2 - .05 ? new Boot(beyond, size, length) : null;
+    }
+
+    /** This drum's boot, or null when it has none. */
+    public @Nullable Boot bootPlace() {
+        return boot ? bootFor(diameter, tangentLength) : null;
+    }
+
+    /**
+     * The lowest saddles a drum with a boot stands on, m: its boot's drain keeps a block for its pipe above the ground
+     * (photo survey A: boot drums stand visibly higher).
+     */
+    public static int minimumBootSupport(double diameter, double tangentLength) {
+        var b = bootFor(diameter, tangentLength);
+        if (b == null) return MAX_SUPPORT + 1;
+        int cells = (int) Math.ceil(diameter);
+        double a = (cells % 2 == 0 ? cells + 1 : cells) / 2.0, apex = a - diameter / 2 - b.length() - b.diameter() / 4;
+        return Math.max(1, 1 - (int) Math.floor(apex - STAND_OUT));
+    }
+
+    /** The boot's room, {x0, y0, z0, x1, y1, z1} in the frame, or null. */
+    private double @Nullable [] bootBox() {
+        var b = bootPlace();
+        if (b == null) return null;
+        double a = axis(), rb = b.diameter() / 2;
+        return new double[]{a - radius() - b.length() - b.diameter() / 4, b.station() - rb, a - rb, a - radius() + .1, b.station() + rb, a + rb};
+    }
+
+    /**
+     * A drum's manway (owner request 2026-10-16; photo survey D), or null for a drum under 0.9 m: a standing drum's on its
+     * shell 0.76 m over the bottom tangent line facing the back, where the outlets and the standard inlet leave it room,
+     * and none where the shell is too short to hold its cover there (a short pot has a body flange or an inspection hole); a lying drum's on its far head's centre, its davit above it (the front head carries
+     * the liquid outlet).
+     */
+    public @Nullable Manway manway() {
+        double size = Manway.size(diameter);
+        if (!drum() || size == 0) return null;
+        double a = axis(), r = radius(), rr = size / 2, cover = Manway.COVER_RATIO * rr;
+        if (orientation.horizontal()) {
+            double depth = headDepth(), start = depth * Math.sqrt(Math.max(0, 1 - rr * rr / (r * r))) - .03;
+            return new Manway(new double[]{a, topTangent(), a}, new double[]{0, 1, 0}, new double[]{1, 0, 0}, size, start, depth, depth + Manway.REACH);
+        }
+        double y = bottomTangent() + .76;
+        if (y + cover + .1 > topTangent()) return null;
+        double apothem = r * DeterministicMath.cos(Math.PI / facets());
+        return new Manway(new double[]{a, y, a}, new double[]{0, 0, 1}, new double[]{0, 1, 0}, size, Math.sqrt(apothem * apothem - rr * rr) - .03, r, r + Manway.REACH);
     }
 
     /** The lowest skirt that still encloses the bottom head, m. */
@@ -397,7 +543,9 @@ public record EquipmentShape(Kind kind, double diameter, double tangentLength, O
 
     /** Design volume of the smooth vessel, m³: the cylinder plus two 2:1 heads of π D³/24 each. Supports and nozzles hold no volume. */
     public double volume() {
-        return Math.PI * diameter * diameter / 4 * tangentLength + Math.PI * diameter * diameter * diameter / 12;
+        var b = bootPlace();
+        double boot = b == null ? 0 : Math.PI * b.diameter() * b.diameter() / 4 * b.length() + Math.PI * b.diameter() * b.diameter() * b.diameter() / 24;
+        return Math.PI * diameter * diameter / 4 * tangentLength + Math.PI * diameter * diameter * diameter / 12 + boot;
     }
 
     /** Outside area of the smooth vessel, m²: the cylinder plus two 2:1 heads (supports and nozzles excluded). */
@@ -485,6 +633,16 @@ public record EquipmentShape(Kind kind, double diameter, double tangentLength, O
                 default -> z1 = Math.max(z1, face[2]);
             }
         }
+        var manway = manway();
+        if (manway != null) {
+            var m = manway.box();
+            x0 = Math.min(x0, Math.floor(m[0]));
+            y0 = Math.min(y0, Math.floor(m[1]));
+            z0 = Math.min(z0, Math.floor(m[2]));
+            x1 = Math.max(x1, Math.ceil(m[3]));
+            y1 = Math.max(y1, Math.ceil(m[4]));
+            z1 = Math.max(z1, Math.ceil(m[5]));
+        }
         return new double[]{x0, y0, z0, x1, y1, z1};
     }
 
@@ -534,6 +692,13 @@ public record EquipmentShape(Kind kind, double diameter, double tangentLength, O
             out.add(new Nozzle(Role.LIQUID_OUTLET, new double[]{xH, start, a}, 1, -1, start - Math.floor(-STAND_OUT), headOd, clampOd(.1 * diameter, headOd), 0,
                     bulge - depth + .03));
         }
+        var b = bootPlace();
+        if (b != null) {
+            // The boot's drain at its bottom head's centre, facing down (photo survey A), its pipe straight down.
+            double rb = b.diameter() / 2, bottom = a - r - b.length(), depth = b.diameter() / 4, od = Math.min(1, rb);
+            double edge = od / 2 / rb, base = bottom - depth * Math.sqrt(Math.max(0, 1 - edge * edge)) + .03, apex = bottom - depth;
+            out.add(new Nozzle(Role.BOOT_DRAIN, new double[]{base, b.station(), a}, 0, -1, base - Math.floor(apex - STAND_OUT), od, clampOd(.05 * diameter, od), 0, base - apex));
+        }
         for (var c : connections) out.add(connection(c, a, bT, tT, apothem));
         return out;
     }
@@ -570,8 +735,8 @@ public record EquipmentShape(Kind kind, double diameter, double tangentLength, O
 
     /**
      * Where the side connections cannot be built as placed: one overlapping another or a fixed outlet with the largest
-     * pipe's flange (one block: nozzles on different block lines never meet), one on a lying drum's saddle, or one
-     * facing down with no cell for a pipe above the ground. Building refuses a drum with any; the constructor's screen
+     * pipe's flange (one block: nozzles on different block lines never meet), one on a lying drum's saddle, its manway
+     * or its boot, or one facing down with no cell for a pipe above the ground. Building refuses a drum with any; the constructor's screen
      * shows the first.
      */
     public List<Clash> clashes() {
@@ -579,13 +744,21 @@ public record EquipmentShape(Kind kind, double diameter, double tangentLength, O
         var all = nozzles();
         int fixed = all.size() - connections.size();
         var out = new ArrayList<Clash>();
+        var manway = manway();
+        double[] bootBox = bootBox();
         double sr = radius() + PLATE, lateral = sr * DeterministicMath.sin(Math.toRadians(SADDLE_CONTACT_DEGREES / 2)),
                 horn = axis() - sr * DeterministicMath.cos(Math.toRadians(SADDLE_CONTACT_DEGREES / 2));
         for (int i = fixed; i < all.size(); i++) {
             var box = reach(all.get(i));
             for (int j = 0; j < i; j++)
                 if (overlap(box, reach(all.get(j))))
-                    out.add(new Clash(i - fixed, j >= fixed ? j - fixed : all.get(j).role() == Role.VAPOUR_OUTLET ? Clash.VAPOUR : Clash.LIQUID));
+                    out.add(new Clash(i - fixed, j >= fixed ? j - fixed : switch (all.get(j).role()) {
+                        case VAPOUR_OUTLET -> Clash.VAPOUR;
+                        case BOOT_DRAIN -> Clash.BOOT;
+                        default -> Clash.LIQUID;
+                    }));
+            if (manway != null && overlap(box, manway.box())) out.add(new Clash(i - fixed, Clash.MANWAY));
+            if (bootBox != null && overlap(box, bootBox)) out.add(new Clash(i - fixed, Clash.BOOT));
             if (!saddles()) continue;
             for (double c : saddleCentres())
                 if (overlap(box, new double[]{-support, c - SADDLE_WIDTH / 2, axis() - lateral, horn, c + SADDLE_WIDTH / 2, axis() + lateral}))

@@ -27,7 +27,12 @@ public final class Mesh {
     public enum Material {
         SHELL(4, Paint.BODY), HEAD(4, Paint.BODY), SUPPORT(2, Paint.STRUCTURE), PIPE(1, -1), FLANGE(1, -1), OPENING(1, -1), CLADDING(2, Paint.BODY),
         GRATING(1, -1), HANDRAIL(1, -1), STEELWORK(1, Paint.STRUCTURE), MACHINE(1, Paint.BODY), MOTOR(1, -1), ACTUATOR(1, -1), FEED(1, -1), DRAIN(1, -1),
-        /** An air cooler's Blender parts (their own texture coordinates) and sprites: fan rotor, fan ring and guard, motor; fins, headers, plenum. */
+        /** A flange's nuts and stud ends ({@link #bolts}). */
+        BOLT(1, -1),
+        /**
+         * An air cooler's Blender parts (their own texture coordinates) and sprites: fan rotor, fan ring and guard, motor;
+         * fins (the bundle, seen through the fan rings from below), headers, the plenum casing's sheet.
+         */
         AC_FAN(1, -1), AC_RING(1, Paint.BODY), AC_MOTOR(1, -1), AC_FINS(1, -1), AC_HEADER(.5, Paint.BODY), AC_PLENUM(1, Paint.BODY);
 
         private final double period;
@@ -456,6 +461,52 @@ public final class Mesh {
         for (int i = 0; i < n; i++) {
             double a0 = 2 * Math.PI * i / n, a1 = 2 * Math.PI * (i + 1) / n;
             flat(List.of(f.at(a0, rIn, z), f.at(a1, rIn, z), f.at(a1, rOut, z), f.at(a0, rOut, z)), outward, material);
+        }
+    }
+
+    /** The smallest nut drawn, across its flats: half a texel, so small flanges still show their bolts. */
+    static final double MIN_NUT = 1 / 32.0;
+
+    /**
+     * The nuts on one side of a bolted flange (owner request 2026-10-16: "add bolts to all flanges") on frame {@code f}:
+     * the class 150 bolting of a line of outside diameter {@code od} ({@link PipeSizes#bolts}), each nut 1.6 bolt diameters
+     * across its flats and, with its stud's end, 1.2 d high, a closed hexagonal prism standing on the flange's surface at
+     * {@code z} towards {@code sign} along the axis. They sit on a bolt circle half way from {@code inner} (the hub, the
+     * neck or a cover's edge) to {@code outer} (the rim), straddling the frame's reference direction as flange bolt holes
+     * do; a flange whose land is narrower than a nut shows none.
+     */
+    void bolts(Frame f, double od, double inner, double outer, double z, int sign, Material material) {
+        double d = PipeSizes.boltDiameter(od), across = Math.max(1.6 * d, MIN_NUT);
+        if (outer - inner < across) return;
+        int count = PipeSizes.bolts(od);
+        double r = across / Math.sqrt(3), height = Math.max(1.2 * d, MIN_NUT), circle = (inner + outer) / 2;
+        var axis = new double[]{sign * f.axis[0], sign * f.axis[1], sign * f.axis[2]};
+        for (int k = 0; k < count; k++) cylinder(new Frame(f.at(2 * Math.PI * (k + .5) / count, circle, z), axis, f.ref), r, 0, height, 6, material);
+    }
+
+    /**
+     * A 2:1 head from its tangent line at frame station {@code at} to its apex {@code depth} beyond, along the frame's
+     * axis, drawn as bands of the ellipsoid (a unit's heads, a drum's boot).
+     */
+    void head(Frame f, double r, double at, double depth, int n, Material material) {
+        int bands = Math.max(3, n / 4);
+        var base = f.along(at);
+        var spheroid = new Spheroid(base, f.axis(), r, depth);
+        for (int k = 0; k < bands; k++) {
+            double p0 = Math.PI / 2 * k / bands, p1 = Math.PI / 2 * (k + 1) / bands;
+            double r0 = r * DeterministicMath.cos(p0), r1 = k + 1 == bands ? 0 : r * DeterministicMath.cos(p1);
+            double z0 = at + depth * DeterministicMath.sin(p0), z1 = at + depth * DeterministicMath.sin(p1);
+            for (int i = 0; i < n; i++) {
+                double a0 = 2 * Math.PI * i / n, a1 = 2 * Math.PI * (i + 1) / n;
+                var polygon = new ArrayList<double[]>(4);
+                polygon.add(f.at(a0, r0, z0));
+                polygon.add(f.at(a1, r0, z0));
+                if (r1 > 0) {
+                    polygon.add(f.at(a1, r1, z1));
+                    polygon.add(f.at(a0, r1, z1));
+                } else polygon.add(f.along(z1));
+                add(polygon, base, spheroid, material, null, null);
+            }
         }
     }
 
