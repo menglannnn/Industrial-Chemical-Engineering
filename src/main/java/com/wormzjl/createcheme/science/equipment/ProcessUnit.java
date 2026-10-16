@@ -22,10 +22,10 @@ import static com.wormzjl.createcheme.science.equipment.Mesh.*;
  *
  * <p>Sizes, from the physics of the plan. An exchanger (TEMA AES) of shell D and tubes L holds about 1,260 D² tubes of
  * 3/4" on a 1" pitch, about 75 D² L m² of surface; its tubes are at least 3 D long. A kettle's bundle of D_b lies in a
- * shell of 1.6 D_b with vapour space over the pool. An air cooler bay is one size, the largest ({@link #BAY_WIDTH} ×
- * {@link #BAY_LENGTH}, two {@link #FAN} m fans under 46 % of its bundle face, API 661 asking 40 %; owner request:
- * "define a largest size, and use scale out"): more duty is more bays, each a unit. An ejector's proportions follow its
- * suction s (8.3 s long).
+ * shell of 1.6 D_b with vapour space over the pool. An air cooler is a bank of single-pass bays in parallel and in series
+ * ({@link Bank}), each 1.5 to 3 m wide and 2 to 6 m long where its one to three fans cover at least 40 % of its bundle
+ * face (API 661; owner requests 2026-10-16: smaller bays, banks), its fans, rings and motors Blender parts ({@link Part}).
+ * An ejector's proportions follow its suction s (8.3 s long).
  *
  * <p>Built in the unit's frame, which stands as a vertical vessel's ({@link EquipmentShape}): y up from the ground, the
  * front (frame -z) towards the constructor, a lying unit's axis along z with its channel (the air cooler's inlet header)
@@ -39,12 +39,57 @@ public final class ProcessUnit {
     private static final int CACHE = 64;
     private static final Map<EquipmentShape, ProcessUnit> BUILT = new ConcurrentHashMap<>();
 
-    /** Steps of an exchanger's shell and a kettle's bundle, and of an ejector's suction, m. */
-    public static final double SHELL_STEP = .25, SUCTION_STEP = .1;
-    /** The air cooler's bay, m: across its tubes, along them (header to header), and its two fans' diameter. */
-    public static final double BAY_WIDTH = 3, BAY_LENGTH = 6, FAN = 1.9;
-    /** Air cooler parts, m: header depth along the tubes and height, the bundle's depth, the plenum's, a fan ring's height. */
-    static final double HEADER = .6, HEADER_HEIGHT = .6, BUNDLE = .5, PLENUM = 1.2, FAN_RING = .3;
+    /**
+     * Steps of an exchanger's shell and a kettle's bundle, and of an ejector's suction, m; the largest suction of an
+     * ejector on a single post (owner request 2026-10-16: "allow smaller ejectors").
+     */
+    public static final double SHELL_STEP = .25, SUCTION_STEP = .05, SMALL_EJECTOR = .2;
+    /**
+     * An air cooler bay's lengths, m (header to header, whole metres; owner request 2026-10-16: "allow smaller ejectors and
+     * ACs"); its width runs from 1.5 to 3 m in 0.5 m steps. A bay is built only where its fans cover {@link #FAN_COVERAGE}
+     * of its bundle face (API 661), which a bay under 1.5 m wide never does.
+     */
+    public static final int MIN_BAY_LENGTH = 2, MAX_BAY_LENGTH = 6;
+    public static final double FAN_COVERAGE = .4;
+    /**
+     * Air cooler parts, m: the largest header depth along the tubes, a header's height, the bundle's depth, and the
+     * deepest a fan ring and guard hang under the plenum (the Blender ring is 0.35 of its fan deep).
+     */
+    static final double HEADER = .6, HEADER_HEIGHT = .6, BUNDLE = .5, RING_DEPTH = .9;
+
+    /**
+     * An air cooler bank (owner request 2026-10-16: "AC should be able to be built in series & parallel", decided: one bank
+     * unit with its manifolds and crossovers): {@code parallel} trains of bays side by side across the frame's x, each
+     * {@code series} bays back to back along z. Single-pass bays: the process enters a train at its first bay's front
+     * header and crosses from each back header to the next front header; the bank has one inlet and one outlet.
+     */
+    public record Bank(int parallel, int series) {
+        public static final Bank ONE = new Bank(1, 1);
+        public static final int MAX_PARALLEL = 6, MAX_SERIES = 4;
+
+        public Bank {
+            if (parallel < 1 || parallel > MAX_PARALLEL || series < 1 || series > MAX_SERIES)
+                throw new IllegalArgumentException("A bank is 1 to " + MAX_PARALLEL + " bays in parallel by 1 to " + MAX_SERIES + " in series, not " + parallel + " × " + series);
+        }
+
+        public int bays() {
+            return parallel * series;
+        }
+
+        public int[] encode() {
+            return new int[]{parallel, series};
+        }
+
+        /** @throws IllegalArgumentException unless {@code values} holds the bays in parallel and in series, in range */
+        public static Bank decode(int[] values) {
+            if (values.length != 2) throw new IllegalArgumentException("A bank holds its bays in parallel and in series");
+            return new Bank(values[0], values[1]);
+        }
+    }
+
+    /** A bay's fans: how many, along its tubes, and their diameter, m. */
+    public record Fans(int count, double diameter) {
+    }
     /** Steelwork, m: a post's section, a beam's depth and flange. */
     static final double POST = .2, BEAM = .2, FLANGE_BEAM = .15;
 
@@ -53,8 +98,8 @@ public final class ProcessUnit {
     public static double minDiameter(Kind kind) {
         return switch (kind) {
             case EXCHANGER, KETTLE -> .5;
-            case AIR_COOLER -> BAY_WIDTH;
-            case EJECTOR -> .1;
+            case AIR_COOLER -> 1.5;
+            case EJECTOR -> SUCTION_STEP;
             default -> throw notUnit(kind);
         };
     }
@@ -63,7 +108,7 @@ public final class ProcessUnit {
         return switch (kind) {
             case EXCHANGER -> 2.5;
             case KETTLE -> 2;
-            case AIR_COOLER -> BAY_WIDTH;
+            case AIR_COOLER -> 3;
             case EJECTOR -> 1;
             default -> throw notUnit(kind);
         };
@@ -72,17 +117,24 @@ public final class ProcessUnit {
     public static double diameterStep(Kind kind) {
         return switch (kind) {
             case EXCHANGER, KETTLE -> SHELL_STEP;
-            case AIR_COOLER -> 1;
+            case AIR_COOLER -> .5;
             case EJECTOR -> SUCTION_STEP;
             default -> throw notUnit(kind);
         };
     }
 
-    /** The shortest tubes, whole metres: three bundle diameters (an air cooler's bay length; an ejector's 1, unused). */
+    /**
+     * The shortest tubes, whole metres: three bundle diameters; an air cooler bay of width {@code diameter}, the shortest
+     * whose fans cover {@link #FAN_COVERAGE} of its bundle face; an ejector's 1, unused.
+     */
     public static int minLength(Kind kind, double diameter) {
         return switch (kind) {
             case EXCHANGER, KETTLE -> Math.max(2, (int) Math.ceil(3 * diameter - 1e-9));
-            case AIR_COOLER -> (int) BAY_LENGTH;
+            case AIR_COOLER -> {
+                int length = MIN_BAY_LENGTH;
+                while (length < MAX_BAY_LENGTH && coverage(diameter, length) < FAN_COVERAGE) length++;
+                yield length;
+            }
             case EJECTOR -> 1;
             default -> throw notUnit(kind);
         };
@@ -92,7 +144,7 @@ public final class ProcessUnit {
         return switch (kind) {
             case EXCHANGER -> 12;
             case KETTLE -> 10;
-            case AIR_COOLER -> (int) BAY_LENGTH;
+            case AIR_COOLER -> MAX_BAY_LENGTH;
             case EJECTOR -> 1;
             default -> throw notUnit(kind);
         };
@@ -127,8 +179,9 @@ public final class ProcessUnit {
         return Math.round((min + k * step) * 1000) / 1000.0;
     }
 
-    static void validate(Kind kind, double diameter, double length, Orientation orientation, int support) {
+    static void validate(Kind kind, double diameter, double length, Orientation orientation, int support, Bank bank) {
         String name = kind.name().toLowerCase(Locale.ROOT);
+        if (kind != Kind.AIR_COOLER && !bank.equals(Bank.ONE)) throw new IllegalArgumentException("Only air coolers are built in banks");
         if (!(diameter >= minDiameter(kind) - 1e-9 && diameter <= maxDiameter(kind) + 1e-9) || Math.abs(snap(kind, diameter) - diameter) > 1e-9)
             throw new IllegalArgumentException("A " + name + "'s size must be " + minDiameter(kind) + " to " + maxDiameter(kind) + " m in " + diameterStep(kind)
                     + " m steps, not " + diameter);
@@ -137,6 +190,8 @@ public final class ProcessUnit {
         if (orientation != orientation(kind)) throw new IllegalArgumentException("A " + name + " " + (orientation(kind).horizontal() ? "lies" : "stands"));
         if (support < minSupport(kind) || support > EquipmentShape.MAX_SUPPORT)
             throw new IllegalArgumentException("A " + name + "'s support must be " + minSupport(kind) + " to " + EquipmentShape.MAX_SUPPORT + " m, not " + support);
+        if (kind == Kind.AIR_COOLER && coverage(diameter, length) < FAN_COVERAGE)
+            throw new IllegalArgumentException("An air cooler bay of " + diameter + " × " + length + " m has no room for fans covering " + FAN_COVERAGE + " of its bundle");
     }
 
     private static IllegalArgumentException notUnit(Kind kind) {
@@ -153,9 +208,45 @@ public final class ProcessUnit {
         return Math.round(1.6 * bundle * 4) / 4.0;
     }
 
-    /** The air cooler's bundle face between its headers, m². */
-    public static double bundleFace() {
-        return (BAY_WIDTH - .22) * (BAY_LENGTH - 2 * (HEADER + .2));
+    /** An air cooler bay's header depth along its tubes, m: 0.15 of its length, at most {@link #HEADER}. */
+    static double header(double length) {
+        return Math.min(HEADER, .15 * length);
+    }
+
+    /** An air cooler bay's bundle face between its headers (centred 0.5 m in from each end), m². */
+    public static double bundleFace(double width, double length) {
+        return (width - .22) * (length - 1 - header(length));
+    }
+
+    /**
+     * An air cooler bay's fans: one to three along its tubes, as many as cover its bundle face best, each as large as fits
+     * its share of the plenum's floor (0.42 m narrower than the bay, 0.1 m shorter than the bundle) less 0.1 m.
+     */
+    public static Fans fans(double width, double length) {
+        Fans best = null;
+        double covered = -1;
+        for (int k = 1; k <= 3; k++) {
+            double d = Math.min(width - .42, (length - 1.1 - header(length)) / k) - .1, c = d > 0 ? k * Math.PI * d * d / 4 : 0;
+            if (c > covered + 1e-9) {
+                covered = c;
+                best = new Fans(k, d);
+            }
+        }
+        return best;
+    }
+
+    /** Every air cooler bay a player may build, {width, length}, the narrowest and shortest first. */
+    public static List<double[]> bays() {
+        var out = new ArrayList<double[]>();
+        for (double w = minDiameter(Kind.AIR_COOLER); w <= maxDiameter(Kind.AIR_COOLER) + 1e-9; w += diameterStep(Kind.AIR_COOLER))
+            for (int l = minLength(Kind.AIR_COOLER, w); l <= MAX_BAY_LENGTH; l++) if (coverage(w, l) >= FAN_COVERAGE) out.add(new double[]{snap(Kind.AIR_COOLER, w), l});
+        return out;
+    }
+
+    /** The share of an air cooler bay's bundle face its fans cover (API 661 asks 0.4 at least). */
+    public static double coverage(double width, double length) {
+        var fans = fans(width, length);
+        return fans.count() * Math.PI * fans.diameter() * fans.diameter() / 4 / bundleFace(width, length);
     }
 
     /** An ejector's length from its steam chest to its diffuser's exit, m: 8.3 suction diameters. */
@@ -418,74 +509,143 @@ public final class ProcessUnit {
     // ---- Air cooler -------------------------------------------------------------------------------------------------
 
     /**
-     * One forced-draft bay across x, its tubes along z: the split inlet-outlet header at the front (process in on its top,
-     * out at its bottom), the return header at the back, the finned bundle between them {@code support} up, a plenum under
-     * it and two fans under that, their motors below on beams, and four legs under the headers' ends.
+     * An air cooler bank of forced-draft single-pass bays ({@link Bank}), their tubes along z. Per bay: the inlet header at
+     * its front and the outlet header at its back (each centred half a metre in from its end), the finned bundle between
+     * them {@code support} up, a plenum under it tapering to its fans' floor, each fan (a Blender rotor in its ring and
+     * guard) with its motor under it on a beam, and legs under the headers' ends (one shared where trains meet). Bays in
+     * series join back header to front header by crossover spools. Trains in parallel take the process from an inlet
+     * manifold over their first front headers, the bank's inlet on its top, and give it to an outlet manifold behind their
+     * last back headers, the outlet under it where the condensate drains; a single train's inlet is on its first header and
+     * its outlet under a stub behind its last.
      */
     private void airCooler() {
-        double hb = shape.support(), w = BAY_WIDTH, low = hb - .05, high = low + HEADER_HEIGHT, a = w / 2;
-        double front0 = .2, front1 = front0 + HEADER, back1 = BAY_LENGTH - .2, back0 = back1 - HEADER;
-        for (double[] z : new double[][]{{front0, front1}, {back0, back1}})
-            box(new double[]{.05, low, z[0]}, new double[]{w - .05, high, z[1]}, Material.MACHINE, true);
-        double x0 = .11, x1 = w - .11;
-        box(new double[]{x0, hb, front1}, new double[]{x1, hb + BUNDLE, back0}, Material.GRATING, true);
-        for (double x : new double[]{.05, x1})
-            box(new double[]{x, hb - .02, front1}, new double[]{x + .06, hb + BUNDLE + .02, back0}, Material.STEELWORK, false);
-        // The plenum tapers under the bundle to its floor at the fans; at the front it leans back past the block under the
-        // front header, where the outlet's pipe drops.
-        double inset = .1, front = .25, back = .05, bottom = hb - PLENUM;
-        double[][] topRect = {{x0, front1}, {x1, front1}, {x1, back0}, {x0, back0}};
-        double[][] lowRect = {{x0 + inset, front1 + front}, {x1 - inset, front1 + front}, {x1 - inset, back0 - back}, {x0 + inset, back0 - back}};
-        var centre = new double[]{a, hb - PLENUM / 2, (front1 + back0) / 2};
-        for (int c = 0; c < 4; c++) {
-            var p = topRect[c];
-            var q = topRect[(c + 1) % 4];
-            var r = lowRect[(c + 1) % 4];
-            var s = lowRect[c];
-            mesh.add(List.of(new double[]{p[0], hb, p[1]}, new double[]{q[0], hb, q[1]}, new double[]{r[0], bottom, r[1]}, new double[]{s[0], bottom, s[1]}), centre, FLAT,
-                    Material.CLADDING, null, null);
-        }
-        var floor = new ArrayList<double[]>();
-        for (int c = 3; c >= 0; c--) floor.add(new double[]{lowRect[c][0], bottom, lowRect[c][1]});
-        mesh.flat(floor, new double[]{0, -1, 0}, Material.CLADDING);
-        // The bundle collides as drawn; the tapered plenum as its section at mid-height.
-        solids.add(Solid.box(new double[]{x0, hb, front1}, new double[]{x1, hb + BUNDLE, back0}));
-        solids.add(Solid.box(new double[]{x0 + inset / 2, bottom, front1 + front / 2}, new double[]{x1 - inset / 2, hb, back0 - back / 2}));
-        volumes.add(Solid.box(new double[]{x0 + inset + .02, bottom + .02, front1 + front + .02}, new double[]{x1 - inset - .02, hb - .02, back0 - back - .02}));
-        // Two fans filling the plenum's floor, each in a ring under it, its motor below.
-        double fan = FAN / 2, motorR = .15, motorL = .5 + .1 * fan, motorBottom = bottom - FAN_RING - .05 - motorL;
-        for (double zc : new double[]{front1 + front + fan + .05, back0 - back - fan - .05}) {
-            var f = Frame.of(new double[]{a, bottom, zc}, 1, 1);
-            int n = Math.max(16, sides(FAN));
-            mesh.ring(f, fan, fan + .05, -FAN_RING, 0, n, 1, Material.MACHINE);
-            mesh.cylinder(f, .12 * fan, -FAN_RING + .05, -.05, 12, Material.MACHINE);
-            for (int blade = 0; blade < 4; blade++) {
-                double angle = Math.PI / 2 * blade + Math.PI / 8;
-                mesh.bar(f.at(angle, .12 * fan, -FAN_RING / 2), f.at(angle, .93 * fan, -FAN_RING / 2), .06, f.at(angle + Math.PI / 2, 1, 0), Material.MACHINE);
+        var bank = shape.bank();
+        int trains = bank.parallel(), rows = bank.series();
+        double w = shape.diameter(), length = shape.tangentLength(), hb = shape.support(), h = header(length);
+        double low = hb - .05, high = low + HEADER_HEIGHT, a = centre(trains * w / 2), x0 = a - trains * w / 2, x1 = x0 + trains * w, end = rows * length;
+        // The fans' parts: the ring and guard hang at most RING_DEPTH m (scaled to 0.35 of it), the rotor turns half way down
+        // the ring, the motor hangs under the guard, its shaft up to the rotor's hub; a small fan's motor is scaled down.
+        var fans = fans(w, length);
+        double d = fans.diameter(), up = Math.min(d, RING_DEPTH), bottom = hb - (.2 + .4 * d), rotor = bottom - .15 * up;
+        double motor = Math.max(.45, Math.min(1, d / 1.9)), motorTop = bottom - .35 * up - .03, motorBottom = motorTop - .58 * motor;
+        // A bay's nozzles and crossovers by its width; a manifold carries the trains' flow at the same speed.
+        double stub = .1 + .04 * w, manifold = Math.min(HEADER_HEIGHT - .1, stub * Math.sqrt(trains));
+        var fanZ = new ArrayList<Double>();
+        for (int k = 0; k < rows; k++) {
+            double front = k * length + .5, back = (k + 1) * length - .5, front1 = front + h / 2, back0 = back - h / 2;
+            for (int i = 0; i < trains; i++) {
+                double bx0 = x0 + i * w, bx1 = bx0 + w, mid = bx0 + w / 2, ix0 = bx0 + .11, ix1 = bx1 - .11;
+                for (double zh : new double[]{front, back})
+                    box(new double[]{bx0 + .05, low, zh - h / 2}, new double[]{bx1 - .05, high, zh + h / 2}, Material.AC_HEADER, true);
+                box(new double[]{ix0, hb, front1}, new double[]{ix1, hb + BUNDLE, back0}, Material.AC_FINS, true);
+                for (double x : new double[]{bx0 + .05, ix1})
+                    box(new double[]{x, hb - .02, front1}, new double[]{x + .06, hb + BUNDLE + .02, back0}, Material.STEELWORK, false);
+                plenum(ix0, ix1, front1, back0, hb, bottom);
+                double share = (back0 - front1 - .1) / fans.count();
+                for (int f = 0; f < fans.count(); f++) {
+                    double zc = front1 + .05 + (f + .5) * share;
+                    if (i == 0 && k == 0) fanZ.add(zc);
+                    Part.of("ac_fan_ring").place(mesh, new double[]{mid, bottom, zc}, d, up, 0, Material.AC_RING);
+                    Part.of("ac_fan").place(mesh, new double[]{mid, rotor, zc}, d, d, 0, Material.AC_FAN);
+                    // Terminal boxes face out of the bank.
+                    Part.of("ac_motor").place(mesh, new double[]{mid, motorTop, zc}, motor, motor, 2 * i < trains - 1 ? 2 : 0, Material.AC_MOTOR);
+                    mesh.cylinder(Frame.of(new double[]{mid, 0, zc}, 1, 1), .025 * motor, motorTop, rotor - .06 * d, 8, Material.FLANGE);
+                    solids.add(Solid.rod(new double[]{mid, 0, zc}, 1, bottom - .35 * up, bottom, .535 * d, 0));
+                    solids.add(Solid.rod(new double[]{mid, 0, zc}, 1, motorBottom, motorTop, .2 * motor, 0));
+                }
+                if (k + 1 < rows) spool(mid, (low + high) / 2, back + h / 2, back + 1 - h / 2, stub);
             }
-            mesh.cylinder(f, motorR, -FAN_RING - .05 - motorL, -FAN_RING - .05, 12, Material.MOTOR);
-            solids.add(Solid.rod(new double[]{a, 0, zc}, 1, bottom - FAN_RING, bottom, fan + .05, 0));
-            solids.add(Solid.rod(new double[]{a, 0, zc}, 1, motorBottom, bottom - FAN_RING, motorR, 0));
-            box(new double[]{.15, motorBottom - BEAM, zc - FLANGE_BEAM / 2}, new double[]{w - .15, motorBottom, zc + FLANGE_BEAM / 2}, Material.STEELWORK, true);
         }
-        // Legs under the headers' ends; a beam across under the return header (the front one's outlet drops between its
-        // legs) and beams along each side at the headers and the motors.
-        double[] legX = {.15, w - .15}, legZ = {(front0 + front1) / 2, (back0 + back1) / 2};
+        // Legs under the headers' ends; beams under the headers across the bank and along each leg line; at the motors'
+        // level beams along the leg lines and across the bank under each row of motors.
+        var legX = new ArrayList<Double>();
+        legX.add(x0 + .15);
+        for (int i = 1; i < trains; i++) legX.add(x0 + i * w);
+        legX.add(x1 - .15);
+        var legZ = new ArrayList<Double>();
+        for (int k = 0; k < rows; k++) {
+            legZ.add(k * length + .5);
+            legZ.add((k + 1) * length - .5);
+        }
         for (double x : legX)
             for (double z : legZ) box(new double[]{x - POST / 2, 0, z - POST / 2}, new double[]{x + POST / 2, low, z + POST / 2}, Material.STEELWORK, true);
-        box(new double[]{.05, low - BEAM, legZ[1] - FLANGE_BEAM / 2}, new double[]{w - .05, low, legZ[1] + FLANGE_BEAM / 2}, Material.STEELWORK, true);
-        for (double x : legX) {
-            box(new double[]{x - FLANGE_BEAM / 2, low - BEAM, legZ[0]}, new double[]{x + FLANGE_BEAM / 2, low, legZ[1]}, Material.STEELWORK, true);
-            box(new double[]{x - FLANGE_BEAM / 2, motorBottom - 2 * BEAM, legZ[0]}, new double[]{x + FLANGE_BEAM / 2, motorBottom - BEAM, legZ[1]}, Material.STEELWORK, true);
+        for (double z : legZ) box(new double[]{x0 + .05, low - BEAM, z - FLANGE_BEAM / 2}, new double[]{x1 - .05, low, z + FLANGE_BEAM / 2}, Material.STEELWORK, true);
+        for (double x : legX)
+            for (double y : new double[]{low, motorBottom})
+                box(new double[]{x - FLANGE_BEAM / 2, y - BEAM, legZ.getFirst()}, new double[]{x + FLANGE_BEAM / 2, y, legZ.getLast()}, Material.STEELWORK, true);
+        for (int k = 0; k < rows; k++)
+            for (double zc : fanZ)
+                box(new double[]{x0 + .15, motorBottom - BEAM, k * length + zc - FLANGE_BEAM / 2}, new double[]{x1 - .15, motorBottom, k * length + zc + FLANGE_BEAM / 2},
+                        Material.STEELWORK, true);
+        // The process in at the front, on top; out at the back, underneath.
+        double zIn = .5, zOut = end + .5;
+        if (trains == 1) nozzles.add(new Nozzle(Role.PROCESS_INLET, new double[]{a, high - .03, zIn}, 1, 1, Math.ceil(high + EquipmentShape.STAND_OUT) - high + .03,
+                stub, stub, 0, .03));
+        else {
+            double ym = high + .1 + manifold / 2;
+            manifold(x0 + w / 2, x1 - w / 2, ym, zIn, manifold);
+            for (int i = 0; i < trains; i++) {
+                var f = Frame.of(new double[]{x0 + (i + .5) * w, 0, zIn}, 1, 1);
+                mesh.prism(f, stub / 2, high, ym, sides(stub), Material.PIPE);
+                mesh.ring(f, stub / 2, PipeSizes.flange(stub) / 2, high, high + .03, sides(stub), 3, Material.FLANGE);
+            }
+            nozzles.add(new Nozzle(Role.PROCESS_INLET, new double[]{a, ym + manifold / 2 - .03, zIn}, 1, 1,
+                    Math.ceil(ym + manifold / 2 + EquipmentShape.STAND_OUT) - ym - manifold / 2 + .03, manifold, manifold, 0, .03));
         }
-        // Process in on the front header's top, out at its bottom: a split header, two passes.
-        double zh = (front0 + front1) / 2, max = HEADER - .1;
-        nozzles.add(new Nozzle(Role.PROCESS_INLET, new double[]{a, high - .03, zh}, 1, 1, Math.ceil(high + EquipmentShape.STAND_OUT) - high + .03, max,
-                ColumnStructure.size(.3, max), 0, .03));
-        nozzles.add(new Nozzle(Role.PROCESS_OUTLET, new double[]{a, low + .03, zh}, 1, -1, low + .03 - Math.floor(low - EquipmentShape.STAND_OUT), max,
-                ColumnStructure.size(.2, max), 0, .03));
-        var outline = new double[][]{{.05, high, front0}, {w - .05, high, front0}, {w - .05, high, back1}, {.05, high, back1}};
+        double out = trains == 1 ? stub : manifold, yo = low + .05 + stub / 2;
+        for (int i = 0; i < trains; i++) {
+            double mid = x0 + (i + .5) * w, z0 = end - .5 + h / 2;
+            var f = Frame.of(new double[]{mid, yo, 0}, 2, 1);
+            mesh.prism(f, stub / 2, z0, trains == 1 ? zOut + stub / 2 : zOut, sides(stub), Material.PIPE);
+            mesh.ring(f, stub / 2, PipeSizes.flange(stub) / 2, z0, z0 + .03, sides(stub), 3, Material.FLANGE);
+            if (trains == 1) mesh.annulus(f, 0, stub / 2, zOut + stub / 2, sides(stub), 1, Material.PIPE);
+            solids.add(Solid.rod(new double[]{mid, yo, 0}, 2, z0, zOut, stub / 2, 0));
+        }
+        if (trains > 1) manifold(x0 + w / 2, x1 - w / 2, yo, zOut, manifold);
+        double outBase = yo - out / 2 + .03;
+        nozzles.add(new Nozzle(Role.PROCESS_OUTLET, new double[]{a, outBase, zOut}, 1, -1, outBase - Math.floor(yo - out / 2 - EquipmentShape.STAND_OUT), out, out, 0, .03));
+        var outline = new double[][]{{x0 + .05, high, .5 - h / 2}, {x1 - .05, high, .5 - h / 2}, {x1 - .05, high, end - .5 + h / 2}, {x0 + .05, high, end - .5 + h / 2}};
         for (int k = 0; k < 4; k++) segment(outline[k], outline[(k + 1) % 4]);
+    }
+
+    /** A plenum from a bundle's underside (x0 to x1, z0 to z1 at {@code top}) tapering to its fans' floor at {@code bottom}. */
+    private void plenum(double x0, double x1, double z0, double z1, double top, double bottom) {
+        double inset = .1, gap = .05;
+        double[][] upper = {{x0, z0}, {x1, z0}, {x1, z1}, {x0, z1}};
+        double[][] lower = {{x0 + inset, z0 + gap}, {x1 - inset, z0 + gap}, {x1 - inset, z1 - gap}, {x0 + inset, z1 - gap}};
+        var centre = new double[]{(x0 + x1) / 2, (top + bottom) / 2, (z0 + z1) / 2};
+        for (int c = 0; c < 4; c++) {
+            var p = upper[c];
+            var q = upper[(c + 1) % 4];
+            var r = lower[(c + 1) % 4];
+            var s = lower[c];
+            mesh.add(List.of(new double[]{p[0], top, p[1]}, new double[]{q[0], top, q[1]}, new double[]{r[0], bottom, r[1]}, new double[]{s[0], bottom, s[1]}), centre, FLAT,
+                    Material.AC_PLENUM, null, null);
+        }
+        var floor = new ArrayList<double[]>();
+        for (int c = 3; c >= 0; c--) floor.add(new double[]{lower[c][0], bottom, lower[c][1]});
+        mesh.flat(floor, new double[]{0, -1, 0}, Material.AC_PLENUM);
+        // Collides as its section at mid-height; encloses its inside.
+        solids.add(Solid.box(new double[]{x0 + inset / 2, bottom, z0 + gap / 2}, new double[]{x1 - inset / 2, top, z1 - gap / 2}));
+        volumes.add(Solid.box(new double[]{x0 + inset + .02, bottom + .02, z0 + gap + .02}, new double[]{x1 - inset - .02, top - .02, z1 - gap - .02}));
+    }
+
+    /** A crossover spool along z at (x, y) from a back header's face {@code z0} to the next front header's {@code z1}, flanged at both. */
+    private void spool(double x, double y, double z0, double z1, double od) {
+        var f = Frame.of(new double[]{x, y, 0}, 2, 1);
+        int n = sides(od);
+        double r = PipeSizes.flange(od) / 2;
+        mesh.prism(f, od / 2, z0, z1, n, Material.PIPE);
+        mesh.ring(f, od / 2, r, z0, z0 + .03, n, 3, Material.FLANGE);
+        mesh.ring(f, od / 2, r, z1 - .03, z1, n, 3, Material.FLANGE);
+        solids.add(Solid.rod(new double[]{x, y, 0}, 2, z0, z1, od / 2, 0));
+    }
+
+    /** A manifold along x from {@code from} to {@code to} (capped half its size beyond each) at height {@code y}, station {@code z}. */
+    private void manifold(double from, double to, double y, double z, double od) {
+        var f = Frame.of(new double[]{0, y, z}, 0, 1);
+        mesh.cylinder(f, od / 2, from - od / 2, to + od / 2, sides(od), Material.PIPE);
+        solids.add(Solid.rod(new double[]{0, y, z}, 0, from - od / 2, to + od / 2, od / 2, 0));
     }
 
     // ---- Steam ejector ----------------------------------------------------------------------------------------------
@@ -494,13 +654,16 @@ public final class ProcessUnit {
      * A steam ejector standing on its own frame, sized by its suction s: from the top, the steam chest (motive steam in on
      * top), the suction chamber (suction from the front), the inlet cone, the throat and the diffuser down to its discharge
      * flange, {@code support} up. Four posts round it from the ground to over the chest, tied by square frames every
-     * 2.5 m, open at the front in the suction's row. Lengths in suction diameters: chest 0.8, chamber 1.5 (1.2 wide),
-     * inlet 2.2, throat 0.8 (0.35 wide), diffuser 3.0 (to 0.75 wide).
+     * 2.5 m, open at the front in the suction's row; a small one ({@link #SMALL_EJECTOR}), which a plant hangs on its
+     * piping, on one post in the cell behind it. Lengths in suction diameters: chest 0.8, chamber 1.5 (1.2 wide), inlet
+     * 2.2, throat 0.8 (0.35 wide), diffuser 3.0 (to 0.75 wide).
      */
     private void ejector() {
         // Posts at ±e round the axis, their base plates outside the pipe blocks of the suction and the discharge (half a
-        // block each side of the axis), and clear of the chamber.
-        double s = shape.diameter(), e = Math.max(.5 + POST, .6 * s + .3), a = centre(e + POST), h = shape.support();
+        // block each side of the axis), and clear of the chamber; a small ejector's axis on its cell's centre.
+        double s = shape.diameter(), e = Math.max(.5 + POST, .6 * s + .3), h = shape.support();
+        boolean small = s <= SMALL_EJECTOR + 1e-9;
+        double a = small ? .5 : centre(e + POST);
         // The suction's centre on a cell centre: the diffuser's exit at least 0.2 m over the discharge flange.
         int row = (int) Math.ceil(h + .2 + 6.75 * s - .5);
         double exit = row + .5 - 6.75 * s, chamber = exit + 6 * s, chest = exit + 7.5 * s, top = exit + 8.3 * s;
@@ -522,10 +685,21 @@ public final class ProcessUnit {
         double motive = Math.max(PipeSizes.MIN_OUTSIDE, .45 * s);
         nozzles.add(new Nozzle(Role.MOTIVE, new double[]{a, top - .03, a}, 1, 1, Math.ceil(top + EquipmentShape.STAND_OUT) - top + .03, motive,
                 ColumnStructure.size(.3 * s, motive), 0, .03));
-        nozzles.add(new Nozzle(Role.DISCHARGE, new double[]{a, exit + .03, a}, 1, -1, exit + .03 - h, 2 * outlet, 2 * outlet, 0, .03));
+        double discharge = Math.max(PipeSizes.MIN_OUTSIDE, 2 * outlet);
+        nozzles.add(new Nozzle(Role.DISCHARGE, new double[]{a, exit + .03, a}, 1, -1, exit + .03 - h, discharge, discharge, 0, .03));
+        double postTop = top + .3, bar = .14, clamp = exit + 3.4 * s;
+        if (small) {
+            // One post in the cell behind (the suction's pipe leaves in front, the discharge's below, the motive's above),
+            // braced to the throat and the chamber.
+            double z = a + 1;
+            box(new double[]{a - POST / 2, 0, z - POST / 2}, new double[]{a + POST / 2, postTop, z + POST / 2}, Material.STEELWORK, true);
+            box(new double[]{a - POST, 0, z - POST}, new double[]{a + POST, .04, z + POST}, Material.SUPPORT, false);
+            mesh.bar(new double[]{a, clamp, z}, new double[]{a, clamp, a + throat}, bar * .6, new double[]{0, 1, 0}, Material.STEELWORK);
+            mesh.bar(new double[]{a, (chamber + chest) / 2, z}, new double[]{a, (chamber + chest) / 2, a + rc}, bar * .6, new double[]{0, 1, 0}, Material.STEELWORK);
+            return;
+        }
         // The frame: posts beside the suction's pipe block, square frames open at the front in its row, a clamp at the
         // throat.
-        double postTop = top + .3, bar = .14, clamp = exit + 3.4 * s;
         double[][] corners = {{a - e, a - e}, {a + e, a - e}, {a + e, a + e}, {a - e, a + e}};
         for (var c : corners) {
             box(new double[]{c[0] - POST / 2, 0, c[1] - POST / 2}, new double[]{c[0] + POST / 2, postTop, c[1] + POST / 2}, Material.STEELWORK, true);

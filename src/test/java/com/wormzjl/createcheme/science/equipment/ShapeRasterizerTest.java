@@ -52,7 +52,8 @@ class ShapeRasterizerTest {
         assertDoesNotThrow(() -> EquipmentShape.column(12, ColumnTrays.simple(20, 10), Heading.NORTH, 3));
         assertThrows(IllegalArgumentException.class, () -> drum(12, 5, Orientation.VERTICAL, Heading.NORTH, 3));
         assertThrows(IllegalArgumentException.class, () -> EquipmentShape.column(3, ColumnTrays.simple(12, 6), Heading.NORTH, 0));
-        assertThrows(IllegalArgumentException.class, () -> new EquipmentShape(EquipmentShape.Kind.COLUMN, 3, 4, Orientation.VERTICAL, Heading.NORTH, 2, ColumnTrays.simple(12, 6), List.of()));
+        assertThrows(IllegalArgumentException.class, () -> new EquipmentShape(EquipmentShape.Kind.COLUMN, 3, 4, Orientation.VERTICAL, Heading.NORTH, 2, ColumnTrays.simple(12, 6), List.of(),
+                ProcessUnit.Bank.ONE));
         assertEquals(2, EquipmentShape.minimumSkirt(6));
         assertEquals(3, EquipmentShape.defaultSupport(6, Orientation.VERTICAL));
         assertEquals(4, EquipmentShape.defaultSupport(10, Orientation.VERTICAL));
@@ -399,6 +400,46 @@ class ShapeRasterizerTest {
     }
 
     @Test
+    void bottomLineRisesWithTheSkirt() {
+        // Owner request 2026-10-16 ("1m pipe on the bottom of drum & column still looks weird"), decided: the line rises
+        // with the skirt. D 3 on 2 m: the head's low point (1.25 m) keeps the line on the lowest row, 0.69 m, its port on
+        // the base plate; on 4 m it carries a full 1 m line one row up; D 2 on 3 m (low point 2.5 m): one row up, 0.95 m,
+        // as large as its elbow fits.
+        assertBottomLine(drum(3, 4, Orientation.VERTICAL, Heading.NORTH, 2), .5, .6925);
+        assertBottomLine(drum(3, 4, Orientation.VERTICAL, Heading.NORTH, 4), 1.5, 1);
+        assertBottomLine(drum(2, 4, Orientation.VERTICAL, Heading.NORTH, 3), 1.5, .95);
+        // Every skirted drum and column: the line runs on a cell centre row, its flange clears grade, its port the base
+        // plate and the head seam, its elbow fits under the head, and a taller skirt never carries a smaller line.
+        for (boolean column : new boolean[]{false, true})
+            for (double d = EquipmentShape.MIN_DIAMETER; d <= (column ? EquipmentShape.MAX_COLUMN_DIAMETER : EquipmentShape.MAX_DIAMETER); d += .5) {
+                double last = 0;
+                for (int s = EquipmentShape.minimumSkirt(d); s <= EquipmentShape.MAX_SUPPORT; s++) {
+                    var shape = column ? EquipmentShape.column(d, ColumnTrays.simple(12, 6), Heading.NORTH, s) : drum(d, 4, Orientation.VERTICAL, Heading.NORTH, s);
+                    var line = shape.nozzles().stream().filter(n -> n.riser() > 0).findFirst();
+                    assertEquals(line.isPresent(), shape.openingRadius() > 0, shape.toString());
+                    if (line.isEmpty()) continue;
+                    double c = line.get().base()[1], od = line.get().maxOd(), pole = shape.bottomTangent() - shape.headDepth();
+                    String at = shape + " line " + od + " at " + c;
+                    assertEquals(shape.openingHeight(), c, 0, at);
+                    assertEquals(.5, c - Math.floor(c), 0, at);
+                    assertTrue(c - PipeSizes.flange(od) / 2 > 0, at);
+                    assertTrue(c - od / 2 - EquipmentShape.PORT_CLEARANCE - EquipmentShape.PORT_COLLAR >= EquipmentShape.PLATE, at);
+                    assertTrue(c + od / 2 + EquipmentShape.PORT_CLEARANCE + EquipmentShape.PORT_COLLAR <= shape.bottomTangent(), at);
+                    assertTrue(c + od <= pole, at);
+                    assertTrue(od >= last - 1e-12, at);
+                    last = od;
+                }
+            }
+    }
+
+    private static void assertBottomLine(EquipmentShape shape, double height, double od) {
+        var line = shape.nozzles().stream().filter(n -> n.role() == EquipmentShape.Role.LIQUID_OUTLET).findFirst().orElseThrow();
+        assertEquals(height, line.base()[1], 0, shape.toString());
+        assertEquals(od, line.maxOd(), 1e-12, shape.toString());
+        assertEquals(od / 2 + EquipmentShape.PORT_CLEARANCE, shape.openingRadius(), 1e-12, shape.toString());
+    }
+
+    @Test
     void skirtShowsItsInsideThroughTheOpeningAndSlots() {
         // Owner reports 2026-10-16: the bottom outlet leaves through its skirt port on the front, centred on the outlet
         // line, the port 5 cm wider than the line drawn, and slots on the left, back and right show the skirt's inside.
@@ -458,7 +499,7 @@ class ShapeRasterizerTest {
                 java.util.Collections.nCopies(EquipmentShape.MAX_CONNECTIONS + 1, new Connection(0, 3, 0))));
         var trays = ColumnTrays.simple(12, 6);
         assertThrows(IllegalArgumentException.class, () -> new EquipmentShape(EquipmentShape.Kind.COLUMN, 3, trays.tangentLength(3), Orientation.VERTICAL,
-                Heading.NORTH, 2, trays, List.of(new Connection(0, 3, 0))));
+                Heading.NORTH, 2, trays, List.of(new Connection(0, 3, 0)), ProcessUnit.Bank.ONE));
         // Right, left and a hillside nozzle at the back: clear of each other and of the outlets, the hillside one off centre.
         var drum = drum(3, 4, Orientation.VERTICAL, Heading.NORTH, 2, placed);
         assertEquals(List.of(), drum.clashes());

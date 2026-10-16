@@ -44,7 +44,7 @@ import java.util.Objects;
  * the box to start at the origin.
  */
 public record EquipmentShape(Kind kind, double diameter, double tangentLength, Orientation orientation, Heading front, int support,
-                             @Nullable ColumnTrays trays, List<Connection> connections) {
+                             @Nullable ColumnTrays trays, List<Connection> connections, ProcessUnit.Bank bank) {
     public static final double MIN_DIAMETER = .5, MAX_DIAMETER = 10, MAX_COLUMN_DIAMETER = 15, MAX_TANGENT_LENGTH = 64;
     public static final int MAX_SUPPORT = 16;
     /** Saddles: centred this fraction of T/T from each tangent line, this wide along the axis (m), over this arc of the shell. */
@@ -58,8 +58,8 @@ public record EquipmentShape(Kind kind, double diameter, double tangentLength, O
     /** A nozzle's flange face stands at least this far beyond the vessel surface (photo survey: 150-300 mm), on the next block face. */
     public static final double STAND_OUT = .15;
     /**
-     * Centre height of a skirted drum's bottom outlet line where it leaves the skirt, through the centre of its skirt
-     * port: the lowest cell centre.
+     * The lowest row a skirted vessel's bottom outlet line leaves the skirt on, through the centre of its skirt port: the
+     * lowest cell centre. A taller skirt lifts the line until it carries its full size ({@link #openingHeight}).
      */
     public static final double SKIRT_OUTLET = .5;
     /**
@@ -241,7 +241,7 @@ public record EquipmentShape(Kind kind, double diameter, double tangentLength, O
 
     /** A bare vertical drum resting on its lower head, front to the north: the debug command's form. */
     public EquipmentShape(double diameter, double tangentLength) {
-        this(Kind.DRUM, diameter, tangentLength, Orientation.VERTICAL, Heading.NORTH, 0, null, defaultConnections(diameter, tangentLength, Orientation.VERTICAL, 0));
+        this(Kind.DRUM, diameter, tangentLength, Orientation.VERTICAL, Heading.NORTH, 0, null, defaultConnections(diameter, tangentLength, Orientation.VERTICAL, 0), ProcessUnit.Bank.ONE);
     }
 
     /** A drum with a new drum's side connection ({@link #defaultConnections}). */
@@ -250,17 +250,22 @@ public record EquipmentShape(Kind kind, double diameter, double tangentLength, O
     }
 
     public static EquipmentShape drum(double diameter, double tangentLength, Orientation orientation, Heading front, int support, List<Connection> connections) {
-        return new EquipmentShape(Kind.DRUM, diameter, tangentLength, orientation, front, support, null, connections);
+        return new EquipmentShape(Kind.DRUM, diameter, tangentLength, orientation, front, support, null, connections, ProcessUnit.Bank.ONE);
     }
 
     public static EquipmentShape column(double diameter, ColumnTrays trays, Heading front, int skirt) {
-        return new EquipmentShape(Kind.COLUMN, diameter, trays.tangentLength(diameter), Orientation.VERTICAL, front, skirt, trays, List.of());
+        return new EquipmentShape(Kind.COLUMN, diameter, trays.tangentLength(diameter), Orientation.VERTICAL, front, skirt, trays, List.of(), ProcessUnit.Bank.ONE);
     }
 
     /** A standalone unit of kind {@code kind}, its sizes as {@link ProcessUnit} reads them; it lies or stands as its kind does. */
     public static EquipmentShape unit(Kind kind, double diameter, double tangentLength, Heading front, int support) {
+        return unit(kind, diameter, tangentLength, front, support, ProcessUnit.Bank.ONE);
+    }
+
+    /** A unit as {@link #unit(Kind, double, double, Heading, int)}; an air cooler built as a bank of bays. */
+    public static EquipmentShape unit(Kind kind, double diameter, double tangentLength, Heading front, int support, ProcessUnit.Bank bank) {
         if (!kind.unit()) throw new IllegalArgumentException(kind + " is not a unit");
-        return new EquipmentShape(kind, diameter, tangentLength, ProcessUnit.orientation(kind), front, support, null, List.of());
+        return new EquipmentShape(kind, diameter, tangentLength, ProcessUnit.orientation(kind), front, support, null, List.of(), bank);
     }
 
     /**
@@ -283,10 +288,11 @@ public record EquipmentShape(Kind kind, double diameter, double tangentLength, O
         Objects.requireNonNull(kind, "kind");
         Objects.requireNonNull(orientation, "orientation");
         Objects.requireNonNull(front, "front");
+        Objects.requireNonNull(bank, "bank");
         connections = List.copyOf(connections);
         if (kind.unit()) {
             if (trays != null || !connections.isEmpty()) throw new IllegalArgumentException("A unit has no trays and no side connections");
-            ProcessUnit.validate(kind, diameter, tangentLength, orientation, support);
+            ProcessUnit.validate(kind, diameter, tangentLength, orientation, support, bank);
         } else {
             double maximum = kind == Kind.COLUMN ? MAX_COLUMN_DIAMETER : MAX_DIAMETER;
             if (!(diameter >= MIN_DIAMETER && diameter <= maximum) || diameter * 2 != Math.rint(diameter * 2))
@@ -303,6 +309,7 @@ public record EquipmentShape(Kind kind, double diameter, double tangentLength, O
                 throw new IllegalArgumentException("Saddle height must be 1 to " + MAX_SUPPORT + " m, not " + support);
             if (!orientation.horizontal() && support != 0 && (support < minimumSkirt(diameter) || support > MAX_SUPPORT))
                 throw new IllegalArgumentException("Skirt height must be 0 (none) or " + minimumSkirt(diameter) + " to " + MAX_SUPPORT + " m, not " + support);
+            if (!bank.equals(ProcessUnit.Bank.ONE)) throw new IllegalArgumentException("Only air coolers are built in banks");
             if (kind == Kind.COLUMN && !connections.isEmpty()) throw new IllegalArgumentException("A column's nozzles follow its trays");
             if (connections.size() > MAX_CONNECTIONS) throw new IllegalArgumentException("A drum takes at most " + MAX_CONNECTIONS + " side connections");
             int[] range = stations(diameter, tangentLength, orientation, support);
@@ -613,38 +620,44 @@ public record EquipmentShape(Kind kind, double diameter, double tangentLength, O
      * A skirted vessel's bottom outlet (a drum's liquid outlet, owner report 2026-10-16; a column's bottoms, owner request
      * 2026-10-16: "output on the skirt like the drum"), or null when the skirt leaves it no room: its line drops from the
      * bottom head's lowest point inside the skirt, turns in an elbow of bend radius maxOd, and leaves through the skirt's
-     * port towards the front (frame -z) at the lowest cell centre ({@link #skirtOutletOd} sizes all three).
+     * port towards the front (frame -z) on the row {@link #skirtOutletLine} picks, which also sizes all three.
      */
     @Nullable Nozzle skirtOutlet(Role role, double defaultOd) {
-        double od = skirtOutletOd();
-        if (od <= 0) return null;
-        double a = axis(), pole = bottomTangent() - headDepth(), start = a - od, plane = Math.floor(a - outerRadius() - STAND_OUT);
-        return new Nozzle(role, new double[]{a, SKIRT_OUTLET, start}, 2, -1, start - plane, od, clampOd(defaultOd, od), pole + .03, radius() + SKIRT_WALL + .02 - od);
+        var line = skirtOutletLine();
+        if (line == null) return null;
+        double od = line[1], a = axis(), pole = bottomTangent() - headDepth(), start = a - od, plane = Math.floor(a - outerRadius() - STAND_OUT);
+        return new Nozzle(role, new double[]{a, line[0], start}, 2, -1, start - plane, od, clampOd(defaultOd, od), pole + .03, radius() + SKIRT_WALL + .02 - od);
     }
 
     /**
-     * Largest size of a skirted vessel's bottom outlet line, or 0 when it has none (owner request 2026-10-16: the line from
-     * the bottom to its port follows the pipe): its elbow (bend radius 1 D) stays under the bottom head, and its skirt
-     * port, the line's clearance and collar round it, clears the base plate and the head seam; at most half the diameter.
-     * A larger pipe meets a reducer outside the skirt.
+     * A skirted vessel's bottom outlet line, {run centre height, largest size}, or null when it has none (owner requests
+     * 2026-10-16: the line follows the pipe; "1m pipe on the bottom of drum & column still looks weird", decided: the line
+     * rises with the skirt). On a row of cell centres, its elbow (bend radius 1 D) stays under the bottom head, and its
+     * skirt port, the line's clearance and collar round it, clears the base plate (so its flange clears grade) and the
+     * head seam. The line takes the lowest row that carries its full size, half the diameter and at most one block; a
+     * skirt too short for that leaves it on the row that carries the largest, and a larger pipe meets a reducer outside.
      */
-    private double skirtOutletOd() {
-        if (!skirt()) return 0;
-        double ring = PORT_CLEARANCE + PORT_COLLAR, pole = bottomTangent() - headDepth();
-        double od = Math.min(Math.min(diameter / 2, pole - SKIRT_OUTLET - .05),
-                2 * Math.min(SKIRT_OUTLET - PLATE - .01 - ring, bottomTangent() - .1 - SKIRT_OUTLET - ring));
-        return od > .05 ? od : 0;
+    private double @Nullable [] skirtOutletLine() {
+        if (!skirt()) return null;
+        double ring = PORT_CLEARANCE + PORT_COLLAR, pole = bottomTangent() - headDepth(), full = Math.min(diameter / 2, PipeSizes.MAX_OUTSIDE);
+        double[] best = null;
+        for (double c = SKIRT_OUTLET; c < pole && (best == null || best[1] < full - 1e-9); c++) {
+            double od = Math.min(Math.min(full, pole - c - .05), 2 * Math.min(c - PLATE - .01 - ring, bottomTangent() - .1 - c - ring));
+            if (od > .05 && (best == null || od > best[1] + 1e-9)) best = new double[]{c, od};
+        }
+        return best;
     }
 
     /** Radius of a skirt's port, or 0: cut for its largest bottom outlet line (the port's bore follows the line drawn). */
     public double openingRadius() {
-        double od = skirtOutletOd();
-        return od > 0 ? od / 2 + PORT_CLEARANCE : 0;
+        var line = skirtOutletLine();
+        return line != null ? line[1] / 2 + PORT_CLEARANCE : 0;
     }
 
-    /** Centre height of a skirt's port: on its bottom outlet line. */
+    /** Centre height of a skirt's port, or 0: on its bottom outlet line. */
     public double openingHeight() {
-        return openingRadius() > 0 ? SKIRT_OUTLET : 0;
+        var line = skirtOutletLine();
+        return line != null ? line[0] : 0;
     }
 
     /** A radial nozzle on the cylindrical shell (a column's cladding) at height {@code y}, along frame axis {@code axis} in direction {@code sign}. */

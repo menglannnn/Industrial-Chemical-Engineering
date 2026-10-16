@@ -68,7 +68,7 @@ public final class FluidDeviceModel implements IDynamicBakedModel {
         var cached = quads.get(key);
         if (cached != null) return cached;
         if (quads.size() >= CACHE) quads.clear();
-        return quads.computeIfAbsent(key, k -> EquipmentShellModel.bake(LineGeometry.polygons(k), sprites));
+        return quads.computeIfAbsent(key, k -> EquipmentShellModel.bake(LineGeometry.polygons(k), sprites, false));
     }
 
     private LineGeometry.Key key(@Nullable BlockState state, ModelData data) {

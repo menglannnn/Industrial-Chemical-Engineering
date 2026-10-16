@@ -255,6 +255,27 @@ class LineGeometryTest {
         return Math.round(p[0] * 1e7) + "," + Math.round(p[1] * 1e7) + "," + Math.round(p[2] * 1e7);
     }
 
+    @Test
+    void unconnectedEndsCloseInABlindFlange() {
+        // Owner request 2026-10-16: "Non-connected pipe tip should look like a flange". A dead end runs straight through
+        // its block and a bare pipe through both faces; every unconnected end shows a flange face, as large as the
+        // pipe's flange, on the block face.
+        for (double od : SIZES)
+            for (int[] faces : new int[][]{{WEST}, {}}) {
+                var key = key(Kind.PIPE, EAST, od, faces, 0, 0, false);
+                double drawn = PipeSizes.outsideOf(key.outside()), reach = 0;
+                for (var polygon : LineGeometry.polygons(key)) {
+                    if (polygon.material() != Material.FLANGE) continue;
+                    double[] p = polygon.positions();
+                    boolean onFace = true;
+                    for (int i = 0; i < polygon.size(); i++) onFace &= Math.abs(p[3 * i] - 1) < 1e-9;
+                    if (!onFace || newell(polygon)[0] <= 0) continue;
+                    for (int i = 0; i < polygon.size(); i++) reach = Math.max(reach, Math.hypot(p[3 * i + 1] - .5, p[3 * i + 2] - .5));
+                }
+                assertEquals(PipeSizes.flange(drawn) / 2, reach, .02 * PipeSizes.flange(drawn) + 1e-6, key.toString());
+            }
+    }
+
     private static double[] newell(Mesh.Polygon polygon) {
         double[] p = polygon.positions(), n = new double[3];
         int m = polygon.size();

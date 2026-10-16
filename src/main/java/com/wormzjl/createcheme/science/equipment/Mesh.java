@@ -20,19 +20,34 @@ import java.util.Locale;
 public final class Mesh {
     static final double EPS = 1e-9, MIN_AREA = 1e-7, OWNER_NUDGE = 1e-6;
 
-    /** Which sprite a polygon samples, and how many metres one sprite tile covers when a part has no frame of its own. */
+    /**
+     * Which sprite a polygon samples, how many metres one sprite tile covers when a part has no frame of its own, and
+     * which {@link Paint} colour a vessel's sprite of it takes.
+     */
     public enum Material {
-        SHELL(4), HEAD(4), SUPPORT(2), PIPE(1), FLANGE(1), OPENING(1), CLADDING(2), GRATING(1), HANDRAIL(1), STEELWORK(1),
-        MACHINE(1), MOTOR(1), ACTUATOR(1), FEED(1), DRAIN(1);
+        SHELL(4, Paint.BODY), HEAD(4, Paint.BODY), SUPPORT(2, Paint.STRUCTURE), PIPE(1, -1), FLANGE(1, -1), OPENING(1, -1), CLADDING(2, Paint.BODY),
+        GRATING(1, -1), HANDRAIL(1, -1), STEELWORK(1, Paint.STRUCTURE), MACHINE(1, Paint.BODY), MOTOR(1, -1), ACTUATOR(1, -1), FEED(1, -1), DRAIN(1, -1),
+        /** An air cooler's Blender parts (their own texture coordinates) and sprites: fan rotor, fan ring and guard, motor; fins, headers, plenum. */
+        AC_FAN(1, -1), AC_RING(1, Paint.BODY), AC_MOTOR(1, -1), AC_FINS(1, -1), AC_HEADER(.5, Paint.BODY), AC_PLENUM(1, Paint.BODY);
 
         private final double period;
+        private final int channel;
 
-        Material(double period) {
+        Material(double period, int channel) {
             this.period = period;
+            this.channel = channel;
         }
 
         public double period() {
             return period;
+        }
+
+        /**
+         * The paint channel a vessel's part of this material takes ({@link Paint#BODY} or {@link Paint#STRUCTURE}), or -1
+         * for parts that keep their own colour. Pipeline devices are never painted.
+         */
+        public int channel() {
+            return channel;
         }
 
         /** The texture variable a model JSON names this material's sprite with. */
@@ -88,7 +103,7 @@ public final class Mesh {
     }
 
     /** How a facet is lit at a point: its own plane, or the normal of the smooth surface it approximates. */
-    sealed interface Shading permits Flat, Radial, Spheroid, Torus, Cone, Sphere, Inward {
+    sealed interface Shading permits Flat, Radial, Spheroid, Torus, Cone, Sphere, Inward, Interpolated {
         /** Normal at a box point, not necessarily of unit length; null for the facet's own normal. */
         double[] at(double[] p);
 
@@ -181,6 +196,21 @@ public final class Mesh {
 
         public Shading map(Transform t) {
             return new Sphere(t.point(centre));
+        }
+    }
+
+    /** An imported triangle's surface: its three corners' normals, blended by where a point lies in it. */
+    record Interpolated(double[] p0, double[] p1, double[] p2, double[] n0, double[] n1, double[] n2) implements Shading {
+        public double[] at(double[] p) {
+            double[] e1 = sub(p1, p0), e2 = sub(p2, p0), w = sub(p, p0);
+            double a = dot(e1, e1), b = dot(e1, e2), c = dot(e2, e2), det = a * c - b * b;
+            if (det <= 0) return null;
+            double s = (c * dot(w, e1) - b * dot(w, e2)) / det, t = (a * dot(w, e2) - b * dot(w, e1)) / det, r = 1 - s - t;
+            return new double[]{r * n0[0] + s * n1[0] + t * n2[0], r * n0[1] + s * n1[1] + t * n2[1], r * n0[2] + s * n1[2] + t * n2[2]};
+        }
+
+        public Shading map(Transform t) {
+            return new Interpolated(t.point(p0), t.point(p1), t.point(p2), t.direction(n0), t.direction(n1), t.direction(n2));
         }
     }
 
@@ -341,6 +371,29 @@ public final class Mesh {
         for (var p : polygon)
             for (int a = 0; a < 3; a++) centroid[a] += p[a] / polygon.size();
         add(polygon, sub(centroid, outward), FLAT, material, null, null);
+    }
+
+    /**
+     * A triangle with its own texture coordinates (in its material's sprite, 0 to 1, v down) and a normal at each corner,
+     * counter-clockwise seen from outside: an imported part's ({@link Part}). Each coordinate is the affine map of the
+     * triangle's plane that meets the three corners, so a cell's piece of it samples the same texels.
+     */
+    void triangle(double[][] p, double[][] uv, double[][] n, Material material) {
+        double[] e1 = sub(p[1], p[0]), e2 = sub(p[2], p[0]);
+        double a = dot(e1, e1), b = dot(e1, e2), c = dot(e2, e2), det = a * c - b * b;
+        if (det < 4 * MIN_AREA * MIN_AREA) return;
+        var u = affine(p[0], e1, e2, a, b, c, det, uv[0][0], uv[1][0] - uv[0][0], uv[2][0] - uv[0][0]);
+        var v = affine(p[0], e1, e2, a, b, c, det, uv[0][1], uv[1][1] - uv[0][1], uv[2][1] - uv[0][1]);
+        var outward = cross(e1, e2);
+        double[] inside = new double[3];
+        for (int k = 0; k < 3; k++) inside[k] = (p[0][k] + p[1][k] + p[2][k]) / 3 - outward[k];
+        add(List.of(p[0], p[1], p[2]), inside, new Interpolated(p[0], p[1], p[2], n[0], n[1], n[2]), material, u, v);
+    }
+
+    /** The coordinate {@code at0} + d at the triangle's corners (d1, d2 at its second and third), affine over its plane. */
+    private static Uv affine(double[] origin, double[] e1, double[] e2, double a, double b, double c, double det, double at0, double d1, double d2) {
+        double alpha = (c * d1 - b * d2) / det, beta = (a * d2 - b * d1) / det;
+        return new Uv(origin, new double[]{alpha * e1[0] + beta * e2[0], alpha * e1[1] + beta * e2[1], alpha * e1[2] + beta * e2[2]}, at0, 1);
     }
 
     /** The side of a prism of {@code n} facets, radius {@code r} (to its vertices), from {@code z0} to {@code z1} along the frame. */

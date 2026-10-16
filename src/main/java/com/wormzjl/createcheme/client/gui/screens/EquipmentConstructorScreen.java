@@ -6,6 +6,7 @@ import com.wormzjl.createcheme.client.gui.common.ProcessUi;
 import com.wormzjl.createcheme.network.EquipmentNetwork;
 import com.wormzjl.createcheme.science.equipment.ColumnTrays;
 import com.wormzjl.createcheme.science.equipment.EquipmentShape;
+import com.wormzjl.createcheme.science.equipment.Paint;
 import com.wormzjl.createcheme.science.equipment.ProcessUnit;
 import com.wormzjl.createcheme.science.equipment.ShapeRasterizer;
 import com.wormzjl.createcheme.science.equipment.VesselPlacement;
@@ -13,8 +14,11 @@ import com.wormzjl.createcheme.world.level.block.EquipmentStructure;
 import com.wormzjl.createcheme.world.level.block.entity.EquipmentConstructorBlockEntity;
 import com.wormzjl.createcheme.world.level.block.entity.EquipmentConstructorBlockEntity.Design;
 import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.components.AbstractButton;
 import net.minecraft.client.gui.components.Button;
+import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.components.Tooltip;
+import net.minecraft.client.gui.narration.NarrationElementOutput;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
@@ -30,16 +34,21 @@ import java.util.function.IntUnaryOperator;
 /**
  * The equipment constructor's screen: first what to build (a vertical drum, a horizontal drum, a distillation column, or
  * a unit: a heat exchanger, a kettle reboiler, an air cooler bay or a steam ejector; owner requests 2026-10-16), then its
- * design, in a panel on the left beside the world and the vessel's ghost; a drum's side connections have a page of their
- * own (owner request 2026-10-16). It edits a local draft; the server receives the design when the screen closes, or with
- * a build request on Build. A column is designed here by its trays and feed, or imported whole (draws, pumparounds and
- * steam too) from the nearest column calculator; its schematic is the calculator's ({@link ColumnDiagram}).
+ * design, in a panel on the left beside the world and the vessel's ghost; a drum's side connections and every kind's
+ * paint have pages of their own (owner requests 2026-10-16). It edits a local draft; the server receives the design when
+ * the screen closes, or with a build request on Build. A column is designed here by its trays and feed, or imported whole
+ * (draws, pumparounds and steam too) from the nearest column calculator; its schematic is the calculator's
+ * ({@link ColumnDiagram}).
  */
 public final class EquipmentConstructorScreen extends Screen {
-    /** The screen's pages: what to build, its design and a drum's side connections. */
+    /** The screen's pages: what to build, its design, a drum's side connections and the paint. */
     private enum Page {
-        CHOOSE, DESIGN, CONNECTIONS
+        CHOOSE, DESIGN, CONNECTIONS, PAINT
     }
+
+    /** The paint page's palette: two rows of eight swatches across the panel. */
+    private static final int SWATCH = 19, SWATCH_GAP = 4, SWATCHES_PER_ROW = 8;
+    private static final String PAINT_KEY = "gui.createcheme.paint.";
 
     /** Panel layout in GUI pixels, top-down, so it fits a 240-pixel-high GUI (854×480 at scale 2). */
     /** The schematic strip's width: the steam lines (90 pixels left of the axis) to the draw marks (39 right of it), and margins. */
@@ -83,6 +92,14 @@ public final class EquipmentConstructorScreen extends Screen {
     /** A drum's side connections, kept within the drum's ranges ({@link #fitConnections}), and the one the page edits. */
     private final List<EquipmentShape.Connection> connections = new ArrayList<>();
     private int selected;
+    /** The paint, and the channel the paint page edits ({@link Paint#BODY} or {@link Paint#STRUCTURE}). */
+    private Paint paint;
+    /** An air cooler's bays in parallel and in series, kept for the other kinds. */
+    private ProcessUnit.Bank bank;
+    private int channel = Paint.BODY;
+    private @Nullable EditBox custom;
+    /** The paint page's body and structure buttons (null off that page). */
+    private final Button[] channelButtons = new Button[2];
     private @Nullable Button build;
     private ShapeRasterizer.Layout layout;
     /** Set by Import until the constructor's synced design changes; the draft then takes it. */
@@ -109,13 +126,20 @@ public final class EquipmentConstructorScreen extends Screen {
         connections.clear();
         connections.addAll(design.connections());
         selected = 0;
+        paint = design.paint();
+        bank = design.bank();
         fitConnections();
         layout = ShapeRasterizer.layout(design().shape(facing));
     }
 
+    /** The constructor this screen designs for. */
+    public BlockPos position() {
+        return position;
+    }
+
     /** The draft; always valid, because every stepper is clamped to the bounds of its parameter. */
     public Design design() {
-        return new Design(diameter, tangentLength, form, support, new VesselPlacement(forward, right, up), trays, List.copyOf(connections));
+        return new Design(diameter, tangentLength, form, support, new VesselPlacement(forward, right, up), trays, List.copyOf(connections), paint, bank);
     }
 
     /** The vessel the draft would build, for the ghost; null on the choice page and once the constructor is gone. */
@@ -144,6 +168,8 @@ public final class EquipmentConstructorScreen extends Screen {
     @Override
     protected void init() {
         build = null;
+        custom = null;
+        channelButtons[0] = channelButtons[1] = null;
         switch (page) {
             case CHOOSE -> {
                 var current = Equipment.of(form);
@@ -157,6 +183,7 @@ public final class EquipmentConstructorScreen extends Screen {
             }
             case DESIGN -> designPage();
             case CONNECTIONS -> connectionsPage();
+            case PAINT -> paintPage();
         }
     }
 
@@ -194,20 +221,111 @@ public final class EquipmentConstructorScreen extends Screen {
         stepper(next + 1, step -> forward = clamp(forward + step, 1, VesselPlacement.MAX_FORWARD));
         stepper(next + 2, step -> right = clamp(right + step, -VesselPlacement.MAX_SHIFT, VesselPlacement.MAX_SHIFT));
         stepper(next + 3, step -> up = clamp(up + step, -VesselPlacement.MAX_SHIFT, VesselPlacement.MAX_SHIFT));
-        // A column imports its design; a drum's side connections have their own page.
+        // A column imports its design; a drum's side connections have their own page, as the paint does.
         if (form.column())
-            bottomRow(Button.builder(Component.translatable(KEY + "import"), b -> importColumn()).tooltip(Tooltip.create(Component.translatable(KEY + "import.hint", EquipmentNetwork.IMPORT_REACH))));
-        else bottomRow(Button.builder(Component.translatable(KEY + "nozzles"), b -> show(Page.CONNECTIONS)).tooltip(Tooltip.create(Component.translatable(KEY + "connections.hint"))));
+            bottomRow(Button.builder(Component.translatable(KEY + "import"), b -> importColumn()).tooltip(Tooltip.create(Component.translatable(KEY + "import.hint", EquipmentNetwork.IMPORT_REACH))),
+                    paintButton());
+        else bottomRow(Button.builder(Component.translatable(KEY + "nozzles"), b -> show(Page.CONNECTIONS)).tooltip(Tooltip.create(Component.translatable(KEY + "connections.hint"))),
+                paintButton());
+    }
+
+    private Button.Builder paintButton() {
+        return Button.builder(Component.translatable(KEY + "paint"), b -> show(Page.PAINT)).tooltip(Tooltip.create(Component.translatable(KEY + "paint.hint")));
     }
 
     /**
-     * A unit's design: its size (an exchanger's shell, a kettle's bundle, an ejector's suction; an air cooler's bay is one
-     * size), its tube length, its support's height and its placement.
+     * The paint page (owner request 2026-10-16): the body's and the structure's colours, each a button that picks it for
+     * editing; the palette; a custom colour as #RRGGBB; the defaults.
+     */
+    private void paintPage() {
+        for (int c : new int[]{Paint.BODY, Paint.STRUCTURE}) {
+            int k = c;
+            channelButtons[c] = addRenderableWidget(Button.builder(colourName(paint.colour(c)), b -> {
+                channel = k;
+                rebuildWidgets();
+            }).bounds(PANEL - 80, TOP + (1 + c) * ROW, 74, 16).tooltip(Tooltip.create(hint(1 + c))).build());
+        }
+        for (int i = 0; i < Paint.PALETTE.size(); i++) {
+            int x = 8 + i % SWATCHES_PER_ROW * (SWATCH + SWATCH_GAP), y = TOP + (3 + i / SWATCHES_PER_ROW) * ROW;
+            addRenderableWidget(new SwatchButton(x, y, Paint.PALETTE.get(i)));
+        }
+        custom = new EditBox(font, PANEL - 80, TOP + 5 * ROW, 74, 16, Component.translatable(KEY + "custom"));
+        custom.setMaxLength(7);
+        custom.setFilter(text -> text.matches("#?[0-9a-fA-F]{0,6}"));
+        custom.setValue(String.format(Locale.ROOT, "#%06X", paint.colour(channel)));
+        custom.setResponder(text -> {
+            var digits = text.startsWith("#") ? text.substring(1) : text;
+            if (digits.length() == 6) colour(Integer.parseInt(digits, 16));
+        });
+        custom.setTooltip(Tooltip.create(hint(5)));
+        addRenderableWidget(custom);
+        addRenderableWidget(Button.builder(Component.translatable(KEY + "paint.default"), b -> {
+            paint = Paint.DEFAULT;
+            refresh();
+            rebuildWidgets();
+        }).bounds(PANEL - 80, TOP + 6 * ROW, 74, 16).tooltip(Tooltip.create(hint(6))).build());
+        bottomRow(Button.builder(Component.translatable(KEY + "back"), b -> show(Page.DESIGN)).tooltip(Tooltip.create(Component.translatable(KEY + "back.hint"))));
+    }
+
+    /** Paints the edited channel {@code rgb}: its button names the colour, and the custom field shows it unless typed in. */
+    private void colour(int rgb) {
+        if (paint.colour(channel) == rgb) return;
+        paint = paint.with(channel, rgb);
+        refresh();
+        if (channelButtons[channel] != null) channelButtons[channel].setMessage(colourName(rgb));
+        if (custom != null && !custom.isFocused()) custom.setValue(String.format(Locale.ROOT, "#%06X", rgb));
+    }
+
+    /** A colour as the page names it: its palette number, or #RRGGBB for a custom one. */
+    private static Component colourName(int rgb) {
+        var swatch = Paint.swatch(rgb);
+        return swatch != null ? Component.literal("RAL " + swatch.ral()) : Component.literal(String.format(Locale.ROOT, "#%06X", rgb));
+    }
+
+    /** A palette colour: a filled square, outlined in white when it is the edited channel's colour. */
+    private final class SwatchButton extends AbstractButton {
+        private final Paint.Swatch swatch;
+
+        SwatchButton(int x, int y, Paint.Swatch swatch) {
+            super(x, y, SWATCH, 16, Component.translatable(PAINT_KEY + swatch.key()));
+            this.swatch = swatch;
+            setTooltip(Tooltip.create(Component.translatable(KEY + "paint.swatch", swatch.ral(), Component.translatable(PAINT_KEY + swatch.key()))));
+        }
+
+        @Override
+        public void onPress() {
+            colour(swatch.rgb());
+        }
+
+        @Override
+        protected void renderWidget(GuiGraphics g, int mouseX, int mouseY, float partialTick) {
+            boolean chosen = paint.colour(channel) == swatch.rgb();
+            int x0 = getX(), y0 = getY(), x1 = x0 + width, y1 = y0 + height;
+            g.fill(x0, y0, x1, y1, chosen ? 0xFFFFFFFF : isHoveredOrFocused() ? ProcessUi.TEXT : ProcessUi.LINE);
+            if (chosen) g.fill(x0 + 1, y0 + 1, x1 - 1, y1 - 1, 0xFF000000);
+            int inset = chosen ? 2 : 1;
+            g.fill(x0 + inset, y0 + inset, x1 - inset, y1 - inset, 0xFF000000 | swatch.rgb());
+        }
+
+        @Override
+        protected void updateWidgetNarration(NarrationElementOutput output) {
+            defaultButtonNarrationText(output);
+        }
+    }
+
+    /**
+     * A unit's design: its size (an exchanger's shell, a kettle's bundle, an ejector's suction; an air cooler's bay, its
+     * width and length together, and its bays in parallel and in series), its tube length, its support's height and its
+     * placement.
      */
     private void unitDesign() {
         var kind = form.kind();
         int row = 1;
-        if (kind != EquipmentShape.Kind.AIR_COOLER) stepper(row, this::diameter);
+        if (kind == EquipmentShape.Kind.AIR_COOLER) {
+            stepper(row++, this::bay);
+            stepper(row++, step -> bank = new ProcessUnit.Bank(clamp(bank.parallel() + step, 1, ProcessUnit.Bank.MAX_PARALLEL), bank.series()));
+            stepper(row, step -> bank = new ProcessUnit.Bank(bank.parallel(), clamp(bank.series() + step, 1, ProcessUnit.Bank.MAX_SERIES)));
+        } else stepper(row, this::diameter);
         row++;
         if (kind == EquipmentShape.Kind.EXCHANGER || kind == EquipmentShape.Kind.KETTLE)
             stepper(row++, step -> tangentLength = clamp(tangentLength + step, ProcessUnit.minLength(kind, diameter), ProcessUnit.maxLength(kind)));
@@ -215,7 +333,7 @@ public final class EquipmentConstructorScreen extends Screen {
         stepper(row + 1, step -> forward = clamp(forward + step, 1, VesselPlacement.MAX_FORWARD));
         stepper(row + 2, step -> right = clamp(right + step, -VesselPlacement.MAX_SHIFT, VesselPlacement.MAX_SHIFT));
         stepper(row + 3, step -> up = clamp(up + step, -VesselPlacement.MAX_SHIFT, VesselPlacement.MAX_SHIFT));
-        bottomRow();
+        bottomRow(paintButton());
     }
 
     /**
@@ -352,13 +470,14 @@ public final class EquipmentConstructorScreen extends Screen {
     private String[] rows() {
         if (page == Page.CONNECTIONS)
             return new String[]{"connections", "connection", "faces", form.orientation().horizontal() ? "along" : "height", "offset"};
+        if (page == Page.PAINT) return new String[]{"paint", "paint.body", "paint.structure", "paint.palette", "paint.palette", "custom", "paint.default"};
         return switch (Equipment.of(form)) {
             case VERTICAL_DRUM -> new String[]{"equipment", "diameter", "tangent_length", "skirt", "forward", "right", "up"};
             case HORIZONTAL_DRUM -> new String[]{"equipment", "diameter", "tangent_length", "axis", "saddles", "forward", "right", "up"};
             case COLUMN -> new String[]{"equipment", "diameter", "trays", "feed", "skirt", "forward", "right", "up"};
             case EXCHANGER -> new String[]{"equipment", "shell", "tubes", "shell_bottom", "forward", "right", "up"};
             case KETTLE -> new String[]{"equipment", "bundle", "tubes", "kettle_bottom", "forward", "right", "up"};
-            case AIR_COOLER -> new String[]{"equipment", "bay", "bundle_height", "forward", "right", "up"};
+            case AIR_COOLER -> new String[]{"equipment", "bay", "parallel", "series", "bundle_height", "forward", "right", "up"};
             case EJECTOR -> new String[]{"equipment", "suction", "discharge", "forward", "right", "up"};
         };
     }
@@ -384,6 +503,16 @@ public final class EquipmentConstructorScreen extends Screen {
     private void edit(IntConsumer change, int direction) {
         change.accept(direction * (hasShiftDown() ? 5 : 1));
         refresh();
+    }
+
+    /** The air cooler's bay {@code steps} steps on along {@link ProcessUnit#bays}: narrowest and shortest first. */
+    private void bay(int steps) {
+        var bays = ProcessUnit.bays();
+        int at = 0;
+        for (int i = 0; i < bays.size(); i++) if (bays.get(i)[0] == diameter && bays.get(i)[1] == tangentLength) at = i;
+        var bay = bays.get(clamp(at + steps, 0, bays.size() - 1));
+        diameter = bay[0];
+        tangentLength = (int) bay[1];
     }
 
     /**
@@ -513,7 +642,32 @@ public final class EquipmentConstructorScreen extends Screen {
             case CHOOSE -> choices(graphics);
             case DESIGN -> designRows(graphics, mouseX, mouseY);
             case CONNECTIONS -> connectionRows(graphics, mouseX, mouseY);
+            case PAINT -> paintRows(graphics, mouseX, mouseY);
         }
+    }
+
+    /**
+     * The paint page: each channel's label (the edited one marked) and colour; the edited colour's name, what it paints,
+     * and what keeps its own colour; the ghost shows the paint.
+     */
+    private void paintRows(GuiGraphics graphics, int mouseX, int mouseY) {
+        String[] names = rows();
+        graphics.drawString(font, Component.translatable(KEY + "paint"), 8, TOP + 4, ProcessUi.ACCENT);
+        for (int c : new int[]{Paint.BODY, Paint.STRUCTURE}) {
+            int y = TOP + (1 + c) * ROW;
+            graphics.drawString(font, (c == channel ? "▶ " : "  ") + Component.translatable(KEY + names[1 + c]).getString(), 8, y + 4, c == channel ? ProcessUi.ACCENT : ProcessUi.TEXT);
+            graphics.fill(PANEL - 100, y + 1, PANEL - 84, y + 15, ProcessUi.LINE);
+            graphics.fill(PANEL - 99, y + 2, PANEL - 85, y + 14, 0xFF000000 | paint.colour(c));
+        }
+        graphics.drawString(font, Component.translatable(KEY + "custom"), 8, TOP + 5 * ROW + 4, ProcessUi.TEXT);
+        var swatch = Paint.swatch(paint.colour(channel));
+        Component name = swatch != null ? Component.translatable(KEY + "paint.named", swatch.ral(), Component.translatable(PAINT_KEY + swatch.key()))
+                : Component.translatable(KEY + "paint.custom", String.format(Locale.ROOT, "#%06X", paint.colour(channel)));
+        graphics.drawString(font, name, 8, LINES, ProcessUi.MUTED);
+        graphics.drawString(font, Component.translatable(KEY + (channel == Paint.BODY ? "paint.body.parts" : "paint.structure.parts")), 8, LINES + LINE, ProcessUi.MUTED);
+        graphics.drawString(font, Component.translatable(KEY + "paint.unpainted"), 8, LINES + 2 * LINE, ProcessUi.MUTED);
+        status(graphics);
+        describe(mouseX, mouseY, names.length, new String[]{"paint.named", "paint.parts", "paint.unpainted"});
     }
 
     /** The status line: an import under way, the first clash, or whether the ghost's cells are free. */
@@ -536,7 +690,8 @@ public final class EquipmentConstructorScreen extends Screen {
             case HORIZONTAL_DRUM -> new String[]{"", across, tangentLength + " m", "", support + " m", place, shift, lift};
             case COLUMN -> new String[]{"", across, Integer.toString(trays.trays()), Integer.toString(trays.feed()), support + " m", place, shift, lift};
             case EXCHANGER, KETTLE -> new String[]{"", across, tangentLength + " m", support + " m", place, shift, lift};
-            case AIR_COOLER -> new String[]{"", size(ProcessUnit.BAY_WIDTH) + " × " + size(ProcessUnit.BAY_LENGTH), support + " m", place, shift, lift};
+            case AIR_COOLER -> new String[]{"", size(diameter) + " × " + tangentLength + " m", Integer.toString(bank.parallel()),
+                    Integer.toString(bank.series()), support + " m", place, shift, lift};
             case EJECTOR -> new String[]{"", across, support + " m", place, shift, lift};
         };
         graphics.drawString(font, Component.translatable(equipment.key()), 8, TOP + 4, ProcessUi.ACCENT);
@@ -559,7 +714,8 @@ public final class EquipmentConstructorScreen extends Screen {
             case VERTICAL_DRUM, HORIZONTAL_DRUM, COLUMN -> Component.translatable(KEY + middle, number(shape.volume()), number(shape.surfaceArea()));
             case EXCHANGER -> Component.translatable(KEY + middle, number(ProcessUnit.tubeSurface(diameter, tangentLength)));
             case KETTLE -> Component.translatable(KEY + middle, size(ProcessUnit.kettleShell(diameter)), number(ProcessUnit.tubeSurface(diameter, tangentLength)));
-            case AIR_COOLER -> Component.translatable(KEY + middle, number(ProcessUnit.bundleFace()), size(ProcessUnit.FAN));
+            case AIR_COOLER -> Component.translatable(KEY + middle, number(bank.bays() * ProcessUnit.bundleFace(diameter, tangentLength)),
+                    bank.bays() * ProcessUnit.fans(diameter, tangentLength).count(), size(ProcessUnit.fans(diameter, tangentLength).diameter()));
             case EJECTOR -> Component.translatable(KEY + middle, number(ProcessUnit.ejectorLength(diameter)));
         };
         int y = LINES;

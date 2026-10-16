@@ -86,8 +86,10 @@ public final class VesselScreen extends Screen {
                 lines.add(Component.translatable(KEY + "tubes", number(tubes), number(ProcessUnit.tubeSurface(d, tubes))));
             }
             case AIR_COOLER -> {
-                lines.add(Component.translatable(KEY + "bay", number(ProcessUnit.BAY_WIDTH), number(ProcessUnit.BAY_LENGTH), number(ProcessUnit.bundleFace())));
-                lines.add(Component.translatable(KEY + "fans", size(ProcessUnit.FAN)));
+                var fans = ProcessUnit.fans(d, tubes);
+                lines.add(Component.translatable(KEY + "bank", shape.bank().parallel(), shape.bank().series()));
+                lines.add(Component.translatable(KEY + "bay", size(d), number(tubes), number(ProcessUnit.bundleFace(d, tubes))));
+                lines.add(Component.translatable(KEY + "fans", fans.count(), size(fans.diameter()), Math.round(100 * ProcessUnit.coverage(d, tubes))));
             }
             case EJECTOR -> lines.add(Component.translatable(KEY + "suction", size(d), number(ProcessUnit.ejectorLength(d))));
             default -> throw new IllegalStateException(shape.kind() + " is not a unit");

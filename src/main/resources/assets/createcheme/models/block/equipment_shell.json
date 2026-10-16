@@ -1,21 +1,27 @@
 {
   "loader": "createcheme:equipment_shell",
   "textures": {
-    "shell": "createcheme:block/vessel_shell",
-    "head": "createcheme:block/vessel_head",
-    "support": "createcheme:block/vessel_support",
+    "shell": "createcheme:block/painted_shell",
+    "head": "createcheme:block/painted_head",
+    "support": "createcheme:block/painted_support",
     "pipe": "createcheme:block/equipment_pipe",
     "flange": "createcheme:block/equipment_flange",
     "opening": "createcheme:block/equipment_opening",
-    "cladding": "createcheme:block/equipment_cladding",
+    "cladding": "createcheme:block/painted_cladding",
     "grating": "createcheme:block/equipment_grating",
     "handrail": "createcheme:block/equipment_handrail",
-    "steelwork": "createcheme:block/equipment_steelwork",
-    "machine": "createcheme:block/equipment_machine",
+    "steelwork": "createcheme:block/painted_steelwork",
+    "machine": "createcheme:block/painted_machine",
     "motor": "createcheme:block/equipment_motor",
     "actuator": "createcheme:block/equipment_actuator",
     "feed": "createcheme:block/equipment_feed",
     "drain": "createcheme:block/equipment_drain",
+    "ac_fan": "createcheme:block/ac_fan",
+    "ac_ring": "createcheme:block/ac_ring",
+    "ac_motor": "createcheme:block/ac_motor",
+    "ac_fins": "createcheme:block/ac_fins",
+    "ac_header": "createcheme:block/ac_header",
+    "ac_plenum": "createcheme:block/ac_plenum",
     "particle": "createcheme:block/vessel_shell"
   }
 }

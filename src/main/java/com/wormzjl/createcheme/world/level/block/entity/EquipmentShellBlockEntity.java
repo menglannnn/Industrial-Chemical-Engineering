@@ -15,6 +15,8 @@ import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.inventory.AbstractContainerMenu;
 import com.wormzjl.createcheme.science.equipment.ColumnTrays;
 import com.wormzjl.createcheme.science.equipment.EquipmentShape;
+import com.wormzjl.createcheme.science.equipment.Paint;
+import com.wormzjl.createcheme.science.equipment.ProcessUnit;
 import com.wormzjl.createcheme.science.equipment.ShapeRasterizer;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
@@ -32,10 +34,11 @@ import java.util.List;
 import java.util.Locale;
 
 /**
- * One shell cell of a parametric vessel: the vessel's shape, this cell's coordinates inside it, and the drawn sizes of
- * the nozzles that reach it. Never ticks. The client model turns the cell's {@link ShapeRasterizer.CellKey} into the
- * quads of this cell, and the block turns it into its collision shape, so the cell needs nothing from any other cell or
- * chunk. The nozzle sizes follow the pipes connected to them; the server sets them ({@code EquipmentStructure}).
+ * One shell cell of a parametric vessel: the vessel's shape, this cell's coordinates inside it, the drawn sizes of the
+ * nozzles that reach it, and the vessel's {@link Paint}. Never ticks. The client model turns the cell's
+ * {@link ShapeRasterizer.CellKey} into the quads of this cell and tints them with the paint, and the block turns the key
+ * into its collision shape, so the cell needs nothing from any other cell or chunk. The nozzle sizes follow the pipes
+ * connected to them; the server sets them ({@code EquipmentStructure}).
  *
  * <p>A drum is a reservoir of the fluid network: its node cell ({@link ShapeRasterizer#fluidCell}) carries the drum's
  * fluid identity and is its presentation binding, as a device block entity is for a one-block tank. Nothing of the
@@ -47,6 +50,8 @@ public final class EquipmentShellBlockEntity extends BlockEntity implements Flui
     private @Nullable EquipmentShape shape;
     private int cellX, cellY, cellZ;
     private long nozzles;
+    /** The vessel's paint, the same on every cell; the client tints the cell's painted parts with it. */
+    private Paint paint = Paint.DEFAULT;
     private @Nullable ShapeRasterizer.CellKey key;
     /** The drum's fluid identity, on its node cell only (0 elsewhere and while unregistered). */
     private long identity;
@@ -143,8 +148,9 @@ public final class EquipmentShellBlockEntity extends BlockEntity implements Flui
             FluidWorldAuthority.find(player.server).ifPresent(world -> world.replayOnOpen(menu));
     }
 
-    public void bind(EquipmentShape shape, ShapeRasterizer.Cell cell) {
+    public void bind(EquipmentShape shape, ShapeRasterizer.Cell cell, Paint paint) {
         assign(shape, cell, 0);
+        this.paint = paint;
         setChanged();
     }
 
@@ -159,6 +165,10 @@ public final class EquipmentShellBlockEntity extends BlockEntity implements Flui
 
     public @Nullable EquipmentShape shape() {
         return shape;
+    }
+
+    public Paint paint() {
+        return paint;
     }
 
     public @Nullable ShapeRasterizer.CellKey key() {
@@ -214,6 +224,7 @@ public final class EquipmentShellBlockEntity extends BlockEntity implements Flui
         super.loadAdditional(tag, registries);
         shape = null;
         key = null;
+        paint = Paint.DEFAULT;
         identity = tag.getLong("FluidIdentity");
         lastView = null;
         if (!tag.contains("Diameter")) return;
@@ -222,7 +233,9 @@ public final class EquipmentShellBlockEntity extends BlockEntity implements Flui
             int[] cell = tag.getIntArray("Cell");
             if (cell.length != 3 || cell[0] < 0 || cell[0] >= read.sizeX() || cell[1] < 0 || cell[1] >= read.sizeY() || cell[2] < 0 || cell[2] >= read.sizeZ())
                 throw new IllegalArgumentException("Cell outside the vessel");
+            var painted = Paint.decode(tag.getIntArray("Paint"));
             assign(read, new ShapeRasterizer.Cell(cell[0], cell[1], cell[2]), tag.getLong("Nozzles"));
+            paint = painted;
         } catch (IllegalArgumentException invalid) {
             CreateChemE.LOGGER.warn("Equipment shell at {} has invalid data and stays unbound: {}", worldPosition, invalid.getMessage());
         }
@@ -233,9 +246,13 @@ public final class EquipmentShellBlockEntity extends BlockEntity implements Flui
         writeShape(tag, shape);
         tag.putIntArray("Cell", new int[]{cellX, cellY, cellZ});
         tag.putLong("Nozzles", nozzles);
+        tag.putIntArray("Paint", paint.encode());
     }
 
-    /** A shape's NBT: kind, diameter, tangent length, orientation, front, support, a column's trays, a drum's side connections. */
+    /**
+     * A shape's NBT: kind, diameter, tangent length, orientation, front, support, a column's trays, a drum's side
+     * connections, an air cooler's bank.
+     */
     public static void writeShape(CompoundTag tag, EquipmentShape shape) {
         tag.putString("Kind", shape.kind().name().toLowerCase(Locale.ROOT));
         tag.putDouble("Diameter", shape.diameter());
@@ -245,6 +262,7 @@ public final class EquipmentShellBlockEntity extends BlockEntity implements Flui
         tag.putInt("Support", shape.support());
         if (shape.trays() != null) tag.putIntArray("Trays", shape.trays().encode());
         else if (shape.drum()) tag.putIntArray("Connections", EquipmentShape.Connection.encode(shape.connections()));
+        if (shape.kind() == EquipmentShape.Kind.AIR_COOLER) tag.putIntArray("Bank", shape.bank().encode());
     }
 
     /** @throws IllegalArgumentException for a missing or invalid field */
@@ -253,7 +271,8 @@ public final class EquipmentShellBlockEntity extends BlockEntity implements Flui
         var front = EquipmentShape.Heading.valueOf(tag.getString("Front").toUpperCase(Locale.ROOT));
         if (kind == EquipmentShape.Kind.COLUMN)
             return EquipmentShape.column(tag.getDouble("Diameter"), ColumnTrays.decode(tag.getIntArray("Trays")), front, tag.getInt("Support"));
-        if (kind.unit()) return EquipmentShape.unit(kind, tag.getDouble("Diameter"), tag.getDouble("TangentLength"), front, tag.getInt("Support"));
+        if (kind.unit()) return EquipmentShape.unit(kind, tag.getDouble("Diameter"), tag.getDouble("TangentLength"), front, tag.getInt("Support"),
+                    kind == EquipmentShape.Kind.AIR_COOLER ? ProcessUnit.Bank.decode(tag.getIntArray("Bank")) : ProcessUnit.Bank.ONE);
         if (!tag.contains("Connections")) throw new IllegalArgumentException("A drum lists its side connections");
         return EquipmentShape.drum(tag.getDouble("Diameter"), tag.getDouble("TangentLength"),
                 EquipmentShape.Orientation.valueOf(tag.getString("Orientation").toUpperCase(Locale.ROOT)), front, tag.getInt("Support"),

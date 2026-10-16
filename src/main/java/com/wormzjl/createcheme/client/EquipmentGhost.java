@@ -2,8 +2,8 @@ package com.wormzjl.createcheme.client;
 
 import com.wormzjl.createcheme.CreateChemE;
 import com.wormzjl.createcheme.client.gui.screens.EquipmentConstructorScreen;
-import com.wormzjl.createcheme.registry.ModBlocks;
 import com.wormzjl.createcheme.science.equipment.EquipmentShape;
+import com.wormzjl.createcheme.science.equipment.Paint;
 import com.wormzjl.createcheme.science.equipment.ShapeRasterizer;
 import com.wormzjl.createcheme.world.level.block.EquipmentStructure;
 import com.wormzjl.createcheme.world.level.block.entity.EquipmentConstructorBlockEntity;
@@ -15,6 +15,8 @@ import net.minecraft.client.renderer.LightTexture;
 import net.minecraft.client.renderer.RenderType;
 import net.minecraft.client.renderer.texture.TextureAtlasSprite;
 import net.minecraft.core.BlockPos;
+import net.minecraft.resources.ResourceLocation;
+import net.minecraft.world.inventory.InventoryMenu;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.HitResult;
 import net.neoforged.api.distmarker.Dist;
@@ -22,18 +24,20 @@ import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.neoforge.client.event.ClientTickEvent;
 import net.neoforged.neoforge.client.event.RenderLevelStageEvent;
-import net.neoforged.neoforge.client.model.data.ModelData;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 
 /**
- * The ghost of the vessel an equipment constructor would build: shown while its screen is open (the screen's draft)
- * and while the player looks at it (its saved design). The shell is drawn translucent with the plate texture, and every
- * cell the vessel cannot take is outlined in red through Catnip's outliner. Client only; the server checks again
- * before it builds.
+ * The ghosts of the vessels equipment constructors would build (owner request 2026-10-16: shown without aiming, gone
+ * once built): every loaded constructor within {@link #RANGE} blocks shows its saved design until that vessel stands
+ * where it would be built, and an open constructor screen shows its draft instead. The shell is drawn translucent on the
+ * painted plate sprite in the design's paint (its other parts light grey); the cells the focused ghost (the screen's draft, or the aimed constructor's design) cannot take
+ * are outlined in red through Catnip's outliner. Client only; the server checks again before it builds.
  */
 @EventBusSubscriber(modid = CreateChemE.MOD_ID, value = Dist.CLIENT)
 public final class EquipmentGhost {
@@ -41,20 +45,36 @@ public final class EquipmentGhost {
     /** Blocks around the ghost change while it is shown: check its cells again twice a second. */
     private static final int RECHECK_TICKS = 10;
     private static final int BLOCKED_COLOUR = 0xFF5555;
+    /** Constructors farther than this from the player show no ghost, blocks. */
+    private static final double RANGE = 48;
+    /** Layouts and meshes kept for the shapes shown; a ghost's shape changes only when the player edits it. */
+    private static final int CACHE = 16;
+    /** The painted shell sprite every ghost samples, its tint for unpainted parts, and its opacity (0-255). */
+    private static final ResourceLocation PLATE = ResourceLocation.fromNamespaceAndPath(CreateChemE.MOD_ID, "block/painted_shell");
+    private static final int UNPAINTED = 0xC8C8C8, ALPHA = 128;
     /** Render thread only, like everything here. */
-    private static @Nullable EquipmentStructure.Vessel shown;
+    private static List<Ghost> shown = List.of();
+    private static @Nullable EquipmentStructure.Vessel focused;
     private static List<BlockPos> blocked = List.of();
-    /** The design's vessel already stands where it would be built, so no ghost is shown. */
+    /** The focused design's vessel already stands where it would be built, so it shows no ghost. */
     private static boolean standing;
     private static int age;
-    /** Layout and mesh of the last shape shown; a ghost's shape changes only when the player edits it. */
-    private static @Nullable ShapeRasterizer.Layout layout;
-    private static @Nullable Mesh mesh;
+    private static final Map<EquipmentShape, ShapeRasterizer.Layout> LAYOUTS = lru();
+    private static final Map<EquipmentShape, Mesh> MESHES = lru();
 
     private EquipmentGhost() {
     }
 
-    /** Cells of the shown vessel that are occupied, unloaded or outside the world, as last checked. */
+    private static <V> Map<EquipmentShape, V> lru() {
+        return new LinkedHashMap<>(CACHE, .75F, true) {
+            @Override
+            protected boolean removeEldestEntry(Map.Entry<EquipmentShape, V> eldest) {
+                return size() > CACHE;
+            }
+        };
+    }
+
+    /** Cells of the focused vessel that are occupied, unloaded or outside the world, as last checked. */
     public static int blockedCount() {
         return blocked.size();
     }
@@ -66,33 +86,49 @@ public final class EquipmentGhost {
     @SubscribeEvent
     public static void tick(ClientTickEvent.Post event) {
         var mc = Minecraft.getInstance();
-        var target = mc.level == null ? null : target(mc);
-        standing = target != null && built(mc.level, target);
-        if (standing) target = null;
-        if (!Objects.equals(target, shown)) {
-            shown = target;
+        var ghosts = new ArrayList<Ghost>();
+        EquipmentStructure.Vessel focus = null;
+        boolean focusStanding = false;
+        if (mc.level != null && mc.player != null) {
+            var screen = mc.screen instanceof EquipmentConstructorScreen open ? open : null;
+            var aimed = mc.screen == null && mc.hitResult instanceof BlockHitResult hit && hit.getType() == HitResult.Type.BLOCK ? hit.getBlockPos() : null;
+            if (screen != null && screen.vessel() != null) {
+                focus = screen.vessel();
+                focusStanding = built(mc.level, focus);
+                if (!focusStanding) ghosts.add(new Ghost(focus, screen.design().paint()));
+            }
+            for (var constructor : EquipmentConstructorBlockEntity.clientLoaded()) {
+                var at = constructor.getBlockPos();
+                if (constructor.isRemoved() || constructor.getLevel() != mc.level || screen != null && at.equals(screen.position())) continue;
+                if (at.distToCenterSqr(mc.player.position()) > RANGE * RANGE) continue;
+                var vessel = constructor.vessel(constructor.design());
+                boolean stands = built(mc.level, vessel);
+                if (at.equals(aimed)) {
+                    focus = vessel;
+                    focusStanding = stands;
+                }
+                if (!stands) ghosts.add(new Ghost(vessel, constructor.design().paint()));
+            }
+        }
+        shown = List.copyOf(ghosts);
+        standing = focusStanding;
+        if (focusStanding) focus = null;
+        if (!Objects.equals(focus, focused)) {
+            focused = focus;
             age = 0;
         }
         var outliner = Outliner.getInstance();
-        if (shown == null) {
+        if (focused == null) {
             blocked = List.of();
             outliner.remove(BLOCKED_SLOT);
             return;
         }
         if (age++ % RECHECK_TICKS == 0) {
-            blocked = blocked(mc.level, shown);
+            blocked = blocked(mc.level, focused);
             if (!blocked.isEmpty()) outliner.showCluster(BLOCKED_SLOT, blocked).colored(BLOCKED_COLOUR).lineWidth(1 / 16F);
         }
         if (blocked.isEmpty()) outliner.remove(BLOCKED_SLOT);
         else outliner.keep(BLOCKED_SLOT);
-    }
-
-    private static @Nullable EquipmentStructure.Vessel target(Minecraft mc) {
-        if (mc.screen instanceof EquipmentConstructorScreen screen) return screen.vessel();
-        if (mc.screen == null && mc.hitResult instanceof BlockHitResult hit && hit.getType() == HitResult.Type.BLOCK
-                && mc.level.getBlockEntity(hit.getBlockPos()) instanceof EquipmentConstructorBlockEntity constructor)
-            return constructor.vessel(constructor.design());
-        return null;
     }
 
     /** The vessel already stands there: its controller cell is a shell cell of the same vessel. */
@@ -115,32 +151,39 @@ public final class EquipmentGhost {
 
     @SubscribeEvent
     public static void render(RenderLevelStageEvent event) {
-        if (event.getStage() != RenderLevelStageEvent.Stage.AFTER_PARTICLES || shown == null) return;
+        if (event.getStage() != RenderLevelStageEvent.Stage.AFTER_PARTICLES || shown.isEmpty()) return;
         var mc = Minecraft.getInstance();
-        var sprite = mc.getBlockRenderer().getBlockModel(ModBlocks.EQUIPMENT_SHELL.get().defaultBlockState()).getParticleIcon(ModelData.EMPTY);
-        var vertices = mesh(shown.shape(), sprite).vertices;
+        var sprite = mc.getModelManager().getAtlas(InventoryMenu.BLOCK_ATLAS).getSprite(PLATE);
         var camera = event.getCamera().getPosition();
         var pose = event.getPoseStack();
-        pose.pushPose();
-        pose.translate(shown.origin().getX() - camera.x, shown.origin().getY() - camera.y, shown.origin().getZ() - camera.z);
-        var last = pose.last();
         var buffers = mc.renderBuffers().bufferSource();
         var consumer = buffers.getBuffer(RenderType.translucent());
-        for (int i = 0; i < vertices.length; i += Mesh.STRIDE)
-            consumer.addVertex(last, vertices[i], vertices[i + 1], vertices[i + 2]).setColor(.65F, .85F, 1F, .45F)
-                    .setUv(vertices[i + 3], vertices[i + 4]).setLight(LightTexture.FULL_BRIGHT).setNormal(last, vertices[i + 5], vertices[i + 6], vertices[i + 7]);
-        pose.popPose();
+        for (var ghost : shown) {
+            var vessel = ghost.vessel();
+            var vertices = mesh(vessel.shape(), sprite).vertices;
+            // Each channel's tint as the chunk model shows it; unpainted parts light grey.
+            int[] tints = {Paint.tint(ghost.paint().body()), Paint.tint(ghost.paint().structure()), UNPAINTED};
+            pose.pushPose();
+            pose.translate(vessel.origin().getX() - camera.x, vessel.origin().getY() - camera.y, vessel.origin().getZ() - camera.z);
+            var last = pose.last();
+            for (int i = 0; i < vertices.length; i += Mesh.STRIDE) {
+                int channel = (int) vertices[i + 8], tint = tints[channel < 0 ? 2 : channel];
+                consumer.addVertex(last, vertices[i], vertices[i + 1], vertices[i + 2]).setColor(tint >> 16 & 0xFF, tint >> 8 & 0xFF, tint & 0xFF, ALPHA)
+                        .setUv(vertices[i + 3], vertices[i + 4]).setLight(LightTexture.FULL_BRIGHT).setNormal(last, vertices[i + 5], vertices[i + 6], vertices[i + 7]);
+            }
+            pose.popPose();
+        }
         buffers.endBatch(RenderType.translucent());
     }
 
     private static ShapeRasterizer.Layout layout(EquipmentShape shape) {
-        if (layout == null || !layout.shape().equals(shape)) layout = ShapeRasterizer.layout(shape);
-        return layout;
+        return LAYOUTS.computeIfAbsent(shape, ShapeRasterizer::layout);
     }
 
-    /** The shell's quads in vessel-local coordinates, rebuilt when the shape or the plate sprite (resource reload) changes. */
+    /** The shell's quads in vessel-local coordinates, rebuilt when the plate sprite changes (resource reload). */
     private static Mesh mesh(EquipmentShape shape, TextureAtlasSprite sprite) {
-        if (mesh != null && mesh.shape.equals(shape) && mesh.sprite == sprite) return mesh;
+        var mesh = MESHES.get(shape);
+        if (mesh != null && mesh.sprite == sprite) return mesh;
         var out = new ArrayList<float[]>();
         for (var cell : layout(shape).shell())
             for (var polygon : ShapeRasterizer.surface(ShapeRasterizer.key(shape, cell.x(), cell.y(), cell.z())))
@@ -150,16 +193,21 @@ public final class EquipmentGhost {
                         double[] p = polygon.positions(), uv = polygon.uvs(), n = polygon.normals();
                         out.add(new float[]{(float) (cell.x() + p[3 * corner]), (float) (cell.y() + p[3 * corner + 1]), (float) (cell.z() + p[3 * corner + 2]),
                                 sprite.getU((float) uv[2 * corner]), sprite.getV((float) uv[2 * corner + 1]),
-                                (float) n[3 * corner], (float) n[3 * corner + 1], (float) n[3 * corner + 2]});
+                                (float) n[3 * corner], (float) n[3 * corner + 1], (float) n[3 * corner + 2], polygon.material().channel()});
                     }
         var vertices = new float[out.size() * Mesh.STRIDE];
         for (int i = 0; i < out.size(); i++) System.arraycopy(out.get(i), 0, vertices, i * Mesh.STRIDE, Mesh.STRIDE);
         mesh = new Mesh(shape, sprite, vertices);
+        MESHES.put(shape, mesh);
         return mesh;
     }
 
-    /** Position, texture coordinate and normal of every quad vertex of the shell. */
+    /** A ghost: the vessel a design would build, and its paint. */
+    private record Ghost(EquipmentStructure.Vessel vessel, Paint paint) {
+    }
+
+    /** Position, texture coordinate, normal and paint channel ({@link com.wormzjl.createcheme.science.equipment.Mesh.Material#channel}) of every quad vertex of the shell. */
     private record Mesh(EquipmentShape shape, TextureAtlasSprite sprite, float[] vertices) {
-        static final int STRIDE = 8;
+        static final int STRIDE = 9;
     }
 }

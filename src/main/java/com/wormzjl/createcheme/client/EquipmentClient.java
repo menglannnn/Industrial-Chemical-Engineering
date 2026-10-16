@@ -7,7 +7,9 @@ import com.wormzjl.createcheme.client.model.EquipmentShellModel;
 import com.wormzjl.createcheme.world.level.block.entity.EquipmentConstructorBlockEntity;
 import net.minecraft.core.BlockPos;
 import com.wormzjl.createcheme.registry.ModBlocks;
+import com.wormzjl.createcheme.science.equipment.Paint;
 import com.wormzjl.createcheme.science.equipment.ShapeRasterizer;
+import com.wormzjl.createcheme.world.level.block.entity.EquipmentShellBlockEntity;
 import com.wormzjl.createcheme.world.level.block.EquipmentStructure;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.RenderType;
@@ -15,12 +17,13 @@ import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.neoforge.client.event.ModelEvent;
+import net.neoforged.neoforge.client.event.RegisterColorHandlersEvent;
 import net.neoforged.neoforge.client.event.RenderHighlightEvent;
 
 /**
- * Client side of parametric vessels: the shell model loader, one outline for the whole vessel instead of per-cell boxes
- * (its silhouette as seen from the camera), and the screens the blocks open (blocks call {@link #openConstructor} and
- * {@link #openVessel} on the client only).
+ * Client side of parametric vessels: the shell model loader, the tint of painted parts, one outline for the whole vessel
+ * instead of per-cell boxes (its silhouette as seen from the camera), and the screens the blocks open (blocks call
+ * {@link #openConstructor} and {@link #openVessel} on the client only).
  */
 @EventBusSubscriber(modid = CreateChemE.MOD_ID, value = Dist.CLIENT)
 public final class EquipmentClient {
@@ -31,6 +34,16 @@ public final class EquipmentClient {
     public static void registerGeometryLoaders(ModelEvent.RegisterGeometryLoaders event) {
         event.register(EquipmentShellModel.LOADER_ID, EquipmentShellModel.LOADER);
         event.register(com.wormzjl.createcheme.client.model.FluidDeviceModel.LOADER_ID, com.wormzjl.createcheme.client.model.FluidDeviceModel.LOADER);
+    }
+
+    /**
+     * A painted quad of a shell cell (tint index: its {@link Paint} channel) takes the cell's paint, scaled to show on the
+     * neutral painted sprites; a cell not yet bound shows the default paint.
+     */
+    @SubscribeEvent
+    public static void registerBlockColours(RegisterColorHandlersEvent.Block event) {
+        event.register((state, level, position, tint) -> Paint.tint((level != null && position != null
+                && level.getBlockEntity(position) instanceof EquipmentShellBlockEntity shell ? shell.paint() : Paint.DEFAULT).colour(tint)), ModBlocks.EQUIPMENT_SHELL.get());
     }
 
     /** Called by the constructor block on the client only: open its design screen. */

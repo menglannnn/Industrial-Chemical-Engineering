@@ -31,6 +31,13 @@ class ProcessUnitTest {
         }
         shapes.add(EquipmentShape.unit(Kind.EXCHANGER, 1.25, 7, Heading.EAST, 5));
         shapes.add(EquipmentShape.unit(Kind.EJECTOR, .7, 1, Heading.SOUTH, 9));
+        // Air cooler banks (owner request 2026-10-16): every count in parallel and in series of the smallest bay, the
+        // largest bank of the largest bay, and an odd one turned.
+        for (int p = 1; p <= ProcessUnit.Bank.MAX_PARALLEL; p++)
+            for (int s = 1; s <= ProcessUnit.Bank.MAX_SERIES; s++)
+                shapes.add(EquipmentShape.unit(Kind.AIR_COOLER, 1.5, 4, Heading.NORTH, 5, new ProcessUnit.Bank(p, s)));
+        shapes.add(EquipmentShape.unit(Kind.AIR_COOLER, 3, 6, Heading.NORTH, 5, new ProcessUnit.Bank(ProcessUnit.Bank.MAX_PARALLEL, ProcessUnit.Bank.MAX_SERIES)));
+        shapes.add(EquipmentShape.unit(Kind.AIR_COOLER, 2.5, 3, Heading.WEST, 7, new ProcessUnit.Bank(3, 2)));
         return shapes;
     }
 
@@ -49,8 +56,15 @@ class ProcessUnitTest {
                 () -> EquipmentShape.unit(Kind.AIR_COOLER, 4, 6, Heading.NORTH, 6),
                 () -> EquipmentShape.unit(Kind.AIR_COOLER, 3, 7, Heading.NORTH, 6),
                 () -> EquipmentShape.unit(Kind.AIR_COOLER, 3, 6, Heading.NORTH, 4),
+                () -> EquipmentShape.unit(Kind.AIR_COOLER, 1, 4, Heading.NORTH, 5),
+                () -> EquipmentShape.unit(Kind.AIR_COOLER, 3, 3, Heading.NORTH, 5),
+                () -> EquipmentShape.unit(Kind.AIR_COOLER, 1.5, 3, Heading.NORTH, 5),
+                () -> EquipmentShape.unit(Kind.EXCHANGER, 1, 4, Heading.NORTH, 2, new ProcessUnit.Bank(2, 1)),
+                () -> new ProcessUnit.Bank(ProcessUnit.Bank.MAX_PARALLEL + 1, 1),
+                () -> new ProcessUnit.Bank(1, 0),
                 () -> EquipmentShape.unit(Kind.EJECTOR, 1.1, 1, Heading.NORTH, 2),
-                () -> EquipmentShape.unit(Kind.EJECTOR, .35, 1, Heading.NORTH, 2),
+                () -> EquipmentShape.unit(Kind.EJECTOR, .33, 1, Heading.NORTH, 2),
+                () -> EquipmentShape.unit(Kind.EJECTOR, 0, 1, Heading.NORTH, 2),
                 () -> EquipmentShape.unit(Kind.EJECTOR, .3, 2, Heading.NORTH, 2),
                 () -> EquipmentShape.unit(Kind.EJECTOR, .3, 1, Heading.NORTH, 17),
                 () -> EquipmentShape.unit(Kind.DRUM, 2, 4, Heading.NORTH, 2)))
@@ -65,9 +79,43 @@ class ProcessUnitTest {
         assertEquals(450, ProcessUnit.tubeSurface(1, 6), 1e-9);
         assertEquals(1.5, ProcessUnit.kettleShell(1), 0);
         assertEquals(3.25, ProcessUnit.kettleShell(2), 0);
-        double fans = 2 * Math.PI * ProcessUnit.FAN * ProcessUnit.FAN / 4;
-        assertTrue(fans >= .4 * ProcessUnit.bundleFace(), fans + " of " + ProcessUnit.bundleFace());
+        // Owner request 2026-10-16 ("allow smaller ACs"): every bay from 1.5 m wide, each with fans over 40 % of its bundle
+        // face (API 661); 1.5 m wide from 4 m long, 3 m wide from 4 m (a 3 m bay of 3 m has 33 %). The 3 × 6 m bay keeps two
+        // fans of about 2 m.
+        var bays = ProcessUnit.bays();
+        assertEquals(14, bays.size());
+        for (var bay : bays) {
+            assertTrue(ProcessUnit.coverage(bay[0], bay[1]) >= ProcessUnit.FAN_COVERAGE, bay[0] + " x " + bay[1]);
+            EquipmentShape.unit(Kind.AIR_COOLER, bay[0], bay[1], Heading.NORTH, 5);
+        }
+        assertEquals(4, ProcessUnit.minLength(Kind.AIR_COOLER, 1.5));
+        assertEquals(3, ProcessUnit.minLength(Kind.AIR_COOLER, 2));
+        assertEquals(4, ProcessUnit.minLength(Kind.AIR_COOLER, 3));
+        assertEquals(new ProcessUnit.Fans(2, 2.05), new ProcessUnit.Fans(ProcessUnit.fans(3, 6).count(), Math.round(ProcessUnit.fans(3, 6).diameter() * 100) / 100.0));
         assertEquals(2.49, ProcessUnit.ejectorLength(.3), 1e-9);
+        // Owner request 2026-10-16 ("allow smaller ejectors"): suction from 0.05 m; one of 0.2 m or less stands on a single
+        // post in the cell behind it, so it takes one cell by two; a larger one keeps its four-post frame.
+        assertEquals(.05, ProcessUnit.minDiameter(Kind.EJECTOR), 0);
+        for (double s : new double[]{.05, .1, .2}) {
+            var small = EquipmentShape.unit(Kind.EJECTOR, s, 1, Heading.NORTH, 1);
+            assertEquals(1, small.sizeX(), small.toString());
+            assertEquals(2, small.sizeZ(), small.toString());
+        }
+        assertEquals(3, EquipmentShape.unit(Kind.EJECTOR, .25, 1, Heading.NORTH, 1).sizeX());
+    }
+
+    @Test
+    void theLowestBundleLeavesHeadroomUnderTheFans() {
+        // Every bay on its lowest bundle (5 m) leaves 2.5 m clear above the ground under its fans, motors and beams, between
+        // its legs.
+        for (var bay : ProcessUnit.bays()) {
+            var shape = EquipmentShape.unit(Kind.AIR_COOLER, bay[0], bay[1], Heading.NORTH, ProcessUnit.minSupport(Kind.AIR_COOLER));
+            var unit = ProcessUnit.of(shape);
+            double[] box = unit.box();
+            for (double z = .75; z < bay[1] - .7; z += .1)
+                for (double y = .05; y < 2.5; y += .1)
+                    assertFalse(unit.inside(new double[]{(box[0] + box[3]) / 2, y, z}), shape + " at " + y + ", " + z);
+        }
     }
 
     @Test

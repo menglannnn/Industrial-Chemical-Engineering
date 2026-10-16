@@ -11,7 +11,9 @@ import com.wormzjl.createcheme.runtime.fluid.PhysicalFluidTopology;
 import com.wormzjl.createcheme.science.fluid.network.PassiveNetwork;
 import com.wormzjl.createcheme.science.equipment.ColumnTrays;
 import com.wormzjl.createcheme.science.equipment.EquipmentShape;
+import com.wormzjl.createcheme.science.equipment.Paint;
 import com.wormzjl.createcheme.science.equipment.PipeSizes;
+import com.wormzjl.createcheme.science.equipment.ProcessUnit;
 import com.wormzjl.createcheme.science.equipment.ShapeRasterizer;
 import com.wormzjl.createcheme.science.fluid.topology.TopologyCompiler;
 import com.wormzjl.createcheme.world.level.block.entity.EquipmentShellBlockEntity;
@@ -77,13 +79,14 @@ public final class EquipmentStructure {
     }
 
     /**
-     * Places a vessel whose box starts at {@code origin}. Only cells below {@code rows} are placed, which builds a
-     * vessel part way. Every cell of the whole vessel must be loaded, inside the build height and replaceable.
+     * Places a vessel whose box starts at {@code origin}, painted {@code paint}. Only cells below {@code rows} are
+     * placed, which builds a vessel part way. Every cell of the whole vessel must be loaded, inside the build height and
+     * replaceable.
      *
      * @return the number of cells placed
      * @throws IllegalStateException naming the first cell that blocks the vessel
      */
-    public static int place(ServerLevel level, BlockPos origin, EquipmentShape shape, int rows) {
+    public static int place(ServerLevel level, BlockPos origin, EquipmentShape shape, Paint paint, int rows) {
         var layout = ShapeRasterizer.layout(shape);
         for (var list : java.util.List.of(layout.shell(), layout.interior()))
             for (var cell : list) {
@@ -98,7 +101,7 @@ public final class EquipmentStructure {
             if (cell.y() >= rows) continue;
             var position = origin.offset(cell.x(), cell.y(), cell.z());
             level.setBlock(position, ModBlocks.EQUIPMENT_SHELL.get().defaultBlockState(), flags);
-            if (level.getBlockEntity(position) instanceof EquipmentShellBlockEntity entity) entity.bind(shape, cell);
+            if (level.getBlockEntity(position) instanceof EquipmentShellBlockEntity entity) entity.bind(shape, cell, paint);
             placed++;
         }
         for (var cell : layout.interior()) {
@@ -276,16 +279,19 @@ public final class EquipmentStructure {
         var column = Commands.literal("column").then(Commands.argument("position", BlockPosArgument.blockPos())
                 .then(Commands.argument("diameter", DoubleArgumentType.doubleArg(EquipmentShape.MIN_DIAMETER, EquipmentShape.MAX_DIAMETER))
                         .then(Commands.argument("trays", IntegerArgumentType.integer(1, ColumnTrays.MAX_TRAYS)).then(skirt))));
-        // A unit: its kind, size (shell, bundle or suction; an air cooler's 3), length (tubes; an air cooler's 6, an
-        // ejector's 1) and support (shell bottom, bundle or discharge height); its channel or suction faces the front.
+        // A unit: its kind, size (shell, bundle or suction; an air cooler's bay width), length (tubes; an air cooler's bay
+        // length, an ejector's 1) and support (shell bottom, bundle or discharge height); its channel or suction faces the
+        // front; an air cooler's bays in parallel and in series after the front.
         var at = Commands.argument("position", BlockPosArgument.blockPos());
         for (var kind : EquipmentShape.Kind.values()) {
             if (!kind.unit()) continue;
             var support = Commands.argument("support", IntegerArgumentType.integer(1, EquipmentShape.MAX_SUPPORT))
-                    .executes(context -> placeUnit(context, kind, EquipmentShape.Heading.NORTH));
+                    .executes(context -> placeUnit(context, kind, EquipmentShape.Heading.NORTH, false));
             for (var front : EquipmentShape.Heading.values())
-                support.then(Commands.literal(front.name().toLowerCase(Locale.ROOT)).executes(context -> placeUnit(context, kind, front)));
-            at.then(Commands.literal(kind.name().toLowerCase(Locale.ROOT)).then(Commands.argument("size", DoubleArgumentType.doubleArg(.1, 3))
+                support.then(Commands.literal(front.name().toLowerCase(Locale.ROOT)).executes(context -> placeUnit(context, kind, front, false))
+                        .then(Commands.argument("parallel", IntegerArgumentType.integer(1, ProcessUnit.Bank.MAX_PARALLEL))
+                                .then(Commands.argument("series", IntegerArgumentType.integer(1, ProcessUnit.Bank.MAX_SERIES)).executes(context -> placeUnit(context, kind, front, true)))));
+            at.then(Commands.literal(kind.name().toLowerCase(Locale.ROOT)).then(Commands.argument("size", DoubleArgumentType.doubleArg(ProcessUnit.SUCTION_STEP, 3))
                     .then(Commands.argument("length", IntegerArgumentType.integer(1, 12)).then(support))));
         }
         var unit = Commands.literal("unit").then(at);
@@ -317,11 +323,12 @@ public final class EquipmentStructure {
         return place(context, shape, Integer.MAX_VALUE, shape.diameter() + " m column of " + trays + " trays");
     }
 
-    private static int placeUnit(CommandContext<CommandSourceStack> context, EquipmentShape.Kind kind, EquipmentShape.Heading front) throws CommandSyntaxException {
+    private static int placeUnit(CommandContext<CommandSourceStack> context, EquipmentShape.Kind kind, EquipmentShape.Heading front, boolean banked) throws CommandSyntaxException {
         EquipmentShape shape;
         try {
             shape = EquipmentShape.unit(kind, DoubleArgumentType.getDouble(context, "size"), IntegerArgumentType.getInteger(context, "length"), front,
-                    IntegerArgumentType.getInteger(context, "support"));
+                    IntegerArgumentType.getInteger(context, "support"), banked ? new ProcessUnit.Bank(IntegerArgumentType.getInteger(context, "parallel"),
+                            IntegerArgumentType.getInteger(context, "series")) : ProcessUnit.Bank.ONE);
         } catch (IllegalArgumentException invalid) {
             context.getSource().sendFailure(Component.literal(invalid.getMessage()));
             return 0;
@@ -333,7 +340,7 @@ public final class EquipmentStructure {
         var source = context.getSource();
         var origin = BlockPosArgument.getLoadedBlockPos(context, "position").offset(-shape.sizeX() / 2, 0, -shape.sizeZ() / 2);
         try {
-            int placed = place(source.getLevel(), origin, shape, rows);
+            int placed = place(source.getLevel(), origin, shape, Paint.DEFAULT, rows);
             source.sendSuccess(() -> Component.literal("Placed " + placed + " cells of a " + name + " at " + origin.toShortString()), true);
             return placed;
         } catch (IllegalStateException blocked) {

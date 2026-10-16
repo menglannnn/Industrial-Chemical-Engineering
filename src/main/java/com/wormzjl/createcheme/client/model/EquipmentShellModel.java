@@ -65,17 +65,25 @@ public final class EquipmentShellModel implements IDynamicBakedModel {
         return quads.computeIfAbsent(key, this::bake);
     }
 
-    /** Each convex polygon becomes a fan of quads; a last single triangle repeats its final vertex. */
+    /**
+     * Each convex polygon becomes a fan of quads; a last single triangle repeats its final vertex. A painted material's
+     * quads carry its paint channel as their tint index, so the cell's paint colours them as the chunk is meshed.
+     */
     private List<BakedQuad> bake(ShapeRasterizer.CellKey key) {
-        return bake(ShapeRasterizer.surface(key), sprites);
+        return bake(ShapeRasterizer.surface(key), sprites, true);
     }
 
-    /** Each convex polygon as a fan of quads, a last single triangle repeating its final vertex; sprites by material. */
-    public static List<BakedQuad> bake(List<Mesh.Polygon> polygons, TextureAtlasSprite[] sprites) {
+    /**
+     * Each convex polygon as a fan of quads, a last single triangle repeating its final vertex; sprites by material, and
+     * {@code painted}: tinted by the material's paint channel (a vessel's), or never (a pipeline device's).
+     */
+    public static List<BakedQuad> bake(List<Mesh.Polygon> polygons, TextureAtlasSprite[] sprites, boolean painted) {
         var out = new ArrayList<BakedQuad>();
-        for (var polygon : polygons)
+        for (var polygon : polygons) {
+            int tint = painted ? polygon.material().channel() : -1;
             for (int first = 1; first + 1 < polygon.size(); first += 2)
-                out.add(quad(polygon, sprites[polygon.material().ordinal()], 0, first, first + 1, Math.min(first + 2, polygon.size() - 1)));
+                out.add(quad(polygon, sprites[polygon.material().ordinal()], tint, 0, first, first + 1, Math.min(first + 2, polygon.size() - 1)));
+        }
         return List.copyOf(out);
     }
 
@@ -88,7 +96,7 @@ public final class EquipmentShellModel implements IDynamicBakedModel {
         return out;
     }
 
-    private static BakedQuad quad(Mesh.Polygon polygon, TextureAtlasSprite sprite, int... corners) {
+    private static BakedQuad quad(Mesh.Polygon polygon, TextureAtlasSprite sprite, int tint, int... corners) {
         double[] p = polygon.positions(), uv = polygon.uvs(), n = polygon.normals();
         // Face direction from the corners' winding (Newell), for vanilla's directional shade.
         double fx = 0, fy = 0, fz = 0;
@@ -100,7 +108,7 @@ public final class EquipmentShellModel implements IDynamicBakedModel {
         }
         var baker = new QuadBakingVertexConsumer();
         baker.setSprite(sprite);
-        baker.setTintIndex(-1);
+        baker.setTintIndex(tint);
         baker.setDirection(Direction.getNearest(fx, fy, fz));
         // The directional shade is baked into each vertex from its smooth normal, by the formula NeoForge uses for its own
         // normal-based lighting (an axis-facing face shades exactly as a block face does). Vanilla's per-quad shade would

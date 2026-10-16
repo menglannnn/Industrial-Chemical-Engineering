@@ -14,10 +14,11 @@ import static com.wormzjl.createcheme.science.equipment.Mesh.*;
  *
  * <p>A pipe runs from its block's centre to each connected face at its own outside diameter. Two arms in line make a
  * straight run, two at right angles a long-radius elbow (bend radius 1.5 OD, shortened to leave room for an end
- * fitting), more a tee or cross along a straight run, or a ball core where no two arms are in line. Where the next pipe
- * is smaller, a concentric reducer in the larger pipe's block narrows to it at the face. Flanges stand only where a
- * line meets equipment or a vessel nozzle, and as a pair in the middle of every sixth straight block (spool ends;
- * photo survey section 3); pipes are welded elsewhere.
+ * fitting), more a tee or cross along a straight run, or a ball core where no two arms are in line; one arm, or none,
+ * runs straight through. Where the next pipe is smaller, a concentric reducer in the larger pipe's block narrows to it
+ * at the face. Flanges stand only where a line meets equipment or a vessel nozzle, as a pair in the middle of every
+ * sixth straight block (spool ends; photo survey section 3), and as a blind flange where a line ends unconnected
+ * (owner request 2026-10-16); pipes are welded elsewhere.
  *
  * <p>Pipeline devices draw their bodies from photographs (survey section 4): a globe control valve with its diaphragm
  * actuator above a horizontal line or beside a vertical one; a vertical in-line pump with its motor up on a pedestal; a
@@ -90,24 +91,23 @@ public final class LineGeometry {
     // ---- Pipes -----------------------------------------------------------------------------------------------------
 
     /** How a line ends at a face: the outside it narrows to, whether it ends in a flange, and the length of both fittings. */
-    record End(double outside, boolean flange, double reducer, double tail, boolean open) {
-        static End plain(double outside, boolean open) {
-            return new End(outside, false, 0, 0, open);
-        }
-
+    record End(double outside, boolean flange, double reducer, double tail) {
         static End flanged(double outside) {
-            return new End(outside, true, 0, PipeSizes.flangeThickness(outside) + PipeSizes.hub(outside), false);
+            return new End(outside, true, 0, PipeSizes.flangeThickness(outside) + PipeSizes.hub(outside));
         }
     }
 
-    /** A pipe of outside {@code od} at face {@code i}: it narrows to a smaller line met there, and is flanged where the joint is. */
+    /**
+     * A pipe of outside {@code od} at face {@code i}: it narrows to a smaller line met there, and is flanged where the joint
+     * is; where it meets nothing it ends in a blind flange of its own size (owner request 2026-10-16).
+     */
     static End end(Key key, int i, double od) {
-        if (!key.connected(i)) return End.plain(od, true);
+        if (!key.connected(i)) return End.flanged(od);
         int code = key.face(i);
         double met = code == 0 ? od : Math.min(od, PipeSizes.outsideOf(code));
         double reducer = met < od - EPS ? reducerLength(od) : 0;
         double tail = reducer + (key.flanged(i) ? PipeSizes.flangeThickness(met) + PipeSizes.hub(met) : 0);
-        return new End(met, key.flanged(i), reducer, tail, false);
+        return new End(met, key.flanged(i), reducer, tail);
     }
 
     /** A concentric reducer's length: ASME B16.9 gives 0.6 to 1.3 times the large end; 0.8 OD, a texel to 0.3 m. */
@@ -120,16 +120,10 @@ public final class LineGeometry {
         int sides = PipeSizes.sides(od);
         var arms = new ArrayList<Integer>();
         for (int i = 0; i < 6; i++) if (key.connected(i)) arms.add(i);
-        if (arms.isEmpty()) {
-            // Unconnected: a length along its facing, cut square at both faces.
-            run(m, key, key.facing() & ~1, od, sides, false);
-            return;
-        }
-        if (arms.size() == 1) {
-            // A dead end: the arm closes in a ball at the block's centre.
-            int i = arms.getFirst();
-            ball(m, od, sides);
-            arm(m, i, 0, od, end(key, i, od), ref(i), sides, true);
+        if (arms.size() <= 1) {
+            // Unconnected, a length along its facing; a dead end, straight on from its connection: blind flanges where
+            // the line ends.
+            run(m, key, arms.isEmpty() ? key.facing() & ~1 : arms.getFirst(), od, sides, false);
             return;
         }
         if (arms.size() == 2) {
@@ -187,7 +181,7 @@ public final class LineGeometry {
     static End fit(End end, double room) {
         if (end.tail() <= room || end.reducer() == 0) return end;
         double reducer = Math.max(1 / 16.0, end.reducer() - (end.tail() - room));
-        return new End(end.outside(), end.flange(), reducer, end.tail() - end.reducer() + reducer, end.open());
+        return new End(end.outside(), end.flange(), reducer, end.tail() - end.reducer() + reducer);
     }
 
     /** A long-radius elbow from face {@code a} to face {@code b}, or a ball corner where the fittings leave no room for it. */
@@ -231,7 +225,6 @@ public final class LineGeometry {
             z = z1;
         }
         if (end.flange()) flange(m, f, end.outside(), z, sides);
-        else if (end.open()) m.annulus(f, 0, end.outside() / 2, .5, sides, 1, Material.PIPE);
     }
 
     /**
