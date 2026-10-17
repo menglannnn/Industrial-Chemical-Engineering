@@ -58,6 +58,22 @@ The owner's words: "try to shorten the tests, they are taking too long/too much 
 - Holds remain only for capability limits, where the model cannot represent a state.
 - Keep these rules lightweight: game-level continuations, not new reference models.
 
+## Small physics simplifications (recorded 2026-10-17)
+
+- The owner's words: "Always keep an eye on this kind of small simplifications in the future which doesn't break the physics too much."
+- The example is D36 of batch `2026-09-24-coolprop-low-temperature`: a gas column does not exist, so a vapour weighs nothing in a static column. A gas column weighs 11 to 22 Pa/m at the network's usual pressures, against 4 to 10 kPa/m for liquids.
+- Every agent working on physics code watches for simplifications whose physical effect is small at game level:
+  - a negligible term;
+  - a rule or mode that a constitutive statement replaces;
+  - a special case that a coarser model absorbs.
+- Each one is proposed to the owner with three things:
+  - its effect in numbers at the network's usual states;
+  - what it deletes;
+  - what it risks, such as a new discontinuity or references that move.
+- The owner approves each one before it is implemented. A broad sweep is written as a review; `SIMPLIFICATION_SWEEP_REVIEW.md` in that batch is the first.
+- A simplification never breaks conservation of mass, energy or components, and never overrides an owner rule.
+- A code comment that records a measured reason for a term counts against removing that term, unless the simplification also removes the cause.
+
 ## Documentation, research, tools and versions (recorded 2026-09-23)
 
 - Working documents, research material and offline tooling are local and git-ignored, in three folders of the main checkout (`D:/Minecraft/Modding/1.21/CreateChemE`), which holds the canonical copy:
