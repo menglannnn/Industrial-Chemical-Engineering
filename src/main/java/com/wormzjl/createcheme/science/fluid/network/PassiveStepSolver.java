@@ -2130,7 +2130,9 @@ public final class PassiveStepSolver {
     /**
      * The outer phase check of a pass's point, node by node ({@link FluidThermodynamics#phaseCheck}, owner decisions D25 and
      * D26): a phase leaves a node only when the solve empties it (the trace fold of the point, at a converged point whose
-     * reconstruction already folded it as at an unsuccessful pass's last iterate), a phase the node's TP answer holds and
+     * reconstruction already folded it as at an unsuccessful pass's last iterate, and the vanishing rule of owner decision
+     * D38 C: a phase under {@link FluidThermodynamics#VANISHING_SHARE} of the node's fluid amount and at a smaller share than
+     * at the step's start, {@link #inputStates}, in a junction as in a vessel), a phase the node's TP answer holds and
      * the node does not is added at the node's own split (a junction's PH answer, a vessel's closure of what the point
      * holds: {@link #vesselSplit}), and no populated phase set is swapped for another on a TP verdict. Never inside a Newton
      * residual or Jacobian evaluation. One node is corrected per call, as one active-set change per pass, and the nodes
@@ -2148,7 +2150,7 @@ public final class PassiveStepSolver {
         for(int i=0;i<states.size();i++) {
             var state=states.get(i);var node=graph.reservoirs().get(i);if(node.fixed())continue;
             FluidThermodynamics.State checked;
-            try{checked=model.phaseCheck(state,node.junction(),foldedPhases,i,prepared==null?null:prepared[i],
+            try{checked=model.phaseCheck(state,node.junction(),inputStates.get(i),foldedPhases,i,prepared==null?null:prepared[i],
                     node.junction()?null:start->vesselSplit(node,state,start,checkpoint),checkpoint);}
             catch(com.wormzjl.createcheme.science.fluid.thermo.ThermoHold hold){throw hold.at(node.id());}
             if(checked==state)continue;

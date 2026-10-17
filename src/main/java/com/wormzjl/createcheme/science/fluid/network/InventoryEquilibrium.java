@@ -163,7 +163,9 @@ public final class InventoryEquilibrium {
     /**
      * The vessel's equilibrium from {@code state}: {@code closure} solved in a phase layout, and the layout decided by the
      * outer phase check (owner decisions D25 and D26, {@code FluidThermodynamics.phaseCheck}). A phase leaves only when the
-     * closure empties it (the trace fold of its point; a failed closure's last iterate is folded as a trial layout); where
+     * closure empties it (the trace fold of its point, and the vanishing rule of owner decision D38 C: a phase under 1e-6
+     * of the vessel's fluid amount and at a smaller share than in {@code state}, where the closure started; a failed
+     * closure's last iterate is folded as a trial layout); where
      * the TP answer finds a phase missing, the vessel is seeded at its own split, the closure started from the TP answer
      * with the phases the vessel holds, and no populated phase set is swapped for another on a TP verdict: a vessel of pure
      * water at its saturation line keeps its liquid and gains the steam its volume and energy give. A phase the check
@@ -174,7 +176,7 @@ public final class InventoryEquilibrium {
      * that has no room leaves both.
      */
     static FluidThermodynamics.State passes(FluidThermodynamics model,FluidThermodynamics.State state,Closure closure,Runnable checkpoint) {
-        var seen=new HashSet<String>();int[] excluded={0};
+        var seen=new HashSet<String>();int[] excluded={0};var from=state;
         UnaryOperator<FluidThermodynamics.State> own=closure::split;
         for(int pass=0;pass<16;pass++) {
             checkpoint.run();if(!seen.add(regime(state)))throw new SparseNewton.Nonconvergence("Inventory equilibrium phase cycle");
@@ -186,12 +188,12 @@ public final class InventoryEquilibrium {
                 // Decision D28 A': a failed closure's check is a trial layout, not a verdict: it reads the A85 record and never
                 // writes to it (a copy). Laid out again with the solids of the pass's state (the vessel's own closure: its
                 // inventory's).
-                var checked=model.phaseCheck(trial,false,excluded.clone(),0,null,own,checkpoint);
+                var checked=model.phaseCheck(trial,false,from,excluded.clone(),0,null,own,checkpoint);
                 if(regime(checked).equals(regime(state)))throw failure;
                 state=checked.withSolids(state.solids());continue;
             }
             if(candidate==state)return state;
-            var checked=model.phaseCheck(candidate,false,excluded,0,null,own,checkpoint);
+            var checked=model.phaseCheck(candidate,false,from,excluded,0,null,own,checkpoint);
             if(checked!=candidate){state=checked;continue;}
             return candidate;
         }

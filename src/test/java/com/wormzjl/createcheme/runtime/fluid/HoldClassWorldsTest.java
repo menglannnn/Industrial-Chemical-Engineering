@@ -3,9 +3,13 @@ package com.wormzjl.createcheme.runtime.fluid;
 import com.wormzjl.createcheme.science.column.v3.thermo.V3PengRobinsonThermo;
 import com.wormzjl.createcheme.science.fluid.network.FlowControl;
 import com.wormzjl.createcheme.science.fluid.network.PassiveStepSolver;
+import com.wormzjl.createcheme.science.fluid.thermo.FluidMaterialCatalog;
+import com.wormzjl.createcheme.science.fluid.thermo.FluidThermodynamics;
 import com.wormzjl.createcheme.science.fluid.topology.TopologyCompiler.Kind;
 import com.wormzjl.createcheme.science.material.MaterialCatalog;
+import com.wormzjl.createcheme.science.material.MaterialRuntime;
 import com.wormzjl.createcheme.science.material.MaterialTestBasis;
+import com.wormzjl.createcheme.science.material.PilotCryogenicTestCatalog;
 import java.util.Arrays;
 import org.junit.jupiter.api.Test;
 import static com.wormzjl.createcheme.runtime.fluid.PhysicalFluidTopology.Direction.*;
@@ -782,6 +786,54 @@ class HoldClassWorldsTest {
         w.place(0,0,0,Kind.PIPE,NORTH,.05);
         w.place(0,2,0,Kind.PIPE,NORTH,.01);
         w.runTo(100+120*100);w.assertKeptUp("a generator filling a dead-end ladder of gas lines");
+    }
+
+    // ---------------- VanishingPhase ----------------
+    /*
+     * One vanishing rule for every node (owner decision D38 C, 2026-10-17; D38_REVERT_D36_AND_VANISHING_RULE.md of batch
+     * 2026-09-24-coolprop-low-temperature): a phase holding less than FluidThermodynamics.VANISHING_SHARE (1e-6) of its
+     * node's fluid moles, and a smaller share than where the solve judging it started, leaves at a converged pass and at a
+     * failed iterate, in a pipe junction as in a vessel, whether the node holds the phase or is offered it.
+     */
+    /**
+     * Cold fuzz seed 30, pair-minimized to 11 blocks (M7_NEW_COLD_HOLDS_TRACE.md; tools/unified-thermo-port-m5/trace), on
+     * the cold pilot package. The world is flat but for an LNG generator (6 MPa, 169.7 K) one block up, which pours about
+     * 72 kg/s down its 5 cm port, at the velocity cap, into a junction (n5); from n5, 70 kg/s goes to a 1 atm void and
+     * about 2 kg/s through 1 cm lines to a 1 m3 tank. At tick 1593 a 5 cm pipe joins a CO2-gas generator (2.03 MPa, 292 K,
+     * 92.6 % CO2) to the tank and to the line between n5 and the tank. Physics: the gas pours into the tank; the
+     * generator's line into n5 closes, as its flow would enter the generator; n5 goes back to about 3.49 MPa, all liquid,
+     * 1.3 MPa above the pressure at which the line beside it boils. The re-minted start states n5 flashed at the
+     * generator's 2.03 MPa with 4.5 % of its 56 mol as vapour, which the solve must remove: a bubble in a subcooled
+     * liquid collapses. The rate solve's failed iterate left it at 1.0e-8 of n5's moles, above the trace share, so before
+     * the rule the failed iterate's trial layout kept it and the island held at tick 1595 (class E5, a line-search stall at
+     * residual 1.47e-9).
+     */
+    @Test void aJunctionsVapourCollapsingInASubcooledLiquidLeavesAtAFailedIterate() {
+        var catalog=PilotCryogenicTestCatalog.catalog();var network=FluidMaterialCatalog.networkPackage(catalog);
+        MaterialRuntime.with(catalog,network,()->{
+            var w=new EventPathWorld(catalog,FluidThermodynamics.forNetwork(catalog,network));
+            w.runTo(100);w.place(2,0,-1,Kind.PIPE,NORTH,.1);
+            w.runTo(466);w.place(-2,0,0,Kind.RESERVOIR,NORTH,.05);
+            w.runTo(470);w.place(0,0,0,Kind.GENERATOR,EAST,new FluidDeviceSpec(1,291.9601168397745,2031523.2199300588,
+                    new double[]{0.009971399772847691,0.06435484220406093,0,0.9256737580230914,0}),.01);
+            w.place(0,0,-2,Kind.PIPE,NORTH,.05);w.place(-1,0,-1,Kind.PIPE,NORTH,.01);
+            w.runTo(599);w.place(-2,0,-1,Kind.PIPE,NORTH,.01);
+            w.runTo(647);w.place(1,0,-1,Kind.PIPE,NORTH,.1);
+            w.runTo(696);w.place(2,1,-1,Kind.GENERATOR,NORTH,new FluidDeviceSpec(1,169.6783671876938,6000000.0,
+                    new double[]{0.005965999241527276,0.9300951052162594,0.027900495572427266,0.03603839996978608,0}),.05);
+            w.runTo(971);w.place(0,0,-3,Kind.VOID,NORTH,.05);
+            w.runTo(1283);w.place(0,0,-1,Kind.PIPE,NORTH,.05);
+            w.runTo(1593);w.place(-1,0,0,Kind.PIPE,NORTH,.05);
+            w.runTo(1593+5*100);
+            for(var s:w.coordinator.snapshots())for(var node:s.graph().reservoirs())
+                System.out.println("VANISHING_RULE island "+s.id()+" node "+node.id()+" "+node.kind()+" z="+node.elevation()+" P="+node.state().pressure()+" T="+node.state().temperature()
+                        +" m="+node.state().mass()+" liq="+node.state().liquidVolume()+" vap="+node.state().vaporVolume()+" solidsKg="+node.state().solids().massKg());
+            w.assertKeptUp("a junction's vapour collapsing in a subcooled liquid");
+            // The junctions carry the LNG at 2.4 to 3.8 MPa and 168.5 to 169.1 K, above its bubble pressure: liquid only.
+            for(var s:w.coordinator.snapshots())for(var node:s.graph().reservoirs())if(node.junction())
+                assertEquals(0,node.state().vaporVolume(),"junction "+node.id()+" at "+node.state().pressure()+" Pa, "+node.state().temperature()+" K holds liquid only");
+            return null;
+        });
     }
 
     // ---------------- VelocityCapMode ----------------

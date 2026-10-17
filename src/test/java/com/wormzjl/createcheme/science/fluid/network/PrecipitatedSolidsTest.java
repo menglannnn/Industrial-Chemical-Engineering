@@ -385,10 +385,10 @@ class PrecipitatedSolidsTest {
                 tank.liquidVolume(),dryIce.volume(),capacity,Arrays.stream(answer.vaporView()).sum());
         assertNotNull(answer.vaporProperties(),"the TP answer proposes a vapour");
         int[] splits={0},record={0};var own=ownSplit(tank,capacity,splits);
-        assertSame(tank,pilot.phaseCheck(tank,false,record,0,null,own,()->{}),"no vapour: the tank keeps its liquid");
+        assertSame(tank,pilot.phaseCheck(tank,false,null,record,0,null,own,()->{}),"no vapour: the tank keeps its liquid");
         assertEquals(1,splits[0]);
         assertEquals(FluidThermodynamics.phaseBits(answer)&~FluidThermodynamics.phaseBits(tank),record[0],"the vapour is refused for the solve");
-        assertSame(tank,pilot.phaseCheck(tank,false,record,0,null,own,()->{}),"the solve's next pass");
+        assertSame(tank,pilot.phaseCheck(tank,false,null,record,0,null,own,()->{}),"the solve's next pass");
         assertEquals(1,splits[0],"no second own split in the solve");
     }
 
@@ -465,10 +465,10 @@ class PrecipitatedSolidsTest {
         var answer=pilot.flashTP(t,point.pressure(),PhaseLayout.totalAmounts(point),()->{});
         assertTrue(pilot.condensedShareOnly(answer),"the TP answer carries frost as the stand-in");
         int[] splits={0},record={0};var own=ownSplit(point,frosted.inventory().volume(),splits);
-        assertSame(point,pilot.phaseCheck(point,false,record,0,null,own,()->{}),"no phase added");
+        assertSame(point,pilot.phaseCheck(point,false,null,record,0,null,own,()->{}),"no phase added");
         assertEquals(1,splits[0],"its own split decides the stand-in");
         assertEquals(1,record[0],"the stand-in is refused for the solve");
-        assertSame(point,pilot.phaseCheck(point,false,record,0,null,own,()->{}),"the solve's next pass");
+        assertSame(point,pilot.phaseCheck(point,false,null,record,0,null,own,()->{}),"the solve's next pass");
         assertEquals(1,splits[0],"no second own split");
     }
 

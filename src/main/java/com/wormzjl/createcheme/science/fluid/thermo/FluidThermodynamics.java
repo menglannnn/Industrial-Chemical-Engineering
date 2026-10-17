@@ -733,11 +733,16 @@ public final class FluidThermodynamics {
      */
     public static final double PHASE_TRACE_FRACTION=1e-9;
     /**
-     * The share under which a vessel's own closure that is shrinking a proposed phase is driving it to nothing, converged
-     * or not ({@link #vanishing}; the D26 amendment by direction, owner decision of 2026-10-16, form 4). It is what a
-     * closure that stops short resolves: its 24 iterations end at a residual near 1e-6 of the node's amount, and cold seed
-     * 48's liquid-full tank beside dry ice stalls with its vapour at 1e-9 to 3e-9 of the moles and still falling, which the
-     * trace share alone keeps or drops at rounding.
+     * The share under which a phase that is shrinking is vanishing ({@link #vanishing}), in any node, a pipe junction or a
+     * vessel, and whether the node holds the phase or is offered it: a phase holding less than this share of its node's
+     * fluid amount, and a smaller share than where the solve that judges it started, leaves, at a converged point as at a
+     * failed iterate (owner decision D38 C, 2026-10-17, which extends the D26 amendment's test of 2026-10-16, form 4, from a
+     * vessel's own closure to every node and to the solve's own iterate). It is what a solve that stops short resolves: a
+     * closure's 24 iterations end at a residual near 1e-6 of the node's amount, and cold seed 48's liquid-full tank beside
+     * dry ice stalls with its vapour at 1e-9 to 3e-9 of the moles and still falling, which the trace share alone keeps or
+     * drops at rounding; in cold seed 30 a junction re-minted flashed (4.5 % vapour) stalls at a failed iterate with its
+     * vapour at 1.0e-8 of its moles, which the trace share kept. 1e-6 of a junction's holdup is about a milligram of LNG.
+     * A phase that does not shrink keeps the trace share ({@link #PHASE_TRACE_FRACTION}) alone.
      */
     public static final double VANISHING_SHARE=1e-6;
     /**
@@ -758,17 +763,31 @@ public final class FluidThermodynamics {
      * {@code water} is {free water, water vapour}. Returns whether anything moved. This is the rule; {@link #folded} and
      * every flash apply it to a state.
      */
-    public boolean foldTracePhases(double[] liquid,double[] vapor,double[] water) {
+    public boolean foldTracePhases(double[] liquid,double[] vapor,double[] water){return foldTracePhases(liquid,vapor,water,0);}
+    /**
+     * {@link #foldTracePhases(double[],double[],double[])} with the phases {@code vanishing} names ({@link #phaseBits};
+     * {@link #vanishing}, owner decision D38 C) folded as traces by the same rule: a hydrocarbon liquid (1) or free water
+     * (4) it names, and a gas every part of which it names (2 for its hydrocarbons, 8 for its water vapour; a gas whose
+     * hydrocarbons stand keeps a vanishing humidity). A phase it names is a trace, so it receives nothing either. A
+     * vanishing gas whose hydrocarbons have no hydrocarbon liquid to go into stays whole: the carried gas's split (its
+     * water vapour into the free water, its gas components dry) is a trace gas's only. Such a gas, nitrogen over water,
+     * leaves through the node's ports, and its humidity folded alone is given back by the next TP answer (a pass cycle:
+     * the last litre of nitrogen in a water tank filled full through its vent).
+     */
+    boolean foldTracePhases(double[] liquid,double[] vapor,double[] water,int vanishing) {
         double nl=0,nh=0;for(double x:liquid)nl+=x;for(double x:vapor)nh+=x;
         double nv=nh+water[1],nw=water[0],total=nl+nv+nw;
         if(!(total>0))return false;
         double limit=PHASE_TRACE_FRACTION*total;boolean moved=false;
-        if(nl>0&&nl<limit&&nh>0&&nv>=limit){for(int i=0;i<liquid.length;i++){vapor[i]+=liquid[i];liquid[i]=0;}moved=true;}
-        if(nw>0&&nw<limit&&nv>=limit){water[1]+=water[0];water[0]=0;moved=true;}
-        if(nv>0&&nv<limit&&(nh==0||nl>=limit)&&(water[1]==0||nw>=limit)) {
+        // A phase is a trace under the trace share or where it is vanishing; a phase the node holds that is no trace stands.
+        boolean tl=nl<limit||(vanishing&1)!=0,tw=nw<limit||(vanishing&4)!=0,tv=nv<limit||(nh==0||(vanishing&2)!=0)&&(water[1]==0||(vanishing&8)!=0);
+        boolean sl=nl>0&&!tl,sw=nw>0&&!tw,sv=nv>0&&!tv;
+        if(nl>0&&tl&&nh>0&&sv){for(int i=0;i<liquid.length;i++){vapor[i]+=liquid[i];liquid[i]=0;}moved=true;}
+        if(nw>0&&tw&&sv){water[1]+=water[0];water[0]=0;moved=true;}
+        if(nv>0&&tv&&(nh==0||sl)&&(water[1]==0||sw)) {
             for(int i=0;i<vapor.length;i++){liquid[i]+=vapor[i];vapor[i]=0;}water[0]+=water[1];water[1]=0;moved=true;
         }
-        else if(nv>0&&nv<limit&&nh>0&&nl<limit&&water[1]>0&&nw>=limit){water[0]+=water[1];water[1]=0;moved=true;}
+        else if(nv>0&&nv<limit&&nh>0&&!sl&&water[1]>0&&sw){water[0]+=water[1];water[1]=0;moved=true;}
         return moved;
     }
     /**
@@ -823,8 +842,9 @@ public final class FluidThermodynamics {
      * every flash ({@link #flashTP}), the reconstruction's restatement of a node and the phase set each Newton pass is
      * laid out for pass through it. Never inside a residual: a fold is a jump of the state function.
      */
-    public State folded(State state) {
-        var result=folded(state,null);
+    public State folded(State state){return folded(state,0);}
+    private State folded(State state,int vanishing) {
+        var result=folded(state,null,vanishing);
         return result==state||state.solids().empty()?result:result.withSolidState(state.solids(),state.solidMoments());
     }
     /**
@@ -832,16 +852,19 @@ public final class FluidThermodynamics {
      * decision D41 ({@link #carriedGas}): a liquid-full junction's gas is restated dry at the junction's pressure, its
      * water vapour in the free water. Nothing leaves the node and nothing is booked, as for the trace fold.
      */
-    public State folded(State state,boolean junction) {
-        var result=folded(state);
+    public State folded(State state,boolean junction){return folded(state,junction,0);}
+    /** {@link #folded(State,boolean)} with the phases {@code vanishing} names folded as traces too (owner decision D38 C,
+     * {@link #foldTracePhases(double[],double[],double[],int)}). */
+    private State folded(State state,boolean junction,int vanishing) {
+        var result=folded(state,vanishing);
         if(!carriedGas(result,junction))return result;
         SolverDiagnostics.count(SolverDiagnostics.traceFolds);
         var carried=state(result.temperature(),result.pressure(),result.liquid(),result.vapor(),result.waterLiquid()+result.waterVapor(),0,result.pressure(),null,null);
         return result.solids().empty()?carried:carried.withSolidState(result.solids(),result.solidMoments());
     }
-    private State folded(State state,TranslatedPengRobinson.Workspace terms) {
+    private State folded(State state,TranslatedPengRobinson.Workspace terms,int vanishing) {
         double[] l=state.liquid(),v=state.vapor(),water={state.waterLiquid(),state.waterVapor()};
-        if(!foldTracePhases(l,v,water))return state;
+        if(!foldTracePhases(l,v,water,vanishing))return state;
         SolverDiagnostics.count(SolverDiagnostics.traceFolds);
         return state(state.temperature(),state.pressure(),l,v,water[0],water[1],
                 foldedHydrocarbonPressure(state.pressure(),state.hydrocarbonPartialPressure(),v,water[1]),terms,null);
@@ -860,7 +883,12 @@ public final class FluidThermodynamics {
      * node's own split:
      * <ul>
      * <li>a phase leaves only when the solve empties it: the trace fold ({@link #folded}, D34) removes a phase {@code state}
-     * holds below the trace share, also where {@code state} is an unsuccessful solve's last iterate;</li>
+     * holds below the trace share, and a phase it holds below {@link #VANISHING_SHARE} and at a smaller share than at
+     * {@code from} is vanishing and is folded by the same rule (owner decision D38 C: {@link #vanishing}, the D26
+     * amendment's test given to the solve's own point), in a junction as in a vessel, also where {@code state} is an
+     * unsuccessful solve's last iterate. A phase the fold removed as vanishing is not proposed again by this check, so
+     * the fold and the proposal below judge it by one test (the TP answer at the folded point otherwise offers it back at
+     * once, the pass is laid out as before, and the pass loop cycles);</li>
      * <li>a node holding every phase its material can form (both hydrocarbon phases or none, both water phases or none)
      * has none to add, and no TP answer is formed. A stand-in liquid ({@link #condensedShareOnly}: a crystal's share
      * carried condensed between refreshes, crystal species only beside a vapour) is no liquid of the node's own (owner
@@ -875,7 +903,9 @@ public final class FluidThermodynamics {
      * the answer;</li>
      * <li>the own split decides by where its closure went, converged or not (the D26 amendment of 2026-10-16, by its
      * direction in form 4): a proposed phase it drove under the trace share, which the seed's fold (D34, and D41's carried
-     * gas at a junction) then removes, or that a vessel's closure is driving to nothing ({@link #vanishing}), is refused,
+     * gas at a junction) then removes, or that it is driving to nothing ({@link #vanishing}; a vessel's closure and, since
+     * owner decision D38 C, a junction's PH answer alike), or that it leaves vanishing against {@code from} (D38 C, the
+     * fold's test), is refused,
      * and the refusal is written to the record, so the TP answer does not propose it again in this solve: a boiling liquid
      * in a vessel with no room for a bubble pressurises and stays liquid, a drop formed in a gas at its dew point
      * re-evaporates. A proposed phase that stands seeds the node, and the seed is taken only when it then holds a phase the
@@ -894,15 +924,20 @@ public final class FluidThermodynamics {
      * read as the phases the solve removed or refused, which are not added, and written with the phases this check removes
      * (the fold, a phase the seed lacks) and refuses; {@code null} reads none and writes nothing. A trial check (a failed
      * iterate, decision D28 A') passes a copy. {@code junction}: whether the node is a pipe junction (the carried gas of
-     * D41 in the fold, its own split the PH answer); {@code prepared}, when given, is the node's prepared temperature state
-     * (used only at exactly that temperature); {@code vesselSplit}, a vessel's own split from a start holding the phases to
-     * lay it out with, or {@code null} where the vessel's flash fails (ignored for a junction).
+     * D41 in the fold, its own split the PH answer); {@code from}: the node's state where the solve that reached
+     * {@code state} started (a step: the node at the step's start; a vessel's closure: the state it closes from), which
+     * the vanishing rule reads, or {@code null} for none; {@code prepared}, when given, is the node's prepared temperature
+     * state (used only at exactly that temperature); {@code vesselSplit}, a vessel's own split from a start holding the
+     * phases to lay it out with, or {@code null} where the vessel's flash fails (ignored for a junction).
      *
      * @return {@code state} itself when it keeps its phases and gains none; otherwise the node's new seed
      */
-    public State phaseCheck(State state,boolean junction,int[] record,int at,Prepared prepared,UnaryOperator<State> vesselSplit,Runnable checkpoint) {
-        var kept=folded(state,junction);var checked=kept;
-        int excluded=record==null?0:record[at],refused=0;
+    public State phaseCheck(State state,boolean junction,State from,int[] record,int at,Prepared prepared,UnaryOperator<State> vesselSplit,Runnable checkpoint) {
+        // Owner decision D38 C: the phases vanishing since the solve's start fold as traces, and what that fold removed is not
+        // offered back by this check's TP answer.
+        int shrinking=from==null?0:vanishing(from,state);
+        var kept=folded(state,junction,shrinking);var checked=kept;
+        int excluded=(record==null?0:record[at])|shrinking&phaseBits(state)&~phaseBits(kept),refused=0;
         boolean hydrocarbonComplete=ownPhaseBits(kept)==phaseBits(kept)&&(kept.liquidProperties()==null)==(kept.vaporProperties()==null);
         boolean waterComplete=kept.waterLiquid()>0&&kept.waterVapor()>0||kept.waterLiquid()+kept.waterVapor()==0;
         if(!(hydrocarbonComplete&&waterComplete)) {
@@ -919,9 +954,10 @@ public final class FluidThermodynamics {
                         :vesselSplit==null?null:vesselSplit.apply(start);
                 if(own!=null)SolverDiagnostics.count(SolverDiagnostics.phaseSeeds);
                 var seed=folded(own==null?start:own.withSolidState(kept.solids(),kept.solidMoments()),junction);
-                // The D26 amendment: the own split's verdict on a proposed phase is where its closure took it; the TP-based
-                // fallback seed is no closure and refuses nothing.
-                if(own!=null)refused=proposed&(~lacking(kept,seed)|(junction?0:vanishing(start,own)));
+                // The D26 amendment: the own split's verdict on a proposed phase is where its closure took it, a vessel's
+                // closure or a junction's PH answer (D38 C), and whether it leaves the phase vanishing against the solve's
+                // start (D38 C, the fold's test); the TP-based fallback seed is no closure and refuses nothing.
+                if(own!=null)refused=proposed&(~lacking(kept,seed)|vanishing(start,own)|(from==null?0:vanishing(from,own)));
                 if(refused!=0)SolverDiagnostics.count(SolverDiagnostics.phaseRefusals);
                 int added=lacking(kept,seed)&~excluded;
                 if(added!=0&&(added&refused)==0)checked=seed;
@@ -946,10 +982,12 @@ public final class FluidThermodynamics {
      */
     private int lacking(State node,State answer){return ownPhaseBits(answer)&~ownPhaseBits(node)|phaseBits(answer)&~phaseBits(node);}
     /**
-     * The phases ({@link #phaseBits}) a vessel's own closure from {@code start} is driving to nothing at {@code end}, its
-     * answer or the last iterate it stopped at (the D26 amendment by direction, owner decision of 2026-10-16, form 4): each
-     * holds less than {@link #VANISHING_SHARE} of {@code end}'s fluid amount and a smaller share than it held at
-     * {@code start}. A phase the closure grows, however small, is not among them.
+     * The phases ({@link #phaseBits}) a solve from {@code start} is driving to nothing at {@code end}, its answer or the last
+     * iterate it stopped at, in any node: each holds less than {@link #VANISHING_SHARE} of {@code end}'s fluid amount and a
+     * smaller share than it held at {@code start}. A phase the solve grows, however small, is not among them. The D26
+     * amendment by direction (owner decision of 2026-10-16, form 4) for a vessel's own closure, given by owner decision D38
+     * C (2026-10-17) to a junction's own split and to the solve's own point ({@link #phaseCheck}: {@code start} the node
+     * where its step or closure started).
      */
     static int vanishing(State start,State end) {
         double[] s=phaseAmounts(start),e=phaseAmounts(end);double ts=sum(s),te=sum(e);int bits=0;
@@ -995,7 +1033,7 @@ public final class FluidThermodynamics {
      * preparing a new one (the arithmetic is the same). */
     public State flashTP(double t,double p,double[] overall,Runnable checkpoint,Prepared prepared) {
         TranslatedPengRobinson.Workspace given=prepared!=null&&prepared.temperature()==t?prepared.pengRobinson():null;
-        return folded(equilibriumTP(t,p,overall,checkpoint,prepared),given);
+        return folded(equilibriumTP(t,p,overall,checkpoint,prepared),given,0);
     }
     /**
      * The equilibrium split of {@link #flashTP} before its trace phases are folded. Not a state the network lays out or

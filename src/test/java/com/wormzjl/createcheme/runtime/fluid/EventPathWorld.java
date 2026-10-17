@@ -22,7 +22,9 @@ class EventPathWorld {
     static final MaterialCatalog CATALOG=MaterialCatalog.bundled();
     record Held(long tick,long island,long committed,String status) {}
 
-    final FluidThermodynamics model=FluidTestSupport.networkModel();
+    /** The world's material catalog: the bundled one, or another catalog's network package (a cold world). */
+    final MaterialCatalog catalog;
+    final FluidThermodynamics model;
     final WorldTopologyLedger ledger;
     final Map<Long,IslandCoordinator.Attempt> attempts=new LinkedHashMap<>();
     final Map<Long,ProcessSolveServices.FluidIslandCommand> commands=new HashMap<>();
@@ -41,7 +43,15 @@ class EventPathWorld {
     /** The world {@code saved} ({@code world.ledger.snapshot()}) and {@code islands} ({@code world.coordinator.snapshots()})
      * reload to, as {@code FluidWorldAuthority} starts: the ledger, every saved island registered, then the registry loaded. */
     EventPathWorld(int workers,WorldTopologyLedger.Snapshot saved,List<IslandCoordinator.Snapshot> islands) {
-        this.workers=workers;ledger=new WorldTopologyLedger(saved);
+        this(workers,saved,islands,CATALOG,FluidTestSupport.networkModel());
+    }
+    /** A world with one synchronous worker on {@code catalog}, whose network model is {@code model}
+     * ({@code FluidThermodynamics.forNetwork} of its network package): built and run inside that catalog's
+     * {@code MaterialRuntime} context, as the cold placement fuzz runs a seed. A block placed without a spec holds a 1 m3
+     * nitrogen charge of that catalog. */
+    EventPathWorld(MaterialCatalog catalog,FluidThermodynamics model){this(1,WorldTopologyLedger.Snapshot.empty(catalog),List.of(),catalog,model);}
+    private EventPathWorld(int workers,WorldTopologyLedger.Snapshot saved,List<IslandCoordinator.Snapshot> islands,MaterialCatalog catalog,FluidThermodynamics model) {
+        this.workers=workers;this.catalog=catalog;this.model=model;ledger=new WorldTopologyLedger(saved);
         coordinator=new IslandCoordinator(new IslandCoordinator.Dispatcher() {
             public int availableWorkers(){return workers-attempts.size();}
             public long nextRequestId(){return ++requests;}
@@ -76,7 +86,7 @@ class EventPathWorld {
     long place(int x,int y,int z,Kind kind,PhysicalFluidTopology.Direction facing,FlowControl control,FluidDeviceSpec spec,double bore) {
         long id=ledger.nextIdentity();
         var device=new PhysicalFluidTopology.Device(id,new PhysicalFluidTopology.Position(DIM,x,y,z),kind,facing,new PipeResistance.Geometry(1,bore,PipeResistance.DEFAULT_ROUGHNESS_METRES,0),control);
-        registry.submit(List.of(new WorldTopologyLedger.Edit(id,new WorldTopologyLedger.Registration(device,spec!=null?spec:nitrogen(),0))),id+1,null);
+        registry.submit(List.of(new WorldTopologyLedger.Edit(id,new WorldTopologyLedger.Registration(device,spec!=null?spec:FluidDeviceSpec.nitrogen(catalog),0))),id+1,null);
         return id;
     }
     /** A block with its kind's default control and a nitrogen spec (boundaries: a 1 m3 charge at 298.15 K, 1 atm). */
@@ -85,7 +95,7 @@ class EventPathWorld {
     long place(int x,int y,int z,Kind kind,PhysicalFluidTopology.Direction facing,FluidDeviceSpec spec,double bore){return place(x,y,z,kind,facing,defaultControl(kind),spec,bore);}
     /** A block as FluidWorldAuthority.place places it: its kind's default control, a 1 m block of 0.05 m bore, water for a
      * generator and a 1 m3 nitrogen charge at 298.15 K and 1 atm for everything else. */
-    long place(int x,int y,int z,Kind kind,PhysicalFluidTopology.Direction facing){return place(x,y,z,kind,facing,kind==Kind.GENERATOR?FluidDeviceSpec.water(CATALOG):nitrogen(),.05);}
+    long place(int x,int y,int z,Kind kind,PhysicalFluidTopology.Direction facing){return place(x,y,z,kind,facing,kind==Kind.GENERATOR?FluidDeviceSpec.water(catalog):FluidDeviceSpec.nitrogen(catalog),.05);}
     /** One online tick as FluidWorldAuthority.tick runs it, with the worker's jobs run to completion in the tick. */
     void tick() {
         ledger.tick();coordinator.tick();
