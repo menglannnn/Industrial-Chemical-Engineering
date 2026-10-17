@@ -77,6 +77,8 @@ final class ColumnStructure {
     private final Plan plan;
     private final double axis, outer, apothem, rung;
     private final int n;
+    /** The plan's ladders as a player meets them, the first from the ground. */
+    private final List<Access.Climb> climbs = new ArrayList<>();
 
     ColumnStructure(EquipmentShape shape) {
         this.shape = shape;
@@ -86,6 +88,15 @@ final class ColumnStructure {
         apothem = outer * DeterministicMath.cos(Math.PI / n);
         rung = outer + STANDOFF;
         plan = plan(shape);
+        for (var l : plan.ladders()) {
+            var foot = at(rung, l.angle(), 0);
+            var out = radial(l.angle());
+            climbs.add(new Access.Climb(foot[0], foot[2], out[0], out[2], l.base(), l.top(), l.top()));
+        }
+    }
+
+    List<Access.Climb> climbs() {
+        return climbs;
     }
 
     /** A side nozzle's heading in the frame, from +x towards +z. */
@@ -216,8 +227,9 @@ final class ColumnStructure {
     }
 
     /**
-     * Adds a radial nozzle at the cell row nearest {@code y} on its side where it meets no other nozzle there and the
-     * structure leaves its neck and pipe block clear; nothing when the shell has no such row.
+     * Adds a radial nozzle at the cell row nearest {@code y} on its side where it meets no other nozzle there, its pipe
+     * block keeps one free block from every other ({@link EquipmentShape.Nozzle#crowds}), and the structure leaves its
+     * neck and pipe block clear; nothing when the shell has no such row.
      */
     private static void side(EquipmentShape s, Clearance clearance, List<EquipmentShape.Nozzle> placed, EquipmentShape.Role role, double y, int axis, int sign,
                              double od) {
@@ -227,11 +239,13 @@ final class ColumnStructure {
         for (int step = 0; step <= 2 * rows; step++) {
             double at = wanted + (step % 2 == 0 ? step / 2 : -(step + 1) / 2);
             if (at - half < yB + .05 || at + half > yT - .05) continue;
+            var nozzle = s.side(role, s.axis(), at, axis, sign, s.outerRadius() * DeterministicMath.cos(Math.PI / s.facets()), od, od);
             boolean free = true;
+            // Flanges on one side never overlap, and no two pipes stand in touching blocks (one free block between).
             for (var other : placed)
-                if (other.axis() == axis && other.sign() == sign && Math.abs(other.base()[1] - at) < half + PipeSizes.flange(other.maxOd()) / 2 + .05) free = false;
+                if (other.axis() == axis && other.sign() == sign && Math.abs(other.base()[1] - at) < half + PipeSizes.flange(other.maxOd()) / 2 + .05 || nozzle.crowds(other)) free = false;
             if (!free || clearance.blocked(Math.floor(at), heading)) continue;
-            placed.add(s.side(role, s.axis(), at, axis, sign, s.outerRadius() * DeterministicMath.cos(Math.PI / s.facets()), od, od));
+            placed.add(nozzle);
             return;
         }
     }
@@ -328,7 +342,7 @@ final class ColumnStructure {
             Access.handrail(mesh, run, p.level(), plan.deckRadius() - outer, p.closedFrom(), p.closedTo());
             if (p.manway()) manway(p.manwayHeight()).draw(mesh);
         }
-        for (var l : plan.ladders()) Access.ladder(ladders, at(rung, l.angle(), 0), radial(l.angle()), STANDOFF, l.base(), l.top());
+        for (var climb : climbs) Access.ladder(ladders, climb, STANDOFF);
         davit(mesh);
     }
 
@@ -420,13 +434,10 @@ final class ColumnStructure {
                 for (int e = 0; e < 2; e++) {
                     if (!(e == 0 ? platform.closedFrom() : platform.closedTo())) continue;
                     double a = e == 0 ? platform.from() : platform.to(), along = along(dx, dz, a), across = across(dx, dz, a);
-                    if (along >= outer + GAP && along <= edge && Math.abs(across) <= .1) return true;
+                    if (along >= outer + GAP && along <= edge && Math.abs(across) <= RAIL_BAND / 2) return true;
                 }
         }
-        for (var l : plan.ladders()) {
-            double along = along(dx, dz, l.angle()), across = across(dx, dz, l.angle());
-            if (y >= l.base() && y <= l.top() && along >= rung - .14 && along <= rung + RUNG_FACE && Math.abs(across) <= LADDER_HALF) return true;
-        }
+        for (var climb : climbs) if (climb.rungs(p)) return true;
         for (var platform : plan.platforms()) {
             if (!platform.manway()) continue;
             if (manway(platform.manwayHeight()).inside(p)) return true;
@@ -438,11 +449,7 @@ final class ColumnStructure {
 
     /** Whether a frame point lies where a ladder is climbed: in front of its rungs, inside its cage, from its foot to its top. */
     boolean climbable(double[] p) {
-        double dx = p[0] - axis, dz = p[2] - axis;
-        for (var l : plan.ladders()) {
-            double along = along(dx, dz, l.angle()), across = across(dx, dz, l.angle());
-            if (p[1] >= l.base() - .1 && p[1] <= l.top() && along >= rung - .05 && along <= rung + 2 * CAGE_HALF + .1 && Math.abs(across) <= CAGE_HALF + .05) return true;
-        }
+        for (var climb : climbs) if (climb.climbable(p)) return true;
         return false;
     }
 

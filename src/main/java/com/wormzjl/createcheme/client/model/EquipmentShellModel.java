@@ -28,7 +28,9 @@ import net.neoforged.neoforge.client.model.pipeline.QuadBakingVertexConsumer;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
+import java.util.EnumSet;
 import java.util.List;
+import java.util.Set;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Function;
@@ -117,8 +119,33 @@ public final class EquipmentShellModel implements IDynamicBakedModel {
         return out;
     }
 
+    /**
+     * The round bodies that take the metallic sheen ({@code CreateChemE.equipmentSheen}; owner request 2026-10-17,
+     * {@code METALLIC_LOOK_RESEARCH.md}): shells, heads, cladding, skirts, heater casings, machine and motor bodies. Pipes and
+     * flanges have too few facets: their highlight would jump from facet to facet.
+     */
+    private static final Set<Mesh.Material> SHEEN = EnumSet.of(Mesh.Material.SHELL, Mesh.Material.HEAD, Mesh.Material.CLADDING, Mesh.Material.SUPPORT,
+            Mesh.Material.HEATER, Mesh.Material.MACHINE, Mesh.Material.MOTOR, Mesh.Material.AC_HEADER);
+
+    /**
+     * A fixed highlight over the shade of a round body's vertex with normal (nx, nz): {@code k |nz|^8} and half as much
+     * {@code |nx|^8}, so a round body seen from the north or south shows a bright band about 40° wide over its middle, from
+     * the east or west a weaker one, and bright rims where its side turns away. It does not follow the view (no
+     * reflection) and costs nothing per frame; the power is one for every material, so the pieces of one facet cut by cells
+     * agree at their seams.
+     */
+    static float sheen(float k, float nx, float nz) {
+        float x2 = nx * nx, z2 = nz * nz, x8 = x2 * x2 * x2 * x2, z8 = z2 * z2 * z2 * z2;
+        return k * (z8 + .5F * x8);
+    }
+
     private static BakedQuad quad(Mesh.Polygon polygon, TextureAtlasSprite sprite, int tint, int... corners) {
         double[] p = polygon.positions(), uv = polygon.uvs(), n = polygon.normals();
+        // Only a curved polygon (its vertex normals differ) of a round body takes the sheen; flat faces keep their shade.
+        boolean curved = false;
+        for (int i = 1; i < polygon.size() && !curved; i++)
+            curved = Math.abs(n[3 * i] - n[0]) + Math.abs(n[3 * i + 1] - n[1]) + Math.abs(n[3 * i + 2] - n[2]) > 1e-4;
+        float k = curved && SHEEN.contains(polygon.material()) ? CreateChemE.equipmentSheen() : 0;
         // Face direction from the corners' winding (Newell), for vanilla's directional shade.
         double fx = 0, fy = 0, fz = 0;
         for (int i = 0; i < 4; i++) {
@@ -138,7 +165,7 @@ public final class EquipmentShellModel implements IDynamicBakedModel {
         baker.setHasAmbientOcclusion(false);
         for (int c : corners) {
             float nx = (float) n[3 * c], ny = (float) n[3 * c + 1], nz = (float) n[3 * c + 2];
-            int shade = Math.round(255 * QuadLighter.calculateShade(nx, ny, nz, false));
+            int shade = Math.round(255 * Math.min(1, QuadLighter.calculateShade(nx, ny, nz, false) + (k > 0 ? sheen(k, nx, nz) : 0)));
             baker.addVertex((float) p[3 * c], (float) p[3 * c + 1], (float) p[3 * c + 2])
                     .setColor(shade, shade, shade, 255)
                     .setUv(sprite.getU((float) uv[2 * c]), sprite.getV((float) uv[2 * c + 1]))

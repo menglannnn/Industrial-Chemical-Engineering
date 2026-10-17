@@ -20,7 +20,12 @@ final class Access {
     static final double RAIL = 1.07, MID_RAIL = .53, TOE = .1, BAR = 1 / 16.0, POSTS = 1.8;
     /** Ladder: rung plane beyond the wall, half width between the rails, rung pitch, cage half width, cage start above the foot, hoop pitch, rails above the landing. */
     static final double STANDOFF = .2, LADDER_HALF = .225, RUNG = .25, CAGE_HALF = .35, CAGE_START = 2.2, HOOP = 1, LANDING = 1.07;
-    /** Collision walls: the handrail's band inside the deck edge, and the rung plane's face beyond the rung line, m. */
+    /**
+     * Collision walls: the handrail's band inside the deck edge (and across a closed end), and the rung plane's face beyond
+     * the rung line, m. The game collides with a shell's solid sampled at the centres of 1/8-block voxels
+     * ({@link ShapeRasterizer#solid}), so a wall a player must meet is at least that thick; a 0.1 m end fence fell between the
+     * centres and let a player walk off a heater's walkway (owner report 2026-10-17).
+     */
     static final double RAIL_BAND = .2, RUNG_FACE = .06;
     /** A fence's collision height over the deck, above the drawn top rail so a player cannot jump it, m. */
     static final double FENCE = 1.4;
@@ -179,16 +184,56 @@ final class Access {
     }
 
     /**
-     * A ladder whose rung plane's middle stands at {@code foot} (x, z; its y unused), facing {@code out} (horizontal, away
-     * from the wall {@code back} behind the rung plane): two rails on brackets to the wall every 2 m, rungs every
+     * A caged ladder as a player meets it: its rung plane's middle at (x, z), facing (outX, outZ) (horizontal, away from
+     * its wall), from its foot {@code base} to its {@code top}; its rung plane stops at {@code rungTop}, the landing of a
+     * ladder walked through (the player steps off between its rails), else its top. Shared by a column's ladders and a
+     * heater's, so both climb and collide alike (owner report 2026-10-17: the heaters' ladders could not be climbed).
+     */
+    record Climb(double x, double z, double outX, double outZ, double base, double top, double rungTop) {
+        /** The climb zone's reach out from the rung plane and half width across it, a little beyond the cage. */
+        static final double REACH = 2 * CAGE_HALF + .1, HALF = CAGE_HALF + .05;
+
+        /** The rung plane a player presses against to climb: from 0.14 m behind the rung line to {@link #RUNG_FACE} in front, between the rails. */
+        boolean rungs(double[] p) {
+            double along = along(p);
+            return p[1] >= base && p[1] <= rungTop && along >= -.14 && along <= RUNG_FACE && Math.abs(across(p)) <= LADDER_HALF;
+        }
+
+        /** Whether a player standing at {@code p} (feet) climbs: in front of the rungs, inside the cage, from just under the foot to the top. */
+        boolean climbable(double[] p) {
+            double along = along(p);
+            return p[1] >= base - .1 && p[1] <= top && along >= -.05 && along <= REACH && Math.abs(across(p)) <= HALF;
+        }
+
+        /** The climb zone's footprint, {out from the rung plane, across}, its four corners. */
+        double[][] footprint() {
+            double[][] corners = new double[4][];
+            int k = 0;
+            for (double o : new double[]{-.05, REACH})
+                for (double t : new double[]{-HALF, HALF}) corners[k++] = new double[]{x + o * outX - t * outZ, z + o * outZ + t * outX};
+            return corners;
+        }
+
+        private double along(double[] p) {
+            return (p[0] - x) * outX + (p[2] - z) * outZ;
+        }
+
+        private double across(double[] p) {
+            return -(p[0] - x) * outZ + (p[2] - z) * outX;
+        }
+    }
+
+    /**
+     * A ladder ({@link Climb}) standing {@code back} out from its wall: two rails on brackets to the wall every 2 m, rungs every
      * {@link #RUNG} up to the landing {@link #LANDING} under the rails' top, and when {@link #caged} a cage of hoops every
      * {@link #HOOP} from {@link #CAGE_START} over the foot, with five vertical bars, to the rails' top. Rungs and hoops
      * (mitred where they bend) end inside the rails, cage bars start inside the first hoop (the last may sit below the
      * rails' top), brackets against the rails and the wall, and the rails stand on a deck or the ground: only the rails'
      * tops and the hoops' bends show their ends.
      */
-    static void ladder(Mesh m, double[] foot, double[] out, double back, double base, double top) {
-        double[] across = {-out[2], 0, out[0]};
+    static void ladder(Mesh m, Climb climb, double back) {
+        double[] foot = {climb.x(), 0, climb.z()}, out = {climb.outX(), 0, climb.outZ()}, across = {-out[2], 0, out[0]};
+        double base = climb.base(), top = climb.top();
         double landing = top - LANDING;
         for (double side : new double[]{-LADDER_HALF, LADDER_HALF}) {
             m.bar(at(foot, out, across, 0, side, base), at(foot, out, across, 0, side, top), BAR, out, END, Material.HANDRAIL);

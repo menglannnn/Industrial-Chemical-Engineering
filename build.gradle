@@ -165,8 +165,9 @@ configurations {
 // while the game window is in the background); jar and build notes: tools/minecraft-mcp-bridge/ (main checkout).
 def mcpControlModJar = 'minecraft-mcp-1.21.1-neoforge-v0.4.7-osguard.jar'
 def prepareMcpControlMod = tasks.register('prepareMcpControlMod', Copy) {
+    def mcpMods = layout.projectDirectory.dir('run/mcp-client/mods').asFile
     from layout.projectDirectory.file("run/mcp-client-mods/${mcpControlModJar}")
-    into layout.projectDirectory.dir('run/mcp-client/mods')
+    into mcpMods
     doFirst {
         def jar = inputs.files.singleFile
         if (!jar.isFile()) throw new GradleException("Copy ${mcpControlModJar} from tools/minecraft-mcp-bridge/ (main checkout) into run/mcp-client-mods/ first.")
@@ -174,8 +175,9 @@ def prepareMcpControlMod = tasks.register('prepareMcpControlMod', Copy) {
         if (digest != 'd71b35aa220c2f62dae36e60dd76402edeee27fdf76bca06c64e9df2560ec4e7') {
             throw new GradleException('Minecraft MCP control mod checksum mismatch')
         }
-        // One bridge jar in the client: drop earlier pinned versions, leave every other mod alone.
-        project.delete(project.fileTree('run/mcp-client/mods') { include 'minecraft-mcp-*.jar'; exclude mcpControlModJar })
+        // One bridge jar in the client: drop earlier pinned versions, leave every other mod alone (plain files: the
+        // configuration cache forbids the project at execution time, and the task reruns whenever the folder changes).
+        mcpMods.listFiles()?.findAll { it.name.startsWith('minecraft-mcp-') && it.name.endsWith('.jar') && it.name != mcpControlModJar }*.delete()
     }
 }
 tasks.matching { it.name == 'runMcpClient' }.configureEach { dependsOn prepareMcpControlMod }

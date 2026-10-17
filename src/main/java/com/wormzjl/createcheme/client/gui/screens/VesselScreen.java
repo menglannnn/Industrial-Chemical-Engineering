@@ -82,7 +82,8 @@ public final class VesselScreen extends Screen {
     private static List<Component> unit(EquipmentShape shape) {
         double d = shape.diameter(), tubes = shape.tangentLength();
         var lines = new ArrayList<Component>();
-        lines.add(Component.translatable(KEY + "kind." + shape.kind().name().toLowerCase(Locale.ROOT)));
+        boolean split = shape.kind() == EquipmentShape.Kind.PUMP && shape.diameter() > ProcessUnit.OH2_MAX + 1e-9;
+        lines.add(Component.translatable(KEY + "kind." + shape.kind().name().toLowerCase(Locale.ROOT) + (split ? ".split" : "")));
         switch (shape.kind()) {
             case EXCHANGER -> {
                 lines.add(Component.translatable(KEY + "shell", size(d)));
@@ -108,7 +109,8 @@ public final class VesselScreen extends Screen {
                 lines.add(Component.translatable(KEY + "displacement", whole(ProcessUnit.displacement(d, (int) tubes)), whole(ProcessUnit.compressorSpeed(d))));
             }
             case VERTICAL_HEATER, CABIN_HEATER -> {
-                lines.add(Component.translatable(KEY + "radiant." + shape.kind().name().toLowerCase(Locale.ROOT), size(d), number(tubes)));
+                int cells = shape.kind() == EquipmentShape.Kind.CABIN_HEATER ? ProcessUnit.cabinCells(tubes) : 1;
+                lines.add(Component.translatable(KEY + "radiant." + shape.kind().name().toLowerCase(Locale.ROOT) + (cells > 1 ? ".twin" : ""), size(d), number(tubes / cells)));
                 lines.add(Component.translatable(KEY + "duty", number(ProcessUnit.heaterDuty(shape.kind(), d, tubes))));
             }
             default -> throw new IllegalStateException(shape.kind() + " is not a unit");

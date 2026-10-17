@@ -59,10 +59,10 @@ public final class EquipmentShellBlock extends BaseEntityBlock {
                 ? EquipmentStructure.collision(shell.key()) : Shapes.block();
     }
 
-    /** A column's ladder is climbed where the entity stands in front of its rungs, inside its cage (not anywhere in its cells). */
+    /** A column's or a heater's ladder is climbed where the entity stands in front of its rungs, inside its cage (not anywhere in its cells); other shapes have none. */
     @Override
     public boolean isLadder(BlockState state, net.minecraft.world.level.LevelReader level, BlockPos position, net.minecraft.world.entity.LivingEntity entity) {
-        if (!(level.getBlockEntity(position) instanceof EquipmentShellBlockEntity shell) || shell.shape() == null || !shell.shape().column()) return false;
+        if (!(level.getBlockEntity(position) instanceof EquipmentShellBlockEntity shell) || shell.shape() == null) return false;
         var origin = shell.origin();
         return ShapeRasterizer.climbable(shell.shape(), entity.getX() - origin.getX(), entity.getY() - origin.getY(), entity.getZ() - origin.getZ());
     }

@@ -60,6 +60,7 @@ public final class CreateChemE {
     private static final ModConfigSpec.IntValue COLUMN_V3_LNN_ITERATIONS;
     private static final ModConfigSpec.IntValue COLUMN_V3_LNN_MILLISECONDS;
     private static final ModConfigSpec.ConfigValue<String> EQUIPMENT_PRIMARY_COLOUR, EQUIPMENT_SECONDARY_COLOUR;
+    private static final ModConfigSpec.DoubleValue EQUIPMENT_SHEEN;
 
     static {
         ModConfigSpec.Builder builder = new ModConfigSpec.Builder();
@@ -186,6 +187,12 @@ public final class CreateChemE {
                 .comment("Secondary colour of new equipment designs as #RRGGBB: skirts, saddles and steelwork.",
                         "Built-in: RAL 7031 blue grey.")
                 .define("secondaryColour", Paint.hex(Paint.DEFAULT.structure()), Paint::isHex);
+        EQUIPMENT_SHEEN = builder
+                .comment("Metallic sheen of round equipment bodies, 0 to 0.4: a fixed highlight baked over their shade (0: none).",
+                        "It is a vertex colour, so it costs nothing per frame and shows under Sodium and Iris shader packs too.",
+                        "A round body seen from the north or south shows a bright band, from the east or west bright rims.",
+                        "Read when the models are baked: restart the client or reload resources (F3+T) after a change.")
+                .defineInRange("metallicSheen", 0.2, 0.0, 0.4);
         builder.pop();
         CONFIG_SPEC = builder.build();
     }
@@ -217,6 +224,11 @@ public final class CreateChemE {
             var server=level.getServer();var dimension=level.dimension();long chunk=event.getChunk().getPos().toLong();
             server.execute(()->com.wormzjl.createcheme.runtime.fluid.FluidWorldAuthority.find(server).ifPresent(world->world.loadedChunk(dimension,chunk)));
         }
+    }
+
+    /** The equipment's metallic sheen, 0 to 0.4 (0: none; default 0.2). */
+    public static float equipmentSheen() {
+        return EQUIPMENT_SHEEN.get().floatValue();
     }
 
     /** The paint of a new equipment design: the config's primary and secondary colours. */

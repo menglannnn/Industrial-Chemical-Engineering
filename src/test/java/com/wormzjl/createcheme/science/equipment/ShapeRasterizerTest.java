@@ -132,8 +132,8 @@ class ShapeRasterizerTest {
             for (var cell : ShapeRasterizer.layout(shape).shell()) {
                 var polygons = ShapeRasterizer.surface(ShapeRasterizer.key(shape, cell.x(), cell.y(), cell.z()));
                 // A cell only a nozzle's largest flange reaches is empty while the nozzle is drawn at its default size; a
-                // drum's fluid node inside its skirt is empty too.
-                assertTrue(!polygons.isEmpty() || reachedByNozzle(shape, cell) || cell.equals(ShapeRasterizer.fluidCell(shape)), shape + " " + cell);
+                // drum's fluid node inside its skirt is empty too, and so is a cell only a ladder's climb zone reaches.
+                assertTrue(!polygons.isEmpty() || reachedByNozzle(shape, cell) || cell.equals(ShapeRasterizer.fluidCell(shape)) || reachedByClimb(shape, cell), shape + " " + cell);
                 for (var polygon : polygons) {
                     assertTrue(polygon.size() >= 3);
                     for (double v : polygon.positions()) assertTrue(v >= 0 && v <= 1, shape + " " + cell + " position " + v);
@@ -274,6 +274,7 @@ class ShapeRasterizerTest {
     @Test
     void nozzlesEndOnBlockFacesWithRoomForAPipe() {
         for (var shape : SHAPES) {
+            ProcessUnitTest.pipesApart(shape);
             var layout = ShapeRasterizer.layout(shape);
             var occupied = new HashSet<ShapeRasterizer.Cell>(layout.shell());
             occupied.addAll(layout.interior());
@@ -549,8 +550,11 @@ class ShapeRasterizerTest {
         assertEquals(EquipmentShape.Role.SIDE, hillside.role());
         assertEquals(drum.axis() + 1, hillside.base()[0], 0);
         assertEquals(4.5, hillside.base()[1], 0);
-        // Two on one place; one beside the bare drum's liquid outlet; one on a saddle; one facing a ground too near.
+        // Two on one place; two on neighbouring rows, their pipes touching (owner rule 2026-10-17); one beside the bare
+        // drum's liquid outlet; one on a saddle; one facing a ground too near.
         assertEquals(List.of(new Clash(1, 0)), drum(3, 4, Orientation.VERTICAL, Heading.NORTH, 2, List.of(new Connection(1, 3, 0), new Connection(1, 3, 0))).clashes());
+        assertEquals(List.of(new Clash(1, 0)), drum(3, 6, Orientation.VERTICAL, Heading.NORTH, 2, List.of(new Connection(1, 3, 0), new Connection(1, 4, 0))).clashes());
+        assertEquals(List.of(), drum(3, 6, Orientation.VERTICAL, Heading.NORTH, 2, List.of(new Connection(1, 3, 0), new Connection(1, 5, 0))).clashes());
         assertEquals(List.of(new Clash(0, Clash.LIQUID)), drum(3, 4, Orientation.VERTICAL, Heading.NORTH, 0, List.of(new Connection(0, 1, 0))).clashes());
         assertTrue(drum(3, 9, Orientation.HORIZONTAL, Heading.NORTH, 2, List.of(new Connection(3, 2, 0))).clashes().contains(new Clash(0, Clash.SADDLE)));
         assertEquals(List.of(new Clash(0, Clash.GROUND)), drum(3, 9, Orientation.HORIZONTAL, Heading.NORTH, 1, List.of(new Connection(3, 5, 0))).clashes());
@@ -699,6 +703,15 @@ class ShapeRasterizerTest {
     private static int axial(ShapeRasterizer.CellKey key) {
         var along = key.shape().transform().direction(new double[]{0, 1, 0});
         return along[0] != 0 ? key.x() : along[1] != 0 ? key.y() : key.z();
+    }
+
+    /** Whether a point of the cell, on a 0.02 m grid, is where a ladder is climbed. */
+    private static boolean reachedByClimb(EquipmentShape shape, ShapeRasterizer.Cell cell) {
+        for (int i = 0; i <= 50; i++)
+            for (int j = 0; j <= 50; j++)
+                for (double y : new double[]{.02, .5, .98})
+                    if (ShapeRasterizer.climbable(shape, cell.x() + i / 50.0, cell.y() + y, cell.z() + j / 50.0)) return true;
+        return false;
     }
 
     private static boolean reachedByNozzle(EquipmentShape shape, ShapeRasterizer.Cell cell) {

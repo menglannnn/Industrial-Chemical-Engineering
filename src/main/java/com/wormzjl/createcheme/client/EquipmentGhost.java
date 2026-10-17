@@ -13,6 +13,7 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.renderer.LightTexture;
 import net.minecraft.client.renderer.RenderType;
+import net.minecraft.client.renderer.texture.OverlayTexture;
 import net.minecraft.client.renderer.texture.TextureAtlasSprite;
 import net.minecraft.core.BlockPos;
 import net.minecraft.resources.ResourceLocation;
@@ -38,6 +39,9 @@ import java.util.Objects;
  * where it would be built, and an open constructor screen shows its draft instead. The shell is drawn translucent on the
  * painted plate sprite in the design's paint (its other parts light grey); the cells the focused ghost (the screen's draft, or the aimed constructor's design) cannot take
  * are outlined in red through Catnip's outliner. Client only; the server checks again before it builds.
+ * <p>The shell is drawn as translucent entity geometry on the block atlas ({@link #TYPE}), as Catnip draws its outlines:
+ * the chunk type {@code RenderType.translucent()} drawn from a level-stage event is lost under an Iris shader pack, whose
+ * terrain programs only take chunk geometry (owner report 2026-10-17, the preview vanished with shaders).
  */
 @EventBusSubscriber(modid = CreateChemE.MOD_ID, value = Dist.CLIENT)
 public final class EquipmentGhost {
@@ -52,6 +56,7 @@ public final class EquipmentGhost {
     /** The painted shell sprite every ghost samples, its tint for unpainted parts, and its opacity (0-255). */
     private static final ResourceLocation PLATE = ResourceLocation.fromNamespaceAndPath(CreateChemE.MOD_ID, "block/painted_shell");
     private static final int UNPAINTED = 0xC8C8C8, ALPHA = 128;
+    private static final RenderType TYPE = RenderType.entityTranslucentCull(InventoryMenu.BLOCK_ATLAS);
     /** Render thread only, like everything here. */
     private static List<Ghost> shown = List.of();
     private static @Nullable EquipmentStructure.Vessel focused;
@@ -157,7 +162,7 @@ public final class EquipmentGhost {
         var camera = event.getCamera().getPosition();
         var pose = event.getPoseStack();
         var buffers = mc.renderBuffers().bufferSource();
-        var consumer = buffers.getBuffer(RenderType.translucent());
+        var consumer = buffers.getBuffer(TYPE);
         for (var ghost : shown) {
             var vessel = ghost.vessel();
             var vertices = mesh(vessel.shape(), sprite).vertices;
@@ -169,11 +174,11 @@ public final class EquipmentGhost {
             for (int i = 0; i < vertices.length; i += Mesh.STRIDE) {
                 int channel = (int) vertices[i + 8], tint = tints[channel < 0 ? 2 : channel];
                 consumer.addVertex(last, vertices[i], vertices[i + 1], vertices[i + 2]).setColor(tint >> 16 & 0xFF, tint >> 8 & 0xFF, tint & 0xFF, ALPHA)
-                        .setUv(vertices[i + 3], vertices[i + 4]).setLight(LightTexture.FULL_BRIGHT).setNormal(last, vertices[i + 5], vertices[i + 6], vertices[i + 7]);
+                        .setUv(vertices[i + 3], vertices[i + 4]).setOverlay(OverlayTexture.NO_OVERLAY).setLight(LightTexture.FULL_BRIGHT).setNormal(last, vertices[i + 5], vertices[i + 6], vertices[i + 7]);
             }
             pose.popPose();
         }
-        buffers.endBatch(RenderType.translucent());
+        buffers.endBatch(TYPE);
     }
 
     private static ShapeRasterizer.Layout layout(EquipmentShape shape) {

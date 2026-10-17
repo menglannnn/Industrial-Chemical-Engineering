@@ -141,13 +141,14 @@ public record EquipmentShape(Kind kind, double diameter, double tangentLength, O
      * What a nozzle is for, and the fluid port its position makes it (owner decision 2026-10-16: fixed class by position):
      * a drum's, a column's, then a unit's (tube side and shell side of an exchanger or a kettle's channel, an air cooler's
      * process line, an ejector's suction, motive steam and discharge, a pump's or a compressor's suction and discharge, a
-     * heater's process line and fuel gas).
+     * heater's convection and radiant coils' inlets and outlets and its fuel gas).
      */
     public enum Role {
         VAPOUR_OUTLET(PortClass.VAPOUR), SIDE(PortClass.BULK), LIQUID_OUTLET(PortClass.LIQUID), BOOT_DRAIN(PortClass.LIQUID), FEED(PortClass.BULK), REFLUX(PortClass.BULK),
         DRAW(PortClass.BULK), PUMPAROUND_DRAW(PortClass.BULK), RETURN(PortClass.BULK), STEAM(PortClass.BULK), BOTTOMS(PortClass.LIQUID),
         VAPOUR_RETURN(PortClass.BULK), TUBE_INLET(PortClass.BULK), TUBE_OUTLET(PortClass.BULK), SHELL_INLET(PortClass.BULK), SHELL_OUTLET(PortClass.BULK),
-        PROCESS_INLET(PortClass.BULK), PROCESS_OUTLET(PortClass.BULK), SUCTION(PortClass.BULK), MOTIVE(PortClass.BULK), DISCHARGE(PortClass.BULK), FUEL(PortClass.BULK);
+        PROCESS_INLET(PortClass.BULK), PROCESS_OUTLET(PortClass.BULK), SUCTION(PortClass.BULK), MOTIVE(PortClass.BULK), DISCHARGE(PortClass.BULK), FUEL(PortClass.BULK),
+        CONVECTION_INLET(PortClass.BULK), CONVECTION_OUTLET(PortClass.BULK), RADIANT_INLET(PortClass.BULK), RADIANT_OUTLET(PortClass.BULK);
 
         public final PortClass port;
 
@@ -184,6 +185,23 @@ public record EquipmentShape(Kind kind, double diameter, double tangentLength, O
             var f = base.clone();
             f[axis] += sign * length;
             return f;
+        }
+
+        /** The block beyond the flange face, where the connected pipe stands, in frame cells. */
+        public int[] pipeBlock() {
+            var f = face();
+            var block = new int[3];
+            for (int i = 0; i < 3; i++) block[i] = (int) Math.floor(f[i] + (i == axis ? .5 * sign : 0));
+            return block;
+        }
+
+        /**
+         * Whether this nozzle's pipe block and {@code other}'s touch, by a face, an edge or a corner. Pipes in blocks that
+         * share a face join, so every pipe keeps one free block between it and the next (owner rule 2026-10-17).
+         */
+        public boolean crowds(Nozzle other) {
+            int[] p = pipeBlock(), q = other.pipeBlock();
+            return Math.abs(p[0] - q[0]) < 2 && Math.abs(p[1] - q[1]) < 2 && Math.abs(p[2] - q[2]) < 2;
         }
     }
 
@@ -737,7 +755,7 @@ public record EquipmentShape(Kind kind, double diameter, double tangentLength, O
 
     /**
      * Where the side connections cannot be built as placed: one overlapping another or a fixed outlet with the largest
-     * pipe's flange (one block: nozzles on different block lines never meet), one on a lying drum's saddle, its manway
+     * pipe's flange (one block: nozzles on different block lines never meet) or crowding its pipe ({@link Nozzle#crowds}), one on a lying drum's saddle, its manway
      * or its boot, or one facing down with no cell for a pipe above the ground. Building refuses a drum with any; the constructor's screen
      * shows the first.
      */
@@ -753,7 +771,7 @@ public record EquipmentShape(Kind kind, double diameter, double tangentLength, O
         for (int i = fixed; i < all.size(); i++) {
             var box = reach(all.get(i));
             for (int j = 0; j < i; j++)
-                if (overlap(box, reach(all.get(j))))
+                if (overlap(box, reach(all.get(j))) || all.get(i).crowds(all.get(j)))
                     out.add(new Clash(i - fixed, j >= fixed ? j - fixed : switch (all.get(j).role()) {
                         case VAPOUR_OUTLET -> Clash.VAPOUR;
                         case BOOT_DRAIN -> Clash.BOOT;

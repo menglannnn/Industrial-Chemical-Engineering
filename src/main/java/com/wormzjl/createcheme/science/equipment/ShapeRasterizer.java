@@ -201,9 +201,9 @@ public final class ShapeRasterizer {
 
     /** Whether a box-local point lies where one of a column's or a heater's ladders is climbed. */
     public static boolean climbable(EquipmentShape shape, double x, double y, double z) {
-        var g = geometry(shape);
-        if (g.column != null) return g.column.climbable(g.transform.local(new double[]{x, y, z}));
-        return g.unit != null && g.unit.climbable(g.transform.local(new double[]{x, y, z}));
+        var p = geometry(shape).transform.local(new double[]{x, y, z});
+        for (var climb : geometry(shape).climbs()) if (climb.climbable(p)) return true;
+        return false;
     }
 
     /** A box column (x, z) of a standing vessel as one number. */
@@ -905,8 +905,8 @@ public final class ShapeRasterizer {
         }
 
         /**
-         * Shell cells: every cell a facet or a nozzle reaches, and a drum's fluid node, which carries its identity even where
-         * nothing is drawn. The other cells inside the vessel are interior, a hollow skirt's too: its collision stays a
+         * Shell cells: every cell a facet or a nozzle reaches, a drum's fluid node, which carries its identity even where
+         * nothing is drawn, and every cell a ladder's climb zone reaches ({@link #climbCells}). The other cells inside the vessel are interior, a hollow skirt's too: its collision stays a
          * full cylinder, so nothing spawns or is placed inside it, and the cells showing its inside are shell cells.
          */
         private Layout buildLayout() {
@@ -924,6 +924,7 @@ public final class ShapeRasterizer {
             var cells = new HashSet<>(facetsByCell.keySet());
             for (var nozzle : nozzleCells) cells.addAll(nozzle);
             if (fluidCell != null) cells.add(fluidCell);
+            climbCells(cells);
             var shellCells = new ArrayList<Cell>();
             var interiorCells = new ArrayList<Cell>();
             for (int x = 0; x < sx; x++)
@@ -937,6 +938,61 @@ public final class ShapeRasterizer {
                         }
                     }
             return new Layout(shape, shellCells, interiorCells);
+        }
+
+        /** A column's or a heater's ladders; none on other shapes. */
+        List<Access.Climb> climbs() {
+            return column != null ? column.climbs() : unit != null ? unit.ladders() : List.of();
+        }
+
+        /**
+         * The cells a ladder's climb zone reaches: Minecraft asks the block at a player's feet whether it is a ladder, so
+         * every cell where a climbing player can stand is a shell cell, drawn or not (below a cage nothing is drawn in
+         * front of the rungs). The footprint is the zone's rectangle; a cell counts when the rectangle meets its square.
+         */
+        private void climbCells(Set<Cell> out) {
+            int sx = shape.sizeX(), sy = shape.sizeY(), sz = shape.sizeZ();
+            for (var climb : climbs()) {
+                var corners = climb.footprint();
+                double[][] box = new double[4][];
+                double x0 = Double.MAX_VALUE, x1 = -Double.MAX_VALUE, z0 = Double.MAX_VALUE, z1 = -Double.MAX_VALUE;
+                for (int k = 0; k < 4; k++) {
+                    box[k] = transform.point(new double[]{corners[k][0], 0, corners[k][1]});
+                    x0 = Math.min(x0, box[k][0]);
+                    x1 = Math.max(x1, box[k][0]);
+                    z0 = Math.min(z0, box[k][2]);
+                    z1 = Math.max(z1, box[k][2]);
+                }
+                double y0 = transform.point(new double[]{climb.x(), climb.base() - .1, climb.z()})[1], y1 = transform.point(new double[]{climb.x(), climb.top(), climb.z()})[1];
+                for (int x = Math.max(0, floor(x0)); x < Math.min(sx, ceil(x1)); x++)
+                    for (int z = Math.max(0, floor(z0)); z < Math.min(sz, ceil(z1)); z++) {
+                        if (!meets(box, x, z)) continue;
+                        for (int y = Math.max(0, floor(Math.min(y0, y1))); y < Math.min(sy, ceil(Math.max(y0, y1))); y++) out.add(new Cell(x, y, z));
+                    }
+            }
+        }
+
+        /** Whether the convex quadrilateral {@code q} (box x, z in [0] and [2], in order round it) meets the unit square at (x, z): separating axes. */
+        private static boolean meets(double[][] q, int x, int z) {
+            double[][] square = {{x, z}, {x + 1, z}, {x + 1, z + 1}, {x, z + 1}};
+            double[][] quad = new double[4][];
+            int[] order = {0, 1, 3, 2};
+            for (int k = 0; k < 4; k++) quad[k] = new double[]{q[order[k]][0], q[order[k]][2]};
+            for (var polygon : new double[][][]{square, quad})
+                for (int k = 0; k < 4; k++) {
+                    double nx = polygon[(k + 1) % 4][1] - polygon[k][1], nz = polygon[k][0] - polygon[(k + 1) % 4][0];
+                    double a0 = Double.MAX_VALUE, a1 = -Double.MAX_VALUE, b0 = Double.MAX_VALUE, b1 = -Double.MAX_VALUE;
+                    for (var p : square) {
+                        a0 = Math.min(a0, p[0] * nx + p[1] * nz);
+                        a1 = Math.max(a1, p[0] * nx + p[1] * nz);
+                    }
+                    for (var p : quad) {
+                        b0 = Math.min(b0, p[0] * nx + p[1] * nz);
+                        b1 = Math.max(b1, p[0] * nx + p[1] * nz);
+                    }
+                    if (a1 <= b0 + 1e-9 || b1 <= a0 + 1e-9) return false;
+                }
+            return true;
         }
 
         List<Facet> facetsIn(Cell cell) {

@@ -77,6 +77,7 @@ class ColumnStructureTest {
     @Test
     void laddersRiseFromTheGroundToEachDeckAndAlternate() {
         for (var shape : COLUMNS) {
+            ProcessUnitTest.climbedFromShellCells(shape, new ColumnStructure(shape).climbs());
             var plan = ColumnStructure.plan(shape);
             var ladders = plan.ladders();
             var platforms = plan.platforms();
@@ -161,7 +162,12 @@ class ColumnStructureTest {
      */
     @Test
     void everyNozzleLeavesAFreeBlockForItsPipe() {
-        for (var shape : COLUMNS) {
+        // A crowded design (draws and pumparounds on neighbouring trays) keeps its pipes apart too.
+        var crowded = EquipmentShape.column(4, new ColumnTrays(30, 15, List.of(8, 9, 20, 21), List.of(31),
+                List.of(new ColumnTrays.Pumparound(11, 10), new ColumnTrays.Pumparound(23, 22))), Heading.NORTH, 3);
+        assertEquals(14, crowded.nozzles().size());
+        for (var shape : java.util.stream.Stream.concat(COLUMNS.stream(), java.util.stream.Stream.of(crowded)).toList()) {
+            ProcessUnitTest.pipesApart(shape);
             var layout = ShapeRasterizer.layout(shape);
             var occupied = new java.util.HashSet<ShapeRasterizer.Cell>(layout.shell());
             occupied.addAll(layout.interior());

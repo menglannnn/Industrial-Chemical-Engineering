@@ -36,10 +36,12 @@ class ProcessUnitTest {
             }
         }
         shapes.add(EquipmentShape.unit(Kind.PUMP, .25, 1, Heading.EAST, 0));
+        shapes.add(EquipmentShape.unit(Kind.PUMP, .45, 1, Heading.SOUTH, 0));
         shapes.add(EquipmentShape.unit(Kind.COMPRESSOR, .15, 6, Heading.SOUTH, 3));
         shapes.add(EquipmentShape.unit(Kind.COMPRESSOR, .45, 4, Heading.WEST, ProcessUnit.minSupport(Kind.COMPRESSOR, .45, 4)));
         shapes.add(EquipmentShape.unit(Kind.VERTICAL_HEATER, 4.5, 9, Heading.EAST, 5));
         shapes.add(EquipmentShape.unit(Kind.CABIN_HEATER, 7, 20, Heading.WEST, 4));
+        shapes.add(EquipmentShape.unit(Kind.CABIN_HEATER, 4, 25, Heading.SOUTH, 3));
         shapes.add(EquipmentShape.unit(Kind.EXCHANGER, 1.25, 7, Heading.EAST, 5));
         shapes.add(EquipmentShape.unit(Kind.EJECTOR, .7, 1, Heading.SOUTH, 9));
         // Air cooler banks (owner request 2026-10-16): every count in parallel and in series of the smallest bay, the
@@ -83,16 +85,18 @@ class ProcessUnitTest {
                 // foundation too low for the discharge bottles; a vertical heater too slender or its floor too low; a cabin off
                 // its 1 m grid or too long.
                 () -> EquipmentShape.unit(Kind.PUMP, .12, 1, Heading.NORTH, 0),
-                () -> EquipmentShape.unit(Kind.PUMP, .45, 1, Heading.NORTH, 0),
+                () -> EquipmentShape.unit(Kind.PUMP, .8, 1, Heading.NORTH, 0),
                 () -> EquipmentShape.unit(Kind.PUMP, .1, 1, Heading.NORTH, 1),
                 () -> EquipmentShape.unit(Kind.COMPRESSOR, .3, 3, Heading.NORTH, 3),
-                () -> EquipmentShape.unit(Kind.COMPRESSOR, .85, 2, Heading.NORTH, 3),
+                () -> EquipmentShape.unit(Kind.COMPRESSOR, 1.25, 2, Heading.NORTH, 3),
+                () -> EquipmentShape.unit(Kind.COMPRESSOR, .45, 12, Heading.NORTH, 3),
+                () -> EquipmentShape.unit(Kind.VERTICAL_HEATER, 10, 21, Heading.NORTH, 3),
                 () -> EquipmentShape.unit(Kind.COMPRESSOR, .8, 6, Heading.NORTH, ProcessUnit.minSupport(Kind.COMPRESSOR, .8, 6) - 1),
                 () -> EquipmentShape.unit(Kind.VERTICAL_HEATER, 4, 12, Heading.NORTH, 3),
                 () -> EquipmentShape.unit(Kind.VERTICAL_HEATER, 4, 5, Heading.NORTH, 3),
                 () -> EquipmentShape.unit(Kind.VERTICAL_HEATER, 4, 8, Heading.NORTH, 2),
                 () -> EquipmentShape.unit(Kind.CABIN_HEATER, 4.5, 8, Heading.NORTH, 3),
-                () -> EquipmentShape.unit(Kind.CABIN_HEATER, 6, 41, Heading.NORTH, 3)))
+                () -> EquipmentShape.unit(Kind.CABIN_HEATER, 6, 49, Heading.NORTH, 3)))
             assertThrows(IllegalArgumentException.class, bad::run);
         assertEquals(.3, ProcessUnit.snap(Kind.EJECTOR, .1 + .1 + .1), 0);
         assertEquals(2.5, ProcessUnit.snap(Kind.EXCHANGER, 3), 0);
@@ -129,25 +133,34 @@ class ProcessUnitTest {
         }
         assertEquals(3, EquipmentShape.unit(Kind.EJECTOR, .25, 1, Heading.NORTH, 1).sizeX());
         // Machines and heaters (MACHINES_HEATERS_PLAN.md): a pump's suction one size up; liquid at 3 m/s in its discharge
-        // (85 m³/h at 0.1 m), 33 kW at a 100 m head and 70 %, a TEFC motor of about 0.46 m; four 0.4 m cylinders sweep about
-        // 8,000 m³/h; a vertical heater of D 4 × 8 m about 6.3 MW, a cabin of 6 × 12 m about 13.5 MW and of 12 × 40 m 95.6 MW;
-        // radiant heights from 1.5 to 2.75 diameters; a heater's floor 3 m up; a pump at grade.
+        // (85 m³/h at 0.1 m), 33 kW at a 100 m head and 70 %, a TEFC motor of about 0.46 m; four 0.4 m cylinders at a 4 m/s
+        // mean piston speed (600 rpm on a 0.2 m stroke) sweep about 7,200 m³/h, a 1.2 m bore runs about 300 rpm
+        // (MACHINES_SCALE_RESEARCH.md); a vertical heater of D 4 × 8 m about 6.3 MW, a cabin of 6 × 12 m about 13.5 MW, of
+        // 12 × 24 m 56.4 MW and a twin cell twice that at 48 m (12 × 40 m: two cells of 20 m, 93.1 MW); radiant heights from 1.5 to 2.75 diameters and 20 m at most; a heater's floor 3 m up; a pump at
+        // grade.
         assertEquals(.15, ProcessUnit.pumpSuction(.1), 0);
         assertEquals(.55, ProcessUnit.pumpSuction(.4), 0);
+        assertEquals(.95, ProcessUnit.pumpSuction(.75), 0);
+        assertEquals(4771, ProcessUnit.pumpFlow(.75), 1);
         assertEquals(84.8, ProcessUnit.pumpFlow(.1), .1);
         assertEquals(33.0, ProcessUnit.pumpPower(.1), .1);
         assertEquals(.46, ProcessUnit.motorDiameter(ProcessUnit.pumpPower(.1)), .01);
-        assertEquals(7962, ProcessUnit.displacement(.4, 4), 1);
+        assertEquals(7238, ProcessUnit.displacement(.4, 4), 1);
+        assertEquals(300, ProcessUnit.compressorSpeed(1.2), 1e-9);
         assertEquals(6.29, ProcessUnit.heaterDuty(Kind.VERTICAL_HEATER, 4, 8), .01);
         assertEquals(13.5, ProcessUnit.heaterDuty(Kind.CABIN_HEATER, 6, 12), .05);
-        assertEquals(95.6, ProcessUnit.heaterDuty(Kind.CABIN_HEATER, 12, 40), .05);
+        assertEquals(93.1, ProcessUnit.heaterDuty(Kind.CABIN_HEATER, 12, 40), .05);
+        assertEquals(2 * ProcessUnit.heaterDuty(Kind.CABIN_HEATER, 12, 24), ProcessUnit.heaterDuty(Kind.CABIN_HEATER, 12, 48), 1e-9);
+        assertEquals(List.of(1, 2), List.of(ProcessUnit.cabinCells(24), ProcessUnit.cabinCells(25)));
+        assertEquals(48, ProcessUnit.maxLength(Kind.CABIN_HEATER, 12));
         assertEquals(6, ProcessUnit.minLength(Kind.VERTICAL_HEATER, 4));
         assertEquals(11, ProcessUnit.maxLength(Kind.VERTICAL_HEATER, 4));
+        assertEquals(20, ProcessUnit.maxLength(Kind.VERTICAL_HEATER, 12));
         assertEquals(3, ProcessUnit.minSupport(Kind.VERTICAL_HEATER, 4, 8));
         assertEquals(0, ProcessUnit.maxSupport(Kind.PUMP));
         // A compressor's lowest foundation keeps its discharge bottles 0.3 m and its motor 0.1 m over grade, and is the
         // lowest that does.
-        for (double b = .15; b <= .8 + 1e-9; b += .05)
+        for (double b = .15; b <= ProcessUnit.maxDiameter(Kind.COMPRESSOR) + 1e-9; b += .05)
             for (int throwsCount = 2; throwsCount <= ProcessUnit.MAX_THROWS; throwsCount += 2) {
                 double bore = ProcessUnit.snap(Kind.COMPRESSOR, b);
                 var c = ProcessUnit.Compressor.of(bore, throwsCount);
@@ -184,8 +197,10 @@ class ProcessUnitTest {
         // Tube side in at the channel's bottom and out at its top; a condensing shell side in on top and out underneath;
         // a kettle fed underneath, its vapour up, its product over the weir at the back; an air cooler's process in on top
         // of its inlet header and out underneath; an ejector's suction at the front, motive steam on top, discharge down; a
-        // pump's suction at the front along its shaft and discharge up; a compressor's gas in on top of each side's suction
-        // bottle and out at the front of each discharge bottle; a heater's process lines and fuel gas towards the front.
+        // pump's suction at the front along its shaft and discharge up, an axially split one's suction to your right (-x)
+        // and discharge to your left (owner decision 2026-10-17); a compressor's gas in on top of its suction header and
+        // out at the front of its discharge header (one each, owner request 2026-10-17); a heater's convection and radiant
+        // coils' inlets and outlets and its fuel gas towards the front.
         var expected = Map.of(
                 Kind.EXCHANGER, Map.of(Role.TUBE_INLET, "1-", Role.TUBE_OUTLET, "1+", Role.SHELL_INLET, "1+", Role.SHELL_OUTLET, "1-"),
                 Kind.KETTLE, Map.of(Role.TUBE_INLET, "1+", Role.TUBE_OUTLET, "1-", Role.FEED, "1-", Role.VAPOUR_OUTLET, "1+", Role.LIQUID_OUTLET, "2+"),
@@ -193,19 +208,35 @@ class ProcessUnitTest {
                 Kind.EJECTOR, Map.of(Role.SUCTION, "2-", Role.MOTIVE, "1+", Role.DISCHARGE, "1-"),
                 Kind.PUMP, Map.of(Role.SUCTION, "2-", Role.DISCHARGE, "1+"),
                 Kind.COMPRESSOR, Map.of(Role.SUCTION, "1+", Role.DISCHARGE, "2-"),
-                Kind.VERTICAL_HEATER, Map.of(Role.PROCESS_INLET, "2-", Role.PROCESS_OUTLET, "2-", Role.FUEL, "2-"),
-                Kind.CABIN_HEATER, Map.of(Role.PROCESS_INLET, "2-", Role.PROCESS_OUTLET, "2-", Role.FUEL, "2-"));
+                Kind.VERTICAL_HEATER, Map.of(Role.CONVECTION_INLET, "2-", Role.CONVECTION_OUTLET, "2-", Role.RADIANT_INLET, "2-", Role.RADIANT_OUTLET, "2-", Role.FUEL, "2-"),
+                Kind.CABIN_HEATER, Map.of(Role.CONVECTION_INLET, "2-", Role.CONVECTION_OUTLET, "2-", Role.RADIANT_INLET, "2-", Role.RADIANT_OUTLET, "2-", Role.FUEL, "2-"));
         for (var shape : everySize()) {
-            var sides = expected.get(shape.kind());
+            var sides = shape.kind() == Kind.PUMP && shape.diameter() > ProcessUnit.OH2_MAX ? Map.of(Role.SUCTION, "0-", Role.DISCHARGE, "0+") : expected.get(shape.kind());
             var nozzles = shape.nozzles();
             assertEquals(sides.keySet(), new HashSet<>(nozzles.stream().map(EquipmentShape.Nozzle::role).toList()), shape.toString());
-            // A compressor has a suction and a discharge on each side.
-            assertEquals(shape.kind() == Kind.COMPRESSOR ? 4 : sides.size(), nozzles.size(), shape.toString());
+            assertEquals(sides.size(), nozzles.size(), shape.toString());
             for (var nozzle : nozzles) {
                 assertEquals(sides.get(nozzle.role()), nozzle.axis() + (nozzle.sign() > 0 ? "+" : "-"), shape + " " + nozzle.role());
                 assertTrue(nozzle.defaultOd() > 0 && nozzle.defaultOd() <= nozzle.maxOd(), shape + " " + nozzle.role());
             }
         }
+    }
+
+    /**
+     * Owner rule 2026-10-17 ("piping connection should have 1 block spacing between them to prevent misconnection"):
+     * pipes in blocks that share a face join, so no two of a shape's pipe blocks touch, by a face, an edge or a corner.
+     */
+    static void pipesApart(EquipmentShape shape) {
+        var ports = ShapeRasterizer.ports(shape);
+        for (int i = 0; i < ports.size(); i++)
+            for (int j = i + 1; j < ports.size(); j++) {
+                var p = ports.get(i);
+                var q = ports.get(j);
+                int dx = Math.abs(p.cell().x() + p.dx() - q.cell().x() - q.dx()), dy = Math.abs(p.cell().y() + p.dy() - q.cell().y() - q.dy()),
+                        dz = Math.abs(p.cell().z() + p.dz() - q.cell().z() - q.dz());
+                assertTrue(Math.max(dx, Math.max(dy, dz)) >= 2, shape + ": the pipes of " + shape.nozzles().get(p.nozzle()).role() + " and "
+                        + shape.nozzles().get(q.nozzle()).role() + " touch");
+            }
     }
 
     @Test
@@ -214,7 +245,6 @@ class ProcessUnitTest {
             var layout = ShapeRasterizer.layout(shape);
             var occupied = new HashSet<ShapeRasterizer.Cell>(layout.shell());
             occupied.addAll(layout.interior());
-            var pipes = new HashSet<ShapeRasterizer.Cell>();
             var ports = ShapeRasterizer.ports(shape);
             assertEquals(shape.nozzles().size(), ports.size(), shape.toString());
             for (var port : ports) {
@@ -223,8 +253,8 @@ class ProcessUnitTest {
                 assertTrue(occupied.contains(port.cell()), shape + " " + role);
                 assertFalse(occupied.contains(pipe), shape + " " + role + ": no room for a pipe at " + pipe);
                 assertTrue(pipe.y() >= 0, shape + " " + role + " pipe under the ground");
-                assertTrue(pipes.add(pipe), shape + " " + role + " shares its pipe's block");
             }
+            pipesApart(shape);
             // Flanges at their largest stand clear of each other.
             var nozzles = shape.nozzles();
             for (int i = 0; i < nozzles.size(); i++)
@@ -316,10 +346,12 @@ class ProcessUnitTest {
     void heatersCarryWalkableDecksAndClimbableLadders() {
         // Owner feedback 2026-10-17 (MACHINES_HEATERS_PLAN.md, API 560 12.4.1): every deck is walked on with head room over
         // it; every ladder starts on a deck or the ground, is climbed in front of its rungs and pressed against at them; one
-        // walked through is passed between its rails over its landing.
+        // walked through is passed between its rails over its landing. Owner report 2026-10-17 ("ladder on both furnace are
+        // not functional"): a player pressing the rungs stands in a shell cell all the way up, so Minecraft asks the shell.
         var shapes = List.of(EquipmentShape.unit(Kind.VERTICAL_HEATER, 2.5, 4, Heading.NORTH, 3), EquipmentShape.unit(Kind.VERTICAL_HEATER, 4, 9, Heading.EAST, 3),
-                EquipmentShape.unit(Kind.VERTICAL_HEATER, 10, 27, Heading.SOUTH, 3), EquipmentShape.unit(Kind.CABIN_HEATER, 4, 6, Heading.NORTH, 3),
-                EquipmentShape.unit(Kind.CABIN_HEATER, 6, 12, Heading.WEST, 3), EquipmentShape.unit(Kind.CABIN_HEATER, 12, 40, Heading.NORTH, 4));
+                EquipmentShape.unit(Kind.VERTICAL_HEATER, 12, 20, Heading.SOUTH, 3), EquipmentShape.unit(Kind.CABIN_HEATER, 4, 6, Heading.NORTH, 3),
+                EquipmentShape.unit(Kind.CABIN_HEATER, 6, 12, Heading.WEST, 3), EquipmentShape.unit(Kind.CABIN_HEATER, 12, 40, Heading.NORTH, 4),
+                EquipmentShape.unit(Kind.CABIN_HEATER, 4, 25, Heading.EAST, 3));
         for (var shape : shapes) {
             var unit = ProcessUnit.of(shape);
             var starts = new HashSet<Double>(List.of(0.0));
@@ -331,15 +363,60 @@ class ProcessUnitTest {
                 starts.add(deck.level() + Access.DECK);
             }
             for (var l : unit.ladders()) {
-                assertTrue(starts.contains(l[4]), shape + " a climb from " + l[4] + " starts on a deck or the ground");
-                double y = (l[4] + l[6]) / 2;
-                assertTrue(climbable(shape, new double[]{l[0] + .3 * l[2], y, l[1] + .3 * l[3]}), shape + " climbable in front of the rungs at " + y);
-                assertFalse(climbable(shape, new double[]{l[0] + 1.5 * l[2], y, l[1] + 1.5 * l[3]}), shape + " not climbable outside the cage");
-                assertTrue(in(shape, new double[]{l[0] - .04 * l[2], y, l[1] - .04 * l[3]}), shape + " the rung plane is pressed against to climb");
-                if (l[6] < l[5]) assertFalse(in(shape, new double[]{l[0], l[6] + .6, l[1]}), shape + " walked through over its landing");
+                assertTrue(starts.contains(l.base()), shape + " a climb from " + l.base() + " starts on a deck or the ground");
+                double y = (l.base() + l.rungTop()) / 2;
+                assertTrue(climbable(shape, new double[]{l.x() + .3 * l.outX(), y, l.z() + .3 * l.outZ()}), shape + " climbable in front of the rungs at " + y);
+                assertFalse(climbable(shape, new double[]{l.x() + 1.5 * l.outX(), y, l.z() + 1.5 * l.outZ()}), shape + " not climbable outside the cage");
+                assertTrue(in(shape, new double[]{l.x() - .04 * l.outX(), y, l.z() - .04 * l.outZ()}), shape + " the rung plane is pressed against to climb");
+                if (l.rungTop() < l.top()) assertFalse(in(shape, new double[]{l.x(), l.rungTop() + .6, l.z()}), shape + " walked through over its landing");
             }
+            climbedFromShellCells(shape, unit.ladders());
+            stoppedAtClosedEnds(shape, unit.decks());
         }
         assertTrue(ProcessUnit.of(EquipmentShape.unit(Kind.CABIN_HEATER, 6, 12, Heading.WEST, 3)).decks().size() >= 6);
+    }
+
+    /**
+     * A player walking off a deck's closed end meets the game's collision there (owner report 2026-10-17, "box furnace
+     * walkway end hitbox is not working"): some 1/8-block voxel, solid at its centre, lies in the end's rail band across the
+     * player's width from knee to chest height.
+     */
+    static void stoppedAtClosedEnds(EquipmentShape shape, List<ProcessUnit.Deck> decks) {
+        for (var d : decks)
+            for (int e = 0; e < 2; e++) {
+                if (!(e == 0 ? d.closedStart() : d.closedEnd())) continue;
+                double len = d.run().length(), from = e == 0 ? 0 : len - Access.RAIL_BAND, off = (Access.GAP + d.width() - Access.RAIL_BAND) / 2, y = d.level() + Access.DECK;
+                // The box round the band's eight corners (a round deck's band is curved), in the shape's box coordinates.
+                double[] p = {Double.MAX_VALUE, Double.MAX_VALUE, Double.MAX_VALUE}, q = {-Double.MAX_VALUE, -Double.MAX_VALUE, -Double.MAX_VALUE};
+                for (double s : new double[]{from, from + Access.RAIL_BAND})
+                    for (double o : new double[]{off - .3, off + .3})
+                        for (double h : new double[]{y + .3, y + 1.2}) {
+                            var c = shape.transform().point(d.run().at(s, o, h));
+                            for (int i = 0; i < 3; i++) {
+                                p[i] = Math.min(p[i], c[i]);
+                                q[i] = Math.max(q[i], c[i]);
+                            }
+                        }
+                int met = 0;
+                for (int i = (int) Math.ceil(Math.min(p[0], q[0]) * 8 - .5); (i + .5) / 8 <= Math.max(p[0], q[0]); i++)
+                    for (int j = (int) Math.ceil(Math.min(p[1], q[1]) * 8 - .5); (j + .5) / 8 <= Math.max(p[1], q[1]); j++)
+                        for (int k = (int) Math.ceil(Math.min(p[2], q[2]) * 8 - .5); (k + .5) / 8 <= Math.max(p[2], q[2]); k++)
+                            if (ShapeRasterizer.inside(shape, (i + .5) / 8, (j + .5) / 8, (k + .5) / 8)) met++;
+                assertTrue(met > 0, shape + " the deck at " + d.level() + " stops a player at its closed end " + e);
+            }
+    }
+
+    /** A player pressing a ladder's rungs (centre {@link Access#RUNG_FACE} + 0.3 m out) stands in a shell cell from its foot to its landing. */
+    static void climbedFromShellCells(EquipmentShape shape, List<Access.Climb> climbs) {
+        var shell = new HashSet<>(ShapeRasterizer.layout(shape).shell());
+        for (var l : climbs)
+            for (double y = l.base() + .05; y < l.rungTop(); y += .25) {
+                double out = Access.RUNG_FACE + .3;
+                var b = shape.transform().point(new double[]{l.x() + out * l.outX(), y, l.z() + out * l.outZ()});
+                var cell = new ShapeRasterizer.Cell((int) Math.floor(b[0]), (int) Math.floor(b[1]), (int) Math.floor(b[2]));
+                assertTrue(shell.contains(cell), shape + " a climber at " + y + " over the foot " + l.base() + " stands in shell cell " + cell);
+                assertTrue(ShapeRasterizer.climbable(shape, b[0], b[1], b[2]), shape + " climbs at " + y);
+            }
     }
 
     private static boolean in(EquipmentShape shape, double[] p) {
