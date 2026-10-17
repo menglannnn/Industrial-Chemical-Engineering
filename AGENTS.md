@@ -61,7 +61,7 @@ The owner's words: "try to shorten the tests, they are taking too long/too much 
 ## Small physics simplifications (recorded 2026-10-17)
 
 - The owner's words: "Always keep an eye on this kind of small simplifications in the future which doesn't break the physics too much."
-- The example is D36 of batch `2026-09-24-coolprop-low-temperature`: a gas column does not exist, so a vapour weighs nothing in a static column. A gas column weighs 11 to 22 Pa/m at the network's usual pressures, against 4 to 10 kPa/m for liquids.
+- The example is D36 of batch `2026-09-24-coolprop-low-temperature`: a gas column does not exist, so a vapour weighs nothing in a static column. A gas column weighs 11 to 22 Pa/m at the network's usual pressures, against 4 to 10 kPa/m for liquids. The owner reverted D36 on 2026-10-17 (decision D38) when the cold package showed a CO2-rich gas at 5.4 MPa weighing 1.15 kPa/m, 25 to 30 % of an LNG column.
 - Every agent working on physics code watches for simplifications whose physical effect is small at game level:
   - a negligible term;
   - a rule or mode that a constitutive statement replaces;
