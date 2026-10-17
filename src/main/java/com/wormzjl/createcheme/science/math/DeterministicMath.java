@@ -63,6 +63,10 @@ public final class DeterministicMath {
         return StrictMath.acos(x);
     }
 
+    public static double asin(double x) {
+        return StrictMath.asin(x);
+    }
+
     public static double atan2(double y, double x) {
         return StrictMath.atan2(y, x);
     }

@@ -1,0 +1,231 @@
+package com.wormzjl.createcheme.science.equipment;
+
+import com.wormzjl.createcheme.science.math.DeterministicMath;
+
+import java.util.ArrayList;
+import java.util.List;
+
+import static com.wormzjl.createcheme.science.equipment.Mesh.*;
+
+/**
+ * Access steelwork drawn along a wall (shared by a column's structure, {@link ColumnStructure}, and the fired heaters of
+ * {@link ProcessUnit}; owner request 2026-10-17, {@code MACHINES_HEATERS_PLAN.md}): grating decks with toe boards and
+ * knee-braced brackets, handrails with mid rails and posts, and caged ladders. A deck follows a {@link Run}: an arc round a
+ * round casing or a straight wall. Sizes are plant practice (OSHA 1910.23/.29, the photo survey of the column batch).
+ */
+final class Access {
+    /** Gap between the wall and a deck, deck thickness (walkable at the collision resolution), m. */
+    static final double GAP = .05, DECK = .125;
+    /** Handrail height over the deck, mid-rail height, toe board height, rail and bar section, largest post spacing, m. */
+    static final double RAIL = 1.07, MID_RAIL = .53, TOE = .1, BAR = 1 / 16.0, POSTS = 1.8;
+    /** Ladder: rung plane beyond the wall, half width between the rails, rung pitch, cage half width, cage start above the foot, hoop pitch, rails above the landing. */
+    static final double STANDOFF = .2, LADDER_HALF = .225, RUNG = .25, CAGE_HALF = .35, CAGE_START = 2.2, HOOP = 1, LANDING = 1.07;
+    /** Collision walls: the handrail's band inside the deck edge, and the rung plane's face beyond the rung line, m. */
+    static final double RAIL_BAND = .2, RUNG_FACE = .06;
+    /** A fence's collision height over the deck, above the drawn top rail so a player cannot jump it, m. */
+    static final double FENCE = 1.4;
+
+    private static final double[] UP = {0, 1, 0}, DOWN = {0, -1, 0};
+
+    private Access() {
+    }
+
+    /**
+     * A deck's run along its wall: the point {@code off} out from the wall and {@code s} along the run (0 to
+     * {@link #length}, measured on the deck's outer edge), at height {@code y}; the outward and along directions there.
+     */
+    interface Run {
+        double length();
+
+        /** Pieces the run's deck and rails are drawn in: one on a straight run, short chords round an arc. */
+        int segments();
+
+        double[] at(double s, double off, double y);
+
+        double[] out(double s);
+
+        double[] along(double s);
+    }
+
+    /**
+     * A run round a round wall of radius {@code wall} about the vertical line through (cx, cz), from angle {@code from} to
+     * {@code to} (counter-clockwise from +x towards +z), its deck's outer edge at radius {@code edge}, drawn in chords of
+     * at most {@code step} along that edge.
+     */
+    record Arc(double cx, double cz, double wall, double from, double to, double edge, double step) implements Run {
+        /** A column's chord: 0.25 m. */
+        static final double STEP = .25;
+
+        /** The longest chord round an edge of radius {@code edge} that strays at most 5 mm from it, and 0.25 m at least. */
+        static double step(double edge) {
+            return Math.max(STEP, Math.sqrt(8 * edge * .005));
+        }
+
+        public double length() {
+            return (to - from) * edge;
+        }
+
+        public int segments() {
+            return Math.max(2, (int) Math.ceil(length() / step));
+        }
+
+        private double angle(double s) {
+            return from + (to - from) * s / length();
+        }
+
+        public double[] at(double s, double off, double y) {
+            double a = angle(s), r = wall + off;
+            return new double[]{cx + r * DeterministicMath.cos(a), y, cz + r * DeterministicMath.sin(a)};
+        }
+
+        public double[] out(double s) {
+            double a = angle(s);
+            return new double[]{DeterministicMath.cos(a), 0, DeterministicMath.sin(a)};
+        }
+
+        public double[] along(double s) {
+            double a = angle(s);
+            return new double[]{-DeterministicMath.sin(a), 0, DeterministicMath.cos(a)};
+        }
+    }
+
+    /** A run along a straight wall from {@code start} (on the wall, at any height), {@code length} along the horizontal {@code direction}, decked towards {@code out}. */
+    record Line(double[] start, double[] direction, double[] out, double length) implements Run {
+        public double[] at(double s, double off, double y) {
+            return new double[]{start[0] + s * direction[0] + off * out[0], y, start[2] + s * direction[2] + off * out[2]};
+        }
+
+        public int segments() {
+            return 1;
+        }
+
+        public double[] out(double s) {
+            return out;
+        }
+
+        public double[] along(double s) {
+            return direction;
+        }
+    }
+
+    /** The stretch of {@code run} from station {@code s0} to {@code s1}, a run of its own. */
+    static Run part(Run run, double s0, double s1) {
+        if (run instanceof Arc arc) {
+            double span = arc.to() - arc.from(), length = arc.length();
+            return new Arc(arc.cx(), arc.cz(), arc.wall(), arc.from() + span * s0 / length, arc.from() + span * s1 / length, arc.edge(), arc.step());
+        }
+        var line = (Line) run;
+        return new Line(line.at(s0, 0, line.start()[1]), line.direction(), line.out(), s1 - s0);
+    }
+
+    /** A deck of grating {@code width} out from its wall, its top {@link #DECK} over {@code level}, with its toe board and ends, and a knee-braced bracket at every post. */
+    static void deck(Mesh m, Run run, double level, double width) {
+        double y0 = level, y1 = y0 + DECK, inner = GAP, toe = width - 1 / 32.0, length = run.length();
+        int segments = run.segments();
+        for (int j = 0; j < segments; j++) {
+            double s0 = length * j / segments, s1 = length * (j + 1) / segments, mid = (s0 + s1) / 2;
+            var out = run.out(mid);
+            m.flat(List.of(run.at(s0, inner, y1), run.at(s1, inner, y1), run.at(s1, width, y1), run.at(s0, width, y1)), UP, Material.GRATING);
+            m.flat(List.of(run.at(s0, inner, y0), run.at(s1, inner, y0), run.at(s1, width, y0), run.at(s0, width, y0)), DOWN, Material.GRATING);
+            m.flat(List.of(run.at(s0, inner, y0), run.at(s1, inner, y0), run.at(s1, inner, y1), run.at(s0, inner, y1)), neg(out), Material.GRATING);
+            m.flat(List.of(run.at(s0, width, y0), run.at(s1, width, y0), run.at(s1, width, y1 + TOE), run.at(s0, width, y1 + TOE)), out, Material.HANDRAIL);
+            m.flat(List.of(run.at(s0, toe, y1), run.at(s1, toe, y1), run.at(s1, toe, y1 + TOE), run.at(s0, toe, y1 + TOE)), neg(out), Material.HANDRAIL);
+            m.flat(List.of(run.at(s0, toe, y1 + TOE), run.at(s1, toe, y1 + TOE), run.at(s1, width, y1 + TOE), run.at(s0, width, y1 + TOE)), UP, Material.HANDRAIL);
+        }
+        for (double end : new double[]{0, length}) {
+            var along = end == 0 ? neg(run.along(end)) : run.along(end);
+            m.flat(List.of(run.at(end, inner, y0), run.at(end, width, y0), run.at(end, width, y1), run.at(end, inner, y1)), along, Material.GRATING);
+            m.flat(List.of(run.at(end, toe, y1), run.at(end, width, y1), run.at(end, width, y1 + TOE), run.at(end, toe, y1 + TOE)), along, Material.HANDRAIL);
+        }
+        for (double s : posts(length)) {
+            m.bar(run.at(s, .02, y0 - .04), run.at(s, width - .05, y0 - .04), BAR * 1.5, UP, Material.STEELWORK);
+            m.bar(run.at(s, .02, y0 - .6), run.at(s, .02 + .6 * width, y0 - .07), BAR, run.out(s), Material.STEELWORK);
+        }
+    }
+
+    /**
+     * The handrail of a deck {@code width} out from its wall: posts along the outer edge and at closed ends; top and mid
+     * rails along the edge (mitred where they bend) and across a closed end. Posts stand in the deck with their tops flush
+     * in the top rail, and rails end inside the posts at a run's ends: those bar ends are never seen and not drawn.
+     */
+    static void handrail(Mesh m, Run run, double level, double width, boolean closedStart, boolean closedEnd) {
+        double base = level + DECK, r = width - .03, inner = .12, length = run.length();
+        for (double s : posts(length)) m.bar(run.at(s, r, base), run.at(s, r, base + RAIL + BAR / 2), BAR, run.out(s), NO_ENDS, Material.HANDRAIL);
+        int segments = run.segments();
+        for (double h : new double[]{RAIL, MID_RAIL}) {
+            var points = new ArrayList<double[]>(segments + 1);
+            for (int j = 0; j <= segments; j++) points.add(run.at(length * j / segments, r, base + h));
+            m.rail(points, BAR, UP, NO_ENDS, Material.HANDRAIL);
+        }
+        for (int e = 0; e < 2; e++) {
+            if (!(e == 0 ? closedStart : closedEnd)) continue;
+            double s = e == 0 ? 0 : length;
+            m.bar(run.at(s, inner, base), run.at(s, inner, base + RAIL + BAR / 2), BAR, run.out(s), NO_ENDS, Material.HANDRAIL);
+            for (double h : new double[]{RAIL, MID_RAIL}) m.bar(run.at(s, inner, base + h), run.at(s, r, base + h), BAR, UP, NO_ENDS, Material.HANDRAIL);
+        }
+    }
+
+    /** Post stations along a run: both ends and every {@link #POSTS} or less between. */
+    static List<Double> posts(double length) {
+        int count = Math.max(1, (int) Math.ceil(length / POSTS));
+        var out = new ArrayList<Double>();
+        for (int j = 0; j <= count; j++) out.add(length * j / count);
+        return out;
+    }
+
+    /** Whether a ladder from {@code base} to {@code top} carries a cage: a climb of more than {@link #CAGE_START} and half a metre. */
+    static boolean caged(double base, double top) {
+        return top - base > CAGE_START + .5;
+    }
+
+    /**
+     * A ladder whose rung plane's middle stands at {@code foot} (x, z; its y unused), facing {@code out} (horizontal, away
+     * from the wall {@code back} behind the rung plane): two rails on brackets to the wall every 2 m, rungs every
+     * {@link #RUNG} up to the landing {@link #LANDING} under the rails' top, and when {@link #caged} a cage of hoops every
+     * {@link #HOOP} from {@link #CAGE_START} over the foot, with five vertical bars, to the rails' top. Rungs and hoops
+     * (mitred where they bend) end inside the rails, cage bars start inside the first hoop (the last may sit below the
+     * rails' top), brackets against the rails and the wall, and the rails stand on a deck or the ground: only the rails'
+     * tops and the hoops' bends show their ends.
+     */
+    static void ladder(Mesh m, double[] foot, double[] out, double back, double base, double top) {
+        double[] across = {-out[2], 0, out[0]};
+        double landing = top - LANDING;
+        for (double side : new double[]{-LADDER_HALF, LADDER_HALF}) {
+            m.bar(at(foot, out, across, 0, side, base), at(foot, out, across, 0, side, top), BAR, out, END, Material.HANDRAIL);
+            for (double y = base + 1; y < top - .3; y += 2)
+                m.bar(at(foot, out, across, .01 - back, side, y), at(foot, out, across, -BAR / 2, side, y), BAR, UP, NO_ENDS, Material.STEELWORK);
+        }
+        for (double y = base + RUNG; y <= landing + 1e-9; y += RUNG)
+            m.bar(at(foot, out, across, 0, -LADDER_HALF, y), at(foot, out, across, 0, LADDER_HALF, y), BAR * .8, UP, NO_ENDS, Material.HANDRAIL);
+        if (!caged(base, top)) return;
+        var hoop = hoop();
+        double first = base + CAGE_START;
+        for (double y = first; y <= top + 1e-9; y = y + HOOP > top && y < top - .2 ? top : y + HOOP) {
+            var points = new ArrayList<double[]>(hoop.size());
+            for (var point : hoop) points.add(at(foot, out, across, point[0], point[1], y));
+            m.rail(points, BAR, UP, NO_ENDS, Material.HANDRAIL);
+        }
+        for (int k : new int[]{2, 3, 4, 5, 6})
+            m.bar(at(foot, out, across, hoop.get(k)[0], hoop.get(k)[1], first), at(foot, out, across, hoop.get(k)[0], hoop.get(k)[1], top), BAR, out, END, Material.HANDRAIL);
+    }
+
+    /** A cage hoop as (out from the rung plane, across) points: from one rail out and round the back to the other. */
+    private static List<double[]> hoop() {
+        var out = new ArrayList<double[]>();
+        out.add(new double[]{0, -LADDER_HALF});
+        out.add(new double[]{0, -CAGE_HALF});
+        for (int k = 0; k <= 4; k++) {
+            double phi = -Math.PI / 2 + Math.PI * k / 4;
+            out.add(new double[]{CAGE_HALF + CAGE_HALF * DeterministicMath.cos(phi), CAGE_HALF * DeterministicMath.sin(phi)});
+        }
+        out.add(new double[]{0, CAGE_HALF});
+        out.add(new double[]{0, LADDER_HALF});
+        return out;
+    }
+
+    /** The point {@code o} out from the rung plane and {@code t} across from the ladder's middle at {@code foot}, at height {@code y}. */
+    private static double[] at(double[] foot, double[] out, double[] across, double o, double t, double y) {
+        return new double[]{foot[0] + o * out[0] + t * across[0], y, foot[2] + o * out[2] + t * across[2]};
+    }
+
+}

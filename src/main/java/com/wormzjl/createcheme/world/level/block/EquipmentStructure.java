@@ -252,8 +252,9 @@ public final class EquipmentStructure {
      * its lower head. The front (north, east, south, west; north by default) is where a standing drum's liquid outlet and a
      * lying drum's front head face; {@code boot} hangs a water boot under a lying drum's far end. {@code /createcheme equipment column <bottom centre> <diameter m> <trays> <skirt m>
      * [front]} places a column fed at its middle tray, its piping side to the front. {@code /createcheme equipment unit
-     * <bottom centre> exchanger|kettle|air_cooler|ejector <size m> <length m> <support m> [front]} places a unit (an air
-     * cooler's size and length are 3 and 6, an ejector's length 1), its channel or suction to the front.
+     * <bottom centre> exchanger|kettle|air_cooler|ejector|pump|compressor|vertical_heater|cabin_heater <size m> <length m>
+     * <support m> [front]} places a unit (an air cooler's size and length are a bay's, an ejector's and a pump's length 1, a
+     * compressor's its throws, a pump's support 0), its channel, suction or process nozzles to the front.
      */
     @SubscribeEvent
     public static void registerCommands(RegisterCommandsEvent event) {
@@ -280,20 +281,22 @@ public final class EquipmentStructure {
         var column = Commands.literal("column").then(Commands.argument("position", BlockPosArgument.blockPos())
                 .then(Commands.argument("diameter", DoubleArgumentType.doubleArg(EquipmentShape.MIN_DIAMETER, EquipmentShape.MAX_DIAMETER))
                         .then(Commands.argument("trays", IntegerArgumentType.integer(1, ColumnTrays.MAX_TRAYS)).then(skirt))));
-        // A unit: its kind, size (shell, bundle or suction; an air cooler's bay width), length (tubes; an air cooler's bay
-        // length, an ejector's 1) and support (shell bottom, bundle or discharge height); its channel or suction faces the
-        // front; an air cooler's bays in parallel and in series after the front.
+        // A unit: its kind, size (shell, bundle, suction, discharge, bore or radiant section; an air cooler's bay width),
+        // length (tubes, throws, radiant height or length; an air cooler's bay length, an ejector's and a pump's 1) and
+        // support (shell bottom, bundle, discharge, foundation or floor height; a pump's 0); its channel, suction or process
+        // nozzles face the front; an air cooler's bays in parallel and in series after the front. The shape checks each
+        // kind's ranges.
         var at = Commands.argument("position", BlockPosArgument.blockPos());
         for (var kind : EquipmentShape.Kind.values()) {
             if (!kind.unit()) continue;
-            var support = Commands.argument("support", IntegerArgumentType.integer(1, EquipmentShape.MAX_SUPPORT))
+            var support = Commands.argument("support", IntegerArgumentType.integer(0, EquipmentShape.MAX_SUPPORT))
                     .executes(context -> placeUnit(context, kind, EquipmentShape.Heading.NORTH, false));
             for (var front : EquipmentShape.Heading.values())
                 support.then(Commands.literal(front.name().toLowerCase(Locale.ROOT)).executes(context -> placeUnit(context, kind, front, false))
                         .then(Commands.argument("parallel", IntegerArgumentType.integer(1, ProcessUnit.Bank.MAX_PARALLEL))
                                 .then(Commands.argument("series", IntegerArgumentType.integer(1, ProcessUnit.Bank.MAX_SERIES)).executes(context -> placeUnit(context, kind, front, true)))));
-            at.then(Commands.literal(kind.name().toLowerCase(Locale.ROOT)).then(Commands.argument("size", DoubleArgumentType.doubleArg(ProcessUnit.SUCTION_STEP, 3))
-                    .then(Commands.argument("length", IntegerArgumentType.integer(1, 12)).then(support))));
+            at.then(Commands.literal(kind.name().toLowerCase(Locale.ROOT)).then(Commands.argument("size", DoubleArgumentType.doubleArg(ProcessUnit.SUCTION_STEP, ProcessUnit.maxDiameter(kind)))
+                    .then(Commands.argument("length", IntegerArgumentType.integer(1, (int) EquipmentShape.MAX_TANGENT_LENGTH)).then(support))));
         }
         var unit = Commands.literal("unit").then(at);
         event.getDispatcher().register(Commands.literal("createcheme").requires(source -> source.hasPermission(2))

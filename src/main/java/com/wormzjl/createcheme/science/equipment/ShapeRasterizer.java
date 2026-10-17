@@ -199,11 +199,11 @@ public final class ShapeRasterizer {
         return false;
     }
 
-    /** Whether a box-local point lies where one of a column's ladders is climbed. */
+    /** Whether a box-local point lies where one of a column's or a heater's ladders is climbed. */
     public static boolean climbable(EquipmentShape shape, double x, double y, double z) {
         var g = geometry(shape);
-        if (g.column == null) return false;
-        return g.column.climbable(g.transform.local(new double[]{x, y, z}));
+        if (g.column != null) return g.column.climbable(g.transform.local(new double[]{x, y, z}));
+        return g.unit != null && g.unit.climbable(g.transform.local(new double[]{x, y, z}));
     }
 
     /** A box column (x, z) of a standing vessel as one number. */
@@ -1136,7 +1136,7 @@ public final class ShapeRasterizer {
             double plate = EquipmentShape.PLATE;
             if (column != null)
                 for (var p : column.plan().platforms()) {
-                    double y = p.level() + ColumnStructure.DECK, r = column.plan().deckRadius();
+                    double y = p.level() + Access.DECK, r = column.plan().deckRadius();
                     int count = Math.max(2, (int) Math.ceil((p.to() - p.from()) * r / .5));
                     for (int j = 0; j < count; j++) {
                         double a0 = p.from() + (p.to() - p.from()) * j / count, a1 = p.from() + (p.to() - p.from()) * (j + 1) / count;

@@ -28,7 +28,7 @@ import net.neoforged.neoforge.network.registration.HandlerThread;
  * import reads the calculator's stored input (nothing is solved) and comes back as the constructor's synced design.
  */
 public final class EquipmentNetwork {
-    public static final String PROTOCOL = "equipment-8";
+    public static final String PROTOCOL = "equipment-9";
     /** A player edits or builds only within this distance of the constructor, blocks. */
     private static final double REACH = 8;
     /** A column calculator is imported from within this many blocks of the constructor. */

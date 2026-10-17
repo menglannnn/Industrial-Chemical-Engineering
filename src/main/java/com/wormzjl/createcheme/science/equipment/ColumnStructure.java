@@ -9,6 +9,7 @@ import java.util.Map;
 import java.util.TreeSet;
 import java.util.concurrent.ConcurrentHashMap;
 
+import static com.wormzjl.createcheme.science.equipment.Access.*;
 import static com.wormzjl.createcheme.science.equipment.Mesh.*;
 
 /**
@@ -16,7 +17,7 @@ import static com.wormzjl.createcheme.science.equipment.Mesh.*;
  * 2026-10-15-custom-equipment-rendering; photo survey section 2): the insulation's aluminium cladding with its rain
  * flashing rings, part-ring platforms at the manways (grating decks, handrails with mid-rails and toe boards, knee
  * braces), caged ladders between them, the manways with their hinge davits, a full ring at the top with the lifting davit,
- * and the process nozzles.
+ * and the process nozzles. Decks, handrails and ladders are drawn by {@link Access}, shared with the fired heaters.
  *
  * <p>Plant layout keeps a column's piping on one side and its access on the other: the nozzles face the front (towards the
  * constructor and the pipe rack) and the two sides, the platforms, ladders and manways the back. Ladders stand at the two
@@ -27,16 +28,6 @@ import static com.wormzjl.createcheme.science.equipment.Mesh.*;
  * are whole metres, so a deck's walking surface is {@link #DECK} above a block boundary.
  */
 final class ColumnStructure {
-    /** Gap between cladding and deck, deck thickness (walkable at the collision resolution), m. */
-    static final double GAP = .05, DECK = .125;
-    /** Handrail height over the deck, mid-rail height, toe board height, rail and bar section, largest post spacing, m. */
-    static final double RAIL = 1.07, MID_RAIL = .53, TOE = .1, BAR = 1 / 16.0, POSTS = 1.8;
-    /** Ladder: rung plane beyond the cladding, half width between the rails, rung pitch, cage half width, cage start above the foot, hoop pitch, rails above the landing. */
-    static final double STANDOFF = .2, LADDER_HALF = .225, RUNG = .25, CAGE_HALF = .35, CAGE_START = 2.2, HOOP = 1, LANDING = 1.07;
-    /** Collision walls: the handrail's band inside the deck edge, and the rung plane's face beyond the rung line, m. */
-    static final double RAIL_BAND = .2, RUNG_FACE = .06;
-    /** A fence's collision height over the deck, above the drawn top rail so a player cannot jump it, m. */
-    static final double FENCE = 1.4;
     /**
      * Room a player takes across a deck, m: its collision box is 0.6 m square and stays aligned with the world, and walls
      * are sampled at cell-fraction centres, so a wall's voxels stand up to half a voxel proud of it; on the back diagonals,
@@ -67,7 +58,7 @@ final class ColumnStructure {
     /** A ladder at angle {@code angle}, from its foot at {@code base} to the top of its rails at {@code top}. */
     record Ladder(double angle, double base, double top) {
         boolean caged() {
-            return top - base > CAGE_START + .5;
+            return Access.caged(base, top);
         }
     }
 
@@ -332,11 +323,12 @@ final class ColumnStructure {
     void build(Mesh mesh, Mesh ladders, List<EquipmentShape.Nozzle> nozzles) {
         flashing(mesh, nozzles);
         for (var p : plan.platforms()) {
-            deck(mesh, p);
-            handrail(mesh, p);
+            var run = new Access.Arc(axis, axis, outer, p.from(), p.to(), plan.deckRadius(), Access.Arc.STEP);
+            Access.deck(mesh, run, p.level(), plan.deckRadius() - outer);
+            Access.handrail(mesh, run, p.level(), plan.deckRadius() - outer, p.closedFrom(), p.closedTo());
             if (p.manway()) manway(p.manwayHeight()).draw(mesh);
         }
-        for (var l : plan.ladders()) ladder(ladders, l);
+        for (var l : plan.ladders()) Access.ladder(ladders, at(rung, l.angle(), 0), radial(l.angle()), STANDOFF, l.base(), l.top());
         davit(mesh);
     }
 
@@ -390,110 +382,10 @@ final class ColumnStructure {
         return Math.min(d, 2 * Math.PI - d);
     }
 
-    /** A deck of grating with its toe board, inner rim and ends, and a knee-braced bracket at every post. */
-    private void deck(Mesh m, Platform p) {
-        double y0 = p.level(), y1 = y0 + DECK, inner = outer + GAP, edge = plan.deckRadius(), toe = edge - 1 / 32.0;
-        int segments = segments(p.from(), p.to());
-        for (int j = 0; j < segments; j++) {
-            double a0 = p.from() + (p.to() - p.from()) * j / segments, a1 = p.from() + (p.to() - p.from()) * (j + 1) / segments, mid = (a0 + a1) / 2;
-            m.flat(List.of(at(inner, a0, y1), at(inner, a1, y1), at(edge, a1, y1), at(edge, a0, y1)), UP, Material.GRATING);
-            m.flat(List.of(at(inner, a0, y0), at(inner, a1, y0), at(edge, a1, y0), at(edge, a0, y0)), DOWN, Material.GRATING);
-            m.flat(List.of(at(inner, a0, y0), at(inner, a1, y0), at(inner, a1, y1), at(inner, a0, y1)), neg(radial(mid)), Material.GRATING);
-            m.flat(List.of(at(edge, a0, y0), at(edge, a1, y0), at(edge, a1, y1 + TOE), at(edge, a0, y1 + TOE)), radial(mid), Material.HANDRAIL);
-            m.flat(List.of(at(toe, a0, y1), at(toe, a1, y1), at(toe, a1, y1 + TOE), at(toe, a0, y1 + TOE)), neg(radial(mid)), Material.HANDRAIL);
-            m.flat(List.of(at(toe, a0, y1 + TOE), at(toe, a1, y1 + TOE), at(edge, a1, y1 + TOE), at(edge, a0, y1 + TOE)), UP, Material.HANDRAIL);
-        }
-        for (double end : new double[]{p.from(), p.to()}) {
-            var along = end == p.from() ? neg(tangent(end)) : tangent(end);
-            m.flat(List.of(at(inner, end, y0), at(edge, end, y0), at(edge, end, y1), at(inner, end, y1)), along, Material.GRATING);
-            m.flat(List.of(at(toe, end, y1), at(edge, end, y1), at(edge, end, y1 + TOE), at(toe, end, y1 + TOE)), along, Material.HANDRAIL);
-        }
-        for (double a : posts(p.from(), p.to())) {
-            m.bar(at(outer + .02, a, y0 - .04), at(edge - .05, a, y0 - .04), BAR * 1.5, UP, Material.STEELWORK);
-            m.bar(at(outer + .02, a, y0 - .6), at(outer + .02 + .6 * (edge - outer), a, y0 - .07), BAR, radial(a), Material.STEELWORK);
-        }
-    }
-
-    /**
-     * Posts along the outer edge and at closed ends; top and mid rails along the edge (mitred where they bend) and across a
-     * closed end. Posts stand in the deck with their tops flush in the top rail, and rails end inside the posts at an arc's
-     * ends: those bar ends are never seen and not drawn.
-     */
-    private void handrail(Mesh m, Platform p) {
-        double base = p.level() + DECK, r = plan.deckRadius() - .03, inner = outer + .12;
-        for (double a : posts(p.from(), p.to())) m.bar(at(r, a, base), at(r, a, base + RAIL + BAR / 2), BAR, radial(a), Mesh.NO_ENDS, Material.HANDRAIL);
-        int segments = segments(p.from(), p.to());
-        for (double h : new double[]{RAIL, MID_RAIL}) {
-            var points = new ArrayList<double[]>(segments + 1);
-            for (int j = 0; j <= segments; j++) points.add(at(r, p.from() + (p.to() - p.from()) * j / segments, base + h));
-            m.rail(points, BAR, UP, Mesh.NO_ENDS, Material.HANDRAIL);
-        }
-        for (int e = 0; e < 2; e++) {
-            if (!(e == 0 ? p.closedFrom() : p.closedTo())) continue;
-            double a = e == 0 ? p.from() : p.to();
-            m.bar(at(inner, a, base), at(inner, a, base + RAIL + BAR / 2), BAR, radial(a), Mesh.NO_ENDS, Material.HANDRAIL);
-            for (double h : new double[]{RAIL, MID_RAIL}) m.bar(at(inner, a, base + h), at(r, a, base + h), BAR, UP, Mesh.NO_ENDS, Material.HANDRAIL);
-        }
-    }
-
-    /** Segments of an arc of the deck's edge, at most 0.25 m each. */
-    private int segments(double from, double to) {
-        return Math.max(2, (int) Math.ceil((to - from) * plan.deckRadius() / .25));
-    }
-
-    /** Post angles over an arc: both ends and every {@link #POSTS} or less between. */
-    private List<Double> posts(double from, double to) {
-        int count = Math.max(1, (int) Math.ceil((to - from) * plan.deckRadius() / POSTS));
-        var out = new ArrayList<Double>();
-        for (int j = 0; j <= count; j++) out.add(from + (to - from) * j / count);
-        return out;
-    }
-
     /** The manway over a platform, at height {@code y}, facing the back ({@link Manway}): its 24" neck through the cladding. */
     private Manway manway(double y) {
         double r = MANWAY / 2;
         return new Manway(new double[]{axis, y, axis}, new double[]{0, 0, 1}, UP, MANWAY, Math.sqrt(apothem * apothem - r * r) - .03, outer, outer + MANWAY_REACH);
-    }
-
-    /**
-     * A caged ladder: two rails stood off the cladding on brackets, rungs every {@link #RUNG} up to the landing, and from
-     * {@link #CAGE_START} over the foot a cage of hoops every {@link #HOOP} with five vertical bars, to the rails' top.
-     * Rungs and hoops (mitred where they bend) end inside the rails, cage bars start inside the first hoop (the last may sit below the rails' top), brackets against the rails and the cladding, and
-     * the rails stand on a deck or the ground: only the rails' tops and the hoops' bends show their ends.
-     */
-    private void ladder(Mesh m, Ladder l) {
-        double a = l.angle(), landing = l.top() - LANDING;
-        for (double side : new double[]{-LADDER_HALF, LADDER_HALF}) {
-            m.bar(at(rung, a, side, l.base()), at(rung, a, side, l.top()), BAR, radial(a), Mesh.END, Material.HANDRAIL);
-            for (double y = l.base() + 1; y < l.top() - .3; y += 2)
-                m.bar(at(outer + .01, a, side, y), at(rung - BAR / 2, a, side, y), BAR, UP, Mesh.NO_ENDS, Material.STEELWORK);
-        }
-        for (double y = l.base() + RUNG; y <= landing + 1e-9; y += RUNG)
-            m.bar(at(rung, a, -LADDER_HALF, y), at(rung, a, LADDER_HALF, y), BAR * .8, UP, Mesh.NO_ENDS, Material.HANDRAIL);
-        if (!l.caged()) return;
-        var hoop = hoop();
-        double first = l.base() + CAGE_START;
-        for (double y = first; y <= l.top() + 1e-9; y = y + HOOP > l.top() && y < l.top() - .2 ? l.top() : y + HOOP) {
-            var points = new ArrayList<double[]>(hoop.size());
-            for (var point : hoop) points.add(at(rung + point[0], a, point[1], y));
-            m.rail(points, BAR, UP, Mesh.NO_ENDS, Material.HANDRAIL);
-        }
-        for (int k : new int[]{2, 3, 4, 5, 6})
-            m.bar(at(rung + hoop.get(k)[0], a, hoop.get(k)[1], first), at(rung + hoop.get(k)[0], a, hoop.get(k)[1], l.top()), BAR, radial(a), Mesh.END, Material.HANDRAIL);
-    }
-
-    /** A cage hoop as (out from the rung plane, across) points: from one rail out and round the back to the other. */
-    private static List<double[]> hoop() {
-        var out = new ArrayList<double[]>();
-        out.add(new double[]{0, -LADDER_HALF});
-        out.add(new double[]{0, -CAGE_HALF});
-        for (int k = 0; k <= 4; k++) {
-            double phi = -Math.PI / 2 + Math.PI * k / 4;
-            out.add(new double[]{CAGE_HALF + CAGE_HALF * DeterministicMath.cos(phi), CAGE_HALF * DeterministicMath.sin(phi)});
-        }
-        out.add(new double[]{0, CAGE_HALF});
-        out.add(new double[]{0, LADDER_HALF});
-        return out;
     }
 
     /** The lifting davit on the top ring: a mast on a base plate, a jib out past the deck with a knee brace, a cable and a hook block. */

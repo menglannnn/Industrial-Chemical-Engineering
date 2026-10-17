@@ -72,7 +72,10 @@ class ShapeRasterizerTest {
             EquipmentShape.unit(Kind.EXCHANGER, 2.5, 12, Heading.WEST, 3), EquipmentShape.unit(Kind.KETTLE, .5, 2, Heading.SOUTH, 2),
             EquipmentShape.unit(Kind.KETTLE, 2, 10, Heading.EAST, 2), EquipmentShape.unit(Kind.AIR_COOLER, 3, 6, Heading.NORTH, 5),
             EquipmentShape.unit(Kind.EJECTOR, .1, 1, Heading.NORTH, 1), EquipmentShape.unit(Kind.EJECTOR, .3, 1, Heading.EAST, 5),
-            EquipmentShape.unit(Kind.EJECTOR, 1, 1, Heading.WEST, 2));
+            EquipmentShape.unit(Kind.EJECTOR, 1, 1, Heading.WEST, 2), EquipmentShape.unit(Kind.PUMP, .05, 1, Heading.NORTH, 0),
+            EquipmentShape.unit(Kind.PUMP, .4, 1, Heading.EAST, 0), EquipmentShape.unit(Kind.COMPRESSOR, .15, 2, Heading.SOUTH, ProcessUnit.minSupport(Kind.COMPRESSOR, .15, 2)),
+            EquipmentShape.unit(Kind.COMPRESSOR, .8, 6, Heading.NORTH, ProcessUnit.minSupport(Kind.COMPRESSOR, .8, 6)),
+            EquipmentShape.unit(Kind.VERTICAL_HEATER, 4, 8, Heading.NORTH, 3), EquipmentShape.unit(Kind.CABIN_HEATER, 6, 12, Heading.WEST, 3));
 
     @Test
     void rejectsShapesOffTheGrid() {

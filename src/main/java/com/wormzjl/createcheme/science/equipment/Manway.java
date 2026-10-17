@@ -44,7 +44,7 @@ public record Manway(double[] centre, double[] out, double[] up, double size, do
 
     void draw(Mesh m) {
         var f = new Frame(centre, out, Mesh.neg(side()));
-        double r = size / 2, cover = cover() / 2, t = THICKNESS, bar = ColumnStructure.BAR;
+        double r = size / 2, cover = cover() / 2, t = THICKNESS, bar = Access.BAR;
         m.prism(f, r, start, face - t, 16, Material.PIPE);
         m.annulus(f, r, cover, face - t, 16, -1, Material.FLANGE);
         m.bolts(f, size, r, cover, face - t, -1, Material.BOLT);

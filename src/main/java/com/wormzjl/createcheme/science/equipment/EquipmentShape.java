@@ -24,7 +24,8 @@ import java.util.Objects;
  * laid out by its trays ({@link ColumnTrays}), insulated and clad, with its platforms, ladders, manways and process
  * nozzles at fixed sides ({@link ColumnStructure}); the player places its condenser, drum, reboiler and pumps and runs
  * the pipes (owner decisions 2026-10-16). A <b>unit</b> (heat exchanger, kettle reboiler, air cooler, steam ejector;
- * owner request 2026-10-16) is built from its parts, not as a vessel of revolution ({@link ProcessUnit}): {@code diameter},
+ * owner request 2026-10-16; centrifugal pump, reciprocating compressor, vertical and cabin heaters, owner request
+ * 2026-10-17) is built from its parts, not as a vessel of revolution ({@link ProcessUnit}): {@code diameter},
  * {@code tangentLength} and {@code support} are its own sizes there. Columns and units are drawn only: their nozzles take
  * the connected pipe's size, but they are not fluid devices yet.
  *
@@ -87,7 +88,7 @@ public record EquipmentShape(Kind kind, double diameter, double tangentLength, O
     public static final double HEAD_AREA_FACTOR = Math.PI * (.25 + DeterministicMath.log(7 + 4 * Math.sqrt(3)) / (16 * Math.sqrt(3)));
 
     public enum Kind {
-        DRUM, COLUMN, EXCHANGER, KETTLE, AIR_COOLER, EJECTOR;
+        DRUM, COLUMN, EXCHANGER, KETTLE, AIR_COOLER, EJECTOR, PUMP, COMPRESSOR, VERTICAL_HEATER, CABIN_HEATER;
 
         /** A standalone unit, built from its parts ({@link ProcessUnit}); a drum and a column are vessels of revolution. */
         public boolean unit() {
@@ -139,13 +140,14 @@ public record EquipmentShape(Kind kind, double diameter, double tangentLength, O
     /**
      * What a nozzle is for, and the fluid port its position makes it (owner decision 2026-10-16: fixed class by position):
      * a drum's, a column's, then a unit's (tube side and shell side of an exchanger or a kettle's channel, an air cooler's
-     * process line, an ejector's suction, motive steam and discharge).
+     * process line, an ejector's suction, motive steam and discharge, a pump's or a compressor's suction and discharge, a
+     * heater's process line and fuel gas).
      */
     public enum Role {
         VAPOUR_OUTLET(PortClass.VAPOUR), SIDE(PortClass.BULK), LIQUID_OUTLET(PortClass.LIQUID), BOOT_DRAIN(PortClass.LIQUID), FEED(PortClass.BULK), REFLUX(PortClass.BULK),
         DRAW(PortClass.BULK), PUMPAROUND_DRAW(PortClass.BULK), RETURN(PortClass.BULK), STEAM(PortClass.BULK), BOTTOMS(PortClass.LIQUID),
         VAPOUR_RETURN(PortClass.BULK), TUBE_INLET(PortClass.BULK), TUBE_OUTLET(PortClass.BULK), SHELL_INLET(PortClass.BULK), SHELL_OUTLET(PortClass.BULK),
-        PROCESS_INLET(PortClass.BULK), PROCESS_OUTLET(PortClass.BULK), SUCTION(PortClass.BULK), MOTIVE(PortClass.BULK), DISCHARGE(PortClass.BULK);
+        PROCESS_INLET(PortClass.BULK), PROCESS_OUTLET(PortClass.BULK), SUCTION(PortClass.BULK), MOTIVE(PortClass.BULK), DISCHARGE(PortClass.BULK), FUEL(PortClass.BULK);
 
         public final PortClass port;
 

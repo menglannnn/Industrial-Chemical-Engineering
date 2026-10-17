@@ -6,6 +6,7 @@ import org.junit.jupiter.api.Test;
 
 import java.util.List;
 
+import static com.wormzjl.createcheme.science.equipment.Access.*;
 import static com.wormzjl.createcheme.science.equipment.ColumnStructure.*;
 import static org.junit.jupiter.api.Assertions.*;
 

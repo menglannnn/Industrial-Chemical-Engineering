@@ -34,7 +34,12 @@ public final class Mesh {
          * An air cooler's Blender parts (their own texture coordinates) and sprites: fan rotor, fan ring and guard, motor;
          * fins (the bundle, seen through the fan rings from below), headers, the plenum casing's sheet.
          */
-        AC_FAN(1, -1), AC_RING(1, Paint.BODY), AC_MOTOR(1, -1), AC_FINS(1, -1), AC_HEADER(.5, Paint.BODY), AC_PLENUM(1, Paint.BODY);
+        AC_FAN(1, -1), AC_RING(1, Paint.BODY), AC_MOTOR(1, -1), AC_FINS(1, -1), AC_HEADER(.5, Paint.BODY), AC_PLENUM(1, Paint.BODY),
+        /**
+         * A fired heater's casing (panels between stiffeners 2 m apart), a machine's concrete plinth or block, a pump's
+         * coupling guard in safety yellow (owner request 2026-10-17).
+         */
+        HEATER(2, Paint.BODY), CONCRETE(2, -1), GUARD(1, -1);
 
         private final double period;
         private final int channel;

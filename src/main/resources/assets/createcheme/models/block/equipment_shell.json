@@ -23,6 +23,9 @@
     "ac_fins": "createcheme:block/ac_fins",
     "ac_header": "createcheme:block/ac_header",
     "ac_plenum": "createcheme:block/ac_plenum",
+    "heater": "createcheme:block/painted_heater",
+    "concrete": "createcheme:block/equipment_concrete",
+    "guard": "createcheme:block/equipment_guard",
     "particle": "createcheme:block/vessel_shell"
   }
 }

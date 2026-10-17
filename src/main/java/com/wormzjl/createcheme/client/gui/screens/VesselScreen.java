@@ -75,7 +75,9 @@ public final class VesselScreen extends Screen {
 
     /**
      * A unit's kind and sizes: an exchanger's shell, tubes and their surface; a kettle's bundle, shell, tubes and surface;
-     * an air cooler bay's size, fans and face; an ejector's suction and length; then its length, top and support's height.
+     * an air cooler bay's size, fans and face; an ejector's suction and length; a pump's nozzles, flow and motor; a
+     * compressor's throws, bore, stroke and displacement; a heater's radiant section and duty; then its length, top and
+     * support's height.
      */
     private static List<Component> unit(EquipmentShape shape) {
         double d = shape.diameter(), tubes = shape.tangentLength();
@@ -97,6 +99,18 @@ public final class VesselScreen extends Screen {
                 lines.add(Component.translatable(KEY + "fans", fans.count(), size(fans.diameter()), Math.round(100 * ProcessUnit.coverage(d, tubes))));
             }
             case EJECTOR -> lines.add(Component.translatable(KEY + "suction", size(d), number(ProcessUnit.ejectorLength(d))));
+            case PUMP -> {
+                lines.add(Component.translatable(KEY + "pump", size(d), size(ProcessUnit.pumpSuction(d))));
+                lines.add(Component.translatable(KEY + "pump_duty", whole(ProcessUnit.pumpFlow(d)), whole(ProcessUnit.pumpPower(d))));
+            }
+            case COMPRESSOR -> {
+                lines.add(Component.translatable(KEY + "compressor", (int) tubes, size(d), size(ProcessUnit.stroke(d))));
+                lines.add(Component.translatable(KEY + "displacement", whole(ProcessUnit.displacement(d, (int) tubes)), whole(ProcessUnit.compressorSpeed(d))));
+            }
+            case VERTICAL_HEATER, CABIN_HEATER -> {
+                lines.add(Component.translatable(KEY + "radiant." + shape.kind().name().toLowerCase(Locale.ROOT), size(d), number(tubes)));
+                lines.add(Component.translatable(KEY + "duty", number(ProcessUnit.heaterDuty(shape.kind(), d, tubes))));
+            }
             default -> throw new IllegalStateException(shape.kind() + " is not a unit");
         }
         lines.add(Component.translatable(KEY + "unit_length", number(shape.overallLength())));
@@ -142,6 +156,11 @@ public final class VesselScreen extends Screen {
 
     private static String number(double value) {
         return String.format(Locale.ROOT, "%.1f", value);
+    }
+
+    /** A large quantity in whole units, thousands separated (30,401). */
+    private static String whole(double value) {
+        return String.format(Locale.ROOT, "%,d", Math.round(value));
     }
 
     /** A size on a 0.25 m or 0.1 m grid: one decimal where it has one, two where it has two (0.75). */

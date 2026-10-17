@@ -14,21 +14,32 @@ import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * Standalone process units (owner request and decisions 2026-10-16, batch 2026-10-15-custom-equipment-rendering,
- * {@code STANDALONE_UNITS_PLAN.md}): their sizes and ranges, where each nozzle faces, and that at every size each
- * nozzle leaves a free block for its pipe, clear of the saddles, frames and other nozzles.
+ * {@code STANDALONE_UNITS_PLAN.md}; machines and heaters 2026-10-17, {@code MACHINES_HEATERS_PLAN.md}): their sizes and
+ * ranges, where each nozzle faces, and that at every size each nozzle leaves a free block for its pipe, clear of the
+ * saddles, frames and other nozzles.
  */
 class ProcessUnitTest {
-    /** Every size a player can choose, at the shortest and longest tubes and the lowest support; an odd and a turned one. */
+    /**
+     * Every size a player can choose, at the shortest and longest tubes and the lowest support (a compressor's at 2 throws,
+     * a heater's at its shortest radiant section, the largest also at the longest); odd and turned ones.
+     */
     private static List<EquipmentShape> everySize() {
         var shapes = new ArrayList<EquipmentShape>();
-        for (var kind : List.of(Kind.EXCHANGER, Kind.KETTLE, Kind.AIR_COOLER, Kind.EJECTOR)) {
+        for (var kind : List.of(Kind.EXCHANGER, Kind.KETTLE, Kind.AIR_COOLER, Kind.EJECTOR, Kind.PUMP, Kind.COMPRESSOR, Kind.VERTICAL_HEATER, Kind.CABIN_HEATER)) {
             double step = ProcessUnit.diameterStep(kind);
+            boolean large = kind == Kind.COMPRESSOR || kind == Kind.VERTICAL_HEATER || kind == Kind.CABIN_HEATER;
             for (double d = ProcessUnit.minDiameter(kind); d <= ProcessUnit.maxDiameter(kind) + 1e-9; d += step) {
                 double size = ProcessUnit.snap(kind, d);
-                for (int length : new int[]{ProcessUnit.minLength(kind, size), ProcessUnit.maxLength(kind)})
-                    shapes.add(EquipmentShape.unit(kind, size, length, Heading.NORTH, ProcessUnit.minSupport(kind)));
+                boolean last = size == ProcessUnit.maxDiameter(kind);
+                for (int length : large && !last ? new int[]{ProcessUnit.minLength(kind, size)} : new int[]{ProcessUnit.minLength(kind, size), ProcessUnit.maxLength(kind, size)})
+                    shapes.add(EquipmentShape.unit(kind, size, length, Heading.NORTH, ProcessUnit.minSupport(kind, size, length)));
             }
         }
+        shapes.add(EquipmentShape.unit(Kind.PUMP, .25, 1, Heading.EAST, 0));
+        shapes.add(EquipmentShape.unit(Kind.COMPRESSOR, .15, 6, Heading.SOUTH, 3));
+        shapes.add(EquipmentShape.unit(Kind.COMPRESSOR, .45, 4, Heading.WEST, ProcessUnit.minSupport(Kind.COMPRESSOR, .45, 4)));
+        shapes.add(EquipmentShape.unit(Kind.VERTICAL_HEATER, 4.5, 9, Heading.EAST, 5));
+        shapes.add(EquipmentShape.unit(Kind.CABIN_HEATER, 7, 20, Heading.WEST, 4));
         shapes.add(EquipmentShape.unit(Kind.EXCHANGER, 1.25, 7, Heading.EAST, 5));
         shapes.add(EquipmentShape.unit(Kind.EJECTOR, .7, 1, Heading.SOUTH, 9));
         // Air cooler banks (owner request 2026-10-16): every count in parallel and in series of the smallest bay, the
@@ -67,7 +78,21 @@ class ProcessUnitTest {
                 () -> EquipmentShape.unit(Kind.EJECTOR, 0, 1, Heading.NORTH, 2),
                 () -> EquipmentShape.unit(Kind.EJECTOR, .3, 2, Heading.NORTH, 2),
                 () -> EquipmentShape.unit(Kind.EJECTOR, .3, 1, Heading.NORTH, 17),
-                () -> EquipmentShape.unit(Kind.DRUM, 2, 4, Heading.NORTH, 2)))
+                () -> EquipmentShape.unit(Kind.DRUM, 2, 4, Heading.NORTH, 2),
+                // Machines and heaters (2026-10-17): a pump off its grid, too large or raised; odd throws, a bore too large, a
+                // foundation too low for the discharge bottles; a vertical heater too slender or its floor too low; a cabin off
+                // its 1 m grid or too long.
+                () -> EquipmentShape.unit(Kind.PUMP, .12, 1, Heading.NORTH, 0),
+                () -> EquipmentShape.unit(Kind.PUMP, .45, 1, Heading.NORTH, 0),
+                () -> EquipmentShape.unit(Kind.PUMP, .1, 1, Heading.NORTH, 1),
+                () -> EquipmentShape.unit(Kind.COMPRESSOR, .3, 3, Heading.NORTH, 3),
+                () -> EquipmentShape.unit(Kind.COMPRESSOR, .85, 2, Heading.NORTH, 3),
+                () -> EquipmentShape.unit(Kind.COMPRESSOR, .8, 6, Heading.NORTH, ProcessUnit.minSupport(Kind.COMPRESSOR, .8, 6) - 1),
+                () -> EquipmentShape.unit(Kind.VERTICAL_HEATER, 4, 12, Heading.NORTH, 3),
+                () -> EquipmentShape.unit(Kind.VERTICAL_HEATER, 4, 5, Heading.NORTH, 3),
+                () -> EquipmentShape.unit(Kind.VERTICAL_HEATER, 4, 8, Heading.NORTH, 2),
+                () -> EquipmentShape.unit(Kind.CABIN_HEATER, 4.5, 8, Heading.NORTH, 3),
+                () -> EquipmentShape.unit(Kind.CABIN_HEATER, 6, 41, Heading.NORTH, 3)))
             assertThrows(IllegalArgumentException.class, bad::run);
         assertEquals(.3, ProcessUnit.snap(Kind.EJECTOR, .1 + .1 + .1), 0);
         assertEquals(2.5, ProcessUnit.snap(Kind.EXCHANGER, 3), 0);
@@ -103,6 +128,33 @@ class ProcessUnitTest {
             assertEquals(2, small.sizeZ(), small.toString());
         }
         assertEquals(3, EquipmentShape.unit(Kind.EJECTOR, .25, 1, Heading.NORTH, 1).sizeX());
+        // Machines and heaters (MACHINES_HEATERS_PLAN.md): a pump's suction one size up; liquid at 3 m/s in its discharge
+        // (85 m³/h at 0.1 m), 33 kW at a 100 m head and 70 %, a TEFC motor of about 0.46 m; four 0.4 m cylinders sweep about
+        // 8,000 m³/h; a vertical heater of D 4 × 8 m about 6.3 MW, a cabin of 6 × 12 m about 13.5 MW and of 12 × 40 m 95.6 MW;
+        // radiant heights from 1.5 to 2.75 diameters; a heater's floor 3 m up; a pump at grade.
+        assertEquals(.15, ProcessUnit.pumpSuction(.1), 0);
+        assertEquals(.55, ProcessUnit.pumpSuction(.4), 0);
+        assertEquals(84.8, ProcessUnit.pumpFlow(.1), .1);
+        assertEquals(33.0, ProcessUnit.pumpPower(.1), .1);
+        assertEquals(.46, ProcessUnit.motorDiameter(ProcessUnit.pumpPower(.1)), .01);
+        assertEquals(7962, ProcessUnit.displacement(.4, 4), 1);
+        assertEquals(6.29, ProcessUnit.heaterDuty(Kind.VERTICAL_HEATER, 4, 8), .01);
+        assertEquals(13.5, ProcessUnit.heaterDuty(Kind.CABIN_HEATER, 6, 12), .05);
+        assertEquals(95.6, ProcessUnit.heaterDuty(Kind.CABIN_HEATER, 12, 40), .05);
+        assertEquals(6, ProcessUnit.minLength(Kind.VERTICAL_HEATER, 4));
+        assertEquals(11, ProcessUnit.maxLength(Kind.VERTICAL_HEATER, 4));
+        assertEquals(3, ProcessUnit.minSupport(Kind.VERTICAL_HEATER, 4, 8));
+        assertEquals(0, ProcessUnit.maxSupport(Kind.PUMP));
+        // A compressor's lowest foundation keeps its discharge bottles 0.3 m and its motor 0.1 m over grade, and is the
+        // lowest that does.
+        for (double b = .15; b <= .8 + 1e-9; b += .05)
+            for (int throwsCount = 2; throwsCount <= ProcessUnit.MAX_THROWS; throwsCount += 2) {
+                double bore = ProcessUnit.snap(Kind.COMPRESSOR, b);
+                var c = ProcessUnit.Compressor.of(bore, throwsCount);
+                int h = ProcessUnit.minSupport(Kind.COMPRESSOR, bore, throwsCount);
+                assertTrue(c.clears(h) && (h == 1 || !c.clears(h - 1)), bore + " x " + throwsCount);
+                assertTrue(c.dischargeAxis(h) - c.discharge() / 2 >= .3 && h + c.crank() - c.motor() / 2 >= .1, bore + " x " + throwsCount);
+            }
     }
 
     @Test
@@ -111,8 +163,8 @@ class ProcessUnitTest {
         // Every bay on its lowest bundle (3 m, owner request 2026-10-16) keeps its rings' inlets that high (the 3 x 5 m
         // bay's 2.48 m fan least, at 0.6 D), and nothing of the unit lies under them between its motor and the ring's rim
         // but the beams carrying the motors.
-        int lowest = ProcessUnit.minSupport(Kind.AIR_COOLER);
         for (var bay : ProcessUnit.bays()) {
+            int lowest = ProcessUnit.minSupport(Kind.AIR_COOLER, bay[0], bay[1]);
             var fans = ProcessUnit.fans(bay[0], bay[1]);
             var stack = ProcessUnit.FanStack.of(lowest, fans.diameter());
             assertTrue(stack.inlet() >= .5 * fans.diameter(), bay[0] + " x " + bay[1] + ": inlet " + stack.inlet());
@@ -131,17 +183,24 @@ class ProcessUnitTest {
     void nozzlesFaceWhereTheirFluidGoes() {
         // Tube side in at the channel's bottom and out at its top; a condensing shell side in on top and out underneath;
         // a kettle fed underneath, its vapour up, its product over the weir at the back; an air cooler's process in on top
-        // of its inlet header and out underneath; an ejector's suction at the front, motive steam on top, discharge down.
+        // of its inlet header and out underneath; an ejector's suction at the front, motive steam on top, discharge down; a
+        // pump's suction at the front along its shaft and discharge up; a compressor's gas in on top of each side's suction
+        // bottle and out at the front of each discharge bottle; a heater's process lines and fuel gas towards the front.
         var expected = Map.of(
                 Kind.EXCHANGER, Map.of(Role.TUBE_INLET, "1-", Role.TUBE_OUTLET, "1+", Role.SHELL_INLET, "1+", Role.SHELL_OUTLET, "1-"),
                 Kind.KETTLE, Map.of(Role.TUBE_INLET, "1+", Role.TUBE_OUTLET, "1-", Role.FEED, "1-", Role.VAPOUR_OUTLET, "1+", Role.LIQUID_OUTLET, "2+"),
                 Kind.AIR_COOLER, Map.of(Role.PROCESS_INLET, "1+", Role.PROCESS_OUTLET, "1-"),
-                Kind.EJECTOR, Map.of(Role.SUCTION, "2-", Role.MOTIVE, "1+", Role.DISCHARGE, "1-"));
+                Kind.EJECTOR, Map.of(Role.SUCTION, "2-", Role.MOTIVE, "1+", Role.DISCHARGE, "1-"),
+                Kind.PUMP, Map.of(Role.SUCTION, "2-", Role.DISCHARGE, "1+"),
+                Kind.COMPRESSOR, Map.of(Role.SUCTION, "1+", Role.DISCHARGE, "2-"),
+                Kind.VERTICAL_HEATER, Map.of(Role.PROCESS_INLET, "2-", Role.PROCESS_OUTLET, "2-", Role.FUEL, "2-"),
+                Kind.CABIN_HEATER, Map.of(Role.PROCESS_INLET, "2-", Role.PROCESS_OUTLET, "2-", Role.FUEL, "2-"));
         for (var shape : everySize()) {
             var sides = expected.get(shape.kind());
             var nozzles = shape.nozzles();
             assertEquals(sides.keySet(), new HashSet<>(nozzles.stream().map(EquipmentShape.Nozzle::role).toList()), shape.toString());
-            assertEquals(sides.size(), nozzles.size(), shape.toString());
+            // A compressor has a suction and a discharge on each side.
+            assertEquals(shape.kind() == Kind.COMPRESSOR ? 4 : sides.size(), nozzles.size(), shape.toString());
             for (var nozzle : nozzles) {
                 assertEquals(sides.get(nozzle.role()), nozzle.axis() + (nozzle.sign() > 0 ? "+" : "-"), shape + " " + nozzle.role());
                 assertTrue(nozzle.defaultOd() > 0 && nozzle.defaultOd() <= nozzle.maxOd(), shape + " " + nozzle.role());
@@ -251,6 +310,46 @@ class ProcessUnitTest {
         assertTrue(one > 0);
         assertEquals(rotors.size() * one, still, 1e-6 * still);
         assertEquals(List.of(), ProcessUnit.rotors(EquipmentShape.unit(Kind.EXCHANGER, 1, 4, Heading.NORTH, 2)));
+    }
+
+    @Test
+    void heatersCarryWalkableDecksAndClimbableLadders() {
+        // Owner feedback 2026-10-17 (MACHINES_HEATERS_PLAN.md, API 560 12.4.1): every deck is walked on with head room over
+        // it; every ladder starts on a deck or the ground, is climbed in front of its rungs and pressed against at them; one
+        // walked through is passed between its rails over its landing.
+        var shapes = List.of(EquipmentShape.unit(Kind.VERTICAL_HEATER, 2.5, 4, Heading.NORTH, 3), EquipmentShape.unit(Kind.VERTICAL_HEATER, 4, 9, Heading.EAST, 3),
+                EquipmentShape.unit(Kind.VERTICAL_HEATER, 10, 27, Heading.SOUTH, 3), EquipmentShape.unit(Kind.CABIN_HEATER, 4, 6, Heading.NORTH, 3),
+                EquipmentShape.unit(Kind.CABIN_HEATER, 6, 12, Heading.WEST, 3), EquipmentShape.unit(Kind.CABIN_HEATER, 12, 40, Heading.NORTH, 4));
+        for (var shape : shapes) {
+            var unit = ProcessUnit.of(shape);
+            var starts = new HashSet<Double>(List.of(0.0));
+            assertFalse(unit.decks().isEmpty(), shape.toString());
+            for (var deck : unit.decks()) {
+                double mid = deck.run().length() / 2, off = (Access.GAP + deck.width() - Access.RAIL_BAND) / 2;
+                assertTrue(in(shape, deck.run().at(mid, off, deck.level() + Access.DECK / 2)), shape + " deck at " + deck.level());
+                assertFalse(in(shape, deck.run().at(mid, off, deck.level() + Access.DECK + .3)), shape + " room over the deck at " + deck.level());
+                starts.add(deck.level() + Access.DECK);
+            }
+            for (var l : unit.ladders()) {
+                assertTrue(starts.contains(l[4]), shape + " a climb from " + l[4] + " starts on a deck or the ground");
+                double y = (l[4] + l[6]) / 2;
+                assertTrue(climbable(shape, new double[]{l[0] + .3 * l[2], y, l[1] + .3 * l[3]}), shape + " climbable in front of the rungs at " + y);
+                assertFalse(climbable(shape, new double[]{l[0] + 1.5 * l[2], y, l[1] + 1.5 * l[3]}), shape + " not climbable outside the cage");
+                assertTrue(in(shape, new double[]{l[0] - .04 * l[2], y, l[1] - .04 * l[3]}), shape + " the rung plane is pressed against to climb");
+                if (l[6] < l[5]) assertFalse(in(shape, new double[]{l[0], l[6] + .6, l[1]}), shape + " walked through over its landing");
+            }
+        }
+        assertTrue(ProcessUnit.of(EquipmentShape.unit(Kind.CABIN_HEATER, 6, 12, Heading.WEST, 3)).decks().size() >= 6);
+    }
+
+    private static boolean in(EquipmentShape shape, double[] p) {
+        var b = shape.transform().point(p);
+        return ShapeRasterizer.inside(shape, b[0], b[1], b[2]);
+    }
+
+    private static boolean climbable(EquipmentShape shape, double[] p) {
+        var b = shape.transform().point(p);
+        return ShapeRasterizer.climbable(shape, b[0], b[1], b[2]);
     }
 
     private static double area(Mesh.Polygon polygon) {

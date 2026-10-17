@@ -13,11 +13,12 @@ public record VesselPlacement(int forward, int right, int up) {
 
     /**
      * A drum standing, or lying with its axis along the constructor's facing (lengthwise) or across it (crosswise); a
-     * distillation column; or a unit (owner requests 2026-10-16): a heat exchanger, a kettle reboiler, an air cooler bay or
-     * a steam ejector, lying lengthwise or standing.
+     * distillation column; or a unit (owner requests 2026-10-16 and 2026-10-17): a heat exchanger, a kettle reboiler, an
+     * air cooler bay, a steam ejector, a centrifugal pump, a reciprocating compressor, a vertical or a cabin heater, lying
+     * lengthwise or standing.
      */
     public enum Form {
-        VERTICAL, LENGTHWISE, CROSSWISE, COLUMN, EXCHANGER, KETTLE, AIR_COOLER, EJECTOR;
+        VERTICAL, LENGTHWISE, CROSSWISE, COLUMN, EXCHANGER, KETTLE, AIR_COOLER, EJECTOR, PUMP, COMPRESSOR, VERTICAL_HEATER, CABIN_HEATER;
 
         /** The kind of equipment this form builds. */
         public EquipmentShape.Kind kind() {
@@ -28,6 +29,10 @@ public record VesselPlacement(int forward, int right, int up) {
                 case KETTLE -> EquipmentShape.Kind.KETTLE;
                 case AIR_COOLER -> EquipmentShape.Kind.AIR_COOLER;
                 case EJECTOR -> EquipmentShape.Kind.EJECTOR;
+                case PUMP -> EquipmentShape.Kind.PUMP;
+                case COMPRESSOR -> EquipmentShape.Kind.COMPRESSOR;
+                case VERTICAL_HEATER -> EquipmentShape.Kind.VERTICAL_HEATER;
+                case CABIN_HEATER -> EquipmentShape.Kind.CABIN_HEATER;
             };
         }
 
@@ -47,7 +52,7 @@ public record VesselPlacement(int forward, int right, int up) {
         /**
          * The vessel's front for a constructor facing the horizontal unit step (stepX, stepZ): back towards the constructor
          * (a standing drum's liquid outlet, a lengthwise drum's front head, a column's piping side, a unit's channel, inlet
-         * header or suction), or a crosswise drum's front head to the constructor's right.
+         * header, suction or process nozzles), or a crosswise drum's front head to the constructor's right.
          */
         public EquipmentShape.Heading front(int stepX, int stepZ) {
             if (Math.abs(stepX) + Math.abs(stepZ) != 1) throw new IllegalArgumentException("Facing must be a horizontal unit step");
