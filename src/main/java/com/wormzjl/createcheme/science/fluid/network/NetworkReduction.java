@@ -99,9 +99,9 @@ public final class NetworkReduction {
     /**
      * The static drive of every connection, in Pa, as {forward, reverse}: the end pressures (a tank's bottom port with its
      * level head) less the column between the ends that the donor end's port stands in the connection
-     * ({@link PassiveStepSolver#columnDensity}, owner decisions D34 and D36: the vapour weighs nothing), positive when it
-     * pushes that way; {@link Double#NEGATIVE_INFINITY} for a direction the one-way rules forbid. The rest step
-     * ({@link #atRest}) reads its size against {@link #REST_RESOLUTION}.
+     * ({@link PassiveStepSolver#columnDensity}, owner decision D34), positive when it pushes that way;
+     * {@link Double#NEGATIVE_INFINITY} for a direction the one-way rules forbid. The rest step ({@link #atRest}) reads its
+     * size against {@link #REST_RESOLUTION}.
      */
     static double[][] drives(PassiveNetwork graph,FluidThermodynamics model) {
         var drive=new double[graph.pipes().size()][2];

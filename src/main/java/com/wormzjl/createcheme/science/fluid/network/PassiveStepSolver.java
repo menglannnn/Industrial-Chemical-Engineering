@@ -415,12 +415,12 @@ public final class PassiveStepSolver {
             modes.set(i,carried);
             // The one place a pump that stood at its shutoff corner is offered its head limit back.
             // The test is taken on the accepted state this step starts from, once per solve, so it
-            // is not a transition the pass sequence can take again; see {@link #atShutoff}. The margin is {@link #demand}'s,
-            // at a vanishing flow: the rise limit on the suction's density, the column its gas share weighing nothing (D36).
+            // is not a transition the pass sequence can take again; see {@link #atShutoff}.
             if(carried!=FlowControl.Mode.CLOSED)continue;
             var a=graph.reservoirs().get(pipe.first());var b=graph.reservoirs().get(pipe.second());
-            double margin=riseLimit(pump,endDensity(a.state(),pipe.firstPort()),a.state().pressure())-(endPressure(b,pipe.secondPort(),b.state())
-                    -endPressure(a,pipe.firstPort(),a.state())+endColumn(a.state(),pipe.firstPort())*GRAVITY*(b.elevation()-a.elevation()));
+            double suction=endDensity(a.state(),pipe.firstPort());
+            double margin=riseLimit(pump,suction,a.state().pressure())-(endPressure(b,pipe.secondPort(),b.state())-endPressure(a,pipe.firstPort(),a.state())
+                    +suction*GRAVITY*(b.elevation()-a.elevation()));
             if(margin>shutoffBand(Math.max(a.state().pressure(),b.state().pressure()),1e-9))modes.set(i,FlowControl.Mode.PUMP_HEAD_LIMIT);
             else atShutoff[i]=true;
         }
@@ -841,7 +841,7 @@ public final class PassiveStepSolver {
                                       FluidThermodynamics.State up,Equations.Transport suction,double tolerance,boolean atShutoff) {
         var graph=equations.graph;var pipe=graph.pipes().get(i);double rho=suction.density;var next=mode;
         if(pipe.control() instanceof FlowControl.Mover pump) {
-            double limit=riseLimit(pump,rho,states.get(pipe.first()).pressure()),margin=limit-demand(graph,pipe,states,suction.column);
+            double limit=riseLimit(pump,rho,states.get(pipe.first()).pressure()),margin=limit-demand(graph,pipe,states,rho);
             double band=shutoffBand(equations.pressureScales[i],tolerance);
             if(pump.targetVolumeFlow()==0)next=FlowControl.Mode.CLOSED;
             else if(mode==FlowControl.Mode.PUMP_TARGET&&pump.targetVolumeFlow()>pipe.minimumArea()*suction.velocityLimit*(1+1e-8))next=FlowControl.Mode.PUMP_HEAD_LIMIT;
@@ -1850,14 +1850,12 @@ public final class PassiveStepSolver {
      * closer the discharge sits to shutoff the further it has to walk. That walk is what runs out
      * of iterations, and it does so at every step size, which is why refining the step cannot help.
      * Seeding from the limit the pass is actually imposing starts the walk where it would have
-     * ended, so the drive's column is the row's ({@link #endColumn}, decision D36); the loss, the
-     * rise limit and the caps read the suction's draw.
+     * ended.
      */
     private double headLimitMassFlow(PassiveNetwork graph,PassiveNetwork.Pipe pipe,FlowControl.Mover pump) {
         var a=graph.reservoirs().get(pipe.first());var b=graph.reservoirs().get(pipe.second());
         double rho=endDensity(a.state(),pipe.firstPort()),mu=endViscosity(a.state(),pipe.firstPort());
-        double driving=endPressure(a,pipe.firstPort(),a.state())-endPressure(b,pipe.secondPort(),b.state())-endColumn(a.state(),pipe.firstPort())*GRAVITY*(b.elevation()-a.elevation())
-                +riseLimit(pump,rho,a.state().pressure());
+        double driving=endPressure(a,pipe.firstPort(),a.state())-endPressure(b,pipe.secondPort(),b.state())-rho*GRAVITY*(b.elevation()-a.elevation())+riseLimit(pump,rho,a.state().pressure());
         if(driving<=0)return 0;
         double lo=0,hi=1;while(pipe.pressureDrop(hi,rho,mu)<driving&&hi<1e6)hi*=2;
         for(int j=0;j<50;j++){double mid=(lo+hi)/2;if(pipe.pressureDrop(mid,rho,mu)>driving)hi=mid;else lo=mid;}
@@ -1956,8 +1954,7 @@ public final class PassiveStepSolver {
      * end, and at a phase port the stream of the first phase of its priority order the state holds
      * ({@link PhaseDraw#leading}; decision D11, {@link #phaseDensity}); the bulk's when the state holds none of the three.
      * The draw reads an end's density through here: a start flow's loss and its velocity cap ({@link #massFlowLimit}), a
-     * mover's suction and rise limit (decision D6). What stands in the connection is {@link #columnDensity}; the column of
-     * a mover's suction stream at a vanishing flow is {@link #endColumn}.
+     * mover's suction, rise limit and column (decision D6). What stands in the connection is {@link #columnDensity}.
      */
     private double endDensity(FluidThermodynamics.State s,PassiveNetwork.PhasePort port){return endDensity(model,s,port);}
     /** {@link #endDensity} for a caller outside a solve (the network reduction stage): the same arithmetic on {@code model}. */
@@ -1971,62 +1968,35 @@ public final class PassiveStepSolver {
         return phase==FluidThermodynamics.GAS?model.vaporDensity(s):model.phaseMass(s,phase)/FluidThermodynamics.phaseVolume(s,phase);
     }
     /**
-     * Owner decision D36 (documentation/2026-09-24-coolprop-low-temperature, 2026-10-17): a gas column does not exist. The
-     * weight per volume of {@link #endDensity}'s stream with its vapour weighing nothing: zero for the gas, a liquid
-     * stream's own density with its solid share ({@link #phaseDensity}), and at a BULK end, or for a state holding none of
-     * the port's phases, the bulk's condensed mass over its volume ({@link #condensedOverBulk}); zero at a BULK end that
-     * draws its gas (decision D33). It is what a connection's end stands in it when the leading phase fills it
-     * ({@link #columnDensity}), and a mover's column at a vanishing flow (decision D6, the suction stream: the carry's
-     * shutoff offer and {@link #headLimitMassFlow}; the rows read the drawn stream's {@code Transport.column}).
-     */
-    private double endColumn(FluidThermodynamics.State s,PassiveNetwork.PhasePort port){return endColumn(model,s,port);}
-    /** {@link #endColumn} for a caller outside a solve: the same arithmetic on {@code model}. */
-    static double endColumn(FluidThermodynamics model,FluidThermodynamics.State s,PassiveNetwork.PhasePort port) {
-        int phase=PhaseDraw.leading(model,s,port);
-        return phase<0?condensedOverBulk(model,s):phase==FluidThermodynamics.GAS?0:phaseDensity(model,s,phase);
-    }
-    /**
-     * A bulk's weight per volume with its vapour weighing nothing (decision D36): its condensed mass (hydrocarbon liquid,
-     * free water and every solid, {@link FluidThermodynamics#liquidMass}, the level head's mass) over its volume,
-     * {@code alpha_L rho_L}; for a state holding no vapour the bulk density {@code mass/volume}, to the bit. A pass cannot
-     * change which of the two it is, nor which of a state's amounts are vapour: a node's trial states hold vapour in exactly
-     * the slots the pass's layout carries ({@link PhaseLayout#decode} writes an omitted phase as exactly zero).
-     */
-    static double condensedOverBulk(FluidThermodynamics model,FluidThermodynamics.State s) {
-        return FluidThermodynamics.holdsVapor(s)?model.liquidMass(s)/s.volume():s.mass()/s.volume();
-    }
-    /**
-     * Owner decisions D34 and D36 (documentation/2026-09-24-coolprop-low-temperature, 2026-10-17): the density of the static
-     * column a node's end {@code port} stands in a connection of its own {@code volume} (m3, {@link PassiveNetwork.Pipe#volume};
+     * Owner decision D34 (documentation/2026-09-24-coolprop-low-temperature, 2026-10-17): the density of the static column
+     * a node's end {@code port} stands in a connection of its own {@code volume} (m3, {@link PassiveNetwork.Pipe#volume};
      * a contracted run's summed): the connection filled with the port's phases in priority order by volume
-     * ({@link PhaseDraw#fill}, one end), each up to what the state holds of it, the last phase it holds taking the rest,
-     * the vapour's share weighing nothing (D36): the condensed phases' mass over the connection's volume.
+     * ({@link PhaseDraw#fill}, one end), each up to what the state holds of it, the last phase it holds taking the rest.
      * Every static column reads an end's density through here: the hydraulic row and the pass's column choice
      * ({@link Equations#columnEnds}), the start drives ({@link #staticDrive}, {@link #initialMassFlows}, {@link #supplyFlow},
      * the balanced junction seed, the valve start head, the one-way estimate), the sign tests ({@link #closeDeadHeads},
      * {@link #illegalWithEitherDensity}, {@link #reopenable}, the cold generator closure) and the rest gauge's drives
-     * ({@code NetworkReduction.drives}). A mover's column is its suction stream's instead (decision D6), its gas share
-     * weighing nothing as well.
+     * ({@code NetworkReduction.drives}). A mover's column is its suction stream instead (decision D6).
      *
-     * <p>A phase that fills the connection alone gives its own column ({@link #endColumn}: a liquid's density to the bit, so
-     * a tank holding liquid for the whole line has the liquid column it had; nothing for a gas); a BULK end, and a state
-     * holding none of the port's phases, the bulk's condensed mass over its volume. In between the column is continuous in
-     * the phase volumes. M5 seed 322: 1.83e-8 m3 of crude condensate (880 kg/m3) at a tank's bottom port over a 2 m drop
-     * of 2 L line stands as its share of the line, 8.2e-3 kg/m3, a 0.16 Pa column, the line's gas weighing nothing; read
-     * from the leading phase it was the condensate's 17.3 kPa, which no step could drain, and the island held. The draw is
-     * unchanged: the trace still leaves first, at its capacity. The column is read on the trial state, so the Jacobian
-     * differentiates it as it did the leading phase's density; which phases a trial state holds is the pass's
-     * ({@link #condensedOverBulk}).
+     * <p>A phase that fills the connection alone gives its own density, to the bit ({@link #endDensity}: a tank holding
+     * liquid for the whole line has the liquid column it had); a BULK end, and a state holding none of the port's phases,
+     * the bulk's. In between the column is continuous in the phase volumes. M5 seed 322: 1.83e-8 m3 of crude condensate
+     * (880 kg/m3) at a tank's bottom port over a 2 m drop of 2 L line stands as the line's gas (2.262 kg/m3) and the
+     * condensate's share, 2.270 kg/m3, a 44.5 Pa column; read from the leading phase it was the condensate's 17.3 kPa,
+     * which no step could drain, and the island held. The draw is unchanged: the trace still leaves first, at its capacity.
+     * The column is read on the trial state, so the Jacobian differentiates it as it did the leading phase's density.
      */
     private double columnDensity(FluidThermodynamics.State s,PassiveNetwork.PhasePort port,double volume){return columnDensity(model,s,port,volume);}
     /** {@link #columnDensity} for a caller outside a solve (the network reduction stage): the same arithmetic on {@code model}. */
     static double columnDensity(FluidThermodynamics model,FluidThermodynamics.State s,PassiveNetwork.PhasePort port,double volume) {
+        if(port==PassiveNetwork.PhasePort.BULK)return endDensity(model,s,port);
         int leading=PhaseDraw.leading(model,s,port);
-        if(port==PassiveNetwork.PhasePort.BULK||leading<0||!(FluidThermodynamics.phaseVolume(s,leading)<volume))return endColumn(model,s,port);
+        if(leading<0)return s.mass()/s.volume();
+        if(!(FluidThermodynamics.phaseVolume(s,leading)<volume))return phaseDensity(model,s,leading);
         int[] order=PhaseDraw.order(model,s,port);var filled=PhaseDraw.fill(s,order,volume,1);
         double mass=0;
         for(int phase:order) {
-            if(phase==FluidThermodynamics.GAS||!(filled[phase]>0))continue;
+            if(!(filled[phase]>0))continue;
             if(filled[phase]==volume)return phaseDensity(model,s,phase);
             mass+=phaseDensity(model,s,phase)*filled[phase];
         }
@@ -2110,9 +2080,7 @@ public final class PassiveStepSolver {
     }
     /**
      * The head this connection demands of its device at the point one active-set pass converged
-     * to: the discharge pressure less the suction pressure, plus the static column between them, in
-     * {@code column}: the row's own, the drawn suction stream's with its gas share weighing nothing
-     * (decisions D6 and D36), not the stream density the rise limit reads.
+     * to: the discharge pressure less the suction pressure, plus the static column between them.
      *
      * <p>This is the one scalar the {@code PUMP_HEAD_LIMIT}/{@code CLOSED} pair is decided on, and
      * it is literally the same expression in both modes. In {@code PUMP_HEAD_LIMIT} the actuator
@@ -2123,10 +2091,10 @@ public final class PassiveStepSolver {
      * hand. Reading one quantity in both modes is what makes the pair a threshold on a line rather
      * than two one-sided tests of two different unknowns.
      */
-    private double demand(PassiveNetwork graph,PassiveNetwork.Pipe pipe,List<FluidThermodynamics.State> states,double column) {
+    private double demand(PassiveNetwork graph,PassiveNetwork.Pipe pipe,List<FluidThermodynamics.State> states,double density) {
         return endPressure(graph.reservoirs().get(pipe.second()),pipe.secondPort(),states.get(pipe.second()))
                 -endPressure(graph.reservoirs().get(pipe.first()),pipe.firstPort(),states.get(pipe.first()))
-                +column*GRAVITY*(graph.reservoirs().get(pipe.second()).elevation()-graph.reservoirs().get(pipe.first()).elevation());
+                +density*GRAVITY*(graph.reservoirs().get(pipe.second()).elevation()-graph.reservoirs().get(pipe.first()).elevation());
     }
     /**
      * How much head margin this edge's own rows can actually resolve, and therefore the band around
@@ -2646,14 +2614,13 @@ public final class PassiveStepSolver {
      * island's open connections balance with every held node (a non-junction) at its start end pressure, each connection
      * carrying the flow of {@link #initialMassFlow}'s law in the column of its donor end (the run's loss inverted, capped
      * at the donor's velocity limit) and nothing in a direction {@link #boundaryAllowed} refuses - so a generator below
-     * its junction carries nothing. A junction donor holding gas only has no column (decision D36) and its density, and so
-     * its cap, scaled with its pressure (ideal gas at its own temperature): the junctions start from the compiler's guess,
-     * not a state, and a cap read at the guessed density put the grid's junctions 10 kPa too high; it is also the one
-     * pressure dependence a capped junction outflow has, so a junction whose connections are all capped keeps a pressure
-     * column. Solved by a damped Newton on the junction pressures alone (per-connection difference derivatives), the
-     * iterate held within the held pressures' hull widened by the island's largest static column. Returns per node the
-     * estimated pressure of a junction some held node reaches, NaN elsewhere, or null if the Newton does not converge
-     * (nothing is then closed).
+     * its junction carries nothing. A junction donor holding gas only has its density, and so its cap, scaled with its
+     * pressure (ideal gas at its own temperature): the junctions start from the compiler's guess, not a state, and a cap
+     * read at the guessed density put the grid's junctions 10 kPa too high; it is also the one pressure dependence a
+     * capped junction outflow has, so a junction whose connections are all capped keeps a pressure column. Solved by a
+     * damped Newton on the junction pressures alone (per-connection difference derivatives), the iterate held within the
+     * held pressures' hull widened by the island's largest static column. Returns per node the estimated pressure of a
+     * junction some held node reaches, NaN elsewhere, or null if the Newton does not converge (nothing is then closed).
      */
     private double[] oneWayPressures(PassiveNetwork graph,boolean[] boundaryClosed,int[][] nodeEdges,Runnable checkpoint) {
         int edges=graph.pipes().size(),nodes=graph.reservoirs().size();
@@ -2781,15 +2748,15 @@ public final class PassiveStepSolver {
             }
         }
         /** The connection's flow at end pressures {@code pa}, {@code pb}: driven against the column of the donor the
-         * direction draws from ({@code column}; none for a gas-only junction, whose density alone is scaled), through its
-         * loss in that donor's stream ({@code rho}), nothing in a refused direction or between the two columns. */
+         * direction draws from ({@code column}), through its loss in that donor's stream ({@code rho}), nothing in a refused
+         * direction or between the two columns. */
         double flow(int e,double pa,double pb) {
             var pipe=graph.pipes().get(e);
             double dz=graph.reservoirs().get(pipe.second()).elevation()-graph.reservoirs().get(pipe.first()).elevation();
             double forwardScale=scale(pipe.first(),pa),reverseScale=scale(pipe.second(),pb);
-            double forward=pa-pb-column[e][0]*GRAVITY*dz;
+            double forward=pa-pb-column[e][0]*forwardScale*GRAVITY*dz;
             if(forward>0)return allowed[e][0]?runFlow(pipe,forward,rho[e][0]*forwardScale,mu[e][0],cap[e][0]*forwardScale):0;
-            double reverse=pa-pb-column[e][1]*GRAVITY*dz;
+            double reverse=pa-pb-column[e][1]*reverseScale*GRAVITY*dz;
             if(reverse<0)return allowed[e][1]?-runFlow(pipe,-reverse,rho[e][1]*reverseScale,mu[e][1],cap[e][1]*reverseScale):0;
             return 0;
         }
@@ -3299,11 +3266,13 @@ public final class PassiveStepSolver {
          * quantity each pass reads off its own seeds, revised only by the seeds moving.
          *
          * <p>What is frozen is which end's fluid stands in the connection (0 the first end's stream, 1 the second's), never
-         * its density (t27's A377, taken by t28): the row reads that end's column on its own trial state, the state its loss
-         * reads, so a riser at rest balances its own fluid's weight at the state solved for. The end is fixed for the pass,
-         * and so are the phases its trial states hold (the pass's layout), so the row stays smooth in its unknowns: no jump
-         * between the two columns at zero flow. A line or a loop holding only gas has no column (owner decision D36): it rests
-         * at one pressure, and a loop of gas risers carries nothing.
+         * its density (t27's A377, taken by t28): the row reads that end's density on its own trial state, the state its loss
+         * reads. A riser at rest then balances its own fluid's weight at the state solved for, and a dead-end loop of risers
+         * carries nothing but the column's discretisation (one end's density per riser: a gas's density changes by
+         * {@code g rho / P}, about 1e-4 per metre at 480 kPa). Frozen at the seeds, the columns of random 498's dead-end
+         * pocket (seeded at 118 to 124 kPa, converged at 397 kPa) did not cancel round its loops: its first rate seed carried
+         * 1.8e-5 kg/s round them, 2.4e-7 kg/s on the trial's densities. The end is fixed for the pass, so the row stays smooth
+         * in its unknowns: no jump between the two columns at zero flow.
          */
         final int[] columnEnds;
         /** Residual scratch. Every one of these is written before it is read within a single
@@ -3634,8 +3603,7 @@ public final class PassiveStepSolver {
          * capacities). The mixture is a {@link Transport} of rates: its {@code mass} is the mass flow it describes and every
          * extensive field the matching rate, so every donor term the solver states per kilogram ({@code moving * moles /
          * mass}, the solid share, the specific enthalpy) reads it unchanged; its density is the no-slip mixture's (mass over
-         * the sum of the phases' volume flows), its column the condensed phases' mass flow over that volume flow (owner
-         * decision D36: the gas weighs nothing), its viscosity the phases' volume-flow average (the bulk's own rule), its
+         * the sum of the phases' volume flows), its viscosity the phases' volume-flow average (the bulk's own rule), its
          * velocity limit the smallest of its phases' (the cap itself is {@link #capLimit}).
          */
         Transport drawn(int edge,int end,Transport node,double q) {
@@ -3647,7 +3615,7 @@ public final class PassiveStepSolver {
             if(pinned.length==1&&marginal<0)return start[pinned[0]];
             double total=segment.pinnedTotal(),basis=marginal<0?total:Math.max(Math.abs(q),total);
             var rates=segment.rates(marginal,basis);
-            double[] moles=new double[node.moles.length];double volume=0,viscous=0,heat=0,limit=Double.POSITIVE_INFINITY,solidMass=0,solidVolume=0,solidCapacity=0,gas=0,condensed=0;
+            double[] moles=new double[node.moles.length];double volume=0,viscous=0,heat=0,limit=Double.POSITIVE_INFINITY,solidMass=0,solidVolume=0,solidCapacity=0;
             for(int k=0;k<6;k++) {
                 if(!(rates[k]>0)&&!(k<3&&k==marginal))continue;
                 var stream=k<3?node.phases[k]:start[k-3];double rate=rates[k],perMass=rate/stream.mass;
@@ -3655,10 +3623,8 @@ public final class PassiveStepSolver {
                 double flowVolume=perMass*stream.volume;volume+=flowVolume;viscous+=flowVolume*stream.viscosity;heat+=rate*stream.specificEnthalpy;
                 limit=Math.min(limit,stream.velocityLimit);
                 solidMass+=perMass*stream.solids.mass();solidVolume+=perMass*stream.solids.volume();solidCapacity+=perMass*stream.solids.heatCapacity();
-                if(k%3==FluidThermodynamics.GAS)gas+=rate;else condensed+=rate;
             }
-            return new Transport(moles,basis,volume,basis/volume,gas>0?condensed/volume:basis/volume,viscous/volume,heat/basis,limit,
-                    new SolidInventory.Moments(solidMass,solidVolume,solidCapacity),null);
+            return new Transport(moles,basis,volume,basis/volume,viscous/volume,heat/basis,limit,new SolidInventory.Moments(solidMass,solidVolume,solidCapacity),null);
         }
         /**
          * The velocity cap (kg/s) of the direction leaving end {@code end} of {@code edge}, on that end's node transport: the
@@ -3937,18 +3903,15 @@ public final class PassiveStepSolver {
         /**
          * What a connection carries out of one node, per kilogram and for its loss and cap: the conserved amounts and their
          * mass (the normaliser), the volume and density, the viscosity, the specific enthalpy, the velocity limit and the
-         * solid moments; and its {@code column}, the stream's weight per volume with its gas share weighing nothing (owner
-         * decision D36: its condensed mass over its volume; the density of a stream holding no gas, zero for a gas stream),
-         * which is a mover's column (decision D6). A node's cached entry is its BULK stream, the whole state exactly as the
-         * donor terms have always read it ({@code mass} is {@code state.mass()}, so {@code moles/mass} is the double
-         * {@code moles/state.mass()} was),
+         * solid moments. A node's cached entry is its BULK stream, the whole state exactly as the donor terms have always
+         * read it ({@code mass} is {@code state.mass()}, so {@code moles/mass} is the double {@code moles/state.mass()} was),
          * and on a donor holding solids but no liquid its gas stream, which its bulk end draws (owner decision D33: solids
          * ride the liquid, {@link FluidThermodynamics#bulkDrawsGas}; {@link #draws} books it as that gas);
          * {@code phases} are its phase streams by phase id ({@link FluidThermodynamics#GAS}, {@link FluidThermodynamics#OIL},
          * {@link FluidThermodynamics#WATER}; null for a phase the state does not hold), built only for a node an end of which
          * is a phase port (plan 3.2; decision D11). What a port end draws of them is {@link Equations#drawn}.
          */
-        private record Transport(double[] moles,double mass,double volume,double density,double column,double viscosity,double specificEnthalpy,double velocityLimit,
+        private record Transport(double[] moles,double mass,double volume,double density,double viscosity,double specificEnthalpy,double velocityLimit,
                                  SolidInventory.Moments solids,Transport[] phases) {
             /** Which phases this node's state holds (a phase stream is built exactly for a phase it holds). */
             boolean[] held(){return new boolean[]{phases[0]!=null,phases[1]!=null,phases[2]!=null};}
@@ -3958,18 +3921,16 @@ public final class PassiveStepSolver {
          * whole-island decode and the block Jacobian sweep. The gas stream's amounts per kilogram are the fluid's totals over
          * its mass, so the structural zeros of a BULK end's columns ({@link #buildSparsity}) hold for it as well. */
         private Transport transport(int node,FluidThermodynamics.State state,FluidThermodynamics.Prepared prepared) {
-            var bulk=FluidThermodynamics.bulkDrawsGas(state)?phase(FluidThermodynamics.GAS,model.phaseStream(state,FluidThermodynamics.GAS,prepared,viscosities))
-                    :new Transport(PhaseLayout.totalAmounts(state),state.mass(),state.volume(),state.mass()/state.volume(),condensedOverBulk(model,state),
-                    viscosity(state,prepared),state.enthalpy()/state.mass(),model.velocityLimit(state),state.solidMoments(),null);
+            var bulk=FluidThermodynamics.bulkDrawsGas(state)?phase(model.phaseStream(state,FluidThermodynamics.GAS,prepared,viscosities))
+                    :new Transport(PhaseLayout.totalAmounts(state),state.mass(),state.volume(),state.mass()/state.volume(),viscosity(state,prepared),
+                    state.enthalpy()/state.mass(),model.velocityLimit(state),state.solidMoments(),null);
             if(!drawsPhase[node])return bulk;
             var phases=new Transport[3];
-            for(int phase=0;phase<3;phase++){var stream=model.phaseStream(state,phase,prepared,viscosities);if(stream!=null)phases[phase]=phase(phase,stream);}
-            return new Transport(bulk.moles,bulk.mass,bulk.volume,bulk.density,bulk.column,bulk.viscosity,bulk.specificEnthalpy,bulk.velocityLimit,bulk.solids,phases);
+            for(int phase=0;phase<3;phase++){var stream=model.phaseStream(state,phase,prepared,viscosities);if(stream!=null)phases[phase]=phase(stream);}
+            return new Transport(bulk.moles,bulk.mass,bulk.volume,bulk.density,bulk.viscosity,bulk.specificEnthalpy,bulk.velocityLimit,bulk.solids,phases);
         }
-        /** Phase stream {@code phase} as a transport: its column is its density, and nothing for the gas (decision D36). */
-        private static Transport phase(int phase,FluidThermodynamics.PhaseStream stream) {
-            double density=stream.mass()/stream.volume();
-            return new Transport(stream.molesView(),stream.mass(),stream.volume(),density,phase==FluidThermodynamics.GAS?0:density,stream.viscosity(),
+        private static Transport phase(FluidThermodynamics.PhaseStream stream) {
+            return new Transport(stream.molesView(),stream.mass(),stream.volume(),stream.mass()/stream.volume(),stream.viscosity(),
                     stream.specificEnthalpy(),stream.velocityLimit(),stream.solidMoments(),null);
         }
         public double[] residual(double[] x) {
@@ -4292,15 +4253,13 @@ public final class PassiveStepSolver {
             // The static column is this pass's, never the live iterate's upwind end; see
             // {@link #columnEnds}. On an island whose devices all sit at one y, {@code dz} is
             // zero and this term is bitwise the zero it always was.
-            // A pump's column is the fluid it moves, the stream its suction end draws at this trial (the suction's bulk at a
-            // BULK end), never the destination's (owner rule, decision D6 of the mixed-gas junction batch), with that
-            // stream's gas share weighing nothing (owner decision D36): a compressor on gas carries no column, a pump on
-            // liquid its own. The pass loop's shutoff margin reads the same column ({@link #demand}); the rise limit, the
-            // target row and the velocity clamp read the stream's density.
+            // A pump's column is the fluid it moves, the suction node's transported density at this trial - the density
+            // its rise limit, its target row, its velocity clamp and the pass loop's shutoff margin ({@link #demand}) read -
+            // never the destination's (owner rule, decision D6 of the mixed-gas junction batch): the stream its suction end
+            // draws, which is the suction's bulk density at a BULK end.
             // The column end is the pass's; its density is the trial's ({@link #columnEnds}), the column that end's port
-            // stands in the connection ({@link #columnDensity}, owner decisions D34 and D36), differentiated with the trial
-            // state.
-            double column=pipe.control() instanceof FlowControl.Mover?suction.column
+            // stands in the connection ({@link #columnDensity}, owner decision D34), differentiated with the trial state.
+            double column=pipe.control() instanceof FlowControl.Mover?suction.density
                     :columnEnds[edge]==0?columnDensity(st[a],pipe.firstPort(),pipe.volume()):columnDensity(st[b],pipe.secondPort(),pipe.volume());
             double driving=endPressure(graph.reservoirs().get(a),pipe.firstPort(),st[a])-endPressure(graph.reservoirs().get(b),pipe.secondPort(),st[b])-column*GRAVITY*dz+signedHead;
             // Every pressure-dimensioned row of this edge is stated in the island's own pressure,

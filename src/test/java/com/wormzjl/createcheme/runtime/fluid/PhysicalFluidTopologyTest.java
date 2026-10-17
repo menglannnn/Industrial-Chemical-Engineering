@@ -212,11 +212,8 @@ class PhysicalFluidTopologyTest {
      * Two tanks stacked on a pipe block, the upper one holding 0.3 m3 of water under nitrogen, both at 1 atm. The upper
      * tank's bottom outlet draws water and nothing else into the lower tank's top; as the lower tank's gas is compressed
      * its top outlet draws gas back up into the upper tank's bottom (inflow is not distinguished, decision D3), so the
-     * water passes down and the gas up until the lower tank holds all of it, and the two headspaces rest at one pressure:
-     * the gas weighs nothing (owner decision D36), and the 9 mg of water left upstairs, which stand in the line, weigh less
-     * than the gauge reads (0.09 Pa against 0.1 Pa). Restated under D36: weighed, the line's gas stood the lower headspace
-     * 22.7 Pa higher.
-     * Every component is conserved. The tank lines read the first interval: the upper tank's bottom outlet
+     * water passes down and the gas up until the lower tank holds all of it, and the two headspaces stand one gas column
+     * apart. Every component is conserved. The tank lines read the first interval: the upper tank's bottom outlet
      * "drawing water", the lower tank's top "receiving".
      */
     @Test void aCompiledStackPassesTheUpperTanksWaterDownAndItsGasUp() {
@@ -243,7 +240,7 @@ class PhysicalFluidTopologyTest {
         var a=graph.reservoirs().get(upper);var b=graph.reservoirs().get(lower);
         System.out.println("STACK_PASS upperP="+a.state().pressure()+" lowerP="+b.state().pressure()+" upperLiquidKg="+model.liquidMass(a.state())+" lowerLiquidKg="+model.liquidMass(b.state()));
         assertTrue(model.liquidMass(a.state())<1e-6*model.liquidMass(start.state()),"the upper tank has passed down its water");
-        assertEquals(a.state().pressure(),b.state().pressure(),NetworkReduction.REST_RESOLUTION,"the headspaces rest at one pressure: the gas weighs nothing");
+        assertTrue(b.state().pressure()>a.state().pressure()&&b.state().pressure()-a.state().pressure()<100,"the headspaces rest one gas column apart");
     }
     /**
      * {@code LEVEL_HEAD_REVIEW.md} fixture 6, face to port plus the level head on a compiled stack: a tank holding 0.3 m3
