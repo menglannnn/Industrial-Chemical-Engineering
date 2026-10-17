@@ -29,7 +29,7 @@ class PumpRiseScalingTest {
     private static PassiveNetwork transfer(FluidThermodynamics model,double pressure) {
         var a=model.initialNitrogenCharge(1,298.15,pressure,()->{});var b=model.initialNitrogenCharge(1,298.15,pressure,()->{});
         return new PassiveNetwork(List.of(new PassiveNetwork.Reservoir(1,0,a),new PassiveNetwork.Reservoir(2,0,b)),
-                List.of(new PassiveNetwork.Pipe(10,0,1,LINE,new FlowControl.Compressor(TARGET,RATIO,1))));
+                List.of(new PassiveNetwork.Pipe(10,0,1,LINE,new FlowControl.Compressor(TARGET,RATIO))));
     }
 
     @Test void theReferenceIsThisModelsOwnWaterAtRoomConditions() {

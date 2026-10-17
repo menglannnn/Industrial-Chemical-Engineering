@@ -64,7 +64,7 @@ class EventPathWorld {
     }
     /** The world's default control of a device kind (FluidWorldAuthority.place). */
     static FlowControl defaultControl(Kind kind) {
-        return switch(kind){case PUMP->new FlowControl.Pump(.01,500000,1);case COMPRESSOR->new FlowControl.Compressor(.05,3.0,1);case VALVE->new FlowControl.PressureValve(200000);default->new FlowControl.Passive();};
+        return switch(kind){case PUMP->new FlowControl.Pump(.01,500000);case COMPRESSOR->new FlowControl.Compressor(.05,3.0);case VALVE->new FlowControl.PressureValve(200000);default->new FlowControl.Passive();};
     }
     /** A 1 m3 nitrogen charge at 298.15 K and 1 atm: a tank's or a void's default. */
     static FluidDeviceSpec nitrogen(){return FluidDeviceSpec.nitrogen(CATALOG);}

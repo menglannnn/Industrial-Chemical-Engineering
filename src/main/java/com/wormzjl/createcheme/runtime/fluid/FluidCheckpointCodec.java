@@ -18,12 +18,12 @@ import java.util.*;
 import java.util.function.Function;
 
 /**
- * Checkpoint format 9 of committed science and runtime state: what one storage unit holds and what the core record
+ * Checkpoint format 10 of committed science and runtime state: what one storage unit holds and what the core record
  * holds. Rebuilds properties through the immutable model; it never deserializes implementation caches or creates a
  * nitrogen charge. Where the units live - pack files beside the world's saved data, dirty tracking, atomic writes and
  * orphan cleanup - is {@link FluidCheckpointStore}'s business.
  *
- * <p><b>Core record</b> (one NBT compound, the world's saved data): {@code FluidFormat = 9}; the world {@code Epoch};
+ * <p><b>Core record</b> (one NBT compound, the world's saved data): {@code FluidFormat = 10}; the world {@code Epoch};
  * {@code Strings}, an append-only table of the long texts units refer to (dimensions, packages, property revisions, certificate
  * policies); {@code Packages}, one entry per property package with the thermodynamic revision and energy reference
  * the units were written under; the pack files and their sizes; the topology unit's reference; and {@code Islands},
@@ -51,18 +51,20 @@ import java.util.function.Function;
  * solids); the reader takes the record, so a crystal comes back with its component and energy offset, and refuses an
  * id that names no record of the package or saved constants that are not the record's.
  *
- * <p>No other format is read: format 8 and older are refused with the instruction to create a fresh world (the
+ * <p>No other format is read: format 9 and older are refused with the instruction to create a fresh world (the
  * owner's standing rule on save compatibility; format 6 added the ports and the compressor of the phase-ports batch,
  * format 7 the end flows of the last interval, format 8 removed the core record's ledger of buffered transfers and
  * modules with the causal module system). Format 9 (unit format 2) dropped the global liquid compressibility from the
  * package key, the package table and the island unit: liquids are evaluated at the state pressure by their own
- * equation of state, so a package is identified by its id and thermodynamic revision alone.
+ * equation of state, so a package is identified by its id and thermodynamic revision alone. Format 10 (unit format 3)
+ * dropped the movers' efficiency (owner decision D37, simplification S6): a pump's or a compressor's shaft work is its
+ * ideal work.
  */
 public final class FluidCheckpointCodec {
-    public static final int VERSION=9;
+    public static final int VERSION=10;
     /** The {@code Base} of an awake island: it carries no certificate. */
     public static final long AWAKE=-1;
-    static final int UNIT_MAGIC=0x43434655,UNIT_FORMAT=2;
+    static final int UNIT_MAGIC=0x43434655,UNIT_FORMAT=3;
     static final byte ISLAND=1,TOPOLOGY=2;
     /** Magic, format, kind, identity, revision, generation. */
     static final int UNIT_HEADER=4+1+1+8+8+8;
@@ -187,9 +189,9 @@ public final class FluidCheckpointCodec {
         var d=r.device();w.varlong(d.id());position(w,d.position(),tables);w.u8(d.kind().ordinal());w.u8(d.facing().ordinal());w.varint(tables.geometry(d.geometry()));
         switch(d.control()) {
             case FlowControl.Passive ignored->w.u8(0);
-            case FlowControl.Pump pump->{w.u8(1);w.f64(pump.targetVolumeFlow());w.f64(pump.maximumAddedPressure());w.f64(pump.efficiency());}
+            case FlowControl.Pump pump->{w.u8(1);w.f64(pump.targetVolumeFlow());w.f64(pump.maximumAddedPressure());}
             case FlowControl.PressureValve valve->{w.u8(2);w.f64(valve.targetPressure());}
-            case FlowControl.Compressor compressor->{w.u8(3);w.f64(compressor.targetVolumeFlow());w.f64(compressor.maximumPressureRatio());w.f64(compressor.efficiency());}
+            case FlowControl.Compressor compressor->{w.u8(3);w.f64(compressor.targetVolumeFlow());w.f64(compressor.maximumPressureRatio());}
         }
         var s=r.spec();w.f64(s.volume());w.f64(s.temperature());w.f64(s.pressure());w.varint(tables.composition(s.composition()));
         w.f64(s.solids().volumeFraction());w.varint(s.solids().grades().size());
@@ -201,8 +203,8 @@ public final class FluidCheckpointCodec {
         long id=r.varlong();var position=position(r,texts);int kind=r.u8();if(kind>=DEVICE_KINDS.length)throw r.invalid("unknown device kind "+kind);
         int facing=r.u8();if(facing>=DIRECTIONS.length)throw r.invalid("unknown facing "+facing);
         var geometry=geometries[r.varint(geometries.length-1)];
-        FlowControl control=switch(r.u8()){case 0->new FlowControl.Passive();case 1->new FlowControl.Pump(r.f64(),r.f64(),r.f64());case 2->new FlowControl.PressureValve(r.f64());
-            case 3->new FlowControl.Compressor(r.f64(),r.f64(),r.f64());default->throw r.invalid("unknown control");};
+        FlowControl control=switch(r.u8()){case 0->new FlowControl.Passive();case 1->new FlowControl.Pump(r.f64(),r.f64());case 2->new FlowControl.PressureValve(r.f64());
+            case 3->new FlowControl.Compressor(r.f64(),r.f64());default->throw r.invalid("unknown control");};
         var device=new PhysicalFluidTopology.Device(id,position,DEVICE_KINDS[kind],DIRECTIONS[facing],geometry,control);
         double volume=r.f64(),temperature=r.f64(),pressure=r.f64();var composition=compositions[r.varint(compositions.length-1)];
         double fraction=r.f64();int gradeCount=r.varint(64);var grades=new ArrayList<SlurryFeed.Grade>(gradeCount);
@@ -346,9 +348,9 @@ public final class FluidCheckpointCodec {
             for(var g:p.sections()){w.f64(g.length());w.f64(g.diameter());w.f64(g.roughness());w.f64(g.minorLoss());}
             switch(p.control()) {
                 case FlowControl.Passive ignored->w.u8(0);
-                case FlowControl.Pump pump->{w.u8(1);w.f64(pump.targetVolumeFlow());w.f64(pump.maximumAddedPressure());w.f64(pump.efficiency());}
+                case FlowControl.Pump pump->{w.u8(1);w.f64(pump.targetVolumeFlow());w.f64(pump.maximumAddedPressure());}
                 case FlowControl.PressureValve valve->{w.u8(2);w.f64(valve.targetPressure());}
-                case FlowControl.Compressor compressor->{w.u8(3);w.f64(compressor.targetVolumeFlow());w.f64(compressor.maximumPressureRatio());w.f64(compressor.efficiency());}
+                case FlowControl.Compressor compressor->{w.u8(3);w.f64(compressor.targetVolumeFlow());w.f64(compressor.maximumPressureRatio());}
             }
             // Format 6: the port of each end (PassiveNetwork.PhasePort ordinal), after the control.
             w.u8(p.firstPort().ordinal());w.u8(p.secondPort().ordinal());
@@ -478,8 +480,8 @@ public final class FluidCheckpointCodec {
             pipeIds[p]=r.i64();first[p]=r.varint(nodes);second[p]=r.varint(nodes);int count=r.varint(MAXIMUM_SECTIONS);
             var list=new ArrayList<PipeResistance.Geometry>(count);for(int s=0;s<count;s++)list.add(new PipeResistance.Geometry(r.f64(),r.f64(),r.f64(),r.f64()));
             sections.add(List.copyOf(list));
-            controls.add(switch(r.u8()){case 0->new FlowControl.Passive();case 1->new FlowControl.Pump(r.f64(),r.f64(),r.f64());case 2->new FlowControl.PressureValve(r.f64());
-                case 3->new FlowControl.Compressor(r.f64(),r.f64(),r.f64());default->throw new IllegalArgumentException("Unknown saved control");});
+            controls.add(switch(r.u8()){case 0->new FlowControl.Passive();case 1->new FlowControl.Pump(r.f64(),r.f64());case 2->new FlowControl.PressureValve(r.f64());
+                case 3->new FlowControl.Compressor(r.f64(),r.f64());default->throw new IllegalArgumentException("Unknown saved control");});
             firstPorts[p]=port(r);secondPorts[p]=port(r);
         }
         return new Topology(ids,elevations,kinds,volumes,pipeIds,first,second,sections,controls,firstPorts,secondPorts);
@@ -588,7 +590,7 @@ public final class FluidCheckpointCodec {
     }
     private static final List<String> LONG_COLUMNS=List.of("Id","Revision","Generation","Online","Committed","Retry","Base","Since","Start","Horizon","Pack","Offset");
     /**
-     * Reads and validates a core record: format 9 only (older formats are refused with the instruction to create a
+     * Reads and validates a core record: format 10 only (older formats are refused with the instruction to create a
      * fresh world), every field present and typed, the envelope digest, the string and package tables,
      * the pack list, and every index row's unit reference lying inside a listed pack. The units themselves are read by
      * {@link #island} and {@link #topology}.

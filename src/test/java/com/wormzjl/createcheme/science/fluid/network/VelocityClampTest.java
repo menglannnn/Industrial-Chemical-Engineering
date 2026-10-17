@@ -35,7 +35,7 @@ class VelocityClampTest {
     }
     @Test void threePhaseClampingTransfersAllPhasesAndDevicesRespectTheRateLimit() {
         var model=model(.2);
-        for(FlowControl control:List.of(new FlowControl.Passive(),new FlowControl.Pump(1,500000,1),new FlowControl.PressureValve(150000))) {
+        for(FlowControl control:List.of(new FlowControl.Passive(),new FlowControl.Pump(1,500000),new FlowControl.PressureValve(150000))) {
             var graph=graph(model,false,true,control,false);var result=new PassiveStepSolver(model).solve(graph,.1,()->{});bounded(model,graph,result);
             if(control instanceof FlowControl.Pump) {
                 // The liquid-only pump (decisions D1, D6 of the phase-ports batch) refuses the three-phase supply: closed with

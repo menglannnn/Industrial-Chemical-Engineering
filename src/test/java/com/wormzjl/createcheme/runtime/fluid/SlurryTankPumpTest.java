@@ -59,7 +59,7 @@ class SlurryTankPumpTest {
     PassiveNetwork island(double target) {
         var devices=List.of(device(VENT,0,3,0,Kind.VOID),device(2,0,2,0,Kind.PIPE),device(TANK,0,1,0,Kind.RESERVOIR),
                 device(4,0,0,0,Kind.PIPE),device(5,0,0,1,Kind.PIPE),device(6,0,0,2,Kind.PIPE),
-                device(PUMP,0,0,3,Kind.PUMP,SOUTH,new FlowControl.Pump(target,500000,1)),device(9,0,0,4,Kind.PIPE),device(10,0,0,5,Kind.VOID));
+                device(PUMP,0,0,3,Kind.PUMP,SOUTH,new FlowControl.Pump(target,500000)),device(9,0,0,4,Kind.PIPE),device(10,0,0,5,Kind.VOID));
         double[] air=new double[pilot.componentCount()];air[0]=1;
         var boundaries=new LinkedHashMap<Long,PassiveNetwork.Reservoir>();
         boundaries.put(TANK,slurryTank());
@@ -105,7 +105,7 @@ class SlurryTankPumpTest {
         assertNotEquals(0,graph.pipes().get(line).blockedDirections(),"0.25 m/s settles the crystals: the suction line closes");
         assertTrue(last.rejectionReasons().keySet().stream().anyMatch(r->r.contains("DEPOSITION")),"on deposition: "+last.rejectionReasons());
         var pipes=new ArrayList<>(graph.pipes());var p=pipes.get(pump);
-        pipes.set(pump,new PassiveNetwork.Pipe(p.id(),p.first(),p.second(),p.sections(),new FlowControl.Pump(.005,500000,1),p.blockedDirections(),p.filter(),p.firstPort(),p.secondPort()));
+        pipes.set(pump,new PassiveNetwork.Pipe(p.id(),p.first(),p.second(),p.sections(),new FlowControl.Pump(.005,500000),p.blockedDirections(),p.filter(),p.firstPort(),p.secondPort()));
         graph=new PassiveNetwork(graph.reservoirs(),pipes,graph.scheduledTransfers());
         last=slice(retained,last,graph,"raised");graph=last.graph();
         assertNotEquals(FlowControl.Mode.INLET_WRONG_PHASE,last.endpointModes().get(pump),"the closure the slow target left does not leave the suction dry");

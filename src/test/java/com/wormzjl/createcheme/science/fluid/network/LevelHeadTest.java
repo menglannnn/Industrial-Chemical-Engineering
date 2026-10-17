@@ -317,7 +317,7 @@ class LevelHeadTest extends PortFixture {
                 new PassiveNetwork.Reservoir(3,0,nitrogenAt(101325)));
         var g=line(1,.05);
         return PassiveNetwork.sizeJunctionHoldups(new PassiveNetwork(nodes,List.of(new PassiveNetwork.Pipe(20,0,1,g),
-                new PassiveNetwork.Pipe(21,1,2,List.of(g),new FlowControl.Pump(.01,300000,.7),0,null,PhasePort.BULK,tankPort))),model);
+                new PassiveNetwork.Pipe(21,1,2,List.of(g),new FlowControl.Pump(.01,300000),0,null,PhasePort.BULK,tankPort))),model);
     }
     /** The pump closes when the discharge it sees reaches its shutoff: into a side (BULK) port that is the headspace, into a
      * bottom (LIQUID) port the headspace plus the level head, so the bottom-fed tank's headspace closes {@code rho g L}

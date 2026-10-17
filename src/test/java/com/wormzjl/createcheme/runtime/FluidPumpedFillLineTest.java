@@ -45,7 +45,7 @@ class FluidPumpedFillLineTest {
             var kind=switch(layout.charAt(i)){case 'G'->TopologyCompiler.Kind.GENERATOR;case 'U'->TopologyCompiler.Kind.PUMP;case 'C'->TopologyCompiler.Kind.COMPRESSOR;case 'P','W'->TopologyCompiler.Kind.PIPE;
                 case 'R'->TopologyCompiler.Kind.RESERVOIR;case 'V'->TopologyCompiler.Kind.VOID;default->throw new IllegalArgumentException(layout);};
             var device=new PhysicalFluidTopology.Device(i+1,new PhysicalFluidTopology.Position("minecraft:overworld",i,64,0),kind,PhysicalFluidTopology.Direction.EAST,layout.charAt(i)=='W'?WIDE:BLOCK,
-                    kind==TopologyCompiler.Kind.PUMP?new FlowControl.Pump(.01,500000,1):kind==TopologyCompiler.Kind.COMPRESSOR?new FlowControl.Compressor(.01,COMPRESSOR_RATIO,1):new FlowControl.Passive());
+                    kind==TopologyCompiler.Kind.PUMP?new FlowControl.Pump(.01,500000):kind==TopologyCompiler.Kind.COMPRESSOR?new FlowControl.Compressor(.01,COMPRESSOR_RATIO):new FlowControl.Passive());
             devices.add(device);
             if(kind==TopologyCompiler.Kind.GENERATOR)boundaries.put(device.id(),new FluidDeviceSpec(1,298.15,101325,pure(MaterialTestBasis.NETWORK)).initialize(device,model,()->{}));
             else if(kind==TopologyCompiler.Kind.RESERVOIR||kind==TopologyCompiler.Kind.VOID)boundaries.put(device.id(),com.wormzjl.createcheme.fluid.support.FluidTestSupport.chargedBoundary(new FluidDeviceSpec(1,298.15,101325,pure(MaterialTestBasis.NITROGEN)),device,model));

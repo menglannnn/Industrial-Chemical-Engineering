@@ -28,7 +28,7 @@ class FixedBoundarySplitTest {
         w.place(0,0,1,Kind.PIPE,NORTH,.02);long secondVoid=w.place(0,0,7,Kind.VOID,NORTH,PASSIVE,nitrogen,.01);w.place(2,0,1,Kind.PIPE,NORTH,.05);
         w.place(0,0,5,Kind.PIPE,NORTH,.01);w.place(0,0,6,Kind.PIPE,NORTH,.01);w.place(0,0,3,Kind.PIPE,NORTH,.02);w.place(0,0,2,Kind.PIPE,NORTH,.02);
         long firstVoid=w.place(3,0,1,Kind.VOID,NORTH,PASSIVE,nitrogen,.05);w.place(-1,0,4,Kind.PIPE,NORTH,.1);w.place(1,0,1,Kind.PIPE,NORTH,.05);
-        long junction=w.place(0,0,4,Kind.PIPE,NORTH,.02);w.place(3,-1,1,Kind.PIPE,NORTH,.05);w.place(-2,0,4,Kind.PUMP,WEST,new FlowControl.Pump(.01,500000,1),null,.1);
+        long junction=w.place(0,0,4,Kind.PIPE,NORTH,.02);w.place(3,-1,1,Kind.PIPE,NORTH,.05);w.place(-2,0,4,Kind.PUMP,WEST,new FlowControl.Pump(.01,500000),null,.1);
         return new Seed33(w,generator,firstVoid,secondVoid,junction);
     }
     private static Set<Long> islandsHolding(EventPathWorld w,long device) {

@@ -39,7 +39,7 @@ class PumpCavitationTest {
         w.place(0,1,-3,Kind.PIPE,NORTH,passive,null,.05);
         w.place(0,-1,1,Kind.PIPE,NORTH,passive,null,.05);
         w.place(0,-2,1,Kind.PIPE,NORTH,passive,null,.05);
-        w.place(0,0,0,Kind.PUMP,SOUTH,new FlowControl.Pump(.01,500000,1),null,.05);
+        w.place(0,0,0,Kind.PUMP,SOUTH,new FlowControl.Pump(.01,500000),null,.05);
         w.place(0,0,-2,Kind.PIPE,NORTH,passive,null,.05);
         w.place(0,0,-1,Kind.PIPE,NORTH,passive,null,.05);
         w.place(0,0,2,Kind.GENERATOR,NORTH,passive,water,.05);
@@ -64,7 +64,7 @@ class PumpCavitationTest {
         w.place(0,0,-3,Kind.GENERATOR,NORTH,passive,EventPathWorld.pure(MaterialTestBasis.NETWORK,298.15,101325),.05);
         w.place(0,0,-2,Kind.PIPE,NORTH,passive,null,.03);
         w.place(0,0,-1,Kind.PIPE,NORTH,passive,null,.03);
-        w.place(0,0,0,Kind.PUMP,SOUTH,new FlowControl.Pump(.01,500000,1),null,.05);
+        w.place(0,0,0,Kind.PUMP,SOUTH,new FlowControl.Pump(.01,500000),null,.05);
         w.place(0,0,1,Kind.PIPE,NORTH,passive,null,.05);
         w.place(0,0,2,Kind.VOID,NORTH,passive,null,.05);
         w.runTo(100+20*100);w.assertKeptUp("a pump on a starved suction");

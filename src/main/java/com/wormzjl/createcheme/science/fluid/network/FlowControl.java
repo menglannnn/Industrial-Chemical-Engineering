@@ -18,8 +18,6 @@ public sealed interface FlowControl permits FlowControl.Passive,FlowControl.Move
     sealed interface Mover extends FlowControl permits Pump,Compressor {
         /** Suction volume flow target (m3/s at suction conditions). */
         double targetVolumeFlow();
-        /** Shaft efficiency, in (0, 1]. */
-        double efficiency();
         /**
          * The largest pressure rise (Pa) the device can add over what its suction draws: {@code suctionDensity} (kg/m3) is
          * the density of the stream the first end draws, {@code suctionPressure} (Pa) the first end's driving pressure,
@@ -30,7 +28,8 @@ public sealed interface FlowControl permits FlowControl.Passive,FlowControl.Move
         /**
          * The shaft power (W) the device puts into what it moves, booked as heat into the discharge: {@code massFlow}
          * (kg/s, forward), {@code head} (Pa, the rise the device holds), both clipped at zero, and the suction's density
-         * and pressure only.
+         * and pressure only. It is the ideal work: a mover has no efficiency (owner decision D37, simplification S6; the
+         * GUI and the world default always set 1).
          */
         double power(double massFlow,double head,double suctionDensity,double suctionPressure);
         /**
@@ -43,26 +42,26 @@ public sealed interface FlowControl permits FlowControl.Passive,FlowControl.Move
         /** The device's name in reasons ("pump", "compressor"). */
         String deviceName();
     }
-    /** Suction volumetric target (m3/s), maximum added pressure (Pa), hydraulic efficiency. A liquid pump (decision D1):
-     * it refuses a supply whose vapour fills more than {@link #VAPOUR_REFUSE} of its fluid volume, and runs again once
-     * that share is below {@link #VAPOUR_RESUME}. */
-    record Pump(double targetVolumeFlow,double maximumAddedPressure,double efficiency) implements Mover {
+    /** Suction volumetric target (m3/s), maximum added pressure (Pa). A liquid pump (decision D1): it refuses a supply whose
+     * vapour fills more than {@link #VAPOUR_REFUSE} of its fluid volume, and runs again once that share is below
+     * {@link #VAPOUR_RESUME}. */
+    record Pump(double targetVolumeFlow,double maximumAddedPressure) implements Mover {
         /** Vapour share of the supply's fluid volume above which a pump refuses (plan Appendix B, decision D6). */
         public static final double VAPOUR_REFUSE=.02;
         /** Vapour share below which a refused pump runs again. */
         public static final double VAPOUR_RESUME=.005;
         public Pump {
-            if(!Double.isFinite(targetVolumeFlow)||targetVolumeFlow<0||!Double.isFinite(maximumAddedPressure)||maximumAddedPressure<=0
-                    ||!Double.isFinite(efficiency)||efficiency<=0||efficiency>1)throw new IllegalArgumentException("Invalid pump settings");
+            if(!Double.isFinite(targetVolumeFlow)||targetVolumeFlow<0||!Double.isFinite(maximumAddedPressure)||maximumAddedPressure<=0)
+                throw new IllegalArgumentException("Invalid pump settings");
         }
         /** The setting is the rise for the reference fluid (water at 298.15 K, 1 atm), scaled by the suction's density: a
          * head, the one quantity a real pump fixes (decision D4: suction density only). */
         @Override public double riseLimit(double suctionDensity,double suctionPressure,double referenceDensity) {
             return maximumAddedPressure*suctionDensity/referenceDensity;
         }
-        /** {@code q v_s head / eff}: the hydraulic power on the suction's specific volume. */
+        /** {@code q v_s head}: the hydraulic power on the suction's specific volume. */
         @Override public double power(double massFlow,double head,double suctionDensity,double suctionPressure) {
-            return Math.max(0,massFlow)/suctionDensity*Math.max(0,head)/efficiency;
+            return Math.max(0,massFlow)/suctionDensity*Math.max(0,head);
         }
         @Override public boolean refuses(InletPhase.Supply supply,boolean refused) {
             if(supply.dry(refused))return true;
@@ -72,31 +71,31 @@ public sealed interface FlowControl permits FlowControl.Passive,FlowControl.Move
         @Override public String deviceName(){return "pump";}
     }
     /**
-     * A gas compressor (decisions D2, D7, D8): suction volume flow target (m3/s at inlet conditions), maximum pressure
-     * ratio {@code r_max} (discharge over suction), efficiency. Its rise limit is {@code (r_max - 1) P_suction}; its shaft
-     * work the ideal isothermal work on suction properties over the efficiency, booked as heat into the discharge. It
+     * A gas compressor (decisions D2, D7, D8): suction volume flow target (m3/s at inlet conditions) and maximum pressure
+     * ratio {@code r_max} (discharge over suction). Its rise limit is {@code (r_max - 1) P_suction}; its shaft work the
+     * ideal isothermal work on suction properties, booked as heat into the discharge. It
      * refuses a supply whose condensed phases (hydrocarbon liquid, free water and solids) exceed
      * {@link #CONDENSED_REFUSE} of its mass, or that carries any solid population above
      * {@link com.wormzjl.createcheme.science.fluid.transport.SlurryTransport#DEFAULT_TRACE_VOLUME_FRACTION} of its volume,
      * and runs again once the condensed share is below {@link #CONDENSED_RESUME} (and no solid is above the trace).
      */
-    record Compressor(double targetVolumeFlow,double maximumPressureRatio,double efficiency) implements Mover {
+    record Compressor(double targetVolumeFlow,double maximumPressureRatio) implements Mover {
         /** Condensed share of the supply's mass above which a compressor refuses (plan Appendix B, decision D6). */
         public static final double CONDENSED_REFUSE=.01;
         /** Condensed share below which a refused compressor runs again. */
         public static final double CONDENSED_RESUME=.002;
         public Compressor {
-            if(!Double.isFinite(targetVolumeFlow)||targetVolumeFlow<0||!Double.isFinite(maximumPressureRatio)||maximumPressureRatio<=1
-                    ||!Double.isFinite(efficiency)||efficiency<=0||efficiency>1)throw new IllegalArgumentException("Invalid compressor settings");
+            if(!Double.isFinite(targetVolumeFlow)||targetVolumeFlow<0||!Double.isFinite(maximumPressureRatio)||maximumPressureRatio<=1)
+                throw new IllegalArgumentException("Invalid compressor settings");
         }
         /** {@code (r_max - 1) P_suction} (decision D7): the discharge stands at most {@code r_max} times the suction. */
         @Override public double riseLimit(double suctionDensity,double suctionPressure,double referenceDensity) {
             return (maximumPressureRatio-1)*suctionPressure;
         }
-        /** {@code q (P_s / rho_s) ln(1 + head / P_s) / eff} (decision D8): the ideal isothermal work of raising the suction
-         * stream by {@code head}, on suction properties only. */
+        /** {@code q (P_s / rho_s) ln(1 + head / P_s)} (decision D8): the ideal isothermal work of raising the suction stream
+         * by {@code head}, on suction properties only. */
         @Override public double power(double massFlow,double head,double suctionDensity,double suctionPressure) {
-            return Math.max(0,massFlow)*(suctionPressure/suctionDensity)*DeterministicMath.log1p(Math.max(0,head)/suctionPressure)/efficiency;
+            return Math.max(0,massFlow)*(suctionPressure/suctionDensity)*DeterministicMath.log1p(Math.max(0,head)/suctionPressure);
         }
         @Override public boolean refuses(InletPhase.Supply supply,boolean refused) {
             if(supply.dry(refused))return true;

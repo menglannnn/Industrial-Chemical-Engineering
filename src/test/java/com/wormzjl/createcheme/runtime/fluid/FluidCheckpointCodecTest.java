@@ -12,7 +12,7 @@ import java.util.*;
 import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
 
-/** Checkpoint format 9, one island: round trip, field refusals, a changed basis, energy datum or velocity limit, and
+/** Checkpoint format 10, one island: round trip, field refusals, a changed basis, energy datum or velocity limit, and
  * solids read back as their records (crystals beside custom solids). */
 class FluidCheckpointCodecTest {
     private static final String PACKAGE="createcheme:tjl20_methane_nitrogen";
@@ -93,7 +93,7 @@ class FluidCheckpointCodecTest {
                 (FluidDeviceSpec)a[6],(long)a[7]);
         var kinds=com.wormzjl.createcheme.science.fluid.topology.TopologyCompiler.Kind.class.getEnumConstants();
         var reservoir=device.apply(new Object[]{1L,"minecraft:overworld",0,kinds[0],block,new FlowControl.Passive(),new FluidDeviceSpec(2,300,150000,nitrogen),0L});
-        var pump=device.apply(new Object[]{2L,"minecraft:overworld",1,com.wormzjl.createcheme.science.fluid.topology.TopologyCompiler.Kind.PUMP,block,new FlowControl.Pump(.01,500000,.75),new FluidDeviceSpec(1,298.15,101325,nitrogen),0L});
+        var pump=device.apply(new Object[]{2L,"minecraft:overworld",1,com.wormzjl.createcheme.science.fluid.topology.TopologyCompiler.Kind.PUMP,block,new FlowControl.Pump(.01,500000),new FluidDeviceSpec(1,298.15,101325,nitrogen),0L});
         var valve=device.apply(new Object[]{3L,"minecraft:overworld",2,com.wormzjl.createcheme.science.fluid.topology.TopologyCompiler.Kind.VALVE,wide,new FlowControl.PressureValve(120000),new FluidDeviceSpec(1,298.15,101325,nitrogen),0L});
         var pipe=device.apply(new Object[]{4L,"minecraft:the_nether",5,com.wormzjl.createcheme.science.fluid.topology.TopologyCompiler.Kind.PIPE,wide,new FlowControl.Passive(),new FluidDeviceSpec(1,298.15,101325,mixed),0L});
         var generator=device.apply(new Object[]{5L,"minecraft:overworld",7,com.wormzjl.createcheme.science.fluid.topology.TopologyCompiler.Kind.GENERATOR,block,new FlowControl.Passive(),new FluidDeviceSpec(1,320,180000,mixed,slurry),0L});
@@ -158,17 +158,17 @@ class FluidCheckpointCodecTest {
                 new PassiveNetwork.Reservoir(3,0,model.initialNitrogenCharge(1,298.15,101325,()->{}),PassiveNetwork.NodeKind.VOID));
         var pipes=List.of(new PassiveNetwork.Pipe(10,0,2,List.of(block),new FlowControl.Passive(),0,null,PassiveNetwork.PhasePort.LIQUID,PassiveNetwork.PhasePort.BULK),
                 new PassiveNetwork.Pipe(11,0,1,List.of(block),new FlowControl.Passive(),0,null,PassiveNetwork.PhasePort.BULK,PassiveNetwork.PhasePort.BULK),
-                new PassiveNetwork.Pipe(12,1,2,List.of(block),new FlowControl.Compressor(.01,2.5,.9),0,null,PassiveNetwork.PhasePort.BULK,PassiveNetwork.PhasePort.BULK),
+                new PassiveNetwork.Pipe(12,1,2,List.of(block),new FlowControl.Compressor(.01,2.5),0,null,PassiveNetwork.PhasePort.BULK,PassiveNetwork.PhasePort.BULK),
                 new PassiveNetwork.Pipe(13,0,2,List.of(block),new FlowControl.Passive(),0,null,PassiveNetwork.PhasePort.VAPOR,PassiveNetwork.PhasePort.BULK));
         var full=new PassiveIntervalSolver(model).solve(new PassiveNetwork(nodes,pipes),5,PassiveIntervalSolver.Settings.defaults(),()->{});
         assertEquals(FlowControl.Mode.INLET_WRONG_PHASE,full.endpointModes().get(2),"the compressor on the tank's bulk is refused");
         var state=new IslandCoordinator.Snapshot(1,4,full.graph(),new IslandClock.Snapshot(350,200,400,100),new FallbackAllowance(2,100,100),Optional.of(ApproximationAnchor.fromFull(model,full)),Optional.of(full),"FULL");
         var before=new FluidCheckpointCodec.Checkpoint(List.of(new FluidCheckpointCodec.IslandEntry("minecraft:overworld",PACKAGE,state)));
-        var image=FluidCheckpointCodec.encode(before,key->model);assertEquals(9,image.core().getInt("FluidFormat"));
+        var image=FluidCheckpointCodec.encode(before,key->model);assertEquals(10,image.core().getInt("FluidFormat"));
         var after=FluidCheckpointCodec.decode(image,key->model).islands().getFirst().snapshot();
         assertEquals(full.graph().pipes(),after.graph().pipes(),"ends, sections, controls, blocked masks and the ports of every pipe");
         assertEquals(PassiveNetwork.PhasePort.LIQUID,after.graph().pipes().get(0).firstPort());assertEquals(PassiveNetwork.PhasePort.VAPOR,after.graph().pipes().get(3).firstPort());
-        assertEquals(new FlowControl.Compressor(.01,2.5,.9),after.graph().pipes().get(2).control());
+        assertEquals(new FlowControl.Compressor(.01,2.5),after.graph().pipes().get(2).control());
         assertEquals(full.endpointModes(),after.lastResult().orElseThrow().endpointModes(),"the refused mover's committed mode, the hysteresis input of the next slice (A38)");
         assertArrayEquals(full.averageMassFlows(),after.lastResult().orElseThrow().averageMassFlows());
         // Since format 7: the end flows the island's next job starts from round-trip bit for bit.
@@ -181,7 +181,7 @@ class FluidCheckpointCodecTest {
         var empty=WorldTopologyLedger.Snapshot.empty(MaterialCatalog.bundled());int count=empty.basis().components().size();
         var nitrogen=new double[count];nitrogen[com.wormzjl.createcheme.science.material.MaterialTestBasis.NITROGEN]=1;
         var device=new PhysicalFluidTopology.Device(4,new PhysicalFluidTopology.Position("minecraft:overworld",3,64,-3),com.wormzjl.createcheme.science.fluid.topology.TopologyCompiler.Kind.COMPRESSOR,
-                PhysicalFluidTopology.Direction.UP,new PipeResistance.Geometry(1,.05,.000045,0),new FlowControl.Compressor(.05,3,1));
+                PhysicalFluidTopology.Direction.UP,new PipeResistance.Geometry(1,.05,.000045,0),new FlowControl.Compressor(.05,3));
         var world=new WorldTopologyLedger.Snapshot(12,9,Map.of(4L,new WorldTopologyLedger.Registration(device,new FluidDeviceSpec(1,298.15,101325,nitrogen),2)),List.of(),
                 WorldTopologyLedger.MaterialTotal.empty(count),WorldTopologyLedger.MaterialTotal.empty(count),empty.basis(),Map.of());
         var bytes=FluidCheckpointCodec.encodeTopology(world);var decoded=FluidCheckpointCodec.decodeTopology(bytes,12,key->model);

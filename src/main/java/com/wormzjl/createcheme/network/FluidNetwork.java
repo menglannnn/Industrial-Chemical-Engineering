@@ -230,8 +230,8 @@ public final class FluidNetwork {
                 var geometry=d.geometry();var control=d.control();var spec=old.spec();
                 switch(d.kind()) {
                     case PIPE,FILTER->geometry=new PipeResistance.Geometry(geometry.length(),controls.diameter,PipeResistance.DEFAULT_ROUGHNESS_METRES,geometry.minorLoss());
-                    case PUMP->control=new FlowControl.Pump(controls.volumeFlow,controls.maximumAddedPressure,1);
-                    case COMPRESSOR->control=new FlowControl.Compressor(controls.volumeFlow,controls.maximumPressureRatio,1);
+                    case PUMP->control=new FlowControl.Pump(controls.volumeFlow,controls.maximumAddedPressure);
+                    case COMPRESSOR->control=new FlowControl.Compressor(controls.volumeFlow,controls.maximumPressureRatio);
                     case VALVE->control=new FlowControl.PressureValve(controls.pressure);
                     case GENERATOR->spec=new FluidDeviceSpec(spec.volume(),controls.temperature,controls.pressure,controls.composition,controls.solids);
                     case VOID->spec=new FluidDeviceSpec(spec.volume(),spec.temperature(),controls.pressure,spec.composition());

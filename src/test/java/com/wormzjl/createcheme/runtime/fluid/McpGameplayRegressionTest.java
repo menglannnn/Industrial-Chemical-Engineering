@@ -23,7 +23,7 @@ class McpGameplayRegressionTest {
     private record Phase(double temperature,double pressure,double[] liquid,double[] vapor,double waterLiquid,double waterVapor,double hydrocarbonPressure) {}
     private record Inventory(double volume,double[] moles,double internalEnergy) {}
     private record Node(long id,double elevation,String kind,Inventory inventory,Phase phase) {}
-    private record Control(String kind,double target,double limit,double efficiency) {}
+    private record Control(String kind,double target,double limit) {}
     private record Pipe(long id,int first,int second,List<PipeResistance.Geometry> sections,Control control) {}
     private record Graph(List<Node> nodes,List<Pipe> pipes) {}
     /** The graph of a capture in its format-3 payload JSON shape. The capture predates solids, blocked masks, filters and
@@ -40,7 +40,7 @@ class McpGameplayRegressionTest {
                     PassiveNetwork.NodeKind.valueOf(n.kind()),inventory));
         }
         return new PassiveNetwork(nodes,saved.pipes().stream().map(p->new PassiveNetwork.Pipe(p.id(),p.first(),p.second(),p.sections(),switch(p.control().kind()) {
-            case "passive"->new FlowControl.Passive();case "pump"->new FlowControl.Pump(p.control().target(),p.control().limit(),p.control().efficiency());
+            case "passive"->new FlowControl.Passive();case "pump"->new FlowControl.Pump(p.control().target(),p.control().limit());
             case "valve"->new FlowControl.PressureValve(p.control().target());default->throw new IllegalArgumentException("Unknown saved control");
         },0,null,PassiveNetwork.PhasePort.BULK,PassiveNetwork.PhasePort.BULK)).toList());
     }

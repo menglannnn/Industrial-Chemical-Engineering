@@ -17,9 +17,9 @@ import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
- * Checkpoint format 9 (format 5, F3's format 4 less its kind column, plus the pipe ports and the compressor control of
+ * Checkpoint format 10 (format 5, F3's format 4 less its kind column, plus the pipe ports and the compressor control of
  * the phase-ports batch in 6, the end flows in 7, without the ledger of transfers and modules in 8, and without the
- * liquid compressibility in 9, whose solids name their records, crystals among them): a restored
+ * liquid compressibility in 9 and the movers' efficiency in 10, whose solids name their records, crystals among them): a restored
  * certificate continues exactly (the full round trip is FluidCheckpointStoreTest's, through the files); every index
  * and certificate field is validated; certificates are discarded, keeping inventory, when certificates are off or their signature
  * changed; a certified island's unit is reused in place, never re-encoded, while it stays certified; a thousand
@@ -317,10 +317,11 @@ class FluidCheckpointFormatTest extends CertifyingRig.Islands {
 
     // ---------------- other formats ----------------
 
-    /** Older formats (3 and before, 7 with its ledger, and 8 with the liquid compressibility in its package key) are
+    /** Older formats (3 and before, 7 with its ledger, 8 with the liquid compressibility in its package key, and 9 with the
+     * movers' efficiency in its units) are
      * refused with the instruction to create a fresh world, and nothing in the tag is changed. */
     @Test void olderFormatsAreRefusedWithAFreshWorldInstructionAndLeftUntouched() {
-        for(int format:new int[]{1,2,3,7,8}) {
+        for(int format:new int[]{1,2,3,7,8,9}) {
             var old=new CompoundTag();old.putInt("FluidFormat",format);old.putLong("Epoch",40);
             byte[] json=("{\"version\":"+format+",\"islands\":[],\"transfers\":{\"revision\":0,\"buffers\":[],\"pending\":[]}}").getBytes(StandardCharsets.UTF_8);
             old.putByteArray(format==3?"Ledger":"Checkpoint",json);old.put("Islands",new ListTag());old.putByteArray("SHA256",new byte[32]);var before=old.copy();

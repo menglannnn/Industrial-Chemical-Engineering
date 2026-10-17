@@ -174,7 +174,7 @@ public final class FluidPhasePortGameTests {
                 place(helper,compressor,ModBlocks.FLUID_COMPRESSOR.get().defaultBlockState().setValue(FluidDeviceBlock.FACING,Direction.EAST));
                 ids[0]=identity(helper,suction);ids[1]=identity(helper,discharge);ids[2]=identity(helper,compressor);
                 var control=world.registrations().get(ids[2]).device().control();
-                helper.assertTrue(control.equals(new com.wormzjl.createcheme.science.fluid.network.FlowControl.Compressor(.05,3,1)),"Placement default: "+control);
+                helper.assertTrue(control.equals(new com.wormzjl.createcheme.science.fluid.network.FlowControl.Compressor(.05,3)),"Placement default: "+control);
                 place(helper,inlet,ModBlocks.FLUID_PIPE.get().defaultBlockState());place(helper,outlet,ModBlocks.FLUID_PIPE.get().defaultBlockState());
                 started[0]=true;deadline[0]=System.nanoTime()+120_000_000_000L;return;
             }

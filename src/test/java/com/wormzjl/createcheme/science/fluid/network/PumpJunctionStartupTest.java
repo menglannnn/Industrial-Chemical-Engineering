@@ -30,7 +30,7 @@ class PumpJunctionStartupTest {
             var receiver=new PassiveNetwork.Reservoir(3,-60,model.initialNitrogenCharge(1,298.15,pressure,()->{}));
             double requested=id.equals("water")?.01:.0001;
             var geometry=new PipeResistance.Geometry(1.5,.05,.000045,0);
-            var graph=new PassiveNetwork(List.of(source,junction,receiver),List.of(new PassiveNetwork.Pipe(4,0,1,geometry),new PassiveNetwork.Pipe(5,1,2,geometry,new FlowControl.Pump(requested,500000,1))));
+            var graph=new PassiveNetwork(List.of(source,junction,receiver),List.of(new PassiveNetwork.Pipe(4,0,1,geometry),new PassiveNetwork.Pipe(5,1,2,geometry,new FlowControl.Pump(requested,500000))));
             var result=new PassiveIntervalSolver(model).solve(graph,1,PassiveIntervalSolver.Settings.defaults(),()->{});
             assertEquals(PassiveStepSolver.Acceptance.FULL,result.acceptance());assertEquals(1,result.advancedSeconds());
             assertTrue(result.averageMassFlows()[0]>0,id);assertEquals(result.averageMassFlows()[0],result.averageMassFlows()[1],1e-8);

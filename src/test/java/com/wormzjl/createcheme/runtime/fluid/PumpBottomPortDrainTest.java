@@ -67,7 +67,7 @@ class PumpBottomPortDrainTest {
     void drain(double target,int slices) {
         long tankId=3;var tank=filledTank(tankId);
         var devices=List.of(device(tankId,0,Y,Kind.RESERVOIR),
-                device(7,0,Y-1,Kind.PIPE),device(4,0,Y-2,Kind.PUMP,PhysicalFluidTopology.Direction.DOWN,new FlowControl.Pump(target,500000,1)),
+                device(7,0,Y-1,Kind.PIPE),device(4,0,Y-2,Kind.PUMP,PhysicalFluidTopology.Direction.DOWN,new FlowControl.Pump(target,500000)),
                 device(5,0,Y-3,Kind.PIPE),device(6,0,Y-4,Kind.VOID));
         var graph=island(devices,Map.of(6L,new FluidDeviceSpec(1,298.15,101325,nitrogen())),Map.of(tankId,tank));
         int pump=-1;for(int i=0;i<graph.pipes().size();i++)if(graph.pipes().get(i).control() instanceof FlowControl.Pump)pump=i;
@@ -106,7 +106,7 @@ class PumpBottomPortDrainTest {
         int y=PumpBottomPortDrainTest.Y;
         var devices=List.of(PumpBottomPortDrainTest.device(7,-2,y,Kind.GENERATOR),PumpBottomPortDrainTest.device(8,-1,y,Kind.PIPE),
                 PumpBottomPortDrainTest.device(tankId,0,y,Kind.RESERVOIR),
-                PumpBottomPortDrainTest.device(9,0,y-1,Kind.PIPE),PumpBottomPortDrainTest.device(4,0,y-2,Kind.PUMP,PhysicalFluidTopology.Direction.DOWN,new FlowControl.Pump(.001,500000,1)),
+                PumpBottomPortDrainTest.device(9,0,y-1,Kind.PIPE),PumpBottomPortDrainTest.device(4,0,y-2,Kind.PUMP,PhysicalFluidTopology.Direction.DOWN,new FlowControl.Pump(.001,500000)),
                 PumpBottomPortDrainTest.device(5,0,y-3,Kind.PIPE),PumpBottomPortDrainTest.device(6,0,y-4,Kind.VOID));
         var graph=base.island(devices,Map.of(7L,new com.wormzjl.createcheme.runtime.fluid.FluidDeviceSpec(1,298.15,130000,com.wormzjl.createcheme.fluid.support.FluidTestSupport.water()),
                 6L,new com.wormzjl.createcheme.runtime.fluid.FluidDeviceSpec(1,298.15,101325,com.wormzjl.createcheme.fluid.support.FluidTestSupport.nitrogen())),Map.of(tankId,tank));

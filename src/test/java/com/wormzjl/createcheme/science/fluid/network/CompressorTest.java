@@ -57,7 +57,7 @@ class CompressorTest extends PortFixture {
     private PassiveNetwork transfer(){return transfer(101325);}
     private PassiveNetwork transfer(double pressure) {
         return new PassiveNetwork(List.of(new PassiveNetwork.Reservoir(1,0,nitrogenAt(pressure)),new PassiveNetwork.Reservoir(2,0,nitrogenAt(pressure))),
-                List.of(pipe(10,0,1,line(2,.05),new FlowControl.Compressor(.02,1.5,1))));
+                List.of(pipe(10,0,1,line(2,.05),new FlowControl.Compressor(.02,1.5))));
     }
     /** On its target the compressor moves its suction volume flow at inlet conditions, {@code q = Q rho_s}, and books the
      * isothermal work {@code q (P_s/rho_s) ln(1 + head/P_s) / eff} of the step (decision D8). */
@@ -114,7 +114,7 @@ class CompressorTest extends PortFixture {
         var generator=new PassiveNetwork.Reservoir(1,0,nitrogenAt(101325),PassiveNetwork.NodeKind.GENERATOR);
         var graph=new PassiveNetwork(List.of(generator,new PassiveNetwork.Reservoir(2,0,nitrogenAt(3*101325),PassiveNetwork.NodeKind.JUNCTION),
                 new PassiveNetwork.Reservoir(3,0,nitrogenAt(3*101325),PassiveNetwork.NodeKind.VOID)),
-                List.of(pipe(10,0,1,line(.5,.05),new FlowControl.Compressor(.02,4,1)),pipe(11,1,2,line(.5,.05),new FlowControl.Passive())));
+                List.of(pipe(10,0,1,line(.5,.05),new FlowControl.Compressor(.02,4)),pipe(11,1,2,line(.5,.05),new FlowControl.Passive())));
         // 0.02 m3/s: the junction's holdup (0.05 s of its connections' cap flow, 0.034 kg) turns over in 1.5 s; 40 s is steady.
         var run=drive("heating",graph,5,8);
         var junction=run.last().reservoirs().get(1).state();var suction=generator.state();var last=run.slices().getLast();
@@ -147,11 +147,11 @@ class CompressorTest extends PortFixture {
                     new PassiveNetwork.Reservoir(3,0,dusty),new PassiveNetwork.Reservoir(4,0,nitrogenAt(101325)),new PassiveNetwork.Reservoir(5,0,nitrogenAt(101325)),
                     new PassiveNetwork.Reservoir(6,0,nitrogenAt(101325)),new PassiveNetwork.Reservoir(7,0,nitrogenAt(101325)),new PassiveNetwork.Reservoir(8,0,nitrogenAt(101325)));
             var island=new PassiveNetwork(nodes,List.of(
-                    pipe(10,0,3,line(1,.05),new FlowControl.Compressor(.001,3,1)),
-                    pipe(11,1,4,line(1,.05),new FlowControl.Compressor(.001,3,1)),
-                    pipe(12,2,5,line(1,.05),new FlowControl.Compressor(.001,3,1)),
-                    pipe(13,0,6,line(1,.05),new FlowControl.Compressor(.001,3,1),PhasePort.LIQUID),
-                    pipe(14,0,7,line(1,.05),new FlowControl.Compressor(.001,3,1),PhasePort.VAPOR)));
+                    pipe(10,0,3,line(1,.05),new FlowControl.Compressor(.001,3)),
+                    pipe(11,1,4,line(1,.05),new FlowControl.Compressor(.001,3)),
+                    pipe(12,2,5,line(1,.05),new FlowControl.Compressor(.001,3)),
+                    pipe(13,0,6,line(1,.05),new FlowControl.Compressor(.001,3),PhasePort.LIQUID),
+                    pipe(14,0,7,line(1,.05),new FlowControl.Compressor(.001,3),PhasePort.VAPOR)));
             var run=drive("fixture7@"+interval,island,interval,count);
             for(int i=0;i<count;i++) {
                 var s=run.slices().get(i);
@@ -168,10 +168,10 @@ class CompressorTest extends PortFixture {
     /** The compressor's thresholds (decision D6): refuse above 1 % condensed by mass, resume below 0.2 %; any solid
      * population above the trace volume fraction refuses whatever the condensed share. */
     @Test void theCompressorsThresholds() {
-        var compressor=new FlowControl.Compressor(.001,3,1);
+        var compressor=new FlowControl.Compressor(.001,3);
         for(double[] c:new double[][]{{.0099,0,0,0},{.0101,0,0,1},{.0099,1,0,1},{.0021,1,0,1},{.0019,1,0,0},{0,0,2e-8,1},{0,0,1e-8,0}})
             assertEquals(c[3]==1,compressor.refuses(new InletPhase.Supply(0,3,PhasePort.BULK,0,c[0],c[2]),c[1]==1),Arrays.toString(c));
         assertEquals("ERROR: compressor inlet not gas (condensed 2.5 % by mass, from node 3)",InletPhase.reason(compressor,new InletPhase.Supply(0,3,PhasePort.BULK,0,.025,0)));
-        assertThrows(IllegalArgumentException.class,()->new FlowControl.Compressor(.001,1,1),"a ratio of 1 adds nothing");
+        assertThrows(IllegalArgumentException.class,()->new FlowControl.Compressor(.001,1),"a ratio of 1 adds nothing");
     }
 }

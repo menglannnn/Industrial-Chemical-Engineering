@@ -35,7 +35,7 @@ class FluidFallbackQualificationTest {
         double[] supply=n;
         if(pump){supply=new double[n.length];supply[com.wormzjl.createcheme.science.material.MaterialTestBasis.NETWORK]=1;}
         var graph=new PassiveNetwork(List.of(node(1,pump?149000:150000,supply,PassiveNetwork.NodeKind.GENERATOR),node(2,pump?150000:149000,n,PassiveNetwork.NodeKind.RESERVOIR)),List.of(
-                new PassiveNetwork.Pipe(1,0,1,new PipeResistance.Geometry(100,name.equals("nitrogen")?.01:.03,.000045,0),pump?new FlowControl.Pump(2e-6,500000,1):new FlowControl.Passive())));
+                new PassiveNetwork.Pipe(1,0,1,new PipeResistance.Geometry(100,name.equals("nitrogen")?.01:.03,.000045,0),pump?new FlowControl.Pump(2e-6,500000):new FlowControl.Passive())));
         return new PassiveIntervalSolver(model).solve(graph,.05,PassiveIntervalSolver.Settings.defaults(),()->{});
     }
     private ProcessSolveServices.FluidIslandSolveResult approximate(PassiveNetwork graph,ApproximationAnchor anchor,FallbackAllowance allowance,int cadence,double duration) {

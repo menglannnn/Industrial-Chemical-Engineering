@@ -487,8 +487,8 @@ public final class ConservativeTransport {
                 if(rates==null)specificVolume=suction.volume()/suction.mass();
                 else{specificVolume=0;for(int k:phases){var state=at(k,suction,graph.reservoirs().get(pipe.first()).state());specificVolume+=weight(rates,phases,k)*(FluidThermodynamics.phaseVolume(state,k%3)/model.phaseMass(state,k%3));}}
                 work=switch(mover) {
-                    case FlowControl.Pump pump->rates==null?dt*flows[edge]*suction.volume()/suction.mass()*Math.max(0,heads[edge])/pump.efficiency()
-                            :dt*flows[edge]*specificVolume*Math.max(0,heads[edge])/pump.efficiency();
+                    case FlowControl.Pump pump->rates==null?dt*flows[edge]*suction.volume()/suction.mass()*Math.max(0,heads[edge])
+                            :dt*flows[edge]*specificVolume*Math.max(0,heads[edge]);
                     case FlowControl.Compressor compressor->dt*compressor.power(flows[edge],heads[edge],1/specificVolume,suction.pressure());
                 };
                 energy[receiver]+=work;pumpWork+=work;}

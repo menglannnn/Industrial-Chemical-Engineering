@@ -57,12 +57,12 @@ class BackwardEulerStepTest {
         assertEquals(energy,next.internalEnergy()-old.internalEnergy()+movedMass*2*PassiveStepSolver.GRAVITY,1e-3);
     }
     @Test void pumpWorkIncludesAllStagesAndElevationEnergy() {
-        // Nitrogen is moved by a compressor (decision D2; test name kept): its isothermal shaft work over the efficiency is
+        // Nitrogen is moved by a compressor (decision D2; test name kept): its ideal isothermal shaft work (D37 S6) is
         // booked as heat into the discharge (decision D8), and the ledger holds that work exactly.
         // Above the ambient: drawn at 1 atm, the suction tank (a bag, decision D54) would go slack and take the ambient's
         // work on its shrinking bag into the ledger this test states for the shaft work alone.
         var suction=gas(1,150000,0);
-        var graph=graph(suction,gas(2,200000,10),new FlowControl.Compressor(.001,3,.8));
+        var graph=graph(suction,gas(2,200000,10),new FlowControl.Compressor(.001,3));
         var result=new PassiveStepSolver(model).solve(graph,.2,()->{});
         assertTrue(result.pumpWorkJoule()>0);double change=0;
         for(int i=0;i<2;i++){var old=graph.reservoirs().get(i).inventory();var next=result.inventories().get(i);double dm=(next.moles()[com.wormzjl.createcheme.science.material.MaterialTestBasis.NITROGEN]-old.moles()[com.wormzjl.createcheme.science.material.MaterialTestBasis.NITROGEN])*model.hydrocarbon.molecularWeight(com.wormzjl.createcheme.science.material.MaterialTestBasis.NITROGEN);change+=next.internalEnergy()-old.internalEnergy()+dm*graph.reservoirs().get(i).elevation()*PassiveStepSolver.GRAVITY;}
