@@ -2,7 +2,7 @@ package com.wormzjl.createcheme.runtime.fluid;
 
 import com.wormzjl.createcheme.science.column.v3.thermo.V3PengRobinsonThermo;
 import com.wormzjl.createcheme.science.fluid.network.FlowControl;
-import com.wormzjl.createcheme.science.fluid.network.PassiveStepSolver;
+import com.wormzjl.createcheme.science.fluid.network.NetworkReduction;
 import com.wormzjl.createcheme.science.fluid.topology.TopologyCompiler.Kind;
 import com.wormzjl.createcheme.science.material.MaterialCatalog;
 import com.wormzjl.createcheme.science.material.MaterialTestBasis;
@@ -408,7 +408,10 @@ class HoldClassWorldsTest {
      * 101 336.2 Pa, the generator does not reach it, and it starts as the tanks' nitrogen; the world runs 120 slices.
      * Without the column the bound is the tanks' pressure, a few 1e-11 Pa below the generator's head by tick 167, so the
      * re-formed junction started as the generator's water and held at tick 168 on "Newton iteration limit at residual
-     * 0.0012" at every step size.
+     * 0.0012" at every step size. That start rule is retired (owner decision D54: a minted junction starts from the
+     * island's fixed point, which here leaves the junctions holding the generator's water, resting 1 m of water apart),
+     * and under owner decision D36 the tanks' nitrogen weighs nothing, so the 11 Pa column is gone; the world stays as a
+     * regression and ends the same on either column rule.
      */
     @Test void aJunctionUnderTheTanksNitrogenStandsAboveALevelWaterGenerator() {
         var w=new EventPathWorld();
@@ -640,17 +643,19 @@ class HoldClassWorldsTest {
     /*
      * Owner decision D34 of the coolprop-low-temperature batch (M5_WORSE_WORLDS_TRACE.md "Seed 322 (E6): a trace of liquid at a
      * tank's bottom port", 2026-10-17): a phase port's static column is filled with the port's phases in priority order by
-     * volume over the connection, so a trace in a long line stands as a gas column and a liquid filling the line as a liquid
-     * column. The draw still reads the port's leading phase: the trace leaves first, at its capacity.
+     * volume over the connection, so a trace in a long line leaves the line standing in gas, which weighs nothing (owner
+     * decision D36), and a liquid filling the line stands as a liquid column. The draw still reads the port's leading phase:
+     * the trace leaves first, at its capacity.
      */
     /**
      * The smallest world of random fuzz seed 322 (13 blocks; minimized in tools/unified-thermo-port-m5/trace logs 09). A 431 kPa
      * methane generator vents to two 1 atm voids, each line at its velocity cap; the junctions and two 1 m3 tanks stand at
      * 430 kPa. The upper tank's bottom port drains through 1 m of 0.05 m line (2 L) into the top of the lower tank, 2 m down,
      * which has no other connection. Heavy crude vapour that the methane carries in condenses in the upper tank (0.9 mL at
-     * tick 785). It runs down and the line holds the upper tank's gas: the lower tank stands at the upper one's pressure plus
-     * that gas column, 2.29 kg/m3 over 2 m, 44.9 Pa. Steady state: the upper tank dry, and no flow in the drop line but the
-     * lower tank following the upper tank's gas as it cools towards the methane's temperature (0.08 K a slice, 7e-9 kg/s).
+     * tick 785). It runs down and the line holds the upper tank's gas, which weighs nothing (owner decision D36): the lower
+     * tank stands at the upper one's pressure. Steady state: the upper tank dry and no flow in the drop line. Restated under
+     * D36: weighed, the line's gas stood the lower tank 44.9 Pa higher (2.29 kg/m3 over 2 m), and the lower tank followed
+     * that column as the upper tank's gas cooled towards the methane's temperature (0.08 K a slice, 7e-9 kg/s).
      * Read from the port's leading phase, the line was the condensate's column, 880 kg/m3 over 2 m, 17.3 kPa, which a few
      * milligrams could not fill: the condensate stood in the tank (1.8e-8 m3 at tick 997), drawn alone at a carried flow of
      * about zero it had no root, and the island held at tick 1097 at every step size.
@@ -678,12 +683,11 @@ class HoldClassWorldsTest {
         for(int i=0;i<island.graph().pipes().size();i++){var p=island.graph().pipes().get(i);if(p.first()==a&&p.second()==b||p.first()==b&&p.second()==a)line=i;}
         double flow=island.lastResult().orElseThrow().averageMassFlows()[line];
         var top=nodes.get(a).state();var bottom=nodes.get(b).state();
-        double column=w.model.vaporDensity(top)*PassiveStepSolver.GRAVITY*(nodes.get(a).elevation()-nodes.get(b).elevation());
         System.out.println("STATIC_COLUMN_WORLD upper P="+top.pressure()+" liquid="+top.liquidVolume()+" lower P="+bottom.pressure()+" liquid="+bottom.liquidVolume()
-                +" gas column="+column+" Pa drop line="+flow+" kg/s");
+                +" difference="+(bottom.pressure()-top.pressure())+" Pa drop line="+flow+" kg/s");
         assertEquals(0,top.liquidVolume(),"the upper tank is dry: the condensate ran down");
-        assertEquals(column,bottom.pressure()-top.pressure(),.1,"the drop line stands as the upper tank's gas column");
-        assertTrue(Math.abs(flow)<1e-6,"no flow in the drop line but the lower tank following the upper one's cooling gas: "+flow);
+        assertEquals(0,bottom.pressure()-top.pressure(),.1,"the drop line stands in the upper tank's gas, which weighs nothing: one pressure");
+        assertTrue(Math.abs(flow)<1e-6,"no flow in the drop line: "+flow);
     }
 
     // ---------------- StepStartFlows ----------------
@@ -760,9 +764,11 @@ class HoldClassWorldsTest {
     /**
      * Random fuzz seed 498 minimized to 9 blocks (tools/phase-ports-probes/hold-classes logs tw08), all placed at tick 100.
      * A 480 kPa nitrogen generator feeds, through two 1 cm pipes, a dead-end ladder of 1, 2 and 5 cm pipes: two loops of
-     * junctions below it and nothing else. Physics: the ladder fills to the generator's pressure plus its gas column and
-     * then nothing moves. The first solve starts its flows from the static estimate on the junctions' old pressures (about
-     * 125 kPa against 480 kPa), so its lines start turbulent (0.01 to 0.03 kg/s, Re up to 2e5) and the root is near rest
+     * junctions below it and nothing else. Physics: the ladder fills to the generator's pressure and then nothing moves;
+     * its gas weighs nothing (owner decision D36), so every junction stands at that pressure. Restated under D36: with the
+     * gas's weight (5.95 kg/m3, 58 Pa per metre) the junctions 2 m down stood 116.7 Pa above it, the same rest otherwise.
+     * The first solve starts its flows from the static estimate on the junctions' old pressures (about 125 kPa against
+     * 480 kPa), so its lines start turbulent (0.01 to 0.03 kg/s, Re up to 2e5) and the root is near rest
      * (1e-4 kg/s, laminar). Newton halves a turbulent flow per fresh step; the chord steps between them kept the resistance
      * of flows up to twice as large and closed only a part of each line's gap (residual contractions 0.75 to 0.8, which the
      * solver read as progress), and the first step ran out of its 20 iterations at every step size: held at tick 101 on
@@ -772,7 +778,7 @@ class HoldClassWorldsTest {
     @Test void aGeneratorFillingADeadEndLadderOfGasLinesSettlesWithinTheNewton() {
         var w=new EventPathWorld();var passive=new FlowControl.Passive();
         w.runTo(100);
-        w.place(0,3,-3,Kind.GENERATOR,NORTH,passive,EventPathWorld.pure(MaterialTestBasis.NITROGEN,272.72073259613035,480371.272983223),.01);
+        long generator=w.place(0,3,-3,Kind.GENERATOR,NORTH,passive,EventPathWorld.pure(MaterialTestBasis.NITROGEN,272.72073259613035,480371.272983223),.01);
         w.place(0,3,-2,Kind.PIPE,NORTH,.01);
         w.place(0,1,0,Kind.PIPE,NORTH,.01);
         w.place(0,2,-1,Kind.PIPE,NORTH,.02);
@@ -782,6 +788,10 @@ class HoldClassWorldsTest {
         w.place(0,0,0,Kind.PIPE,NORTH,.05);
         w.place(0,2,0,Kind.PIPE,NORTH,.01);
         w.runTo(100+120*100);w.assertKeptUp("a generator filling a dead-end ladder of gas lines");
+        var island=w.coordinator.snapshots().stream().filter(s->s.graph().reservoirs().stream().anyMatch(n->n.id()==generator)).findFirst().orElseThrow();
+        for(var node:island.graph().reservoirs())
+            assertEquals(480371.272983223,node.state().pressure(),NetworkReduction.REST_RESOLUTION,"node "+node.id()+" at y "+node.elevation()+" stands at the generator's pressure");
+        for(double flow:island.lastResult().orElseThrow().averageMassFlows())assertEquals(0,flow,0.0,"nothing moves");
     }
 
     // ---------------- VelocityCapMode ----------------

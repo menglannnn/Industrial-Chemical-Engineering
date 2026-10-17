@@ -99,11 +99,13 @@ class FedTankOpenOutletsTest {
         assertTrue(steady>=10,label+": the tank settles (ten slices without a change of its mass)");
         double[] flows=last.averageMassFlows();double in=0,out=0;int t=node(graph,TANK);
         for(int i=0;i<flows.length;i++){var pipe=graph.pipes().get(i);double f=pipe.first()==t?flows[i]:pipe.second()==t?-flows[i]:0;if(f>0)out+=f;else in-=f;}
-        // Owner decision D54 (every vessel a bag with a stiff wall): the 1 atm charge vents through the bottom outlet into the
-        // void below (its 2 m of gas column), the tank runs dry within a step and rests empty at the ambient, and a 1 atm
-        // generator level with it has no head to feed it. Before, the rigid tank stood 23 Pa below the ambient and drew
-        // the generator's water through it.
-        assertTrue(graph.reservoirs().get(t).empty(),label+": the tank runs dry and rests empty");
+        // Owner decision D36 (a gas column does not exist): the tank's 1 atm charge has no weight to drive it down the bottom
+        // outlet into the void 2 m below, so the tank rests full at the ambient (every vessel a bag with a stiff wall, D54),
+        // nothing flows anywhere, and a 1 atm generator level with it has no head to feed it. Restated under D36: weighed,
+        // the charge drained down that outlet on its 2 m gas column (22.5 Pa, 0.019 kg/s) and the tank rested empty; before
+        // D54 the rigid tank stood 23 Pa below the ambient and drew the generator's water through it.
+        assertFalse(graph.reservoirs().get(t).empty(),label+": the tank keeps its charge");
+        assertEquals(model.initialNitrogenCharge(1,298.15,101325,()->{}).mass(),s.mass(),1e-9,label+": the 1 atm nitrogen it was placed with");
         assertEquals(0,in,label+": nothing is fed at rest");assertEquals(0,out,label+": nothing drains at rest");
     }
 
