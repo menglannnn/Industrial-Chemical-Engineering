@@ -429,7 +429,7 @@ public final class ConservativeTransport {
             if(transfer instanceof ScheduledTransfer.Withdrawal out) {
                 mass=-dt*out.massKgPerSecond();
                 for(int c=0;c<components;c++)moved[c]=mass*fractions[node][c]/molecularWeight[c];
-                movedEnergy=mass*(state.enthalpy()/state.mass()+PassiveStepSolver.GRAVITY*graph.reservoirs().get(node).elevation());
+                movedEnergy=mass*(state.enthalpy()/state.mass());
             } else {
                 var in=(ScheduledTransfer.Injection)transfer;var n=in.molesPerSecond();
                 for(int c=0;c<components;c++){moved[c]=dt*n[c];mass+=moved[c]*molecularWeight[c];}
@@ -438,7 +438,7 @@ public final class ConservativeTransport {
             SolidInventory movedSolids;int solidDirection;
             if(transfer instanceof ScheduledTransfer.Withdrawal out){movedSolids=state.solids().scale(dt*out.massKgPerSecond()/state.mass());solidDirection=-1;}
             else{movedSolids=((ScheduledTransfer.Injection)transfer).solidsPerSecond().scale(dt);solidDirection=1;mass+=movedSolids.massKg();}
-            energy[node]+=movedEnergy-mass*PassiveStepSolver.GRAVITY*graph.reservoirs().get(node).elevation();
+            energy[node]+=movedEnergy;
             for(int c=0;c<components;c++)external[c]+=moved[c];externalEnergy+=movedEnergy;
             boundaries.add(new BoundaryTransfer(transfer.id(),moved,movedEnergy,movedSolids,solidDirection));
         }
@@ -449,7 +449,7 @@ public final class ConservativeTransport {
         if(frozen)for(int node=0;node<nodes;node++)accSolids[node]=new SignedSolids();
         for(int edge=0;edge<flows.length;edge++) {
             checkpoint.run();var pipe=graph.pipes().get(edge);int donor=flows[edge]>=0?pipe.first():pipe.second(),receiver=flows[edge]>=0?pipe.second():pipe.first();
-            var upstream=states.get(donor);double moved=dt*Math.abs(flows[edge]),upstreamZ=graph.reservoirs().get(donor).elevation();
+            var upstream=states.get(donor);double moved=dt*Math.abs(flows[edge]);
             // A phase-port outflow carries the frozen stream fractions booked above, and the stream's specific enthalpy on
             // the reconstructed donor (whatever number is booked leaves the donor and reaches the receiver, so the energy
             // ledger closes exactly either way); so does a bulk end drawing the gas of a donor holding solids but no liquid
@@ -460,24 +460,24 @@ public final class ConservativeTransport {
             double specificEnthalpy;
             if(rates==null)specificEnthalpy=upstream.enthalpy()/upstream.mass();
             else{specificEnthalpy=0;for(int k:phases)specificEnthalpy+=weight(rates,phases,k)*model.phaseSpecificEnthalpy(at(k,upstream,startState),k%3,null);}
-            double movedEnergy=moved*(specificEnthalpy+PassiveStepSolver.GRAVITY*upstreamZ);
-            energy[donor]-=movedEnergy-moved*PassiveStepSolver.GRAVITY*upstreamZ;
+            double movedEnergy=moved*specificEnthalpy;
+            energy[donor]-=movedEnergy;
             SolidInventory movedSolids;
             if(drawn[edge]==null)movedSolids=upstream.solids().scale(moved/upstream.mass());
             else{var moving=new ArrayList<SolidInventory.Population>();
                 for(int c=0;c<populationKeys.size();c++){var source=populationBasis.get(populationKeys.get(c));moving.add(new SolidInventory.Population(source.material(),source.size(),moved*w[components+c]));}
                 movedSolids=new SolidInventory(moving);}
-            double deliveredEnergy=movedEnergy,deliveredMass=moved;
+            double deliveredEnergy=movedEnergy;
             if(pipe.filter()!=null){
                 double capturedEnergy;
-                if(drawn[edge]==null)capturedEnergy=moved*(upstream.solidMoments().enthalpy(upstream.temperature(),upstream.pressure())/upstream.mass()+upstream.solidMoments().mass()/upstream.mass()*PassiveStepSolver.GRAVITY*upstreamZ);
+                if(drawn[edge]==null)capturedEnergy=moved*(upstream.solidMoments().enthalpy(upstream.temperature(),upstream.pressure())/upstream.mass());
                 else{double perMass=0;
                     // Each liquid phase's share of the solids, over its stream's mass, weighted by its mass flow (none in the gas).
                     for(int k:phases)if(k%3!=FluidThermodynamics.GAS){var state=at(k,upstream,startState);int phase=k%3;double share=FluidThermodynamics.phaseSolidShare(state,phase),streamMass=model.phaseMass(state,phase);
-                        perMass+=weight(rates,phases,k)*(share*state.solidMoments().enthalpy(state.temperature(),state.pressure())/streamMass+share*state.solidMoments().mass()/streamMass*PassiveStepSolver.GRAVITY*upstreamZ);}
+                        perMass+=weight(rates,phases,k)*(share*state.solidMoments().enthalpy(state.temperature(),state.pressure())/streamMass);}
                     capturedEnergy=moved*perMass;}
-                filters.put(pipe.id(),pipe.filter().add(movedSolids,capturedEnergy));deliveredEnergy-=capturedEnergy;deliveredMass-=movedSolids.massKg();}
-            energy[receiver]+=deliveredEnergy-deliveredMass*PassiveStepSolver.GRAVITY*graph.reservoirs().get(receiver).elevation();
+                filters.put(pipe.id(),pipe.filter().add(movedSolids,capturedEnergy));deliveredEnergy-=capturedEnergy;}
+            energy[receiver]+=deliveredEnergy;
             double work=0;
             if(pipe.control() instanceof FlowControl.Mover mover&&flows[edge]>0){var suction=states.get(pipe.first());
                 // Metered on the suction stream's specific volume (the suction's bulk at a BULK end) and, for a compressor,
@@ -513,18 +513,17 @@ public final class ConservativeTransport {
             boundaries.add(new BoundaryTransfer(graph.reservoirs().get(node).id(),new double[components],ambient));
         }
         // Frozen rate: each junction keeps its buffer, and what its rows would have mixed into it over dt, formed from the
-        // amounts the pipe loop actually booked (solids the junction gained and lost, the field change plus the accumulated
-        // mass's g z), is held back: it is the rate evaluation's junction term (owner decision D46), not a boundary.
+        // amounts the pipe loop actually booked (solids the junction gained and lost, and its energy field's change), is held
+        // back: it is the rate evaluation's junction term (owner decision D46), not a boundary.
         var held=HeldJunctions.none(components);
         if(frozen) {
             var heldMoles=new double[components];var grossMoles=new double[components];double heldEnergy=0,grossEnergy=0;var heldSolids=new SignedSolids();
             for(int node=0;node<nodes;node++)if(graph.reservoirs().get(node).junction()) {
-                checkpoint.run();double accumulatedMass=0;
-                for(int c=0;c<components;c++){accumulatedMass+=accMoles[node][c]*molecularWeight[c];heldMoles[c]+=accMoles[node][c];grossMoles[c]+=Math.abs(accMoles[node][c]);}
-                var gained=accSolids[node].part(1);var lost=accSolids[node].part(-1);accumulatedMass+=gained.massKg()-lost.massKg();
+                checkpoint.run();
+                for(int c=0;c<components;c++){heldMoles[c]+=accMoles[node][c];grossMoles[c]+=Math.abs(accMoles[node][c]);}
+                var gained=accSolids[node].part(1);var lost=accSolids[node].part(-1);
                 heldSolids.add(gained,1);heldSolids.add(lost,-1);
-                double energyChange=energy[node]-graph.reservoirs().get(node).inventory().internalEnergy(),z=graph.reservoirs().get(node).elevation();
-                double nodeHeld=energyChange+accumulatedMass*PassiveStepSolver.GRAVITY*z;heldEnergy+=nodeHeld;grossEnergy+=Math.abs(nodeHeld);
+                double nodeHeld=energy[node]-graph.reservoirs().get(node).inventory().internalEnergy();heldEnergy+=nodeHeld;grossEnergy+=Math.abs(nodeHeld);
             }
             held=new HeldJunctions(heldMoles,heldEnergy,heldSolids.part(1),heldSolids.part(-1),grossMoles,grossEnergy);
         }
@@ -559,8 +558,7 @@ public final class ConservativeTransport {
         for(int node=0;node<nodes;node++) {
             var oldNode=graph.reservoirs().get(node);var state=states.get(node);
             if(frozen&&oldNode.junction()){inventories.add(oldNode.inventory());continue;}
-            // A junction's buffer record holds endMass*w and its energy field in enthalpy form (m*h, potential energy
-            // excluded, as for a vessel's internal energy).
+            // A junction's buffer record holds endMass*w and its energy field in enthalpy form (m*h).
             if(oldNode.junction()){inventories.add(new PassiveNetwork.Inventory(oldNode.inventory().volume(),ownedMoles[node],energy[node],ownedSolids[node]));continue;}
             inventories.add(oldNode.fixed()?oldNode.inventory():new PassiveNetwork.Inventory(oldNode.inventory().volume(),moles[node],energy[node],state.solids()));
         }

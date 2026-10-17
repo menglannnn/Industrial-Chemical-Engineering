@@ -11,9 +11,9 @@ import com.wormzjl.createcheme.science.column.v3.thermo.V3PengRobinsonThermo;
 class ScheduledTransferTest {
     private final FluidThermodynamics model=FluidTestSupport.networkModel();
     private PassiveNetwork.Reservoir gas(long id,double p,double z){return new PassiveNetwork.Reservoir(id,z,model.initialNitrogenCharge(1,298.15,p,()->{}));}
-    private double mass(PassiveNetwork.Inventory inventory){var n=inventory.moles();double mass=0;for(int c=0;c<n.length;c++)mass+=n[c]*(c==com.wormzjl.createcheme.science.material.MaterialTestBasis.NETWORK?model.waterMolecularWeight:model.hydrocarbon.molecularWeight(c));return mass;}
-    private double energy(PassiveNetwork graph){double total=0;for(var node:graph.reservoirs())if(node.kind()==PassiveNetwork.NodeKind.RESERVOIR)total+=node.inventory().internalEnergy()+mass(node.inventory())*PassiveStepSolver.GRAVITY*node.elevation();return total;}
-    @Test void bulkWithdrawalIsDistributedInTimeAndCarriesEnthalpyAndElevationEnergy() {
+    private double energy(PassiveNetwork graph){double total=0;for(var node:graph.reservoirs())if(node.kind()==PassiveNetwork.NodeKind.RESERVOIR)total+=node.inventory().internalEnergy();return total;}
+    /** The withdrawal carries the tank's enthalpy alone: no stream carries potential energy (owner decision D37, S1). */
+    @Test void bulkWithdrawalIsDistributedInTimeAndCarriesItsEnthalpy() {
         var initial=new PassiveNetwork(List.of(gas(1,150000,10),gas(2,149000,20)),List.of(new PassiveNetwork.Pipe(8,0,1,new PipeResistance.Geometry(100,.02,.000045,0))),List.of(new ScheduledTransfer.Withdrawal(90,1,.001)));
         var result=new PassiveIntervalSolver(model).solve(initial,5,PassiveIntervalSolver.Settings.defaults(),()->{});
         double removedMass=0,removedEnergy=0;
@@ -27,7 +27,7 @@ class ScheduledTransferTest {
         for(double seconds:new double[]{5,15,30}) {
             var tank=gas(1,101325,12);double[] water=new double[com.wormzjl.createcheme.science.material.MaterialTestBasis.NETWORK+1];water[com.wormzjl.createcheme.science.material.MaterialTestBasis.NETWORK]=1;var stream=model.flashTP(298.15,101325,water,()->{});
             double[] rates=new double[com.wormzjl.createcheme.science.material.MaterialTestBasis.NETWORK+1];rates[com.wormzjl.createcheme.science.material.MaterialTestBasis.NETWORK]=100/model.waterMolecularWeight/seconds;
-            double energyRate=100/seconds*(stream.enthalpy()/stream.mass()+PassiveStepSolver.GRAVITY*12);
+            double energyRate=100/seconds*(stream.enthalpy()/stream.mass());
             var graph=new PassiveNetwork(List.of(tank),List.of(),List.of(new ScheduledTransfer.Injection(90,0,rates,energyRate)));
             var result=new PassiveIntervalSolver(model).solve(graph,seconds,PassiveIntervalSolver.Settings.defaults(),()->{});
             var after=result.graph().reservoirs().getFirst();assertEquals(100,after.inventory().moles()[com.wormzjl.createcheme.science.material.MaterialTestBasis.NETWORK]*model.waterMolecularWeight,1e-8);

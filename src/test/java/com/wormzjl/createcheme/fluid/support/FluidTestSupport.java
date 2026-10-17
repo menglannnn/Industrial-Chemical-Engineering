@@ -3,7 +3,6 @@ package com.wormzjl.createcheme.fluid.support;
 import com.wormzjl.createcheme.runtime.BoundedCpuSolveService;
 import com.wormzjl.createcheme.science.column.v3.thermo.V3PengRobinsonThermo;
 import com.wormzjl.createcheme.science.fluid.network.PassiveNetwork;
-import com.wormzjl.createcheme.science.fluid.network.PassiveStepSolver;
 import com.wormzjl.createcheme.science.fluid.thermo.FluidThermodynamics;
 import com.wormzjl.createcheme.science.fluid.transport.SlurryTransport;
 import com.wormzjl.createcheme.science.thermo.TraceTruncationPolicy;
@@ -143,7 +142,7 @@ public final class FluidTestSupport {
         return total;
     }
 
-    /** Totals one graph's finite component and gravity-inclusive energy ownership. */
+    /** Totals one graph's finite component and internal-energy ownership (no potential energy, owner decision D37 S1). */
     public static Ledger finiteLedger(PassiveNetwork graph, double[] molecularWeights) {
         return finiteLedger(List.of(Objects.requireNonNull(graph, "graph")), molecularWeights);
     }
@@ -167,8 +166,7 @@ public final class FluidTestSupport {
                     }
                     components[component] += moles[component];
                 }
-                energy += inventory.internalEnergy()
-                        + mass(moles, weights) * PassiveStepSolver.GRAVITY * reservoir.elevation();
+                energy += inventory.internalEnergy();
             }
         }
         return new Ledger(components, energy);
@@ -184,7 +182,7 @@ public final class FluidTestSupport {
         ConservationAssertions.energy(before.energy(), after.energy(), 0, Math.abs(before.energy()));
     }
 
-    /** Immutable totals for finite component and gravity-inclusive energy ownership. */
+    /** Immutable totals for finite component and internal-energy ownership. */
     public record Ledger(double[] components, double energy) {
         public Ledger {
             components = Objects.requireNonNull(components, "components").clone();

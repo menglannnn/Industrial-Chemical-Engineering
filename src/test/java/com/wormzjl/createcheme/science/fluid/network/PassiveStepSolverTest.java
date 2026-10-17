@@ -71,7 +71,7 @@ class PassiveStepSolverTest {
         assertTrue(flows[0]>0);assertEquals(flows[0],flows[1]+flows[2],1e-9);assertEquals(flows[1],flows[2],1e-9);
         assertEquals(result.states().get(1).pressure(),result.states().get(2).pressure(),1e-4);
     }
-    @Test void bulkThreePhaseCrudeTransfersAllComponentsAndIncludesElevationEnergy() {
+    @Test void bulkThreePhaseCrudeTransfersAllComponentsUpAnElevation() {
         String id="createcheme:tjl20_methane";double[] composition=Arrays.copyOf(V3PengRobinsonThermo.fromRegisteredPackage(id).crudeFeed("createcheme:tia_juana_light_methane").moleFractions(),com.wormzjl.createcheme.science.material.MaterialTestBasis.CRUDE+1);composition[com.wormzjl.createcheme.science.material.MaterialTestBasis.CRUDE]=.2;
         var reservoirs=new ArrayList<PassiveNetwork.Reservoir>();
         for(double pressure:new double[]{200000,150000}) {

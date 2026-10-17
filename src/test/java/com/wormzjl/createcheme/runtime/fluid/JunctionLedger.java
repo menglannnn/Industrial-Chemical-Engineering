@@ -2,7 +2,6 @@ package com.wormzjl.createcheme.runtime.fluid;
 
 import com.wormzjl.createcheme.science.fluid.network.PassiveIntervalSolver;
 import com.wormzjl.createcheme.science.fluid.network.PassiveNetwork;
-import com.wormzjl.createcheme.science.fluid.network.PassiveStepSolver;
 
 /**
  * The ledger of owner decision D46 over a transient of one island (no topology edit): the change of its tanks since the
@@ -13,7 +12,7 @@ import com.wormzjl.createcheme.science.fluid.network.PassiveStepSolver;
  * max(1, initial) as the transient tests always measured it, and the junction term against its bound. The bound is
  * the row's: a buffer's composition is a convex combination of its old one and its inflows', so each component's
  * content stays in [0, m_J] and its change within m_J; its enthalpy stays inside the span of the specific enthalpies
- * (plus g z) of the states it mixes, here read on every committed state of the island.
+ * of the states it mixes, here read on every committed state of the island.
  */
 final class JunctionLedger {
     private final double[] mw;
@@ -65,9 +64,9 @@ final class JunctionLedger {
         if(mintedMass==null){mintedMass=new double[graph.reservoirs().size()];for(int i=0;i<mintedMass.length;i++)mintedMass[i]=mass(graph.reservoirs().get(i));}
         for(var node:graph.reservoirs()) {
             if(node.kind()==PassiveNetwork.NodeKind.RESERVOIR&&node.empty())continue;
-            var state=node.state();double h=state.enthalpy()/state.mass()+PassiveStepSolver.GRAVITY*node.elevation();
+            var state=node.state();double h=state.enthalpy()/state.mass();
             lowest=Math.min(lowest,h);highest=Math.max(highest,h);
-            if(node.junction()){double b=node.inventory().internalEnergy()/mass(node)+PassiveStepSolver.GRAVITY*node.elevation();lowest=Math.min(lowest,b);highest=Math.max(highest,b);}
+            if(node.junction()){double b=node.inventory().internalEnergy()/mass(node);lowest=Math.min(lowest,b);highest=Math.max(highest,b);}
         }
     }
     private double[] amounts(PassiveNetwork graph,boolean junctions) {
@@ -75,11 +74,11 @@ final class JunctionLedger {
         for(var node:graph.reservoirs())if(junctions?node.junction():node.kind()==PassiveNetwork.NodeKind.RESERVOIR){var n=node.inventory().moles();for(int c=0;c<n.length;c++)totals[c]+=n[c];}
         return totals;
     }
-    /** Energy field plus potential energy (a buffer's field is m h, a tank's its internal energy). */
+    /** The energy field (a buffer's is m h, a tank's its internal energy; no potential energy, owner decision D37 S1). */
     private double energy(PassiveNetwork graph,boolean junctions) {
         double energy=0;
         for(var node:graph.reservoirs())if(junctions?node.junction():node.kind()==PassiveNetwork.NodeKind.RESERVOIR)
-            energy+=node.inventory().internalEnergy()+mass(node)*PassiveStepSolver.GRAVITY*node.elevation();
+            energy+=node.inventory().internalEnergy();
         return energy;
     }
     private double mass(PassiveNetwork.Reservoir node){double m=node.inventory().solids().massKg();var n=node.inventory().moles();for(int c=0;c<n.length;c++)m+=mw[c]*n[c];return m;}

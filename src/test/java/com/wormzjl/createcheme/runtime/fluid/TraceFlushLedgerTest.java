@@ -14,8 +14,9 @@ import static org.junit.jupiter.api.Assertions.*;
  * under nitrogen joined by one pipe, at rest, one of them holding a methane trace.
  *
  * <p>A trace below 1e-24 of its vessel is removed at the first accepted step and booked as a boundary transfer at the
- * vessel itself, so the interval's ledger (owned after - owned before = boundary transfers) closes, the potential energy
- * of the removed mass included; the interval is not certified, the next one carries no flush. A trace above the
+ * vessel itself, so the interval's ledger (owned after - owned before = boundary transfers) closes; the removal carries
+ * no energy (the vessel keeps its internal-energy field, and no stream carries potential energy since owner decision D37,
+ * S1: before, the removed mass's m g z at the vessels' 5 m); the interval is not certified, the next one carries no flush. A trace above the
  * threshold stays.
  */
 class TraceFlushLedgerTest {
@@ -42,8 +43,7 @@ class TraceFlushLedgerTest {
     }
     private double ownedEnergy(PassiveNetwork graph) {
         double total=0;
-        for(var node:graph.reservoirs()){double mass=0;var n=node.inventory().moles();for(int c=0;c<n.length;c++)mass+=n[c]*mw[c];
-            total+=node.inventory().internalEnergy()+mass*PassiveStepSolver.GRAVITY*node.elevation();}
+        for(var node:graph.reservoirs())total+=node.inventory().internalEnergy();
         return total;
     }
 
@@ -62,8 +62,7 @@ class TraceFlushLedgerTest {
         for(int c=0;c<moles.length;c++)if(c!=methane)assertEquals(0.0,moles[c],"only the trace component is booked, component "+c);
         assertTrue(moles[methane]<0,"removed material leaves the network");
         assertEquals(-held,moles[methane],1e-9*held,"what was removed is what the vessel held");
-        double removedMass=-moles[methane]*mw[methane];
-        assertEquals(-removedMass*PassiveStepSolver.GRAVITY*ELEVATION,booked.getFirst().totalEnergyJoule(),"the potential energy of the removed mass");
+        assertEquals(0.0,booked.getFirst().totalEnergyJoule(),"the removal books no energy: the vessel keeps its internal energy");
         assertTrue(booked.getFirst().solids().empty());
         assertTrue(at(result,2).isEmpty(),"the vessel without a trace books nothing");
         // The interval's ledger: owned after - owned before = the boundary transfers, component by component and in energy.

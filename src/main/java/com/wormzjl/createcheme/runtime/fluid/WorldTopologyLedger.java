@@ -35,7 +35,7 @@ public final class WorldTopologyLedger {
         public static MaterialTotal empty(int count){if(count<1||count>com.wormzjl.createcheme.science.material.MaterialAxis.MAX_CONSERVED_COMPONENTS)throw new IllegalArgumentException("Invalid external material axis size");return new MaterialTotal(new double[count],0);}
         /**
          * These totals plus what {@code reservoirs} hold, on the network basis {@code components} with their molar masses
-         * {@code weights} (kg/mol): component moles, total energy (internal plus potential) and custom solid masses by
+         * {@code weights} (kg/mol): component moles, total (internal) energy and custom solid masses by
          * material and size. A crystal (owner decision D23) is its component in another phase, so it is booked as that
          * component's moles with its true energy, its stored sensible part plus its energy offset times its mass: the
          * totals do not depend on the phase the material was in when it was placed or removed.
@@ -45,7 +45,7 @@ public final class WorldTopologyLedger {
             if(components.size()!=total.length||weights.length!=total.length)throw new IllegalArgumentException("External ledger basis mismatch");
             for(var node:reservoirs) {
                 var n=node.inventory().moles();if(n.length!=total.length)throw new IllegalArgumentException("External ledger basis mismatch");
-                double mass=node.inventory().solids().massKg(),internal=node.inventory().internalEnergy();
+                double internal=node.inventory().internalEnergy();
                 for(var p:node.inventory().solids().populations()) {
                     var crystal=p.material().crystal();
                     if(crystal==null){solids.merge(p.material().id()+"@"+p.size().metres(),p.massKg(),Double::sum);continue;}
@@ -53,8 +53,8 @@ public final class WorldTopologyLedger {
                     if(c<0)throw new IllegalArgumentException("Crystal "+p.material().id()+" is made of "+crystal.component()+", which the ledger basis does not carry");
                     total[c]+=p.massKg()/weights[c];internal+=p.massKg()*crystal.energyOffset();
                 }
-                for(int c=0;c<n.length;c++){total[c]+=n[c];mass+=n[c]*weights[c];}
-                energy+=internal+mass*com.wormzjl.createcheme.science.fluid.network.PassiveStepSolver.GRAVITY*node.elevation();
+                for(int c=0;c<n.length;c++)total[c]+=n[c];
+                energy+=internal;
             }
             return new MaterialTotal(total,energy,solids);
         }

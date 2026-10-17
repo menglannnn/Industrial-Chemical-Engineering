@@ -199,7 +199,7 @@ class ExtremeTopologyIslandTest {
         int lowest=tanks.stream().min(Comparator.comparingDouble(i->nodes.get(i).state().pressure())).orElseThrow();
         var slot=new HashMap<Long,Integer>();for(int g=0;g<generators.size();g++)slot.put(nodes.get(generators.get(g)).id(),g);
         double[] initial=totals(graph),external=new double[initial.length],supplied=new double[generators.size()];
-        double initialEnergy=energy(graph,mw),externalEnergy=0,totalSupplied=0;
+        double initialEnergy=energy(graph),externalEnergy=0,totalSupplied=0;
         double[][] history=new double[tanks.size()][count+1];for(int t=0;t<tanks.size();t++)history[t][0]=nodes.get(tanks.get(t)).state().pressure();
         double lowestTank=tanks.stream().mapToDouble(i->nodes.get(i).state().pressure()).min().orElseThrow();
         var solver=new PassiveIntervalSolver(model);PassiveIntervalSolver.Result committed=null;
@@ -235,7 +235,7 @@ class ExtremeTopologyIslandTest {
                     double error=Math.abs(sum[k]-initial[k]-external[k])/Math.max(1,initial[k]);run.worstMoles=Math.max(run.worstMoles,error);
                     if(error>=COMPONENT_LEDGER)run.violations.add(at+"component "+k+" ledger "+error);
                 }
-                double energyError=Math.abs(energy(graph,mw)-initialEnergy-externalEnergy)/Math.max(1,Math.abs(initialEnergy));
+                double energyError=Math.abs(energy(graph)-initialEnergy-externalEnergy)/Math.max(1,Math.abs(initialEnergy));
                 run.worstEnergy=Math.max(run.worstEnergy,energyError);if(energyError>=ENERGY_LEDGER)run.violations.add(at+"energy ledger "+energyError);
                 var now=graph.reservoirs();double min=Double.POSITIVE_INFINITY;
                 for(int t=0;t<tanks.size();t++) {
@@ -300,11 +300,12 @@ class ExtremeTopologyIslandTest {
         }
         return totals;
     }
-    /** A junction's owned inventory (energy field m h) is counted like a tank's, as in MixedGasJunctionTransientTest. */
-    private static double energy(PassiveNetwork graph,double[] mw) {
+    /** A junction's owned inventory (energy field m h) is counted like a tank's, as in MixedGasJunctionTransientTest; no
+     * potential energy (owner decision D37 S1). */
+    private static double energy(PassiveNetwork graph) {
         double energy=0;
         for(var node:graph.reservoirs())if(node.kind()==PassiveNetwork.NodeKind.RESERVOIR||node.junction())
-            energy+=node.inventory().internalEnergy()+mass(node,mw)*PassiveStepSolver.GRAVITY*node.elevation();
+            energy+=node.inventory().internalEnergy();
         return energy;
     }
 

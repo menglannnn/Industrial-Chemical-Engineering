@@ -38,7 +38,7 @@ class VirtualJunctionHoldupTest {
             int tank=-1;for(int i=0;i<gas.reservoirs().size();i++)if(gas.reservoirs().get(i).id()==1)tank=i;
             double[] feed=new double[mw.length];feed[0]=.5;
             var feedState=model.flashTP(350,150000,feed,()->{});
-            double feedEnergy=feedState.enthalpy()+.5*mw[0]*PassiveStepSolver.GRAVITY*gas.reservoirs().get(tank).elevation();
+            double feedEnergy=feedState.enthalpy();
             var schedule=MixedGasJunctionTransientTest.schedule(interval);var durations=new double[schedule.size()];var transfers=new ArrayList<List<ScheduledTransfer>>();
             for(int s=0;s<durations.length;s++){durations[s]=schedule.get(s)[0];transfers.add(schedule.get(s)[1]>0?List.of(new ScheduledTransfer.Injection(900,tank,feed,feedEnergy)):List.of());}
             run("mixed-gas 0.05:4:true interval="+interval,gas,durations,transfers);

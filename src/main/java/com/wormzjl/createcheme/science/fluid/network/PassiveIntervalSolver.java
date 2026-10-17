@@ -336,15 +336,15 @@ public final class PassiveIntervalSolver {
     /**
      * Removes every component below {@link #TRACE_FLUSH_FRACTION} of its vessel's or junction's total amount, restates
      * the node at its temperature and pressure, and books exactly what it removed: a boundary transfer at the node's
-     * own id, signed like a port's (positive = into the network, so the removed moles are negative), whose energy is
-     * the change of the node's owned total energy. The inventory's internal-energy field is kept, so that change is the
-     * potential energy of the removed mass alone. The interval's ledger (owned after - owned before = boundaries)
-     * therefore closes by construction, and a checkpoint or a certificate sees the flush as any other boundary
+     * own id, signed like a port's (positive = into the network, so the removed moles are negative), with no energy: the
+     * inventory's internal-energy field is kept, and no stream carries potential energy (owner decision D37, S1). The
+     * interval's ledger (owned after - owned before = boundaries) therefore closes by construction, and a checkpoint or a
+     * certificate sees the flush as any other boundary
      * transfer; a certificate is not issued on an interval that contains one ({@code IslandCertificate.issue}), since
      * a one-time removal is not a rate. Returns null when nothing was flushed.
      */
     private Flush flushTraces(PassiveNetwork graph,Runnable checkpoint) {
-        List<PassiveNetwork.Reservoir> nodes=null;List<ConservativeTransport.BoundaryTransfer> booked=null;double[] weights=null;
+        List<PassiveNetwork.Reservoir> nodes=null;List<ConservativeTransport.BoundaryTransfer> booked=null;
         for(int i=0;i<graph.reservoirs().size();i++) {
             var node=graph.reservoirs().get(i);if(node.fixed())continue;
             var held=node.inventory().moles();double total=0;for(double amount:held)total+=amount;
@@ -352,15 +352,14 @@ public final class PassiveIntervalSolver {
             for(int c=0;c<held.length;c++)if(held[c]>0&&held[c]<TRACE_FLUSH_FRACTION*total){if(kept==null)kept=held.clone();kept[c]=0;}
             if(kept==null)continue;
             checkpoint.run();
-            if(weights==null)weights=model.molecularWeights();
-            var removed=new double[held.length];double removedMass=0;
-            for(int c=0;c<held.length;c++){removed[c]=kept[c]-held[c];removedMass-=removed[c]*weights[c];}
+            var removed=new double[held.length];
+            for(int c=0;c<held.length;c++)removed[c]=kept[c]-held[c];
             var old=node.state();var state=model.flashTP(old.temperature(),old.pressure(),kept,checkpoint);
             if(!old.solids().empty())state=state.withSolids(old.solids());
             if(nodes==null){nodes=new ArrayList<>(graph.reservoirs());booked=new ArrayList<>();}
             nodes.set(i,new PassiveNetwork.Reservoir(node.id(),node.elevation(),state,node.kind(),
                     new PassiveNetwork.Inventory(node.inventory().volume(),kept,node.inventory().internalEnergy(),node.inventory().solids())));
-            booked.add(new ConservativeTransport.BoundaryTransfer(node.id(),removed,-removedMass*PassiveStepSolver.GRAVITY*node.elevation()));
+            booked.add(new ConservativeTransport.BoundaryTransfer(node.id(),removed,0));
             SolverDiagnostics.count(SolverDiagnostics.traceFlushes);
         }
         return nodes==null?null:new Flush(new PassiveNetwork(nodes,graph.pipes(),graph.scheduledTransfers()),booked);

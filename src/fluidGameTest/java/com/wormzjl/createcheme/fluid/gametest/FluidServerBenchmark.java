@@ -730,8 +730,8 @@ public final class FluidServerBenchmark {
     private static Map<String,Object> statistics(List<Double> values){var result=new LinkedHashMap<String,Object>();result.put("count",values.size());result.put("median",percentile(values,.5));result.put("p95",percentile(values,.95));result.put("max",percentile(values,1));return result;}
     private static double[] weights(FluidThermodynamics model){double[] weights=new double[com.wormzjl.createcheme.science.fluid.thermo.FluidMaterialCatalog.conservedCount()];for(int c=0;c<model.componentCount();c++)weights[c]=c==model.componentCount()-1?model.waterMolecularWeight:model.hydrocarbon.molecularWeight(c);return weights;}
     private static double[] totals(FluidCheckpointCodec.Checkpoint checkpoint,FluidThermodynamics model) {
-        double[] sum=new double[com.wormzjl.createcheme.science.fluid.thermo.FluidMaterialCatalog.conservedCount()+1],weights=weights(model);for(var island:checkpoint.islands())for(var node:island.snapshot().graph().reservoirs())if(node.kind()==PassiveNetwork.NodeKind.RESERVOIR) {
-            var n=node.inventory().moles();double mass=0;for(int c=0;c<model.componentCount();c++){sum[c]+=n[c];mass+=n[c]*weights[c];}sum[sum.length-1]+=node.inventory().internalEnergy()+mass*PassiveStepSolver.GRAVITY*node.elevation();
+        double[] sum=new double[com.wormzjl.createcheme.science.fluid.thermo.FluidMaterialCatalog.conservedCount()+1];for(var island:checkpoint.islands())for(var node:island.snapshot().graph().reservoirs())if(node.kind()==PassiveNetwork.NodeKind.RESERVOIR) {
+            var n=node.inventory().moles();for(int c=0;c<model.componentCount();c++)sum[c]+=n[c];sum[sum.length-1]+=node.inventory().internalEnergy();
         }
         return sum;
     }

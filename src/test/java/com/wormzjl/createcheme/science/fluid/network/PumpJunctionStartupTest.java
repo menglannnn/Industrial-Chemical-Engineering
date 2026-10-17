@@ -45,7 +45,7 @@ class PumpJunctionStartupTest {
                 beforeMass+=before.moles()[c]*model.molecularWeight(c);afterMass+=after.moles()[c]*model.molecularWeight(c);
             }
             assertTrue(afterMass>beforeMass);
-            double change=after.internalEnergy()-before.internalEnergy()+(afterMass-beforeMass)*PassiveStepSolver.GRAVITY*receiver.elevation();
+            double change=after.internalEnergy()-before.internalEnergy();
             assertEquals(externalEnergy+result.pumpWorkJoule(),change,1e-4+1e-6*Math.abs(externalEnergy),id+" total energy");
         }
     }

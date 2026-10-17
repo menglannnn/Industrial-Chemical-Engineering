@@ -15,6 +15,10 @@ import com.wormzjl.createcheme.science.fluid.transport.SlurryTransport;
 /** One simultaneous backward-Euler step with a fixed phase regime; no nested TP/UV/PH flash. */
 public final class PassiveStepSolver {
     public enum Acceptance { FULL, APPROXIMATE }
+    /**
+     * Standard gravity, m/s2: the static heads (a connection's column, a vessel's level head) and a solid's settling
+     * ({@code SlurryTransport}). No stream or ledger carries potential energy (owner decision D37, simplification S1).
+     */
     public static final double GRAVITY=9.80665;
     /**
      * How far below its own difference floor a solid moment unknown stops bounding the Newton step
@@ -1203,7 +1207,7 @@ public final class PassiveStepSolver {
                     double delivered=dt*Math.abs(flow),streamMass=endMass(stream,port);double[] moles=endMoles(stream,port);
                     for(int c=0;c<n.length;c++)n[c]+=delivered*moles[c]/streamMass;
                     mass+=delivered;weighted+=delivered*stream.temperature();arrives=true;
-                    heat+=delivered*(endSpecificEnthalpy(stream,port)+GRAVITY*(graph.reservoirs().get(donor).elevation()-node.elevation()));
+                    heat+=delivered*endSpecificEnthalpy(stream,port);
                 }
                 if(empty) {
                     if(!arrives||!(mass>0))continue;
@@ -1232,9 +1236,9 @@ public final class PassiveStepSolver {
     }
     /**
      * Decisions D54 and D26: an empty bag's own split of what arrives over a step, the amounts {@code n} with the enthalpy
-     * {@code h} they bring (J, the network's datum, each stream's drop in potential included, as the vessel's energy row
-     * books it). The engine's PH answer at the ambient pressure ({@code FluidThermodynamics.equilibriumPH}, under the
-     * competition at the arrival's mass-weighted temperature {@code t}) holds the phases; the vessel's closure from it
+     * {@code h} they bring (J, the network's datum, as the vessel's energy row books it). The engine's PH answer at the
+     * ambient pressure ({@code FluidThermodynamics.equilibriumPH}, under the competition at the arrival's mass-weighted
+     * temperature {@code t}) holds the phases; the vessel's closure from it
      * ({@link InventoryEquilibrium#split}, the bag empty at the step's start, so the wall's work is booked from a zero
      * volume) is the equilibrium of that enthalpy at the ambient while the bag is slack and of its energy at the capacity
      * once what arrives overfills it; the PH answer itself where the closure leaves nothing. Folded as a vessel.
@@ -1331,7 +1335,7 @@ public final class PassiveStepSolver {
                 var source=nodes.get(donor);double rate=Math.abs(flow);var port=pipe.portAt(donor);
                 var n=endMoles(source.state(),port);double sourceMass=endMass(source.state(),port);
                 for(int c=0;c<n.length;c++)amounts[c]+=rate*n[c]/sourceMass;
-                mass+=rate;heat+=rate*(endSpecificEnthalpy(source.state(),port)+GRAVITY*(source.elevation()-junction.elevation()));
+                mass+=rate;heat+=rate*endSpecificEnthalpy(source.state(),port);
                 tLow=Math.min(tLow,source.state().temperature());tHigh=Math.max(tHigh,source.state().temperature());
             }
             if(!(mass>0))return seed;
@@ -1361,7 +1365,7 @@ public final class PassiveStepSolver {
      * at the current iterate, on a fresh solver (a cold rate solve, as the first interval's cold seed is: the solver's own
      * laws, columns, one-way rules, D12 closures and device active sets); each junction then becomes the flow-weighted
      * mixture of the streams that solve drives into it (a vessel's or boundary's end stream, a junction donor's current
-     * mixture; amounts and enthalpy per kilogram, the enthalpy with its height gain), flashed at its solved pressure; a
+     * mixture; amounts and enthalpy per kilogram), flashed at its solved pressure; a
      * junction nothing flows into keeps its composition at its solved pressure. It stops when no junction's mass fractions
      * move by more than 1e-9 and no pressure by more than 1e-9 of itself, after {@link #FIXED_POINT_ROUNDS} rounds, or at
      * a round whose rate solve fails (or leaves the property domain), and returns the last round it completed: round 0
@@ -1398,7 +1402,7 @@ public final class PassiveStepSolver {
                             if(source.junction()){per=y[donor];specific=h[donor];temperature=states.get(donor).temperature();}
                             else{var port=pipe.portAt(donor);var s=source.state();var n=endMoles(s,port);double m=endMass(s,port);per=new double[count];for(int c=0;c<count;c++)per[c]=n[c]/m;specific=endSpecificEnthalpy(s,port);temperature=s.temperature();}
                             for(int c=0;c<count;c++)amounts[c]+=rate1*per[c];
-                            heat+=rate1*(specific+GRAVITY*(source.elevation()-junction.elevation()));total+=rate1;
+                            heat+=rate1*specific;total+=rate1;
                             lo=Math.min(lo,temperature);hi=Math.max(hi,temperature);
                         }
                         inflow[j]=total;if(!(total>0))continue;
@@ -1438,7 +1442,7 @@ public final class PassiveStepSolver {
      * generator, a port); a void and a dry end (a vessel that holds no fluid among them) send nothing ({@link #boundaryAllowed}). Each
      * supplier joined to a junction sends the stream its end draws ({@link #endMoles}, as the rate estimate reads it) at
      * the flow its static drive gives against the ambient ({@link #supplyFlow}); a junction is the flow-weighted mixture
-     * of what reaches it (amounts per kilogram, enthalpy per kilogram with its height gain), flashed at the pressure where
+     * of what reaches it (amounts and enthalpy per kilogram), flashed at the pressure where
      * the start estimate's flows into and out of it balance ({@link #balancePressure}). A junction no supplier drives into
      * takes it hop by hop from the junctions that have it (a breadth-first sweep, each hop the mixture of the neighbours
      * seeded before it, weighted by the flow that seeded them; a vessel that holds no fluid passes the sweep through). A
@@ -1490,7 +1494,7 @@ public final class PassiveStepSolver {
                 if(!(q>0))continue;
                 var port=pipe.portAt(supplier);double[] n=endMoles(s.state(),port);double m=endMass(s.state(),port);
                 for(int c=0;c<count;c++)amounts[junction][c]+=q*n[c]/m;
-                heat[junction]+=q*(endSpecificEnthalpy(s.state(),port)+GRAVITY*(s.elevation()-graph.reservoirs().get(junction).elevation()));
+                heat[junction]+=q*endSpecificEnthalpy(s.state(),port);
                 mass[junction]+=q;tLow[junction]=Math.min(tLow[junction],s.state().temperature());tHigh[junction]=Math.max(tHigh[junction],s.state().temperature());
             }
             for(int j=0;j<nodes;j++)if(mass[j]>0&&seedAt(states,j,amounts[j],mass[j],heat[j],tLow[j],tHigh[j],PhaseLayout.AMBIENT_PRESSURE,checkpoint)){seeded[j]=true;weight[j]=mass[j];}
@@ -1501,11 +1505,10 @@ public final class PassiveStepSolver {
                 for(var row:amounts)Arrays.fill(row,0);
                 for(int j=0;j<nodes;j++) {
                     if(!graph.reservoirs().get(j).junction()||seeded[j])continue;
-                    var z=graph.reservoirs().get(j).elevation();
                     for(int k:sweepNeighbours(graph,j)) {
                         if(!seeded[k])continue;var s=states.get(k);double w=weight[k];
                         double[] n=PhaseLayout.totalAmounts(s);for(int c=0;c<count;c++)amounts[j][c]+=w*n[c]/s.mass();
-                        heat[j]+=w*(s.enthalpy()/s.mass()+GRAVITY*(graph.reservoirs().get(k).elevation()-z));mass[j]+=w;
+                        heat[j]+=w*(s.enthalpy()/s.mass());mass[j]+=w;
                         tLow[j]=Math.min(tLow[j],s.temperature());tHigh[j]=Math.max(tHigh[j],s.temperature());
                     }
                 }
@@ -3047,7 +3050,10 @@ public final class PassiveStepSolver {
      * plus the junction term, per component, per solid population and for energy (pump work included). The junction term
      * is the change of the junctions' buffers (a junction's buffer is the state of its relaxation row, m_J w and m_J h,
      * not inventory) plus what a rate evaluation's frozen junctions held back ({@link ConservativeTransport.HeldJunctions}).
-     * Each tolerance is scaled as it always was, by the boundaries' turnover and the stocks held, buffers included.
+     * Each tolerance is scaled as it always was, by the boundaries' turnover and the stocks held, buffers included. The
+     * energy is the internal energy held plus the enthalpy each transfer carries, {@code U + sum h dm}: no stream carries
+     * potential energy (owner decision D37, simplification S1), so a pump's lift work stays in the fluid it lifts as heat
+     * (0.023 K per 10 m of water) and a falling stream does not warm.
      */
     void checkConservation(PassiveNetwork graph,ConservativeTransport.Projection projection) {
         int count=model.hydrocarbon.componentCount()+1;double[] before=new double[count],after=new double[count],turnover=new double[count];double eb=0,ea=0,energyScale=0;
@@ -3059,12 +3065,10 @@ public final class PassiveStepSolver {
         for(int i=0;i<graph.reservoirs().size();i++) {
             var reservoir=graph.reservoirs().get(i);var old=reservoir.inventory();var next=projection.inventories().get(i);
             if(reservoir.fixed())continue;
-            var a=old.moles();var b=next.moles();double ma=old.solids().massKg(),mb=next.solids().massKg();
-            for(int j=0;j<count;j++){double mw=model.molecularWeight(j);ma+=a[j]*mw;mb+=b[j]*mw;}
-            double ebNode=old.internalEnergy()+ma*GRAVITY*reservoir.elevation(),eaNode=next.internalEnergy()+mb*GRAVITY*reservoir.elevation();
+            var a=old.moles();var b=next.moles();double ebNode=old.internalEnergy(),eaNode=next.internalEnergy();
             if(reservoir.junction()){for(int j=0;j<count;j++){junction[j]+=b[j]-a[j];bufferedBefore[j]+=a[j];bufferedAfter[j]+=b[j];}junctionEnergy+=eaNode-ebNode;}
             else{for(int j=0;j<count;j++){before[j]+=a[j];after[j]+=b[j];}eb+=ebNode;ea+=eaNode;}
-            energyScale+=Math.abs(old.internalEnergy())+Math.abs(ma*GRAVITY*reservoir.elevation());
+            energyScale+=Math.abs(old.internalEnergy());
         }
         // Per population: vessels and cakes before [0] and after [1], boundaries [2], buffers before [3] and after [4], and a
         // rate evaluation's held accumulation [5] (net, signed as the junction term).
@@ -4045,7 +4049,6 @@ public final class PassiveStepSolver {
             System.arraycopy(graph.reservoirs().get(node).inventory().solids().moments().values(),0,solidTargets[node],0,3);Arrays.fill(solidIncoming[node],0);
             System.arraycopy(oldAmounts[node],0,target,0,target.length);Arrays.fill(in,0);
             double stored=graph.reservoirs().get(node).inventory().internalEnergy(),mass=0,heat=0,net=0;
-            double elevation=graph.reservoirs().get(node).elevation();
             for(var transfer:graph.scheduledTransfers()) {
                 if(transfer.node()!=node)continue;
                 var state=st[node];
@@ -4057,10 +4060,10 @@ public final class PassiveStepSolver {
                     stored-=withdrawn*state.enthalpy()/state.mass();
                     var moments=state.solidMoments().values();for(int c=0;c<3;c++)solidTargets[node][c]-=withdrawn*moments[c]/state.mass();
                 } else if(transfer instanceof ScheduledTransfer.Injection input) {
-                    var rates=input.molesPerSecond();double massRate=0;
-                    for(int c=0;c<rates.length;c++){target[c]+=dt*rates[c];massRate+=rates[c]*model.molecularWeight(c);}
-                    massRate+=input.solidsPerSecond().massKg();var moments=input.solidsPerSecond().moments().values();for(int c=0;c<3;c++)solidTargets[node][c]+=dt*moments[c];
-                    stored+=dt*(input.totalEnergyPerSecond()-massRate*GRAVITY*elevation);
+                    var rates=input.molesPerSecond();
+                    for(int c=0;c<rates.length;c++)target[c]+=dt*rates[c];
+                    var moments=input.solidsPerSecond().moments().values();for(int c=0;c<3;c++)solidTargets[node][c]+=dt*moments[c];
+                    stored+=dt*input.totalEnergyPerSecond();
                 }
             }
             for(int edge:nodeEdges[node]) {
@@ -4076,24 +4079,23 @@ public final class PassiveStepSolver {
                 for(int c=0;c<amounts.length;c++){double moved=moving*amounts[c]/transport.mass;target[c]+=first?-moved:moved;}
                 var moments=transport.solids.values();
                 for(int c=0;c<3;c++)if(!receiver||pipe.filter()==null)solidTargets[node][c]+=(first?-1:1)*moving*moments[c]/transport.mass;
-                double donorZ=graph.reservoirs().get(donor).elevation(),h=transport.specificEnthalpy;
-                stored+=(first?-1:1)*moving*(h+GRAVITY*(donorZ-elevation));
+                stored+=(first?-1:1)*moving*transport.specificEnthalpy;
                 // What arrives at this node, on the live upwind: read only by a junction's rows, which mix it into the
                 // junction's owned stock like a vessel's inflow.
                 int mixed=donor;
                 if(receiver) {
                     var source=st[mixed];var carried=transport;var sourceAmounts=carried.moles;
                     double sourceCapture=pipe.filter()==null?0:carried.solids.mass()/carried.mass;
-                    double sourceZ=graph.reservoirs().get(mixed).elevation(),sourceEnthalpy=carried.specificEnthalpy;
+                    double sourceEnthalpy=carried.specificEnthalpy;
                     mass+=Math.abs(flow)*(1-sourceCapture);
                     for(int c=0;c<sourceAmounts.length;c++)in[c]+=Math.abs(flow)*sourceAmounts[c]/carried.mass;
-                    heat+=Math.abs(flow)*(sourceEnthalpy+GRAVITY*(sourceZ-elevation));
+                    heat+=Math.abs(flow)*sourceEnthalpy;
                     var sourceMoments=carried.solids.values();
                     if(pipe.filter()==null)for(int c=0;c<3;c++)solidIncoming[node][c]+=Math.abs(flow)*sourceMoments[c]/carried.mass;
-                    else heat-=Math.abs(flow)*(carried.solids.enthalpy(source.temperature(),source.pressure())/carried.mass+sourceCapture*GRAVITY*(sourceZ-elevation));
+                    else heat-=Math.abs(flow)*(carried.solids.enthalpy(source.temperature(),source.pressure())/carried.mass);
                 }
                 if(receiver&&pipe.filter()!=null) {
-                    double capturedRate=Math.abs(flow)*(transport.solids.enthalpy(upstream.temperature(),upstream.pressure())/transport.mass+captureFraction*GRAVITY*(donorZ-elevation));
+                    double capturedRate=Math.abs(flow)*(transport.solids.enthalpy(upstream.temperature(),upstream.pressure())/transport.mass);
                     stored-=dt*capturedRate;
                 }
                 if(!first&&pipe.control() instanceof FlowControl.Mover mover) {

@@ -73,8 +73,8 @@ class McpGameplayRegressionTest {
         for(var boundary:result.boundaries()){var n=boundary.moles();for(int c=0;c<com.wormzjl.createcheme.science.material.MaterialTestBasis.NETWORK+1;c++)external[c]+=n[c];externalEnergy+=boundary.totalEnergyJoule();}
         for(int i=0;i<graph.reservoirs().size();i++)if(graph.reservoirs().get(i).kind()==PassiveNetwork.NodeKind.RESERVOIR) {
             var a=graph.reservoirs().get(i);var b=result.graph().reservoirs().get(i);var na=a.inventory().moles();var nb=b.inventory().moles();
-            double ma=0,mb=0;for(int c=0;c<com.wormzjl.createcheme.science.material.MaterialTestBasis.NETWORK+1;c++){before[c]+=na[c];after[c]+=nb[c];double mw=c==com.wormzjl.createcheme.science.material.MaterialTestBasis.NETWORK?model.waterMolecularWeight:model.hydrocarbon.molecularWeight(c);ma+=na[c]*mw;mb+=nb[c]*mw;}
-            beforeEnergy+=a.inventory().internalEnergy()+ma*PassiveStepSolver.GRAVITY*a.elevation();afterEnergy+=b.inventory().internalEnergy()+mb*PassiveStepSolver.GRAVITY*b.elevation();
+            for(int c=0;c<com.wormzjl.createcheme.science.material.MaterialTestBasis.NETWORK+1;c++){before[c]+=na[c];after[c]+=nb[c];}
+            beforeEnergy+=a.inventory().internalEnergy();afterEnergy+=b.inventory().internalEnergy();
         }
         for(int c=0;c<com.wormzjl.createcheme.science.material.MaterialTestBasis.NETWORK+1;c++)assertEquals(before[c]+external[c],after[c],1e-10+1e-8*Math.max(before[c],after[c]));
         assertEquals(beforeEnergy+externalEnergy+result.pumpWorkJoule(),afterEnergy,1e-4+1e-6*(Math.abs(beforeEnergy)+Math.abs(externalEnergy)));

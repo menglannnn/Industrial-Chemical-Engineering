@@ -18,7 +18,7 @@ import static org.junit.jupiter.api.Assertions.*;
  * PHASE_PORTS_REVIEW.md, section "WP4".
  */
 class CompressorTest extends PortFixture {
-    private static final double COMPONENT_LEDGER=1e-12,ENERGY_LEDGER=1e-10,G=PassiveStepSolver.GRAVITY;
+    private static final double COMPONENT_LEDGER=1e-12,ENERGY_LEDGER=1e-10;
     private static PipeResistance.Geometry line(double length,double diameter){return new PipeResistance.Geometry(length,diameter,PipeResistance.DEFAULT_ROUGHNESS_METRES,0);}
     private static PassiveNetwork.Pipe pipe(long id,int a,int b,PipeResistance.Geometry g,FlowControl control,PhasePort pa){return new PassiveNetwork.Pipe(id,a,b,List.of(g),control,0,null,pa,PhasePort.BULK);}
     private static PassiveNetwork.Pipe pipe(long id,int a,int b,PipeResistance.Geometry g,FlowControl control){return pipe(id,a,b,g,control,PhasePort.BULK);}

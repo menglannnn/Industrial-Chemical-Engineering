@@ -307,7 +307,7 @@ class PhasePortTest extends PortFixture {
 
     private double energy(PassiveNetwork graph) {
         var node=graph.reservoirs().getFirst();
-        return node.inventory().internalEnergy()+mass(node.inventory().moles())*PassiveStepSolver.GRAVITY*node.elevation();
+        return node.inventory().internalEnergy();
     }
     private static double sum(double[] v){double s=0;for(double x:v)s+=x;return s;}
     private static double[] add(double[] a,double[] b){var r=a.clone();for(int i=0;i<r.length;i++)r[i]+=b[i];return r;}
