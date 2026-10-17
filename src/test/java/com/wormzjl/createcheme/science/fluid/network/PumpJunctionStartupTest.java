@@ -32,7 +32,7 @@ class PumpJunctionStartupTest {
             var geometry=new PipeResistance.Geometry(1.5,.05,.000045,0);
             var graph=new PassiveNetwork(List.of(source,junction,receiver),List.of(new PassiveNetwork.Pipe(4,0,1,geometry),new PassiveNetwork.Pipe(5,1,2,geometry,new FlowControl.Pump(requested,500000))));
             var result=new PassiveIntervalSolver(model).solve(graph,1,PassiveIntervalSolver.Settings.defaults(),()->{});
-            assertEquals(PassiveStepSolver.Acceptance.FULL,result.acceptance());assertEquals(1,result.advancedSeconds());
+            assertEquals(1,result.advancedSeconds());
             assertTrue(result.averageMassFlows()[0]>0,id);assertEquals(result.averageMassFlows()[0],result.averageMassFlows()[1],1e-8);
             int nitrogen=model.components().indexOf("Nitrogen");var middle=result.graph().reservoirs().get(1);
             assertEquals(0,PhaseLayout.totalAmounts(middle.state())[nitrogen],0,"No reverse nitrogen path across the pump");

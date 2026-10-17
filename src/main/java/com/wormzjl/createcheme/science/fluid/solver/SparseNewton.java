@@ -239,27 +239,6 @@ public final class SparseNewton {
         workspace.invalidate();
         throw new Nonconvergence("Newton iteration limit at residual "+norm,x,hold);
     }
-    public record CorrectionEstimate(double[] probe,double initialResidual,double probeResidual) {
-        public CorrectionEstimate{probe=probe.clone();}
-        @Override public double[] probe(){return probe.clone();}
-    }
-    /** Tests a full linearized correction without publishing it; refreshes a stale Jacobian at most once. */
-    public static CorrectionEstimate estimateCorrection(Equations equations,double[] point,Runnable checkpoint,Workspace workspace) {
-        workspace.owned();int n=equations.size();if(point.length!=n||n==0)throw new IllegalArgumentException("Invalid correction point");
-        if(workspace.pattern==null)workspace.pattern=new Pattern(n,equations.columnRows());
-        var residual=evaluate(equations,point,n);double before=norm(residual);
-        if(before<=1e-12)return new CorrectionEstimate(point,before,before);
-        double[] rhs=residual.clone();for(int i=0;i<n;i++)rhs[i]=-rhs[i];
-        for(int attempt=0;attempt<2;attempt++) {
-            checkpoint.run();if(!workspace.preconditioned()||attempt>0)differentiate(equations,point,residual,1e-6,checkpoint,workspace);
-            try {
-                var correction=workspace.factorization.solve(rhs);var probe=point.clone();for(int i=0;i<n;i++)probe[i]+=correction[i];
-                double after=norm(evaluate(equations,probe,n));
-                if(after<=Math.max(1e-10,.1*before))return new CorrectionEstimate(probe,before,after);
-            }catch(IllegalArgumentException|SparseLuSolver.SolveFailure invalidProbe){ /* Refresh before refusing the estimate. */ }
-        }
-        throw new Nonconvergence("Linearized error estimate does not contract inside the supported domain");
-    }
     private static int differentiate(Equations equations,double[] x,double[] f,double differenceStep,Runnable checkpoint,Workspace workspace) {
         if(!SolverDiagnostics.ENABLED)return differentiate0(equations,x,f,differenceStep,checkpoint,workspace);
         boolean outer=SolverDiagnostics.enterJacobian();

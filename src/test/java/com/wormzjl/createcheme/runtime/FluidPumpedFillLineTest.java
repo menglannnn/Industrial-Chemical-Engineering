@@ -20,7 +20,8 @@ import static org.junit.jupiter.api.Assertions.*;
  *
  * <p>The long runs go through the real {@link IslandCoordinator} - its slices, holds, retries and certificates at the
  * world defaults - with one synchronous worker whose jobs run on a clock that charges one microsecond per solver
- * checkpoint (a warm JIT measured 1.03 us), so the 2 s wall and 1.5 s soft budgets cut attempts at reproducible points.
+ * checkpoint (a warm JIT measured 1.03 us), so the 2 s wall budget cuts attempts at reproducible points (the 1.5 s soft
+ * budget only reads the load for the adaptive cadence since owner decision D37, S2).
  */
 class FluidPumpedFillLineTest {
     private static final PipeResistance.Geometry BLOCK=new PipeResistance.Geometry(1,.05,.000045,0);
@@ -71,7 +72,7 @@ class FluidPumpedFillLineTest {
                 public boolean submit(IslandCoordinator.Attempt attempt,ProcessSolveServices.FluidIslandCommand command){attempts.put(attempt.slice().requestId(),attempt);commands.put(attempt.slice().requestId(),command);return true;}
                 public void cancel(long request){}
             },changed->{},()->0L,new IslandCoordinator.Settings(2_000_000_000L,1_500_000_000L,64,false,100,CertificatePolicy.defaults()));
-            coordinator.register(new IslandCoordinator.Snapshot(1,0,line(layout),new IslandClock.Snapshot(0,0,0,100),FallbackAllowance.NONE,Optional.empty(),Optional.empty(),"READY"),model);
+            coordinator.register(new IslandCoordinator.Snapshot(1,0,line(layout),new IslandClock.Snapshot(0,0,0,100),Optional.empty(),"READY"),model);
         }
         /** Online ticks, each: advance, run what was admitted, deliver, pump. Stops early when {@code done} holds. */
         void run(long ticks,java.util.function.Predicate<IslandCoordinator.Snapshot> done) {

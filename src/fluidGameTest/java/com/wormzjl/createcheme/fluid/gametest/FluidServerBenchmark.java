@@ -56,7 +56,7 @@ public final class FluidServerBenchmark {
      * change; every other island must follow the mixed100 trajectory bit for bit.
      */
     private record ViewerTarget(int network,long device,Kind kind,BlockPos position,String role) {}
-    private record Sample(long island,IslandCoordinator.Metrics timing,String status,PassiveStepSolver.Acceptance acceptance,int substeps,int rejectedSubsteps,Double readyToPublicationMillis) {}
+    private record Sample(long island,IslandCoordinator.Metrics timing,String status,int substeps,int rejectedSubsteps,Double readyToPublicationMillis) {}
     /** Test-only one-second observations. Heap usage includes garbage awaiting collection; it is not retained live size. */
     private record MemorySample(long onlineTick,long epochMillis,double sinceStartSeconds,boolean measured,
                                 long heapUsed,long heapCommitted,long heapMax,long nonHeapUsed,
@@ -308,7 +308,7 @@ public final class FluidServerBenchmark {
                     continue;
                 }
                 var ready=eligibleTickStarts.get(timing.endTick());Double totalLatency=ready==null?null:(System.nanoTime()-ready)/1e6;
-                var sample=new Sample(island.id(),timing,island.status(),result==null?null:result.acceptance(),result==null?0:result.acceptedSubsteps(),result==null?0:result.rejectedSubsteps(),totalLatency);
+                var sample=new Sample(island.id(),timing,island.status(),result==null?0:result.acceptedSubsteps(),result==null?0:result.rejectedSubsteps(),totalLatency);
                 if(measuring())samples.add(sample);else if(warmupSamples.size()<10000)warmupSamples.add(sample);
             }
         }
@@ -389,7 +389,7 @@ public final class FluidServerBenchmark {
             var kinds=island.physicalIds().stream().map(ladderOf::get).filter(Objects::nonNull).distinct().toList();
             if(timed&&kinds.size()!=1)throw new IllegalStateException("A fixture island must come from exactly one ladder");
             if(timed)islandLadders.put(id,kinds.getFirst());
-            var snapshot=new IslandCoordinator.Snapshot(id,0,island.graph(),new IslandClock.Snapshot(0,0,0,100),FallbackAllowance.NONE,Optional.empty(),Optional.empty(),"READY");
+            var snapshot=new IslandCoordinator.Snapshot(id,0,island.graph(),new IslandClock.Snapshot(0,0,0,100),Optional.empty(),"READY");
             entries.add(new FluidCheckpointCodec.IslandEntry("minecraft:overworld",FluidPresetCatalog.NETWORK_PACKAGE,snapshot));
         }
         double[] weights=weights(model);var finite=stocks.values().stream().filter(n->n.kind()==PassiveNetwork.NodeKind.RESERVOIR).toList();
@@ -504,13 +504,12 @@ public final class FluidServerBenchmark {
         for(int c=0;c<r.external.length;c++)maximumBalance=Math.max(maximumBalance,Math.abs(actual[c]-initial[c]-r.external[c])/(1e-10+1e-8*Math.max(Math.abs(initial[c]),Math.abs(actual[c]))));
         double energyError=Math.abs(actual[actual.length-1]-initial[initial.length-1]-r.externalEnergy-r.pumpWork)/(1e-4+1e-6*(Math.abs(initial[initial.length-1])+Math.abs(r.externalEnergy)+Math.abs(r.pumpWork)));
         Double workerP95=percentile(worker,.95),serverP95=percentile(r.engineMillis,.95);
-        long approximate=r.samples.stream().filter(s->s.acceptance()==PassiveStepSolver.Acceptance.APPROXIMATE).count();
         long finalDebt=finalState.islands().stream().mapToLong(i->i.snapshot().clock().onlineTick()-i.snapshot().clock().committedTick()).max().orElse(0);
         // A window with no solve at all (every island certified before it, as rest100 with certificates on now is) has no
         // worker or latency sample: those two gates hold vacuously there, instead of failing on an empty percentile.
         boolean latencyPass=r.contention?r.competing.passed()&&r.maximumDebtTicks>=800&&finalDebt<=100&&r.bounded:endToEnd.size()==r.samples.size()&&(endToEnd.isEmpty()||percentile(endToEnd,.95)<2000);
-        boolean pass=held==0&&approximate==0&&maximumBalance<=1&&energyError<=1&&(r.samples.isEmpty()||workerP95!=null&&workerP95<2000)&&latencyPass&&serverP95!=null&&serverP95<2&&!Boolean.getBoolean("createcheme.fluid.benchmark.testFailure");
-        var report=new LinkedHashMap<String,Object>();report.put("status",r.pilot?(pass?"PILOT_PASSED_NOT_QUALIFICATION":"PILOT_FAILED"):r.contention?(pass?"CONTENTION_PASSED":"CONTENTION_FAILED"):pass?"REPLICATE_PASSED":"REPLICATE_FAILED");report.put("gatesPassed",pass);report.put("approximateIntervals",approximate);
+        boolean pass=held==0&&maximumBalance<=1&&energyError<=1&&(r.samples.isEmpty()||workerP95!=null&&workerP95<2000)&&latencyPass&&serverP95!=null&&serverP95<2&&!Boolean.getBoolean("createcheme.fluid.benchmark.testFailure");
+        var report=new LinkedHashMap<String,Object>();report.put("status",r.pilot?(pass?"PILOT_PASSED_NOT_QUALIFICATION":"PILOT_FAILED"):r.contention?(pass?"CONTENTION_PASSED":"CONTENTION_FAILED"):pass?"REPLICATE_PASSED":"REPLICATE_FAILED");report.put("gatesPassed",pass);
         if(r.contention){report.put("competingJobs",r.competing.report());report.put("contentionSamples",r.contentionSamples);report.put("maximumDebtTicks",r.maximumDebtTicks);report.put("finalDebtTicks",finalDebt);report.put("maximumOutstandingJobs",r.maximumOutstanding);report.put("maximumReadyJobs",r.maximumReady);report.put("boundedQueues",r.bounded);report.put("contentionNote","Every shared worker occupied by an actual 45-second CPU kernel. Queue latency is reported without applying the ordinary-load two-second gate. Fluid work must recover within ten seconds of terminal delivery.");}
         report.put("profile",System.getProperty("createcheme.fluid.benchmark.profile"));report.put("processId",ProcessHandle.current().pid());report.put("java",System.getProperty("java.runtime.version"));report.put("os",System.getProperty("os.name")+" "+System.getProperty("os.version"));report.put("processorIdentifier",System.getenv("PROCESSOR_IDENTIFIER"));report.put("availableProcessors",Runtime.getRuntime().availableProcessors());
         report.put("jvmArguments",java.lang.management.ManagementFactory.getRuntimeMXBean().getInputArguments());
@@ -519,7 +518,7 @@ public final class FluidServerBenchmark {
         report.put("measuredIntervalsPerIsland",r.samples.stream().collect(java.util.stream.Collectors.groupingBy(Sample::island,java.util.stream.Collectors.counting())));
         report.put("workers",ProcessSolveServices.diagnostics(r.server).workerCount());report.put("cadenceSeconds",5);report.put("adaptiveCadence",false);report.put("warmupTicks",r.warmupTicks);report.put("warmupSeconds",r.warmupTicks/20.0);report.put("measurementSecondsConfigured",r.stressMeasurementNanos/1e9);report.put("elapsedSeconds",(now-r.startNanos)/1e9);report.put("measuredSeconds",(now-r.measuredStarted)/1e9);
         report.put("reservoirs",100);report.put("physicalPipes",fixture.physicalPipes);report.put("compiledPipes",fixture.compressedPipes);report.put("components",r.external.length);report.put("islands",fixture.checkpoint.islands().size());report.put("loadedFixtureChunks",fixture.chunks.size());report.put("chunkTickets","Explicit test-harness tickets only; simulation engine creates none");
-        report.put("propertyRevision",ApproximationAnchor.revision(fixture.model));report.put("heldIntervals",held);report.put("componentBalanceToleranceUnits",maximumBalance);report.put("energyBalanceToleranceUnits",energyError);
+        report.put("propertyRevision",fixture.model.revision());report.put("heldIntervals",held);report.put("componentBalanceToleranceUnits",maximumBalance);report.put("energyBalanceToleranceUnits",energyError);
         report.put("workerMilliseconds",statistics(worker));report.put("dispatchToPublicationMilliseconds",statistics(latency));report.put("engineServerMillisecondsPerTick",statistics(r.engineMillis));report.put("wholeTickMilliseconds",statistics(r.tickMillis));report.put("tickSpacingMilliseconds",statistics(r.tickSpacingMillis));
         report.put("readyToPublicationMilliseconds",statistics(endToEnd));report.put("latencyDefinition","Start of the eligible server tick to atomic publication; includes readiness queue/debt and the cohort barrier. Missing bounded timing history fails qualification.");
         report.put("samples",r.samples);report.put("rawEngineMillisecondsPerTick",r.engineMillis);report.put("rawTickSpacingMilliseconds",r.tickSpacingMillis);

@@ -21,7 +21,7 @@ public final class InventoryEquilibrium {
     public record Refreshed(PassiveNetwork graph,List<ConservativeTransport.BoundaryTransfer> boundaries,boolean converted) {
         public Refreshed{boundaries=List.copyOf(boundaries);}
         /** A graph a run starts from as it is, booking nothing: a solid-event segment's first (its interval's start was
-         * refreshed), and the approximate solve's start. */
+         * refreshed). */
         static Refreshed as(PassiveNetwork graph){return new Refreshed(graph,List.of(),false);}
     }
     /**

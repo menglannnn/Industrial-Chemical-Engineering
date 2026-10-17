@@ -58,8 +58,8 @@ public final class FluidThermodynamics {
     private final double maximumVelocity;
     /** Carried on the model, like {@link #maximumVelocity}, because every retained solver, workspace
      * and factorization is keyed on the model: replacing it is what makes a changed cutoff reach a
-     * running island deterministically, and {@code ApproximationAnchor.revision} carries it so a
-     * saved fallback anchor built under a different unknown set cannot be reused. */
+     * running island deterministically, and {@link #revision} carries it so a certificate issued
+     * under a different unknown set is not kept. */
     private final TraceTruncationPolicy tracePolicy;
 
     /**
@@ -135,7 +135,27 @@ public final class FluidThermodynamics {
         var triple=waterLiquid(iceRecord.anchor().temperature(),iceRecord.anchor().pressure());
         freeWaterIce=FreeWaterIce.of(iceRecord,ice.coefficients(),ice.exponents(),this::saturationPressure,triple.molarVolume(),triple.molarEnthalpy(),steam);
         this.catalog=catalog;
+        thermodynamicRevision="fluid-trbdf2-r1:"+hydrocarbon.revision()+":"+viscosity.revision();
+        // The trace cutoff joins the hydraulic acceptance law, not the thermodynamic reference: it changes which unknowns a
+        // Newton pass carries, so a certificate issued under another cutoff describes a different numerical path - but it
+        // changes no property data, so a saved island's inventory and energy stay readable across a change of it.
+        revision=thermodynamicRevision+":velocity-clamp-v1:trace-relative-v1:max="+Double.toHexString(maximumVelocity)
+                +":trace="+Double.toHexString(tracePolicy.cutoffMoleFraction())+":solids-v1:"+solidSettings;
     }
+    /**
+     * The thermodynamic reference a saved island's inventory and energy are read against (the checkpoint's package
+     * table): the network's integrator, the hydrocarbon model's and the viscosity's revisions. Built once per model.
+     */
+    private final String thermodynamicRevision;
+    /**
+     * The model's full revision: the thermodynamic one with the hydraulic acceptance law (the velocity clamp, the trace
+     * cutoff, the solid settings). A certificate holds only under the revision it was issued with, and the world's
+     * property guard resumes a held dimension only on its own. It was the approximation anchor's until owner decision
+     * D37 (S2) removed the approximate fallback; it is the model's identity, so it lives on the model.
+     */
+    private final String revision;
+    public String thermodynamicRevision(){return thermodynamicRevision;}
+    public String revision(){return revision;}
     /** The free water's ice below its melting line (WP4, {@link FreeWaterIce}): the phase engine's and the vessels' ice. */
     private final FreeWaterIce freeWaterIce;
     public FreeWaterIce freeWaterIce(){return freeWaterIce;}

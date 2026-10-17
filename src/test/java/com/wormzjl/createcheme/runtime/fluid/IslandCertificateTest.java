@@ -439,7 +439,7 @@ class IslandCertificateTest {
     private IslandCertificate.Summary interval(long start,PassiveNetwork before,PassiveNetwork after,double flow,double forward,double reverse,Map<String,Integer> reasons) {
         var boundary=new ConservativeTransport.BoundaryTransfer(2,amounts(-flow*5/.028,0),-flow*5e3);
         var result=new PassiveIntervalSolver.Result(after,5,new double[]{flow},1,0,0,flow==0?List.of():List.of(boundary),reasons,List.of(FlowControl.Mode.PASSIVE),new double[]{0},new double[]{flow},
-                PassiveStepSolver.Acceptance.FULL,List.of(new PipeTransfer(9,stream(forward),stream(reverse))));
+                List.of(new PipeTransfer(9,stream(forward),stream(reverse))));
         return new IslandCertificate.Summary(new IslandCertificate.Interval(start,start+100,before,result),model.molecularWeights());
     }
     /** Two consecutive intervals of a tank draining component amounts {@code delta1} then {@code delta2} from {@code moles}. */
@@ -553,7 +553,7 @@ class IslandCertificateTest {
             double f=(to-200)/100.0;var delta=steps[1].moles[0];
             for(int c=0;c<base.length;c++)assertEquals(base[c]+f*delta[c],now[c],0,"component "+c);
             assertEquals(-1e-8,delta[nitrogen],1e-14);assertEquals(-2e-9,delta[methane],1e-14);
-            assertEquals(0,replay.acceptedSubsteps());assertEquals(PassiveStepSolver.Acceptance.FULL,replay.acceptance());
+            assertEquals(0,replay.acceptedSubsteps());
         }
         assertThrows(IllegalArgumentException.class,()->certificate.replay(300,300));
         assertThrows(IllegalArgumentException.class,()->certificate.graphAt(certificate.horizonTick()+1));

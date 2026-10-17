@@ -49,7 +49,10 @@ public final class IslandCoordinator {
     /**
      * {@code certificates} is the rest and steady-flow policy. The constructors without one keep the scheduling
      * of an island that solves every interval (certificates off); {@link #defaults()} and the world use the
-     * configured policy, certificates on.
+     * configured policy, certificates on. {@code hardBudgetNanos} is a job's wall budget; {@code softBudgetNanos} is
+     * only the adaptive cadence's load measure (three CPU-bound intervals at or over it lengthen the cadence, ten
+     * under a quarter of it shorten it, {@link IslandClock#performanceSample}): no job is cut at it since owner
+     * decision D37 (S2) removed the approximate fallback it used to start.
      */
     public record Settings(long hardBudgetNanos, long softBudgetNanos, int maximumDispatchesPerTick, boolean adaptive,int initialCadenceTicks,CertificatePolicy certificates) {
         public Settings(long hardBudgetNanos,long softBudgetNanos,int maximumDispatchesPerTick,boolean adaptive){this(hardBudgetNanos,softBudgetNanos,maximumDispatchesPerTick,adaptive,100);}
@@ -98,28 +101,25 @@ public final class IslandCoordinator {
         private static List<Object> identity(IslandCertificate.Saved s){return List.of(s.interval().startTick(),s.interval().endTick(),s.signature());}
     }
     public record Snapshot(long id,long revision,PassiveNetwork graph,IslandClock.Snapshot clock,
-                           FallbackAllowance allowance,Optional<ApproximationAnchor> anchor,
                            Optional<PassiveIntervalSolver.Result> lastResult,String status,Map<UUID,Long> fences,Optional<Certified> certificate,long payloadGeneration) {
-        public Snapshot(long id,long revision,PassiveNetwork graph,IslandClock.Snapshot clock,FallbackAllowance allowance,Optional<ApproximationAnchor> anchor,Optional<PassiveIntervalSolver.Result> lastResult,String status) {
-            this(id,revision,graph,clock,allowance,anchor,lastResult,status,Map.of());
+        public Snapshot(long id,long revision,PassiveNetwork graph,IslandClock.Snapshot clock,Optional<PassiveIntervalSolver.Result> lastResult,String status) {
+            this(id,revision,graph,clock,lastResult,status,Map.of());
         }
-        public Snapshot(long id,long revision,PassiveNetwork graph,IslandClock.Snapshot clock,FallbackAllowance allowance,Optional<ApproximationAnchor> anchor,Optional<PassiveIntervalSolver.Result> lastResult,String status,Map<UUID,Long> fences) {
-            this(id,revision,graph,clock,allowance,anchor,lastResult,status,fences,Optional.empty());
+        public Snapshot(long id,long revision,PassiveNetwork graph,IslandClock.Snapshot clock,Optional<PassiveIntervalSolver.Result> lastResult,String status,Map<UUID,Long> fences) {
+            this(id,revision,graph,clock,lastResult,status,fences,Optional.empty());
         }
         /** A snapshot with no payload generation (0): a checkpoint encodes it every time and never caches it. */
-        public Snapshot(long id,long revision,PassiveNetwork graph,IslandClock.Snapshot clock,FallbackAllowance allowance,Optional<ApproximationAnchor> anchor,Optional<PassiveIntervalSolver.Result> lastResult,String status,Map<UUID,Long> fences,Optional<Certified> certificate) {
-            this(id,revision,graph,clock,allowance,anchor,lastResult,status,fences,certificate,0);
+        public Snapshot(long id,long revision,PassiveNetwork graph,IslandClock.Snapshot clock,Optional<PassiveIntervalSolver.Result> lastResult,String status,Map<UUID,Long> fences,Optional<Certified> certificate) {
+            this(id,revision,graph,clock,lastResult,status,fences,certificate,0);
         }
         public Snapshot {
             FluidRuntimeDiagnostics.count(FluidRuntimeDiagnostics.islandSnapshots);
             if(id<=0||revision<0||payloadGeneration<0)throw new IllegalArgumentException("Invalid island identity");
-            Objects.requireNonNull(graph);Objects.requireNonNull(clock);Objects.requireNonNull(allowance);
-            Objects.requireNonNull(anchor);Objects.requireNonNull(lastResult);Objects.requireNonNull(status);Objects.requireNonNull(certificate);
+            Objects.requireNonNull(graph);Objects.requireNonNull(clock);Objects.requireNonNull(lastResult);Objects.requireNonNull(status);Objects.requireNonNull(certificate);
             fences=Map.copyOf(fences);
             if(fences.values().stream().anyMatch(t->t<clock.committedTick()))throw new IllegalArgumentException("Persisted fence precedes state");
             if(certificate.isPresent()&&(certificate.orElseThrow().baseTick()>clock.committedTick()||certificate.orElseThrow().horizonTick()<clock.committedTick()))
                 throw new IllegalArgumentException("Certified island "+id+" committed at "+clock.committedTick()+" outside its certificate window ["+certificate.orElseThrow().baseTick()+", "+certificate.orElseThrow().horizonTick()+"]");
-            if(allowance.acceptedIntervals()>0&&anchor.isEmpty())throw new IllegalArgumentException("Degraded state needs its episode anchor");
         }
     }
     /** Nominal online tick length; converts the wall-clock round budget into a first deadline. */
@@ -138,8 +138,6 @@ public final class IslandCoordinator {
         private final FluidThermodynamics model;
         private PassiveNetwork graph;
         private final IslandClock clock;
-        private FallbackAllowance allowance;
-        private Optional<ApproximationAnchor> anchor;
         private Optional<PassiveIntervalSolver.Result> lastResult;
         private final PipePresentation.SpeedWindow pipeSpeed = new PipePresentation.SpeedWindow();
         private String status;
@@ -148,14 +146,11 @@ public final class IslandCoordinator {
         private String notice="";
         private Metrics metrics;
         private boolean suspended;
-        // Ephemeral cost hint, not material state or a renewed fallback allowance. A restart
+        // Ephemeral cost hint, not material state. A restart
         // may rediscover the hint; saved inventory, cadence, debt and fences stay authoritative.
         private int maximumSliceTicks=Integer.MAX_VALUE;
         // Holds in a row at the one-tick slice, for the retry wait; see {@link #hold}. Ephemeral like the slice hint.
         private int holdStreak;
-        // Set by a hold whose soft budget ran out and whose approximate fallback refused the slice: the retry runs the
-        // full solve on the whole budget instead; cleared by the next accepted interval. See {@link #hold}.
-        private boolean fullOnly;
         // The phase hold (a phase set the network cannot carry; leaving a data range is never one, owner rule of
         // 2026-10-16) the last held attempt failed on, awaiting its fresh-solver retry, and whether that
         // retry reproduced it (the island then waits for an input change); cleared by an accepted interval or an input
@@ -195,11 +190,11 @@ public final class IslandCoordinator {
          * the checkpoint store's unit of that snapshot stays in place until something it records changes. */
         private Island(Snapshot saved,FluidThermodynamics model,LongSupplier epoch) {
             id=saved.id;revision=saved.revision;this.model=Objects.requireNonNull(model);graph=saved.graph;
-            clock=new IslandClock(saved.clock,epoch);allowance=saved.allowance;anchor=saved.anchor;lastResult=saved.lastResult;status=saved.status;fences.putAll(saved.fences);
+            clock=new IslandClock(saved.clock,epoch);lastResult=saved.lastResult;status=saved.status;fences.putAll(saved.fences);
             notice=com.wormzjl.createcheme.science.fluid.thermo.DataRangeNotices.suffix(saved.status);
             payloadGeneration=saved.payloadGeneration!=0?saved.payloadGeneration:PAYLOAD_GENERATIONS.incrementAndGet();
         }
-        private Snapshot snapshot(){return new Snapshot(id,revision,graph,clock.snapshot(),allowance,anchor,lastResult,
+        private Snapshot snapshot(){return new Snapshot(id,revision,graph,clock.snapshot(),lastResult,
                 !suspended&&!clock.busy()&&fence()==clock.committedTick()?"WAITING: event alignment":status,fences,
                 certificate==null?Optional.empty():Optional.of(new Certified(certificate.drift(),certifiedSince,certificate.baseTick(),certificate.horizonTick(),certificate.largestFlow(),
                         suspended?Optional.empty():Optional.of(new IslandCertificate.Saved(certifiedSince,certificate.horizonTick(),certificate.interval(),signature)))),
@@ -370,7 +365,7 @@ public final class IslandCoordinator {
         if(epochTick!=Long.MAX_VALUE)schedule(epochTick,kind,generation,generation);
     }
 
-    /** Invalidates old proposals without changing committed stock, debt, fences or allowance.
+    /** Invalidates old proposals without changing committed stock, debt or fences.
      * Cancellation retains ownership until the actual terminal completion is drained. */
     public void suspendForPropertyChange(String reason) {
         owned();Objects.requireNonNull(reason);if(stopped||suspension!=null)return;
@@ -381,7 +376,6 @@ public final class IslandCoordinator {
             island.holdTick=island.clock.snapshot().onlineTick();materialise(island);
             island.lastInterval=null;island.streak=0;island.revalidating=null;
             island.revision=Math.addExact(island.revision,1);island.suspended=true;island.status=reason;island.retained=island.certificate==null?new RetainedSolver():null;
-            island.anchor=island.anchor.map(a->new ApproximationAnchor("invalidated:property-reload",a.graph(),a.modes()));
             island.touch();reconsider(island);
         }
         var closing=List.copyOf(rounds);rounds.clear();
@@ -484,10 +478,9 @@ public final class IslandCoordinator {
                 var island=require(next.getAsLong());long request=dispatcher.nextRequestId();
                 var slice=island.clock.nextSlice(request,island.fence(),island.maximumSliceTicks).orElseThrow();
                 var attempt=new Attempt(island.id,island.revision,slice);
-                var policy=island.anchor.isPresent()&&!island.fullOnly&&!com.wormzjl.createcheme.science.fluid.transport.SolidMobility.requiresFull(island.model,island.graph)?FallbackAllowance.Policy.active(island.anchor.orElseThrow(),island.allowance,island.clock.snapshot().cadenceTicks(),settings.softBudgetNanos):FallbackAllowance.Policy.disabled();
                 // The job starts from the committed interval, not from the solver's history; see RetainedSolver.
                 island.retained.committed(island.lastResult.orElse(null));
-                var command=new ProcessSolveServices.FluidIslandCommand(island.model,island.graph,slice.seconds(),PassiveIntervalSolver.Settings.defaults(),settings.hardBudgetNanos,policy,island.retained);
+                var command=new ProcessSolveServices.FluidIslandCommand(island.model,island.graph,slice.seconds(),PassiveIntervalSolver.Settings.defaults(),settings.hardBudgetNanos,island.retained);
                 if(!dispatcher.submit(attempt,command)) {island.status="WAITING: shared worker capacity";island.touch();break;}
                 island.clock.admitted(slice);island.status="SOLVING";island.touch();FluidRuntimeDiagnostics.count(FluidRuntimeDiagnostics.solvesDispatched);
                 var entry=new Pending(attempt,island.clock.snapshot().onlineTick(),nanoClock.getAsLong());pending.put(request,entry);island.pendingEntries++;admitted.add(entry);dispatchedThisTick++;
@@ -529,7 +522,6 @@ public final class IslandCoordinator {
                 else {
                     island.graph=candidate.graph();island.lastResult=Optional.of(candidate);
                     island.pipeSpeed.accepted(attempt.slice.startTick(),attempt.slice.endTick(),candidate.pipeTransfers());
-                    island.allowance=outcome.proposedAllowance();island.anchor=outcome.proposedAnchor();
                     island.notice=com.wormzjl.createcheme.science.fluid.thermo.DataRangeNotices.line(outcome.notices(),nodeNames);
                     island.status=outcome.detail()+island.notice;
                 }
@@ -541,8 +533,8 @@ public final class IslandCoordinator {
             if(suspension!=null)island.status=suspension;
             if(suspension==null&&!accept&&refusal==null&&attempt.revision==island.revision)hold(island,attempt.slice,outcome);
             else if(accept) {
-                island.holdStreak=0;island.fullOnly=false;island.phaseHold=null;island.phaseParked=false;
-                if(outcome.candidate().orElseThrow().acceptance()==PassiveStepSolver.Acceptance.FULL&&island.maximumSliceTicks!=Integer.MAX_VALUE) {
+                island.holdStreak=0;island.phaseHold=null;island.phaseParked=false;
+                if(island.maximumSliceTicks!=Integer.MAX_VALUE) {
                     int cadence=island.clock.snapshot().cadenceTicks();
                     island.maximumSliceTicks=island.maximumSliceTicks>=cadence/2?Integer.MAX_VALUE:island.maximumSliceTicks*2;
                 }
@@ -584,10 +576,6 @@ public final class IslandCoordinator {
      * less loaded worker can pass it; it just stops being retried every cadence. Anything that changes the island's
      * inputs (a fence, a released fence, a property resume) clears the wait and the count; a
      * topology change makes a new island. Online ticks only: no wall clock decides a delay.
-     *
-     * <p>A hold whose soft budget ran out and whose approximate fallback then refused the slice spent a quarter of
-     * the budget on a fallback that cannot pass it: the retry runs the full solve alone on the whole budget, until
-     * the next accepted interval.
      */
     private void hold(Island island,IslandClock.Slice slice,ProcessSolveServices.FluidIslandSolveResult outcome) {
         FluidRuntimeDiagnostics.count(budgetHold(outcome)?FluidRuntimeDiagnostics.budgetHolds:FluidRuntimeDiagnostics.numericalHolds);
@@ -618,13 +606,12 @@ public final class IslandCoordinator {
             island.holdStreak=Math.min(island.holdStreak+1,MAXIMUM_RETRY_DOUBLINGS);
             FluidRuntimeDiagnostics.count(FluidRuntimeDiagnostics.retriesDeferred);
         }
-        if(outcome!=null&&outcome.detail().startsWith(ProcessSolveServices.SOFT_BUDGET_REFUSED))island.fullOnly=true;
         if(island.certificate==null)island.retained=new RetainedSolver();
     }
-    /** A hold the worker's budget decided rather than the solve: no result by the round deadline, the wall budget,
-     * or a soft budget whose approximate fallback refused. A repeat can pass with more CPU; the rest cannot. */
+    /** A hold the worker's budget decided rather than the solve: no result by the round deadline, or the wall budget. A
+     * repeat can pass with more CPU; the rest cannot. */
     static boolean budgetHold(ProcessSolveServices.FluidIslandSolveResult outcome) {
-        return outcome==null||outcome.detail().startsWith(ProcessSolveServices.WALL_DEADLINE)||outcome.detail().startsWith(ProcessSolveServices.SOFT_BUDGET_REFUSED);
+        return outcome==null||outcome.detail().startsWith(ProcessSolveServices.WALL_DEADLINE);
     }
     /** Something the island solves against changed: a held island is retried at once, from its first retry again - a
      * phase hold included, which starts a new episode. */
@@ -726,8 +713,7 @@ public final class IslandCoordinator {
      * each at its committed tick, and none of them survives into a replacement. Declared additions and removals must
      * exactly match the stock delta; metadataCommit publishes the already-prepared construction/destruction ledger and
      * registry atomically. A merge or split without placement or destruction changes no owned reservoir inventory;
-     * placement, destruction and material delivery need their own explicitly balanced transactions. Topology changes
-     * require a new full solve; they cannot renew an approximate grace period.
+     * placement, destruction and material delivery need their own explicitly balanced transactions.
      */
     public void topology(Set<UUID> events,Set<Long> affected,List<Replacement> replacements,FluidThermodynamics model,long committed,long online,Map<Long,PassiveNetwork.Reservoir> additions,Set<Long> removals,Map<Long,com.wormzjl.createcheme.science.fluid.network.InlineFilter> releasedFilters,Runnable metadataCommit) {
         owned();Objects.requireNonNull(model);Objects.requireNonNull(metadataCommit);if(events.isEmpty())throw new IllegalArgumentException("A topology change needs its events");
@@ -735,17 +721,12 @@ public final class IslandCoordinator {
         var originals=affected.stream().map(this::require).toList();
         long revision=0;int cadence=originals.isEmpty()?settings.initialCadenceTicks:20;
         var stock=new HashMap<Long,PassiveNetwork.Reservoir>();var fences=new HashMap<UUID,Long>();
-        var allowance=FallbackAllowance.NONE;Optional<ApproximationAnchor> anchor=Optional.empty();
         for(var old:originals) {
-            if(old.clock.committedTick()!=committed||old.clock.snapshot().onlineTick()!=online||!ApproximationAnchor.revision(old.model).equals(ApproximationAnchor.revision(model)))throw new IllegalStateException("Incompatible clocks or property packages");
+            if(old.clock.committedTick()!=committed||old.clock.snapshot().onlineTick()!=online||!old.model.revision().equals(model.revision()))throw new IllegalStateException("Incompatible clocks or property packages");
             revision=Math.max(revision,old.revision);cadence=Math.max(cadence,old.clock.snapshot().cadenceTicks());
             for(var node:old.graph.reservoirs())if(node.kind()==PassiveNetwork.NodeKind.RESERVOIR&&stock.putIfAbsent(node.id(),node)!=null)throw new IllegalStateException("Duplicate stock ownership");
             for(var fence:old.fences.entrySet())if(!events.contains(fence.getKey())) {
                 Long prior=fences.putIfAbsent(fence.getKey(),fence.getValue());if(prior!=null&&!prior.equals(fence.getValue()))throw new IllegalStateException("Conflicting event timestamps");
-            }
-            if(old.allowance.acceptedIntervals()>0) {
-                int captured=allowance.acceptedIntervals()==0?old.allowance.capturedCadenceTicks():Math.min(allowance.capturedCadenceTicks(),old.allowance.capturedCadenceTicks());
-                allowance=new FallbackAllowance(3,3L*captured,captured);anchor=old.anchor;
             }
         }
         for(long removed:removals)if(stock.remove(removed)==null)throw new IllegalStateException("Destruction did not name an owned reservoir");
@@ -763,7 +744,7 @@ public final class IslandCoordinator {
                 var old=stock.get(node.id());
                 if(!seen.add(node.id())||old==null||!old.inventory().equals(node.inventory())||old.elevation()!=node.elevation())throw new IllegalStateException("Topology event changed stock or elevation energy");
             }
-            var island=new Island(new Snapshot(replacement.id,revision,replacement.graph,new IslandClock.Snapshot(online,committed,0,cadence),allowance,anchor,Optional.empty(),"WAITING: full solve after topology change",fences),model,epoch);
+            var island=new Island(new Snapshot(replacement.id,revision,replacement.graph,new IslandClock.Snapshot(online,committed,0,cadence),Optional.empty(),"WAITING: full solve after topology change",fences),model,epoch);
             // A topology change starts the island cold: its first slice is one tick and each accepted full interval
             // doubles it back to the cadence (as after a budget hold). Whatever the player just built - a pump
             // filling dry tanks, a valve opening - starts its transient here, and its first milliseconds can cost
@@ -866,7 +847,7 @@ public final class IslandCoordinator {
             // checkpoint keeps - except that an island stopped at its fence reads "WAITING: event alignment".
             if(target==island.fence())island.touch();
             var stored=island.snapshot();
-            replayed.published(List.of(new Snapshot(stored.id(),stored.revision(),stored.graph(),stored.clock(),stored.allowance(),stored.anchor(),Optional.of(replay),stored.status(),stored.fences(),stored.certificate(),stored.payloadGeneration())));
+            replayed.published(List.of(new Snapshot(stored.id(),stored.revision(),stored.graph(),stored.clock(),Optional.of(replay),stored.status(),stored.fences(),stored.certificate(),stored.payloadGeneration())));
         }
         if(presentation||stopped||suspension!=null)return;
         if(target==wake)revalidate(island,certificate);
@@ -881,7 +862,7 @@ public final class IslandCoordinator {
     }
     /**
      * The entry evidence of plan section 3.3, evaluated after each round closure on the server thread. An
-     * accepted FULL interval with no degraded episode extends the stationary streak
+     * accepted interval extends the stationary streak
      * when it repeats the previous interval within the tolerance, or starts a new one; once the streak reaches the
      * confirm count, the last interval is certified. A horizon's
      * revalidating slice renews the certificate from its solved state if it repeats the certified interval, and
@@ -889,11 +870,10 @@ public final class IslandCoordinator {
      */
     private void qualify(Island island,ProcessSolveServices.FluidIslandSolveResult accepted,PassiveNetwork before,Attempt attempt) {
         var revalidation=island.revalidating;island.revalidating=null;var policy=settings.certificates();
-        boolean usable=policy.enabled()&&!stopped&&suspension==null&&accepted!=null
-                &&island.allowance.acceptedIntervals()==0&&accepted.candidate().orElseThrow().acceptance()==PassiveStepSolver.Acceptance.FULL;
+        boolean usable=policy.enabled()&&!stopped&&suspension==null&&accepted!=null;
         if(!usable) {
             island.lastInterval=null;island.streak=0;island.evidence=null;if(revalidation!=null)island.certifiedSince=-1;
-            island.refusal=!policy.enabled()?null:accepted==null?"no accepted interval":"not a FULL interval without a degraded episode";return;
+            island.refusal=!policy.enabled()?null:accepted==null?"no accepted interval":"stopped or suspended";return;
         }
         var summary=new IslandCertificate.Summary(new IslandCertificate.Interval(attempt.slice.startTick(),attempt.slice.endTick(),before,accepted.candidate().orElseThrow()),island.model.molecularWeights());
         if(revalidation!=null) {

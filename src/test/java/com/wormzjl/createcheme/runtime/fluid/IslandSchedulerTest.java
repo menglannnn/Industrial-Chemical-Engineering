@@ -40,7 +40,7 @@ class IslandSchedulerTest {
             for(long request:List.copyOf(attempts.keySet())) {
                 var attempt=attempts.remove(request);var command=commands.remove(request);
                 var result=new PassiveIntervalSolver(MODEL).solve(command.snapshot(),command.durationSeconds(),command.settings(),()->{});
-                coordinator.completed(attempt,Optional.of(new ProcessSolveServices.FluidIslandSolveResult(Optional.of(result),"FULL",10,FallbackAllowance.NONE,Optional.of(ApproximationAnchor.fromFull(MODEL,result)))));
+                coordinator.completed(attempt,Optional.of(new ProcessSolveServices.FluidIslandSolveResult(Optional.of(result),"FULL",10)));
             }
             coordinator.pump();
         }
@@ -51,7 +51,7 @@ class IslandSchedulerTest {
     }
     private static IslandCoordinator.Snapshot island(long id,long online,long committed,Map<UUID,Long> fences) {
         var node=new PassiveNetwork.Reservoir(id,0,TANK.state());
-        return new IslandCoordinator.Snapshot(id,0,new PassiveNetwork(List.of(node),List.of()),new IslandClock.Snapshot(online,committed,0,100),FallbackAllowance.NONE,Optional.empty(),Optional.empty(),"READY",fences);
+        return new IslandCoordinator.Snapshot(id,0,new PassiveNetwork(List.of(node),List.of()),new IslandClock.Snapshot(online,committed,0,100),Optional.empty(),"READY",fences);
     }
 
     @Test void deadlinesComeOutByTickThenInSchedulingOrderAndNextDueIsAPeek() {
@@ -164,7 +164,7 @@ class IslandSchedulerTest {
             var generator=new PassiveNetwork.Reservoir(10_000_001,0,MODEL.initialNitrogenCharge(1,298.15,150000,()->{}),PassiveNetwork.NodeKind.GENERATOR);
             var tank=new PassiveNetwork.Reservoir(10_000_002,0,MODEL.initialNitrogenCharge(1000,298.15,101325,()->{}));
             var filling=new PassiveNetwork(List.of(generator,tank),List.of(new PassiveNetwork.Pipe(10_000_003,0,1,new PipeResistance.Geometry(4,.05,.000045,0))));
-            long id=count+1L;coordinator.register(new IslandCoordinator.Snapshot(id,0,filling,new IslandClock.Snapshot(0,0,0,100),FallbackAllowance.NONE,Optional.empty(),Optional.empty(),"READY"),MODEL);
+            long id=count+1L;coordinator.register(new IslandCoordinator.Snapshot(id,0,filling,new IslandClock.Snapshot(0,0,0,100),Optional.empty(),"READY"),MODEL);
             count();
             for(int step=0;step<2_000;step++){coordinator.tick();if(!dispatch.attempts.isEmpty())dispatch.finishAll();}
             assertTrue(coordinator.observe(id).certificate().isEmpty(),"the filling tank must not certify");

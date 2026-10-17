@@ -53,7 +53,7 @@ public final class IslandCertificate {
          * inventory (its small holdup passes the flow on), a generator, void or port for none (infinity).
          */
         final double[] referenceMass;
-        final boolean fullAcceptance,transitionFree,closuresUnchanged,solidsUnchanged,phasesUnchanged,exactZero,grossWithoutNet,solidsInTransport,hasFilter;
+        final boolean transitionFree,closuresUnchanged,solidsUnchanged,phasesUnchanged,exactZero,grossWithoutNet,solidsInTransport,hasFilter;
         /** The interval booked a transfer at a node the island owns (a vessel or a junction): a trace flush
          * ({@code PassiveIntervalSolver.flushTraces}), a one-time removal that linear replay must not repeat. */
         final boolean flushed;
@@ -106,7 +106,7 @@ public final class IslandCertificate {
                 if(!pipe.forward().solids().empty()||!pipe.reverse().solids().empty())transport=true;
                 if(pipe.forward().massKg()!=0||pipe.reverse().massKg()!=0)gross=true;
             }
-            fullAcceptance=result.acceptance()==PassiveStepSolver.Acceptance.FULL;transitionFree=transitionFree(result.rejectionReasons());
+            transitionFree=transitionFree(result.rejectionReasons());
             closuresUnchanged=closures;solidsUnchanged=solids;phasesUnchanged=phase;solidsInTransport=transport;hasFilter=filter;stateChange=state;
             // Rest is the identity of the map: nothing may move, not even back and forth inside the interval.
             exactZero=zero&&!gross;grossWithoutNet=zero&&gross;
@@ -246,7 +246,6 @@ public final class IslandCertificate {
     /** Everything that must repeat exactly between the two intervals, or null when it does. */
     private static String discreteDifference(Summary a,Summary b) {
         if(a.durationTicks!=b.durationTicks)return "interval lengths differ";
-        if(!a.fullAcceptance||!b.fullAcceptance)return "an interval was not FULL";
         if(!a.transitionFree||!b.transitionFree)return "a solid transport transition or a phase-hold rejection";
         if(!a.closuresUnchanged||!b.closuresUnchanged)return "a closure or filter cake changed";
         if(!a.solidsUnchanged||!b.solidsUnchanged)return "node solids changed";
@@ -285,7 +284,7 @@ public final class IslandCertificate {
      * nodes.
      */
     static Result issue(Summary last,CertificatePolicy policy) {
-        if(!last.fullAcceptance||!last.transitionFree||!last.closuresUnchanged||!last.solidsUnchanged||!last.phasesUnchanged)return Result.refused("the interval changed a closure, a cake, a phase or node solids");
+        if(!last.transitionFree||!last.closuresUnchanged||!last.solidsUnchanged||!last.phasesUnchanged)return Result.refused("the interval changed a closure, a cake, a phase or node solids");
         if(last.flushed)return Result.refused("the interval flushed a trace component");
         if(last.grossWithoutNet)return Result.refused("gross flow with a zero average is not rest");
         if(last.exactZero) {
@@ -315,7 +314,7 @@ public final class IslandCertificate {
     // ---------------- persistence (plan section 3.5) ----------------
 
     /**
-     * The validity signature of a certificate: the model's full property revision ({@link ApproximationAnchor#revision},
+     * The validity signature of a certificate: the model's full property revision ({@link FluidThermodynamics#revision},
      * which also carries the velocity clamp, the trace cutoff and the solid settings), the six certificate policy values
      * it was issued under, and a SHA-256 digest of its island's graph identity - node ids, kinds, elevations and finite
      * volumes, fixed-node inventories and states, and pipe identities with their sections, controls, blocked masks, end
@@ -331,7 +330,7 @@ public final class IslandCertificate {
         }
         /** The signature a certificate of this graph gets under this model and policy. */
         public static Signature of(FluidThermodynamics model,CertificatePolicy policy,PassiveNetwork graph) {
-            return new Signature(ApproximationAnchor.revision(model),policyValues(policy),graphIdentity(graph));
+            return new Signature(model.revision(),policyValues(policy),graphIdentity(graph));
         }
         /** Which part of this signature differs from {@code current}, or null when none does. */
         public String difference(Signature current) {
@@ -482,7 +481,7 @@ public final class IslandCertificate {
         var pipes=new ArrayList<PipeTransfer>(recorded.pipeTransfers().size());
         for(var p:recorded.pipeTransfers())pipes.add(new PipeTransfer(p.pipeId(),scale(p.forward(),g),scale(p.reverse(),g)));
         return new PassiveIntervalSolver.Result(graphAt(to),(to-from)/20.0,recorded.averageMassFlows(),0,0,g*recorded.pumpWorkJoule(),boundaries,Map.of(),
-                recorded.endpointModes(),recorded.endpointHeads(),recorded.endpointFlows(),recorded.acceptance(),pipes);
+                recorded.endpointModes(),recorded.endpointHeads(),recorded.endpointFlows(),pipes);
     }
     private static PipeTransfer.Stream scale(PipeTransfer.Stream stream,double g) {
         var phases=stream.phaseMoles();for(var phase:phases)for(int c=0;c<phase.length;c++)phase[c]*=g;

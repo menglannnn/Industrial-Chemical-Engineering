@@ -37,13 +37,13 @@ class IslandCoordinatorTest {
         private IslandCoordinator.Attempt finish(long request) {
             var attempt=attempts.remove(request);var command=commands.remove(request);
             var result=new PassiveIntervalSolver(model).solve(command.snapshot(),command.durationSeconds(),command.settings(),()->{});
-            coordinator.completed(attempt,Optional.of(new ProcessSolveServices.FluidIslandSolveResult(Optional.of(result),"FULL",10,FallbackAllowance.NONE,Optional.of(ApproximationAnchor.fromFull(model,result)))));
+            coordinator.completed(attempt,Optional.of(new ProcessSolveServices.FluidIslandSolveResult(Optional.of(result),"FULL",10)));
             return attempt;
         }
     }
     private void register(long id,long online,long committed) {
         var graph=new PassiveNetwork(List.of(new PassiveNetwork.Reservoir(id,0,model.initialNitrogenCharge(1,298.15,101325,()->{}))),List.of());
-        coordinator.register(new IslandCoordinator.Snapshot(id,0,graph,new IslandClock.Snapshot(online,committed,0,100),FallbackAllowance.NONE,Optional.empty(),Optional.empty(),"READY"),model);
+        coordinator.register(new IslandCoordinator.Snapshot(id,0,graph,new IslandClock.Snapshot(online,committed,0,100),Optional.empty(),"READY"),model);
     }
     @Test void nonblockingBarrierCommitsACompleteRoundAndThenCatchesUpFairly() {
         register(1,900,0);register(2,900,0);coordinator.pump();
@@ -94,7 +94,7 @@ class IslandCoordinatorTest {
         var retry=dispatch.attempts.get(2L);assertEquals(0,retry.slice().startTick());assertEquals(50,retry.slice().endTick());
         dispatch.finish(2);coordinator.pump();assertEquals(50,coordinator.snapshot(1).clock().committedTick());
         var grown=dispatch.attempts.get(3L);assertEquals(50,grown.slice().startTick());assertEquals(150,grown.slice().endTick());
-        assertEquals(100,coordinator.snapshot(1).clock().cadenceTicks());assertEquals(FallbackAllowance.NONE,coordinator.snapshot(1).allowance());
+        assertEquals(100,coordinator.snapshot(1).clock().cadenceTicks());
     }
     @Test void fencesAlignUnequalClocksWithoutApplyingAnEventRetroactively() {
         register(1,200,100);register(2,200,0);var event=UUID.randomUUID();coordinator.fence(event,150,List.of(1L,2L));
@@ -110,7 +110,7 @@ class IslandCoordinatorTest {
         register(1,200,0);coordinator.pump();
         var attempt=dispatch.attempts.values().stream().filter(a->a.islandId()==1).findFirst().orElseThrow();
         dispatch.attempts.remove(attempt.slice().requestId());dispatch.commands.remove(attempt.slice().requestId());
-        coordinator.completed(attempt,Optional.of(new ProcessSolveServices.FluidIslandSolveResult(Optional.empty(),"HELD: test refusal",10,FallbackAllowance.NONE,Optional.empty())));
+        coordinator.completed(attempt,Optional.of(new ProcessSolveServices.FluidIslandSolveResult(Optional.empty(),"HELD: test refusal",10)));
         coordinator.pump();assertTrue(dispatch.attempts.isEmpty());
         assertTrue(coordinator.snapshot(1).status().startsWith("HELD"),coordinator.snapshot(1).status());assertEquals(0,coordinator.snapshot(1).clock().committedTick());
         var before=coordinator.snapshot(1).graph();
@@ -170,7 +170,7 @@ class IslandCoordinatorTest {
         };
         var lagging=new IslandCoordinator(slow,changed->{},time::get,new IslandCoordinator.Settings(2_000_000_000L,1_500_000_000L,64,false));
         for(long id=1;id<=2;id++){var graph=new PassiveNetwork(List.of(new PassiveNetwork.Reservoir(id,0,model.initialNitrogenCharge(1,298.15,101325,()->{}))),List.of());
-            lagging.register(new IslandCoordinator.Snapshot(id,0,graph,new IslandClock.Snapshot(100,0,0,100),FallbackAllowance.NONE,Optional.empty(),Optional.empty(),"READY"),model);}
+            lagging.register(new IslandCoordinator.Snapshot(id,0,graph,new IslandClock.Snapshot(100,0,0,100),Optional.empty(),"READY"),model);}
         lagging.pump();assertEquals(2,attempts.size());
         int closedAt=-1;
         for(int tick=1;tick<=40&&closedAt<0;tick++) {
@@ -183,7 +183,7 @@ class IslandCoordinatorTest {
     }
     @Test void aHeldOwnerRetriesExactlyAtItsRetryDeadlineAndIsNotVisitedBefore() {
         register(1,100,0);coordinator.pump();var first=dispatch.attempts.remove(1L);dispatch.commands.remove(1L);
-        coordinator.completed(first,Optional.of(new ProcessSolveServices.FluidIslandSolveResult(Optional.empty(),"HELD: test refusal",10,FallbackAllowance.NONE,Optional.empty())));
+        coordinator.completed(first,Optional.of(new ProcessSolveServices.FluidIslandSolveResult(Optional.empty(),"HELD: test refusal",10)));
         coordinator.pump();assertEquals(200,coordinator.snapshot(1).clock().retryAtTick());
         FluidRuntimeDiagnostics.reset();FluidRuntimeDiagnostics.ENABLED=true;
         try {
@@ -199,7 +199,7 @@ class IslandCoordinatorTest {
     }
     private void hold(IslandCoordinator.Attempt attempt,String detail) {
         dispatch.attempts.remove(attempt.slice().requestId());dispatch.commands.remove(attempt.slice().requestId());
-        coordinator.completed(attempt,Optional.of(new ProcessSolveServices.FluidIslandSolveResult(Optional.empty(),detail,10,FallbackAllowance.NONE,Optional.empty())));
+        coordinator.completed(attempt,Optional.of(new ProcessSolveServices.FluidIslandSolveResult(Optional.empty(),detail,10)));
         coordinator.pump();
     }
     /** Ticks until the island's next attempt is dispatched; that attempt. */
@@ -249,30 +249,16 @@ class IslandCoordinatorTest {
             assertEquals(1,FluidRuntimeDiagnostics.sample().get("budgetHolds"));
         } finally {FluidRuntimeDiagnostics.ENABLED=false;FluidRuntimeDiagnostics.reset();}
     }
-    /** A soft budget whose approximate fallback refused the slice: the retry is a full solve on the whole budget,
-     * until an interval is accepted again. */
-    @Test void aRefusedFallbackIsRetriedAsAFullSolveUntilAnIntervalIsAccepted() {
-        register(1,1_000,0);coordinator.pump();dispatch.finish(dispatch.attempts.keySet().iterator().next());coordinator.pump();
-        var second=dispatch.attempts.values().iterator().next();
-        assertTrue(dispatch.commands.get(second.slice().requestId()).fallback().enabled(),"an anchored island offers the fallback");
-        hold(second,ProcessSolveServices.SOFT_BUDGET_REFUSED+"test");
-        var third=nextAttempt().getValue();
-        assertFalse(dispatch.commands.get(third.slice().requestId()).fallback().enabled(),"the retry of a refused fallback solves in full");
-        assertEquals(50,third.slice().endTick()-third.slice().startTick());
-        dispatch.finish(third.slice().requestId());coordinator.pump();
-        var fourth=nextAttempt().getValue();
-        assertTrue(dispatch.commands.get(fourth.slice().requestId()).fallback().enabled(),"an accepted interval offers the fallback again");
-    }
     @Test void thePerTickDispatchBudgetResumesOnTheNextTickWithoutPolling() {
         var budgeted=new IslandCoordinator(dispatch,publications::add,time::get,new IslandCoordinator.Settings(1000,750,2,false));
         dispatch.capacity=10;var order=new ArrayList<Long>();
         for(long id=1;id<=5;id++){var graph=new PassiveNetwork(List.of(new PassiveNetwork.Reservoir(id,0,model.initialNitrogenCharge(1,298.15,101325,()->{}))),List.of());
-            budgeted.register(new IslandCoordinator.Snapshot(id,0,graph,new IslandClock.Snapshot(100,0,0,100),FallbackAllowance.NONE,Optional.empty(),Optional.empty(),"READY"),model);}
+            budgeted.register(new IslandCoordinator.Snapshot(id,0,graph,new IslandClock.Snapshot(100,0,0,100),Optional.empty(),"READY"),model);}
         Runnable completeAll=()->{
             for(long request:List.copyOf(dispatch.attempts.keySet())) {
                 var attempt=dispatch.attempts.remove(request);var command=dispatch.commands.remove(request);order.add(attempt.islandId());
                 var result=new PassiveIntervalSolver(model).solve(command.snapshot(),command.durationSeconds(),command.settings(),()->{});
-                budgeted.completed(attempt,Optional.of(new ProcessSolveServices.FluidIslandSolveResult(Optional.of(result),"FULL",10,FallbackAllowance.NONE,Optional.of(ApproximationAnchor.fromFull(model,result)))));
+                budgeted.completed(attempt,Optional.of(new ProcessSolveServices.FluidIslandSolveResult(Optional.of(result),"FULL",10)));
             }
             budgeted.pump();
         };
@@ -298,11 +284,11 @@ class IslandCoordinatorTest {
         // A shared epoch: the owner advances it before each tick, as the world does.
         var shared=new IslandCoordinator(elastic,changed->{},time::get,new IslandCoordinator.Settings(1000,750,64,false),()->epoch[0]);
         for(long id=1;id<=3;id++){var graph=new PassiveNetwork(List.of(new PassiveNetwork.Reservoir(id,0,model.initialNitrogenCharge(1,298.15,101325,()->{}))),List.of());
-            shared.register(new IslandCoordinator.Snapshot(id,0,graph,new IslandClock.Snapshot(100,0,0,100),FallbackAllowance.NONE,Optional.empty(),Optional.empty(),"READY"),model);}
+            shared.register(new IslandCoordinator.Snapshot(id,0,graph,new IslandClock.Snapshot(100,0,0,100),Optional.empty(),"READY"),model);}
         shared.pump();assertEquals(3,limit[0]);assertEquals(3,attempts.size());
         for(long request:List.copyOf(attempts.keySet())) {
             var attempt=attempts.remove(request);var command=commands.remove(request);var result=new PassiveIntervalSolver(model).solve(command.snapshot(),command.durationSeconds(),command.settings(),()->{});
-            shared.completed(attempt,Optional.of(new ProcessSolveServices.FluidIslandSolveResult(Optional.of(result),"FULL",10,FallbackAllowance.NONE,Optional.of(ApproximationAnchor.fromFull(model,result)))));
+            shared.completed(attempt,Optional.of(new ProcessSolveServices.FluidIslandSolveResult(Optional.of(result),"FULL",10)));
         }
         // Park all three owners on an event so nothing but the allocator deadline can wake the coordinator.
         shared.fence(UUID.randomUUID(),100,List.of(1L,2L,3L));shared.pump();
@@ -322,7 +308,7 @@ class IslandCoordinatorTest {
     private void phaseHold(IslandCoordinator.Attempt attempt,com.wormzjl.createcheme.science.fluid.thermo.ThermoHold v) {
         dispatch.attempts.remove(attempt.slice().requestId());dispatch.commands.remove(attempt.slice().requestId());
         coordinator.completed(attempt,Optional.of(new ProcessSolveServices.FluidIslandSolveResult(Optional.empty(),ProcessSolveServices.PHASE_HOLD+v.getMessage(),10,-1,
-                FallbackAllowance.NONE,Optional.empty(),Optional.of(v))));
+                Optional.of(v))));
         coordinator.pump();
     }
     /**

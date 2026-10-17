@@ -1,6 +1,5 @@
 package com.wormzjl.createcheme.runtime.fluid;
 
-import com.wormzjl.createcheme.science.fluid.network.ApproximationAnchor;
 import com.wormzjl.createcheme.science.fluid.thermo.FluidThermodynamics;
 import com.wormzjl.createcheme.science.material.MaterialCatalog;
 import java.util.Objects;
@@ -21,14 +20,14 @@ public final class FluidPropertyReloadGuard {
         // Every numerical setting the qualified model was built with, so a reload of the same data
         // rebuilds the same model and the comparison isolates the property change it is looking for.
         traceCutoff=model.traceTruncation().cutoffMoleFraction();
-        qualifiedRevision=ApproximationAnchor.revision(model);
+        qualifiedRevision=model.revision();
     }
     public Optional<String> inspect(MaterialCatalog current) {
         Objects.requireNonNull(current);if(current==observed)return Optional.ofNullable(refusal);
         observed=current;
         try {
             var candidate=FluidThermodynamics.forNetwork(current,packageId,maximumVelocity,traceCutoff,solids);
-            refusal=qualifiedRevision.equals(ApproximationAnchor.revision(candidate))?null:HOLD;
+            refusal=qualifiedRevision.equals(candidate.revision())?null:HOLD;
         } catch(IllegalArgumentException|IllegalStateException unavailable) {refusal=HOLD;}
         return Optional.ofNullable(refusal);
     }

@@ -16,8 +16,6 @@ import net.minecraft.world.level.Level;
 import com.wormzjl.createcheme.science.fluid.network.PassiveNetwork;
 import com.wormzjl.createcheme.science.fluid.network.PassiveIntervalSolver;
 import com.wormzjl.createcheme.science.fluid.thermo.FluidThermodynamics;
-import com.wormzjl.createcheme.science.fluid.network.ApproximationAnchor;
-import com.wormzjl.createcheme.runtime.fluid.FallbackAllowance;
 
 import java.time.Duration;
 import java.util.ArrayList;
@@ -369,61 +367,42 @@ public final class ProcessSolveServices {
 
     /** Contains no live level, block entity, callback, or mutable server-owned collection. */
     public record FluidIslandCommand(FluidThermodynamics model,PassiveNetwork snapshot,double durationSeconds,
-                                     PassiveIntervalSolver.Settings settings,long wallBudgetNanos,FallbackAllowance.Policy fallback,
+                                     PassiveIntervalSolver.Settings settings,long wallBudgetNanos,
                                      com.wormzjl.createcheme.runtime.fluid.RetainedSolver retained) implements ProcessSolveCommand {
-        public FluidIslandCommand(FluidThermodynamics model,PassiveNetwork snapshot,double durationSeconds,PassiveIntervalSolver.Settings settings,long wallBudgetNanos) {
-            this(model,snapshot,durationSeconds,settings,wallBudgetNanos,FallbackAllowance.Policy.disabled());
-        }
         /** Without a retained handle the job gets its own, which is the per-job solver of before. */
-        public FluidIslandCommand(FluidThermodynamics model,PassiveNetwork snapshot,double durationSeconds,PassiveIntervalSolver.Settings settings,long wallBudgetNanos,FallbackAllowance.Policy fallback) {
-            this(model,snapshot,durationSeconds,settings,wallBudgetNanos,fallback,new com.wormzjl.createcheme.runtime.fluid.RetainedSolver());
+        public FluidIslandCommand(FluidThermodynamics model,PassiveNetwork snapshot,double durationSeconds,PassiveIntervalSolver.Settings settings,long wallBudgetNanos) {
+            this(model,snapshot,durationSeconds,settings,wallBudgetNanos,new com.wormzjl.createcheme.runtime.fluid.RetainedSolver());
         }
         public FluidIslandCommand {
-            Objects.requireNonNull(model);Objects.requireNonNull(snapshot);Objects.requireNonNull(settings);Objects.requireNonNull(fallback);Objects.requireNonNull(retained);
+            Objects.requireNonNull(model);Objects.requireNonNull(snapshot);Objects.requireNonNull(settings);Objects.requireNonNull(retained);
             if(!Double.isFinite(durationSeconds)||durationSeconds<=0||wallBudgetNanos<=0)throw new IllegalArgumentException("Invalid island solve budget");
-            if(fallback.enabled()&&(fallback.softBudgetNanos()>=wallBudgetNanos||durationSeconds<.05||durationSeconds>20||!Double.isFinite(durationSeconds*20)
-                    ||Math.abs(durationSeconds*20-Math.rint(durationSeconds*20))>1e-8))throw new IllegalArgumentException("Fallback needs tick-aligned duration and separate soft/hard budgets");
         }
         @Override public ProcessSolveResult solve(BoundedCpuSolveService.CancellationToken cancellationToken) {
             long cpuStart=WorkerAllocation.CpuTime.sample();
             var result=(FluidIslandSolveResult)solve(cancellationToken,System::nanoTime);
             long cpu=WorkerAllocation.CpuTime.elapsed(cpuStart,WorkerAllocation.CpuTime.sample());
-            return new FluidIslandSolveResult(result.candidate(),result.detail(),result.workerNanos(),cpu,result.proposedAllowance(),result.proposedAnchor(),result.phaseHold(),result.notices());
+            return new FluidIslandSolveResult(result.candidate(),result.detail(),result.workerNanos(),cpu,result.phaseHold(),result.notices());
         }
+        /**
+         * The full solve, on the whole wall budget. Owner decision D37 (S2) removed the approximate fallback a soft budget
+         * used to start: it refused every interval it was tried on (M5), and the island was held and retried with the
+         * full solve alone on the whole budget, which is now every attempt.
+         */
         ProcessSolveResult solve(BoundedCpuSolveService.CancellationToken cancellationToken,java.util.function.LongSupplier nanoClock) {
             Objects.requireNonNull(cancellationToken);Objects.requireNonNull(nanoClock);long start=nanoClock.getAsLong();
-            long ticks=Math.round(durationSeconds*20);boolean eligible=fallback.enabled()&&!com.wormzjl.createcheme.science.fluid.transport.SolidMobility.requiresFull(model,snapshot)&&fallback.anchor().orElseThrow().propertyRevision().equals(ApproximationAnchor.revision(model))&&fallback.allowance().permits(ticks,fallback.cadenceTicks());
             long[] elapsed={0};
             Runnable hard=()->{cancellationToken.throwIfCancellationRequested();elapsed[0]=nanoClock.getAsLong()-start;if(elapsed[0]>=wallBudgetNanos)throw new FluidWallDeadline();};
-            Runnable checkpoint=()->{hard.run();if(eligible&&elapsed[0]>=fallback.softBudgetNanos())throw new FluidSoftDeadline();};
             try {
-                try {
-                    var candidate=retained.solve(model,snapshot,durationSeconds,settings,checkpoint);hard.run();
-                    return new FluidIslandSolveResult(Optional.of(candidate),"FULL",elapsed[0],-1,FallbackAllowance.NONE,
-                            Optional.of(ApproximationAnchor.fromFull(model,candidate)),Optional.empty(),notices(model,candidate));
-                }catch(FluidSoftDeadline deadline) {
-                    hard.run();
-                    // A refused fallback is still the soft budget's decision: the full solve had not finished when it
-                    // ran out. Its detail says so, so the hold policy treats it as a budget hold (IslandCoordinator.hold).
-                    try {
-                        var guard=fallback.anchor().orElseThrow().guard(model,snapshot);
-                        var approximateSettings=new PassiveIntervalSolver.Settings(Math.min(1,durationSeconds),20,256);
-                        var candidate=retained.solveApproximate(model,snapshot,durationSeconds,approximateSettings,hard,guard);hard.run();
-                        return new FluidIslandSolveResult(Optional.of(candidate),"APPROXIMATE: soft budget",elapsed[0],-1,
-                                fallback.allowance().accept(ticks,fallback.cadenceTicks()),fallback.anchor(),Optional.empty(),notices(model,candidate));
-                    }catch(com.wormzjl.createcheme.science.fluid.solver.SparseNewton.Nonconvergence|IllegalArgumentException|ApproximationAnchor.Rejected refused) {
-                        cancellationToken.throwIfCancellationRequested();
-                        return new FluidIslandSolveResult(Optional.empty(),SOFT_BUDGET_REFUSED+refused.getMessage(),elapsed[0],fallback.allowance(),fallback.anchor());
-                    }
-                }
-            }catch(FluidWallDeadline deadline){return new FluidIslandSolveResult(Optional.empty(),WALL_DEADLINE,elapsed[0],fallback.allowance(),fallback.anchor());}
-            catch(com.wormzjl.createcheme.science.fluid.solver.SparseNewton.Nonconvergence|IllegalArgumentException|ApproximationAnchor.Rejected failed) {
+                var candidate=retained.solve(model,snapshot,durationSeconds,settings,hard);hard.run();
+                return new FluidIslandSolveResult(Optional.of(candidate),"FULL",elapsed[0],-1,Optional.empty(),notices(model,candidate));
+            }catch(FluidWallDeadline deadline){return new FluidIslandSolveResult(Optional.empty(),WALL_DEADLINE,elapsed[0]);}
+            catch(com.wormzjl.createcheme.science.fluid.solver.SparseNewton.Nonconvergence|IllegalArgumentException failed) {
                 cancellationToken.throwIfCancellationRequested();
                 // A failure a phase hold decided (a phase set the network cannot carry, or the critical band) carries the
                 // hold itself, so the coordinator can hold the island with the dedicated status and tell a reproduced hold
                 // from a numerical failure (IslandCoordinator.hold).
                 var hold=Optional.ofNullable(com.wormzjl.createcheme.science.fluid.solver.SparseNewton.phaseHold(failed));
-                return new FluidIslandSolveResult(Optional.empty(),hold.map(v->PHASE_HOLD+v.getMessage()).orElse("HELD: "+failed.getMessage()),elapsed[0],-1,fallback.allowance(),fallback.anchor(),hold);
+                return new FluidIslandSolveResult(Optional.empty(),hold.map(v->PHASE_HOLD+v.getMessage()).orElse("HELD: "+failed.getMessage()),elapsed[0],-1,hold);
             }
         }
     }
@@ -441,27 +420,22 @@ public final class ProcessSolveServices {
     public static final String WALL_DEADLINE="HELD: wall deadline";
     /** The detail prefix of an island interval a phase hold refused; the result carries the hold. */
     public static final String PHASE_HOLD="HELD (phases): ";
-    /** The detail prefix of an island interval whose full solve ran out of the soft budget and whose approximate
-     * fallback then refused the interval. */
-    public static final String SOFT_BUDGET_REFUSED="HELD: soft budget; approximate fallback refused: ";
     private static final class FluidWallDeadline extends RuntimeException {}
-    private static final class FluidSoftDeadline extends RuntimeException {}
     public record FluidIslandSolveResult(Optional<PassiveIntervalSolver.Result> candidate,String detail,long workerNanos,long workerCpuNanos,
-                                        FallbackAllowance proposedAllowance,Optional<ApproximationAnchor> proposedAnchor,
                                         Optional<com.wormzjl.createcheme.science.fluid.thermo.ThermoHold> phaseHold,
                                         List<com.wormzjl.createcheme.science.fluid.thermo.DataRangeNotices.Notice> notices) implements ProcessSolveResult {
         public FluidIslandSolveResult(Optional<PassiveIntervalSolver.Result> candidate,String detail,long workerNanos,long workerCpuNanos,
-                                      FallbackAllowance allowance,Optional<ApproximationAnchor> anchor,Optional<com.wormzjl.createcheme.science.fluid.thermo.ThermoHold> phaseHold) {
-            this(candidate,detail,workerNanos,workerCpuNanos,allowance,anchor,phaseHold,List.of());
+                                      Optional<com.wormzjl.createcheme.science.fluid.thermo.ThermoHold> phaseHold) {
+            this(candidate,detail,workerNanos,workerCpuNanos,phaseHold,List.of());
         }
-        public FluidIslandSolveResult(Optional<PassiveIntervalSolver.Result> candidate,String detail,long workerNanos,long workerCpuNanos,FallbackAllowance allowance,Optional<ApproximationAnchor> anchor) {
-            this(candidate,detail,workerNanos,workerCpuNanos,allowance,anchor,Optional.empty());
+        public FluidIslandSolveResult(Optional<PassiveIntervalSolver.Result> candidate,String detail,long workerNanos,long workerCpuNanos) {
+            this(candidate,detail,workerNanos,workerCpuNanos,Optional.empty());
         }
-        public FluidIslandSolveResult(Optional<PassiveIntervalSolver.Result> candidate,String detail,long workerNanos,FallbackAllowance allowance,Optional<ApproximationAnchor> anchor) {
-            this(candidate,detail,workerNanos,-1,allowance,anchor);
+        public FluidIslandSolveResult(Optional<PassiveIntervalSolver.Result> candidate,String detail,long workerNanos) {
+            this(candidate,detail,workerNanos,-1);
         }
         /** {@code notices}: the data ranges the accepted interval's end state lies outside, empty for a held one. */
-        public FluidIslandSolveResult {Objects.requireNonNull(phaseHold);notices=List.copyOf(notices);if(!notices.isEmpty()&&candidate.isEmpty())throw new IllegalArgumentException("Only an accepted interval carries data-range notices");if(phaseHold.isPresent()&&candidate.isPresent())throw new IllegalArgumentException("An accepted interval has no phase hold");Objects.requireNonNull(candidate);Objects.requireNonNull(detail);Objects.requireNonNull(proposedAllowance);Objects.requireNonNull(proposedAnchor);if(workerNanos<0||workerCpuNanos < -1)throw new IllegalArgumentException("Invalid worker elapsed time");}
+        public FluidIslandSolveResult {Objects.requireNonNull(phaseHold);notices=List.copyOf(notices);if(!notices.isEmpty()&&candidate.isEmpty())throw new IllegalArgumentException("Only an accepted interval carries data-range notices");if(phaseHold.isPresent()&&candidate.isPresent())throw new IllegalArgumentException("An accepted interval has no phase hold");Objects.requireNonNull(candidate);Objects.requireNonNull(detail);if(workerNanos<0||workerCpuNanos < -1)throw new IllegalArgumentException("Invalid worker elapsed time");}
     }
 
     /** Immutable worker snapshot; configuration has already been read and converted by server-thread admission. */

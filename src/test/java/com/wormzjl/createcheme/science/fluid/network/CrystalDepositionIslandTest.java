@@ -209,7 +209,7 @@ class CrystalDepositionIslandTest {
         var result=interval(new PassiveNetwork(graph.reservoirs(),graph.pipes(),List.of(new ScheduledTransfer.Injection(100,0,rate,watts))));
         return new PassiveIntervalSolver.Result(new PassiveNetwork(result.graph().reservoirs(),result.graph().pipes()),result.advancedSeconds(),result.averageMassFlows(),
                 result.acceptedSubsteps(),result.rejectedSubsteps(),result.pumpWorkJoule(),result.boundaries(),result.rejectionReasons(),result.endpointModes(),
-                result.endpointHeads(),result.endpointFlows(),result.acceptance(),result.pipeTransfers());
+                result.endpointHeads(),result.endpointFlows(),result.pipeTransfers());
     }
 
     /**

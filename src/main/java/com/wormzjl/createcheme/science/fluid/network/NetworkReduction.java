@@ -347,7 +347,7 @@ public final class NetworkReduction {
                     :pipe.control() instanceof FlowControl.Passive&&PassiveStepSolver.boundaryAllowed(graph,pipe,1)&&PassiveStepSolver.boundaryAllowed(graph,pipe,-1)?FlowControl.Mode.PASSIVE:FlowControl.Mode.CLOSED);}
         var states=graph.reservoirs().stream().map(PassiveNetwork.Reservoir::state).toList();
         double[] zero=new double[pipes];
-        return new PassiveIntervalSolver.Result(graph,duration,zero,1,0,0,List.of(),Map.of(),modes,new double[pipes],zero,PassiveStepSolver.Acceptance.FULL,
+        return new PassiveIntervalSolver.Result(graph,duration,zero,1,0,0,List.of(),Map.of(),modes,new double[pipes],zero,
                 PipeTransfer.sample(graph,states,zero,duration));
     }
     /** The game's ambient: air (the network's nitrogen) at 298.15 K and {@link PhaseLayout#AMBIENT_PRESSURE} (A280). The

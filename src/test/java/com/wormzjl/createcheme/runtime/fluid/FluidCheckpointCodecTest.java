@@ -20,7 +20,7 @@ class FluidCheckpointCodecTest {
     private FluidCheckpointCodec.Checkpoint fixture() {
         var graph=new PassiveNetwork(List.of(new PassiveNetwork.Reservoir(1,0,model.initialNitrogenCharge(1,298.15,101325,()->{}))),List.of());
         var full=new PassiveIntervalSolver(model).solve(graph,5,PassiveIntervalSolver.Settings.defaults(),()->{});
-        var state=new IslandCoordinator.Snapshot(1,4,full.graph(),new IslandClock.Snapshot(350,200,400,100),new FallbackAllowance(2,100,100),Optional.of(ApproximationAnchor.fromFull(model,full)),Optional.of(full),"APPROXIMATE",Map.of(UUID.randomUUID(),300L));
+        var state=new IslandCoordinator.Snapshot(1,4,full.graph(),new IslandClock.Snapshot(350,200,400,100),Optional.of(full),"FULL",Map.of(UUID.randomUUID(),300L));
         return new FluidCheckpointCodec.Checkpoint(List.of(new FluidCheckpointCodec.IslandEntry("minecraft:overworld",PACKAGE,state)));
     }
     private static CompoundTag islands(CompoundTag core){return core.getCompound("Islands");}
@@ -30,13 +30,12 @@ class FluidCheckpointCodecTest {
     }
     private static FluidCheckpointCodec.Image copy(FluidCheckpointCodec.Image image){return new FluidCheckpointCodec.Image(image.core().copy(),image.packs());}
 
-    @Test void roundTripRetainsStockDebtFencesAndFallback() {
+    @Test void roundTripRetainsStockDebtAndFences() {
         var before=fixture();var image=FluidCheckpointCodec.encode(before,key->model);
         assertEquals(FluidCheckpointCodec.VERSION,image.core().getInt("FluidFormat"));assertEquals(350,FluidCheckpointCodec.epoch(image.core()),"epoch of a core-only checkpoint: its most advanced island");
         var loaded=FluidCheckpointCodec.decode(image,key->model);var a=before.islands().getFirst().snapshot();var b=loaded.islands().getFirst().snapshot();
-        assertEquals(a.graph().reservoirs().getFirst().inventory(),b.graph().reservoirs().getFirst().inventory());assertEquals(a.clock(),b.clock());assertEquals(a.fences(),b.fences());assertEquals(a.allowance(),b.allowance());
-        assertEquals(a.anchor().orElseThrow().propertyRevision(),b.anchor().orElseThrow().propertyRevision());assertEquals(a.revision(),b.revision());assertEquals(a.status(),b.status());
-        assertSame(b.graph(),b.anchor().orElseThrow().graph(),"the anchor is stored as the island's own graph");
+        assertEquals(a.graph().reservoirs().getFirst().inventory(),b.graph().reservoirs().getFirst().inventory());assertEquals(a.clock(),b.clock());assertEquals(a.fences(),b.fences());
+        assertEquals(a.revision(),b.revision());assertEquals(a.status(),b.status());
         assertSameImage(image,FluidCheckpointCodec.encode(loaded,key->model),"a reloaded checkpoint re-encodes to the same bytes");
     }
     @Test void missingClocksMistypedStampsCorruptionUnknownVersionsAndChangedPropertiesAreRejected() {
@@ -121,21 +120,14 @@ class FluidCheckpointCodecTest {
         assertTrue(assertThrows(IllegalArgumentException.class,()->FluidCheckpointCodec.decodeTopology(Arrays.copyOf(bytes,bytes.length+1),0,key->model)).getMessage().contains("trailing bytes"));
         assertThrows(IllegalArgumentException.class,()->FluidCheckpointCodec.decodeTopology(Arrays.copyOf(bytes,bytes.length/2),0,key->model));
     }
-    @Test void changingVelocityLimitPreservesSavedStockClocksAndAllowanceButInvalidatesTheOldAnchor() {
+    /** A saved island stays readable under another velocity limit: the limit is in the model's revision (a certificate
+     * issued under the old one is not kept, FluidCheckpointFormatTest) but not in its thermodynamic one, which the
+     * package table holds. Restated without the approximation anchor (owner decision D37, S2). */
+    @Test void changingVelocityLimitPreservesSavedStockAndClocks() {
         var before=fixture();var image=FluidCheckpointCodec.encode(before,key->model);
         var loaded=FluidCheckpointCodec.decode(image,key->FluidThermodynamics.forNetwork(MaterialCatalog.bundled(),PACKAGE,10, FluidThermodynamics.DEFAULT_TRACE_CUTOFF_MOLE_FRACTION));
         var a=before.islands().getFirst().snapshot();var b=loaded.islands().getFirst().snapshot();
-        assertEquals(a.graph().reservoirs().getFirst().inventory(),b.graph().reservoirs().getFirst().inventory());assertEquals(a.clock(),b.clock());assertEquals(a.allowance(),b.allowance());assertEquals(a.fences(),b.fences());
-        assertThrows(ApproximationAnchor.Rejected.class,()->b.anchor().orElseThrow().guard(FluidThermodynamics.forNetwork(MaterialCatalog.bundled(),PACKAGE,10, FluidThermodynamics.DEFAULT_TRACE_CUTOFF_MOLE_FRACTION),b.graph()));
-        // An anchor recorded under the thermodynamic revision alone does not carry the hydraulic acceptance law.
-        var thermodynamicOnly=CheckpointImages.withIsland(image,1,key->model,entry->{
-            var s=entry.snapshot();var anchor=s.anchor().orElseThrow();
-            return new FluidCheckpointCodec.IslandEntry(entry.dimension(),entry.packageId(),new IslandCoordinator.Snapshot(s.id(),s.revision(),s.graph(),s.clock(),s.allowance(),
-                    Optional.of(new ApproximationAnchor(ApproximationAnchor.thermodynamicRevision(model),anchor.graph(),anchor.modes())),s.lastResult(),s.status(),s.fences()));
-        });
-        var restored=FluidCheckpointCodec.decode(thermodynamicOnly,key->model).islands().getFirst().snapshot();
-        assertEquals(a.clock(),restored.clock());assertEquals(a.allowance(),restored.allowance());assertEquals(a.graph().reservoirs().getFirst().inventory(),restored.graph().reservoirs().getFirst().inventory());
-        assertThrows(ApproximationAnchor.Rejected.class,()->restored.anchor().orElseThrow().guard(model,restored.graph()));
+        assertEquals(a.graph().reservoirs().getFirst().inventory(),b.graph().reservoirs().getFirst().inventory());assertEquals(a.clock(),b.clock());assertEquals(a.fences(),b.fences());
     }
 
     // ---------------- format 6: pipe ports and the compressor (phase-ports WP5, plan 4.4) ----------------
@@ -150,7 +142,7 @@ class FluidCheckpointCodecTest {
     /**
      * An island whose pipes have every port kind and a compressor, solved for one interval in which the compressor, fed
      * the bulk of a half-water tank, is refused ({@code INLET_WRONG_PHASE}): graph, ports, controls, the last interval's
-     * endpoint modes and the anchor come back exactly, and the reloaded checkpoint re-encodes to the same bytes.
+     * endpoint modes come back exactly, and the reloaded checkpoint re-encodes to the same bytes.
      */
     @Test void portsACompressorAndARefusedMoverRoundTripExactly() {
         var block=new PipeResistance.Geometry(1,.05,.000045,0);
@@ -162,7 +154,7 @@ class FluidCheckpointCodecTest {
                 new PassiveNetwork.Pipe(13,0,2,List.of(block),new FlowControl.Passive(),0,null,PassiveNetwork.PhasePort.VAPOR,PassiveNetwork.PhasePort.BULK));
         var full=new PassiveIntervalSolver(model).solve(new PassiveNetwork(nodes,pipes),5,PassiveIntervalSolver.Settings.defaults(),()->{});
         assertEquals(FlowControl.Mode.INLET_WRONG_PHASE,full.endpointModes().get(2),"the compressor on the tank's bulk is refused");
-        var state=new IslandCoordinator.Snapshot(1,4,full.graph(),new IslandClock.Snapshot(350,200,400,100),new FallbackAllowance(2,100,100),Optional.of(ApproximationAnchor.fromFull(model,full)),Optional.of(full),"FULL");
+        var state=new IslandCoordinator.Snapshot(1,4,full.graph(),new IslandClock.Snapshot(350,200,400,100),Optional.of(full),"FULL");
         var before=new FluidCheckpointCodec.Checkpoint(List.of(new FluidCheckpointCodec.IslandEntry("minecraft:overworld",PACKAGE,state)));
         var image=FluidCheckpointCodec.encode(before,key->model);assertEquals(10,image.core().getInt("FluidFormat"));
         var after=FluidCheckpointCodec.decode(image,key->model).islands().getFirst().snapshot();
@@ -173,7 +165,6 @@ class FluidCheckpointCodecTest {
         assertArrayEquals(full.averageMassFlows(),after.lastResult().orElseThrow().averageMassFlows());
         // Since format 7: the end flows the island's next job starts from round-trip bit for bit.
         assertArrayEquals(full.endpointFlows(),after.lastResult().orElseThrow().endpointFlows(),"the committed end flows (format 7)");
-        assertEquals(full.graph().pipes(),after.anchor().orElseThrow().graph().pipes());
         assertSameImage(image,FluidCheckpointCodec.encode(FluidCheckpointCodec.decode(image,key->model),key->model),"a reloaded checkpoint re-encodes to the same bytes");
     }
     /** The world ledger's compressor registration (control tag 3) comes back exactly; an unknown control tag is refused. */
@@ -214,7 +205,7 @@ class FluidCheckpointCodecTest {
         return new SolidInventory(solids.populations().stream().map(p->p.material().equals(from)?new SolidInventory.Population(to,p.size(),p.massKg()):p).toList());
     }
     private static FluidCheckpointCodec.Checkpoint island(PassiveNetwork graph) {
-        var state=new IslandCoordinator.Snapshot(1,4,graph,new IslandClock.Snapshot(350,200,400,100),FallbackAllowance.NONE,Optional.empty(),Optional.empty(),"READY");
+        var state=new IslandCoordinator.Snapshot(1,4,graph,new IslandClock.Snapshot(350,200,400,100),Optional.empty(),"READY");
         return new FluidCheckpointCodec.Checkpoint(List.of(new FluidCheckpointCodec.IslandEntry("minecraft:overworld",PILOT,state)));
     }
     /**

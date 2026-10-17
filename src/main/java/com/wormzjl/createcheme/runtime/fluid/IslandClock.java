@@ -74,7 +74,7 @@ public final class IslandClock {
     }
     /** Call only after the shared executor accepts this exact slice. A queue rejection leaves it ready. */
     public void admitted(Slice slice){if(outstanding!=null||slice.startTick!=committedTick||slice.endTick>online())throw new IllegalStateException("Invalid clock admission");outstanding=slice;}
-    /** Full and qualified approximate results advance once; a held result retains all of its debt. */
+    /** An accepted result advances once; a held result retains all of its debt. */
     public void completed(Slice slice,boolean accepted) {
         if(!slice.equals(outstanding))throw new IllegalStateException("Stale/duplicate clock completion");outstanding=null;
         if(accepted){committedTick=slice.endTick;retryAtTick=0;}

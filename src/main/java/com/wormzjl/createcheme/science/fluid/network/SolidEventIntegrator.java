@@ -277,9 +277,9 @@ final class SolidEventIntegrator {
         // steps would find, and on an island's first interval the junction compositions it holds fixed are the mint, so a
         // rate solve that fails is no evidence either way: it declares no closure here, and the steps decide, their guards
         // seeing every transition at t0 and inside the interval (option R1, hold class E1; it used to hold the island).
-        for(int attempt=0;SolidMobility.requiresFull(model,graph)&&attempt<=2*blocked.length;attempt++) {
+        for(int attempt=0;SolidMobility.closable(model,graph)&&attempt<=2*blocked.length;attempt++) {
             checkpoint.run();graph=masks(graph,blocked);
-            var candidate=rates.portRate(graph,checkpoint,PassiveStepSolver.Acceptance.FULL);
+            var candidate=rates.portRate(graph,checkpoint);
             if(candidate==null)break;
             var failure=failed(graph,candidate.states(),candidate.massFlows());
             if(failure==null)break;
@@ -305,7 +305,7 @@ final class SolidEventIntegrator {
             // The first segment starts from the interval's refresh; every later one from its own refresh of the state the
             // transition left (owner decision D23: crystal mass moves only in a vessel's refresh).
             var segment=event==0?InventoryEquilibrium.Refreshed.as(masked):InventoryEquilibrium.refresh(masked,model,checkpoint);
-            var prefix=integrator.integrateToTransition(segment,remaining,settings,checkpoint,PassiveStepSolver.Acceptance.FULL,guard(masked),step);
+            var prefix=integrator.integrateToTransition(segment,remaining,settings,checkpoint,guard(masked),step);
             var transition=prefix.transition();int stoppedFilter=-1;
             if(transition!=null) {
                 blocked[transition.edge]|=BOTH_DIRECTIONS;
@@ -327,6 +327,6 @@ final class SolidEventIntegrator {
         if(elapsed<duration||last==null)throw new SparseNewton.Nonconvergence("Solid event limit exhausted; no partial interval may commit");
         for(int i=0;i<transported.length;i++)transported[i]/=duration;
         return new PassiveIntervalSolver.Result(graph,duration,transported,accepted,rejected,work,boundaries,reasons,
-                last.endpointModes(),last.endpointHeads(),last.endpointFlows(),PassiveStepSolver.Acceptance.FULL,histories.snapshot());
+                last.endpointModes(),last.endpointHeads(),last.endpointFlows(),histories.snapshot());
     }
 }

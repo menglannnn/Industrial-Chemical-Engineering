@@ -34,11 +34,10 @@ import java.util.function.Function;
  * covers every field.
  *
  * <p><b>Island unit</b> (binary, {@link Writer}, {@link Reader}): a header naming the island, its revision and the unit's
- * generation (all three must match the index), then its dimension and package, status, fallback allowance and fences;
+ * generation (all three must match the index), then its dimension and package, status and fences;
  * the graph's topology once - node identities, elevations, kinds and volumes, pipe ends, sections, controls (tag 0
  * passive, 1 pump, 2 valve, 3 compressor) and, since format 6, the two ends' phase ports - and
- * its state; the approximation anchor, stored as "the same graph" when it is (always, in every fixture measured) or
- * as a state over the same topology; the last solved interval, with (since format 7) its end flows, which the island's
+ * its state; the last solved interval, with (since format 7) its end flows, which the island's
  * next job starts from; and, for a certified island, its certificate
  * signature and the graph its certified interval started from, again as a state over the shared topology. Nothing
  * derived is stored: the energy reference and the thermodynamic revision are the package's (core record), and a
@@ -58,7 +57,8 @@ import java.util.function.Function;
  * package key, the package table and the island unit: liquids are evaluated at the state pressure by their own
  * equation of state, so a package is identified by its id and thermodynamic revision alone. Format 10 (unit format 3)
  * dropped the movers' efficiency (owner decision D37, simplification S6): a pump's or a compressor's shaft work is its
- * ideal work.
+ * ideal work; and the approximate fallback (S2): the island unit's fallback allowance and approximation anchor, and the
+ * saved interval's acceptance (every interval is a full solve).
  */
 public final class FluidCheckpointCodec {
     public static final int VERSION=10;
@@ -73,7 +73,6 @@ public final class FluidCheckpointCodec {
     /** Tests and GameTests (the scheduler's self-verification switch) also re-encode every reused unit and fail if
      * the stored one differs. */
     private static final boolean VERIFY=Boolean.getBoolean("createcheme.fluid.scheduler.verify");
-    private static final PassiveStepSolver.Acceptance[] ACCEPTANCES=PassiveStepSolver.Acceptance.values();
     private static final FlowControl.Mode[] MODES=FlowControl.Mode.values();
     private static final PassiveNetwork.NodeKind[] NODE_KINDS=PassiveNetwork.NodeKind.values();
     private static final PassiveNetwork.PhasePort[] PHASE_PORTS=PassiveNetwork.PhasePort.values();
@@ -287,8 +286,8 @@ public final class FluidCheckpointCodec {
 
     /**
      * One island's unit. A certified island records its certificate base (the solved interval's end state, with the
-     * interval itself and the graph it started from), not its materialised state. The anchor and the certificate's
-     * starting graph are written as "the same graph" or as a state over the same topology whenever they are.
+     * interval itself and the graph it started from), not its materialised state. The certificate's starting graph is
+     * written as "the same graph" or as a state over the same topology whenever it is.
      */
     static byte[] islandUnit(IslandEntry entry,long generation,Strings strings) {
         var s=entry.snapshot;var persisted=s.certificate().flatMap(IslandCoordinator.Certified::saved);
@@ -299,13 +298,10 @@ public final class FluidCheckpointCodec {
         header(w,ISLAND,s.id(),s.revision(),generation);
         w.varint(strings.ref(entry.dimension));w.varint(strings.ref(entry.packageId));
         w.text(s.status());
-        var a=s.allowance();w.varint(a.acceptedIntervals());w.varlong(a.advancedTicks());w.varint(a.capturedCadenceTicks());
         var fences=new TreeMap<>(s.fences());w.varint(fences.size());
         for(var fence:fences.entrySet()){w.i64(fence.getKey().getMostSignificantBits());w.i64(fence.getKey().getLeastSignificantBits());w.i64(fence.getValue());}
         int topologyStart=w.size();topology(w,graph);int stateStart=w.size();state(w,graph);
         var main=new Written(topologyStart,stateStart,w.size());
-        if(s.anchor().isEmpty())w.u8(0);
-        else{var anchor=s.anchor().orElseThrow();related(w,anchor.graph(),graph,main);w.varint(strings.ref(anchor.propertyRevision()));modes(w,anchor.modes());}
         if(result.isEmpty())w.u8(0);
         else {
             var r=result.orElseThrow();w.u8(1);
@@ -313,7 +309,7 @@ public final class FluidCheckpointCodec {
             w.varint(r.boundaries().size());
             for(var b:r.boundaries()){w.i64(b.nodeId());w.sparse(b.moles());w.f64(b.totalEnergyJoule());solids(w,b.solids());w.u8(b.solidDirection()+1);}
             var reasons=new TreeMap<>(r.rejectionReasons());w.varint(reasons.size());for(var reason:reasons.entrySet()){w.text(reason.getKey());w.i32(reason.getValue());}
-            modes(w,r.endpointModes());w.sparse(r.endpointHeads());w.sparse(r.endpointFlows());w.u8(r.acceptance().ordinal());
+            modes(w,r.endpointModes());w.sparse(r.endpointHeads());w.sparse(r.endpointFlows());
             w.varint(r.pipeTransfers().size());
             for(var p:r.pipeTransfers()) {
                 w.i64(p.pipeId());int count=p.forward().phaseMoles()[0].length;
@@ -404,7 +400,6 @@ public final class FluidCheckpointCodec {
         var model=models.get(new PackageKey(packageId));
         if(model==null)throw new IllegalArgumentException("Island "+id+": its package "+packageId+" is not in the checkpoint's package table");
         String status=r.text(MAXIMUM_TEXT);
-        var allowance=new FallbackAllowance(r.varint(Integer.MAX_VALUE),r.varlong(),r.varint(Integer.MAX_VALUE));
         int fenceCount=r.varint(MAXIMUM_FENCES);var fences=new LinkedHashMap<UUID,Long>();
         for(int i=0;i<fenceCount;i++) {
             var event=new UUID(r.i64(),r.i64());long tick=r.i64();
@@ -412,9 +407,6 @@ public final class FluidCheckpointCodec {
             if(tick<row.committed)throw new IllegalArgumentException("Island "+id+": fence "+event+" at tick "+tick+" precedes the committed tick "+row.committed);
         }
         var topology=topology(r);var graph=state(r,topology,model);
-        Optional<ApproximationAnchor> anchor=Optional.empty();
-        int anchorFlag=r.u8();
-        if(anchorFlag!=0){var g=related(r,anchorFlag,graph,topology,model);anchor=Optional.of(new ApproximationAnchor(strings.get(r.varint(Integer.MAX_VALUE),"anchor of island "+id),g,modes(r,g.pipes().size())));}
         Optional<PassiveIntervalSolver.Result> result=Optional.empty();
         if(r.bool()) {
             int pipes=graph.pipes().size();
@@ -423,14 +415,14 @@ public final class FluidCheckpointCodec {
             for(int i=0;i<boundaryCount;i++){long node=r.i64();var moles=r.sparse(MAXIMUM_ARRAY);double energy=r.f64();var solids=solids(r,model);int direction=r.u8()-1;boundaries.add(new ConservativeTransport.BoundaryTransfer(node,moles,energy,solids,direction));}
             int reasonCount=r.varint(MAXIMUM_REASONS);var reasons=new LinkedHashMap<String,Integer>();
             for(int i=0;i<reasonCount;i++)if(reasons.put(r.text(MAXIMUM_TEXT),r.i32())!=null)throw r.invalid("duplicate rejection reason");
-            var endpointModes=modes(r,MAXIMUM_PIPES);var heads=r.sparse(MAXIMUM_PIPES);var endFlows=r.sparse(MAXIMUM_PIPES);int acceptance=r.u8();if(acceptance>=ACCEPTANCES.length)throw r.invalid("unknown acceptance "+acceptance);
+            var endpointModes=modes(r,MAXIMUM_PIPES);var heads=r.sparse(MAXIMUM_PIPES);var endFlows=r.sparse(MAXIMUM_PIPES);
             int transferCount=r.varint(MAXIMUM_PIPES);var transfers=new ArrayList<PipeTransfer>(transferCount);
             for(int i=0;i<transferCount;i++){long pipe=r.i64();int count=r.varint(MAXIMUM_ARRAY);transfers.add(new PipeTransfer(pipe,stream(r,count,model),stream(r,count,model)));}
             if(seconds<=0||accepted<1||rejected<0||flows.length!=pipes||endpointModes.size()!=pipes||heads.length!=pipes||endFlows.length!=pipes||transfers.size()!=pipes)throw new IllegalArgumentException("Invalid saved interval history");
             // A closed or refused connection's end flow is exactly zero (the step solver records it so).
             for(int i=0;i<pipes;i++)if(endFlows[i]!=0&&(endpointModes.get(i)==FlowControl.Mode.CLOSED||endpointModes.get(i)==FlowControl.Mode.INLET_WRONG_PHASE))
                 throw new IllegalArgumentException("Invalid saved interval history: a closed connection with an end flow");
-            result=Optional.of(new PassiveIntervalSolver.Result(graph,seconds,flows,accepted,rejected,pumpWork,boundaries,reasons,endpointModes,heads,endFlows,ACCEPTANCES[acceptance],transfers));
+            result=Optional.of(new PassiveIntervalSolver.Result(graph,seconds,flows,accepted,rejected,pumpWork,boundaries,reasons,endpointModes,heads,endFlows,transfers));
         }
         IslandCertificate.Signature signature=null;PassiveNetwork certifiedFrom=null;
         if(r.bool()) {
@@ -445,7 +437,7 @@ public final class FluidCheckpointCodec {
         long generation=IslandCoordinator.freshPayloadGeneration();
         if(row.base==AWAKE) {
             if(row.since!=0||row.start!=0||row.horizon!=0||signature!=null)throw new IllegalArgumentException("Awake island "+id+" carries a certificate");
-            return new IslandEntry(dimension,packageId,new IslandCoordinator.Snapshot(id,row.revision,graph,clock,allowance,anchor,result,status,fences,Optional.empty(),generation));
+            return new IslandEntry(dimension,packageId,new IslandCoordinator.Snapshot(id,row.revision,graph,clock,result,status,fences,Optional.empty(),generation));
         }
         if(row.base<0)throw new IllegalArgumentException("Island "+id+": invalid certificate base tick "+row.base);
         if(signature==null||result.isEmpty())throw new IllegalArgumentException("Certified island "+id+" lacks its certificate record");
@@ -456,7 +448,7 @@ public final class FluidCheckpointCodec {
         // The island at its saved committed tick: its base inventory plus the replayed fraction, never a solve.
         var rebuilt=IslandCertificate.rebuild(persisted,model.molecularWeights());
         var certified=new IslandCoordinator.Certified(rebuilt.drift(),row.since,row.base,row.horizon,rebuilt.largestFlow(),Optional.of(persisted));
-        return new IslandEntry(dimension,packageId,new IslandCoordinator.Snapshot(id,row.revision,rebuilt.graphAt(row.committed),clock,allowance,anchor,result,status,fences,Optional.of(certified),generation));
+        return new IslandEntry(dimension,packageId,new IslandCoordinator.Snapshot(id,row.revision,rebuilt.graphAt(row.committed),clock,result,status,fences,Optional.of(certified),generation));
     }
     private static PassiveNetwork related(Reader r,int flag,PassiveNetwork main,Topology topology,FluidThermodynamics model) {
         return switch(flag) {
@@ -548,7 +540,7 @@ public final class FluidCheckpointCodec {
         PackageKey key(){return new PackageKey(packageId);}
         static PackageRecord of(PackageKey key,FluidThermodynamics model) {
             var reference=EnergyReference.sensible(model.components());
-            return new PackageRecord(key.packageId(),ApproximationAnchor.thermodynamicRevision(model),reference.revision(),List.copyOf(reference.components()));
+            return new PackageRecord(key.packageId(),model.thermodynamicRevision(),reference.revision(),List.copyOf(reference.components()));
         }
     }
     record CoreRecord(long epoch,Strings strings,List<PackageRecord> packages,long[] packs,long[] packBytes,long nextPack,long nextGeneration,

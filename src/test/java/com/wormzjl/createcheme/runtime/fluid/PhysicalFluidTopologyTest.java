@@ -228,7 +228,6 @@ class PhysicalFluidTopologyTest {
         var solver=new PassiveIntervalSolver(model);PassiveIntervalSolver.Result first=null;
         for(int slice=0;slice<40;slice++) {
             var result=solver.solve(graph,5,PassiveIntervalSolver.Settings.defaults(),()->{});graph=result.graph();if(first==null)first=result;
-            assertEquals(PassiveStepSolver.Acceptance.FULL,result.acceptance(),"slice "+slice);
         }
         double moved=(line.first()==upper?1:-1)*first.averageMassFlows()[edge];
         var out=first.pipeTransfers().stream().filter(t->t.pipeId()==line.id()).findFirst().orElseThrow();var drawn=line.first()==upper?out.forward():out.reverse();
@@ -265,7 +264,6 @@ class PhysicalFluidTopologyTest {
         var solver=new PassiveIntervalSolver(model);PassiveIntervalSolver.Result first=null,last=null;double drained=0;
         for(int slice=0;slice<40;slice++) {
             last=solver.solve(graph,5,PassiveIntervalSolver.Settings.defaults(),()->{});graph=last.graph();if(first==null)first=last;
-            assertEquals(PassiveStepSolver.Acceptance.FULL,last.acceptance(),"slice "+slice);
             drained+=(line.first()==tank?1:-1)*last.averageMassFlows()[edge]*5;
         }
         var out=first.pipeTransfers().getFirst();var drawn=line.first()==tank?out.forward():out.reverse();

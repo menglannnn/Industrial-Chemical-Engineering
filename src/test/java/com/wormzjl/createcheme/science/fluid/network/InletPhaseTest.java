@@ -52,7 +52,6 @@ class InletPhaseTest extends PortFixture {
         for(int slice=0;slice<count;slice++) {
             solver.replayStart(graph,committed);
             var result=solver.solve(graph,interval,PassiveIntervalSolver.Settings.defaults(),NOOP);committed=result;graph=result.graph();
-            assertEquals(PassiveStepSolver.Acceptance.FULL,result.acceptance(),label+" slice "+slice);
             assertEquals(interval,result.advancedSeconds(),0,label+" slice "+slice+": the whole slice commits");
             for(var transfer:result.boundaries()){var n=transfer.moles();for(int c=0;c<n.length;c++)external[c]+=n[c];externalEnergy+=transfer.totalEnergyJoule();}
             externalEnergy+=result.pumpWorkJoule();
@@ -211,7 +210,6 @@ class InletPhaseTest extends PortFixture {
             var graph=new PassiveNetwork(List.of(generator,tank),List.of(pipe(10,0,1,line(2,.03),new FlowControl.Pump(.0005,500000))));
             solver.replayStart(graph,committed);
             var result=solver.solve(graph,5,PassiveIntervalSolver.Settings.defaults(),NOOP);committed=result;tank=result.graph().reservoirs().get(1);
-            assertEquals(PassiveStepSolver.Acceptance.FULL,result.acceptance());
             boolean off=result.endpointModes().getFirst()==FlowControl.Mode.INLET_WRONG_PHASE;refused.add(off);
             if(off)assertEquals(0.0,result.averageMassFlows()[0]);else assertTrue(result.averageMassFlows()[0]>0,"runs at "+sweep[i]);
         }

@@ -213,7 +213,7 @@ class ExtremeTopologyIslandTest {
                 try{result=solver.solve(graph,slice,PassiveIntervalSolver.Settings.defaults(),()->{});}
                 catch(RuntimeException held){run.failure="interval "+(i+1)+" (t="+String.format(Locale.ROOT,"%.1f",slice*i)+" s): "+held;break;}
                 String at="interval "+(i+1)+": ";
-                if(result.acceptance()!=PassiveStepSolver.Acceptance.FULL||result.advancedSeconds()!=slice)run.violations.add(at+"not a full interval: "+result.acceptance()+" advanced "+result.advancedSeconds());
+                if(result.advancedSeconds()!=slice)run.violations.add(at+"not a full interval: advanced "+result.advancedSeconds());
                 committed=result;graph=result.graph();run.completed++;run.accepted+=result.acceptedSubsteps();run.rejected+=result.rejectedSubsteps();
                 result.rejectionReasons().forEach((k,v)->run.reasons.merge(k,v,Integer::sum));
                 double[] intervalSupply=new double[generators.size()];

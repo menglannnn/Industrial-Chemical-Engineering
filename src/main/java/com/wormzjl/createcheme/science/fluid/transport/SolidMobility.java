@@ -26,7 +26,10 @@ public final class SolidMobility {
         return state.liquidVolume()>0&&SlurryTransport.immobile(model.viscosity.liquid(state.temperature(),state.liquidView()).pascalSeconds(),model.solidSettings.immobileViscosity())
                 ||state.waterVolume()>0&&SlurryTransport.immobile(model.viscosity.waterLiquid(state.temperature()),model.solidSettings.immobileViscosity());
     }
-    public static boolean requiresFull(FluidThermodynamics model,PassiveNetwork graph) {
+    /** Whether a connection of {@code graph} can close for its solids at the interval's t0: a filter, a vessel holding solids
+     * or an immobile liquid, or a feed of solids. {@code SolidEventIntegrator} reads the island's closures at t0 only then; it
+     * was also the approximate fallback's refusal until owner decision D37 (S2) removed that mode. */
+    public static boolean closable(FluidThermodynamics model,PassiveNetwork graph) {
         return graph.pipes().stream().anyMatch(p->p.filter()!=null)
                 ||graph.reservoirs().stream().anyMatch(n->n.state().solidMoments().mass()>0||immobileLiquid(model,n.state()))
                 ||graph.scheduledTransfers().stream().anyMatch(t->t instanceof com.wormzjl.createcheme.science.fluid.network.ScheduledTransfer.Injection in&&!in.solidsPerSecond().empty());

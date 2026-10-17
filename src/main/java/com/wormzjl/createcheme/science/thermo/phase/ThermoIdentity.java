@@ -20,9 +20,9 @@ import java.util.Objects;
  *
  * <p>Cache rule: anything that stores a number computed from a phase state, or a decision derived from one, keys on
  * {@link #revision()} and is discarded, never migrated, when it changes (the owner's no-compatibility rule): the fluid
- * network's thermodynamic revision ({@code ApproximationAnchor.thermodynamicRevision}, which saved islands are checked
+ * network's thermodynamic revision ({@code FluidThermodynamics.thermodynamicRevision}, which saved islands are checked
  * against), the column's neural-model physics fingerprint and its eligibility check, regression fixtures and pins, and
- * any approximation state (anchors, warm starts, factorizations) built on the phase engine.</p>
+ * any approximation state (warm starts, factorizations) built on the phase engine.</p>
  *
  * <p>The revision encodes every part length-prefixed, so no two different identities share a revision whatever
  * characters the parts contain.</p>

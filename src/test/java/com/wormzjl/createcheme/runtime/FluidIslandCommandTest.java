@@ -12,23 +12,23 @@ import org.junit.jupiter.api.Test;
 import com.wormzjl.createcheme.runtime.fluid.*;
 
 class FluidIslandCommandTest {
-    @Test void aSoftTimeoutCanProduceAUsefulConservativeApproximationAndThenRecover() {
+    /**
+     * A job that runs past what was the soft budget is the full solve, on the whole wall budget: the clock advances 1 ns
+     * per read, so the old 1 ns soft budget cut this job at its first checkpoint and started the approximate fallback.
+     * Owner decision D37 (S2) removed that mode, so the job is the same computation as a solve with no clock at all.
+     */
+    @Test void aJobPastTheOldSoftBudgetIsTheFullSolveOnTheWholeWallBudget() {
         var model=FluidTestSupport.networkModel();
         var graph=new PassiveNetwork(List.of(new PassiveNetwork.Reservoir(1,0,model.initialNitrogenCharge(1,350,150000,()->{}),PassiveNetwork.NodeKind.GENERATOR),
                 new PassiveNetwork.Reservoir(2,0,model.initialNitrogenCharge(1,350,149000,()->{}))),List.of(new PassiveNetwork.Pipe(1,0,1,new PipeResistance.Geometry(100,.01,.000045,0))));
-        var warm=new PassiveIntervalSolver(model).solve(graph,.05,PassiveIntervalSolver.Settings.defaults(),()->{});graph=warm.graph();
-        var anchor=ApproximationAnchor.fromFull(model,warm);var policy=FallbackAllowance.Policy.active(anchor,FallbackAllowance.NONE,100,1);
-        var command=new ProcessSolveServices.FluidIslandCommand(model,graph,5,PassiveIntervalSolver.Settings.defaults(),1_000_000,policy);
+        graph=new PassiveIntervalSolver(model).solve(graph,.05,PassiveIntervalSolver.Settings.defaults(),()->{}).graph();
+        var command=new ProcessSolveServices.FluidIslandCommand(model,graph,5,PassiveIntervalSolver.Settings.defaults(),1_000_000);
         var clock=new AtomicLong();var result=assertInstanceOf(ProcessSolveServices.FluidIslandSolveResult.class,command.solve(token(false),clock::getAndIncrement));
-        assertTrue(result.candidate().isPresent(),result.detail());assertEquals(PassiveStepSolver.Acceptance.APPROXIMATE,result.candidate().orElseThrow().acceptance());
-        assertTrue(result.candidate().orElseThrow().averageMassFlows()[0]>0);assertEquals(1,result.proposedAllowance().acceptedIntervals());assertEquals(anchor,result.proposedAnchor().orElseThrow());
+        assertEquals("FULL",result.detail());assertTrue(clock.get()>1,"the job read the clock past the old soft budget");
         var reference=new PassiveIntervalSolver(model).solve(graph,5,PassiveIntervalSolver.Settings.defaults(),()->{});
-        assertEquals(reference.averageMassFlows()[0],result.candidate().orElseThrow().averageMassFlows()[0],.02*reference.averageMassFlows()[0]);
-        var current=result.candidate().orElseThrow().graph();var recovery=new ProcessSolveServices.FluidIslandCommand(model,current,5,PassiveIntervalSolver.Settings.defaults(),1_000_000,
-                FallbackAllowance.Policy.active(anchor,result.proposedAllowance(),100,1));
-        var recovered=assertInstanceOf(ProcessSolveServices.FluidIslandSolveResult.class,recovery.solve(token(false),()->0));
-        assertEquals("FULL",recovered.detail());assertEquals(FallbackAllowance.NONE,recovered.proposedAllowance());
-        assertTrue(recovered.candidate().orElseThrow().graph().reservoirs().get(1).inventory().moles()[com.wormzjl.createcheme.science.material.MaterialTestBasis.NITROGEN]>=current.reservoirs().get(1).inventory().moles()[com.wormzjl.createcheme.science.material.MaterialTestBasis.NITROGEN]);
+        assertTrue(reference.averageMassFlows()[0]>0);
+        assertArrayEquals(reference.averageMassFlows(),result.candidate().orElseThrow().averageMassFlows());
+        assertEquals(reference.graph().reservoirs().get(1).inventory(),result.candidate().orElseThrow().graph().reservoirs().get(1).inventory());
     }
     private ProcessSolveServices.FluidIslandCommand command() {
         var model=FluidTestSupport.networkModel();
@@ -52,14 +52,5 @@ class FluidIslandCommandTest {
         var command=command();assertThrows(CancellationException.class,()->command.solve(token(true),()->0));
         var result=assertInstanceOf(ProcessSolveServices.FluidIslandSolveResult.class,command.solve(token(false),()->0));
         assertEquals(5,result.candidate().orElseThrow().advancedSeconds());assertEquals(command.snapshot(),result.candidate().orElseThrow().graph());
-    }
-    @Test void oldHydraulicAnchorCannotTriggerSoftFallbackAndIsRenewedOnlyByAFullSolve() {
-        var base=command();var model=base.model();var full=new PassiveIntervalSolver(model).solve(base.snapshot(),5,PassiveIntervalSolver.Settings.defaults(),()->{});
-        var old=new ApproximationAnchor(ApproximationAnchor.thermodynamicRevision(model),full.graph(),full.endpointModes());
-        var allowance=new FallbackAllowance(2,100,100);var policy=FallbackAllowance.Policy.active(old,allowance,100,1);
-        var changed=new ProcessSolveServices.FluidIslandCommand(model,full.graph(),5,PassiveIntervalSolver.Settings.defaults(),1_000_000,policy);
-        var clock=new AtomicLong();var result=(ProcessSolveServices.FluidIslandSolveResult)changed.solve(token(false),clock::getAndIncrement);
-        assertEquals("FULL",result.detail());assertEquals(FallbackAllowance.NONE,result.proposedAllowance());
-        assertEquals(ApproximationAnchor.revision(model),result.proposedAnchor().orElseThrow().propertyRevision());
     }
 }

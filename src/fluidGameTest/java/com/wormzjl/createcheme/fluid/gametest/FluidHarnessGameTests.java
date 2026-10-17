@@ -93,7 +93,7 @@ public final class FluidHarnessGameTests {
     public static void savedDataKeepsADepletedNitrogenChargeAndAtomicWritesKeepThePreviousCheckpoint(GameTestHelper helper) throws java.io.IOException {
         var model=com.wormzjl.createcheme.science.fluid.thermo.FluidThermodynamics.forNetwork(com.wormzjl.createcheme.science.material.MaterialCatalog.bundled(),"createcheme:tjl20_methane_nitrogen");
         var graph=new com.wormzjl.createcheme.science.fluid.network.PassiveNetwork(java.util.List.of(new com.wormzjl.createcheme.science.fluid.network.PassiveNetwork.Reservoir(1,0,model.initialNitrogenCharge(1,298.15,65000,()->{}))),java.util.List.of());
-        var island=new com.wormzjl.createcheme.runtime.fluid.IslandCoordinator.Snapshot(1,0,graph,new com.wormzjl.createcheme.runtime.fluid.IslandClock.Snapshot(250,100,0,100),com.wormzjl.createcheme.runtime.fluid.FallbackAllowance.NONE,java.util.Optional.empty(),java.util.Optional.empty(),"HELD");
+        var island=new com.wormzjl.createcheme.runtime.fluid.IslandCoordinator.Snapshot(1,0,graph,new com.wormzjl.createcheme.runtime.fluid.IslandClock.Snapshot(250,100,0,100),java.util.Optional.empty(),"HELD");
         var checkpoint=new com.wormzjl.createcheme.runtime.fluid.FluidCheckpointCodec.Checkpoint(java.util.List.of(new com.wormzjl.createcheme.runtime.fluid.FluidCheckpointCodec.IslandEntry("minecraft:overworld","createcheme:tjl20_methane_nitrogen",island)));
         // Format 5 through Minecraft's own save path: the core record and a pack written on NeoForge's IO worker, in a
         // folder of their own under the GameTest world's data.
@@ -136,8 +136,8 @@ public final class FluidHarnessGameTests {
         },com.wormzjl.createcheme.runtime.fluid.IslandCoordinator.Settings.defaults().withCertificates(com.wormzjl.createcheme.runtime.fluid.CertificatePolicy.disabled()),null);
         long id=com.wormzjl.createcheme.runtime.ProcessSolveServices.nextRequestId();
         runtime.register(helper.getLevel().dimension(),new com.wormzjl.createcheme.runtime.fluid.IslandCoordinator.Snapshot(id,0,graph,
-                new com.wormzjl.createcheme.runtime.fluid.IslandClock.Snapshot(900,0,0,100),com.wormzjl.createcheme.runtime.fluid.FallbackAllowance.NONE,
-                java.util.Optional.empty(),java.util.Optional.empty(),"READY"),model);
+                new com.wormzjl.createcheme.runtime.fluid.IslandClock.Snapshot(900,0,0,100),
+                java.util.Optional.empty(),"READY"),model);
         runtime.coordinator().pump();
         helper.succeedWhen(()->{
             var current=runtime.coordinator().snapshot(id);

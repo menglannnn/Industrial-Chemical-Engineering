@@ -127,7 +127,7 @@ class PhysicalRegistryTest {
         Runnable heldTick=()->{
             w.ledger.tick();w.coordinator.tick();if(w.ledger.hasPendingEvents()){w.registry.applyPending();w.coordinator.pumpIfUseful();}
             for(long request:List.copyOf(w.attempts.keySet())){var attempt=w.attempts.remove(request);var command=w.commands.remove(request);
-                var result=attempt.islandId()==island?new ProcessSolveServices.FluidIslandSolveResult(Optional.empty(),"HELD: test refusal",10,FallbackAllowance.NONE,Optional.empty())
+                var result=attempt.islandId()==island?new ProcessSolveServices.FluidIslandSolveResult(Optional.empty(),"HELD: test refusal",10)
                         :(ProcessSolveServices.FluidIslandSolveResult)command.solve(FluidTestSupport.NEVER);
                 w.coordinator.completed(attempt,Optional.of(result));}
             w.coordinator.pump();

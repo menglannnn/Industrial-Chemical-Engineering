@@ -60,7 +60,6 @@ class LevelHeadTest extends PortFixture {
             for(int slice=0;slice<count;slice++) {
                 solver.replayStart(graph,committed);
                 var result=solver.solve(graph,interval,PassiveIntervalSolver.Settings.defaults(),NOOP);committed=result;graph=result.graph();
-                assertEquals(PassiveStepSolver.Acceptance.FULL,result.acceptance(),label+" slice "+slice);
                 assertEquals(interval,result.advancedSeconds(),0,label+" slice "+slice+": the whole slice commits");
                 for(var transfer:result.boundaries()){var n=transfer.moles();for(int c=0;c<n.length;c++)external[c]+=n[c];externalEnergy+=transfer.totalEnergyJoule();}
                 externalEnergy+=result.pumpWorkJoule();

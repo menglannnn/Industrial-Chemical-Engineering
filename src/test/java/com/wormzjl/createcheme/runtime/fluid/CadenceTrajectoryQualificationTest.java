@@ -91,14 +91,14 @@ class CadenceTrajectoryQualificationTest {
         var dispatch=new Dispatch();double[] moved={0};var frames=new ArrayList<Frame>();var published=new ArrayList<Frame>();var clocks=new ArrayList<IslandClock.Snapshot>();var cadences=new TreeSet<Integer>();int[] intervals={0};
         var coordinator=new IslandCoordinator(dispatch,changes->{
             for(var state:changes) {
-                var result=state.lastResult().orElseThrow();assertEquals(PassiveStepSolver.Acceptance.FULL,result.acceptance());assertClosed(initial,state.graph());
+                var result=state.lastResult().orElseThrow();assertClosed(initial,state.graph());
                 moved[0]+=result.advancedSeconds()*result.averageMassFlows()[0];cadences.add(state.clock().cadenceTicks());intervals[0]++;
                 published.add(new Frame((int)state.clock().committedTick(),state.graph(),moved[0]));clocks.add(state.clock());
                 if(state.clock().committedTick()%400==0)frames.add(new Frame((int)state.clock().committedTick(),state.graph(),moved[0]));
             }
         // Certificates off: these rows qualify every solved interval and must stay byte-identical to the WP0 fingerprint.
         },()->0,new IslandCoordinator.Settings(2_000_000_000L,1_500_000_000L,64,true,100,CertificatePolicy.disabled()));
-        coordinator.register(new IslandCoordinator.Snapshot(1,0,initial,new IslandClock.Snapshot(0,0,0,100),FallbackAllowance.NONE,Optional.empty(),Optional.empty(),"READY"),model);
+        coordinator.register(new IslandCoordinator.Snapshot(1,0,initial,new IslandClock.Snapshot(0,0,0,100),Optional.empty(),"READY"),model);
         UUID boundary=UUID.randomUUID();coordinator.fence(boundary,400,List.of(1L));
         for(int tick=1;tick<=1600;tick++) {
             coordinator.tick();
@@ -106,7 +106,7 @@ class CadenceTrajectoryQualificationTest {
                 var attempt=dispatch.attempt;var command=dispatch.command;dispatch.attempt=null;dispatch.command=null;
                 var result=new PassiveIntervalSolver(model).solve(command.snapshot(),command.durationSeconds(),command.settings(),()->{});
                 long cpu=intervals[0]<3?1_600_000_000L:10_000_000L;
-                coordinator.completed(attempt,Optional.of(new ProcessSolveServices.FluidIslandSolveResult(Optional.of(result),"FULL",cpu,cpu,FallbackAllowance.NONE,Optional.of(ApproximationAnchor.fromFull(model,result)))));
+                coordinator.completed(attempt,Optional.of(new ProcessSolveServices.FluidIslandSolveResult(Optional.of(result),"FULL",cpu,cpu)));
                 coordinator.pump();
             }
             if(tick%400==0&&tick<1600){coordinator.releaseFence(boundary,List.of(1L));boundary=UUID.randomUUID();coordinator.fence(boundary,tick+400,List.of(1L));}

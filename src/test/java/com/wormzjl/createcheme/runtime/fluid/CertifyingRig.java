@@ -42,7 +42,7 @@ final class CertifyingRig {
     /** Records what the coordinator publishes and replays from here on. */
     CertifyingRig recording(){recording=true;return this;}
     void register(long id,PassiveNetwork graph) {
-        coordinator.register(new IslandCoordinator.Snapshot(id,0,graph,new IslandClock.Snapshot(epoch[0],epoch[0],0,100),FallbackAllowance.NONE,Optional.empty(),Optional.empty(),"READY"),model);
+        coordinator.register(new IslandCoordinator.Snapshot(id,0,graph,new IslandClock.Snapshot(epoch[0],epoch[0],0,100),Optional.empty(),"READY"),model);
     }
     void load(FluidCheckpointCodec.Checkpoint checkpoint){for(var entry:checkpoint.islands())coordinator.register(entry.snapshot(),model);}
     /** Solves and completes everything admitted, then pumps, until nothing is outstanding: one completion drain. */

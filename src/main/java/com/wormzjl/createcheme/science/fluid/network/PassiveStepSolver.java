@@ -14,7 +14,6 @@ import com.wormzjl.createcheme.science.fluid.transport.SlurryTransport;
 
 /** One simultaneous backward-Euler step with a fixed phase regime; no nested TP/UV/PH flash. */
 public final class PassiveStepSolver {
-    public enum Acceptance { FULL, APPROXIMATE }
     /**
      * Standard gravity, m/s2: the static heads (a connection's column, a vessel's level head) and a solid's settling
      * ({@code SlurryTransport}). No stream or ledger carries potential energy (owner decision D37, simplification S1).
@@ -356,10 +355,8 @@ public final class PassiveStepSolver {
         @Override public double[] devicePressureChanges(){return devicePressureChanges.clone();}
         @Override public double[] externalMoles(){return externalMoles.clone();}
     }
-    public Result solve(PassiveNetwork graph,double dt,Runnable checkpoint) {
-        return solve(graph,dt,checkpoint,Acceptance.FULL);
-    }
-    public Result solveRate(PassiveNetwork graph,Runnable checkpoint,Acceptance acceptance){return solve(graph,1,checkpoint,acceptance,true);}
+    public Result solve(PassiveNetwork graph,double dt,Runnable checkpoint){return solve(graph,dt,checkpoint,false);}
+    public Result solveRate(PassiveNetwork graph,Runnable checkpoint){return solve(graph,1,checkpoint,true);}
     /**
      * One rate solve of {@code graph} with its vessels held as ports ({@link PassiveNetwork.NodeKind#PORT}, dt = 1), or
      * null when it has no connection or does not converge. Both start-of-interval checks read the island through it: the
@@ -369,21 +366,20 @@ public final class PassiveStepSolver {
      * closure, and the steps, whose guards see every transition at t0 and inside the interval, decide (option R1 of the
      * phase-ports review, hold class E1).
      */
-    Result portRate(PassiveNetwork graph,Runnable checkpoint,Acceptance acceptance) {
+    Result portRate(PassiveNetwork graph,Runnable checkpoint) {
         if(graph.pipes().isEmpty())return null;
         var ports=new ArrayList<PassiveNetwork.Reservoir>();
         for(var node:graph.reservoirs())ports.add(new PassiveNetwork.Reservoir(node.id(),node.elevation(),node.state(),
                 node.kind()==PassiveNetwork.NodeKind.RESERVOIR?PassiveNetwork.NodeKind.PORT:node.kind(),node.inventory()));
-        try{return solveRate(new PassiveNetwork(ports,graph.pipes()),checkpoint,acceptance);}
-        catch(SparseNewton.Nonconvergence|IllegalArgumentException|ApproximationAnchor.Rejected failed){return null;}
+        try{return solveRate(new PassiveNetwork(ports,graph.pipes()),checkpoint);}
+        catch(SparseNewton.Nonconvergence|IllegalArgumentException failed){return null;}
     }
-    public Result solve(PassiveNetwork graph,double dt,Runnable checkpoint,Acceptance acceptance) {return solve(graph,dt,checkpoint,acceptance,false);}
-    private Result solve(PassiveNetwork inputGraph,double dt,Runnable checkpoint,Acceptance acceptance,boolean rateOnly) {
+    private Result solve(PassiveNetwork inputGraph,double dt,Runnable checkpoint,boolean rateOnly) {
         // A junction minted by its constructor and not yet sized to its connections is sized here (no-op otherwise).
         inputGraph=PassiveNetwork.sizeJunctionHoldups(inputGraph,model);
         this.rateOnly=rateOnly;
         inputStates=inputGraph.reservoirs().stream().map(PassiveNetwork.Reservoir::state).toList();
-        Objects.requireNonNull(acceptance);SolverDiagnostics.count(SolverDiagnostics.implicitSolves);
+        SolverDiagnostics.count(SolverDiagnostics.implicitSolves);
         ownership.check("Each executing island job needs its own step workspace");
         lastSolve=null;
         if(!Double.isFinite(dt)||dt<=0)throw new IllegalArgumentException("Positive finite substep required");
@@ -547,7 +543,7 @@ public final class PassiveStepSolver {
             // 1e-11 stalls on caloric cancellation in nearly liquid-full water with trace N2.
             // Keep two orders of margin to the unchanged 1e-8 full-equation gate; every final
             // reconstruction and the independent interval accuracy/accounting checks still run.
-            double tolerance=acceptance==Acceptance.APPROXIMATE?1e-6:smallHeadspace?1e-10:1e-9;
+            double tolerance=smallHeadspace?1e-10:1e-9;
             try{numerical=SparseNewton.solve(equations,equations.initial(),new SparseNewton.Settings(20,tolerance,1e-6,24),checkpoint,workspace);}
             catch(SparseNewton.Nonconvergence failure) {
                 if(failure.lastVariables()==null)throw failure;
@@ -695,7 +691,7 @@ public final class PassiveStepSolver {
             for(int node=0;node<projection.states().size();node++)if(equations.layout[node]!=null){var encoded=equations.layout[node].encode(projection.states().get(node));System.arraycopy(encoded,0,reconstructed,equations.offsets[node],encoded.length);}
             SolverDiagnostics.count(SolverDiagnostics.verificationResiduals);
             double maximumResidual=0;for(double residual:equations.residual(reconstructed))maximumResidual=Math.max(maximumResidual,Math.abs(residual));
-            double gate=acceptance==Acceptance.FULL?1e-8:1e-6;
+            double gate=1e-8;
             if(maximumResidual>gate) {
                 // Decision D13: a refused point gets one polish on a fresh Jacobian before the step is refused; see
                 // {@link #polishRefusedPoint}. Reached only after the gate has refused, so every point it accepts is untouched.
@@ -714,7 +710,6 @@ public final class PassiveStepSolver {
                     projection=polished.projection();reconstructed=polished.reconstructed();maximumResidual=polished.residual();}
             }
             if(maximumResidual>gate){SolverDiagnostics.count(SolverDiagnostics.equationGateRejections);throw new SparseNewton.Nonconvergence("Conservative reconstruction fails equation gate: "+maximumResidual);}
-            if(acceptance==Acceptance.APPROXIMATE)checkApproximation(equations,reconstructed,projection.states(),flows,workspace,checkpoint,tolerance);
             // The ledger reads the island as it is: an emptying vessel is a vessel that ends empty, not the junction it stood
             // as in this pass.
             checkConservation(original,projection);
@@ -1008,46 +1003,6 @@ public final class PassiveStepSolver {
         for(var node:graph.reservoirs())if(node.kind()!=PassiveNetwork.NodeKind.VOID){var amounts=node.inventory().moles();for(int c=0;c<mask.length;c++)mask[c]|=amounts[c]>0;}
         for(var transfer:graph.scheduledTransfers())if(transfer instanceof ScheduledTransfer.Injection input){var amounts=input.molesPerSecond();for(int c=0;c<mask.length;c++)mask[c]|=amounts[c]>0;}
         return mask;
-    }
-    /** Online trust check against a contracting correction of the complete coupled equations, not separate flashes. */
-    private void checkApproximation(Equations equations,double[] point,List<FluidThermodynamics.State> candidate,double[] flows,SparseNewton.Workspace workspace,Runnable checkpoint,double tolerance) {
-        var estimate=SparseNewton.estimateCorrection(equations,point,checkpoint,workspace);var probe=estimate.probe();var corrected=equations.states(probe);
-        double inflation=estimate.initialResidual()>1e-12?1/(1-Math.min(.5,estimate.probeResidual()/estimate.initialResidual())):1;
-        if(phaseCorrection(equations.graph,corrected,checkpoint)!=null)throw new ApproximationAnchor.Rejected("Error probe changes a phase regime");
-        for(int i=0;i<candidate.size();i++) {
-            var a=candidate.get(i);var b=corrected.get(i);
-            if(inflation*Math.abs(a.pressure()-b.pressure())>.001*b.pressure()+.1
-                    ||inflation*Math.abs(a.temperature()-b.temperature())>.2
-                    ||inflation*Math.abs(a.vaporVolume()/a.volume()-b.vaporVolume()/b.volume())>.002
-                    ||inflation*Math.abs(a.liquidVolume()/a.volume()-b.liquidVolume()/b.volume())>.002
-                    ||inflation*Math.abs(a.waterVolume()/a.volume()-b.waterVolume()/b.volume())>.002)
-                throw new ApproximationAnchor.Rejected("Coupled property-error estimate exceeds the fallback trust profile");
-        }
-        for(int edge=0;edge<flows.length;edge++) {
-            var pipe=equations.graph.pipes().get(edge);double q=probe[equations.edgeOffset+edge],floor=1e-10;
-            for(int node:new int[]{pipe.first(),pipe.second()})if(!equations.graph.reservoirs().get(node).junction()&&!equations.graph.reservoirs().get(node).fixed())floor+=1e-9*candidate.get(node).mass()/equations.dt;
-            if(inflation*Math.abs(q-flows[edge])>floor+.002*Math.abs(q)
-                    ||Math.signum(q)!=Math.signum(flows[edge])&&Math.max(Math.abs(q),Math.abs(flows[edge]))>floor
-                    ||!boundaryAllowed(equations.graph,pipe,q)&&Math.abs(q)>floor)
-                throw new ApproximationAnchor.Rejected("Coupled flow-error estimate exceeds the fallback trust profile");
-            double head=equations.controlOffsets[edge]<0?0:probe[equations.controlOffsets[edge]]*1e5;
-            var up=corrected.get(pipe.first());var mode=equations.modes.get(edge);
-            if(pipe.control() instanceof FlowControl.Mover pump&&mode!=FlowControl.Mode.INLET_WRONG_PHASE) {
-                // A pump the solve closed at its own shutoff corner holds a head within
-                // {@link #shutoffBand} of its maximum by construction, so the probe reads the
-                // reopening test against that same band rather than a fixed 0.01 Pa.
-                double band=shutoffBand(equations.pressureScales[edge],tolerance);
-                double limit=riseLimit(pump,endDensity(up,pipe.firstPort()),up.pressure());
-                if(q<-floor||mode!=FlowControl.Mode.CLOSED&&head>limit+.01||mode==FlowControl.Mode.CLOSED&&pump.targetVolumeFlow()>0&&head<limit-band)
-                    throw new ApproximationAnchor.Rejected("Error probe changes pump feasibility");
-            }else if(pipe.control() instanceof FlowControl.PressureValve valve) {
-                if(q<-floor||mode==FlowControl.Mode.VALVE_REGULATING&&head<-.01
-                        ||mode==FlowControl.Mode.VALVE_OPEN&&up.pressure()<valve.targetPressure()-.01&&q>floor
-                        ||mode==FlowControl.Mode.CLOSED&&up.pressure()>valve.targetPressure()+.01&&head>.01)
-                    throw new ApproximationAnchor.Rejected("Error probe changes valve feasibility");
-            }
-            if(Math.abs(q)>velocityCap(equations,edge,q,corrected)*(1+2e-8)+floor)throw new ApproximationAnchor.Rejected("Error probe violates velocity constraint");
-        }
     }
     /** Physical species can traverse passive pipes in either direction, actuators only downstream.
      * Junction property guesses own no inventory and therefore cannot introduce a species. {@code closed} names the connections this pass has already pinned to a flow of exactly zero;
@@ -1381,7 +1336,7 @@ public final class PassiveStepSolver {
                 var trial=new ArrayList<PassiveNetwork.Reservoir>(nodes);
                 for(int i=0;i<nodes;i++){var node=graph.reservoirs().get(i);trial.add(node.junction()?new PassiveNetwork.Reservoir(node.id(),node.elevation(),states.get(i),PassiveNetwork.NodeKind.JUNCTION):node);}
                 var held=PassiveNetwork.sizeJunctionHoldups(new PassiveNetwork(trial,graph.pipes(),graph.scheduledTransfers()),model);
-                var rate=new PassiveStepSolver(model).portRate(held,none,Acceptance.FULL);
+                var rate=new PassiveStepSolver(model).portRate(held,none);
                 if(rate==null)return states;
                 double[] q=rate.massFlows();
                 // Per junction: amounts per kilogram and specific enthalpy of what it holds, iterated over the junctions.
@@ -2203,11 +2158,6 @@ public final class PassiveStepSolver {
     /** Whether an accepted mode reports a connection on its velocity cap. */
     private static boolean capMode(FlowControl.Mode mode) {
         return mode==FlowControl.Mode.VELOCITY_LIMITED||mode==FlowControl.Mode.PUMP_VELOCITY_LIMIT||mode==FlowControl.Mode.VALVE_VELOCITY_LIMIT;
-    }
-    /** {@link #phaseCorrection(PassiveNetwork, List, Runnable, FluidThermodynamics.Prepared[], int[])} with no prepared
-     * temperatures and no record of folded phases. */
-    private List<FluidThermodynamics.State> phaseCorrection(PassiveNetwork graph,List<FluidThermodynamics.State> states,Runnable checkpoint) {
-        return phaseCorrection(graph,states,checkpoint,null,null);
     }
     /**
      * The outer phase check of a pass's point, node by node ({@link FluidThermodynamics#phaseCheck}, owner decisions D25 and

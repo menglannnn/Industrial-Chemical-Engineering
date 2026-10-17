@@ -1,7 +1,6 @@
 package com.wormzjl.createcheme.runtime.fluid;
 
 import com.wormzjl.createcheme.CreateChemE;
-import com.wormzjl.createcheme.science.fluid.network.ApproximationAnchor;
 import com.wormzjl.createcheme.science.fluid.state.EnergyReference;
 import com.wormzjl.createcheme.science.fluid.thermo.FluidThermodynamics;
 import net.minecraft.nbt.*;
@@ -318,7 +317,7 @@ public final class FluidCheckpointStore {
         var byKey=new HashMap<FluidCheckpointCodec.PackageKey,FluidThermodynamics>();
         for(var p:core.packages()) {
             var model=Objects.requireNonNull(models.apply(p.key()));
-            if(!p.propertyRevision().equals(ApproximationAnchor.thermodynamicRevision(model)))throw new IllegalArgumentException("Incompatible fluid property basis; use a fresh development world: "+p.packageId());
+            if(!p.propertyRevision().equals(model.thermodynamicRevision()))throw new IllegalArgumentException("Incompatible fluid property basis; use a fresh development world: "+p.packageId());
             var reference=EnergyReference.sensible(model.components());
             if(!p.energyRevision().equals(reference.revision())||!p.energyComponents().equals(reference.components())||reference.formationDataQualified())
                 throw new IllegalArgumentException("Saved energy reference is not this build's; use a fresh development world");

@@ -94,7 +94,7 @@ class SolidTransportAcceptanceTest {
         assertEquals(SolidMobility.Reason.IMMOBILE_LIQUID,check(cold,pipe(),1,SolidMobility.Outlet.MIXED).reason());
         assertTrue(check(hot,pipe(),1,SolidMobility.Outlet.MIXED).allowed());
         assertTrue(check(cold,pipe(),1,SolidMobility.Outlet.GAS).allowed());
-        assertTrue(SolidMobility.requiresFull(model,new PassiveNetwork(List.of(new PassiveNetwork.Reservoir(1,0,cold)),List.of())));
+        assertTrue(SolidMobility.closable(model,new PassiveNetwork(List.of(new PassiveNetwork.Reservoir(1,0,cold)),List.of())));
     }
     @Test void populationCountDoesNotIncreaseTheNonlinearDimension() throws Exception {
         int dimension=-1,unknowns=-1,colors=-1;

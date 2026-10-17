@@ -292,7 +292,7 @@ class PhasePortTest extends PortFixture {
         var settings=PassiveIntervalSolver.Settings.defaults();
         for(int slice=0;slice<count;slice++) {
             solver.replayStart(graph,committed);
-            var result=solver.integrate(InventoryEquilibrium.refresh(graph,model,NOOP),interval,settings,NOOP,PassiveStepSolver.Acceptance.FULL,PassiveIntervalSolver.StageGuard.NONE,settings.initialStep());
+            var result=solver.integrate(InventoryEquilibrium.refresh(graph,model,NOOP),interval,settings,NOOP,PassiveIntervalSolver.StageGuard.NONE,settings.initialStep());
             committed=result;graph=result.graph();
             bits.add((long)result.acceptedSubsteps());bits.add((long)result.rejectedSubsteps());
             for(var node:graph.reservoirs()){var s=node.state();

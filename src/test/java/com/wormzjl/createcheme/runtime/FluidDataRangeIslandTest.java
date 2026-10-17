@@ -62,7 +62,7 @@ class FluidDataRangeIslandTest {
             },changed->{},()->0L,new IslandCoordinator.Settings(2_000_000_000L,1_500_000_000L,64,false,100,CertificatePolicy.defaults()));
             coordinator.onPhaseHold((island,v,where,parked)->warnings.add(v.getMessage()+" | "+where));
             coordinator.nodeNames(names);
-            coordinator.register(new IslandCoordinator.Snapshot(1,0,graph,new IslandClock.Snapshot(0,0,0,100),FallbackAllowance.NONE,Optional.empty(),Optional.empty(),"READY"),model);
+            coordinator.register(new IslandCoordinator.Snapshot(1,0,graph,new IslandClock.Snapshot(0,0,0,100),Optional.empty(),"READY"),model);
         }
         void run(int ticks) {
             for(int t=0;t<ticks;t++) {

@@ -47,8 +47,8 @@ public final class PassiveIntervalSolver {
     }
     public record Result(PassiveNetwork graph,double advancedSeconds,double[] averageMassFlows,int acceptedSubsteps,int rejectedSubsteps,
                          double pumpWorkJoule,List<ConservativeTransport.BoundaryTransfer> boundaries,Map<String,Integer> rejectionReasons,
-                         List<FlowControl.Mode> endpointModes,double[] endpointHeads,double[] endpointFlows,PassiveStepSolver.Acceptance acceptance,List<PipeTransfer> pipeTransfers) {
-        public Result {averageMassFlows=averageMassFlows.clone();boundaries=List.copyOf(boundaries);rejectionReasons=Collections.unmodifiableMap(new LinkedHashMap<>(rejectionReasons));endpointModes=List.copyOf(endpointModes);endpointHeads=endpointHeads.clone();endpointFlows=endpointFlows.clone();Objects.requireNonNull(acceptance);pipeTransfers=List.copyOf(pipeTransfers);}
+                         List<FlowControl.Mode> endpointModes,double[] endpointHeads,double[] endpointFlows,List<PipeTransfer> pipeTransfers) {
+        public Result {averageMassFlows=averageMassFlows.clone();boundaries=List.copyOf(boundaries);rejectionReasons=Collections.unmodifiableMap(new LinkedHashMap<>(rejectionReasons));endpointModes=List.copyOf(endpointModes);endpointHeads=endpointHeads.clone();endpointFlows=endpointFlows.clone();pipeTransfers=List.copyOf(pipeTransfers);}
         @Override public double[] averageMassFlows(){return averageMassFlows.clone();}
         @Override public double[] endpointHeads(){return endpointHeads.clone();}
         /** The mass flows (kg/s) of the interval's last accepted step: the flows at its end state, which the next job's first
@@ -90,19 +90,8 @@ public final class PassiveIntervalSolver {
         var start=InventoryEquilibrium.completed(initial,conversions,model,checkpoint);
         Result result;
         if(com.wormzjl.createcheme.science.fluid.transport.SolidMobility.monitored(monitored)||model.solidSettings.immobileViscosity()<.002&&monitored.reservoirs().stream().anyMatch(n->n.state().waterVolume()>0))result=new SolidEventIntegrator(model,this).solve(start,duration,settings,checkpoint,startingStep);
-        else result=integrate(start,duration,settings,checkpoint,PassiveStepSolver.Acceptance.FULL,StageGuard.NONE,startingStep);
+        else result=integrate(start,duration,settings,checkpoint,StageGuard.NONE,startingStep);
         return committedInlets(result);
-    }
-    public Result solveApproximate(PassiveNetwork initial,double duration,Settings settings,Runnable checkpoint,StageGuard guard) {
-        // The interval starts with every transport closure read open (owner decision D33; see solve).
-        initial=NetworkReduction.reopened(PassiveNetwork.sizeJunctionHoldups(initial,model));
-        if(com.wormzjl.createcheme.science.fluid.transport.SolidMobility.requiresFull(model,initial))throw new ApproximationAnchor.Rejected("Solid/filter intervals require a full solve");
-        StageGuard checked=(states,modes)->{
-            for(var state:states)if(state.solidMoments().mass()>0||com.wormzjl.createcheme.science.fluid.transport.SolidMobility.immobileLiquid(model,state))throw new ApproximationAnchor.Rejected("Solid transition requires a full solve");
-            guard.check(states,modes);
-        };
-        decideInlets(initial,duration);
-        return committedInlets(integrate(InventoryEquilibrium.Refreshed.as(initial),duration,settings,checkpoint,PassiveStepSolver.Acceptance.APPROXIMATE,checked,settings.initialStep()));
     }
     /**
      * The endpoint modes of the island's committed interval and the pipe ids they belong to: the hysteresis input of the
@@ -159,18 +148,16 @@ public final class PassiveIntervalSolver {
 
     /** The interval from {@code start}, the island's refresh at the interval's start (its graph and the boundaries the
      * refresh booked, which the result's boundaries begin with). */
-    Result integrate(InventoryEquilibrium.Refreshed start,double duration,Settings settings,Runnable checkpoint,PassiveStepSolver.Acceptance acceptance,
-                     StageGuard guard,double startingStep) {
-        var prefix=run(start,duration,settings,checkpoint,acceptance,guard,startingStep);
+    Result integrate(InventoryEquilibrium.Refreshed start,double duration,Settings settings,Runnable checkpoint,StageGuard guard,double startingStep) {
+        var prefix=run(start,duration,settings,checkpoint,guard,startingStep);
         // No caller of the public contract can handle a prefix, so a guard that declares a
         // transition on this path escapes exactly as it did before there was a prefix at all.
         if(prefix.transition()!=null)throw prefix.transition();
         return prefix.result();
     }
     /** {@link #integrate} with the prefix returned rather than thrown; see {@link Prefix}. */
-    Prefix integrateToTransition(InventoryEquilibrium.Refreshed start,double duration,Settings settings,Runnable checkpoint,PassiveStepSolver.Acceptance acceptance,
-                                 StageGuard guard,double startingStep) {
-        return run(start,duration,settings,checkpoint,acceptance,guard,startingStep);
+    Prefix integrateToTransition(InventoryEquilibrium.Refreshed start,double duration,Settings settings,Runnable checkpoint,StageGuard guard,double startingStep) {
+        return run(start,duration,settings,checkpoint,guard,startingStep);
     }
     /**
      * The interval, stepped by backward Euler under the state-change controller.
@@ -201,8 +188,7 @@ public final class PassiveIntervalSolver {
      * 8.8 (a)).</li>
      * </ul>
      */
-    private Prefix run(InventoryEquilibrium.Refreshed refreshed,double duration,Settings settings,Runnable checkpoint,PassiveStepSolver.Acceptance acceptance,
-                       StageGuard guard,double startingStep) {
+    private Prefix run(InventoryEquilibrium.Refreshed refreshed,double duration,Settings settings,Runnable checkpoint,StageGuard guard,double startingStep) {
         if(!Double.isFinite(duration)||duration<=0)throw new IllegalArgumentException("Positive finite interval required");
         if(!Double.isFinite(startingStep)||startingStep<=0)throw new IllegalArgumentException("Positive finite starting step required");
         PassiveNetwork accepted=refreshed.graph();
@@ -241,15 +227,15 @@ public final class PassiveIntervalSolver {
                 // declare something (the solid event integrator's), one rate solve of the port graph supplies the t0
                 // flows; a failed rate solve skips the t0 check (PassiveStepSolver.portRate).
                 else if(guard!=StageGuard.NONE&&attempt==0) {
-                    var rate=implicit.portRate(accepted,checkpoint,acceptance);
+                    var rate=implicit.portRate(accepted,checkpoint);
                     if(rate!=null)guard.checkRate(liveFilters(accepted),rate.states(),rate.modes(),rate.massFlows());
                 }
                 PassiveNetwork start=accepted;
                 if(implicit.backwardEulerCold(accepted)) {
-                    if(coldSeedFor!=accepted){coldSeed=coldRateSeed(accepted,checkpoint,acceptance);coldSeedFor=accepted;}
+                    if(coldSeedFor!=accepted){coldSeed=coldRateSeed(accepted,checkpoint);coldSeedFor=accepted;}
                     start=coldSeed;
                 }
-                var result=implicit.solve(start,step,checkpoint,acceptance);
+                var result=implicit.solve(start,step,checkpoint);
                 if(elapsed!=reopenElapsed||step!=reopenStep){reopened.clear();reopenElapsed=elapsed;reopenStep=step;}
                 var candidates=new LinkedHashSet<>(implicit.reopenable(start,result));candidates.removeAll(reopened);
                 if(!candidates.isEmpty()) {
@@ -279,7 +265,7 @@ public final class PassiveIntervalSolver {
                 // Owner decision D42: an island the gauge reads at rest at this accepted step (NetworkReduction step 6 on its
                 // end state and its flows) is no longer stepped. The rest of the interval is the identity: nothing moves, so
                 // the step's transfers stand as booked and the interval's averages are what the steps moved.
-                if(acceptance==PassiveStepSolver.Acceptance.FULL&&elapsed<duration&&NetworkReduction.atRest(accepted,model,flows,implicit.sliceRefused(accepted))) {
+                if(elapsed<duration&&NetworkReduction.atRest(accepted,model,flows,implicit.sliceRefused(accepted))) {
                     SolverDiagnostics.count(SolverDiagnostics.restStops);elapsed=duration;
                 }
             }catch(SolidEventIntegrator.Transition transition) {
@@ -320,7 +306,7 @@ public final class PassiveIntervalSolver {
         // transported mass.
         double normalizer=declared==null?duration:elapsed;
         for(int i=0;i<transferred.length;i++)transferred[i]/=normalizer;
-        return new Prefix(new Result(accepted,elapsed,transferred,acceptedCount,rejectedCount,work,boundaries,rejectionReasons,last.modes(),last.devicePressureChanges(),last.massFlows(),acceptance,pipeTransfers.snapshot()),declared);
+        return new Prefix(new Result(accepted,elapsed,transferred,acceptedCount,rejectedCount,work,boundaries,rejectionReasons,last.modes(),last.devicePressureChanges(),last.massFlows(),pipeTransfers.snapshot()),declared);
     }
     /**
      * The share of a node's total amount below which a component is flushed at an accepted step (owner decision
@@ -390,9 +376,9 @@ public final class PassiveIntervalSolver {
      * fails. From the compiled property guess alone a pumped line into a dry tank, with three liquid junctions, failed
      * at every step size (review 8.6 (b), run 88d).
      */
-    private PassiveNetwork coldRateSeed(PassiveNetwork graph,Runnable checkpoint,PassiveStepSolver.Acceptance acceptance) {
+    private PassiveNetwork coldRateSeed(PassiveNetwork graph,Runnable checkpoint) {
         if(graph.pipes().isEmpty()||graph.reservoirs().stream().noneMatch(PassiveNetwork.Reservoir::junction))return graph;
-        var rate=implicit.portRate(graph,checkpoint,acceptance);
+        var rate=implicit.portRate(graph,checkpoint);
         if(rate==null)return graph;
         var nodes=new ArrayList<PassiveNetwork.Reservoir>();
         for(int i=0;i<graph.reservoirs().size();i++){var node=graph.reservoirs().get(i);
@@ -480,7 +466,7 @@ public final class PassiveIntervalSolver {
      * A check the interval solver runs on every step it takes: {@link #checkRate} on the state a step starts from,
      * {@link #checkFilters} on the step's converged end. It throws to refuse the step: a
      * {@link SolidEventIntegrator.Transition} to declare a solid transport event (the interval solver then searches the
-     * step onto it), an {@link ApproximationAnchor.Rejected} to send an approximate interval back to a full solve.
+     * step onto it).
      */
     @FunctionalInterface public interface StageGuard {
         StageGuard NONE=(states,modes)->{};

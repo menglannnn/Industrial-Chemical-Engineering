@@ -44,10 +44,10 @@ class FluidCheckpointFormatTest extends CertifyingRig.Islands {
     /** A certified island's snapshot with its certificate base and interval start graphs replaced. */
     private static FluidCheckpointCodec.IslandEntry withCertificateGraphs(FluidCheckpointCodec.IslandEntry entry,java.util.function.UnaryOperator<PassiveNetwork> base,java.util.function.UnaryOperator<PassiveNetwork> before) {
         var s=entry.snapshot();var c=s.certificate().orElseThrow();var saved=c.saved().orElseThrow();var interval=saved.interval();var r=interval.result();
-        var result=new PassiveIntervalSolver.Result(base.apply(r.graph()),r.advancedSeconds(),r.averageMassFlows(),r.acceptedSubsteps(),r.rejectedSubsteps(),r.pumpWorkJoule(),r.boundaries(),r.rejectionReasons(),r.endpointModes(),r.endpointHeads(),r.endpointFlows(),r.acceptance(),r.pipeTransfers());
+        var result=new PassiveIntervalSolver.Result(base.apply(r.graph()),r.advancedSeconds(),r.averageMassFlows(),r.acceptedSubsteps(),r.rejectedSubsteps(),r.pumpWorkJoule(),r.boundaries(),r.rejectionReasons(),r.endpointModes(),r.endpointHeads(),r.endpointFlows(),r.pipeTransfers());
         var edited=new IslandCertificate.Saved(saved.sinceTick(),saved.horizonTick(),new IslandCertificate.Interval(interval.startTick(),interval.endTick(),before.apply(interval.before()),result),saved.signature());
         var certified=new IslandCoordinator.Certified(c.drift(),c.sinceTick(),c.baseTick(),c.horizonTick(),c.largestFlow(),Optional.of(edited));
-        return new FluidCheckpointCodec.IslandEntry(entry.dimension(),entry.packageId(),new IslandCoordinator.Snapshot(s.id(),s.revision(),s.graph(),s.clock(),s.allowance(),s.anchor(),Optional.of(result),s.status(),s.fences(),Optional.of(certified)));
+        return new FluidCheckpointCodec.IslandEntry(entry.dimension(),entry.packageId(),new IslandCoordinator.Snapshot(s.id(),s.revision(),s.graph(),s.clock(),Optional.of(result),s.status(),s.fences(),Optional.of(certified)));
     }
     private static PassiveNetwork withNodeEnergy(PassiveNetwork graph,double energy) {
         var nodes=new ArrayList<>(graph.reservoirs());
@@ -140,7 +140,7 @@ class FluidCheckpointFormatTest extends CertifyingRig.Islands {
         // A fence before the committed tick: a fence at the committed tick, then the committed tick moved past it.
         var event=UUID.randomUUID();
         var fenced=CheckpointImages.withIsland(image,2,key->model,entry->{var s=entry.snapshot();return new FluidCheckpointCodec.IslandEntry(entry.dimension(),entry.packageId(),
-                new IslandCoordinator.Snapshot(s.id(),s.revision(),s.graph(),s.clock(),s.allowance(),s.anchor(),s.lastResult(),s.status(),Map.of(event,committed),s.certificate()));});
+                new IslandCoordinator.Snapshot(s.id(),s.revision(),s.graph(),s.clock(),s.lastResult(),s.status(),Map.of(event,committed),s.certificate()));});
         assertEquals(1,FluidCheckpointCodec.decode(fenced,key->model).islands().getFirst().snapshot().fences().size(),"the fence itself reads back");
         set(fenced.core(),2,"Committed",committed+1);CheckpointImages.reseal(fenced.core());
         assertTrue(assertThrows(IllegalArgumentException.class,()->FluidCheckpointCodec.decode(fenced,key->model)).getMessage().contains("precedes the committed tick"));
@@ -192,8 +192,8 @@ class FluidCheckpointFormatTest extends CertifyingRig.Islands {
                 new Case("certificate policy",model,new CertificatePolicy(true,1e-7,1e-6,17_280,3,0),image),
                 new Case("certificate policy",model,new CertificatePolicy(true,1e-7,1e-6,17_280,2,60),image),
                 new Case("graph identity",model,defaults,longer));
-        assertNotEquals(ApproximationAnchor.revision(model),ApproximationAnchor.revision(cases.getFirst().model()));
-        assertEquals(ApproximationAnchor.thermodynamicRevision(model),ApproximationAnchor.thermodynamicRevision(cases.getFirst().model()),"a velocity limit leaves the saved inventory readable");
+        assertNotEquals(model.revision(),cases.getFirst().model().revision());
+        assertEquals(model.thermodynamicRevision(),cases.getFirst().model().thermodynamicRevision(),"a velocity limit leaves the saved inventory readable");
         for(var c:cases) {
             var decoded=FluidCheckpointCodec.decode(c.image(),key->c.model());
             countFromHere();

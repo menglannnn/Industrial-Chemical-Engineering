@@ -24,7 +24,7 @@ class SolidRuntimeTest {
         return model.flashTP(350,pressure,n,()->{});
     }
     private FluidCheckpointCodec.Checkpoint checkpoint(PassiveNetwork graph){
-        var snapshot=new IslandCoordinator.Snapshot(1,0,graph,new IslandClock.Snapshot(0,0,0,100),FallbackAllowance.NONE,Optional.empty(),Optional.empty(),"READY");
+        var snapshot=new IslandCoordinator.Snapshot(1,0,graph,new IslandClock.Snapshot(0,0,0,100),Optional.empty(),"READY");
         return new FluidCheckpointCodec.Checkpoint(List.of(new FluidCheckpointCodec.IslandEntry("minecraft:overworld",FluidPresetCatalog.NETWORK_PACKAGE,snapshot)));
     }
     @Test void generatorUsesSlurryVolumeFractionWithoutChangingTheFluidAxis(){

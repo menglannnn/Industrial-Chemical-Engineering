@@ -64,12 +64,13 @@ class VelocityClampTest {
         assertEquals(beforeN,afterN,1e-10+1e-8*beforeN);assertEquals(beforeU,afterU,1e-4+1e-6*Math.abs(beforeU));
         assertTrue(Math.abs(result.states().getFirst().temperature()-350)>1e-5,"The clamp must not hold temperature fixed");
     }
-    @Test void invalidConfigurationIsRejectedAndDifferentLimitsInvalidateFallbackAnchors() {
+    /** A certificate issued under one velocity limit is not kept under another (the model's revision is its signature's,
+     * IslandCertificate.Signature), and a saved island's inventory stays readable across the change (the checkpoint's
+     * package table holds the thermodynamic revision). Restated from the fallback anchor's refusal (owner decision D37, S2). */
+    @Test void invalidConfigurationIsRejectedAndADifferentLimitMovesTheModelsRevision() {
         assertThrows(IllegalArgumentException.class,()->model(0));assertThrows(IllegalArgumentException.class,()->model(Double.NaN));
-        var model=model(100);var graph=graph(model,false,false,new FlowControl.Passive(),true);
-        var full=new PassiveIntervalSolver(model).solve(graph,.05,PassiveIntervalSolver.Settings.defaults(),()->{});
-        var anchor=ApproximationAnchor.fromFull(model,full);assertThrows(ApproximationAnchor.Rejected.class,()->anchor.guard(model(10),full.graph()));
-        assertEquals(ApproximationAnchor.thermodynamicRevision(model),ApproximationAnchor.thermodynamicRevision(model(10)));
+        assertNotEquals(model(100).revision(),model(10).revision());
+        assertEquals(model(100).thermodynamicRevision(),model(10).thermodynamicRevision());
     }
     @Test void aWarmWorkspaceReleasesTheClampWhenThePressureDriveFalls() {
         var model=model(1);var solver=new PassiveStepSolver(model);var high=graph(model,false,false,new FlowControl.Passive(),false);
