@@ -235,5 +235,7 @@ public record PassiveNetwork(List<Reservoir> reservoirs,List<Pipe> pipes,List<Sc
         public double maximumArea(){double area=0;for(var section:sections)area=Math.max(area,section.area());return area;}
         public double minimumDiameter(){double diameter=Double.POSITIVE_INFINITY;for(var section:sections)diameter=Math.min(diameter,section.diameter());return diameter;}
         public double minimumArea(){double area=Double.POSITIVE_INFINITY;for(var section:sections)area=Math.min(area,section.area());return area;}
+        /** The run's own volume, m3: what stands in it is its static column (owner decision D34, {@code PassiveStepSolver.columnDensity}). */
+        public double volume(){double volume=0;for(var section:sections)volume+=section.area()*section.length();return volume;}
     }
 }

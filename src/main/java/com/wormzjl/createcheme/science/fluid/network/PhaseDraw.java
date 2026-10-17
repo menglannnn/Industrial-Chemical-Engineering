@@ -53,8 +53,9 @@ final class PhaseDraw {
         return port==PassiveNetwork.PhasePort.LIQUID?new int[]{heavy,light,GAS}:new int[]{GAS,light,heavy};
     }
     /** The phase a port draws at a vanishing flow: the first of its order {@code state} holds; -1 for a BULK end drawing the
-     * bulk and for a state holding none of the three (then the port draws the bulk). The stream every static reader of a port reads
-     * (columns, sign tests, start flows, the mobility check): the priority stream's limit as the flow goes to zero. */
+     * bulk and for a state holding none of the three (then the port draws the bulk). The stream every reader of what a port
+     * sends reads (a start flow's loss and velocity cap, a mover's suction, the mobility check): the priority stream's limit
+     * as the flow goes to zero. What stands in the port's connection is its {@link #fill} (owner decision D34). */
     static int leading(FluidThermodynamics model,FluidThermodynamics.State state,PassiveNetwork.PhasePort port) {
         var order=order(model,state,port);if(order==null)return -1;
         for(int phase:order)if(FluidThermodynamics.holdsPhase(state,phase))return phase;
@@ -63,6 +64,28 @@ final class PhaseDraw {
     /** Which of the three phases {@code state} holds. */
     static boolean[] held(FluidThermodynamics.State state) {
         return new boolean[]{FluidThermodynamics.holdsPhase(state,GAS),FluidThermodynamics.holdsPhase(state,OIL),FluidThermodynamics.holdsPhase(state,WATER)};
+    }
+    /**
+     * A port's priority fill of {@code volume} (m3) from {@code state}: the volume of each phase stream that fills it, by
+     * phase id ({@link FluidThermodynamics#phaseVolume}, a liquid with its share of the solids), in the port's
+     * {@code order}: each phase the state holds up to its held volume over {@code ends}, the last one it holds taking the
+     * rest, as the priority stream's last phase takes the rest of a flow. Null when the state holds none of the order's
+     * phases. The one fill of both readers: the step's suction intake of a mover ({@link InletPhase}, its target volume
+     * shared among the vessel's {@code ends} phase-port outlets) and the static column of a connection
+     * ({@code PassiveStepSolver.columnDensity}, the connection's own volume, one end).
+     */
+    static double[] fill(FluidThermodynamics.State state,int[] order,double volume,int ends) {
+        int last=-1;for(int phase:order)if(FluidThermodynamics.holdsPhase(state,phase))last=phase;
+        if(last<0)return null;
+        double[] filled=new double[3];double remaining=volume;
+        for(int phase:order) {
+            if(!FluidThermodynamics.holdsPhase(state,phase))continue;
+            if(phase==last){filled[phase]=remaining;break;}
+            double take=Math.min(remaining,FluidThermodynamics.phaseVolume(state,phase)/ends);
+            filled[phase]=take;remaining-=take;
+            if(!(remaining>0))break;
+        }
+        return filled;
     }
 
     /**

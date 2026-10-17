@@ -232,12 +232,13 @@ public final class PassiveStepSolver {
                 reverseAllowed&=boundaryAllowed(graph,link,aligned?-1:1);
             }
             var a=states.get(start);var b=states.get(finish);
-            // Each end of the run stands in what its own end port draws, at its own end's driving pressure.
+            // Each end of the run stands in its own end port's column over the run ({@link #columnDensity}), at its own end's
+            // driving pressure.
             var startPort=graph.pipes().get(chain.getFirst()).portAt(start);var finishPort=graph.pipes().get(chain.getLast()).portAt(finish);
             double pa=endPressure(graph.reservoirs().get(start),startPort,a),pb=endPressure(graph.reservoirs().get(finish),finishPort,b);
             double dz=graph.reservoirs().get(finish).elevation()-graph.reservoirs().get(start).elevation(),difference=pa-pb;
             double band=reopenBand(pa,pb);
-            double forwardDrive=difference-endDensity(a,startPort)*GRAVITY*dz,reverseDrive=difference-endDensity(b,finishPort)*GRAVITY*dz;
+            double forwardDrive=difference-runColumnDensity(graph,chain,a,startPort)*GRAVITY*dz,reverseDrive=difference-runColumnDensity(graph,chain,b,finishPort)*GRAVITY*dz;
             if(forwardAllowed&&forwardDrive>band||reverseAllowed&&reverseDrive<-band)for(int link:chain)reopen.add(graph.pipes().get(link).identity());
         }
         return reopen;
@@ -1541,7 +1542,7 @@ public final class PassiveStepSolver {
         for(var pipe:graph.pipes())if(pipe.first()==j||pipe.second()==j) {
             int k=pipe.first()==j?pipe.second():pipe.first();var other=graph.reservoirs().get(k);
             double end=endPressure(graph,pipe,k),dz=junction.elevation()-other.elevation();
-            for(double rho:new double[]{endDensity(other.state(),pipe.portAt(k)),endDensity(junction.state(),pipe.portAt(j))}) {
+            for(double rho:new double[]{columnDensity(other.state(),pipe.portAt(k),pipe.volume()),columnDensity(junction.state(),pipe.portAt(j),pipe.volume())}) {
                 low=Math.min(low,end-rho*GRAVITY*dz);high=Math.max(high,end-rho*GRAVITY*dz);
             }
         }
@@ -1592,9 +1593,9 @@ public final class PassiveStepSolver {
     /**
      * The flow (kg/s, at least zero) supplier {@code supplier} sends into the junction at the other end of {@code pipe}
      * before anything is solved, as the start estimate reads a connection ({@link #initialMassFlow}): a mover's suction
-     * flow out of its suction end; otherwise the supplier's end pressure over the ambient, less the column of its own end
-     * stream up to the junction, through the connection's loss, capped by the velocity limit. Zero where that direction is
-     * refused ({@link #boundaryAllowed}) or the drive points back.
+     * flow out of its suction end; otherwise the supplier's end pressure over the ambient, less its own end's column up to
+     * the junction ({@link #columnDensity}), through the connection's loss in its end stream, capped by the velocity limit.
+     * Zero where that direction is refused ({@link #boundaryAllowed}) or the drive points back.
      */
     private double supplyFlow(PassiveNetwork graph,PassiveNetwork.Pipe pipe,int supplier) {
         boolean first=pipe.first()==supplier;
@@ -1603,7 +1604,8 @@ public final class PassiveStepSolver {
         if(pipe.control() instanceof FlowControl.Mover pump)
             return first?Math.min(suctionMassFlow(pump.targetVolumeFlow(),s.state(),port),massFlowLimit(pipe,s.state(),port)):0;
         double rho=endDensity(s.state(),port),mu=endViscosity(s.state(),port);
-        double drive=endPressure(s,port,s.state())-PhaseLayout.AMBIENT_PRESSURE-rho*GRAVITY*(graph.reservoirs().get(first?pipe.second():pipe.first()).elevation()-s.elevation());
+        double drive=endPressure(s,port,s.state())-PhaseLayout.AMBIENT_PRESSURE
+                -columnDensity(s.state(),port,pipe.volume())*GRAVITY*(graph.reservoirs().get(first?pipe.second():pipe.first()).elevation()-s.elevation());
         if(!(drive>0))return 0;
         double lo=0,hi=1;while(pipe.pressureDrop(hi,rho,mu)<drive&&hi<1e6)hi*=2;
         for(int j=0;j<50;j++){double mid=(lo+hi)/2;if(pipe.pressureDrop(mid,rho,mu)>drive)hi=mid;else lo=mid;}
@@ -1689,7 +1691,7 @@ public final class PassiveStepSolver {
                 var link=graph.pipes().get(chain.get(position));int u=order.get(position),v=order.get(position+1);
                 var nu=graph.reservoirs().get(u);var nv=graph.reservoirs().get(v);
                 var portU=link.portAt(u);var portV=link.portAt(v);
-                double first=endDensity(nu.state(),portU),second=endDensity(nv.state(),portV),dz=nv.elevation()-nu.elevation();
+                double first=columnDensity(nu.state(),portU,link.volume()),second=columnDensity(nv.state(),portV,link.volume()),dz=nv.elevation()-nu.elevation();
                 if(!donates(graph,link,u))first=second;else if(!donates(graph,link,v))second=first;
                 double difference=endPressure(nu,portU,nu.state())-endPressure(nv,portV,nv.state());
                 column+=(columnFromFirst(first,second,difference,dz,difference>=0)?first:second)*GRAVITY*dz;
@@ -1769,7 +1771,8 @@ public final class PassiveStepSolver {
                     double predictedDrop=a.state().pressure()-(seeds==null?a.state():seeds.get(pipe.first())).pressure();
                     if(predictedDrop>0)flows[i]*=Math.clamp((a.state().pressure()-valve.targetPressure())/predictedDrop,0,1);
                     double rho=endDensity(a.state(),pipe.firstPort());
-                    heads[i]=(endPressure(a,pipe.firstPort(),a.state())-endPressure(b,pipe.secondPort(),b.state())-rho*GRAVITY*(b.elevation()-a.elevation())
+                    heads[i]=(endPressure(a,pipe.firstPort(),a.state())-endPressure(b,pipe.secondPort(),b.state())
+                            -columnDensity(a.state(),pipe.firstPort(),pipe.volume())*GRAVITY*(b.elevation()-a.elevation())
                             -pipe.pressureDrop(flows[i],rho,endViscosity(a.state(),pipe.firstPort())))/1e5;
                 }
                 continue;
@@ -1829,15 +1832,15 @@ public final class PassiveStepSolver {
     }
     /**
      * The static driving pressure of one passive connection from end {@code a} (drawn through {@code aPort}) to end {@code b}
-     * (a contracted run sums its links' columns the same way, {@link #initialMassFlows}), given
-     * their end pressures' {@code difference}, with the column {@link #columnFromFirst} states: the start estimate's
-     * drive. Its own start sign, where both columns are admissible, is the sign of {@code difference} (the estimate is
-     * the start point, so it has no earlier start to read): the row then reads the flow this drive produces and states the
-     * same column. An end that may not donate into the connection has no column of its own ({@link #donates}).
+     * (a contracted run sums its links' columns the same way, {@link #initialMassFlows}), given their end pressures'
+     * {@code difference}, with the column {@link #columnFromFirst} states, each end's {@link #columnDensity}: the start
+     * estimate's drive. Its own start sign, where both columns are admissible, is the sign of {@code difference} (the
+     * estimate is the start point, so it has no earlier start to read): the row then reads the flow this drive produces and
+     * states the same column. An end that may not donate into the connection has no column of its own ({@link #donates}).
      */
     private double staticDrive(PassiveNetwork graph,PassiveNetwork.Pipe pipe,double difference) {
         var a=graph.reservoirs().get(pipe.first());var b=graph.reservoirs().get(pipe.second());
-        double first=endDensity(a.state(),pipe.firstPort()),second=endDensity(b.state(),pipe.secondPort()),dz=b.elevation()-a.elevation();
+        double first=columnDensity(a.state(),pipe.firstPort(),pipe.volume()),second=columnDensity(b.state(),pipe.secondPort(),pipe.volume()),dz=b.elevation()-a.elevation();
         if(!donates(graph,pipe,pipe.first()))first=second;else if(!donates(graph,pipe,pipe.second()))second=first;
         return difference-(columnFromFirst(first,second,difference,dz,difference>=0)?first:second)*GRAVITY*dz;
     }
@@ -1856,10 +1859,11 @@ public final class PassiveStepSolver {
     }
     /**
      * The one column rule of a vertical connection: whether its static head is stated in the first end's column
-     * ({@code first}, the density of what that end's port draws) rather than the second's, given the end pressures'
-     * {@code difference} (actuator included) and {@code dz = z_second - z_first}. The flow row states it once per pass
-     * ({@link Equations#columnEnds}, whose comment gives the reasons) and the start estimate states it on the same
-     * question ({@link #staticDrive}), so the estimate never starts a connection on a column the row does not read.
+     * ({@code first}, the density of what that end's port stands in the connection, {@link #columnDensity}) rather than
+     * the second's, given the end pressures' {@code difference} (actuator included) and {@code dz = z_second - z_first}.
+     * The flow row states it once per pass ({@link Equations#columnEnds}, whose comment gives the reasons) and the start
+     * estimate states it on the same question ({@link #staticDrive}), so the estimate never starts a connection on a
+     * column the row does not read.
      * <ul>
      * <li>Both columns drive one way: the column of the end that drive leaves (the only admissible one).</li>
      * <li>The two drives point towards each other (neither column admissible, where a settled line lives): the column
@@ -1990,17 +1994,60 @@ public final class PassiveStepSolver {
     /**
      * The density of what leaves a node through {@code port} at a vanishing flow: the bulk {@code mass/volume} at a BULK
      * end, and at a phase port the stream of the first phase of its priority order the state holds
-     * ({@link PhaseDraw#leading}; decision D11): the vapour's ({@link FluidThermodynamics#vaporDensity}, as before) or a
-     * liquid's with its solid share; the bulk's when the state holds none of the three. Every static column, sign test and
-     * start-flow velocity cap reads an end's density through here: a sign test sees which way the fluid the port would
-     * draw first stands in the connection, and a gas-only tank's bottom port or a liquid-full tank's top port reads the
-     * phase it then draws (the gas, the lighter liquid) instead of the bulk of decision A8.
+     * ({@link PhaseDraw#leading}; decision D11, {@link #phaseDensity}); the bulk's when the state holds none of the three.
+     * The draw reads an end's density through here: a start flow's loss and its velocity cap ({@link #massFlowLimit}), a
+     * mover's suction, rise limit and column (decision D6). What stands in the connection is {@link #columnDensity}.
      */
     private double endDensity(FluidThermodynamics.State s,PassiveNetwork.PhasePort port){return endDensity(model,s,port);}
     /** {@link #endDensity} for a caller outside a solve (the network reduction stage): the same arithmetic on {@code model}. */
     static double endDensity(FluidThermodynamics model,FluidThermodynamics.State s,PassiveNetwork.PhasePort port) {
         int phase=PhaseDraw.leading(model,s,port);
-        return phase<0?s.mass()/s.volume():phase==FluidThermodynamics.GAS?model.vaporDensity(s):model.phaseMass(s,phase)/FluidThermodynamics.phaseVolume(s,phase);
+        return phase<0?s.mass()/s.volume():phaseDensity(model,s,phase);
+    }
+    /** The density of one phase stream of {@code s}: the vapour's ({@link FluidThermodynamics#vaporDensity}) or a liquid's
+     * with its solid share ({@link FluidThermodynamics#phaseMass} over {@link FluidThermodynamics#phaseVolume}). */
+    private static double phaseDensity(FluidThermodynamics model,FluidThermodynamics.State s,int phase) {
+        return phase==FluidThermodynamics.GAS?model.vaporDensity(s):model.phaseMass(s,phase)/FluidThermodynamics.phaseVolume(s,phase);
+    }
+    /**
+     * Owner decision D34 (documentation/2026-09-24-coolprop-low-temperature, 2026-10-17): the density of the static column
+     * a node's end {@code port} stands in a connection of its own {@code volume} (m3, {@link PassiveNetwork.Pipe#volume};
+     * a contracted run's summed): the connection filled with the port's phases in priority order by volume
+     * ({@link PhaseDraw#fill}, one end), each up to what the state holds of it, the last phase it holds taking the rest.
+     * Every static column reads an end's density through here: the hydraulic row and the pass's column choice
+     * ({@link Equations#columnEnds}), the start drives ({@link #staticDrive}, {@link #initialMassFlows}, {@link #supplyFlow},
+     * the balanced junction seed, the valve start head, the one-way estimate), the sign tests ({@link #closeDeadHeads},
+     * {@link #illegalWithEitherDensity}, {@link #reopenable}, the cold generator closure) and the rest gauge's drives
+     * ({@code NetworkReduction.drives}). A mover's column is its suction stream instead (decision D6).
+     *
+     * <p>A phase that fills the connection alone gives its own density, to the bit ({@link #endDensity}: a tank holding
+     * liquid for the whole line has the liquid column it had); a BULK end, and a state holding none of the port's phases,
+     * the bulk's. In between the column is continuous in the phase volumes. M5 seed 322: 1.83e-8 m3 of crude condensate
+     * (880 kg/m3) at a tank's bottom port over a 2 m drop of 2 L line stands as the line's gas (2.262 kg/m3) and the
+     * condensate's share, 2.270 kg/m3, a 44.5 Pa column; read from the leading phase it was the condensate's 17.3 kPa,
+     * which no step could drain, and the island held. The draw is unchanged: the trace still leaves first, at its capacity.
+     * The column is read on the trial state, so the Jacobian differentiates it as it did the leading phase's density.
+     */
+    private double columnDensity(FluidThermodynamics.State s,PassiveNetwork.PhasePort port,double volume){return columnDensity(model,s,port,volume);}
+    /** {@link #columnDensity} for a caller outside a solve (the network reduction stage): the same arithmetic on {@code model}. */
+    static double columnDensity(FluidThermodynamics model,FluidThermodynamics.State s,PassiveNetwork.PhasePort port,double volume) {
+        if(port==PassiveNetwork.PhasePort.BULK)return endDensity(model,s,port);
+        int leading=PhaseDraw.leading(model,s,port);
+        if(leading<0)return s.mass()/s.volume();
+        if(!(FluidThermodynamics.phaseVolume(s,leading)<volume))return phaseDensity(model,s,leading);
+        int[] order=PhaseDraw.order(model,s,port);var filled=PhaseDraw.fill(s,order,volume,1);
+        double mass=0;
+        for(int phase:order) {
+            if(!(filled[phase]>0))continue;
+            if(filled[phase]==volume)return phaseDensity(model,s,phase);
+            mass+=phaseDensity(model,s,phase)*filled[phase];
+        }
+        return mass/volume;
+    }
+    /** {@link #columnDensity} of a contracted run's end: the run {@code chain}'s links' volumes summed. */
+    private double runColumnDensity(PassiveNetwork graph,List<Integer> chain,FluidThermodynamics.State s,PassiveNetwork.PhasePort port) {
+        double volume=0;for(int link:chain)volume+=graph.pipes().get(link).volume();
+        return columnDensity(s,port,volume);
     }
     /** The velocity limit of what leaves a node through {@code port} at a vanishing flow ({@link #endDensity}'s stream);
      * the bulk's at a BULK end and when the state holds none of the phases. */
@@ -2324,11 +2371,11 @@ public final class PassiveStepSolver {
             }
             if(forwardAllowed&&reverseAllowed)continue;
             var a=graph.reservoirs().get(start);var b=graph.reservoirs().get(finish);
-            // Each direction in the column of what its donor end port draws, at the ends' driving pressures.
+            // Each direction in its donor end port's column over the run ({@link #columnDensity}), at the ends' driving pressures.
             var startPort=graph.pipes().get(chain.getFirst()).portAt(start);var finishPort=graph.pipes().get(chain.getLast()).portAt(finish);
             double dz=b.elevation()-a.elevation(),difference=endPressure(a,startPort,a.state())-endPressure(b,finishPort,b.state());
-            boolean forward=forwardAllowed&&difference-endDensity(a.state(),startPort)*GRAVITY*dz>0;
-            boolean reverse=reverseAllowed&&difference-endDensity(b.state(),finishPort)*GRAVITY*dz<0;
+            boolean forward=forwardAllowed&&difference-runColumnDensity(graph,chain,a.state(),startPort)*GRAVITY*dz>0;
+            boolean reverse=reverseAllowed&&difference-runColumnDensity(graph,chain,b.state(),finishPort)*GRAVITY*dz<0;
             if(keep!=null){boolean kept=false;for(int link:chain)kept|=keep[link];if(kept)continue;}
             if(!forward&&!reverse)for(int link:chain)boundaryClosed[link]=true;
         }
@@ -2595,7 +2642,7 @@ public final class PassiveStepSolver {
             var chain=runs.get(r);int g=ends.get(r)[0],far=ends.get(r)[1];
             var generator=graph.reservoirs().get(g);var port=graph.pipes().get(chain.getFirst()).portAt(g);
             double pg=endPressure(generator,port,generator.state()),pf=pressures[far];
-            double drive=pg-pf-endDensity(generator.state(),port)*GRAVITY*(graph.reservoirs().get(far).elevation()-generator.elevation());
+            double drive=pg-pf-runColumnDensity(graph,chain,generator.state(),port)*GRAVITY*(graph.reservoirs().get(far).elevation()-generator.elevation());
             if(drive<-reopenBand(pg,pf)){for(int link:chain)boundaryClosed[link]=true;closed=true;}
         }
         if(!closed)return graph;
@@ -2648,8 +2695,9 @@ public final class PassiveStepSolver {
             for(int dir=0;dir<2;dir++) {
                 int donor=dir==0?pipe.first():pipe.second();var node=graph.reservoirs().get(donor);var port=pipe.portAt(donor);
                 estimate.rho[e][dir]=endDensity(node.state(),port);estimate.mu[e][dir]=endViscosity(node.state(),port);estimate.cap[e][dir]=massFlowLimit(pipe,node.state(),port);
+                estimate.column[e][dir]=columnDensity(node.state(),port,pipe.volume());
                 estimate.allowed[e][dir]=boundaryAllowed(graph,pipe,dir==0?1:-1);
-                rhoMax=Math.max(rhoMax,estimate.rho[e][dir]);scale=Math.max(scale,estimate.cap[e][dir]);
+                rhoMax=Math.max(rhoMax,estimate.column[e][dir]);scale=Math.max(scale,estimate.cap[e][dir]);
                 estimate.endPressures[e][dir]=endPressure(graph,pipe,donor);
                 if(!node.junction()){low=Math.min(low,estimate.endPressures[e][dir]);high=Math.max(high,estimate.endPressures[e][dir]);}
             }
@@ -2699,10 +2747,10 @@ public final class PassiveStepSolver {
     /** The connection law and the held data of {@link #oneWayPressures}. */
     private static final class OneWay {
         final PassiveNetwork graph;final boolean[] open;final int[] unknown;
-        final double[][] rho,mu,cap,endPressures;final boolean[][] allowed;final boolean[] gas;final double[] reference;
+        final double[][] rho,column,mu,cap,endPressures;final boolean[][] allowed;final boolean[] gas;final double[] reference;
         OneWay(PassiveNetwork graph,boolean[] open,int[] unknown) {
             this.graph=graph;this.open=open;this.unknown=unknown;int edges=open.length,nodes=unknown.length;
-            rho=new double[edges][2];mu=new double[edges][2];cap=new double[edges][2];endPressures=new double[edges][2];allowed=new boolean[edges][2];
+            rho=new double[edges][2];column=new double[edges][2];mu=new double[edges][2];cap=new double[edges][2];endPressures=new double[edges][2];allowed=new boolean[edges][2];
             gas=new boolean[nodes];reference=new double[nodes];
         }
         /** Half the squared net inflows of the unknown junctions at {@code p} (into {@code residual}); with {@code jacobian},
@@ -2746,15 +2794,16 @@ public final class PassiveStepSolver {
                 p[node]=.5*(lo+hi);
             }
         }
-        /** The connection's flow at end pressures {@code pa}, {@code pb}: in the column of the donor the direction draws
-         * from, nothing in a refused direction or between the two columns. */
+        /** The connection's flow at end pressures {@code pa}, {@code pb}: driven against the column of the donor the
+         * direction draws from ({@code column}), through its loss in that donor's stream ({@code rho}), nothing in a refused
+         * direction or between the two columns. */
         double flow(int e,double pa,double pb) {
             var pipe=graph.pipes().get(e);
             double dz=graph.reservoirs().get(pipe.second()).elevation()-graph.reservoirs().get(pipe.first()).elevation();
             double forwardScale=scale(pipe.first(),pa),reverseScale=scale(pipe.second(),pb);
-            double forward=pa-pb-rho[e][0]*forwardScale*GRAVITY*dz;
+            double forward=pa-pb-column[e][0]*forwardScale*GRAVITY*dz;
             if(forward>0)return allowed[e][0]?runFlow(pipe,forward,rho[e][0]*forwardScale,mu[e][0],cap[e][0]*forwardScale):0;
-            double reverse=pa-pb-rho[e][1]*reverseScale*GRAVITY*dz;
+            double reverse=pa-pb-column[e][1]*reverseScale*GRAVITY*dz;
             if(reverse<0)return allowed[e][1]?-runFlow(pipe,-reverse,rho[e][1]*reverseScale,mu[e][1],cap[e][1]*reverseScale):0;
             return 0;
         }
@@ -2809,9 +2858,9 @@ public final class PassiveStepSolver {
     private boolean illegalWithEitherDensity(PassiveNetwork graph,PassiveNetwork.Pipe pipe,double flow) {
         var a=graph.reservoirs().get(pipe.first());var b=graph.reservoirs().get(pipe.second());
         double dp=endPressure(a,pipe.firstPort(),a.state())-endPressure(b,pipe.secondPort(),b.state()),dz=b.elevation()-a.elevation();
-        // Each end's density is what its own port draws first (decision D11; the bulk when it holds no phase).
-        double drivingFirst=dp-endDensity(a.state(),pipe.firstPort())*GRAVITY*dz;if(!(Math.signum(drivingFirst)==Math.signum(flow)))return false;
-        double drivingSecond=dp-endDensity(b.state(),pipe.secondPort())*GRAVITY*dz;if(!(Math.signum(drivingSecond)==Math.signum(flow)))return false;
+        // Each end's density is what its own port stands in the connection (decision D34, {@link #columnDensity}).
+        double drivingFirst=dp-columnDensity(a.state(),pipe.firstPort(),pipe.volume())*GRAVITY*dz;if(!(Math.signum(drivingFirst)==Math.signum(flow)))return false;
+        double drivingSecond=dp-columnDensity(b.state(),pipe.secondPort(),pipe.volume())*GRAVITY*dz;if(!(Math.signum(drivingSecond)==Math.signum(flow)))return false;
         return true;
     }
     /**
@@ -3382,8 +3431,8 @@ public final class PassiveStepSolver {
             for(int edge=0;edge<columnEnds.length;edge++) {
                 var pipe=graph.pipes().get(edge);
                 var start=seeds.get(pipe.first());var end=seeds.get(pipe.second());
-                // Each end's column is what its own port draws first (decision D11; the bulk when it holds no phase).
-                double first=endDensity(start,pipe.firstPort()),second=endDensity(end,pipe.secondPort());
+                // Each end's column is what its own port stands in the connection (decision D34, {@link #columnDensity}).
+                double first=columnDensity(start,pipe.firstPort(),pipe.volume()),second=columnDensity(end,pipe.secondPort(),pipe.volume());
                 // Decisions D54 and D59 (5): an end that may not fill the connection (a dry end, a void, a generator's far
                 // end, a blocked way) has nothing to stand in it; it stands in what the other end sends ({@link #donates}).
                 int only=-1;
@@ -4256,9 +4305,10 @@ public final class PassiveStepSolver {
             // its rise limit, its target row, its velocity clamp and the pass loop's shutoff margin ({@link #demand}) read -
             // never the destination's (owner rule, decision D6 of the mixed-gas junction batch): the stream its suction end
             // draws, which is the suction's bulk density at a BULK end.
-            // The column end is the pass's; its density is the trial's ({@link #columnEnds}).
+            // The column end is the pass's; its density is the trial's ({@link #columnEnds}), the column that end's port
+            // stands in the connection ({@link #columnDensity}, owner decision D34), differentiated with the trial state.
             double column=pipe.control() instanceof FlowControl.Mover?suction.density
-                    :columnEnds[edge]==0?endDensity(st[a],pipe.firstPort()):endDensity(st[b],pipe.secondPort());
+                    :columnEnds[edge]==0?columnDensity(st[a],pipe.firstPort(),pipe.volume()):columnDensity(st[b],pipe.secondPort(),pipe.volume());
             double driving=endPressure(graph.reservoirs().get(a),pipe.firstPort(),st[a])-endPressure(graph.reservoirs().get(b),pipe.secondPort(),st[b])-column*GRAVITY*dz+signedHead;
             // Every pressure-dimensioned row of this edge is stated in the island's own pressure,
             // never in a fixed 1e5 Pa unit; see {@link #pressureScales}. The throttled-inlet row

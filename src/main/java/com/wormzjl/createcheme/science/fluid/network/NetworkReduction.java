@@ -98,9 +98,10 @@ public final class NetworkReduction {
 
     /**
      * The static drive of every connection, in Pa, as {forward, reverse}: the end pressures (a tank's bottom port with its
-     * level head) less the column between the ends in the density of the fluid the donor end would send, positive when it
-     * pushes that way; {@link Double#NEGATIVE_INFINITY} for a direction the one-way rules forbid. The rest step
-     * ({@link #atRest}) reads its size against {@link #REST_RESOLUTION}.
+     * level head) less the column between the ends that the donor end's port stands in the connection
+     * ({@link PassiveStepSolver#columnDensity}, owner decision D34), positive when it pushes that way;
+     * {@link Double#NEGATIVE_INFINITY} for a direction the one-way rules forbid. The rest step ({@link #atRest}) reads its
+     * size against {@link #REST_RESOLUTION}.
      */
     static double[][] drives(PassiveNetwork graph,FluidThermodynamics model) {
         var drive=new double[graph.pipes().size()][2];
@@ -109,8 +110,10 @@ public final class NetworkReduction {
             double pa=a.state().pressure()+PassiveStepSolver.portHead(model,a,pipe.firstPort(),a.state());
             double pb=b.state().pressure()+PassiveStepSolver.portHead(model,b,pipe.secondPort(),b.state());
             double dz=b.elevation()-a.elevation(),difference=pa-pb;
-            drive[i][0]=PassiveStepSolver.boundaryAllowed(graph,pipe,1)?difference-PassiveStepSolver.endDensity(model,a.state(),pipe.firstPort())*PassiveStepSolver.GRAVITY*dz:Double.NEGATIVE_INFINITY;
-            drive[i][1]=PassiveStepSolver.boundaryAllowed(graph,pipe,-1)?-(difference-PassiveStepSolver.endDensity(model,b.state(),pipe.secondPort())*PassiveStepSolver.GRAVITY*dz):Double.NEGATIVE_INFINITY;
+            drive[i][0]=PassiveStepSolver.boundaryAllowed(graph,pipe,1)
+                    ?difference-PassiveStepSolver.columnDensity(model,a.state(),pipe.firstPort(),pipe.volume())*PassiveStepSolver.GRAVITY*dz:Double.NEGATIVE_INFINITY;
+            drive[i][1]=PassiveStepSolver.boundaryAllowed(graph,pipe,-1)
+                    ?-(difference-PassiveStepSolver.columnDensity(model,b.state(),pipe.secondPort(),pipe.volume())*PassiveStepSolver.GRAVITY*dz):Double.NEGATIVE_INFINITY;
         }
         return drive;
     }

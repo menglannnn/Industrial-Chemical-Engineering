@@ -156,33 +156,24 @@ public final class InletPhase {
 
     /**
      * The volume (m3) of each phase stream ({@link FluidThermodynamics#phaseVolume}, solids with their liquid) drawn from
-     * {@code node} through {@code port} for a target volume {@code volume}; null for the bulk (a BULK end, or a vessel
-     * holding none of the phases). With no target volume, the leading phase alone (a unit volume).
+     * {@code node} through {@code port} for a target volume {@code volume}, the port's priority fill shared among the
+     * vessel's phase-port outlets ({@link PhaseDraw#fill}); null for the bulk (a BULK end, or a vessel holding none of the
+     * phases). With no target volume, the leading phase alone (a unit volume).
      */
     private static double[] draw(FluidThermodynamics model,PassiveNetwork graph,int node,PassiveNetwork.PhasePort port,double volume) {
         if(port==PassiveNetwork.PhasePort.BULK)return null;
         var state=graph.reservoirs().get(node).state();
-        int[] order=PhaseDraw.order(model,state,port);
-        int last=-1;for(int phase:order)if(FluidThermodynamics.holdsPhase(state,phase))last=phase;
-        if(last<0)return null;
-        double[] drawn=new double[3];
-        if(!(volume>0)){drawn[PhaseDraw.leading(model,state,port)]=1;return drawn;}
+        if(!(volume>0)) {
+            int leading=PhaseDraw.leading(model,state,port);if(leading<0)return null;
+            double[] drawn=new double[3];drawn[leading]=1;return drawn;
+        }
         // The vessel's phase-port ends that may carry outflow from it by the static rule: each phase is shared among them.
         int ends=0;
         for(var pipe:graph.pipes())for(int end=0;end<2;end++) {
             if((end==0?pipe.first():pipe.second())!=node||(end==0?pipe.firstPort():pipe.secondPort())==PassiveNetwork.PhasePort.BULK)continue;
             if(PassiveStepSolver.boundaryAllowed(graph,pipe,end==0?1:-1))ends++;
         }
-        ends=Math.max(1,ends);
-        double remaining=volume;
-        for(int phase:order) {
-            if(!FluidThermodynamics.holdsPhase(state,phase))continue;
-            if(phase==last){drawn[phase]=remaining;break;}
-            double take=Math.min(remaining,FluidThermodynamics.phaseVolume(state,phase)/ends);
-            drawn[phase]=take;remaining-=take;
-            if(!(remaining>0))break;
-        }
-        return drawn;
+        return PhaseDraw.fill(state,PhaseDraw.order(model,state,port),volume,Math.max(1,ends));
     }
 
     private static Supply measure(FluidThermodynamics model,FluidThermodynamics.State state,double[] drawn,int node,long id,PassiveNetwork.PhasePort port,double held) {

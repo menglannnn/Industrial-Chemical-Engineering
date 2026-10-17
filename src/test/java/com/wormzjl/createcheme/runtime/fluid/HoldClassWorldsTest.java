@@ -2,12 +2,14 @@ package com.wormzjl.createcheme.runtime.fluid;
 
 import com.wormzjl.createcheme.science.column.v3.thermo.V3PengRobinsonThermo;
 import com.wormzjl.createcheme.science.fluid.network.FlowControl;
+import com.wormzjl.createcheme.science.fluid.network.PassiveStepSolver;
 import com.wormzjl.createcheme.science.fluid.topology.TopologyCompiler.Kind;
 import com.wormzjl.createcheme.science.material.MaterialCatalog;
 import com.wormzjl.createcheme.science.material.MaterialTestBasis;
 import java.util.Arrays;
 import org.junit.jupiter.api.Test;
 import static com.wormzjl.createcheme.runtime.fluid.PhysicalFluidTopology.Direction.*;
+import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * The hold-class worlds of the phase-ports batch (PHASE_PORTS_REVIEW.md, "Hold class ..." sections) and the later
@@ -632,6 +634,56 @@ class HoldClassWorldsTest {
         w.place(0,-1,0,Kind.PIPE,NORTH,passive,null,.05);
         w.place(-1,0,0,Kind.PIPE,NORTH,passive,null,.05);
         w.runTo(217+120*100);w.assertKeptUp("a filter island whose start check fails under the start rule");
+    }
+
+    // ---------------- StaticColumn ----------------
+    /*
+     * Owner decision D34 of the coolprop-low-temperature batch (M5_WORSE_WORLDS_TRACE.md "Seed 322 (E6): a trace of liquid at a
+     * tank's bottom port", 2026-10-17): a phase port's static column is filled with the port's phases in priority order by
+     * volume over the connection, so a trace in a long line stands as a gas column and a liquid filling the line as a liquid
+     * column. The draw still reads the port's leading phase: the trace leaves first, at its capacity.
+     */
+    /**
+     * The smallest world of random fuzz seed 322 (13 blocks; minimized in tools/unified-thermo-port-m5/trace logs 09). A 431 kPa
+     * methane generator vents to two 1 atm voids, each line at its velocity cap; the junctions and two 1 m3 tanks stand at
+     * 430 kPa. The upper tank's bottom port drains through 1 m of 0.05 m line (2 L) into the top of the lower tank, 2 m down,
+     * which has no other connection. Heavy crude vapour that the methane carries in condenses in the upper tank (0.9 mL at
+     * tick 785). It runs down and the line holds the upper tank's gas: the lower tank stands at the upper one's pressure plus
+     * that gas column, 2.29 kg/m3 over 2 m, 44.9 Pa. Steady state: the upper tank dry, and no flow in the drop line but the
+     * lower tank following the upper tank's gas as it cools towards the methane's temperature (0.08 K a slice, 7e-9 kg/s).
+     * Read from the port's leading phase, the line was the condensate's column, 880 kg/m3 over 2 m, 17.3 kPa, which a few
+     * milligrams could not fill: the condensate stood in the tank (1.8e-8 m3 at tick 997), drawn alone at a carried flow of
+     * about zero it had no root, and the island held at tick 1097 at every step size.
+     */
+    @Test void aLiquidTraceAtATanksBottomPortLeavesItsDropLineAGasColumn() {
+        var w=new EventPathWorld();var passive=new FlowControl.Passive();
+        w.runTo(498);
+        long upper=w.place(1,0,-1,Kind.RESERVOIR,NORTH,passive,NITROGEN,.1);
+        w.place(0,1,-2,Kind.PIPE,NORTH,passive,null,.05);
+        w.place(1,2,-2,Kind.PIPE,NORTH,passive,null,.1);
+        w.place(2,0,-1,Kind.PIPE,NORTH,passive,null,.1);
+        w.place(1,0,0,Kind.VOID,NORTH,passive,NITROGEN,.05);
+        w.place(0,0,-2,Kind.GENERATOR,NORTH,passive,crude(362.6583839483169,276473.9715734725),.02);
+        w.place(2,0,-2,Kind.GENERATOR,NORTH,passive,EventPathWorld.pure(METHANE,357.0575469354789,431096.16156985326),.1);
+        w.place(1,3,-2,Kind.VOID,NORTH,passive,NITROGEN,.1);
+        w.place(1,1,-2,Kind.PIPE,NORTH,passive,null,.1);
+        w.place(1,-1,-1,Kind.PIPE,NORTH,passive,null,.05);
+        w.runTo(680);w.place(1,0,-2,Kind.PIPE,NORTH,passive,null,.1);
+        w.runTo(729);long lower=w.place(1,-2,-1,Kind.RESERVOIR,NORTH,passive,NITROGEN,.05);
+        w.runTo(770);w.place(2,0,0,Kind.PIPE,NORTH,passive,null,.1);
+        w.runTo(770+40*100);w.assertKeptUp("a liquid trace at a tank's bottom port");
+        var island=w.coordinator.snapshots().stream().filter(s->s.graph().reservoirs().stream().anyMatch(n->n.id()==upper)).findFirst().orElseThrow();
+        var nodes=island.graph().reservoirs();int a=-1,b=-1,line=-1;
+        for(int i=0;i<nodes.size();i++){if(nodes.get(i).id()==upper)a=i;if(nodes.get(i).id()==lower)b=i;}
+        for(int i=0;i<island.graph().pipes().size();i++){var p=island.graph().pipes().get(i);if(p.first()==a&&p.second()==b||p.first()==b&&p.second()==a)line=i;}
+        double flow=island.lastResult().orElseThrow().averageMassFlows()[line];
+        var top=nodes.get(a).state();var bottom=nodes.get(b).state();
+        double column=w.model.vaporDensity(top)*PassiveStepSolver.GRAVITY*(nodes.get(a).elevation()-nodes.get(b).elevation());
+        System.out.println("STATIC_COLUMN_WORLD upper P="+top.pressure()+" liquid="+top.liquidVolume()+" lower P="+bottom.pressure()+" liquid="+bottom.liquidVolume()
+                +" gas column="+column+" Pa drop line="+flow+" kg/s");
+        assertEquals(0,top.liquidVolume(),"the upper tank is dry: the condensate ran down");
+        assertEquals(column,bottom.pressure()-top.pressure(),.1,"the drop line stands as the upper tank's gas column");
+        assertTrue(Math.abs(flow)<1e-6,"no flow in the drop line but the lower tank following the upper one's cooling gas: "+flow);
     }
 
     // ---------------- StepStartFlows ----------------
