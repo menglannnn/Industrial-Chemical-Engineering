@@ -406,12 +406,12 @@ public final class FluidThermodynamics {
      * state the whole condensed phase (the level head's mass and a level's volume).</li>
      * </ul>
      * The streams partition the state: their moles, masses, volumes and enthalpies add up to the state's own. The
-     * velocity limit is {@link #isothermalAcousticBound}'s formula restricted to the stream's phases,
-     * {@code V_s / sqrt(M_s * compliance_s)}, i.e. {@code sqrt(stiffness/rho_v)} for the vapour and
-     * {@code sqrt(1/(kappa rho))} (solids incompressible) for a liquid, capped by the configured maximum as
+     * vapour's velocity limit is {@link #isothermalAcousticBound}'s formula restricted to the vapour,
+     * {@code V_v / sqrt(M_v * compliance_v)}, i.e. {@code sqrt(stiffness/rho_v)}, capped by the configured maximum as
      * {@link #velocityLimit} caps the bulk: a vapour drawn off a wet tank is limited by the vapour's own acoustic bound,
-     * not by the far lower bound of the two-phase mixture. The viscosity is the stream's own terms of the volume
-     * average the step solver states for the bulk (the slurry correction over the liquid's share of the solids).
+     * not by the far lower bound of the two-phase mixture. A liquid stream's limit is the configured maximum
+     * ({@link #phaseVelocityLimit}). The viscosity is the stream's own terms of the volume average the step solver
+     * states for the bulk (the slurry correction over the liquid's share of the solids).
      *
      * <p>A stream whose phase the state does not hold is not built: the builders return {@code null}, and what an
      * absent stream means is the reader's rule (the step solver's: a port draws the next phase of its priority order,
@@ -575,14 +575,12 @@ public final class FluidThermodynamics {
         h+=phaseSolidShare(state,phase)*state.solidMoments().enthalpy(t,p);
         return h/phaseMass(state,phase);
     }
-    /** A phase stream's velocity limit: {@link #vaporVelocityLimit} for the gas, {@code min(maximum, V/sqrt(M V_liquid
-     * kappa))} for a liquid with its solids (incompressible), {@code kappa} the liquid's own isothermal compressibility at
-     * the state (the equation of state's for the hydrocarbon liquid, Region 1's for the free water). */
+    /** A phase stream's velocity limit: {@link #vaporVelocityLimit} for the gas, the configured maximum for a liquid
+     * with its solids. A liquid's own isothermal sound speed {@code sqrt(1/(kappa rho))} is 900 to 1500 m/s at the
+     * network's states (water 1480, LNG about 1000 at 112 K, crude about 900), so it never binds below the cap; only a
+     * pure light liquid within a few kelvin of its critical point would fall under it (owner decision D37, S5). */
     public double phaseVelocityLimit(State state,int phase) {
-        if(phase==GAS)return vaporVelocityLimit(state);
-        double compliance=phase==WATER?state.waterVolume()*state.waterCompressibility()
-                :state.liquidVolume()>0?state.liquidVolume()*state.liquidProperties().isothermalCompressibility():0;
-        return Math.min(maximumVelocity,acoustic(phaseVolume(state,phase),phaseMass(state,phase),compliance));
+        return phase==GAS?vaporVelocityLimit(state):maximumVelocity;
     }
     /** A phase stream's viscosity: {@link #vaporViscosity} for the gas; a liquid's own viscosity with the slurry
      * correction for its share of the solids, over the stream's volume. */
