@@ -35,6 +35,9 @@ class PilotCryogenicCatalogTest {
      * 9ca0f9c before the P2 loader change (a javac-run main against the compiled classes). The physics fingerprints are
      * unchanged since; the scientific revisions moved once, with the water record every package shares (WP4 of the
      * range-extrapolation plan: its ice Ih and revision {@code water-iapws-shomate-r2}; bonga's was {@code 61dcf6df...}).
+     * Both pins of {@code tjl20_methane_nitrogen} moved with the nitrogen record r3 (owner decision D37, simplification
+     * S4: its {@code ideal_gas_cp.below} segment deleted, the fit's 273.16 K lower end declared; before, {@code a390e042...}
+     * and {@code c9ff50b0...}); no other package carries that record.
      */
     private static final String[][] BUNDLED_PINS = {
         {"createcheme:bonga_tjl20", "crude-regrouped-r1:2b656d117d1b18f4870ba7eba0552434ba2461dd9f8f39834c8ca0ad511f3030", "b1b9f1eb4d77f7868982c4eec28fabd5b4b9fd36b91ca8a5869b7fbcbea6ceb8"},
@@ -42,7 +45,7 @@ class PilotCryogenicCatalogTest {
         {"createcheme:dalia_tjl20", "crude-regrouped-r1:7fb5cd2a052f6b94f7673f63a9b4d702c7b2c3cfd2793da8ea667965e24bb811", "b1b9f1eb4d77f7868982c4eec28fabd5b4b9fd36b91ca8a5869b7fbcbea6ceb8"},
         {"createcheme:tjl19_dwsim", "crude-regrouped-r1:49a39c7185be6213b57c9ef520074f5afacc227e94cd8795acb319db01900948", "3361fe82944a086e30a433f7f43d9122583a7ee762d8c5caff8b2d5af00303b4"},
         {"createcheme:tjl20_methane", "crude-regrouped-r1:aa4d0b8ad847942cb4f3654fd372adac5ff1561057420a30e3ee6a13a555d4e5", "b1b9f1eb4d77f7868982c4eec28fabd5b4b9fd36b91ca8a5869b7fbcbea6ceb8"},
-        {"createcheme:tjl20_methane_nitrogen", "crude-regrouped-r1:a390e042a693d7388a0ca305ee0dbe1546cf1097c2ef97f947bd65ee91c50006", "c9ff50b0b82ac9ff12dafaca84860747829c58bfd5acddeb70dd6ca489b5f854"},
+        {"createcheme:tjl20_methane_nitrogen", "crude-regrouped-r1:745ccb643718c025ffae21001e4f9a3912ec15de06230cd2f585ccff936f952b", "70a43baa0dbbbd1aba90b60695c513ccbedf640321ac4f5320fa386438e045ee"},
         {"createcheme:upper_zakum_tjl20", "crude-regrouped-r1:8ee3e5d38c69163987197a14dd050356d4a5aac420660368ae1a4a372f279b85", "b1b9f1eb4d77f7868982c4eec28fabd5b4b9fd36b91ca8a5869b7fbcbea6ceb8"},
         {"createcheme:wti_light_export_tjl20", "crude-regrouped-r1:e6dfc5112227020090411e6e5413549f8d53b54a146ba68c90b7884e2c326aec", "b1b9f1eb4d77f7868982c4eec28fabd5b4b9fd36b91ca8a5869b7fbcbea6ceb8"},
     };

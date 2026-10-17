@@ -39,15 +39,6 @@ public final class TranslatedPengRobinson {
     private final double[][] heatCapacityCoefficients;
     private final double[] translations;
     private final PengRobinsonKernel kernel;
-    /**
-     * Optional low-temperature ideal-gas segments: below {@code joints[i]} component {@code i} takes the heat capacity
-     * {@code lowCoefficients[i]} and an enthalpy continued from the main fit's value at the joint,
-     * {@code H(T) = jointEnthalpies[i] + G(T) - jointAntiderivatives[i]} with {@code G} the segment's antiderivative, so
-     * the enthalpy is continuous there by construction (at the joint the continuation adds {@code G(Tj) - G(Tj)}, an
-     * exact zero). A component without a segment has the joint at minus infinity and is evaluated exactly as before.
-     */
-    private final double[] joints,jointEnthalpies,jointAntiderivatives;
-    private final double[][] lowCoefficients;
     /** See {@link #residualOnly}: no ideal-gas part, so the heat capacity is the residual one and may be any sign. */
     private final boolean residualOnly;
     /** The spine variant's ideal-gas functions, one per component; {@code null} on the coefficient path. */
@@ -66,24 +57,13 @@ public final class TranslatedPengRobinson {
         this(components,interactions,heatCapacityCoefficients,translations,null,null);
     }
     /**
-     * {@code joints} and {@code lowCoefficients} give each component an optional second heat-capacity segment below
-     * its joint (six coefficients in powers of (T - 298.15 K), like the main fit); a joint of minus infinity, or
-     * {@code null} arrays, is none.
+     * As {@link #TranslatedPengRobinson(List, double[][], double[][], double[])}, with each component's fit range
+     * {@code [fitMinimum[i], fitMaximum[i]]} (K; both {@code null} for none): past it the heat capacity is held at the end
+     * value and the enthalpy integrates it, so both are continuous at the ends.
      */
     public TranslatedPengRobinson(List<ThermoComponent> components, double[][] interactions,
-                                 double[][] heatCapacityCoefficients, double[] translations,
-                                 double[] joints, double[][] lowCoefficients) {
-        this(components,interactions,heatCapacityCoefficients,translations,joints,lowCoefficients,null,null);
-    }
-    /**
-     * As {@link #TranslatedPengRobinson(List, double[][], double[][], double[], double[], double[][])}, with each
-     * component's fit range {@code [fitMinimum[i], fitMaximum[i]]} (K; both {@code null} for none): past it the heat
-     * capacity is held at the end value and the enthalpy integrates it, so both are continuous at the ends.
-     */
-    public TranslatedPengRobinson(List<ThermoComponent> components, double[][] interactions,
-                                 double[][] heatCapacityCoefficients, double[] translations,
-                                 double[] joints, double[][] lowCoefficients, double[] fitMinimum, double[] fitMaximum) {
-        this(components,interactions,null,heatCapacityCoefficients,translations,joints,lowCoefficients,false,null,null,fitMinimum,fitMaximum);
+                                 double[][] heatCapacityCoefficients, double[] translations, double[] fitMinimum, double[] fitMaximum) {
+        this(components,interactions,null,heatCapacityCoefficients,translations,false,null,null,fitMinimum,fitMaximum);
     }
 
     /**
@@ -95,7 +75,7 @@ public final class TranslatedPengRobinson {
      */
     public static TranslatedPengRobinson residualOnly(List<ThermoComponent> components, double[][] interactions,
                                                       double[] translations) {
-        return new TranslatedPengRobinson(components,interactions,null,new double[components.size()][6],translations,null,null,true);
+        return new TranslatedPengRobinson(components,interactions,null,new double[components.size()][6],translations,true);
     }
 
     /**
@@ -107,7 +87,7 @@ public final class TranslatedPengRobinson {
     public static TranslatedPengRobinson residualOnly(List<ThermoComponent> components, PairInteractions interactions,
                                                       double[] translations) {
         return new TranslatedPengRobinson(components,null,Objects.requireNonNull(interactions,"interactions"),
-                new double[components.size()][6],translations,null,null,true);
+                new double[components.size()][6],translations,true);
     }
 
     /**
@@ -122,22 +102,20 @@ public final class TranslatedPengRobinson {
     public TranslatedPengRobinson(List<ThermoComponent> components, PairInteractions interactions,
                                   List<? extends IdealGasFunction> idealGas, double[] datumOffsets, double[] translations) {
         this(components,null,Objects.requireNonNull(interactions,"interactions"),new double[components.size()][6],
-                translations,null,null,false,Objects.requireNonNull(idealGas,"idealGas").toArray(new IdealGasFunction[0]),
+                translations,false,Objects.requireNonNull(idealGas,"idealGas").toArray(new IdealGasFunction[0]),
                 Objects.requireNonNull(datumOffsets,"datumOffsets"),null,null);
     }
 
     /** Exactly one of {@code interactions} (the constant matrix, {@code SPARSE_PAIRS}) and {@code pairModel} is set. */
     private TranslatedPengRobinson(List<ThermoComponent> components, double[][] interactions, PairInteractions pairModel,
-                                   double[][] heatCapacityCoefficients, double[] translations,
-                                   double[] joints, double[][] lowCoefficients, boolean residualOnly) {
-        this(components,interactions,pairModel,heatCapacityCoefficients,translations,joints,lowCoefficients,residualOnly,null,null,null,null);
+                                   double[][] heatCapacityCoefficients, double[] translations, boolean residualOnly) {
+        this(components,interactions,pairModel,heatCapacityCoefficients,translations,residualOnly,null,null,null,null);
     }
 
     /** {@code idealGas} and {@code datumOffsets} are both set (the spine variant) or both {@code null}; so are the fit
      * ranges, which only the coefficient path takes. */
     private TranslatedPengRobinson(List<ThermoComponent> components, double[][] interactions, PairInteractions pairModel,
-                                   double[][] heatCapacityCoefficients, double[] translations,
-                                   double[] joints, double[][] lowCoefficients, boolean residualOnly,
+                                   double[][] heatCapacityCoefficients, double[] translations, boolean residualOnly,
                                    IdealGasFunction[] idealGas, double[] datumOffsets, double[] fitMinimum, double[] fitMaximum) {
         this.residualOnly = residualOnly;
         if ((idealGas == null) != (datumOffsets == null))
@@ -166,22 +144,6 @@ public final class TranslatedPengRobinson {
         if (count == 0 || (pairModel == null ? interactions.length != count : pairModel.componentCount() != count)
                 || heatCapacityCoefficients.length != count
                 || translations.length != count) throw new IllegalArgumentException("Inconsistent property basis");
-        if ((joints == null) != (lowCoefficients == null) || joints != null && (joints.length != count || lowCoefficients.length != count))
-            throw new IllegalArgumentException("Inconsistent low-temperature heat-capacity segments");
-        this.joints = new double[count]; jointEnthalpies = new double[count]; jointAntiderivatives = new double[count];
-        this.lowCoefficients = new double[count][];
-        for (int i = 0; i < count; i++) {
-            this.joints[i] = joints == null ? Double.NEGATIVE_INFINITY : joints[i];
-            if (this.joints[i] == Double.NEGATIVE_INFINITY) continue;
-            if (!Double.isFinite(this.joints[i]) || this.joints[i] <= 0 || lowCoefficients[i] == null || lowCoefficients[i].length != 6
-                    || heatCapacityCoefficients[i].length != 6)
-                throw new IllegalArgumentException("Invalid low-temperature heat-capacity segment");
-            this.lowCoefficients[i] = lowCoefficients[i].clone();
-            for (double value : this.lowCoefficients[i]) finite(value);
-            double delta = this.joints[i] - REFERENCE_T, h = 0, g = 0;
-            for (int term = 5; term >= 0; term--) { h = h*delta + heatCapacityCoefficients[i][term]/(term+1); g = g*delta + this.lowCoefficients[i][term]/(term+1); }
-            jointEnthalpies[i] = h*delta; jointAntiderivatives[i] = g*delta;
-        }
         this.heatCapacityCoefficients = new double[count][];
         this.translations = translations.clone();
         double[] criticalTemperatures=new double[count],criticalPressures=new double[count],acentricFactors=new double[count];
@@ -317,14 +279,8 @@ public final class TranslatedPengRobinson {
         else for(int i=0;i<count;i++) {
             double fit=temperature<fitMinimum[i]?fitMinimum[i]:temperature>fitMaximum[i]?fitMaximum[i]:temperature;
             double delta=fit-REFERENCE_T,cp=0,h=0;
-            if(fit<joints[i]) {
-                double[] low=lowCoefficients[i];
-                for(int term=5;term>=0;term--){cp=cp*delta+low[term];h=h*delta+low[term]/(term+1);}
-                workspace.heatCapacity[i]=cp;workspace.enthalpy[i]=jointEnthalpies[i]+(h*delta-jointAntiderivatives[i]);
-            } else {
-                for(int term=5;term>=0;term--){cp=cp*delta+heatCapacityCoefficients[i][term];h=h*delta+heatCapacityCoefficients[i][term]/(term+1);}
-                workspace.heatCapacity[i]=cp;workspace.enthalpy[i]=h*delta;
-            }
+            for(int term=5;term>=0;term--){cp=cp*delta+heatCapacityCoefficients[i][term];h=h*delta+heatCapacityCoefficients[i][term]/(term+1);}
+            workspace.heatCapacity[i]=cp;workspace.enthalpy[i]=h*delta;
             if(fit!=temperature)workspace.enthalpy[i]+=cp*(temperature-fit);
         }
         kernel.prepareTemperature(temperature,workspace.mixture);

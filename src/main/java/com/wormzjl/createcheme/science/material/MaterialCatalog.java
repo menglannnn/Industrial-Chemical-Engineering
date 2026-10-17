@@ -13,10 +13,10 @@ public final class MaterialCatalog {
     public record NrtlPair(String first, String second, double a12, double b12, double a21,
             double b21, double alpha, double minimumTemperature, double maximumTemperature) {}
     /**
-     * {@code lowTemperatureCp} is an optional second ideal-gas heat-capacity segment, used below
-     * {@link CpSegment#belowKelvin()} with the enthalpy continued from the main fit's value there; {@code null} for a
-     * record with one fit (every record but nitrogen), which keeps their serialized form, and so every physics
-     * fingerprint that hashes it, exactly what it was.
+     * {@code idealGasMinimumTemperature} is the lower end of the {@code ideal_gas_cp} fit where it lies above the
+     * component's own range (nitrogen's 273.16 K: below it the fluid network holds the fit's heat capacity, owner decision
+     * D37, simplification S4); {@code null} for every other record, which keeps their serialized form, and so every
+     * physics fingerprint that hashes it, exactly what it was.
      *
      * <p>{@code cp} is empty for a record without {@code ideal_gas_cp}, which only a package with a reference spine may
      * use (D6: its ideal gas comes from the spine; {@code referenceTemperature} is then 298.15). {@code volumeTranslation}
@@ -26,12 +26,8 @@ public final class MaterialCatalog {
     public record Property(String id, String component, double molecularWeight, double normalBoilingPoint,
             double density, double standardTemperature, double standardPressure, double minimumTemperature,
             double maximumTemperature, double referenceTemperature, List<Double> cp, Pr78 pr, boolean estimated,
-            CpSegment lowTemperatureCp, VolumeTranslation volumeTranslation) {
+            Double idealGasMinimumTemperature, VolumeTranslation volumeTranslation) {
         public Property { cp = List.copyOf(cp); }
-    }
-    /** Six coefficients in powers of {@code (T - 298.15 K)}, the main fit's form, valid below {@code belowKelvin}. */
-    public record CpSegment(double belowKelvin, List<Double> coefficients) {
-        public CpSegment { coefficients = List.copyOf(coefficients); }
     }
     /**
      * The data range of a component (or, for a package, its envelope) as the fluid network reads it, with the evidence it
@@ -427,23 +423,16 @@ public final class MaterialCatalog {
                 pr=new Pr78(positive(p,"critical_temperature_kelvin"),positive(p,"critical_pressure_pascal"),number(p,"acentric_factor"));
             }
             double min=positive(o,"temperature_min_kelvin"), max=positive(o,"temperature_max_kelvin"); range(min,max,"temperature");
-            CpSegment low=null;
-            if (cp!=null && cp.has("below")) {
-                JsonObject segment=object(cp,"below"); text(segment,"source");
-                double joint=positive(segment,"temperature_kelvin");
-                if (joint<=min || joint>max || joint>reference) throw new IllegalArgumentException("ideal_gas_cp.below.temperature_kelvin must lie in (temperature_min_kelvin, 298.15]");
-                low=new CpSegment(joint,counted(segment,"coefficients",6));
+            Double floor=null;
+            if (cp!=null && cp.has("temperature_min_kelvin")) {
+                floor=positive(cp,"temperature_min_kelvin");
+                if (floor<=min || floor>reference) throw new IllegalArgumentException("ideal_gas_cp.temperature_min_kelvin must lie in (temperature_min_kelvin, 298.15]");
             }
             VolumeTranslation translation=o.has("volume_translation")?VolumeTranslation.read(o,pr):null;
             properties.put(id,new Property(id,component,positive(o,"molecular_weight_kg_per_mol"),positive(o,"normal_boiling_point_kelvin"),
                     positive(o,"standard_liquid_density_kg_per_m3"),positive(o,"standard_temperature_kelvin"),positive(o,"standard_pressure_pascal"),
-                    min,max,reference,coefficients,pr,bool(o,"estimated_heavy_residue"),low,translation));
-            if (o.has("fluid_domain")) {
-                var domain=validity(object(o,"fluid_domain"));
-                if (low!=null && domain.minimumTemperature()<min)
-                    throw new IllegalArgumentException("fluid_domain: below temperature_min_kelvin of a record with its own low-temperature fit");
-                propertyValidity.put(id,domain);
-            }
+                    min,max,reference,coefficients,pr,bool(o,"estimated_heavy_residue"),floor,translation));
+            if (o.has("fluid_domain")) propertyValidity.put(id,validity(object(o,"fluid_domain")));
         });
         for (var o : group(groups,"water").values()) checked(origins,o,() -> {
             viscosities.put("water/" + text(o,"id"), readViscosities(o));

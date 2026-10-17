@@ -37,10 +37,8 @@ class RangeContinuationGateTest {
                 else {
                     var property = propertyPackage.properties().get(i);
                     if (property.cp().isEmpty()) continue;
-                    var range = catalog.fluidValidity(id, component);
-                    gas = new NetworkPhaseEngine.CoefficientIdealGas(property,
-                            range.map(MaterialCatalog.Validity::minimumTemperature).orElse(property.minimumTemperature()),
-                            range.map(MaterialCatalog.Validity::maximumTemperature).orElse(property.maximumTemperature()));
+                    double[] fit = HydrocarbonModel.idealGasFitRange(catalog, id, property);
+                    gas = new NetworkPhaseEngine.CoefficientIdealGas(property, fit[0], fit[1]);
                 }
                 ends(gas, id + " " + component);
                 checked++;
@@ -60,9 +58,8 @@ class RangeContinuationGateTest {
         int n = propertyPackage.components().size();
         for (int i = 0; i < n; i++) {
             var property = propertyPackage.properties().get(i);
-            var range = catalog.fluidValidity(NETWORK, property.component());
-            double minimum = range.map(MaterialCatalog.Validity::minimumTemperature).orElse(property.minimumTemperature());
-            double maximum = range.map(MaterialCatalog.Validity::maximumTemperature).orElse(property.maximumTemperature());
+            double[] fit = HydrocarbonModel.idealGasFitRange(catalog, NETWORK, property);
+            double minimum = fit[0], maximum = fit[1];
             var gas = new NetworkPhaseEngine.CoefficientIdealGas(property, minimum, maximum);
             double[] pure = new double[n];
             pure[i] = 1;

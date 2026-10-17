@@ -77,20 +77,14 @@ public final class HydrocarbonModel {
         List<ThermoComponent> components=propertyPackage.properties().stream().map(p->new ThermoComponent(
                 p.component(),p.pr().criticalTemperature(),p.pr().criticalPressure(),p.pr().acentricFactor(),p.molecularWeight())).toList();
         int count=components.size();
-        double[][] interactions=new double[count][count], cp=new double[count][6], low=new double[count][];
-        double[] joints=new double[count],fitMinimum=new double[count],fitMaximum=new double[count];
+        double[][] interactions=new double[count][count], cp=new double[count][6];
+        double[] fitMinimum=new double[count],fitMaximum=new double[count];
         for(int i=0;i<count;i++) {
             for(int j=0;j<count;j++) interactions[i][j]=propertyPackage.interactions().get(i).get(j);
             var property=propertyPackage.properties().get(i);
             for(int j=0;j<6;j++) cp[i][j]=property.cp().get(j);
-            var segment=property.lowTemperatureCp();
-            joints[i]=segment==null?Double.NEGATIVE_INFINITY:segment.belowKelvin();
-            if(segment!=null){low[i]=new double[6];for(int j=0;j<6;j++)low[i][j]=segment.coefficients().get(j);}
-            // The fit's range: the component's fluid range where it declares one (the fit qualified there), its record's
-            // otherwise, as the phase engine's ideal gas of the same fit (NetworkPhaseEngine.CoefficientIdealGas).
-            var range=catalog.fluidValidity(packageId,property.component());
-            fitMinimum[i]=range.map(MaterialCatalog.Validity::minimumTemperature).orElse(property.minimumTemperature());
-            fitMaximum[i]=range.map(MaterialCatalog.Validity::maximumTemperature).orElse(property.maximumTemperature());
+            double[] fit=idealGasFitRange(catalog,packageId,property);
+            fitMinimum[i]=fit[0];fitMaximum[i]=fit[1];
         }
         var calibrations=catalog.fluidData().volumeReferences();
         double[] shifts=new double[count],anchorT=new double[count],anchorP=new double[count];
@@ -107,13 +101,28 @@ public final class HydrocarbonModel {
             shifts[i]=targetVolume-rawVolume;
             anchorT[i]=t;anchorP[i]=referenceP;
         }
-        translated=new TranslatedPengRobinson(components,interactions,cp,shifts,joints,low,fitMinimum,fitMaximum);
+        translated=new TranslatedPengRobinson(components,interactions,cp,shifts,fitMinimum,fitMaximum);
         // An anchor is a liquid volume, so the equation of state must have a liquid root at the anchor's state: a
         // single vapour-like root there would translate the component by a gas volume.
         for(int i=0;i<count;i++)requireLiquidRoot(packageId,components.get(i),i,anchorT[i],anchorP[i]);
         // The free water's formulation and revision, as a spine package's identity carries them (WP4: its ice).
         revision=catalog.fluidThermoFingerprint(packageId)+":"+FORMULATION+":"+ThermoIdentity.SEPARATE_FREE_WATER_FORMULATION+":"+propertyPackage.water().revision()
-                +":fluid-domain-data-v1:cp-segments-v1:catalog-volume-reference-v1";
+                +":fluid-domain-data-v1:catalog-volume-reference-v1";
+    }
+
+    /**
+     * The data range of a coefficient record's ideal-gas fit on package {@code packageId}, K, as {@code {minimum,
+     * maximum}}: the component's fluid range where it declares one (the fit qualified there), its record's otherwise,
+     * raised to the fit's own lower end where the record declares one (nitrogen's 273.16 K, owner decision D37,
+     * simplification S4: the heat capacity held below it is within 0.05 % of NIST's zero-pressure value down to the
+     * triple point). Past it the translated model, and the phase engine's ideal gas of the same fit
+     * ({@link NetworkPhaseEngine.CoefficientIdealGas}, which reads the translated model's ends), hold the heat capacity.
+     */
+    static double[] idealGasFitRange(MaterialCatalog catalog,String packageId,MaterialCatalog.Property property) {
+        var range=catalog.fluidValidity(packageId,property.component());
+        double minimum=range.map(MaterialCatalog.Validity::minimumTemperature).orElse(property.minimumTemperature());
+        if(property.idealGasMinimumTemperature()!=null)minimum=Math.max(minimum,property.idealGasMinimumTemperature());
+        return new double[]{minimum,range.map(MaterialCatalog.Validity::maximumTemperature).orElse(property.maximumTemperature())};
     }
 
     /** A liquid root of pure component {@code i} at its volume anchor's own state ({@code t}, {@code p}), on either path. */

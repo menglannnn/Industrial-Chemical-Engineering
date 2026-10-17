@@ -65,10 +65,7 @@ final class NetworkPhaseEngine {
             List<IdealGasFunction> gas=new ArrayList<>(n);
             for(int i=0;i<n;i++) {
                 translations[i]=translated.translation(i);
-                var property=propertyPackage.properties().get(i);
-                var range=catalog.fluidValidity(packageId,propertyPackage.components().get(i));
-                gas.add(new CoefficientIdealGas(property,range.map(MaterialCatalog.Validity::minimumTemperature).orElse(property.minimumTemperature()),
-                        range.map(MaterialCatalog.Validity::maximumTemperature).orElse(property.maximumTemperature())));
+                gas.add(new CoefficientIdealGas(propertyPackage.properties().get(i),translated.idealGasMinimumTemperature(i),translated.idealGasMaximumTemperature(i)));
             }
             evaluator=CubicPhaseEvaluator.fromPackage(propertyPackage,propertyPackage.components(),translations,gas);
         }
@@ -176,38 +173,33 @@ final class NetworkPhaseEngine {
     }
 
     /**
-     * A {@code shifted_polynomial_5} ideal-gas fit (and its optional low-temperature segment) as an
-     * {@link IdealGasFunction} on the network's sensible datum: {@code c_p = sum a_k (T - 298.15)^k}, the enthalpy its
-     * integral from 298.15 K (the network's own ideal-gas enthalpy), the entropy {@code integral c_p/T dT} from 298.15 K
-     * minus {@code R ln(P/1e5)}; below a segment's joint the segment continues both from their values there. Past the fit's
-     * range {@code [minimum, maximum]} the heat capacity is held at the end value and the enthalpy and entropy integrate it
-     * (owner rule of 2026-10-16), as {@link TranslatedPengRobinson}'s coefficient path does.
+     * A {@code shifted_polynomial_5} ideal-gas fit as an {@link IdealGasFunction} on the network's sensible datum:
+     * {@code c_p = sum a_k (T - 298.15)^k}, the enthalpy its integral from 298.15 K (the network's own ideal-gas
+     * enthalpy), the entropy {@code integral c_p/T dT} from 298.15 K minus {@code R ln(P/1e5)}. Past the fit's range
+     * {@code [minimum, maximum]} (the translated model's own, {@link TranslatedPengRobinson#idealGasMinimumTemperature},
+     * so both continue at the same ends) the heat capacity is held at the end value and the enthalpy and entropy
+     * integrate it (owner rule of 2026-10-16), as {@link TranslatedPengRobinson}'s coefficient path does.
      */
     static final class CoefficientIdealGas implements IdealGasFunction {
         private static final double REFERENCE=298.15;
-        private final double[] main,low,mainPowers,lowPowers;
-        private final double joint,jointEnthalpy,jointEntropy,minimum,maximum;
+        private final double[] main,mainPowers;
+        private final double minimum,maximum;
         private final String revision;
         CoefficientIdealGas(MaterialCatalog.Property property,double minimum,double maximum) {
             main=property.cp().stream().mapToDouble(Double::doubleValue).toArray();
-            var segment=property.lowTemperatureCp();
-            low=segment==null?null:segment.coefficients().stream().mapToDouble(Double::doubleValue).toArray();
-            joint=segment==null?Double.NEGATIVE_INFINITY:segment.belowKelvin();
-            mainPowers=powers(main);lowPowers=low==null?null:powers(low);
-            jointEnthalpy=low==null?0:antiderivative(main,joint)-antiderivative(low,joint);
-            jointEntropy=low==null?0:entropyIntegral(mainPowers,joint)-entropyIntegral(lowPowers,joint);
+            mainPowers=powers(main);
             this.minimum=minimum;this.maximum=maximum;revision=property.id()+":shifted_polynomial_5";
         }
         @Override public double heatCapacity(double t) {
             return fitHeatCapacity(edge(t));
         }
         @Override public double enthalpy(double t) {
-            double e=edge(t),h=e<joint?antiderivative(low,e)+jointEnthalpy:antiderivative(main,e);
+            double e=edge(t),h=antiderivative(main,e);
             return e==t?h:h+fitHeatCapacity(e)*(t-e);
         }
         @Override public double entropy(double t,double p) {
             double e=edge(t);if(!(p>0))throw new IllegalArgumentException("Ideal-gas entropy needs a positive pressure");
-            double integral=e<joint?entropyIntegral(lowPowers,e)+jointEntropy:entropyIntegral(mainPowers,e);
+            double integral=entropyIntegral(mainPowers,e);
             if(e!=t)integral+=fitHeatCapacity(e)*DeterministicMath.log(t/e);
             return integral-FluidThermodynamics.R*DeterministicMath.log(p/1.0e5);
         }
@@ -215,8 +207,8 @@ final class NetworkPhaseEngine {
         @Override public double maximumTemperature(){return maximum;}
         @Override public String revision(){return revision;}
         private double fitHeatCapacity(double t) {
-            double[] a=t<joint?low:main;double delta=t-REFERENCE,cp=0;
-            for(int k=a.length-1;k>=0;k--)cp=cp*delta+a[k];
+            double delta=t-REFERENCE,cp=0;
+            for(int k=main.length-1;k>=0;k--)cp=cp*delta+main[k];
             return cp;
         }
         /** {@code t} inside the fit's range, the nearer end outside it; a temperature that is not positive is refused. */

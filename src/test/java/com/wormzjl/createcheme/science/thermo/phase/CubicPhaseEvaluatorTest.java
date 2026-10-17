@@ -25,29 +25,21 @@ import org.junit.jupiter.api.Test;
 class CubicPhaseEvaluatorTest {
     private static final double[][] COMPOSITIONS = {{1.0, 0.0}, {0.0, 1.0}, {0.3, 0.7}, {0.7, 0.3}};
 
-    /** The network's constructor path: the package's cp fits (with nitrogen's low segment) and the same translations. */
+    /** The network's constructor path: the package's cp fits (each the polynomial at every temperature) and the same translations. */
     private static TranslatedPengRobinson reference() {
         var pkg = PhaseTestSupport.network();
         List<ThermoComponent> components = new ArrayList<>();
         int n = 2;
         double[][] cp = new double[n][6];
-        double[][] low = new double[n][];
-        double[] joints = new double[n];
         String[] names = {"Methane", "Nitrogen"};
         for (int a = 0; a < n; a++) {
             var property = pkg.properties().get(pkg.components().indexOf(names[a]));
             components.add(new ThermoComponent(names[a], property.pr().criticalTemperature(), property.pr().criticalPressure(),
                     property.pr().acentricFactor(), property.molecularWeight()));
             for (int j = 0; j < 6; j++) cp[a][j] = property.cp().get(j);
-            var segment = property.lowTemperatureCp();
-            joints[a] = segment == null ? Double.NEGATIVE_INFINITY : segment.belowKelvin();
-            if (segment != null) {
-                low[a] = new double[6];
-                for (int j = 0; j < 6; j++) low[a][j] = segment.coefficients().get(j);
-            }
         }
         return new TranslatedPengRobinson(components, new double[n][n], cp,
-                new double[] {PhaseTestSupport.METHANE_TRANSLATION, PhaseTestSupport.NITROGEN_TRANSLATION}, joints, low);
+                new double[] {PhaseTestSupport.METHANE_TRANSLATION, PhaseTestSupport.NITROGEN_TRANSLATION});
     }
 
     @Test
@@ -59,7 +51,6 @@ class CubicPhaseEvaluatorTest {
         var derivatives = evaluator.newDerivatives();
         var pkg = PhaseTestSupport.network();
         int states = 0;
-        int enthalpyStates = 0;
         double worstEnthalpy = 0.0;
         for (double t : new double[] {100.0, 110.0, 120.0, 150.0, 200.0, 298.15, 400.0, 600.0}) {
             var terms = reference.prepare(t);
@@ -78,34 +69,30 @@ class CubicPhaseEvaluatorTest {
                         assertEquals(bits(direct.volumePressureDerivative()), bits(derivatives.volumePressureDerivative()), at);
                         assertEquals(bits(direct.enthalpyPressureDerivative()), bits(derivatives.enthalpyPressureDerivative()), at);
                         assertEquals(bits(state.molarVolume()), bits(derivatives.state().molarVolume()), at);
-                        // Above nitrogen's low-temperature joint the reference's ideal part is the main fit alone.
-                        if (t >= 273.16) {
-                            double delta = t - 298.15;
-                            double ideal = 0.0;
-                            for (int i = 0; i < 2; i++) {
-                                var cp = pkg.properties().get(pkg.components().indexOf(i == 0 ? "Methane" : "Nitrogen")).cp();
-                                double h = 0.0;
-                                for (int term = 5; term >= 0; term--) h = h * delta + cp.get(term) / (term + 1);
-                                ideal += n[i] * (h * delta);
-                            }
-                            double residual = direct.molarEnthalpy() - ideal;
-                            double error = Math.abs(residual - state.residualEnthalpy());
-                            worstEnthalpy = Math.max(worstEnthalpy, error / Math.max(1.0, Math.abs(direct.molarEnthalpy())));
-                            assertTrue(error <= 1.0e-14 * Math.max(1.0, Math.abs(direct.molarEnthalpy())), at + ": " + error);
-                            if (t == 298.15) assertEquals(bits(residual), bits(state.residualEnthalpy()), at);
-                            // With the stubs' zero formation values the whole enthalpy is the reference's to rounding.
-                            assertEquals(direct.molarEnthalpy(), state.molarEnthalpy(), 1.0e-12 * Math.max(1.0, Math.abs(direct.molarEnthalpy())), at);
-                            enthalpyStates++;
+                        // The reference's ideal part is each main fit at every temperature, as the stubs' inside 50-1500 K.
+                        double delta = t - 298.15;
+                        double ideal = 0.0;
+                        for (int i = 0; i < 2; i++) {
+                            var cp = pkg.properties().get(pkg.components().indexOf(i == 0 ? "Methane" : "Nitrogen")).cp();
+                            double h = 0.0;
+                            for (int term = 5; term >= 0; term--) h = h * delta + cp.get(term) / (term + 1);
+                            ideal += n[i] * (h * delta);
                         }
+                        double residual = direct.molarEnthalpy() - ideal;
+                        double error = Math.abs(residual - state.residualEnthalpy());
+                        worstEnthalpy = Math.max(worstEnthalpy, error / Math.max(1.0, Math.abs(direct.molarEnthalpy())));
+                        assertTrue(error <= 1.0e-14 * Math.max(1.0, Math.abs(direct.molarEnthalpy())), at + ": " + error);
+                        if (t == 298.15) assertEquals(bits(residual), bits(state.residualEnthalpy()), at);
+                        // With the stubs' zero formation values the whole enthalpy is the reference's to rounding.
+                        assertEquals(direct.molarEnthalpy(), state.molarEnthalpy(), 1.0e-12 * Math.max(1.0, Math.abs(direct.molarEnthalpy())), at);
                         states++;
                     }
                 }
             }
         }
         assertEquals(256, states);
-        assertEquals(96, enthalpyStates);
         System.out.println("P2 adapter parity: " + states + " states bitwise (v, ln phi, dv/dT, dv/dP, dh/dP); residual enthalpy "
-                + enthalpyStates + " states, worst " + worstEnthalpy + " of |h|");
+                + states + " states, worst " + worstEnthalpy + " of |h|");
     }
 
     @Test

@@ -72,11 +72,11 @@ Physical fields:
 Coefficient n has units J/(mol·K^(n+1)). Ideal-gas enthalpy is its analytic integral from 298.15 K, in J/mol,
 with zero enthalpy at that datum. Existing cubic fits retain their original evaluation order when E and F are zero.
 
-An optional `below` object gives a second segment for temperatures below its `temperature_kelvin` (which must lie
-above `temperature_min_kelvin` and at most 298.15 K): six `coefficients` in the same form and a `source`. The fluid
-network continues the enthalpy from the main fit's value at the joint, so it is continuous there by construction; fit
-the segment so its heat capacity equals the main fit's at the joint. Nitrogen uses one below 273.16 K (NIST
-zero-pressure Cp to its 63.151 K triple point). The column evaluates the main fit only.
+An optional `temperature_min_kelvin` gives the fit's own lower end where it lies above the record's (it must lie
+above the record's `temperature_min_kelvin` and at most 298.15 K). Past either end of the fit's range the fluid network
+holds the heat capacity at the end value and integrates it, so the enthalpy and entropy stay continuous. Nitrogen
+declares 273.16 K: its fit's value there, 29.111 J/(mol·K), is within 0.05 % of the NIST zero-pressure Cp down to its
+63.151 K triple point (owner decision D37). The column evaluates the main fit only.
 
 `models` may contain `pr78`, with `critical_temperature_kelvin`, `critical_pressure_pascal`, and dimensionless
 `acentric_factor`. A PR78 package requires those fields for each selected property dataset. NRTL is a mixture

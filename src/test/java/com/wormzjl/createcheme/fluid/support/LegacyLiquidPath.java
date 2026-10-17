@@ -29,15 +29,11 @@ public final class LegacyLiquidPath {
         List<ThermoComponent> components=propertyPackage.properties().stream().map(p->new ThermoComponent(
                 p.component(),p.pr().criticalTemperature(),p.pr().criticalPressure(),p.pr().acentricFactor(),p.molecularWeight())).toList();
         int count=components.size();
-        double[][] interactions=new double[count][count],cp=new double[count][6],low=new double[count][];
-        double[] joints=new double[count];
+        double[][] interactions=new double[count][count],cp=new double[count][6];
         for(int i=0;i<count;i++) {
             for(int j=0;j<count;j++)interactions[i][j]=propertyPackage.interactions().get(i).get(j);
             var property=propertyPackage.properties().get(i);
             for(int j=0;j<6;j++)cp[i][j]=property.cp().get(j);
-            var segment=property.lowTemperatureCp();
-            joints[i]=segment==null?Double.NEGATIVE_INFINITY:segment.belowKelvin();
-            if(segment!=null){low[i]=new double[6];for(int j=0;j<6;j++)low[i][j]=segment.coefficients().get(j);}
         }
         var raw=new PengRobinson78(components,interactions);
         var calibrations=catalog.fluidData().volumeReferences();
@@ -54,7 +50,7 @@ public final class LegacyLiquidPath {
             legacyShifts[i]=target*Math.exp(k*(anchorP-REFERENCE_PRESSURE))-atReference;
             directShifts[i]=target-atAnchor;
         }
-        legacy=new TranslatedPengRobinson(components,interactions,cp,legacyShifts,joints,low);
+        legacy=new TranslatedPengRobinson(components,interactions,cp,legacyShifts);
     }
 
     /** {@code c_i} of the retired path, m3/mol. */

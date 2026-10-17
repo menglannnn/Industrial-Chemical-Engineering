@@ -54,18 +54,25 @@ class LegacyNetworkPathPinTest {
      * ({@code tools/unified-thermo-port-extrapolation/probes/LegacyPinPointProbe.java} at both trees) only the 27 wet
      * flashes at 77, 110 and 150 K moved, each the ice hold before: 26 are answered, the water ice beside the
      * hydrocarbons, and the twelve-component mixture at 110 K and 1 bar is the three-phase hold its hydrocarbons meet dry.</p>
+     *
+     * <p>Re-pinned for owner decision D37, simplification S4 (nitrogen's low-temperature heat-capacity segment deleted,
+     * its fit held below its 273.16 K lower end; the value before, {@code 6e9fbe83094f3a9fa9aeee3460f89f22b0e74931e035e3adca39c9f196e0b7e4}).
+     * Point by point (the same probe at both trees, {@code tools/unified-thermo-port-m5/simplifications/probe}) every
+     * point at 293.15 K and above keeps its bits; the 188 points at 77, 110 and 150 K moved, each through nitrogen's
+     * ideal-gas part alone (pure nitrogen at 77 K: h -0.843 J/mol, 1.3e-4 of h; no volume or phase amount moved).</p>
      */
-    static final String DIGEST = "6e9fbe83094f3a9fa9aeee3460f89f22b0e74931e035e3adca39c9f196e0b7e4";
+    static final String DIGEST = "98a1af1147a2fc7e952a83a62d274ad68a1c875ce7c3c7bd80ce757b904a8d78";
     /**
      * The revision string: the formulation tag {@code direct-liquid-v1:tp-engine-v1:range-continuation-v1} (the phases
      * decided by the equilibrium engine, every data range continued since the owner rule of 2026-10-16) and the fluid
      * thermodynamic fingerprint of the widened {@code fluid_domain} (nitrogen, methane and the envelope to 10 MPa, P3 WP7
      * data) replace main 0.8.0's: a fresh world. Since WP4 it carries the free water's formulation and revision
      * ({@code separate-free-water-v2:water-iapws-shomate-r2}: its ice), as a spine package's identity does, and the
-     * fingerprint hashes the ice's science.
+     * fingerprint hashes the ice's science. Since D37 S4 the {@code cp-segments-v1} tag is gone with the segments, and the
+     * fingerprint is the nitrogen record r3's.
      */
-    static final String REVISION = "0b64e8814c6a995993f80d1446d88bd2e1a258e664552d1d1128976fcd004352:direct-liquid-v1:tp-engine-v1:range-continuation-v1"
-            + ":separate-free-water-v2:water-iapws-shomate-r2:fluid-domain-data-v1:cp-segments-v1:catalog-volume-reference-v1";
+    static final String REVISION = "7b2229595dd3a815b0bd569f3fd1e7561f7c3671919be682f9c1d6656740cd92:direct-liquid-v1:tp-engine-v1:range-continuation-v1"
+            + ":separate-free-water-v2:water-iapws-shomate-r2:fluid-domain-data-v1:catalog-volume-reference-v1";
 
     @Test
     void theBundledNetworkPackageKeepsItsCoefficientPathBitForBit() {
@@ -78,7 +85,7 @@ class LegacyNetworkPathPinTest {
         // The revision keeps WP4's layout: the package's fluid thermodynamic fingerprint and the formulation tags, with the
         // free water's formulation and revision since the free water's ice (WP4 of the range-extrapolation plan).
         assertEquals(catalog.fluidThermoFingerprint(NETWORK) + ":" + HydrocarbonModel.FORMULATION + ":" + ThermoIdentity.SEPARATE_FREE_WATER_FORMULATION
-                + ":" + catalog.requirePackage(NETWORK).water().revision() + ":fluid-domain-data-v1:cp-segments-v1:catalog-volume-reference-v1", revision);
+                + ":" + catalog.requirePackage(NETWORK).water().revision() + ":fluid-domain-data-v1:catalog-volume-reference-v1", revision);
         assertEquals(REVISION, revision);
         assertEquals(DIGEST, digest);
         assertTrue(catalog.requirePackage(NETWORK).spine().isEmpty(), "the bundled network package declares no spine");
@@ -87,7 +94,7 @@ class LegacyNetworkPathPinTest {
     /**
      * The engine's evaluator of a package without a spine, as {@link NetworkPhaseEngine} builds it: the package's PR78
      * constants and constant interactions, the network model's own translations, and the {@code shifted_polynomial_5}
-     * fits on the network's datum over each component's fluid validity.
+     * fits on the network's datum over the translated model's fit ranges.
      */
     static CubicPhaseEvaluator evaluator(MaterialCatalog catalog, FluidThermodynamics model) {
         var propertyPackage = catalog.requirePackage(NETWORK);
@@ -97,11 +104,8 @@ class LegacyNetworkPathPinTest {
         List<IdealGasFunction> gas = new ArrayList<>(n);
         for (int i = 0; i < n; i++) {
             translations[i] = translated.translation(i);
-            var property = propertyPackage.properties().get(i);
-            var range = catalog.fluidValidity(NETWORK, propertyPackage.components().get(i));
-            gas.add(new NetworkPhaseEngine.CoefficientIdealGas(property,
-                    range.map(MaterialCatalog.Validity::minimumTemperature).orElse(property.minimumTemperature()),
-                    range.map(MaterialCatalog.Validity::maximumTemperature).orElse(property.maximumTemperature())));
+            gas.add(new NetworkPhaseEngine.CoefficientIdealGas(propertyPackage.properties().get(i),
+                    translated.idealGasMinimumTemperature(i), translated.idealGasMaximumTemperature(i)));
         }
         return CubicPhaseEvaluator.fromPackage(propertyPackage, propertyPackage.components(), translations, gas);
     }
