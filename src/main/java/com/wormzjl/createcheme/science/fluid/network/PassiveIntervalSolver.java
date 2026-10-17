@@ -81,18 +81,16 @@ public final class PassiveIntervalSolver {
         // its boundaries kept. Every package has a crystal, the free water's ice (WP4), so only the stocks that may convert
         // are refreshed here: an island where none may (no solids, no crystal able to form) reaches its rest test with no
         // closure and no checkpoint, as on a package without crystals before the ice.
-        var refreshed=InventoryEquilibrium.conversions(initial,model,checkpoint);
-        boolean converted=refreshed.converted();
-        if(Double.isFinite(duration)&&duration>0&&!converted&&NetworkReduction.atRest(initial,model,null,refused)){SolverDiagnostics.count(SolverDiagnostics.restIntervals);return committedInlets(NetworkReduction.restInterval(committed,duration,refused));}
-        if(converted)initial=refreshed.graph();
+        var conversions=InventoryEquilibrium.conversions(initial,model,checkpoint);
+        if(Double.isFinite(duration)&&duration>0&&!conversions.converted()&&NetworkReduction.atRest(initial,model,null,refused)){SolverDiagnostics.count(SolverDiagnostics.restIntervals);return committedInlets(NetworkReduction.restInterval(committed,duration,refused));}
+        // Owner decision D37 (S3): the interval's one refresh completes the rest test's (InventoryEquilibrium.completed), and
+        // the steps or the solid events start from it, its boundaries first. Whether the solid events run is read where the
+        // rest test's refresh left the island when a stock converted, and on the island as it came otherwise.
+        var monitored=conversions.converted()?conversions.graph():initial;
+        var start=InventoryEquilibrium.completed(initial,conversions,model,checkpoint);
         Result result;
-        if(com.wormzjl.createcheme.science.fluid.transport.SolidMobility.monitored(initial)||model.solidSettings.immobileViscosity()<.002&&initial.reservoirs().stream().anyMatch(n->n.state().waterVolume()>0))result=new SolidEventIntegrator(model,this).solve(initial,duration,settings,checkpoint,startingStep);
-        else result=integrate(initial,duration,settings,checkpoint,PassiveStepSolver.Acceptance.FULL,StageGuard.NONE,startingStep);
-        if(converted&&!refreshed.boundaries().isEmpty()) {
-            var boundaries=new ArrayList<>(refreshed.boundaries());boundaries.addAll(result.boundaries());
-            result=new Result(result.graph(),result.advancedSeconds(),result.averageMassFlows(),result.acceptedSubsteps(),result.rejectedSubsteps(),result.pumpWorkJoule(),
-                    boundaries,result.rejectionReasons(),result.endpointModes(),result.endpointHeads(),result.endpointFlows(),result.acceptance(),result.pipeTransfers());
-        }
+        if(com.wormzjl.createcheme.science.fluid.transport.SolidMobility.monitored(monitored)||model.solidSettings.immobileViscosity()<.002&&monitored.reservoirs().stream().anyMatch(n->n.state().waterVolume()>0))result=new SolidEventIntegrator(model,this).solve(start,duration,settings,checkpoint,startingStep);
+        else result=integrate(start,duration,settings,checkpoint,PassiveStepSolver.Acceptance.FULL,StageGuard.NONE,startingStep);
         return committedInlets(result);
     }
     public Result solveApproximate(PassiveNetwork initial,double duration,Settings settings,Runnable checkpoint,StageGuard guard) {
@@ -104,7 +102,7 @@ public final class PassiveIntervalSolver {
             guard.check(states,modes);
         };
         decideInlets(initial,duration);
-        return committedInlets(integrate(initial,duration,settings,checkpoint,PassiveStepSolver.Acceptance.APPROXIMATE,checked,settings.initialStep()));
+        return committedInlets(integrate(InventoryEquilibrium.Refreshed.as(initial),duration,settings,checkpoint,PassiveStepSolver.Acceptance.APPROXIMATE,checked,settings.initialStep()));
     }
     /**
      * The endpoint modes of the island's committed interval and the pipe ids they belong to: the hysteresis input of the
@@ -159,18 +157,20 @@ public final class PassiveIntervalSolver {
     private static final String TRANSITION_REJECTION="Solid transport transition inside the step";
     private static final String REOPEN_REJECTION="Backward-Euler boundary reopened";
 
-    Result integrate(PassiveNetwork initial,double duration,Settings settings,Runnable checkpoint,PassiveStepSolver.Acceptance acceptance,
+    /** The interval from {@code start}, the island's refresh at the interval's start (its graph and the boundaries the
+     * refresh booked, which the result's boundaries begin with). */
+    Result integrate(InventoryEquilibrium.Refreshed start,double duration,Settings settings,Runnable checkpoint,PassiveStepSolver.Acceptance acceptance,
                      StageGuard guard,double startingStep) {
-        var prefix=run(initial,duration,settings,checkpoint,acceptance,guard,startingStep);
+        var prefix=run(start,duration,settings,checkpoint,acceptance,guard,startingStep);
         // No caller of the public contract can handle a prefix, so a guard that declares a
         // transition on this path escapes exactly as it did before there was a prefix at all.
         if(prefix.transition()!=null)throw prefix.transition();
         return prefix.result();
     }
     /** {@link #integrate} with the prefix returned rather than thrown; see {@link Prefix}. */
-    Prefix integrateToTransition(PassiveNetwork initial,double duration,Settings settings,Runnable checkpoint,PassiveStepSolver.Acceptance acceptance,
+    Prefix integrateToTransition(InventoryEquilibrium.Refreshed start,double duration,Settings settings,Runnable checkpoint,PassiveStepSolver.Acceptance acceptance,
                                  StageGuard guard,double startingStep) {
-        return run(initial,duration,settings,checkpoint,acceptance,guard,startingStep);
+        return run(start,duration,settings,checkpoint,acceptance,guard,startingStep);
     }
     /**
      * The interval, stepped by backward Euler under the state-change controller.
@@ -201,18 +201,15 @@ public final class PassiveIntervalSolver {
      * 8.8 (a)).</li>
      * </ul>
      */
-    private Prefix run(PassiveNetwork initial,double duration,Settings settings,Runnable checkpoint,PassiveStepSolver.Acceptance acceptance,
+    private Prefix run(InventoryEquilibrium.Refreshed refreshed,double duration,Settings settings,Runnable checkpoint,PassiveStepSolver.Acceptance acceptance,
                        StageGuard guard,double startingStep) {
         if(!Double.isFinite(duration)||duration<=0)throw new IllegalArgumentException("Positive finite interval required");
-        initial=PassiveNetwork.sizeJunctionHoldups(initial,model);
         if(!Double.isFinite(startingStep)||startingStep<=0)throw new IllegalArgumentException("Positive finite starting step required");
-        var refreshed=acceptance==PassiveStepSolver.Acceptance.FULL?InventoryEquilibrium.refresh(initial,model,checkpoint):null;
-        PassiveNetwork accepted=refreshed==null?initial:refreshed.graph();
+        PassiveNetwork accepted=refreshed.graph();
         // h is the controller's estimate; each attempt uses it truncated to the rest of the interval.
         double elapsed=0,h=Math.min(startingStep,settings.maximumStep);int acceptedCount=0,rejectedCount=0,consecutiveRejects=0;PassiveStepSolver.Result last=null;
-        double[] transferred=new double[initial.pipes().size()];
-        double work=0;var boundaries=new ArrayList<ConservativeTransport.BoundaryTransfer>();
-        if(refreshed!=null)boundaries.addAll(refreshed.boundaries());
+        double[] transferred=new double[accepted.pipes().size()];
+        double work=0;var boundaries=new ArrayList<ConservativeTransport.BoundaryTransfer>(refreshed.boundaries());
         var pipeTransfers=new PipeTransfer.Accumulator();
         var rejectionReasons=new LinkedHashMap<String,Integer>();
         String lastRejection="";

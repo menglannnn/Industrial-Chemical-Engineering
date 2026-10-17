@@ -20,6 +20,9 @@ public final class InventoryEquilibrium {
      */
     public record Refreshed(PassiveNetwork graph,List<ConservativeTransport.BoundaryTransfer> boundaries,boolean converted) {
         public Refreshed{boundaries=List.copyOf(boundaries);}
+        /** A graph a run starts from as it is, booking nothing: a solid-event segment's first (its interval's start was
+         * refreshed), and the approximate solve's start. */
+        static Refreshed as(PassiveNetwork graph){return new Refreshed(graph,List.of(),false);}
     }
     /**
      * The island's states from what it holds, at an interval or solid-event segment start: each vessel's state closed to
@@ -28,16 +31,25 @@ public final class InventoryEquilibrium {
      * {@link SolidInventory#oneSizePerSolid}): the vessels, the junction buffers and the filter cakes. A stock already
      * holding one size per solid, a vessel at its crystal equilibrium and an island of fluids only keep every bit.
      */
-    public static Refreshed refresh(PassiveNetwork graph,FluidThermodynamics model,Runnable checkpoint){return refresh(graph,model,checkpoint,node->true);}
+    public static Refreshed refresh(PassiveNetwork graph,FluidThermodynamics model,Runnable checkpoint){return refresh(graph,model,checkpoint,node->true,null);}
     /**
      * The refresh an island's rest test reads (owner decision D23 (6)): {@link #refresh} of the nodes whose stock may
-     * convert ({@link #mayConvert}); every other node is left as it is, with no closure and no checkpoint. Its graph is
-     * used only where it converted, and the interval's run then restates every vessel ({@link #refresh}, decision D36), so
-     * a node it leaves loses nothing. Before the free water's ice (WP4) it ran on packages with crystals only; with the
-     * ice on every package, the test is the vessel's.
+     * convert ({@link #mayConvert}); every other node is left as it is, with no closure and no checkpoint. An island that
+     * is not at rest completes it ({@link #completed}), so a node it leaves loses nothing. Before the free water's ice
+     * (WP4) it ran on packages with crystals only; with the ice on every package, the test is the vessel's.
      */
     public static Refreshed conversions(PassiveNetwork graph,FluidThermodynamics model,Runnable checkpoint) {
-        return refresh(graph,model,checkpoint,node->mayConvert(node,model));
+        return refresh(graph,model,checkpoint,node->mayConvert(node,model),null);
+    }
+    /**
+     * The interval start's refresh of {@code graph} after its rest test (owner decision D37, simplification S3: one
+     * refresh per interval start): the nodes {@code conversions} refreshed are its own, every other vessel is restated
+     * from what it holds (decision D36), so each node is closed once; its boundaries follow the conversions' own. It is
+     * {@link #refresh} of {@code graph} where the conversions changed no stock (the same closures of the same states) and
+     * of the conversions' graph where they did (a refreshed vessel keeps every bit).
+     */
+    public static Refreshed completed(PassiveNetwork graph,Refreshed conversions,FluidThermodynamics model,Runnable checkpoint) {
+        return refresh(graph,model,checkpoint,node->!mayConvert(node,model),conversions);
     }
     /**
      * Whether a refresh may convert {@code node}'s stock: a vessel or junction buffer holding solids (a crystal may melt or
@@ -50,11 +62,17 @@ public final class InventoryEquilibrium {
         if(!node.inventory().solids().empty())return true;
         return !node.junction()&&VesselCrystals.competes(model,node.inventory(),node.state());
     }
-    private static Refreshed refresh(PassiveNetwork graph,FluidThermodynamics model,Runnable checkpoint,Predicate<PassiveNetwork.Reservoir> visited) {
+    /** {@link #refresh} of the {@code visited} nodes of {@code graph}; every other node is {@code done}'s (or, null, the
+     * graph's own), whose boundaries come first. */
+    private static Refreshed refresh(PassiveNetwork graph,FluidThermodynamics model,Runnable checkpoint,Predicate<PassiveNetwork.Reservoir> visited,
+                                     Refreshed done) {
         var nodes=new ArrayList<PassiveNetwork.Reservoir>();var boundaries=new ArrayList<ConservativeTransport.BoundaryTransfer>();
-        boolean changed=false,converted=false;
-        for(var node:graph.reservoirs()) {
-            if(!visited.test(node)){nodes.add(node);continue;}
+        var base=done==null?graph:done.graph();
+        boolean changed=base!=graph,converted=false;
+        if(done!=null){boundaries.addAll(done.boundaries());converted=done.converted();}
+        for(int i=0;i<graph.reservoirs().size();i++) {
+            var node=graph.reservoirs().get(i);
+            if(!visited.test(node)){nodes.add(base.reservoirs().get(i));continue;}
             checkpoint.run();PassiveNetwork.Reservoir refreshed;
             // A committed inventory whose phases the network holds on names its node, directly or through the failed
             // closure such a hold stopped; see ThermoHold.
@@ -63,7 +81,7 @@ public final class InventoryEquilibrium {
             catch(SparseNewton.Nonconvergence failure){throw failure.at(node.id());}
             changed|=refreshed!=node;converted|=refreshed.inventory()!=node.inventory();nodes.add(refreshed);
         }
-        var pipes=graph.pipes();List<PassiveNetwork.Pipe> merged=null;
+        var pipes=base.pipes();List<PassiveNetwork.Pipe> merged=null;
         for(int i=0;i<pipes.size();i++) {
             var filter=pipes.get(i).filter();if(filter==null)continue;
             var cake=filter.captured().oneSizePerSolid();if(cake==filter.captured())continue;

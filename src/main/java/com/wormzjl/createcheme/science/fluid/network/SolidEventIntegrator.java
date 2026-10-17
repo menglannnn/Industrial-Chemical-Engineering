@@ -261,9 +261,10 @@ final class SolidEventIntegrator {
             }
         };
     }
-    PassiveIntervalSolver.Result solve(PassiveNetwork initial,double duration,PassiveIntervalSolver.Settings settings,Runnable checkpoint,double startingStep) {
+    /** The interval from {@code start}, the island's refresh at the interval's start ({@link PassiveIntervalSolver#solve}). */
+    PassiveIntervalSolver.Result solve(InventoryEquilibrium.Refreshed start,double duration,PassiveIntervalSolver.Settings settings,Runnable checkpoint,double startingStep) {
         if(!Double.isFinite(duration)||duration<=0)throw new IllegalArgumentException("Positive finite interval required");
-        var refreshed=InventoryEquilibrium.refresh(initial,model,checkpoint);var graph=refreshed.graph();
+        var graph=start.graph();
         int[] blocked=new int[graph.pipes().size()];
         for(int i=0;i<blocked.length;i++){var p=graph.pipes().get(i);var a=graph.reservoirs().get(p.first());var b=graph.reservoirs().get(p.second());if(p.filter()!=null&&a.id()<0&&b.id()<0&&a.kind()==PassiveNetwork.NodeKind.GENERATOR&&b.kind()==PassiveNetwork.NodeKind.VOID)blocked[i]=BOTH_DIRECTIONS;}
         double elapsed=0,work=0,step=startingStep;int accepted=0,rejected=0;
@@ -292,7 +293,7 @@ final class SolidEventIntegrator {
             if(attempt==2*blocked.length)throw new SparseNewton.Nonconvergence("Solid closure active set did not settle");
         }
         double[] transported=new double[graph.pipes().size()];
-        var histories=new PipeTransfer.Accumulator();var boundaries=new ArrayList<ConservativeTransport.BoundaryTransfer>(refreshed.boundaries());
+        var histories=new PipeTransfer.Accumulator();var boundaries=new ArrayList<ConservativeTransport.BoundaryTransfer>(start.boundaries());
         PassiveIntervalSolver.Result last=null;
         // One segment per closure. The interval solver stops its own step grid on the transition
         // and hands back the prefix it accepted, so the event is located by the same adaptive
@@ -300,8 +301,11 @@ final class SolidEventIntegrator {
         // prefix is never re-integrated.
         for(int event=0;elapsed<duration&&event<=2*blocked.length+1;event++) {
             checkpoint.run();
-            var start=masks(graph,blocked);double remaining=duration-elapsed;
-            var prefix=integrator.integrateToTransition(start,remaining,settings,checkpoint,PassiveStepSolver.Acceptance.FULL,guard(start),step);
+            var masked=masks(graph,blocked);double remaining=duration-elapsed;
+            // The first segment starts from the interval's refresh; every later one from its own refresh of the state the
+            // transition left (owner decision D23: crystal mass moves only in a vessel's refresh).
+            var segment=event==0?InventoryEquilibrium.Refreshed.as(masked):InventoryEquilibrium.refresh(masked,model,checkpoint);
+            var prefix=integrator.integrateToTransition(segment,remaining,settings,checkpoint,PassiveStepSolver.Acceptance.FULL,guard(masked),step);
             var transition=prefix.transition();int stoppedFilter=-1;
             if(transition!=null) {
                 blocked[transition.edge]|=BOTH_DIRECTIONS;
