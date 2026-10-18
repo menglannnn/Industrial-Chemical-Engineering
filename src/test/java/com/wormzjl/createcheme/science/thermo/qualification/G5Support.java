@@ -308,11 +308,4 @@ final class G5Support {
         for (PhaseAmounts phase : r.phases()) if (phase.kind() == PhaseKind.LIQUID) return true;
         return false;
     }
-
-    /** The pilot service with the crystal record's anchor fusion enthalpy replaced (the D16 revisit). */
-    static FluidTpEquilibrium withFusionEnthalpy(double fusion) {
-        return FluidTpEquilibrium.forPackage(com.wormzjl.createcheme.science.material.PilotCryogenicTestCatalog.parseWith(
-                "data/createcheme/materials/crystals/carbon_dioxide_i.json",
-                o -> o.getAsJsonObject("anchor").addProperty("fusion_enthalpy_j_per_mol", fusion)), PILOT);
-    }
 }

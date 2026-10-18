@@ -4283,16 +4283,6 @@ public final class FluidTpEquilibrium {
         return onset(true, Root.LIQUID, crystal, pressure, species, amounts, own(workspace));
     }
 
-    /** {@link #freezingTemperature(String, double, List, double[], Workspace)}, a new workspace. */
-    public DepositionOnset freezingTemperature(double pressure, List<String> species, double[] amounts) {
-        return freezingTemperature(null, pressure, species, amounts, newWorkspace());
-    }
-
-    /** The frost pressure: the pressure at {@code temperature} where the crystal first forms; a new workspace. */
-    public DepositionOnset depositionPressure(double temperature, List<String> species, double[] amounts) {
-        return depositionPressure(null, temperature, species, amounts, newWorkspace());
-    }
-
     /**
      * The onset pressure of crystal {@code crystal}: as {@link #depositionTemperature(String, double, List, double[],
      * Workspace)} with the search in {@code ln P} ({@code D} increases with it; first slope one, the

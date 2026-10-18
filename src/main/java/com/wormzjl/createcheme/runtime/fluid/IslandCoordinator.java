@@ -675,13 +675,6 @@ public final class IslandCoordinator {
         owned();if(!aligned(event,affected))throw new IllegalStateException("Event owners have not aligned");
         for(long id:affected){var i=require(id);removeFence(i,event);inputsChanged(i);i.touch();reconsider(i);}
     }
-    /** Production has become known (including zero production). A lagging receiver need not
-     * reach the promised time to resolve this dependency. The host separately retains a known
-     * input-time boundary when needed, so it cannot inject into an already admitted interval. */
-    public void resolveDeliveryFence(UUID event,Collection<Long> receivers) {
-        owned();for(long id:receivers)if(!require(id).fences.containsKey(event))throw new IllegalStateException("Missing delivery horizon");
-        for(long id:receivers){var island=require(id);removeFence(island,event);inputsChanged(island);island.touch();reconsider(island);}
-    }
     public record Replacement(long id,PassiveNetwork graph) {
         public Replacement {if(id<=0)throw new IllegalArgumentException("Invalid replacement identity");Objects.requireNonNull(graph);}
     }

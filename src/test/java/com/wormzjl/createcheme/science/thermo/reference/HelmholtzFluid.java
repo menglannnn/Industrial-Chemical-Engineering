@@ -74,16 +74,8 @@ public final class HelmholtzFluid {
         return new HelmholtzFluid(root);
     }
 
-    public String name() {
-        return name;
-    }
-
     public double gasConstant() {
         return gasConstant;
-    }
-
-    public double molarMass() {
-        return molarMass;
     }
 
     public double reducingTemperature() {
@@ -102,20 +94,12 @@ public final class HelmholtzFluid {
         return criticalPressure;
     }
 
-    public double criticalDensity() {
-        return criticalDensity;
-    }
-
     public double tripleTemperature() {
         return tripleTemperature;
     }
 
     public double maximumTemperature() {
         return maximumTemperature;
-    }
-
-    public double maximumPressure() {
-        return maximumPressure;
     }
 
     /** alpha0 and its derivatives at (tau, delta), written into {@code out}. */
@@ -156,13 +140,6 @@ public final class HelmholtzFluid {
         double logPhi = ar.alpha + deltaArD - Math.log(z);
         return new HelmholtzState(temperature, density, pressure, z, enthalpy, entropy, internalEnergy, gibbs, cp, cv,
                 logPhi, r * temperature * stiffness);
-    }
-
-    /** Pressure p(T, rho), Pa. */
-    public double pressure(double temperature, double density) {
-        AlphaDerivatives ar = new AlphaDerivatives();
-        residual.evaluate(reducingTemperature / temperature, density / reducingDensity, ar);
-        return density * gasConstant * temperature * (1.0 + density / reducingDensity * ar.dDelta);
     }
 
     /**
@@ -295,21 +272,6 @@ public final class HelmholtzFluid {
         HelmholtzState liquidState = state(temperature, rhoL);
         HelmholtzState vapourState = state(temperature, rhoV);
         return new SaturationState(temperature, vapourState.pressure(), liquidState, vapourState);
-    }
-
-    /** The file's saturation-pressure ancillary (a starting value, not an EOS result). */
-    public double ancillarySaturationPressure(double temperature) {
-        return saturationPressureAncillary.evaluate(temperature);
-    }
-
-    /** The file's saturated-liquid density ancillary (a starting value, not an EOS result). */
-    public double ancillaryLiquidDensity(double temperature) {
-        return liquidDensityAncillary.evaluate(temperature);
-    }
-
-    /** The file's saturated-vapour density ancillary (a starting value, not an EOS result). */
-    public double ancillaryVapourDensity(double temperature) {
-        return vapourDensityAncillary.evaluate(temperature);
     }
 
     private static void requireUnits(JsonObject object, String key, String expected) {

@@ -99,18 +99,6 @@ public final class SolidCarbonDioxideReferences {
                 * (-14.97366 * theta + 1.805904 * Math.pow(theta, 1.5) - 2.834695 * Math.pow(theta, 2.5)));
     }
 
-    /** Trusler 2011 equation 47, Pa. */
-    static double truslerMeltingPressure(double t) {
-        double x = t / TRIPLE_TEMPERATURE - 1;
-        return TRIPLE_PRESSURE * (1 + 2010.04 * x + 1704.40 * x * x + 171.695 * x * x * x);
-    }
-
-    /** Trusler 2011 equation 49: molar volume on the melting curve, m3/mol. */
-    static double truslerMeltingVolume(double t) {
-        double x = t / TRIPLE_TEMPERATURE - 1;
-        return 28.5589e-6 * (1 + 0.160433 * x - 0.018643 * x * x + 0.001582 * x * x * x);
-    }
-
     /** Trusler 2011 equation 50: molar volume on the sublimation curve, m3/mol (V00 from Table 6). */
     static double truslerSublimationVolume(double t) {
         double x = t / 68.347;

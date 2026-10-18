@@ -66,11 +66,4 @@ final class SaturationAncillary {
         return reducingValue * Math.exp(usingTauR ? reducingTemperature / temperature * sum : sum);
     }
 
-    double minimumTemperature() {
-        return minimumTemperature;
-    }
-
-    double maximumTemperature() {
-        return maximumTemperature;
-    }
 }
