@@ -182,7 +182,7 @@ public final class FluidPhasePortGameTests {
             var view=world.view(compressorId);
             helper.assertTrue(System.nanoTime()<deadline[0],"The compressor did not close: "+view.status()+", seen "+seen);
             helper.assertTrue(!view.status().startsWith("HELD"),"Held: "+view.status());
-            for(var mode:List.of("PUMP_TARGET","PUMP_HEAD_LIMIT","PUMP_VELOCITY_LIMIT","CLOSED","INLET_WRONG_PHASE"))if(view.status().contains(" / "+mode))seen.add(mode);
+            for(var mode:List.of("PUMP_TARGET","PUMP_HEAD_LIMIT","CLOSED","INLET_WRONG_PHASE"))if(view.status().contains(" / "+mode))seen.add(mode);
             helper.assertTrue(!seen.contains("INLET_WRONG_PHASE"),"A compressor on nitrogen is not refused: "+view.status());
             if(!view.status().contains(" / CLOSED")||!seen.contains("PUMP_TARGET"))return;
             var a=world.view(suctionId).state();var b=world.view(dischargeId).state();

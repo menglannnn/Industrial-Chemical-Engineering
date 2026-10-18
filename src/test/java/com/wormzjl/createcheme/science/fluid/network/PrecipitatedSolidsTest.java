@@ -501,7 +501,12 @@ class PrecipitatedSolidsTest {
         System.out.printf(Locale.ROOT,"frosted tank vents: %.6e kg/s for 5 s, %.1f Pa left, frost %.6f kg kept of %.6f kg, closures %d%n",vent.averageMassFlows()[0],
                 after.state().pressure(),crystalKg(after),crystalKg(frosted),vent.graph().pipes().getFirst().blockedDirections());
         assertTrue(vent.averageMassFlows()[0]>0,"the gas leaves");
-        assertEquals(frosted.inventory().solids(),after.inventory().solids(),"every crystal stays");
+        // Every crystal stays: the same populations, their masses to the closure's roundoff (the frost stands in its
+        // sublimation equilibrium with the gas, whose state the vent moves; 2026-10-18, the velocity cap in the law).
+        var before=frosted.inventory().solids().populations();var kept=after.inventory().solids().populations();
+        assertEquals(before.size(),kept.size(),"every crystal stays");
+        for(int i=0;i<before.size();i++){assertEquals(before.get(i).material(),kept.get(i).material());assertEquals(before.get(i).size(),kept.get(i).size());
+            assertEquals(before.get(i).massKg(),kept.get(i).massKg(),1e-12*before.get(i).massKg(),"every crystal stays");}
         assertTrue(vent.boundaries().stream().allMatch(b->b.solids().empty()),"none leaves with the gas");
         var warm=charge(pilot,250,3e5,new double[]{.9,0,0,.1,0},.1);var receiver=charge(pilot,250,101e3,new double[]{1,0,0,0,0},.1);
         var stuck=new PassiveNetwork(List.of(new PassiveNetwork.Reservoir(1,0,warm),new PassiveNetwork.Reservoir(2,0,receiver)),List.of(outlet.withBlockedDirections(3)));

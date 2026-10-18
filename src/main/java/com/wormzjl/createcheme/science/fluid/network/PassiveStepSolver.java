@@ -62,9 +62,6 @@ public final class PassiveStepSolver {
      * term ({@link #checkConservation}). A numerical regularisation sized to the flow: its mixing lag at full flow is tau.
      */
     static final double HOLDUP_TAU=.05;
-    /** A connection's cap state ({@link Equations#capDirections}): on its law, or not decided yet (decided on the next
-     * pass's start point). A capped connection's state is the end its cap flow leaves, 0 or 1. */
-    static final int CAP_OPEN=-1,CAP_START=-2;
     /**
      * The movers (pipe ids) refused for the slice in progress ({@link FlowControl.Mode#INLET_WRONG_PHASE}, decision D6),
      * set by the interval solver at each slice start ({@link #refuseInlets}) and read by every solve until the next;
@@ -214,6 +211,9 @@ public final class PassiveStepSolver {
     private List<PassiveNetwork.Pipe.Identity> previousPipes=List.of();
     private long[] previousNodeIds=new long[0];
     private double[] previousFlows=new double[0],previousHeads=new double[0];
+    /** The law flows ({@link #saturated}: the edge unknowns) of the point {@link #previousFlows} are the transported flows of;
+     * a step's Newton starts from them. At a job start the committed endpoint's transported flows stand in for them. */
+    private double[] previousLawFlows=new double[0];
     /** The input states {@link #previousFlows} were recorded at, and the input states of the solve in progress: a
      * rate-only solve warm-starts only from flows recorded at value-identical input states; see {@link #startPoint}. */
     private List<FluidThermodynamics.State> previousInputStates=List.of(),inputStates=List.of();
@@ -225,13 +225,6 @@ public final class PassiveStepSolver {
      * still describe this graph.
      */
     private List<FlowControl.Mode> previousModes=List.of();
-    /**
-     * The velocity cap states ({@link Equations#capDirections}) the last pass of the last solve on this graph settled on,
-     * recorded with {@link #previousModes} (decision A271): a line choked at the end of one step starts the next choked,
-     * as a pump on its head limit does, and a converged point that refutes it releases it. At a job start, the committed
-     * interval's endpoint modes and flows ({@link #replayStart}).
-     */
-    private int[] previousCaps=new int[0];
     /** The structure of the last solve this solver accepted; {@link #closeIllegalStarts} acts only on it. */
     private List<PassiveNetwork.Pipe.Identity> acceptedPipes=List.of();
     private long[] acceptedNodeIds=new long[0];
@@ -262,17 +255,14 @@ public final class PassiveStepSolver {
         // carried job refreshed its Jacobian where a fresh one reused it (RetainedSolverTest).
         workspaces.clear();
         for(var entry:structures.entrySet())entry.setValue(entry.getValue().forkStructure());
-        previousFlows=new double[0];previousHeads=new double[0];previousInputStates=List.of();inputStates=List.of();
-        previousPipes=List.of();previousNodeIds=new long[0];previousModes=List.of();previousCaps=new int[0];
+        previousFlows=new double[0];previousLawFlows=new double[0];previousHeads=new double[0];previousInputStates=List.of();inputStates=List.of();
+        previousPipes=List.of();previousNodeIds=new long[0];previousModes=List.of();
         keepOpen=Set.of();lastSolve=null;
         if(committed!=null) {
             var ids=identities(graph);long[] nodes=nodeIds(graph);
             beAcceptedPipes=ids;beAcceptedNodeIds=nodes;acceptedPipes=ids;acceptedNodeIds=nodes;
             previousPipes=ids;previousNodeIds=nodes;previousModes=committed.endpointModes();
-            // A connection the committed point left on its cap starts there, in the direction of its end flow.
-            previousCaps=new int[ids.size()];
-            for(int i=0;i<previousCaps.length;i++)previousCaps[i]=capMode(previousModes.get(i))?committed.endpointFlows()[i]>=0?0:1:CAP_OPEN;
-            previousFlows=committed.endpointFlows();previousHeads=committed.endpointHeads();
+            previousFlows=committed.endpointFlows();previousLawFlows=committed.endpointFlows();previousHeads=committed.endpointHeads();
             previousInputStates=committed.graph().reservoirs().stream().map(PassiveNetwork.Reservoir::state).toList();
         } else {beAcceptedPipes=List.of();beAcceptedNodeIds=new long[0];acceptedPipes=List.of();acceptedNodeIds=new long[0];}
     }
@@ -351,7 +341,7 @@ public final class PassiveStepSolver {
         });
         // A pump the previous point left on its head limit, on its suction limit or at its shutoff corner opens there;
         // see {@link #previousModes}. Only those three: the target branch is decided against this
-        // step's own states above, and the velocity cap is carried as its own state ({@link #previousCaps}).
+        // step's own states above, and the velocity cap is part of every line's law ({@link #saturated}).
         if(carryModes)for(int i=0;i<modes.size();i++) {
             var pipe=graph.pipes().get(i);
             if(!(pipe.control() instanceof FlowControl.Mover pump)||pump.targetVolumeFlow()==0)continue;
@@ -417,11 +407,6 @@ public final class PassiveStepSolver {
         int[] foldedPhases=new int[seeds.size()];
         // Owner decision D39 B: the phase the last converged point's check added to one node, until a pass converges again.
         Proposal proposal=null;
-        // The velocity cap's active set (decision A270): each connection's cap state, decided on the first pass's start point
-        // and revised by this loop at converged points, like a device's mode ({@link Equations#capTransition}).
-        int[] caps=new int[graph.pipes().size()];Arrays.fill(caps,CAP_START);
-        // A line the previous point left on its cap starts there; every other is decided on this solve's start point.
-        if(carryModes&&previousCaps.length==caps.length)for(int i=0;i<caps.length;i++)if(previousCaps[i]>=0)caps[i]=previousCaps[i];
         int maximumPasses=Math.min(512,16+2*graph.reservoirs().size()+2*graph.pipes().size());
         // Decision D54: the vessels this solve has found running dry within the step (a failed Newton drove what they hold to
         // nothing); each pass solves them as junctions holding their stock (emptyingGraph), null while there is none.
@@ -441,15 +426,12 @@ public final class PassiveStepSolver {
             int[] phases=new int[seeds.size()];for(int i=0;i<phases.length;i++)phases[i]=dry(graph.reservoirs().get(i),seeds.get(i))?DRY:phaseCode(seeds.get(i));
             byte[] modeCodes=new byte[modes.size()];for(int i=0;i<modeCodes.length;i++)modeCodes[i]=(byte)modes.get(i).ordinal();
             var supports=supports(graph,seeds,reachable,promoted);
-            var equations=new Equations(graph,dt,modes,caps,boundaryClosed,seeds,reachable,supports,pipeIdentities);
-            System.arraycopy(equations.capDirections,0,caps,0,caps.length);
+            var equations=new Equations(graph,dt,modes,boundaryClosed,seeds,reachable,supports,pipeIdentities);
             // The active-set state is what varies between passes, so the structure key is also the cycle key: repeating one
             // means the pass sequence cannot make progress. The frozen junction donors and the phase-port segments belong to
             // it for the same reason the modes do: they decide which equations this pass states (see {@link PassKey}).
             var structure=new WorkspaceKey(0,nodeIds,kinds,pipeIdentities,phases,componentMask,supportCodes(supports),modeCodes,boundaryClosed.clone(),equations.junctionDonorFirst);
-            // The cap states are part of the cycle key, not of the workspace key: a capped row has the columns of the row it
-            // replaces, and the workspaces are shared across cap states as they were when the cap was a branch of the row.
-            if(!seen.add(new PassKey(structure,equations.segmentCodes(),foldedPhases.clone(),capCodes(caps))))throw new SparseNewton.Nonconvergence("Phase/device active-set cycle");
+            if(!seen.add(new PassKey(structure,equations.segmentCodes(),foldedPhases.clone())))throw new SparseNewton.Nonconvergence("Phase/device active-set cycle");
             var key=new WorkspaceKey(Double.doubleToLongBits(dt),nodeIds,kinds,pipeIdentities,phases,componentMask,structure.supports,modeCodes,structure.boundaryClosed,structure.junctionDonors);
             var workspace=workspaces.get(key);
             SolverDiagnostics.count(workspace==null?SolverDiagnostics.workspaceBuilds:SolverDiagnostics.workspaceReuses);
@@ -477,15 +459,8 @@ public final class PassiveStepSolver {
                 if(failure.lastVariables()==null)throw failure;
                 double[] trialFlows=Arrays.copyOfRange(failure.lastVariables(),equations.edgeOffset,equations.edgeOffset+graph.pipes().size());
                 // Owner decision D59 (4): a pump whose target or head limit pulled its suction below the vapour pressure of the
-                // water it draws cavitates; the pass is solved again with it on its suction limit. Taken before the cap
-                // corrections: the iterate stands in a vapour that does not exist, so the caps it would decide read nothing.
-                if(cavitates(equations,failure.lastVariables(),modes,boundaryClosed,caps,tolerance))continue;
-                // Decision A274: a pass that states the wrong cap flows can have no root inside the property domain, and the
-                // failed Newton's last iterate shows which: a capped line whose drive there has fallen below its cap's
-                // pressure drop is released, otherwise a line on its law that the iterate holds at its cap (the trial
-                // projection, A275) is put on its cap. A line cannot carry more than its cap, and a stated flow its ends
-                // cannot push is no state. The pass is solved again from its start, before the phase corrections below.
-                if(equations.correctCaps(failure.lastVariables(),caps,tolerance))continue;
+                // water it draws cavitates; the pass is solved again with it on its suction limit.
+                if(cavitates(equations,failure.lastVariables(),modes,boundaryClosed,tolerance))continue;
                 // Decision D54: a vessel the failed iterate drained to nothing runs dry within the step. Its end state has no
                 // contents, so the pass laid out with them has no root (every step size fails the same way); it is solved
                 // again with the vessel as a junction holding its stock, which ends the step empty (emptyingGraph).
@@ -516,6 +491,8 @@ public final class PassiveStepSolver {
             // A pass that converges ends the proposal it was laid out with (D39 B): the network's closure kept it.
             proposal=null;
             double[] x=numerical.variables();var states=equations.states(x);double[] flows=new double[graph.pipes().size()],heads=new double[flows.length];
+            // The edge unknowns are the law flows; the transported flows are their saturation at the caps (saturated).
+            double[] lawFlows=Arrays.copyOfRange(x,equations.edgeOffset,equations.edgeOffset+flows.length);
             // The converged Newton point is not phase-checked here: the reconstructed point below, which an accepted step
             // commits, is, and the two agree to the Newton tolerance (checking both cost 43 % of a flowing island's wall
             // time). The reactivation asks the same stability question per component of the frozen trace support.
@@ -524,14 +501,14 @@ public final class PassiveStepSolver {
             // dry (what reaches it is more than its outlets take at the ambient): it holds contents at the step's end and is
             // solved again as the vessel it is, unless an earlier converged pass of this solve has confirmed it emptying.
             if(emptying!=null){var kept=keptEmptying(states,emptying,emptied);if(kept!=null){emptying=kept;continue;}}
-            boolean changed=false;int illegalDirection=-1,capChange=-1,capNext=CAP_OPEN,deviceChange=-1;FlowControl.Mode deviceNext=null;
+            boolean changed=false;int illegalDirection=-1,deviceChange=-1;FlowControl.Mode deviceNext=null;
             for(int i=0;i<flows.length;i++) {
-                flows[i]=x[equations.edgeOffset+i];heads[i]=equations.controlOffsets[i]<0?0:x[equations.controlOffsets[i]]*1e5;
-                if(boundaryClosed[i]||modes.get(i)==FlowControl.Mode.CLOSED){flows[i]=0;x[equations.edgeOffset+i]=0;}
+                flows[i]=equations.flow(i,x[equations.edgeOffset+i],equations.cachedTransport);heads[i]=equations.controlOffsets[i]<0?0:x[equations.controlOffsets[i]]*1e5;
+                if(boundaryClosed[i]||modes.get(i)==FlowControl.Mode.CLOSED){flows[i]=0;x[equations.edgeOffset+i]=0;lawFlows[i]=0;}
                 // Decision D54: a dry end has nothing to give; an outflow from it within the forbidden-direction tolerance
                 // below is no flow ({@link #outOfDryEnd}).
                 var pipe=graph.pipes().get(i);
-                if(flows[i]!=0&&Math.abs(flows[i])<=1e-10&&outOfDryEnd(graph,pipe,flows[i])){flows[i]=0;x[equations.edgeOffset+i]=0;}
+                if(flows[i]!=0&&Math.abs(flows[i])<=1e-10&&outOfDryEnd(graph,pipe,flows[i])){flows[i]=0;x[equations.edgeOffset+i]=0;lawFlows[i]=0;}
                 // What the first (suction) end draws at this flow: its bulk at a BULK end, the priority stream at a phase port.
                 var up=states.get(pipe.first());var suction=equations.drawn(i,0,equations.cachedTransport[pipe.first()],flows[i]);
                 double rho=suction.density;var mode=modes.get(i);var next=mode;
@@ -539,17 +516,12 @@ public final class PassiveStepSolver {
                 if(boundaryClosed[i])continue;
                 next=nextMode(equations,i,mode,flows[i],heads[i],states,up,suction,tolerance,atShutoff[i]);
                 if(next!=mode&&deviceChange<0){deviceChange=i;deviceNext=next;}
-                // A capped connection the point refutes is released before a new cap is stated (decision A272).
-                if(capChange<0||caps[capChange]==CAP_OPEN&&caps[i]>=0){int cap=equations.capTransition(i,x,tolerance);if(cap!=caps[i]){capChange=i;capNext=cap;}}
             }
-            // Decision A272: one active-set change per pass, a cap change first, then a device's mode, then a boundary
-            // closure. A point where a line carries more than its cap is no point a device may read its mode from, a
-            // boundary closure is never taken back within a solve, and a forbidden direction can be the symptom of a wrong
-            // cap as of a wrong device mode, so the reversible corrections come first.
-            if(capChange>=0){caps[capChange]=capNext;changed=true;}
-            else if(deviceChange>=0) {
-                // A device that changes mode has its cap decided afresh on the next pass's start point.
-                var mode=modes.get(deviceChange);modes.set(deviceChange,deviceNext);caps[deviceChange]=CAP_START;changed=true;
+            // Decision A272: one active-set change per pass, a device's mode first, then a boundary closure. A boundary
+            // closure is never taken back within a solve, and a forbidden direction can be the symptom of a wrong device
+            // mode, so the reversible correction comes first.
+            if(deviceChange>=0) {
+                var mode=modes.get(deviceChange);modes.set(deviceChange,deviceNext);changed=true;
                 if(deviceNext==FlowControl.Mode.CLOSED&&(mode==FlowControl.Mode.PUMP_HEAD_LIMIT||mode==FlowControl.Mode.PUMP_SUCTION_LIMIT))atShutoff[deviceChange]=true;
             }
             // A passive connection showing a direction its own boundary forbids, next to a device that has just decided it
@@ -558,26 +530,16 @@ public final class PassiveStepSolver {
             // pins the wrong active set for good (the closed suction edge forces the pump's flow to zero, the reverse-flow
             // test never fires again, and the pump is left at its head limit where the Newton cannot converge). The device
             // is decided first; the boundary closure waits for a pass where every device holds a mode it can.
-            if(!changed&&illegalDirection>=0){closeBoundary(graph,illegalDirection,boundaryClosed,modes,caps);changed=true;}
-            // Decision A272: a cap change re-solves the same pass from its own start (its seeds, start flows and phase-port
-            // segments): it changes which equation states one flow, not the point the pass was laid out on (re-seeded from
-            // the converged junction a line's column came out 365 kg/m3 lighter and the cap left and entered until the
-            // sequence cycled). A confirmed emptying (keptEmptying) was decided on the network this active set states, so
-            // a cap, mode or closure change decides it again.
+            if(!changed&&illegalDirection>=0){closeBoundary(graph,illegalDirection,boundaryClosed,modes);changed=true;}
+            // A confirmed emptying (keptEmptying) was decided on the network this active set states, so a mode or closure
+            // change decides it again.
             if(changed)Arrays.fill(emptied,false);
-            if(changed&&capChange>=0){previousCaps=caps.clone();continue;}
-            if(changed){seeds=states;previousPipes=pipeIdentities;previousNodeIds=nodeIds;previousInputStates=inputStates;previousFlows=flows.clone();previousHeads=heads.clone();previousModes=List.copyOf(modes);previousCaps=caps.clone();continue;}
+            if(changed){seeds=states;previousPipes=pipeIdentities;previousNodeIds=nodeIds;previousInputStates=inputStates;previousFlows=flows.clone();previousLawFlows=lawFlows;previousHeads=heads.clone();previousModes=List.copyOf(modes);continue;}
             // Decision D11: the phase-port segments this pass froze must be the ones its own converged flows land in
             // (which phases a port draws at its capacity and which one carries the rest); otherwise the pass is solved
             // again, starting from these flows, under the segments they decide (see PhaseDraw). Like an active-set change,
             // and the cycle key carries the segments, so the sequence stays finite. An island without a phase port has none.
-            if(equations.segmentsMoved(flows)){seeds=states;previousPipes=pipeIdentities;previousNodeIds=nodeIds;previousInputStates=inputStates;previousFlows=flows.clone();previousHeads=heads.clone();previousModes=List.copyOf(modes);previousCaps=caps.clone();continue;}
-            for(int edge=0;edge<flows.length;edge++) {
-                var pipe=graph.pipes().get(edge);var upstream=states.get(flows[edge]>=0?pipe.first():pipe.second());
-                double cap=pipe.drawPort(flows[edge])==PassiveNetwork.PhasePort.BULK?massFlowLimit(pipe,upstream,PassiveNetwork.PhasePort.BULK)
-                        :equations.capLimit(edge,flows[edge]>=0?0:1,equations.cachedTransport[flows[edge]>=0?pipe.first():pipe.second()]);
-                if(Math.abs(flows[edge])>cap*(1+2e-8)+1e-12)throw new SparseNewton.Nonconvergence("Velocity constraint did not close");
-            }
+            if(equations.segmentsMoved(flows)){seeds=states;previousPipes=pipeIdentities;previousNodeIds=nodeIds;previousInputStates=inputStates;previousFlows=flows.clone();previousLawFlows=lawFlows;previousHeads=heads.clone();previousModes=List.copyOf(modes);continue;}
             // What each phase-port outflow drew, phase by phase, at these flows on this candidate: the reconstruction books it
             // and the transfer samples it (decision D11).
             var draws=equations.draws(flows,states);
@@ -610,10 +572,10 @@ public final class PassiveStepSolver {
                     // The booked states show a drive the converged point did not state: a one-way end that would receive
                     // (a tank full of water 0.01 Pa above its generator, pushed back into it by the polish). The boundary
                     // is closed as at a converged point, and the pass is solved again from the reconstruction.
-                    closeBoundary(graph,polished.closure(),boundaryClosed,modes,caps);Arrays.fill(emptied,false);
-                    seeds=projection.states();previousPipes=pipeIdentities;previousNodeIds=nodeIds;previousInputStates=inputStates;previousFlows=flows.clone();previousHeads=heads.clone();previousModes=List.copyOf(modes);previousCaps=caps.clone();continue;
+                    closeBoundary(graph,polished.closure(),boundaryClosed,modes);Arrays.fill(emptied,false);
+                    seeds=projection.states();previousPipes=pipeIdentities;previousNodeIds=nodeIds;previousInputStates=inputStates;previousFlows=flows.clone();previousLawFlows=lawFlows;previousHeads=heads.clone();previousModes=List.copyOf(modes);continue;
                 }
-                if(polished!=null){numerical=polished.numerical();x=polished.variables();states=polished.states();System.arraycopy(polished.flows(),0,flows,0,flows.length);
+                if(polished!=null){numerical=polished.numerical();x=polished.variables();states=polished.states();System.arraycopy(polished.flows(),0,flows,0,flows.length);lawFlows=Arrays.copyOfRange(x,equations.edgeOffset,equations.edgeOffset+flows.length);
                     System.arraycopy(polished.heads(),0,heads,0,heads.length);draws=polished.draws();
                     projection=polished.projection();reconstructed=polished.reconstructed();maximumResidual=polished.residual();}
             }
@@ -621,18 +583,10 @@ public final class PassiveStepSolver {
             // The ledger reads the island as it is: an emptying vessel is a vessel that ends empty, not the junction it stood
             // as in this pass.
             checkConservation(original,projection);
-            previousPipes=pipeIdentities;previousNodeIds=nodeIds;previousInputStates=inputStates;previousFlows=flows.clone();previousHeads=heads.clone();previousModes=List.copyOf(modes);previousCaps=caps.clone();
+            previousPipes=pipeIdentities;previousNodeIds=nodeIds;previousInputStates=inputStates;previousFlows=flows.clone();previousLawFlows=lawFlows;previousHeads=heads.clone();previousModes=List.copyOf(modes);
             acceptedPipes=pipeIdentities;acceptedNodeIds=nodeIds;
             var acceptedModes=new ArrayList<>(modes);
-            for(int edge=0;edge<flows.length;edge++) {
-                var pipe=graph.pipes().get(edge);
-                if(boundaryClosed[edge]&&pipe.control() instanceof FlowControl.Passive)acceptedModes.set(edge,FlowControl.Mode.CLOSED);
-                // The accepted mode reports the cap state the solve ran in (decision A273): a connection on its cap stated
-                // its cap flow.
-                else if(caps[edge]>=0) {
-                    acceptedModes.set(edge,switch(pipe.control()){case FlowControl.Passive ignored->FlowControl.Mode.VELOCITY_LIMITED;case FlowControl.Mover ignored->FlowControl.Mode.PUMP_VELOCITY_LIMIT;case FlowControl.PressureValve ignored->FlowControl.Mode.VALVE_VELOCITY_LIMIT;});
-                }
-            }
+            for(int edge=0;edge<flows.length;edge++)if(boundaryClosed[edge]&&graph.pipes().get(edge).control() instanceof FlowControl.Passive)acceptedModes.set(edge,FlowControl.Mode.CLOSED);
             if(SolverDiagnostics.ENABLED)SolverDiagnostics.count(SolverDiagnostics.solidMomentProjectionsAtAcceptedPoints,
                     equations.negativeSolidUnknowns(x)+equations.negativeSolidUnknowns(reconstructed));
             lastSolve=new LastSolve(equations,x);
@@ -649,14 +603,11 @@ public final class PassiveStepSolver {
     }
     /**
      * Closes connection {@code edge}'s boundary for the rest of the solve: a direction its one-way end forbids (a void
-     * supplying, a generator receiving, a dry end giving). Decision A272: a closure changes what reaches a junction at its
-     * ends, so the caps decided there are decided again on the next pass's start point.
+     * supplying, a generator receiving, a dry end giving).
      */
-    private static void closeBoundary(PassiveNetwork graph,int edge,boolean[] boundaryClosed,List<FlowControl.Mode> modes,int[] caps) {
-        var pipe=graph.pipes().get(edge);boundaryClosed[edge]=true;
-        if(!(pipe.control() instanceof FlowControl.Passive))modes.set(edge,FlowControl.Mode.CLOSED);
-        for(int end:new int[]{pipe.first(),pipe.second()})if(graph.reservoirs().get(end).junction())
-            for(int other=0;other<caps.length;other++){var link=graph.pipes().get(other);if(link.first()==end||link.second()==end)caps[other]=CAP_START;}
+    private static void closeBoundary(PassiveNetwork graph,int edge,boolean[] boundaryClosed,List<FlowControl.Mode> modes) {
+        boundaryClosed[edge]=true;
+        if(!(graph.pipes().get(edge).control() instanceof FlowControl.Passive))modes.set(edge,FlowControl.Mode.CLOSED);
     }
     /** A point the equation gate refused, re-solved once and passing the gate, or the boundary its point shows must close
      * ({@code closure}, -1 for none); see {@link #polishRefusedPoint}. */
@@ -670,8 +621,8 @@ public final class PassiveStepSolver {
      * the converged point with every node at its reconstructed state, the flows the Newton's), on a fresh Jacobian of this
      * step's own dt at 1e-2 times the pass's Newton tolerance; checked exactly as the pass loop checks a converged point
      * (no trace reactivation due, no device mode change ({@link #nextMode}), no illegal direction, the segments its flows
-     * land in the ones the pass froze, the velocity constraint, the reconstruction with its own draws, the phase
-     * correction) and gated again. Returns it only if all of that holds; a point that flows the way a boundary forbids
+     * land in the ones the pass froze, the reconstruction with its own draws, the phase correction) and gated again.
+     * Returns it only if all of that holds; a point that flows the way a boundary forbids
      * returns that boundary ({@link Polished#closing}); otherwise null and the step is refused as before.
      *
      * <p>Why: the Newton's last iterates run on a chord Jacobian inherited from another step, so a balance row closes only
@@ -699,7 +650,7 @@ public final class PassiveStepSolver {
         }
         double[] flows=new double[graph.pipes().size()],heads=new double[flows.length];
         for(int edge=0;edge<flows.length;edge++) {
-            flows[edge]=variables[equations.edgeOffset+edge];heads[edge]=equations.controlOffsets[edge]<0?0:variables[equations.controlOffsets[edge]]*1e5;
+            flows[edge]=equations.flow(edge,variables[equations.edgeOffset+edge],equations.cachedTransport);heads[edge]=equations.controlOffsets[edge]<0?0:variables[equations.controlOffsets[edge]]*1e5;
             if(boundaryClosed[edge]||modes.get(edge)==FlowControl.Mode.CLOSED){flows[edge]=0;variables[equations.edgeOffset+edge]=0;}
             var pipe=graph.pipes().get(edge);
             if(flows[edge]!=0&&Math.abs(flows[edge])<=1e-10&&outOfDryEnd(graph,pipe,flows[edge])){flows[edge]=0;variables[equations.edgeOffset+edge]=0;}
@@ -707,15 +658,8 @@ public final class PassiveStepSolver {
             if(boundaryClosed[edge])continue;
             var suction=equations.drawn(edge,0,equations.cachedTransport[pipe.first()],flows[edge]);
             if(nextMode(equations,edge,modes.get(edge),flows[edge],heads[edge],states,states.get(pipe.first()),suction,tolerance,atShutoff[edge])!=modes.get(edge))return null;
-            if(equations.capTransition(edge,variables,tolerance)!=equations.capDirections[edge])return null;
         }
         if(equations.segmentsMoved(flows))return null;
-        for(int edge=0;edge<flows.length;edge++) {
-            var pipe=graph.pipes().get(edge);var upstream=states.get(flows[edge]>=0?pipe.first():pipe.second());
-            double cap=pipe.drawPort(flows[edge])==PassiveNetwork.PhasePort.BULK?massFlowLimit(pipe,upstream,PassiveNetwork.PhasePort.BULK)
-                    :equations.capLimit(edge,flows[edge]>=0?0:1,equations.cachedTransport[flows[edge]>=0?pipe.first():pipe.second()]);
-            if(Math.abs(flows[edge])>cap*(1+2e-8)+1e-12)return null;
-        }
         var draws=equations.draws(flows,states);
         var projection=ConservativeTransport.reconstruct(graph,states,flows,heads,dt,model,checkpoint,transport,rateOnly,draws,equations.supports,emptyings);
         if(phaseAppeared(graph,states,projection.states())||phaseFolded(graph,states,projection.states())
@@ -780,16 +724,15 @@ public final class PassiveStepSolver {
     /**
      * Owner decision D59 (4) on a failed Newton: the first pump at its target or head limit whose suction the last iterate
      * holds below the vapour pressure ({@link #cavitationMargin}, by more than {@link #shutoffBand}) is put on its suction
-     * limit, its cap decided afresh; true if one was. Like the cap corrections of a failed iterate (A274) it is part of the
-     * cycle key, so the sequence stays finite.
+     * limit; true if one was. The mode is part of the cycle key, so the sequence stays finite.
      */
-    private boolean cavitates(Equations equations,double[] last,List<FlowControl.Mode> modes,boolean[] boundaryClosed,int[] caps,double tolerance) {
+    private boolean cavitates(Equations equations,double[] last,List<FlowControl.Mode> modes,boolean[] boundaryClosed,double tolerance) {
         List<FluidThermodynamics.State> states=null;
         for(int i=0;i<modes.size();i++) {
             var mode=modes.get(i);
             if(boundaryClosed[i]||mode!=FlowControl.Mode.PUMP_TARGET&&mode!=FlowControl.Mode.PUMP_HEAD_LIMIT||!(equations.graph.pipes().get(i).control() instanceof FlowControl.Pump))continue;
             if(states==null)try{states=equations.states(last);}catch(IllegalArgumentException outsideDomain){return false;}
-            if(cavitationMargin(equations,i,states)<-shutoffBand(equations.pressureScales[i],tolerance)){modes.set(i,FlowControl.Mode.PUMP_SUCTION_LIMIT);caps[i]=CAP_START;return true;}
+            if(cavitationMargin(equations,i,states)<-shutoffBand(equations.pressureScales[i],tolerance)){modes.set(i,FlowControl.Mode.PUMP_SUCTION_LIMIT);return true;}
         }
         return false;
     }
@@ -824,9 +767,9 @@ public final class PassiveStepSolver {
      * A85, D26 amendment, D39 B): that record only grows, so a pass that returns to an earlier structure after a fold or
      * a refusal is a pass under a different phase-correction rule, not a cycle.
      */
-    private record PassKey(WorkspaceKey structure,byte[] segments,int[] folded,byte[] caps) {
-        @Override public boolean equals(Object other){return other instanceof PassKey key&&structure.equals(key.structure)&&Arrays.equals(segments,key.segments)&&Arrays.equals(folded,key.folded)&&Arrays.equals(caps,key.caps);}
-        @Override public int hashCode(){return 31*(31*(31*structure.hashCode()+Arrays.hashCode(segments))+Arrays.hashCode(folded))+Arrays.hashCode(caps);}
+    private record PassKey(WorkspaceKey structure,byte[] segments,int[] folded) {
+        @Override public boolean equals(Object other){return other instanceof PassKey key&&structure.equals(key.structure)&&Arrays.equals(segments,key.segments)&&Arrays.equals(folded,key.folded);}
+        @Override public int hashCode(){return 31*(31*structure.hashCode()+Arrays.hashCode(segments))+Arrays.hashCode(folded);}
     }
     /**
      * A proposal (owner decision D39 B): the phases ({@link FluidThermodynamics#phaseBits} bits) the check of a converged
@@ -846,8 +789,6 @@ public final class PassiveStepSolver {
             return null;
         }
     }
-    /** The cap states of a pass as codes for its cycle key ({@link PassKey}). */
-    private static byte[] capCodes(int[] caps){byte[] codes=new byte[caps.length];for(int i=0;i<caps.length;i++)codes[i]=(byte)caps[i];return codes;}
     /** Every node's frozen per-component phase support for one pass, from that pass's seeds and never from a Newton iterate,
      * with the components this solve has already reactivated kept in both phases. A fixed node owns no unknowns. */
     private PhaseSupport[][] supports(PassiveNetwork graph,List<FluidThermodynamics.State> seeds,boolean[][] reachable,boolean[][] promoted) {
@@ -1005,8 +946,8 @@ public final class PassiveStepSolver {
             if(!(Math.abs(flow)>0)||(flow>=0?pipe.second():pipe.first())!=nodeIndex||!boundaryAllowed(graph,pipe,flow))continue;
             var stream=endStream(graph.reservoirs().get(flow>=0?pipe.first():pipe.second()).state(),pipe.drawPort(flow));
             if(stream==null)continue;
-            // The stream is per kilogram of fluid.
-            double mass=Math.min(seed.mass()*.25,dt*Math.abs(flow));double[] sl=stream.liquidView(),sv=stream.vaporView();
+            // The stream is per kilogram of fluid; the start flows are the law's, delivered at their saturation ({@link #transported}).
+            double mass=Math.min(seed.mass()*.25,dt*Math.abs(transported(graph,pipe,flow)));double[] sl=stream.liquidView(),sv=stream.vaporView();
             for(int c=0;c<n;c++){if(!liquid&&sl[c]>0){l[c]+=mass*sl[c];added=true;}if(!vapour&&sv[c]>0){v[c]+=mass*sv[c];added=true;}}
             if(!water&&stream.waterLiquid()>0){wl+=mass*stream.waterLiquid();added=true;}
             if(!steam&&stream.waterVapor()>0){wv+=mass*stream.waterVapor();added=true;}
@@ -1064,7 +1005,7 @@ public final class PassiveStepSolver {
                     var pipe=graph.pipes().get(edge);double flow=flows[edge];
                     if(!(Math.abs(flow)>0)||(flow>=0?pipe.second():pipe.first())!=j||!boundaryAllowed(graph,pipe,flow))continue;
                     int donor=flow>=0?pipe.first():pipe.second();var stream=current.get(donor);var port=pipe.drawPort(flow);
-                    double delivered=dt*Math.abs(flow),streamMass=endMass(stream,port);double[] moles=endMoles(stream,port);
+                    double delivered=dt*Math.abs(transported(graph,pipe,flow)),streamMass=endMass(stream,port);double[] moles=endMoles(stream,port);
                     for(int c=0;c<n.length;c++)n[c]+=delivered*moles[c]/streamMass;
                     mass+=delivered;weighted+=delivered*stream.temperature();arrives=true;
                     heat+=delivered*endSpecificEnthalpy(stream,port);
@@ -1452,7 +1393,7 @@ public final class PassiveStepSolver {
         if(!(drive>0))return 0;
         double lo=0,hi=1;while(pipe.pressureDrop(hi,rho,mu)<drive&&hi<1e6)hi*=2;
         for(int j=0;j<50;j++){double mid=(lo+hi)/2;if(pipe.pressureDrop(mid,rho,mu)>drive)hi=mid;else lo=mid;}
-        return Math.min((lo+hi)/2,massFlowLimit(pipe,s.state(),port));
+        return saturated((lo+hi)/2,massFlowLimit(pipe,s.state(),port));
     }
     /** The mass of a conserved amount vector, water last. */
     private double molarMass(double[] amounts) {
@@ -1514,10 +1455,9 @@ public final class PassiveStepSolver {
                 double mid=(lo+hi)/2;
                 if(chainPressureDrop(graph,chain,mid,rho,mu)>Math.abs(driving))hi=mid;else lo=mid;
             }
-            double magnitude=(lo+hi)/2;
-            var donor=graph.reservoirs().get(driving>=0?start:finish).state();var donorPort=driving>=0?startPort:finishPort;
-            for(int link:chain)magnitude=Math.min(magnitude,massFlowLimit(graph.pipes().get(link),donor,donorPort));
-            double flow=Math.copySign(magnitude,driving);
+            // The law's flow, as every link's edge unknown is (the transported flow is its saturation at each link's cap,
+            // {@link #saturated}; {@link #transported}).
+            double flow=Math.copySign((lo+hi)/2,driving);
             for(int position=0;position<chain.size();position++) {
                 var link=graph.pipes().get(chain.get(position));
                 q[chain.get(position)]=link.first()==order.get(position)?flow:-flow;
@@ -1536,7 +1476,7 @@ public final class PassiveStepSolver {
         boolean warmFlow=graph.reservoirs().stream().anyMatch(node->node.junction()||node.fixed())
                 ||graph.pipes().stream().anyMatch(pipe->phaseCode(graph.reservoirs().get(pipe.first()).state())!=phaseCode(graph.reservoirs().get(pipe.second()).state()));
         // At a job start the previous point is the committed interval's endpoint; see {@link #replayStart}.
-        boolean previousAvailable=previousPipes.equals(pipeIdentities)&&Arrays.equals(previousNodeIds,nodeIds(graph))&&previousFlows.length==graph.pipes().size();
+        boolean previousAvailable=previousPipes.equals(pipeIdentities)&&Arrays.equals(previousNodeIds,nodeIds(graph))&&previousFlows.length==graph.pipes().size()&&previousLawFlows.length==graph.pipes().size();
         // A rate-only solve's warm start is only as good as the state it was recorded at: it is a cold start's solve, or
         // a start-of-step guard's, whose previous flows belong to another point in time, and a rate solve warm-started
         // from cap-level flows of seconds ago stalls in the junction rows at rest (review 7.7). It uses them only when
@@ -1564,7 +1504,7 @@ public final class PassiveStepSolver {
                 // A flow the connection's boundary forbids (into a generator, out of a void, a blocked way) is no state to
                 // start from, however small: the pass loop tolerates one below 1e-10 kg/s at a converged point, and carried
                 // into the next step a Newton that converges without an iteration kept it there for good. It starts at rest.
-                flows[i]=boundaryAllowed(graph,pipe,previousFlows[i])?previousFlows[i]:0;heads[i]=previousHeads[i]/1e5;headSet[i]=true;
+                flows[i]=boundaryAllowed(graph,pipe,previousLawFlows[i])?previousLawFlows[i]:0;heads[i]=previousHeads[i]/1e5;headSet[i]=true;
                 if(modes.get(i)==FlowControl.Mode.VALVE_REGULATING&&pipe.control() instanceof FlowControl.PressureValve valve) {
                     double predictedDrop=a.state().pressure()-(seeds==null?a.state():seeds.get(pipe.first())).pressure();
                     if(predictedDrop>0)flows[i]*=Math.clamp((a.state().pressure()-valve.targetPressure())/predictedDrop,0,1);
@@ -1613,20 +1553,35 @@ public final class PassiveStepSolver {
         double drop=0;for(int link:chain)drop+=graph.pipes().get(link).pressureDrop(flow,rho,mu);
         return drop;
     }
+    /** The law's flow of one connection on its ends' states (the edge unknown's start, {@link #lawFlow}); a mover's its target. */
     private double initialMassFlow(PassiveNetwork graph,PassiveNetwork.Pipe pipe) {
-        return initialMassFlow(graph,pipe,endPressure(graph,pipe,pipe.first()),endPressure(graph,pipe,pipe.second()));
+        return lawFlow(graph,pipe,endPressure(graph,pipe,pipe.first()),endPressure(graph,pipe,pipe.second()));
     }
+    /** The transported flow of one connection on its ends at the end pressures given: the law's flow saturated at the cap
+     * of the end the drive leaves ({@link #saturated}), what a start estimate books or balances. */
     private double initialMassFlow(PassiveNetwork graph,PassiveNetwork.Pipe pipe,double firstPressure,double secondPressure) {
+        double law=lawFlow(graph,pipe,firstPressure,secondPressure);
+        return Math.copySign(transported(graph,pipe,law),law);
+    }
+    /** The transported flow of connection {@code pipe} for the law's flow {@code lawFlow}: its saturation at the velocity
+     * cap of the end it leaves, on that end's stream ({@link #massFlowLimit}); the law's flow for a mover at its target. */
+    private double transported(PassiveNetwork graph,PassiveNetwork.Pipe pipe,double lawFlow) {
+        if(pipe.control() instanceof FlowControl.Mover)return lawFlow;
+        var donor=graph.reservoirs().get(lawFlow>=0?pipe.first():pipe.second()).state();
+        return saturated(lawFlow,massFlowLimit(pipe,donor,pipe.drawPort(lawFlow)));
+    }
+    /** The law's flow of one connection at the end pressures given: a mover's suction target, else the loss inverted on the
+     * static drive in the stream of the end the drive leaves (as the row's loss reads its flow's donor), with no cap. */
+    private double lawFlow(PassiveNetwork graph,PassiveNetwork.Pipe pipe,double firstPressure,double secondPressure) {
         var a=graph.reservoirs().get(pipe.first());var b=graph.reservoirs().get(pipe.second());
         if(pipe.control() instanceof FlowControl.Mover pump)
             return Math.min(suctionMassFlow(pump.targetVolumeFlow(),a.state(),pipe.firstPort()),massFlowLimit(pipe,a.state(),pipe.firstPort()));
         double driving=staticDrive(graph,pipe,firstPressure-secondPressure);
-        // The loss reads the stream of the end the drive leaves, as the row's loss reads its flow's donor.
         var donor=(driving>=0?a:b).state();var donorPort=driving>=0?pipe.firstPort():pipe.secondPort();
         double rho=endDensity(donor,donorPort),mu=endViscosity(donor,donorPort);
         double lo=0,hi=1;while(pipe.pressureDrop(hi,rho,mu)<Math.abs(driving)&&hi<1e6)hi*=2;
         for(int j=0;j<50;j++){double mid=(lo+hi)/2;if(pipe.pressureDrop(mid,rho,mu)>Math.abs(driving))hi=mid;else lo=mid;}
-        return Math.copySign(Math.min((lo+hi)/2,massFlowLimit(pipe,donor,pipe.drawPort(driving))),driving);
+        return Math.copySign((lo+hi)/2,driving);
     }
     /**
      * The static driving pressure of one passive connection from end {@code a} to end {@code b} (a contracted run sums its
@@ -1686,7 +1641,7 @@ public final class PassiveStepSolver {
         if(driving<=0)return 0;
         double lo=0,hi=1;while(pipe.pressureDrop(hi,rho,mu)<driving&&hi<1e6)hi*=2;
         for(int j=0;j<50;j++){double mid=(lo+hi)/2;if(pipe.pressureDrop(mid,rho,mu)>driving)hi=mid;else lo=mid;}
-        return Math.min((lo+hi)/2,Math.min(massFlowLimit(pipe,a.state(),pipe.firstPort()),pump.targetVolumeFlow()*rho));
+        return Math.min((lo+hi)/2,pump.targetVolumeFlow()*rho);
     }
     /**
      * A mover's pressure-rise limit ({@link FlowControl.Mover#riseLimit}); a compressor's is {@code (r_max - 1) P_s} on its
@@ -1707,6 +1662,32 @@ public final class PassiveStepSolver {
      * a priority mixture is {@link Equations#capLimit}. */
     private double massFlowLimit(PassiveNetwork.Pipe pipe,FluidThermodynamics.State donor,PassiveNetwork.PhasePort port) {
         return endDensity(donor,port)*pipe.minimumArea()*endVelocityLimit(donor,port);
+    }
+    /**
+     * The velocity cap as part of every line's law (M7 and M8 option C, 2026-10-18; it replaces the cap active set of
+     * decision A270): a choked line passes at most the cap flow {@code q_cap} of the end it leaves, and the flow its law
+     * gives at a driving pressure, {@code q_law}, is reached only far under it,
+     * {@code q = q_law (1 + (q_law/q_cap)^8)^(-1/8)}, odd in {@code q_law}: 8.3 % under the cap where the drive equals the
+     * cap's own pressure drop, within 0.06 % of it at twice that drive and bitwise the law at a tenth of it. The edge
+     * unknown is the law's flow {@code q_law}, unbounded, so the hydraulic row stays the plain law
+     * {@code driving = loss(q_law)}; what the connection carries, {@code q}, is read from it wherever a flow is booked
+     * ({@link Equations#flow}: the node rows, the actuator rows, the step's transfers). A flow deep in saturation moves
+     * nothing by its own drive, and a junction between choked lines balances by its pressure, as it does in a pipe. One
+     * law for every mode that throttles ({@link #saturates}: passive, a pump on its head or suction limit, an open valve); a
+     * pump at its target and a regulating valve state their own flow or pressure and are not saturated.
+     */
+    static final double CAP_EXPONENT=8;
+    /** The transported flow of the law's flow {@code qLaw} under the cap {@code qCap}; {@code qLaw} itself without a cap. */
+    static double saturated(double qLaw,double qCap) {
+        if(!(qCap>0)||!(qCap<Double.POSITIVE_INFINITY))return qLaw;
+        double r=Math.abs(qLaw)/qCap,r2=r*r,r4=r2*r2,r8=r4*r4;
+        return qLaw*DeterministicMath.pow(1+r8,-1/CAP_EXPONENT);
+    }
+    /** {@code dq / dq_law} of {@link #saturated} at {@code qLaw}: {@code (1 + (q_law/q_cap)^8)^(-9/8)}, 1 without a cap. */
+    static double saturationSlope(double qLaw,double qCap) {
+        if(!(qCap>0)||!(qCap<Double.POSITIVE_INFINITY))return 1;
+        double r=Math.abs(qLaw)/qCap,r2=r*r,r4=r2*r2,r8=r4*r4;
+        return DeterministicMath.pow(1+r8,-(CAP_EXPONENT+1)/CAP_EXPONENT);
     }
     /**
      * The driving pressure of one end of a connection: the node's pressure plus the static offset of the port at that
@@ -1896,12 +1877,9 @@ public final class PassiveStepSolver {
     private static double shutoffBand(double pressureScale,double tolerance) {
         return Math.max(.01,tolerance*Math.max(1e5,pressureScale));
     }
-    private static boolean canClamp(FlowControl.Mode mode) {
+    /** The modes whose law the velocity cap saturates ({@link #saturated}): the throttling ones. */
+    private static boolean saturates(FlowControl.Mode mode) {
         return mode==FlowControl.Mode.PASSIVE||mode==FlowControl.Mode.PUMP_HEAD_LIMIT||mode==FlowControl.Mode.PUMP_SUCTION_LIMIT||mode==FlowControl.Mode.VALVE_OPEN;
-    }
-    /** Whether an accepted mode reports a connection on its velocity cap. */
-    private static boolean capMode(FlowControl.Mode mode) {
-        return mode==FlowControl.Mode.VELOCITY_LIMITED||mode==FlowControl.Mode.PUMP_VELOCITY_LIMIT||mode==FlowControl.Mode.VALVE_VELOCITY_LIMIT;
     }
     /**
      * The outer phase check of a converged pass's point, node by node ({@link FluidThermodynamics#phaseCheck}, owner
@@ -2445,20 +2423,20 @@ public final class PassiveStepSolver {
         }
         /** The density ratio of a gas-only junction donor at pressure {@code pressure}; 1 for any other donor. */
         private double scale(int node,double pressure){return unknown[node]>=0&&gas[node]?pressure/reference[node]:1;}
-        /** The flow a run passes at a positive driving pressure: its loss inverted, capped at {@code cap}. */
+        /** The flow a run passes at a positive driving pressure: its loss inverted, saturated at {@code cap}
+         * ({@link PassiveStepSolver#saturated}). */
         private static double runFlow(PassiveNetwork.Pipe pipe,double driving,double rho,double mu,double cap) {
             if(!(cap>0))return 0;
-            double capLoss=pipe.pressureDrop(cap,rho,mu);
-            if(capLoss<=driving)return cap;
-            double lo=0,hi=cap,q=cap*Math.sqrt(driving/capLoss);
+            double lo=0,hi=cap;while(pipe.pressureDrop(hi,rho,mu)<driving&&hi<1e6)hi*=2;
+            double q=hi*Math.sqrt(driving/pipe.pressureDrop(hi,rho,mu));
             for(int k=0;k<100;k++) {
                 var loss=pipe.loss(q,rho,mu);double f=loss.pressureDrop()-driving;
                 if(Math.abs(f)<=1e-14*driving)break;
                 if(f>0)hi=q;else lo=q;
                 double next=q-f/loss.massFlowDerivative();q=next>lo&&next<hi?next:.5*(lo+hi);
-                if(hi-lo<=1e-15*cap)break;
+                if(hi-lo<=1e-15*hi)break;
             }
-            return q;
+            return saturated(q,cap);
         }
     }
     /** Banded Gaussian elimination without pivoting ({@code a} in band storage of half-width {@code band}, overwritten):
@@ -2767,10 +2745,6 @@ public final class PassiveStepSolver {
          * flow, so freezing it keeps each residual smooth; the pass loop re-decides it from the converged flow.
          */
         final PhaseDraw.Segment[][] segments;
-        /** Per connection end ({@code [edge][end]}), the pressure drop of the velocity cap of the direction leaving that end
-         * ({@link #capDrop}), and the end transport it was computed on: one entry per end, kept while the decode cache keeps
-         * that end's transport, and dropped with it ({@link #releaseDecodeCache}). */
-        final Transport[][] capSources;final double[][] capPressureDrops;
         final FluidThermodynamics.Prepared[] cachedPrepared;
         /**
          * Whether a device in this island prescribes its own mass flow this pass. A saturated filter inlet and a pump
@@ -2862,14 +2836,13 @@ public final class PassiveStepSolver {
         /** The weight of the mixing and enthalpy rows the last {@link #junctionInflow} call set: they are stated in
          * amount form over the junction's own mass; see there. */
         double junctionWeight=1;
-        Equations(PassiveNetwork graph,double dt,List<FlowControl.Mode> modes,int[] caps,boolean[] boundaryClosed,List<FluidThermodynamics.State> seeds,boolean[][] reachable,
+        Equations(PassiveNetwork graph,double dt,List<FlowControl.Mode> modes,boolean[] boundaryClosed,List<FluidThermodynamics.State> seeds,boolean[][] reachable,
                   PhaseSupport[][] supports,List<PassiveNetwork.Pipe.Identity> pipeIdentities) {
-            this.modes=List.copyOf(modes);capDirections=caps.clone();this.pipeIdentities=pipeIdentities;
+            this.modes=List.copyOf(modes);this.pipeIdentities=pipeIdentities;
             prescribedFlow=this.modes.contains(FlowControl.Mode.PUMP_TARGET);
             this.seeds=List.copyOf(seeds);this.supports=supports;
             this.boundaryClosed=boundaryClosed.clone();
             this.graph=graph;this.dt=dt;solidSupport=hasSolids(graph);int count=graph.reservoirs().size();layout=new PhaseLayout[count];offsets=new int[count];oldAmounts=new double[count][];
-            capSources=new Transport[graph.pipes().size()][2];capPressureDrops=new double[graph.pipes().size()][2];
             cachedVariables=new double[count][];cachedStates=new FluidThermodynamics.State[count];cachedTransport=new Transport[count];
             cachedPrepared=new FluidThermodynamics.Prepared[count];
             drawsPhase=new boolean[count];
@@ -2991,37 +2964,36 @@ public final class PassiveStepSolver {
                 // choice multiplies nothing. The rule is {@link #columnFromFirst}, which the start estimate states too.
                 columnEnds[edge]=only>=0?only:columnFromFirst(first,second,difference,dz,initialPoint[edgeOffset+edge]>=0)?0:1;
             }
-            segments=startInsideCaps();
-            startCaps();
-            anchorJunctions();
+            segments=startSegments();
         }
         /**
-         * The segments of this pass, decided from its start flows, and those start flows moved inside the velocity cap of
-         * the priority mixture they land in (decision D11). The start point starts every connection inside its own cap
-         * ({@link #initialMassFlow}), but that is the cap of the stream a port draws at a vanishing flow (the water of a wet
-         * tank's bottom port); a start flow beyond the first phase's capacity lands in a mixture whose cap
-         * ({@link #capLimit}) can be far lower (137.7 kg/s of start flow against a mixture cap of about 8.7 kg/s on a 2 MPa
-         * tank with 2 % water stalled the Newton). Only a connection drawing through a phase port moves (no sign changes,
-         * so the frozen donors and columns are unchanged); the segments are then decided again from the moved flows. An
-         * end drawing the phase the start point read keeps its flow to the bit.
+         * The segments of this pass, decided from the flows its start point carries: the start point's edge unknowns are
+         * the law's flows, and which phases a port draws at its capacity is a question of the transported ones
+         * ({@link #flow}), which depend on the segments through a priority mixture's cap ({@link #capLimit}). Decided under
+         * the bulk caps first, then under their own decision until it stands (at most three rounds); the pass loop decides
+         * again from the converged flows (decision D11).
          */
-        private PhaseDraw.Segment[][] startInsideCaps() {
-            int edges=graph.pipes().size();
-            var decided=decideSegments(Arrays.copyOfRange(initialPoint,edgeOffset,edgeOffset+edges));
+        private PhaseDraw.Segment[][] startSegments() {
+            int edges=graph.pipes().size();double[] q=new double[edges];PhaseDraw.Segment[][] decided=null;
             for(int round=0;round<3;round++) {
-                boolean moved=false;
                 for(int edge=0;edge<edges;edge++) {
-                    double q=initialPoint[edgeOffset+edge];int end=q>=0?0:1;var segment=decided[edge][end];
-                    if(segment==null)continue;
-                    var pipe=graph.pipes().get(edge);int node=end==0?pipe.first():pipe.second();
-                    double limit=capLimit(segment,edge,end,transportAt(node,seeds.get(node)));
-                    if(Math.abs(q)>limit){initialPoint[edgeOffset+edge]=Math.copySign(limit,q);moved=true;}
+                    double y=initialPoint[edgeOffset+edge];int end=y>=0?0:1;var pipe=graph.pipes().get(edge);int node=end==0?pipe.first():pipe.second();
+                    q[edge]=saturates(edge)?saturated(y,cap(decided==null?null:decided[edge][end],edge,end,transportAt(node,seeds.get(node)),y)):y;
                 }
-                if(!moved)break;
-                decided=decideSegments(Arrays.copyOfRange(initialPoint,edgeOffset,edgeOffset+edges));
+                var next=decideSegments(q);
+                if(decided!=null&&samePhases(decided,next))break;
+                decided=next;
             }
             return decided;
         }
+        private static boolean samePhases(PhaseDraw.Segment[][] a,PhaseDraw.Segment[][] b) {
+            for(int edge=0;edge<a.length;edge++)for(int end=0;end<2;end++)
+                if(a[edge][end]==null?b[edge][end]!=null:b[edge][end]==null||!a[edge][end].samePhases(b[edge][end]))return false;
+            return true;
+        }
+        /** Whether connection {@code edge}'s law is saturated at its velocity cap in this pass ({@link PassiveStepSolver#saturates}): a
+         * throttling mode and not closed. */
+        boolean saturates(int edge){return PassiveStepSolver.saturates(modes.get(edge))&&!boundaryClosed[edge];}
         /** {@link #capacities} of {@code graph} (its states are the step's start states). */
         private double[][] capacities(PassiveNetwork graph,double dt) {
             int nodes=graph.reservoirs().size();int[] ends=new int[nodes];
@@ -3097,6 +3069,9 @@ public final class PassiveStepSolver {
          */
         boolean[] runsDry(double[] x,boolean[] emptying) {
             boolean[] result=null;
+            // The connections' flows are the transported ones ({@link #flow}) where the iterate decodes; its law flows where
+            // it does not (a refused iterate).
+            Transport[] tr;try{decode(x);tr=cachedTransport;}catch(IllegalArgumentException outsideDomain){tr=null;}
             for(int node=0;node<layout.length;node++) {
                 var reservoir=graph.reservoirs().get(node);
                 if(layout[node]==null||reservoir.kind()!=PassiveNetwork.NodeKind.RESERVOIR||dry[node])continue;
@@ -3106,7 +3081,7 @@ public final class PassiveStepSolver {
                 for(int local=0;local<layout[node].size();local++)if(layout[node].totalAmountVariable(local)&&!layout[node].solidVariable(local))left+=x[offsets[node]+local];
                 left*=layout[node].amountScale();
                 if(!(left<1e-6*held))continue;
-                double out=0;for(int edge:nodeEdges[node]){var pipe=graph.pipes().get(edge);double q=x[edgeOffset+edge];out+=pipe.first()==node?q:-q;}
+                double out=0;for(int edge:nodeEdges[node]){var pipe=graph.pipes().get(edge);double q=tr==null?x[edgeOffset+edge]:flow(edge,x[edgeOffset+edge],tr);out+=pipe.first()==node?q:-q;}
                 double stock=molarMass(oldAmounts[node])+reservoir.inventory().solids().massKg();
                 if(!(out*dt>=.5*stock))continue;
                 if(result==null)result=emptying==null?new boolean[layout.length]:emptying.clone();
@@ -3140,8 +3115,9 @@ public final class PassiveStepSolver {
          * extensive field the matching rate), so every per-kilogram donor term reads it unchanged; its density is the
          * no-slip mixture's, its viscosity the phases' volume-flow average, its velocity limit the smallest of its phases'.
          */
-        Transport drawn(int edge,int end,Transport node,double q) {
-            var segment=segments[edge][end];
+        Transport drawn(int edge,int end,Transport node,double q){return drawn(segments[edge][end],edge,end,node,q);}
+        /** {@link #drawn} under {@code segment} in place of this pass's own. */
+        private Transport drawn(PhaseDraw.Segment segment,int edge,int end,Transport node,double q) {
             if(segment==null||node.phases==null)return node;
             int marginal=segment.marginalAt(node.held());var pinned=segment.pinned();
             if(pinned.length==0)return marginal<0?node:node.phases[marginal];
@@ -3170,18 +3146,24 @@ public final class PassiveStepSolver {
          */
         double capLimit(int edge,int end,Transport node){return capLimit(segments[edge][end],edge,end,node);}
         /**
-         * The pressure drop of {@code edge} (no inline filter) at the velocity cap of the direction leaving end {@code end},
-         * on that end's node transport {@code node}: the loss of the drawn stream at {@link #capLimit}. Cached per end while
-         * {@code node} is the same object: a coloured or block Jacobian perturbs a few nodes and the decode cache hands every
-         * other end its unchanged immutable transport, so an end's cap is recomputed only when its own node moves.
+         * The velocity cap (kg/s) of connection {@code edge} for the law's flow {@code y}, on the node transports {@code tr}:
+         * the cap of the end it leaves ({@link #capLimit}) and a filter's cake room ({@link #filterCapFlow}, on the stream
+         * drawn at the capped flow); none where the law is not saturated ({@link #saturates}).
          */
-        private double capDrop(int edge,int end,Transport node) {
-            if(capSources[edge][end]!=node) {
-                double limit=capLimit(edge,end,node);var capTransport=drawn(edge,end,node,limit);
-                capPressureDrops[edge][end]=graph.pipes().get(edge).pressureDrop(limit,capTransport.density,capTransport.viscosity);capSources[edge][end]=node;
-            }
-            return capPressureDrops[edge][end];
+        double cap(int edge,double y,Transport[] tr) {
+            if(!saturates(edge))return Double.POSITIVE_INFINITY;
+            var pipe=graph.pipes().get(edge);int end=y>=0?0:1;
+            return cap(segments[edge][end],edge,end,tr[end==0?pipe.first():pipe.second()],y);
         }
+        /** {@link #cap} under {@code segment} at the end {@code end} the flow leaves, on that end's node transport {@code donor}. */
+        private double cap(PhaseDraw.Segment segment,int edge,int end,Transport donor,double y) {
+            var pipe=graph.pipes().get(edge);double limit=capLimit(segment,edge,end,donor);
+            return pipe.filter()==null?limit:filterCapFlow(edge,limit,drawn(segment,edge,end,donor,saturated(y,limit)));
+        }
+        /** The transported flow (kg/s) of connection {@code edge} for its edge unknown {@code y}, the law's flow: its
+         * saturation at its cap ({@link PassiveStepSolver#saturated}, {@link #cap}), the flow every booking and actuator row
+         * reads; {@code y} itself where the law is not saturated. */
+        double flow(int edge,double y,Transport[] tr){return saturated(y,cap(edge,y,tr));}
         /** {@link #capLimit} under {@code segment} in place of this pass's own. */
         private double capLimit(PhaseDraw.Segment segment,int edge,int end,Transport node) {
             var pipe=graph.pipes().get(edge);
@@ -3292,7 +3274,8 @@ public final class PassiveStepSolver {
          * proportional to it on the turbulent branch, so a Newton walking a gas line from 2.0e-3 kg/s (Re 15 000) to a root
          * near rest (1.5e-5 kg/s, Re 109) halves its flow per fresh step, while a chord step keeping the resistance of a flow
          * twice as large closes only half the gap and the contraction test reads the halving as progress until the
-         * iteration limit. The pressure slopes: a row's slope in an end's {@code ln(P / 1e5)} is that end's pressure, so a
+         * iteration limit; near the velocity cap the saturated law's slope ({@link PassiveStepSolver#saturationSlope}) moves
+         * faster still. The pressure slopes: a row's slope in an end's {@code ln(P / 1e5)} is that end's pressure, so a
          * node whose pressure has moved since the Jacobian was built has every row through it stated with the old pressure
          * (two junctions seeded 373 kPa apart stated a filter's pressure columns at 1/1.55 of their own and overshot its
          * gap by 0.55 per step). The rows and roots are unchanged; what moves is which Jacobian a step uses.
@@ -3305,10 +3288,15 @@ public final class PassiveStepSolver {
                 if(pipe.filter()!=null||boundaryClosed[edge])continue;
                 double from=built[edgeOffset+edge],to=now[edgeOffset+edge];
                 if(from==to)continue;
-                var transport=drawn(edge,to>=0?0:1,cachedTransport[to>=0?pipe.first():pipe.second()],to);
+                double qCap=cap(edge,to,cachedTransport);var donor=cachedTransport[to>=0?pipe.first():pipe.second()];var transport=drawn(edge,to>=0?0:1,donor,saturated(to,qCap));
                 double then=pipe.loss(from,transport.density,transport.viscosity).massFlowDerivative();
                 double slope=pipe.loss(to,transport.density,transport.viscosity).massFlowDerivative();
                 if(!chordHolds(then,slope))return false;
+                // The node rows' slope in this unknown is the saturation's ({@link PassiveStepSolver#saturationSlope}, 1 far
+                // under the cap, 0 deep in saturation): a flow that crossed the knee of its cap since the build is on a
+                // slope the Jacobian does not state. Absolute, as the slope is: two slopes both near zero differ in nothing
+                // the row's other columns do not dominate.
+                if(Math.abs(saturationSlope(to,qCap)-saturationSlope(from,qCap))>CHORD_CONTRACTION)return false;
             }
             for(int node=0;node<layout.length;node++)if(layout[node]!=null) {
                 int at=offsets[node]+layout[node].pressureVariable();
@@ -3346,28 +3334,6 @@ public final class PassiveStepSolver {
             for(int c=0;c<edgeOffset;c++)
                 if(amountVariables[c]&&!solidVariables[c]&&variables[c]<=clampFloors[c]&&candidate[c]<TRACE_RETENTION*variables[c])
                     candidate[c]=TRACE_RETENTION*variables[c];
-            projectFlows(candidate);
-        }
-        /**
-         * Decision A275: a line carries at most its cap, in a trial as in a converged point. A trial that puts a line on its
-         * law past the cap flow of the end it leaves (on the trial's own donor state) is moved to that cap flow; a capped
-         * line's row states it already. Without it the first steps of a pump starting on a junction at 1 atm drew kilograms
-         * of nitrogen per second from a void branch whose cap is a fraction of that, and the Newton ended on a plateau at
-         * 4e-8. A trial outside the property domain is left to the residual, which refuses it.
-         */
-        private void projectFlows(double[] candidate) {
-            boolean any=false;for(int edge=0;edge<capDirections.length&&!any;edge++)any=capDirections[edge]==CAP_OPEN&&clamps(edge);
-            if(!any)return;
-            try {
-                decode(candidate);
-                for(int edge=0;edge<capDirections.length;edge++) {
-                    if(capDirections[edge]!=CAP_OPEN||!clamps(edge))continue;
-                    var pipe=graph.pipes().get(edge);double q=candidate[edgeOffset+edge];int end=q>=0?0:1;
-                    var node=cachedTransport[end==0?pipe.first():pipe.second()];
-                    double limit=pipe.filter()==null?capLimit(edge,end,node):filterCapFlow(edge,end,node,drawn(edge,end,node,q));
-                    if(Math.abs(q)>limit)candidate[edgeOffset+edge]=Math.copySign(limit,q);
-                }
-            }catch(IllegalArgumentException outsideDomain){/* the residual refuses the trial */}
         }
         /** Solid unknowns this point leaves negative, i.e. where {@link PhaseLayout#decode}'s
          * nonnegativity projection would be active. Must be zero at every accepted point. */
@@ -3397,8 +3363,7 @@ public final class PassiveStepSolver {
             return states;
         }
         /** Drops the per-node decode cache; the next decode rebuilds every node exactly. */
-        void releaseDecodeCache(){Arrays.fill(cachedStates,null);Arrays.fill(cachedTransport,null);Arrays.fill(cachedPrepared,null);
-            for(var sources:capSources)Arrays.fill(sources,null);}
+        void releaseDecodeCache(){Arrays.fill(cachedStates,null);Arrays.fill(cachedTransport,null);Arrays.fill(cachedPrepared,null);}
         /** Brings the per-node decode cache up to {@code x}; the residual reads the arrays directly. */
         private void decode(double[] x) {
             for(int i=0;i<layout.length;i++) {
@@ -3492,7 +3457,7 @@ public final class PassiveStepSolver {
                 }
             }
             for(int edge:nodeEdges[node]) {
-                var pipe=graph.pipes().get(edge);int a=pipe.first(),b=pipe.second();double flow=x[edgeOffset+edge];
+                var pipe=graph.pipes().get(edge);int a=pipe.first(),b=pipe.second();double flow=flow(edge,x[edgeOffset+edge],tr);
                 // The donor terms read the stream of the end the flow leaves: the donor's bulk at a BULK end (the same
                 // doubles as its whole state), its drawn phase at a phase port.
                 boolean first=node==a;int donor=flow>=0?a:b;var upstream=st[donor];var transport=drawn(edge,flow>=0?0:1,tr[donor],flow);
@@ -3535,174 +3500,12 @@ public final class PassiveStepSolver {
             energy[node]=stored;incomingMass[node]=mass;incomingEnergy[node]=heat;netMass[node]=emptyings!=null&&emptyings[node]!=null?net+emptyings[node].drain():net;
         }
         /**
-         * Whether {@code node} is a junction whose every connection other than {@code edge} is closed, or a sealed pocket
-         * behind {@code edge} (hold F8, {@link #pockets}: with {@code edge} left out, the junctions its coupling connections
-         * reach touch no vessel, port, generator or void, no regulating valve draws from them, and every other connection
-         * leaving them is closed). Its mass rows then force zero flow through {@code edge} at every solution, so the edge's
-         * cap can never be active there and its row's only job is to place the junction pressure; the capped branch has no
-         * pressure column, so an iterate landing on it with the flow fixed by the mass row makes the Jacobian structurally
-         * singular (a dead-headed pump, and a pipe from a generator into an inline filter's junctions with a closed pump
-         * behind them). Such an edge gets no cap.
-         */
-        private boolean deadEnd(int node,int edge) {
-            if(deadEnds==null){deadEnds=new byte[2*graph.pipes().size()];}
-            int slot=2*edge+(graph.pipes().get(edge).first()==node?0:1);
-            if(deadEnds[slot]==0)deadEnds[slot]=(byte)(sealedWithout(node,edge)?1:2);
-            return deadEnds[slot]==1;
-        }
-        /** Per edge end, whether that end is a dead end for the edge (1), not (2), or not yet decided (0); per pass. */
-        private byte[] deadEnds;
-        private boolean sealedWithout(int node,int edge){return PassiveStepSolver.sealedWithout(graph,nodeEdges,modes,boundaryClosed,node,edge);}
-        /** Whether connection {@code edge} has a velocity cap in this pass: a mode that throttles (passive, a pump on its head
-         * limit, an open valve), not closed, and no dead end at either end ({@link #deadEnd}). */
-        boolean clamps(int edge) {
-            var pipe=graph.pipes().get(edge);
-            return canClamp(modes.get(edge))&&!boundaryClosed[edge]&&!deadEnd(pipe.first(),edge)&&!deadEnd(pipe.second(),edge);
-        }
-        /**
-         * Each connection's cap state for this pass (decision A270): {@link #CAP_OPEN} on its law, or the end its cap flow
-         * leaves (0 the first, 1 the second) while it runs at its cap. Given by the pass loop; a connection the loop has not
-         * decided ({@link #CAP_START}) is decided once, at construction, on this pass's start point ({@link #startCaps}).
-         */
-        final int[] capDirections;
-        /** What the last {@link #edgeRows} of a capped-capable connection read: its driving pressure, the cap's pressure drop
-         * in the direction it used, that direction, and the row's pressure unit. Scratch for {@link #capTransition} and
-         * {@link #startCaps}; never read by a residual. */
-        private double rowDriving,rowLimitDrop,rowCapScale;private int rowDirection;
-        /** The connections {@link #startCaps} put on their cap in this pass (decided on the start point, not by the pass loop). */
-        private boolean[] startCapped;
-        /** The start cap state of every connection neither the pass loop nor the carry decided (decision A271): on the cap when
-         * its driving pressure at this pass's start point exceeds the cap's pressure drop, in the driving pressure's direction
-         * (a device's or a filter's: its start flow's), otherwise on its law, the branch the flow row's clamp read at a
-         * Newton's first iterate before the cap was a mode. A connection that cannot be capped in this pass is on its law. */
-        private void startCaps() {
-            startCapped=new boolean[capDirections.length];
-            boolean any=false;
-            for(int edge=0;edge<capDirections.length;edge++) {
-                if(!clamps(edge))capDirections[edge]=CAP_OPEN;
-                else if(capDirections[edge]==CAP_START)any=true;
-            }
-            if(!any)return;
-            double[] scratch=new double[size];
-            try {
-                decode(initialPoint);
-                for(int edge=0;edge<capDirections.length;edge++) {
-                    if(capDirections[edge]!=CAP_START)continue;
-                    capDirections[edge]=CAP_OPEN;edgeRows(edge,initialPoint,cachedStates,cachedTransport,scratch);
-                    if(Math.abs(rowDriving)>rowLimitDrop){capDirections[edge]=rowDirection;startCapped[edge]=true;}
-                }
-            }catch(IllegalArgumentException outsideDomain){for(int edge=0;edge<capDirections.length;edge++)if(capDirections[edge]==CAP_START)capDirections[edge]=CAP_OPEN;}
-        }
-        /**
-         * Owner decision D59 (5), the capped junctions (A276, A341): a junction whose lines are all choked must still be able
-         * to balance. A junction holds nothing, so its mass balance is what places its pressure; a line on its law reads
-         * that pressure, a line on its cap only when the cap leaves the junction (the cap flow of the junction's own state
-         * rises with its pressure), and a cap that enters it, a mover at its target and a closed line read it not at all.
-         * So a junction with no line on its law balances only if some cap leaves it and some cap enters it; where every cap
-         * enters it nothing places its pressure and the step is singular, where every cap leaves it its balance has no root.
-         * In real life its pressure moves until one of its lines leaves its choke: the one whose drive exceeds its cap's
-         * pressure drop by the least, in pascals. That line is on its law in this pass, read on the start point, decided
-         * with the other cap states before the Newton. The same holds for a group of junctions joined by law lines (the
-         * pockets of hold F8 with capped lines as their boundary): one line is released per group and round, until every
-         * group can balance. Only a cap the start point decided is released ({@link #startCaps}): a cap the pass loop
-         * entered from a converged point or a failed iterate (A271, A274) is evidence from a Newton that ran, and
-         * releasing it returns the pass loop to the state that produced it.
-         */
-        private void anchorJunctions() {
-            int nodes=layout.length,edges=graph.pipes().size();double[] excess=null;
-            for(int round=0;round<=edges;round++) {
-                // Groups of junctions joined by connections on their law; a group is anchored by a law connection to a node
-                // that is not a junction, or by a connection whose row fixes a member's pressure.
-                int[] parent=new int[nodes];for(int i=0;i<nodes;i++)parent[i]=i;
-                boolean[] anchoredNode=new boolean[nodes];
-                for(int e=0;e<edges;e++) {
-                    var mode=modes.get(e);if(closedEdge(mode,boundaryClosed[e])||capDirections[e]>=0)continue;
-                    var pipe=graph.pipes().get(e);int a=pipe.first(),b=pipe.second();
-                    boolean ja=graph.reservoirs().get(a).junction(),jb=graph.reservoirs().get(b).junction();
-                    if(couples(mode,false)){if(ja&&jb){int ra=root(parent,a),rb=root(parent,b);if(ra!=rb)parent[Math.max(ra,rb)]=Math.min(ra,rb);}else{anchoredNode[a]|=ja;anchoredNode[b]|=jb;}}
-                    else if(anchors(mode))anchoredNode[a]|=ja;
-                }
-                boolean[] anchored=new boolean[nodes],leaves=new boolean[nodes],enters=new boolean[nodes];
-                for(int i=0;i<nodes;i++)if(anchoredNode[i])anchored[root(parent,i)]=true;
-                int[] best=new int[nodes];Arrays.fill(best,-1);double[] least=new double[nodes];Arrays.fill(least,Double.POSITIVE_INFINITY);
-                for(int e=0;e<edges;e++) {
-                    if(capDirections[e]<0||closedEdge(modes.get(e),boundaryClosed[e]))continue;
-                    var pipe=graph.pipes().get(e);int donor=capDirections[e]==0?pipe.first():pipe.second(),other=donor==pipe.first()?pipe.second():pipe.first();
-                    boolean jd=graph.reservoirs().get(donor).junction(),jo=graph.reservoirs().get(other).junction();
-                    int rd=jd?root(parent,donor):-1,ro=jo?root(parent,other):-1;
-                    if(rd>=0&&rd==ro)continue;
-                    if(excess==null) {
-                        excess=new double[edges];Arrays.fill(excess,Double.NaN);
-                        try{decode(initialPoint);}catch(IllegalArgumentException outsideDomain){return;}
-                    }
-                    if(Double.isNaN(excess[e])) {
-                        try{edgeRows(e,initialPoint,cachedStates,cachedTransport,new double[size]);excess[e]=Math.abs(rowDriving)-rowLimitDrop;}
-                        catch(IllegalArgumentException outsideDomain){excess[e]=Double.POSITIVE_INFINITY;}
-                    }
-                    if(startCapped[e])for(int r:new int[]{rd,ro})if(r>=0&&excess[e]<least[r]){least[r]=excess[e];best[r]=e;}
-                    if(rd>=0)leaves[rd]=true;
-                    if(ro>=0)enters[ro]=true;
-                }
-                boolean changed=false;
-                for(int r=0;r<nodes;r++)if(best[r]>=0&&!anchored[r]&&!(leaves[r]&&enters[r])&&capDirections[best[r]]>=0){capDirections[best[r]]=CAP_OPEN;changed=true;}
-                if(!changed)return;
-            }
-        }
-        /**
-         * The cap state the pass loop moves connection {@code edge} to at the converged point {@code x}, or its own when the
-         * point holds it (decision A271). On its law, it enters the cap when its flow exceeds the cap flow of the end that
-         * flow leaves, by the margin the velocity constraint was always checked with ({@code 2e-8} relative); on its cap, it
-         * leaves when the driving pressure in its direction falls short of the cap's pressure drop by more than the row
-         * resolves ({@code tolerance} of its pressure unit). Inside that band a connection keeps its mode, so a point at the
-         * cap's edge, where both modes are the same equation, never alternates.
-         */
-        int capTransition(int edge,double[] x,double tolerance) {
-            if(!clamps(edge))return CAP_OPEN;
-            decode(x);
-            double[] scratch=new double[size];
-            edgeRows(edge,x,cachedStates,cachedTransport,scratch);
-            int cap=capDirections[edge];
-            if(cap>=0)return (cap==0?rowDriving:-rowDriving)<rowLimitDrop-tolerance*rowCapScale?CAP_OPEN:cap;
-            var pipe=graph.pipes().get(edge);double q=x[edgeOffset+edge];int end=q>=0?0:1;
-            var node=cachedTransport[end==0?pipe.first():pipe.second()];
-            double limit=pipe.filter()==null?capLimit(edge,end,node):filterCapFlow(edge,end,node,drawn(edge,end,node,q));
-            return Math.abs(q)>limit*(1+2e-8)+1e-12?end:CAP_OPEN;
-        }
-        /**
-         * The cap corrections a failed Newton's last iterate {@code x} shows (decision A274), applied to {@code caps}; true
-         * when any was made. Every capped connection {@link #capTransition} would release there is released; when none is,
-         * every connection on its law that the iterate holds at its cap ({@link #projectFlows}: its flow at the cap flow of
-         * the end it leaves, its drive past the cap's pressure drop that way) is put on its cap. A drive past the cap drop at
-         * a flow still below the cap is a Newton not yet converged. A point outside the property domain changes nothing.
-         */
-        boolean correctCaps(double[] x,int[] caps,double tolerance) {
-            int[] released=caps.clone(),entered=caps.clone();boolean release=false,enter=false;
-            try {
-                double[] scratch=new double[size];
-                for(int edge=0;edge<caps.length;edge++) {
-                    if(!clamps(edge))continue;
-                    if(capDirections[edge]>=0){if(capTransition(edge,x,tolerance)==CAP_OPEN){released[edge]=CAP_OPEN;release=true;}continue;}
-                    decode(x);edgeRows(edge,x,cachedStates,cachedTransport,scratch);
-                    var pipe=graph.pipes().get(edge);double q=x[edgeOffset+edge];int end=q>=0?0:1;var node=cachedTransport[end==0?pipe.first():pipe.second()];
-                    double limit=pipe.filter()==null?capLimit(edge,end,node):filterCapFlow(edge,end,node,drawn(edge,end,node,q));
-                    // The drive in the flow's direction, as capTransition releases on it: a line is choked only by a drive
-                    // that pushes its flow (random seed 200: a filter line drawing 0.99 kg/s against a 325 kPa drive was
-                    // released and entered again at the same point, and the pass sequence cycled).
-                    if(Math.abs(q)>=limit*(1-1e-9)&&end==rowDirection&&(rowDirection==0?rowDriving:-rowDriving)>rowLimitDrop){entered[edge]=rowDirection;enter=true;}
-                }
-            }catch(IllegalArgumentException outsideDomain){return false;}
-            if(release)System.arraycopy(released,0,caps,0,caps.length);
-            else if(enter)System.arraycopy(entered,0,caps,0,caps.length);
-            return release||enter;
-        }
-        /**
-         * The cap flow (kg/s) of an inline filter's connection leaving end {@code end}: the drawn stream's velocity cap
+         * The cap flow (kg/s) of an inline filter's connection: the drawn stream's velocity cap {@code limit}
          * ({@link #capLimit}) and, in a step that may fill the cake, the room the cake has left over the step's own
          * retention per kilogram of {@code drawn}, the stream the flow carries.
          */
-        private double filterCapFlow(int edge,int end,Transport node,Transport drawn) {
+        private double filterCapFlow(int edge,double limit,Transport drawn) {
             var pipe=graph.pipes().get(edge);
-            double limit=capLimit(edge,end,node);
             if(!rateOnly&&!prescribedFlow) {
                 // A filter has a second inlet limit: the cake it can still hold. The retained volume at the end of this step
                 // is the expression the loading row states, so bounding the inlet by the room divided by the step's own
@@ -3716,19 +3519,20 @@ public final class PassiveStepSolver {
         }
         /** The hydraulic row of one edge and its actuator row, from the two endpoint states alone. */
         private void edgeRows(int edge,double[] x,FluidThermodynamics.State[] st,Transport[] tr,double[] f) {
-            var pipe=graph.pipes().get(edge);int a=pipe.first(),b=pipe.second();double flow=x[edgeOffset+edge];
-            // The loss and a device's cap read the stream of the end the flow leaves.
+            // The edge unknown is the law's flow; what the connection carries is its saturation at the velocity cap of the
+            // end it leaves ({@link #flow}, PassiveStepSolver.saturated), the flow every booking and actuator row reads. The
+            // loss is the law's at the law's flow, in the stream of the end the flow leaves.
+            var pipe=graph.pipes().get(edge);int a=pipe.first(),b=pipe.second();double law=x[edgeOffset+edge],flow=flow(edge,law,tr);
             int donor=flow>=0?a:b;var transport=drawn(edge,flow>=0?0:1,tr[donor],flow);double rho=transport.density;
             var suction=drawn(edge,0,tr[a],flow);
             double dz=graph.reservoirs().get(b).elevation()-graph.reservoirs().get(a).elevation();
-            double loss=pipe.pressureDrop(flow,rho,transport.viscosity);
-            double filterCoefficient=0;
+            double loss=pipe.pressureDrop(law,rho,transport.viscosity);
             if(pipe.filter()!=null){
                 // The cake is loaded, and its resistance scaled, per kilogram of the drawn stream: its fluid volume, its
                 // carrier's viscosity and its solids.
                 var state=st[donor];double fluidVolume=transport.volume-transport.solids.volume();double carrier=drawnCarrierViscosity(edge,flow>=0?0:1,state,tr[donor],flow);
                 double loading=x[filterOffsets[edge]];
-                filterCoefficient=pipe.filter().cleanResistance()*(carrier/.001)*(1+99*loading*loading)*fluidVolume/transport.mass;loss=filterCoefficient*flow;
+                loss=pipe.filter().cleanResistance()*(carrier/.001)*(1+99*loading*loading)*fluidVolume/transport.mass*law;
                 double volume=pipe.filter().captured().volume()+(rateOnly?0:dt)*Math.abs(flow)*transport.solids.volume()/transport.mass;
                 f[filterOffsets[edge]]=loading-volume/pipe.filter().capacity();
             }
@@ -3748,43 +3552,6 @@ public final class PassiveStepSolver {
             // pump's target row is a volume flow.
             double pressureScale=pressureScales[edge];
             f[edgeOffset+edge]=(driving-loss)/pressureScale;
-            // No cap on an edge a dead-ended junction can only carry zero through; see {@link #deadEnd}.
-            if(clamps(edge)) {
-                // The velocity cap is an active-set mode of the connection (decision A270): {@link #capDirections} says, for
-                // the whole pass, whether this connection runs on its law or at its cap, and in which direction. On the cap
-                // its row states the cap flow of the end it leaves, reading that end's state and neither end's pressure: a
-                // choked line passes what its upstream state lets through. Which mode a pass runs in is the pass loop's
-                // decision ({@link #capTransition}), never the live iterate's, so the row is smooth in its own unknowns
-                // (before, a junction between capped lines saw its pressure column vanish and come back between iterates).
-                // On the law a plain passive connection's scale reads both ends' cap drops, so it needs no direction; a
-                // device or a filter keeps its flow's donor.
-                boolean byDriving=pipe.filter()==null&&pipe.control() instanceof FlowControl.Passive;
-                int cap=capDirections[edge];
-                int direction=cap>=0?cap:(byDriving?driving>=0:flow>=0)?0:1;
-                // The direction's donor end: for a device or a filter the flow's donor, which is the same end.
-                var capSource=tr[direction==0?a:b];
-                double limitDrop;
-                if(pipe.filter()==null)limitDrop=capDrop(edge,direction,capSource);
-                else limitDrop=filterCoefficient*filterCapFlow(edge,direction,capSource,transport);
-                // A saturated pressure/flow law: the unused driving pressure is throttled, and the same bounded flow unknown
-                // enters every component and enthalpy balance; no post-solve clipping. Both modes are stated in one pressure
-                // unit, the loss against the driving pressure on the law and against the cap's own drop on the cap, over
-                // S = min(pressureScale, 2 scaleDrop): as a flow row the capped branch sat on a scale 80x apart from the
-                // hydraulic row's on a 50 mm line and a Newton crossing the cap exit stalled on the mismatch. The floor keeps
-                // a filter with no room left from a zero scale. On a plain passive connection scaleDrop is the smaller of the
-                // two ends' cap drops, not the donor's: the scale weighs the row and says nothing about which way the fluid
-                // goes, and at a zero-flow root neither end is the donor; taken from the donor the sign chose, S jumped at
-                // that root wherever the two ends hold different fluids (water and nitrogen: cap drops orders apart), every
-                // differenced Jacobian straddled the jump and the Newton contracted only linearly (hold class E6). A device
-                // or a filter keeps its flow donor's drop.
-                double scaleDrop=byDriving?Math.min(limitDrop,capDrop(edge,1-direction,tr[direction==0?b:a])):limitDrop;
-                double capScale=Math.max(Math.min(pressureScale,2*scaleDrop),1e-12);
-                f[edgeOffset+edge]=(driving-loss)/capScale;
-                rowDriving=driving;rowLimitDrop=limitDrop;rowDirection=direction;rowCapScale=capScale;
-                // On the cap: loss(q) = the loss at the cap flow of the end it leaves, i.e. q is that cap flow, stated in
-                // the hydraulic row's own pressure unit (the two branches of a connection must share one unit; review 7.1).
-                if(cap>=0)f[edgeOffset+edge]=((direction==0?limitDrop:-limitDrop)-loss)/capScale;
-            }
             if(boundaryClosed[edge]&&control<0)f[edgeOffset+edge]=flow;
             if(control>=0)f[control]=switch(modes.get(edge)) {
                 case PUMP_TARGET->(flow/suction.density-((FlowControl.Mover)pipe.control()).targetVolumeFlow())/.01;
@@ -3799,7 +3566,7 @@ public final class PassiveStepSolver {
                 case VALVE_OPEN->head/pressureScale;
                 // A mover refused for the slice (decision D6) is closed: its flow is exactly zero.
                 case CLOSED,INLET_WRONG_PHASE->flow;
-                case PASSIVE,VELOCITY_LIMITED,PUMP_VELOCITY_LIMIT,VALVE_VELOCITY_LIMIT->throw new IllegalStateException("Presentation-only or passive mode has actuator unknown");
+                case PASSIVE->throw new IllegalStateException("A passive mode has no actuator unknown");
             };
         }
         /**

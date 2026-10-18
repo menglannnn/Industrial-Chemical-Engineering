@@ -113,13 +113,13 @@ public sealed interface FlowControl permits FlowControl.Passive,FlowControl.Move
      * The regime of one connection in a solve. {@code INLET_WRONG_PHASE} (decision D6) is a mover refused for a whole
      * slice because its supply is the wrong phase or dry ({@link InletPhase}): in the solver it is {@code CLOSED} (flow exactly
      * zero, never reopened within the slice), and it persists as an endpoint mode so the next slice's hysteresis reads it.
-     * Appended last: endpoint modes are saved as ordinals.
+     * Endpoint modes are saved as ordinals (checkpoint format 11).
      *
      * <p>{@code PUMP_SUCTION_LIMIT} (owner decision D59 (4)) is a liquid pump that cavitates: its target flow would pull its
      * suction below the vapour pressure of the water it draws, so the row {@code P_suction = P_vapour(T_suction)} replaces
      * the target-flow row, as the head limit does, and the flow is what the suction line delivers at that pressure. It
-     * persists as an endpoint mode like the head limit; appended last for the same reason.
+     * persists as an endpoint mode like the head limit. The velocity cap is no mode: it is part of every throttling
+     * line's law ({@code PassiveStepSolver.saturated}, 2026-10-18).
      */
-    enum Mode { PASSIVE, PUMP_TARGET, PUMP_HEAD_LIMIT, VALVE_REGULATING, VALVE_OPEN, CLOSED,
-        VELOCITY_LIMITED, PUMP_VELOCITY_LIMIT, VALVE_VELOCITY_LIMIT, INLET_WRONG_PHASE, PUMP_SUCTION_LIMIT }
+    enum Mode { PASSIVE, PUMP_TARGET, PUMP_HEAD_LIMIT, VALVE_REGULATING, VALVE_OPEN, CLOSED, INLET_WRONG_PHASE, PUMP_SUCTION_LIMIT }
 }

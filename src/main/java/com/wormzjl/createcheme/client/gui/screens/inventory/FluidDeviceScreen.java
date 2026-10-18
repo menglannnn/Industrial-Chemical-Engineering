@@ -488,7 +488,7 @@ public final class FluidDeviceScreen extends AbstractContainerScreen<FluidDevice
         if(!notice.isEmpty())return statusText(status.substring(0,status.length()-notice.length()))+notice;
         if(status.contains("HELD")||status.contains("ERROR")||status.contains("WAITING")||status.contains("closed")||status.contains("UNBOUND"))return status;
         if(status.startsWith("STEADY: no flow"))return tr("no_flow");
-        if(status.startsWith("STEADY:"))return tr(status.contains("VELOCITY_LIMIT")?"velocity_limited":"flowing");
+        if(status.startsWith("STEADY:"))return tr("flowing");
         if(status.equals("FULL")||status.equals("READY"))return tr("ready");
         return status;
     }

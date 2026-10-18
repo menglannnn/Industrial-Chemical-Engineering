@@ -379,7 +379,6 @@
   "gui.createcheme.fluid.pipe_status": "Status / errors",
   "gui.createcheme.fluid.reversed_interval": "Flow reversed during this interval.",
   "gui.createcheme.fluid.flowing": "Flowing normally.",
-  "gui.createcheme.fluid.velocity_limited": "Flow is limited by the allowed fluid velocity.",
   "gui.createcheme.fluid.no_flow": "No flow.",
   "gui.createcheme.fluid.ready": "Ready.",
   "gui.createcheme.fluid.junction": "Junction · %s connections",

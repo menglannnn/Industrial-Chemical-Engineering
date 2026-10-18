@@ -18,7 +18,7 @@ import java.util.*;
 import java.util.function.Function;
 
 /**
- * Checkpoint format 10 of committed science and runtime state: what one storage unit holds and what the core record
+ * Checkpoint format 11 of committed science and runtime state: what one storage unit holds and what the core record
  * holds. Rebuilds properties through the immutable model; it never deserializes implementation caches or creates a
  * nitrogen charge. Where the units live is {@link FluidCheckpointStore}'s business.
  *
@@ -40,11 +40,11 @@ import java.util.function.Function;
  * each population as its material's id, revision, density and heat capacity, then its size and mass; the id names a
  * crystal the package admits or a custom solid (owner decision D23), and the reader refuses an id that names no record
  * of the package or saved constants that are not the record's. No other format is read: format 9 and older are refused
- * with the instruction to create a fresh world (format 10, unit format 3, dropped the movers' efficiency, the
+ * with the instruction to create a fresh world (format 11 dropped the velocity-limit modes among the endpoint modes, 2026-10-18; format 10, unit format 3, dropped the movers' efficiency, the
  * approximate fallback and the saved interval's acceptance: every interval is a full solve).</p>
  */
 public final class FluidCheckpointCodec {
-    public static final int VERSION=10;
+    public static final int VERSION=11;
     /** The {@code Base} of an awake island: it carries no certificate. */
     public static final long AWAKE=-1;
     static final int UNIT_MAGIC=0x43434655,UNIT_FORMAT=3;
@@ -564,7 +564,7 @@ public final class FluidCheckpointCodec {
     }
     private static final List<String> LONG_COLUMNS=List.of("Id","Revision","Generation","Online","Committed","Retry","Base","Since","Start","Horizon","Pack","Offset");
     /**
-     * Reads and validates a core record: format 10 only (older formats are refused with the instruction to create a
+     * Reads and validates a core record: format 11 only (older formats are refused with the instruction to create a
      * fresh world), every field present and typed, the envelope digest, the string and package tables,
      * the pack list, and every index row's unit reference lying inside a listed pack. The units themselves are read by
      * {@link #island} and {@link #topology}.
