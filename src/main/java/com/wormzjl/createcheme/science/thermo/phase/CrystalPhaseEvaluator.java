@@ -6,11 +6,7 @@ import com.wormzjl.createcheme.science.material.MaterialCatalog;
 import com.wormzjl.createcheme.science.thermo.IdealGasFunction;
 import com.wormzjl.createcheme.science.thermo.PengRobinsonKernel;
 import com.wormzjl.createcheme.science.thermo.PengRobinsonKernel.Root;
-import com.wormzjl.createcheme.science.thermo.phase.PhaseDerivatives.Capability;
-import java.util.Collections;
-import java.util.EnumSet;
 import java.util.Objects;
-import java.util.Set;
 
 /**
  * The {@link SolidPhaseEvaluator} of a crystal record: the record's model ({@link CrystalReference}, for CO2 the Gibbs
@@ -26,16 +22,12 @@ import java.util.Set;
  * record is refused at construction. {@link #anchored(TriplePointAnchor)} solves the integration constants once and
  * returns an immutable {@link Anchored} crystal, which an equilibrium service holds per crystal so a flash never
  * re-solves g0 and g1; {@link #evaluate(double, double, TriplePointAnchor, PhaseState)} reuses the last anchored view
- * while the caller passes an equal anchor. Derivatives ({@link #derivatives}): {@link Capability#FUGACITY_STATE_DERIVATIVES}
- * ({@code d ln phi/dT = -(h_s - h_ig)/(R T^2)}, {@code d ln phi/dP = v_s/(R T) - 1/P}),
- * {@link Capability#VOLUMETRIC_DERIVATIVES} ({@code dv/dT = alpha v}, {@code dv/dP = -kappa v}) and
- * {@link Capability#CALORIC_DERIVATIVES} ({@code c_p}, {@code dh/dP = v (1 - alpha T)}); no composition derivatives.
+ * while the caller passes an equal anchor. Derivatives ({@link #derivatives}): {@code d ln phi/dT = -(h_s - h_ig)/(R T^2)},
+ * {@code d ln phi/dP = v_s/(R T) - 1/P}, {@code dv/dT = alpha v}, {@code dv/dP = -kappa v}, {@code c_p},
+ * {@code dh/dP = v (1 - alpha T)}; no composition derivatives.
  */
 public final class CrystalPhaseEvaluator implements SolidPhaseEvaluator {
     private static final double R = PengRobinsonKernel.GAS_CONSTANT;
-    /** The derivative blocks {@link #derivatives} provides: no composition derivatives for a pure crystal. */
-    public static final Set<Capability> CAPABILITIES = Collections.unmodifiableSet(EnumSet.of(
-            Capability.FUGACITY_STATE_DERIVATIVES, Capability.VOLUMETRIC_DERIVATIVES, Capability.CALORIC_DERIVATIVES));
     private static final double[] ONE = {1.0};
 
     private final CrystalReference crystal;
@@ -106,8 +98,6 @@ public final class CrystalPhaseEvaluator implements SolidPhaseEvaluator {
     public PhaseDerivatives derivatives(double temperature, double pressure, TriplePointAnchor anchor, PhaseDerivatives out) {
         return view(anchor).derivatives(temperature, pressure, out);
     }
-
-    public Set<Capability> capabilities() { return CAPABILITIES; }
 
     /**
      * The crystal anchored at {@code anchor}, its integration constants solved once: the view an equilibrium service
@@ -186,7 +176,7 @@ public final class CrystalPhaseEvaluator implements SolidPhaseEvaluator {
             return fill(properties(temperature, pressure), out);
         }
 
-        /** The state and the derivative blocks of {@link #CAPABILITIES} at (T, P) into {@code out} (one component). */
+        /** The state and the derivative blocks (no composition block) at (T, P) into {@code out} (one component). */
         public PhaseDerivatives derivatives(double temperature, double pressure, PhaseDerivatives out) {
             Objects.requireNonNull(out, "out");
             if (out.componentCount() != 1) throw new IllegalArgumentException("A crystal state has one component");
@@ -197,7 +187,6 @@ public final class CrystalPhaseEvaluator implements SolidPhaseEvaluator {
             // ln phi = (g_s - g_ig)/(R T): d/dT = -(h_s - h_ig)/(R T^2), d/dP = (v_s - R T/P)/(R T).
             out.logFugacityTemperatureBuffer()[0] = -state.residualEnthalpy() / (rt * temperature);
             out.logFugacityPressureBuffer()[0] = s.volume() / rt - 1.0 / pressure;
-            out.provide(Capability.FUGACITY_STATE_DERIVATIVES);
             double volume = s.volume();
             out.setVolumetric(s.expansion() * volume, -s.compressibility() * volume);
             out.setCaloric(s.heatCapacity(), volume * (1.0 - s.expansion() * temperature));

@@ -11,7 +11,6 @@ import com.wormzjl.createcheme.science.fluid.thermo.TranslatedPengRobinson;
 import com.wormzjl.createcheme.science.thermo.IdealGasFunction;
 import com.wormzjl.createcheme.science.thermo.PengRobinsonKernel.Root;
 import com.wormzjl.createcheme.science.thermo.ThermoComponent;
-import com.wormzjl.createcheme.science.thermo.phase.PhaseDerivatives.Capability;
 import com.wormzjl.createcheme.science.thermo.phase.PhaseTestSupport.StubIdealGas;
 import java.util.ArrayList;
 import java.util.List;
@@ -195,7 +194,6 @@ class CubicPhaseEvaluatorTest {
             Root root = (Root) c[3];
             String at = t + " K " + p + " Pa " + root;
             evaluator.derivatives(t, p, n, root, w, d);
-            assertEquals(java.util.EnumSet.allOf(Capability.class), d.supported());
             PhaseState s = d.state();
             double dt = 1.0e-3;
             double dp = 1.0e-5 * p;
@@ -375,20 +373,6 @@ class CubicPhaseEvaluatorTest {
         PhaseState frozen = evaluator.evaluate(300.0, 1.0e6, new double[] {0.5, 0.5}, Root.VAPOR, w, evaluator.newState()).copy();
         assertThrows(IllegalStateException.class,
                 () -> evaluator.evaluate(300.0, 1.0e6, new double[] {0.5, 0.5}, Root.VAPOR, w, frozen));
-    }
-
-    @Test
-    void derivativeBlocksAFamilyDidNotProvideAreRefused() {
-        var d = new PhaseDerivatives(2);
-        d.begin("volumetric_only_test");
-        d.setVolumetric(1.0e-7, -1.0e-9);
-        assertEquals(1.0e-7, d.volumeTemperatureDerivative());
-        assertThrows(UnsupportedOperationException.class, d::enthalpyTemperatureDerivative);
-        assertThrows(UnsupportedOperationException.class, () -> d.logFugacityCompositionDerivative(0, 1));
-        assertThrows(UnsupportedOperationException.class, d::logFugacityTemperatureDerivativeView);
-        // A new fill forgets the previous blocks.
-        d.begin("nothing");
-        assertThrows(UnsupportedOperationException.class, d::volumeTemperatureDerivative);
     }
 
     private static String worstWhat = "";

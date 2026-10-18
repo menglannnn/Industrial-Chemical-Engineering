@@ -10,12 +10,8 @@ import com.wormzjl.createcheme.science.thermo.PairInteractions;
 import com.wormzjl.createcheme.science.thermo.PengRobinsonKernel;
 import com.wormzjl.createcheme.science.thermo.PengRobinsonKernel.Root;
 import com.wormzjl.createcheme.science.thermo.ThermoComponent;
-import com.wormzjl.createcheme.science.thermo.phase.PhaseDerivatives.Capability;
-import java.util.Collections;
-import java.util.EnumSet;
 import java.util.List;
 import java.util.Objects;
-import java.util.Set;
 
 /**
  * The fluid phase evaluator: the translated PR78 over a component basis, family {@value #FAMILY}. It turns (T, P,
@@ -41,7 +37,6 @@ import java.util.Set;
 public final class CubicPhaseEvaluator {
     public static final String FAMILY = "pr78_translated_v1";
     private static final double R = PengRobinsonKernel.GAS_CONSTANT;
-    private static final Set<Capability> CAPABILITIES = Collections.unmodifiableSet(EnumSet.allOf(Capability.class));
 
     private final String sourceId;
     private final List<String> names;
@@ -119,7 +114,6 @@ public final class CubicPhaseEvaluator {
 
     public String family() { return FAMILY; }
     public List<String> components() { return names; }
-    public Set<Capability> capabilities() { return CAPABILITIES; }
     public ThermoComponent component(int index) { return components.get(index); }
     public IdealGasFunction idealGas(int index) { return idealGas[index]; }
     /** The constant volume translation {@code c_i} of a component, m3/mol ({@code v = v_PR + c}). */
@@ -181,7 +175,6 @@ public final class CubicPhaseEvaluator {
             double[] row = out.logFugacityCompositionRowBuffer(i);
             System.arraycopy(w.mixtureDerivatives.dLogPhiDnRowView(i), 0, row, 0, n);
         }
-        out.provide(Capability.FUGACITY_COMPOSITION_DERIVATIVES);
         // ln phi_i carries +P c_i/(RT) from the translation, whose T and P derivatives are these two terms.
         double rt = R * temperature;
         double[] mixtureDt = w.mixtureDerivatives.dLogPhiDtView();
@@ -195,7 +188,6 @@ public final class CubicPhaseEvaluator {
                 throw new IllegalArgumentException("Nonfinite chemical-potential derivative");
             }
         }
-        out.provide(Capability.FUGACITY_STATE_DERIVATIVES);
         out.setVolumetric(values.volumeTemperatureDerivative(), values.volumePressureDerivative());
         double idealHeatCapacity = 0.0;
         for (int i = 0; i < n; i++) {

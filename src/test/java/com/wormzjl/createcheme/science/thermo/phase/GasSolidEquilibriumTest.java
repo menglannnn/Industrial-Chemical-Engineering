@@ -13,7 +13,6 @@ import com.wormzjl.createcheme.science.thermo.phase.EquilibriumResult.Classifica
 import com.wormzjl.createcheme.science.thermo.phase.EquilibriumResult.CoverageGrade;
 import com.wormzjl.createcheme.science.thermo.phase.EquilibriumResult.Status;
 import com.wormzjl.createcheme.science.thermo.phase.EquilibriumResult.UnsupportedReason;
-import com.wormzjl.createcheme.science.thermo.phase.PhaseDerivatives.Capability;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -527,15 +526,12 @@ class GasSolidEquilibriumTest {
         var fluid = CubicPhaseEvaluator.forPackage(catalog, PILOT);
         var crystal = CrystalPhaseEvaluator.forPackage(catalog, PILOT, CRYSTAL);
         var anchor = crystal.anchor(fluid);
-        assertEquals(Set.of(Capability.FUGACITY_STATE_DERIVATIVES, Capability.VOLUMETRIC_DERIVATIVES, Capability.CALORIC_DERIVATIVES),
-                crystal.capabilities());
         var view = crystal.anchored(anchor);
         double worst = 0;
         for (double[] state : new double[][] {{100, 1.0e5}, {150, 1.0e5}, {194.7, 1.0e5}, {216, 5.0e6}, {250, 1.0e8}}) {
             double t = state[0], p = state[1];
             var d = crystal.derivatives(t, p, anchor, new PhaseDerivatives(1));
             assertEquals(crystal.family(), d.family());
-            assertThrows(UnsupportedOperationException.class, () -> d.logFugacityCompositionDerivative(0, 0));
             // The same state as the evaluator's (bit for bit through the anchored view and the record's own path).
             PhaseState direct = crystal.evaluate(t, p, anchor, new PhaseState(1));
             assertEquals(direct.toString(), d.state().toString());
