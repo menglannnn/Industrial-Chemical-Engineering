@@ -954,8 +954,21 @@ public final class FluidThermodynamics {
      */
     public static int vanishing(State start,State end) {
         double[] s=phaseAmounts(start),e=phaseAmounts(end);double ts=sum(s),te=sum(e);int bits=0;
-        for(int k=0;k<4;k++)if(e[k]<VANISHING_SHARE*te&&e[k]*ts<s[k]*te)bits|=1<<k;
+        // Owner decision of 2026-10-18 on t40's trace (D38 C amended): a shrinking phase is nothing only below the share both
+        // by moles and by volume; the direction (shrinking) by moles. A gas holds about a hundred times its mole share in
+        // volume, so a mole test alone folded a 21 mL bubble of 2.6e-7 of a liquid-full tank's moles, which at the tank's
+        // compressibility moved its pressure by 16 %; the converged point's check proposed it back, and the interval's step
+        // halved on every jump down to 1e-15 s (bundled seeds 407 and 26). Below 1e-6 of the volume a fold moves a liquid
+        // node by 2 kPa at most, under the state cap.
+        double[] ev=phaseVolumes(end);double tv=sum(ev);
+        for(int k=0;k<4;k++)if(e[k]<VANISHING_SHARE*te&&ev[k]<VANISHING_SHARE*tv&&e[k]*ts<s[k]*te)bits|=1<<k;
         return bits;
+    }
+    /** A state's fluid volume by phase, in {@link #phaseBits} order; a gas phase's volume shared between the hydrocarbon
+     * vapour and the steam by moles. */
+    private static double[] phaseVolumes(State state) {
+        double hv=sum(state.vaporView()),wv=state.waterVapor(),gas=hv+wv,vv=state.vaporVolume();
+        return new double[]{state.liquidVolume(),gas>0?vv*hv/gas:0,state.waterVolume(),gas>0?vv*wv/gas:0};
     }
     /**
      * The phases a solve from {@code start} that stopped short of a root is driving to nothing at its last iterate

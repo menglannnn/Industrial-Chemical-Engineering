@@ -812,4 +812,31 @@ class HoldClassWorldsTest {
         w.place(1,1,0,Kind.PIPE,NORTH,.1);w.place(0,1,0,Kind.RESERVOIR,NORTH,passive,NITROGEN,.01);
         w.runTo(151+40*100);w.assertKeptUp("a crude tank fed through a junction");
     }
+
+    /**
+     * Owner decision of 2026-10-18 on t40's trace (D38 C amended): a shrinking phase is nothing only below VANISHING_SHARE
+     * of its node's fluid both by moles and by volume. Bundled fuzz seed 407, pair-minimized to 3 blocks: a tank placed
+     * with a 0.05 m pipe at tick 291, and at tick 1208 a crude generator (Tia Juana light with methane, 311.16 K,
+     * 315.67 kPa) at the pipe's other end. The crude fills the tank; its nitrogen pad and the light ends dissolve as the
+     * pressure rises, the last bubble (21 mL, 2.6e-7 of the moles) closes, and the liquid is pressed to the supply:
+     * liquid-full at 316 kPa, 177 kPa above its bubble pressure, no flow. With the mole share alone the bubble was folded,
+     * the stretched liquid stood 16 % under its bubble pressure, the converged point's check proposed the bubble back, and
+     * the interval halved its step on every jump down to 1e-15 s: held at its 1024-attempt cap in [1435,1535] (class E8).
+     */
+    @Test void aCrudeGeneratorFillsATankToLiquidFullAndRests() {
+        var w=new EventPathWorld();var passive=new FlowControl.Passive();
+        w.runTo(291);
+        w.place(1,0,0,Kind.PIPE,NORTH,passive,null,.05);
+        w.place(0,0,0,Kind.RESERVOIR,WEST,.05);
+        w.runTo(1208);
+        w.place(2,0,0,Kind.GENERATOR,NORTH,passive,crude(311.1640418552006,315670.8797145338),.05);
+        w.runTo(1208+30*100);w.assertKeptUp("a crude generator filling a tank to liquid-full");
+        var s=w.coordinator.snapshots().stream().filter(sn->sn.graph().reservoirs().stream().anyMatch(r->r.kind()==PassiveNetwork.NodeKind.RESERVOIR)).findFirst().orElseThrow();
+        var tank=s.graph().reservoirs().stream().filter(r->r.kind()==PassiveNetwork.NodeKind.RESERVOIR).findFirst().orElseThrow().state();
+        var result=s.lastResult().orElseThrow();
+        System.out.println("LIQUID_FULL_CRUDE status="+s.status()+" P="+tank.pressure()+" T="+tank.temperature()+" liqV="+tank.liquidVolume()+" vapV="+tank.vaporVolume()+" flows="+Arrays.toString(result.averageMassFlows()));
+        assertEquals(0,tank.vaporVolume(),"liquid-full: no vapour");
+        assertEquals(315670.8797145338,tank.pressure(),.01*315670.8797145338,"pressed to the supply");
+        assertTrue(s.status().startsWith("STEADY"),"at rest: "+s.status());
+    }
 }
