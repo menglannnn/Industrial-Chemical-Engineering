@@ -1,8 +1,13 @@
 package com.wormzjl.createcheme.runtime.fluid;
 
 import com.wormzjl.createcheme.science.fluid.network.FlowControl;
+import com.wormzjl.createcheme.science.fluid.network.PassiveNetwork;
+import com.wormzjl.createcheme.science.fluid.thermo.FluidMaterialCatalog;
+import com.wormzjl.createcheme.science.fluid.thermo.FluidThermodynamics;
 import com.wormzjl.createcheme.science.fluid.topology.TopologyCompiler.Kind;
+import com.wormzjl.createcheme.science.material.MaterialRuntime;
 import com.wormzjl.createcheme.science.material.MaterialTestBasis;
+import com.wormzjl.createcheme.science.material.PilotCryogenicTestCatalog;
 import java.util.Arrays;
 import org.junit.jupiter.api.Test;
 import static com.wormzjl.createcheme.runtime.fluid.PhysicalFluidTopology.Direction.*;
@@ -77,5 +82,51 @@ class PumpCavitationTest {
         assertEquals(FlowControl.Mode.PUMP_SUCTION_LIMIT,result.endpointModes().get(pump),"the pump cavitates");
         assertEquals(vapour,suction.pressure(),1e-3*vapour,"its suction stands at the vapour pressure");
         assertTrue(q>0&&q<.01*suction.mass()/suction.volume(),"it delivers what the line gives, below its target: "+q);
+    }
+
+    /**
+     * Owner decision on the t38 plan (2026-10-18, K6): a pump's suction limit reads the liquid it draws, and a two-phase
+     * supplier's own pressure is its bubble pressure (no new thermodynamics). From cold fuzz seed 397's world: its LNG
+     * (111.66 K, 89 % methane with ethane and CO2) boils at about 99 kPa; the seed's generator stood subcooled at 222 kPa,
+     * and the pump [0.01 m3/s, 500 kPa] pulled the suction junction of its 10 mm line to 40 kPa, where the liquid flashed
+     * and the two-phase junction's pass stalled (a hold outside this rule, which reads a two-phase supplier only). Here
+     * the same LNG at 111.8 K fills a tank from a generator at 222 kPa and boils there: the tank fills to its wall and
+     * stands two-phase at about 128 kPa and 115 K, two metres above the pump, which draws through the tank's bottom port
+     * (liquid, so the pump is not refused). The available head is the column and the level head alone, the target would
+     * need far more line loss, so the pump stands on its suction limit with the junction at the tank's pressure and
+     * delivers what that head pushes through two metres of 10 mm line (0.086 kg/s against a target of 4.2 kg/s). Without
+     * the rule (the water-only limit of A390) the junction is pulled below the bubble pressure and flashes: the island
+     * holds at tick 1327 on a line-search stall.
+     */
+    @Test void anLngSupplierAtItsBubblePointHoldsItsPumpOnTheSuctionLimit() {
+        var catalog=PilotCryogenicTestCatalog.catalog();var network=FluidMaterialCatalog.networkPackage(catalog);
+        MaterialRuntime.with(catalog,network,()->{
+            var w=new EventPathWorld(catalog,FluidThermodynamics.forNetwork(catalog,network));var passive=new FlowControl.Passive();
+            // Seed 397's LNG on the pilot basis [nitrogen, methane, ethane, CO2, water] at 111.8 K: subcooled in the generator
+            // at 222 kPa, boiling in the tank. A placed tank holds nothing (owner direction D52): it fills from the generator
+            // through its side, and the pump draws from its bottom port.
+            var lng=new FluidDeviceSpec(1,111.8,222268.7652191971,new double[]{0.0019051322577280617,0.8927278421557977,0.06093423437004952,0.04443279121642472,0});
+            w.runTo(100);
+            w.place(2,2,-1,Kind.GENERATOR,NORTH,passive,lng,.01);
+            w.place(1,2,-1,Kind.PIPE,NORTH,passive,null,.01);
+            w.place(0,2,-1,Kind.RESERVOIR,NORTH,.01);
+            w.place(0,1,-1,Kind.PIPE,NORTH,passive,null,.01);
+            w.place(0,0,-1,Kind.PIPE,NORTH,passive,null,.01);
+            w.place(0,0,0,Kind.PUMP,SOUTH,new FlowControl.Pump(.01,500000),null,.01);
+            w.place(0,0,1,Kind.PIPE,NORTH,passive,null,.01);
+            w.place(0,0,2,Kind.VOID,NORTH,passive,new FluidDeviceSpec(1,298.15,101325,new double[]{1,0,0,0,0}),.01);
+            w.runTo(100+20*100);w.assertKeptUp("an LNG supplier at its bubble point feeding a pump");
+            var s=w.coordinator.snapshots().stream().filter(sn->sn.graph().pipes().stream().anyMatch(p->p.control() instanceof FlowControl.Pump)).findFirst().orElseThrow();
+            var result=s.lastResult().orElseThrow();var graph=s.graph();
+            int pump=-1;for(int e=0;e<graph.pipes().size();e++)if(graph.pipes().get(e).control() instanceof FlowControl.Pump)pump=e;
+            var tank=graph.reservoirs().stream().filter(r->r.kind()==PassiveNetwork.NodeKind.RESERVOIR).findFirst().orElseThrow().state();
+            var suction=graph.reservoirs().get(graph.pipes().get(pump).first()).state();double q=result.averageMassFlows()[pump];
+            System.out.println("PUMP_CAVITATION_LNG modes="+result.endpointModes()+" flows="+Arrays.toString(result.averageMassFlows())+" tankP="+tank.pressure()+" tankT="+tank.temperature()
+                    +" tankLiquidV="+tank.liquidVolume()+" tankVapourV="+tank.vaporVolume()+" suctionP="+suction.pressure()+" suctionT="+suction.temperature());
+            assertTrue(tank.liquidVolume()>0&&tank.vaporVolume()>0,"the tank boils: two-phase");
+            assertEquals(FlowControl.Mode.PUMP_SUCTION_LIMIT,result.endpointModes().get(pump),"the pump stands on its suction limit");
+            assertEquals(tank.pressure(),suction.pressure(),.01*tank.pressure(),"its suction stands at the tank's bubble pressure");
+            assertTrue(q>0&&q<.01*suction.mass()/suction.volume(),"it delivers what the head pushes through the line, below its target: "+q);
+            return null;});
     }
 }

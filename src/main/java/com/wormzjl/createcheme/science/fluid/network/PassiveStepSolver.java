@@ -217,6 +217,8 @@ public final class PassiveStepSolver {
     /** The input states {@link #previousFlows} were recorded at, and the input states of the solve in progress: a
      * rate-only solve warm-starts only from flows recorded at value-identical input states; see {@link #startPoint}. */
     private List<FluidThermodynamics.State> previousInputStates=List.of(),inputStates=List.of();
+    /** Per connection, the pressure a pump's suction may not fall below in this solve ({@link #suctionFloors(PassiveNetwork,List)}). */
+    private double[] suctionFloors=new double[0];
     /**
      * The device active set the last pass of the last solve on this graph settled on. A pump on its head limit or at its
      * shutoff corner is a property of the island's state, not of one step: restarting every solve on the target branch
@@ -312,6 +314,7 @@ public final class PassiveStepSolver {
         inputGraph=PassiveNetwork.sizeJunctionHoldups(inputGraph,model);
         this.rateOnly=rateOnly;
         inputStates=inputGraph.reservoirs().stream().map(PassiveNetwork.Reservoir::state).toList();
+        suctionFloors=suctionFloors(inputGraph,inputStates);
         SolverDiagnostics.count(SolverDiagnostics.implicitSolves);
         ownership.check("Each executing island job needs its own step workspace");
         lastSolve=null;
@@ -347,6 +350,9 @@ public final class PassiveStepSolver {
             if(!(pipe.control() instanceof FlowControl.Mover pump)||pump.targetVolumeFlow()==0)continue;
             var carried=previousModes.get(i);
             if(carried!=FlowControl.Mode.PUMP_HEAD_LIMIT&&carried!=FlowControl.Mode.PUMP_SUCTION_LIMIT&&carried!=FlowControl.Mode.CLOSED)continue;
+            // A suction limit is carried only where this step's suction has a vapour pressure to stand at ({@link #suctionFloors},
+            // the water its first node holds); elsewhere the pump opens at its head limit and the pass loop decides.
+            if(carried==FlowControl.Mode.PUMP_SUCTION_LIMIT&&!(suctionFloors[i]<Double.POSITIVE_INFINITY)&&!FluidThermodynamics.holdsPhase(inputStates.get(pipe.first()),FluidThermodynamics.WATER))carried=FlowControl.Mode.PUMP_HEAD_LIMIT;
             modes.set(i,carried);
             // The one place a pump that stood at its shutoff corner is offered its head limit back.
             // The test is taken on the accepted state this step starts from, once per solve, so it
@@ -714,12 +720,44 @@ public final class PassiveStepSolver {
      * state stands outside the water data.
      */
     private double cavitationMargin(Equations equations,int edge,List<FluidThermodynamics.State> states) {
+        var pipe=equations.graph.pipes().get(edge);int a=pipe.first();
+        double vapour=vapourPressure(equations,edge,states.get(a));
+        return vapour<Double.POSITIVE_INFINITY?endPressure(equations.graph.reservoirs().get(a),pipe.firstPort(),states.get(a))-vapour:Double.POSITIVE_INFINITY;
+    }
+    /**
+     * The pressure the suction of pump connection {@code edge} may not fall below, at the trial state {@code suction} of its
+     * first node: the vapour pressure of the water that node's seed holds, at the trial's temperature (owner decision D59
+     * (4), A390; the seed's temperature where the trial stands outside the water data), else the floor of the liquid the
+     * pump draws ({@link #suctionFloors}); positive infinity where the suction has none (no pump, a VAPOR port, a dry or
+     * subcooled supplier).
+     */
+    double vapourPressure(Equations equations,int edge,FluidThermodynamics.State suction) {
         var pipe=equations.graph.pipes().get(edge);int a=pipe.first();var seed=equations.seeds.get(a);
-        if(!(pipe.control() instanceof FlowControl.Pump)||pipe.firstPort()==PassiveNetwork.PhasePort.VAPOR||!FluidThermodynamics.holdsPhase(seed,FluidThermodynamics.WATER))
-            return Double.POSITIVE_INFINITY;
-        var state=states.get(a);double vapour;
-        try{vapour=model.saturationPressure(state.temperature());}catch(IllegalArgumentException outsideData){vapour=model.saturationPressure(seed.temperature());}
-        return endPressure(equations.graph.reservoirs().get(a),pipe.firstPort(),state)-vapour;
+        if(!(pipe.control() instanceof FlowControl.Pump)||pipe.firstPort()==PassiveNetwork.PhasePort.VAPOR)return Double.POSITIVE_INFINITY;
+        if(!FluidThermodynamics.holdsPhase(seed,FluidThermodynamics.WATER))return edge<suctionFloors.length?suctionFloors[edge]:Double.POSITIVE_INFINITY;
+        try{return model.saturationPressure(suction.temperature());}catch(IllegalArgumentException outsideData){return model.saturationPressure(seed.temperature());}
+    }
+    /**
+     * Owner decision on the t38 plan (2026-10-18, K6): a pump's suction limit reads the liquid it draws. A pump cannot pull
+     * its suction below the bubble pressure of that liquid; for water the saturation curve says what it is
+     * ({@link #vapourPressure}), and for a hydrocarbon liquid a two-phase supplier's own pressure is its bubble pressure,
+     * no new thermodynamics. Per pump connection, for the whole solve: the pressure of the supplier its suction walk ends
+     * at ({@link InletPhase#walk}) in the step's start states, where that supplier holds vapour beside a hydrocarbon liquid
+     * and is not the pump's own first node (a tank's own closure holds its bubble pressure; a suction junction between the
+     * two is what the pump can pull down); positive infinity otherwise. An LNG tank at 112 K and 222 kPa feeding a pump
+     * through its line drew the junction below the bubble point, where the liquid flashed and the step stalled; with water
+     * at that temperature the limit was nothing.
+     */
+    private double[] suctionFloors(PassiveNetwork graph,List<FluidThermodynamics.State> states) {
+        double[] floors=new double[graph.pipes().size()];Arrays.fill(floors,Double.POSITIVE_INFINITY);
+        for(int edge=0;edge<floors.length;edge++) {
+            var pipe=graph.pipes().get(edge);
+            if(!(pipe.control() instanceof FlowControl.Pump)||pipe.firstPort()==PassiveNetwork.PhasePort.VAPOR)continue;
+            var walk=InletPhase.walk(graph,edge);if(walk.via()<0)continue;
+            var supplier=states.get(walk.node());
+            if(FluidThermodynamics.holdsPhase(supplier,FluidThermodynamics.GAS)&&FluidThermodynamics.holdsPhase(supplier,FluidThermodynamics.OIL))floors[edge]=supplier.pressure();
+        }
+        return floors;
     }
     /**
      * Owner decision D59 (4) on a failed Newton: the first pump at its target or head limit whose suction the last iterate
@@ -3570,9 +3608,10 @@ public final class PassiveStepSolver {
                 // sweep re-evaluates this edge's rows for every perturbed column of its first node, and the sparsity
                 // already declares the actuator row on both endpoints' columns (buildSparsity).
                 case PUMP_HEAD_LIMIT->(head-riseLimit((FlowControl.Mover)pipe.control(),suction.density,st[a].pressure()))/pressureScale;
-                // Cavitation (owner decision D59 (4)): the suction end stands at the vapour pressure of the water at its
-                // temperature; the head is free, and the hydraulic row with the suction line's sets the flow.
-                case PUMP_SUCTION_LIMIT->(endPressure(graph.reservoirs().get(a),pipe.firstPort(),st[a])-model.saturationPressure(st[a].temperature()))/pressureScale;
+                // Cavitation (owner decision D59 (4); t38 K6): the suction end stands at the vapour pressure of the liquid the
+                // pump draws ({@link PassiveStepSolver#vapourPressure}); the head is free, and the hydraulic row with the
+                // suction line's sets the flow.
+                case PUMP_SUCTION_LIMIT->(endPressure(graph.reservoirs().get(a),pipe.firstPort(),st[a])-vapourPressure(this,edge,st[a]))/pressureScale;
                 case VALVE_REGULATING->(st[a].pressure()-((FlowControl.PressureValve)pipe.control()).targetPressure())/pressureScale;
                 case VALVE_OPEN->head/pressureScale;
                 // A mover refused for the slice (decision D6) is closed: its flow is exactly zero.
