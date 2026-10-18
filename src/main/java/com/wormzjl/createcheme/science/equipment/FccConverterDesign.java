@@ -10,8 +10,8 @@ import java.util.List;
  * {@link FccConverterLayout}): the regenerator's shell 4 to 17 m across in 0.5 m steps, the riser up to 44 whole metres
  * from its wye to its end inside the reactor (the contact time of 2 to 4 s fixes it, whatever the regenerator), the
  * regenerator's bottom tangent 6 to 14 m up. A short riser or a high regenerator is offered only where both standpipes
- * keep within 45° of vertical and their slide valves find their floors: a larger regenerator's longer stripper needs a
- * longer riser (from 25 m at 4 m to 44 m at 17 m), and its lowest bottom rises with the standpipe's run and the air
+ * keep within 45° of vertical and their slide valves find their floors: a larger regenerator's longer standpipe run needs a
+ * longer riser (from 25 m at 4 m to 36 m at 17 m), and its lowest bottom rises with the standpipe's run and the air
  * line's elbow under it (from 8 m at 4 m to 11 m at 17 m).
  *
  * <p>The feed it takes follows the regenerator's dense bed: air at 0.6 to 1 m/s burns the coke the feed lays down, so the
@@ -96,8 +96,9 @@ final class FccConverterDesign extends UnitDesign {
     @Override
     public List<Line> datasheet(EquipmentShape shape) {
         double d = shape.diameter(), feed = feed(d);
-        return List.of(new Line("fcc_converter.regenerator", size(d), number(14 + 1.3 * d)),
-                new Line("fcc_converter.reactor", number(.6 * d), number(.4 * d)),
+        var l = new FccConverterLayout(d, (int) shape.tangentLength(), shape.support());
+        return List.of(new Line("fcc_converter.regenerator", size(d), number(l.straight)),
+                new Line("fcc_converter.reactor", number(2 * l.rr), number(2 * l.rs)),
                 new Line("fcc_converter.riser", size(PipeSizes.od(.15 * d + .1, .1, 3)), (int) shape.tangentLength()),
                 new Line("fcc_converter.feed", whole(feed), whole(feed * 24 / .159 / 1000)));
     }

@@ -8,10 +8,14 @@ import java.util.concurrent.ConcurrentHashMap;
 /**
  * An FCC converter's numbers ({@link FccConverterDesign}; {@code NEW_UNITS_SURVEY_FCC_COKER.md} section 1, owner decisions
  * D3 and D4 of 2026-10-18), in a frame whose origin is the regenerator's axis at grade: the riser and reactor stand
- * {@link #x} m along +x, the front is -z. Every size follows the regenerator's shell D (survey proportions):
+ * {@link #x} m along +x, the front is -z. Every size follows the regenerator's shell D (survey proportions; heights
+ * from {@code FCC_PROPORTIONS_RESEARCH.md}, owner choice of form A 2026-10-18: diameters follow the flows, heights barely
+ * follow D):
  * <ul>
- * <li>regenerator: straight shell 14 + 1.3 D, 2:1 heads; reactor (disengager) 0.6 D across, its straight shell 1.3 of
- * its own diameter; stripper 0.4 D across and 0.9 D + 3 m long under a 30° cone; riser 0.15 D + 0.1 m; standpipes
+ * <li>regenerator: straight shell 9 + 1.5 D (grid, a 3-6 m bed, freeboard and two-stage cyclones), 2:1 heads; reactor
+ * (disengager) 0.6 D across, its straight shell 6 m + 1.2 of its own diameter (riser end, cyclones and diplegs: 2 to 3
+ * times as tall as wide); stripper 0.35 D across (its catalyst flux round the riser) and 5 + 0.3 D m long (35-45 s of
+ * residence, not D) under a 30° cone; riser 0.15 D + 0.1 m; standpipes
  * 0.09 D + 0.15 m; riser axis 0.7 D + 4 m from the regenerator's (to a whole metre, so both axes run through cell
  * centres); air line 0.12 D through a start-up heater 2.5 of it across and 3.75 of it high; flue gas line 0.2 D; vapour
  * line 0.17 D;</li>
@@ -80,13 +84,13 @@ final class FccConverterLayout {
         this.length = length;
         this.support = support;
         r = d / 2;
-        straight = 14 + 1.3 * d;
+        straight = 9 + 1.5 * d;
         head = d / 4;
         rr = .3 * d;
-        reactorShell = .78 * d;
-        rs = .2 * d;
-        stripperShell = .9 * d + 3;
-        cone = .1 * d * Math.sqrt(3);
+        reactorShell = 6 + .72 * d;
+        rs = .175 * d;
+        stripperShell = 5 + .3 * d;
+        cone = (rr - rs) * Math.sqrt(3);
         rri = (.15 * d + .1) / 2;
         dsp = .09 * d + .15;
         asp = dsp / 2;
@@ -174,9 +178,9 @@ final class FccConverterLayout {
         scsvY = floor + VALVE_CLEAR + up2;
         scsvX = p1x + (scsvY - p1y) * tan2;
         stripperFloor = stripperBottom + .3;
-        scsvHole = floor + 2.1 > stripperBottom - .1 * d ? rs + .15 : riserHole;
+        scsvHole = floor + 2.1 > stripperBottom - rs / 2 ? rs + .15 : riserHole;
         double near = Math.max(0, x - scsvX - plan2);
-        boolean underHead = near < rs && scsvY + up2 + .2 > stripperBottom - .1 * d * Math.sqrt(Math.max(0, 1 - near * near / (rs * rs)));
+        boolean underHead = near < rs && scsvY + up2 + .2 > stripperBottom - rs / 2 * Math.sqrt(Math.max(0, 1 - near * near / (rs * rs)));
         boolean scsvFits = tan2 <= 1 + 1e-9 && scsvX + plan2 <= x - rri - .3 && floor <= stripperFloor - FLOOR_GAP && !underHead;
         manwayFloor = reactorBottom + .5 * reactorShell - .9;
         topFloor = reactorTop + .25;
