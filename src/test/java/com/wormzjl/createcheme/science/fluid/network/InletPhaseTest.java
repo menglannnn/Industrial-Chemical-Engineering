@@ -145,10 +145,13 @@ class InletPhaseTest extends PortFixture {
      * hold), at 5 s and 0.1 s. The water line integrates bit for bit as in the same island whose nitrogen line is a
      * compressor set to no flow (a closed device, mode CLOSED): a refusal is exactly a closed device. (The control was a
      * compressor closed both ways by a block until every interval start read the closures open, owner decision D33.)
-     * Against the water line alone (no device lines at all) it is bit for bit at 5 s; at 0.1 s a closed device's head
-     * unknown moves the water line's flow by a few units in the last place in some slices, as the pre-existing
-     * closed-device path does (measured: the refused and the closed-compressor islands agree bitwise, both 1-2 ulp from
-     * the line alone, drifting to a few ulp over 60 slices), so that comparison is held to 1e-13 relative.
+     * Against the water line alone (no device lines at all) it agrees to a few units in the last place: the line alone is
+     * another Newton system. At 0.1 s a closed device's head unknown moves the water line's flow by a few units in the
+     * last place in some slices, as the pre-existing closed-device path does (measured: the refused and the
+     * closed-compressor islands agree bitwise, both 1-2 ulp from the line alone, drifting to a few ulp over 60 slices);
+     * at 5 s it was bit for bit until a vessel's seed became its committed layout (owner decision D40 A), which moves the
+     * joint solve's last iterate: slice 0 ends 11 units in the last place apart in the receiving tank's pressure
+     * (1.6e-10 Pa of 104.7 kPa). That comparison is held to 1e-13 relative in the flow and 1e-12 in the tank's state.
      */
     @Test void refusedPumpsCarryNothingAndTheIslandsWaterLineIntegratesBitwise() {
         for(double interval:new double[]{5,.1}) {
@@ -174,8 +177,7 @@ class InletPhaseTest extends PortFixture {
                 assertEquals(0.0,s.averageMassFlows()[1]);assertEquals(0.0,s.averageMassFlows()[2]);assertEquals(0.0,s.pumpWorkJoule());
                 assertEquals(FlowControl.Mode.CLOSED,control.slices().get(i).endpointModes().get(1),"the control's compressor is closed, not refused");
                 assertSameDoubles("water line vs the closed-device island @"+interval+" slice "+i,control.slices().get(i),s,2,1);
-                if(interval==5)assertSameDoubles("water line vs the line alone @"+interval+" slice "+i,reference.slices().get(i),s,2,1);
-                else{double a=reference.slices().get(i).averageMassFlows()[0],b=s.averageMassFlows()[0];
+                {double a=reference.slices().get(i).averageMassFlows()[0],b=s.averageMassFlows()[0];
                     worstUlps=Math.max(worstUlps,(int)Math.abs(Double.doubleToLongBits(a)-Double.doubleToLongBits(b)));
                     assertEquals(a,b,1e-13*Math.abs(a),"water line vs the line alone @"+interval+" slice "+i);
                     var x=reference.slices().get(i).graph().reservoirs().get(1).state();var y=s.graph().reservoirs().get(1).state();

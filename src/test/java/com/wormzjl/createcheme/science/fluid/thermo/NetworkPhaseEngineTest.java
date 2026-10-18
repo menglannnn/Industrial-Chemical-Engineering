@@ -172,8 +172,11 @@ class NetworkPhaseEngineTest {
      * vapour held 1 % above its saturation pressure at 100 K condenses the liquid its enthalpy gives, at the saturation
      * temperature of its pressure, and liquid water 1 % below its saturation pressure at 350 K boils off the steam its
      * enthalpy gives; 1e-9 below, that steam (about 4e-11 of the water) is a trace the fold removes, so nothing is added.
-     * Where a vessel's own flash fails, the TP answer seeds with the populated phase it lacks (each half of the
-     * component). A phase the trace rule removed in this solve is not added back.
+     * A vessel's own split starts from its own state at the crossing (owner decision D40 A): the same nitrogen vapour in a
+     * taut vessel starts from the engine's equilibrium at its own energy and volume, the liquid its volume no longer holds
+     * as vapour beside the vapour at the saturation pressure, a little warmer for the condensing heat; where its closure
+     * fails, it proposes nothing and the liquid is refused for the solve. A phase the trace rule removed in this solve is
+     * not added back.
      */
     @Test
     void theOuterCheckKeepsThePopulatedPhasesAndSeedsTheMissingOneAtTheNodesOwnSplit() {
@@ -195,14 +198,23 @@ class NetworkPhaseEngineTest {
         assertEquals(above, saturationPressure(condensed.temperature()), 1e-7 * above, "at the saturation temperature of that pressure");
         assertEquals(supersaturated.enthalpy(), condensed.enthalpy(), 1e-9 * Math.abs(supersaturated.enthalpy()), "at the junction's enthalpy");
         assertEquals(40, sum(condensed.liquidView()) + sum(condensed.vaporView()), 1e-12, "the junction's own amount");
-        // A vessel whose own flash fails: the TP answer (all liquid) with the vapour the node holds.
-        var gas = model.state(t, p, none, vapor, 0, 0, p);
-        var starts = new ArrayList<FluidThermodynamics.State>();
-        var seeded = model.phaseCheck(gas, false, null, null, 0, null, start -> {starts.add(start);return null;}, () -> {});
+        // A vessel: its own split starts from its own state at the crossing (D40 A), and a failed closure proposes nothing.
+        var answer = model.flashTP(t, above, pure(nitrogen, 40, 0), () -> {});
+        var starts = new ArrayList<FluidThermodynamics.State>();int[] record = {0};
+        assertSame(supersaturated, model.phaseCheck(supersaturated, false, null, record, 0, null, start -> {starts.add(start);return null;}, () -> {}),
+                "a failed closure proposes nothing");
         assertEquals(1, starts.size(), "the vessel's own split is asked once");
-        assertSame(starts.getFirst(), seeded, "its failure seeds the TP-based state");
-        assertEquals(20, sum(seeded.liquidView()), 1e-12, "the answer's liquid");
-        assertEquals(20, sum(seeded.vaporView()), 1e-12, "beside the node's vapour");
+        var crossing = starts.getFirst();
+        System.out.printf("N2 vapour at %.6f Pa, 100 K: vessel crossing %.6f K %.6f Pa, liquid %.6e of 40 mol in %.9e m3%n", above, crossing.temperature(), crossing.pressure(),
+                sum(crossing.liquidView()), crossing.volume());
+        assertEquals(supersaturated.volume(), crossing.volume(), 1e-6 * supersaturated.volume(), "in the vessel's own volume");
+        assertEquals(supersaturated.internalEnergy(), crossing.internalEnergy(), 1e-6 * Math.abs(supersaturated.internalEnergy()), "at the vessel's own energy");
+        assertTrue(crossing.temperature() > t, "the liquid's condensing heat warms it: " + crossing.temperature());
+        assertEquals(crossing.pressure(), saturationPressure(crossing.temperature()), 1e-6 * crossing.pressure(), "at its saturation");
+        assertTrue(sum(crossing.liquidView()) > 0 && sum(crossing.liquidView()) < 1, "the liquid its volume no longer holds as vapour: " + sum(crossing.liquidView()));
+        assertEquals(40, sum(crossing.liquidView()) + sum(crossing.vaporView()), 1e-9, "the vessel's own amount");
+        assertEquals(FluidThermodynamics.phaseBits(answer) & ~FluidThermodynamics.phaseBits(supersaturated), record[0], "the liquid is refused for the solve");
+        var gas = model.state(t, p, none, vapor, 0, 0, p);
         assertSame(gas, model.phaseCheck(gas, false, null, new int[]{FluidThermodynamics.phaseBits(flash)}, 0, null, null, () -> {}),
                 "a phase the trace rule removed in this solve is not added back");
         double tw = 350, saturation = model.saturationPressure(tw);

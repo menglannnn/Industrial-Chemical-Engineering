@@ -2,6 +2,7 @@ package com.wormzjl.createcheme.science.fluid.thermo;
 
 import com.wormzjl.createcheme.science.column.v3.thermo.V3WaterProperties;
 import com.wormzjl.createcheme.science.fluid.diagnostics.SolverDiagnostics;
+import com.wormzjl.createcheme.science.fluid.solver.PhaseLayout;
 import com.wormzjl.createcheme.science.fluid.transport.MixtureViscosity;
 import com.wormzjl.createcheme.science.material.MaterialCatalog;
 import com.wormzjl.createcheme.science.material.SolidMaterialCatalog;
@@ -378,6 +379,13 @@ public final class FluidThermodynamics {
     }
     /** The saturation pressure of a prepared node temperature, evaluated once for that temperature. */
     public double saturationPressure(Prepared prepared) { return own(prepared).saturationPressure(); }
+    /**
+     * The vapour pressure of the condensed free water at {@code t} and {@code p}: its saturation pressure, the ice's below
+     * the melting line, where its condensed stand-in is ice (WP4). What a gas beside free water holds of it as steam: the
+     * TP answer's test of a water-only node and the steam a vessel's gas takes beside the free water arriving in it
+     * ({@code PassiveStepSolver.arrivingInVessel}).
+     */
+    public double freeWaterVaporPressure(double t,double p){return t<freeWaterIce.meltingTemperature(p)?freeWaterIce.fugacity(t,p):saturationPressure(t);}
     /** The molar enthalpy of the free water's ideal steam, J/mol ({@link NetworkPhaseEngine.Steam}). */
     public double vaporWaterEnthalpy(double t) {
         if(!Double.isFinite(t))throw new IllegalArgumentException("Non-finite water temperature");
@@ -912,9 +920,13 @@ public final class FluidThermodynamics {
      * not in the solve's record ({@code record}, A85), the node's own split decides it (D26), the equilibrium of what it
      * holds: a pipe junction's PH answer at its pressure and enthalpy ({@link #equilibriumPH}), a vessel's
      * {@code vesselSplit}, the network's closure of its inventory (UV while its wall is taut, PH at the ambient pressure
-     * while slack), started from the TP answer with the node's populated phases it lacks ({@link #tpSeed}). Where the
-     * node's own flash fails, or none is given, that TP-based state seeds instead; it is only a seed, the node's rows give
-     * the answer;</li>
+     * while slack), started from the vessel's own state at the crossing (owner decision D40 A, {@link #crossing}): the
+     * engine's answer of that same closure, a liquid-full vessel's liquid near its own bubble pressure and the vapour
+     * filling the volume the liquid lost. The TP answer says which phase is missing, never how much of it a vessel holds:
+     * its amounts ignore the vessel's volume. A vessel with no crossing, or whose closure from it fails, or
+     * with no {@code vesselSplit}, proposes nothing, and the phase is refused for the solve. Where a junction's PH answer
+     * fails, the TP answer with the junction's populated phases it lacks ({@link #tpSeed}) seeds instead; it is only a seed,
+     * the junction's rows give the answer;</li>
      * <li>the own split decides by where its closure went, converged or not (the D26 amendment of 2026-10-16, by its
      * direction in form 4): a proposed phase it drove under the trace share, which the seed's fold (D34, and D41's carried
      * gas at a junction) then removes, or that it is driving to nothing ({@link #vanishing}; a vessel's closure and, since
@@ -943,7 +955,7 @@ public final class FluidThermodynamics {
      * the solve that reached {@code state} started (a step: the node at the step's start; a vessel's closure: the state it
      * closes from), which the vanishing rule reads, or {@code null} for none; {@code prepared}, when given, is the node's prepared temperature
      * state (used only at exactly that temperature); {@code vesselSplit}, a vessel's own split from a start holding the
-     * phases to lay it out with, or {@code null} where the vessel's flash fails (ignored for a junction).
+     * phases to lay it out with, which answers {@code null} where its closure fails (ignored for a junction).
      *
      * @return {@code state} itself when it keeps its phases and gains none; otherwise the node's new seed
      */
@@ -963,19 +975,24 @@ public final class FluidThermodynamics {
             var equilibrium=folded(equilibriumTP(kept.temperature(),kept.pressure(),totals,checkpoint,prepared).withSolidState(kept.solids(),kept.solidMoments()),junction);
             int proposed=lacking(kept,equilibrium)&~excluded;
             if(proposed!=0) {
-                var start=tpSeed(kept,equilibrium,prepared);
+                State start,own;
                 // A junction's energy is its enthalpy (its mixing rows, D46): the solve's, before the fold restated it.
-                State own=junction?equilibriumPH(kept.temperature(),kept.pressure(),state.enthalpy()-state.solidMoments().enthalpy(state.temperature(),state.pressure()),totals,checkpoint)
-                        :vesselSplit==null?null:vesselSplit.apply(start);
+                if(junction){start=tpSeed(kept,equilibrium,prepared);own=equilibriumPH(kept.temperature(),kept.pressure(),state.enthalpy()-state.solidMoments().enthalpy(state.temperature(),state.pressure()),totals,checkpoint);}
+                // Owner decision D40 A: a vessel starts from its own state at the crossing, never from the TP answer's amounts.
+                else{start=crossing(state,kept,proposed,totals,checkpoint);own=start==null||vesselSplit==null?null:vesselSplit.apply(start);}
                 if(own!=null)SolverDiagnostics.count(SolverDiagnostics.phaseSeeds);
-                var seed=folded(own==null?start:own.withSolidState(kept.solids(),kept.solidMoments()),junction);
-                // The D26 amendment: the own split's verdict on a proposed phase is where its closure took it, a vessel's
-                // closure or a junction's PH answer (D38 C), and whether it leaves the phase vanishing against the solve's
-                // start (D38 C, the fold's test); the TP-based fallback seed is no closure and refuses nothing.
-                if(own!=null)refused=proposed&(~lacking(kept,seed)|vanishing(start,own)|(from==null?0:vanishing(from,own)));
+                if(own!=null||junction) {
+                    var seed=folded(own==null?start:own.withSolidState(kept.solids(),kept.solidMoments()),junction);
+                    // The D26 amendment: the own split's verdict on a proposed phase is where its closure took it, a vessel's
+                    // closure or a junction's PH answer (D38 C), and whether it leaves the phase vanishing against the solve's
+                    // start (D38 C, the fold's test); a junction's TP-based fallback seed is no closure and refuses nothing.
+                    if(own!=null)refused=proposed&(~lacking(kept,seed)|vanishing(start,own)|(from==null?0:vanishing(from,own)));
+                    int added=lacking(kept,seed)&~excluded;
+                    if(added!=0&&(added&refused)==0)checked=seed;
+                }
+                // A vessel with no crossing, or whose closure from it fails, proposes nothing (D40 A).
+                else refused=proposed;
                 if(refused!=0)SolverDiagnostics.count(SolverDiagnostics.phaseRefusals);
-                int added=lacking(kept,seed)&~excluded;
-                if(added!=0&&(added&refused)==0)checked=seed;
             }
         }
         if(record!=null)record[at]|=phaseBits(state)&~phaseBits(checked)|refused;
@@ -1020,8 +1037,8 @@ public final class FluidThermodynamics {
      * otherwise each component is shared between the answer's phases and those kept phases in proportion to what each
      * holds of it (pure water the answer states all steam: half its water liquid, half steam), and a gas holding
      * hydrocarbons and steam is at Dalton's hydrocarbon partial pressure, a dry gas at the node's pressure. The answer
-     * itself where that gas would pass the steam approximation's qualified partial pressure. The start of a vessel's own
-     * closure, and the seed where a node's own flash fails.
+     * itself where that gas would pass the steam approximation's qualified partial pressure. A junction's seed where its
+     * PH answer fails; never a vessel's (owner decision D40 A, {@link #crossing}).
      */
     private State tpSeed(State kept,State equilibrium,Prepared prepared) {
         int answer=phaseBits(equilibrium),lacking=phaseBits(kept)&~answer;
@@ -1038,6 +1055,39 @@ public final class FluidThermodynamics {
         try{return adoptingState(kept.temperature(),p,l,v,wl,wv,nv>0&&wv>0?p*(nv/(nv+wv)):p,prepared).withSolidState(kept.solids(),kept.solidMoments());}
         catch(IllegalArgumentException steamLimit){return equilibrium;}
     }
+    /**
+     * A vessel's own state at a crossing (owner decision D40 A), the start of its own split in {@link #phaseCheck}: the
+     * engine's equilibrium of the fluid it holds under its wall's law, the problem its own closure solves
+     * ({@code InventoryEquilibrium}), as a network state ({@link #adopt}) folded as a vessel. A slack bag
+     * ({@code PhaseLayout.wallRow}: its pressure the ambient's, its volume free) at its fluid enthalpy and the ambient
+     * pressure, as a junction's and an empty bag's own split ({@link #equilibriumPH}, D26 and D54); a taut vessel (the wall
+     * carrying its pressure above the ambient's) at its fluid's internal energy and volume ({@link #equilibriumUV}),
+     * warm-started at its temperature and pressure. Both under the competition of the vessel's TP request
+     * ({@link #crystalsCompete}), as the TP answer: a crystal the engine forms is carried as its stand-in, no crystal mass
+     * moving in a step (D23), and the vessel's own split closes it with its crystal stock inert. The fluid alone is no
+     * answer there: LNG with 0.7 % of CO2 cooled past its dew point in a bag of nitrogen (the pilot world's row E) is
+     * three fluid phases with a CO2-rich liquid, which the network does not carry. A liquid-full vessel drawn below its
+     * bubble point starts from its liquid near its own bubble pressure and the vapour filling the volume the liquid lost;
+     * a vapour cooled past its dew point, from its vapour and the liquid its energy and volume no longer hold as vapour,
+     * however much that is. The TP answer says only which phase is missing: its amounts ignore the vessel's volume and are
+     * never the seed (test world row 9b: a liquid-full slush tank drawn below its bubble point was offered 13 to 29 m3 of
+     * vapour for 0.78 m3 of fluid space, and its closure from there failed). {@code null} where the engine does not
+     * converge, answers a phase set the network cannot carry, or answers none of the phases {@code proposed} adds (no
+     * crossing: a liquid-full vessel above its own bubble pressure has no room for a bubble), so the vessel proposes
+     * nothing.
+     */
+    private State crossing(State state,State kept,int proposed,double[] totals,Runnable checkpoint) {
+        double t=kept.temperature(),p=kept.pressure();var solids=state.solidMoments();
+        // The slack branch of the wall states the pressure the ambient's (PhaseLayout.wallRow); a taut wall carries more.
+        var own=p<=PhaseLayout.AMBIENT_PRESSURE*(1+SLACK_PRESSURE)?equilibriumPH(t,p,state.enthalpy()-solids.enthalpy(state.temperature(),state.pressure()),totals,checkpoint)
+                :equilibriumUV(t,p,state.internalEnergy()-solids.internalEnergy(state.temperature()),state.volume()-solids.volume(),totals,checkpoint);
+        if(own==null)return null;
+        var seed=folded(own.withSolidState(kept.solids(),kept.solidMoments()),false);
+        return (lacking(kept,seed)&proposed)!=0?seed:null;
+    }
+    /** How far above the ambient pressure, relatively, a vessel's state still reads as its wall's slack branch in
+     * {@link #crossing}: the slack row holds it at the ambient to the solve's tolerance (a vessel's closure, 1e-11). */
+    private static final double SLACK_PRESSURE=1e-9;
 
     /**
      * Initializer, boundary and outer-check flash; the time-step solver never calls it in a residual evaluation: the
@@ -1106,7 +1156,7 @@ public final class FluidThermodynamics {
         NumericalBox.require(t,p);
         if(nh==0) {
             // Below the melting line the condensed water is ice (its stand-in here), whose vapour pressure is the ice's.
-            boolean condensed=p>=(t<freeWaterIce.meltingTemperature(p)?freeWaterIce.fugacity(t,p):saturationPressure(t));
+            boolean condensed=p>=freeWaterVaporPressure(t,p);
             return state(t,p,hc,hc,condensed?w:0,condensed?0:w,0);
         }
         checkpoint.run();
@@ -1115,14 +1165,15 @@ public final class FluidThermodynamics {
         return adopt(t,p,overall,result,given);
     }
     /**
-     * A pipe junction's own split (owner decision D26, {@link #phaseCheck}), and the phases of an empty bag's
-     * ({@code PassiveStepSolver.emptyBagSplit}, D54): the engine's PH equilibrium of {@code overall}
-     * (the conserved basis, water last) at the junction's pressure {@code p} and its fluid enthalpy {@code h} (J, the
-     * network's datum), under the competition of the junction's TP request at {@code t} ({@link #crystalsCompete}), as a
-     * network state ({@link #adopt}, unfolded); {@code null} where the engine does not converge or answers a phase set the
-     * network cannot carry. The engine of a spine package states energies on the spine's formation datum, the network on
-     * its sensible one (D10), so the target moves by the formation enthalpies; a spine-less package's engine is on the
-     * network's datum. {@code checkpoint} runs as for {@link #equilibriumTP}. Never inside a residual.
+     * A pipe junction's own split (owner decision D26, {@link #phaseCheck}), the phases of an empty bag's
+     * ({@code PassiveStepSolver.emptyBagSplit}, D54) and a slack vessel's crossing ({@link #crossing}, D40 A): the
+     * engine's PH equilibrium of {@code overall} (the conserved basis, water last) at the node's pressure {@code p} and
+     * its fluid enthalpy {@code h} (J, the network's datum), under the competition of the node's TP request at {@code t}
+     * ({@link #crystalsCompete}), as a network state ({@link #adopt}, unfolded); {@code null} where the engine does not
+     * converge or answers a phase set the network cannot carry. The engine of a spine package states energies on the
+     * spine's formation datum, the network on its sensible one (D10), so the target moves by the formation enthalpies; a
+     * spine-less package's engine is on the network's datum. {@code checkpoint} runs as for {@link #equilibriumTP}. Never
+     * inside a residual.
      */
     public State equilibriumPH(double t,double p,double h,double[] overall,Runnable checkpoint) {
         var spine=hydrocarbon.spine();double target=h;
@@ -1135,6 +1186,23 @@ public final class FluidThermodynamics {
         for(int evaluation=result.diagnostics().kernelEvaluations();evaluation>0;evaluation--)checkpoint.run();
         if(!result.converged()||result.phases().isEmpty())return null;
         try{return adopt(result.phases().getFirst().temperature(),p,overall,result,null);}
+        catch(IllegalArgumentException refused){return null;}
+    }
+    /**
+     * A taut vessel's own state at a crossing ({@link #crossing}, owner decision D40 A), the UV twin of
+     * {@link #equilibriumPH}: the engine's equilibrium of {@code overall} (the conserved basis, water last) at its fluid's
+     * internal energy {@code u} (J, the network's datum) and volume {@code v} (m3), under the competition of the vessel's
+     * TP request at {@code t} ({@link #crystalsCompete}), warm-started at {@code t} and {@code p}, as a network state
+     * ({@link #adopt}, unfolded); {@code null} where the engine does not converge or answers a phase set the network cannot
+     * carry. {@code checkpoint} runs as for {@link #equilibriumTP}. Never inside a residual.
+     */
+    private State equilibriumUV(double t,double p,double u,double v,double[] overall,Runnable checkpoint) {
+        checkpoint.run();
+        var result=phaseEngine().crystalUv(engineEnergy(u,overall),v,overall,crystalsCompete(t,overall),t,p);
+        for(int evaluation=result.diagnostics().kernelEvaluations();evaluation>0;evaluation--)checkpoint.run();
+        if(!result.converged()||result.phases().isEmpty())return null;
+        var answer=result.phases().getFirst();
+        try{return adopt(answer.temperature(),answer.pressure(),overall,result,null);}
         catch(IllegalArgumentException refused){return null;}
     }
 

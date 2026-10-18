@@ -131,8 +131,10 @@ public final class InventoryEquilibrium {
         for(int c=0;c<n.length;c++)changedBasis|=(n[c]==0)!=(old[c]==0)||Math.abs(n[c]-old[c])>1e-12+1e-10*Math.max(n[c],old[c]);
         // Decision D34: the phase set each pass below is laid out for has its trace phases folded; a candidate that ends
         // with a phase below the trace share is restated folded (the regime test) and its last split is folded by
-        // repartition, so this energy-volume flash returns no trace phase either.
-        var state=(changedBasis?model.flashTP(previous.temperature(),previous.pressure(),n,checkpoint):model.folded(previous)).withSolids(inventory.solids());
+        // repartition, so this energy-volume flash returns no trace phase either. Owner decision D40 A: the vessel starts
+        // from its own state, an inventory that moved restated in the phases it holds (repartition), not from a TP flash of
+        // its amounts at its last temperature and pressure, which ignores its volume.
+        var state=(changedBasis?ConservativeTransport.repartition(model,previous,n):model.folded(previous)).withSolids(inventory.solids());
         // Owner decision D59 (2): a vessel that holds no fluid at the bag's resolution holds a residue, booked exactly in its
         // inventory, and no fluid state to close: it is stated at its flash with its solids, at the temperature and pressure
         // it had. Random fuzz seed 707 booked 1e-42 mol of crude and 1e-84 mol of water vapour into an empty 1 m3 tank; the
@@ -156,24 +158,23 @@ public final class InventoryEquilibrium {
         FluidThermodynamics.State close(FluidThermodynamics.State start);
         /** The fluid at {@code variables}, an iterate of {@link #close} from {@code start}, as its layout decodes it. */
         FluidThermodynamics.State iterate(FluidThermodynamics.State start,double[] variables);
-        /** The vessel's own split from {@code start} (owner decision D26, {@link InventoryEquilibrium#split}): the closure, or
-         * where it stops short its last iterate given the amounts it holds; {@code null} where it leaves neither. */
+        /** The vessel's own split from {@code start} (owner decision D26, {@link InventoryEquilibrium#split}): the closure;
+         * {@code null} where it stops short (owner decision D40 A: a failed closure proposes nothing). */
         FluidThermodynamics.State split(FluidThermodynamics.State start);
     }
     /**
      * The vessel's equilibrium from {@code state}: {@code closure} solved in a phase layout, and the layout decided by the
      * outer phase check (owner decisions D25 and D26, {@code FluidThermodynamics.phaseCheck}). A phase leaves only when the
      * closure empties it (the trace fold of its point, and the vanishing rule of owner decision D38 C: a phase under 1e-6
-     * of the vessel's fluid amount and at a smaller share than in {@code state}, where the closure started; a failed
-     * closure's last iterate is folded as a trial layout); where
-     * the TP answer finds a phase missing, the vessel is seeded at its own split, the closure started from the TP answer
-     * with the phases the vessel holds, and no populated phase set is swapped for another on a TP verdict: a vessel of pure
-     * water at its saturation line keeps its liquid and gains the steam its volume and energy give. A phase the check
-     * removed from a converged answer, or the own split refused (the D26 amendment), is not added again within this solve
-     * (A85); a failed iterate's check reads that record and never writes it (decision D28 A'), so a phase it removed comes
-     * back where a converged answer finds it missing, and a repeated regime is the cycle that refuses the solve. One rule
-     * for a vessel's own closure ({@link #solve}) and for the crystal refresh's joint closure (decision D30), so a phase
-     * that has no room leaves both.
+     * of the vessel's fluid amount and at a smaller share than in {@code state}, where the closure started); where
+     * the TP answer finds a phase missing, the vessel is seeded at its own split, the closure started from the vessel's own
+     * state at the crossing (owner decision D40 A), and no populated phase set is swapped for another on a TP verdict: a
+     * vessel of pure water at its saturation line keeps its liquid and gains the steam its volume and energy give. A failed
+     * closure's last iterate is no state (decisions D28 A', D39 and D40 A): it is only folded by the same two rules, and
+     * it proposes nothing; a fold that changes nothing leaves the failure standing. A phase the check removed from a
+     * converged answer, or the own split refused (the D26 amendment), is not added again within this solve (A85), and a
+     * repeated regime is the cycle that refuses the solve. One rule for a vessel's own closure ({@link #solve}) and for the
+     * crystal refresh's joint closure (decision D30), so a phase that has no room leaves both.
      */
     static FluidThermodynamics.State passes(FluidThermodynamics model,FluidThermodynamics.State state,Closure closure,Runnable checkpoint) {
         var seen=new HashSet<String>();int[] excluded={0};var from=state;
@@ -184,11 +185,10 @@ public final class InventoryEquilibrium {
             try{candidate=closure.close(state);}
             catch(SparseNewton.Nonconvergence failure) {
                 if(failure.lastVariables()==null)throw failure;
-                var trial=closure.iterate(state,failure.lastVariables());
-                // Decision D28 A': a failed closure's check is a trial layout, not a verdict: it reads the A85 record and never
-                // writes to it (a copy). Laid out again with the solids of the pass's state (the vessel's own closure: its
-                // inventory's).
-                var checked=model.phaseCheck(trial,false,from,excluded.clone(),0,null,own,checkpoint);
+                // Decisions D28 A', D39 and D40 A: a failed closure's last iterate is a trial layout, not a state: the phases it
+                // empties are folded, and it proposes nothing. Laid out again with the solids of the pass's state (the vessel's
+                // own closure: its inventory's).
+                var checked=model.folded(closure.iterate(state,failure.lastVariables()),false,from);
                 if(regime(checked).equals(regime(state)))throw failure;
                 state=checked.withSolids(state.solids());continue;
             }
@@ -269,23 +269,17 @@ public final class InventoryEquilibrium {
      * holding the phases to lay the vessel out with), the wall's work booked from the bag volume {@code workFrom}: the
      * equilibrium of its energy and volume while the wall is taut, of its enthalpy at the ambient pressure while slack (of
      * its energy there with {@code workFrom} {@code NaN}, as at the interval's refresh, {@link #solve}).
-     * Where the closure stops short of its tolerance its last iterate, the nearest it came, is the split, given the
-     * inventory's amounts and restated with the trace fold ({@link ConservativeTransport#repartition}): from the TP split of
-     * a liquid-full vessel cooled past its bubble point (several vessel volumes of vapour) the closure's 24 iterations end
-     * within about 1e-5 of the bubble it holds. Converged or not, the split answers by where the closure went: a phase it
-     * drove under the trace share is not in it, and the check refuses that phase for the solve (the D26 amendment), as it
-     * refuses one the closure is still driving to nothing ({@code FluidThermodynamics.vanishing}, form 4).
-     * {@code null} where the closure leaves no iterate or refuses the state; the check then seeds its TP-based state.
+     * The split answers by where the closure went: a phase it drove under the trace share is not in it, and the check
+     * refuses that phase for the solve (the D26 amendment), as it refuses one the closure is driving to nothing
+     * ({@code FluidThermodynamics.vanishing}, form 4). {@code null} where the closure stops short of its tolerance or
+     * refuses the state: a failed closure proposes nothing (owner decision D40 A). Its last iterate is no state; standing
+     * as the split, it put all of a liquid-full slush tank's 14 420 mol in the vapour slot as one dense root, the liquid
+     * relabelled, and every later pass failed (test world row 9b).
      */
     static FluidThermodynamics.State split(FluidThermodynamics model,FluidThermodynamics.State start,PassiveNetwork.Inventory inventory,double workFrom,
                                            Runnable checkpoint) {
         try{return close(model,start,inventory,null,workFrom,checkpoint);}
-        catch(SparseNewton.Nonconvergence failure) {
-            if(failure.lastVariables()==null)return null;
-            try{return ConservativeTransport.repartition(model,layout(model,start,null).decode(failure.lastVariables(),0),inventory.moles());}
-            catch(IllegalArgumentException refused){return null;}
-        }
-        catch(IllegalArgumentException refused){return null;}
+        catch(SparseNewton.Nonconvergence|IllegalArgumentException failed){return null;}
     }
     /**
      * The vessel's own layout of {@code state} under {@code support}, or under the support the model's trace truncation

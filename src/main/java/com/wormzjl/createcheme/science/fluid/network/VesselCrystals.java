@@ -342,16 +342,11 @@ final class VesselCrystals {
             return ConservativeTransport.repartition(model,closing.fluid(x),closing.fluidAmounts(x));
         }
         @Override public FluidThermodynamics.State iterate(FluidThermodynamics.State start,double[] variables){return joint(start).fluid(variables);}
+        /** The joint closure from {@code start}; {@code null} where it stops short or refuses the state (owner decision D40 A:
+         * a failed closure proposes nothing). */
         @Override public FluidThermodynamics.State split(FluidThermodynamics.State start) {
-            Joint closing;
-            try{closing=joint(start);}catch(IllegalArgumentException refused){return null;}
-            try{var x=solve(closing,start);return ConservativeTransport.repartition(model,closing.fluid(x),closing.fluidAmounts(x));}
-            catch(SparseNewton.Nonconvergence failure) {
-                if(failure.lastVariables()==null)return null;
-                try{return ConservativeTransport.repartition(model,closing.fluid(failure.lastVariables()),closing.fluidAmounts(failure.lastVariables()));}
-                catch(IllegalArgumentException refused){return null;}
-            }
-            catch(IllegalArgumentException refused){return null;}
+            try{var closing=joint(start);var x=solve(closing,start);return ConservativeTransport.repartition(model,closing.fluid(x),closing.fluidAmounts(x));}
+            catch(SparseNewton.Nonconvergence|IllegalArgumentException failed){return null;}
         }
     }
 

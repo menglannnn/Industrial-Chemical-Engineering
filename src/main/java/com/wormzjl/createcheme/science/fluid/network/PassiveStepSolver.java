@@ -1096,10 +1096,16 @@ public final class PassiveStepSolver {
     /**
      * A trial point for one pass, per node.
      *
-     * <p>A vessel is seeded as it always was: its own inventory, plus a quarter of its mass at
-     * most of what is about to arrive, which is a correction to a stock it already owns. A
-     * junction is seeded with its own state: its owned holdup is a small stock whose mixture the
-     * backward-Euler rows move from where it is - with one addition, the water trace below.
+     * <p>A vessel is seeded with its own state, its committed layout (owner decision D40 A). A reachable component it lacks
+     * ({@link #reachableComponents}) enters as an entry trace of {@code 1e-12} of its amount, restated in the phases it
+     * holds as every reconstruction restates a node ({@link ConservativeTransport#repartition}), and the layout's own
+     * equilibrium split places it ({@code PhaseLayout.encode}); a phase what is about to arrive carries and the layout
+     * lacks enters with what arrives of it ({@link #arrivingInVessel}). The seed was the TP flash of that inventory with up
+     * to a quarter of its mass of what is about to arrive, at their mass-weighted temperature: for a pool of pure methane
+     * at its saturation pressure, fed CO2 through a 1 cm line, that flash put 99 % of the moles in the vapour, 183 m3 in a
+     * 1 m3 tank, and every pass started at a wall residual of 182 (test world row 2). A junction is seeded with its own state:
+     * its owned holdup is a small stock whose mixture the backward-Euler rows move from where it is - with one addition,
+     * the water trace below.
      *
      * <p><b>Water trace in a junction (decision D10 of the phase-ports batch).</b> A junction whose reachable set holds
      * water ({@link #reachableComponents}) while its own state holds none is seeded with its state flashed at its own
@@ -1130,28 +1136,50 @@ public final class PassiveStepSolver {
             // A vessel that holds no fluid keeps its own state, which lays it out dry (decision D54, see dry); what arrives
             // in it is laid out by arrivingPhases.
             if(node.fixed()||node.junction()||holdsNoFluidVessel(node)){seeds.add(state);continue;}
+            // This is only a trial guess and a basis. The accumulation equations still start from the exact original inventory.
             var n=PhaseLayout.totalAmounts(state);double total=Arrays.stream(n).sum();boolean changed=false;
-            // This is only a trial guess. The accumulation equations still start from the exact original inventory.
-            for(int i=0;i<count;i++)if(available[i]&&n[i]==0)changed=true;
-            double weightedTemperature=state.mass()*state.temperature(),seedMass=state.mass();
-            if(changed)for(var transfer:graph.scheduledTransfers())if(transfer instanceof ScheduledTransfer.Injection input&&input.node()==nodeIndex) {
-                var rates=input.molesPerSecond();for(int i=0;i<count;i++)n[i]+=dt*rates[i];
-            }
-            if(changed)for(int edge=0;edge<flows.length;edge++) {
-                var pipe=graph.pipes().get(edge);
-                if(pipe.first()!=nodeIndex&&pipe.second()!=nodeIndex)continue;
-                double flow=flows[edge];int receiver=flow>=0?pipe.second():pipe.first(),donor=flow>=0?pipe.first():pipe.second();
-                if(receiver!=nodeIndex||!boundaryAllowed(graph,pipe,flow))continue;
-                var incoming=graph.reservoirs().get(donor).state();double mass=Math.min(state.mass()*.25,dt*Math.abs(flow));var port=pipe.drawPort(flow);
-                var feed=endMoles(incoming,port);double feedMass=endMass(incoming,port);
-                for(int i=0;i<count;i++)n[i]+=mass*feed[i]/feedMass;
-                weightedTemperature+=mass*incoming.temperature();seedMass+=mass;
-            }
-            for(int i=0;i<count;i++)if(available[i]&&n[i]==0)n[i]=total*1e-12;
-            try{seeds.add(changed?model.flashTP(weightedTemperature/seedMass,state.pressure(),n,checkpoint).withSolidState(state.solids(),state.solidMoments()):state);}
+            for(int i=0;i<count;i++)if(available[i]&&n[i]==0){n[i]=total*1e-12;changed=true;}
+            try{seeds.add(changed?arrivingInVessel(graph,nodeIndex,ConservativeTransport.repartition(model,state,n),flows,dt):state);}
             catch(com.wormzjl.createcheme.science.fluid.thermo.ThermoHold hold){throw hold.at(graph.reservoirs().get(nodeIndex).id());}
         }
         return arrivingPhases(graph,seeds,modes,boundaryClosed,dt,checkpoint);
+    }
+    /**
+     * Owner decision D40 A at a vessel's step start ({@link #initialPhaseSeeds}): its committed layout {@code seed}, and a
+     * phase that what is about to arrive carries and the layout lacks laid out with what arrives of it, in its own phase:
+     * per inflow, the stream its donor end draws ({@link #endStream}), at most a quarter of the vessel's mass over
+     * {@code dt}, at the vessel's temperature and pressure. The phases the vessel holds keep their committed amounts, but
+     * for the steam its gas takes beside the free water arriving in it: the free water's own vapour pressure
+     * ({@code FluidThermodynamics.freeWaterVaporPressure}, Dalton), the steam left at its entry trace being ten orders of
+     * magnitude under it, which no pass's Newton climbs (water let into a tank of nitrogen at 298 K stopped its first
+     * 0.01 s step at the iteration limit, |r| 2.5e-5). Liquid water a 200 kPa generator drives into a tank of nitrogen
+     * enters as liquid water: laid out as the gas alone, no pass holds it (steam carries no more than its limit), and the
+     * connection stays closed for the whole interval. The seed itself where nothing arrives in a phase it lacks, or where
+     * its state refuses that phase at its temperature and pressure (a liquid on a single vapour-like root beside a
+     * vapour: LNG let into a warm gas boils there).
+     */
+    private FluidThermodynamics.State arrivingInVessel(PassiveNetwork graph,int nodeIndex,FluidThermodynamics.State seed,double[] flows,double dt) {
+        int n=model.hydrocarbon.componentCount();double[] l=seed.liquid(),v=seed.vapor();double wl=seed.waterLiquid(),wv=seed.waterVapor();
+        boolean liquid=seed.liquidVolume()>0,vapour=seed.vaporProperties()!=null,water=wl>0,steam=wv>0,added=false;
+        for(int edge=0;edge<flows.length;edge++) {
+            var pipe=graph.pipes().get(edge);double flow=flows[edge];
+            if(!(Math.abs(flow)>0)||(flow>=0?pipe.second():pipe.first())!=nodeIndex||!boundaryAllowed(graph,pipe,flow))continue;
+            var stream=endStream(graph.reservoirs().get(flow>=0?pipe.first():pipe.second()).state(),pipe.drawPort(flow));
+            if(stream==null)continue;
+            // The stream is per kilogram of fluid.
+            double mass=Math.min(seed.mass()*.25,dt*Math.abs(flow));double[] sl=stream.liquidView(),sv=stream.vaporView();
+            for(int c=0;c<n;c++){if(!liquid&&sl[c]>0){l[c]+=mass*sl[c];added=true;}if(!vapour&&sv[c]>0){v[c]+=mass*sv[c];added=true;}}
+            if(!water&&stream.waterLiquid()>0){wl+=mass*stream.waterLiquid();added=true;}
+            if(!steam&&stream.waterVapor()>0){wv+=mass*stream.waterVapor();added=true;}
+        }
+        if(!added)return seed;
+        double nv=Arrays.stream(v).sum(),p=seed.pressure(),pc=vapour?seed.hydrocarbonPartialPressure():nv>0&&wv>0?p*(nv/(nv+wv)):p;
+        if(!water&&wl>0&&nv>0) {
+            double pw=model.freeWaterVaporPressure(seed.temperature(),p);
+            if(pw<p){double all=wl+wv;wv=Math.max(wv,Math.min(all,nv*pw/(p-pw)));wl=all-wv;pc=p*(nv/(nv+wv));}
+        }
+        try{return model.adoptingState(seed.temperature(),p,l,v,wl,wv,pc,null).withSolidState(seed.solids(),seed.solidMoments());}
+        catch(IllegalArgumentException refused){return seed;}
     }
     /** A dry junction state flashed at its own temperature and pressure with a water entry trace of 1e-12 of its total
      * amount; the state itself if that flash leaves the property domain. See {@link #initialPhaseSeeds}. */
@@ -1171,7 +1199,7 @@ public final class PassiveStepSolver {
      *
      * <p>Each junction's mixture over the step is its held stock plus what its connections deliver at the pass's start
      * flows ({@link #startPoint}) over {@code dt}, each the stream its donor end draws ({@link #endMoles}), at the
-     * mass-weighted temperature (the vessel seed's rule above) and the seed's pressure, flashed and folded as the pass folds
+     * mass-weighted temperature and the seed's pressure, flashed and folded as the pass folds
      * a junction (D34, D41). Where that mixture holds a phase the seed lacks, the seed becomes the mixture at the seed's
      * mass (a junction's amounts are a basis; its rows are intensive). A junction donor delivers its own updated seed, so a
      * phase reaches a run of junctions in one stage. A junction whose seed already holds every phase of its mixture keeps

@@ -54,7 +54,10 @@ class WaterIntoCryogenicMethaneTest {
                 List.of(new PassiveNetwork.Pipe(1, 0, 1, pipe), new PassiveNetwork.Pipe(2, 1, 3, pipe), new PassiveNetwork.Pipe(3, 1, 2, pipe)));
     }
 
-    /** Four 5 s intervals commit; the vessel stands at or above the ambient and holds no water. */
+    /** Four 5 s intervals commit; the vessel stands at or above the ambient and holds no water. While its wall is slack
+     * at the ambient, the water generator's pressure, the drive into it is zero, which the step resolves to its tolerance:
+     * since a vessel starts each pass from its own layout (owner decision D40 A), the 120 K row's first interval books
+     * 7.4e-12 mol (1.3e-10 g) of water there, gone again by the third. No water enters to 1e-9 mol. */
     private void commitsWithNoWaterEntering(double methaneTemperature, double methanePressure) {
         var solver = new PassiveIntervalSolver(model);
         var graph = island(methaneTemperature, methanePressure, PhaseLayout.AMBIENT_PRESSURE);
@@ -68,7 +71,7 @@ class WaterIntoCryogenicMethaneTest {
                     methanePressure, k + 1, vessel.state().temperature(), vessel.state().pressure(), vessel.state().liquidVolume(), vessel.inventory().moles()[WATER],
                     result.acceptedSubsteps());
             assertTrue(vessel.state().pressure() >= PhaseLayout.AMBIENT_PRESSURE, "the wall goes slack at the ambient, never below it");
-            assertEquals(0, vessel.inventory().moles()[WATER], "no water enters");
+            assertEquals(0, vessel.inventory().moles()[WATER], 1e-9, "no water enters");
         }
     }
 
