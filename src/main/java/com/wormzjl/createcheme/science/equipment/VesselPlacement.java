@@ -18,22 +18,26 @@ public record VesselPlacement(int forward, int right, int up) {
      * lengthwise or standing.
      */
     public enum Form {
-        VERTICAL, LENGTHWISE, CROSSWISE, COLUMN, EXCHANGER, KETTLE, AIR_COOLER, EJECTOR, PUMP, COMPRESSOR, VERTICAL_HEATER, CABIN_HEATER;
+        VERTICAL(EquipmentShape.Kind.DRUM), LENGTHWISE(EquipmentShape.Kind.DRUM), CROSSWISE(EquipmentShape.Kind.DRUM), COLUMN(EquipmentShape.Kind.COLUMN),
+        EXCHANGER(EquipmentShape.Kind.EXCHANGER), KETTLE(EquipmentShape.Kind.KETTLE), AIR_COOLER(EquipmentShape.Kind.AIR_COOLER), EJECTOR(EquipmentShape.Kind.EJECTOR),
+        PUMP(EquipmentShape.Kind.PUMP), COMPRESSOR(EquipmentShape.Kind.COMPRESSOR), VERTICAL_HEATER(EquipmentShape.Kind.VERTICAL_HEATER),
+        CABIN_HEATER(EquipmentShape.Kind.CABIN_HEATER), STIRRED_REACTOR(EquipmentShape.Kind.STIRRED_REACTOR), ADSORBER(EquipmentShape.Kind.ADSORBER),
+        TRICKLE_BED_REACTOR(EquipmentShape.Kind.TRICKLE_BED_REACTOR), EBULLATED_BED_REACTOR(EquipmentShape.Kind.EBULLATED_BED_REACTOR),
+        CENTRIFUGAL_COMPRESSOR(EquipmentShape.Kind.CENTRIFUGAL_COMPRESSOR), STEAM_TURBINE(EquipmentShape.Kind.STEAM_TURBINE),
+        CONDENSING_TURBINE(EquipmentShape.Kind.CONDENSING_TURBINE), CYCLONE(EquipmentShape.Kind.CYCLONE), FCC_CONVERTER(EquipmentShape.Kind.FCC_CONVERTER),
+        DELAYED_COKER(EquipmentShape.Kind.DELAYED_COKER), FLUIDIZED_BED_BOILER(EquipmentShape.Kind.FLUIDIZED_BED_BOILER),
+        FLUIDIZED_BED_GASIFIER(EquipmentShape.Kind.FLUIDIZED_BED_GASIFIER), GRATE_BOILER(EquipmentShape.Kind.GRATE_BOILER),
+        FIXED_BED_GASIFIER(EquipmentShape.Kind.FIXED_BED_GASIFIER);
+
+        private final EquipmentShape.Kind kind;
+
+        Form(EquipmentShape.Kind kind) {
+            this.kind = kind;
+        }
 
         /** The kind of equipment this form builds. */
         public EquipmentShape.Kind kind() {
-            return switch (this) {
-                case VERTICAL, LENGTHWISE, CROSSWISE -> EquipmentShape.Kind.DRUM;
-                case COLUMN -> EquipmentShape.Kind.COLUMN;
-                case EXCHANGER -> EquipmentShape.Kind.EXCHANGER;
-                case KETTLE -> EquipmentShape.Kind.KETTLE;
-                case AIR_COOLER -> EquipmentShape.Kind.AIR_COOLER;
-                case EJECTOR -> EquipmentShape.Kind.EJECTOR;
-                case PUMP -> EquipmentShape.Kind.PUMP;
-                case COMPRESSOR -> EquipmentShape.Kind.COMPRESSOR;
-                case VERTICAL_HEATER -> EquipmentShape.Kind.VERTICAL_HEATER;
-                case CABIN_HEATER -> EquipmentShape.Kind.CABIN_HEATER;
-            };
+            return kind;
         }
 
         public EquipmentShape.Orientation orientation() {

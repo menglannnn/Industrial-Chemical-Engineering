@@ -20,18 +20,21 @@ import static org.junit.jupiter.api.Assertions.*;
  */
 class ProcessUnitTest {
     /**
-     * Every size a player can choose, at the shortest and longest tubes and the lowest support (a compressor's at 2 throws,
-     * a heater's at its shortest radiant section, the largest also at the longest); odd and turned ones.
+     * Every size a player can choose of every unit kind, at its least second size and the lowest support, and at its most
+     * too where the kind has at most nine sizes, else at its smallest and largest (2026-10-18: every kind's design is
+     * gated, the new ones as soon as they exist); odd and turned ones.
      */
-    private static List<EquipmentShape> everySize() {
+    static List<EquipmentShape> everySize() {
         var shapes = new ArrayList<EquipmentShape>();
-        for (var kind : List.of(Kind.EXCHANGER, Kind.KETTLE, Kind.AIR_COOLER, Kind.EJECTOR, Kind.PUMP, Kind.COMPRESSOR, Kind.VERTICAL_HEATER, Kind.CABIN_HEATER)) {
+        for (var kind : Kind.values()) {
+            if (!kind.unit()) continue;
             double step = ProcessUnit.diameterStep(kind);
-            boolean large = kind == Kind.COMPRESSOR || kind == Kind.VERTICAL_HEATER || kind == Kind.CABIN_HEATER;
+            boolean few = Math.round((ProcessUnit.maxDiameter(kind) - ProcessUnit.minDiameter(kind)) / step) < 9;
             for (double d = ProcessUnit.minDiameter(kind); d <= ProcessUnit.maxDiameter(kind) + 1e-9; d += step) {
                 double size = ProcessUnit.snap(kind, d);
-                boolean last = size == ProcessUnit.maxDiameter(kind);
-                for (int length : large && !last ? new int[]{ProcessUnit.minLength(kind, size)} : new int[]{ProcessUnit.minLength(kind, size), ProcessUnit.maxLength(kind, size)})
+                boolean end = size == ProcessUnit.minDiameter(kind) || size == ProcessUnit.maxDiameter(kind);
+                int least = ProcessUnit.minLength(kind, size), most = ProcessUnit.maxLength(kind, size);
+                for (int length : (few || end) && most > least ? new int[]{least, most} : new int[]{least})
                     shapes.add(EquipmentShape.unit(kind, size, length, Heading.NORTH, ProcessUnit.minSupport(kind, size, length)));
             }
         }
@@ -99,6 +102,18 @@ class ProcessUnitTest {
                 () -> EquipmentShape.unit(Kind.CABIN_HEATER, 6, 49, Heading.NORTH, 3)))
             assertThrows(IllegalArgumentException.class, bad::run);
         assertEquals(.3, ProcessUnit.snap(Kind.EJECTOR, .1 + .1 + .1), 0);
+        // A new unit (2026-10-18, NEW_UNITS_PLAN.md) starts at its design's second size and support, inside its ranges at every size.
+        for (var kind : Kind.values()) {
+            if (!kind.unit()) continue;
+            for (double d = ProcessUnit.minDiameter(kind); d <= ProcessUnit.maxDiameter(kind) + 1e-9; d += ProcessUnit.diameterStep(kind)) {
+                double size = ProcessUnit.snap(kind, d);
+                int length = ProcessUnit.defaultLength(kind, size), support = ProcessUnit.defaultSupport(kind, size, length);
+                assertTrue(length >= ProcessUnit.minLength(kind, size) && length <= ProcessUnit.maxLength(kind, size), kind + " " + size + " default length " + length);
+                assertTrue(support >= ProcessUnit.minSupport(kind, size, length) && support <= ProcessUnit.maxSupport(kind), kind + " " + size + " default support " + support);
+            }
+        }
+        assertEquals(2, ProcessUnit.defaultLength(Kind.ADSORBER, 2));
+        assertEquals(32, ProcessUnit.defaultLength(Kind.FCC_CONVERTER, 9.5));
         assertEquals(2.5, ProcessUnit.snap(Kind.EXCHANGER, 3), 0);
         assertEquals(.75, ProcessUnit.snap(Kind.KETTLE, .8), 0);
         assertEquals(3, ProcessUnit.minLength(Kind.EXCHANGER, .75));
@@ -201,15 +216,39 @@ class ProcessUnitTest {
         // and discharge to your left (owner decision 2026-10-17); a compressor's gas in on top of its suction header and
         // out at the front of its discharge header (one each, owner request 2026-10-17); a heater's convection and radiant
         // coils' inlets and outlets and its fuel gas towards the front.
-        var expected = Map.of(
-                Kind.EXCHANGER, Map.of(Role.TUBE_INLET, "1-", Role.TUBE_OUTLET, "1+", Role.SHELL_INLET, "1+", Role.SHELL_OUTLET, "1-"),
-                Kind.KETTLE, Map.of(Role.TUBE_INLET, "1+", Role.TUBE_OUTLET, "1-", Role.FEED, "1-", Role.VAPOUR_OUTLET, "1+", Role.LIQUID_OUTLET, "2+"),
-                Kind.AIR_COOLER, Map.of(Role.PROCESS_INLET, "1+", Role.PROCESS_OUTLET, "1-"),
-                Kind.EJECTOR, Map.of(Role.SUCTION, "2-", Role.MOTIVE, "1+", Role.DISCHARGE, "1-"),
-                Kind.PUMP, Map.of(Role.SUCTION, "2-", Role.DISCHARGE, "1+"),
-                Kind.COMPRESSOR, Map.of(Role.SUCTION, "1+", Role.DISCHARGE, "2-"),
-                Kind.VERTICAL_HEATER, Map.of(Role.CONVECTION_INLET, "2-", Role.CONVECTION_OUTLET, "2-", Role.RADIANT_INLET, "2-", Role.RADIANT_OUTLET, "2-", Role.FUEL, "2-"),
-                Kind.CABIN_HEATER, Map.of(Role.CONVECTION_INLET, "2-", Role.CONVECTION_OUTLET, "2-", Role.RADIANT_INLET, "2-", Role.RADIANT_OUTLET, "2-", Role.FUEL, "2-"));
+        // The new units' faces (2026-10-18, NEW_UNITS_PLAN.md) as their designs place them; every unit kind is listed.
+        var expected = Map.ofEntries(
+                Map.entry(Kind.EXCHANGER, Map.of(Role.TUBE_INLET, "1-", Role.TUBE_OUTLET, "1+", Role.SHELL_INLET, "1+", Role.SHELL_OUTLET, "1-")),
+                Map.entry(Kind.KETTLE, Map.of(Role.TUBE_INLET, "1+", Role.TUBE_OUTLET, "1-", Role.FEED, "1-", Role.VAPOUR_OUTLET, "1+", Role.LIQUID_OUTLET, "2+")),
+                Map.entry(Kind.AIR_COOLER, Map.of(Role.PROCESS_INLET, "1+", Role.PROCESS_OUTLET, "1-")),
+                Map.entry(Kind.EJECTOR, Map.of(Role.SUCTION, "2-", Role.MOTIVE, "1+", Role.DISCHARGE, "1-")),
+                Map.entry(Kind.PUMP, Map.of(Role.SUCTION, "2-", Role.DISCHARGE, "1+")),
+                Map.entry(Kind.COMPRESSOR, Map.of(Role.SUCTION, "1+", Role.DISCHARGE, "2-")),
+                Map.entry(Kind.VERTICAL_HEATER, Map.of(Role.CONVECTION_INLET, "2-", Role.CONVECTION_OUTLET, "2-", Role.RADIANT_INLET, "2-", Role.RADIANT_OUTLET, "2-", Role.FUEL, "2-")),
+                Map.entry(Kind.CABIN_HEATER, Map.of(Role.CONVECTION_INLET, "2-", Role.CONVECTION_OUTLET, "2-", Role.RADIANT_INLET, "2-", Role.RADIANT_OUTLET, "2-", Role.FUEL, "2-")),
+                Map.entry(Kind.STIRRED_REACTOR, Map.of(Role.VAPOUR_OUTLET, "1+", Role.FEED, "1+", Role.NITROGEN, "1+", Role.VENT, "1+", Role.LIQUID_OUTLET, "1-",
+                        Role.COOLANT_INLET, "2-", Role.COOLANT_OUTLET, "2+")),
+                Map.entry(Kind.ADSORBER, Map.of(Role.FEED, "2-", Role.VENT, "2-", Role.PRODUCT, "2-", Role.NITROGEN, "2-", Role.REGENERATION_OUTLET, "2+", Role.DRAIN, "2+",
+                        Role.REGENERATION_INLET, "2+")),
+                Map.entry(Kind.TRICKLE_BED_REACTOR, Map.of(Role.FEED, "2-", Role.HYDROGEN, "0+", Role.EFFLUENT, "2-", Role.QUENCH, "0+")),
+                Map.entry(Kind.EBULLATED_BED_REACTOR, Map.of(Role.EFFLUENT, "2-", Role.FEED, "2-", Role.HYDROGEN, "2+", Role.CATALYST_INLET, "1+", Role.CATALYST_OUTLET, "0+")),
+                Map.entry(Kind.CENTRIFUGAL_COMPRESSOR, Map.of(Role.SUCTION, "1-", Role.DISCHARGE, "0-", Role.COOLANT_INLET, "2-", Role.COOLANT_OUTLET, "2+")),
+                Map.entry(Kind.STEAM_TURBINE, Map.of(Role.STEAM, "0+", Role.EXHAUST, "1+")),
+                Map.entry(Kind.CONDENSING_TURBINE, Map.of(Role.STEAM, "0+", Role.COOLANT_INLET, "1-", Role.COOLANT_OUTLET, "2-", Role.CONDENSATE, "2+", Role.VENT, "0-")),
+                Map.entry(Kind.CYCLONE, Map.of(Role.FEED, "2-", Role.VAPOUR_OUTLET, "2+", Role.SOLIDS_OUTLET, "1-")),
+                Map.entry(Kind.FCC_CONVERTER, Map.of(Role.FEED, "2-", Role.STEAM, "2+", Role.AIR, "2-", Role.FUEL, "2-", Role.FLUE_GAS, "0-", Role.VAPOUR_OUTLET, "0+",
+                        Role.CATALYST_INLET, "2-", Role.CATALYST_OUTLET, "2+")),
+                Map.entry(Kind.DELAYED_COKER, Map.of(Role.FEED, "2-", Role.WATER, "2+", Role.STEAM, "0-", Role.VAPOUR_OUTLET, "0-", Role.QUENCH, "1+", Role.BLOWDOWN, "0+",
+                        Role.RELIEF, "2+", Role.CUTTING_WATER, "0+", Role.SOLIDS_OUTLET, "1-")),
+                Map.entry(Kind.FLUIDIZED_BED_BOILER, Map.of(Role.FEEDWATER, "0+", Role.STEAM, "0+", Role.BLOWDOWN, "0+", Role.DRAIN, "0-", Role.FUEL, "2-", Role.SOLIDS_INLET, "1+",
+                        Role.SOLIDS_OUTLET, "1-")),
+                Map.entry(Kind.FLUIDIZED_BED_GASIFIER, Map.of(Role.OXIDANT, "2-", Role.SYNGAS, "2+", Role.FEEDWATER, "0+", Role.BLOWDOWN, "0-", Role.STEAM, "1+", Role.NITROGEN, "1+",
+                        Role.VENT, "1+", Role.SOLIDS_INLET, "1+", Role.SOLIDS_OUTLET, "1-")),
+                Map.entry(Kind.GRATE_BOILER, Map.of(Role.STEAM, "1+", Role.FEEDWATER, "0+", Role.BLOWDOWN, "0+", Role.DRAIN, "1-", Role.FUEL, "2-", Role.SOLIDS_INLET, "1+",
+                        Role.SOLIDS_OUTLET, "1-")),
+                Map.entry(Kind.FIXED_BED_GASIFIER, Map.of(Role.OXIDANT, "2-", Role.STEAM, "2+", Role.FEEDWATER, "2-", Role.NITROGEN, "2-", Role.VENT, "1+", Role.SOLIDS_INLET, "1+",
+                        Role.SOLIDS_OUTLET, "1-", Role.QUENCH, "1+", Role.LIQUID_OUTLET, "1-", Role.SYNGAS, "0+")));
+        for (var kind : Kind.values()) assertEquals(kind.unit(), expected.containsKey(kind), kind + " has its nozzles' faces listed");
         for (var shape : everySize()) {
             var sides = shape.kind() == Kind.PUMP && shape.diameter() > ProcessUnit.OH2_MAX ? Map.of(Role.SUCTION, "0-", Role.DISCHARGE, "0+") : expected.get(shape.kind());
             var nozzles = shape.nozzles();
@@ -324,29 +363,44 @@ class ProcessUnitTest {
                 EquipmentShape.unit(Kind.EXCHANGER, 1, 4, Heading.NORTH, 2), 0, EquipmentShape.unit(Kind.VERTICAL_HEATER, 2.5, 4, Heading.NORTH, 3), 0);
         for (var entry : cases.entrySet()) {
             var shape = entry.getKey();
-            var parts = ShapeRasterizer.moving(shape);
-            assertEquals(entry.getValue(), parts.size(), shape.toString());
+            assertEquals(entry.getValue(), ShapeRasterizer.moving(shape).size(), shape.toString());
             assertEquals(entry.getValue() > 0, ProcessUnit.moves(shape.kind()), shape.toString());
-            double moving = 0;
-            for (var part : parts) {
-                double[] p = part.motion().pivot();
-                assertTrue(p[0] > 0 && p[0] < shape.sizeX() && p[1] > 0 && p[1] < shape.sizeY() && p[2] > 0 && p[2] < shape.sizeZ(), shape + " " + part.motion());
-                assertFalse(part.polygons().isEmpty(), shape.toString());
-                for (var polygon : part.polygons()) {
-                    assertTrue(polygon.material().channel() < 0, shape + ": " + polygon.material());
-                    double[] q = polygon.positions();
-                    for (int i = 0; i < q.length; i += 3) assertTrue(Math.sqrt(q[i] * q[i] + q[i + 1] * q[i + 1] + q[i + 2] * q[i + 2]) <= part.reach() + 1e-9);
-                    moving += area(polygon);
-                }
-            }
-            double still = 0;
-            for (var cell : ShapeRasterizer.layout(shape).shell()) {
-                var key = ShapeRasterizer.key(shape, cell.x(), cell.y(), cell.z());
-                for (var polygon : ShapeRasterizer.surface(key)) still += area(polygon);
-                for (var polygon : ShapeRasterizer.fixedSurface(key)) still -= area(polygon);
-            }
-            assertEquals(moving, still, 1e-6 * Math.max(1, moving), shape.toString());
+            if (entry.getValue() > 0) movesAsStill(shape);
         }
+        // Every size of every kind (2026-10-18, NEW_UNITS_PLAN.md): a kind that moves has moving parts at every size, each
+        // its still parts set going; one that does not has none.
+        for (var shape : everySize()) {
+            if (ProcessUnit.moves(shape.kind())) movesAsStill(shape);
+            else assertTrue(ShapeRasterizer.moving(shape).isEmpty(), shape.toString());
+        }
+    }
+
+    /**
+     * The shape's moving parts are its still parts set going: each turns or slides round a pivot inside the box, in
+     * unpainted materials within its reach, and the shell cells' surfaces less their fixed ones are their area.
+     */
+    static void movesAsStill(EquipmentShape shape) {
+        var parts = ShapeRasterizer.moving(shape);
+        assertFalse(parts.isEmpty(), shape + " moves");
+        double moving = 0;
+        for (var part : parts) {
+            double[] p = part.motion().pivot();
+            assertTrue(p[0] > 0 && p[0] < shape.sizeX() && p[1] > 0 && p[1] < shape.sizeY() && p[2] > 0 && p[2] < shape.sizeZ(), shape + " " + part.motion());
+            assertFalse(part.polygons().isEmpty(), shape.toString());
+            for (var polygon : part.polygons()) {
+                assertTrue(polygon.material().channel() < 0, shape + ": " + polygon.material());
+                double[] q = polygon.positions();
+                for (int i = 0; i < q.length; i += 3) assertTrue(Math.sqrt(q[i] * q[i] + q[i + 1] * q[i + 1] + q[i + 2] * q[i + 2]) <= part.reach() + 1e-9);
+                moving += area(polygon);
+            }
+        }
+        double still = 0;
+        for (var cell : ShapeRasterizer.layout(shape).shell()) {
+            var key = ShapeRasterizer.key(shape, cell.x(), cell.y(), cell.z());
+            for (var polygon : ShapeRasterizer.surface(key)) still += area(polygon);
+            for (var polygon : ShapeRasterizer.fixedSurface(key)) still -= area(polygon);
+        }
+        assertEquals(moving, still, 1e-6 * Math.max(1, moving), shape.toString());
     }
 
     @Test
@@ -398,27 +452,69 @@ class ProcessUnitTest {
                 EquipmentShape.unit(Kind.CABIN_HEATER, 6, 12, Heading.WEST, 3), EquipmentShape.unit(Kind.CABIN_HEATER, 12, 40, Heading.NORTH, 4),
                 EquipmentShape.unit(Kind.CABIN_HEATER, 4, 25, Heading.EAST, 3));
         for (var shape : shapes) {
-            var unit = ProcessUnit.of(shape);
-            var starts = new HashSet<Double>(List.of(0.0));
-            assertFalse(unit.decks().isEmpty(), shape.toString());
-            for (var deck : unit.decks()) {
-                double mid = deck.run().length() / 2, off = (Access.GAP + deck.width() - Access.RAIL_BAND) / 2;
-                assertTrue(in(shape, deck.run().at(mid, off, deck.level() + Access.DECK / 2)), shape + " deck at " + deck.level());
-                assertFalse(in(shape, deck.run().at(mid, off, deck.level() + Access.DECK + .3)), shape + " room over the deck at " + deck.level());
-                starts.add(deck.level() + Access.DECK);
-            }
-            for (var l : unit.ladders()) {
-                assertTrue(starts.contains(l.base()), shape + " a climb from " + l.base() + " starts on a deck or the ground");
-                double y = (l.base() + l.rungTop()) / 2;
-                assertTrue(climbable(shape, new double[]{l.x() + .3 * l.outX(), y, l.z() + .3 * l.outZ()}), shape + " climbable in front of the rungs at " + y);
-                assertFalse(climbable(shape, new double[]{l.x() + 1.5 * l.outX(), y, l.z() + 1.5 * l.outZ()}), shape + " not climbable outside the cage");
-                assertTrue(in(shape, new double[]{l.x() - .04 * l.outX(), y, l.z() - .04 * l.outZ()}), shape + " the rung plane is pressed against to climb");
-                if (l.rungTop() < l.top()) assertFalse(in(shape, new double[]{l.x(), l.rungTop() + .6, l.z()}), shape + " walked through over its landing");
-            }
-            climbedFromShellCells(shape, unit.ladders());
-            stoppedAtClosedEnds(shape, unit.decks());
+            assertFalse(ProcessUnit.of(shape).decks().isEmpty(), shape.toString());
+            walkedAndClimbed(shape);
         }
         assertTrue(ProcessUnit.of(EquipmentShape.unit(Kind.CABIN_HEATER, 6, 12, Heading.WEST, 3)).decks().size() >= 6);
+    }
+
+    /** Every size of every kind (2026-10-18, NEW_UNITS_PLAN.md): its decks are walked on and its ladders climbed. */
+    @Test
+    void everyUnitsDecksAreWalkedAndLaddersClimbed() {
+        for (var shape : everySize()) walkedAndClimbed(shape);
+    }
+
+    /** The shape's decks are walked on with head room over them, its ladders climbed from a deck or the ground. */
+    static void walkedAndClimbed(EquipmentShape shape) {
+        var unit = ProcessUnit.of(shape);
+        var starts = new HashSet<Double>(List.of(0.0));
+        for (var deck : unit.decks()) {
+            double mid = deck.run().length() / 2, off = (Access.GAP + deck.width() - Access.RAIL_BAND) / 2;
+            assertTrue(in(shape, deck.run().at(mid, off, deck.level() + Access.DECK / 2)), shape + " deck at " + deck.level());
+            assertFalse(in(shape, deck.run().at(mid, off, deck.level() + Access.DECK + .3)), shape + " room over the deck at " + deck.level());
+            starts.add(deck.level() + Access.DECK);
+        }
+        for (var l : unit.ladders()) {
+            assertTrue(starts.contains(l.base()), shape + " a climb from " + l.base() + " starts on a deck or the ground");
+            double y = (l.base() + l.rungTop()) / 2;
+            assertTrue(climbable(shape, new double[]{l.x() + .3 * l.outX(), y, l.z() + .3 * l.outZ()}), shape + " climbable in front of the rungs at " + y);
+            assertFalse(climbable(shape, new double[]{l.x() + 1.5 * l.outX(), y, l.z() + 1.5 * l.outZ()}), shape + " not climbable outside the cage");
+            assertTrue(in(shape, new double[]{l.x() - .04 * l.outX(), y, l.z() - .04 * l.outZ()}), shape + " the rung plane is pressed against to climb");
+            if (l.rungTop() < l.top()) assertFalse(in(shape, new double[]{l.x(), l.rungTop() + .6, l.z()}), shape + " walked through over its landing");
+        }
+        // A stair flight (2026-10-18, NEW_UNITS_PLAN.md) runs from a deck or the ground up to a deck; each tread is stepped on
+        // with room over it, between fences either side.
+        for (var st : unit.stairs()) {
+            assertTrue(starts.contains(st.base()) && starts.contains(st.top()), shape + " a stair from " + st.base() + " to " + st.top() + " joins decks or the ground");
+            for (int k = 1; k <= st.steps(); k++) {
+                double s = (k - .5) * ProcessUnit.STAIR_GOING, y = st.base() + k * st.rise();
+                assertTrue(in(shape, st.at(s, 0, y - .06)), shape + " stair tread " + k + " at " + y);
+                assertFalse(in(shape, st.at(s, 0, y + .3)), shape + " room over stair tread " + k + " at " + y);
+                for (int side = -1; side <= 1; side += 2)
+                    assertTrue(in(shape, st.at(s, side * (st.width() / 2 - .1), y + .8)), shape + " stair fence " + side + " at tread " + k);
+            }
+        }
+        climbedFromShellCells(shape, unit.ladders());
+        stoppedAtClosedEnds(shape, unit.decks());
+        railedAtClosedEnds(shape, unit);
+    }
+
+    /**
+     * A player sees the rail that stops them: each closed end's handrail is drawn across the deck's middle (in-game check
+     * 2026-10-18: a stair landing's opening starting at a walkway's end left the end's fence without its rail).
+     */
+    static void railedAtClosedEnds(EquipmentShape shape, ProcessUnit unit) {
+        var rails = unit.mesh().facets().stream().filter(f -> f.material() == Mesh.Material.HANDRAIL).toList();
+        for (var d : unit.decks())
+            for (int e = 0; e < 2; e++) {
+                if (!(e == 0 ? d.closedStart() : d.closedEnd())) continue;
+                var p = d.run().at(e == 0 ? 0 : d.run().length(), (.12 + d.width() - .03) / 2, d.level() + Access.DECK + Access.RAIL);
+                boolean drawn = rails.stream().anyMatch(f -> {
+                    for (int i = 0; i < 3; i++) if (p[i] < f.min()[i] - .05 || p[i] > f.max()[i] + .05) return false;
+                    return true;
+                });
+                assertTrue(drawn, shape + " the deck at " + d.level() + " draws its rail across its closed end " + e);
+            }
     }
 
     /**

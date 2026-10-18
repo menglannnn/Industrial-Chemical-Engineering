@@ -1048,23 +1048,27 @@ public final class ShapeRasterizer {
                 var polygons = new ArrayList<Polygon>();
                 double reach = 0;
                 var pieces = new ArrayList<Polygon>();
-                for (var facet : byPart.get(k))
-                    for (int x = floor(facet.min()[0]); x <= floor(facet.max()[0]); x++)
-                        for (int y = floor(facet.min()[1]); y <= floor(facet.max()[1]); y++)
-                            for (int z = floor(facet.min()[2]); z <= floor(facet.max()[2]); z++) {
-                                pieces.clear();
-                                mesh.cell(facet, x, y, z, pieces);
-                                for (var piece : pieces) {
-                                    var p = piece.positions().clone();
-                                    for (int i = 0; i < p.length; i += 3) {
-                                        p[i] += x - pivot[0];
-                                        p[i + 1] += y - pivot[1];
-                                        p[i + 2] += z - pivot[2];
-                                        reach = Math.max(reach, Math.sqrt(p[i] * p[i] + p[i + 1] * p[i + 1] + p[i + 2] * p[i + 2]));
-                                    }
-                                    polygons.add(new Polygon(p, piece.uvs(), piece.normals(), piece.material()));
-                                }
+                var reached = new HashSet<Cell>();
+                for (var facet : byPart.get(k)) {
+                    // The cells the chunk mesh cuts the facet into (a facet in a cell face belongs to the cell on its inner
+                    // side): a piston rod's end lying on a block face was lost from the moving rod (2026-10-18).
+                    reached.clear();
+                    cells(facet, reached);
+                    for (var cell : reached) {
+                        pieces.clear();
+                        mesh.cell(facet, cell.x(), cell.y(), cell.z(), pieces);
+                        for (var piece : pieces) {
+                            var p = piece.positions().clone();
+                            for (int i = 0; i < p.length; i += 3) {
+                                p[i] += cell.x() - pivot[0];
+                                p[i + 1] += cell.y() - pivot[1];
+                                p[i + 2] += cell.z() - pivot[2];
+                                reach = Math.max(reach, Math.sqrt(p[i] * p[i] + p[i + 1] * p[i + 1] + p[i + 2] * p[i + 2]));
                             }
+                            polygons.add(new Polygon(p, piece.uvs(), piece.normals(), piece.material()));
+                        }
+                    }
+                }
                 parts.add(new Moving(motion, List.copyOf(polygons), reach));
             }
             return moving = List.copyOf(parts);

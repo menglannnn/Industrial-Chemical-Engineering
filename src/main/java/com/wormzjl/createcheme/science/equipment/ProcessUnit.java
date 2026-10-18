@@ -112,125 +112,49 @@ public final class ProcessUnit {
     /** Steelwork, m: a post's section, a beam's depth and flange. */
     static final double POST = .2, BEAM = .2, FLANGE_BEAM = .15;
 
-    // ---- Sizes ------------------------------------------------------------------------------------------------------
+    // ---- Sizes: each kind's design ({@link UnitDesign}) ---------------------------------------------------------------
 
     public static double minDiameter(Kind kind) {
-        return switch (kind) {
-            case EXCHANGER, KETTLE -> .5;
-            case AIR_COOLER -> 1.5;
-            case EJECTOR, PUMP -> SUCTION_STEP;
-            case COMPRESSOR -> .15;
-            case VERTICAL_HEATER -> 2.5;
-            case CABIN_HEATER -> 4;
-            default -> throw notUnit(kind);
-        };
+        return UnitDesign.of(kind).minSize();
     }
 
     public static double maxDiameter(Kind kind) {
-        return switch (kind) {
-            case EXCHANGER -> 2.5;
-            case KETTLE -> 2;
-            case AIR_COOLER -> 3;
-            case EJECTOR -> 1;
-            case PUMP -> .75;
-            case COMPRESSOR -> 1.2;
-            case VERTICAL_HEATER -> 12;
-            case CABIN_HEATER -> 12;
-            default -> throw notUnit(kind);
-        };
+        return UnitDesign.of(kind).maxSize();
     }
 
     public static double diameterStep(Kind kind) {
-        return switch (kind) {
-            case EXCHANGER, KETTLE -> SHELL_STEP;
-            case AIR_COOLER, VERTICAL_HEATER -> .5;
-            case EJECTOR, PUMP, COMPRESSOR -> SUCTION_STEP;
-            case CABIN_HEATER -> 1;
-            default -> throw notUnit(kind);
-        };
+        return UnitDesign.of(kind).sizeStep();
     }
 
-    /**
-     * The shortest tubes, whole metres: three bundle diameters; an air cooler bay of width {@code diameter}, the shortest
-     * whose fans cover {@link #FAN_COVERAGE} of its bundle face; an ejector's and a pump's 1, unused; a compressor's
-     * least throws; a vertical heater's radiant section 1.5 diameters high, a cabin's 1.2 widths long.
-     */
+    /** The least second size (tubes, a bay's length, throws, a radiant height or length; 1 where the kind has none). */
     public static int minLength(Kind kind, double diameter) {
-        return switch (kind) {
-            case EXCHANGER, KETTLE -> Math.max(2, (int) Math.ceil(3 * diameter - 1e-9));
-            case AIR_COOLER -> {
-                int length = MIN_BAY_LENGTH;
-                while (length < MAX_BAY_LENGTH && coverage(diameter, length) < FAN_COVERAGE) length++;
-                yield length;
-            }
-            case EJECTOR, PUMP -> 1;
-            case COMPRESSOR -> 2;
-            case VERTICAL_HEATER -> Math.max(4, (int) Math.ceil(1.5 * diameter - 1e-9));
-            case CABIN_HEATER -> Math.max(6, (int) Math.ceil(1.2 * diameter - 1e-9));
-            default -> throw notUnit(kind);
-        };
+        return UnitDesign.of(kind).minLength(diameter);
     }
 
-    /**
-     * The longest tubes, whole metres; a compressor's most throws; a vertical heater's radiant section at most 2.75
-     * diameters high (API 560's slenderness) and 20 m (vertical radiant tubes reach about 18.3 m,
-     * {@code MACHINES_SCALE_RESEARCH.md}), a cabin's 48 m: above {@link #MAX_CABIN_CELL} a twin cell of two half-length
-     * cells.
-     */
     public static int maxLength(Kind kind, double diameter) {
-        return switch (kind) {
-            case EXCHANGER -> 12;
-            case KETTLE -> 10;
-            case AIR_COOLER -> MAX_BAY_LENGTH;
-            case EJECTOR, PUMP -> 1;
-            case COMPRESSOR -> MAX_THROWS;
-            case VERTICAL_HEATER -> Math.min(MAX_RADIANT_HEIGHT, (int) Math.floor(2.75 * diameter + 1e-9));
-            case CABIN_HEATER -> 2 * MAX_CABIN_CELL;
-            default -> throw notUnit(kind);
-        };
+        return UnitDesign.of(kind).maxLength(diameter);
     }
 
-    /**
-     * The lowest support, m: a lying unit's bottom 2 m up leaves a block under its bottom nozzles for their pipes; an air
-     * cooler's bundle 3 m up (owner request 2026-10-16) keeps its fans' ring inlets at least 0.6 fan diameters above
-     * grade, more than the half diameter of free air a forced-draft fan usually takes; an ejector's discharge 1 m up; a
-     * pump stands on its plinth at grade; a compressor's foundation high enough that its discharge bottles clear grade by
-     * 0.3 m and its motor by 0.1 m; a heater's floor 3 m up, room to stand under its burners.
-     */
+    public static int defaultLength(Kind kind, double diameter) {
+        return UnitDesign.of(kind).defaultLength(diameter);
+    }
+
+    /** The lowest support, m. */
     public static int minSupport(Kind kind, double diameter, double length) {
-        return switch (kind) {
-            case EXCHANGER, KETTLE -> 2;
-            case AIR_COOLER -> 3;
-            case EJECTOR -> 1;
-            case PUMP -> 0;
-            case COMPRESSOR -> {
-                var c = Compressor.of(diameter, (int) length);
-                int h = 1;
-                while (h < EquipmentShape.MAX_SUPPORT && !c.clears(h)) h++;
-                yield h;
-            }
-            case VERTICAL_HEATER, CABIN_HEATER -> 3;
-            default -> throw notUnit(kind);
-        };
+        return UnitDesign.of(kind).minSupport(diameter, (int) length);
     }
 
-    /** The highest support, m: a pump's plinth is at grade (the constructor's Up lifts it onto a deck). */
+    /** The highest support, m: 0 where it is fixed (a pump's plinth at grade). */
     public static int maxSupport(Kind kind) {
-        return kind == Kind.PUMP ? 0 : EquipmentShape.MAX_SUPPORT;
+        return UnitDesign.of(kind).maxSupport();
     }
 
-    /** A new unit's support, m: an air cooler's bundle 4 m up (owner request 2026-10-16), 1.68 m or more under its motor beams; the least for the rest. */
     public static int defaultSupport(Kind kind, double diameter, double length) {
-        return switch (kind) {
-            case AIR_COOLER -> 4;
-            case EXCHANGER, KETTLE, EJECTOR -> 2;
-            default -> minSupport(kind, diameter, length);
-        };
+        return UnitDesign.of(kind).defaultSupport(diameter, (int) length);
     }
 
-    /** An ejector and a vertical heater stand; the others lie. */
     public static Orientation orientation(Kind kind) {
-        return kind == Kind.EJECTOR || kind == Kind.VERTICAL_HEATER ? Orientation.VERTICAL : Orientation.HORIZONTAL;
+        return UnitDesign.of(kind).orientation();
     }
 
     /** A diameter on its kind's grid, cleared of rounding (0.30000000000000004 becomes 0.3). */
@@ -241,24 +165,20 @@ public final class ProcessUnit {
     }
 
     static void validate(Kind kind, double diameter, double length, Orientation orientation, int support, Bank bank) {
+        var design = UnitDesign.of(kind);
         String name = kind.name().toLowerCase(Locale.ROOT);
-        if (kind != Kind.AIR_COOLER && !bank.equals(Bank.ONE)) throw new IllegalArgumentException("Only air coolers are built in banks");
+        if (!design.banks() && !bank.equals(Bank.ONE)) throw new IllegalArgumentException("Only air coolers are built in banks");
         if (!(diameter >= minDiameter(kind) - 1e-9 && diameter <= maxDiameter(kind) + 1e-9) || Math.abs(snap(kind, diameter) - diameter) > 1e-9)
             throw new IllegalArgumentException("A " + name + "'s size must be " + minDiameter(kind) + " to " + maxDiameter(kind) + " m in " + diameterStep(kind)
                     + " m steps, not " + diameter);
         if (length != Math.rint(length) || length < minLength(kind, diameter) || length > maxLength(kind, diameter))
-            throw new IllegalArgumentException("A " + name + "'s length must be " + minLength(kind, diameter) + " to " + maxLength(kind, diameter) + " whole metres, not " + length);
-        if (kind == Kind.COMPRESSOR && length % 2 != 0) throw new IllegalArgumentException("A balanced-opposed compressor has an even number of throws, not " + length);
+            throw new IllegalArgumentException("A " + name + "'s " + (design.lengthInMetres() ? "length" : "count") + " must be " + minLength(kind, diameter) + " to "
+                    + maxLength(kind, diameter) + (design.lengthInMetres() ? " whole metres" : "") + ", not " + length);
         if (orientation != orientation(kind)) throw new IllegalArgumentException("A " + name + " " + (orientation(kind).horizontal() ? "lies" : "stands"));
         int lowest = minSupport(kind, diameter, length);
         if (support < lowest || support > maxSupport(kind))
             throw new IllegalArgumentException("A " + name + "'s support must be " + lowest + " to " + maxSupport(kind) + " m, not " + support);
-        if (kind == Kind.AIR_COOLER && coverage(diameter, length) < FAN_COVERAGE)
-            throw new IllegalArgumentException("An air cooler bay of " + diameter + " × " + length + " m has no room for fans covering " + FAN_COVERAGE + " of its bundle");
-    }
-
-    private static IllegalArgumentException notUnit(Kind kind) {
-        return new IllegalArgumentException(kind + " is not a unit");
+        design.check(diameter, (int) length, support, bank);
     }
 
     /** Tube surface of an exchanger or a kettle's bundle of shell {@code shell} and tubes {@code tubes}, m². */
@@ -499,8 +419,12 @@ public final class ProcessUnit {
         }
     }
 
-    /** Ticks holding whole turns of every shown speed. */
-    public static final int MOTION_PERIOD = 40;
+    /**
+     * Ticks holding whole turns of every shown speed: two minutes (2026-10-18), so slow machines move at their real pace
+     * (a coker's drill stem one stroke, an ash cooler's drum at 3 rpm, a ram feeder's stroke every 30 s) and every
+     * speed that is a whole number of turns in it loops without a jump.
+     */
+    public static final int MOTION_PERIOD = 2400;
     /** Shown speeds, rev/s: an air cooler's fans, a pump's shaft and its motor's fan, a compressor's crank. */
     static final double FAN_SPEED = 1.5, PUMP_SPEED = 2, CRANK_SPEED = 1;
 
@@ -511,7 +435,7 @@ public final class ProcessUnit {
 
     /** Whether units of {@code kind} have moving parts: their datasheet carries the switch. */
     public static boolean moves(Kind kind) {
-        return kind == Kind.AIR_COOLER || kind == Kind.PUMP || kind == Kind.COMPRESSOR;
+        return UnitDesign.of(kind).moves();
     }
 
     static ProcessUnit of(EquipmentShape shape) {
@@ -530,7 +454,7 @@ public final class ProcessUnit {
      * beyond its high end (0: flat); a cylinder may be hollow inside {@code inner} and cut to the angles [from, to]
      * (counter-clockwise from +x towards +z about a vertical axis; from = to: whole), a deck's ring.
      */
-    private record Solid(double[] min, double[] max, int axis, double[] centre, double radius, double radiusHi, double lo, double hi, double headHi, double inner,
+    record Solid(double[] min, double[] max, int axis, double[] centre, double radius, double radiusHi, double lo, double hi, double headHi, double inner,
                          double from, double to) {
         static Solid box(double[] min, double[] max) {
             return new Solid(min, max, -1, null, 0, 0, 0, 0, 0, 0, 0, 0);
@@ -582,39 +506,54 @@ public final class ProcessUnit {
 
     // ---- The unit ---------------------------------------------------------------------------------------------------
 
-    private final EquipmentShape shape;
+    final EquipmentShape shape;
     /** The mesh being drawn: the cached unit drops it once built; {@link #mesh()} draws the facets again. */
-    private Mesh mesh = new Mesh();
-    private final List<Solid> solids = new ArrayList<>(), volumes = new ArrayList<>();
+    Mesh mesh = new Mesh();
+    final List<Solid> solids = new ArrayList<>(), volumes = new ArrayList<>();
     /** The moving parts, by the index their facets carry ({@link Mesh#part}). */
-    private final List<Motion> motions = new ArrayList<>();
-    /** A heater's ladders. */
-    private final List<Access.Climb> ladders = new ArrayList<>();
+    final List<Motion> motions = new ArrayList<>();
+    /** A unit's ladders. */
+    final List<Access.Climb> ladders = new ArrayList<>();
+
+    /**
+     * A unit's straight stair flight (2026-10-18, NEW_UNITS_PLAN.md: the big units' stair towers): its foot's centre (x, z),
+     * rising along frame axis {@code axis} (0 or 2) in direction {@code sign}, {@code width} between its outer stringers,
+     * from walking level {@code base} to {@code top}, in {@code steps} treads {@link #STAIR_GOING} deep.
+     */
+    record Stair(double x, double z, int axis, int sign, double width, double base, double top, int steps) {
+        /** A point {@code s} along the flight from its foot, {@code off} across it (positive to its left going up), at height {@code y}. */
+        double[] at(double s, double off, double y) {
+            double along = sign * s, across = sign * off;
+            return axis == 0 ? new double[]{x + along, y, z - across} : new double[]{x + across, y, z + along};
+        }
+
+        double rise() {
+            return (top - base) / steps;
+        }
+
+        double length() {
+            return steps * STAIR_GOING;
+        }
+    }
+
+    /** A stair tread's going and its highest rise (an industrial stair of about 39°, OSHA 1910.25), m. */
+    static final double STAIR_GOING = .25, STAIR_RISE = .2;
+    final List<Stair> stairs = new ArrayList<>();
 
     /** A heater's deck: its run along its wall, the height under its walking surface, its width, whether a rail closes each end. */
     record Deck(Access.Run run, double level, double width, boolean closedStart, boolean closedEnd) {
     }
 
-    private final List<Deck> decks = new ArrayList<>();
+    final List<Deck> decks = new ArrayList<>();
     private final Map<Long, List<Solid>> solidCells = new HashMap<>(), volumeCells = new HashMap<>();
-    private final List<Nozzle> nozzles = new ArrayList<>();
+    final List<Nozzle> nozzles = new ArrayList<>();
     /** Fixed outline edges, {x0, y0, z0, x1, y1, z1}; round bodies outlined against the eye, {x, y, z on the axis, axis, radius, lo, hi}. */
-    private final List<double[]> edges = new ArrayList<>(), rounds = new ArrayList<>();
+    final List<double[]> edges = new ArrayList<>(), rounds = new ArrayList<>();
     private final double[] box;
 
     private ProcessUnit(EquipmentShape s, boolean drawing) {
         shape = s;
-        switch (s.kind()) {
-            case EXCHANGER -> exchanger();
-            case KETTLE -> kettle();
-            case AIR_COOLER -> airCooler();
-            case EJECTOR -> ejector();
-            case PUMP -> pump();
-            case COMPRESSOR -> compressor();
-            case VERTICAL_HEATER -> verticalHeater();
-            case CABIN_HEATER -> cabinHeater();
-            default -> throw notUnit(s.kind());
-        }
+        UnitDesign.of(s.kind()).build(this);
         box = box(mesh.bounds());
         if (drawing) return;
         mesh = null;
@@ -640,6 +579,10 @@ public final class ProcessUnit {
         return List.copyOf(ladders);
     }
 
+    List<Stair> stairs() {
+        return List.copyOf(stairs);
+    }
+
     /** The box in the frame, {x0, y0, z0, x1, y1, z1}: the parts and every nozzle's flange face, in whole cells. */
     double[] box() {
         return box.clone();
@@ -657,7 +600,7 @@ public final class ProcessUnit {
 
     private double top;
 
-    private double[] box(double[] bounds) {
+    double[] box(double[] bounds) {
         double[] out = {Math.floor(bounds[0] + 1e-9), 0, Math.floor(bounds[2] + 1e-9), Math.ceil(bounds[3] - 1e-9), Math.ceil(bounds[4] - 1e-9), Math.ceil(bounds[5] - 1e-9)};
         top = bounds[4];
         for (var n : nozzles) {
@@ -711,21 +654,21 @@ public final class ProcessUnit {
         }
     }
 
-    private static boolean within(Map<Long, List<Solid>> cells, double[] p) {
+    static boolean within(Map<Long, List<Solid>> cells, double[] p) {
         var list = cells.get(key(Mesh.floor(p[0]), Mesh.floor(p[1]), Mesh.floor(p[2])));
         if (list == null) return false;
         for (var s : list) if (s.contains(p)) return true;
         return false;
     }
 
-    private static void index(List<Solid> parts, Map<Long, List<Solid>> cells) {
+    static void index(List<Solid> parts, Map<Long, List<Solid>> cells) {
         for (var s : parts)
             for (int x = Mesh.floor(s.min()[0]); x <= Mesh.floor(s.max()[0]); x++)
                 for (int y = Mesh.floor(s.min()[1]); y <= Mesh.floor(s.max()[1]); y++)
                     for (int z = Mesh.floor(s.min()[2]); z <= Mesh.floor(s.max()[2]); z++) cells.computeIfAbsent(key(x, y, z), k -> new ArrayList<>()).add(s);
     }
 
-    private static long key(int x, int y, int z) {
+    static long key(int x, int y, int z) {
         return (long) (x + 1024) << 42 | (long) (y + 1024) << 21 | (z + 1024);
     }
 
@@ -736,7 +679,7 @@ public final class ProcessUnit {
      * cover, the channel (tube side in at its bottom, out at its top), the tubesheet's flange, the shell (shell side in
      * on top near the back, out at the bottom near the front), the floating head's flange and its cover.
      */
-    private void exchanger() {
+    void exchanger() {
         double d = shape.diameter(), r = d / 2, y = shape.support() + r, a = centre(1.1 * r);
         int n = sides(d);
         double channel = .5 * d + .2, zn = Math.ceil(.08 + channel / 2 - .5) + .5;
@@ -777,7 +720,7 @@ public final class ProcessUnit {
      * in at its top, condensate out at its bottom), a cone up to the kettle's shell (1.6 times the bundle), the shell
      * (liquid fed low at its front, vapour out on top) and its back head, where the product leaves low behind the weir.
      */
-    private void kettle() {
+    void kettle() {
         double db = shape.diameter(), rb = db / 2, dk = kettleShell(db), rk = dk / 2, y = shape.support() + rk, a = centre(rk);
         int n = sides(dk), nb = sides(db);
         double channel = .5 * db + .2, zn = Math.ceil(.08 + channel / 2 - .5) + .5;
@@ -833,7 +776,7 @@ public final class ProcessUnit {
      * last back headers, the outlet under it where the condensate drains; a single train's inlet is on its first header and
      * its outlet under a stub behind its last.
      */
-    private void airCooler() {
+    void airCooler() {
         var bank = shape.bank();
         int trains = bank.parallel(), rows = bank.series();
         double w = shape.diameter(), length = shape.tangentLength(), hb = shape.support(), h = header(length);
@@ -941,7 +884,7 @@ public final class ProcessUnit {
      * corner to the quarter of the circle between, at the ring's {@link #RING_SIDES} corners. Sheets are drawn on both
      * faces, so the casing also shows from inside a ring; looking up through a ring one sees the bundle's fins.
      */
-    private void plenum(double x0, double x1, double z0, double z1, double top, double bottom, double[] centres, double ring) {
+    void plenum(double x0, double x1, double z0, double z1, double top, double bottom, double[] centres, double ring) {
         for (int f = 0; f < centres.length; f++) {
             double za = f == 0 ? z0 : (centres[f - 1] + centres[f]) / 2, zb = f + 1 == centres.length ? z1 : (centres[f] + centres[f + 1]) / 2;
             // The ring part's top flange is a 24-gon at these angles (ac_parts.py, lathe n = 24): the hopper meets its corners.
@@ -960,7 +903,7 @@ public final class ProcessUnit {
      * multiple of 4, angle 0 towards +x, whose corners a fan ring's or a stack's prism about y shares). Drawn facing out, and also in where
      * {@code inside} (a plenum seen up through its fan ring).
      */
-    private void transition(double x0, double x1, double z0, double z1, double at, double cx, double cz, double radius, double to, int n, Material material, boolean inside) {
+    void transition(double x0, double x1, double z0, double z1, double at, double cx, double cz, double radius, double to, int n, Material material, boolean inside) {
         int quarter = n / 4;
         // The rectangle's corners in the circle's quadrants, counter-clockwise from +x +z.
         double[][] corners = {{x1, at, z1}, {x0, at, z1}, {x0, at, z0}, {x1, at, z0}};
@@ -977,7 +920,7 @@ public final class ProcessUnit {
     }
 
     /** One transition sheet, facing away from its {@code axis} point and, where {@code inside}, also towards it. */
-    private void sheet(List<double[]> triangle, double[] axis, Material material, boolean inside) {
+    void sheet(List<double[]> triangle, double[] axis, Material material, boolean inside) {
         mesh.add(triangle, axis, FLAT, material, null, null);
         if (!inside) return;
         var centroid = new double[3];
@@ -987,7 +930,7 @@ public final class ProcessUnit {
     }
 
     /** A crossover spool along z at (x, y) from a back header's face {@code z0} to the next front header's {@code z1}, flanged at both. */
-    private void spool(double x, double y, double z0, double z1, double od) {
+    void spool(double x, double y, double z0, double z1, double od) {
         var f = Frame.of(new double[]{x, y, 0}, 2, 1);
         int n = sides(od);
         double r = PipeSizes.flange(od) / 2;
@@ -1000,7 +943,7 @@ public final class ProcessUnit {
     }
 
     /** A manifold along x from {@code from} to {@code to} (capped half its size beyond each) at height {@code y}, station {@code z}. */
-    private void manifold(double from, double to, double y, double z, double od) {
+    void manifold(double from, double to, double y, double z, double od) {
         var f = Frame.of(new double[]{0, y, z}, 0, 1);
         mesh.cylinder(f, od / 2, from - od / 2, to + od / 2, sides(od), Material.PIPE);
         solids.add(Solid.rod(new double[]{0, y, z}, 0, from - od / 2, to + od / 2, od / 2, 0));
@@ -1016,7 +959,7 @@ public final class ProcessUnit {
      * piping, on one post in the cell behind it. Lengths in suction diameters: chest 0.8, chamber 1.5 (1.2 wide), inlet
      * 2.2, throat 0.8 (0.35 wide), diffuser 3.0 (to 0.75 wide).
      */
-    private void ejector() {
+    void ejector() {
         // Posts at ±e round the axis, their base plates outside the pipe blocks of the suction and the discharge (half a
         // block each side of the axis), and clear of the chamber; a small ejector's axis on its cell's centre.
         double s = shape.diameter(), e = Math.max(.5 + POST, .6 * s + .3), h = shape.support();
@@ -1104,7 +1047,7 @@ public final class ProcessUnit {
      * spools of the connected pipe. Sizes follow the discharge d: suction {@link #pumpSuction}, impeller 0.18 + 1.2 d, the
      * motor {@link #motorDiameter} of {@link #pumpPower} across.
      */
-    private void pump() {
+    void pump() {
         if (shape.diameter() > OH2_MAX + 1e-9) {
             splitPump();
             return;
@@ -1231,7 +1174,7 @@ public final class ProcessUnit {
      * on one baseplate, grout line and plinth. Sizes follow the discharge d: suction {@link #pumpSuction}, impeller
      * 0.35 + 0.8 d, the motor about 1.15 {@link #motorDiameter} of {@link #pumpPower} across.
      */
-    private void splitPump() {
+    void splitPump() {
         double d = shape.diameter(), s = pumpSuction(d), di = .35 + .8 * d;
         double rv = .9 * di, rc = .72 * di, wv = .5 * di, lc = 1.5 * di, split = .03 + .02 * di;
         double fs = 1.15 * PipeSizes.flange(s) / 2, ts = 1.3 * PipeSizes.flangeThickness(s), fd = 1.15 * PipeSizes.flange(d) / 2, td = 1.3 * PipeSizes.flangeThickness(d);
@@ -1334,7 +1277,7 @@ public final class ProcessUnit {
      * radius {@code rh} whose front is recessed to {@code zh}; its section a rectangle with chamfered outer corners. The
      * outer wall is lit as round, the rest flat; a chamfer, twisted between stations, is drawn as two triangles.
      */
-    private void scroll(double x, double y, double z0, double z1, double zh, double rh, double r0, double r1) {
+    void scroll(double x, double y, double z0, double z1, double zh, double rh, double r0, double r1) {
         int steps = 20;
         double t0 = .45, t1 = 2 * Math.PI - .1, c = .3 * (r0 - rh), zm = (z0 + z1) / 2;
         var round = new Radial(new double[]{x, y, 0}, new double[]{0, 0, 1});
@@ -1374,7 +1317,7 @@ public final class ProcessUnit {
      * {@code r1}: a cast shell 0.025 m thick, open in a window each side (frame ±x) over the middle 60 % of its length and
      * 100° of its round, drawn inside and out so the seal shows through.
      */
-    private void bracket(Frame f, double r0, double r1, double z0, double z1, int n) {
+    void bracket(Frame f, double r0, double r1, double z0, double z1, int n) {
         double t = .025, w0 = z0 + .2 * (z1 - z0), w1 = z0 + .8 * (z1 - z0), window = Math.toRadians(50);
         double[] stations = {z0, w0, w1, z1};
         for (int band = 0; band < 3; band++) {
@@ -1410,7 +1353,7 @@ public final class ProcessUnit {
     }
 
     /** The smaller angle between two directions, radians. */
-    private static double apart(double a, double b) {
+    static double apart(double a, double b) {
         double d = Math.abs(a - b) % (2 * Math.PI);
         return Math.min(d, 2 * Math.PI - d);
     }
@@ -1421,7 +1364,7 @@ public final class ProcessUnit {
      * drive end's bearing cap and shaft, its terminal box and lifting eyes on top, four feet on a pedestal down to the
      * baseplate at {@code top}.
      */
-    private void motor(Frame f, double x, double y, double r, double fin, double z0, double cowl, double z1, int n, double shaft, double top) {
+    void motor(Frame f, double x, double y, double r, double fin, double z0, double cowl, double z1, int n, double shaft, double top) {
         mesh.prism(f, r, z0, cowl, n, Material.MOTOR);
         mesh.annulus(f, 0, r, z0, n, -1, Material.MOTOR);
         mesh.cylinder(f, .35 * r, z0 - .04, z0, n, Material.MOTOR);
@@ -1457,7 +1400,7 @@ public final class ProcessUnit {
     }
 
     /** A line of radius {@code r} through {@code points}, a ball at each bend (a seal's flush tube, a heater's insulated crossover); legs of no length are skipped. */
-    private void line(double r, Material material, double[]... points) {
+    void line(double r, Material material, double[]... points) {
         int sides = r < .05 ? 6 : 12;
         for (int k = 0; k + 1 < points.length; k++) {
             var along = sub(points[k + 1], points[k]);
@@ -1471,7 +1414,7 @@ public final class ProcessUnit {
     }
 
     /** A prism along z from {@code z0} to {@code z1} whose section is the convex polygon {@code outline} of (x, y) points, both ends drawn. */
-    private void extrude(List<double[]> outline, double z0, double z1, Material material) {
+    void extrude(List<double[]> outline, double z0, double z1, Material material) {
         int m = outline.size();
         double cx = 0, cy = 0;
         for (var p : outline) {
@@ -1509,7 +1452,7 @@ public final class ProcessUnit {
      * outlet). The synchronous motor drives the crankshaft's back end through a guarded coupling ({@link #syncMotor}).
      * Sizes from {@link Compressor}.
      */
-    private void compressor() {
+    void compressor() {
         var c = Compressor.of(shape.diameter(), (int) shape.tangentLength());
         int throwCount = c.throwCount(), h = shape.support();
         double b = c.bore(), yc = h + c.crank(), ds = c.suction(), dd = c.discharge(), cyl = c.cylinder(), lc = c.cylinderLength(), gh = c.guide(), piece = c.piece();
@@ -1654,7 +1597,7 @@ public final class ProcessUnit {
      * of five cranks from {@code phase}, its oil deflector collar in the compartment by the guide; it reaches half a stroke
      * and 0.1 m into the guide and the cylinder, so its ends never show.
      */
-    private void distancePiece(double g, double p, int sx, double y, double z, double piece, int compartments, double bore, double stroke, double phase) {
+    void distancePiece(double g, double p, int sx, double y, double z, double piece, int compartments, double bore, double stroke, double phase) {
         double x0 = Math.min(g, p), x1 = Math.max(g, p), t = .03 + .02 * bore, length = (x1 - x0) / compartments, win = .55 * piece;
         solids.add(Solid.box(new double[]{x0, y - piece, z - piece}, new double[]{x1, y + piece, z + piece}));
         box(new double[]{x0, y + piece - t, z - piece}, new double[]{x1, y + piece, z + piece}, Material.MACHINE, false);
@@ -1690,7 +1633,7 @@ public final class ProcessUnit {
      * moving part turning at {@link #PUMP_SPEED} (owner answer 2026-10-18: the shaft and the motor's fan turn). A round
      * shaft turning shows nothing; its screws show it.
      */
-    private void shaft(Frame f, double shaft, double[][] spans, double... collars) {
+    void shaft(Frame f, double shaft, double[][] spans, double... collars) {
         mesh.part(motions.size());
         for (var s : spans) mesh.prism(f, shaft, s[0], s[1], 8, Material.PIPE);
         double rc = 1.7 * shaft + .01, w = .02 + shaft / 2;
@@ -1706,7 +1649,7 @@ public final class ProcessUnit {
     }
 
     /** The width of a {@link #shaft}'s seal collar, m. */
-    private static double collar(double shaft) {
+    static double collar(double shaft) {
         return .02 + shaft / 2;
     }
 
@@ -1716,7 +1659,7 @@ public final class ProcessUnit {
      * {@code speed} (a moving part; the motor's shaft drives it), and over them a grille of eight spokes, two rings and a
      * hub cap.
      */
-    private void grilledFan(Frame f, double r, double face, double depth, int n, double speed) {
+    void grilledFan(Frame f, double r, double face, double depth, int n, double speed) {
         mesh.bore(f, r, face - depth, face, n, Material.OPENING);
         mesh.annulus(f, 0, r, face - depth, n, 1, Material.OPENING);
         double hub = .2 * r, t = .01 + .01 * r, deep = face - depth + .01, shallow = face - 2 * t - .005, width = Math.min(.4 * r, 1.6 * (shallow - deep));
@@ -1741,7 +1684,7 @@ public final class ProcessUnit {
      * A process header of {@code od} through {@code points} (a bend at each), with a flange pair where it leaves the first
      * and enters the last; it collides as drawn.
      */
-    private void header(double od, double[]... points) {
+    void header(double od, double[]... points) {
         double r = od / 2;
         line(r, Material.PIPE, points);
         for (int k = 0; k + 1 < points.length; k++) {
@@ -1767,7 +1710,7 @@ public final class ProcessUnit {
      * at each of the {@code lines} along z, posts under them on base plates, their tops at {@code top}. A slow-speed machine
      * of the largest frames stands on a concrete block in real plants; steel here keeps to the other units' look.
      */
-    private void table(double a, double half, double z0, double z1, double top, List<Double> lines, double rail) {
+    void table(double a, double half, double z0, double z1, double top, List<Double> lines, double rail) {
         double beam = Math.min(rail, top), post = POST + .1, x0 = a - half + post / 2, x1 = a + half - post / 2;
         for (double x : new double[]{x0, x1}) {
             box(new double[]{x - FLANGE_BEAM, top - beam, z0}, new double[]{x + FLANGE_BEAM, top, z1}, Material.STEELWORK, true);
@@ -1789,7 +1732,7 @@ public final class ProcessUnit {
      * it, its rotor the flywheel (owner request 2026-10-17: a better motor than a box); a large pump's induction motor
      * ends at its fan cowl.
      */
-    private void largeMotor(double x, double y, double z0, double across, double length, double floor, boolean synchronous) {
+    void largeMotor(double x, double y, double z0, double across, double length, double floor, boolean synchronous) {
         double r = across / 2, z1 = z0 + length, corner = r * (Math.sqrt(2) - 1); // tan(pi/8): half a side of the octagon of apothem r
         var octagon = new ArrayList<double[]>();
         for (int k = 0; k < 8; k++) {
@@ -1857,12 +1800,12 @@ public final class ProcessUnit {
     }
 
     /** A square flange plate across a throw's line from {@code x0} to {@code x1}, {@code half} out from its axis at (y, z). */
-    private void plate(double x0, double x1, double y, double z, double half) {
+    void plate(double x0, double x1, double y, double z, double half) {
         box(new double[]{Math.min(x0, x1), y - half, z - half}, new double[]{Math.max(x0, x1), y + half, z + half}, Material.MACHINE, false);
     }
 
     /** A pulsation bottle lying along z at (x, y), its tangent lines at {@code lo} and {@code hi}, with 2:1 heads; it collides and encloses as drawn. */
-    private void bottle(double x, double y, double lo, double hi, double od, int n) {
+    void bottle(double x, double y, double lo, double hi, double od, int n) {
         double r = od / 2, depth = od / 4;
         mesh.prism(Frame.of(new double[]{x, y, 0}, 2, 1), r, lo, hi, n, Material.SHELL);
         mesh.head(Frame.of(new double[]{x, y, 0}, 2, 1), r, hi, depth, n, Material.HEAD);
@@ -1891,7 +1834,7 @@ public final class ProcessUnit {
      * out near its bottom (it flows down against the flue gas), the radiant coil in just under the roof and out just over
      * the floor (the crossover between them is the player's pipe), fuel gas to the burners' ring header.
      */
-    private void verticalHeater() {
+    void verticalHeater() {
         double dia = shape.diameter(), r = dia / 2, height = shape.tangentLength(), y0 = shape.support() - .3, y1 = shape.support() + height;
         int floor = shape.support();
         double hx = Math.min(2.25, Math.max(.75, .225 * dia)), hz = Math.min(.425 * dia, Math.sqrt(r * r - hx * hx) - .1), process = Math.min(.6, hx);
@@ -2007,7 +1950,7 @@ public final class ProcessUnit {
     }
 
     /** A vertical heater's caged ladder at angle {@code t} round its casing (the casing columns' face {@code wall} from its axis), bracketed to the leg and column behind it. */
-    private void verticalLadder(double a, double wall, double t, double base, double top, boolean walkThrough) {
+    void verticalLadder(double a, double wall, double t, double base, double top, boolean walkThrough) {
         double rung = wall + Access.STANDOFF;
         ladder(a + rung * DeterministicMath.cos(t), a + rung * DeterministicMath.sin(t), new double[]{DeterministicMath.cos(t), 0, DeterministicMath.sin(t)}, Access.STANDOFF + .12,
                 base, top, walkThrough);
@@ -2033,7 +1976,7 @@ public final class ProcessUnit {
      * header box (+x, seen from the constructor) near its top and out of the right one just over the floor (the crossover between the coils is the
      * player's pipe), fuel gas to the burner rows' headers.
      */
-    private void cabinHeater() {
+    void cabinHeater() {
         double w = shape.diameter(), total = shape.tangentLength(), y0 = shape.support() - .3, y1 = shape.support() + cabinWall(w);
         int floor = shape.support(), cells = cabinCells(total);
         double length = total / cells, wc = Math.min(4, Math.max(1.5, .4 * w)), yr = y1 + .6 * (w - wc) / 2, walk = 1.2, process = Math.min(.6, wc / 2);
@@ -2211,7 +2154,7 @@ public final class ProcessUnit {
     static final double HEADER_BOX = .6;
 
     /** A flanged joint between two stack sections at height {@code y}: two flanges 0.05 m deep either side of a 0.02 m split. */
-    private void stackJoint(Frame up, double r, double y, int n) {
+    void stackJoint(Frame up, double r, double y, int n) {
         for (double lo : new double[]{y, y + .07}) {
             mesh.prism(up, r + .05, lo, lo + .05, n, Material.HEATER);
             mesh.annulus(up, r, r + .05, lo, n, -1, Material.HEATER);
@@ -2220,14 +2163,14 @@ public final class ProcessUnit {
     }
 
     /** A girth band round a vertical heater's casing or its stack (radius {@code r}, {@code n} sides about frame {@code up}) at height {@code y}. */
-    private void band(Frame up, double r, double y, int n) {
+    void band(Frame up, double r, double y, int n) {
         mesh.prism(up, r + .05, y, y + .12, n, Material.HEATER);
         mesh.annulus(up, r, r + .05, y, n, -1, Material.HEATER);
         mesh.annulus(up, r, r + .05, y + .12, n, 1, Material.HEATER);
     }
 
     /** X-bracing between two legs at (x, z) from {@code low} to {@code high}: angles 0.15 m across. */
-    private void brace(double[] p, double[] q, double low, double high) {
+    void brace(double[] p, double[] q, double low, double high) {
         mesh.bar(new double[]{p[0], low, p[1]}, new double[]{q[0], high, q[1]}, .15, new double[]{0, 1, 0}, Material.STEELWORK);
         mesh.bar(new double[]{p[0], high, p[1]}, new double[]{q[0], low, q[1]}, .15, new double[]{0, 1, 0}, Material.STEELWORK);
     }
@@ -2258,7 +2201,7 @@ public final class ProcessUnit {
      * A heater's leg at (x, z): an H-section in a square concrete casing {@code cased} across (its faces square to
      * {@code web}, horizontal) from its pedestal 0.3 m over grade up to the floor at {@code top}.
      */
-    private void leg(double x, double z, double top, double cased, double[] web) {
+    void leg(double x, double z, double top, double cased, double[] web) {
         double[] flange = {-web[2], 0, web[0]};
         double half = cased / 2, pad = half + .1;
         mesh.block(new double[]{x, .15, z}, scale(web, pad), new double[]{0, .15, 0}, scale(flange, pad), Material.CONCRETE);
@@ -2268,7 +2211,7 @@ public final class ProcessUnit {
     }
 
     /** A girder from leg p to leg q, {x, z} each, from {@code low} to {@code high}, between the legs' casings ({@code depth} across). */
-    private void girder(double[] p, double[] q, double low, double high, double depth) {
+    void girder(double[] p, double[] q, double low, double high, double depth) {
         double dx = q[0] - p[0], dz = q[1] - p[1], length = Math.sqrt(dx * dx + dz * dz);
         double[] along = {dx / length, 0, dz / length}, across = {-along[2], 0, along[0]};
         mesh.block(new double[]{(p[0] + q[0]) / 2, (low + high) / 2, (p[1] + q[1]) / 2}, scale(along, length / 2 - depth / 2), new double[]{0, (high - low) / 2, 0},
@@ -2276,7 +2219,7 @@ public final class ProcessUnit {
     }
 
     /** Knee braces from the casings ({@code depth} across) of legs p and q ({x, z}) up to the girder's underside at {@code low}, a third of the bay or 0.8 m along it. */
-    private void knees(double[] p, double[] q, double low, double depth) {
+    void knees(double[] p, double[] q, double low, double depth) {
         double dx = q[0] - p[0], dz = q[1] - p[1], length = Math.sqrt(dx * dx + dz * dz), reach = Math.min(.8, length / 3) + depth / 2;
         double ux = dx / length, uz = dz / length;
         for (int end = 0; end < 2; end++) {
@@ -2287,18 +2230,18 @@ public final class ProcessUnit {
     }
 
     /** A nozzle out of a box's front face (frame -z) at (x, y), its neck starting at z: its flange face on the next block face {@link EquipmentShape#STAND_OUT} beyond. */
-    private static Nozzle front(Role role, double x, double y, double z, double maxOd, double defaultOd) {
+    static Nozzle front(Role role, double x, double y, double z, double maxOd, double defaultOd) {
         return new Nozzle(role, new double[]{x, y, z}, 2, -1, z - Math.floor(z - .03 - EquipmentShape.STAND_OUT), maxOd, defaultOd, 0, .03);
     }
 
     /** A door on a round casing (axis at (x, z), radius {@code r}) at angle {@code t}, centred at height {@code y}: {@code across} and {@code up} its half sizes. */
-    private void door(double x, double z, double r, double t, double y, double across, double up) {
+    void door(double x, double z, double r, double t, double y, double across, double up) {
         double[] radial = {DeterministicMath.cos(t), 0, DeterministicMath.sin(t)}, tangent = {-radial[2], 0, radial[0]};
         mesh.block(new double[]{x + (r + .04) * radial[0], y, z + (r + .04) * radial[2]}, scale(radial, .04), new double[]{0, up, 0}, scale(tangent, across), Material.MACHINE);
     }
 
     /** A door on a flat side wall at x {@code wall} facing {@code side} (±1 along x), centred at z and height {@code y}. */
-    private void door(double wall, double z, int side, double y, double across, double up) {
+    void door(double wall, double z, int side, double y, double across, double up) {
         double outer = wall + side * .08;
         box(new double[]{Math.min(wall, outer), y - up, z - across}, new double[]{Math.max(wall, outer), y + up, z + across}, Material.MACHINE, false);
     }
@@ -2308,7 +2251,7 @@ public final class ProcessUnit {
      * across, its louvre band and lever) under the floor, the muffler drum (1.3 times as wide, open underneath) under it,
      * and the gas riser from the fuel header at {@code yFuel} up through the muffler.
      */
-    private void burners(double[][] at, double register, double y0, double yFuel, double pipe) {
+    void burners(double[][] at, double register, double y0, double yFuel, double pipe) {
         double muffler = 1.3 * register, low = y0 - 1.05;
         for (var p : at) {
             var up = Frame.of(new double[]{p[0], 0, p[1]}, 1, 1);
@@ -2331,7 +2274,7 @@ public final class ProcessUnit {
      * on one and carrying the breeching on another, with corner columns (owner request 2026-10-18, photo survey). Its tubes
      * stay clean on fuel gas: no soot blowers (owner decision 2026-10-18; they were red gearboxes every metre up its side).
      */
-    private void convection(double x0, double x1, double z0, double z1, double bottom, double top) {
+    void convection(double x0, double x1, double z0, double z1, double bottom, double top) {
         mesh.box(new double[]{x0, bottom, z0}, new double[]{x1, top, z1}, ALL_FACES & ~4, Material.HEATER);
         solids.add(Solid.box(new double[]{x0, bottom, z0}, new double[]{x1, top, z1}));
         volumes.add(Solid.box(new double[]{x0 + .05, bottom, z0 + .05}, new double[]{x1 - .05, top - .05, z1 - .05}));
@@ -2377,7 +2320,7 @@ public final class ProcessUnit {
      * apart, each 0.07 m deep; nuts on the upper frame every {@link #BOLT_PITCH}. An edge's bar reaches past an outer
      * corner and stops short of an inner one, so the bars meet without overlapping.
      */
-    private void joint(double[][] outline, double y, boolean pair) {
+    void joint(double[][] outline, double y, boolean pair) {
         int n = outline.length;
         double area = 0;
         for (int i = 0; i < n; i++) area += outline[i][0] * outline[(i + 1) % n][1] - outline[(i + 1) % n][0] * outline[i][1];
@@ -2409,7 +2352,7 @@ public final class ProcessUnit {
      * flange bars 0.12 m proud and 0.09 m wide either side of a 0.02 m split, nuts every {@link #BOLT_PITCH} on the outer
      * face of each ({@code bolts}).
      */
-    private void seam(double[] p, double[] q, double[] out, boolean bolts) {
+    void seam(double[] p, double[] q, double[] out, boolean bolts) {
         var along = sub(q, p);
         double length = Math.sqrt(dot(along, along));
         var u = scale(along, 1 / length);
@@ -2431,7 +2374,7 @@ public final class ProcessUnit {
      * of them side by side along frame axis {@code split} (the other in-face axis is their height), 0.02 m proud, 0.04 m
      * apart and 0.06 m in from the box's edges, each with a lifting handle.
      */
-    private void panels(double[] lo, double[] hi, int axis, int sign, int split, int count) {
+    void panels(double[] lo, double[] hi, int axis, int sign, int split, int count) {
         int other = 3 - axis - split;
         double face = sign > 0 ? hi[axis] : lo[axis], from = lo[split] + .06, to = hi[split] - .06, size = (to - from - .04 * (count - 1)) / count;
         for (int k = 0; k < count; k++) {
@@ -2459,7 +2402,7 @@ public final class ProcessUnit {
      * joint between its sections every 8 m ({@link #stackJoint}), a band under its top, open at the top, a lightning rod on
      * its rim.
      */
-    private void stack(double x, double z, double x0, double x1, double z0, double z1, double base, double od, double roof) {
+    void stack(double x, double z, double x0, double x1, double z0, double z1, double base, double od, double roof) {
         double r = od / 2, neck = base + Math.max(.8, .8 * (Math.max(x1 - x0, z1 - z0) / 2 - r)), top = Math.min(neck + 30, Math.max(neck + 6, 2 * roof));
         int n = Math.max(12, 4 * (int) Math.ceil(.75 * Math.PI * od));
         transition(x0, x1, z0, z1, base, x, z, r, neck, n, Material.HEATER, false);
@@ -2482,7 +2425,7 @@ public final class ProcessUnit {
     // ---- Parts ------------------------------------------------------------------------------------------------------
 
     /** The middle of a box whose width is the least odd whole number of cells holding {@code half} each side: the centre line runs through cell centres. */
-    private static double centre(double half) {
+    static double centre(double half) {
         int width = (int) Math.ceil(2 * half - 1e-9);
         if (width % 2 == 0) width++;
         return width / 2.0;
@@ -2493,14 +2436,14 @@ public final class ProcessUnit {
      * {@code n} vertices) at station {@code z}: its neck starts under the surface at its largest size's edge, its flange
      * face on the next block face {@link EquipmentShape#STAND_OUT} beyond.
      */
-    private static Nozzle radial(Role role, double x, double y, double r, int n, double z, int sign, double maxOd, double defaultOd) {
+    static Nozzle radial(Role role, double x, double y, double r, int n, double z, int sign, double maxOd, double defaultOd) {
         double apothem = r * DeterministicMath.cos(Math.PI / n), start = Math.sqrt(Math.max(0, apothem * apothem - maxOd * maxOd / 4)) - .03;
         double surface = y + sign * r, plane = sign > 0 ? Math.ceil(surface + EquipmentShape.STAND_OUT) : Math.floor(surface - EquipmentShape.STAND_OUT);
         return new Nozzle(role, new double[]{x, y + sign * start, z}, 1, sign, Math.abs(plane - (y + sign * start)), maxOd, defaultOd, 0, r - start);
     }
 
     /** A nozzle on the front (frame -z) of a standing body (its axis at (x, z), radius {@code r}) at height {@code y}. */
-    private static Nozzle radialSide(Role role, double x, double y, double z, double r, int n, double maxOd, double defaultOd) {
+    static Nozzle radialSide(Role role, double x, double y, double z, double r, int n, double maxOd, double defaultOd) {
         double apothem = r * DeterministicMath.cos(Math.PI / n), start = Math.sqrt(Math.max(0, apothem * apothem - maxOd * maxOd / 4)) - .03;
         double plane = Math.floor(z - r - EquipmentShape.STAND_OUT);
         return new Nozzle(role, new double[]{x, y, z - start}, 2, -1, z - start - plane, maxOd, defaultOd, 0, r - start);
@@ -2511,7 +2454,7 @@ public final class ProcessUnit {
      * standing in the pipe block under a downward nozzle at any of {@code under}: half a block each side of the nozzle's
      * centre line and 0.05 m. {@code want} when no such place is on the shell.
      */
-    private static double saddleAt(double want, double w, double lo, double hi, double... under) {
+    static double saddleAt(double want, double w, double lo, double hi, double... under) {
         double best = want, gap = Double.MAX_VALUE, keep = .55 + w / 2;
         var candidates = new ArrayList<Double>(List.of(want));
         for (double z : under) {
@@ -2530,29 +2473,29 @@ public final class ProcessUnit {
         return best;
     }
 
-    private static double saddleWidth(double r) {
+    static double saddleWidth(double r) {
         return Math.max(.15, Math.min(.3, .12 * r + .1));
     }
 
     /** A saddle at station {@code z} under a body lying along z at (x, y) of radius {@code r}: a plate from the ground and its base plate. */
-    private void saddle(double z, double x, double y, double r, double w) {
+    void saddle(double z, double x, double y, double r, double w) {
         double across = .8 * r;
         box(new double[]{x - across, 0, z - w / 2}, new double[]{x + across, y - .6 * r, z + w / 2}, Material.SUPPORT, true);
         box(new double[]{x - across - .05, 0, z - w / 2 - .05}, new double[]{x + across + .05, .04, z + w / 2 + .05}, Material.SUPPORT, false);
     }
 
     /** A round body lying along z at (x, y) from {@code lo} to {@code hi}: its rims are fixed edges, its sides outlined against the eye. */
-    private void round(double x, double y, double lo, double hi, double r) {
+    void round(double x, double y, double lo, double hi, double r) {
         round(x, y, lo, hi, r, 2);
     }
 
     /** A round body along frame axis {@code axis} through the point (x, y, z) less that axis, from {@code lo} to {@code hi}. */
-    private void round(double x, double y, double lo, double hi, double r, int axis) {
+    void round(double x, double y, double lo, double hi, double r, int axis) {
         round(axis == 2 ? new double[]{x, y, 0} : new double[]{x, 0, y}, axis, lo, hi, r);
     }
 
     /** A round body along frame axis {@code axis} through {@code centre} (its {@code axis} coordinate unused), from {@code lo} to {@code hi}. */
-    private void round(double[] centre, int axis, double lo, double hi, double r) {
+    void round(double[] centre, int axis, double lo, double hi, double r) {
         rounds.add(new double[]{centre[0], centre[1], centre[2], axis, r, lo, hi});
         int u = (axis + 1) % 3, v = (axis + 2) % 3, steps = 24;
         for (double at : new double[]{lo, hi})
@@ -2574,7 +2517,7 @@ public final class ProcessUnit {
      * {@link Access#DECK} over {@code level}, and its handrail ({@link #rails}), open over the {@code gaps} where a ladder
      * is walked through. A player walks the deck; its outer edge is outlined.
      */
-    private void platform(Access.Run run, double level, double width, boolean closedStart, boolean closedEnd, double... gaps) {
+    void platform(Access.Run run, double level, double width, boolean closedStart, boolean closedEnd, double... gaps) {
         Access.deck(mesh, run, level, width);
         decks.add(new Deck(run, level, width, closedStart, closedEnd));
         double deck = level + Access.DECK, length = run.length();
@@ -2586,16 +2529,17 @@ public final class ProcessUnit {
     }
 
     /** A handrail alone {@code width} out from the wall along {@code run}, standing {@link Access#DECK} over {@code level} (a roof's edge): open at both ends. */
-    private void railing(Access.Run run, double level, double width) {
+    void railing(Access.Run run, double level, double width) {
         rails(run, level, width, false, false);
     }
 
     /**
      * A deck's handrail along {@code run} but over the {@code gaps} (pairs of stations along it), each piece's posts at its
-     * ends, a rail across each closed end of the run; a player meets the rails and closed ends as fences {@link Access#FENCE}
-     * high and {@link Access#RAIL_BAND} thick.
+     * ends, a rail across each closed end of the run, also where a gap begins at that end (a stair landing beside a
+     * walkway's end: in-game check 2026-10-18, the condensing turbine's walkway end was open over a 6 m drop); a player
+     * meets the rails and closed ends as fences {@link Access#FENCE} high and {@link Access#RAIL_BAND} thick.
      */
-    private void rails(Access.Run run, double level, double width, boolean closedStart, boolean closedEnd, double... gaps) {
+    void rails(Access.Run run, double level, double width, boolean closedStart, boolean closedEnd, double... gaps) {
         double deck = level + Access.DECK, fence = deck + Access.FENCE, length = run.length();
         var pieces = new ArrayList<double[]>();
         double from = 0;
@@ -2604,13 +2548,18 @@ public final class ProcessUnit {
             from = Math.max(from, gaps[g + 1]);
         }
         if (length > from + .05) pieces.add(new double[]{from, length});
+        boolean startDrawn = false, endDrawn = false;
         for (int i = 0; i < pieces.size(); i++) {
             var piece = Access.part(run, pieces.get(i)[0], pieces.get(i)[1]);
             boolean start = closedStart && pieces.get(i)[0] == 0, end = closedEnd && pieces.get(i)[1] == length;
+            startDrawn |= start;
+            endDrawn |= end;
             Access.handrail(mesh, piece, level, width, start, end);
             if (piece instanceof Access.Arc arc) solids.add(Solid.ring(arc.cx(), arc.cz(), deck, fence, arc.wall() + width - Access.RAIL_BAND, arc.wall() + width, arc.from(), arc.to()));
             else solids.add(span(piece.at(0, width - Access.RAIL_BAND, deck), piece.at(piece.length(), width, fence)));
         }
+        if (closedStart && !startDrawn) Access.endRail(mesh, run, 0, level, width);
+        if (closedEnd && !endDrawn) Access.endRail(mesh, run, length, level, width);
         if (run instanceof Access.Arc arc) {
             // Inside the deck's last band, as on a straight run: the band is RAIL_BAND long at its inner edge.
             double wall = arc.wall(), band = Access.RAIL_BAND / (wall + Access.GAP);
@@ -2627,28 +2576,70 @@ public final class ProcessUnit {
      * {@code back} behind it, from {@code base} to {@code top}; one {@code walkThrough} is climbed facing the deck it
      * lands on and left between its rails, so its rung plane stops at the landing.
      */
-    private void ladder(double x, double z, double[] out, double back, double base, double top, boolean walkThrough) {
+    void ladder(double x, double z, double[] out, double back, double base, double top, boolean walkThrough) {
         var climb = new Access.Climb(x, z, out[0], out[2], base, top, walkThrough ? top - Access.LANDING : top);
         Access.ladder(mesh, climb, back);
         ladders.add(climb);
     }
 
+    /**
+     * A straight stair flight ({@link Stair}) from walking level {@code base} at its foot's centre (x, z) up to {@code top},
+     * rising along frame axis {@code axis} (0 or 2) in direction {@code sign}, {@code width} across its stringers: grating
+     * treads {@link #STAIR_GOING} deep, rises of at most {@link #STAIR_RISE}, on two channel stringers, a handrail and mid
+     * rail each side 0.9 m over the nosings (OSHA 1910.29). Its last tread is level with {@code top}, where a deck or
+     * landing goes on beyond the flight. A player steps up the treads between the side fences. Returns the flight's length.
+     */
+    double stair(double x, double z, int axis, int sign, double width, double base, double top) {
+        int steps = (int) Math.ceil((top - base) / STAIR_RISE - 1e-9);
+        var f = new Stair(x, z, axis, sign, width, base, top, steps);
+        stairs.add(f);
+        double rise = f.rise(), half = width / 2, length = f.length();
+        for (int k = 1; k <= steps; k++) {
+            double s0 = (k - 1) * STAIR_GOING, s1 = k * STAIR_GOING, y = base + k * rise;
+            double[] p = f.at(s0, -half + .06, y - .04), q = f.at(s1, half - .06, y);
+            mesh.box(new double[]{Math.min(p[0], q[0]), p[1], Math.min(p[2], q[2])}, new double[]{Math.max(p[0], q[0]), q[1], Math.max(p[2], q[2])}, ALL_FACES, Material.GRATING);
+            // The tread's step is filled down to the one below, so the game's collision (1/8-block voxels) steps a player up it.
+            solids.add(span(f.at(s0, -half, y - rise), f.at(s1, half, y)));
+            for (int side = -1; side <= 1; side += 2)
+                solids.add(span(f.at(s0, side * half, y), f.at(s1, side * (half - Access.RAIL_BAND), y + Access.FENCE)));
+        }
+        double[] up = {0, 1, 0}, rising = axis == 0 ? new double[]{sign, 0, 0} : new double[]{0, 0, sign};
+        for (int side = -1; side <= 1; side += 2) {
+            // The stringer, its ends cut short of the foot's level and of the landing's deck.
+            double[] a = f.at(0, side * (half - .03), base + .1), b = f.at(length, side * (half - .03), top - .1);
+            double dx = b[0] - a[0], dy = b[1] - a[1], dz = b[2] - a[2], l = Math.sqrt(dx * dx + dy * dy + dz * dz), h = Math.sqrt(dx * dx + dz * dz);
+            double[] centre = {(a[0] + b[0]) / 2, (a[1] + b[1]) / 2, (a[2] + b[2]) / 2}, along = {dx / 2, dy / 2, dz / 2};
+            double[] depth = {-dx / h * dy / l * .1, h / l * .1, -dz / h * dy / l * .1}, across = f.at(0, side * .03, 0);
+            mesh.block(centre, along, depth, new double[]{across[0] - x, 0, across[2] - z}, Material.STEELWORK);
+            // Handrail and mid rail from over the first nosing to over the landing's edge, posts at both ends and 1.8 m apart.
+            double r = side * (half - .03);
+            for (double over : new double[]{.9, .45})
+                mesh.bar(f.at(0, r, base + rise + over), f.at(length, r, top + over), Access.BAR, up, NO_ENDS, Material.HANDRAIL);
+            for (double s : Access.posts(length)) {
+                double nosing = base + rise + (top - base - rise) * s / length;
+                mesh.bar(f.at(s, r, nosing - .04), f.at(s, r, nosing + .9 + Access.BAR / 2), Access.BAR, rising, NO_ENDS, Material.HANDRAIL);
+            }
+            segment(f.at(0, side * half, base + rise), f.at(length, side * half, top));
+        }
+        return length;
+    }
+
     /** The axis-aligned box spanned by two corners in any order, a solid. */
-    private static Solid span(double[] p, double[] q) {
+    static Solid span(double[] p, double[] q) {
         return Solid.box(new double[]{Math.min(p[0], q[0]), Math.min(p[1], q[1]), Math.min(p[2], q[2])}, new double[]{Math.max(p[0], q[0]), Math.max(p[1], q[1]), Math.max(p[2], q[2])});
     }
 
     /** An axis-aligned box, every face drawn; {@code solid} for one a player collides with. */
-    private void box(double[] lo, double[] hi, Material material, boolean solid) {
+    void box(double[] lo, double[] hi, Material material, boolean solid) {
         mesh.box(lo, hi, ALL_FACES, material);
         if (solid) solids.add(Solid.box(lo.clone(), hi.clone()));
     }
 
-    private void segment(double[] p, double[] q) {
+    void segment(double[] p, double[] q) {
         edges.add(new double[]{p[0], p[1], p[2], q[0], q[1], q[2]});
     }
 
-    private static int sides(double od) {
+    static int sides(double od) {
         return Math.max(12, PipeSizes.sides(od));
     }
 }

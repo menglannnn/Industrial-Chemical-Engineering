@@ -252,9 +252,10 @@ public final class EquipmentStructure {
      * its lower head. The front (north, east, south, west; north by default) is where a standing drum's liquid outlet and a
      * lying drum's front head face; {@code boot} hangs a water boot under a lying drum's far end. {@code /createcheme equipment column <bottom centre> <diameter m> <trays> <skirt m>
      * [front]} places a column fed at its middle tray, its piping side to the front. {@code /createcheme equipment unit
-     * <bottom centre> exchanger|kettle|air_cooler|ejector|pump|compressor|vertical_heater|cabin_heater <size m> <length m>
-     * <support m> [front]} places a unit (an air cooler's size and length are a bay's, an ejector's and a pump's length 1, a
-     * compressor's its throws, a pump's support 0), its channel, suction or process nozzles to the front.
+     * <bottom centre> <kind> <size m> <length> <support m> [front]} places a unit of any unit kind, by its lower-case name.
+     * The kind's design gives the meaning and ranges of the size, the second size (a length, a height or a count: an air
+     * cooler's size and length are a bay's, a compressor's its throws, 1 where the kind has none) and the support (0 where
+     * the unit stands at grade); its channel, suction, feed or process nozzles face the front.
      */
     @SubscribeEvent
     public static void registerCommands(RegisterCommandsEvent event) {

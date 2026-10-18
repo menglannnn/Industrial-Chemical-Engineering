@@ -88,7 +88,10 @@ public record EquipmentShape(Kind kind, double diameter, double tangentLength, O
     public static final double HEAD_AREA_FACTOR = Math.PI * (.25 + DeterministicMath.log(7 + 4 * Math.sqrt(3)) / (16 * Math.sqrt(3)));
 
     public enum Kind {
-        DRUM, COLUMN, EXCHANGER, KETTLE, AIR_COOLER, EJECTOR, PUMP, COMPRESSOR, VERTICAL_HEATER, CABIN_HEATER;
+        DRUM, COLUMN, EXCHANGER, KETTLE, AIR_COOLER, EJECTOR, PUMP, COMPRESSOR, VERTICAL_HEATER, CABIN_HEATER,
+        // New units (owner request 2026-10-18, NEW_UNITS_PLAN.md).
+        STIRRED_REACTOR, ADSORBER, TRICKLE_BED_REACTOR, EBULLATED_BED_REACTOR, CENTRIFUGAL_COMPRESSOR, STEAM_TURBINE, CONDENSING_TURBINE, CYCLONE,
+        FCC_CONVERTER, DELAYED_COKER, FLUIDIZED_BED_BOILER, FLUIDIZED_BED_GASIFIER, GRATE_BOILER, FIXED_BED_GASIFIER;
 
         /** A standalone unit, built from its parts ({@link ProcessUnit}); a drum and a column are vessels of revolution. */
         public boolean unit() {
@@ -148,7 +151,14 @@ public record EquipmentShape(Kind kind, double diameter, double tangentLength, O
         DRAW(PortClass.BULK), PUMPAROUND_DRAW(PortClass.BULK), RETURN(PortClass.BULK), STEAM(PortClass.BULK), BOTTOMS(PortClass.LIQUID),
         VAPOUR_RETURN(PortClass.BULK), TUBE_INLET(PortClass.BULK), TUBE_OUTLET(PortClass.BULK), SHELL_INLET(PortClass.BULK), SHELL_OUTLET(PortClass.BULK),
         PROCESS_INLET(PortClass.BULK), PROCESS_OUTLET(PortClass.BULK), SUCTION(PortClass.BULK), MOTIVE(PortClass.BULK), DISCHARGE(PortClass.BULK), FUEL(PortClass.BULK),
-        CONVECTION_INLET(PortClass.BULK), CONVECTION_OUTLET(PortClass.BULK), RADIANT_INLET(PortClass.BULK), RADIANT_OUTLET(PortClass.BULK);
+        CONVECTION_INLET(PortClass.BULK), CONVECTION_OUTLET(PortClass.BULK), RADIANT_INLET(PortClass.BULK), RADIANT_OUTLET(PortClass.BULK),
+        // The new units' roles (2026-10-18, NEW_UNITS_PLAN.md): bottom outlets draw the dense phase (liquid, solids) first, top
+        // outlets and vents the vapour.
+        PRODUCT(PortClass.BULK), NITROGEN(PortClass.BULK), COOLANT_INLET(PortClass.BULK), COOLANT_OUTLET(PortClass.BULK), REGENERATION_INLET(PortClass.BULK),
+        REGENERATION_OUTLET(PortClass.BULK), HYDROGEN(PortClass.BULK), EFFLUENT(PortClass.BULK), QUENCH(PortClass.BULK), CATALYST_INLET(PortClass.BULK), AIR(PortClass.BULK),
+        OXIDANT(PortClass.BULK), WATER(PortClass.BULK), CUTTING_WATER(PortClass.BULK), BLOWDOWN(PortClass.BULK), SOLIDS_INLET(PortClass.BULK), FEEDWATER(PortClass.BULK),
+        VENT(PortClass.VAPOUR), EXHAUST(PortClass.VAPOUR), FLUE_GAS(PortClass.VAPOUR), RELIEF(PortClass.VAPOUR), SYNGAS(PortClass.VAPOUR),
+        DRAIN(PortClass.LIQUID), CONDENSATE(PortClass.LIQUID), CATALYST_OUTLET(PortClass.LIQUID), SOLIDS_OUTLET(PortClass.LIQUID);
 
         public final PortClass port;
 

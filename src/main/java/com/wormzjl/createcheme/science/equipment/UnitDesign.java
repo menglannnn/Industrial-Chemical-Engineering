@@ -1,0 +1,167 @@
+package com.wormzjl.createcheme.science.equipment;
+
+import com.wormzjl.createcheme.science.equipment.EquipmentShape.Kind;
+import com.wormzjl.createcheme.science.equipment.EquipmentShape.Orientation;
+
+import java.util.EnumMap;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+
+/**
+ * One kind of standalone unit (owner request 2026-10-18: eleven new units, built in parallel; batch
+ * 2026-10-15-custom-equipment-rendering): its sizes, the constructor's rows, the datasheet's lines and its parts. Each
+ * kind's design is its own file; {@link ProcessUnit} keeps the shared drawing kit (parts, solids, nozzles, decks,
+ * ladders, moving parts) and the static sizes the game calls, which ask the kind's design.
+ *
+ * <p>The sizes a player sets are the shape's {@code diameter} (the unit's main size, on {@link #sizeStep()}),
+ * {@code tangentLength} (a second whole number: a length, a height or a count; 1 where the kind has none) and
+ * {@code support} (a height under the unit, m). A design draws its unit in the frame described in {@link ProcessUnit}.
+ */
+public abstract class UnitDesign {
+    /** A screen line: its translation key (under the screen's own prefix) and its formatted arguments. */
+    public record Line(String key, Object... args) {
+    }
+
+    // ---- Sizes ------------------------------------------------------------------------------------------------------
+
+    public abstract double minSize();
+
+    public abstract double maxSize();
+
+    public abstract double sizeStep();
+
+    /** The least second size (length, height or count) at main size {@code size}; 1 where the kind has none. */
+    public int minLength(double size) {
+        return 1;
+    }
+
+    public int maxLength(double size) {
+        return 1;
+    }
+
+    /** A new unit's second size at main size {@code size}: the least by default (a set of adsorbers starts at two beds). */
+    public int defaultLength(double size) {
+        return minLength(size);
+    }
+
+    /** The second size's step (a balanced-opposed compressor's throws come in pairs). */
+    public int lengthStep() {
+        return 1;
+    }
+
+    public abstract int minSupport(double size, int length);
+
+    public int maxSupport() {
+        return EquipmentShape.MAX_SUPPORT;
+    }
+
+    /** A new unit's support, m: the least by default. */
+    public int defaultSupport(double size, int length) {
+        return minSupport(size, length);
+    }
+
+    public abstract Orientation orientation();
+
+    /** Whether the kind is built in banks of bays ({@link ProcessUnit.Bank}): only air coolers. */
+    public boolean banks() {
+        return false;
+    }
+
+    /** Checks beyond the ranges and the grid; throws {@link IllegalArgumentException} with the reason. */
+    void check(double size, int length, int support, ProcessUnit.Bank bank) {
+    }
+
+    /** Whether units of the kind have moving parts: their datasheet carries the switch. */
+    public boolean moves() {
+        return false;
+    }
+
+    // ---- Constructor and datasheet ----------------------------------------------------------------------------------
+
+    /** The constructor's row for the main size (its translation key under the constructor's prefix). */
+    public abstract String sizeRow();
+
+    /** The constructor's row for the second size, or {@code null} where the kind has none. */
+    public String lengthRow() {
+        return null;
+    }
+
+    /** Whether the second size is shown in metres (a length or a height) rather than as a count. */
+    public boolean lengthInMetres() {
+        return true;
+    }
+
+    /** The constructor's row for the support, or {@code null} where it is fixed ({@link #maxSupport()} 0). */
+    public abstract String supportRow();
+
+    /** The constructor's middle line: what the unit holds or does. */
+    public abstract Line held(EquipmentShape shape);
+
+    /** The vessel screen's kind line's key suffix after {@code kind.<kind>} (a pump above {@link ProcessUnit#OH2_MAX} is split). */
+    public String variant(EquipmentShape shape) {
+        return "";
+    }
+
+    /** The vessel screen's lines between the kind and the overall length. */
+    public abstract List<Line> datasheet(EquipmentShape shape);
+
+    // ---- Parts ------------------------------------------------------------------------------------------------------
+
+    /** Draws the unit's parts, solids, nozzles, decks, ladders and moving parts into {@code unit}. */
+    abstract void build(ProcessUnit unit);
+
+    // ---- Kinds ------------------------------------------------------------------------------------------------------
+
+    private static final Map<Kind, UnitDesign> DESIGNS = new EnumMap<>(Kind.class);
+
+    static {
+        DESIGNS.put(Kind.EXCHANGER, new ExchangerDesign());
+        DESIGNS.put(Kind.KETTLE, new KettleDesign());
+        DESIGNS.put(Kind.AIR_COOLER, new AirCoolerDesign());
+        DESIGNS.put(Kind.EJECTOR, new EjectorDesign());
+        DESIGNS.put(Kind.PUMP, new PumpDesign());
+        DESIGNS.put(Kind.COMPRESSOR, new CompressorDesign());
+        DESIGNS.put(Kind.VERTICAL_HEATER, new VerticalHeaterDesign());
+        DESIGNS.put(Kind.CABIN_HEATER, new CabinHeaterDesign());
+        DESIGNS.put(Kind.STIRRED_REACTOR, new StirredReactorDesign());
+        DESIGNS.put(Kind.ADSORBER, new AdsorberDesign());
+        DESIGNS.put(Kind.TRICKLE_BED_REACTOR, new TrickleBedReactorDesign());
+        DESIGNS.put(Kind.EBULLATED_BED_REACTOR, new EbullatedBedReactorDesign());
+        DESIGNS.put(Kind.CENTRIFUGAL_COMPRESSOR, new CentrifugalCompressorDesign());
+        DESIGNS.put(Kind.STEAM_TURBINE, new SteamTurbineDesign());
+        DESIGNS.put(Kind.CONDENSING_TURBINE, new CondensingTurbineDesign());
+        DESIGNS.put(Kind.CYCLONE, new CycloneDesign());
+        DESIGNS.put(Kind.FCC_CONVERTER, new FccConverterDesign());
+        DESIGNS.put(Kind.DELAYED_COKER, new DelayedCokerDesign());
+        DESIGNS.put(Kind.FLUIDIZED_BED_BOILER, new FluidizedBedBoilerDesign());
+        DESIGNS.put(Kind.FLUIDIZED_BED_GASIFIER, new FluidizedBedGasifierDesign());
+        DESIGNS.put(Kind.GRATE_BOILER, new GrateBoilerDesign());
+        DESIGNS.put(Kind.FIXED_BED_GASIFIER, new FixedBedGasifierDesign());
+    }
+
+    /** The design of unit kind {@code kind}. */
+    public static UnitDesign of(Kind kind) {
+        var design = DESIGNS.get(kind);
+        if (design == null) throw new IllegalArgumentException(kind + " is not a unit");
+        return design;
+    }
+
+    // ---- Formats ----------------------------------------------------------------------------------------------------
+
+    /** One decimal. */
+    public static String number(double value) {
+        return String.format(Locale.ROOT, "%.1f", value);
+    }
+
+    /** A large quantity in whole units, thousands separated (30,401). */
+    public static String whole(double value) {
+        return String.format(Locale.ROOT, "%,d", Math.round(value));
+    }
+
+    /** A size on a 0.25 m or 0.1 m grid: one decimal where it has one, two where it has two (0.75). */
+    public static String size(double value) {
+        double tenths = value * 10;
+        return Math.abs(tenths - Math.rint(tenths)) < 1e-6 ? number(value) : String.format(Locale.ROOT, "%.2f", value);
+    }
+}

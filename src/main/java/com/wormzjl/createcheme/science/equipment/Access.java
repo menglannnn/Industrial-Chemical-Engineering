@@ -162,12 +162,19 @@ final class Access {
             for (int j = 0; j <= segments; j++) points.add(run.at(length * j / segments, r, base + h));
             m.rail(points, BAR, UP, NO_ENDS, Material.HANDRAIL);
         }
-        for (int e = 0; e < 2; e++) {
-            if (!(e == 0 ? closedStart : closedEnd)) continue;
-            double s = e == 0 ? 0 : length;
-            m.bar(run.at(s, inner, base), run.at(s, inner, base + RAIL + BAR / 2), BAR, run.out(s), NO_ENDS, Material.HANDRAIL);
-            for (double h : new double[]{RAIL, MID_RAIL}) m.bar(run.at(s, inner, base + h), run.at(s, r, base + h), BAR, UP, NO_ENDS, Material.HANDRAIL);
-        }
+        if (closedStart) endRail(m, run, 0, level, width);
+        if (closedEnd) endRail(m, run, length, level, width);
+    }
+
+    /**
+     * The rail across a deck's closed end at station {@code s} of its run: a post by the wall and the handrail and mid
+     * rail out to the side rail's line. Drawn with the side rail's piece that reaches the end, or alone where a landing's
+     * opening in the side rail starts at the end (a stair landing beside a walkway's end).
+     */
+    static void endRail(Mesh m, Run run, double s, double level, double width) {
+        double base = level + DECK, r = width - .03, inner = .12;
+        m.bar(run.at(s, inner, base), run.at(s, inner, base + RAIL + BAR / 2), BAR, run.out(s), NO_ENDS, Material.HANDRAIL);
+        for (double h : new double[]{RAIL, MID_RAIL}) m.bar(run.at(s, inner, base + h), run.at(s, r, base + h), BAR, UP, NO_ENDS, Material.HANDRAIL);
     }
 
     /** Post stations along a run: both ends and every {@link #POSTS} or less between. */
