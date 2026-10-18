@@ -115,5 +115,7 @@ class CrystalFlushBudgetTest {
     }
     /** The refresh form's checkpoints, 5,799, 31,158 and 52,881 when re-measured (M3), with half again as headroom: the
      * per-substep form's cost is ten to two hundred times these. */
-    private static final long BOUND_1 = 9_000, BOUND_2 = 47_000, BOUND_3 = 80_000;
+    // BOUND_1 9000 -> 10000 (owner decision of 2026-10-18 on the t38 plan): with the velocity cap in every line's law the row
+    // E flush costs 9381 checkpoints in interval 1 (7992 before).
+    private static final long BOUND_1 = 10_000, BOUND_2 = 47_000, BOUND_3 = 80_000;
 }
