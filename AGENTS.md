@@ -7,6 +7,7 @@ Standing rules from the project owner. They apply to every agent working in this
 - No compatibility work at the current development stage. A breaking change to a save format, checkpoint, wire protocol or material data set is tested on a fresh world.
 - Never test against an old world, never write a migration, absent-field normalisation, or legacy-save test gate for such a change.
 - New formats must still validate what they read and round-trip clocks, material, pending events and any optimisation state they carry.
+- Exception (owner request 2026-10-18: "Add a compatibility system so when loading an old save updated model is replaced by new ones"): a placed equipment structure whose cells an older layout of its shape placed is rebuilt to the current layout after it loads (`EquipmentRefresh`, `EquipmentStructure.refreshLater`, gated by `EquipmentRefreshTest`). It keeps its origin, paint, nozzle sizes and a drum's registration, and never overwrites another block. The exception covers equipment layouts only; every other format above stays without compatibility work.
 
 ## Player-facing updates (recorded 2026-09-23; amended 2026-09-24)
 

@@ -252,6 +252,34 @@ public final class ShapeRasterizer {
         return out;
     }
 
+    /**
+     * The stamp of the shape's layout (owner request 2026-10-18: a placed vessel follows its kind's current drawing):
+     * a 64-bit FNV-1a hash of its box, its shell and interior cells and its ports, never 0. A shell cell keeps the stamp
+     * it was placed with; another one on load means the vessel's cells in the world no longer match the layout the code
+     * draws ({@link EquipmentRefresh}). The drawing of a cell needs no stamp: it follows the code at every load.
+     */
+    public static long stamp(EquipmentShape shape) {
+        var g = geometry(shape);
+        long stamp = g.stamp;
+        if (stamp != 0) return stamp;
+        long h = 0xcbf29ce484222325L;
+        h = mix(mix(mix(h, shape.sizeX()), shape.sizeY()), shape.sizeZ());
+        for (var cells : List.of(g.layout.shell(), g.layout.interior())) {
+            for (var cell : cells) h = mix(mix(mix(h, cell.x()), cell.y()), cell.z());
+            h = mix(h, -1);
+        }
+        for (var port : g.ports)
+            h = mix(mix(mix(mix(mix(mix(mix(mix(h, port.cell().x()), port.cell().y()), port.cell().z()), port.dx()), port.dy()), port.dz()), port.port().ordinal()), port.nozzle());
+        g.stamp = stamp = h == 0 ? 1 : h;
+        return stamp;
+    }
+
+    /** One FNV-1a step over the four bytes of {@code v}. */
+    private static long mix(long h, int v) {
+        for (int i = 0; i < 4; i++) h = (h ^ (v >>> 8 * i & 0xff)) * 0x100000001b3L;
+        return h;
+    }
+
     /** The nozzles as fluid ports, in the order of {@link EquipmentShape#nozzles()}. */
     public static List<Port> ports(EquipmentShape shape) {
         return geometry(shape).ports;
@@ -384,6 +412,8 @@ public final class ShapeRasterizer {
         private final List<Port> ports = new ArrayList<>();
         private final Layout layout;
         private final Cell fluidCell;
+        /** The layout's {@link #stamp}, 0 until first asked. */
+        private volatile long stamp;
 
         Geometry(EquipmentShape shape) {
             this.shape = shape;

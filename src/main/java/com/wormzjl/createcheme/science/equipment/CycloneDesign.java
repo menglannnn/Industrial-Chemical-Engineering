@@ -18,7 +18,8 @@ import static com.wormzjl.createcheme.science.equipment.Mesh.scale;
  * section 2): one to four Stairmand high-efficiency cyclones of body diameter D, 0.3 to 2 m (the gas outlet, half of it,
  * stays within the 1 m pipe), in a row D + 1.5 m apart (to the next metre) on common headers. Stairmand's proportions over
  * D [Leith &amp; Mehta; Koch &amp; Licht 1977]: a tangential inlet 0.5 high and 0.2 wide, its top flush with the roof and
- * its outer wall tangent to the shell, fed by a duct of 1 D and a round-to-rectangle transition of 0.7 D; a gas outlet of
+ * its outer wall tangent to the shell, fed by a duct of 1 D and a round-to-rectangle transition of 0.7 D (one cyclone's
+ * eccentric, its round end on the feed nozzle's cell centre, its walls within 30° of the axis); a gas outlet of
  * 0.5 rising at least 0.4 D over the roof into a 90° elbow (one cyclone) or the outlet header over the row; a cylinder of
  * 1.5 on a flanged joint over a cone of 2.5 (longer than the cylinder: the signature) down to a dust outlet of 0.375 on a
  * short spool whose flange stands {@code support} up (the spool, 0.05 to 1 m, sets the inlet's centre on a cell centre).
@@ -216,6 +217,10 @@ final class CycloneDesign extends UnitDesign {
         int n = ProcessUnit.sides(d), nd = ProcessUnit.sides(dust), no = ProcessUnit.sides(OUTLET * d);
         double rf = .18 * d, feedOd = Math.min(PipeSizes.MAX_OUTSIDE, 2 * rf * Math.sqrt(count)), outOd = Math.min(PipeSizes.MAX_OUTSIDE, OUTLET * d * Math.sqrt(count));
         double zDuct = az - .3 * d - DUCT * d, zT = zDuct - TRANSITION * d;
+        // One cyclone's transition is eccentric: its round end on the nearest cell centre (the feed nozzle's), at least √3
+        // times that offset long so its walls stay within 30° of the axis, as a fabricated offset transition's do.
+        double xt0 = x0 + r - INLET_WIDTH * d / 2, xf = Math.floor(xt0) + .5;
+        double zEnd = count == 1 ? zDuct - Math.max(TRANSITION * d, Math.sqrt(3) * Math.abs(xf - xt0)) : zT;
         double xLast = x0 + (count - 1) * pitch;
         for (int k = 0; k < count; k++) {
             double x = x0 + k * pitch;
@@ -249,9 +254,9 @@ final class CycloneDesign extends UnitDesign {
             // The tangential inlet: its duct (outer wall tangent at +x, top just under the roof, its back hidden in the
             // shell, its front in the transition) and the round-to-rectangle transition in front of it, along -z.
             u.box(new double[]{x + r - INLET_WIDTH * d, yRoof - INLET_HEIGHT * d, zDuct}, new double[]{x + r, yRoof - .01, az}, ALL_FACES & ~(16 | 32), Material.SHELL, true);
-            double xt = x + r - INLET_WIDTH * d / 2;
-            u.transition(2, x + r - INLET_WIDTH * d, x + r, yRoof - INLET_HEIGHT * d, yRoof - .01, zDuct, xt, yFeed, rf, zT, ProcessUnit.sides(2 * rf), Material.SHELL, false);
-            u.solids.add(Solid.box(new double[]{xt - rf, yFeed - INLET_HEIGHT * d / 2, zT}, new double[]{xt + rf, yFeed + INLET_HEIGHT * d / 2, zDuct}));
+            double xt = x + r - INLET_WIDTH * d / 2, xc = count == 1 ? xf : xt;
+            u.transition(2, x + r - INLET_WIDTH * d, x + r, yRoof - INLET_HEIGHT * d, yRoof - .01, zDuct, xc, yFeed, rf, zEnd, ProcessUnit.sides(2 * rf), Material.SHELL, false);
+            u.solids.add(Solid.box(new double[]{Math.min(xt, xc) - rf, yFeed - INLET_HEIGHT * d / 2, zEnd}, new double[]{Math.max(xt, xc) + rf, yFeed + INLET_HEIGHT * d / 2, zDuct}));
             // A bolted hatch on the cylinder's back right, a second at its front right from 1 m (between the lugs); the
             // roof's explosion vent from 0.8 m.
             u.door(x, az, r, .75 * Math.PI, yJoint + .55 * CYLINDER * d, .08 + .06 * d, .1 + .08 * d);
@@ -308,19 +313,10 @@ final class CycloneDesign extends UnitDesign {
         for (int j = 1; j < count; j++) columns[j] = x0 + (j - .5) * pitch;
         double endLow = count > 1 ? s - leg - 1.2 * lock + .15 : .3;
         structure(u, columns, x0, pitch, count, az, e, b, ps, bd, bw, yBeam, deck ? yRoof : yBeam, endLow, .06 + .04 * d);
-        // The gas in: one cyclone's transition turns into the nozzle on the nearest cell centre; several cyclones' run
-        // straight into the inlet manifold in front, the nozzle on its front near the middle.
-        double xt0 = x0 + r - INLET_WIDTH * d / 2;
-        if (count == 1) {
-            double xf = Math.floor(xt0) + .5, zf = zT;
-            if (Math.abs(xf - xt0) > .02) {
-                double run = Math.max(.25, 1.5 * Math.abs(xf - xt0));
-                zf = zT - .2 - run;
-                u.line(rf, Material.PIPE, new double[]{xt0, yFeed, zT + .01}, new double[]{xt0, yFeed, zT - .1}, new double[]{xf, yFeed, zT - .1 - run}, new double[]{xf, yFeed, zf});
-                u.solids.add(ProcessUnit.span(new double[]{Math.min(xt0, xf) - rf, yFeed - rf, zf}, new double[]{Math.max(xt0, xf) + rf, yFeed + rf, zT}));
-            }
-            u.nozzles.add(ProcessUnit.front(Role.FEED, xf, yFeed, zf + .02, feedOd, feedOd));
-        } else {
+        // The gas in: one cyclone's nozzle at its transition's round end; several cyclones' run straight into the inlet
+        // manifold in front, the nozzle on its front near the middle.
+        if (count == 1) u.nozzles.add(ProcessUnit.front(Role.FEED, xf, yFeed, zEnd + .02, feedOd, feedOd));
+        else {
             double rm = rf * Math.sqrt(count), zm = zT - .3 - rm, xa = xt0, xb = xt0 + (count - 1) * pitch;
             int nm = ProcessUnit.sides(2 * rm);
             for (int k = 0; k < count; k++) u.mesh.prism(Frame.of(new double[]{xt0 + k * pitch, yFeed, 0}, 2, 1), rf, zm, zT + .01, ProcessUnit.sides(2 * rf), Material.PIPE);

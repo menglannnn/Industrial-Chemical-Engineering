@@ -6,6 +6,7 @@ import com.wormzjl.createcheme.runtime.fluid.FluidView;
 import com.wormzjl.createcheme.runtime.fluid.FluidWorldAuthority;
 import com.wormzjl.createcheme.runtime.fluid.PhysicalFluidTopology;
 import com.wormzjl.createcheme.world.inventory.FluidDeviceMenu;
+import com.wormzjl.createcheme.world.level.block.EquipmentStructure;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
@@ -50,6 +51,8 @@ import java.util.WeakHashMap;
 public final class EquipmentShellBlockEntity extends BlockEntity implements FluidView.Receiver {
     /** Model data read by the shell model while the chunk is meshed. */
     public static final ModelProperty<ShapeRasterizer.CellKey> CELL = new ModelProperty<>();
+    /** A saved cell or box beyond this many cells along any side is corrupt (the largest unit is under 100). */
+    private static final int MAX_CELL = 512;
     private @Nullable EquipmentShape shape;
     private int cellX, cellY, cellZ;
     private long nozzles;
@@ -58,6 +61,12 @@ public final class EquipmentShellBlockEntity extends BlockEntity implements Flui
     private @Nullable ShapeRasterizer.CellKey key;
     /** The drum's fluid identity, on its node cell only (0 elsewhere and while unregistered). */
     private long identity;
+    /**
+     * The layout this cell was placed by: its {@link ShapeRasterizer#stamp} and its box (0 for a cell saved before the
+     * stamp existed). Another stamp on load sends the vessel to {@link EquipmentStructure#refreshLater}.
+     */
+    private long stamp;
+    private int[] box = new int[3];
     private @Nullable FluidView lastView;
     /**
      * Client: the cells holding a moving part's pivot, whose parts the client moves (owner requests 2026-10-16 and
@@ -132,6 +141,7 @@ public final class EquipmentShellBlockEntity extends BlockEntity implements Flui
         super.onLoad();
         if (level != null && level.isClientSide) trackMoving();
         if (!(level instanceof ServerLevel serverLevel) || shape == null) return;
+        if (stale()) EquipmentStructure.refreshLater(serverLevel, origin(), shape, box, worldPosition);
         var here = fluidPosition();
         FluidWorldAuthority.find(serverLevel.getServer()).ifPresent(world -> world.at(here)
                 .filter(record -> record.device().position().equals(here) && !record.device().ports().isEmpty())
@@ -189,16 +199,38 @@ public final class EquipmentShellBlockEntity extends BlockEntity implements Flui
     public void bind(EquipmentShape shape, ShapeRasterizer.Cell cell, Paint paint) {
         assign(shape, cell, 0);
         this.paint = paint;
+        stamp = ShapeRasterizer.stamp(shape);
+        box = new int[]{shape.sizeX(), shape.sizeY(), shape.sizeZ()};
         setChanged();
     }
 
+    /** A cell inside the vessel's box takes its key; one a smaller layout left outside draws nothing until its vessel is refreshed. */
     private void assign(EquipmentShape shape, ShapeRasterizer.Cell cell, long nozzles) {
         this.shape = shape;
         cellX = cell.x();
         cellY = cell.y();
         cellZ = cell.z();
         this.nozzles = nozzles;
-        key = ShapeRasterizer.key(shape, cellX, cellY, cellZ, nozzles);
+        boolean inside = cellX < shape.sizeX() && cellY < shape.sizeY() && cellZ < shape.sizeZ();
+        key = inside ? ShapeRasterizer.key(shape, cellX, cellY, cellZ, nozzles) : null;
+    }
+
+    /** Whether this cell was placed by another layout than the one the code draws for its shape (server, after load). */
+    public boolean stale() {
+        return shape != null && (key == null || stamp != ShapeRasterizer.stamp(shape));
+    }
+
+    /** The box of the layout this cell was placed by (zeros when it was saved before the stamp existed). */
+    public int[] placedBox() {
+        return box.clone();
+    }
+
+    /** Server: a refreshed drum's node moved elsewhere; this cell no longer stands for its fluid identity. */
+    public void releaseIdentity() {
+        if (identity == 0) return;
+        released();
+        identity = 0;
+        setChanged();
     }
 
     public @Nullable EquipmentShape shape() {
@@ -263,17 +295,25 @@ public final class EquipmentShellBlockEntity extends BlockEntity implements Flui
         shape = null;
         key = null;
         paint = Paint.DEFAULT;
+        stamp = 0;
+        box = new int[3];
         identity = tag.getLong("FluidIdentity");
         lastView = null;
         if (!tag.contains("Diameter")) return;
         try {
             var read = readShape(tag);
-            int[] cell = tag.getIntArray("Cell");
-            if (cell.length != 3 || cell[0] < 0 || cell[0] >= read.sizeX() || cell[1] < 0 || cell[1] >= read.sizeY() || cell[2] < 0 || cell[2] >= read.sizeZ())
-                throw new IllegalArgumentException("Cell outside the vessel");
+            // A cell outside the box of the current layout stays bound until its vessel is refreshed (it was placed by
+            // a larger one); the box it was placed by, when saved, bounds it.
+            int[] cell = tag.getIntArray("Cell"), placed = tag.contains("Box") ? tag.getIntArray("Box") : new int[3];
+            if (cell.length != 3 || cell[0] < 0 || cell[1] < 0 || cell[2] < 0 || cell[0] >= MAX_CELL || cell[1] >= MAX_CELL || cell[2] >= MAX_CELL)
+                throw new IllegalArgumentException("Cell outside any vessel");
+            if (placed.length != 3 || placed[0] < 0 || placed[1] < 0 || placed[2] < 0 || placed[0] > MAX_CELL || placed[1] > MAX_CELL || placed[2] > MAX_CELL)
+                throw new IllegalArgumentException("Invalid placed box");
             var painted = Paint.decode(tag.getIntArray("Paint"));
             assign(read, new ShapeRasterizer.Cell(cell[0], cell[1], cell[2]), tag.getLong("Nozzles"));
             paint = painted;
+            stamp = tag.getLong("Layout");
+            box = placed;
         } catch (IllegalArgumentException invalid) {
             CreateChemE.LOGGER.warn("Equipment shell at {} has invalid data and stays unbound: {}", worldPosition, invalid.getMessage());
         }
@@ -285,6 +325,8 @@ public final class EquipmentShellBlockEntity extends BlockEntity implements Flui
         tag.putIntArray("Cell", new int[]{cellX, cellY, cellZ});
         tag.putLong("Nozzles", nozzles);
         tag.putIntArray("Paint", paint.encode());
+        tag.putLong("Layout", stamp);
+        tag.putIntArray("Box", box);
     }
 
     /**
