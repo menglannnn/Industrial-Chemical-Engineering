@@ -113,7 +113,7 @@ class G5F6ConsistencyTest {
             for (double p : new double[] {1.0e5, 3.0e5, 1.0e6, 2.0e6, 5.0e6, 1.0e7}) {
                 for (double[] f : feeds) {
                     double[] feed = z(f[0], f[1], f[2], f[3]);
-                    var fluidOnly = SERVICE.tpCrystalsHeldOut(EquilibriumRequest.tp(t, p, BASIS, feed, PhaseCompetition.FLUID_AND_CRYSTALS), ws);
+                    var fluidOnly = SERVICE.tp(EquilibriumRequest.tp(t, p, BASIS, feed, PhaseCompetition.FLUID_ONLY), ws);
                     if (fluidOnly.converged() || !fluidOnly.detail().contains(EquilibriumResult.UNSTABLE_PRODUCT)) continue;
                     threeFluid++;
                     var r = SERVICE.tp(EquilibriumRequest.tp(t, p, BASIS, feed, PhaseCompetition.FLUID_AND_CRYSTALS), ws);

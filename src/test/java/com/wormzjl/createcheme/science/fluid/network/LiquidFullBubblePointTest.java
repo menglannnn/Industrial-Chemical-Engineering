@@ -92,23 +92,4 @@ class LiquidFullBubblePointTest {
     @Test void aLiquidFullMethaneVesselWithDissolvedCo2CrossesItsBubblePointUnderTheCrystalCompetition() {
         crossBubblePoint("CH4 + 0.5 % CO2",new double[]{0,.995,0,.005,0},172,6);
     }
-
-    /** The engine's held-out UV (P6) is the fluid answer of the crystal competition's material, labelled fluid-only; refused otherwise. */
-    @Test void theHeldOutUvIsTheFluidAnswerOfTheCrystalCompetitionsMaterial() {
-        var engine=FluidTpEquilibrium.forPackage(CATALOG,PILOT);var basis=engine.contract().components();
-        double[] z={0,.995,0,.005,0};
-        var tp=engine.tp(EquilibriumRequest.tp(166,1.9e6,basis,z,PhaseCompetition.FLUID_AND_CRYSTALS),engine.newWorkspace());
-        assertTrue(tp.converged(),tp.toString());
-        var uv=engine.uvCrystalsHeldOut(EquilibriumRequest.uv(tp.internalEnergy(),tp.volume(),basis,z,PhaseCompetition.FLUID_AND_CRYSTALS),engine.newWorkspace());
-        assertTrue(uv.converged(),uv.toString());
-        assertEquals(PhaseCompetition.FLUID_ONLY,uv.competition());assertTrue(uv.detail().contains("held out"),uv.detail());
-        assertEquals(166,uv.phases().getFirst().temperature(),1e-6);assertEquals(1.9e6,uv.phases().getFirst().pressure(),1e-6*1.9e6);
-        assertThrows(IllegalArgumentException.class,()->engine.uvCrystalsHeldOut(EquilibriumRequest.uv(tp.internalEnergy(),tp.volume(),basis,z,PhaseCompetition.FLUID_ONLY),engine.newWorkspace()));
-        // The fluid-only request answers CO2 below its triple point the same (owner rule of 2026-10-16: a freezing point is
-        // never a validity bound); the held-out answer differs only by its label.
-        var fluidOnly=engine.uv(EquilibriumRequest.uv(tp.internalEnergy(),tp.volume(),basis,z,PhaseCompetition.FLUID_ONLY),engine.newWorkspace());
-        assertTrue(fluidOnly.converged(),fluidOnly.toString());
-        assertEquals(uv.phases().getFirst().temperature(),fluidOnly.phases().getFirst().temperature(),1e-9*166);
-        assertEquals(uv.phases().getFirst().pressure(),fluidOnly.phases().getFirst().pressure(),1e-9*1.9e6);
-    }
 }

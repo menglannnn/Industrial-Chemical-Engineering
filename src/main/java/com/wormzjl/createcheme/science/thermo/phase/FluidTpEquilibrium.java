@@ -914,64 +914,6 @@ public final class FluidTpEquilibrium {
     }
 
     /**
-     * The fluid phases of a crystal competition's material with its crystals held out: the fluid answer of the whole feed
-     * at the request's (T, P), no crystal taking part, labelled {@link PhaseCompetition#FLUID_ONLY} ("solid phases not
-     * assessed") with the held-out competition in its detail. For a consumer whose crystal inventory is frozen over a
-     * step and equilibrated between steps (the fluid network's operator split): the regime of its mobile fluid inside
-     * the step. A request that is not a crystal competition is refused ({@code IllegalArgumentException}).
-     */
-    public EquilibriumResult tpCrystalsHeldOut(EquilibriumRequest request, Workspace workspace) {
-        Workspace w = own(workspace);
-        requireSpecification(request, Specification.TP);
-        if (!request.competition().crystalsCompete()) throw new IllegalArgumentException("Crystals are held out of a crystal competition only");
-        EquilibriumResult refused = contractChecks(request, w);
-        if (refused != null) return refused;
-        double t = request.temperature();
-        double p = request.pressure();
-        PhaseCompetition competition = w.competition;
-        refused = implementationChecks(Specification.TP, competition, w);
-        if (refused != null) return refused;
-        refused = outsideBox(Specification.TP, t, p, competition);
-        if (refused != null) return refused;
-        EquilibriumResult fluid = fluidAnswer(t, p, competition, w);
-        String note = "the crystals of " + competition + " held out (not an equilibrium with them)";
-        if (!fluid.converged()) {
-            return new EquilibriumResult(fluid.specification(), fluid.status(), fluid.reason(), fluid.detail() + "; " + note,
-                    fluid.identity(), PhaseCompetition.FLUID_ONLY, Classification.NONE, List.of(), List.of(),
-                    new EquilibriumResult.Coverage(fluid.coverage().grade(), fluid.coverage().evidence() + "; " + note), fluid.diagnostics());
-        }
-        return graded(new EquilibriumResult(fluid.specification(), fluid.status(), null, fluid.detail() + "; " + note, fluid.identity(),
-                PhaseCompetition.FLUID_ONLY, fluid.classification(), fluid.phases(), fluid.coexisting(), fluid.coverage(), fluid.diagnostics(),
-                fluid.freeWater()), null, w);
-    }
-
-    /**
-     * The UV answer of a crystal competition's material with its crystals held out: {@link #uv} over the fluid answers of
-     * {@link #tpCrystalsHeldOut}, labelled {@link PhaseCompetition#FLUID_ONLY} with the held-out competition in its
-     * detail (the split of a vessel's own fluid at its own energy and volume). A request that is not a crystal
-     * competition is refused ({@code IllegalArgumentException}).
-     */
-    public EquilibriumResult uvCrystalsHeldOut(EquilibriumRequest request, Workspace workspace) {
-        Workspace w = own(workspace);
-        requireSpecification(request, Specification.UV);
-        if (!request.competition().crystalsCompete()) throw new IllegalArgumentException("Crystals are held out of a crystal competition only");
-        EquilibriumResult refused = contractChecks(request, w);
-        if (refused != null) return refused;
-        PhaseCompetition competition = w.competition;
-        refused = implementationChecks(Specification.UV, competition, w);
-        if (refused != null) return refused;
-        // Held out: every TP answer of the search is the fluid answer, no crystal taking part.
-        w.activeCount = 0;
-        searchWindow(w);
-        EquilibriumResult answer = solveUv(request.internalEnergy(), request.volume(), Double.NaN, Double.NaN, competition, w);
-        String note = "the crystals of " + competition + " held out (not an equilibrium with them)";
-        return graded(new EquilibriumResult(answer.specification(), answer.status(), answer.reason(), answer.detail() + "; " + note,
-                answer.identity(), PhaseCompetition.FLUID_ONLY, answer.classification(), answer.phases(),
-                answer.coexisting(), new EquilibriumResult.Coverage(answer.coverage().grade(), answer.coverage().evidence() + "; " + note),
-                answer.diagnostics(), answer.freeWater()), null, w);
-    }
-
-    /**
      * PH: the temperature at the request's pressure whose TP equilibrium has the request's enthalpy (J, over all phases),
      * by the bracketed search of the class comment: Newton with the phase's {@code c_p} for one dry phase, secant
      * otherwise, bisection whenever a step leaves the bracket or the residual stops halving; a step of {@code H(T)} the
