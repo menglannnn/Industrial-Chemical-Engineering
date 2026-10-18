@@ -8,7 +8,6 @@ import com.wormzjl.createcheme.science.material.MaterialCatalog;
 import com.wormzjl.createcheme.science.thermo.phase.DepositionOnset;
 import com.wormzjl.createcheme.science.thermo.phase.EquilibriumRequest;
 import com.wormzjl.createcheme.science.thermo.phase.EquilibriumResult;
-import com.wormzjl.createcheme.science.thermo.phase.EquilibriumService;
 import com.wormzjl.createcheme.science.thermo.phase.FluidTpEquilibrium;
 import com.wormzjl.createcheme.science.thermo.phase.PhaseCompetition;
 import java.io.BufferedReader;
@@ -146,7 +145,7 @@ class G4F1CarbonDioxideFrostPointHoldoutTest {
 
     static double[] feed(double[] z) { return new double[] {z[0], z[1], z[2], z[3], 0.0}; }
 
-    static Map<String, Score> score(List<Point> points, EquilibriumService.Workspace ws, boolean print) {
+    static Map<String, Score> score(List<Point> points, FluidTpEquilibrium.Workspace ws, boolean print) {
         Map<String, Score> scores = new LinkedHashMap<>();
         for (Point point : points) {
             String group = point.dataset() + " set " + point.set();

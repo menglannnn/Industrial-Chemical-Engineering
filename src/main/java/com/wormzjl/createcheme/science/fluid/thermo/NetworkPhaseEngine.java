@@ -99,7 +99,7 @@ final class NetworkPhaseEngine {
      * package's crystals competing where {@code crystals} (as for {@link #tp}) and the free water's ice by water's own rule
      * (WP4): the crystal test of a taut vessel's refresh ({@code InventoryEquilibrium}, D23), D21's near-pure step included.
      * Warm-started at {@code (hintT, hintP)} when both are finite
-     * ({@link FluidTpEquilibrium#uv(EquilibriumRequest, com.wormzjl.createcheme.science.thermo.phase.EquilibriumService.Workspace, double, double)}).
+     * ({@link FluidTpEquilibrium#uv(EquilibriumRequest, com.wormzjl.createcheme.science.thermo.phase.FluidTpEquilibrium.Workspace, double, double)}).
      */
     EquilibriumResult crystalUv(double u,double v,double[] overall,boolean crystals,double hintT,double hintP) {
         var request=EquilibriumRequest.uv(u,v,species,overall,crystals?PhaseCompetition.FLUID_AND_CRYSTALS:PhaseCompetition.FLUID_ONLY);

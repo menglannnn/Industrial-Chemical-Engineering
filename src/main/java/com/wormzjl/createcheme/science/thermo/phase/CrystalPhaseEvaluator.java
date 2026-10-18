@@ -6,7 +6,7 @@ import com.wormzjl.createcheme.science.material.MaterialCatalog;
 import com.wormzjl.createcheme.science.thermo.IdealGasFunction;
 import com.wormzjl.createcheme.science.thermo.PengRobinsonKernel;
 import com.wormzjl.createcheme.science.thermo.PengRobinsonKernel.Root;
-import com.wormzjl.createcheme.science.thermo.phase.PhaseEvaluator.Capability;
+import com.wormzjl.createcheme.science.thermo.phase.PhaseDerivatives.Capability;
 import java.util.Collections;
 import java.util.EnumSet;
 import java.util.Objects;
@@ -17,7 +17,7 @@ import java.util.Set;
  * record's model ({@link CrystalReference}, for CO2 the Gibbs function of Jaeger and Span 2012) anchored at the triple
  * point to the fluid family's pure liquid.
  *
- * <p>Anchoring. {@link #anchor(PhaseEvaluator)} evaluates the fluid family's pure liquid of the species at the record's
+ * <p>Anchoring. {@link #anchor(CubicPhaseEvaluator)} evaluates the fluid family's pure liquid of the species at the record's
  * triple point (T_t, P_t) and returns its chemical potential mu_L and enthalpy h_L. The crystal then satisfies
  * g_s(T_t, P_t) = mu_L and s_s(T_t, P_t) = (h_L - mu_L)/T_t - dH_fus/T_t (Jaeger and Span's equations 19 and 20, with the
  * record's fusion enthalpy); for a Gibbs-function record these two linear conditions fix its integration constants g0
@@ -91,7 +91,7 @@ public final class CrystalPhaseEvaluator implements SolidPhaseEvaluator {
      * The anchor of this crystal on a fluid family: the family's pure liquid of {@link #component()} at the record's
      * triple point. The family must carry the component and have a liquid root there distinct from its vapour root.
      */
-    public TriplePointAnchor anchor(PhaseEvaluator fluid) {
+    public TriplePointAnchor anchor(CubicPhaseEvaluator fluid) {
         int index = fluid.components().indexOf(component());
         if (index < 0) throw new IllegalArgumentException("Fluid family " + fluid.family() + " does not carry " + component());
         double[] amounts = new double[fluid.componentCount()];

@@ -1,6 +1,5 @@
 package com.wormzjl.createcheme.science.thermo.phase;
 
-import com.wormzjl.createcheme.science.thermo.phase.PhaseEvaluator.Capability;
 import java.util.EnumSet;
 import java.util.Objects;
 import java.util.Set;
@@ -18,6 +17,18 @@ import java.util.Set;
  * {@code dh/dP} of the molar quantities at constant composition.</p>
  */
 public final class PhaseDerivatives {
+    /** Derivative blocks a family may provide. */
+    public enum Capability {
+        /** {@code d ln phi_i / d n_j}. */
+        FUGACITY_COMPOSITION_DERIVATIVES,
+        /** {@code d ln phi_i / dT} and {@code d ln phi_i / dP}. */
+        FUGACITY_STATE_DERIVATIVES,
+        /** {@code dv/dT} and {@code dv/dP}. */
+        VOLUMETRIC_DERIVATIVES,
+        /** {@code dh/dT} ({@code c_p}) and {@code dh/dP}. */
+        CALORIC_DERIVATIVES
+    }
+
     private final PhaseState state;
     private final double[][] logFugacityComposition;
     private final double[] logFugacityTemperature;

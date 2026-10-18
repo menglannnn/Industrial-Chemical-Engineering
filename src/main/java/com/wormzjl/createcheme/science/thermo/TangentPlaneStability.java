@@ -658,7 +658,7 @@ public final class TangentPlaneStability {
     }
 
     /** In-place lower Cholesky factor of the leading {@code m x m} block; false unless positive definite. */
-    private static boolean cholesky(double[] a, int m) {
+    public static boolean cholesky(double[] a, int m) {
         for (int j = 0; j < m; j++) {
             double pivot = a[j * m + j];
             for (int k = 0; k < j; k++) pivot -= a[j * m + k] * a[j * m + k];
@@ -674,7 +674,7 @@ public final class TangentPlaneStability {
         return true;
     }
 
-    private static void solveCholesky(double[] factor, int m, double[] rhs) {
+    public static void solveCholesky(double[] factor, int m, double[] rhs) {
         for (int i = 0; i < m; i++) {
             double value = rhs[i];
             for (int k = 0; k < i; k++) value -= factor[i * m + k] * rhs[k];

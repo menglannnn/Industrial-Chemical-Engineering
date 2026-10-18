@@ -4,7 +4,6 @@ import com.wormzjl.createcheme.science.material.MaterialCatalog;
 import com.wormzjl.createcheme.science.thermo.phase.DepositionOnset;
 import com.wormzjl.createcheme.science.thermo.phase.EquilibriumRequest;
 import com.wormzjl.createcheme.science.thermo.phase.EquilibriumResult;
-import com.wormzjl.createcheme.science.thermo.phase.EquilibriumService;
 import com.wormzjl.createcheme.science.thermo.phase.FluidTpEquilibrium;
 import com.wormzjl.createcheme.science.thermo.phase.PhaseAmounts;
 import com.wormzjl.createcheme.science.thermo.phase.PhaseCompetition;
@@ -210,7 +209,7 @@ final class G5Support {
         }
     }
 
-    static DepositionOnset onset(FluidTpEquilibrium service, Point point, EquilibriumService.Workspace ws) {
+    static DepositionOnset onset(FluidTpEquilibrium service, Point point, FluidTpEquilibrium.Workspace ws) {
         return point.vapour() ? service.frostTemperature(null, point.p(), BASIS, point.z(), ws)
                 : service.freezingTemperature(null, point.p(), BASIS, point.z(), ws);
     }
@@ -275,7 +274,7 @@ final class G5Support {
      * CO2 fraction from the answer just above, the vapour's from the answer just below. {@code partner} is the basis index
      * of CH4 (1) or N2 (0). Null when no change lies between 1 kPa and 10 MPa.
      */
-    static double[] threePhase(FluidTpEquilibrium service, double t, int partner, EquilibriumService.Workspace ws) {
+    static double[] threePhase(FluidTpEquilibrium service, double t, int partner, FluidTpEquilibrium.Workspace ws) {
         double[] feed = new double[5];
         feed[CO2] = 0.95;
         feed[partner] = 0.05;
@@ -301,7 +300,7 @@ final class G5Support {
         return new double[] {Math.exp(0.5 * (lo + hi)), x, y};
     }
 
-    static EquilibriumResult tp(FluidTpEquilibrium service, double t, double p, double[] feed, EquilibriumService.Workspace ws) {
+    static EquilibriumResult tp(FluidTpEquilibrium service, double t, double p, double[] feed, FluidTpEquilibrium.Workspace ws) {
         return service.tp(EquilibriumRequest.tp(t, p, BASIS, feed, PhaseCompetition.FLUID_AND_CRYSTALS), ws);
     }
 

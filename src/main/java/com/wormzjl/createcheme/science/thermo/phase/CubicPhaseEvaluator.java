@@ -10,6 +10,7 @@ import com.wormzjl.createcheme.science.thermo.PairInteractions;
 import com.wormzjl.createcheme.science.thermo.PengRobinsonKernel;
 import com.wormzjl.createcheme.science.thermo.PengRobinsonKernel.Root;
 import com.wormzjl.createcheme.science.thermo.ThermoComponent;
+import com.wormzjl.createcheme.science.thermo.phase.PhaseDerivatives.Capability;
 import java.util.Collections;
 import java.util.EnumSet;
 import java.util.List;
@@ -17,23 +18,27 @@ import java.util.Objects;
 import java.util.Set;
 
 /**
- * The translated PR78 as a {@link PhaseEvaluator}: family {@value #FAMILY}.
+ * The fluid phase evaluator: the translated PR78 over a component basis, family {@value #FAMILY}. It turns (T, P,
+ * amounts, root preference) into a {@link PhaseState} at that pressure; {@link PhaseState#kind()} states the root
+ * situation actually met. {@link #family()} is part of the thermodynamic identity ({@link ThermoIdentity}): a change of
+ * the residual formulation is a new family id.
  *
  * <p>The residual parts are {@link TranslatedPengRobinson#residualOnly} (the shared {@link PengRobinsonKernel} with a
- * constant per-component volume translation), evaluated at the state pressure for every root: a liquid is the cubic's
- * liquid root at (T, P), as the fluid network's {@code HydrocarbonModel} also evaluates it since P3 WP4. The volume,
- * {@code ln phi} and volumetric derivatives are therefore bit for bit those of a {@link TranslatedPengRobinson} with the
- * same constants. The ideal-gas parts are the {@link IdealGasFunction}s given at construction, one per component.</p>
- *
- * <p>{@link #forPackage} builds the evaluator of a package that declares a reference spine from the same
- * {@link SpinePackageData} the network's {@code HydrocarbonModel} uses (spines, E-PPR78 pair interactions, the records'
- * {@code volume_translation} anchors): the network's phase then has this evaluator's volume and {@code ln phi} bit for bit
- * and its enthalpy minus {@code sum x_i DeltafH_i} (the network's sensible datum, D10).</p>
+ * constant per-component volume translation), evaluated at the state pressure for every root, so the volume,
+ * {@code ln phi} and volumetric derivatives are bit for bit those of a {@link TranslatedPengRobinson} with the same
+ * constants, and the fluid network's {@code HydrocarbonModel} agrees with them. The ideal-gas parts are the
+ * {@link IdealGasFunction}s given at construction, one per component; {@link #forPackage} takes a spine package's
+ * ({@link SpinePackageData}: spines, E-PPR78 pair interactions, the records' {@code volume_translation} anchors).</p>
  *
  * <p>The translation {@code c_i} adds {@code P c} to {@code h} and {@code g} and {@code P c_i/(R T)} to
  * {@code ln phi_i}, nothing to {@code s} or {@code c_p}; it cancels from every phase-equilibrium condition.</p>
+ *
+ * <p>Errors: malformed input (wrong length, negative or non-finite amounts, no material, non-positive T or P) is an
+ * {@link IllegalArgumentException}; a state outside a component's data is evaluated on the data's continuation (owner
+ * rule of 2026-10-16), never refused; a state the model cannot evaluate (no physical root, a derivative at root
+ * coalescence) is an {@link IllegalArgumentException} or {@link IllegalStateException} from the model.</p>
  */
-public final class CubicPhaseEvaluator implements PhaseEvaluator {
+public final class CubicPhaseEvaluator {
     public static final String FAMILY = "pr78_translated_v1";
     private static final double R = PengRobinsonKernel.GAS_CONSTANT;
     private static final Set<Capability> CAPABILITIES = Collections.unmodifiableSet(EnumSet.allOf(Capability.class));
@@ -53,19 +58,18 @@ public final class CubicPhaseEvaluator implements PhaseEvaluator {
      */
     public CubicPhaseEvaluator(String sourceId, List<ThermoComponent> components, double[][] interactions,
                                double[] translations, List<? extends IdealGasFunction> idealGas) {
-        this.sourceId = Objects.requireNonNull(sourceId, "sourceId");
-        this.components = List.copyOf(components);
-        if (idealGas.size() != this.components.size()) throw new IllegalArgumentException("One ideal-gas function per component");
-        this.idealGas = idealGas.toArray(new IdealGasFunction[0]);
-        for (IdealGasFunction function : this.idealGas) Objects.requireNonNull(function, "idealGas");
-        this.names = this.components.stream().map(ThermoComponent::id).toList();
-        if (names.stream().distinct().count() != names.size()) throw new IllegalArgumentException("Duplicate component");
-        this.eos = TranslatedPengRobinson.residualOnly(this.components, interactions, translations);
-        this.translations = translations.clone();
+        this(sourceId, components, TranslatedPengRobinson.residualOnly(List.copyOf(components), interactions, translations),
+                translations, idealGas);
     }
 
     /** The same evaluator on a pair-interaction model (the kernel's {@code TEMPERATURE_DEPENDENT_PAIRS}). */
     private CubicPhaseEvaluator(String sourceId, List<ThermoComponent> components, PairInteractions interactions,
+                                double[] translations, List<? extends IdealGasFunction> idealGas) {
+        this(sourceId, components, TranslatedPengRobinson.residualOnly(List.copyOf(components), interactions, translations),
+                translations, idealGas);
+    }
+
+    private CubicPhaseEvaluator(String sourceId, List<ThermoComponent> components, TranslatedPengRobinson eos,
                                 double[] translations, List<? extends IdealGasFunction> idealGas) {
         this.sourceId = Objects.requireNonNull(sourceId, "sourceId");
         this.components = List.copyOf(components);
@@ -74,7 +78,7 @@ public final class CubicPhaseEvaluator implements PhaseEvaluator {
         for (IdealGasFunction function : this.idealGas) Objects.requireNonNull(function, "idealGas");
         this.names = this.components.stream().map(ThermoComponent::id).toList();
         if (names.stream().distinct().count() != names.size()) throw new IllegalArgumentException("Duplicate component");
-        this.eos = TranslatedPengRobinson.residualOnly(this.components, interactions, translations);
+        this.eos = eos;
         this.translations = translations.clone();
     }
 
@@ -113,9 +117,9 @@ public final class CubicPhaseEvaluator implements PhaseEvaluator {
         return new CubicPhaseEvaluator(propertyPackage.id(), components, interactions, translations, idealGas);
     }
 
-    @Override public String family() { return FAMILY; }
-    @Override public List<String> components() { return names; }
-    @Override public Set<Capability> capabilities() { return CAPABILITIES; }
+    public String family() { return FAMILY; }
+    public List<String> components() { return names; }
+    public Set<Capability> capabilities() { return CAPABILITIES; }
     public ThermoComponent component(int index) { return components.get(index); }
     public IdealGasFunction idealGas(int index) { return idealGas[index]; }
     /** The constant volume translation {@code c_i} of a component, m3/mol ({@code v = v_PR + c}). */
@@ -125,14 +129,16 @@ public final class CubicPhaseEvaluator implements PhaseEvaluator {
     /** The untranslated equation of state; stability tests and flash iterations run on it (the translation cancels). */
     public PengRobinsonKernel kernel() { return eos.kernel(); }
 
-    @Override
     public Workspace newWorkspace() { return new Workspace(this); }
+    public int componentCount() { return names.size(); }
+    public PhaseState newState() { return new PhaseState(names.size()); }
+    public PhaseDerivatives newDerivatives() { return new PhaseDerivatives(names.size()); }
 
     /**
      * Scratch for one thread: the translated model's prepared temperature, the kernel's own workspace and derivative
      * bundle for the derivative block, and the per-evaluation buffers.
      */
-    public static final class Workspace implements PhaseEvaluator.Workspace {
+    public static final class Workspace {
         private final CubicPhaseEvaluator owner;
         private final TranslatedPengRobinson.Workspace terms;
         private final PengRobinsonKernel.Workspace mixture;
@@ -150,9 +156,8 @@ public final class CubicPhaseEvaluator implements PhaseEvaluator {
         }
     }
 
-    @Override
     public PhaseState evaluate(double temperature, double pressure, double[] amounts, Root preference,
-                               PhaseEvaluator.Workspace workspace, PhaseState out) {
+                               Workspace workspace, PhaseState out) {
         Workspace w = own(workspace);
         prepare(temperature, pressure, amounts, preference, w);
         TranslatedPengRobinson.Values values = eos.evaluateValues(temperature, pressure, amounts, preference, w.terms);
@@ -160,9 +165,8 @@ public final class CubicPhaseEvaluator implements PhaseEvaluator {
         return out;
     }
 
-    @Override
     public PhaseDerivatives derivatives(double temperature, double pressure, double[] amounts, Root preference,
-                                        PhaseEvaluator.Workspace workspace, PhaseDerivatives out) {
+                                        Workspace workspace, PhaseDerivatives out) {
         Workspace w = own(workspace);
         Objects.requireNonNull(out, "out");
         if (out.componentCount() != names.size()) throw new IllegalArgumentException("Derivative basis mismatch");
@@ -207,7 +211,7 @@ public final class CubicPhaseEvaluator implements PhaseEvaluator {
         return out;
     }
 
-    private Workspace own(PhaseEvaluator.Workspace workspace) {
+    private Workspace own(Workspace workspace) {
         if (!(Objects.requireNonNull(workspace, "workspace") instanceof Workspace w) || w.owner != this) {
             throw new IllegalArgumentException("Workspace belongs to another evaluator");
         }

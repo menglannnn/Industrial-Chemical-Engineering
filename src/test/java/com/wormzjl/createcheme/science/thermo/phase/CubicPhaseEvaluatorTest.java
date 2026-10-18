@@ -11,7 +11,7 @@ import com.wormzjl.createcheme.science.fluid.thermo.TranslatedPengRobinson;
 import com.wormzjl.createcheme.science.thermo.IdealGasFunction;
 import com.wormzjl.createcheme.science.thermo.PengRobinsonKernel.Root;
 import com.wormzjl.createcheme.science.thermo.ThermoComponent;
-import com.wormzjl.createcheme.science.thermo.phase.PhaseEvaluator.Capability;
+import com.wormzjl.createcheme.science.thermo.phase.PhaseDerivatives.Capability;
 import com.wormzjl.createcheme.science.thermo.phase.PhaseTestSupport.StubIdealGas;
 import java.util.ArrayList;
 import java.util.List;

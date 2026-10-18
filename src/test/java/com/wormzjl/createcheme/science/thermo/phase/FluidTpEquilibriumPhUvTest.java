@@ -78,7 +78,7 @@ class FluidTpEquilibriumPhUvTest {
      * TP at (t, p), then PH at (p, H) and UV at (U, V) of its answer: both converged, the same phases, T and P recovered
      * to {@link #ROUND_TRIP}, each component conserved to {@link #CONSERVATION}, the specification met.
      */
-    private static EquilibriumResult[] roundTrip(FluidTpEquilibrium service, EquilibriumService.Workspace workspace,
+    private static EquilibriumResult[] roundTrip(FluidTpEquilibrium service, FluidTpEquilibrium.Workspace workspace,
                                                  List<String> species, double[] amounts, double t, double p, Tally tally) {
         String at = t + " K, " + p + " Pa";
         var tp = service.tp(EquilibriumRequest.tp(t, p, species, amounts, PhaseCompetition.FLUID_ONLY), workspace);
@@ -121,7 +121,7 @@ class FluidTpEquilibriumPhUvTest {
      * {@code max(1, T (dP/dT)_V / P)} of the TP answer at (t, p), from central differences of its volume (0.01 %); 1 where
      * they do not give a positive finite slope (a step of V across a phase boundary).
      */
-    private static double isochoricStiffness(FluidTpEquilibrium service, EquilibriumService.Workspace workspace, List<String> species,
+    private static double isochoricStiffness(FluidTpEquilibrium service, FluidTpEquilibrium.Workspace workspace, List<String> species,
                                              double[] amounts, double t, double p) {
         double dt = 1.0e-4 * t, dp = 1.0e-4 * p;
         double[] v = new double[4];
@@ -621,7 +621,7 @@ class FluidTpEquilibriumPhUvTest {
         for (Case c : cases) fresh.add(solve(c.service(), c.request(), c.service().newWorkspace()));
         for (EquilibriumResult result : fresh) assertEquals(Status.CONVERGED, result.status(), result.toString());
         assertTrue(fresh.get(fresh.size() - 3).diagnostics().coexistenceFromBalance());
-        var reused = new java.util.IdentityHashMap<FluidTpEquilibrium, EquilibriumService.Workspace>();
+        var reused = new java.util.IdentityHashMap<FluidTpEquilibrium, FluidTpEquilibrium.Workspace>();
         for (int pass = 0; pass < 2; pass++) {
             for (int k = 0; k < cases.size(); k++) {
                 int index = pass == 0 ? cases.size() - 1 - k : k;
@@ -676,7 +676,7 @@ class FluidTpEquilibriumPhUvTest {
         assertEquals(9.95e6, pressure(uv), 9.95e6 * ROUND_TRIP);
     }
 
-    private static EquilibriumResult solve(FluidTpEquilibrium service, EquilibriumRequest request, EquilibriumService.Workspace workspace) {
+    private static EquilibriumResult solve(FluidTpEquilibrium service, EquilibriumRequest request, FluidTpEquilibrium.Workspace workspace) {
         return request.specification() == EquilibriumRequest.Specification.PH ? service.ph(request, workspace)
                 : service.uv(request, workspace);
     }

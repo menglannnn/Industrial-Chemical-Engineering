@@ -13,7 +13,7 @@ import com.wormzjl.createcheme.science.thermo.phase.EquilibriumResult.Classifica
 import com.wormzjl.createcheme.science.thermo.phase.EquilibriumResult.CoverageGrade;
 import com.wormzjl.createcheme.science.thermo.phase.EquilibriumResult.Status;
 import com.wormzjl.createcheme.science.thermo.phase.EquilibriumResult.UnsupportedReason;
-import com.wormzjl.createcheme.science.thermo.phase.PhaseEvaluator.Capability;
+import com.wormzjl.createcheme.science.thermo.phase.PhaseDerivatives.Capability;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -44,7 +44,7 @@ class GasSolidEquilibriumTest {
 
     static double[] inNitrogen(double y) { return feed(1.0 - y, 0.0, 0.0, y); }
 
-    static EquilibriumResult tp(double t, double p, double[] z, EquilibriumService.Workspace ws) {
+    static EquilibriumResult tp(double t, double p, double[] z, FluidTpEquilibrium.Workspace ws) {
         return SERVICE.tp(EquilibriumRequest.tp(t, p, BASIS, z, CRYSTALS), ws);
     }
 

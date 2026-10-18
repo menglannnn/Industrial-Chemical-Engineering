@@ -159,7 +159,7 @@ public final class SolidCarbonDioxideReferences {
     }
 
     /** Crystal-fluid coexistence pressure of the pure species on a fluid family at T, Pa. */
-    static double familyCoexistence(PhaseEvaluator fluid, CrystalPhaseEvaluator solid, SolidPhaseEvaluator.TriplePointAnchor anchor,
+    static double familyCoexistence(CubicPhaseEvaluator fluid, CrystalPhaseEvaluator solid, SolidPhaseEvaluator.TriplePointAnchor anchor,
                                     double t, Root root, double start) {
         int i = fluid.components().indexOf(solid.component());
         double[] pure = new double[fluid.componentCount()];

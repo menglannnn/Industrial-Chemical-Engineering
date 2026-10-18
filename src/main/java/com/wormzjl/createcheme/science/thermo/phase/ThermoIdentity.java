@@ -12,7 +12,7 @@ import java.util.Objects;
  *   <li>{@code packageFingerprint}: the package's data (components, PR constants, interactions, the volume references
  *   the translation is calibrated from, the declared domains); {@link #of} takes
  *   {@link MaterialCatalog#fluidThermoFingerprint(String)}.</li>
- *   <li>{@code evaluatorFamily}: the residual formulation, {@link PhaseEvaluator#family()}.</li>
+ *   <li>{@code evaluatorFamily}: the residual formulation, {@link CubicPhaseEvaluator#family()}.</li>
  *   <li>{@code spineFingerprint}: the ideal-gas and formation data (the data spine, decision D6). The P2 data work adds
  *   it to the package; until a package carries one the caller passes {@link #NO_SPINE}.</li>
  *   <li>{@code waterModelRevision}: the water model and how it participates ({@link WaterParticipation}).</li>

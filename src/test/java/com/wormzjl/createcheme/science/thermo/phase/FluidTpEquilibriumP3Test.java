@@ -195,7 +195,7 @@ class FluidTpEquilibriumP3Test {
         }
         List<EquilibriumResult> fresh = new ArrayList<>();
         for (int k = 0; k < requests.size(); k++) fresh.add(services.get(k).tp(requests.get(k)));
-        var reused = new java.util.IdentityHashMap<FluidTpEquilibrium, EquilibriumService.Workspace>();
+        var reused = new java.util.IdentityHashMap<FluidTpEquilibrium, FluidTpEquilibrium.Workspace>();
         for (int pass = 0; pass < 2; pass++) {
             for (int j = 0; j < requests.size(); j++) {
                 int k = pass == 0 ? requests.size() - 1 - j : j;

@@ -413,7 +413,7 @@ class FluidTpEquilibriumTest {
                 new Case(network, EquilibriumRequest.tp(77.355, 90_000.0, network.contract().components(), nitrogen, PhaseCompetition.FLUID_ONLY)));
         List<EquilibriumResult> fresh = new ArrayList<>();
         for (Case c : cases) fresh.add(c.service().tp(c.request()));
-        var reused = new java.util.IdentityHashMap<FluidTpEquilibrium, EquilibriumService.Workspace>();
+        var reused = new java.util.IdentityHashMap<FluidTpEquilibrium, FluidTpEquilibrium.Workspace>();
         for (int pass = 0; pass < 2; pass++) {
             for (int k = 0; k < cases.size(); k++) {
                 int index = pass == 0 ? cases.size() - 1 - k : k;

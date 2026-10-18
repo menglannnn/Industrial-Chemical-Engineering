@@ -5,7 +5,7 @@ import java.util.List;
 import java.util.Objects;
 
 /**
- * The answer of an {@link EquilibriumService}: a status, the phases with their amounts over the shared basis, a
+ * The answer of a {@link FluidTpEquilibrium}: a status, the phases with their amounts over the shared basis, a
  * classification, a coverage grade with its evidence, and diagnostics.
  *
  * <p>Status rules (the constructor enforces them):</p>

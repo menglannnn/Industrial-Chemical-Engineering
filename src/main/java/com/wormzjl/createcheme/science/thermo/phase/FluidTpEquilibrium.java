@@ -29,7 +29,7 @@ import java.util.Objects;
  *
  * <p>Hydrocarbon phases:</p>
  * <ol>
- *   <li>Contract checks ({@link EquilibriumService}); a request asking for crystals the package is qualified for, on a
+ *   <li>Contract checks ({@link #contractChecks}); a request asking for crystals the package is qualified for, on a
  *   service without their evaluators, is {@link UnsupportedReason#NOT_IMPLEMENTED}; with them see "Crystals" below.</li>
  *   <li>Tangent-plane stability of the feed ({@link TangentPlaneStability} on the evaluator's kernel; the constant
  *   translation cancels from it at one pressure).</li>
@@ -191,7 +191,7 @@ import java.util.Objects;
  * prepared temperatures, recomputed bit-identically) and allocation-light: the iterations allocate nothing; a call
  * allocates the stability results and its own result (PH and UV: those of every TP answer they evaluate).</p>
  */
-public final class FluidTpEquilibrium implements EquilibriumService {
+public final class FluidTpEquilibrium {
     /** Largest {@code ln K} change one extrapolation may add. */
     private static final double MAXIMUM_EXTRAPOLATION = 20.0;
     /** Keeps {@code exp(ln K)} a finite, positive normal double. */
@@ -689,16 +689,22 @@ public final class FluidTpEquilibrium implements EquilibriumService {
         double fusionEnthalpy() { return anchored.record().anchor().fusionEnthalpy(); }
     }
 
-    @Override public PhaseContract contract() { return contract; }
+    public PhaseContract contract() { return contract; }
     public CubicPhaseEvaluator evaluator() { return evaluator; }
     public Settings settings() { return settings; }
     /** The water model, {@code null} when requests with water are not implemented by this service. */
     public FreeWaterModel freeWater() { return freeWater; }
 
-    @Override public Workspace newWorkspace() { return new Workspace(this); }
+    /** Caller-owned scratch for one thread; reusing it makes a call allocate little more than its result, and results do
+     * not depend on what the workspace computed before. */
+    public Workspace newWorkspace() { return new Workspace(this); }
+
+    public EquilibriumResult tp(EquilibriumRequest request) { return tp(request, newWorkspace()); }
+    public EquilibriumResult ph(EquilibriumRequest request) { return ph(request, newWorkspace()); }
+    public EquilibriumResult uv(EquilibriumRequest request) { return uv(request, newWorkspace()); }
 
     /** Scratch for one thread. */
-    public static final class Workspace implements EquilibriumService.Workspace {
+    public static final class Workspace {
         private final FluidTpEquilibrium owner;
         private final double[] basisAmounts;
         private final double[] feed;
@@ -712,7 +718,7 @@ public final class FluidTpEquilibrium implements EquilibriumService {
         private final PengRobinsonKernel.Workspace mixture;
         private final PengRobinsonKernel.Evaluation first, second;
         private final TangentPlaneStability.Workspace stability;
-        private final PhaseEvaluator.Workspace phases;
+        private final CubicPhaseEvaluator.Workspace phases;
         private final PhaseState vaporState, liquidState;
         private int kernelEvaluations, derivativeEvaluations, rachfordRiceSteps, iterations, extrapolations,
                 newtonIterations;
@@ -984,8 +990,7 @@ public final class FluidTpEquilibrium implements EquilibriumService {
         }
     }
 
-    @Override
-    public EquilibriumResult tp(EquilibriumRequest request, EquilibriumService.Workspace workspace) {
+    public EquilibriumResult tp(EquilibriumRequest request, Workspace workspace) {
         Workspace w = own(workspace);
         requireSpecification(request, Specification.TP);
         PhaseCompetition competition = request.competition();
@@ -1010,7 +1015,7 @@ public final class FluidTpEquilibrium implements EquilibriumService {
      * a crystal competition is refused ({@code IllegalArgumentException}); the contract's refusals are those of
      * {@link #tp}.
      */
-    public EquilibriumResult tpCrystalsHeldOut(EquilibriumRequest request, EquilibriumService.Workspace workspace) {
+    public EquilibriumResult tpCrystalsHeldOut(EquilibriumRequest request, Workspace workspace) {
         Workspace w = own(workspace);
         requireSpecification(request, Specification.TP);
         if (!request.competition().crystalsCompete()) throw new IllegalArgumentException("Crystals are held out of a crystal competition only");
@@ -1042,7 +1047,7 @@ public final class FluidTpEquilibrium implements EquilibriumService {
      * over a step: the split of a vessel's own fluid at its own energy and volume. A request that is not a crystal
      * competition is refused ({@code IllegalArgumentException}).
      */
-    public EquilibriumResult uvCrystalsHeldOut(EquilibriumRequest request, EquilibriumService.Workspace workspace) {
+    public EquilibriumResult uvCrystalsHeldOut(EquilibriumRequest request, Workspace workspace) {
         Workspace w = own(workspace);
         requireSpecification(request, Specification.UV);
         if (!request.competition().crystalsCompete()) throw new IllegalArgumentException("Crystals are held out of a crystal competition only");
@@ -1071,8 +1076,7 @@ public final class FluidTpEquilibrium implements EquilibriumService {
      * temperature, or free water boiling at the state pressure, is answered with the phase fraction from the energy
      * balance (a coexistence TP leaves undetermined); any other step is typed not converged. See the class comment.
      */
-    @Override
-    public EquilibriumResult ph(EquilibriumRequest request, EquilibriumService.Workspace workspace) {
+    public EquilibriumResult ph(EquilibriumRequest request, Workspace workspace) {
         Workspace w = own(workspace);
         requireSpecification(request, Specification.PH);
         PhaseCompetition competition = request.competition();
@@ -1097,8 +1101,7 @@ public final class FluidTpEquilibrium implements EquilibriumService {
      * two-phase dome, or free water boiling, closes the pressure bracket on the step of {@code V(P)}: the phase fraction
      * then comes from the volume balance at the equal-fugacity (saturation) pressure. See the class comment.
      */
-    @Override
-    public EquilibriumResult uv(EquilibriumRequest request, EquilibriumService.Workspace workspace) {
+    public EquilibriumResult uv(EquilibriumRequest request, Workspace workspace) {
         return uv(request, workspace, Double.NaN, Double.NaN);
     }
 
@@ -1112,7 +1115,7 @@ public final class FluidTpEquilibrium implements EquilibriumService {
      * diagnostics include the warm attempt, the outer-iteration count is the path that answered. A hint that is not
      * finite is the cold search alone.
      */
-    public EquilibriumResult uv(EquilibriumRequest request, EquilibriumService.Workspace workspace, double hintTemperature,
+    public EquilibriumResult uv(EquilibriumRequest request, Workspace workspace, double hintTemperature,
                                 double hintPressure) {
         Workspace w = own(workspace);
         requireSpecification(request, Specification.UV);
@@ -4410,7 +4413,7 @@ public final class FluidTpEquilibrium implements EquilibriumService {
      *         several are and none is named
      */
     public DepositionOnset depositionTemperature(String crystal, double pressure, List<String> species, double[] amounts,
-                                                 EquilibriumService.Workspace workspace) {
+                                                 Workspace workspace) {
         return onset(true, null, crystal, pressure, species, amounts, own(workspace));
     }
 
@@ -4420,11 +4423,11 @@ public final class FluidTpEquilibrium implements EquilibriumService {
      * one) have equal chemical potentials of the crystal's species; the standard solid-vapour temperature at a measured
      * vapour composition (a three-phase point's vapour, a frost point near the gas's dew point), whether or not the gas would
      * condense at that pressure. The mirror of {@link #freezingTemperature(String, double, List, double[],
-     * EquilibriumService.Workspace)}; {@link DepositionOnset#fluid()} is the fluid answer of the whole feed at the onset,
+     * Workspace)}; {@link DepositionOnset#fluid()} is the fluid answer of the whole feed at the onset,
      * the partial-pressure approximation a diagnostic as in {@link #depositionTemperature}.
      */
     public DepositionOnset frostTemperature(String crystal, double pressure, List<String> species, double[] amounts,
-                                            EquilibriumService.Workspace workspace) {
+                                            Workspace workspace) {
         return onset(true, Root.VAPOR, crystal, pressure, species, amounts, own(workspace));
     }
 
@@ -4436,17 +4439,17 @@ public final class FluidTpEquilibrium implements EquilibriumService {
      * solubility temperature: a liquid at its bubble point (a measured three-phase point) or a compressed liquid is
      * scored at its own composition, whether or not a vapour would form from it at that pressure. The same bracketed
      * search in {@code x = 1/T} as {@link #depositionTemperature(String, double, List, double[],
-     * EquilibriumService.Workspace)}, started at the ideal-solubility estimate
+     * Workspace)}, started at the ideal-solubility estimate
      * {@code 1/T = 1/T_t - R ln x_i / Delta h_fus} (the family's fusion enthalpy at its triple point); no fluid flash per
      * step. {@link DepositionOnset#fluid()} is the fluid answer of the whole feed at the onset: a liquid, or a split when
      * the liquid is not the stable fluid there (the detail says so). The partial-pressure approximation is {@code NaN}.
      */
     public DepositionOnset freezingTemperature(String crystal, double pressure, List<String> species, double[] amounts,
-                                               EquilibriumService.Workspace workspace) {
+                                               Workspace workspace) {
         return onset(true, Root.LIQUID, crystal, pressure, species, amounts, own(workspace));
     }
 
-    /** {@link #freezingTemperature(String, double, List, double[], EquilibriumService.Workspace)}, a new workspace. */
+    /** {@link #freezingTemperature(String, double, List, double[], Workspace)}, a new workspace. */
     public DepositionOnset freezingTemperature(double pressure, List<String> species, double[] amounts) {
         return freezingTemperature(null, pressure, species, amounts, newWorkspace());
     }
@@ -4458,11 +4461,11 @@ public final class FluidTpEquilibrium implements EquilibriumService {
 
     /**
      * The onset pressure of crystal {@code crystal}: as {@link #depositionTemperature(String, double, List, double[],
-     * EquilibriumService.Workspace)} with the search in {@code ln P} ({@code D} increases with it; first slope one, the
+     * Workspace)} with the search in {@code ln P} ({@code D} increases with it; first slope one, the
      * ideal gas's), steps capped at 2 in {@code ln P} before a bracket.
      */
     public DepositionOnset depositionPressure(String crystal, double temperature, List<String> species, double[] amounts,
-                                              EquilibriumService.Workspace workspace) {
+                                              Workspace workspace) {
         return onset(false, null, crystal, temperature, species, amounts, own(workspace));
     }
 
@@ -5414,7 +5417,7 @@ public final class FluidTpEquilibrium implements EquilibriumService {
                     int i = w.present[a];
                     w.step[a] = -w.scale[i] * w.gradient[i];
                 }
-                solveCholesky(w.factor, m, w.step);
+                TangentPlaneStability.solveCholesky(w.factor, m, w.step);
                 return true;
             }
         }
@@ -5934,7 +5937,7 @@ public final class FluidTpEquilibrium implements EquilibriumService {
                 w.derivativeEvaluations, w.newtonIterations, w.tieLine, band);
     }
 
-    private Workspace own(EquilibriumService.Workspace workspace) {
+    private Workspace own(Workspace workspace) {
         if (!(Objects.requireNonNull(workspace, "workspace") instanceof Workspace w) || w.owner != this) {
             throw new IllegalArgumentException("Workspace belongs to another service");
         }
@@ -5947,38 +5950,11 @@ public final class FluidTpEquilibrium implements EquilibriumService {
         }
     }
 
-    // Dense linear algebra on the leading m x m block.
-
-    /** Lower Cholesky factor of {@code a + mu I} into {@code factor}; false unless positive definite. */
+    /** Lower Cholesky factor of {@code a + mu I} into {@code factor} ({@link TangentPlaneStability#cholesky}); false unless positive definite. */
     private static boolean factorShifted(double[] a, int m, double mu, double[] factor) {
         for (int j = 0; j < m; j++) {
             for (int i = j; i < m; i++) factor[i * m + j] = a[i * m + j] + (i == j ? mu : 0.0);
         }
-        for (int j = 0; j < m; j++) {
-            double pivot = factor[j * m + j];
-            for (int k = 0; k < j; k++) pivot -= factor[j * m + k] * factor[j * m + k];
-            if (!(pivot > 0.0) || !Double.isFinite(pivot)) return false;
-            double root = Math.sqrt(pivot);
-            factor[j * m + j] = root;
-            for (int i = j + 1; i < m; i++) {
-                double value = factor[i * m + j];
-                for (int k = 0; k < j; k++) value -= factor[i * m + k] * factor[j * m + k];
-                factor[i * m + j] = value / root;
-            }
-        }
-        return true;
-    }
-
-    private static void solveCholesky(double[] factor, int m, double[] rhs) {
-        for (int i = 0; i < m; i++) {
-            double value = rhs[i];
-            for (int k = 0; k < i; k++) value -= factor[i * m + k] * rhs[k];
-            rhs[i] = value / factor[i * m + i];
-        }
-        for (int i = m - 1; i >= 0; i--) {
-            double value = rhs[i];
-            for (int k = i + 1; k < m; k++) value -= factor[k * m + i] * rhs[k];
-            rhs[i] = value / factor[i * m + i];
-        }
+        return TangentPlaneStability.cholesky(factor, m);
     }
 }
