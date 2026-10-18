@@ -222,6 +222,11 @@ public final class PengRobinsonKernel {
     public Workspace newWorkspace() {
         return interactions == null ? new Workspace(count) : new Workspace(count, interactions.pairCount());
     }
+
+    /** The pairs' {@code k_ij} of the sparse plans: the constants, or the workspace's prepared {@code k_ij(T)}. */
+    private double[] pairInteractions(Workspace workspace) {
+        return mixing == Mixing.SPARSE_PAIRS ? pairInteraction : workspace.pairK;
+    }
     public Evaluation newEvaluation() { return new Evaluation(count); }
     public Derivatives newDerivatives() { return new Derivatives(count); }
 
@@ -301,19 +306,21 @@ public final class PengRobinsonKernel {
         }
         double aMix;
         double daMixDt;
-        if (mixing == Mixing.SPARSE_PAIRS) {
-            // g_i = sum_j (1 - k_ij) q_j, reached as the rank-one sum minus the few pairs that are not zero.
+        if (mixing == Mixing.SPARSE_PAIRS || mixing == Mixing.TEMPERATURE_DEPENDENT_PAIRS) {
+            // g_i = sum_j (1 - k_ij) q_j, reached as the rank-one sum minus the few pairs that are not zero; the
+            // temperature-dependent plan reads the prepared k_ij(T).
+            double[] k = pairInteractions(workspace);
             double qSum = 0.0;
             for (int i = 0; i < count; i++) qSum += workspace.q[i];
             for (int i = 0; i < count; i++) workspace.g[i] = qSum;
             for (int pair = 0; pair < pairFirst.length; pair++) {
                 int i = pairFirst[pair];
                 int j = pairSecond[pair];
-                double interaction = pairInteraction[pair];
+                double interaction = k[pair];
                 workspace.g[i] -= interaction * workspace.q[j];
                 workspace.g[j] -= interaction * workspace.q[i];
             }
-            // From here the dense branch's own expressions, so the two plans differ only in how g_i was summed.
+            // From here the dense branch's own expressions, so the plans differ only in how g_i was summed.
             aMix = 0.0;
             daMixDt = 0.0;
             for (int i = 0; i < count; i++) {
@@ -322,32 +329,14 @@ public final class PengRobinsonKernel {
                 double dq = workspace.composition[i] * workspace.daDt[i] / (2.0 * workspace.sqrtA[i]);
                 daMixDt += 2.0 * dq * workspace.g[i];
             }
-        } else if (mixing == Mixing.TEMPERATURE_DEPENDENT_PAIRS) {
-            // SPARSE_PAIRS's expressions on the prepared k_ij(T), then the interactions' own temperature derivative.
-            double qSum = 0.0;
-            for (int i = 0; i < count; i++) qSum += workspace.q[i];
-            for (int i = 0; i < count; i++) workspace.g[i] = qSum;
-            for (int pair = 0; pair < pairFirst.length; pair++) {
-                int i = pairFirst[pair];
-                int j = pairSecond[pair];
-                double interaction = workspace.pairK[pair];
-                workspace.g[i] -= interaction * workspace.q[j];
-                workspace.g[j] -= interaction * workspace.q[i];
+            if (mixing == Mixing.TEMPERATURE_DEPENDENT_PAIRS) {
+                // d/dT of -sum_ij q_i q_j k_ij at fixed q: -2 sum_pairs q_i q_j dk_ij/dT.
+                double interactionDt = 0.0;
+                for (int pair = 0; pair < pairFirst.length; pair++) {
+                    interactionDt += workspace.pairKDt[pair] * workspace.q[pairFirst[pair]] * workspace.q[pairSecond[pair]];
+                }
+                daMixDt -= 2.0 * interactionDt;
             }
-            aMix = 0.0;
-            daMixDt = 0.0;
-            for (int i = 0; i < count; i++) {
-                workspace.sumA[i] = workspace.sqrtA[i] * workspace.g[i];
-                aMix += workspace.q[i] * workspace.g[i];
-                double dq = workspace.composition[i] * workspace.daDt[i] / (2.0 * workspace.sqrtA[i]);
-                daMixDt += 2.0 * dq * workspace.g[i];
-            }
-            // d/dT of -sum_ij q_i q_j k_ij at fixed q: -2 sum_pairs q_i q_j dk_ij/dT (an exact zero for constant pairs).
-            double interactionDt = 0.0;
-            for (int pair = 0; pair < pairFirst.length; pair++) {
-                interactionDt += workspace.pairKDt[pair] * workspace.q[pairFirst[pair]] * workspace.q[pairSecond[pair]];
-            }
-            daMixDt -= 2.0 * interactionDt;
         } else if (rankOneMixing) {
             double qSum = 0.0;
             double dqSum = 0.0;
@@ -527,25 +516,15 @@ public final class PengRobinsonKernel {
     public double mixtureSecondTemperatureDerivative(
             Workspace workspace, double[] rootDt, double[] rootDt2, double[] crossDt) {
         double[] x = workspace.composition;
-        if (mixing == Mixing.SPARSE_PAIRS) {
+        if (mixing == Mixing.SPARSE_PAIRS || mixing == Mixing.TEMPERATURE_DEPENDENT_PAIRS) {
+            double[] k = pairInteractions(workspace);
             double interactionSum = 0.0;
             for (int i = 0; i < count; i++) interactionSum += x[i] * rootDt[i];
             for (int i = 0; i < count; i++) crossDt[i] = interactionSum;
             for (int pair = 0; pair < pairFirst.length; pair++) {
                 int i = pairFirst[pair];
                 int j = pairSecond[pair];
-                double interaction = pairInteraction[pair];
-                crossDt[i] -= interaction * x[j] * rootDt[j];
-                crossDt[j] -= interaction * x[i] * rootDt[i];
-            }
-        } else if (mixing == Mixing.TEMPERATURE_DEPENDENT_PAIRS) {
-            double interactionSum = 0.0;
-            for (int i = 0; i < count; i++) interactionSum += x[i] * rootDt[i];
-            for (int i = 0; i < count; i++) crossDt[i] = interactionSum;
-            for (int pair = 0; pair < pairFirst.length; pair++) {
-                int i = pairFirst[pair];
-                int j = pairSecond[pair];
-                double interaction = workspace.pairK[pair];
+                double interaction = k[pair];
                 crossDt[i] -= interaction * x[j] * rootDt[j];
                 crossDt[j] -= interaction * x[i] * rootDt[i];
             }
@@ -801,16 +780,7 @@ public final class PengRobinsonKernel {
         private final double[] interactionRootDt2;
         private long preparedTemperature = Long.MIN_VALUE;
 
-        private Workspace(int count) {
-            composition = new double[count];
-            a = new double[count];
-            daDt = new double[count];
-            sqrtA = new double[count];
-            q = new double[count];
-            g = new double[count];
-            sumA = new double[count];
-            pairK = pairKDt = pairKDt2 = interactionRootDt = interactionRootDt2 = new double[0];
-        }
+        private Workspace(int count) { this(count, 0); }
 
         private Workspace(int count, int pairs) {
             composition = new double[count];

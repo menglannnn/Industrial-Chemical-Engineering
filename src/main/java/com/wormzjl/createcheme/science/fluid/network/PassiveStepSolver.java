@@ -9,6 +9,7 @@ import com.wormzjl.createcheme.science.math.DeterministicMath;
 import com.wormzjl.createcheme.science.thermo.NumericalBox;
 import com.wormzjl.createcheme.science.thermo.PhaseSupport;
 import java.util.*;
+import java.util.function.IntPredicate;
 import com.wormzjl.createcheme.science.fluid.state.SolidInventory;
 import com.wormzjl.createcheme.science.fluid.transport.SlurryTransport;
 
@@ -120,6 +121,43 @@ public final class PassiveStepSolver {
     void reopenNext(Set<PassiveNetwork.Pipe.Identity> identities){keepOpen=Set.copyOf(identities);}
     /** The driving pressure (Pa) a closed run's end states must exceed in an allowed direction to be reopened. */
     static double reopenBand(double pa,double pb){return Math.max(1,1e-6*Math.max(Math.abs(pa),Math.abs(pb)));}
+    /** The runs of a graph: a run is a maximal chain of connections through degree-two junctions no actuator touches.
+     * {@link #reopenable}, {@link #initialMassFlows} and {@link #closeDeadHeads} walk them, each over the connections
+     * its own rule admits. */
+    private record Runs(boolean[] interior,int[][] nodeEdges) {
+        static Runs of(PassiveNetwork graph) {
+            int edges=graph.pipes().size(),nodes=graph.reservoirs().size();
+            int[] degree=new int[nodes];boolean[] actuated=new boolean[nodes];
+            for(var pipe:graph.pipes()) {
+                degree[pipe.first()]++;degree[pipe.second()]++;
+                if(!(pipe.control() instanceof FlowControl.Passive)){actuated[pipe.first()]=true;actuated[pipe.second()]=true;}
+            }
+            boolean[] interior=new boolean[nodes];
+            for(int i=0;i<nodes;i++)interior[i]=graph.reservoirs().get(i).junction()&&degree[i]==2&&!actuated[i];
+            int[][] nodeEdges=new int[nodes][];
+            for(int i=0;i<nodes;i++)nodeEdges[i]=new int[degree[i]];
+            Arrays.fill(degree,0);
+            for(int edge=0;edge<edges;edge++){var pipe=graph.pipes().get(edge);nodeEdges[pipe.first()][degree[pipe.first()]++]=edge;nodeEdges[pipe.second()][degree[pipe.second()]++]=edge;}
+            return new Runs(interior,nodeEdges);
+        }
+        /** Walks the run through {@code edge} both ways over the connections {@code walkable} admits, marking them
+         * taken: {@code chain} its links and {@code order} its nodes, first to last. */
+        void walk(PassiveNetwork graph,int edge,boolean[] taken,IntPredicate walkable,List<Integer> chain,List<Integer> order) {
+            var pipe=graph.pipes().get(edge);
+            order.add(pipe.first());chain.add(edge);order.add(pipe.second());taken[edge]=true;
+            for(int end=0;end<2;end++) {
+                int at=end==0?pipe.first():pipe.second(),from=edge;
+                while(interior[at]) {
+                    int next=nodeEdges[at][0]==from?nodeEdges[at][1]:nodeEdges[at][0];
+                    if(taken[next]||!walkable.test(next))break;
+                    taken[next]=true;var step=graph.pipes().get(next);
+                    int beyond=step.first()==at?step.second():step.first();
+                    if(end==0){chain.addFirst(next);order.addFirst(beyond);}else{chain.add(next);order.add(beyond);}
+                    at=beyond;from=next;
+                }
+            }
+        }
+    }
     /**
      * The passive connections a converged step holds closed ({@code boundaryClosed}) whose run (the chain of closed passive
      * connections through degree-two junctions no actuator touches, as {@link #closeDeadHeads} decides it) is driven by the
@@ -140,36 +178,14 @@ public final class PassiveStepSolver {
             if(modes.get(e)!=FlowControl.Mode.CLOSED&&modes.get(e)!=FlowControl.Mode.INLET_WRONG_PHASE){open[pipe.first()]=true;open[pipe.second()]=true;}
         }
         if(!any)return Set.of();
-        int[] degree=new int[nodes];boolean[] actuated=new boolean[nodes];
-        for(var pipe:graph.pipes()) {
-            degree[pipe.first()]++;degree[pipe.second()]++;
-            if(!(pipe.control() instanceof FlowControl.Passive)){actuated[pipe.first()]=true;actuated[pipe.second()]=true;}
-        }
-        boolean[] interior=new boolean[nodes];
-        for(int i=0;i<nodes;i++)interior[i]=graph.reservoirs().get(i).junction()&&degree[i]==2&&!actuated[i];
-        int[][] nodeEdges=new int[nodes][];
-        for(int i=0;i<nodes;i++)nodeEdges[i]=new int[degree[i]];
-        Arrays.fill(degree,0);
-        for(int edge=0;edge<edges;edge++){var pipe=graph.pipes().get(edge);nodeEdges[pipe.first()][degree[pipe.first()]++]=edge;nodeEdges[pipe.second()][degree[pipe.second()]++]=edge;}
+        var runs=Runs.of(graph);
         boolean[] taken=new boolean[edges];var reopen=new LinkedHashSet<PassiveNetwork.Pipe.Identity>();
         // A phase port never refuses a direction (decision D11: it draws its next phase instead), so only the static
         // boundary rule decides which way a run may be reopened.
         for(int edge=0;edge<edges;edge++) {
             if(taken[edge]||!closed[edge])continue;
-            var pipe=graph.pipes().get(edge);
             var chain=new ArrayList<Integer>();var order=new ArrayList<Integer>();
-            order.add(pipe.first());chain.add(edge);order.add(pipe.second());taken[edge]=true;
-            for(int end=0;end<2;end++) {
-                int at=end==0?pipe.first():pipe.second(),from=edge;
-                while(interior[at]) {
-                    int next=nodeEdges[at][0]==from?nodeEdges[at][1]:nodeEdges[at][0];
-                    if(taken[next]||!closed[next])break;
-                    taken[next]=true;var step=graph.pipes().get(next);
-                    int beyond=step.first()==at?step.second():step.first();
-                    if(end==0){chain.addFirst(next);order.addFirst(beyond);}else{chain.add(next);order.add(beyond);}
-                    at=beyond;from=next;
-                }
-            }
+            runs.walk(graph,edge,taken,next->closed[next],chain,order);
             int start=order.getFirst(),finish=order.getLast();
             if(start==finish)continue;
             if(graph.reservoirs().get(start).junction()&&!open[start]||graph.reservoirs().get(finish).junction()&&!open[finish])continue;
@@ -1456,24 +1472,12 @@ public final class PassiveStepSolver {
      * needs the solve).
      */
     private double[] initialMassFlows(PassiveNetwork graph) {
-        int edges=graph.pipes().size(),nodes=graph.reservoirs().size();
+        int edges=graph.pipes().size();
         double[] q=new double[edges];
         for(int edge=0;edge<edges;edge++)q[edge]=initialMassFlow(graph,graph.pipes().get(edge));
-        int[] degree=new int[nodes];boolean[] actuated=new boolean[nodes];
-        for(var pipe:graph.pipes()) {
-            degree[pipe.first()]++;degree[pipe.second()]++;
-            if(!(pipe.control() instanceof FlowControl.Passive)){actuated[pipe.first()]=true;actuated[pipe.second()]=true;}
-        }
-        boolean[] interior=new boolean[nodes];boolean any=false;
-        for(int i=0;i<nodes;i++)any|=interior[i]=graph.reservoirs().get(i).junction()&&degree[i]==2&&!actuated[i];
+        var runs=Runs.of(graph);boolean[] interior=runs.interior;boolean any=false;
+        for(boolean b:interior)any|=b;
         if(!any)return q;
-        int[][] nodeEdges=new int[nodes][];
-        for(int i=0;i<nodes;i++)nodeEdges[i]=new int[degree[i]];
-        Arrays.fill(degree,0);
-        for(int edge=0;edge<edges;edge++) {
-            var pipe=graph.pipes().get(edge);
-            nodeEdges[pipe.first()][degree[pipe.first()]++]=edge;nodeEdges[pipe.second()][degree[pipe.second()]++]=edge;
-        }
         boolean[] taken=new boolean[edges];
         for(int edge=0;edge<edges;edge++) {
             if(taken[edge])continue;
@@ -1481,18 +1485,7 @@ public final class PassiveStepSolver {
             if(!interior[pipe.first()]&&!interior[pipe.second()])continue;
             // Walk out of this connection in both directions until a node that owns a pressure.
             var chain=new ArrayList<Integer>();var order=new ArrayList<Integer>();
-            order.add(pipe.first());chain.add(edge);order.add(pipe.second());taken[edge]=true;
-            for(int end=0;end<2;end++) {
-                int at=end==0?pipe.first():pipe.second(),from=edge;
-                while(interior[at]) {
-                    int next=nodeEdges[at][0]==from?nodeEdges[at][1]:nodeEdges[at][0];
-                    if(taken[next])break;
-                    taken[next]=true;var step=graph.pipes().get(next);
-                    int beyond=step.first()==at?step.second():step.first();
-                    if(end==0){chain.addFirst(next);order.addFirst(beyond);}else{chain.add(next);order.add(beyond);}
-                    at=beyond;from=next;
-                }
-            }
+            runs.walk(graph,edge,taken,next->true,chain,order);
             int start=order.getFirst(),finish=order.getLast();
             if(start==finish||interior[start]||interior[finish])continue;
             var a=graph.reservoirs().get(start);var b=graph.reservoirs().get(finish);
@@ -2043,40 +2036,15 @@ public final class PassiveStepSolver {
      * solve, so a line whose generator is raised afterwards opens again.
      */
     private void closeDeadHeads(PassiveNetwork graph,boolean[] boundaryClosed,boolean[] keep) {
-        int edges=graph.pipes().size(),nodes=graph.reservoirs().size();
-        int[] degree=new int[nodes];boolean[] actuated=new boolean[nodes];
-        for(var pipe:graph.pipes()) {
-            degree[pipe.first()]++;degree[pipe.second()]++;
-            if(!(pipe.control() instanceof FlowControl.Passive)){actuated[pipe.first()]=true;actuated[pipe.second()]=true;}
-        }
-        boolean[] interior=new boolean[nodes];
-        for(int i=0;i<nodes;i++)interior[i]=graph.reservoirs().get(i).junction()&&degree[i]==2&&!actuated[i];
-        int[][] nodeEdges=new int[nodes][];
-        for(int i=0;i<nodes;i++)nodeEdges[i]=new int[degree[i]];
-        Arrays.fill(degree,0);
-        for(int edge=0;edge<edges;edge++) {
-            var pipe=graph.pipes().get(edge);
-            nodeEdges[pipe.first()][degree[pipe.first()]++]=edge;nodeEdges[pipe.second()][degree[pipe.second()]++]=edge;
-        }
+        int edges=graph.pipes().size();
+        var runs=Runs.of(graph);
         boolean[] taken=new boolean[edges];
         for(int edge=0;edge<edges;edge++) {
             if(taken[edge]||boundaryClosed[edge]||!(graph.pipes().get(edge).control() instanceof FlowControl.Passive))continue;
-            var pipe=graph.pipes().get(edge);
             // The maximal passive run through degree-two junctions containing this connection, as
             // a node order and the links between consecutive nodes; see {@link #initialMassFlows}.
             var chain=new ArrayList<Integer>();var order=new ArrayList<Integer>();
-            order.add(pipe.first());chain.add(edge);order.add(pipe.second());taken[edge]=true;
-            for(int end=0;end<2;end++) {
-                int at=end==0?pipe.first():pipe.second(),from=edge;
-                while(interior[at]) {
-                    int next=nodeEdges[at][0]==from?nodeEdges[at][1]:nodeEdges[at][0];
-                    if(taken[next]||!(graph.pipes().get(next).control() instanceof FlowControl.Passive))break;
-                    taken[next]=true;var step=graph.pipes().get(next);
-                    int beyond=step.first()==at?step.second():step.first();
-                    if(end==0){chain.addFirst(next);order.addFirst(beyond);}else{chain.add(next);order.add(beyond);}
-                    at=beyond;from=next;
-                }
-            }
+            runs.walk(graph,edge,taken,next->graph.pipes().get(next).control() instanceof FlowControl.Passive,chain,order);
             int start=order.getFirst(),finish=order.getLast();
             if(start==finish||graph.reservoirs().get(start).junction()||graph.reservoirs().get(finish).junction())continue;
             // Which way the run as a whole may carry: every link must allow its own share of it.
