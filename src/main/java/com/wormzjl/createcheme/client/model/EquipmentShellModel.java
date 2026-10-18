@@ -1,7 +1,7 @@
 package com.wormzjl.createcheme.client.model;
 
 import com.wormzjl.createcheme.CreateChemE;
-import com.wormzjl.createcheme.client.FanAnimation;
+import com.wormzjl.createcheme.client.MachineAnimation;
 import com.wormzjl.createcheme.science.equipment.Mesh;
 import com.wormzjl.createcheme.science.equipment.ShapeRasterizer;
 import com.wormzjl.createcheme.world.level.block.entity.EquipmentShellBlockEntity;
@@ -42,7 +42,7 @@ import java.util.function.Function;
  * no ambient occlusion; their directional shade is baked into the vertex colour from the smooth normal (owner report
  * 2026-10-16: the per-quad six-step shade banded a round shell), so vanilla and Sodium shade them alike.
  * Without model data (Distant Horizons asks that way) the model is empty and the particle sprite gives the colour.
- * While air coolers' fans turn ({@link FanAnimation}) their rotors are left out: a cell holding a rotor keeps both lists,
+ * While units' parts move ({@link MachineAnimation}) the moving parts are left out: a cell holding one keeps both lists,
  * every other cell one list for both states.
  */
 public final class EquipmentShellModel implements IDynamicBakedModel {
@@ -78,11 +78,11 @@ public final class EquipmentShellModel implements IDynamicBakedModel {
             if (quads.size() >= CACHE) quads.clear();
             baked = quads.computeIfAbsent(key, this::bake);
         }
-        return FanAnimation.enabled() ? baked.turning() : baked.still();
+        return MachineAnimation.enabled() ? baked.moving() : baked.still();
     }
 
-    /** A cell's quads with its rotors at rest, and without them while the fans turn: one list where it holds none. */
-    private record Baked(List<BakedQuad> still, List<BakedQuad> turning) {
+    /** A cell's quads with its moving parts at rest, and without them while they move: one list where it holds none. */
+    private record Baked(List<BakedQuad> still, List<BakedQuad> moving) {
     }
 
     /**
@@ -90,10 +90,9 @@ public final class EquipmentShellModel implements IDynamicBakedModel {
      * quads carry its paint channel as their tint index, so the cell's paint colours them as the chunk is meshed.
      */
     private Baked bake(ShapeRasterizer.CellKey key) {
-        var polygons = ShapeRasterizer.surface(key);
-        var still = bake(polygons, sprites, true);
-        if (polygons.stream().noneMatch(p -> p.material() == Mesh.Material.AC_FAN)) return new Baked(still, still);
-        return new Baked(still, bake(polygons.stream().filter(p -> p.material() != Mesh.Material.AC_FAN).toList(), sprites, true));
+        var still = bake(ShapeRasterizer.surface(key), sprites, true);
+        if (!ShapeRasterizer.moves(key)) return new Baked(still, still);
+        return new Baked(still, bake(ShapeRasterizer.fixedSurface(key), sprites, true));
     }
 
     /**
@@ -139,13 +138,23 @@ public final class EquipmentShellModel implements IDynamicBakedModel {
         return k * (z8 + .5F * x8);
     }
 
-    private static BakedQuad quad(Mesh.Polygon polygon, TextureAtlasSprite sprite, int tint, int... corners) {
-        double[] p = polygon.positions(), uv = polygon.uvs(), n = polygon.normals();
-        // Only a curved polygon (its vertex normals differ) of a round body takes the sheen; flat faces keep their shade.
+    /**
+     * A vertex's shade, 0 to 255, as the chunk mesh bakes it into the vertex colour: the directional shade of its smooth
+     * normal, by the formula NeoForge uses for its own normal-based lighting, and on a curved polygon (its vertex normals
+     * differ) of a round body the sheen; flat faces keep their shade. Moving parts are baked the same way.
+     */
+    public static int shade(Mesh.Polygon polygon, int corner) {
+        double[] n = polygon.normals();
         boolean curved = false;
         for (int i = 1; i < polygon.size() && !curved; i++)
             curved = Math.abs(n[3 * i] - n[0]) + Math.abs(n[3 * i + 1] - n[1]) + Math.abs(n[3 * i + 2] - n[2]) > 1e-4;
         float k = curved && SHEEN.contains(polygon.material()) ? CreateChemE.equipmentSheen() : 0;
+        float nx = (float) n[3 * corner], ny = (float) n[3 * corner + 1], nz = (float) n[3 * corner + 2];
+        return Math.round(255 * Math.min(1, QuadLighter.calculateShade(nx, ny, nz, false) + (k > 0 ? sheen(k, nx, nz) : 0)));
+    }
+
+    private static BakedQuad quad(Mesh.Polygon polygon, TextureAtlasSprite sprite, int tint, int... corners) {
+        double[] p = polygon.positions(), uv = polygon.uvs(), n = polygon.normals();
         // Face direction from the corners' winding (Newell), for vanilla's directional shade.
         double fx = 0, fy = 0, fz = 0;
         for (int i = 0; i < 4; i++) {
@@ -164,12 +173,11 @@ public final class EquipmentShellModel implements IDynamicBakedModel {
         baker.setShade(false);
         baker.setHasAmbientOcclusion(false);
         for (int c : corners) {
-            float nx = (float) n[3 * c], ny = (float) n[3 * c + 1], nz = (float) n[3 * c + 2];
-            int shade = Math.round(255 * Math.min(1, QuadLighter.calculateShade(nx, ny, nz, false) + (k > 0 ? sheen(k, nx, nz) : 0)));
+            int shade = shade(polygon, c);
             baker.addVertex((float) p[3 * c], (float) p[3 * c + 1], (float) p[3 * c + 2])
                     .setColor(shade, shade, shade, 255)
                     .setUv(sprite.getU((float) uv[2 * c]), sprite.getV((float) uv[2 * c + 1]))
-                    .setNormal(nx, ny, nz);
+                    .setNormal((float) n[3 * c], (float) n[3 * c + 1], (float) n[3 * c + 2]);
         }
         return baker.bakeQuad();
     }

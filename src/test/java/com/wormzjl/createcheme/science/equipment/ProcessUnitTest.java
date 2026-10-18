@@ -299,47 +299,92 @@ class ProcessUnitTest {
         // inside the plenum's frame across the bay.
         for (var bay : ProcessUnit.bays()) {
             var shape = EquipmentShape.unit(Kind.AIR_COOLER, bay[0], bay[1], Heading.NORTH, 4, new ProcessUnit.Bank(2, 2));
-            var rotors = ProcessUnit.rotors(shape);
-            double ring = ProcessUnit.RING_OD * rotors.getFirst()[3];
+            var hubs = ShapeRasterizer.moving(shape).stream().map(part -> part.motion().pivot()).toList();
+            double ring = ProcessUnit.RING_OD * ProcessUnit.fans(bay[0], bay[1]).diameter();
             assertTrue(ring <= bay[0] - .32 + 1e-9, bay[0] + " x " + bay[1]);
-            for (var a : rotors)
-                for (var b : rotors)
+            for (var a : hubs)
+                for (var b : hubs)
                     if (a != b && Math.abs(a[0] - b[0]) < 1e-9)
                         assertTrue(Math.abs(a[2] - b[2]) >= ring + .02 - 1e-9, bay[0] + " x " + bay[1] + ": " + Math.abs(a[2] - b[2]) + " < " + ring);
         }
     }
 
     @Test
-    void fanRotorsTurnAboutTheirHubs() {
-        // Owner request 2026-10-16: the client turns each fan's rotor about its hub. A bank has a rotor per fan per bay,
-        // each hub inside the bank's box; a rotor alone lies within its radius of the hub, and all of them together are
-        // the area of the still rotors the chunk mesh would draw.
+    void movingPartsAreTheStillOnesSetGoing() {
+        // Owner requests 2026-10-16 and 2026-10-18 ("give compressor and pump working animations"): the client moves each
+        // part about its pivot. An air cooler bank has a fan per fan position per bay, a pump its shaft and its motor's
+        // fan, a compressor a piston rod per throw and its motor's cooler fan, the other units none. Each pivot lies in the
+        // unit's box and each part within its reach of it; the parts' polygons have the area of the facets the chunk mesh
+        // draws at rest, which it leaves out while they move; they are unpainted, drawn without the cell's tint.
         var bank = new ProcessUnit.Bank(2, 2);
-        var shape = EquipmentShape.unit(Kind.AIR_COOLER, 3, 6, Heading.EAST, 4, bank);
-        var fans = ProcessUnit.fans(3, 6);
-        var rotors = ProcessUnit.rotors(shape);
-        assertEquals(bank.bays() * fans.count(), rotors.size());
-        for (var r : rotors) {
-            assertEquals(fans.diameter(), r[3], 1e-12);
-            assertTrue(r[0] > 0 && r[0] < shape.sizeX() && r[1] > 0 && r[1] < shape.sizeY() && r[2] > 0 && r[2] < shape.sizeZ());
-        }
-        double radius = fans.diameter() / 2, one = 0;
-        for (var polygon : ProcessUnit.rotor(fans.diameter())) {
-            assertEquals(Mesh.Material.AC_FAN, polygon.material());
-            double[] p = polygon.positions();
-            for (int i = 0; i < p.length; i += 3) {
-                assertTrue(p[i] * p[i] + p[i + 2] * p[i + 2] <= radius * radius + 1e-9);
-                assertTrue(Math.abs(p[i + 1]) <= radius);
+        var cases = Map.of(EquipmentShape.unit(Kind.AIR_COOLER, 3, 6, Heading.EAST, 4, bank), bank.bays() * ProcessUnit.fans(3, 6).count(),
+                EquipmentShape.unit(Kind.PUMP, .05, 1, Heading.NORTH, 0), 2, EquipmentShape.unit(Kind.PUMP, .25, 1, Heading.EAST, 0), 2,
+                EquipmentShape.unit(Kind.PUMP, .75, 1, Heading.SOUTH, 0), 2, EquipmentShape.unit(Kind.COMPRESSOR, .15, 2, Heading.NORTH, 2), 3,
+                EquipmentShape.unit(Kind.COMPRESSOR, .45, 4, Heading.WEST, ProcessUnit.minSupport(Kind.COMPRESSOR, .45, 4)), 5,
+                EquipmentShape.unit(Kind.EXCHANGER, 1, 4, Heading.NORTH, 2), 0, EquipmentShape.unit(Kind.VERTICAL_HEATER, 2.5, 4, Heading.NORTH, 3), 0);
+        for (var entry : cases.entrySet()) {
+            var shape = entry.getKey();
+            var parts = ShapeRasterizer.moving(shape);
+            assertEquals(entry.getValue(), parts.size(), shape.toString());
+            assertEquals(entry.getValue() > 0, ProcessUnit.moves(shape.kind()), shape.toString());
+            double moving = 0;
+            for (var part : parts) {
+                double[] p = part.motion().pivot();
+                assertTrue(p[0] > 0 && p[0] < shape.sizeX() && p[1] > 0 && p[1] < shape.sizeY() && p[2] > 0 && p[2] < shape.sizeZ(), shape + " " + part.motion());
+                assertFalse(part.polygons().isEmpty(), shape.toString());
+                for (var polygon : part.polygons()) {
+                    assertTrue(polygon.material().channel() < 0, shape + ": " + polygon.material());
+                    double[] q = polygon.positions();
+                    for (int i = 0; i < q.length; i += 3) assertTrue(Math.sqrt(q[i] * q[i] + q[i + 1] * q[i + 1] + q[i + 2] * q[i + 2]) <= part.reach() + 1e-9);
+                    moving += area(polygon);
+                }
             }
-            one += area(polygon);
+            double still = 0;
+            for (var cell : ShapeRasterizer.layout(shape).shell()) {
+                var key = ShapeRasterizer.key(shape, cell.x(), cell.y(), cell.z());
+                for (var polygon : ShapeRasterizer.surface(key)) still += area(polygon);
+                for (var polygon : ShapeRasterizer.fixedSurface(key)) still -= area(polygon);
+            }
+            assertEquals(moving, still, 1e-6 * Math.max(1, moving), shape.toString());
         }
-        double still = 0;
-        for (var cell : ShapeRasterizer.layout(shape).shell())
-            for (var polygon : ShapeRasterizer.surface(ShapeRasterizer.key(shape, cell.x(), cell.y(), cell.z())))
-                if (polygon.material() == Mesh.Material.AC_FAN) still += area(polygon);
-        assertTrue(one > 0);
-        assertEquals(rotors.size() * one, still, 1e-6 * still);
-        assertEquals(List.of(), ProcessUnit.rotors(EquipmentShape.unit(Kind.EXCHANGER, 1, 4, Heading.NORTH, 2)));
+    }
+
+    @Test
+    void pistonRodsHideTheirEnds() {
+        // Owner request 2026-10-18 ("add Piston model to compressor"; answered: the rods in open distance-piece windows).
+        // A rod rides its slider-crank: drawn with its crank a quarter turn round, out and in by about half the stroke;
+        // over the whole stroke both of its ends stay inside the crosshead guide and the cylinder, so it never shows a cut
+        // end in the windows.
+        for (double b : new double[]{.15, .45, .8, 1.2})
+            for (int throwCount : new int[]{ProcessUnit.minLength(Kind.COMPRESSOR, b), ProcessUnit.maxLength(Kind.COMPRESSOR, b)}) {
+                var shape = EquipmentShape.unit(Kind.COMPRESSOR, b, throwCount, Heading.NORTH, ProcessUnit.minSupport(Kind.COMPRESSOR, b, throwCount));
+                int rods = 0;
+                for (var part : ShapeRasterizer.moving(shape)) {
+                    var motion = part.motion();
+                    if (!motion.slides()) continue;
+                    rods++;
+                    double crank = ProcessUnit.stroke(b) / 2;
+                    assertEquals(crank, motion.crank(), 1e-12);
+                    assertEquals(0, motion.offset(.25), 1e-12);
+                    // Dead centres a stroke apart, out and in from the still rod (a quarter turn is not quite mid stroke).
+                    assertEquals(2 * crank, motion.offset(0) - motion.offset(.5), 1e-12);
+                    assertTrue(motion.offset(0) > 0 && motion.offset(.5) < 0);
+                    double[] pivot = motion.pivot(), axis = motion.axis();
+                    double lo = Double.MAX_VALUE, hi = -Double.MAX_VALUE;
+                    for (var polygon : part.polygons())
+                        for (int i = 0; i < polygon.positions().length; i += 3) {
+                            double t = polygon.positions()[i] * axis[0] + polygon.positions()[i + 1] * axis[1] + polygon.positions()[i + 2] * axis[2];
+                            lo = Math.min(lo, t);
+                            hi = Math.max(hi, t);
+                        }
+                    for (double turns = 0; turns < 1; turns += .05) {
+                        double d = motion.offset(turns);
+                        for (double t : new double[]{lo + d + .01, hi + d - .01})
+                            assertTrue(ShapeRasterizer.inside(shape, pivot[0] + t * axis[0], pivot[1] + t * axis[1], pivot[2] + t * axis[2]), shape + " turn " + turns);
+                    }
+                }
+                assertEquals(throwCount, rods, shape.toString());
+            }
     }
 
     @Test

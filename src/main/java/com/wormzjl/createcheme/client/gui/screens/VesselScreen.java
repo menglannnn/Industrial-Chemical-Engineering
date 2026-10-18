@@ -1,6 +1,6 @@
 package com.wormzjl.createcheme.client.gui.screens;
 
-import com.wormzjl.createcheme.client.FanAnimation;
+import com.wormzjl.createcheme.client.MachineAnimation;
 import com.wormzjl.createcheme.client.gui.common.ProcessUi;
 import com.wormzjl.createcheme.science.equipment.EquipmentShape;
 import com.wormzjl.createcheme.science.equipment.ProcessUnit;
@@ -27,13 +27,13 @@ public final class VesselScreen extends Screen {
     private static final int WIDTH = 256, LINE = 12;
     private static final String KEY = "gui.createcheme.vessel.";
     private final List<Component> lines;
-    private final boolean fans;
+    private final boolean moving;
     private int left, top, panel;
 
     public VesselScreen(EquipmentStructure.Vessel vessel) {
         super(Component.translatable(KEY + "title." + vessel.shape().kind().name().toLowerCase(Locale.ROOT)));
         lines = datasheet(vessel);
-        fans = vessel.shape().kind() == EquipmentShape.Kind.AIR_COOLER;
+        moving = vessel.shape().unit() && ProcessUnit.moves(vessel.shape().kind());
     }
 
     /** The vessel's datasheet, a line each: its kind first, then its sizes and cells, then each nozzle. */
@@ -128,17 +128,17 @@ public final class VesselScreen extends Screen {
         left = (width - panel) / 2;
         top = (height - (lines.size() * LINE + 56)) / 2;
         int y = top + lines.size() * LINE + 30;
-        // An air cooler's debug switch: its fans turn, or stand still in the chunk mesh, to compare frame rates.
-        if (fans) addRenderableWidget(Button.builder(fanLabel(), b -> {
-            FanAnimation.toggle();
-            b.setMessage(fanLabel());
-        }).bounds(left + panel / 2 - 124, y, 120, 20).tooltip(Tooltip.create(Component.translatable(KEY + "fans.hint"))).build());
+        // A moving unit's debug switch: its fans, shafts and rods move, or stand still in the chunk mesh, to compare frame rates.
+        if (moving) addRenderableWidget(Button.builder(motionLabel(), b -> {
+            MachineAnimation.toggle();
+            b.setMessage(motionLabel());
+        }).bounds(left + panel / 2 - 144, y, 140, 20).tooltip(Tooltip.create(Component.translatable(KEY + "motion.hint"))).build());
         addRenderableWidget(Button.builder(Component.translatable("gui.done"), b -> onClose())
-                .bounds(fans ? left + panel / 2 + 4 : left + (panel - 80) / 2, y, 80, 20).build());
+                .bounds(moving ? left + panel / 2 + 4 : left + (panel - 80) / 2, y, 80, 20).build());
     }
 
-    private static Component fanLabel() {
-        return Component.translatable(KEY + (FanAnimation.enabled() ? "fans.turning" : "fans.still"));
+    private static Component motionLabel() {
+        return Component.translatable(KEY + (MachineAnimation.enabled() ? "motion.running" : "motion.still"));
     }
 
     @Override

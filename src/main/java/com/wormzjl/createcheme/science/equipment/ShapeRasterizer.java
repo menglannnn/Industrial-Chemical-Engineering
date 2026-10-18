@@ -154,7 +154,34 @@ public final class ShapeRasterizer {
 
     public static List<Polygon> surface(CellKey key) {
         int[] c = cell(key);
-        return surface(key.shape(), c[0], c[1], c[2], key.nozzles());
+        return surface(key.shape(), c[0], c[1], c[2], key.nozzles(), true);
+    }
+
+    /** A cell's surface without its moving parts' facets ({@link ProcessUnit.Motion}): the client draws those moving. */
+    public static List<Polygon> fixedSurface(CellKey key) {
+        int[] c = cell(key);
+        return surface(key.shape(), c[0], c[1], c[2], key.nozzles(), false);
+    }
+
+    /** Whether facets of a moving part reach the cell: its surface differs while the parts move. */
+    public static boolean moves(CellKey key) {
+        int[] c = cell(key);
+        for (var facet : geometry(key.shape()).facetsIn(new Cell(c[0], c[1], c[2]))) if (facet.part() >= 0) return true;
+        return false;
+    }
+
+    /**
+     * A unit's moving part in the box: its motion (pivot and axis in box coordinates), its polygons relative to the pivot,
+     * cut at the cell grid as the chunk mesh cuts them (the moving part shows the still one's texels), and its farthest
+     * point from the pivot.
+     */
+    public record Moving(ProcessUnit.Motion motion, List<Polygon> polygons, double reach) {
+    }
+
+    /** A unit's moving parts in the box, by index ({@link ProcessUnit.Motion}); none for a vessel, a column or a unit without any. */
+    public static List<Moving> moving(EquipmentShape shape) {
+        if (!drawing) throw new IllegalStateException("A dedicated server keeps no surfaces");
+        return geometry(shape).moving();
     }
 
     /** Greedy merge of the cell's solid sampled at {@link #SOLID_RESOLUTION}: along z, then x, then y. */
@@ -245,11 +272,16 @@ public final class ShapeRasterizer {
 
     /** Surface polygons of the cell at its actual position, without key normalization; {@code codes} as {@link #cellCodes}. */
     static List<Polygon> surface(EquipmentShape shape, int x, int y, int z, long codes) {
+        return surface(shape, x, y, z, codes, true);
+    }
+
+    /** Surface polygons of the cell, with or without the {@code moving} parts' facets. */
+    private static List<Polygon> surface(EquipmentShape shape, int x, int y, int z, long codes, boolean moving) {
         if (!drawing) throw new IllegalStateException("A dedicated server keeps no surfaces");
         var g = geometry(shape);
         var out = new ArrayList<Polygon>();
         var cell = new Cell(x, y, z);
-        for (var facet : g.facetsIn(cell)) g.mesh.cell(facet, x, y, z, out);
+        for (var facet : g.facetsIn(cell)) if (moving || facet.part() < 0) g.mesh.cell(facet, x, y, z, out);
         var reaching = g.reaching(cell);
         for (int j = 0; j < reaching.length; j++) {
             var mesh = g.nozzle(reaching[j], code(codes, j));
@@ -997,6 +1029,45 @@ public final class ShapeRasterizer {
 
         List<Facet> facetsIn(Cell cell) {
             return facetsByCell.getOrDefault(cell, List.of());
+        }
+
+        private volatile List<Moving> moving;
+
+        /** The unit's moving parts, cut and gathered once (the client asks for them as it meets the unit). */
+        List<Moving> moving() {
+            var out = moving;
+            if (out != null) return out;
+            var parts = new ArrayList<Moving>();
+            var motions = unit != null ? unit.motions() : List.<ProcessUnit.Motion>of();
+            var byPart = new ArrayList<List<Facet>>();
+            for (int k = 0; k < motions.size(); k++) byPart.add(new ArrayList<>());
+            for (var facet : mesh.facets()) if (facet.part() >= 0) byPart.get(facet.part()).add(facet);
+            for (int k = 0; k < motions.size(); k++) {
+                var motion = motions.get(k).in(transform);
+                var pivot = motion.pivot();
+                var polygons = new ArrayList<Polygon>();
+                double reach = 0;
+                var pieces = new ArrayList<Polygon>();
+                for (var facet : byPart.get(k))
+                    for (int x = floor(facet.min()[0]); x <= floor(facet.max()[0]); x++)
+                        for (int y = floor(facet.min()[1]); y <= floor(facet.max()[1]); y++)
+                            for (int z = floor(facet.min()[2]); z <= floor(facet.max()[2]); z++) {
+                                pieces.clear();
+                                mesh.cell(facet, x, y, z, pieces);
+                                for (var piece : pieces) {
+                                    var p = piece.positions().clone();
+                                    for (int i = 0; i < p.length; i += 3) {
+                                        p[i] += x - pivot[0];
+                                        p[i + 1] += y - pivot[1];
+                                        p[i + 2] += z - pivot[2];
+                                        reach = Math.max(reach, Math.sqrt(p[i] * p[i] + p[i + 1] * p[i + 1] + p[i + 2] * p[i + 2]));
+                                    }
+                                    polygons.add(new Polygon(p, piece.uvs(), piece.normals(), piece.material()));
+                                }
+                            }
+                parts.add(new Moving(motion, List.copyOf(polygons), reach));
+            }
+            return moving = List.copyOf(parts);
         }
 
         /** Body rows along the axis and their texture classes: rows wholly in the cylinder, clear of supports, opening and nozzles. */

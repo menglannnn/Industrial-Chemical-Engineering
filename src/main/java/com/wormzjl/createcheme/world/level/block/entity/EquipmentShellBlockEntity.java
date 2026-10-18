@@ -60,12 +60,13 @@ public final class EquipmentShellBlockEntity extends BlockEntity implements Flui
     private long identity;
     private @Nullable FluidView lastView;
     /**
-     * Client: the cells holding an air cooler fan's hub, whose rotors the client turns (owner request 2026-10-16).
-     * Render thread only; weak, so an unloaded level frees them.
+     * Client: the cells holding a moving part's pivot, whose parts the client moves (owner requests 2026-10-16 and
+     * 2026-10-18: air cooler fans, pump shafts and motor fans, compressor piston rods). Render thread only; weak, so an
+     * unloaded level frees them.
      */
-    private static final Set<EquipmentShellBlockEntity> CLIENT_ROTORS = Collections.newSetFromMap(new WeakHashMap<>());
-    /** Client: the fan rotors whose hubs this cell holds, {x, y, z, diameter} in world coordinates. */
-    private List<double[]> rotors = List.of();
+    private static final Set<EquipmentShellBlockEntity> CLIENT_MOVING = Collections.newSetFromMap(new WeakHashMap<>());
+    /** Client: the moving parts whose pivots this cell holds, by index ({@link ShapeRasterizer#moving}). */
+    private int[] moving = new int[0];
 
     public EquipmentShellBlockEntity(BlockPos position, BlockState state) {
         super(ModBlockEntities.EQUIPMENT_SHELL.get(), position, state);
@@ -100,34 +101,36 @@ public final class EquipmentShellBlockEntity extends BlockEntity implements Flui
         return new PhysicalFluidTopology.Position(level.dimension().location().toString(), worldPosition.getX(), worldPosition.getY(), worldPosition.getZ());
     }
 
-    /** Client: the cells holding a fan's hub in the client's level. */
-    public static List<EquipmentShellBlockEntity> clientRotorCells() {
-        return List.copyOf(CLIENT_ROTORS);
+    /** Client: the cells holding a moving part's pivot in the client's level. */
+    public static List<EquipmentShellBlockEntity> clientMovingCells() {
+        return List.copyOf(CLIENT_MOVING);
     }
 
-    public List<double[]> rotors() {
-        return rotors;
+    public int[] moving() {
+        return moving;
     }
 
-    /** Client: lists the fan hubs in this cell ({@link ProcessUnit#rotors}) for the client that turns them. */
-    private void trackRotors() {
-        rotors = List.of();
-        CLIENT_ROTORS.remove(this);
-        if (shape == null || level == null || !level.isClientSide) return;
-        var here = new ArrayList<double[]>();
-        for (var r : ProcessUnit.rotors(shape))
-            if (Math.floor(r[0]) == cellX && Math.floor(r[1]) == cellY && Math.floor(r[2]) == cellZ)
-                here.add(new double[]{worldPosition.getX() - cellX + r[0], worldPosition.getY() - cellY + r[1], worldPosition.getZ() - cellZ + r[2], r[3]});
+    /** Client: lists the moving parts whose pivots lie in this cell ({@link ShapeRasterizer#moving}) for the client that moves them. */
+    private void trackMoving() {
+        moving = new int[0];
+        CLIENT_MOVING.remove(this);
+        if (shape == null || level == null || !level.isClientSide || !shape.unit() || !ProcessUnit.moves(shape.kind())) return;
+        var parts = ShapeRasterizer.moving(shape);
+        var here = new ArrayList<Integer>();
+        for (int k = 0; k < parts.size(); k++) {
+            var p = parts.get(k).motion().pivot();
+            if (Math.floor(p[0]) == cellX && Math.floor(p[1]) == cellY && Math.floor(p[2]) == cellZ) here.add(k);
+        }
         if (here.isEmpty()) return;
-        rotors = List.copyOf(here);
-        CLIENT_ROTORS.add(this);
+        moving = here.stream().mapToInt(Integer::intValue).toArray();
+        CLIENT_MOVING.add(this);
     }
 
-    /** Server: a node cell binds the drum the ledger holds here, as a device block entity binds its registration; the client lists its fan hubs. */
+    /** Server: a node cell binds the drum the ledger holds here, as a device block entity binds its registration; the client lists its moving parts. */
     @Override
     public void onLoad() {
         super.onLoad();
-        if (level != null && level.isClientSide) trackRotors();
+        if (level != null && level.isClientSide) trackMoving();
         if (!(level instanceof ServerLevel serverLevel) || shape == null) return;
         var here = fluidPosition();
         FluidWorldAuthority.find(serverLevel.getServer()).ifPresent(world -> world.at(here)
@@ -150,9 +153,9 @@ public final class EquipmentShellBlockEntity extends BlockEntity implements Flui
         released();
     }
 
-    /** Unloaded or removed: publications stop marking the drum; the client stops turning its fans. */
+    /** Unloaded or removed: publications stop marking the drum; the client stops moving its parts. */
     private void released() {
-        CLIENT_ROTORS.remove(this);
+        CLIENT_MOVING.remove(this);
         if (identity != 0 && level instanceof ServerLevel serverLevel && serverLevel.getServer().isSameThread())
             FluidWorldAuthority.find(serverLevel.getServer()).ifPresent(world -> world.deviceUnloaded(identity));
     }
@@ -334,7 +337,7 @@ public final class EquipmentShellBlockEntity extends BlockEntity implements Flui
     public void onDataPacket(net.minecraft.network.Connection connection, ClientboundBlockEntityDataPacket packet, HolderLookup.Provider registries) {
         super.onDataPacket(connection, packet, registries);
         requestModelDataUpdate();
-        trackRotors();
+        trackMoving();
         if (level != null) level.sendBlockUpdated(worldPosition, getBlockState(), getBlockState(), 0);
     }
 

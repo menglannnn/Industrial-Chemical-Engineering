@@ -465,41 +465,53 @@ public final class ProcessUnit {
     }
 
     /**
-     * An air cooler's fan rotors, {x, y, z, diameter} in box coordinates at each hub's centre, for the client that turns
-     * them (owner request 2026-10-16); none for another unit.
+     * A moving part (owner requests 2026-10-16, "add a working animation for AC", and 2026-10-18, "give compressor and
+     * pump working animations"; {@code HEATER_JOINTS_MACHINE_MOTION_PLAN.md}): the facets drawn under its index
+     * ({@link Mesh#part}) turn about {@code axis} through {@code pivot}, or slide along it, at {@code speed} revolutions a
+     * second from {@code phase} (turns). A sliding part rides a slider-crank of crank radius {@code crank} and connecting
+     * rod {@code rod}, drawn at mid stroke (the crank a quarter turn round). Real speeds alias at frame rates (a fan's 5
+     * rev/s, a pump's 50, a compressor crank's 5 to 15), so these are slower; each makes whole turns in
+     * {@link #MOTION_PERIOD} ticks. The client moves them only while its switch is on; the server never does.
      */
-    public static List<double[]> rotors(EquipmentShape shape) {
-        if (shape.kind() != Kind.AIR_COOLER) return List.of();
-        var out = new ArrayList<double[]>();
-        for (var r : of(shape).rotors) {
-            var p = shape.transform().point(new double[]{r[0], r[1], r[2]});
-            out.add(new double[]{p[0], p[1], p[2], r[3]});
+    public record Motion(double[] pivot, double[] axis, double speed, double phase, double crank, double rod) {
+        static Motion turning(double[] pivot, double[] axis, double speed, double phase) {
+            return new Motion(pivot, axis, speed, phase, 0, 0);
         }
-        return out;
+
+        public boolean slides() {
+            return crank > 0;
+        }
+
+        /** Where the part is {@code seconds} on: its angle about the axis, or its crank's, in turns. */
+        public double turns(double seconds) {
+            return speed * seconds + phase;
+        }
+
+        /** A sliding part's displacement along its axis from where it is drawn, m, its crank {@code turns} round. */
+        public double offset(double turns) {
+            double t = 2 * Math.PI * turns, s = DeterministicMath.sin(t);
+            return crank * DeterministicMath.cos(t) + Math.sqrt(rod * rod - crank * crank * s * s) - Math.sqrt(rod * rod - crank * crank);
+        }
+
+        /** The same motion in the box: its pivot and axis turned by {@code transform}. */
+        public Motion in(Transform transform) {
+            return new Motion(transform.point(pivot), transform.direction(axis), speed, phase, crank, rod);
+        }
     }
 
-    /**
-     * A fan's rotor alone ({@link Material#AC_FAN}), its hub's centre at the origin, as polygons in metres cut where the
-     * static model cuts it, so the turning rotor shows the texels of the still one.
-     */
-    public static List<Mesh.Polygon> rotor(double diameter) {
-        int reach = (int) Math.ceil(diameter / 2) + 1;
-        var mesh = new Mesh();
-        Part.of("ac_fan").place(mesh, new double[]{reach, reach, reach}, diameter, diameter, 0, Material.AC_FAN);
-        var out = new ArrayList<Mesh.Polygon>();
-        for (int x = 0; x < 2 * reach; x++)
-            for (int y = 0; y < 2 * reach; y++)
-                for (int z = 0; z < 2 * reach; z++)
-                    for (var piece : mesh.cell(x, y, z)) {
-                        var p = piece.positions().clone();
-                        for (int i = 0; i < p.length; i += 3) {
-                            p[i] += x - reach;
-                            p[i + 1] += y - reach;
-                            p[i + 2] += z - reach;
-                        }
-                        out.add(new Mesh.Polygon(p, piece.uvs(), piece.normals(), piece.material()));
-                    }
-        return out;
+    /** Ticks holding whole turns of every shown speed. */
+    public static final int MOTION_PERIOD = 40;
+    /** Shown speeds, rev/s: an air cooler's fans, a pump's shaft and its motor's fan, a compressor's crank. */
+    static final double FAN_SPEED = 1.5, PUMP_SPEED = 2, CRANK_SPEED = 1;
+
+    /** The unit's moving parts in its frame, by index ({@link Mesh#part}): none for an exchanger, a kettle, an ejector or a heater. */
+    List<Motion> motions() {
+        return List.copyOf(motions);
+    }
+
+    /** Whether units of {@code kind} have moving parts: their datasheet carries the switch. */
+    public static boolean moves(Kind kind) {
+        return kind == Kind.AIR_COOLER || kind == Kind.PUMP || kind == Kind.COMPRESSOR;
     }
 
     static ProcessUnit of(EquipmentShape shape) {
@@ -574,8 +586,8 @@ public final class ProcessUnit {
     /** The mesh being drawn: the cached unit drops it once built; {@link #mesh()} draws the facets again. */
     private Mesh mesh = new Mesh();
     private final List<Solid> solids = new ArrayList<>(), volumes = new ArrayList<>();
-    /** An air cooler's fan rotors, {x, y, z, diameter} in the frame at each hub's centre. */
-    private final List<double[]> rotors = new ArrayList<>();
+    /** The moving parts, by the index their facets carry ({@link Mesh#part}). */
+    private final List<Motion> motions = new ArrayList<>();
     /** A heater's ladders. */
     private final List<Access.Climb> ladders = new ArrayList<>();
 
@@ -850,8 +862,11 @@ public final class ProcessUnit {
                     double zc = front1 + .05 + (f + .5) * share;
                     if (i == 0 && k == 0) fanZ.add(zc);
                     Part.of("ac_fan_ring").place(mesh, new double[]{mid, bottom, zc}, d, up, 0, Material.AC_RING);
+                    // The rotor turns clockwise seen from below, each from its own angle so a bank's blades are not in step.
+                    mesh.part(motions.size());
                     Part.of("ac_fan").place(mesh, new double[]{mid, rotor, zc}, d, d, 0, Material.AC_FAN);
-                    rotors.add(new double[]{mid, rotor, zc, d});
+                    mesh.part(-1);
+                    motions.add(Motion.turning(new double[]{mid, rotor, zc}, new double[]{0, -1, 0}, FAN_SPEED, .618 * motions.size()));
                     // Terminal boxes face out of the bank.
                     Part.of("ac_motor").place(mesh, new double[]{mid, motorTop, zc}, motor, motor, 2 * i < trains - 1 ? 2 : 0, Material.AC_MOTOR);
                     mesh.cylinder(Frame.of(new double[]{mid, 0, zc}, 1, 1), .025 * motor, motorTop, rotor - .06 * d, 8, Material.FLANGE);
@@ -1122,11 +1137,11 @@ public final class ProcessUnit {
         mesh.annulus(f, .43 * s + .04, rh, zh, n, -1, Material.MACHINE);
         mesh.cylinder(f, joint, z1, zk, n, Material.MACHINE);
         mesh.bolts(f, Math.min(PipeSizes.MAX_OUTSIDE, 1.6 * joint), joint - .12, joint, zk, 1, Material.BOLT);
-        // The bracket, windowed each side over the seal chamber, its gland and the shaft.
+        // The bracket, windowed each side over the seal chamber, its gland and the shaft turning with its seal's collar.
         bracket(f, .62 * di, rb + .03, zk, zb0, n);
         mesh.cylinder(f, .27 * di, zk, seal, n, Material.MACHINE);
         mesh.cylinder(f, .2 * di, seal, seal + .05, n, Material.FLANGE);
-        mesh.prism(f, shaft, seal + .05, zb0, 8, Material.PIPE);
+        shaft(f, shaft, new double[][]{{seal + .05, zb0}}, seal + .05 + collar(shaft) / 2);
         // The bearing housing: its oil sump, the finned round body, the end cover; the oiler on the sump, the vent on top.
         double sump = zb0 + .45 * lb;
         box(new double[]{a - .9 * rb, y - 1.2 * rb, zb0}, new double[]{a + .9 * rb, y + .55 * rb, sump}, Material.MACHINE, false);
@@ -1274,8 +1289,7 @@ public final class ProcessUnit {
         bracket(f, .45 * di, rb + .03, z1, zb0, n);
         mesh.cylinder(f, .22 * di, z0 - .55 * lk, z0, n, Material.MACHINE);
         mesh.cylinder(f, .22 * di, z1, z1 + .55 * lk, n, Material.MACHINE);
-        mesh.prism(f, shaft, zf1, z0 - .55 * lk, 8, Material.PIPE);
-        mesh.prism(f, shaft, z1 + .55 * lk, zb0, 8, Material.PIPE);
+        shaft(f, shaft, new double[][]{{zf1, z0 - .55 * lk}, {z1 + .55 * lk, zb0}}, z0 - .55 * lk - collar(shaft) / 2, z1 + .55 * lk + collar(shaft) / 2);
         for (int e = 0; e < 2; e++) {
             double h0 = e == 0 ? zf0 : zb0, h1 = e == 0 ? zf1 : zb1;
             mesh.prism(f, rb, h0, h1, nb, Material.MACHINE);
@@ -1423,7 +1437,7 @@ public final class ProcessUnit {
         mesh.annulus(f, r, rc, cowl, n, -1, Material.MOTOR);
         mesh.frustum(f, rc, .92 * rc, cowl, z1, n, Material.MOTOR);
         mesh.annulus(f, .8 * rc, .92 * rc, z1, n, 1, Material.MOTOR);
-        mesh.annulus(f, 0, .8 * rc, z1, n, 1, Material.OPENING);
+        grilledFan(f, .8 * rc, z1, Math.max(.06, Math.min(.15, .6 * (z1 - cowl))), n, PUMP_SPEED);
         double terminal = z0 + .3 * (z1 - z0);
         box(new double[]{x - .35 * r, y + r - .02, terminal}, new double[]{x + .35 * r, y + 1.45 * r, terminal + .55 * r}, Material.MOTOR, false);
         mesh.cylinder(Frame.of(new double[]{0, y + 1.2 * r, terminal + .27 * r}, 0, 1), .06 * r + .01, x + .35 * r, x + .35 * r + .05, 8, Material.MOTOR);
@@ -1552,23 +1566,14 @@ public final class ProcessUnit {
         for (int k = 0; k < throwCount; k++) {
             int sx = k % 2 == 0 ? -1 : 1;
             double z = zs[k], xb = a + sx * c.out(), g0 = a + sx * half, g1 = a + sx * (half + c.guideLength()), p1 = xb - sx * (lc / 2 + .06);
-            // The crosshead guide and its door; the distance piece between its flanges, a window cover each side of each compartment.
+            // The crosshead guide and its door; the open distance piece between its flanges with the piston rod sliding in it.
             box(new double[]{Math.min(g0, g1), yc - gh, z - gh}, new double[]{Math.max(g0, g1), yc + gh, z + gh}, Material.MACHINE, true);
             double d0 = g0 + sx * .15, d1 = g1 - sx * .15;
             box(new double[]{Math.min(d0, d1), yc + gh, z - .7 * gh}, new double[]{Math.max(d0, d1), yc + gh + .025, z + .7 * gh}, Material.MACHINE, false);
             mesh.bar(new double[]{(d0 + d1) / 2 - .1, yc + gh + .06, z}, new double[]{(d0 + d1) / 2 + .1, yc + gh + .06, z}, .03, new double[]{0, 1, 0}, Material.PIPE);
             plate(g1 - sx * .05, g1, yc, z, piece + .06);
-            box(new double[]{Math.min(g1, p1), yc - piece, z - piece}, new double[]{Math.max(g1, p1), yc + piece, z + piece}, Material.MACHINE, true);
-            int compartments = c.pieceLength() > 1.1 ? 2 : 1;
-            double length = Math.abs(p1 - g1) / compartments;
-            for (int j = 0; j < compartments; j++) {
-                double mid = g1 + sx * length * (j + .5);
-                if (j > 0) plate(g1 + sx * (length * j - .025), g1 + sx * (length * j + .025), yc, z, piece + .04);
-                for (int face = -1; face <= 1; face += 2) {
-                    double zf = z + face * piece, zo = zf + face * .02;
-                    box(new double[]{mid - .3 * length, yc - .55 * piece, Math.min(zf, zo)}, new double[]{mid + .3 * length, yc + .55 * piece, Math.max(zf, zo)}, Material.OPENING, false);
-                }
-            }
+            // Balanced opposed: a pair's pistons move out together, the pairs' cranks spread over half a turn.
+            distancePiece(g1, p1, sx, yc, z, piece, c.pieceLength() > 1.1 ? 2 : 1, b, c.stroke(), (k / 2) / (double) throwCount);
             // The cylinder: crank-end flange, body, head flange with its studs, head cover; the clearance pocket and its wheel.
             var fx = Frame.of(new double[]{xb, yc, z}, 0, sx);
             mesh.cylinder(fx, cyl / 2 + .05, -lc / 2 - .06, -lc / 2 + .02, n, Material.FLANGE);
@@ -1637,6 +1642,99 @@ public final class ProcessUnit {
         mesh.cylinder(Frame.of(new double[]{a, yc, 0}, 2, 1), .1 + .1 * b, end, mz0, 12, Material.MACHINE);
         box(new double[]{a - g, Math.max(h, yc - g), end + .03}, new double[]{a + g, yc + 1.2 * g, mz0 - .03}, Material.GUARD, true);
         largeMotor(a, yc, mz0, c.motor(), c.motorLength(), 0, true);
+    }
+
+    /**
+     * A throw's open distance piece from the crosshead guide's flange at {@code g} to the cylinder's at {@code p} (outward
+     * {@code sx} along x; its axis at (y, z), its half section {@code piece}) in {@code compartments} (owner request
+     * 2026-10-18, "add Piston model to compressor", answered: the rods in open windows, since the pistons stay in the
+     * cylinders): top and bottom plates, sides open in a window per compartment, a partition between compartments, the
+     * rod's packing case on the cylinder's flange and its wiper case on the guide's. The piston rod, 0.05 + 0.12 bores
+     * across, slides through it as a moving part ({@link Motion}) on a crank of half the {@code stroke} and a connecting rod
+     * of five cranks from {@code phase}, its oil deflector collar in the compartment by the guide; it reaches half a stroke
+     * and 0.1 m into the guide and the cylinder, so its ends never show.
+     */
+    private void distancePiece(double g, double p, int sx, double y, double z, double piece, int compartments, double bore, double stroke, double phase) {
+        double x0 = Math.min(g, p), x1 = Math.max(g, p), t = .03 + .02 * bore, length = (x1 - x0) / compartments, win = .55 * piece;
+        solids.add(Solid.box(new double[]{x0, y - piece, z - piece}, new double[]{x1, y + piece, z + piece}));
+        box(new double[]{x0, y + piece - t, z - piece}, new double[]{x1, y + piece, z + piece}, Material.MACHINE, false);
+        box(new double[]{x0, y - piece, z - piece}, new double[]{x1, y - piece + t, z + piece}, Material.MACHINE, false);
+        for (int face = -1; face <= 1; face += 2) {
+            double za = face < 0 ? z - piece : z + piece - t, zb = za + t, from = x0;
+            box(new double[]{x0, y - piece + t, za}, new double[]{x1, y - win, zb}, Material.MACHINE, false);
+            box(new double[]{x0, y + win, za}, new double[]{x1, y + piece - t, zb}, Material.MACHINE, false);
+            for (int j = 0; j < compartments; j++) {
+                double mid = x0 + length * (j + .5);
+                box(new double[]{from, y - win, za}, new double[]{mid - .3 * length, y + win, zb}, Material.MACHINE, false);
+                from = mid + .3 * length;
+            }
+            box(new double[]{from, y - win, za}, new double[]{x1, y + win, zb}, Material.MACHINE, false);
+        }
+        for (int j = 1; j < compartments; j++) plate(x0 + length * j - .025, x0 + length * j + .025, y, z, piece - t);
+        var f = Frame.of(new double[]{0, y, z}, 0, 1);
+        double rod = .025 + .06 * bore, cased = p - sx * (.1 + .05 * bore), wiper = g + sx * .06;
+        mesh.cylinder(f, 2.2 * rod, Math.min(p, cased), Math.max(p, cased), 12, Material.FLANGE);
+        mesh.cylinder(f, 1.8 * rod, Math.min(g, wiper), Math.max(g, wiper), 12, Material.FLANGE);
+        double reach = stroke / 2 + .1, collar = g + sx * length / 2, half = .02 + .02 * bore;
+        mesh.part(motions.size());
+        mesh.cylinder(f, rod, Math.min(g - sx * reach, p + sx * reach), Math.max(g - sx * reach, p + sx * reach), 10, Material.PIPE);
+        mesh.cylinder(f, 1.9 * rod, collar - half, collar + half, 12, Material.FLANGE);
+        mesh.part(-1);
+        double crank = stroke / 2;
+        motions.add(new Motion(new double[]{(g + p) / 2, y, z}, new double[]{sx, 0, 0}, CRANK_SPEED, phase, crank, 5 * crank));
+    }
+
+    /**
+     * A shaft of radius {@code shaft} along frame {@code f} (its axis along z) over {@code spans} ({z0, z1} each), seen in
+     * a pump's bracket windows, with a seal's drive collar and its four set screws centred at each of {@code collars}: a
+     * moving part turning at {@link #PUMP_SPEED} (owner answer 2026-10-18: the shaft and the motor's fan turn). A round
+     * shaft turning shows nothing; its screws show it.
+     */
+    private void shaft(Frame f, double shaft, double[][] spans, double... collars) {
+        mesh.part(motions.size());
+        for (var s : spans) mesh.prism(f, shaft, s[0], s[1], 8, Material.PIPE);
+        double rc = 1.7 * shaft + .01, w = .02 + shaft / 2;
+        for (double zc : collars) {
+            mesh.cylinder(f, rc, zc - w / 2, zc + w / 2, 12, Material.FLANGE);
+            for (int k = 0; k < 4; k++) {
+                var at = f.at(k * Math.PI / 2, rc + .008, zc);
+                box(new double[]{at[0] - .012, at[1] - .012, at[2] - .012}, new double[]{at[0] + .012, at[1] + .012, at[2] + .012}, Material.BOLT, false);
+            }
+        }
+        mesh.part(-1);
+        motions.add(Motion.turning(f.along((spans[0][0] + spans[spans.length - 1][1]) / 2), f.axis(), PUMP_SPEED, 0));
+    }
+
+    /** The width of a {@link #shaft}'s seal collar, m. */
+    private static double collar(double shaft) {
+        return .02 + shaft / 2;
+    }
+
+    /**
+     * A cooling fan behind a grille in a cowl's end along frame {@code f} at {@code face} (facing along the frame's axis,
+     * radius {@code r}): a dark bore {@code depth} deep and its back, six pitched blades on a hub turning in it at
+     * {@code speed} (a moving part; the motor's shaft drives it), and over them a grille of eight spokes, two rings and a
+     * hub cap.
+     */
+    private void grilledFan(Frame f, double r, double face, double depth, int n, double speed) {
+        mesh.bore(f, r, face - depth, face, n, Material.OPENING);
+        mesh.annulus(f, 0, r, face - depth, n, 1, Material.OPENING);
+        double hub = .2 * r, t = .01 + .01 * r, deep = face - depth + .01, shallow = face - 2 * t - .005, width = Math.min(.4 * r, 1.6 * (shallow - deep));
+        mesh.part(motions.size());
+        mesh.cylinder(f, hub, deep, shallow, 10, Material.MOTOR);
+        double pitch = Math.PI / 6;
+        for (int k = 0; k < 6; k++) {
+            double angle = k * Math.PI / 3;
+            var radial = sub(f.at(angle, 1, 0), f.at(angle, 0, 0));
+            var across = plus(scale(cross(f.axis(), radial), DeterministicMath.cos(pitch)), scale(f.axis(), DeterministicMath.sin(pitch)));
+            mesh.block(f.at(angle, (hub + .92 * r) / 2, (deep + shallow) / 2), scale(radial, (.92 * r - hub) / 2), scale(across, width / 2), scale(cross(radial, across), .006),
+                    Material.MOTOR);
+        }
+        mesh.part(-1);
+        motions.add(Motion.turning(f.along(face), f.axis(), speed, 0));
+        for (int k = 0; k < 8; k++) mesh.bar(f.at(k * Math.PI / 4, .15 * r, face - t / 2), f.at(k * Math.PI / 4, r, face - t / 2), t, f.axis(), Material.MOTOR);
+        for (double ring : new double[]{.45 * r, .75 * r}) mesh.ring(f, ring - t / 2, ring + t / 2, face - t, face, n, 3, Material.MOTOR);
+        mesh.cylinder(f, .15 * r, face - t, face, 10, Material.MOTOR);
     }
 
     /**
@@ -1738,7 +1836,11 @@ public final class ProcessUnit {
             double xf = x + side * .75 * r, xo = xf + side * .01;
             box(new double[]{Math.min(xf, xo), y + r + .2 * cool, c0 + .1}, new double[]{Math.max(xf, xo), y + r + .8 * cool, c1 - .1}, Material.OPENING, false);
         }
-        mesh.cylinder(Frame.of(new double[]{x, y + r + .55 * cool, 0}, 2, 1), .35 * cool + .05, c1, Math.min(z1 + .1, c1 + .3), 12, Material.MOTOR);
+        var cowl = Frame.of(new double[]{x, y + r + .55 * cool, 0}, 2, 1);
+        double rf = .35 * cool + .05, end = Math.min(z1 + .1, c1 + .3);
+        mesh.prism(cowl, rf, c1, end, 12, Material.MOTOR);
+        mesh.annulus(cowl, .85 * rf, rf, end, 12, 1, Material.MOTOR);
+        grilledFan(cowl, .85 * rf, end, Math.min(.15, .6 * (end - c1)), 12, synchronous ? CRANK_SPEED : PUMP_SPEED);
         // The terminal box on the right side, its conduit to the ground.
         double zt = (z0 + z1) / 2;
         box(new double[]{x + r, y - .35 * r, zt - terminal / 2}, new double[]{x + r + .4 * terminal, y - .35 * r + .7 * terminal, zt + terminal / 2}, Material.MOTOR, false);
@@ -1779,8 +1881,9 @@ public final class ProcessUnit {
      * radiant section of diameter D and height {@code tangentLength} on 6 to 14 H-section legs about 2.3 m apart on concrete
      * pedestals, a ring girder under its floor from leg to leg, X-braced in alternate bays and knee-braced in the others
      * (the front's left open), its floor {@code support} up with the burners (muffler drums under their registers) firing
-     * up through it from a circle of 0.4 D; casing columns over the legs, girth bands every 3 m; on its roof the convection
-     * section with its panelled header boxes and soot blowers, the breeching and the stack with its damper. Platforms (API 560 12.4.1): the
+     * up through it from a circle of 0.4 D; the casing's full-height panels bolted on flanged seams over the legs
+     * ({@link #seam}), girth bands every 3 m; on its roof the convection section in modules with its panelled header boxes
+     * ({@link #convection}), the breeching and the stack with its damper. Platforms (API 560 12.4.1): the
      * hearth platform round the casing at the floor, a 270° one for each further row of peep doors when the radiant
      * section is over 8 m, peep doors 1.4 m over each and an access door over the hearth at the back; a handrail round the
      * roof's edge; caged ladders at the side legs ({@link Access}), alternating, the last walked through onto the roof.
@@ -1813,11 +1916,10 @@ public final class ProcessUnit {
         var legAt = new double[legs][];
         for (int k = 0; k < legs; k++) {
             double t = -Math.PI / 2 + (k + .5) * step;
-            double[] radial = {DeterministicMath.cos(t), 0, DeterministicMath.sin(t)}, tangent = {-radial[2], 0, radial[0]};
+            double[] radial = {DeterministicMath.cos(t), 0, DeterministicMath.sin(t)};
             legAt[k] = new double[]{a + (r - .12) * radial[0], a + (r - .12) * radial[2]};
             leg(legAt[k][0], legAt[k][1], y0, cased, radial);
-            mesh.block(new double[]{a + (r + .06) * radial[0], (y0 + y1) / 2, a + (r + .06) * radial[2]}, scale(radial, .06), new double[]{0, (y1 - y0) / 2, 0}, scale(tangent, .1),
-                    Material.HEATER);
+            seam(new double[]{a + r * radial[0], y0, a + r * radial[2]}, new double[]{a + r * radial[0], y1, a + r * radial[2]}, radial, true);
         }
         for (int k = 0; k < legs; k++) girder(legAt[k], legAt[(k + 1) % legs], low, y0, cased);
         solids.add(Solid.ring(a, a, low, y0, r - .12 - GIRDER_HALF, r - .12 + GIRDER_HALF, 0, 2 * Math.PI));
@@ -1888,7 +1990,7 @@ public final class ProcessUnit {
         }
         // The convection section with its header boxes, the stack.
         double y2 = y1 + hc;
-        convection(a - hx, a + hx, a - hz, a + hz, y1, y2, y1 + 1);
+        convection(a - hx, a + hx, a - hz, a + hz, y1, y2);
         stack(a, a, a - hx, a + hx, a - hz, a + hz, y2, .25 * dia + .3, y1);
         // The convection coil in near the top of its front header box and out near its bottom; the radiant coil in at the
         // front under the roof, two rows under the convection outlet, and out just over the floor; fuel gas to the ring
@@ -1917,9 +2019,10 @@ public final class ProcessUnit {
      * under the floor round its edge, X-braced along both sides in the end bays and every third and knee-braced in the
      * others (the burner aisles open), its walls W + 1 high, a hipped roof rising to the convection section
      * along its whole length, its floor {@code support} up with one or two rows of burners (muffler drums under their
-     * registers) firing up through it. Casing columns over the legs with an eave beam, peep doors 1.4 m over each walkway
-     * in every bay and an access door over the hearth walkway; panelled header boxes on both end walls for the side walls'
-     * tube bends and for the convection section's, soot blowers along its right side, an insulated crossover between the
+     * registers) firing up through it. The wall panels bolted on flanged seams over the legs ({@link #seam}) with an eave
+     * beam, peep doors 1.4 m over each walkway in every bay and an access door over the hearth walkway; panelled header
+     * boxes on both end walls for the side walls' tube bends and for the convection section's (in modules,
+     * {@link #convection}), an insulated crossover between the
      * back radiant header boxes (the coil runs back along the right wall and returns along the left); one stack per 15 m
      * with its damper. Walkways on both sides (API 560
      * 12.4.1, {@link Access}): the hearth walkway the full length, a second one under the eaves when the walls are 6 m or
@@ -1978,7 +2081,7 @@ public final class ProcessUnit {
                 for (int side = -1; side <= 1; side += 2) {
                     double wall = ac + side * w / 2, leg = ac + side * (w / 2 - .15);
                     leg(leg, z, y0, cased, new double[]{1, 0, 0});
-                    box(new double[]{Math.min(wall, wall + side * .12), y0, z - .1}, new double[]{Math.max(wall, wall + side * .12), side < 0 ? top0 : top1, z + .1}, Material.HEATER, false);
+                    seam(new double[]{wall, y0, z}, new double[]{wall, side < 0 ? top0 : top1, z}, new double[]{side, 0, 0}, true);
                     if (k == bays) continue;
                     double[] p = {leg, z}, q = {leg, zs + length * (k + 1) / bays};
                     if (k == 0 || k == bays - 1 || k % 3 == 1) brace(p, q, .6, low);
@@ -2037,7 +2140,7 @@ public final class ProcessUnit {
         // √2 as wide).
         double y2 = yr + hc, stack = Math.min(3.5, (.25 * w + .3) * Math.sqrt(cells));
         int convection = (int) Math.ceil(yr + .05);
-        convection(c0, c1, zs, ze, yr, y2, convection + 1);
+        convection(c0, c1, zs, ze, yr, y2);
         int stacks = Math.max(1, (int) Math.round(length / 15));
         for (int j = 0; j < stacks; j++) {
             double zj = zs + length * (j + .5) / stacks, room = Math.min(length / stacks / 2 - .2, Math.max((c1 - c0) / 2, stack / 2 + .3));
@@ -2106,6 +2209,15 @@ public final class ProcessUnit {
 
     /** A heater's header box depth beyond the casing it stands on, m (its tube bends and their covers). */
     static final double HEADER_BOX = .6;
+
+    /** A flanged joint between two stack sections at height {@code y}: two flanges 0.05 m deep either side of a 0.02 m split. */
+    private void stackJoint(Frame up, double r, double y, int n) {
+        for (double lo : new double[]{y, y + .07}) {
+            mesh.prism(up, r + .05, lo, lo + .05, n, Material.HEATER);
+            mesh.annulus(up, r, r + .05, lo, n, -1, Material.HEATER);
+            mesh.annulus(up, r, r + .05, lo + .05, n, 1, Material.HEATER);
+        }
+    }
 
     /** A girth band round a vertical heater's casing or its stack (radius {@code r}, {@code n} sides about frame {@code up}) at height {@code y}. */
     private void band(Frame up, double r, double y, int n) {
@@ -2214,29 +2326,104 @@ public final class ProcessUnit {
 
     /**
      * A heater's convection section from x0 to x1 by z0 to z1, from {@code bottom} (the radiant roof) to {@code top}, its
-     * top drawn (the breeching opens from it), a panelled header box on each end, soot blowers on its right side every metre
-     * from {@code blowers} up and about every 4 m along; it encloses its inside.
+     * top drawn (the breeching opens from it), a panelled header box on each end; it encloses its inside. It is built of
+     * equal shop modules of {@link #MODULE} at most, stacked on bolted flanged joints ({@link #joint}), standing on the roof
+     * on one and carrying the breeching on another, with corner columns (owner request 2026-10-18, photo survey). Its tubes
+     * stay clean on fuel gas: no soot blowers (owner decision 2026-10-18; they were red gearboxes every metre up its side).
      */
-    private void convection(double x0, double x1, double z0, double z1, double bottom, double top, double blowers) {
+    private void convection(double x0, double x1, double z0, double z1, double bottom, double top) {
         mesh.box(new double[]{x0, bottom, z0}, new double[]{x1, top, z1}, ALL_FACES & ~4, Material.HEATER);
         solids.add(Solid.box(new double[]{x0, bottom, z0}, new double[]{x1, top, z1}));
         volumes.add(Solid.box(new double[]{x0 + .05, bottom, z0 + .05}, new double[]{x1 - .05, top - .05, z1 - .05}));
-        int count = Math.max(2, (int) Math.round((x1 - x0 - .2) / .9));
+        int count = Math.max(2, (int) Math.round((x1 - x0 - .2) / .9)), modules = (int) Math.ceil((top - bottom) / MODULE - 1e-9);
+        double h = (top - bottom) / modules, hx0 = x0 + .1, hx1 = x1 - .1;
         for (int end = 0; end < 2; end++) {
-            double[] lo = {x0 + .1, bottom + .2, end == 0 ? z0 - HEADER_BOX : z1}, hi = {x1 - .1, top - .2, end == 0 ? z0 : z1 + HEADER_BOX};
+            double[] lo = {hx0, bottom + .2, end == 0 ? z0 - HEADER_BOX : z1}, hi = {hx1, top - .2, end == 0 ? z0 : z1 + HEADER_BOX};
             mesh.box(lo, hi, ALL_FACES & ~(end == 0 ? 32 : 16), Material.HEATER);
             solids.add(Solid.box(lo, hi));
-            panels(lo, hi, 2, end == 0 ? -1 : 1, 0, count);
-        }
-        int along = Math.max(1, (int) Math.round((z1 - z0) / 4));
-        for (double y = blowers; y < top - .5; y += 1)
-            for (int j = 0; j < along; j++) {
-                double z = z0 + (z1 - z0) * (j + .5) / along;
-                mesh.cylinder(Frame.of(new double[]{0, y, z}, 0, 1), .06, x1, x1 + .25, 8, Material.PIPE);
-                box(new double[]{x1 + .25, y - .13, z - .15}, new double[]{x1 + .5, y + .13, z + .15}, Material.ACTUATOR, false);
-                mesh.cylinder(Frame.of(new double[]{x1 + .375, 0, z}, 1, 1), .08, y + .13, y + .33, 8, Material.MOTOR);
+            // Each module's own header panels.
+            for (int m = 0; m < modules; m++) {
+                double[] plo = lo.clone(), phi = hi.clone();
+                plo[1] = Math.max(lo[1], bottom + m * h + .12);
+                phi[1] = Math.min(hi[1], bottom + (m + 1) * h - .12);
+                if (phi[1] - plo[1] > .3) panels(plo, phi, 2, end == 0 ? -1 : 1, 0, count);
             }
+        }
+        // The joints: on the roof and under the breeching round the casing, between modules round the header boxes too.
+        double[][] casing = {{x0, z0}, {x1, z0}, {x1, z1}, {x0, z1}};
+        double[][] whole = {{x0, z0}, {hx0, z0}, {hx0, z0 - HEADER_BOX}, {hx1, z0 - HEADER_BOX}, {hx1, z0}, {x1, z0}, {x1, z1}, {hx1, z1}, {hx1, z1 + HEADER_BOX},
+                {hx0, z1 + HEADER_BOX}, {hx0, z1}, {x0, z1}};
+        joint(casing, bottom, false);
+        for (int m = 1; m < modules; m++) joint(whole, bottom + m * h, true);
+        joint(casing, top, true);
+        for (double[] c : casing) {
+            double cx = c[0] == x0 ? x0 - .08 : x1, cz = c[1] == z0 ? z0 - .08 : z1;
+            box(new double[]{cx, bottom, cz}, new double[]{cx + .08, top, cz + .08}, Material.HEATER, false);
+        }
         for (double[] p : new double[][]{{x0, z0, x1, z0}, {x1, z0, x1, z1}, {x1, z1, x0, z1}, {x0, z1, x0, z0}}) segment(new double[]{p[0], top, p[1]}, new double[]{p[2], top, p[3]});
+    }
+
+    /** A heater casing module's largest height, m: about what goes by road (the photos' convection modules are 2 to 3 m). */
+    static final double MODULE = 3;
+    /**
+     * Spacing of the nuts drawn on a heater's field joints, m: real bolts stand 0.15 to 0.3 m apart; a row at 0.75 m reads
+     * as bolted at a block's scale for half the quads of one at 0.5 m (each nut is five).
+     */
+    static final double BOLT_PITCH = .75;
+
+    /**
+     * A bolted field joint at height {@code y} round a casing's outline (x, z corners of a rectilinear polygon, either
+     * way round): a flange frame 0.1 m out over the joint and, where two modules meet ({@code pair}), one under it 0.02 m
+     * apart, each 0.07 m deep; nuts on the upper frame every {@link #BOLT_PITCH}. An edge's bar reaches past an outer
+     * corner and stops short of an inner one, so the bars meet without overlapping.
+     */
+    private void joint(double[][] outline, double y, boolean pair) {
+        int n = outline.length;
+        double area = 0;
+        for (int i = 0; i < n; i++) area += outline[i][0] * outline[(i + 1) % n][1] - outline[(i + 1) % n][0] * outline[i][1];
+        double w = .1, turn = Math.signum(area);
+        for (int i = 0; i < n; i++) {
+            double[] p = outline[i], q = outline[(i + 1) % n], r = outline[(i + 2) % n];
+            double dx = Math.signum(q[0] - p[0]), dz = Math.signum(q[1] - p[1]), ex = Math.signum(r[0] - q[0]), ez = Math.signum(r[1] - q[1]);
+            // Outward of the edge (x, z): to its right going round with positive area; an outer corner turns left.
+            double ox = turn * dz, oz = -turn * dx;
+            boolean outer = turn * (dx * ez - dz * ex) > 0;
+            double length = Math.abs(q[0] - p[0]) + Math.abs(q[1] - p[1]), to = length + (outer ? w : -w);
+            if (to < .02) continue;
+            for (int k = 0; k < (pair ? 2 : 1); k++) {
+                double lo = k == 0 ? y + (pair ? .01 : 0) : y - .08, hi = lo + .07;
+                double[] a = {p[0], p[1]}, b = {p[0] + dx * to + ox * w, p[1] + dz * to + oz * w};
+                box(new double[]{Math.min(a[0], b[0]), lo, Math.min(a[1], b[1])}, new double[]{Math.max(a[0], b[0]), hi, Math.max(a[1], b[1])}, Material.HEATER, false);
+            }
+            int bolts = (int) Math.floor(to / BOLT_PITCH);
+            for (int k = 0; k < bolts; k++) {
+                double t = to * (k + .5) / bolts, x = p[0] + dx * t + ox * w / 2, z = p[1] + dz * t + oz * w / 2, top = y + (pair ? .08 : .07);
+                mesh.box(new double[]{x - .025, top, z - .025}, new double[]{x + .025, top + .03, z + .025}, ALL_FACES & ~4, Material.BOLT);
+            }
+        }
+    }
+
+    /**
+     * A bolted field joint between two casing panels from {@code p} to {@code q} on a wall facing {@code out} (owner
+     * request 2026-10-18; photo survey: shop-built panels bolted on site on flanged seams at the casing columns): two
+     * flange bars 0.12 m proud and 0.09 m wide either side of a 0.02 m split, nuts every {@link #BOLT_PITCH} on the outer
+     * face of each ({@code bolts}).
+     */
+    private void seam(double[] p, double[] q, double[] out, boolean bolts) {
+        var along = sub(q, p);
+        double length = Math.sqrt(dot(along, along));
+        var u = scale(along, 1 / length);
+        var across = unit(cross(out, u));
+        var mid = scale(plus(p, q), .5);
+        int count = bolts ? (int) Math.floor(length / BOLT_PITCH) : 0;
+        for (int side = -1; side <= 1; side += 2) {
+            var bar = plus(plus(mid, scale(out, .06)), scale(across, side * .055));
+            mesh.block(bar, scale(out, .06), scale(u, length / 2), scale(across, .045), ALL_FACES & ~1, Material.HEATER);
+            for (int k = 0; k < count; k++) {
+                var nut = plus(plus(bar, scale(across, side * .06)), scale(u, ((k + .5) / count - .5) * length));
+                mesh.block(nut, scale(out, .025), scale(u, .025), scale(across, .015), ALL_FACES & ~(side > 0 ? 16 : 32), Material.BOLT);
+            }
+        }
     }
 
     /**
@@ -2268,8 +2455,9 @@ public final class ProcessUnit {
     /**
      * A heater's breeching from the convection section's top (x0 to x1 by z0 to z1 at {@code base}) up to a stack of
      * {@code od} round (x, z), and the stack: its top at twice the radiant roof's height {@code roof} over grade, at least
-     * 6 m and at most 30 m over the breeching; the damper's band half a metre up with its actuator and lever, a flange band
-     * every 8 m and one under its top, open at the top, a lightning rod on its rim.
+     * 6 m and at most 30 m over the breeching; the damper's band half a metre up with its actuator and lever, a flanged
+     * joint between its sections every 8 m ({@link #stackJoint}), a band under its top, open at the top, a lightning rod on
+     * its rim.
      */
     private void stack(double x, double z, double x0, double x1, double z0, double z1, double base, double od, double roof) {
         double r = od / 2, neck = base + Math.max(.8, .8 * (Math.max(x1 - x0, z1 - z0) / 2 - r)), top = Math.min(neck + 30, Math.max(neck + 6, 2 * roof));
@@ -2278,7 +2466,7 @@ public final class ProcessUnit {
         var up = Frame.of(new double[]{x, 0, z}, 1, 1);
         mesh.prism(up, r, neck, top, n, Material.SHELL);
         band(up, r, neck + .5, n);
-        for (double y = neck + 8; y < top - 2; y += 8) band(up, r, y, n);
+        for (double y = neck + 8; y < top - 2; y += 8) stackJoint(up, r, y, n);
         band(up, r, top - .6, n);
         box(new double[]{x + r + .05, neck + .38, z - .15}, new double[]{x + r + .35, neck + .68, z + .15}, Material.ACTUATOR, false);
         mesh.bar(new double[]{x + r + .2, neck + .68, z}, new double[]{x + r + .45, neck + 1.05, z}, .04, new double[]{0, 0, 1}, Material.ACTUATOR);

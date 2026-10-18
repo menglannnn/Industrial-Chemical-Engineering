@@ -272,8 +272,11 @@ public final class Mesh {
         return facing[2] > 0 ? 4 : 5;
     }
 
-    /** A planar convex facet in box coordinates, counter-clockwise seen from outside, with its texture frame. */
-    record Facet(List<double[]> positions, double[] normal, double[] min, double[] max, Shading shading, Material material, Uv u, Uv v) {
+    /**
+     * A planar convex facet in box coordinates, counter-clockwise seen from outside, with its texture frame; {@code part}
+     * is the moving part it belongs to ({@link ProcessUnit.Motion}, by index), -1 for the still parts.
+     */
+    record Facet(List<double[]> positions, double[] normal, double[] min, double[] max, Shading shading, Material material, Uv u, Uv v, int part) {
     }
 
     /**
@@ -308,6 +311,7 @@ public final class Mesh {
 
     private final List<Facet> facets = new ArrayList<>();
     private Transform transform = Transform.IDENTITY;
+    private int part = -1;
 
     public Mesh() {
     }
@@ -319,6 +323,11 @@ public final class Mesh {
 
     public Transform transform() {
         return transform;
+    }
+
+    /** The moving part everything added from now on belongs to ({@link ProcessUnit.Motion}, by index); -1: the still parts. */
+    void part(int part) {
+        this.part = part;
     }
 
     List<Facet> facets() {
@@ -362,7 +371,7 @@ public final class Mesh {
             worldU = projection[0];
             worldV = projection[1];
         }
-        facets.add(new Facet(List.copyOf(positions), facing, min, max, shading.map(transform), material, worldU, worldV));
+        facets.add(new Facet(List.copyOf(positions), facing, min, max, shading.map(transform), material, worldU, worldV, part));
     }
 
     /**
@@ -385,7 +394,7 @@ public final class Mesh {
                 }
             }
             facets.add(new Facet(List.copyOf(positions), transform.direction(f.normal()), min, max, shadings.computeIfAbsent(f.shading(), s -> s.map(transform)), f.material(),
-                    uvs.computeIfAbsent(f.u(), u -> u.map(transform)), uvs.computeIfAbsent(f.v(), v -> v.map(transform))));
+                    uvs.computeIfAbsent(f.u(), u -> u.map(transform)), uvs.computeIfAbsent(f.v(), v -> v.map(transform)), f.part()));
         }
     }
 
