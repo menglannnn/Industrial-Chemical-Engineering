@@ -246,12 +246,10 @@ public final class EquilibriumResult {
     public static final String UNRESOLVED_PRODUCT = "UNRESOLVED_PRODUCT";
 
     /**
-     * The prefix of the detail of the typed hold of a crystal competition whose answer needs a phase set the engine
-     * does not implement (P5; it replaces P4's {@code SOLID_LIQUID} hold, whose crystal-beside-a-liquid cases P5
-     * answers): two liquids beside a crystal (the fluid the crystal leaves is {@link Classification#LIQUID_LIQUID}),
-     * three fluid phases beside a crystal (that fluid has a product proved unstable), or two crystals forming. The
-     * result is {@link Status#UNSUPPORTED} with {@link UnsupportedReason#NOT_IMPLEMENTED}, the fluid answer's
-     * diagnostics, and no phases (the network's {@code UnsupportedPhases} hold of kind {@code CRYSTAL_PHASES}).
+     * The prefix of the detail of the typed hold of a crystal competition whose answer needs a phase set the engine does
+     * not implement: two liquids beside a crystal, three fluid phases beside a crystal (that fluid has a product proved
+     * unstable), or two crystals forming. The result is {@link Status#UNSUPPORTED} with
+     * {@link UnsupportedReason#NOT_IMPLEMENTED}, the fluid answer's diagnostics, and no phases.
      */
     public static final String CRYSTAL_PHASES = "CRYSTAL_PHASES";
 

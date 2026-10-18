@@ -8,35 +8,19 @@ import com.wormzjl.createcheme.science.fluid.solver.PhaseLayout;
 import com.wormzjl.createcheme.science.fluid.transport.MixtureViscosity;
 
 /**
- * The network reduction stage: what of a placed network is solved, and as what (owner decisions D17 to D19 of the
- * phase-ports batch, documentation/2026-09-26-phase-ports-and-compressor/PHASE_PORTS_REVIEW.md "Boundary split, dead ends
- * and rest (2026-09-28)"). It runs where islands are formed ({@code TopologyCompiler.compile}, called by
- * {@code PhysicalFluidTopology.compile} for every topology event and every load), in this order:
- * <ol>
- * <li><b>Connectivity</b> ({@code PhysicalFluidTopology.compile}, {@code TopologyCompiler.compile}): placed blocks become
- * nodes and links; only pipes connect (owner decision D20, {@code PhysicalFluidTopology.Device.joins}): two pieces of
- * equipment side by side exchange nothing.</li>
- * <li><b>Dead ends</b> ({@link #pruneDeadEnds}, D18): a branch that leads to no destination - no tank, no generator, no
- * void - carries no flow, so it is left out of the solve. Its devices are owned by no island (a filter keeps its cake in
- * an island of its own, as a disconnected filter always has).</li>
- * <li><b>Runs</b> ({@code TopologyCompiler.compile}): maximal chains through blocks with two connections become one
- * connection.</li>
- * <li><b>Split at fixed boundaries</b> ({@link #splitAtFixedBoundaries}, D17): a generator's or a void's state is not
- * something the network can change, so the parts of a network that meet only at one are separate islands; the boundary
- * belongs to each.</li>
- * <li><b>Direction feasibility</b> ({@link #drives}): per connection, the directions its one-way rules allow and its
- * static drive pushes on the island's present states.</li>
- * <li><b>Rest</b> ({@link #atRest}, D19): an island nothing can drive is not solved; its interval is the identity.</li>
- * </ol>
- * A junction has no start state of its own (owner decision D54, nothing at the mint): its buffer is a relaxation row's
- * state (D46), started where an island formed from placed blocks is minted ({@link PassiveNetwork#mintJunctions}) from the
- * island-wide fixed point's last round, which the buffer's 0.05 s relaxation (D25) washes out.
- * Steps 2 and 4 commute (a fixed boundary is a destination, so no pruned branch passes through one), and neither reads a
- * state: they are functions of the placed blocks alone, so every compile of the same blocks reduces them the same way.
- * Steps 5 and 6 read the island's states, so they are evaluated on the graph every interval job receives
- * ({@link PassiveIntervalSolver#solve}), which is the island as formed on its first job: every path that solves an island
- * (a topology replacement, a load, a property resume, a certificate's revalidation) then decides the same way, and the
- * result reaches the coordinator from a worker like any interval, never from the server tick.
+ * The network reduction stage: what of a placed network is solved, and as what (owner decisions D17 to D19). It runs
+ * where islands are formed ({@code TopologyCompiler.compile}, called by {@code PhysicalFluidTopology.compile} for every
+ * topology event and every load), in this order: connectivity (placed blocks become nodes and links; only pipes
+ * connect, owner decision D20); dead ends ({@link #pruneDeadEnds}, D18: a branch that leads to no tank, generator or
+ * void carries no flow and is left out, its devices owned by no island); runs (maximal chains through blocks with two
+ * connections become one connection); split at fixed boundaries ({@link #splitAtFixedBoundaries}, D17: parts of a
+ * network that meet only at a generator or a void are separate islands, the boundary belonging to each); direction
+ * feasibility ({@link #drives}); rest ({@link #atRest}, D19: an island nothing can drive is not solved, its interval is
+ * the identity). A junction has no start state of its own (owner decision D54): its buffer is a relaxation row's state
+ * (D46), minted from the island-wide fixed point's last round ({@link PassiveNetwork#mintJunctions}). Dead ends and the
+ * boundary split read no state and commute, so every compile of the same blocks reduces them the same way; the drives
+ * and the rest test read the island's states and are evaluated on the graph every interval job receives
+ * ({@link PassiveIntervalSolver#solve}), so every path that solves an island decides the same way, from a worker.
  */
 public final class NetworkReduction {
     private NetworkReduction() {}
@@ -120,42 +104,27 @@ public final class NetworkReduction {
 
     /**
      * Step 6, rest (owner decisions D19 and D22): whether nothing in an island can drive a flow, so its interval is the
-     * identity - every flow, transfer and change exactly zero - and it is not solved ({@link PassiveIntervalSolver#solve}
-     * returns {@link #restInterval}; the island then certifies as at rest through the existing certificate path). Decided
-     * from the structure and the present states only, before any Newton:
+     * identity and it is not solved ({@link PassiveIntervalSolver#solve} returns {@link #restInterval}; the island then
+     * certifies as at rest). Decided from the structure and the present states only, before any Newton:
      * <ul>
-     * <li>Only islands holding no trace an accepted step would flush (decision D16) and no module transfer in the interval
-     * are asked. Solids do not keep an island awake (owner decision D23 (6)): a particle moves only with the flow that
-     * carries it and grows or melts only in a vessel's refresh, which {@link PassiveIntervalSolver#solve} runs before this
-     * test, so an unchanged stock of solids at no drive stays as it is. At an interval start every transport closure is read
-     * as open, solids or not (owner decision D33), since that interval re-decides them: the interval solver hands this test
-     * the interval start ({@link #reopened}), as it hands it to every path of the interval; a filter stopped at its capacity
-     * stays closed. A connection the solid events closed stands for the rest of its interval only, and a deposition closure,
-     * the one the drive decides, reopens under a drive that suspends the particles; read only while the island held solids,
-     * a closure outlived the frost that caused it (M4's island at rest 199 kPa across one). A drive across one is a drive,
-     * and the island is solved. A pressure valve passes only from its first end and only while that end stands
-     * above its set point, so it drives forward by the smaller of its static drive and that excess, and never back (A211);
-     * the rest interval reports it CLOSED. An empty vessel stands at the ambient and gives nothing (decision D54): its
-     * pressure is the ambient's, and every drive out of it is forbidden ({@link PassiveStepSolver#boundaryAllowed}).</li>
-     * <li>An island that holds no stock (no generator, no vessel holding anything: voids, empty vessels and junctions only)
-     * is at rest whatever its devices are set to and whatever its junctions hold: a junction's buffer is its relaxation
-     * row's state, never material (D46), and one no source reaches holds a placeholder (D55), so there is nothing to move.
-     * A compressor between two placed tanks has nothing to compress. This replaces the junction-and-void tree of D19, its
-     * special case.</li>
-     * <li>A pump or compressor that cannot move anything this slice is a closed connection: one set to no flow, or one
-     * refused for the slice ({@code refused}: a dry suction or the wrong phase, decision D6, owner decision D58). Any other
-     * pump or compressor at its target moves its set flow, whatever the pressures: such an island is solved.</li>
-     * <li>Otherwise it is at rest when the gauge reads no drive and no flow (owner decisions D42 and D43, D58). A gauge stands
-     * where stock is (a tank, a generator, a void); a junction holds no stock and no gauge, its pressure is its relaxation
-     * row's state (on an island's first interval, its start guess, D55). So: no connection between two nodes that hold
-     * stock has a static drive ({@link #drives}) above {@link #REST_RESOLUTION} in a direction its one-way rules allow, no
-     * path of junctions between two such nodes drives above it ({@link #pathDriven}: the junctions' own pressures cancel
-     * along it), no loop of connections has a net drive above it ({@link #loopDriven}: a loop with no net drive carries no
-     * circulation), and, when the state is a step's end, no connection carries more than the flow the resolution drives
-     * through it ({@link #resolutionFlow}). No source (a generator, or a tank) then reaches a destination (a void, a tank)
-     * at a pressure a gauge could tell from its own, elevation and level head included; a tank at the pressure its sources
-     * can reach is at rest (D22). The state itself is never rounded: the island keeps it to the last digit, it is only no
-     * longer stepped.</li>
+     * <li>Only islands holding no trace an accepted step would flush (decision D16) and no module transfer are asked.
+     * Solids do not keep an island awake (owner decision D23 (6)): a particle moves only with the flow that carries it
+     * and grows or melts only in a vessel's refresh, which runs before this test. At an interval start every transport
+     * closure is read as open (owner decision D33), since that interval re-decides them ({@link #reopened}); a filter
+     * stopped at its capacity stays closed. A pressure valve drives forward by the smaller of its static drive and its
+     * excess over the set point, never back; the rest interval reports it CLOSED. An empty vessel stands at the ambient
+     * and gives nothing (decision D54).</li>
+     * <li>An island that holds no stock (no generator, no vessel holding anything) is at rest whatever its devices are
+     * set to: a junction's buffer is never material (D46), and one no source reaches holds a placeholder (D55).</li>
+     * <li>A pump or compressor that cannot move anything this slice (set to no flow, or refused for the slice,
+     * {@code refused}) is a closed connection; any other at its target moves its set flow whatever the pressures, and
+     * the island is solved.</li>
+     * <li>Otherwise it is at rest when the gauge reads no drive and no flow (owner decisions D42, D43, D58). A gauge stands
+     * where stock is; a junction holds no stock and no gauge. So: no connection between two stock nodes has a static drive
+     * ({@link #drives}) above {@link #REST_RESOLUTION} in an allowed direction, no path of junctions between two such
+     * nodes drives above it ({@link #pathDriven}), no loop of connections has a net drive above it ({@link #loopDriven}),
+     * and, when the state is a step's end, no connection carries more than the flow the resolution drives through it
+     * ({@link #resolutionFlow}). The state itself is never rounded; it is only no longer stepped.</li>
      * </ul>
      *
      * @param flows   the mass flows of the step that ended in this state, or null at an interval start (flows are not state)
@@ -294,14 +263,14 @@ public final class NetworkReduction {
         return false;
     }
     /**
-     * Owner decision D42, read where a gauge stands: a junction holds no stock and no gauge, so the drive that counts is the
-     * one between two nodes that do (tanks, generators, voids), summed along a path of junctions between them. The
-     * pressures of the path's junctions cancel, so a path's drive is its end pressures less its columns: a chain of five
-     * tees each 0.09 Pa apart is 0.45 Pa between its tank and its generator, and the tank still fills. Whether some path
-     * between two such nodes drives above {@link #REST_RESOLUTION}: the largest path drive arriving at each junction from a
-     * stock node, relaxed through the junctions (at most one round per junction), then closed at a stock node. A loop of
-     * junctions with a net drive below the resolution ({@link #loopDriven}) can only raise a path by that much per round:
-     * the test may then read a drive that is not there, never miss one.
+     * Owner decision D42, read where a gauge stands: a junction holds no stock and no gauge, so the drive that counts is
+     * the one between two nodes that do, summed along a path of junctions between them (the junctions' pressures cancel,
+     * so a path's drive is its end pressures less its columns: a chain of five tees each 0.09 Pa apart is 0.45 Pa between
+     * its tank and its generator, and the tank still fills). Whether some path between two such nodes drives above
+     * {@link #REST_RESOLUTION}: the largest path drive arriving at each junction from a stock node, relaxed through the
+     * junctions (at most one round per junction), then closed at a stock node. A loop of junctions with a net drive below
+     * the resolution can only raise a path by that much per round: the test may read a drive that is not there, never
+     * miss one.
      */
     static boolean pathDriven(PassiveNetwork graph,double[][] drives) {
         int nodes=graph.reservoirs().size(),junctions=0;double[] best=new double[nodes];Arrays.fill(best,Double.NEGATIVE_INFINITY);

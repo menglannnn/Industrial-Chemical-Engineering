@@ -15,48 +15,32 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * The crystal part of a vessel's refresh (owner decisions D22 (5) and D23; plan
- * {@code documentation/2026-09-24-coolprop-low-temperature/PRECIPITATED_SOLIDS_PLAN.md}): the one place crystal mass
- * moves. A crystal is a population of the vessel's solids ({@link NetworkCrystals}); inside a step it is inert, and at
- * each interval and solid-event segment start the vessel's refresh ({@link InventoryEquilibrium#refresh}) equilibrates it
- * with the vessel's fluid, about 5 s of lag, which the owner accepted.
+ * The crystal part of a vessel's refresh (owner decisions D22 (5) and D23): the one place crystal mass moves. A crystal
+ * is a population of the vessel's solids ({@link NetworkCrystals}); inside a step it is inert, and at each interval and
+ * solid-event segment start the vessel's refresh ({@link InventoryEquilibrium#refresh}) equilibrates it with the
+ * vessel's fluid, about 5 s of lag, which the owner accepted.
  *
  * <p>Physics. A well-mixed closed tank at fixed energy and volume (a taut wall), or at the ambient pressure and fixed
  * enthalpy (a slack bag, D54), has one equilibrium; where a crystal is in it, the crystal's chemical potential equals its
- * component's in the fluid, and the latent heat of the mass that froze or melted is in the tank's energy. So:
- * <ol>
- * <li><b>Presence.</b> At the vessel's own closed state (its fluid at its energy and volume, the crystals inert) the
- * fluid's drive to each crystal, {@code D = ln f_i(fluid) - ln f_s}, is read. A vessel holding no crystal with no positive
- * drive, or holding its crystals at zero drive ({@link #DEADBAND}), is at its equilibrium and keeps every bit; a vessel at
- * rest is a fixed point. Otherwise the equilibrium engine's crystal test decides which crystals are present: its answer for
- * the vessel's fluid and crystals together at fixed volume while the wall is taut and at the ambient pressure while it is
- * slack (D21's near-pure step in both), switching to the other when a fixed-volume answer lies below the ambient or a
- * constant-pressure one above the capacity.</li>
- * <li><b>Amount.</b> Each present crystal's amount is one more unknown of the vessel's own closure, beside its fluid's
- * ({@link Joint}): the crystal's chemical potential equal to its component's is its row, and the energy and wall rows hold
- * the crystal's mass at its record's constants (its stored energy and the offset the record carries, its volume). The
- * vessel's pass loop lays its fluid out ({@link JointClosure}, decision D30), so a phase the closure empties leaves and a
- * missing one is added at the vessel's own split, as in the closure without crystals. A crystal the closure would hold
- * below zero mass is absent (it melts entirely), and the closure is solved again without it.</li>
- * <li><b>Booking.</b> The vessel's stored energy is its true energy less the crystals' offsets
- * ({@link com.wormzjl.createcheme.science.material.SolidMaterialCatalog.SolidMaterial.Crystal}), so the offset of the mass
- * that froze or melted is booked here, and the ambient's work on a moving bag, {@code -P_amb (V_bag - V_bag,0)}, is booked
- * as the step's transport books it (D54): a boundary transfer of energy alone at the vessel.</li>
- * <li><b>Size</b> (D23, amended: one size per solid in each stock). Mass that freezes enters at
- * {@link #precipitateDiameter} of the liquids it freezes from, the vessel's own before the refresh ({@link #freezing}),
- * and is merged into the stock's one population of that crystal at the mass-weighted mean
- * ({@link SolidInventory#oneSizePerSolid}); mass that melts leaves at the stock's size. The step carried the crystal's
- * share condensed in the liquid slot ({@code FluidThermodynamics.adopt}), as the supersaturated solution it stands for:
- * methane with 30 % CO2 freezes at about 0.5 mm. Where the refresh leaves no liquid beside the crystals, the liquid was
- * the crystal's own condensate (frost from a gas, carried as the stand-in or condensed by the closure without crystals;
- * the snow of a let-down): 0.25 mm. Not the liquids after the refresh: the crystal has left them at its solubility, so
- * every freeze read as dilute (the test world's F4: 250 um in a 30 % CO2 slush).</li>
- * </ol>
- * Above the crystals' ceiling a vessel holds none of the package's crystals: they melt into the fluid. The free water's
- * ice (WP4) is water's own rule, on every package: free water below its melting line freezes here, from its liquid (the
- * stand-in the step carried it as) and from the gas's steam, which keeps the ice's sublimation pressure; gas hydrates are
- * not modelled (decision 6 A), so ice and a competing crystal coexist. A vessel holding no fluid is main's dry-solids
- * vessel (OD-P4): its crystals have no fluid to exchange with.
+ * component's in the fluid, and the latent heat of the mass that froze or melted is in the tank's energy. Presence: at
+ * the vessel's own closed state the fluid's drive to each crystal, {@code D = ln f_i(fluid) - ln f_s}, is read; a vessel
+ * holding no crystal with no positive drive, or holding its crystals at zero drive ({@link #DEADBAND}), keeps every bit
+ * (a vessel at rest is a fixed point); otherwise the equilibrium engine's crystal test decides which crystals are
+ * present, at fixed volume while the wall is taut and at the ambient pressure while it is slack, switching to the other
+ * when a fixed-volume answer lies below the ambient or a constant-pressure one above the capacity. Amount: each present
+ * crystal's amount is one more unknown of the vessel's own closure beside its fluid's ({@link Joint}), its chemical
+ * potential equal to its component's its row, the energy and wall rows holding the crystal's mass at its record's
+ * constants; the vessel's pass loop lays its fluid out ({@link JointClosure}, decision D30), and a crystal the closure
+ * would hold below zero mass is absent and the closure solved again without it. Booking: the offset of the mass that
+ * froze or melted, and the ambient's work on a moving bag {@code -P_amb (V_bag - V_bag,0)} (D54), are booked as a
+ * boundary transfer of energy alone at the vessel. Size (D23, one size per solid in each stock): mass that freezes
+ * enters at {@link #precipitateDiameter} of the liquids it freezes from, the vessel's own before the refresh
+ * ({@link #freezing}), merged into the stock's one population at the mass-weighted mean
+ * ({@link SolidInventory#oneSizePerSolid}); mass that melts leaves at the stock's size (methane with 30 % CO2 freezes at
+ * about 0.5 mm; frost from a gas or the snow of a let-down at 0.25 mm). Above the crystals' ceiling a vessel holds none of
+ * the package's crystals. The free water's ice is water's own rule, on every package: free water below its melting line
+ * freezes here, from its liquid and from the gas's steam; ice and a competing crystal coexist. A vessel holding no fluid
+ * is the dry-solids vessel: its crystals have no fluid to exchange with.
  */
 final class VesselCrystals {
     private VesselCrystals() {}
@@ -306,15 +290,12 @@ final class VesselCrystals {
 
     /**
      * The joint closure ({@link Joint}) as the inner closure of the vessel's pass loop ({@link InventoryEquilibrium#passes},
-     * decision D30): each pass lays the fluid out with the phases of its start, the crystals at the engine's amounts.
-     * {@link #joint} and {@link #solved} are the last converged closure, the one the loop answers with (its own split, a
-     * seed of the phase check, records nothing).
-     *
-     * <p>Physics: the engine's answer states its own crystal, whose volume differs from the record's constant one (CO2-I in
-     * LNG at 143.8 K: 1625 against 1571 kg/m3, so 37 kg take 0.79 L more as the record's). In a rigid tank full of LNG the
-     * engine's answer holds a 0.45 L bubble that the record's crystal leaves no room for: the tank stays liquid-full, and
-     * the closure started in the answer's layout empties the bubble (cold fuzz seeds 35, 72 and 148). The loop's trace fold
-     * of that iterate removes the phase, and the closure is solved again without it.</p>
+     * decision D30): each pass lays the fluid out with the phases of its start, the crystals at the engine's amounts;
+     * {@link #joint} and {@link #solved} are the last converged closure, the one the loop answers with. The engine's
+     * answer states its own crystal, whose volume differs from the record's constant one (CO2-I in LNG at 143.8 K: 1625
+     * against 1571 kg/m3), so in a rigid tank full of LNG the engine's answer holds a 0.45 L bubble the record's crystal
+     * leaves no room for: the closure started in the answer's layout empties the bubble, the loop's trace fold removes
+     * the phase, and the closure is solved again without it.
      */
     private static final class JointClosure implements InventoryEquilibrium.Closure {
         private final FluidThermodynamics model;

@@ -7,42 +7,30 @@ import java.util.Arrays;
 import java.util.Objects;
 
 /**
- * Michelsen's (1982a) tangent-plane test of whether one phase of a feed is stable, on the PR78 kernel's own
- * fugacity coefficients and its analytic composition derivatives.
+ * Michelsen's (1982a) tangent-plane test of whether one phase of a feed is stable, on the PR78 kernel's own fugacity
+ * coefficients and its analytic composition derivatives. The feed {@code z} is evaluated on its physical root with the
+ * lower Gibbs energy, which fixes the tangent plane {@code d_i = ln z_i + ln phi_i(z)}. A trial phase of mole numbers
+ * {@code W} is measured by the modified tangent-plane distance {@code tm(W) = 1 + sum_i W_i (ln W_i + ln phi_i(W) - d_i - 1)},
+ * whose minimum over the amount scale is {@code 1 - exp(-D(w))}, so {@code tm(W) < 0} at any {@code W} proves the feed
+ * unstable; every trial phase is evaluated on its own lower-Gibbs root. Trials run in a fixed order: Wilson vapour-like
+ * {@code W = z K}, Wilson liquid-like {@code W = z / K}, and, when at most {@link Settings#pureComponentTrialLimit()}
+ * components are present, each pure present component in basis order. A trial iterates {@code ln W_i = d_i - ln phi_i(W)}
+ * by successive substitution with a fixed-cycle dominant-eigenvalue extrapolation, then Newton on
+ * {@code alpha_i = 2 sqrt(W_i)} with the Hessian {@code delta_ij (1 + g_i / 2) + sqrt(w_i w_j) d ln phi_i/d n_j}, a
+ * decrease test on {@code tm} and step halving; it ends converged, at the trivial solution {@code W = z}, or out of
+ * iterations. Components absent from the feed stay absent from every trial; a feed with one present component is
+ * decided by comparing its two roots' fugacities directly. Deterministic: a fixed trial order and one caller-owned
+ * {@link Workspace} whose only carried state is the kernel's prepared temperature, recomputed bit-identically.
  *
- * <p>The feed {@code z} is evaluated on its physical root with the lower Gibbs energy, which fixes the tangent
- * plane {@code d_i = ln z_i + ln phi_i(z)}. A trial phase of mole numbers {@code W} is measured by the modified
- * tangent-plane distance {@code tm(W) = 1 + sum_i W_i (ln W_i + ln phi_i(W) - d_i - 1)}; its minimum over the
- * amount scale is {@code 1 - exp(-D(w))} with {@code D} the reduced tangent-plane distance of the normalised
- * composition, so {@code tm(W) < 0} at any {@code W} proves the feed unstable, and the feed is stable exactly when
- * no {@code W} makes it negative. Every trial phase is evaluated on its own lower-Gibbs root, which is the
- * minimum of {@code tm} over both roots at that composition.</p>
- *
- * <p>Trials run in a fixed order: Wilson vapour-like {@code W = z K}, Wilson liquid-like {@code W = z / K}, and,
- * when at most {@link Settings#pureComponentTrialLimit()} components are present, each pure present component in
- * basis order. A trial iterates {@code ln W_i = d_i - ln phi_i(W)} by successive substitution with a fixed-cycle
- * dominant-eigenvalue extrapolation, then switches to Newton on {@code alpha_i = 2 sqrt(W_i)} with the Hessian
- * {@code delta_ij (1 + g_i / 2) + sqrt(w_i w_j) d ln phi_i/d n_j} from the kernel's analytic derivatives, a
- * decrease test on {@code tm} and step halving. A trial ends converged, at the trivial solution {@code W = z},
- * or out of iterations.</p>
- *
- * <p>Components absent from the feed stay absent from every trial. A feed with one present component is decided
- * by comparing its two roots' fugacities directly, which is always a stable single phase on the lower root.
- * Deterministic: no randomness, a fixed trial order, and one caller-owned {@link Workspace} whose only state
- * carried between calls is the kernel's prepared temperature, which is recomputed bit-identically.</p>
- *
- * <p>Per-branch pressures ({@link #test(double, double, double, double[], Workspace)}, P3): the fluid network's
- * separate free-water rule evaluates a hydrocarbon liquid at the state pressure {@code P} and a hydrocarbon vapour at
- * its partial pressure {@code pc = P - p_w}, because ideal steam shares the gas volume. The test then compares
- * fugacities, not fugacity coefficients: every liquid-branch evaluation (the kernel's {@code LIQUID} root) is made at
- * the liquid pressure, every vapour-branch evaluation ({@code VAPOR} root) at the vapour pressure, and the vapour
- * branch carries {@code ln(pc/P)} (plus {@code (pc - P) c_i/(R T)} for a translated model) on its {@code ln phi_i}, so
- * the comparison is of {@code ln f_i = ln x_i + ln phi_i + ln P_branch} up to the common {@code ln P}. Both branches
- * are evaluated for every composition. A single physical root at the
- * vapour pressure counts as the vapour branch only when it is vapour-like by the phase identification parameter
- * (Venkatarathnam and Oellrich 2011, {@code PhaseIdentification}): a dense fluid at the lower pressure is the same
- * liquid at the wrong pressure, and admitting it would make every liquid look unstable against itself. With equal
- * pressures the call is the one-pressure test, bit for bit.</p>
+ * <p>Per-branch pressures ({@link #test(double, double, double, double[], Workspace)}): the fluid network's separate
+ * free-water rule evaluates a hydrocarbon liquid at the state pressure {@code P} and a hydrocarbon vapour at its partial
+ * pressure {@code pc = P - p_w}. The test then compares fugacities: every liquid-branch evaluation ({@code LIQUID} root)
+ * is made at the liquid pressure, every vapour-branch evaluation ({@code VAPOR} root) at the vapour pressure, and the
+ * vapour branch carries {@code ln(pc/P)} (plus {@code (pc - P) c_i/(R T)} for a translated model) on its {@code ln phi_i}.
+ * A single physical root at the vapour pressure counts as the vapour branch only when it is vapour-like by the phase
+ * identification parameter ({@code PhaseIdentification}): a dense fluid at the lower pressure is the same liquid at the
+ * wrong pressure, and admitting it would make every liquid look unstable against itself. With equal pressures the call
+ * is the one-pressure test, bit for bit.</p>
  */
 public final class TangentPlaneStability {
     /** How far one extrapolation may move any {@code ln W_i}. */

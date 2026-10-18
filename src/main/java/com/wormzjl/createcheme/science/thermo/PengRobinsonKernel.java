@@ -6,14 +6,10 @@ import java.util.Arrays;
 import java.util.Objects;
 
 /**
- * Allocation-free PR78 hydrocarbon kernel. One {@link Workspace} belongs to one solve; liquid and vapor
- * evaluations at a common temperature share its temperature-dependent pure-component arithmetic.
- *
- * <p>Promoted unchanged from the V3 column's package so the fluid network can evaluate its phases on the
- * same arithmetic. The only difference from the column-private original is where the critical constants
- * come from: they are read into arrays by the constructor instead of through a property-package interface
- * on every use, so the class no longer depends on the column, and every expression below is the one the
- * column has been running.</p>
+ * Allocation-free PR78 hydrocarbon kernel. One {@link Workspace} belongs to one solve; liquid and vapor evaluations at
+ * a common temperature share its temperature-dependent pure-component arithmetic. Promoted unchanged from the V3
+ * column's package, the critical constants read into arrays by the constructor, so the column and the fluid network
+ * evaluate their phases on the same arithmetic.
  */
 public final class PengRobinsonKernel {
     public static final double GAS_CONSTANT = 8.31446261815324;
@@ -22,13 +18,10 @@ public final class PengRobinsonKernel {
     private static final double COALESCENCE_DISCRIMINANT_TOLERANCE = 1.0e-16;
     private static final int MAXIMUM_ROOT_REFINEMENTS = 4;
     /**
-     * How flat the cubic may be at the selected root before its derivative is refused.
-     *
-     * <p>Every state derivative divides by this slope, so it is the one quantity whose smallness makes the
-     * whole bundle meaningless rather than merely inaccurate. The bound is relative to the size of the terms
-     * the slope is assembled from, so it measures cancellation rather than magnitude, and it is deliberately
-     * far below any separation a column state reaches: refusing costs the caller a fallback to differencing,
-     * which is correct but slow, and a root this flat is one whose finite difference is no better.</p>
+     * How flat the cubic may be at the selected root before its derivative is refused. Every state derivative divides by
+     * this slope, so its smallness makes the whole bundle meaningless; the bound is relative to the size of the terms
+     * the slope is assembled from, so it measures cancellation, and lies far below any separation a column state
+     * reaches (refusing costs the caller a fallback to differencing).
      */
     private static final double COALESCENCE_SLOPE_TOLERANCE = 1.0e-10;
 
@@ -408,24 +401,14 @@ public final class PengRobinsonKernel {
     }
 
     /**
-     * Fills {@code output} with the value evaluation and its first derivatives on the very same root.
-     *
-     * <p>The values come from {@link #evaluatePrepared} itself rather than from a parallel expression, so a
-     * caller mixing values from one path with derivatives from the other is differentiating the function it is
-     * actually evaluating. Everything after that reads the mixture terms that evaluation left in the
-     * workspace.</p>
-     *
-     * <p>The route is the direct one. {@code Z} is a root of the fixed cubic
-     * {@code Z^3 + c2 Z^2 + c1 Z + c0} whose coefficients are polynomials in {@code (A, B)}, so the implicit
-     * function theorem gives {@code dZ/dA} and {@code dZ/dB} from one derivative of that cubic, and every
-     * remaining term of {@code ln phi_i} and of {@code H^R} is an explicit algebraic function of
-     * {@code (Z, A, B, a, b, S_i, b_i)}. That derivative, {@code 3Z^2 + 2 c2 Z + c1}, is also exactly the
-     * quantity that vanishes when two roots coalesce, which is where the derivative genuinely does not exist:
-     * the guard below refuses such a state instead of returning the enormous number the division would give.
-     * The partial molar residual enthalpies are not derived a second time; they are
-     * {@code -R T^2 (d ln phi_i / dT)}, which is the definition of the residual enthalpy differentiated once,
-     * and its mixture sum reproducing {@code H^R} is a genuine check of the temperature derivative against the
-     * closed-form residual enthalpy, because the two are computed from different expressions.</p>
+     * Fills {@code output} with the value evaluation and its first derivatives on the very same root: the values come from
+     * {@link #evaluatePrepared} itself, and everything after reads the mixture terms that evaluation left in the
+     * workspace. {@code Z} is a root of the fixed cubic {@code Z^3 + c2 Z^2 + c1 Z + c0} whose coefficients are
+     * polynomials in {@code (A, B)}, so the implicit function theorem gives {@code dZ/dA} and {@code dZ/dB} from one
+     * derivative of that cubic, {@code 3Z^2 + 2 c2 Z + c1}, which is also the quantity that vanishes when two roots
+     * coalesce: the guard refuses such a state instead of returning the enormous number the division would give. The
+     * partial molar residual enthalpies are {@code -R T^2 (d ln phi_i / dT)}, and their mixture sum reproducing
+     * {@code H^R} is a check of the temperature derivative against the closed-form residual enthalpy.
      */
     public void evaluateDerivatives(
             double temperatureKelvin, double pressurePascal, double[] composition, Root root,
@@ -789,13 +772,11 @@ public final class PengRobinsonKernel {
     public enum Root { LIQUID, VAPOR }
 
     /**
-     * No physical root (one above {@code B}) found for the requested slot. Mathematically the cubic always has one, since
-     * it is {@code -2 B^2 < 0} at {@code Z = B} and grows without bound; floating point loses it only where the reduced
-     * parameters are far outside any physical state: {@code A B} or {@code p^3} overflow (a hydrocarbon partial pressure of
-     * 1e183 Pa), or the root's distance above {@code B}, about one, falls below one ulp of {@code B} (6.6e25 Pa,
-     * {@code B = 2.7e17}). It is an {@link IllegalStateException}, the type every caller of the kernel has always caught
-     * (the column's sessions, the phase engine, the stability test); the fluid network's property layer turns it into its
-     * refused trial ({@code HydrocarbonModel.RootAbsent}).
+     * No physical root (one above {@code B}) found for the requested slot. The cubic always has one mathematically, being
+     * {@code -2 B^2 < 0} at {@code Z = B} and unbounded above; floating point loses it only far outside any physical
+     * state ({@code A B} or {@code p^3} overflow, a hydrocarbon partial pressure of 1e183 Pa, or the root's distance above
+     * {@code B} below one ulp of {@code B}, 6.6e25 Pa). An {@link IllegalStateException}, the type every caller of the
+     * kernel catches; the fluid network's property layer turns it into its refused trial ({@code HydrocarbonModel.RootAbsent}).
      */
     public static final class NoPhysicalRoot extends IllegalStateException {
         public NoPhysicalRoot(Root root) {
