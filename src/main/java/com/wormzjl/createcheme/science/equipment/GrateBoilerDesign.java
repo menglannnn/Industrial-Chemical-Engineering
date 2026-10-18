@@ -10,6 +10,8 @@ import com.wormzjl.createcheme.science.math.DeterministicMath;
 import java.util.ArrayList;
 import java.util.List;
 
+import static com.wormzjl.createcheme.science.equipment.ProcessUnit.clamp;
+
 /**
  * A grate-fired stoker boiler ({@code NEW_UNITS_SURVEY_SOLID_FUEL.md} section 2, "Grate boiler"; owner decisions D1 and D4
  * of 2026-10-18, batch 2026-10-15-custom-equipment-rendering): lump fuel burnt in a thin layer on a reciprocating grate
@@ -38,9 +40,10 @@ import java.util.List;
  * clamp(0.2 Wg + 0.6, 1, 3) m round (calc: 3 m carries the 75 m³/s of 180 MW at 11 m/s), 10 m over the roof.
  *
  * <p>Access (owner decision D4): the firing aisle's deck across the front at a metre under the grate, the drum deck over
- * the roof, overhanging its front, and a stair tower beside the west wall from the ground to both ({@link
- * FixedBedGasifierHouse#tower}). Moving parts (survey): each ram feeder's rod and crosshead slide; the drag chain's head
- * shaft and both motors' fans turn, as does the fan's shaft.
+ * the roof, and the kit's stair tower beside the west wall from the ground to both ({@link ProcessUnit#stairTower}), its
+ * landing on the aisle in front of the furnace; the drum deck overhangs the front where the tower's top landing is there.
+ * Moving parts (survey): each ram feeder's rod and crosshead slide; the drag chain's head shaft and both motors' fans
+ * turn, as does the fan's shaft.
  *
  * <p>Nozzles (survey section 1 sizes with Wg for W), each facing the same way in both forms: the steam up from the drum,
  * clamp(0.025 Wg + 0.1, 0.15, 0.6); the feedwater east, into the drum's side (bi-drum) or the economiser's inlet on the
@@ -152,10 +155,6 @@ final class GrateBoilerDesign extends UnitDesign {
         return fuel(w, l) * EFFICIENCY / STEAM_ENTHALPY * 3.6;
     }
 
-    static double clamp(double v, double lo, double hi) {
-        return Math.max(lo, Math.min(hi, v));
-    }
-
     @Override
     void build(ProcessUnit unit) {
         new Build(unit).run();
@@ -165,6 +164,8 @@ final class GrateBoilerDesign extends UnitDesign {
     private static final class Build {
         /** The casing's thickness (membrane wall, insulation, cladding), a buckstay's depth out of it and height, m. */
         static final double WALL = .3, STAY = .2, STAY_HEIGHT = .3;
+        /** A column's section, a deck beam's depth, m. */
+        static final double COLUMN = .35, BEAM = .3;
         /** The drag chain's rise, radians (survey: 30 to 35°). */
         static final double RISE = Math.toRadians(32);
         /** A ram's speed, rev/s of its slider-crank: a stroke out and back every 30 s (real rams every 1 to 5 min). */
@@ -284,9 +285,9 @@ final class GrateBoilerDesign extends UnitDesign {
          * from 2.5 m over the grate, outlined along the roof's edges.
          */
         void furnace() {
-            box(new double[]{fx0, yL, zf}, new double[]{fx1, s, zb}, Mesh.ALL_FACES & ~8, Material.MACHINE, false);
+            u.box(new double[]{fx0, yL, zf}, new double[]{fx1, s, zb}, Mesh.ALL_FACES & ~8, Material.MACHINE, false);
             int upper = Mesh.ALL_FACES & ~4 & ~(bi ? 2 : 32);
-            box(new double[]{fx0, s, zf}, new double[]{fx1, yR, zb}, upper, Material.CLADDING, false);
+            u.box(new double[]{fx0, s, zf}, new double[]{fx1, yR, zb}, upper, Material.CLADDING, false);
             if (bi) u.mesh.flat(List.of(new double[]{fx1, s, zf}, new double[]{fx1, s, zb}, new double[]{fx1, yM, zb}, new double[]{fx1, yM, zf}), new double[]{1, 0, 0},
                     Material.CLADDING);
             else u.mesh.flat(List.of(new double[]{fx0, s, zb}, new double[]{fx1, s, zb}, new double[]{fx1, ybp, zb}, new double[]{fx0, ybp, zb}), new double[]{0, 0, 1},
@@ -299,8 +300,8 @@ final class GrateBoilerDesign extends UnitDesign {
             // Plenum division seams on both side walls.
             for (int k = 1; k < plenums; k++) {
                 double z = zg0 + k * pl;
-                box(new double[]{fx0 - .05, yL, z - .05}, new double[]{fx0, s, z + .05}, Mesh.ALL_FACES & ~2, Material.STEELWORK, false);
-                if (!bi) box(new double[]{fx1, yL, z - .05}, new double[]{fx1 + .05, s, z + .05}, Mesh.ALL_FACES & ~1, Material.STEELWORK, false);
+                u.box(new double[]{fx0 - .05, yL, z - .05}, new double[]{fx0, s, z + .05}, Mesh.ALL_FACES & ~2, Material.STEELWORK, false);
+                if (!bi) u.box(new double[]{fx1, yL, z - .05}, new double[]{fx1 + .05, s, z + .05}, Mesh.ALL_FACES & ~1, Material.STEELWORK, false);
             }
             // Peep doors over the grate on the west wall, one per plenum.
             for (int k = 0; k < plenums; k++) u.door(fx0, zg0 + (k + .5) * pl, -1, s + .9, .15, .12);
@@ -313,10 +314,10 @@ final class GrateBoilerDesign extends UnitDesign {
         /** A ring of buckstays round the casing x0..x1 by z0..z1 at height {@code y}. */
         void buckstays(double x0, double x1, double z0, double z1, double y) {
             double y1 = y + STAY_HEIGHT;
-            box(new double[]{x0 - STAY, y, z0 - STAY}, new double[]{x1 + STAY, y1, z0}, Mesh.ALL_FACES & ~32, Material.STEELWORK, true);
-            box(new double[]{x0 - STAY, y, z1}, new double[]{x1 + STAY, y1, z1 + STAY}, Mesh.ALL_FACES & ~16, Material.STEELWORK, true);
-            box(new double[]{x0 - STAY, y, z0}, new double[]{x0, y1, z1}, Mesh.ALL_FACES & ~2 & ~16 & ~32, Material.STEELWORK, true);
-            box(new double[]{x1, y, z0}, new double[]{x1 + STAY, y1, z1}, Mesh.ALL_FACES & ~1 & ~16 & ~32, Material.STEELWORK, true);
+            u.box(new double[]{x0 - STAY, y, z0 - STAY}, new double[]{x1 + STAY, y1, z0}, Mesh.ALL_FACES & ~32, Material.STEELWORK, true);
+            u.box(new double[]{x0 - STAY, y, z1}, new double[]{x1 + STAY, y1, z1 + STAY}, Mesh.ALL_FACES & ~16, Material.STEELWORK, true);
+            u.box(new double[]{x0 - STAY, y, z0}, new double[]{x0, y1, z1}, Mesh.ALL_FACES & ~2 & ~16 & ~32, Material.STEELWORK, true);
+            u.box(new double[]{x1, y, z0}, new double[]{x1 + STAY, y1, z1}, Mesh.ALL_FACES & ~1 & ~16 & ~32, Material.STEELWORK, true);
         }
 
         /** The stations along z of the columns beside the furnace: its front, the plenums' joints, in front of the trough, about 3 m apart or more. */
@@ -340,12 +341,12 @@ final class GrateBoilerDesign extends UnitDesign {
             var stations = columnStations();
             double top = bi ? yL : yR;
             for (double z : stations) {
-                FixedBedGasifierHouse.column(u, fx0 - .1, z, 0, top);
-                FixedBedGasifierHouse.column(u, fx1 + .1, z, 0, bi ? yM : top);
-                if (bi) FixedBedGasifierHouse.column(u, bx1 + .1, z, 0, yM);
+                u.post(fx0 - .1, z, 0, top, COLUMN, false);
+                u.post(fx1 + .1, z, 0, bi ? yM : top, COLUMN, false);
+                if (bi) u.post(bx1 + .1, z, 0, yM, COLUMN, false);
             }
             if (!bi)
-                for (double x : new double[]{fx0 - .1, fx1 + .1}) FixedBedGasifierHouse.column(u, x, zb + dp - .2, 0, yR);
+                for (double x : new double[]{fx0 - .1, fx1 + .1}) u.post(x, zb + dp - .2, 0, yR, COLUMN, false);
         }
 
         // ---- Under the grate ---------------------------------------------------------------------------------------
@@ -362,8 +363,8 @@ final class GrateBoilerDesign extends UnitDesign {
                 for (int j = 0; j < across; j++) {
                     double x0 = inner0 + j * seg + .05, x1 = x0 + seg - .1, z0 = zg0 + k * pl + .05, z1 = z0 + pl - .1, cx = (x0 + x1) / 2, cz = (z0 + z1) / 2, yh = yL - hh;
                     loft(new double[]{x0, x1, z0, z1}, yL, new double[]{cx - .15, cx + .15, cz - .15, cz + .15}, yh, Material.MACHINE);
-                    box(new double[]{cx - .18, yh - .22, cz - .18}, new double[]{cx + .18, yh, cz + .18}, Mesh.ALL_FACES, Material.MACHINE, true);
-                    box(new double[]{cx + .18, yh - .15, cz - .03}, new double[]{cx + .3, yh - .09, cz + .03}, Mesh.ALL_FACES, Material.ACTUATOR, false);
+                    u.box(new double[]{cx - .18, yh - .22, cz - .18}, new double[]{cx + .18, yh, cz + .18}, Mesh.ALL_FACES, Material.MACHINE, true);
+                    u.box(new double[]{cx + .18, yh - .15, cz - .03}, new double[]{cx + .3, yh - .09, cz + .03}, Mesh.ALL_FACES, Material.ACTUATOR, false);
                     u.solids.add(ProcessUnit.Solid.box(new double[]{x0, yh, z0}, new double[]{x1, yL, z1}));
                 }
             // The ash drop.
@@ -372,16 +373,16 @@ final class GrateBoilerDesign extends UnitDesign {
             u.solids.add(ProcessUnit.Solid.box(new double[]{inner0, th, Math.min(c0, zg1)}, new double[]{inner1, yL, Math.max(c1, zb - WALL)}));
             // The air main, its branches and the riser behind the furnace.
             double y0 = yL, y1 = yL + am, zr0 = zb + .05, zr1 = zr0 + am, top = riserTop();
-            box(new double[]{xa0, y0, zg0 + .2}, new double[]{xa1, y1, zr0}, Mesh.ALL_FACES & ~32, Material.CLADDING, true);
-            box(new double[]{xa0, y0, zr0}, new double[]{xa1, top, zr1}, Mesh.ALL_FACES, Material.CLADDING, true);
+            u.box(new double[]{xa0, y0, zg0 + .2}, new double[]{xa1, y1, zr0}, Mesh.ALL_FACES & ~32, Material.CLADDING, true);
+            u.box(new double[]{xa0, y0, zr0}, new double[]{xa1, top, zr1}, Mesh.ALL_FACES, Material.CLADDING, true);
             for (int k = 0; k < plenums; k++) {
                 double z = zg0 + (k + .5) * pl;
-                box(new double[]{fx1, y0 + .1, z - .25}, new double[]{xa0, y1 - .1, z + .25}, Mesh.ALL_FACES & ~1 & ~2, Material.CLADDING, false);
-                box(new double[]{fx1 + .1, y1 - .1, z - .08}, new double[]{fx1 + .25, y1 + .05, z + .08}, Mesh.ALL_FACES, Material.ACTUATOR, false);
+                u.box(new double[]{fx1, y0 + .1, z - .25}, new double[]{xa0, y1 - .1, z + .25}, Mesh.ALL_FACES & ~1 & ~2, Material.CLADDING, false);
+                u.box(new double[]{fx1 + .1, y1 - .1, z - .08}, new double[]{fx1 + .25, y1 + .05, z + .08}, Mesh.ALL_FACES, Material.ACTUATOR, false);
             }
             // Into the air heater: a bi-drum's through its front, a back-pass unit's through its east side.
-            if (bi) box(new double[]{xa0, top - am, zr1}, new double[]{xa1, top, az0}, Mesh.ALL_FACES & ~16 & ~32, Material.CLADDING, true);
-            else box(new double[]{ax1, top - am, zr0}, new double[]{xa0, top, zr1}, Mesh.ALL_FACES & ~1 & ~2, Material.CLADDING, true);
+            if (bi) u.box(new double[]{xa0, top - am, zr1}, new double[]{xa1, top, az0}, Mesh.ALL_FACES & ~16 & ~32, Material.CLADDING, true);
+            else u.box(new double[]{ax1, top - am, zr0}, new double[]{xa0, top, zr1}, Mesh.ALL_FACES & ~1 & ~2, Material.CLADDING, true);
         }
 
         /** The hot-air riser's top: into the air heater over its hoppers, over the top over-fire air row. */
@@ -437,11 +438,11 @@ final class GrateBoilerDesign extends UnitDesign {
          */
         void trough() {
             double z0 = zt - tw / 2, z1 = zt + tw / 2, xt = fx0 + .1, cos = DeterministicMath.cos(RISE), sin = DeterministicMath.sin(RISE);
-            box(new double[]{xt, 0, z0}, new double[]{xr0, th, z1}, Mesh.ALL_FACES, Material.MACHINE, true);
+            u.box(new double[]{xt, 0, z0}, new double[]{xr0, th, z1}, Mesh.ALL_FACES, Material.MACHINE, true);
             // The tail: its shaft's bearings either side.
             for (double z : new double[]{z0 - .08, z1}) u.mesh.cylinder(Frame.of(new double[]{xt + .35, th / 2, 0}, 2, 1), .13, z, z + .08, 10, Material.MACHINE);
             for (double x = xt + 1; x < xr0 - .3; x += 1.5)
-                for (double z : new double[]{z0 - .04, z1}) box(new double[]{x - .04, 0, z}, new double[]{x + .04, th, z + .04}, Mesh.ALL_FACES, Material.STEELWORK, false);
+                for (double z : new double[]{z0 - .04, z1}) u.box(new double[]{x - .04, 0, z}, new double[]{x + .04, th, z + .04}, Mesh.ALL_FACES, Material.STEELWORK, false);
             // The rise, its length set so the discharge chute's centre line stands on a cell centre.
             double cw = clamp(.15 + .01 * w, .18, .3), yHead0 = 3.4 + .04 * w, sl0 = (yHead0 - th / 2) / sin;
             double xd = Math.ceil(xr0 + sl0 * cos + .45 - .5) + .5, xh = xd - .45, sl = (xh - xr0) / cos, yHead = th / 2 + sl * sin;
@@ -455,27 +456,27 @@ final class GrateBoilerDesign extends UnitDesign {
             }
             for (int k = 1; k <= 2; k++) {
                 double sk = sl * k / 3, x = xr0 + sk * cos, under = th / 2 + sk * sin - th / 2 / cos;
-                for (double z : new double[]{z0 - .1, z1 + .1}) FixedBedGasifierHouse.column(u, x, z, 0, under);
-                box(new double[]{x - .1, under - .15, z0 - .25}, new double[]{x + .1, under, z1 + .25}, Mesh.ALL_FACES, Material.STEELWORK, true);
+                for (double z : new double[]{z0 - .1, z1 + .1}) u.post(x, z, 0, under, COLUMN, false);
+                u.box(new double[]{x - .1, under - .15, z0 - .25}, new double[]{x + .1, under, z1 + .25}, Mesh.ALL_FACES, Material.STEELWORK, true);
             }
             // The head and its discharge chute.
             double hy0 = yHead - th / 2 - .1, hy1 = yHead + th / 2 + .2;
-            box(new double[]{xh - .45, hy0, z0 - .05}, new double[]{xh + .75, hy1, z1 + .05}, Mesh.ALL_FACES, Material.MACHINE, true);
-            for (double z : new double[]{z0 - .1, z1 + .1}) FixedBedGasifierHouse.column(u, xh - .3, z, 0, hy0);
+            u.box(new double[]{xh - .45, hy0, z0 - .05}, new double[]{xh + .75, hy1, z1 + .05}, Mesh.ALL_FACES, Material.MACHINE, true);
+            for (double z : new double[]{z0 - .1, z1 + .1}) u.post(xh - .3, z, 0, hy0, COLUMN, false);
             double face = outletFace(yHead);
-            box(new double[]{xd - cw, face + .3, zt - cw}, new double[]{xd + cw, hy0, zt + cw}, Mesh.ALL_FACES & ~8, Material.MACHINE, true);
+            u.box(new double[]{xd - cw, face + .3, zt - cw}, new double[]{xd + cw, hy0, zt + cw}, Mesh.ALL_FACES & ~8, Material.MACHINE, true);
             // The head shaft in its bearings, the gearbox and the motor on their stool.
             double rshaft = .05 + .004 * w, rm = clamp(.15 + .01 * w, .16, .28), gb0 = z1 + .3, gb1 = gb0 + .5, m0 = gb1 + .05, m1 = m0 + 3.2 * rm + .1;
-            box(new double[]{xh - .15, yHead - .15, z0 - .2}, new double[]{xh + .15, yHead + .15, z0 - .05}, Mesh.ALL_FACES, Material.MACHINE, false);
+            u.box(new double[]{xh - .15, yHead - .15, z0 - .2}, new double[]{xh + .15, yHead + .15, z0 - .05}, Mesh.ALL_FACES, Material.MACHINE, false);
             var shaft = Frame.of(new double[]{xh, yHead, 0}, 2, 1);
             u.shaft(shaft, rshaft, new double[][]{{z1 + .05, gb0}}, (z1 + .05 + gb0) / 2);
-            box(new double[]{xh - .3, yHead - .35, gb0}, new double[]{xh + .3, yHead + .3, gb1}, Mesh.ALL_FACES, Material.MACHINE, true);
+            u.box(new double[]{xh - .3, yHead - .35, gb0}, new double[]{xh + .3, yHead + .3, gb1}, Mesh.ALL_FACES, Material.MACHINE, true);
             double top = yHead - rm - .3;
-            u.motor(shaft, xh, yHead, rm, .025 + .06 * rm, m0, m1 - .18 * (m1 - m0), m1, ProcessUnit.sides(2 * rm), .8 * rshaft, top);
-            box(new double[]{xh - .45, top - .08, gb0}, new double[]{xh + .45, top, m1}, Mesh.ALL_FACES, Material.STEELWORK, true);
+            u.motor(shaft, rm, m0, m1, .8 * rshaft, top, ProcessUnit.MotorDetail.FULL);
+            u.box(new double[]{xh - .45, top - .08, gb0}, new double[]{xh + .45, top, m1}, Mesh.ALL_FACES, Material.STEELWORK, true);
             for (double x : new double[]{xh - .38, xh + .38})
-                for (double z : new double[]{gb0 + .07, m1 - .07}) box(new double[]{x - .06, 0, z - .06}, new double[]{x + .06, top - .08, z + .06}, Mesh.ALL_FACES, Material.STEELWORK, true);
-            if (yHead - .35 > top + .01) box(new double[]{xh - .25, top, gb0 + .05}, new double[]{xh + .25, yHead - .35, gb1 - .05}, Mesh.ALL_FACES, Material.STEELWORK, true);
+                for (double z : new double[]{gb0 + .07, m1 - .07}) u.box(new double[]{x - .06, 0, z - .06}, new double[]{x + .06, top - .08, z + .06}, Mesh.ALL_FACES, Material.STEELWORK, true);
+            if (yHead - .35 > top + .01) u.box(new double[]{xh - .25, top, gb0 + .05}, new double[]{xh + .25, yHead - .35, gb1 - .05}, Mesh.ALL_FACES, Material.STEELWORK, true);
             outlet = new double[]{xd, face, zt, 2 * cw};
         }
 
@@ -501,48 +502,49 @@ final class GrateBoilerDesign extends UnitDesign {
             double yb0 = y1 + .5, yb1 = yb0 + Math.max(.5, .45 * Math.min(bw, bd)), yb2 = yb1 + bh;
             for (int i = 0; i < feeders; i++) {
                 double x = fx0 + WALL + pitch * (i + .5), half = ram / 2;
-                box(new double[]{x - half, y0, hz0}, new double[]{x + half, y1, zf}, Mesh.ALL_FACES & ~32, Material.MACHINE, true);
-                box(new double[]{x - half - .04, y0 - .04, hz0 - .06}, new double[]{x + half + .04, y1 + .04, hz0}, Mesh.ALL_FACES & ~32, Material.FLANGE, true);
-                box(new double[]{x - half + .05, deck + Access.DECK, hz0 + .05}, new double[]{x + half - .05, y0, hz0 + .3}, Mesh.ALL_FACES, Material.STEELWORK, true);
+                u.box(new double[]{x - half, y0, hz0}, new double[]{x + half, y1, zf}, Mesh.ALL_FACES & ~32, Material.MACHINE, true);
+                u.box(new double[]{x - half - .04, y0 - .04, hz0 - .06}, new double[]{x + half + .04, y1 + .04, hz0}, Mesh.ALL_FACES & ~32, Material.FLANGE, true);
+                u.box(new double[]{x - half + .05, deck + Access.DECK, hz0 + .05}, new double[]{x + half - .05, y0, hz0 + .3}, Mesh.ALL_FACES, Material.STEELWORK, true);
                 // The guides and the cylinder with its flanges.
                 for (int side = -1; side <= 1; side += 2) {
                     double gx = x + side * (half - .12);
-                    box(new double[]{gx - .03, yc - .03, gz0}, new double[]{gx + .03, yc + .03, hz0 - .06}, Mesh.ALL_FACES, Material.STEELWORK, false);
+                    u.box(new double[]{gx - .03, yc - .03, gz0}, new double[]{gx + .03, yc + .03, hz0 - .06}, Mesh.ALL_FACES, Material.STEELWORK, false);
                 }
                 var f = Frame.of(new double[]{x, yc, 0}, 2, 1);
                 u.mesh.prism(f, rc, cz0 + .05, gz0 - .05, 12, Material.ACTUATOR);
                 u.mesh.cylinder(f, rc + .04, cz0, cz0 + .05, 12, Material.FLANGE);
-                box(new double[]{x - half + .06, yc - rc - .04, gz0 - .05}, new double[]{x + half - .06, yc + rc + .04, gz0}, Mesh.ALL_FACES, Material.FLANGE, false);
+                u.box(new double[]{x - half + .06, yc - rc - .04, gz0 - .05}, new double[]{x + half - .06, yc + rc + .04, gz0}, Mesh.ALL_FACES, Material.FLANGE, false);
                 u.solids.add(ProcessUnit.Solid.rod(new double[]{x, yc, 0}, 2, cz0, gz0, rc + .04, 0));
                 // The rod and crosshead: drawn at mid-stroke; both rod ends stay in the cylinder and the housing.
                 double zc = (gz0 + hz0 - .06) / 2, crank = stroke / 2;
                 u.mesh.part(u.motions.size());
                 u.mesh.prism(f, .45 * rc, gz0 - .55 * stroke - .1, hz0 + .55 * stroke + .1, 10, Material.PIPE);
-                box(new double[]{x - .12, yc - .1, zc - .06}, new double[]{x + .12, yc + .1, zc + .06}, Mesh.ALL_FACES, Material.FLANGE, false);
+                u.box(new double[]{x - .12, yc - .1, zc - .06}, new double[]{x + .12, yc + .1, zc + .06}, Mesh.ALL_FACES, Material.FLANGE, false);
                 u.mesh.part(-1);
                 u.motions.add(new ProcessUnit.Motion(new double[]{x, yc, zc}, new double[]{0, 0, 1}, RAM_SPEED, (double) i / feeders, crank, 5 * crank));
                 // The chute, hopper and day bin, its legs.
-                box(new double[]{x - .3, y1, bc - .3}, new double[]{x + .3, yb0, bc + .3}, Mesh.ALL_FACES & ~4 & ~8, Material.MACHINE, true);
+                u.box(new double[]{x - .3, y1, bc - .3}, new double[]{x + .3, yb0, bc + .3}, Mesh.ALL_FACES & ~4 & ~8, Material.MACHINE, true);
                 loft(new double[]{x - bw / 2, x + bw / 2, bz0, bz1}, yb1, new double[]{x - .3, x + .3, bc - .3, bc + .3}, yb0, Material.MACHINE);
-                box(new double[]{x - bw / 2, yb1, bz0}, new double[]{x + bw / 2, yb2, bz1}, Mesh.ALL_FACES & ~4, Material.MACHINE, true);
+                u.box(new double[]{x - bw / 2, yb1, bz0}, new double[]{x + bw / 2, yb2, bz1}, Mesh.ALL_FACES & ~4, Material.MACHINE, true);
                 u.solids.add(ProcessUnit.Solid.box(new double[]{x - bw / 2, yb0, bz0}, new double[]{x + bw / 2, yb1, bz1}));
                 for (int side = -1; side <= 1; side += 2) {
                     double lx = x + side * (bw / 2 - .06);
-                    box(new double[]{lx - .05, deck + Access.DECK, bz0 + .01}, new double[]{lx + .05, yb1, bz0 + .11}, Mesh.ALL_FACES, Material.STEELWORK, true);
+                    u.box(new double[]{lx - .05, deck + Access.DECK, bz0 + .01}, new double[]{lx + .05, yb1, bz0 + .11}, Mesh.ALL_FACES, Material.STEELWORK, true);
                 }
-                box(new double[]{x - bw / 2 + .1, yb2 - .25, bz1}, new double[]{x + bw / 2 - .1, yb2 - .15, zf}, Mesh.ALL_FACES & ~32, Material.STEELWORK, false);
+                u.box(new double[]{x - bw / 2 + .1, yb2 - .25, bz1}, new double[]{x + bw / 2 - .1, yb2 - .15, zf}, Mesh.ALL_FACES & ~32, Material.STEELWORK, false);
             }
             // The conveyor over the bins, its inlet chute beyond the last bin.
             double cw = conveyorWidth(), ch = clamp(.4 + .02 * w, .4, .6), zi = conveyorLine(), yc0 = yb2 + .1, yc1 = yc0 + ch;
             double first = fx0 + WALL + pitch / 2 - bw / 2, last = fx0 + WALL + pitch * (feeders - .5) + bw / 2, xi = Math.ceil(last + .25 + cw / 2 - .5) + .5;
-            box(new double[]{first - .5, yc0, zi - cw / 2}, new double[]{xi + .4, yc1, zi + cw / 2}, Mesh.ALL_FACES, Material.MACHINE, true);
+            u.box(new double[]{first - .5, yc0, zi - cw / 2}, new double[]{xi + .4, yc1, zi + cw / 2}, Mesh.ALL_FACES, Material.MACHINE, true);
             for (int i = 0; i < feeders; i++) {
                 double x = fx0 + WALL + pitch * (i + .5);
-                box(new double[]{x - .2, yb2, zi - .2}, new double[]{x + .2, yc0, zi + .2}, Mesh.ALL_FACES & ~4 & ~8, Material.MACHINE, false);
+                u.box(new double[]{x - .2, yb2, zi - .2}, new double[]{x + .2, yc0, zi + .2}, Mesh.ALL_FACES & ~4 & ~8, Material.MACHINE, false);
             }
-            double rm = .14;
-            box(new double[]{first - .5, yc0 + .05, zi - cw / 2 - .3}, new double[]{first - .1, yc1 - .05, zi - cw / 2}, Mesh.ALL_FACES & ~32, Material.MACHINE, false);
-            u.mesh.cylinder(Frame.of(new double[]{first - .3, (yc0 + yc1) / 2, 0}, 2, 1), rm, zi - cw / 2 - .75, zi - cw / 2 - .3, 12, Material.MOTOR);
+            // The drive: its gearbox on the conveyor's west end, the motor flanged on its front (no feet).
+            double yd = (yc0 + yc1) / 2, zd = zi - cw / 2 - .3;
+            u.box(new double[]{first - .5, yc0 + .05, zd}, new double[]{first - .1, yc1 - .05, zi - cw / 2}, Mesh.ALL_FACES & ~32, Material.MACHINE, false);
+            u.motor(Frame.of(new double[]{first - .3, yd, zd}, 2, -1), .14, 0, .45, 0, yd, ProcessUnit.MotorDetail.PLAIN);
             inlet = new double[]{xi, yc1, zi};
             fuelBase = yc1;
         }
@@ -568,10 +570,10 @@ final class GrateBoilerDesign extends UnitDesign {
          * valves; the bank's flue gas duct from its back into the air heater's top.
          */
         void biDrum() {
-            box(new double[]{fx1, yM, zf}, new double[]{bx1, yR, zb}, Mesh.ALL_FACES & ~1, Material.CLADDING, false);
+            u.box(new double[]{fx1, yM, zf}, new double[]{bx1, yR, zb}, Mesh.ALL_FACES & ~1, Material.CLADDING, false);
             // The joint between the furnace's and the bank's casings, a flat bar down the front and back.
             for (double z : new double[]{zf - .05, zb})
-                box(new double[]{fx1 - .06, yM, z}, new double[]{fx1 + .06, yR, z + .05}, Mesh.ALL_FACES & ~(z < zf ? 32 : 16), Material.STEELWORK, false);
+                u.box(new double[]{fx1 - .06, yM, z}, new double[]{fx1 + .06, yR, z + .05}, Mesh.ALL_FACES & ~(z < zf ? 32 : 16), Material.STEELWORK, false);
             u.solids.add(ProcessUnit.Solid.box(new double[]{fx1, yM, zf}, new double[]{bx1, yR, zb}));
             u.volumes.add(ProcessUnit.Solid.box(new double[]{fx1 - .2, yM + .1, zf + .1}, new double[]{bx1 - .1, yR - .1, zb - .1}));
             double rmd = .3 + .025 * w, m0 = zf + .15 + rmd / 2, m1 = zb - .15 - rmd / 2;
@@ -586,7 +588,7 @@ final class GrateBoilerDesign extends UnitDesign {
             drum(new double[]{bmid, yS, 0}, 2, s0, s1);
             // Flue gas from the bank's back into the air heater's top.
             double dh = clamp(.8 + .05 * w, .9, 1.2);
-            box(new double[]{ax0 + .1, ah1 - dh, zb}, new double[]{ax1 - .1, ah1 - .1, az0}, Mesh.ALL_FACES & ~16 & ~32, Material.CLADDING, true);
+            u.box(new double[]{ax0 + .1, ah1 - dh, zb}, new double[]{ax1 - .1, ah1 - .1, az0}, Mesh.ALL_FACES & ~16 & ~32, Material.CLADDING, true);
         }
 
         /**
@@ -595,7 +597,7 @@ final class GrateBoilerDesign extends UnitDesign {
          * header on the back pass's east side.
          */
         void backPass() {
-            box(new double[]{fx0, ybp, zb}, new double[]{fx1, yR, zb + dp}, Mesh.ALL_FACES & ~16, Material.CLADDING, false);
+            u.box(new double[]{fx0, ybp, zb}, new double[]{fx1, yR, zb + dp}, Mesh.ALL_FACES & ~16, Material.CLADDING, false);
             u.solids.add(ProcessUnit.Solid.box(new double[]{fx0, ybp, zb}, new double[]{fx1, yR, zb + dp}));
             u.volumes.add(ProcessUnit.Solid.box(new double[]{fx0 + .1, ybp + .1, zb - .2}, new double[]{fx1 - .1, yR - .1, zb + dp - .1}));
             double zs = drumLine(), s0 = fx0 + .4 + rs / 2, s1 = fx1 - .4 - rs / 2;
@@ -640,7 +642,7 @@ final class GrateBoilerDesign extends UnitDesign {
             for (double t : new double[]{t0 + .2 * (t1 - t0), t1 - .2 * (t1 - t0)}) {
                 double[] lo = axis == 2 ? new double[]{centre[0] - .8 * rs, floor, t - .08} : new double[]{t - .08, floor, centre[2] - .8 * rs};
                 double[] hi = axis == 2 ? new double[]{centre[0] + .8 * rs, yS - .6 * rs, t + .08} : new double[]{t + .08, yS - .6 * rs, centre[2] + .8 * rs};
-                box(lo, hi, Mesh.ALL_FACES, Material.SUPPORT, true);
+                u.box(lo, hi, Mesh.ALL_FACES, Material.SUPPORT, true);
             }
             for (double[] v : valves()) safetyValve(v[0], v[1], yS + rs);
         }
@@ -692,27 +694,27 @@ final class GrateBoilerDesign extends UnitDesign {
 
         /** The tubular air heater: its clad box on four legs (a back-pass unit's hangs under the back pass), its ash hoppers, an air intake hood. */
         void airHeater() {
-            box(new double[]{ax0, ah0, az0}, new double[]{ax1, ah1, az1}, bi ? Mesh.ALL_FACES : Mesh.ALL_FACES & ~8, Material.CLADDING, true);
+            u.box(new double[]{ax0, ah0, az0}, new double[]{ax1, ah1, az1}, bi ? Mesh.ALL_FACES : Mesh.ALL_FACES & ~8, Material.CLADDING, true);
             u.volumes.add(ProcessUnit.Solid.box(new double[]{ax0 + .1, ah0 + .1, az0 + .1}, new double[]{ax1 - .1, ah1 - .1, az1 - .1}));
             int hoppers = (int) clamp(Math.round((ax1 - ax0) / 2.5), 1, 4);
             double seg = (ax1 - ax0) / hoppers, hop = clamp(.4 * Math.min(seg, az1 - az0), .7, 1.5), zc = (az0 + az1) / 2;
             for (int k = 0; k < hoppers; k++) {
                 double x0 = ax0 + k * seg, x1 = x0 + seg, xc = (x0 + x1) / 2;
                 loft(new double[]{x0 + .05, x1 - .05, az0 + .05, az1 - .05}, ah0, new double[]{xc - .15, xc + .15, zc - .15, zc + .15}, ah0 - hop, Material.CLADDING);
-                box(new double[]{xc - .17, ah0 - hop - .25, zc - .17}, new double[]{xc + .17, ah0 - hop, zc + .17}, Mesh.ALL_FACES, Material.MACHINE, true);
+                u.box(new double[]{xc - .17, ah0 - hop - .25, zc - .17}, new double[]{xc + .17, ah0 - hop, zc + .17}, Mesh.ALL_FACES, Material.MACHINE, true);
                 u.solids.add(ProcessUnit.Solid.box(new double[]{x0, ah0 - hop, az0}, new double[]{x1, ah0, az1}));
             }
             if (bi)
                 for (double x : new double[]{ax0 + .12, ax1 - .12})
-                    for (double z : new double[]{az0 + .12, az1 - .12}) FixedBedGasifierHouse.column(u, x, z, 0, ah0);
+                    for (double z : new double[]{az0 + .12, az1 - .12}) u.post(x, z, 0, ah0, COLUMN, false);
             // The air intake hood on its outer side (east of a bi-drum unit's, west of a back-pass unit's), its louvres dark.
             double hy0 = ah0 + .3, hy1 = Math.min(ah1 - .3, hy0 + clamp(.6 + .08 * w, .8, 1.6)), hz0 = zc - .5, hz1 = zc + .5;
             if (bi) {
-                box(new double[]{ax1, hy0, hz0}, new double[]{ax1 + .5, hy1, hz1}, Mesh.ALL_FACES & ~1 & ~2, Material.CLADDING, true);
+                u.box(new double[]{ax1, hy0, hz0}, new double[]{ax1 + .5, hy1, hz1}, Mesh.ALL_FACES & ~1 & ~2, Material.CLADDING, true);
                 u.mesh.flat(List.of(new double[]{ax1 + .5, hy0, hz0}, new double[]{ax1 + .5, hy0, hz1}, new double[]{ax1 + .5, hy1, hz1}, new double[]{ax1 + .5, hy1, hz0}),
                         new double[]{1, 0, 0}, Material.OPENING);
             } else {
-                box(new double[]{ax0 - .5, hy0, hz0}, new double[]{ax0, hy1, hz1}, Mesh.ALL_FACES & ~1 & ~2, Material.CLADDING, true);
+                u.box(new double[]{ax0 - .5, hy0, hz0}, new double[]{ax0, hy1, hz1}, Mesh.ALL_FACES & ~1 & ~2, Material.CLADDING, true);
                 u.mesh.flat(List.of(new double[]{ax0 - .5, hy0, hz0}, new double[]{ax0 - .5, hy1, hz0}, new double[]{ax0 - .5, hy1, hz1}, new double[]{ax0 - .5, hy0, hz1}),
                         new double[]{-1, 0, 0}, Material.OPENING);
             }
@@ -721,15 +723,16 @@ final class GrateBoilerDesign extends UnitDesign {
         /**
          * The flue duct from the air heater's back over its hoppers to over the fan, down into the fan's inlet; the
          * induced-draught fan's scroll on its plinth, its hub, the shaft to its motor turning, its outlet duct into the
-         * stack's base; the drawn stack ({@link #stack}).
+         * stack's square base; the kit's drawn stack ({@link ProcessUnit#stack}) from the base's top, 10 m over the roof
+         * and at most 60 m high, its bands in the cladding's paint.
          */
         void fanAndStack() {
             double rw = clamp(.3 + .1 * w, .5, 1.5), r0 = 1.1 * rw, r1 = 1.55 * rw, rh = .55 * rw, width = .8 * rw + .2, yf = r1 + .35;
             double xf = (ax0 + ax1) / 2, dd = clamp(.6 + .05 * w, .6, 1.2), dw = 2 * rh + .3, z0 = az1 + .4 + dd, z1 = z0 + width, yd0 = ah0 + .1, yd1 = yd0 + dd;
-            box(new double[]{xf - dw / 2, yd0, az1}, new double[]{xf + dw / 2, yd1, z0 - dd}, Mesh.ALL_FACES & ~16 & ~32, Material.CLADDING, true);
-            box(new double[]{xf - dw / 2, yf - rh - .1, z0 - dd}, new double[]{xf + dw / 2, yd1, z0}, Mesh.ALL_FACES & ~32, Material.CLADDING, true);
+            u.box(new double[]{xf - dw / 2, yd0, az1}, new double[]{xf + dw / 2, yd1, z0 - dd}, Mesh.ALL_FACES & ~16 & ~32, Material.CLADDING, true);
+            u.box(new double[]{xf - dw / 2, yf - rh - .1, z0 - dd}, new double[]{xf + dw / 2, yd1, z0}, Mesh.ALL_FACES & ~32, Material.CLADDING, true);
             double rm = clamp(.2 + .025 * w, .25, .5), lm = 3.2 * rm + .1, m0 = z1 + .55, m1 = m0 + lm, shaft = .04 + .01 * w;
-            box(new double[]{xf - r1 - .1, 0, z0 - .1}, new double[]{xf + r1 + .1, .3, m1 + .1}, Mesh.ALL_FACES, Material.CONCRETE, true);
+            u.box(new double[]{xf - r1 - .1, 0, z0 - .1}, new double[]{xf + r1 + .1, .3, m1 + .1}, Mesh.ALL_FACES, Material.CONCRETE, true);
             double zh = z1 - .3 * width;
             u.scroll(xf, yf, z0, z1, zh, rh, r0, r1);
             var f = Frame.of(new double[]{xf, yf, 0}, 2, 1);
@@ -738,78 +741,80 @@ final class GrateBoilerDesign extends UnitDesign {
             u.solids.add(ProcessUnit.Solid.rod(new double[]{xf, yf, 0}, 2, z0, z1, r1, 0));
             u.round(xf, yf, z0, z1, r1);
             // The bearing pedestal, the shaft and the motor.
-            box(new double[]{xf - .2, .3, z1 + .12}, new double[]{xf + .2, yf - shaft - .05, z1 + .35}, Mesh.ALL_FACES, Material.MACHINE, true);
+            u.box(new double[]{xf - .2, .3, z1 + .12}, new double[]{xf + .2, yf - shaft - .05, z1 + .35}, Mesh.ALL_FACES, Material.MACHINE, true);
             u.mesh.cylinder(f, shaft + .08, z1 + .12, z1 + .35, 12, Material.MACHINE);
             u.shaft(f, shaft, new double[][]{{z1, z1 + .12}, {z1 + .35, m0}}, z1 + .45);
-            u.motor(f, xf, yf, rm, .025 + .06 * rm, m0, m1 - .18 * lm, m1, ProcessUnit.sides(2 * rm), shaft, .3);
+            u.motor(f, rm, m0, m1, shaft, .3, ProcessUnit.MotorDetail.FULL);
             // The outlet duct off the scroll's top into the stack's base.
             double od = clamp(.2 * w + .6, 1, 3), half = od / 2 + .3, xs = xf + r1 + .4 + half, zs = (z0 + z1) / 2, base = yf + r1 + .4;
-            box(new double[]{xf - .05, yf + .99 * rh, z0}, new double[]{xs - half, yf + r1, z1}, Mesh.ALL_FACES & ~1 & ~2, Material.MACHINE, true);
-            stack(xs, zs, half, base, od, Math.min(60, yR + 10));
-        }
-
-        /**
-         * A drawn stack of {@code od} round (x, z) on its square base {@code half} each side up to {@code base}: a
-         * square-to-round transition, its sections' flanged joints every 8 m, bands under its top, open at the top, a
-         * lightning rod on its rim.
-         */
-        void stack(double x, double z, double half, double base, double od, double top) {
-            double r = od / 2, neck = base + .8;
-            int n = Math.max(12, 4 * (int) Math.ceil(.75 * Math.PI * od));
-            box(new double[]{x - half, 0, z - half}, new double[]{x + half, base, z + half}, Mesh.ALL_FACES & ~8, Material.CLADDING, true);
-            u.transition(x - half, x + half, z - half, z + half, base, x, z, r, neck, n, Material.CLADDING, false);
-            var up = Frame.of(new double[]{x, 0, z}, 1, 1);
-            u.mesh.prism(up, r, neck, top, n, Material.SHELL);
-            for (double y = neck + 8; y < top - 2; y += 8) band(up, r, y, .1, n);
-            band(up, r, top - .6, .15, n);
-            u.mesh.annulus(up, .92 * r, r, top, n, 1, Material.SHELL);
-            u.mesh.bore(up, .92 * r, top - .3, top, n, Material.SHELL);
-            u.mesh.annulus(up, 0, .92 * r, top - .3, n, 1, Material.OPENING);
-            u.mesh.bar(new double[]{x + .96 * r, top, z}, new double[]{x + .96 * r, top + 1.2, z}, .03, new double[]{1, 0, 0}, Material.PIPE);
-            u.solids.add(ProcessUnit.Solid.box(new double[]{x - half, base, z - half}, new double[]{x + half, neck, z + half}));
-            u.solids.add(ProcessUnit.Solid.rod(new double[]{x, 0, z}, 1, neck, top, r, 0));
-            u.round(x, z, neck, top, r, 1);
-        }
-
-        /** A band {@code t} high round a stack of radius r at height y. */
-        void band(Frame up, double r, double y, double t, int n) {
-            u.mesh.prism(up, r + .05, y, y + t, n, Material.SHELL);
-            u.mesh.annulus(up, r, r + .05, y, n, -1, Material.SHELL);
-            u.mesh.annulus(up, r, r + .05, y + t, n, 1, Material.SHELL);
+            u.box(new double[]{xf - .05, yf + .99 * rh, z0}, new double[]{xs - half, yf + r1, z1}, Mesh.ALL_FACES & ~1 & ~2, Material.MACHINE, true);
+            u.box(new double[]{xs - half, 0, zs - half}, new double[]{xs + half, base, zs + half}, Mesh.ALL_FACES & ~4 & ~8, Material.CLADDING, true);
+            u.stack(xs, zs, od, ProcessUnit.sides(od), base, Math.min(60, yR + 10), Material.CLADDING, new ProcessUnit.Breeching(xs - half, xs + half, zs - half, zs + half), false);
         }
 
         // ---- Access ------------------------------------------------------------------------------------------------
 
         /**
-         * The firing aisle's deck across the front from the west wall to past the boiler a metre under the grate, the drum
-         * deck over the roof from the west wall, overhanging the front by a landing's depth, and the stair tower climbing
-         * beside the west wall from the ground to both, their front landings joining the decks' west ends; beams under
-         * the decks, posts under the aisle's front edge.
+         * The firing aisle's deck across the front from the west wall to past the boiler a metre under the grate, on beams
+         * and posts; the drum deck over the roof from the west wall; the kit's stair tower beside the west wall from the
+         * ground to both ({@link ProcessUnit#stairTower}). Its lane A stands on the nearest cell centre whose flight keeps
+         * clear of the furnace's columns, and its landing on the aisle ends at the furnace's front: the tower rises towards
+         * the front where a flight of lane A reaches the aisle (lane A's landings are at the tower's far end), towards the
+         * back where one of lane B does. The drum deck reaches over the furnace's front or back as far as the tower's top
+         * landing needs, on beams with knee braces to the casing; where the tower stands off the wall, a {@link #bridge}
+         * joins each landing to its deck.
          */
         void access() {
-            double depth = FixedBedGasifierHouse.DEPTH, beam = FixedBedGasifierHouse.BEAM;
             double[] alongX = {1, 0, 0}, alongZ = {0, 0, 1};
-            u.platform(new Access.Line(new double[]{wall, 0, zf}, alongX, new double[]{0, 0, -1}, xEnd - wall), deck, aisle, false, true);
-            u.railing(new Access.Line(new double[]{wall + .3, 0, zA0}, alongZ, new double[]{-1, 0, 0}, zf - depth - zA0), deck, .3);
-            FixedBedGasifierHouse.beam(u, new double[]{wall, deck - beam, zA0}, new double[]{xEnd, deck, zA0 + .2});
-            FixedBedGasifierHouse.beam(u, new double[]{wall, deck - beam, zf - .2}, new double[]{xEnd, deck, zf});
+            double lane = Math.floor(wall + .025 - ProcessUnit.TOWER_FLIGHT / 2 - .5) + .5;
+            var plan = ProcessUnit.towerPlan(deck, yR);
+            int sign = -plan.end(0);
+            double[] landing = plan.opening(0);
+            var tower = u.stairTower(plan, lane, ProcessUnit.TowerPlan.foot(zf, sign, sign > 0 ? landing[1] : landing[0]), 2, sign, -1, true);
+            double[] onAisle = tower.openings().get(0), onRoof = tower.openings().get(1);
+            // The aisle: railed at its front and east end, and along its west end but over the tower's landing.
+            u.platform(new Access.Line(new double[]{wall, 0, zf}, alongX, new double[]{0, 0, -1}, xEnd - wall), deck, aisle, Access.RAILED, false, true);
+            var west = new Access.Line(new double[]{wall + .3, 0, zA0}, alongZ, new double[]{-1, 0, 0}, zf - zA0);
+            u.rails(west, deck, .3, false, false, west.gap(onAisle));
+            bridge(tower.edge(), onAisle, deck);
+            u.beam(new double[]{wall, deck - BEAM, zA0}, new double[]{xEnd, deck, zA0 + .2});
+            u.beam(new double[]{wall, deck - BEAM, zf - .2}, new double[]{xEnd, deck, zf});
             int bays = Math.max(1, (int) Math.ceil((xEnd - wall) / 3));
             for (int k = 0; k <= bays; k++) {
                 double x = Math.min(xEnd - .1, Math.max(wall + .1, wall + (xEnd - wall) * k / bays));
-                FixedBedGasifierHouse.beam(u, new double[]{x - .1, deck - beam, zA0 + .2}, new double[]{x + .1, deck, zf - .2});
-                FixedBedGasifierHouse.column(u, x, zA0 + .2, 0, deck - beam);
+                u.beam(new double[]{x - .1, deck - BEAM, zA0 + .2}, new double[]{x + .1, deck, zf - .2});
+                u.post(x, zA0 + .2, 0, deck - BEAM, COLUMN, false);
             }
-            // The drum deck.
-            double zEnd = bi ? zb : zb + dp, xR = bi ? bx1 : fx1, z0 = zf - depth;
-            u.platform(new Access.Line(new double[]{wall, 0, z0}, alongZ, new double[]{1, 0, 0}, zEnd - z0), yR, xR - wall, true, true);
-            u.railing(new Access.Line(new double[]{wall + .3, 0, zf}, alongZ, new double[]{-1, 0, 0}, zEnd - zf), yR, .3);
-            FixedBedGasifierHouse.beam(u, new double[]{wall, yR - beam, z0}, new double[]{xR, yR, z0 + .2});
-            FixedBedGasifierHouse.beam(u, new double[]{wall, yR - beam, z0 + .2}, new double[]{wall + .2, yR, zEnd});
-            for (double x = wall + .1 + 2; x < xR - 1; x += 2.5) {
-                FixedBedGasifierHouse.beam(u, new double[]{x - .1, yR - beam, z0 + .2}, new double[]{x + .1, yR, zf});
-                u.mesh.bar(new double[]{x, yR - beam, z0 + .3}, new double[]{x, yR - 1.2, zf}, .12, new double[]{1, 0, 0}, Material.STEELWORK);
+            // The drum deck from the wall to the bank's or furnace's east side, its west edge railed but over the landing.
+            double zEnd = bi ? zb : zb + dp, xR = bi ? bx1 : fx1, z0 = Math.min(zf, onRoof[0]), z1 = Math.max(zEnd, onRoof[1]);
+            u.platform(new Access.Line(new double[]{wall - Access.GAP, 0, z0}, alongZ, new double[]{1, 0, 0}, z1 - z0), yR, xR - wall + Access.GAP, Access.RAILED | Access.WALL_EDGE,
+                    true, true);
+            var roof = new Access.Line(new double[]{wall + .3, 0, z0}, alongZ, new double[]{-1, 0, 0}, z1 - z0);
+            u.rails(roof, yR, .3, false, false, roof.gap(onRoof));
+            bridge(tower.edge(), onRoof, yR);
+            u.beam(new double[]{wall, yR - BEAM, z0}, new double[]{wall + .2, yR, z1});
+            // Over the front and the back: a beam along the deck's edge, cross beams out to it on knee braces to the casing.
+            for (int e = 0; e < 2; e++) {
+                double edge = e == 0 ? z0 : z1, casing = e == 0 ? zf : zEnd, in = e == 0 ? 1 : -1;
+                if (Math.abs(casing - edge) < .3) continue;
+                u.beam(new double[]{wall + .2, yR - BEAM, Math.min(edge, edge + .2 * in)}, new double[]{xR, yR, Math.max(edge, edge + .2 * in)});
+                for (double x = wall + .1 + 2; x < xR - 1; x += 2.5) {
+                    u.beam(new double[]{x - .1, yR - BEAM, Math.min(edge + .2 * in, casing)}, new double[]{x + .1, yR, Math.max(edge + .2 * in, casing)});
+                    u.mesh.bar(new double[]{x, yR - BEAM, edge + .3 * in}, new double[]{x, yR - 1.2, casing}, .12, new double[]{1, 0, 0}, Material.STEELWORK);
+                }
             }
-            FixedBedGasifierHouse.tower(u, wall, -1, zf, new double[]{deck, yR}, new boolean[]{true, true});
+        }
+
+        /**
+         * A bridge at {@code level} from the stair tower's side at x {@code edge} to a deck's west edge at the wall, over the
+         * tower's landing {@code over} ({lo, hi} along z), where the tower stands off the wall: a landing piece railed across
+         * its ends only ({@link ProcessUnit#platform}, no parts), on a beam under each end.
+         */
+        void bridge(double edge, double[] over, double level) {
+            if (wall - edge < .1) return;
+            u.platform(new Access.Line(new double[]{edge - Access.GAP, 0, over[0]}, new double[]{0, 0, 1}, new double[]{1, 0, 0}, over[1] - over[0]), level, wall - edge + Access.GAP, 0,
+                    true, true);
+            for (double z : new double[]{over[0], over[1] - .15}) u.beam(new double[]{edge, level - .2, z}, new double[]{wall, level, z + .15});
         }
 
         // ---- Nozzles -----------------------------------------------------------------------------------------------
@@ -823,9 +828,8 @@ final class GrateBoilerDesign extends UnitDesign {
                 u.nozzles.add(drumSide(Role.FEEDWATER, zs, n, .45, ColumnStructure.size(fw, .45)));
                 u.nozzles.add(drumSide(Role.BLOWDOWN, zs - 2, n, blow, blow));
             } else {
-                double xs = steamStation(), zs = drumLine(), apothem = rs * DeterministicMath.cos(Math.PI / n), start = Math.sqrt(apothem * apothem - .36 / 4) - .03;
-                double plane = Math.ceil(yS + rs + EquipmentShape.STAND_OUT);
-                u.nozzles.add(new Nozzle(Role.STEAM, new double[]{xs, yS + start, zs}, 1, 1, plane - yS - start, .6, ColumnStructure.size(steam, .6), 0, rs - start));
+                double xs = steamStation(), zs = drumLine();
+                u.nozzles.add(ProcessUnit.radial(Role.STEAM, xs, yS, rs, n, zs, 1, .6, ColumnStructure.size(steam, .6)));
                 double yf = feedwaterHeight(), bx = fx1 + .17, face = Math.ceil(fx1 + STAY + EquipmentShape.STAND_OUT);
                 u.nozzles.add(new Nozzle(Role.FEEDWATER, new double[]{bx, yf, zs}, 0, 1, face - bx, .45, ColumnStructure.size(fw, .45), 0, .12));
                 double base = fx1 - .4 - .05;
@@ -834,18 +838,16 @@ final class GrateBoilerDesign extends UnitDesign {
             // The drain down from the rear lower header to the ground behind the furnace, clear of the trough.
             double xd = Math.floor(fx0 + 1.5) + .5, zd = Math.max(Math.ceil(zt + tw / 2 + .15), Math.ceil(zb)) + .5, yh = yL + .15;
             u.line(.035, Material.PIPE, new double[]{xd, yh, zb - .05}, new double[]{xd, yh, zd}, new double[]{xd, 1.3, zd});
-            u.nozzles.add(new Nozzle(Role.DRAIN, new double[]{xd, 1.3, zd}, 1, -1, .3, .05, .05, 0, .03));
+            u.nozzles.add(ProcessUnit.end(Role.DRAIN, new double[]{xd, 1.3, zd}, 1, -1, .05, .05));
             // The start-up burner on the front wall over the conveyor, its windbox and register.
             double yb = Math.floor(fuelBase + 1.5) + .5, xb = Math.floor(fx0 + 1) + .5;
-            box(new double[]{xb - .4, yb - .4, zf - .4}, new double[]{xb + .4, yb + .4, zf}, Mesh.ALL_FACES & ~32, Material.MACHINE, true);
+            u.box(new double[]{xb - .4, yb - .4, zf - .4}, new double[]{xb + .4, yb + .4, zf}, Mesh.ALL_FACES & ~32, Material.MACHINE, true);
             u.mesh.ring(Frame.of(new double[]{xb, yb, 0}, 2, -1), .15, .3, -(zf - .4), -(zf - .48), 12, 3, Material.FLANGE);
             u.nozzles.add(ProcessUnit.front(Role.FUEL, xb, yb, zf - .37, fuel, ColumnStructure.size(fuel, fuel)));
             // Fuel into the conveyor's end, ash out of the trough's chute.
             double feed = Math.min(.6, conveyorWidth() - .1);
-            u.nozzles.add(new Nozzle(Role.SOLIDS_INLET, new double[]{inlet[0], inlet[1] - .03, inlet[2]}, 1, 1, Math.ceil(inlet[1] + EquipmentShape.STAND_OUT) - inlet[1] + .03, feed,
-                    ColumnStructure.size(.2 + .02 * w, feed), 0, .03));
-            u.nozzles.add(new Nozzle(Role.SOLIDS_OUTLET, new double[]{outlet[0], outlet[1] + .3, outlet[2]}, 1, -1, .3, outlet[3], ColumnStructure.size(outlet[3] - .05, outlet[3]), 0,
-                    .03));
+            u.nozzles.add(ProcessUnit.end(Role.SOLIDS_INLET, new double[]{inlet[0], inlet[1] - .03, inlet[2]}, 1, 1, feed, ColumnStructure.size(.2 + .02 * w, feed)));
+            u.nozzles.add(ProcessUnit.end(Role.SOLIDS_OUTLET, new double[]{outlet[0], outlet[1] + .3, outlet[2]}, 1, -1, outlet[3], ColumnStructure.size(outlet[3] - .05, outlet[3])));
         }
 
         /** A bi-drum unit's nozzle out of its steam drum's east side at station {@code z}, its face past the drum deck's edge. */
@@ -854,9 +856,5 @@ final class GrateBoilerDesign extends UnitDesign {
             return new Nozzle(role, new double[]{bmid + start, yS, z}, 0, 1, blowdownFace() - bmid - start, maxOd, defaultOd, 0, rs - start);
         }
 
-        void box(double[] lo, double[] hi, int faces, Material material, boolean solid) {
-            u.mesh.box(lo, hi, faces, material);
-            if (solid) u.solids.add(ProcessUnit.Solid.box(lo.clone(), hi.clone()));
-        }
     }
 }

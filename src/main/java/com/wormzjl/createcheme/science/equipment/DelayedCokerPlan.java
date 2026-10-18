@@ -1,7 +1,5 @@
 package com.wormzjl.createcheme.science.equipment;
 
-import java.util.ArrayList;
-
 /**
  * A delayed coker's sizes and layout in the unit's frame ({@link DelayedCokerDesign}; {@code NEW_UNITS_SURVEY_FCC_COKER.md}
  * section 3, whose numbers are the definition; owner decisions D3 and D4 2026-10-18: real sizes, its own structure).
@@ -16,9 +14,10 @@ import java.util.ArrayList;
  * carries an intermediate deck half way up and the cutting deck 1.2 to 2.2 m over the relief and cutting water lines,
  * which run with the overhead headers over the top heads' shoulders. Each derrick stands on the cutting deck over its
  * drum: a straight square lattice of 3.5 m (room for the hose loop inside [survey: 3 m and more]), as tall as the drum
- * and 5 m more so the withdrawn drill stem clears it [survey; derrick patent: about 40 m]. One stair tower stands behind
- * the middle of the row (one for both pairs: a second would cost a sixth of the quad budget), its flights of at most
- * 3.6 m rise (OSHA 3.7 m) switching back between landings at its two ends and stopping at every deck. Where the quad
+ * and 5 m more so the withdrawn drill stem clears it [survey; derrick patent: about 40 m]. One stair tower (the kit's
+ * {@link ProcessUnit#stairTower}) stands behind the middle of the row (one for both pairs: a second would cost a sixth of
+ * the quad budget), its flights of at most 3.6 m rise (OSHA 3.7 m) switching back between landings at its two ends and
+ * stopping at every deck ({@link #stops}). Where the quad
  * budget binds (owner D3: detail goes before size), detail that grows with the unit is drawn coarser: 24 drum sides
  * (facets of 1.35 m at most), one intermediate deck, derrick stories of three sides.
  */
@@ -33,8 +32,6 @@ final class DelayedCokerPlan {
     static final double SLAB = 1.5, TABLE_HOLE = 1.5;
     /** The half side of the switch deck's opening round each chute, m (the chute's upper section is 2.2 m across). */
     static final double CHUTE_HOLE = 1.45;
-    /** A stair tower's landing depth along its flights, a flight's width, the most rise of one flight, m. */
-    static final double LAND = 1.25, FLIGHT = 1, FLIGHT_RISE = 3.6;
     /** How far a deck's outer edge stays in from the structure's faces, m: its handrail then stands inside one row of cells. */
     static final double EDGE = .05;
     /** The cut drum's slider-crank (survey: a 4 m band worked up and down, about 2 min a cycle): crank, rod, m; period, s. */
@@ -67,13 +64,10 @@ final class DelayedCokerPlan {
     /** Line rows: feed, transfer, water; steam; the overhead headers; relief and cutting water; their z. */
     final double yFeed, ySteam, yVapour, yRelief, zVapour, zBlow, zFeed, zWater, zSteam, zCut, rho;
     final double feedOd, steamOd, waterOd, vapourOd, overheadOd, blowdownOd, reliefOd;
-    /** The stair towers: per flight its top's deck level and length (flight f, 1-based, at index f - 1); the longest flight. */
-    final double[] levels, lens;
-    final double lenMax;
-    /** The flight after which each structure stop is reached: the switch deck, the table, the middle decks, the cutting deck. */
-    final int[] stops;
-    /** The stair tower's west end (integer x), the tower centred behind the middle of the row. */
-    final double towerX0;
+    /** The stair tower's plan ({@link ProcessUnit#towerPlan}: to every stop). */
+    final ProcessUnit.TowerPlan tower;
+    /** Its first foot (lane A, next to the structure, rising +x), on a whole metre: the tower centred behind the row. */
+    final double towerX;
 
     DelayedCokerPlan(EquipmentShape shape) {
         d = shape.diameter();
@@ -145,52 +139,21 @@ final class DelayedCokerPlan {
         zBlow = zc + Math.max(Math.ceil(.85 + Math.max(blowdownOd, reliefOd) / 2 + .15 - 1e-9), Math.round(.7 * r));
         zCut = zc - 1;
         rho = Math.max(Math.round(.55 * r), .95 + overheadOd / 2 + .1);
-
-        // The stair towers: flights of at most FLIGHT_RISE between the stops, intermediate landings on an eighth of a metre.
-        double[] stopLevels = new double[3 + m];
-        stopLevels[0] = switchLevel;
-        stopLevels[1] = yTable - Access.DECK;
-        for (int k = 0; k < m; k++) stopLevels[2 + k] = middle[k];
-        stopLevels[2 + m] = cutLevel;
-        var lv = new ArrayList<Double>();
-        var ln = new ArrayList<Double>();
-        stops = new int[stopLevels.length];
-        double walk = 0;
-        for (int j = 0; j < stopLevels.length; j++) {
-            double to = stopLevels[j] + Access.DECK, rise = to - walk;
-            int k = (int) Math.ceil(rise / FLIGHT_RISE - 1e-9);
-            for (int q = 1; q <= k; q++) {
-                double level = q == k ? stopLevels[j] : Math.round((walk + q * rise / k - Access.DECK) * 8) / 8.0;
-                double from = lv.isEmpty() ? 0 : lv.getLast() + Access.DECK, top = level + Access.DECK;
-                lv.add(level);
-                ln.add(Math.ceil((top - from) / ProcessUnit.STAIR_RISE - 1e-9) * ProcessUnit.STAIR_GOING);
-            }
-            stops[j] = lv.size();
-            walk = to;
-        }
-        levels = lv.stream().mapToDouble(Double::doubleValue).toArray();
-        lens = ln.stream().mapToDouble(Double::doubleValue).toArray();
-        double longest = 0;
-        for (double l : lens) longest = Math.max(longest, l);
-        lenMax = longest;
-        towerX0 = Math.round((xd[0] + xd[drums - 1]) / 2 - (2 * LAND + lenMax) / 2);
+        tower = ProcessUnit.towerPlan(stops());
+        towerX = Math.round((xd[0] + xd[drums - 1]) / 2 - (tower.from() + tower.to()) / 2);
     }
 
-    /** The walking height at the top of flight {@code f} (1-based; 0: the ground), as the access gates add it up. */
-    double walk(int f) {
-        return f == 0 ? 0 : levels[f - 1] + Access.DECK;
-    }
-
-    /** The tower's lane A (next to the structure) landing piece at the top of flight {@code f}: {x from, x to}. */
-    double[] laneA(int f) {
-        double a0 = towerX0 + LAND, t1 = a0 + lenMax + LAND;
-        return f % 2 == 1 ? new double[]{a0 + lens[f - 1], t1} : new double[]{towerX0, a0};
-    }
-
-    /** The rail gap, as stations from {@code x0} + {@link #EDGE} along a back edge, where the tower's landing joins a deck reached after flight {@code f}. */
-    double[] gaps(int f) {
-        var a = laneA(f);
-        return new double[]{a[0] - x0 - EDGE, a[1] - x0 - EDGE};
+    /**
+     * The deck levels the stair tower stops at, rising (its openings come back in this order): the switch deck, the
+     * table's top (its walking surface {@link Access#DECK} over this), the intermediate decks, the cutting deck.
+     */
+    double[] stops() {
+        var out = new double[3 + middle.length];
+        out[0] = switchLevel;
+        out[1] = yTable - Access.DECK;
+        for (int k = 0; k < middle.length; k++) out[2 + k] = middle[k];
+        out[2 + middle.length] = cutLevel;
+        return out;
     }
 
     /** The overall drum height, from the bottom flange to the apex, m. */

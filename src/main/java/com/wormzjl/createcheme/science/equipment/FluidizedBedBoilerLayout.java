@@ -1,6 +1,5 @@
 package com.wormzjl.createcheme.science.equipment;
 
-import com.wormzjl.createcheme.science.equipment.EquipmentShape.Nozzle;
 import com.wormzjl.createcheme.science.equipment.EquipmentShape.Role;
 import com.wormzjl.createcheme.science.equipment.Mesh.Frame;
 import com.wormzjl.createcheme.science.equipment.Mesh.Material;
@@ -9,9 +8,7 @@ import com.wormzjl.createcheme.science.equipment.ProcessUnit.Solid;
 import java.util.ArrayList;
 import java.util.List;
 
-import static com.wormzjl.createcheme.science.equipment.FluidizedBedParts.box;
 import static com.wormzjl.createcheme.science.equipment.FluidizedBedParts.closedBox;
-import static com.wormzjl.createcheme.science.equipment.FluidizedBedParts.trim;
 
 /**
  * A circulating fluidized-bed boiler's parts ({@link FluidizedBedBoilerDesign}; {@code NEW_UNITS_SURVEY_SOLID_FUEL.md}
@@ -27,7 +24,7 @@ import static com.wormzjl.createcheme.science.equipment.FluidizedBedParts.trim;
  * each cyclone's roof outlet into the back pass's top. The back pass (W wide, 0.45 D deep, as high as the furnace), the
  * tubular air heater a quarter of the furnace's height under it on legs, its fly-ash hoppers; the hot primary air into
  * the windbox and the secondary air into the ring under the cyclones' loop. Behind the air heater the PA, ID and SA fans
- * at grade, the flue gas to a drawn stack (its top 10 m over the roof, 60 m at most). Under the grid the bed-ash drains to
+ * at grade, the flue gas to a drawn stack (the kit's, its top 10 m over the roof, 60 m at most). Under the grid the bed-ash drains to
  * rotary drum coolers turning slowly, their ash on a drag conveyor rising to its head beside the furnace.
  *
  * <p>The steel: columns on concrete pedestals at the frame's corners (the front line, behind the furnace and behind the
@@ -35,20 +32,23 @@ import static com.wormzjl.createcheme.science.equipment.FluidizedBedParts.trim;
  * survey: 2 to 4 m deep), X-bracing in the side bays between the decks; on top the steam drum (W + 2 m long) on its
  * beams, riser bundles from the roof header, the downcomer down the left rear corner, safety valves with tall vent
  * silencers. Decks ring the furnace's front and sides at the feeder floor, every fourth landing above it and the highest,
- * reached by a stair tower on its right (flights of 3.6 m above the feeder floor; OSHA: 3.7); where a deck is over the
- * air heater its right side runs on past the cyclones to a deck along the back pass (no caged ladders, survey).
+ * reached by the kit's stair tower on its right outside the column line ({@link ProcessUnit#stairTower}: flights of at
+ * most 3.6 m, OSHA 1910.25), a short deck across the column line at each stop; where a deck is over the air heater its
+ * right side runs on past the cyclones to a deck along the back pass (no caged ladders, survey).
  */
 final class FluidizedBedBoilerLayout {
-    /** The water wall and its cladding, m; a deck's width; a stair flight's width and a landing's depth. */
-    static final double WALL = .25, DECK = 1.2, STAIR = 1.1, LANDING = 1.2;
+    /** The water wall and its cladding, m; a deck's width. */
+    static final double WALL = .25, DECK = 1.2;
 
     final ProcessUnit u;
     final int n, chutes, top;
-    final double w, d, h, g, yt, hx, s, ht, hw, dc, tc, rc, wi, pitch, hc, colOff, feeder, hf, e;
+    final double w, d, h, g, yt, hx, s, ht, hw, dc, tc, rc, wi, pitch, hc, colOff, feeder, e;
     final double binWidth, binAt, a, zF, zR, zc, zb0, zb1, ab, hxb, r1, r1id, px, yah0, yah1, zdr, dg, yd, rd;
     final double[] cx;
     /** The bed-ash conveyor's line along z, set when the coolers are drawn. */
     double ashZ;
+    /** The stair tower's openings onto the furnace's right decks, one per decked landing, set when it is drawn. */
+    ProcessUnit.Tower stairs;
 
     FluidizedBedBoilerLayout(ProcessUnit unit) {
         u = unit;
@@ -69,10 +69,9 @@ final class FluidizedBedBoilerLayout {
         pitch = 2 * rc + .6;
         hc = Math.max(.45, Math.min(.8, .4 + .015 * w));
         colOff = hx + DECK + hc / 2;
-        // The stair tower: four equal flights to the feeder floor 4.5 m over the grid, flights of HIGH above it; the
-        // highest deck 1.2 m under the roof at least.
+        // The feeder floor 4.5 m over the grid, the landings every HIGH above it; the highest deck 1.2 m under the roof at
+        // least.
         feeder = g + 4.5;
-        hf = feeder / 4;
         int k = 4;
         while (landing(k + 2) <= yt - 1.2) k += 2;
         top = k;
@@ -98,7 +97,8 @@ final class FluidizedBedBoilerLayout {
         double half = hx;
         for (int i = 0; i < n; i++) half = Math.max(half, Math.abs(first + i * pitch - shift) + wx / 2 + .25);
         hxb = half;
-        double left = Math.max(e + 2 * STAIR + .3, px + r1 + .8 - shift);
+        // The stair tower outside the right column line: its two lanes, a cell's rounding and its posts.
+        double left = Math.max(e + 2 * ProcessUnit.TOWER_LANE + 1, px + r1 + .8 - shift);
         a = Math.ceil(left - .5) + .5;
         ab = a + shift;
         cx = new double[n];
@@ -122,8 +122,8 @@ final class FluidizedBedBoilerLayout {
         coolers();
         steel();
         roof();
-        decks();
         tower();
+        decks();
         nozzles();
     }
 
@@ -145,12 +145,11 @@ final class FluidizedBedBoilerLayout {
     void furnace() {
         double x0 = a - hx, x1 = a + hx, y1 = g + ht, f0 = zF + s, r0 = zR - s;
         var m = u.mesh;
-        m.box(new double[]{x0, y1, zF}, new double[]{x1, yt, zR}, Mesh.ALL_FACES & ~4, Material.CLADDING);
+        u.box(new double[]{x0, y1, zF}, new double[]{x1, yt, zR}, Mesh.ALL_FACES & ~4, Material.CLADDING, true);
         m.flat(List.of(new double[]{x0, g, f0}, new double[]{x1, g, f0}, new double[]{x1, y1, zF}, new double[]{x0, y1, zF}), new double[]{0, -s, -ht}, Material.CLADDING);
         m.flat(List.of(new double[]{x0, g, r0}, new double[]{x1, g, r0}, new double[]{x1, y1, zR}, new double[]{x0, y1, zR}), new double[]{0, -s, ht}, Material.CLADDING);
         for (double x : new double[]{x0, x1})
             m.flat(List.of(new double[]{x, g, f0}, new double[]{x, g, r0}, new double[]{x, y1, zR}, new double[]{x, y1, zF}), new double[]{x - a, 0, 0}, Material.CLADDING);
-        u.solids.add(Solid.box(new double[]{x0, y1, zF}, new double[]{x1, yt, zR}));
         u.volumes.add(Solid.box(new double[]{x0 + .1, y1 - .2, zF + .1}, new double[]{x1 - .1, yt - .1, zR - .1}));
         // The taper in steps of half a metre or less, each to its walls at its top: a sliver of a step outside a sloping
         // wall is under 0.4 m thick, so the cells it reaches hold the wall.
@@ -168,10 +167,9 @@ final class FluidizedBedBoilerLayout {
             u.segment(new double[]{p[0], yt, p[1]}, new double[]{p[2], yt, p[3]});
         // The windbox under the grid, the primary air coming in at its back.
         // Its top is the grid, inside the furnace: not drawn.
-        u.mesh.box(new double[]{x0, g - hw, f0}, new double[]{x1, g, r0}, Mesh.ALL_FACES & ~8, Material.CLADDING);
-        u.solids.add(Solid.box(new double[]{x0, g - hw, f0}, new double[]{x1, g, r0}));
+        u.box(new double[]{x0, g - hw, f0}, new double[]{x1, g, r0}, Mesh.ALL_FACES & ~8, Material.CLADDING, true);
         u.volumes.add(Solid.box(new double[]{x0 + .1, g - hw + .1, f0 + .1}, new double[]{x1 - .1, g - .1, r0 - .1}));
-        FluidizedBedParts.band(u, x0 - .08, g - .25, f0 - .08, x1 + .08, g, r0 + .08, Material.STEELWORK);
+        u.box(new double[]{x0 - .08, g - .25, f0 - .08}, new double[]{x1 + .08, g, r0 + .08}, FluidizedBedParts.BAND, Material.STEELWORK, false);
         // The lower headers along the side walls' foot.
         double rh = .15 + .004 * w;
         for (double x : new double[]{x0 - rh, x1 + rh}) {
@@ -182,17 +180,15 @@ final class FluidizedBedBoilerLayout {
         secondaryAir();
     }
 
-    /** A flight's rise above the feeder floor, m: 18 rises of 0.2 m (OSHA 1910.25: at most 3.7 m between landings). */
-    static final double HIGH = 3.6;
+    /** The landings' pitch above the feeder floor, m: the stair tower's flights ({@link ProcessUnit#TOWER_RISE}). */
+    static final double HIGH = ProcessUnit.TOWER_RISE;
 
-    /** The landings' heights, deck tops over grade: {@code j hf} up to the feeder floor, then every {@link #HIGH}. */
+    /** The stack's most sides: 0.39 m facets at its 6 m, the largest boiler's (26 x 3 on 8 m) under 80 000 quads. */
+    static final int STACK_SIDES = 48;
+
+    /** The landings' heights from the feeder floor up, deck tops over grade: the feeder floor at {@code j} 4, then every {@link #HIGH}. */
     double landing(int j) {
-        return j <= 4 ? j * hf : feeder + (j - 4) * HIGH;
-    }
-
-    /** The length of the flight from landing {@code j}: its treads' goings. */
-    double flight(int j) {
-        return Math.ceil((landing(j + 1) - landing(j)) / ProcessUnit.STAIR_RISE - 1e-9) * ProcessUnit.STAIR_GOING;
+        return feeder + (j - 4) * HIGH;
     }
 
     /** Whether the furnace has decks at landing {@code j}: the feeder floor, every fourth landing above it, and the highest. */
@@ -203,35 +199,30 @@ final class FluidizedBedBoilerLayout {
     /**
      * Buckstays round the furnace under every landing's height above the taper (survey: every 3 to 4 m, a signature): an
      * I-beam 0.45 m deep standing 0.3 m off the wall, the deck at that level resting on it; round the rear wall's inlet
-     * ducts. Their undersides and the faces against the wall or inside a neighbour are not drawn (2 500 quads at W 26).
+     * ducts. Their undersides and the faces against the wall or inside a neighbour are not drawn (2 500 quads at W 26). The
+     * taper reaches over the feeder floor's height only on the smallest furnaces: none under it.
      */
     void buckstays() {
         double x0 = a - hx, x1 = a + hx, out = .3, depth = .45;
         int ends = 8, along = ends | 16 | 32;
-        for (int j = 1; landing(j) - Access.DECK < yt - .4; j++) {
+        for (int j = 4; landing(j) - Access.DECK < yt - .4; j++) {
             double top = landing(j) - Access.DECK, low = top - depth;
             if (low < g + ht + .2) continue;
-            // Faces against the wall or inside a neighbour are not drawn.
-            faced(new double[]{x0 - out, low, zF - out}, new double[]{x0, top, zR + out}, along | 1);
-            faced(new double[]{x1, low, zF - out}, new double[]{x1 + out, top, zR + out}, along | 2);
-            faced(new double[]{x0, low, zF - out}, new double[]{x1, top, zF}, ends | 16);
+            // Faces against the wall or inside a neighbour are not drawn; they collide.
+            u.box(new double[]{x0 - out, low, zF - out}, new double[]{x0, top, zR + out}, along | 1, Material.STEELWORK, true);
+            u.box(new double[]{x1, low, zF - out}, new double[]{x1 + out, top, zR + out}, along | 2, Material.STEELWORK, true);
+            u.box(new double[]{x0, low, zF - out}, new double[]{x1, top, zF}, ends | 16, Material.STEELWORK, true);
             // The rear wall's between the cyclones' inlet ducts where they are at that height.
             double from = x0;
             for (double c : cx) {
                 double d0 = c - rc - .1, d1 = c - rc + wi + .1;
                 if (top > inletLow() - .05 && low < yt - .25) {
-                    if (d0 > from + .1) faced(new double[]{from, low, zR}, new double[]{d0, top, zR + out}, ends | 32 | 1 | 2);
+                    if (d0 > from + .1) u.box(new double[]{from, low, zR}, new double[]{d0, top, zR + out}, ends | 32 | 1 | 2, Material.STEELWORK, true);
                     from = Math.max(from, d1);
                 }
             }
-            if (x1 > from + .1) faced(new double[]{from, low, zR}, new double[]{x1, top, zR + out}, ends | 32 | 1 | 2);
+            if (x1 > from + .1) u.box(new double[]{from, low, zR}, new double[]{x1, top, zR + out}, ends | 32 | 1 | 2, Material.STEELWORK, true);
         }
-    }
-
-    /** A steel box drawn with only the faces in {@code mask} (the others against a wall or inside a neighbour); it collides. */
-    void faced(double[] lo, double[] hi, int mask) {
-        u.mesh.box(lo, hi, mask, Material.STEELWORK);
-        u.solids.add(Solid.box(lo, hi));
     }
 
     /** The cyclones' inlet ducts' underside. */
@@ -242,10 +233,11 @@ final class FluidizedBedBoilerLayout {
     /** The secondary-air ring 1 to 1.7 m over the grid round all four walls (survey: SA manifolds 1.5 to 5 m over the grid). */
     void secondaryAir() {
         double y0 = g + .9, y1 = g + 1.7, f = front(y1), r = rear(y1), o = .7, x0 = a - hx, x1 = a + hx;
-        box(u, x0 - o, y0, f - o, x1 + o, y1, f, Material.CLADDING);
-        box(u, x0 - o, y0, r, x1 + o, y1, r + o, Material.CLADDING);
-        box(u, x0 - o, y0, f, x0, y1, r, Material.CLADDING);
-        box(u, x1, y0, f, x1 + o, y1, r, Material.CLADDING);
+        u.box(new double[]{x0 - o, y0, f - o}, new double[]{x1 + o, y1, f}, Material.CLADDING, true);
+        u.box(new double[]{x0 - o, y0, r}, new double[]{x1 + o, y1, r + o}, Material.CLADDING, true);
+        // The sides' ends inside the front and back boxes, their inner faces on the walls, are not drawn.
+        u.box(new double[]{x0 - o, y0, f}, new double[]{x0, y1, r}, Mesh.ALL_FACES & ~(2 | 16 | 32), Material.CLADDING, true);
+        u.box(new double[]{x1, y0, f}, new double[]{x1 + o, y1, r}, Mesh.ALL_FACES & ~(1 | 16 | 32), Material.CLADDING, true);
     }
 
     /**
@@ -259,7 +251,7 @@ final class FluidizedBedBoilerLayout {
             double z = zF + WALL + s + t * (d - 2 * s);
             var f = Frame.of(new double[]{0, yb, z}, 0, 1);
             u.mesh.cylinder(f, rb, x, x + .55, 12, Material.MACHINE);
-            FluidizedBedParts.hoop(u, f, rb, rb + .04, x + .2, x + .3, 12, Material.FLANGE);
+            u.mesh.hoop(f, rb, rb + .04, x + .2, x + .3, 12, Material.FLANGE);
             u.mesh.cylinder(f, .08, x + .55, x + .75, 8, Material.PIPE);
             u.solids.add(Solid.rod(new double[]{0, yb, z}, 0, x, x + .75, rb + .04, 0));
             u.line(pipe, Material.PIPE, new double[]{x + .75, yb, z}, new double[]{header, yb, z}, new double[]{header, yh, z});
@@ -292,10 +284,10 @@ final class FluidizedBedBoilerLayout {
             // The loop seal and its return leg.
             closedBox(u, new double[]{x - .625 * dsp - .15, yLow, legStart - .15}, new double[]{x + .625 * dsp + .15, yTop, zc + .5 * dsp + .15}, Material.CLADDING);
             u.line(rl, Material.CLADDING, new double[]{x, entry + run, legStart}, new double[]{x, entry, rear(entry) + .05});
-            FluidizedBedParts.hoop(u, Frame.of(new double[]{x, 0, zc}, 1, 1), .1 * dc + .15, .1 * dc + .25, yTop + .3, yTop + .5, 12, Material.FLANGE);
+            u.mesh.hoop(Frame.of(new double[]{x, 0, zc}, 1, 1), .1 * dc + .15, .1 * dc + .25, yTop + .3, yTop + .5, 12, Material.FLANGE);
             // The crossover over the back pass and its drop into its roof.
             closedBox(u, new double[]{x - wx / 2, yt + stub, zc - wx / 2}, new double[]{x + wx / 2, yt + stub + hxd, zx1}, Material.CLADDING);
-            box(u, x - wx / 2, yt, zx1 - wx, x + wx / 2, yt + stub, zx1, Material.CLADDING);
+            u.box(new double[]{x - wx / 2, yt, zx1 - wx}, new double[]{x + wx / 2, yt + stub, zx1}, Mesh.ALL_FACES & ~8, Material.CLADDING, true);
         }
     }
 
@@ -309,8 +301,7 @@ final class FluidizedBedBoilerLayout {
     void backPass() {
         double x0 = ab - hxb, x1 = ab + hxb, o = .15;
         // The back pass stands on the air heater: the faces between them are not drawn, the insides join.
-        u.mesh.box(new double[]{x0, yah1, zb0}, new double[]{x1, yt, zb1}, Mesh.ALL_FACES & ~4, Material.CLADDING);
-        u.solids.add(Solid.box(new double[]{x0, yah1, zb0}, new double[]{x1, yt, zb1}));
+        u.box(new double[]{x0, yah1, zb0}, new double[]{x1, yt, zb1}, Mesh.ALL_FACES & ~4, Material.CLADDING, true);
         u.volumes.add(Solid.box(new double[]{x0 + .1, yah1 - .3, zb0 + .1}, new double[]{x1 - .1, yt - .1, zb1 - .1}));
         for (double x : new double[]{x0 - .05, x1 - .05})
             for (double z : new double[]{zb0 - .05, zb1 - .05})
@@ -322,21 +313,20 @@ final class FluidizedBedBoilerLayout {
         for (int j = 4; j <= top; j += 2) {
             double level = landing(j) - Access.DECK, y = level + Access.DECK + 1.2;
             if (!decked(j) || !backPassDeck(level)) continue;
-            trim(u, x0 - .08, level + Access.DECK + .1, zb0 + .35, x0, level + Access.DECK + 1.6, zb0 + .95, Material.MACHINE);
+            u.box(new double[]{x0 - .08, level + Access.DECK + .1, zb0 + .35}, new double[]{x0, level + Access.DECK + 1.6, zb0 + .95}, Material.MACHINE, false);
             for (double z = zb0 + 1.4; z < zb1 - .3; z += 1.6) {
-                trim(u, x0 - .12, y - .2, z - .2, x0, y + .2, z + .2, Material.MACHINE);
-                trim(u, x0 - .3, y - .12, z - .12, x0 - .12, y + .12, z + .12, Material.ACTUATOR);
+                u.box(new double[]{x0 - .12, y - .2, z - .2}, new double[]{x0, y + .2, z + .2}, Material.MACHINE, false);
+                u.box(new double[]{x0 - .3, y - .12, z - .12}, new double[]{x0 - .12, y + .12, z + .12}, Material.ACTUATOR, false);
             }
         }
         // The air heater with an expansion joint under the back pass.
         double[] lo = {x0 - o, yah0, zb0 - o}, hi = {x1 + o, yah1, zb1 + o};
-        u.mesh.box(lo, hi, Mesh.ALL_FACES & ~8, Material.MACHINE);
+        u.box(lo, hi, Mesh.ALL_FACES & ~8, Material.MACHINE, true);
         u.mesh.flat(List.of(new double[]{x0 - o, yah1, zb0 - o}, new double[]{x1 + o, yah1, zb0 - o}, new double[]{x1 + o, yah1, zb0}, new double[]{x0 - o, yah1, zb0}), new double[]{0, 1, 0}, Material.MACHINE);
         u.mesh.flat(List.of(new double[]{x0 - o, yah1, zb1}, new double[]{x1 + o, yah1, zb1}, new double[]{x1 + o, yah1, zb1 + o}, new double[]{x0 - o, yah1, zb1 + o}), new double[]{0, 1, 0}, Material.MACHINE);
-        u.solids.add(Solid.box(lo, hi));
         u.volumes.add(Solid.box(new double[]{x0 - o + .1, yah0 + .1, zb0 - o + .1}, new double[]{x1 + o - .1, yah1 + .3, zb1 + o - .1}));
-        FluidizedBedParts.band(u, x0 - .05, yah1, zb0 - .05, x1 + .05, yah1 + .25, zb1 + .05, Material.STEELWORK);
-        for (double y = yah0 + 2; y < yah1 - .5; y += 2) FluidizedBedParts.band(u, x0 - o - .06, y, zb0 - o - .06, x1 + o + .06, y + .12, zb1 + o + .06, Material.MACHINE);
+        u.box(new double[]{x0 - .05, yah1, zb0 - .05}, new double[]{x1 + .05, yah1 + .25, zb1 + .05}, FluidizedBedParts.BAND, Material.STEELWORK, false);
+        for (double y = yah0 + 2; y < yah1 - .5; y += 2) u.box(new double[]{x0 - o - .06, y, zb0 - o - .06}, new double[]{x1 + o + .06, y + .12, zb1 + o + .06}, FluidizedBedParts.BAND, Material.MACHINE, false);
         // The hoppers.
         int hoppers = w < 8 ? 2 : w < 16 ? 3 : 4;
         double depth = zb1 - zb0 + 2 * o, hh = Math.min(.6 * depth, yah0 - 1.3), cz = (zb0 + zb1) / 2, out = .2, each = (x1 - x0 + 2 * o) / hoppers;
@@ -350,8 +340,8 @@ final class FluidizedBedBoilerLayout {
                 u.mesh.flat(List.of(top[i], top[j], bottom[j], bottom[i]), outward, Material.MACHINE);
             }
             u.solids.add(Solid.box(new double[]{hcx - .3 * each, yb, cz - .3 * depth}, new double[]{hcx + .3 * each, yah0, cz + .3 * depth}));
-            box(u, hcx - .22, yb - .45, cz - .22, hcx + .22, yb, cz + .22, Material.MACHINE);
-            trim(u, hcx + .22, yb - .35, cz - .1, hcx + .45, yb - .1, cz + .1, Material.MOTOR);
+            u.box(new double[]{hcx - .22, yb - .45, cz - .22}, new double[]{hcx + .22, yb, cz + .22}, Material.MACHINE, true);
+            u.box(new double[]{hcx + .22, yb - .35, cz - .1}, new double[]{hcx + .45, yb - .1, cz + .1}, Material.MOTOR, false);
             u.mesh.cylinder(Frame.of(new double[]{hcx, 0, cz}, 1, 1), .12, Math.max(.3, yb - 1.2), yb - .45, 8, Material.PIPE);
         }
         // Legs under the air heater's corners and between its hoppers, braced along the sides.
@@ -361,7 +351,7 @@ final class FluidizedBedBoilerLayout {
         for (double x : legs)
             for (double z : new double[]{zb0 - o, zb1 + o}) {
                 double lx = Math.max(x0 - o, Math.min(x1 + o - leg, x - leg / 2)), lz = z < cz ? z : z - leg;
-                box(u, lx, 0, lz, lx + leg, yah0, lz + leg, Material.STEELWORK);
+                u.box(new double[]{lx, 0, lz}, new double[]{lx + leg, yah0, lz + leg}, Mesh.ALL_FACES & ~4, Material.STEELWORK, true);
             }
         for (double z : new double[]{zb0 - o + leg / 2, zb1 + o - leg / 2})
             for (int k = 0; k < hoppers; k += 2) {
@@ -370,15 +360,18 @@ final class FluidizedBedBoilerLayout {
             }
         // The hot primary air into the windbox's back, the secondary air into the ring's back.
         double wpa = Math.max(1, Math.min(4.5, .25 * w));
-        closedBox(u, new double[]{a - wpa / 2, g - hw + .2, rear(g) - .05}, new double[]{a + wpa / 2, g - .15, zb0 - o + .05}, Material.CLADDING);
-        closedBox(u, new double[]{a - wpa / 2, g + .9, rear(g + 1.7) + .65}, new double[]{a + wpa / 2, g + 1.7, zb0 - o + .05}, Material.CLADDING);
+        // Their ends are inside the windbox, the ring and the air heater.
+        closedBox(u, new double[]{a - wpa / 2, g - hw + .2, rear(g) - .05}, new double[]{a + wpa / 2, g - .15, zb0 - o + .05}, Mesh.ALL_FACES & ~(16 | 32), Material.CLADDING);
+        closedBox(u, new double[]{a - wpa / 2, g + .9, rear(g + 1.7) + .65}, new double[]{a + wpa / 2, g + 1.7, zb0 - o + .05}, Mesh.ALL_FACES & ~(16 | 32), Material.CLADDING);
     }
 
     /**
      * The fans at grade behind the air heater ({@link FluidizedBedParts#fan}), their inlets towards it: the ID fan in the
      * middle drawing the flue gas from the air heater's back through its inlet box and blowing it up and back into the
      * stack's foot; the PA fan on its right and the SA fan on its left, each with an inlet silencer (the air's way in),
-     * blowing up and forward into the air heater's back through a cold-air duct. The stack behind the ID fan's motor.
+     * blowing up and forward into the air heater's back through a cold-air duct. The stack behind the ID fan's motor on its
+     * concrete foundation ({@link ProcessUnit#stack}, its bands in the casing's paint): the flue gas stays in the unit
+     * (survey: a 30 MWth boiler's 1.2 m duct does not fit a 1 m pipe), as on the fired heaters.
      */
     void fans() {
         double bell = .3 + .2 * r1, ls = .6 + .5 * r1, z0 = zb1 + .55 + Math.max(bell + ls, 1.2);
@@ -388,12 +381,15 @@ final class FluidizedBedBoilerLayout {
         // The inlet box from the air heater's back to the ID fan's bell.
         double idTop = Math.max(yId + .7 * r1id, yah0 + 1);
         closedBox(u, new double[]{ab - .7 * r1id, yId - .7 * r1id, zb1 + .15}, new double[]{ab + .7 * r1id, idTop, z0 - .3 - .2 * r1id}, Material.MACHINE);
-        // Up from the throat and back into the stack.
+        // Up from the throat and back into the stack: survey clamp(0.25 W, 1.5, 6), its sides at most STACK_SIDES (60 at
+        // 6 m would put the largest boiler over 80 000 quads).
         double ds = Math.max(1.5, Math.min(6, .25 * w)), zst = id[2] + .8 + ds / 2, hsd = .6 * r1id, ys1 = yId + r1id + .4 + hsd;
         double[] t = FluidizedBedParts.throat(ab, r1id);
         closedBox(u, new double[]{t[0], yId + .5 * r1id, z0 + .05}, new double[]{t[1], ys1, id[1] - .05}, Material.MACHINE);
-        closedBox(u, new double[]{t[0], ys1 - hsd, id[1] - .05}, new double[]{t[1], ys1, zst - ds / 2 + .3}, Material.MACHINE);
-        FluidizedBedParts.stack(u, ab, zst, ds, Math.min(60, yt + 10));
+        // The duct back into the stack: its ends inside the rising duct and the stack.
+        closedBox(u, new double[]{t[0], ys1 - hsd, id[1] - .05}, new double[]{t[1], ys1, zst - ds / 2 + .3}, Mesh.ALL_FACES & ~(16 | 32), Material.MACHINE);
+        u.box(new double[]{ab - ds / 2 - .6, 0, zst - ds / 2 - .6}, new double[]{ab + ds / 2 + .6, .6, zst + ds / 2 + .6}, Mesh.ALL_FACES & ~4, Material.CONCRETE, true);
+        u.stack(ab, zst, ds, Math.min(STACK_SIDES, ProcessUnit.sides(ds)), .6, Math.min(60, yt + 10), Material.HEATER, null, false);
         // The PA (right) and SA (left) fans and their cold-air ducts.
         double hcd = .5 * r1, wcd = .5 * r1, yc1 = Math.max(yFan + r1 + .4, idTop + .3) + hcd;
         for (int side = -1; side <= 1; side += 2) {
@@ -435,15 +431,15 @@ final class FluidizedBedBoilerLayout {
                 u.mesh.flat(List.of(rim[k], rim[j], neck[j], neck[k]), new double[]{(rim[k][0] + rim[j][0]) / 2 - x, -.3, (rim[k][2] + rim[j][2]) / 2 - zb}, Material.MACHINE);
             }
             u.solids.add(Solid.box(new double[]{x - .3 * bw, yo, zb - .3 * bw}, new double[]{x + .3 * bw, yo + cone, zb + .3 * bw}));
-            FluidizedBedParts.band(u, x - bw / 2 - .06, yo + cone - .2, zb - bw / 2 - .06, x + bw / 2 + .06, yo + cone, zb + bw / 2 + .06, Material.STEELWORK);
+            u.box(new double[]{x - bw / 2 - .06, yo + cone - .2, zb - bw / 2 - .06}, new double[]{x + bw / 2 + .06, yo + cone, zb + bw / 2 + .06}, FluidizedBedParts.BAND, Material.STEELWORK, false);
             for (int sx = -1; sx <= 1; sx += 2)
                 for (int sz = -1; sz <= 1; sz += 2) {
                     double lx = x + sx * (bw / 2 - .1), lz = zb + sz * (bw / 2 - .1);
-                    box(u, lx - .1, 0, lz - .1, lx + .1, yo + cone - .2, lz + .1, Material.STEELWORK);
+                    u.box(new double[]{lx - .1, 0, lz - .1}, new double[]{lx + .1, yo + cone - .2, lz + .1}, Mesh.ALL_FACES & ~4, Material.STEELWORK, true);
                 }
             // The feeder, its drive and its chute.
-            box(u, x - .3, f0, zb - .45, x + .3, f1, zF - .15, Material.MACHINE);
-            FluidizedBedParts.drive(u, x, (f0 + f1) / 2, zb - .45, 1, FluidizedBedParts.FEEDER_MOTOR, f0);
+            u.box(new double[]{x - .3, f0, zb - .45}, new double[]{x + .3, f1, zF - .15}, Material.MACHINE, true);
+            FluidizedBedParts.drive(u, x, (f0 + f1) / 2, zb - .45, FluidizedBedParts.FEEDER_MOTOR, f0);
             u.mesh.bar(new double[]{x, f0 + .2, zF - .4}, new double[]{x, g + 2.5, front(g + 2.5) + .1}, .45, new double[]{1, 0, 0}, Material.MACHINE);
             u.mesh.ring(Frame.of(new double[]{x, g + 2.5, front(g + 2.5)}, 2, -1), 0, .35, .1, .25, 12, 3, Material.FLANGE);
         }
@@ -452,9 +448,9 @@ final class FluidizedBedBoilerLayout {
             closedBox(u, new double[]{c0, top + .4, zb - .3}, new double[]{c1, top + 1, zb + .3}, Material.MACHINE);
             for (int i = 0; i < chutes; i++) {
                 double x = a - w / 2 + (i + .5) * pb;
-                box(u, x - .15, top, zb - .15, x + .15, top + .4, zb + .15, Material.MACHINE);
+                u.box(new double[]{x - .15, top, zb - .15}, new double[]{x + .15, top + .4, zb + .15}, Material.MACHINE, true);
             }
-            trim(u, c1, top + .35, zb - .35, c1 + .5, top + 1.05, zb + .35, Material.MOTOR);
+            u.box(new double[]{c1, top + .35, zb - .35}, new double[]{c1 + .5, top + 1.05, zb + .35}, Material.MOTOR, false);
         }
     }
 
@@ -474,36 +470,36 @@ final class FluidizedBedBoilerLayout {
             double x = a - w / 2 + (k + .5) * pitchC, half = dcl / 2 + .15;
             FluidizedBedParts.drum(u, x, ycl, zd0, zd1, dcl, DRUM_SPEED, .618 * k);
             // The inlet hood and the drain into it; the outlet hood down into the conveyor.
-            box(u, x - half, ycl - .3 * dcl, zd0 - .55, x + half, ycl + dcl / 2 + .35, zd0 + .2, Material.MACHINE);
+            u.box(new double[]{x - half, ycl - .3 * dcl, zd0 - .55}, new double[]{x + half, ycl + dcl / 2 + .35, zd0 + .2}, Material.MACHINE, true);
             u.mesh.cylinder(Frame.of(new double[]{x, 0, zd0 - .2}, 1, 1), .18, ycl + dcl / 2 + .35, g - hw + .02, 10, Material.PIPE);
             u.mesh.cylinder(Frame.of(new double[]{x, 0, zd0 - .2}, 1, 1), .26, ycl + dcl / 2 + .9, ycl + dcl / 2 + 1.1, 10, Material.ACTUATOR);
             u.solids.add(Solid.rod(new double[]{x, 0, zd0 - .2}, 1, ycl + dcl / 2 + .35, g - hw, .18, 0));
-            box(u, x - half, .75, zd1 - .2, x + half, ycl + dcl / 2 + .3, zcv + .35, Material.MACHINE);
+            u.box(new double[]{x - half, .75, zd1 - .2}, new double[]{x + half, ycl + dcl / 2 + .3, zcv + .35}, Material.MACHINE, true);
             // Rollers under the riding rings, the drive under the girth gear.
             for (double t : new double[]{.18, .82}) {
                 double z = zd0 + t * lc;
-                trim(u, x - .45 * dcl, 0, z - .3, x + .45 * dcl, .2, z + .3, Material.CONCRETE);
+                u.box(new double[]{x - .45 * dcl, 0, z - .3}, new double[]{x + .45 * dcl, .2, z + .3}, Mesh.ALL_FACES & ~4, Material.CONCRETE, false);
                 for (int sx = -1; sx <= 1; sx += 2)
                     u.mesh.cylinder(Frame.of(new double[]{x + sx * .3 * dcl, .2 + .12, 0}, 2, 1), .12, z - .2, z + .2, 10, Material.FLANGE);
                 u.solids.add(Solid.box(new double[]{x - .45 * dcl, 0, z - .3}, new double[]{x + .45 * dcl, ycl - dcl / 2, z + .3}));
             }
             double zm = zd0 + .5 * lc;
-            trim(u, x - .3, 0, zm - .25, x + .3, ycl - dcl / 2 - .12, zm + .25, Material.MACHINE);
+            u.box(new double[]{x - .3, 0, zm - .25}, new double[]{x + .3, ycl - dcl / 2 - .12, zm + .25}, Mesh.ALL_FACES & ~4, Material.MACHINE, false);
             u.mesh.cylinder(Frame.of(new double[]{x, .32, 0}, 2, 1), .2, zm + .3, zm + 1.1, 12, Material.MOTOR);
             u.solids.add(Solid.box(new double[]{x - .3, 0, zm - .25}, new double[]{x + .3, ycl - dcl / 2 - .12, zm + 1.1}));
         }
         // The conveyor: along the back under the coolers' outlets, up at 45° beside the furnace to its head and spout.
         double xe = a + hx + .4, xh = xe + 2.2, xn = outletX();
-        box(u, a - w / 2 - .2, .15, zcv - .35, xe, .75, zcv + .35, Material.MACHINE);
+        u.box(new double[]{a - w / 2 - .2, .15, zcv - .35}, new double[]{xe, .75, zcv + .35}, Material.MACHINE, true);
         u.mesh.block(new double[]{(xe + xh) / 2, (.45 + 2.65) / 2, zcv}, new double[]{(xh - xe) / 2 + .2, (2.65 - .45) / 2 + .2, 0}, new double[]{-.21, .21, 0}, new double[]{0, 0, .35},
                 Material.MACHINE);
-        box(u, xh - .3, 2.25, zcv - .4, xh + .75, 3.1, zcv + .4, Material.MACHINE);
-        trim(u, xh + .75, 2.5, zcv - .2, xh + 1.05, 2.9, zcv + .2, Material.MOTOR);
-        box(u, xn - .3, 1.6, zcv - .3, xn + .3, 2.25, zcv + .3, Material.MACHINE);
+        u.box(new double[]{xh - .3, 2.25, zcv - .4}, new double[]{xh + .75, 3.1, zcv + .4}, Material.MACHINE, true);
+        u.box(new double[]{xh + .75, 2.5, zcv - .2}, new double[]{xh + 1.05, 2.9, zcv + .2}, Material.MOTOR, false);
+        u.box(new double[]{xn - .3, 1.6, zcv - .3}, new double[]{xn + .3, 2.25, zcv + .3}, Material.MACHINE, true);
         // A post under the incline; the head's post stands beside it, clear of the cell under the spout (the outlet's pipe).
-        box(u, xe + .52, 0, zcv - .3, xe + .68, 1, zcv - .14, Material.STEELWORK);
-        box(u, xh - .18, 0, zcv + .52, xh - .02, 2.25, zcv + .68, Material.STEELWORK);
-        trim(u, xh - .18, 2.1, zcv + .35, xh - .02, 2.25, zcv + .52, Material.STEELWORK);
+        u.post(xe + .6, zcv - .22, 0, 1, .16, false);
+        u.post(xh - .1, zcv + .6, 0, 2.25, .16, false);
+        u.box(new double[]{xh - .18, 2.1, zcv + .35}, new double[]{xh - .02, 2.25, zcv + .52}, Material.STEELWORK, false);
     }
 
     /** A bed-ash cooler drum's turning, rev/s: 3 rpm (real 1 to 6), whole turns in {@link ProcessUnit#MOTION_PERIOD} ticks. */
@@ -575,11 +571,11 @@ final class FluidizedBedBoilerLayout {
         for (double z : new double[]{zm, zr})
             for (int side = -1; side <= 1; side += 2) column(a + side * colOff, z, top);
         // Girders.
-        box(u, a - colOff, y0, zf - gw, a + colOff, top, zf + gw, Material.STEELWORK);
-        box(u, a - colOff, y0, zm - gw, a + colOff, top, zm + gw, Material.STEELWORK);
-        for (int side = -1; side <= 1; side += 2) box(u, a + side * colOff - gw, y0, zf, a + side * colOff + gw, top, zr, Material.STEELWORK);
+        u.box(new double[]{a - colOff, y0, zf - gw}, new double[]{a + colOff, top, zf + gw}, Material.STEELWORK, true);
+        u.box(new double[]{a - colOff, y0, zm - gw}, new double[]{a + colOff, top, zm + gw}, Material.STEELWORK, true);
+        for (int side = -1; side <= 1; side += 2) u.box(new double[]{a + side * colOff - gw, y0, zf}, new double[]{a + side * colOff + gw, top, zr}, Material.STEELWORK, true);
         double z1 = crossGirder();
-        box(u, a - colOff + gw, y0, z1 - gw, a + colOff - gw, top, z1 + gw, Material.STEELWORK);
+        u.box(new double[]{a - colOff + gw, y0, z1 - gw}, new double[]{a + colOff - gw, top, z1 + gw}, Material.STEELWORK, true);
         for (double x = a - w / 2 + 1; x < a + w / 2 - .5; x += 2.5) u.mesh.bar(new double[]{x, yt, z1}, new double[]{x, y0, z1}, .06, new double[]{1, 0, 0}, Material.STEELWORK);
         // X-bracing in the side bays between the decked levels (the decks rest on the buckstays).
         int from = 4;
@@ -603,11 +599,8 @@ final class FluidizedBedBoilerLayout {
     /** A column at (x, z) from its concrete pedestal to {@code top}: an H-section drawn as its box. */
     void column(double x, double z, double top) {
         double p = hc / 2 + .2;
-        double[] lo = {x - p, 0, z - p}, hi = {x + p, .6, z + p}, clo = {x - hc / 2, .6, z - hc / 2}, chi = {x + hc / 2, top, z + hc / 2};
-        u.mesh.box(lo, hi, Mesh.ALL_FACES & ~4, Material.CONCRETE);
-        u.mesh.box(clo, chi, Mesh.ALL_FACES & ~4, Material.STEELWORK);
-        u.solids.add(Solid.box(lo, hi));
-        u.solids.add(Solid.box(clo, chi));
+        u.box(new double[]{x - p, 0, z - p}, new double[]{x + p, .6, z + p}, Mesh.ALL_FACES & ~4, Material.CONCRETE, true);
+        u.post(x, z, .6, top, hc, false);
     }
 
     /**
@@ -621,36 +614,36 @@ final class FluidizedBedBoilerLayout {
         double top = steelTop(), z1 = crossGirder(), zm = midColumn(), x0 = a - w / 2 - 1, x1 = a + w / 2 + 1;
         for (int side = -1; side <= 1; side += 2) {
             double x = a + side * .3 * w;
-            box(u, x - .2, top, z1 - .225, x + .2, top + .45, zm + .225, Material.STEELWORK);
-            box(u, x - .45 * rd, top + .45, zdr - .3, x + .45 * rd, yd - .6 * rd, zdr + .3, Material.STEELWORK);
+            u.box(new double[]{x - .2, top, z1 - .225}, new double[]{x + .2, top + .45, zm + .225}, Material.STEELWORK, true);
+            u.box(new double[]{x - .45 * rd, top + .45, zdr - .3}, new double[]{x + .45 * rd, yd - .6 * rd, zdr + .3}, Material.STEELWORK, true);
         }
         var f = Frame.of(new double[]{0, yd, zdr}, 0, 1);
         int n = ProcessUnit.sides(2 * rd);
         u.mesh.prism(f, rd, x0, x1, n, Material.SHELL);
         u.mesh.head(f, rd, x1, rd / 2, n, Material.HEAD);
         u.mesh.head(Frame.of(new double[]{0, yd, zdr}, 0, -1), rd, -x0, rd / 2, n, Material.HEAD);
-        FluidizedBedParts.hoop(u, f, rd, rd + .05, (x0 + x1) / 2 - .4, (x0 + x1) / 2 - .3, n, Material.SHELL);
+        u.mesh.hoop(f, rd, rd + .05, (x0 + x1) / 2 - .4, (x0 + x1) / 2 - .3, n, Material.SHELL);
         u.solids.add(Solid.rod(new double[]{0, yd, zdr}, 0, x0 - rd / 2, x1 + rd / 2, rd, 0));
         u.volumes.add(Solid.rod(new double[]{0, yd, zdr}, 0, x0, x1, .9 * rd, 0));
         u.round(new double[]{0, yd, zdr}, 0, x0, x1, rd);
         // The roof header and the riser bundles, one per 4 m of width between the drum's beams.
         double rh = .15 + .004 * w, bundle = .35 + .01 * w;
-        box(u, a - w / 2 + .3, yt, zdr - rh, a + w / 2 - .3, yt + 2 * rh, zdr + rh, Material.PIPE);
+        u.box(new double[]{a - w / 2 + .3, yt, zdr - rh}, new double[]{a + w / 2 - .3, yt + 2 * rh, zdr + rh}, Material.PIPE, true);
         int bundles = Math.max(2, (int) Math.round(w / 4));
         for (int k = 0; k < bundles; k++) {
             double x = a - w / 2 + (k + .5) * w / bundles;
             double beam = a + Math.signum(x - a) * .3 * w, clear = .45 * rd + bundle / 2 + .1;
             if (Math.abs(x - beam) < clear) x = beam + (x >= beam ? clear : -clear);
-            trim(u, x - bundle / 2, yt + 2 * rh, zdr - .15, x + bundle / 2, yd - .8 * rd, zdr + .15, Material.PIPE);
+            u.box(new double[]{x - bundle / 2, yt + 2 * rh, zdr - .15}, new double[]{x + bundle / 2, yd - .8 * rd, zdr + .15}, Material.PIPE, false);
         }
         // The downcomer: a square bar down the left wall's rear corner, into the wall over the lower headers.
         double half = downcomer(), xdc = a + hx + .65, ye = Math.max(g + 2.2, g + ht * Math.max(0, 1 - (zR - zdr - .3) / s));
-        box(u, xdc - half, ye - half, zdr - half, xdc + half, yd - .5 * rd, zdr + half, Material.PIPE);
-        box(u, a + hx, ye - half, zdr - half, xdc - half, ye + half, zdr + half, Material.PIPE);
+        u.box(new double[]{xdc - half, ye - half, zdr - half}, new double[]{xdc + half, yd - .5 * rd, zdr + half}, Material.PIPE, true);
+        u.box(new double[]{a + hx, ye - half, zdr - half}, new double[]{xdc - half, ye + half, zdr + half}, Material.PIPE, true);
         // The safety valves and their silencers.
         for (int side = -1; side <= 1; side += 2) {
             double x = a + side * w / 4, y0 = yd + rd - .05, vent = y0 + 3.2, rs = .25 + .006 * w;
-            trim(u, x - .18, y0, zdr - .18, x + .18, y0 + .45, zdr + .18, Material.MACHINE);
+            u.box(new double[]{x - .18, y0, zdr - .18}, new double[]{x + .18, y0 + .45, zdr + .18}, Material.MACHINE, false);
             u.mesh.prism(Frame.of(new double[]{x, 0, zdr}, 1, 1), .06 + .002 * w, y0 + .45, vent - 1.3, 8, Material.PIPE);
             var up = Frame.of(new double[]{x, 0, zdr}, 1, 1);
             u.mesh.cylinder(up, rs, vent - 1.3, vent, 12, Material.MACHINE);
@@ -673,25 +666,33 @@ final class FluidizedBedBoilerLayout {
     /**
      * Decks round the furnace's front and sides at the feeder floor, every fourth landing above it and the highest
      * (survey: at the feeder floor, the SA levels, the cyclone inlets and the roof), each on its buckstay; the front one
-     * reaches back into the lower furnace's taper; the left one stops short of the downcomer. The right one opens onto the
-     * stair tower's landings and, where it is over the air heater, runs on past the cyclones (a rail on its inner side) to
-     * a deck along the back pass's right wall (survey: back-pass platforms at the soot blowers; a stair tower, not caged
-     * ladders), a rail across that deck's open start.
+     * reaches back into the lower furnace's taper; the left one stops short of the downcomer. The right one opens onto a
+     * short deck across the column line to the stair tower's landing ({@link #tower}) and, where it is over the air
+     * heater, runs on past the cyclones (a rail on its inner side) to a deck along the back pass's right wall (survey:
+     * back-pass platforms at the soot blowers; a stair tower, not caged ladders), a rail across that deck's open start.
      */
     void decks() {
-        double zt = towerFront(), end = zdr - downcomer() - .2;
+        double end = zdr - downcomer() - .2, xi = a - hx - DECK, edge = stairs.edge();
+        int stop = 0;
         for (int j = 4; j <= top; j += 2) {
             if (!decked(j)) continue;
             double level = landing(j) - Access.DECK, wall = front(level);
+            double[] open = stairs.openings().get(stop++);
             boolean back = backPassDeck(level);
-            u.platform(new Access.Line(new double[]{a - hx - DECK, 0, wall}, new double[]{1, 0, 0}, new double[]{0, 0, -1}, 2 * hx + 2 * DECK), level, DECK + wall - zF, true, true);
-            u.platform(new Access.Line(new double[]{a - hx, 0, wall}, new double[]{0, 0, 1}, new double[]{-1, 0, 0}, (back ? zb0 : zR) - wall), level, DECK, false, !back, zt - wall,
-                    zt + LANDING - wall);
-            u.platform(new Access.Line(new double[]{a + hx, 0, wall}, new double[]{0, 0, 1}, new double[]{1, 0, 0}, end - wall), level, DECK, false, true);
+            // Over the taper a deck's wall edge faces the furnace's wall 5 cm off and is never seen (the kit's parts).
+            int walled = level >= g + ht ? Access.BRACKETS | Access.RAILED : Access.ALL_PARTS;
+            u.platform(new Access.Line(new double[]{xi, 0, wall}, new double[]{1, 0, 0}, new double[]{0, 0, -1}, 2 * hx + 2 * DECK), level, DECK + wall - zF, walled, true, true);
+            var right = new Access.Line(new double[]{a - hx, 0, wall}, new double[]{0, 0, 1}, new double[]{-1, 0, 0}, (back ? zb0 : zR) - wall);
+            u.platform(right, level, DECK, back ? Access.ALL_PARTS : walled, false, !back, right.gap(open));
+            // The deck across the column line to the tower's landing, railed both sides.
+            u.platform(new Access.Line(new double[]{edge, 0, open[0]}, new double[]{1, 0, 0}, new double[]{0, 0, 1}, xi - edge), level, open[1] - open[0], Access.RAILED | Access.WALL_EDGE,
+                    false, false);
+            u.railing(new Access.Line(new double[]{edge, 0, open[1]}, new double[]{1, 0, 0}, new double[]{0, 0, -1}, xi - edge), level, open[1] - open[0]);
+            u.platform(new Access.Line(new double[]{a + hx, 0, wall}, new double[]{0, 0, 1}, new double[]{1, 0, 0}, end - wall), level, DECK, walled, false, true);
             if (!back) continue;
             double face = ab - hxb;
-            u.railing(new Access.Line(new double[]{a - hx - DECK, 0, zR}, new double[]{0, 0, 1}, new double[]{1, 0, 0}, zb0 - zR), level, DECK - Access.GAP);
-            u.platform(new Access.Line(new double[]{face, 0, zb0}, new double[]{0, 0, 1}, new double[]{-1, 0, 0}, zb1 - zb0), level, face - (a - hx - DECK), false, true);
+            u.railing(new Access.Line(new double[]{xi, 0, zR}, new double[]{0, 0, 1}, new double[]{1, 0, 0}, zb0 - zR), level, DECK - Access.GAP);
+            u.platform(new Access.Line(new double[]{face, 0, zb0}, new double[]{0, 0, 1}, new double[]{-1, 0, 0}, zb1 - zb0), level, face - xi, false, true);
             u.railing(new Access.Line(new double[]{a - hx, 0, zb0 + Access.RAIL_BAND}, new double[]{1, 0, 0}, new double[]{0, 0, -1}, face - (a - hx)), level, Access.RAIL_BAND);
         }
     }
@@ -702,29 +703,21 @@ final class FluidizedBedBoilerLayout {
     }
 
     /**
-     * The stair tower on the furnace's right (survey: boiler structures use a stair tower with a landing every 3 to 4 m,
-     * not caged ladders): two lanes of straight flights ({@link #hf} high to the feeder floor, {@link #HIGH} above it), the
-     * outer climbing back from the front landings,
-     * the inner climbing forward from the back landings; the front landings reach across the column line onto the
-     * furnace's decks; posts at its outer corners.
+     * The stair tower on the furnace's right, outside the column line (survey: boiler structures use a stair tower with a
+     * landing every 3 to 4 m, not caged ladders): the kit's ({@link ProcessUnit#stairTower}), its lanes along z, stopping
+     * at every decked landing, its landings on its corner posts as the old tower's were (no beams: 500 quads at W 26). The rise to the feeder floor splits into three or four flights,
+     * the rest into whole {@link #HIGH} ones; where the feeder floor is an odd number of flights up its first flight
+     * rises forward from the back, so every stop opens at the tower's front end, beside the furnace's front corner where
+     * no column stands.
      */
     void tower() {
-        double z0 = towerFront(), xo = a - e - 2 * STAIR, xi = a - hx - DECK, z1 = z0 + 2 * LANDING + flight(4);
-        for (int j = 0; j < top; j += 2) {
-            // A pair of flights: out along the outer lane to the back landing, back along the inner lane; both the same
-            // rise, so the back landing sits a flight behind the front one.
-            double back = z0 + LANDING + flight(j);
-            u.stair(a - e - 1.5 * STAIR, z0 + LANDING, 2, 1, STAIR, landing(j), landing(j + 1));
-            u.stair(a - e - .5 * STAIR, back, 2, -1, STAIR, landing(j + 1), landing(j + 2));
-            u.platform(new Access.Line(new double[]{xo, 0, back}, new double[]{1, 0, 0}, new double[]{0, 0, 1}, 2 * STAIR + .1), landing(j + 1) - Access.DECK, LANDING, true, true);
-            double level = landing(j + 2) - Access.DECK;
-            u.platform(new Access.Line(new double[]{xo, 0, z0 + LANDING}, new double[]{1, 0, 0}, new double[]{0, 0, -1}, xi - xo), level, LANDING, true, !decked(j + 2));
-        }
-        for (double z : new double[]{z0 - .15, z1 + .15}) {
-            double[] lo = {xo - .25, 0, z - .1}, hi = {xo - .05, landing(top) + 1.2, z + .1};
-            u.mesh.box(lo, hi, Mesh.ALL_FACES & ~4, Material.STEELWORK);
-            u.solids.add(Solid.box(lo, hi));
-        }
+        var stops = new ArrayList<Double>();
+        for (int j = 4; j <= top; j += 2) if (decked(j)) stops.add(landing(j) - Access.DECK);
+        var plan = ProcessUnit.towerPlan(stops.stream().mapToDouble(Double::doubleValue).toArray());
+        // The end the first stop's landing is at faces the front, that landing's edge at the tower's front.
+        int sign = -plan.end(0);
+        double lane = Math.floor(a - e - .45 - .5) + .5;
+        stairs = u.stairTower(plan, lane, ProcessUnit.TowerPlan.foot(towerFront(), sign, sign > 0 ? plan.near() : plan.far()), 2, sign, -1, false);
     }
 
     // ---- Nozzles ------------------------------------------------------------------------------------------------------
@@ -738,32 +731,26 @@ final class FluidizedBedBoilerLayout {
         return Math.floor(yt - 1.5) + .5;
     }
 
-    /** A nozzle out of a wall facing +x at {@code x}, its flange face on the next block face 0.15 m beyond. */
-    static Nozzle left(Role role, double x, double y, double z, double maxOd, double defaultOd) {
-        double base = x - .03;
-        return new Nozzle(role, new double[]{base, y, z}, 0, 1, Math.ceil(x + EquipmentShape.STAND_OUT) - base, maxOd, defaultOd, 0, .03);
-    }
-
     /**
-     * Seven nozzles (survey; owner decision: flue gas inside): feedwater into the economiser on the back pass's left wall
-     * at 0.35 H and steam out of the final superheater on it under the roof; blowdown from the drum's left end; the
-     * lower headers' drain out to the right at grade; start-up fuel to the burners' line at the front; the fuel into the
-     * bins' conveyor (or the one bin) on top; the bed ash out of the conveyor head's spout, down.
+     * Seven nozzles (survey; owner decision: flue gas inside), each at a line's end ({@link ProcessUnit#end}): feedwater
+     * into the economiser on the back pass's left wall at 0.35 H and steam out of the final superheater on it under the
+     * roof; blowdown from the drum's left end; the lower headers' drain out to the right at grade; start-up fuel to the
+     * burners' line at the front; the fuel into the bins' conveyor (or the one bin) on top; the bed ash out of the
+     * conveyor head's spout, down.
      */
     void nozzles() {
         double zm = Math.floor((zb0 + zb1) / 2) + .5;
         double fw = Math.max(.1, Math.min(.45, .015 * w + .08)), st = Math.max(.15, Math.min(.6, .025 * w + .1));
-        u.nozzles.add(left(Role.FEEDWATER, ab + hxb, feedwaterY(), zm, fw, fw));
-        u.nozzles.add(left(Role.STEAM, ab + hxb, steamY(), zm, st, st));
-        u.nozzles.add(left(Role.BLOWDOWN, a + w / 2 + 1 + rd / 2 - .02, yd, zdr, .08, .06));
+        u.nozzles.add(ProcessUnit.end(Role.FEEDWATER, new double[]{ab + hxb - .03, feedwaterY(), zm}, 0, 1, fw, fw));
+        u.nozzles.add(ProcessUnit.end(Role.STEAM, new double[]{ab + hxb - .03, steamY(), zm}, 0, 1, st, st));
+        u.nozzles.add(ProcessUnit.end(Role.BLOWDOWN, new double[]{a + w / 2 + 1 + rd / 2 - .05, yd, zdr}, 0, 1, .08, .06));
         // The drain from the right lower header down to grade.
         double rh = .15 + .004 * w, xd = a - hx - rh, zd = zF + Math.ceil(s - .4) + .5;
         u.line(.04, Material.PIPE, new double[]{xd, g + rh, zd}, new double[]{xd, .5, zd});
-        double base = xd + .03;
-        u.nozzles.add(new Nozzle(Role.DRAIN, new double[]{base, .5, zd}, 0, -1, base - Math.floor(xd - .03 - EquipmentShape.STAND_OUT), .08, .05, 0, .03));
+        u.nozzles.add(ProcessUnit.end(Role.DRAIN, new double[]{xd + .03, .5, zd}, 0, -1, .08, .05));
         u.nozzles.add(ProcessUnit.front(Role.FUEL, fuelX(), g + 2.5, zF - .2, .1, .08));
-        double zb = zF - binAt, roof = chutes > 1 ? binTop() + 1 : binTop(), in = roof - .03;
-        u.nozzles.add(new Nozzle(Role.SOLIDS_INLET, new double[]{a, in, zb}, 1, 1, Math.ceil(roof + EquipmentShape.STAND_OUT) - in, chutes > 1 ? .5 : Math.min(1, binWidth - .4), .3, 0, .03));
-        u.nozzles.add(new Nozzle(Role.SOLIDS_OUTLET, new double[]{outletX(), 1.63, ashZ}, 1, -1, .63, .5, .3, 0, .03));
+        double zb = zF - binAt, roof = chutes > 1 ? binTop() + 1 : binTop();
+        u.nozzles.add(ProcessUnit.end(Role.SOLIDS_INLET, new double[]{a, roof - .03, zb}, 1, 1, chutes > 1 ? .5 : Math.min(1, binWidth - .4), .3));
+        u.nozzles.add(ProcessUnit.end(Role.SOLIDS_OUTLET, new double[]{outletX(), 1.63, ashZ}, 1, -1, .5, .3));
     }
 }

@@ -14,6 +14,14 @@ public final class PipeSizes {
     private PipeSizes() {
     }
 
+    /**
+     * A unit nozzle's drawn outside diameter, m: {@code want} (a line sized from the unit's duty) to the nearest 0.05 m,
+     * from {@code least} to {@code most} (the nozzle's room on its face, at most one block).
+     */
+    public static double od(double want, double least, double most) {
+        return Math.max(least, Math.min(most, Math.round(want * 20) / 20.0));
+    }
+
     /** Outside diameter of a pipe of bore {@code bore}: the wall adds about a tenth (2" 52.5/60.3 mm, 12" 303/324 mm). */
     public static double outside(double bore) {
         return Math.max(MIN_OUTSIDE, Math.min(MAX_OUTSIDE, 1.1 * bore));
@@ -25,11 +33,6 @@ public final class PipeSizes {
      */
     public static double flange(double outside) {
         return Math.min(1, 1.25 * outside + .085);
-    }
-
-    /** The largest pipe whose flange is at most {@code flange} across (the inverse of {@link #flange}). */
-    public static double largestUnder(double flange) {
-        return (flange - .085) / 1.25;
     }
 
     /** One flange of a pair: a pair is one texel thick up to 24", two above. */

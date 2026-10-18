@@ -534,7 +534,15 @@ public final class Mesh {
      * axis, drawn as bands of the ellipsoid (a unit's heads, a drum's boot).
      */
     void head(Frame f, double r, double at, double depth, int n, Material material) {
-        int bands = Math.max(3, n / 4);
+        head(f, r, at, depth, n, Math.max(3, n / 4), material);
+    }
+
+    /**
+     * A 2:1 head as {@link #head(Frame, double, double, double, int, Material)} draws it, in {@code bands} bands of the
+     * ellipsoid from its tangent line to its apex: a large vessel's heads keep their outline in fewer bands (the FCC's
+     * a sixth of its sides, four at least).
+     */
+    void head(Frame f, double r, double at, double depth, int n, int bands, Material material) {
         var base = f.along(at);
         var spheroid = new Spheroid(base, f.axis(), r, depth);
         for (int k = 0; k < bands; k++) {
@@ -571,6 +579,16 @@ public final class Mesh {
         if (rIn > EPS) bore(f, rIn, z0, z1, n, material);
         if ((faces & 1) != 0) annulus(f, rIn, rOut, Math.min(z0, z1), n, -1, material);
         if ((faces & 2) != 0) annulus(f, rIn, rOut, Math.max(z0, z1), n, 1, material);
+    }
+
+    /**
+     * A hoop round a round body of radius {@code rIn} (a stiffening band, a riding ring, a stack's joint) on frame
+     * {@code f} from {@code z0} to {@code z1}: its rim and both faces; its bore lies on the body and is not drawn.
+     */
+    void hoop(Frame f, double rIn, double rOut, double z0, double z1, int n, Material material) {
+        prism(f, rOut, z0, z1, n, material);
+        annulus(f, rIn, rOut, Math.min(z0, z1), n, -1, material);
+        annulus(f, rIn, rOut, Math.max(z0, z1), n, 1, material);
     }
 
     /** An axis-aligned box in the local frame; {@code faces} masks its faces (bits -x, +x, -y, +y, -z, +z). */
@@ -730,6 +748,37 @@ public final class Mesh {
                 add(List.of(p00, p01, p11), centre, shading, material, around, along);
                 add(List.of(p00, p11, p10), centre, shading, material, around, along);
             }
+        }
+    }
+
+    /**
+     * A segmented bend (a mitred elbow, a ring header): a pipe of radius {@code r} along the arc of radius {@code bend}
+     * round frame {@code f}'s origin, in the plane square to its axis, from angle {@code a0} to {@code a1} (from
+     * {@code ref} towards {@code axis × ref}), turning {@code segments} times. An open bend's pieces lie along the arc's
+     * tangents at a0, every step and a1 (fabricated mitre bends, ASME B31.3 304.2.3: the end pieces are half pieces along
+     * the runs either side), so its ends are square to the pipe at the arc's ends and a straight run meets them flush;
+     * where not {@code ends}, those runs carry on to the first and last mitres themselves (a pipe's legs) and the end
+     * pieces are not drawn. A closed ring's pieces are its chords. Each piece runs on past its mitres by r tan(half the
+     * turn), so the outside of the bend closes and the inside laps into the next piece. A piece's facets are quads, so it
+     * costs half a {@link #torus}'s quads for the same outline.
+     */
+    void bend(Frame f, double bend, double r, double a0, double a1, int segments, int n, boolean ends, Material material) {
+        double step = (a1 - a0) / segments, tan = Math.abs(DeterministicMath.sin(step / 2) / DeterministicMath.cos(step / 2)), lap = r * tan;
+        if (Math.abs(a1 - a0) > 2 * Math.PI - 1e-9) {
+            for (int k = 0; k < segments; k++) {
+                var p0 = torusPoint(f, bend, 0, a0 + k * step, 0);
+                var chord = sub(torusPoint(f, bend, 0, a0 + (k + 1) * step, 0), p0);
+                double length = Math.sqrt(dot(chord, chord));
+                if (length > EPS) prism(new Frame(p0, scale(chord, 1 / length), f.axis), r, -lap, length + lap, n, material);
+            }
+            return;
+        }
+        var side = f.side();
+        double half = bend * tan, turn = Math.signum(step);
+        for (int k = ends ? 0 : 1; k <= (ends ? segments : segments - 1); k++) {
+            double t = a0 + k * step, c = DeterministicMath.cos(t), s = DeterministicMath.sin(t);
+            double[] dir = {turn * (-s * f.ref[0] + c * side[0]), turn * (-s * f.ref[1] + c * side[1]), turn * (-s * f.ref[2] + c * side[2])};
+            prism(new Frame(torusPoint(f, bend, 0, t, 0), dir, f.axis), r, k == 0 ? 0 : -half - lap, k == segments ? 0 : half + lap, n, material);
         }
     }
 

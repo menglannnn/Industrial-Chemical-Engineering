@@ -13,10 +13,11 @@ import static com.wormzjl.createcheme.science.equipment.Mesh.*;
  * <p>Each derrick: four straight legs at the corners of its 3.5 m square ({@link DelayedCokerPlan#DERRICK}), struts at
  * stories three sides high (four stories at least) and one diagonal a face a story, alternating (Warren bracing; the
  * front face's lowest story left open as the way in), struts and diagonals flat bars; the crown frame and sheave housing
- * on top, the hoist's drum and motor beside the sheaves; two guide rails 0.6 m either side of the axis, tied to the
- * struts. The cutting water line's standpipe rises 0.9 m beside the axis to a gooseneck, the hose hangs from it in a loop
- * to the swivel on the crosshead; under the swivel the travelling block and its ropes up to the crown, under the
- * crosshead the drill stem.
+ * on top, the hoist's drum and its motor (the kit's {@link ProcessUnit#motor}, plain) beside the sheaves; two guide
+ * rails 0.6 m either side of the axis, tied to the struts. The cutting water line's standpipe rises 0.9 m beside the axis
+ * to a gooseneck, the hose (a kit {@link ProcessUnit#pipe} that does not collide) hangs from it in a loop to the swivel
+ * on the crosshead; under the swivel the travelling block and its ropes up to the crown, under the crosshead the drill
+ * stem.
  *
  * <p>The second drum of each pair is being cut: its crosshead, swivel, block, stem, the hose's loop and the ropes' ends
  * ride a slider-crank up and down a 4 m band ({@link DelayedCokerPlan#CRANK}, about two minutes a cycle; the pairs half
@@ -35,8 +36,8 @@ final class DelayedCokerDerrick {
     static final double HEAD = .5, HEAD_DEPTH = .3, HEAD_HALF = .25, SWIVEL = .18, SWIVEL_TOP = .75, BLOCK_TOP = 1.45;
     /** The drill stem's and the cutting tool's diameters, the hose's and wire ropes' (the moving pieces a little thinner), m. */
     static final double STEM = .2, TOOL = .4, HOSE = .18, HOSE_IN = .15, ROPE = .07, ROPE_IN = .055;
-    /** The hose's and the drill stem's sides: thin round parts, hexagonal. */
-    static final int HOSE_SIDES = 6;
+    /** The drill stem's sides: a thin round part, hexagonal. */
+    static final int STEM_SIDES = 6;
     /** The standpipe's offset +x from the axis; the hose's swivel leg and loop: its leg's offset -z, the loop's depth under the crosshead, m. */
     static final double STANDPIPE = .9, SWIVEL_LEG = .42, LOOP = 3.5;
     /** The highest and lowest offsets of the slider-crank from where its part is drawn, m (offset(0), -offset(0.5)). */
@@ -92,7 +93,7 @@ final class DelayedCokerDerrick {
         int[][] corners = {{-1, -1}, {1, -1}, {1, 1}, {-1, 1}};
         for (var c : corners) {
             double cx = x + c[0] * h, cz = z + c[1] * h;
-            DelayedCokerDrums.box(u, new double[]{cx - LEG / 2, y0, cz - LEG / 2}, new double[]{cx + LEG / 2, top, cz + LEG / 2}, ALL_FACES & ~(4 | 8), Material.STEELWORK, true);
+            u.box(new double[]{cx - LEG / 2, y0, cz - LEG / 2}, new double[]{cx + LEG / 2, top, cz + LEG / 2}, ALL_FACES & ~(4 | 8), Material.STEELWORK, true);
         }
         // Struts at each story, one diagonal a face a story, alternating; the front face's lowest story open.
         for (int k = 0; k < stories; k++) {
@@ -117,17 +118,17 @@ final class DelayedCokerDerrick {
         for (int side = -1; side <= 1; side += 2)
             u.mesh.bar(new double[]{x + side * GUIDE, p.yCut + .45, z}, new double[]{x + side * GUIDE, top, z}, RAIL, xAxis, START, Material.STEELWORK);
         // The crown frame and the sheave housing on it.
-        DelayedCokerDrums.box(u, new double[]{x - h - .15, top, z - h - .15}, new double[]{x + h + .15, top + CROWN_FRAME, z + h + .15}, ALL_FACES, Material.STEELWORK, true);
-        DelayedCokerDrums.box(u, new double[]{x - .55, top + CROWN_FRAME, z - .45}, new double[]{x + .55, p.yTop, z + .45}, ALL_FACES & ~4, Material.MACHINE, true);
+        u.box(new double[]{x - h - .15, top, z - h - .15}, new double[]{x + h + .15, top + CROWN_FRAME, z + h + .15}, Material.STEELWORK, true);
+        u.box(new double[]{x - .55, top + CROWN_FRAME, z - .45}, new double[]{x + .55, p.yTop, z + .45}, ALL_FACES & ~4, Material.MACHINE, true);
         for (int side = -1; side <= 1; side += 2)
             u.mesh.cylinder(Frame.of(new double[]{x, top + CROWN_FRAME + SHEAVES / 2, 0}, 2, 1), .33, z + side * .45, z + side * .5, 16, Material.MACHINE);
         // The hoist on the crown frame beside the sheaves: its drum and motor.
         var hoist = Frame.of(new double[]{x + h - .2, top + CROWN_FRAME + .3, 0}, 2, 1);
         u.mesh.cylinder(hoist, .3, z - .5, z + .3, 12, Material.MACHINE);
-        u.mesh.cylinder(hoist, .25, z + .3, z + .9, 12, Material.MOTOR);
+        u.motor(hoist, .25, z + .3, z + .9, 0, top + CROWN_FRAME, ProcessUnit.MotorDetail.PLAIN);
         // The standpipe from the cutting water line beside the axis up to the gooseneck, which turns down into the hose; tied to the front face.
         double xs = x + STANDPIPE, zs = p.zCut, yg = gooseneck(p), rg = STANDPIPE / 2;
-        DelayedCokerDrums.pipe(u, CUT_OD, Material.PIPE, new double[]{xs, p.yRelief, zs}, new double[]{xs, yg, zs});
+        u.pipe(CUT_OD / 2, Material.PIPE, true, new double[]{xs, p.yRelief, zs}, new double[]{xs, yg, zs});
         u.mesh.torus(new Frame(new double[]{x + rg, yg, zs}, new double[]{0, 0, 1}, new double[]{1, 0, 0}), rg, CUT_OD / 2, 0, Math.PI, 4, PipeSizes.sides(CUT_OD), Material.PIPE);
         u.mesh.cylinder(Frame.of(new double[]{x, yg, zs}, 1, -1), HOSE / 2 + .04, 0, .12, 12, Material.FLANGE);
         for (int k = 1; k < stories; k++) {
@@ -142,12 +143,12 @@ final class DelayedCokerDerrick {
      */
     static void crosshead(ProcessUnit u, DelayedCokerPlan p, int i, double y) {
         double x = p.xd[i], z = p.zc;
-        DelayedCokerDrums.box(u, new double[]{x - HEAD, y - HEAD_HALF, z - HEAD_DEPTH}, new double[]{x + HEAD, y + HEAD_HALF, z + HEAD_DEPTH}, ALL_FACES, Material.FLANGE, false);
+        u.box(new double[]{x - HEAD, y - HEAD_HALF, z - HEAD_DEPTH}, new double[]{x + HEAD, y + HEAD_HALF, z + HEAD_DEPTH}, Material.FLANGE, false);
         for (int side = -1; side <= 1; side += 2)
-            DelayedCokerDrums.box(u, new double[]{x + side * GUIDE - .1, y - .45, z - .16}, new double[]{x + side * GUIDE + .1, y + .45, z + .16}, ALL_FACES, Material.FLANGE, false);
+            u.box(new double[]{x + side * GUIDE - .1, y - .45, z - .16}, new double[]{x + side * GUIDE + .1, y + .45, z + .16}, Material.FLANGE, false);
         var axis = Frame.of(new double[]{x, 0, z}, 1, 1);
         u.mesh.prism(axis, SWIVEL, y + HEAD_HALF, y + SWIVEL_TOP, 12, Material.FLANGE);
-        DelayedCokerDrums.box(u, new double[]{x - .3, y + SWIVEL_TOP, z - .22}, new double[]{x + .3, y + BLOCK_TOP, z + .22}, ALL_FACES, Material.GUARD, false);
+        u.box(new double[]{x - .3, y + SWIVEL_TOP, z - .22}, new double[]{x + .3, y + BLOCK_TOP, z + .22}, Material.GUARD, false);
     }
 
     /**
@@ -159,8 +160,8 @@ final class DelayedCokerDerrick {
         double loop = y - LOOP, ys = y + .55, slide = loop + .15 + UP_STROKE, reach = slide + DOWN_STROKE + .25;
         u.mesh.part(u.motions.size());
         crosshead(u, p, i, y);
-        DelayedCokerDrums.prism(u, Frame.of(new double[]{x, 0, z}, 1, 1), STEM / 2, p.yCut - 2.5, y - HEAD_HALF, HOSE_SIDES, Material.PIPE);
-        DelayedCokerDrums.line(u, HOSE_IN, HOSE_SIDES, Material.OPENING, false, new double[]{x, ys, z - .15}, new double[]{x, ys, z - SWIVEL_LEG}, new double[]{x, loop, z - SWIVEL_LEG},
+        u.prism(Frame.of(new double[]{x, 0, z}, 1, 1), STEM / 2, p.yCut - 2.5, y - HEAD_HALF, STEM_SIDES, Material.PIPE);
+        u.pipe(HOSE_IN / 2, Material.OPENING, false, new double[]{x, ys, z - .15}, new double[]{x, ys, z - SWIVEL_LEG}, new double[]{x, loop, z - SWIVEL_LEG},
                 new double[]{x, loop, zs}, new double[]{x, reach, zs});
         for (int side = -1; side <= 1; side += 2)
             u.mesh.bar(new double[]{x + side * .15, y + BLOCK_TOP, z}, new double[]{x + side * .15, y + BLOCK_TOP + UP_STROKE + DOWN_STROKE + .3, z}, ROPE_IN, new double[]{1, 0, 0},
@@ -169,8 +170,9 @@ final class DelayedCokerDerrick {
         u.motions.add(new ProcessUnit.Motion(new double[]{x, y, z}, new double[]{0, 1, 0}, 1 / PERIOD, .5 * (i / 2), CRANK, ROD));
         // The still hose leg from the gooseneck down to where the loop's piece slides into it, and the ropes from the crown.
         var leg = Frame.of(new double[]{x, 0, zs}, 1, 1);
-        DelayedCokerDrums.prism(u, leg, HOSE / 2, slide, yg, HOSE_SIDES, Material.OPENING);
-        u.mesh.annulus(leg, HOSE_IN / 2, HOSE / 2, slide, HOSE_SIDES, -1, Material.OPENING);
+        int n = PipeSizes.sides(HOSE);
+        u.prism(leg, HOSE / 2, slide, yg, n, Material.OPENING);
+        u.mesh.annulus(leg, HOSE_IN / 2, HOSE / 2, slide, n, -1, Material.OPENING);
         for (int side = -1; side <= 1; side += 2)
             u.mesh.bar(new double[]{x + side * .15, y + BLOCK_TOP + UP_STROKE, z}, new double[]{x + side * .15, top, z}, ROPE, new double[]{1, 0, 0}, START, Material.BOLT);
     }
@@ -181,10 +183,10 @@ final class DelayedCokerDerrick {
         crosshead(u, p, i, y);
         double foot = Math.max(p.yCut + 1.5, y - HEAD_HALF - p.drumHeight());
         var axis = Frame.of(new double[]{x, 0, z}, 1, 1);
-        DelayedCokerDrums.prism(u, axis, STEM / 2, foot + 1, y - HEAD_HALF, HOSE_SIDES, Material.PIPE);
+        u.prism(axis, STEM / 2, foot + 1, y - HEAD_HALF, STEM_SIDES, Material.PIPE);
         u.mesh.cylinder(axis, TOOL / 2, foot, foot + 1, 12, Material.FLANGE);
         double loop = yg - 4;
-        DelayedCokerDrums.line(u, HOSE, HOSE_SIDES, Material.OPENING, false, new double[]{x, yg, zs}, new double[]{x, loop, zs}, new double[]{x, loop, z - SWIVEL_LEG},
+        u.pipe(HOSE / 2, Material.OPENING, false, new double[]{x, yg, zs}, new double[]{x, loop, zs}, new double[]{x, loop, z - SWIVEL_LEG},
                 new double[]{x, ys, z - SWIVEL_LEG}, new double[]{x, ys, z - .15});
         for (int side = -1; side <= 1; side += 2)
             u.mesh.bar(new double[]{x + side * .15, y + BLOCK_TOP, z}, new double[]{x + side * .15, top, z}, ROPE, new double[]{1, 0, 0}, NO_ENDS, Material.BOLT);

@@ -20,16 +20,19 @@ import static com.wormzjl.createcheme.science.equipment.Mesh.ALL_FACES;
  * the operating deck's height. Physics: the exhaust falls straight into the condenser, so the table's height is the
  * condenser's.
  *
- * <p>The train ({@link SteamTurbineTrain}) stands on a reinforced-concrete table-top, its shaft 0.45 Dc over the deck: a
- * slab 0.8 to 1.5 m thick (0.3 + 0.4 Dc) on columns 0.6 to 1.1 m square (0.35 + 0.25 Dc) in frames at its ends and at
- * most 6 m apart, outside the condenser, with openings for the exhaust neck and the steam riser. Grating walkways 1.2 m
- * wide run along both sides at deck level with their handrails; a stair tower of flights alternating direction (OSHA:
- * at most 3.7 m a flight, a 1.2 m landing between) climbs to the -x walkway. Under the deck the exhaust neck, 1.1 by
- * 0.8 Dc (shorter on a short casing), falls through its expansion joint into the surface condenser: a shell 1.6 Dc
- * across and 3.5 Dc long, its axis under the shaft, two-pass with its water boxes (as deep as the cooling-water nozzle
- * and 0.1 m, 0.35 Dc at least) and their bolted covers at both ends, its hotwell 0.3 Dc deep under its middle, on two
- * saddles; behind it two vertical can-type condensate pumps (their cans in the pit, their discharge heads and motors in
- * sight, sized for 9.5 Dc² kW) and their discharge header. The atmospheric relief diaphragm sits on the exhaust casing.
+ * <p>The train ({@link SteamTurbineTrain}) stands on a reinforced-concrete table-top ({@link ProcessUnit#concreteTable}),
+ * its shaft 0.45 Dc over the deck: a slab 0.8 to 1.5 m thick (0.3 + 0.4 Dc) on columns 0.6 to 1.1 m square (0.35 +
+ * 0.25 Dc) on their pads, in frames at its ends and at most 6 m apart, outside the condenser, with openings for the
+ * exhaust neck and the steam riser. Grating walkways run along both sides at deck level with their handrails, 1.2 m wide
+ * (the -x one up to 1 m wider, out to the stair tower's lane on its cell centre), and rails along the table's front and
+ * back edges; the stair tower ({@link ProcessUnit#stairTower}: flights of at most 3.6 m between 1.2 m landings, OSHA
+ * 1910.25) climbs beside the -x walkway from the table's front, its top landing joining the walkway there. Under the
+ * deck the exhaust neck, 1.1 by 0.8 Dc (shorter on a short casing), falls through its expansion joint into the surface
+ * condenser: a shell 1.6 Dc across and 3.5 Dc long, its axis under the shaft, two-pass with its water boxes (as deep as
+ * the cooling-water nozzle and 0.1 m, 0.35 Dc at least) and their bolted covers at both ends, its hotwell 0.3 Dc deep
+ * under its middle, on two saddles; behind it two vertical can-type condensate pumps (their cans in the pit, their
+ * discharge heads and plain motors in sight, sized for 9.5 Dc² kW) and their discharge header. The atmospheric relief
+ * diaphragm sits on the exhaust casing.
  * The deck stands at least 2.4 Dc + 0.5 m and 3.5 m high (survey), and so high that the cooling-water inlet under the
  * front water box keeps its flange and a free pipe block over grade ({@link #heights}; a metre more than the survey's
  * least at Dc 1.1 to 1.4, 1.6 to 1.8, 2.1 and 2.2, 2.6 and 2.7, and 3 m).
@@ -40,8 +43,8 @@ import static com.wormzjl.createcheme.science.equipment.Mesh.ALL_FACES;
  * upper -x side (0.06 Dc); 0.05 m at least each.
  */
 final class CondensingTurbineDesign extends UnitDesign {
-    /** Walkway and landing widths, a stair flight's width, a flight's highest rise (OSHA 1910.25), m. */
-    static final double WALK = 1.2, LANDING = 1.2, STAIR = 1, FLIGHT = 3.7;
+    /** The walkways' width, m (the -x one wider to the stair tower). */
+    static final double WALK = 1.2;
 
     /** The table's slab, deck and beams in one, m: 0.3 + 0.4 Dc, 0.8 to 1.5 m. */
     static double slab(double d) {
@@ -161,8 +164,10 @@ final class CondensingTurbineDesign extends UnitDesign {
         final SteamTurbineTrain t;
         final double d, h, a, z0, slab, column, r, ring, tube, cw, box, cover, steam, vent, condensate;
         final double j, yt, yk, yb, rowOut, inletFace, xv, yv, zv, ys, half, zT0, zT1, zE, zwb, zs0, zs1, rear, motor, head, spread, zp, zVent, yVent;
-        final double xo, fLo, fHi, rise, xMin, zMin;
-        final int flights;
+        /** The stair tower's plan, its side facing the -x walkway (that walkway's outer edge), its lane A's first foot along z and the way it rises. */
+        final ProcessUnit.TowerPlan plan;
+        final double edge, foot, xMin, zMin;
+        final int rising;
         final List<Double> frames = new ArrayList<>();
 
         Layout(EquipmentShape shape, double a, double z0) {
@@ -219,21 +224,16 @@ final class CondensingTurbineDesign extends UnitDesign {
             zv = free(Math.floor(z0 + t.chest) + .5, steam / 2 + .08 + column / 2, zT0 + .4, zT1 - .4);
             zVent = free(Math.floor(zs0 + .7 * 3.5 * d) + .5, .55 + column / 2, zs0 + .55, zs1 - .55);
             yVent = row(yk + .55 * r, yk, Math.min(yk + r - vent / 2 - .04, h - slab - .5));
-            // The stair tower outside the -x walkway: its flights alternating, its top landing at the table's back end
-            // (an odd count) or front end (even).
-            flights = Math.max(2, (int) Math.ceil(h / FLIGHT - 1e-9));
-            rise = h / flights;
-            double flight = Math.ceil(rise / ProcessUnit.STAIR_RISE - 1e-9) * ProcessUnit.STAIR_GOING;
-            xo = a - half - WALK;
-            if (flights % 2 == 1) {
-                fHi = zT1 - .05 - LANDING;
-                fLo = fHi - flight;
-            } else {
-                fLo = zT0 + .05 + LANDING;
-                fHi = fLo + flight;
-            }
-            xMin = xo - 2 * STAIR - .05;
-            zMin = Math.min(Math.min(zT0, fLo - LANDING), Math.floor(zwb - box / 2 - cover - EquipmentShape.STAND_OUT)) - .02;
+            // The stair tower beside the -x walkway, its lanes on cell centres (that walkway as much wider as reaches them),
+            // from the table's front end (its corner posts there) over its equal flights (at most 3.6 m each). Its top
+            // landing joins the walkway at the front: the tower rises to the back where a flight of lane B reaches the
+            // walkway (that landing at the tower's near end), to the front where one of lane A does.
+            edge = Math.floor(a - half - WALK - .95) + .95;
+            plan = ProcessUnit.towerPlan(h - Access.DECK);
+            rising = -plan.end(0);
+            foot = ProcessUnit.TowerPlan.foot(zT0, rising, rising > 0 ? plan.from() : plan.to());
+            xMin = edge - 2;
+            zMin = Math.min(zT0, Math.floor(zwb - box / 2 - cover - EquipmentShape.STAND_OUT)) - .02;
         }
 
         /** The cell centre nearest {@code want} in [lo, hi]; with none there, the highest under {@code hi}. */
@@ -263,39 +263,23 @@ final class CondensingTurbineDesign extends UnitDesign {
 
             // The table: its slab with the openings for the exhaust neck and the steam riser; its columns on their pads.
             double nx = .55 * d, n0 = zE - t.neck / 2, n1 = zE + t.neck / 2;
-            cast(u, a - half, zT0, a + half, zT1, under, h, new double[][]{{a - nx - .05, n0 - .05, a + nx + .05, n1 + .05}, {xv - rp - .05, zv - rp - .05, xv + rp + .05, zv + rp + .05}});
+            var posts = new ArrayList<double[]>();
             for (double zf : frames)
-                for (int side = -1; side <= 1; side += 2) {
-                    double x0 = a + side * (half - column), x1 = a + side * half;
-                    u.box(new double[]{Math.min(x0, x1), .15, zf - column / 2}, new double[]{Math.max(x0, x1), under, zf + column / 2}, Material.CONCRETE, true);
-                    u.box(new double[]{Math.min(x0, x1) - .1, 0, zf - column / 2 - .1}, new double[]{Math.max(x0, x1) + .1, .15, zf + column / 2 + .1}, Material.CONCRETE, true);
-                }
+                for (int side = -1; side <= 1; side += 2) posts.add(new double[]{a + side * (half - column / 2), zf});
+            u.concreteTable(a - half, a + half, zT0, zT1, h, slab, List.of(new double[]{a - nx - .05, n0 - .05, a + nx + .05, n1 + .05},
+                    new double[]{xv - rp - .05, zv - rp - .05, xv + rp + .05, zv + rp + .05}), column, posts);
 
-            // The walkways along both sides at deck level, the -x one open where the stair tower's top landing joins it.
+            // The stair tower (see the layout); the walkways along both sides at deck level, the -x one out to the tower and
+            // open where its top landing joins it.
             double level = h - Access.DECK, length = zT1 - zT0;
-            boolean odd = flights % 2 == 1;
-            double g0 = odd ? fHi + Access.GAP - zT0 : fLo - LANDING - zT0, g1 = odd ? fHi + LANDING - zT0 : fLo - Access.GAP - zT0;
+            var tower = u.stairTower(plan, edge - ProcessUnit.TOWER_FLIGHT / 2, foot, 2, rising, -1, true);
+            var walk = new Access.Line(new double[]{a - half, 0, zT0}, new double[]{0, 0, 1}, new double[]{-1, 0, 0}, length);
             u.platform(new Access.Line(new double[]{a + half, 0, zT0}, new double[]{0, 0, 1}, new double[]{1, 0, 0}, length), level, WALK, true, true);
-            u.platform(new Access.Line(new double[]{a - half, 0, zT0}, new double[]{0, 0, 1}, new double[]{-1, 0, 0}, length), level, WALK, true, true, g0, g1);
+            u.platform(walk, level, a - half - edge, true, true, walk.gap(tower.openings().getFirst()));
             // The table's front and back edges between the walkways, a drop of the table's height: handrails, as on the
             // centrifugal compressor's table.
             u.railing(new Access.Line(new double[]{a - half, 0, zT0 + 1}, new double[]{1, 0, 0}, new double[]{0, 0, -1}, 2 * half), level, 1);
             u.railing(new Access.Line(new double[]{a - half, 0, zT1 - 1}, new double[]{1, 0, 0}, new double[]{0, 0, 1}, 2 * half), level, 1);
-            // The stair tower: odd flights rise towards +z in the outer lane, even ones back in the inner lane, a landing
-            // across both lanes at each turn; the top landing opens onto the walkway, a handrail on its edge over the lane
-            // the last flight does not use.
-            double outer = xo - 1.5 * STAIR, inner = xo - .5 * STAIR;
-            for (int k = 1; k <= flights; k++) {
-                boolean up = k % 2 == 1, last = k == flights;
-                u.stair(up ? outer : inner, up ? fLo : fHi, 2, up ? 1 : -1, STAIR, (k - 1) * rise, last ? h : k * rise);
-                double end = up ? fHi : fLo, out = up ? 1 : -1, top = last ? h : k * rise;
-                u.platform(new Access.Line(new double[]{xo - 2 * STAIR, 0, end}, new double[]{1, 0, 0}, new double[]{0, 0, out}, 2 * STAIR), top - Access.DECK, LANDING, true, !last);
-                if (last) {
-                    double lane = up ? xo - STAIR : xo - 2 * STAIR;
-                    u.railing(new Access.Line(new double[]{lane, 0, end + out * LANDING}, new double[]{1, 0, 0}, new double[]{0, 0, -out}, STAIR), top - Access.DECK,
-                            LANDING - Access.GAP);
-                }
-            }
 
             // The exhaust neck from the casing's split line down through the deck into the condenser's top, its expansion
             // joint's frames and convolutions under the deck; the relief diaphragm on the exhaust casing.
@@ -320,7 +304,7 @@ final class CondensingTurbineDesign extends UnitDesign {
 
             // The steam riser from the valve's inlet down through the deck, its elbow under the deck towards +x.
             double yi = yv - rb - .08;
-            SteamTurbineTrain.pipe(u, rp, new double[]{xv, yi, zv}, new double[]{xv, ys, zv});
+            u.pipe(rp, Material.PIPE, true, new double[]{xv, yi, zv}, new double[]{xv, ys, zv});
             m.sphere(new double[]{xv, ys, zv}, 1.05 * rp, 12, Material.PIPE);
 
             // The nozzles.
@@ -350,9 +334,7 @@ final class CondensingTurbineDesign extends UnitDesign {
             m.prism(fk, r, zs0, zs1, nk, Material.SHELL);
             for (int end = 0; end < 2; end++) {
                 double s = end == 0 ? -1 : 1, t0 = end == 0 ? zs0 : zs1, w0 = t0 + s * tube, w1 = w0 + s * box, c1 = w1 + s * cover;
-                m.prism(fk, big, Math.min(t0, w0), Math.max(t0, w0), nk, Material.FLANGE);
-                m.annulus(fk, r, big, Math.min(t0, w0), nk, -1, Material.FLANGE);
-                m.annulus(fk, r, big, Math.max(t0, w0), nk, 1, Material.FLANGE);
+                m.hoop(fk, r, big, Math.min(t0, w0), Math.max(t0, w0), nk, Material.FLANGE);
                 m.prism(fk, r, Math.min(w0, w1), Math.max(w0, w1), nk, Material.MACHINE);
                 m.prism(fk, big, Math.min(w1, c1), Math.max(w1, c1), nk, Material.FLANGE);
                 m.annulus(fk, r, big, w1, nk, -s, Material.FLANGE);
@@ -376,21 +358,22 @@ final class CondensingTurbineDesign extends UnitDesign {
             // The hotwell, the condensate's line into the pit with its sleeve at grade.
             double length = zs1 - zs0, h0 = zs0 + .38 * length, h1 = zs0 + .62 * length, hw = .35 * d, hb = yb - .3 * d, hm = (h0 + h1) / 2, rl = Math.max(.04, .05 * d);
             u.box(new double[]{a - hw, hb, h0}, new double[]{a + hw, yk - .5 * r, h1}, Material.MACHINE, true);
-            SteamTurbineTrain.pipe(u, rl, new double[]{a, hb, hm}, new double[]{a, 0, hm});
+            u.pipe(rl, Material.PIPE, true, new double[]{a, hb, hm}, new double[]{a, 0, hm});
             m.cylinder(Frame.of(new double[]{a, 0, hm}, 1, 1), rl + .06, 0, .05, 12, Material.CONCRETE);
             double w = ProcessUnit.saddleWidth(r);
-            u.saddle(ProcessUnit.saddleAt(zs0 + .15 * length, w, zs0, zs1, zwb), a, yk, r, w);
-            u.saddle(ProcessUnit.saddleAt(zs1 - .15 * length, w, zs0, zs1, zwb), a, yk, r, w);
+            u.saddle(ProcessUnit.saddleAt(zs0 + .15 * length, w, zs0, zs1, zwb), a, yk, r, w, 0);
+            u.saddle(ProcessUnit.saddleAt(zs1 - .15 * length, w, zs0, zs1, zwb), a, yk, r, w, 0);
         }
 
         /**
          * The two condensate pumps behind the rear water box at x a ± spread: each a sole plate at grade (its can in the
-         * pit), a discharge head with its outlet 0.5 m up, the motor stand, the vertical motor and its fan cowl, a terminal
-         * box outboard; their outlets joined by the header the condensate nozzle leaves.
+         * pit), a discharge head with its outlet 0.5 m up, the motor stand and the plain vertical motor
+         * ({@link ProcessUnit#motor}, its terminal box to the front); their outlets joined by the header the condensate
+         * nozzle leaves.
          */
         private void pumps(ProcessUnit u) {
             var m = u.mesh;
-            double crown = .95, base = crown + .5 * motor + .1, cap = base + 1.4 * motor + .15;
+            double crown = .95, base = crown + .5 * motor + .1, top = base + 1.7 * motor + .18;
             int n = ProcessUnit.sides(2 * head);
             for (int side = -1; side <= 1; side += 2) {
                 double x = a + side * spread;
@@ -398,48 +381,10 @@ final class CondensingTurbineDesign extends UnitDesign {
                 u.box(new double[]{x - head - .08, 0, zp - head - .08}, new double[]{x + head + .08, .06, zp + head + .08}, Material.STEELWORK, false);
                 m.cylinder(up, head, .06, crown, n, Material.MACHINE);
                 m.cylinder(up, .7 * motor, crown, base, 12, Material.MACHINE);
-                m.cylinder(up, motor, base, cap, ProcessUnit.sides(2 * motor), Material.MOTOR);
-                m.cylinder(up, .9 * motor, cap, cap + .3 * motor + .03, ProcessUnit.sides(2 * motor), Material.MOTOR);
-                double xt = x + side * motor;
-                u.box(new double[]{Math.min(xt, xt + side * .4 * motor), base + .5 * motor, zp - .3 * motor}, new double[]{Math.max(xt, xt + side * .4 * motor), base + 1.1 * motor, zp + .3 * motor},
-                        Material.MOTOR, false);
-                u.solids.add(ProcessUnit.Solid.rod(new double[]{x, 0, zp}, 1, 0, cap + .3 * motor + .03, head, 0));
+                u.solids.add(ProcessUnit.Solid.rod(new double[]{x, 0, zp}, 1, 0, base, head, 0));
+                u.motor(up, motor, base, top, 0, base, ProcessUnit.MotorDetail.PLAIN);
             }
-            SteamTurbineTrain.pipe(u, condensate / 2, new double[]{a - spread + .9 * head, .5, zp}, new double[]{a + spread - .9 * head, .5, zp});
-        }
-
-        /**
-         * The table's slab from (x0, z0) to (x1, z1), its underside at {@code y0} and its deck at {@code y1}, but over the
-         * {@code holes} ({x0, z0, x1, z1} each): in bands along z between the holes' edges, each band's pieces between them.
-         */
-        private static void cast(ProcessUnit u, double x0, double z0, double x1, double z1, double y0, double y1, double[][] holes) {
-            var cuts = new ArrayList<Double>(List.of(z0, z1));
-            for (var hole : holes)
-                for (double z : new double[]{hole[1], hole[3]}) if (z > z0 && z < z1) cuts.add(z);
-            cuts.sort(Double::compare);
-            for (int b = 0; b + 1 < cuts.size(); b++) {
-                double za = cuts.get(b), zb = cuts.get(b + 1);
-                if (zb - za < 1e-6) continue;
-                var spans = new ArrayList<double[]>();
-                spans.add(new double[]{x0, x1});
-                for (var hole : holes) {
-                    if (hole[1] >= zb - 1e-9 || hole[3] <= za + 1e-9) continue;
-                    var cut = new ArrayList<double[]>();
-                    for (var s : spans) {
-                        if (hole[2] <= s[0] || hole[0] >= s[1]) cut.add(s);
-                        else {
-                            if (hole[0] > s[0]) cut.add(new double[]{s[0], hole[0]});
-                            if (hole[2] < s[1]) cut.add(new double[]{hole[2], s[1]});
-                        }
-                    }
-                    spans = cut;
-                }
-                for (var s : spans) {
-                    u.box(new double[]{s[0], y0, za}, new double[]{s[1], y1, zb}, Material.CONCRETE, true);
-                    if (s[1] - s[0] > .2 && zb - za > .2 && y1 - y0 > .2)
-                        u.volumes.add(ProcessUnit.Solid.box(new double[]{s[0] + .05, y0 + .05, za + .05}, new double[]{s[1] - .05, y1 - .05, zb - .05}));
-                }
-            }
+            u.pipe(condensate / 2, Material.PIPE, true, new double[]{a - spread + .9 * head, .5, zp}, new double[]{a + spread - .9 * head, .5, zp});
         }
     }
 }

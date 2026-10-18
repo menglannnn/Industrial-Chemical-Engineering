@@ -1,19 +1,17 @@
 package com.wormzjl.createcheme.science.equipment;
 
-import com.wormzjl.createcheme.science.equipment.EquipmentShape.Nozzle;
 import com.wormzjl.createcheme.science.equipment.EquipmentShape.Role;
 import com.wormzjl.createcheme.science.equipment.Mesh.Frame;
 import com.wormzjl.createcheme.science.equipment.Mesh.Material;
 import com.wormzjl.createcheme.science.equipment.ProcessUnit.Motion;
+import com.wormzjl.createcheme.science.equipment.ProcessUnit.Ring;
 import com.wormzjl.createcheme.science.equipment.ProcessUnit.Solid;
 import com.wormzjl.createcheme.science.math.DeterministicMath;
 
 import java.util.ArrayList;
 import java.util.List;
 
-import static com.wormzjl.createcheme.science.equipment.FluidizedBedParts.box;
 import static com.wormzjl.createcheme.science.equipment.FluidizedBedParts.closedBox;
-import static com.wormzjl.createcheme.science.equipment.FluidizedBedParts.trim;
 
 /**
  * An HTW gasifier's parts ({@link FluidizedBedGasifierDesign}; {@code NEW_UNITS_SURVEY_SOLID_FUEL.md} section 1, gasifier
@@ -29,7 +27,8 @@ import static com.wormzjl.createcheme.science.equipment.FluidizedBedParts.trim;
  * Under the vessel the water-cooled ash screw, its drive turning, into the ash lock hopper behind it. The open steel
  * structure round it all: columns fireproofed in concrete up to the support floor, girders at that floor, at the lock
  * valves' floors and at the top, X-bracing in the vessel bay's sides; grating decks round the vessel and the lock-hopper
- * stack, caged ladders on the right.
+ * stack (the kit's ring access), caged ladders on the right, rest platforms where a climb would be longer than 9 m
+ * (owner decision C1 2026-10-18).
  */
 final class FluidizedBedGasifierLayout {
     /** The gap between the lock-hopper stack and the vessel, m: room for both decks and the screws' run. */
@@ -147,15 +146,13 @@ final class FluidizedBedGasifierLayout {
         u.mesh.prism(up, r, yb, yt, n, Material.SHELL);
         u.mesh.head(up, r, yt, hd, n, Material.HEAD);
         u.mesh.head(Frame.of(new double[]{a, 0, za}, 1, -1), r, -yb, hd, n, Material.HEAD);
-        for (double y = yb + 6; y < yt - 3; y += 6) FluidizedBedParts.hoop(u, up, r, r + .04, y, y + .1, n, Material.SHELL);
-        u.solids.add(Solid.rod(axis, 1, yb, yt, r, hd));
-        u.solids.add(Solid.cone(axis, 1, yb - hd, yb, .35 * r, r, 0));
-        // Its inside, the heads' too (a 2:1 head holds the cone from its tangent line's edge to near its apex).
-        u.volumes.add(Solid.rod(axis, 1, yb, yt, r - .2, hd - .2));
-        bottomHead(a, za, yb, r, hd);
+        for (double y = yb + 6; y < yt - 3; y += 6) u.mesh.hoop(up, r, r + .04, y, y + .1, n, Material.SHELL);
+        u.solids.add(Solid.rod(axis, 1, yb, yt, r, hd, hd));
+        // Its inside, the heads' too.
+        u.volumes.add(Solid.rod(axis, 1, yb, yt, r - .2, hd - .2, hd - .2));
         u.round(a, za, yb, yt, r, 1);
         // The support ring on the floor's beams, with its gussets.
-        FluidizedBedParts.hoop(u, up, r, r + .35, ring - .6, ring - .45, n, Material.SHELL);
+        u.mesh.hoop(up, r, r + .35, ring - .6, ring - .45, n, Material.SHELL);
         for (int k = 0; k < 8; k++) {
             double t = Math.PI / 8 + Math.PI / 4 * k, c = DeterministicMath.cos(t), s = DeterministicMath.sin(t);
             u.mesh.block(new double[]{a + (r + .17) * c, ring - .9, za + (r + .17) * s}, new double[]{.17 * c, 0, .17 * s}, new double[]{0, .3, 0},
@@ -181,19 +178,6 @@ final class FluidizedBedGasifierLayout {
         u.mesh.cylinder(Frame.of(axis, 1, 1), ra, yb - hd - .4, yb - hd + .1, 12, Material.SHELL);
         u.mesh.cylinder(Frame.of(axis, 1, 1), ra + .1, yb - hd - .4, yb - hd - .28, 12, Material.FLANGE);
         u.solids.add(Solid.rod(axis, 1, yb - hd - .4, yb - hd, ra + .1, 0));
-    }
-
-    /**
-     * The inside of a 2:1 bottom head under the tangent line {@code y} of a standing body at (x, z): bands a quarter of a
-     * metre deep, each 0.2 m inside the head at its lower edge, so every inside cell's neighbours hold the head's surface.
-     */
-    void bottomHead(double x, double z, double y, double r, double depth) {
-        int bands = (int) Math.ceil(4 * (depth - .2) - 1e-9);
-        for (int k = 0; k < bands; k++) {
-            double y1 = y - k * (depth - .2) / bands, y0 = y - (k + 1) * (depth - .2) / bands, d = (y - y0) / depth;
-            double rk = r * Math.sqrt(Math.max(0, 1 - d * d)) - .2;
-            if (rk > .05) u.volumes.add(Solid.rod(new double[]{x, 0, z}, 1, y0, y1 + .01, rk, 0));
-        }
     }
 
     /** The O2/steam ring headers' pipe, m (survey: OXIDANT up to 0.05 ID, the headers a size up). */
@@ -232,11 +216,11 @@ final class FluidizedBedGasifierLayout {
             double xin = a + Math.sqrt(Math.max(0, r * r - (zc - za) * (zc - za))) - .1, bend = entry + (xcy - xin);
             u.line(rs, Material.CLADDING, new double[]{xcy, foot - .5, zc}, new double[]{xcy, bend, zc}, new double[]{xin, entry, zc});
             u.solids.add(Solid.rod(new double[]{xcy, 0, zc}, 1, bend, foot, rs, 0));
-            FluidizedBedParts.hoop(u, Frame.of(new double[]{xcy, 0, zc}, 1, 1), rs, rs + .1, bend + 1, bend + 1.15, 12, Material.FLANGE);
+            u.mesh.hoop(Frame.of(new double[]{xcy, 0, zc}, 1, 1), rs, rs + .1, bend + 1, bend + 1.15, 12, Material.FLANGE);
             // The beams it hangs from.
             double yb0 = roof - 1.25 * dcy - .45;
             for (int s = -1; s <= 1; s += 2)
-                box(u, xcy - rcy - .2, yb0, zc + s * .4 * rcy - .12, a + xp, yb0 + .35, zc + s * .4 * rcy + .12, Material.STEELWORK);
+                u.box(new double[]{xcy - rcy - .2, yb0, zc + s * .4 * rcy - .12}, new double[]{a + xp, yb0 + .35, zc + s * .4 * rcy + .12}, Material.STEELWORK, true);
         }
         // The hot gas duct: back over the cyclones' outlets to the cooler's line, across to its top, down into it.
         double y0 = stubTop, y1 = stubTop + dd, zfirst = zcy[0] - dd / 2;
@@ -260,16 +244,14 @@ final class FluidizedBedGasifierLayout {
         u.mesh.prism(up, rc, ysc0, ysc1, n, Material.SHELL);
         u.mesh.head(up, rc, ysc1, rc / 2, n, Material.HEAD);
         u.mesh.head(Frame.of(new double[]{a, 0, zs}, 1, -1), rc, -ysc0, rc / 2, n, Material.HEAD);
-        FluidizedBedParts.hoop(u, up, rc, rc + .08, ysc1 - .35, ysc1 - .2, n, Material.FLANGE);
-        u.solids.add(Solid.rod(new double[]{a, 0, zs}, 1, ysc0, ysc1, rc, rc / 2));
-        u.solids.add(Solid.cone(new double[]{a, 0, zs}, 1, ysc0 - rc / 2, ysc0, .3 * rc, rc, 0));
-        u.volumes.add(Solid.rod(new double[]{a, 0, zs}, 1, ysc0, ysc1, rc - .15, rc / 2 - .15));
-        bottomHead(a, zs, ysc0, rc, rc / 2);
+        u.mesh.hoop(up, rc, rc + .08, ysc1 - .35, ysc1 - .2, n, Material.FLANGE);
+        u.solids.add(Solid.rod(new double[]{a, 0, zs}, 1, ysc0, ysc1, rc, rc / 2, rc / 2));
+        u.volumes.add(Solid.rod(new double[]{a, 0, zs}, 1, ysc0, ysc1, rc - .15, rc / 2 - .15, rc / 2 - .15));
         u.round(a, zs, ysc0, ysc1, rc, 1);
         // Its beams.
         double mid = (ysc0 + ysc1) / 2;
-        FluidizedBedParts.hoop(u, up, rc, rc + .3, mid, mid + .15, n, Material.SHELL);
-        for (int s = -1; s <= 1; s += 2) box(u, a - xm, mid - .45, zs + s * (rc + .35) - .12, a + xp, mid, zs + s * (rc + .35) + .12, Material.STEELWORK);
+        u.mesh.hoop(up, rc, rc + .3, mid, mid + .15, n, Material.SHELL);
+        for (int s = -1; s <= 1; s += 2) u.box(new double[]{a - xm, mid - .45, zs + s * (rc + .35) - .12}, new double[]{a + xp, mid, zs + s * (rc + .35) + .12}, Material.STEELWORK, true);
         // The drum on its beams and saddles, its safety valve.
         double x0 = a - lr / 2, x1 = a + lr / 2, rd = ddr / 2;
         var f = Frame.of(new double[]{0, ydr, zs}, 0, 1);
@@ -282,18 +264,18 @@ final class FluidizedBedGasifierLayout {
         u.round(new double[]{0, ydr, zs}, 0, x0, x1, rd);
         for (int s = -1; s <= 1; s += 2) {
             double x = a + s * .4 * lr;
-            box(u, x - .2, frameTop, zm, x + .2, frameTop + .4, zr, Material.STEELWORK);
-            box(u, x - .4 * rd - .1, frameTop + .4, zs - .3, x + .4 * rd + .1, ydr - .6 * rd, zs + .3, Material.STEELWORK);
+            u.box(new double[]{x - .2, frameTop, zm}, new double[]{x + .2, frameTop + .4, zr}, Material.STEELWORK, true);
+            u.box(new double[]{x - .4 * rd - .1, frameTop + .4, zs - .3}, new double[]{x + .4 * rd + .1, ydr - .6 * rd, zs + .3}, Material.STEELWORK, true);
         }
         double xv = a - .15 * lr, yv = ydr + rd - .05;
-        trim(u, xv - .15, yv, zs - .15, xv + .15, yv + .4, zs + .15, Material.MACHINE);
+        u.box(new double[]{xv - .15, yv, zs - .15}, new double[]{xv + .15, yv + .4, zs + .15}, Material.MACHINE, false);
         u.mesh.prism(Frame.of(new double[]{xv, 0, zs}, 1, 1), .05, yv + .4, yv + 1.6, 8, Material.PIPE);
         u.mesh.cylinder(Frame.of(new double[]{xv, 0, zs}, 1, 1), .18, yv + 1.1, yv + 1.9, 10, Material.MACHINE);
         // The riser and the downcomer as single bars, on the cooler's right clear of the gas duct.
         double xr = a - rc - .15, b = .09 + .02 * id;
         for (double z : new double[]{zs, zs + .45}) {
-            box(u, xr - b, ysc1 - 1, z - b, xr + b, ydr - .5 * rd, z + b, Material.PIPE);
-            box(u, xr + b, ysc1 - 1 - b, z - b, a - rc * .8, ysc1 - 1 + b, z + b, Material.PIPE);
+            u.box(new double[]{xr - b, ysc1 - 1, z - b}, new double[]{xr + b, ydr - .5 * rd, z + b}, Material.PIPE, true);
+            u.box(new double[]{xr + b, ysc1 - 1 - b, z - b}, new double[]{a - rc * .8, ysc1 - 1 + b, z + b}, Material.PIPE, true);
         }
         // The moderator steam down from the drum's right end to the post-gasification header's back.
         double xs = x0 + .3, yp = yb + .4 * ht, ps = .05 + .012 * id;
@@ -333,7 +315,7 @@ final class FluidizedBedGasifierLayout {
             u.mesh.frustum(up, rn, rv, y0, y1, n, Material.SHELL);
             u.mesh.prism(up, rv, y1, y2, n, Material.SHELL);
             u.mesh.head(up, rv, y2, dv / 4, n, Material.HEAD);
-            FluidizedBedParts.hoop(u, up, rv, rv + .05, y1 - .05, y1 + .1, n, Material.SHELL);
+            u.mesh.hoop(up, rv, rv + .05, y1 - .05, y1 + .1, n, Material.SHELL);
             u.mesh.annulus(up, 0, rn, y0, 12, -1, Material.SHELL);
             u.solids.add(Solid.cone(axis, 1, y0, y1, rn, rv, 0));
             u.solids.add(Solid.rod(axis, 1, y1, y2, rv, dv / 4));
@@ -353,7 +335,7 @@ final class FluidizedBedGasifierLayout {
         if (screws == 1) u.mesh.cylinder(up, rn, top, y0, 12, Material.SHELL);
         else {
             double s = .25 * dv;
-            box(u, a - s - rn, y0 - .35, zl - rn, a + s + rn, y0, zl + rn, Material.SHELL);
+            u.box(new double[]{a - s - rn, y0 - .35, zl - rn}, new double[]{a + s + rn, y0, zl + rn}, Material.SHELL, true);
             for (int k = -1; k <= 1; k += 2) u.mesh.cylinder(Frame.of(new double[]{a + k * s, 0, zl}, 1, 1), .7 * rn, top, y0 - .35, 12, Material.SHELL);
         }
     }
@@ -375,7 +357,7 @@ final class FluidizedBedGasifierLayout {
         double b0 = x + side * rb, b1 = b0 + side * .2, c0 = b1 + side * (.2 + STROKE), c1 = c0 + side * (.5 + STROKE);
         var f = Frame.of(new double[]{0, ym, z}, 0, side);
         u.mesh.cylinder(f, .1, side * b0, side * b1, 10, Material.MACHINE);
-        trim(u, Math.min(b1, b1 + side * .2), ym - .12, z - .12, Math.max(b1, b1 + side * .2), ym + .12, z + .12, Material.MACHINE);
+        u.box(new double[]{Math.min(b1, b1 + side * .2), ym - .12, z - .12}, new double[]{Math.max(b1, b1 + side * .2), ym + .12, z + .12}, Material.MACHINE, false);
         u.mesh.cylinder(f, .1 + .01 * id, side * c0, side * c1, 10, Material.ACTUATOR);
         u.mesh.annulus(f, 0, .1 + .01 * id, side * c1, 10, 1, Material.ACTUATOR);
         u.mesh.annulus(f, 0, .1 + .01 * id, side * c0, 10, -1, Material.ACTUATOR);
@@ -399,9 +381,9 @@ final class FluidizedBedGasifierLayout {
             var f = Frame.of(new double[]{x, ys, 0}, 2, 1);
             u.mesh.cylinder(f, rsc, z0, z1, 12, Material.MACHINE);
             u.mesh.annulus(f, 0, rsc, z0, 12, -1, Material.MACHINE);
-            for (double z : new double[]{z0 + .05, z1 - .45}) FluidizedBedParts.hoop(u, f, rsc, rsc + .07, z, z + .1, 12, Material.FLANGE);
+            for (double z : new double[]{z0 + .05, z1 - .45}) u.mesh.hoop(f, rsc, rsc + .07, z, z + .1, 12, Material.FLANGE);
             u.solids.add(Solid.rod(new double[]{x, ys, 0}, 2, z0, z1, rsc + .07, 0));
-            FluidizedBedParts.drive(u, x, ys, z0, 1, rm, feedFloor + Access.DECK);
+            FluidizedBedParts.drive(u, x, ys, z0, rm, feedFloor + Access.DECK);
         }
     }
 
@@ -417,12 +399,12 @@ final class FluidizedBedGasifierLayout {
         var f = Frame.of(new double[]{a, ysa, 0}, 2, 1);
         u.mesh.cylinder(f, rs, z0, z1, 12, Material.MACHINE);
         u.mesh.annulus(f, 0, rs, z1, 12, 1, Material.MACHINE);
-        for (double z : new double[]{z0 + .05, z1 - .2}) FluidizedBedParts.hoop(u, f, rs, rs + .07, z, z + .1, 12, Material.FLANGE);
+        for (double z : new double[]{z0 + .05, z1 - .2}) u.mesh.hoop(f, rs, rs + .07, z, z + .1, 12, Material.FLANGE);
         u.solids.add(Solid.rod(new double[]{a, ysa, 0}, 2, z0, z1, rs + .07, 0));
         u.mesh.cylinder(Frame.of(new double[]{a, 0, za}, 1, 1), outlet(), ysa + rs - .05, yb - hd - .4, 12, Material.SHELL);
         for (int s = -1; s <= 1; s += 2)
             u.mesh.cylinder(Frame.of(new double[]{a + s * .5 * rs, ysa + rs + .04, 0}, 2, 1), .04, z0 + .3, z1 - .3, 6, Material.PIPE);
-        FluidizedBedParts.drive(u, a, ysa, z0, 1, Math.max(.2, Math.min(.3, .15 + .025 * id)), ysa - rs - .2);
+        FluidizedBedParts.drive(u, a, ysa, z0, Math.max(.2, Math.min(.3, .15 + .025 * id)), ysa - rs - .2);
         // The chute, the top valve, the lock, the bottom valve and the outlet.
         double rn = .1 + .05 * dl, yv1 = ysa - rs - .3, rl = dl / 2, coneH = .87 * (rl - rn), headD = dl / 4;
         u.mesh.cylinder(Frame.of(new double[]{a, 0, zal}, 1, 1), rn, yv1, ysa - rs + .05, 12, Material.SHELL);
@@ -447,7 +429,7 @@ final class FluidizedBedGasifierLayout {
         for (int sx = -1; sx <= 1; sx += 2)
             for (int sz = -1; sz <= 1; sz += 2) {
                 double x = a + sx * lx, z = zal + sz * lx;
-                box(u, x - .06, 0, z - .06, x + .06, legTop, z + .06, Material.STEELWORK);
+                u.post(x, z, 0, legTop, .12, false);
                 u.mesh.bar(new double[]{x, legTop - .1, z}, new double[]{a + sx * .7 * rl, legTop - .1, zal + sz * .7 * rl}, .1, new double[]{0, 1, 0}, Material.STEELWORK);
             }
     }
@@ -484,7 +466,7 @@ final class FluidizedBedGasifierLayout {
         double half = hc / 2, fire = half + .1;
         for (double x : xs)
             for (double z : zs3) {
-                box(u, x - fire - .15, 0, z - fire - .15, x + fire + .15, .4, z + fire + .15, Material.CONCRETE);
+                u.box(new double[]{x - fire - .15, 0, z - fire - .15}, new double[]{x + fire + .15, .4, z + fire + .15}, Mesh.ALL_FACES & ~4, Material.CONCRETE, true);
                 double[] lo = {x - fire, .4, z - fire}, hi = {x + fire, ring - .5, z + fire};
                 u.mesh.box(lo, hi, Mesh.ALL_FACES & ~4, Material.CONCRETE);
                 u.solids.add(Solid.box(lo, hi));
@@ -500,8 +482,8 @@ final class FluidizedBedGasifierLayout {
         for (var lv : levels) {
             double y1 = lv[0], y0 = y1 - .5;
             for (double z : zs3)
-                if (z >= lv[1] - .01 && z <= lv[2] + .01) box(u, a - xm + half, y0, z - .12, a + xp - half, y1, z + .12, Material.STEELWORK);
-            for (double x : xs) box(u, x - .12, y0, lv[1] + half, x + .12, y1, lv[2] - half, Material.STEELWORK);
+                if (z >= lv[1] - .01 && z <= lv[2] + .01) u.box(new double[]{a - xm + half, y0, z - .12}, new double[]{a + xp - half, y1, z + .12}, Material.STEELWORK, true);
+            for (double x : xs) u.box(new double[]{x - .12, y0, lv[1] + half}, new double[]{x + .12, y1, lv[2] - half}, Material.STEELWORK, true);
         }
         // The support ring's beams out to the vessel bay's corners.
         for (double x : xs)
@@ -512,7 +494,7 @@ final class FluidizedBedGasifierLayout {
             }
         // The cyclones' beams' girder on the left.
         double yc0 = roof - 1.25 * dcy - .45;
-        box(u, a + xp - .12, yc0, zm + half, a + xp + .12, yc0 + .35, zr - half, Material.STEELWORK);
+        u.box(new double[]{a + xp - .12, yc0, zm + half}, new double[]{a + xp + .12, yc0 + .35, zr - half}, Material.STEELWORK, true);
         // X-bracing in the vessel bay's sides and back, under the support floor.
         for (double x : xs) u.brace(new double[]{x, zm + fire}, new double[]{x, zr - fire}, .5, ring - .6);
         u.brace(new double[]{a - xm + fire, zr}, new double[]{a + xp - fire, zr}, .5, ring - .6);
@@ -523,55 +505,61 @@ final class FluidizedBedGasifierLayout {
      * and every 8 m or less to its top (between the ladders), round the stack under each lock valve; the feed floor
      * under the screws' drives. The ladders alternate either side of the right (-x), each from the deck the one before
      * reached: the vessel's from the ground, the stack's from the feed floor, the feed floor's walked through from grade.
+     * Rest platforms ({@link #rests}) break every climb longer than {@link Access#MAX_CLIMB}: arcs between the ladders
+     * round the vessel and the stack; under the feed floor (the highest support, 16 m, needs one at most) the kit's flat
+     * face climb ({@link ProcessUnit#climb}): a deck in front of its edge on four posts, the climb from grade walked
+     * through onto its front 1.2 m to the left, the next one up from its back onto the feed floor.
      */
     void access() {
-        // The feed floor: against the vessel's front, under the screws' drives.
-        double back = za - r - .5, depth = back - zFront, xl = a - xw, ladderX = xl + .6;
+        // The feed floor: against the vessel's front, under the screws' drives; its ladder lands at its front's right.
+        double back = za - r - .5, depth = back - zFront, ladderX = a - xw + .6;
         u.platform(new Access.Line(new double[]{a + xw, 0, back}, new double[]{-1, 0, 0}, new double[]{0, 0, -1}, 2 * xw), feedFloor, depth, true, true,
                 a + xw - ladderX - .3, a + xw - ladderX + .3);
-        u.ladder(ladderX, back - depth - .05, new double[]{0, 0, -1}, .05, 0, feedFloor + Access.DECK + Access.LANDING, true);
-        // The vessel's decks and ladders.
+        u.climb(new Access.Line(new double[]{ladderX - .6, 0, zFront}, new double[]{1, 0, 0}, new double[]{0, 0, -1}, 2.4), 0, feedFloor + Access.DECK, 1.8, .6, .15);
+        // The vessel's decks and ladders, the stack's.
         round(a, za, r + .45, vesselLevels(), 0, true);
         round(a, zl, dv / 2, stackLevels(), feedFloor + Access.DECK, false);
     }
 
     /**
-     * Decks round a standing body (axis at (x, z), {@code wall} its deck's inner edge) at {@code levels}, its ladders at
-     * the right ± {@link #LADDER} alternately from {@code base}: the first deck a whole ring open at the arriving ladder
-     * when {@code ring}, else every deck an arc from its arriving ladder round past the right to the next one.
+     * The deck levels of caged climbs from walking level {@code base} (the ground 0, or a deck's) up through
+     * {@code levels} (deck levels, rising): each of them, and before each the rest platforms that split its climb where
+     * it would be longer than {@link Access#MAX_CLIMB} (owner decision C1 2026-10-18), {@link Access#climbs} over its
+     * whole metres: equal climbs of at most 9 m to the nearest metre, the last one's grating over it.
      */
-    void round(double x, double z, double wall, List<Double> levels, double base, boolean ring) {
-        double edge = wall + WIDTH, rung = wall + Access.STANDOFF, out = wall + Access.STANDOFF - .05, across = Access.CAGE_HALF + .2;
-        double clear = DeterministicMath.acos(out / Math.sqrt(out * out + across * across));
+    static List<Double> rests(double base, List<Double> levels) {
+        var out = new ArrayList<Double>();
         double from = base;
-        for (int k = 0; k < levels.size(); k++) {
-            double level = levels.get(k), in = Math.PI + (k % 2 == 0 ? -LADDER : LADDER), next = Math.PI + (k % 2 == 0 ? LADDER : -LADDER);
-            double c = DeterministicMath.cos(in), s = DeterministicMath.sin(in);
-            u.ladder(x + rung * c, z + rung * s, new double[]{c, 0, s}, Access.STANDOFF + .12, from, level + Access.DECK + Access.LANDING, false);
-            if (k == 0 && ring) u.platform(new Access.Arc(x, z, wall, in + clear, in + 2 * Math.PI - clear, edge, Access.Arc.step(edge)), level, WIDTH, false, false);
-            else if (k == levels.size() - 1) {
-                // The top deck: half a ring round the right from its ladder.
-                double t0 = in < Math.PI ? in - Math.PI / 2 : in + clear, t1 = in < Math.PI ? in - clear : in + Math.PI / 2;
-                u.platform(new Access.Arc(x, z, wall, t0, t1, edge, Access.Arc.step(edge)), level, WIDTH, in > Math.PI, in < Math.PI);
-            } else if (in < next) u.platform(new Access.Arc(x, z, wall, in + clear, next + clear, edge, Access.Arc.step(edge)), level, WIDTH, false, true);
-            else u.platform(new Access.Arc(x, z, wall, next - clear, in - clear, edge, Access.Arc.step(edge)), level, WIDTH, true, false);
+        for (double level : levels) {
+            var stops = Access.climbs(0, List.of(), (int) Math.ceil(level - from - 1e-9));
+            for (int i = 0; i + 1 < stops.size(); i++) out.add(from + stops.get(i) - Access.DECK);
+            out.add(level);
             from = level + Access.DECK;
         }
+        return out;
+    }
+
+    /**
+     * Decks round a standing body (axis at (x, z), {@code wall} its deck's inner edge) at {@code levels} and the rest
+     * platforms between them ({@link #rests}), by the kit's ring access ({@link ProcessUnit#ringAccess}): its ladders at
+     * the right ± {@link #LADDER} alternately from {@code base}, every deck an arc from its arriving ladder round past the
+     * right to the next one; the first of {@code levels} a whole ring open at its ladder when {@code ring}; the last half
+     * a ring round the right from its ladder, closed at its far end.
+     */
+    void round(double x, double z, double wall, List<Double> levels, double base, boolean ring) {
+        var all = rests(base, levels);
+        double clear = Access.clearance(wall), span = 2 * LADDER;
+        var rings = new ArrayList<Ring>();
+        for (int k = 0; k < all.size(); k++) {
+            double level = all.get(k), in = Math.PI + (k % 2 == 0 ? -LADDER : LADDER);
+            if (ring && level == levels.getFirst()) rings.add(new Ring(level, in, 0, 2 * Math.PI));
+            else if (k == all.size() - 1) rings.add(in < Math.PI ? new Ring(level, in, in - Math.PI / 2, in) : new Ring(level, in, in, in + Math.PI / 2));
+            else rings.add(in < Math.PI ? new Ring(level, in, in, in + clear + span) : new Ring(level, in, in - clear - span, in));
+        }
+        u.ringAccess(x, z, wall, WIDTH, base, rings);
     }
 
     // ---- Nozzles ------------------------------------------------------------------------------------------------------
-
-    /**
-     * A nozzle along frame axis {@code axis} ({@code sign}) out of a surface at {@code surface} on that axis, through
-     * {@code at}'s other two coordinates (cell centres): its neck starts {@code depth} inside the surface (a round body's
-     * sagitta under the flange), its flange face on the next block face {@link EquipmentShape#STAND_OUT} beyond.
-     */
-    static Nozzle nozzle(Role role, double[] at, int axis, int sign, double surface, double depth, double maxOd, double defaultOd) {
-        double plane = sign > 0 ? Math.ceil(surface + EquipmentShape.STAND_OUT) : Math.floor(surface - EquipmentShape.STAND_OUT), start = surface - sign * (depth + .03);
-        var base = at.clone();
-        base[axis] = start;
-        return new Nozzle(role, base, axis, sign, Math.abs(plane - start), maxOd, defaultOd, 0, depth + .03);
-    }
 
     /** A round surface's sagitta under a flange {@code od} across, radius {@code r}. */
     static double sag(double r, double od) {
@@ -579,10 +567,11 @@ final class FluidizedBedGasifierLayout {
     }
 
     /**
-     * The nozzles: OXIDANT up the right front of the vessel from the distributor's header to the front 1.5 m over grade;
-     * SYNGAS out of the cooler's bottom to the back; FEEDWATER and BLOWDOWN at the drum's ends, STEAM on its top (survey:
-     * 0.04 ID); NITROGEN and VENT up past the bin's top from the lock hopper's front and left; SOLIDS_INLET up out of the
-     * bin's top; SOLIDS_OUTLET down out of the ash lock.
+     * The nozzles, each at a line's end ({@link ProcessUnit#end}) or out of a round side ({@link ProcessUnit#radialSide}):
+     * OXIDANT up the right front of the vessel from the distributor's header to the front 1.5 m over grade; SYNGAS out of
+     * the cooler's bottom to the back; FEEDWATER and BLOWDOWN at the drum's ends, STEAM on its top (survey: 0.04 ID);
+     * NITROGEN and VENT up past the bin's top from the lock hopper's front and left; SOLIDS_INLET up out of the bin's top;
+     * SOLIDS_OUTLET down out of the ash lock.
      */
     void nozzles() {
         // OXIDANT: survey clamp(0.05 ID, 0.05, 0.25).
@@ -591,24 +580,24 @@ final class FluidizedBedGasifierLayout {
         u.line(header() / 2, Material.PIPE, new double[]{xo, yo, za - Math.sqrt(Math.max(0, ro * ro - (a - xo) * (a - xo)))}, new double[]{xo, yo, zo}, new double[]{xo, 1.5, zo});
         u.nozzles.add(ProcessUnit.front(Role.OXIDANT, xo, 1.5, zo - header() / 2, Math.min(.4, 1.6 * ox), ox));
         // SYNGAS: survey clamp(0.17 ID, 0.25, 1.0).
-        double sg = Math.max(.25, Math.min(1, .17 * id)), rc = dsc / 2, ysg = Math.floor(ysc0 + .3 + sg / 2) + .5;
-        u.nozzles.add(nozzle(Role.SYNGAS, new double[]{a, ysg, zs}, 2, 1, zs + rc, sag(rc, Math.min(1, 1.3 * sg)), Math.min(1, 1.3 * sg), sg));
+        double sg = Math.max(.25, Math.min(1, .17 * id)), ysg = Math.floor(ysc0 + .3 + sg / 2) + .5;
+        u.nozzles.add(ProcessUnit.radialSide(Role.SYNGAS, a, ysg, zs, dsc / 2, ProcessUnit.sides(dsc), 1, Math.min(1, 1.3 * sg), sg));
         // The drum's water and steam: 0.04 ID.
         double ws = Math.max(.05, .04 * id), rd = ddr / 2, x0 = a - lr / 2, x1 = a + lr / 2;
-        u.nozzles.add(nozzle(Role.FEEDWATER, new double[]{0, ydr, zs}, 0, 1, x1 + rd / 2, .05, 1.5 * ws, ws));
-        u.nozzles.add(nozzle(Role.BLOWDOWN, new double[]{0, ydr, zs}, 0, -1, x0 - rd / 2, .05, 1.5 * ws, ws));
+        u.nozzles.add(ProcessUnit.end(Role.FEEDWATER, new double[]{x1 + rd / 2 - .03, ydr, zs}, 0, 1, 1.5 * ws, ws));
+        u.nozzles.add(ProcessUnit.end(Role.BLOWDOWN, new double[]{x0 - rd / 2 + .03, ydr, zs}, 0, -1, 1.5 * ws, ws));
         double xst = Math.floor(a + .25 * lr) + .5;
-        u.nozzles.add(nozzle(Role.STEAM, new double[]{xst, 0, zs}, 1, 1, ydr + rd, sag(rd, 1.5 * ws), 1.5 * ws, ws));
+        u.nozzles.add(ProcessUnit.end(Role.STEAM, new double[]{xst, ydr + rd - sag(rd, 1.5 * ws) - .03, zs}, 1, 1, 1.5 * ws, ws));
         // NITROGEN and VENT: from the lock hopper's cylinder foot out past the stack's decks, up past the bin's top beside
         // its inlet (lock gas in, depressurising gas out to the flare: survey 0.05 to 0.1 and 0.1 to 0.15 m).
         double yl = vesselBottom(1) + cone + .3, top = Math.ceil(binTop() + .15) - .2, reach = dv / 2 + 1.3;
         double xv = Math.ceil(a + reach - .5) + .5, zn = Math.floor(zl - reach - .5) + .5;
         u.line(.05, Material.PIPE, new double[]{a + dv / 2 - .05, yl, zl}, new double[]{xv, yl, zl}, new double[]{xv, top, zl});
         u.line(.04, Material.PIPE, new double[]{a, yl, zl - dv / 2 + .05}, new double[]{a, yl, zn}, new double[]{a, top, zn});
-        u.nozzles.add(nozzle(Role.VENT, new double[]{xv, 0, zl}, 1, 1, top, 0, .15, .12));
-        u.nozzles.add(nozzle(Role.NITROGEN, new double[]{a, 0, zn}, 1, 1, top, 0, .1, .08));
-        // The solids.
-        u.nozzles.add(nozzle(Role.SOLIDS_INLET, new double[]{a, 0, zl}, 1, 1, binTop(), .05, .5, .3));
-        u.nozzles.add(nozzle(Role.SOLIDS_OUTLET, new double[]{a, 0, zal}, 1, -1, ashOutlet(), .05, .5, .3));
+        u.nozzles.add(ProcessUnit.end(Role.VENT, new double[]{xv, top - .03, zl}, 1, 1, .15, .12));
+        u.nozzles.add(ProcessUnit.end(Role.NITROGEN, new double[]{a, top - .03, zn}, 1, 1, .1, .08));
+        // The solids: up out of the bin's head and down out of the ash lock's outlet.
+        u.nozzles.add(ProcessUnit.end(Role.SOLIDS_INLET, new double[]{a, binTop() - .03, zl}, 1, 1, .5, .3));
+        u.nozzles.add(ProcessUnit.end(Role.SOLIDS_OUTLET, new double[]{a, ashOutlet() + .03, zal}, 1, -1, .5, .3));
     }
 }

@@ -7,6 +7,7 @@ import com.wormzjl.createcheme.science.equipment.Mesh.Frame;
 import com.wormzjl.createcheme.science.equipment.Mesh.Material;
 import com.wormzjl.createcheme.science.equipment.ProcessUnit.Solid;
 
+import java.util.ArrayList;
 import java.util.List;
 
 import static com.wormzjl.createcheme.science.equipment.Mesh.ALL_FACES;
@@ -22,10 +23,12 @@ import static com.wormzjl.createcheme.science.equipment.Mesh.ALL_FACES;
  * coupling, a parallel-shaft step-up gear (1.2 by 2 by 2 Hm, its low-speed shaft 0.6 Hm aside) and the induction
  * motor (4.5 Hm long and 2 Hm across with its top-hat cooler), Hm = 0.5 m (P / 1 MW)^¼ from the shaft power P (Elliott
  * 32M4, D 0.65 m with four impellers: 33,000 m³/h, 2.5 MW, 7,176 rpm, scaled with D² and the impellers). The train stands
- * on a concrete table-top whose 1 m deck lies {@code support} up (4 m and more, so the suction line's elbow and strainer
- * fit under it), on columns at its edges; grating walkways with rails beside it at its level, reached by a switchback
- * stair at its front right; the API 614 lube-oil console (reservoir, twin pumps and filters, twin coolers) at grade on
- * its left with its overhead rundown tank on a stand on the table beside the motor; a seal-gas panel by the casing.
+ * on a concrete table-top ({@link ProcessUnit#concreteTable}) whose 1 m deck lies {@code support} up (4 m and more, so
+ * the suction line's elbow and strainer fit under it), on columns on pads at its edges; grating walkways with rails beside
+ * it at its level, the right-hand one reached by the stair tower beside it ({@link ProcessUnit#stairTower}, its top
+ * landing at the table's front); the API 614 lube-oil console (reservoir, twin pumps on plain motors and filters, twin
+ * coolers) at grade on its left with its overhead rundown tank on an X-braced stand on the table beside the motor; a
+ * seal-gas panel by the casing.
  * The motor's cooling fan and the coupling's shaft collar turn. Nozzles: suction down through the table; discharge down
  * through it and turned under it out to the right, one block clear of the suction's pipe; cooling water in at the front
  * and out at the back of the console's lower cooler.
@@ -40,9 +43,9 @@ final class CentrifugalCompressorDesign extends UnitDesign {
     static final double TIP_SPEED = 245;
     /** The suction and discharge nozzles over the impeller diameter (survey: 0.9 and 0.45). */
     static final double SUCTION = .9, DISCHARGE = .45;
-    /** The table-top's slab, the walkways' and the landing's width and a stair's width, m. */
-    static final double SLAB = 1, WALK = 1.1, LANDING = 1.2, STAIR = 1;
-    /** The lowest table deck, m (the survey's envelopes: 3.5 m at the smallest), and the highest (two stair flights of at most 3.5 m). */
+    /** The table-top's slab and the walkways' width (the right-hand one wider to the stair tower), m. */
+    static final double SLAB = 1, WALK = 1.1;
+    /** The lowest table deck, m (the survey's envelopes: 3.5 m at the smallest), and the highest (two stair tower flights of at most 3.6 m). */
     static final int MIN_TABLE = 4, MAX_TABLE = 7;
 
     @Override
@@ -276,18 +279,12 @@ final class CentrifugalCompressorDesign extends UnitDesign {
         u.solids.add(Solid.rod(new double[]{xm, ys, 0}, 2, zG1 + .08, zm0 - .02, guard2, 0));
         u.largeMotor(xm, ys, zm0, 2 * hm, lm, h, false);
 
-        // The table-top: its slab round the suction's opening, on columns at its edges.
+        // The table-top's reach, and the half width q of its opening round the suction.
         double terminal = Math.min(1.2, .3 + .4 * hm), pd = .4 + .2 * k, pl = .6 + .4 * k, ph = 1.4 + .6 * k;
         double tod = .6 + .5 * k, tl = 1.5 + 1.5 * k, sw = tod / 2 + .05, xt = ax + .6 * hm + .4 * terminal + .25 + sw;
         double left = Math.max(xj + .2 * d, 1.7 * hm) + .6, right = Math.max(Math.max(xj + .5 + pd + .4, xt - ax + sw + .4), .7 * hm + .5);
         double x0 = ax - left, x1 = ax + right, zt0 = cover - .8, zt1 = zm0 + lm + .7, y0 = h - SLAB;
         double q = Math.max(odS / 2 + .08, PipeSizes.flange(odS) / 2 + .03);
-        u.box(new double[]{x0, y0, zt0}, new double[]{x1, h, zs - q}, Material.CONCRETE, true);
-        u.box(new double[]{x0, y0, zs + q}, new double[]{x1, h, zt1}, Material.CONCRETE, true);
-        u.mesh.box(new double[]{x0, y0, zs - q}, new double[]{ax - q, h, zs + q}, ALL_FACES & ~48, Material.CONCRETE);
-        u.mesh.box(new double[]{ax + q, y0, zs - q}, new double[]{x1, h, zs + q}, ALL_FACES & ~48, Material.CONCRETE);
-        u.solids.add(Solid.box(new double[]{x0, y0, zs - q}, new double[]{ax - q, h, zs + q}));
-        u.solids.add(Solid.box(new double[]{ax + q, y0, zs - q}, new double[]{x1, h, zs + q}));
         // The discharge leaves the slab's underside (a dog-leg hidden in it keeps it clear of the suction's pipe on a short
         // casing), drops to an elbow and runs out to the right, jogged onto a cell centre, to its flange.
         double rd = odD / 2, bend = Math.max(.15, odD), xv = zv - zs >= .55 + rd ? ax : ax - .55 - rd;
@@ -299,40 +296,32 @@ final class CentrifugalCompressorDesign extends UnitDesign {
         u.line(rd, Material.PIPE, new double[]{xv - bend, yd, zv}, new double[]{xr, yd, zv}, new double[]{xr - jog, yd, zd}, new double[]{xn + .01, yd, zd});
         u.solids.add(Solid.rod(new double[]{xv, 0, zv}, 1, yd + bend, y0, rd, 0));
         u.solids.add(ProcessUnit.span(new double[]{xn, yd - rd, Math.min(zv, zd) - rd}, new double[]{xv + rd, yd + bend, Math.max(zv, zd) + rd}));
-        u.box(new double[]{xr - .06, 0, zv - .06}, new double[]{xr + .06, yd - rd, zv + .06}, Material.STEELWORK, true);
+        u.post(xr, zv, 0, yd - rd, .12, false);
         u.nozzles.add(new Nozzle(Role.DISCHARGE, new double[]{xn, yd, zd}, 0, -1, xn - faceD, odD, odD, 0, .03));
-        // Columns at both edges at most 5 m apart, the right-hand ones clear of the discharge's pipe; each carries a
-        // walkway's bracket and knee.
+        // The table-top on columns at both edges at most 5 m apart, the right-hand ones clear of the discharge's pipe.
         double c = .6 + .4 * k;
         int count = Math.max(2, (int) Math.ceil((zt1 - zt0 - c) / 5 - 1e-9) + 1);
-        for (int side = -1; side <= 1; side += 2) {
-            double edge = side < 0 ? x0 : x1, inner = edge - side * c, out = edge + side * WALK;
+        var posts = new ArrayList<double[]>();
+        for (int side = -1; side <= 1; side += 2)
             for (int j = 0; j < count; j++) {
                 double z = zt0 + c / 2 + (zt1 - zt0 - c) * j / (count - 1);
                 if (side < 0) z = clear(z, zd, c / 2 + .6, zt0 + c / 2, zt1 - c / 2);
-                u.box(new double[]{Math.min(edge, inner), 0, z - c / 2}, new double[]{Math.max(edge, inner), y0, z + c / 2}, Material.CONCRETE, true);
-                u.box(new double[]{Math.min(edge, out), h - Access.DECK - .15, z - .06}, new double[]{Math.max(edge, out), h - Access.DECK, z + .06}, Material.STEELWORK, true);
-                u.mesh.bar(new double[]{edge, h - 1.7, z}, new double[]{out - side * .15, h - Access.DECK - .15, z}, .08, new double[]{0, 1, 0}, Material.STEELWORK);
+                posts.add(new double[]{(side < 0 ? x0 : x1) - side * c / 2, z});
             }
-        }
-        // The walkways beside the table at its level (the left one's start open to the stair), rails along its front and back.
-        double deck = h - Access.DECK;
-        u.platform(new Access.Line(new double[]{x0, 0, zt0}, new double[]{0, 0, 1}, new double[]{-1, 0, 0}, zt1 - zt0), deck, WALK, false, true);
+        u.concreteTable(x0, x1, zt0, zt1, h, SLAB, List.of(new double[]{ax - q, zs - q, ax + q, zs + q}), c, posts);
+        // The stair tower beside the right-hand walkway, its lanes on cell centres (that walkway as wide again as reaches
+        // them), its near end at the table's front end, or behind the discharge's pipe and its pipe block where they come
+        // out under the tower, rising to the back; its top landing joins the walkway. The walkways beside the table at its
+        // level, rails along its front and back.
+        double deck = h - Access.DECK, edge = Math.floor(x0 - WALK - .95) + .95;
+        double front = faceD - 1 < edge ? Math.max(zt0, Math.max(zd + .5, Math.max(zv, zd) + rd) + .05) : zt0;
+        var plan = ProcessUnit.towerPlan(deck);
+        var tower = u.stairTower(plan, edge - ProcessUnit.TOWER_FLIGHT / 2, ProcessUnit.TowerPlan.foot(front, 1, plan.from()), 2, 1, -1, true);
+        var walk = new Access.Line(new double[]{x0, 0, zt0}, new double[]{0, 0, 1}, new double[]{-1, 0, 0}, zt1 - zt0);
+        u.platform(walk, deck, x0 - edge, true, true, walk.gap(tower.openings().getFirst()));
         u.platform(new Access.Line(new double[]{x1, 0, zt0}, new double[]{0, 0, 1}, new double[]{1, 0, 0}, zt1 - zt0), deck, WALK, true, true);
         u.railing(new Access.Line(new double[]{x0, 0, zt0 + 1}, new double[]{1, 0, 0}, new double[]{0, 0, -1}, x1 - x0), deck, 1);
         u.railing(new Access.Line(new double[]{x0, 0, zt1 - 1}, new double[]{1, 0, 0}, new double[]{0, 0, 1}, x1 - x0), deck, 1);
-        // The switchback stair at the front right: a flight from the ground up to the landing, the next up to the walkway.
-        double landing = h / 2.0 - Access.DECK, x2 = x0 - (Access.GAP + WALK) / 2, x1s = x2 - STAIR - .05;
-        double len2 = Math.ceil((deck + Access.DECK - (landing + Access.DECK)) / ProcessUnit.STAIR_RISE - 1e-9) * ProcessUnit.STAIR_GOING;
-        double len1 = Math.ceil((landing + Access.DECK) / ProcessUnit.STAIR_RISE - 1e-9) * ProcessUnit.STAIR_GOING;
-        double zE = zt0 - len2;
-        u.stair(x2, zE, 2, 1, STAIR, landing + Access.DECK, deck + Access.DECK);
-        u.stair(x1s, zE + len1, 2, -1, STAIR, 0, landing + Access.DECK);
-        double l0 = x2 + STAIR / 2 + .05, l1 = x1s - STAIR / 2 - .05;
-        u.platform(new Access.Line(new double[]{l0, 0, zE + Access.GAP}, new double[]{-1, 0, 0}, new double[]{0, 0, -1}, l0 - l1), landing, LANDING, true, true);
-        for (double px : new double[]{l0 - .06, l1 + .06})
-            for (double pz : new double[]{zE - .06, zE + Access.GAP - LANDING + .06})
-                u.box(new double[]{px - .05, 0, pz - .05}, new double[]{px + .05, landing, pz + .05}, Material.STEELWORK, true);
 
         // The seal-gas panel by the casing's left; the rundown tank on its braced stand beside the motor, its line down to
         // the drive-end bearing.
@@ -342,15 +331,11 @@ final class CentrifugalCompressorDesign extends UnitDesign {
         double yt = ys + 4 + .5 * k, lo = zm0 + (lm - tl) / 2, hi = lo + tl, legTop = yt - .35 * tod, leg = .1 + .04 * k;
         u.bottle(xt, yt, lo, hi, tod, ProcessUnit.sides(tod));
         for (double lz : new double[]{lo + .15, hi - .15}) {
-            for (int side = -1; side <= 1; side += 2)
-                u.box(new double[]{xt + side * sw - leg / 2, h, lz - leg / 2}, new double[]{xt + side * sw + leg / 2, legTop, lz + leg / 2}, Material.STEELWORK, true);
+            for (int side = -1; side <= 1; side += 2) u.post(xt + side * sw, lz, h, legTop, leg, false);
             u.box(new double[]{xt - sw - leg / 2, legTop - .12, lz - leg / 2}, new double[]{xt + sw + leg / 2, legTop, lz + leg / 2}, Material.STEELWORK, true);
         }
-        for (int side = -1; side <= 1; side += 2) {
-            double lx = xt + side * sw, y1 = legTop - .12;
-            u.mesh.bar(new double[]{lx, h + .2, lo + .15}, new double[]{lx, y1, hi - .15}, .06, new double[]{1, 0, 0}, Material.STEELWORK);
-            u.mesh.bar(new double[]{lx, y1, lo + .15}, new double[]{lx, h + .2, hi - .15}, .06, new double[]{1, 0, 0}, Material.STEELWORK);
-        }
+        for (int side = -1; side <= 1; side += 2)
+            u.brace(new double[]{xt + side * sw, lo + .15}, new double[]{xt + side * sw, hi - .15}, h + .2, legTop - .12, .06, ProcessUnit.BRACE_TIER);
         double ro = .025 + .02 * k, zr = (zc1 + zb1) / 2;
         u.line(ro, Material.PIPE, new double[]{xt, yt - .4 * tod, (lo + hi) / 2}, new double[]{xt, h + .25, (lo + hi) / 2}, new double[]{xt, h + .25, zr},
                 new double[]{ax + housing + .1, h + .25, zr}, new double[]{ax + housing + .1, ys - .2 * d, zr}, new double[]{ax + .6 * housing, ys - .2 * d, zr});
@@ -368,8 +353,8 @@ final class CentrifugalCompressorDesign extends UnitDesign {
         for (double pz : new double[]{zk1 - .3 - 1.2 * rp, zk1 - .4 - 3.6 * rp}) {
             var up = Frame.of(new double[]{(xk0 + xr1) / 2, 0, pz}, 1, 1);
             u.mesh.cylinder(up, 1.2 * rp, tp, tp + .2, 12, Material.MACHINE);
-            u.mesh.cylinder(up, rp, tp + .2, tp + .55 + .25 * k, 12, Material.MOTOR);
-            u.solids.add(Solid.rod(new double[]{(xk0 + xr1) / 2, 0, pz}, 1, tp, tp + .55 + .25 * k, 1.2 * rp, 0));
+            u.solids.add(Solid.rod(new double[]{(xk0 + xr1) / 2, 0, pz}, 1, tp, tp + .2, 1.2 * rp, 0));
+            u.motor(up, rp, tp + .2, tp + .55 + .25 * k, 0, tp, ProcessUnit.MotorDetail.PLAIN);
         }
         for (double fz : new double[]{zk0 + .3 + rp, zk0 + .4 + 3 * rp})
             u.mesh.cylinder(Frame.of(new double[]{(xk0 + xr1) / 2, 0, fz}, 1, 1), .8 * rp, tp, tp + .5 + .3 * k, 12, Material.MACHINE);

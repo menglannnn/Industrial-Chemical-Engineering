@@ -123,7 +123,7 @@ final class SteamTurbineDesign extends UnitDesign {
         double stand = xv < a + wb ? base : xv < a + wp ? plinth : 0, yc = base + t.chestAxis();
         double yv = Math.max(Math.floor(yc) + .5, Math.ceil(stand + rb + .12 - .5) + .5), zv = Math.floor(z0 + t.chest) + .5;
         t.draw(u, a, base, z0, xv, yv, zv);
-        u.box(new double[]{xv - .05, stand, zv - .05}, new double[]{xv + .05, yv - rb, zv + .05}, Material.STEELWORK, true);
+        u.post(xv, zv, stand, yv - rb, .1, false);
         u.box(new double[]{xv - .1, stand, zv - .1}, new double[]{xv + .1, stand + .02, zv + .1}, Material.STEELWORK, false);
 
         // The base frame with its drip rim, on the chamfered plinth.
@@ -137,13 +137,12 @@ final class SteamTurbineDesign extends UnitDesign {
         u.extrude(List.of(new double[]{a - wp, 0}, new double[]{a + wp, 0}, new double[]{a + wp, plinth - chamfer}, new double[]{a + wp - chamfer, plinth},
                 new double[]{a - wp + chamfer, plinth}, new double[]{a - wp, plinth - chamfer}), zf0 - .12, zf1 + .12, Material.CONCRETE);
         u.solids.add(ProcessUnit.Solid.box(new double[]{a - wp, 0, zf0 - .12}, new double[]{a + wp, plinth, zf1 + .12}));
-        // The auxiliary oil pump on the frame beside the front standard: its casing, its motor and fan cowl.
-        double sx = Math.max(.2, .32 * d), xo = a - (sx + wb) / 2, ro = Math.min(.1 + .03 * d, (wb - sx) / 2 - .04), zo = z0 + .5 * t.standard;
+        // The auxiliary oil pump on the frame beside the front standard: its casing and its plain standing motor.
+        double sx = Math.max(.2, .32 * d), xo = a - (sx + wb) / 2, ro = Math.min(.1 + .03 * d, (wb - sx) / 2 - .1), zo = z0 + .5 * t.standard;
         var oil = Frame.of(new double[]{xo, 0, zo}, 1, 1);
         m.cylinder(oil, .8 * ro, base, base + .6 * ro, 12, Material.MACHINE);
-        m.cylinder(oil, ro, base + .6 * ro, base + 2.6 * ro, 12, Material.MOTOR);
-        m.cylinder(oil, .9 * ro, base + 2.6 * ro, base + 3 * ro, 12, Material.MOTOR);
-        u.solids.add(ProcessUnit.Solid.rod(new double[]{xo, 0, zo}, 1, base, base + 3 * ro, ro, 0));
+        u.solids.add(ProcessUnit.Solid.rod(new double[]{xo, 0, zo}, 1, base, base + .6 * ro, .8 * ro, 0));
+        u.motor(oil, ro, base + .6 * ro, base + 3 * ro, 0, base, ProcessUnit.MotorDetail.PLAIN);
 
         // The exhaust: a branch up from the barrel's top, its flange pair, the expansion joint's convolutions, a reducer
         // to a nozzle of 1 m where the branch is larger, the exhaust flange and its nuts.
@@ -157,7 +156,7 @@ final class SteamTurbineDesign extends UnitDesign {
         int folds = Math.max(3, (int) Math.round(joint / .07));
         for (int k = 0; k < folds; k++) {
             double y = y1 + joint * (k + .5) / folds, w = .015 + .005 * d;
-            m.ring(up, rbr + .01, rbr + .03 + .015 * d, y - w, y + w, ne, 3, Material.PIPE);
+            m.hoop(up, rbr + .01, rbr + .03 + .015 * d, y - w, y + w, ne, Material.PIPE);
         }
         m.ring(up, rbr, rr, y2, y2 + tf, ne, 3, Material.FLANGE);
         double y3 = y2 + tf, step = 2 * rbr > oe + 1e-9 ? .2 * d : .05 + .03 * d;

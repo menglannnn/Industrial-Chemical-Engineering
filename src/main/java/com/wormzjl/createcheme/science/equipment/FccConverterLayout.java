@@ -109,8 +109,8 @@ final class FccConverterLayout {
         outer = rri + injectorReach * COS30;
         outerY = injectorAt - injectorReach / 2;
         injectorFloor = outerY - 1.6;
-        feedOd = ColumnStructure.size(.03 * d, .5);
-        steamOd = ColumnStructure.size(Math.max(.1, .02 * d), .5);
+        feedOd = PipeSizes.od(.03 * d, .1, .5);
+        steamOd = PipeSizes.od(.02 * d, .1, .5);
         feedRing = outer + .05;
         feedY = injectorFloor + 1.15;
         steamRing = outer + .45;
@@ -118,10 +118,13 @@ final class FccConverterLayout {
         zone = steamRing + steamOd / 2 + .15;
         injectors = (int) Math.round(4 + 4 * (d - 4) / 13);
         // The frame: room for the reactor's floors and for a slide valve's actuator ({@link #valveReach}) 0.5 m inside its
-        // rail; its -x face clear of the regenerator's ring platforms (1.45 m wide).
+        // rail; its -x face clear of the regenerator's ring platforms (1.45 m wide); its +x face at least as far out, where
+        // the stair tower's side meets it: the tower's lanes on cell centres, half a block off this frame's axes
+        // (ProcessUnit#stairTower; the side 0.45 m from lane A's centre).
         half = Math.max(3.5, Math.max(rr + 1.4, valveReach(dsp) + .5));
         xf = r + 1.6;
-        xe = x + half;
+        double side = 1 - ProcessUnit.TOWER_FLIGHT / 2;
+        xe = x + Math.ceil(half - side - 1e-9) + side;
         riserHole = Math.max(rri + .15, asp + .25);
         // The regenerated-catalyst standpipe from the regenerator's lower shell to the wye.
         rcspTop = support + .3 + asp;

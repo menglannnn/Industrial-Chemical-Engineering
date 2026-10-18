@@ -4,7 +4,6 @@ import com.wormzjl.createcheme.science.equipment.EquipmentShape.Nozzle;
 import com.wormzjl.createcheme.science.equipment.EquipmentShape.Role;
 
 import java.util.ArrayList;
-import java.util.List;
 
 import static com.wormzjl.createcheme.science.equipment.DelayedCokerPlan.*;
 import static com.wormzjl.createcheme.science.equipment.Mesh.*;
@@ -13,8 +12,9 @@ import static com.wormzjl.createcheme.science.equipment.Mesh.*;
  * A delayed coker's concrete table, drums, bottom and top works, lines and nozzles ({@link DelayedCokerPlan};
  * {@code NEW_UNITS_SURVEY_FCC_COKER.md} section 3).
  *
- * <p>The table: a 1.5 m slab on square columns of 0.15 D (1.2 m at least) at the structure's corners and between the
- * drums, front and back, a square opening round each drum's cone, a handrail round its top. Each drum: its skirt from the
+ * <p>The table (the kit's {@link ProcessUnit#concreteTable}): a 1.5 m slab on square columns of 0.15 D (1.2 m at least)
+ * standing on pads, at the structure's corners and between the drums, front and back, a square opening round each drum's
+ * cone; its top's handrail is the structure's ({@link DelayedCokerStructure#tableRail}). Each drum: its skirt from the
  * table's top to just over the cone (the skirt is welded to the lower shell and rests on the table [US8221591]), with an
  * access opening; the aluminium jacket over 100 mm of insulation up to the top tangent and over the 2:1 head; the 30° cone
  * inside the skirt down to the 2 m bottom flange. Under the flange the bottom spool with its side-entry feed stub, the
@@ -25,10 +25,12 @@ import static com.wormzjl.createcheme.science.equipment.Mesh.*;
  * 0.3 to 0.6 m]) rising off the head's shoulder to a tee into the vapour header in front and, through its valve, the
  * blowdown header behind, and the relief valve on the other shoulder into the relief header over the blowdown header.
  * Under the slab each pair's switch valve sends the feed through transfer lines to its drums' feed stubs; the feed
- * header, the quench water header and the steam line join the switch valves.
+ * header, the quench water header and the steam line join the switch valves. Lines are the kit's
+ * ({@link ProcessUnit#pipe}: long-radius mitred elbows).
  *
- * <p>Nozzles (survey's table; each role once): FEED 2- (0.03 D, 0.15 m at least) and WATER 2+ (0.03 D) under the slab's
- * front and back, STEAM 0- (0.02 D, 0.1 m at least) at its -x end; VAPOUR_OUTLET 0- (0.08 D, 1 m at most) at the vapour
+ * <p>Nozzles (survey's table; each role once; each at its line's end, {@link ProcessUnit#end}, its flange face on the
+ * next block face): FEED 2- (0.03 D, 0.15 m at least) and WATER 2+ (0.03 D) under the slab's front and back, STEAM 0-
+ * (0.02 D, 0.1 m at least) at its -x end; VAPOUR_OUTLET 0- (0.08 D, 1 m at most) at the vapour
  * header's end, QUENCH 1+ (0.06 m) on its top near that end, BLOWDOWN 0+ (0.05 D) at the blowdown header's end, RELIEF
  * 2+ (0.04 D) off the relief header's -x end to the back; CUTTING_WATER 0+ (0.15 m) at the foot of the riser outside the
  * +x end; SOLIDS_OUTLET 1- (1 m) at drum 0's chute toe.
@@ -53,56 +55,21 @@ final class DelayedCokerDrums {
 
     // ---- The table ------------------------------------------------------------------------------------------------
 
-    /** The concrete table: its columns, the slab round the drums' openings, the handrail round its top. */
+    /**
+     * The concrete table ({@link ProcessUnit#concreteTable}): its columns on their pads at the structure's corners and
+     * between the drums, front and back, flush with the slab's faces; the slab cut round a square opening under each drum.
+     */
     static void table(ProcessUnit u, DelayedCokerPlan p) {
-        double c = p.concrete, y0 = p.yUnder, y1 = p.yTable, h = TABLE_HOLE;
-        for (double x : p.lines)
-            for (double za : new double[]{p.z0, p.zb - c}) {
-                double xa = Math.max(p.x0, Math.min(x - c / 2, p.x1 - c));
-                double[] lo = {xa, 0, za}, hi = {xa + c, y0, za + c};
-                u.mesh.box(lo, hi, ALL_FACES & ~(4 | 8), Material.CONCRETE);
-                u.solids.add(ProcessUnit.Solid.box(lo, hi));
-                u.volumes.add(ProcessUnit.Solid.box(new double[]{xa + .05, .05, za + .05}, new double[]{xa + c - .05, y0, za + c - .05}));
-            }
-        // The slab in pieces round the openings: a band in front, one behind, pieces between the openings.
-        var pieces = new ArrayList<double[]>();
-        pieces.add(new double[]{p.x0, p.x1, p.z0, p.zc - h});
-        pieces.add(new double[]{p.x0, p.x1, p.zc + h, p.zb});
-        double from = p.x0;
-        for (double x : p.xd) {
-            pieces.add(new double[]{from, x - h, p.zc - h, p.zc + h});
-            from = x + h;
+        double c = p.concrete, h = TABLE_HOLE;
+        var posts = new ArrayList<double[]>();
+        for (double x : p.lines) {
+            double xc = Math.max(p.x0, Math.min(x - c / 2, p.x1 - c)) + c / 2;
+            posts.add(new double[]{xc, p.z0 + c / 2});
+            posts.add(new double[]{xc, p.zb - c / 2});
         }
-        pieces.add(new double[]{from, p.x1, p.zc - h, p.zc + h});
-        for (var q : pieces) {
-            u.mesh.flat(rect(q[0], q[1], y1, q[2], q[3]), new double[]{0, 1, 0}, Material.CONCRETE);
-            u.mesh.flat(rect(q[0], q[1], y0, q[2], q[3]), new double[]{0, -1, 0}, Material.CONCRETE);
-            u.solids.add(ProcessUnit.Solid.box(new double[]{q[0], y0, q[2]}, new double[]{q[1], y1, q[3]}));
-            u.volumes.add(ProcessUnit.Solid.box(new double[]{q[0] + .05, y0 + .05, q[2] + .05}, new double[]{q[1] - .05, y1 - .05, q[3] - .05}));
-        }
-        u.mesh.flat(List.of(new double[]{p.x0, y0, p.z0}, new double[]{p.x1, y0, p.z0}, new double[]{p.x1, y1, p.z0}, new double[]{p.x0, y1, p.z0}), new double[]{0, 0, -1}, Material.CONCRETE);
-        u.mesh.flat(List.of(new double[]{p.x0, y0, p.zb}, new double[]{p.x1, y0, p.zb}, new double[]{p.x1, y1, p.zb}, new double[]{p.x0, y1, p.zb}), new double[]{0, 0, 1}, Material.CONCRETE);
-        for (double x : new double[]{p.x0, p.x1})
-            u.mesh.flat(List.of(new double[]{x, y0, p.z0}, new double[]{x, y0, p.zb}, new double[]{x, y1, p.zb}, new double[]{x, y1, p.z0}), new double[]{x == p.x0 ? -1 : 1, 0, 0},
-                    Material.CONCRETE);
-        // The openings' walls.
-        for (double x : p.xd) {
-            for (int side = -1; side <= 1; side += 2) {
-                double zw = p.zc + side * h, xw = x + side * h;
-                u.mesh.flat(List.of(new double[]{x - h, y0, zw}, new double[]{x + h, y0, zw}, new double[]{x + h, y1, zw}, new double[]{x - h, y1, zw}), new double[]{0, 0, -side},
-                        Material.CONCRETE);
-                u.mesh.flat(List.of(new double[]{xw, y0, p.zc - h}, new double[]{xw, y0, p.zc + h}, new double[]{xw, y1, p.zc + h}, new double[]{xw, y1, p.zc - h}), new double[]{-side, 0, 0},
-                        Material.CONCRETE);
-            }
-        }
-        double[][] corners = {{p.x0, p.z0}, {p.x1, p.z0}, {p.x1, p.zb}, {p.x0, p.zb}};
-        for (int k = 0; k < 4; k++) u.segment(new double[]{corners[k][0], y1, corners[k][1]}, new double[]{corners[(k + 1) % 4][0], y1, corners[(k + 1) % 4][1]});
-        // The handrail round the table's top, open behind where the stair towers land.
-        double level = y1 - Access.DECK, xa = p.x0 + EDGE, length = p.x1 - p.x0 - 2 * EDGE, depth = p.zb - p.z0 - 2 * EDGE, w = 1 - EDGE;
-        u.rails(new Access.Line(new double[]{xa, 0, p.z0 + 1}, new double[]{1, 0, 0}, new double[]{0, 0, -1}, length), level, w, false, false);
-        u.rails(new Access.Line(new double[]{xa, 0, p.zb - 1}, new double[]{1, 0, 0}, new double[]{0, 0, 1}, length), level, w, false, false, p.gaps(p.stops[1]));
-        u.rails(new Access.Line(new double[]{p.x0 + 1, 0, p.z0 + EDGE}, new double[]{0, 0, 1}, new double[]{-1, 0, 0}, depth), level, w, false, false);
-        u.rails(new Access.Line(new double[]{p.x1 - 1, 0, p.z0 + EDGE}, new double[]{0, 0, 1}, new double[]{1, 0, 0}, depth), level, w, false, false);
+        var holes = new ArrayList<double[]>();
+        for (double x : p.xd) holes.add(new double[]{x - h, p.zc - h, x + h, p.zc + h});
+        u.concreteTable(p.x0, p.x1, p.z0, p.zb, p.yTable, SLAB, holes, c, posts);
     }
 
     // ---- A drum ---------------------------------------------------------------------------------------------------
@@ -122,9 +89,9 @@ final class DelayedCokerDrums {
         u.mesh.annulus(up, BOTTOM, BOTTOM + .15, s + FLANGE, nb, 1, Material.FLANGE);
         u.mesh.frustum(up, BOTTOM, rc, s + FLANGE, yc, n, Material.SHELL);
         if (shown < p.cone) u.mesh.annulus(up, rc, p.r, yc, n, -1, Material.SHELL);
-        prism(u, up, p.r, p.yTable, p.ySkirt, n, Material.SUPPORT);
+        u.prism(up, p.r, p.yTable, p.ySkirt, n, Material.SUPPORT);
         u.mesh.annulus(up, p.r, p.jacket, p.ySkirt, n, -1, Material.CLADDING);
-        prism(u, up, p.jacket, p.ySkirt, p.yTangent, n, Material.CLADDING);
+        u.prism(up, p.jacket, p.ySkirt, p.yTangent, n, Material.CLADDING);
         u.mesh.head(up, p.jacket, p.yTangent, p.jacket / 2, n, Material.CLADDING);
         // The skirt's access opening at the front, where it is tall enough: a corner of the skirt's polygon faces -z, its faces
         // recede 0.35 tan 7.5° = 0.046 m at the opening's sides, so the opening stands from 0.02 m in front of the corner to
@@ -165,9 +132,9 @@ final class DelayedCokerDrums {
         // The slide-gate valve: its body round the bore, the bonnet the gate retracts into, the end plate, the cylinders.
         double v1 = s - SPOOL, v0 = v1 - VALVE, length = Math.min(3.5 * 2 * BOTTOM, p.zb - p.zc - .4 + 1.3), back = z - 1.3 + length;
         double plate = back - .9;
-        box(u, new double[]{x - 1.3, v0, z - 1.3}, new double[]{x + 1.3, v1, z + 1.3}, ALL_FACES, Material.MACHINE, true);
-        box(u, new double[]{x - 1.1, v0 + .1, z + 1.3}, new double[]{x + 1.1, v1 - .1, plate}, ALL_FACES & ~16, Material.MACHINE, true);
-        box(u, new double[]{x - 1.2, v0 + .05, plate}, new double[]{x + 1.2, v1 - .05, plate + .1}, ALL_FACES, Material.MACHINE, true);
+        u.box(new double[]{x - 1.3, v0, z - 1.3}, new double[]{x + 1.3, v1, z + 1.3}, Material.MACHINE, true);
+        u.box(new double[]{x - 1.1, v0 + .1, z + 1.3}, new double[]{x + 1.1, v1 - .1, plate}, ALL_FACES & ~16, Material.MACHINE, true);
+        u.box(new double[]{x - 1.2, v0 + .05, plate}, new double[]{x + 1.2, v1 - .05, plate + .1}, Material.MACHINE, true);
         for (int side = -1; side <= 1; side += 2) {
             var cylinder = Frame.of(new double[]{x + side * .55, (v0 + v1) / 2, 0}, 2, 1);
             u.mesh.cylinder(cylinder, .16, plate + .1, back, 12, Material.ACTUATOR);
@@ -181,7 +148,7 @@ final class DelayedCokerDrums {
         double upper = top - .1;
         for (int k = 0; k < 3; k++) {
             double lower = k == 2 ? coneTop : upper - sectionLength;
-            prism(u, up, radii[k], lower, upper, ProcessUnit.sides(2 * radii[k]), Material.MACHINE);
+            u.prism(up, radii[k], lower, upper, ProcessUnit.sides(2 * radii[k]), Material.MACHINE);
             if (k < 2) {
                 // The step to the next section with the collar round its foot.
                 u.mesh.annulus(up, radii[k + 1], radii[k] + .05, lower, ProcessUnit.sides(2 * radii[k]), -1, Material.MACHINE);
@@ -209,28 +176,28 @@ final class DelayedCokerDrums {
         double x = p.xd[i], z = p.zc, deck = p.cutLevel, apex = p.yTangent + p.jacket / 2;
         var up = Frame.of(new double[]{x, 0, z}, 1, 1);
         double rs = p.topFlange / 2 - .1;
-        prism(u, up, rs, apex - .1, deck - .25, ProcessUnit.sides(2 * rs), Material.CLADDING);
+        u.prism(up, rs, apex - .1, deck - .25, ProcessUnit.sides(2 * rs), Material.CLADDING);
         u.mesh.cylinder(up, p.topFlange / 2, deck - .25, deck - .1, ProcessUnit.sides(p.topFlange), Material.FLANGE);
         u.solids.add(ProcessUnit.Solid.rod(new double[]{x, 0, z}, 1, apex - .1, deck - .1, p.topFlange / 2, 0));
         double dl = Math.min(p.base / 2 - .15, 1.3 * p.topFlange), dw = .55 * p.topFlange;
-        box(u, new double[]{x - dl, deck - .1, z - dw}, new double[]{x + dl, deck + .5, z + dw}, ALL_FACES, Material.MACHINE, true);
+        u.box(new double[]{x - dl, deck - .1, z - dw}, new double[]{x + dl, deck + .5, z + dw}, Material.MACHINE, true);
         for (int side = -1; side <= 1; side += 2)
             u.mesh.cylinder(Frame.of(new double[]{0, deck + .59, z + side * .5 * dw}, 0, 1), .09, x - .75 * dl, x + .75 * dl, 12, Material.ACTUATOR);
         u.mesh.annulus(up, 0, .13, deck + .505, 12, 1, Material.OPENING);
         // The overhead line, its flange over the nozzle, the tee into both headers; the blowdown branch's valve.
         double xo = x - p.rho, shoulder = headAt(p, p.rho);
-        pipe(u, p.overheadOd, Material.CLADDING, new double[]{xo, shoulder - .1, z}, new double[]{xo, p.yVapour, z}, new double[]{xo, p.yVapour, p.zVapour});
+        u.pipe(p.overheadOd / 2, Material.CLADDING, true, new double[]{xo, shoulder - .1, z}, new double[]{xo, p.yVapour, z}, new double[]{xo, p.yVapour, p.zVapour});
         u.mesh.cylinder(Frame.of(new double[]{xo, 0, z}, 1, 1), p.overheadOd / 2 + .08, shoulder + .3, shoulder + .4, ProcessUnit.sides(p.overheadOd + .16), Material.FLANGE);
-        pipe(u, p.blowdownOd, Material.PIPE, new double[]{xo, p.yVapour, z}, new double[]{xo, p.yVapour, p.zBlow});
+        u.pipe(p.blowdownOd / 2, Material.PIPE, true, new double[]{xo, p.yVapour, z}, new double[]{xo, p.yVapour, p.zBlow});
         double zv = z + .55 * (p.zBlow - z), body = .8 * p.blowdownOd / 2 + .12;
-        box(u, new double[]{xo - body, p.yVapour - body, zv - .18}, new double[]{xo + body, p.yVapour + body, zv + .18}, ALL_FACES, Material.MACHINE, true);
+        u.box(new double[]{xo - body, p.yVapour - body, zv - .18}, new double[]{xo + body, p.yVapour + body, zv + .18}, Material.MACHINE, true);
         u.mesh.cylinder(Frame.of(new double[]{xo, 0, zv}, 1, 1), .14, p.yVapour + body, p.yVapour + body + .35, 12, Material.ACTUATOR);
         // The relief valve: inlet neck, body, bonnet; its outlet to the relief header.
         double xr = x + p.rho, inlet = Math.max(.08, .3 * p.reliefOd);
         u.mesh.prism(Frame.of(new double[]{xr, 0, z}, 1, 1), inlet, shoulder - .1, p.yRelief - .22, 12, Material.PIPE);
-        box(u, new double[]{xr - .22, p.yRelief - .22, z - .22}, new double[]{xr + .22, p.yRelief + .22, z + .22}, ALL_FACES, Material.ACTUATOR, true);
+        u.box(new double[]{xr - .22, p.yRelief - .22, z - .22}, new double[]{xr + .22, p.yRelief + .22, z + .22}, Material.ACTUATOR, true);
         u.mesh.cylinder(Frame.of(new double[]{xr, 0, z}, 1, 1), .1, p.yRelief + .22, p.yRelief + .62, 12, Material.ACTUATOR);
-        pipe(u, p.reliefOd, Material.PIPE, new double[]{xr, p.yRelief, z + .2}, new double[]{xr, p.yRelief, p.zBlow});
+        u.pipe(p.reliefOd / 2, Material.PIPE, true, new double[]{xr, p.yRelief, z + .2}, new double[]{xr, p.yRelief, p.zBlow});
     }
 
     /** The jacket's head's height at {@code rho} from a drum's axis. */
@@ -250,31 +217,31 @@ final class DelayedCokerDrums {
         double s = p.support, yf = p.yFeed, zc = p.zc;
         for (int k = 0; k < p.pairs; k++) {
             double x = p.xp[k];
-            box(u, new double[]{x - .45, s - 2.15, zc - .5}, new double[]{x + .45, s - 1.05, zc + .5}, ALL_FACES, Material.MACHINE, true);
-            box(u, new double[]{x - .3, s - 2.75, zc - .3}, new double[]{x + .3, s - 2.15, zc + .3}, ALL_FACES, Material.ACTUATOR, true);
+            u.box(new double[]{x - .45, s - 2.15, zc - .5}, new double[]{x + .45, s - 1.05, zc + .5}, Material.MACHINE, true);
+            u.box(new double[]{x - .3, s - 2.75, zc - .3}, new double[]{x + .3, s - 2.15, zc + .3}, Material.ACTUATOR, true);
             for (int side = -1; side <= 1; side += 2) {
                 double xd = p.xd[2 * k + (side < 0 ? 0 : 1)];
-                pipe(u, p.feedOd, Material.PIPE, new double[]{x + side * .45, yf, zc}, new double[]{xd - side * 1.3, yf, zc});
+                u.pipe(p.feedOd / 2, Material.PIPE, true, new double[]{x + side * .45, yf, zc}, new double[]{xd - side * 1.3, yf, zc});
             }
-            pipe(u, p.feedOd, Material.PIPE, new double[]{x, yf, zc - .5}, new double[]{x, yf, p.zFeed});
-            pipe(u, p.waterOd, Material.PIPE, new double[]{x, yf, zc + .5}, new double[]{x, yf, p.zWater});
-            pipe(u, p.steamOd, Material.PIPE, new double[]{x, p.ySteam, p.zSteam}, new double[]{x, p.ySteam, zc - 1}, new double[]{x, yf, zc - 1});
+            u.pipe(p.feedOd / 2, Material.PIPE, true, new double[]{x, yf, zc - .5}, new double[]{x, yf, p.zFeed});
+            u.pipe(p.waterOd / 2, Material.PIPE, true, new double[]{x, yf, zc + .5}, new double[]{x, yf, p.zWater});
+            u.pipe(p.steamOd / 2, Material.PIPE, true, new double[]{x, p.ySteam, p.zSteam}, new double[]{x, p.ySteam, zc - 1}, new double[]{x, yf, zc - 1});
         }
         double xf = feedX(p), lo = Math.min(p.xp[0], xf), hi = Math.max(p.xp[p.pairs - 1], xf);
         if (hi - lo > .05) {
-            pipe(u, p.feedOd, Material.PIPE, new double[]{lo, yf, p.zFeed}, new double[]{hi, yf, p.zFeed});
+            u.pipe(p.feedOd / 2, Material.PIPE, true, new double[]{lo, yf, p.zFeed}, new double[]{hi, yf, p.zFeed});
             cap(u, new double[]{lo, yf, p.zFeed}, 0, -1, p.feedOd);
             cap(u, new double[]{hi, yf, p.zFeed}, 0, 1, p.feedOd);
         }
-        pipe(u, p.feedOd, Material.PIPE, new double[]{xf, yf, p.zFeed}, new double[]{xf, yf, p.z0 + .2});
+        u.pipe(p.feedOd / 2, Material.PIPE, true, new double[]{xf, yf, p.zFeed}, new double[]{xf, yf, p.z0 + .2});
         double xw = waterX(p);
-        pipe(u, p.waterOd, Material.PIPE, new double[]{p.xp[p.pairs - 1], yf, p.zWater}, new double[]{xw, yf, p.zWater}, new double[]{xw, yf, p.zb - .2});
+        u.pipe(p.waterOd / 2, Material.PIPE, true, new double[]{p.xp[p.pairs - 1], yf, p.zWater}, new double[]{xw, yf, p.zWater}, new double[]{xw, yf, p.zb - .2});
         cap(u, new double[]{p.xp[p.pairs - 1], yf, p.zWater}, 0, 1, p.waterOd);
-        pipe(u, p.steamOd, Material.PIPE, new double[]{p.x0 + .2, p.ySteam, p.zSteam}, new double[]{p.xp[p.pairs - 1], p.ySteam, p.zSteam});
+        u.pipe(p.steamOd / 2, Material.PIPE, true, new double[]{p.x0 + .2, p.ySteam, p.zSteam}, new double[]{p.xp[p.pairs - 1], p.ySteam, p.zSteam});
         cap(u, new double[]{p.xp[p.pairs - 1], p.ySteam, p.zSteam}, 0, 1, p.steamOd);
-        u.nozzles.add(end(Role.FEED, new double[]{xf, yf, p.z0 + .2}, 2, -1, 0, p.feedOd, p.feedOd));
-        u.nozzles.add(end(Role.WATER, new double[]{xw, yf, p.zb - .2}, 2, 1, p.zb, p.waterOd, ColumnStructure.size(p.waterOd, p.waterOd)));
-        u.nozzles.add(end(Role.STEAM, new double[]{p.x0 + .2, p.ySteam, p.zSteam}, 0, -1, 0, p.steamOd, ColumnStructure.size(p.steamOd, p.steamOd)));
+        u.nozzles.add(ProcessUnit.end(Role.FEED, new double[]{xf, yf, p.z0 + .2}, 2, -1, p.feedOd, p.feedOd));
+        u.nozzles.add(ProcessUnit.end(Role.WATER, new double[]{xw, yf, p.zb - .2}, 2, 1, p.waterOd, PipeSizes.od(p.waterOd, .1, p.waterOd)));
+        u.nozzles.add(ProcessUnit.end(Role.STEAM, new double[]{p.x0 + .2, p.ySteam, p.zSteam}, 0, -1, p.steamOd, PipeSizes.od(p.steamOd, .1, p.steamOd)));
         u.nozzles.add(new Nozzle(Role.SOLIDS_OUTLET, new double[]{p.xd[0], 1.6, zc}, 1, -1, .6, SOLIDS_OD, SOLIDS_OD, 0, .03));
     }
 
@@ -297,107 +264,26 @@ final class DelayedCokerDrums {
     static void overheads(ProcessUnit u, DelayedCokerPlan p) {
         double yv = p.yVapour, yr = p.yRelief, last = p.xd[p.drums - 1];
         double xa = p.x0 + .3, xq = p.x0 + 1.5, xRel = p.x0 + 1.5;
-        pipe(u, p.vapourOd, Material.CLADDING, new double[]{xa, yv, p.zVapour}, new double[]{last - p.rho + .1, yv, p.zVapour});
+        u.pipe(p.vapourOd / 2, Material.CLADDING, true, new double[]{xa, yv, p.zVapour}, new double[]{last - p.rho + .1, yv, p.zVapour});
         cap(u, new double[]{last - p.rho + .1, yv, p.zVapour}, 0, 1, p.vapourOd);
         double b0 = p.xd[0] - p.rho - .1;
-        pipe(u, p.blowdownOd, Material.PIPE, new double[]{b0, yv, p.zBlow}, new double[]{p.x1 - .2, yv, p.zBlow});
+        u.pipe(p.blowdownOd / 2, Material.PIPE, true, new double[]{b0, yv, p.zBlow}, new double[]{p.x1 - .2, yv, p.zBlow});
         cap(u, new double[]{b0, yv, p.zBlow}, 0, -1, p.blowdownOd);
         double r1 = last + p.rho + .1;
-        pipe(u, p.reliefOd, Material.PIPE, new double[]{r1, yr, p.zBlow}, new double[]{xRel, yr, p.zBlow}, new double[]{xRel, yr, p.zb - .2});
+        u.pipe(p.reliefOd / 2, Material.PIPE, true, new double[]{r1, yr, p.zBlow}, new double[]{xRel, yr, p.zBlow}, new double[]{xRel, yr, p.zb - .2});
         cap(u, new double[]{r1, yr, p.zBlow}, 0, 1, p.reliefOd);
         double xr = p.x1 + .5;
-        pipe(u, CUT_OD, Material.PIPE, new double[]{p.xd[0], yr, p.zCut}, new double[]{xr, yr, p.zCut}, new double[]{xr, 1.5, p.zCut}, new double[]{xr + .25, 1.5, p.zCut});
+        u.pipe(CUT_OD / 2, Material.PIPE, true, new double[]{p.xd[0], yr, p.zCut}, new double[]{xr, yr, p.zCut}, new double[]{xr, 1.5, p.zCut}, new double[]{xr + .25, 1.5, p.zCut});
         cap(u, new double[]{p.xd[0], yr, p.zCut}, 0, -1, CUT_OD);
-        u.nozzles.add(end(Role.VAPOUR_OUTLET, new double[]{xa, yv, p.zVapour}, 0, -1, 0, p.vapourOd, ColumnStructure.size(p.vapourOd, p.vapourOd)));
-        double qBase = yv + p.vapourOd / 2 - .03;
-        u.nozzles.add(end(Role.QUENCH, new double[]{xq, qBase, p.zVapour}, 1, 1, face(qBase, 1), QUENCH_OD, QUENCH_OD));
-        u.nozzles.add(end(Role.BLOWDOWN, new double[]{p.x1 - .2, yv, p.zBlow}, 0, 1, p.x1, p.blowdownOd, ColumnStructure.size(p.blowdownOd, p.blowdownOd)));
-        u.nozzles.add(end(Role.RELIEF, new double[]{xRel, yr, p.zb - .2}, 2, 1, p.zb, p.reliefOd, ColumnStructure.size(p.reliefOd, p.reliefOd)));
-        u.nozzles.add(end(Role.CUTTING_WATER, new double[]{xr + .25, 1.5, p.zCut}, 0, 1, face(xr + .25, 1), CUT_OD, CUT_OD));
-    }
-
-    // ---- Parts ----------------------------------------------------------------------------------------------------
-
-    /**
-     * A line of {@code od} through {@code points} (legs along the frame's axes, square turns): its legs and, at each turn, a
-     * long-radius elbow of one diameter (0.15 m at least, half the shorter leg at most); its legs collide as drawn.
-     */
-    static void pipe(ProcessUnit u, double od, Material material, double[]... points) {
-        line(u, od, PipeSizes.sides(od), material, true, points);
-    }
-
-    /** A {@link #pipe} of {@code n} sides that collides when {@code solid} (a hose inside a derrick, a moving part, does not). */
-    static void line(ProcessUnit u, double od, int n, Material material, boolean solid, double[]... points) {
-        double r = od / 2, bend = Math.max(.15, od);
-        int m = points.length;
-        var cut = new double[m];
-        for (int k = 1; k + 1 < m; k++) cut[k] = Math.min(bend, .5 * Math.min(distance(points[k - 1], points[k]), distance(points[k], points[k + 1])));
-        for (int k = 0; k + 1 < m; k++) {
-            double[] a = points[k], b = points[k + 1];
-            double length = distance(a, b);
-            if (length < 1e-6) continue;
-            var dir = scale(sub(b, a), 1 / length);
-            int axis = Math.abs(dir[0]) > .5 ? 0 : Math.abs(dir[1]) > .5 ? 1 : 2;
-            var ref = new double[3];
-            ref[(axis + 1) % 3] = 1;
-            if (length - cut[k + 1] > cut[k] + 1e-6) prism(u, new Frame(a, dir, ref), r, cut[k], length - cut[k + 1], n, material);
-            var origin = a.clone();
-            origin[axis] = 0;
-            if (solid) u.solids.add(ProcessUnit.Solid.rod(origin, axis, Math.min(a[axis], b[axis]) - (k == 0 ? 0 : r), Math.max(a[axis], b[axis]) + (k + 2 == m ? 0 : r), r, 0));
-        }
-        for (int k = 1; k + 1 < m; k++) {
-            if (cut[k] < 1e-6) continue;
-            var d1 = unit(sub(points[k], points[k - 1]));
-            var d2 = unit(sub(points[k + 1], points[k]));
-            var centre = plus(points[k], plus(scale(d1, -cut[k]), scale(d2, cut[k])));
-            u.mesh.torus(new Frame(centre, unit(cross(d1, d2)), neg(d2)), cut[k], r, 0, Math.PI / 2, od > .2 ? 2 : 1, n, material);
-        }
-    }
-
-    /**
-     * A prism along a frame axis parallel to a box axis ({@link Mesh#prism}), cut once where its texture's tiles along it
-     * meet a whole multiple of the material's period: a prism's tiles start at its own end, so a long body starting off a
-     * cell face is cut once more in every cell; from the cut on they fall on cell faces.
-     */
-    static void prism(ProcessUnit u, Frame f, double r, double z0, double z1, int n, Material material) {
-        double[] axis = f.axis(), o = f.origin();
-        int a = Math.abs(axis[0]) > .5 ? 0 : Math.abs(axis[1]) > .5 ? 1 : 2;
-        double s = axis[a], period = material.period(), lo = Math.min(z0, z1), hi = Math.max(z0, z1), w = o[a] + lo * s;
-        double aligned = s > 0 ? Math.ceil(w / period - 1e-9) * period : Math.floor(w / period + 1e-9) * period, cut = (aligned - o[a]) * s;
-        if (hi - lo > period && cut > lo + 1e-6 && cut < hi - 1e-6) {
-            u.mesh.prism(f, r, lo, cut, n, material);
-            u.mesh.prism(f, r, cut, hi, n, material);
-        } else u.mesh.prism(f, r, lo, hi, n, material);
+        u.nozzles.add(ProcessUnit.end(Role.VAPOUR_OUTLET, new double[]{xa, yv, p.zVapour}, 0, -1, p.vapourOd, PipeSizes.od(p.vapourOd, .1, p.vapourOd)));
+        u.nozzles.add(ProcessUnit.end(Role.QUENCH, new double[]{xq, yv + p.vapourOd / 2 - .03, p.zVapour}, 1, 1, QUENCH_OD, QUENCH_OD));
+        u.nozzles.add(ProcessUnit.end(Role.BLOWDOWN, new double[]{p.x1 - .2, yv, p.zBlow}, 0, 1, p.blowdownOd, PipeSizes.od(p.blowdownOd, .1, p.blowdownOd)));
+        u.nozzles.add(ProcessUnit.end(Role.RELIEF, new double[]{xRel, yr, p.zb - .2}, 2, 1, p.reliefOd, PipeSizes.od(p.reliefOd, .1, p.reliefOd)));
+        u.nozzles.add(ProcessUnit.end(Role.CUTTING_WATER, new double[]{xr + .25, 1.5, p.zCut}, 0, 1, CUT_OD, CUT_OD));
     }
 
     /** A blind end of a line of {@code od} at {@code at}, facing {@code sign} along frame axis {@code axis}. */
     static void cap(ProcessUnit u, double[] at, int axis, int sign, double od) {
         u.mesh.annulus(Frame.of(at, axis, sign), 0, od / 2 + .002, .002, PipeSizes.sides(od), 1, Material.PIPE);
-    }
-
-    /** A nozzle at a line's end, its neck from {@code base} along frame axis {@code axis} ({@code sign}) to its flange face on the plane {@code face}. */
-    static Nozzle end(Role role, double[] base, int axis, int sign, double face, double maxOd, double defaultOd) {
-        return new Nozzle(role, base, axis, sign, Math.abs(face - base[axis]), maxOd, defaultOd, 0, .03);
-    }
-
-    /** The block face {@link EquipmentShape#STAND_OUT} beyond a line's end at {@code at}, towards {@code sign}. */
-    static double face(double at, int sign) {
-        return sign > 0 ? Math.ceil(at + .03 + EquipmentShape.STAND_OUT - 1e-9) : Math.floor(at - .03 - EquipmentShape.STAND_OUT + 1e-9);
-    }
-
-    /** An axis-aligned box drawn with {@code faces}; {@code solid} for one a player collides with. */
-    static void box(ProcessUnit u, double[] lo, double[] hi, int faces, Material material, boolean solid) {
-        u.mesh.box(lo, hi, faces, material);
-        if (solid) u.solids.add(ProcessUnit.Solid.box(lo.clone(), hi.clone()));
-    }
-
-    /** A horizontal rectangle at height {@code y}. */
-    static List<double[]> rect(double xa, double xb, double y, double za, double zb) {
-        return List.of(new double[]{xa, y, za}, new double[]{xb, y, za}, new double[]{xb, y, zb}, new double[]{xa, y, zb});
-    }
-
-    static double distance(double[] a, double[] b) {
-        var d = sub(b, a);
-        return Math.sqrt(dot(d, d));
     }
 }

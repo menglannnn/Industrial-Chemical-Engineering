@@ -164,12 +164,12 @@ final class SteamTurbineTrain {
         if (hp < d) m.frustum(f, hp / 2, r, z1, z2, n, Material.CLADDING);
         m.prism(f, r, z2, ze, n, Material.MACHINE);
         m.annulus(f, 0, r, ze, n, 1, Material.MACHINE);
-        m.ring(f, r, r + .02 + .01 * d, z2, z2 + .04, n, 3, Material.CLADDING);
+        m.hoop(f, r, r + .02 + .01 * d, z2, z2 + .04, n, Material.CLADDING);
         if (d >= 1) {
             int ribs = Math.max(1, (int) Math.round((ze - z2) / (.35 * d)));
             for (int k = 1; k <= ribs; k++) {
                 double z = z2 + (ze - z2) * k / (ribs + 1), w = .02 + .005 * d;
-                m.ring(f, r, r + .025 * d, z - w, z + w, n, 3, Material.MACHINE);
+                m.hoop(f, r, r + .025 * d, z - w, z + w, n, Material.MACHINE);
             }
         }
         m.prism(f, .1 * d + .02, zs, zh, n, Material.MACHINE);
@@ -427,24 +427,9 @@ final class SteamTurbineTrain {
         m.bar(new double[]{xv, yB + .1 * d + .05, zv + .5 * rb}, new double[]{xv, yB + .1 * d + .05, zt - rt}, Math.max(.04, .03 * d), new double[]{0, 1, 0}, Material.MACHINE);
         u.solids.add(ProcessUnit.Solid.box(new double[]{xv - rb, yv - rb, zv - rb}, new double[]{xv + rb, yY + head, zt + rt}));
         u.solids.add(ProcessUnit.Solid.box(new double[]{xv - hw / 2, yH - .02, zv - hw / 2}, new double[]{xv + hw / 2, yH + .02, zv + hw / 2}));
-        // The outlet line to the chest's +x cover.
+        // The outlet line to the chest's +x cover ({@link ProcessUnit#pipe}, which leaves out a jog of no length): its legs
+        // across, along z, up or down and across again.
         double xo = xv - rb - .08, xc = a + .4 * d + .03 + .01 * d, xm = (xo + xc) / 2;
-        pipe(u, od / 2, new double[]{xo, yv, zv}, new double[]{xm, yv, zv}, new double[]{xm, yv, zc}, new double[]{xm, yc, zc}, new double[]{xc, yc, zc});
-    }
-
-    /** A line of radius {@code r} along {@code points} (each leg along a frame axis; legs of no length are skipped), colliding as drawn. */
-    static void pipe(ProcessUnit u, double r, double[]... points) {
-        var kept = new ArrayList<double[]>();
-        for (var p : points)
-            if (kept.isEmpty() || Math.abs(p[0] - kept.getLast()[0]) + Math.abs(p[1] - kept.getLast()[1]) + Math.abs(p[2] - kept.getLast()[2]) > 1e-6) kept.add(p);
-        if (kept.size() < 2) return;
-        u.line(r, Material.PIPE, kept.toArray(double[][]::new));
-        for (int k = 0; k + 1 < kept.size(); k++) {
-            double[] p = kept.get(k), q = kept.get(k + 1);
-            int axis = Math.abs(p[0] - q[0]) > 1e-9 ? 0 : Math.abs(p[1] - q[1]) > 1e-9 ? 1 : 2;
-            double[] origin = p.clone();
-            origin[axis] = 0;
-            u.solids.add(ProcessUnit.Solid.rod(origin, axis, Math.min(p[axis], q[axis]), Math.max(p[axis], q[axis]), r, 0));
-        }
+        u.pipe(od / 2, Material.PIPE, true, new double[]{xo, yv, zv}, new double[]{xm, yv, zv}, new double[]{xm, yv, zc}, new double[]{xm, yc, zc}, new double[]{xc, yc, zc});
     }
 }

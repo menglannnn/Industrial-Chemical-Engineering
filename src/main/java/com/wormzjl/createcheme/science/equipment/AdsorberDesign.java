@@ -24,8 +24,9 @@ import java.util.List;
  * its bottom nozzle drops inside the skirt to the bottom headers 0.5 m over grade; each line then turns both ways
  * through an actuated ball valve (the survey's two per bed and header level) into a header: feed in at the top left and
  * product out at the bottom left, bare; regeneration gas in at the bottom right and out at the top right, lagged. The
- * platform joins the beds at their top tangent: grating round a square opening per bed, filled to the cladding,
- * bracketed off the shells, a caged ladder up its back walked through, portal frames on its edges carrying the top
+ * platform ({@link ProcessUnit#squareDeck}) joins the beds at their top tangent: grating round a square opening per bed,
+ * filled to the cladding, on beams bracketed off the shells, a caged ladder up its back walked through (from a rest
+ * platform where the climb is over 9 m, owner decision C1 2026-10-18), portal frames on its edges carrying the top
  * headers. The nozzles are the header ends only (survey): FEED, VENT (0.04 D, to flare), PRODUCT and NITROGEN (purge)
  * at the front, REGENERATION_OUTLET, DRAIN and REGENERATION_INLET at the back, the top header's back end blind.
  */
@@ -129,12 +130,12 @@ final class AdsorberDesign extends UnitDesign {
 
     /** The feed and product lines (and each bed's nozzles), m: 0.12 D, 0.1 to 0.6 (the survey's 0.10 D usual). */
     static double main(double d) {
-        return StirredReactorDesign.od(.12 * d, .1, .6);
+        return PipeSizes.od(.12 * d, .1, .6);
     }
 
     /** The regeneration gas lines, m: 0.08 D, 0.1 to 0.4 (the survey's 0.06 D usual; about 10 % of the feed, hot). */
     static double regen(double d) {
-        return StirredReactorDesign.od(.08 * d, .1, .4);
+        return PipeSizes.od(.08 * d, .1, .4);
     }
 
     /** An actuated ball valve's length flange to flange, m (ASME B16.10 long pattern, about 1.3 bores and the flanges). */
@@ -180,7 +181,7 @@ final class AdsorberDesign extends UnitDesign {
         }
     }
 
-    private static final double[] UP = {0, 1, 0}, X = {1, 0, 0}, NEG_X = {-1, 0, 0}, Z = {0, 0, 1}, NEG_Z = {0, 0, -1};
+    private static final double[] UP = {0, 1, 0}, X = {1, 0, 0}, Z = {0, 0, 1}, MINUS_Z = {0, 0, -1};
 
     @Override
     void build(ProcessUnit u) {
@@ -229,22 +230,15 @@ final class AdsorberDesign extends UnitDesign {
         int no = ProcessUnit.sides(2 * ro + .1);
         u.mesh.ring(opening, ro, ro + .05, rs - .06, rs + .06, no, 2, Material.SUPPORT);
         u.mesh.annulus(opening, 0, ro, rs + .01, no, 1, Material.OPENING);
-        // The bottom head inside the skirt closes the bed's inside; it encloses as four frustums inside its ellipse.
-        double depth = d / 4 + .02, apex = p.bottom - depth;
-        u.mesh.head(Frame.of(axis, 1, -1), rs, -p.bottom, depth, n, Material.HEAD);
-        double[] f = {0, .08, .25, .55, 1};
-        for (int k = 1; k + 1 < f.length; k++) {
-            double y0 = apex + f[k] * depth, y1 = apex + f[k + 1] * depth;
-            double r0 = .94 * p.r * Math.sqrt(f[k] * (2 - f[k])), r1 = .94 * p.r * Math.sqrt(f[k + 1] * (2 - f[k + 1]));
-            u.volumes.add(ProcessUnit.Solid.cone(axis, 1, y0, y1, r0, r1, 0));
-        }
+        // The bottom head inside the skirt closes the bed's inside; the bed encloses with both of its heads.
+        u.mesh.head(Frame.of(axis, 1, -1), rs, -p.bottom, d / 4 + .02, n, Material.HEAD);
         // The cladding from the skirt's top, closed under, over the shell and the top head; a band every 1.5 m.
         u.mesh.annulus(up, rs, rc, p.bottom, n, -1, Material.CLADDING);
         u.mesh.prism(up, rc, p.bottom, p.top, n, Material.CLADDING);
         u.mesh.head(up, rc, p.top, d / 4 + .1, n, Material.CLADDING);
         for (double y = p.bottom + .75; y < p.top - .3; y += 1.5) u.mesh.prism(up, rc + .01, y, y + .05, n, Material.CLADDING);
         u.solids.add(ProcessUnit.Solid.rod(axis, 1, p.bottom, p.top, rc, d / 4 + .1));
-        u.volumes.add(ProcessUnit.Solid.rod(axis, 1, p.bottom, p.top, .94 * p.r, .9 * d / 4));
+        u.volumes.add(ProcessUnit.Solid.rod(axis, 1, p.bottom, p.top, .94 * p.r, .9 * d / 4, .9 * d / 4));
         u.round(a, z, p.bottom, p.top, rc, 1);
     }
 
@@ -255,7 +249,7 @@ final class AdsorberDesign extends UnitDesign {
     private static void topLines(ProcessUnit u, Plan p, double z) {
         double a = p.a, rm = p.main / 2, rr = rm + LAGGING, apex = p.head(0), y = p.yh;
         nozzle(u, new double[]{a, 0, z}, 1, apex, p.main);
-        pipe(u, new double[]{a, apex + .27, z}, new double[]{a, y, z}, rr, Material.CLADDING);
+        u.pipe(rr, Material.CLADDING, true, new double[]{a, apex + .27, z}, new double[]{a, y, z});
         u.mesh.sphere(new double[]{a, y, z}, 1.03 * rr, ProcessUnit.sides(2 * rr), Material.CLADDING);
         branch(u, a, y, z, 1, p.kt, rr, p.main, rm, Material.PIPE);
         branch(u, a, y, z, -1, p.kt, rr, p.regen, p.regen / 2 + LAGGING, Material.CLADDING);
@@ -269,7 +263,7 @@ final class AdsorberDesign extends UnitDesign {
     private static void bottomLines(ProcessUnit u, Plan p, double z) {
         double a = p.a, rm = p.main / 2, ri = p.regen / 2 + LAGGING, apex = p.bottom - p.d / 4 - .02, y = BOTTOM_ROW;
         nozzle(u, new double[]{a, 0, z}, -1, apex, p.main);
-        pipe(u, new double[]{a, y, z}, new double[]{a, apex - .27, z}, rm, Material.PIPE);
+        u.pipe(rm, Material.PIPE, true, new double[]{a, y, z}, new double[]{a, apex - .27, z});
         u.mesh.sphere(new double[]{a, y, z}, 1.03 * rm, ProcessUnit.sides(2 * rm), Material.PIPE);
         branch(u, a, y, z, 1, p.kb, p.rs + .05, p.main, rm, Material.PIPE);
         branch(u, a, y, z, -1, p.kb, p.rs + .05, p.regen, ri, Material.CLADDING);
@@ -298,20 +292,9 @@ final class AdsorberDesign extends UnitDesign {
      */
     private static void branch(ProcessUnit u, double a, double y, double z, int sx, double k, double clear, double od, double r, Material material) {
         double lv = valveLength(od), mid = (clear + .1 + k - r - .1) / 2;
-        pipe(u, new double[]{a, y, z}, new double[]{a + sx * (mid - lv / 2), y, z}, r, material);
+        u.pipe(r, material, true, new double[]{a, y, z}, new double[]{a + sx * (mid - lv / 2), y, z});
         valve(u, new double[]{a + sx * mid, y, z}, 0, od, lv);
-        pipe(u, new double[]{a + sx * (mid + lv / 2), y, z}, new double[]{a + sx * k, y, z}, r, material);
-    }
-
-    /** A straight pipe of radius {@code r} from p to q along a frame axis (they differ in one coordinate), and its solid. */
-    private static void pipe(ProcessUnit u, double[] p, double[] q, double r, Material material) {
-        int axis = p[0] != q[0] ? 0 : p[1] != q[1] ? 1 : 2;
-        double[] origin = p.clone();
-        origin[axis] = 0;
-        double lo = Math.min(p[axis], q[axis]), hi = Math.max(p[axis], q[axis]);
-        if (hi - lo < 1e-6) return;
-        u.mesh.prism(Frame.of(origin, axis, 1), r, lo, hi, ProcessUnit.sides(2 * r), material);
-        u.solids.add(ProcessUnit.Solid.rod(origin, axis, lo, hi, r, 0));
+        u.pipe(r, material, true, new double[]{a + sx * (mid + lv / 2), y, z}, new double[]{a + sx * k, y, z});
     }
 
     /**
@@ -344,7 +327,7 @@ final class AdsorberDesign extends UnitDesign {
      * under a blind flange: as near the axis as keeps its flange over the concrete ring.
      */
     private static void unloading(ProcessUnit u, Plan p, double z) {
-        double od = StirredReactorDesign.od(.06 * p.d, .1, .3), ru = od / 2, fl = PipeSizes.flange(od) / 2, depth = p.d / 4 + .02, s = Math.sqrt(.5);
+        double od = PipeSizes.od(.06 * p.d, .1, .3), ru = od / 2, fl = PipeSizes.flange(od) / 2, depth = p.d / 4 + .02, s = Math.sqrt(.5);
         for (double k = .6; k < .85; k += .1) {
             double rho = k * p.r, y0 = p.bottom - depth * Math.sqrt(1 - k * k), out = p.rs - rho + .25;
             if (y0 - out - fl * s < PLINTH + .15) continue;
@@ -418,22 +401,17 @@ final class AdsorberDesign extends UnitDesign {
     }
 
     /**
-     * The platform at the top tangent: grating round each bed's square opening (front and back strips closed at their
-     * ends, the back one open where the ladder lands, side strips along the row, strips across between the beds without
-     * rails, the corners filled to the cladding), its frame of beams along its edges and the openings' sides, and the
-     * caged ladder up its back from the ground, walked through.
+     * The platform at the top tangent ({@link ProcessUnit#squareDeck}): grating on its beams round each bed's square
+     * opening, filled to the cladding, railed round its edges but where the ladder lands at the back, the pieces between
+     * the beds without rails; its frame of beams along its edges and the openings' sides, and the caged ladder up its back
+     * ({@link #climb}).
      */
     private static void deck(ProcessUnit u, Plan p) {
-        double a = p.a, h = p.hole, w = p.width, half = p.half, level = p.walk - Access.DECK, z0 = p.z(0), zl = p.z(p.beds - 1);
-        u.platform(new Access.Line(new double[]{a - half, 0, z0 - h}, X, NEG_Z, 2 * half), level, w, true, true);
-        u.platform(new Access.Line(new double[]{a - half, 0, zl + h}, X, Z, 2 * half), level, w, true, true, half - .3, half + .3);
-        double side = zl - z0 + 2 * (h + Access.GAP);
-        u.platform(new Access.Line(new double[]{a + h, 0, z0 - h - Access.GAP}, Z, X, side), level, w, false, false);
-        u.platform(new Access.Line(new double[]{a - h, 0, z0 - h - Access.GAP}, Z, NEG_X, side), level, w, false, false);
-        for (int i = 0; i + 1 < p.beds; i++)
-            u.platform(new Access.Line(new double[]{a - h, 0, p.z(i) + h}, X, Z, 2 * h), level, p.pitch - 2 * h, false, false, 0, 2 * h);
-        for (int i = 0; i < p.beds; i++) StirredReactorDesign.fill(u, a, p.z(i), h, p.rc + .04, level);
-        u.ladder(a, p.zb + .05, Z, .05, 0, p.walk + Access.LANDING, true);
+        double a = p.a, h = p.hole, half = p.half, level = p.walk - Access.DECK;
+        var centres = new double[p.beds];
+        for (int i = 0; i < p.beds; i++) centres[i] = p.z(i);
+        u.squareDeck(a - half, a + half, FRONT, p.zb, level, 2, a, h, centres, p.rc + .04, 32, Access.RAILED, new double[][]{null, null, {a - .3, a + .3}, null}, null);
+        climb(u, p);
         double lo = level - beam(p.d), fb = ProcessUnit.FLANGE_BEAM / 2;
         for (double off : new double[]{h + fb, half - fb})
             for (int s = -1; s <= 1; s += 2) u.box(new double[]{a + s * off - fb, lo, FRONT}, new double[]{a + s * off + fb, level, p.zb}, Material.STEELWORK, true);
@@ -443,6 +421,20 @@ final class AdsorberDesign extends UnitDesign {
             ends.add(p.z(i) + h + fb);
         }
         for (double zz : ends) u.box(new double[]{a - half, lo, zz - fb}, new double[]{a + half, level, zz + fb}, Material.STEELWORK, true);
+    }
+
+    /**
+     * The caged ladder up the platform's back, walked through onto it at the opening in its rail ({@link ProcessUnit#climb}):
+     * where it is longer than {@link Access#MAX_CLIMB} (the platform stands under 15 m: one rest at most), its rest
+     * platform behind the back edge from 0.6 m right of the upper section to 0.6 m left of the lower one, 1 m to the left,
+     * on brackets off a beam between two posts, which rise from the ground to that edge's beam.
+     */
+    private static void climb(ProcessUnit u, Plan p) {
+        double a = p.a, z = p.zb, level = p.walk - Access.DECK, offset = 1, x0 = a - .6, x1 = a + offset + .6, post = ProcessUnit.FLANGE_BEAM;
+        for (double rest : u.climb(new Access.Line(new double[]{x0, 0, z}, X, Z, x1 - x0), 0, p.walk, offset + .6, .6, 0)) {
+            for (double x : new double[]{x0 + post / 2, x1 - post / 2}) u.post(x, z - post / 2, 0, level - beam(p.d), post, false);
+            u.beam(new double[]{x0 + post, rest - beam(p.d), z - post}, new double[]{x1 - post, rest, z});
+        }
     }
 
     /**
@@ -464,8 +456,7 @@ final class AdsorberDesign extends UnitDesign {
                 double xt = a + s * p.kt, xb = a + s * p.kb, rt = s > 0 ? rm : ri;
                 u.box(new double[]{xt - .08, yp, zz - .1}, new double[]{xt + .08, p.yh - rt + .01, zz + .1}, Material.STEELWORK, false);
                 double foot = BOTTOM_ROW - rt;
-                u.box(new double[]{xb - .06, .03, zz - .06}, new double[]{xb + .06, foot - .03, zz + .06}, Material.STEELWORK, true);
-                u.box(new double[]{xb - .15, 0, zz - .15}, new double[]{xb + .15, .03, zz + .15}, Material.STEELWORK, false);
+                u.post(xb, zz, 0, foot - .03, .12, true);
                 u.box(new double[]{xb - .1, foot - .03, zz - .1}, new double[]{xb + .1, foot + .01, zz + .1}, Material.STEELWORK, false);
             }
         }
@@ -481,10 +472,10 @@ final class AdsorberDesign extends UnitDesign {
     private static void headers(ProcessUnit u, Plan p) {
         double d = p.d, rm = p.main / 2, rg = p.regen / 2, e0 = END, e1 = p.back - END, yh = p.yh, yb = BOTTOM_ROW;
         double xa = p.a + p.kt, xb = p.a - p.kt, xc = p.a + p.kb, xd = p.a - p.kb;
-        double usualMain = StirredReactorDesign.od(.1 * d, .05, p.main), usualRegen = StirredReactorDesign.od(.06 * d, .05, p.regen);
-        double vent = StirredReactorDesign.od(.05 * d, .05, .25), usualVent = StirredReactorDesign.od(.04 * d, .05, vent);
+        double usualMain = PipeSizes.od(.1 * d, .05, p.main), usualRegen = PipeSizes.od(.06 * d, .05, p.regen);
+        double vent = PipeSizes.od(.05 * d, .05, .25), usualVent = PipeSizes.od(.04 * d, .05, vent);
         // Feed.
-        pipe(u, new double[]{xa, yh, e0}, new double[]{xa, yh, e1 - .12}, rm, Material.PIPE);
+        u.pipe(rm, Material.PIPE, true, new double[]{xa, yh, e0}, new double[]{xa, yh, e1 - .12});
         cap(u, xa, yh, e0, rm, -1);
         var blind = Frame.of(new double[]{xa, yh, 0}, 2, 1);
         double fl = PipeSizes.flange(p.main) / 2;
@@ -496,51 +487,45 @@ final class AdsorberDesign extends UnitDesign {
         u.nozzles.add(new Nozzle(Role.FEED, new double[]{xa, yh, e0 + .03}, 2, -1, e0 + .03, p.main, usualMain, 0, .03));
         // Regeneration outlet and vent.
         lagged(u, xb, yh, e0 + .35, e1 - .1, rg);
-        reducer(u, xb, yh, e0 + .35, rg, e0 + .1, vent / 2);
-        pipe(u, new double[]{xb, yh, e0}, new double[]{xb, yh, e0 + .1}, vent / 2, Material.PIPE);
+        u.reducer(new double[]{xb, yh, e0 + .35}, MINUS_Z, rg, vent / 2, .25, PipeSizes.sides(Math.max(2 * rg, vent)), Material.PIPE, true);
+        u.pipe(vent / 2, Material.PIPE, true, new double[]{xb, yh, e0}, new double[]{xb, yh, e0 + .1});
         cap(u, xb, yh, e0, vent / 2, -1);
-        pipe(u, new double[]{xb, yh, e1 - .1}, new double[]{xb, yh, e1}, rg, Material.PIPE);
+        u.pipe(rg, Material.PIPE, true, new double[]{xb, yh, e1 - .1}, new double[]{xb, yh, e1});
         cap(u, xb, yh, e1, rg, 1);
         u.nozzles.add(new Nozzle(Role.VENT, new double[]{xb, yh, e0 + .03}, 2, -1, e0 + .03, vent, usualVent, 0, .03));
         u.nozzles.add(new Nozzle(Role.REGENERATION_OUTLET, new double[]{xb, yh, e1 - .03}, 2, 1, END + .03, p.regen, usualRegen, 0, .03));
         // Product and drain.
-        pipe(u, new double[]{xc, yb, e0}, new double[]{xc, yb, e1 - .35}, rm, Material.PIPE);
+        u.pipe(rm, Material.PIPE, true, new double[]{xc, yb, e0}, new double[]{xc, yb, e1 - .35});
         cap(u, xc, yb, e0, rm, -1);
-        reducer(u, xc, yb, e1 - .35, rm, e1 - .1, .05);
-        pipe(u, new double[]{xc, yb, e1 - .1}, new double[]{xc, yb, e1}, .05, Material.PIPE);
+        u.reducer(new double[]{xc, yb, e1 - .35}, Z, rm, .05, .25, PipeSizes.sides(2 * rm), Material.PIPE, true);
+        u.pipe(.05, Material.PIPE, true, new double[]{xc, yb, e1 - .1}, new double[]{xc, yb, e1});
         cap(u, xc, yb, e1, .05, 1);
         u.nozzles.add(new Nozzle(Role.PRODUCT, new double[]{xc, yb, e0 + .03}, 2, -1, e0 + .03, p.main, usualMain, 0, .03));
         u.nozzles.add(new Nozzle(Role.DRAIN, new double[]{xc, yb, e1 - .03}, 2, 1, END + .03, .1, .05, 0, .03));
         // Regeneration inlet and nitrogen.
         lagged(u, xd, yb, e0 + .35, e1 - .1, rg);
-        reducer(u, xd, yb, e0 + .35, rg, e0 + .1, .05);
-        pipe(u, new double[]{xd, yb, e0}, new double[]{xd, yb, e0 + .1}, .05, Material.PIPE);
+        u.reducer(new double[]{xd, yb, e0 + .35}, MINUS_Z, rg, .05, .25, PipeSizes.sides(2 * rg), Material.PIPE, true);
+        u.pipe(.05, Material.PIPE, true, new double[]{xd, yb, e0}, new double[]{xd, yb, e0 + .1});
         cap(u, xd, yb, e0, .05, -1);
-        pipe(u, new double[]{xd, yb, e1 - .1}, new double[]{xd, yb, e1}, rg, Material.PIPE);
+        u.pipe(rg, Material.PIPE, true, new double[]{xd, yb, e1 - .1}, new double[]{xd, yb, e1});
         cap(u, xd, yb, e1, rg, 1);
         u.nozzles.add(new Nozzle(Role.NITROGEN, new double[]{xd, yb, e0 + .03}, 2, -1, e0 + .03, .1, .05, 0, .03));
         u.nozzles.add(new Nozzle(Role.REGENERATION_INLET, new double[]{xd, yb, e1 - .03}, 2, 1, END + .03, p.regen, usualRegen, 0, .03));
     }
 
-    /** A header's end face at z, facing {@code sign} along z. */
+    /** A header's end face at z, facing {@code sign} along z, with the pipe's facets ({@link PipeSizes#sides}, as the kit's {@link ProcessUnit#pipe}). */
     private static void cap(ProcessUnit u, double x, double y, double z, double r, int sign) {
-        u.mesh.annulus(Frame.of(new double[]{x, y, 0}, 2, 1), 0, r, z, ProcessUnit.sides(2 * r), sign, Material.PIPE);
+        u.mesh.annulus(Frame.of(new double[]{x, y, 0}, 2, 1), 0, r, z, PipeSizes.sides(2 * r), sign, Material.PIPE);
     }
 
-    /** A lagged header along z from z0 to z1 (its pipe of radius r under the lagging), its ends closed. */
+    /** A lagged header along z from z0 to z1 (its pipe of radius r under the lagging), its ends closed; with a pipe's facets. */
     private static void lagged(ProcessUnit u, double x, double y, double z0, double z1, double r) {
         double ri = r + LAGGING;
         var f = Frame.of(new double[]{x, y, 0}, 2, 1);
-        int n = ProcessUnit.sides(2 * ri);
+        int n = PipeSizes.sides(2 * ri);
         u.mesh.prism(f, ri, z0, z1, n, Material.CLADDING);
         u.mesh.annulus(f, r, ri, z0, n, -1, Material.CLADDING);
         u.mesh.annulus(f, r, ri, z1, n, 1, Material.CLADDING);
         u.solids.add(ProcessUnit.Solid.rod(new double[]{x, y, 0}, 2, z0, z1, ri, 0));
-    }
-
-    /** A concentric reducer along z from radius r0 at z0 to r1 at z1. */
-    private static void reducer(ProcessUnit u, double x, double y, double z0, double r0, double z1, double r1) {
-        u.mesh.frustum(Frame.of(new double[]{x, y, 0}, 2, 1), r0, r1, z0, z1, ProcessUnit.sides(2 * Math.max(r0, r1)), Material.PIPE);
-        u.solids.add(ProcessUnit.Solid.rod(new double[]{x, y, 0}, 2, Math.min(z0, z1), Math.max(z0, z1), Math.max(r0, r1), 0));
     }
 }

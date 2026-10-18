@@ -30,7 +30,7 @@ class ColumnStructureTest {
             var platforms = plan.platforms();
             int previous = 0;
             for (var p : platforms) {
-                assertTrue(p.level() >= 1 && p.level() - previous <= MAX_CLIMB, shape + " climb to " + p.level());
+                assertTrue(p.level() >= 1 && p.level() - previous <= Access.MAX_CLIMB, shape + " climb to " + p.level());
                 if (previous > 0) assertTrue(p.level() - previous >= MIN_PITCH, shape + " platforms at " + previous + " and " + p.level());
                 previous = p.level();
                 if (p.manway()) {

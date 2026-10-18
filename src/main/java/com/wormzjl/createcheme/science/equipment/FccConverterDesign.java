@@ -98,7 +98,7 @@ final class FccConverterDesign extends UnitDesign {
         double d = shape.diameter(), feed = feed(d);
         return List.of(new Line("fcc_converter.regenerator", size(d), number(14 + 1.3 * d)),
                 new Line("fcc_converter.reactor", number(.6 * d), number(.4 * d)),
-                new Line("fcc_converter.riser", size(ColumnStructure.size(.15 * d + .1, 3)), (int) shape.tangentLength()),
+                new Line("fcc_converter.riser", size(PipeSizes.od(.15 * d + .1, .1, 3)), (int) shape.tangentLength()),
                 new Line("fcc_converter.feed", whole(feed), whole(feed * 24 / .159 / 1000)));
     }
 

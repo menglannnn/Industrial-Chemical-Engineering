@@ -5,10 +5,19 @@ import com.wormzjl.createcheme.science.equipment.EquipmentShape.Kind;
 import com.wormzjl.createcheme.science.equipment.EquipmentShape.Role;
 import org.junit.jupiter.api.Test;
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.EnumSet;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.function.Consumer;
+import java.util.regex.Pattern;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -458,6 +467,39 @@ class ProcessUnitTest {
         assertTrue(ProcessUnit.of(EquipmentShape.unit(Kind.CABIN_HEATER, 6, 12, Heading.WEST, 3)).decks().size() >= 6);
     }
 
+    /**
+     * No unit design reaches into another design's files (kit consolidation 2026-10-18, {@code KIT_CONSOLIDATION_PLAN.md}):
+     * what two designs share is the kit's. A design's files are its {@code <Name>Design} and the helpers named after it;
+     * the two turbine sets share their train, the two fluidized beds and the two hydroprocessing reactors their parts, by
+     * design. Comments are left out of the scan.
+     */
+    @Test
+    void designsShareOnlyTheKit() throws IOException {
+        var dir = Path.of("src/main/java/com/wormzjl/createcheme/science/equipment");
+        var names = new ArrayList<String>();
+        try (var files = Files.list(dir)) {
+            for (var file : files.toList()) names.add(file.getFileName().toString().replace(".java", ""));
+        }
+        var owners = new HashMap<String, Set<Kind>>();
+        for (var kind : Kind.values()) {
+            if (!kind.unit()) continue;
+            String prefix = UnitDesign.of(kind).getClass().getSimpleName().replace("Design", "");
+            for (var name : names) if (name.startsWith(prefix)) owners.computeIfAbsent(name, n -> EnumSet.noneOf(Kind.class)).add(kind);
+        }
+        owners.get("SteamTurbineTrain").add(Kind.CONDENSING_TURBINE);
+        owners.put("FluidizedBedParts", EnumSet.of(Kind.FLUIDIZED_BED_BOILER, Kind.FLUIDIZED_BED_GASIFIER));
+        owners.put("HydroprocessingParts", EnumSet.of(Kind.TRICKLE_BED_REACTOR, Kind.EBULLATED_BED_REACTOR));
+        var crossings = new ArrayList<String>();
+        for (var file : owners.entrySet()) {
+            // The code only: a comment naming another design (a cross-reference in prose) uses none of it.
+            String source = Files.readString(dir.resolve(file.getKey() + ".java")).replaceAll("(?s)/\\*.*?\\*/", "").replaceAll("//[^\n]*", "");
+            for (var other : owners.entrySet())
+                if (Collections.disjoint(file.getValue(), other.getValue()) && Pattern.compile("\\b" + other.getKey() + "\\b").matcher(source).find())
+                    crossings.add(file.getKey() + " -> " + other.getKey());
+        }
+        assertEquals(List.of(), crossings);
+    }
+
     /** Every size of every kind (2026-10-18, NEW_UNITS_PLAN.md): its decks are walked on and its ladders climbed. */
     @Test
     void everyUnitsDecksAreWalkedAndLaddersClimbed() {
@@ -476,6 +518,9 @@ class ProcessUnitTest {
         }
         for (var l : unit.ladders()) {
             assertTrue(starts.contains(l.base()), shape + " a climb from " + l.base() + " starts on a deck or the ground");
+            // Owner decision C1 2026-10-18: no climb longer than Access.MAX_CLIMB from its foot to the deck it lands on
+            // (the columns' rule; a deck's grating may add its own thickness: 9.125 m, under the old rule's 30 ft).
+            assertTrue(l.top() - Access.LANDING - l.base() <= Access.MAX_CLIMB + Access.DECK + 1e-9, shape + " climbs from " + l.base() + " to " + (l.top() - Access.LANDING));
             double y = (l.base() + l.rungTop()) / 2;
             assertTrue(climbable(shape, new double[]{l.x() + .3 * l.outX(), y, l.z() + .3 * l.outZ()}), shape + " climbable in front of the rungs at " + y);
             assertFalse(climbable(shape, new double[]{l.x() + 1.5 * l.outX(), y, l.z() + 1.5 * l.outZ()}), shape + " not climbable outside the cage");
@@ -558,6 +603,266 @@ class ProcessUnitTest {
                 assertTrue(shell.contains(cell), shape + " a climber at " + y + " over the foot " + l.base() + " stands in shell cell " + cell);
                 assertTrue(ShapeRasterizer.climbable(shape, b[0], b[1], b[2]), shape + " climbs at " + y);
             }
+    }
+
+    // ---- The kit's pieces (2026-10-18, KIT_CONSOLIDATION_PLAN.md) ---------------------------------------------------
+
+    /** A unit drawn by {@code design} alone (the shape only names it): the kit's pieces under test, in the unit's frame. */
+    private static ProcessUnit kit(Consumer<ProcessUnit> design) {
+        return ProcessUnit.of(EquipmentShape.unit(Kind.PUMP, .25, 1, Heading.NORTH, 0), design);
+    }
+
+    /**
+     * A kit unit's decks are walked with room over them and their closed ends stop a player; its ladders and flights start
+     * on a deck or the ground and its flights reach one; each tread is stepped on between its fences with room over it
+     * and, between them, room for a player (0.6 m) at the game's 1/8-block collision; so is each landing piece under 1.2 m
+     * across between its ends.
+     */
+    private static void walkedInFrame(ProcessUnit unit) {
+        var starts = new HashSet<Double>(List.of(0.0));
+        for (var deck : unit.decks()) {
+            var run = deck.run();
+            double mid = run.length() / 2, off = (Access.GAP + deck.width() - Access.RAIL_BAND) / 2, y = deck.level() + Access.DECK;
+            assertTrue(unit.inside(run.at(mid, off, deck.level() + Access.DECK / 2)), "deck at " + deck.level());
+            assertFalse(unit.inside(run.at(mid, off, y + .3)), "room over the deck at " + deck.level());
+            starts.add(y);
+            for (int e = 0; e < 2; e++)
+                if (e == 0 ? deck.closedStart() : deck.closedEnd())
+                    assertTrue(unit.inside(run.at(e == 0 ? .06 : run.length() - .06, off, y + .8)), "the deck at " + deck.level() + " stops a player at its end " + e);
+            if (run.length() < 1.2) assertTrue(clear(unit, run.at(0, off, y + .6), run.at(run.length(), off, y + .6)) >= .6, "room across the deck at " + deck.level());
+        }
+        for (var l : unit.ladders()) assertTrue(starts.contains(l.base()), "a climb from " + l.base() + " starts on a deck or the ground");
+        for (var st : unit.stairs()) {
+            assertTrue(starts.contains(st.base()) && starts.contains(st.top()), "a stair from " + st.base() + " to " + st.top() + " joins decks or the ground");
+            for (int k = 1; k <= st.steps(); k++) {
+                double s = (k - .5) * ProcessUnit.STAIR_GOING, y = st.base() + k * st.rise();
+                assertTrue(unit.inside(st.at(s, 0, y - .06)), "stair tread " + k + " at " + y);
+                assertFalse(unit.inside(st.at(s, 0, y + .3)), "room over stair tread " + k + " at " + y);
+                for (int side = -1; side <= 1; side += 2) assertTrue(unit.inside(st.at(s, side * (st.width() / 2 - .1), y + .8)), "stair fence " + side + " at tread " + k);
+                assertTrue(clear(unit, st.at(s, -st.width() / 2, y + .6), st.at(s, st.width() / 2, y + .6)) >= .6, "room for a player on tread " + k + " at " + y);
+            }
+        }
+    }
+
+    /** The longest stretch free of solid 1/8-block voxels (sampled at their centres) on the line from p to q along a horizontal frame axis, m. */
+    private static double clear(ProcessUnit unit, double[] p, double[] q) {
+        int axis = Math.abs(q[0] - p[0]) > Math.abs(q[2] - p[2]) ? 0 : 2;
+        double lo = Math.min(p[axis], q[axis]) - .125, hi = Math.max(p[axis], q[axis]) + .125, best = 0, run = 0;
+        var c = p.clone();
+        for (int a = 0; a < 3; a++) if (a != axis) c[a] = (Math.floor(c[a] * 8) + .5) / 8;
+        for (int i = (int) Math.floor(lo * 8); (i + .5) / 8 <= hi; i++) {
+            c[axis] = (i + .5) / 8;
+            run = unit.inside(c) ? 0 : run + .125;
+            best = Math.max(best, run);
+        }
+        return best;
+    }
+
+    @Test
+    void climbsRestAtMostNineMetresApart() {
+        // Owner decision C1 2026-10-18: a caged ladder climbs at most Access.MAX_CLIMB between rest platforms.
+        assertEquals(List.of(5, 13, 20, 28), Access.climbs(0, List.of(5, 20), 28));
+        assertEquals(List.of(8, 15, 23, 30), Access.climbs(0, List.of(), 30));
+        assertEquals(List.of(10), Access.climbs(4, List.of(2, 4, 40), 10));
+        for (int top = 1; top <= 40; top += 3) {
+            var levels = Access.climbs(0, List.of(top / 3, top / 2), top);
+            assertEquals(top, levels.getLast());
+            int previous = 0;
+            for (int level : levels) {
+                assertTrue(level > previous && level - previous <= Access.MAX_CLIMB, top + ": " + levels);
+                previous = level;
+            }
+        }
+        // The cage clearance, the least deck and the longest climb are the columns'.
+        var column = EquipmentShape.column(3, ColumnTrays.simple(12, 6), Heading.SOUTH, 2);
+        assertEquals(ColumnStructure.clearance(column), Access.clearance(column.outerRadius()));
+        assertEquals(ColumnStructure.MIN_DECK, Access.MIN_DECK);
+        assertEquals(ColumnStructure.MAX_CLIMB, Access.MAX_CLIMB);
+        assertEquals(.35, PipeSizes.od(.33, .1, .6), 1e-12);
+        assertEquals(.1, PipeSizes.od(.02, .1, .6), 1e-12);
+        assertEquals(.6, PipeSizes.od(.9, .1, .6), 1e-12);
+    }
+
+    @Test
+    void aTallHeaterRestsItsClimbs() {
+        // A vertical heater on a 14 m support: a rest platform under its floor (owner decision C1 2026-10-18).
+        var shape = EquipmentShape.unit(Kind.VERTICAL_HEATER, 4, 9, Heading.NORTH, 14);
+        walkedAndClimbed(shape);
+        var unit = ProcessUnit.of(shape);
+        for (var l : unit.ladders()) assertTrue(l.top() - Access.LANDING - l.base() <= Access.MAX_CLIMB + 1e-9, shape + " climbs from " + l.base() + " to " + l.top());
+        assertTrue(unit.decks().stream().anyMatch(d -> d.level() < shape.support()), shape + " rests under its floor");
+    }
+
+    @Test
+    void solidsCloseWithAHeadAtEitherEnd() {
+        var rod = ProcessUnit.Solid.rod(new double[]{0, 0, 0}, 1, 2, 5, 1, .5, .25);
+        assertEquals(1.5, rod.min()[1], 1e-12);
+        assertEquals(5.25, rod.max()[1], 1e-12);
+        assertTrue(rod.contains(new double[]{0, 1.6, 0}));
+        assertTrue(rod.contains(new double[]{.5, 1.8, 0}));
+        assertFalse(rod.contains(new double[]{.9, 1.6, 0}));
+        assertTrue(rod.contains(new double[]{0, 5.2, 0}));
+        assertTrue(rod.contains(new double[]{.99, 3, 0}));
+        var flat = ProcessUnit.Solid.rod(new double[]{0, 0, 0}, 1, 2, 5, 1, 0);
+        assertFalse(flat.contains(new double[]{0, 1.99, 0}));
+        assertTrue(flat.contains(new double[]{0, 2, 0}));
+    }
+
+    @Test
+    void meshPiecesDrawTheirFacets() {
+        // A hoop: its rim and both faces, no bore; a mitred bend: a prism per piece, a half piece along each end's
+        // tangent (its end square to the pipe there, so a straight run meets it flush), none where the runs carry on to
+        // the mitres; a 2:1 head in the bands asked.
+        var hoop = new Mesh();
+        hoop.hoop(Mesh.Frame.of(new double[]{0, 0, 0}, 1, 1), 1, 1.05, 0, .12, 12, Mesh.Material.HEATER);
+        assertEquals(36, hoop.facets().size());
+        var f = new Mesh.Frame(new double[]{0, 0, 0}, new double[]{0, 1, 0}, new double[]{1, 0, 0});
+        var bend = new Mesh();
+        bend.bend(f, 1, .1, 0, Math.PI / 2, 3, 8, true, Mesh.Material.PIPE);
+        assertEquals(32, bend.facets().size());
+        var b = bend.bounds();
+        assertTrue(Math.abs(b[0]) < 1e-9 && b[3] < 1.15 && b[2] > -1.15 && Math.abs(b[5]) < 1e-9, java.util.Arrays.toString(b));
+        var inner = new Mesh();
+        inner.bend(f, 1, .1, 0, Math.PI / 2, 3, 8, false, Mesh.Material.PIPE);
+        assertEquals(16, inner.facets().size());
+        var head = new Mesh();
+        head.head(Mesh.Frame.of(new double[]{0, 0, 0}, 1, 1), 1, 0, .5, 16, 4, Mesh.Material.HEAD);
+        assertEquals(64, head.facets().size());
+        assertEquals(16, ProcessUnit.stackTop(10, 8), 1e-12);
+        assertEquals(24, ProcessUnit.stackTop(10, 12), 1e-12);
+        assertEquals(16, ProcessUnit.stackTop(10, 3), 1e-12);
+    }
+
+    @Test
+    void toeBoardsRunOnlyUnderTheRail() {
+        // Owner decision 2026-10-18: no toe board across a rail's gap (a ladder's or a stair's opening), the bare grating
+        // edge there; the rail's pieces carry it.
+        var run = new Access.Line(new double[]{0, 0, 0}, new double[]{1, 0, 0}, new double[]{0, 0, -1}, 4);
+        var m = new Mesh();
+        Access.deck(m, run, 2, 1.2, Access.ALL_PARTS, 1.5, 2.5);
+        boolean bare = false, toeLeft = false, toeRight = false;
+        for (var f : m.facets()) {
+            if (f.max()[0] - f.min()[0] < 1e-6) continue;
+            boolean overGap = f.min()[0] > 1.5 - 1e-9 && f.max()[0] < 2.5 + 1e-9;
+            if (f.material() == Mesh.Material.HANDRAIL) {
+                assertFalse(overGap, "a toe board over the gap");
+                toeLeft |= f.max()[0] <= 1.5 + 1e-9;
+                toeRight |= f.min()[0] >= 2.5 - 1e-9;
+            }
+            bare |= overGap && f.material() == Mesh.Material.GRATING && Math.abs(f.min()[2] + 1.2) < 1e-9 && Math.abs(f.max()[2] + 1.2) < 1e-9;
+        }
+        assertTrue(bare && toeLeft && toeRight);
+    }
+
+    @Test
+    void stairTowersClimbToEveryStop() {
+        // Owner decision 2026-10-18: flights 0.9 m wide on lanes 1 m apart on cell centres, of at most 3.6 m between
+        // landings 1.2 m deep, each stop's landing open towards the structure.
+        // Its plan, worked out before it is drawn, places it: its ends and each stop's opening as stations from lane A's foot.
+        double[] stops = {4, 11, 14};
+        var plan = ProcessUnit.towerPlan(stops);
+        var tower = new ProcessUnit.Tower[1];
+        var unit = kit(u -> tower[0] = u.stairTower(plan, 10.3, 5.7, 0, 1, 1, true));
+        walkedInFrame(unit);
+        assertEquals(5, unit.stairs().size());
+        assertEquals(stops.length, tower[0].openings().size());
+        assertEquals(5.05, tower[0].edge(), 1e-12);
+        assertEquals(10.3 + plan.from(), tower[0].from(), 1e-12);
+        assertEquals(10.3 + plan.to(), tower[0].to(), 1e-12);
+        for (var st : unit.stairs()) {
+            assertTrue(st.top() - st.base() <= ProcessUnit.TOWER_RISE + 1e-9);
+            assertEquals(.5, st.z() - Math.floor(st.z()), 1e-12, "a lane on a cell centre");
+        }
+        for (int j = 0; j < stops.length; j++) {
+            var o = tower[0].openings().get(j);
+            assertEquals(10.3 + plan.opening(j)[0], o[0], 1e-12);
+            assertEquals(10.3 + plan.opening(j)[1], o[1], 1e-12);
+            assertTrue(o[0] >= tower[0].from() && o[1] <= tower[0].to() && o[1] - o[0] >= ProcessUnit.TOWER_LANDING - 1e-9);
+            // The structure's side of the landing is open there and fenced elsewhere along the tower's lane A.
+            double y = stops[j] + Access.DECK + .8, mid = (o[0] + o[1]) / 2;
+            assertFalse(unit.inside(new double[]{mid, y, 5.05 + .06}), "the landing at " + stops[j] + " opens onto the structure");
+            // A deck run along the structure's edge opens its rail over the landing.
+            var run = new Access.Line(new double[]{20, 0, 5.05}, new double[]{-1, 0, 0}, new double[]{0, 0, -1}, 20);
+            assertArrayEquals(new double[]{20 - o[1], 20 - o[0]}, run.gap(o), 1e-12);
+        }
+        // The corner posts stand flush with the tower's side, clear of the structure's deck beside it.
+        assertTrue(unit.inside(new double[]{tower[0].from() + .1, 1, 5.06}));
+        assertFalse(unit.inside(new double[]{tower[0].from() + .1, 1, 5.04}));
+        // A single flight lands on lane A alone; a tower with no stop over 3.6 m has no turn.
+        var single = kit(u -> u.stairTower(ProcessUnit.towerPlan(3), 2, 9, 2, -1, -1, false));
+        walkedInFrame(single);
+        assertEquals(1, single.stairs().size());
+    }
+
+    @Test
+    void concreteTablesAreCutRoundTheirHoles() {
+        var unit = kit(u -> u.concreteTable(0, 8, 0, 6, 4, .8, List.of(new double[]{2, 2, 4, 4}), .6, List.of(new double[]{.5, .5}, new double[]{7.5, 5.5})));
+        assertTrue(unit.inside(new double[]{1, 3.6, 1}));
+        assertTrue(unit.filled(new double[]{1, 3.6, 1}));
+        assertFalse(unit.inside(new double[]{3, 3.6, 3}), "the hole");
+        assertTrue(unit.inside(new double[]{.5, 2, .5}), "a column");
+        assertTrue(unit.inside(new double[]{.85, .1, .5}), "its pad");
+        assertFalse(unit.inside(new double[]{.85, 2, .5}));
+        // Drawn faces: each piece's top and underside, the four outer faces, the hole's four walls, and the columns and pads.
+        long walls = unit.mesh().facets().stream().filter(f -> f.material() == Mesh.Material.CONCRETE && f.min()[1] > 3.2 - 1e-9 && f.max()[1] < 4 + 1e-9
+                && f.max()[1] - f.min()[1] > .7).count();
+        assertEquals(8, walls);
+    }
+
+    @Test
+    void squareDecksAndRingAccessAreWalked() {
+        var deck = kit(u -> u.squareDeck(0, 6, 0, 9, 3, 2, 3, 1, new double[]{2.5, 6.5}, .7, 32, Access.RAILED, new double[][]{null, {4, 5}, null, null}, null));
+        walkedInFrame(deck);
+        double y = 3 + Access.DECK;
+        assertTrue(deck.inside(new double[]{1, 3 + Access.DECK / 2, 4.5}), "a strip");
+        assertTrue(deck.inside(new double[]{3.85, 3 + Access.DECK / 2, 2.5}), "the fill round a body");
+        assertFalse(deck.inside(new double[]{3, 3 + Access.DECK / 2, 2.5}), "the body's place");
+        assertTrue(deck.inside(new double[]{.1, y + .6, 4.5}), "the rail on the -x edge");
+        assertFalse(deck.inside(new double[]{5.9, y + .6, 4.5}), "the gap in the +x edge's rail");
+        assertTrue(deck.inside(new double[]{5.9, y + .6, 1}), "the +x edge's rail");
+        var arcs = new ArrayList<List<Access.Arc>>();
+        var rings = List.of(new ProcessUnit.Ring(4, 0, -Math.PI / 2 + .3, 1.5 * Math.PI - .3), new ProcessUnit.Ring(10, Math.PI, -.5, Math.PI + 1.2),
+                new ProcessUnit.Ring(15, 0, 0, 2 * Math.PI));
+        var ring = kit(u -> arcs.addAll(u.ringAccess(5.5, 5.5, 1.2, Access.MIN_DECK, 0, rings)));
+        walkedInFrame(ring);
+        assertEquals(List.of(2, 2, 1), arcs.stream().map(List::size).toList());
+        assertEquals(3, ring.ladders().size());
+        for (int k = 0; k < rings.size(); k++)
+            for (var arc : arcs.get(k))
+                for (int w = -1; w <= 1; w++) {
+                    double t = rings.get(k).ladder() + 2 * Math.PI * w;
+                    assertFalse(t > arc.from() && t < arc.to(), "ring " + k + " is open where its ladder comes up");
+                }
+        var decks = ring.decks();
+        assertFalse(decks.getLast().closedStart() || decks.getLast().closedEnd(), "a whole ring is open only at its ladder");
+    }
+
+    @Test
+    void motorsStacksAndPartsCollideAsDrawn() {
+        // A TEFC motor lying along z, standing, and lying on a diagonal, in each detail.
+        var lying = kit(u -> u.motor(Mesh.Frame.of(new double[]{2.5, 1, 0}, 2, 1), .2, 1, 2, .03, 0, ProcessUnit.MotorDetail.FULL));
+        assertTrue(lying.inside(new double[]{2.5, 1, 1.5}));
+        assertTrue(lying.inside(new double[]{2.5, .5, 1.5}), "its pedestal");
+        assertEquals(1, lying.motions().size(), "its fan turns");
+        var standing = kit(u -> u.motor(Mesh.Frame.of(new double[]{2.5, 0, 2.5}, 1, 1), .2, 1, 2, .03, 0, ProcessUnit.MotorDetail.FINNED));
+        assertTrue(standing.inside(new double[]{2.5, 1.5, 2.5}));
+        assertTrue(standing.motions().isEmpty());
+        var diagonal = kit(u -> u.motor(new Mesh.Frame(new double[]{2.5, 1, 2.5}, Mesh.unit(1, 0, 1), new double[]{0, 1, 0}), .2, 1, 2, .03, 0, ProcessUnit.MotorDetail.PLAIN));
+        assertTrue(diagonal.inside(new double[]{2.5 + 1.5 / Math.sqrt(2), 1, 2.5 + 1.5 / Math.sqrt(2)}));
+        // A stack on its breeching; a pipe with a long-radius elbow; a skirt on its pedestal and a davit.
+        var stack = kit(u -> u.stack(3.5, 3.5, 1, ProcessUnit.sides(1), 2, 20, Mesh.Material.HEATER, new ProcessUnit.Breeching(2, 5, 2.5, 4.5), true));
+        assertTrue(stack.inside(new double[]{3.5, 10, 3.5}));
+        assertTrue(stack.inside(new double[]{2.2, 2.3, 3}), "the breeching");
+        var pipe = kit(u -> u.pipe(.1, Mesh.Material.PIPE, true, new double[]{1, 1, 1}, new double[]{1, 1, 4}, new double[]{4, 1, 4}));
+        assertTrue(pipe.inside(new double[]{1, 1, 2}) && pipe.inside(new double[]{3, 1, 4}));
+        var vessel = kit(u -> {
+            u.pedestal(4.5, 4.5, 2, .3);
+            u.skirt(4.5, 4.5, 1.5, .1, .3, 3, 2, 24);
+            u.davit(4.5, 4.5, Math.PI / 2, 1.8, 3, 7, 0);
+        });
+        assertTrue(vessel.inside(new double[]{4.5, .1, 4.5 + 1.9}), "the pedestal");
+        assertTrue(vessel.inside(new double[]{4.5 + 1.45, 2, 4.5}), "the skirt");
+        assertTrue(vessel.inside(new double[]{4.5, 5, 4.5 + 1.8}), "the davit's mast");
     }
 
     private static boolean in(EquipmentShape shape, double[] p) {

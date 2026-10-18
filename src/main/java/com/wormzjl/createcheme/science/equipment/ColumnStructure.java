@@ -28,23 +28,14 @@ import static com.wormzjl.createcheme.science.equipment.Mesh.*;
  * are whole metres, so a deck's walking surface is {@link #DECK} above a block boundary.
  */
 final class ColumnStructure {
-    /**
-     * Room a player takes across a deck, m: its collision box is 0.6 m square and stays aligned with the world, and walls
-     * are sampled at cell-fraction centres, so a wall's voxels stand up to half a voxel proud of it; on the back diagonals,
-     * where the ladders stand, the two together span (0.6 + 1/8)·√2 radially.
-     */
-    static final double PLAYER = (.6 + 1.0 / ShapeRasterizer.SOLID_RESOLUTION) * Math.sqrt(2);
-    /**
-     * Least deck width, m, to the next 5 cm: a player stands on the deck in front of the ladder that starts there, between
-     * the rung plane and the handrail (1.45 m; plant platforms are 0.9 to 1.5 m wide, those carrying a caged ladder the widest).
-     */
-    static final double MIN_DECK = Math.ceil((STANDOFF + RUNG_FACE + PLAYER + RAIL_BAND - GAP) * 20) / 20;
+    /** Least deck width, m: the kit's ({@link Access#MIN_DECK}), which the designs reach through the column's name too. */
+    static final double MIN_DECK = Access.MIN_DECK;
     /** Manway: neck and cover diameters (24" class 150), cover face beyond the cladding, centre over the deck, m. */
     static final double MANWAY = Manway.LARGE, COVER = Manway.COVER_RATIO * MANWAY, MANWAY_REACH = Manway.REACH, MANWAY_HEIGHT = .9;
     /** Rain flashing rings: pitch, band height and projection, m. */
     static final double FLASHING_PITCH = 3, FLASHING = 1 / 16.0;
-    /** Platforms: at least this far apart, and no climb longer than {@link #MAX_CLIMB} (old OSHA 1910.27), m. */
-    static final int MIN_PITCH = 3, MAX_CLIMB = 9;
+    /** Platforms: at least this far apart, and no climb longer than {@link #MAX_CLIMB} (the kit's {@link Access#MAX_CLIMB}, old OSHA 1910.27), m. */
+    static final int MIN_PITCH = 3, MAX_CLIMB = Access.MAX_CLIMB;
     /** The two ladder positions (back-right and back-left diagonals) and the manways' (the back). */
     static final double LADDER_A = 3 * Math.PI / 4, LADDER_B = Math.PI / 4, BACK = Math.PI / 2;
 
@@ -119,10 +110,9 @@ final class ColumnStructure {
         return Math.max(minimumDeckRadius(shape), shape.width() / 2.0 - .95);
     }
 
-    /** Half the angle a ladder and its cage take at the deck's inner edge, with room for a rail: where a deck ends beside a ladder. */
+    /** Half the angle a ladder and its cage take at the deck's inner edge, with room for a rail: where a deck ends beside a ladder ({@link Access#clearance}). */
     static double clearance(EquipmentShape shape) {
-        double across = CAGE_HALF + .2, out = shape.outerRadius() + STANDOFF - .05;
-        return DeterministicMath.acos(out / Math.sqrt(out * out + across * across));
+        return Access.clearance(shape.outerRadius());
     }
 
     /**
@@ -338,7 +328,7 @@ final class ColumnStructure {
         flashing(mesh, nozzles);
         for (var p : plan.platforms()) {
             var run = new Access.Arc(axis, axis, outer, p.from(), p.to(), plan.deckRadius(), Access.Arc.STEP);
-            Access.deck(mesh, run, p.level(), plan.deckRadius() - outer);
+            Access.deck(mesh, run, p.level(), plan.deckRadius() - outer, Access.ALL_PARTS);
             Access.handrail(mesh, run, p.level(), plan.deckRadius() - outer, p.closedFrom(), p.closedTo());
             if (p.manway()) manway(p.manwayHeight()).draw(mesh);
         }
@@ -402,18 +392,11 @@ final class ColumnStructure {
         return new Manway(new double[]{axis, y, axis}, new double[]{0, 0, 1}, UP, MANWAY, Math.sqrt(apothem * apothem - r * r) - .03, outer, outer + MANWAY_REACH);
     }
 
-    /** The lifting davit on the top ring: a mast on a base plate, a jib out past the deck with a knee brace, a cable and a hook block. */
+    /** The lifting davit on the top ring ({@link Access#davit}): a mast on a base plate, a jib out past the deck with a knee brace, a cable and a hook block. */
     private void davit(Mesh m) {
         double a = plan.davitAngle(), r = outer + .35, base = plan.top().level() + DECK, top = plan.davitTop();
         double reach = Math.min(plan.deckRadius() + .5, (axis - .25) / Math.max(Math.abs(DeterministicMath.cos(a)), Math.abs(DeterministicMath.sin(a))));
-        var f = new Frame(at(r, a, base), UP, radial(a));
-        m.prism(f, .1, 0, top - base, 8, Material.HANDRAIL);
-        m.annulus(f, 0, .1, top - base, 8, 1, Material.HANDRAIL);
-        m.block(at(r, a, base + .02), scale(radial(a), .18), new double[]{0, .02, 0}, scale(tangent(a), .18), Material.STEELWORK);
-        m.bar(at(r - .1, a, top - .1), at(reach, a, top - .1), .14, UP, Material.HANDRAIL);
-        m.bar(at(r, a, top - 1.1), at(r + .6 * (reach - r), a, top - .17), .07, tangent(a), Material.HANDRAIL);
-        m.bar(at(reach - .05, a, top - .17), at(reach - .05, a, top - 1), .025, radial(a), Material.STEELWORK);
-        m.block(at(reach - .05, a, top - 1.07), scale(radial(a), .07), new double[]{0, .07, 0}, scale(tangent(a), .07), Material.STEELWORK);
+        Access.davit(m, axis, axis, a, r, base, top, reach);
     }
 
     // ---- Solids -------------------------------------------------------------------------------------------------
@@ -484,13 +467,5 @@ final class ColumnStructure {
 
     private static double[] radial(double a) {
         return new double[]{DeterministicMath.cos(a), 0, DeterministicMath.sin(a)};
-    }
-
-    private static double[] tangent(double a) {
-        return new double[]{-DeterministicMath.sin(a), 0, DeterministicMath.cos(a)};
-    }
-
-    private static double[] scale(double[] v, double k) {
-        return new double[]{v[0] * k, v[1] * k, v[2] * k};
     }
 }

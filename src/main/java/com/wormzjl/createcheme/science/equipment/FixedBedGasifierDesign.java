@@ -10,6 +10,8 @@ import com.wormzjl.createcheme.science.math.DeterministicMath;
 import java.util.ArrayList;
 import java.util.List;
 
+import static com.wormzjl.createcheme.science.equipment.ProcessUnit.clamp;
+
 /**
  * A Lurgi (Sasol-Lurgi FBDB) fixed-bed dry-bottom gasifier in its gasifier house (owner decisions D1 and D4 2026-10-18,
  * {@code NEW_UNITS_PLAN.md}; {@code NEW_UNITS_SURVEY_SOLID_FUEL.md} section 2): lump coal sinks through a bed against
@@ -30,7 +32,8 @@ import java.util.List;
  * least odd number of metres of D + 4.9 at least) and a bay of 3 m on the wash cooler's side, carries its floors at the ash lock, the grate drives and agent inlet,
  * the vessel's support (0.3 of its height), the gas outlet, the coal lock's bottom and top valves (with the distributor
  * drive) and the bunker's top (with the hoist beam over the coal lock), its columns cased in concrete up to the first
- * floor; a stair tower beside it ({@link FixedBedGasifierHouse}). Floors closer than 2.6 m give way to the more needed one.
+ * floor; the kit's stair tower beside its west face ({@link ProcessUnit#stairTower}), each floor open where the tower's
+ * landing meets it. Floors closer than 2.6 m give way to the more needed one.
  *
  * <p>Nozzles (the survey's sizes, D the inside diameter): oxidant at the front of the grate housing, clamp(0.03 D, 0.05,
  * 0.2); agent steam at its back, clamp(0.05 D, 0.08, 0.3), importing what the jacket does not raise (its steam joins it
@@ -110,6 +113,8 @@ final class FixedBedGasifierDesign extends UnitDesign {
     static final int GAS = 0, ASH = 1, DRIVES = 2, SUPPORT = 3, COAL_BOTTOM = 4, COAL_TOP = 5, ROOF = 6;
     /** The least distance between two floors, m: 2.1 m of headroom over a deck and its beams. */
     static final double STOREY = 2.6;
+    /** A floor beam's depth and flange, a house column's section, m. */
+    static final double BEAM = .3, FLANGE = .2, COLUMN = .35;
 
     /**
      * The gasifier's stack of parts, bottom up, at inside diameter {@code d} with the ash lock's bottom valve {@code s} up
@@ -217,7 +222,7 @@ final class FixedBedGasifierDesign extends UnitDesign {
         /** The widest round part from just under a floor's beams to half a metre over its deck. */
         double opening(int level) {
             double widest = 0;
-            for (double y = level - FixedBedGasifierHouse.BEAM; y <= level + .5 + 1e-9; y += .05) widest = Math.max(widest, radius(y));
+            for (double y = level - BEAM; y <= level + .5 + 1e-9; y += .05) widest = Math.max(widest, radius(y));
             return widest;
         }
     }
@@ -259,21 +264,20 @@ final class FixedBedGasifierDesign extends UnitDesign {
         // ---- The house ---------------------------------------------------------------------------------------------
 
         /**
-         * The floors round the stack, the stair tower west of them, the columns (cased in concrete up to the first floor)
-         * with X-bracing on the back and east faces in alternate storeys, the wash cooler's bay, the hoist beam on the roof.
+         * The stair tower west of the house ({@link ProcessUnit#stairTower}): its lane A beside the west face, its first
+         * flight rising towards the back from a landing clear of the front corner column's casing and of the tower's own
+         * corner posts; it climbs from the ground to every floor, each landing on a floor at the tower's front or back end.
+         * The floors round the stack ({@link #floor}), the columns (cased in concrete up to the first floor) with X-bracing
+         * on the back and west faces in alternate storeys, the wash cooler's bay, the hoist beam on the roof.
          */
         void house() {
-            double zF = z0 + 1.5;
             var levels = new double[st.floors.size()];
-            var joined = new boolean[levels.length];
-            for (int k = 0; k < levels.length; k++) {
-                int level = st.floors.get(k)[0];
-                levels[k] = level;
-                joined[k] = true;
-                FixedBedGasifierHouse.floor(u, x0, x1, z0, z1, a, c, st.opening(level), level, zF - FixedBedGasifierHouse.DEPTH + .05, zF - .05);
-            }
-            FixedBedGasifierHouse.tower(u, x0, -1, zF, levels, joined);
-            double top = st.roof + Access.DECK + 1.1, first = levels[0], beam = FixedBedGasifierHouse.BEAM;
+            for (int k = 0; k < levels.length; k++) levels[k] = st.floors.get(k)[0];
+            double cased = ProcessUnit.casing(COLUMN);
+            var plan = ProcessUnit.towerPlan(levels);
+            var tower = u.stairTower(plan, x0 - .5, ProcessUnit.TowerPlan.foot(z0 + cased / 2, 1, plan.from()), 2, 1, -1, true);
+            for (int k = 0; k < levels.length; k++) floor(st.floors.get(k)[0], tower.edge(), tower.openings().get(k));
+            double top = st.roof + Access.DECK + 1.1, first = levels[0];
             // Columns at the corners, and in the middle of the back and east faces of a wider house.
             double[] alongX = bay >= 9 ? new double[]{x0, a, x1} : new double[]{x0, x1};
             var columns = new ArrayList<double[]>(List.of(new double[]{x0, z0}, new double[]{x1, z0}, new double[]{x0, z1}, new double[]{x1, z1}));
@@ -281,27 +285,29 @@ final class FixedBedGasifierDesign extends UnitDesign {
                 columns.add(new double[]{a, z1});
                 columns.add(new double[]{x1, c});
             }
-            double cased = ProcessUnit.casing(FixedBedGasifierHouse.COLUMN);
             for (var p : columns) {
-                u.leg(p[0], p[1], first - beam, cased, new double[]{1, 0, 0});
-                FixedBedGasifierHouse.column(u, p[0], p[1], first - beam, top);
+                u.leg(p[0], p[1], first - BEAM, cased, new double[]{1, 0, 0});
+                u.post(p[0], p[1], first - BEAM, top, COLUMN, false);
             }
-            // X-bracing in every other storey from the first floor up: each bay of the back face, the west face behind the
-            // stair tower (the front stays open towards the constructor, the east face to the wash cooler's bay).
+            // X-bracing in every other storey from the first floor up: each bay of the back face; the west face in the
+            // columns' inner flange plane, clear of the stair tower beside it, over the longer stretch beside the storey's
+            // floor's landing (the front stays open towards the constructor, the east face to the wash cooler's bay).
             for (int k = 0; k + 1 < levels.length; k += 2) {
-                double lo = levels[k] + .05, hi = levels[k + 1] - beam;
+                double lo = levels[k] + .05, hi = levels[k + 1] - BEAM, xb = x0 + COLUMN / 2 - .075;
                 for (int i = 0; i + 1 < alongX.length; i++) u.brace(new double[]{alongX[i] + .2, z1}, new double[]{alongX[i + 1] - .2, z1}, lo, hi);
-                u.brace(new double[]{x0, z0 + FixedBedGasifierHouse.DEPTH + 1.7}, new double[]{x0, z1 - .2}, lo, hi);
+                double[] open = tower.openings().get(k);
+                double front = open[0] - .2 - (z0 + .2), back = z1 - .2 - (open[1] + .2);
+                if (Math.max(front, back) >= 1.5)
+                    u.brace(new double[]{xb, front > back ? z0 + .2 : open[1] + .2}, new double[]{xb, front > back ? open[0] - .2 : z1 - .2}, lo, hi);
             }
             // The wash cooler's bay: two columns, beams out to them at the cooler's support, beams along it carrying the
             // cooler's lugs.
             double ys = washTop() - .3, rw = washRadius();
             for (double z : new double[]{z0, z1}) {
-                FixedBedGasifierHouse.column(u, xe, z, 0, ys);
-                FixedBedGasifierHouse.beam(u, new double[]{x1, ys - beam, z - .1}, new double[]{xe, ys, z + .1});
+                u.post(xe, z, 0, ys, COLUMN, false);
+                u.beam(new double[]{x1, ys - BEAM, z - .1}, new double[]{xe, ys, z + .1});
             }
-            for (double x : new double[]{xw - rw - .3, xw + rw + .1})
-                FixedBedGasifierHouse.beam(u, new double[]{x, ys - beam, z0 + .1}, new double[]{x + .2, ys, z1 - .1});
+            for (double x : new double[]{xw - rw - .3, xw + rw + .1}) u.beam(new double[]{x, ys - BEAM, z0 + .1}, new double[]{x + .2, ys, z1 - .1});
             // The hoist beam on two posts over the roof, along x over the coal lock, reaching out over the wash cooler's
             // bay; its trolley parked east of the bunker.
             double roofWalk = st.roof + Access.DECK, yh = roofWalk + 3, xt = (a + st.rBunker + x1) / 2;
@@ -310,6 +316,25 @@ final class FixedBedGasifierDesign extends UnitDesign {
             u.box(new double[]{x0 + .25, yh, c - .14}, new double[]{xe + .15, yh + .45, c + .14}, Material.STEELWORK, true);
             u.box(new double[]{xt - .25, yh - .5, c - .2}, new double[]{xt + .25, yh, c + .2}, Material.MACHINE, false);
             u.mesh.cylinder(Frame.of(new double[]{xt, 0, c}, 1, 1), .02, yh - 1.4, yh - .5, 6, Material.PIPE);
+        }
+
+        /**
+         * A house floor at {@code level} ({@link ProcessUnit#squareDeck}, on beams: no brackets): grating from the stair
+         * tower's edge {@code west} to the east face and from the front face to the back round a square opening for the
+         * stack's widest part there ({@link Stack#opening}), filled round it; railed at the house's edges but over the
+         * tower's {@code landing} ({lo, hi} along z) on the west edge. Beams under the house's edges and round the opening.
+         */
+        void floor(int level, double west, double[] landing) {
+            double rh = st.opening(level) + Access.GAP, h = rh + Access.GAP, y0 = level - BEAM;
+            u.squareDeck(west, x1, z0, z1, level, 2, a, h, new double[]{c}, rh, rh < 1.5 ? 16 : 24, Access.RAILED, new double[][]{null, null, null, landing}, null);
+            u.beam(new double[]{x0, y0, z0}, new double[]{x1, level, z0 + FLANGE});
+            u.beam(new double[]{x0, y0, z1 - FLANGE}, new double[]{x1, level, z1});
+            u.beam(new double[]{x0, y0, z0 + FLANGE}, new double[]{x0 + FLANGE, level, z1 - FLANGE});
+            u.beam(new double[]{x1 - FLANGE, y0, z0 + FLANGE}, new double[]{x1, level, z1 - FLANGE});
+            u.beam(new double[]{x0 + FLANGE, y0, c - h - FLANGE}, new double[]{x1 - FLANGE, level, c - h});
+            u.beam(new double[]{x0 + FLANGE, y0, c + h}, new double[]{x1 - FLANGE, level, c + h + FLANGE});
+            u.beam(new double[]{a - h - FLANGE, y0, c - h}, new double[]{a - h, level, c + h});
+            u.beam(new double[]{a + h, y0, c - h}, new double[]{a + h + FLANGE, level, c + h});
         }
 
         // ---- The ash lock ------------------------------------------------------------------------------------------
@@ -340,7 +365,7 @@ final class FixedBedGasifierDesign extends UnitDesign {
             u.round(a, c, st.y1, st.y2, st.rAl, 1);
             // The cylinders: lever boxes on the bottom valve, the cylinders on brackets up the shell, their rods between.
             double crank = st.crank, rc = st.rCyl, out = st.rAl + .12 + rc, box = Math.max(st.valve, crank + .25), lever = s + box;
-            double length = Math.max(.4, Math.min(.6 + .1 * d, st.floor(DRIVES) - FixedBedGasifierHouse.BEAM - .1 - (lever + crank + .15)));
+            double length = Math.max(.4, Math.min(.6 + .1 * d, st.floor(DRIVES) - BEAM - .1 - (lever + crank + .15)));
             for (double t : new double[]{.75 * Math.PI, -.25 * Math.PI}) {
                 double[] radial = {DeterministicMath.cos(t), 0, DeterministicMath.sin(t)}, tangent = {-radial[2], 0, radial[0]};
                 double x = a + out * radial[0], z = c + out * radial[2];
@@ -357,13 +382,6 @@ final class FixedBedGasifierDesign extends UnitDesign {
                 u.solids.add(ProcessUnit.Solid.rod(new double[]{x, 0, z}, 1, c0, c1, rc + .025, 0));
                 slider(f, .035 + .006 * d, lever - crank - .1, c0 + crank + .1, (c0 + lever) / 2, t < 0 ? .5 : 0);
             }
-        }
-
-        /** A band {@code out} proud round a round body of radius r (frame {@code f}) from y0 to y1: its outside and both faces. */
-        void band(Frame f, double r, double out, double y0, double y1, int n, Material material) {
-            u.mesh.prism(f, r + out, y0, y1, n, material);
-            u.mesh.annulus(f, r, r + out, y0, n, -1, material);
-            u.mesh.annulus(f, r, r + out, y1, n, 1, material);
         }
 
         /**
@@ -408,10 +426,10 @@ final class FixedBedGasifierDesign extends UnitDesign {
             int n = ProcessUnit.sides(2 * st.ro);
             u.mesh.annulus(up, st.rValve, st.rGate, st.y4, n, -1, Material.SHELL);
             u.mesh.frustum(up, st.rGate, st.ro - .04, st.y4, st.yb - .08, n, Material.SHELL);
-            band(up, st.ro - .04, .1, st.yb - .08, st.yb, n, Material.FLANGE);
+            u.mesh.hoop(up, st.ro - .04, st.ro + .06, st.yb - .08, st.yb, n, Material.FLANGE);
             u.mesh.prism(up, st.ro, st.yb, st.yt, n, Material.CLADDING);
             u.mesh.head(up, st.ro, st.yt, st.ro / 2, n, Material.CLADDING);
-            for (double y = st.yb + 2; y < st.yt - .5; y += 2) band(up, st.ro, .03, y, y + .06, n, Material.CLADDING);
+            for (double y = st.yb + 2; y < st.yt - .5; y += 2) u.mesh.hoop(up, st.ro, st.ro + .03, y, y + .06, n, Material.CLADDING);
             u.solids.add(ProcessUnit.Solid.cone(axis, 1, st.y4, st.yb, st.rGate, st.ro + .06, 0));
             u.solids.add(ProcessUnit.Solid.rod(axis, 1, st.yb, st.yt, st.ro, st.ro / 2));
             u.volumes.add(ProcessUnit.Solid.cone(axis, 1, st.y4 + .1, st.yb, .94 * st.rGate, .94 * st.ro, 0));
@@ -435,7 +453,9 @@ final class FixedBedGasifierDesign extends UnitDesign {
 
         /**
          * A grate drive set at angle t round the grate housing at height y (its cone radius r there): the gearbox on the
-         * cone, the turning coupling, the motor on its pedestal from the deck, all along the radius.
+         * cone and its pedestal from the deck, the turning coupling, the kit's motor on its pedestal ({@link
+         * ProcessUnit#motor(Frame, double, double, double, double, double, ProcessUnit.MotorDetail)}, plain: a small drive
+         * among large parts), all along the radius.
          */
         void drive(double t, double y, double r, double deck) {
             double[] radial = {DeterministicMath.cos(t), 0, DeterministicMath.sin(t)};
@@ -449,26 +469,14 @@ final class FixedBedGasifierDesign extends UnitDesign {
             u.mesh.cylinder(f, .12 + .03 * d, g1, g1 + .06, 12, Material.MACHINE);
             u.mesh.cylinder(f, .12 + .03 * d, m0 - .06, m0, 12, Material.MOTOR);
             u.shaft(f, .04 + .01 * d, new double[][]{{g1 + .06, m0 - .06}}, (g1 + m0) / 2);
-            // The motor: its body, end shield and fan cowl; feet on a pedestal down to the deck.
-            int nm = ProcessUnit.sides(2 * rm);
-            u.mesh.prism(f, rm, m0, m1 - .25 * lm, nm, Material.MOTOR);
-            u.mesh.annulus(f, 0, rm, m0, nm, -1, Material.MOTOR);
-            u.mesh.frustum(f, rm + .03, .9 * rm, m1 - .25 * lm, m1, nm, Material.MOTOR);
-            u.mesh.annulus(f, 0, .9 * rm, m1, nm, 1, Material.MOTOR);
-            u.mesh.annulus(f, rm, rm + .03, m1 - .25 * lm, nm, -1, Material.MOTOR);
-            u.mesh.block(Mesh.plus(f.along((m0 + m1) / 2), new double[]{0, rm + .08, 0}), Mesh.scale(radial, .18), new double[]{0, .08, 0}, Mesh.scale(tangent, .15),
-                    Material.MOTOR);
-            double foot = y - rm, low = Math.min(foot, y - gh / 2);
-            if (low - deck > .05) {
-                u.mesh.block(new double[]{a + (m0 + m1) / 2 * radial[0], (deck + foot) / 2, c + (m0 + m1) / 2 * radial[2]}, Mesh.scale(radial, lm / 2), new double[]{0, (foot - deck) / 2, 0},
-                        Mesh.scale(tangent, .8 * rm), Material.STEELWORK);
+            u.motor(f, rm, m0, m1, 0, deck, ProcessUnit.MotorDetail.PLAIN);
+            if (y - gh / 2 - deck > .05)
                 u.mesh.block(new double[]{a + (g0 + g1) / 2 * radial[0], (deck + y - gh / 2) / 2, c + (g0 + g1) / 2 * radial[2]}, Mesh.scale(radial, (g1 - g0) / 2 - .05),
                         new double[]{0, (y - gh / 2 - deck) / 2, 0}, Mesh.scale(tangent, gw / 2 - .1), Material.STEELWORK);
-            }
-            // Collision: the boxes round the set's parts, axis-aligned.
+            // Collision: the box round the gearbox and coupling, axis-aligned (the motor collides as the kit draws it).
             var lo = new double[]{Double.MAX_VALUE, deck, Double.MAX_VALUE};
-            var hi = new double[]{-Double.MAX_VALUE, y + Math.max(gh / 2 + .08, rm + .16), -Double.MAX_VALUE};
-            for (double s : new double[]{g0 + .3, m1})
+            var hi = new double[]{-Double.MAX_VALUE, y + gh / 2 + .08, -Double.MAX_VALUE};
+            for (double s : new double[]{g0 + .3, m0})
                 for (double side : new double[]{-1, 1}) {
                     double x = a + s * radial[0] + side * gw / 2 * tangent[0], z = c + s * radial[2] + side * gw / 2 * tangent[2];
                     lo[0] = Math.min(lo[0], x);
@@ -499,9 +507,9 @@ final class FixedBedGasifierDesign extends UnitDesign {
             u.mesh.frustum(up, st.rNeck + .05, st.rBunker, st.y10a, st.y10, nb, Material.SHELL);
             u.mesh.annulus(up, st.rNeck, st.rNeck + .05, st.y10a, nb, -1, Material.SHELL);
             u.mesh.prism(up, st.rBunker, st.y10, st.y11, nb, Material.SHELL);
-            band(up, st.rBunker, .05, st.y11 - .1, st.y11, nb, Material.SHELL);
+            u.mesh.hoop(up, st.rBunker, st.rBunker + .05, st.y11 - .1, st.y11, nb, Material.SHELL);
             u.mesh.annulus(up, 0, st.rBunker, st.y11, nb, 1, Material.SHELL);
-            for (double y = st.y10 + 1; y < st.y11 - .5; y += 1.5) band(up, st.rBunker, .04, y, y + .12, nb, Material.SHELL);
+            for (double y = st.y10 + 1; y < st.y11 - .5; y += 1.5) u.mesh.hoop(up, st.rBunker, st.rBunker + .04, y, y + .12, nb, Material.SHELL);
             u.solids.add(ProcessUnit.Solid.rod(axis, 1, st.apex - .3, st.y5, st.rValve + .07, 0));
             u.solids.add(ProcessUnit.Solid.cone(axis, 1, st.y5, st.y6, st.rNeck + .05, st.rCl, 0));
             u.solids.add(ProcessUnit.Solid.rod(axis, 1, st.y6, st.y7, st.rCl, st.rCl / 2));
@@ -655,12 +663,12 @@ final class FixedBedGasifierDesign extends UnitDesign {
             u.nozzles.add(side(Role.NITROGEN, yn, -1, lock, lock));
             // The vent up through the roof.
             double vent = ventOd(), base = st.roof + Access.DECK + .2;
-            u.nozzles.add(new Nozzle(Role.VENT, new double[]{a - ventOut(), base, c - 1}, 1, 1, Math.ceil(base + .03 + EquipmentShape.STAND_OUT) - base, vent, vent, 0, .03));
+            u.nozzles.add(ProcessUnit.end(Role.VENT, new double[]{a - ventOut(), base, c - 1}, 1, 1, vent, vent));
             // Coal into the bunker's roof, ash out of the chute 1 m over grade.
             double coal = Math.min(1, ColumnStructure.size(.2 * d + .2, 1)), roof = st.y11;
-            u.nozzles.add(new Nozzle(Role.SOLIDS_INLET, new double[]{a, roof - .03, c}, 1, 1, Math.ceil(roof + EquipmentShape.STAND_OUT) - roof + .03, coal, coal, 0, .03));
+            u.nozzles.add(ProcessUnit.end(Role.SOLIDS_INLET, new double[]{a, roof - .03, c}, 1, 1, coal, coal));
             double ash = 2 * st.rChute;
-            u.nozzles.add(new Nozzle(Role.SOLIDS_OUTLET, new double[]{a, 1.3, c}, 1, -1, .3, ash, ColumnStructure.size(ash, ash), 0, .03));
+            u.nozzles.add(ProcessUnit.end(Role.SOLIDS_OUTLET, new double[]{a, 1.3, c}, 1, -1, ash, ColumnStructure.size(ash, ash)));
             // The wash cooler: quench liquor on top, gas liquor out of the bottom, syngas out of its east side near the bottom.
             double rw = washRadius(), top = washTop() + rw / 2, bottom = washBottom() - rw / 2, liquor = clamp(.03 * d, .05, .15), gas = clamp(.1 * d, .2, .6);
             u.nozzles.add(new Nozzle(Role.QUENCH, new double[]{xw, top - .04, c}, 1, 1, Math.ceil(top + EquipmentShape.STAND_OUT) - top + .04, liquor, liquor, 0, .04));
@@ -676,7 +684,7 @@ final class FixedBedGasifierDesign extends UnitDesign {
         double clear(double lo, double hi) {
             for (double y = Math.ceil(lo - .5) + .5; y <= hi + 1e-9; y++) {
                 boolean free = true;
-                for (var f : st.floors) if (y + .5 > f[0] - FixedBedGasifierHouse.BEAM - .05 && y - .5 < f[0] + Access.DECK + .05) free = false;
+                for (var f : st.floors) if (y + .5 > f[0] - BEAM - .05 && y - .5 < f[0] + Access.DECK + .05) free = false;
                 if (free) return y;
             }
             return Math.ceil(lo - .5) + .5;
@@ -708,8 +716,4 @@ final class FixedBedGasifierDesign extends UnitDesign {
 
     /** The locks' cylinders' shown speed, rev/s: a stroke out and back every 30 s (the locks cycle several times an hour). */
     static final double LOCK_SPEED = 1 / 30.0;
-
-    static double clamp(double v, double lo, double hi) {
-        return Math.max(lo, Math.min(hi, v));
-    }
 }

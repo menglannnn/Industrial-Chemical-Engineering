@@ -20,9 +20,10 @@ import static com.wormzjl.createcheme.science.equipment.Mesh.*;
  *
  * <p>Proportions [3V-CE datasheet]: the jacket D + 0.1 m across (D + 0.15 m from 3.2 m), up to just under the lugs; 2:1
  * heads, 0.25 D deep; the lugs 0.2 D + 0.1 m under the top tangent; the drive (lantern, gearbox, in-line motor) 0.7 +
- * 0.385 D high over the agitator's flange. The deck's grating stands on its beams at the lugs' feet with 0.95 to 1.4 m of
- * walkway round the opening, on four columns braced on its sides, a caged ladder from the ground walked through on its
- * left. The top head carries the process nozzles' flanges over the four corner cells round the drive's (one free block
+ * 0.385 D high over the agitator's flange. The deck's grating ({@link ProcessUnit#squareDeck}) stands on its beams at the
+ * lugs' feet with 0.95 to 1.4 m of walkway round the opening, on four columns braced on its sides, a caged ladder walked
+ * through on its left: from the ground up to 9 m, above that from a rest platform (owner decision C1 2026-10-18). The top
+ * head carries the process nozzles' flanges over the four corner cells round the drive's (one free block
  * between pipes, owner rule 2026-10-17): straight up from the head from 3.8 m, where the corners lie on it; on a smaller
  * head as the survey's crown of nozzles at 0.6 R with spools rising to the corners, over head height where they stand over
  * the walkway. Between them the manway (inclined, swing-bolt clamps, where it fits: from about 1.4 m), the sight glasses
@@ -137,11 +138,6 @@ final class StirredReactorDesign extends UnitDesign {
         return 60 * TIP_SPEED / (Math.PI * (.62 - .03 * d) * d);
     }
 
-    /** A nozzle's size, m: {@code want} to the nearest 0.05 m, from {@code least} to {@code most}. */
-    static double od(double want, double least, double most) {
-        return Math.max(least, Math.min(most, Math.round(want * 20) / 20.0));
-    }
-
     /**
      * A reactor's heights and sizes, m, frame y up from the ground: the shell's radius, the jacket's gap and radius, the
      * bottom valve's line (largest and usual) and its body's height, the jacket's bottom apex, the bottom and top tangents,
@@ -152,7 +148,7 @@ final class StirredReactorDesign extends UnitDesign {
                 double level, double jacketTop, double beam, double hole, double half) {
         static Plan of(double d, int s, int support) {
             double r = d / 2, gap = d >= 3.2 - 1e-9 ? .075 : .05, rj = r + gap;
-            double valve = od(.06 * d, .1, .25), usual = od(.05 * d, .1, valve), body = .15 + 1.6 * valve;
+            double valve = PipeSizes.od(.06 * d, .1, .25), usual = PipeSizes.od(.05 * d, .1, valve), body = .15 + 1.6 * valve;
             // From the valve's outlet face up: its neck, body, flange pair and the vessel's bottom nozzle through the jacket.
             double yj = support + .12 + body + .06 + .1, bottom = yj + d / 4 + gap, top = bottom + s, level = top - (.2 * d + .1);
             double hole = rj + .12;
@@ -173,7 +169,7 @@ final class StirredReactorDesign extends UnitDesign {
         }
     }
 
-    private static final double[] UP = {0, 1, 0}, DOWN = {0, -1, 0}, X = {1, 0, 0}, NEG_X = {-1, 0, 0}, Z = {0, 0, 1}, NEG_Z = {0, 0, -1};
+    private static final double[] UP = {0, 1, 0}, X = {1, 0, 0}, Z = {0, 0, 1}, NEG_Z = {0, 0, -1};
 
     @Override
     void build(ProcessUnit u) {
@@ -191,17 +187,10 @@ final class StirredReactorDesign extends UnitDesign {
         u.mesh.annulus(up, r, rj, p.jacketTop, n, 1, Material.SHELL);
         u.mesh.prism(up, r, p.jacketTop, p.top, n, Material.SHELL);
         u.mesh.head(up, r, p.top, d / 4, n, Material.HEAD);
-        // The bottom head collides and encloses as four frustums inside its ellipse.
-        double[] f = {0, .08, .25, .55, 1};
-        for (int k = 0; k + 1 < f.length; k++) {
-            double y0 = p.yj + f[k] * (p.bottom - p.yj), y1 = p.yj + f[k + 1] * (p.bottom - p.yj);
-            double r0 = rj * Math.sqrt(f[k] * (2 - f[k])), r1 = rj * Math.sqrt(f[k + 1] * (2 - f[k + 1]));
-            u.solids.add(ProcessUnit.Solid.cone(axis, 1, y0, y1, r0, r1, 0));
-            if (k > 0) u.volumes.add(ProcessUnit.Solid.cone(axis, 1, y0, y1, .94 * r0, .94 * r1, 0));
-        }
-        u.solids.add(ProcessUnit.Solid.rod(axis, 1, p.bottom, p.jacketTop, rj, 0));
+        // The jacket collides with its bottom head, the vessel encloses with both of its own.
+        u.solids.add(ProcessUnit.Solid.rod(axis, 1, p.bottom, p.jacketTop, rj, p.bottom - p.yj, 0));
         u.solids.add(ProcessUnit.Solid.rod(axis, 1, p.jacketTop, p.top, r, d / 4));
-        u.volumes.add(ProcessUnit.Solid.rod(axis, 1, p.bottom, p.top, .94 * r, .9 * d / 4));
+        u.volumes.add(ProcessUnit.Solid.rod(axis, 1, p.bottom, p.top, .94 * r, .9 * d / 4, .9 * d / 4));
         u.round(a, a, p.bottom, p.jacketTop, rj, 1);
         u.round(a, a, p.jacketTop, p.top, r, 1);
         lugs(u, p, a);
@@ -232,20 +221,15 @@ final class StirredReactorDesign extends UnitDesign {
     }
 
     /**
-     * The operating deck: grating round a square opening on the lugs' beams (four strips, the front and back ones closed
-     * at their ends, and the corners between the opening and the jacket filled), the beams framing the opening and the
-     * deck's edges both ways, four columns braced on the left and right sides and knee-braced front and back (left open for
-     * the jacket's lines), and the caged ladder walked through on the left.
+     * The operating deck ({@link ProcessUnit#squareDeck}): grating on the lugs' beams round a square opening filled to the
+     * jacket, railed round its edges but where the ladder lands on the left; the beams framing the opening and the deck's
+     * edges both ways, four columns X-braced on the left and right sides and knee-braced front and back (left open for the
+     * jacket's lines), and the caged ladder on the left ({@link #climb}).
      */
     private static void deck(ProcessUnit u, Plan p, double a) {
-        double h = p.hole, half = p.half, level = p.level, beam = p.beam, width = half - h, fb = ProcessUnit.FLANGE_BEAM / 2;
-        u.platform(new Access.Line(new double[]{a - half, 0, a - h}, X, NEG_Z, 2 * half), level, width, true, true);
-        u.platform(new Access.Line(new double[]{a - half, 0, a + h}, X, Z, 2 * half), level, width, true, true);
-        double side = 2 * (h + Access.GAP), ladder = h + Access.GAP;
-        u.platform(new Access.Line(new double[]{a + h, 0, a - h - Access.GAP}, Z, X, side), level, width, false, false, ladder - .3, ladder + .3);
-        u.platform(new Access.Line(new double[]{a - h, 0, a - h - Access.GAP}, Z, NEG_X, side), level, width, false, false);
-        fill(u, a, a, h, p.rj + .04, level);
-        u.ladder(a + half + .05, a, X, .05, 0, level + Access.DECK + Access.LANDING, true);
+        double h = p.hole, half = p.half, level = p.level, beam = p.beam, fb = ProcessUnit.FLANGE_BEAM / 2;
+        u.squareDeck(a - half, a + half, a - half, a + half, level, 0, a, h, new double[]{a}, p.rj + .04, 32, Access.RAILED,
+                new double[][]{null, {a - .3, a + .3}, null, null}, null);
         // The beams: round the opening under the lugs, and along the deck's edges.
         for (double off : new double[]{h + .05, half - fb})
             for (int s = -1; s <= 1; s += 2) {
@@ -256,38 +240,25 @@ final class StirredReactorDesign extends UnitDesign {
         double post = ProcessUnit.POST + .02 * p.d, at = half - post / 2 - .02, foot = level - beam;
         for (int sx = -1; sx <= 1; sx += 2)
             for (int sz = -1; sz <= 1; sz += 2) {
-                double x = a + sx * at, z = a + sz * at;
-                u.box(new double[]{x - post / 2, .03, z - post / 2}, new double[]{x + post / 2, foot, z + post / 2}, Material.STEELWORK, true);
-                u.box(new double[]{x - post / 2 - .06, 0, z - post / 2 - .06}, new double[]{x + post / 2 + .06, .03, z + post / 2 + .06}, Material.STEELWORK, false);
+                u.post(a + sx * at, a + sz * at, 0, foot, post, true);
             }
-        int panels = Math.max(1, (int) Math.ceil((foot - .3) / 3.5 - 1e-9));
-        double span = (foot - .3) / panels;
-        for (int sx = -1; sx <= 1; sx += 2)
-            for (int k = 0; k < panels; k++) u.brace(new double[]{a + sx * at, a - at}, new double[]{a + sx * at, a + at}, .3 + k * span, .3 + (k + 1) * span);
+        // The side bracing in tiers of at most 3.5 m.
+        for (int sx = -1; sx <= 1; sx += 2) u.brace(new double[]{a + sx * at, a - at}, new double[]{a + sx * at, a + at}, .3, foot, .15, 3.5);
         for (int sz = -1; sz <= 1; sz += 2) u.knees(new double[]{a - at, a + sz * at}, new double[]{a + at, a + sz * at}, foot, post);
+        climb(u, p, a, at, post);
     }
 
     /**
-     * Grating between a round body (radius {@code inner} about the vertical line through (x, z)) and the square opening of
-     * half side {@code h} round it in a deck at {@code level}: quads from the body's circle out to the square along its
-     * radii (a corner of the square is a vertex of the circle's 32), drawn on top, underneath and along the inner edge; it
-     * collides as a ring out to the square's corners (the strips round the opening collide beyond its sides).
+     * The caged ladder on the left, walked through onto the deck at the opening in its rail ({@link ProcessUnit#climb}):
+     * where it is longer than {@link Access#MAX_CLIMB} (the deck stands under 13 m: one rest at most), its rest platform
+     * from 0.6 m behind the upper section to 0.6 m in front of the lower one, along the frame towards the front, on
+     * brackets off a girt between the left columns; the lower section 1 m to the front.
      */
-    static void fill(ProcessUnit u, double x, double z, double h, double inner, double level) {
-        int n = 32;
-        double top = level + Access.DECK;
-        for (int i = 0; i < n; i++) {
-            double t0 = 2 * Math.PI * i / n, t1 = 2 * Math.PI * (i + 1) / n, mid = (t0 + t1) / 2;
-            double c0 = DeterministicMath.cos(t0), s0 = DeterministicMath.sin(t0), c1 = DeterministicMath.cos(t1), s1 = DeterministicMath.sin(t1);
-            double q0 = h / Math.max(Math.abs(c0), Math.abs(s0)), q1 = h / Math.max(Math.abs(c1), Math.abs(s1));
-            for (double y : new double[]{level, top})
-                u.mesh.flat(List.of(new double[]{x + inner * c0, y, z + inner * s0}, new double[]{x + inner * c1, y, z + inner * s1}, new double[]{x + q1 * c1, y, z + q1 * s1},
-                        new double[]{x + q0 * c0, y, z + q0 * s0}), y == top ? UP : DOWN, Material.GRATING);
-            u.mesh.flat(List.of(new double[]{x + inner * c0, level, z + inner * s0}, new double[]{x + inner * c1, level, z + inner * s1},
-                    new double[]{x + inner * c1, top, z + inner * s1}, new double[]{x + inner * c0, top, z + inner * s0}),
-                    new double[]{-DeterministicMath.cos(mid), 0, -DeterministicMath.sin(mid)}, Material.GRATING);
-        }
-        u.solids.add(ProcessUnit.Solid.ring(x, z, level, top, inner, h * Math.sqrt(2), 0, 0));
+    private static void climb(ProcessUnit u, Plan p, double a, double at, double post) {
+        double x = a + p.half, offset = 1;
+        for (double rest : u.climb(new Access.Line(new double[]{x, 0, a + .6}, NEG_Z, X, offset + 1.2), 0, p.level + Access.DECK, offset + .6, .6, 0))
+            // The girt carrying the brackets, its face flush with the columns'.
+            u.beam(new double[]{x - .02 - ProcessUnit.FLANGE_BEAM, rest - p.beam, a - at + post / 2}, new double[]{x - .02, rest, a + at - post / 2});
     }
 
     /**
@@ -318,7 +289,7 @@ final class StirredReactorDesign extends UnitDesign {
      * branch leaves the jacket at its own height and a spool runs down (or up) to the nearest free row.
      */
     private static void jacketNozzles(ProcessUnit u, Plan p, double a, int n) {
-        double most = od(.05 * p.d, .1, .2), usual = od(.03 * p.d, .05, most), rr = most / 2;
+        double most = PipeSizes.od(.05 * p.d, .1, .2), usual = PipeSizes.od(.03 * p.d, .05, most), rr = most / 2;
         // The outlet's row: the highest whose cell clears the deck's beams; the inlet's: the lowest on the jacket's straight
         // side, not over the outlet's.
         double outRow = Math.floor(p.level - p.beam - .02 - 1) + .5, highest = Math.min(p.jacketTop - .1 - rr, p.level - p.beam - .1 - rr);
@@ -361,8 +332,8 @@ final class StirredReactorDesign extends UnitDesign {
         double d = p.d, r = p.r;
         Role[] roles = {Role.VAPOUR_OUTLET, Role.FEED, Role.NITROGEN, Role.VENT};
         int[][] corners = {{1, 1}, {-1, 1}, {1, -1}, {-1, -1}};
-        double[] most = {od(.15 * d, .1, .6), od(.1 * d, .1, .4), .1, od(.06 * d, .1, .25)};
-        double[] usual = {od(.1 * d, .1, most[0]), od(.06 * d, .05, most[1]), .05, od(.04 * d, .05, most[3])};
+        double[] most = {PipeSizes.od(.15 * d, .1, .6), PipeSizes.od(.1 * d, .1, .4), .1, PipeSizes.od(.06 * d, .1, .25)};
+        double[] usual = {PipeSizes.od(.1 * d, .1, most[0]), PipeSizes.od(.06 * d, .05, most[1]), .05, PipeSizes.od(.04 * d, .05, most[3])};
         double agitator = .14 + .05 * d, fag = PipeSizes.flange(agitator) / 2, corner = Math.sqrt(2);
         // Circles taken on the head, {x, z, radius}: the agitator's flange and the process nozzles' (or their spools').
         var taken = new ArrayList<double[]>();
@@ -412,7 +383,7 @@ final class StirredReactorDesign extends UnitDesign {
     /**
      * The agitator's drive on its nozzle at the head's apex: the lantern (0.4 to 0.6 m across, a window each side front and
      * back) on the nozzle's flange, the mechanical seal in it, the shaft and its flanged coupling turning in the windows;
-     * the gearbox and the in-line TEFC motor (fins, cowl, its fan turning behind the grille, terminal box) on top; the seal's
+     * the gearbox and the in-line TEFC motor on top (the kit's standing {@link ProcessUnit#motor}, its fan turning); the seal's
      * thermosiphon pot on a bracket at the lantern's right.
      */
     private static void drive(ProcessUnit u, Plan p, double a, double agitator, double fag) {
@@ -444,26 +415,10 @@ final class StirredReactorDesign extends UnitDesign {
         double g0 = l1, g1 = g0 + .15 + .085 * d, rg = rl + .03;
         u.mesh.cylinder(f, rg, g0, g1, nl, Material.MOTOR);
         u.mesh.cylinder(f, rg + .02, g0 + .4 * (g1 - g0), g0 + .4 * (g1 - g0) + .04, nl, Material.MOTOR);
-        double rm = ProcessUnit.motorDiameter(power(d, p.s)) / 2, fin = .025 + .06 * rm, m0 = g1, m1 = m0 + .25 + .2 * d, cowl = m1 - .18 * (m1 - m0), rc2 = rm + fin;
-        int nm = ProcessUnit.sides(2 * rc2);
-        u.mesh.cylinder(f, rc2 + .03, m0, m0 + .04, nm, Material.MOTOR);
-        u.mesh.prism(f, rm, m0 + .04, cowl, nm, Material.MOTOR);
-        int fins = Math.max(16, Math.min(32, (int) Math.round(2 * Math.PI * rm / .08)));
-        for (int k = 0; k < fins; k++) {
-            double angle = 2 * Math.PI * k / fins;
-            var radial = sub(f.at(angle, 1, 0), f.at(angle, 0, 0));
-            var tangent = cross(UP, radial);
-            u.mesh.block(f.at(angle, rm + fin / 2 - .01, (m0 + .07 + cowl - .02) / 2), scale(radial, fin / 2), new double[]{0, (cowl - .09 - m0) / 2, 0}, scale(tangent, .01),
-                    Material.MOTOR);
-        }
-        u.mesh.annulus(f, rm, rc2, cowl, nm, -1, Material.MOTOR);
-        u.mesh.frustum(f, rc2, .92 * rc2, cowl, m1, nm, Material.MOTOR);
-        u.mesh.annulus(f, .8 * rc2, .92 * rc2, m1, nm, 1, Material.MOTOR);
-        u.grilledFan(f, .8 * rc2, m1, Math.max(.06, Math.min(.15, .6 * (m1 - cowl))), nm, ProcessUnit.PUMP_SPEED);
-        double tb = m0 + .3 * (m1 - m0);
-        u.box(new double[]{a - .35 * rm, tb, a - rm - .45 * rm}, new double[]{a + .35 * rm, tb + .55 * rm, a - rm + .02}, Material.MOTOR, false);
-        u.solids.add(ProcessUnit.Solid.rod(new double[]{a, 0, a}, 1, flange - .05, m1, Math.max(Math.max(rl + .04, rg + .02), rc2 + .03), 0));
-        u.round(a, a, l0, m1, Math.max(rl + .04, rc2), 1);
+        double rm = ProcessUnit.motorDiameter(power(d, p.s)) / 2;
+        u.motor(f, rm, g1, g1 + .25 + .2 * d, 0, 0, ProcessUnit.MotorDetail.FULL);
+        u.solids.add(ProcessUnit.Solid.rod(new double[]{a, 0, a}, 1, flange - .05, g1, Math.max(rl + .04, rg + .02), 0));
+        u.round(a, a, l0, g1, rl + .04, 1);
         // The seal pot on its bracket at the lantern's right, two lines into the seal.
         double pot = .06 + .015 * d, height = .35 + .08 * d, px = a - (rl + .1 + pot), py = l0 + .06;
         var pf = Frame.of(new double[]{px, 0, a}, 1, 1);
