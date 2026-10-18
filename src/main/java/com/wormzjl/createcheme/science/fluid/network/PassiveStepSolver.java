@@ -470,13 +470,16 @@ public final class PassiveStepSolver {
         // key monotone and the pass sequence finite; demotion happens at the next solve's seed.
         boolean[][] promoted=new boolean[seeds.size()][];
         // Decision D34 with A85: the phases (phaseCode bits) the trace rule removed at each node in this solve, by the
-        // reconstruction's fold or by a phase correction whose flash folded them, and those a node's own split refused at a
-        // converged point (the D26 amendment: its closure drove the TP answer's phase under the trace share). Monotone like
-        // the reactivations above: the phase correction does not give such a phase back within this solve, and the next
-        // solve decides from its own start state. Without it, a condensate that converges just below the trace share
-        // is folded, the gas left behind is cooler by the condensate's latent heat, its flash condenses more than the share
-        // again, and the pass sequence repeats (a humid vented tank: 1.0e-9 folded, 2.4e-9 given back).
+        // reconstruction's fold or by a phase correction whose flash folded them, those a node's own split refused at a
+        // converged point (the D26 amendment: its closure drove the TP answer's phase under the trace share), and those the
+        // pass after a proposal refuted (owner decision D39 B, {@link Proposal}). Monotone like the reactivations above: the
+        // phase correction does not give such a phase back within this solve, and the next solve decides from its own start
+        // state. Without it, a condensate that converges just below the trace share is folded, the gas left behind is cooler
+        // by the condensate's latent heat, its flash condenses more than the share again, and the pass sequence repeats (a
+        // humid vented tank: 1.0e-9 folded, 2.4e-9 given back).
         int[] foldedPhases=new int[seeds.size()];
+        // Owner decision D39 B: the phase the last converged point's check added to one node, until a pass converges again.
+        Proposal proposal=null;
         // The velocity cap's active set (decision A270): each connection's cap state, decided on the first pass's start point
         // and revised by this loop at converged points, like a device's mode ({@link Equations#capTransition}).
         int[] caps=new int[graph.pipes().size()];Arrays.fill(caps,CAP_START);
@@ -584,13 +587,28 @@ public final class PassiveStepSolver {
                 // Owner decisions D28 A' and D39: the same holds for its phases. The iterate's check folds what the iterate
                 // empties and proposes nothing (cold seed 430: TP answers at a junction on the 1 Pa box floor seeded later
                 // passes with 13 300 m3 of gas at 51 K, and a third fluid phase at 17 K was held about a non-state).
-                var changedSeeds=foldedIterate(graph,equations.states(failure.lastVariables()));
+                var iterate=equations.states(failure.lastVariables());
+                // Owner decision D39 B: the iterate is read for one thing more, the solve's own proposal. This pass is the
+                // network's closure of the layout the last converged point's check proposed, as a vessel's closure is a node's
+                // own split, and a proposed phase it drives to nothing, vanishing from the proposal's seed (the one test of
+                // the D26 amendment and of rule C, FluidThermodynamics.vanishing), is refuted as the own split refuses one:
+                // the pass is solved again from the point it was proposed at, the node laid out without it, and the refusal
+                // is recorded (A85). Cold seed 48: a tank receiving a boiling tank's liquid sits on its bubble point; the
+                // check proposed 3.4e-6 of its moles as vapour, and the two-phase pass drove it under 1e-8 and stalled at
+                // every step size, as a shrinking vapour cannot close the tank's equilibrium rows.
+                if(proposal!=null) {
+                    int refuted=proposal.phases()&FluidThermodynamics.vanishing(proposal.seed(),iterate.get(proposal.node()));
+                    if(refuted!=0){foldedPhases[proposal.node()]|=refuted;SolverDiagnostics.count(SolverDiagnostics.phaseRefusals);seeds=proposal.point();proposal=null;continue;}
+                }
+                var changedSeeds=foldedIterate(graph,iterate);
                 // Decision D11: a phase a vessel's ports draw at their full capacity leaves the vessel within the step; a
                 // pass whose seed still holds it may have no root (see drainedSeeds).
                 if(changedSeeds==null)changedSeeds=equations.drainedSeeds(checkpoint);
                 if(changedSeeds==null)throw new SparseNewton.Nonconvergence(failure.getMessage()+"; active-set pass="+pass,failure.lastVariables(),failure.phaseHold());
                 seeds=changedSeeds;continue;
             }
+            // A pass that converges ends the proposal it was laid out with (D39 B): the network's closure kept it.
+            proposal=null;
             double[] x=numerical.variables();var states=equations.states(x);double[] flows=new double[graph.pipes().size()],heads=new double[flows.length];
             // The converged Newton point is not phase-checked here: the reconstructed point below, which is what an accepted
             // step commits, is, and the two agree to the Newton tolerance, so checking both asks one question twice at a TP
@@ -689,7 +707,8 @@ public final class PassiveStepSolver {
             // so the pass is solved again from the folded states: the Newton, the reconstruction and the equation gate then
             // read the same phases.
             if(recordFolds(graph,states,projection.states(),foldedPhases)){SolverDiagnostics.count(SolverDiagnostics.traceFoldPasses);seeds=projection.states();continue;}
-            var changedSeeds=phaseCorrection(graph,projection.states(),checkpoint,equations.cachedPrepared,foldedPhases);if(changedSeeds!=null){seeds=changedSeeds;continue;}
+            var changedSeeds=phaseCorrection(graph,projection.states(),checkpoint,equations.cachedPrepared,foldedPhases);
+            if(changedSeeds!=null){proposal=Proposal.of(projection.states(),changedSeeds);seeds=changedSeeds;continue;}
             var reconstructed=x.clone();
             for(int node=0;node<projection.states().size();node++)if(equations.layout[node]!=null){var encoded=equations.layout[node].encode(projection.states().get(node));System.arraycopy(encoded,0,reconstructed,equations.offsets[node],encoded.length);}
             SolverDiagnostics.count(SolverDiagnostics.verificationResiduals);
@@ -933,13 +952,33 @@ public final class PassiveStepSolver {
      * every column entry whatever it draws), so it is not part of the workspace key and a re-decided segment keeps the
      * workspace and its preconditioner; it is part of the cycle key, because the pass loop revises it, and a pass
      * sequence that returns to a segment it has already solved under cannot make progress. It also carries the phases the
-     * trace rule has removed and the own splits have refused so far in the solve (decision D34, A85; the D26 amendment):
-     * that record only grows, so a pass that returns to an earlier structure after a fold or a refusal is a pass under a
-     * different phase-correction rule, not a cycle, and the sequence stays finite.
+     * trace rule has removed and the own splits and the passes after a proposal have refused so far in the solve
+     * (decision D34, A85; the D26 amendment; owner decision D39 B): that record only grows, so a pass that returns to an
+     * earlier structure after a fold or a refusal is a pass under a different phase-correction rule, not a cycle, and the
+     * sequence stays finite.
      */
     private record PassKey(WorkspaceKey structure,byte[] segments,int[] folded,byte[] caps) {
         @Override public boolean equals(Object other){return other instanceof PassKey key&&structure.equals(key.structure)&&Arrays.equals(segments,key.segments)&&Arrays.equals(folded,key.folded)&&Arrays.equals(caps,key.caps);}
         @Override public int hashCode(){return 31*(31*(31*structure.hashCode()+Arrays.hashCode(segments))+Arrays.hashCode(folded))+Arrays.hashCode(caps);}
+    }
+    /**
+     * A proposal (owner decision D39 B): the phases ({@link FluidThermodynamics#phaseBits} bits) the check of a converged
+     * pass's point added to one node ({@link #phaseCorrection}), the node's seed holding them and the point they were
+     * added at. The passes after it, until one converges, are the network's own closure of that layout, as a vessel's
+     * closure or a junction's PH answer is the node's own split (the D26 amendment); one that fails with a proposed phase
+     * vanishing from the seed refutes it.
+     */
+    private record Proposal(int node,int phases,FluidThermodynamics.State seed,List<FluidThermodynamics.State> point) {
+        /** The proposal of the phase correction from {@code point} to {@code corrected}, which changes one node; null where
+         * it adds no phase (a fold). */
+        static Proposal of(List<FluidThermodynamics.State> point,List<FluidThermodynamics.State> corrected) {
+            for(int i=0;i<point.size();i++) {
+                if(corrected.get(i)==point.get(i))continue;
+                int added=FluidThermodynamics.phaseBits(corrected.get(i))&~FluidThermodynamics.phaseBits(point.get(i));
+                return added==0?null:new Proposal(i,added,corrected.get(i),point);
+            }
+            return null;
+        }
     }
     /**
      * Every node's frozen per-component phase support for one pass, derived from that pass's seeds
@@ -2148,7 +2187,7 @@ public final class PassiveStepSolver {
      * there a phase its fold removes from a converged point and a phase its own split refuses there, so the sequence of
      * passes stays finite and a refused phase costs one own split per solve. A polished or reused point is checked on a
      * copy. A failed pass's last iterate is not checked here: it is no state, and it is only folded ({@link #foldedIterate},
-     * owner decisions D28 and D39).
+     * owner decisions D28 and D39) and read for whether it refutes a phase this check added ({@link Proposal}, D39 B).
      */
     private List<FluidThermodynamics.State> phaseCorrection(PassiveNetwork graph,List<FluidThermodynamics.State> states,Runnable checkpoint,FluidThermodynamics.Prepared[] prepared,int[] foldedPhases) {
         for(int i=0;i<states.size();i++) {

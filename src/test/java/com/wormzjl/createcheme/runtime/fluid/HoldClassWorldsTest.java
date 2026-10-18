@@ -2,6 +2,7 @@ package com.wormzjl.createcheme.runtime.fluid;
 
 import com.wormzjl.createcheme.science.column.v3.thermo.V3PengRobinsonThermo;
 import com.wormzjl.createcheme.science.fluid.network.FlowControl;
+import com.wormzjl.createcheme.science.fluid.network.PassiveNetwork;
 import com.wormzjl.createcheme.science.fluid.network.PassiveStepSolver;
 import com.wormzjl.createcheme.science.fluid.thermo.FluidMaterialCatalog;
 import com.wormzjl.createcheme.science.fluid.thermo.FluidThermodynamics;
@@ -581,6 +582,42 @@ class HoldClassWorldsTest {
         w.place(0,1,-1,Kind.GENERATOR,NORTH,passive,new FluidDeviceSpec(1,317.097467877553,334274.03661019984,water),.02);
         w.place(0,-2,-1,Kind.RESERVOIR,NORTH,passive,new FluidDeviceSpec(1,298.15,101325,air),.01);
         w.runTo(207+120*100);w.assertKeptUp("a tank filled full of water by a generator");
+    }
+
+    // ---------------- RefutedProposal ----------------
+    /*
+     * A proposal the next pass refutes is refused (owner decision D39 B, 2026-10-18; D39_FAILED_ITERATE_AND_REFUTED_PROPOSAL.md
+     * of batch 2026-09-24-coolprop-low-temperature): a phase the check of a converged point added to a node, which the next
+     * pass drives to nothing (under FluidThermodynamics.VANISHING_SHARE and below the share it was added at), fails that
+     * pass; the pass is solved again from the converged point without it, and the refusal holds for the solve (A85).
+     */
+    /**
+     * Cold fuzz seed 48, pair-minimized to 6 blocks (M8_CAMPAIGN_WORSE_WORLDS_TRACE.md), on the cold pilot package. At tick
+     * 1254 a 0.1 m pipe joins a 1.95 MPa, 149 K LNG generator (88 % methane, 5 % CO2) to an empty 1 m3 tank, whose bottom
+     * drains through a 0.1 m pipe into a second empty tank 2 m below. Physics: the upper tank flashes at its 1 atm bubble
+     * point, 113.07 K, and its liquid falls into the lower tank; no stream carries potential energy (S1), so while both bags
+     * are slack the lower tank holds that liquid exactly on its bubble point, with no vapour. Before the rule the check
+     * proposed 3.4e-6 of the lower tank's moles as vapour, the two-phase pass drove it to 6e-9 or less and stalled at every
+     * step size, and the island held at tick 1257 (class E5, residual 4.04e-8). With it, the lower tank is laid out liquid
+     * only at those steps; once the upper bag is taut, the liquid arrives from above its bubble pressure and flashes. The
+     * generator's subcooled LNG then fills both bags: liquid and the CO2 frost of the flash, no vapour.
+     */
+    @Test void aBubbleTheNextPassDrivesToNothingIsRefused() {
+        cold(w->{
+            w.runTo(166);w.place(0,0,0,Kind.GENERATOR,SOUTH,pilot(149.1281962169163,1953857.8831369104,0.006488146200716343,0.8830893755602761,0.06294213595499426,0.047480342284013224,0),.02);
+            w.runTo(323);w.place(0,-1,-3,Kind.PIPE,NORTH,.1);
+            w.runTo(598);w.place(0,0,-3,Kind.RESERVOIR,NORTH,.1);
+            w.runTo(1185);w.place(0,0,-1,Kind.PIPE,NORTH,.1);
+            w.runTo(1207);w.place(0,-2,-3,Kind.RESERVOIR,NORTH,.1);
+            w.runTo(1254);w.place(0,0,-2,Kind.PIPE,NORTH,.1);
+            w.runTo(1254+5*100);
+            for(var s:w.coordinator.snapshots())for(var node:s.graph().reservoirs())if(node.kind()==PassiveNetwork.NodeKind.RESERVOIR)
+                System.out.println("REFUTED_PROPOSAL island "+s.id()+" node "+node.id()+" z="+node.elevation()+" P="+node.state().pressure()+" T="+node.state().temperature()
+                        +" m="+node.state().mass()+" liq="+node.state().liquidVolume()+" vap="+node.state().vaporVolume()+" solidsKg="+node.state().solids().massKg());
+            w.assertKeptUp("a boiling tank draining into an empty tank below");
+            for(var s:w.coordinator.snapshots())for(var node:s.graph().reservoirs())if(node.kind()==PassiveNetwork.NodeKind.RESERVOIR)
+                assertEquals(0,node.state().vaporVolume(),"tank "+node.id()+" at "+node.state().pressure()+" Pa, "+node.state().temperature()+" K holds no vapour");
+        });
     }
 
     // ---------------- ResidueTank ----------------

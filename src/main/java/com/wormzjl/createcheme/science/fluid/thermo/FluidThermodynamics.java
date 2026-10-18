@@ -742,7 +742,9 @@ public final class FluidThermodynamics {
      * dry ice stalls with its vapour at 1e-9 to 3e-9 of the moles and still falling, which the trace share alone keeps or
      * drops at rounding; in cold seed 30 a junction re-minted flashed (4.5 % vapour) stalls at a failed iterate with its
      * vapour at 1.0e-8 of its moles, which the trace share kept. 1e-6 of a junction's holdup is about a milligram of LNG.
-     * A phase that does not shrink keeps the trace share ({@link #PHASE_TRACE_FRACTION}) alone.
+     * A phase that does not shrink keeps the trace share ({@link #PHASE_TRACE_FRACTION}) alone. A phase the solve itself
+     * adds shrinks from where it was added: a proposal the next pass drives under this share fails that pass and is
+     * refused (owner decision D39 B, the network solver's pass loop).
      */
     public static final double VANISHING_SHARE=1e-6;
     /**
@@ -935,10 +937,11 @@ public final class FluidThermodynamics {
      * <p>{@code record}, {@code at}: the solve's A85 record of the node's phases ({@link #phaseBits}), {@code record[at]}:
      * read as the phases the solve removed or refused, which are not added, and written with the phases this check removes
      * (the fold, a phase the seed lacks) and refuses; {@code null} reads none and writes nothing. A trial check (a vessel
-     * closure's failed iterate, decision D28 A') passes a copy. {@code junction}: whether the node is a pipe junction (the
-     * carried gas of D41 in the fold, its own split the PH answer); {@code from}: the node's state where the solve that
-     * reached {@code state} started (a step: the node at the step's start; a vessel's closure: the state it closes from), which
-     * the vanishing rule reads, or {@code null} for none; {@code prepared}, when given, is the node's prepared temperature
+     * closure's failed iterate, decision D28 A') passes a copy. The network solver also writes there a phase this check
+     * added that the next pass refutes (owner decision D39 B), read the same way. {@code junction}: whether the node is a
+     * pipe junction (the carried gas of D41 in the fold, its own split the PH answer); {@code from}: the node's state where
+     * the solve that reached {@code state} started (a step: the node at the step's start; a vessel's closure: the state it
+     * closes from), which the vanishing rule reads, or {@code null} for none; {@code prepared}, when given, is the node's prepared temperature
      * state (used only at exactly that temperature); {@code vesselSplit}, a vessel's own split from a start holding the
      * phases to lay it out with, or {@code null} where the vessel's flash fails (ignored for a junction).
      *
@@ -999,9 +1002,11 @@ public final class FluidThermodynamics {
      * smaller share than it held at {@code start}. A phase the solve grows, however small, is not among them. The D26
      * amendment by direction (owner decision of 2026-10-16, form 4) for a vessel's own closure, given by owner decision D38
      * C (2026-10-17) to a junction's own split and to the solve's own point ({@link #phaseCheck}: {@code start} the node
-     * where its step or closure started).
+     * where its step or closure started), and by owner decision D39 B (2026-10-18) to the network's pass after a proposal:
+     * {@code start} the node's seed holding the phase the converged point's check added, {@code end} the pass's failed
+     * iterate, where a proposed phase it names is refuted.
      */
-    static int vanishing(State start,State end) {
+    public static int vanishing(State start,State end) {
         double[] s=phaseAmounts(start),e=phaseAmounts(end);double ts=sum(s),te=sum(e);int bits=0;
         for(int k=0;k<4;k++)if(e[k]<VANISHING_SHARE*te&&e[k]*ts<s[k]*te)bits|=1<<k;
         return bits;
