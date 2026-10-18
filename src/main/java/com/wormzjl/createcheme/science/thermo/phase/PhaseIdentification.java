@@ -5,35 +5,26 @@ import com.wormzjl.createcheme.science.thermo.PengRobinsonKernel;
 /**
  * The phase identification parameter of Venkatarathnam and Oellrich (2011, Fluid Phase Equilibria 301, 225-233) on
  * the untranslated PR78 cubic: a liquid-like or vapour-like label for one fluid state that needs no saturation
- * property and no mixture critical point.
+ * property and no mixture critical point. {@code PIP = v [ (d2P/dT dv) / (dP/dT)_v - (d2P/dv2) / (dP/dv)_T ]}, which
+ * is {@code d ln[(dP/dT)_v / -(dP/dv)_T] / d ln v} at constant temperature: the ideal gas has {@code PIP = 1}, a dense
+ * liquid tends to {@code v/(v - b) > 1}, a dilute real gas is {@code 1 + (B - T dB/dT)/v} with the cubic's second
+ * virial coefficient {@code B = b - a/(R T)}, below one while {@code B < T dB/dT}; so {@code PIP > 1} is liquid-like
+ * and {@code PIP < 1} vapour-like.
  *
- * <p>{@code PIP = v [ (d2P/dT dv) / (dP/dT)_v - (d2P/dv2) / (dP/dv)_T ]}, which is
- * {@code d ln[(dP/dT)_v / -(dP/dv)_T] / d ln v} at constant temperature. The ideal gas has {@code PIP = 1} exactly;
- * a dense liquid tends to {@code v/(v - b) > 1}; a dilute real gas is {@code 1 + (B - T dB/dT)/v} with the second
- * virial coefficient {@code B = b - a/(R T)} of the cubic, below one while {@code B < T dB/dT}. So {@code PIP > 1} is
- * liquid-like and {@code PIP < 1} vapour-like (gas-like), as the paper states; the P3 plan's parenthesis
- * "(> 1 vapour-like)" has the sign reversed and is not followed.</p>
+ * <p>The label rule: liquid-like when {@code PIP > max(1, Z)}, {@code Z = P v/(R T)} of the same untranslated root;
+ * vapour-like otherwise. The bare {@code PIP > 1} misreads a hot gas: {@code B - T dB/dT} turns positive above the
+ * Boyle temperature and a dilute gas then has a parameter just above one (nitrogen above about 620 K: 1.000079 at 700 K
+ * and 0.1 MPa), but such a gas has {@code Z = 1 + B/v} above one and above its parameter, since to first order
+ * {@code PIP - Z = -T (dB/dT)/v < 0} wherever the alpha function decreases (to 1388 K for the bundled components, above
+ * every fluid domain's 1200 K). A liquid-like state has its parameter well above one and above {@code Z}: every liquid
+ * and dense supercritical state with {@code Z < 1} (nitrogen at 130 K and 6 MPa: {@code Z} 0.39, {@code PIP} 4.97), and
+ * a compressed liquid whose {@code Z} has reached one ({@code crude_pc12} at 293.15 K and 2 MPa: {@code Z} 1.15,
+ * {@code PIP} about 92), which a bare {@code Z < 1} guard would call vapour. Measured over the one-root states with
+ * {@code PIP > 1} and {@code Z >= 1} of every bundled component inside their fluid domains, those less dense than the
+ * cubic's critical volume ({@code v > 3.95 b}) all have {@code PIP < Z} and the denser ones {@code PIP - Z > 91}. The
+ * three-root case does not use this rule: there the stability root decides.</p>
  *
- * <p><b>The label rule (P3 WP7c): liquid-like when {@code PIP > 1} and {@code PIP > Z}</b>, i.e. {@code PIP > max(1, Z)}
- * with {@code Z = P v/(R T)} of the same untranslated root; vapour-like otherwise. The bare {@code PIP > 1} misreads a
- * hot gas: {@code B - T dB/dT = b - 2 a/(R T) + (da/dT)/R} turns positive at high temperature, and a dilute gas then
- * has a parameter just above one (nitrogen above about 620 K on the network and pilot kernels, 1.000079 at 700 K and
- * 0.1 MPa; methane on the pilot kernel above about 1000 K, carbon dioxide above about 1150 K). Such a gas has a positive
- * {@code B} (it is above its Boyle temperature), so {@code Z = 1 + B/v} is above one as well, and above its
- * parameter: to first order in {@code 1/v}, {@code PIP - Z = -T (dB/dT)/v < 0}, because the cubic's {@code B} rises
- * with temperature ({@code a/T} falls) wherever the alpha function decreases, {@code sqrt(T/Tc) < 1 + 1/m}; for the
- * bundled components that holds to 1388 K (nitrogen, the lowest), above every fluid domain's 1200 K. A liquid-like state
- * has its parameter well above one and above {@code Z}: every liquid and dense supercritical state with {@code Z < 1}
- * (nitrogen at 130 K and 6 MPa: {@code Z} 0.39, {@code PIP} 4.97), where the rule is {@code PIP > 1 and Z < 1}, and a
- * compressed liquid whose {@code Z} has reached one (the heaviest crude cut {@code crude_pc12} at 293.15 K and its
- * 2 MPa maximum: {@code Z} 1.15, {@code PIP} about 92), which a bare {@code Z < 1} guard would call vapour. Measured
- * over the one-root states with {@code PIP > 1} and {@code Z >= 1} of every bundled component and several mixtures
- * inside their fluid domains: those less dense than the cubic's critical volume ({@code v > 3.95 b}) all have
- * {@code PIP < Z} (vapour-like; the difference shrinks towards zero from below with the density, as the first-order
- * term says), the denser ones {@code PIP - Z > 91} (liquid-like). The three-root case does not use this rule: there
- * the stability root decides.</p>
- *
- * <p>For the PR78 form {@code P = R T/(v - b) - a/D}, {@code D = v^2 + 2 b v - b^2}, the four derivatives are the ones
+ * <p>For {@code P = R T/(v - b) - a/D}, {@code D = v^2 + 2 b v - b^2}, the four derivatives are the ones
  * {@code TranslatedPengRobinson.fill} forms for its volumetric block:</p>
  * <pre>
  *   dP/dv    = -R T/(v - b)^2 + 2 a (v + b)/D^2
@@ -41,15 +32,11 @@ import com.wormzjl.createcheme.science.thermo.PengRobinsonKernel;
  *   d2P/dv2  =  2 R T/(v - b)^3 + 2 a/D^2 - 8 a (v + b)^2/D^3
  *   d2P/dTdv = -R/(v - b)^2 + 2 (da/dT)(v + b)/D^2
  * </pre>
- * <p>so the parameter needs the mixture's {@code a}, {@code b}, {@code da/dT} and the root's volume only: no second
- * temperature derivative of {@code a} and no composition derivative. It is evaluated on the untranslated volume
- * {@code v = Z R T/P}, the cubic on which roots are selected and equilibria computed (a constant translation shifts
- * the volume axis and so changes the {@code v} prefactor; the label belongs to the root, not to the density
- * correction). It is undefined where {@code (dP/dT)_v = 0} (never for a PR root with {@code v > b} and
- * {@code da/dT < 0}) and at a mechanically unstable root ({@code dP/dv >= 0}, refused by the evaluators anyway);
- * at a pure-component critical point {@code dP/dv} and {@code d2P/dv2} vanish together and the ratio has a finite
- * limit, but a state exactly there is not separated from its neighbours by this parameter, which is why the critical
- * band ({@link FluidTpEquilibrium}) grades such states research-only whatever their label.</p>
+ * <p>so the parameter needs the mixture's {@code a}, {@code b}, {@code da/dT} and the root's volume only, evaluated on
+ * the untranslated volume {@code v = Z R T/P} (the label belongs to the root, not to the density correction). It is
+ * undefined where {@code (dP/dT)_v = 0} and at a mechanically unstable root; at a pure-component critical point the
+ * ratio has a finite limit but separates nothing, which is why the critical band ({@link FluidTpEquilibrium}) grades
+ * such states research-only whatever their label.</p>
  */
 public final class PhaseIdentification {
     private static final double R = PengRobinsonKernel.GAS_CONSTANT;

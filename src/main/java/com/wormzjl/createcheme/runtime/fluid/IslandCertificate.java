@@ -169,35 +169,22 @@ public final class IslandCertificate {
     }
 
     /**
-     * How far the later of two consecutive intervals is from a stationary repeat of the earlier one: the first
-     * discrete difference, or null when there is none, and for each continuous test the smallest tolerance it
-     * passes at. The pair is stationary at a tolerance {@code eps} exactly when {@code discrete} is null and every
-     * measure is at most {@code eps} ({@link #refusal}); {@link #measure} is the smallest such {@code eps}.
-     *
-     * <ul>
-     * <li>{@code discrete}: unequal durations; an interval not FULL, or with a solid transport transition, a
-     *     closure, cake, phase or node-solid change inside it; unequal modes, phases, blocked masks, filter cakes
-     *     or fixed-node states.</li>
-     * <li>{@code state}: the larger interval's largest relative temperature or pressure drift of a finite node.
-     *     A node whose state drifts at a constant rate (pump heating, a slow depletion) is not stationary. Zero
-     *     between two identity maps, whose states differ at most by decode roundoff.</li>
-     * <li>{@code component}: the largest change between the intervals of a finite node's component change,
-     *     relative to that inventory.</li>
-     * <li>{@code energy}: the same for internal energy, relative to {@link #energyScale}.</li>
-     * <li>{@code flow}: per pipe the smaller of two ratios, the largest over the pipes. The first is the change
-     *     of its flow relative to the larger of that flow and the island's largest flow. The second is the mass
-     *     the pipe moves in one interval (the larger of the two intervals) relative to the smaller finite
-     *     inventory it draws on ({@link Summary#referenceMass}): a pipe that moves less than {@code eps} of that
-     *     inventory in both intervals is quiet, because whatever its flow does is already bounded by the
-     *     component and energy tests of the inventories it moves between. Without it the relative test is
-     *     ill-conditioned wherever the island's largest flow is itself solver noise (a settled closed island at
-     *     1e-10 kg/s), since a noise flow's change is of the order of the flow itself. A pipe between two
-     *     boundaries (a generator straight into a void) draws on no finite inventory and is never quiet.</li>
-     * </ul>
-     * {@code flowChange} and {@code flowMoves} are the two ratios of the pipe that sets {@code flow};
-     * {@code largestRelativeFlowChange} is the largest first ratio over all pipes, the whole flow test before
-     * quiet pipes were exempt, kept for diagnostics. The locations are for the refusal text only. Nothing here
-     * decides accounting: replay scales the recorded interval, so conservation is exact whatever the tolerance.
+     * How far the later of two consecutive intervals is from a stationary repeat of the earlier one: the first discrete
+     * difference, or null when there is none, and for each continuous test the smallest tolerance it passes at. The
+     * pair is stationary at a tolerance {@code eps} exactly when {@code discrete} is null and every measure is at most
+     * {@code eps} ({@link #refusal}); {@link #measure} is the smallest such {@code eps}. {@code discrete}: unequal
+     * durations; an interval not FULL, or with a solid transport transition, a closure, cake, phase or node-solid change
+     * inside it; unequal modes, phases, blocked masks, filter cakes or fixed-node states. {@code state}: the larger
+     * interval's largest relative temperature or pressure drift of a finite node (a node drifting at a constant rate is
+     * not stationary). {@code component} and {@code energy}: the largest change between the intervals of a finite node's
+     * component or internal-energy change, relative to that inventory or {@link #energyScale}. {@code flow}: per pipe
+     * the smaller of two ratios, the largest over the pipes: the change of its flow relative to the larger of that flow
+     * and the island's largest flow, and the mass it moves in one interval relative to the smaller finite inventory it
+     * draws on ({@link Summary#referenceMass}), so a pipe that moves less than {@code eps} of that inventory is quiet
+     * (otherwise the relative test is ill-conditioned wherever the island's largest flow is solver noise, a settled
+     * closed island at 1e-10 kg/s). {@code flowChange} and {@code flowMoves} are the two ratios of the pipe that sets
+     * {@code flow}; {@code largestRelativeFlowChange} the largest first ratio over all pipes, for diagnostics. Nothing
+     * here decides accounting: replay scales the recorded interval, so conservation is exact whatever the tolerance.
      */
     public record Stationarity(String discrete,double state,double component,String componentAt,double energy,String energyAt,
                                double flow,String flowAt,double flowChange,double flowMoves,double largestRelativeFlowChange) {
@@ -274,14 +261,12 @@ public final class IslandCertificate {
 
     /**
      * The certificate the last interval supports, or empty with the reason. When every change, flow, gross pipe
-     * transfer, boundary transfer and pump work of the interval is exactly zero (the identity map, d = 0) its horizon
-     * is the policy's recheck period, or {@link Long#MAX_VALUE} without one. None when the averages are zero but
-     * something still moved back and forth (the average hides it). Otherwise it also needs no solids in transport and
-     * no filter on the island, and a horizon of at least one interval: {@code min(K_max, floor(budget / d))}
-     * intervals, d the largest relative per-interval change of any finite node component, internal energy (against
-     * {@link #energyScale}), temperature or pressure, cut short before any extrapolated component could reach zero.
-     * A constant boundary transfer cannot change sign under linear replay, so no further limit is needed for fixed
-     * nodes.
+     * transfer, boundary transfer and pump work of the interval is exactly zero (the identity map, d = 0) its horizon is
+     * the policy's recheck period, or {@link Long#MAX_VALUE} without one; none when the averages are zero but something
+     * still moved back and forth. Otherwise it also needs no solids in transport and no filter on the island, and a
+     * horizon of at least one interval: {@code min(K_max, floor(budget / d))} intervals, d the largest relative
+     * per-interval change of any finite node component, internal energy, temperature or pressure, cut short before any
+     * extrapolated component could reach zero.
      */
     static Result issue(Summary last,CertificatePolicy policy) {
         if(!last.transitionFree||!last.closuresUnchanged||!last.solidsUnchanged||!last.phasesUnchanged)return Result.refused("the interval changed a closure, a cake, a phase or node solids");

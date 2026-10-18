@@ -8,37 +8,24 @@ import static com.wormzjl.createcheme.science.fluid.thermo.FluidThermodynamics.O
 import static com.wormzjl.createcheme.science.fluid.thermo.FluidThermodynamics.WATER;
 
 /**
- * What a vessel's phase port draws (decision D11 of documentation/2026-09-26-phase-ports-and-compressor: ports carry
- * mixed phases by priority).
+ * What a vessel's phase port draws (decision D11: ports carry mixed phases by priority). Priority: a bottom
+ * ({@link PassiveNetwork.PhasePort#LIQUID}) port draws the heavier of the vessel's two liquids
+ * ({@link FluidThermodynamics#heavierLiquid}), then the lighter, then the gas; a top ({@link PassiveNetwork.PhasePort#VAPOR})
+ * port the gas, then the lighter liquid, then the heavier; each liquid carries its volume share of the solids
+ * ({@link FluidThermodynamics#phaseSolidShare}). A BULK end draws the bulk, except on a donor holding solids but no
+ * liquid, whose bulk end draws its gas (owner decision D33, {@link FluidThermodynamics#bulkDrawsGas}).
  *
- * <p><b>Priority.</b> A bottom ({@link PassiveNetwork.PhasePort#LIQUID}) port draws the heavier of the vessel's two
- * liquids (by their own densities, {@link FluidThermodynamics#heavierLiquid}), then the lighter, then the gas; a top
- * ({@link PassiveNetwork.PhasePort#VAPOR}) port the gas, then the lighter liquid, then the heavier. Each liquid carries
- * its volume share of the solids ({@link FluidThermodynamics#phaseSolidShare}). A BULK end draws the bulk and has no
- * order, except on a donor holding solids but no liquid, whose bulk end draws its gas (owner decision D33: solids ride
- * the liquid, {@link FluidThermodynamics#bulkDrawsGas}).
- *
- * <p><b>Capacity and the priority stream.</b> A phase can be drawn through a port over one step only up to what the
- * vessel held of it at the step start: {@code c = m_start / (N dt)} (kg/s), {@code N} the vessel's phase-port ends whose
- * connection may carry outflow by the static rule, {@code dt} the step; infinite in a rate solve, which has no step.
- * A port carrying the outflow {@code q} draws the first phase of its order up to its capacity, the second with what is
- * left up to its capacity, and so on; the last phase the vessel holds takes whatever the earlier ones do not (it is
- * never capped: a port's total flow is limited by the hydraulics and the velocity cap alone, as a bulk end's is). A
- * phase the vessel does not hold at the step start has no capacity and is skipped.
- *
- * <p><b>Pinned and marginal phases.</b> A phase drawn at its capacity (pinned) is drawn at the composition, enthalpy and
- * density of the step's start state: over the step it takes exactly its share of what the vessel held of that phase at
- * the start, which exists whatever the end state holds (a phase drawn at its capacity usually ends the step at zero, on
- * its own phase boundary, where its end-state composition is not defined and a Newton whose layout keeps the phase
- * cannot converge). The phase that carries the rest of the flow (marginal) is drawn at the step's end state, the
- * implicit form of every stream before (plan 3.2): with no phase pinned the port's stream is exactly its phase stream.
- * The marginal phase must be held by the pass's seed; a phase the seed no longer holds (it vanished within the step) is
- * not drawn as marginal, and the next phase of the order the seed holds is.
- *
- * <p><b>The segment.</b> Which phases are pinned and which one is marginal is a kink in the stream's composition as a
- * function of {@code q}, so it is frozen for one active-set pass (a {@link Segment}, decided from the pass's start flow
- * and seeds, like the junction donors and the head densities) and re-decided from the converged flow by the pass loop:
- * each Newton residual is smooth, and the loop settles on the segment its own flow confirms.
+ * <p>Capacity and the priority stream: a phase can be drawn through a port over one step only up to what the vessel
+ * held of it at the step start, {@code c = m_start / (N dt)} (kg/s), {@code N} the vessel's phase-port ends whose
+ * connection may carry outflow by the static rule, {@code dt} the step (infinite in a rate solve). A port carrying the
+ * outflow {@code q} draws the first phase of its order up to its capacity, the second with what is left, and so on; the
+ * last phase the vessel holds takes whatever the earlier ones do not (a port's total flow is limited by the hydraulics
+ * and the velocity cap alone). A phase drawn at its capacity (pinned) is drawn at the composition, enthalpy and density
+ * of the step's start state, which exists whatever the end state holds (a phase drawn at its capacity usually ends the
+ * step at zero, on its own phase boundary); the phase that carries the rest (marginal) is drawn at the step's end state,
+ * and must be held by the pass's seed. Which phases are pinned and which one is marginal is a kink in the stream's
+ * composition as a function of {@code q}, so it is frozen for one active-set pass (a {@link Segment}, decided from the
+ * pass's start flow and seeds) and re-decided from the converged flow by the pass loop.</p>
  */
 final class PhaseDraw {
     private PhaseDraw() {}

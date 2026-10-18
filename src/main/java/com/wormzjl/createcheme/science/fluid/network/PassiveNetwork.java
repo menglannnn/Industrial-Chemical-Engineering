@@ -11,17 +11,14 @@ public record PassiveNetwork(List<Reservoir> reservoirs,List<Pipe> pipes,List<Sc
     public enum NodeKind { RESERVOIR, JUNCTION, GENERATOR, VOID, PORT }
     /**
      * What one end of a connection draws from its node when the flow leaves the node through it: the whole state
-     * ({@code BULK}, every connection before phase-selective outlets, a tank's side), or its phases by priority
-     * (decision D11 of documentation/2026-09-26-phase-ports-and-compressor, {@code PhaseDraw}): a {@code LIQUID} port (a
-     * tank's bottom face) the heavier liquid, then the lighter, then the gas, a {@code VAPOR} port (its top face) the gas,
-     * then the lighter liquid, then the heavier, each phase up to what the vessel held of it at the step start and the
-     * next phase beyond that, a liquid with its volume share of the solids. A port never closes for want of a phase. A
-     * port acts on outflow only: inflow through any port is delivered to the vessel as through a bulk end (D3). The
-     * port's driving pressure is the node's pressure plus a per-end offset ({@code PassiveStepSolver.endPressure}), in
-     * both directions: the level head {@code g * condensed mass * 1 m / V} at a LIQUID port (decision D9), zero
-     * elsewhere. Only a finite vessel has phases to select from, so a non-BULK port is valid only on an end whose node
-     * is a {@link NodeKind#RESERVOIR} or its rate-solve copy, a {@link NodeKind#PORT}. Named {@code PhasePort} rather
-     * than {@code Port} because {@link NodeKind#PORT} is a node kind.
+     * ({@code BULK}), or its phases by priority (decision D11, {@code PhaseDraw}): a {@code LIQUID} port (a tank's bottom
+     * face) the heavier liquid, then the lighter, then the gas, a {@code VAPOR} port (its top face) the gas, then the
+     * lighter liquid, then the heavier, each phase up to what the vessel held of it at the step start and the next phase
+     * beyond that, a liquid with its volume share of the solids. A port never closes for want of a phase, and acts on
+     * outflow only (inflow is delivered as through a bulk end). The port's driving pressure is the node's pressure plus
+     * a per-end offset ({@code PassiveStepSolver.endPressure}: the level head at a LIQUID port, decision D9). Only a
+     * finite vessel has phases to select from, so a non-BULK port is valid only on a {@link NodeKind#RESERVOIR} or its
+     * rate-solve copy, a {@link NodeKind#PORT}.
      */
     public enum PhasePort { BULK, VAPOR, LIQUID }
     public PassiveNetwork {
@@ -74,29 +71,21 @@ public record PassiveNetwork(List<Reservoir> reservoirs,List<Pipe> pipes,List<Sc
     /**
      * Sizes every junction that is not sized yet ({@link #unsized}), once, from its seed state and its connections:
      * {@code m_J = PassiveStepSolver.HOLDUP_TAU * max over its connections of rho_seed * minimumArea * velocityLimit(seed)},
-     * the velocity cap's mass flow evaluated on the junction's seed state (a filter connection uses the same formula; its
-     * cake limit is a step quantity). An unconnected junction, which carries nothing, is given 1 kg so its stock is
-     * positive. A graph with no unsized junction is returned unchanged.
-     *
-     * <p>The mint is once, at the seed state: a later lower density lowers the cap flow and only shortens the mixing lag;
-     * a higher one (liquid arriving in a gas fitting) lengthens it. The buffer's mass then stays exactly m_J (the mass pin
-     * of {@code ConservativeTransport.reconstruct}); a topology edit recompiles the island and mints its junctions again.
-     * Nothing is booked at a mint (owner decision D46: the buffer is the relaxation row's state, not inventory).
-     * The seed is the state the junction was built with; an island formed from placed blocks is minted by
-     * {@link #mintJunctions}, which first gives every new junction its start state.
+     * the velocity cap's mass flow on the junction's seed state; an unconnected junction is given 1 kg so its stock is
+     * positive. The mint is once, at the seed state (a later density only changes the mixing lag); the buffer's mass
+     * then stays exactly m_J (the mass pin of {@code ConservativeTransport.reconstruct}), a topology edit recompiles the
+     * island and mints its junctions again, and nothing is booked at a mint (owner decision D46). A graph with no
+     * unsized junction is returned unchanged.
      */
     public static PassiveNetwork sizeJunctionHoldups(PassiveNetwork graph,FluidThermodynamics model) {
         return sizeJunctionHoldups(graph,model,null);
     }
     /**
-     * The junctions of an island formed from placed blocks, minted (owner decisions D54, nothing at the mint, and D55): a
-     * junction holds nothing a placement put there, so its buffer, the state of its relaxation row (D46), starts from a
-     * guess, which its 0.05 s relaxation (D25) washes out. The guess is the island-wide fixed point's last round
-     * ({@link PassiveStepSolver#fixedPointStarts}: round 0 what the connected suppliers would send each junction, swept
-     * hop by hop to the junctions none touches; then the boundaries' states give flows, upwind mixing gives the junctions'
-     * mixtures, the mixtures give columns and caps), and every junction is sized from it ({@link #sizeJunctionHoldups}),
-     * so on a fluid a source supplies. The state the compile built such a junction with is a placeholder. A graph built
-     * directly keeps the junction states it was given ({@link #sizeJunctionHoldups} alone).
+     * The junctions of an island formed from placed blocks, minted (owner decisions D54 and D55): a junction holds
+     * nothing a placement put there, so its buffer, the state of its relaxation row (D46), starts from a guess, which its
+     * 0.05 s relaxation washes out: the island-wide fixed point's last round ({@link PassiveStepSolver#fixedPointStarts}),
+     * from which every junction is sized ({@link #sizeJunctionHoldups}), so on a fluid a source supplies. A graph built
+     * directly keeps the junction states it was given.
      */
     public static PassiveNetwork mintJunctions(PassiveNetwork graph,FluidThermodynamics model) {
         for(var node:graph.reservoirs)if(unsized(node))
@@ -154,16 +143,12 @@ public record PassiveNetwork(List<Reservoir> reservoirs,List<Pipe> pipes,List<Sc
         @Override public int hashCode(){return 31*Objects.hash(volume,internalEnergy,solids)+Arrays.hashCode(moles);}
     }
     /**
-     * {@code blockedDirections} is a two-bit mask - 1 forbids flow from {@link #first} to
-     * {@link #second}, 2 the reverse - and stays an int because the saved checkpoint format is one
-     * and {@link #blocked(double)} is still asked per direction. Every closure the solid transport
-     * machinery makes produces 3: a settled bed and a filter at capacity are both properties of the
-     * connection rather than of one end of it. A saved checkpoint may still carry 1 or 2, and a
-     * caller may still impose one.
-     *
-     * <p>{@code firstPort} and {@code secondPort} are what the connection draws from its first and second node when
-     * the flow leaves that node through it ({@link PhasePort}). Every constructor but the canonical one passes
-     * {@link PhasePort#BULK} at both ends, so every graph built without naming a port is the graph it always was.
+     * {@code blockedDirections} is a two-bit mask (1 forbids flow from {@link #first} to {@link #second}, 2 the reverse),
+     * an int because the saved checkpoint format is one; every closure the solid transport machinery makes produces 3 (a
+     * settled bed and a filter at capacity are properties of the connection), while a saved checkpoint or a caller may
+     * carry 1 or 2. {@code firstPort} and {@code secondPort} are what the connection draws from its first and second node
+     * when the flow leaves that node through it ({@link PhasePort}); every constructor but the canonical one passes
+     * {@link PhasePort#BULK} at both ends.
      */
     public record Pipe(long id,int first,int second,List<PipeResistance.Geometry> sections,FlowControl control,int blockedDirections,InlineFilter filter,
                        PhasePort firstPort,PhasePort secondPort) {
@@ -171,16 +156,12 @@ public record PassiveNetwork(List<Reservoir> reservoirs,List<Pipe> pipes,List<Sc
         public Pipe(long id,int first,int second,List<PipeResistance.Geometry> sections,FlowControl control,int blockedDirections){this(id,first,second,sections,control,blockedDirections,null);}
         public Pipe(long id,int first,int second,List<PipeResistance.Geometry> sections,FlowControl control){this(id,first,second,sections,control,0);}
         /**
-         * Everything about this connection that decides the shape and the coefficients of the
-         * equations it contributes, and nothing that only moves their right-hand side.
-         *
-         * <p>The captured cake is exactly that right-hand side: each step rebuilds the pipe list with
-         * the cake it left, so a retained Newton workspace, sparsity pattern,
-         * fill-reducing ordering or warm flow keyed on the whole {@link Pipe} record would miss on
-         * every step of any island that has a filter in it - a fresh factorization per step, no
-         * preconditioner to fork, and the previous step's flows thrown away. The filter's own
-         * settings do belong here, because its clean resistance and capacity are coefficients. So do the two ports: they
-         * decide which phase an outflow's donor terms read, and so the coefficients of every row the donor reaches.
+         * Everything about this connection that decides the shape and the coefficients of the equations it contributes,
+         * and nothing that only moves their right-hand side. The captured cake is exactly that right-hand side: each step
+         * rebuilds the pipe list with the cake it left, so a retained Newton workspace, sparsity pattern, ordering or warm
+         * flow keyed on the whole {@link Pipe} record would miss on every step of any island with a filter. The filter's
+         * clean resistance and capacity are coefficients and belong here, as do the two ports, which decide which phase an
+         * outflow's donor terms read.
          */
         public record Identity(long id,int first,int second,List<PipeResistance.Geometry> sections,FlowControl control,
                                int blockedDirections,FilterSettings filter,PhasePort firstPort,PhasePort secondPort) {}

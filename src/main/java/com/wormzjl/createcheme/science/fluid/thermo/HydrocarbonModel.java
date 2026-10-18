@@ -12,22 +12,17 @@ import com.wormzjl.createcheme.science.thermo.phase.WaterParticipation;
 import java.util.List;
 
 /**
- * Fluid-specific property snapshot. Does not replace or modify the column's property model.
- *
- * <p>Every hydrocarbon phase is the translated PR78 evaluated directly at its own pressure: a liquid at the state
- * pressure, a vapour at its hydrocarbon partial pressure. There is no reference pressure and no global liquid
- * compressibility: a liquid's volume, enthalpy, {@code ln phi} and compressibility are the equation of state's own at
- * the state, and the volume translation of each component is anchored at its reference point's own temperature and
- * pressure.
- *
- * <p>Two paths, chosen by the package. A package without a reference spine takes the coefficient path: the
- * {@code shifted_polynomial_5} ideal-gas fits, the constant interaction matrix and the global calibration anchors
- * (pinned by {@code LegacyNetworkPathPinTest}). A package that declares a {@code spine} takes the spine path
- * ({@link SpinePackageData}): the spine records as the ideal gas with each species' formation enthalpy subtracted (the
- * network's sensible datum, D10), the E-PPR78 pair interactions, the records' own {@code volume_translation} anchors,
- * and its {@link ThermoIdentity} as the thermodynamic revision. On that path a phase's volume and {@code ln phi} are bit
- * for bit those of {@code CubicPhaseEvaluator.forPackage} on the same package, and its enthalpy is the evaluator's minus
- * {@code sum x_i DeltafH_i}.</p>
+ * Fluid-specific property snapshot. Every hydrocarbon phase is the translated PR78 evaluated directly at its own
+ * pressure: a liquid at the state pressure, a vapour at its hydrocarbon partial pressure; a liquid's volume, enthalpy,
+ * {@code ln phi} and compressibility are the equation of state's own, and each component's volume translation is
+ * anchored at its reference point. Two paths, chosen by the package: a package without a reference spine takes the
+ * coefficient path (the {@code shifted_polynomial_5} ideal-gas fits, the constant interaction matrix and the global
+ * calibration anchors, pinned by {@code LegacyNetworkPathPinTest}); a package that declares a {@code spine} takes the
+ * spine path ({@link SpinePackageData}: the spine records as the ideal gas with each species' formation enthalpy
+ * subtracted, the network's sensible datum, the E-PPR78 pair interactions, the records' own {@code volume_translation}
+ * anchors, and its {@link ThermoIdentity} as the thermodynamic revision), on which a phase's volume and {@code ln phi}
+ * are bit for bit those of {@code CubicPhaseEvaluator.forPackage} and its enthalpy the evaluator's minus
+ * {@code sum x_i DeltafH_i}.
  */
 public final class HydrocarbonModel {
     /**
@@ -164,22 +159,15 @@ public final class HydrocarbonModel {
     }
     /**
      * One hydrocarbon phase at {@code p}: the state pressure for a liquid, the hydrocarbon partial pressure for a vapour.
-     *
-     * <p>The root rule: the slot's root must exist, of the slot's kind, or the evaluation is refused with the typed
-     * {@link RootAbsent} (an {@link IllegalArgumentException}: the line search backtracks, and for a liquid slot the outer
-     * check re-decides the regime). A root is absent in two ways.
-     * <ul>
-     * <li>Floating point loses the cubic's physical root ({@link PengRobinsonKernel.NoPhysicalRoot}): a trial far outside
-     * any physical state, where the cubic's coefficients overflow (1.5e292 Pa) or its root's distance above the co-volume
-     * falls below one ulp of it (6.6e25 Pa). The network's state read keeps the pressure a phase is read at inside the
-     * numerical box, a vapour's hydrocarbon partial pressure included ({@code FluidThermodynamics.state}): this is the
-     * guard for a root lost inside it.</li>
-     * <li>At the state pressure the cubic can have one physical root, and it can be vapour-like (the phase identification
-     * parameter of Venkatarathnam and Oellrich 2011 at most one, or at most its {@code Z}:
-     * {@link PhaseIdentification#vapourLike(double, double)}): the liquid root is absent. If the phase's node also carries
-     * a hydrocarbon vapour ({@code vaporCoexists}), the two slots would evaluate the same kind of root, a trial collapsing
-     * onto the trivial solution. In a liquid-only node the single root is the same fluid continuing and is accepted.</li>
-     * </ul>
+     * The slot's root must exist, of the slot's kind, or the evaluation is refused with the typed {@link RootAbsent} (an
+     * {@link IllegalArgumentException}: the line search backtracks, and for a liquid slot the outer check re-decides the
+     * regime). A root is absent where floating point loses the cubic's physical root
+     * ({@link PengRobinsonKernel.NoPhysicalRoot}: a trial far outside any physical state, the coefficients overflowing at
+     * 1.5e292 Pa or the root's distance above the co-volume below one ulp of it at 6.6e25 Pa), and where at the state
+     * pressure the cubic has one physical root that is vapour-like ({@link PhaseIdentification#vapourLike(double, double)}):
+     * the liquid root is then absent if the phase's node also carries a hydrocarbon vapour ({@code vaporCoexists}), since
+     * the two slots would evaluate the same kind of root; in a liquid-only node the single root is the same fluid
+     * continuing and is accepted.
      */
     public Phase phase(double t,double p,double[] amounts,PengRobinsonKernel.Root root,TranslatedPengRobinson.Workspace terms,boolean vaporCoexists) {
         if(amounts.length!=componentCount())throw new IllegalArgumentException("Hydrocarbon basis mismatch");

@@ -7,32 +7,19 @@ import java.util.*;
 import java.util.function.LongSupplier;
 
 /**
- * Server-thread authority over island clocks and atomic result publication. Workers receive only commands.
- * A round contains at most the available dispatch capacity; waiting owners retain duration, not queued snapshots.
- * The dispatcher must deliver terminal callbacks asynchronously on this coordinator's owning thread.
- *
- * <p>Scheduling is driven by deadlines, dependency changes and completions, never by visiting every island on
- * every tick. Island clocks read a shared online epoch. Each island is either <em>ready</em> (its next slice
- * can be dispatched now), holds one deadline in the {@link IslandScheduler} for the epoch tick at which the
- * passage of time alone makes it ready, or waits for an event that re-examines it (a completion, a fence
- * change, a property resume). Every change to what decides readiness re-examines exactly the island it
- * changed. The fair queue holds ready owners only, so dispatch order among ready owners, the per-tick
- * dispatch limit, the capacity rule and the round barrier are those of the polled coordinator this replaces.
- * Round timeouts and the worker allocator's shrink are deadlines too.
- *
- * <p>An island whose solved intervals repeat (an exact identity, or stationary within the policy's tolerance)
- * is <em>certified</em> ({@link IslandCertificate}): it is never ready, releases its solver
- * caches, and holds at most one deadline, at its certificate horizon. Its committed
- * time is not stored per tick but materialised on demand - at a read of its snapshot, an event alignment, a
- * property hold, its own deadline - by the identity or by scaled replay of its last solved interval, never past
- * the online clock, a fence or a hold. The horizon wakes it; a property resume or a topology
- * event discards the certificate. A snapshot carries the certificate in its saved form; {@link #register}
- * restores it while its signature holds and otherwise discards it, keeping the materialised inventory.
- *
- * <p>Every snapshot also carries a payload generation: a JVM-wide unique number that changes whenever anything
- * a checkpoint payload records about the island changes (a solve, a dispatch, a fence, a certificate issued or
- * ended, a hold or resume), and never when a certified island is only materialised, so a checkpoint can keep an
- * encoded payload for as long as its island's generation stands.
+ * Server-thread authority over island clocks and atomic result publication. Workers receive only commands; a round
+ * contains at most the available dispatch capacity, and the dispatcher must deliver terminal callbacks asynchronously
+ * on this coordinator's owning thread. Scheduling is driven by deadlines, dependency changes and completions, never by
+ * visiting every island on every tick: each island is ready (its next slice can be dispatched now), holds one deadline
+ * in the {@link IslandScheduler} for the epoch tick at which time alone makes it ready, or waits for an event that
+ * re-examines it (a completion, a fence change, a property resume); every change to what decides readiness re-examines
+ * exactly the island it changed. An island whose solved intervals repeat is certified ({@link IslandCertificate}): never
+ * ready, its solver caches released, one deadline at its certificate horizon; its committed time is materialised on
+ * demand by the identity or by scaled replay of its last solved interval, never past the online clock, a fence or a
+ * hold. {@link #register} restores a saved certificate while its signature holds. Every snapshot carries a payload
+ * generation, a JVM-wide unique number that changes whenever anything a checkpoint payload records about the island
+ * changes and never when a certified island is only materialised, so a checkpoint can keep an encoded payload while
+ * its island's generation stands.
  */
 public final class IslandCoordinator {
     public interface Dispatcher {
@@ -557,24 +544,15 @@ public final class IslandCoordinator {
     static final int MAXIMUM_RETRY_DOUBLINGS=6;
     /**
      * The hold policy: what a held attempt (no committed candidate, no refused transaction) changes before the retry.
-     *
-     * <p>Every hold hands the retry a fresh {@link RetainedSolver}. The one the attempt used carries the step
-     * solver's last flows, modes and factorizations from wherever inside the slice that attempt stopped - the cut
-     * of a wall budget or the last pass of a failed solve - and a retry that warm-starts from them starts the slice
-     * again from its first state with the flows of a later one: measured on the vented three-tank chain, a rate
-     * solve that starts from 0.45 and -0.22 kg/s on tanks still at rest converges linearly through the friction kink
-     * at zero and fails the same way at every retry. It is also what made a retry's trajectory depend on how far the
-     * cancelled job had got. With a fresh solver a retry is the same computation as the first attempt on the same
-     * committed state and slice, so a numerical failure is reproducible exactly and a retry of the same slice is
-     * pointless.
-     *
-     * <p>So every hold also changes the problem: a slice longer than one tick is halved (a shorter whole interval,
-     * never a partial commit; the first full acceptance doubles it back), whether the budget cut it or the solve
-     * failed, and a hold at one tick waits {@code cadence * 2^k} ticks for its retry, k the number of such holds in a
-     * row, at most {@link #MAXIMUM_RETRY_DOUBLINGS}. A budget hold at one tick is retried too, because a warmer or
-     * less loaded worker can pass it; it just stops being retried every cadence. Anything that changes the island's
-     * inputs (a fence, a released fence, a property resume) clears the wait and the count; a
-     * topology change makes a new island. Online ticks only: no wall clock decides a delay.
+     * Every hold hands the retry a fresh {@link RetainedSolver}: the one the attempt used carries the step solver's last
+     * flows, modes and factorizations from wherever inside the slice that attempt stopped, and a retry that warm-starts
+     * from them starts the slice again from its first state with the flows of a later one (a rate solve starting from
+     * 0.45 and -0.22 kg/s on tanks still at rest failed the same way at every retry). With a fresh solver a retry is the
+     * same computation as the first attempt, so every hold also changes the problem: a slice longer than one tick is
+     * halved (a shorter whole interval, never a partial commit; the first full acceptance doubles it back), and a hold
+     * at one tick waits {@code cadence * 2^k} ticks for its retry, k the number of such holds in a row, at most
+     * {@link #MAXIMUM_RETRY_DOUBLINGS}. Anything that changes the island's inputs (a fence, a released fence, a property
+     * resume) clears the wait and the count. Online ticks only: no wall clock decides a delay.
      */
     private void hold(Island island,IslandClock.Slice slice,ProcessSolveServices.FluidIslandSolveResult outcome) {
         FluidRuntimeDiagnostics.count(budgetHold(outcome)?FluidRuntimeDiagnostics.budgetHolds:FluidRuntimeDiagnostics.numericalHolds);

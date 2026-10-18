@@ -88,13 +88,11 @@ public record PhaseContract(String packageId, ThermoIdentity identity, List<Stri
     }
 
     /**
-     * The fluid network package's contract with the package's own spine (P3 WP5): {@link #forNetworkPackage(MaterialCatalog,
-     * String, String)} with the package's {@code spineFingerprint()}, or {@link ThermoIdentity#NO_SPINE} for a package
-     * without one. The identity is the engine's ({@link CubicPhaseEvaluator#FAMILY}, the formation datum of
-     * {@link CubicPhaseEvaluator#forPackage}); the network's own revision is {@code HydrocarbonModel.NETWORK_FAMILY}'s
-     * identity, which differs from it by the family (another energy datum). The package's crystals, if any, are not
-     * qualified here: the network requests fluid-only competition until its crystal inventory exists (P4 stage 2b);
-     * {@link #forPackage} is the contract with the package's crystal set (P4 stage 2a).
+     * The fluid network package's contract with the package's own spine: {@link #forNetworkPackage(MaterialCatalog,
+     * String, String)} with the package's {@code spineFingerprint()}, or {@link ThermoIdentity#NO_SPINE} without one.
+     * The identity is the engine's ({@link CubicPhaseEvaluator#FAMILY}); the package's crystals, if any, are not
+     * qualified here (the network requests fluid-only competition until its crystal inventory exists; {@link #forPackage}
+     * is the contract with the package's crystal set).
      */
     public static PhaseContract forNetworkPackage(MaterialCatalog catalog, String packageId) {
         String spine = catalog.requirePackage(packageId).spineFingerprint();
@@ -102,12 +100,10 @@ public record PhaseContract(String packageId, ThermoIdentity identity, List<Stri
     }
 
     /**
-     * The package's contract for the equilibrium engine with its crystals (P4 stage 2a):
-     * {@link #forNetworkPackage(MaterialCatalog, String)} (the same basis, identity, water participation, domain and
-     * fluid coverage) qualified in addition for the competition of the fluid phases with every crystal the package
-     * admits ({@link #admittedCrystals}), as one whole set (D8). A package that admits no crystal gets the fluid-only
-     * contract, so a crystal request on it is refused as not qualified. The fluid network keeps
-     * {@link #forNetworkPackage(MaterialCatalog, String)}.
+     * The package's contract for the equilibrium engine with its crystals: {@link #forNetworkPackage(MaterialCatalog, String)}
+     * qualified in addition for the competition of the fluid phases with every crystal the package admits
+     * ({@link #admittedCrystals}), as one whole set. A package that admits no crystal gets the fluid-only contract, so a
+     * crystal request on it is refused as not qualified.
      */
     public static PhaseContract forPackage(MaterialCatalog catalog, String packageId) {
         PhaseContract fluid = forNetworkPackage(catalog, packageId);

@@ -20,45 +20,28 @@ import java.util.function.Function;
 /**
  * Checkpoint format 10 of committed science and runtime state: what one storage unit holds and what the core record
  * holds. Rebuilds properties through the immutable model; it never deserializes implementation caches or creates a
- * nitrogen charge. Where the units live - pack files beside the world's saved data, dirty tracking, atomic writes and
- * orphan cleanup - is {@link FluidCheckpointStore}'s business.
+ * nitrogen charge. Where the units live is {@link FluidCheckpointStore}'s business.
  *
- * <p><b>Core record</b> (one NBT compound, the world's saved data): {@code FluidFormat = 10}; the world {@code Epoch};
- * {@code Strings}, an append-only table of the long texts units refer to (dimensions, packages, property revisions, certificate
- * policies); {@code Packages}, one entry per property package with the thermodynamic revision and energy reference
- * the units were written under; the pack files and their sizes; the topology unit's reference; and {@code Islands},
- * the island index in columns: identity, revision and unit generation, the clock ({@code Online}, {@code Committed},
- * {@code Retry}, {@code Cadence}), the certificate summary ({@code Base} - or {@link #AWAKE} -, {@code Since},
- * {@code Start}, {@code Horizon}; format 5 dropped format 4's {@code Kind} column with the merge of the REST and
- * STEADY certificates into one kind) and where the island's unit lies with its SHA-256. {@code SHA256}
- * covers every field.
+ * <p>Core record (one NBT compound, the world's saved data): {@code FluidFormat = 10}; the world {@code Epoch};
+ * {@code Strings}, an append-only table of the long texts units refer to; {@code Packages}, one entry per property
+ * package with the thermodynamic revision and energy reference the units were written under; the pack files and their
+ * sizes; the topology unit's reference; and {@code Islands}, the island index in columns: identity, revision and unit
+ * generation, the clock ({@code Online}, {@code Committed}, {@code Retry}, {@code Cadence}), the certificate summary
+ * ({@code Base} or {@link #AWAKE}, {@code Since}, {@code Start}, {@code Horizon}) and where the island's unit lies with
+ * its SHA-256. {@code SHA256} covers every field.</p>
  *
- * <p><b>Island unit</b> (binary, {@link Writer}, {@link Reader}): a header naming the island, its revision and the unit's
- * generation (all three must match the index), then its dimension and package, status and fences;
- * the graph's topology once - node identities, elevations, kinds and volumes, pipe ends, sections, controls (tag 0
- * passive, 1 pump, 2 valve, 3 compressor) and, since format 6, the two ends' phase ports - and
- * its state; the last solved interval, with (since format 7) its end flows, which the island's
- * next job starts from; and, for a certified island, its certificate
- * signature and the graph its certified interval started from, again as a state over the shared topology. Nothing
- * derived is stored: the energy reference and the thermodynamic revision are the package's (core record), and a
- * certified island's unit records its certificate base, not its materialised state, so while it stays certified its
- * unit never changes; a load materialises it from the base to the committed tick without a solve.
- *
- * <p><b>Solids</b> (every stock, stream, cake and pending recovery): each population as its material's id, revision,
- * density and heat capacity, then its size and mass. The id names the population's record in the island's package (the
- * topology unit's: its basis package), a crystal the package admits or a custom solid (owner decision D23: crystals are
- * solids); the reader takes the record, so a crystal comes back with its component and energy offset, and refuses an
- * id that names no record of the package or saved constants that are not the record's.
- *
- * <p>No other format is read: format 9 and older are refused with the instruction to create a fresh world (the
- * owner's standing rule on save compatibility; format 6 added the ports and the compressor of the phase-ports batch,
- * format 7 the end flows of the last interval, format 8 removed the core record's ledger of buffered transfers and
- * modules with the causal module system). Format 9 (unit format 2) dropped the global liquid compressibility from the
- * package key, the package table and the island unit: liquids are evaluated at the state pressure by their own
- * equation of state, so a package is identified by its id and thermodynamic revision alone. Format 10 (unit format 3)
- * dropped the movers' efficiency (owner decision D37, simplification S6): a pump's or a compressor's shaft work is its
- * ideal work; and the approximate fallback (S2): the island unit's fallback allowance and approximation anchor, and the
- * saved interval's acceptance (every interval is a full solve).
+ * <p>Island unit (binary, {@link Writer}, {@link Reader}): a header naming the island, its revision and the unit's
+ * generation (all three must match the index), then its dimension and package, status and fences; the graph's topology
+ * once (node identities, elevations, kinds and volumes, pipe ends, sections, controls as tag 0 passive, 1 pump, 2
+ * valve, 3 compressor, and the two ends' phase ports) and its state; the last solved interval with its end flows,
+ * which the island's next job starts from; and, for a certified island, its certificate signature and the graph its
+ * certified interval started from. Nothing derived is stored, and a certified island's unit records its certificate
+ * base, so while it stays certified its unit never changes. Solids (every stock, stream, cake and pending recovery):
+ * each population as its material's id, revision, density and heat capacity, then its size and mass; the id names a
+ * crystal the package admits or a custom solid (owner decision D23), and the reader refuses an id that names no record
+ * of the package or saved constants that are not the record's. No other format is read: format 9 and older are refused
+ * with the instruction to create a fresh world (format 10, unit format 3, dropped the movers' efficiency, the
+ * approximate fallback and the saved interval's acceptance: every interval is a full solve).</p>
  */
 public final class FluidCheckpointCodec {
     public static final int VERSION=10;

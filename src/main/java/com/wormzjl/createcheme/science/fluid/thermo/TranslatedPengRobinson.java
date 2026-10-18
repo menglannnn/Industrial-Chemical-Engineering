@@ -12,24 +12,17 @@ import java.util.List;
 import java.util.Objects;
 
 /**
- * Constant volume-translated PR78 with analytic fixed-composition volumetric/caloric derivatives.
- *
- * <p>The equation of state itself is the shared {@link PengRobinsonKernel} - the same arithmetic the column
- * solves on - selected with {@link PengRobinsonKernel.Mixing#SPARSE_PAIRS}, because the network's package has
- * 11 nonzero binary interactions among 21 components and the dense quadratic rule spent three n x n matrices
- * per distinct temperature to express them. What stays here is what the kernel does not model: the ideal-gas
- * caloric polynomials, the constant volume translation, and the volumetric block (dv/dT, dv/dP, d2v/dT2, cp,
- * dh/dP, the isothermal compressibility and the partial molar volumes), which is explicit algebra in
- * {@code (v, a, b, da/dT, d2a/dT2, S_i)} and is unchanged.
- *
- * <p>Two ideal-gas sources, one per model. The coefficient path (every constructor taking heat-capacity coefficients)
- * evaluates the {@code shifted_polynomial_5} fits; past a fit's range (by default none) the heat capacity is held at the
- * end value and the enthalpy integrates it, as every ideal-gas function continues (owner rule of 2026-10-16). The spine
- * variant ({@link #TranslatedPengRobinson(List, PairInteractions, List, double[], double[])}) takes one
- * {@link IdealGasFunction} per component (the package's reference spine, which continues past its segments itself) and a
- * datum offset per component that is subtracted from the function's enthalpy: the network passes the formation enthalpy,
- * so its energies stay on the sensible datum (zero at 298.15 K, decision D10) while its heat capacity, volume and
- * fugacities are the spine's and the cubic's.</p>
+ * Constant volume-translated PR78 with analytic fixed-composition volumetric and caloric derivatives. The equation of
+ * state itself is the shared {@link PengRobinsonKernel} with {@link PengRobinsonKernel.Mixing#SPARSE_PAIRS} (the
+ * network's package has 11 nonzero binary interactions among 21 components); what stays here is what the kernel does
+ * not model: the ideal-gas caloric functions, the constant volume translation, and the volumetric block (dv/dT, dv/dP,
+ * d2v/dT2, cp, dh/dP, the isothermal compressibility and the partial molar volumes), explicit algebra in
+ * {@code (v, a, b, da/dT, d2a/dT2, S_i)}. Two ideal-gas sources, one per model: the coefficient path (every constructor
+ * taking heat-capacity coefficients) evaluates the {@code shifted_polynomial_5} fits, past a fit's range holding the
+ * heat capacity at the end value and integrating it; the spine variant
+ * ({@link #TranslatedPengRobinson(List, PairInteractions, List, double[], double[])}) takes one {@link IdealGasFunction}
+ * per component and a datum offset per component subtracted from the function's enthalpy (the network passes the
+ * formation enthalpy, so its energies stay on the sensible datum, decision D10).
  */
 public final class TranslatedPengRobinson {
     private static final double R = FluidThermodynamics.R;
@@ -176,13 +169,10 @@ public final class TranslatedPengRobinson {
     }
 
     /**
-     * One exact temperature's prepared state, and the scratch every evaluation at it reuses.
-     *
-     * <p>This replaces the immutable {@code TemperatureTerms} and its three n x n matrices. The mixing terms a
-     * workspace carries are the kernel's 3n pure-component vectors, and the composition-dependent sums that
-     * used to be read out of those matrices are now formed per evaluation in O(n + pairs). It is mutable
-     * scratch, so - like every other solver workspace here - it belongs to one solving thread at a time; the
-     * caller that holds it (a node's {@link FluidThermodynamics.Prepared}) already has that confinement.</p>
+     * One exact temperature's prepared state, and the scratch every evaluation at it reuses: the kernel's 3n
+     * pure-component vectors, the composition-dependent sums formed per evaluation in O(n + pairs). Mutable scratch, so
+     * it belongs to one solving thread at a time; the caller that holds it (a node's {@link FluidThermodynamics.Prepared})
+     * already has that confinement.
      */
     public static final class Workspace {
         private final TranslatedPengRobinson owner;

@@ -13,36 +13,23 @@ import java.util.Objects;
 import java.util.Set;
 
 /**
- * The {@link SolidPhaseEvaluator} of a crystal record (P4 stage 1, batch 2026-09-24-coolprop-low-temperature): the
- * record's model ({@link CrystalReference}, for CO2 the Gibbs function of Jaeger and Span 2012) anchored at the triple
- * point to the fluid family's pure liquid.
- *
- * <p>Anchoring. {@link #anchor(CubicPhaseEvaluator)} evaluates the fluid family's pure liquid of the species at the record's
- * triple point (T_t, P_t) and returns its chemical potential mu_L and enthalpy h_L. The crystal then satisfies
- * g_s(T_t, P_t) = mu_L and s_s(T_t, P_t) = (h_L - mu_L)/T_t - dH_fus/T_t (Jaeger and Span's equations 19 and 20, with the
- * record's fusion enthalpy); for a Gibbs-function record these two linear conditions fix its integration constants g0
- * and g1. Nothing of the paper's own reference state is used at runtime.</p>
- *
- * <p>State. The evaluator fills a one-component {@link PhaseKind#SOLID} state naming the record's id as its crystal:
- * v, h and s of the anchored crystal, split against the species' ideal gas (the package's spine) as
- * {@code h = h_ig(T) + (h - h_ig)} and {@code s = s_ig(T, P) + (s - s_ig)}, and
- * {@code ln phi = (g_s - g_ig(T, P)) / (R T)} with the kernel's gas constant, so that
- * {@link PhaseState#chemicalPotential(int)} equals g_s and compares directly with a fluid phase's chemical potential.
- * Past the record's range and the ideal-gas function's, both continue (owner rule of 2026-10-16); an unusable record
- * is refused at construction.</p>
- *
- * <p>Anchored view (P4 stage 2a). {@link #anchored(TriplePointAnchor)} solves the integration constants once and returns
- * an immutable {@link Anchored} crystal that evaluates its function once per state; an equilibrium service holds one per
- * crystal for its contract's thermodynamic identity (the fluid family, the package and the crystal record decide the
- * anchor), so a flash never re-solves g0 and g1. {@link #evaluate(double, double, TriplePointAnchor, PhaseState)} keeps
- * the last anchored view it built and reuses it while the caller passes an equal anchor.</p>
- *
- * <p>Derivatives ({@link #derivatives}): the crystal is a pure phase of fixed composition, so
- * {@link Capability#FUGACITY_STATE_DERIVATIVES} ({@code d ln phi/dT = -(h_s - h_ig)/(R T^2)},
- * {@code d ln phi/dP = v_s/(R T) - 1/P}, equivalent to {@code d mu/dT = -s} and {@code d mu/dP = v}),
+ * The {@link SolidPhaseEvaluator} of a crystal record: the record's model ({@link CrystalReference}, for CO2 the Gibbs
+ * function of Jaeger and Span 2012) anchored at the triple point to the fluid family's pure liquid.
+ * {@link #anchor(CubicPhaseEvaluator)} evaluates the family's pure liquid of the species at the record's triple point
+ * (T_t, P_t) and returns its chemical potential mu_L and enthalpy h_L; the crystal then satisfies g_s(T_t, P_t) = mu_L
+ * and s_s(T_t, P_t) = (h_L - mu_L)/T_t - dH_fus/T_t (Jaeger and Span's equations 19 and 20), which for a Gibbs-function
+ * record fix its integration constants g0 and g1. The evaluator fills a one-component {@link PhaseKind#SOLID} state
+ * naming the record's id: v, h and s of the anchored crystal, split against the species' ideal gas (the package's
+ * spine) as {@code h = h_ig(T) + (h - h_ig)} and {@code s = s_ig(T, P) + (s - s_ig)}, and
+ * {@code ln phi = (g_s - g_ig(T, P)) / (R T)}, so that {@link PhaseState#chemicalPotential(int)} equals g_s and compares
+ * directly with a fluid phase's. Past the record's range and the ideal-gas function's, both continue; an unusable
+ * record is refused at construction. {@link #anchored(TriplePointAnchor)} solves the integration constants once and
+ * returns an immutable {@link Anchored} crystal, which an equilibrium service holds per crystal so a flash never
+ * re-solves g0 and g1; {@link #evaluate(double, double, TriplePointAnchor, PhaseState)} reuses the last anchored view
+ * while the caller passes an equal anchor. Derivatives ({@link #derivatives}): {@link Capability#FUGACITY_STATE_DERIVATIVES}
+ * ({@code d ln phi/dT = -(h_s - h_ig)/(R T^2)}, {@code d ln phi/dP = v_s/(R T) - 1/P}),
  * {@link Capability#VOLUMETRIC_DERIVATIVES} ({@code dv/dT = alpha v}, {@code dv/dP = -kappa v}) and
- * {@link Capability#CALORIC_DERIVATIVES} ({@code c_p}, {@code dh/dP = v (1 - alpha T)}) are provided, and no composition
- * derivatives.</p>
+ * {@link Capability#CALORIC_DERIVATIVES} ({@code c_p}, {@code dh/dP = v (1 - alpha T)}); no composition derivatives.
  */
 public final class CrystalPhaseEvaluator implements SolidPhaseEvaluator {
     private static final double R = PengRobinsonKernel.GAS_CONSTANT;

@@ -4,24 +4,14 @@ import java.util.*;
 import java.util.concurrent.atomic.LongAdder;
 
 /**
- * Opt-in instrumentation of the fluid solver. {@link #ENABLED} defaults to {@code false}; every
- * recording site then performs one volatile boolean read, allocates nothing and reads no clock, so
- * production numerics, tolerances and physics gates are unchanged whether or not it is enabled.
- *
- * <p>The counters are process-wide and additive, and each is a {@link LongAdder}, so any number of
- * workers may record into them at once: the facility is correct under the production solver pool,
- * not only under a single-threaded replay. The nesting markers ({@link #inJacobian()},
- * {@link #inReconstruct()}), which decide whether a factorization, solve or ordering is charged to
- * the Newton side or the conservative-transport side, are <b>per thread</b>, so twelve workers
- * cannot interleave each other's attribution. The timers are per-thread {@code nanoTime} deltas
- * summed into the same adders: under a pool they measure occupied thread time, so their sum over
- * threads exceeds the wall duration of the window by design.
- *
- * <p>Enabling and disabling is a plain volatile write, so a job already running when the switch
- * flips contributes only the part of itself that follows the flip, and one such job can charge its
- * transport linear algebra to the Newton buckets because its marker was never set. Over a window
- * of thousands of jobs that edge is negligible; it is why the server benchmark resets and enables
- * at the start of its measurement window rather than at warm-up.
+ * Opt-in instrumentation of the fluid solver. {@link #ENABLED} defaults to {@code false}; every recording site then
+ * performs one volatile boolean read, allocates nothing and reads no clock, so production numerics are unchanged
+ * whether or not it is enabled. The counters are process-wide {@link LongAdder}s, so any number of workers may record
+ * into them at once; the nesting markers ({@link #inJacobian()}, {@link #inReconstruct()}), which decide whether a
+ * factorization, solve or ordering is charged to the Newton side or the transport side, are per thread. The timers are
+ * per-thread {@code nanoTime} deltas summed into the same adders: under a pool they measure occupied thread time. A job
+ * already running when the switch flips contributes only the part of itself that follows the flip, which is why the
+ * server benchmark resets and enables at the start of its measurement window.
  */
 public final class SolverDiagnostics {
     private SolverDiagnostics() {}

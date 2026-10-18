@@ -164,17 +164,15 @@ public final class InventoryEquilibrium {
     }
     /**
      * The vessel's equilibrium from {@code state}: {@code closure} solved in a phase layout, and the layout decided by the
-     * outer phase check (owner decisions D25 and D26, {@code FluidThermodynamics.phaseCheck}). A phase leaves only when the
-     * closure empties it (the trace fold of its point, and the vanishing rule of owner decision D38 C: a phase under 1e-6
-     * of the vessel's fluid amount and at a smaller share than in {@code state}, where the closure started); where
-     * the TP answer finds a phase missing, the vessel is seeded at its own split, the closure started from the vessel's own
-     * state at the crossing (owner decision D40 A), and no populated phase set is swapped for another on a TP verdict: a
-     * vessel of pure water at its saturation line keeps its liquid and gains the steam its volume and energy give. A failed
-     * closure's last iterate is no state (decisions D28 A', D39 and D40 A): it is only folded by the same two rules, and
-     * it proposes nothing; a fold that changes nothing leaves the failure standing. A phase the check removed from a
-     * converged answer, or the own split refused (the D26 amendment), is not added again within this solve (A85), and a
-     * repeated regime is the cycle that refuses the solve. One rule for a vessel's own closure ({@link #solve}) and for the
-     * crystal refresh's joint closure (decision D30), so a phase that has no room leaves both.
+     * outer phase check (owner decisions D25 and D26, {@code FluidThermodynamics.phaseCheck}). A phase leaves only when
+     * the closure empties it (the trace fold of its point, and the vanishing rule of owner decision D38 C: under 1e-6 of
+     * the vessel's fluid amount and at a smaller share than in {@code state}); where the TP answer finds a phase missing,
+     * the vessel is seeded at its own split, the closure started from the vessel's own state at the crossing (owner
+     * decision D40 A), and no populated phase set is swapped for another on a TP verdict. A failed closure's last iterate
+     * is no state (D28 A', D39, D40 A): it is only folded by the same two rules and proposes nothing. A phase the check
+     * removed from a converged answer, or the own split refused, is not added again within this solve (A85), and a
+     * repeated regime is the cycle that refuses the solve. One rule for a vessel's own closure ({@link #solve}) and for
+     * the crystal refresh's joint closure (decision D30).
      */
     static FluidThermodynamics.State passes(FluidThermodynamics model,FluidThermodynamics.State state,Closure closure,Runnable checkpoint) {
         var seen=new HashSet<String>();int[] excluded={0};var from=state;
@@ -208,28 +206,20 @@ public final class InventoryEquilibrium {
      */
     public static final double CLOSURE=1e-11;
     /**
-     * Decision D36, G2: the vessel's state at what it holds. Its inventory (amounts, internal energy) and its capacity are
-     * the conserved truth and fix temperature, pressure and volume through the equation of state and the wall (decision
-     * D54: a bag with a stiff wall, {@link PhaseLayout#wallRow}), so the energy and wall equations
-     * are solved, in the phase layout of {@code state} and from it, to {@link #CLOSURE}, and the result is given exactly
-     * the inventory's amounts ({@link ConservativeTransport#repartition}). A state already within the closure is returned
-     * as it is (an island at rest stays bit for bit). The phase set is {@code state}'s less any phase the restatement folds
-     * away (decision D34), the vessel then closed again without it (E8): whether the set holds is the caller's question
-     * (the refresh's pass loop, {@link #passes}; in a step, the pass loop's phase correction of the reconstructed state).
-     * One closure for the interval-start refresh and every reconstruction ({@code ConservativeTransport.reconstruct0}).
-     * A vessel holding dry solids only is at the temperature its energy gives the solids, at {@code state}'s pressure.
-     *
-     * <p>The equilibrium it is closed to is the one the step solves the vessel with: {@code support}, the frozen phase
-     * support of the step's own layout for this node (a component the trace truncation holds in one phase has no split
-     * unknown and no equilibrium row), or, when null, the support the next solve derives from {@code state} under the
-     * model's truncation policy. Closed in full equilibrium instead, a crude tank at rest stood 0.71 Pa (3.2e-6) above
-     * the truncated equilibrium the step and its equation gate state, every reconstruction moved it there, the gate refused
-     * it at every step size and the polish could not bring it back (review "G2 follow-up", random seeds 400 and 737).
-     *
-     * <p>{@code workFrom}: the bag volume a step started from ({@link PhaseLayout#bagVolume}), when {@code inventory}'s energy
-     * is the step's booked energy before the wall's work; the closed state then holds that energy less
-     * {@code P_ambient (V_bag - workFrom)} ({@link PhaseLayout#balanceRows}). {@code NaN}: the inventory's energy is the
-     * state's.
+     * Decision D36, G2: the vessel's state at what it holds. Its inventory (amounts, internal energy) and its capacity
+     * are the conserved truth and fix temperature, pressure and volume through the equation of state and the wall
+     * (decision D54, {@link PhaseLayout#wallRow}), so the energy and wall equations are solved in the phase layout of
+     * {@code state} and from it, to {@link #CLOSURE}, and the result is given exactly the inventory's amounts
+     * ({@link ConservativeTransport#repartition}). A state already within the closure is returned as it is (an island at
+     * rest stays bit for bit). The phase set is {@code state}'s less any phase the restatement folds away (decision D34),
+     * the vessel then closed again without it; whether the set holds is the caller's question. A vessel holding dry
+     * solids only is at the temperature its energy gives the solids, at {@code state}'s pressure. The equilibrium it is
+     * closed to is the one the step solves the vessel with: {@code support}, the frozen phase support of the step's own
+     * layout for this node, or, when null, the support the next solve derives from {@code state} (closed in full
+     * equilibrium instead, a crude tank at rest stood 0.71 Pa above the truncated equilibrium the step states, and the
+     * gate refused every step). {@code workFrom}: the bag volume a step started from ({@link PhaseLayout#bagVolume}) when
+     * {@code inventory}'s energy is the step's booked energy before the wall's work; the closed state then holds that
+     * energy less {@code P_ambient (V_bag - workFrom)}. {@code NaN}: the inventory's energy is the state's.
      */
     public static FluidThermodynamics.State close(FluidThermodynamics model,FluidThermodynamics.State state,PassiveNetwork.Inventory inventory,PhaseSupport[] support,
                                                   double workFrom,Runnable checkpoint) {
@@ -246,13 +236,10 @@ public final class InventoryEquilibrium {
         var solved=SparseNewton.solve(layout.wallClosure(n,energy,volume,workFrom),x,new SparseNewton.Settings(24,CLOSURE,1e-6,24),checkpoint);
         var closed=ConservativeTransport.repartition(model,layout.decode(solved.variables(),0),n);
         // The restatement applies the flash's trace-phase rule (decision D34), so a phase the closure left as a trace is
-        // folded away; the vessel is then closed again without it, in the folded state's own layout (decision D30's form:
-        // the fold, then the closure again without the phase; E8). Folded and only checked, a liquid-full LNG tank beside its
-        // dry ice whose closure left its last bubble just under the trace share (1e-9 of its moles, 2e-8 of its volume at
-        // 1.14 MPa) missed its volume by that bubble, 1.9e-8 against the 1e-8 check, and its step was refused at every size
-        // (cold seed 48, 10 224 times). A fold only removes a phase (a restatement adds one only to a state the closure left
-        // with no hydrocarbon phase, ConservativeTransport.repartition), so this ends. A step whose reconstruction folded a
-        // phase is solved again from the folded state (the pass loop's recordFolds).
+        // folded away and the vessel is closed again without it, in the folded state's own layout (decision D30). Folded
+        // and only checked, a liquid-full LNG tank whose closure left its last bubble just under the trace share missed
+        // its volume by that bubble (1.9e-8 against the 1e-8 check) and its step was refused at every size. A fold only
+        // removes a phase, so this ends; a step whose reconstruction folded a phase is solved again from the folded state.
         if(!regime(closed).equals(regime(state))) {
             try{return close(model,closed,inventory,null,workFrom,checkpoint);}
             // Its iterate is one of the folded layout, which a caller decoding in the layout of {@code state} cannot read.
@@ -265,16 +252,14 @@ public final class InventoryEquilibrium {
     }
     /**
      * Owner decision D26: a vessel's own split, the seed of a phase the outer phase check adds
-     * ({@code FluidThermodynamics.phaseCheck}): its closure ({@link #close}) at {@code inventory}, from {@code start} (a state
-     * holding the phases to lay the vessel out with), the wall's work booked from the bag volume {@code workFrom}: the
-     * equilibrium of its energy and volume while the wall is taut, of its enthalpy at the ambient pressure while slack (of
-     * its energy there with {@code workFrom} {@code NaN}, as at the interval's refresh, {@link #solve}).
-     * The split answers by where the closure went: a phase it drove under the trace share is not in it, and the check
-     * refuses that phase for the solve (the D26 amendment), as it refuses one the closure is driving to nothing
-     * ({@code FluidThermodynamics.vanishing}, form 4). {@code null} where the closure stops short of its tolerance or
-     * refuses the state: a failed closure proposes nothing (owner decision D40 A). Its last iterate is no state; standing
-     * as the split, it put all of a liquid-full slush tank's 14 420 mol in the vapour slot as one dense root, the liquid
-     * relabelled, and every later pass failed (test world row 9b).
+     * ({@code FluidThermodynamics.phaseCheck}): its closure ({@link #close}) at {@code inventory}, from {@code start} (a
+     * state holding the phases to lay the vessel out with), the wall's work booked from the bag volume {@code workFrom}:
+     * the equilibrium of its energy and volume while the wall is taut, of its enthalpy at the ambient pressure while
+     * slack. The split answers by where the closure went: a phase it drove under the trace share is not in it, and the
+     * check refuses that phase for the solve, as it refuses one the closure is driving to nothing
+     * ({@code FluidThermodynamics.vanishing}). {@code null} where the closure stops short of its tolerance or refuses the
+     * state: a failed closure proposes nothing (owner decision D40 A; its last iterate standing as the split put all of a
+     * liquid-full slush tank's 14 420 mol in the vapour slot and every later pass failed).
      */
     static FluidThermodynamics.State split(FluidThermodynamics model,FluidThermodynamics.State start,PassiveNetwork.Inventory inventory,double workFrom,
                                            Runnable checkpoint) {

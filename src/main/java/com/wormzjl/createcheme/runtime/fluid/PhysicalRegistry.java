@@ -10,22 +10,14 @@ import java.util.*;
  * The physical registry's compiled form and its topology events, apart from the server: which island owns each
  * registered device, what the compiler said about each device, which devices sit in which chunk, and the path that
  * queues an edit as a ledger event and later applies it to the islands. {@link FluidWorldAuthority} owns one and
- * supplies the world through {@link Host}; a test supplies an {@link IslandCoordinator} of its own.
- *
- * <p>Cost. An event costs time in the part of the registry it touches, never in the size of the world:
- * <ul>
- * <li>{@link #submit} walks from the edited position through the devices no island owns and no queued event edits, and
- * stops at the first device an island owns (that island is fenced whole) or a queued event edits (that event orders this
- * one). So the event's touched set is its neighbourhood, plus any ownerless stretch of pipe it reaches.</li>
- * <li>{@link #applyPending} applies the queued events in batches: a batch is every queued event of one tick and one
- * dimension whose owners are aligned, in queue order, each one meeting no earlier event left out of the batch. The
- * batch compiles only the connected components (after the batch) of the devices it touched and of the islands it
- * replaces, reads only those islands, and keeps the compiled form of the rest of the registry. A command that places
- * thousands of devices therefore compiles each component it builds once.</li>
- * </ul>
- * The compiled form is kept per device (diagnostics, pipe views, owner), so replacing a component replaces exactly the
- * entries of its devices. An island no event touched is never read, recompiled, materialised or replaced: a certified one
- * keeps its certificate and its saved payload.
+ * supplies the world through {@link Host}; a test supplies an {@link IslandCoordinator} of its own. An event costs time
+ * in the part of the registry it touches, never in the size of the world: {@link #submit} walks from the edited
+ * position through the devices no island owns and no queued event edits, and stops at the first device an island owns
+ * (that island is fenced whole) or a queued event edits (that event orders this one); {@link #applyPending} applies the
+ * queued events in batches (every queued event of one tick and one dimension whose owners are aligned), compiling only
+ * the connected components of the devices it touched and of the islands it replaces. The compiled form is kept per
+ * device, so replacing a component replaces exactly the entries of its devices; an island no event touched is never
+ * read, recompiled, materialised or replaced.
  */
 public final class PhysicalRegistry {
     /** What the registry needs from its world. Called on the owning thread only. */
@@ -146,12 +138,11 @@ public final class PhysicalRegistry {
 
     /**
      * Queues edits as one ledger event and fences it on the islands it touches; {@link #applyPending()} applies it. The
-     * touched set is the edited devices, every device joined to an edited position before or after the edit, and every device reached from them
-     * through applied devices that no island owns and no queued event edits (a dead-end branch, a line with no tank). An
-     * owned device stands for its island, which the fence covers whole, and a queued device for the event that edits it,
-     * which this event now follows; the walk stops at both, so its cost is the neighbourhood, not the island. A fixed
-     * boundary (a generator or a void) the event does not edit stops the walk and stands for none of its islands: they
-     * meet there without being joined (owner decision D17). One the event edits stands for all of them.
+     * touched set is the edited devices, every device joined to an edited position before or after the edit, and every
+     * device reached from them through applied devices that no island owns and no queued event edits. An owned device
+     * stands for its island, which the fence covers whole, and a queued device for the event that edits it; the walk
+     * stops at both. A fixed boundary (a generator or a void) the event does not edit stops the walk and stands for none
+     * of its islands (owner decision D17); one the event edits stands for all of them.
      */
     public WorldTopologyLedger.Event submit(List<WorldTopologyLedger.Edit> edits,long nextId,WorldTopologyLedger.Recovery recovery) {
         var latest=topology.latest();var proposed=new HashMap<Long,Optional<WorldTopologyLedger.Registration>>();var proposedAt=new HashMap<PhysicalFluidTopology.Position,WorldTopologyLedger.Registration>();
@@ -400,12 +391,11 @@ public final class PhysicalRegistry {
         Long owner=owners.get(device);return owner==null?Set.of():Set.of(owner);
     }
     /**
-     * The islands an event's touched device stands for: every island of a device the event edits, the island of any other
-     * owned device, and none for a fixed boundary it only passes (a device beside an edit, a member of an island the walk
-     * stopped at): islands that share a generator or a void are independent of each other (owner decision D17). A lone
-     * boundary is the exception: an edit that touches it joins it (or would), and the batch that puts it into the joined
-     * island ends its island of one, so that island is fenced and replaced with the rest (D32; left alone it stayed in the
-     * coordinator beside the joined island, was saved, and came back from a reload with no device).
+     * The islands an event's touched device stands for: every island of a device the event edits, the island of any
+     * other owned device, and none for a fixed boundary it only passes (islands that share a generator or a void are
+     * independent of each other, owner decision D17). A lone boundary is the exception: an edit that touches it joins it,
+     * and the batch that puts it into the joined island ends its island of one, so that island is fenced and replaced
+     * with the rest (D32).
      */
     private Set<Long> standsFor(long device,Set<Long> edited) {
         if(edited.contains(device))return islandsOf(device);

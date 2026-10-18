@@ -9,23 +9,13 @@ import java.util.*;
 /** Worker-local strict transport events. Trial integrations never commit ownership. */
 final class SolidEventIntegrator {
     /**
-     * Every transport closure names both directions. A filter that has met its capacity carries
-     * nothing either way; a bed that has settled out of a carrier too slow to suspend it is in the
-     * connection, not in one end of it.
-     *
-     * <p>It is also what the step solver can actually work with. {@link PassiveStepSolver} presets
-     * {@code boundaryClosed} only for a fully closed connection, so a one-directional closure left
-     * the first Newton pass free to drive flow through the forbidden direction and to manufacture,
-     * hop by hop, the solid dust that used to stall the line search; the active set then needed two
-     * or three passes per solve to find its way back. Closing both puts it right on pass 0.
-     * Measured over eleven warm repeats: a ten-reservoir chain 70 -> 51 ms and a thirty-reservoir
-     * chain 215 -> 103 ms, against 226 -> 270 ms on the five-node pump-filter island, whose
-     * closures isolate a junction and are re-examined more often.
-     *
-     * <p>What made this impossible before was that isolating a junction produced a singular block;
-     * {@link com.wormzjl.createcheme.science.fluid.solver.PhaseLayout#junctionRows} now has a rule
-     * for one. The next interval's rate pass reconsiders every closure from scratch either way, so
-     * none of them is a permanent physical deposit.
+     * Every transport closure names both directions: a filter that has met its capacity carries nothing either way, and
+     * a bed that has settled out of a carrier too slow to suspend it is in the connection, not in one end of it. It is
+     * also what the step solver can work with: {@link PassiveStepSolver} presets {@code boundaryClosed} only for a fully
+     * closed connection, and a one-directional closure left the first Newton pass free to drive flow through the
+     * forbidden direction (a ten-reservoir chain 70 to 51 ms and a thirty-reservoir chain 215 to 103 ms over eleven warm
+     * repeats once both were closed). The next interval's rate pass reconsiders every closure from scratch, so none is a
+     * permanent physical deposit.
      */
     private static final int BOTH_DIRECTIONS=3;
     private final FluidThermodynamics model;
@@ -115,18 +105,12 @@ final class SolidEventIntegrator {
         return check.minimumVelocity()>0?check.velocity()/check.minimumVelocity():-1;
     }
     /**
-     * Which of an over-populated receiver's flagged connections actually has to stop: one per
-     * receiver, and never one whose delivery the limit did not need to refuse.
-     *
-     * <p>Every open inbound connection of a receiver whose union does not fit is flagged, so the
-     * shared rule - lowest velocity ratio, then lowest identity - could name a feed whose removal
-     * leaves the union over the limit anyway. A receiver holding sixty grades, fed four new ones by
-     * one connection and ten by another, closed the four-grade feed first and the ten-grade feed on
-     * the next pass: two closures, one of them for a delivery that always fit. So the feed that
-     * closes is the one contributing the most keys no other open inbound donor - and not the
-     * receiver's own stock or injection - supplies; the rest stay open and are reconsidered from
-     * scratch next pass like every other closure. Ties fall back to the shared rule, so the choice
-     * is still decided by the graph rather than by iteration order.
+     * Which of an over-populated receiver's flagged connections actually has to stop: one per receiver, and never one
+     * whose delivery the limit did not need to refuse. Every open inbound connection of a receiver whose union does not
+     * fit is flagged, so the shared rule (lowest velocity ratio, then lowest identity) could name a feed whose removal
+     * leaves the union over the limit anyway (a receiver holding sixty grades closed a four-grade feed first and a
+     * ten-grade feed on the next pass). So the feed that closes is the one contributing the most keys no other open
+     * inbound donor supplies; the rest stay open and are reconsidered next pass. Ties fall back to the shared rule.
      */
     private static Map<Integer,SolidMobility.Check> narrowLimits(PassiveNetwork graph,List<FluidThermodynamics.State> states,double[] flows,
                                                                  List<SortedSet<SolidInventory.Key>> reach,Map<Integer,SolidMobility.Check> flagged) {
@@ -164,18 +148,12 @@ final class SolidEventIntegrator {
         return keys;
     }
     /**
-     * The conserved population keys that can reach each node over one step, or {@code null} when
-     * this island cannot put more than {@link SolidInventory#MAXIMUM_POPULATIONS} of them anywhere.
-     *
-     * <p>The reconstruction's population system has only positive coefficients, so a stock reaches
-     * every node connected to it by open connections a filter does not empty - not only its
-     * immediate receivers - and the union that decides whether an inventory can be built is the
-     * transitive one. A node whose stock the reconstruction does not rebuild, which is every fixed
-     * node, neither receives nor forwards; it answers with its own inventory throughout.
-     *
-     * <p>The bound that skips all of this is the island's population count <em>with</em>
-     * duplicates: if the whole island holds 64 or fewer, no union of them can exceed 64. That is
-     * one field read per node, so an ordinary island never pays for the closure.
+     * The conserved population keys that can reach each node over one step, or {@code null} when this island cannot put
+     * more than {@link SolidInventory#MAXIMUM_POPULATIONS} of them anywhere. The reconstruction's population system has
+     * only positive coefficients, so a stock reaches every node connected to it by open connections a filter does not
+     * empty, and the union that decides whether an inventory can be built is the transitive one; a fixed node neither
+     * receives nor forwards. If the whole island holds 64 or fewer populations with duplicates, no union can exceed 64,
+     * one field read per node.
      */
     private static List<SortedSet<SolidInventory.Key>> populationReach(PassiveNetwork graph,List<FluidThermodynamics.State> states,double[] flows) {
         int held=0;
@@ -269,14 +247,10 @@ final class SolidEventIntegrator {
         for(int i=0;i<blocked.length;i++){var p=graph.pipes().get(i);var a=graph.reservoirs().get(p.first());var b=graph.reservoirs().get(p.second());if(p.filter()!=null&&a.id()<0&&b.id()<0&&a.kind()==PassiveNetwork.NodeKind.GENERATOR&&b.kind()==PassiveNetwork.NodeKind.VOID)blocked[i]=BOTH_DIRECTIONS;}
         double elapsed=0,work=0,step=startingStep;int accepted=0,rejected=0;
         var reasons=new LinkedHashMap<String,Integer>();
-        // Reconsider every closure on a new requested interval; none is a permanent physical deposit.
-        // A closure the interval starts with is reported like any other: it is the same event, at
-        // the interval's own t0 rather than inside it, and it is the only account of why a
-        // connection that carried material last interval carries none in this one.
-        // The check reads one rate solve of the port graph (PassiveStepSolver.portRate). It only pre-empts a closure the
-        // steps would find, and on an island's first interval the junction compositions it holds fixed are the mint, so a
-        // rate solve that fails is no evidence either way: it declares no closure here, and the steps decide, their guards
-        // seeing every transition at t0 and inside the interval (option R1, hold class E1; it used to hold the island).
+        // Reconsider every closure on a new requested interval; none is a permanent physical deposit. A closure the
+        // interval starts with is reported like any other, at the interval's own t0. The check reads one rate solve of the
+        // port graph (PassiveStepSolver.portRate); it only pre-empts a closure the steps would find, so a rate solve that
+        // fails declares no closure and the steps decide (hold class E1).
         for(int attempt=0;SolidMobility.closable(model,graph)&&attempt<=2*blocked.length;attempt++) {
             checkpoint.run();graph=masks(graph,blocked);
             var candidate=rates.portRate(graph,checkpoint);
