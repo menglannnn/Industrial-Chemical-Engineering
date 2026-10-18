@@ -135,4 +135,42 @@ class WaterIntoCryogenicMethaneTest {
         assertTrue(frozen > 0, "the water froze at a refresh");
         assertTrue(vessel.state().temperature() < 273.0, "the vessel is below the melting line: " + vessel.state().temperature());
     }
+
+    /**
+     * Owner decision D40 A (test world H4, row 10's refresh), the vessel's crystal test on the engine at the inputs the
+     * test world's refresh formed. Physics: a rigid 1 m3 tank holds 25,359.6 mol of methane and 551.1 mol of water, liquid
+     * full at 125.29 K and 0.956 MPa; 4.29 kg of the water is ice, and the refresh freezes the other 312.7 mol. Water is
+     * immiscible with the methane and its ice's vapour pressure is nothing at 125 K, so all 9.93 kg of it is ice. In the
+     * model the ice at 125 K holds more energy than the stand-in liquid it replaces, so the freeze cools the tank; the
+     * liquid methane contracts by more than the ice expands, the pressure falls to methane's own saturation, and a bubble
+     * takes the volume the liquid gives up. The energy balance puts the tank at 124.606 K and 263.5 kPa with 0.3 L of
+     * vapour: at V = 1 m3 the liquid-full state at 124.718 K already holds 141 kJ more than the target (the trace's own TP
+     * scan), and the liquid fills the tank alone only above about 124.68 K. Before, the UV pressure search met methane's step
+     * of V(P) at 124.631 K (0.9998 m3 on the liquid side, 92.9 m3 on the vapour side, beside the same ice) with no case for
+     * a wet feed with one hydrocarbon, and the secant it stored across the jump, 8.8e11, froze every later temperature's
+     * search at one pressure: the refresh held, "no convergence of the UV pressure search ... in 100 TP equilibria".
+     */
+    @Test
+    void theRefreshOfALiquidFullMethaneTankAnswersItsIceBesideMethanesSaturation() {
+        double[] totals = {0, 25359.6, 0, 0, 551.097};
+        int ice = -1;
+        var crystals = model.crystalSolids().all();
+        for (int k = 0; k < crystals.size(); k++) if (crystals.get(k).material().id().equals(ICE)) ice = k;
+        assertTrue(ice >= 0, "the package carries the free water's ice");
+        for (boolean warm : new boolean[] {true, false}) {
+            var answer = model.crystalsAtVolume(totals, -382903781.6, 1.0, warm ? 125.29301992026599 : Double.NaN,
+                    warm ? 956157.6260855258 : Double.NaN, false, () -> {});
+            var fluid = answer.fluid();
+            System.out.printf(Locale.ROOT, "D40 H4 refresh (%s): %.6f K %.2f Pa, ice %.6f mol, methane liquid %.6f mol in %.7f m3, vapour %.6f mol in %.4f L, "
+                            + "water %.3e mol, volume %.9f m3%n", warm ? "warm" : "cold", answer.temperature(), answer.pressure(), answer.crystalMoles()[ice],
+                    fluid.liquidView()[METHANE], fluid.liquidVolume(), fluid.vaporView()[METHANE], 1e3 * fluid.vaporVolume(), fluid.waterLiquid() + fluid.waterVapor(),
+                    answer.volume());
+            assertEquals(124.606, answer.temperature(), 0.002, "the tank cools to where the energy balance puts it");
+            assertEquals(263.47e3, answer.pressure(), 0.1e3, "methane's own saturation");
+            assertEquals(totals[WATER], answer.crystalMoles()[ice], 1e-9 * totals[WATER], "all of the water is ice");
+            assertEquals(0.3e-3, fluid.vaporVolume(), 0.05e-3, "a bubble takes the volume the liquid gives up");
+            assertEquals(totals[METHANE], fluid.liquidView()[METHANE] + fluid.vaporView()[METHANE], 1e-9 * totals[METHANE], "the methane is conserved");
+            assertEquals(1.0, answer.volume(), 1e-6, "the tank's volume");
+        }
+    }
 }
