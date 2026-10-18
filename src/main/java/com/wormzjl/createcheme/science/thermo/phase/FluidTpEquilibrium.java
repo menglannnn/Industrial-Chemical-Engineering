@@ -22,174 +22,102 @@ import java.util.Map;
 import java.util.Objects;
 
 /**
- * TP equilibrium of fluid phases on a {@link CubicPhaseEvaluator} (P2, completed in P3 work package WP6a): the
- * hydrocarbon phases by stability test and flash, and water as the fluid network's separate free water.
- * PH and UV (work package WP6b) search over those TP answers. Pure crystals compete with the fluid phases from P4
- * stage 2a (gas-solid equilibrium; see "Crystals" below).
+ * TP equilibrium of fluid phases on a {@link CubicPhaseEvaluator}: the hydrocarbon phases by stability test and flash,
+ * water as the fluid network's separate free water, pure crystals competing with the fluid phases; PH and UV search over
+ * the TP answers.
  *
- * <p>Hydrocarbon phases:</p>
- * <ol>
- *   <li>Contract checks ({@link #contractChecks}); a request asking for crystals the package is qualified for, on a
- *   service without their evaluators, is {@link UnsupportedReason#NOT_IMPLEMENTED}; with them see "Crystals" below.</li>
- *   <li>Tangent-plane stability of the feed ({@link TangentPlaneStability} on the evaluator's kernel; the constant
- *   translation cancels from it at one pressure).</li>
- *   <li>Stable: one phase on the feed's lower-Gibbs root, classified from the root situation. A pure component with
- *   three roots whose two fugacities agree to within {@link Settings#coexistenceTolerance()} in relative pressure
- *   (first order: {@code |ln phi_L - ln phi_V| / (Z_V - Z_L)}) is
- *   {@link Classification#PURE_COEXISTENCE_UNDERDETERMINED}: both states, no split. A single phase with one physical
- *   root is labelled liquid or vapour by its phase identification parameter ({@link PhaseIdentification}: liquid-like
- *   when it exceeds both one and the root's compressibility factor, P3 WP7c), except a
- *   pure component above its critical temperature and pressure, {@link Classification#SUPERCRITICAL_FLUID} labelled
- *   {@link PhaseKind#FLUID}.</li>
- *   <li>Unstable: two-phase Rachford-Rice with successive substitution on {@code ln K_i = ln phi_i^L - ln phi_i^V},
- *   started from the stability test's stationary composition, each phase on its own lower-Gibbs root, with a
- *   dominant-eigenvalue extrapolation every {@link Settings#accelerationCycle()} plain steps; converged when a plain
- *   step moves no {@code ln K_i} by {@link Settings#lnKTolerance()}. Rachford-Rice is solved in the minor phase's
- *   fraction (D24): the vapour fraction {@code beta} up to one half, above it the liquid fraction
- *   {@code delta = 1 - beta}, each to full relative precision, so a trace phase keeps its amount and its shares.</li>
- *   <li>Second-order finish (P3): when substitution has run {@link #SLOW_SUBSTITUTION_STEPS} steps with the
- *   dominant eigenvalue estimate above {@link #SLOW_EIGENVALUE}, after {@link Settings#substitutionLimit()}
- *   steps, or when it collapses onto the feed or loses the split, Newton minimises the Gibbs energy over the vapour mole
- *   numbers {@code v_i} (liquid {@code l_i = z_i - v_i}, both carried so a trace keeps its precision): gradient
- *   {@code g_i = ln f_i^V - ln f_i^L}, Hessian
- *   {@code H_ij = sum over both phases (delta_ij/n_i - 1/N + Phi_ij/N)} with the kernel's per-mole
- *   {@code Phi_ij = d ln phi_i/d n_j} (symmetrised), scaled by {@code s_i = sqrt(v_i l_i / z_i)} and shifted by
- *   {@code mu I} until Cholesky succeeds, the step cut so no amount shrinks below a tenth of itself, and an Armijo line
- *   search on {@code Delta G/RT = sum_i v_i (ln f_i^V - d_i) + l_i (ln f_i^L - d_i)} measured from the feed's
- *   {@code d_i = ln f_i(z)}, which it keeps negative: the start is a split below the feed's Gibbs energy (the
- *   substitution iterate, or else the stability test's stationary composition in a small amount), so the finish can
- *   never reach the trivial solution. Converged at {@code max |g_i| < }{@link #FUGACITY_TOLERANCE}.</li>
- *   <li>The phase amounts are split per component: the smaller share is computed directly (capped at {@code n_i}) and
- *   the larger is {@code n_i} minus it, so they conserve each component to rounding, stay nonnegative, and a trace
- *   share keeps its relative precision.</li>
- *   <li>Near-critical merging: a converged split with {@code sum z_i (ln K_i)^2 <} {@link Settings#mergeTieLine()}
- *   whose molar volumes differ by less than {@link Settings#mergeVolumeGap()} (relative to their mean) is one fluid:
- *   {@link Classification#SINGLE_FLUID} labelled {@link PhaseKind#FLUID}, inside the critical band, its detail saying
- *   it was merged. Otherwise both products are re-tested for stability; an unstable product (a third phase, or a wrong
- *   split) is {@link EquilibriumResult.Status#NOT_CONVERGED}, its detail prefixed {@link EquilibriumResult#UNSTABLE_PRODUCT}
- *   when a product was proved unstable (P3 WP11), {@link EquilibriumResult#UNRESOLVED_PRODUCT} when the re-check left a
- *   product's stability unresolved and proved none unstable.</li>
- *   <li>Labels of a split: the denser phase {@link PhaseKind#LIQUID}, the lighter {@link PhaseKind#VAPOR}
- *   ({@link Classification#VAPOR_LIQUID}); when both products are liquid-like by the phase identification parameter on
- *   their own roots ({@link PhaseIdentification#liquidLike(double, double)}) and both are denser than the cubic's
- *   critical volume ({@link PhaseIdentification#denseLiquidLike}, {@code v < 3.9514 b}, P3 WP11), and the split lies
- *   outside the critical band, it is {@link Classification#LIQUID_LIQUID} with both labelled {@link PhaseKind#LIQUID},
- *   the lighter first (P3 WP7d).</li>
- *   <li>A feed stability test that ends unresolved is repeated once with
- *   {@link #UNRESOLVED_STABILITY_BUDGET_FACTOR} times the per-trial budget (P3 WP7d).</li>
- * </ol>
+ * <p>Hydrocarbon phases: contract checks ({@link #contractChecks}; a request asking for crystals on a service without
+ * their evaluators is {@link UnsupportedReason#NOT_IMPLEMENTED}); tangent-plane stability of the feed
+ * ({@link TangentPlaneStability} on the evaluator's kernel, where the constant translation cancels at one pressure).
+ * Stable: one phase on the feed's lower-Gibbs root, classified from the root situation; a pure component with three
+ * roots whose fugacities agree within {@link Settings#coexistenceTolerance()} is
+ * {@link Classification#PURE_COEXISTENCE_UNDERDETERMINED}; a one-root phase is labelled by its phase identification
+ * parameter ({@link PhaseIdentification}), except a pure component above its critical point
+ * ({@link Classification#SUPERCRITICAL_FLUID}, {@link PhaseKind#FLUID}). Unstable: Rachford-Rice with successive
+ * substitution on {@code ln K_i = ln phi_i^L - ln phi_i^V} from the stability test's stationary composition, each phase
+ * on its own lower-Gibbs root, a dominant-eigenvalue extrapolation every {@link Settings#accelerationCycle()} steps,
+ * solved in the minor phase's fraction so a trace phase keeps its precision; converged when a step moves no
+ * {@code ln K_i} by {@link Settings#lnKTolerance()}. When substitution is slow ({@link #SLOW_SUBSTITUTION_STEPS} steps
+ * with the eigenvalue above {@link #SLOW_EIGENVALUE}), past {@link Settings#substitutionLimit()}, collapsing onto the
+ * feed or losing the split, a Newton minimises the Gibbs energy over the vapour mole numbers ({@code l_i = z_i - v_i}):
+ * gradient {@code ln f_i^V - ln f_i^L}, Hessian {@code sum over both phases (delta_ij/n_i - 1/N + Phi_ij/N)} with the
+ * kernel's {@code Phi_ij = d ln phi_i/d n_j}, scaled by {@code sqrt(v_i l_i / z_i)} and shifted by {@code mu I} until
+ * Cholesky succeeds, the step cut so no amount shrinks below a tenth of itself, an Armijo line search on
+ * {@code Delta G/RT} from the feed, which stays negative so the finish never reaches the trivial solution; converged at
+ * {@code max |g_i| < }{@link #FUGACITY_TOLERANCE}. Amounts are split per component, the smaller share directly and the
+ * larger by difference, so each component conserves to rounding. A converged split with
+ * {@code sum z_i (ln K_i)^2 <} {@link Settings#mergeTieLine()} whose molar volumes differ by less than
+ * {@link Settings#mergeVolumeGap()} is one fluid ({@link Classification#SINGLE_FLUID}, inside the critical band);
+ * otherwise both products are re-tested, and an unstable product is {@link EquilibriumResult.Status#NOT_CONVERGED} with
+ * the detail {@link EquilibriumResult#UNSTABLE_PRODUCT} or {@link EquilibriumResult#UNRESOLVED_PRODUCT}. The denser
+ * phase is {@link PhaseKind#LIQUID} and the lighter {@link PhaseKind#VAPOR}; two liquid-like products denser than the
+ * cubic's critical volume ({@link PhaseIdentification#denseLiquidLike}, {@code v < 3.9514 b}) outside the critical band
+ * are {@link Classification#LIQUID_LIQUID}, the lighter first. An unresolved feed stability test is repeated once with
+ * {@link #UNRESOLVED_STABILITY_BUDGET_FACTOR} times the per-trial budget.</p>
  *
- * <p>Declared critical band (plan P3 section 6.2): a pure fluid (one component at least 0.95 of the amount) at reduced
- * temperature and pressure in [0.95, 1.1] x [0.8, 1.5], [0.90, 0.95] x [0.58, 0.74] widened by [0.95, 0.97] x [0.58, 0.8]
- * (D15), [1.05, 1.2] x [2, 3], or D14's corner [1.0, 1.1] x [1.5, 2] ({@link #pureBandBox}, P3 WP7d); a split
- * with {@code sum z_i (ln K_i)^2 <} {@link #BAND_TIE_LINE}; a single mixture phase whose stability test met a
- * stationary point other than the feed within {@link #BAND_STATIONARY_DISTANCE} of it
+ * <p>Declared critical band: a pure fluid (one component at least 0.95 of the amount) in the reduced boxes of
+ * {@link #pureBandBox}; a split with {@code sum z_i (ln K_i)^2 <} {@link #BAND_TIE_LINE}; a single mixture phase whose
+ * stability test met a stationary point other than the feed within {@link #BAND_STATIONARY_DISTANCE}
  * ({@link TangentPlaneStability.Result#nearestStationaryDistance()}); a failed split whose last iterate or stability
- * seed was that short. Inside it a converged answer is graded {@link EquilibriumResult.CoverageGrade#RESEARCH_ONLY}, and
- * a failure is the typed not-converged result whose detail starts with {@link EquilibriumResult#CRITICAL_BAND} and whose
- * diagnostics say {@code criticalBand}. No split is fabricated, and no single phase is reported as stable when the test
- * said unstable (a merged split says so in its detail).</p>
+ * seed was that short. Inside it a converged answer is graded {@link EquilibriumResult.CoverageGrade#RESEARCH_ONLY} and
+ * a failure is typed {@link EquilibriumResult#CRITICAL_BAND}. No split is fabricated and no single phase is reported
+ * stable when the test said unstable.</p>
  *
- * <p>Free water ({@link WaterParticipation#SEPARATE_FREE_WATER} with a {@link FreeWaterModel}): the fluid network's rule
- * as {@code FluidThermodynamics.flashTP} encodes it (read at commit {@code 5100233}; restated here, constants below):
- * the hydrocarbon liquid at the state pressure {@code P}, the hydrocarbon vapour at its partial pressure
+ * <p>Free water ({@link WaterParticipation#SEPARATE_FREE_WATER} with a {@link FreeWaterModel}), the fluid network's
+ * rule: the hydrocarbon liquid at the state pressure {@code P}, the hydrocarbon vapour at its partial pressure
  * {@code pc = P - p_w}, ideal steam sharing the gas volume, liquid water from the water model at {@code P}. Without
  * hydrocarbons the water is all liquid when {@code P >= p_sat} and all steam otherwise. With both, when
  * {@code P > p_sat + 1e-6 Pa} the hydrocarbons are split at {@code (P, P - p_sat)} and the steam that saturates the gas,
- * {@code p_sat V_gas/(R T)}, is taken from the water if there is that much (the rest is free water); otherwise all water
- * is steam and {@code pc} solves {@code pc + n_w R T / V_gas(pc) = P}: up to three fixed-point steps
- * {@code pc = P - n_w R T / V_gas(pc)} first (P3 WP7b), each accepted only on the bisection's stop test, else the
- * network's bisection on {@code [1e-6 Pa, P]} (70 halvings, stop at {@code 1e-8 P}, accepted within {@code 1e-6 P}).
- * A steam partial pressure above the model's qualified limit is answered and graded
- * {@link EquilibriumResult.CoverageGrade#EXTRAPOLATED} (owner rule of 2026-10-16: leaving a data range never refuses a
- * state; the network reports it as a notice). The hydrocarbon split with branch pressures uses {@link TangentPlaneStability}'s per-branch test and the vapour branch's
- * shift {@code ln(pc/P) + (pc - P) c_i/(R T)} in the flash (the translation does not cancel between two pressures), with
- * the vapour on the vapour root at {@code pc} and the liquid on the liquid root at {@code P}.</p>
+ * {@code p_sat V_gas/(R T)}, is taken from the water if there is that much; otherwise all water is steam and {@code pc}
+ * solves {@code pc + n_w R T / V_gas(pc) = P}: up to {@link #PARTIAL_PRESSURE_FIXED_POINT_STEPS} fixed-point steps, each
+ * accepted only on the bisection's stop test, else a bisection on {@code [1e-6 Pa, P]}
+ * ({@link #PARTIAL_PRESSURE_BISECTIONS} halvings, stop at {@link #PARTIAL_PRESSURE_TOLERANCE}, accepted within
+ * {@link #PARTIAL_PRESSURE_ACCEPTANCE}). Steam above the model's qualified partial pressure is answered and graded
+ * {@link EquilibriumResult.CoverageGrade#EXTRAPOLATED}. The split with branch pressures uses the stability test's
+ * per-branch form and the vapour branch's shift {@code ln(pc/P) + (pc - P) c_i/(R T)} in the flash (the translation does
+ * not cancel between two pressures). Ice ({@link FreeWaterIce}): below the melting line {@code T_m(P)} the condensed
+ * water is ice, a solid phase naming the water model's ice record, and the rule runs with the ice's fugacity in place of
+ * {@code p_sat}; ice is water's own rule, never a crystal of a competition, and forms beside a competing crystal too.</p>
  *
- * <p>Ice (WP4, {@link FreeWaterIce}): below the melting line {@code T_m(P)} the free water's condensed phase is its ice,
- * a solid phase naming the water model's ice record, and the rule above runs with the ice's fugacity in place of
- * {@code p_sat} (the steam over ice, R14-08's sublimation pressure meeting the liquid's on the line). Ice is water's own
- * rule, never a crystal of a competition: it forms under every competition, beside a competing crystal too (decision 6 A,
- * no hydrates). PH and UV answer its freeze at {@code T_m(P)} from the balance, as water's boiling.</p>
+ * <p>PH and UV are outer searches over TP answers inside the numerical box ({@link NumericalBox}; a specification
+ * beyond it is {@code NOT_CONVERGED}, a numerical failure). PH: a bracketed search in {@code T} at fixed pressure
+ * ({@code H(T)} increases for stable equilibria) from the ideal-gas temperature of the enthalpy; Newton with the phase's
+ * {@code c_p} for one dry phase, a secant between answers with the same phases otherwise, bisection when two steps fail
+ * to halve the bracket's smaller residual. UV: Newton on {@code (ln T, ln P)} for
+ * {@code ((U - U_spec)/(N R T), ln(V/V_spec))} (the analytic Jacobian of one dry phase, else differences and Broyden's
+ * update, a halving line search), started where the feed as one phase of the cubic has the specified energy at the
+ * specified volume; when Newton stalls, a nested search in {@code T} at the specified volume, each temperature solving
+ * {@code V(P) = V_spec} in {@code ln P}; a bracket that closes at the box's pressure bound with the energy still short is
+ * {@code NOT_CONVERGED} naming that bound. Steps the TP answer leaves undetermined (a pure hydrocarbon at its
+ * equal-fugacity point, free water boiling or subliming at the state pressure, free water freezing at its melting line)
+ * are determined from the balance once a bracket straddles the jump, {@code target = (1 - beta) x_1 + beta x_2}, at the
+ * kernel's equal-fugacity temperature or pressure, the water model's saturation or the melting line
+ * ({@link #freezingAtVolume} at a fixed volume and energy; pure water inside its triple point's triangle at that point,
+ * {@link #waterTriplePoint}): {@link Classification#VAPOR_LIQUID} or {@link Classification#FREE_WATER} with
+ * {@link Diagnostics#coexistenceFromBalance()}. A target inside any other step is {@code NOT_CONVERGED}. Every search is
+ * bounded ({@link Settings#maximumOuterIterations()}); near a critical point the searches take secants and brackets.</p>
  *
- * <p>PH and UV (P3 work package WP6b) are outer searches over these TP answers, never extrapolations of them:</p>
- * <ul>
- *   <li>The search window is the numerical box ({@link NumericalBox}, 10 to 6000 K and 1 Pa to 1 GPa; owner rule of
- *   2026-10-16: the models continue past their data ranges, and a converged answer outside one is graded
- *   {@link EquilibriumResult.CoverageGrade#EXTRAPOLATED}). A specification beyond the box is {@code NOT_CONVERGED}: a
- *   numerical failure, not a data range.</li>
- *   <li>PH: a bracketed search in {@code T} at the fixed pressure ({@code H(T)} increases for stable equilibria),
- *   started at the ideal-gas temperature of the enthalpy; Newton with the phase's {@code c_p} for one dry phase, a
- *   secant between answers with the same phases otherwise (across a bubble or dew point {@code H(T)} has a kink), the
- *   bracket's secant before that; bisection when two steps in a row fail to halve the bracket's smaller residual.</li>
- *   <li>UV: Newton on {@code (ln T, ln P)} for {@code ((U - U_spec)/(N R T), ln(V/V_spec))} (the analytic Jacobian of
- *   one dry phase, else finite differences and Broyden's update, a halving line search), started for dry material at
- *   the temperature where the feed as one phase of the cubic has the specified energy at the specified volume (a
- *   closed-form PR departure) and the cubic's own pressure there, which is the answer when that phase is stable; when it
- *   is not, from an inexact volume solve at that temperature. When Newton stalls, a nested search: {@code U(T)} at the
- *   specified volume bracketed in {@code T}, each temperature solving {@code V(P) = V_spec} bracketed in {@code ln P}
- *   (inexact while the energy is far off). A temperature whose isochore leaves the pressure window closes the bracket
- *   from that side; when the bracket closes there with the energy still short of the specification, the answer lies
- *   beyond the box's pressure bound: {@code NOT_CONVERGED} naming that bound, not a step of {@code U(T)}.</li>
- *   <li>Steps: a pure hydrocarbon at its equal-fugacity point, free water boiling (or, below its melting line,
- *   subliming) at the state pressure, and free water freezing at its melting line (WP4) are coexistences TP leaves
- *   undetermined ({@link Classification#PURE_COEXISTENCE_UNDERDETERMINED}, or the free-water rule's jump from all
- *   condensed to all steam, or from liquid to ice); PH and UV determine them: once a bracket straddles the jump, the
- *   phase fraction follows from {@code target = (1 - beta) x_1 + beta x_2} (enthalpy in PH, volume at the fixed
- *   temperature in UV), at the kernel's equal-fugacity temperature (PH) or pressure (UV), the water model's saturation,
- *   or the melting line's temperature (PH) or pressure (UV). At a fixed volume and energy the freeze is answered on the
- *   line itself once a step of the UV search crosses it ({@link #freezingAtVolume}): {@code T = T_m(P)}, the ice from
- *   the energy balance and {@code P} from the volume's; pure water with only its own steam inside its triple point's
- *   triangle is answered at that point before the search ({@link #waterTriplePoint}), from the mole, energy and volume
- *   balances as a crystal's pure species. The pure coexistence is {@link Classification#VAPOR_LIQUID},
- *   the free water's steps {@link Classification#FREE_WATER}, all with {@link Diagnostics#coexistenceFromBalance()} and
- *   the balance in the detail. A target inside any other step (a fraction outside [0, 1]) is typed
- *   {@code NOT_CONVERGED}: no state of the model has it.</li>
- *   <li>Every search is bounded ({@link Settings#maximumOuterIterations()}); its failure is {@code NOT_CONVERGED}, typed
- *   {@link EquilibriumResult#CRITICAL_BAND} when its last TP answer lies in the band. Near a critical point, where the
- *   kernel refuses derivatives, the searches take secants and brackets: no finite slope is needed. The result is the
- *   last TP answer (or the balance) under the PH/UV specification, with the whole search's kernel counts,
- *   {@link Diagnostics#outerIterations()} and {@link Diagnostics#specificationResidual()}.</li>
- * </ul>
+ * <p>Crystals: a service built with crystal evaluators ({@link #forPackage}) answers the competitions its contract
+ * qualifies ({@link PhaseCompetition#FLUID_AND_CRYSTALS} resolves to the package's set). Each crystal is anchored once,
+ * at construction, to this evaluator's pure liquid at its triple point ({@link CrystalPhaseEvaluator.Anchored}). A
+ * crystal's record continues past its data range; the lowest record ceiling of a competition ({@link #crystalCeiling},
+ * 300 K for CO2-I) is where its crystals cease to exist. With free water the crystals compete against the free-water
+ * rule's hydrocarbon phases at the hydrocarbon partial pressure ({@link #solveWetWithCrystals}; ice and CO2 frost
+ * coexist). TP: the fluid answer of the feed, then each crystal against it by fugacity, {@code D = (mu_i - mu_s)/(R T)};
+ * above {@link #DEPOSITION_TOLERANCE} the solid amount is solved so that the fluid the crystal leaves, re-flashed with
+ * the stability test, has the crystal's chemical potential to {@code 1e-9}: the vapour-solid Newton on the reduced
+ * feed's vapour root first ({@link #depositFromVapour}), else the general solve whose every iterate is a re-flash
+ * ({@link #depositFromFluid}; {@link Classification#VAPOR_SOLID}, {@link Classification#LIQUID_SOLID} or
+ * {@link Classification#VAPOR_LIQUID_SOLID}). A pure feed freezes or deposits completely
+ * ({@link Classification#SOLID_PRESENT}), as does a species below {@link #DEPOSITION_TRACE} in the fluid. Two liquids
+ * beside the crystal, three fluid phases and two crystals are the typed {@link EquilibriumResult#CRYSTAL_PHASES} hold.
+ * PH and UV answer the pure species' sublimation and melting steps, its triple point (UV) and a binary's three-phase
+ * step from the balances; a start in a held region restarts from the competition's ceiling. Onsets
+ * ({@link #depositionTemperature}, {@link #freezingTemperature}, {@link #depositionPressure}) are bracketed searches on
+ * {@code D} of the fluid answer of the whole feed.</p>
  *
- * <p>Crystals (P4 stage 2a, {@code P4_GAS_SOLID_EQUILIBRIUM.md}; beside a liquid from P5,
- * {@code P5_SOLID_LIQUID_EQUILIBRIUM.md}): a service built with crystal evaluators
- * ({@link #forPackage}) answers the competitions its contract qualifies with them
- * ({@link PhaseContract#forPackage}; {@link PhaseCompetition#FLUID_AND_CRYSTALS} resolves to the package's set). Each
- * crystal is anchored once, at construction, to this evaluator's pure liquid at its triple point (an immutable
- * {@link CrystalPhaseEvaluator.Anchored} view: no flash solves its integration constants again). A crystal's record
- * continues past its data range like every model (an answer with the crystal outside it is graded extrapolated); the
- * lowest record ceiling of a competition ({@link #crystalCeiling}, 300 K for CO2-I) is where its crystals cease to
- * exist: the onset searches stay below it and a PH or UV start that fails restarts there. With free water the crystals
- * compete against the free-water rule's hydrocarbon phases and are solved at the hydrocarbon partial pressure
- * ({@link #solveWetWithCrystals}, WP4; decision 6 A: gas hydrates are not modelled, so ice and CO2 frost coexist); the
- * pure species' and binary steps below are taken by dry feeds only.</p>
- * <ul>
- *   <li>TP: the fluid answer of the feed, then each crystal against it by fugacity,
- *   {@code D = (mu_i - mu_s)/(R T)}; above {@link #DEPOSITION_TOLERANCE} the solid amount is solved so that the fluid
- *   the crystal leaves, re-flashed with the stability test, has the crystal's chemical potential to
- *   {@code |mu_i - mu_s|/(R T) <= 1e-9}: first P4's vapour-solid Newton on the reduced feed's vapour root (one
- *   re-flash), and where that does not leave one stable phase on its root, the general solve of P5 whose every iterate
- *   is a re-flash, so the fluid may be a vapour ({@link Classification#VAPOR_SOLID}), a liquid or a liquid-like one-root
- *   fluid ({@link Classification#LIQUID_SOLID}) or a vapour-liquid split ({@link Classification#VAPOR_LIQUID_SOLID}).
- *   A pure feed of the species freezes or deposits completely ({@link Classification#SOLID_PRESENT}); a fraction of
- *   the species in the fluid below {@link #DEPOSITION_TRACE} is a complete deposition too. Two liquids beside the crystal,
- *   three fluid phases beside it and two crystals are the typed {@link EquilibriumResult#CRYSTAL_PHASES} hold. The
- *   result's grade folds the crystal's; {@link EquilibriumResult#deposition()} carries the solve.</li>
- *   <li>PH and UV search over those TP answers, so the solid's enthalpy and volume enter. The pure species' sublimation
- *   step (below the family's own triple point) and melting step (above it) are answered from the energy or volume
- *   balance like a pure fluid's coexistence, the pure species' triple point in UV from the mole, energy and volume
- *   balances, and a binary's three-phase step (vapour, liquid and crystal on its three-phase line) from the species'
- *   and the energy or volume balances (P5). A start in a held region restarts from the competition's ceiling, and
- *   unbracketed PH steps are capped (a vapour's c_p says nothing of the heat of deposition).</li>
- *   <li>Onsets: {@link #depositionTemperature}, {@link #freezingTemperature} (P5: the liquidus, the same search) and
- *   {@link #depositionPressure}, bracketed searches on {@code D} of the fluid answer of the whole feed (a vapour, a
- *   liquid or a vapour-liquid split at the onset), with the partial-pressure approximation beside a deposition onset.</li>
- * </ul>
- *
- * <p>Deterministic (fixed arithmetic order, no randomness; a reused {@link Workspace} carries nothing between calls but
- * prepared temperatures, recomputed bit-identically) and allocation-light: the iterations allocate nothing; a call
- * allocates the stability results and its own result (PH and UV: those of every TP answer they evaluate).</p>
+ * <p>Deterministic (fixed arithmetic order; a reused {@link Workspace} carries nothing between calls but prepared
+ * temperatures, recomputed bit-identically) and allocation-light: the iterations allocate nothing.</p>
  */
 public final class FluidTpEquilibrium {
     /** Largest {@code ln K} change one extrapolation may add. */
@@ -222,11 +150,9 @@ public final class FluidTpEquilibrium {
     /** Fixed-point steps {@code pc = P - n_w R T / V_gas(pc)} tried before the bisection (P3 WP7b). */
     public static final int PARTIAL_PRESSURE_FIXED_POINT_STEPS = 3;
     /**
-     * A feed whose stability test ends unresolved (a trial out of its iteration budget without proving instability) is
-     * tested once more with this many times the per-trial budget (P3 WP7d). Next to a mixture critical point a trial can
-     * crawl towards the trivial solution on a root whose own Hessian is indefinite, where the test's Newton step is
-     * refused and substitution alone moves it; the longer budget lets it arrive. Every feed the first test resolves is
-     * computed exactly as before.
+     * A feed whose stability test ends unresolved (a trial out of its budget without proving instability) is tested once
+     * more with this many times the per-trial budget: next to a mixture critical point a trial can crawl towards the
+     * trivial solution on a root whose Hessian is indefinite, where only substitution moves it.
      */
     public static final int UNRESOLVED_STABILITY_BUDGET_FACTOR = 10;
 
@@ -245,11 +171,9 @@ public final class FluidTpEquilibrium {
     private static final double DIFFERENCE_STEP = 1.0e-7;
     private static final int NEWTON_UV_EVALUATIONS = 30;
     /**
-     * TP equilibria of a warm-started UV Newton phase (P6) before the cold search takes over. 16 since P6b (8 before): a
-     * vessel's crystal beside a vapour and a liquid of three species moves between substeps by more than two Newton
-     * iterations (three TP equilibria each with the difference Jacobian) can close; measured on the pilot world's liquid
-     * methane flush (row E), warm answers 55/55, 166/166, 180/211 per interval at 16 against 43/55, 93/166, 2/211 at 8 (154
-     * of 211 at 12, none more at 24).
+     * TP equilibria of a warm-started UV Newton phase before the cold search takes over. 16, not 8: a vessel's crystal
+     * beside a vapour and a liquid of three species moves between substeps by more than two Newton iterations can close
+     * (warm answers 180 of 211 per interval at 16 against 2 of 211 at 8 on the pilot world's liquid methane flush).
      */
     public static final int WARM_UV_EVALUATIONS = 16;
     private static final int LINE_SEARCH_HALVINGS = 4;
@@ -296,26 +220,20 @@ public final class FluidTpEquilibrium {
     /**
      * D21: a dry feed whose species other than its largest total at most this fraction of it is near-pure. When that
      * major species has a competing crystal, PH and UV answer its crystal steps (sublimation, melting, triple point) as
-     * a pure feed's, from the balances at the pure species' equal-chemical-potential point, the other species carried as
-     * traces in the fluid phase the step leaves (see {@link #STEP_FLUID_TRACES}); the pure species' pressure (UV) or
-     * temperature (PH) is then about 1.3 times the trace fraction off (at this bound about 1.4e-5 of the pressure, or
-     * 0.1 mK at 101 kPa). TP cannot resolve the feed's own vapour-solid region, about the trace fraction wide in pressure
-     * (P6B_RUNTIME_FAILURE_DIAGNOSIS section 1), up to about 1e-6, and not reliably just above: at 101.325 kPa a PH target
-     * at 2e-6 closed on a 0.57 J step of H(T) over 6e-10 K, while 45 targets from 5e-6 to 1e-3 converged (M1). The bound
-     * was 1e-6 until the owner's D21 follow-up of 2026-10-15. It takes precedence over the pseudo-binary rule of
-     * {@link #TRACE_FRACTION}.
+     * a pure feed's, the other species carried as traces in the fluid phase the step leaves ({@link #STEP_FLUID_TRACES});
+     * the pure species' pressure or temperature is then about 1.3 times the trace fraction off (0.1 mK at 101 kPa at
+     * this bound). TP cannot resolve the feed's own vapour-solid region, about the trace fraction wide in pressure, up
+     * to about 1e-6 and not reliably just above (a PH target at 2e-6 closed on a 0.57 J step of H(T) over 6e-10 K).
+     * Takes precedence over the pseudo-binary rule of {@link #TRACE_FRACTION}.
      */
     private static final double NEAR_PURE_TRACES = 1.0e-5;
     /**
      * D21: the largest share of a near-pure step's fluid its traces may take. The step at the pure species' point leaves
-     * out the traces' dilution of that fluid, which moves the real step by about this share in ln P (12 K times it in T
-     * for CO2 sublimation at 101 kPa, R T^2 over the step's enthalpy); a step needing a smaller fluid (deep deposition) is
-     * the general solve's, whose vapour-solid region is then at least this share wide in drive, five decades above
-     * {@link #DEPOSITION_TOLERANCE}. At 10 times {@link #NEAR_PURE_TRACES} every near-pure feed keeps at least 90 % of
-     * its step on the rule (fluid shares from traces/1e-4 of the feed to 1), and the handover moves the answer by at most
-     * 1e-4 in ln P. Bounding the share by the trace fraction itself leaves a feed at that fraction no step; leaving it
-     * unbounded (only the fluid of nothing but traces refused) claims the pure point where the traces make most of the
-     * fluid, and the rule and the general solve then alternate along {@code H(T)} (measured, M1_ENGINE_PORT).
+     * out the traces' dilution of that fluid, which moves the real step by about this share in ln P; a step needing a
+     * smaller fluid (deep deposition) is the general solve's, whose vapour-solid region is then at least this share
+     * wide in drive. At 10 times {@link #NEAR_PURE_TRACES} every near-pure feed keeps at least 90 % of its step on the
+     * rule, and the handover moves the answer by at most 1e-4 in ln P; unbounded, the rule and the general solve
+     * alternate along {@code H(T)} where the traces make most of the fluid.
      */
     private static final double STEP_FLUID_TRACES = 1.0e-4;
     /**
@@ -996,13 +914,11 @@ public final class FluidTpEquilibrium {
     }
 
     /**
-     * The fluid phases of a crystal competition's material with its crystals held out (P5): the fluid answer of the whole
-     * feed at the request's (T, P), no crystal taking part. It is not an equilibrium with the crystals and is labelled
-     * {@link PhaseCompetition#FLUID_ONLY} ("solid phases not assessed"), its detail naming the held-out competition. For a
-     * consumer whose crystal inventory is frozen over a step and equilibrated between steps (the fluid network's operator
-     * split, P4 stage 2b): the regime of its mobile fluid inside the step is that fluid's own split. A request that is not
-     * a crystal competition is refused ({@code IllegalArgumentException}); the contract's refusals are those of
-     * {@link #tp}.
+     * The fluid phases of a crystal competition's material with its crystals held out: the fluid answer of the whole feed
+     * at the request's (T, P), no crystal taking part, labelled {@link PhaseCompetition#FLUID_ONLY} ("solid phases not
+     * assessed") with the held-out competition in its detail. For a consumer whose crystal inventory is frozen over a
+     * step and equilibrated between steps (the fluid network's operator split): the regime of its mobile fluid inside
+     * the step. A request that is not a crystal competition is refused ({@code IllegalArgumentException}).
      */
     public EquilibriumResult tpCrystalsHeldOut(EquilibriumRequest request, Workspace workspace) {
         Workspace w = own(workspace);
@@ -1030,10 +946,9 @@ public final class FluidTpEquilibrium {
     }
 
     /**
-     * The UV answer of a crystal competition's material with its crystals held out (P6): {@link #uv} over the fluid
-     * answers of {@link #tpCrystalsHeldOut} (no crystal taking part), labelled {@link PhaseCompetition#FLUID_ONLY} with the
-     * held-out competition named in its detail. For the fluid network's mobile fluid, whose crystal inventory is frozen
-     * over a step: the split of a vessel's own fluid at its own energy and volume. A request that is not a crystal
+     * The UV answer of a crystal competition's material with its crystals held out: {@link #uv} over the fluid answers of
+     * {@link #tpCrystalsHeldOut}, labelled {@link PhaseCompetition#FLUID_ONLY} with the held-out competition in its
+     * detail (the split of a vessel's own fluid at its own energy and volume). A request that is not a crystal
      * competition is refused ({@code IllegalArgumentException}).
      */
     public EquilibriumResult uvCrystalsHeldOut(EquilibriumRequest request, Workspace workspace) {
@@ -1057,13 +972,11 @@ public final class FluidTpEquilibrium {
     }
 
     /**
-     * PH (P3 WP6b): the temperature at the request's pressure whose TP equilibrium has the request's enthalpy (J, over
-     * all phases). A bracketed search over TP answers: {@code H(T)} at fixed pressure and composition increases for
-     * stable equilibria, so the answer is bracketed inside the numerical box; the steps are Newton with the phase's
-     * {@code c_p} (one dry phase), secant otherwise, and bisection whenever a step leaves the bracket or the residual
-     * stops halving. A step of {@code H(T)} is found by the bracket closing on it: a pure component at its equal-fugacity
-     * temperature, or free water boiling at the state pressure, is answered with the phase fraction from the energy
-     * balance (a coexistence TP leaves undetermined); any other step is typed not converged. See the class comment.
+     * PH: the temperature at the request's pressure whose TP equilibrium has the request's enthalpy (J, over all phases),
+     * by the bracketed search of the class comment: Newton with the phase's {@code c_p} for one dry phase, secant
+     * otherwise, bisection whenever a step leaves the bracket or the residual stops halving; a step of {@code H(T)} the
+     * bracket closes on (a pure component's coexistence, free water boiling) is answered from the energy balance, any
+     * other step is typed not converged.
      */
     public EquilibriumResult ph(EquilibriumRequest request, Workspace workspace) {
         Workspace w = own(workspace);
@@ -1082,27 +995,22 @@ public final class FluidTpEquilibrium {
     }
 
     /**
-     * UV (P3 WP6b): the temperature and pressure whose TP equilibrium has the request's internal energy (J) and volume
-     * (m3). Newton on {@code (ln T, ln P)} over TP answers (the analytic Jacobian of one dry phase, else finite
-     * differences updated by Broyden's rule, a halving line search on the scaled residual), and when that does not
-     * converge a nested bracketed search: in temperature at the fixed volume, {@code U(T)} increasing, each temperature
-     * with a bracketed search in {@code ln P} for the volume, {@code V(P)} decreasing. A pure component inside its
-     * two-phase dome, or free water boiling, closes the pressure bracket on the step of {@code V(P)}: the phase fraction
-     * then comes from the volume balance at the equal-fugacity (saturation) pressure. See the class comment.
+     * UV: the temperature and pressure whose TP equilibrium has the request's internal energy (J) and volume (m3): the
+     * Newton on {@code (ln T, ln P)} of the class comment and, when it does not converge, the nested bracketed search
+     * ({@code U(T)} increasing at the fixed volume, {@code V(P)} decreasing at each temperature); a pure component
+     * inside its two-phase dome, or free water boiling, closes the pressure bracket on the step of {@code V(P)} and the
+     * phase fraction comes from the volume balance at the saturation pressure.
      */
     public EquilibriumResult uv(EquilibriumRequest request, Workspace workspace) {
         return uv(request, workspace, Double.NaN, Double.NaN);
     }
 
     /**
-     * {@link #uv} warm-started from a previous answer's temperature and pressure (P6: the fluid network's crystal
-     * equilibration of a vessel already holding crystals, whose own state is the engine's last answer moved by at most
-     * one substep): the UV Newton phase starts at {@code (hintTemperature, hintPressure)} with at most
-     * {@link #WARM_UV_EVALUATIONS} TP equilibria; when it does not converge there (a hint outside the search window, a
-     * step of the function such as a binary's three-phase line), the cold search of {@link #uv} runs as before, with its
-     * own budget. The answer meets the same specification and tolerance as a cold one; the kernel counts of the
-     * diagnostics include the warm attempt, the outer-iteration count is the path that answered. A hint that is not
-     * finite is the cold search alone.
+     * {@link #uv} warm-started from a previous answer's temperature and pressure (the fluid network's crystal
+     * equilibration of a vessel already holding crystals): the UV Newton phase starts at
+     * {@code (hintTemperature, hintPressure)} with at most {@link #WARM_UV_EVALUATIONS} TP equilibria; when it does not
+     * converge there, the cold search of {@link #uv} runs with its own budget. The answer meets the same specification
+     * and tolerance; the diagnostics' kernel counts include the warm attempt. A hint that is not finite is the cold search.
      */
     public EquilibriumResult uv(EquilibriumRequest request, Workspace workspace, double hintTemperature,
                                 double hintPressure) {
@@ -1301,13 +1209,11 @@ public final class FluidTpEquilibrium {
     // PH and UV (P3 WP6b).
 
     /**
-     * The search window: the numerical box ({@link NumericalBox}; owner rule of 2026-10-16: the models continue past their
-     * data ranges, the box is where the mathematics stops); resets the search's counters and state. A search starts inside
-     * the data of every model the material uses, where they overlap: the package envelope, the carried species' ideal-gas
-     * functions and, with water, the steam's range (the envelope alone where they do not overlap). The first temperature
-     * is a lower bound from the ideal gas, which a crystal's or free water's latent heat can put far below the answer and
-     * far outside every data range (35 K for a frost answer at 150 K); from inside the data the search moves out only as
-     * far as the specification asks.
+     * The search window: the numerical box ({@link NumericalBox}, where the mathematics stops; no data range bounds it);
+     * resets the search's counters and state. A search starts inside the data of every model the material uses, where
+     * they overlap (the package envelope, the carried species' ideal-gas functions and the steam's range), since the
+     * first temperature is a lower bound from the ideal gas, which a latent heat can put far below the answer (35 K for a
+     * frost answer at 150 K); from inside the data the search moves out only as far as the specification asks.
      */
     private void searchWindow(Workspace w) {
         w.minimumT = NumericalBox.MINIMUM_TEMPERATURE;
@@ -2056,15 +1962,13 @@ public final class FluidTpEquilibrium {
     /**
      * The pressure at temperature {@code t} whose TP answer has volume {@code v}: {@code ln(v/V(P))} increases with
      * {@code ln P}, bracketed like PH. Started from the cubic's own pressure of the dry feed as one phase when the last
-     * answer was one phase (exact for a stable single phase), otherwise from the pressures found at earlier
-     * temperatures, extrapolated linearly in {@code (1/T, ln P)} (a vapour-pressure line; with one earlier answer at
-     * the slope of Trouton's rule, {@code -10 T}); the first slope without a compressibility is the last secant measured
-     * between two answers on one piece of {@code V(P)} ({@link #samePhases}), also by an earlier temperature's search.
-     * Accepted within {@code innerLooseness} in {@code ln V} (the nested search's inexact solves far from the answer) or
-     * else at the specification. A step of {@code V(P)} is the volume jump between the bracket's ends, wet or dry (owner
-     * decision D40 A): the one hydrocarbon's coexistence (beside the free water in a wet feed), a crystal's step, a binary's
-     * three-phase pressure, or the free water's boiling or freezing, each answered from the volume balance, or a typed
-     * failure.
+     * answer was one phase, otherwise from the pressures found at earlier temperatures extrapolated linearly in
+     * {@code (1/T, ln P)} (one earlier answer: Trouton's slope {@code -10 T}); the first slope without a compressibility
+     * is the last secant measured between two answers on one piece of {@code V(P)} ({@link #samePhases}). Accepted within
+     * {@code innerLooseness} in {@code ln V} (the nested search's inexact solves far from the answer) or at the
+     * specification. A step of {@code V(P)} is the volume jump between the bracket's ends, wet or dry (owner decision
+     * D40 A): a pure coexistence, a crystal's step, a binary's three-phase pressure, the free water's boiling or
+     * freezing, each answered from the volume balance, or a typed failure.
      */
     private int innerUv(double t, double v, PhaseCompetition competition, Workspace w) {
         Search s = w.inner;
@@ -2131,11 +2035,8 @@ public final class FluidTpEquilibrium {
             double slope = result == null ? Double.NaN : dryCompressibility(result, t, p, w);
             if (!(slope > 0.0) || !Double.isFinite(slope)) {
                 // A secant only between answers on one piece of V(P), the same phases (owner decision D40 A): across a bubble
-                // or dew point V(P) has a kink, across a step (a three-phase pressure, where a vapour-solid answer meets a
-                // vapour-liquid or liquid-solid one of the same phase count; a wet hydrocarbon's coexistence, whose two sides
-                // share the free water's classification and the phase count) a jump whose secant is no slope. Stored, such a
-                // secant started the next temperature's search with steps below the spacing of ln P, 100 TP equilibria at one
-                // point (D21 follow-up, 2026-10-15; test world H4: 8.8e11 across methane's step at 263.9 kPa).
+                // or dew point V(P) has a kink, across a step a jump whose secant is no slope; stored, such a secant started
+                // the next temperature's search with steps below the spacing of ln P (100 TP equilibria at one point).
                 slope = Double.isNaN(previousY) || previousY == y || !samePhases(result, previous) ? Double.NaN
                         : (residual - previousResidual) / (y - previousY);
                 if (slope > 0.0 && Double.isFinite(slope)) w.innerSlope = slope; else slope = w.innerSlope;
@@ -2323,16 +2224,15 @@ public final class FluidTpEquilibrium {
     }
 
     /**
-     * The one hydrocarbon of a wet feed at its equal-fugacity pressure at temperature {@code t} (UV; owner decision D40 A,
-     * test world H4): the dry pure coexistence ({@link #pureCoexistence}) beside the free water as the free-water rule's TP
-     * answers on both sides of the jump hold it, condensed at the state pressure (its ice below the melting line), its
-     * steam in the gas at the condensed water's fugacity {@code p_w}, the hydrocarbon's vapour at {@code P - p_w}
-     * ({@link #coexistencePressure}). The vapour fraction {@code beta} from the volume balance
-     * {@code V = n [(1 - beta) v_L + beta v_V] + (n_w - beta n s) v_c}, {@code s = p_w v_V/(R T)} the steam a mole of the
-     * vapour holds, drawn from the condensed water. Returns the answer when {@code beta} lies in [0, 1] (within the
-     * specification tolerance, or always when {@code clamp}); otherwise null with the jump's end on the target's side in
-     * {@code coexistenceX} ({@code ln P}) and {@code coexistenceResidual}. {@code coexistenceX} is NaN when no
-     * equal-fugacity pressure was found, or when the gas would take all of the water as steam (no step of this kind).
+     * The one hydrocarbon of a wet feed at its equal-fugacity pressure at temperature {@code t} (UV, owner decision
+     * D40 A): the dry pure coexistence ({@link #pureCoexistence}) beside the free water as the rule's TP answers on both
+     * sides of the jump hold it, condensed at the state pressure (ice below the melting line), its steam in the gas at
+     * the condensed water's fugacity {@code p_w}, the hydrocarbon's vapour at {@code P - p_w}
+     * ({@link #coexistencePressure}). The vapour fraction from the volume balance
+     * {@code V = n [(1 - beta) v_L + beta v_V] + (n_w - beta n s) v_c}, {@code s = p_w v_V/(R T)}. Returns the answer when
+     * {@code beta} lies in [0, 1] (within the tolerance, or always when {@code clamp}); otherwise null with the jump's end
+     * on the target's side in {@code coexistenceX} ({@code ln P}) and {@code coexistenceResidual}, NaN when no
+     * equal-fugacity pressure was found or the gas would take all of the water as steam.
      */
     private EquilibriumResult wetCoexistence(double t, double p, double v, boolean clamp, PhaseCompetition competition,
                                              Workspace w) {
@@ -2553,13 +2453,11 @@ public final class FluidTpEquilibrium {
 
     /**
      * Free water boiling (or subliming) at the state pressure {@code p}, the condensed water's vapour pressure at
-     * {@code t}: the hydrocarbons as on the condensed side (their liquid at {@code (t, p)}, no vapour), the water split into
-     * steam at {@code p_w = p} and condensed water (its liquid, or its ice below the melting line), the steam fraction from
-     * the energy (PH) or volume (UV) balance. The free-water rule's own limit of both water phases ({@code p_w = p_sat}),
-     * which its TP answer leaves on one side of the step. Null when the balance puts the fraction outside [0, 1] by more
-     * than the specification tolerance: the target lies in a part of the step no state of the rule spans (hydrocarbon
-     * vapour appearing with the steam), which the caller types as not converged; null as well beside a competing crystal,
-     * whose hydrocarbons are not one liquid.
+     * {@code t}: the hydrocarbons as on the condensed side (their liquid at {@code (t, p)}, no vapour), the water split
+     * into steam at {@code p_w = p} and condensed water (liquid, or ice below the melting line), the steam fraction from
+     * the energy (PH) or volume (UV) balance. Null when the balance puts the fraction outside [0, 1] by more than the
+     * specification tolerance (the target lies in a part of the step no state of the rule spans, which the caller types
+     * as not converged), and beside a competing crystal, whose hydrocarbons are not one liquid.
      */
     private EquilibriumResult waterBoiling(Specification specification, double t, double p, double target,
                                            EquilibriumResult condensedSide, PhaseCompetition competition, Workspace w) {
@@ -2682,20 +2580,15 @@ public final class FluidTpEquilibrium {
     }
 
     /**
-     * The free water's freeze at a fixed volume and energy (WP4; the lead's direction of 2026-10-17): a rigid vessel of gas
-     * over water cooled below its melting line freezes on the line, ice and liquid water at {@code T_m(P)}. At each
-     * pressure {@code P} of the line the warm side's TP answer at {@code (T_m(P), P)} ({@link #meltingLine}) gives the ice
-     * fraction from the energy balance, {@code beta = (U - U_L) / (n_c (u_s - u_L))}, and with it the volume
-     * {@code V = V_L + beta n_c (v_s - v_L)}: ice is 9 % less dense than the water and compresses the gas cushion, and
-     * {@code T_m} moves with {@code P} at -7.42e-8 K/Pa. The volume balance sets {@code P}: {@code V_spec / V - 1} rises
-     * with {@code P}, linearly for an ideal gas and to first order for the condensed phases (a liquid-full vessel's
-     * pressure moves by megapascals where a gas cushion's moves by pascals), so a secant in {@code P} from {@code p0}, its
-     * first slope from the phases' compressibility and bisection once bracketed, closes it in two to six TP equilibria.
-     * {@code beta} falls with {@code P} (the line is colder at higher pressure), so a {@code beta} beyond [0, 1] on the
-     * side the root lies ends the solve: the line holds no answer, all of the water is ice below it or liquid above it.
-     * Returns the answer; null where the line holds none or its warm side has no liquid water at {@code p0} (the search
-     * goes on); {@code NOT_CONVERGED} where the root lies beyond the pressure window (the numerical box: a liquid-full
-     * vessel's freeze pressurises it beyond).
+     * The free water's freeze at a fixed volume and energy: a rigid vessel of gas over water cooled below its melting
+     * line freezes on the line, ice and liquid water at {@code T_m(P)}. At each pressure {@code P} of the line the warm
+     * side's TP answer at {@code (T_m(P), P)} ({@link #meltingLine}) gives the ice fraction from the energy balance,
+     * {@code beta = (U - U_L) / (n_c (u_s - u_L))}, and with it the volume {@code V = V_L + beta n_c (v_s - v_L)} (ice is
+     * 9 % less dense than the water and compresses the gas cushion; {@code T_m} moves at -7.42e-8 K/Pa). The volume
+     * balance sets {@code P}: a secant in {@code P} from {@code p0}, its first slope from the phases' compressibility and
+     * bisection once bracketed, closes it in two to six TP equilibria. A {@code beta} beyond [0, 1] on the side the root
+     * lies ends the solve: the line holds no answer. Returns the answer; null where the line holds none or its warm side
+     * has no liquid water at {@code p0}; {@code NOT_CONVERGED} where the root lies beyond the pressure window.
      */
     private EquilibriumResult freezingAtVolume(double u, double v, double p0, PhaseCompetition competition, Workspace w) {
         if (w.freezeAttempts >= FREEZE_ATTEMPTS) return null;
@@ -2862,28 +2755,17 @@ public final class FluidTpEquilibrium {
 
     /**
      * TP with competing crystals (dry material; with free water {@link #solveWetWithCrystals} runs this on the
-     * hydrocarbons at their partial pressure). The fluid answer
-     * of the whole feed first; each competing crystal whose species is carried is tested against it:
-     * {@code D = (mu_i - mu_s)/(R T)}, the species' chemical potential in the fluid answer (fugacity, never partial
-     * pressure; equal in every phase of it) against the crystal's. A fluid answer whose split has a product proved
-     * unstable (a third fluid phase indicated, P3 WP11) gives its split's chemical potential as the test (P5): below the
-     * crystal's triple point that third phase is typically a subcooled liquid of the crystal's species, which the crystal
-     * replaces. No {@code D} above {@link #DEPOSITION_TOLERANCE}: the fluid answer, re-labelled with the solids assessed.
-     * Otherwise:
-     * <ul>
-     *   <li>a pure feed of the crystal's species is its crystal alone (complete deposition out of the vapour, or complete
-     *   freezing of the liquid: P5), except within the coexistence tolerance of its sublimation or melting point (the
-     *   split is then undetermined by T and P, as a pure fluid's coexistence);</li>
-     *   <li>a mixture: the solid amount is solved so that the fluid the crystal leaves, re-flashed with the stability
-     *   test, has the crystal's chemical potential. The vapour-solid solve of P4 stage 2a runs first
-     *   ({@link #depositFromVapour}: Newton on the reduced feed's vapour root, one re-flash); where it does not leave one
-     *   stable fluid phase on the root it solved, the general solve ({@link #depositFromFluid}: every iterate a re-flash,
-     *   so the fluid may be a vapour, a liquid or a vapour-liquid split). The answer is
-     *   {@link Classification#VAPOR_SOLID}, {@link Classification#LIQUID_SOLID} or
-     *   {@link Classification#VAPOR_LIQUID_SOLID};</li>
-     *   <li>two liquids beside the crystal, three fluid phases beside it, and two crystals forming are the typed
-     *   {@link EquilibriumResult#CRYSTAL_PHASES} hold.</li>
-     * </ul>
+     * hydrocarbons at their partial pressure). The fluid answer of the whole feed first; each competing crystal whose
+     * species is carried is tested against it, {@code D = (mu_i - mu_s)/(R T)}, the species' chemical potential in the
+     * fluid answer (fugacity, equal in every phase) against the crystal's; a fluid answer whose split has a product
+     * proved unstable gives its split's chemical potential as the test (below the crystal's triple point that third
+     * phase is typically a subcooled liquid of the species, which the crystal replaces). No {@code D} above
+     * {@link #DEPOSITION_TOLERANCE}: the fluid answer, the solids assessed. Otherwise a pure feed of the species is its
+     * crystal alone (except within the coexistence tolerance of its sublimation or melting point, undetermined as a
+     * pure fluid's coexistence); a mixture's solid amount is solved so that the fluid the crystal leaves, re-flashed
+     * with the stability test, has the crystal's chemical potential: {@link #depositFromVapour} first, and where that
+     * does not leave one stable fluid phase on its root, {@link #depositFromFluid}; two liquids beside the crystal,
+     * three fluid phases and two crystals forming are the typed {@link EquilibriumResult#CRYSTAL_PHASES} hold.
      */
     private EquilibriumResult solveWithCrystals(double t, double p, PhaseCompetition competition, Workspace w) {
         EquilibriumResult fluid = solveDry(t, p, competition, w);
@@ -2954,21 +2836,16 @@ public final class FluidTpEquilibrium {
     }
 
     /**
-     * TP with competing crystals and free water (WP4; decision 6 A: gas hydrates are not modelled, so the free water and a
-     * competing crystal coexist, ice beside CO2 frost): the free-water rule's answer of the whole feed first
-     * ({@link #solveWet}, exact at its branch pressures), each competing crystal tested against its hydrocarbon phases
-     * ({@code D = (mu_i - mu_s)/(R T)}, as {@link #solveWithCrystals}). No crystal forms: that answer, the solids assessed.
-     * Otherwise, and where the rule's hydrocarbon split has no answer of its own (a third fluid phase indicated, two
-     * liquids: the dry feed's crystal replaces the subcooled liquid of its species there, P5), the hydrocarbons and their
-     * crystal are solved as a dry feed ({@link #solveWithCrystals}) at the hydrocarbon partial pressure {@code pc = P - p_w},
-     * where their vapour lies, and the water is laid around them by its rule: the steam in their vapour at the condensed
-     * water's vapour pressure and the rest condensed, or all of it steam where that leaves the gas unsaturated; {@code pc}
-     * then follows the new gas (the fixed point of {@link #solveWet}, accepted on its stop test), started at the rule's own
-     * {@code pc}, else at the saturated gas's {@code P - p_w}. The liquid and the crystal are restated at the state
-     * pressure. Solving them at {@code pc} instead of {@code P} moves their chemical potentials by {@code v p_w / (R T)}:
-     * below 1e-7 where a crystal forms beside ice (R14-08: 1.6 Pa at CO2's triple point, 216.6 K), 2e-5 for a liquid
-     * beside liquid water at 280 K. A wet pure hydrocarbon at its crystal's own coexistence (undetermined by T and P) is the
-     * typed {@link EquilibriumResult#CRYSTAL_STEP} failure.
+     * TP with competing crystals and free water (ice and a competing crystal coexist): the free-water rule's answer of
+     * the whole feed first ({@link #solveWet}), each competing crystal tested against its hydrocarbon phases as in
+     * {@link #solveWithCrystals}. No crystal forms: that answer, the solids assessed. Otherwise the hydrocarbons and their
+     * crystal are solved as a dry feed at the hydrocarbon partial pressure {@code pc = P - p_w}, where their vapour lies,
+     * and the water is laid around them by its rule (the steam in their vapour at the condensed water's vapour pressure
+     * and the rest condensed, or all steam where that leaves the gas unsaturated); {@code pc} then follows the new gas
+     * (the fixed point of {@link #solveWet}), started at the rule's own {@code pc}. The liquid and the crystal are
+     * restated at the state pressure: solving them at {@code pc} moves their chemical potentials by
+     * {@code v p_w / (R T)}, below 1e-7 where a crystal forms beside ice, 2e-5 for a liquid beside liquid water at 280 K.
+     * A wet pure hydrocarbon at its crystal's own coexistence is the typed {@link EquilibriumResult#CRYSTAL_STEP} failure.
      */
     private EquilibriumResult solveWetWithCrystals(double t, double p, boolean frozen, PhaseCompetition competition, Workspace w) {
         EquilibriumResult fluid = solveWet(t, p, w.hydrocarbonTotal, w.waterTotal, frozen, competition, w);
@@ -3127,21 +3004,17 @@ public final class FluidTpEquilibrium {
     }
 
     /**
-     * The vapour-solid solve of P4 stage 2a, the first attempt of a mixture: the solid amount is the one unknown. With
-     * {@code r} the species' amount left in the fluid and {@code s = ln(r/z_i)} in {@code (-infinity, 0]}, the fluid holds
+     * The vapour-solid solve, the first attempt of a mixture: the solid amount is the one unknown. With {@code r} the
+     * species' amount left in the fluid and {@code s = ln(r/z_i)} in {@code (-infinity, 0]}, the fluid holds
      * {@code z - (z_i - r) e_i} and {@code f(s) = (mu_i^V - mu_s)/(R T)} on the reduced feed's vapour root increases with
-     * {@code s}. Newton on {@code s} with {@code f' = 1 - y_i + y_i Phi_ii} (the kernel's per-mole
-     * {@code d ln phi_i/d n_i}), bracketed ({@code f(hi) > 0 > f(lo)}, bisection when a step leaves the bracket), to
-     * {@code |f| <= }{@link #DEPOSITION_TOLERANCE}; below the trace floor ({@code y_i = }{@link #DEPOSITION_TRACE}) with
-     * {@code f} still positive the deposition is complete. The reduced feed is then re-flashed with the stability test.
-     * The answer is returned only when that fluid is one phase meeting the tolerance on its own root: labelled liquid
-     * (a one-root fluid that is liquid-like by its phase identification parameter, such as dense supercritical nitrogen,
-     * P5) it is {@link Classification#LIQUID_SOLID}, otherwise {@link Classification#VAPOR_SOLID}. Every other outcome
-     * (the feed's vapour not supersaturated, the fluid a liquid on another root or a split, a re-flash that fails, no
-     * convergence) returns {@code null}: the general solve decides ({@link #depositFromFluid}). A second crystal forming is
-     * the typed hold. The smaller of the solid and the fluid's share is computed directly ({@code -z_i expm1(s)} or
-     * {@code z_i exp(s)}), the larger by difference, so the species is conserved to rounding. The caller saves and
-     * restores the feed.
+     * {@code s}. Newton on {@code s} with {@code f' = 1 - y_i + y_i Phi_ii}, bracketed (bisection when a step leaves the
+     * bracket), to {@code |f| <= }{@link #DEPOSITION_TOLERANCE}; below the trace floor ({@code y_i = }{@link #DEPOSITION_TRACE})
+     * with {@code f} still positive the deposition is complete. The reduced feed is then re-flashed with the stability
+     * test; the answer is returned only when that fluid is one phase meeting the tolerance on its own root
+     * ({@link Classification#LIQUID_SOLID} for a liquid-like one-root fluid, else {@link Classification#VAPOR_SOLID});
+     * every other outcome returns {@code null} and {@link #depositFromFluid} decides. A second crystal forming is the
+     * typed hold. The smaller of the solid and the fluid's share is computed directly ({@code -z_i expm1(s)} or
+     * {@code z_i exp(s)}), the larger by difference, so the species is conserved to rounding.
      */
     private EquilibriumResult depositFromVapour(EquilibriumResult fluid, Crystal c, double drive, double solidMu, CharSequence forces,
                                                 double t, double p, PhaseCompetition competition, Workspace w) {
@@ -3251,28 +3124,22 @@ public final class FluidTpEquilibrium {
     }
 
     /**
-     * The general crystal solve (P5): the solid amount of crystal {@code c} out of a mixture whose fluid the crystal leaves
-     * may be a vapour, a liquid or a vapour-liquid split. The unknown is {@code s = ln(r/z_i)} in {@code (-infinity, 0]},
-     * {@code r} the species' amount left in the fluid; every iterate re-flashes the reduced feed
-     * {@code z - (z_i - r) e_i} with the stability test (the fluid-only engine), and
-     * {@code f(s) = (mu_i - mu_s)/(R T)} is the species' chemical potential of that fluid answer (equal in each of its
-     * phases) against the crystal's: nondecreasing in {@code s} ({@code mu_i} of a stable fluid grows with its amount of
-     * {@code i}; a binary's vapour-liquid split holds it constant, where the step goes on), with {@code f(0) = D > 0}.
-     * Steps: Newton with {@code f' = 1 - y_i + y_i Phi_ii} on a one-phase fluid's root, a secant otherwise, the step
-     * {@code s - max(1, |f|)} before a bracket exists, bisection when a step leaves the bracket or two steps fail to halve
-     * {@code |f|}; at most {@link #CRYSTAL_ITERATIONS} re-flashes. The steps read {@code f} of the fluid's first phase; the
-     * search is converged on a converged fluid answer each of whose phases has {@code |mu_i - mu_s|/(R T) <= }
-     * {@link #DEPOSITION_TOLERANCE}, since the crystal stands beside every one of them and a split's phases agree on
-     * {@code mu_i} only to the flash's own fugacity tolerance (1e-10): stopped on its first phase alone, the search left the
-     * other up to that much outside, and the answer was refused (cold fuzz seed 183, LNG at 140.9 K and 620 kPa freezing
-     * CO2: the vapour at 9.9998e-10, the liquid at 1.0046e-9). A reduced fluid whose split has a product proved unstable
-     * steers the search with its split's chemical potential but is never an answer. Below the trace floor with {@code f}
-     * still positive the deposition is complete (the fluid is the feed without the species). The answer: the fluid's phases
-     * and the crystal, {@link Classification#VAPOR_SOLID}, {@link Classification#LIQUID_SOLID} or
-     * {@link Classification#VAPOR_LIQUID_SOLID} by the fluid's phases; two liquids beside the crystal (or three fluid
-     * phases, where the bracket closes on them) are the typed {@link EquilibriumResult#CRYSTAL_PHASES} hold, a search
-     * that does not converge the typed {@code NOT_CONVERGED} with its last residual. The solid is {@code -z_i expm1(s)} and
-     * the fluid carries {@code z_i e^s}, so the species is conserved to rounding. The caller saves and restores the feed.
+     * The general crystal solve: the solid amount of crystal {@code c} out of a mixture whose fluid the crystal leaves
+     * may be a vapour, a liquid or a vapour-liquid split. The unknown is {@code s = ln(r/z_i)} in {@code (-infinity, 0]};
+     * every iterate re-flashes the reduced feed {@code z - (z_i - r) e_i} with the stability test, and
+     * {@code f(s) = (mu_i - mu_s)/(R T)} of that fluid answer is nondecreasing in {@code s} (a binary's vapour-liquid
+     * split holds it constant, where the step goes on), with {@code f(0) = D > 0}. Steps: Newton with
+     * {@code f' = 1 - y_i + y_i Phi_ii} on a one-phase fluid's root, a secant otherwise, {@code s - max(1, |f|)} before a
+     * bracket exists, bisection when a step leaves the bracket or two steps fail to halve {@code |f|}; at most
+     * {@link #CRYSTAL_ITERATIONS} re-flashes. Converged on a converged fluid answer each of whose phases has
+     * {@code |mu_i - mu_s|/(R T) <= }{@link #DEPOSITION_TOLERANCE} (a split's phases agree on {@code mu_i} only to the
+     * flash's fugacity tolerance: stopped on its first phase alone, the search left the other outside and the answer was
+     * refused, LNG at 140.9 K and 620 kPa freezing CO2). A reduced fluid whose split has a product proved unstable steers
+     * the search but is never an answer. Below the trace floor with {@code f} still positive the deposition is complete.
+     * The answer: the fluid's phases and the crystal ({@link Classification#VAPOR_SOLID},
+     * {@link Classification#LIQUID_SOLID} or {@link Classification#VAPOR_LIQUID_SOLID}); two liquids beside the crystal
+     * are the typed {@link EquilibriumResult#CRYSTAL_PHASES} hold, a search that does not converge {@code NOT_CONVERGED}.
+     * The solid is {@code -z_i expm1(s)} and the fluid carries {@code z_i e^s}, so the species is conserved to rounding.
      */
     private EquilibriumResult depositFromFluid(EquilibriumResult fluid, boolean threeFluid, Crystal c, double drive, double solidMu,
                                                CharSequence forces, double t, double p, PhaseCompetition competition, Workspace w) {
@@ -3687,19 +3554,14 @@ public final class FluidTpEquilibrium {
 
     /**
      * The pure species of a competing crystal at its equal-chemical-potential point with its own fluid (PH at the fixed
-     * pressure, UV at the fixed temperature): below the family's triple point ({@link Crystal#tripleTemperature()},
-     * {@link Crystal#triplePressure()}) the sublimation step with the vapour, above it the melting step with the liquid
-     * (P5). TP leaves the split undetermined, the energy or volume balance determines it,
-     * {@code target = N [(1 - beta) x_s + beta x_F]}. As {@link #pureCoexistence}: the answer when {@code beta} lies in
-     * {@code [0, 1]} (within the specification tolerance, or always when {@code clamp}), otherwise null with the jump's
-     * end on the target's side in {@code coexistenceX} and {@code coexistenceResidual}.
-     *
-     * <p>A near-pure feed (D21) takes the same step at the same point, its traces in the fluid: {@code beta} is then the
-     * fluid's share of all the moles, the fluid's {@code x_F} is evaluated at its own composition (the traces and
-     * {@code beta N} less them of the species; a few re-evaluations converge the split), and the step holds while the
-     * traces are at most {@link #STEP_FLUID_TRACES} of that fluid, {@code beta >= traces / (Y N)}. A target beyond that
-     * end is the general solve's (the search goes on); a closed search there is the typed
-     * {@link EquilibriumResult#CRYSTAL_STEP} hold, never a crystal stretched over the traces' own pressure.
+     * pressure, UV at the fixed temperature): below the family's triple point the sublimation step with the vapour, above
+     * it the melting step with the liquid. The energy or volume balance determines the split,
+     * {@code target = N [(1 - beta) x_s + beta x_F]}; as {@link #pureCoexistence}, the answer when {@code beta} lies in
+     * {@code [0, 1]}, otherwise null with the jump's end in {@code coexistenceX} and {@code coexistenceResidual}. A
+     * near-pure feed (D21) takes the same step at the same point, its traces in the fluid ({@code beta} the fluid's share
+     * of all the moles, the fluid evaluated at its own composition, a few re-evaluations converging the split), while the
+     * traces are at most {@link #STEP_FLUID_TRACES} of that fluid; a target beyond that end is the general solve's, and a
+     * closed search there is the typed {@link EquilibriumResult#CRYSTAL_STEP} hold.
      */
     private EquilibriumResult pureCrystalStep(Specification specification, double t, double p, double target, boolean clamp,
                                               PhaseCompetition competition, Workspace w) {
@@ -3909,19 +3771,14 @@ public final class FluidTpEquilibrium {
     }
 
     /**
-     * The pure species of a competing crystal at its family's triple point in UV (P5): the vapour, the liquid and the
-     * crystal at the family's triple point ({@link Crystal#tripleTemperature()}, {@link Crystal#triplePressure()}), with
-     * the amounts from the three balances (moles, energy, volume). A target inside the triple point's triangle (every
-     * amount nonnegative within the specification tolerance) has this answer, {@link Classification#VAPOR_LIQUID_SOLID}
-     * from the balance, before any search (at that volume {@code U(T)} has its step at the triple temperature, where a
-     * search could only close on it); otherwise null.
-     *
-     * <p>A near-pure feed (D21) at the same point carries its traces in the larger fluid phase of the balances (the
-     * smaller trace share, so the smaller departure from the pure point), that fluid evaluated at its own composition, the
-     * other one pure, and the balances solved again until the amounts settle (its own three-phase region lies within
-     * about the trace fraction of the pure point, where the volume at a temperature can fall in a step no search
-     * resolves). Inside the triangle with more than {@link #STEP_FLUID_TRACES} of traces in the larger fluid the answer
-     * is the typed {@link EquilibriumResult#CRYSTAL_STEP} hold (D21 option C): no other rule answers that state.
+     * The pure species of a competing crystal at its family's triple point in UV: the vapour, the liquid and the crystal
+     * at the family's triple point ({@link Crystal#tripleTemperature()}, {@link Crystal#triplePressure()}), with the
+     * amounts from the three balances (moles, energy, volume). A target inside the triple point's triangle (every amount
+     * nonnegative within the specification tolerance) has this answer, {@link Classification#VAPOR_LIQUID_SOLID}, before
+     * any search (at that volume {@code U(T)} steps at the triple temperature); otherwise null. A near-pure feed (D21)
+     * carries its traces in the larger fluid phase of the balances, that fluid evaluated at its own composition and the
+     * balances solved again until the amounts settle; with more than {@link #STEP_FLUID_TRACES} of traces in it the
+     * answer is the typed {@link EquilibriumResult#CRYSTAL_STEP} hold.
      */
     private EquilibriumResult pureTriplePoint(double u, double v, PhaseCompetition competition, Workspace w) {
         Crystal c = pureCrystal(w);
@@ -3981,15 +3838,13 @@ public final class FluidTpEquilibrium {
     }
 
     /**
-     * Pure water with only its own steam at its triple point (the lead's direction of 2026-10-17), the end of the free
-     * water's melting line where no gas holds the pressure above the steam's: steam, liquid water and ice at the ice
-     * record's triple point, 273.16 K and 611.657 Pa (the network water model's saturation pressure there: 611.65707
-     * Pa), with the amounts from the mole, energy and volume balances over the corners {@link #waterTriangle}, as
-     * {@link #pureTriplePoint} answers a crystal's species. A target inside the triangle, within the specification
-     * ({@link #insideTriangle}), has this answer before any search: at its volume {@code U(T)} rises by the latent
-     * heats within 2e-9 K of the triple temperature, a step the search refuses or does not converge on. A rigid vessel
-     * of water and its steam cooled through 0 °C stands here until its liquid is gone, then cools as ice and steam on
-     * the sublimation line. Otherwise null.
+     * Pure water with only its own steam at its triple point, the end of the free water's melting line where no gas holds
+     * the pressure above the steam's: steam, liquid water and ice at the ice record's triple point (273.16 K and
+     * 611.657 Pa), with the amounts from the mole, energy and volume balances over the corners {@link #waterTriangle}, as
+     * {@link #pureTriplePoint} answers a crystal's species. A target inside the triangle ({@link #insideTriangle}) has
+     * this answer before any search (at its volume {@code U(T)} rises by the latent heats within 2e-9 K of the triple
+     * temperature, a step no search converges on); a rigid vessel of water and its steam cooled through 0 °C stands here
+     * until its liquid is gone. Otherwise null.
      */
     private EquilibriumResult waterTriplePoint(double u, double v, PhaseCompetition competition, Workspace w) {
         if (waterTriangle == null) return null;
@@ -4161,18 +4016,16 @@ public final class FluidTpEquilibrium {
     }
 
     /**
-     * The three-phase step of a dry binary with a competing crystal (P5): at the fixed pressure (PH) the temperature, at
-     * the fixed temperature (UV) the pressure where the vapour, a liquid and the crystal coexist, and the three amounts from
-     * the two species' balances and the energy (PH) or volume (UV) balance. The three-phase point is solved from the
-     * bracket's two ends (the vapour's and the liquid's compositions, the variable at the bracket's middle): Newton on
-     * {@code (X, ln x_i, ln y_i)} ({@code X = 1/T} for PH, {@code ln P} for UV) for {@code (mu_i^L - mu_s, mu_i^V - mu_s,
-     * mu_j^L - mu_j^V)/(R T) = 0}, a finite-difference Jacobian, steps capped, to {@code 1e-11}. It must lie inside the
-     * bracket (a relative 1e-9 of slack), with two distinct fluid phases. The amounts: one free amount along
-     * {@code d = (1 - x_i, -(1 - y_i), x_i - y_i)} keeps both species' balances; the third balance fixes it. As
-     * {@link #pureCoexistence}: the answer when every amount is nonnegative within the specification tolerance (or always,
-     * clamped, when {@code clamp}), otherwise null with the step's end on the target's side in {@code coexistenceX} and
-     * {@code coexistenceResidual}; {@code coexistenceX} NaN when no three-phase point lies in the bracket. The liquid's
-     * amounts of the other species and the crystal's are taken by difference, so both species are conserved to rounding.
+     * The three-phase step of a dry binary with a competing crystal: at the fixed pressure (PH) the temperature, at the
+     * fixed temperature (UV) the pressure where the vapour, a liquid and the crystal coexist, and the three amounts from
+     * the two species' balances and the energy or volume balance. The three-phase point is solved from the bracket's two
+     * ends: Newton on {@code (X, ln x_i, ln y_i)} ({@code X = 1/T} for PH, {@code ln P} for UV) for
+     * {@code (mu_i^L - mu_s, mu_i^V - mu_s, mu_j^L - mu_j^V)/(R T) = 0}, a finite-difference Jacobian, steps capped, to
+     * {@code 1e-11}; it must lie inside the bracket with two distinct fluid phases. One free amount along
+     * {@code d = (1 - x_i, -(1 - y_i), x_i - y_i)} keeps both species' balances and the third balance fixes it. As
+     * {@link #pureCoexistence}: the answer when every amount is nonnegative within the tolerance (or clamped), otherwise
+     * null with the step's end in {@code coexistenceX} and {@code coexistenceResidual}, NaN when no three-phase point
+     * lies in the bracket. The liquid's other species and the crystal are taken by difference, so both species conserve.
      */
     private EquilibriumResult binaryThreePhase(Specification specification, Search s, double t, double p, double target,
                                                boolean clamp, PhaseCompetition competition, Workspace w) {
@@ -4386,16 +4239,14 @@ public final class FluidTpEquilibrium {
 
     /**
      * The onset temperature of crystal {@code crystal} ({@code null}: the one competing crystal whose species is carried)
-     * at {@code pressure}: the frost point of a gas, and since P5 whatever the fluid answer of the whole feed is at the
-     * onset (a liquid: the liquidus; a vapour-liquid split: a three-phase point). A bracketed search in {@code x = 1/T}
-     * ({@code D = (mu_i - mu_s)/(R T)} increases with {@code x}; {@code mu_i} is continuous across the fluid's own phase
-     * boundaries): started at the partial-pressure approximation (or the window's warm end), Newton with the ideal-gas
-     * sublimation enthalpy {@code (h_ig,i - h_s)/R} as the first slope and secants after, steps capped at a fifth of
-     * {@code x} before a bracket, bisection when a step leaves it; converged at
+     * at {@code pressure}: the frost point of a gas, the liquidus of a liquid, a three-phase point of a split, whatever
+     * the fluid answer of the whole feed is at the onset. A bracketed search in {@code x = 1/T} ({@code D} increases with
+     * {@code x}; {@code mu_i} is continuous across the fluid's own phase boundaries) from the partial-pressure
+     * approximation (or the window's warm end), Newton with the ideal-gas sublimation enthalpy as the first slope and
+     * secants after, steps capped at a fifth of {@code x} before a bracket, bisection when a step leaves it; converged at
      * {@code |D| <= }{@link #DEPOSITION_TOLERANCE}. The window is the numerical box below the competition's ceiling
-     * ({@link #crystalCeiling}, where its crystals cease to exist); an onset beyond it is {@code NOT_CONVERGED}, and a
-     * converged onset outside a data range of the models it used is graded extrapolated (owner rule of 2026-10-16). An
-     * onset whose fluid is two liquids is the typed {@link EquilibriumResult#CRYSTAL_PHASES} hold.
+     * ({@link #crystalCeiling}); an onset beyond it is {@code NOT_CONVERGED}, one outside a data range is graded
+     * extrapolated, one whose fluid is two liquids the typed {@link EquilibriumResult#CRYSTAL_PHASES} hold.
      *
      * @throws IllegalArgumentException when no competing crystal (or {@code crystal}) is made of a carried species, or
      *         several are and none is named
@@ -4406,13 +4257,11 @@ public final class FluidTpEquilibrium {
     }
 
     /**
-     * The frost point of a gas of composition {@code amounts} as one vapour phase (P5): the temperature at
-     * {@code pressure} where crystal {@code crystal} and the feed on the cubic's vapour root (its only root where it has
-     * one) have equal chemical potentials of the crystal's species; the standard solid-vapour temperature at a measured
-     * vapour composition (a three-phase point's vapour, a frost point near the gas's dew point), whether or not the gas would
-     * condense at that pressure. The mirror of {@link #freezingTemperature(String, double, List, double[],
-     * Workspace)}; {@link DepositionOnset#fluid()} is the fluid answer of the whole feed at the onset,
-     * the partial-pressure approximation a diagnostic as in {@link #depositionTemperature}.
+     * The frost point of a gas of composition {@code amounts} as one vapour phase: the temperature at {@code pressure}
+     * where crystal {@code crystal} and the feed on the cubic's vapour root have equal chemical potentials of the
+     * crystal's species, the standard solid-vapour temperature at a measured vapour composition, whether or not the gas
+     * would condense at that pressure. The mirror of {@link #freezingTemperature(String, double, List, double[], Workspace)};
+     * {@link DepositionOnset#fluid()} is the fluid answer of the whole feed at the onset.
      */
     public DepositionOnset frostTemperature(String crystal, double pressure, List<String> species, double[] amounts,
                                             Workspace workspace) {
@@ -4420,17 +4269,14 @@ public final class FluidTpEquilibrium {
     }
 
     /**
-     * The freezing point (P5): the liquidus of a liquid of composition {@code amounts} at {@code pressure}, the
-     * temperature where crystal {@code crystal} ({@code null}: the one competing crystal whose species is carried) and
-     * the feed as one liquid phase (the cubic's liquid root, its only root where it has one) have equal chemical
-     * potentials of the crystal's species; for a pure feed its melting temperature. The standard solid-liquid
-     * solubility temperature: a liquid at its bubble point (a measured three-phase point) or a compressed liquid is
-     * scored at its own composition, whether or not a vapour would form from it at that pressure. The same bracketed
-     * search in {@code x = 1/T} as {@link #depositionTemperature(String, double, List, double[],
-     * Workspace)}, started at the ideal-solubility estimate
-     * {@code 1/T = 1/T_t - R ln x_i / Delta h_fus} (the family's fusion enthalpy at its triple point); no fluid flash per
-     * step. {@link DepositionOnset#fluid()} is the fluid answer of the whole feed at the onset: a liquid, or a split when
-     * the liquid is not the stable fluid there (the detail says so). The partial-pressure approximation is {@code NaN}.
+     * The freezing point: the liquidus of a liquid of composition {@code amounts} at {@code pressure}, the temperature
+     * where crystal {@code crystal} ({@code null}: the one competing crystal whose species is carried) and the feed as one
+     * liquid phase (the cubic's liquid root) have equal chemical potentials of the crystal's species; for a pure feed its
+     * melting temperature. The standard solid-liquid solubility temperature at the liquid's own composition, whether or
+     * not a vapour would form from it. The same bracketed search in {@code x = 1/T} as
+     * {@link #depositionTemperature(String, double, List, double[], Workspace)}, started at the ideal-solubility estimate
+     * {@code 1/T = 1/T_t - R ln x_i / Delta h_fus}; no fluid flash per step. {@link DepositionOnset#fluid()} is the
+     * fluid answer of the whole feed at the onset; the partial-pressure approximation is {@code NaN}.
      */
     public DepositionOnset freezingTemperature(String crystal, double pressure, List<String> species, double[] amounts,
                                                Workspace workspace) {
@@ -4843,15 +4689,13 @@ public final class FluidTpEquilibrium {
     }
 
     /**
-     * A dry split. The equilibrium's labels: the denser phase is the liquid and the lighter the vapour, unless both are
-     * liquid-like by the WP7c rule ({@code PIP > max(1, Z)} on each product's own root) and denser than the cubic's
-     * critical volume ({@link PhaseIdentification#denseLiquidLike}: a dense gas beside a liquid at 8 to 10 MPa has a
-     * parameter just above one while less dense than {@code 3.9514 b}, P3 WP11) and the split lies outside the declared
-     * critical band: then it is {@link Classification#LIQUID_LIQUID} with both phases labelled {@link PhaseKind#LIQUID},
-     * the lighter first (P3 WP7d). Inside the band the parameter is no label to trust (section
-     * 4 of the WP6a notes: next to a critical point it runs to plus or minus infinity, and the dense vapour of a
-     * near-critical N2/CH4 split has a parameter above one at tie lines up to 0.012), so a split there stays
-     * vapour-liquid.
+     * A dry split. The denser phase is the liquid and the lighter the vapour, unless both are liquid-like
+     * ({@code PIP > max(1, Z)} on each product's own root) and denser than the cubic's critical volume
+     * ({@link PhaseIdentification#denseLiquidLike}: a dense gas beside a liquid at 8 to 10 MPa has a parameter just above
+     * one while less dense than {@code 3.9514 b}) and the split lies outside the declared critical band: then it is
+     * {@link Classification#LIQUID_LIQUID} with both phases {@link PhaseKind#LIQUID}, the lighter first. Inside the band
+     * the parameter is no label to trust (next to a critical point it runs to plus or minus infinity), so a split there
+     * stays vapour-liquid.
      */
     private EquilibriumResult twoPhaseResult(double t, double p, PhaseCompetition competition, Workspace w) {
         PhaseState liquid = w.liquidState;
@@ -5452,15 +5296,14 @@ public final class FluidTpEquilibrium {
     }
 
     /**
-     * Rachford-Rice for the current {@code ln K}, solved in the minor phase's fraction (D24): the vapour fraction
-     * {@code beta} of {@code sum z_i (K_i - 1)/(1 + beta (K_i - 1)) = 0} when the root lies at or below one half, and
-     * otherwise the liquid fraction {@code delta = 1 - beta} of the same equation, {@code 1 + beta (K_i - 1) =
-     * K_i - delta (K_i - 1)}. The minor fraction then carries full relative precision: a liquid of 1e-14 of the feed is
-     * {@code delta = 1e-14}, of which {@code 1 - beta} keeps two digits, and it is a split while {@code delta > 0}, also
-     * where {@code 1 - delta} rounds to one. The first evaluation, at one half, tells which phase is minor; safeguarded
-     * Newton with bisection on the window between that fraction's pole and one half (a negative flash is allowed while
-     * iterating), stopped when a step moves the fraction by at most 1e-15 of itself. Fills {@code k}, the normalised
-     * {@code x} and {@code y}, and both fractions; false when the K-values straddle no split.
+     * Rachford-Rice for the current {@code ln K}, solved in the minor phase's fraction: the vapour fraction {@code beta}
+     * of {@code sum z_i (K_i - 1)/(1 + beta (K_i - 1)) = 0} when the root lies at or below one half, otherwise the liquid
+     * fraction {@code delta = 1 - beta} of the same equation ({@code 1 + beta (K_i - 1) = K_i - delta (K_i - 1)}), so the
+     * minor fraction carries full relative precision (a liquid of 1e-14 of the feed is {@code delta = 1e-14}, a split
+     * while {@code delta > 0}). The first evaluation, at one half, tells which phase is minor; safeguarded Newton with
+     * bisection between that fraction's pole and one half, stopped when a step moves the fraction by at most 1e-15 of
+     * itself. Fills {@code k}, the normalised {@code x} and {@code y}, and both fractions; false when the K-values
+     * straddle no split.
      */
     private boolean split(Workspace w) {
         double smallest = Double.POSITIVE_INFINITY;

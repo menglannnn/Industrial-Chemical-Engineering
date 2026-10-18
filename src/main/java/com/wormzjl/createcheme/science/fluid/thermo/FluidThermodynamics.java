@@ -30,13 +30,10 @@ public final class FluidThermodynamics {
     public static final double R=8.31446261815324;
     public static final double DEFAULT_MAXIMUM_VELOCITY=100;
     /**
-     * The network's ceiling on the trace cutoff, a thousandth of the column's. The column verifies a
-     * truncated flash against an unmasked reference and declares explicit error budgets, so it may
-     * ask for a percent; the network has no reference to answer to inside a Newton pass, and the
-     * energy it can misplace by folding an omitted phase into the retained one is bounded by
-     * {@code sum_omitted y_i n_V |h_i^V - h_i^L|}, i.e. by the cutoff times the phase amount times
-     * the largest enthalpy of vaporization on the basis. At 1e-5 that is still inside the interval
-     * controller's own energy gate; above it, it is not.
+     * The network's ceiling on the trace cutoff, a thousandth of the column's: the network has no reference to answer to
+     * inside a Newton pass, and the energy it can misplace by folding an omitted phase into the retained one is bounded
+     * by the cutoff times the phase amount times the largest enthalpy of vaporization on the basis, which at 1e-5 is
+     * still inside the interval controller's own energy gate.
      */
     public static final double MAX_TRACE_CUTOFF_MOLE_FRACTION=1e-5;
     /** The gameplay default for a network model built without an explicit cutoff, and the default of
@@ -65,14 +62,9 @@ public final class FluidThermodynamics {
 
     /**
      * The canonical gameplay basis, which includes nitrogen. {@code packageId} is resolved through
-     * {@link FluidMaterialCatalog#resolveNetworkPackage}, which accepts only the registered network package (any
-     * other id is refused; there is no migration), and a package without nitrogen is refused
-     * rather than silently run on a shorter basis. Direct construction retains an explicitly supplied
-     * test/science basis.
-     *
-     * <p>No overload takes a single number after the package: the retired liquid-compressibility argument sat there,
-     * and a {@code (catalog, package, maximumVelocity)} form would silently give an old call a velocity limit of
-     * 1e-9 m/s. The velocity limit comes with the trace cutoff instead.</p>
+     * {@link FluidMaterialCatalog#resolveNetworkPackage}, which accepts only the registered network package, and a
+     * package without nitrogen is refused rather than run on a shorter basis. No overload takes a single number after
+     * the package: the velocity limit comes with the trace cutoff.
      */
     public static FluidThermodynamics forNetwork(MaterialCatalog catalog,String packageId) {
         return forNetwork(catalog,packageId,DEFAULT_MAXIMUM_VELOCITY,DEFAULT_TRACE_CUTOFF_MOLE_FRACTION);
@@ -151,8 +143,7 @@ public final class FluidThermodynamics {
     /**
      * The model's full revision: the thermodynamic one with the hydraulic acceptance law (the velocity clamp, the trace
      * cutoff, the solid settings). A certificate holds only under the revision it was issued with, and the world's
-     * property guard resumes a held dimension only on its own. It was the approximation anchor's until owner decision
-     * D37 (S2) removed the approximate fallback; it is the model's identity, so it lives on the model.
+     * property guard resumes a held dimension only on its own.
      */
     private final String revision;
     public String thermodynamicRevision(){return thermodynamicRevision;}
@@ -197,13 +188,11 @@ public final class FluidThermodynamics {
         return custom;
     }
     /**
-     * The crystal answer of a vessel's refresh (owner decision D23): the equilibrium engine's answer for the vessel's fluid
-     * and crystals together, the package's crystals competing where they compete and the free water's ice by water's own
-     * rule (WP4), as the network states it. {@code temperature} and {@code pressure} are the answer's; {@code fluid} its
-     * fluid phases, the free water and its steam included, as a network state without solids (null where the crystals hold
-     * everything); {@code crystalMoles} the moles each of the package's crystals holds ({@link NetworkCrystals#all} order,
-     * all zero where no crystal is stable); {@code volume} the fluid's and the crystals' volume, the crystals in the
-     * engine's own model.
+     * The crystal answer of a vessel's refresh (owner decision D23): the engine's answer for the vessel's fluid and
+     * crystals together, the package's crystals competing where they compete and the free water's ice by water's own
+     * rule. {@code fluid} is its fluid phases as a network state without solids (null where the crystals hold
+     * everything); {@code crystalMoles} the moles of each of the package's crystals ({@link NetworkCrystals#all} order);
+     * {@code volume} the fluid's and the crystals' volume, the crystals in the engine's own model.
      */
     public record CrystalAnswer(double temperature,double pressure,State fluid,double[] crystalMoles,double volume) {
         public CrystalAnswer{crystalMoles=crystalMoles.clone();}
@@ -213,13 +202,11 @@ public final class FluidThermodynamics {
     }
     /**
      * The crystal test of a taut vessel (D23, with D21's near-pure step): the equilibrium of {@code totals} (the conserved
-     * basis, water last) at internal energy {@code energy} (J, the network's datum: the fluid's and the crystals' true
-     * energy, every inert solid's excluded) and volume {@code volume} (m3, the bag less the inert solids), the package's
-     * crystals competing where {@code competing} ({@link #crystalsCompete}), the free water freezing by its own rule
-     * everywhere, warm-started at {@code (hintT, hintP)} when both are finite. {@code checkpoint} runs as for
-     * {@link #equilibriumTP}. Refusals are typed where the engine types them: a phase set the engine does not implement or
-     * a crystal step it does not answer the {@link UnsupportedPhases} of kind {@code CRYSTAL_PHASES} or
-     * {@code CRYSTAL_STEP}, the critical band's {@link CriticalBandHold}; any other failure is a plain
+     * basis, water last) at internal energy {@code energy} (J, the network's datum, inert solids excluded) and volume
+     * {@code volume} (m3, the bag less the inert solids), the package's crystals competing where {@code competing}
+     * ({@link #crystalsCompete}), the free water freezing by its own rule, warm-started at {@code (hintT, hintP)} when
+     * both are finite. Refusals are typed where the engine types them ({@link UnsupportedPhases} of kind
+     * {@code CRYSTAL_PHASES} or {@code CRYSTAL_STEP}, {@link CriticalBandHold}); any other failure is a plain
      * {@link IllegalArgumentException}.
      */
     public CrystalAnswer crystalsAtVolume(double[] totals,double energy,double volume,double hintT,double hintP,boolean competing,Runnable checkpoint) {
@@ -292,12 +279,11 @@ public final class FluidThermodynamics {
     /** The package's data ranges: its envelope, the input box of a device setting ({@link FluidDomain}). */
     public FluidDomain domain(){return domain;}
     /**
-     * The data ranges the state at network node {@code node} lies outside, into {@code notices} (owner rule of
-     * 2026-10-16: every model continues past its data and the island's status line reports it, RANGE_EXTRAPOLATION_PLAN
-     * section 5): the package envelope; each carried component's ideal-gas data and the viscosity data of each phase it
-     * is in; free liquid water's Region 1 range (its viscosity's too) and the pressure its metastable liquid has data to;
-     * the steam's range and qualified partial pressure; and each crystal's record. Reads the state and the declared ranges
-     * only: no model is evaluated but the water's saturation pressure.
+     * The data ranges the state at network node {@code node} lies outside, into {@code notices} (every model continues
+     * past its data and the island's status line reports it): the package envelope; each carried component's ideal-gas
+     * data and the viscosity data of each phase it is in; free liquid water's Region 1 range (its viscosity's too) and the
+     * pressure its metastable liquid has data to; the steam's range and qualified partial pressure; each crystal's
+     * record. Reads the state and the declared ranges only, evaluating no model but the water's saturation pressure.
      */
     public void dataRanges(State state,long node,DataRangeNotices notices) {
         double t=state.temperature(),p=state.pressure();
@@ -420,30 +406,16 @@ public final class FluidThermodynamics {
     }
     /**
      * The fluid a phase-selective vessel outlet draws, read off the vessel's own state with no flash and no extra
-     * equation-of-state root: every term below is a sum over the phase amounts, volumes and molar properties
-     * {@link #state} already computed (plan table 3.2 of documentation/2026-09-26-phase-ports-and-compressor).
-     * <ul>
-     * <li>The vapour stream is the hydrocarbon vapour and the water vapour: {@code moles} are {@code vapor} with the
-     * water vapour in the last slot, its volume is the gas volume, its enthalpy {@code n_v h_v + n_wv h_wv(T)}, and it
-     * carries no solid.</li>
-     * <li>The condensed phase is the hydrocarbon liquid, the free water and every solid; a port draws its two liquids
-     * one after the other (decision D11), so each liquid is its own stream ({@link #phaseStream}): {@code moles} are
-     * {@code liquid} with a zero water slot (OIL) or only the free water in the last slot (WATER), its volume the
-     * liquid's volume plus its volume share of the solids, its enthalpy {@code n_l h_l} or {@code n_wl h_wl(T,P)} plus
-     * that share of {@code H_solids(T,P)}. {@link #liquidMass}, {@link #liquidStreamVolume} and {@link #liquidDensity}
-     * state the whole condensed phase (the level head's mass and a level's volume).</li>
-     * </ul>
-     * The streams partition the state: their moles, masses, volumes and enthalpies add up to the state's own. The
-     * vapour's velocity limit is {@link #isothermalAcousticBound}'s formula restricted to the vapour,
-     * {@code V_v / sqrt(M_v * compliance_v)}, i.e. {@code sqrt(stiffness/rho_v)}, capped by the configured maximum as
-     * {@link #velocityLimit} caps the bulk: a vapour drawn off a wet tank is limited by the vapour's own acoustic bound,
-     * not by the far lower bound of the two-phase mixture. A liquid stream's limit is the configured maximum
-     * ({@link #phaseVelocityLimit}). The viscosity is the stream's own terms of the volume average the step solver
-     * states for the bulk (the slurry correction over the liquid's share of the solids).
-     *
-     * <p>A stream whose phase the state does not hold is not built: the builders return {@code null}, and what an
-     * absent stream means is the reader's rule (the step solver's: a port draws the next phase of its priority order,
-     * decision D11).
+     * equation-of-state root: every term is a sum over the phase amounts, volumes and molar properties {@link #state}
+     * already computed. The vapour stream is the hydrocarbon vapour and the water vapour ({@code moles} are {@code vapor}
+     * with the water vapour last, the gas volume, enthalpy {@code n_v h_v + n_wv h_wv(T)}, no solid). The condensed phase
+     * is the hydrocarbon liquid, the free water and every solid; a port draws its two liquids one after the other
+     * (decision D11), so each liquid is its own stream ({@link #phaseStream}) with its volume share of the solids and of
+     * {@code H_solids(T,P)}; {@link #liquidMass}, {@link #liquidStreamVolume} and {@link #liquidDensity} state the whole
+     * condensed phase. The streams partition the state. The vapour's velocity limit is {@link #isothermalAcousticBound}'s
+     * formula restricted to the vapour ({@code sqrt(stiffness/rho_v)}, capped by the configured maximum), not the far
+     * lower bound of the two-phase mixture; a liquid stream's limit is the configured maximum. A stream whose phase the
+     * state does not hold is not built ({@code null}): a port then draws the next phase of its priority order.
      */
     public record PhaseStream(double[] moles,double mass,double volume,double viscosity,double specificEnthalpy,double velocityLimit,
                               SolidInventory.Moments solidMoments) {
@@ -489,11 +461,9 @@ public final class FluidThermodynamics {
     }
     /**
      * {@code V / sqrt(M C)}. The product of a phase's mass and compliance goes subnormal for a trace phase (a vanishing
-     * nitrogen vapour below about 2e-150 mol, whose mass and compliance are each of order its amount): it then keeps too
-     * few bits, and below about 2e-158 mol it is zero and the bound infinite. Such a product is evaluated as
-     * {@code sqrt(V/M) sqrt(V/C)}, ratios of like-sized quantities, which is the same number to rounding; every product
-     * at or above {@link Double#MIN_NORMAL} takes the original expression, bit for bit (phase-ports in-game defect F2,
-     * tools/phase-ports-probes/holds/).
+     * nitrogen vapour below about 2e-150 mol) and is zero below about 2e-158 mol, the bound then infinite; such a product
+     * is evaluated as {@code sqrt(V/M) sqrt(V/C)}, ratios of like-sized quantities, and every product at or above
+     * {@link Double#MIN_NORMAL} takes the original expression, bit for bit.
      */
     private static double acoustic(double volume,double mass,double compliance) {
         double product=mass*compliance;
@@ -514,14 +484,11 @@ public final class FluidThermodynamics {
                 vaporSpecificEnthalpy(state,prepared),vaporVelocityLimit(state),SolidInventory.Moments.ZERO);
     }
     /*
-     * The three phases a vessel port can draw one after another (decision D11 of
-     * documentation/2026-09-26-phase-ports-and-compressor: ports carry mixed phases by priority). GAS is the vapour stream
-     * above. The condensed phase splits into the hydrocarbon liquid (OIL) and the free water (WATER), each carrying its
-     * volume share of every solid population: the solids are held as a uniform suspension in the combined liquid, the
-     * carrier the solid mobility check already reads (volume-averaged density and viscosity of both liquids), so a phase
-     * of the liquid draws its share of them. The OIL and WATER streams partition the condensed phase (moles, mass,
-     * volume, enthalpy and solids add up to the condensed phase's), and with one liquid present its stream carries every
-     * solid (a share of exactly 1.0). All read the state's own amounts and molar properties: no flash.
+     * The three phases a vessel port can draw one after another (decision D11: ports carry mixed phases by priority). GAS
+     * is the vapour stream above. The condensed phase splits into the hydrocarbon liquid (OIL) and the free water (WATER),
+     * each carrying its volume share of every solid population (the solids are a uniform suspension in the combined
+     * liquid, the carrier the solid mobility check reads), so the OIL and WATER streams partition the condensed phase, and
+     * with one liquid present its stream carries every solid. All read the state's own amounts and molar properties.
      */
     public static final int GAS=0,OIL=1,WATER=2;
     /** Whether {@code state} holds {@code phase} ({@link #GAS}, {@link #OIL} or {@link #WATER}) to draw: a positive
@@ -534,15 +501,13 @@ public final class FluidThermodynamics {
         return state.vaporVolume()>0||state.liquidVolume()>0||state.waterVolume()>0;
     }
     /**
-     * Owner decision D33 (2026-10-16): solids ride the liquid. A connection's BULK end draws a uniform share of what its
-     * donor holds, the solids carried by the liquid at {@code solids * liquid drawn / liquid held}: wherever a liquid is
-     * held that is the bulk share, the number it always was. Where none is held nothing carries them: the gas leaves
-     * through the end and the solids stay (frost on a tank's walls, a dry bed), zero solid from a dry gas. So the end draws
-     * the donor's gas exactly where that differs from its bulk: a gas beside solids, with no liquid (a stand-in liquid,
-     * D29 A, is a liquid here, as it is booked). The solids are read as the populations the state carries, which a step's
-     * iterates keep from their pass's seed, so the answer is fixed for a pass. The one reading of a bulk end: the stage
-     * guard's outlet (the GAS outlet, {@code SolidEventIntegrator}), the static end reads ({@code PhaseDraw.leading}),
-     * and the step's donor terms and the reconstruction's booking ({@code PassiveStepSolver.Equations}).
+     * Owner decision D33: solids ride the liquid. A connection's BULK end draws a uniform share of what its donor holds,
+     * the solids carried by the liquid at {@code solids * liquid drawn / liquid held}; where no liquid is held nothing
+     * carries them (frost on a tank's walls, a dry bed), so the end draws the donor's gas exactly where that differs from
+     * its bulk: a gas beside solids with no liquid (a stand-in liquid, D29 A, is a liquid here). The solids are read as
+     * the populations the state carries, which a step's iterates keep from their pass's seed, so the answer is fixed for
+     * a pass. The one reading of a bulk end: the stage guard's outlet, the static end reads ({@code PhaseDraw.leading}),
+     * the step's donor terms and the reconstruction's booking.
      */
     public static boolean bulkDrawsGas(State state) {
         return !(state.liquidVolume()>0)&&!(state.waterVolume()>0)&&state.vaporVolume()>0&&!state.solids().empty();
@@ -730,56 +695,42 @@ public final class FluidThermodynamics {
     }
 
     /**
-     * Owner decision D34 (phase-ports batch, 2026-09-28): a fluid phase holding less than this share of its node's fluid
-     * amount is a trace phase and does not exist; its material is in the node's other phase (A83). The share is taken in
-     * moles over every fluid phase and component of the node, solids not counted: the unit the Newton states a node's
-     * balances in (its tolerance is a share of the node's total amount), so a phase below it is below what the solve
-     * resolves, and the same number for a condensate film in a gas and for the last bubble in a liquid.
+     * Owner decision D34: a fluid phase holding less than this share of its node's fluid amount is a trace phase and does
+     * not exist; its material is in the node's other phase (A83). The share is taken in moles over every fluid phase and
+     * component of the node, solids not counted: the unit the Newton states a node's balances in, so a phase below it is
+     * below what the solve resolves, the same number for a condensate film in a gas and for the last bubble in a liquid.
      */
     public static final double PHASE_TRACE_FRACTION=1e-9;
     /**
-     * The share under which a phase that is shrinking is vanishing ({@link #vanishing}), in any node, a pipe junction or a
-     * vessel, and whether the node holds the phase or is offered it: a phase holding less than this share of its node's
-     * fluid amount, and a smaller share than where the solve that judges it started, leaves, at a converged point as at a
-     * failed iterate (owner decision D38 C, 2026-10-17, which extends the D26 amendment's test of 2026-10-16, form 4, from a
-     * vessel's own closure to every node and to the solve's own iterate). It is what a solve that stops short resolves: a
-     * closure's 24 iterations end at a residual near 1e-6 of the node's amount, and cold seed 48's liquid-full tank beside
-     * dry ice stalls with its vapour at 1e-9 to 3e-9 of the moles and still falling, which the trace share alone keeps or
-     * drops at rounding; in cold seed 30 a junction re-minted flashed (4.5 % vapour) stalls at a failed iterate with its
-     * vapour at 1.0e-8 of its moles, which the trace share kept. 1e-6 of a junction's holdup is about a milligram of LNG.
-     * A phase that does not shrink keeps the trace share ({@link #PHASE_TRACE_FRACTION}) alone. A phase the solve itself
-     * adds shrinks from where it was added: a proposal the next pass drives under this share fails that pass and is
-     * refused (owner decision D39 B, the network solver's pass loop).
+     * The share under which a phase that is shrinking is vanishing ({@link #vanishing}), in any node: a phase holding
+     * less than this share of its node's fluid amount, and a smaller share than where the solve that judges it started,
+     * leaves, at a converged point as at a failed iterate (owner decision D38 C). It is what a solve that stops short
+     * resolves: a closure's 24 iterations end at a residual near 1e-6 of the node's amount, and a liquid-full tank beside
+     * dry ice stalled with its vapour at 1e-9 to 3e-9 of the moles and still falling, which the trace share alone keeps or
+     * drops at rounding. 1e-6 of a junction's holdup is about a milligram of LNG. A phase that does not shrink keeps the
+     * trace share ({@link #PHASE_TRACE_FRACTION}) alone; a proposal the next pass drives under this share is refused
+     * (owner decision D39 B).
      */
     public static final double VANISHING_SHARE=1e-6;
     /**
      * Folds the trace phases of one split in place (owner decisions D33, D34): nothing leaves the node and nothing is
-     * booked, so every component amount, and with it the node's mass, is unchanged. The rule (A84):
-     * <ul>
-     * <li>a trace hydrocarbon liquid goes into the gas phase when that holds hydrocarbons (a gas of water vapour alone has
-     * no hydrocarbon partial pressure to state it at);</li>
-     * <li>a trace of free water goes into the gas phase as water vapour;</li>
-     * <li>a trace gas phase goes into the liquids, its hydrocarbons into the hydrocarbon liquid and its water vapour into
-     * the free water, when each part it holds has its liquid;</li>
-     * <li>a trace gas whose gas components have no hydrocarbon liquid to go into, in a node with free water, is a carried
-     * gas (owner decision D41, {@link #carriedGas}): its water vapour goes into the free water and its gas components stay
-     * a dry gas at the node's pressure. A trace gas is no gas space, so it has no saturation row of its own;</li>
-     * <li>a trace phase none of whose receiving phases exists stays otherwise: a trace of hydrocarbon liquid in free water
-     * with no gas. A receiving phase that is itself a trace receives nothing.</li>
-     * </ul>
-     * {@code water} is {free water, water vapour}. Returns whether anything moved. This is the rule; {@link #folded} and
-     * every flash apply it to a state.
+     * booked, so every component amount and the node's mass are unchanged. The rule (A84): a trace hydrocarbon liquid
+     * goes into the gas phase when that holds hydrocarbons; a trace of free water goes into the gas as water vapour; a
+     * trace gas goes into the liquids, its hydrocarbons into the hydrocarbon liquid and its water vapour into the free
+     * water, when each part has its liquid; a trace gas whose gas components have no hydrocarbon liquid, in a node with
+     * free water, is a carried gas (owner decision D41, {@link #carriedGas}): its water vapour goes into the free water and
+     * its gas components stay a dry gas at the node's pressure; a trace phase none of whose receiving phases exists stays,
+     * and a receiving phase that is itself a trace receives nothing. {@code water} is {free water, water vapour}. Returns
+     * whether anything moved. {@link #folded} and every flash apply the rule to a state.
      */
     public boolean foldTracePhases(double[] liquid,double[] vapor,double[] water){return foldTracePhases(liquid,vapor,water,0);}
     /**
      * {@link #foldTracePhases(double[],double[],double[])} with the phases {@code vanishing} names ({@link #phaseBits};
-     * {@link #vanishing}, owner decision D38 C) folded as traces by the same rule: a hydrocarbon liquid (1) or free water
-     * (4) it names, and a gas every part of which it names (2 for its hydrocarbons, 8 for its water vapour; a gas whose
-     * hydrocarbons stand keeps a vanishing humidity). A phase it names is a trace, so it receives nothing either. A
-     * vanishing gas whose hydrocarbons have no hydrocarbon liquid to go into stays whole: the carried gas's split (its
-     * water vapour into the free water, its gas components dry) is a trace gas's only. Such a gas, nitrogen over water,
-     * leaves through the node's ports, and its humidity folded alone is given back by the next TP answer (a pass cycle:
-     * the last litre of nitrogen in a water tank filled full through its vent).
+     * owner decision D38 C) folded as traces by the same rule: a hydrocarbon liquid (1) or free water (4) it names, and a
+     * gas every part of which it names (2 for its hydrocarbons, 8 for its water vapour). A phase it names receives
+     * nothing either. A vanishing gas whose hydrocarbons have no hydrocarbon liquid to go into stays whole: the carried
+     * gas's split is a trace gas's only (such a gas, nitrogen over water, leaves through the node's ports, and its humidity
+     * folded alone is given back by the next TP answer, a pass cycle).
      */
     boolean foldTracePhases(double[] liquid,double[] vapor,double[] water,int vanishing) {
         double nl=0,nh=0;for(double x:liquid)nl+=x;for(double x:vapor)nh+=x;
@@ -798,22 +749,15 @@ public final class FluidThermodynamics {
         return moved;
     }
     /**
-     * Owner decision D41 (phase-ports batch, 2026-10-13): a gas bubble in a liquid-full pipe is carried by the liquid, at the
-     * liquid's velocity, to the next gas space (a vessel's gas space, a void, a gas-filled junction), where it joins the
-     * gas there. In the pipe it sits at the liquid's temperature and pressure with its own volume, and it is in no
-     * equilibrium of its own with the water around it: its water vapour is a negligible part of a negligible phase. Such a
-     * gas is a <em>carried gas</em>: a dry gas at the node's pressure (its hydrocarbon partial pressure is the pressure),
-     * whose water is in the free water, so the node states no saturation row and no partial-pressure row for it. It leaves
-     * with the liquid in proportion (a junction's outflow is its bulk), and the first node with a gas space gives it its
-     * vapour again in its own flash. A node holds a carried gas, rather than a gas space, when
-     * <ul>
-     * <li>its gas is a trace ({@link #foldTracePhases}), whatever the node: a trace gas is no gas space;</li>
-     * <li>it is a pipe junction ({@code junction}) whose only liquid is free water and whose free water fills more of it
-     * than its gas: the water is the continuous phase and the gas is bubbles in it. A vessel separates its gas upwards
-     * into a gas space by gravity and keeps the saturation of that space; a junction is a piece of pipe the liquid runs
-     * through, held 0.05 s of its peak flow (D25).</li>
-     * </ul>
-     * Returns whether {@code state} holds a gas of the second kind that is not yet dry.
+     * Owner decision D41: a gas bubble in a liquid-full pipe is carried by the liquid, at the liquid's velocity, to the
+     * next gas space, where it joins the gas there; in the pipe it sits at the liquid's temperature and pressure with its
+     * own volume and is in no equilibrium with the water around it. Such a carried gas is a dry gas at the node's
+     * pressure (its hydrocarbon partial pressure is the pressure) whose water is in the free water, so the node states no
+     * saturation row and no partial-pressure row for it; it leaves with the liquid in proportion, and the first node with
+     * a gas space gives it its vapour again. A node holds a carried gas when its gas is a trace ({@link #foldTracePhases}),
+     * or when it is a pipe junction ({@code junction}) whose only liquid is free water and whose free water fills more of
+     * it than its gas (a vessel separates its gas upwards by gravity; a junction is a piece of pipe the liquid runs
+     * through). Returns whether {@code state} holds a gas of the second kind that is not yet dry.
      */
     public static boolean carriedGas(State state,boolean junction) {
         if(!junction||!(state.waterVapor()>0)||!(state.waterLiquid()>0)||state.liquidVolume()>0||!(state.vaporVolume()<state.waterVolume()))return false;
@@ -864,11 +808,9 @@ public final class FluidThermodynamics {
      * The check of a failed pass's last iterate (owner decisions D28 and D39): {@link #folded(State,boolean)} with the
      * phases vanishing since {@code from} folded too (D38 C, {@link #vanishing}), and nothing else. A failed iterate is not
      * a state, so its check only folds what the iterate empties and proposes nothing: no TP answer and no own split of a
-     * non-state, so no phase is added and no typed hold is raised there. A phase the pass needs appears at a converged
-     * point's check ({@link #phaseCheck}) or at a smaller step. Cold seed 430's tank, fed LNG and CO2-rich gas at
-     * 1 atm, fills at its bubble point near 112 K; its failed iterates held a junction on the numerical box's 1 Pa floor,
-     * whose PH answer seeded it at 51 K with 13 300 m3 of gas, and the tank's iterates then fell to 17 K, where the TP
-     * answer raised a third fluid phase about a state the network never reached.
+     * non-state (a failed iterate on the box's 1 Pa floor seeded a junction at 51 K with 13 300 m3 of gas, and a third
+     * fluid phase was raised at 17 K about a state the network never reached). A phase the pass needs appears at a
+     * converged point's check ({@link #phaseCheck}) or at a smaller step.
      */
     public State folded(State state,boolean junction,State from){return folded(state,junction,from==null?0:vanishing(from,state));}
     /** {@link #folded(State,boolean)} with the phases {@code vanishing} names folded as traces too (owner decision D38 C,
@@ -893,66 +835,45 @@ public final class FluidThermodynamics {
         return (state.liquidVolume()>0?1:0)|(state.vaporProperties()!=null?2:0)|(state.waterLiquid()>0?4:0)|(state.waterVapor()>0?8:0);
     }
     /**
-     * The outer phase check of one node of the fluid network (owner decisions D25 and D26), never inside a residual. A node
-     * at fixed amounts, energy and volume has one equilibrium (a pipe junction: at its mixing rows' enthalpy and the
-     * network's pressure); the node's own rows find it once its layout holds every phase that equilibrium needs, while a
-     * TP answer at the node's temperature and pressure tells which phases are missing but not how much of each the node
-     * holds. So the check never swaps one populated phase set for another on a TP verdict, and an added phase starts at the
-     * node's own split:
+     * The outer phase check of one node of the fluid network (owner decisions D25 and D26), never inside a residual. A
+     * node at fixed amounts, energy and volume has one equilibrium, which its own rows find once its layout holds every
+     * phase that equilibrium needs; a TP answer at the node's temperature and pressure tells which phases are missing but
+     * not how much of each the node holds. So the check never swaps one populated phase set for another on a TP verdict,
+     * and an added phase starts at the node's own split:
      * <ul>
-     * <li>a phase leaves only when the solve empties it: the trace fold ({@link #folded}, D34) removes a phase {@code state}
-     * holds below the trace share, and a phase it holds below {@link #VANISHING_SHARE} and at a smaller share than at
-     * {@code from} is vanishing and is folded by the same rule (owner decision D38 C: {@link #vanishing}, the D26
-     * amendment's test given to the solve's own point), in a junction as in a vessel, also where {@code state} is a
-     * vessel closure's unsuccessful last iterate (D28 A'; a step's failed iterate is only folded,
-     * {@link #folded(State,boolean,State)}, owner decision D39). A phase the fold removed as vanishing is not proposed
-     * again by this check, so the fold and the proposal below judge it by one test (the TP answer at the folded point
-     * otherwise offers it back at once, the pass is laid out as before, and the pass loop cycles);</li>
-     * <li>a node holding every phase its material can form (both hydrocarbon phases or none, both water phases or none)
-     * has none to add, and no TP answer is formed. A stand-in liquid ({@link #condensedShareOnly}: a crystal's share
-     * carried condensed between refreshes, crystal species only beside a vapour) is no liquid of the node's own (owner
-     * decision D31 B, for every node), so it never makes the node liquid-complete; in a TP answer it is a phase like any
-     * other, proposed to a node that holds no liquid at all and decided by the node's own split ({@link #lacking});</li>
-     * <li>where the TP answer ({@link #flashTP}: {@link #equilibriumTP} with its fold) holds a phase the node lacks that is
-     * not in the solve's record ({@code record}, A85), the node's own split decides it (D26), the equilibrium of what it
-     * holds: a pipe junction's PH answer at its pressure and enthalpy ({@link #equilibriumPH}), a vessel's
-     * {@code vesselSplit}, the network's closure of its inventory (UV while its wall is taut, PH at the ambient pressure
-     * while slack), started from the vessel's own state at the crossing (owner decision D40 A, {@link #crossing}): the
-     * engine's answer of that same closure, a liquid-full vessel's liquid near its own bubble pressure and the vapour
-     * filling the volume the liquid lost. The TP answer says which phase is missing, never how much of it a vessel holds:
-     * its amounts ignore the vessel's volume. A vessel with no crossing, or whose closure from it fails, or
-     * with no {@code vesselSplit}, proposes nothing, and the phase is refused for the solve. Where a junction's PH answer
-     * fails, the TP answer with the junction's populated phases it lacks ({@link #tpSeed}) seeds instead; it is only a seed,
-     * the junction's rows give the answer;</li>
-     * <li>the own split decides by where its closure went, converged or not (the D26 amendment of 2026-10-16, by its
-     * direction in form 4): a proposed phase it drove under the trace share, which the seed's fold (D34, and D41's carried
-     * gas at a junction) then removes, or that it is driving to nothing ({@link #vanishing}; a vessel's closure and, since
-     * owner decision D38 C, a junction's PH answer alike), or that it leaves vanishing against {@code from} (D38 C, the
-     * fold's test), is refused,
-     * and the refusal is written to the record, so the TP answer does not propose it again in this solve: a boiling liquid
-     * in a vessel with no room for a bubble pressurises and stays liquid, a drop formed in a gas at its dew point
-     * re-evaporates. A proposed phase that stands seeds the node, and the seed is taken only when it then holds a phase the
-     * node lacks that is not in the record and none that was refused: nothing the fold removes is added, so the check and
-     * the fold agree.</li>
+     * <li>a phase leaves only when the solve empties it: the trace fold ({@link #folded}, D34), and a phase held below
+     * {@link #VANISHING_SHARE} and at a smaller share than at {@code from} (owner decision D38 C, {@link #vanishing}), in a
+     * junction as in a vessel, also at a vessel closure's unsuccessful last iterate (D28 A'). A phase the fold removed as
+     * vanishing is not proposed again by this check;</li>
+     * <li>a node holding every phase its material can form has none to add, and no TP answer is formed. A stand-in liquid
+     * ({@link #condensedShareOnly}, owner decision D31 B) is no liquid of the node's own and never makes it
+     * liquid-complete; in a TP answer it is a phase like any other, decided by the node's own split ({@link #lacking});</li>
+     * <li>where the TP answer ({@link #flashTP}) holds a phase the node lacks that is not in the solve's record
+     * ({@code record}, A85), the node's own split decides it (D26): a pipe junction's PH answer at its pressure and
+     * enthalpy ({@link #equilibriumPH}), a vessel's {@code vesselSplit}, the network's closure of its inventory (UV while
+     * its wall is taut, PH at the ambient while slack), started from the vessel's own state at the crossing (owner
+     * decision D40 A, {@link #crossing}). The TP answer says which phase is missing, never how much a vessel holds: its
+     * amounts ignore the vessel's volume. A vessel with no crossing, or whose closure from it fails, proposes nothing.
+     * Where a junction's PH answer fails, the TP answer with the junction's populated phases ({@link #tpSeed}) seeds
+     * instead;</li>
+     * <li>the own split decides by where its closure went, converged or not (the D26 amendment): a proposed phase it drove
+     * under the trace share, that it is driving to nothing ({@link #vanishing}) or that it leaves vanishing against
+     * {@code from} is refused, and the refusal is written to the record so the TP answer does not propose it again in
+     * this solve (a boiling liquid in a vessel with no room for a bubble pressurises and stays liquid). A proposed phase
+     * that stands seeds the node, and the seed is taken only when it then holds a phase the node lacks that is not in the
+     * record and none that was refused.</li>
      * </ul>
-     * The rule decides which phases a node is laid out with; how much of each it holds is its rows' answer. It holds for
-     * any material: a pure water node at its saturation pressure, whose TP answer is all liquid on one side and all steam
-     * on the other, keeps its liquid and gains the steam its energy and volume give; a rigid vessel cooled past its bubble
-     * point gains the small vapour of its own energy and volume, not the TP split's several vessel volumes; a liquid
-     * junction let down below its bubble point starts flashed at its enthalpy, and water and a gas mixed in a junction
-     * start with the gas saturated with steam where that makes the gas the larger phase (the bubbles grow), as a dry
-     * carried gas where it does not.
+     * The rule decides which phases a node is laid out with; how much of each it holds is its rows' answer: a rigid
+     * vessel cooled past its bubble point gains the small vapour of its own energy and volume, not the TP split's several
+     * vessel volumes.
      *
-     * <p>{@code record}, {@code at}: the solve's A85 record of the node's phases ({@link #phaseBits}), {@code record[at]}:
-     * read as the phases the solve removed or refused, which are not added, and written with the phases this check removes
-     * (the fold, a phase the seed lacks) and refuses; {@code null} reads none and writes nothing. A trial check (a vessel
-     * closure's failed iterate, decision D28 A') passes a copy. The network solver also writes there a phase this check
-     * added that the next pass refutes (owner decision D39 B), read the same way. {@code junction}: whether the node is a
-     * pipe junction (the carried gas of D41 in the fold, its own split the PH answer); {@code from}: the node's state where
-     * the solve that reached {@code state} started (a step: the node at the step's start; a vessel's closure: the state it
-     * closes from), which the vanishing rule reads, or {@code null} for none; {@code prepared}, when given, is the node's prepared temperature
-     * state (used only at exactly that temperature); {@code vesselSplit}, a vessel's own split from a start holding the
-     * phases to lay it out with, which answers {@code null} where its closure fails (ignored for a junction).
+     * <p>{@code record}, {@code at}: the solve's A85 record of the node's phases ({@link #phaseBits}), read as the phases
+     * the solve removed or refused and written with those this check removes and refuses ({@code null}: none); the
+     * network solver also writes there a phase this check added that the next pass refutes (owner decision D39 B).
+     * {@code junction}: whether the node is a pipe junction; {@code from}: the node's state where the solve that reached
+     * {@code state} started, which the vanishing rule reads, or {@code null}; {@code prepared}: the node's prepared
+     * temperature state, used only at exactly that temperature; {@code vesselSplit}: a vessel's own split from a start
+     * holding the phases to lay it out with, {@code null} where its closure fails (ignored for a junction).
      *
      * @return {@code state} itself when it keeps its phases and gains none; otherwise the node's new seed
      */
@@ -1055,23 +976,16 @@ public final class FluidThermodynamics {
     /**
      * A vessel's own state at a crossing (owner decision D40 A), the start of its own split in {@link #phaseCheck}: the
      * engine's equilibrium of the fluid it holds under its wall's law, the problem its own closure solves
-     * ({@code InventoryEquilibrium}), as a network state ({@link #adopt}) folded as a vessel. A slack bag
-     * ({@code PhaseLayout.wallRow}: its pressure the ambient's, its volume free) at its fluid enthalpy and the ambient
-     * pressure, as a junction's and an empty bag's own split ({@link #equilibriumPH}, D26 and D54); a taut vessel (the wall
-     * carrying its pressure above the ambient's) at its fluid's internal energy and volume ({@link #equilibriumUV}),
-     * warm-started at its temperature and pressure. Both under the competition of the vessel's TP request
-     * ({@link #crystalsCompete}), as the TP answer: a crystal the engine forms is carried as its stand-in, no crystal mass
-     * moving in a step (D23), and the vessel's own split closes it with its crystal stock inert. The fluid alone is no
-     * answer there: LNG with 0.7 % of CO2 cooled past its dew point in a bag of nitrogen (the pilot world's row E) is
-     * three fluid phases with a CO2-rich liquid, which the network does not carry. A liquid-full vessel drawn below its
-     * bubble point starts from its liquid near its own bubble pressure and the vapour filling the volume the liquid lost;
-     * a vapour cooled past its dew point, from its vapour and the liquid its energy and volume no longer hold as vapour,
-     * however much that is. The TP answer says only which phase is missing: its amounts ignore the vessel's volume and are
-     * never the seed (test world row 9b: a liquid-full slush tank drawn below its bubble point was offered 13 to 29 m3 of
-     * vapour for 0.78 m3 of fluid space, and its closure from there failed). {@code null} where the engine does not
-     * converge, answers a phase set the network cannot carry, or answers none of the phases {@code proposed} adds (no
-     * crossing: a liquid-full vessel above its own bubble pressure has no room for a bubble), so the vessel proposes
-     * nothing.
+     * ({@code InventoryEquilibrium}), as a network state ({@link #adopt}) folded as a vessel: a slack bag at its fluid
+     * enthalpy and the ambient pressure ({@link #equilibriumPH}), a taut vessel at its fluid's internal energy and volume
+     * ({@link #equilibriumUV}), warm-started at its temperature and pressure, both under the competition of the vessel's
+     * TP request ({@link #crystalsCompete}); a crystal the engine forms is carried as its stand-in (D23). The fluid alone
+     * is no answer there: LNG with 0.7 % of CO2 cooled past its dew point in a bag of nitrogen is three fluid phases with
+     * a CO2-rich liquid, which the network does not carry. The TP answer says only which phase is missing: its amounts
+     * ignore the vessel's volume and are never the seed (a liquid-full slush tank drawn below its bubble point was offered
+     * 13 to 29 m3 of vapour for 0.78 m3 of fluid space, and its closure from there failed). {@code null} where the engine
+     * does not converge, answers a phase set the network cannot carry, or answers none of the phases {@code proposed}
+     * adds (no crossing), so the vessel proposes nothing.
      */
     private State crossing(State state,State kept,int proposed,double[] totals,Runnable checkpoint) {
         double t=kept.temperature(),p=kept.pressure();var solids=state.solidMoments();
@@ -1100,47 +1014,27 @@ public final class FluidThermodynamics {
         return folded(equilibriumTP(t,p,overall,checkpoint,prepared),given,0);
     }
     /**
-     * The equilibrium split of {@link #flashTP} before its trace phases are folded. Not a state the network lays out or
-     * commits: {@code flashTP} is that, {@code folded(equilibriumTP(...))}. The step solver's phase correction reads both
-     * to know which phase the trace rule, rather than the equilibrium, removed (decision D34, A85).
-     *
-     * <p>The phases of {@code overall} (the conserved basis, water last) at {@code (t, p)} are decided by the equilibrium
-     * engine ({@link NetworkPhaseEngine}): the tangent-plane stability test first, then the split with its second-order
-     * finish, the declared critical band, the phase identification parameter for a one-root phase, and the network's
-     * separate free-water rule; this adapter states that answer as a network {@link State} with the network's own direct
-     * phase evaluations ({@link #state}). The Wilson-started successive substitution and its root heuristic are
-     * retired.</p>
-     *
-     * <p>Slots: a split's lighter phase is the vapour slot and its denser phase the liquid slot; a phase with three roots
-     * takes its root's slot; a one-root phase the engine labels liquid-like or vapour-like takes that slot, and a
-     * {@code FLUID}-labelled one (a pure supercritical fluid, a merged near-critical split) the slot its own phase
-     * identification parameter gives. With water the engine's free-water record gives the water split and the
-     * hydrocarbon vapour's partial pressure. A pure component exactly at its own coexistence pressure is a single
-     * liquid here (the split is undetermined by T and P).</p>
-     *
-     * <p>Refusals: a state outside the numerical box is a plain {@link IllegalArgumentException} (checked before the
-     * engine runs; no data range bounds a state); an answer the engine could not converge inside the declared critical
-     * band is the typed {@link CriticalBandHold}; a liquid-liquid split (two liquid-like hydrocarbon phases) and a split
-     * with a product proved unstable (a third fluid phase indicated) are {@link UnsupportedPhases}, since a node carries one
-     * hydrocarbon liquid and one vapour; any other failure is a plain {@link IllegalArgumentException}. Pure water needs no
-     * phase decision: all condensed at or above the condensed water's vapour pressure (the liquid's saturation pressure,
-     * below its melting line its ice's, WP4), all steam below.</p>
-     *
-     * <p>Ice (WP4). Below its melting line the engine states the free water's condensed part as ice; a TP answer never
-     * moves material into a crystal (owner decision D23), so the network carries it as free liquid water, the stand-in
-     * ({@link #state}), until a vessel's refresh freezes it.</p>
-     *
-     * <p>{@code checkpoint} runs once before the engine and once per equation-of-state evaluation the engine reports, so
-     * a budget clock counts the flash's work (the engine itself has no checkpoint; one call is bounded).</p>
-     *
-     * <p>Crystals. On a package that admits crystals a request carrying a crystal's species at or below the crystals'
-     * ceiling is made under the crystal competition ({@link #crystalsCompete}). A TP answer never moves
-     * material into a crystal: crystal mass moves only in a vessel's refresh (owner decision D23,
-     * {@code InventoryEquilibrium}), so a step, a transport node and a boundary carry a supersaturated fluid, and the
-     * receiving vessel's next refresh precipitates it. Where a crystal forms, the answer's vapour is the vapour and the
-     * liquid slot takes the rest, the crystal's share condensed in it (see {@link #adopt}). A crystal beside a phase set
-     * the engine does not implement (two liquids, three fluid phases, two crystals) is the typed
-     * {@link UnsupportedPhases.Kind#CRYSTAL_PHASES} hold.</p>
+     * The equilibrium split of {@link #flashTP} before its trace phases are folded; not a state the network lays out or
+     * commits ({@code flashTP} is {@code folded(equilibriumTP(...))}). The step solver's phase correction reads both to
+     * know which phase the trace rule, rather than the equilibrium, removed (D34, A85). The phases of {@code overall}
+     * (the conserved basis, water last) at {@code (t, p)} are decided by the equilibrium engine
+     * ({@link NetworkPhaseEngine}: stability test, split with its second-order finish, critical band, phase
+     * identification, the separate free-water rule); this adapter states that answer as a network {@link State} with the
+     * network's own direct phase evaluations ({@link #state}). Slots: a split's lighter phase is the vapour slot and its
+     * denser phase the liquid slot; a one-root phase takes the slot its label or its own phase identification parameter
+     * gives; with water the engine's free-water record gives the water split and the hydrocarbon vapour's partial
+     * pressure; a pure component exactly at its coexistence pressure is a single liquid here. Refusals: a state outside
+     * the numerical box is a plain {@link IllegalArgumentException} (no data range bounds a state); an answer the engine
+     * could not converge inside the critical band is the typed {@link CriticalBandHold}; a liquid-liquid split and a
+     * split with a product proved unstable are {@link UnsupportedPhases} (a node carries one hydrocarbon liquid and one
+     * vapour); any other failure is a plain {@link IllegalArgumentException}. Below its melting line the engine states
+     * the free water's condensed part as ice; a TP answer never moves material into a crystal (owner decision D23), so the
+     * network carries it as free liquid water, the stand-in ({@link #state}), until a vessel's refresh freezes it; on a
+     * package that admits crystals a request carrying a crystal's species at or below the crystals' ceiling is made under
+     * the crystal competition ({@link #crystalsCompete}), and where a crystal forms the answer's vapour is the vapour and
+     * the liquid slot takes the rest with the crystal's share condensed in it ({@link #adopt}). A crystal beside a phase
+     * set the engine does not implement is the typed {@link UnsupportedPhases.Kind#CRYSTAL_PHASES} hold.
+     * {@code checkpoint} runs once before the engine and once per equation-of-state evaluation the engine reports.
      */
     public State equilibriumTP(double t,double p,double[] overall,Runnable checkpoint,Prepared prepared) {
         TranslatedPengRobinson.Workspace given=prepared!=null&&prepared.temperature()==t?prepared.pengRobinson():null;
@@ -1163,14 +1057,12 @@ public final class FluidThermodynamics {
     }
     /**
      * A pipe junction's own split (owner decision D26, {@link #phaseCheck}), the phases of an empty bag's
-     * ({@code PassiveStepSolver.emptyBagSplit}, D54) and a slack vessel's crossing ({@link #crossing}, D40 A): the
-     * engine's PH equilibrium of {@code overall} (the conserved basis, water last) at the node's pressure {@code p} and
-     * its fluid enthalpy {@code h} (J, the network's datum), under the competition of the node's TP request at {@code t}
+     * ({@code PassiveStepSolver.emptyBagSplit}, D54) and a slack vessel's crossing ({@link #crossing}): the engine's PH
+     * equilibrium of {@code overall} (the conserved basis, water last) at the node's pressure {@code p} and its fluid
+     * enthalpy {@code h} (J, the network's datum), under the competition of the node's TP request at {@code t}
      * ({@link #crystalsCompete}), as a network state ({@link #adopt}, unfolded); {@code null} where the engine does not
-     * converge or answers a phase set the network cannot carry. The engine of a spine package states energies on the
-     * spine's formation datum, the network on its sensible one (D10), so the target moves by the formation enthalpies; a
-     * spine-less package's engine is on the network's datum. {@code checkpoint} runs as for {@link #equilibriumTP}. Never
-     * inside a residual.
+     * converge or answers a phase set the network cannot carry. A spine package's engine states energies on the spine's
+     * formation datum, the network on its sensible one (D10), so the target moves by the formation enthalpies.
      */
     public State equilibriumPH(double t,double p,double h,double[] overall,Runnable checkpoint) {
         var spine=hydrocarbon.spine();double target=h;
@@ -1219,14 +1111,11 @@ public final class FluidThermodynamics {
     }
 
     /**
-     * Owner decision D29 A: whether {@code state}'s hydrocarbon liquid is the stand-in's condensed share alone (see
-     * {@link #adopt}): a liquid holding crystal species only, beside a vapour, as a frost answer's crystal is carried. It is
-     * no phase of the answer, so its composition says nothing of which components a liquid there holds: the trace support
-     * reads the answer's own fluid phase, the vapour, and the stand-in admits every component the node holds, as the
-     * supersaturated solution it stands for ({@code PhaseLayout.support}). In the outer phase check it is no liquid of the
-     * node's own (owner decision D31 B, {@link #phaseCheck}): it never makes the node liquid-complete; a TP answer's
-     * stand-in is proposed like any phase where the node holds no liquid, and the node's own split decides it (form 4).
-     * Never on a package without crystals.
+     * Owner decision D29 A: whether {@code state}'s hydrocarbon liquid is the stand-in's condensed share alone
+     * ({@link #adopt}): a liquid holding crystal species only, beside a vapour, as a frost answer's crystal is carried. It
+     * is no phase of the answer, so the trace support reads the answer's own fluid phase, the vapour, and the stand-in
+     * admits every component the node holds ({@code PhaseLayout.support}); in the outer phase check it is no liquid of
+     * the node's own (owner decision D31 B) and never makes the node liquid-complete. Never on a package without crystals.
      */
     public boolean condensedShareOnly(State state) {
         if(crystalIds.isEmpty()||!(state.liquidVolume()>0)||state.vaporProperties()==null)return false;
@@ -1270,13 +1159,11 @@ public final class FluidThermodynamics {
             case LIQUID_LIQUID->throw new UnsupportedPhases(domain.packageId(),t,p,UnsupportedPhases.Kind.LIQUID_LIQUID,
                     "a liquid-liquid split (two liquid-like hydrocarbon phases); the fluid network carries one hydrocarbon liquid");
             // A crystal in the answer. A TP phase decision never moves material into a crystal (owner decision D23: only a
-            // vessel's refresh does), so the mobile phases of these amounts carry the crystal's share until then, and that
-            // share is condensed matter: the vapour is the answer's vapour (none beside a crystal out of a liquid, or a
-            // crystal alone) and the liquid slot takes the rest, a supersaturated liquid, per component by difference and
-            // never negative, so the amounts are conserved exactly. In the vapour slot the crystal's mass would take a
-            // gas's volume and energy: a CO2 let-down below the triple point, stated all vapour, ran to CO2's 90 K floor.
-            // Its own fluid split with the crystal held out is a CO2-rich liquid, beside a methane liquid a third fluid
-            // phase: row E of the pilot world held at its first step.
+            // vessel's refresh does), so the mobile phases carry the crystal's share until then as condensed matter: the
+            // vapour is the answer's vapour and the liquid slot takes the rest, a supersaturated liquid, per component by
+            // difference and never negative, so the amounts are conserved exactly. In the vapour slot the crystal's mass
+            // would take a gas's volume and energy (a CO2 let-down below the triple point, stated all vapour, ran to CO2's
+            // 90 K floor).
             case VAPOR_SOLID,LIQUID_SOLID,VAPOR_LIQUID_SOLID,SOLID_PRESENT->{
                 var classification=result.classification();
                 if(classification==EquilibriumResult.Classification.VAPOR_SOLID||classification==EquilibriumResult.Classification.VAPOR_LIQUID_SOLID)
