@@ -63,6 +63,14 @@ public final class SparseNewton {
         /** Ends the bracket {@link #linearising} opened. */
         default void linearised(){}
     }
+    /**
+     * The iteration limit of every Newton the fluid solver runs (a step's pass, its polish, a vessel's closure, the
+     * crystal refresh's joint closure): one constant, no condition and no per-island case (owner decision of 2026-10-18 on
+     * the t38 plan, question 3). Chosen 30 on the 200-seed quick check among 30, 40 and 60: it was 20 for a pass and 24 for a closure; with the velocity cap in every line's law a
+     * network deep in saturation (lines past five times their cap, slopes of 1e-7 and below) converges at 0.06 to 0.36 per
+     * step and ran out of 20 at a residual of 1e-8 (cold seed 19).
+     */
+    public static final int ITERATIONS=30;
     public record Settings(int iterations,double tolerance,double differenceStep,int backtracks) {
         public Settings {
             if(iterations<1||!Double.isFinite(tolerance)||tolerance<=0||!Double.isFinite(differenceStep)

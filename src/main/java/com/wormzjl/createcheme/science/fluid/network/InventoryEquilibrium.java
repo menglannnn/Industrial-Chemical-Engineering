@@ -238,7 +238,7 @@ public final class InventoryEquilibrium {
         var layout=layout(model,state,support);var x=layout.encode(state);
         double[] residual=new double[layout.size()];layout.residual(state,n,energy,volume,workFrom,residual,0,x);
         if(norm(residual)<=CLOSURE)return state;
-        var solved=SparseNewton.solve(layout.wallClosure(n,energy,volume,workFrom),x,new SparseNewton.Settings(24,CLOSURE,1e-6,24),checkpoint);
+        var solved=SparseNewton.solve(layout.wallClosure(n,energy,volume,workFrom),x,new SparseNewton.Settings(SparseNewton.ITERATIONS,CLOSURE,1e-6,24),checkpoint);
         var closed=ConservativeTransport.repartition(model,layout.decode(solved.variables(),0),n);
         // The restatement applies the flash's trace-phase rule (decision D34), so a phase the closure left as a trace is
         // folded away and the vessel is closed again without it, in the folded state's own layout (decision D30). Folded

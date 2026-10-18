@@ -315,7 +315,7 @@ final class VesselCrystals {
         }
         private Joint joint(FluidThermodynamics.State start){return new Joint(model,start,present,seeds,totals,trueEnergy,capacity,workFrom,inert);}
         private double[] solve(Joint joint,FluidThermodynamics.State start) {
-            return SparseNewton.solve(joint,joint.start(start,seeds),new SparseNewton.Settings(24,InventoryEquilibrium.CLOSURE,1e-6,24),checkpoint).variables();
+            return SparseNewton.solve(joint,joint.start(start,seeds),new SparseNewton.Settings(SparseNewton.ITERATIONS,InventoryEquilibrium.CLOSURE,1e-6,24),checkpoint).variables();
         }
         @Override public FluidThermodynamics.State close(FluidThermodynamics.State start) {
             var closing=joint(start);var x=solve(closing,start);

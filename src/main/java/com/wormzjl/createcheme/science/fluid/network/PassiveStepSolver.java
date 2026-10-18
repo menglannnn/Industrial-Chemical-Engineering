@@ -454,7 +454,7 @@ public final class PassiveStepSolver {
             // Keep two orders of margin to the unchanged 1e-8 full-equation gate; every final
             // reconstruction and the independent interval accuracy/accounting checks still run.
             double tolerance=smallHeadspace?1e-10:1e-9;
-            try{numerical=SparseNewton.solve(equations,equations.initial(),new SparseNewton.Settings(20,tolerance,1e-6,24),checkpoint,workspace);}
+            try{numerical=SparseNewton.solve(equations,equations.initial(),new SparseNewton.Settings(SparseNewton.ITERATIONS,tolerance,1e-6,24),checkpoint,workspace);}
             catch(SparseNewton.Nonconvergence failure) {
                 if(failure.lastVariables()==null)throw failure;
                 double[] trialFlows=Arrays.copyOfRange(failure.lastVariables(),equations.edgeOffset,equations.edgeOffset+graph.pipes().size());
@@ -637,7 +637,7 @@ public final class PassiveStepSolver {
                                         boolean[] boundaryClosed,boolean[][] promoted,boolean[] atShutoff,int[] foldedPhases,double tolerance,double gate,Runnable checkpoint) {
         SolverDiagnostics.count(SolverDiagnostics.equationGatePolishes);
         SparseNewton.Result numerical;
-        try{numerical=SparseNewton.solve(equations,x,new SparseNewton.Settings(20,tolerance*1e-2,1e-6,24),checkpoint,new SparseNewton.Workspace(ownership));}
+        try{numerical=SparseNewton.solve(equations,x,new SparseNewton.Settings(SparseNewton.ITERATIONS,tolerance*1e-2,1e-6,24),checkpoint,new SparseNewton.Workspace(ownership));}
         catch(SparseNewton.Nonconvergence failure){return null;}
         double[] variables=numerical.variables();var states=equations.states(variables);
         // A trace the polished point would reactivate is an active-set change the pass loop would take (reactivate), not an
