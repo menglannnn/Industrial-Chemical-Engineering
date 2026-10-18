@@ -46,7 +46,7 @@ class PassiveStepSolverTest {
         var geometry=new PipeResistance.Geometry(10,.05,.000045,0);
         var graph=new PassiveNetwork(List.of(
                 new PassiveNetwork.Reservoir(1,0,fill(300000,0),PassiveNetwork.NodeKind.GENERATOR),
-                new PassiveNetwork.Reservoir(2,0,fill(170000,0),true),
+                new PassiveNetwork.Reservoir(2,0,fill(170000,0),PassiveNetwork.NodeKind.JUNCTION),
                 // Above the ambient: a vessel is a bag (decision D54), and one charged below the ambient goes slack at it.
                 new PassiveNetwork.Reservoir(3,0,fill(110000,0)),
                 new PassiveNetwork.Reservoir(4,0,fill(110000,0))),List.of(
@@ -65,7 +65,7 @@ class PassiveStepSolverTest {
         var geometry=new PipeResistance.Geometry(10,.05,.000045,0);
         var graph=new PassiveNetwork(List.of(new PassiveNetwork.Reservoir(1,0,fill(300000,0)),
                 new PassiveNetwork.Reservoir(2,0,fill(100000,0)),new PassiveNetwork.Reservoir(3,0,fill(100000,0)),
-                new PassiveNetwork.Reservoir(4,0,fill(180000,0),true)),List.of(
+                new PassiveNetwork.Reservoir(4,0,fill(180000,0),PassiveNetwork.NodeKind.JUNCTION)),List.of(
                 new PassiveNetwork.Pipe(5,0,3,geometry),new PassiveNetwork.Pipe(6,3,1,geometry),new PassiveNetwork.Pipe(7,3,2,geometry)));
         var result=new PassiveStepSolver(model).solve(graph,.1,()->{});var flows=result.massFlows();
         assertTrue(flows[0]>0);assertEquals(flows[0],flows[1]+flows[2],1e-9);assertEquals(flows[1],flows[2],1e-9);

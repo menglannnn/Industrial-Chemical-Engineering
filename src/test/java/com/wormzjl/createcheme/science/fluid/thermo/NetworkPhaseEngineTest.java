@@ -143,7 +143,7 @@ class NetworkPhaseEngineTest {
     void aCriticalBandFailureIsTyped() {
         var pilot = FluidTestSupport.model(MaterialCatalog.bundled(), PILOT);
         var limited = new FluidTpEquilibrium.Settings(1.0e-10, 1000, 5, 1.0e-9, 1.0e-8, TangentPlaneStability.Settings.DEFAULT,
-                10, 0.9, 1, 1, 1.0e-10, 0.1, 0.1, 1.0e-8, 1.0e-2);
+                1, 1, 1.0e-8, 1.0e-2, 100, 1.0e-11);
         var engine = NetworkPhaseEngine.of(pilot, MaterialCatalog.bundled(), PILOT, com.wormzjl.createcheme.science.material.MaterialRuntime.with(
                 MaterialCatalog.bundled(), PILOT, com.wormzjl.createcheme.science.material.MaterialRuntime::water), limited);
         double[] nearCritical = {0.67, 0.33, 0, 0, 0}, ordinary = {0.5, 0.5, 0, 0, 0};

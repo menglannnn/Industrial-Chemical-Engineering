@@ -169,8 +169,8 @@ class CompressorTest extends PortFixture {
     @Test void theCompressorsThresholds() {
         var compressor=new FlowControl.Compressor(.001,3);
         for(double[] c:new double[][]{{.0099,0,0,0},{.0101,0,0,1},{.0099,1,0,1},{.0021,1,0,1},{.0019,1,0,0},{0,0,2e-8,1},{0,0,1e-8,0}})
-            assertEquals(c[3]==1,compressor.refuses(new InletPhase.Supply(0,3,PhasePort.BULK,0,c[0],c[2]),c[1]==1),Arrays.toString(c));
-        assertEquals("ERROR: compressor inlet not gas (condensed 2.5 % by mass, from node 3)",InletPhase.reason(compressor,new InletPhase.Supply(0,3,PhasePort.BULK,0,.025,0)));
+            assertEquals(c[3]==1,compressor.refuses(new InletPhase.Supply(0,3,PhasePort.BULK,0,c[0],c[2],Double.POSITIVE_INFINITY),c[1]==1),Arrays.toString(c));
+        assertEquals("ERROR: compressor inlet not gas (condensed 2.5 % by mass, from node 3)",InletPhase.reason(compressor,new InletPhase.Supply(0,3,PhasePort.BULK,0,.025,0,Double.POSITIVE_INFINITY)));
         assertThrows(IllegalArgumentException.class,()->new FlowControl.Compressor(.001,1),"a ratio of 1 adds nothing");
     }
 }

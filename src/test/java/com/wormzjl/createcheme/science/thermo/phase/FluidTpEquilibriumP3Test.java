@@ -83,7 +83,7 @@ class FluidTpEquilibriumP3Test {
     private static FluidTpEquilibrium.Settings settings(int substitutionLimit, int newtonIterations, double mergeTieLine,
                                                         double mergeVolumeGap) {
         return new FluidTpEquilibrium.Settings(1.0e-10, 1000, 5, 1.0e-9, 1.0e-8, TangentPlaneStability.Settings.DEFAULT,
-                10, 0.9, substitutionLimit, newtonIterations, 1.0e-10, 0.1, 0.1, mergeTieLine, mergeVolumeGap);
+                substitutionLimit, newtonIterations, mergeTieLine, mergeVolumeGap, 100, 1.0e-11);
     }
 
     /**
@@ -117,7 +117,7 @@ class FluidTpEquilibriumP3Test {
             assertTrue(d.newtonIterations() > 0, at + ": the Newton finish converged it");
             assertTrue(d.criticalBand(), at);
             assertEquals(CoverageGrade.RESEARCH_ONLY, result.coverage().grade(), at);
-            assertTrue(d.tieLine() < service.settings().bandTieLine(), at + " tie " + d.tieLine());
+            assertTrue(d.tieLine() < FluidTpEquilibrium.BAND_TIE_LINE, at + " tie " + d.tieLine());
             assertTrue(result.conservationDefect(z) < 1.0e-13, at);
             assertTrue(d.fugacityResidual() < 1.0e-9, at + " fugacity " + d.fugacityResidual());
             PhaseState vapour = result.phases().get(0).state();

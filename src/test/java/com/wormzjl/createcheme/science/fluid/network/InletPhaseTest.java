@@ -132,8 +132,8 @@ class InletPhaseTest extends PortFixture {
     @Test void thePumpsThresholdsAndReason() {
         var pump=new FlowControl.Pump(.001,500000);
         for(double[] c:new double[][]{{.0199,0,0},{.0201,0,1},{.0199,1,1},{.0051,1,1},{.0049,1,0},{.0049,0,0},{0,1,0}})
-            assertEquals(c[2]==1,pump.refuses(new InletPhase.Supply(0,7,PhasePort.BULK,c[0],0,0),c[1]==1),Arrays.toString(c));
-        assertEquals("ERROR: pump inlet not liquid (vapour 34.0 % by volume, from node 7)",InletPhase.reason(pump,new InletPhase.Supply(0,7,PhasePort.BULK,.34,0,0)));
+            assertEquals(c[2]==1,pump.refuses(new InletPhase.Supply(0,7,PhasePort.BULK,c[0],0,0,Double.POSITIVE_INFINITY),c[1]==1),Arrays.toString(c));
+        assertEquals("ERROR: pump inlet not liquid (vapour 34.0 % by volume, from node 7)",InletPhase.reason(pump,new InletPhase.Supply(0,7,PhasePort.BULK,.34,0,0,Double.POSITIVE_INFINITY)));
     }
 
     // ---- Fixture 4: refused pumps; the rest of the island bitwise; hysteresis ---------------------------------------

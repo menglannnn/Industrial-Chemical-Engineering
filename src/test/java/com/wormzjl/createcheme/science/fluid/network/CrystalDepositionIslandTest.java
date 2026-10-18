@@ -243,7 +243,7 @@ class CrystalDepositionIslandTest {
         var warm=charge(250,1.3e6,new double[]{.9,0,0,.1,0},.1);
         var cold=charge(140,1e6,new double[]{1,0,0,0,0},.1);
         var pipe=new PipeResistance.Geometry(1,.004,.000045,0);
-        var graph=new PassiveNetwork(List.of(new PassiveNetwork.Reservoir(1,0,warm),new PassiveNetwork.Reservoir(2,0,warm,true),new PassiveNetwork.Reservoir(3,0,cold)),
+        var graph=new PassiveNetwork(List.of(new PassiveNetwork.Reservoir(1,0,warm),new PassiveNetwork.Reservoir(2,0,warm,PassiveNetwork.NodeKind.JUNCTION),new PassiveNetwork.Reservoir(3,0,cold)),
                 List.of(new PassiveNetwork.Pipe(10,0,1,pipe),new PassiveNetwork.Pipe(11,1,2,pipe)));
         var solver=new PassiveIntervalSolver(model);double step=1;double co2=-1;
         for(int k=0;k<6;k++) {

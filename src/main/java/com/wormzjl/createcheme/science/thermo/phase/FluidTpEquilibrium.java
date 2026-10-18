@@ -47,8 +47,8 @@ import java.util.Objects;
  *   step moves no {@code ln K_i} by {@link Settings#lnKTolerance()}. Rachford-Rice is solved in the minor phase's
  *   fraction (D24): the vapour fraction {@code beta} up to one half, above it the liquid fraction
  *   {@code delta = 1 - beta}, each to full relative precision, so a trace phase keeps its amount and its shares.</li>
- *   <li>Second-order finish (P3): when substitution has run {@link Settings#slowSubstitutionSteps()} steps with the
- *   dominant eigenvalue estimate above {@link Settings#slowEigenvalue()}, after {@link Settings#substitutionLimit()}
+ *   <li>Second-order finish (P3): when substitution has run {@link #SLOW_SUBSTITUTION_STEPS} steps with the
+ *   dominant eigenvalue estimate above {@link #SLOW_EIGENVALUE}, after {@link Settings#substitutionLimit()}
  *   steps, or when it collapses onto the feed or loses the split, Newton minimises the Gibbs energy over the vapour mole
  *   numbers {@code v_i} (liquid {@code l_i = z_i - v_i}, both carried so a trace keeps its precision): gradient
  *   {@code g_i = ln f_i^V - ln f_i^L}, Hessian
@@ -58,7 +58,7 @@ import java.util.Objects;
  *   search on {@code Delta G/RT = sum_i v_i (ln f_i^V - d_i) + l_i (ln f_i^L - d_i)} measured from the feed's
  *   {@code d_i = ln f_i(z)}, which it keeps negative: the start is a split below the feed's Gibbs energy (the
  *   substitution iterate, or else the stability test's stationary composition in a small amount), so the finish can
- *   never reach the trivial solution. Converged at {@code max |g_i| < }{@link Settings#fugacityTolerance()}.</li>
+ *   never reach the trivial solution. Converged at {@code max |g_i| < }{@link #FUGACITY_TOLERANCE}.</li>
  *   <li>The phase amounts are split per component: the smaller share is computed directly (capped at {@code n_i}) and
  *   the larger is {@code n_i} minus it, so they conserve each component to rounding, stay nonnegative, and a trace
  *   share keeps its relative precision.</li>
@@ -82,8 +82,8 @@ import java.util.Objects;
  * <p>Declared critical band (plan P3 section 6.2): a pure fluid (one component at least 0.95 of the amount) at reduced
  * temperature and pressure in [0.95, 1.1] x [0.8, 1.5], [0.90, 0.95] x [0.58, 0.74] widened by [0.95, 0.97] x [0.58, 0.8]
  * (D15), [1.05, 1.2] x [2, 3], or D14's corner [1.0, 1.1] x [1.5, 2] ({@link #pureBandBox}, P3 WP7d); a split
- * with {@code sum z_i (ln K_i)^2 <} {@link Settings#bandTieLine()}; a single mixture phase whose stability test met a
- * stationary point other than the feed within {@link Settings#bandStationaryDistance()} of it
+ * with {@code sum z_i (ln K_i)^2 <} {@link #BAND_TIE_LINE}; a single mixture phase whose stability test met a
+ * stationary point other than the feed within {@link #BAND_STATIONARY_DISTANCE} of it
  * ({@link TangentPlaneStability.Result#nearestStationaryDistance()}); a failed split whose last iterate or stability
  * seed was that short. Inside it a converged answer is graded {@link EquilibriumResult.CoverageGrade#RESEARCH_ONLY}, and
  * a failure is the typed not-converged result whose detail starts with {@link EquilibriumResult#CRITICAL_BAND} and whose
@@ -343,20 +343,14 @@ public final class FluidTpEquilibrium {
      *        which the state is pure coexistence
      * @param trivialDistance {@code sum ln K_i^2} below which substitution has collapsed onto the feed (Newton takes over)
      * @param stability settings of the stability tests
-     * @param slowSubstitutionSteps substitution steps after which a slow iteration hands over to Newton
-     * @param slowEigenvalue the dominant eigenvalue estimate above which substitution is slow
      * @param substitutionLimit substitution steps after which Newton takes over in any case
      * @param maximumNewtonIterations accepted Newton steps before {@link EquilibriumResult.Status#NOT_CONVERGED}
-     * @param fugacityTolerance Newton is converged at {@code max |ln f_i^V - ln f_i^L|} below this
-     * @param bandTieLine a split with {@code sum z_i (ln K_i)^2} below this is in the critical band
-     * @param bandStationaryDistance a single mixture phase whose stability test met a stationary point within this
-     *        {@code sum (ln W_i - ln z_i)^2} of the feed is in the critical band
      * @param mergeTieLine a split with {@code sum z_i (ln K_i)^2} below this ...
      * @param mergeVolumeGap ... and molar volumes within this relative gap is merged into one fluid
-     * @param maximumOuterIterations PH and UV (P3 WP6b): TP equilibria one search may evaluate (the PH temperature
-     *        search and the UV Newton phase count TP equilibria, the UV Newton phase stopping after 30 unless its last
-     *        step cut the residual fourfold; the nested UV temperature search counts its steps and each of its pressure
-     *        searches its TP equilibria) before {@link EquilibriumResult.Status#NOT_CONVERGED}
+     * @param maximumOuterIterations PH and UV: TP equilibria one search may evaluate (the PH temperature search and the
+     *        UV Newton phase count TP equilibria, the UV Newton phase stopping after 30 unless its last step cut the
+     *        residual fourfold; the nested UV temperature search counts its steps and each of its pressure searches its
+     *        TP equilibria) before {@link EquilibriumResult.Status#NOT_CONVERGED}
      * @param outerTolerance PH and UV: converged when the next step moves {@code T} (relative) and {@code ln P} by
      *        at most this, or a bracket is this narrow (relative), with the specification met to
      *        {@link FluidTpEquilibrium#SPECIFICATION_TOLERANCE} of {@code N R T} (energy) and in {@code ln V}
@@ -364,9 +358,7 @@ public final class FluidTpEquilibrium {
     public record Settings(double lnKTolerance, int maximumIterations, int accelerationCycle,
                            double coexistenceTolerance, double trivialDistance,
                            TangentPlaneStability.Settings stability,
-                           int slowSubstitutionSteps, double slowEigenvalue, int substitutionLimit,
-                           int maximumNewtonIterations, double fugacityTolerance,
-                           double bandTieLine, double bandStationaryDistance,
+                           int substitutionLimit, int maximumNewtonIterations,
                            double mergeTieLine, double mergeVolumeGap,
                            int maximumOuterIterations, double outerTolerance) {
         public static final Settings DEFAULT = new Settings(1.0e-10, 1000, 5, 1.0e-9, 1.0e-8,
@@ -376,34 +368,31 @@ public final class FluidTpEquilibrium {
             Objects.requireNonNull(stability, "stability");
             if (!(lnKTolerance > 0.0) || !Double.isFinite(lnKTolerance) || maximumIterations < 1 || accelerationCycle < 2
                     || !(coexistenceTolerance >= 0.0) || !Double.isFinite(coexistenceTolerance)
-                    || !(trivialDistance > 0.0) || !Double.isFinite(trivialDistance)
-                    || slowSubstitutionSteps < 1 || !(slowEigenvalue > 0.0) || substitutionLimit < 1
-                    || maximumNewtonIterations < 1 || !(fugacityTolerance > 0.0) || !Double.isFinite(fugacityTolerance)
-                    || !(bandTieLine >= 0.0) || !(bandStationaryDistance >= 0.0) || !(mergeTieLine >= 0.0)
+                    || !(trivialDistance > 0.0) || !Double.isFinite(trivialDistance) || substitutionLimit < 1
+                    || maximumNewtonIterations < 1 || !(mergeTieLine >= 0.0)
                     || !(mergeVolumeGap >= 0.0) || maximumOuterIterations < 2 || !(outerTolerance > 0.0)
                     || !(outerTolerance < 1.0e-3)) {
                 throw new IllegalArgumentException("Invalid equilibrium settings");
             }
         }
 
-        /** The P2 settings with the P3 defaults of the Newton finish, the critical band and merging. */
+        /** The core settings with the defaults of the Newton finish, merging and the PH and UV searches. */
         public Settings(double lnKTolerance, int maximumIterations, int accelerationCycle, double coexistenceTolerance,
                         double trivialDistance, TangentPlaneStability.Settings stability) {
             this(lnKTolerance, maximumIterations, accelerationCycle, coexistenceTolerance, trivialDistance, stability,
-                    10, 0.9, 50, 50, 1.0e-10, 0.1, 0.1, 1.0e-8, 1.0e-2);
-        }
-
-        /** The WP6a settings with the WP6b defaults of the PH and UV searches (100 evaluations, 1e-11). */
-        public Settings(double lnKTolerance, int maximumIterations, int accelerationCycle, double coexistenceTolerance,
-                        double trivialDistance, TangentPlaneStability.Settings stability,
-                        int slowSubstitutionSteps, double slowEigenvalue, int substitutionLimit,
-                        int maximumNewtonIterations, double fugacityTolerance, double bandTieLine,
-                        double bandStationaryDistance, double mergeTieLine, double mergeVolumeGap) {
-            this(lnKTolerance, maximumIterations, accelerationCycle, coexistenceTolerance, trivialDistance, stability,
-                    slowSubstitutionSteps, slowEigenvalue, substitutionLimit, maximumNewtonIterations, fugacityTolerance,
-                    bandTieLine, bandStationaryDistance, mergeTieLine, mergeVolumeGap, 100, 1.0e-11);
+                    50, 50, 1.0e-8, 1.0e-2, 100, 1.0e-11);
         }
     }
+
+    /** Substitution steps after which a slow iteration (dominant eigenvalue estimate above {@link #SLOW_EIGENVALUE}) hands over to Newton. */
+    public static final int SLOW_SUBSTITUTION_STEPS = 10;
+    public static final double SLOW_EIGENVALUE = 0.9;
+    /** Newton is converged at {@code max |ln f_i^V - ln f_i^L|} below this. */
+    public static final double FUGACITY_TOLERANCE = 1.0e-10;
+    /** A split with {@code sum z_i (ln K_i)^2} below this is in the critical band. */
+    public static final double BAND_TIE_LINE = 0.1;
+    /** A single mixture phase whose stability test met a stationary point within this {@code sum (ln W_i - ln z_i)^2} of the feed is in the critical band. */
+    public static final double BAND_STATIONARY_DISTANCE = 0.1;
 
     private final PhaseContract contract;
     private final CubicPhaseEvaluator evaluator;
@@ -2941,7 +2930,7 @@ public final class FluidTpEquilibrium {
             PhaseAmounts solid = new PhaseAmounts(PhaseKind.SOLID, forming.id(), t, p, w.basisAmounts,
                     forming.anchored().evaluate(t, p, w.solidState).copy());
             var deposition = new EquilibriumResult.Deposition(forming.id(), evaluator.components().get(forming.component()), drive,
-                    Double.NaN, w.feed[forming.component()], true, DEPOSITION_TRACE, 0, w.fluidEquilibria);
+                    Double.NaN, w.feed[forming.component()], true, 0, w.fluidEquilibria);
             return solidAnswer(competition, Classification.SOLID_PRESENT, List.of(solid), fluid, deposition,
                     (liquid ? "complete freezing: the pure " : "complete deposition: the pure ") + evaluator.components().get(forming.component())
                             + " is its crystal " + forming.id() + " (" + forces + "), the fluid vanishes", w);
@@ -3241,7 +3230,7 @@ public final class FluidTpEquilibrium {
         double[] solidAmounts = new double[basis];
         solidAmounts[slot] = solid;
         PhaseAmounts crystal = new PhaseAmounts(PhaseKind.SOLID, c.id(), t, p, solidAmounts, c.anchored().evaluate(t, p, w.solidState).copy());
-        var deposition = new EquilibriumResult.Deposition(c.id(), species, drive, residual, solid, complete, DEPOSITION_TRACE,
+        var deposition = new EquilibriumResult.Deposition(c.id(), species, drive, residual, solid, complete,
                 iterations, w.fluidEquilibria);
         String note = complete
                 ? "complete deposition of " + species + " as " + c.id() + ": at the trace limit y = " + DEPOSITION_TRACE
@@ -3420,7 +3409,7 @@ public final class FluidTpEquilibrium {
         PhaseAmounts crystal = new PhaseAmounts(PhaseKind.SOLID, c.id(), t, p, solidAmounts, c.anchored().evaluate(t, p, w.solidState).copy());
         List<PhaseAmounts> phases = new ArrayList<>(reduced.phases());
         phases.add(crystal);
-        var deposition = new EquilibriumResult.Deposition(c.id(), species, drive, residual, solid, complete, DEPOSITION_TRACE,
+        var deposition = new EquilibriumResult.Deposition(c.id(), species, drive, residual, solid, complete,
                 iterations, w.fluidEquilibria);
         String out = switch (classification) {
             case LIQUID_SOLID -> "freezes " + solid + " mol of " + species + " out of the liquid";
@@ -3781,7 +3770,7 @@ public final class FluidTpEquilibrium {
         } else if (beta == 0.0) {
             classification = Classification.SOLID_PRESENT;
             phases = List.of(new PhaseAmounts(PhaseKind.SOLID, c.id(), t, p, w.basisAmounts, solid.copy()));
-            deposition = new EquilibriumResult.Deposition(c.id(), species, Double.NaN, Double.NaN, amount, true, DEPOSITION_TRACE, 0, 0);
+            deposition = new EquilibriumResult.Deposition(c.id(), species, Double.NaN, Double.NaN, amount, true, 0, 0);
         } else {
             double[] fluidAmounts = new double[basis];
             double[] solidAmounts = new double[basis];
@@ -3801,8 +3790,7 @@ public final class FluidTpEquilibrium {
             classification = melting ? Classification.LIQUID_SOLID : Classification.VAPOR_SOLID;
             phases = List.of(new PhaseAmounts(fluidKind, null, t, p, fluidAmounts, fluid.copy()),
                     new PhaseAmounts(PhaseKind.SOLID, c.id(), t, p, solidAmounts, solid.copy()));
-            deposition = new EquilibriumResult.Deposition(c.id(), species, Double.NaN, Double.NaN, solidAmounts[slot], false,
-                    DEPOSITION_TRACE, 0, 0);
+            deposition = new EquilibriumResult.Deposition(c.id(), species, Double.NaN, Double.NaN, solidAmounts[slot], false, 0, 0);
         }
         return new EquilibriumResult(Specification.TP, EquilibriumResult.Status.CONVERGED, null, CONVERGED + "; " + note,
                 contract.identity(), competition, classification, phases, List.of(), solidCoverage(convergedCoverage, w),
@@ -3985,7 +3973,7 @@ public final class FluidTpEquilibrium {
         String note = "pure " + species + " at its family's triple point (" + t + " K, " + p + " Pa): vapour " + nv + ", liquid " + nl
                 + ", " + c.id() + " " + ns + " mol from the mole, energy and volume balances"
                 + (traces > 0.0 ? "; near-pure (D21): " + traces + " mol of other species in the " + (inVapour ? "vapour" : "liquid") : "");
-        var deposition = ns > 0.0 ? new EquilibriumResult.Deposition(c.id(), species, Double.NaN, Double.NaN, ns, false, DEPOSITION_TRACE, 0, 0) : null;
+        var deposition = ns > 0.0 ? new EquilibriumResult.Deposition(c.id(), species, Double.NaN, Double.NaN, ns, false, 0, 0) : null;
         EquilibriumResult answer = new EquilibriumResult(Specification.TP, EquilibriumResult.Status.CONVERGED, null, CONVERGED + "; " + note,
                 contract.identity(), competition, classification, phases, List.of(), solidCoverage(convergedCoverage, w),
                 diagnostics(w, null, false), null, deposition);
@@ -4347,7 +4335,7 @@ public final class FluidTpEquilibrium {
         String note = "three-phase point of the " + species + " binary with " + c.id() + " at (" + t3 + " K, " + p3 + " Pa): x = " + x3
                 + ", y = " + y3 + "; vapour " + nv + ", liquid " + nl + ", crystal " + si + " mol from the species and "
                 + (energy ? "energy" : "volume") + " balances";
-        var deposition = si > 0.0 ? new EquilibriumResult.Deposition(c.id(), species, Double.NaN, Double.NaN, si, false, DEPOSITION_TRACE, 0, 0) : null;
+        var deposition = si > 0.0 ? new EquilibriumResult.Deposition(c.id(), species, Double.NaN, Double.NaN, si, false, 0, 0) : null;
         return new EquilibriumResult(Specification.TP, EquilibriumResult.Status.CONVERGED, null, CONVERGED + "; " + note,
                 contract.identity(), competition, classification, phases, List.of(), solidCoverage(convergedCoverage, w),
                 diagnostics(w, null, false), null, deposition);
@@ -4771,7 +4759,7 @@ public final class FluidTpEquilibrium {
 
     private EquilibriumResult singlePhase(double t, double p, PhaseCompetition competition, Workspace w) {
         TangentPlaneStability.Result feed = w.feedResult;
-        boolean band = inBand(t, p, w) || feed.nearestStationaryDistance() < settings.bandStationaryDistance() && w.presentCount > 1;
+        boolean band = inBand(t, p, w) || feed.nearestStationaryDistance() < BAND_STATIONARY_DISTANCE && w.presentCount > 1;
         String why = band ? bandReason(t, p, w, feed.nearestStationaryDistance()) : null;
         if (w.presentCount == 1) {
             int only = w.present[0];
@@ -4869,7 +4857,7 @@ public final class FluidTpEquilibrium {
         PhaseState liquid = w.liquidState;
         PhaseState vapour = w.vaporState;
         boolean swapped = vapour.molarVolume() < liquid.molarVolume();
-        boolean band = inBand(t, p, w) || w.tieLine < settings.bandTieLine();
+        boolean band = inBand(t, p, w) || w.tieLine < BAND_TIE_LINE;
         boolean liquidLiquid = !band && w.liquidProductDenseLiquidLike && w.vapourProductDenseLiquidLike;
         PhaseAmounts lighter = new PhaseAmounts(liquidLiquid ? PhaseKind.LIQUID : PhaseKind.VAPOR, null, t, p,
                 expand(swapped ? w.liquidAmounts : w.vaporAmounts), (swapped ? liquid : vapour).copy());
@@ -4881,7 +4869,7 @@ public final class FluidTpEquilibrium {
 
     private EquilibriumResult failed(double t, double p, PhaseCompetition competition, Workspace w) {
         double seed = w.feedResult == null ? Double.NaN : w.seedDistance;
-        boolean band = inBand(t, p, w) || w.tieLine < settings.bandTieLine() || seed < settings.bandStationaryDistance();
+        boolean band = inBand(t, p, w) || w.tieLine < BAND_TIE_LINE || seed < BAND_STATIONARY_DISTANCE;
         String detail = band ? EquilibriumResult.CRITICAL_BAND + " (" + bandReason(t, p, w, seed) + "): " + w.failure : w.failure;
         return EquilibriumResult.notConverged(Specification.TP, contract.identity(), competition,
                 detail, diagnostics(w, w.feedResult, band));
@@ -5059,7 +5047,7 @@ public final class FluidTpEquilibrium {
                 break;
             }
             if (steps >= settings.substitutionLimit()
-                    || steps >= settings.slowSubstitutionSteps() && w.lambda > settings.slowEigenvalue()) {
+                    || steps >= SLOW_SUBSTITUTION_STEPS && w.lambda > SLOW_EIGENVALUE) {
                 newton = true;
                 break;
             }
@@ -5239,7 +5227,7 @@ public final class FluidTpEquilibrium {
             }
             w.lastChange = largest;
             w.tieLine = tie;
-            if (largest < settings.fugacityTolerance()) break;
+            if (largest < FUGACITY_TOLERANCE) break;
             if (!Double.isFinite(largest) || iteration >= settings.maximumNewtonIterations()) {
                 w.failure = "no convergence in " + w.newtonIterations + " Newton steps (max |ln f_V - ln f_L| " + largest + ")";
                 return false;
@@ -5622,7 +5610,7 @@ public final class FluidTpEquilibrium {
 
     private String bandReason(double t, double p, Workspace w, double stationary) {
         if (inBand(t, p, w)) return "critical band: pure fluid near its critical point";
-        if (w.tieLine < settings.bandTieLine()) return "critical band: short tie line (sum z ln K^2 = " + w.tieLine + ")";
+        if (w.tieLine < BAND_TIE_LINE) return "critical band: short tie line (sum z ln K^2 = " + w.tieLine + ")";
         return "critical band: incipient phase next to the feed (sum (ln w - ln z)^2 = " + stationary + ")";
     }
 
@@ -5757,9 +5745,9 @@ public final class FluidTpEquilibrium {
             case MERGED -> Classification.SINGLE_FLUID;
             default -> vapour > 0.0 ? singleClassification(w.vaporState, t, pc, w) : singleClassification(w.liquidState, t, p, w);
         };
-        boolean band = inBand(t, p, w) || outcome != SINGLE && w.tieLine < settings.bandTieLine()
+        boolean band = inBand(t, p, w) || outcome != SINGLE && w.tieLine < BAND_TIE_LINE
                 || outcome == SINGLE && w.presentCount > 1
-                && w.feedResult.nearestStationaryDistance() < settings.bandStationaryDistance();
+                && w.feedResult.nearestStationaryDistance() < BAND_STATIONARY_DISTANCE;
         String why = band ? bandReason(t, p, w, w.feedResult.nearestStationaryDistance())
                 + (outcome == MERGED ? "; " + mergedDetail(w) : "") : null;
         var split = freeWaterSplit(hydrocarbon, saturation, pc, partial, liquidWater, steam, frozen);

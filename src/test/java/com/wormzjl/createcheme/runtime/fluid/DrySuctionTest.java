@@ -55,7 +55,7 @@ class DrySuctionTest {
             assertEquals(c[2]==1,pump.refuses(supply,c[1]==1),Arrays.toString(c));
             assertEquals(c[2]==1,new InletPhase.Supply(0,7,PhasePort.BULK,1,0,0,c[0]).dry(c[1]==1),Arrays.toString(c));
         }
-        assertFalse(new InletPhase.Supply(0,7,PhasePort.BULK,0,0,0).dry(true),"no measured feed: never dry");
+        assertFalse(new InletPhase.Supply(0,7,PhasePort.BULK,0,0,0,Double.POSITIVE_INFINITY).dry(true),"no measured feed: never dry");
         assertEquals("ERROR: pump inlet dry (from node 7)",InletPhase.reason(pump,new InletPhase.Supply(0,7,PhasePort.BULK,1,0,0,0)));
         assertEquals("ERROR: compressor inlet dry (from node 7)",InletPhase.reason(compressor,new InletPhase.Supply(0,7,PhasePort.BULK,0,1,0,.002)));
     }

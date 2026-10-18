@@ -156,7 +156,7 @@ public final class FluidCheckpointCodec {
     }
     private static WorldTopologyLedger.Snapshot topologyBody(Reader r,long onlineTick,Function<PackageKey,FluidThermodynamics> models) {
         long nextIdentity=r.varlong();
-        int textCount=r.varint(MAXIMUM_STRINGS);var texts=new String[textCount];for(int i=0;i<textCount;i++)texts[i]=r.text(MAXIMUM_TEXT);
+        int textCount=r.varint(MAXIMUM_STRINGS);var texts=new String[textCount];for(int i=0;i<textCount;i++)texts[i]=r.text();
         int geometryCount=r.varint(MAXIMUM_PIPES);var geometries=new PipeResistance.Geometry[geometryCount];for(int i=0;i<geometryCount;i++)geometries[i]=new PipeResistance.Geometry(r.f64(),r.f64(),r.f64(),r.f64());
         int compositionCount=r.varint(MAXIMUM_PIPES);var compositions=new double[compositionCount][];for(int i=0;i<compositionCount;i++)compositions[i]=r.sparse(MAXIMUM_ARRAY);
         var tables=new Object[][]{texts,geometries,compositions};
@@ -398,7 +398,7 @@ public final class FluidCheckpointCodec {
         String dimension=strings.get(r.varint(Integer.MAX_VALUE),"unit of island "+id),packageId=strings.get(r.varint(Integer.MAX_VALUE),"unit of island "+id);
         var model=models.get(new PackageKey(packageId));
         if(model==null)throw new IllegalArgumentException("Island "+id+": its package "+packageId+" is not in the checkpoint's package table");
-        String status=r.text(MAXIMUM_TEXT);
+        String status=r.text();
         int fenceCount=r.varint(MAXIMUM_FENCES);var fences=new LinkedHashMap<UUID,Long>();
         for(int i=0;i<fenceCount;i++) {
             var event=new UUID(r.i64(),r.i64());long tick=r.i64();
@@ -413,7 +413,7 @@ public final class FluidCheckpointCodec {
             int boundaryCount=r.varint(MAXIMUM_BOUNDARIES);var boundaries=new ArrayList<ConservativeTransport.BoundaryTransfer>(boundaryCount);
             for(int i=0;i<boundaryCount;i++){long node=r.i64();var moles=r.sparse(MAXIMUM_ARRAY);double energy=r.f64();var solids=solids(r,model);int direction=r.u8()-1;boundaries.add(new ConservativeTransport.BoundaryTransfer(node,moles,energy,solids,direction));}
             int reasonCount=r.varint(MAXIMUM_REASONS);var reasons=new LinkedHashMap<String,Integer>();
-            for(int i=0;i<reasonCount;i++)if(reasons.put(r.text(MAXIMUM_TEXT),r.i32())!=null)throw r.invalid("duplicate rejection reason");
+            for(int i=0;i<reasonCount;i++)if(reasons.put(r.text(),r.i32())!=null)throw r.invalid("duplicate rejection reason");
             var endpointModes=modes(r,MAXIMUM_PIPES);var heads=r.sparse(MAXIMUM_PIPES);var endFlows=r.sparse(MAXIMUM_PIPES);
             int transferCount=r.varint(MAXIMUM_PIPES);var transfers=new ArrayList<PipeTransfer>(transferCount);
             for(int i=0;i<transferCount;i++){long pipe=r.i64();int count=r.varint(MAXIMUM_ARRAY);transfers.add(new PipeTransfer(pipe,stream(r,count,model),stream(r,count,model)));}
@@ -503,8 +503,8 @@ public final class FluidCheckpointCodec {
         int count=r.varint(SolidInventory.MAXIMUM_POPULATIONS);if(count==0)return SolidInventory.EMPTY;
         var populations=new ArrayList<SolidInventory.Population>(count);
         for(int i=0;i<count;i++) {
-            var saved=new SolidMaterial(r.text(MAXIMUM_TEXT),r.text(MAXIMUM_TEXT),r.f64(),r.f64());
-            populations.add(new SolidInventory.Population(record(saved,model),new ParticleSize(r.text(MAXIMUM_TEXT)),r.f64()));
+            var saved=new SolidMaterial(r.text(),r.text(),r.f64(),r.f64());
+            populations.add(new SolidInventory.Population(record(saved,model),new ParticleSize(r.text()),r.f64()));
         }
         var solids=new SolidInventory(populations);
         if(solids.populations().size()!=count)throw r.invalid("solid populations not in canonical form");
@@ -794,8 +794,8 @@ public final class FluidCheckpointCodec {
         }
         /** A count at most {@code maximum}. */
         int varint(int maximum){long value=varlong();if(value>maximum)throw invalid("count "+value+" exceeds "+maximum);return (int)value;}
-        String text(int maximumBytes) {
-            int length=varint(maximumBytes);need(length);
+        String text() {
+            int length=varint(MAXIMUM_TEXT);need(length);
             try{var text=StandardCharsets.UTF_8.newDecoder().onMalformedInput(CodingErrorAction.REPORT).onUnmappableCharacter(CodingErrorAction.REPORT).decode(ByteBuffer.wrap(data,position,length)).toString();position+=length;return text;}
             catch(CharacterCodingException malformed){throw invalid("malformed text");}
         }

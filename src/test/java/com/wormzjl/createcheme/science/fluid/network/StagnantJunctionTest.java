@@ -41,7 +41,7 @@ class StagnantJunctionTest {
         var hot = charge(250, 1.3e6, warm, .1);
         var cold = charge(140, 1e6, COLD_NITROGEN, .1);
         var pipe = new PipeResistance.Geometry(1, .004, .000045, 0);
-        return new PassiveNetwork(List.of(new PassiveNetwork.Reservoir(1, 0, hot), new PassiveNetwork.Reservoir(2, 0, hot, true),
+        return new PassiveNetwork(List.of(new PassiveNetwork.Reservoir(1, 0, hot), new PassiveNetwork.Reservoir(2, 0, hot, PassiveNetwork.NodeKind.JUNCTION),
                 new PassiveNetwork.Reservoir(3, 0, cold)), List.of(new PassiveNetwork.Pipe(10, 0, 1, pipe),
                 new PassiveNetwork.Pipe(11, 1, 2, pipe).withPorts(PassiveNetwork.PhasePort.BULK, PassiveNetwork.PhasePort.VAPOR)));
     }

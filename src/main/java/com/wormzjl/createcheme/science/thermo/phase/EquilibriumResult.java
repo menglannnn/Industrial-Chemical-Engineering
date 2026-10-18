@@ -149,13 +149,12 @@ public final class EquilibriumResult {
      *        deposition (the species is absent from the fluid) and for a coexistence from a balance
      * @param solidAmount moles in the crystal
      * @param complete whether the whole species deposited: the vapour holds none of it, because its equilibrium mole
-     *        fraction lies below {@code traceLimit} or no other species is carried (the vapour vanishes)
-     * @param traceLimit the vapour mole fraction below which a deposition counts as complete
+     *        fraction lies below {@link FluidTpEquilibrium#DEPOSITION_TRACE} or no other species is carried (the vapour vanishes)
      * @param iterations Newton steps of the solve for the solid amount (zero for a complete deposition without one)
      * @param fluidEquilibria fluid TP equilibria the answer evaluated (the feed's, and the re-flashes of the reduced feed)
      */
     public record Deposition(String crystal, String component, double feedDrivingForce, double residual, double solidAmount,
-                             boolean complete, double traceLimit, int iterations, int fluidEquilibria) {
+                             boolean complete, int iterations, int fluidEquilibria) {
         public Deposition {
             Objects.requireNonNull(crystal, "crystal");
             Objects.requireNonNull(component, "component");

@@ -75,7 +75,7 @@ public final class TranslatedPengRobinson {
      */
     public static TranslatedPengRobinson residualOnly(List<ThermoComponent> components, double[][] interactions,
                                                       double[] translations) {
-        return new TranslatedPengRobinson(components,interactions,null,new double[components.size()][6],translations,true);
+        return new TranslatedPengRobinson(components,interactions,null,new double[components.size()][6],translations,true,null,null,null,null);
     }
 
     /**
@@ -87,7 +87,7 @@ public final class TranslatedPengRobinson {
     public static TranslatedPengRobinson residualOnly(List<ThermoComponent> components, PairInteractions interactions,
                                                       double[] translations) {
         return new TranslatedPengRobinson(components,null,Objects.requireNonNull(interactions,"interactions"),
-                new double[components.size()][6],translations,true);
+                new double[components.size()][6],translations,true,null,null,null,null);
     }
 
     /**
@@ -106,13 +106,8 @@ public final class TranslatedPengRobinson {
                 Objects.requireNonNull(datumOffsets,"datumOffsets"),null,null);
     }
 
-    /** Exactly one of {@code interactions} (the constant matrix, {@code SPARSE_PAIRS}) and {@code pairModel} is set. */
-    private TranslatedPengRobinson(List<ThermoComponent> components, double[][] interactions, PairInteractions pairModel,
-                                   double[][] heatCapacityCoefficients, double[] translations, boolean residualOnly) {
-        this(components,interactions,pairModel,heatCapacityCoefficients,translations,residualOnly,null,null,null,null);
-    }
-
-    /** {@code idealGas} and {@code datumOffsets} are both set (the spine variant) or both {@code null}; so are the fit
+    /** Exactly one of {@code interactions} (the constant matrix, {@code SPARSE_PAIRS}) and {@code pairModel} is set.
+     * {@code idealGas} and {@code datumOffsets} are both set (the spine variant) or both {@code null}; so are the fit
      * ranges, which only the coefficient path takes. */
     private TranslatedPengRobinson(List<ThermoComponent> components, double[][] interactions, PairInteractions pairModel,
                                    double[][] heatCapacityCoefficients, double[] translations, boolean residualOnly,

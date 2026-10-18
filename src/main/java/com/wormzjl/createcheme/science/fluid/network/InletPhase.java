@@ -65,10 +65,6 @@ public final class InletPhase {
      * the largest share of its capacity held by what can feed the suction ({@link #held}; infinite for a generator).
      */
     public record Supply(int node,long nodeId,PassiveNetwork.PhasePort port,double vapourVolumeShare,double condensedMassShare,double largestSolidVolumeFraction,double heldShare) {
-        /** A supply whose feed is not measured: never dry. */
-        public Supply(int node,long nodeId,PassiveNetwork.PhasePort port,double vapourVolumeShare,double condensedMassShare,double largestSolidVolumeFraction) {
-            this(node,nodeId,port,vapourVolumeShare,condensedMassShare,largestSolidVolumeFraction,Double.POSITIVE_INFINITY);
-        }
         /** Whether the suction is dry for the next slice, given whether the device stood refused at the committed slice end. */
         public boolean dry(boolean refused){return heldShare<DRY_REFUSE||refused&&!(heldShare>=DRY_RESUME);}
     }

@@ -158,9 +158,8 @@ final class PhaseTestSupport {
                                                        double outerTolerance) {
         var s = settings;
         return new FluidTpEquilibrium.Settings(s.lnKTolerance(), s.maximumIterations(), s.accelerationCycle(),
-                s.coexistenceTolerance(), s.trivialDistance(), s.stability(), s.slowSubstitutionSteps(), s.slowEigenvalue(),
-                s.substitutionLimit(), s.maximumNewtonIterations(), s.fugacityTolerance(), s.bandTieLine(),
-                s.bandStationaryDistance(), s.mergeTieLine(), s.mergeVolumeGap(), maximumOuterIterations, outerTolerance);
+                s.coexistenceTolerance(), s.trivialDistance(), s.stability(), s.substitutionLimit(), s.maximumNewtonIterations(),
+                s.mergeTieLine(), s.mergeVolumeGap(), maximumOuterIterations, outerTolerance);
     }
 
     /** The network contract with the network's own free water ({@link #networkFreeWater}). */

@@ -116,14 +116,6 @@ public final class TangentPlaneStability {
             trialComposition = trialComposition.clone();
         }
 
-        /** The P1 form: no stationary point reported. */
-        public Result(Verdict verdict, double minimumTangentPlaneDistance, double[] trialComposition,
-                      PengRobinsonKernel.Root trialRoot, PengRobinsonKernel.Root feedRoot,
-                      int trials, int iterations, int kernelEvaluations, int derivativeEvaluations) {
-            this(verdict, minimumTangentPlaneDistance, trialComposition, trialRoot, feedRoot, trials, iterations,
-                    kernelEvaluations, derivativeEvaluations, Double.POSITIVE_INFINITY);
-        }
-
         @Override public double[] trialComposition() { return trialComposition.clone(); }
     }
 
@@ -303,7 +295,7 @@ public final class TangentPlaneStability {
     private static Result pureComponent(Workspace w, PengRobinsonKernel.Evaluation feedEvaluation, boolean twoRoots) {
         if (!twoRoots) {
             return new Result(Verdict.STABLE, 0.0, w.feed, w.feedRoot, w.feedRoot, 0, 0,
-                    w.evaluations, w.derivativeEvaluations);
+                    w.evaluations, w.derivativeEvaluations, Double.POSITIVE_INFINITY);
         }
         int k = w.present[0];
         PengRobinsonKernel.Evaluation other = feedEvaluation == w.feedVapor ? w.feedLiquid : w.feedVapor;
@@ -313,7 +305,7 @@ public final class TangentPlaneStability {
                         - (feedEvaluation.logFugacityCoefficient(k) + w.shift(w.feedRoot, k))
                 : other.logFugacityCoefficient(k) - feedEvaluation.logFugacityCoefficient(k);
         return new Result(Verdict.STABLE, -DeterministicMath.expm1(-gap), w.feed, opposite(w.feedRoot), w.feedRoot, 1, 0,
-                w.evaluations, w.derivativeEvaluations);
+                w.evaluations, w.derivativeEvaluations, Double.POSITIVE_INFINITY);
     }
 
     private Outcome runTrial(Workspace w, int trial) {
