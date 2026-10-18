@@ -30,7 +30,7 @@ import static org.junit.jupiter.api.Assertions.*;
  */
 class SlurryTankPumpTest {
     static final String DIMENSION="minecraft:overworld",PILOT="createcheme:pilot_cryogenic";
-    static final long VENT=1,TANK=3,PUMP=8;
+    static final long VENT=1,TANK=3,PUMP=8,SIDE_VOID=12;
     static final int METHANE=1,CO2=3;
     static final PipeResistance.Geometry BLOCK=new PipeResistance.Geometry(1,.05,PipeResistance.DEFAULT_ROUGHNESS_METRES,0);
     final FluidThermodynamics pilot=FluidTestSupport.model(MaterialCatalog.bundled(),PILOT);
@@ -55,11 +55,13 @@ class SlurryTankPumpTest {
         return InventoryEquilibrium.refresh(new PassiveNetwork(List.of(vessel),List.of()),pilot,()->{}).graph().reservoirs().getFirst();
     }
 
-    /** The world's compile of the tank, its vent and the pump line, the pump at {@code target} m3/s, minted. */
-    PassiveNetwork island(double target) {
-        var devices=List.of(device(VENT,0,3,0,Kind.VOID),device(2,0,2,0,Kind.PIPE),device(TANK,0,1,0,Kind.RESERVOIR),
+    /** The world's compile of the tank, its vent and the pump line, the pump at {@code target} m3/s, and {@code extra}
+     * devices, minted. */
+    PassiveNetwork island(double target,PhysicalFluidTopology.Device... extra) {
+        var devices=new ArrayList<>(List.of(device(VENT,0,3,0,Kind.VOID),device(2,0,2,0,Kind.PIPE),device(TANK,0,1,0,Kind.RESERVOIR),
                 device(4,0,0,0,Kind.PIPE),device(5,0,0,1,Kind.PIPE),device(6,0,0,2,Kind.PIPE),
-                device(PUMP,0,0,3,Kind.PUMP,SOUTH,new FlowControl.Pump(target,500000)),device(9,0,0,4,Kind.PIPE),device(10,0,0,5,Kind.VOID));
+                device(PUMP,0,0,3,Kind.PUMP,SOUTH,new FlowControl.Pump(target,500000)),device(9,0,0,4,Kind.PIPE),device(10,0,0,5,Kind.VOID)));
+        devices.addAll(List.of(extra));
         double[] air=new double[pilot.componentCount()];air[0]=1;
         var boundaries=new LinkedHashMap<Long,PassiveNetwork.Reservoir>();
         boundaries.put(TANK,slurryTank());
@@ -68,6 +70,15 @@ class SlurryTankPumpTest {
         var connected=compiled.islands().stream().filter(i->i.physicalIds().size()==devices.size()).toList();
         assertEquals(1,connected.size(),"one connected island: "+compiled.diagnostics());
         return PassiveNetwork.mintJunctions(connected.getFirst().graph(),pilot);
+    }
+    /** {@link #island(double, PhysicalFluidTopology.Device...)} with R7's side outlet, one block of pipe from the tank's
+     * east face to a void, closed by deposition: both directions, as the solid event closes a connection. */
+    PassiveNetwork islandWithClosedSideOutlet(double target) {
+        var graph=island(target,device(11,1,1,0,Kind.PIPE),device(SIDE_VOID,2,1,0,Kind.VOID));
+        int tank=node(graph,TANK),side=node(graph,SIDE_VOID);var pipes=new ArrayList<>(graph.pipes());int closed=0;
+        for(int e=0;e<pipes.size();e++){var p=pipes.get(e);if(p.first()==tank&&p.second()==side||p.first()==side&&p.second()==tank){pipes.set(e,p.withBlockedDirections(3));closed++;}}
+        assertEquals(1,closed,"one side outlet from the tank to its void");
+        return new PassiveNetwork(graph.reservoirs(),pipes,graph.scheduledTransfers());
     }
     /** The pump's suction junction: the pump connection's first node. */
     static FluidThermodynamics.State pumpJunction(PassiveNetwork graph){return graph.reservoirs().get(graph.pipes().get(edge(graph,FlowControl.Pump.class)).first()).state();}
@@ -111,5 +122,21 @@ class SlurryTankPumpTest {
         assertNotEquals(FlowControl.Mode.INLET_WRONG_PHASE,last.endpointModes().get(pump),"the closure the slow target left does not leave the suction dry");
         assertEquals(0,graph.pipes().get(line).blockedDirections(),"the pump's drive suspends the crystals: the line opens");
         assertEquals(2.2,last.averageMassFlows()[pump],.15,"the pump draws about 2.2 kg/s");
+    }
+
+    /**
+     * Test world row 9, the fast pump (H2; owner decision D40 A): a pump's start mode reads its own lines only. The pump
+     * draws 5 L/s of the slurry from the tank's bottom while R7's side outlet stands closed by deposition, as the rig's
+     * side outlet closed at its 1.02 m/s threshold. Physics: nothing in the pump's own lines changed, so it goes on at its
+     * target, about 2.2 kg/s, its suction junction a few kPa above the tank. Before the rule, any blocked connection in the
+     * island started every pump on its head limit: there the pump drew about 20 kg/s, its liquid-only suction junction fell
+     * to the 1 Pa box floor, and the step stalled at every size (the rig held for good at tick 5075, |r| 0.4575).
+     */
+    @Test void aSideOutletClosedByDepositionLeavesThePumpOnItsTarget() {
+        var graph=islandWithClosedSideOutlet(.005);var retained=new RetainedSolver();PassiveIntervalSolver.Result last=null;
+        for(int k=1;k<=2;k++){last=slice(retained,last,graph,"side outlet closed "+k);graph=last.graph();}
+        int pump=edge(graph,FlowControl.Pump.class);
+        assertEquals(FlowControl.Mode.PUMP_TARGET,last.endpointModes().get(pump),"the pump stays on its target");
+        assertEquals(2.2,last.averageMassFlows()[pump],.15,"the pump draws about 2.2 kg/s of the slurry");
     }
 }
