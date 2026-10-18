@@ -8,7 +8,7 @@ package com.wormzjl.createcheme.science.thermo.phase;
  * A request that would need it is refused with
  * {@link EquilibriumResult.UnsupportedReason#WATER_CHEMISTRY_NOT_MODELLED}: water co-present with a species the
  * package declares water-reactive ({@link PhaseContract#waterChemistrySpecies()}, e.g. ammonia, whose dissolution
- * and hydrates the approximation cannot describe), or a competition with gas hydrates.</p>
+ * hydrates the approximation cannot describe).</p>
  */
 public enum WaterParticipation {
     /** Water is not a component of the package; a request carrying water names a species outside the package. */

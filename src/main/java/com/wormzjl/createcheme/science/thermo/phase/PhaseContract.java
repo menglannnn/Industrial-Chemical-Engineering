@@ -19,7 +19,7 @@ import java.util.Set;
  * <ul>
  *   <li>Water: {@link WaterParticipation#NONE} names no water component; {@link WaterParticipation#SEPARATE_FREE_WATER}
  *   names one in the basis. {@link #waterChemistrySpecies()} lie in the basis and are not the water itself.</li>
- *   <li>Competitions: at least one; none with gas hydrates, because no P2 water participation models them.</li>
+ *   <li>Competitions: at least one.</li>
  *   <li>The domain names exactly the basis.</li>
  *   <li>The fluid coverage grade is one an answer can have ({@code QUALIFIED}, {@code ESTIMATED_DECLARED_ERROR} or
  *   {@code RESEARCH_ONLY}).</li>
@@ -50,11 +50,6 @@ public record PhaseContract(String packageId, ThermoIdentity identity, List<Stri
         }
         qualifiedCompetitions = Set.copyOf(qualifiedCompetitions);
         if (qualifiedCompetitions.isEmpty()) throw new IllegalArgumentException("A package qualifies at least one competition");
-        for (PhaseCompetition competition : qualifiedCompetitions) {
-            if (competition.hydrates()) {
-                throw new IllegalArgumentException("No water participation of P2 models hydrates; a package cannot qualify them");
-            }
-        }
         waterChemistrySpecies = Set.copyOf(waterChemistrySpecies);
         for (String species : waterChemistrySpecies) {
             if (!components.contains(species) || species.equals(waterComponent)) {
@@ -138,7 +133,7 @@ public record PhaseContract(String packageId, ThermoIdentity identity, List<Stri
     public PhaseCompetition crystalCompetition() {
         PhaseCompetition best = null;
         for (PhaseCompetition competition : qualifiedCompetitions) {
-            if (competition.crystals().isEmpty() || competition.hydrates()) continue;
+            if (competition.crystals().isEmpty()) continue;
             if (best == null || competition.crystals().size() > best.crystals().size()
                     || competition.crystals().size() == best.crystals().size() && competition.toString().compareTo(best.toString()) < 0) {
                 best = competition;

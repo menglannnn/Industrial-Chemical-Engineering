@@ -81,7 +81,7 @@ class GasSolidEquilibriumTest {
         assertNull(network.crystalCompetition());
         assertEquals(CRYSTALS, network.resolve(CRYSTALS));
         assertTrue(CRYSTALS.crystalsCompete() && !CRYSTALS.fluidOnly() && CRYSTALS.crystals().isEmpty());
-        assertThrows(IllegalArgumentException.class, () -> new PhaseCompetition(new java.util.TreeSet<>(Set.of(CRYSTAL)), false, true));
+        assertThrows(IllegalArgumentException.class, () -> new PhaseCompetition(new java.util.TreeSet<>(Set.of(CRYSTAL)), true));
 
         // Named or the package's: the same answer, which names the resolved set.
         var ws = SERVICE.newWorkspace();

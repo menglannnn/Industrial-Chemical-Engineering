@@ -4478,10 +4478,6 @@ public final class FluidTpEquilibrium {
             throw new IllegalArgumentException("A request names the contract basis " + contract.components() + ", got " + request.species());
         }
         System.arraycopy(request.amountsView(), 0, w.basisAmounts, 0, basis);
-        if (competition.hydrates()) {
-            return unsupported(specification, competition, UnsupportedReason.WATER_CHEMISTRY_NOT_MODELLED,
-                    "gas hydrates need water chemistry; water participation " + contract.water() + " models none");
-        }
         if (waterIndex >= 0 && w.basisAmounts[waterIndex] > 0.0) {
             for (int i : waterChemistry) {
                 if (w.basisAmounts[i] > 0.0) {

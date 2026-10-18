@@ -16,7 +16,6 @@ import com.wormzjl.createcheme.science.thermo.phase.EquilibriumResult.Status;
 import com.wormzjl.createcheme.science.thermo.phase.EquilibriumResult.UnsupportedReason;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.TreeSet;
 import java.util.function.DoubleUnaryOperator;
 import org.junit.jupiter.api.Test;
 
@@ -554,12 +553,9 @@ class FluidTpEquilibriumPhUvTest {
         var crystal = service.ph(EquilibriumRequest.ph(1.0e6, 0.0, contract.components(), PhaseTestSupport.over(contract, "Methane", 1.0),
                 PhaseCompetition.withCrystals("co2_solid_i")), workspace);
         assertEquals(UnsupportedReason.PHASE_COMPETITION_NOT_QUALIFIED, crystal.reason());
-        var hydrates = service.uv(EquilibriumRequest.uv(0.0, 1.0e-3, contract.components(), PhaseTestSupport.over(contract, "Methane", 1.0, "Water", 1.0),
-                new PhaseCompetition(new TreeSet<>(), true)), workspace);
-        assertEquals(UnsupportedReason.WATER_CHEMISTRY_NOT_MODELLED, hydrates.reason());
         var waterWithoutModel = service.uv(EquilibriumRequest.uv(0.0, 1.0e-3, contract.components(), PhaseTestSupport.over(contract, "Methane", 1.0, "Water", 1.0), PhaseCompetition.FLUID_ONLY), workspace);
         assertEquals(UnsupportedReason.NOT_IMPLEMENTED, waterWithoutModel.reason());
-        for (var result : List.of(crystal, hydrates, waterWithoutModel)) {
+        for (var result : List.of(crystal, waterWithoutModel)) {
             assertEquals(Status.UNSUPPORTED, result.status());
             assertEquals(0, result.diagnostics().outerIterations());
         }

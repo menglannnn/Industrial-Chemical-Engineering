@@ -22,7 +22,6 @@ import com.wormzjl.createcheme.science.thermo.phase.PhaseTestSupport.StubIdealGa
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
-import java.util.TreeSet;
 import java.util.function.DoubleUnaryOperator;
 import org.junit.jupiter.api.Test;
 
@@ -270,16 +269,12 @@ class FluidTpEquilibriumTest {
         var contract = service.contract();
         List<EquilibriumResult> refused = new ArrayList<>();
 
-        // Free water is in the contract but not yet in this service; hydrates are water chemistry nothing models.
+        // Free water is in the contract but not yet in this service.
         var water = service.tp(EquilibriumRequest.tp(300.0, 1.0e6, contract.components(), PhaseTestSupport.over(contract, "Methane", 1.0, "Water", 1.0),
                 PhaseCompetition.FLUID_ONLY));
         assertEquals(UnsupportedReason.NOT_IMPLEMENTED, water.reason());
         assertTrue(water.detail().contains("P3"));
         refused.add(water);
-        var hydrates = service.tp(EquilibriumRequest.tp(280.0, 1.0e6, contract.components(), PhaseTestSupport.over(contract, "Methane", 1.0, "Water", 1.0),
-                new PhaseCompetition(new TreeSet<>(), true)));
-        assertEquals(UnsupportedReason.WATER_CHEMISTRY_NOT_MODELLED, hydrates.reason());
-        refused.add(hydrates);
 
         // A crystal the package is not qualified for: refused, not answered fluid-only.
         var crystal = service.tp(EquilibriumRequest.tp(300.0, 1.0e6, contract.components(), PhaseTestSupport.over(contract, "Methane", 1.0),
@@ -364,9 +359,6 @@ class FluidTpEquilibriumTest {
         assertEquals(UnsupportedReason.PHASE_COMPETITION_NOT_QUALIFIED, otherCrystal.reason());
 
         // The contract refuses what no P2 water participation can back.
-        assertThrows(IllegalArgumentException.class, () -> new PhaseContract("x", identity, basis,
-                WaterParticipation.SEPARATE_FREE_WATER, "Water", Set.of(new PhaseCompetition(new TreeSet<>(), true)), Set.of(),
-                PhaseDomain.open("x", basis), new EquilibriumResult.Coverage(CoverageGrade.RESEARCH_ONLY, "")));
         assertThrows(IllegalArgumentException.class, () -> new PhaseContract("x", identity, basis, WaterParticipation.NONE,
                 "Water", Set.of(PhaseCompetition.FLUID_ONLY), Set.of(), PhaseDomain.open("x", basis),
                 new EquilibriumResult.Coverage(CoverageGrade.RESEARCH_ONLY, "")));

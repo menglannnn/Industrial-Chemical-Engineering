@@ -109,9 +109,6 @@ class G3F9DataRangeBoundaryTest {
         assertEquals(EquilibriumResult.UnsupportedReason.PHASE_COMPETITION_NOT_QUALIFIED, crystal.reason());
         table.row("CO2-I crystal (research-only record)", "pilot engine contract", "-", "competition with CO2-I at 180 K", crystal.status() + ", "
                 + crystal.reason());
-        var hydrate = engine.tp(EquilibriumRequest.tp(280, 1e6, components, new double[] {0.5, 0, 0, 0, 0.5}, new PhaseCompetition(new java.util.TreeSet<>(), true)), ews);
-        assertEquals(EquilibriumResult.Status.UNSUPPORTED, hydrate.status());
-        table.row("hydrates (D8)", "pilot engine contract", "-", "competition with hydrates", hydrate.status() + ", " + hydrate.reason());
         // Past the envelope the contract's answer is graded extrapolated, the envelope named; just inside it is not.
         var below = engine.tp(EquilibriumRequest.tp(300, 9.95e6, components, new double[] {1, 0, 0, 0, 0}, PhaseCompetition.FLUID_ONLY), ews);
         assertTrue(below.converged() && below.coverage().grade() != CoverageGrade.EXTRAPOLATED, below.coverage().toString());
