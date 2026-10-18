@@ -20,89 +20,45 @@ public final class PassiveStepSolver {
      */
     public static final double GRAVITY=9.80665;
     /**
-     * How far below its own difference floor a solid moment unknown stops bounding the Newton step
-     * length. The solid difference floors are {@code max(1e-6, encoded value)}, so on a node whose
-     * moments are dust this is a scaled value of {@value #SOLID_CLAMP_FRACTION}e-6.
-     *
-     * <p>Swept on the ten- and thirty-reservoir water chains at 0 (the unfloored rule), 1e-6, 1e-3
-     * and 1, i.e. scaled floors of 0, 1e-12, 1e-9 and 1e-6. All three nonzero values give exactly
-     * the same accepted/rejected counts and no line-search stall anywhere; 0 still fails the
-     * thirty-reservoir chain outright. The smallest that works is kept, so the exemption covers
-     * only values at which {@code x + alpha*d} is bitwise {@code x} for every unknown of order one
-     * and no backtrack could produce a different residual anyway.
+     * How far below its own difference floor a solid moment unknown stops bounding the Newton step length (the floors are
+     * {@code max(1e-6, encoded value)}). Swept at 0, 1e-6, 1e-3 and 1 on the ten- and thirty-reservoir water chains: every
+     * nonzero value gives the same accepted and rejected counts, 0 fails the thirty-reservoir chain; the smallest kept.
      */
     private static final double SOLID_CLAMP_FRACTION=1e-6;
     /**
-     * How far below its own difference floor a fluid amount unknown stops bounding the Newton step
-     * length, and what a trial keeps of it instead: {@link Equations#project} holds such a trace at
-     * {@value #TRACE_RETENTION} of its value rather than let the whole step shrink to that trace's
-     * size. The same fraction as {@link #SOLID_CLAMP_FRACTION}, for the same reason: at a value this
-     * far below the scale the Jacobian's own differences resolve the unknown on, the one-sided
-     * difference step is a million times the unknown itself.
-     *
-     * <p>The case it settles is a connection whose flow the step reverses. A vessel's transported
-     * amounts are linearized with the donor of the current flow sign, so a step that turns a
-     * connection around predicts that the vessel on the far side loses the <em>near</em> side's
-     * composition. Where that vessel holds a species only as a trace - the {@code 1e-12} entry trace
-     * {@code initialPhaseSeeds} plants for every reachable component, or the 1e-14 to 1e-30 a reversal
-     * has already carried there - the prediction drives it negative by orders of magnitude, and
-     * {@link Equations#maximumStep}'s {@code .99*x/-d} rule then cut every step of the whole island
-     * to that trace's size: 2e-10 of a step at the first iteration, 2e-12 at the next, until the line
-     * search reported a stall at a residual its own direction would have removed. Measured on every
-     * pumped fill of a chain of nitrogen tanks with the placement defaults: water entering the first
-     * tank evaporates into its dry nitrogen, cools it about 17 K to its wet-bulb temperature within a
-     * few milliseconds, its pressure drops about 4.5 kPa, and every connection downstream reverses;
-     * 73 of the 76 Newton failures of the three-tank chain's first interval and every one of the
-     * six-tank chain's held retries in game ({@code Newton line search stalled at residual 0.096...})
-     * were this limiter on a steam trace in the second tank. See
-     * {@code documentation/fluid-followups/FLUID_PUMPED_FILL_REVIEW.md}.
-     *
-     * <p>Projecting instead is safe because such a trace is invisible to every row the Newton
-     * converges on: its material row is scaled by the node's whole amount (a gas node, or a trace
-     * the node did not hold at the start of the step), so a trace below the floor moves it by less
-     * than {@code 1e-10}, below the tightest tolerance; its equilibrium and closure rows carry it at
-     * the same order. Inventories are rebuilt from the converged flows by
-     * {@link ConservativeTransport#reconstruct}, so conservation never depends on the value the
-     * projection kept. In a liquid-full node whose trace is resolved against its own reference the
-     * difference floor is that trace itself, so only dust a millionth of it is exempt.
+     * How far below its own difference floor a fluid amount unknown stops bounding the Newton step length, and what a
+     * trial keeps of it instead: {@link Equations#project} holds such a trace at {@value #TRACE_RETENTION} of its value
+     * rather than let the whole step shrink to the trace's size. The case: a connection the step reverses predicts that
+     * the far vessel loses the near side's composition, drives a {@code 1e-12} entry trace negative by orders of magnitude,
+     * and the {@code .99*x/-d} rule of {@link Equations#maximumStep} cut every step of the island to 2e-10 and then 2e-12
+     * until the line search stalled (73 of the 76 Newton failures of a three-tank pumped fill). Safe because such a trace
+     * moves every row it enters by less than 1e-10, and inventories are rebuilt from the converged flows by
+     * {@link ConservativeTransport#reconstruct}.
      */
     private static final double TRACE_CLAMP_FRACTION=1e-6,TRACE_RETENTION=.01;
     /**
-     * How far below its stated capacity the saturated filter inlet aims. The committed cake is
-     * reconstructed from the converged flow by a different summation than the loading row solves,
-     * so a law aimed exactly at capacity lands within a unit in the last place of it on either
-     * side, and a cake one ULP over its own capacity is not a state the owned inventory should
-     * ever hold. Aiming a hair under makes the landing one-sided while leaving it at capacity to
-     * far better than any audit resolves; {@link SolidEventIntegrator} treats a cake this close to
-     * capacity as having met it.
+     * How far below its stated capacity the saturated filter inlet aims: the committed cake is reconstructed by another
+     * summation than the loading row solves, so a law aimed exactly at capacity lands one ULP over it on either side;
+     * aiming a hair under makes the landing one-sided, and {@link SolidEventIntegrator} treats a cake this close as full.
      */
     private static final double FILTER_CAPACITY_MARGIN=1e-12;
     /**
-     * The share of a row's gap a chord step may leave before it stops being worth taking ({@link Equations#linearisationHolds}).
-     * A chord step on a row whose reused Jacobian states the slope s where the row's own is t moves that row by t/s of its
-     * gap and leaves |1 - t/s| of it: a stated slope twice the row's own closes half (the turbulent law walking towards
-     * rest, A371), and one two thirds of it overshoots by half and the residual changes sign. Past one half either way a
-     * chord step does no better than the halving a fresh step makes, so the reused Jacobian saves nothing.
+     * The share of a row's gap a chord step may leave before it is not worth taking ({@link Equations#linearisationHolds}):
+     * a reused Jacobian stating slope s where the row's own is t leaves |1 - t/s| of the gap; past one half either way the
+     * chord step does no better than the halving a fresh step makes.
      */
     static final double CHORD_CONTRACTION=.5;
     /** Whether a chord step still closes at least half of a row's gap where the Jacobian states the slope {@code stated} and
      * the row's own is {@code own} ({@link #CHORD_CONTRACTION}). */
     static boolean chordHolds(double stated,double own){return Math.abs(1-own/stated)<=CHORD_CONTRACTION;}
     /**
-     * The holdup of a junction, in seconds of its largest connection's velocity-cap flow: a junction's buffer holds
-     * {@code m_J = HOLDUP_TAU * max over its connections of rho_seed * minimumArea * velocityLimit(seed)} of fluid, minted
-     * from its seed state when it is first solved; see {@link PassiveNetwork#sizeJunctionHoldups}.
-     *
-     * <p>Why a junction has a buffer: a junction without one mixes by a ratio closure, the inflow-weighted mixture of
-     * what arrives, which is singular at zero through-flow, and an island coming to rest drives every junction there. With
-     * a holdup the junction's mixing and enthalpy rows are the backward-Euler vessel rows
-     * {@code (m_J/dt + Q) w = (m_J/dt) w_old + sum q w_e}, regular at Q = 0, and the reconstruction states the junction with
-     * the same row, its mass pinned at m_J ({@code ConservativeTransport.pinnedFlows}). The buffer is the row's state, not
-     * inventory (owner decision D46): nothing is booked at a mint or a destroy, and the ledger reports the buffers' change
-     * as its own term ({@link #checkConservation}). The holdup is a numerical
-     * regularisation sized to the flow, not to the throughput over a step (the longest step is 20 s): its mixing lag at
-     * full flow is m_J/Q = tau. See documentation/2026-09-24-mixed-gas-junction/HANDOFF_REVIEW.md 7.2, 7.6 and 7.10, and
-     * decision D2 of that batch's DECISION_LOG.md.
+     * The holdup of a junction, in seconds of its largest connection's velocity-cap flow: its buffer holds
+     * {@code m_J = HOLDUP_TAU * max over its connections of rho_seed * minimumArea * velocityLimit(seed)}, minted from its
+     * seed when first solved ({@link PassiveNetwork#sizeJunctionHoldups}). Without a buffer a junction mixes by a ratio
+     * closure that is singular at zero through-flow; with one its mixing and enthalpy rows are the backward-Euler vessel
+     * rows {@code (m_J/dt + Q) w = (m_J/dt) w_old + sum q w_e}, regular at Q = 0. The buffer is the row's state, not
+     * inventory (owner decision D46): nothing is booked at a mint, and the ledger reports the buffers' change as its own
+     * term ({@link #checkConservation}). A numerical regularisation sized to the flow: its mixing lag at full flow is tau.
      */
     static final double HOLDUP_TAU=.05;
     /** A connection's cap state ({@link Equations#capDirections}): on its law, or not decided yet (decided on the next
@@ -126,10 +82,8 @@ public final class PassiveStepSolver {
     }
     /**
      * Which connections of {@code graph} this solve holds in {@link FlowControl.Mode#INLET_WRONG_PHASE}: the slice's
-     * refusals when an interval solver set them ({@link #refuseInlets}: decided once per slice at its start, on the
-     * committed state and the committed endpoint modes, so every step, rate seed and certified replay of the slice agrees);
-     * otherwise, for a step solver used on its own, {@link InletPhase#decide} on this solve's input states, with the
-     * carried modes as the hysteresis input and the step as the slice (a rate solve: the leading phase).
+     * refusals when an interval solver set them ({@link #refuseInlets}, decided once per slice on the committed state so
+     * every step and replay of the slice agrees); otherwise {@link InletPhase#decide} on this solve's input states.
      */
     private boolean[] refusedInlets(PassiveNetwork graph,boolean carryModes,double dt) {
         boolean[] refused=new boolean[graph.pipes().size()];
@@ -141,14 +95,11 @@ public final class PassiveStepSolver {
         return InletPhase.decide(model,graph,carryModes?previousModes:null,rateOnly?0:dt);
     }
     /**
-     * Whether a mover's target mass flow on the start state ({@code Q rho_s}, the suction end's density) exceeds the
-     * velocity cap of a link on its suction walk ({@link InletPhase#walk}: each link's cap on the stream its own donor end
-     * draws, {@link #massFlowLimit}), or a link of the walk may not carry flow towards the device at all. Such a target
-     * has no solution (the target row fixes the device's flow, the cap the suction line's, and the junction balances
-     * equate them), so the device starts on its head limit, where the flow is free (plan 3.6, "Target above what the
-     * suction can deliver"). A port's D11 capacities bound only the phases before its last, never its total (decision
-     * A22), so they are no limit here; a port that would run into another phase is the inlet check's business. A device
-     * drawing straight from its first node walks no link, and the pump edge's own cap is tested by the caller.
+     * Whether a mover's target mass flow on the start state exceeds the velocity cap of a link on its suction walk
+     * ({@link InletPhase#walk}, each link's cap on the stream its donor end draws, {@link #massFlowLimit}), or a link of
+     * the walk may not carry flow towards the device at all. Such a target has no solution, so the device starts on its
+     * head limit, where the flow is free. A port's capacities bound only the phases before its last, never its total, so
+     * they are no limit here; a device drawing straight from its first node walks no link.
      */
     private boolean suctionCapped(PassiveNetwork graph,int edge,FlowControl.Mover mover) {
         var walk=InletPhase.walk(graph,edge);
@@ -170,19 +121,13 @@ public final class PassiveStepSolver {
     /** The driving pressure (Pa) a closed run's end states must exceed in an allowed direction to be reopened. */
     static double reopenBand(double pa,double pb){return Math.max(1,1e-6*Math.max(Math.abs(pa),Math.abs(pb)));}
     /**
-     * The passive connections a converged step holds closed ({@code boundaryClosed}, i.e. accepted mode CLOSED; not a
-     * connection blocked both ways before the solve) whose run - the maximal chain of closed passive connections through
-     * degree-two junctions no actuator touches, the run {@link #closeDeadHeads} decides on - is driven by the step's own
-     * end states in a direction every link allows, by more than {@link #reopenBand}. A forward run stands in the first
-     * end's fluid and a reverse run in the second's, as in {@link #closeDeadHeads}. A junction end counts only while one
-     * of its connections is open in the step, so its pressure is a solved hydraulic pressure; a junction every
-     * connection of which is closed says nothing.
-     *
-     * <p>Why: {@link #closeDeadHeads} and {@link #closeIllegalStarts} decide a closure on the solve's start point, and the
-     * pass loop never reopens a boundary closure within a solve. A backward-Euler step is solved once, so a step that
-     * starts closed and should open part-way (an injection into tanks at rest, a withdrawal from a dead-headed tank) would
-     * be solved shut throughout, and the tanks would bottle up or starve for the whole step: 2.8 kPa at 13 s on a 5 s
-     * slice (review 8.8 (b) and (c)). The interval solver refuses such a step and solves it again with the run exempt.
+     * The passive connections a converged step holds closed ({@code boundaryClosed}) whose run (the chain of closed passive
+     * connections through degree-two junctions no actuator touches, as {@link #closeDeadHeads} decides it) is driven by the
+     * step's own end states in a direction every link allows, by more than {@link #reopenBand}; a forward run stands in
+     * the first end's fluid, a reverse run in the second's, and a junction end counts only while one of its connections
+     * is open. Closures are decided on the solve's start point and never reopened within a solve, so a step that should
+     * open part-way (an injection into tanks at rest) would be solved shut throughout: the interval solver refuses such a
+     * step and solves it again with the run exempt.
      */
     Set<PassiveNetwork.Pipe.Identity> reopenable(PassiveNetwork graph,Result result) {
         int edges=graph.pipes().size(),nodes=graph.reservoirs().size();
@@ -257,16 +202,11 @@ public final class PassiveStepSolver {
      * rate-only solve warm-starts only from flows recorded at value-identical input states; see {@link #startPoint}. */
     private List<FluidThermodynamics.State> previousInputStates=List.of(),inputStates=List.of();
     /**
-     * The device active set the last pass of the last solve on this graph settled on.
-     *
-     * <p>A pump standing on its head limit, or at its own shutoff corner, is a property of the
-     * island's state and not of one step. Restarting every solve on the target branch makes each
-     * one re-walk the whole power-law hydraulic curve down from a flow the head limit has already
-     * refused - 9.96 kg/s to 0.07 near shutoff - and the closer the discharge sits to shutoff the
-     * longer that walk is, until it no longer fits in the Newton iteration budget at any step size.
-     * Starting where the previous point ended makes the first pass the right one and its Newton a
-     * correction rather than a descent. Valid only while {@link #previousPipes} and
-     * {@link #previousNodeIds} still describe this graph.
+     * The device active set the last pass of the last solve on this graph settled on. A pump on its head limit or at its
+     * shutoff corner is a property of the island's state, not of one step: restarting every solve on the target branch
+     * re-walks the power-law curve down from a flow the limit has refused (9.96 kg/s to 0.07 near shutoff) until it no
+     * longer fits the Newton budget at any step size. Valid only while {@link #previousPipes} and {@link #previousNodeIds}
+     * still describe this graph.
      */
     private List<FlowControl.Mode> previousModes=List.of();
     /**
@@ -290,23 +230,13 @@ public final class PassiveStepSolver {
     boolean backwardEulerCold(PassiveNetwork graph){return !(beAcceptedPipes.equals(identities(graph))&&Arrays.equals(beAcceptedNodeIds,nodeIds(graph)));}
     /**
      * Puts this solver, at the start of an island job, in the state a fresh solver would be in given only the island's
-     * committed interval {@code committed} (null when the job's island has none on this structure), so a job's solves
-     * depend on the committed interval and the slice and not on what this solver did in earlier jobs (see
-     * {@link PassiveIntervalSolver#replayStart}).
-     * <ul>
-     * <li>No Newton opens on a factorization from an earlier job: every retained workspace's numeric Jacobian and LU are
-     * dropped, and the dt-keyed workspaces themselves. The sparsity pattern, colouring and fill-reducing ordering stay:
-     * they are functions of the structure only.</li>
-     * <li>The warm start is the committed endpoint: the first step starts from the committed interval's end flows and
-     * heads ({@link #startPoint}), recorded at its end states, exactly as every later step starts from the step before.
-     * The pump active-set carry ({@link #previousModes}) is its endpoint modes (a pump on its head limit or CLOSED there
-     * opens there). Nothing comes from whatever this solver solved last (a refused step, an uncommitted planner trial, a
-     * rate solve). With no committed interval on this structure, the first solve starts from {@code initialMassFlows} of
-     * the job's states.</li>
-     * <li>"This structure has been accepted" (the cold start and the void-start history gate) is true exactly when the
-     * island has a committed interval on this structure.</li>
-     * <li>The reopen exemption and the retained last solve are dropped.</li>
-     * </ul>
+     * committed interval {@code committed} (null without one on this structure), so a job's solves depend on the committed
+     * interval and the slice, not on earlier jobs ({@link PassiveIntervalSolver#replayStart}): every retained numeric
+     * Jacobian and LU is dropped (the sparsity pattern, colouring and ordering stay, being functions of the structure);
+     * the first step starts from the committed endpoint's flows, heads and modes ({@link #startPoint},
+     * {@link #previousModes}), or from {@code initialMassFlows} without a committed interval; "this structure has been
+     * accepted" is true exactly when the island has a committed interval on it; the reopen exemption and the retained
+     * last solve are dropped.
      */
     void replayStart(PassiveNetwork graph,PassiveIntervalSolver.Result committed) {
         ownership.check("Each executing island job needs its own step workspace");
@@ -359,12 +289,9 @@ public final class PassiveStepSolver {
     public Result solveRate(PassiveNetwork graph,Runnable checkpoint){return solve(graph,1,checkpoint,true);}
     /**
      * One rate solve of {@code graph} with its vessels held as ports ({@link PassiveNetwork.NodeKind#PORT}, dt = 1), or
-     * null when it has no connection or does not converge. Both start-of-interval checks read the island through it: the
-     * interval solver's guard ({@code PassiveIntervalSolver}) and the solid closure check ({@link SolidEventIntegrator}).
-     * The rate solve only pre-empts a closure the steps would otherwise find, and on an island's first interval its
-     * junctions hold their minted start state, so a rate solve that fails is no evidence of anything: it declares no
-     * closure, and the steps, whose guards see every transition at t0 and inside the interval, decide (option R1 of the
-     * phase-ports review, hold class E1).
+     * null when it has no connection or does not converge: the interval solver's guard and the solid closure check
+     * ({@link SolidEventIntegrator}) read the island through it. It only pre-empts a closure the steps would find, so a
+     * failed rate solve declares nothing and the steps decide (hold class E1).
      */
     Result portRate(PassiveNetwork graph,Runnable checkpoint) {
         if(graph.pipes().isEmpty())return null;
@@ -396,11 +323,8 @@ public final class PassiveStepSolver {
         // only forbids one transition from being taken back within this solve.
         boolean[] atShutoff=new boolean[graph.pipes().size()];
         // A pump's start mode reads its own lines only (owner decision D40 A): its connection's velocity cap at the suction
-        // end, its suction walk's caps and one-way rules (suctionCapped), and, below, the sealed pockets on either side of it
-        // (relieveSealedPockets). A connection blocked elsewhere in the island changes none of them: in the owner's test
-        // world (row 9) a side outlet closed by deposition started the pump under the tank on its head limit, where it drew
-        // 19.76 kg/s against its 2.17 kg/s target, its liquid-only suction junction fell to the 1 Pa box floor, and every
-        // step size stalled.
+        // end, its suction walk's caps and one-way rules (suctionCapped), and the sealed pockets on either side of it
+        // (relieveSealedPockets). A connection blocked elsewhere in the island changes none of them.
         for(var pipe:graph.pipes())modes.add(switch(pipe.control()) {
             case FlowControl.Passive ignored->FlowControl.Mode.PASSIVE;
             case FlowControl.Mover pump->pump.targetVolumeFlow()==0?FlowControl.Mode.CLOSED:
@@ -429,11 +353,9 @@ public final class PassiveStepSolver {
             if(margin>shutoffBand(Math.max(a.state().pressure(),b.state().pressure()),1e-9))modes.set(i,FlowControl.Mode.PUMP_HEAD_LIMIT);
             else atShutoff[i]=true;
         }
-        // A connection closed to all transport before the solve starts is in the same active-set
-        // state the pass-by-pass closure below produces, actuator included: an actuator left on its
-        // own setpoint across a closed edge is a second equation for a flow the closure has already
-        // decided, and on a junction whose other edges are closed too it is one equation too many
-        // and the factorization is singular.
+        // A connection closed to all transport before the solve starts is in the active-set state the pass-by-pass closure
+        // produces, actuator included: an actuator left on its setpoint across a closed edge is a second equation for a
+        // flow the closure has decided, and on a junction whose other edges are closed the factorization is singular.
         boolean[] boundaryClosed=new boolean[graph.pipes().size()];
         for(int i=0;i<boundaryClosed.length;i++)if(graph.pipes().get(i).blockedDirections()==3) {
             boundaryClosed[i]=true;
@@ -455,13 +377,10 @@ public final class PassiveStepSolver {
         graph=closeColdReceivingGenerators(graph,boundaryClosed,keep,checkpoint);
         // Hold F8: a mover held at its target flow into (or out of) a sealed pocket of junctions has no root.
         relieveSealedPockets(graph,modes,boundaryClosed,atShutoff);
-        // The species this island can carry, and the trial states built from them, are read off the
-        // connections this pass leaves open - so they are stated after the closure above and not
-        // before it. A connection the closure has taken carries exactly zero by a row of its own,
-        // for the whole solve, so it delivers nothing; seeding a vessel behind it with an entry
-        // trace of a component only that connection could bring puts an unknown on a nonnegativity
-        // boundary whose only root is zero, which is what used to refuse the whole Newton step. See
-        // {@link #closeDeadHeads} and documentation/DEAD_HEADED_LINE.md.
+        // The species this island can carry, and the trial states built from them, are read off the connections this pass
+        // leaves open, so they are stated after the closure above: a connection the closure has taken delivers nothing,
+        // and an entry trace seeded behind it for a component only it could bring puts an unknown on a nonnegativity
+        // boundary whose only root is zero, which refused the whole Newton step ({@link #closeDeadHeads}).
         var reachable=reachableComponents(graph,boundaryClosed);
         var seeds=initialPhaseSeeds(graph,dt,checkpoint,reachable,modes,boundaryClosed);
         var seen=new HashSet<PassKey>();
@@ -474,14 +393,11 @@ public final class PassiveStepSolver {
         // - a later pass's seed may not undo it - which is what keeps the support half of the cycle
         // key monotone and the pass sequence finite; demotion happens at the next solve's seed.
         boolean[][] promoted=new boolean[seeds.size()][];
-        // Decision D34 with A85: the phases (phaseCode bits) the trace rule removed at each node in this solve, by the
-        // reconstruction's fold or by a phase correction whose flash folded them, those a node's own split refused at a
-        // converged point (the D26 amendment: its closure drove the TP answer's phase under the trace share), and those the
-        // pass after a proposal refuted (owner decision D39 B, {@link Proposal}). Monotone like the reactivations above: the
-        // phase correction does not give such a phase back within this solve, and the next solve decides from its own start
-        // state. Without it, a condensate that converges just below the trace share is folded, the gas left behind is cooler
-        // by the condensate's latent heat, its flash condenses more than the share again, and the pass sequence repeats (a
-        // humid vented tank: 1.0e-9 folded, 2.4e-9 given back).
+        // Decision D34 with A85: the phases (phaseCode bits) the trace rule removed at each node in this solve, those a
+        // node's own split refused at a converged point (the D26 amendment) and those the pass after a proposal refuted
+        // (owner decision D39 B, {@link Proposal}). Monotone within the solve: the phase correction does not give such a
+        // phase back, else a condensate just below the trace share is folded, the gas left behind is cooler, its flash
+        // condenses more than the share again, and the pass sequence repeats (1.0e-9 folded, 2.4e-9 given back).
         int[] foldedPhases=new int[seeds.size()];
         // Owner decision D39 B: the phase the last converged point's check added to one node, until a pass converges again.
         Proposal proposal=null;
@@ -511,11 +427,9 @@ public final class PassiveStepSolver {
             var supports=supports(graph,seeds,reachable,promoted);
             var equations=new Equations(graph,dt,modes,caps,boundaryClosed,seeds,reachable,supports,pipeIdentities);
             System.arraycopy(equations.capDirections,0,caps,0,caps.length);
-            // The active-set state is exactly what varies between passes, so the structure key is
-            // also the cycle key: repeating one means the pass sequence cannot make progress. The
-            // frozen junction donors belong to it for the same reason the modes do - they decide
-            // which equations this pass states, and the pass loop revises them. So do the phase-port segments, which the
-            // cycle key carries beside the structure (see {@link PassKey}).
+            // The active-set state is what varies between passes, so the structure key is also the cycle key: repeating one
+            // means the pass sequence cannot make progress. The frozen junction donors and the phase-port segments belong to
+            // it for the same reason the modes do: they decide which equations this pass states (see {@link PassKey}).
             var structure=new WorkspaceKey(0,nodeIds,kinds,pipeIdentities,phases,componentMask,supportCodes(supports),modeCodes,boundaryClosed.clone(),equations.junctionDonorFirst);
             // The cap states are part of the cycle key, not of the workspace key: a capped row has the columns of the row it
             // replaces, and the workspaces are shared across cap states as they were when the cap was a branch of the row.
@@ -526,22 +440,12 @@ public final class PassiveStepSolver {
             if(workspace==null){if(workspaces.size()>=4)workspaces.remove(workspaces.keySet().iterator().next());var previous=structures.get(structure);workspace=previous==null?new SparseNewton.Workspace(ownership):previous.forkPreconditioner();workspaces.put(key,workspace);}
             if(structures.size()>=4&&!structures.containsKey(structure))structures.remove(structures.keySet().iterator().next());structures.put(structure,workspace);
             SparseNewton.Result numerical;
-            // Small headspaces amplify inventory roundoff into pressure/flow errors; solve these
-            // more tightly - but only a node that holds a finite inventory has a headspace at all.
-            // A generator and a void carry a prescribed boundary state, and a junction a
-            // normalized guess with no volume and no stock; none of them owns roundoff for a small
-            // headspace to amplify, and none of them contributes an unknown or a row, so none may
-            // tighten the tolerance every other node is then held to. A port does keep its say: it
-            // is a finite reservoir held fixed for one instantaneous rate evaluation, and holding
-            // a liquid-full pair of them at rest to 1e-10 kg/s is exactly what the tolerance buys.
-            //
-            // A filter block compiles to two junctions seeded from the island's first boundary
-            // state, which on a water line is liquid-full, so every placed filter line demanded
-            // 1e-10 of nodes that cannot reach it - a tank with a little water in it floors its
-            // water saturation row near 1.03e-10 - and the island refined its step to nothing.
-            //
-            // Decision D54: only a vessel whose wall carries it has a headspace that amplifies anything. A slack vessel is at
-            // the ambient whatever it holds, and a dry one holds no fluid.
+            // Small headspaces amplify inventory roundoff into pressure and flow errors, so such nodes are solved more
+            // tightly. Only a vessel whose wall carries it has a headspace (decision D54: a slack vessel is at the ambient,
+            // a dry one holds no fluid); a generator, a void and a junction own no roundoff and no row, so none of them may
+            // tighten the tolerance every other node is held to (a filter's two junctions seeded liquid-full demanded 1e-10
+            // of a tank that floors its water saturation row near 1.03e-10, and the island refined its step to nothing).
+            // A port keeps its say: a finite reservoir held fixed for one rate evaluation.
             boolean smallHeadspace=false;
             for(int i=0;i<seeds.size();i++) {
                 var node=graph.reservoirs().get(i);var kind=node.kind();
@@ -562,45 +466,26 @@ public final class PassiveStepSolver {
                 if(cavitates(equations,failure.lastVariables(),modes,boundaryClosed,caps,tolerance))continue;
                 // Decision A274: a pass that states the wrong cap flows can have no root inside the property domain, and the
                 // failed Newton's last iterate shows which: a capped line whose drive there has fallen below its cap's
-                // pressure drop is released (random seed 101 of the world defaults: a tank's outflow into a junction stayed
-                // capped after the pump drawing from that junction was refused for the slice, and the Newton drove the
-                // junction to 2 MPa pushing the stated flow out through a filter, against a drive reversed by 1.9 MPa);
-                // otherwise, a line on its law that the iterate holds at its cap (the trial projection, A275, keeps its flow
-                // there while its drive asks for more) is put on its cap (defaults seed 164: two lines through a gas-filled
-                // junction stalled the pass at 0.15 at every step size wanting more than their caps). A line cannot carry
-                // more than its cap, and a stated flow its ends cannot push is no state, so a Newton walking either went
-                // through states that do not exist. The pass is solved again from its start. Taken before the phase
-                // corrections below, which read the same iterate.
+                // pressure drop is released, otherwise a line on its law that the iterate holds at its cap (the trial
+                // projection, A275) is put on its cap. A line cannot carry more than its cap, and a stated flow its ends
+                // cannot push is no state. The pass is solved again from its start, before the phase corrections below.
                 if(equations.correctCaps(failure.lastVariables(),caps,tolerance))continue;
                 // Decision D54: a vessel the failed iterate drained to nothing runs dry within the step. Its end state has no
                 // contents, so the pass laid out with them has no root (every step size fails the same way); it is solved
                 // again with the vessel as a junction holding its stock, which ends the step empty (emptyingGraph).
                 var drained=equations.runsDry(failure.lastVariables(),emptying);
                 if(drained!=null){emptying=drained;continue;}
-                // A point the Newton never reached is deliberately not read as evidence about this
-                // pass's frozen junction donors, nor about the junction basis those donors state,
-                // unlike the converged tests further down. Measured on the filter block line:
-                // turning a junction onto a diverged trial's flow sign hands it the tank's nitrogen
-                // as a seeded trace nothing delivers, and every swept pressure lost an interval by
-                // it - 400 kPa went from interval 8 back to 7, and from a tank settled at
-                // 399999.99971 Pa to one at 399998.24 Pa. Widening the junction basis from the same
-                // diverged trial is the same mistake with a bigger blast radius, and it is what
-                // used to put the phantom trace back at every refinement level: the trial's flows
-                // at a stalled point are -1.14e-6 kg/s on a line whose generator drives it
-                // forwards, and reading them as backflow let the tank's nitrogen into both of the
-                // filter's zero-holdup junctions; see documentation/JUNCTION_PHANTOM_TRACE.md.
-                // Owner decisions D28 A' and D39: the same holds for its phases. The iterate's check folds what the iterate
-                // empties and proposes nothing (cold seed 430: TP answers at a junction on the 1 Pa box floor seeded later
-                // passes with 13 300 m3 of gas at 51 K, and a third fluid phase at 17 K was held about a non-state).
+                // A point the Newton never reached is not read as evidence about this pass's frozen junction donors or the
+                // junction basis they state (unlike the converged tests below): a diverged trial's flow sign handed a
+                // junction the tank's nitrogen as a seeded trace nothing delivers, and every swept pressure lost an interval
+                // by it (a tank settled at 399999.99971 Pa went to 399998.24 Pa). Owner decisions D28 A' and D39: the same
+                // holds for its phases; the iterate's check folds what the iterate empties and proposes nothing.
                 var iterate=equations.states(failure.lastVariables());
                 // Owner decision D39 B: the iterate is read for one thing more, the solve's own proposal. This pass is the
-                // network's closure of the layout the last converged point's check proposed, as a vessel's closure is a node's
-                // own split, and a proposed phase it drives to nothing, vanishing from the proposal's seed (the one test of
-                // the D26 amendment and of rule C, FluidThermodynamics.vanishing), is refuted as the own split refuses one:
-                // the pass is solved again from the point it was proposed at, the node laid out without it, and the refusal
-                // is recorded (A85). Cold seed 48: a tank receiving a boiling tank's liquid sits on its bubble point; the
-                // check proposed 3.4e-6 of its moles as vapour, and the two-phase pass drove it under 1e-8 and stalled at
-                // every step size, as a shrinking vapour cannot close the tank's equilibrium rows.
+                // network's closure of the layout the last converged point's check proposed, and a proposed phase it drives
+                // to nothing (vanishing from the proposal's seed, FluidThermodynamics.vanishing) is refuted: the pass is
+                // solved again from the point it was proposed at, the node laid out without it, and the refusal recorded
+                // (a tank on its bubble point proposed 3.4e-6 of its moles as vapour and stalled at every step size).
                 if(proposal!=null) {
                     int refuted=proposal.phases()&FluidThermodynamics.vanishing(proposal.seed(),iterate.get(proposal.node()));
                     if(refuted!=0){foldedPhases[proposal.node()]|=refuted;SolverDiagnostics.count(SolverDiagnostics.phaseRefusals);seeds=proposal.point();proposal=null;continue;}
@@ -615,12 +500,9 @@ public final class PassiveStepSolver {
             // A pass that converges ends the proposal it was laid out with (D39 B): the network's closure kept it.
             proposal=null;
             double[] x=numerical.variables();var states=equations.states(x);double[] flows=new double[graph.pipes().size()],heads=new double[flows.length];
-            // The converged Newton point is not phase-checked here: the reconstructed point below, which is what an accepted
-            // step commits, is, and the two agree to the Newton tolerance, so checking both asks one question twice at a TP
-            // flash per single-phase node each (review 8.7 (c) D: 43 % of the wall time of a flowing island at 0.1 s).
-            // The same outer stability question the phase correction above answers for a whole phase,
-            // asked per component of the frozen trace support: this converged point's own fugacity
-            // coefficients decide whether an omitted phase is still a trace.
+            // The converged Newton point is not phase-checked here: the reconstructed point below, which an accepted step
+            // commits, is, and the two agree to the Newton tolerance (checking both cost 43 % of a flowing island's wall
+            // time). The reactivation asks the same stability question per component of the frozen trace support.
             if(reactivate(equations,states,promoted)>0){seeds=states;continue;}
             // Decision D54: an emptying vessel whose outlet pressure the converged point puts above the ambient does not run
             // dry (what reaches it is more than its outlets take at the ambient): it holds contents at the step's end and is
@@ -645,42 +527,27 @@ public final class PassiveStepSolver {
                 if(capChange<0||caps[capChange]==CAP_OPEN&&caps[i]>=0){int cap=equations.capTransition(i,x,tolerance);if(cap!=caps[i]){capChange=i;capNext=cap;}}
             }
             // Decision A272: one active-set change per pass, a cap change first, then a device's mode, then a boundary
-            // closure. A point where a line carries more than its cap, or states a cap flow its drive cannot push, is no point
-            // a device may read its mode from (random seed 336: a compressor drawing 0.081 kg/s through a suction line choked
-            // well below it turned between its head limit and its target, the line's cap never stated, until the pass
-            // sequence cycled). A boundary closure is never taken back within a solve, and a forbidden direction can be the
-            // symptom of a wrong cap as of a wrong device mode, so the reversible corrections come first.
+            // closure. A point where a line carries more than its cap is no point a device may read its mode from, a
+            // boundary closure is never taken back within a solve, and a forbidden direction can be the symptom of a wrong
+            // cap as of a wrong device mode, so the reversible corrections come first.
             if(capChange>=0){caps[capChange]=capNext;changed=true;}
             else if(deviceChange>=0) {
                 // A device that changes mode has its cap decided afresh on the next pass's start point.
                 var mode=modes.get(deviceChange);modes.set(deviceChange,deviceNext);caps[deviceChange]=CAP_START;changed=true;
                 if(deviceNext==FlowControl.Mode.CLOSED&&(mode==FlowControl.Mode.PUMP_HEAD_LIMIT||mode==FlowControl.Mode.PUMP_SUCTION_LIMIT))atShutoff[deviceChange]=true;
             }
-            // A passive connection showing a direction its own boundary forbids, next to a device
-            // that has just decided it cannot run in its current mode, is that device's symptom and
-            // not an event of its own: a pump held above its shutoff head pushes its whole suction
-            // line backwards, and the generator edge feeding it is the first thing that shows it.
-            // The pass applies one active-set change, so whichever of the two is taken first
-            // discards the other - and {@code boundaryClosed} is never cleared again within a solve,
-            // so taking the symptom first pins the wrong active set for good: the closed suction
-            // edge forces the pump's own flow to zero through the junction mass balance, the
-            // reverse-flow test that would have closed the pump never fires again, and the pump is
-            // left at its head limit on a junction sitting exactly on the upwind and
-            // junction inflow-floor discontinuities of the former zero-holdup junction rows, where the Newton
-            // cannot converge at any step size. Deciding the device first leaves the boundary
-            // closure to a later pass, where it is applied only if the direction is still illegal
-            // once every device runs in a mode it can actually hold.
+            // A passive connection showing a direction its own boundary forbids, next to a device that has just decided it
+            // cannot run in its current mode, is that device's symptom: a pump held above its shutoff head pushes its whole
+            // suction line backwards. {@code boundaryClosed} is never cleared within a solve, so taking the symptom first
+            // pins the wrong active set for good (the closed suction edge forces the pump's flow to zero, the reverse-flow
+            // test never fires again, and the pump is left at its head limit where the Newton cannot converge). The device
+            // is decided first; the boundary closure waits for a pass where every device holds a mode it can.
             if(!changed&&illegalDirection>=0){closeBoundary(graph,illegalDirection,boundaryClosed,modes,caps);changed=true;}
-            // Decision A272: a cap change re-solves the same pass from its own start (its seeds: what fills each connection,
-            // which phases exist, the junctions' start states; and its start flows and phase-port segments): it changes which
-            // equation states one flow, not the point the pass was laid out on. Re-seeded from the converged two-phase
-            // junction, random seed 35's next pass stated the line's column 365 kg/m3 lighter, its drive fell 3.6 kPa below
-            // the cap drop, and the cap left and entered again until the pass sequence cycled; started from the capped
-            // pass's flows, a tank's released bottom outlet started at the 7.8 kg/s water cap it had been stating against a
-            // drive that pushes 0.3 kg/s and stalled (LiquidFullTankOutletsTest).
-            // A confirmed emptying (keptEmptying) was decided on the network this active set states; a cap, a device mode or a
-            // closure changes what reaches the vessel, so it is decided again (world defaults 853: a placed tank's 0.68 kg,
-            // confirmed emptying at 98.9 kPa, then a closure of a generator's connection put it at 113 kPa, filling).
+            // Decision A272: a cap change re-solves the same pass from its own start (its seeds, start flows and phase-port
+            // segments): it changes which equation states one flow, not the point the pass was laid out on (re-seeded from
+            // the converged junction a line's column came out 365 kg/m3 lighter and the cap left and entered until the
+            // sequence cycled). A confirmed emptying (keptEmptying) was decided on the network this active set states, so
+            // a cap, mode or closure change decides it again.
             if(changed)Arrays.fill(emptied,false);
             if(changed&&capChange>=0){previousCaps=caps.clone();continue;}
             if(changed){seeds=states;previousPipes=pipeIdentities;previousNodeIds=nodeIds;previousInputStates=inputStates;previousFlows=flows.clone();previousHeads=heads.clone();previousModes=List.copyOf(modes);previousCaps=caps.clone();continue;}
@@ -725,10 +592,8 @@ public final class PassiveStepSolver {
                 var polished=polishRefusedPoint(graph,equations,reconstructed,dt,modes,boundaryClosed,promoted,atShutoff,foldedPhases,tolerance,gate,checkpoint);
                 if(polished!=null&&polished.closure()>=0) {
                     // The booked states show a drive the converged point did not state: a one-way end that would receive
-                    // (random fuzz seed 71: a tank filled full of water stood 0.01 Pa above what its generator holds, the
-                    // polish pushed that back into the generator, and the step was refused at every step size). The
-                    // boundary is closed as at a converged point, and the pass is solved again from the reconstruction,
-                    // the state each vessel holds.
+                    // (a tank full of water 0.01 Pa above its generator, pushed back into it by the polish). The boundary
+                    // is closed as at a converged point, and the pass is solved again from the reconstruction.
                     closeBoundary(graph,polished.closure(),boundaryClosed,modes,caps);Arrays.fill(emptied,false);
                     seeds=projection.states();previousPipes=pipeIdentities;previousNodeIds=nodeIds;previousInputStates=inputStates;previousFlows=flows.clone();previousHeads=heads.clone();previousModes=List.copyOf(modes);previousCaps=caps.clone();continue;
                 }
@@ -769,9 +634,7 @@ public final class PassiveStepSolver {
     /**
      * Closes connection {@code edge}'s boundary for the rest of the solve: a direction its one-way end forbids (a void
      * supplying, a generator receiving, a dry end giving). Decision A272: a closure changes what reaches a junction at its
-     * ends, so a cap decided there was decided on a supply that is gone; those connections are decided again on the next
-     * pass's start point (random seed 336: a line filling a tank kept the cap it took while a void fed its junction, and the
-     * next pass drew the junction to 11 kPa to bring that cap down to the trickle left).
+     * ends, so the caps decided there are decided again on the next pass's start point.
      */
     private static void closeBoundary(PassiveNetwork graph,int edge,boolean[] boundaryClosed,List<FlowControl.Mode> modes,int[] caps) {
         var pipe=graph.pipes().get(edge);boundaryClosed[edge]=true;
@@ -787,30 +650,21 @@ public final class PassiveStepSolver {
         static Polished closing(int edge){return new Polished(null,null,null,null,null,null,null,null,Double.NaN,edge);}
     }
     /**
-     * Decision D13 (PHASE_PORTS_REVIEW.md "Vent gate defect", "D13"): one re-solve of a point the reconstruction's equation
-     * gate refused, from its reconstruction ({@code x}: the converged point with every node at its reconstructed state, the
-     * flows the Newton's), on a fresh Jacobian of this step's own dt and state, at 1e-2 times the
-     * pass's Newton tolerance; the re-solved point is checked exactly as the pass loop checks a converged point before it
-     * accepts it (merged with decision D11: no trace reactivation due, no device mode change ({@link #nextMode}), no
-     * illegal direction, the phase-port segments its flows land in the ones the pass froze, the velocity constraint in its
-     * D11 form, the reconstruction with its own phase draws, the converged-point phase correction) and gated again.
-     * Returns it only if all of that holds; a point that flows the way a boundary forbids returns that boundary
-     * ({@link Polished#closing}), which the pass loop closes as at a converged point; otherwise null, and the step is refused
-     * exactly as before.
+     * Decision D13: one re-solve of a point the reconstruction's equation gate refused, from its reconstruction ({@code x}:
+     * the converged point with every node at its reconstructed state, the flows the Newton's), on a fresh Jacobian of this
+     * step's own dt at 1e-2 times the pass's Newton tolerance; checked exactly as the pass loop checks a converged point
+     * (no trace reactivation due, no device mode change ({@link #nextMode}), no illegal direction, the segments its flows
+     * land in the ones the pass froze, the velocity constraint, the reconstruction with its own draws, the phase
+     * correction) and gated again. Returns it only if all of that holds; a point that flows the way a boundary forbids
+     * returns that boundary ({@link Polished#closing}); otherwise null and the step is refused as before.
      *
-     * <p>Why it is needed: the Newton's last iterates usually run on a chord Jacobian inherited from another step (the
-     * workspace keyed by dt forks the previous structure's factorization), so a balance row can close only to the
-     * tolerance, which is stated over the node's total amount. The reconstruction books that node's exact amounts and
-     * states the vessel at them (decision D36, G2), and a vessel whose gas is a small share of its amounts (a nitrogen
-     * cushion over water: 0.1-0.2 %) sees that residual magnified by n_total/n_gas in its cushion's pressure, and so in the
-     * rows of its connections - about 500 times, where the gate keeps one order of margin. A fresh Jacobian closes such a
-     * row in one iteration (measured 1.6e-14 to 1.5e-12), so the polish passes where halving the step could lock the
-     * controller (the D9 manometer ran out its substep limit). It starts from the reconstruction, the state the vessel
-     * holds: the converged point itself may already meet the polish's tolerance (measured 9.2e-12), and a re-solve from
-     * there returns it at zero iterations and sees nothing of the pressure its booked amounts give the cushion.
-     *
-     * <p>Only a refused point reaches this method, so every step the gate accepts is bitwise what it was; the fresh
-     * workspace is local and never retained, so no later solve's preconditioner changes either.
+     * <p>Why: the Newton's last iterates run on a chord Jacobian inherited from another step, so a balance row closes only
+     * to the tolerance, stated over the node's total amount; a vessel whose gas is a small share of its amounts (a nitrogen
+     * cushion over water, 0.1 to 0.2 %) sees that residual magnified by n_total/n_gas (about 500) in its cushion's pressure.
+     * A fresh Jacobian closes such a row in one iteration (1.6e-14 to 1.5e-12). It starts from the reconstruction because
+     * the converged point itself may already meet the tolerance (9.2e-12) and a re-solve from there sees nothing. Only a
+     * refused point reaches this method, and the fresh workspace is never retained, so every accepted step is bitwise what
+     * it was.
      */
     private Polished polishRefusedPoint(PassiveNetwork graph,Equations equations,double[] x,double dt,List<FlowControl.Mode> modes,
                                         boolean[] boundaryClosed,boolean[][] promoted,boolean[] atShutoff,int[] foldedPhases,double tolerance,double gate,Runnable checkpoint) {
@@ -877,10 +731,8 @@ public final class PassiveStepSolver {
             else if(mode==FlowControl.Mode.PUMP_HEAD_LIMIT&&flow/rho>pump.targetVolumeFlow()*(1+1e-8))next=FlowControl.Mode.PUMP_TARGET;
             else if(mode==FlowControl.Mode.CLOSED&&!atShutoff&&margin>band)next=FlowControl.Mode.PUMP_HEAD_LIMIT;
             // Owner decision D59 (4), cavitation, the mirror of the head limit: a pump whose target or head limit holds its
-            // suction below the vapour pressure of the water it draws goes on its suction limit; there its flow is what the
-            // suction line delivers at that pressure, and it leaves when that is more than the target, when holding the
-            // suction there needs more head than the pump has, or when the suction line delivers nothing at that pressure
-            // (its source cannot lift the water to the pump: the pump runs dry and stands at its shutoff for the solve).
+            // suction below the vapour pressure of the water it draws goes on its suction limit, where its flow is what the
+            // suction line delivers; it leaves when that exceeds the target, needs more head than the pump has, or is nothing.
             else if((mode==FlowControl.Mode.PUMP_TARGET||mode==FlowControl.Mode.PUMP_HEAD_LIMIT)&&cavitationMargin(equations,i,states)<-band)next=FlowControl.Mode.PUMP_SUCTION_LIMIT;
             else if(mode==FlowControl.Mode.PUMP_SUCTION_LIMIT&&flow/rho>pump.targetVolumeFlow()*(1+1e-8))next=FlowControl.Mode.PUMP_TARGET;
             else if(mode==FlowControl.Mode.PUMP_SUCTION_LIMIT&&head>limit+.01)next=FlowControl.Mode.PUMP_HEAD_LIMIT;
@@ -897,10 +749,9 @@ public final class PassiveStepSolver {
     }
     /**
      * Owner decision D59 (4): how far the suction end of connection {@code edge} stands above the vapour pressure of the
-     * water its pump draws, read on {@code states} (Pa); positive infinity where the connection is not a liquid pump or the
-     * pass laid its suction out with no free water (a compressor draws gas; a hydrocarbon liquid has no vapour pressure the
-     * model states). The temperature is the state's, or the pass's seed's where the state stands outside the water data (a
-     * failed iterate that flashed its suction to the triple point).
+     * water its pump draws, read on {@code states} (Pa); positive infinity where the connection is not a liquid pump or
+     * the pass laid its suction out with no free water. The temperature is the state's, or the pass's seed's where the
+     * state stands outside the water data.
      */
     private double cavitationMargin(Equations equations,int edge,List<FluidThermodynamics.State> states) {
         var pipe=equations.graph.pipes().get(edge);int a=pipe.first();var seed=equations.seeds.get(a);
@@ -913,9 +764,8 @@ public final class PassiveStepSolver {
     /**
      * Owner decision D59 (4) on a failed Newton: the first pump at its target or head limit whose suction the last iterate
      * holds below the vapour pressure ({@link #cavitationMargin}, by more than {@link #shutoffBand}) is put on its suction
-     * limit, its cap decided afresh; true if one was. The iterate went where the pump pulled it, and a suction below the
-     * vapour pressure is a state the water does not have: there the pump cavitates. Like the cap corrections of a failed
-     * iterate (A274), it changes which row states one connection and is part of the cycle key, so the sequence stays finite.
+     * limit, its cap decided afresh; true if one was. Like the cap corrections of a failed iterate (A274) it is part of the
+     * cycle key, so the sequence stays finite.
      */
     private boolean cavitates(Equations equations,double[] last,List<FlowControl.Mode> modes,boolean[] boundaryClosed,int[] caps,double tolerance) {
         List<FluidThermodynamics.State> states=null;
@@ -952,15 +802,11 @@ public final class PassiveStepSolver {
         }
     }
     /**
-     * The cycle key of one active-set pass: its structure and the phase-port segments it froze ({@link PhaseDraw.Segment}).
-     * A segment changes the values of a port's stream but no structural entry (a node any end of which draws a phase keeps
-     * every column entry whatever it draws), so it is not part of the workspace key and a re-decided segment keeps the
-     * workspace and its preconditioner; it is part of the cycle key, because the pass loop revises it, and a pass
-     * sequence that returns to a segment it has already solved under cannot make progress. It also carries the phases the
-     * trace rule has removed and the own splits and the passes after a proposal have refused so far in the solve
-     * (decision D34, A85; the D26 amendment; owner decision D39 B): that record only grows, so a pass that returns to an
-     * earlier structure after a fold or a refusal is a pass under a different phase-correction rule, not a cycle, and the
-     * sequence stays finite.
+     * The cycle key of one active-set pass: its structure and the phase-port segments it froze ({@link PhaseDraw.Segment},
+     * which change a port stream's values but no structural entry, so they are not part of the workspace key), plus the
+     * phases the trace rule has removed and the own splits and refuted proposals have refused so far in the solve (D34,
+     * A85, D26 amendment, D39 B): that record only grows, so a pass that returns to an earlier structure after a fold or
+     * a refusal is a pass under a different phase-correction rule, not a cycle.
      */
     private record PassKey(WorkspaceKey structure,byte[] segments,int[] folded,byte[] caps) {
         @Override public boolean equals(Object other){return other instanceof PassKey key&&structure.equals(key.structure)&&Arrays.equals(segments,key.segments)&&Arrays.equals(folded,key.folded)&&Arrays.equals(caps,key.caps);}
@@ -969,8 +815,7 @@ public final class PassiveStepSolver {
     /**
      * A proposal (owner decision D39 B): the phases ({@link FluidThermodynamics#phaseBits} bits) the check of a converged
      * pass's point added to one node ({@link #phaseCorrection}), the node's seed holding them and the point they were
-     * added at. The passes after it, until one converges, are the network's own closure of that layout, as a vessel's
-     * closure or a junction's PH answer is the node's own split (the D26 amendment); one that fails with a proposed phase
+     * added at. The passes after it are the network's own closure of that layout; one that fails with a proposed phase
      * vanishing from the seed refutes it.
      */
     private record Proposal(int node,int phases,FluidThermodynamics.State seed,List<FluidThermodynamics.State> point) {
@@ -985,13 +830,10 @@ public final class PassiveStepSolver {
             return null;
         }
     }
-    /**
-     * Every node's frozen per-component phase support for one pass, derived from that pass's seeds
-     * and never from a Newton iterate, with the components this solve has already reactivated kept in
-     * both phases. A fixed node owns no unknowns and gets none.
-     */
     /** The cap states of a pass as codes for its cycle key ({@link PassKey}). */
     private static byte[] capCodes(int[] caps){byte[] codes=new byte[caps.length];for(int i=0;i<caps.length;i++)codes[i]=(byte)caps[i];return codes;}
+    /** Every node's frozen per-component phase support for one pass, from that pass's seeds and never from a Newton iterate,
+     * with the components this solve has already reactivated kept in both phases. A fixed node owns no unknowns. */
     private PhaseSupport[][] supports(PassiveNetwork graph,List<FluidThermodynamics.State> seeds,boolean[][] reachable,boolean[][] promoted) {
         var supports=new PhaseSupport[seeds.size()][];
         for(int node=0;node<supports.length;node++)
@@ -1001,12 +843,10 @@ public final class PassiveStepSolver {
         return supports;
     }
     /**
-     * Components whose omitted phase the converged point no longer supports omitting, marked for the
-     * next pass; returns how many. The test runs on the Newton solution of the reduced system, where
-     * the fugacity coefficients of both phases are converged and the equation of state has filled
-     * {@code ln phi_i} for the omitted phase at infinite dilution, which is what the inequality needs.
-     * Every node is swept before any pass is repeated, so one reactivation pass restores everything
-     * the state asks for instead of one component at a time.
+     * Components whose omitted phase the converged point no longer supports omitting, marked for the next pass; returns
+     * how many. The test runs on the Newton solution of the reduced system, where both phases' fugacity coefficients are
+     * converged and {@code ln phi_i} of the omitted phase is filled at infinite dilution. Every node is swept before any
+     * pass is repeated, so one reactivation pass restores everything the state asks for.
      */
     private int reactivate(Equations equations,List<FluidThermodynamics.State> states,boolean[][] promoted) {
         if(!model.traceTruncation().enabled())return 0;
@@ -1094,35 +934,22 @@ public final class PassiveStepSolver {
         return result;
     }
     /**
-     * A trial point for one pass, per node.
+     * A trial point for one pass, per node. A vessel is seeded with its own state, its committed layout (owner decision
+     * D40 A): a reachable component it lacks ({@link #reachableComponents}) enters as an entry trace of {@code 1e-12} of
+     * its amount, restated in the phases it holds ({@link ConservativeTransport#repartition}) and placed by the layout's
+     * own split; a phase what is about to arrive carries and the layout lacks enters with what arrives of it
+     * ({@link #arrivingInVessel}). The seed was the TP flash of the inventory with up to a quarter of its mass of what
+     * arrives: for a pool of pure methane at saturation fed CO2 that put 99 % of the moles in the vapour, 183 m3 in a 1 m3
+     * tank. A junction is seeded with its own state, its owned holdup a small stock the backward-Euler rows move.
      *
-     * <p>A vessel is seeded with its own state, its committed layout (owner decision D40 A). A reachable component it lacks
-     * ({@link #reachableComponents}) enters as an entry trace of {@code 1e-12} of its amount, restated in the phases it
-     * holds as every reconstruction restates a node ({@link ConservativeTransport#repartition}), and the layout's own
-     * equilibrium split places it ({@code PhaseLayout.encode}); a phase what is about to arrive carries and the layout
-     * lacks enters with what arrives of it ({@link #arrivingInVessel}). The seed was the TP flash of that inventory with up
-     * to a quarter of its mass of what is about to arrive, at their mass-weighted temperature: for a pool of pure methane
-     * at its saturation pressure, fed CO2 through a 1 cm line, that flash put 99 % of the moles in the vapour, 183 m3 in a
-     * 1 m3 tank, and every pass started at a wall residual of 182 (test world row 2). A junction is seeded with its own state:
-     * its owned holdup is a small stock whose mixture the backward-Euler rows move from where it is - with one addition,
-     * the water trace below.
-     *
-     * <p><b>Water trace in a junction (decision D10 of the phase-ports batch).</b> A junction whose reachable set holds
-     * water ({@link #reachableComponents}) while its own state holds none is seeded with its state flashed at its own
-     * temperature and pressure with a water entry trace of {@code 1e-12} of its total amount - the entry trace a vessel
-     * gets for every reachable component it lacks. A node's {@link PhaseLayout} carries water (its water unknowns, its
-     * water balance row and the junction's water mixing row) only when its seed holds water, and the hydrocarbon
-     * components a junction can receive already enter through the reachable mask; water has no mask entry, so without the
-     * trace a junction seeded dry that receives unsaturated water vapour - which does not change its phase code, so the
-     * converged-point phase correction never reseeds it - is solved without the water the reconstruction then books into
-     * it, and the equation gate refuses every step (1.3e-8 at 0.5 % water; PHASE_PORTS_REVIEW.md WP1 section 8). The
-     * junction's owned inventory is untouched: the seed is a starting point and a basis, the rows start from the stock.
-     * A junction whose flash with the trace leaves the property domain keeps its state (the trace is a basis, never a
-     * reason to refuse a step).
-     *
-     * <p><b>A junction's first pass admits the phase that arrives (group L, PHASE_PORTS_REVIEW.md "Group L: a junction's
-     * first step admits the phase that arrives (2026-10-13)", A300-A303).</b> The phases of a junction in a step are those
-     * of what its mixing rows leave in it, and those follow from the step's inflow; see {@link #arrivingPhases}.
+     * <p>Water trace in a junction (decision D10): a junction whose reachable set holds water while its state holds none
+     * is seeded with its state flashed at its own temperature and pressure with a water entry trace of {@code 1e-12} of
+     * its amount. A node's {@link PhaseLayout} carries water only when its seed holds it, and water has no entry in the
+     * reachable mask, so without the trace a junction seeded dry that receives unsaturated water vapour (no phase code
+     * change, so the phase correction never reseeds it) is solved without the water the reconstruction then books into
+     * it, and the equation gate refuses every step. The seed is a basis, never a reason to refuse a step; a junction
+     * whose flash leaves the domain keeps its state. A junction's first pass admits the phase that arrives
+     * ({@link #arrivingPhases}).
      */
     private List<FluidThermodynamics.State> initialPhaseSeeds(PassiveNetwork graph,double dt,Runnable checkpoint,boolean[][] reachable,
                                                               List<FlowControl.Mode> modes,boolean[] boundaryClosed) {
@@ -1145,18 +972,14 @@ public final class PassiveStepSolver {
         return arrivingPhases(graph,seeds,modes,boundaryClosed,dt,checkpoint);
     }
     /**
-     * Owner decision D40 A at a vessel's step start ({@link #initialPhaseSeeds}): its committed layout {@code seed}, and a
-     * phase that what is about to arrive carries and the layout lacks laid out with what arrives of it, in its own phase:
-     * per inflow, the stream its donor end draws ({@link #endStream}), at most a quarter of the vessel's mass over
-     * {@code dt}, at the vessel's temperature and pressure. The phases the vessel holds keep their committed amounts, but
-     * for the steam its gas takes beside the free water arriving in it: the free water's own vapour pressure
-     * ({@code FluidThermodynamics.freeWaterVaporPressure}, Dalton), the steam left at its entry trace being ten orders of
-     * magnitude under it, which no pass's Newton climbs (water let into a tank of nitrogen at 298 K stopped its first
-     * 0.01 s step at the iteration limit, |r| 2.5e-5). Liquid water a 200 kPa generator drives into a tank of nitrogen
-     * enters as liquid water: laid out as the gas alone, no pass holds it (steam carries no more than its limit), and the
-     * connection stays closed for the whole interval. The seed itself where nothing arrives in a phase it lacks, or where
-     * its state refuses that phase at its temperature and pressure (a liquid on a single vapour-like root beside a
-     * vapour: LNG let into a warm gas boils there).
+     * Owner decision D40 A at a vessel's step start: its committed layout {@code seed}, and a phase that what is about to
+     * arrive carries and the layout lacks laid out with what arrives of it, in its own phase: per inflow the stream its
+     * donor end draws ({@link #endStream}), at most a quarter of the vessel's mass over {@code dt}, at the vessel's
+     * temperature and pressure. The phases the vessel holds keep their committed amounts, except the steam its gas takes
+     * beside arriving free water: the free water's own vapour pressure ({@code FluidThermodynamics.freeWaterVaporPressure},
+     * Dalton), since steam left at its entry trace is ten orders of magnitude under it and no Newton climbs that (water
+     * let into a tank of nitrogen at 298 K stopped its first step at the iteration limit, |r| 2.5e-5). The seed itself
+     * where nothing arrives in a phase it lacks, or where its state refuses that phase (LNG let into a warm gas boils).
      */
     private FluidThermodynamics.State arrivingInVessel(PassiveNetwork graph,int nodeIndex,FluidThermodynamics.State seed,double[] flows,double dt) {
         int n=model.hydrocarbon.componentCount();double[] l=seed.liquid(),v=seed.vapor();double wl=seed.waterLiquid(),wv=seed.waterVapor();
@@ -1190,32 +1013,23 @@ public final class PassiveStepSolver {
     }
     /**
      * Group L (A300-A303): {@code seeds} with every junction laid out for the phases the step's inflow leaves in it. A
-     * fitting full of air that water reaches is full of water a few milliseconds later; a step solve states that through
-     * the junction's backward-Euler mixing rows, {@code (m_J/dt + Q) w = (m_J/dt) w_old + sum q w_e}, and its phases are
-     * those of that mixture. A pass is laid out for its seeds' phases ({@link PhaseLayout}), so a junction seeded as its
-     * held gas has no unknown for the water its rows must hold: the residual sits in its mixing and enthalpy rows, the
-     * trial temperatures leave the data (water below 273.16 K) and the step halves to its floor (world defaults 745 under
-     * the physical start: an 11 g air buffer receiving about 7 kg/s of water).
+     * fitting full of air that water reaches is full of water a few milliseconds later, and a pass is laid out for its
+     * seeds' phases ({@link PhaseLayout}), so a junction seeded as its held gas has no unknown for the water its mixing
+     * rows must hold: the residual sits in those rows, the trial temperatures leave the data and the step halves to its
+     * floor (an 11 g air buffer receiving about 7 kg/s of water). Each junction's mixture over the step is its stock plus
+     * what its connections deliver at the pass's start flows ({@link #startPoint}) over {@code dt}, each the stream its
+     * donor end draws ({@link #endMoles}), at the mass-weighted temperature and the seed's pressure, flashed and folded as
+     * the pass folds a junction (D34, D41). Where that mixture holds a phase the seed lacks, the seed becomes the mixture
+     * at the seed's mass; a junction donor delivers its own updated seed, so a phase reaches a run of junctions in one
+     * stage. A seed that already holds every phase of its mixture is kept to the bit; a rate-only solve holds a
+     * junction's composition at its stock and this does nothing there.
      *
-     * <p>Each junction's mixture over the step is its held stock plus what its connections deliver at the pass's start
-     * flows ({@link #startPoint}) over {@code dt}, each the stream its donor end draws ({@link #endMoles}), at the
-     * mass-weighted temperature and the seed's pressure, flashed and folded as the pass folds
-     * a junction (D34, D41). Where that mixture holds a phase the seed lacks, the seed becomes the mixture at the seed's
-     * mass (a junction's amounts are a basis; its rows are intensive). A junction donor delivers its own updated seed, so a
-     * phase reaches a run of junctions in one stage. A junction whose seed already holds every phase of its mixture keeps
-     * its seed to the bit, as does every vessel that holds something. A rate-only solve holds a junction's composition at
-     * its stock, so it lays out the stock's phases and this does nothing there.
-     *
-     * <p>A vessel that holds no fluid (decision D54) is laid out from what its connections deliver over {@code dt}, no fluid
-     * held, beside whatever solids it holds: the delivered amounts themselves (a vessel's rows are its amounts) at the bag's own split (decision D26,
-     * {@link #emptyBagSplit}), the equilibrium of what arrives with the enthalpy it brings, at the ambient pressure while
-     * the bag is slack and at the capacity once what arrives overfills it, folded as a vessel: the root of the vessel's
-     * own rows at the start flows. Where the engine answers nothing the network carries, the TP flash of the delivered
-     * amounts at their mass-weighted temperature and the ambient pressure seeds it. That flash is an isothermal let-down,
-     * which no throttled stream is: LNG arriving at 139 K and 1.14 MPa is, at 139 K and 1 atm, a vapour of several bag
-     * volumes beside its CO2 frost, where the bag holds boiling LNG near 112 K, and a first pass laid out without that
-     * liquid cooled the methane vapour to its 90.69 K floor at every step size (cold seeds 34 and 114). One nothing reaches
-     * stays dry.
+     * <p>A vessel that holds no fluid (decision D54) is laid out from what its connections deliver over {@code dt}, beside
+     * its solids: the delivered amounts at the bag's own split (decision D26, {@link #emptyBagSplit}), at the ambient while
+     * the bag is slack and at the capacity once what arrives overfills it, folded as a vessel; where the engine answers
+     * nothing the network carries, the TP flash of the delivered amounts at their mass-weighted temperature and the
+     * ambient (an isothermal let-down: LNG at 139 K and 1 atm is a vapour of several bag volumes beside CO2 frost, and a
+     * pass laid out without the liquid cooled the vapour to its 90.69 K floor). One nothing reaches stays dry.
      */
     private List<FluidThermodynamics.State> arrivingPhases(PassiveNetwork graph,List<FluidThermodynamics.State> seeds,List<FlowControl.Mode> modes,
                                                            boolean[] boundaryClosed,double dt,Runnable checkpoint) {
@@ -1266,13 +1080,11 @@ public final class PassiveStepSolver {
     }
     /**
      * Decisions D54 and D26: an empty bag's own split of what arrives over a step, the amounts {@code n} with the enthalpy
-     * {@code h} they bring (J, the network's datum, as the vessel's energy row books it). The engine's PH answer at the
-     * ambient pressure ({@code FluidThermodynamics.equilibriumPH}, under the competition at the arrival's mass-weighted
-     * temperature {@code t}) holds the phases; the vessel's closure from it
-     * ({@link InventoryEquilibrium#split}, the bag empty at the step's start, so the wall's work is booked from a zero
-     * volume) is the equilibrium of that enthalpy at the ambient while the bag is slack and of its energy at the capacity
-     * once what arrives overfills it; the PH answer itself where the closure leaves nothing. Folded as a vessel.
-     * {@code null} where the engine answers nothing the network carries.
+     * {@code h} they bring (J, the network's datum). The engine's PH answer at the ambient pressure holds the phases; the
+     * vessel's closure from it ({@link InventoryEquilibrium#split}, the wall's work booked from a zero volume) is the
+     * equilibrium of that enthalpy at the ambient while the bag is slack and of its energy at the capacity once what
+     * arrives overfills it; the PH answer itself where the closure leaves nothing. {@code null} where the engine answers
+     * nothing the network carries.
      */
     private FluidThermodynamics.State emptyBagSplit(PassiveNetwork.Reservoir node,double t,double[] n,double h,Runnable checkpoint) {
         try {
@@ -1300,10 +1112,9 @@ public final class PassiveStepSolver {
     /**
      * The balanced pressure seed of a cold junction: every junction of degree three or more joined by open passive
      * connections to nodes that hold their pressure over the solve, whose guess lies outside its neighbours' pressure
-     * range, starts from the pressure at which its connections' estimated flows balance, and from the mixture those
-     * flows deliver at that pressure. A property guess outside the range makes every flow of the star point the same way
-     * and the Newton descend from a state no solution is near (the 7-of-32 static matrix of review 6.1). A starting guess
-     * only: the junction's owned inventory is not touched.
+     * range, starts from the pressure at which its connections' estimated flows balance, and from the mixture those flows
+     * deliver there. A guess outside the range makes every flow of the star point the same way and the Newton descend
+     * from a state no solution is near. A starting guess only: the junction's owned inventory is not touched.
      */
     private PassiveNetwork seedBoundaryJunctions(PassiveNetwork graph,Runnable checkpoint) {
         List<PassiveNetwork.Reservoir> nodes=null;
@@ -1313,11 +1124,9 @@ public final class PassiveStepSolver {
             double low=Double.POSITIVE_INFINITY,high=Double.NEGATIVE_INFINITY;int degree=0;boolean eligible=true;
             for(var pipe:graph.pipes())if(pipe.first()==node||pipe.second()==node) {
                 degree++;int other=pipe.first()==node?pipe.second():pipe.first();
-                // A vessel neighbour counts as held while this structure is cold: with no rate solve per step, a step is the
-                // only solve a cold junction ever sees, and a vessel's pressure moves by at most the state cap over it (review
-                // 8.6 (b), run 85d). Only until a step of the structure has been accepted: at a hydrostatic rest the junction
-                // pressure lies outside its neighbours' range and the seed would fire at every step (run 85b: 480 seeds,
-                // 119040 flashes in one case).
+                // A vessel neighbour counts as held while this structure is cold: a step is the only solve a cold junction
+                // sees, and a vessel's pressure moves by at most the state cap over it. Only until a step of the structure
+                // has been accepted: at a hydrostatic rest the seed would fire at every step (480 seeds, 119040 flashes).
                 boolean held=graph.reservoirs().get(other).fixed()||graph.reservoirs().get(other).kind()==PassiveNetwork.NodeKind.RESERVOIR&&backwardEulerCold(graph);
                 if(!held||!(pipe.control() instanceof FlowControl.Passive)
                         ||pipe.filter()!=null||pipe.blockedDirections()!=0){eligible=false;break;}
@@ -1388,18 +1197,14 @@ public final class PassiveStepSolver {
     private static final int FIXED_POINT_ROUNDS=1;
     /**
      * Owner decisions D54 (nothing at the mint) and D55 (the guess from the connected suppliers): the start guess of a
-     * minted island's junctions, the island-wide fixed point's last round reached. A junction holds nothing a placement
-     * put there, so the guess has no physical claim: its buffer's 0.05 s relaxation (D25) washes it out, and the guess
-     * only has to be a point the first step's Newton starts near, of a fluid a source supplies. Round 0 is
-     * {@link #supplierSeeds}; then, each round: one rate solve of the port graph with every junction's composition held
-     * at the current iterate, on a fresh solver (a cold rate solve, as the first interval's cold seed is: the solver's own
-     * laws, columns, one-way rules, D12 closures and device active sets); each junction then becomes the flow-weighted
-     * mixture of the streams that solve drives into it (a vessel's or boundary's end stream, a junction donor's current
-     * mixture; amounts and enthalpy per kilogram), flashed at its solved pressure; a
-     * junction nothing flows into keeps its composition at its solved pressure. It stops when no junction's mass fractions
-     * move by more than 1e-9 and no pressure by more than 1e-9 of itself, after {@link #FIXED_POINT_ROUNDS} rounds, or at
-     * a round whose rate solve fails (or leaves the property domain), and returns the last round it completed: round 0
-     * when the first one fails. Per-kilogram states, one per node, null for every node that is not a junction.
+     * minted island's junctions, the last round an island-wide fixed point reached. A junction holds nothing a placement
+     * put there, so the guess only has to be a point the first step's Newton starts near, of a fluid a source supplies.
+     * Round 0 is {@link #supplierSeeds}; each round after it is one rate solve of the port graph with every junction's
+     * composition held at the current iterate, on a fresh solver; each junction then becomes the flow-weighted mixture
+     * of the streams that solve drives into it, flashed at its solved pressure (one nothing flows into keeps its
+     * composition). It stops when no mass fraction moves by more than 1e-9 and no pressure by more than 1e-9 of itself,
+     * after {@link #FIXED_POINT_ROUNDS} rounds, or at a round whose rate solve fails, returning the last completed round.
+     * Per-kilogram states, one per node, null for every node that is not a junction.
      */
     List<FluidThermodynamics.State> fixedPointStarts(PassiveNetwork graph) {
         int nodes=graph.reservoirs().size(),count=model.hydrocarbon.componentCount()+1;
@@ -1468,27 +1273,20 @@ public final class PassiveStepSolver {
     }
     /**
      * Owner decision D55, round 0 of {@link #fixedPointStarts}: a junction's start guess is what its connected suppliers
-     * would send it. A supplier is a node that is not a junction and holds something (a vessel holding contents, a
-     * generator, a port); a void and a dry end (a vessel that holds no fluid among them) send nothing ({@link #boundaryAllowed}). Each
-     * supplier joined to a junction sends the stream its end draws ({@link #endMoles}, as the rate estimate reads it) at
-     * the flow its static drive gives against the ambient ({@link #supplyFlow}); a junction is the flow-weighted mixture
-     * of what reaches it (amounts and enthalpy per kilogram), flashed at the pressure where
-     * the start estimate's flows into and out of it balance ({@link #balancePressure}). A junction no supplier drives into
-     * takes it hop by hop from the junctions that have it (a breadth-first sweep, each hop the mixture of the neighbours
-     * seeded before it, weighted by the flow that seeded them; a vessel that holds no fluid passes the sweep through). A
-     * junction neither reaches (every drive towards it points away, as at a rest, or a vessel holding contents lies
-     * between) takes the streams of the suppliers joined to it, one share per supplier, and the sweep runs again from
-     * those. The ambient is the pressure of an empty node, never a fluid: a junction no source reaches (an island that
-     * holds no stock) keeps the state it was built with as a placeholder, and nothing moves there
+     * would send it. A supplier is a node that is not a junction and holds something; a void and a dry end send nothing
+     * ({@link #boundaryAllowed}). Each supplier joined to a junction sends the stream its end draws ({@link #endMoles}) at
+     * the flow its static drive gives against the ambient ({@link #supplyFlow}); the junction is the flow-weighted mixture
+     * of what reaches it, flashed at the pressure where the estimate's flows balance ({@link #balancePressure}). A junction
+     * no supplier drives into takes it hop by hop from the junctions that have it (a breadth-first sweep weighted by the
+     * flow that seeded them); one neither reaches takes the streams of the suppliers joined to it, one share each, and
+     * the sweep runs again. A junction no source reaches keeps the state it was built with as a placeholder
      * ({@link NetworkReduction#atRest}).
      *
-     * <p>A mover's suction line is seeded first, from the stream it draws (owner's fix A of F2, 2026-10-16): the junctions
-     * its supply walk crosses ({@link InletPhase#walk}: the device's own junction and the run of junctions beyond it) take
-     * the stream of the supplier the walk ends at, as that end draws it ({@link #endStream}): the supplier's own phase at
-     * its own temperature and pressure. That is already a state, so it is neither flashed nor moved to a balance pressure.
-     * A mover's target row converts its volume flow at its suction junction's density, so that junction must hold what
-     * the mover draws: a pump under a vented LNG tank kept the 298 K nitrogen placeholder (1.1 kg/m3 for 447 kg/m3), its
-     * first rate solve moved 0.006 kg/s for 2.24 kg/s, and the suction line closed on deposition at every interval start.
+     * <p>A mover's suction line is seeded first, from the stream it draws (owner's fix A of F2): the junctions its supply
+     * walk crosses ({@link InletPhase#walk}) take the stream of the supplier the walk ends at, as that end draws it
+     * ({@link #endStream}), neither flashed nor moved to a balance pressure. A mover's target row converts its volume flow
+     * at its suction junction's density, so that junction must hold what the mover draws (a pump under a vented LNG tank
+     * kept the 298 K nitrogen placeholder, 1.1 kg/m3 for 447 kg/m3, and moved 0.006 kg/s for 2.24 kg/s).
      */
     private List<FluidThermodynamics.State> supplierSeeds(PassiveNetwork graph,Runnable checkpoint) {
         int nodes=graph.reservoirs().size(),count=model.hydrocarbon.componentCount()+1;
@@ -1563,12 +1361,10 @@ public final class PassiveStepSolver {
     }
     /**
      * Owner decision D55: the pressure of junction {@code j} at which the start estimate's flows into and out of it
-     * ({@link #initialMassFlow}: each connection against its other end's own pressure, on the column its rule states, as
-     * far as {@link #boundaryAllowed} lets it) balance, bisected between the lowest and highest of its neighbours' end
-     * pressures referred to its height through either end's column, within the numerical box. A junction is a node of
-     * the pipework, so its pressure is what its connections' flows make it, never the ambient's: seeded at the ambient a
-     * liquid junction stood 9.8 kPa above a 1 m spill and 240 kPa below its two generators, and its first Newton did not
-     * converge (logs es36).
+     * ({@link #initialMassFlow}, as far as {@link #boundaryAllowed} lets it) balance, bisected between the lowest and
+     * highest of its neighbours' end pressures referred to its height, within the numerical box. A junction's pressure is
+     * what its connections' flows make it, never the ambient's (seeded at the ambient a liquid junction stood 9.8 kPa above
+     * a 1 m spill and 240 kPa below its two generators, and its first Newton did not converge).
      */
     private double balancePressure(PassiveNetwork graph,int j) {
         var junction=graph.reservoirs().get(j);double low=Double.POSITIVE_INFINITY,high=Double.NEGATIVE_INFINITY;
@@ -1608,9 +1404,8 @@ public final class PassiveStepSolver {
     }
     /** {@link #supplierSeeds}' flash of junction {@code j}'s mixture (amounts and enthalpy summed over {@code mass}) at
      * {@code pressure}, per kilogram: the temperature at which the mixture has the mixed enthalpy, bisected within 20 K of
-     * its streams' temperatures inside the numerical box (owner rule of 2026-10-16: no data range narrows the window, so a
-     * cold stream carrying a species below its data, LNG with CO2 dissolved at 111.6 K, is seeded like any other). False,
-     * the junction left as it was, where a flash is refused. A mover's suction line does not come here (see above). */
+     * its streams' temperatures inside the numerical box (no data range narrows the window, owner rule of 2026-10-16).
+     * False, the junction left as it was, where a flash is refused. */
     private boolean seedAt(List<FluidThermodynamics.State> states,int j,double[] amounts,double mass,double heat,double tLow,double tHigh,double pressure,Runnable checkpoint) {
         double[] y=new double[amounts.length];for(int c=0;c<y.length;c++)y[c]=amounts[c]/mass;
         double lower=Math.max(tLow-20,NumericalBox.MINIMUM_TEMPERATURE),upper=Math.min(tHigh+20,NumericalBox.MAXIMUM_TEMPERATURE);
@@ -1625,10 +1420,9 @@ public final class PassiveStepSolver {
     }
     /**
      * The flow (kg/s, at least zero) supplier {@code supplier} sends into the junction at the other end of {@code pipe}
-     * before anything is solved, as the start estimate reads a connection ({@link #initialMassFlow}): a mover's suction
-     * flow out of its suction end; otherwise the supplier's end pressure over the ambient, less its own end's column up to
-     * the junction ({@link #columnDensity}), through the connection's loss in its end stream, capped by the velocity limit.
-     * Zero where that direction is refused ({@link #boundaryAllowed}) or the drive points back.
+     * before anything is solved, as {@link #initialMassFlow} reads a connection: a mover's suction flow out of its suction
+     * end; otherwise the supplier's end pressure over the ambient, less its own end's column up to the junction, through
+     * the connection's loss in its end stream, capped by the velocity limit. Zero where that direction is refused.
      */
     private double supplyFlow(PassiveNetwork graph,PassiveNetwork.Pipe pipe,int supplier) {
         boolean first=pipe.first()==supplier;
@@ -1650,28 +1444,16 @@ public final class PassiveStepSolver {
         return mass;
     }
     /**
-     * The whole island's connection flows as the states this solve starts at imply them, with
-     * every chain of zero-holdup junctions carrying one flow.
-     *
-     * <p>{@link #initialMassFlow} answers one connection at a time, against the two pressures at
-     * its ends. On a vessel that is the right question. Across a zero-holdup junction it is not:
-     * the junction stores nothing, so the connections on either side of it carry the <em>same</em>
-     * flow, and the junction's own pressure - which is what the per-connection answer reads - is
-     * an output of the previous solve carrying that solve's roundoff. On a settled line the
-     * pressures along the chain differ by micropascals and the per-connection answer is noise: at
-     * 150 kPa it said the tank was pushing -7.2e-7 kg/s back into the filter's outlet junction
-     * while the filter was pushing +1.6e-5 kg/s forward into the same junction, a pattern no
-     * junction can be in. Everything a pass states about a junction - which species it mixes, what
-     * that mixture is, which end of each connection donates into it - is read off this point, so
-     * stating it from a point like that is what left the tank's nitrogen on a junction nothing was
-     * feeding; see {@code documentation/JUNCTION_PHANTOM_TRACE.md}.
-     *
-     * <p>So a maximal run of degree-two junctions joined by passive connections is contracted to
-     * one resistance between the two nodes at its ends, which do own their pressures, and the
-     * single flow that resistance passes is laid on every connection in it. An actuator is never
-     * contracted through, because its own setpoint and not the chain's resistance decides what it
-     * passes; a junction of degree three or more is not contracted either, because its split needs
-     * the solve and not an estimate.
+     * The whole island's connection flows as the states this solve starts at imply them, with every chain of zero-holdup
+     * junctions carrying one flow. {@link #initialMassFlow} answers one connection against the two pressures at its ends,
+     * the right question on a vessel; across a zero-holdup junction the junction's own pressure is an output of the
+     * previous solve carrying its roundoff, and on a settled line the per-connection answer is noise (at 150 kPa it said
+     * the tank pushed -7.2e-7 kg/s back into the filter's outlet junction while the filter pushed +1.6e-5 kg/s into it).
+     * Everything a pass states about a junction is read off this point, so a maximal run of degree-two junctions joined
+     * by passive connections is contracted to one resistance between the two nodes at its ends, which own their
+     * pressures, and the single flow that resistance passes is laid on every connection in it. An actuator is never
+     * contracted through (its own setpoint decides what it passes), nor a junction of degree three or more (its split
+     * needs the solve).
      */
     private double[] initialMassFlows(PassiveNetwork graph) {
         int edges=graph.pipes().size(),nodes=graph.reservoirs().size();
@@ -1751,15 +1533,9 @@ public final class PassiveStepSolver {
         return q;
     }
     /**
-     * The connection flows and actuator heads a pass with this active set starts from, which is
-     * the whole of {@link Equations#buildInitial}'s edge half.
-     *
-     * <p>It lives here rather than in {@link Equations} because the pass reads it twice: once to
-     * lay it into its own initial point, and once - before the equations exist - in
-     * {@link #closeIllegalStarts}, which reads the direction each connection starts in.
-     *
-     * <p>{@code seeds} may be {@code null} before this solve has any, which only a regulating
-     * valve reads, and no pass can start in that mode.
+     * The connection flows and actuator heads a pass with this active set starts from, the whole of
+     * {@link Equations#buildInitial}'s edge half; it lives here because {@link #closeIllegalStarts} reads it before the
+     * equations exist. {@code seeds} may be {@code null} before this solve has any, which only a regulating valve reads.
      */
     private void startPoint(PassiveNetwork graph,List<FlowControl.Mode> modes,boolean[] boundaryClosed,
                             List<PassiveNetwork.Pipe.Identity> pipeIdentities,List<FluidThermodynamics.State> seeds,
@@ -1780,14 +1556,10 @@ public final class PassiveStepSolver {
             var pipe=graph.pipes().get(i);var a=graph.reservoirs().get(pipe.first());var b=graph.reservoirs().get(pipe.second());
             if(boundaryClosed[i]||modes.get(i)==FlowControl.Mode.CLOSED)continue;
             if(modes.get(i)==FlowControl.Mode.PUMP_TARGET){flows[i]=suctionMassFlow(((FlowControl.Mover)pipe.control()).targetVolumeFlow(),a.state(),pipe.firstPort());continue;}
-            // A connection whose pump is holding its limit starts from a flow that limit can
-            // produce, never from one it has already refused; see {@link #headLimitMassFlow}.
-            // A point already on the limit - the previous pass, or the previous accepted step
-            // of a settled island - carries its own flow forward as before.
-            // A pump the carry has just offered its head limit back from CLOSED starts from the limit's own flow and head,
-            // not from the closed point's (zero flow and the head the closed pump held), a head the pass will not have.
-            // From that closed head a long step's pass chose the discharge tank's bulk density for the column and ended
-            // every 5 s step past the shutoff, so the pump re-closed for good 12.3 kPa short (review 8.8 (c)).
+            // A connection whose pump is holding its limit starts from a flow that limit can produce, never from one it has
+            // refused ({@link #headLimitMassFlow}); a point already on the limit carries its own flow forward. A pump the
+            // carry has just offered its head limit back from CLOSED starts from the limit's own flow and head, not from the
+            // closed point's (from that head a long step's pass ended every 5 s step past the shutoff, 12.3 kPa short).
             boolean reopened=previousModes.size()==graph.pipes().size()&&previousModes.get(i)==FlowControl.Mode.CLOSED;
             if(modes.get(i)==FlowControl.Mode.PUMP_HEAD_LIMIT&&pipe.control() instanceof FlowControl.Mover pump
                     &&(reopened||!(previousAvailable&&previousHeads[i]<=riseLimit(pump,endDensity(a.state(),pipe.firstPort()),a.state().pressure())))) {
@@ -1864,12 +1636,10 @@ public final class PassiveStepSolver {
         return Math.copySign(Math.min((lo+hi)/2,massFlowLimit(pipe,donor,pipe.drawPort(driving))),driving);
     }
     /**
-     * The static driving pressure of one passive connection from end {@code a} (drawn through {@code aPort}) to end {@code b}
-     * (a contracted run sums its links' columns the same way, {@link #initialMassFlows}), given their end pressures'
-     * {@code difference}, with the column {@link #columnFromFirst} states, each end's {@link #columnDensity}: the start
-     * estimate's drive. Its own start sign, where both columns are admissible, is the sign of {@code difference} (the
-     * estimate is the start point, so it has no earlier start to read): the row then reads the flow this drive produces and
-     * states the same column. An end that may not donate into the connection has no column of its own ({@link #donates}).
+     * The static driving pressure of one passive connection from end {@code a} to end {@code b} (a contracted run sums its
+     * links' columns the same way, {@link #initialMassFlows}), given their end pressures' {@code difference}, with the
+     * column {@link #columnFromFirst} states and each end's {@link #columnDensity}. Its start sign, where both columns are
+     * admissible, is the sign of {@code difference}. An end that may not donate has no column of its own ({@link #donates}).
      */
     private double staticDrive(PassiveNetwork graph,PassiveNetwork.Pipe pipe,double difference) {
         var a=graph.reservoirs().get(pipe.first());var b=graph.reservoirs().get(pipe.second());
@@ -1878,25 +1648,21 @@ public final class PassiveStepSolver {
         return difference-(columnFromFirst(first,second,difference,dz,difference>=0)?first:second)*GRAVITY*dz;
     }
     /**
-     * Owner decision D59 (5), t28: whether end {@code node} of {@code pipe} may fill the connection, that is, whether the
-     * connection may carry flow out of that end ({@link #boundaryAllowed}). A void only receives, a generator's far end can
-     * never send into it, a blocked way and a dry end (decision D54) send nothing: such an end's fluid never stands in the
-     * connection, so its column is not one the connection can have; the connection stands in what the other end sends.
-     * This is the one statement of that fact for every static column (the row's {@link Equations#columnEnds}, the start
-     * estimate's {@link #staticDrive} and a run's in {@link #initialMassFlows}); before, only a dry end was read so, and a
-     * void line whose junction stood below the ambient was given the void's air column, its flow started out of the void
-     * on the cap, and the pass loop closed it, where its water column drains into the void (world defaults 244).
+     * Owner decision D59 (5): whether end {@code node} of {@code pipe} may fill the connection, that is, whether the
+     * connection may carry flow out of that end ({@link #boundaryAllowed}). A void only receives, a generator's far end
+     * never sends into it, a blocked way and a dry end (decision D54) send nothing: such an end's fluid never stands in
+     * the connection, so the connection stands in what the other end sends. The one statement of that fact for every
+     * static column (the row's {@link Equations#columnEnds}, {@link #staticDrive} and a run's in {@link #initialMassFlows});
+     * before, a void line whose junction stood below the ambient was given the void's air column and closed for good.
      */
     static boolean donates(PassiveNetwork graph,PassiveNetwork.Pipe pipe,int node) {
         return boundaryAllowed(graph,pipe,node==pipe.first()?1:-1);
     }
     /**
      * The one column rule of a vertical connection: whether its static head is stated in the first end's column
-     * ({@code first}, the density of what that end's port stands in the connection, {@link #columnDensity}) rather than
-     * the second's, given the end pressures' {@code difference} (actuator included) and {@code dz = z_second - z_first}.
-     * The flow row states it once per pass ({@link Equations#columnEnds}, whose comment gives the reasons) and the start
-     * estimate states it on the same question ({@link #staticDrive}), so the estimate never starts a connection on a
-     * column the row does not read.
+     * ({@code first}, the density of what that end's port stands in the connection) rather than the second's, given the
+     * end pressures' {@code difference} (actuator included) and {@code dz = z_second - z_first}. The flow row states it
+     * once per pass ({@link Equations#columnEnds}) and the start estimate on the same question ({@link #staticDrive}).
      * <ul>
      * <li>Both columns drive one way: the column of the end that drive leaves (the only admissible one).</li>
      * <li>The two drives point towards each other (neither column admissible, where a settled line lives): the column
@@ -1913,19 +1679,12 @@ public final class PassiveStepSolver {
         return forwardStart;
     }
     /**
-     * The flow a pump holding its maximum added pressure can actually push through its own
-     * connection, from the start-of-step endpoint states: the same bisection
-     * {@link #initialMassFlow} runs for a passive connection, with the pump's limit added to the
-     * driving pressure.
-     *
-     * <p>A pump only reaches {@code PUMP_HEAD_LIMIT} because its target flow was refused, and the
-     * pass that refused it leaves that target flow behind as the warm start. Near shutoff the two
-     * are orders of magnitude apart - 9.96 kg/s against 0.07 - and the connection's loss is a power
-     * law in between, so Newton walks down it by roughly halving the flow per iteration and the
-     * closer the discharge sits to shutoff the further it has to walk. That walk is what runs out
-     * of iterations, and it does so at every step size, which is why refining the step cannot help.
-     * Seeding from the limit the pass is actually imposing starts the walk where it would have
-     * ended.
+     * The flow a pump holding its maximum added pressure can push through its own connection, from the start-of-step
+     * endpoint states: the bisection {@link #initialMassFlow} runs for a passive connection, with the pump's limit added
+     * to the driving pressure. A pump reaches {@code PUMP_HEAD_LIMIT} because its target flow was refused, and that target
+     * is the warm start; near shutoff the two are orders apart (9.96 kg/s against 0.07) and Newton walks the power law
+     * down by halving per iteration, which runs out of iterations at every step size. Seeding from the limit starts the
+     * walk where it would have ended.
      */
     private double headLimitMassFlow(PassiveNetwork graph,PassiveNetwork.Pipe pipe,FlowControl.Mover pump) {
         var a=graph.reservoirs().get(pipe.first());var b=graph.reservoirs().get(pipe.second());
@@ -1938,20 +1697,13 @@ public final class PassiveStepSolver {
     }
     /**
      * A mover's pressure-rise limit ({@link FlowControl.Mover#riseLimit}); a compressor's is {@code (r_max - 1) P_s} on its
-     * suction pressure (decision D7 of the phase-ports batch). A pump's is the setting, which is the rise for water at 298.15 K and 1 atm
-     * ({@link FluidThermodynamics#pumpReferenceDensity()}), scaled by the suction's density over water's - a head, the
-     * one quantity a real pump fixes. On water the limit is the setting within water's compressibility; on nitrogen at
-     * 1 atm it is about 1/870 of it, so a pump moving gas between closed vessels reaches its limit, and then its shutoff,
-     * within a second instead of evacuating the suction vessel until the gas left the property domain (F1 review,
-     * section 5, option P1; documentation/fluid-followups/FLUID_PUMP_AND_THERMO_DOMAIN_REVIEW.md).
-     *
-     * <p>The density is the density of what the suction end draws ({@link #endDensity}): the suction node's bulk density,
-     * mass over volume of everything it holds, at a BULK end, and the drawn phase's at a phase port - the same density
-     * its target row converts the volume flow with and the velocity clamp caps that end with. No mode, band or switch is added; the target, head-limit and closed modes,
-     * the shutoff band and the velocity clamp are decided exactly as before, on this limit.
-     *
-     * <p>The density is the trial's: the head-limit row reads the suction's decoded state, so the Jacobian carries the
-     * limit's dependence on that node's unknowns, and every mode test reads the same density at the converged point.
+     * suction pressure. A pump's is the setting, the rise for water at 298.15 K and 1 atm
+     * ({@link FluidThermodynamics#pumpReferenceDensity()}), scaled by the suction's density over water's: a head, the one
+     * quantity a real pump fixes. On nitrogen at 1 atm the limit is about 1/870 of the setting, so a pump moving gas
+     * between closed vessels reaches its limit and its shutoff within a second instead of evacuating the suction vessel.
+     * The density is the trial's suction stream density ({@link #endDensity}: the bulk at a BULK end, the drawn phase's at
+     * a phase port), the same density the target row and the velocity clamp read, so the Jacobian carries the limit's
+     * dependence on that node and every mode test reads the same density at the converged point.
      */
     private double riseLimit(FlowControl.Mover mover,double suctionDensity,double suctionPressure) {
         return mover.riseLimit(suctionDensity,suctionPressure,model.pumpReferenceDensity());
@@ -1965,16 +1717,11 @@ public final class PassiveStepSolver {
     }
     /**
      * The driving pressure of one end of a connection: the node's pressure plus the static offset of the port at that
-     * end ({@link #portHead}: the level head at a vessel's LIQUID port, zero elsewhere). Every static driving pressure
-     * the solver states - the hydraulic row ({@code edgeRows}), the pass's column choice ({@code columnEnds}), the
-     * start-of-solve closures ({@link #closeDeadHeads}, {@link #illegalWithEitherDensity}), the start flows
-     * ({@link #initialMassFlows}, {@link #initialMassFlow}, the balanced junction seed), the valve start head, the pump's
-     * head-limit start ({@link #headLimitMassFlow}, which the reopen start calls), its carry offer and shutoff margin
-     * ({@link #demand}) and the boundary-reopen test ({@link #reopenable}) - reads an end's pressure through here and
-     * nowhere else, because they must agree: a closure decided on one pressure and reopened on another bottles a line
-     * for good (review 8.8 (c) of the mixed-gas batch;
-     * documentation/2026-09-26-phase-ports-and-compressor/LEVEL_HEAD_REVIEW.md 2.3). The offset applies in both
-     * directions: it is a pressure, not a withdrawal rule.
+     * end ({@link #portHead}: the level head at a vessel's LIQUID port, zero elsewhere). Every static driving pressure the
+     * solver states (the hydraulic row, the pass's column choice, the start-of-solve closures, the start flows, the valve
+     * start head, the pump's head-limit start, its carry offer and shutoff margin ({@link #demand}) and the reopen test)
+     * reads an end's pressure through here and nowhere else, because they must agree: a closure decided on one pressure
+     * and reopened on another bottles a line for good. The offset is a pressure, so it applies in both directions.
      */
     double endPressure(PassiveNetwork.Reservoir node,PassiveNetwork.PhasePort port,FluidThermodynamics.State state) {
         return state.pressure()+portHead(node,port,state);
@@ -1985,29 +1732,20 @@ public final class PassiveStepSolver {
         return endPressure(reservoir,pipe.portAt(node),reservoir.state());
     }
     /**
-     * The height every vessel's level head is stated over (decision D9, option B of
-     * documentation/2026-09-26-phase-ports-and-compressor/LEVEL_HEAD_REVIEW.md): one metre, the one-block tank's own
-     * height at the default 1 m3 volume. A constant, not a setting: a prismatic tank of this height over the footprint
-     * {@code V/H}. Multi-block tanks, when they exist, state their structure's height here instead.
+     * The height every vessel's level head is stated over (decision D9, option B): one metre, the one-block tank's own
+     * height at the default 1 m3 volume; a prismatic tank of this height over the footprint {@code V/H}.
      */
     public static final double LEVEL_HEAD_HEIGHT=1;
     /**
      * The static head of a port over its node's pressure: the level head of a bottom outlet (decision D9, option B), zero
      * everywhere else. At a LIQUID port of a vessel (RESERVOIR, or its rate-solve copy PORT) the node's pressure is the
-     * headspace's, and the bottom stands below the weight of the condensed phases over the tank's footprint
-     * {@code A = V/H}:
-     *
-     * <p>{@code h = g * m_c * H / V}, with {@code m_c} the condensed mass of {@code state} (hydrocarbon liquid, free water
-     * and every solid, {@link FluidThermodynamics#liquidMass}), {@code H} = {@link #LEVEL_HEAD_HEIGHT} and {@code V} the
-     * vessel's inventory volume (its identity, not the trial state's EOS volume).
-     *
-     * <p>Linear in the decoded condensed amounts and independent of T and P except through the phase split; every caller
-     * evaluates it on the state it is stating a pressure for (the hydraulic row on the Newton's trial state, so the block
-     * Jacobian's re-decoded node carries its derivative with no new structural entry). It is a pressure, so it applies in
-     * both directions: inflow through a bottom port works against it. It does not enter the port's capacities (those read
-     * the phases' masses, decision D11) nor the step controller. A VAPOR or BULK port, a node of any other
-     * kind, and a state with no condensed mass get exactly {@code 0.0}, so {@code P + 0.0} is {@code P} to the bit:
-     * gas-only and all-BULK islands are the doubles they were.
+     * headspace's, and the bottom stands below the weight of the condensed phases over the footprint {@code A = V/H}:
+     * {@code h = g * m_c * H / V}, {@code m_c} the condensed mass of {@code state} ({@link FluidThermodynamics#liquidMass}),
+     * {@code H} = {@link #LEVEL_HEAD_HEIGHT}, {@code V} the vessel's inventory volume. Linear in the decoded condensed
+     * amounts, evaluated by every caller on the state it is stating a pressure for (so the block Jacobian carries its
+     * derivative with no new structural entry); a pressure, so inflow through a bottom port works against it; not in the
+     * port's capacities nor the step controller. A VAPOR or BULK port, any other node kind and a state with no condensed
+     * mass get exactly {@code 0.0}, so gas-only and all-BULK islands are the doubles they were.
      */
     double portHead(PassiveNetwork.Reservoir node,PassiveNetwork.PhasePort port,FluidThermodynamics.State state){return portHead(model,node,port,state);}
     /** {@link #portHead} for a caller outside a solve (the network reduction stage): the same arithmetic on {@code model}. */
@@ -2019,9 +1757,9 @@ public final class PassiveStepSolver {
     /**
      * The density of what leaves a node through {@code port} at a vanishing flow: the bulk {@code mass/volume} at a BULK
      * end, and at a phase port the stream of the first phase of its priority order the state holds
-     * ({@link PhaseDraw#leading}; decision D11, {@link #phaseDensity}); the bulk's when the state holds none of the three.
-     * The draw reads an end's density through here: a start flow's loss and its velocity cap ({@link #massFlowLimit}), a
-     * mover's suction, rise limit and column (decision D6). What stands in the connection is {@link #columnDensity}.
+     * ({@link PhaseDraw#leading}, decision D11); the bulk's when the state holds none of the three. The draw reads an
+     * end's density here (a start flow's loss and cap, a mover's suction, rise limit and column); what stands in the
+     * connection is {@link #columnDensity}.
      */
     private double endDensity(FluidThermodynamics.State s,PassiveNetwork.PhasePort port){return endDensity(model,s,port);}
     /** {@link #endDensity} for a caller outside a solve (the network reduction stage): the same arithmetic on {@code model}. */
@@ -2035,23 +1773,16 @@ public final class PassiveStepSolver {
         return phase==FluidThermodynamics.GAS?model.vaporDensity(s):model.phaseMass(s,phase)/FluidThermodynamics.phaseVolume(s,phase);
     }
     /**
-     * Owner decision D34 (documentation/2026-09-24-coolprop-low-temperature, 2026-10-17): the density of the static column
-     * a node's end {@code port} stands in a connection of its own {@code volume} (m3, {@link PassiveNetwork.Pipe#volume};
-     * a contracted run's summed): the connection filled with the port's phases in priority order by volume
-     * ({@link PhaseDraw#fill}, one end), each up to what the state holds of it, the last phase it holds taking the rest.
-     * Every static column reads an end's density through here: the hydraulic row and the pass's column choice
-     * ({@link Equations#columnEnds}), the start drives ({@link #staticDrive}, {@link #initialMassFlows}, {@link #supplyFlow},
-     * the balanced junction seed, the valve start head, the one-way estimate), the sign tests ({@link #closeDeadHeads},
-     * {@link #illegalWithEitherDensity}, {@link #reopenable}, the cold generator closure) and the rest gauge's drives
-     * ({@code NetworkReduction.drives}). A mover's column is its suction stream instead (decision D6).
-     *
-     * <p>A phase that fills the connection alone gives its own density, to the bit ({@link #endDensity}: a tank holding
-     * liquid for the whole line has the liquid column it had); a BULK end, and a state holding none of the port's phases,
-     * the bulk's. In between the column is continuous in the phase volumes. M5 seed 322: 1.83e-8 m3 of crude condensate
-     * (880 kg/m3) at a tank's bottom port over a 2 m drop of 2 L line stands as the line's gas (2.262 kg/m3) and the
-     * condensate's share, 2.270 kg/m3, a 44.5 Pa column; read from the leading phase it was the condensate's 17.3 kPa,
-     * which no step could drain, and the island held. The draw is unchanged: the trace still leaves first, at its capacity.
-     * The column is read on the trial state, so the Jacobian differentiates it as it did the leading phase's density.
+     * Owner decision D34: the density of the static column a node's end {@code port} stands in a connection of its own
+     * {@code volume} (m3; a contracted run's summed): the connection filled with the port's phases in priority order by
+     * volume ({@link PhaseDraw#fill}), each up to what the state holds of it, the last phase it holds taking the rest.
+     * Every static column reads an end's density here (the hydraulic row and the pass's column choice, the start drives,
+     * the sign tests and the rest gauge's drives); a mover's column is its suction stream instead (decision D6). A phase
+     * that fills the connection alone gives its own density to the bit; a BULK end, and a state holding none of the
+     * port's phases, the bulk's; in between the column is continuous in the phase volumes. Read from the leading phase
+     * instead, 1.83e-8 m3 of condensate (880 kg/m3) at a bottom port over a 2 m drop of 2 L line stood as a 17.3 kPa
+     * column no step could drain; as the line's gas plus the condensate's share it is 44.5 Pa. Read on the trial state,
+     * so the Jacobian differentiates it.
      */
     private double columnDensity(FluidThermodynamics.State s,PassiveNetwork.PhasePort port,double volume){return columnDensity(model,s,port,volume);}
     /** {@link #columnDensity} for a caller outside a solve (the network reduction stage): the same arithmetic on {@code model}. */
@@ -2101,10 +1832,9 @@ public final class PassiveStepSolver {
         return volumeFlow*model.phaseMass(s,phase)/FluidThermodynamics.phaseVolume(s,phase);
     }
     /** The conserved amounts (water last) of what leaves through {@code port} at a vanishing flow; the node's total amounts
-     * at a BULK end and when the state holds none of the phases. Over {@link #endMass} they are the moles per kilogram of the
-     * fluid the connection carries: every start guess these three helpers feed is a fluid flash, so the solids a liquid or a
-     * bulk end also draws are left behind, as {@link #endStream} leaves them (their mass and stored energy are not the
-     * fluid's: LNG drawn with 1.3 % of dry ice at its stored energy flashed 1.3 % of its methane to vapour). */
+     * at a BULK end and when the state holds none of the phases. Over {@link #endMass} they are the moles per kilogram of
+     * the fluid the connection carries: the solids a liquid or bulk end also draws are left behind, as {@link #endStream}
+     * leaves them (LNG drawn with 1.3 % of dry ice at its stored energy flashed 1.3 % of its methane to vapour). */
     private double[] endMoles(FluidThermodynamics.State s,PassiveNetwork.PhasePort port) {
         int phase=PhaseDraw.leading(model,s,port);
         return phase<0?PhaseLayout.totalAmounts(s):FluidThermodynamics.phaseMoles(s,phase);
@@ -2146,17 +1876,13 @@ public final class PassiveStepSolver {
         return model.state(s.temperature(),s.pressure(),liquid,vapour,waterLiquid/mass,waterVapour/mass,gas?s.hydrocarbonPartialPressure():0);
     }
     /**
-     * The head this connection demands of its device at the point one active-set pass converged
-     * to: the discharge pressure less the suction pressure, plus the static column between them.
-     *
-     * <p>This is the one scalar the {@code PUMP_HEAD_LIMIT}/{@code CLOSED} pair is decided on, and
-     * it is literally the same expression in both modes. In {@code PUMP_HEAD_LIMIT} the actuator
-     * row pins the head to the maximum, so the hydraulic row makes this {@code maximum - loss(q)}:
-     * the margin below is then the edge's own pressure loss, positive for forward flow and
-     * negative for reverse. In {@code CLOSED} the actuator row pins the flow to zero, so the free
-     * head unknown <em>is</em> this demand and the margin is how much head the pump still has in
-     * hand. Reading one quantity in both modes is what makes the pair a threshold on a line rather
-     * than two one-sided tests of two different unknowns.
+     * The head this connection demands of its device at the point one active-set pass converged to: the discharge
+     * pressure less the suction pressure, plus the static column between them. The one scalar the
+     * {@code PUMP_HEAD_LIMIT}/{@code CLOSED} pair is decided on, the same expression in both modes: in
+     * {@code PUMP_HEAD_LIMIT} the actuator row pins the head to the maximum, so this is {@code maximum - loss(q)} and the
+     * margin is the edge's own loss; in {@code CLOSED} the actuator row pins the flow to zero, so the free head unknown is
+     * this demand and the margin is how much head the pump has in hand. One quantity in both modes makes the pair a
+     * threshold on a line rather than two one-sided tests of two unknowns.
      */
     private double demand(PassiveNetwork graph,PassiveNetwork.Pipe pipe,List<FluidThermodynamics.State> states,double density) {
         return endPressure(graph.reservoirs().get(pipe.second()),pipe.secondPort(),states.get(pipe.second()))
@@ -2164,25 +1890,15 @@ public final class PassiveStepSolver {
                 +density*GRAVITY*(graph.reservoirs().get(pipe.second()).elevation()-graph.reservoirs().get(pipe.first()).elevation());
     }
     /**
-     * How much head margin this edge's own rows can actually resolve, and therefore the band around
-     * the shutoff corner inside which a device's mode may not be decided by the sign of a flow.
-     *
-     * <p>The pressure-dimensioned rows of an edge are stated in {@link Equations#pressureScales},
-     * so a solve converged to {@code tolerance} has decided them to {@code tolerance*scale} Pa -
-     * 1e-4 Pa on an atmospheric island and 6e-4 Pa at 6 bar. Through the line's resistance that is
-     * a flow resolution of order 1e-5 kg/s, while the rule this replaces closed a pump on a reverse
-     * flow of 1e-10 kg/s: five orders of magnitude below anything the solve decided the sign of.
-     * The floor of 0.01 Pa is the band the {@code CLOSED} side already used, kept so that the
-     * reopening test is bit for bit the test it was on every island whose scale is at or below
-     * 1e5 Pa - which is every island the regression reference was captured on.
-     *
-     * <p>Both sides of the pair now read the same margin against this one band, so there is no
-     * interval in which a pump at its shutoff corner is left holding its head limit. That corner is
-     * degenerate - head at the maximum and zero flow satisfy both modes' equations at once - and
-     * {@code CLOSED} is its well-posed representative: it pins the flow to exactly zero through the
-     * actuator row instead of leaving the solve to find zero by iteration, which is what keeps a
-     * zero-holdup junction off its own upwind and
-     * junction inflow-floor discontinuities of the former zero-holdup junction rows.
+     * How much head margin this edge's own rows can resolve, and so the band around the shutoff corner inside which a
+     * device's mode may not be decided by the sign of a flow. The pressure-dimensioned rows of an edge are stated in
+     * {@link Equations#pressureScales}, so a solve converged to {@code tolerance} has decided them to
+     * {@code tolerance*scale} Pa (1e-4 Pa on an atmospheric island, 6e-4 Pa at 6 bar), a flow resolution of order
+     * 1e-5 kg/s; the rule this replaced closed a pump on a reverse flow of 1e-10 kg/s. The floor of 0.01 Pa is the band
+     * the {@code CLOSED} side used, kept so the reopening test is bit for bit what it was at or below 1e5 Pa (every island
+     * of the regression reference). Both sides read the same margin, so no interval leaves a pump at its shutoff corner
+     * holding its head limit; that corner is degenerate and {@code CLOSED} is its well-posed representative (it pins the
+     * flow to exactly zero through the actuator row).
      */
     private static double shutoffBand(double pressureScale,double tolerance) {
         return Math.max(.01,tolerance*Math.max(1e5,pressureScale));
@@ -2196,23 +1912,19 @@ public final class PassiveStepSolver {
     }
     /**
      * The outer phase check of a converged pass's point, node by node ({@link FluidThermodynamics#phaseCheck}, owner
-     * decisions D25 and D26): a phase leaves a node only when the solve empties it (the trace fold of the point, which the
-     * reconstruction has already applied, and the vanishing rule of owner decision
-     * D38 C: a phase under {@link FluidThermodynamics#VANISHING_SHARE} of the node's fluid amount and at a smaller share than
-     * at the step's start, {@link #inputStates}, in a junction as in a vessel), a phase the node's TP answer holds and
-     * the node does not is added at the node's own split (a junction's PH answer, a vessel's closure of what the point
-     * holds: {@link #vesselSplit}), and no populated phase set is swapped for another on a TP verdict. Never inside a Newton
-     * residual or Jacobian evaluation. One node is corrected per call, as one active-set change per pass, and the nodes
-     * after it are not checked (their verdicts would be discarded, and an own split is a flash); null when none changes.
+     * decisions D25 and D26): a phase leaves a node only when the solve empties it (the trace fold, which the
+     * reconstruction has applied, and the vanishing rule of D38 C: under {@link FluidThermodynamics#VANISHING_SHARE} of the
+     * node's fluid and at a smaller share than at the step's start, {@link #inputStates}), a phase the node's TP answer
+     * holds and the node does not is added at the node's own split (a junction's PH answer, a vessel's closure,
+     * {@link #vesselSplit}), and no populated phase set is swapped for another on a TP verdict. Never inside a residual or
+     * Jacobian evaluation. One node per call, as one active-set change per pass; null when none changes.
      *
-     * <p>{@code prepared}, when given, is the pass's per-node prepared temperature state: a node's flash at exactly that
-     * temperature reuses its Peng-Robinson workspace instead of preparing a new one (the arithmetic is the same).
-     * {@code foldedPhases}, when given, holds per node the phases ({@link #phaseCode} bits) the trace rule removed in this
-     * solve and those a node's own split refused (A85; the D26 amendment): the check does not add them back, and writes
-     * there a phase its fold removes from a converged point and a phase its own split refuses there, so the sequence of
-     * passes stays finite and a refused phase costs one own split per solve. A polished or reused point is checked on a
-     * copy. A failed pass's last iterate is not checked here: it is no state, and it is only folded ({@link #foldedIterate},
-     * owner decisions D28 and D39) and read for whether it refutes a phase this check added ({@link Proposal}, D39 B).
+     * <p>{@code prepared}, when given, is the pass's per-node prepared temperature state (a flash at exactly that
+     * temperature reuses its workspace). {@code foldedPhases}, when given, holds per node the phases ({@link #phaseCode}
+     * bits) the trace rule removed in this solve and those an own split refused (A85, the D26 amendment): the check does
+     * not add them back and records there what its fold removes and its own split refuses, so the pass sequence stays
+     * finite. A failed pass's last iterate is not checked here: it is only folded ({@link #foldedIterate}) and read for
+     * whether it refutes a phase this check added ({@link Proposal}).
      */
     private List<FluidThermodynamics.State> phaseCorrection(PassiveNetwork graph,List<FluidThermodynamics.State> states,Runnable checkpoint,FluidThermodynamics.Prepared[] prepared,int[] foldedPhases) {
         for(int i=0;i<states.size();i++) {
@@ -2227,13 +1939,11 @@ public final class PassiveStepSolver {
         return null;
     }
     /**
-     * The check of a failed pass's last iterate, node by node (owner decisions D28 A' and D39,
-     * {@link FluidThermodynamics#folded(FluidThermodynamics.State,boolean,FluidThermodynamics.State)}): the iterate with the
+     * The check of a failed pass's last iterate, node by node (owner decisions D28 A' and D39): the iterate with the
      * phases it empties folded, by the trace fold and the vanishing rule against the step's start ({@link #inputStates}),
-     * one node per call as {@link #phaseCorrection} corrects; null when it empties none. A failed iterate is not a state:
-     * this trial layout neither reads nor writes the A85 record, and it adds no phase, so no TP answer or own split is
-     * formed and no hold is raised at a point the network never reaches. A phase the pass needs appears at a converged
-     * point's check or at a smaller step.
+     * one node per call; null when it empties none. A failed iterate is not a state: this trial layout neither reads nor
+     * writes the A85 record and adds no phase, so no own split is formed and no hold is raised at a point the network
+     * never reaches.
      */
     private List<FluidThermodynamics.State> foldedIterate(PassiveNetwork graph,List<FluidThermodynamics.State> states) {
         for(int i=0;i<states.size();i++) {
@@ -2314,57 +2024,23 @@ public final class PassiveStepSolver {
         return (state.solidMoments().mass()>0?16:0)|FluidThermodynamics.phaseBits(state);
     }
     /**
-     * Closes, before the first pass, every passive connection whose own starting point leaves it no
-     * direction it is allowed to carry.
+     * Closes, before the first pass, every passive connection whose own starting point leaves it no direction it is
+     * allowed to carry. The hydraulic row is {@code driving - loss(q)} with {@code loss} zero at zero flow and increasing
+     * away from it, so a root with {@code q > 0} exists only when the driving pressure a forward flow stands in is
+     * positive, and with {@code q < 0} only when the reverse drive is negative: a connection one of whose ends forbids a
+     * direction has no admissible root when the only sign with a root is the forbidden one, and its one answer is a flow
+     * of exactly zero, the answer {@code boundaryClosed} produces. On a dead-headed line the pass cannot converge to that
+     * point (the reverse root lies across zero flow, where the friction slope changes by three orders between a liquid and
+     * a gas), so the closure is taken from the starting point instead.
      *
-     * <p>The hydraulic row of a connection is {@code driving - loss(q)}, and {@code loss} is zero at
-     * zero flow and strictly increasing away from it, so a root with {@code q > 0} exists only when
-     * the driving pressure a forward flow stands in is positive, and a root with {@code q < 0} only
-     * when the driving pressure a reverse flow stands in is negative. A connection one of whose ends
-     * forbids a direction - a generator, a void, a directionally blocked pipe - therefore has no
-     * admissible root at all when the only sign with a root is the forbidden one, and its one
-     * admissible answer is a flow of exactly zero. That is the same answer
-     * {@code boundaryClosed} already produces, and the pass loop already reaches it the moment a
-     * converged point shows a direction the boundary refuses. The whole defect is that on a
-     * dead-headed line the pass cannot converge to that point: the reverse root lies across a flow
-     * of zero, where the friction slope changes by three orders between a liquid and a gas, and the
-     * step limiter has its own reasons to refuse the journey. So the closure is taken from the
-     * starting point instead, which says the same thing without asking the Newton to travel there -
-     * the pre-interval rate pass of {@link SolidEventIntegrator} closes a transport failure the same
-     * way rather than letting the interval discover it.
-     *
-     * <p>Three conditions keep this a statement that cannot be wrong for the solve it is made in.
-     *
-     * <ul>
-     * <li><b>Both columns are asked.</b> A forward flow stands in the fluid of {@link
-     * PassiveNetwork.Pipe#first} and a reverse flow in that of {@link PassiveNetwork.Pipe#second},
-     * so each direction is tested against the static head of its own column - the same pairing
-     * {@link Equations#columnEnds} states a connection's head on. A direction is refused only
-     * when the column that would fill it does not drive it.
-     * <li><b>Neither end of the run is a zero-holdup junction.</b> A junction owns no volume, so
-     * the pressure it carries into a pass is an output of the previous solve rather than a property
-     * of any stock, and it is free to move as far as the hydraulics need within this one. A
-     * vessel's and a boundary's are not: a boundary holds its pressure fixed by construction, and a
-     * vessel's pressure moves only with what it receives, monotonically against the flow that
-     * delivers it. So across a run between a boundary and a vessel a driving pressure that refuses
-     * a direction at the starting point refuses it everywhere the solve can go - delivering in the
-     * allowed direction only pushes it further away - while a junction's pressure says nothing. The
-     * run is the one {@link #initialMassFlows} already contracts: a maximal chain of passive
-     * connections through degree-two junctions, which carry the one flow the chain passes and own
-     * no pressure of their own, so a static column across the chain is the column across its two
-     * ends and nothing in between enters it. A run of one connection is the ordinary case.
-     * <li><b>Only passive connections.</b> An actuator decides its own mode, and the device-first
-     * rule of the pass loop exists precisely so that a boundary direction is never closed on
-     * evidence that is really a device's symptom. A pre-pass closure of an actuator's connection
-     * would take that decision before the device had spoken at all. A run through a junction an
-     * actuator touches is left alone for the same reason.
-     * </ul>
-     *
-     * <p>It cannot cycle. The closure is monotone within a solve, it is taken once before any pass,
-     * it is read by the existing pass loop exactly as a closure taken by that loop would be, and
-     * it is never cleared - so it adds no transition to the active-set sequence and cannot lengthen
-     * it. It is per solve, so a line whose generator is raised afterwards is decided again from the
-     * new starting point and opens.
+     * <p>Three conditions keep it a statement that cannot be wrong for the solve: both columns are asked (a forward flow
+     * stands in the first end's fluid and a reverse flow in the second's, the pairing {@link Equations#columnEnds} states);
+     * neither end of the run is a zero-holdup junction (a junction's pressure is an output of the previous solve, while a
+     * boundary's is fixed and a vessel's moves monotonically against the flow that delivers it, so a drive that refuses a
+     * direction at the start refuses it everywhere the solve can go; the run is the chain {@link #initialMassFlows}
+     * contracts); only passive connections (an actuator decides its own mode, and a boundary direction is never closed on
+     * a device's symptom). It cannot cycle: monotone within a solve, taken once before any pass, never cleared, and per
+     * solve, so a line whose generator is raised afterwards opens again.
      */
     private void closeDeadHeads(PassiveNetwork graph,boolean[] boundaryClosed,boolean[] keep) {
         int edges=graph.pipes().size(),nodes=graph.reservoirs().size();
@@ -2423,26 +2099,16 @@ public final class PassiveStepSolver {
     }
     /**
      * The {@code illegalDirection} closure of the pass loop, taken once at the start of the solve on the point pass 0
-     * starts from.
-     *
-     * <p>A passive connection whose start-point flow runs in a direction its own boundary forbids
-     * ({@link #boundaryAllowed}) is closed for this solve exactly as that rule closes it after a converged pass.
-     * The direction is the one {@link #startPoint} gives the connection; where the start point gives it none
-     * ({@code |q| <= 1e-10}, the rule's own threshold, which is every connection the previous accepted point had
-     * closed, since a closed connection records exactly zero), it is the direction of {@link #initialMassFlow} on
-     * the current states. Nothing is carried from the previous solve: the closure is derived afresh from this
-     * solve's start point, so a connection whose pressures turn legal opens again at the next solve.
-     *
-     * <p>Passive connections only. The comment above the {@code illegalDirection} rule decides devices first: a
-     * passive edge showing an illegal direction next to a device that cannot hold its mode is that device's
-     * symptom, and closing the symptom first pins the wrong active set. Before any pass no device has been
-     * decided, so a device connection is left to the pass loop.
-     *
-     * <p>Why: an island coming to rest next to a void or a generator leaves the one-way connections to it with flows that
-     * point the forbidden way at the start of the next solve; the pass loop would close them only after a pass that
-     * converged, and at rest that pass is the zero-flow stall of review 7.8. Only once this solver has accepted a solve on
-     * the same structure (pipe identities and node ids): a first solve's junction pressures are the compiler's property
-     * guess, not a state. And only where the static driving pressure forbids the direction with either end's density
+     * starts from: a passive connection whose start-point flow runs in a direction its own boundary forbids
+     * ({@link #boundaryAllowed}) is closed for this solve exactly as that rule closes it after a converged pass. The
+     * direction is the one {@link #startPoint} gives it; where that gives none ({@code |q| <= 1e-10}, every connection the
+     * previous point had closed), the direction of {@link #initialMassFlow} on the current states. Derived afresh from
+     * this solve's start point, so a connection whose pressures turn legal opens again at the next solve. Passive
+     * connections only (devices are decided first, see the pass loop). Why: an island coming to rest next to a void or a
+     * generator leaves the one-way connections with flows that point the forbidden way at the next solve's start, and the
+     * pass loop would close them only after a converged pass, which at rest is a zero-flow stall. Only once this solver
+     * has accepted a solve on the same structure (a first solve's junction pressures are the compiler's guess, not a
+     * state), and only where the static driving pressure forbids the direction with either end's density
      * ({@link #illegalWithEitherDensity}). {@code keep} names the connections the interval solver reopened.
      */
     private void closeIllegalStarts(PassiveNetwork graph,List<FlowControl.Mode> modes,boolean[] boundaryClosed,boolean[] keep) {
@@ -2486,13 +2152,11 @@ public final class PassiveStepSolver {
     private static boolean closedEdge(FlowControl.Mode mode,boolean closed){return closed||mode==FlowControl.Mode.CLOSED||mode==FlowControl.Mode.INLET_WRONG_PHASE;}
     private static int root(int[] parent,int node){while(parent[node]!=node){parent[node]=parent[parent[node]];node=parent[node];}return node;}
     /**
-     * The pockets of a pass (hold F8 of the phase-ports batch): for every node, the pocket it belongs to (the index of a
-     * member), or -1. A pocket is a set of junctions joined by pressure-coupling connections ({@link #couples}) with no
-     * pressure anchor: no coupling connection to a node that is not a junction (a vessel, whose pressure its stock sets, a
-     * port, a generator or a void, whose pressure is given) and no regulating valve drawing from it (whose row fixes the
-     * pressure of its first end). A junction's pressure is algebraic - its mass is pinned, so only the hydraulics place it -
-     * and nothing places a pocket's pressure level: shifting every member's pressure together changes no row but the rows of
-     * the connections on its boundary, which are all prescribed-flow rows with a free head or none.
+     * The pockets of a pass (hold F8): for every node, the pocket it belongs to (the index of a member), or -1. A pocket
+     * is a set of junctions joined by pressure-coupling connections ({@link #couples}) with no pressure anchor: no coupling
+     * connection to a node that is not a junction and no regulating valve drawing from it. A junction's pressure is
+     * algebraic, and nothing places a pocket's level: shifting every member's pressure together changes no row but those
+     * of the connections on its boundary, all prescribed-flow rows with a free head or none.
      */
     private static int[] pockets(PassiveNetwork graph,List<FlowControl.Mode> modes,boolean[] boundaryClosed) {
         int nodes=graph.reservoirs().size();int[] parent=new int[nodes];for(int i=0;i<nodes;i++)parent[i]=i;
@@ -2508,32 +2172,18 @@ public final class PassiveStepSolver {
         return pocket;
     }
     /**
-     * Hold F8 of the phase-ports batch (2026-09-27): the start modes of a pass must leave every pocket ({@link #pockets})
-     * a root. A pocket whose boundary carries only closed connections and movers at their target flow balances its mass
-     * against the targets alone - its members' mass rows sum to the targets' net inflow, which no unknown of the pocket
-     * moves - so with a nonzero target it has no root, and its pressure level has no row at all: the factorization is
-     * singular before the first Newton step (a pump discharging into a pressure control valve that is closed at the start,
-     * or into an inline filter with nothing past it). The pass loop can only leave an active set from a converged point, so
-     * such a start was refused at every step size and the island held.
-     *
-     * <p>What the pocket can do instead is decided here, in the order the physics does it, and only at the start of the
-     * solve (the pass loop's transitions decide from the first converged point on, unchanged):
-     * <ul>
-     * <li>a mover pushing into the pocket raises its pressure until a closed pressure control valve drawing from it opens:
-     * such a valve whose far end has a pressure anchor starts regulating (its row holds the pocket at its set point and
-     * its flow carries the targets out);</li>
-     * <li>otherwise nothing can take the targets: a mover (at its target or at its head limit) with a sealed pocket on either
-     * side - every way out of it other than through the mover closed ({@link #sealedWithout}) - can carry nothing, and it
-     * starts closed at its shutoff for this solve ({@code atShutoff}, which the pass loop never reopens within the solve,
-     * as for a pump it has itself found at its shutoff corner). The pocket is then isolated and keeps its pressure
-     * ({@code Equations.retainedPressures}). Starting it at its head limit instead also has a root, but one that places
-     * the pocket at the mover's shutoff pressure, which for a compressor or a strong pump lies outside the property
-     * package's range (the placement-sequence fuzz: a dead-ended compressor's pocket at 2.5 MPa of nitrogen, a pump's
-     * dead-ended suction pulled below 100 Pa), where the island then held on the data range (before the owner rule of
-     * 2026-10-16) though a zero flow never reaches it.</li>
-     * </ul>
-     * Repeated until no pocket is left without a root (each round changes at least one mode and never undoes one). An
-     * island without such a pocket keeps its start modes exactly.
+     * Hold F8: the start modes of a pass must leave every pocket ({@link #pockets}) a root. A pocket whose boundary carries
+     * only closed connections and movers at their target flow balances its mass against the targets alone, which no
+     * unknown of the pocket moves, so with a nonzero target it has no root and its pressure level has no row: the
+     * factorization is singular before the first Newton step (a pump discharging into a pressure control valve closed at
+     * the start, or into an inline filter with nothing past it), and such a start was refused at every step size. Decided
+     * here, at the start of the solve only, in the order the physics does it: a mover pushing into the pocket raises its
+     * pressure until a closed pressure control valve drawing from it opens (a valve whose far end has an anchor starts
+     * regulating); otherwise a mover with a sealed pocket on either side ({@link #sealedWithout}) can carry nothing and
+     * starts closed at its shutoff for this solve ({@code atShutoff}, never reopened within it), the pocket isolated at its
+     * pressure ({@code Equations.retainedPressures}); starting it at its head limit instead would place the pocket at the
+     * mover's shutoff pressure, outside the package's range for a compressor or a strong pump. Repeated until no pocket is
+     * left without a root; an island without such a pocket keeps its start modes exactly.
      */
     private static void relieveSealedPockets(PassiveNetwork graph,List<FlowControl.Mode> modes,boolean[] boundaryClosed,boolean[] atShutoff) {
         int edges=graph.pipes().size();int[][] nodeEdges=incidence(graph);
@@ -2589,11 +2239,9 @@ public final class PassiveStepSolver {
         return sealedWithout(graph,nodeEdges,modes,boundaryClosed,node,edge,0);
     }
     /**
-     * {@link #sealedWithout} for a mover's side (owner decision D58, A4): with {@code relief} 1 the pocket must let flow out
-     * (a mover's discharge), with -1 it must let flow in (its suction), and a connection whose one-way rules
-     * ({@link #boundaryAllowed}; a pump, compressor or valve passes only from its first end to its second) forbid that
-     * direction counts as closed: a discharge whose only way out is into a generator, or a suction whose only feed is a void
-     * or a dry end, is sealed. With 0 every open connection counts, either way.
+     * {@link #sealedWithout} for a mover's side (owner decision D58, A4): with {@code relief} 1 the pocket must let flow
+     * out (a mover's discharge), with -1 it must let flow in (its suction), and a connection whose one-way rules
+     * ({@link #boundaryAllowed}) forbid that direction counts as closed. With 0 every open connection counts, either way.
      */
     static boolean sealedWithout(PassiveNetwork graph,int[][] nodeEdges,List<FlowControl.Mode> modes,boolean[] boundaryClosed,int node,int edge,int relief) {
         if(!graph.reservoirs().get(node).junction())return false;
@@ -2616,41 +2264,22 @@ public final class PassiveStepSolver {
         return true;
     }
     /**
-     * Decision D12 (phase-ports batch): a generator never receives, from the cold start's first pass on. On a rate solve
-     * with no accepted solve of its structure behind it - the cold start's rate seed ({@code PassiveIntervalSolver}'s
-     * {@code coldRateSeed}), whose converged junction states and flows the first steps start from - a passive generator
-     * run (the generator's connection and the degree-two junctions after it, the run {@link #closeDeadHeads} decides on)
-     * that ends at a junction of degree three or more is closed for this solve when the island's one-way pressure
-     * estimate ({@link #oneWayPressures}) puts that junction above the generator by more than {@link #reopenBand}; if any
-     * run is closed, the island's junctions start from the estimate's pressures (their own temperature and composition; a
-     * Newton starting guess only, the owned inventories are untouched).
+     * Decision D12: a generator never receives, from the cold start's first pass on. On a rate solve with no accepted solve
+     * of its structure behind it (the cold start's rate seed), a passive generator run (the generator's connection and the
+     * degree-two junctions after it, the run {@link #closeDeadHeads} decides on) that ends at a junction of degree three or
+     * more is closed for this solve when the island's one-way pressure estimate ({@link #oneWayPressures}) puts that
+     * junction above the generator by more than {@link #reopenBand}; if any run is closed, the island's junctions start
+     * from the estimate's pressures (a Newton starting guess only).
      *
-     * <p>Why: {@link #closeDeadHeads} skips a run that ends at a junction, and {@link #closeIllegalStarts} waits for an
-     * accepted solve because a first solve's junction pressures are the compiler's property guess, not a state. So pass 0
-     * of the cold rate seed treated every generator as a two-way fixed-pressure boundary: between generators tens of kPa
-     * apart, a through-flow network whose low generators are sinks, most of it on the velocity cap's branch (a row that
-     * does not depend on the end pressures), with junction pressure columns near empty. The rate seed failed, the steps
-     * started from the compiler's guess with the same two-way generators, and every step was refused at "active-set
-     * pass=0" at every step size. Measured on the extreme-topology fixtures: closing the receiving generators from the
-     * compiler's junction guess does not converge, a uniform junction pressure with them closed converges only near the
-     * solution; the estimate supplies both the closures and the start. Once the rate seed has converged its structure
-     * counts as accepted, so the first step's {@link #closeIllegalStarts} closes the generators that seed shows receiving
-     * before that step's pass 0 (documentation/2026-09-26-phase-ports-and-compressor/PHASE_PORTS_REVIEW.md, D12).
-     *
-     * <p>The estimate is a steady state with every held node (vessel as a port, generator, void) at its start pressure; a
-     * closure it decides binds this rate solve only, and the step solves decide afresh on the seeded states
-     * ({@link #closeIllegalStarts}, the interval solver's {@link #reopenable}). A step solve is not given the closure: on a
-     * first step solve without a converged rate seed it was measured insufficient (4 of the 6 full-fixture runs still failed
-     * in pass 0). An island in which no generator would receive is solved exactly as before (the estimate changes no state
-     * and closes nothing). Islands with an actuator or solids are left to the pass loop, as the start closures leave
-     * actuated runs (the device-first rule).
-     *
-     * <p>An inline filter is a passive connection here (hold class E1 of the phase-ports batch, 2026-09-28): an island
-     * with a filter runs this rate solve twice, as the cold rate seed and as {@code SolidEventIntegrator}'s interval-start
-     * closure check, whose failure holds the island; excluding it left the two-way generator of the defect above in every
-     * filter island, and a 1 atm water generator three blocks below its junction stalled that check at "Newton line search
-     * stalled" at every interval (a generator one-way by decision D12). The estimate reads the filter's connection by its
-     * block's geometry, a start guess like every other number it uses.
+     * <p>Why: {@link #closeDeadHeads} skips a run that ends at a junction and {@link #closeIllegalStarts} waits for an
+     * accepted solve, so pass 0 of the cold rate seed treated every generator as a two-way fixed-pressure boundary:
+     * between generators tens of kPa apart, a through-flow network whose low generators are sinks, and every step was
+     * refused at pass 0 at every step size. Measured on the extreme-topology fixtures, closing the receiving generators
+     * from the compiler's junction guess does not converge and a uniform junction pressure converges only near the
+     * solution; the estimate supplies both the closures and the start. A closure binds this rate solve only; the step
+     * solves decide afresh on the seeded states. An island in which no generator would receive is solved exactly as
+     * before. Islands with an actuator or solids are left to the pass loop. An inline filter is a passive connection here
+     * (hold class E1): the estimate reads its connection by its block's geometry.
      */
     private PassiveNetwork closeColdReceivingGenerators(PassiveNetwork graph,boolean[] boundaryClosed,boolean[] keep,Runnable checkpoint) {
         if(!rateOnly||acceptedPipes.equals(identities(graph))&&Arrays.equals(acceptedNodeIds,nodeIds(graph)))return graph;
@@ -2699,16 +2328,14 @@ public final class PassiveStepSolver {
     }
     /**
      * The one-way pressure estimate of {@link #closeColdReceivingGenerators}: every junction's pressure at which the
-     * island's open connections balance with every held node (a non-junction) at its start end pressure, each connection
-     * carrying the flow of {@link #initialMassFlow}'s law in the column of its donor end (the run's loss inverted, capped
-     * at the donor's velocity limit) and nothing in a direction {@link #boundaryAllowed} refuses - so a generator below
-     * its junction carries nothing. A junction donor holding gas only has its density, and so its cap, scaled with its
-     * pressure (ideal gas at its own temperature): the junctions start from the compiler's guess, not a state, and a cap
-     * read at the guessed density put the grid's junctions 10 kPa too high; it is also the one pressure dependence a
-     * capped junction outflow has, so a junction whose connections are all capped keeps a pressure column. Solved by a
-     * damped Newton on the junction pressures alone (per-connection difference derivatives), the iterate held within the
-     * held pressures' hull widened by the island's largest static column. Returns per node the estimated pressure of a
-     * junction some held node reaches, NaN elsewhere, or null if the Newton does not converge (nothing is then closed).
+     * island's open connections balance with every held node at its start end pressure, each connection carrying the flow
+     * of {@link #initialMassFlow}'s law in the column of its donor end (the run's loss inverted, capped at the donor's
+     * velocity limit) and nothing in a direction {@link #boundaryAllowed} refuses. A junction donor holding gas only has
+     * its density, and so its cap, scaled with its pressure (ideal gas at its own temperature): a cap read at the guessed
+     * density put a grid's junctions 10 kPa too high, and it is the one pressure dependence a capped junction outflow has.
+     * A damped Newton on the junction pressures alone, held within the held pressures' hull widened by the island's
+     * largest static column. Returns per node the estimated pressure of a junction some held node reaches, NaN elsewhere,
+     * or null if the Newton does not converge (nothing is then closed).
      */
     private double[] oneWayPressures(PassiveNetwork graph,boolean[] boundaryClosed,int[][] nodeEdges,Runnable checkpoint) {
         int edges=graph.pipes().size(),nodes=graph.reservoirs().size();
@@ -2886,15 +2513,12 @@ public final class PassiveStepSolver {
         return x;
     }
     /**
-     * Whether the static driving pressure {@code P_a - P_b - rho g (z_b - z_a)} has the sign of {@code flow} with rho = either endpoint's density.
-     * {@link #initialMassFlow}, which supplies the direction of a connection the previous point had closed, states
-     * the row's column ({@link #columnFromFirst}), and where the pipe could stand full of either fluid that is the
-     * column of the endpoint with the higher pressure. On a falling water line into a nitrogen tank that is the
-     * tank's gas once the tank passes the generator's pressure, so the estimate reads a 4 m water column as 4 m of
-     * nitrogen and reports a 4.8 kg/s backflow into the generator while the column still drives 4.2 kPa forward
-     * (ElevatedBlockLineIslandTest, run 76a); the connection then stays closed for good, because a closed connection
-     * records zero and the next start reads the same estimate. Between two gas endpoints (the void edges of review
-     * 7.8) the two densities give the same sign and the rule fires as before.
+     * Whether the static driving pressure {@code P_a - P_b - rho g (z_b - z_a)} has the sign of {@code flow} with rho =
+     * either endpoint's density. {@link #initialMassFlow} states the row's column ({@link #columnFromFirst}), and where
+     * the pipe could stand full of either fluid that is the column of the end with the higher pressure: on a falling water
+     * line into a nitrogen tank that is the tank's gas once the tank passes the generator's pressure, so the estimate read
+     * a 4 m water column as nitrogen and reported a 4.8 kg/s backflow while the column still drove 4.2 kPa forward, and
+     * the connection stayed closed for good. Between two gas endpoints both densities give the same sign.
      */
     private boolean illegalWithEitherDensity(PassiveNetwork graph,PassiveNetwork.Pipe pipe,double flow) {
         var a=graph.reservoirs().get(pipe.first());var b=graph.reservoirs().get(pipe.second());
@@ -2916,22 +2540,19 @@ public final class PassiveStepSolver {
                 &&!outOfDryEnd(graph,pipe,flow);
     }
     /**
-     * Whether {@code flow} leaves its connection through a dry end ({@link #dryEnd}). Such an end gives nothing in the
-     * step: a larger flow is a forbidden direction ({@link #boundaryAllowed}), and one within that rule's tolerance,
-     * 1e-10 kg/s, is no flow, at a converged point and at a polished one alike. A vessel that starts the step holding
-     * nothing has nothing to book out, whether the pass laid it out dry or laid it out from what reached it (random seed
-     * 708: an empty tank looped twice to one junction converged with 1.6e-22 kg/s in by one line and out by the other,
-     * and the booking, which starts from nothing, ended it at zero at every step size).
+     * Whether {@code flow} leaves its connection through a dry end ({@link #dryEnd}). Such an end gives nothing in the step:
+     * a larger flow is a forbidden direction ({@link #boundaryAllowed}), and one within that rule's tolerance, 1e-10 kg/s,
+     * is no flow, at a converged point and at a polished one alike (an empty tank looped twice to one junction converged
+     * with 1.6e-22 kg/s round the loop, and the booking ended it at zero at every step size).
      */
     static boolean outOfDryEnd(PassiveNetwork graph,PassiveNetwork.Pipe pipe,double flow) {
         return flow>0&&dryEnd(graph.reservoirs().get(pipe.first()),pipe.firstPort())||flow<0&&dryEnd(graph.reservoirs().get(pipe.second()),pipe.secondPort());
     }
     /**
      * Decision D54 (every vessel a bag with a stiff wall): an end with nothing behind it to draw. A vessel that holds no
-     * fluid ({@link #holdsNoFluid}: placed empty, or holding only solids, which ride the liquid while a dry gas carries
-     * none, decision D33) has nothing to carry anything out, so all its ports are dry; a top (VAPOR) port of a slack vessel
-     * that holds no gas is dry too: the liquid stands below it at the ambient, and what is above it is the atmosphere the
-     * model does not carry. The model never draws air.
+     * fluid ({@link #holdsNoFluid}: placed empty, or holding only solids, which ride the liquid, decision D33) has nothing
+     * to carry anything out, so all its ports are dry; a top (VAPOR) port of a slack vessel that holds no gas is dry too:
+     * what is above the liquid is the atmosphere the model does not carry.
      */
     static boolean dryEnd(PassiveNetwork.Reservoir node,PassiveNetwork.PhasePort port) {
         if(node.kind()!=PassiveNetwork.NodeKind.RESERVOIR&&node.kind()!=PassiveNetwork.NodeKind.PORT)return false;
@@ -2940,18 +2561,15 @@ public final class PassiveStepSolver {
                 &&!PhaseLayout.taut(node.state(),node.inventory().volume());
     }
     /**
-     * A vessel, or its rate-solve copy, that holds no fluid (decision D54: placed empty, or holding only solids): its fluid,
-     * the bag less its solids, at most the bag's resolution, {@link #HOLDS_NOTHING} of its capacity (owner decision D59 (2),
-     * t28). That resolution is the one at which the bag's volume is already snapped to the capacity (A311,
-     * {@link PhaseLayout#bagVolume}); below it a vessel's fluid is roundoff, typically a residue a junction's buffer leaves in
-     * an emptied tank (world defaults 322: 1.3e-71 kg; 333: 2.2e-17 kg). Solids ride the liquid and a dry gas carries none
-     * (owner decision D33), and without a fluid they have nothing to exchange with (OD-P4), so whatever solids it holds,
-     * such a vessel is neither a feed nor stock and has no fluid to state: an end of it gives nothing ({@link #dryEnd}), its
-     * column is the other end's, a junction seed's sweep passes through it, the rest test does not count it, a step lays it
-     * out dry ({@link #dry}), and the booking states it at its flash with no closure ({@link InventoryEquilibrium#solve}).
-     * One rule where holding nothing was the test before (decision D54 of a vessel placed empty). The residue stays booked
-     * in the vessel's inventory (the ledger is exact, D46): nothing is deleted or flushed. A mover's dry suction keeps its
-     * port band (A334, {@link InletPhase}).
+     * A vessel, or its rate-solve copy, that holds no fluid (decision D54): its fluid, the bag less its solids, at most
+     * the bag's resolution, {@link #HOLDS_NOTHING} of its capacity (owner decision D59 (2)), the resolution at which the
+     * bag's volume is already snapped to the capacity ({@link PhaseLayout#bagVolume}); below it a vessel's fluid is
+     * roundoff, typically a residue a junction's buffer leaves in an emptied tank (1.3e-71 kg, 2.2e-17 kg). Solids ride
+     * the liquid and have no fluid to exchange with, so whatever solids it holds such a vessel is neither feed nor stock:
+     * an end of it gives nothing ({@link #dryEnd}), its column is the other end's, a junction seed's sweep passes through
+     * it, the rest test does not count it, a step lays it out dry ({@link #dry}), and the booking states it at its flash
+     * with no closure ({@link InventoryEquilibrium#solve}). The residue stays booked in its inventory (the ledger is exact,
+     * D46). A mover's dry suction keeps its port band ({@link InletPhase}).
      */
     static boolean holdsNoFluid(PassiveNetwork.Reservoir node) {
         if(node.kind()!=PassiveNetwork.NodeKind.RESERVOIR&&node.kind()!=PassiveNetwork.NodeKind.PORT)return false;
@@ -2965,13 +2583,11 @@ public final class PassiveStepSolver {
         return (inventory.solids().empty()?bag:bag-inventory.solids().volume())<=HOLDS_NOTHING*capacity;
     }
     /**
-     * A vessel a step lays out dry when nothing arrives in it (decision D54) and books nothing for when nothing reaches it:
-     * one that holds no fluid at the bag's resolution (owner decision D59 (2)), whatever solids it holds. A residue below
-     * it has no phases worth stating: random seed 708 kept a 4e-33 kg crude residue in a tank and a pass laid out another
-     * tank from a 2e-29 kg roundoff arrival, both as two phases, and their fugacity rows, stated for that roundoff, stalled
-     * the line search at every step size. Solids without a fluid neither move nor change in a step (they ride the liquid,
-     * decision D33, and have no fluid to exchange with, OD-P4): a bed of them has no unknowns until a fluid arrives, and a
-     * layout of it with none found no state to decode at all ("Empty/nonfinite fluid properties").
+     * A vessel a step lays out dry when nothing arrives in it (decision D54) and books nothing for when nothing reaches
+     * it: one that holds no fluid at the bag's resolution (owner decision D59 (2)), whatever solids it holds. A residue
+     * below it has no phases worth stating (a 4e-33 kg crude residue laid out as two phases stalled the line search at
+     * every step size), and solids without a fluid neither move nor change in a step: a bed of them has no unknowns until
+     * a fluid arrives.
      */
     static boolean holdsNoFluidVessel(PassiveNetwork.Reservoir node) {
         return node.kind()==PassiveNetwork.NodeKind.RESERVOIR&&holdsNoFluid(node);
@@ -2979,15 +2595,14 @@ public final class PassiveStepSolver {
     /** The bag's resolution as a share of its capacity: the share below which a vessel holds no fluid (D59 (2), A311). */
     static final double HOLDS_NOTHING=1e-12;
     /**
-     * Decision D54 (a vessel is a bag; a bag can be emptied): {@code graph} with every vessel that runs dry within the step
-     * ({@code emptying}) standing as a junction that holds its stock. A vessel drained to nothing ends the step with no
-     * contents, so it has no state of its own to solve for at the step's end; what leaves it over the step is what it held
-     * and what reached it, mixed (the junction's backward-Euler rows with the stock as their held term), at the pressure its
-     * outlets drain it at, at most the ambient (the outlets run partly full once its contents are gone). The junction's
-     * buffer is the vessel's inventory, its energy field in enthalpy form the vessel's energy plus the ambient's work on its
-     * collapsing bag, {@code U + P_ambient V_bag}; its continuity row gains the stock's mass over the step
-     * ({@link #emptyings}), and its ports draw the bulk (everything leaves). The vessel's own record is untouched: the
-     * reconstruction books it to nothing ({@link ConservativeTransport.Emptying}).
+     * Decision D54 (a bag can be emptied): {@code graph} with every vessel that runs dry within the step ({@code emptying})
+     * standing as a junction that holds its stock. A vessel drained to nothing has no state of its own to solve for at the
+     * step's end; what leaves it is what it held and what reached it, mixed (the junction's backward-Euler rows with the
+     * stock as their held term), at the pressure its outlets drain it at, at most the ambient. The junction's buffer is
+     * the vessel's inventory, its energy field the vessel's energy plus the ambient's work on its collapsing bag,
+     * {@code U + P_ambient V_bag}; its continuity row gains the stock's mass over the step ({@link #emptyings}), and its
+     * ports draw the bulk. The vessel's own record is untouched: the reconstruction books it to nothing
+     * ({@link ConservativeTransport.Emptying}).
      */
     private static PassiveNetwork emptyingGraph(PassiveNetwork graph,boolean[] emptying) {
         var nodes=new ArrayList<>(graph.reservoirs());
@@ -3016,12 +2631,10 @@ public final class PassiveStepSolver {
     private ConservativeTransport.Emptying[] emptyings;
     /**
      * {@code emptying} with every vessel released that a converged pass puts above the ambient (it holds contents at the
-     * step's end after all), or null when none is. A vessel a converged pass of this solve has held at or below the
-     * ambient is confirmed in {@code emptied} and never released again within the solve: whether a bag runs dry within
-     * the step is decided once, as {@code atShutoff} decides a pump's shutoff corner once (random seed 678: the emptying
-     * pass converged at 91.3 kPa, the phase correction laid the vessel's last 3e-17 kg of crude out as two-phase, that pass
-     * converged a little above the ambient, the release restored the vessel form, whose Newton has no root, and the pass
-     * sequence cycled at every step size).
+     * step's end after all), or null when none is. A vessel a converged pass of this solve has held at or below the ambient
+     * is confirmed in {@code emptied} and never released again within the solve: whether a bag runs dry within the step is
+     * decided once (a release that restored the vessel form after the phase correction laid out its last 3e-17 kg as two
+     * phases cycled the pass sequence at every step size).
      */
     private static boolean[] keptEmptying(List<FluidThermodynamics.State> states,boolean[] emptying,boolean[] emptied) {
         boolean[] result=null;
@@ -3037,10 +2650,9 @@ public final class PassiveStepSolver {
     private static final int DRY=32;
     /**
      * Decision D54: whether a pass lays {@code node} out as dry, with no unknowns. A vessel that holds no fluid at the step
-     * start ({@link #holdsNoFluidVessel}), whose seed is still its own state (nothing has been laid out for it), is a
-     * receiver at the ambient with no fluid: its state is its pressure and the solids it holds, if any, and it gives
-     * nothing (its ends are dry, {@link #dryEnd}). Once the start flows deliver into it ({@link #arrivingPhases}) or a pass's
-     * flows reach it ({@link #filled}), its seed is what arrives and it is laid out like every vessel.
+     * start ({@link #holdsNoFluidVessel}), whose seed is still its own state, is a receiver at the ambient with no fluid:
+     * its state is its pressure and its solids, and it gives nothing. Once the start flows deliver into it
+     * ({@link #arrivingPhases}) or a pass's flows reach it ({@link #filled}), it is laid out like every vessel.
      */
     static boolean dry(PassiveNetwork.Reservoir node,FluidThermodynamics.State seed){return holdsNoFluidVessel(node)&&seed==node.state();}
     /** Whether a converged pass's reconstruction books a fluid into a vessel the pass laid out dry: more than none at the
@@ -3051,14 +2663,12 @@ public final class PassiveStepSolver {
         return false;
     }
     /**
-     * The step's ledger (owner decision D46): the change of the vessels and filter cakes equals the boundary transfers
-     * plus the junction term, per component, per solid population and for energy (pump work included). The junction term
-     * is the change of the junctions' buffers (a junction's buffer is the state of its relaxation row, m_J w and m_J h,
-     * not inventory) plus what a rate evaluation's frozen junctions held back ({@link ConservativeTransport.HeldJunctions}).
-     * Each tolerance is scaled as it always was, by the boundaries' turnover and the stocks held, buffers included. The
-     * energy is the internal energy held plus the enthalpy each transfer carries, {@code U + sum h dm}: no stream carries
-     * potential energy (owner decision D37, simplification S1), so a pump's lift work stays in the fluid it lifts as heat
-     * (0.023 K per 10 m of water) and a falling stream does not warm.
+     * The step's ledger (owner decision D46): the change of the vessels and filter cakes equals the boundary transfers plus
+     * the junction term, per component, per solid population and for energy (pump work included). The junction term is
+     * the change of the junctions' buffers (a buffer is the state of its relaxation row, not inventory) plus what a rate
+     * evaluation's frozen junctions held back ({@link ConservativeTransport.HeldJunctions}). Each tolerance is scaled by
+     * the boundaries' turnover and the stocks held. The energy is {@code U + sum h dm}: no stream carries potential energy
+     * (owner decision D37, simplification S1), so a pump's lift work stays in the fluid as heat (0.023 K per 10 m of water).
      */
     void checkConservation(PassiveNetwork graph,ConservativeTransport.Projection projection) {
         int count=model.hydrocarbon.componentCount()+1;double[] before=new double[count],after=new double[count],turnover=new double[count];double eb=0,ea=0,energyScale=0;
@@ -3114,13 +2724,11 @@ public final class PassiveStepSolver {
     /** The ambient's state ({@link NetworkReduction#ambient}), read for an end that holds no fluid ({@link #viscosity}). */
     private FluidThermodynamics.State ambient;
     private FluidThermodynamics.State ambient(){if(ambient==null)ambient=NetworkReduction.ambient(model);return ambient;}
-    /** {@code prepared} must be this state's own temperature bundle, or {@code null} to evaluate
-     * the pure-component terms here as the standalone paths do.
-     *
-     * <p>A state holding no fluid (a vessel holding only solids, decision D33) has no stream: its ends are dry and pass
-     * nothing ({@link #dryEnd}). The solver still reads a stream at every end where no flow passes (each node's at every
-     * decode, a closed connection's row, a start estimate, a row's scale), and there it reads an empty vessel's, the
-     * ambient's (decision D54: the state an empty vessel holds), not the 0/0 of no fluid ({@link #carrierViscosity} too). */
+    /** {@code prepared} must be this state's own temperature bundle, or {@code null} to evaluate the pure-component terms
+     * here. A state holding no fluid (a vessel holding only solids, decision D33) has no stream: its ends are dry. The
+     * solver still reads a stream at every end where no flow passes (a decode, a closed row, a start estimate, a row's
+     * scale), and there it reads an empty vessel's, the ambient's (decision D54), not the 0/0 of no fluid
+     * ({@link #carrierViscosity} too). */
     private double viscosity(FluidThermodynamics.State s,FluidThermodynamics.Prepared prepared) {
         if(!FluidThermodynamics.holdsFluid(s))return viscosity(ambient(),null);
         var terms=prepared==null?null:prepared.viscosities();
@@ -3145,10 +2753,8 @@ public final class PassiveStepSolver {
         final double[][] solidTargets,solidIncoming;
         final int[] filterOffsets;
         /** The connections as the warm-flow check may compare them: never including the cake. They are the solve's own
-         * connections, also in a pass that stands an emptying vessel as a junction (decision D54, {@link #emptyingGraph}):
-         * that pass draws the vessel's bulk through the same connections, so it starts from the same carried flows as
-         * every other pass of the step (random seed 257: from the static estimate instead, the drain to a void below
-         * started inward, stood in the void's air, and the emptying pass converged with the vessel above the ambient). */
+         * connections, also in a pass that stands an emptying vessel as a junction (decision D54, {@link #emptyingGraph}),
+         * so every pass of the step starts from the same carried flows. */
         final List<PassiveNetwork.Pipe.Identity> pipeIdentities;
         final PassiveNetwork graph;final double dt;final PhaseLayout[] layout;final int[] offsets;
         /** Per node, the frozen phase support its layout states (null for a fixed node): the equilibrium the reconstruction
@@ -3165,25 +2771,19 @@ public final class PassiveStepSolver {
         PhaseLayout.Wall[] sweepWall,builtWall;
         final int edgeOffset,size;final double[][] oldAmounts;int[][] sparsity;final List<FlowControl.Mode> modes;final int[] controlOffsets;final boolean[] boundaryClosed;final List<FluidThermodynamics.State> seeds;
         final double[][] cachedVariables;final FluidThermodynamics.State[] cachedStates;final Transport[] cachedTransport;
-        /** Which nodes an end draws phases of ({@link PassiveNetwork.PhasePort} VAPOR or LIQUID) through a connection this pass
-         * leaves open: only those nodes build their phase streams at each decode, and only their non-amount columns keep
-         * their material-row entries ({@link #buildSparsity}). A passive connection the boundary rule has closed carries
-         * exactly zero by its own row ({@code f = q}) at every iterate, so its donor terms are zero whatever it would draw,
-         * and it neither builds a stream nor costs its node a structural zero. A graph with no open phase port has none and
-         * is solved as it always was. */
+        /** Which nodes an end draws phases of ({@link PassiveNetwork.PhasePort} VAPOR or LIQUID) through a connection this
+         * pass leaves open: only those nodes build their phase streams at each decode, and only their non-amount columns
+         * keep their material-row entries ({@link #buildSparsity}). A closed passive connection carries exactly zero by its
+         * own row, so its donor terms are zero whatever it would draw. */
         final boolean[] drawsPhase;
         /**
-         * Each vessel's per-phase capacity (decision D11; {@link PhaseDraw}), kg/s by phase id ({@link FluidThermodynamics#GAS},
-         * {@link FluidThermodynamics#OIL}, {@link FluidThermodynamics#WATER}), for a node with a phase port whose connection
-         * may carry outflow from it; null for every other node:
-         * <pre>c = m_start / (N dt)</pre>
-         * with {@code m_start} the phase stream's mass on the accepted state the step starts from (its solid share included;
-         * zero for a phase it does not hold), {@code N} the vessel's phase-port ends whose connection may carry outflow from
-         * it by the static rule ({@link #boundaryAllowed}: not blocked, not into a generator; start-of-solve closures do not
-         * change it, so it is a constant of the solve), an equal share of what the vessel holds, and {@code dt} this solve's
-         * step - the backward-Euler step the interval solver attempts, the interval's remainder when that is shorter, halved
-         * with every retry - never the slice. A rate solve has no step: every capacity is
-         * infinite, and a port draws the first phase of its order its vessel holds.
+         * Each vessel's per-phase capacity (decision D11; {@link PhaseDraw}), kg/s by phase id, for a node with a phase port
+         * whose connection may carry outflow from it; null for every other node: {@code c = m_start / (N dt)}, with
+         * {@code m_start} the phase stream's mass on the accepted state the step starts from (its solid share included),
+         * {@code N} the vessel's phase-port ends whose connection may carry outflow by the static rule
+         * ({@link #boundaryAllowed}, a constant of the solve), and {@code dt} this solve's step (the backward-Euler step the
+         * interval solver attempts, never the slice). A rate solve has no step: every capacity is infinite, and a port
+         * draws the first phase of its order its vessel holds.
          */
         final double[][] capacities;
         /** Which phases each node's seed of this pass holds ({@link PhaseDraw#held}). */
@@ -3192,12 +2792,11 @@ public final class PassiveStepSolver {
          * for a phase it does not hold): what a pinned phase is drawn at ({@link PhaseDraw}). */
         final Transport[][] startPhases;
         /**
-         * The phase-port segment of each connection end for this pass ({@link PhaseDraw.Segment}; {@code [edge][0]} the first
-         * end, {@code [edge][1]} the second), null for a BULK end and for a passive connection the boundary rule has closed.
-         * Decided once per pass, from the pass's start flow ({@link #initialPoint}) and its seeds, like
-         * {@link #junctionDonorFirst}: which phases are pinned at their capacity and which one carries the rest is a kink of
-         * the stream's composition in the flow, so freezing it keeps each Newton residual smooth; the pass loop re-decides it
-         * from the converged flow ({@link #segmentsMoved}).
+         * The phase-port segment of each connection end for this pass ({@link PhaseDraw.Segment}; {@code [edge][0]} the
+         * first end, {@code [edge][1]} the second), null for a BULK end and for a closed passive connection. Decided once
+         * per pass from the start flow ({@link #initialPoint}) and the seeds, like {@link #junctionDonorFirst}: which
+         * phases are pinned at their capacity and which one carries the rest is a kink of the stream's composition in the
+         * flow, so freezing it keeps each residual smooth; the pass loop re-decides it from the converged flow.
          */
         final PhaseDraw.Segment[][] segments;
         /** Per connection end ({@code [edge][end]}), the pressure drop of the velocity cap of the direction leaving that end
@@ -3206,12 +2805,10 @@ public final class PassiveStepSolver {
         final Transport[][] capSources;final double[][] capPressureDrops;
         final FluidThermodynamics.Prepared[] cachedPrepared;
         /**
-         * Whether a device in this island prescribes its own mass flow this pass. A saturated
-         * filter inlet and a pump holding a target volume flow are two equations for the same edge
-         * once continuity has related them, so the filter capacity is not imposed as a law while
-         * one is active; those islands meet the capacity by step refusal instead, exactly as every
-         * island did before the law existed. A pump on its head limit prescribes a pressure rather
-         * than a flow and leaves the edge free, so it does not count.
+         * Whether a device in this island prescribes its own mass flow this pass. A saturated filter inlet and a pump
+         * holding a target volume flow are two equations for the same edge once continuity has related them, so the filter
+         * capacity is not imposed as a law while one is active; those islands meet the capacity by step refusal. A pump on
+         * its head limit prescribes a pressure, not a flow, so it does not count.
          */
         final boolean prescribedFlow;
         /** Whether this island carries the three aggregate solid moment unknowns on every node;
@@ -3236,131 +2833,55 @@ public final class PassiveStepSolver {
          * evaluation; see {@link PhaseLayout#junctionRows}. */
         final double[] retainedPressures;
         /**
-         * The pressure each edge's pressure-dimensioned rows are stated in, so that the single
-         * Newton tolerance means the same <em>relative</em> closure on every island.
-         *
-         * <p>Those rows - the hydraulic balance, a pump's head limit, a valve's regulated inlet
-         * pressure and an open valve's zero head - used to divide by a literal 1e5 Pa. That is a
-         * fixed unit, not a scale: at a tolerance of 1e-9 it demands 1e-4 Pa of closure whatever
-         * the island runs at, which is a relative 1e-9 at atmospheric pressure and a relative
-         * 2.5e-10 at 400 kPa. The second is below what the endpoint pressures themselves can be
-         * resolved to once they are reconstructed and re-encoded through the logarithmic pressure
-         * unknown, so a driven line settles a fraction of a milli-pascal apart and the island
-         * stalls there forever - and the more resistive the edge, the larger the imbalance its own
-         * row shows, which is why an inline filter (clean resistance ~150x a plain pipe's) is what
-         * this stops first.
-         *
-         * <p>The scale is {@code max(1e5, max(P_first, P_second))} from the endpoint states of
-         * <em>this pass</em>, so:
-         *
-         * <ul>
-         * <li>it is constant through the whole Newton solve, which keeps it out of the Jacobian
-         *     entirely: no derivative of the scale, no new sparsity, and the block sweep and the
-         *     coloured whole-island sweep still evaluate the identical row;</li>
-         * <li>the 1e5 Pa floor leaves every island at or below atmospheric pressure bit-identical
-         *     to what it was, so only islands that actually run above 1 bar move at all;</li>
-         * <li>it is per edge rather than per island, because an island may span a 4 bar header and
-         *     an atmospheric vent and only the rows that sit at high pressure should be loosened. A
-         *     single island-wide maximum would relax an atmospheric branch by the header's factor
-         *     for no reason.</li>
-         * </ul>
-         *
-         * <p>Taking the live iterate's pressures instead was rejected: the scale would then be a
-         * function of the unknowns, so its derivative would enter every one of those rows, the
-         * {@code max} would put a kink in them, and the rows would stop being a fixed positive
-         * multiple of the physical equation - all of it to track a pressure that a converging
-         * Newton is already driving to the pass's own endpoint pressures.
+         * The pressure each edge's pressure-dimensioned rows are stated in, so that the single Newton tolerance means the
+         * same relative closure on every island: {@code max(1e5, max(P_first, P_second))} from the endpoint states of this
+         * pass. Those rows (the hydraulic balance, a pump's head limit, a valve's regulated inlet pressure and an open
+         * valve's zero head) used to divide by a literal 1e5 Pa: at a tolerance of 1e-9 that demands 1e-4 Pa whatever the
+         * island runs at, a relative 2.5e-10 at 400 kPa, below what the endpoint pressures can be resolved to through the
+         * logarithmic pressure unknown, so a driven line stalled a fraction of a milli-pascal apart (an inline filter, about
+         * 150x a plain pipe's resistance, first). Constant through the Newton solve, so out of the Jacobian; floored at
+         * 1e5 Pa, so every island at or below atmospheric pressure is bit-identical; per edge, so an island spanning a 4 bar
+         * header and an atmospheric vent loosens only the rows at high pressure. The live iterate's pressures were
+         * rejected: the scale would enter every row's derivative with a kink.
          */
         final double[] pressureScales;
         /** This pass's starting point, built once: {@link #junctionDonorFirst} is read off it. */
         final double[] initialPoint;
         /**
-         * Which end of each connection donates into a zero-holdup junction for the whole of this
-         * pass, taken from the point the pass starts at rather than from the live iterate.
-         *
-         * <p>A junction's mass fractions and its specific enthalpy are the mixture of what arrives,
-         * a ratio that does not shrink with the flows that form it. Deciding the donor inside the
-         * residual therefore put a finite jump in those rows at exactly zero flow, and the
-         * one-sided differences the Jacobian is built from only ever sample the positive side of
-         * it: on a settled island the Newton direction points the other way, so the derivative the
-         * step was computed from is not the derivative along the step. Measured on the valve block
-         * line at 400 kPa, the linear model predicted a residual of 8e-25 and the full step
-         * produced 1.7e-3, twenty orders apart, with every one of the twenty-four backtracks
-         * landing on the same plateau because the jump is a step and not a slope. That is the
-         * whole of why a tank behind a filter or a valve held while the same tank on plain pipes
-         * runs indefinitely: a plain pipe carries its donor's properties only inside terms already
-         * multiplied by the flow, so its own upwind switch is continuous and its jump is zero.
-         *
-         * <p>Freezing it makes one pass's residual smooth in its own unknowns, which is the rule
-         * every other switch in this solver already follows - device modes, phase regimes, trace
-         * support and boundary closure are all decided once per pass and revised by the outer
-         * loop. The outer loop does the same here: a converged point whose flow disagrees with the
-         * donor it was solved under is one more active-set change, and the donor signs join the
-         * cycle key so the pass sequence stays finite. Only the junction mixture reads them; the
-         * reservoir targets, the net-flow balance and every edge row keep the live upwind, so an
-         * accepted point is upwinded exactly as {@link ConservativeTransport} reconstructs it.
+         * Which end of each connection donates into a zero-holdup junction for the whole of this pass, taken from the point
+         * the pass starts at rather than from the live iterate. A junction's mass fractions and specific enthalpy are the
+         * mixture of what arrives, a ratio that does not shrink with the flows that form it, so deciding the donor inside
+         * the residual put a finite jump in those rows at exactly zero flow, and the one-sided differences the Jacobian is
+         * built from sample only the positive side: on a settled island the derivative the step was computed from is not
+         * the derivative along the step (on the valve block line at 400 kPa the linear model predicted a residual of 8e-25
+         * and the full step produced 1.7e-3, every backtrack on the same plateau). Freezing it makes one pass's residual
+         * smooth in its own unknowns, the rule every other switch here follows; a converged point whose flow disagrees
+         * with the donor is one more active-set change, and the donor signs join the cycle key. Only the junction mixture
+         * reads them; every edge row keeps the live upwind, so an accepted point is upwinded exactly as
+         * {@link ConservativeTransport} reconstructs it.
          */
         final boolean[] junctionDonorFirst;
         /**
-         * The density each connection's static head {@code rho*g*dz} is stated with for the whole
-         * of this pass, read off the point the pass starts at rather than from the live iterate.
+         * Which end's fluid stands in each connection for the whole of this pass (0 the first end's stream, 1 the second's),
+         * read off the point the pass starts at rather than from the live iterate: the twin of {@link #junctionDonorFirst}
+         * on the hydraulic row. The head {@code rho*g*dz} does not shrink with the flow, so a head read from the upwind end
+         * of the current flow had a jump of {@code (rho_first - rho_second)*g*dz} in its row at exactly zero flow, and a
+         * settled line landed on a plateau it could not leave (a water generator four blocks below a nitrogen tank at
+         * 400 kPa: the row jumped by 2.754e-2, the predicted {@code (996.31-715.46)*9.80665*4/400000}, the linear model
+         * predicted 1.08e-19 and the full step produced 2.76e-2). Stating it once per pass makes the column a property of
+         * the connection for that pass and the rest point {@code P_b = P_a - rho*g*dz} an actual root.
          *
-         * <p>It is {@link #junctionDonorFirst}'s twin on the hydraulic row, and the reason is the
-         * same. {@code edgeRows} used to take the head's density from the upwind end of the
-         * <em>current</em> flow, so a connection whose two ends hold fluids of different density
-         * had a finite jump of {@code (rho_first - rho_second)*g*dz} in its own row at exactly
-         * zero flow - and the head does not shrink with the flow, so that jump is degree zero,
-         * exactly like a zero-holdup junction's mixture. The one-sided differences the Jacobian is
-         * built from sample only the branch the iterate is already on, so the line search is
-         * handed a direction whose derivative does not hold across the switch, and a settled line
-         * lands on a plateau it cannot leave. Every fixture in the tree used to be flat, where
-         * {@code dz} is zero and the term vanished; measured on a water generator four blocks
-         * below a nitrogen-charged tank at 400 kPa, the row jumped by 2.754e-2 - the predicted
-         * {@code (996.31-715.46)*9.80665*4/400000} to every digit - the linear model predicted
-         * 1.08e-19, the full step produced 2.76e-2, and all twenty-four backtracks landed on the
-         * same 2.716e-2 plateau. See documentation/ELEVATED_LINE_PROBE.md.
-         *
-         * <p>Freezing it is also the physically honest reading. A connection owns no holdup, so
-         * the fluid whose weight the head is has to be inferred, and what a vertical pipe from a
-         * water generator into a gas space actually contains is the water that was pushed into it
-         * - not whichever end momentarily reads as upstream of a 1e-8 kg/s flow. Stating it once
-         * per pass makes the column a property of the connection for that pass, the row a smooth
-         * function of the pass's own unknowns, and the rest point {@code P_b = P_a - rho*g*dz}
-         * an actual root instead of a value the residual steps over.
-         *
-         * <p>Which column it is, is stated below from the pass's own seed pressures and elevations
-         * - never from the start point's flow sign, which at a settled line is a numerical zero and
-         * means nothing, and never from a converged flow either. It is deliberately <em>not</em>
-         * revised by the outer active-set loop, which is the one place it differs from the junction
-         * donor, and the difference is measured rather than argued: the two columns of a line near
-         * its own hydrostatic balance each put the flow on the other one - the heavier column
-         * leaves the tank marginally over-filled, so the flow is negative, and the lighter one then
-         * leaves it marginally under-filled, so it is positive - so a rule that turned the head
-         * over on a converged disagreement would alternate forever, and if the column joined the
-         * cycle key it would alternate for exactly two passes and then throw. The pass keeps the
-         * column it solved under; the flow that disagrees with it is small by construction, and the
-         * connection's own boundary closure or the next step's seeds take it from there. The
-         * friction term keeps the live donor: {@code pressureDrop} is odd in the flow and zero at
-         * zero, so its upwind switch is continuous and carries no jump to freeze.
-         *
-         * <p>It is also deliberately not part of {@link WorkspaceKey}, unlike the junction donors,
-         * and that too was measured rather than argued. Adding it - as a real boolean per connected
-         * elevation and a constant for every flat one, so that a flat island's workspace identity
-         * could not move - kept the pass sequence honest in principle but cost the vertical line
-         * standing at its own hydrostatic balance its whole run: from forty intervals settled at
-         * 360918.3068 Pa to a hold on {@code Newton iteration limit at residual 2.202e-7}, because
-         * the extra key component churns the workspace cache and the modified Newton loses the
-         * preconditioner it was reusing. It belongs where {@link #pressureScales} belongs: a
-         * quantity each pass reads off its own seeds, revised only by the seeds moving.
-         *
-         * <p>What is frozen is which end's fluid stands in the connection (0 the first end's stream, 1 the second's), never
-         * its density (t27's A377, taken by t28): the row reads that end's density on its own trial state, the state its loss
-         * reads. A riser at rest then balances its own fluid's weight at the state solved for, and a dead-end loop of risers
-         * carries nothing but the column's discretisation (one end's density per riser: a gas's density changes by
-         * {@code g rho / P}, about 1e-4 per metre at 480 kPa). Frozen at the seeds, the columns of random 498's dead-end
-         * pocket (seeded at 118 to 124 kPa, converged at 397 kPa) did not cancel round its loops: its first rate seed carried
-         * 1.8e-5 kg/s round them, 2.4e-7 kg/s on the trial's densities. The end is fixed for the pass, so the row stays smooth
-         * in its unknowns: no jump between the two columns at zero flow.
+         * <p>Which column it is, is stated from the pass's own seed pressures and elevations ({@link #columnFromFirst}),
+         * never from a flow sign, and it is deliberately not revised by the outer active-set loop (unlike the junction
+         * donor): near its own hydrostatic balance each column puts the flow on the other one, so a rule that turned the
+         * head over on a converged disagreement would alternate forever. The pass keeps the column it solved under; the
+         * friction term keeps the live donor, being odd in the flow with no jump to freeze. Nor is it part of
+         * {@link WorkspaceKey}: adding it churned the workspace cache and cost a vertical line at rest its whole run (forty
+         * intervals settled at 360918.3068 Pa went to a hold at residual 2.202e-7). What is frozen is the end, never its
+         * density: the row reads that end's density on its own trial state, so a riser at rest balances its own fluid's
+         * weight at the state solved for, and a dead-end loop of risers carries nothing but the column's discretisation
+         * (frozen at the seeds, a dead-end pocket's columns did not cancel round its loops: 1.8e-5 kg/s on the seeds,
+         * 2.4e-7 kg/s on the trial's densities).
          */
         final int[] columnEnds;
         /** Residual scratch. Every one of these is written before it is read within a single
@@ -3442,11 +2963,10 @@ public final class PassiveStepSolver {
                 var pipe=graph.pipes().get(edge);
                 pressureScales[edge]=Math.max(1e5,Math.max(seeds.get(pipe.first()).pressure(),seeds.get(pipe.second()).pressure()));
             }
-            // A junction no open connection reaches keeps the pressure it had (PhaseLayout.junctionRows). The same holds for a
-            // sealed pocket of junctions (hold F8; see pockets): its members are joined by open connections, but every
-            // connection on its boundary is closed, so its members' mass rows sum to zero identically - one of them says
-            // nothing the others do not - and its pressure level has no row. The pocket's first member keeps its pressure
-            // in place of its mass row; the others keep theirs. A pocket of one junction is the isolated junction, as before.
+            // A junction no open connection reaches keeps the pressure it had (PhaseLayout.junctionRows). The same holds
+            // for a sealed pocket of junctions (hold F8; see pockets): every connection on its boundary is closed, so its
+            // members' mass rows sum to zero identically and its pressure level has no row. The pocket's first member
+            // keeps its pressure in place of its mass row; the others keep theirs.
             retainedPressures=new double[count];
             int[] pocket=pockets(graph,this.modes,this.boundaryClosed);boolean[] unsealed=new boolean[count],retained=new boolean[count];
             for(int edge=0;edge<graph.pipes().size();edge++) {
@@ -3488,50 +3008,19 @@ public final class PassiveStepSolver {
                 double actuator=controlOffsets[edge]<0?0:initialPoint[controlOffsets[edge]]*1e5;
                 double difference=endPressure(graph.reservoirs().get(pipe.first()),pipe.firstPort(),start)-endPressure(graph.reservoirs().get(pipe.second()),pipe.secondPort(),end)
                         +(pipe.control() instanceof FlowControl.Mover?actuator:-actuator);
-                // The column that is its own donor. A column states which end fills the connection,
-                // so a column is admissible exactly when the driving pressure it produces points
-                // away from the end it was read off: the first end's when that pressure is forward,
-                // the second end's when it is backward. Where both columns agree on the direction
-                // only one of them is admissible and there is nothing to decide - a line pouring
-                // downhill stands in what feeds it from above, and a line the pressures cannot lift
-                // stands in what would come back down it.
-                //
-                // Taking the start point's upwind end instead reads a numerical zero as a
-                // direction, and both readings of that zero are wrong somewhere. A water generator
-                // four blocks under a nitrogen tank at the same pressure sits at a flow of exactly
-                // zero; read as the water column it asks for 39 kPa the generator has not got, so
-                // the pass is sent looking for a reverse flow the whole way across zero and stalls
-                // on the friction kink there, where the slope changes by three orders between the
-                // two fluids. Read the other way, a liquid line resting on its own two-metre column
-                // whose ends differ only by water's compressibility takes the lighter end's
-                // density, and the 0.18 Pa that leaves drives a permanent 8.3e-7 kg/s through a
-                // graph that has to be at rest.
-                //
-                // Two cases are left, and they are opposites rather than one band.
-                //
-                // Neither column admissible - the driving pressure is below the heavier head and
-                // above the lighter one - is where a settled line actually lives, and it is the
-                // same fact that forbids revising the head on a converged flow, since there each
-                // column puts the flow on the other one. The column to state is then the one
-                // nearest its own rest point, which makes rest a fixed point of the rule as well as
-                // of the equations: a line standing at {@code P_a - P_b = rho*g*dz} has no driving
-                // pressure at all under {@code rho} and the whole difference between the heads
-                // under the other one, so it keeps the column it is balanced under.
-                //
-                // Both columns admissible is genuine bistability - the connection can stand full of
-                // either fluid and be at rest in both - and there the start point's flow sign is
-                // the right evidence and the only evidence, because which fluid is in the pipe is
-                // exactly the history the model does not otherwise carry. Deciding it by rest point
-                // instead stops a filling line at the lighter column's balance: the falling
-                // four-block line at 400 kPa settled at 429851 Pa against the 439082 Pa its own
-                // water column demands, because the tank's own mixture balances 9 kPa earlier and
-                // the line met that point first.
-                //
-                // On an island whose devices all sit at one y both tests read the same pressure
-                // difference and the column they pick multiplies a {@code dz} of zero, so a flat
-                // island is bitwise what it was whichever end is named.
-                //
-                // The rule is {@link #columnFromFirst}, which the start estimate states too.
+                // The column that is its own donor: a column is admissible exactly when the driving pressure it produces
+                // points away from the end it was read off. Where both columns agree on the direction only one is
+                // admissible (a line pouring downhill stands in what feeds it from above). Taking the start point's upwind
+                // end instead reads a numerical zero as a direction: a water generator four blocks under a nitrogen tank at
+                // the same pressure, read as the water column, asks for 39 kPa the generator has not got and stalls on the
+                // friction kink at zero; a liquid line resting on its own two-metre column, read the other way, takes the
+                // lighter density and the 0.18 Pa that leaves drives a permanent 8.3e-7 kg/s through a graph at rest.
+                // Neither column admissible (the drive below the heavier head and above the lighter) is where a settled
+                // line lives: the column nearest its own rest point, so rest is a fixed point of the rule as of the
+                // equations. Both admissible is genuine bistability, and the start point's flow sign is the only evidence
+                // of which fluid is in the pipe (deciding by rest point stopped a filling line at the lighter column's
+                // balance, 429851 Pa against the 439082 Pa its water column demands). On a flat island dz is zero and the
+                // choice multiplies nothing. The rule is {@link #columnFromFirst}, which the start estimate states too.
                 columnEnds[edge]=only>=0?only:columnFromFirst(first,second,difference,dz,initialPoint[edgeOffset+edge]>=0)?0:1;
             }
             segments=startInsideCaps();
@@ -3539,19 +3028,14 @@ public final class PassiveStepSolver {
             anchorJunctions();
         }
         /**
-         * The segments of this pass, deciding them from its start flows, and those start flows moved inside the velocity
-         * cap of the priority mixture they land in (decision D11). The start point starts every connection inside its own
-         * velocity cap ({@link #initialMassFlow}), but that cap is the one of the stream a port draws at a vanishing flow
-         * (the water of a wet tank's bottom port); a start flow beyond the first phase's capacity lands in a mixture whose
-         * cap ({@link #capLimit}) can be far lower (a volume flow of mostly gas), and a pass started there has to walk its
-         * Newton the whole way down: measured on a 5 s step of a 2 MPa tank with 2 % water, 137.7 kg/s of start flow
-         * against a mixture cap of about 8.7 kg/s, the Newton stalled and the phase correction cycled. Only a connection
-         * drawing through a phase port moves (a sign never changes, so the frozen junction donors and head columns
-         * read off the start point are unchanged); the segments are then decided again from the moved flows, since a
-         * flow moved below the pinned total lands in a segment with fewer pinned phases, whose cap is at least as high. An
-         * end drawing the phase the start point read keeps its flow (the start point already starts inside that cap, to
-         * the bit); one whose seed no longer holds that phase (a phase correction) moves inside the cap of the one it
-         * draws instead.
+         * The segments of this pass, decided from its start flows, and those start flows moved inside the velocity cap of
+         * the priority mixture they land in (decision D11). The start point starts every connection inside its own cap
+         * ({@link #initialMassFlow}), but that is the cap of the stream a port draws at a vanishing flow (the water of a wet
+         * tank's bottom port); a start flow beyond the first phase's capacity lands in a mixture whose cap
+         * ({@link #capLimit}) can be far lower (137.7 kg/s of start flow against a mixture cap of about 8.7 kg/s on a 2 MPa
+         * tank with 2 % water stalled the Newton). Only a connection drawing through a phase port moves (no sign changes,
+         * so the frozen donors and columns are unchanged); the segments are then decided again from the moved flows. An
+         * end drawing the phase the start point read keeps its flow to the bit.
          */
         private PhaseDraw.Segment[][] startInsideCaps() {
             int edges=graph.pipes().size();
@@ -3603,15 +3087,12 @@ public final class PassiveStepSolver {
         }
         /**
          * The seeds of a pass whose Newton failed, with every vessel whose phase-port segments together draw a phase's whole
-         * start content (each end that may draw from it pins the phase, at its equal share of the capacity: {@code sum c dt
-         * = m_start}) seeded without that content: its seed's amounts less the phase's start amounts, flashed at the seed's
-         * temperature and pressure; null when no seed changes its phase regime that way. A phase drawn to zero over the step
-         * usually ends it on its own phase boundary: a gas no liquid dissolves (nitrogen over free water) cannot exist once
-         * it has all left, and a pass that keeps its unknowns has no root, while the phase correction of the failed iterate
-         * (which still holds some of it) finds nothing to change - a step refused at every size, since halving the step
-         * doubles the capacity and the pinned draw is still the whole phase. A starting point and a phase regime only, like
-         * the phase correction: the accumulation rows start from the vessel's inventory, and a converged pass that turns out
-         * to hold the phase after all is corrected back by the converged-point phase correction.
+         * start content (each end that may draw from it pins the phase at its share of the capacity, {@code sum c dt =
+         * m_start}) seeded without that content, flashed at the seed's temperature and pressure; null when no seed changes
+         * its phase regime that way. A phase drawn to zero usually ends the step on its own phase boundary (a gas no liquid
+         * dissolves cannot exist once it has all left), and a pass that keeps its unknowns has no root while halving the
+         * step doubles the capacity and the pinned draw is still the whole phase. A starting point and a phase regime only:
+         * a converged pass that holds the phase after all is corrected back by the converged-point phase correction.
          */
         List<FluidThermodynamics.State> drainedSeeds(Runnable checkpoint) {
             List<FluidThermodynamics.State> result=null;
@@ -3685,14 +3166,11 @@ public final class PassiveStepSolver {
         /**
          * What connection {@code edge} carries out of its end {@code end} for the connection flow {@code q}, on that end's
          * node transport {@code node}: the node's bulk at a BULK end (or a closed connection's), the one phase stream the
-         * segment draws at the end state where it pins none, and otherwise the priority stream's mixture ({@link PhaseDraw}):
-         * the pinned phases at their capacities, at the step's start state ({@link #startPhases}), and the marginal phase at
-         * the end state with the rest of {@code |q|} (below the pinned total, the pinned phases in proportion to their
-         * capacities). The mixture is a {@link Transport} of rates: its {@code mass} is the mass flow it describes and every
-         * extensive field the matching rate, so every donor term the solver states per kilogram ({@code moving * moles /
-         * mass}, the solid share, the specific enthalpy) reads it unchanged; its density is the no-slip mixture's (mass over
-         * the sum of the phases' volume flows), its viscosity the phases' volume-flow average (the bulk's own rule), its
-         * velocity limit the smallest of its phases' (the cap itself is {@link #capLimit}).
+         * segment draws where it pins none, and otherwise the priority stream's mixture ({@link PhaseDraw}): the pinned
+         * phases at their capacities, at the step's start state ({@link #startPhases}), and the marginal phase at the end
+         * state with the rest of {@code |q|}. The mixture is a {@link Transport} of rates ({@code mass} the mass flow, every
+         * extensive field the matching rate), so every per-kilogram donor term reads it unchanged; its density is the
+         * no-slip mixture's, its viscosity the phases' volume-flow average, its velocity limit the smallest of its phases'.
          */
         Transport drawn(int edge,int end,Transport node,double q) {
             var segment=segments[edge][end];
@@ -3716,12 +3194,11 @@ public final class PassiveStepSolver {
         }
         /**
          * The velocity cap (kg/s) of the direction leaving end {@code end} of {@code edge}, on that end's node transport: the
-         * drawn stream's {@code density * area * velocityLimit} at a BULK end and where one phase is drawn at the end state
-         * (the form the cap always had, to the bit); for a priority mixture, a volume flow of {@code area * v}, {@code v} the
-         * smallest velocity limit of its phases (decision D11's default): the pinned phases at their capacities and the
-         * marginal one filling the rest, {@code C + rho_m (A v - sum c/rho)}, or, where the pinned phases alone would exceed
-         * it (or no marginal phase is left), the pinned mixture scaled down to it, {@code C A v / sum c/rho} (continuous at
-         * {@code A v = sum c/rho}).
+         * drawn stream's {@code density * area * velocityLimit} at a BULK end and where one phase is drawn (the form the cap
+         * always had, to the bit); for a priority mixture, a volume flow of {@code area * v}, {@code v} the smallest
+         * velocity limit of its phases: the pinned phases at their capacities and the marginal one filling the rest,
+         * {@code C + rho_m (A v - sum c/rho)}, or, where the pinned phases alone would exceed it, the pinned mixture scaled
+         * down to it, {@code C A v / sum c/rho} (continuous at {@code A v = sum c/rho}).
          */
         double capLimit(int edge,int end,Transport node){return capLimit(segments[edge][end],edge,end,node);}
         /**
@@ -3818,11 +3295,9 @@ public final class PassiveStepSolver {
                     }
                 }
             }
-            // Exact structural zeros: phase allocation/T/P cannot change bulk component flow at
-            // fixed total amounts and kg/s. Suppress cancellation-noise derivatives, not small physics.
-            // Only for a BULK end: what a phase port carries is the phase split itself, which the
-            // node's phase allocation, temperature and pressure move, so a node any end of which draws a
-            // phase keeps every entry of its columns (plan 3.3 item 1).
+            // Exact structural zeros: phase allocation, T and P cannot change bulk component flow at fixed total amounts and
+            // kg/s, so cancellation-noise derivatives are suppressed, not small physics. Only for a BULK end: what a phase
+            // port carries is the phase split itself, so a node any end of which draws a phase keeps every entry.
             BitSet materialRows=new BitSet(size);
             for(int node=0;node<count;node++)if(layout[node]!=null) {
                 int components=layout[node].componentBalanceCount();
@@ -3845,23 +3320,14 @@ public final class PassiveStepSolver {
         /**
          * Whether a chord step on the Jacobian built at {@code built} still closes at least half of every row's gap at
          * {@code now} ({@link #chordHolds}): the slopes a connection's row states are its loss slope in its flow and its
-         * slope in each end's pressure unknown.
-         *
-         * <p>The loss slope (the turbulent walk on gas lines, B2 of the phase-ports batch, decision A371). In real life a
-         * line's resistance follows its flow: on the turbulent branch it is proportional to the flow, on the laminar branch
-         * constant. A Newton that walks a gas line from its start estimate (random seed 498: 2.0e-3 kg/s, Re 15 000) to a
-         * root near rest (1.5e-5 kg/s, Re 109) halves its flow per fresh step; a chord step that keeps the resistance of a
-         * flow twice as large closes only half of that line's gap, the residual halves, and the solver's contraction test
-         * (refresh above 0.8) reads the halving as progress until the iteration limit. Both slopes are read on the same
-         * donor state, the one at {@code now}. A cake's law is linear in the flow, and a closed connection's row is its flow.
-         *
-         * <p>The pressure slopes (t29, random seed 886). A row's slope in an end's pressure unknown, {@code ln(P / 1e5)}, is
-         * that end's pressure: a node whose pressure has moved since the Jacobian was built has every row through it stated
-         * with the old pressure. A filter's two junctions seeded 373 kPa apart (the generator's side and the void's) stood
-         * near 143 kPa when the last Jacobian was built and near 222 kPa at the iterate, while the filter between them drops
-         * 105 Pa at its cap: the chord steps stated its row's pressure columns at 1/1.55 of their own, overshot its gap by
-         * 0.55 each, the residual changed sign and fell by 0.55 per step, read as progress, until the iteration limit at
-         * 1.9e-3. The rows are unchanged, so is every root; what moves is which Jacobian a step uses.
+         * slope in each end's pressure unknown. The loss slope (decision A371): a line's resistance follows its flow,
+         * proportional to it on the turbulent branch, so a Newton walking a gas line from 2.0e-3 kg/s (Re 15 000) to a root
+         * near rest (1.5e-5 kg/s, Re 109) halves its flow per fresh step, while a chord step keeping the resistance of a flow
+         * twice as large closes only half the gap and the contraction test reads the halving as progress until the
+         * iteration limit. The pressure slopes: a row's slope in an end's {@code ln(P / 1e5)} is that end's pressure, so a
+         * node whose pressure has moved since the Jacobian was built has every row through it stated with the old pressure
+         * (two junctions seeded 373 kPa apart stated a filter's pressure columns at 1/1.55 of their own and overshot its
+         * gap by 0.55 per step). The rows and roots are unchanged; what moves is which Jacobian a step uses.
          */
         @Override public boolean linearisationHolds(double[] built,double[] now) {
             if(built==null||built.length!=now.length)return true;
@@ -3895,22 +3361,18 @@ public final class PassiveStepSolver {
         @Override public void linearised(){sweepWall=null;}
         public double maximumStep(double[] variables,double[] direction) {
             double alpha=1;
-            // Approach a nonnegative amount boundary directly instead of repeatedly halving a step
-            // that misses it by roundoff. This bounds a trial step; it never clips accepted inventory.
-            // Below clampFloors the unknown is not a boundary this step has to respect: a solid
-            // moment 1e-30 to 1e-70 below its own scale would otherwise bound alpha at 1e-12 to
-            // 1e-18, at which x+alpha*d is bitwise x for every unknown of order one and no
-            // backtrack can ever produce a different residual.
+            // Approach a nonnegative amount boundary directly instead of repeatedly halving a step that misses it by
+            // roundoff; this bounds a trial step and never clips accepted inventory. Below clampFloors the unknown is not a
+            // boundary this step has to respect: a solid moment 1e-30 below its scale would bound alpha at 1e-12, where
+            // x+alpha*d is bitwise x for every unknown of order one.
             for(int c=0;c<edgeOffset;c++)if(amountVariables[c]&&variables[c]>clampFloors[c]&&direction[c]<0)alpha=Math.min(alpha,.99*variables[c]/-direction[c]);
             return alpha;
         }
         /**
-         * The other half of the trace rule in {@link #maximumStep}: a fluid amount at or below its
-         * floor does not bound the step, so a trial that would take it below {@value #TRACE_RETENTION}
-         * of its value keeps that fraction instead, which is the share the {@code .99} rule would have
-         * left it while scaling every other unknown by the same tiny factor. The rest of the step is
-         * taken as the Newton direction says; see {@link #TRACE_CLAMP_FRACTION}. Solid moments keep
-         * their own projection in {@link PhaseLayout#decode}.
+         * The other half of the trace rule in {@link #maximumStep}: a fluid amount at or below its floor does not bound the
+         * step, so a trial that would take it below {@value #TRACE_RETENTION} of its value keeps that fraction instead, the
+         * share the {@code .99} rule would have left it; the rest of the step is taken as the Newton direction says
+         * ({@link #TRACE_CLAMP_FRACTION}). Solid moments keep their own projection in {@link PhaseLayout#decode}.
          */
         @Override public void project(double[] variables,double[] candidate) {
             for(int c=0;c<edgeOffset;c++)
@@ -3919,12 +3381,11 @@ public final class PassiveStepSolver {
             projectFlows(candidate);
         }
         /**
-         * Decision A275: a line carries at most its cap, in a trial as in a converged point, as an amount is never negative.
-         * A trial that puts a line on its law past the cap flow of the end it leaves (on the trial's own donor state) is
-         * moved to that cap flow; a capped line's row states it already. Before the cap was a mode, the flow row's clamp
-         * did this to every trial; without it the first steps of a pump starting on a junction at 1 atm drew kilograms of
-         * nitrogen per second from a void branch whose cap is a fraction of that, and the Newton ended on a plateau at 4e-8
-         * (InlineFilterLineHoldTest). A trial outside the property domain is left to the residual, which refuses it.
+         * Decision A275: a line carries at most its cap, in a trial as in a converged point. A trial that puts a line on its
+         * law past the cap flow of the end it leaves (on the trial's own donor state) is moved to that cap flow; a capped
+         * line's row states it already. Without it the first steps of a pump starting on a junction at 1 atm drew kilograms
+         * of nitrogen per second from a void branch whose cap is a fraction of that, and the Newton ended on a plateau at
+         * 4e-8. A trial outside the property domain is left to the residual, which refuses it.
          */
         private void projectFlows(double[] candidate) {
             boolean any=false;for(int edge=0;edge<capDirections.length&&!any;edge++)any=capDirections[edge]==CAP_OPEN&&clamps(edge);
@@ -3991,13 +3452,10 @@ public final class PassiveStepSolver {
         /**
          * What a connection carries out of one node, per kilogram and for its loss and cap: the conserved amounts and their
          * mass (the normaliser), the volume and density, the viscosity, the specific enthalpy, the velocity limit and the
-         * solid moments. A node's cached entry is its BULK stream, the whole state exactly as the donor terms have always
-         * read it ({@code mass} is {@code state.mass()}, so {@code moles/mass} is the double {@code moles/state.mass()} was),
-         * and on a donor holding solids but no liquid its gas stream, which its bulk end draws (owner decision D33: solids
-         * ride the liquid, {@link FluidThermodynamics#bulkDrawsGas}; {@link #draws} books it as that gas);
-         * {@code phases} are its phase streams by phase id ({@link FluidThermodynamics#GAS}, {@link FluidThermodynamics#OIL},
-         * {@link FluidThermodynamics#WATER}; null for a phase the state does not hold), built only for a node an end of which
-         * is a phase port (plan 3.2; decision D11). What a port end draws of them is {@link Equations#drawn}.
+         * solid moments. A node's cached entry is its BULK stream, the whole state as the donor terms have always read it
+         * ({@code moles/mass} is the double {@code moles/state.mass()} was), and on a donor holding solids but no liquid its
+         * gas stream (owner decision D33, {@link FluidThermodynamics#bulkDrawsGas}); {@code phases} are its phase streams by
+         * phase id (null for a phase it does not hold), built only for a node an end of which is a phase port (decision D11).
          */
         private record Transport(double[] moles,double mass,double volume,double density,double viscosity,double specificEnthalpy,double velocityLimit,
                                  SolidInventory.Moments solids,Transport[] phases) {
@@ -4109,23 +3567,14 @@ public final class PassiveStepSolver {
             energy[node]=stored;incomingMass[node]=mass;incomingEnergy[node]=heat;netMass[node]=emptyings!=null&&emptyings[node]!=null?net+emptyings[node].drain():net;
         }
         /**
-         * Whether {@code node} is a junction
-         * whose every connection other than {@code edge} is closed (closed by the boundary rule or a device in mode
-         * CLOSED). Its mass row then forces zero flow through {@code edge} at every solution, so the edge's velocity cap
-         * can never be active there, and its row's only job is to place the junction pressure. The capped branch has no
-         * pressure column (in every form), so an iterate that lands on it with the flow already fixed by the mass row
-         * makes the Jacobian structurally singular; form B's re-weighting of the hydraulic row by
-         * pressureScale/min(pressureScale, 2 limitDrop) lets the line search accept exactly such a step
-         * (IslandCertificateTest's dead-headed pump, review 7.11). Such an edge gets no cap.
-         *
-         * <p>The same holds when {@code node} reaches other junctions through open connections that couple their pressures
-         * but the set it forms has no other way in or out: a sealed pocket behind {@code edge} (hold F8 of the phase-ports
-         * batch; see {@link #pockets}): the pocket's mass rows force zero flow through {@code edge}, and on its capped branch
-         * nothing places the pocket's pressure - a pipe from a generator into an inline filter's two junctions with a closed
-         * pump behind them was singular at the rate pass of every interval. So {@code node} is a dead end for {@code edge}
-         * when, with {@code edge} left out, the junctions its coupling connections reach touch no vessel, port, generator or
-         * void, no regulating valve draws from them, and every other connection leaving them is closed. A junction whose other
-         * connections are all closed is the pocket of one, as before.
+         * Whether {@code node} is a junction whose every connection other than {@code edge} is closed, or a sealed pocket
+         * behind {@code edge} (hold F8, {@link #pockets}: with {@code edge} left out, the junctions its coupling connections
+         * reach touch no vessel, port, generator or void, no regulating valve draws from them, and every other connection
+         * leaving them is closed). Its mass rows then force zero flow through {@code edge} at every solution, so the edge's
+         * cap can never be active there and its row's only job is to place the junction pressure; the capped branch has no
+         * pressure column, so an iterate landing on it with the flow fixed by the mass row makes the Jacobian structurally
+         * singular (a dead-headed pump, and a pipe from a generator into an inline filter's junctions with a closed pump
+         * behind them). Such an edge gets no cap.
          */
         private boolean deadEnd(int node,int edge) {
             if(deadEnds==null){deadEnds=new byte[2*graph.pipes().size()];}
@@ -4152,15 +3601,12 @@ public final class PassiveStepSolver {
          * in the direction it used, that direction, and the row's pressure unit. Scratch for {@link #capTransition} and
          * {@link #startCaps}; never read by a residual. */
         private double rowDriving,rowLimitDrop,rowCapScale;private int rowDirection;
-        /**
-         * The start cap state of every connection neither the pass loop nor the carry decided (decision A271): on the cap
-         * when its driving pressure at this pass's start point exceeds the cap's pressure drop, in the driving pressure's
-         * direction (a device's or a filter's: its start flow's), otherwise on its law. It is the branch the flow row's
-         * clamp read at a Newton's first iterate before the cap was a mode, so a Newton that never crossed the cap is solved
-         * as it was. A connection that cannot be capped in this pass (closed, a dead end, a mode with no cap) is on its law.
-         */
         /** The connections {@link #startCaps} put on their cap in this pass (decided on the start point, not by the pass loop). */
         private boolean[] startCapped;
+        /** The start cap state of every connection neither the pass loop nor the carry decided (decision A271): on the cap when
+         * its driving pressure at this pass's start point exceeds the cap's pressure drop, in the driving pressure's direction
+         * (a device's or a filter's: its start flow's), otherwise on its law, the branch the flow row's clamp read at a
+         * Newton's first iterate before the cap was a mode. A connection that cannot be capped in this pass is on its law. */
         private void startCaps() {
             startCapped=new boolean[capDirections.length];
             boolean any=false;
@@ -4180,32 +3626,19 @@ public final class PassiveStepSolver {
             }catch(IllegalArgumentException outsideDomain){for(int edge=0;edge<capDirections.length;edge++)if(capDirections[edge]==CAP_START)capDirections[edge]=CAP_OPEN;}
         }
         /**
-         * Owner decision D59 (5), the capped junctions (A276, A341), t28: a junction whose lines are all choked must still be
-         * able to balance. A junction holds nothing (D46), so its mass balance is what places its pressure. A line on its law
-         * reads that pressure; a line on its cap reads it only when the cap leaves the junction (the cap flow of the
-         * junction's own state, rho_J A v_lim, which rises with its pressure); a cap that enters it, a mover at its target and
-         * a closed line read it not at all. So a junction with no line on its law balances only if some cap leaves it and some
-         * cap enters it: then its pressure settles where its outflow caps carry what its inflow caps bring (random 529: a
-         * junction between a generator's capped line and two capped vents). Where every cap enters it, nothing places its
-         * pressure and the step is singular (random 529, 498: a junction whose three lines all enter it at their caps; world
-         * defaults 228: a pump's discharge junction left with the pump's target, a closed generator line and a void line
-         * entered on its cap from a failed iterate); where every cap leaves it and nothing enters, its balance has no root
-         * (random 529: a junction seeded at its generator's pressure whose four lines all leave it). In real life its
-         * pressure moves until one of its lines leaves its choke: the one whose drive exceeds its cap's pressure drop by the
-         * least, in pascals, which is the shift of the junction's pressure that unchokes it. That line is on its law in this
-         * pass, read on the pass's start point, decided for the whole pass with the other cap states before the Newton.
-         *
-         * <p>The same holds for a group of junctions joined by lines on their law (the pockets of hold F8, with capped lines
-         * as their boundary): their law lines carry their pressures together, so the group's level is placed only by a law
-         * line to a node that is not a junction, a row that fixes a member's pressure (a regulating valve, a pump on its
-         * suction limit), or caps on its boundary both leaving and entering it (random 498: two junctions joined by one law
-         * line whose five boundary caps all enter them). One line is released per group and round, until every group can
-         * balance; a group with no capped line on its boundary is F8's.
-         *
-         * <p>Only a cap the start point decided is released ({@link #startCaps}): a cap the pass loop entered from a converged
-         * point or a failed iterate (A271, A274) is evidence from a Newton that ran, and releasing it returns the pass loop to
-         * the state that produced it (random 915: a generator line entered on its cap by a failed iterate, beside a pump at its
-         * target, released again, and the passes repeated).
+         * Owner decision D59 (5), the capped junctions (A276, A341): a junction whose lines are all choked must still be able
+         * to balance. A junction holds nothing, so its mass balance is what places its pressure; a line on its law reads
+         * that pressure, a line on its cap only when the cap leaves the junction (the cap flow of the junction's own state
+         * rises with its pressure), and a cap that enters it, a mover at its target and a closed line read it not at all.
+         * So a junction with no line on its law balances only if some cap leaves it and some cap enters it; where every cap
+         * enters it nothing places its pressure and the step is singular, where every cap leaves it its balance has no root.
+         * In real life its pressure moves until one of its lines leaves its choke: the one whose drive exceeds its cap's
+         * pressure drop by the least, in pascals. That line is on its law in this pass, read on the start point, decided
+         * with the other cap states before the Newton. The same holds for a group of junctions joined by law lines (the
+         * pockets of hold F8 with capped lines as their boundary): one line is released per group and round, until every
+         * group can balance. Only a cap the start point decided is released ({@link #startCaps}): a cap the pass loop
+         * entered from a converged point or a failed iterate (A271, A274) is evidence from a Newton that ran, and
+         * releasing it returns the pass loop to the state that produced it.
          */
         private void anchorJunctions() {
             int nodes=layout.length,edges=graph.pipes().size();double[] excess=null;
@@ -4252,9 +3685,8 @@ public final class PassiveStepSolver {
          * point holds it (decision A271). On its law, it enters the cap when its flow exceeds the cap flow of the end that
          * flow leaves, by the margin the velocity constraint was always checked with ({@code 2e-8} relative); on its cap, it
          * leaves when the driving pressure in its direction falls short of the cap's pressure drop by more than the row
-         * resolves ({@code tolerance} of its pressure unit): then the line could not push the cap flow, and runs on its law.
-         * Inside that band a connection keeps its mode, so a point at the cap's edge, where both modes are the same
-         * equation, never alternates.
+         * resolves ({@code tolerance} of its pressure unit). Inside that band a connection keeps its mode, so a point at the
+         * cap's edge, where both modes are the same equation, never alternates.
          */
         int capTransition(int edge,double[] x,double tolerance) {
             if(!clamps(edge))return CAP_OPEN;
@@ -4269,12 +3701,11 @@ public final class PassiveStepSolver {
             return Math.abs(q)>limit*(1+2e-8)+1e-12?end:CAP_OPEN;
         }
         /**
-         * The cap corrections a failed Newton's last iterate {@code x} shows (decision A274), applied to {@code caps}; true when
-         * any was made. Every capped connection {@link #capTransition} would release there is released; when none is, every
-         * connection on its law that the iterate holds at its cap ({@link #projectFlows}: its flow at the cap flow of the end
-         * it leaves, its drive past the cap's pressure drop in that direction) is put on its cap. A drive past the cap drop
-         * at a flow still below the cap is a Newton not yet converged, not a line at its cap. A point outside the property
-         * domain changes nothing.
+         * The cap corrections a failed Newton's last iterate {@code x} shows (decision A274), applied to {@code caps}; true
+         * when any was made. Every capped connection {@link #capTransition} would release there is released; when none is,
+         * every connection on its law that the iterate holds at its cap ({@link #projectFlows}: its flow at the cap flow of
+         * the end it leaves, its drive past the cap's pressure drop that way) is put on its cap. A drive past the cap drop at
+         * a flow still below the cap is a Newton not yet converged. A point outside the property domain changes nothing.
          */
         boolean correctCaps(double[] x,int[] caps,double tolerance) {
             int[] released=caps.clone(),entered=caps.clone();boolean release=false,enter=false;
@@ -4305,13 +3736,10 @@ public final class PassiveStepSolver {
             var pipe=graph.pipes().get(edge);
             double limit=capLimit(edge,end,node);
             if(!rateOnly&&!prescribedFlow) {
-                // A filter has a second inlet limit: the cake it can still hold. The
-                // retained volume at the end of this step is the same expression the
-                // loading row below states, so bounding the inlet by the room divided by
-                // the step's own retention per unit mass makes the filter fill exactly at
-                // a step boundary instead of past one. A rate solve carries no step and no
-                // retention, so it is exempt, and a base already at capacity is left to
-                // the stage guard rather than throttled to a degenerate zero limit.
+                // A filter has a second inlet limit: the cake it can still hold. The retained volume at the end of this step
+                // is the expression the loading row states, so bounding the inlet by the room divided by the step's own
+                // retention per unit mass makes the filter fill exactly at a step boundary. A rate solve carries no step and
+                // no retention, so it is exempt, and a base already at capacity is left to the stage guard.
                 double retainedPerMass=drawn.solids.volume()/drawn.mass;
                 double room=pipe.filter().capacity()*(1-FILTER_CAPACITY_MARGIN)-pipe.filter().captured().volume();
                 if(retainedPerMass>0&&room>0)limit=Math.min(limit,room/(dt*retainedPerMass));
@@ -4338,15 +3766,11 @@ public final class PassiveStepSolver {
             }
             int control=controlOffsets[edge];double head=control<0?0:x[control]*1e5;
             double signedHead=pipe.control() instanceof FlowControl.Mover?head:-head;
-            // The static column is this pass's, never the live iterate's upwind end; see
-            // {@link #columnEnds}. On an island whose devices all sit at one y, {@code dz} is
-            // zero and this term is bitwise the zero it always was.
-            // A pump's column is the fluid it moves, the suction node's transported density at this trial - the density
-            // its rise limit, its target row, its velocity clamp and the pass loop's shutoff margin ({@link #demand}) read -
-            // never the destination's (owner rule, decision D6 of the mixed-gas junction batch): the stream its suction end
-            // draws, which is the suction's bulk density at a BULK end.
-            // The column end is the pass's; its density is the trial's ({@link #columnEnds}), the column that end's port
-            // stands in the connection ({@link #columnDensity}, owner decision D34), differentiated with the trial state.
+            // The static column is this pass's, never the live iterate's upwind end ({@link #columnEnds}); on a flat island
+            // dz is zero and the term is bitwise the zero it was. A pump's column is the fluid it moves, the suction node's
+            // transported density at this trial (the density its rise limit, target row, velocity clamp and shutoff margin
+            // read), never the destination's (decision D6). The column end is the pass's; its density is the trial's, the
+            // column that end's port stands in the connection ({@link #columnDensity}, owner decision D34).
             double column=pipe.control() instanceof FlowControl.Mover?suction.density
                     :columnEnds[edge]==0?columnDensity(st[a],pipe.firstPort(),pipe.volume()):columnDensity(st[b],pipe.secondPort(),pipe.volume());
             double driving=endPressure(graph.reservoirs().get(a),pipe.firstPort(),st[a])-endPressure(graph.reservoirs().get(b),pipe.secondPort(),st[b])-column*GRAVITY*dz+signedHead;
@@ -4358,18 +3782,14 @@ public final class PassiveStepSolver {
             f[edgeOffset+edge]=(driving-loss)/pressureScale;
             // No cap on an edge a dead-ended junction can only carry zero through; see {@link #deadEnd}.
             if(clamps(edge)) {
-                // The velocity cap is an active-set mode of the connection (decision A270; PHASE_PORTS_REVIEW.md "The
-                // velocity cap as an active-set mode (2026-10-13)"): {@link #capDirections} says, for the whole pass,
-                // whether this connection runs on its law or at its cap, and in which direction. On the cap its row
-                // states the cap flow of the end it leaves, so it reads that end's state and neither end's pressure: a
-                // choked line passes what its upstream state lets through, whatever stands downstream. Which mode a pass
-                // runs in is the pass loop's decision ({@link #capTransition}), never the live iterate's, so the row is
-                // smooth in its own unknowns; before, the row switched branch at |driving| = limitDrop inside the
-                // residual, and a junction between capped lines saw its pressure column vanish and come back from one
-                // iterate to the next (hold group E6-C). On the law, a plain passive connection's scale reads both ends'
-                // cap drops, so it needs no direction; a device or a filter keeps its flow's donor (a pump or a valve
-                // decides its direction through its own active set; a filter's cap is its cake's resistance on the
-                // drawn carrier, re-read at every evaluation).
+                // The velocity cap is an active-set mode of the connection (decision A270): {@link #capDirections} says, for
+                // the whole pass, whether this connection runs on its law or at its cap, and in which direction. On the cap
+                // its row states the cap flow of the end it leaves, reading that end's state and neither end's pressure: a
+                // choked line passes what its upstream state lets through. Which mode a pass runs in is the pass loop's
+                // decision ({@link #capTransition}), never the live iterate's, so the row is smooth in its own unknowns
+                // (before, a junction between capped lines saw its pressure column vanish and come back between iterates).
+                // On the law a plain passive connection's scale reads both ends' cap drops, so it needs no direction; a
+                // device or a filter keeps its flow's donor.
                 boolean byDriving=pipe.filter()==null&&pipe.control() instanceof FlowControl.Passive;
                 int cap=capDirections[edge];
                 int direction=cap>=0?cap:(byDriving?driving>=0:flow>=0)?0:1;
@@ -4378,27 +3798,17 @@ public final class PassiveStepSolver {
                 double limitDrop;
                 if(pipe.filter()==null)limitDrop=capDrop(edge,direction,capSource);
                 else limitDrop=filterCoefficient*filterCapFlow(edge,direction,capSource,transport);
-                // A saturated pressure/flow law: the unused driving pressure is throttled.
-                // The same bounded flow unknown enters every component and enthalpy balance.
-                // No post-solve clipping, temperature prescription, or inventory adjustment.
-                //
-                // Both modes are stated in one pressure unit, the loss against the driving pressure on the law and against
-                // the cap's own drop on the cap, over S = min(pressureScale, 2 scaleDrop). The capped branch used to be a flow row,
-                // (+-limit - q)/limit, on a scale 80x apart from the hydraulic row's on a 50 mm line, and a Newton crossing
-                // the cap exit stalled on the mismatch; rescaling only the capped branch left the same mismatch at the
-                // cap's edge (review 7.1, 7.5). The floor keeps a filter with no room left from a zero scale.
-                //
-                // On a plain passive connection scaleDrop is the smaller of the two ends' cap drops, not the donor's.
-                // The scale weighs the row; it says nothing about which way the fluid goes, and at a zero-flow root
-                // neither end is the donor. Taken from the donor chosen by the driving pressure's sign, S jumped
-                // exactly at that root wherever the two ends hold different fluids (water at one end, nitrogen at the
-                // other: cap drops orders apart), every differenced Jacobian straddled the jump (the pressure column's
-                // step far exceeds the driving pressure near the root) and the Newton contracted only linearly, to
-                // the iteration limit at every step size (hold class E6 of the phase-ports batch, random seed 33).
-                // The smaller drop keeps the property the cap scale was chosen for, both branches in one unit no
-                // coarser than the cap's own drop, on either side of the root. A device or a filter keeps its flow
-                // donor's drop: a device does not turn round inside a pass (its active set closes it), and a filter's
-                // drop is its cake's resistance on the drawn carrier, re-read at every evaluation.
+                // A saturated pressure/flow law: the unused driving pressure is throttled, and the same bounded flow unknown
+                // enters every component and enthalpy balance; no post-solve clipping. Both modes are stated in one pressure
+                // unit, the loss against the driving pressure on the law and against the cap's own drop on the cap, over
+                // S = min(pressureScale, 2 scaleDrop): as a flow row the capped branch sat on a scale 80x apart from the
+                // hydraulic row's on a 50 mm line and a Newton crossing the cap exit stalled on the mismatch. The floor keeps
+                // a filter with no room left from a zero scale. On a plain passive connection scaleDrop is the smaller of the
+                // two ends' cap drops, not the donor's: the scale weighs the row and says nothing about which way the fluid
+                // goes, and at a zero-flow root neither end is the donor; taken from the donor the sign chose, S jumped at
+                // that root wherever the two ends hold different fluids (water and nitrogen: cap drops orders apart), every
+                // differenced Jacobian straddled the jump and the Newton contracted only linearly (hold class E6). A device
+                // or a filter keeps its flow donor's drop.
                 double scaleDrop=byDriving?Math.min(limitDrop,capDrop(edge,1-direction,tr[direction==0?b:a])):limitDrop;
                 double capScale=Math.max(Math.min(pressureScale,2*scaleDrop),1e-12);
                 f[edgeOffset+edge]=(driving-loss)/capScale;
@@ -4425,24 +3835,13 @@ public final class PassiveStepSolver {
             };
         }
         /**
-         * The Jacobian from per-node block perturbations instead of a coloured whole-island sweep.
-         *
-         * <p>One local column at a time, for every node that owns one: the node is decoded at the
-         * perturbed point and only the rows that can see it are re-assembled - its own block, the
-         * block of each neighbour across an incident edge (whose backward-Euler targets and
-         * aggregate solid targets carry this node's composition, solid moments and specific
-         * enthalpy when it is the donor), and the hydraulic, actuator and filter-loading rows of
-         * those edges. The flow, actuator and filter columns sweep the same way over their own
-         * edge. Every such row is produced by the same {@link #nodeAccumulate},
-         * {@link #edgeRows} and {@link #nodeRows} the whole-island residual uses, in the same
-         * accumulation order, so each entry is the double the coloured sweep computed: the
-         * colouring guarantees that no other column in a group can reach a row, which is exactly
-         * the statement that evaluating that row with one column perturbed gives the same value.</p>
-         *
-         * <p>The cost this removes is the assembly, not the decodes. The coloured sweep already
-         * decodes each node once per one of its own columns - the colour groups are
-         * {@code (column, independent node set)} pairs - but it pays a complete island residual,
-         * every node block and every edge row, for each of those 143-191 groups.</p>
+         * The Jacobian from per-node block perturbations instead of a coloured whole-island sweep: one local column at a
+         * time, the node decoded at the perturbed point and only the rows that can see it re-assembled (its own block, the
+         * block of each neighbour across an incident edge, and the hydraulic, actuator and filter-loading rows of those
+         * edges; the flow, actuator and filter columns sweep the same way over their own edge). Every such row is produced
+         * by the same {@link #nodeAccumulate}, {@link #edgeRows} and {@link #nodeRows} the whole-island residual uses, in the
+         * same accumulation order, so each entry is the double the coloured sweep computed. The cost this removes is the
+         * assembly: the coloured sweep paid a complete island residual for each of its 143 to 191 colour groups.
          */
         public int differentiateEntries(double[] x,double[] f,double differenceStep,int[] entryOffsets,int[] entryRows,
                                         double[] entries,Runnable checkpoint) {
@@ -4549,15 +3948,11 @@ public final class PassiveStepSolver {
             nodeSolidRows(node,x,st,f);
         }
         /**
-         * This node's three aggregate solid rows against the targets <em>this</em> evaluation
-         * accumulated, which is what makes them rows a neighbour's column can move.
-         *
-         * <p>{@link PhaseLayout#balanceRows} and {@link PhaseLayout#junctionRows} already write
-         * these rows, but against the layout's own seed reference, because a layout evaluated on its
-         * own has no accumulated target. Both whole-island assembly and block sweep therefore have
-         * to overwrite them here, with the same targets in the same order, or a neighbour's column
-         * would be differentiated against the seed reference while the base residual holds the real
-         * one - a silently wrong derivative rather than a missing one.
+         * This node's three aggregate solid rows against the targets this evaluation accumulated, which is what makes them
+         * rows a neighbour's column can move. {@link PhaseLayout#balanceRows} and {@link PhaseLayout#junctionRows} write
+         * these rows against the layout's own seed reference, so both whole-island assembly and block sweep overwrite them
+         * here with the same targets in the same order, or a neighbour's column would be differentiated against the seed
+         * reference while the base residual holds the real one: a silently wrong derivative rather than a missing one.
          */
         private void nodeSolidRows(int node,double[] x,FluidThermodynamics.State[] st,double[] f) {
             if(!solidSupport)return;
@@ -4574,20 +3969,14 @@ public final class PassiveStepSolver {
         }
         /**
          * Fills {@link #fractions} with the mass fractions this junction's rows mix to and returns the specific enthalpy,
-         * and sets {@link #junctionWeight}.
-         *
-         * <p>A step solve is backward Euler over the step on the junction's owned inventory,
+         * and sets {@link #junctionWeight}. A step solve is backward Euler over the step on the junction's owned inventory,
          * {@code (m/dt + Q) w = (m/dt) w_old + sum q w_e} and {@code (m/dt + Q) h = E_old/dt + sum q (h_e + g dz)}, with m,
-         * w_old and E_old = m h_old (the inventory's energy field, in enthalpy form) read from the graph this step solves -
-         * the same numbers the vessel row of {@code ConservativeTransport.reconstruct} reads. The rows are stated in amount
-         * form over the junction's own mass, {@code (dt/m)(m/dt + Q)(w - w_mix)}: a row at the Newton tolerance then bounds
-         * the step's species error at tol m_J, and the rounding floor is {@code eps (1 + dt Q/m)}, which does not grow as
-         * the step shrinks (in rate form, {@code eps (m/dt + Q)} kg/s, it did: every refinement chain ended on it; review
-         * 8.3 class 4 and 8.7 (c) C).
-         *
-         * <p>A rate-only solve evaluates a differential state at its own value: the junction's composition and enthalpy
-         * are held at its owned inventory's, its pressure stays algebraic, and the reconstruction books its accumulation
-         * as a pseudo-boundary at the junction ({@code ConservativeTransport.reconstruct}, frozen junctions).
+         * w_old and E_old = m h_old read from the graph this step solves. The rows are stated in amount form over the
+         * junction's own mass, {@code (dt/m)(m/dt + Q)(w - w_mix)}: a row at the Newton tolerance bounds the step's species
+         * error at tol m_J, and the rounding floor {@code eps (1 + dt Q/m)} does not grow as the step shrinks (in rate form
+         * it did, and every refinement chain ended on it). A rate-only solve holds the junction's composition and enthalpy
+         * at its owned inventory's, its pressure algebraic, and the reconstruction books its accumulation as a
+         * pseudo-boundary (frozen junctions).
          */
         private double junctionInflow(int node) {
             var inventory=graph.reservoirs().get(node).inventory();var held=oldAmounts[node];
