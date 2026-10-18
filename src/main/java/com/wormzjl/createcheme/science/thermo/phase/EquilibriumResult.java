@@ -28,8 +28,6 @@ public final class EquilibriumResult {
     public enum UnsupportedReason {
         /** The request needs a phase competition the package is not qualified for. */
         PHASE_COMPETITION_NOT_QUALIFIED,
-        /** The request carries a species the package does not have. */
-        SPECIES_NOT_IN_PACKAGE,
         /** The request needs water chemistry (dissolution, aqueous non-ideality, hydrates) no participation models. */
         WATER_CHEMISTRY_NOT_MODELLED,
         /** The contract admits the request but this service does not implement it yet (named milestone in the detail). */

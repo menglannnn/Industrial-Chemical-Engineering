@@ -217,6 +217,16 @@ final class PhaseTestSupport {
     }
 
     /** The Tia Juana light assay plus 5 mol% nitrogen over the network basis (water last, zero). */
+    /** Amounts over {@code contract}'s basis from (species, amount) pairs, every other species zero (owner decision O2: a
+     * request names the whole basis). */
+    static double[] over(PhaseContract contract, Object... speciesAndAmounts) {
+        double[] amounts = new double[contract.components().size()];
+        for (int i = 0; i < speciesAndAmounts.length; i += 2) {
+            amounts[contract.index((String) speciesAndAmounts[i])] = ((Number) speciesAndAmounts[i + 1]).doubleValue();
+        }
+        return amounts;
+    }
+
     static double[] crudeWithNitrogen(PhaseContract contract) {
         var pkg = network();
         var assay = pkg.assays().get("createcheme:tia_juana_light_methane");

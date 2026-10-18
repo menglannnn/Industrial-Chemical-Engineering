@@ -4469,26 +4469,15 @@ public final class FluidTpEquilibrium {
 
     // Contract checks.
 
-    /** Maps the request onto the basis and applies the species, water-chemistry and competition rules. */
+    /** Takes the request's amounts over the contract basis (owner decision O2: a request names the basis, in order) and
+     * applies the water-chemistry and competition rules. */
     private EquilibriumResult contractChecks(EquilibriumRequest request, Workspace w) {
         Specification specification = request.specification();
         PhaseCompetition competition = request.competition();
-        List<String> species = request.species();
-        double[] amounts = request.amountsView();
-        if (species.equals(contract.components())) {
-            System.arraycopy(amounts, 0, w.basisAmounts, 0, basis);
-        } else {
-            Arrays.fill(w.basisAmounts, 0.0);
-            for (int s = 0; s < species.size(); s++) {
-                int i = contract.index(species.get(s));
-                if (i >= 0) {
-                    w.basisAmounts[i] = amounts[s];
-                } else if (amounts[s] > 0.0) {
-                    return unsupported(specification, competition, UnsupportedReason.SPECIES_NOT_IN_PACKAGE,
-                            "species " + species.get(s) + " is not in package " + contract.packageId());
-                }
-            }
+        if (!request.species().equals(contract.components())) {
+            throw new IllegalArgumentException("A request names the contract basis " + contract.components() + ", got " + request.species());
         }
+        System.arraycopy(request.amountsView(), 0, w.basisAmounts, 0, basis);
         if (competition.hydrates()) {
             return unsupported(specification, competition, UnsupportedReason.WATER_CHEMISTRY_NOT_MODELLED,
                     "gas hydrates need water chemistry; water participation " + contract.water() + " models none");

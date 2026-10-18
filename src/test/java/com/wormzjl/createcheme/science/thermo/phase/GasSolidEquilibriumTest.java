@@ -98,7 +98,7 @@ class GasSolidEquilibriumTest {
         // A package without crystals, and the pilot with a research-only crystal record: the request is refused.
         assertEquals(Set.of(PhaseCompetition.FLUID_ONLY), PhaseContract.forPackage(catalog, PhaseTestSupport.NETWORK).qualifiedCompetitions());
         var bundled = PhaseTestSupport.networkService();
-        var none = bundled.tp(EquilibriumRequest.tp(150.0, 1.0e6, List.of("Nitrogen"), new double[] {1.0}, CRYSTALS));
+        var none = bundled.tp(EquilibriumRequest.tp(150.0, 1.0e6, bundled.contract().components(), PhaseTestSupport.over(bundled.contract(), "Nitrogen", 1.0), CRYSTALS));
         assertEquals(UnsupportedReason.PHASE_COMPETITION_NOT_QUALIFIED, none.reason(), none.toString());
         var researchCatalog = PilotCryogenicTestCatalog.parseWith(CrystalPhaseEvaluatorTest.CRYSTAL_PATH,
                 o -> o.getAsJsonObject("coverage").addProperty("grade", "research_only"));

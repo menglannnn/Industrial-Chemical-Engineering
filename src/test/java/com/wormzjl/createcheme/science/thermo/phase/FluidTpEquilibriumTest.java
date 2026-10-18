@@ -270,66 +270,53 @@ class FluidTpEquilibriumTest {
         var contract = service.contract();
         List<EquilibriumResult> refused = new ArrayList<>();
 
-        // A species the package lacks, with material; with none it is simply absent.
-        var ammonia = service.tp(EquilibriumRequest.tp(300.0, 1.0e6, List.of("Methane", "Ammonia"), new double[] {1.0, 0.1},
-                PhaseCompetition.FLUID_ONLY));
-        assertEquals(UnsupportedReason.SPECIES_NOT_IN_PACKAGE, ammonia.reason());
-        refused.add(ammonia);
-        var absent = service.tp(EquilibriumRequest.tp(300.0, 1.0e6, List.of("Methane", "Ammonia"), new double[] {1.0, 0.0},
-                PhaseCompetition.FLUID_ONLY));
-        assertEquals(Status.CONVERGED, absent.status());
-        assertEquals(1.0, absent.phases().get(0).amount(contract.index("Methane")));
-
         // Free water is in the contract but not yet in this service; hydrates are water chemistry nothing models.
-        var water = service.tp(EquilibriumRequest.tp(300.0, 1.0e6, List.of("Methane", "Water"), new double[] {1.0, 1.0},
+        var water = service.tp(EquilibriumRequest.tp(300.0, 1.0e6, contract.components(), PhaseTestSupport.over(contract, "Methane", 1.0, "Water", 1.0),
                 PhaseCompetition.FLUID_ONLY));
         assertEquals(UnsupportedReason.NOT_IMPLEMENTED, water.reason());
         assertTrue(water.detail().contains("P3"));
         refused.add(water);
-        var hydrates = service.tp(EquilibriumRequest.tp(280.0, 1.0e6, List.of("Methane", "Water"), new double[] {1.0, 1.0},
+        var hydrates = service.tp(EquilibriumRequest.tp(280.0, 1.0e6, contract.components(), PhaseTestSupport.over(contract, "Methane", 1.0, "Water", 1.0),
                 new PhaseCompetition(new TreeSet<>(), true)));
         assertEquals(UnsupportedReason.WATER_CHEMISTRY_NOT_MODELLED, hydrates.reason());
         refused.add(hydrates);
 
         // A crystal the package is not qualified for: refused, not answered fluid-only.
-        var crystal = service.tp(EquilibriumRequest.tp(300.0, 1.0e6, List.of("Methane"), new double[] {1.0},
+        var crystal = service.tp(EquilibriumRequest.tp(300.0, 1.0e6, contract.components(), PhaseTestSupport.over(contract, "Methane", 1.0),
                 PhaseCompetition.withCrystals("co2_solid_i")));
         assertEquals(UnsupportedReason.PHASE_COMPETITION_NOT_QUALIFIED, crystal.reason());
         refused.add(crystal);
 
         // Outside a data range nothing is refused (owner rule of 2026-10-16): methane below its 293.15 K ideal-gas fit and
         // above the 10 MPa envelope are answered, graded extrapolated with the range named.
-        var cold = service.tp(EquilibriumRequest.tp(200.0, 1.0e6, List.of("Methane", "Nitrogen"), new double[] {1.0, 1.0},
+        var cold = service.tp(EquilibriumRequest.tp(200.0, 1.0e6, contract.components(), PhaseTestSupport.over(contract, "Methane", 1.0, "Nitrogen", 1.0),
                 PhaseCompetition.FLUID_ONLY));
         assertEquals(Status.CONVERGED, cold.status(), cold.toString());
         assertEquals(CoverageGrade.EXTRAPOLATED, cold.coverage().grade());
         assertTrue(cold.coverage().evidence().contains("the ideal gas of Methane 293.15"), cold.coverage().evidence());
-        var inside = service.tp(EquilibriumRequest.tp(350.0, 3.0e6, List.of("Methane"), new double[] {1.0}, PhaseCompetition.FLUID_ONLY));
+        var inside = service.tp(EquilibriumRequest.tp(350.0, 3.0e6, contract.components(), PhaseTestSupport.over(contract, "Methane", 1.0), PhaseCompetition.FLUID_ONLY));
         assertEquals(Status.CONVERGED, inside.status(), inside.toString());
         assertNotEquals(CoverageGrade.EXTRAPOLATED, inside.coverage().grade());
-        var dense = service.tp(EquilibriumRequest.tp(350.0, 12.0e6, List.of("Methane"), new double[] {1.0}, PhaseCompetition.FLUID_ONLY));
+        var dense = service.tp(EquilibriumRequest.tp(350.0, 12.0e6, contract.components(), PhaseTestSupport.over(contract, "Methane", 1.0), PhaseCompetition.FLUID_ONLY));
         assertEquals(Status.CONVERGED, dense.status(), dense.toString());
         assertEquals(CoverageGrade.EXTRAPOLATED, dense.coverage().grade());
         // Free water below its triple point without a water model: unimplemented, as above it.
-        var ice = service.tp(EquilibriumRequest.tp(250.0, 1.0e6, List.of("Nitrogen", "Water"), new double[] {1.0, 2.0},
+        var ice = service.tp(EquilibriumRequest.tp(250.0, 1.0e6, contract.components(), PhaseTestSupport.over(contract, "Nitrogen", 1.0, "Water", 2.0),
                 PhaseCompetition.FLUID_ONLY));
         assertEquals(UnsupportedReason.NOT_IMPLEMENTED, ice.reason());
         refused.add(ice);
 
         // PH and UV (P3 WP6b) run the same contract checks first; free water without a water model stays unimplemented.
-        var ph = service.ph(EquilibriumRequest.ph(1.0e6, -1.0e4, List.of("Methane", "Water"), new double[] {1.0, 1.0},
+        var ph = service.ph(EquilibriumRequest.ph(1.0e6, -1.0e4, contract.components(), PhaseTestSupport.over(contract, "Methane", 1.0, "Water", 1.0),
                 PhaseCompetition.FLUID_ONLY));
         assertEquals(UnsupportedReason.NOT_IMPLEMENTED, ph.reason());
         assertTrue(ph.detail().contains("FreeWaterModel"));
-        var uv = service.uv(EquilibriumRequest.uv(-1.0e4, 1.0e-3, List.of("Methane", "Water"), new double[] {1.0, 1.0},
+        var uv = service.uv(EquilibriumRequest.uv(-1.0e4, 1.0e-3, contract.components(), PhaseTestSupport.over(contract, "Methane", 1.0, "Water", 1.0),
                 PhaseCompetition.FLUID_ONLY));
         assertEquals(UnsupportedReason.NOT_IMPLEMENTED, uv.reason());
-        var phSpecies = service.ph(EquilibriumRequest.ph(1.0e6, -1.0e4, List.of("Ammonia"), new double[] {1.0}, PhaseCompetition.FLUID_ONLY));
-        assertEquals(UnsupportedReason.SPECIES_NOT_IN_PACKAGE, phSpecies.reason());
         refused.add(ph);
         refused.add(uv);
-        assertThrows(IllegalArgumentException.class, () -> service.tp(EquilibriumRequest.ph(1.0e6, 0.0, List.of("Methane"),
-                new double[] {1.0}, PhaseCompetition.FLUID_ONLY)));
+        assertThrows(IllegalArgumentException.class, () -> service.tp(EquilibriumRequest.ph(1.0e6, 0.0, contract.components(), PhaseTestSupport.over(contract, "Methane", 1.0), PhaseCompetition.FLUID_ONLY)));
 
         for (EquilibriumResult result : refused) {
             assertTrue(result.phases().isEmpty(), result.toString());

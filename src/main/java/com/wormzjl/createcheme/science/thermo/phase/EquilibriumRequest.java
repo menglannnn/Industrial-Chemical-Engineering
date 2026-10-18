@@ -6,9 +6,8 @@ import java.util.Objects;
 /**
  * One equilibrium question: a specification pair, the amounts of named species, and the phase competition asked for.
  *
- * <p>The species are named, not positional, so a request can name a species the package lacks and be told so
- * ({@link EquilibriumResult.UnsupportedReason#SPECIES_NOT_IN_PACKAGE}); a species with zero amount is absent and may be
- * named whether the package has it or not. A request over exactly the contract's basis list is the fast path.</p>
+ * <p>The species list is the contract's basis, in order (owner decision O2); a service refuses any other list with an
+ * {@link IllegalArgumentException}.</p>
  *
  * @param specification which pair {@code first}, {@code second} is: (T, P) K and Pa; (P, H) Pa and J; (U, V) J and m3
  * @param amounts mole numbers per species: finite, nonnegative, some positive

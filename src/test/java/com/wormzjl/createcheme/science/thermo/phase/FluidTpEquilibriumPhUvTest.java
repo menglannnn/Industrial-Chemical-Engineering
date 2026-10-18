@@ -551,19 +551,15 @@ class FluidTpEquilibriumPhUvTest {
         assertEquals(CoverageGrade.EXTRAPOLATED, small.coverage().grade());
 
         // Outside the contract: before any search.
-        var crystal = service.ph(EquilibriumRequest.ph(1.0e6, 0.0, List.of("Methane"), new double[] {1.0},
+        var crystal = service.ph(EquilibriumRequest.ph(1.0e6, 0.0, contract.components(), PhaseTestSupport.over(contract, "Methane", 1.0),
                 PhaseCompetition.withCrystals("co2_solid_i")), workspace);
         assertEquals(UnsupportedReason.PHASE_COMPETITION_NOT_QUALIFIED, crystal.reason());
-        var hydrates = service.uv(EquilibriumRequest.uv(0.0, 1.0e-3, List.of("Methane", "Water"), new double[] {1.0, 1.0},
+        var hydrates = service.uv(EquilibriumRequest.uv(0.0, 1.0e-3, contract.components(), PhaseTestSupport.over(contract, "Methane", 1.0, "Water", 1.0),
                 new PhaseCompetition(new TreeSet<>(), true)), workspace);
         assertEquals(UnsupportedReason.WATER_CHEMISTRY_NOT_MODELLED, hydrates.reason());
-        var ammonia = service.ph(EquilibriumRequest.ph(1.0e6, 0.0, List.of("Ammonia"), new double[] {1.0},
-                PhaseCompetition.FLUID_ONLY), workspace);
-        assertEquals(UnsupportedReason.SPECIES_NOT_IN_PACKAGE, ammonia.reason());
-        var waterWithoutModel = service.uv(EquilibriumRequest.uv(0.0, 1.0e-3, List.of("Methane", "Water"),
-                new double[] {1.0, 1.0}, PhaseCompetition.FLUID_ONLY), workspace);
+        var waterWithoutModel = service.uv(EquilibriumRequest.uv(0.0, 1.0e-3, contract.components(), PhaseTestSupport.over(contract, "Methane", 1.0, "Water", 1.0), PhaseCompetition.FLUID_ONLY), workspace);
         assertEquals(UnsupportedReason.NOT_IMPLEMENTED, waterWithoutModel.reason());
-        for (var result : List.of(crystal, hydrates, ammonia, waterWithoutModel)) {
+        for (var result : List.of(crystal, hydrates, waterWithoutModel)) {
             assertEquals(Status.UNSUPPORTED, result.status());
             assertEquals(0, result.diagnostics().outerIterations());
         }
