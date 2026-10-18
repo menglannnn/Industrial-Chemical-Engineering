@@ -53,7 +53,6 @@ public final class GroupContributionInteractions {
      */
     public record Term(String firstGroup, String secondGroup, double aMegapascal, double bMegapascal, double weight) {
         public double aPascal() { return aMegapascal * PASCAL_PER_MEGAPASCAL; }
-        public double bPascal() { return bMegapascal * PASCAL_PER_MEGAPASCAL; }
         /** {@code B/A - 1} from the record's values. */
         public double exponent() { return bMegapascal / aMegapascal - 1.0; }
     }

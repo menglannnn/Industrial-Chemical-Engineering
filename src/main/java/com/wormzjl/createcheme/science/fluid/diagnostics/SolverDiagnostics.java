@@ -191,8 +191,6 @@ public final class SolverDiagnostics {
     public static final int MAXIMUM_ATTEMPTS=200_000;
     private static final List<Attempt> ATTEMPTS=Collections.synchronizedList(new ArrayList<>());
 
-    public static long begin(){return ENABLED?System.nanoTime():0;}
-    public static void end(LongAdder target,long started){if(ENABLED)target.add(System.nanoTime()-started);}
     public static void count(LongAdder target){if(ENABLED)target.increment();}
     public static void count(LongAdder target,long amount){if(ENABLED)target.add(amount);}
     public static void attempt(int index,double step,boolean accepted,String dominant,double error) {

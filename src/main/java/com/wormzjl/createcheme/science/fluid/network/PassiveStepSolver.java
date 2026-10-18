@@ -1956,14 +1956,6 @@ public final class PassiveStepSolver {
     private double riseLimit(FlowControl.Mover mover,double suctionDensity,double suctionPressure) {
         return mover.riseLimit(suctionDensity,suctionPressure,model.pumpReferenceDensity());
     }
-    /** The velocity cap (kg/s) the solve {@code equations} imposes on connection {@code edge} carrying {@code q}, read on
-     * the node states {@code states}: {@link #massFlowLimit} of a BULK donor end (the form it always had), the pass's
-     * {@link Equations#capLimit} of a phase port. */
-    private double velocityCap(Equations equations,int edge,double q,List<FluidThermodynamics.State> states) {
-        var pipe=equations.graph.pipes().get(edge);int donor=q>=0?pipe.first():pipe.second();
-        if(pipe.drawPort(q)==PassiveNetwork.PhasePort.BULK)return massFlowLimit(pipe,states.get(donor),PassiveNetwork.PhasePort.BULK);
-        return equations.capLimit(edge,q>=0?0:1,equations.transportAt(donor,states.get(donor)));
-    }
     /** The velocity cap's mass flow of what leaves {@code donor} through {@code port} at a vanishing flow (the stream
      * {@link #endDensity} names): its density, area and velocity limit, multiplied in the order the bulk form
      * {@code mass/volume*area*velocityLimit} always was, so a BULK end is that form to the bit. The cap a pass imposes on

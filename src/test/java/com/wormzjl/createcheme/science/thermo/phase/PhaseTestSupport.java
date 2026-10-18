@@ -93,7 +93,7 @@ final class PhaseTestSupport {
 
         @Override public double minimumTemperature() { return minimum; }
         @Override public double maximumTemperature() { return maximum; }
-        @Override public String revision() { return "test-stub"; }
+        public String revision() { return "test-stub"; }
 
         private void check(double t) {
             if (!(t > 0.0 && Double.isFinite(t))) throw new IllegalArgumentException("temperature " + t);
@@ -201,10 +201,10 @@ final class PhaseTestSupport {
             }
             @Override public double minimumTemperature() { return minimum; }
             @Override public double maximumTemperature() { return maximum; }
-            @Override public String revision() { return water.revision(); }
+            public String revision() { return water.revision(); }
         };
         return new FreeWaterModel() {
-            @Override public String revision() { return water.revision(); }
+            public String revision() { return water.revision(); }
             @Override public double saturationPressure(double t) { return fluid.saturationPressure(t); }
             @Override public double vaporPartialPressureLimit(double t) { return FluidThermodynamics.waterVaporPressureLimit(t); }
             @Override public void liquid(double t, double p, double[] out) {

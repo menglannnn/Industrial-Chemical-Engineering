@@ -38,10 +38,6 @@ class SolidPhaseEvaluatorTest {
             this.idealGas = idealGas;
         }
 
-        @Override public String family() { return "constant_crystal_test"; }
-        @Override public String crystal() { return crystal; }
-        @Override public String component() { return component; }
-
         @Override
         public PhaseState evaluate(double t, double p, TriplePointAnchor anchor, PhaseState out) {
             if (!anchor.component().equals(component)) throw new IllegalArgumentException("Anchor of another species");

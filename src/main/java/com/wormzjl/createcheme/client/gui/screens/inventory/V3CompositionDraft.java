@@ -21,9 +21,7 @@ final class V3CompositionDraft {
     void add(int id){values.add(id);}
     void remove(int id){values.remove(id);}
     void set(int id,String value){values.set(id,value);}
-    double total(){return values.total();}
     double[] moleFractions(){return values.moleFractions();}
-    List<Double> molecularWeights(){return values.molecularWeights();}
     Map<String,Double> relativeAmounts(){return values.relativeAmounts();}
     void load(Map<String,Double> amounts,boolean mass){values.load(amounts,mass);}
     double[] displayFractions(){return values.displayFractions();}

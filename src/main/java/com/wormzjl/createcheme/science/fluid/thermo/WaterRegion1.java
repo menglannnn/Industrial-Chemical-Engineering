@@ -138,8 +138,8 @@ public final class WaterRegion1 {
         }
     }
 
-    /** The dilute-gas term's data range, K, and its value (Pa.s) and log slope {@code d ln mu / d ln T} at the lower end. */
-    public static final double VISCOSITY_LOW = 273.16, VISCOSITY_HIGH = 900;
+    /** The dilute-gas term's data floor, K, and its value (Pa.s) and log slope {@code d ln mu / d ln T} there. */
+    public static final double VISCOSITY_LOW = 273.16;
     private static final double VISCOSITY_AT_LOW = diluteFormula(VISCOSITY_LOW / 647.096);
     private static final double VISCOSITY_EXPONENT_AT_LOW = diluteExponent(VISCOSITY_LOW / 647.096);
 

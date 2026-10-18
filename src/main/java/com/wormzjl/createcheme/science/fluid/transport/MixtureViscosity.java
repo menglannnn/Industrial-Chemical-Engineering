@@ -66,7 +66,6 @@ public final class MixtureViscosity {
             vaporMu=new double[count+1];vaporSqrt=new double[count+1];
             Arrays.fill(vaporMu,Double.NaN);
         }
-        public double temperature() { return temperature; }
         private byte liquid(int component) {
             if(liquidKind[component]==UNFILLED) {
                 owner.fillLiquid(this,component);

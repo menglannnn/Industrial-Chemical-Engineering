@@ -37,9 +37,6 @@ class FluidIslandCommandTest {
     }
     private BoundedCpuSolveService.CancellationToken token(boolean cancelled) {
         return new BoundedCpuSolveService.CancellationToken(){
-            public long deadlineNanos(){return Long.MAX_VALUE;}
-            public boolean isDeadlineExceeded(){return false;}
-            public boolean isCancellationRequested(){return cancelled;}
             public void throwIfCancellationRequested(){if(cancelled)throw new CancellationException("test cancellation");}
         };
     }

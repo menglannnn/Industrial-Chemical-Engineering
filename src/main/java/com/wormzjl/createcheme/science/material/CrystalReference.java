@@ -116,9 +116,7 @@ public final class CrystalReference {
 
     public String id() { return id; }
     public String component() { return component; }
-    public String crystal() { return crystal; }
     public String revision() { return revision; }
-    public String source() { return source; }
     public MaterialCoverage coverage() { return coverage; }
     public Anchor anchor() { return anchor; }
     public List<Transition> transitions() { return transitions; }

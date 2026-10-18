@@ -7,7 +7,6 @@ import java.util.Objects;
 public final class FluidMaterialCatalog {
     /** Bundled fixture IDs; runtime code resolves the selected network from its catalog snapshot. */
     public static final String NETWORK_PACKAGE="createcheme:tjl20_methane_nitrogen";
-    public static final String CRUDE_BASIS_PACKAGE="createcheme:tjl20_methane";
     public static final String NITROGEN="Nitrogen";
     private FluidMaterialCatalog() {}
     public static String networkPackage(MaterialCatalog catalog){return catalog.presets().network().packageId();}

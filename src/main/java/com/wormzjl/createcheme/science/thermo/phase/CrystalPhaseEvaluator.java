@@ -83,9 +83,9 @@ public final class CrystalPhaseEvaluator implements SolidPhaseEvaluator {
     /** The species' ideal-gas function the state is split against (the package's spine): {@code ln phi} refers to it. */
     public IdealGasFunction idealGas() { return idealGas; }
 
-    @Override public String family() { return family; }
-    @Override public String crystal() { return crystal.id(); }
-    @Override public String component() { return crystal.component(); }
+    public String family() { return family; }
+    public String crystal() { return crystal.id(); }
+    public String component() { return crystal.component(); }
 
     /**
      * The anchor of this crystal on a fluid family: the family's pure liquid of {@link #component()} at the record's
@@ -116,12 +116,11 @@ public final class CrystalPhaseEvaluator implements SolidPhaseEvaluator {
     }
 
     /** The anchored crystal and its derivatives at (T, P) into {@code out} (one component); see the class comment. */
-    @Override
     public PhaseDerivatives derivatives(double temperature, double pressure, TriplePointAnchor anchor, PhaseDerivatives out) {
         return view(anchor).derivatives(temperature, pressure, out);
     }
 
-    @Override public Set<Capability> capabilities() { return CAPABILITIES; }
+    public Set<Capability> capabilities() { return CAPABILITIES; }
 
     /**
      * The crystal anchored at {@code anchor}, its integration constants solved once: the view an equilibrium service
@@ -166,9 +165,6 @@ public final class CrystalPhaseEvaluator implements SolidPhaseEvaluator {
         }
 
         public TriplePointAnchor anchor() { return anchor; }
-        public CrystalPhaseEvaluator evaluator() { return CrystalPhaseEvaluator.this; }
-        public IdealGasFunction idealGas() { return idealGas; }
-        public String family() { return family; }
         public String crystal() { return crystal.id(); }
         public String component() { return crystal.component(); }
         public CrystalReference record() { return crystal; }

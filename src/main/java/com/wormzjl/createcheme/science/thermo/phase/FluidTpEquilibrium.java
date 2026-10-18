@@ -4394,15 +4394,6 @@ public final class FluidTpEquilibrium implements EquilibriumService {
     // Onset functions (P4 stage 2a; P5 beside a liquid).
 
     /**
-     * The frost point: the temperature at {@code pressure} where the package's crystal first forms in the material,
-     * {@code mu_i(T, P, z) = mu_s(T, P)} with the fluid answer of the whole feed (see {@link DepositionOnset}). The one
-     * competing crystal whose species is carried; a new workspace.
-     */
-    public DepositionOnset depositionTemperature(double pressure, List<String> species, double[] amounts) {
-        return depositionTemperature(null, pressure, species, amounts, newWorkspace());
-    }
-
-    /**
      * The onset temperature of crystal {@code crystal} ({@code null}: the one competing crystal whose species is carried)
      * at {@code pressure}: the frost point of a gas, and since P5 whatever the fluid answer of the whole feed is at the
      * onset (a liquid: the liquidus; a vapour-liquid split: a three-phase point). A bracketed search in {@code x = 1/T}

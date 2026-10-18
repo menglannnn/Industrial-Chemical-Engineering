@@ -399,8 +399,5 @@ public final class TranslatedPengRobinson {
                         double volumeSecondTemperatureDerivative,double[] partialMolarVolumes,double phaseIdentificationParameter) {
         @Override public double[] logFugacityCoefficients() { return logFugacityCoefficients.clone(); }
         @Override public double[] partialMolarVolumes() { return partialMolarVolumes.clone(); }
-        /** The coefficients themselves, for the solver packages. The caller must not mutate them. */
-        public double[] logFugacityCoefficientsView() { return logFugacityCoefficients; }
-        public double[] partialMolarVolumesView() { return partialMolarVolumes; }
     }
 }

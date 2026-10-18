@@ -71,10 +71,6 @@ public final class V3FugacityDerivatives {
         }
     }
 
-    public Root phase() {
-        return phase;
-    }
-
     public int componentCount() {
         return logFugacityCoefficients.length;
     }

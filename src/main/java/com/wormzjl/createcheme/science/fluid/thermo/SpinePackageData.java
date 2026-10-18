@@ -128,7 +128,6 @@ public final class SpinePackageData {
                 propertyPackage.spineFingerprint());
     }
 
-    public String packageId() { return packageId; }
     /** The package components with their PR78 constants, in package order. */
     public List<ThermoComponent> components() { return components; }
     /** The reference spine of each component, in package order: the ideal-gas functions. */
@@ -147,6 +146,4 @@ public final class SpinePackageData {
     public double[] formationEnthalpies() { return formationEnthalpies.clone(); }
     /** The formation datum over the package components; see the class comment. */
     public EnergyReference formationReference() { return formationReference; }
-    /** The package's spine fingerprint (never empty for a spine package). */
-    public String spineFingerprint() { return spineFingerprint; }
 }

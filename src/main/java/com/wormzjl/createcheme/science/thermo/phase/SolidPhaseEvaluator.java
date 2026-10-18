@@ -38,15 +38,6 @@ public interface SolidPhaseEvaluator {
         }
     }
 
-    /** Solid-model family id, part of the thermodynamic identity of a package that admits the crystal. */
-    String family();
-
-    /** The crystal id, e.g. {@code createcheme:crystal_carbon_dioxide_i}. */
-    String crystal();
-
-    /** The species the crystal is made of, a component id of the shared basis. */
-    String component();
-
     /**
      * Fills {@code out} (one component) with the crystal at {@code (temperature, pressure)}; its Gibbs energy at the
      * anchor's state equals the anchor's chemical potential.
@@ -58,20 +49,4 @@ public interface SolidPhaseEvaluator {
         return evaluate(temperature, pressure, anchor, new PhaseState(1)).molarGibbsEnergy();
     }
 
-    /**
-     * The derivative blocks {@link #derivatives} provides (P4 stage 2a); empty for a model without derivatives. A pure
-     * crystal has a fixed composition, so it never provides
-     * {@link PhaseEvaluator.Capability#FUGACITY_COMPOSITION_DERIVATIVES}.
-     */
-    default Set<PhaseEvaluator.Capability> capabilities() { return Set.of(); }
-
-    /**
-     * Fills {@code out} (one component) with the crystal at {@code (temperature, pressure)} and every derivative block of
-     * {@link #capabilities()}: {@code d ln phi/dT} and {@code d ln phi/dP} against the species' ideal gas
-     * ({@code d mu/dT = -s}, {@code d mu/dP = v}), {@code dv/dT = alpha v}, {@code dv/dP = -kappa v}, {@code c_p} and
-     * {@code dh/dP = v (1 - alpha T)}. A model without derivatives throws {@link UnsupportedOperationException}.
-     */
-    default PhaseDerivatives derivatives(double temperature, double pressure, TriplePointAnchor anchor, PhaseDerivatives out) {
-        throw new UnsupportedOperationException(family() + " provides no derivatives");
-    }
 }

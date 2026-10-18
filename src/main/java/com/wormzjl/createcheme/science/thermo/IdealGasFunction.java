@@ -28,6 +28,4 @@ public interface IdealGasFunction {
     /** Highest temperature of the data (the declared segments), K; the function continues above it. */
     double maximumTemperature();
 
-    /** Revision of the record the function was read from; part of the thermodynamic identity of a package. */
-    String revision();
 }

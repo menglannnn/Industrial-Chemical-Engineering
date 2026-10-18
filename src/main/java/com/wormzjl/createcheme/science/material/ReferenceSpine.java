@@ -195,11 +195,10 @@ public final class ReferenceSpine implements IdealGasFunction {
 
     @Override public double minimumTemperature() { return minimumTemperature; }
     @Override public double maximumTemperature() { return maximumTemperature; }
-    @Override public String revision() { return revision; }
+    public String revision() { return revision; }
 
     public String id() { return id; }
     public String component() { return component; }
-    public String source() { return source; }
     public double molarMass() { return molarMass; }
     public ReferenceValue formationEnthalpy() { return formationEnthalpy; }
     public ReferenceValue standardEntropy() { return standardEntropy; }

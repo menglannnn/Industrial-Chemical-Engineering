@@ -25,7 +25,6 @@ public final class V3WaterProperties {
     public static double molarMass() { return data().molarMass(); }
     public static double triplePoint() { return data().triplePoint(); }
     public static double criticalTemperature() { return data().criticalTemperature(); }
-    public static double criticalPressure() { return data().criticalPressure(); }
     public static double maximumTemperature() { return data().maximumTemperature(); }
     private V3WaterProperties() {}
 

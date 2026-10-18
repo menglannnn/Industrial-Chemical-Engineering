@@ -169,7 +169,6 @@ final class NetworkPhaseEngine {
         }
         @Override public double minimumTemperature(){return minimum;}
         @Override public double maximumTemperature(){return maximum;}
-        @Override public String revision(){return water.revision();}
     }
 
     /**
@@ -184,11 +183,10 @@ final class NetworkPhaseEngine {
         private static final double REFERENCE=298.15;
         private final double[] main,mainPowers;
         private final double minimum,maximum;
-        private final String revision;
         CoefficientIdealGas(MaterialCatalog.Property property,double minimum,double maximum) {
             main=property.cp().stream().mapToDouble(Double::doubleValue).toArray();
             mainPowers=powers(main);
-            this.minimum=minimum;this.maximum=maximum;revision=property.id()+":shifted_polynomial_5";
+            this.minimum=minimum;this.maximum=maximum;
         }
         @Override public double heatCapacity(double t) {
             return fitHeatCapacity(edge(t));
@@ -205,7 +203,6 @@ final class NetworkPhaseEngine {
         }
         @Override public double minimumTemperature(){return minimum;}
         @Override public double maximumTemperature(){return maximum;}
-        @Override public String revision(){return revision;}
         private double fitHeatCapacity(double t) {
             double delta=t-REFERENCE,cp=0;
             for(int k=main.length-1;k>=0;k--)cp=cp*delta+main[k];

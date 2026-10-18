@@ -33,11 +33,6 @@ public record V3PumparoundSpec(int returnTray, int drawTray, double dutyWatts, S
         }
     }
 
-    /** Number of trays over which this pumparound places its duty. */
-    public int trayCount() {
-        return split == Split.RETURN_TRAY ? 1 : drawTray - returnTray + 1;
-    }
-
     /** Signed duty placed on one tray of the zone; zero outside it. */
     public double trayDutyWatts(int trayNumber) {
         if (trayNumber < returnTray || trayNumber > drawTray) return 0.0;

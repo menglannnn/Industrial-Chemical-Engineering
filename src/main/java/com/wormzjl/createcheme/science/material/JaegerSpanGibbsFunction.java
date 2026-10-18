@@ -153,8 +153,6 @@ public final class JaegerSpanGibbsFunction {
     public double maximumPressure() { return maximumPressure; }
     /** The paper's reference state T0, K. */
     public double referenceTemperature() { return referenceTemperature; }
-    /** The paper's reference state p0, Pa. */
-    public double referencePressure() { return referencePressure; }
     /** The paper's v0 (equation 10), m3/mol; not an input of equation 8, carried for the check v(T0, p0) = v0. */
     public double referenceVolume() { return referenceVolume; }
     /** The model's own gas constant, J/(mol K) (8.314472 in the paper); part of the fitted function. */

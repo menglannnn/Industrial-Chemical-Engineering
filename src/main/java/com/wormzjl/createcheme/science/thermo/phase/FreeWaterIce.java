@@ -85,9 +85,6 @@ public final class FreeWaterIce implements CrystalFugacity {
     public double tripleTemperature() { return tripleTemperature; }
     /** The record's triple-point pressure, Pa, where its melting line starts. */
     public double triplePressure() { return triplePressure; }
-    /** {@code dT_m/dP}, K/Pa: Clapeyron's slope of the melting line from the record. */
-    public double meltingSlope() { return slope; }
-
     /** The melting temperature at {@code pressure}: {@code T_t + (dT/dP) (P - p_t)}, K. */
     public double meltingTemperature(double pressure) {
         return tripleTemperature + slope * (pressure - triplePressure);
@@ -98,14 +95,7 @@ public final class FreeWaterIce implements CrystalFugacity {
         return triplePressure + (temperature - tripleTemperature) / slope;
     }
 
-    /**
-     * IAPWS R14-08 equation 6: {@code ln(p_sub/p_t) = (T_t/T) sum a_i theta^b_i}, {@code theta = T/T_t}, Pa (5.6e-12 Pa at
-     * 111.6 K, 259.87 Pa at 263.15 K); continued past its data, smooth to the numerical box.
-     */
-    public double sublimationPressure(double temperature) {
-        return triplePressure * DeterministicMath.exp(logSublimationRatio(temperature));
-    }
-
+    /** IAPWS R14-08 equation 6: {@code ln(p_sub/p_t) = (T_t/T) sum a_i theta^b_i}, {@code theta = T/T_t}; continued past its data. */
     private double logSublimationRatio(double temperature) {
         double theta = temperature / tripleTemperature;
         double sum = 0.0;

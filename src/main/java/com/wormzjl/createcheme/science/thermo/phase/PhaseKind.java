@@ -23,7 +23,5 @@ public enum PhaseKind {
      * The separate free-water liquid of {@link WaterParticipation#SEPARATE_FREE_WATER}: pure liquid water, never mixing
      * with the hydrocarbon phases (P3). Its state has the one-component basis {@code [Water]}.
      */
-    FREE_WATER;
-
-    public boolean fluid() { return this != SOLID; }
+    FREE_WATER
 }

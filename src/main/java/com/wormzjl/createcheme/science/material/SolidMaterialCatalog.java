@@ -67,9 +67,5 @@ public final class SolidMaterialCatalog {
             if (!Double.isFinite(temperature) || temperature <= 0) throw new IllegalArgumentException("Invalid solid temperature");
             return heatCapacity * (temperature - REFERENCE_TEMPERATURE);
         }
-        public double specificEnthalpy(double temperature, double pressure) {
-            if (!Double.isFinite(pressure) || pressure <= 0) throw new IllegalArgumentException("Invalid solid pressure");
-            return specificInternalEnergy(temperature) + pressure / density;
-        }
     }
 }

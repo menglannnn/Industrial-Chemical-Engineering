@@ -254,7 +254,6 @@ public final class FluidCheckpointCodec {
             index.put(value,values.size());values.add(value);return values.size()-1;
         }
         String get(int i,String what){if(i<0||i>=values.size())throw new IllegalArgumentException("Invalid saved "+what+": string "+i+" is not in the table of "+values.size());return values.get(i);}
-        int size(){return values.size();}
         ListTag tag(){var list=new ListTag();for(var value:values)list.add(StringTag.valueOf(value));return list;}
         static Strings read(ListTag list) {
             var strings=new Strings();

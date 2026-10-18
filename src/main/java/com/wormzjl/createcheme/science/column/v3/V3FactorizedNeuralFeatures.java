@@ -6,17 +6,12 @@ import java.util.Arrays;
 
 /** Gen3 targets separate phase traffic from normalized compositions and optional learned seed support. */
 public final class V3FactorizedNeuralFeatures {
-    public static final String REVISION = "v3-factorized-stage-1";
     public static final double TRACE_FLOOR_FRACTION = 1e-10;
     private static final double MAXIMUM_LOG_TOTAL = DeterministicMath.log1p(1000);
 
     private V3FactorizedNeuralFeatures() {}
 
-    public static int globalWidth(int components) { return V3GeneralNeuralFeatures.globalWidth(components); }
-    public static int nodeWidth(int components) { return V3GeneralNeuralFeatures.nodeWidth(components); }
     public static int outputWidth(int components) { return 4 * components + 5; }
-    public static double[] global(V3ColumnInput input) { return V3GeneralNeuralFeatures.global(input); }
-    public static double[][] nodes(V3ColumnInput input, V3CondenserPhaseBranch branch) { return V3GeneralNeuralFeatures.nodes(input, branch); }
 
     /** T, log1p(L/F), log1p(V/F), centered log(x/zFeed), centered log(y/zFeed), water, wet, and signed support labels. */
     public static double[][] targets(V3NeuralSeed seed) {

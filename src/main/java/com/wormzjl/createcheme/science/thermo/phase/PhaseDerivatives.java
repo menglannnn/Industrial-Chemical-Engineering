@@ -41,7 +41,6 @@ public final class PhaseDerivatives {
     public int componentCount() { return logFugacityTemperature.length; }
     /** The blocks the last fill provided. */
     public Set<Capability> supported() { return EnumSet.copyOf(supported); }
-    public boolean supports(Capability capability) { return supported.contains(capability); }
     public String family() { return family; }
 
     public double logFugacityCompositionDerivative(int component, int respectTo) {

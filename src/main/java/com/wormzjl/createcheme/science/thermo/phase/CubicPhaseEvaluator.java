@@ -116,7 +116,6 @@ public final class CubicPhaseEvaluator implements PhaseEvaluator {
     @Override public String family() { return FAMILY; }
     @Override public List<String> components() { return names; }
     @Override public Set<Capability> capabilities() { return CAPABILITIES; }
-    public String sourceId() { return sourceId; }
     public ThermoComponent component(int index) { return components.get(index); }
     public IdealGasFunction idealGas(int index) { return idealGas[index]; }
     /** The constant volume translation {@code c_i} of a component, m3/mol ({@code v = v_PR + c}). */

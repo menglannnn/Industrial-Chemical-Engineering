@@ -33,16 +33,6 @@ public final class V3PengRobinsonThermo implements V3ThermoModel, V3ThermoDeriva
         return session.advisoryEvidence();
     }
 
-    /** Returns the inclusive lower temperature bound declared by the selected property package. */
-    public double minimumTemperatureKelvin() {
-        return session.minimumTemperatureKelvin();
-    }
-
-    /** Returns the inclusive upper temperature bound declared by the selected property package. */
-    public double maximumTemperatureKelvin() {
-        return session.maximumTemperatureKelvin();
-    }
-
     /** Returns the inclusive lower absolute-pressure bound declared by the selected property package. */
     public double minimumPressurePascal() {
         return session.minimumPressurePascal();

@@ -876,10 +876,6 @@ final class V3AcceptanceAuditor {
         return waterFraction / (1.0 - waterFraction);
     }
 
-    private double condenserTemperatureKelvin() {
-        return condenserTemperatureKelvin(problem);
-    }
-
     private static double condenserTemperatureKelvin(V3ColumnProblem problem) {
         return problem.input().specifications().stream()
                 .filter(V3ColumnSpecification.CondenserOutletTemperature.class::isInstance)

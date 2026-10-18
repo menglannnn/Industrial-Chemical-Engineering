@@ -11,7 +11,6 @@ public final class ColumnInputPreset {
     private ColumnInputPreset(String id){this.id=id;}
     public String id(){return id;}
     public String label(){return descriptor(MaterialRuntime.current()).label();}
-    public String translationKey(){return descriptor(MaterialRuntime.current()).translationKey();}
     public MaterialPresets.Descriptor descriptor(MaterialCatalog catalog) {
         if(this==HOLLAND) {var input=V3HollandExample32.input();return new MaterialPresets.Descriptor(id,"Holland Example 3-2","gui.createcheme.column_preset."+id,input.packageId(),input.assayId());}
         return catalog.presets().column(id).descriptor();

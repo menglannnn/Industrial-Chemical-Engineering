@@ -444,18 +444,13 @@ public final class EquilibriumResult {
     public double enthalpy() { return sum(Property.ENTHALPY); }
     /** {@code sum_p n_p u_p}, J. */
     public double internalEnergy() { return sum(Property.INTERNAL_ENERGY); }
-    /** {@code sum_p n_p s_p}, J/K. */
-    public double entropy() { return sum(Property.ENTROPY); }
     /** {@code sum_p n_p g_p}, J. */
     public double gibbsEnergy() { return sum(Property.GIBBS); }
     /** {@code sum_p n_p v_p}, m3. */
     public double volume() { return sum(Property.VOLUME); }
     public double molarEnthalpy() { return enthalpy() / totalAmount(); }
-    public double molarInternalEnergy() { return internalEnergy() / totalAmount(); }
-    public double molarEntropy() { return entropy() / totalAmount(); }
-    public double molarVolume() { return volume() / totalAmount(); }
 
-    private enum Property { ENTHALPY, INTERNAL_ENERGY, ENTROPY, GIBBS, VOLUME }
+    private enum Property { ENTHALPY, INTERNAL_ENERGY, GIBBS, VOLUME }
 
     private double sum(Property property) {
         requireSplit();
@@ -465,7 +460,6 @@ public final class EquilibriumResult {
             double molar = switch (property) {
                 case ENTHALPY -> state.molarEnthalpy();
                 case INTERNAL_ENERGY -> state.molarInternalEnergy();
-                case ENTROPY -> state.molarEntropy();
                 case GIBBS -> state.molarGibbsEnergy();
                 case VOLUME -> state.molarVolume();
             };

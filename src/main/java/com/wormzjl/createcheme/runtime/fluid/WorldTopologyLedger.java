@@ -102,8 +102,6 @@ public final class WorldTopologyLedger {
         }
         /** The queued event, or the first applied one. */
         public Event event(){return event;}
-        /** The events an application applies, in queue order; empty for a queued event. */
-        public List<Event> events(){return applied;}
     }
     /** What an event reads and writes, for ordering: the identities it touches and edits, and their positions. */
     public record Footprint(Event event,Set<Long> ids,Set<PhysicalFluidTopology.Position> positions) {

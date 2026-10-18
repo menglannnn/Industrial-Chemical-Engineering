@@ -336,7 +336,6 @@ public final class IslandCoordinator {
     /** Told of every certificate materialisation, with the replayed interval as the island's last result. Only
      * accounting listens here: a replay changes no dependency and needs no view refresh of its own. */
     public void onReplayed(Publisher listener){owned();replayed=Objects.requireNonNull(listener);}
-    public CertificatePolicy certificates(){return settings.certificates();}
     public int pendingCount(){owned();return pending.size();}
     /** The shared online epoch this coordinator's clocks read. */
     public long now(){owned();return epoch.getAsLong();}

@@ -44,9 +44,7 @@ public final class PhaseDomain {
                 Double.MAX_VALUE});
     }
 
-    public String packageId() { return packageId; }
     public List<String> components() { return components; }
-    public boolean open() { return open; }
 
     /** The envelope {@code [Tmin, Tmax, Pmin, Pmax]}, a copy. */
     public double[] envelope() { return new double[] {minimumT, maximumT, minimumP, maximumP}; }

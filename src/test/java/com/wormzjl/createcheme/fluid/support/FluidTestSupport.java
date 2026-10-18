@@ -28,9 +28,6 @@ public final class FluidTestSupport {
 
     /** A token for a worker that is never cancelled and has no deadline: tests solve every admitted slice to its end. */
     public static final BoundedCpuSolveService.CancellationToken NEVER = new BoundedCpuSolveService.CancellationToken() {
-        public long deadlineNanos() { return Long.MAX_VALUE; }
-        public boolean isDeadlineExceeded() { return false; }
-        public boolean isCancellationRequested() { return false; }
         public void throwIfCancellationRequested() {}
     };
 

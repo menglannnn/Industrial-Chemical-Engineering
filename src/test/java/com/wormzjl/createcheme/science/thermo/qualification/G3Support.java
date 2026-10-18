@@ -243,7 +243,7 @@ final class G3Support {
             @Override public double entropy(double t, double p) { return 100 * Math.log(t / 298.15) - R * Math.log(p / 1e5); }
             @Override public double minimumTemperature() { return 1; }
             @Override public double maximumTemperature() { return 6000; }
-            @Override public String revision() { return "g3-probe-constant-cp"; }
+            public String revision() { return "g3-probe-constant-cp"; }
         };
     }
 
