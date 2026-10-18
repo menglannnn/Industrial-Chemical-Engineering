@@ -713,6 +713,17 @@ public final class FluidThermodynamics {
      */
     public static final double VANISHING_SHARE=1e-6;
     /**
+     * The share of its start share under which a shrinking phase of a failed iterate is collapsing ({@link #collapsing};
+     * t38 form C, 2026-10-18): a solve that drives a phase to nothing moves its ln(v/l) splits along a near-null
+     * direction of the equilibrium block (the rows {@code x_i - ln K_i - ln(V/L)} are singular under a common shift), so
+     * the Newton crawls and stops at its iteration limit with the phase at any small share (a bubble-point receiver's
+     * seed vapour of 8 % by mass stopped at 1.3e-6, a hair over {@link #VANISHING_SHARE}, at every step size). A phase a
+     * thousand times below where the solve started it is going, whatever share it stands at: it is folded and the pass
+     * solved again without it; a phase that exists comes back by the converged point's check, and a proposal that
+     * collapses again is refused (owner decision D39 B).
+     */
+    public static final double VANISHING_COLLAPSE=1e-3;
+    /**
      * Folds the trace phases of one split in place (owner decisions D33, D34): nothing leaves the node and nothing is
      * booked, so every component amount and the node's mass are unchanged. The rule (A84): a trace hydrocarbon liquid
      * goes into the gas phase when that holds hydrocarbons; a trace of free water goes into the gas as water vapour; a
@@ -812,7 +823,7 @@ public final class FluidThermodynamics {
      * fluid phase was raised at 17 K about a state the network never reached). A phase the pass needs appears at a
      * converged point's check ({@link #phaseCheck}) or at a smaller step.
      */
-    public State folded(State state,boolean junction,State from){return folded(state,junction,from==null?0:vanishing(from,state));}
+    public State folded(State state,boolean junction,State from){return folded(state,junction,from==null?0:collapsing(from,state));}
     /** {@link #folded(State,boolean)} with the phases {@code vanishing} names folded as traces too (owner decision D38 C,
      * {@link #foldTracePhases(double[],double[],double[],int)}). */
     private State folded(State state,boolean junction,int vanishing) {
@@ -944,6 +955,19 @@ public final class FluidThermodynamics {
     public static int vanishing(State start,State end) {
         double[] s=phaseAmounts(start),e=phaseAmounts(end);double ts=sum(s),te=sum(e);int bits=0;
         for(int k=0;k<4;k++)if(e[k]<VANISHING_SHARE*te&&e[k]*ts<s[k]*te)bits|=1<<k;
+        return bits;
+    }
+    /**
+     * The phases a solve from {@code start} that stopped short of a root is driving to nothing at its last iterate
+     * {@code end} (t38 form C, 2026-10-18): {@link #vanishing}, and as well every phase shrinking to less than
+     * {@link #VANISHING_COLLAPSE} of its start share, whatever share it stands at. A failed iterate is no state, and its
+     * trajectory is the evidence: a phase it has collapsed a thousandfold is leaving. A converged point keeps the share
+     * rule alone ({@link #phaseCheck}): a tank whose water a port drained to its condensate within the step holds a
+     * phase a thousand times smaller than at its start that is not vanishing but drained.
+     */
+    public static int collapsing(State start,State end) {
+        double[] s=phaseAmounts(start),e=phaseAmounts(end);double ts=sum(s),te=sum(e);int bits=vanishing(start,end);
+        for(int k=0;k<4;k++)if(e[k]*ts<VANISHING_COLLAPSE*s[k]*te)bits|=1<<k;
         return bits;
     }
     /** A state's fluid amount by phase, in {@link #phaseBits} order: hydrocarbon liquid, vapour, free water, water vapour. */

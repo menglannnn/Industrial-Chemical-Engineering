@@ -478,7 +478,7 @@ public final class PassiveStepSolver {
                 // solved again from the point it was proposed at, the node laid out without it, and the refusal recorded
                 // (a tank on its bubble point proposed 3.4e-6 of its moles as vapour and stalled at every step size).
                 if(proposal!=null) {
-                    int refuted=proposal.phases()&FluidThermodynamics.vanishing(proposal.seed(),iterate.get(proposal.node()));
+                    int refuted=proposal.phases()&FluidThermodynamics.collapsing(proposal.seed(),iterate.get(proposal.node()));
                     if(refuted!=0){foldedPhases[proposal.node()]|=refuted;SolverDiagnostics.count(SolverDiagnostics.phaseRefusals);seeds=proposal.point();proposal=null;continue;}
                 }
                 var changedSeeds=foldedIterate(graph,iterate);
@@ -2508,9 +2508,9 @@ public final class PassiveStepSolver {
     }
     /**
      * A vessel, or its rate-solve copy, that holds no fluid (decision D54): its fluid, the bag less its solids, at most
-     * the bag's resolution, {@link #HOLDS_NOTHING} of its capacity (owner decision D59 (2)), the resolution at which the
-     * bag's volume is already snapped to the capacity ({@link PhaseLayout#bagVolume}); below it a vessel's fluid is
-     * roundoff, typically a residue a junction's buffer leaves in an emptied tank (1.3e-71 kg, 2.2e-17 kg). Solids ride
+     * the bag's resolution, {@link #HOLDS_NOTHING} of its capacity (owner decision D59 (2)); below it a vessel's fluid
+     * has no pressure of its own, typically a residue a junction's buffer leaves in an emptied tank (1.3e-71 kg,
+     * 2.2e-17 kg) or the first drops a trickle delivers (7e-12 kg). Solids ride
      * the liquid and have no fluid to exchange with, so whatever solids it holds such a vessel is neither feed nor stock:
      * an end of it gives nothing ({@link #dryEnd}), its column is the other end's, a junction seed's sweep passes through
      * it, the rest test does not count it, a step lays it out dry ({@link #dry}), and the booking states it at its flash
@@ -2538,8 +2538,14 @@ public final class PassiveStepSolver {
     static boolean holdsNoFluidVessel(PassiveNetwork.Reservoir node) {
         return node.kind()==PassiveNetwork.NodeKind.RESERVOIR&&holdsNoFluid(node);
     }
-    /** The bag's resolution as a share of its capacity: the share below which a vessel holds no fluid (D59 (2), A311). */
-    static final double HOLDS_NOTHING=1e-12;
+    /**
+     * The bag's resolution as a share of its capacity: the share below which a vessel holds no fluid (D59 (2), A311).
+     * A millilitre in a cubic metre (t38 form C, 2026-10-18; 1e-12 before, the roundoff at which {@link PhaseLayout#bagVolume}
+     * snaps): a first arrival of 7e-12 kg in an empty tank was laid out with two phases and stalled the Newton at every
+     * step size (cold seed 1); below this resolution a bag's fluid has no pressure of its own, so the vessel stays dry,
+     * booked exactly and laid out once it holds a millilitre.
+     */
+    static final double HOLDS_NOTHING=1e-6;
     /**
      * Decision D54 (a bag can be emptied): {@code graph} with every vessel that runs dry within the step ({@code emptying})
      * standing as a junction that holds its stock. A vessel drained to nothing has no state of its own to solve for at the

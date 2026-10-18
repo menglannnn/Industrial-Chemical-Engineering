@@ -43,9 +43,10 @@ class EmptyNetworkTest {
     // ---------------- from HoldsNothingTest ----------------
     /*
      * Owner decision D59 (2), t28: one meaning of holding nothing. A vessel holds nothing when its bag holds at most the bag's
-     * resolution, 1e-12 of its capacity (A311: the share at which the bag's volume is already snapped to the capacity). Below
-     * it, what a vessel holds is roundoff (a residue a junction's buffer leaves in an emptied tank): an end holding it gives
-     * nothing, and the rest test does not count it as stock. The residue stays booked in the inventory.
+     * resolution, 1e-6 of its capacity (t38 form C, 2026-10-18: a millilitre in a cubic metre; 1e-12 before, A311, the share
+     * at which the bag's volume is already snapped to the capacity). Below it, what a vessel holds has no pressure of its
+     * own (a residue a junction's buffer leaves in an emptied tank, the first drops a trickle delivers): an end holding it
+     * gives nothing, and the rest test does not count it as stock. The residue stays booked in the inventory.
      */
     /** A 1 m3 vessel holding nitrogen at 298.15 K and 1 atm whose bag is {@code share} of its capacity. */
     private PassiveNetwork.Reservoir vessel(double share) {
@@ -55,7 +56,7 @@ class EmptyNetworkTest {
     }
 
     @Test void aBagAtOrBelowItsResolutionHoldsNothingAndGivesNothing() {
-        for(double[] c:new double[][]{{2e-12,0},{1e-12,1},{.5e-12,1}}) {
+        for(double[] c:new double[][]{{2e-6,0},{1e-6,1},{.5e-6,1},{1e-12,1}}) {
             var node=vessel(c[0]);boolean nothing=c[1]==1;
             assertEquals(c[0],PhaseLayout.bagVolume(node.state(),1),1e-6*c[0],"the bag is that share of its capacity");
             assertEquals(nothing,PassiveStepSolver.holdsNoFluid(node),"share "+c[0]);
