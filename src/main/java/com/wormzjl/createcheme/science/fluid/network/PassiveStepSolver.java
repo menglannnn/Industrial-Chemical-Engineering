@@ -581,7 +581,10 @@ public final class PassiveStepSolver {
                 // at a stalled point are -1.14e-6 kg/s on a line whose generator drives it
                 // forwards, and reading them as backflow let the tank's nitrogen into both of the
                 // filter's zero-holdup junctions; see documentation/JUNCTION_PHANTOM_TRACE.md.
-                var changedSeeds=phaseCorrection(graph,equations.states(failure.lastVariables()),checkpoint,null,foldedPhases.clone());
+                // Owner decisions D28 A' and D39: the same holds for its phases. The iterate's check folds what the iterate
+                // empties and proposes nothing (cold seed 430: TP answers at a junction on the 1 Pa box floor seeded later
+                // passes with 13 300 m3 of gas at 51 K, and a third fluid phase at 17 K was held about a non-state).
+                var changedSeeds=foldedIterate(graph,equations.states(failure.lastVariables()));
                 // Decision D11: a phase a vessel's ports draw at their full capacity leaves the vessel within the step; a
                 // pass whose seed still holds it may have no root (see drainedSeeds).
                 if(changedSeeds==null)changedSeeds=equations.drainedSeeds(checkpoint);
@@ -2128,9 +2131,9 @@ public final class PassiveStepSolver {
         return mode==FlowControl.Mode.VELOCITY_LIMITED||mode==FlowControl.Mode.PUMP_VELOCITY_LIMIT||mode==FlowControl.Mode.VALVE_VELOCITY_LIMIT;
     }
     /**
-     * The outer phase check of a pass's point, node by node ({@link FluidThermodynamics#phaseCheck}, owner decisions D25 and
-     * D26): a phase leaves a node only when the solve empties it (the trace fold of the point, at a converged point whose
-     * reconstruction already folded it as at an unsuccessful pass's last iterate, and the vanishing rule of owner decision
+     * The outer phase check of a converged pass's point, node by node ({@link FluidThermodynamics#phaseCheck}, owner
+     * decisions D25 and D26): a phase leaves a node only when the solve empties it (the trace fold of the point, which the
+     * reconstruction has already applied, and the vanishing rule of owner decision
      * D38 C: a phase under {@link FluidThermodynamics#VANISHING_SHARE} of the node's fluid amount and at a smaller share than
      * at the step's start, {@link #inputStates}, in a junction as in a vessel), a phase the node's TP answer holds and
      * the node does not is added at the node's own split (a junction's PH answer, a vessel's closure of what the point
@@ -2143,8 +2146,9 @@ public final class PassiveStepSolver {
      * {@code foldedPhases}, when given, holds per node the phases ({@link #phaseCode} bits) the trace rule removed in this
      * solve and those a node's own split refused (A85; the D26 amendment): the check does not add them back, and writes
      * there a phase its fold removes from a converged point and a phase its own split refuses there, so the sequence of
-     * passes stays finite and a refused phase costs one own split per solve. A failed pass's iterate is checked on a copy
-     * (decision D28 A'): its check is a trial layout, which reads the record and never writes to it.
+     * passes stays finite and a refused phase costs one own split per solve. A polished or reused point is checked on a
+     * copy. A failed pass's last iterate is not checked here: it is no state, and it is only folded ({@link #foldedIterate},
+     * owner decisions D28 and D39).
      */
     private List<FluidThermodynamics.State> phaseCorrection(PassiveNetwork graph,List<FluidThermodynamics.State> states,Runnable checkpoint,FluidThermodynamics.Prepared[] prepared,int[] foldedPhases) {
         for(int i=0;i<states.size();i++) {
@@ -2155,6 +2159,24 @@ public final class PassiveStepSolver {
             catch(com.wormzjl.createcheme.science.fluid.thermo.ThermoHold hold){throw hold.at(node.id());}
             if(checked==state)continue;
             var corrected=new ArrayList<>(states);corrected.set(i,checked);return corrected;
+        }
+        return null;
+    }
+    /**
+     * The check of a failed pass's last iterate, node by node (owner decisions D28 A' and D39,
+     * {@link FluidThermodynamics#folded(FluidThermodynamics.State,boolean,FluidThermodynamics.State)}): the iterate with the
+     * phases it empties folded, by the trace fold and the vanishing rule against the step's start ({@link #inputStates}),
+     * one node per call as {@link #phaseCorrection} corrects; null when it empties none. A failed iterate is not a state:
+     * this trial layout neither reads nor writes the A85 record, and it adds no phase, so no TP answer or own split is
+     * formed and no hold is raised at a point the network never reaches. A phase the pass needs appears at a converged
+     * point's check or at a smaller step.
+     */
+    private List<FluidThermodynamics.State> foldedIterate(PassiveNetwork graph,List<FluidThermodynamics.State> states) {
+        for(int i=0;i<states.size();i++) {
+            var state=states.get(i);var node=graph.reservoirs().get(i);if(node.fixed())continue;
+            var folded=model.folded(state,node.junction(),inputStates.get(i));
+            if(folded==state)continue;
+            var corrected=new ArrayList<>(states);corrected.set(i,folded);return corrected;
         }
         return null;
     }

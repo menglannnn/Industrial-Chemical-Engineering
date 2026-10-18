@@ -31,6 +31,14 @@ class HoldClassWorldsTest {
                 MaterialTestBasis.NETWORK+1);
         return new FluidDeviceSpec(1,temperature,pressure,n);
     }
+    /** Runs {@code body} on a world of the cold pilot package, inside that catalog's context, as the cold placement fuzz runs
+     * a seed; its specs are on the pilot basis [nitrogen, methane, ethane, CO2, water]. */
+    private static void cold(java.util.function.Consumer<EventPathWorld> body) {
+        var catalog=PilotCryogenicTestCatalog.catalog();var network=FluidMaterialCatalog.networkPackage(catalog);
+        MaterialRuntime.with(catalog,network,()->{body.accept(new EventPathWorld(catalog,FluidThermodynamics.forNetwork(catalog,network)));return null;});
+    }
+    /** A 1 m3 generator's spec on the cold pilot basis: {@code moles} in basis order. */
+    private static FluidDeviceSpec pilot(double temperature,double pressure,double... moles){return new FluidDeviceSpec(1,temperature,pressure,moles);}
 
     // ---------------- ActuatedIslandGeneratorClosure ----------------
     /*
@@ -59,6 +67,38 @@ class HoldClassWorldsTest {
         w.place(4,0,0,Kind.VOID,NORTH,passive,EventPathWorld.pure(MaterialTestBasis.NITROGEN,298.15,101325),.05);
         w.place(-1,-1,0,Kind.PIPE,NORTH,.02);w.place(-1,0,1,Kind.PIPE,NORTH,.02);
         w.runTo(4200);w.assertKeptUp("a low crude generator in a valve island");
+    }
+
+    // ---------------- FailedIterateIsNoState ----------------
+    /*
+     * A failed pass's last iterate is not a state (owner decisions D28 and D39, M8_CAMPAIGN_WORSE_WORLDS_TRACE.md of batch
+     * 2026-09-24-coolprop-low-temperature): its check folds what the iterate empties and proposes nothing, so no TP answer
+     * or own split is formed there and no capability hold is raised about a point the network never reaches.
+     */
+    /**
+     * Cold fuzz seed 430, pair-minimized to 8 blocks, on the cold pilot package. At tick 404 two pipes join an empty 1 m3
+     * tank one block down to a junction fed by a CO2-rich gas generator (4.89 MPa, 293 K, 84 % CO2) and an LNG generator
+     * (884 kPa, 128 K, 97 % methane): a 2 cm run reaches the tank's side, a 5 cm run its top. Physics: the gas line runs
+     * on its cap, the LNG joins it, and the mix let down into the bag flashes at its 1 atm bubble point, about 112 K. No
+     * node can cool below about 110 K, so no third fluid phase forms anywhere. Before the rule, the failed-iterate check
+     * flashed a junction its failed iterates held on the 1 Pa box floor (seeded at 51 K with 13 300 m3 of gas), the
+     * near-empty tank's later iterates fell to 17 K, and the TP answer there held the island at tick 406 on "a third fluid
+     * phase ... at 17.35 K" (class C). The world still holds a step stall (class E5: the flashing top run, M8's option C,
+     * is open), so this world is not asserted to keep up: it pins that no hold is a capability hold.
+     */
+    @Test void aFailedIterateRaisesNoPhaseHold() {
+        cold(w->{
+            w.runTo(100);w.place(-3,0,0,Kind.PIPE,NORTH,.05);w.place(-3,-1,0,Kind.PIPE,NORTH,.02);
+            w.runTo(122);w.place(-5,-1,0,Kind.RESERVOIR,NORTH,.1);
+            w.runTo(277);w.place(-5,0,0,Kind.PIPE,NORTH,.05);
+            w.runTo(314);w.place(-3,-2,0,Kind.GENERATOR,NORTH,pilot(293.3622295561016,4890311.622961059,0.08614517149650655,0.07056407215385954,0,0.8432907563496339,0),.1);
+            w.runTo(364);w.place(-2,-1,0,Kind.GENERATOR,NORTH,pilot(128.26444287849995,884476.301554819,0.0015460461379406321,0.9680838334702262,0.010807740847289705,0.01956237954454346,0),.02);
+            w.runTo(404);w.place(-4,-1,0,Kind.PIPE,NORTH,.02);w.place(-4,0,0,Kind.PIPE,NORTH,.05);
+            w.runTo(404+100);
+            for(var h:w.held)System.out.println("FAILED_ITERATE_HELD "+h);
+            assertTrue(w.held.stream().noneMatch(h->h.status().startsWith(com.wormzjl.createcheme.runtime.ProcessSolveServices.PHASE_HOLD)),
+                    "no capability hold about a failed iterate: "+w.held);
+        });
     }
 
     // ---------------- FilterIslandGeneratorClosure ----------------
@@ -809,18 +849,14 @@ class HoldClassWorldsTest {
      * residual 1.47e-9).
      */
     @Test void aJunctionsVapourCollapsingInASubcooledLiquidLeavesAtAFailedIterate() {
-        var catalog=PilotCryogenicTestCatalog.catalog();var network=FluidMaterialCatalog.networkPackage(catalog);
-        MaterialRuntime.with(catalog,network,()->{
-            var w=new EventPathWorld(catalog,FluidThermodynamics.forNetwork(catalog,network));
+        cold(w->{
             w.runTo(100);w.place(2,0,-1,Kind.PIPE,NORTH,.1);
             w.runTo(466);w.place(-2,0,0,Kind.RESERVOIR,NORTH,.05);
-            w.runTo(470);w.place(0,0,0,Kind.GENERATOR,EAST,new FluidDeviceSpec(1,291.9601168397745,2031523.2199300588,
-                    new double[]{0.009971399772847691,0.06435484220406093,0,0.9256737580230914,0}),.01);
+            w.runTo(470);w.place(0,0,0,Kind.GENERATOR,EAST,pilot(291.9601168397745,2031523.2199300588,0.009971399772847691,0.06435484220406093,0,0.9256737580230914,0),.01);
             w.place(0,0,-2,Kind.PIPE,NORTH,.05);w.place(-1,0,-1,Kind.PIPE,NORTH,.01);
             w.runTo(599);w.place(-2,0,-1,Kind.PIPE,NORTH,.01);
             w.runTo(647);w.place(1,0,-1,Kind.PIPE,NORTH,.1);
-            w.runTo(696);w.place(2,1,-1,Kind.GENERATOR,NORTH,new FluidDeviceSpec(1,169.6783671876938,6000000.0,
-                    new double[]{0.005965999241527276,0.9300951052162594,0.027900495572427266,0.03603839996978608,0}),.05);
+            w.runTo(696);w.place(2,1,-1,Kind.GENERATOR,NORTH,pilot(169.6783671876938,6000000.0,0.005965999241527276,0.9300951052162594,0.027900495572427266,0.03603839996978608,0),.05);
             w.runTo(971);w.place(0,0,-3,Kind.VOID,NORTH,.05);
             w.runTo(1283);w.place(0,0,-1,Kind.PIPE,NORTH,.05);
             w.runTo(1593);w.place(-1,0,0,Kind.PIPE,NORTH,.05);
@@ -832,7 +868,6 @@ class HoldClassWorldsTest {
             // The junctions carry the LNG at 2.4 to 3.8 MPa and 168.5 to 169.1 K, above its bubble pressure: liquid only.
             for(var s:w.coordinator.snapshots())for(var node:s.graph().reservoirs())if(node.junction())
                 assertEquals(0,node.state().vaporVolume(),"junction "+node.id()+" at "+node.state().pressure()+" Pa, "+node.state().temperature()+" K holds liquid only");
-            return null;
         });
     }
 
