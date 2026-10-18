@@ -431,7 +431,7 @@ public final class PassiveStepSolver {
             // means the pass sequence cannot make progress. The frozen junction donors and the phase-port segments belong to
             // it for the same reason the modes do: they decide which equations this pass states (see {@link PassKey}).
             var structure=new WorkspaceKey(0,nodeIds,kinds,pipeIdentities,phases,componentMask,supportCodes(supports),modeCodes,boundaryClosed.clone(),equations.junctionDonorFirst);
-            if(!seen.add(new PassKey(structure,equations.segmentCodes(),foldedPhases.clone())))throw new SparseNewton.Nonconvergence("Phase/device active-set cycle");
+            if(!seen.add(new PassKey(structure,equations.segmentCodes(),foldedPhases.clone(),proposal==null?-1:proposal.node(),proposal==null?0:proposal.phases())))throw new SparseNewton.Nonconvergence("Phase/device active-set cycle");
             var key=new WorkspaceKey(Double.doubleToLongBits(dt),nodeIds,kinds,pipeIdentities,phases,componentMask,structure.supports,modeCodes,structure.boundaryClosed,structure.junctionDonors);
             var workspace=workspaces.get(key);
             SolverDiagnostics.count(workspace==null?SolverDiagnostics.workspaceBuilds:SolverDiagnostics.workspaceReuses);
@@ -765,11 +765,16 @@ public final class PassiveStepSolver {
      * which change a port stream's values but no structural entry, so they are not part of the workspace key), plus the
      * phases the trace rule has removed and the own splits and refuted proposals have refused so far in the solve (D34,
      * A85, D26 amendment, D39 B): that record only grows, so a pass that returns to an earlier structure after a fold or
-     * a refusal is a pass under a different phase-correction rule, not a cycle.
+     * a refusal is a pass under a different phase-correction rule, not a cycle. The proposal the pass is laid out under
+     * ({@link Proposal}: its node and phases, none as -1 and 0) belongs to the key too (t38 form B, 2026-10-18): a pass
+     * whose seed a failed iterate's fold trimmed, re-proposed by the converged point's check, is the pass that refutes or
+     * keeps the proposal (D39 B), not a cycle with the pass that failed before the fold; the record of refusals still
+     * grows at every refutation, so the sequence stays finite (CO2 gas mixed into LNG near its critical region: the check
+     * and the Newton disagreed, the fold and the proposal alternated, and the guard fired before the refutation could).
      */
-    private record PassKey(WorkspaceKey structure,byte[] segments,int[] folded) {
-        @Override public boolean equals(Object other){return other instanceof PassKey key&&structure.equals(key.structure)&&Arrays.equals(segments,key.segments)&&Arrays.equals(folded,key.folded);}
-        @Override public int hashCode(){return 31*(31*structure.hashCode()+Arrays.hashCode(segments))+Arrays.hashCode(folded);}
+    private record PassKey(WorkspaceKey structure,byte[] segments,int[] folded,int proposalNode,int proposalPhases) {
+        @Override public boolean equals(Object other){return other instanceof PassKey key&&structure.equals(key.structure)&&Arrays.equals(segments,key.segments)&&Arrays.equals(folded,key.folded)&&proposalNode==key.proposalNode&&proposalPhases==key.proposalPhases;}
+        @Override public int hashCode(){return 31*(31*(31*(31*structure.hashCode()+Arrays.hashCode(segments))+Arrays.hashCode(folded))+proposalNode)+proposalPhases;}
     }
     /**
      * A proposal (owner decision D39 B): the phases ({@link FluidThermodynamics#phaseBits} bits) the check of a converged

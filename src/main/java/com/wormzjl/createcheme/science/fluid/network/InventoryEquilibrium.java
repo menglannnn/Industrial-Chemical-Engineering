@@ -188,6 +188,11 @@ public final class InventoryEquilibrium {
                 // own closure: its inventory's).
                 var checked=model.folded(closure.iterate(state,failure.lastVariables()),false,from);
                 if(regime(checked).equals(regime(state)))throw failure;
+                // What a failed closure folds joins the A85 record (t38 form B, 2026-10-18): the check of the answer without
+                // it may not propose it again within this closure, else the regime it was folded from repeats and the
+                // closure refuses as a cycle before anything decided the phase (the vessel's own closure has no proposal
+                // and refutation of its own; the network's pass loop decides at its level, D39 B).
+                excluded[0]|=FluidThermodynamics.phaseBits(state)&~FluidThermodynamics.phaseBits(checked);
                 state=checked.withSolids(state.solids());continue;
             }
             if(candidate==state)return state;
