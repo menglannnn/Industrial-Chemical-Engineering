@@ -2045,7 +2045,6 @@ public final class PassiveStepSolver {
      */
     private Start balanceStart(PassiveNetwork graph,List<FlowControl.Mode> modes,boolean[] boundaryClosed,boolean[] keep,Runnable checkpoint) {
         int edges=graph.pipes().size();
-        SolverDiagnostics.count(SolverDiagnostics.balanceStarts);
         var current=graph;boolean converged=true;BalanceNet net=null;double[] p=null;
         for(int round=0;round<Math.max(1,BALANCE_ROUNDS);round++) {
             net=new BalanceNet(current,modes,boundaryClosed,checkpoint);
@@ -2073,7 +2072,6 @@ public final class PassiveStepSolver {
             boolean fwd=boundaryAllowed(current,pipe,1),rev=boundaryAllowed(current,pipe,-1);
             if(forward>band&&!fwd&&!(reverse<-band&&rev)||reverse<-band&&!rev&&!(forward>band&&fwd)){closed[e]=true;law[e]=0;}
         }
-        if(!converged)SolverDiagnostics.count(SolverDiagnostics.balanceUnconverged);
         return new Start(current,law,closed,List.copyOf(modes),converged);
     }
     /** The balance of one island on its start states (decision D12's one-way estimate promoted, with every connection's mode): the junction pressures
@@ -2129,7 +2127,7 @@ public final class PassiveStepSolver {
                     // Fluid-only: a crystal the competition would book at a table point moves the density by the crystal's share, nothing
                     // a starting guess needs; the junction's final mixture ({@link #mixed}) keeps the competition. On the cold package the
                     // competition was the tables' cost (about 1.4 ms a flash, t44's probe).
-                    try{var at=model.equilibriumPH(s.temperature(),tp[k],h,held.clone(),false,checkpoint);SolverDiagnostics.count(SolverDiagnostics.balanceFlashes);
+                    try{var at=model.equilibriumPH(s.temperature(),tp[k],h,held.clone(),false,checkpoint);
                         if(at==null||!FluidThermodynamics.holdsFluid(at)){ok=false;break;}
                         tr[k]=at.mass()/at.volume();tv[k]=tr[k]*model.velocityLimit(at);}
                     catch(IllegalArgumentException refused){ok=false;}
@@ -2206,7 +2204,6 @@ public final class PassiveStepSolver {
             return 0;
         }
         private double runFlow(int e,int dir,double driving,double rho,double mu,double cap) {
-            SolverDiagnostics.count(SolverDiagnostics.balanceLaws);
             if(!(cap>0))return 0;
             if(filterR[e][dir]>0)return saturated(driving/filterR[e][dir],cap);
             var pipe=graph.pipes().get(e);
@@ -2318,7 +2315,7 @@ public final class PassiveStepSolver {
             for(int iteration=0;iteration<30;iteration++) {
                 checkpoint.run();finalResidual=maximum(residual);
                 if(finalResidual<=tolerance){converged=true;return p;}
-                iterations++;SolverDiagnostics.count(SolverDiagnostics.balanceIterations);
+                iterations++;
                 double[][] jacobian=new double[count][2*band+1];residual(p,new double[count],jacobian);
                 double floor=0;for(int i=0;i<count;i++)floor=Math.max(floor,Math.abs(jacobian[i][band]));floor=Math.max(floor*1e-12,Double.MIN_NORMAL);
                 for(int i=0;i<count;i++)if(Math.abs(jacobian[i][band])<floor)jacobian[i][band]=-floor;
@@ -2336,7 +2333,7 @@ public final class PassiveStepSolver {
                 // Where the Newton step does not descend (a cap or a one-way kink), one Gauss-Seidel sweep, kept only where it
                 // improves on the Newton's point: a sweep across a choked junction's flat range can walk away from a root the
                 // Newton has all but reached, and then neither method improves on the other.
-                if(!accepted){if(++sweeps>12)break;SolverDiagnostics.count(SolverDiagnostics.balanceSweeps);double[] was=p.clone(),wasResidual=residual.clone();double wasMerit=merit;sweep(p);merit=residual(p,residual,null);
+                if(!accepted){if(++sweeps>12)break;double[] was=p.clone(),wasResidual=residual.clone();double wasMerit=merit;sweep(p);merit=residual(p,residual,null);
                     if(!(merit<wasMerit)){System.arraycopy(was,0,p,0,nodes);System.arraycopy(wasResidual,0,residual,0,count);merit=wasMerit;break;}
                     double moved=0;for(int i=0;i<nodes;i++)if(unknown[i]>=0)moved=Math.max(moved,Math.abs(p[i]-was[i])/Math.max(1,Math.abs(was[i])));
                     if(moved<1e-12)break;}
@@ -2405,7 +2402,6 @@ public final class PassiveStepSolver {
          * temperature bisection inside the streams' window (20 K either side, inside the numerical box: no data range narrows a seed, owner rule of 2026-10-16). */
         private FluidThermodynamics.State mixed(double[] amounts,double mass,double heat,double tMix,double tLow,double tHigh,double pressure,Runnable checkpoint) {
             double[] y=new double[amounts.length];for(int c=0;c<y.length;c++)y[c]=amounts[c]/mass;
-            SolverDiagnostics.count(SolverDiagnostics.balanceFlashes);
             double hydrocarbon=0;for(int c=0;c<y.length-1;c++)hydrocarbon+=y[c];
             var answer=hydrocarbon>0?model.equilibriumPH(tMix,pressure,heat/mass,y,checkpoint):null;
             if(answer!=null&&FluidThermodynamics.holdsFluid(answer))return model.folded(answer,true);
