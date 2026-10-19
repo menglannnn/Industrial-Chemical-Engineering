@@ -72,9 +72,10 @@ public record PassiveNetwork(List<Reservoir> reservoirs,List<Pipe> pipes,List<Sc
      * Sizes every junction that is not sized yet ({@link #unsized}), once, from its seed state and its connections:
      * {@code m_J = PassiveStepSolver.HOLDUP_TAU * max over its connections of rho_seed * minimumArea * velocityLimit(seed)},
      * the velocity cap's mass flow on the junction's seed state; an unconnected junction is given 1 kg so its stock is
-     * positive. The mint is once, at the seed state (a later density only changes the mixing lag); the buffer's mass
-     * then stays exactly m_J (the mass pin of {@code ConservativeTransport.reconstruct}), a topology edit recompiles the
-     * island and mints its junctions again, and nothing is booked at a mint (owner decision D46). A graph with no
+     * positive. A junction is sized wherever it is given a state: when its island is minted ({@link #mintJunctions}), when a
+     * replacement of one structure carries it ({@link #withJunctionStates}), and at a solve's entry for a graph built
+     * directly. Between those its buffer's mass stays exactly m_J (the mass pin of {@code ConservativeTransport.reconstruct};
+     * a later density only changes the mixing lag), and nothing is booked at a sizing (owner decision D46). A graph with no
      * unsized junction is returned unchanged.
      */
     public static PassiveNetwork sizeJunctionHoldups(PassiveNetwork graph,FluidThermodynamics model) {
@@ -95,20 +96,23 @@ public record PassiveNetwork(List<Reservoir> reservoirs,List<Pipe> pipes,List<Sc
     /** Whether {@code a} and {@code b} are one structure: the same pipe identities and node ids, in order. */
     public static boolean sameStructure(PassiveNetwork a,PassiveNetwork b){return PassiveStepSolver.sameStructure(a,b);}
     /**
-     * {@code graph} with every junction's state and buffer taken from the node of the same id in {@code from}, one structure
-     * with it: an island replaced by one of the same graph carries its junctions (owner decision of 2026-10-19, t46's trace
-     * of bundled fuzz seed 483, where a filter placed beyond a tank re-minted an unchanged header and the mint's balance
-     * re-mixed it as water), nothing minted or balanced anew.
+     * {@code graph} with every junction's state taken from the node of the same id in {@code from}, one structure with it,
+     * and its buffer sized on that state ({@link #sizeJunctionHoldups}): an island replaced by one of the same graph carries
+     * its junctions (owner decision of 2026-10-19, t46's trace of bundled fuzz seed 483, where a filter placed beyond a tank
+     * re-minted an unchanged header and the mint's balance re-mixed it as water), nothing balanced anew. The buffer follows
+     * what the junction holds, by the mint's own rule: a junction is a fitting of fixed volume, whose mixing lag does not
+     * depend on what fills it (t48's trace of bundled fuzz seed 145: a buffer sized on the minted nitrogen placeholder,
+     * 0.011 kg, was carried while 21.5 kg/s of water passed, a 0.5 ms lag, and the island held).
      */
-    public static PassiveNetwork withJunctionStates(PassiveNetwork graph,PassiveNetwork from) {
+    public static PassiveNetwork withJunctionStates(PassiveNetwork graph,PassiveNetwork from,FluidThermodynamics model) {
         if(!sameStructure(graph,from))throw new IllegalArgumentException("Not one structure");
         List<Reservoir> nodes=null;
         for(int i=0;i<graph.reservoirs.size();i++) {
             var node=graph.reservoirs.get(i);if(!node.junction())continue;var old=from.reservoirs.get(i);
             if(nodes==null)nodes=new ArrayList<>(graph.reservoirs);
-            nodes.set(i,new Reservoir(node.id(),node.elevation(),old.state(),node.kind(),old.inventory()));
+            nodes.set(i,new Reservoir(node.id(),node.elevation(),old.state(),node.kind()));
         }
-        return nodes==null?graph:new PassiveNetwork(nodes,graph.pipes,graph.scheduledTransfers);
+        return nodes==null?graph:sizeJunctionHoldups(new PassiveNetwork(nodes,graph.pipes,graph.scheduledTransfers),model);
     }
     private static PassiveNetwork sizeJunctionHoldups(PassiveNetwork graph,FluidThermodynamics model,List<FluidThermodynamics.State> starts) {
         List<Reservoir> sized=null;

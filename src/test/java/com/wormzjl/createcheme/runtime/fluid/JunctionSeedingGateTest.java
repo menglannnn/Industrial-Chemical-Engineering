@@ -170,4 +170,33 @@ class JunctionSeedingGateTest {
             w.runTo(1852+40*100);w.assertKeptUp("a back-pressure valve placed under a choked gas supply");
         });
     }
+
+    /**
+     * Bundled fuzz seed 145's smallest world (16 blocks; t48's trace in {@code FINAL_TEST_REVIEW.md}): a water generator
+     * (354 K, 374 kPa) placed at tick 2114 fills a tank at 51.5 kg/s while 21.5 kg/s drain through a 50 mm bottom line
+     * into a 1 atm void; a second tank beyond a closed 150 kPa valve stays empty. The island is minted before water reaches
+     * the drain's junction, so that junction holds the nitrogen placeholder and its buffer is sized on gas, 0.011 kg. The
+     * placements at 2152, 2164 (20 mm pipes on a dead-end line) and 2440 (a filter below the second tank) replace the island
+     * with one of the same graph, which carries its junctions. Carried with their old buffers, the drain's junction kept
+     * 0.011 kg while 21.5 kg/s of water passed (a 0.5 ms mixing lag where the mint's rule gives 0.44 s), each interval cost
+     * 2 to 3.5 times the work and at 3767 the step failed 19 times on the junction inventory (E9). Sized on its carried
+     * water by the mint's rule, the buffer holds 9.5 kg and the island keeps up.
+     */
+    @Test void aJunctionCarriedAcrossAReplacementHasItsBufferSizedOnWhatItHolds() {
+        var w=new EventPathWorld();var passive=new FlowControl.Passive();
+        w.runTo(137);w.place(0,2,2,Kind.PIPE,NORTH,passive,null,.02);
+        w.runTo(323);w.place(0,2,0,Kind.RESERVOIR,NORTH,passive,NITROGEN,.05);w.place(1,1,0,Kind.VALVE,WEST,new FlowControl.PressureValve(150000),null,.01);
+        w.runTo(462);w.place(2,2,0,Kind.RESERVOIR,NORTH,passive,NITROGEN,.05);w.place(-2,2,0,Kind.PIPE,NORTH,passive,null,.05);w.place(-1,2,0,Kind.PIPE,NORTH,passive,null,.05);
+        w.runTo(646);w.place(0,2,1,Kind.PIPE,NORTH,passive,null,.02);
+        w.runTo(1041);w.place(0,2,4,Kind.PIPE,NORTH,passive,null,.02);
+        w.runTo(1206);w.place(2,1,0,Kind.PIPE,NORTH,passive,null,.05);
+        w.runTo(1273);w.place(0,1,0,Kind.PIPE,NORTH,passive,null,.05);
+        w.runTo(1572);w.place(1,2,0,Kind.PIPE,NORTH,passive,null,.05);
+        w.runTo(1945);w.place(0,0,0,Kind.VOID,NORTH,passive,NITROGEN,.05);
+        w.runTo(2114);w.place(-3,2,0,Kind.GENERATOR,NORTH,passive,EventPathWorld.pure(MaterialTestBasis.NETWORK,353.7140998874968,374290.4801779348),.05);
+        w.runTo(2152);w.place(0,2,3,Kind.PIPE,NORTH,passive,null,.02);
+        w.runTo(2164);w.place(0,2,5,Kind.PIPE,NORTH,passive,null,.02);
+        w.runTo(2440);w.place(3,1,0,Kind.FILTER,EAST,passive,null,.05);
+        w.runTo(2440+40*100);w.assertKeptUp("a drain junction carried across three same-graph replacements");
+    }
 }
