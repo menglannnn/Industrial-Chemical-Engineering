@@ -217,6 +217,9 @@ public final class PassiveStepSolver {
     /** The input states {@link #previousFlows} were recorded at, and the input states of the solve in progress: a
      * rate-only solve warm-starts only from flows recorded at value-identical input states; see {@link #startPoint}. */
     private List<FluidThermodynamics.State> previousInputStates=List.of(),inputStates=List.of();
+    /** The last converged solve's states, and whether it was a rate solve: a rate solve's point starts a step only where
+     * it was written back into the step's graph ({@code PassiveIntervalSolver.coldRateSeed}); see {@link #carriedPoint}. */
+    private List<FluidThermodynamics.State> previousOutputStates=List.of();private boolean previousRateOnly;
     /** Per connection, the pressure a pump's suction may not fall below in this solve ({@link #suctionFloors(PassiveNetwork,List)}). */
     private double[] suctionFloors=new double[0];
     /**
@@ -257,7 +260,7 @@ public final class PassiveStepSolver {
         // carried job refreshed its Jacobian where a fresh one reused it (RetainedSolverTest).
         workspaces.clear();
         for(var entry:structures.entrySet())entry.setValue(entry.getValue().forkStructure());
-        previousFlows=new double[0];previousLawFlows=new double[0];previousHeads=new double[0];previousInputStates=List.of();inputStates=List.of();
+        previousFlows=new double[0];previousLawFlows=new double[0];previousHeads=new double[0];previousInputStates=List.of();inputStates=List.of();previousOutputStates=List.of();previousRateOnly=false;
         previousPipes=List.of();previousNodeIds=new long[0];previousModes=List.of();
         keepOpen=Set.of();lastSolve=null;
         if(committed!=null) {
@@ -377,10 +380,10 @@ public final class PassiveStepSolver {
         closeDeadHeads(graph,boundaryClosed,keep);
         balanceLawFlows=null;
         if(needsBalance(graph)) {
-            // Owner decision of 2026-10-19 (junction seeding): a solve without a carried point, and a structure no step has been
-            // accepted on, starts from the island's quasi-steady balance ({@link #balanceStart}), the pump modes it decides
-            // included; the carried point of an earlier solve (a rate solve, a refused attempt) is dropped, the pass loop
-            // carries within the solve. Every attempt of one step starts from the same balance.
+            // Owner decision of 2026-10-19 (junction seeding): a solve without a carried point ({@link #carriedPoint}) starts from
+            // the island's quasi-steady balance ({@link #balanceStart}), the pump modes it decides included: the cold rate seed's
+            // rate solve, whose converged point then starts the step (the plan's fallback), and a step whose rate seed failed.
+            // A point carried from a solve on other states is dropped; the pass loop carries within the solve.
             relieveSealedPockets(graph,modes,boundaryClosed,atShutoff);
             Start start;
             if(balanceFor==inputGraph&&balanceCache!=null&&Arrays.equals(balanceClosedFor,boundaryClosed))start=balanceCache;
@@ -544,12 +547,12 @@ public final class PassiveStepSolver {
             // A confirmed emptying (keptEmptying) was decided on the network this active set states, so a mode or closure
             // change decides it again.
             if(changed)Arrays.fill(emptied,false);
-            if(changed){seeds=states;previousPipes=pipeIdentities;previousNodeIds=nodeIds;previousInputStates=inputStates;previousFlows=flows.clone();previousLawFlows=lawFlows;previousHeads=heads.clone();previousModes=List.copyOf(modes);continue;}
+            if(changed){seeds=states;previousPipes=pipeIdentities;previousNodeIds=nodeIds;previousInputStates=inputStates;previousOutputStates=states;previousRateOnly=rateOnly;previousFlows=flows.clone();previousLawFlows=lawFlows;previousHeads=heads.clone();previousModes=List.copyOf(modes);continue;}
             // Decision D11: the phase-port segments this pass froze must be the ones its own converged flows land in
             // (which phases a port draws at its capacity and which one carries the rest); otherwise the pass is solved
             // again, starting from these flows, under the segments they decide (see PhaseDraw). Like an active-set change,
             // and the cycle key carries the segments, so the sequence stays finite. An island without a phase port has none.
-            if(equations.segmentsMoved(flows)){seeds=states;previousPipes=pipeIdentities;previousNodeIds=nodeIds;previousInputStates=inputStates;previousFlows=flows.clone();previousLawFlows=lawFlows;previousHeads=heads.clone();previousModes=List.copyOf(modes);continue;}
+            if(equations.segmentsMoved(flows)){seeds=states;previousPipes=pipeIdentities;previousNodeIds=nodeIds;previousInputStates=inputStates;previousOutputStates=states;previousRateOnly=rateOnly;previousFlows=flows.clone();previousLawFlows=lawFlows;previousHeads=heads.clone();previousModes=List.copyOf(modes);continue;}
             // What each phase-port outflow drew, phase by phase, at these flows on this candidate: the reconstruction books it
             // and the transfer samples it (decision D11).
             var draws=equations.draws(flows,states);
@@ -583,7 +586,7 @@ public final class PassiveStepSolver {
                     // (a tank full of water 0.01 Pa above its generator, pushed back into it by the polish). The boundary
                     // is closed as at a converged point, and the pass is solved again from the reconstruction.
                     closeBoundary(graph,polished.closure(),boundaryClosed,modes);Arrays.fill(emptied,false);
-                    seeds=projection.states();previousPipes=pipeIdentities;previousNodeIds=nodeIds;previousInputStates=inputStates;previousFlows=flows.clone();previousLawFlows=lawFlows;previousHeads=heads.clone();previousModes=List.copyOf(modes);continue;
+                    seeds=projection.states();previousPipes=pipeIdentities;previousNodeIds=nodeIds;previousInputStates=inputStates;previousOutputStates=projection.states();previousRateOnly=rateOnly;previousFlows=flows.clone();previousLawFlows=lawFlows;previousHeads=heads.clone();previousModes=List.copyOf(modes);continue;
                 }
                 if(polished!=null){numerical=polished.numerical();x=polished.variables();states=polished.states();System.arraycopy(polished.flows(),0,flows,0,flows.length);lawFlows=Arrays.copyOfRange(x,equations.edgeOffset,equations.edgeOffset+flows.length);
                     System.arraycopy(polished.heads(),0,heads,0,heads.length);draws=polished.draws();
@@ -593,7 +596,7 @@ public final class PassiveStepSolver {
             // The ledger reads the island as it is: an emptying vessel is a vessel that ends empty, not the junction it stood
             // as in this pass.
             checkConservation(original,projection);
-            previousPipes=pipeIdentities;previousNodeIds=nodeIds;previousInputStates=inputStates;previousFlows=flows.clone();previousLawFlows=lawFlows;previousHeads=heads.clone();previousModes=List.copyOf(modes);
+            previousPipes=pipeIdentities;previousNodeIds=nodeIds;previousInputStates=inputStates;previousOutputStates=projection.states();previousRateOnly=rateOnly;previousFlows=flows.clone();previousLawFlows=lawFlows;previousHeads=heads.clone();previousModes=List.copyOf(modes);
             acceptedPipes=pipeIdentities;acceptedNodeIds=nodeIds;
             var acceptedModes=new ArrayList<>(modes);
             for(int edge=0;edge<flows.length;edge++)if(boundaryClosed[edge]&&graph.pipes().get(edge).control() instanceof FlowControl.Passive)acceptedModes.set(edge,FlowControl.Mode.CLOSED);
@@ -1101,6 +1104,27 @@ public final class PassiveStepSolver {
         }
         catch(IllegalArgumentException refused){return null;}
     }
+    /** Value identity of the fluid of two node-state lists (T, P, amounts, water): a rate solve's point written back
+     * carries the junction's own solids, so mass, volume and enthalpy (the moments' share) are not compared. */
+    private static boolean sameFluidStates(List<FluidThermodynamics.State> a,List<FluidThermodynamics.State> b) {
+        if(a.size()!=b.size())return false;
+        for(int i=0;i<a.size();i++) {
+            var x=a.get(i);var y=b.get(i);if(x==y)continue;
+            if(Double.doubleToLongBits(x.temperature())!=Double.doubleToLongBits(y.temperature())||Double.doubleToLongBits(x.pressure())!=Double.doubleToLongBits(y.pressure())
+                    ||Double.doubleToLongBits(x.waterLiquid())!=Double.doubleToLongBits(y.waterLiquid())||Double.doubleToLongBits(x.waterVapor())!=Double.doubleToLongBits(y.waterVapor())
+                    ||!Arrays.equals(x.liquid(),y.liquid())||!Arrays.equals(x.vapor(),y.vapor()))return false;
+        }
+        return true;
+    }
+    /** {@code state} with its extensive quantities (amounts, volumes, mass, energies, solid moments) scaled by {@code f}: a
+     * per-kilogram mixture restated at a junction's own scale. */
+    static FluidThermodynamics.State scaled(FluidThermodynamics.State s,double f) {
+        double[] l=s.liquid().clone(),v=s.vapor().clone();for(int c=0;c<l.length;c++){l[c]*=f;v[c]*=f;}
+        var m=s.solidMoments();
+        return new FluidThermodynamics.State(s.temperature(),s.pressure(),l,v,s.waterLiquid()*f,s.waterVapor()*f,s.hydrocarbonPartialPressure(),s.waterPartialPressure(),
+                s.volume()*f,s.enthalpy()*f,s.internalEnergy()*f,s.mass()*f,s.liquidVolume()*f,s.waterVolume()*f,s.vaporVolume()*f,s.liquidProperties(),s.vaporProperties(),
+                s.solids(),new SolidInventory.Moments(m.mass()*f,m.volume()*f,m.heatCapacity()*f),s.waterCompressibility());
+    }
     /** Value identity of two node-state lists (T, P, amounts, mass, volume, enthalpy). */
     private static boolean sameStates(List<FluidThermodynamics.State> a,List<FluidThermodynamics.State> b) {
         if(a.size()!=b.size())return false;
@@ -1136,12 +1160,7 @@ public final class PassiveStepSolver {
         boolean warmFlow=graph.reservoirs().stream().anyMatch(node->node.junction()||node.fixed())
                 ||graph.pipes().stream().anyMatch(pipe->phaseCode(graph.reservoirs().get(pipe.first()).state())!=phaseCode(graph.reservoirs().get(pipe.second()).state()));
         // At a job start the previous point is the committed interval's endpoint; see {@link #replayStart}.
-        boolean previousAvailable=previousPipes.equals(pipeIdentities)&&Arrays.equals(previousNodeIds,nodeIds(graph))&&previousFlows.length==graph.pipes().size()&&previousLawFlows.length==graph.pipes().size();
-        // A rate-only solve's warm start is only as good as the state it was recorded at: it is a cold start's solve, or
-        // a start-of-step guard's, whose previous flows belong to another point in time, and a rate solve warm-started
-        // from cap-level flows of seconds ago stalls in the junction rows at rest (review 7.7). It uses them only when
-        // they were recorded at value-identical input states (a re-solve of the same point, or a later pass of it).
-        if(rateOnly&&!sameStates(previousInputStates,inputStates))previousAvailable=false;
+        boolean previousAvailable=carriedPoint(graph,pipeIdentities);
         // The balance's law flows ({@link #balanceStart}) where this point has no history to start from (a solve without a
         // carried point balances first); each connection's own law on its ends' states on an island the balance leaves alone.
         double[] estimate=warmFlow&&!previousAvailable?(balanceLawFlows!=null&&balanceLawFlows.length==graph.pipes().size()?balanceLawFlows:lawFlows(graph)):null;
@@ -1840,12 +1859,19 @@ public final class PassiveStepSolver {
      * open connection at the balanced ends, the passive connections the one-way law closes, the device modes it decided, and whether it converged. */
     record Start(PassiveNetwork graph,double[] lawFlows,boolean[] closed,List<FlowControl.Mode> modes,boolean converged) {}
     /** Whether this solve starts from a carried point ({@link #startPoint}'s test) or needs the balance. */
-    private boolean needsBalance(PassiveNetwork graph) {
-        if(graph.pipes().isEmpty())return false;
-        boolean carried=previousPipes.equals(identities(graph))&&Arrays.equals(previousNodeIds,nodeIds(graph))&&previousFlows.length==graph.pipes().size()&&previousLawFlows.length==graph.pipes().size();
-        if(carried&&rateOnly&&!sameStates(previousInputStates,inputStates))carried=false;
-        // A structure no step has been accepted on balances whatever a rate solve carried (its junction states were never written back).
-        return !carried||backwardEulerCold(graph);
+    private boolean needsBalance(PassiveNetwork graph){return !graph.pipes().isEmpty()&&!carriedPoint(graph,identities(graph));}
+    /**
+     * Whether this solve starts from a carried point: the previous converged solve's structure is this one's (pipe
+     * identities, node ids, a flow per connection) and its point is this solve's own. A rate solve warm-starts only on
+     * value-identical input states (review 7.7); a rate solve's point starts a step only where it was written back into the
+     * step's graph (the cold rate seed, {@code PassiveIntervalSolver.coldRateSeed}: owner decision of 2026-10-19, the plan's
+     * fallback), so a step whose rate seed failed, or any solve on other states, starts from the balance instead.
+     */
+    private boolean carriedPoint(PassiveNetwork graph,List<PassiveNetwork.Pipe.Identity> pipeIdentities) {
+        if(!(previousPipes.equals(pipeIdentities)&&Arrays.equals(previousNodeIds,nodeIds(graph))&&previousFlows.length==graph.pipes().size()&&previousLawFlows.length==graph.pipes().size()))return false;
+        if(rateOnly&&!sameStates(previousInputStates,inputStates))return false;
+        if(previousRateOnly&&!rateOnly&&!sameFluidStates(previousOutputStates,inputStates))return false;
+        return true;
     }
     /** The initial device modes of a solve on {@code graph}'s states (the mint reads them too): the switch of {@link #solve}. */
     private List<FlowControl.Mode> initialModes(PassiveNetwork graph) {
@@ -2177,7 +2203,12 @@ public final class PassiveStepSolver {
                     try {
                         // A junction that already holds the delivered mixture at that pressure is not flashed again (the second
                         // round's unchanged junctions, a structure balanced once more): the flashes were the balance's cost.
-                        if(mass>0)next=holdsMixture(old,amounts,mass,heat,pressure)?null:mixed(amounts,mass,heat,weighted/mass,tLow,tHigh,pressure,checkpoint);
+                        if(mass>0) {
+                            next=holdsMixture(old,amounts,mass,heat,pressure)?null:mixed(amounts,mass,heat,weighted/mass,tLow,tHigh,pressure,checkpoint);
+                            // At the junction's own scale (the mixture is stated per kilogram): the solid event integrator reads a junction's
+                            // populations against its state's volume, and the rate seed writes the state back into the step's graph.
+                            if(next!=null){double oldFluid=old.mass()-old.solidMoments().mass(),newFluid=next.mass()-next.solidMoments().mass();if(oldFluid>0&&newFluid>0)next=scaled(next,oldFluid/newFluid);}
+                        }
                         else next=Math.abs(pressure-old.pressure())>1e-9*old.pressure()?model.flashTP(old.temperature(),pressure,PhaseLayout.totalAmounts(old),checkpoint):null;
                     } catch(IllegalArgumentException refused){next=null;}
                     if(next==null)continue;
