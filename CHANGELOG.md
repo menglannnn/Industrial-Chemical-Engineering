@@ -15,6 +15,10 @@ All notable changes to CreateChemE are recorded in this file. The format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- Post-0.9.0 follow-ups (batch folder: `2026-10-19-post-release-followups`, thread t51, commits `a313400b`, `50fd053f`, `afddb22c`, `6c00db3e`, `73fbe48c` on `claude/post-0.9.0` from `5b49f940`). A junction carried across a same-graph replacement has its buffer sized on its carried state by the mint's rule, one sizing for a minted and a carried junction (bundled fuzz 145 clean). A still pipe, carrying at most its D42 resolution flow, raises no solid transition and keeps its state (cold fuzz 850 clean; cold clean-in-both Newton iterations −42 %). Five stale comments. The material-override example is the bundled record with only its density edited. `fluidThermoFingerprint` hashes the calibration point that a package without a spine reads. A malformed solid record names its file and field. The D46 gate: bundled fuzz 188's world, where the unbooked water stays within what the washed buffers were minted with (D46's watch item closed: total mass exact, composition `m_J (w_install - w_end)` unbooked). Gates in `JunctionSeedingGateTest`, `HoldClassWorldsTest` and `MaterialFluidDataTest`, rule-off patches in `tools/post-release-followups/t51/`.
+
 ## [0.9.0] - 2026-10-19
 
 ### Changed
