@@ -199,4 +199,64 @@ class JunctionSeedingGateTest {
         w.runTo(2440);w.place(3,1,0,Kind.FILTER,EAST,passive,null,.05);
         w.runTo(2440+40*100);w.assertKeptUp("a drain junction carried across three same-graph replacements");
     }
+
+    /**
+     * The water the junction buffers create, unbooked (owner decision D46 and its watch item, closed 2026-10-19 on t52's
+     * D46_MINT_MASS_REVIEW.md): a buffer is the state of its junction's relaxation row, held at its mass m_J by the mass
+     * pin, so total mass is exact, but each buffer life puts {@code m_J (w_install - w_end)} of composition into the vessels
+     * unbooked: what it was minted with and what washes it at the end. Read as minus the sum of every committed change of
+     * the buffers (the ledger's junction term), per buffer life; a replacement installs a new life, which creates nothing.
+     * Bounded by physics: a buffer whose water falls gives up at most the water it was minted with, {@code m_J w_install}.
+     * Bundled fuzz seed 188's world (21 blocks, t52's gate world): at 1740 a 20 mm junction is minted as liquid water from a
+     * 271 kPa water generator, m_J = 0.05 s x 100 m/s x 994 kg/m3 x 3.1e-4 m2 = 1.56 kg; at 1782 a 332 kPa nitrogen generator
+     * takes the line over and washes it for the rest of the run, so about 1.3 kg of water reach a 40.7 kg tank unbooked (a
+     * real 20 mm fitting holds 0.31 kg and passes it on booked).
+     */
+    @Test void aBufferMintedOnWaterAndWashedByNitrogenCreatesNoMoreWaterThanItWasMintedWith() {
+        var w=new EventPathWorld();var passive=new FlowControl.Passive();var buffers=new BufferWater(w);
+        var water=EventPathWorld.pure(MaterialTestBasis.NETWORK,308.7667244941392,270611.50577975024);
+        buffers.runTo(148);w.place(0,0,0,Kind.VALVE,SOUTH,new FlowControl.PressureValve(200000),null,.05);w.place(-2,0,-1,Kind.GENERATOR,NORTH,passive,water,.02);
+        buffers.runTo(430);w.place(0,0,-1,Kind.PIPE,NORTH,passive,null,.05);w.place(-1,-3,-4,Kind.PIPE,NORTH,passive,null,.01);
+        buffers.runTo(607);w.place(-1,-4,-1,Kind.PIPE,NORTH,passive,null,.05);
+        buffers.runTo(857);w.place(0,1,-1,Kind.PIPE,NORTH,passive,null,.05);
+        buffers.runTo(900);w.place(0,0,-2,Kind.PIPE,NORTH,passive,null,.05);
+        buffers.runTo(1071);w.place(-1,0,-1,Kind.PIPE,NORTH,passive,null,.02);
+        buffers.runTo(1079);w.place(-1,-3,1,Kind.COMPRESSOR,NORTH,new FlowControl.Compressor(.2,6),null,.02);w.place(-1,-3,-3,Kind.PIPE,NORTH,passive,null,.01);
+        buffers.runTo(1232);w.place(-1,-2,-1,Kind.PIPE,NORTH,passive,null,.05);
+        buffers.runTo(1302);w.place(-1,-3,-1,Kind.PIPE,NORTH,passive,null,.05);w.place(0,0,-3,Kind.PUMP,SOUTH,new FlowControl.Pump(.01,500000),null,.05);
+        buffers.runTo(1336);w.place(-1,-1,-1,Kind.PIPE,NORTH,passive,null,.05);
+        buffers.runTo(1372);w.place(-1,-3,0,Kind.PIPE,NORTH,passive,null,.02);
+        buffers.runTo(1680);w.place(-1,-3,-2,Kind.PIPE,NORTH,passive,null,.01);
+        buffers.runTo(1740);w.place(0,-1,-2,Kind.PIPE,NORTH,passive,null,.05);w.place(0,-1,-1,Kind.RESERVOIR,NORTH,passive,NITROGEN,.02);
+        w.place(0,2,-1,Kind.PIPE,NORTH,passive,null,.05);w.place(-1,-5,-1,Kind.PIPE,NORTH,passive,null,.05);
+        buffers.runTo(1782);w.place(0,-1,-3,Kind.GENERATOR,NORTH,passive,EventPathWorld.pure(MaterialTestBasis.NITROGEN,354.1428219629714,332374.5805774033),.05);
+        buffers.runTo(1782+120*100);
+        System.out.printf(java.util.Locale.ROOT,"D46_GATE seed=188 createdWaterKg=%.6f washedBufferWaterKg=%.6f lives=%d%n",buffers.created,buffers.washed(),buffers.lives.size());
+        w.assertKeptUp("a water-minted buffer washed by nitrogen");
+        assertTrue(buffers.created>0,"the washed buffer gives up water unbooked: "+buffers.created+" kg");
+        assertTrue(buffers.created<=buffers.washed(),"the washed buffers give up at most the water they were minted with, m_J w_install: "+buffers.created+" kg of "+buffers.washed()+" kg");
+    }
+
+    /** The water the junction buffers of a world create unbooked, read from the islands' committed graphs after every tick and
+     * between a tick's topology events and its solves (a placed island's first solve runs in the tick it is installed):
+     * per buffer life (a junction id within one island), minus the sum of its committed changes, and the water it was
+     * minted with; {@link #washed} is the physical bound, the water minted into the buffers whose water fell: what they can
+     * give up at most, {@code m_J w_install}. */
+    private static final class BufferWater {
+        final EventPathWorld w;final java.util.Map<Long,long[]> life=new java.util.HashMap<>();final java.util.List<double[]> lives=new java.util.ArrayList<>();
+        double created;
+        BufferWater(EventPathWorld w){this.w=w;w.beforeSolves=this::read;}
+        void runTo(long tick){while(w.ledger.onlineTick()<tick){w.tick();read();}}
+        void read() {
+            for(var s:w.coordinator.snapshots())for(var node:s.graph().reservoirs()) {
+                if(!node.junction())continue;double kg=node.inventory().moles()[MaterialTestBasis.NETWORK]*w.model.waterMolecularWeight;
+                var owner=life.get(node.id());
+                // A junction id in another island is a new buffer life (a placement replaced the island): minted, not committed.
+                if(owner==null||owner[0]!=s.id()){life.put(node.id(),new long[]{s.id(),lives.size()});lives.add(new double[]{kg,kg});continue;}
+                var buffer=lives.get((int)owner[1]);created+=buffer[1]-kg;buffer[1]=kg;
+            }
+        }
+        /** The water minted into every buffer life whose water fell (installed, then current). */
+        double washed(){double kg=0;for(var b:lives)if(b[1]<b[0])kg+=b[0];return kg;}
+    }
 }

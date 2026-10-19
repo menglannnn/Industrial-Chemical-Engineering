@@ -35,6 +35,8 @@ class EventPathWorld {
     final PhysicalRegistry registry;
     /** The removals of every committed topology batch, in order. */
     final List<Set<Long>> committedRemovals=new ArrayList<>();
+    /** Run in each tick between the topology events and the solves, where a placed island is installed and not yet solved. */
+    Runnable beforeSolves=()->{};
 
     /** A world with one synchronous worker. */
     EventPathWorld(){this(1);}
@@ -100,6 +102,7 @@ class EventPathWorld {
     void tick() {
         ledger.tick();coordinator.tick();
         if(ledger.hasPendingEvents()){registry.applyPending();coordinator.pumpIfUseful();}
+        beforeSolves.run();
         for(long request:List.copyOf(attempts.keySet())) {
             var attempt=attempts.remove(request);var command=commands.remove(request);
             var result=(ProcessSolveServices.FluidIslandSolveResult)command.solve(FluidTestSupport.NEVER);
