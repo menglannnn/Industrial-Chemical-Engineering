@@ -876,8 +876,9 @@ class HoldClassWorldsTest {
 
     /**
      * Owner direction of 2026-10-19 on t48's trace (cold seed 850): a pipe at rest carries no solids, so it deposits
-     * nothing. A flow at or below the connection's resolution flow (owner decision D42, {@code NetworkReduction.resolutionFlow})
-     * is no flow for the solid transition test, and such a pipe keeps its open or closed state. Seed 850 pair-minimized to
+     * nothing. A roundoff flow at the interval's start (within the Newton's tolerance, {@code SolidEventIntegrator.still})
+     * is no flow, and such a pipe keeps its state for the interval, its steps included (owner decision on t53's final test,
+     * which replaced D42's resolution flow as the bound). Seed 850 pair-minimized to
      * 20 blocks: a CO2-rich gas generator (65 mol % CO2, 270 K, 2.83 MPa) and two LNG generators (128 K at 0.83 MPa, 152 K at
      * 2.06 MPa) share a 1 m3 tank. The gas sets 2.83 MPa, the tank fills with LNG at about 156 K and goes full, the LNG
      * generators are pushed back and nothing flows; the CO2 that met the cold liquid froze, 2.9 kg in the tank. At 3652 a
@@ -916,6 +917,31 @@ class HoldClassWorldsTest {
             System.out.println("STILL_PIPE_GATE seed=850 solidTransitionRejections="+transitions);
             w.assertKeptUp("a still pipe beside a tank holding crystals");
             assertEquals(0,transitions,"a network at rest refuses no solid transition on its still pipes");
+        });
+    }
+
+    /**
+     * Owner decision of 2026-10-19 on t53's final test (cold seed 829): still is roundoff, decided once at the interval's
+     * start. Seed 829 pair-minimized to 8 blocks: an LNG generator (126 K, 733 kPa) fills three 1 atm tanks through a 100 mm
+     * line, and the CO2 it carries freezes in the tank above the junction (8.6 kg). At 796 a 10 mm pipe opens the junction
+     * further, so that tank starts to drain down its 100 mm line at about 0.38 m/s (1.3 kg/s), below the suspension velocity:
+     * the line deposits and closes, at the interval's start. D42's resolution flow, read as still before, is about 1 kg/s
+     * in 1 m of 100 mm LNG line (it scales as d^4/mu): the draining flow sat at that threshold, the transition fired inside
+     * the steps 14 times and the line search stalled (E5 at 799). A real flow is no roundoff, so the closure is declared at
+     * the start and the island keeps up.
+     */
+    @Test void aTankDrainingDownAWideLineBelowItsSuspensionVelocityClosesItAtTheIntervalStart() {
+        cold(w->{
+            var passive=new FlowControl.Passive();var nitrogen=pilot(298.15,101325,1,0,0,0,0);
+            w.runTo(100);w.place(-1,0,0,Kind.GENERATOR,NORTH,passive,pilot(125.76292312053825,732797.2457513055,0.0016664056166807318,0.9674404636551707,0.020971372577656206,0.009921758150492371,0),.02);
+            w.runTo(103);w.place(0,1,0,Kind.PIPE,NORTH,passive,null,.1);
+            w.runTo(341);w.place(-1,1,0,Kind.PIPE,NORTH,passive,null,.05);
+            w.runTo(569);w.place(0,2,0,Kind.RESERVOIR,NORTH,passive,nitrogen,.1);
+            w.runTo(618);w.place(1,0,0,Kind.RESERVOIR,NORTH,passive,nitrogen,.05);
+            w.runTo(644);w.place(0,0,-2,Kind.RESERVOIR,NORTH,passive,nitrogen,.01);
+            w.runTo(743);w.place(0,0,-1,Kind.PIPE,NORTH,passive,null,.01);
+            w.runTo(796);w.place(0,0,0,Kind.PIPE,NORTH,passive,null,.01);
+            w.runTo(796+40*100);w.assertKeptUp("a tank draining down a wide line below its suspension velocity");
         });
     }
 }

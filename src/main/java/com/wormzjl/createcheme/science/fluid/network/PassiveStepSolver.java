@@ -62,6 +62,9 @@ public final class PassiveStepSolver {
      * term ({@link #checkConservation}). A numerical regularisation sized to the flow: its mixing lag at full flow is tau.
      */
     static final double HOLDUP_TAU=.05;
+    /** The Newton's relative tolerance on its scaled rows (a tenth of it with a small liquid-full headspace); the solid
+     * events read a flow within it of the island's largest as roundoff ({@code SolidEventIntegrator.still}). */
+    static final double NEWTON_TOLERANCE=1e-9;
     /**
      * The movers (pipe ids) refused for the slice in progress ({@link FlowControl.Mode#INLET_WRONG_PHASE}, decision D6),
      * set by the interval solver at each slice start ({@link #refuseInlets}) and read by every solve until the next;
@@ -466,7 +469,7 @@ public final class PassiveStepSolver {
             // 1e-11 stalls on caloric cancellation in nearly liquid-full water with trace N2.
             // Keep two orders of margin to the unchanged 1e-8 full-equation gate; every final
             // reconstruction and the independent interval accuracy/accounting checks still run.
-            double tolerance=smallHeadspace?1e-10:1e-9;
+            double tolerance=smallHeadspace?NEWTON_TOLERANCE/10:NEWTON_TOLERANCE;
             try{numerical=SparseNewton.solve(equations,equations.initial(),new SparseNewton.Settings(SparseNewton.ITERATIONS,tolerance,1e-6,24),checkpoint,workspace);}
             catch(SparseNewton.Nonconvergence failure) {
                 if(failure.lastVariables()==null)throw failure;

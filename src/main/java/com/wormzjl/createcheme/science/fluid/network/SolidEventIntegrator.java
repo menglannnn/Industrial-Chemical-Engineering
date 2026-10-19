@@ -2,7 +2,6 @@ package com.wormzjl.createcheme.science.fluid.network;
 
 import com.wormzjl.createcheme.science.fluid.thermo.FluidThermodynamics;
 import com.wormzjl.createcheme.science.fluid.state.SolidInventory;
-import com.wormzjl.createcheme.science.fluid.transport.MixtureViscosity;
 import com.wormzjl.createcheme.science.fluid.transport.SolidMobility;
 import com.wormzjl.createcheme.science.fluid.solver.SparseNewton;
 import java.util.*;
@@ -55,18 +54,35 @@ final class SolidEventIntegrator {
         return new PassiveNetwork(graph.reservoirs(),pipes,graph.scheduledTransfers());
     }
     private PassiveNetwork stopFilter(PassiveNetwork graph,int edge){var pipes=new ArrayList<>(graph.pipes());var p=pipes.get(edge);pipes.set(edge,p.withFilter(p.filter().stopped()));return new PassiveNetwork(graph.reservoirs(),pipes,graph.scheduledTransfers());}
-    private Transition failed(PassiveNetwork graph,List<FluidThermodynamics.State> states,double[] flows) {
+    /**
+     * The pipes still at an interval's start (owner decision of 2026-10-19 on t53's final test): a pipe at rest carries no
+     * solids, so it deposits, refuses and delivers nothing, and the sign of a roundoff flow names no donor (t48's trace of
+     * cold fuzz seed 850: 1.3e-23 m/s in a still pipe from a tank holding crystals read DEPOSITION, and its rejections
+     * stalled the island). Still is roundoff: a flow of the interval-start rate solve within the Newton's own tolerance
+     * ({@link PassiveStepSolver#NEWTON_TOLERANCE}) of its largest flow, at least 1 kg/s. It is decided once, where the
+     * closures are decided, and such a pipe keeps its state for the interval: no threshold on a real flow fires inside a
+     * step (D42's resolution flow, read as still before, is about 1 kg/s in 1 m of 100 mm LNG line, and cold fuzz seed
+     * 829's draining tank, 0.38 m/s, met it inside its step).
+     */
+    private static boolean[] still(double[] flows) {
+        double largest=1;for(double q:flows)largest=Math.max(largest,Math.abs(q));
+        boolean[] still=new boolean[flows.length];
+        for(int i=0;i<flows.length;i++)still[i]=Math.abs(flows[i])<=PassiveStepSolver.NEWTON_TOLERANCE*largest;
+        return still;
+    }
+    /** The first transition among the connections not {@code still} (null for none), at the flows given. */
+    private Transition failed(PassiveNetwork graph,List<FluidThermodynamics.State> states,double[] flows,boolean[] still) {
         Transition result=null;double ratio=Double.POSITIVE_INFINITY;long identity=Long.MAX_VALUE;
         var reach=populationReach(graph,states,flows);
         // One mobility preparation per donor node, not per connection leaving it: the carrier
         // viscosities, which every wet island pays whether or not it carries a particle, depend on
         // the donor alone. A node that is never a donor this pass is never prepared at all.
         var prepared=new SolidMobility.Donor[states.size()];
-        Map<Integer,SolidMobility.Check> limited=null;MixtureViscosity.Workspace scratch=null;
+        Map<Integer,SolidMobility.Check> limited=null;
         for(int i=0;i<flows.length;i++) {
             var pipe=graph.pipes().get(i);double flow=flows[i];int direction=flow>=0?1:2;
             if(pipe.filter()!=null&&atCapacity(pipe.filter())&&pipe.blockedDirections()!=BOTH_DIRECTIONS)return clogged(i,pipe.id());
-            if((pipe.blockedDirections()&direction)!=0)continue;
+            if((pipe.blockedDirections()&direction)!=0||still!=null&&still[i])continue;
             int upstream=flow>=0?pipe.first():pipe.second();var donor=states.get(upstream);
             if(prepared[upstream]==null)prepared[upstream]=SolidMobility.donor(model,donor);
             // What the end draws decides the outlet (plan 3.8; decision D11): a phase port is checked on the phase it draws
@@ -82,14 +98,8 @@ final class SolidEventIntegrator {
             else if(phase==FluidThermodynamics.GAS){outlet=SolidMobility.Outlet.GAS;drawnMass=donor.mass();}
             else{outlet=phase==FluidThermodynamics.OIL?SolidMobility.Outlet.ORGANIC_LIQUID:SolidMobility.Outlet.WATER;drawnMass=model.phaseMass(donor,phase)/FluidThermodynamics.phaseSolidShare(donor,phase);}
             var check=SolidMobility.check(prepared[upstream],donor,pipe,flow,outlet,drawnMass);
-            boolean overPopulated=check.allowed()&&reach!=null&&overPopulated(graph,pipe,flow,reach);
+            boolean overPopulated=check.allowed()&&reach!=null&&flow!=0&&overPopulated(graph,pipe,flow,reach);
             if(check.allowed()&&!overPopulated)continue;
-            // A pipe at rest carries no solids, so it deposits, refuses and delivers nothing: a flow at or below the flow the
-            // gauge's resolution drives through it (owner decision D42) is no flow, whichever end its roundoff sign names the
-            // donor, and the pipe keeps its open or closed state (t48's trace of cold fuzz seed 850: 1.3e-23 m/s in a still
-            // pipe from a tank holding crystals read DEPOSITION, and its rejections stalled the island). Read only for a
-            // connection that would otherwise fail, so a flowing island never prepares its viscosities for it.
-            if(Math.abs(flow)<=NetworkReduction.resolutionFlow(graph,model,i,scratch==null?scratch=new MixtureViscosity.Workspace():scratch))continue;
             if(overPopulated) {
                 check=new SolidMobility.Check(SolidMobility.Reason.POPULATION_LIMIT,check.velocity(),check.minimumVelocity());
                 // A node receiver can be fed by several connections at once, and every one of them
@@ -208,14 +218,14 @@ final class SolidEventIntegrator {
     private static boolean atCapacity(InlineFilter state) {
         return state.clogged()||state.captured().volume()>=state.capacity()*(1-1e-9);
     }
-    private PassiveIntervalSolver.StageGuard guard(PassiveNetwork graph) {
+    private PassiveIntervalSolver.StageGuard guard(PassiveNetwork graph,boolean[] still) {
         return new PassiveIntervalSolver.StageGuard() {
             public void check(List<FluidThermodynamics.State> states,List<FlowControl.Mode> modes) {}
             @Override public void checkRate(Map<Long,InlineFilter> filters,List<FluidThermodynamics.State> states,List<FlowControl.Mode> modes,double[] flows) {
                 // The graph this guard closes over is the one the segment started from, so its own
                 // cakes are stale by the steps already accepted; the live ones arrive here.
                 var full=cloggedFilter(filters);if(full!=null)throw full.atStart();
-                var failure=failed(graph,states,flows);if(failure!=null)throw failure.atStart();
+                var failure=failed(graph,states,flows,still);if(failure!=null)throw failure.atStart();
             }
             @Override public void checkFilters(Map<Long,InlineFilter> filters,List<FluidThermodynamics.State> states,List<FlowControl.Mode> modes,double[] flows) {
                 // A step may not reach capacity: the exact test, so the saturated inlet law's own
@@ -227,7 +237,7 @@ final class SolidEventIntegrator {
                 checkFlow(states,modes,flows);
             }
             @Override public void checkFlow(List<FluidThermodynamics.State> states,List<FlowControl.Mode> modes,double[] flows) {
-                var failure=failed(graph,states,flows);
+                var failure=failed(graph,states,flows,still);
                 if(failure!=null)throw failure;
             }
             private Transition cloggedFilter(Map<Long,InlineFilter> filters) {
@@ -258,12 +268,15 @@ final class SolidEventIntegrator {
         // Reconsider every closure on a new requested interval; none is a permanent physical deposit. A closure the
         // interval starts with is reported like any other, at the interval's own t0. The check reads one rate solve of the
         // port graph (PassiveStepSolver.portRate); it only pre-empts a closure the steps would find, so a rate solve that
-        // fails declares no closure and the steps decide (hold class E1).
+        // fails declares no closure and the steps decide (hold class E1). The same rate solve decides which pipes are still
+        // (still): they keep their state for the whole interval, its steps included.
+        boolean[] still=null;
         for(int attempt=0;SolidMobility.closable(model,graph)&&attempt<=2*blocked.length;attempt++) {
             checkpoint.run();graph=masks(graph,blocked);
             var candidate=rates.portRate(graph,checkpoint);
             if(candidate==null)break;
-            var failure=failed(graph,candidate.states(),candidate.massFlows());
+            still=still(candidate.massFlows());
+            var failure=failed(graph,candidate.states(),candidate.massFlows(),still);
             if(failure==null)break;
             blocked[failure.edge]|=BOTH_DIRECTIONS;
             // A cake the last interval's final step left at capacity is declared here, at the next interval's t0, and
@@ -287,7 +300,7 @@ final class SolidEventIntegrator {
             // The first segment starts from the interval's refresh; every later one from its own refresh of the state the
             // transition left (owner decision D23: crystal mass moves only in a vessel's refresh).
             var segment=event==0?InventoryEquilibrium.Refreshed.as(masked):InventoryEquilibrium.refresh(masked,model,checkpoint);
-            var prefix=integrator.integrateToTransition(segment,remaining,settings,checkpoint,guard(masked),step);
+            var prefix=integrator.integrateToTransition(segment,remaining,settings,checkpoint,guard(masked,still),step);
             var transition=prefix.transition();int stoppedFilter=-1;
             if(transition!=null) {
                 blocked[transition.edge]|=BOTH_DIRECTIONS;
