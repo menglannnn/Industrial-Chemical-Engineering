@@ -40,14 +40,15 @@ import java.util.function.Function;
  * each population as its material's id, revision, density and heat capacity, then its size and mass; the id names a
  * crystal the package admits or a custom solid (owner decision D23), and the reader refuses an id that names no record
  * of the package or saved constants that are not the record's. No other format is read: format 9 and older are refused
- * with the instruction to create a fresh world (format 11 dropped the velocity-limit modes among the endpoint modes, 2026-10-18; format 10, unit format 3, dropped the movers' efficiency, the
+ * with the instruction to create a fresh world (format 11 dropped the velocity-limit modes among the endpoint modes, 2026-10-18, and unit format 4
+ * states their eight ordinals, 2026-10-19; format 10, unit format 3, dropped the movers' efficiency, the
  * approximate fallback and the saved interval's acceptance: every interval is a full solve).</p>
  */
 public final class FluidCheckpointCodec {
     public static final int VERSION=11;
     /** The {@code Base} of an awake island: it carries no certificate. */
     public static final long AWAKE=-1;
-    static final int UNIT_MAGIC=0x43434655,UNIT_FORMAT=3;
+    static final int UNIT_MAGIC=0x43434655,UNIT_FORMAT=4;
     static final byte ISLAND=1,TOPOLOGY=2;
     /** Magic, format, kind, identity, revision, generation. */
     static final int UNIT_HEADER=4+1+1+8+8+8;

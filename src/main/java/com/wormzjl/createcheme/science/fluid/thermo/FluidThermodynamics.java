@@ -132,7 +132,9 @@ public final class FluidThermodynamics {
         // The trace cutoff joins the hydraulic acceptance law, not the thermodynamic reference: it changes which unknowns a
         // Newton pass carries, so a certificate issued under another cutoff describes a different numerical path - but it
         // changes no property data, so a saved island's inventory and energy stay readable across a change of it.
-        revision=thermodynamicRevision+":velocity-clamp-v1:trace-relative-v1:max="+Double.toHexString(maximumVelocity)
+        // line-cap-saturation-v1 names the cap law of every throttling line (PassiveStepSolver.saturated, 2026-10-18): the
+        // smooth saturation of the law's flow at the stream's velocity limit, max= the configured limit it is built from.
+        revision=thermodynamicRevision+":line-cap-saturation-v1:trace-relative-v1:max="+Double.toHexString(maximumVelocity)
                 +":trace="+Double.toHexString(tracePolicy.cutoffMoleFraction())+":solids-v1:"+solidSettings;
     }
     /**
