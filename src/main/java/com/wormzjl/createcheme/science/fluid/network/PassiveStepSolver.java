@@ -3299,8 +3299,7 @@ public final class PassiveStepSolver {
                 if(graph.reservoirs().get(node).junction())materialRows.set(offsets[node]+components+1);
             }
             for(int node=0;node<count;node++)if(layout[node]!=null&&!drawsPhase[node])for(int local=0;local<layout[node].size();local++)
-                // A crystal melting in a junction (D61) books a donor's solid mass as its component there: no zero then.
-                if(!layout[node].totalAmountVariable(local)&&!(melting!=null&&layout[node].solidVariable(local)))columns[offsets[node]+local].andNot(materialRows);
+                if(!layout[node].totalAmountVariable(local))columns[offsets[node]+local].andNot(materialRows);
             sparsity=new int[size][];for(int c=0;c<size;c++)sparsity[c]=columns[c].stream().toArray();
         }
         public int size(){return size;}

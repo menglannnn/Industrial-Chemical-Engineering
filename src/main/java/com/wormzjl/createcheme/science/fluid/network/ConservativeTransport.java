@@ -245,15 +245,6 @@ public final class ConservativeTransport {
             else if(!reservoir.fixed())index[node]=count++;
             else storedFractions(fractions[node],candidate.get(node),reservoir,populationKeys,molecularWeight,components);
         }
-        // Owner decision D61 (JunctionCrystals): per solved junction, the crystal each population is if it melts there (else
-        // null), and the mass of it melted over the step, booked as its component's. A rate booking melts nothing.
-        var melting=frozen||populationKeys.isEmpty()?null:JunctionCrystals.of(graph,model);
-        NetworkCrystals.Crystal[][] meltAt=new NetworkCrystals.Crystal[nodes][];double[][] melted=new double[nodes][];
-        if(melting!=null)for(int node=0;node<nodes;node++)if(index[node]>=0&&melting.any(node)) {
-            var at=new NetworkCrystals.Crystal[populationKeys.size()];boolean any=false;
-            for(int k=0;k<at.length;k++){at[k]=melting.melts(node,populationBasis.get(populationKeys.get(k)).material());any|=at[k]!=null;}
-            if(any){meltAt[node]=at;melted[node]=new double[at.length];}
-        }
         // A phase-port outflow (a draw) is booked as a fixed donor with its stream fractions frozen from the candidate
         // (plan 3.3 item 2; decision D11: the priority stream at the solved flow): it leaves its donor's diagonal (outgoing)
         // and enters the donor's right-hand side as -dt q w_stream and the receiver's as +dt q w_stream, on the pinned flow
@@ -291,6 +282,24 @@ public final class ConservativeTransport {
             int node=transfer.node();
             if(transfer instanceof ScheduledTransfer.Withdrawal out){outgoing[node]+=out.massKgPerSecond();endMass[node]-=dt*out.massKgPerSecond();}
             else if(transfer instanceof ScheduledTransfer.Injection in){var n=in.molesPerSecond();for(int c=0;c<components;c++)endMass[node]+=dt*n[c]*molecularWeight[c];endMass[node]+=dt*in.solidsPerSecond().massKg();}
+        }
+        // Owner decision D61 (JunctionCrystals): per solved junction, the crystal each population is if it melts there (else
+        // null), and the mass of it melted over the step, booked as its component's; only where the booked flows can bring
+        // the population (its holders' reach), since elsewhere the junction holds none of it exactly and the booking is the
+        // one it always was. A rate booking melts nothing.
+        var melting=frozen||populationKeys.isEmpty()?null:JunctionCrystals.of(graph,model);
+        NetworkCrystals.Crystal[][] meltAt=new NetworkCrystals.Crystal[nodes][];double[][] melted=new double[nodes][];
+        if(melting!=null)for(int k=0;k<populationKeys.size();k++) {
+            var material=populationBasis.get(populationKeys.get(k)).material();if(material.crystal()==null)continue;
+            boolean[] reach=null;
+            for(int node=0;node<nodes;node++) {
+                if(index[node]<0||!graph.reservoirs().get(node).junction())continue;
+                var crystal=melting.melts(node,material);if(crystal==null)continue;
+                if(reach==null)reach=reach(graph,flows,populationKeys.get(k),drawn,fractions,index,components+k);
+                if(!reach[node])continue;
+                if(meltAt[node]==null){meltAt[node]=new NetworkCrystals.Crystal[populationKeys.size()];melted[node]=new double[populationKeys.size()];}
+                meltAt[node][k]=crystal;
+            }
         }
         // Every vessel and every junction takes the row below. A junction's diagonal endMass+dt*outgoing = m_old+dt*incoming,
         // so its row is (m_old/dt+Q) w = (m_old/dt) w_old + sum q w_e, exactly the Newton junction row, and its buffer
@@ -569,6 +578,28 @@ public final class ConservativeTransport {
             inventories.add(oldNode.fixed()?oldNode.inventory():new PassiveNetwork.Inventory(oldNode.inventory().volume(),moles[node],energy[node],state.solids()));
         }
         return new Projection(inventories,states,boundaries,external,externalEnergy,pumpWork,filters,held,meltedRecord);
+    }
+    /**
+     * The nodes population {@code key} can be booked into over this step: the solved nodes holding it, those an injection or
+     * a fixed or drawn donor delivers it to (entry {@code column} of its fractions), and every node the booked flows carry
+     * on from them, a filter stopping it. A node outside it holds none of the population after the booking.
+     */
+    private static boolean[] reach(PassiveNetwork graph,double[] flows,SolidInventory.Key key,double[][] drawn,double[][] fractions,int[] index,int column) {
+        int nodes=graph.reservoirs().size();boolean[] reach=new boolean[nodes];var queue=new ArrayDeque<Integer>();
+        for(int node=0;node<nodes;node++)if(index[node]>=0&&graph.reservoirs().get(node).inventory().solids().mass(key)>0){reach[node]=true;queue.add(node);}
+        for(var transfer:graph.scheduledTransfers())if(transfer instanceof ScheduledTransfer.Injection in&&in.solidsPerSecond().mass(key)>0&&!reach[in.node()]){reach[in.node()]=true;queue.add(in.node());}
+        for(int edge=0;edge<flows.length;edge++) {
+            var pipe=graph.pipes().get(edge);int donor=flows[edge]>=0?pipe.first():pipe.second(),receiver=flows[edge]>=0?pipe.second():pipe.first();
+            if(flows[edge]==0||pipe.filter()!=null||reach[receiver])continue;
+            double w=drawn[edge]!=null?drawn[edge][column]:index[donor]<0?fractions[donor][column]:0;
+            if(w>0){reach[receiver]=true;queue.add(receiver);}
+        }
+        while(!queue.isEmpty()){int at=queue.poll();
+            for(int edge=0;edge<flows.length;edge++) {
+                var pipe=graph.pipes().get(edge);if(flows[edge]==0||pipe.filter()!=null||(flows[edge]>=0?pipe.first():pipe.second())!=at)continue;
+                int receiver=flows[edge]>=0?pipe.second():pipe.first();if(!reach[receiver]){reach[receiver]=true;queue.add(receiver);}
+            }}
+        return reach;
     }
     /**
      * Books {@code mass} kg of population {@code k}, which melts at the junction of row {@code row} (D61), as its crystal's
