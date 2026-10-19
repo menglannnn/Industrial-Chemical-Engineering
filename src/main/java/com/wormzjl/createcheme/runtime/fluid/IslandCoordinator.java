@@ -563,7 +563,7 @@ public final class IslandCoordinator {
             // ladder below gives it). When that retry fails on the same phase set at the same node, the failure is the
             // model's and deterministic - the committed state, or where the island's physics takes it, holds phases the
             // network does not carry - so no retry on the ladder can pass it: the island waits, dispatching nothing, until its
-            // inputs change (a fence, a released or resolved one, a property resume; a topology or control edit makes a
+            // inputs change (a fence, a released one, a property resume; a topology or control edit makes a
             // new island). Every other failure keeps the ladder.
             boolean reproduced=hold.sameAs(island.phaseHold);
             island.phaseHold=hold;

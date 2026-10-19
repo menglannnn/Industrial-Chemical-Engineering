@@ -707,7 +707,7 @@ public final class FluidThermodynamics {
      * The share under which a phase that is shrinking is vanishing ({@link #vanishing}), in any node: a phase holding
      * less than this share of its node's fluid amount, and a smaller share than where the solve that judges it started,
      * leaves, at a converged point as at a failed iterate (owner decision D38 C). It is what a solve that stops short
-     * resolves: a closure's 24 iterations end at a residual near 1e-6 of the node's amount, and a liquid-full tank beside
+     * resolves: a closure's 30 iterations end at a residual near 1e-6 of the node's amount, and a liquid-full tank beside
      * dry ice stalled with its vapour at 1e-9 to 3e-9 of the moles and still falling, which the trace share alone keeps or
      * drops at rounding. 1e-6 of a junction's holdup is about a milligram of LNG. A phase that does not shrink keeps the
      * trace share ({@link #PHASE_TRACE_FRACTION}) alone; a proposal the next pass drives under this share is refused

@@ -9,7 +9,7 @@ public sealed interface FlowControl permits FlowControl.Passive,FlowControl.Move
      * A device that moves fluid from its connection's first end (its suction) to its second at a set suction volume flow,
      * up to a pressure-rise limit: the liquid pump and the gas compressor (decisions D1, D2, D7, D8 of
      * documentation/2026-09-26-phase-ports-and-compressor). The solver runs both on one set of modes
-     * ({@code PUMP_TARGET}, {@code PUMP_HEAD_LIMIT}, {@code CLOSED}, {@code PUMP_VELOCITY_LIMIT},
+     * ({@code PUMP_TARGET}, {@code PUMP_HEAD_LIMIT}, {@code CLOSED},
      * {@code INLET_WRONG_PHASE}), rows, shutoff band and carry; they differ only in the rise limit, the shaft work and the
      * inlet phase they admit. A pump has one more, {@code PUMP_SUCTION_LIMIT} (cavitation); a compressor draws gas, which
      * has no vapour pressure to fall below, and never takes it. Every quantity reads the suction only (decision D4): the stream the first end draws, and the
@@ -116,7 +116,8 @@ public sealed interface FlowControl permits FlowControl.Passive,FlowControl.Move
      * Endpoint modes are saved as ordinals (checkpoint format 11, unit format 4).
      *
      * <p>{@code PUMP_SUCTION_LIMIT} (owner decision D59 (4)) is a liquid pump that cavitates: its target flow would pull its
-     * suction below the vapour pressure of the water it draws, so the row {@code P_suction = P_vapour(T_suction)} replaces
+     * suction below the bubble pressure of the liquid it draws (water's saturation pressure; for a hydrocarbon liquid a
+     * two-phase supplier's own pressure, owner decision K6 of 2026-10-18), so the row {@code P_suction = P_bubble} replaces
      * the target-flow row, as the head limit does, and the flow is what the suction line delivers at that pressure. It
      * persists as an endpoint mode like the head limit. The velocity cap is no mode: it is part of every throttling
      * line's law ({@code PassiveStepSolver.saturated}, 2026-10-18).
