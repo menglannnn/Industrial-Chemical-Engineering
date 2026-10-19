@@ -27,6 +27,12 @@ class SolidRuntimeTest {
         var snapshot=new IslandCoordinator.Snapshot(1,0,graph,new IslandClock.Snapshot(0,0,0,100),Optional.empty(),"READY");
         return new FluidCheckpointCodec.Checkpoint(List.of(new FluidCheckpointCodec.IslandEntry("minecraft:overworld",FluidPresetCatalog.NETWORK_PACKAGE,snapshot)));
     }
+    /** t56 (cold seed 163): a subnormal mass is roundoff zero; its volume underflowed to 0 and the stock refused it. */
+    @Test void aSubnormalMassIsNoStock(){
+        assertTrue(stock(1.48e-321).empty(),"a mass below the smallest normal double is no population");
+        assertFalse(stock(Double.MIN_NORMAL).empty(),"the smallest normal mass stays");
+        assertTrue(stock(1e-300).plus(stock(1.48e-321)).massKg()==1e-300,"merging adds nothing for it");
+    }
     @Test void generatorUsesSlurryVolumeFractionWithoutChangingTheFluidAxis(){
         var water=FluidDeviceSpec.water(catalog);
         var spec=new FluidDeviceSpec(1,298.15,101325,water.composition(),SlurryFeed.demo());

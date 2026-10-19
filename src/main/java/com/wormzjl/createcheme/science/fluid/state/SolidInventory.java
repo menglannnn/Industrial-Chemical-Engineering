@@ -41,7 +41,10 @@ public record SolidInventory(List<Population> populations) {
         var combined = new TreeMap<Key, Population>();
         for (var population : populations) {
             Objects.requireNonNull(population);
-            if (population.massKg() == 0) continue;
+            // A mass below the smallest normal double is roundoff zero: it has no volume or heat capacity a double can state
+            // (t56's trace of cold seed 163: a junction's crystal buffer, decaying behind a carried closure, reached
+            // 1.5e-321 kg, its volume underflowed to 0, and the guard below refused every trial step).
+            if (population.massKg() < Double.MIN_NORMAL) continue;
             combined.merge(population.key(), population, (a, b) -> {
                 if (!a.material().equals(b.material())) throw new IllegalArgumentException("Incompatible solid properties: " + a.material().id());
                 return new Population(a.material(), a.size(), a.massKg() + b.massKg());
