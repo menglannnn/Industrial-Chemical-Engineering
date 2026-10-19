@@ -918,4 +918,32 @@ class HoldClassWorldsTest {
             assertEquals(0,transitions,"a network at rest refuses no solid transition on its still pipes");
         });
     }
+
+    /**
+     * Owner decision of 2026-10-19, amending D33 (t51's trace of cold seed 15): a still pipe keeps the closure its last interval
+     * left it, because what closed it is still in it. Seed 15 pair-minimized to 11 blocks: an LNG generator (153 K, 2.75 MPa,
+     * 4.4 mol % CO2) fills three 1 atm tanks through a filter, a 200 kPa valve and 10 to 20 mm lines to a void; the CO2 the
+     * cold liquid meets freezes in the tanks. Once they are full the lines nearly rest. At 10839 + 4.5 s a line out of a tank
+     * holding crystals carried 0.038 m/s, far below its 1.2 m/s suspension velocity: DEPOSITION closed it in its interval
+     * and it ended with no flow. D33 reopened it at the next interval's start; the port graph had no rate solve with it open,
+     * so nothing was declared, and the steps, started with it open, stalled at 0.637 at every step size from 10939 to 11539
+     * (E5). Kept closed while an end holds the crystals and nothing shows a flow that would clear them, the island keeps up.
+     */
+    @Test void aStillPipeKeepsTheDepositionClosureItsLastIntervalLeftIt() {
+        cold(w->{
+            var passive=new FlowControl.Passive();var nitrogen=pilot(298.15,101325,1,0,0,0,0);
+            w.runTo(492);w.place(0,0,2,Kind.RESERVOIR,NORTH,passive,nitrogen,.02);
+            w.runTo(600);w.place(0,0,-2,Kind.VALVE,SOUTH,new FlowControl.PressureValve(200000),null,.01);
+            w.runTo(880);w.place(0,1,-1,Kind.PIPE,NORTH,passive,null,.01);w.place(0,-1,-1,Kind.RESERVOIR,NORTH,passive,nitrogen,.01);
+            w.runTo(1255);w.place(0,0,-3,Kind.PIPE,NORTH,passive,null,.01);w.place(0,0,0,Kind.FILTER,SOUTH,passive,null,.05);
+            w.runTo(1262);w.place(0,-1,1,Kind.GENERATOR,NORTH,passive,pilot(153.4298831199327,2750494.941230718,0.006201944038199153,0.8887994010659398,0.06057615677002076,0.04442249812584026,0),.05);
+            w.runTo(1338);w.place(0,2,-1,Kind.VOID,NORTH,passive,nitrogen,.01);
+            w.runTo(1355);w.place(0,0,-1,Kind.PIPE,NORTH,passive,null,.01);
+            w.runTo(1410);w.place(0,0,1,Kind.PIPE,NORTH,passive,null,.02);
+            w.runTo(1412);w.place(0,0,-4,Kind.RESERVOIR,NORTH,passive,nitrogen,.01);
+            // Past the hold from 10939 to 11539.
+            w.runTo(1412+110*100);
+            w.assertKeptUp("a still pipe closed by deposition in its last interval");
+        });
+    }
 }

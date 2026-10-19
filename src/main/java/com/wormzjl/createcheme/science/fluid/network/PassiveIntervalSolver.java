@@ -69,7 +69,8 @@ public final class PassiveIntervalSolver {
         // read open, and every path reads that start: the rest test, the slice's inlet decision, the refresh, the solid
         // events (which decide the closures again at t0) and the plain integrate of an island with no filter, solids or
         // liquid, where nothing decides one again (a gas carries no solid). A rest interval changes nothing: it keeps the
-        // committed graph.
+        // committed graph. Amended 2026-10-19 (t51, cold fuzz seed 15): the solid events read the committed closures too, and
+        // a still pipe keeps the one its last interval left it (SolidEventIntegrator.standing).
         initial=NetworkReduction.reopened(committed);
         // Owner decisions D19, D42 and D58: an island nothing can drive by more than the gauge reads is at rest and is not
         // solved (NetworkReduction step 6); a mover refused for the slice moves nothing.
@@ -87,7 +88,7 @@ public final class PassiveIntervalSolver {
         var monitored=conversions.converted()?conversions.graph():initial;
         var start=InventoryEquilibrium.completed(initial,conversions,model,checkpoint);
         Result result;
-        if(com.wormzjl.createcheme.science.fluid.transport.SolidMobility.monitored(monitored)||model.solidSettings.immobileViscosity()<.002&&monitored.reservoirs().stream().anyMatch(n->n.state().waterVolume()>0))result=new SolidEventIntegrator(model,this).solve(start,duration,settings,checkpoint,startingStep);
+        if(com.wormzjl.createcheme.science.fluid.transport.SolidMobility.monitored(monitored)||model.solidSettings.immobileViscosity()<.002&&monitored.reservoirs().stream().anyMatch(n->n.state().waterVolume()>0))result=new SolidEventIntegrator(model,this).solve(start,committed,duration,settings,checkpoint,startingStep);
         else result=integrate(start,duration,settings,checkpoint,StageGuard.NONE,startingStep);
         return committedInlets(result);
     }
