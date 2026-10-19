@@ -714,7 +714,14 @@ public final class IslandCoordinator {
                 var old=stock.get(node.id());
                 if(!seen.add(node.id())||old==null||!old.inventory().equals(node.inventory())||old.elevation()!=node.elevation())throw new IllegalStateException("Topology event changed stock or elevation energy");
             }
-            var island=new Island(new Snapshot(replacement.id,revision,replacement.graph,new IslandClock.Snapshot(online,committed,0,cadence),Optional.empty(),"WAITING: full solve after topology change",fences),model,epoch);
+            // Owner decision of 2026-10-19 (t46's trace of bundled 483): a replacement whose graph is one original's (the same pipe
+            // identities and node ids) carries that island's committed junction states and interval endpoint, the warm carry
+            // across the replacement, so nothing of it is minted or balanced anew: a plant does not notice a filter placed on
+            // a dead-end line beyond its tank. The mint's states are discarded.
+            PassiveNetwork graph=replacement.graph;Optional<PassiveIntervalSolver.Result> carried=Optional.empty();
+            var same=originals.stream().filter(old->old.lastResult.isPresent()&&PassiveNetwork.sameStructure(old.graph,replacement.graph)).toList();
+            if(same.size()==1){var old=same.get(0);graph=PassiveNetwork.withJunctionStates(replacement.graph,old.graph);carried=old.lastResult;}
+            var island=new Island(new Snapshot(replacement.id,revision,graph,new IslandClock.Snapshot(online,committed,0,cadence),carried,"WAITING: full solve after topology change",fences),model,epoch);
             // A topology change starts the island cold: its first slice is one tick and each accepted full interval
             // doubles it back to the cadence (as after a budget hold). Whatever the player just built - a pump
             // filling dry tanks, a valve opening - starts its transient here, and its first milliseconds can cost

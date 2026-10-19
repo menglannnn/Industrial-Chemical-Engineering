@@ -119,4 +119,32 @@ class JunctionSeedingGateTest {
             w.runTo(2824+40*100);w.assertKeptUp("an all-choked vent network under a 5.4 MPa gas generator");
         });
     }
+
+    /**
+     * Bundled fuzz seed 483's smallest world (11 blocks; t46's trace in {@code FINAL_TEST_REVIEW.md}): a water generator
+     * (321 kPa) delivers 6.8 kg/s through 20 mm, 3.0 kg/s into a tank and 3.9 kg/s into a 100 mm vent header; a methane
+     * generator (294 kPa, 392 K) delivers 1.14 kg/s at its cap, half into the tank and half into the header, which vents
+     * 4.4 kg/s of a 5.7 kg/m3 two-phase mixture at 127.5 kPa. At tick 1068 a filter is placed on a dead-end line beyond the
+     * second tank: the header's island is recompiled with its ten edges unchanged. Re-minted, the balance's second
+     * composition round re-mixed the header from its water line alone (992.6 kg/m3, its vent cap 3 to 780 kg/s) and
+     * pulled it from 127 to 101 kPa; the rate seed failed and pass 0 stalled at |r| 102 (E5). A plant would not notice
+     * the filter: the replaced island carries its committed junctions and endpoint, and a composition round that
+     * reverses an edge is not kept.
+     */
+    @Test void aFilterPlacedBeyondATankLeavesAnUnchangedVentHeaderItsState() {
+        var w=new EventPathWorld();var passive=new FlowControl.Passive();
+        var water=EventPathWorld.pure(MaterialTestBasis.NETWORK,312.1569321967112,320635.26861555193);
+        w.runTo(100);w.place(-2,0,-2,Kind.PIPE,NORTH,passive,null,.1);
+        w.runTo(131);w.place(-3,0,-2,Kind.VOID,NORTH,passive,NITROGEN,.1);
+        w.runTo(172);w.place(-2,0,-1,Kind.PIPE,NORTH,passive,null,.02);
+        w.runTo(612);w.place(-1,0,-2,Kind.PIPE,NORTH,passive,null,.1);
+        w.runTo(782);w.place(-3,0,-1,Kind.GENERATOR,NORTH,passive,water,.02);
+        w.runTo(928);w.place(-1,0,-1,Kind.RESERVOIR,NORTH,passive,NITROGEN,.05);
+        w.runTo(970);w.place(0,0,0,Kind.RESERVOIR,NORTH,passive,NITROGEN,.02);
+        w.runTo(1030);w.place(0,0,-1,Kind.PIPE,NORTH,passive,null,.01);
+        w.runTo(1039);w.place(0,0,1,Kind.PIPE,NORTH,passive,null,.05);w.place(0,0,-2,Kind.GENERATOR,NORTH,passive,methane(392.11898966991953,294078.3425857688),.01);
+        w.runTo(1068);w.place(-1,0,1,Kind.FILTER,WEST,passive,null,.1);
+        w.runTo(1068+40*100);w.assertKeptUp("a vent header whose island a filter beyond its tank recompiled unchanged");
+    }
+
 }

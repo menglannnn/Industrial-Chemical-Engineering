@@ -92,6 +92,24 @@ public record PassiveNetwork(List<Reservoir> reservoirs,List<Pipe> pipes,List<Sc
             return sizeJunctionHoldups(graph,model,new PassiveStepSolver(model).balanceStarts(graph));
         return graph;
     }
+    /** Whether {@code a} and {@code b} are one structure: the same pipe identities and node ids, in order. */
+    public static boolean sameStructure(PassiveNetwork a,PassiveNetwork b){return PassiveStepSolver.sameStructure(a,b);}
+    /**
+     * {@code graph} with every junction's state and buffer taken from the node of the same id in {@code from}, one structure
+     * with it: an island replaced by one of the same graph carries its junctions (owner decision of 2026-10-19, t46's trace
+     * of bundled fuzz seed 483, where a filter placed beyond a tank re-minted an unchanged header and the mint's balance
+     * re-mixed it as water), nothing minted or balanced anew.
+     */
+    public static PassiveNetwork withJunctionStates(PassiveNetwork graph,PassiveNetwork from) {
+        if(!sameStructure(graph,from))throw new IllegalArgumentException("Not one structure");
+        List<Reservoir> nodes=null;
+        for(int i=0;i<graph.reservoirs.size();i++) {
+            var node=graph.reservoirs.get(i);if(!node.junction())continue;var old=from.reservoirs.get(i);
+            if(nodes==null)nodes=new ArrayList<>(graph.reservoirs);
+            nodes.set(i,new Reservoir(node.id(),node.elevation(),old.state(),node.kind(),old.inventory()));
+        }
+        return nodes==null?graph:new PassiveNetwork(nodes,graph.pipes,graph.scheduledTransfers);
+    }
     private static PassiveNetwork sizeJunctionHoldups(PassiveNetwork graph,FluidThermodynamics model,List<FluidThermodynamics.State> starts) {
         List<Reservoir> sized=null;
         for(int i=0;i<graph.reservoirs.size();i++) {
