@@ -83,13 +83,13 @@ public record PassiveNetwork(List<Reservoir> reservoirs,List<Pipe> pipes,List<Sc
     /**
      * The junctions of an island formed from placed blocks, minted (owner decisions D54 and D55): a junction holds
      * nothing a placement put there, so its buffer, the state of its relaxation row (D46), starts from a guess, which its
-     * 0.05 s relaxation washes out: the island-wide fixed point's last round ({@link PassiveStepSolver#fixedPointStarts}),
-     * from which every junction is sized ({@link #sizeJunctionHoldups}), so on a fluid a source supplies. A graph built
+     * 0.05 s relaxation washes out: the island's quasi-steady balance on its own states ({@link PassiveStepSolver#balanceStarts},
+     * owner decision of 2026-10-19), from which every junction is sized ({@link #sizeJunctionHoldups}), so on a fluid a source supplies. A graph built
      * directly keeps the junction states it was given.
      */
     public static PassiveNetwork mintJunctions(PassiveNetwork graph,FluidThermodynamics model) {
         for(var node:graph.reservoirs)if(unsized(node))
-            return sizeJunctionHoldups(graph,model,new PassiveStepSolver(model).fixedPointStarts(graph));
+            return sizeJunctionHoldups(graph,model,new PassiveStepSolver(model).balanceStarts(graph));
         return graph;
     }
     private static PassiveNetwork sizeJunctionHoldups(PassiveNetwork graph,FluidThermodynamics model,List<FluidThermodynamics.State> starts) {

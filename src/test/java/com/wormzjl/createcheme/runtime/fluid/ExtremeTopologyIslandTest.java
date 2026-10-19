@@ -96,7 +96,7 @@ import static org.junit.jupiter.api.Assertions.*;
  *
  * <p>Owner decision D12 (a generator only pushes when its pressure allows and never receives, from the cold start's first
  * pass): the cold start's rate seed now closes before its pass 0 the generator runs that a one-way pressure estimate of the
- * island shows receiving, and starts its junctions from that estimate ({@code PassiveStepSolver.closeColdReceivingGenerators}),
+ * island shows receiving, and starts its junctions from that estimate ({@code PassiveStepSolver.balanceStart}: the balanced start of 2026-10-19 reads the same closure off the balance),
  * so the seed converges and the first step's {@code closeIllegalStarts} starts it with one-way generators.
  * {@link #theFullCasesIntegrateAtTheDefaultCap} is the regression: the full fixtures at the default cap run every oracle of
  * the passing cases. The reproduction of the hold (a {@code FULL_CASES_OPEN_DEFECT} flag that made that test assert the

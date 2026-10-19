@@ -222,14 +222,9 @@ public final class PassiveIntervalSolver {
                     var rate=implicit.portRate(accepted,checkpoint);
                     if(rate!=null)guard.checkRate(liveFilters(accepted),rate.states(),rate.modes(),rate.massFlows());
                 }
-                PassiveNetwork start=accepted;
-                if(implicit.backwardEulerCold(accepted)) {
-                    if(coldSeedFor!=accepted){coldSeed=coldRateSeed(accepted,checkpoint);coldSeedFor=accepted;}
-                    start=coldSeed;
-                }
-                var result=implicit.solve(start,step,checkpoint);
+                var result=implicit.solve(accepted,step,checkpoint);
                 if(elapsed!=reopenElapsed||step!=reopenStep){reopened.clear();reopenElapsed=elapsed;reopenStep=step;}
-                var candidates=new LinkedHashSet<>(implicit.reopenable(start,result));candidates.removeAll(reopened);
+                var candidates=new LinkedHashSet<>(implicit.reopenable(accepted,result));candidates.removeAll(reopened);
                 if(!candidates.isEmpty()) {
                     reopened.addAll(candidates);implicit.reopenNext(candidates);rejectedCount++;
                     SolverDiagnostics.attempt(attempt,step,false,"be-reopen",candidates.size());
@@ -246,9 +241,9 @@ public final class PassiveIntervalSolver {
                 var flush=flushTraces(accepted,checkpoint);if(flush!=null)accepted=flush.graph();
                 implicit.markBackwardEulerAccepted(accepted);
                 carriedModes=result.modes();carriedFlows=result.massFlows();carriedKey=flowKey(accepted);
-                // The cold-start graphs are read only while the structure is cold, and the step solver's last solve only
-                // by a test of the Jacobian; a retained island keeps neither (review 8.7 (c) E2).
-                coldSeed=null;coldSeedFor=null;implicit.releaseLastSolve();
+                // The step solver's last solve is read only by a test of the Jacobian; a retained island does not keep it
+                // (review 8.7 (c) E2).
+                implicit.releaseLastSolve();
                 work+=result.pumpWorkJoule();boundaries.addAll(result.boundaries());pipeTransfers.add(result.pipeTransfers(),1);
                 if(flush!=null)boundaries.addAll(flush.boundaries());
                 var flows=result.massFlows();for(int i=0;i<transferred.length;i++)transferred[i]+=step*flows[i];
@@ -358,30 +353,12 @@ public final class PassiveIntervalSolver {
         if(message.length()>90)message=message.substring(0,90);
         return (rejected instanceof SparseNewton.Nonconvergence?"newton":"other")+"|"+message;
     }
-    /** The cold-start graph with its junction states replaced by one rate solve's, and the graph it was built for. */
-    private PassiveNetwork coldSeed,coldSeedFor;
-    /**
-     * The cold-start graph: the junctions' states replaced by one rate solve's of the port graph, whose flows the step
-     * solver's warm start then carries into the first steps; the graph unchanged if it has no junction or the rate solve
-     * fails. From the compiled property guess alone a pumped line into a dry tank, with three liquid junctions, failed
-     * at every step size (review 8.6 (b), run 88d).
-     */
-    private PassiveNetwork coldRateSeed(PassiveNetwork graph,Runnable checkpoint) {
-        if(graph.pipes().isEmpty()||graph.reservoirs().stream().noneMatch(PassiveNetwork.Reservoir::junction))return graph;
-        var rate=implicit.portRate(graph,checkpoint);
-        if(rate==null)return graph;
-        var nodes=new ArrayList<PassiveNetwork.Reservoir>();
-        for(int i=0;i<graph.reservoirs().size();i++){var node=graph.reservoirs().get(i);
-            nodes.add(node.junction()?new PassiveNetwork.Reservoir(node.id(),node.elevation(),rate.states().get(i),node.kind(),node.inventory()):node);}
-        return new PassiveNetwork(nodes,graph.pipes(),graph.scheduledTransfers());
-    }
     /**
      * The start of an island job ({@code graph}, the island's committed state) given the island's committed interval
      * ({@code committed}; null for an island with none). Afterwards this solver holds exactly what a fresh solver derives
      * from the committed interval: when the job's island is the committed interval's (the same pipe identities and node
      * ids), its endpoint (modes, heads and flows) is carried into the job as every accepted step's endpoint is carried
-     * into the next step ({@link PassiveStepSolver#replayStart}, {@link #carriedFlows}); otherwise nothing is carried, and
-     * the cold-start seed graphs are dropped. Committed state only, because a certified island is woken with a fresh
+     * into the next step ({@link PassiveStepSolver#replayStart}, {@link #carriedFlows}); otherwise nothing is carried. Committed state only, because a certified island is woken with a fresh
      * solver and a replay must reproduce the island that solved every interval bit for bit: a Newton workspace carried
      * across a job boundary opened the next job's first solve on an older factorization, and through the controller's
      * step growth the last-digit difference reached the committed inventories (decision D8). The endpoint is carried
@@ -390,7 +367,6 @@ public final class PassiveIntervalSolver {
      */
     public void replayStart(PassiveNetwork graph,Result committed) {
         graph=PassiveNetwork.sizeJunctionHoldups(graph,model);
-        coldSeed=null;coldSeedFor=null;
         boolean continued=committed!=null&&PassiveStepSolver.sameStructure(graph,committed.graph())
                 &&committed.endpointModes().size()==graph.pipes().size()&&committed.endpointFlows().length==graph.pipes().size();
         implicit.replayStart(graph,continued?committed:null);

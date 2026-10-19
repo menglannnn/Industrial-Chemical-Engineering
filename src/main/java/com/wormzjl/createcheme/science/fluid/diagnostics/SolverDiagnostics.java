@@ -31,6 +31,14 @@ public final class SolverDiagnostics {
     public static final LongAdder jacobianBuilds=new LongAdder();
     public static final LongAdder jacobianColors=new LongAdder();
     public static final LongAdder jacobianNonzeros=new LongAdder();
+    // ---- the balanced start (PassiveStepSolver.balanceStart): balances run, their Newton iterations and Gauss-Seidel
+    // sweeps, connection-law evaluations, balances that left their budget unconverged, and the engine flashes they spent ----
+    public static final LongAdder balanceStarts=new LongAdder();
+    public static final LongAdder balanceIterations=new LongAdder();
+    public static final LongAdder balanceSweeps=new LongAdder();
+    public static final LongAdder balanceLaws=new LongAdder();
+    public static final LongAdder balanceUnconverged=new LongAdder();
+    public static final LongAdder balanceFlashes=new LongAdder();
     /**
      * Where a Newton iteration's search direction came from, so the cost of the modified-Newton
      * chord can be told from the cost of a fresh Jacobian. {@code newtonSolvesPreconditioned}
@@ -199,6 +207,8 @@ public final class SolverDiagnostics {
         map.put("jacobianBuilds",jacobianBuilds);map.put("jacobianColors",jacobianColors);map.put("jacobianNonzeros",jacobianNonzeros);
         map.put("jacobianBlockBuilds",jacobianBlockBuilds);map.put("jacobianBlockColumns",jacobianBlockColumns);
         map.put("jacobianBlockFallbacks",jacobianBlockFallbacks);
+        map.put("balanceStarts",balanceStarts);map.put("balanceIterations",balanceIterations);map.put("balanceSweeps",balanceSweeps);
+        map.put("balanceLaws",balanceLaws);map.put("balanceUnconverged",balanceUnconverged);map.put("balanceFlashes",balanceFlashes);
         map.put("newtonSolvesPreconditioned",newtonSolvesPreconditioned);
         map.put("newtonIterationsPreconditioned",newtonIterationsPreconditioned);
         map.put("newtonIterationsFresh",newtonIterationsFresh);map.put("newtonIterationsStale",newtonIterationsStale);
