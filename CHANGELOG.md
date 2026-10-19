@@ -15,6 +15,8 @@ All notable changes to CreateChemE are recorded in this file. The format follows
 
 ## [Unreleased]
 
+## [0.9.1] - 2026-10-19
+
 ### Fixed
 
 - Post-0.9.0 follow-ups (batch folder: `2026-10-19-post-release-followups`, thread t51, commits `a313400b`, `50fd053f`, `afddb22c`, `6c00db3e`, `73fbe48c`, `340e43da`, `987db979`, `235d69bb` on `claude/post-0.9.0` from `5b49f940`; options 3 and 1 built and reverted: `e5042683`/`c6b7d07b`, `fbb57602`/`42915e01`). A junction carried across a same-graph replacement has its buffer sized on its carried state by the mint's rule, one sizing for a minted and a carried junction (bundled fuzz 145 clean). A still pipe, one whose interval-start flow is roundoff (within the Newton's tolerance), keeps its state for the interval, decided once where closures are decided (cold fuzz 850 and 829 clean; `50fd053f`'s in-step test on D42's resolution flow replaced by `235d69bb`, D42 back to the rest test only). Five stale comments. The material-override example is the bundled record with only its density edited. `fluidThermoFingerprint` hashes the calibration point that a package without a spine reads. A malformed solid record names its file and field, and a network water model without `ice` is refused at loading, so a `/reload` of such data is refused; the CDU17 test fixture's water record carries its ice. The D46 gate: bundled fuzz 188's world, where the unbooked water stays within what the washed buffers were minted with (D46's watch item closed: total mass exact, composition `m_J (w_install - w_end)` unbooked). Gates in `JunctionSeedingGateTest`, `HoldClassWorldsTest` and `MaterialFluidDataTest`, rule-off patches in `tools/post-release-followups/t51/`.
