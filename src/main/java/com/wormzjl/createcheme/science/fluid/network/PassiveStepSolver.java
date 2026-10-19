@@ -1979,7 +1979,10 @@ public final class PassiveStepSolver {
                 double[] held=PhaseLayout.totalAmounts(s);double h=s.enthalpy();double[] tp=new double[TABLE],tr=new double[TABLE],tv=new double[TABLE];boolean ok=true;
                 for(int k=0;k<TABLE&&ok;k++) {
                     tp[k]=low*DeterministicMath.exp(DeterministicMath.log(high/low)*k/(TABLE-1));
-                    try{var at=model.equilibriumPH(s.temperature(),tp[k],h,held.clone(),checkpoint);SolverDiagnostics.count(SolverDiagnostics.balanceFlashes);
+                    // Fluid-only: a crystal the competition would book at a table point moves the density by the crystal's share, nothing
+                    // a starting guess needs; the junction's final mixture ({@link #mixed}) keeps the competition. On the cold package the
+                    // competition was the tables' cost (about 1.4 ms a flash, t44's probe).
+                    try{var at=model.equilibriumPH(s.temperature(),tp[k],h,held.clone(),false,checkpoint);SolverDiagnostics.count(SolverDiagnostics.balanceFlashes);
                         if(at==null||!FluidThermodynamics.holdsFluid(at)){ok=false;break;}
                         tr[k]=at.mass()/at.volume();tv[k]=tr[k]*model.velocityLimit(at);}
                     catch(IllegalArgumentException refused){ok=false;}
@@ -2172,7 +2175,9 @@ public final class PassiveStepSolver {
                     }
                     var old=states.get(j);FluidThermodynamics.State next;
                     try {
-                        if(mass>0)next=mixed(amounts,mass,heat,weighted/mass,tLow,tHigh,pressure,checkpoint);
+                        // A junction that already holds the delivered mixture at that pressure is not flashed again (the second
+                        // round's unchanged junctions, a structure balanced once more): the flashes were the balance's cost.
+                        if(mass>0)next=holdsMixture(old,amounts,mass,heat,pressure)?null:mixed(amounts,mass,heat,weighted/mass,tLow,tHigh,pressure,checkpoint);
                         else next=Math.abs(pressure-old.pressure())>1e-9*old.pressure()?model.flashTP(old.temperature(),pressure,PhaseLayout.totalAmounts(old),checkpoint):null;
                     } catch(IllegalArgumentException refused){next=null;}
                     if(next==null)continue;
@@ -2187,6 +2192,15 @@ public final class PassiveStepSolver {
             var reservoirs=new ArrayList<PassiveNetwork.Reservoir>(nodes);
             for(int i=0;i<nodes;i++){var node=graph.reservoirs().get(i);reservoirs.add(states.get(i)==node.state()?node:new PassiveNetwork.Reservoir(node.id(),node.elevation(),states.get(i),node.kind(),node.inventory()));}
             return new PassiveNetwork(reservoirs,graph.pipes(),graph.scheduledTransfers());
+        }
+        /** Whether {@code old} already is the delivered mixture ({@code amounts} and {@code heat} over {@code mass}) at {@code pressure},
+         * within 1e-6 of each per-kilogram amount, the specific enthalpy and the pressure: a start guess needs no closer a flash. */
+        private boolean holdsMixture(FluidThermodynamics.State old,double[] amounts,double mass,double heat,double pressure) {
+            double oldMass=old.mass()-old.solidMoments().mass();if(!(oldMass>0))return false;
+            if(Math.abs(old.pressure()-pressure)>1e-6*pressure||Math.abs(old.enthalpy()/oldMass-heat/mass)>1e-6*Math.max(1,Math.abs(heat/mass)))return false;
+            double[] n=PhaseLayout.totalAmounts(old);double total=0;for(int c=0;c<amounts.length;c++)total+=amounts[c]/mass;
+            for(int c=0;c<amounts.length;c++)if(Math.abs(n[c]/oldMass-amounts[c]/mass)>1e-6*total)return false;
+            return true;
         }
         /** The mixture per kilogram at {@code pressure} with the delivered specific enthalpy: the engine's PH answer, else a
          * temperature bisection inside the streams' window (20 K either side, inside the numerical box: no data range narrows a seed, owner rule of 2026-10-16). */

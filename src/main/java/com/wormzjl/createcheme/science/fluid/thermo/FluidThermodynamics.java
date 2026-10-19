@@ -1116,14 +1116,20 @@ public final class FluidThermodynamics {
      * converge or answers a phase set the network cannot carry. A spine package's engine states energies on the spine's
      * formation datum, the network on its sensible one (D10), so the target moves by the formation enthalpies.
      */
-    public State equilibriumPH(double t,double p,double h,double[] overall,Runnable checkpoint) {
+    public State equilibriumPH(double t,double p,double h,double[] overall,Runnable checkpoint){return equilibriumPH(t,p,h,overall,crystalsCompete(t,overall),checkpoint);}
+    /**
+     * {@link #equilibriumPH} with the crystal competition stated by the caller: fluid-only ({@code crystals} false) for a
+     * starting guess that never books a crystal, the balanced start's density tables ({@code PassiveStepSolver.BalanceNet}),
+     * whose junction's final mixture keeps the competition.
+     */
+    public State equilibriumPH(double t,double p,double h,double[] overall,boolean crystals,Runnable checkpoint) {
         var spine=hydrocarbon.spine();double target=h;
         if(spine.isPresent()) {
             var formation=spine.get().formationReference();
             target=EnergyReference.sensible(formation.components()).rebase(h,Arrays.copyOf(overall,hydrocarbon.componentCount()),formation);
         }
         checkpoint.run();
-        var result=phaseEngine().ph(p,target,overall,crystalsCompete(t,overall));
+        var result=phaseEngine().ph(p,target,overall,crystals);
         for(int evaluation=result.diagnostics().kernelEvaluations();evaluation>0;evaluation--)checkpoint.run();
         if(!result.converged()||result.phases().isEmpty())return null;
         try{return adopt(result.phases().getFirst().temperature(),p,overall,result,null);}
