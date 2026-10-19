@@ -231,7 +231,7 @@ class JunctionSeedingGateTest {
         w.place(0,2,-1,Kind.PIPE,NORTH,passive,null,.05);w.place(-1,-5,-1,Kind.PIPE,NORTH,passive,null,.05);
         buffers.runTo(1782);w.place(0,-1,-3,Kind.GENERATOR,NORTH,passive,EventPathWorld.pure(MaterialTestBasis.NITROGEN,354.1428219629714,332374.5805774033),.05);
         buffers.runTo(1782+120*100);
-        System.out.printf(java.util.Locale.ROOT,"D46_GATE seed=188 createdWaterKg=%.6f washedBufferWaterKg=%.6f lives=%d%n",buffers.created,buffers.washed(),buffers.lives.size());
+        System.out.printf(java.util.Locale.ROOT,"D46_GATE seed=188 createdWaterKg=%.6f washedBufferWaterKg=%.6f resizedBufferKg=%.6f lives=%d%n",buffers.created,buffers.washed(),buffers.resized,buffers.lives.size());
         w.assertKeptUp("a water-minted buffer washed by nitrogen");
         assertTrue(buffers.created>0,"the washed buffer gives up water unbooked: "+buffers.created+" kg");
         assertTrue(buffers.created<=buffers.washed(),"the washed buffers give up at most the water they were minted with, m_J w_install: "+buffers.created+" kg of "+buffers.washed()+" kg");
@@ -241,19 +241,23 @@ class JunctionSeedingGateTest {
      * between a tick's topology events and its solves (a placed island's first solve runs in the tick it is installed):
      * per buffer life (a junction id within one island), minus the sum of its committed changes, and the water it was
      * minted with; {@link #washed} is the physical bound, the water minted into the buffers whose water fell: what they can
-     * give up at most, {@code m_J w_install}. */
+     * give up at most, {@code m_J w_install}. A buffer sized anew on its state at an interval's start (t51) scales its
+     * whole content by its mass ratio, which books nothing and reaches no vessel, so a commit's water given up is
+     * {@code w_old M_new / M_old - w_new}. */
     private static final class BufferWater {
         final EventPathWorld w;final java.util.Map<Long,long[]> life=new java.util.HashMap<>();final java.util.List<double[]> lives=new java.util.ArrayList<>();
-        double created;
+        double created,resized;
         BufferWater(EventPathWorld w){this.w=w;w.beforeSolves=this::read;}
         void runTo(long tick){while(w.ledger.onlineTick()<tick){w.tick();read();}}
         void read() {
             for(var s:w.coordinator.snapshots())for(var node:s.graph().reservoirs()) {
-                if(!node.junction())continue;double kg=node.inventory().moles()[MaterialTestBasis.NETWORK]*w.model.waterMolecularWeight;
+                if(!node.junction())continue;double kg=node.inventory().moles()[MaterialTestBasis.NETWORK]*w.model.waterMolecularWeight,mass=0;
+                var mw=w.model.molecularWeights();for(int c=0;c<mw.length;c++)mass+=node.inventory().moles()[c]*mw[c];
+                if(!(mass>0))continue;
                 var owner=life.get(node.id());
                 // A junction id in another island is a new buffer life (a placement replaced the island): minted, not committed.
-                if(owner==null||owner[0]!=s.id()){life.put(node.id(),new long[]{s.id(),lives.size()});lives.add(new double[]{kg,kg});continue;}
-                var buffer=lives.get((int)owner[1]);created+=buffer[1]-kg;buffer[1]=kg;
+                if(owner==null||owner[0]!=s.id()){life.put(node.id(),new long[]{s.id(),lives.size()});lives.add(new double[]{kg,kg,mass});continue;}
+                var buffer=lives.get((int)owner[1]);created+=buffer[1]*mass/buffer[2]-kg;resized+=mass-buffer[2];buffer[1]=kg;buffer[2]=mass;
             }
         }
         /** The water minted into every buffer life whose water fell (installed, then current). */

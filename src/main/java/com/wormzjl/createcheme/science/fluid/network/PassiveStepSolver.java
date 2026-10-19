@@ -54,8 +54,8 @@ public final class PassiveStepSolver {
     static boolean chordHolds(double stated,double own){return Math.abs(1-own/stated)<=CHORD_CONTRACTION;}
     /**
      * The holdup of a junction, in seconds of its largest connection's velocity-cap flow: its buffer holds
-     * {@code m_J = HOLDUP_TAU * max over its connections of rho_seed * minimumArea * velocityLimit(seed)}, minted from its
-     * seed when first solved ({@link PassiveNetwork#sizeJunctionHoldups}). Without a buffer a junction mixes by a ratio
+     * {@code m_J = HOLDUP_TAU * max over its connections of rho * minimumArea * velocityLimit}, sized on the junction's
+     * state at each solved interval's start ({@link PassiveNetwork#sizeJunctions}). Without a buffer a junction mixes by a ratio
      * closure that is singular at zero through-flow; with one its mixing and enthalpy rows are the backward-Euler vessel
      * rows {@code (m_J/dt + Q) w = (m_J/dt) w_old + sum q w_e}, regular at Q = 0. The buffer is the row's state, not
      * inventory (owner decision D46): nothing is booked at a mint, and the ledger reports the buffers' change as its own
