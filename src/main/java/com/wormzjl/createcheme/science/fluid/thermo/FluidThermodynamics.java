@@ -912,10 +912,15 @@ public final class FluidThermodynamics {
                 if(own!=null)SolverDiagnostics.count(SolverDiagnostics.phaseSeeds);
                 if(own!=null||junction) {
                     var seed=folded(own==null?start:own.withSolidState(kept.solids(),kept.solidMoments()),junction);
-                    // The D26 amendment: the own split's verdict on a proposed phase is where its closure took it, a vessel's
-                    // closure or a junction's PH answer (D38 C), and whether it leaves the phase vanishing against the solve's
-                    // start (D38 C, the fold's test); a junction's TP-based fallback seed is no closure and refuses nothing.
-                    if(own!=null)refused=proposed&(~lacking(kept,seed)|vanishing(start,own)|(from==null?0:vanishing(from,own)));
+                    // The D26 amendment, amended by the owner on 2026-10-19 (t40's trace of bundled seed 678): the own split's
+                    // verdict on a proposed phase is where its closure took it, a vessel's closure or a junction's PH answer
+                    // (D38 C); a proposed phase the closure holds below VANISHING_SHARE of the node's fluid both by moles and
+                    // by volume is nothing, whatever its direction ({@link #nothing}: the amended fold's statement applied to
+                    // a phase arriving), so the two direction tests against the solve's start go. A receiver landing on its
+                    // bubble point was proposed 5.8e-11 m3 of vapour (6.5e-7 of its volume) that its closure grew slightly,
+                    // which no direction test refused, and the pass laid out with it had no root. A junction's TP-based
+                    // fallback seed is no closure and refuses nothing.
+                    if(own!=null)refused=proposed&(~lacking(kept,seed)|nothing(own));
                     int added=lacking(kept,seed)&~excluded;
                     if(added!=0&&(added&refused)==0)checked=seed;
                 }
@@ -962,6 +967,16 @@ public final class FluidThermodynamics {
         // node by 2 kPa at most, under the state cap.
         double[] ev=phaseVolumes(end);double tv=sum(ev);
         for(int k=0;k<4;k++)if(e[k]<VANISHING_SHARE*te&&ev[k]<VANISHING_SHARE*tv&&e[k]*ts<s[k]*te)bits|=1<<k;
+        return bits;
+    }
+    /**
+     * The phases ({@link #phaseBits}) {@code state} holds below {@link #VANISHING_SHARE} of its fluid both by moles and by
+     * volume, whatever their direction: nothing at the node's resolution (owner decision of 2026-10-19 on t40's trace of
+     * bundled seed 678), the amended fold's statement ({@link #vanishing}) for a phase arriving as for one leaving.
+     */
+    static int nothing(State state) {
+        double[] e=phaseAmounts(state),ev=phaseVolumes(state);double te=sum(e),tv=sum(ev);int bits=0;
+        for(int k=0;k<4;k++)if(e[k]>0&&e[k]<VANISHING_SHARE*te&&ev[k]<VANISHING_SHARE*tv)bits|=1<<k;
         return bits;
     }
     /** A state's fluid volume by phase, in {@link #phaseBits} order; a gas phase's volume shared between the hydrocarbon

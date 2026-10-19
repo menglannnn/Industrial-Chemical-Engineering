@@ -839,4 +839,30 @@ class HoldClassWorldsTest {
         assertEquals(315670.8797145338,tank.pressure(),.01*315670.8797145338,"pressed to the supply");
         assertTrue(s.status().startsWith("STEADY"),"at rest: "+s.status());
     }
+
+    /**
+     * Owner decision of 2026-10-19 on t40's trace (bundled seed 678): a proposed phase that the node's own split holds below
+     * VANISHING_SHARE of its fluid both by moles and by volume is refused, whatever its direction, and the two direction
+     * tests of the D26 amendment go with it. Seed 678 pair-minimized to 9 blocks: crude at 310.37 K and 331.5 kPa joins at
+     * tick 1700 through a 10 mm line into an empty tank at z=-2, whose bottom port drains three metres down a 50 mm line
+     * to a second empty tank. The crude flashes in the upper slack bag at 1 atm; its saturated liquid lands in the lower
+     * bag exactly at its bubble point, so no vapour forms there. The converged check proposed vapour anyway (the TP answer
+     * on the bubble point holds some), the own split seeded 5.8e-11 m3, 6.5e-7 of the fluid volume, which the closure grew
+     * slightly, so no direction test refused it; the pass laid out with it had no root (the ln(V/L) split a near-null
+     * direction) and the line search stalled at every step size: held at tick 1704 (class E5). With the rule the island
+     * keeps up; both tanks end liquid-full at the supply pressure plus their heads, with no flow.
+     */
+    @Test void aReceiverLandingOnItsBubblePointIsNotProposedAVapourBelowItsResolution() {
+        var w=new EventPathWorld();var passive=new FlowControl.Passive();
+        w.runTo(335);w.place(0,-4,0,Kind.PIPE,NORTH,passive,null,.05);
+        w.runTo(336);w.place(0,-3,0,Kind.PIPE,NORTH,passive,null,.05);
+        w.runTo(386);w.place(0,-1,-1,Kind.PIPE,NORTH,passive,null,.1);
+        w.runTo(605);w.place(1,-5,-1,Kind.RESERVOIR,NORTH,.05);
+        w.runTo(620);w.place(0,-5,0,Kind.PIPE,NORTH,passive,null,.05);
+        w.runTo(1218);w.place(1,-5,0,Kind.PIPE,NORTH,passive,null,.05);
+        w.runTo(1683);w.place(0,-2,0,Kind.RESERVOIR,NORTH,.01);
+        w.runTo(1696);w.place(0,-1,-2,Kind.GENERATOR,NORTH,passive,crude(310.37149417674493,331510.7850719945),.1);
+        w.runTo(1700);w.place(0,-1,0,Kind.PIPE,NORTH,passive,null,.01);
+        w.runTo(1700+40*100);w.assertKeptUp("a receiver landing on its bubble point");
+    }
 }
