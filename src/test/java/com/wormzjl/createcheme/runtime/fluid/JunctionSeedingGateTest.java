@@ -147,4 +147,27 @@ class JunctionSeedingGateTest {
         w.runTo(1068+40*100);w.assertKeptUp("a vent header whose island a filter beyond its tank recompiled unchanged");
     }
 
+    /**
+     * Cold fuzz seed 271's smallest world (10 blocks; t46's trace in {@code FINAL_TEST_REVIEW.md}): a CO2-rich gas generator
+     * (1.13 MPa, 270 K) feeds a 20 mm line choked at 0.685 kg/s and a 10 mm riser venting 0.137 kg/s; the 200 kPa valve
+     * placed at tick 1852 is a back-pressure valve into a 1 atm tank. It opens, holds its inlet at 200 kPa and passes
+     * 0.548 kg/s. The mint's balance had left the inlet at the tank's 100.9 kPa, so the valve started CLOSED, the closed
+     * network balanced at 1 125 kPa, and pass 1 switched the valve to REGULATING 925 kPa above its anchor: singular at
+     * every step size (E2). The balance now decides the valve's mode on its balanced pressures, as it does a pump's.
+     */
+    @Test void aBackPressureValvePlacedUnderAChokedGasSupplyOpensAtTheStart() {
+        cold(w->{
+            var passive=new FlowControl.Passive();
+            w.runTo(148);w.place(0,1,-1,Kind.PIPE,NORTH,passive,null,.01);
+            w.runTo(182);w.place(0,0,-2,Kind.GENERATOR,NORTH,passive,pilot(269.81060085426174,1129422.6360429446,0.045457615852132614,0.11138617765944389,0,0.8431562064884235,0),.02);
+            w.place(0,1,2,Kind.PIPE,NORTH,passive,null,.02);w.place(0,0,1,Kind.PIPE,NORTH,passive,null,.1);
+            w.runTo(502);w.place(0,1,3,Kind.PIPE,NORTH,passive,null,.02);
+            w.runTo(1380);w.place(0,0,2,Kind.PIPE,NORTH,passive,null,.1);
+            w.runTo(1385);w.place(0,0,3,Kind.RESERVOIR,NORTH,passive,pilotNitrogen(),.1);
+            w.runTo(1391);w.place(0,0,-1,Kind.PIPE,NORTH,passive,null,.02);
+            w.runTo(1573);w.place(0,2,-1,Kind.VOID,NORTH,passive,pilotNitrogen(),.01);
+            w.runTo(1852);w.place(0,0,0,Kind.VALVE,SOUTH,new FlowControl.PressureValve(200000),null,.1);
+            w.runTo(1852+40*100);w.assertKeptUp("a back-pressure valve placed under a choked gas supply");
+        });
+    }
 }

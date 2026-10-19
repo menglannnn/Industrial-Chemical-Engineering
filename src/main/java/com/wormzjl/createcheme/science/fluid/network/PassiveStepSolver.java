@@ -2091,40 +2091,25 @@ public final class PassiveStepSolver {
         /** Per pump connection, whether the balance put it on its suction limit: its suction junction is anchored at the
          * liquid's bubble pressure ({@link #suctionFloors}) and the pump passes what the suction line delivers there. */
         final boolean[] suctionLimited;final int[][] nodeEdges;final double[][] lastQ;
+        /** Closed for this solve by a start closure, a blocked way or a refused inlet, never to reopen; {@code closed} also holds
+         * the device modes the balance may revise (a closed valve). */
+        final boolean[] hardClosed;double rhoMax,rises,zLow=Double.POSITIVE_INFINITY,zHigh=Double.NEGATIVE_INFINITY;
         double low,high,scale;int band;
         BalanceNet(PassiveNetwork graph,List<FlowControl.Mode> modes,boolean[] boundaryClosed,Runnable checkpoint) {
             tableP=new double[graph.reservoirs().size()][];tableRho=new double[graph.reservoirs().size()][];tableRhoV=new double[graph.reservoirs().size()][];
             suctionLimited=new boolean[graph.pipes().size()];nodeEdges=incidence(graph);lastQ=new double[graph.pipes().size()][2];
             this.graph=graph;this.modes=modes;edges=graph.pipes().size();nodes=graph.reservoirs().size();
-            closed=new boolean[edges];unknown=new int[nodes];Arrays.fill(unknown,-1);anchor=new double[nodes];Arrays.fill(anchor,Double.NaN);
+            closed=new boolean[edges];hardClosed=new boolean[edges];unknown=new int[nodes];Arrays.fill(unknown,-1);anchor=new double[nodes];Arrays.fill(anchor,Double.NaN);
             rho=new double[edges][2];mu=new double[edges][2];cap=new double[edges][2];column=new double[edges][2];endP=new double[edges][2];filterR=new double[edges][2];
             allowed=new boolean[edges][2];gas=new boolean[nodes];mover=new boolean[edges];reference=new double[nodes];prescribed=new double[edges];Arrays.fill(prescribed,Double.NaN);
             for(int i=0;i<nodes;i++){var node=graph.reservoirs().get(i);var s=node.state();reference[i]=s.pressure();gas[i]=node.junction()&&s.liquidVolume()==0&&s.waterVolume()==0&&s.pressure()>0;}
-            double zLow=Double.POSITIVE_INFINITY,zHigh=Double.NEGATIVE_INFINITY,rhoMax=0,rises=0;low=Double.POSITIVE_INFINITY;high=Double.NEGATIVE_INFINITY;scale=0;
+            low=Double.POSITIVE_INFINITY;high=Double.NEGATIVE_INFINITY;scale=0;
             for(int i=0;i<nodes;i++){zLow=Math.min(zLow,graph.reservoirs().get(i).elevation());zHigh=Math.max(zHigh,graph.reservoirs().get(i).elevation());}
             for(int e=0;e<edges;e++) {
                 var pipe=graph.pipes().get(e);var mode=modes.get(e);
-                closed[e]=boundaryClosed[e]||pipe.blockedDirections()==3||mode==FlowControl.Mode.CLOSED||mode==FlowControl.Mode.INLET_WRONG_PHASE;
-                if(closed[e])continue;
-                for(int dir=0;dir<2;dir++) {
-                    int donor=dir==0?pipe.first():pipe.second();var node=graph.reservoirs().get(donor);var port=pipe.portAt(donor);var s=node.state();
-                    rho[e][dir]=endDensity(s,port);mu[e][dir]=endViscosity(s,port);cap[e][dir]=massFlowLimit(pipe,s,port);
-                    column[e][dir]=columnDensity(s,port,pipe.volume());allowed[e][dir]=boundaryAllowed(graph,pipe,dir==0?1:-1);
-                    endP[e][dir]=endPressure(graph,pipe,donor);
-                    if(pipe.filter()!=null){double loading=pipe.filter().loading();filterR[e][dir]=pipe.filter().cleanResistance()*(carrierViscosity(s)/.001)*(1+99*loading*loading)/rho[e][dir];}
-                    rhoMax=Math.max(rhoMax,column[e][dir]);scale=Math.max(scale,cap[e][dir]);
-                    if(!node.junction()){low=Math.min(low,endP[e][dir]);high=Math.max(high,endP[e][dir]);}
-                }
-                if(pipe.control() instanceof FlowControl.Mover pump) {
-                    allowed[e][1]=false;var a=graph.reservoirs().get(pipe.first());
-                    if(mode==FlowControl.Mode.PUMP_TARGET)prescribed[e]=suctionMassFlow(pump.targetVolumeFlow(),a.state(),pipe.firstPort());
-                    else mover[e]=true;
-                    rises+=riseLimit(pump,rho[e][0],a.state().pressure());
-                    if(mode==FlowControl.Mode.PUMP_SUCTION_LIMIT&&a.junction()&&e<suctionFloors.length&&suctionFloors[e]<Double.POSITIVE_INFINITY)anchor[pipe.first()]=suctionFloors[e];
-                } else if(pipe.control() instanceof FlowControl.PressureValve valve) {
-                    allowed[e][1]=false;
-                    if(mode==FlowControl.Mode.VALVE_REGULATING&&graph.reservoirs().get(pipe.first()).junction())anchor[pipe.first()]=valve.targetPressure();
-                }
+                hardClosed[e]=boundaryClosed[e]||pipe.blockedDirections()==3||mode==FlowControl.Mode.INLET_WRONG_PHASE;
+                closed[e]=hardClosed[e]||mode==FlowControl.Mode.CLOSED;
+                if(!closed[e])prepare(e);
             }
             // The unknowns: junctions a node that holds its pressure reaches through pressure-coupling connections (a
             // prescribed flow couples nothing), numbered breadth first so the Jacobian is banded; an anchored junction is a
@@ -2150,6 +2135,30 @@ public final class PassiveStepSolver {
                     catch(IllegalArgumentException refused){ok=false;}
                 }
                 if(ok){tableP[j]=tp;tableRho[j]=tr;tableRhoV[j]=tv;TABLE_CACHE.put(s,new double[][]{tp,tr,tv});}
+            }
+        }
+        /** The held data of open connection {@code e}: each end's density, viscosity, cap, column and end pressure, its one-way
+         * rules and filter law, a mover's prescribed flow or rise, a regulating valve's anchor; the hull and scale grow with it. */
+        private void prepare(int e) {
+            var pipe=graph.pipes().get(e);var mode=modes.get(e);
+            for(int dir=0;dir<2;dir++) {
+                int donor=dir==0?pipe.first():pipe.second();var node=graph.reservoirs().get(donor);var port=pipe.portAt(donor);var s=node.state();
+                rho[e][dir]=endDensity(s,port);mu[e][dir]=endViscosity(s,port);cap[e][dir]=massFlowLimit(pipe,s,port);
+                column[e][dir]=columnDensity(s,port,pipe.volume());allowed[e][dir]=boundaryAllowed(graph,pipe,dir==0?1:-1);
+                endP[e][dir]=endPressure(graph,pipe,donor);
+                if(pipe.filter()!=null){double loading=pipe.filter().loading();filterR[e][dir]=pipe.filter().cleanResistance()*(carrierViscosity(s)/.001)*(1+99*loading*loading)/rho[e][dir];}
+                rhoMax=Math.max(rhoMax,column[e][dir]);scale=Math.max(scale,cap[e][dir]);
+                if(!node.junction()){low=Math.min(low,endP[e][dir]);high=Math.max(high,endP[e][dir]);}
+            }
+            if(pipe.control() instanceof FlowControl.Mover pump) {
+                allowed[e][1]=false;var a=graph.reservoirs().get(pipe.first());
+                if(mode==FlowControl.Mode.PUMP_TARGET)prescribed[e]=suctionMassFlow(pump.targetVolumeFlow(),a.state(),pipe.firstPort());
+                else mover[e]=true;
+                rises+=riseLimit(pump,rho[e][0],a.state().pressure());
+                if(mode==FlowControl.Mode.PUMP_SUCTION_LIMIT&&a.junction()&&e<suctionFloors.length&&suctionFloors[e]<Double.POSITIVE_INFINITY)anchor[pipe.first()]=suctionFloors[e];
+            } else if(pipe.control() instanceof FlowControl.PressureValve valve) {
+                allowed[e][1]=false;
+                if(mode==FlowControl.Mode.VALVE_REGULATING&&graph.reservoirs().get(pipe.first()).junction())anchor[pipe.first()]=valve.targetPressure();
             }
         }
         /** Linear interpolation of {@code table} in ln P at {@code pressure}, clamped to the table's range. */
@@ -2254,11 +2263,34 @@ public final class PassiveStepSolver {
             // The pump modes the balance starts the step in: a target the balanced ends demand more head for than the rise
             // limit gives goes to the head limit; a pump whose suction junction stands below the bubble pressure of the
             // liquid it draws goes to its suction limit, the junction anchored there and the pump passing what arrives.
-            for(int round=0;round<3;round++) {
+            for(int round=0;round<4;round++) {
                 boolean changed=false;
                 for(int e=0;e<edges;e++) {
-                    var pipe=graph.pipes().get(e);if(closed[e]||!(pipe.control() instanceof FlowControl.Mover pump))continue;
-                    int a=pipe.first(),b=pipe.second();double pa=endAt(e,0,p),pb=endAt(e,1,p);var mode=modes.get(e);
+                    var pipe=graph.pipes().get(e);int a=pipe.first(),b=pipe.second();var mode=modes.get(e);
+                    // Owner decision of 2026-10-19 (t46's trace of cold 271): the balance decides a pressure valve's mode on its balanced
+                    // pressures as it decides a pump's, the pass loop's own transitions taken at the start. A closed back-pressure valve
+                    // whose balanced inlet stands above its target with a forward drive regulates, its inlet anchored at the target (271:
+                    // minted at 100.9 kPa the valve started closed, the closed network balanced at 1 125 kPa and pass 1 was singular);
+                    // one that nothing reaches closes; one the open valve cannot relieve at its target opens; an open one whose inlet
+                    // falls under the target regulates again.
+                    if(pipe.control() instanceof FlowControl.PressureValve valve&&graph.reservoirs().get(a).junction()&&!hardClosed[e]) {
+                        double target=valve.targetPressure();
+                        if(mode==FlowControl.Mode.CLOSED) {
+                            double pa=endAt(e,0,p),pb=endAt(e,1,p),dz=graph.reservoirs().get(b).elevation()-graph.reservoirs().get(a).elevation();
+                            double drive=pa-pb-columnDensity(graph.reservoirs().get(a).state(),pipe.firstPort(),pipe.volume())*GRAVITY*dz;
+                            if(pa>target+.01&&drive>.01){closed[e]=false;modes.set(e,FlowControl.Mode.VALVE_REGULATING);prepare(e);anchor[a]=target;changed=true;}
+                        } else if(mode==FlowControl.Mode.VALVE_REGULATING) {
+                            double inflow=inflowExcept(a,e,p),pass=flow(e,target,endAt(e,1,p));
+                            if(inflow<=0){modes.set(e,FlowControl.Mode.CLOSED);closed[e]=true;anchor[a]=Double.NaN;changed=true;}
+                            else if(inflow>pass*(1+1e-9)){modes.set(e,FlowControl.Mode.VALVE_OPEN);anchor[a]=Double.NaN;changed=true;}
+                        } else if(mode==FlowControl.Mode.VALVE_OPEN) {
+                            double pa=endAt(e,0,p);
+                            if(pa<target-.01&&flow(e,pa,endAt(e,1,p))>1e-10){modes.set(e,FlowControl.Mode.VALVE_REGULATING);anchor[a]=target;changed=true;}
+                        }
+                        continue;
+                    }
+                    if(closed[e]||!(pipe.control() instanceof FlowControl.Mover pump))continue;
+                    double pa=endAt(e,0,p),pb=endAt(e,1,p);
                     double dz=graph.reservoirs().get(b).elevation()-graph.reservoirs().get(a).elevation();
                     double rhoA=tableP[a]!=null?at(a,tableRho[a],pa):rho[e][0]*scale(a,pa);
                     if(mode==FlowControl.Mode.PUMP_TARGET&&pb-pa+rhoA*GRAVITY*dz>riseLimit(pump,rhoA,pa)*(1+1e-9)){modes.set(e,FlowControl.Mode.PUMP_HEAD_LIMIT);prescribed[e]=Double.NaN;mover[e]=true;changed=true;continue;}
