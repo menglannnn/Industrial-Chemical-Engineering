@@ -917,6 +917,9 @@ public final class PassiveStepSolver {
         for(var transfer:graph.scheduledTransfers())if(transfer instanceof ScheduledTransfer.Injection injection) {
             var amounts=injection.molesPerSecond();for(int c=0;c<count;c++)if(amounts[c]>0)possible[injection.node()].set(c);
         }
+        // Owner decision D61: where a junction melts crystals, a crystal can bring its component.
+        if(!rateOnly&&JunctionCrystals.of(graph,model)!=null)for(int i=0;i<nodes;i++)
+            for(var p:graph.reservoirs().get(i).inventory().solids().crystals())possible[i].set(model.crystalSolids().of(p.material()).component());
         for(int edge=0;edge<graph.pipes().size();edge++) {var pipe=graph.pipes().get(edge);
             if(closed!=null&&closed[edge])continue;
             if(!(pipe.control() instanceof FlowControl.Mover pump)||pump.targetVolumeFlow()>0) {
@@ -2673,10 +2676,13 @@ public final class PassiveStepSolver {
             for(var p:next.captured().populations())solidBalance.computeIfAbsent(p.key(),k->new double[6])[1]+=p.massKg();
         }
         for(var boundary:projection.boundaries())for(var p:boundary.solids().populations())solidBalance.computeIfAbsent(p.key(),k->new double[6])[2]+=boundary.solidDirection()*p.massKg();
+        // What the junctions melted (owner decision D61) leaves the solid ledger and enters the component and energy ones.
+        var melted=projection.melted();
+        for(var p:melted.solids().populations())solidBalance.computeIfAbsent(p.key(),k->new double[6])[2]-=p.massKg();
         for(var b:solidBalance.values())if(Math.abs(b[0]+b[2]-b[1]-(b[4]-b[3]+b[5]))>1e-10+1e-8*Math.max(Math.max(b[0]+b[3],b[1]+b[4]),Math.abs(b[2]-b[5])))throw new SparseNewton.Nonconvergence("Solid population balance failed");
-        var external=projection.externalMoles();
-        for(int i=0;i<count;i++)if(Math.abs(before[i]+external[i]-after[i]-junction[i])>1e-10+1e-8*Math.max(turnover[i],Math.max(before[i]+bufferedBefore[i],after[i]+bufferedAfter[i])))throw new SparseNewton.Nonconvergence("Component balance failed: "+i);
-        if(Math.abs(ea-eb+junctionEnergy-projection.pumpWork()-projection.externalEnergy())>1e-4+1e-6*(energyScale+Math.abs(projection.pumpWork())))throw new SparseNewton.Nonconvergence("Total energy balance failed");
+        var external=projection.externalMoles();var meltedMoles=melted.moles();
+        for(int i=0;i<count;i++)if(Math.abs(before[i]+external[i]+meltedMoles[i]-after[i]-junction[i])>1e-10+1e-8*Math.max(turnover[i],Math.max(before[i]+bufferedBefore[i],after[i]+bufferedAfter[i])))throw new SparseNewton.Nonconvergence("Component balance failed: "+i);
+        if(Math.abs(ea-eb+junctionEnergy-projection.pumpWork()-projection.externalEnergy()-melted.energyJoule())>1e-4+1e-6*(energyScale+Math.abs(projection.pumpWork())+Math.abs(melted.energyJoule())))throw new SparseNewton.Nonconvergence("Total energy balance failed");
     }
     private double carrierViscosity(FluidThermodynamics.State s) {
         if(!FluidThermodynamics.holdsFluid(s))return carrierViscosity(ambient());
@@ -2723,6 +2729,11 @@ public final class PassiveStepSolver {
     /** The rows a block Jacobian sweep has to re-evaluate for one perturbed node or edge column. */
     final class Equations implements SparseNewton.Equations {
         final double[][] solidTargets,solidIncoming;
+        /** The junctions above a crystal's melting point (owner decision D61, {@link JunctionCrystals}), null where none is or
+         * in a rate solve; per such junction, what its own stock melts: amounts {@code heldMelt} (mol), offsets
+         * {@code heldMeltEnergy} (J), and the moments of the solids it keeps, {@code heldKept}. */
+        final JunctionCrystals melting;
+        final double[][] heldMelt,heldKept;final double[] heldMeltEnergy;
         final int[] filterOffsets;
         /** The connections as the warm-flow check may compare them: never including the cake. They are the solve's own
          * connections, also in a pass that stands an emptying vessel as a junction (decision D54, {@link #emptyingGraph}),
@@ -2915,6 +2926,13 @@ public final class PassiveStepSolver {
             int components=oldAmounts[0].length;
             targets=new double[count][components];incoming=new double[count][components];fractions=new double[components];
             solidTargets=new double[count][3];solidIncoming=new double[count][3];
+            melting=rateOnly?null:JunctionCrystals.of(graph,model);heldMelt=new double[count][];heldKept=new double[count][];heldMeltEnergy=new double[count];
+            if(melting!=null)for(int node=0;node<count;node++)if(melting.any(node)) {
+                var stock=graph.reservoirs().get(node).inventory().solids();heldMelt[node]=new double[components];
+                for(var p:stock.populations()){var crystal=melting.melts(node,p.material());if(crystal==null)continue;
+                    heldMelt[node][crystal.component()]+=p.massKg()/model.molecularWeight(crystal.component());heldMeltEnergy[node]+=p.massKg()*p.material().crystal().energyOffset();}
+                heldKept[node]=melting.kept(node,stock).moments().values();
+            }
             energy=new double[count];incomingMass=new double[count];incomingEnergy=new double[count];netMass=new double[count];
             for(int node=0;node<count;node++)if(layout[node]!=null)cachedVariables[node]=new double[layout[node].size()];
             int[] degree=new int[count];
@@ -3281,7 +3299,8 @@ public final class PassiveStepSolver {
                 if(graph.reservoirs().get(node).junction())materialRows.set(offsets[node]+components+1);
             }
             for(int node=0;node<count;node++)if(layout[node]!=null&&!drawsPhase[node])for(int local=0;local<layout[node].size();local++)
-                if(!layout[node].totalAmountVariable(local))columns[offsets[node]+local].andNot(materialRows);
+                // A crystal melting in a junction (D61) books a donor's solid mass as its component there: no zero then.
+                if(!layout[node].totalAmountVariable(local)&&!(melting!=null&&layout[node].solidVariable(local)))columns[offsets[node]+local].andNot(materialRows);
             sparsity=new int[size][];for(int c=0;c<size;c++)sparsity[c]=columns[c].stream().toArray();
         }
         public int size(){return size;}
@@ -3507,7 +3526,16 @@ public final class PassiveStepSolver {
                     for(int c=0;c<sourceAmounts.length;c++)in[c]+=Math.abs(flow)*sourceAmounts[c]/carried.mass;
                     heat+=Math.abs(flow)*sourceEnthalpy;
                     var sourceMoments=carried.solids.values();
-                    if(pipe.filter()==null)for(int c=0;c<3;c++)solidIncoming[node][c]+=Math.abs(flow)*sourceMoments[c]/carried.mass;
+                    if(pipe.filter()==null&&melting!=null&&melting.any(node)&&carried.solids.mass()>0) {
+                        // Owner decision D61: the crystal this junction is above the melting point of arrives as its
+                        // component, with its offset (the crystal's enthalpy), and only the solids it keeps mix as solids.
+                        var split=melting.split(node,source.solids(),sourceAmounts.length);double solidRate=Math.abs(flow)*carried.solids.mass()/carried.mass;
+                        for(int c=0;c<sourceAmounts.length;c++)if(split.mass()[c]>0)in[c]+=solidRate*split.mass()[c]/model.molecularWeight(c);
+                        heat+=solidRate*split.energy();
+                        if(!split.all()){double[] removed={split.share(),split.volume(),split.capacity()};
+                            for(int c=0;c<3;c++)solidIncoming[node][c]+=Math.max(0,Math.abs(flow)*sourceMoments[c]/carried.mass-solidRate*removed[c]);}
+                    }
+                    else if(pipe.filter()==null)for(int c=0;c<3;c++)solidIncoming[node][c]+=Math.abs(flow)*sourceMoments[c]/carried.mass;
                     else heat-=Math.abs(flow)*(carried.solids.enthalpy(source.temperature(),source.pressure())/carried.mass);
                 }
                 if(receiver&&pipe.filter()!=null) {
@@ -3725,7 +3753,7 @@ public final class PassiveStepSolver {
             // holds them at the stock's own (see junctionInflow).
             var inventory=graph.reservoirs().get(node).inventory();
             double retained=(molarMass(oldAmounts[node])+inventory.solids().massKg())/dt,total=incomingMass[node]+retained;
-            var solids=solidIncoming[node].clone();var held=inventory.solids().moments().values();
+            var solids=solidIncoming[node].clone();var held=heldKept[node]!=null?heldKept[node]:inventory.solids().moments().values();
             for(int c=0;c<3;c++)solids[c]=rateOnly?held[c]/(retained*dt):(solids[c]+held[c]/dt)/total;
             layout[node].solidRows(st[node],x,offsets[node],solids,true,f);
         }
@@ -3749,9 +3777,11 @@ public final class PassiveStepSolver {
                 return inventory.internalEnergy()/heldMass;
             }
             junctionWeight=total*dt/Math.max(heldMass,1e-300);
+            // Owner decision D61: what the junction's own stock melts joins its fluid, with the crystal's offset.
+            var melt=heldMelt[node];
             for(int c=0;c<fractions.length;c++)
-                fractions[c]=(incoming[node][c]+held[c]/dt)*model.molecularWeight(c)/total;
-            return (incomingEnergy[node]+inventory.internalEnergy()/dt)/total;
+                fractions[c]=(incoming[node][c]+(melt==null?held[c]:held[c]+melt[c])/dt)*model.molecularWeight(c)/total;
+            return (incomingEnergy[node]+(melt==null?inventory.internalEnergy():inventory.internalEnergy()+heldMeltEnergy[node])/dt)/total;
         }
         /** Whether this edge can carry a change of {@code node}'s decoded state into the other
          * endpoint's rows: the transported amounts and enthalpy are the donor's, a junction's

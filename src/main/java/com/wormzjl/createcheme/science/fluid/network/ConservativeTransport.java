@@ -5,6 +5,7 @@ import com.wormzjl.createcheme.science.fluid.diagnostics.SolverDiagnostics;
 import com.wormzjl.createcheme.science.fluid.linalg.*;
 import com.wormzjl.createcheme.science.fluid.solver.*;
 import com.wormzjl.createcheme.science.fluid.thermo.FluidThermodynamics;
+import com.wormzjl.createcheme.science.fluid.thermo.NetworkCrystals;
 import com.wormzjl.createcheme.science.thermo.PhaseSupport;
 import java.util.*;
 import com.wormzjl.createcheme.science.fluid.state.SolidInventory;
@@ -76,9 +77,21 @@ public final class ConservativeTransport {
         @Override public double[] grossMoles(){return grossMoles.clone();}
         static HeldJunctions none(int components){return new HeldJunctions(new double[components],0,SolidInventory.EMPTY,SolidInventory.EMPTY,new double[components],0);}
     }
+    /**
+     * What the step's junctions melted (owner decision D61, {@link JunctionCrystals}): the crystal mass {@code solids} that
+     * left the solid ledger, the component amounts {@code moles} it became, and its offsets {@code energyJoule}, which the
+     * stored energy gains (the crystal's enthalpy is its stored part plus its offset). An internal conversion of the step's
+     * ledger ({@code PassiveStepSolver.checkConservation}); none in a rate solve.
+     */
+    public record Melted(double[] moles,double energyJoule,SolidInventory solids) {
+        public Melted{moles=moles.clone();Objects.requireNonNull(solids);}
+        @Override public double[] moles(){return moles.clone();}
+        static Melted none(int components){return new Melted(new double[components],0,SolidInventory.EMPTY);}
+    }
     public record Projection(List<PassiveNetwork.Inventory> inventories,List<FluidThermodynamics.State> states,
-                             List<BoundaryTransfer> boundaries,double[] externalMoles,double externalEnergy,double pumpWork,Map<Long,InlineFilter> filters,HeldJunctions held) {
-        public Projection{filters=Map.copyOf(filters);inventories=List.copyOf(inventories);states=List.copyOf(states);boundaries=List.copyOf(boundaries);externalMoles=externalMoles.clone();Objects.requireNonNull(held);}
+                             List<BoundaryTransfer> boundaries,double[] externalMoles,double externalEnergy,double pumpWork,Map<Long,InlineFilter> filters,HeldJunctions held,
+                             Melted melted) {
+        public Projection{filters=Map.copyOf(filters);inventories=List.copyOf(inventories);states=List.copyOf(states);boundaries=List.copyOf(boundaries);externalMoles=externalMoles.clone();Objects.requireNonNull(held);Objects.requireNonNull(melted);}
         @Override public double[] externalMoles(){return externalMoles.clone();}
     }
     /** One-shot: a caller with no retained island workspace builds fresh linear algebra, as before. */
@@ -232,6 +245,15 @@ public final class ConservativeTransport {
             else if(!reservoir.fixed())index[node]=count++;
             else storedFractions(fractions[node],candidate.get(node),reservoir,populationKeys,molecularWeight,components);
         }
+        // Owner decision D61 (JunctionCrystals): per solved junction, the crystal each population is if it melts there (else
+        // null), and the mass of it melted over the step, booked as its component's. A rate booking melts nothing.
+        var melting=frozen||populationKeys.isEmpty()?null:JunctionCrystals.of(graph,model);
+        NetworkCrystals.Crystal[][] meltAt=new NetworkCrystals.Crystal[nodes][];double[][] melted=new double[nodes][];
+        if(melting!=null)for(int node=0;node<nodes;node++)if(index[node]>=0&&melting.any(node)) {
+            var at=new NetworkCrystals.Crystal[populationKeys.size()];boolean any=false;
+            for(int k=0;k<at.length;k++){at[k]=melting.melts(node,populationBasis.get(populationKeys.get(k)).material());any|=at[k]!=null;}
+            if(any){meltAt[node]=at;melted[node]=new double[at.length];}
+        }
         // A phase-port outflow (a draw) is booked as a fixed donor with its stream fractions frozen from the candidate
         // (plan 3.3 item 2; decision D11: the priority stream at the solved flow): it leaves its donor's diagonal (outgoing)
         // and enters the donor's right-hand side as -dt q w_stream and the receiver's as +dt q w_stream, on the pinned flow
@@ -283,7 +305,10 @@ public final class ConservativeTransport {
             add(columns,row,row,endMass[node]+dt*outgoing[node]);
             for(int c=0;c<components;c++)rhs[c][row]=old[node][c]*molecularWeight[c];
             for(int c=0;c<populationKeys.size();c++)rhs[components+c][row]=reservoir.inventory().solids().mass(populationKeys.get(c));
+            // What a melting junction holds of the crystal melts with what arrives (D61).
+            if(meltAt[node]!=null)for(int k=0;k<populationKeys.size();k++)if(meltAt[node][k]!=null)melt(rhs,components,row,k,meltAt[node][k],rhs[components+k][row],melted[node],true);
         }
+        var diagonal=new ArrayList<TreeMap<Integer,Double>>();for(var column:columns)diagonal.add(new TreeMap<>(column));
         var solidColumns=new ArrayList<TreeMap<Integer,Double>>();for(var column:columns)solidColumns.add(new TreeMap<>(column));
         for(int edge=0;edge<flows.length;edge++) {
             var pipe=graph.pipes().get(edge);int donor=flows[edge]>=0?pipe.first():pipe.second(),receiver=flows[edge]>=0?pipe.second():pipe.first();
@@ -291,13 +316,19 @@ public final class ConservativeTransport {
                 double weight=dt*Math.abs(flows[edge]);var w=drawn[edge];
                 // The donor loses the stream, solids included whether or not a filter then captures them.
                 if(index[donor]>=0)for(int c=0;c<conserved;c++)rhs[c][index[donor]]-=weight*w[c];
-                if(index[receiver]>=0)for(int c=0;c<conserved;c++)if(c<components||pipe.filter()==null)rhs[c][index[receiver]]+=weight*w[c];
+                if(index[receiver]>=0)for(int c=0;c<conserved;c++)if(c<components||pipe.filter()==null) {
+                    if(c>=components&&meltAt[receiver]!=null&&meltAt[receiver][c-components]!=null)melt(rhs,components,index[receiver],c-components,meltAt[receiver][c-components],weight*w[c],melted[receiver],false);
+                    else rhs[c][index[receiver]]+=weight*w[c];
+                }
                 continue;
             }
             if(index[receiver]<0||flows[edge]==0)continue;
             double weight=dt*Math.abs(flows[edge]);
             if(index[donor]>=0){add(columns,index[donor],index[receiver],-weight);if(pipe.filter()==null)add(solidColumns,index[donor],index[receiver],-weight);}
-            else for(int c=0;c<conserved;c++)if(c<components||pipe.filter()==null)rhs[c][index[receiver]]+=weight*fractions[donor][c];
+            else for(int c=0;c<conserved;c++)if(c<components||pipe.filter()==null) {
+                if(c>=components&&meltAt[receiver]!=null&&meltAt[receiver][c-components]!=null)melt(rhs,components,index[receiver],c-components,meltAt[receiver][c-components],weight*fractions[donor][c],melted[receiver],false);
+                else rhs[c][index[receiver]]+=weight*fractions[donor][c];
+            }
         }
         for(var transfer:graph.scheduledTransfers())if(transfer instanceof ScheduledTransfer.Injection in&&index[in.node()]>=0) {
             var n=in.molesPerSecond();for(int c=0;c<components;c++)rhs[c][index[in.node()]]+=dt*n[c]*molecularWeight[c];
@@ -307,8 +338,10 @@ public final class ConservativeTransport {
         // One backward-error check on the first component vector qualifies this factorization; the
         // remaining component columns are bounded by the junction continuity and conservation
         // checks below, which are the quantities this solve exists to produce.
+        boolean melts=false;for(var at:meltAt)melts|=at!=null;
         try{var system=matrix(columns);
-            if(populationKeys.isEmpty()||graph.pipes().stream().noneMatch(p->p.filter()!=null))solved=(workspace==null?SparseLuSolver.factor(system):workspace.factor(system)).solveMultiple(rhs,SparseLuSolver.Verification.UNTIL_VERIFIED);
+            if(melts)solved=meltingSolve(graph,flows,drawn,index,dt,components,populationKeys.size(),meltAt,melted,rhs,system,diagonal,solidColumns,workspace);
+            else if(populationKeys.isEmpty()||graph.pipes().stream().noneMatch(p->p.filter()!=null))solved=(workspace==null?SparseLuSolver.factor(system):workspace.factor(system)).solveMultiple(rhs,SparseLuSolver.Verification.UNTIL_VERIFIED);
             else {
                 solved=new double[conserved][];
                 var fluid=(workspace==null?SparseLuSolver.factor(system):workspace.factor(system)).solveMultiple(Arrays.copyOf(rhs,components),SparseLuSolver.Verification.UNTIL_VERIFIED);
@@ -388,6 +421,17 @@ public final class ConservativeTransport {
             catch(com.wormzjl.createcheme.science.fluid.thermo.ThermoHold hold){throw hold.at(reservoir.id());}
         }
         double[] energy=new double[nodes];for(int node=0;node<nodes;node++)energy[node]=graph.reservoirs().get(node).inventory().internalEnergy();
+        // D61: a melting junction's energy gains the offsets of what it melted, so the crystal enters with its own enthalpy.
+        var meltedRecord=Melted.none(components);
+        if(melts) {
+            var meltedMoles=new double[components];double meltedEnergy=0;var meltedSolids=new ArrayList<SolidInventory.Population>();
+            for(int node=0;node<nodes;node++)if(melted[node]!=null)for(int k=0;k<populationKeys.size();k++)if(melted[node][k]>0) {
+                var crystal=meltAt[node][k];var source=populationBasis.get(populationKeys.get(k));double offset=melted[node][k]*source.material().crystal().energyOffset();
+                energy[node]+=offset;meltedEnergy+=offset;meltedMoles[crystal.component()]+=melted[node][k]/molecularWeight[crystal.component()];
+                meltedSolids.add(new SolidInventory.Population(source.material(),source.size(),melted[node][k]));
+            }
+            meltedRecord=new Melted(meltedMoles,meltedEnergy,new SolidInventory(meltedSolids));
+        }
         double[] external=new double[components];double externalEnergy=0,pumpWork=0;var boundaries=new ArrayList<BoundaryTransfer>();
         for(var transfer:graph.scheduledTransfers()) {
             checkpoint.run();int node=transfer.node();var state=states.get(node);double[] moved=new double[components];double movedEnergy,mass=0;
@@ -524,7 +568,58 @@ public final class ConservativeTransport {
             if(oldNode.junction()){inventories.add(new PassiveNetwork.Inventory(oldNode.inventory().volume(),ownedMoles[node],energy[node],ownedSolids[node]));continue;}
             inventories.add(oldNode.fixed()?oldNode.inventory():new PassiveNetwork.Inventory(oldNode.inventory().volume(),moles[node],energy[node],state.solids()));
         }
-        return new Projection(inventories,states,boundaries,external,externalEnergy,pumpWork,filters,held);
+        return new Projection(inventories,states,boundaries,external,externalEnergy,pumpWork,filters,held,meltedRecord);
+    }
+    /**
+     * Books {@code mass} kg of population {@code k}, which melts at the junction of row {@code row} (D61), as its crystal's
+     * component there: into that component's right-hand side, and into the junction's melted tally; {@code held}: the mass
+     * is already on the population's right-hand side (the junction's own stock), which it leaves.
+     */
+    private static void melt(double[][] rhs,int components,int row,int k,NetworkCrystals.Crystal crystal,double mass,double[] melted,boolean held) {
+        if(held)rhs[components+k][row]=0;
+        rhs[crystal.component()][row]+=mass;melted[k]+=mass;
+    }
+    /**
+     * The reconstruction's solve where a junction melts crystals (D61). Each population is solved first, on a matrix in which
+     * the junctions it melts in receive none of it from a solved donor (their rows keep only the diagonal, and their
+     * right-hand side holds nothing of it), grouped by those junctions; populations that melt nowhere take the matrix they
+     * always had ({@code solidColumns}, which is {@code system}'s without a filter). What a solved donor delivers of a melting
+     * population into such a junction is then booked as its component there, and the fluid components are solved last on
+     * {@code system}. Every quantity's solution is linear in its own right-hand side, so the booking stays exact.
+     */
+    private static double[][] meltingSolve(PassiveNetwork graph,double[] flows,double[][] drawn,int[] index,double dt,int components,int populations,
+                                           NetworkCrystals.Crystal[][] meltAt,double[][] melted,double[][] rhs,SparseMatrix system,
+                                           List<TreeMap<Integer,Double>> diagonal,List<TreeMap<Integer,Double>> solidColumns,Workspace workspace) {
+        int nodes=graph.reservoirs().size();var solved=new double[components+populations][];
+        boolean filters=graph.pipes().stream().anyMatch(p->p.filter()!=null);
+        var groups=new LinkedHashMap<BitSet,List<Integer>>();
+        for(int k=0;k<populations;k++){var at=new BitSet(nodes);for(int node=0;node<nodes;node++)if(meltAt[node]!=null&&meltAt[node][k]!=null)at.set(node);groups.computeIfAbsent(at,x->new ArrayList<>()).add(k);}
+        for(var group:groups.entrySet()) {
+            var at=group.getKey();SparseMatrix matrix;
+            if(at.isEmpty())matrix=filters?matrix(solidColumns):system;
+            else {
+                var columns=new ArrayList<TreeMap<Integer,Double>>();for(var column:diagonal)columns.add(new TreeMap<>(column));
+                for(int edge=0;edge<flows.length;edge++) {
+                    var pipe=graph.pipes().get(edge);int donor=flows[edge]>=0?pipe.first():pipe.second(),receiver=flows[edge]>=0?pipe.second():pipe.first();
+                    if(drawn[edge]!=null||flows[edge]==0||index[receiver]<0||index[donor]<0||pipe.filter()!=null||at.get(receiver))continue;
+                    add(columns,index[donor],index[receiver],-dt*Math.abs(flows[edge]));
+                }
+                matrix=matrix(columns);
+            }
+            var b=new double[group.getValue().size()][];for(int i=0;i<b.length;i++)b[i]=rhs[components+group.getValue().get(i)];
+            var x=(workspace==null?SparseLuSolver.factor(matrix):workspace.factor(matrix)).solveMultiple(b,SparseLuSolver.Verification.UNTIL_VERIFIED);
+            for(int i=0;i<b.length;i++)solved[components+group.getValue().get(i)]=x[i];
+        }
+        // What solved donors deliver of a melting population into the junction it melts in.
+        for(int edge=0;edge<flows.length;edge++) {
+            var pipe=graph.pipes().get(edge);int donor=flows[edge]>=0?pipe.first():pipe.second(),receiver=flows[edge]>=0?pipe.second():pipe.first();
+            if(drawn[edge]!=null||flows[edge]==0||index[receiver]<0||index[donor]<0||pipe.filter()!=null||meltAt[receiver]==null)continue;
+            for(int k=0;k<populations;k++)if(meltAt[receiver][k]!=null)
+                melt(rhs,components,index[receiver],k,meltAt[receiver][k],dt*Math.abs(flows[edge])*solved[components+k][index[donor]],melted[receiver],false);
+        }
+        var fluid=(workspace==null?SparseLuSolver.factor(system):workspace.factor(system)).solveMultiple(Arrays.copyOf(rhs,components),SparseLuSolver.Verification.UNTIL_VERIFIED);
+        System.arraycopy(fluid,0,solved,0,components);
+        return solved;
     }
     /**
      * The flows a reconstruction books so that every junction passes exactly what it receives and its buffer keeps the

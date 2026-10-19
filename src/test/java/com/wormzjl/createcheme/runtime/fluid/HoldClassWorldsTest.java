@@ -944,4 +944,37 @@ class HoldClassWorldsTest {
             w.runTo(796+40*100);w.assertKeptUp("a tank draining down a wide line below its suspension velocity");
         });
     }
+
+    /**
+     * Owner decision D61 of 2026-10-19 (batch 2026-10-20-crystal-junction-holds, amends D23 for junctions): a crystal above
+     * its melting point melts on arrival in a junction. Cold seed 778 pair-minimized to 7 blocks: a 1 m3 tank liquid-full of
+     * LNG at 165 K and 4.16 MPa holding 19 kg of CO2 crystal stands on a junction through which a CO2 header (312 K,
+     * 4.43 MPa) blows to air at its 100 m/s cap, 2.39 kg/s; the LNG generator (3.38 MPa) is below the tank. At rest the tank
+     * gives nothing. A step's large-step root drains tank liquid into the 307 K junction, and its crystal share (5.3 %)
+     * arrived as an inert solid 90 K above the CO2 melting point (about 217 K at 4.1 MPa): the reconstruction booked a crystal
+     * rate the Newton's junction rows did not state, every step size failed the equation gate on the junction's solid and
+     * temperature rows (E4 at 1185). The crystal now melts in the junction, booked as CO2 with the crystal's enthalpy, and
+     * the island keeps up with the tank back at rest.
+     */
+    @Test void aCrystalArrivingInAWarmJunctionMeltsThere() {
+        cold(w->{
+            var passive=new FlowControl.Passive();var nitrogen=pilot(298.15,101325,1,0,0,0,0);
+            w.runTo(100);w.place(-1,2,0,Kind.PIPE,NORTH,passive,null,.05);
+            w.runTo(131);w.place(0,2,0,Kind.RESERVOIR,NORTH,passive,nitrogen,.02);
+            w.runTo(153);w.place(0,1,-1,Kind.PIPE,NORTH,passive,null,.05);
+            w.runTo(181);w.place(0,0,0,Kind.VOID,SOUTH,passive,nitrogen,.1);
+            w.runTo(232);w.place(-2,2,0,Kind.GENERATOR,NORTH,passive,pilot(158.1143422191448,3382180.9834845206,0.0049772535753268695,0.9507968063578207,2.531343550757903E-5,0.04420062663134479,0),.05);
+            w.runTo(435);w.place(0,1,0,Kind.PIPE,NORTH,passive,null,.02);
+            w.runTo(458);w.place(0,1,-2,Kind.GENERATOR,NORTH,passive,pilot(311.8387507147899,4434735.037139751,0.07356367343142986,0.13346290931189256,0,0.7929734172566776,0),.05);
+            w.runTo(458+40*100);w.assertKeptUp("a crystal arriving in a warm junction");
+            // The tank is back at rest: its lines carry nothing over the last interval.
+            for(var s:w.coordinator.snapshots()) {
+                var g=s.graph();var flows=s.lastResult().map(r->r.averageMassFlows()).orElse(null);if(flows==null)continue;
+                for(int e=0;e<g.pipes().size();e++){var p=g.pipes().get(e);
+                    if(g.reservoirs().get(p.first()).kind()!=PassiveNetwork.NodeKind.RESERVOIR&&g.reservoirs().get(p.second()).kind()!=PassiveNetwork.NodeKind.RESERVOIR)continue;
+                    System.out.println("MELT_GATE seed=778 tankLine="+e+" flow="+flows[e]);
+                    assertTrue(Math.abs(flows[e])<1e-3,"the tank's line "+e+" is at rest: "+flows[e]+" kg/s");}
+            }
+        });
+    }
 }

@@ -43,11 +43,26 @@ public final class NetworkCrystals {
      * One crystal: its record as a solid ({@link SolidMaterial#crystal()} set), the network basis index and molar mass
      * (kg/mol) of the component it is made of (the free water's slot, the basis's last, for ice), the temperature its
      * constants were taken at, its anchored model (its record's properties) and its fugacity: the anchored model itself for
-     * an admitted crystal, the free-water rule's ice for ice.
+     * an admitted crystal, the free-water rule's ice for ice. {@code meltingFoot} (K, Pa) and {@code meltingSlope} (K/Pa)
+     * state an admitted crystal's melting line ({@link #meltingTemperature}); the ice reads its own.
      */
     public record Crystal(SolidMaterial material,int component,double molarMass,double referenceTemperature,
-                          CrystalPhaseEvaluator.Anchored anchored,CrystalFugacity fugacity) {
+                          CrystalPhaseEvaluator.Anchored anchored,CrystalFugacity fugacity,double meltingFootTemperature,
+                          double meltingFootPressure,double meltingSlope) {
         public Crystal{Objects.requireNonNull(material);Objects.requireNonNull(anchored);Objects.requireNonNull(fugacity);}
+        /**
+         * The pure crystal's melting temperature at {@code pressure}, K: above it no amount of this crystal is stable beside
+         * any fluid (a fluid's mixing only lowers its species' chemical potential below the pure liquid's). The ice's is the
+         * free-water rule's line ({@link FreeWaterIce#meltingTemperature}); an admitted crystal's is the straight line
+         * through its record's triple point and the engine's own melting point of the pure species at
+         * {@link #MELTING_PRESSURE} (CO2-I: 216.6 K at 0.518 MPa and about 218.6 K at 10 MPa, within 0.13 K of Span and Wagner
+         * there). Below the triple-point pressure the line continues: a crystal between its sublimation point and that line
+         * is kept, as before.
+         */
+        public double meltingTemperature(double pressure) {
+            if(fugacity instanceof FreeWaterIce ice)return ice.meltingTemperature(pressure);
+            return meltingFootTemperature+meltingSlope*(pressure-meltingFootPressure);
+        }
         /** {@code ln phi_s}: the crystal's chemical potential against its species' ideal gas at (T, P), the reference the
          * fluid's {@code ln (x phi P)} is stated on (continued past the record's range); for ice {@code ln(f_ice/P)}. */
         public double logFugacityCoefficient(double temperature,double pressure){return fugacity.logFugacityCoefficient(temperature,pressure);}
@@ -81,23 +96,32 @@ public final class NetworkCrystals {
             var onset=engine.engine().depositionTemperature(id,PhaseLayout.AMBIENT_PRESSURE,species,pure,engine.engine().newWorkspace());
             if(onset.status()!=EquilibriumResult.Status.CONVERGED)
                 throw new IllegalStateException("Crystal "+id+": no transition of the pure crystal at the ambient pressure ("+onset.detail()+")");
-            built.add(crystal(anchored,anchored,component,molarMass,onset.temperature(),formation.offsetJoulesPerMole(component),packageId));
+            // Its melting line (Crystal.meltingTemperature): the record's triple point and the pure species' melting point at
+            // MELTING_PRESSURE; upright at the triple point where the engine gives none.
+            double footT=anchored.anchor().temperature(),footP=anchored.anchor().pressure(),slope=0;
+            var melting=engine.engine().depositionTemperature(id,MELTING_PRESSURE,species,pure,engine.engine().newWorkspace());
+            if(melting.converged()&&MELTING_PRESSURE>footP)slope=(melting.temperature()-footT)/(MELTING_PRESSURE-footP);
+            built.add(crystal(anchored,anchored,component,molarMass,onset.temperature(),formation.offsetJoulesPerMole(component),packageId,footT,footP,slope));
         }
         // The free water's ice, at its normal melting point; the free water is on the network's own datum (no formation).
         var ice=model.freeWaterIce();int water=model.hydrocarbon.componentCount();
-        built.add(crystal(ice.anchored(),ice,water,model.molecularWeight(water),ice.meltingTemperature(PhaseLayout.AMBIENT_PRESSURE),0,packageId));
+        built.add(crystal(ice.anchored(),ice,water,model.molecularWeight(water),ice.meltingTemperature(PhaseLayout.AMBIENT_PRESSURE),0,packageId,
+                ice.tripleTemperature(),ice.triplePressure(),Double.NaN));
         return new NetworkCrystals(built);
     }
+    /** The pressure at which an admitted crystal's melting line takes its second point, Pa: the top of the network's usual
+     * states. */
+    static final double MELTING_PRESSURE=1e7;
     /** A crystal's record as a solid, its constants taken at {@code t} and the ambient pressure; {@code formation}, J/mol, is
      * the component's formation enthalpy on the anchored model's datum. */
     private static Crystal crystal(CrystalPhaseEvaluator.Anchored anchored,CrystalFugacity fugacity,int component,double molarMass,double t,
-                                   double formation,String packageId) {
+                                   double formation,String packageId,double footT,double footP,double slope) {
         double p=PhaseLayout.AMBIENT_PRESSURE;
         var state=anchored.properties(t,p);
         double internalEnergy=state.enthalpy()-formation-p*state.volume();
         double density=molarMass/state.volume(),heatCapacity=state.heatCapacity()/molarMass;
         double offset=internalEnergy/molarMass-heatCapacity*(t-SolidMaterial.REFERENCE_TEMPERATURE);
         var material=new SolidMaterial(anchored.crystal(),anchored.record().revision()+"@"+packageId,density,heatCapacity,new SolidMaterial.Crystal(anchored.component(),offset));
-        return new Crystal(material,component,molarMass,t,anchored,fugacity);
+        return new Crystal(material,component,molarMass,t,anchored,fugacity,footT,footP,slope);
     }
 }
