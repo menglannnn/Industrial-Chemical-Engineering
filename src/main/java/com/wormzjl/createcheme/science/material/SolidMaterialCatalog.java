@@ -26,9 +26,14 @@ public final class SolidMaterialCatalog {
     static SolidMaterialCatalog parse(Map<String, String> resources) {
         var solids = new TreeMap<String, SolidMaterial>();
         for (var entry : resources.entrySet()) if (entry.getKey().contains("/materials/solids/")) {
-            var o = JsonParser.parseString(entry.getValue()).getAsJsonObject();
-            var material = new SolidMaterial(o.get("id").getAsString(), o.get("revision").getAsString(),
-                    o.get("density_kg_per_m3").getAsDouble(), o.get("heat_capacity_j_per_kg_kelvin").getAsDouble());
+            // Read through the material data's field reader, so a missing or ill-typed field is refused with the file and
+            // the field it names, never a NullPointerException.
+            SolidMaterial material;
+            try {
+                var o = JsonParser.parseString(entry.getValue()).getAsJsonObject();
+                material = new SolidMaterial(JsonFields.text(o, "id"), JsonFields.text(o, "revision"),
+                        JsonFields.number(o, "density_kg_per_m3"), JsonFields.number(o, "heat_capacity_j_per_kg_kelvin"));
+            } catch (RuntimeException invalid) { throw new IllegalArgumentException(entry.getKey() + ": " + invalid.getMessage(), invalid); }
             if (solids.putIfAbsent(material.id(), material) != null) throw new IllegalArgumentException("Duplicate solid material");
         }
         return new SolidMaterialCatalog(solids);

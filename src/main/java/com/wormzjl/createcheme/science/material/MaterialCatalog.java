@@ -166,11 +166,14 @@ public final class MaterialCatalog {
      */
     public String fluidThermoFingerprint(String packageId) {
         var p=requirePackage(packageId);var points=new TreeMap<String,FluidData.VolumeReference>();
-        // A component whose property record carries its own volume_translation is anchored by it (hashed through the
-        // physics fingerprint), not by the global calibration point: one anchor per species per package.
+        // The calibration point a component's liquid volume is anchored by, where the network's model reads one: a spine
+        // package anchors a component whose property record carries its own volume_translation by it (hashed through the
+        // physics fingerprint; SpinePackageData), every other component, and every component of a package without a spine,
+        // by the global calibration point (HydrocarbonModel reads no volume_translation): one anchor per species per package.
         for(int i=0;i<p.components().size();i++) {
             String id=p.components().get(i);
-            if(p.properties().get(i).volumeTranslation()==null&&fluidData.volumeReferences().containsKey(id))points.put(id,fluidData.volumeReferences().get(id));
+            boolean translated=!p.spine().isEmpty()&&p.properties().get(i).volumeTranslation()!=null;
+            if(!translated&&fluidData.volumeReferences().containsKey(id))points.put(id,fluidData.volumeReferences().get(id));
         }
         var domains=new ArrayList<Object>();
         domains.add(fluidValidity(packageId).map(Validity::numbers).orElse(List.of()));

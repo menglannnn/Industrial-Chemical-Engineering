@@ -31,7 +31,13 @@ class MaterialPresetsTest {
     }
     @Test void exampleWholeRecordOverridePreservesAllExistingTransportData() throws Exception {
         var original=MaterialCatalog.bundled();var resources=new HashMap<>(original.resources());String path=ROOT+"properties/tjl20_methane.json";
-        resources.put(path,java.nio.file.Files.readString(java.nio.file.Path.of("examples/material-override/"+path)));
+        String example=java.nio.file.Files.readString(java.nio.file.Path.of("examples/material-override/"+path));
+        // The example is the bundled record with its density and source edited, nothing else, so it never drifts into an
+        // older copy (t44d found one whose fluid_domain ended at 2 MPa where the bundled record ends at 10 MPa).
+        var edited=JsonParser.parseString(example).getAsJsonObject();var bundled=JsonParser.parseString(resources.get(path)).getAsJsonObject();
+        for(var field:new String[]{"standard_liquid_density_kg_per_m3","source"}){edited.remove(field);bundled.remove(field);}
+        assertEquals(bundled,edited,"the example differs from the bundled record only in its density and source");
+        resources.put(path,example);
         var replaced=MaterialCatalog.parse(resources);String id="createcheme:tjl20_methane";
         assertEquals(357,replaced.requirePackage(id).properties().getFirst().density());
         assertEquals(original.viscosityFingerprint(id),replaced.viscosityFingerprint(id));

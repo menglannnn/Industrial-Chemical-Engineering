@@ -16,9 +16,9 @@ The active crude family has 12 pseudocomponents (`crude_pc01`–`crude_pc12`): 1
 Copy `examples/material-override` into a world's `datapacks` directory, enable it with `/datapack enable`, and run
 `/reload`. The example replaces the property record `createcheme:tjl20_methane` to give methane an illustrative
 standard-liquid density (357.0 instead of 356.07 kg/m³); it is an editing example, not a measured reference dataset.
-Its other fields are an older copy of the bundled record, so its `fluid_domain` ends at 2 MPa where the bundled one
-ends at 10 MPa. Methane belongs to the network package, so on a running world the reload holds the fluid network
-until the data is restored (see "Reloads").
+Its other fields are the bundled record's (a test keeps them so). Methane belongs to the network package, so a changed
+density is a changed fluid revision: on a running world the reload holds the fluid network until the data is restored
+(see "Reloads"); a fresh world starts on the edited record.
 
 Records live under `data/<namespace>/materials/<kind>/<filename>.json`. Minecraft chooses the highest-priority
 resource at each path. A replacement is a **whole record**, not a field merge. Different resource paths declaring
