@@ -22,7 +22,7 @@ import java.util.function.Function;
  * holds. Rebuilds properties through the immutable model; it never deserializes implementation caches or creates a
  * nitrogen charge. Where the units live is {@link FluidCheckpointStore}'s business.
  *
- * <p>Core record (one NBT compound, the world's saved data): {@code FluidFormat = 10}; the world {@code Epoch};
+ * <p>Core record (one NBT compound, the world's saved data): {@code FluidFormat = 11} ({@link #VERSION}); the world {@code Epoch};
  * {@code Strings}, an append-only table of the long texts units refer to; {@code Packages}, one entry per property
  * package with the thermodynamic revision and energy reference the units were written under; the pack files and their
  * sizes; the topology unit's reference; and {@code Islands}, the island index in columns: identity, revision and unit
@@ -39,7 +39,7 @@ import java.util.function.Function;
  * base, so while it stays certified its unit never changes. Solids (every stock, stream, cake and pending recovery):
  * each population as its material's id, revision, density and heat capacity, then its size and mass; the id names a
  * crystal the package admits or a custom solid (owner decision D23), and the reader refuses an id that names no record
- * of the package or saved constants that are not the record's. No other format is read: format 9 and older are refused
+ * of the package or saved constants that are not the record's. No other format is read: format 10 and older are refused
  * with the instruction to create a fresh world (format 11 dropped the velocity-limit modes among the endpoint modes, 2026-10-18, and unit format 4
  * states their eight ordinals, 2026-10-19; format 10, unit format 3, dropped the movers' efficiency, the
  * approximate fallback and the saved interval's acceptance: every interval is a full solve).</p>

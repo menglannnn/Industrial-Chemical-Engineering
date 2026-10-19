@@ -170,8 +170,9 @@ public final class PassiveIntervalSolver {
      * <li>Boundary reopen: a converged step that holds a passive run closed although its own end states drive the run in
      * an allowed direction ({@link PassiveStepSolver#reopenable}) is refused and solved again with that run exempt from
      * the start-of-solve closures, each run at most once per attempted step.</li>
-     * <li>Cold start: while no step of this structure has been accepted, one rate solve of the port graph supplies the
-     * junctions' starting states, and the balanced pressure seed treats vessel neighbours as held.</li>
+     * <li>Cold start: while no step of this structure has been accepted, one rate solve of the port graph, started from the
+     * island's balance ({@code PassiveStepSolver.balanceStart}), supplies the junctions' starting states; when it fails, the
+     * step starts from the balance itself.</li>
      * <li>Events: the stage guard's {@code checkRate} runs at every step start, on the previous accepted endpoint, else on
      * the endpoint carried from the last interval while no connection's identity or closure changed, else on one rate
      * solve of the port graph; {@code checkFilters} runs on every step's end. A declared transition is searched onto by

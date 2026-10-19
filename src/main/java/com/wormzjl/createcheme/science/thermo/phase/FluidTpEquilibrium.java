@@ -353,8 +353,9 @@ public final class FluidTpEquilibrium {
 
     /**
      * The service of a package with its crystals (P4 stage 2a): {@link PhaseContract#forPackage}, the package's cubic
-     * evaluator, the default settings, no water model (a request with water is not implemented; with a crystal
-     * competition it is refused as water chemistry first), and an evaluator of every crystal the contract admits.
+     * evaluator, the default settings, no water model (a request with water is {@code NOT_IMPLEMENTED}, with crystals or
+     * without, unless the contract refuses it first as {@code WATER_CHEMISTRY_NOT_MODELLED}, when it also holds a species that
+     * needs aqueous chemistry), and an evaluator of every crystal the contract admits.
      */
     public static FluidTpEquilibrium forPackage(MaterialCatalog catalog, String packageId) {
         PhaseContract contract = PhaseContract.forPackage(catalog, packageId);
