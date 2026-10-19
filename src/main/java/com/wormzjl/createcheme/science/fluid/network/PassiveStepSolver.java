@@ -1886,9 +1886,145 @@ public final class PassiveStepSolver {
         });
         return modes;
     }
+    /**
+     * The mint's round 0 (owner decision of 2026-10-19 on t45's trace, {@code BRANCH_SELECTION_TRACE.md}): a minted
+     * junction's first state is what reaches it, decision D55's supplier composition, not the placeholder (the island's
+     * lowest-id boundary state, which put crude in a nitrogen header and water in a nitrogen loop, sized buffers 38 to 570
+     * times too dense, and left the balance's two rounds on an iterate the cold rate seed then froze). A supplier is a node
+     * that is not a junction and holds something; a void and a dry end send nothing ({@link #boundaryAllowed}). Each
+     * supplier joined to a junction sends the stream its end draws ({@link #endMoles}) at the flow its static drive gives
+     * against the ambient ({@link #supplyFlow}); the junction is the flow-weighted mixture of what reaches it, flashed at the
+     * flow-weighted pressure of its suppliers' ends ({@link #seedAt}; the ambient put a liquid CO2 let-down below its triple point): the balance solves the pressures and restates every mixture at its balanced pressure
+     * ({@link BalanceNet#seeded}), so D55's pressure bisection is not needed. A junction no supplier drives into takes it hop
+     * by hop from the junctions that have it (a breadth-first sweep weighted by the flow that seeded them); one neither
+     * reaches takes the streams of the suppliers joined to it, one share each, and the sweep runs again. A junction no
+     * source reaches keeps the state it was built with ({@link NetworkReduction#atRest}).
+     *
+     * <p>A mover's suction line is seeded first, from the stream it draws (owner's fix A of F2): the junctions its supply
+     * walk crosses ({@link InletPhase#walk}) take the stream of the supplier the walk ends at, as that end draws it
+     * ({@link #endStream}), neither flashed nor moved. A mover's target row converts its volume flow at its suction
+     * junction's density, so that junction must hold what the mover draws (a pump under a vented LNG tank kept the 298 K
+     * nitrogen placeholder, 1.1 kg/m3 for 447 kg/m3, and moved 0.006 kg/s for 2.24 kg/s).
+     */
+    private List<FluidThermodynamics.State> supplierSeeds(PassiveNetwork graph,Runnable checkpoint) {
+        int nodes=graph.reservoirs().size(),count=model.hydrocarbon.componentCount()+1;
+        var states=new ArrayList<FluidThermodynamics.State>(nodes);
+        for(var node:graph.reservoirs())states.add(node.junction()?node.state():null);
+        double[][] amounts=new double[nodes][count];double[] mass=new double[nodes],heat=new double[nodes],tLow=new double[nodes],tHigh=new double[nodes],pressureSum=new double[nodes];
+        boolean[] seeded=new boolean[nodes],drawn=new boolean[nodes];double[] weight=new double[nodes];
+        for(int e=0;e<graph.pipes().size();e++) {
+            if(!(graph.pipes().get(e).control() instanceof FlowControl.Mover))continue;
+            var walk=InletPhase.walk(graph,e);
+            if(walk.via()<0||graph.reservoirs().get(walk.node()).junction())continue;
+            boolean supplies=true;
+            for(int k=0;k<walk.links().length&&supplies;k++){var link=graph.pipes().get(walk.links()[k]);supplies=boundaryAllowed(graph,link,link.first()==walk.donors()[k]?1:-1);}
+            var supplier=graph.reservoirs().get(walk.node());var last=graph.pipes().get(walk.via());
+            var seed=supplies?endStream(supplier.state(),last.portAt(walk.node())):null;
+            if(seed==null)continue;
+            double q=supplyFlow(graph,last,walk.node());if(!(q>0))q=1;
+            for(int k=-1;k<walk.links().length-1;k++) {
+                int j=k<0?graph.pipes().get(e).first():walk.donors()[k];
+                if(seeded[j])continue;
+                states.set(j,seed);seeded[j]=drawn[j]=true;weight[j]=q;
+            }
+        }
+        for(boolean driven:new boolean[]{true,false}) {
+            Arrays.fill(mass,0);Arrays.fill(heat,0);Arrays.fill(pressureSum,0);Arrays.fill(tLow,Double.POSITIVE_INFINITY);Arrays.fill(tHigh,Double.NEGATIVE_INFINITY);
+            for(var row:amounts)Arrays.fill(row,0);
+            for(var pipe:graph.pipes())for(int end=0;end<2;end++) {
+                int supplier=end==0?pipe.first():pipe.second(),junction=end==0?pipe.second():pipe.first();
+                var s=graph.reservoirs().get(supplier);
+                // A supplier whose end is dry (one holding no fluid, dryEnd) sends nothing: both flows below are zero.
+                if(!graph.reservoirs().get(junction).junction()||seeded[junction]||s.junction())continue;
+                double q=driven?supplyFlow(graph,pipe,supplier):boundaryAllowed(graph,pipe,end==0?1:-1)?1:0;
+                if(!(q>0))continue;
+                var port=pipe.portAt(supplier);double[] n=endMoles(s.state(),port);double m=endMass(s.state(),port);
+                for(int c=0;c<count;c++)amounts[junction][c]+=q*n[c]/m;
+                heat[junction]+=q*endSpecificEnthalpy(s.state(),port);pressureSum[junction]+=q*endPressure(s,port,s.state());
+                mass[junction]+=q;tLow[junction]=Math.min(tLow[junction],s.state().temperature());tHigh[junction]=Math.max(tHigh[junction],s.state().temperature());
+            }
+            // Flashed at the flow-weighted pressure of what reaches it (a liquid CO2 let-down's junction stands above the triple
+            // point, not at the ambient); the balance then solves the pressure and restates the mixture there.
+            for(int j=0;j<nodes;j++)if(mass[j]>0&&seedAt(states,j,amounts[j],mass[j],heat[j],tLow[j],tHigh[j],pressureSum[j]/mass[j],checkpoint)){seeded[j]=true;weight[j]=mass[j];}
+            // The sweep: hop by hop from the junctions seeded so far; a vessel that holds no fluid passes it through.
+            for(boolean grew=true;grew;) {
+                grew=false;var next=new boolean[nodes];
+                Arrays.fill(mass,0);Arrays.fill(heat,0);Arrays.fill(pressureSum,0);Arrays.fill(tLow,Double.POSITIVE_INFINITY);Arrays.fill(tHigh,Double.NEGATIVE_INFINITY);
+                for(var row:amounts)Arrays.fill(row,0);
+                for(int j=0;j<nodes;j++) {
+                    if(!graph.reservoirs().get(j).junction()||seeded[j])continue;
+                    for(int k:sweepNeighbours(graph,j)) {
+                        if(!seeded[k])continue;var s=states.get(k);double w=weight[k];
+                        double[] n=PhaseLayout.totalAmounts(s);for(int c=0;c<count;c++)amounts[j][c]+=w*n[c]/s.mass();
+                        heat[j]+=w*(s.enthalpy()/s.mass());pressureSum[j]+=w*s.pressure();mass[j]+=w;
+                        tLow[j]=Math.min(tLow[j],s.temperature());tHigh[j]=Math.max(tHigh[j],s.temperature());
+                    }
+                }
+                for(int j=0;j<nodes;j++)if(mass[j]>0&&seedAt(states,j,amounts[j],mass[j],heat[j],tLow[j],tHigh[j],pressureSum[j]/mass[j],checkpoint)){next[j]=grew=true;weight[j]=mass[j];}
+                for(int j=0;j<nodes;j++)seeded[j]|=next[j];
+            }
+        }
+        return states;
+    }
+    /** The junctions one hop from junction {@code j} for {@link #supplierSeeds}' sweep: joined to it by a connection, or
+     * through one or more vessels that hold no fluid ({@link #holdsNoFluid}: none of their own to send). */
+    private static List<Integer> sweepNeighbours(PassiveNetwork graph,int j) {
+        var found=new ArrayList<Integer>();var seen=new HashSet<Integer>();var open=new ArrayDeque<Integer>();open.add(j);seen.add(j);
+        while(!open.isEmpty()) {
+            int at=open.poll();
+            for(var pipe:graph.pipes()) {
+                int other=pipe.first()==at?pipe.second():pipe.second()==at?pipe.first():-1;
+                if(other<0||!seen.add(other))continue;
+                var node=graph.reservoirs().get(other);
+                if(node.junction())found.add(other);else if(holdsNoFluid(node))open.add(other);
+            }
+        }
+        Collections.sort(found);return found;
+    }
+    /** {@link #supplierSeeds}' flash of junction {@code j}'s mixture (amounts and enthalpy summed over {@code mass}) at
+     * {@code pressure}, per kilogram: the temperature at which the mixture has the mixed enthalpy, bisected within 20 K of
+     * its streams' temperatures inside the numerical box (no data range narrows the window, owner rule of 2026-10-16).
+     * False, the junction left as it was, where a flash is refused. */
+    private boolean seedAt(List<FluidThermodynamics.State> states,int j,double[] amounts,double mass,double heat,double tLow,double tHigh,double pressure,Runnable checkpoint) {
+        double[] y=new double[amounts.length];for(int c=0;c<y.length;c++)y[c]=amounts[c]/mass;
+        double lower=Math.max(tLow-20,NumericalBox.MINIMUM_TEMPERATURE),upper=Math.min(tHigh+20,NumericalBox.MAXIMUM_TEMPERATURE);
+        try {
+            for(int k=0;k<60&&upper-lower>1e-9;k++) {
+                double t=.5*(lower+upper);var point=model.flashTP(t,pressure,y.clone(),checkpoint);
+                if(point.enthalpy()/point.mass()<heat/mass)lower=t;else upper=t;
+            }
+            states.set(j,model.flashTP(.5*(lower+upper),pressure,y.clone(),checkpoint));
+        } catch(IllegalArgumentException refused){return false;} // a rejected state: the numerical box, a phase hold
+        return true;
+    }
+    /**
+     * The flow (kg/s, at least zero) supplier {@code supplier} sends into the junction at the other end of {@code pipe}
+     * before anything is solved, as {@link #initialMassFlow} reads a connection: a mover's suction flow out of its suction
+     * end; otherwise the supplier's end pressure over the ambient, less its own end's column up to the junction, through
+     * the connection's loss in its end stream, capped by the velocity limit. Zero where that direction is refused.
+     */
+    private double supplyFlow(PassiveNetwork graph,PassiveNetwork.Pipe pipe,int supplier) {
+        boolean first=pipe.first()==supplier;
+        if(!boundaryAllowed(graph,pipe,first?1:-1))return 0;
+        var s=graph.reservoirs().get(supplier);var port=pipe.portAt(supplier);
+        if(pipe.control() instanceof FlowControl.Mover pump)
+            return first?Math.min(suctionMassFlow(pump.targetVolumeFlow(),s.state(),port),massFlowLimit(pipe,s.state(),port)):0;
+        double rho=endDensity(s.state(),port),mu=endViscosity(s.state(),port);
+        double drive=endPressure(s,port,s.state())-PhaseLayout.AMBIENT_PRESSURE
+                -columnDensity(s.state(),port,pipe.volume())*GRAVITY*(graph.reservoirs().get(first?pipe.second():pipe.first()).elevation()-s.elevation());
+        if(!(drive>0))return 0;
+        double lo=0,hi=1;while(pipe.pressureDrop(hi,rho,mu)<drive&&hi<1e6)hi*=2;
+        for(int j=0;j<50;j++){double mid=(lo+hi)/2;if(pipe.pressureDrop(mid,rho,mu)>drive)hi=mid;else lo=mid;}
+        return saturated((lo+hi)/2,massFlowLimit(pipe,s.state(),port));
+    }
     /** The mint ({@link PassiveNetwork#mintJunctions}): every junction's state from the balance on the island's own states
-     * under the start modes, null for every other node; a junction nothing reaches keeps the state it was built with. */
+     * under the start modes, its round 0 the supplier composition ({@link #supplierSeeds}); null for every other node; a
+     * junction nothing reaches keeps the state it was built with. */
     List<FluidThermodynamics.State> balanceStarts(PassiveNetwork graph) {
+        // Round 0 from what reaches each junction ({@link #supplierSeeds}); the balance solves the pressures from there.
+        var seeds=supplierSeeds(graph,()->{});var seeded=new ArrayList<PassiveNetwork.Reservoir>(graph.reservoirs().size());
+        for(int i=0;i<graph.reservoirs().size();i++){var node=graph.reservoirs().get(i);seeded.add(node.junction()&&seeds.get(i)!=null&&seeds.get(i)!=node.state()?new PassiveNetwork.Reservoir(node.id(),node.elevation(),seeds.get(i),node.kind(),node.inventory()):node);}
+        graph=new PassiveNetwork(seeded,graph.pipes(),graph.scheduledTransfers());
         suctionFloors=suctionFloors(graph,graph.reservoirs().stream().map(PassiveNetwork.Reservoir::state).toList());
         var modes=initialModes(graph);boolean[] closed=new boolean[graph.pipes().size()];
         for(int i=0;i<closed.length;i++)if(graph.pipes().get(i).blockedDirections()==3){closed[i]=true;if(!(graph.pipes().get(i).control() instanceof FlowControl.Passive))modes.set(i,FlowControl.Mode.CLOSED);}
