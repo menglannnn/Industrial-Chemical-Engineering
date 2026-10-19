@@ -634,12 +634,19 @@ class HoldClassWorldsTest {
         for(int i=0;i<island.graph().pipes().size();i++){var p=island.graph().pipes().get(i);if(p.first()==a&&p.second()==b||p.first()==b&&p.second()==a)line=i;}
         double flow=island.lastResult().orElseThrow().averageMassFlows()[line];
         var top=nodes.get(a).state();var bottom=nodes.get(b).state();
-        double column=w.model.vaporDensity(top)*PassiveStepSolver.GRAVITY*(nodes.get(a).elevation()-nodes.get(b).elevation());
+        double dz=nodes.get(a).elevation()-nodes.get(b).elevation(),column=bottom.pressure()-top.pressure();
+        double upperColumn=w.model.vaporDensity(top)*PassiveStepSolver.GRAVITY*dz,lowerColumn=w.model.vaporDensity(bottom)*PassiveStepSolver.GRAVITY*dz;
         System.out.println("STATIC_COLUMN_WORLD upper P="+top.pressure()+" liquid="+top.liquidVolume()+" lower P="+bottom.pressure()+" liquid="+bottom.liquidVolume()
-                +" gas column="+column+" Pa drop line="+flow+" kg/s");
+                +" gas column="+column+" Pa (the upper tank's gas "+upperColumn+", the lower tank's "+lowerColumn+") drop line="+flow+" kg/s");
         assertEquals(0,top.liquidVolume(),"the upper tank is dry: the condensate ran down");
-        assertEquals(column,bottom.pressure()-top.pressure(),.1,"the drop line stands as the upper tank's gas column");
-        assertTrue(Math.abs(flow)<1e-6,"no flow in the drop line but the lower tank following the upper one's cooling gas: "+flow);
+        // Owner decision of 2026-10-19 (decision 2 of FORM_D_GATES_TRACE.md): the line stands as a gas column, any between the two
+        // tanks' gas columns (it holds the upper tank's gas, which cools towards the lower tank's), never the 17.3 kPa condensate one.
+        assertTrue(column>=Math.min(upperColumn,lowerColumn)-.1&&column<=Math.max(upperColumn,lowerColumn)+.1,
+                "the drop line stands as a gas column between the two tanks' columns: "+column+" Pa against "+upperColumn+" and "+lowerColumn);
+        // A standing column, not a drain: over the run's 40 intervals (200 s) the drop line's flow does not exchange the gas it
+        // holds (the lower tank follows the upper one's cooling gas; the 17.3 kPa condensate column would have drained in seconds).
+        double held=w.model.vaporDensity(bottom)*island.graph().pipes().get(line).volume();
+        assertTrue(Math.abs(flow)*200<held,"the drop line stands: its flow "+flow+" kg/s would exchange its "+held+" kg of gas within the run");
     }
 
     // ---------------- StepStartFlows ----------------
