@@ -45,6 +45,14 @@ class MaterialFluidDataTest {
   first.addProperty("molarVolumeCubicMetres",first.get("molarVolumeCubicMetres").getAsDouble()*1.01);resources.put(path,data.toString());
   assertNotEquals(translated.fluidThermoFingerprint(ID),MaterialCatalog.parse(resources).fluidThermoFingerprint(ID));
  }
+ /** The network package's water model without its ice fails loading, with the water record's file and the field, so a
+  * /reload of such data is refused before publication instead of holding a running network at its model build. */
+ @Test void aNetworkWaterModelWithoutIceFailsLoadingWithItsFileAndField() {
+  var resources=new HashMap<>(MaterialCatalog.bundled().resources());String path="data/createcheme/materials/water/water.json";
+  var water=JsonParser.parseString(resources.get(path)).getAsJsonObject();assertNotNull(water.remove("ice"));resources.put(path,water.toString());
+  var failure=assertThrows(IllegalArgumentException.class,()->MaterialCatalog.parse(resources));
+  assertTrue(failure.getMessage().startsWith(path+": ice: required"),failure.getMessage());
+ }
  /** A solid record missing or mistyping a field fails loading with its file and that field (it was a NullPointerException). */
  @Test void aMalformedSolidRecordFailsWithItsResourceAndField() {
   String path="data/createcheme/materials/solids/demo_particle.json";

@@ -600,6 +600,14 @@ public final class MaterialCatalog {
             for(var phase:ViscosityCorrelation.Phase.values())if(result.viscosity(network.id(),"Nitrogen",phase).isEmpty())throw new IllegalArgumentException("package: nitrogen transport is required");
             if(result.fluidValidity(network.id()).isEmpty())throw new IllegalArgumentException("package: the network package needs a fluid_domain envelope");
         });
+        // The fluid network freezes free water below its melting line on every package (WP4), so the network package's
+        // water model needs its ice: refused here, with the water record's file and the field, so a /reload of such data is
+        // refused before publication (owner decision of 2026-10-19) rather than holding a running network at its model build.
+        if(!group(groups,"networks").isEmpty()) {
+            var network=result.requirePackage(result.presets().network().packageId());
+            if(network.water().ice()==null)throw new IllegalArgumentException(origins.get(group(groups,"water").get(result.waterModels.get(network.id())))
+                    +": ice: required, the fluid network's package "+network.id()+" freezes its free water as this record's ice");
+        }
         return result;
     }
 
