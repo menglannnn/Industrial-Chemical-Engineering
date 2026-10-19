@@ -2189,6 +2189,12 @@ public final class PassiveStepSolver {
             for(int e:nodeEdges[node]){if(e==except||closed[e])continue;var pipe=graph.pipes().get(e);double q=flow(e,endAt(e,0,p),endAt(e,1,p));net+=pipe.second()==node?q:-q;}
             return net;
         }
+        /** Whether no open connection of junction {@code node} carries anything at {@code p}: each is refused the way its drive
+         * points, or has none (a sealed fitting, whose balance holds at its own pressure). */
+        private boolean sealed(int node,double[] p) {
+            for(int e:nodeEdges[node]){if(closed[e])continue;if(flow(e,endAt(e,0,p),endAt(e,1,p))!=0)return false;}
+            return true;
+        }
         private double scale(int node,double pressure){return unknown[node]>=0&&gas[node]?pressure/reference[node]:1;}
         /** The connection's flow at end pressures {@code pa}, {@code pb} (positive first to second): its law in the donor's
          * column and stream, saturated at the donor's cap, nothing in a refused direction; a mover's prescribed flow, or its
@@ -2246,10 +2252,17 @@ public final class PassiveStepSolver {
             double merit=0;for(double r:residual)merit+=r*r;
             return .5*merit;
         }
+        /**
+         * One Gauss-Seidel sweep: each junction is bisected on the sign of its net inflow inside the hull, except a sealed one
+         * ({@link #sealed}), which keeps its pressure (t56's trace of cold seed 743): a junction between closed lines and a
+         * one-way supply it stands above has no inflow at any pressure above that supply's, and the bisection put it on the
+         * edge of that flat range, a liquid-full fitting at 4.96 MPa seeded as vapour at the supply's 485 kPa, where no step
+         * converged. A sealed fitting holds its fluid and its pressure.
+         */
         void sweep(double[] p) {
             int[][] nodeEdges=incidence(graph);
             for(int node=0;node<nodes;node++) {
-                if(unknown[node]<0)continue;
+                if(unknown[node]<0||sealed(node,p))continue;
                 double lo=low,hi=high;
                 for(int k=0;k<30&&hi-lo>1e-9*high;k++) {
                     double mid=.5*(lo+hi),net=0;p[node]=mid;

@@ -946,6 +946,37 @@ class HoldClassWorldsTest {
     }
 
     /**
+     * t56's trace of cold seed 743 (batch 2026-10-20-crystal-junction-holds, HOLDS_PLAN.md section 2): the balance moves
+     * only a junction it has not balanced. Seed 743 pair-minimized to 14 blocks: a 1 m3 tank of two-phase LNG (4.96 MPa,
+     * 200.7 K, 37 kg of CO2 crystal) pressurised by a CO2 generator, over junction 0, which joins it (50 mm), a 10 mm vent
+     * to air and an LNG supply line (120 K, 485 kPa). Each interval the reopened tank line and vent plug again within
+     * milliseconds, and the interval's last segment starts with junction 0 sealed: liquid-full at 4.96 MPa between two
+     * plugs and a supply it stands above, with no inflow at any pressure above 485 kPa. At 11358 the balance fell back to its
+     * Gauss-Seidel sweep for the CO2 make-up line's junctions, and the sweep's bisection put junction 0 on the edge of its
+     * flat range, at the supply's 485 kPa as vapour; no step converged from there (E5). A balanced junction now keeps its
+     * pressure, and the island keeps up.
+     */
+    @Test void aSealedJunctionTheBalanceHasBalancedKeepsItsPressure() {
+        cold(w->{
+            var passive=new FlowControl.Passive();var nitrogen=pilot(298.15,101325,1,0,0,0,0);
+            w.runTo(739);w.place(-3,0,0,Kind.PIPE,NORTH,passive,null,.05);
+            w.runTo(784);w.place(-4,0,0,Kind.PIPE,NORTH,passive,null,.05);
+            w.runTo(839);w.place(-2,0,0,Kind.RESERVOIR,NORTH,passive,nitrogen,.01);
+            w.runTo(840);w.place(-4,0,-3,Kind.VOID,NORTH,passive,nitrogen,.01);
+            w.runTo(894);w.place(-5,0,0,Kind.GENERATOR,NORTH,passive,pilot(119.80548180791456,485157.7267545908,0.0016846589022311764,0.8840774652856096,0.0764619183986177,0.03777595741354157,0),.05);
+            w.runTo(1222);w.place(-4,0,-1,Kind.PIPE,NORTH,passive,null,.01);
+            w.runTo(1547);w.place(-2,0,2,Kind.GENERATOR,NORTH,passive,pilot(275.3598487506343,3771940.112658649,0.0787727097062485,0.3660299987338409,0,0.5551972915599106,0),.01);
+            w.runTo(1548);w.place(1,0,0,Kind.PIPE,NORTH,passive,null,.1);w.place(-1,0,0,Kind.PIPE,NORTH,passive,null,.01);
+            w.runTo(1767);w.place(-2,0,1,Kind.PIPE,NORTH,passive,null,.01);
+            w.runTo(2179);w.place(1,0,2,Kind.GENERATOR,NORTH,passive,pilot(291.39197998306963,4956691.435211645,0.24867900979351562,0.01755247919259541,0,0.733768511013889,0),.05);
+            w.runTo(2198);w.place(-4,0,-2,Kind.PIPE,NORTH,passive,null,.01);
+            w.runTo(2626);w.place(0,0,0,Kind.FILTER,WEST,passive,null,.1);
+            w.runTo(2631);w.place(1,0,1,Kind.PIPE,NORTH,passive,null,.05);
+            w.runTo(11358+10*100);w.assertKeptUp("a sealed junction the balance has balanced");
+        });
+    }
+
+    /**
      * Owner decision D61 of 2026-10-19 (batch 2026-10-20-crystal-junction-holds, amends D23 for junctions): a crystal above
      * its melting point melts on arrival in a junction. Cold seed 778 pair-minimized to 7 blocks: a 1 m3 tank liquid-full of
      * LNG at 165 K and 4.16 MPa holding 19 kg of CO2 crystal stands on a junction through which a CO2 header (312 K,
