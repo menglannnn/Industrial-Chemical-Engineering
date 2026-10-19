@@ -1,6 +1,7 @@
 package com.wormzjl.createcheme.runtime.fluid;
 
 import com.wormzjl.createcheme.science.column.v3.thermo.V3PengRobinsonThermo;
+import com.wormzjl.createcheme.science.fluid.diagnostics.SolverDiagnostics;
 import com.wormzjl.createcheme.science.fluid.network.FlowControl;
 import com.wormzjl.createcheme.science.fluid.network.PassiveNetwork;
 import com.wormzjl.createcheme.science.fluid.network.PassiveStepSolver;
@@ -871,5 +872,50 @@ class HoldClassWorldsTest {
         w.runTo(1696);w.place(0,-1,-2,Kind.GENERATOR,NORTH,passive,crude(310.37149417674493,331510.7850719945),.1);
         w.runTo(1700);w.place(0,-1,0,Kind.PIPE,NORTH,passive,null,.01);
         w.runTo(1700+40*100);w.assertKeptUp("a receiver landing on its bubble point");
+    }
+
+    /**
+     * Owner direction of 2026-10-19 on t48's trace (cold seed 850): a pipe at rest carries no solids, so it deposits
+     * nothing. A flow at or below the connection's resolution flow (owner decision D42, {@code NetworkReduction.resolutionFlow})
+     * is no flow for the solid transition test, and such a pipe keeps its open or closed state. Seed 850 pair-minimized to
+     * 20 blocks: a CO2-rich gas generator (65 mol % CO2, 270 K, 2.83 MPa) and two LNG generators (128 K at 0.83 MPa, 152 K at
+     * 2.06 MPa) share a 1 m3 tank. The gas sets 2.83 MPa, the tank fills with LNG at about 156 K and goes full, the LNG
+     * generators are pushed back and nothing flows; the CO2 that met the cold liquid froze, 2.9 kg in the tank. At 3652 a
+     * 400 kPa valve on a dead-end 10 mm line replaces the island with one of the same graph. The still 20 mm pipe from a
+     * junction to the tank then carried 1.3e-23 m/s, and its sign picked the donor: the tank, holding solids, read DEPOSITION
+     * against a 1.275 m/s suspension velocity. The intervals at 4279 and 5179 each took 40 solid-transport rejections, and at
+     * 9079 the line search stalled after 162 active-set passes (E5). The hold itself rests on the roundoff history (the
+     * placement fuzz holds this world, this transcription keeps up without the rule), so the gate reads the mechanism: from
+     * the valve to 9652 the world without the rule refuses 1146 solid transitions, with it none, and it keeps up at rest.
+     */
+    @Test void aStillPipeBesideATankHoldingCrystalsDepositsNothing() {
+        cold(w->{
+            var passive=new FlowControl.Passive();var nitrogen=pilot(298.15,101325,1,0,0,0,0);
+            w.runTo(121);w.place(3,0,2,Kind.PIPE,NORTH,passive,null,.01);w.place(4,-1,2,Kind.PIPE,NORTH,passive,null,.05);
+            w.runTo(203);w.place(3,-1,3,Kind.PIPE,NORTH,passive,null,.05);
+            w.runTo(597);w.place(-2,0,2,Kind.GENERATOR,NORTH,passive,pilot(128.4829346763447,827435.2919859318,0.008989418166292172,0.91427133230824,0.04173624669812814,0.03500300282733968,0),.1);
+            w.runTo(645);w.place(0,0,2,Kind.PIPE,NORTH,passive,null,.02);
+            w.runTo(704);w.place(0,0,0,Kind.RESERVOIR,WEST,passive,nitrogen,.05);
+            w.runTo(1259);w.place(0,0,1,Kind.PIPE,NORTH,passive,null,.02);
+            w.runTo(1293);w.place(3,-1,4,Kind.GENERATOR,NORTH,passive,pilot(152.0591282854399,2054830.4045629618,0.0017950219332677254,0.9159935083362025,0.06778793175434208,0.014423537976187718,0),.05);
+            w.runTo(1332);w.place(2,-1,2,Kind.PIPE,NORTH,passive,null,.05);
+            w.runTo(1354);w.place(0,-1,2,Kind.PIPE,NORTH,passive,null,.02);
+            w.runTo(1903);w.place(1,-1,2,Kind.PIPE,NORTH,passive,null,.05);
+            w.runTo(1949);w.place(5,-1,1,Kind.PIPE,NORTH,passive,null,.01);
+            w.runTo(2087);w.place(3,-1,2,Kind.PIPE,NORTH,passive,null,.05);
+            w.runTo(2449);w.place(0,-2,2,Kind.PUMP,DOWN,new FlowControl.Pump(.01,500000),null,.02);
+            w.runTo(2641);w.place(5,-1,0,Kind.GENERATOR,NORTH,passive,pilot(269.91164644552856,2832869.246130703,0.1315093967488998,0.2208042977245737,0,0.6476863055265265,0),.01);
+            w.runTo(2857);w.place(0,-1,0,Kind.PIPE,NORTH,passive,null,.02);
+            w.runTo(3251);w.place(-1,0,2,Kind.PIPE,NORTH,passive,null,.1);
+            w.runTo(3440);w.place(5,-1,2,Kind.PIPE,NORTH,passive,null,.05);
+            w.runTo(3489);w.place(4,0,2,Kind.PIPE,NORTH,passive,null,.02);
+            w.runTo(3652);w.place(3,0,3,Kind.VALVE,NORTH,new FlowControl.PressureValve(400000),null,.01);
+            // Past the hold at 9079 to 9179, counting the solid transitions refused at rest.
+            long transitions;SolverDiagnostics.reset();SolverDiagnostics.ENABLED=true;
+            try{w.runTo(3652+60*100);transitions=SolverDiagnostics.solidTransitionRejections.sum();}finally{SolverDiagnostics.ENABLED=false;}
+            System.out.println("STILL_PIPE_GATE seed=850 solidTransitionRejections="+transitions);
+            w.assertKeptUp("a still pipe beside a tank holding crystals");
+            assertEquals(0,transitions,"a network at rest refuses no solid transition on its still pipes");
+        });
     }
 }

@@ -195,7 +195,8 @@ public final class NetworkReduction {
     /**
      * The gauge's pressure resolution, Pa (owner decision D42: "Further precision is pointless"). A static drive at or
      * below it is no drive, and a flow at or below what it drives through a connection ({@link #resolutionFlow}) is no
-     * flow. It belongs to the rest test only: the solver keeps full precision, the flow law has no dead band, and no state
+     * flow. It belongs to the rest test and to the solid transition test, where a still pipe deposits nothing
+     * ({@code SolidEventIntegrator.failed}): the solver keeps full precision, the flow law has no dead band, and no state
      * is ever rounded.
      */
     public static final double REST_RESOLUTION=.1;

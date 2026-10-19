@@ -2,6 +2,7 @@ package com.wormzjl.createcheme.science.fluid.network;
 
 import com.wormzjl.createcheme.science.fluid.thermo.FluidThermodynamics;
 import com.wormzjl.createcheme.science.fluid.state.SolidInventory;
+import com.wormzjl.createcheme.science.fluid.transport.MixtureViscosity;
 import com.wormzjl.createcheme.science.fluid.transport.SolidMobility;
 import com.wormzjl.createcheme.science.fluid.solver.SparseNewton;
 import java.util.*;
@@ -61,7 +62,7 @@ final class SolidEventIntegrator {
         // viscosities, which every wet island pays whether or not it carries a particle, depend on
         // the donor alone. A node that is never a donor this pass is never prepared at all.
         var prepared=new SolidMobility.Donor[states.size()];
-        Map<Integer,SolidMobility.Check> limited=null;
+        Map<Integer,SolidMobility.Check> limited=null;MixtureViscosity.Workspace scratch=null;
         for(int i=0;i<flows.length;i++) {
             var pipe=graph.pipes().get(i);double flow=flows[i];int direction=flow>=0?1:2;
             if(pipe.filter()!=null&&atCapacity(pipe.filter())&&pipe.blockedDirections()!=BOTH_DIRECTIONS)return clogged(i,pipe.id());
@@ -81,14 +82,21 @@ final class SolidEventIntegrator {
             else if(phase==FluidThermodynamics.GAS){outlet=SolidMobility.Outlet.GAS;drawnMass=donor.mass();}
             else{outlet=phase==FluidThermodynamics.OIL?SolidMobility.Outlet.ORGANIC_LIQUID:SolidMobility.Outlet.WATER;drawnMass=model.phaseMass(donor,phase)/FluidThermodynamics.phaseSolidShare(donor,phase);}
             var check=SolidMobility.check(prepared[upstream],donor,pipe,flow,outlet,drawnMass);
-            if(check.allowed()&&reach!=null&&flow!=0&&overPopulated(graph,pipe,flow,reach)) {
+            boolean overPopulated=check.allowed()&&reach!=null&&overPopulated(graph,pipe,flow,reach);
+            if(check.allowed()&&!overPopulated)continue;
+            // A pipe at rest carries no solids, so it deposits, refuses and delivers nothing: a flow at or below the flow the
+            // gauge's resolution drives through it (owner decision D42) is no flow, whichever end its roundoff sign names the
+            // donor, and the pipe keeps its open or closed state (t48's trace of cold fuzz seed 850: 1.3e-23 m/s in a still
+            // pipe from a tank holding crystals read DEPOSITION, and its rejections stalled the island). Read only for a
+            // connection that would otherwise fail, so a flowing island never prepares its viscosities for it.
+            if(Math.abs(flow)<=NetworkReduction.resolutionFlow(graph,model,i,scratch==null?scratch=new MixtureViscosity.Workspace():scratch))continue;
+            if(overPopulated) {
                 check=new SolidMobility.Check(SolidMobility.Reason.POPULATION_LIMIT,check.velocity(),check.minimumVelocity());
                 // A node receiver can be fed by several connections at once, and every one of them
                 // is flagged although at most one of them has to stop; which one is decided over
                 // the whole set, once it is known. A filter's cake has the one donor that fills it.
                 if(pipe.filter()==null){(limited==null?limited=new LinkedHashMap<>():limited).put(i,check);continue;}
             }
-            if(check.allowed())continue;
             double candidate=closureRatio(check);
             if(candidate<ratio||candidate==ratio&&pipe.id()<identity){result=new Transition(i,pipe.id(),check,false);ratio=candidate;identity=pipe.id();}
         }
