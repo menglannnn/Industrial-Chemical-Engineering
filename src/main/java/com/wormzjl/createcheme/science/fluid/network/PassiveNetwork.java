@@ -46,9 +46,9 @@ public record PassiveNetwork(List<Reservoir> reservoirs,List<Pipe> pipes,List<Sc
     /**
      * The record a junction is built with from a property state: nothing yet. A junction's buffer, the state of its
      * relaxation row (owner decision D46: not inventory), is sized to its connections ({@link #sizeJunctionHoldups}),
-     * which its constructor does not know, so it is installed empty and sized on its state at each solved interval's
-     * start ({@link #sizeJunctions}), or at a solve's entry for a graph built directly. An empty junction record means
-     * exactly "not sized yet": a sized one always holds positive mass.
+     * which its constructor does not know, so it is minted empty and sized once its island's pipes are known: by
+     * {@code PhysicalRegistry} when the island is formed, and otherwise at the entry of every solve. An empty junction
+     * record means exactly "not sized yet": a sized one always holds positive mass.
      */
     static Inventory unsizedJunction(FluidThermodynamics.State state) {
         return new Inventory(state.volume(),new double[state.componentCount()],0,SolidInventory.EMPTY);
@@ -69,72 +69,42 @@ public record PassiveNetwork(List<Reservoir> reservoirs,List<Pipe> pipes,List<Sc
         return new Inventory(state.volume(),moles,holdup*state.enthalpy()/state.mass(),state.solids().empty()?SolidInventory.EMPTY:state.solids().scale(scale));
     }
     /**
-     * The buffer of a junction on its state and its connections, the one sizing rule (owner decision of 2026-10-19, t51):
-     * {@code m_J = PassiveStepSolver.HOLDUP_TAU * max over its connections of rho * minimumArea * velocityLimit}, the
-     * velocity cap's mass flow on the junction's state: a fitting of fixed volume (5 m of its widest pipe at the 100 m/s
-     * cap), so its mixing lag at full flow is tau whatever fills it. An unconnected junction is given 1 kg so its stock is
-     * positive. Every junction is sized on its current state at each solved interval's start ({@link #sizeJunctions},
-     * {@code PassiveIntervalSolver.solve}); a minted or carried junction is installed unsized and sized there, and a graph
-     * built directly is sized at a solve's entry ({@link #sizeJunctionHoldups}). Within an interval a buffer's mass stays
-     * exactly m_J (the mass pin of {@code ConservativeTransport.reconstruct}). Nothing is booked at a sizing (owner decision
-     * D46): the buffer is its relaxation row's state, and the ledger reports its change as its own term.
+     * Sizes every junction that is not sized yet ({@link #unsized}), once, from its seed state and its connections:
+     * {@code m_J = PassiveStepSolver.HOLDUP_TAU * max over its connections of rho_seed * minimumArea * velocityLimit(seed)},
+     * the velocity cap's mass flow on the junction's seed state; an unconnected junction is given 1 kg so its stock is
+     * positive. A junction is sized wherever it is given a state: when its island is minted ({@link #mintJunctions}), when a
+     * replacement of one structure carries it ({@link #withJunctionStates}), and at a solve's entry for a graph built
+     * directly. Between those its buffer's mass stays exactly m_J (the mass pin of {@code ConservativeTransport.reconstruct};
+     * a later density only changes the mixing lag), and nothing is booked at a sizing (owner decision D46). A graph with no
+     * unsized junction is returned unchanged.
      */
-    private static Inventory sized(PassiveNetwork graph,int node,FluidThermodynamics.State state,FluidThermodynamics model) {
-        double rho=state.mass()/state.volume(),velocity=model.velocityLimit(state),capacity=0;
-        for(var pipe:graph.pipes)if(pipe.first==node||pipe.second==node)capacity=Math.max(capacity,rho*pipe.minimumArea()*velocity);
-        double mass=PassiveStepSolver.HOLDUP_TAU*capacity;
-        return mintedJunction(state,mass>0?mass:1);
-    }
-    /** {@code graph} with every junction that is not sized yet ({@link #unsized}) sized on its state ({@link #sized}); a graph
-     * with none is returned unchanged. */
     public static PassiveNetwork sizeJunctionHoldups(PassiveNetwork graph,FluidThermodynamics model) {
-        return sizeJunctions(graph,model,true);
-    }
-    /**
-     * {@code graph} with every junction sized on its current state ({@link #sized}): a solved interval's start. The buffer
-     * follows what the junction holds: a 20 mm junction holds 1.56 kg of 994 kg/m3 water and 5 g of nitrogen at 330 kPa, so
-     * a buffer sized once on its first fluid gave the next one a mixing lag 300 times too long or too short (t48's trace of
-     * bundled fuzz seed 145: 0.011 kg sized on the minted nitrogen placeholder while 21.5 kg/s of water passed, a 0.5 ms
-     * lag where 0.44 s is the rule's, and the island held).
-     */
-    public static PassiveNetwork sizeJunctions(PassiveNetwork graph,FluidThermodynamics model) {
-        return sizeJunctions(graph,model,false);
-    }
-    private static PassiveNetwork sizeJunctions(PassiveNetwork graph,FluidThermodynamics model,boolean unsizedOnly) {
-        List<Reservoir> nodes=null;
-        for(int i=0;i<graph.reservoirs.size();i++) {
-            var node=graph.reservoirs.get(i);
-            if(!node.junction()||unsizedOnly&&!unsized(node))continue;
-            if(nodes==null)nodes=new ArrayList<>(graph.reservoirs);
-            nodes.set(i,new Reservoir(node.id(),node.elevation(),node.state(),node.kind(),sized(graph,i,node.state(),model)));
-        }
-        return nodes==null?graph:new PassiveNetwork(nodes,graph.pipes,graph.scheduledTransfers);
+        return sizeJunctionHoldups(graph,model,null);
     }
     /**
      * The junctions of an island formed from placed blocks, minted (owner decisions D54 and D55): a junction holds
-     * nothing a placement put there, so its state, the state of its relaxation row (D46), starts from a guess, which its
+     * nothing a placement put there, so its buffer, the state of its relaxation row (D46), starts from a guess, which its
      * 0.05 s relaxation washes out: the island's quasi-steady balance on its own states ({@link PassiveStepSolver#balanceStarts},
-     * owner decision of 2026-10-19), so on a fluid a source supplies. Its buffer is sized on that state at the island's
-     * first solve ({@link #sizeJunctions}). A graph built directly keeps the junction states it was given.
+     * owner decision of 2026-10-19), from which every junction is sized ({@link #sizeJunctionHoldups}), so on a fluid a source supplies. A graph built
+     * directly keeps the junction states it was given.
      */
     public static PassiveNetwork mintJunctions(PassiveNetwork graph,FluidThermodynamics model) {
-        for(var node:graph.reservoirs)if(unsized(node)) {
-            var starts=new PassiveStepSolver(model).balanceStarts(graph);var nodes=new ArrayList<>(graph.reservoirs);
-            for(int i=0;i<nodes.size();i++){var n=nodes.get(i);if(unsized(n))nodes.set(i,new Reservoir(n.id(),n.elevation(),starts.get(i),n.kind()));}
-            return new PassiveNetwork(nodes,graph.pipes,graph.scheduledTransfers);
-        }
+        for(var node:graph.reservoirs)if(unsized(node))
+            return sizeJunctionHoldups(graph,model,new PassiveStepSolver(model).balanceStarts(graph));
         return graph;
     }
     /** Whether {@code a} and {@code b} are one structure: the same pipe identities and node ids, in order. */
     public static boolean sameStructure(PassiveNetwork a,PassiveNetwork b){return PassiveStepSolver.sameStructure(a,b);}
     /**
-     * {@code graph} with every junction's state taken from the node of the same id in {@code from}, one structure with it:
-     * an island replaced by one of the same graph carries its junctions (owner decision of 2026-10-19, t46's trace of
-     * bundled fuzz seed 483, where a filter placed beyond a tank re-minted an unchanged header and the mint's balance
-     * re-mixed it as water), nothing balanced anew. Its buffer, installed unsized, is sized on that state at the next
-     * solved interval ({@link #sizeJunctions}), as every buffer is.
+     * {@code graph} with every junction's state taken from the node of the same id in {@code from}, one structure with it,
+     * and its buffer sized on that state ({@link #sizeJunctionHoldups}): an island replaced by one of the same graph carries
+     * its junctions (owner decision of 2026-10-19, t46's trace of bundled fuzz seed 483, where a filter placed beyond a tank
+     * re-minted an unchanged header and the mint's balance re-mixed it as water), nothing balanced anew. The buffer follows
+     * what the junction holds, by the mint's own rule: a junction is a fitting of fixed volume, whose mixing lag does not
+     * depend on what fills it (t48's trace of bundled fuzz seed 145: a buffer sized on the minted nitrogen placeholder,
+     * 0.011 kg, was carried while 21.5 kg/s of water passed, a 0.5 ms lag, and the island held).
      */
-    public static PassiveNetwork withJunctionStates(PassiveNetwork graph,PassiveNetwork from) {
+    public static PassiveNetwork withJunctionStates(PassiveNetwork graph,PassiveNetwork from,FluidThermodynamics model) {
         if(!sameStructure(graph,from))throw new IllegalArgumentException("Not one structure");
         List<Reservoir> nodes=null;
         for(int i=0;i<graph.reservoirs.size();i++) {
@@ -142,7 +112,22 @@ public record PassiveNetwork(List<Reservoir> reservoirs,List<Pipe> pipes,List<Sc
             if(nodes==null)nodes=new ArrayList<>(graph.reservoirs);
             nodes.set(i,new Reservoir(node.id(),node.elevation(),old.state(),node.kind()));
         }
-        return nodes==null?graph:new PassiveNetwork(nodes,graph.pipes,graph.scheduledTransfers);
+        return nodes==null?graph:sizeJunctionHoldups(new PassiveNetwork(nodes,graph.pipes,graph.scheduledTransfers),model);
+    }
+    private static PassiveNetwork sizeJunctionHoldups(PassiveNetwork graph,FluidThermodynamics model,List<FluidThermodynamics.State> starts) {
+        List<Reservoir> sized=null;
+        for(int i=0;i<graph.reservoirs.size();i++) {
+            var node=graph.reservoirs.get(i);
+            if(!unsized(node))continue;
+            var state=starts==null?node.state():starts.get(i);
+            double rho=state.mass()/state.volume(),velocity=model.velocityLimit(state),capacity=0;
+            for(var pipe:graph.pipes)if(pipe.first==i||pipe.second==i)capacity=Math.max(capacity,rho*pipe.minimumArea()*velocity);
+            double mass=PassiveStepSolver.HOLDUP_TAU*capacity;
+            if(!(mass>0))mass=1;
+            if(sized==null)sized=new ArrayList<>(graph.reservoirs);
+            sized.set(i,new Reservoir(node.id(),node.elevation(),state,node.kind(),mintedJunction(state,mass)));
+        }
+        return sized==null?graph:new PassiveNetwork(sized,graph.pipes,graph.scheduledTransfers);
     }
     /**
      * A vessel of {@code capacity} cubic metres that holds nothing (owner decision D54: every vessel is a bag with a stiff

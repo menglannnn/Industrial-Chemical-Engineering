@@ -87,9 +87,6 @@ public final class PassiveIntervalSolver {
         // rest test's refresh left the island when a stock converted, and on the island as it came otherwise.
         var monitored=conversions.converted()?conversions.graph():initial;
         var start=InventoryEquilibrium.completed(initial,conversions,model,checkpoint);
-        // Owner decision of 2026-10-19 (t51): every junction buffer is sized on its current state at a solved interval's start,
-        // the one sizing rule (PassiveNetwork.sizeJunctions); a rest interval changes nothing and keeps its buffers.
-        start=new InventoryEquilibrium.Refreshed(PassiveNetwork.sizeJunctions(start.graph(),model),start.boundaries(),start.converted());
         Result result;
         if(com.wormzjl.createcheme.science.fluid.transport.SolidMobility.monitored(monitored)||model.solidSettings.immobileViscosity()<.002&&monitored.reservoirs().stream().anyMatch(n->n.state().waterVolume()>0))result=new SolidEventIntegrator(model,this).solve(start,committed,duration,settings,checkpoint,startingStep);
         else result=integrate(start,duration,settings,checkpoint,StageGuard.NONE,startingStep);
