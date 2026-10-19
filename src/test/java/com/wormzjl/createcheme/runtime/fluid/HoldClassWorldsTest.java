@@ -946,6 +946,61 @@ class HoldClassWorldsTest {
     }
 
     /**
+     * Owner decision D62 of 2026-10-19 (batch 2026-10-20-crystal-junction-holds, D33 amended): a closure nothing moves
+     * carries across an interval start, because what closed it is still in it. Cold seed 183 pair-minimized to 10 blocks:
+     * an LNG generator (159 K, 4.07 MPa, 3.7 mol % CO2) fills a 1 atm tank through 10 to 50 mm lines; the tank drains to a
+     * void through a 10 mm and a 100 mm line, and the CO2 the boiling liquid leaves freezes in it. Its 10 mm lines close
+     * by DEPOSITION (the tank, holding crystals, is their donor, against 0.8 to 1.25 m/s suspension velocities) and end
+     * their interval with no flow. D33 reopened them at the next start, and the steps stalled at a residual of 74 at
+     * every step size (E5 at 2379). Now one carries where the interval-start rate solve leaves it roundoff-still, the
+     * other where no rate solve exists and no mover draws through it, and the island keeps up. With the rule off
+     * (rule-off-closure-carry.patch) it holds E5 at 2379.
+     */
+    @Test void aClosureNothingMovesCarriesAcrossTheIntervalStartInATankDrainingToAVoid() {
+        cold(w->{
+            var passive=new FlowControl.Passive();var nitrogen=pilot(298.15,101325,1,0,0,0,0);
+            w.runTo(285);w.place(0,0,-1,Kind.PIPE,NORTH,passive,null,.02);
+            w.runTo(349);w.place(0,0,-2,Kind.PIPE,NORTH,passive,null,.02);
+            w.runTo(682);w.place(0,0,-3,Kind.RESERVOIR,NORTH,passive,nitrogen,.02);
+            w.runTo(997);w.place(0,-1,-2,Kind.PIPE,NORTH,passive,null,.01);
+            w.runTo(1015);w.place(0,-2,-3,Kind.VOID,NORTH,passive,nitrogen,.1);
+            w.runTo(1440);w.place(0,-2,-2,Kind.PIPE,NORTH,passive,null,.01);
+            w.runTo(1809);w.place(0,-1,-3,Kind.PIPE,NORTH,passive,null,.1);
+            w.runTo(1816);w.place(0,0,0,Kind.PIPE,NORTH,passive,null,.05);
+            w.runTo(1852);w.place(0,0,2,Kind.GENERATOR,NORTH,passive,pilot(158.63533042151192,4070973.226775625,0.0026188357969988553,0.9141419986451405,0.0459783449996244,0.0372608205582363,0),.01);
+            w.runTo(2348);w.place(0,0,1,Kind.PIPE,NORTH,passive,null,.01);
+            w.runTo(2348+40*100);w.assertKeptUp("a closure nothing moves in a tank draining to a void");
+        });
+    }
+    /**
+     * D62, cold seed 15's world, pair-minimized to 11 blocks by t51: an LNG generator (153 K, 2.75 MPa, 4.4 mol % CO2) fills three 1 atm tanks through a filter, a 200 kPa valve
+     * and 10 to 20 mm lines to a void; the CO2 the cold liquid meets freezes in the tanks. Once they are full the lines
+     * nearly rest. At 10839 + 4.5 s a line out of a tank holding crystals carried 0.038 m/s against a 1.2 m/s suspension
+     * velocity: DEPOSITION closed it in its interval, and it ended with no flow. D33 reopened it at the next interval's
+     * start; the port graph had no rate solve with it open, so nothing was declared, and the steps, started with it open,
+     * stalled at 0.637 at every step size from 10939 (E5). The closure now carries while an end holds the crystals, and
+     * the island keeps up. Since 235d69bb (still is roundoff) this world keeps up without the rule as well (23 refused
+     * transitions either way): it stays as the regression of its old hold.
+     */
+    @Test void aClosureNothingMovesCarriesAcrossTheIntervalStart() {
+        cold(w->{
+            var passive=new FlowControl.Passive();var nitrogen=pilot(298.15,101325,1,0,0,0,0);
+            w.runTo(492);w.place(0,0,2,Kind.RESERVOIR,NORTH,passive,nitrogen,.02);
+            w.runTo(600);w.place(0,0,-2,Kind.VALVE,SOUTH,new FlowControl.PressureValve(200000),null,.01);
+            w.runTo(880);w.place(0,1,-1,Kind.PIPE,NORTH,passive,null,.01);w.place(0,-1,-1,Kind.RESERVOIR,NORTH,passive,nitrogen,.01);
+            w.runTo(1255);w.place(0,0,-3,Kind.PIPE,NORTH,passive,null,.01);w.place(0,0,0,Kind.FILTER,SOUTH,passive,null,.05);
+            w.runTo(1262);w.place(0,-1,1,Kind.GENERATOR,NORTH,passive,pilot(153.4298831199327,2750494.941230718,0.006201944038199153,0.8887994010659398,0.06057615677002076,0.04442249812584026,0),.05);
+            w.runTo(1338);w.place(0,2,-1,Kind.VOID,NORTH,passive,nitrogen,.01);
+            w.runTo(1355);w.place(0,0,-1,Kind.PIPE,NORTH,passive,null,.01);
+            w.runTo(1410);w.place(0,0,1,Kind.PIPE,NORTH,passive,null,.02);
+            w.runTo(1412);w.place(0,0,-4,Kind.RESERVOIR,NORTH,passive,nitrogen,.01);
+            // Past the hold from 10939 to 11539.
+            w.runTo(1412+110*100);
+            w.assertKeptUp("a closure nothing moves carries across the interval start");
+        });
+    }
+
+    /**
      * t56's trace of cold seed 743 (batch 2026-10-20-crystal-junction-holds, HOLDS_PLAN.md section 2): the balance moves
      * only a junction it has not balanced. Seed 743 pair-minimized to 14 blocks: a 1 m3 tank of two-phase LNG (4.96 MPa,
      * 200.7 K, 37 kg of CO2 crystal) pressurised by a CO2 generator, over junction 0, which joins it (50 mm), a 10 mm vent

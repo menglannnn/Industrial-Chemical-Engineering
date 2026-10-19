@@ -173,8 +173,10 @@ public final class NetworkReduction {
     }
     /** {@code graph} with every transport closure lifted ({@link PassiveNetwork.Pipe#blockedDirections} zero) except a
      * filter's stopped at its capacity ({@link InlineFilter#stoppedAtCapacity}), which stands until the cake is cleared:
-     * the closures as an interval start reads them (owner decision D33). {@link PassiveIntervalSolver#solve} starts every
-     * interval from it, so the rest test, the slice's inlet decision and both integrations read it; so do the device view
+     * the closures as an interval start reads them (owner decision D33); the solid events then decide them again on the
+     * committed ones, and a closure nothing moves keeps (D62, {@code SolidEventIntegrator.carried}).
+     * {@link PassiveIntervalSolver#solve} starts every interval from it, so the rest test, the slice's inlet decision and
+     * both integrations read it; so do the device view
      * of a mover's supply and {@link #atRest(PassiveNetwork, FluidThermodynamics)}. */
     public static PassiveNetwork reopened(PassiveNetwork graph) {
         if(graph.pipes().stream().allMatch(p->p.blockedDirections()==0||stopped(p)))return graph;
