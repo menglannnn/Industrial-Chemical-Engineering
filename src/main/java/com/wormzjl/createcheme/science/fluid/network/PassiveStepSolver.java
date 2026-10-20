@@ -1045,7 +1045,11 @@ public final class PassiveStepSolver {
      * donor end draws ({@link #endMoles}), at the seed's pressure and the enthalpy of stock and deliveries, split as the
      * junction's own split is (D26, {@link FluidThermodynamics#equilibriumPH}, from the mass-weighted temperature, fluid
      * only: a starting basis books no crystal, the seed keeps the junction's own solids; the TP flash there where the
-     * engine answers nothing, as for an empty bag) and folded as the pass folds a junction (D34, D41). With the crystals
+     * engine answers nothing, as for an empty bag) and folded as the pass folds a junction (D34, D41). The stock is what
+     * the junction's own rows mix (D46): its buffer's amounts and energy field, which is in enthalpy form, its solids'
+     * enthalpy left out. Its property state can be another mixture (the balance states a junction as what is delivered
+     * to it, {@code BalanceNet.seeded}), and that state's specific enthalpy over the buffer's amounts made a subcooled LNG buffer (134.35 K, 656 kPa, 27 kJ/kg apart) a
+     * two-phase mixture at 139.97 K, 45 % vapour by volume, and no step converged (cold fuzz seed 583, E5). With the crystals
      * competing, the cold quick check's seeds 77 and 151 held E5 and six more ran out of wall time. The enthalpy carries
      * the latent heat a temperature mix leaves out: liquid water at 326.648 K reaching a pump suction held at its vapour
      * pressure (14.63 kPa, its saturation at 326.606 K) is liquid beside 6.6e-6 of its mass as steam, where the TP flash
@@ -1097,7 +1101,10 @@ public final class PassiveStepSolver {
                     result.set(j,held.empty()?arrived:arrived.withSolids(held));changed=true;continue;
                 }
                 if(!arrives||!(heldMass>0))continue;
-                double scale=seed.mass()/mass,enthalpy=(heldMass*endSpecificEnthalpy(node.state(),PassiveNetwork.PhasePort.BULK)+heat)*scale;
+                // The stock as the junction's rows mix it (D46): the buffer's amounts and its energy field (enthalpy form), fluid only.
+                var buffer=node.inventory();var at=node.state();
+                double stock=buffer.internalEnergy()-buffer.solids().moments().enthalpy(at.temperature(),at.pressure());
+                double scale=seed.mass()/mass,enthalpy=(stock+heat)*scale;
                 for(int c=0;c<n.length;c++)n[c]*=scale;
                 FluidThermodynamics.State mixture;
                 try{var split=model.equilibriumPH(weighted/mass,seed.pressure(),enthalpy,n,false,checkpoint);mixture=model.folded(split!=null?split:model.flashTP(weighted/mass,seed.pressure(),n,checkpoint),true);}
