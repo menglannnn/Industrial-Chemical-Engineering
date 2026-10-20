@@ -611,6 +611,11 @@ class HoldClassWorldsTest {
      * vapour condenses in the upper tank, and the drop line holds its gas (2.29 kg/m3, 44.9 Pa over 2 m). Read from the
      * leading phase the line was the condensate's 17.3 kPa column, which milligrams could not fill: drawn alone at a
      * carried flow of about zero it had no root, and the island held at tick 1097 at every step size.
+     *
+     * <p>Owner decision of 2026-10-20, amending D38 C (OD4_HOLDS_REVIEW.md, round 3): a shrinking hydrocarbon liquid
+     * vanishes on its volume share alone. The upper tank sits at its dew point and condenses 0.077 mL a step: 1.5e-6 of
+     * its moles but 7.7e-8 of its volume. Under the mole test, the first step accepted with that film made every later
+     * pass lose its root above 3.7e-4 s, so the island held at tick 4497 on any 1e-12 change in the junction's seed.
      */
     @Test void aLiquidTraceAtATanksBottomPortLeavesItsDropLineAGasColumn() {
         var w=new EventPathWorld();var passive=new FlowControl.Passive();

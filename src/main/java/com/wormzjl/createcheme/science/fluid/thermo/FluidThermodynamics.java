@@ -711,7 +711,8 @@ public final class FluidThermodynamics {
      * dry ice stalled with its vapour at 1e-9 to 3e-9 of the moles and still falling, which the trace share alone keeps or
      * drops at rounding. 1e-6 of a junction's holdup is about a milligram of LNG. A phase that does not shrink keeps the
      * trace share ({@link #PHASE_TRACE_FRACTION}) alone; a proposal the next pass drives under this share is refused
-     * (owner decision D39 B).
+     * (owner decision D39 B). The share is taken by moles and by volume ({@link #belowShare}); owner decision 2026-10-20,
+     * amending D38 C: a shrinking hydrocarbon liquid vanishes on its volume share alone.
      */
     public static final double VANISHING_SHARE=1e-6;
     /**
@@ -916,9 +917,9 @@ public final class FluidThermodynamics {
                     var seed=folded(own==null?start:own.withSolidState(kept.solids(),kept.solidMoments()),junction);
                     // The D26 amendment, amended by the owner on 2026-10-19 (t40's trace of bundled seed 678): the own split's
                     // verdict on a proposed phase is where its closure took it, a vessel's closure or a junction's PH answer
-                    // (D38 C); a proposed phase the closure holds below VANISHING_SHARE of the node's fluid both by moles and
-                    // by volume is nothing, whatever its direction ({@link #nothing}: the amended fold's statement applied to
-                    // a phase arriving), so the two direction tests against the solve's start go. A receiver landing on its
+                    // (D38 C); a proposed phase the closure holds below the vanishing share of the node's fluid (belowShare) is
+                    // nothing, whatever its direction ({@link #nothing}: the amended fold's statement applied to a phase
+                    // arriving), so the two direction tests against the solve's start go. A receiver landing on its
                     // bubble point was proposed 5.8e-11 m3 of vapour (6.5e-7 of its volume) that its closure grew slightly,
                     // which no direction test refused, and the pass laid out with it had no root. A junction's TP-based
                     // fallback seed is no closure and refuses nothing.
@@ -960,26 +961,40 @@ public final class FluidThermodynamics {
      * iterate, where a proposed phase it names is refuted.
      */
     public static int vanishing(State start,State end) {
-        double[] s=phaseAmounts(start),e=phaseAmounts(end);double ts=sum(s),te=sum(e);int bits=0;
-        // Owner decision of 2026-10-18 on t40's trace (D38 C amended): a shrinking phase is nothing only below the share both
-        // by moles and by volume; the direction (shrinking) by moles. A gas holds about a hundred times its mole share in
-        // volume, so a mole test alone folded a 21 mL bubble of 2.6e-7 of a liquid-full tank's moles, which at the tank's
-        // compressibility moved its pressure by 16 %; the converged point's check proposed it back, and the interval's step
-        // halved on every jump down to 1e-15 s (bundled seeds 407 and 26). Below 1e-6 of the volume a fold moves a liquid
-        // node by 2 kPa at most, under the state cap.
-        double[] ev=phaseVolumes(end);double tv=sum(ev);
-        for(int k=0;k<4;k++)if(e[k]<VANISHING_SHARE*te&&ev[k]<VANISHING_SHARE*tv&&e[k]*ts<s[k]*te)bits|=1<<k;
+        double[] s=phaseAmounts(start),e=phaseAmounts(end),ev=phaseVolumes(end);double ts=sum(s),te=sum(e),tv=sum(ev);int bits=0;
+        // The direction (shrinking) is taken by moles; the share by belowShare.
+        for(int k=0;k<4;k++)if(belowShare(k,e,te,ev,tv)&&e[k]*ts<s[k]*te)bits|=1<<k;
         return bits;
     }
     /**
-     * The phases ({@link #phaseBits}) {@code state} holds below {@link #VANISHING_SHARE} of its fluid both by moles and by
-     * volume, whatever their direction: nothing at the node's resolution (owner decision of 2026-10-19 on t40's trace of
-     * bundled seed 678), the amended fold's statement ({@link #vanishing}) for a phase arriving as for one leaving.
+     * The phases ({@link #phaseBits}) {@code state} holds below the vanishing share of its fluid ({@link #belowShare}),
+     * whatever their direction: nothing at the node's resolution (owner decision of 2026-10-19 on t40's trace of bundled
+     * seed 678), the amended fold's statement ({@link #vanishing}) for a phase arriving as for one leaving.
      */
     static int nothing(State state) {
         double[] e=phaseAmounts(state),ev=phaseVolumes(state);double te=sum(e),tv=sum(ev);int bits=0;
-        for(int k=0;k<4;k++)if(e[k]>0&&e[k]<VANISHING_SHARE*te&&ev[k]<VANISHING_SHARE*tv)bits|=1<<k;
+        for(int k=0;k<4;k++)if(e[k]>0&&belowShare(k,e,te,ev,tv))bits|=1<<k;
         return bits;
+    }
+    /**
+     * Whether phase {@code k} ({@link #phaseBits} order) of a node with phase amounts {@code e} (total {@code te}) and
+     * phase volumes {@code ev} (total {@code tv}) is below {@link #VANISHING_SHARE}: the one share criterion of
+     * {@link #vanishing} and {@link #nothing}.
+     * <ul>
+     * <li>Every phase is below the share by volume. Owner decision of 2026-10-18 on t40's trace (D38 C amended): a gas
+     * holds about a hundred times its mole share in volume, so a mole test alone folded a 21 mL bubble of 2.6e-7 of a
+     * liquid-full tank's moles, which at the tank's compressibility moved its pressure by 16 %. The converged point's
+     * check proposed it back, and the interval's step halved on every jump down to 1e-15 s (bundled seeds 407 and 26).
+     * Below 1e-6 of the volume a fold moves a liquid node by 2 kPa at most, under the state cap.</li>
+     * <li>A water liquid and either gas must also be below the share by moles. A hydrocarbon liquid is judged on its
+     * volume share alone (owner decision 2026-10-20, amending D38 C). This is the mirror of the bubble: a liquid in a gas
+     * vessel holds about twenty times its volume share in moles. A methane tank at its dew point (the D34 gate,
+     * minimized bundled seed 322) condensed 0.077 mL a step, 1.5e-6 of its moles but 7.7e-8 of its volume. The mole
+     * test kept that film as a phase, and the pass laid out with it had no root at any step above 3.7e-4 s.</li>
+     * </ul>
+     */
+    private static boolean belowShare(int k,double[] e,double te,double[] ev,double tv) {
+        return ev[k]<VANISHING_SHARE*tv&&(k==0||e[k]<VANISHING_SHARE*te);
     }
     /** A state's fluid volume by phase, in {@link #phaseBits} order; a gas phase's volume shared between the hydrocarbon
      * vapour and the steam by moles. */
