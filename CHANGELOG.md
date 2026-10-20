@@ -15,6 +15,8 @@ All notable changes to CreateChemE are recorded in this file. The format follows
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-10-20
+
 ### Added
 
 - Custom equipment rendering, proof of concept (owner decisions D1–D5 2026-10-15, batch folder: `2026-10-15-custom-equipment-rendering`): parametric vertical vessels with 2:1 heads (D 0.5–10 m in 0.5 m steps, T/T 1–64 m) built from `equipment_shell` cells with a block entity and invisible `equipment_interior` cells; the shell is a per-cell procedural baked model (`createcheme:equipment_shell` geometry loader) in the chunk mesh, collision is the 1/8-block solid of each cell, and the selection outline is the vessel silhouette; breaking any cell removes the whole vessel; placed by `/createcheme equipment place` until the constructor exists. Shape core in `science/equipment` (`EquipmentShape`, `ShapeRasterizer`, `ShapeRasterizerTest`). Measured with 20 columns of 6 × 40 m: no FPS cost on the vanilla pipeline or Sodium, +0.06 ms per frame under Iris with a shader pack.
