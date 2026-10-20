@@ -946,6 +946,44 @@ class HoldClassWorldsTest {
     }
 
     /**
+     * t56b's trace of the whole cold seed 743 world (22 blocks; HOLDS_PLAN.md section 2, round 2): a junction the balance puts
+     * at a new pressure is stated as what its own row mixes there. In the interval from 13658 the carried plugs leave junction
+     * 0 (2.25 kg of LNG and CO2 at 4.96 MPa, 200.4 K) with only its 485 kPa LNG supply line, which it stands above; the
+     * balance's hull is that supply's pressure, so the junction is put there. Restated at its old temperature it was vapour at
+     * 200.4 K (0.34 m3), holding about 1 MJ more than its buffer, and no step converged (E5 at 13758). Let down at its own
+     * enthalpy it is a two-phase mixture at 165 K, as the real liquid flashes, and the island keeps up. With the rule off
+     * (rule-off-row-seed.patch) it holds E5 at 13758.
+     */
+    @Test void aJunctionPutAtANewPressureIsStatedAsWhatItsRowMixes() {
+        cold(w->{
+            var passive=new FlowControl.Passive();var nitrogen=pilot(298.15,101325,1,0,0,0,0);
+            w.runTo(470);w.place(1,-1,0,Kind.COMPRESSOR,DOWN,new FlowControl.Compressor(0.05,1.5),null,0.05);
+            w.runTo(739);w.place(-3,0,0,Kind.PIPE,NORTH,passive,null,0.05);
+            w.runTo(753);w.place(-7,0,-3,Kind.VOID,NORTH,passive,nitrogen,0.05);
+            w.runTo(784);w.place(-4,0,0,Kind.PIPE,NORTH,passive,null,0.05);
+            w.runTo(839);w.place(-2,0,0,Kind.RESERVOIR,NORTH,passive,nitrogen,0.01);
+            w.runTo(840);w.place(-4,0,-3,Kind.VOID,NORTH,passive,nitrogen,0.01);
+            w.runTo(894);w.place(-5,0,0,Kind.GENERATOR,NORTH,passive,pilot(119.80548180791456,485157.7267545908,0.0016846589022311764,0.8840774652856096,0.0764619183986177,0.03777595741354157,0.0),0.05);
+            w.runTo(1222);w.place(-4,0,-1,Kind.PIPE,NORTH,passive,null,0.01);
+            w.runTo(1247);w.place(2,0,0,Kind.VALVE,WEST,new FlowControl.PressureValve(200000.0),null,0.1);
+            w.runTo(1547);w.place(-2,0,2,Kind.GENERATOR,NORTH,passive,pilot(275.3598487506343,3771940.112658649,0.0787727097062485,0.3660299987338409,0.0,0.5551972915599106,0.0),0.01);
+            w.runTo(1548);w.place(1,0,0,Kind.PIPE,NORTH,passive,null,0.1);
+            w.runTo(1548);w.place(-1,0,0,Kind.PIPE,NORTH,passive,null,0.01);
+            w.runTo(1580);w.place(-6,0,-3,Kind.PIPE,NORTH,passive,null,0.05);
+            w.runTo(1738);w.place(-2,0,-3,Kind.PIPE,NORTH,passive,null,0.05);
+            w.runTo(1767);w.place(-2,0,1,Kind.PIPE,NORTH,passive,null,0.01);
+            w.runTo(1775);w.place(-5,0,-3,Kind.PIPE,NORTH,passive,null,0.05);
+            w.runTo(2161);w.place(-3,0,-3,Kind.PIPE,NORTH,passive,null,0.05);
+            w.runTo(2179);w.place(1,0,2,Kind.GENERATOR,NORTH,passive,pilot(291.39197998306963,4956691.435211645,0.24867900979351562,0.01755247919259541,0.0,0.733768511013889,0.0),0.05);
+            w.runTo(2198);w.place(-4,0,-2,Kind.PIPE,NORTH,passive,null,0.01);
+            w.runTo(2567);w.place(-1,0,-3,Kind.VOID,NORTH,passive,nitrogen,0.05);
+            w.runTo(2626);w.place(0,0,0,Kind.FILTER,WEST,passive,null,0.1);
+            w.runTo(2631);w.place(1,0,1,Kind.PIPE,NORTH,passive,null,0.05);
+            w.runTo(13758+10*100);w.assertKeptUp("a junction put at a new pressure, stated as what its row mixes");
+        });
+    }
+
+    /**
      * Owner decision D62 of 2026-10-19 (batch 2026-10-20-crystal-junction-holds, D33 amended): a closure nothing moves
      * carries across an interval start, because what closed it is still in it. Cold seed 183 pair-minimized to 10 blocks:
      * an LNG generator (159 K, 4.07 MPa, 3.7 mol % CO2) fills a 1 atm tank through 10 to 50 mm lines; the tank drains to a

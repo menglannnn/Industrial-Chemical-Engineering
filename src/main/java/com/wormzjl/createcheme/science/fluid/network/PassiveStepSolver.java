@@ -2036,7 +2036,7 @@ public final class PassiveStepSolver {
         for(int i=0;i<closed.length;i++)if(graph.pipes().get(i).blockedDirections()==3){closed[i]=true;if(!(graph.pipes().get(i).control() instanceof FlowControl.Passive))modes.set(i,FlowControl.Mode.CLOSED);}
         if(graph.pipes().stream().anyMatch(pipe->pipe.control() instanceof FlowControl.Mover)){boolean[] refused=InletPhase.decide(model,graph,null,0);for(int i=0;i<refused.length;i++)if(refused[i]){closed[i]=true;modes.set(i,FlowControl.Mode.INLET_WRONG_PHASE);}}
         closeDeadHeads(graph,closed,null);relieveSealedPockets(graph,modes,closed,new boolean[closed.length]);
-        var start=balanceStart(graph,modes,closed,null,()->{});
+        var start=balanceStart(graph,modes,closed,null,()->{},null);
         var states=new ArrayList<FluidThermodynamics.State>();
         for(int i=0;i<graph.reservoirs().size();i++)states.add(graph.reservoirs().get(i).junction()?start.graph().reservoirs().get(i).state():null);
         return states;
@@ -2049,11 +2049,13 @@ public final class PassiveStepSolver {
      * deliver, flashed at its balanced pressure (PH); then the law flow of every open connection at the balanced ends and
      * the passive connections the one-way law leaves nothing to carry. A starting point only: no inventory moves.
      */
-    private Start balanceStart(PassiveNetwork graph,List<FlowControl.Mode> modes,boolean[] boundaryClosed,boolean[] keep,Runnable checkpoint) {
+    private Start balanceStart(PassiveNetwork graph,List<FlowControl.Mode> modes,boolean[] boundaryClosed,boolean[] keep,Runnable checkpoint) {return balanceStart(graph,modes,boundaryClosed,keep,checkpoint,graph);}
+    /** {@link #balanceStart} with the junctions' buffers {@code buffers}: the solve's input graph; null for the mint, which has none yet. */
+    private Start balanceStart(PassiveNetwork graph,List<FlowControl.Mode> modes,boolean[] boundaryClosed,boolean[] keep,Runnable checkpoint,PassiveNetwork buffers) {
         int edges=graph.pipes().size();
         var current=graph;boolean converged=true;BalanceNet net=null;double[] p=null;
         for(int round=0;round<Math.max(1,BALANCE_ROUNDS);round++) {
-            net=new BalanceNet(current,modes,boundaryClosed,checkpoint);
+            net=new BalanceNet(current,buffers,modes,boundaryClosed,checkpoint);
             p=net.solve(checkpoint);converged=net.converged;
             if(net.count==0&&net.anchored==0)break;
             var next=net.seeded(p,checkpoint);
@@ -2084,6 +2086,8 @@ public final class PassiveStepSolver {
      * at which every junction's net inflow vanishes, and the junctions' upwind mixtures at those pressures. */
     final class BalanceNet {
         final PassiveNetwork graph;final List<FlowControl.Mode> modes;final boolean[] closed;final int edges,nodes;
+        /** The junctions' buffers, the solve's input graph ({@link #seeded}); null for the mint, which has none yet. */
+        final PassiveNetwork buffers;
         final int[] unknown;final double[] anchor;int count,anchored,iterations,sweeps;boolean converged;double finalResidual;
         final double[][] rho,mu,cap,column,endP,filterR;final boolean[][] allowed;final boolean[] gas,mover;final double[] reference,prescribed;
         /** Per unknown junction, its bulk density and density times velocity limit as a function of its own pressure: the
@@ -2099,7 +2103,8 @@ public final class PassiveStepSolver {
          * the device modes the balance may revise (a closed valve). */
         final boolean[] hardClosed;double rhoMax,rises,zLow=Double.POSITIVE_INFINITY,zHigh=Double.NEGATIVE_INFINITY;
         double low,high,scale;int band;
-        BalanceNet(PassiveNetwork graph,List<FlowControl.Mode> modes,boolean[] boundaryClosed,Runnable checkpoint) {
+        BalanceNet(PassiveNetwork graph,PassiveNetwork buffers,List<FlowControl.Mode> modes,boolean[] boundaryClosed,Runnable checkpoint) {
+            this.buffers=buffers;
             tableP=new double[graph.reservoirs().size()][];tableRho=new double[graph.reservoirs().size()][];tableRhoV=new double[graph.reservoirs().size()][];
             suctionLimited=new boolean[graph.pipes().size()];nodeEdges=incidence(graph);lastQ=new double[graph.pipes().size()][2];
             this.graph=graph;this.modes=modes;edges=graph.pipes().size();nodes=graph.reservoirs().size();
@@ -2360,8 +2365,15 @@ public final class PassiveStepSolver {
             finalResidual=maximum(residual);converged=finalResidual<=tolerance;
             return p;
         }
-        /** The graph with every balanced junction at its pressure and the upwind mixture of what the balanced flows deliver
-         * (PH at that pressure; the junction's own composition where nothing reaches it); null when nothing moved. */
+        /**
+         * The graph with every balanced junction at its pressure and the upwind mixture of what the balanced flows deliver (PH
+         * at that pressure); null when nothing moved. A junction nothing reaches mixes only its own buffer in its row, so it is
+         * stated as that buffer let down at its own enthalpy (PH; {@link #held}); at the mint, which has no buffer yet, at its
+         * temperature. t56b's trace of the whole cold seed 743 world: a sealed junction holding 2.25 kg of LNG and CO2 at
+         * 4.96 MPa and 200.4 K, put on its 485 kPa supply's pressure, was restated at its old temperature, as vapour holding
+         * about 1 MJ more than its buffer (0.34 m3), so its energy row had no root and every step stalled; at its own enthalpy
+         * it is a two-phase mixture at 165 K, as the real liquid flashes.
+         */
         PassiveNetwork seeded(double[] p,Runnable checkpoint) {
             double[] q=new double[edges];
             for(int e=0;e<edges;e++)q[e]=closed[e]?0:flow(e,endAt(e,0,p),endAt(e,1,p));
@@ -2393,7 +2405,10 @@ public final class PassiveStepSolver {
                             // populations against its state's volume, and the rate seed writes the state back into the step's graph.
                             if(next!=null){double oldFluid=old.mass()-old.solidMoments().mass(),newFluid=next.mass()-next.solidMoments().mass();if(oldFluid>0&&newFluid>0)next=scaled(next,oldFluid/newFluid);}
                         }
-                        else next=Math.abs(pressure-old.pressure())>1e-9*old.pressure()?model.flashTP(old.temperature(),pressure,PhaseLayout.totalAmounts(old),checkpoint):null;
+                        else if(!(Math.abs(pressure-old.pressure())>1e-9*old.pressure()))next=null;
+                        else if(buffers==null)next=model.flashTP(old.temperature(),pressure,PhaseLayout.totalAmounts(old),checkpoint);
+                        else{next=held(buffers.reservoirs().get(j).state(),pressure,checkpoint);
+                            if(next!=null){double oldFluid=old.mass()-old.solidMoments().mass(),newFluid=next.mass()-next.solidMoments().mass();if(oldFluid>0&&newFluid>0)next=scaled(next,oldFluid/newFluid);}}
                     } catch(IllegalArgumentException refused){next=null;}
                     if(next==null)continue;
                     // The junction's solids ride its fluid: the moments scale with the fluid mass the mixture is stated for.
@@ -2407,6 +2422,12 @@ public final class PassiveStepSolver {
             var reservoirs=new ArrayList<PassiveNetwork.Reservoir>(nodes);
             for(int i=0;i<nodes;i++){var node=graph.reservoirs().get(i);reservoirs.add(states.get(i)==node.state()?node:new PassiveNetwork.Reservoir(node.id(),node.elevation(),states.get(i),node.kind(),node.inventory()));}
             return new PassiveNetwork(reservoirs,graph.pipes(),graph.scheduledTransfers());
+        }
+        /** {@code buffer}'s fluid at {@code pressure} at its own enthalpy (PH), per kilogram; null where it holds no fluid. */
+        private FluidThermodynamics.State held(FluidThermodynamics.State buffer,double pressure,Runnable checkpoint) {
+            double mass=buffer.mass()-buffer.solidMoments().mass();if(!(mass>0))return null;
+            double heat=buffer.enthalpy()-buffer.solidMoments().enthalpy(buffer.temperature(),buffer.pressure());
+            return mixed(PhaseLayout.totalAmounts(buffer),mass,heat,buffer.temperature(),buffer.temperature(),buffer.temperature(),pressure,checkpoint);
         }
         /** Whether {@code old} already is the delivered mixture ({@code amounts} and {@code heat} over {@code mass}) at {@code pressure},
          * within 1e-6 of each per-kilogram amount, the specific enthalpy and the pressure: a start guess needs no closer a flash. */
