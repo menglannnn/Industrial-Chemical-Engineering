@@ -1053,7 +1053,10 @@ public final class PassiveStepSolver {
      * the junction's own rows mix (D46): its buffer's amounts and energy field, which is in enthalpy form, its solids'
      * enthalpy left out. Its property state can be another mixture (the balance states a junction as what is delivered
      * to it, {@code BalanceNet.seeded}), and that state's specific enthalpy over the buffer's amounts made a subcooled LNG buffer (134.35 K, 656 kPa, 27 kJ/kg apart) a
-     * two-phase mixture at 139.97 K, 45 % vapour by volume, and no step converged (cold fuzz seed 583, E5). With the crystals
+     * two-phase mixture at 139.97 K, 45 % vapour by volume, and no step converged (cold fuzz seed 583, E5). A junction
+     * nothing reaches at the start flows is its stock alone: an island come to rest at its gas source's pressure had its
+     * junctions stated as the 257 K CO2-rich gas the balance delivers to them, while each held 1.1 to 3.5 kg of the cold
+     * two-phase mixture it had, and the pass laid out as a gas stalled on their enthalpy rows (cold fuzz seed 729). With the crystals
      * competing, the cold quick check's seeds 77 and 151 held E5 and six more ran out of wall time. The enthalpy carries
      * the latent heat a temperature mix leaves out: liquid water at 326.648 K reaching a pump suction held at its vapour
      * pressure (14.63 kPa, its saturation at 326.606 K) is liquid beside 6.6e-6 of its mass as steam, where the TP flash
@@ -1104,7 +1107,8 @@ public final class PassiveStepSolver {
                     var arrived=own==null?delivered:own;var held=node.inventory().solids();
                     result.set(j,held.empty()?arrived:arrived.withSolids(held));changed=true;continue;
                 }
-                if(!arrives||!(heldMass>0))continue;
+                // Where nothing arrives the mixture is the stock alone, which the seed must hold as well.
+                if(!(heldMass>0))continue;
                 // The stock as the junction's rows mix it (D46): the buffer's amounts and its energy field (enthalpy form), fluid only.
                 var buffer=node.inventory();var at=node.state();
                 double stock=buffer.internalEnergy()-buffer.solids().moments().enthalpy(at.temperature(),at.pressure());
