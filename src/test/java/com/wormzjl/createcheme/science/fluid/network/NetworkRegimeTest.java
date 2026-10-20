@@ -77,12 +77,12 @@ class NetworkRegimeTest {
         // Nitrogen is moved by a compressor (decision D2; a liquid-only pump refuses gas, decision D1). Its limit is a
         // pressure ratio (decision D7): r_max = 1.5 on the 1 MPa generator adds 500 kPa, the bracket this test always had.
         for(double p:new double[]{1.49e6,1.51e6}) {
-            var graph=new PassiveNetwork(List.of(source,gas(2,350,p,com.wormzjl.createcheme.science.material.MaterialTestBasis.NITROGEN,PassiveNetwork.NodeKind.VOID)),List.of(new PassiveNetwork.Pipe(1,0,1,geometry,new FlowControl.Compressor(.001,1.5,1))));
+            var graph=new PassiveNetwork(List.of(source,gas(2,350,p,com.wormzjl.createcheme.science.material.MaterialTestBasis.NITROGEN,PassiveNetwork.NodeKind.VOID)),List.of(new PassiveNetwork.Pipe(1,0,1,geometry,new FlowControl.Compressor(.001,1.5))));
             var result=new PassiveStepSolver(model).solve(graph,1,()->{});
             if(p<1.5e6)assertTrue(result.massFlows()[0]>0);else assertEquals(0,result.massFlows()[0],1e-9);
         }
         var recycle=new PassiveNetwork(List.of(gas(1,350,150000,com.wormzjl.createcheme.science.material.MaterialTestBasis.NITROGEN,PassiveNetwork.NodeKind.RESERVOIR),gas(2,350,150000,com.wormzjl.createcheme.science.material.MaterialTestBasis.NITROGEN,PassiveNetwork.NodeKind.RESERVOIR)),List.of(
-                new PassiveNetwork.Pipe(1,0,1,geometry,new FlowControl.Compressor(.001,1.5,1)),new PassiveNetwork.Pipe(2,1,0,geometry)));
+                new PassiveNetwork.Pipe(1,0,1,geometry,new FlowControl.Compressor(.001,1.5)),new PassiveNetwork.Pipe(2,1,0,geometry)));
         var result=new PassiveIntervalSolver(model).solve(recycle,1,PassiveIntervalSolver.Settings.defaults(),()->{});
         assertTrue(result.averageMassFlows()[0]>0&&result.averageMassFlows()[1]>0);assertTrue(result.pumpWorkJoule()>0);
     }
@@ -119,9 +119,9 @@ class NetworkRegimeTest {
         assertArrayEquals(fresh.averageMassFlows(),retry.averageMassFlows(),1e-8);
         var sonic=new PassiveNetwork(List.of(gas(1,350,101325,com.wormzjl.createcheme.science.material.MaterialTestBasis.NITROGEN,PassiveNetwork.NodeKind.GENERATOR),gas(2,350,101325,com.wormzjl.createcheme.science.material.MaterialTestBasis.NITROGEN,PassiveNetwork.NodeKind.VOID)),List.of(
                 // A compressor (decision D2) whose ratio adds about 500 kPa on the 1 atm generator, the rise the pump had.
-                new PassiveNetwork.Pipe(1,0,1,new PipeResistance.Geometry(.1,.01,0,0),new FlowControl.Compressor(1,6,1))));
+                new PassiveNetwork.Pipe(1,0,1,new PipeResistance.Geometry(.1,.01,0,0),new FlowControl.Compressor(1,6))));
         var capped=new PassiveStepSolver(model).solve(sonic,1,()->{});var upstream=sonic.reservoirs().getFirst().state();
         double expected=upstream.mass()/upstream.volume()*sonic.pipes().getFirst().minimumArea()*model.velocityLimit(upstream);
-        assertEquals(expected,capped.massFlows()[0],1e-10+expected*1e-8);assertEquals(FlowControl.Mode.PUMP_VELOCITY_LIMIT,capped.modes().getFirst());
+        assertEquals(expected,capped.massFlows()[0],1e-10+expected*1e-8);assertEquals(FlowControl.Mode.PUMP_HEAD_LIMIT,capped.modes().getFirst());assertTrue(Math.abs(capped.massFlows()[0])<expected,"the saturated law stays under the cap");
     }
 }

@@ -37,13 +37,13 @@ class IslandCoordinatorTest {
         private IslandCoordinator.Attempt finish(long request) {
             var attempt=attempts.remove(request);var command=commands.remove(request);
             var result=new PassiveIntervalSolver(model).solve(command.snapshot(),command.durationSeconds(),command.settings(),()->{});
-            coordinator.completed(attempt,Optional.of(new ProcessSolveServices.FluidIslandSolveResult(Optional.of(result),"FULL",10,FallbackAllowance.NONE,Optional.of(ApproximationAnchor.fromFull(model,result)))));
+            coordinator.completed(attempt,Optional.of(new ProcessSolveServices.FluidIslandSolveResult(Optional.of(result),"FULL",10)));
             return attempt;
         }
     }
     private void register(long id,long online,long committed) {
         var graph=new PassiveNetwork(List.of(new PassiveNetwork.Reservoir(id,0,model.initialNitrogenCharge(1,298.15,101325,()->{}))),List.of());
-        coordinator.register(new IslandCoordinator.Snapshot(id,0,graph,new IslandClock.Snapshot(online,committed,0,100),FallbackAllowance.NONE,Optional.empty(),Optional.empty(),"READY"),model);
+        coordinator.register(new IslandCoordinator.Snapshot(id,0,graph,new IslandClock.Snapshot(online,committed,0,100),Optional.empty(),"READY"),model);
     }
     @Test void nonblockingBarrierCommitsACompleteRoundAndThenCatchesUpFairly() {
         register(1,900,0);register(2,900,0);coordinator.pump();
@@ -94,7 +94,7 @@ class IslandCoordinatorTest {
         var retry=dispatch.attempts.get(2L);assertEquals(0,retry.slice().startTick());assertEquals(50,retry.slice().endTick());
         dispatch.finish(2);coordinator.pump();assertEquals(50,coordinator.snapshot(1).clock().committedTick());
         var grown=dispatch.attempts.get(3L);assertEquals(50,grown.slice().startTick());assertEquals(150,grown.slice().endTick());
-        assertEquals(100,coordinator.snapshot(1).clock().cadenceTicks());assertEquals(FallbackAllowance.NONE,coordinator.snapshot(1).allowance());
+        assertEquals(100,coordinator.snapshot(1).clock().cadenceTicks());
     }
     @Test void fencesAlignUnequalClocksWithoutApplyingAnEventRetroactively() {
         register(1,200,100);register(2,200,0);var event=UUID.randomUUID();coordinator.fence(event,150,List.of(1L,2L));
@@ -110,7 +110,7 @@ class IslandCoordinatorTest {
         register(1,200,0);coordinator.pump();
         var attempt=dispatch.attempts.values().stream().filter(a->a.islandId()==1).findFirst().orElseThrow();
         dispatch.attempts.remove(attempt.slice().requestId());dispatch.commands.remove(attempt.slice().requestId());
-        coordinator.completed(attempt,Optional.of(new ProcessSolveServices.FluidIslandSolveResult(Optional.empty(),"HELD: test refusal",10,FallbackAllowance.NONE,Optional.empty())));
+        coordinator.completed(attempt,Optional.of(new ProcessSolveServices.FluidIslandSolveResult(Optional.empty(),"HELD: test refusal",10)));
         coordinator.pump();assertTrue(dispatch.attempts.isEmpty());
         assertTrue(coordinator.snapshot(1).status().startsWith("HELD"),coordinator.snapshot(1).status());assertEquals(0,coordinator.snapshot(1).clock().committedTick());
         var before=coordinator.snapshot(1).graph();
@@ -170,7 +170,7 @@ class IslandCoordinatorTest {
         };
         var lagging=new IslandCoordinator(slow,changed->{},time::get,new IslandCoordinator.Settings(2_000_000_000L,1_500_000_000L,64,false));
         for(long id=1;id<=2;id++){var graph=new PassiveNetwork(List.of(new PassiveNetwork.Reservoir(id,0,model.initialNitrogenCharge(1,298.15,101325,()->{}))),List.of());
-            lagging.register(new IslandCoordinator.Snapshot(id,0,graph,new IslandClock.Snapshot(100,0,0,100),FallbackAllowance.NONE,Optional.empty(),Optional.empty(),"READY"),model);}
+            lagging.register(new IslandCoordinator.Snapshot(id,0,graph,new IslandClock.Snapshot(100,0,0,100),Optional.empty(),"READY"),model);}
         lagging.pump();assertEquals(2,attempts.size());
         int closedAt=-1;
         for(int tick=1;tick<=40&&closedAt<0;tick++) {
@@ -183,7 +183,7 @@ class IslandCoordinatorTest {
     }
     @Test void aHeldOwnerRetriesExactlyAtItsRetryDeadlineAndIsNotVisitedBefore() {
         register(1,100,0);coordinator.pump();var first=dispatch.attempts.remove(1L);dispatch.commands.remove(1L);
-        coordinator.completed(first,Optional.of(new ProcessSolveServices.FluidIslandSolveResult(Optional.empty(),"HELD: test refusal",10,FallbackAllowance.NONE,Optional.empty())));
+        coordinator.completed(first,Optional.of(new ProcessSolveServices.FluidIslandSolveResult(Optional.empty(),"HELD: test refusal",10)));
         coordinator.pump();assertEquals(200,coordinator.snapshot(1).clock().retryAtTick());
         FluidRuntimeDiagnostics.reset();FluidRuntimeDiagnostics.ENABLED=true;
         try {
@@ -199,7 +199,7 @@ class IslandCoordinatorTest {
     }
     private void hold(IslandCoordinator.Attempt attempt,String detail) {
         dispatch.attempts.remove(attempt.slice().requestId());dispatch.commands.remove(attempt.slice().requestId());
-        coordinator.completed(attempt,Optional.of(new ProcessSolveServices.FluidIslandSolveResult(Optional.empty(),detail,10,FallbackAllowance.NONE,Optional.empty())));
+        coordinator.completed(attempt,Optional.of(new ProcessSolveServices.FluidIslandSolveResult(Optional.empty(),detail,10)));
         coordinator.pump();
     }
     /** Ticks until the island's next attempt is dispatched; that attempt. */
@@ -249,30 +249,16 @@ class IslandCoordinatorTest {
             assertEquals(1,FluidRuntimeDiagnostics.sample().get("budgetHolds"));
         } finally {FluidRuntimeDiagnostics.ENABLED=false;FluidRuntimeDiagnostics.reset();}
     }
-    /** A soft budget whose approximate fallback refused the slice: the retry is a full solve on the whole budget,
-     * until an interval is accepted again. */
-    @Test void aRefusedFallbackIsRetriedAsAFullSolveUntilAnIntervalIsAccepted() {
-        register(1,1_000,0);coordinator.pump();dispatch.finish(dispatch.attempts.keySet().iterator().next());coordinator.pump();
-        var second=dispatch.attempts.values().iterator().next();
-        assertTrue(dispatch.commands.get(second.slice().requestId()).fallback().enabled(),"an anchored island offers the fallback");
-        hold(second,ProcessSolveServices.SOFT_BUDGET_REFUSED+"test");
-        var third=nextAttempt().getValue();
-        assertFalse(dispatch.commands.get(third.slice().requestId()).fallback().enabled(),"the retry of a refused fallback solves in full");
-        assertEquals(50,third.slice().endTick()-third.slice().startTick());
-        dispatch.finish(third.slice().requestId());coordinator.pump();
-        var fourth=nextAttempt().getValue();
-        assertTrue(dispatch.commands.get(fourth.slice().requestId()).fallback().enabled(),"an accepted interval offers the fallback again");
-    }
     @Test void thePerTickDispatchBudgetResumesOnTheNextTickWithoutPolling() {
         var budgeted=new IslandCoordinator(dispatch,publications::add,time::get,new IslandCoordinator.Settings(1000,750,2,false));
         dispatch.capacity=10;var order=new ArrayList<Long>();
         for(long id=1;id<=5;id++){var graph=new PassiveNetwork(List.of(new PassiveNetwork.Reservoir(id,0,model.initialNitrogenCharge(1,298.15,101325,()->{}))),List.of());
-            budgeted.register(new IslandCoordinator.Snapshot(id,0,graph,new IslandClock.Snapshot(100,0,0,100),FallbackAllowance.NONE,Optional.empty(),Optional.empty(),"READY"),model);}
+            budgeted.register(new IslandCoordinator.Snapshot(id,0,graph,new IslandClock.Snapshot(100,0,0,100),Optional.empty(),"READY"),model);}
         Runnable completeAll=()->{
             for(long request:List.copyOf(dispatch.attempts.keySet())) {
                 var attempt=dispatch.attempts.remove(request);var command=dispatch.commands.remove(request);order.add(attempt.islandId());
                 var result=new PassiveIntervalSolver(model).solve(command.snapshot(),command.durationSeconds(),command.settings(),()->{});
-                budgeted.completed(attempt,Optional.of(new ProcessSolveServices.FluidIslandSolveResult(Optional.of(result),"FULL",10,FallbackAllowance.NONE,Optional.of(ApproximationAnchor.fromFull(model,result)))));
+                budgeted.completed(attempt,Optional.of(new ProcessSolveServices.FluidIslandSolveResult(Optional.of(result),"FULL",10)));
             }
             budgeted.pump();
         };
@@ -298,11 +284,11 @@ class IslandCoordinatorTest {
         // A shared epoch: the owner advances it before each tick, as the world does.
         var shared=new IslandCoordinator(elastic,changed->{},time::get,new IslandCoordinator.Settings(1000,750,64,false),()->epoch[0]);
         for(long id=1;id<=3;id++){var graph=new PassiveNetwork(List.of(new PassiveNetwork.Reservoir(id,0,model.initialNitrogenCharge(1,298.15,101325,()->{}))),List.of());
-            shared.register(new IslandCoordinator.Snapshot(id,0,graph,new IslandClock.Snapshot(100,0,0,100),FallbackAllowance.NONE,Optional.empty(),Optional.empty(),"READY"),model);}
+            shared.register(new IslandCoordinator.Snapshot(id,0,graph,new IslandClock.Snapshot(100,0,0,100),Optional.empty(),"READY"),model);}
         shared.pump();assertEquals(3,limit[0]);assertEquals(3,attempts.size());
         for(long request:List.copyOf(attempts.keySet())) {
             var attempt=attempts.remove(request);var command=commands.remove(request);var result=new PassiveIntervalSolver(model).solve(command.snapshot(),command.durationSeconds(),command.settings(),()->{});
-            shared.completed(attempt,Optional.of(new ProcessSolveServices.FluidIslandSolveResult(Optional.of(result),"FULL",10,FallbackAllowance.NONE,Optional.of(ApproximationAnchor.fromFull(model,result)))));
+            shared.completed(attempt,Optional.of(new ProcessSolveServices.FluidIslandSolveResult(Optional.of(result),"FULL",10)));
         }
         // Park all three owners on an event so nothing but the allocator deadline can wake the coordinator.
         shared.fence(UUID.randomUUID(),100,List.of(1L,2L,3L));shared.pump();
@@ -314,40 +300,41 @@ class IslandCoordinatorTest {
         assertEquals(before+1,observed.size());assertEquals(1,limit[0],"the shrink applied exactly at its deadline");
         assertEquals(-1,allocator.shrinkTick());assertEquals(Long.MAX_VALUE,shared.nextDue());
     }
-    private static com.wormzjl.createcheme.science.fluid.thermo.ThermoDomainViolation violation(double value,long node) {
-        return new com.wormzjl.createcheme.science.fluid.thermo.ThermoDomainViolation("createcheme:tjl20_methane_nitrogen","Nitrogen",
-                com.wormzjl.createcheme.science.fluid.thermo.ThermoDomainViolation.Property.TEMPERATURE,value,63.151,900).at(node);
+    /** A phase hold (D21 option C): a third fluid phase, a capability limit (the interim ice hold it replaced is gone, WP4). */
+    private static com.wormzjl.createcheme.science.fluid.thermo.ThermoHold violation(double value,long node) {
+        return new com.wormzjl.createcheme.science.fluid.thermo.FluidThermodynamics.UnsupportedPhases("createcheme:tjl20_methane_nitrogen",value,101325,
+                com.wormzjl.createcheme.science.fluid.thermo.FluidThermodynamics.UnsupportedPhases.Kind.THREE_PHASES,"a third fluid phase is indicated").at(node);
     }
-    private void domainHold(IslandCoordinator.Attempt attempt,com.wormzjl.createcheme.science.fluid.thermo.ThermoDomainViolation v) {
+    private void phaseHold(IslandCoordinator.Attempt attempt,com.wormzjl.createcheme.science.fluid.thermo.ThermoHold v) {
         dispatch.attempts.remove(attempt.slice().requestId());dispatch.commands.remove(attempt.slice().requestId());
-        coordinator.completed(attempt,Optional.of(new ProcessSolveServices.FluidIslandSolveResult(Optional.empty(),ProcessSolveServices.THERMO_DOMAIN+v.getMessage(),10,-1,
-                FallbackAllowance.NONE,Optional.empty(),Optional.of(v))));
+        coordinator.completed(attempt,Optional.of(new ProcessSolveServices.FluidIslandSolveResult(Optional.empty(),ProcessSolveServices.PHASE_HOLD+v.getMessage(),10,-1,
+                Optional.of(v))));
         coordinator.pump();
     }
     /**
-     * F4, T4: a thermo-domain failure is retried once on a fresh solver (and the halved slice of every hold); when the
-     * retry reproduces the same violation - component, property, side and node - no retry on the back-off ladder can pass
-     * it, so the island waits for an input change and dispatches nothing. The status line is the dedicated one and the
+     * F4, T4 (a phase hold since leaving a data range holds nothing, owner rule of 2026-10-16): a phase hold is
+     * retried once on a fresh solver (and the halved slice of every hold); when the retry reproduces the same hold - kind
+     * and node - no retry on the back-off ladder can pass it, so the island waits for an input change and dispatches nothing. The status line is the dedicated one and the
      * world is told once. A fence (an edit) wakes it at once.
      */
-    @Test void aReproducedThermoDomainViolationWaitsForAnInputChangeInsteadOfTheLadder() {
+    @Test void aReproducedPhaseHoldWaitsForAnInputChangeInsteadOfTheLadder() {
         var warned=new ArrayList<String>();
-        coordinator.onDomainHold((island,v,where,parked)->warned.add(island+" "+v.reasonKey()+" "+where+" "+parked));
+        coordinator.onPhaseHold((island,v,where,parked)->warned.add(island+" "+v.reasonKey()+" "+where+" "+parked));
         coordinator.nodeNames(id->"tank at "+id+", 64, 0");
         register(1,1_000_000,0);coordinator.pump();
         FluidRuntimeDiagnostics.reset();FluidRuntimeDiagnostics.ENABLED=true;
         try {
             var first=dispatch.attempts.values().iterator().next();var firstSolver=dispatch.commands.get(first.slice().requestId()).retained();
-            domainHold(first,violation(60.12,1));
+            phaseHold(first,violation(260.12,1));
             var status=coordinator.snapshot(1).status();
-            assertEquals("HELD (thermo domain): Nitrogen at 60.12 K is below 63.151 K in tank at 1, 64, 0 (valid 63.151..900 K, package createcheme:tjl20_methane_nitrogen)",status);
-            assertFalse(coordinator.waitsForInputs(1),"the first domain failure is retried");
+            assertEquals("HELD (phases): a third fluid phase, which the network does not carry at 260.12 K, 101325 Pa in tank at 1, 64, 0 (package createcheme:tjl20_methane_nitrogen)",status);
+            assertFalse(coordinator.waitsForInputs(1),"the first phase hold is retried");
             var retry=nextAttempt();assertEquals(100,retry.getKey(),"the retry comes a cadence later");
             assertEquals(50,retry.getValue().slice().endTick()-retry.getValue().slice().startTick(),"on the halved slice every hold gives");
             assertNotSame(firstSolver,dispatch.commands.get(retry.getValue().slice().requestId()).retained(),"on a fresh solver");
-            domainHold(retry.getValue(),violation(58.4,1));
+            phaseHold(retry.getValue(),violation(258.4,1));
             assertTrue(coordinator.waitsForInputs(1),"the retry reproduced it: the island waits for its inputs");
-            assertTrue(coordinator.snapshot(1).status().startsWith("HELD (thermo domain): Nitrogen at 58.40 K is below 63.151 K in tank at 1, 64, 0"),coordinator.snapshot(1).status());
+            assertTrue(coordinator.snapshot(1).status().startsWith("HELD (phases): a third fluid phase, which the network does not carry at 258.40 K, 101325 Pa in tank at 1, 64, 0"),coordinator.snapshot(1).status());
             assertTrue(coordinator.snapshot(1).status().endsWith("the retry failed the same way, so the island waits for a change to its network"));
             assertEquals(Long.MAX_VALUE,coordinator.snapshot(1).clock().retryAtTick());
             for(int tick=0;tick<1000;tick++)coordinator.tick();
@@ -359,8 +346,8 @@ class IslandCoordinatorTest {
             for(int tick=0;tick<200;tick++)restored.tick();
             assertTrue(dispatch.attempts.isEmpty(),"a restored waiting island dispatches nothing");restored.stop();
             assertEquals(1,warned.size(),"one warning for the hold, not one per attempt: "+warned);
-            assertEquals("1 thermo-domain: Nitrogen temperature < 63.151 K tank at 1, 64, 0 false",warned.getFirst());
-            assertEquals(2,FluidRuntimeDiagnostics.sample().get("numericalHolds"));assertEquals(1,FluidRuntimeDiagnostics.sample().get("domainHolds"));
+            assertEquals("1 phase-hold: phases THREE_PHASES tank at 1, 64, 0 false",warned.getFirst());
+            assertEquals(2,FluidRuntimeDiagnostics.sample().get("numericalHolds"));assertEquals(1,FluidRuntimeDiagnostics.sample().get("phaseHolds"));
             assertEquals(0,FluidRuntimeDiagnostics.sample().get("retriesDeferred"));
         } finally {FluidRuntimeDiagnostics.ENABLED=false;FluidRuntimeDiagnostics.reset();}
         // An input change (here a fence, which is how an edit reaches the island) wakes it at once.
@@ -368,15 +355,15 @@ class IslandCoordinatorTest {
         coordinator.fence(UUID.randomUUID(),committed+10_000,List.of(1L));coordinator.pump();
         assertEquals(1,dispatch.attempts.size(),"an input change retries the waiting island at once");
         assertFalse(coordinator.waitsForInputs(1));
-        // The same violation after the wake is a new episode: retried once again, and logged again only after the rate limit.
-        domainHold(dispatch.attempts.values().iterator().next(),violation(58.4,1));
-        assertFalse(coordinator.waitsForInputs(1));assertEquals(1,warned.size(),"the same island and violation within five minutes is not logged again");
+        // The same hold after the wake is a new episode: retried once again, and logged again only after the rate limit.
+        phaseHold(dispatch.attempts.values().iterator().next(),violation(258.4,1));
+        assertFalse(coordinator.waitsForInputs(1));assertEquals(1,warned.size(),"the same island and hold within five minutes is not logged again");
     }
-    /** A different violation on the retry - another node, another component - is not a reproduction: the ladder goes on. */
-    @Test void aDifferentViolationOnTheRetryKeepsTheLadder() {
+    /** A different hold on the retry - another node, another kind - is not a reproduction: the ladder goes on. */
+    @Test void aDifferentHoldOnTheRetryKeepsTheLadder() {
         register(1,1_000_000,0);coordinator.pump();
-        domainHold(dispatch.attempts.values().iterator().next(),violation(60.12,1));
-        domainHold(nextAttempt().getValue(),violation(60.12,2));
+        phaseHold(dispatch.attempts.values().iterator().next(),violation(260.12,1));
+        phaseHold(nextAttempt().getValue(),violation(260.12,2));
         assertFalse(coordinator.waitsForInputs(1));
         assertEquals(100,nextAttempt().getKey(),"retried on the ladder");
     }

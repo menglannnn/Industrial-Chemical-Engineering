@@ -1,5 +1,6 @@
 package com.wormzjl.createcheme.science.fluid.transport;
 
+import com.wormzjl.createcheme.science.fluid.network.PassiveStepSolver;
 import com.wormzjl.createcheme.science.math.DeterministicMath;
 
 /**
@@ -8,8 +9,14 @@ import com.wormzjl.createcheme.science.math.DeterministicMath;
  */
 public final class SlurryTransport {
     public static final double MAXIMUM_PACKING_FRACTION = 0.62;
+    /**
+     * The solid share of a slurry's condensed volume at which an outlet stops carrying it: a slush (owner decision D23,
+     * PRECIPITATED_SOLIDS_PLAN section 5 item 3). One rule for every solid. It keeps the steep end of
+     * {@link #effectiveViscosity} (13 times the carrier's at 0.5, 200 times at 0.6) out of every open line; the
+     * viscosity law itself keeps its packing limit {@link #MAXIMUM_PACKING_FRACTION}.
+     */
+    public static final double SLUSH_FRACTION = 0.5;
     public static final double DEFAULT_TRACE_VOLUME_FRACTION = 1e-8;
-    private static final double GRAVITY = 9.80665;
 
     /** Captured solid transport settings; changing them never changes a material or energy basis. {@link #defaults} is the one
      * statement of their defaults: the server config and an unconfigured filter ({@code InlineFilter.empty}) read it. */
@@ -54,7 +61,7 @@ public final class SlurryTransport {
         double contrast = Math.abs(particleDensity / carrierDensity - 1);
         if (contrast == 0) return 0;
         double kinematicViscosity = carrierViscosity / carrierDensity;
-        double buoyancy = contrast * GRAVITY;
+        double buoyancy = contrast * PassiveStepSolver.GRAVITY;
         double speed = buoyancy * diameter * diameter
                 / (18 * kinematicViscosity + Math.sqrt(0.3 * buoyancy * diameter * diameter * diameter));
         return positive(speed, "settling speed");

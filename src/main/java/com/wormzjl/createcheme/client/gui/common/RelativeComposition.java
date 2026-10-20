@@ -52,7 +52,6 @@ public final class RelativeComposition {
         for(int i=0;i<result.length;i++)result[i]/=sum;
         return result;
     }
-    public List<Double> molecularWeights(){return weights;}
     public Map<String,Double> relativeAmounts(){
         Map<String,Double> result=new LinkedHashMap<>();
         for(int id:values.keySet())result.put(components.get(id),value(id));

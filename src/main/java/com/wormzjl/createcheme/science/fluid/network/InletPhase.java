@@ -9,45 +9,33 @@ import static com.wormzjl.createcheme.science.fluid.thermo.FluidThermodynamics.O
 import static com.wormzjl.createcheme.science.fluid.thermo.FluidThermodynamics.WATER;
 
 /**
- * The inlet phase check of a pump or compressor (decisions D1, D2, D6 of
- * documentation/2026-09-26-phase-ports-and-compressor; plan 3.6 and 3.7): what the device's suction line delivers,
+ * The inlet phase check of a pump or compressor (decisions D1, D2, D6): what the device's suction line delivers,
  * measured on a committed state, and whether the device is refused ({@link FlowControl.Mode#INLET_WRONG_PHASE}) for the
- * slice that starts there. Every method is a pure function of the graph (its connections and node states), the slice
- * duration and, for the decision, the committed endpoint modes: the solver decides with it, and the device view
- * ({@code FluidWorldAuthority}) formats the same {@link #reason} from the committed graph.
+ * slice that starts there. Every method is a pure function of the graph, the slice duration and, for the decision, the
+ * committed endpoint modes, so the solver and the device view ({@code FluidWorldAuthority}) read the same answer.
  *
- * <p><b>The supply walk.</b> From the device edge's first node: a vessel, generator, void or port there supplies the
- * stream of that end. A junction is walked through: the device's own junction, if it has exactly one other connection
- * and that connection is passive, is crossed, and so is every following junction with two connections neither of which
- * carries an actuator (the run {@code closeDeadHeads} walks); the walk ends at the first node that is not such a junction.
- * If that node is a vessel, generator, void or port, the supply is the stream of the last link's end there; if it is a
- * junction (a branch, or one an actuator touches), and when the device's own junction is a branch or a dead end, the
- * supply is that junction's state mixture. So the check reads the source, not the device's own junction: flashing at the
- * inlet does not refuse a device drawing a saturated liquid (risk R2), it only lowers the suction density and so the
- * pump's rise limit.
+ * <p>The supply walk: from the device edge's first node, a vessel, generator, void or port there supplies the stream of
+ * that end; a junction is walked through (the device's own junction if it has exactly one other, passive, connection,
+ * and every following junction with two connections neither of which carries an actuator), and the walk ends at the
+ * first node that is not such a junction: a vessel, generator, void or port supplies the stream of the last link's end
+ * there, a junction its state mixture. So the check reads the source, not the device's own junction: flashing at the
+ * inlet does not refuse a device drawing a saturated liquid, it only lowers the suction density. What a phase port
+ * supplies (decision A37) is the priority draw of decision D11 at the device's target volume flow over the slice: the
+ * target volume {@code Q T} is filled from the port's priority order, each phase up to its share of the vessel
+ * ({@code V_phase / N}), the last phase the vessel holds with the rest, so a bottom port holding less liquid than the
+ * device would move in one slice reads the gas it would break through to; with no target volume it is the port's
+ * leading phase. A BULK end supplies the node's bulk. Measures: for a pump the vapour share of the supply's fluid
+ * volume (solids excluded); for a compressor the condensed share of its mass and the largest solid population's share
+ * of its volume.</p>
  *
- * <p><b>What a phase port supplies</b> (decision A37, answering D11 open item 6). The priority draw of decision D11 at the
- * device's target volume flow over the slice, on the committed state: the target volume {@code Q T} is filled from the
- * port's priority order, each phase up to its share of the vessel ({@code V_phase / N}, {@code N} the vessel's phase-port
- * ends that may carry outflow by the static rule, the D11 capacity over the slice), the last phase the vessel holds with
- * the rest. So a dry bottom port reads as gas, and a bottom port holding less liquid than the device would move in one
- * slice reads the gas it would break through to; a trace of condensate left after a drain does not make it read liquid.
- * With no target volume ({@code Q = 0}, or a rate solve with no slice) it is the port's leading phase, the draw at a
- * vanishing flow (decision A28). A BULK end supplies the node's bulk.
- *
- * <p><b>Measures.</b> For a pump the vapour share of the supply's fluid volume, {@code V_v / (V_v + V_l + V_w)} (solids
- * excluded: a pump moves them within the mobility rules); for a compressor the condensed share of its mass
- * ({@code (m_l + m_w + m_s) / m}) and the largest solid population's share of its volume (fluid and solids).
- *
- * <p><b>A dry suction</b> (owner decision D58, A1). A pump or compressor with nothing at its suction runs dry: no flow, no
- * head. What can feed the suction is what stands upstream of it ({@link #held}): the device's first node if it is not a
- * junction, else every node reached from it through junctions by a connection that may carry flow towards the device
- * (a passive connection in a direction its one-way rules allow, {@link PassiveStepSolver#boundaryAllowed}; a device only
- * from its first end to its second). A generator always feeds; a void, a dry end ({@link PassiveStepSolver#dryEnd}) and
- * a junction never do; a vessel feeds by the share of its capacity its contents fill. The suction is dry when the
- * largest such share is below {@link #DRY_REFUSE}, the share a drained port's throttle lands on (plan Appendix B, A4), and
- * a device refused on it runs again once that share reaches {@link #DRY_RESUME}, the share at which a port opens. A dry
- * device is refused like a wrong phase (decision D6), with its own reason.
+ * <p>A dry suction (owner decision D58, A1): a pump or compressor with nothing at its suction runs dry. What can feed
+ * the suction is what stands upstream of it ({@link #held}): the device's first node if it is not a junction, else
+ * every node reached from it through junctions by a connection that may carry flow towards the device
+ * ({@link PassiveStepSolver#boundaryAllowed}). A generator always feeds; a void, a dry end and a junction never do; a
+ * vessel feeds by the share of its capacity its contents fill. The suction is dry when the largest such share is below
+ * {@link #DRY_REFUSE}, the share a drained port's throttle lands on, and a device refused on it runs again once that
+ * share reaches {@link #DRY_RESUME}. A slice decides on its committed graph with the transport closures read as open
+ * (owner decision D33): a closure is the solid events' to decide again, so it never leaves a suction dry by itself.</p>
  */
 public final class InletPhase {
     private InletPhase() {}
@@ -63,10 +51,6 @@ public final class InletPhase {
      * the largest share of its capacity held by what can feed the suction ({@link #held}; infinite for a generator).
      */
     public record Supply(int node,long nodeId,PassiveNetwork.PhasePort port,double vapourVolumeShare,double condensedMassShare,double largestSolidVolumeFraction,double heldShare) {
-        /** A supply whose feed is not measured: never dry. */
-        public Supply(int node,long nodeId,PassiveNetwork.PhasePort port,double vapourVolumeShare,double condensedMassShare,double largestSolidVolumeFraction) {
-            this(node,nodeId,port,vapourVolumeShare,condensedMassShare,largestSolidVolumeFraction,Double.POSITIVE_INFINITY);
-        }
         /** Whether the suction is dry for the next slice, given whether the device stood refused at the committed slice end. */
         public boolean dry(boolean refused){return heldShare<DRY_REFUSE||refused&&!(heldShare>=DRY_RESUME);}
     }
@@ -154,33 +138,24 @@ public final class InletPhase {
 
     /**
      * The volume (m3) of each phase stream ({@link FluidThermodynamics#phaseVolume}, solids with their liquid) drawn from
-     * {@code node} through {@code port} for a target volume {@code volume}; null for the bulk (a BULK end, or a vessel
-     * holding none of the phases). With no target volume, the leading phase alone (a unit volume).
+     * {@code node} through {@code port} for a target volume {@code volume}, the port's priority fill shared among the
+     * vessel's phase-port outlets ({@link PhaseDraw#fill}); null for the bulk (a BULK end, or a vessel holding none of the
+     * phases). With no target volume, the leading phase alone (a unit volume).
      */
     private static double[] draw(FluidThermodynamics model,PassiveNetwork graph,int node,PassiveNetwork.PhasePort port,double volume) {
         if(port==PassiveNetwork.PhasePort.BULK)return null;
         var state=graph.reservoirs().get(node).state();
-        int[] order=PhaseDraw.order(model,state,port);
-        int last=-1;for(int phase:order)if(FluidThermodynamics.holdsPhase(state,phase))last=phase;
-        if(last<0)return null;
-        double[] drawn=new double[3];
-        if(!(volume>0)){drawn[PhaseDraw.leading(model,state,port)]=1;return drawn;}
+        if(!(volume>0)) {
+            int leading=PhaseDraw.leading(model,state,port);if(leading<0)return null;
+            double[] drawn=new double[3];drawn[leading]=1;return drawn;
+        }
         // The vessel's phase-port ends that may carry outflow from it by the static rule: each phase is shared among them.
         int ends=0;
         for(var pipe:graph.pipes())for(int end=0;end<2;end++) {
             if((end==0?pipe.first():pipe.second())!=node||(end==0?pipe.firstPort():pipe.secondPort())==PassiveNetwork.PhasePort.BULK)continue;
             if(PassiveStepSolver.boundaryAllowed(graph,pipe,end==0?1:-1))ends++;
         }
-        ends=Math.max(1,ends);
-        double remaining=volume;
-        for(int phase:order) {
-            if(!FluidThermodynamics.holdsPhase(state,phase))continue;
-            if(phase==last){drawn[phase]=remaining;break;}
-            double take=Math.min(remaining,FluidThermodynamics.phaseVolume(state,phase)/ends);
-            drawn[phase]=take;remaining-=take;
-            if(!(remaining>0))break;
-        }
-        return drawn;
+        return PhaseDraw.fill(state,PhaseDraw.order(model,state,port),volume,Math.max(1,ends));
     }
 
     private static Supply measure(FluidThermodynamics model,FluidThermodynamics.State state,double[] drawn,int node,long id,PassiveNetwork.PhasePort port,double held) {

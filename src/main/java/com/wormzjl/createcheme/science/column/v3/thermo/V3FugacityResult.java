@@ -34,10 +34,6 @@ public final class V3FugacityResult {
         }
     }
 
-    public Root phase() {
-        return phase;
-    }
-
     public double[] logFugacityCoefficients() {
         return logFugacityCoefficients.clone();
     }

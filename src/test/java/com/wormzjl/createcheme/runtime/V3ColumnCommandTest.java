@@ -104,9 +104,6 @@ class V3ColumnCommandTest {
     void callerCancellationStillEscapesBeforeScientificWork() {
         CancellationException cancellation = new CancellationException("cancelled worker");
         BoundedCpuSolveService.CancellationToken token = new BoundedCpuSolveService.CancellationToken() {
-            @Override public long deadlineNanos() { return Long.MAX_VALUE; }
-            @Override public boolean isDeadlineExceeded() { return false; }
-            @Override public boolean isCancellationRequested() { return true; }
             @Override public void throwIfCancellationRequested() { throw cancellation; }
         };
         assertSame(cancellation, assertThrows(CancellationException.class,
@@ -115,9 +112,6 @@ class V3ColumnCommandTest {
 
     private static BoundedCpuSolveService.CancellationToken unbounded() {
         return new BoundedCpuSolveService.CancellationToken() {
-            @Override public long deadlineNanos() { return Long.MAX_VALUE; }
-            @Override public boolean isDeadlineExceeded() { return false; }
-            @Override public boolean isCancellationRequested() { return false; }
             @Override public void throwIfCancellationRequested() {}
         };
     }

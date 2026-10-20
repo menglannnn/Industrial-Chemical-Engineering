@@ -51,22 +51,69 @@ class BackwardEulerStepTest {
             // bag shrinks at the ambient pressure, and the ambient's work on it is booked at the tank, energy alone.
             if(entry.nodeId()==2){assertTrue(java.util.Arrays.stream(entry.moles()).allMatch(m->m==0),"the ambient moves no material");energy+=entry.totalEnergyJoule();continue;}
             assertEquals(1,entry.nodeId(),"a transfer at "+entry.nodeId()+": "+entry.totalEnergyJoule()+" J, "+java.util.Arrays.toString(entry.moles()));var amounts=entry.moles();for(int c=0;c<com.wormzjl.createcheme.science.material.MaterialTestBasis.NETWORK+1;c++)incoming[c]+=amounts[c];energy+=entry.totalEnergyJoule();}
-        var before=old.moles();var after=next.moles();double movedMass=0;
-        for(int c=0;c<com.wormzjl.createcheme.science.material.MaterialTestBasis.NETWORK+1;c++){assertEquals(before[c]+incoming[c],after[c],1e-8);movedMass+=incoming[c]*(c==com.wormzjl.createcheme.science.material.MaterialTestBasis.NETWORK?model.waterMolecularWeight:model.hydrocarbon.molecularWeight(c));}
+        var before=old.moles();var after=next.moles();
+        for(int c=0;c<com.wormzjl.createcheme.science.material.MaterialTestBasis.NETWORK+1;c++)assertEquals(before[c]+incoming[c],after[c],1e-8);
         assertTrue(after[com.wormzjl.createcheme.science.material.MaterialTestBasis.NETWORK]>0);assertEquals(before[com.wormzjl.createcheme.science.material.MaterialTestBasis.NITROGEN],after[com.wormzjl.createcheme.science.material.MaterialTestBasis.NITROGEN],1e-9);
-        assertEquals(energy,next.internalEnergy()-old.internalEnergy()+movedMass*2*PassiveStepSolver.GRAVITY,1e-3);
+        assertEquals(energy,next.internalEnergy()-old.internalEnergy(),1e-3);
     }
-    @Test void pumpWorkIncludesAllStagesAndElevationEnergy() {
-        // Nitrogen is moved by a compressor (decision D2; test name kept): its isothermal shaft work over the efficiency is
-        // booked as heat into the discharge (decision D8), and the ledger holds that work exactly.
+    @Test void aCompressorsWorkIsHeatInTheDischargeAndTheInternalEnergyLedgerHoldsIt() {
+        // Nitrogen is lifted 10 m by a compressor (decision D2): its ideal isothermal shaft work (D37 S6) is booked as heat
+        // into the discharge (decision D8), and the internal energy holds that work exactly: no stream carries potential
+        // energy (D37 S1; before, the ledger added the lifted mass's m g z).
         // Above the ambient: drawn at 1 atm, the suction tank (a bag, decision D54) would go slack and take the ambient's
         // work on its shrinking bag into the ledger this test states for the shaft work alone.
         var suction=gas(1,150000,0);
-        var graph=graph(suction,gas(2,200000,10),new FlowControl.Compressor(.001,3,.8));
+        var graph=graph(suction,gas(2,200000,10),new FlowControl.Compressor(.001,3));
         var result=new PassiveStepSolver(model).solve(graph,.2,()->{});
         assertTrue(result.pumpWorkJoule()>0);double change=0;
-        for(int i=0;i<2;i++){var old=graph.reservoirs().get(i).inventory();var next=result.inventories().get(i);double dm=(next.moles()[com.wormzjl.createcheme.science.material.MaterialTestBasis.NITROGEN]-old.moles()[com.wormzjl.createcheme.science.material.MaterialTestBasis.NITROGEN])*model.hydrocarbon.molecularWeight(com.wormzjl.createcheme.science.material.MaterialTestBasis.NITROGEN);change+=next.internalEnergy()-old.internalEnergy()+dm*graph.reservoirs().get(i).elevation()*PassiveStepSolver.GRAVITY;}
+        for(int i=0;i<2;i++){var old=graph.reservoirs().get(i).inventory();var next=result.inventories().get(i);change+=next.internalEnergy()-old.internalEnergy();}
         assertEquals(result.pumpWorkJoule(),change,1e-5);assertTrue(result.boundaries().isEmpty());
+    }
+    /**
+     * Owner decision D37, simplification S1: no stream carries potential energy, so a pump's lift work stays in the water
+     * it lifts, as heat. One 1 s step of a pump moving 1 L/s of water from a vessel's bottom port 10 m up into another
+     * vessel's bottom port, against the same line laid flat: the lift costs the pump {@code m g dz} more work (98 J per
+     * kilogram moved, the column it holds), the island's internal energy takes all of the work in both lines (the ledger
+     * {@code U + sum h dm} closes to round-off, with no boundary), so the lifted water arrives {@code g dz / c_p} = 0.023 K
+     * warmer than the flat line's. With potential energy booked (before S1) the lift's {@code m g dz} left the ledger as
+     * potential energy and only the line's friction heated the water.
+     */
+    @Test void aPumpedTenMetreLiftOfWaterDeliversItsLiftWorkAsHeat() {
+        double lift=10,gz=PassiveStepSolver.GRAVITY*lift;
+        var lifted=pumpedLine(lift);var flat=pumpedLine(0);
+        assertEquals(flat.moved(),lifted.moved(),1e-9*lifted.moved(),"both lines run at the pump's target flow");
+        int water=model.components().indexOf("Water");
+        double cp=(model.waterLiquid(298.16,2e5).molarEnthalpy()-model.waterLiquid(298.14,2e5).molarEnthalpy())/.02/model.molecularWeights()[water];
+        double extraWork=lifted.work()-flat.work(),warmer=(lifted.heat()-flat.heat())/lifted.moved()/cp;
+        System.out.printf(Locale.ROOT,"PUMPED_LIFT %.0f m: %.6f kg moved, pump work %.4f J (flat %.4f J), extra work %.4f J/kg (g dz %.4f J/kg),"
+                +" ledgers %.3e and %.3e of U, lifted water %+.5f K against the flat line's (g dz / c_p %.5f K)%n",lift,lifted.moved(),lifted.work(),flat.work(),
+                extraWork/lifted.moved(),gz,(lifted.heat()-lifted.work())/lifted.scale(),(flat.heat()-flat.work())/flat.scale(),warmer,gz/cp);
+        assertEquals(gz,extraWork/lifted.moved(),.01*gz,"the pump holds the 10 m column: m g dz more work");
+        assertEquals(lifted.work(),lifted.heat(),1e-12*lifted.scale(),"the lifted line's internal energy takes all of the pump's work");
+        assertEquals(flat.work(),flat.heat(),1e-12*flat.scale(),"so does the flat line's");
+        assertEquals(gz/cp,warmer,.01*gz/cp,"the lifted water arrives g dz / c_p warmer");
+    }
+    /** What one step of {@link #pumpedLine} moved (kg), the pump's work and the island's internal-energy gain (J), and the
+     * internal energy it started from (J, the ledger's scale). */
+    private record PumpedLine(double moved,double work,double heat,double scale) {}
+    /** Two 1 m3 vessels at 298.15 K, each 0.5 m3 of water under nitrogen at 200 kPa, the second {@code lift} m above the
+     * first; a pump (1 L/s, up to 3 bar) on a 10 m, 50 mm line between their bottom ports; one 1 s step. */
+    private PumpedLine pumpedLine(double lift) {
+        var pipe=new PassiveNetwork.Pipe(10,0,1,List.of(new PipeResistance.Geometry(10,.05,.000045,0)),new FlowControl.Pump(.001,3e5),0,null,
+                PassiveNetwork.PhasePort.LIQUID,PassiveNetwork.PhasePort.LIQUID);
+        var graph=new PassiveNetwork(List.of(new PassiveNetwork.Reservoir(1,0,waterUnderNitrogen()),new PassiveNetwork.Reservoir(2,lift,waterUnderNitrogen())),List.of(pipe));
+        var result=new PassiveStepSolver(model).solve(graph,1,()->{});
+        assertTrue(result.boundaries().isEmpty()&&result.massFlows()[0]>0&&result.pumpWorkJoule()>0,"a closed island, pumping");
+        double heat=0,scale=0;
+        for(int i=0;i<2;i++){double u=graph.reservoirs().get(i).inventory().internalEnergy();heat+=result.inventories().get(i).internalEnergy()-u;scale+=Math.abs(u);}
+        return new PumpedLine(result.massFlows()[0],result.pumpWorkJoule(),heat,scale);
+    }
+    private FluidThermodynamics.State waterUnderNitrogen() {
+        var mw=model.molecularWeights();int water=model.components().indexOf("Water"),nitrogen=model.components().indexOf("Nitrogen");
+        double t=298.15,p=2e5;double[] n=new double[mw.length];
+        n[water]=.5*997/mw[water];n[nitrogen]=p*.5/(FluidThermodynamics.R*t);
+        var unit=model.flashTP(t,p,n,()->{});for(int c=0;c<n.length;c++)n[c]/=unit.volume();
+        return model.flashTP(t,p,n,()->{});
     }
     @Test void sourceAndVoidKeepSeparateNonzeroLedgersDespiteZeroNetTransfer() {
         var source=new PassiveNetwork.Reservoir(1,0,gas(1,200000,0).state(),PassiveNetwork.NodeKind.GENERATOR);

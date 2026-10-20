@@ -42,7 +42,7 @@ final class CertifyingRig {
     /** Records what the coordinator publishes and replays from here on. */
     CertifyingRig recording(){recording=true;return this;}
     void register(long id,PassiveNetwork graph) {
-        coordinator.register(new IslandCoordinator.Snapshot(id,0,graph,new IslandClock.Snapshot(epoch[0],epoch[0],0,100),FallbackAllowance.NONE,Optional.empty(),Optional.empty(),"READY"),model);
+        coordinator.register(new IslandCoordinator.Snapshot(id,0,graph,new IslandClock.Snapshot(epoch[0],epoch[0],0,100),Optional.empty(),"READY"),model);
     }
     void load(FluidCheckpointCodec.Checkpoint checkpoint){for(var entry:checkpoint.islands())coordinator.register(entry.snapshot(),model);}
     /** Solves and completes everything admitted, then pumps, until nothing is outstanding: one completion drain. */
@@ -69,9 +69,9 @@ final class CertifyingRig {
     }
     IslandCoordinator.Snapshot stored(long id){return coordinator.observe(id);}
     IslandCoordinator.Snapshot read(long id){return coordinator.snapshot(id);}
-    /** What a save captures: every island materialised to now. */
+    /** What a save captures: every island materialised to now, under the rig's model's package. */
     FluidCheckpointCodec.Checkpoint checkpoint() {
-        return new FluidCheckpointCodec.Checkpoint(coordinator.snapshots().stream().map(s->new FluidCheckpointCodec.IslandEntry("minecraft:overworld",PACKAGE,1e-9,s)).toList());
+        return new FluidCheckpointCodec.Checkpoint(coordinator.snapshots().stream().map(s->new FluidCheckpointCodec.IslandEntry("minecraft:overworld",model.domain().packageId(),s)).toList());
     }
 
     /** Islands with distinct identities on the network model, the diagnostics counters, and rigs on that model. */

@@ -8,49 +8,41 @@ import static com.wormzjl.createcheme.science.fluid.thermo.FluidThermodynamics.O
 import static com.wormzjl.createcheme.science.fluid.thermo.FluidThermodynamics.WATER;
 
 /**
- * What a vessel's phase port draws (decision D11 of documentation/2026-09-26-phase-ports-and-compressor: ports carry
- * mixed phases by priority).
+ * What a vessel's phase port draws (decision D11: ports carry mixed phases by priority). Priority: a bottom
+ * ({@link PassiveNetwork.PhasePort#LIQUID}) port draws the heavier of the vessel's two liquids
+ * ({@link FluidThermodynamics#heavierLiquid}), then the lighter, then the gas; a top ({@link PassiveNetwork.PhasePort#VAPOR})
+ * port the gas, then the lighter liquid, then the heavier; each liquid carries its volume share of the solids
+ * ({@link FluidThermodynamics#phaseSolidShare}). A BULK end draws the bulk, except on a donor holding solids but no
+ * liquid, whose bulk end draws its gas (owner decision D33, {@link FluidThermodynamics#bulkDrawsGas}).
  *
- * <p><b>Priority.</b> A bottom ({@link PassiveNetwork.PhasePort#LIQUID}) port draws the heavier of the vessel's two
- * liquids (by their own densities, {@link FluidThermodynamics#heavierLiquid}), then the lighter, then the gas; a top
- * ({@link PassiveNetwork.PhasePort#VAPOR}) port the gas, then the lighter liquid, then the heavier. Each liquid carries
- * its volume share of the solids ({@link FluidThermodynamics#phaseSolidShare}). A BULK end draws the bulk and has no
- * order.
- *
- * <p><b>Capacity and the priority stream.</b> A phase can be drawn through a port over one step only up to what the
- * vessel held of it at the step start: {@code c = m_start / (N dt)} (kg/s), {@code N} the vessel's phase-port ends whose
- * connection may carry outflow by the static rule, {@code dt} the step; infinite in a rate solve, which has no step.
- * A port carrying the outflow {@code q} draws the first phase of its order up to its capacity, the second with what is
- * left up to its capacity, and so on; the last phase the vessel holds takes whatever the earlier ones do not (it is
- * never capped: a port's total flow is limited by the hydraulics and the velocity cap alone, as a bulk end's is). A
- * phase the vessel does not hold at the step start has no capacity and is skipped.
- *
- * <p><b>Pinned and marginal phases.</b> A phase drawn at its capacity (pinned) is drawn at the composition, enthalpy and
- * density of the step's start state: over the step it takes exactly its share of what the vessel held of that phase at
- * the start, which exists whatever the end state holds (a phase drawn at its capacity usually ends the step at zero, on
- * its own phase boundary, where its end-state composition is not defined and a Newton whose layout keeps the phase
- * cannot converge). The phase that carries the rest of the flow (marginal) is drawn at the step's end state, the
- * implicit form of every stream before (plan 3.2): with no phase pinned the port's stream is exactly its phase stream.
- * The marginal phase must be held by the pass's seed; a phase the seed no longer holds (it vanished within the step) is
- * not drawn as marginal, and the next phase of the order the seed holds is.
- *
- * <p><b>The segment.</b> Which phases are pinned and which one is marginal is a kink in the stream's composition as a
- * function of {@code q}, so it is frozen for one active-set pass (a {@link Segment}, decided from the pass's start flow
- * and seeds, like the junction donors and the head densities) and re-decided from the converged flow by the pass loop:
- * each Newton residual is smooth, and the loop settles on the segment its own flow confirms.
+ * <p>Capacity and the priority stream: a phase can be drawn through a port over one step only up to what the vessel
+ * held of it at the step start, {@code c = m_start / (N dt)} (kg/s), {@code N} the vessel's phase-port ends whose
+ * connection may carry outflow by the static rule, {@code dt} the step (infinite in a rate solve). A port carrying the
+ * outflow {@code q} draws the first phase of its order up to its capacity, the second with what is left, and so on; the
+ * last phase the vessel holds takes whatever the earlier ones do not (a port's total flow is limited by the hydraulics
+ * and the velocity cap alone). A phase drawn at its capacity (pinned) is drawn at the composition, enthalpy and density
+ * of the step's start state, which exists whatever the end state holds (a phase drawn at its capacity usually ends the
+ * step at zero, on its own phase boundary); the phase that carries the rest (marginal) is drawn at the step's end state,
+ * and must be held by the pass's seed. Which phases are pinned and which one is marginal is a kink in the stream's
+ * composition as a function of {@code q}, so it is frozen for one active-set pass (a {@link Segment}, decided from the
+ * pass's start flow and seeds) and re-decided from the converged flow by the pass loop.</p>
  */
 final class PhaseDraw {
     private PhaseDraw() {}
 
-    /** The priority order of {@code port} on {@code state} (phase ids of {@link FluidThermodynamics}), null for BULK. */
+    /** The priority order of {@code port} on {@code state} (phase ids of {@link FluidThermodynamics}): null for BULK, which
+     * draws the bulk, but the gas alone where the bulk end of a donor holding solids but no liquid draws its gas (owner
+     * decision D33, {@link FluidThermodynamics#bulkDrawsGas}). A BULK end has no segment either way: what it carries in a
+     * step is its node's transport ({@code PassiveStepSolver.Equations}). */
     static int[] order(FluidThermodynamics model,FluidThermodynamics.State state,PassiveNetwork.PhasePort port) {
-        if(port==PassiveNetwork.PhasePort.BULK)return null;
+        if(port==PassiveNetwork.PhasePort.BULK)return FluidThermodynamics.bulkDrawsGas(state)?new int[]{GAS}:null;
         int heavy=model.heavierLiquid(state),light=heavy==OIL?WATER:OIL;
         return port==PassiveNetwork.PhasePort.LIQUID?new int[]{heavy,light,GAS}:new int[]{GAS,light,heavy};
     }
-    /** The phase a port draws at a vanishing flow: the first of its order {@code state} holds; -1 for a BULK end and for a
-     * state holding none of the three (then the port draws the bulk). The stream every static reader of a port reads
-     * (columns, sign tests, start flows, the mobility check): the priority stream's limit as the flow goes to zero. */
+    /** The phase a port draws at a vanishing flow: the first of its order {@code state} holds; -1 for a BULK end drawing the
+     * bulk and for a state holding none of the three (then the port draws the bulk). The stream every reader of what a port
+     * sends reads (a start flow's loss and velocity cap, a mover's suction, the mobility check): the priority stream's limit
+     * as the flow goes to zero. What stands in the port's connection is its {@link #fill} (owner decision D34). */
     static int leading(FluidThermodynamics model,FluidThermodynamics.State state,PassiveNetwork.PhasePort port) {
         var order=order(model,state,port);if(order==null)return -1;
         for(int phase:order)if(FluidThermodynamics.holdsPhase(state,phase))return phase;
@@ -59,6 +51,28 @@ final class PhaseDraw {
     /** Which of the three phases {@code state} holds. */
     static boolean[] held(FluidThermodynamics.State state) {
         return new boolean[]{FluidThermodynamics.holdsPhase(state,GAS),FluidThermodynamics.holdsPhase(state,OIL),FluidThermodynamics.holdsPhase(state,WATER)};
+    }
+    /**
+     * A port's priority fill of {@code volume} (m3) from {@code state}: the volume of each phase stream that fills it, by
+     * phase id ({@link FluidThermodynamics#phaseVolume}, a liquid with its share of the solids), in the port's
+     * {@code order}: each phase the state holds up to its held volume over {@code ends}, the last one it holds taking the
+     * rest, as the priority stream's last phase takes the rest of a flow. Null when the state holds none of the order's
+     * phases. The one fill of both readers: the step's suction intake of a mover ({@link InletPhase}, its target volume
+     * shared among the vessel's {@code ends} phase-port outlets) and the static column of a connection
+     * ({@code PassiveStepSolver.columnDensity}, the connection's own volume, one end).
+     */
+    static double[] fill(FluidThermodynamics.State state,int[] order,double volume,int ends) {
+        int last=-1;for(int phase:order)if(FluidThermodynamics.holdsPhase(state,phase))last=phase;
+        if(last<0)return null;
+        double[] filled=new double[3];double remaining=volume;
+        for(int phase:order) {
+            if(!FluidThermodynamics.holdsPhase(state,phase))continue;
+            if(phase==last){filled[phase]=remaining;break;}
+            double take=Math.min(remaining,FluidThermodynamics.phaseVolume(state,phase)/ends);
+            filled[phase]=take;remaining-=take;
+            if(!(remaining>0))break;
+        }
+        return filled;
     }
 
     /**

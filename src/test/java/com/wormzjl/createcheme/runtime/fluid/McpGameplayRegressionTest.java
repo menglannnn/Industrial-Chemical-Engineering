@@ -10,9 +10,10 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class McpGameplayRegressionTest {
     /**
-     * The first island of an archived gameplay capture (see mcp-held-drain-checkpoint.md), a checkpoint saved on
-     * 2026-09-16 and kept byte for byte for reproducibility. It is solver input, not a save that is loaded: no
-     * checkpoint format reads it any more, so only its graph is taken, in the shape the payloads still use.
+     * The first island of an archived gameplay capture (see mcp-held-drain-checkpoint.md). It is solver input, not a save
+     * that is loaded: no checkpoint format reads it any more, so only its graph is taken, in the shape the payloads still
+     * use. The held drain is the checkpoint saved on 2026-09-16, kept byte for byte for reproducibility; the clamped
+     * liquid-full island was re-archived under the engine's liquid water (D27).
      */
     private com.google.gson.JsonObject archivedIsland(String resource) throws java.io.IOException {
         try(var input=Objects.requireNonNull(getClass().getResourceAsStream(resource))) {
@@ -22,7 +23,7 @@ class McpGameplayRegressionTest {
     private record Phase(double temperature,double pressure,double[] liquid,double[] vapor,double waterLiquid,double waterVapor,double hydrocarbonPressure) {}
     private record Inventory(double volume,double[] moles,double internalEnergy) {}
     private record Node(long id,double elevation,String kind,Inventory inventory,Phase phase) {}
-    private record Control(String kind,double target,double limit,double efficiency) {}
+    private record Control(String kind,double target,double limit) {}
     private record Pipe(long id,int first,int second,List<PipeResistance.Geometry> sections,Control control) {}
     private record Graph(List<Node> nodes,List<Pipe> pipes) {}
     /** The graph of a capture in its format-3 payload JSON shape. The capture predates solids, blocked masks, filters and
@@ -39,10 +40,12 @@ class McpGameplayRegressionTest {
                     PassiveNetwork.NodeKind.valueOf(n.kind()),inventory));
         }
         return new PassiveNetwork(nodes,saved.pipes().stream().map(p->new PassiveNetwork.Pipe(p.id(),p.first(),p.second(),p.sections(),switch(p.control().kind()) {
-            case "passive"->new FlowControl.Passive();case "pump"->new FlowControl.Pump(p.control().target(),p.control().limit(),p.control().efficiency());
+            case "passive"->new FlowControl.Passive();case "pump"->new FlowControl.Pump(p.control().target(),p.control().limit());
             case "valve"->new FlowControl.PressureValve(p.control().target());default->throw new IllegalArgumentException("Unknown saved control");
         },0,null,PassiveNetwork.PhasePort.BULK,PassiveNetwork.PhasePort.BULK)).toList());
     }
+    /** The tank holds the capture's nitrogen trace and the water that fills its 1 m3 at the captured 298.16 K and
+     * 150.66 kPa (997.06 kg, D27); 31.1 kg/s flows through it from the 200 kPa generator to the 1 atm void. */
     @Test void clampedDrainContinuesAfterTheTankBecomesAlmostLiquidFull() throws Exception {
         var model=FluidTestSupport.networkModel();
         var graph=archivedGraph(archivedIsland("/fluid/mcp-clamped-liquid-full-checkpoint.json"),model);
@@ -70,8 +73,8 @@ class McpGameplayRegressionTest {
         for(var boundary:result.boundaries()){var n=boundary.moles();for(int c=0;c<com.wormzjl.createcheme.science.material.MaterialTestBasis.NETWORK+1;c++)external[c]+=n[c];externalEnergy+=boundary.totalEnergyJoule();}
         for(int i=0;i<graph.reservoirs().size();i++)if(graph.reservoirs().get(i).kind()==PassiveNetwork.NodeKind.RESERVOIR) {
             var a=graph.reservoirs().get(i);var b=result.graph().reservoirs().get(i);var na=a.inventory().moles();var nb=b.inventory().moles();
-            double ma=0,mb=0;for(int c=0;c<com.wormzjl.createcheme.science.material.MaterialTestBasis.NETWORK+1;c++){before[c]+=na[c];after[c]+=nb[c];double mw=c==com.wormzjl.createcheme.science.material.MaterialTestBasis.NETWORK?model.waterMolecularWeight:model.hydrocarbon.molecularWeight(c);ma+=na[c]*mw;mb+=nb[c]*mw;}
-            beforeEnergy+=a.inventory().internalEnergy()+ma*PassiveStepSolver.GRAVITY*a.elevation();afterEnergy+=b.inventory().internalEnergy()+mb*PassiveStepSolver.GRAVITY*b.elevation();
+            for(int c=0;c<com.wormzjl.createcheme.science.material.MaterialTestBasis.NETWORK+1;c++){before[c]+=na[c];after[c]+=nb[c];}
+            beforeEnergy+=a.inventory().internalEnergy();afterEnergy+=b.inventory().internalEnergy();
         }
         for(int c=0;c<com.wormzjl.createcheme.science.material.MaterialTestBasis.NETWORK+1;c++)assertEquals(before[c]+external[c],after[c],1e-10+1e-8*Math.max(before[c],after[c]));
         assertEquals(beforeEnergy+externalEnergy+result.pumpWorkJoule(),afterEnergy,1e-4+1e-6*(Math.abs(beforeEnergy)+Math.abs(externalEnergy)));

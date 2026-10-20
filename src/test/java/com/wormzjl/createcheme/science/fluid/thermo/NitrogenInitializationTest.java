@@ -17,7 +17,7 @@ class NitrogenInitializationTest {
     private static final String NETWORK=FluidMaterialCatalog.NETWORK_PACKAGE;
     @Test void placementCreatesRealNitrogenInventoryWithoutChangingTheColumnPackage() {
         var catalog=MaterialCatalog.bundled();var original=catalog.requirePackage(COLUMN).fingerprint();
-        var model=FluidThermodynamics.forNetwork(catalog,NETWORK,1e-9);var state=model.initialNitrogenCharge(1,298.15,101325,()->{});
+        var model=FluidThermodynamics.forNetwork(catalog,NETWORK);var state=model.initialNitrogenCharge(1,298.15,101325,()->{});
         assertEquals(catalog.requirePackage(NETWORK).components().size(),model.hydrocarbon.componentCount());assertEquals(1,state.volume(),1e-12);assertEquals(0,state.liquidVolume());
         assertTrue(state.mass()>1.13&&state.mass()<1.16);assertEquals(0,state.waterLiquid()+state.waterVapor());
         int nitrogen=model.hydrocarbon.components().indexOf("Nitrogen");assertEquals(catalog.requirePackage(NETWORK).components().indexOf("Nitrogen"),nitrogen);assertTrue(state.vapor()[nitrogen]>40);
@@ -44,7 +44,7 @@ class NitrogenInitializationTest {
         }
     }
     @Test void smallWaterChargeConservesEnergyUsingOnlyTheInitialNitrogenAndFluid() {
-        var model=FluidThermodynamics.forNetwork(MaterialCatalog.bundled(),NETWORK,1e-9);
+        var model=FluidThermodynamics.forNetwork(MaterialCatalog.bundled(),NETWORK);
         var initial=model.initialNitrogenCharge(1,298.15,101325,()->{});var amounts=PhaseLayout.totalAmounts(initial);
         int water=model.hydrocarbon.componentCount();amounts[water]=.01/model.waterMolecularWeight;
         double energy=initial.internalEnergy()+amounts[water]*model.waterLiquid(298.15,101325).molarEnthalpy();

@@ -13,7 +13,7 @@ class IslandClockTest {
         for(int request=1;request<=9;request++){var slice=clock.nextSlice(request,Long.MAX_VALUE).orElseThrow();clock.admitted(slice);clock.completed(slice,true);}
         assertEquals(0,debt(clock));assertEquals(900,clock.committedTick());assertTrue(clock.nextSlice(10,Long.MAX_VALUE).isEmpty());
     }
-    @Test void heldResultsKeepDebtAndNeverReplayAnAcceptedApproximateInterval() {
+    @Test void heldResultsKeepDebtAndNeverReplayAnAcceptedInterval() {
         var clock=at(200);var first=clock.nextSlice(1,Long.MAX_VALUE).orElseThrow();clock.admitted(first);clock.completed(first,true);
         var second=clock.nextSlice(2,Long.MAX_VALUE).orElseThrow();clock.admitted(second);clock.completed(second,false);
         assertEquals(100,clock.committedTick());assertEquals(100,debt(clock));assertTrue(clock.nextSlice(3,Long.MAX_VALUE).isEmpty());

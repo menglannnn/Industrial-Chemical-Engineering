@@ -22,8 +22,10 @@ class EventPathWorld {
     static final MaterialCatalog CATALOG=MaterialCatalog.bundled();
     record Held(long tick,long island,long committed,String status) {}
 
-    final FluidThermodynamics model=FluidTestSupport.networkModel();
-    final WorldTopologyLedger ledger=new WorldTopologyLedger(WorldTopologyLedger.Snapshot.empty(CATALOG));
+    /** The world's material catalog: the bundled one, or another catalog's network package (a cold world). */
+    final MaterialCatalog catalog;
+    final FluidThermodynamics model;
+    final WorldTopologyLedger ledger;
     final Map<Long,IslandCoordinator.Attempt> attempts=new LinkedHashMap<>();
     final Map<Long,ProcessSolveServices.FluidIslandCommand> commands=new HashMap<>();
     final int workers;long requests;
@@ -33,12 +35,25 @@ class EventPathWorld {
     final PhysicalRegistry registry;
     /** The removals of every committed topology batch, in order. */
     final List<Set<Long>> committedRemovals=new ArrayList<>();
+    /** Run in each tick between the topology events and the solves, where a placed island is installed and not yet solved. */
+    Runnable beforeSolves=()->{};
 
     /** A world with one synchronous worker. */
     EventPathWorld(){this(1);}
     /** A world whose worker pool has {@code workers} slots: 0 (no solve) or 1 (a synchronous worker). */
-    EventPathWorld(int workers) {
-        this.workers=workers;
+    EventPathWorld(int workers){this(workers,WorldTopologyLedger.Snapshot.empty(CATALOG),List.of());}
+    /** The world {@code saved} ({@code world.ledger.snapshot()}) and {@code islands} ({@code world.coordinator.snapshots()})
+     * reload to, as {@code FluidWorldAuthority} starts: the ledger, every saved island registered, then the registry loaded. */
+    EventPathWorld(int workers,WorldTopologyLedger.Snapshot saved,List<IslandCoordinator.Snapshot> islands) {
+        this(workers,saved,islands,CATALOG,FluidTestSupport.networkModel());
+    }
+    /** A world with one synchronous worker on {@code catalog}, whose network model is {@code model}
+     * ({@code FluidThermodynamics.forNetwork} of its network package): built and run inside that catalog's
+     * {@code MaterialRuntime} context, as the cold placement fuzz runs a seed. A block placed without a spec holds a 1 m3
+     * nitrogen charge of that catalog. */
+    EventPathWorld(MaterialCatalog catalog,FluidThermodynamics model){this(1,WorldTopologyLedger.Snapshot.empty(catalog),List.of(),catalog,model);}
+    private EventPathWorld(int workers,WorldTopologyLedger.Snapshot saved,List<IslandCoordinator.Snapshot> islands,MaterialCatalog catalog,FluidThermodynamics model) {
+        this.workers=workers;this.catalog=catalog;this.model=model;ledger=new WorldTopologyLedger(saved);
         coordinator=new IslandCoordinator(new IslandCoordinator.Dispatcher() {
             public int availableWorkers(){return workers-attempts.size();}
             public long nextRequestId(){return ++requests;}
@@ -56,11 +71,12 @@ class EventPathWorld {
             public void refused(UUID event,String reason){}
             public void committed(Set<Long> removed,Set<Long> recompiled){committedRemovals.add(removed);}
         });
+        for(var island:islands)coordinator.register(island,model);
         registry.load();
     }
     /** The world's default control of a device kind (FluidWorldAuthority.place). */
     static FlowControl defaultControl(Kind kind) {
-        return switch(kind){case PUMP->new FlowControl.Pump(.01,500000,1);case COMPRESSOR->new FlowControl.Compressor(.05,3.0,1);case VALVE->new FlowControl.PressureValve(200000);default->new FlowControl.Passive();};
+        return switch(kind){case PUMP->new FlowControl.Pump(.01,500000);case COMPRESSOR->new FlowControl.Compressor(.05,3.0);case VALVE->new FlowControl.PressureValve(200000);default->new FlowControl.Passive();};
     }
     /** A 1 m3 nitrogen charge at 298.15 K and 1 atm: a tank's or a void's default. */
     static FluidDeviceSpec nitrogen(){return FluidDeviceSpec.nitrogen(CATALOG);}
@@ -72,7 +88,7 @@ class EventPathWorld {
     long place(int x,int y,int z,Kind kind,PhysicalFluidTopology.Direction facing,FlowControl control,FluidDeviceSpec spec,double bore) {
         long id=ledger.nextIdentity();
         var device=new PhysicalFluidTopology.Device(id,new PhysicalFluidTopology.Position(DIM,x,y,z),kind,facing,new PipeResistance.Geometry(1,bore,PipeResistance.DEFAULT_ROUGHNESS_METRES,0),control);
-        registry.submit(List.of(new WorldTopologyLedger.Edit(id,new WorldTopologyLedger.Registration(device,spec!=null?spec:nitrogen(),0))),id+1,null);
+        registry.submit(List.of(new WorldTopologyLedger.Edit(id,new WorldTopologyLedger.Registration(device,spec!=null?spec:FluidDeviceSpec.nitrogen(catalog),0))),id+1,null);
         return id;
     }
     /** A block with its kind's default control and a nitrogen spec (boundaries: a 1 m3 charge at 298.15 K, 1 atm). */
@@ -81,12 +97,12 @@ class EventPathWorld {
     long place(int x,int y,int z,Kind kind,PhysicalFluidTopology.Direction facing,FluidDeviceSpec spec,double bore){return place(x,y,z,kind,facing,defaultControl(kind),spec,bore);}
     /** A block as FluidWorldAuthority.place places it: its kind's default control, a 1 m block of 0.05 m bore, water for a
      * generator and a 1 m3 nitrogen charge at 298.15 K and 1 atm for everything else. */
-    long place(int x,int y,int z,Kind kind,PhysicalFluidTopology.Direction facing){return place(x,y,z,kind,facing,kind==Kind.GENERATOR?FluidDeviceSpec.water(CATALOG):nitrogen(),.05);}
+    long place(int x,int y,int z,Kind kind,PhysicalFluidTopology.Direction facing){return place(x,y,z,kind,facing,kind==Kind.GENERATOR?FluidDeviceSpec.water(catalog):FluidDeviceSpec.nitrogen(catalog),.05);}
     /** A drum as FluidWorldAuthority.placeVessel registers it: an empty reservoir at its node cell with its ports, volume and level height. */
     long placeVessel(PhysicalFluidTopology.Position node,List<PhysicalFluidTopology.Port> ports,double volume,double levelHeight) {
         long id=ledger.nextIdentity();
         var device=new PhysicalFluidTopology.Device(id,node,Kind.RESERVOIR,PhysicalFluidTopology.Direction.NORTH,new PipeResistance.Geometry(1,.05,PipeResistance.DEFAULT_ROUGHNESS_METRES,0),new FlowControl.Passive(),ports);
-        var spec=new FluidDeviceSpec(volume,298.15,101325,nitrogen().composition(),SlurryFeed.NONE,levelHeight);
+        var spec=new FluidDeviceSpec(volume,298.15,101325,FluidDeviceSpec.nitrogen(catalog).composition(),SlurryFeed.NONE,levelHeight);
         registry.submit(List.of(new WorldTopologyLedger.Edit(id,new WorldTopologyLedger.Registration(device,spec,0))),id+1,null);
         return id;
     }
@@ -94,6 +110,7 @@ class EventPathWorld {
     void tick() {
         ledger.tick();coordinator.tick();
         if(ledger.hasPendingEvents()){registry.applyPending();coordinator.pumpIfUseful();}
+        beforeSolves.run();
         for(long request:List.copyOf(attempts.keySet())) {
             var attempt=attempts.remove(request);var command=commands.remove(request);
             var result=(ProcessSolveServices.FluidIslandSolveResult)command.solve(FluidTestSupport.NEVER);

@@ -19,7 +19,7 @@ class FluidPropertyCoverageTest {
         // twenty-component basis exactly and differ only in their assay, which is what production
         // does: {@code FluidPresetCatalog} computes each crude composition on its own package and
         // pads it onto this one basis.
-        var model = FluidThermodynamics.forNetwork(catalog, FluidMaterialCatalog.NETWORK_PACKAGE, 1e-9);
+        var model = FluidThermodynamics.forNetwork(catalog, FluidMaterialCatalog.NETWORK_PACKAGE);
         for (String packageId : List.of("createcheme:tjl20_methane", "createcheme:wti_light_export_tjl20", "createcheme:cold_lake_blend_tjl20", "createcheme:upper_zakum_tjl20", "createcheme:bonga_tjl20", "createcheme:dalia_tjl20")) {
             var propertyPackage = catalog.requirePackage(packageId);
             var n = Arrays.copyOf(V3PengRobinsonThermo.fromRegisteredPackage(packageId)

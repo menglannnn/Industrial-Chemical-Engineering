@@ -69,7 +69,6 @@ public record FluidView(long identity,long inputRevision,long committedTick,long
     /** {@code volume} is what the node holds; {@code capacity} the volume its wall holds (decision D54: a vessel is a bag
      * whose contents may be smaller than its capacity), the contents' own volume for a node with no wall. */
     public record State(double pressure,double temperature,double volume,double mass,double[] phaseVolumes,double[][] phaseMoles,SolidInventory solids,double capacity) {
-        public State(double pressure,double temperature,double volume,double mass,double[] phaseVolumes,double[][] phaseMoles){this(pressure,temperature,volume,mass,phaseVolumes,phaseMoles,SolidInventory.EMPTY,volume);}
         public State {Objects.requireNonNull(solids);phaseVolumes=phaseVolumes.clone();phaseMoles=Arrays.stream(phaseMoles).map(double[]::clone).toArray(double[][]::new);
             if(!(capacity>0)||!Double.isFinite(capacity))throw new IllegalArgumentException("Invalid capacity");}
         @Override public double[] phaseVolumes(){return phaseVolumes.clone();}

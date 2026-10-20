@@ -54,7 +54,7 @@ class DrumReservoirTest {
                 new com.wormzjl.createcheme.science.fluid.network.FlowControl.Passive(),PORTS);
         var spec=new FluidDeviceSpec(20,298.15,101325,EventPathWorld.nitrogen().composition(),SlurryFeed.NONE,4);
         var world=new WorldTopologyLedger.Snapshot(5,2,Map.of(1L,new WorldTopologyLedger.Registration(device,spec,0)),List.of(),empty.constructed(),empty.destroyed(),empty.basis(),Map.of());
-        var bytes=FluidCheckpointCodec.encodeTopology(world);var decoded=FluidCheckpointCodec.decodeTopology(bytes,5);
+        var bytes=FluidCheckpointCodec.encodeTopology(world);var decoded=FluidCheckpointCodec.decodeTopology(bytes,5,key->{throw new AssertionError("no recovery, no model");});
         assertEquals(world.active(),decoded.active(),"ports, their classes and the level height come back");
         assertArrayEquals(bytes,FluidCheckpointCodec.encodeTopology(decoded));
         assertThrows(IllegalArgumentException.class,()->new PhysicalFluidTopology.Device(2,at(0,0,0),Kind.PIPE,NORTH,device.geometry(),device.control(),PORTS),"only a vessel has ports");

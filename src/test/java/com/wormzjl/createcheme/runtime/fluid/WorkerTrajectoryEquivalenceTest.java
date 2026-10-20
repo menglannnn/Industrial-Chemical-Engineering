@@ -4,7 +4,6 @@ import com.wormzjl.createcheme.fluid.support.FluidTestSupport;
 import com.wormzjl.createcheme.runtime.BoundedCpuSolveService;
 import com.wormzjl.createcheme.runtime.ProcessSolveServices;
 import com.wormzjl.createcheme.runtime.WorkerAllocation.Demand;
-import com.wormzjl.createcheme.science.fluid.network.ApproximationAnchor;
 import com.wormzjl.createcheme.science.fluid.network.PassiveIntervalSolver;
 import com.wormzjl.createcheme.science.fluid.network.PassiveNetwork;
 import com.wormzjl.createcheme.science.fluid.network.PipeResistance;
@@ -137,7 +136,7 @@ class WorkerTrajectoryEquivalenceTest {
                 @Override public boolean submit(IslandCoordinator.Attempt attempt,ProcessSolveServices.FluidIslandCommand command) {
                     long request=attempt.slice().requestId();
                     var stamp=new BoundedCpuSolveService.JobStamp<Long>(service.serverEpoch(),request,attempt.islandId(),
-                            attempt.revision(),ApproximationAnchor.revision(model),BoundedCpuSolveService.NO_DEADLINE);
+                            attempt.revision(),model.revision(),BoundedCpuSolveService.NO_DEADLINE);
                     attempts.put(request,attempt);stamps.put(request,stamp);
                     var admission=service.trySubmit(stamp,command,(snapshot,token)->
                             (ProcessSolveServices.FluidIslandSolveResult)snapshot.solve(token));
@@ -154,7 +153,7 @@ class WorkerTrajectoryEquivalenceTest {
             for(int index=0;index<ISLANDS;index++) {
                 long islandId=index+1L;var graph=graph(index);initialGraphs.add(graph);histories.put(islandId,new ArrayList<>());
                 coordinator.register(new IslandCoordinator.Snapshot(islandId,0,graph,new IslandClock.Snapshot(0,0,0,20),
-                        FallbackAllowance.NONE,Optional.empty(),Optional.empty(),"READY"),model);
+                        Optional.empty(),"READY"),model);
             }
         }
 

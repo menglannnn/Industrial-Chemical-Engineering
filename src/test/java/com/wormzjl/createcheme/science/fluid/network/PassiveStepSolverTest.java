@@ -9,7 +9,7 @@ import java.util.*;
 import org.junit.jupiter.api.Test;
 
 class PassiveStepSolverTest {
-    private final FluidThermodynamics model=com.wormzjl.createcheme.fluid.support.FluidTestSupport.model(MaterialCatalog.bundled(),"createcheme:tjl20_methane",1e-9);
+    private final FluidThermodynamics model=com.wormzjl.createcheme.fluid.support.FluidTestSupport.model(MaterialCatalog.bundled(),"createcheme:tjl20_methane");
     private FluidThermodynamics.State fill(double pressure,int component) {
         double[] n=new double[com.wormzjl.createcheme.science.material.MaterialTestBasis.CRUDE+1];n[component]=1;var unit=model.flashTP(350,pressure,n,()->{});n[component]/=unit.volume();
         return model.flashTP(350,pressure,n,()->{});
@@ -46,7 +46,7 @@ class PassiveStepSolverTest {
         var geometry=new PipeResistance.Geometry(10,.05,.000045,0);
         var graph=new PassiveNetwork(List.of(
                 new PassiveNetwork.Reservoir(1,0,fill(300000,0),PassiveNetwork.NodeKind.GENERATOR),
-                new PassiveNetwork.Reservoir(2,0,fill(170000,0),true),
+                new PassiveNetwork.Reservoir(2,0,fill(170000,0),PassiveNetwork.NodeKind.JUNCTION),
                 // Above the ambient: a vessel is a bag (decision D54), and one charged below the ambient goes slack at it.
                 new PassiveNetwork.Reservoir(3,0,fill(110000,0)),
                 new PassiveNetwork.Reservoir(4,0,fill(110000,0))),List.of(
@@ -65,13 +65,13 @@ class PassiveStepSolverTest {
         var geometry=new PipeResistance.Geometry(10,.05,.000045,0);
         var graph=new PassiveNetwork(List.of(new PassiveNetwork.Reservoir(1,0,fill(300000,0)),
                 new PassiveNetwork.Reservoir(2,0,fill(100000,0)),new PassiveNetwork.Reservoir(3,0,fill(100000,0)),
-                new PassiveNetwork.Reservoir(4,0,fill(180000,0),true)),List.of(
+                new PassiveNetwork.Reservoir(4,0,fill(180000,0),PassiveNetwork.NodeKind.JUNCTION)),List.of(
                 new PassiveNetwork.Pipe(5,0,3,geometry),new PassiveNetwork.Pipe(6,3,1,geometry),new PassiveNetwork.Pipe(7,3,2,geometry)));
         var result=new PassiveStepSolver(model).solve(graph,.1,()->{});var flows=result.massFlows();
         assertTrue(flows[0]>0);assertEquals(flows[0],flows[1]+flows[2],1e-9);assertEquals(flows[1],flows[2],1e-9);
         assertEquals(result.states().get(1).pressure(),result.states().get(2).pressure(),1e-4);
     }
-    @Test void bulkThreePhaseCrudeTransfersAllComponentsAndIncludesElevationEnergy() {
+    @Test void bulkThreePhaseCrudeTransfersAllComponentsUpAnElevation() {
         String id="createcheme:tjl20_methane";double[] composition=Arrays.copyOf(V3PengRobinsonThermo.fromRegisteredPackage(id).crudeFeed("createcheme:tia_juana_light_methane").moleFractions(),com.wormzjl.createcheme.science.material.MaterialTestBasis.CRUDE+1);composition[com.wormzjl.createcheme.science.material.MaterialTestBasis.CRUDE]=.2;
         var reservoirs=new ArrayList<PassiveNetwork.Reservoir>();
         for(double pressure:new double[]{200000,150000}) {

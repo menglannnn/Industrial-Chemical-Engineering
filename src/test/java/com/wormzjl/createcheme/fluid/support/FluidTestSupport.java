@@ -3,7 +3,6 @@ package com.wormzjl.createcheme.fluid.support;
 import com.wormzjl.createcheme.runtime.BoundedCpuSolveService;
 import com.wormzjl.createcheme.science.column.v3.thermo.V3PengRobinsonThermo;
 import com.wormzjl.createcheme.science.fluid.network.PassiveNetwork;
-import com.wormzjl.createcheme.science.fluid.network.PassiveStepSolver;
 import com.wormzjl.createcheme.science.fluid.thermo.FluidThermodynamics;
 import com.wormzjl.createcheme.science.fluid.transport.SlurryTransport;
 import com.wormzjl.createcheme.science.thermo.TraceTruncationPolicy;
@@ -15,7 +14,6 @@ import java.util.Objects;
 /** Shared, independent fixture-basis and finite-ledger calculations for fluid tests. */
 public final class FluidTestSupport {
     private static final String NETWORK_PACKAGE = "createcheme:tjl20_methane_nitrogen";
-    private static final double DEFAULT_COMPRESSIBILITY = 1e-9;
     private static final int NITROGEN = com.wormzjl.createcheme.science.material.MaterialTestBasis.NITROGEN;
     private static final int WATER = com.wormzjl.createcheme.science.material.MaterialTestBasis.NETWORK;
 
@@ -30,23 +28,19 @@ public final class FluidTestSupport {
 
     /** A token for a worker that is never cancelled and has no deadline: tests solve every admitted slice to its end. */
     public static final BoundedCpuSolveService.CancellationToken NEVER = new BoundedCpuSolveService.CancellationToken() {
-        public long deadlineNanos() { return Long.MAX_VALUE; }
-        public boolean isDeadlineExceeded() { return false; }
-        public boolean isCancellationRequested() { return false; }
         public void throwIfCancellationRequested() {}
     };
 
-    /** Creates the bundled gameplay network model at the qualified compressibility. */
+    /** Creates the bundled gameplay network model. */
     public static FluidThermodynamics networkModel() {
-        return FluidThermodynamics.forNetwork(
-                MaterialCatalog.bundled(), NETWORK_PACKAGE, DEFAULT_COMPRESSIBILITY);
+        return FluidThermodynamics.forNetwork(MaterialCatalog.bundled(), NETWORK_PACKAGE);
     }
 
-    /** A model of any bundled or test package at the given liquid compressibility: the default velocity cap, no trace
-     * truncation and the default solid settings. Not the network model ({@link #networkModel}), whose trace cutoff and
-     * package resolution are the configured ones. */
-    public static FluidThermodynamics model(MaterialCatalog catalog, String packageId, double liquidCompressibility) {
-        return new FluidThermodynamics(catalog, packageId, liquidCompressibility, FluidThermodynamics.DEFAULT_MAXIMUM_VELOCITY,
+    /** A model of any bundled or test package: the default velocity cap, no trace truncation and the default solid
+     * settings. Not the network model ({@link #networkModel}), whose trace cutoff and package resolution are the
+     * configured ones. */
+    public static FluidThermodynamics model(MaterialCatalog catalog, String packageId) {
+        return new FluidThermodynamics(catalog, packageId, FluidThermodynamics.DEFAULT_MAXIMUM_VELOCITY,
                 TraceTruncationPolicy.OFF, SlurryTransport.Settings.defaults());
     }
 
@@ -102,6 +96,18 @@ public final class FluidTestSupport {
                 new PassiveNetwork.Inventory(spec.volume(),com.wormzjl.createcheme.science.fluid.solver.PhaseLayout.totalAmounts(state),state.internalEnergy(),state.solids()));
     }
 
+    /**
+     * The state a closed vessel holds at {@code inventory} (its amounts, internal energy and capacity), started from
+     * {@code previous}: the network's own energy-volume solve, through its public entry, the interval-start refresh
+     * ({@code InventoryEquilibrium.refresh}) of a one-vessel graph.
+     */
+    public static FluidThermodynamics.State inventoryState(FluidThermodynamics model, FluidThermodynamics.State previous,
+                                                           PassiveNetwork.Inventory inventory) {
+        var vessel = new PassiveNetwork.Reservoir(1, 0, previous, PassiveNetwork.NodeKind.RESERVOIR, inventory);
+        return com.wormzjl.createcheme.science.fluid.network.InventoryEquilibrium
+                .refresh(new PassiveNetwork(List.of(vessel), List.of()), model, () -> {}).graph().reservoirs().getFirst().state();
+    }
+
     /** Retains the production nitrogen-initialization path used by world fixtures. */
     public static FluidThermodynamics.State nitrogenCharge(
             FluidThermodynamics model, double volume, double temperature, double pressure) {
@@ -133,7 +139,7 @@ public final class FluidTestSupport {
         return total;
     }
 
-    /** Totals one graph's finite component and gravity-inclusive energy ownership. */
+    /** Totals one graph's finite component and internal-energy ownership (no potential energy, owner decision D37 S1). */
     public static Ledger finiteLedger(PassiveNetwork graph, double[] molecularWeights) {
         return finiteLedger(List.of(Objects.requireNonNull(graph, "graph")), molecularWeights);
     }
@@ -157,8 +163,7 @@ public final class FluidTestSupport {
                     }
                     components[component] += moles[component];
                 }
-                energy += inventory.internalEnergy()
-                        + mass(moles, weights) * PassiveStepSolver.GRAVITY * reservoir.elevation();
+                energy += inventory.internalEnergy();
             }
         }
         return new Ledger(components, energy);
@@ -174,7 +179,7 @@ public final class FluidTestSupport {
         ConservationAssertions.energy(before.energy(), after.energy(), 0, Math.abs(before.energy()));
     }
 
-    /** Immutable totals for finite component and gravity-inclusive energy ownership. */
+    /** Immutable totals for finite component and internal-energy ownership. */
     public record Ledger(double[] components, double energy) {
         public Ledger {
             components = Objects.requireNonNull(components, "components").clone();

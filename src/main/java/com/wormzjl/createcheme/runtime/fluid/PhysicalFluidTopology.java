@@ -251,8 +251,8 @@ public final class PhysicalFluidTopology {
         hash=(hash^part)*0x100000001b3L;return (hash&Long.MAX_VALUE)==0?1:hash&Long.MAX_VALUE;
     }
     private static FlowControl control(Device device,Set<Long> invalidPumps) {
-        if(device.control instanceof FlowControl.Pump pump&&invalidPumps.contains(device.id))return new FlowControl.Pump(0,pump.maximumAddedPressure(),pump.efficiency());
-        if(device.control instanceof FlowControl.Compressor compressor&&invalidPumps.contains(device.id))return new FlowControl.Compressor(0,compressor.maximumPressureRatio(),compressor.efficiency());
+        if(device.control instanceof FlowControl.Pump pump&&invalidPumps.contains(device.id))return new FlowControl.Pump(0,pump.maximumAddedPressure());
+        if(device.control instanceof FlowControl.Compressor compressor&&invalidPumps.contains(device.id))return new FlowControl.Compressor(0,compressor.maximumPressureRatio());
         return device.control;
     }
     private static boolean positiveSide(Device device,Point neighbor){var p=device.position;var d=device.facing;return (neighbor.x-p.x)*d.x+(neighbor.y-p.y)*d.y+(neighbor.z-p.z)*d.z>0;}

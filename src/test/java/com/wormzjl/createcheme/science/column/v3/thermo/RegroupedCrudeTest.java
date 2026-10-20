@@ -10,7 +10,8 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class RegroupedCrudeTest {
     @Test void replacementHasTwelveConsistentCutsAndNoRetiredProductionBasis() {
-        var catalog=MaterialCatalog.bundled();assertEquals(8,catalog.packages().size());
+        // Eight column/network packages plus the bundled pilot createcheme:pilot_cryogenic (no column package).
+        var catalog=MaterialCatalog.bundled();assertEquals(9,catalog.packages().size());
         assertFalse(catalog.packages().containsKey("createcheme:cdu17_tjl_acs2018"));
         var p=catalog.requirePackage("createcheme:tjl20_methane");assertEquals(19,p.components().size());
         for(int i=1;i<=12;i++)assertEquals("crude_pc%02d".formatted(i),p.components().get(i+6));
@@ -69,9 +70,9 @@ class RegroupedCrudeTest {
         double residueError=Math.abs(viscosity.liquid(333.15,residue).pascalSeconds()/residueObserved-1);
         assertTrue((wholeError+residueError)/2<=.1);assertTrue(Math.max(wholeError,residueError)<=.2);
         for(double t:new double[]{293.15,298.15,373.15,773.15,900}) {
-            double last=catalog.viscosity(id,"crude_pc12",ViscosityCorrelation.Phase.LIQUID).orElseThrow().dynamicViscosityPascalSeconds(t,100000);
-            assertEquals(last,catalog.viscosity(id,"crude_pc11",ViscosityCorrelation.Phase.LIQUID).orElseThrow().dynamicViscosityPascalSeconds(t,100000),last*1e-12);
-            assertEquals(last,catalog.viscosity(id,"crude_pc10",ViscosityCorrelation.Phase.LIQUID).orElseThrow().dynamicViscosityPascalSeconds(t,100000),last*1e-12);
+            double last=catalog.viscosity(id,"crude_pc12",ViscosityCorrelation.Phase.LIQUID).orElseThrow().dynamicViscosityPascalSeconds(t,ViscosityCorrelation.Phase.LIQUID);
+            assertEquals(last,catalog.viscosity(id,"crude_pc11",ViscosityCorrelation.Phase.LIQUID).orElseThrow().dynamicViscosityPascalSeconds(t,ViscosityCorrelation.Phase.LIQUID),last*1e-12);
+            assertEquals(last,catalog.viscosity(id,"crude_pc10",ViscosityCorrelation.Phase.LIQUID).orElseThrow().dynamicViscosityPascalSeconds(t,ViscosityCorrelation.Phase.LIQUID),last*1e-12);
         }
     }
     @Test void gameplayDrawsRetainTheCapturedPhysicalVolumeTargets() throws Exception {

@@ -26,7 +26,7 @@ class RestIslandTest {
         w.place(0,0,1,Kind.PIPE,NORTH,.05);w.place(0,0,2,Kind.PIPE,NORTH,.05);
         long generator=w.place(0,0,0,Kind.GENERATOR,NORTH,PASSIVE,EventPathWorld.pure(MaterialTestBasis.NETWORK,298.15,firstGenerator),.05);
         w.place(0,1,1,Kind.VOID,NORTH,PASSIVE,nitrogen,.05);w.place(-1,0,1,Kind.PIPE,NORTH,.05);w.place(0,0,3,Kind.GENERATOR,NORTH,PASSIVE,water,.05);
-        w.place(0,1,3,Kind.PUMP,NORTH,new FlowControl.Pump(.01,500000,1),null,.05);w.place(-2,0,0,Kind.PIPE,NORTH,.05);w.place(0,1,2,Kind.PIPE,NORTH,.05);
+        w.place(0,1,3,Kind.PUMP,NORTH,new FlowControl.Pump(.01,500000),null,.05);w.place(-2,0,0,Kind.PIPE,NORTH,.05);w.place(0,1,2,Kind.PIPE,NORTH,.05);
         w.place(-2,0,1,Kind.VOID,NORTH,PASSIVE,nitrogen,.05);
         w.runTo(232);w.place(-3,0,0,Kind.FILTER,EAST,.05);
         return generator;

@@ -35,5 +35,6 @@
   "data/createcheme/materials/packages/cdu17.json",
   "data/createcheme/materials/assays/cdu17.json",
   "data/createcheme/materials/water/water.json",
-  "data/createcheme/materials/components/water.json"
+  "data/createcheme/materials/components/water.json",
+  "data/createcheme/materials/crystals/ice_ih.json"
 ]

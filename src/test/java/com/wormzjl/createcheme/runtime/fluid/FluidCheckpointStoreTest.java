@@ -18,7 +18,7 @@ import org.junit.jupiter.api.io.TempDir;
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
- * Checkpoint format 8 through its real layout on a temporary directory (F3): the core record as the world's saved
+ * Checkpoint format 11 through its real layout on a temporary directory (F3): the core record as the world's saved
  * data file, the island and topology units in pack files beside it. Minecraft's save path round-trips clocks,
  * inventories, fences, pending events, certificates and held islands; a save writes only the units of islands
  * that changed; a crash between a pack and its core record leaves the previous checkpoint in force; a commit built on
@@ -42,7 +42,7 @@ class FluidCheckpointStoreTest extends CertifyingRig.Islands {
         if(Files.isDirectory(units))try(var list=Files.list(units)){list.forEach(f->names.add(f.getFileName().toString()));}
         return names;
     }
-    private static FluidCheckpointCodec.IslandEntry entry(IslandCoordinator.Snapshot snapshot){return new FluidCheckpointCodec.IslandEntry("minecraft:overworld",PACKAGE,1e-9,snapshot);}
+    private static FluidCheckpointCodec.IslandEntry entry(IslandCoordinator.Snapshot snapshot){return new FluidCheckpointCodec.IslandEntry("minecraft:overworld",PACKAGE,snapshot);}
     private static FluidCheckpointCodec.Checkpoint checkpoint(List<IslandCoordinator.Snapshot> snapshots){return new FluidCheckpointCodec.Checkpoint(snapshots.stream().map(FluidCheckpointStoreTest::entry).toList());}
     private static void assertInventories(PassiveNetwork expected,PassiveNetwork actual,String what) {
         assertEquals(expected.reservoirs().size(),actual.reservoirs().size(),what);
@@ -68,7 +68,7 @@ class FluidCheckpointStoreTest extends CertifyingRig.Islands {
     }
     /** An awake lone tank with an explicit payload generation, as a coordinator's snapshot carries it. */
     private IslandCoordinator.Snapshot tank(long id,long generation,long tick) {
-        return new IslandCoordinator.Snapshot(id,0,loneTanks.computeIfAbsent(id,k->loneTank(100_000+k)),new IslandClock.Snapshot(tick,tick,0,100),FallbackAllowance.NONE,Optional.empty(),Optional.empty(),"READY",Map.of(),Optional.empty(),generation);
+        return new IslandCoordinator.Snapshot(id,0,loneTanks.computeIfAbsent(id,k->loneTank(100_000+k)),new IslandClock.Snapshot(tick,tick,0,100),Optional.empty(),"READY",Map.of(),Optional.empty(),generation);
     }
     private final Map<Long,PassiveNetwork> loneTanks=new HashMap<>();
 
@@ -77,7 +77,7 @@ class FluidCheckpointStoreTest extends CertifyingRig.Islands {
     /**
      * Minecraft's save path (SavedData.save(File)) writes the core record and one pack; a fresh store reading the files
      * gives back clocks (the held island's retry tick too), inventories bit for bit, fences, statuses, the last results,
-     * a queued topology event and the no-flow and moving certificates exactly; the core record carries format 8, the
+     * a queued topology event and the no-flow and moving certificates exactly; the core record carries format 10, the
      * epoch and one certificate kind; and the loaded checkpoint saves back to the same core record without encoding.
      */
     @Test void clocksFencesEventsCertificatesAndHeldIslandsRoundTripThroughTheFiles() throws IOException {
@@ -87,7 +87,7 @@ class FluidCheckpointStoreTest extends CertifyingRig.Islands {
         assertTrue(rig.stored(4).certificate().isEmpty(),"the slow fill stays awake");
         var fence=UUID.randomUUID();rig.coordinator.fence(fence,1_500,List.of(4L));
         // A held island as a start-up hold leaves one: awake, its retry tick ahead of its committed tick, a HELD status line.
-        var held=new IslandCoordinator.Snapshot(5,3,loneTank(900),new IslandClock.Snapshot(1_234,1_100,1_260,100),FallbackAllowance.NONE,Optional.empty(),Optional.empty(),"HELD: start-up round over its wall budget; retry at 63.0 s");
+        var held=new IslandCoordinator.Snapshot(5,3,loneTank(900),new IslandClock.Snapshot(1_234,1_100,1_260,100),Optional.empty(),"HELD: start-up round over its wall budget; retry at 63.0 s");
         var entries=new ArrayList<>(rig.checkpoint().islands());entries.add(entry(held));
         var checkpoint=new FluidCheckpointCodec.Checkpoint(entries);
         // A queued topology event, pending in the world ledger at the save.
@@ -103,18 +103,18 @@ class FluidCheckpointStoreTest extends CertifyingRig.Islands {
         assertEquals(Set.of("fluid-1.pack"),packs(folder),"one pack: every unit of the first save");assertTrue(Files.exists(core(folder)));
         assertEquals(5,data.lastSave().payloadsEncoded());assertTrue(data.lastSave().topologyEncoded());
         var tag=NbtIo.readCompressed(core(folder),NbtAccounter.unlimitedHeap()).getCompound("data");
-        assertEquals(9,tag.getInt("FluidFormat"));assertEquals(1_234,tag.getLong("Epoch"));
+        assertEquals(FluidCheckpointCodec.VERSION,tag.getInt("FluidFormat"));assertEquals(1_234,tag.getLong("Epoch"));
         var rows=tag.getCompound("Islands");
         assertEquals(FluidCheckpointCodec.AWAKE,rows.getLongArray("Base")[CheckpointImages.row(tag,4)]);
         assertEquals(checkpoint.islands().get(1).snapshot().certificate().orElseThrow().baseTick(),rows.getLongArray("Base")[CheckpointImages.row(tag,2)]);
-        assertFalse(rows.contains("Kind"),"format 8, like 5 to 7, has one certificate kind and no kind column");
+        assertFalse(rows.contains("Kind"),"format 11, like 5 to 10, has one certificate kind and no kind column");
         assertEquals(0.0,checkpoint.islands().get(1).snapshot().certificate().orElseThrow().drift(),"the closed pair's certificate is the identity map, drift 0");
 
         var loaded=FluidSavedData.read(directory(folder),key->model).orElseThrow();
         for(int i=0;i<5;i++) {
             var a=checkpoint.islands().get(i).snapshot();var b=loaded.checkpoint().islands().get(i).snapshot();String what="island "+a.id();
             assertEquals(a.id(),b.id());assertEquals(a.revision(),b.revision(),what);assertEquals(a.clock(),b.clock(),what+" clock, exact");
-            assertEquals(a.fences(),b.fences(),what);assertEquals(a.status(),b.status(),what);assertEquals(a.allowance(),b.allowance(),what);
+            assertEquals(a.fences(),b.fences(),what);assertEquals(a.status(),b.status(),what);
             assertInventories(a.graph(),b.graph(),what);
             assertEquals(a.lastResult().isPresent(),b.lastResult().isPresent(),what);
             a.lastResult().ifPresent(r->{var s=b.lastResult().orElseThrow();assertArrayEquals(r.averageMassFlows(),s.averageMassFlows(),what);assertArrayEquals(r.endpointHeads(),s.endpointHeads(),what);
@@ -320,10 +320,10 @@ class FluidCheckpointStoreTest extends CertifyingRig.Islands {
             java.util.function.UnaryOperator<PassiveNetwork> relabel=g->new PassiveNetwork(g.reservoirs().stream().map(n->new PassiveNetwork.Reservoir(node,n.elevation(),n.state(),n.kind(),n.inventory())).toList(),g.pipes());
             var r=saved.interval().result();
             var result=new PassiveIntervalSolver.Result(relabel.apply(r.graph()),r.advancedSeconds(),r.averageMassFlows(),r.acceptedSubsteps(),r.rejectedSubsteps(),r.pumpWorkJoule(),
-                    r.boundaries().stream().map(b->new ConservativeTransport.BoundaryTransfer(node,b.moles(),b.totalEnergyJoule(),b.solids(),b.solidDirection())).toList(),r.rejectionReasons(),r.endpointModes(),r.endpointHeads(),r.endpointFlows(),r.acceptance(),r.pipeTransfers());
+                    r.boundaries().stream().map(b->new ConservativeTransport.BoundaryTransfer(node,b.moles(),b.totalEnergyJoule(),b.solids(),b.solidDirection())).toList(),r.rejectionReasons(),r.endpointModes(),r.endpointHeads(),r.endpointFlows(),r.pipeTransfers());
             var copy=new IslandCertificate.Saved(saved.sinceTick(),saved.horizonTick(),new IslandCertificate.Interval(saved.interval().startTick(),saved.interval().endTick(),relabel.apply(saved.interval().before()),result),
                     IslandCertificate.Signature.of(model,policy,result.graph()));
-            snapshots.add(new IslandCoordinator.Snapshot(id,0,relabel.apply(t.graph()),t.clock(),t.allowance(),t.anchor().map(a->new ApproximationAnchor(a.propertyRevision(),relabel.apply(a.graph()),a.modes())),Optional.of(result),t.status(),Map.of(),
+            snapshots.add(new IslandCoordinator.Snapshot(id,0,relabel.apply(t.graph()),t.clock(),Optional.of(result),t.status(),Map.of(),
                     Optional.of(new IslandCoordinator.Certified(certified.drift(),certified.sinceTick(),certified.baseTick(),certified.horizonTick(),certified.largestFlow(),Optional.of(copy)))));
         }
         countFromHere();

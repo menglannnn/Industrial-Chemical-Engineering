@@ -108,10 +108,6 @@ final class HollandExample32Data {
         return fixture.sideDrawLbMolPerHour() * LB_MOL_PER_HOUR_TO_MOL_PER_SECOND;
     }
 
-    double publishedDistillateLbMolPerHour() {
-        return fixture.publishedDistillateLbMolPerHour();
-    }
-
     double publishedRefluxRatio() {
         return fixture.publishedRefluxRatioToVaporDistillate();
     }

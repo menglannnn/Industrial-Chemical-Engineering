@@ -23,7 +23,7 @@ public final class PhaseLayout {
      * it, so it is built with the layout instead of boxed into a list on every evaluation. */
     private final int[] junctionBasis;
     private final int waterLiquidIndex,waterVaporIndex,temperatureIndex,pressureIndex,partialPressureIndex,size;
-    private final double amountScale,energyScale;
+    private final double amountScale,energyScale,steamSeed;
     private final double[] componentScales,differenceScales;
     private final boolean liquidActive,vaporActive;
     private final int solidIndex;
@@ -99,11 +99,39 @@ public final class PhaseLayout {
             for(int c:components)if(conservedReference[c]==0){int at=amountIndex[c];differenceScales[at]=Math.max(1e-4,differenceScales[at]);}
             if(conservedReference[l.length]==0){if(waterLiquidIndex>=0)differenceScales[waterLiquidIndex]=Math.max(1e-4,differenceScales[waterLiquidIndex]);if(waterVaporIndex>=0)differenceScales[waterVaporIndex]=Math.max(1e-4,differenceScales[waterVaporIndex]);}
         }
+        // The steam beside its liquid water, which the saturation row reads through a logarithm: the floors above are capped
+        // at LOG_READ_SPAN of its own seed amount.
+        steamSeed=waterVaporIndex>=0?seed.waterVapor()/amountScale:0;
+        if(waterLiquidIndex>=0&&waterVaporIndex>=0)differenceScales[waterVaporIndex]=logReadFloor(differenceScales[waterVaporIndex]);
     }
+    /**
+     * The span by which the bulk difference floor of an amount may exceed the amount where a row reads it through a
+     * logarithm: 1e4, so its step (the Newton's 1e-6 of the scale) stays within 1 % of the amount and the logarithm's
+     * secant within 0.5 % of its tangent. The bulk floor of a gas-rich vessel (1e-4 of its amount) is kept wherever such
+     * an amount is at least 1e-8 of its vessel; the stand-in of ice in a cold gas holds steam of about 1e-5 Pa at 150 K,
+     * 1e-11 of its vessel, where the floor's step was 8 times the steam and the Newton on the saturation row alternated.
+     */
+    public static final double LOG_READ_SPAN=1e4;
+    private double logReadFloor(double floored){return Math.min(floored,Math.max(steamSeed,LOG_READ_SPAN*steamSeed));}
+    /** The local column of the free water's steam, -1 where the layout carries none. */
+    public int waterVaporVariable(){return waterVaporIndex;}
+    /**
+     * {@link #differenceStepScale} of the steam column where a row reads the steam through a logarithm, with the floor
+     * capped at {@link #LOG_READ_SPAN} of the seed's steam: this layout's saturation row (the column carries the cap
+     * already), and a vessel refresh's ice row (WP4) beside a layout without liquid water.
+     */
+    public double steamLogReadScale(double value){return traceDifferenceScale(Math.max(Math.abs(value),logReadFloor(differenceScales[waterVaporIndex])));}
     public int size(){return size;}
     /** The local column of the pressure unknown, {@code ln(P / 1e5)}; every layout has one. */
     public int pressureVariable(){return pressureIndex;}
     public int componentBalanceCount(){return components.length+(waterLiquidIndex>=0||waterVaporIndex>=0?1:0);}
+    /** Whether this layout carries free liquid water, and water vapour, as unknowns (the free water's phases). */
+    public boolean carriesWaterLiquid(){return waterLiquidIndex>=0;}
+    public boolean carriesWaterVapor(){return waterVaporIndex>=0;}
+    /** The water balance's row among {@link #balanceRows}' (from their offset), or -1 where the layout carries no water. */
+    public int waterBalanceRow(){return waterLiquidIndex>=0||waterVaporIndex>=0?components.length:-1;}
+    /** The amount a component's balance row is stated over ({@link #balanceRows}), mol; water's at the basis's last index. */
+    public double componentScale(int component){return componentScales[component];}
     /** This layout's frozen per-component support, in the conserved hydrocarbon basis. */
     public PhaseSupport support(int component){return support[component];}
     /** Components whose omitted phase this layout holds at exactly zero, for the diagnostics counters. */
@@ -143,19 +171,12 @@ public final class PhaseLayout {
     /**
      * The scale of the finite-difference step of this column: {@link #differenceScale}, except that an amount whose value
      * and seed both lie below {@link #TRACE_DIFFERENCE_GUARD} is differenced relative to its own size, the guard applying
-     * only where both are zero. The guard used to apply to every such amount, so a trace of 1e-36 of its node's amount
-     * was differenced with a step as large as itself: the equilibrium rows, which read a trace phase's amounts through
-     * logarithms and ratios (the water saturation row of a vanishing vapour phase holding a trace of nitrogen that free
-     * water does not dissolve), got a secant 20-35 % below the tangent, and the Newton overshot and alternated, contracting
-     * by only 0.06-0.5 per iteration, so 20 iterations ended a little above the tolerance (1.1-1.8e-9 against 1e-9 in game)
-     * at every step size (phase-ports in-game defects F1 and F2, tools/phase-ports-probes/holds/). Bitwise wherever the
-     * value or the seed is at least the guard.
-     *
-     * <p>What this does not reach: such a trace decays geometrically and never to zero (a junction washed out by backward
-     * Euler, a gas cap a phase port draws at its D11 capacity share), and near the bottom of the double range (about
-     * 1e-300 of its node) the rows reading it through a logarithm have Jacobian entries of order 1/amount that overflow
-     * the factorization, then subnormal amounts that no longer resolve their own ratio. That end needs a decision on
-     * traces (the review's options), not a difference step.
+     * only where both are zero. Applied to every such amount, a trace of 1e-36 of its node's amount was differenced with
+     * a step as large as itself, and the equilibrium rows, which read a trace phase's amounts through logarithms and
+     * ratios, got a secant 20 to 35 % below the tangent: the Newton contracted by only 0.06 to 0.5 per iteration and
+     * ended a little above the tolerance at every step size. Bitwise wherever the value or the seed is at least the
+     * guard. Not reached: a trace near the bottom of the double range (about 1e-300 of its node), whose logarithmic rows
+     * overflow the factorization; that end needs a decision on traces, not a difference step.
      */
     public double differenceStepScale(int local,double value) {
         if(!totalAmountVariable(local))return differenceScale(local,value);
@@ -254,18 +275,14 @@ public final class PhaseLayout {
      */
     public static final double AMBIENT_PRESSURE=101325;
     /**
-     * Owner decision D54 (plan {@code documentation/2026-10-14-empty-start-progressive-volume/EMPTY_START_PLAN.md}): every
-     * vessel is a bag with a stiff wall. Its wall carries no load while the contents are smaller than the capacity, so the
-     * pressure is the ambient and the volume is the contents' own; once the contents would exceed the capacity the wall
-     * holds them at the capacity and the pressure comes from the contents. The wall law {@code P = P_ambient + k max(0,
-     * V - V_max)} is taken in its stiff limit, {@code k} infinite: {@code V <= V_max}, {@code P >= P_ambient}, one of the
-     * two an equality. As one row, {@code max(taut, slack) = 0}, with {@code taut = (V - V_max)/V_max} (the fixed-volume
-     * row it replaces, to the bit) and {@code slack = 2 (P_ambient - P)/P_ambient}. The slack row is stated twice as steep
-     * in pressure as any contents' own volume (a gas's is about 1 in log pressure), so a vessel exactly at the kink reads
-     * the taut row.
-     *
-     * <p>The row is continuous and smooth on each branch, with a kink where the branches meet; a Newton on it takes the
-     * slopes of the branch the iterate is on ({@code branch}, decision A423, see {@link Wall}).
+     * Owner decision D54: every vessel is a bag with a stiff wall. Its wall carries no load while the contents are
+     * smaller than the capacity, so the pressure is the ambient and the volume the contents' own; once the contents
+     * would exceed the capacity the wall holds them there and the pressure comes from the contents. The wall law
+     * {@code P = P_ambient + k max(0, V - V_max)} in its stiff limit: {@code V <= V_max}, {@code P >= P_ambient}, one of
+     * the two an equality, as one row {@code max(taut, slack) = 0} with {@code taut = (V - V_max)/V_max} (the fixed-volume
+     * row it replaces, to the bit) and {@code slack = 2 (P_ambient - P)/P_ambient}, twice as steep in pressure as any
+     * contents' own volume, so a vessel exactly at the kink reads the taut row. Continuous and smooth on each branch; a
+     * Newton on it takes the slopes of the branch the iterate is on ({@code branch}, {@link Wall}).
      */
     public static double wallRow(FluidThermodynamics.State state,double capacity){return wallRow(state,capacity,null);}
     /** {@link #wallRow} stated on {@code branch}'s branch ({@link Wall#taut}); on the state's own when it is null. */
@@ -275,20 +292,15 @@ public final class PhaseLayout {
     }
     /**
      * The branches of a vessel's wall at one state: {@code taut}, whether the wall carries the contents ({@link #wallRow}
-     * on its taut branch); {@code full}, whether the bag is at the capacity ({@link #bagVolume}).
-     *
-     * <p>Decision A423 (the close of the phase-ports batch, 2026-10-14). The wall row and the bag volume are continuous
-     * and piecewise smooth, and a one-sided difference across their kink reads the far branch's slope for a row on the
-     * near one. A full tank of air at the ambient, the common state of a vessel in the game, sits on that kink. The
-     * six-tank pumped chain's cold first tick (0.05 s) seeded its five full nitrogen tanks 7.5e-9 of their capacity over
-     * it (the trace flash of a vessel a reachable water may enter, {@code PassiveStepSolver.initialPhaseSeeds}); the first
-     * step, on the taut slopes, left them 2.7e-8 below the ambient and 1.9e-8 over the capacity; the chord steps kept the
-     * taut slopes across the branch flips (a pressure moved 2.7e-8 passes the chord test), while the energy row's bag
-     * volume switched between the contents' volume and the capacity under them: the line search stalled at 5.3e-8 at every
-     * step size down to 4.8e-8 s (log cl08). The rule: a Jacobian sweep states every wall row and bag volume on the
-     * branches of the point it is built at ({@link SparseNewton.Equations#linearising}: the generalised Jacobian of a
-     * semismooth Newton), and a chord step is refused once a vessel's branches differ from the Jacobian's
-     * ({@link SparseNewton.Equations#linearisationHolds}). The rows are unchanged, so is every root.
+     * on its taut branch); {@code full}, whether the bag is at the capacity ({@link #bagVolume}). Decision A423: the wall
+     * row and the bag volume are continuous and piecewise smooth, and a one-sided difference across their kink reads the
+     * far branch's slope for a row on the near one; a full tank of air at the ambient, the common state of a vessel in
+     * the game, sits on that kink (five full nitrogen tanks seeded 7.5e-9 of their capacity over it stalled the line
+     * search at 5.3e-8 at every step size, the chord steps keeping the taut slopes across the branch flips). The rule: a
+     * Jacobian sweep states every wall row and bag volume on the branches of the point it is built at
+     * ({@link SparseNewton.Equations#linearising}, a semismooth Newton), and a chord step is refused once a vessel's
+     * branches differ from the Jacobian's ({@link SparseNewton.Equations#linearisationHolds}). The rows and roots are
+     * unchanged.
      */
     public record Wall(boolean taut,boolean full) {}
     /** The wall's branches at {@code state}. */
@@ -364,22 +376,12 @@ public final class PhaseLayout {
     }
     /**
      * The mixing block of {@link #junctionResidual}: everything the inflow and the net flow move, and nothing the
-     * equilibrium rows below it read. Returns the first row after this block.
-     *
-     * <p>{@code retainedPressure} is positive only for a junction no open connection reaches, and is
-     * then the pressure it keeps.
-     *
-     * <p>Nothing but the hydraulics decides a junction's pressure: the net
-     * mass flow row below balances what arrives against what leaves, and the connected pressure
-     * drops relate that to the pressure here. Close every connection and both halves of that
-     * disappear at once. Each closed connection already has a row of its own stating that its flow
-     * is zero, so the net flow row becomes their sum - satisfied identically, with no dependence on
-     * any unknown this junction owns - and the block is one equation short of its own pressure. The
-     * factorization is then singular, which is what a junction between two stopped filters, two
-     * shut pumps, or two connections a transport closure has taken in both directions produces.
-     *
-     * <p>So an isolated junction keeps the pressure it had, exactly as it keeps the composition it
-     * holds: nothing arrives to move it.
+     * equilibrium rows below it read. Returns the first row after this block. {@code retainedPressure} is positive only
+     * for a junction no open connection reaches, and is then the pressure it keeps: nothing but the hydraulics decides a
+     * junction's pressure, and with every connection closed the net flow row is the sum of the closed rows, satisfied
+     * identically, so the block would be one equation short of its own pressure and the factorization singular (a
+     * junction between two stopped filters or two shut pumps). An isolated junction keeps the pressure it had, as it
+     * keeps the composition it holds.
      */
     public int junctionRows(FluidThermodynamics.State state,double[] incomingMassFractions,double incomingSpecificEnthalpy,
                             double netMassFlow,double retainedPressure,double[] result,int offset,double[] variables,double weight) {
@@ -398,15 +400,11 @@ public final class PhaseLayout {
         return row;
     }
     /**
-     * Three aggregate balances; population identities are reconstructed outside Newton.
-     *
-     * <p>The moments are read from the unknowns rather than from the decoded state, so that each
-     * row stays exactly linear in its own unknown everywhere, including past the nonnegative
-     * boundary that {@link #decode} projects onto. Reading them back from the projected state
-     * would make the row constant for any trial point with a negative moment, which is a column of
-     * zeros in the Jacobian and a singular factorization - and a node whose incoming solids are
-     * zero, every node downstream of a filter for instance, sits exactly on that boundary. The two
-     * agree at every point the solver can accept, because the projection is inactive there.
+     * Three aggregate balances; population identities are reconstructed outside Newton. The moments are read from the
+     * unknowns rather than from the decoded state, so that each row stays exactly linear in its own unknown everywhere,
+     * including past the nonnegative boundary {@link #decode} projects onto: read from the projected state the row would
+     * be constant for any trial with a negative moment, a column of zeros, and every node downstream of a filter sits on
+     * that boundary. The two agree at every point the solver can accept.
      */
     public void solidRows(FluidThermodynamics.State state,double[] variables,int offset,double[] target,boolean junction,double[] result) {
         if(solidIndex<0)return;
@@ -436,22 +434,14 @@ public final class PhaseLayout {
         if(row!=offset+size)throw new IllegalStateException("Phase equation/unknown count mismatch");
     }
     /**
-     * Components whose omitted phase this converged state no longer supports omitting, marked in
-     * {@code promoted} for the next active-set pass; returns how many were newly marked.
-     *
-     * <p>The test is V3's reinsertion inequality, on the equilibrium relation this layout's own
-     * equilibrium rows state. At a converged point the retained components satisfy
-     * {@code ln y_i = ln x_i + ln phi_i^L - ln phi_i^V + ln(P/Pc)}, and the equation of state fills
-     * {@code ln phi_i} for a component that is not in a phase as well - at infinite dilution, which is
-     * exactly the regime an omitted trace is in - so the same expression says what mole fraction the
-     * omitted phase <em>would</em> hold. When that reaches
-     * {@link TraceTruncationPolicy#REINSERTION_FACTOR} times the cutoff, the reference the support was
-     * derived from is no longer describing this state and the component gets both phases back; the
-     * factor is the hysteresis that stops a component on the boundary from alternating.</p>
-     *
-     * <p>The seed for the restored phase needs no extra work: {@link #encode} already seeds a
-     * component with an empty phase at exactly this ratio, because a phase that has just appeared and
-     * a trace that has just been reactivated are the same situation.</p>
+     * Components whose omitted phase this converged state no longer supports omitting, marked in {@code promoted} for
+     * the next active-set pass; returns how many were newly marked. The test is V3's reinsertion inequality on this
+     * layout's own equilibrium relation: at a converged point the retained components satisfy
+     * {@code ln y_i = ln x_i + ln phi_i^L - ln phi_i^V + ln(P/Pc)}, and the equation of state fills {@code ln phi_i} of
+     * an absent component at infinite dilution, so the same expression says what mole fraction the omitted phase would
+     * hold; when that reaches {@link TraceTruncationPolicy#REINSERTION_FACTOR} times the cutoff the component gets both
+     * phases back (the factor is the hysteresis against alternation). {@link #encode} already seeds a component with an
+     * empty phase at exactly this ratio.
      */
     public int reactivate(FluidThermodynamics.State state,TraceTruncationPolicy policy,boolean[] promoted) {
         if(!policy.enabled()||!liquidActive||!vaporActive)return 0;
@@ -474,39 +464,44 @@ public final class PhaseLayout {
         return restored;
     }
     /**
-     * The per-component phase support of one node, derived from a full-basis reference state and
-     * then frozen: V3's rule, on the seed's own phase compositions.
-     *
-     * <p>The reference is the seed the layout is built from and never an in-flight Newton iterate, so
-     * the unknown set of a pass is fixed before the pass starts - which is what lets the sparsity
-     * pattern, the colouring, the fill-reducing ordering and the retained factorization be keyed on
-     * it. A component is reduced to one phase when its mole fraction in the other phase is below the
-     * cutoff while this one's is not; when both are below it the reference cannot say which phase the
-     * component belongs to and both are kept, as V3 does. {@code promoted} components are kept in
-     * both phases regardless: the active set reactivated them during this solve, and a reactivation
-     * may not be undone by a later pass of the same solve or the two would alternate.</p>
-     *
-     * <p>A node with only one active hydrocarbon phase gets that phase for every present component,
-     * which is the layout it always had. At {@link TraceTruncationPolicy#OFF} this returns the
-     * support of the unreduced layout for every component, so the whole path is the pre-truncation
-     * one.</p>
+     * The per-component phase support of one node, derived from a full-basis reference state and then frozen: V3's
+     * rule, on the seed's own phase compositions. The reference is the seed the layout is built from and never a Newton
+     * iterate, so the unknown set of a pass is fixed before the pass starts, which lets the sparsity pattern, the
+     * colouring, the ordering and the retained factorization be keyed on it. A component is reduced to one phase when
+     * its mole fraction in the other phase is below the cutoff while this one's is not; when both are below it both are
+     * kept. {@code promoted} components are kept in both phases regardless (a reactivation may not be undone by a later
+     * pass of the same solve). A node with one active hydrocarbon phase gets that phase for every present component; at
+     * {@link TraceTruncationPolicy#OFF} the support is the unreduced layout's.
      */
     public static PhaseSupport[] support(FluidThermodynamics.State seed,boolean[] componentMask,TraceTruncationPolicy policy,boolean[] promoted) {
         return support(seed,componentMask,policy,promoted,false);
     }
     /**
      * {@link #support} for a node that is a pipe junction ({@code junction}) or a vessel. A junction whose seed holds a
-     * carried trace gas ({@link FluidThermodynamics#carriedTrace}, decision D41) has no phase of its own for it in the
-     * solve: its gas components are omitted traces, like a masked component nothing delivers, with no unknown and no row.
-     * They are below what the junction's rows resolve (stated over its whole holdup): an amount unknown there has a
-     * difference step no row registers, so its column is zero and the factorization singular, and with the gas's water
-     * vapour as well the saturation row read the ratio of two such amounts and never contracted. The transport
-     * reconstruction carries them exactly, out with the water in proportion, and books more when more arrives: a share at
-     * or above the trace is a phase appearance, and the pass is solved again with them in it.
+     * carried trace gas ({@link FluidThermodynamics#carriedTrace}, decision D41) has no phase of its own for it: its gas
+     * components are omitted traces with no unknown and no row, below what the junction's rows resolve (an amount
+     * unknown there has a difference step no row registers, a zero column, and with the gas's water vapour the
+     * saturation row read the ratio of two such amounts and never contracted). The transport reconstruction carries them
+     * exactly and books more when more arrives; a share at or above the trace is a phase appearance.
      */
     public static PhaseSupport[] support(FluidThermodynamics.State seed,boolean[] componentMask,TraceTruncationPolicy policy,boolean[] promoted,boolean junction) {
         var support=supportOf(seed,componentMask,policy,promoted);
         if(junction&&FluidThermodynamics.carriedTrace(seed))for(int i=0;i<support.length;i++)if(support[i]==PhaseSupport.VAPOR_ONLY)support[i]=PhaseSupport.ABSENT;
+        return support;
+    }
+    /**
+     * {@link #support(FluidThermodynamics.State, boolean[], TraceTruncationPolicy, boolean[], boolean)} of a node of
+     * {@code model}'s network, under its trace truncation policy, with the support read from the fluid phases of the
+     * answer the seed was adopted from (owner decision D29 A). Where the seed's liquid is a crystal's condensed share alone
+     * ({@link FluidThermodynamics#condensedShareOnly}), that liquid is no phase of the answer and its composition says
+     * nothing of what a liquid there holds: the answer's one fluid phase is the vapour, and every component the vapour
+     * holds is admitted to the liquid too ({@link PhaseSupport#BOTH} where the rule gives {@link PhaseSupport#VAPOR_ONLY}),
+     * so the supersaturated liquid takes up the species that arrive with it (methane held in the vapour only cooled an
+     * LNG-fed tank to methane's 90.69 K floor). Elsewhere the same support as without the model.
+     */
+    public static PhaseSupport[] support(FluidThermodynamics model,FluidThermodynamics.State seed,boolean[] componentMask,boolean[] promoted,boolean junction) {
+        var support=support(seed,componentMask,model.traceTruncation(),promoted,junction);
+        if(model.condensedShareOnly(seed))for(int i=0;i<support.length;i++)if(support[i]==PhaseSupport.VAPOR_ONLY)support[i]=PhaseSupport.BOTH;
         return support;
     }
     private static PhaseSupport[] supportOf(FluidThermodynamics.State seed,boolean[] componentMask,TraceTruncationPolicy policy,boolean[] promoted) {
@@ -519,13 +514,10 @@ public final class PhaseLayout {
         double nl=liquidActive?sum(l):0,nv=vaporActive?sum(v):0;
         for(int i=0;i<l.length;i++) {
             if(!(l[i]+v[i]>0||componentMask!=null&&componentMask[i]))support[i]=PhaseSupport.ABSENT;
-            // A masked component this reference holds none of, on a point with no hydrocarbon
-            // phase to hold it in, is an omitted trace: there is no phase to carry an amount for
-            // it, and inventing one for a species nothing delivers is the defect
-            // {@code documentation/JUNCTION_PHANTOM_TRACE.md} measures. It stays in the mask, so a
-            // pass whose seed does carry the component - because something delivered it - states
-            // it again. A component this reference does hold with no phase to hold it in is a real
-            // appearance problem and is left to the layout to refuse, as before.
+            // A masked component this reference holds none of, on a point with no hydrocarbon phase to hold it in, is an
+            // omitted trace: inventing a phase for a species nothing delivers is the phantom-trace defect. It stays in the
+            // mask, so a pass whose seed does carry the component states it again. A component this reference does hold
+            // with no phase to hold it in is a real appearance problem and is left to the layout to refuse.
             else if(l[i]+v[i]==0&&!liquidActive&&!vaporActive)support[i]=PhaseSupport.ABSENT;
             else if(!vaporActive)support[i]=PhaseSupport.LIQUID_ONLY;
             else if(!liquidActive)support[i]=PhaseSupport.VAPOR_ONLY;

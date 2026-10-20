@@ -94,19 +94,6 @@ final class IndependentHollandMeshOracle {
         throw new IllegalStateException("Independent Holland oracle reached its iteration limit");
     }
 
-    double[] liquidTotals(State state) {
-        return totals(state.liquidComponentFlows());
-    }
-
-    double[] vaporTotals(State state) {
-        return totals(state.vaporComponentFlows());
-    }
-
-    double condenserDutyBtuPerHour(State state) {
-        return componentEnergy(state.vaporComponentFlows()[1], state.temperaturesFahrenheit()[1], true)
-                - componentEnergy(state.liquidComponentFlows()[0], state.temperaturesFahrenheit()[0], false)
-                - componentEnergy(state.vaporComponentFlows()[0], state.temperaturesFahrenheit()[0], true);
-    }
 
     private State initialState() {
         double[] temperatures = data.solution().temperatureFahrenheit().clone();
@@ -320,11 +307,6 @@ final class IndependentHollandMeshOracle {
         return normalized;
     }
 
-    private static double[] totals(double[][] values) {
-        double[] totals = new double[values.length];
-        for (int node = 0; node < values.length; node++) totals[node] = sum(values[node]);
-        return totals;
-    }
 
     private static double sum(double[] values) {
         double total = 0.0;

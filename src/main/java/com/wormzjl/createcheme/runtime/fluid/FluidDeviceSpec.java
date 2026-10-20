@@ -17,9 +17,8 @@ public record FluidDeviceSpec(double volume,double temperature,double pressure,d
     public FluidDeviceSpec(double volume,double temperature,double pressure,double[] composition,SlurryFeed solids){this(volume,temperature,pressure,composition,solids,com.wormzjl.createcheme.science.fluid.network.PassiveStepSolver.LEVEL_HEAD_HEIGHT);}
     public FluidDeviceSpec {
         Objects.requireNonNull(solids);composition=composition.clone();
-        // Structural bounds only. Where a temperature and pressure may be evaluated depends on the property package
-        // and on what the device holds, so it is checked against the model (validate, initialize), with the dedicated
-        // thermo-domain error, not against constants here.
+        // Structural bounds only. The input box a setting must lie in is the property package's envelope, so it is checked
+        // against the model (validate, initialize), not against constants here.
         if(!Double.isFinite(volume)||volume<=0||volume>MAX_VOLUME||!Double.isFinite(levelHeight)||levelHeight<=0||levelHeight>MAX_LEVEL_HEIGHT||!Double.isFinite(temperature)||!(temperature>0)||!Double.isFinite(pressure)||!(pressure>0)||(composition.length<1||composition.length>com.wormzjl.createcheme.science.material.MaterialAxis.MAX_CONSERVED_COMPONENTS))throw new IllegalArgumentException("Device settings outside the fluid model's bounds");
         double sum=0;for(double amount:composition){if(!Double.isFinite(amount)||amount<0)throw new IllegalArgumentException("Invalid composition");sum+=amount;}
         if(!Double.isFinite(sum)||sum<=0)throw new IllegalArgumentException("Empty composition");
@@ -36,19 +35,15 @@ public record FluidDeviceSpec(double volume,double temperature,double pressure,d
         return new FluidDeviceSpec(1,298.15,101325,n);
     }
     /**
-     * Refuses settings the model cannot evaluate, with the dedicated {@link com.wormzjl.createcheme.science.fluid.thermo.ThermoDomainViolation}:
-     * the fluid a device of this kind would hold at this temperature and pressure - nitrogen for a void, this composition
-     * for a generator - against the package's domain. A reservoir is placed empty (decision D54), and pipes and actuators
-     * hold nothing.
+     * Refuses a void's or a generator's temperature and pressure outside the package envelope, when the player sets them
+     * ({@link com.wormzjl.createcheme.science.fluid.thermo.FluidDomain#requireInput}: an input box, plan decision 9, never
+     * a hold of a state the network reaches by itself). A reservoir is placed empty (decision D54), and pipes and
+     * actuators hold nothing.
      */
     public void validate(FluidThermodynamics model,TopologyCompiler.Kind kind) {
         if(composition.length!=model.components().size())throw new IllegalArgumentException("Device composition differs from captured fluid axis");
         switch(kind) {
-            case VOID->{
-                int nitrogen=model.hydrocarbon.components().indexOf(com.wormzjl.createcheme.science.fluid.thermo.FluidMaterialCatalog.NITROGEN);
-                double[] charge=new double[composition.length];charge[nitrogen]=1;model.domain().checkTotals(temperature,pressure,charge);
-            }
-            case GENERATOR->model.domain().checkTotals(temperature,pressure,composition);
+            case VOID,GENERATOR->model.domain().requireInput(temperature,pressure);
             default->{}
         }
     }

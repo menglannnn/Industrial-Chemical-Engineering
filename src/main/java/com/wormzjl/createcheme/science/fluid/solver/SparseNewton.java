@@ -4,7 +4,7 @@ import com.wormzjl.createcheme.science.fluid.SolverOwnership;
 import com.wormzjl.createcheme.science.fluid.diagnostics.SolverDiagnostics;
 import com.wormzjl.createcheme.science.fluid.linalg.SparseLuSolver;
 import com.wormzjl.createcheme.science.fluid.linalg.SparseMatrix;
-import com.wormzjl.createcheme.science.fluid.thermo.ThermoDomainViolation;
+import com.wormzjl.createcheme.science.fluid.thermo.ThermoHold;
 import java.util.*;
 
 /** Per-call sparse Newton workspace. Inputs and residuals must already be dimensionlessly scaled. */
@@ -63,6 +63,14 @@ public final class SparseNewton {
         /** Ends the bracket {@link #linearising} opened. */
         default void linearised(){}
     }
+    /**
+     * The iteration limit of every Newton the fluid solver runs (a step's pass, its polish, a vessel's closure, the
+     * crystal refresh's joint closure): one constant, no condition and no per-island case (owner decision of 2026-10-18 on
+     * the t38 plan, question 3). Chosen 30 on the 200-seed quick check among 30, 40 and 60: it was 20 for a pass and 24 for a closure; with the velocity cap in every line's law a
+     * network deep in saturation (lines past five times their cap, slopes of 1e-7 and below) converges at 0.06 to 0.36 per
+     * step and ran out of 20 at a residual of 1e-8 (cold seed 19).
+     */
+    public static final int ITERATIONS=30;
     public record Settings(int iterations,double tolerance,double differenceStep,int backtracks) {
         public Settings {
             if(iterations<1||!Double.isFinite(tolerance)||tolerance<=0||!Double.isFinite(differenceStep)
@@ -76,22 +84,30 @@ public final class SparseNewton {
     }
     public static final class Nonconvergence extends RuntimeException {
         private final double[] lastVariables;
-        private final ThermoDomainViolation domainViolation;
+        private final ThermoHold phaseHold;
         public Nonconvergence(String message){this(message,null);}
         public Nonconvergence(String message,double[] lastVariables){this(message,lastVariables,null);}
-        /** {@code domainViolation}: the property domain stopped this solve - the failing iteration's line search was
+        /** {@code phaseHold}: a phase hold stopped this solve ({@link ThermoHold}: a phase set the network cannot carry, or
+         * one the engine could not converge inside the declared critical band) - the failing iteration's line search was
          * refused by it - and a rejection count or a held island should name it rather than the Newton symptom. */
-        public Nonconvergence(String message,double[] lastVariables,ThermoDomainViolation domainViolation) {
-            super(message);this.lastVariables=lastVariables==null?null:lastVariables.clone();this.domainViolation=domainViolation;
+        public Nonconvergence(String message,double[] lastVariables,ThermoHold phaseHold) {
+            super(message);this.lastVariables=lastVariables==null?null:lastVariables.clone();this.phaseHold=phaseHold;
         }
         public double[] lastVariables(){return lastVariables==null?null:lastVariables.clone();}
-        /** The domain violation that stopped this solve, or {@code null} when the failure was numerical. */
-        public ThermoDomainViolation domainViolation(){return domainViolation;}
+        /** The phase hold that stopped this solve, or {@code null} when the failure was numerical. */
+        public ThermoHold phaseHold(){return phaseHold;}
+        /** This failure with the hold that stopped it at a known network node ({@link ThermoHold#at}): a caller that knows
+         * the node a failed solve belongs to names it as it names a hold. Itself where no hold stopped the solve or the
+         * hold already names a node. */
+        public Nonconvergence at(long node) {
+            var named=phaseHold==null?null:phaseHold.at(node);
+            return named==phaseHold?this:new Nonconvergence(getMessage(),lastVariables,named);
+        }
     }
-    /** The domain violation a refusal stands for: the violation itself, or the one a failed solve carries; else null. */
-    public static ThermoDomainViolation domainViolation(Throwable refusal) {
-        if(refusal instanceof ThermoDomainViolation violation)return violation;
-        if(refusal instanceof Nonconvergence failure)return failure.domainViolation();
+    /** The phase hold a refusal stands for: the hold itself, or the one a failed solve carries; else null. */
+    public static ThermoHold phaseHold(Throwable refusal) {
+        if(refusal instanceof ThermoHold hold)return hold;
+        if(refusal instanceof Nonconvergence failure)return failure.phaseHold();
         return null;
     }
 
@@ -158,14 +174,14 @@ public final class SparseNewton {
         boolean openedPreconditioned=!refresh;
         if(openedPreconditioned)SolverDiagnostics.count(SolverDiagnostics.newtonSolvesPreconditioned);
         checkpoint.run();double[] f=evaluate(equations,x,n);double norm=norm(f);
-        // The property-domain refusal the current iteration's line search met, if any: when that iteration is the one
-        // that fails, the failure is the domain's and says so.
-        ThermoDomainViolation domain=null;
+        // The phase hold the current iteration's line search met, if any: when that iteration is the one that fails, the
+        // failure is the hold's and says so.
+        ThermoHold hold=null;
         for(int iteration=0;iteration<=settings.iterations();iteration++) {
             checkpoint.run();
             if(norm<=settings.tolerance())return new Result(x,norm,iteration,calls,lastNonzeros,pattern.groups.size());
             if(iteration==settings.iterations())break;
-            domain=null;
+            hold=null;
             SolverDiagnostics.count(SolverDiagnostics.newtonIterations);
             if(openedPreconditioned)SolverDiagnostics.count(SolverDiagnostics.newtonIterationsPreconditioned);
             // A chord step reuses the Jacobian only while the equations say it still describes them.
@@ -213,7 +229,7 @@ public final class SparseNewton {
                     }
                 }catch(IllegalArgumentException outsideDomain){
                     // A smaller Newton step may stay in the valid domain.
-                    if(outsideDomain instanceof ThermoDomainViolation violation)domain=violation;
+                    if(outsideDomain instanceof ThermoHold met)hold=met;
                 }
             }
             if(!accepted) {
@@ -225,32 +241,11 @@ public final class SparseNewton {
                     workspace.invalidate();throw new Nonconvergence("Singular Newton Jacobian: "+failure.getMessage(),x);
                 }
                 if(!fresh){SolverDiagnostics.count(SolverDiagnostics.newtonRefreshesFailed);refresh=true;continue;}
-                workspace.invalidate();throw new Nonconvergence("Newton line search stalled at residual "+norm,x,domain);
+                workspace.invalidate();throw new Nonconvergence("Newton line search stalled at residual "+norm,x,hold);
             }
         }
         workspace.invalidate();
-        throw new Nonconvergence("Newton iteration limit at residual "+norm,x,domain);
-    }
-    public record CorrectionEstimate(double[] probe,double initialResidual,double probeResidual) {
-        public CorrectionEstimate{probe=probe.clone();}
-        @Override public double[] probe(){return probe.clone();}
-    }
-    /** Tests a full linearized correction without publishing it; refreshes a stale Jacobian at most once. */
-    public static CorrectionEstimate estimateCorrection(Equations equations,double[] point,Runnable checkpoint,Workspace workspace) {
-        workspace.owned();int n=equations.size();if(point.length!=n||n==0)throw new IllegalArgumentException("Invalid correction point");
-        if(workspace.pattern==null)workspace.pattern=new Pattern(n,equations.columnRows());
-        var residual=evaluate(equations,point,n);double before=norm(residual);
-        if(before<=1e-12)return new CorrectionEstimate(point,before,before);
-        double[] rhs=residual.clone();for(int i=0;i<n;i++)rhs[i]=-rhs[i];
-        for(int attempt=0;attempt<2;attempt++) {
-            checkpoint.run();if(!workspace.preconditioned()||attempt>0)differentiate(equations,point,residual,1e-6,checkpoint,workspace);
-            try {
-                var correction=workspace.factorization.solve(rhs);var probe=point.clone();for(int i=0;i<n;i++)probe[i]+=correction[i];
-                double after=norm(evaluate(equations,probe,n));
-                if(after<=Math.max(1e-10,.1*before))return new CorrectionEstimate(probe,before,after);
-            }catch(IllegalArgumentException|SparseLuSolver.SolveFailure invalidProbe){ /* Refresh before refusing the estimate. */ }
-        }
-        throw new Nonconvergence("Linearized error estimate does not contract inside the supported domain");
+        throw new Nonconvergence("Newton iteration limit at residual "+norm,x,hold);
     }
     private static int differentiate(Equations equations,double[] x,double[] f,double differenceStep,Runnable checkpoint,Workspace workspace) {
         if(!SolverDiagnostics.ENABLED)return differentiate0(equations,x,f,differenceStep,checkpoint,workspace);

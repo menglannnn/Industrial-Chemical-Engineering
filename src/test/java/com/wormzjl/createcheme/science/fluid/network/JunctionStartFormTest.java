@@ -10,7 +10,7 @@ import org.junit.jupiter.api.Test;
 
 /**
  * Owner decisions D54 (nothing at the mint) and D55: a minted junction holds nothing a placement put there; its buffer
- * starts from the island-wide fixed point's last round ({@link PassiveStepSolver#fixedPointStarts}), whose round 0 is what
+ * starts from the island-wide fixed point's last round ({@link PassiveStepSolver#balanceStarts}), whose round 0 is what
  * the connected suppliers would send it (swept hop by hop to the junctions none touches), and a round whose rate solve
  * fails ends the rounds with the last one completed. The ambient is an empty node's pressure, never a junction's fluid.
  * The start chain (D37, D39, D40) and the start switch of D48 (A280-A284) are gone.

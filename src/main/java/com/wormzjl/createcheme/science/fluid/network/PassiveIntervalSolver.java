@@ -8,15 +8,13 @@ import com.wormzjl.createcheme.science.fluid.thermo.FluidThermodynamics;
 import java.util.*;
 
 /**
- * Adaptive internal substeps. The requested simulated interval is independent of the caller's wall deadline.
- *
- * <p>Every step is one backward-Euler step, {@link PassiveStepSolver#solve}: one Newton with its active-set passes, one
- * exact conservative reconstruction, the equation gate and the conservation audit. A converged step is accepted when no
- * vessel's pressure or mass changed by more than {@link #STATE_CAP} of itself. The basis and its measurements are in
- * documentation/2026-09-24-mixed-gas-junction/HANDOFF_REVIEW.md 8.4-8.9 and the batch's BE_INTEGRATOR_PLAN.md: against
- * the second-order TR-BDF2 it replaced, one Newton solve per step instead of two plus an embedded companion, no rate
- * solve per step, and zero nonconvergence on the mixed-gas junction matrices where TR-BDF2 failed on its rate solve;
- * trajectories are first order (a decay lags by up to one 5 s cycle), which the owner accepted (decision D4).
+ * Adaptive internal substeps; the requested simulated interval is independent of the caller's wall deadline. Every
+ * step is one backward-Euler step, {@link PassiveStepSolver#solve}: one Newton with its active-set passes, one exact
+ * conservative reconstruction, the equation gate and the conservation audit. A converged step is accepted when no
+ * vessel's pressure or mass changed by more than {@link #STATE_CAP} of itself. Against the second-order TR-BDF2 it
+ * replaced: one Newton solve per step instead of two plus an embedded companion, no rate solve per step, and zero
+ * nonconvergence on the mixed-gas junction matrices; trajectories are first order (a decay lags by up to one 5 s
+ * cycle), which the owner accepted (decision D4).
  */
 public final class PassiveIntervalSolver {
     /**
@@ -47,8 +45,8 @@ public final class PassiveIntervalSolver {
     }
     public record Result(PassiveNetwork graph,double advancedSeconds,double[] averageMassFlows,int acceptedSubsteps,int rejectedSubsteps,
                          double pumpWorkJoule,List<ConservativeTransport.BoundaryTransfer> boundaries,Map<String,Integer> rejectionReasons,
-                         List<FlowControl.Mode> endpointModes,double[] endpointHeads,double[] endpointFlows,PassiveStepSolver.Acceptance acceptance,List<PipeTransfer> pipeTransfers) {
-        public Result {averageMassFlows=averageMassFlows.clone();boundaries=List.copyOf(boundaries);rejectionReasons=Collections.unmodifiableMap(new LinkedHashMap<>(rejectionReasons));endpointModes=List.copyOf(endpointModes);endpointHeads=endpointHeads.clone();endpointFlows=endpointFlows.clone();Objects.requireNonNull(acceptance);pipeTransfers=List.copyOf(pipeTransfers);}
+                         List<FlowControl.Mode> endpointModes,double[] endpointHeads,double[] endpointFlows,List<PipeTransfer> pipeTransfers) {
+        public Result {averageMassFlows=averageMassFlows.clone();boundaries=List.copyOf(boundaries);rejectionReasons=Collections.unmodifiableMap(new LinkedHashMap<>(rejectionReasons));endpointModes=List.copyOf(endpointModes);endpointHeads=endpointHeads.clone();endpointFlows=endpointFlows.clone();pipeTransfers=List.copyOf(pipeTransfers);}
         @Override public double[] averageMassFlows(){return averageMassFlows.clone();}
         @Override public double[] endpointHeads(){return endpointHeads.clone();}
         /** The mass flows (kg/s) of the interval's last accepted step: the flows at its end state, which the next job's first
@@ -66,25 +64,32 @@ public final class PassiveIntervalSolver {
      * of the interval alone, so that a certified replay is bitwise (see {@link #replayStart}).
      */
     public Result solve(PassiveNetwork initial,double duration,Settings settings,Runnable checkpoint,double startingStep) {
-        initial=PassiveNetwork.sizeJunctionHoldups(initial,model);
+        var committed=PassiveNetwork.sizeJunctionHoldups(initial,model);
+        // Owner decision D33, amended by D62: a transport closure is reconsidered at each interval start, so the interval
+        // starts with every one read open, and every path reads that start: the rest test, the slice's inlet decision, the
+        // refresh, the solid events and the plain integrate of an island with no filter, solids or liquid, where nothing decides
+        // one again (a gas carries no solid). The solid events decide the closures again at t0 on the committed ones: a closure
+        // nothing moves keeps (SolidEventIntegrator.carried). A rest interval changes nothing: it keeps the committed graph.
+        initial=NetworkReduction.reopened(committed);
         // Owner decisions D19, D42 and D58: an island nothing can drive by more than the gauge reads is at rest and is not
         // solved (NetworkReduction step 6); a mover refused for the slice moves nothing.
         boolean[] refused=decideInlets(initial,duration);
-        if(Double.isFinite(duration)&&duration>0&&NetworkReduction.atRest(initial,model,null,refused)){SolverDiagnostics.count(SolverDiagnostics.restIntervals);return committedInlets(NetworkReduction.restInterval(initial,duration,refused));}
+        // Owner decision D23 (6): the refresh runs before the rest test, because a supersaturated closed tank is not at rest:
+        // an island whose refresh froze or melted a crystal (or merged a stock's sizes) is solved from the refreshed state,
+        // its boundaries kept. Every package has a crystal, the free water's ice (WP4), so only the stocks that may convert
+        // are refreshed here: an island where none may (no solids, no crystal able to form) reaches its rest test with no
+        // closure and no checkpoint, as on a package without crystals before the ice.
+        var conversions=InventoryEquilibrium.conversions(initial,model,checkpoint);
+        if(Double.isFinite(duration)&&duration>0&&!conversions.converted()&&NetworkReduction.atRest(initial,model,null,refused)){SolverDiagnostics.count(SolverDiagnostics.restIntervals);return committedInlets(NetworkReduction.restInterval(committed,duration,refused));}
+        // Owner decision D37 (S3): the interval's one refresh completes the rest test's (InventoryEquilibrium.completed), and
+        // the steps or the solid events start from it, its boundaries first. Whether the solid events run is read where the
+        // rest test's refresh left the island when a stock converted, and on the island as it came otherwise.
+        var monitored=conversions.converted()?conversions.graph():initial;
+        var start=InventoryEquilibrium.completed(initial,conversions,model,checkpoint);
         Result result;
-        if(com.wormzjl.createcheme.science.fluid.transport.SolidMobility.monitored(initial)||model.solidSettings.immobileViscosity()<.002&&initial.reservoirs().stream().anyMatch(n->n.state().waterVolume()>0))result=new SolidEventIntegrator(model,this).solve(initial,duration,settings,checkpoint,startingStep);
-        else result=integrate(initial,duration,settings,checkpoint,PassiveStepSolver.Acceptance.FULL,StageGuard.NONE,startingStep);
+        if(com.wormzjl.createcheme.science.fluid.transport.SolidMobility.monitored(monitored)||model.solidSettings.immobileViscosity()<.002&&monitored.reservoirs().stream().anyMatch(n->n.state().waterVolume()>0))result=new SolidEventIntegrator(model,this).solve(start,committed,duration,settings,checkpoint,startingStep);
+        else result=integrate(start,duration,settings,checkpoint,StageGuard.NONE,startingStep);
         return committedInlets(result);
-    }
-    public Result solveApproximate(PassiveNetwork initial,double duration,Settings settings,Runnable checkpoint,StageGuard guard) {
-        initial=PassiveNetwork.sizeJunctionHoldups(initial,model);
-        if(com.wormzjl.createcheme.science.fluid.transport.SolidMobility.requiresFull(model,initial))throw new ApproximationAnchor.Rejected("Solid/filter intervals require a full solve");
-        StageGuard checked=(states,modes)->{
-            for(var state:states)if(state.solidMoments().mass()>0||com.wormzjl.createcheme.science.fluid.transport.SolidMobility.immobileLiquid(model,state))throw new ApproximationAnchor.Rejected("Solid transition requires a full solve");
-            guard.check(states,modes);
-        };
-        decideInlets(initial,duration);
-        return committedInlets(integrate(initial,duration,settings,checkpoint,PassiveStepSolver.Acceptance.APPROXIMATE,checked,settings.initialStep()));
     }
     /**
      * The endpoint modes of the island's committed interval and the pipe ids they belong to: the hysteresis input of the
@@ -96,12 +101,14 @@ public final class PassiveIntervalSolver {
     private List<Long> inletKey=List.of();
     private static List<Long> pipeIds(PassiveNetwork graph){var ids=new ArrayList<Long>(graph.pipes().size());for(var pipe:graph.pipes())ids.add(pipe.id());return ids;}
     /**
-     * Decision D6 (plan 3.6, 3.7): at a slice's start, on its committed state {@code initial} and the committed endpoint
-     * modes, which pumps and compressors are refused for the whole slice because their supply is the wrong phase
-     * ({@link InletPhase#decide} over the slice {@code duration}); handed to the step solver, which holds them in
-     * {@link FlowControl.Mode#INLET_WRONG_PHASE} (closed) in every step, rate seed and segment of the slice. The input is
-     * the committed endpoint mode, never solver-local history, so a certified island woken with a fresh solver decides
-     * exactly as the island that solved every interval.
+     * Decision D6: at a slice's start, on its committed state {@code initial} and the committed endpoint modes, which
+     * pumps and compressors are refused for the whole slice because their supply is the wrong phase
+     * ({@link InletPhase#decide} over the slice {@code duration}); the step solver holds them in
+     * {@link FlowControl.Mode#INLET_WRONG_PHASE} in every step, rate seed and segment of the slice. The input is the
+     * committed endpoint mode, never solver-local history, so a certified island woken with a fresh solver decides
+     * exactly as the island that solved every interval. {@code initial} is the interval start with its transport closures
+     * read open (owner decision D33, {@link NetworkReduction#reopened}): read as they stood, a suction line the last
+     * interval closed left its pump "inlet dry", and a refused pump cannot drive the flow that would suspend the crystals.
      */
     private boolean[] decideInlets(PassiveNetwork initial,double duration) {
         var modes=inletKey.equals(pipeIds(initial))?inletModes:null;
@@ -135,57 +142,53 @@ public final class PassiveIntervalSolver {
     private static final String TRANSITION_REJECTION="Solid transport transition inside the step";
     private static final String REOPEN_REJECTION="Backward-Euler boundary reopened";
 
-    Result integrate(PassiveNetwork initial,double duration,Settings settings,Runnable checkpoint,PassiveStepSolver.Acceptance acceptance,
-                     StageGuard guard,double startingStep) {
-        var prefix=run(initial,duration,settings,checkpoint,acceptance,guard,startingStep);
+    /** The interval from {@code start}, the island's refresh at the interval's start (its graph and the boundaries the
+     * refresh booked, which the result's boundaries begin with). */
+    Result integrate(InventoryEquilibrium.Refreshed start,double duration,Settings settings,Runnable checkpoint,StageGuard guard,double startingStep) {
+        var prefix=run(start,duration,settings,checkpoint,guard,startingStep);
         // No caller of the public contract can handle a prefix, so a guard that declares a
         // transition on this path escapes exactly as it did before there was a prefix at all.
         if(prefix.transition()!=null)throw prefix.transition();
         return prefix.result();
     }
     /** {@link #integrate} with the prefix returned rather than thrown; see {@link Prefix}. */
-    Prefix integrateToTransition(PassiveNetwork initial,double duration,Settings settings,Runnable checkpoint,PassiveStepSolver.Acceptance acceptance,
-                                 StageGuard guard,double startingStep) {
-        return run(initial,duration,settings,checkpoint,acceptance,guard,startingStep);
+    Prefix integrateToTransition(InventoryEquilibrium.Refreshed start,double duration,Settings settings,Runnable checkpoint,StageGuard guard,double startingStep) {
+        return run(start,duration,settings,checkpoint,guard,startingStep);
     }
     /**
      * The interval, stepped by backward Euler under the state-change controller.
-     *
      * <ul>
-     * <li><b>Acceptance.</b> A converged step is accepted when the largest relative change of a vessel's pressure (over
+     * <li>Acceptance: a converged step is accepted when the largest relative change of a vessel's pressure (over
      * max(100 Pa, P0)) or mass (over m0) is at most {@link #STATE_CAP}; otherwise it is refused and the step halved. A
-     * change that halving did not reduce - at least 0.9 of the refused change at twice the step - is an algebraic jump of
+     * change that halving did not reduce (at least 0.9 of the refused change at twice the step) is an algebraic jump of
      * the node's state, not a trajectory error, and the step that shows it is accepted (water entering a dry gas tank
-     * drops its pressure about 5 % at any step size, review 8.6 (b)). A step at or below the transition floor is accepted
-     * whatever its change. There is no rule on accepted-mode transitions: a symmetric pair of void edges opens and closes
-     * together, so a one-transition rule halved every event to the floor and drove a resting line into the rounding
-     * floor of its rows (review 8.6 (c) and (f)).</li>
-     * <li><b>Growth.</b> After an accepted step the estimate grows by {@code clamp(0.9 sqrt(cap/change), 0.5, 2)} (2 at
-     * zero change), bounded by the maximum step. A Newton failure, an equation-gate or conservation failure halves.</li>
-     * <li><b>Boundary reopen.</b> A converged step that holds a passive run closed although its own end states drive the
-     * run in an allowed direction ({@link PassiveStepSolver#reopenable}) is refused and solved again with that run
-     * exempt from the start-of-solve closures; each run at most once per attempted step (review 8.8 (c)).</li>
-     * <li><b>Cold start.</b> While no step of this structure has been accepted (after compile, a topology change or a
-     * job start with no committed interval on it), one rate solve of the port graph supplies the junctions' starting
-     * states; the balanced pressure seed treats vessel neighbours as held (review 8.6 (b) additions 1 and 2).</li>
-     * <li><b>Events.</b> The stage guard's {@code checkRate} runs at every step start, on the previous accepted endpoint,
-     * else on the endpoint carried from the last interval while no connection's identity or closure changed, else (a
-     * guard that can declare something, first step) on one rate solve of the port graph; {@code checkFilters} runs on
-     * every step's end. A declared transition is searched onto by halving, exactly as before.</li>
-     * <li><b>Limits.</b> The attempt cap and the twenty-consecutive-rejection limit; transition refusals have their own
-     * bound. An exhausted interval states its rejection map (a domain approach ends on twenty rejections, review 8.8 (a)).</li>
+     * drops its pressure about 5 % at any step size). A step at or below the transition floor is accepted whatever its
+     * change. No rule on accepted-mode transitions: a symmetric pair of void edges opens and closes together, and a
+     * one-transition rule halved every event to the floor.</li>
+     * <li>Growth: after an accepted step the estimate grows by {@code clamp(0.9 sqrt(cap/change), 0.5, 2)} (2 at zero
+     * change), bounded by the maximum step; a Newton, equation-gate or conservation failure halves.</li>
+     * <li>Boundary reopen: a converged step that holds a passive run closed although its own end states drive the run in
+     * an allowed direction ({@link PassiveStepSolver#reopenable}) is refused and solved again with that run exempt from
+     * the start-of-solve closures, each run at most once per attempted step.</li>
+     * <li>Cold start: while no step of this structure has been accepted, one rate solve of the port graph, started from the
+     * island's balance ({@code PassiveStepSolver.balanceStart}), supplies the junctions' starting states; when it fails, the
+     * step starts from the balance itself.</li>
+     * <li>Events: the stage guard's {@code checkRate} runs at every step start, on the previous accepted endpoint, else on
+     * the endpoint carried from the last interval while no connection's identity or closure changed, else on one rate
+     * solve of the port graph; {@code checkFilters} runs on every step's end. A declared transition is searched onto by
+     * halving.</li>
+     * <li>Limits: the attempt cap and the twenty-consecutive-rejection limit; transition refusals have their own bound.
+     * An exhausted interval states its rejection map.</li>
      * </ul>
      */
-    private Prefix run(PassiveNetwork initial,double duration,Settings settings,Runnable checkpoint,PassiveStepSolver.Acceptance acceptance,
-                       StageGuard guard,double startingStep) {
+    private Prefix run(InventoryEquilibrium.Refreshed refreshed,double duration,Settings settings,Runnable checkpoint,StageGuard guard,double startingStep) {
         if(!Double.isFinite(duration)||duration<=0)throw new IllegalArgumentException("Positive finite interval required");
-        initial=PassiveNetwork.sizeJunctionHoldups(initial,model);
         if(!Double.isFinite(startingStep)||startingStep<=0)throw new IllegalArgumentException("Positive finite starting step required");
-        PassiveNetwork accepted=acceptance==PassiveStepSolver.Acceptance.FULL?InventoryEquilibrium.refresh(initial,model,checkpoint):initial;
+        PassiveNetwork accepted=refreshed.graph();
         // h is the controller's estimate; each attempt uses it truncated to the rest of the interval.
         double elapsed=0,h=Math.min(startingStep,settings.maximumStep);int acceptedCount=0,rejectedCount=0,consecutiveRejects=0;PassiveStepSolver.Result last=null;
-        double[] transferred=new double[initial.pipes().size()];
-        double work=0;var boundaries=new ArrayList<ConservativeTransport.BoundaryTransfer>();
+        double[] transferred=new double[accepted.pipes().size()];
+        double work=0;var boundaries=new ArrayList<ConservativeTransport.BoundaryTransfer>(refreshed.boundaries());
         var pipeTransfers=new PipeTransfer.Accumulator();
         var rejectionReasons=new LinkedHashMap<String,Integer>();
         String lastRejection="";
@@ -201,8 +204,8 @@ public final class PassiveIntervalSolver {
         double previousStateChange=0,previousStateStep=0;
         // Runs already reopened for the attempted step (same t0 and step).
         var reopened=new HashSet<PassiveNetwork.Pipe.Identity>();double reopenElapsed=-1,reopenStep=-1;
-        // Rejections the property domain decided: the last one, how many, and whether the latest rejection was one.
-        com.wormzjl.createcheme.science.fluid.thermo.ThermoDomainViolation lastDomain=null;int domainRejections=0;boolean lastWasDomain=false;
+        // Rejections a phase hold decided: the last one, how many, and whether the latest rejection was one.
+        com.wormzjl.createcheme.science.fluid.thermo.ThermoHold lastHold=null;int holdRejections=0;boolean lastWasHold=false;
         for(int attempt=0;attempt<settings.maximumAttempts&&elapsed<duration&&declared==null;attempt++) {
             checkpoint.run();double step=Math.min(h,duration-elapsed);
             try {
@@ -217,15 +220,17 @@ public final class PassiveIntervalSolver {
                 // declare something (the solid event integrator's), one rate solve of the port graph supplies the t0
                 // flows; a failed rate solve skips the t0 check (PassiveStepSolver.portRate).
                 else if(guard!=StageGuard.NONE&&attempt==0) {
-                    var rate=implicit.portRate(accepted,checkpoint,acceptance);
+                    var rate=implicit.portRate(accepted,checkpoint);
                     if(rate!=null)guard.checkRate(liveFilters(accepted),rate.states(),rate.modes(),rate.massFlows());
                 }
+                // The cold rate seed (owner decision of 2026-10-19, the plan's fallback): a structure no step has been accepted on
+                // starts from one rate solve's converged point, itself started from the balance; see {@link #coldRateSeed}.
                 PassiveNetwork start=accepted;
                 if(implicit.backwardEulerCold(accepted)) {
-                    if(coldSeedFor!=accepted){coldSeed=coldRateSeed(accepted,checkpoint,acceptance);coldSeedFor=accepted;}
+                    if(coldSeedFor!=accepted){coldSeed=coldRateSeed(accepted,checkpoint);coldSeedFor=accepted;}
                     start=coldSeed;
                 }
-                var result=implicit.solve(start,step,checkpoint,acceptance);
+                var result=implicit.solve(start,step,checkpoint);
                 if(elapsed!=reopenElapsed||step!=reopenStep){reopened.clear();reopenElapsed=elapsed;reopenStep=step;}
                 var candidates=new LinkedHashSet<>(implicit.reopenable(start,result));candidates.removeAll(reopened);
                 if(!candidates.isEmpty()) {
@@ -255,7 +260,7 @@ public final class PassiveIntervalSolver {
                 // Owner decision D42: an island the gauge reads at rest at this accepted step (NetworkReduction step 6 on its
                 // end state and its flows) is no longer stepped. The rest of the interval is the identity: nothing moves, so
                 // the step's transfers stand as booked and the interval's averages are what the steps moved.
-                if(acceptance==PassiveStepSolver.Acceptance.FULL&&elapsed<duration&&NetworkReduction.atRest(accepted,model,flows,implicit.sliceRefused(accepted))) {
+                if(elapsed<duration&&NetworkReduction.atRest(accepted,model,flows,implicit.sliceRefused(accepted))) {
                     SolverDiagnostics.count(SolverDiagnostics.restStops);elapsed=duration;
                 }
             }catch(SolidEventIntegrator.Transition transition) {
@@ -274,19 +279,19 @@ public final class PassiveIntervalSolver {
             }catch(SparseNewton.Nonconvergence|IllegalArgumentException|StateChangeRejection rejected) {
                 lastRejection=String.valueOf(rejected.getMessage());
                 if(!(rejected instanceof StateChangeRejection))SolverDiagnostics.attempt(attempt,step,false,diagnosticReason(rejected),Double.NaN);
-                // A trial the property domain refused - directly, or a Newton pass whose failing line search it
-                // stopped - is counted under its own key (one per component, property and side, never folded into
-                // "Other"), so a checkpoint, a view and the certificate's transition check all see it.
-                var domain=SparseNewton.domainViolation(rejected);
-                if(domain!=null){rejectionReasons.merge(domain.reasonKey(),1,Integer::sum);lastDomain=domain;domainRejections++;}
+                // A trial a phase hold refused - directly, or a Newton pass whose failing line search it stopped - is
+                // counted under its own key (one per phase set; never folded into "Other"), so a checkpoint, a view and the
+                // certificate's transition check all see it.
+                var hold=SparseNewton.phaseHold(rejected);
+                if(hold!=null){rejectionReasons.merge(hold.reasonKey(),1,Integer::sum);lastHold=hold;holdRejections++;}
                 else count(rejectionReasons,String.valueOf(rejected.getMessage()).replaceAll("[-+]?[0-9]+(?:\\.[0-9]+)?(?:[Ee][-+]?[0-9]+)?","#"));
-                lastWasDomain=domain!=null;
+                lastWasHold=hold!=null;
                 rejectedCount++;consecutiveRejects++;h=step*.5;
-                if(consecutiveRejects>=20||elapsed+h==elapsed)throw new SparseNewton.Nonconvergence("Substep refinement exhausted: "+rejected.getMessage()+"; reasons="+rejectionReasons,null,domainCause(lastWasDomain,lastDomain,domainRejections,rejectedCount));
+                if(consecutiveRejects>=20||elapsed+h==elapsed)throw new SparseNewton.Nonconvergence("Substep refinement exhausted: "+rejected.getMessage()+"; reasons="+rejectionReasons,null,phaseHoldCause(lastWasHold,lastHold,holdRejections,rejectedCount));
             }
         }
         if(declared==null&&elapsed<duration)throw new SparseNewton.Nonconvergence("Interval substep limit; no partial interval may commit: advanced="+elapsed+" of "+duration+" s, accepted="+acceptedCount+", rejected="+rejectedCount+", reasons="+rejectionReasons+", last="+lastRejection,
-                null,domainCause(lastWasDomain,lastDomain,domainRejections,rejectedCount));
+                null,phaseHoldCause(lastWasHold,lastHold,holdRejections,rejectedCount));
         // A segment that ended on a declared transition hands the next one the estimate it held
         // before the search, not the micro-step the search finished on.
         nextStepEstimate=declared!=null&&transitionRejects>0?beforeTransition:h;
@@ -296,7 +301,7 @@ public final class PassiveIntervalSolver {
         // transported mass.
         double normalizer=declared==null?duration:elapsed;
         for(int i=0;i<transferred.length;i++)transferred[i]/=normalizer;
-        return new Prefix(new Result(accepted,elapsed,transferred,acceptedCount,rejectedCount,work,boundaries,rejectionReasons,last.modes(),last.devicePressureChanges(),last.massFlows(),acceptance,pipeTransfers.snapshot()),declared);
+        return new Prefix(new Result(accepted,elapsed,transferred,acceptedCount,rejectedCount,work,boundaries,rejectionReasons,last.modes(),last.devicePressureChanges(),last.massFlows(),pipeTransfers.snapshot()),declared);
     }
     /**
      * The share of a node's total amount below which a component is flushed at an accepted step (owner decision
@@ -312,15 +317,13 @@ public final class PassiveIntervalSolver {
     /**
      * Removes every component below {@link #TRACE_FLUSH_FRACTION} of its vessel's or junction's total amount, restates
      * the node at its temperature and pressure, and books exactly what it removed: a boundary transfer at the node's
-     * own id, signed like a port's (positive = into the network, so the removed moles are negative), whose energy is
-     * the change of the node's owned total energy. The inventory's internal-energy field is kept, so that change is the
-     * potential energy of the removed mass alone. The interval's ledger (owned after - owned before = boundaries)
-     * therefore closes by construction, and a checkpoint or a certificate sees the flush as any other boundary
-     * transfer; a certificate is not issued on an interval that contains one ({@code IslandCertificate.issue}), since
-     * a one-time removal is not a rate. Returns null when nothing was flushed.
+     * own id, signed like a port's (the removed moles negative), with no energy (no stream carries potential energy,
+     * owner decision D37). The interval's ledger therefore closes by construction and a checkpoint sees the flush as any
+     * other boundary transfer; a certificate is not issued on an interval that contains one, since a one-time removal
+     * is not a rate. Returns null when nothing was flushed.
      */
     private Flush flushTraces(PassiveNetwork graph,Runnable checkpoint) {
-        List<PassiveNetwork.Reservoir> nodes=null;List<ConservativeTransport.BoundaryTransfer> booked=null;double[] weights=null;
+        List<PassiveNetwork.Reservoir> nodes=null;List<ConservativeTransport.BoundaryTransfer> booked=null;
         for(int i=0;i<graph.reservoirs().size();i++) {
             var node=graph.reservoirs().get(i);if(node.fixed())continue;
             var held=node.inventory().moles();double total=0;for(double amount:held)total+=amount;
@@ -328,15 +331,14 @@ public final class PassiveIntervalSolver {
             for(int c=0;c<held.length;c++)if(held[c]>0&&held[c]<TRACE_FLUSH_FRACTION*total){if(kept==null)kept=held.clone();kept[c]=0;}
             if(kept==null)continue;
             checkpoint.run();
-            if(weights==null)weights=model.molecularWeights();
-            var removed=new double[held.length];double removedMass=0;
-            for(int c=0;c<held.length;c++){removed[c]=kept[c]-held[c];removedMass-=removed[c]*weights[c];}
+            var removed=new double[held.length];
+            for(int c=0;c<held.length;c++)removed[c]=kept[c]-held[c];
             var old=node.state();var state=model.flashTP(old.temperature(),old.pressure(),kept,checkpoint);
             if(!old.solids().empty())state=state.withSolids(old.solids());
             if(nodes==null){nodes=new ArrayList<>(graph.reservoirs());booked=new ArrayList<>();}
             nodes.set(i,new PassiveNetwork.Reservoir(node.id(),node.elevation(),state,node.kind(),
                     node.inventory().with(kept,node.inventory().internalEnergy(),node.inventory().solids())));
-            booked.add(new ConservativeTransport.BoundaryTransfer(node.id(),removed,-removedMass*PassiveStepSolver.GRAVITY*node.elevation()));
+            booked.add(new ConservativeTransport.BoundaryTransfer(node.id(),removed,0));
             SolverDiagnostics.count(SolverDiagnostics.traceFlushes);
         }
         return nodes==null?null:new Flush(new PassiveNetwork(nodes,graph.pipes(),graph.scheduledTransfers()),booked);
@@ -345,13 +347,13 @@ public final class PassiveIntervalSolver {
         if(reasons.size()<8||reasons.containsKey(reason))reasons.merge(reason,1,Integer::sum);else reasons.merge("Other",1,Integer::sum);
     }
     /**
-     * The domain violation an interval that could not commit failed on, or null: its last rejection was a domain
-     * refusal, or domain refusals were the dominant reason (more than half of the interval's rejections). An interval
-     * that only met the domain on the way, and failed for another reason, is a numerical failure.
+     * The phase hold an interval that could not commit failed on, or null: its last rejection was a phase hold, or phase
+     * holds were the dominant reason (more than half of the interval's rejections). An interval that only met one on
+     * the way, and failed for another reason, is a numerical failure.
      */
-    static com.wormzjl.createcheme.science.fluid.thermo.ThermoDomainViolation domainCause(boolean lastWasDomain,
-            com.wormzjl.createcheme.science.fluid.thermo.ThermoDomainViolation lastDomain,int domainRejections,int rejected) {
-        return lastWasDomain||2*domainRejections>rejected?lastDomain:null;
+    static com.wormzjl.createcheme.science.fluid.thermo.ThermoHold phaseHoldCause(boolean lastWasHold,
+            com.wormzjl.createcheme.science.fluid.thermo.ThermoHold lastHold,int holdRejections,int rejected) {
+        return lastWasHold||2*holdRejections>rejected?lastHold:null;
     }
     /** The diagnostic reason of an attempt that threw ("newton|message" with numbers masked). */
     private static String diagnosticReason(RuntimeException rejected) {
@@ -362,18 +364,27 @@ public final class PassiveIntervalSolver {
     /** The cold-start graph with its junction states replaced by one rate solve's, and the graph it was built for. */
     private PassiveNetwork coldSeed,coldSeedFor;
     /**
-     * The cold-start graph: the junctions' states replaced by one rate solve's of the port graph, whose flows the step
-     * solver's warm start then carries into the first steps; the graph unchanged if it has no junction or the rate solve
-     * fails. From the compiled property guess alone a pumped line into a dry tank, with three liquid junctions, failed
-     * at every step size (review 8.6 (b), run 88d).
+     * The cold-start graph (owner decision of 2026-10-19, the junction seeding plan's fallback): the junctions' states
+     * replaced by one rate solve's of the port graph, a rate solve that starts from the island's balance
+     * ({@code PassiveStepSolver.balanceStart}); the step then starts from the rate solve's converged point, its flows carried
+     * ({@code PassiveStepSolver.carriedPoint}). The graph unchanged if it has no junction or the rate solve fails: the step
+     * then starts from the balance itself. Measured on the balance alone (t44b): a new structure's first steps cost 4 to 10
+     * Newton iterations where the converged rate point costs 1, and on a multistable island the start picked the branch
+     * (cold fuzz seed 197 never certified STEADY).
      */
-    private PassiveNetwork coldRateSeed(PassiveNetwork graph,Runnable checkpoint,PassiveStepSolver.Acceptance acceptance) {
+    private PassiveNetwork coldRateSeed(PassiveNetwork graph,Runnable checkpoint) {
         if(graph.pipes().isEmpty()||graph.reservoirs().stream().noneMatch(PassiveNetwork.Reservoir::junction))return graph;
-        var rate=implicit.portRate(graph,checkpoint,acceptance);
+        var rate=implicit.portRate(graph,checkpoint);
         if(rate==null)return graph;
         var nodes=new ArrayList<PassiveNetwork.Reservoir>();
         for(int i=0;i<graph.reservoirs().size();i++){var node=graph.reservoirs().get(i);
-            nodes.add(node.junction()?new PassiveNetwork.Reservoir(node.id(),node.elevation(),rate.states().get(i),node.kind(),node.inventory()):node);}
+            if(!node.junction()){nodes.add(node);continue;}
+            // The rate solve's fluid state; the junction's own solids ride it, their moments scaled with the fluid mass (the rate
+            // solve transported a second of slurry into the junction, which the step's inventory never received).
+            var old=node.state();var rs=rate.states().get(i);var m=old.solidMoments();
+            double oldFluid=old.mass()-m.mass(),ratio=oldFluid>0?(rs.mass()-rs.solidMoments().mass())/oldFluid:1;
+            var written=rs.withSolidState(old.solids(),new com.wormzjl.createcheme.science.fluid.state.SolidInventory.Moments(m.mass()*ratio,m.volume()*ratio,m.heatCapacity()*ratio));
+            nodes.add(new PassiveNetwork.Reservoir(node.id(),node.elevation(),written,node.kind(),node.inventory()));}
         return new PassiveNetwork(nodes,graph.pipes(),graph.scheduledTransfers());
     }
     /**
@@ -381,21 +392,13 @@ public final class PassiveIntervalSolver {
      * ({@code committed}; null for an island with none). Afterwards this solver holds exactly what a fresh solver derives
      * from the committed interval: when the job's island is the committed interval's (the same pipe identities and node
      * ids), its endpoint (modes, heads and flows) is carried into the job as every accepted step's endpoint is carried
-     * into the next step inside a job: the step solver starts its first step from it ({@link PassiveStepSolver#replayStart})
-     * and the start-of-step guard reads it ({@link #carriedFlows}). Otherwise nothing is carried. The cold-start seed
-     * graphs are dropped.
-     *
-     * <p>Why committed state only: a certified island is woken with a fresh solver, a loaded world has fresh solvers, and
-     * a replay must reproduce the island that solved every interval bit for bit. A Newton workspace carried across a job
-     * boundary opened the next job's first solve on an older factorization, the converged pressures differed in the last
-     * digits, and through the controller's step growth (a continuous function of the change) the difference reached the
-     * committed inventories (review 8.9 (c), decision D8). The endpoint is committed state, so a fresh solver handed the
-     * same committed interval starts where the retained one does.
-     *
-     * <p>Why the endpoint is carried: flows are continuous in time, so a slice's first instant has the flows the last one
-     * ended with, and a connection at rest stays at rest. Started instead from the static per-connection estimate, a
-     * riser standing at rest restarted at its velocity cap and the Newton walked it back by halving until it ran out of
-     * iterations (card E6-S of the phase-ports batch, "The step starts from the committed flows" in its review).
+     * into the next step ({@link PassiveStepSolver#replayStart}, {@link #carriedFlows}); otherwise nothing is carried, and
+     * the cold-start seed graphs are dropped. Committed state only, because a certified island is woken with a fresh
+     * solver and a replay must reproduce the island that solved every interval bit for bit: a Newton workspace carried
+     * across a job boundary opened the next job's first solve on an older factorization, and through the controller's
+     * step growth the last-digit difference reached the committed inventories (decision D8). The endpoint is carried
+     * because flows are continuous in time: started from the static per-connection estimate instead, a riser at rest
+     * restarted at its velocity cap and the Newton walked it back by halving until it ran out of iterations.
      */
     public void replayStart(PassiveNetwork graph,Result committed) {
         graph=PassiveNetwork.sizeJunctionHoldups(graph,model);
@@ -457,7 +460,7 @@ public final class PassiveIntervalSolver {
      * A check the interval solver runs on every step it takes: {@link #checkRate} on the state a step starts from,
      * {@link #checkFilters} on the step's converged end. It throws to refuse the step: a
      * {@link SolidEventIntegrator.Transition} to declare a solid transport event (the interval solver then searches the
-     * step onto it), an {@link ApproximationAnchor.Rejected} to send an approximate interval back to a full solve.
+     * step onto it).
      */
     @FunctionalInterface public interface StageGuard {
         StageGuard NONE=(states,modes)->{};

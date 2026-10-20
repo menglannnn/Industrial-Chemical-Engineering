@@ -108,24 +108,12 @@ public final class V3DegreeOfFreedomLedger {
                 diagnostics, structuralRank, truncationSupport, wetTraySet);
     }
 
-    public V3ColumnTopology topology() {
-        return topology;
-    }
-
-    public int componentCount() {
-        return componentCount;
-    }
-
     V3TruncationSupport truncationSupport() {
         return truncationSupport;
     }
 
     V3WetTraySet wetTraySet() {
         return wetTraySet;
-    }
-
-    public List<V3ColumnSpecification> specifications() {
-        return specifications;
     }
 
     public List<Unknown> unknowns() {

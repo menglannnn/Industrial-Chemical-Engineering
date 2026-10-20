@@ -60,14 +60,45 @@ public record ViscosityCorrelation(Model model, double minimumTemperatureKelvin,
         requirePositive(evaluate(model, maximumTemperatureKelvin, referenceTemperatureKelvin, coefficients, exponents, temperaturesKelvin), "viscosity at maximum temperature");
     }
 
-    /** Returns Pa·s. Pressure selects the validated interval; these models have no pressure correction. */
-    public double dynamicViscosityPascalSeconds(double temperatureKelvin, double pressurePascal) {
-        if (!Double.isFinite(temperatureKelvin) || temperatureKelvin < minimumTemperatureKelvin || temperatureKelvin > maximumTemperatureKelvin
-                || !Double.isFinite(pressurePascal) || pressurePascal < minimumPressurePascal || pressurePascal > maximumPressurePascal)
-            throw new IllegalArgumentException("Viscosity state is outside the correlation's temperature/pressure domain");
-        double value = evaluate(model, temperatureKelvin, referenceTemperatureKelvin, coefficients, exponents, temperaturesKelvin);
+    /**
+     * The viscosity cap, Pa s: a glass. A continuation is capped here in log space, so no table continued to the
+     * numerical box's 10 K (the heaviest crude cut holds 6.8e4 Pa s at 293 K) overflows a double.
+     */
+    public static final double MAXIMUM_VISCOSITY = 1e12;
+    private static final double LOG_MAXIMUM_VISCOSITY = DeterministicMath.log(MAXIMUM_VISCOSITY);
+
+    /**
+     * Returns Pa s at any positive finite temperature, as the phase the correlation describes. Inside the declared
+     * temperature interval it is the correlation itself. Past an end of a {@code log_table} it continues from the end
+     * node (owner rule of 2026-10-16, plan RANGE_EXTRAPOLATION_PLAN section 3): a liquid below its table keeps the end
+     * segment's slope with ln(mu) linear in 1/T (Andrade's form; value and slope continuous) and above its table holds
+     * the end value (continuous, like the table's own nodes); a vapour has ln(mu) linear in ln(T) with the end segment's
+     * slope at both ends. A formula (Andrade, Sutherland, power sum) continues itself. Every result is capped at
+     * {@link #MAXIMUM_VISCOSITY}. The declared interval is the data range a notice reports; these models have no
+     * pressure correction, so the declared pressure interval is data only.
+     */
+    public double dynamicViscosityPascalSeconds(double temperatureKelvin, Phase phase) {
+        Objects.requireNonNull(phase, "phase");
+        if (!(temperatureKelvin > 0) || !Double.isFinite(temperatureKelvin))
+            throw new IllegalArgumentException("Viscosity temperature must be positive and finite: " + temperatureKelvin);
+        double value;
+        if (model == Model.LOG_TABLE && temperatureKelvin < minimumTemperatureKelvin) value = continued(temperatureKelvin, 0, 1, phase);
+        else if (model == Model.LOG_TABLE && temperatureKelvin > maximumTemperatureKelvin)
+            value = continued(temperatureKelvin, coefficients.size() - 1, coefficients.size() - 2, phase);
+        else value = evaluate(model, temperatureKelvin, referenceTemperatureKelvin, coefficients, exponents, temperaturesKelvin);
+        if (!(value <= MAXIMUM_VISCOSITY)) value = MAXIMUM_VISCOSITY;
         requirePositive(value, "dynamic viscosity");
         return value;
+    }
+
+    /** A table past its end node {@code end}, {@code inner} the node next to it: the continuation of the phase. */
+    private double continued(double t, int end, int inner, Phase phase) {
+        double te = temperaturesKelvin.get(end), endValue = coefficients.get(end);
+        if (phase == Phase.LIQUID && t > te) return endValue;
+        double endLog = DeterministicMath.log(endValue);
+        double slope = (endLog - DeterministicMath.log(coefficients.get(inner))) / (te - temperaturesKelvin.get(inner));
+        double log = phase == Phase.LIQUID ? endLog - slope * te * te * (1 / t - 1 / te) : endLog + slope * te * DeterministicMath.log(t / te);
+        return log >= LOG_MAXIMUM_VISCOSITY ? MAXIMUM_VISCOSITY : DeterministicMath.exp(log);
     }
 
     private static double evaluate(Model model, double t, double reference, List<Double> c, List<Double> powers, List<Double> nodes) {

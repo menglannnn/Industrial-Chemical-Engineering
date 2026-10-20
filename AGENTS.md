@@ -48,6 +48,33 @@ The owner's words: "try to shorten the tests, they are taking too long/too much 
 - Every issue is first reasoned from real-life physics, with simplifications: what flows where, and what the steady state is, in numbers. The report leads with that expectation, then states what the code did instead in plain words, and ends in a proposition for the owner to validate.
 - Every fix improves the existing code structure. A fix is placed in the stage it belongs to and absorbs the special cases it makes unnecessary; no isolated patches.
 
+## Thermo validity below the freezing point; no range holds (recorded 2026-10-16)
+
+- The owner's words: "If we have data to the freezing point, the validity of thermo package should be good below that T, that's a general rule for any future implementations."
+- A component whose fluid data reaches its freezing (triple) point stays valid below that temperature, both in mixtures and in supercooled or metastable states. An example of a mixture is a solute dissolved in a colder liquid, such as CO2 in LNG.
+- A freezing point is therefore never a lower validity bound. Seed windows, domain floors, fluid-only ranges and range clips use the package's own domain floor, not a component's freezing point.
+- Amended 2026-10-16, in the owner's words: "it's extremely inconvenient for the system to be put on hold when outside package range, maybe just don't hold it at all (maybe use extrapolated data?)". The plan was approved with "ok keep things lightweight".
+- Leaving any data range never holds an island. This covers low or high T and P, and every property model. Properties extrapolate smoothly, with value and slope continuous at the edge. A non-blocking notice on the island's status line reports the extrapolation.
+- Only numerical guards remain, where the mathematics breaks: a numerical box, T ≤ 0, no equation-of-state root. They act inside the solvers, as a rejected trial step and a backtrack, never as a hold.
+- Holds remain only for capability limits, where the model cannot represent a state.
+- Keep these rules lightweight: game-level continuations, not new reference models.
+
+## Small physics simplifications (recorded 2026-10-17)
+
+- The owner's words: "Always keep an eye on this kind of small simplifications in the future which doesn't break the physics too much."
+- The example is D36 of batch `2026-09-24-coolprop-low-temperature`: a gas column does not exist, so a vapour weighs nothing in a static column. A gas column weighs 11 to 22 Pa/m at the network's usual pressures, against 4 to 10 kPa/m for liquids. The owner reverted D36 on 2026-10-17 (decision D38) when the cold package showed a CO2-rich gas at 5.4 MPa weighing 1.15 kPa/m, 25 to 30 % of an LNG column.
+- Every agent working on physics code watches for simplifications whose physical effect is small at game level:
+  - a negligible term;
+  - a rule or mode that a constitutive statement replaces;
+  - a special case that a coarser model absorbs.
+- Each one is proposed to the owner with three things:
+  - its effect in numbers at the network's usual states;
+  - what it deletes;
+  - what it risks, such as a new discontinuity or references that move.
+- The owner approves each one before it is implemented. A broad sweep is written as a review; `SIMPLIFICATION_SWEEP_REVIEW.md` in that batch is the first.
+- A simplification never breaks conservation of mass, energy or components, and never overrides an owner rule.
+- A code comment that records a measured reason for a term counts against removing that term, unless the simplification also removes the cause.
+
 ## Documentation, research, tools and versions (recorded 2026-09-23)
 
 - Working documents, research material and offline tooling are local and git-ignored, in three folders of the main checkout (`D:/Minecraft/Modding/1.21/CreateChemE`), which holds the canonical copy:

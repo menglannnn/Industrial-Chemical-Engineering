@@ -6,7 +6,7 @@ license="MIT"
 modId="createcheme_mcp_compat"
 version="1.0.0"
 displayName="CreateChemE MCP Test Compatibility"
-description="Test-client input dispatch compatibility for Minecraft MCP 0.3.0."
+description="Test-client input dispatch compatibility for Minecraft MCP 0.4.x (dependency range [0.4.7,0.5.0))."
 
 [[mixins]]
 config="createcheme_mcp_compat.mixins.json"

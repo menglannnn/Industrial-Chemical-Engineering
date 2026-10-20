@@ -28,7 +28,7 @@ class VesselStateFollowsContentsTest {
     private static final PipeResistance.Geometry BLOCK=new PipeResistance.Geometry(1,.05,.000045,0);
 
     @Test void everyTankOfTheExtremeGridIsStatedAtItsContentsAfterEveryInterval() {
-        var model=FluidThermodynamics.forNetwork(MaterialCatalog.bundled(),"createcheme:tjl20_methane_nitrogen",1e-9,100000);
+        var model=FluidThermodynamics.forNetwork(MaterialCatalog.bundled(),"createcheme:tjl20_methane_nitrogen",100000, FluidThermodynamics.DEFAULT_TRACE_CUTOFF_MOLE_FRACTION);
         var devices=new ArrayList<PhysicalFluidTopology.Device>();var pressures=new LinkedHashMap<Long,Double>();
         for(int x=0;x<10;x++){devices.add(device(1+x,x,0,Kind.GENERATOR));pressures.put(1L+x,ExtremeTopologyIslandTest.GENERATORS[x]);}
         for(int x=0;x<10;x++)devices.add(device(11+x,x,1,Kind.PIPE));

@@ -31,7 +31,7 @@ public final class FluidPumpStartupGameTests {
             // generator stands at 1 MPa and supplies a liquid (re-baselined from 101325 Pa).
             var old=world.registrations().get(sourceId);world.edit(sourceId,old.revision(),old.device(),new FluidDeviceSpec(1,350,1e6,feed.moleFractions()));
             long id=((FluidDeviceBlockEntity)level.getBlockEntity(pump)).fluidIdentity();old=world.registrations().get(id);var d=old.device();
-            world.edit(id,old.revision(),new PhysicalFluidTopology.Device(d.id(),d.position(),d.kind(),d.facing(),d.geometry(),new FlowControl.Pump(.0001,500000,1)),old.spec());
+            world.edit(id,old.revision(),new PhysicalFluidTopology.Device(d.id(),d.position(),d.kind(),d.facing(),d.geometry(),new FlowControl.Pump(.0001,500000)),old.spec());
         }
         // A placed tank holds nothing (decision D54): the nitrogen reservoir is charged first, at 102 kPa (TankCharge).
         var charge=new TankCharge(helper,world,tank,Direction.SOUTH,102000);

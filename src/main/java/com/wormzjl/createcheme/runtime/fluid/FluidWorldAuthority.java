@@ -23,7 +23,6 @@ public final class FluidWorldAuthority implements AutoCloseable {
     private final FluidPropertyReloadGuard propertyReload;
     private String propertyHold;
     private final CreateChemE.FluidOptions options;
-    private final double compressibility;
     private final List<FluidPresetCatalog.Preset> presetCache;
     private final List<String> componentNames;
     private final FluidSavedData data;
@@ -53,9 +52,8 @@ public final class FluidWorldAuthority implements AutoCloseable {
     private FluidWorldAuthority(MinecraftServer server) {
         this.server=server;owned();catalog=MaterialRuntime.active();
         options=CreateChemE.fluidOptions();data=FluidSavedData.open(server,this::model);
-        compressibility=data.checkpoint().islands().isEmpty()?options.compressibility():data.checkpoint().islands().getFirst().compressibility();
-        model=model(new FluidCheckpointCodec.PackageKey(com.wormzjl.createcheme.science.fluid.thermo.FluidMaterialCatalog.networkPackage(catalog),compressibility));
-        propertyReload=new FluidPropertyReloadGuard(catalog,com.wormzjl.createcheme.science.fluid.thermo.FluidMaterialCatalog.networkPackage(catalog),compressibility,model);
+        model=model(new FluidCheckpointCodec.PackageKey(com.wormzjl.createcheme.science.fluid.thermo.FluidMaterialCatalog.networkPackage(catalog)));
+        propertyReload=new FluidPropertyReloadGuard(catalog,com.wormzjl.createcheme.science.fluid.thermo.FluidMaterialCatalog.networkPackage(catalog),model);
         presetCache=FluidPresetCatalog.resolve(catalog);componentNames=model.components();
         var savedTopology=data.world().orElseGet(()->WorldTopologyLedger.Snapshot.empty(catalog));savedTopology.basis().requireCurrent(catalog);
         FluidPropertyReloadGuard.validateSolids(catalog.solids(),data.checkpoint(),savedTopology);observedSolidData=catalog;
@@ -65,9 +63,9 @@ public final class FluidWorldAuthority implements AutoCloseable {
         // Island clocks read the world's online tick: one epoch increment per tick advances every island.
         runtime=new MinecraftFluidRuntime(server,this::published,settings,topology::onlineTick);
         runtime.coordinator().onReplayed(this::replayed);
-        runtime.coordinator().onDomainHold(this::domainHeld);runtime.coordinator().nodeNames(this::deviceLabel);
+        runtime.coordinator().onPhaseHold(this::phaseHeld);runtime.coordinator().nodeNames(this::deviceLabel);
         registry=new PhysicalRegistry(topology,model,new InlineFilter(options.solids().filterCapacity(),options.solids().filterResistance(),com.wormzjl.createcheme.science.fluid.state.SolidInventory.EMPTY,0),new RegistryHost());
-        for(var entry:data.checkpoint().islands())runtime.register(dimension(entry.dimension()),entry.snapshot(),model(new FluidCheckpointCodec.PackageKey(entry.packageId(),entry.compressibility())));
+        for(var entry:data.checkpoint().islands())runtime.register(dimension(entry.dimension()),entry.snapshot(),model(entry.key()));
         logLoad();
         registry.load();data.bindCapture(this::capture);
         // Block entities whose chunks loaded before this authority existed never reported themselves: every device
@@ -110,7 +108,7 @@ public final class FluidWorldAuthority implements AutoCloseable {
     /** Every island of this world solves on a model built from the same captured options, so the
      * configured trace cutoff is one value for every worker and every retained solver: a retained
      * solver is replaced whenever its model identity changes, and the model is the cutoff's home. */
-    private FluidThermodynamics model(FluidCheckpointCodec.PackageKey key){return models.computeIfAbsent(key,k->FluidThermodynamics.forNetwork(catalog,k.packageId(),k.compressibility(),options.maximumVelocity(),options.traceCutoffMoleFraction(),options.solids()));}
+    private FluidThermodynamics model(FluidCheckpointCodec.PackageKey key){return models.computeIfAbsent(key,k->FluidThermodynamics.forNetwork(catalog,k.packageId(),options.maximumVelocity(),options.traceCutoffMoleFraction(),options.solids()));}
     private static ResourceKey<Level> dimension(String name){return ResourceKey.create(Registries.DIMENSION,ResourceLocation.parse(name));}
     public List<FluidPresetCatalog.Preset> presets(){owned();return presetCache;}
     public List<String> components(){owned();return componentNames;}
@@ -139,7 +137,7 @@ public final class FluidWorldAuthority implements AutoCloseable {
     private void refuseEvent(UUID event,String reason){refusedEvents.put(event,reason);if(refusedEvents.size()>WorldTopologyLedger.MAXIMUM_EVENTS)refusedEvents.remove(refusedEvents.keySet().iterator().next());}
     public WorldTopologyLedger.Registration place(PhysicalFluidTopology.Position position,TopologyCompiler.Kind kind,PhysicalFluidTopology.Direction facing) {
         owned();
-        long id=topology.nextIdentity();var control=switch(kind){case PUMP->new FlowControl.Pump(.01,500000,1);case COMPRESSOR->new FlowControl.Compressor(.05,3.0,1);case VALVE->new FlowControl.PressureValve(200000);default->new FlowControl.Passive();};
+        long id=topology.nextIdentity();var control=switch(kind){case PUMP->new FlowControl.Pump(.01,500000);case COMPRESSOR->new FlowControl.Compressor(.05,3.0);case VALVE->new FlowControl.PressureValve(200000);default->new FlowControl.Passive();};
         var device=new PhysicalFluidTopology.Device(id,position,kind,facing,new PipeResistance.Geometry(1,.05,PipeResistance.DEFAULT_ROUGHNESS_METRES,0),control);
         var spec=kind==TopologyCompiler.Kind.GENERATOR?FluidDeviceSpec.water(catalog):FluidDeviceSpec.nitrogen(catalog);
         // A reservoir is placed empty (decision D54): of its settings only the capacity means anything.
@@ -262,8 +260,9 @@ public final class FluidWorldAuthority implements AutoCloseable {
     public FluidSavedData.Capture capture() {
         owned();flush();var islands=new ArrayList<FluidCheckpointCodec.IslandEntry>();var world=topology.snapshot();
         for(var snapshot:runtime.coordinator().snapshots()) {
+            if(registry.members(snapshot.id()).isEmpty())throw new IllegalStateException("Fluid island "+snapshot.id()+" holds no device; refusing to save it");
             String dimension=world.active().get(registry.members(snapshot.id()).getFirst()).device().position().dimension();
-            islands.add(new FluidCheckpointCodec.IslandEntry(dimension,com.wormzjl.createcheme.science.fluid.thermo.FluidMaterialCatalog.networkPackage(catalog),compressibility,snapshot));
+            islands.add(new FluidCheckpointCodec.IslandEntry(dimension,com.wormzjl.createcheme.science.fluid.thermo.FluidMaterialCatalog.networkPackage(catalog),snapshot));
         }
         return new FluidSavedData.Capture(new FluidCheckpointCodec.Checkpoint(islands),world);
     }
@@ -285,7 +284,6 @@ public final class FluidWorldAuthority implements AutoCloseable {
             for(int i=0;i<snapshot.graph().pipes().size();i++){var pipe=snapshot.graph().pipes().get(i);if(pipe.first()==nodeIndex)flow+=q[i];if(pipe.second()==nodeIndex)flow-=q[i];}
             for(var mapping:registry.pipeViews(id))for(var value:result.pipeTransfers())if(value.pipeId()==mapping.pipeId()) {
                 history.add(value);
-                for(int edge=0;edge<snapshot.graph().pipes().size();edge++)if(snapshot.graph().pipes().get(edge).id()==value.pipeId()&&result.endpointModes().get(edge).name().contains("VELOCITY_LIMIT"))status+=" / "+result.endpointModes().get(edge);
             }
             if(!history.isEmpty())flow=(history.getFirst().forward().massKg()-history.getFirst().reverse().massKg())/result.advancedSeconds();
             if(registration.device().actuator())for(int i=0;i<snapshot.graph().pipes().size();i++){var pipe=snapshot.graph().pipes().get(i);if(pipe.first()==nodeIndex&&!(pipe.control() instanceof FlowControl.Passive)){flow=q[i];devicePressureChange=result.endpointHeads()[i];status+=" / "+result.endpointModes().get(i);
@@ -366,24 +364,26 @@ public final class FluidWorldAuthority implements AutoCloseable {
         var p=registration.device().position();return registration.device().kind().name().toLowerCase(java.util.Locale.ROOT)+" at "+p.x()+", "+p.y()+", "+p.z();
     }
     /**
-     * One WARN per island per thermo-domain hold (the coordinator rate-limits repeats of the same island and violation):
-     * where, which package, component, property, value and range, and what to do about it.
+     * One WARN per island per phase hold, a phase set the network cannot carry (D21 option C; the coordinator
+     * rate-limits repeats of the same island and hold): where, which package, its reason key and state, and what to do
+     * about it. Leaving a data range is no hold (owner rule of 2026-10-16).
      */
-    private void domainHeld(long island,com.wormzjl.createcheme.science.fluid.thermo.ThermoDomainViolation violation,String where,boolean parked) {
+    private void phaseHeld(long island,com.wormzjl.createcheme.science.fluid.thermo.ThermoHold hold,String where,boolean parked) {
         String dimension="unknown";
         var members=registry.members(island);if(!members.isEmpty()){var record=topology.active().get(members.getFirst());if(record!=null)dimension=record.device().position().dimension();}
-        CreateChemE.LOGGER.warn("fluid_island={} dimension={} node={} device={} status=THERMO_DOMAIN code={} package={} component={} property={} value={} range={} waits_for_inputs={} detail={} action=Extend the component's validity range in its data file only with data validated for it; see documentation/fluid-followups/THERMO_DOMAIN_ERROR.md and FLUID_PUMP_AND_THERMO_DOMAIN_REVIEW.md",
-                island,dimension,violation.node()==com.wormzjl.createcheme.science.fluid.thermo.ThermoDomainViolation.NO_NODE?"unknown":violation.node(),where.isEmpty()?"unknown":where,
-                violation.code(),violation.packageId(),violation.component(),violation.property().label(),violation.value(),violation.range(),parked,violation.getMessage());
+        Object node=hold.node()==com.wormzjl.createcheme.science.fluid.thermo.ThermoHold.NO_NODE?"unknown":hold.node();String device=where.isEmpty()?"unknown":where;
+        CreateChemE.LOGGER.warn("fluid_island={} dimension={} node={} device={} status=PHASE_HOLD code={} package={} temperature={} pressure={} waits_for_inputs={} detail={} action=Change what the island mixes or the conditions it holds: the network carries one hydrocarbon liquid, one vapour, water and the package's crystals",
+                island,dimension,node,device,hold.reasonKey().substring(com.wormzjl.createcheme.science.fluid.thermo.ThermoHold.REASON_PREFIX.length()),hold.packageId(),hold.temperature(),hold.pressure(),parked,hold.getMessage());
     }
     /**
      * Why a mover is refused (decision D6), as the solver's inlet check states it on the committed state the next slice
      * decides on ({@link InletPhase#reason}), with the node the supply walk ended at named as a device. Pure arithmetic on
-     * the committed state's stored phase amounts: no solve and no flash.
+     * the committed state's stored phase amounts: no solve and no flash. Its transport closures read as open, as that
+     * slice reads them (owner decision D33, {@link NetworkReduction#reopened}).
      */
     private String inletReason(PassiveNetwork graph,int edge,double seconds) {
         var mover=(FlowControl.Mover)graph.pipes().get(edge).control();
-        var supply=InletPhase.supply(model,graph,edge,mover.targetVolumeFlow(),seconds);
+        var supply=InletPhase.supply(model,NetworkReduction.reopened(graph),edge,mover.targetVolumeFlow(),seconds);
         return InletPhase.reason(mover,supply).replace("from node "+supply.nodeId()+")","from "+deviceLabel(supply.nodeId())+")");
     }
     private String nodeLabel(long id) {
@@ -471,8 +471,8 @@ public final class FluidWorldAuthority implements AutoCloseable {
     }
     private void published(List<IslandCoordinator.Snapshot> changed) {
         if(observer!=null){var timings=new HashMap<Long,IslandCoordinator.Metrics>();for(var island:changed)runtime.coordinator().metrics(island.id()).ifPresent(m->timings.put(island.id(),m));observer.accept(changed,Map.copyOf(timings));}
-        // A thermo-domain hold has its own, rate-limited line with the full detail (domainHeld); every other hold keeps this one.
-        data.setDirty();var ids=new HashSet<Long>();for(var snapshot:changed){ids.add(snapshot.id());if(snapshot.status().startsWith("HELD")&&!snapshot.status().startsWith(com.wormzjl.createcheme.runtime.ProcessSolveServices.THERMO_DOMAIN))CreateChemE.LOGGER.warn("fluid_island={} committed_tick={} status={}",snapshot.id(),snapshot.clock().committedTick(),snapshot.status());}
+        // A phase hold has its own, rate-limited line with the full detail (phaseHeld); every other hold keeps this one.
+        data.setDirty();var ids=new HashSet<Long>();for(var snapshot:changed){ids.add(snapshot.id());if(snapshot.status().startsWith("HELD")&&!snapshot.status().startsWith(com.wormzjl.createcheme.runtime.ProcessSolveServices.PHASE_HOLD))CreateChemE.LOGGER.warn("fluid_island={} committed_tick={} status={}",snapshot.id(),snapshot.clock().committedTick(),snapshot.status());}
         // Only loaded devices are marked; their bucket presents them. A publication itself pushes nothing.
         for(long island:ids)for(long physical:registry.members(island))presentation.markIfLoaded(physical);
         if(options.debugChat()&&(lastDebugChat==Long.MIN_VALUE||topology.onlineTick()-lastDebugChat>=20)) {

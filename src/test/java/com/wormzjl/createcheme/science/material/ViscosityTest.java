@@ -15,9 +15,9 @@ class ViscosityTest {
     @Test void liquidWaterMatchesIndependentIapwsTableEight() {
         var v = MaterialCatalog.bundled().viscosity(PACKAGE, "Water", ViscosityCorrelation.Phase.LIQUID).orElseThrow();
         // IAPWS SR6-08(2011), table 8: values are published in microPa.s (including metastable liquid).
-        assertEquals(3058.36075e-6, v.dynamicViscosityPascalSeconds(260, 100000), 5e-12);
-        assertEquals(889.996774e-6, v.dynamicViscosityPascalSeconds(298.15, 100000), 5e-13);
-        assertEquals(276.207245e-6, v.dynamicViscosityPascalSeconds(375, 100000), 5e-13);
+        assertEquals(3058.36075e-6, v.dynamicViscosityPascalSeconds(260, ViscosityCorrelation.Phase.LIQUID), 5e-12);
+        assertEquals(889.996774e-6, v.dynamicViscosityPascalSeconds(298.15, ViscosityCorrelation.Phase.LIQUID), 5e-13);
+        assertEquals(276.207245e-6, v.dynamicViscosityPascalSeconds(375, ViscosityCorrelation.Phase.LIQUID), 5e-13);
         assertFalse(v.estimated());
         assertTrue(v.source().contains("IAPWS"));
     }
@@ -29,10 +29,13 @@ class ViscosityTest {
         assertThrows(IllegalArgumentException.class,()->catalog.viscosity(PACKAGE,"TJL_PC07",ViscosityCorrelation.Phase.LIQUID));
         assertThrows(IllegalArgumentException.class, () -> catalog.viscosity(PACKAGE, "NotAComponent", ViscosityCorrelation.Phase.LIQUID));
         var v = catalog.viscosity(PACKAGE, "Water", ViscosityCorrelation.Phase.LIQUID).orElseThrow();
-        for (double t : new double[] {253.14, 383.16, Double.NaN, Double.POSITIVE_INFINITY})
-            assertThrows(IllegalArgumentException.class, () -> v.dynamicViscosityPascalSeconds(t, 100000));
-        assertThrows(IllegalArgumentException.class, () -> v.dynamicViscosityPascalSeconds(300, 250000));
-        assertTrue(v.dynamicViscosityPascalSeconds(253.15, 100000) > v.dynamicViscosityPascalSeconds(383.15, 100000));
+        // Past its data the correlation continues (owner rule of 2026-10-16): only a temperature that is not positive and
+        // finite is refused. SR6's own sum continues itself just past both ends of 253.15..383.15 K.
+        for (double t : new double[] {0, -1, Double.NaN, Double.POSITIVE_INFINITY})
+            assertThrows(IllegalArgumentException.class, () -> v.dynamicViscosityPascalSeconds(t, ViscosityCorrelation.Phase.LIQUID));
+        assertTrue(v.dynamicViscosityPascalSeconds(253.14, ViscosityCorrelation.Phase.LIQUID) > v.dynamicViscosityPascalSeconds(253.15, ViscosityCorrelation.Phase.LIQUID));
+        assertTrue(v.dynamicViscosityPascalSeconds(383.16, ViscosityCorrelation.Phase.LIQUID) < v.dynamicViscosityPascalSeconds(383.15, ViscosityCorrelation.Phase.LIQUID));
+        assertTrue(v.dynamicViscosityPascalSeconds(253.15, ViscosityCorrelation.Phase.LIQUID) > v.dynamicViscosityPascalSeconds(383.15, ViscosityCorrelation.Phase.LIQUID));
         assertThrows(UnsupportedOperationException.class, () -> v.coefficients().set(0, 1.0));
     }
 
@@ -44,15 +47,13 @@ class ViscosityTest {
         fits.add("liquid", fit("andrade", 1e-6, 1500));
         fits.add("vapor", fit("sutherland", 1.1e-5, 110));
         property.add("viscosity", fits);
-        // The fluid network's range for the record may not exceed its vapour viscosity data (F4): the fit ends at 700 K.
-        property.getAsJsonObject("fluid_domain").addProperty("temperature_max_kelvin", 700);
         resources.put(path, property.toString());
         var catalog = MaterialCatalog.parse(resources);
         var liquid = catalog.viscosity(PACKAGE, "Methane", ViscosityCorrelation.Phase.LIQUID).orElseThrow();
         var vapor = catalog.viscosity(PACKAGE, "Methane", ViscosityCorrelation.Phase.VAPOR).orElseThrow();
-        assertEquals(1e-6 * Math.exp(5), liquid.dynamicViscosityPascalSeconds(300, 100000), 1e-18);
-        assertEquals(1.1e-5, vapor.dynamicViscosityPascalSeconds(300, 100000), 1e-20);
-        assertTrue(vapor.dynamicViscosityPascalSeconds(600, 100000) > vapor.dynamicViscosityPascalSeconds(300, 100000));
+        assertEquals(1e-6 * Math.exp(5), liquid.dynamicViscosityPascalSeconds(300, ViscosityCorrelation.Phase.LIQUID), 1e-18);
+        assertEquals(1.1e-5, vapor.dynamicViscosityPascalSeconds(300, ViscosityCorrelation.Phase.VAPOR), 1e-20);
+        assertTrue(vapor.dynamicViscosityPascalSeconds(600, ViscosityCorrelation.Phase.VAPOR) > vapor.dynamicViscosityPascalSeconds(300, ViscosityCorrelation.Phase.VAPOR));
         assertTrue(liquid.estimated());
         assertEquals(MaterialCatalog.bundled().requirePackage(PACKAGE).fingerprint(), catalog.requirePackage(PACKAGE).fingerprint());
         assertNotEquals(MaterialCatalog.bundled().viscosityFingerprint(PACKAGE), catalog.viscosityFingerprint(PACKAGE));
@@ -134,7 +135,7 @@ class ViscosityTest {
                 for(var value:checks) {
                     var point=value.getAsJsonObject();double t=point.get("temperature_kelvin").getAsDouble();
                     double expected=point.get("viscosity_pascal_seconds").getAsDouble();
-                    assertEquals(expected,curve.dynamicViscosityPascalSeconds(t,100000),expected*0.000500001,
+                    assertEquals(expected,curve.dynamicViscosityPascalSeconds(t,phase),expected*0.000500001,
                             ()->property.id()+" "+phase+" at "+t+" K diverges from DWSIM");
                     verified++;
                 }
@@ -148,9 +149,9 @@ class ViscosityTest {
     @Test void tableNodesAreExactAndMalformedTablesAreRejected() {
         var table=new ViscosityCorrelation(ViscosityCorrelation.Model.LOG_TABLE,300,400,100000,100000,300,
                 List.of(.001,.00025),List.of(),"test","manufactured interpolation fixture",true,List.of(300.,400.));
-        assertEquals(.001,table.dynamicViscosityPascalSeconds(300,100000));
-        assertEquals(.00025,table.dynamicViscosityPascalSeconds(400,100000));
-        assertEquals(.0005,table.dynamicViscosityPascalSeconds(350,100000),1e-18);
+        assertEquals(.001,table.dynamicViscosityPascalSeconds(300,ViscosityCorrelation.Phase.LIQUID));
+        assertEquals(.00025,table.dynamicViscosityPascalSeconds(400,ViscosityCorrelation.Phase.LIQUID));
+        assertEquals(.0005,table.dynamicViscosityPascalSeconds(350,ViscosityCorrelation.Phase.LIQUID),1e-18);
         assertThrows(IllegalArgumentException.class,()->new ViscosityCorrelation(ViscosityCorrelation.Model.LOG_TABLE,300,400,100000,100000,300,
                 List.of(.001,.00025),List.of(),"test","fixture",true,List.of(300.,300.)));
         assertThrows(IllegalArgumentException.class,()->new ViscosityCorrelation(ViscosityCorrelation.Model.LOG_TABLE,300,400,100000,100000,300,
@@ -181,11 +182,12 @@ class ViscosityTest {
                 properties.add(id);
                 String component=p.properties().stream().filter(v->v.id().equals(id)).findFirst().orElseThrow().component();
                 for(var phase:row.getAsJsonObject("checks").entrySet()) {
-                    var correlation=catalog.viscosity(p.id(),component,ViscosityCorrelation.Phase.valueOf(phase.getKey().toUpperCase(java.util.Locale.ROOT))).orElseThrow();
+                    var kind=ViscosityCorrelation.Phase.valueOf(phase.getKey().toUpperCase(java.util.Locale.ROOT));
+                    var correlation=catalog.viscosity(p.id(),component,kind).orElseThrow();
                     for(var value:phase.getValue().getAsJsonArray()) {
                         var point=value.getAsJsonObject();double t=point.get("temperature_kelvin").getAsDouble();
                         double expected=point.get("viscosity_pascal_seconds").getAsDouble();
-                        assertEquals(expected,correlation.dynamicViscosityPascalSeconds(t,100000),expected*.000500001,id+" at "+t);
+                        assertEquals(expected,correlation.dynamicViscosityPascalSeconds(t,kind),expected*.000500001,id+" at "+t);
                         checked++;
                     }
                 }

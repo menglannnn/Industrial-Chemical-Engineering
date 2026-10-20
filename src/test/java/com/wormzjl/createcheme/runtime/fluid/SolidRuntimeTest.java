@@ -24,8 +24,14 @@ class SolidRuntimeTest {
         return model.flashTP(350,pressure,n,()->{});
     }
     private FluidCheckpointCodec.Checkpoint checkpoint(PassiveNetwork graph){
-        var snapshot=new IslandCoordinator.Snapshot(1,0,graph,new IslandClock.Snapshot(0,0,0,100),FallbackAllowance.NONE,Optional.empty(),Optional.empty(),"READY");
-        return new FluidCheckpointCodec.Checkpoint(List.of(new FluidCheckpointCodec.IslandEntry("minecraft:overworld",FluidPresetCatalog.NETWORK_PACKAGE,1e-9,snapshot)));
+        var snapshot=new IslandCoordinator.Snapshot(1,0,graph,new IslandClock.Snapshot(0,0,0,100),Optional.empty(),"READY");
+        return new FluidCheckpointCodec.Checkpoint(List.of(new FluidCheckpointCodec.IslandEntry("minecraft:overworld",FluidPresetCatalog.NETWORK_PACKAGE,snapshot)));
+    }
+    /** t56 (cold seed 163): a subnormal mass is roundoff zero; its volume underflowed to 0 and the stock refused it. */
+    @Test void aSubnormalMassIsNoStock(){
+        assertTrue(stock(1.48e-321).empty(),"a mass below the smallest normal double is no population");
+        assertFalse(stock(Double.MIN_NORMAL).empty(),"the smallest normal mass stays");
+        assertTrue(stock(1e-300).plus(stock(1.48e-321)).massKg()==1e-300,"merging adds nothing for it");
     }
     @Test void generatorUsesSlurryVolumeFractionWithoutChangingTheFluidAxis(){
         var water=FluidDeviceSpec.water(catalog);
@@ -47,7 +53,7 @@ class SolidRuntimeTest {
         var restored=FluidCheckpointCodec.decode(json,key->model).islands().getFirst().snapshot().graph();
         assertEquals(cake,restored.pipes().getFirst().filter());
         assertEquals(source.solids(),restored.reservoirs().getFirst().inventory().solids());
-        var changed=FluidThermodynamics.forNetwork(catalog,FluidPresetCatalog.NETWORK_PACKAGE,1e-9,100,1e-6,new SlurryTransport.Settings(100,1e-8,12,.0001,2e6));
+        var changed=FluidThermodynamics.forNetwork(catalog,FluidPresetCatalog.NETWORK_PACKAGE,100,1e-6,new SlurryTransport.Settings(100,1e-8,12,.0001,2e6));
         var resized=FluidCheckpointCodec.decode(json,key->changed).islands().getFirst().snapshot().graph().pipes().getFirst().filter();
         assertTrue(resized.clogged());assertEquals(cake.captured(),resized.captured());assertEquals(cake.energyJoule(),resized.energyJoule());
         assertEquals(.0001,resized.capacity());assertEquals(2e6,resized.cleanResistance());
@@ -76,7 +82,7 @@ class SolidRuntimeTest {
     @Test void physicalPumpFilterAndNitrogenReceiverStartTogether(){
         var devices=new ArrayList<PhysicalFluidTopology.Device>();
         var kinds=new TopologyCompiler.Kind[]{TopologyCompiler.Kind.GENERATOR,TopologyCompiler.Kind.PIPE,TopologyCompiler.Kind.PUMP,TopologyCompiler.Kind.PIPE,TopologyCompiler.Kind.FILTER,TopologyCompiler.Kind.PIPE,TopologyCompiler.Kind.RESERVOIR};
-        for(int i=0;i<kinds.length;i++)devices.add(new PhysicalFluidTopology.Device(i+1,new PhysicalFluidTopology.Position("minecraft:overworld",i,-60,0),kinds[i],PhysicalFluidTopology.Direction.EAST,new PipeResistance.Geometry(1,.05,.000045,0),i==2?new FlowControl.Pump(.01,500000,1):new FlowControl.Passive()));
+        for(int i=0;i<kinds.length;i++)devices.add(new PhysicalFluidTopology.Device(i+1,new PhysicalFluidTopology.Position("minecraft:overworld",i,-60,0),kinds[i],PhysicalFluidTopology.Direction.EAST,new PipeResistance.Geometry(1,.05,.000045,0),i==2?new FlowControl.Pump(.01,500000):new FlowControl.Passive()));
         var spec=new FluidDeviceSpec(1,298.15,101325,FluidDeviceSpec.water(catalog).composition(),SlurryFeed.demo());
         var source=spec.initialize(devices.getFirst(),model,()->{});
         var sink=FluidTestSupport.chargedBoundary(FluidDeviceSpec.nitrogen(catalog),devices.getLast(),model);

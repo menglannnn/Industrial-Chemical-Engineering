@@ -32,7 +32,7 @@ class PhysicalRegistryTest {
     private final class World extends EventPathWorld {
         World(int workers){super(workers);}
         WorldTopologyLedger.Registration record(long id,int x,int z,Kind kind,PhysicalFluidTopology.Direction facing) {
-            var control=kind==Kind.PUMP?new FlowControl.Pump(.01,500000,1):new FlowControl.Passive();
+            var control=kind==Kind.PUMP?new FlowControl.Pump(.01,500000):new FlowControl.Passive();
             var device=new PhysicalFluidTopology.Device(id,new PhysicalFluidTopology.Position(DIM,x,Y,z),kind,facing,new PipeResistance.Geometry(1,.05,.000045,0),control);
             var spec=kind==Kind.GENERATOR?FluidDeviceSpec.water(catalog):FluidDeviceSpec.nitrogen(catalog);
             if(kind==Kind.RESERVOIR)spec=new FluidDeviceSpec(1,298.15,101325,spec.composition());
@@ -127,7 +127,7 @@ class PhysicalRegistryTest {
         Runnable heldTick=()->{
             w.ledger.tick();w.coordinator.tick();if(w.ledger.hasPendingEvents()){w.registry.applyPending();w.coordinator.pumpIfUseful();}
             for(long request:List.copyOf(w.attempts.keySet())){var attempt=w.attempts.remove(request);var command=w.commands.remove(request);
-                var result=attempt.islandId()==island?new ProcessSolveServices.FluidIslandSolveResult(Optional.empty(),"HELD: test refusal",10,FallbackAllowance.NONE,Optional.empty())
+                var result=attempt.islandId()==island?new ProcessSolveServices.FluidIslandSolveResult(Optional.empty(),"HELD: test refusal",10)
                         :(ProcessSolveServices.FluidIslandSolveResult)command.solve(FluidTestSupport.NEVER);
                 w.coordinator.completed(attempt,Optional.of(result));}
             w.coordinator.pump();
@@ -310,7 +310,7 @@ class PhysicalRegistryTest {
         }
         var tanks=graph.reservoirs().stream().filter(n->n.kind()==PassiveNetwork.NodeKind.RESERVOIR).toList();
         assertEquals(2,tanks.size());
-        assertBooked(empty.plus(tanks,weights),placed.constructed(),start.constructed(),"the placement books both tanks as constructed, and no junction (D46)");
+        assertBooked(empty.plus(tanks,model.components(),weights),placed.constructed(),start.constructed(),"the placement books both tanks as constructed, and no junction (D46)");
         assertBooked(empty,placed.destroyed(),start.destroyed(),"a placement into an empty world destroys nothing");
         // Ten intervals of flow move the junctions' composition away from the mint.
         w.run(1_000);

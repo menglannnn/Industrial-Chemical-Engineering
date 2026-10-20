@@ -18,7 +18,7 @@ import static org.junit.jupiter.api.Assertions.*;
  * an {@code INLET_PHASE_RUN} line; the numbers are recorded in PHASE_PORTS_REVIEW.md, section "WP3".
  */
 class InletPhaseTest extends PortFixture {
-    private static final double COMPONENT_LEDGER=1e-12,ENERGY_LEDGER=1e-10,G=PassiveStepSolver.GRAVITY;
+    private static final double COMPONENT_LEDGER=1e-12,ENERGY_LEDGER=1e-10;
     private static PipeResistance.Geometry line(double length,double diameter){return new PipeResistance.Geometry(length,diameter,PipeResistance.DEFAULT_ROUGHNESS_METRES,0);}
     private static PassiveNetwork.Pipe pipe(long id,int a,int b,PipeResistance.Geometry g,FlowControl control,PhasePort pa,PhasePort pb) {
         return new PassiveNetwork.Pipe(id,a,b,List.of(g),control,0,null,pa,pb);
@@ -52,7 +52,6 @@ class InletPhaseTest extends PortFixture {
         for(int slice=0;slice<count;slice++) {
             solver.replayStart(graph,committed);
             var result=solver.solve(graph,interval,PassiveIntervalSolver.Settings.defaults(),NOOP);committed=result;graph=result.graph();
-            assertEquals(PassiveStepSolver.Acceptance.FULL,result.acceptance(),label+" slice "+slice);
             assertEquals(interval,result.advancedSeconds(),0,label+" slice "+slice+": the whole slice commits");
             for(var transfer:result.boundaries()){var n=transfer.moles();for(int c=0;c<n.length;c++)external[c]+=n[c];externalEnergy+=transfer.totalEnergyJoule();}
             externalEnergy+=result.pumpWorkJoule();
@@ -94,7 +93,7 @@ class InletPhaseTest extends PortFixture {
         for(boolean branched:new boolean[]{false,true}) {
             var nodes=new ArrayList<>(List.of(new PassiveNetwork.Reservoir(10,0,vessel),new PassiveNetwork.Reservoir(11,0,junctionSeed,PassiveNetwork.NodeKind.JUNCTION),
                     new PassiveNetwork.Reservoir(12,0,junctionSeed,PassiveNetwork.NodeKind.JUNCTION),new PassiveNetwork.Reservoir(13,0,nitrogenAt(101325),PassiveNetwork.NodeKind.VOID)));
-            var pipes=new ArrayList<>(List.of(pipe(1,0,1,line(1,.05),new FlowControl.Passive()),pipe(2,2,1,line(1,.05),new FlowControl.Passive()),pipe(3,2,3,line(1,.05),new FlowControl.Pump(.001,500000,1))));
+            var pipes=new ArrayList<>(List.of(pipe(1,0,1,line(1,.05),new FlowControl.Passive()),pipe(2,2,1,line(1,.05),new FlowControl.Passive()),pipe(3,2,3,line(1,.05),new FlowControl.Pump(.001,500000))));
             if(branched){nodes.add(new PassiveNetwork.Reservoir(14,0,nitrogenAt(101325),PassiveNetwork.NodeKind.VOID));pipes.add(pipe(4,1,4,line(1,.05),new FlowControl.Passive()));}
             var graph=new PassiveNetwork(nodes,pipes);
             var supply=InletPhase.supply(model,graph,2,.001,5);
@@ -105,14 +104,14 @@ class InletPhaseTest extends PortFixture {
         // A valve upstream of the pump's junction ends the walk there: it is not a passive link.
         var valved=new PassiveNetwork(List.of(new PassiveNetwork.Reservoir(10,0,vessel),new PassiveNetwork.Reservoir(11,0,junctionSeed,PassiveNetwork.NodeKind.JUNCTION),
                 new PassiveNetwork.Reservoir(12,0,nitrogenAt(101325),PassiveNetwork.NodeKind.VOID)),
-                List.of(pipe(1,0,1,line(1,.05),new FlowControl.PressureValve(120000)),pipe(2,1,2,line(1,.05),new FlowControl.Pump(.001,500000,1))));
+                List.of(pipe(1,0,1,line(1,.05),new FlowControl.PressureValve(120000)),pipe(2,1,2,line(1,.05),new FlowControl.Pump(.001,500000))));
         assertEquals(11,InletPhase.supply(model,valved,1,.001,5).nodeId());
         // Ports on a vessel pumped directly: bottom on plenty of water, top, a dry bottom, a bottom short of one slice.
         var dry=nitrogenAt(150000);var shortOfWater=waterUnderNitrogen(.004,150000);
         for(var c:List.of(Map.entry("bottom",vessel),Map.entry("top",vessel),Map.entry("dry bottom",dry),Map.entry("short bottom",shortOfWater))) {
             var port=c.getKey().equals("top")?PhasePort.VAPOR:PhasePort.LIQUID;
             var graph=new PassiveNetwork(List.of(new PassiveNetwork.Reservoir(10,0,c.getValue()),new PassiveNetwork.Reservoir(13,0,nitrogenAt(101325),PassiveNetwork.NodeKind.VOID)),
-                    List.of(pipe(3,0,1,line(1,.05),new FlowControl.Pump(.001,500000,1),port,PhasePort.BULK)));
+                    List.of(pipe(3,0,1,line(1,.05),new FlowControl.Pump(.001,500000),port,PhasePort.BULK)));
             var supply=InletPhase.supply(model,graph,0,.001,5);var leading=InletPhase.supply(model,graph,0,.001,0);
             System.out.println("INLET_PHASE_RUN walk "+c.getKey()+" vapourShare="+supply.vapourVolumeShare()+" leading="+leading.vapourVolumeShare());
             switch(c.getKey()) {
@@ -131,10 +130,10 @@ class InletPhaseTest extends PortFixture {
     /** The decision of D6 on the measure alone: refuse above 2 % vapour by volume; a pump refused at the committed slice end
      * stays refused until below 0.5 %; the reason names the share and the source node. */
     @Test void thePumpsThresholdsAndReason() {
-        var pump=new FlowControl.Pump(.001,500000,1);
+        var pump=new FlowControl.Pump(.001,500000);
         for(double[] c:new double[][]{{.0199,0,0},{.0201,0,1},{.0199,1,1},{.0051,1,1},{.0049,1,0},{.0049,0,0},{0,1,0}})
-            assertEquals(c[2]==1,pump.refuses(new InletPhase.Supply(0,7,PhasePort.BULK,c[0],0,0),c[1]==1),Arrays.toString(c));
-        assertEquals("ERROR: pump inlet not liquid (vapour 34.0 % by volume, from node 7)",InletPhase.reason(pump,new InletPhase.Supply(0,7,PhasePort.BULK,.34,0,0)));
+            assertEquals(c[2]==1,pump.refuses(new InletPhase.Supply(0,7,PhasePort.BULK,c[0],0,0,Double.POSITIVE_INFINITY),c[1]==1),Arrays.toString(c));
+        assertEquals("ERROR: pump inlet not liquid (vapour 34.0 % by volume, from node 7)",InletPhase.reason(pump,new InletPhase.Supply(0,7,PhasePort.BULK,.34,0,0,Double.POSITIVE_INFINITY)));
     }
 
     // ---- Fixture 4: refused pumps; the rest of the island bitwise; hysteresis ---------------------------------------
@@ -144,11 +143,15 @@ class InletPhaseTest extends PortFixture {
      * tank), a pump between two nitrogen tanks, and a pump on a two-phase generator (30 % vapour by volume) into a
      * nitrogen tank. Both pumps are refused ({@code INLET_WRONG_PHASE}), carry exactly zero, every slice commits FULL (no
      * hold), at 5 s and 0.1 s. The water line integrates bit for bit as in the same island whose nitrogen line is a
-     * compressor closed both ways (the existing closed-device path, mode CLOSED): a refusal is exactly a closed device.
-     * Against the water line alone (no device lines at all) it is bit for bit at 5 s; at 0.1 s a closed device's head
-     * unknown moves the water line's flow by a few units in the last place in some slices, as the pre-existing
-     * closed-device path does (measured: the refused and the closed-compressor islands agree bitwise, both 1-2 ulp from
-     * the line alone, drifting to a few ulp over 60 slices), so that comparison is held to 1e-13 relative.
+     * compressor set to no flow (a closed device, mode CLOSED): a refusal is exactly a closed device. (The control was a
+     * compressor closed both ways by a block until every interval start read the closures open, owner decision D33.)
+     * Against the water line alone (no device lines at all) it agrees to a few units in the last place: the line alone is
+     * another Newton system. At 0.1 s a closed device's head unknown moves the water line's flow by a few units in the
+     * last place in some slices, as the pre-existing closed-device path does (measured: the refused and the
+     * closed-compressor islands agree bitwise, both 1-2 ulp from the line alone, drifting to a few ulp over 60 slices);
+     * at 5 s it was bit for bit until a vessel's seed became its committed layout (owner decision D40 A), which moves the
+     * joint solve's last iterate: slice 0 ends 11 units in the last place apart in the receiving tank's pressure
+     * (1.6e-10 Pa of 104.7 kPa). That comparison is held to 1e-13 relative in the flow and 1e-12 in the tank's state.
      */
     @Test void refusedPumpsCarryNothingAndTheIslandsWaterLineIntegratesBitwise() {
         for(double interval:new double[]{5,.1}) {
@@ -160,10 +163,10 @@ class InletPhaseTest extends PortFixture {
             var twoPhase=twoPhase(.3,150000);
             nodes.add(new PassiveNetwork.Reservoir(5,0,twoPhase,PassiveNetwork.NodeKind.GENERATOR));nodes.add(new PassiveNetwork.Reservoir(6,0,nitrogenAt(101325)));
             var island=new PassiveNetwork(nodes,List.of(pipe(10,0,1,line(10,.02),new FlowControl.Passive()),
-                    pipe(11,2,3,line(1,.05),new FlowControl.Pump(.01,500000,1)),pipe(12,4,5,line(1,.05),new FlowControl.Pump(.001,500000,1))));
-            // The control: the nitrogen line's device a compressor (a gas is its phase) closed both ways; the two-phase line as is.
+                    pipe(11,2,3,line(1,.05),new FlowControl.Pump(.01,500000)),pipe(12,4,5,line(1,.05),new FlowControl.Pump(.001,500000))));
+            // The control: the nitrogen line's device a compressor (a gas is its phase) set to no flow; the two-phase line as is.
             var closedControl=new PassiveNetwork(nodes,List.of(pipe(10,0,1,line(10,.02),new FlowControl.Passive()),
-                    pipe(11,2,3,line(1,.05),new FlowControl.Compressor(.01,1.5,1)).withBlockedDirections(3),pipe(12,4,5,line(1,.05),new FlowControl.Pump(.001,500000,1))));
+                    pipe(11,2,3,line(1,.05),new FlowControl.Compressor(0,1.5)),pipe(12,4,5,line(1,.05),new FlowControl.Pump(.001,500000))));
             var reference=drive("alone@"+interval,alone,interval,count);var run=drive("island@"+interval,island,interval,count);
             var control=drive("closed@"+interval,closedControl,interval,count);
             int worstUlps=0;
@@ -174,8 +177,7 @@ class InletPhaseTest extends PortFixture {
                 assertEquals(0.0,s.averageMassFlows()[1]);assertEquals(0.0,s.averageMassFlows()[2]);assertEquals(0.0,s.pumpWorkJoule());
                 assertEquals(FlowControl.Mode.CLOSED,control.slices().get(i).endpointModes().get(1),"the control's compressor is closed, not refused");
                 assertSameDoubles("water line vs the closed-device island @"+interval+" slice "+i,control.slices().get(i),s,2,1);
-                if(interval==5)assertSameDoubles("water line vs the line alone @"+interval+" slice "+i,reference.slices().get(i),s,2,1);
-                else{double a=reference.slices().get(i).averageMassFlows()[0],b=s.averageMassFlows()[0];
+                {double a=reference.slices().get(i).averageMassFlows()[0],b=s.averageMassFlows()[0];
                     worstUlps=Math.max(worstUlps,(int)Math.abs(Double.doubleToLongBits(a)-Double.doubleToLongBits(b)));
                     assertEquals(a,b,1e-13*Math.abs(a),"water line vs the line alone @"+interval+" slice "+i);
                     var x=reference.slices().get(i).graph().reservoirs().get(1).state();var y=s.graph().reservoirs().get(1).state();
@@ -207,10 +209,9 @@ class InletPhaseTest extends PortFixture {
         var refused=new ArrayList<Boolean>();
         for(int i=0;i<sweep.length;i++) {
             var generator=new PassiveNetwork.Reservoir(1,0,twoPhase(sweep[i],150000),PassiveNetwork.NodeKind.GENERATOR);
-            var graph=new PassiveNetwork(List.of(generator,tank),List.of(pipe(10,0,1,line(2,.03),new FlowControl.Pump(.0005,500000,1))));
+            var graph=new PassiveNetwork(List.of(generator,tank),List.of(pipe(10,0,1,line(2,.03),new FlowControl.Pump(.0005,500000))));
             solver.replayStart(graph,committed);
             var result=solver.solve(graph,5,PassiveIntervalSolver.Settings.defaults(),NOOP);committed=result;tank=result.graph().reservoirs().get(1);
-            assertEquals(PassiveStepSolver.Acceptance.FULL,result.acceptance());
             boolean off=result.endpointModes().getFirst()==FlowControl.Mode.INLET_WRONG_PHASE;refused.add(off);
             if(off)assertEquals(0.0,result.averageMassFlows()[0]);else assertTrue(result.averageMassFlows()[0]>0,"runs at "+sweep[i]);
         }
@@ -234,7 +235,7 @@ class InletPhaseTest extends PortFixture {
         for(int i=0;i<3;i++)tankState=waterUnderNitrogen(charged*=2.99*target*interval/tankState.waterVolume(),120000);
         var start=new PassiveNetwork(List.of(new PassiveNetwork.Reservoir(1,0,tankState),
                 new PassiveNetwork.Reservoir(2,0,nitrogenAt(150000),PassiveNetwork.NodeKind.VOID)),
-                List.of(pipe(10,0,1,line(5,.025),new FlowControl.Pump(target,500000,1),PhasePort.LIQUID,PhasePort.BULK)));
+                List.of(pipe(10,0,1,line(5,.025),new FlowControl.Pump(target,500000),PhasePort.LIQUID,PhasePort.BULK)));
         var run=drive("bottom drain",start,interval,8);
         var modes=new ArrayList<String>();var drawn=new ArrayList<Double>();
         for(var s:run.slices()){modes.add(String.valueOf(s.endpointModes().getFirst()));drawn.add(s.averageMassFlows()[0]*interval);}
@@ -261,7 +262,7 @@ class InletPhaseTest extends PortFixture {
         var vessel=new PassiveNetwork.Reservoir(1,0,waterUnderNitrogen(.97,101325));
         var start=new PassiveNetwork(List.of(vessel,new PassiveNetwork.Reservoir(2,0,waterSupply(600000),PassiveNetwork.NodeKind.GENERATOR),
                 new PassiveNetwork.Reservoir(3,0,nitrogenAt(101325),PassiveNetwork.NodeKind.VOID)),
-                List.of(pipe(10,1,0,line(10,.01),new FlowControl.Passive()),pipe(11,0,2,line(2,.02),new FlowControl.Pump(.0001,500000,1))));
+                List.of(pipe(10,1,0,line(10,.01),new FlowControl.Passive()),pipe(11,0,2,line(2,.02),new FlowControl.Pump(.0001,500000))));
         var reference=drive("replay",start,5,12);
         var shares=new ArrayList<Double>();for(var g:reference.graphs())shares.add(share(g.reservoirs().getFirst().state()));
         System.out.println("INLET_PHASE_RUN fixture8 shares="+shares+" modes="+reference.slices().stream().map(s->s.endpointModes().get(1)).toList()+" accepted="+reference.accepted()+" rejected="+reference.rejected());

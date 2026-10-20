@@ -7,7 +7,6 @@ import java.util.*;
 /** Catalog choices projected by identity onto the single qualified network basis. */
 public final class FluidPresetCatalog {
     public static final String NETWORK_PACKAGE=FluidMaterialCatalog.NETWORK_PACKAGE;
-    public static final String CRUDE_BASIS_PACKAGE=FluidMaterialCatalog.CRUDE_BASIS_PACKAGE;
     private FluidPresetCatalog() {}
     public record Preset(String id,String name,double[] moleFractions,SlurryFeed solids) {
         public Preset(String id,String name,double[] moleFractions){this(id,name,moleFractions,SlurryFeed.NONE);}

@@ -27,9 +27,13 @@ import java.util.*;
  * revision changed. An edit or recovery packet is validated as before, queued as a ledger event, and its reply -
  * {@code Queued for simulation event at tick N}, {@code Applied} or {@code Not applied: <reason>} - arrives with
  * the next bucket.
+ *
+ * <p>{@code fluid-10} (owner decision D23, crystals are solids): a solid population's material carries its crystal
+ * record (the component it is made of and its energy offset) when it is a crystal, so a tank's dry ice reaches the
+ * Solids tab and the solid share as a solid; a menu refuses a crystal made of a component off its axis.</p>
  */
 public final class FluidNetwork {
-    public static final String PROTOCOL="fluid-9";
+    public static final String PROTOCOL="fluid-10";
     private static final Gson JSON=new Gson();
     public static final int MAX_JSON=262144;
     public static final int MAX_EDIT_JSON=4096;
@@ -48,9 +52,8 @@ public final class FluidNetwork {
             Objects.requireNonNull(solids);composition=composition.clone();
             for(double value:new double[]{temperature,pressure,diameter,roughness,volumeFlow,maximumAddedPressure,maximumPressureRatio})if(!Double.isFinite(value))throw new IllegalArgumentException("All controls must be finite numbers");
             if(!pressureRatioAllowed(maximumPressureRatio))throw new IllegalArgumentException("The pressure ratio must lie between "+MINIMUM_PRESSURE_RATIO+" and "+MAXIMUM_PRESSURE_RATIO);
-            // Temperature and pressure are only required to be physical here: the range the fluid model can evaluate
-            // is the property package's and depends on the composition, so the server checks it against the model when
-            // the edit arrives and refuses it with the thermo-domain error (see edit below).
+            // Temperature and pressure are only required to be physical here: the input box is the property package's
+            // envelope, so the server checks it against the model when the edit arrives (see edit below).
             if(!(temperature>0)||!(pressure>0)||diameter<.001||diameter>1||roughness<0||roughness>=diameter||volumeFlow<0||volumeFlow>10||maximumAddedPressure<=0||maximumAddedPressure>2e6||(composition.length<1||composition.length>com.wormzjl.createcheme.science.material.MaterialAxis.MAX_CONSERVED_COMPONENTS))throw new IllegalArgumentException("Controls are outside the supported range");
             double sum=0;for(double n:composition){if(!Double.isFinite(n)||n<0)throw new IllegalArgumentException("Composition entries must be nonnegative");sum+=n;}if(!Double.isFinite(sum)||sum<=0)throw new IllegalArgumentException("Composition cannot be empty");
         }
@@ -83,6 +86,11 @@ public final class FluidNetwork {
             }
             if(view.state()!=null)requirePhaseAxis(view.state().phaseMoles(),components.size());
             for(var transfer:view.pipeHistory()){requirePhaseAxis(transfer.forward().phaseMoles(),components.size());requirePhaseAxis(transfer.reverse().phaseMoles(),components.size());}
+            // A crystal (owner decision D23) is made of a component of the axis, wherever the view shows solids.
+            if(view.state()!=null)requireCrystalAxis(view.state().solids(),components);
+            if(view.pipeInfo()!=null)requireCrystalAxis(view.pipeInfo().contents().solids(),components);
+            if(view.filter()!=null)requireCrystalAxis(view.filter().captured(),components);
+            for(var transfer:view.pipeHistory()){requireCrystalAxis(transfer.forward().solids(),components);requireCrystalAxis(transfer.reverse().solids(),components);}
             for(var p:presets)if(p.moleFractions().length!=components.size())throw new IllegalArgumentException("Fluid preset axis mismatch");
             for(var e:materialNames.entrySet())if(!e.getKey().equals(e.getValue().id()))throw new IllegalArgumentException("Fluid name identity mismatch");
         }
@@ -115,6 +123,9 @@ public final class FluidNetwork {
     private static void requirePhaseAxis(double[][] phases,int components) {
         if(phases.length!=3)throw new IllegalArgumentException("Fluid phase count mismatch");
         for(var phase:phases)if(phase.length!=components)throw new IllegalArgumentException("Fluid phase axis mismatch");
+    }
+    private static void requireCrystalAxis(com.wormzjl.createcheme.science.fluid.state.SolidInventory solids,List<String> components) {
+        for(var p:solids.crystals())if(!components.contains(p.material().crystal().component()))throw new IllegalArgumentException("Crystal off the fluid axis: "+p.material().id());
     }
     public record EditPayload(int menuId,BlockPos position,long identity,long revision,String json) implements CustomPacketPayload {
         public static final Type<EditPayload> TYPE=new Type<>(ResourceLocation.fromNamespaceAndPath(CreateChemE.MOD_ID,"fluid_edit"));
@@ -219,18 +230,18 @@ public final class FluidNetwork {
                 var geometry=d.geometry();var control=d.control();var spec=old.spec();
                 switch(d.kind()) {
                     case PIPE,FILTER->geometry=new PipeResistance.Geometry(geometry.length(),controls.diameter,PipeResistance.DEFAULT_ROUGHNESS_METRES,geometry.minorLoss());
-                    case PUMP->control=new FlowControl.Pump(controls.volumeFlow,controls.maximumAddedPressure,1);
-                    case COMPRESSOR->control=new FlowControl.Compressor(controls.volumeFlow,controls.maximumPressureRatio,1);
+                    case PUMP->control=new FlowControl.Pump(controls.volumeFlow,controls.maximumAddedPressure);
+                    case COMPRESSOR->control=new FlowControl.Compressor(controls.volumeFlow,controls.maximumPressureRatio);
                     case VALVE->control=new FlowControl.PressureValve(controls.pressure);
                     case GENERATOR->spec=new FluidDeviceSpec(spec.volume(),controls.temperature,controls.pressure,controls.composition,controls.solids);
                     case VOID->spec=new FluidDeviceSpec(spec.volume(),spec.temperature(),controls.pressure,spec.composition());
                     case RESERVOIR->throw new IllegalArgumentException("Reservoir initialization is fixed; existing fluid is conserved.");
                 }
-                // Refused here, before anything is queued, with the dedicated thermo-domain error: the reply with the
-                // next bucket reads "Not applied: Thermo domain: ...".
+                // Refused here, before anything is queued, outside the package envelope (the input box, plan decision 9):
+                // the reply with the next bucket reads "Not applied: ..." with the envelope named.
                 switch(d.kind()) {
                     case GENERATOR,VOID->spec.validate(world.model(),d.kind());
-                    case VALVE->world.model().domain().checkPressure(controls.pressure);
+                    case VALVE->world.model().domain().requireInputPressure(controls.pressure);
                     default->{}
                 }
                 event=world.edit(d.id(),payload.revision,new PhysicalFluidTopology.Device(d.id(),d.position(),d.kind(),d.facing(),geometry,control,d.ports()),spec);

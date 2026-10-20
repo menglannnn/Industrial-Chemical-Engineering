@@ -8,7 +8,7 @@ import java.util.*;
 import static org.junit.jupiter.api.Assertions.*;
 
 class VelocityClampTest {
-    private FluidThermodynamics model(double limit){return FluidThermodynamics.forNetwork(MaterialCatalog.bundled(),"createcheme:tjl20_methane_nitrogen",1e-9,limit);}
+    private FluidThermodynamics model(double limit){return FluidThermodynamics.forNetwork(MaterialCatalog.bundled(),"createcheme:tjl20_methane_nitrogen",limit, FluidThermodynamics.DEFAULT_TRACE_CUTOFF_MOLE_FRACTION);}
     private FluidThermodynamics.State state(FluidThermodynamics model,double pressure,boolean wet) {
         double[] n=new double[com.wormzjl.createcheme.science.material.MaterialTestBasis.NETWORK+1];if(wet){n=Arrays.copyOf(V3PengRobinsonThermo.fromRegisteredPackage("createcheme:tjl20_methane_nitrogen").crudeFeed("createcheme:tia_juana_light_methane").moleFractions(),com.wormzjl.createcheme.science.material.MaterialTestBasis.NETWORK+1);n[com.wormzjl.createcheme.science.material.MaterialTestBasis.NETWORK]=.2;}else n[com.wormzjl.createcheme.science.material.MaterialTestBasis.NITROGEN]=1;
         var unit=model.flashTP(350,pressure,n,()->{});for(int c=0;c<n.length;c++)n[c]/=unit.volume();return model.flashTP(350,pressure,n,()->{});
@@ -23,19 +23,28 @@ class VelocityClampTest {
         double limit=donor.mass()/donor.volume()*pipe.minimumArea()*model.velocityLimit(donor);
         assertTrue(Math.abs(q)<=limit*(1+2e-8)+1e-12,"q="+q+" cap="+limit);
     }
+    /** The velocity cap is part of the line's law (2026-10-18, M7/M8 option C): a 99 kPa drive on a 0.1 m line of 10 mm chokes it, and
+     * the converged flow stands under the cap flow of the end it leaves, the saturation ({@link PassiveStepSolver#saturated})
+     * of the flow the law gives for the driving pressure. */
     @Test void configuredAndAcousticLimitsCapBothDirectionsAndPreserveExternalLedgers() {
         for(double limit:new double[]{100,100000})for(boolean reverse:new boolean[]{false,true}) {
             var model=model(limit);var graph=graph(model,reverse,false,new FlowControl.Passive(),false);
             var result=new PassiveStepSolver(model).solve(graph,1,()->{});bounded(model,graph,result);
-            var donor=result.states().get(reverse?1:0);double expected=donor.mass()/donor.volume()*graph.pipes().getFirst().minimumArea()*model.velocityLimit(donor);
-            assertEquals(reverse?-expected:expected,result.massFlows()[0],expected*1e-8+1e-10);assertEquals(FlowControl.Mode.VELOCITY_LIMITED,result.modes().getFirst());
+            var donor=result.states().get(reverse?1:0);var other=result.states().get(reverse?0:1);var pipe=graph.pipes().getFirst();
+            double cap=donor.mass()/donor.volume()*pipe.minimumArea()*model.velocityLimit(donor),q=result.massFlows()[0];
+            assertTrue(Math.abs(q)<cap&&Math.abs(q)>.9*cap,"q="+q+" cap="+cap);assertEquals(reverse?-1:1,Math.signum(q));
+            double rho=donor.mass()/donor.volume(),mu=model.viscosity.vapor(350,donor.vapor(),0),driving=Math.abs(donor.pressure()-other.pressure());
+            double lo=0,hi=cap;while(pipe.pressureDrop(hi,rho,mu)<driving)hi*=2;
+            for(int j=0;j<60;j++){double mid=(lo+hi)/2;if(pipe.pressureDrop(mid,rho,mu)>driving)hi=mid;else lo=mid;}
+            assertEquals(PassiveStepSolver.saturated((lo+hi)/2,cap),Math.abs(q),1e-6*cap,"the transported flow is the saturated law's");
+            assertEquals(FlowControl.Mode.PASSIVE,result.modes().getFirst());
             assertArrayEquals(new double[com.wormzjl.createcheme.science.material.MaterialTestBasis.NETWORK+1],result.externalMoles(),1e-9);assertEquals(0,result.externalEnergyJoule(),1e-6);
             assertEquals(350,result.states().getFirst().temperature()); // fixed boundary, not a clamp-imposed temperature
         }
     }
     @Test void threePhaseClampingTransfersAllPhasesAndDevicesRespectTheRateLimit() {
         var model=model(.2);
-        for(FlowControl control:List.of(new FlowControl.Passive(),new FlowControl.Pump(1,500000,1),new FlowControl.PressureValve(150000))) {
+        for(FlowControl control:List.of(new FlowControl.Passive(),new FlowControl.Pump(1,500000),new FlowControl.PressureValve(150000))) {
             var graph=graph(model,false,true,control,false);var result=new PassiveStepSolver(model).solve(graph,.1,()->{});bounded(model,graph,result);
             if(control instanceof FlowControl.Pump) {
                 // The liquid-only pump (decisions D1, D6 of the phase-ports batch) refuses the three-phase supply: closed with
@@ -64,21 +73,23 @@ class VelocityClampTest {
         assertEquals(beforeN,afterN,1e-10+1e-8*beforeN);assertEquals(beforeU,afterU,1e-4+1e-6*Math.abs(beforeU));
         assertTrue(Math.abs(result.states().getFirst().temperature()-350)>1e-5,"The clamp must not hold temperature fixed");
     }
-    @Test void invalidConfigurationIsRejectedAndDifferentLimitsInvalidateFallbackAnchors() {
+    /** A certificate issued under one velocity limit is not kept under another (the model's revision is its signature's,
+     * IslandCertificate.Signature), and a saved island's inventory stays readable across the change (the checkpoint's
+     * package table holds the thermodynamic revision). Restated from the fallback anchor's refusal (owner decision D37, S2). */
+    @Test void invalidConfigurationIsRejectedAndADifferentLimitMovesTheModelsRevision() {
         assertThrows(IllegalArgumentException.class,()->model(0));assertThrows(IllegalArgumentException.class,()->model(Double.NaN));
-        var model=model(100);var graph=graph(model,false,false,new FlowControl.Passive(),true);
-        var full=new PassiveIntervalSolver(model).solve(graph,.05,PassiveIntervalSolver.Settings.defaults(),()->{});
-        var anchor=ApproximationAnchor.fromFull(model,full);assertThrows(ApproximationAnchor.Rejected.class,()->anchor.guard(model(10),full.graph()));
-        assertEquals(ApproximationAnchor.thermodynamicRevision(model),ApproximationAnchor.thermodynamicRevision(model(10)));
+        assertNotEquals(model(100).revision(),model(10).revision());
+        assertEquals(model(100).thermodynamicRevision(),model(10).thermodynamicRevision());
     }
     @Test void aWarmWorkspaceReleasesTheClampWhenThePressureDriveFalls() {
         var model=model(1);var solver=new PassiveStepSolver(model);var high=graph(model,false,false,new FlowControl.Passive(),false);
-        var capped=solver.solve(high,1,()->{});assertEquals(FlowControl.Mode.VELOCITY_LIMITED,capped.modes().getFirst());
+        var source=high.reservoirs().getFirst().state();double cap=source.mass()/source.volume()*high.pipes().getFirst().minimumArea()*model.velocityLimit(source);
+        var capped=solver.solve(high,1,()->{});assertTrue(capped.massFlows()[0]<=cap&&capped.massFlows()[0]>cap*(1-1e-6),"choked: "+capped.massFlows()[0]+" of "+cap);
         var low=new PassiveNetwork(List.of(new PassiveNetwork.Reservoir(1,0,state(model,101325.1,false),PassiveNetwork.NodeKind.PORT),new PassiveNetwork.Reservoir(2,0,state(model,101325,false),PassiveNetwork.NodeKind.PORT)),high.pipes());
         var released=solver.solve(low,1,()->{});assertEquals(FlowControl.Mode.PASSIVE,released.modes().getFirst());bounded(model,low,released);
         var donor=low.reservoirs().getFirst().state();double rho=donor.mass()/donor.volume(),mu=model.viscosity.vapor(350,donor.vapor(),0);
         double expected=.1*Math.PI*rho*Math.pow(.01,4)/(128*mu*.1);
         assertEquals(expected,released.massFlows()[0],1e-10+1e-4*expected);
-        assertEquals(FlowControl.Mode.VELOCITY_LIMITED,solver.solve(high,1,()->{}).modes().getFirst());
+        double again=solver.solve(high,1,()->{}).massFlows()[0];assertTrue(again<=cap&&again>cap*(1-1e-6),"choked again: "+again+" of "+cap);
     }
 }

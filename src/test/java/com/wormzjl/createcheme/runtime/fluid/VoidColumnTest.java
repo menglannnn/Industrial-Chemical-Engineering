@@ -35,7 +35,7 @@ class VoidColumnTest {
         w.runTo(537);w.place(3,2,-4,Kind.GENERATOR,NORTH,passive,water,.05);w.place(0,0,-3,Kind.VOID,NORTH,.05);
         w.runTo(584);w.place(-3,0,-5,Kind.PIPE,NORTH,passive,null,.05);
         w.runTo(616);w.place(-2,0,-1,Kind.PIPE,NORTH,passive,null,.05);
-        w.runTo(623);w.place(1,1,-4,Kind.PIPE,NORTH,passive,null,.05);w.place(-4,0,-5,Kind.COMPRESSOR,EAST,new FlowControl.Compressor(.05,3,1),null,.05);
+        w.runTo(623);w.place(1,1,-4,Kind.PIPE,NORTH,passive,null,.05);w.place(-4,0,-5,Kind.COMPRESSOR,EAST,new FlowControl.Compressor(.05,3),null,.05);
         w.place(0,4,-4,Kind.PIPE,NORTH,passive,null,.05);
         w.runTo(659);w.place(-3,0,-2,Kind.VALVE,WEST,new FlowControl.PressureValve(200000),null,.05);
         w.runTo(745);w.place(0,1,-4,Kind.PIPE,NORTH,passive,null,.05);

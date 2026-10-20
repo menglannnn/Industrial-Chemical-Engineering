@@ -9,23 +9,13 @@ import java.util.*;
 /** Worker-local strict transport events. Trial integrations never commit ownership. */
 final class SolidEventIntegrator {
     /**
-     * Every transport closure names both directions. A filter that has met its capacity carries
-     * nothing either way; a bed that has settled out of a carrier too slow to suspend it is in the
-     * connection, not in one end of it.
-     *
-     * <p>It is also what the step solver can actually work with. {@link PassiveStepSolver} presets
-     * {@code boundaryClosed} only for a fully closed connection, so a one-directional closure left
-     * the first Newton pass free to drive flow through the forbidden direction and to manufacture,
-     * hop by hop, the solid dust that used to stall the line search; the active set then needed two
-     * or three passes per solve to find its way back. Closing both puts it right on pass 0.
-     * Measured over eleven warm repeats: a ten-reservoir chain 70 -> 51 ms and a thirty-reservoir
-     * chain 215 -> 103 ms, against 226 -> 270 ms on the five-node pump-filter island, whose
-     * closures isolate a junction and are re-examined more often.
-     *
-     * <p>What made this impossible before was that isolating a junction produced a singular block;
-     * {@link com.wormzjl.createcheme.science.fluid.solver.PhaseLayout#junctionRows} now has a rule
-     * for one. The next interval's rate pass reconsiders every closure from scratch either way, so
-     * none of them is a permanent physical deposit.
+     * Every transport closure names both directions: a filter that has met its capacity carries nothing either way, and
+     * a bed that has settled out of a carrier too slow to suspend it is in the connection, not in one end of it. It is
+     * also what the step solver can work with: {@link PassiveStepSolver} presets {@code boundaryClosed} only for a fully
+     * closed connection, and a one-directional closure left the first Newton pass free to drive flow through the
+     * forbidden direction (a ten-reservoir chain 70 to 51 ms and a thirty-reservoir chain 215 to 103 ms over eleven warm
+     * repeats once both were closed). The next interval's rate pass reconsiders every closure, and one stands only while
+     * nothing moves its pipe and an end holds what closed it ({@link #carried}), so none is a permanent physical deposit.
      */
     private static final int BOTH_DIRECTIONS=3;
     private final FluidThermodynamics model;
@@ -64,7 +54,24 @@ final class SolidEventIntegrator {
         return new PassiveNetwork(graph.reservoirs(),pipes,graph.scheduledTransfers());
     }
     private PassiveNetwork stopFilter(PassiveNetwork graph,int edge){var pipes=new ArrayList<>(graph.pipes());var p=pipes.get(edge);pipes.set(edge,p.withFilter(p.filter().stopped()));return new PassiveNetwork(graph.reservoirs(),pipes,graph.scheduledTransfers());}
-    private Transition failed(PassiveNetwork graph,List<FluidThermodynamics.State> states,double[] flows) {
+    /**
+     * The pipes still at an interval's start (owner decision of 2026-10-19 on t53's final test): a pipe at rest carries no
+     * solids, so it deposits, refuses and delivers nothing, and the sign of a roundoff flow names no donor (t48's trace of
+     * cold fuzz seed 850: 1.3e-23 m/s in a still pipe from a tank holding crystals read DEPOSITION, and its rejections
+     * stalled the island). Still is roundoff: a flow of the interval-start rate solve within the Newton's own tolerance
+     * ({@link PassiveStepSolver#NEWTON_TOLERANCE}) of its largest flow, at least 1 kg/s. It is decided once, where the
+     * closures are decided, and such a pipe keeps its state for the interval: no threshold on a real flow fires inside a
+     * step (D42's resolution flow, read as still before, is about 1 kg/s in 1 m of 100 mm LNG line, and cold fuzz seed
+     * 829's draining tank, 0.38 m/s, met it inside its step).
+     */
+    private static boolean[] still(double[] flows) {
+        double largest=1;for(double q:flows)largest=Math.max(largest,Math.abs(q));
+        boolean[] still=new boolean[flows.length];
+        for(int i=0;i<flows.length;i++)still[i]=Math.abs(flows[i])<=PassiveStepSolver.NEWTON_TOLERANCE*largest;
+        return still;
+    }
+    /** The first transition among the connections not {@code still} (null for none), at the flows given. */
+    private Transition failed(PassiveNetwork graph,List<FluidThermodynamics.State> states,double[] flows,boolean[] still) {
         Transition result=null;double ratio=Double.POSITIVE_INFINITY;long identity=Long.MAX_VALUE;
         var reach=populationReach(graph,states,flows);
         // One mobility preparation per donor node, not per connection leaving it: the carrier
@@ -75,28 +82,17 @@ final class SolidEventIntegrator {
         for(int i=0;i<flows.length;i++) {
             var pipe=graph.pipes().get(i);double flow=flows[i];int direction=flow>=0?1:2;
             if(pipe.filter()!=null&&atCapacity(pipe.filter())&&pipe.blockedDirections()!=BOTH_DIRECTIONS)return clogged(i,pipe.id());
-            if((pipe.blockedDirections()&direction)!=0)continue;
-            int upstream=flow>=0?pipe.first():pipe.second();var donor=states.get(upstream);
-            if(prepared[upstream]==null)prepared[upstream]=SolidMobility.donor(model,donor);
-            // What the end draws decides the outlet (plan 3.8; decision D11): a phase port is checked on the phase it draws
-            // first (PhaseDraw.leading, the priority stream at a vanishing flow; this check sees no step and so no capacity):
-            // the gas carries no solid and is always mobile; the hydrocarbon liquid or the free water carries its volume share
-            // of the solids, checked for its own carrier (ORGANIC_LIQUID, WATER) over its stream's mass per the whole liquid
-            // it carries the solids in; a bulk end, and a phase port on a vessel holding none of the phases, the donor's mix.
-            int phase=PhaseDraw.leading(model,donor,pipe.drawPort(flow));
-            SolidMobility.Outlet outlet;double drawnMass;
-            if(phase<0){outlet=SolidMobility.Outlet.MIXED;drawnMass=donor.mass();}
-            else if(phase==FluidThermodynamics.GAS){outlet=SolidMobility.Outlet.GAS;drawnMass=donor.mass();}
-            else{outlet=phase==FluidThermodynamics.OIL?SolidMobility.Outlet.ORGANIC_LIQUID:SolidMobility.Outlet.WATER;drawnMass=model.phaseMass(donor,phase)/FluidThermodynamics.phaseSolidShare(donor,phase);}
-            var check=SolidMobility.check(prepared[upstream],donor,pipe,flow,outlet,drawnMass);
-            if(check.allowed()&&reach!=null&&flow!=0&&overPopulated(graph,pipe,flow,reach)) {
+            if((pipe.blockedDirections()&direction)!=0||still!=null&&still[i])continue;
+            var check=mobility(graph,states,prepared,i,flow);
+            boolean overPopulated=check.allowed()&&reach!=null&&flow!=0&&overPopulated(graph,pipe,flow,reach);
+            if(check.allowed()&&!overPopulated)continue;
+            if(overPopulated) {
                 check=new SolidMobility.Check(SolidMobility.Reason.POPULATION_LIMIT,check.velocity(),check.minimumVelocity());
                 // A node receiver can be fed by several connections at once, and every one of them
                 // is flagged although at most one of them has to stop; which one is decided over
                 // the whole set, once it is known. A filter's cake has the one donor that fills it.
                 if(pipe.filter()==null){(limited==null?limited=new LinkedHashMap<>():limited).put(i,check);continue;}
             }
-            if(check.allowed())continue;
             double candidate=closureRatio(check);
             if(candidate<ratio||candidate==ratio&&pipe.id()<identity){result=new Transition(i,pipe.id(),check,false);ratio=candidate;identity=pipe.id();}
         }
@@ -106,6 +102,68 @@ final class SolidEventIntegrator {
         }
         return result;
     }
+    /** Whether connection {@code i} keeps its solids moving when it draws {@code flow} (its sign names the donor end). */
+    private SolidMobility.Check mobility(PassiveNetwork graph,List<FluidThermodynamics.State> states,SolidMobility.Donor[] prepared,int i,double flow) {
+        var pipe=graph.pipes().get(i);int upstream=flow>=0?pipe.first():pipe.second();var donor=states.get(upstream);
+        if(prepared[upstream]==null)prepared[upstream]=SolidMobility.donor(model,donor);
+        // What the end draws decides the outlet (plan 3.8; decision D11): a phase port is checked on the phase it draws
+        // first (PhaseDraw.leading, the priority stream at a vanishing flow; this check sees no step and so no capacity):
+        // the gas carries no solid and is always mobile; the hydrocarbon liquid or the free water carries its volume share
+        // of the solids, checked for its own carrier (ORGANIC_LIQUID, WATER) over its stream's mass per the whole liquid
+        // it carries the solids in; a bulk end, and a phase port on a vessel holding none of the phases, the donor's mix,
+        // except a bulk end on a donor holding solids but no liquid: nothing carries them, so it draws the gas and the
+        // solids stay (owner decision D33, the GAS outlet through PhaseDraw.leading).
+        int phase=PhaseDraw.leading(model,donor,pipe.drawPort(flow));
+        SolidMobility.Outlet outlet;double drawnMass;
+        if(phase<0){outlet=SolidMobility.Outlet.MIXED;drawnMass=donor.mass();}
+        else if(phase==FluidThermodynamics.GAS){outlet=SolidMobility.Outlet.GAS;drawnMass=donor.mass();}
+        else{outlet=phase==FluidThermodynamics.OIL?SolidMobility.Outlet.ORGANIC_LIQUID:SolidMobility.Outlet.WATER;drawnMass=model.phaseMass(donor,phase)/FluidThermodynamics.phaseSolidShare(donor,phase);}
+        return SolidMobility.check(prepared[upstream],donor,pipe,flow,outlet,drawnMass);
+    }
+    /**
+     * What a closure carries across an interval start (owner decision D62 of 2026-10-19, batch
+     * {@code 2026-10-20-crystal-junction-holds}, amending D33): a pipe the last interval left closed that nothing moves at
+     * this interval's start keeps its closure, because what closed it (the bed its slow carrier let settle, the particle
+     * too wide for its bore, the slush) is still in it. Nothing moves it: the rate solve with it reopened leaves it
+     * roundoff-still ({@code still}, the reading of {@link #still}), or, without a rate solve, no mover draws through it
+     * ({@link #carriedWithoutRate}). It keeps its closure while an end still holds what closed it: the mobility check fails
+     * with that end as the donor, read both ways at a vanishing flow, so no roundoff sign picks the end. A pipe the drive
+     * moves is decided by its flow in {@link #failed}, as any other. Returns the first such closure, declared at t0.
+     */
+    private Transition carried(PassiveNetwork graph,PassiveNetwork committed,int[] blocked,List<FluidThermodynamics.State> states,boolean[] still) {
+        var prepared=new SolidMobility.Donor[states.size()];
+        for(int i=0;i<blocked.length;i++) {
+            if(committed.pipes().get(i).blockedDirections()!=BOTH_DIRECTIONS||blocked[i]!=0||still!=null&&!still[i])continue;
+            for(double draw:new double[]{Double.MIN_VALUE,-Double.MIN_VALUE}){var check=mobility(graph,states,prepared,i,draw);if(!check.allowed())return new Transition(i,graph.pipes().get(i).id(),check,true);}
+        }
+        return null;
+    }
+    /**
+     * {@link #carried} where the port graph has no rate solve with the closures reopened, so nothing shows a flow through
+     * them (cold fuzz seed 15). The owner's assumption, form C of t56's comparison: a mover clears what it draws through.
+     * A closure on a line a mover draws through ({@link #drawnThrough}) reads open, and the steps decide it by its flow
+     * (PumpCavitationTest's pump pulls 2.5 m/s through its 10 mm suction line); every other closure an end still holds
+     * keeps. On the 200-seed quick check form A (keep every closure) closed that suction line, and form B (the drive read
+     * from a rate solve with the closures closed) cleared neither cold 183 nor 118.
+     */
+    private Transition carriedWithoutRate(PassiveNetwork graph,PassiveNetwork committed,int[] blocked) {
+        var drawn=drawnThrough(graph);int[] kept=blocked.clone();
+        for(int i=0;i<kept.length;i++)if(drawn[i])kept[i]=BOTH_DIRECTIONS;
+        return carried(graph,committed,kept,graph.reservoirs().stream().map(PassiveNetwork.Reservoir::state).toList(),null);
+    }
+    /** The passive pipes a mover draws through: those on its suction side, reached from its first end through junctions. */
+    private static boolean[] drawnThrough(PassiveNetwork graph) {
+        int edges=graph.pipes().size();boolean[] drawn=new boolean[edges];
+        for(int m=0;m<edges;m++) {
+            if(!(graph.pipes().get(m).control() instanceof FlowControl.Mover mover)||mover.targetVolumeFlow()<=0)continue;
+            var queue=new ArrayDeque<Integer>();var seen=new HashSet<Integer>();queue.add(graph.pipes().get(m).first());seen.add(graph.pipes().get(m).first());
+            while(!queue.isEmpty()){int at=queue.poll();
+                for(int e=0;e<edges;e++){var pipe=graph.pipes().get(e);if(e==m||drawn[e]||!(pipe.control() instanceof FlowControl.Passive)||pipe.first()!=at&&pipe.second()!=at)continue;
+                    drawn[e]=true;int other=pipe.first()==at?pipe.second():pipe.first();
+                    if(graph.reservoirs().get(other).junction()&&seen.add(other))queue.add(other);}}
+        }
+        return drawn;
+    }
     /** How far a connection is from carrying what it is asked to, as the shared closure rule orders
      * it: the lowest ratio closes first, and a failure with no velocity of its own sorts ahead of
      * every one that has one. */
@@ -113,18 +171,12 @@ final class SolidEventIntegrator {
         return check.minimumVelocity()>0?check.velocity()/check.minimumVelocity():-1;
     }
     /**
-     * Which of an over-populated receiver's flagged connections actually has to stop: one per
-     * receiver, and never one whose delivery the limit did not need to refuse.
-     *
-     * <p>Every open inbound connection of a receiver whose union does not fit is flagged, so the
-     * shared rule - lowest velocity ratio, then lowest identity - could name a feed whose removal
-     * leaves the union over the limit anyway. A receiver holding sixty grades, fed four new ones by
-     * one connection and ten by another, closed the four-grade feed first and the ten-grade feed on
-     * the next pass: two closures, one of them for a delivery that always fit. So the feed that
-     * closes is the one contributing the most keys no other open inbound donor - and not the
-     * receiver's own stock or injection - supplies; the rest stay open and are reconsidered from
-     * scratch next pass like every other closure. Ties fall back to the shared rule, so the choice
-     * is still decided by the graph rather than by iteration order.
+     * Which of an over-populated receiver's flagged connections actually has to stop: one per receiver, and never one
+     * whose delivery the limit did not need to refuse. Every open inbound connection of a receiver whose union does not
+     * fit is flagged, so the shared rule (lowest velocity ratio, then lowest identity) could name a feed whose removal
+     * leaves the union over the limit anyway (a receiver holding sixty grades closed a four-grade feed first and a
+     * ten-grade feed on the next pass). So the feed that closes is the one contributing the most keys no other open
+     * inbound donor supplies; the rest stay open and are reconsidered next pass. Ties fall back to the shared rule.
      */
     private static Map<Integer,SolidMobility.Check> narrowLimits(PassiveNetwork graph,List<FluidThermodynamics.State> states,double[] flows,
                                                                  List<SortedSet<SolidInventory.Key>> reach,Map<Integer,SolidMobility.Check> flagged) {
@@ -162,18 +214,12 @@ final class SolidEventIntegrator {
         return keys;
     }
     /**
-     * The conserved population keys that can reach each node over one step, or {@code null} when
-     * this island cannot put more than {@link SolidInventory#MAXIMUM_POPULATIONS} of them anywhere.
-     *
-     * <p>The reconstruction's population system has only positive coefficients, so a stock reaches
-     * every node connected to it by open connections a filter does not empty - not only its
-     * immediate receivers - and the union that decides whether an inventory can be built is the
-     * transitive one. A node whose stock the reconstruction does not rebuild, which is every fixed
-     * node, neither receives nor forwards; it answers with its own inventory throughout.
-     *
-     * <p>The bound that skips all of this is the island's population count <em>with</em>
-     * duplicates: if the whole island holds 64 or fewer, no union of them can exceed 64. That is
-     * one field read per node, so an ordinary island never pays for the closure.
+     * The conserved population keys that can reach each node over one step, or {@code null} when this island cannot put
+     * more than {@link SolidInventory#MAXIMUM_POPULATIONS} of them anywhere. The reconstruction's population system has
+     * only positive coefficients, so a stock reaches every node connected to it by open connections a filter does not
+     * empty, and the union that decides whether an inventory can be built is the transitive one; a fixed node neither
+     * receives nor forwards. If the whole island holds 64 or fewer populations with duplicates, no union can exceed 64,
+     * one field read per node.
      */
     private static List<SortedSet<SolidInventory.Key>> populationReach(PassiveNetwork graph,List<FluidThermodynamics.State> states,double[] flows) {
         int held=0;
@@ -220,14 +266,14 @@ final class SolidEventIntegrator {
     private static boolean atCapacity(InlineFilter state) {
         return state.clogged()||state.captured().volume()>=state.capacity()*(1-1e-9);
     }
-    private PassiveIntervalSolver.StageGuard guard(PassiveNetwork graph) {
+    private PassiveIntervalSolver.StageGuard guard(PassiveNetwork graph,boolean[] still) {
         return new PassiveIntervalSolver.StageGuard() {
             public void check(List<FluidThermodynamics.State> states,List<FlowControl.Mode> modes) {}
             @Override public void checkRate(Map<Long,InlineFilter> filters,List<FluidThermodynamics.State> states,List<FlowControl.Mode> modes,double[] flows) {
                 // The graph this guard closes over is the one the segment started from, so its own
                 // cakes are stale by the steps already accepted; the live ones arrive here.
                 var full=cloggedFilter(filters);if(full!=null)throw full.atStart();
-                var failure=failed(graph,states,flows);if(failure!=null)throw failure.atStart();
+                var failure=failed(graph,states,flows,still);if(failure!=null)throw failure.atStart();
             }
             @Override public void checkFilters(Map<Long,InlineFilter> filters,List<FluidThermodynamics.State> states,List<FlowControl.Mode> modes,double[] flows) {
                 // A step may not reach capacity: the exact test, so the saturated inlet law's own
@@ -239,7 +285,7 @@ final class SolidEventIntegrator {
                 checkFlow(states,modes,flows);
             }
             @Override public void checkFlow(List<FluidThermodynamics.State> states,List<FlowControl.Mode> modes,double[] flows) {
-                var failure=failed(graph,states,flows);
+                var failure=failed(graph,states,flows,still);
                 if(failure!=null)throw failure;
             }
             private Transition cloggedFilter(Map<Long,InlineFilter> filters) {
@@ -259,26 +305,32 @@ final class SolidEventIntegrator {
             }
         };
     }
-    PassiveIntervalSolver.Result solve(PassiveNetwork initial,double duration,PassiveIntervalSolver.Settings settings,Runnable checkpoint,double startingStep) {
+    /** The interval from {@code start}, the island's refresh at the interval's start ({@link PassiveIntervalSolver#solve}), whose
+     * closures D33 read open; {@code committed} is the committed graph, whose closures {@link #carried} reads. */
+    PassiveIntervalSolver.Result solve(InventoryEquilibrium.Refreshed start,PassiveNetwork committed,double duration,PassiveIntervalSolver.Settings settings,Runnable checkpoint,double startingStep) {
         if(!Double.isFinite(duration)||duration<=0)throw new IllegalArgumentException("Positive finite interval required");
-        var graph=InventoryEquilibrium.refresh(initial,model,checkpoint);
+        var graph=start.graph();
         int[] blocked=new int[graph.pipes().size()];
         for(int i=0;i<blocked.length;i++){var p=graph.pipes().get(i);var a=graph.reservoirs().get(p.first());var b=graph.reservoirs().get(p.second());if(p.filter()!=null&&a.id()<0&&b.id()<0&&a.kind()==PassiveNetwork.NodeKind.GENERATOR&&b.kind()==PassiveNetwork.NodeKind.VOID)blocked[i]=BOTH_DIRECTIONS;}
         double elapsed=0,work=0,step=startingStep;int accepted=0,rejected=0;
         var reasons=new LinkedHashMap<String,Integer>();
-        // Reconsider every closure on a new requested interval; none is a permanent physical deposit.
-        // A closure the interval starts with is reported like any other: it is the same event, at
-        // the interval's own t0 rather than inside it, and it is the only account of why a
-        // connection that carried material last interval carries none in this one.
-        // The check reads one rate solve of the port graph (PassiveStepSolver.portRate). It only pre-empts a closure the
-        // steps would find, and on an island's first interval the junction compositions it holds fixed are the mint, so a
-        // rate solve that fails is no evidence either way: it declares no closure here, and the steps decide, their guards
-        // seeing every transition at t0 and inside the interval (option R1, hold class E1; it used to hold the island).
-        for(int attempt=0;SolidMobility.requiresFull(model,graph)&&attempt<=2*blocked.length;attempt++) {
+        // Reconsider every closure on a new requested interval (D33, amended by D62): a pipe the drive moves is decided by its
+        // flow, and a closure nothing moves keeps while an end holds what closed it (carried). A closure the interval starts
+        // with is reported like any other, at the interval's own t0. The check reads one rate solve of the port graph
+        // (PassiveStepSolver.portRate); it only pre-empts a closure the steps would find, so a rate solve that fails declares
+        // no new closure and the steps decide (hold class E1), but a closure carried without it (carriedWithoutRate) is
+        // declared, and the rate solve tried again with it closed. The same rate solve decides which pipes are still (still):
+        // they keep their state for the whole interval, its steps included, a closed one its closure.
+        boolean[] still=null;
+        for(int attempt=0;SolidMobility.closable(model,graph)&&attempt<=2*blocked.length;attempt++) {
             checkpoint.run();graph=masks(graph,blocked);
-            var candidate=rates.portRate(graph,checkpoint,PassiveStepSolver.Acceptance.FULL);
-            if(candidate==null)break;
-            var failure=failed(graph,candidate.states(),candidate.massFlows());
+            var candidate=rates.portRate(graph,checkpoint);
+            Transition failure;
+            if(candidate!=null) {
+                still=still(candidate.massFlows());
+                failure=failed(graph,candidate.states(),candidate.massFlows(),still);
+                if(failure==null)failure=carried(graph,committed,blocked,candidate.states(),still);
+            } else failure=carriedWithoutRate(graph,committed,blocked);
             if(failure==null)break;
             blocked[failure.edge]|=BOTH_DIRECTIONS;
             // A cake the last interval's final step left at capacity is declared here, at the next interval's t0, and
@@ -290,7 +342,7 @@ final class SolidEventIntegrator {
             if(attempt==2*blocked.length)throw new SparseNewton.Nonconvergence("Solid closure active set did not settle");
         }
         double[] transported=new double[graph.pipes().size()];
-        var histories=new PipeTransfer.Accumulator();var boundaries=new ArrayList<ConservativeTransport.BoundaryTransfer>();
+        var histories=new PipeTransfer.Accumulator();var boundaries=new ArrayList<ConservativeTransport.BoundaryTransfer>(start.boundaries());
         PassiveIntervalSolver.Result last=null;
         // One segment per closure. The interval solver stops its own step grid on the transition
         // and hands back the prefix it accepted, so the event is located by the same adaptive
@@ -298,8 +350,11 @@ final class SolidEventIntegrator {
         // prefix is never re-integrated.
         for(int event=0;elapsed<duration&&event<=2*blocked.length+1;event++) {
             checkpoint.run();
-            var start=masks(graph,blocked);double remaining=duration-elapsed;
-            var prefix=integrator.integrateToTransition(start,remaining,settings,checkpoint,PassiveStepSolver.Acceptance.FULL,guard(start),step);
+            var masked=masks(graph,blocked);double remaining=duration-elapsed;
+            // The first segment starts from the interval's refresh; every later one from its own refresh of the state the
+            // transition left (owner decision D23: crystal mass moves only in a vessel's refresh).
+            var segment=event==0?InventoryEquilibrium.Refreshed.as(masked):InventoryEquilibrium.refresh(masked,model,checkpoint);
+            var prefix=integrator.integrateToTransition(segment,remaining,settings,checkpoint,guard(masked,still),step);
             var transition=prefix.transition();int stoppedFilter=-1;
             if(transition!=null) {
                 blocked[transition.edge]|=BOTH_DIRECTIONS;
@@ -321,6 +376,6 @@ final class SolidEventIntegrator {
         if(elapsed<duration||last==null)throw new SparseNewton.Nonconvergence("Solid event limit exhausted; no partial interval may commit");
         for(int i=0;i<transported.length;i++)transported[i]/=duration;
         return new PassiveIntervalSolver.Result(graph,duration,transported,accepted,rejected,work,boundaries,reasons,
-                last.endpointModes(),last.endpointHeads(),last.endpointFlows(),PassiveStepSolver.Acceptance.FULL,histories.snapshot());
+                last.endpointModes(),last.endpointHeads(),last.endpointFlows(),histories.snapshot());
     }
 }

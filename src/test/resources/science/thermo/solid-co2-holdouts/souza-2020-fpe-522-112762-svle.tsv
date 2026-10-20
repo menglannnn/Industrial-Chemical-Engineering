@@ -1,0 +1,26 @@
+# Copied 2026-09-25 for the G4 frost-point gate (P4 stage 2a, batch 2026-09-24-coolprop-low-temperature) from the git-ignored
+# research/2026-09-24-coolprop-low-temperature/sources/solid-co2-holdouts/ of the main checkout; digits and header verbatim.
+# Rows: set 4 only (the 7 SVLE points); sets 1 to 3 (VLE, no solid) dropped.
+# Souza L.F.S., Al Ghafri S.Z.S., Fandino O., Trusler J.P.M. (2020). Vapor-liquid equilibria, solid-vapor-liquid equilibria
+# and H2S partition coefficient in (CO2 + CH4) at temperatures between (203.96 and 303.15) K at pressures up to 9 MPa.
+# Fluid Phase Equilib. 522, 112762. DOI 10.1016/j.fluid.2020.112762 (paywalled; not read).
+# Set 4: SVLE (three-phase) pressures of CO2 + CH4, 7 points, 203.96 to 215.79 K, 964 to 4858 kPa, crystal of unknown type
+# per TRC. Sets 1-3: pure CO2 vapour pressure (7) and CO2 + CH4 VLE (83 p-x and 83 y points, 218.124 to 303.166 K), kept as
+# context; they involve no solid.
+# Holdout role: P5 three-phase line of CO2 + CH4 at the CO2-rich end (G5 SLV consistency next to the triple point).
+# Source: NIST TRC ThermoML Archive (IUPAC ThermoML), https://trc.nist.gov/ThermoML/10.1016/j.fluid.2020.112762.xml, retrieved 2026-09-25;
+# archive DOI 10.18434/mds2-2422. TRC terms: no warranty by the publisher, editors or NIST/TRC; TRC requests that works
+# using ThermoML Archive data cite them. The XML is TRC's compilation of the paper's tables, not the paper itself.
+# Flattened with thermoml_to_tsv.py (this folder): one row per property value, digits exactly as in the XML.
+# U95 = nCombExpandUncertValue, expanded uncertainty at 95 % assessed by the TRC data-file compiler (not the authors' own
+# statement unless the paper gives the same number). Labels abbreviated: fluid/liquid/gas/crystal, CO2/CH4/N2/C2H6.
+# Transcribed 2026-09-25, batch 2026-09-24-coolprop-low-temperature.
+# XML file: thermoml/souza-2020-fpe-522-112762.xml (sha256 92157292381b190a8eeb25d9f8ad0f7bbf8fc041f06de03f2497df3e077216b2)
+set	system	phases	property	method	value	U95	Temperature, K@liquid	Mole fraction[CH4]@liquid	Temperature, K@gas
+4	CO2 + CH4	gas | liquid | crystal(unknown type)	Vapor or sublimation pressure, kPa @gas	Closed cell (Static) method	4858	71			203.96
+4	CO2 + CH4	gas | liquid | crystal(unknown type)	Vapor or sublimation pressure, kPa @gas	Closed cell (Static) method	4691	71			207.07
+4	CO2 + CH4	gas | liquid | crystal(unknown type)	Vapor or sublimation pressure, kPa @gas	Closed cell (Static) method	4101	71			209.58
+4	CO2 + CH4	gas | liquid | crystal(unknown type)	Vapor or sublimation pressure, kPa @gas	Closed cell (Static) method	4104	71			209.63
+4	CO2 + CH4	gas | liquid | crystal(unknown type)	Vapor or sublimation pressure, kPa @gas	Closed cell (Static) method	3655	71			210.67
+4	CO2 + CH4	gas | liquid | crystal(unknown type)	Vapor or sublimation pressure, kPa @gas	Closed cell (Static) method	1981	71			214.16
+4	CO2 + CH4	gas | liquid | crystal(unknown type)	Vapor or sublimation pressure, kPa @gas	Closed cell (Static) method	964	70			215.79

@@ -3,6 +3,7 @@ package com.wormzjl.createcheme.runtime.fluid;
 import com.google.gson.Gson;
 import com.wormzjl.createcheme.network.FluidNetwork;
 import com.wormzjl.createcheme.science.fluid.network.PipeTransfer;
+import com.wormzjl.createcheme.science.fluid.state.SolidInventory;
 import com.wormzjl.createcheme.science.fluid.topology.TopologyCompiler;
 import io.netty.buffer.Unpooled;
 import net.minecraft.core.*;
@@ -28,12 +29,12 @@ class FluidPacketCodecTest {
         assertThrows(IllegalArgumentException.class,()->new FluidNetwork.Controls(Double.NaN,101325,.05,.000045,.01,500000,n));
         assertThrows(IllegalArgumentException.class,()->new FluidNetwork.Controls(298.15,Double.POSITIVE_INFINITY,.05,.000045,.01,500000,n));
         assertThrows(IllegalArgumentException.class,()->new FluidNetwork.Controls(298.15,-1,.05,.000045,.01,500000,n));
-        // Where a pressure may be evaluated is the property package's (F4): a structurally valid 3 MPa reaches the server,
-        // whose edit handler refuses it against the model's domain before anything is queued.
+        // The input box is the property package's envelope (F4; plan decision 9): a structurally valid 12 MPa reaches the
+        // server, whose edit handler refuses it against the envelope before anything is queued.
         var model=com.wormzjl.createcheme.fluid.support.FluidTestSupport.networkModel();
-        var outside=new FluidNetwork.Controls(298.15,3000000,.05,.000045,.01,500000,n);
-        assertThrows(com.wormzjl.createcheme.science.fluid.thermo.ThermoDomainViolation.class,()->new FluidDeviceSpec(1,outside.temperature(),outside.pressure(),outside.composition()).validate(model,TopologyCompiler.Kind.GENERATOR));
-        assertThrows(com.wormzjl.createcheme.science.fluid.thermo.ThermoDomainViolation.class,()->model.domain().checkPressure(outside.pressure()));
+        var outside=new FluidNetwork.Controls(298.15,12000000,.05,.000045,.01,500000,n);
+        assertThrows(IllegalArgumentException.class,()->new FluidDeviceSpec(1,outside.temperature(),outside.pressure(),outside.composition()).validate(model,TopologyCompiler.Kind.GENERATOR));
+        assertThrows(IllegalArgumentException.class,()->model.domain().requireInputPressure(outside.pressure()));
         assertThrows(IllegalArgumentException.class,()->new FluidNetwork.Controls(298.15,101325,.05,.000045,.01,500000,new double[23]));
         var accepted=new FluidNetwork.Controls(298.15,101325,.05,.000045,.01,500000,n);n[com.wormzjl.createcheme.science.material.MaterialTestBasis.NITROGEN]=0;assertEquals(1,accepted.composition()[com.wormzjl.createcheme.science.material.MaterialTestBasis.NITROGEN]);
     }
@@ -57,7 +58,7 @@ class FluidPacketCodecTest {
         for(int i=0;i<count;i++){String id="server_"+i;ids.add(id);descriptors.put(id,new com.wormzjl.createcheme.science.material.MaterialName(id,"t".repeat(128),"l".repeat(128),"lump",null,null,false));}
         double[] amounts=new double[count];Arrays.fill(amounts,1.0/count);var presets=new ArrayList<FluidPresetCatalog.Preset>();
         for(int i=0;i<32;i++)presets.add(new FluidPresetCatalog.Preset("p".repeat(120)+i,"n".repeat(128),amounts));
-        var view=new FluidView(1,0,0,0,"READY",new FluidView.State(101325,298.15,1,1,new double[]{1,2,3},n),0,history);
+        var view=new FluidView(1,0,0,0,"READY",new FluidView.State(101325,298.15,1,1,new double[]{1,2,3},n,SolidInventory.EMPTY,1),0,history);
         var data=new FluidNetwork.MenuData(TopologyCompiler.Kind.PIPE,view.withPipeInfo(FluidView.PipeInfo.empty(view.pipeHistory().getFirst().forward().componentMoles().length)),new FluidNetwork.Controls(298.15,101325,.05,.000045,.01,500000,amounts),ids,presets,"",descriptors,weights(ids.size()));
         String json=new Gson().toJson(data);assertTrue(json.length()<FluidNetwork.MAX_JSON);
         var buffer=new RegistryFriendlyByteBuf(Unpooled.buffer(),RegistryAccess.EMPTY);
@@ -75,7 +76,7 @@ class FluidPacketCodecTest {
     @Test void aFullBranchHistoryFitsTheBoundedClientWireAndSurvivesTheActualJsonSchema() {
         double[][] amounts=new double[3][com.wormzjl.createcheme.science.material.MaterialTestBasis.NETWORK+1];for(int p=0;p<3;p++)for(int c=0;c<com.wormzjl.createcheme.science.material.MaterialTestBasis.NETWORK+1;c++)amounts[p][c]=(p+1)*(c+1)*1e-6;
         var history=new ArrayList<PipeTransfer>();for(int i=0;i<12;i++)history.add(new PipeTransfer(i+1,new PipeTransfer.Stream(12.34,amounts,new double[]{.01,.02,.03}),new PipeTransfer.Stream(2.34,amounts,new double[]{.001,.002,.003})));
-        var view=new FluidView(42,7,200,250,"APPROXIMATE",new FluidView.State(101325,298.15,1,50,new double[]{.1,.2,.7},amounts),.25,history);
+        var view=new FluidView(42,7,200,250,"FULL",new FluidView.State(101325,298.15,1,50,new double[]{.1,.2,.7},amounts,SolidInventory.EMPTY,1),.25,history);
         var names=new ArrayList<String>();for(int i=0;i<com.wormzjl.createcheme.science.material.MaterialTestBasis.NETWORK+1;i++)names.add("component_"+i);
         var controls=new FluidNetwork.Controls(298.15,101325,.05,.000045,.01,500000,FluidDeviceSpec.nitrogen().composition());
         var data=new FluidNetwork.MenuData(TopologyCompiler.Kind.PIPE,view.withPipeInfo(FluidView.PipeInfo.empty(view.pipeHistory().getFirst().forward().componentMoles().length)),controls,names,List.of(),"",Map.of(),weights(names.size()));var gson=new Gson();String json=gson.toJson(data);assertTrue(json.length()<FluidNetwork.MAX_JSON);
@@ -97,13 +98,30 @@ class FluidPacketCodecTest {
         var view=new FluidView(9,4,1200,1300,"RESTING: no flow since 55.0 s",null,0,List.of());
         return new FluidNetwork.MenuData(TopologyCompiler.Kind.GENERATOR,view,new FluidNetwork.Controls(298.15,150000,.05,.000045,.01,500000,amounts),names,presets,message,Map.of("component_0",descriptor),weights(names.size()));
     }
-    /** The protocol is fluid-9 (fluid-6 plus the compressor's ratio control and a tank's outlets, phase-ports WP5; fluid-8
-     * adds each outlet's face, GUI fix F4; fluid-9 drops the unread hydraulicOwner and intervalQuality view fields) and every
-     * payload has its own wire identity. Test name kept. */
+    /** The protocol is fluid-10 (fluid-6 plus the compressor's ratio control and a tank's outlets, phase-ports WP5; fluid-8
+     * adds each outlet's face, GUI fix F4; fluid-9 drops the unread hydraulicOwner and intervalQuality view fields; fluid-10
+     * carries a crystal's record with its solid, D23) and every payload has its own wire identity. A tank's dry ice crosses
+     * the live payload as a solid with its crystal record and comes back equal; a crystal made of a component off the
+     * menu's axis is refused. Test name kept. */
     @Test void theProtocolIsFluidSixWithDistinctStaticAndLivePayloads() {
-        assertEquals("fluid-9",FluidNetwork.PROTOCOL);
+        assertEquals("fluid-10",FluidNetwork.PROTOCOL);
         var ids=java.util.Set.of(FluidNetwork.EditPayload.TYPE.id(),FluidNetwork.RecoverPayload.TYPE.id(),FluidNetwork.StaticPayload.TYPE.id(),FluidNetwork.LivePayload.TYPE.id());
         assertEquals(4,ids.size());
+        var base=generatorMenu("");int count=base.components().size();
+        java.util.function.Function<String,FluidNetwork.MenuData> tank=component->{
+            var dryIce=new com.wormzjl.createcheme.science.material.SolidMaterialCatalog.SolidMaterial("createcheme:crystal_carbon_dioxide_i","crystal-carbon_dioxide-i-r2@createcheme:pilot_cryogenic",
+                    1571.3607340045514,1254.99435771707,new com.wormzjl.createcheme.science.material.SolidMaterialCatalog.SolidMaterial.Crystal(component,-525945.1827807827));
+            var solids=new com.wormzjl.createcheme.science.fluid.state.SolidInventory(List.of(new com.wormzjl.createcheme.science.fluid.state.SolidInventory.Population(dryIce,
+                    com.wormzjl.createcheme.science.fluid.state.ParticleSize.micrometres("250"),.246103828701677)));
+            var state=new FluidView.State(1.2e6,175.5,.1,6.4,new double[]{0,0,.0998},new double[3][count],solids,.1);
+            var view=new FluidView(9,4,1200,1300,"",state,0,List.of());
+            return new FluidNetwork.MenuData(TopologyCompiler.Kind.RESERVOIR,view,base.controls(),base.components(),base.presets(),"",base.materialNames(),base.molecularWeights());
+        };
+        var data=tank.apply("component_3");
+        var copy=FluidNetwork.MenuData.of(data.staticData(0),FluidNetwork.decodeLive(new Gson().toJson(live(data))));
+        assertEquals(data.view().state().solids(),copy.view().state().solids(),"the dry ice and its crystal record, as sent");
+        assertEquals("component_3",copy.view().state().solids().crystals().getFirst().material().crystal().component());
+        assertTrue(assertThrows(IllegalArgumentException.class,()->tank.apply("CarbonDioxide")).getMessage().contains("off the fluid axis"));
     }
     /** The static part carries the axis, presets, names and kind only; the live part the view, controls and reply only; joined they are the menu state. */
     @Test void theStaticAndLivePayloadsSplitAndRejoinIntoTheSameMenuState() {
@@ -176,7 +194,7 @@ class FluidPacketCodecTest {
             assertThrows(IllegalArgumentException.class,()->new FluidNetwork.Controls(298.15,101325,.05,.000045,.05,500000,n,com.wormzjl.createcheme.runtime.fluid.SlurryFeed.NONE,ratio),"ratio "+ratio);
         assertEquals(3.0,new FluidNetwork.Controls(298.15,101325,.05,.000045,.01,500000,n).maximumPressureRatio(),"the placement default of plan Appendix B");
         var device=new PhysicalFluidTopology.Device(7,new PhysicalFluidTopology.Position("minecraft:overworld",0,64,0),TopologyCompiler.Kind.COMPRESSOR,PhysicalFluidTopology.Direction.EAST,
-                new com.wormzjl.createcheme.science.fluid.network.PipeResistance.Geometry(1,.05,.000045,0),new com.wormzjl.createcheme.science.fluid.network.FlowControl.Compressor(.05,2.5,1));
+                new com.wormzjl.createcheme.science.fluid.network.PipeResistance.Geometry(1,.05,.000045,0),new com.wormzjl.createcheme.science.fluid.network.FlowControl.Compressor(.05,2.5));
         var controls=FluidNetwork.Controls.from(new WorldTopologyLedger.Registration(device,FluidDeviceSpec.nitrogen(),3));
         assertEquals(.05,controls.volumeFlow());assertEquals(2.5,controls.maximumPressureRatio());
         var gson=new Gson();var object=com.google.gson.JsonParser.parseString(gson.toJson(controls)).getAsJsonObject();
@@ -232,10 +250,10 @@ class FluidPacketCodecTest {
         var gson=new Gson();var object=com.google.gson.JsonParser.parseString(gson.toJson(new FluidNetwork.Controls(298.15,101325,.05,.000045,.01,500000,n))).getAsJsonObject();object.addProperty("pressure",-3e6);
         var refused=assertThrows(RuntimeException.class,()->gson.fromJson(object.toString(),FluidNetwork.Controls.class));
         assertEquals("Controls are outside the supported range",FluidNetwork.reason(refused));
-        // A setting the property package cannot evaluate is replied with the thermo-domain error's own text.
-        var domain=assertThrows(com.wormzjl.createcheme.science.fluid.thermo.ThermoDomainViolation.class,
-                ()->new FluidDeviceSpec(1,298.15,3e6,n).validate(com.wormzjl.createcheme.fluid.support.FluidTestSupport.networkModel(),TopologyCompiler.Kind.GENERATOR));
-        assertEquals("Thermo domain: Nitrogen at 3000000 Pa is above its valid range 100..2000000 Pa (package createcheme:tjl20_methane_nitrogen); the state cannot be evaluated",FluidNetwork.reason(domain));
+        // A setting outside the package envelope is replied with the input box's own text.
+        var domain=assertThrows(IllegalArgumentException.class,
+                ()->new FluidDeviceSpec(1,298.15,1.2e7,n).validate(com.wormzjl.createcheme.fluid.support.FluidTestSupport.networkModel(),TopologyCompiler.Kind.GENERATOR));
+        assertEquals("Pressure 1.2E7 Pa outside the package envelope 100.0..1.0E7 Pa (package createcheme:tjl20_methane_nitrogen)",FluidNetwork.reason(domain));
         assertEquals("Stale fluid controls",FluidNetwork.reason(new IllegalStateException("Stale fluid controls")));
         assertEquals("null",FluidNetwork.reason(new RuntimeException()));
     }

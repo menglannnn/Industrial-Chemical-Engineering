@@ -541,12 +541,6 @@ public final class BoundedCpuSolveService<O, S, R> implements AutoCloseable {
     }
 
     public interface CancellationToken {
-        long deadlineNanos();
-
-        boolean isDeadlineExceeded();
-
-        boolean isCancellationRequested();
-
         void throwIfCancellationRequested();
     }
 
@@ -723,21 +717,8 @@ public final class BoundedCpuSolveService<O, S, R> implements AutoCloseable {
         }
 
         private final class Token implements CancellationToken {
-            @Override
-            public long deadlineNanos() {
-                return stamp.deadlineNanos();
-            }
-
-            @Override
-            public boolean isDeadlineExceeded() {
+            boolean isDeadlineExceeded() {
                 return deadlineReached(nanoTime.getAsLong(), stamp.deadlineNanos());
-            }
-
-            @Override
-            public boolean isCancellationRequested() {
-                return state.get() instanceof CancelReason
-                        || isDeadlineExceeded()
-                        || Thread.currentThread().isInterrupted();
             }
 
             @Override

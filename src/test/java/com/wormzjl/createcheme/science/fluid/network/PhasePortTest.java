@@ -264,9 +264,10 @@ class PhasePortTest extends PortFixture {
      * A phase port that carries nothing is inert: with the vapour and liquid lines closed both ways, the vessel, its bulk
      * line and every boundary evolve to the last bit as they do with bulk ends on those closed lines. (A closed connection
      * neither builds a phase stream nor costs its node a structural zero.) Stepped with the step solver, five 1 s steps
-     * and ten 0.1 s steps: an island holding a hydrocarbon liquid is integrated by {@link SolidEventIntegrator}, which
-     * reconsiders every closure at each interval start and so reopens a caller's both-way block; the step solver keeps it.
-     * The water vessel (no hydrocarbon liquid) also runs through the interval solver at 5 s and 0.1 s slices.
+     * and ten 0.1 s steps: an interval start reads every closure open, on every path (owner decision D33), so a caller's
+     * both-way block never reaches an interval's steps; the step solver keeps it. The water vessel also runs at 5 s and
+     * 0.1 s slices through the interval integrator below the interval start, as the solid events' segments run it with
+     * the closures they declared.
      */
     @Test void closedPhasePortsLeaveTheBulkLineBitwise() {
         for(var kind:Vessel.values())for(double dt:new double[]{1,.1}) {
@@ -283,12 +284,16 @@ class PhasePortTest extends PortFixture {
         }
     }
     /** Every double of every committed slice, as raw bits (a zero of either sign read as +0: a zero-flow line books
-     * {@code 0*h}, whose sign is the sign of the enthalpy it multiplies). */
+     * {@code 0*h}, whose sign is the sign of the enthalpy it multiplies). Each slice is the interval integrator's, which
+     * keeps the graph's closures (the solid events' segment form), not {@link PassiveIntervalSolver#solve}'s, which starts
+     * from them read open. */
     private List<Long> run(PassiveNetwork graph,double interval,int count) {
         var bits=new ArrayList<Long>();var solver=new PassiveIntervalSolver(model);PassiveIntervalSolver.Result committed=null;
+        var settings=PassiveIntervalSolver.Settings.defaults();
         for(int slice=0;slice<count;slice++) {
             solver.replayStart(graph,committed);
-            var result=solver.solve(graph,interval,PassiveIntervalSolver.Settings.defaults(),NOOP);committed=result;graph=result.graph();
+            var result=solver.integrate(InventoryEquilibrium.refresh(graph,model,NOOP),interval,settings,NOOP,PassiveIntervalSolver.StageGuard.NONE,settings.initialStep());
+            committed=result;graph=result.graph();
             bits.add((long)result.acceptedSubsteps());bits.add((long)result.rejectedSubsteps());
             for(var node:graph.reservoirs()){var s=node.state();
                 for(double v:new double[]{s.temperature(),s.pressure(),s.mass(),s.volume(),s.liquidVolume(),s.waterVolume(),s.vaporVolume(),node.inventory().internalEnergy()})bits.add(bits(v));
@@ -302,7 +307,7 @@ class PhasePortTest extends PortFixture {
 
     private double energy(PassiveNetwork graph) {
         var node=graph.reservoirs().getFirst();
-        return node.inventory().internalEnergy()+mass(node.inventory().moles())*PassiveStepSolver.GRAVITY*node.elevation();
+        return node.inventory().internalEnergy();
     }
     private static double sum(double[] v){double s=0;for(double x:v)s+=x;return s;}
     private static double[] add(double[] a,double[] b){var r=a.clone();for(int i=0;i<r.length;i++)r[i]+=b[i];return r;}

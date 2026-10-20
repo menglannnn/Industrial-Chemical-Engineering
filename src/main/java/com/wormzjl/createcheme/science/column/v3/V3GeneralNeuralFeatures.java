@@ -7,16 +7,13 @@ import java.util.Arrays;
 
 /** Stage-conditioned encoding: one shared predictor serves every supported stage count. */
 public final class V3GeneralNeuralFeatures {
-    public static final String REVISION = "v3-stage-conditioned-regrouped-2";
     public static final int LOCAL_WIDTH = 22;
     public static final int BRANCH_COUNT = 3;
-    private static final double FLOW_FLOOR = 1e-8;
 
     private V3GeneralNeuralFeatures() {}
 
     public static int globalWidth(int components) { return 54 + components; }
     public static int nodeWidth(int components) { return globalWidth(components) + LOCAL_WIDTH + BRANCH_COUNT; }
-    public static int outputWidth(int components) { return 2 * components + 3; }
 
     /** All component fractions have the same representation; no component receives a special role. */
     public static double[] global(V3ColumnInput input) {
@@ -110,56 +107,6 @@ public final class V3GeneralNeuralFeatures {
         return switch (branch) { case LIQUID_ONLY -> 0; case TWO_PHASE -> 1; case VAPOR_ONLY -> 2; };
     }
 
-    /** Per-component flow scaling avoids privileging large feed fractions over dilute components. */
-    public static double[][] targets(V3NeuralSeed seed) {
-        double[] feed = seed.input().feedComponentMolarFlowsMolPerSecond();
-        double total = Arrays.stream(feed).sum();
-        double[][] l = seed.liquid(), v = seed.vapor();
-        double[] t = seed.temperatures(), w = seed.freeWater(); boolean[] wet = seed.wetTrays();
-        double[][] y = new double[t.length][outputWidth(feed.length)];
-        for (int n = 0; n < t.length; n++) {
-            int k = 0; y[n][k++] = t[n];
-            for (int c = 0; c < feed.length; c++) y[n][k++] = DeterministicMath.log1p(l[n][c] / componentScale(feed[c], total));
-            for (int c = 0; c < feed.length; c++) y[n][k++] = DeterministicMath.log1p(v[n][c] / componentScale(feed[c], total));
-            y[n][k++] = DeterministicMath.log1p(w[n] / (total * FLOW_FLOOR)); y[n][k] = wet[n] ? 1 : 0;
-        }
-        return y;
-    }
-
-    static V3NeuralSeed decode(V3ColumnInput input, String revision, V3CondenserPhaseBranch branch, double[][] y) {
-        double[] feed = input.feedComponentMolarFlowsMolPerSecond(); double total = Arrays.stream(feed).sum();
-        int count = input.stageCount() + 2;
-        if (y.length != count) throw new IllegalArgumentException("General neural output node mismatch");
-        double[][] l = new double[count][feed.length], v = new double[count][feed.length];
-        double[] t = new double[count], w = new double[count]; boolean[] wet = new boolean[count];
-        for (int n = 0; n < count; n++) {
-            if (y[n].length != outputWidth(feed.length)) throw new IllegalArgumentException("General neural output width mismatch");
-            int k = 0; t[n] = y[n][k++];
-            if (!Double.isFinite(t[n]) || t[n] < 100 || t[n] > 1500) throw new IllegalArgumentException("Unbounded neural temperature");
-            for (int c = 0; c < feed.length; c++) {
-                double prediction = flow(y[n][k++], componentScale(feed[c], total));
-                l[n][c] = feed[c] == 0 ? 0 : prediction;
-            }
-            for (int c = 0; c < feed.length; c++) {
-                double prediction = flow(y[n][k++], componentScale(feed[c], total));
-                v[n][c] = feed[c] == 0 ? 0 : prediction;
-            }
-            double water = flow(y[n][k++], total * FLOW_FLOOR);
-            if (!Double.isFinite(y[n][k])) throw new IllegalArgumentException("Nonfinite neural wet score");
-            wet[n] = y[n][k] >= 0.5 && n > 0 && n < count - 1 && !input.steamFeeds().isEmpty();
-            w[n] = wet[n] ? water : 0;
-        }
-        for (var spec : input.specifications()) if (spec instanceof V3ColumnSpecification.CondenserOutletTemperature tc) t[0] = tc.kelvin();
-        if (branch == V3CondenserPhaseBranch.LIQUID_ONLY) Arrays.fill(v[0], 0);
-        if (branch == V3CondenserPhaseBranch.VAPOR_ONLY) Arrays.fill(l[0], 0);
-        return new V3NeuralSeed(input, revision, branch, l, v, t, w, wet);
-    }
-
-    private static double componentScale(double componentFeed, double total) { return Math.max(componentFeed, total * 1e-12) * 1e-5; }
-    private static double flow(double value, double scale) {
-        if (!Double.isFinite(value) || value > 30) throw new IllegalArgumentException("Unbounded neural flow");
-        return scale * DeterministicMath.expm1(Math.max(0, value));
-    }
     private static double nearestPosition(int[] positions, int node, double span) {
         if (positions.length == 0) return 0;
         int closest = positions[0];

@@ -44,18 +44,6 @@ final class V3OperatingDomainValidator {
 
     /** Immutable admission result for one resolved dry V3 problem and its registered property package. */
     sealed interface Assessment permits Assessment.Eligible, Assessment.Rejected {
-        /** The minimum absolute pressure across every resolved column node. */
-        double minimumNodePressurePascal();
-
-        /** The maximum absolute pressure across every resolved column node. */
-        double maximumNodePressurePascal();
-
-        /** The inclusive lower pressure bound declared by the selected package. */
-        double packageMinimumPressurePascal();
-
-        /** The inclusive upper pressure bound declared by the selected package. */
-        double packageMaximumPressurePascal();
-
         /** A resolved profile that is entirely inside the selected package's pressure envelope. */
         record Eligible(
                 Lane lane,

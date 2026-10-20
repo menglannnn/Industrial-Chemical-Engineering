@@ -33,13 +33,28 @@ public final class WorldTopologyLedger {
         @Override public double[] moles(){return moles.clone();}
         public static MaterialTotal empty(){return empty(com.wormzjl.createcheme.science.fluid.thermo.FluidMaterialCatalog.conservedCount());}
         public static MaterialTotal empty(int count){if(count<1||count>com.wormzjl.createcheme.science.material.MaterialAxis.MAX_CONSERVED_COMPONENTS)throw new IllegalArgumentException("Invalid external material axis size");return new MaterialTotal(new double[count],0);}
-        public MaterialTotal plus(Collection<PassiveNetwork.Reservoir> reservoirs,double[] weights) {
+        /**
+         * These totals plus what {@code reservoirs} hold, on the network basis {@code components} with their molar masses
+         * {@code weights} (kg/mol): component moles, total (internal) energy and custom solid masses by
+         * material and size. A crystal (owner decision D23) is its component in another phase, so it is booked as that
+         * component's moles with its true energy, its stored sensible part plus its energy offset times its mass: the
+         * totals do not depend on the phase the material was in when it was placed or removed.
+         */
+        public MaterialTotal plus(Collection<PassiveNetwork.Reservoir> reservoirs,List<String> components,double[] weights) {
             var total=moles.clone();double energy=totalEnergy;var solids=new TreeMap<>(solidMasses);
+            if(components.size()!=total.length||weights.length!=total.length)throw new IllegalArgumentException("External ledger basis mismatch");
             for(var node:reservoirs) {
-                var n=node.inventory().moles();if(n.length!=total.length||weights.length!=total.length)throw new IllegalArgumentException("External ledger basis mismatch");double mass=node.inventory().solids().massKg();
-                for(var p:node.inventory().solids().populations())solids.merge(p.material().id()+"@"+p.size().metres(),p.massKg(),Double::sum);
-                for(int c=0;c<n.length;c++){total[c]+=n[c];mass+=n[c]*weights[c];}
-                energy+=node.inventory().internalEnergy()+mass*com.wormzjl.createcheme.science.fluid.network.PassiveStepSolver.GRAVITY*node.elevation();
+                var n=node.inventory().moles();if(n.length!=total.length)throw new IllegalArgumentException("External ledger basis mismatch");
+                double internal=node.inventory().internalEnergy();
+                for(var p:node.inventory().solids().populations()) {
+                    var crystal=p.material().crystal();
+                    if(crystal==null){solids.merge(p.material().id()+"@"+p.size().metres(),p.massKg(),Double::sum);continue;}
+                    int c=components.indexOf(crystal.component());
+                    if(c<0)throw new IllegalArgumentException("Crystal "+p.material().id()+" is made of "+crystal.component()+", which the ledger basis does not carry");
+                    total[c]+=p.massKg()/weights[c];internal+=p.massKg()*crystal.energyOffset();
+                }
+                for(int c=0;c<n.length;c++)total[c]+=n[c];
+                energy+=internal;
             }
             return new MaterialTotal(total,energy,solids);
         }
@@ -87,8 +102,6 @@ public final class WorldTopologyLedger {
         }
         /** The queued event, or the first applied one. */
         public Event event(){return event;}
-        /** The events an application applies, in queue order; empty for a queued event. */
-        public List<Event> events(){return applied;}
     }
     /** What an event reads and writes, for ordering: the identities it touches and edits, and their positions. */
     public record Footprint(Event event,Set<Long> ids,Set<PhysicalFluidTopology.Position> positions) {
@@ -193,7 +206,7 @@ public final class WorldTopologyLedger {
         if(batch.size()!=wanted.size())throw new IllegalStateException("Topology event has unresolved earlier dependencies");
         // The batch is validated against the applied registry, each event after the ones before it.
         var overlay=new Overlay(active,activeAt);for(var event:batch)overlay.check(event.edits);
-        return new Prepared(version,onlineTick,nextIdentity,batch.getFirst(),batch,constructed.plus(additions,weights),destroyed.plus(removals,weights),Map.of());
+        return new Prepared(version,onlineTick,nextIdentity,batch.getFirst(),batch,constructed.plus(additions,basis.components(),weights),destroyed.plus(removals,basis.components(),weights),Map.of());
     }
     public Prepared withRecovery(Prepared prepared,RecoveredSolid recovery){
         validate(prepared);if(prepared.applied.isEmpty())throw new IllegalArgumentException("Only an application can queue a recovery");

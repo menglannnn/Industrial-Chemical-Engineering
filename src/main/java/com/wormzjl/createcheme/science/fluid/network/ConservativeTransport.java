@@ -5,6 +5,7 @@ import com.wormzjl.createcheme.science.fluid.diagnostics.SolverDiagnostics;
 import com.wormzjl.createcheme.science.fluid.linalg.*;
 import com.wormzjl.createcheme.science.fluid.solver.*;
 import com.wormzjl.createcheme.science.fluid.thermo.FluidThermodynamics;
+import com.wormzjl.createcheme.science.fluid.thermo.NetworkCrystals;
 import com.wormzjl.createcheme.science.thermo.PhaseSupport;
 import java.util.*;
 import com.wormzjl.createcheme.science.fluid.state.SolidInventory;
@@ -13,23 +14,13 @@ import com.wormzjl.createcheme.science.fluid.state.SolidInventory;
 public final class ConservativeTransport {
     private ConservativeTransport() {}
     /**
-     * One island's transport linear algebra, retained across its reconstructions the way
-     * {@code SparseNewton.Workspace.Shared} is retained across a fork family: one EJML storage that
-     * every reconstruction refills in place, and the fill-reducing ordering of each structure the
-     * island actually produces.
-     *
-     * <p>Without it each reconstruction built its own {@link SparseLuSolver.Storage} - an EJML
-     * solver, a CSC copy, two dense vectors, a sorter and the scaling buffers - and its own
-     * ordering, three or four times per interval for the life of the island. The solved graphs
-     * alternate (a step solve and a rate solve of the port graph do not share a sparsity
-     * pattern), so the orderings are a small keyed cache while the storage, which
-     * reshapes itself, is single and shared.
-     *
-     * <p>Reuse is bitwise: a {@link SparseLuSolver.Storage} clears every buffer it reads before
-     * reading it and its {@code verified} flag is reset by each factorization, and an ordering is
-     * only reused for a matrix with the identical structure, so it is the permutation a fresh
-     * computation would have produced. Each factorization is consumed inside the reconstruction
-     * that produced it, so no holder can be superseded by the next one.
+     * One island's transport linear algebra, retained across its reconstructions as {@code SparseNewton.Workspace.Shared}
+     * is retained across a fork family: one EJML storage every reconstruction refills in place, and the fill-reducing
+     * ordering of each structure the island produces (a step solve and a rate solve of the port graph do not share a
+     * sparsity pattern, so the orderings are a small keyed cache). Without it each reconstruction built its own
+     * {@link SparseLuSolver.Storage} and ordering, three or four times per interval. Reuse is bitwise: the storage clears
+     * every buffer it reads, an ordering is only reused for a matrix with the identical structure, and each factorization
+     * is consumed inside the reconstruction that produced it.
      */
     public static final class Workspace {
         private static final int RETAINED_ORDERINGS=4;
@@ -86,9 +77,21 @@ public final class ConservativeTransport {
         @Override public double[] grossMoles(){return grossMoles.clone();}
         static HeldJunctions none(int components){return new HeldJunctions(new double[components],0,SolidInventory.EMPTY,SolidInventory.EMPTY,new double[components],0);}
     }
+    /**
+     * What the step's junctions melted (owner decision D61, {@link JunctionCrystals}): the crystal mass {@code solids} that
+     * left the solid ledger, the component amounts {@code moles} it became, and its offsets {@code energyJoule}, which the
+     * stored energy gains (the crystal's enthalpy is its stored part plus its offset). An internal conversion of the step's
+     * ledger ({@code PassiveStepSolver.checkConservation}); none in a rate solve.
+     */
+    public record Melted(double[] moles,double energyJoule,SolidInventory solids) {
+        public Melted{moles=moles.clone();Objects.requireNonNull(solids);}
+        @Override public double[] moles(){return moles.clone();}
+        static Melted none(int components){return new Melted(new double[components],0,SolidInventory.EMPTY);}
+    }
     public record Projection(List<PassiveNetwork.Inventory> inventories,List<FluidThermodynamics.State> states,
-                             List<BoundaryTransfer> boundaries,double[] externalMoles,double externalEnergy,double pumpWork,Map<Long,InlineFilter> filters,HeldJunctions held) {
-        public Projection{filters=Map.copyOf(filters);inventories=List.copyOf(inventories);states=List.copyOf(states);boundaries=List.copyOf(boundaries);externalMoles=externalMoles.clone();Objects.requireNonNull(held);}
+                             List<BoundaryTransfer> boundaries,double[] externalMoles,double externalEnergy,double pumpWork,Map<Long,InlineFilter> filters,HeldJunctions held,
+                             Melted melted) {
+        public Projection{filters=Map.copyOf(filters);inventories=List.copyOf(inventories);states=List.copyOf(states);boundaries=List.copyOf(boundaries);externalMoles=externalMoles.clone();Objects.requireNonNull(held);Objects.requireNonNull(melted);}
         @Override public double[] externalMoles(){return externalMoles.clone();}
     }
     /** One-shot: a caller with no retained island workspace builds fresh linear algebra, as before. */
@@ -101,22 +104,15 @@ public final class ConservativeTransport {
     /**
      * {@code frozenJunctions} (rate evaluations only): every junction is held at its buffer's composition, as the
      * rate-only rows of {@code PassiveStepSolver.Equations.junctionInflow} hold it, and its accumulation over dt is held
-     * back in the projection's {@link HeldJunctions} (owner decision D46: a junction's buffer is not inventory, so
-     * nothing is booked at it).
-     *
-     * <p>{@code draws}: per connection, the mass flow each phase ({@link FluidThermodynamics#GAS}, {@link FluidThermodynamics#OIL},
-     * {@link FluidThermodynamics#WATER}) supplied to the outflow of a phase-port end at the solved flow (decision D11, the
-     * priority stream; they add up to the solved flow), null for a connection that drew the bulk; null altogether for a
-     * graph none of whose outflows drew phases. A caller whose graph has phase ports passes the step solver's draws.
-     *
-     * <p>{@code supports}: per node, the frozen phase support the step solved it with (null for a node, or altogether,
-     * when there is none); each vessel is closed to its booked inventory in that equilibrium ({@link InventoryEquilibrium#close}).
-     *
-     * <p>{@code emptying} (null: none): per node, a vessel that runs dry within the step and stands in {@code graph} as a
-     * junction holding its stock (decision D54, {@code PassiveStepSolver.emptyingGraph}): {@link Emptying#drain} its
-     * stock's mass over dt and {@link Emptying#work} the ambient's work on its collapsing bag, {@code P_ambient V_bag}
-     * (already in the junction's energy field). Its booking pins its end mass to zero, its energy's residual at the end of
-     * the step leaves to the ambient boundary at the vessel, and it ends holding nothing.
+     * back in the projection's {@link HeldJunctions} (owner decision D46: a junction's buffer is not inventory).
+     * {@code draws}: per connection, the mass flow each phase ({@link FluidThermodynamics#GAS}, {@link FluidThermodynamics#OIL},
+     * {@link FluidThermodynamics#WATER}) supplied to the outflow of a phase-port end at the solved flow (decision D11),
+     * null for a connection that drew the bulk, null altogether for a graph none of whose outflows drew phases.
+     * {@code supports}: per node, the frozen phase support the step solved it with; each vessel is closed to its booked
+     * inventory in that equilibrium ({@link InventoryEquilibrium#close}). {@code emptying} (null: none): per node, a
+     * vessel that runs dry within the step and stands in {@code graph} as a junction holding its stock (decision D54):
+     * {@link Emptying#drain} its stock's mass over dt and {@link Emptying#work} the ambient's work on its collapsing bag;
+     * its booking pins its end mass to zero, and its energy's residual leaves to the ambient boundary at the vessel.
      */
     public static Projection reconstruct(PassiveNetwork graph,List<FluidThermodynamics.State> candidate,double[] flows,double[] heads,
                                          double dt,FluidThermodynamics model,Runnable checkpoint,Workspace workspace,boolean frozenJunctions,double[][] draws,
@@ -131,23 +127,14 @@ public final class ConservativeTransport {
         }
     }
     /**
-     * The mass fractions of a node whose composition this reconstruction does not solve for: a
-     * prescribed boundary. It is a <em>composition</em> and not a conserved amount, so every entry is read off one state - the
-     * candidate - and the stored inventory supplies nothing but the split of the candidate's
-     * aggregate solid mass across its populations.
-     *
-     * <p>A Newton candidate carries its solids as the three aggregate moments and keeps the seed's
-     * population list unscaled ({@link com.wormzjl.createcheme.science.fluid.solver.PhaseLayout#decode}),
-     * so the stored list is the only place the split can come from; its absolute masses are not.
-     * Reading the fluid half off the candidate and the solid half off the stored inventory, both
-     * over the candidate's total mass, is what broke: a junction owns no volume, so its total
-     * amount is a free scale the Newton moves, and an absolute stored 125.0 kg divided by a total
-     * the Newton has shrunk by 0.099 % leaves the fractions summing to 1.000115804 instead of 1.
-     * See {@code documentation/FULL_TANK_SOLIDS_EVENT.md}.
-     *
-     * <p>Where candidate and inventory already agree the scale is exactly 1.0 and this is bit for
-     * bit what the two separate reads produced, which is why the exact solver regression does not
-     * move.
+     * The mass fractions of a node whose composition this reconstruction does not solve for: a prescribed boundary. It
+     * is a composition, not a conserved amount, so every entry is read off one state, the candidate, and the stored
+     * inventory supplies nothing but the split of the candidate's aggregate solid mass across its populations (a Newton
+     * candidate carries its solids as the three aggregate moments and keeps the seed's population list unscaled,
+     * {@link com.wormzjl.createcheme.science.fluid.solver.PhaseLayout#decode}). Reading the fluid half off the candidate
+     * and the solid half off the stored inventory, both over the candidate's total mass, left a junction's fractions
+     * summing to 1.000115804 after the Newton had moved its free total by 0.099 %. Where candidate and inventory agree
+     * the scale is exactly 1.0 and the result is bit for bit what the two reads produced.
      */
     private static void storedFractions(double[] result,FluidThermodynamics.State state,PassiveNetwork.Reservoir reservoir,
                                         List<SolidInventory.Key> populationKeys,double[] molecularWeight,int components) {
@@ -238,15 +225,15 @@ public final class ConservativeTransport {
         double[] molecularWeight=model.molecularWeights();
         double[][] old=new double[nodes][],fractions=new double[nodes][conserved];
         double[] endMass=new double[nodes],incoming=new double[nodes],outgoing=new double[nodes];
-        // Decision D54: a vessel holding nothing (at the bag's resolution, D59 (2)) that nothing reaches in this step keeps
-        // what it holds (it has no state to restate), as a fixed node keeps its inventory; one that receives is booked like
-        // every vessel.
-        boolean[] reached=new boolean[nodes];
+        // Decision D54: a vessel holding no fluid (at the bag's resolution, D59 (2)) that nothing reaches in this step keeps
+        // what it holds, its solids included (it has no fluid to restate, and solids without one do not change, D33), as a
+        // fixed node keeps its inventory; one that receives is booked like every vessel.
+        boolean[] reached=new boolean[nodes],kept=new boolean[nodes];
         for(int edge=0;edge<flows.length;edge++)if(flows[edge]!=0){var pipe=graph.pipes().get(edge);reached[flows[edge]>0?pipe.second():pipe.first()]=true;}
         for(var transfer:graph.scheduledTransfers())if(transfer instanceof ScheduledTransfer.Injection)reached[transfer.node()]=true;
         for(int node=0;node<nodes;node++) {
             var reservoir=graph.reservoirs().get(node);old[node]=reservoir.inventory().moles();
-            if(PassiveStepSolver.holdsNothingVessel(reservoir)&&!reached[node])continue;
+            if(PassiveStepSolver.holdsNoFluidVessel(reservoir)&&!reached[node]){kept[node]=true;continue;}
             for(int c=0;c<components;c++)endMass[node]+=old[node][c]*molecularWeight[c];
             endMass[node]+=reservoir.inventory().solids().massKg();
             if(frozen&&reservoir.junction()) {
@@ -276,14 +263,11 @@ public final class ConservativeTransport {
             if(phase) {
                 drawn[edge]=streamFractions(model,rates,candidate.get(donor),graph.reservoirs().get(donor).state(),graph.reservoirs().get(donor),populationKeys,molecularWeight,components);
                 // Unbacked traces. A vessel's Newton seed carries an entry trace (1e-12 of its amount) of every component the
-                // island can bring it, whether or not anything does in this step, and the candidate keeps some of it; the
-                // implicit bulk booking below lands such a component at exactly zero in a donor whose inventory lacks it
-                // ((m + dt Q) w = m w_old), but a frozen stream would book the candidate's trace out of an inventory of
-                // zero and refuse the step as a negative reconstruction at every step size (measured: 5e-25 mol of
-                // nitrogen in a methane tank drawn through a VAPOR port into a junction a nitrogen tank also feeds; the
-                // WP1 tree fails the same way). A donor that neither holds a component nor receives anything in the step
-                // cannot deliver it, so its stream books none of it; the ledger stays exact (donor and receiver book the
-                // same w).
+                // island can bring it, and the candidate keeps some of it; the implicit bulk booking lands such a component
+                // at exactly zero in a donor whose inventory lacks it, but a frozen stream would book the candidate's trace
+                // out of an inventory of zero and refuse the step as a negative reconstruction at every step size (5e-25 mol
+                // of nitrogen in a methane tank drawn through a VAPOR port). A donor that neither holds a component nor
+                // receives anything in the step cannot deliver it, so its stream books none of it; the ledger stays exact.
                 if(!receives[donor]&&!graph.reservoirs().get(donor).fixed()) {
                     var reservoir=graph.reservoirs().get(donor);
                     for(int c=0;c<components;c++)if(old[donor][c]==0)drawn[edge][c]=0;
@@ -299,6 +283,24 @@ public final class ConservativeTransport {
             if(transfer instanceof ScheduledTransfer.Withdrawal out){outgoing[node]+=out.massKgPerSecond();endMass[node]-=dt*out.massKgPerSecond();}
             else if(transfer instanceof ScheduledTransfer.Injection in){var n=in.molesPerSecond();for(int c=0;c<components;c++)endMass[node]+=dt*n[c]*molecularWeight[c];endMass[node]+=dt*in.solidsPerSecond().massKg();}
         }
+        // Owner decision D61 (JunctionCrystals): per solved junction, the crystal each population is if it melts there (else
+        // null), and the mass of it melted over the step, booked as its component's; only where the booked flows can bring
+        // the population (its holders' reach), since elsewhere the junction holds none of it exactly and the booking is the
+        // one it always was. A rate booking melts nothing.
+        var melting=frozen||populationKeys.isEmpty()?null:JunctionCrystals.of(graph,model);
+        NetworkCrystals.Crystal[][] meltAt=new NetworkCrystals.Crystal[nodes][];double[][] melted=new double[nodes][];
+        if(melting!=null)for(int k=0;k<populationKeys.size();k++) {
+            var material=populationBasis.get(populationKeys.get(k)).material();if(material.crystal()==null)continue;
+            boolean[] reach=null;
+            for(int node=0;node<nodes;node++) {
+                if(index[node]<0||!graph.reservoirs().get(node).junction())continue;
+                var crystal=melting.melts(node,material);if(crystal==null)continue;
+                if(reach==null)reach=reach(graph,flows,populationKeys.get(k),drawn,fractions,index,components+k);
+                if(!reach[node])continue;
+                if(meltAt[node]==null){meltAt[node]=new NetworkCrystals.Crystal[populationKeys.size()];melted[node]=new double[populationKeys.size()];}
+                meltAt[node][k]=crystal;
+            }
+        }
         // Every vessel and every junction takes the row below. A junction's diagonal endMass+dt*outgoing = m_old+dt*incoming,
         // so its row is (m_old/dt+Q) w = (m_old/dt) w_old + sum q w_e, exactly the Newton junction row, and its buffer
         // is endMass*w: the relaxation state the next step's row reads (owner decision D46: a buffer, not inventory).
@@ -312,7 +314,10 @@ public final class ConservativeTransport {
             add(columns,row,row,endMass[node]+dt*outgoing[node]);
             for(int c=0;c<components;c++)rhs[c][row]=old[node][c]*molecularWeight[c];
             for(int c=0;c<populationKeys.size();c++)rhs[components+c][row]=reservoir.inventory().solids().mass(populationKeys.get(c));
+            // What a melting junction holds of the crystal melts with what arrives (D61).
+            if(meltAt[node]!=null)for(int k=0;k<populationKeys.size();k++)if(meltAt[node][k]!=null)melt(rhs,components,row,k,meltAt[node][k],rhs[components+k][row],melted[node],true);
         }
+        var diagonal=new ArrayList<TreeMap<Integer,Double>>();for(var column:columns)diagonal.add(new TreeMap<>(column));
         var solidColumns=new ArrayList<TreeMap<Integer,Double>>();for(var column:columns)solidColumns.add(new TreeMap<>(column));
         for(int edge=0;edge<flows.length;edge++) {
             var pipe=graph.pipes().get(edge);int donor=flows[edge]>=0?pipe.first():pipe.second(),receiver=flows[edge]>=0?pipe.second():pipe.first();
@@ -320,13 +325,19 @@ public final class ConservativeTransport {
                 double weight=dt*Math.abs(flows[edge]);var w=drawn[edge];
                 // The donor loses the stream, solids included whether or not a filter then captures them.
                 if(index[donor]>=0)for(int c=0;c<conserved;c++)rhs[c][index[donor]]-=weight*w[c];
-                if(index[receiver]>=0)for(int c=0;c<conserved;c++)if(c<components||pipe.filter()==null)rhs[c][index[receiver]]+=weight*w[c];
+                if(index[receiver]>=0)for(int c=0;c<conserved;c++)if(c<components||pipe.filter()==null) {
+                    if(c>=components&&meltAt[receiver]!=null&&meltAt[receiver][c-components]!=null)melt(rhs,components,index[receiver],c-components,meltAt[receiver][c-components],weight*w[c],melted[receiver],false);
+                    else rhs[c][index[receiver]]+=weight*w[c];
+                }
                 continue;
             }
             if(index[receiver]<0||flows[edge]==0)continue;
             double weight=dt*Math.abs(flows[edge]);
             if(index[donor]>=0){add(columns,index[donor],index[receiver],-weight);if(pipe.filter()==null)add(solidColumns,index[donor],index[receiver],-weight);}
-            else for(int c=0;c<conserved;c++)if(c<components||pipe.filter()==null)rhs[c][index[receiver]]+=weight*fractions[donor][c];
+            else for(int c=0;c<conserved;c++)if(c<components||pipe.filter()==null) {
+                if(c>=components&&meltAt[receiver]!=null&&meltAt[receiver][c-components]!=null)melt(rhs,components,index[receiver],c-components,meltAt[receiver][c-components],weight*fractions[donor][c],melted[receiver],false);
+                else rhs[c][index[receiver]]+=weight*fractions[donor][c];
+            }
         }
         for(var transfer:graph.scheduledTransfers())if(transfer instanceof ScheduledTransfer.Injection in&&index[in.node()]>=0) {
             var n=in.molesPerSecond();for(int c=0;c<components;c++)rhs[c][index[in.node()]]+=dt*n[c]*molecularWeight[c];
@@ -336,8 +347,10 @@ public final class ConservativeTransport {
         // One backward-error check on the first component vector qualifies this factorization; the
         // remaining component columns are bounded by the junction continuity and conservation
         // checks below, which are the quantities this solve exists to produce.
+        boolean melts=false;for(var at:meltAt)melts|=at!=null;
         try{var system=matrix(columns);
-            if(populationKeys.isEmpty()||graph.pipes().stream().noneMatch(p->p.filter()!=null))solved=(workspace==null?SparseLuSolver.factor(system):workspace.factor(system)).solveMultiple(rhs,SparseLuSolver.Verification.UNTIL_VERIFIED);
+            if(melts)solved=meltingSolve(graph,flows,drawn,index,dt,components,populationKeys.size(),meltAt,melted,rhs,system,diagonal,solidColumns,workspace);
+            else if(populationKeys.isEmpty()||graph.pipes().stream().noneMatch(p->p.filter()!=null))solved=(workspace==null?SparseLuSolver.factor(system):workspace.factor(system)).solveMultiple(rhs,SparseLuSolver.Verification.UNTIL_VERIFIED);
             else {
                 solved=new double[conserved][];
                 var fluid=(workspace==null?SparseLuSolver.factor(system):workspace.factor(system)).solveMultiple(Arrays.copyOf(rhs,components),SparseLuSolver.Verification.UNTIL_VERIFIED);
@@ -345,22 +358,16 @@ public final class ConservativeTransport {
                 System.arraycopy(fluid,0,solved,0,components);System.arraycopy(solids,0,solved,components,solids.length);
             }}
         catch(SparseLuSolver.SolveFailure failure){throw new SparseNewton.Nonconvergence("Transport reconstruction failed: "+failure.getMessage());}
-        // Nothing is drawn that is not there (PHASE_PORTS_REVIEW.md "Active-set cycles and the flush family (2026-10-14)",
-        // B3). A phase stream's fractions are frozen from the Newton's candidate, whose balance rows resolve a node's amounts
-        // to the tolerance of its total, so a trace the candidate states in the drawn phase can exceed what the node holds
-        // and receives over the step. Random seed 720: a tank holding nitrogen at 4.8e-24 of its amount (just above the
-        // flush fraction, D16) drew 5.8e-21 mol of it through its gas stream over a step, twelve times its 4.9e-22 mol;
-        // random seeds 322, 579 and 431: a tank holding none of a component, fed by a bulk inflow carrying none either
-        // (so the unbacked rule above does not apply), drew the seed's entry trace of it. The explicit booking left the
-        // component negative at every step size. In real life a phase carries a component in proportion to what the node
-        // holds of it. So where the explicit booking leaves a component negative anywhere, that component's streams out of
-        // solved nodes are booked implicitly at the candidate's partition, the stream's fraction over the donor's bulk
-        // fraction, r = w_stream / w_bulk, times the donor's own end fraction: the donor's column gains dt q r on its
-        // diagonal and -dt q r at its receiver, so it stays diagonally dominant by its end mass, and with a right-hand side
-        // of holdings and supplies alone the component's solution cannot be negative. Donor and receiver book the same
-        // amount, so the ledger stays exact over vessels and boundaries (D46); the stream's energy is its specific enthalpy
-        // on the same moved mass as before, so the energy booking does not change. Only a component that came out negative
-        // is re-solved, so every step accepted before is unchanged to the bit.
+        // Nothing is drawn that is not there (B3). A phase stream's fractions are frozen from the Newton's candidate, whose
+        // balance rows resolve a node's amounts to the tolerance of its total, so a trace the candidate states in the drawn
+        // phase can exceed what the node holds and receives over the step (a tank holding nitrogen at 4.8e-24 of its amount
+        // drew twelve times its 4.9e-22 mol through its gas stream), and the explicit booking left the component negative.
+        // In real life a phase carries a component in proportion to what the node holds of it. So where the explicit
+        // booking leaves a component negative anywhere, that component's streams out of solved nodes are booked implicitly
+        // at the candidate's partition, r = w_stream / w_bulk, times the donor's own end fraction: the donor's column gains
+        // dt q r on its diagonal and -dt q r at its receiver, so it stays diagonally dominant and the solution cannot be
+        // negative; donor and receiver book the same amount (the ledger stays exact) and the energy booking is unchanged.
+        // Only a component that came out negative is re-solved, so every step accepted before is unchanged to the bit.
         for(int c=0;c<components;c++) {
             boolean negative=false;for(int node=0;node<nodes;node++)if(index[node]>=0&&solved[c][index[node]]<0){negative=true;break;}
             if(!negative)continue;
@@ -386,7 +393,18 @@ public final class ConservativeTransport {
         // junction's amount row pins.
         double[][] ownedMoles=new double[nodes][];var ownedSolids=new SolidInventory[nodes];
         for(int node=0;node<nodes;node++) {
-            var reservoir=graph.reservoirs().get(node);if(index[node]<0){moles[node]=old[node];states.add(candidate.get(node));continue;}
+            var reservoir=graph.reservoirs().get(node);
+            if(index[node]<0) {
+                moles[node]=old[node];
+                // A kept vessel is stated with the solids it holds, not with the candidate's. A pass
+                // that laid it out from an arrival the pinned flows then booked as nothing leaves the candidate a roundoff of
+                // that arrival, solids included, and the vessel's inventory takes its state's solids below: cold fuzz seed 85
+                // put 3.4e-93 kg of CO2-I and no fluid in an empty tank, which then stood as a dry-solids vessel whose bulk
+                // end had no fluid to carry anything (a viscosity of 0/0) and refused every step.
+                var state=candidate.get(node);var held=reservoir.inventory().solids();
+                states.add(kept[node]&&!state.solids().equals(held)?state.withSolids(held):state);
+                continue;
+            }
             double total=0,molesPerKg=0;
             for(int c=0;c<components;c++){double w=solved[c][index[node]];if(w<0||!Double.isFinite(w))throw new SparseNewton.Nonconvergence("Negative transport reconstruction");fractions[node][c]=w;total+=w;molesPerKg+=w/molecularWeight[c];}
             for(int c=components;c<conserved;c++){double w=solved[c][index[node]];if(w<0||!Double.isFinite(w))throw new SparseNewton.Nonconvergence("Negative solid reconstruction");fractions[node][c]=w;total+=w;}
@@ -403,22 +421,33 @@ public final class ConservativeTransport {
             for(int c=0;c<populationKeys.size();c++){var source=populationBasis.get(populationKeys.get(c));populations.add(new SolidInventory.Population(source.material(),source.size(),mass*fractions[node][components+c]));}
             // A junction is restated with its carried gas (decision D41) as every pass seeds it (PassiveStepSolver.foldedSeeds),
             // so the reconstruction, the pass loop's phase tests and the next pass read one statement of its phases.
-            // A vessel the pass left dry (it held nothing and nothing was laid out for it, decision D54) has no phases to
-            // restate the booked amounts in: they are flashed where its state stands (the ambient), and its closure below
-            // solves the rest.
+            // A vessel the pass left dry (it held no fluid and nothing was laid out for it, decision D54) has no phases to
+            // restate the booked amounts in: they are flashed where its state stands (the ambient, or its solids' temperature),
+            // and its closure below solves the rest.
             try{var restated=dryVessel(reservoir,supports,node)?model.flashTP(candidate.get(node).temperature(),candidate.get(node).pressure(),moles[node],checkpoint)
                     :repartition(model,candidate.get(node),moles[node]);if(reservoir.junction())restated=model.folded(restated,true);
                 states.add(restated.withSolids(new SolidInventory(populations)));}
-            catch(com.wormzjl.createcheme.science.fluid.thermo.ThermoDomainViolation violation){throw violation.at(reservoir.id());}
+            catch(com.wormzjl.createcheme.science.fluid.thermo.ThermoHold hold){throw hold.at(reservoir.id());}
         }
         double[] energy=new double[nodes];for(int node=0;node<nodes;node++)energy[node]=graph.reservoirs().get(node).inventory().internalEnergy();
+        // D61: a melting junction's energy gains the offsets of what it melted, so the crystal enters with its own enthalpy.
+        var meltedRecord=Melted.none(components);
+        if(melts) {
+            var meltedMoles=new double[components];double meltedEnergy=0;var meltedSolids=new ArrayList<SolidInventory.Population>();
+            for(int node=0;node<nodes;node++)if(melted[node]!=null)for(int k=0;k<populationKeys.size();k++)if(melted[node][k]>0) {
+                var crystal=meltAt[node][k];var source=populationBasis.get(populationKeys.get(k));double offset=melted[node][k]*source.material().crystal().energyOffset();
+                energy[node]+=offset;meltedEnergy+=offset;meltedMoles[crystal.component()]+=melted[node][k]/molecularWeight[crystal.component()];
+                meltedSolids.add(new SolidInventory.Population(source.material(),source.size(),melted[node][k]));
+            }
+            meltedRecord=new Melted(meltedMoles,meltedEnergy,new SolidInventory(meltedSolids));
+        }
         double[] external=new double[components];double externalEnergy=0,pumpWork=0;var boundaries=new ArrayList<BoundaryTransfer>();
         for(var transfer:graph.scheduledTransfers()) {
             checkpoint.run();int node=transfer.node();var state=states.get(node);double[] moved=new double[components];double movedEnergy,mass=0;
             if(transfer instanceof ScheduledTransfer.Withdrawal out) {
                 mass=-dt*out.massKgPerSecond();
                 for(int c=0;c<components;c++)moved[c]=mass*fractions[node][c]/molecularWeight[c];
-                movedEnergy=mass*(state.enthalpy()/state.mass()+PassiveStepSolver.GRAVITY*graph.reservoirs().get(node).elevation());
+                movedEnergy=mass*(state.enthalpy()/state.mass());
             } else {
                 var in=(ScheduledTransfer.Injection)transfer;var n=in.molesPerSecond();
                 for(int c=0;c<components;c++){moved[c]=dt*n[c];mass+=moved[c]*molecularWeight[c];}
@@ -427,7 +456,7 @@ public final class ConservativeTransport {
             SolidInventory movedSolids;int solidDirection;
             if(transfer instanceof ScheduledTransfer.Withdrawal out){movedSolids=state.solids().scale(dt*out.massKgPerSecond()/state.mass());solidDirection=-1;}
             else{movedSolids=((ScheduledTransfer.Injection)transfer).solidsPerSecond().scale(dt);solidDirection=1;mass+=movedSolids.massKg();}
-            energy[node]+=movedEnergy-mass*PassiveStepSolver.GRAVITY*graph.reservoirs().get(node).elevation();
+            energy[node]+=movedEnergy;
             for(int c=0;c<components;c++)external[c]+=moved[c];externalEnergy+=movedEnergy;
             boundaries.add(new BoundaryTransfer(transfer.id(),moved,movedEnergy,movedSolids,solidDirection));
         }
@@ -438,33 +467,35 @@ public final class ConservativeTransport {
         if(frozen)for(int node=0;node<nodes;node++)accSolids[node]=new SignedSolids();
         for(int edge=0;edge<flows.length;edge++) {
             checkpoint.run();var pipe=graph.pipes().get(edge);int donor=flows[edge]>=0?pipe.first():pipe.second(),receiver=flows[edge]>=0?pipe.second():pipe.first();
-            var upstream=states.get(donor);double moved=dt*Math.abs(flows[edge]),upstreamZ=graph.reservoirs().get(donor).elevation();
+            var upstream=states.get(donor);double moved=dt*Math.abs(flows[edge]);
             // A phase-port outflow carries the frozen stream fractions booked above, and the stream's specific enthalpy on
             // the reconstructed donor (whatever number is booked leaves the donor and reaches the receiver, so the energy
-            // ledger closes exactly either way); a bulk one its donor's end composition and enthalpy, as always.
+            // ledger closes exactly either way); so does a bulk end drawing the gas of a donor holding solids but no liquid
+            // (owner decision D33: its draw is that gas, the solids stay); any other bulk one its donor's end composition and
+            // enthalpy, as always.
             var w=drawn[edge]!=null?drawn[edge]:fractions[donor];var rates=drawn[edge]==null?null:draws[edge];var phases=rates==null?null:drawnPhases(rates);
             var startState=graph.reservoirs().get(donor).state();
             double specificEnthalpy;
             if(rates==null)specificEnthalpy=upstream.enthalpy()/upstream.mass();
             else{specificEnthalpy=0;for(int k:phases)specificEnthalpy+=weight(rates,phases,k)*model.phaseSpecificEnthalpy(at(k,upstream,startState),k%3,null);}
-            double movedEnergy=moved*(specificEnthalpy+PassiveStepSolver.GRAVITY*upstreamZ);
-            energy[donor]-=movedEnergy-moved*PassiveStepSolver.GRAVITY*upstreamZ;
+            double movedEnergy=moved*specificEnthalpy;
+            energy[donor]-=movedEnergy;
             SolidInventory movedSolids;
             if(drawn[edge]==null)movedSolids=upstream.solids().scale(moved/upstream.mass());
             else{var moving=new ArrayList<SolidInventory.Population>();
                 for(int c=0;c<populationKeys.size();c++){var source=populationBasis.get(populationKeys.get(c));moving.add(new SolidInventory.Population(source.material(),source.size(),moved*w[components+c]));}
                 movedSolids=new SolidInventory(moving);}
-            double deliveredEnergy=movedEnergy,deliveredMass=moved;
+            double deliveredEnergy=movedEnergy;
             if(pipe.filter()!=null){
                 double capturedEnergy;
-                if(drawn[edge]==null)capturedEnergy=moved*(upstream.solidMoments().enthalpy(upstream.temperature(),upstream.pressure())/upstream.mass()+upstream.solidMoments().mass()/upstream.mass()*PassiveStepSolver.GRAVITY*upstreamZ);
+                if(drawn[edge]==null)capturedEnergy=moved*(upstream.solidMoments().enthalpy(upstream.temperature(),upstream.pressure())/upstream.mass());
                 else{double perMass=0;
                     // Each liquid phase's share of the solids, over its stream's mass, weighted by its mass flow (none in the gas).
                     for(int k:phases)if(k%3!=FluidThermodynamics.GAS){var state=at(k,upstream,startState);int phase=k%3;double share=FluidThermodynamics.phaseSolidShare(state,phase),streamMass=model.phaseMass(state,phase);
-                        perMass+=weight(rates,phases,k)*(share*state.solidMoments().enthalpy(state.temperature(),state.pressure())/streamMass+share*state.solidMoments().mass()/streamMass*PassiveStepSolver.GRAVITY*upstreamZ);}
+                        perMass+=weight(rates,phases,k)*(share*state.solidMoments().enthalpy(state.temperature(),state.pressure())/streamMass);}
                     capturedEnergy=moved*perMass;}
-                filters.put(pipe.id(),pipe.filter().add(movedSolids,capturedEnergy));deliveredEnergy-=capturedEnergy;deliveredMass-=movedSolids.massKg();}
-            energy[receiver]+=deliveredEnergy-deliveredMass*PassiveStepSolver.GRAVITY*graph.reservoirs().get(receiver).elevation();
+                filters.put(pipe.id(),pipe.filter().add(movedSolids,capturedEnergy));deliveredEnergy-=capturedEnergy;}
+            energy[receiver]+=deliveredEnergy;
             double work=0;
             if(pipe.control() instanceof FlowControl.Mover mover&&flows[edge]>0){var suction=states.get(pipe.first());
                 // Metered on the suction stream's specific volume (the suction's bulk at a BULK end) and, for a compressor,
@@ -474,8 +505,8 @@ public final class ConservativeTransport {
                 if(rates==null)specificVolume=suction.volume()/suction.mass();
                 else{specificVolume=0;for(int k:phases){var state=at(k,suction,graph.reservoirs().get(pipe.first()).state());specificVolume+=weight(rates,phases,k)*(FluidThermodynamics.phaseVolume(state,k%3)/model.phaseMass(state,k%3));}}
                 work=switch(mover) {
-                    case FlowControl.Pump pump->rates==null?dt*flows[edge]*suction.volume()/suction.mass()*Math.max(0,heads[edge])/pump.efficiency()
-                            :dt*flows[edge]*specificVolume*Math.max(0,heads[edge])/pump.efficiency();
+                    case FlowControl.Pump pump->rates==null?dt*flows[edge]*suction.volume()/suction.mass()*Math.max(0,heads[edge])
+                            :dt*flows[edge]*specificVolume*Math.max(0,heads[edge]);
                     case FlowControl.Compressor compressor->dt*compressor.power(flows[edge],heads[edge],1/specificVolume,suction.pressure());
                 };
                 energy[receiver]+=work;pumpWork+=work;}
@@ -500,31 +531,27 @@ public final class ConservativeTransport {
             boundaries.add(new BoundaryTransfer(graph.reservoirs().get(node).id(),new double[components],ambient));
         }
         // Frozen rate: each junction keeps its buffer, and what its rows would have mixed into it over dt, formed from the
-        // amounts the pipe loop actually booked (solids the junction gained and lost, the field change plus the accumulated
-        // mass's g z), is held back: it is the rate evaluation's junction term (owner decision D46), not a boundary.
+        // amounts the pipe loop actually booked (solids the junction gained and lost, and its energy field's change), is held
+        // back: it is the rate evaluation's junction term (owner decision D46), not a boundary.
         var held=HeldJunctions.none(components);
         if(frozen) {
             var heldMoles=new double[components];var grossMoles=new double[components];double heldEnergy=0,grossEnergy=0;var heldSolids=new SignedSolids();
             for(int node=0;node<nodes;node++)if(graph.reservoirs().get(node).junction()) {
-                checkpoint.run();double accumulatedMass=0;
-                for(int c=0;c<components;c++){accumulatedMass+=accMoles[node][c]*molecularWeight[c];heldMoles[c]+=accMoles[node][c];grossMoles[c]+=Math.abs(accMoles[node][c]);}
-                var gained=accSolids[node].part(1);var lost=accSolids[node].part(-1);accumulatedMass+=gained.massKg()-lost.massKg();
+                checkpoint.run();
+                for(int c=0;c<components;c++){heldMoles[c]+=accMoles[node][c];grossMoles[c]+=Math.abs(accMoles[node][c]);}
+                var gained=accSolids[node].part(1);var lost=accSolids[node].part(-1);
                 heldSolids.add(gained,1);heldSolids.add(lost,-1);
-                double energyChange=energy[node]-graph.reservoirs().get(node).inventory().internalEnergy(),z=graph.reservoirs().get(node).elevation();
-                double nodeHeld=energyChange+accumulatedMass*PassiveStepSolver.GRAVITY*z;heldEnergy+=nodeHeld;grossEnergy+=Math.abs(nodeHeld);
+                double nodeHeld=energy[node]-graph.reservoirs().get(node).inventory().internalEnergy();heldEnergy+=nodeHeld;grossEnergy+=Math.abs(nodeHeld);
             }
             held=new HeldJunctions(heldMoles,heldEnergy,heldSolids.part(1),heldSolids.part(-1),grossMoles,grossEnergy);
         }
         // Decision D36, G2: a vessel is stated at what it holds. Its amounts and energy are booked above, exactly; its
         // temperature and pressure follow from them at its volume (InventoryEquilibrium.close), not from the candidate's,
-        // so no booked inflow is ever held in a state that does not show it (review "Hold class E6, grid overshoot (G2)").
-        // The connections' energies above are booked on the repartitioned donor, the Newton's own end state. A junction
-        // keeps its state: it has no volume, and its mass is pinned. The equilibrium a vessel is closed to is the one the
-        // step solved it with (its phase support), which the equation gate then checks it against.
-        // Decision D54: the vessel's wall moves its bag volume at the ambient pressure, so the energy booked above is what
-        // the vessel holds plus the work it did on the ambient, P_ambient (V_bag,end - V_bag,start) (PhaseLayout.bagVolume):
-        // the closure states that balance, the vessel keeps the rest, and the work leaves the island as the ambient
-        // boundary's energy, booked at the vessel. Zero between two taut states, so nothing is booked there.
+        // so no booked inflow is ever held in a state that does not show it. A junction keeps its state: it has no volume,
+        // and its mass is pinned. The equilibrium a vessel is closed to is the one the step solved it with (its phase
+        // support), which the equation gate then checks it against. Decision D54: the wall moves its bag volume at the
+        // ambient pressure, so the energy booked above is what the vessel holds plus the work it did on the ambient,
+        // P_ambient (V_bag,end - V_bag,start), which leaves the island as the ambient boundary's energy, booked at the vessel.
         for(int node=0;node<nodes;node++) {
             var reservoir=graph.reservoirs().get(node);if(index[node]<0||reservoir.junction())continue;
             checkpoint.run();var state=states.get(node);double capacity=reservoir.inventory().volume();
@@ -532,7 +559,10 @@ public final class ConservativeTransport {
             var booked=reservoir.inventory().with(moles[node],energy[node],state.solids());
             try{states.set(node,dryVessel(reservoir,supports,node)?InventoryEquilibrium.solve(model,state,booked,workFrom,checkpoint)
                     :InventoryEquilibrium.close(model,state,booked,supports==null?null:supports[node],workFrom,checkpoint));}
-            catch(com.wormzjl.createcheme.science.fluid.thermo.ThermoDomainViolation violation){throw violation.at(reservoir.id());}
+            // A phase hold the closure meets names the vessel, directly or through the failed solve it stopped (a phase set
+            // the network cannot carry refused the closure's line search).
+            catch(com.wormzjl.createcheme.science.fluid.thermo.ThermoHold hold){throw hold.at(reservoir.id());}
+            catch(SparseNewton.Nonconvergence failure){throw failure.at(reservoir.id());}
             double moved=PhaseLayout.bagVolume(states.get(node),capacity)-workFrom;
             if(moved!=0) {
                 double work=PhaseLayout.AMBIENT_PRESSURE*moved;energy[node]-=work;externalEnergy-=work;
@@ -543,37 +573,99 @@ public final class ConservativeTransport {
         for(int node=0;node<nodes;node++) {
             var oldNode=graph.reservoirs().get(node);var state=states.get(node);
             if(frozen&&oldNode.junction()){inventories.add(oldNode.inventory());continue;}
-            // A junction's buffer record holds endMass*w and its energy field in enthalpy form (m*h, potential energy
-            // excluded, as for a vessel's internal energy).
+            // A junction's buffer record holds endMass*w and its energy field in enthalpy form (m*h).
             if(oldNode.junction()){inventories.add(oldNode.inventory().with(ownedMoles[node],energy[node],ownedSolids[node]));continue;}
             inventories.add(oldNode.fixed()?oldNode.inventory():oldNode.inventory().with(moles[node],energy[node],state.solids()));
         }
-        return new Projection(inventories,states,boundaries,external,externalEnergy,pumpWork,filters,held);
+        return new Projection(inventories,states,boundaries,external,externalEnergy,pumpWork,filters,held,meltedRecord);
+    }
+    /**
+     * The nodes population {@code key} can be booked into over this step: the solved nodes holding it, those an injection or
+     * a fixed or drawn donor delivers it to (entry {@code column} of its fractions), and every node the booked flows carry
+     * on from them, a filter stopping it. A node outside it holds none of the population after the booking.
+     */
+    private static boolean[] reach(PassiveNetwork graph,double[] flows,SolidInventory.Key key,double[][] drawn,double[][] fractions,int[] index,int column) {
+        int nodes=graph.reservoirs().size();boolean[] reach=new boolean[nodes];var queue=new ArrayDeque<Integer>();
+        for(int node=0;node<nodes;node++)if(index[node]>=0&&graph.reservoirs().get(node).inventory().solids().mass(key)>0){reach[node]=true;queue.add(node);}
+        for(var transfer:graph.scheduledTransfers())if(transfer instanceof ScheduledTransfer.Injection in&&in.solidsPerSecond().mass(key)>0&&!reach[in.node()]){reach[in.node()]=true;queue.add(in.node());}
+        for(int edge=0;edge<flows.length;edge++) {
+            var pipe=graph.pipes().get(edge);int donor=flows[edge]>=0?pipe.first():pipe.second(),receiver=flows[edge]>=0?pipe.second():pipe.first();
+            if(flows[edge]==0||pipe.filter()!=null||reach[receiver])continue;
+            double w=drawn[edge]!=null?drawn[edge][column]:index[donor]<0?fractions[donor][column]:0;
+            if(w>0){reach[receiver]=true;queue.add(receiver);}
+        }
+        while(!queue.isEmpty()){int at=queue.poll();
+            for(int edge=0;edge<flows.length;edge++) {
+                var pipe=graph.pipes().get(edge);if(flows[edge]==0||pipe.filter()!=null||(flows[edge]>=0?pipe.first():pipe.second())!=at)continue;
+                int receiver=flows[edge]>=0?pipe.second():pipe.first();if(!reach[receiver]){reach[receiver]=true;queue.add(receiver);}
+            }}
+        return reach;
+    }
+    /**
+     * Books {@code mass} kg of population {@code k}, which melts at the junction of row {@code row} (D61), as its crystal's
+     * component there: into that component's right-hand side, and into the junction's melted tally; {@code held}: the mass
+     * is already on the population's right-hand side (the junction's own stock), which it leaves.
+     */
+    private static void melt(double[][] rhs,int components,int row,int k,NetworkCrystals.Crystal crystal,double mass,double[] melted,boolean held) {
+        if(held)rhs[components+k][row]=0;
+        rhs[crystal.component()][row]+=mass;melted[k]+=mass;
+    }
+    /**
+     * The reconstruction's solve where a junction melts crystals (D61). Each population is solved first, on a matrix in which
+     * the junctions it melts in receive none of it from a solved donor (their rows keep only the diagonal, and their
+     * right-hand side holds nothing of it), grouped by those junctions; populations that melt nowhere take the matrix they
+     * always had ({@code solidColumns}, which is {@code system}'s without a filter). What a solved donor delivers of a melting
+     * population into such a junction is then booked as its component there, and the fluid components are solved last on
+     * {@code system}. Every quantity's solution is linear in its own right-hand side, so the booking stays exact.
+     */
+    private static double[][] meltingSolve(PassiveNetwork graph,double[] flows,double[][] drawn,int[] index,double dt,int components,int populations,
+                                           NetworkCrystals.Crystal[][] meltAt,double[][] melted,double[][] rhs,SparseMatrix system,
+                                           List<TreeMap<Integer,Double>> diagonal,List<TreeMap<Integer,Double>> solidColumns,Workspace workspace) {
+        int nodes=graph.reservoirs().size();var solved=new double[components+populations][];
+        boolean filters=graph.pipes().stream().anyMatch(p->p.filter()!=null);
+        var groups=new LinkedHashMap<BitSet,List<Integer>>();
+        for(int k=0;k<populations;k++){var at=new BitSet(nodes);for(int node=0;node<nodes;node++)if(meltAt[node]!=null&&meltAt[node][k]!=null)at.set(node);groups.computeIfAbsent(at,x->new ArrayList<>()).add(k);}
+        for(var group:groups.entrySet()) {
+            var at=group.getKey();SparseMatrix matrix;
+            if(at.isEmpty())matrix=filters?matrix(solidColumns):system;
+            else {
+                var columns=new ArrayList<TreeMap<Integer,Double>>();for(var column:diagonal)columns.add(new TreeMap<>(column));
+                for(int edge=0;edge<flows.length;edge++) {
+                    var pipe=graph.pipes().get(edge);int donor=flows[edge]>=0?pipe.first():pipe.second(),receiver=flows[edge]>=0?pipe.second():pipe.first();
+                    if(drawn[edge]!=null||flows[edge]==0||index[receiver]<0||index[donor]<0||pipe.filter()!=null||at.get(receiver))continue;
+                    add(columns,index[donor],index[receiver],-dt*Math.abs(flows[edge]));
+                }
+                matrix=matrix(columns);
+            }
+            var b=new double[group.getValue().size()][];for(int i=0;i<b.length;i++)b[i]=rhs[components+group.getValue().get(i)];
+            var x=(workspace==null?SparseLuSolver.factor(matrix):workspace.factor(matrix)).solveMultiple(b,SparseLuSolver.Verification.UNTIL_VERIFIED);
+            for(int i=0;i<b.length;i++)solved[components+group.getValue().get(i)]=x[i];
+        }
+        // What solved donors deliver of a melting population into the junction it melts in.
+        for(int edge=0;edge<flows.length;edge++) {
+            var pipe=graph.pipes().get(edge);int donor=flows[edge]>=0?pipe.first():pipe.second(),receiver=flows[edge]>=0?pipe.second():pipe.first();
+            if(drawn[edge]!=null||flows[edge]==0||index[receiver]<0||index[donor]<0||pipe.filter()!=null||meltAt[receiver]==null)continue;
+            for(int k=0;k<populations;k++)if(meltAt[receiver][k]!=null)
+                melt(rhs,components,index[receiver],k,meltAt[receiver][k],dt*Math.abs(flows[edge])*solved[components+k][index[donor]],melted[receiver],false);
+        }
+        var fluid=(workspace==null?SparseLuSolver.factor(system):workspace.factor(system)).solveMultiple(Arrays.copyOf(rhs,components),SparseLuSolver.Verification.UNTIL_VERIFIED);
+        System.arraycopy(fluid,0,solved,0,components);
+        return solved;
     }
     /**
      * The flows a reconstruction books so that every junction passes exactly what it receives and its buffer keeps the
-     * mass m_J it was sized with ({@link PassiveNetwork#sizeJunctionHoldups}), the m the next step's row reads. A
-     * junction is a fitting full of fluid: its mass does not change (owner decision D46 keeps the row with the same m_J;
-     * this is the fitting's mass continuity, not ownership). The Newton's net-mass row at a junction closes only to its
-     * tolerance, so {@code dt (In - Out) != 0} by that residual, and a buffer with no restoring term would integrate it
-     * into m (review 7.9 (d)). Here the residual is booked onto the junction's own connections, per junction J in flow order:
-     * <ul>
-     * <li>with a positive outflow, its outflows are booked scaled by {@code f_J = In'/Out}, where In' is what its
-     * inflows deliver as booked (an upstream junction's factor applied, filter capture removed): the excess leaves
-     * with the junction's own composition;</li>
-     * <li>with no outflow, its inflows from non-junction donors are booked scaled by
-     * {@code g_J = (Out - In'_junction)/In'_other} when that lies in [0, 1], i.e. to zero (an inflow is only ever
-     * reduced: amplifying one moves the junction's composition off the Newton's, and the equation gate refused exactly
-     * that, review 7.10 run 69b);</li>
-     * <li>otherwise (a junction cycle, or nothing to scale) it stays unpinned.</li>
-     * </ul>
-     * Pinned, {@code dt (In' - Out') = 0}. It applies to every reconstruction: the step solves (the junction's buffer is
-     * then m_J w) and the frozen rate booking (the junction's held accumulation then carries no mass).
-     *
-     * <p>Exact: every edge still books one amount at both ends (a receiver's row, a fixed node's boundary, the pipe loop
-     * and the held tallies all read the same booked rate), so the change of the vessels plus the junction term equals the
-     * boundaries per component, solid population and energy. Only the booking moves: the flows, states and pipe
-     * histories the Newton produced are unchanged. The buffer's total mass (fluid and solids, as minted) is pinned.
+     * mass m_J it was sized with ({@link PassiveNetwork#sizeJunctionHoldups}): a junction is a fitting full of fluid, its
+     * mass does not change (the fitting's mass continuity, owner decision D46). The Newton's net-mass row at a junction
+     * closes only to its tolerance, so {@code dt (In - Out) != 0} by that residual, which a buffer with no restoring term
+     * would integrate into m. The residual is booked onto the junction's own connections, per junction J in flow order:
+     * with a positive outflow its outflows are scaled by {@code f_J = In'/Out}, In' what its inflows deliver as booked (an
+     * upstream junction's factor applied, filter capture removed), so the excess leaves with the junction's own
+     * composition; with no outflow its inflows from non-junction donors are scaled by
+     * {@code g_J = (Out - In'_junction)/In'_other} when that lies in [0, 1] (an inflow is only ever reduced, since
+     * amplifying one moves the junction's composition off the Newton's); otherwise (a junction cycle, or nothing to
+     * scale) it stays unpinned. Applies to every reconstruction. Exact: every edge still books one amount at both ends,
+     * so the change of the vessels plus the junction term equals the boundaries per component, solid population and
+     * energy; only the booking moves, the flows, states and pipe histories are unchanged.
      */
     private static double[] pinnedFlows(PassiveNetwork graph,List<FluidThermodynamics.State> candidate,double[] flows,FluidThermodynamics model,double[][] draws,
                                         Emptying[] emptying) {
@@ -614,15 +706,12 @@ public final class ConservativeTransport {
         }
     }
     /**
-     * The node restated with the booked amounts in the phases it already holds, each component split as it was.
-     *
-     * <p>A hydrocarbon booked into a node that holds no hydrocarbon phase at all (a junction seeded as pure water
-     * that the step's flows deliver nitrogen to: its layout omits the component, hold class E3) has no phase to go
-     * to and no partial pressure to be evaluated at; placing it in a vapour at the state's partial pressure of zero
-     * failed every step at every size. Such a node is flashed at its temperature and pressure instead: the phase set
-     * the booked amounts form. It is never committed as it stands: the pass loop reseeds the node from it
-     * ({@code PassiveStepSolver}, the phase appearance after reconstruction) and solves the pass again. Every other
-     * node is restated exactly as before, with the flash's trace-phase rule applied to the split (decision D34,
+     * The node restated with the booked amounts in the phases it already holds, each component split as it was. A
+     * hydrocarbon booked into a node that holds no hydrocarbon phase at all (a junction seeded as pure water that the
+     * step's flows deliver nitrogen to, hold class E3) has no phase to go to and no partial pressure to be evaluated at,
+     * so such a node is flashed at its temperature and pressure instead, the phase set the booked amounts form; it is
+     * never committed as it stands, the pass loop reseeds the node from it and solves the pass again. Every other node is
+     * restated exactly as before, with the flash's trace-phase rule applied to the split (decision D34,
      * {@link FluidThermodynamics#foldTracePhases}): a node is never committed with a phase its flash would not give it.
      */
     static FluidThermodynamics.State repartition(FluidThermodynamics model,FluidThermodynamics.State state,double[] moles) {
@@ -642,10 +731,10 @@ public final class ConservativeTransport {
         if(model.foldTracePhases(l,v,split)){SolverDiagnostics.count(SolverDiagnostics.traceFolds);pc=FluidThermodynamics.foldedHydrocarbonPressure(state.pressure(),pc,v,split[1]);}
         return model.adoptingState(state.temperature(),state.pressure(),l,v,split[0],split[1],pc,null).withSolidState(state.solids(),state.solidMoments());
     }
-    /** A vessel that held nothing at the step start and that the step solved with no phase support: no unknowns, its state
-     * the ambient (decision D54, {@code PassiveStepSolver.dry}). One the step laid out holds its own phases. */
+    /** A vessel that held no fluid at the step start and that the step solved with no phase support: no unknowns, its state
+     * the ambient or its solids' (decision D54, {@code PassiveStepSolver.dry}). One the step laid out holds its own phases. */
     private static boolean dryVessel(PassiveNetwork.Reservoir reservoir,PhaseSupport[][] supports,int node) {
-        return PassiveStepSolver.holdsNothingVessel(reservoir)&&(supports==null||supports[node]==null);
+        return PassiveStepSolver.holdsNoFluidVessel(reservoir)&&(supports==null||supports[node]==null);
     }
     /** Whether {@code moles} book a hydrocarbon into a state that holds no hydrocarbon phase (see {@link #repartition}). */
     static boolean appearsWithoutPhase(FluidThermodynamics.State state,double[] moles) {

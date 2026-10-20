@@ -1,6 +1,9 @@
 package com.wormzjl.createcheme.science.fluid.state;
 
 import com.wormzjl.createcheme.science.material.SolidMaterialCatalog.SolidMaterial;
+import java.math.BigDecimal;
+import java.math.MathContext;
+import java.math.RoundingMode;
 import java.util.*;
 
 /** Immutable exact conserved populations. Trace masking never deletes an entry or frees a slot. */
@@ -38,7 +41,10 @@ public record SolidInventory(List<Population> populations) {
         var combined = new TreeMap<Key, Population>();
         for (var population : populations) {
             Objects.requireNonNull(population);
-            if (population.massKg() == 0) continue;
+            // A mass below the smallest normal double is roundoff zero: it has no volume or heat capacity a double can state
+            // (t56's trace of cold seed 163: a junction's crystal buffer, decaying behind a carried closure, reached
+            // 1.5e-321 kg, its volume underflowed to 0, and the guard below refused every trial step).
+            if (population.massKg() < Double.MIN_NORMAL) continue;
             combined.merge(population.key(), population, (a, b) -> {
                 if (!a.material().equals(b.material())) throw new IllegalArgumentException("Incompatible solid properties: " + a.material().id());
                 return new Population(a.material(), a.size(), a.massKg() + b.massKg());
@@ -61,6 +67,51 @@ public record SolidInventory(List<Population> populations) {
     public double massKg() { return moments().mass(); }
     public double volume() { return moments().volume(); }
     public double mass(Key key) { for (var p : populations) if (p.key().equals(key)) return p.massKg(); return 0; }
+    /**
+     * The stock's size of one solid (owner decision D23, amended 2026-10-15: one size per solid in each stock): its
+     * population's own size when it holds one, else the mass-weighted mean diameter {@code sum(m d) / sum(m)} of its
+     * populations in key order, rounded to {@link #SIZE_DIGITS} significant digits from the exact double
+     * ({@link BigDecimal}, so every JDK gives the same key); {@code null} when the stock holds none of it. The outlet
+     * check reads this size ({@code SolidMobility.donor}), so a merge ({@link #oneSizePerSolid}) never changes an outlet
+     * decision.
+     */
+    public ParticleSize size(String material) {
+        Population only = null; double mass = 0, moment = 0; int count = 0;
+        for (var p : populations) if (p.material().id().equals(material)) {only = p; count++; mass += p.massKg(); moment += p.massKg() * p.size().diameterMetres();}
+        if (count == 0) return null;
+        if (count == 1) return only.size();
+        return new ParticleSize(new BigDecimal(moment / mass).round(new MathContext(SIZE_DIGITS, RoundingMode.HALF_EVEN)).toString());
+    }
+    /** The significant digits of a merged stock size ({@link #size}). */
+    public static final int SIZE_DIGITS = 9;
+    /**
+     * The stock with one population per solid (owner decision D23, amended): each solid holding several populations is
+     * merged into one of their total mass at the stock's size ({@link #size}); a solid holding one population is left as
+     * it is, so a stock already holding one size per solid is returned itself, bit for bit. Mass is kept exactly per
+     * solid; volume and heat capacity, its mass times the solid's constants, to rounding.
+     */
+    public SolidInventory oneSizePerSolid() {
+        String previous = null; boolean merge = false;
+        for (var p : populations) {if (p.material().id().equals(previous)) {merge = true; break;} previous = p.material().id();}
+        if (!merge) return this;
+        var merged = new ArrayList<Population>(); var masses = new LinkedHashMap<String, Double>(); var materials = new HashMap<String, SolidMaterial>();
+        for (var p : populations) {masses.merge(p.material().id(), p.massKg(), Double::sum); materials.putIfAbsent(p.material().id(), p.material());}
+        for (var entry : masses.entrySet()) merged.add(new Population(materials.get(entry.getKey()), size(entry.getKey()), entry.getValue()));
+        return new SolidInventory(merged);
+    }
+    /** The populations of crystals ({@link SolidMaterial#crystal()} not null), in key order. */
+    public List<Population> crystals() {
+        var crystals = new ArrayList<Population>();
+        for (var p : populations) if (p.material().crystal() != null) crystals.add(p);
+        return crystals;
+    }
+    /** This stock without its crystal populations. */
+    public SolidInventory withoutCrystals() {
+        if (crystals().isEmpty()) return this;
+        var inert = new ArrayList<Population>();
+        for (var p : populations) if (p.material().crystal() == null) inert.add(p);
+        return new SolidInventory(inert);
+    }
     public SolidInventory plus(SolidInventory other) {
         var merged = new ArrayList<>(populations); merged.addAll(other.populations);
         return new SolidInventory(merged);

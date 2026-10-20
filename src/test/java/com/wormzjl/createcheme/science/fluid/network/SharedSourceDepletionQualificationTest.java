@@ -259,7 +259,7 @@ class SharedSourceDepletionQualificationTest {
         return new PassiveNetwork(List.of(source, receiving), List.of(
                 new PassiveNetwork.Pipe(23, 0, 1,
                         new PipeResistance.Geometry(1, .02, .000045, 0),
-                        new FlowControl.Compressor(targetVolumeFlow, 3, .8))));
+                        new FlowControl.Compressor(targetVolumeFlow, 3))));
     }
 
     private FluidThermodynamics.State nitrogen(double volume, double pressure) {

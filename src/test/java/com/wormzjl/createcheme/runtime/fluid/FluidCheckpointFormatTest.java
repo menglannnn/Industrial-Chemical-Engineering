@@ -17,8 +17,9 @@ import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
- * Checkpoint format 8 (format 5, F3's format 4 less its kind column, plus the pipe ports and the compressor control of
- * the phase-ports batch in 6, the end flows in 7, and without the ledger of transfers and modules in 8): a restored
+ * Checkpoint format 11 (format 5, F3's format 4 less its kind column, plus the pipe ports and the compressor control of
+ * the phase-ports batch in 6, the end flows in 7, without the ledger of transfers and modules in 8, and without the
+ * liquid compressibility in 9, the movers' efficiency in 10 and the velocity-limit modes in 11, whose solids name their records, crystals among them): a restored
  * certificate continues exactly (the full round trip is FluidCheckpointStoreTest's, through the files); every index
  * and certificate field is validated; certificates are discarded, keeping inventory, when certificates are off or their signature
  * changed; a certified island's unit is reused in place, never re-encoded, while it stays certified; a thousand
@@ -43,10 +44,10 @@ class FluidCheckpointFormatTest extends CertifyingRig.Islands {
     /** A certified island's snapshot with its certificate base and interval start graphs replaced. */
     private static FluidCheckpointCodec.IslandEntry withCertificateGraphs(FluidCheckpointCodec.IslandEntry entry,java.util.function.UnaryOperator<PassiveNetwork> base,java.util.function.UnaryOperator<PassiveNetwork> before) {
         var s=entry.snapshot();var c=s.certificate().orElseThrow();var saved=c.saved().orElseThrow();var interval=saved.interval();var r=interval.result();
-        var result=new PassiveIntervalSolver.Result(base.apply(r.graph()),r.advancedSeconds(),r.averageMassFlows(),r.acceptedSubsteps(),r.rejectedSubsteps(),r.pumpWorkJoule(),r.boundaries(),r.rejectionReasons(),r.endpointModes(),r.endpointHeads(),r.endpointFlows(),r.acceptance(),r.pipeTransfers());
+        var result=new PassiveIntervalSolver.Result(base.apply(r.graph()),r.advancedSeconds(),r.averageMassFlows(),r.acceptedSubsteps(),r.rejectedSubsteps(),r.pumpWorkJoule(),r.boundaries(),r.rejectionReasons(),r.endpointModes(),r.endpointHeads(),r.endpointFlows(),r.pipeTransfers());
         var edited=new IslandCertificate.Saved(saved.sinceTick(),saved.horizonTick(),new IslandCertificate.Interval(interval.startTick(),interval.endTick(),before.apply(interval.before()),result),saved.signature());
         var certified=new IslandCoordinator.Certified(c.drift(),c.sinceTick(),c.baseTick(),c.horizonTick(),c.largestFlow(),Optional.of(edited));
-        return new FluidCheckpointCodec.IslandEntry(entry.dimension(),entry.packageId(),entry.compressibility(),new IslandCoordinator.Snapshot(s.id(),s.revision(),s.graph(),s.clock(),s.allowance(),s.anchor(),Optional.of(result),s.status(),s.fences(),Optional.of(certified)));
+        return new FluidCheckpointCodec.IslandEntry(entry.dimension(),entry.packageId(),new IslandCoordinator.Snapshot(s.id(),s.revision(),s.graph(),s.clock(),Optional.of(result),s.status(),s.fences(),Optional.of(certified)));
     }
     private static PassiveNetwork withNodeEnergy(PassiveNetwork graph,double energy) {
         var nodes=new ArrayList<>(graph.reservoirs());
@@ -138,8 +139,8 @@ class FluidCheckpointFormatTest extends CertifyingRig.Islands {
         assertTrue(assertThrows(IllegalArgumentException.class,()->FluidCheckpointCodec.decode(overflow,key->model)).getMessage().contains("nonfinite energy delta"));
         // A fence before the committed tick: a fence at the committed tick, then the committed tick moved past it.
         var event=UUID.randomUUID();
-        var fenced=CheckpointImages.withIsland(image,2,key->model,entry->{var s=entry.snapshot();return new FluidCheckpointCodec.IslandEntry(entry.dimension(),entry.packageId(),entry.compressibility(),
-                new IslandCoordinator.Snapshot(s.id(),s.revision(),s.graph(),s.clock(),s.allowance(),s.anchor(),s.lastResult(),s.status(),Map.of(event,committed),s.certificate()));});
+        var fenced=CheckpointImages.withIsland(image,2,key->model,entry->{var s=entry.snapshot();return new FluidCheckpointCodec.IslandEntry(entry.dimension(),entry.packageId(),
+                new IslandCoordinator.Snapshot(s.id(),s.revision(),s.graph(),s.clock(),s.lastResult(),s.status(),Map.of(event,committed),s.certificate()));});
         assertEquals(1,FluidCheckpointCodec.decode(fenced,key->model).islands().getFirst().snapshot().fences().size(),"the fence itself reads back");
         set(fenced.core(),2,"Committed",committed+1);CheckpointImages.reseal(fenced.core());
         assertTrue(assertThrows(IllegalArgumentException.class,()->FluidCheckpointCodec.decode(fenced,key->model)).getMessage().contains("precedes the committed tick"));
@@ -149,9 +150,9 @@ class FluidCheckpointFormatTest extends CertifyingRig.Islands {
         assertTrue(assertThrows(IllegalArgumentException.class,()->FluidCheckpointCodec.decode(truncated,key->model)).getMessage().contains("Invalid saved unit of island 2"));
         var trailing=CheckpointImages.withUnit(image,2,Arrays.copyOf(bytes,bytes.length+3));
         assertTrue(assertThrows(IllegalArgumentException.class,()->FluidCheckpointCodec.decode(trailing,key->model)).getMessage().contains("trailing bytes"));
-        var otherFormat=bytes.clone();otherFormat[4]=2;
+        var otherFormat=bytes.clone();otherFormat[4]=1;
         var refused=assertThrows(IllegalArgumentException.class,()->FluidCheckpointCodec.decode(CheckpointImages.withUnit(image,2,otherFormat),key->model)).getMessage();
-        assertTrue(refused.contains("unit format 2")&&refused.contains("Create a fresh world"),refused);
+        assertTrue(refused.contains("unit format 1")&&refused.contains("Create a fresh world"),refused);
     }
 
     /** restDetection=false discards every saved certificate; the island keeps its materialised inventory and solves again. */
@@ -184,15 +185,15 @@ class FluidCheckpointFormatTest extends CertifyingRig.Islands {
         // A graph-identity change: every run of pipe one metre longer, in the base and in the interval's start alike.
         var longer=CheckpointImages.withIsland(image,2,key->model,entry->withCertificateGraphs(entry,FluidCheckpointFormatTest::withLongerSections,FluidCheckpointFormatTest::withLongerSections));
         var cases=List.of(
-                new Case("property revision",FluidThermodynamics.forNetwork(MaterialCatalog.bundled(),PACKAGE,1e-9,10),defaults,image),
+                new Case("property revision",FluidThermodynamics.forNetwork(MaterialCatalog.bundled(),PACKAGE,10, FluidThermodynamics.DEFAULT_TRACE_CUTOFF_MOLE_FRACTION),defaults,image),
                 new Case("certificate policy",model,new CertificatePolicy(true,1e-8,1e-6,17_280,2,0),image),
                 new Case("certificate policy",model,new CertificatePolicy(true,1e-7,1e-5,17_280,2,0),image),
                 new Case("certificate policy",model,new CertificatePolicy(true,1e-7,1e-6,17_279,2,0),image),
                 new Case("certificate policy",model,new CertificatePolicy(true,1e-7,1e-6,17_280,3,0),image),
                 new Case("certificate policy",model,new CertificatePolicy(true,1e-7,1e-6,17_280,2,60),image),
                 new Case("graph identity",model,defaults,longer));
-        assertNotEquals(ApproximationAnchor.revision(model),ApproximationAnchor.revision(cases.getFirst().model()));
-        assertEquals(ApproximationAnchor.thermodynamicRevision(model),ApproximationAnchor.thermodynamicRevision(cases.getFirst().model()),"a velocity limit leaves the saved inventory readable");
+        assertNotEquals(model.revision(),cases.getFirst().model().revision());
+        assertEquals(model.thermodynamicRevision(),cases.getFirst().model().thermodynamicRevision(),"a velocity limit leaves the saved inventory readable");
         for(var c:cases) {
             var decoded=FluidCheckpointCodec.decode(c.image(),key->c.model());
             countFromHere();
@@ -303,7 +304,7 @@ class FluidCheckpointFormatTest extends CertifyingRig.Islands {
             assertEquals(hold+1_000,decoded.clock().onlineTick(),"the online time accrued during the hold is kept as debt");
             assertEquals(during.status(),decoded.status(),"the hold's status line is kept");
             assertTrue(decoded.certificate().isEmpty());assertInventories(during.graph(),decoded.graph(),"held inventory");
-            var restarted=rig(policy,model,rig.epoch[0]);restarted.load(new FluidCheckpointCodec.Checkpoint(List.of(new FluidCheckpointCodec.IslandEntry("minecraft:overworld",PACKAGE,1e-9,decoded))));
+            var restarted=rig(policy,model,rig.epoch[0]);restarted.load(new FluidCheckpointCodec.Checkpoint(List.of(new FluidCheckpointCodec.IslandEntry("minecraft:overworld",PACKAGE,decoded))));
             assertTrue(restarted.coordinator.retainsSolver(1));assertEquals(1,restarted.coordinator.readyCount(),"awake with debt, ready at once");
             restarted.coordinator.pump();restarted.drain();
             var again=restarted.stored(1).certificate().orElseThrow();
@@ -316,10 +317,11 @@ class FluidCheckpointFormatTest extends CertifyingRig.Islands {
 
     // ---------------- other formats ----------------
 
-    /** Older formats (3 and before, and 7 with its ledger) are refused with the instruction to create a fresh world, and
-     * nothing in the tag is changed. */
+    /** Older formats (3 and before, 7 with its ledger, 8 with the liquid compressibility in its package key, and 9 with the
+     * movers' efficiency in its units, 10 with the velocity-limit modes among its endpoint modes, and 11 without vessel
+     * ports and level heights) are refused with the instruction to create a fresh world, and nothing in the tag is changed. */
     @Test void olderFormatsAreRefusedWithAFreshWorldInstructionAndLeftUntouched() {
-        for(int format:new int[]{1,2,3,7}) {
+        for(int format:new int[]{1,2,3,7,8,9,10,11}) {
             var old=new CompoundTag();old.putInt("FluidFormat",format);old.putLong("Epoch",40);
             byte[] json=("{\"version\":"+format+",\"islands\":[],\"transfers\":{\"revision\":0,\"buffers\":[],\"pending\":[]}}").getBytes(StandardCharsets.UTF_8);
             old.putByteArray(format==3?"Ledger":"Checkpoint",json);old.put("Islands",new ListTag());old.putByteArray("SHA256",new byte[32]);var before=old.copy();

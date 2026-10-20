@@ -21,10 +21,6 @@ public final class PhaseProperties {
         return compressibilityFactor;
     }
 
-    public int componentCount() {
-        return logFugacityCoefficients.length;
-    }
-
     public double logFugacityCoefficient(int component) {
         return logFugacityCoefficients[component];
     }

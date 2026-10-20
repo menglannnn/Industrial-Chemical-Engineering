@@ -34,11 +34,11 @@ abstract class PortFixture {
         for(var node:graph.reservoirs())if(node.kind()==PassiveNetwork.NodeKind.RESERVOIR||node.junction()){var n=node.inventory().moles();for(int c=0;c<n.length;c++)totals[c]+=n[c];}
         return totals;
     }
-    /** Their internal energy plus their potential energy at the node elevations. */
+    /** Their internal energy (no potential energy, owner decision D37 S1). */
     double ownedEnergy(PassiveNetwork graph) {
         double energy=0;
         for(var node:graph.reservoirs())if(node.kind()==PassiveNetwork.NodeKind.RESERVOIR||node.junction())
-            energy+=node.inventory().internalEnergy()+mass(node.inventory().moles())*PassiveStepSolver.GRAVITY*node.elevation();
+            energy+=node.inventory().internalEnergy();
         return energy;
     }
     /** Every double of {@code count} chained backward-Euler steps, each graph carrying the previous step's states and

@@ -33,12 +33,26 @@ class SolidTransportAcceptanceTest {
         assertTrue(check(state,pipe,-q*(1+1e-10),SolidMobility.Outlet.MIXED).allowed());
         assertEquals(SolidMobility.Reason.DEPOSITION,check(state,pipe,0,SolidMobility.Outlet.MIXED).reason());
     }
-    @Test void dryParticlesBlockGasButTracesStillTravelAndRetainTheirSlots() {
-        var gas=model.initialNitrogenCharge(1,298.15,101325,()->{});
-        assertEquals(SolidMobility.Reason.NO_LIQUID_CARRIER,check(gas.withSolids(stock(1,1)),pipe(),1,SolidMobility.Outlet.MIXED).reason());
+    /**
+     * Owner decision D33: solids ride the liquid. A gas holding dry particles has nothing to carry them: its bulk end is the
+     * GAS outlet, always mobile (it used to close both ways, NO_LIQUID_CARRIER), the gas leaves and every particle stays,
+     * trace populations keeping their slots; a dry gas without solids draws its bulk, the stream it always was.
+     */
+    @Test void aBulkEndOnDryParticlesPassesTheGasAndKeepsTheParticles() {
+        var gas=model.initialNitrogenCharge(1,298.15,101325,()->{});var dusty=gas.withSolids(stock(1,1));
+        assertTrue(FluidThermodynamics.bulkDrawsGas(dusty));assertFalse(FluidThermodynamics.bulkDrawsGas(gas));
+        assertEquals(FluidThermodynamics.GAS,PhaseDraw.leading(model,dusty,PassiveNetwork.PhasePort.BULK),"the bulk end is the GAS outlet");
+        assertTrue(check(dusty,pipe(),1,SolidMobility.Outlet.GAS).allowed());
         var traces=gas.withSolids(stock(64,1e-12));
-        assertTrue(check(traces,pipe(),1,SolidMobility.Outlet.MIXED).allowed());
+        assertEquals(FluidThermodynamics.GAS,PhaseDraw.leading(model,traces,PassiveNetwork.PhasePort.BULK));
         assertEquals(64,traces.solids().populations().size());assertTrue(traces.mass()>gas.mass());
+        // One step into a void at half the pressure: the gas leaves through the bulk end, the particles stay in the tank.
+        var graph=new PassiveNetwork(List.of(new PassiveNetwork.Reservoir(1,0,dusty),
+                new PassiveNetwork.Reservoir(2,0,model.initialNitrogenCharge(1,298.15,50000,()->{}),PassiveNetwork.NodeKind.VOID)),List.of(pipe()));
+        var result=new PassiveStepSolver(model).solve(graph,.001,()->{});
+        assertTrue(result.massFlows()[0]>0,"the gas leaves");
+        assertEquals(1,result.inventories().getFirst().solids().massKg(),1e-12,"every particle stays");
+        assertTrue(result.boundaries().stream().allMatch(b->b.solids().massKg()==0),"none reaches the void");
     }
     @Test void reverseFiltrationCapturesTheOtherDonorAndConservesEnergy() {
         var source=water(160000).withSolids(stock(8,100));var sink=water(150000);
@@ -80,7 +94,7 @@ class SolidTransportAcceptanceTest {
         assertEquals(SolidMobility.Reason.IMMOBILE_LIQUID,check(cold,pipe(),1,SolidMobility.Outlet.MIXED).reason());
         assertTrue(check(hot,pipe(),1,SolidMobility.Outlet.MIXED).allowed());
         assertTrue(check(cold,pipe(),1,SolidMobility.Outlet.GAS).allowed());
-        assertTrue(SolidMobility.requiresFull(model,new PassiveNetwork(List.of(new PassiveNetwork.Reservoir(1,0,cold)),List.of())));
+        assertTrue(SolidMobility.closable(model,new PassiveNetwork(List.of(new PassiveNetwork.Reservoir(1,0,cold)),List.of())));
     }
     @Test void populationCountDoesNotIncreaseTheNonlinearDimension() throws Exception {
         int dimension=-1,unknowns=-1,colors=-1;
@@ -134,30 +148,33 @@ class SolidTransportAcceptanceTest {
         System.out.println("solid populations: "+receiver.populations().size()+" held, reasons="+result.rejectionReasons());
     }
     @Test void theFlaggedFeedThatCarriesTheKeysNobodyElseSuppliesIsTheOneThatCloses() {
-        // A receiver already holding sixty grades, fed four new ones by one connection and ten by
-        // another. The union is 74 and a conserved stock holds 64, so both feeds are flagged; but
-        // closing the four-grade feed leaves 70, still over the limit, and the ten-grade feed then
-        // closes on the next pass - two closures, one of them for a delivery that always fit.
-        // Only the feed whose keys nobody else supplies has to stop.
+        // Three feeds into one receiver: four grades by one connection, ten by another and sixty by a third. The union
+        // is 74 and a conserved stock holds 64, so every feed is flagged; but closing the four-grade feed leaves 70,
+        // still over the limit, and the ten-grade feed then closes on the next pass - two closures, both for deliveries
+        // that always fit. Only the feed whose keys nobody else supplies has to stop.
+        // Owner decision D23 (amended 2026-10-15): a stock holds one size per solid after its refresh, so a receiver
+        // can no longer start an interval holding sixty grades of one solid (it held them here before); the limit is met
+        // by what arrives within one interval, and the sixty grades now arrive from their own source.
         var run=new PipeResistance.Geometry(100,.05,.000045,0);
         var graph=new PassiveNetwork(List.of(
                 new PassiveNetwork.Reservoir(1,0,water(200000).withSolids(traceGrades(1,4)),PassiveNetwork.NodeKind.GENERATOR),
                 new PassiveNetwork.Reservoir(2,0,water(200000).withSolids(traceGrades(5,10)),PassiveNetwork.NodeKind.GENERATOR),
-                new PassiveNetwork.Reservoir(3,0,water(150000).withSolids(traceGrades(101,60))),
-                new PassiveNetwork.Reservoir(4,0,water(100000),PassiveNetwork.NodeKind.VOID)),List.of(
-                new PassiveNetwork.Pipe(10,0,2,run),new PassiveNetwork.Pipe(11,1,2,run),new PassiveNetwork.Pipe(12,2,3,run)));
+                new PassiveNetwork.Reservoir(3,0,water(150000)),
+                new PassiveNetwork.Reservoir(4,0,water(100000),PassiveNetwork.NodeKind.VOID),
+                new PassiveNetwork.Reservoir(5,0,water(200000).withSolids(traceGrades(101,60)),PassiveNetwork.NodeKind.GENERATOR)),List.of(
+                new PassiveNetwork.Pipe(10,0,2,run),new PassiveNetwork.Pipe(11,1,2,run),new PassiveNetwork.Pipe(12,2,3,run),new PassiveNetwork.Pipe(13,4,2,run)));
         var result=new PassiveIntervalSolver(model).solve(graph,5,PassiveIntervalSolver.Settings.defaults(),()->{});
 
         assertEquals(5,result.advancedSeconds());
         var closed=result.graph().pipes().stream().filter(p->p.blockedDirections()!=0).toList();
         assertEquals(1,closed.size(),"Only one feed may close: "+result.graph().pipes());
-        assertEquals(11,closed.getFirst().id(),"The ten-grade feed is the one whose keys nobody else supplies");
+        assertEquals(13,closed.getFirst().id(),"The sixty-grade feed is the one whose keys nobody else supplies");
         assertTrue(result.averageMassFlows()[0]>0,"The four-grade feed still delivers");
-        assertTrue(result.rejectionReasons().keySet().stream().anyMatch(k->k.contains("POPULATION_LIMIT")&&k.contains("pipe=11")),
+        assertTrue(result.averageMassFlows()[1]>0,"The ten-grade feed still delivers");
+        assertTrue(result.rejectionReasons().keySet().stream().anyMatch(k->k.contains("POPULATION_LIMIT")&&k.contains("pipe=13")),
                 "The closure names the connection it closed: "+result.rejectionReasons());
         var receiver=result.graph().reservoirs().get(2).inventory().solids();
-        assertEquals(SolidInventory.MAXIMUM_POPULATIONS,receiver.populations().size(),
-                "Sixty held plus four delivered is exactly what a conserved stock holds");
+        assertEquals(14,receiver.populations().size(),"Four and ten grades delivered, each its own population until the receiver's next refresh");
     }
     @Test void closedParticlesRestartWhenDrivingPressureIncreases() {
         var source=water(150001).withSolids(stock(64,100));var sink=water(150000);

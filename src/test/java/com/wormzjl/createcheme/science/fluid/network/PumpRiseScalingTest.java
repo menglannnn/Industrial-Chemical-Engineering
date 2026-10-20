@@ -1,9 +1,8 @@
 package com.wormzjl.createcheme.science.fluid.network;
 
 import com.google.gson.JsonParser;
-import com.wormzjl.createcheme.science.fluid.solver.SparseNewton;
 import com.wormzjl.createcheme.science.fluid.thermo.FluidThermodynamics;
-import com.wormzjl.createcheme.science.fluid.thermo.ThermoDomainViolation;
+import com.wormzjl.createcheme.science.fluid.thermo.ThermoHold;
 import com.wormzjl.createcheme.science.material.MaterialCatalog;
 import java.util.*;
 import org.junit.jupiter.api.Test;
@@ -12,7 +11,8 @@ import static org.junit.jupiter.api.Assertions.*;
 /**
  * F4, T3 (option P1 of the F1 review): a pump's "maximum pressure rise" is the rise for water at 298.15 K and 1 atm, and
  * on what it actually withdraws its limit is that setting times the suction's bulk density over water's - a head. And
- * T2: a trial the property domain refuses is its own rejection key and the reason a failed interval gives.
+ * T2, since the range-extrapolation batch for a phase hold only: a hold is its own rejection key and the reason a failed
+ * interval gives; leaving a record's data range is no refusal at all (owner rule of 2026-10-16).
  *
  * <p>Since the phase-ports batch (decisions D1, D2, D7) a pump refuses gas, so the nitrogen transfer between closed tanks is
  * a compressor's, closing at its pressure-ratio limit; the pump's density scaling is kept in the water test.
@@ -20,7 +20,7 @@ import static org.junit.jupiter.api.Assertions.*;
 class PumpRiseScalingTest {
     private static final String NETWORK="createcheme:tjl20_methane_nitrogen";
     private static final PipeResistance.Geometry LINE=new PipeResistance.Geometry(1,.05,.000045,0);
-    private final FluidThermodynamics model=FluidThermodynamics.forNetwork(MaterialCatalog.bundled(),NETWORK,1e-9);
+    private final FluidThermodynamics model=FluidThermodynamics.forNetwork(MaterialCatalog.bundled(),NETWORK);
 
     /** The compressor of the transfer: 0.1 m3/s of suction volume, ratio 1.05. */
     private static final double TARGET=.1,RATIO=1.05;
@@ -29,14 +29,15 @@ class PumpRiseScalingTest {
     private static PassiveNetwork transfer(FluidThermodynamics model,double pressure) {
         var a=model.initialNitrogenCharge(1,298.15,pressure,()->{});var b=model.initialNitrogenCharge(1,298.15,pressure,()->{});
         return new PassiveNetwork(List.of(new PassiveNetwork.Reservoir(1,0,a),new PassiveNetwork.Reservoir(2,0,b)),
-                List.of(new PassiveNetwork.Pipe(10,0,1,LINE,new FlowControl.Compressor(TARGET,RATIO,1))));
+                List.of(new PassiveNetwork.Pipe(10,0,1,LINE,new FlowControl.Compressor(TARGET,RATIO))));
     }
 
     @Test void theReferenceIsThisModelsOwnWaterAtRoomConditions() {
         double rho=model.waterMolecularWeight/model.waterLiquid(298.15,101325).molarVolume();
         assertEquals(rho,model.pumpReferenceDensity(),1e-12*rho);
-        // IF97 Region 1 at the 2 MPa reference carried to 1 atm by the global 1e-9 1/Pa compressibility: 996.0 kg/m3.
-        assertEquals(996.0,model.pumpReferenceDensity(),.1);
+        // IF97 Region 1 at 298.15 K and 1 atm itself: 997.048 kg/m3 (NIST 997.05; the retired 2 MPa reference carried to
+        // 1 atm by the global 1e-9 1/Pa compressibility gave 996.0).
+        assertEquals(997.048,model.pumpReferenceDensity(),.001);
     }
 
     /**
@@ -69,7 +70,7 @@ class PumpRiseScalingTest {
         assertEquals(298.15,suction.temperature(),1e-6,"the suction bag gives its gas at its own temperature (D54): "+suction.temperature());
         assertEquals(101325,suction.pressure(),1e-3,"the suction bag stays at the ambient (D54): "+suction.pressure());
         assertTrue(discharge.temperature()>298.15,"the discharge is warmer: "+discharge.temperature());assertTrue(work>0);
-        assertTrue(result.rejectionReasons().keySet().stream().noneMatch(k->k.startsWith(ThermoDomainViolation.REASON_PREFIX)),"never near the domain: "+result.rejectionReasons());
+        assertTrue(result.rejectionReasons().keySet().stream().noneMatch(k->k.startsWith(ThermoHold.REASON_PREFIX)),"no thermo hold: "+result.rejectionReasons());
     }
 
     /** On water the limit is the setting within water's compressibility: the same shutoff as before P1. */
@@ -82,33 +83,34 @@ class PumpRiseScalingTest {
     }
 
     /**
-     * A trial the property domain refuses is counted under its own key, and an interval it stops fails with the
-     * violation itself. Forced by narrowing the nitrogen record's fluid_domain to 298.05 K: the compressor's transfer
-     * cools the suction past it (the pump's did by 0.24 K; the ratio limit lets the suction expand further).
+     * Leaving a record's data range is no refusal (owner rule of 2026-10-16; this test forced the thermo-domain hold
+     * before): with the nitrogen record's fluid_domain narrowed to 298.05 K, the compressor's transfer cools the suction
+     * past it (the ratio limit lets the suction expand) and runs on, nitrogen's ideal-gas cp held below the record, no
+     * trial rejected under a thermo key. Physics: cp of nitrogen changes by 0.0001 J/mol K per kelvin there, so the
+     * held value is the record's to rounding.
      */
-    @Test void aDomainRefusalIsItsOwnRejectionKeyAndTheReasonTheIntervalFails() {
+    @Test void aSuctionCooledPastItsRecordRunsOnWithoutARefusal() {
         var resources=new HashMap<>(MaterialCatalog.bundled().resources());String key="data/createcheme/materials/properties/nitrogen.json";
         var o=JsonParser.parseString(resources.get(key)).getAsJsonObject();o.getAsJsonObject("fluid_domain").addProperty("temperature_min_kelvin",298.05);resources.put(key,o.toString());
-        var narrowed=FluidThermodynamics.forNetwork(MaterialCatalog.parse(resources),NETWORK,1e-9);
-        var failure=assertThrows(SparseNewton.Nonconvergence.class,()->{
-            // Above the ambient, so the drawn suction tank expands and cools: a slack bag at 1 atm (decision D54) shrinks at
-            // the ambient pressure instead and never reaches the narrowed floor.
-            var graph=transfer(narrowed,150000);var solver=new PassiveIntervalSolver(narrowed);
-            for(int k=0;k<40;k++)graph=solver.solve(graph,.05,PassiveIntervalSolver.Settings.defaults(),()->{},solver.nextStepEstimate()>0?solver.nextStepEstimate():.05).graph();
-        });
-        var violation=failure.domainViolation();
-        assertNotNull(violation,"the failed interval names the domain, not the Newton symptom: "+failure.getMessage());
-        assertEquals("Nitrogen",violation.component());assertEquals(ThermoDomainViolation.Code.THERMO_DOMAIN_TEMPERATURE_BELOW,violation.code());
-        assertEquals(298.05,violation.minimum());assertEquals(1,violation.node(),"the suction tank");
-        assertTrue(failure.getMessage().contains("thermo-domain: Nitrogen temperature < 298.05 K="),"the rejection map counts it under its key: "+failure.getMessage());
-        assertEquals(violation,SparseNewton.domainViolation(failure));
+        var narrowed=FluidThermodynamics.forNetwork(MaterialCatalog.parse(resources),NETWORK);
+        // Above the ambient, so the drawn suction tank expands and cools: a slack bag at 1 atm (decision D54) shrinks at
+        // the ambient pressure instead and never reaches the narrowed floor.
+        var graph=transfer(narrowed,150000);var solver=new PassiveIntervalSolver(narrowed);double coldest=Double.POSITIVE_INFINITY;
+        for(int k=0;k<40;k++) {
+            var result=solver.solve(graph,.05,PassiveIntervalSolver.Settings.defaults(),()->{},solver.nextStepEstimate()>0?solver.nextStepEstimate():.05);graph=result.graph();
+            assertTrue(result.rejectionReasons().keySet().stream().noneMatch(r->r.startsWith(ThermoHold.REASON_PREFIX)),"no thermo hold: "+result.rejectionReasons());
+            coldest=Math.min(coldest,graph.reservoirs().get(0).state().temperature());
+        }
+        System.out.println("suction past its narrowed record: coldest "+coldest+" K");
+        assertTrue(coldest<298.05,"the suction left the narrowed record: "+coldest);
     }
 
-    @Test void anIntervalFailsOnTheDomainWhenItsLastOrMostRejectionsWereDomainOnes() {
-        var v=new ThermoDomainViolation(NETWORK,"Nitrogen",ThermoDomainViolation.Property.TEMPERATURE,60,63.151,900);
-        assertSame(v,PassiveIntervalSolver.domainCause(true,v,1,20),"the last rejection");
-        assertSame(v,PassiveIntervalSolver.domainCause(false,v,11,20),"most rejections");
-        assertNull(PassiveIntervalSolver.domainCause(false,v,10,20),"met on the way, failed for another reason");
-        assertNull(PassiveIntervalSolver.domainCause(false,null,0,20));
+    /** The cause of a failed interval is a phase hold met at its last trial or at most of its rejections (D21 option C). */
+    @Test void anIntervalFailsOnAPhaseHoldWhenItsLastOrMostRejectionsWerePhaseHolds() {
+        var v=new FluidThermodynamics.UnsupportedPhases(NETWORK,260,101325,FluidThermodynamics.UnsupportedPhases.Kind.THREE_PHASES,"a third fluid phase at 260 K");
+        assertSame(v,PassiveIntervalSolver.phaseHoldCause(true,v,1,20),"the last rejection");
+        assertSame(v,PassiveIntervalSolver.phaseHoldCause(false,v,11,20),"most rejections");
+        assertNull(PassiveIntervalSolver.phaseHoldCause(false,v,10,20),"met on the way, failed for another reason");
+        assertNull(PassiveIntervalSolver.phaseHoldCause(false,null,0,20));
     }
 }

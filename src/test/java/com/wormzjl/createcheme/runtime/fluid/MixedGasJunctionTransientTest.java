@@ -75,10 +75,10 @@ class MixedGasJunctionTransientTest {
         var graph=island(model,bore,ports,unequal);
         var ledger=new JunctionLedger(graph,mw);
         int tank=-1;for(int i=0;i<graph.reservoirs().size();i++)if(graph.reservoirs().get(i).id()==1)tank=i;
-        // 0.5 mol/s methane at 350 K and 150 kPa, enthalpy plus the tank's gravitational term.
+        // 0.5 mol/s methane at 350 K and 150 kPa, carrying its enthalpy.
         double[] feed=new double[mw.length];feed[0]=.5;
         var feedState=model.flashTP(350,150000,feed,()->{});
-        double feedEnergy=feedState.enthalpy()+.5*mw[0]*PassiveStepSolver.GRAVITY*graph.reservoirs().get(tank).elevation();
+        double feedEnergy=feedState.enthalpy();
         var solver=new PassiveIntervalSolver(model);
         PassiveIntervalSolver.Result committed=null;
         var schedule=schedule(interval);

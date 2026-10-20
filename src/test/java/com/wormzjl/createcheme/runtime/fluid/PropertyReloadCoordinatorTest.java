@@ -25,38 +25,35 @@ class PropertyReloadCoordinatorTest {
         for(long id=1;id<=2;id++) {
             var graph=new PassiveNetwork(List.of(new PassiveNetwork.Reservoir(id,0,model.initialNitrogenCharge(1,350,150000,()->{}))),List.of());
             var full=new PassiveIntervalSolver(model).solve(graph,5,PassiveIntervalSolver.Settings.defaults(),()->{});
-            var snapshot=new IslandCoordinator.Snapshot(id,7,graph,new IslandClock.Snapshot(300,100,0,100),new FallbackAllowance(2,100,100),Optional.of(ApproximationAnchor.fromFull(model,full)),Optional.of(full),"READY",Map.of(fence,300L));
+            var snapshot=new IslandCoordinator.Snapshot(id,7,graph,new IslandClock.Snapshot(300,100,0,100),Optional.of(full),"READY",Map.of(fence,300L));
             originals.put(id,snapshot);coordinator.register(snapshot,model);
         }
         coordinator.pump();var first=attempts.remove(1L);var second=attempts.get(2L);
         var oldResult=originals.get(1L).lastResult().orElseThrow();
-        coordinator.completed(first,Optional.of(new ProcessSolveServices.FluidIslandSolveResult(Optional.of(oldResult),"FULL",10,FallbackAllowance.NONE,Optional.of(ApproximationAnchor.fromFull(model,oldResult)))));
+        coordinator.completed(first,Optional.of(new ProcessSolveServices.FluidIslandSolveResult(Optional.of(oldResult),"FULL",10)));
         coordinator.suspendForPropertyChange(FluidPropertyReloadGuard.HOLD);
         assertTrue(cancelled.contains(2L));assertEquals(1,coordinator.pendingCount());
         for(int i=0;i<10;i++)coordinator.tick();
         for(long id=1;id<=2;id++) {
             var saved=coordinator.snapshot(id);var original=originals.get(id);
             assertEquals(original.graph(),saved.graph());assertEquals(100,saved.clock().committedTick());assertEquals(310,saved.clock().onlineTick());
-            assertEquals(original.allowance(),saved.allowance());assertEquals(original.fences(),saved.fences());assertEquals(8,saved.revision());
-            assertNotEquals(ApproximationAnchor.revision(model),saved.anchor().orElseThrow().propertyRevision());
+            assertEquals(original.fences(),saved.fences());assertEquals(8,saved.revision());
             assertTrue(saved.status().startsWith("HELD: property data"));
         }
         coordinator.suspendForPropertyChange(FluidPropertyReloadGuard.HOLD);assertEquals(8,coordinator.snapshot(1).revision());
-        attempts.remove(2L);coordinator.completed(second,Optional.of(new ProcessSolveServices.FluidIslandSolveResult(Optional.of(oldResult),"FULL",10,FallbackAllowance.NONE,Optional.of(ApproximationAnchor.fromFull(model,oldResult)))));
+        attempts.remove(2L);coordinator.completed(second,Optional.of(new ProcessSolveServices.FluidIslandSolveResult(Optional.of(oldResult),"FULL",10)));
         assertEquals(0,coordinator.pendingCount());coordinator.pump();assertTrue(attempts.isEmpty());
-        var saved=coordinator.snapshot(1);var checkpoint=new FluidCheckpointCodec.Checkpoint(List.of(new FluidCheckpointCodec.IslandEntry("minecraft:overworld",FluidPresetCatalog.NETWORK_PACKAGE,1e-9,saved)));
+        var saved=coordinator.snapshot(1);var checkpoint=new FluidCheckpointCodec.Checkpoint(List.of(new FluidCheckpointCodec.IslandEntry("minecraft:overworld",FluidPresetCatalog.NETWORK_PACKAGE,saved)));
         var restored=FluidCheckpointCodec.decode(FluidCheckpointCodec.encode(checkpoint,key->model),key->model).islands().getFirst().snapshot();
-        assertEquals(saved.allowance(),restored.allowance());assertEquals(saved.clock(),restored.clock());assertEquals(saved.anchor().orElseThrow().propertyRevision(),restored.anchor().orElseThrow().propertyRevision());
+        assertEquals(saved.clock(),restored.clock());assertEquals(saved.status(),restored.status());
         coordinator.resumeQualifiedProperties();coordinator.pump();assertEquals(2,attempts.size());
-        for(var command:commands.values())if(command.fallback().enabled())assertEquals(originals.get(1L).allowance(),command.fallback().allowance());
         for(var attempt:List.copyOf(attempts.values())) {
             var command=commands.get(attempt.slice().requestId());
             assertEquals(5.0,command.durationSeconds(),"Administrative suspension must not shorten the retry span");
-            assertNotEquals(ApproximationAnchor.revision(model),command.fallback().anchor().orElseThrow().propertyRevision());
             var full=new PassiveIntervalSolver(model).solve(command.snapshot(),command.durationSeconds(),command.settings(),()->{});
-            attempts.remove(attempt.slice().requestId());coordinator.completed(attempt,Optional.of(new ProcessSolveServices.FluidIslandSolveResult(Optional.of(full),"FULL",10,FallbackAllowance.NONE,Optional.of(ApproximationAnchor.fromFull(model,full)))));
+            attempts.remove(attempt.slice().requestId());coordinator.completed(attempt,Optional.of(new ProcessSolveServices.FluidIslandSolveResult(Optional.of(full),"FULL",10)));
         }
-        coordinator.pump();assertEquals(200,coordinator.snapshot(1).clock().committedTick());assertEquals(FallbackAllowance.NONE,coordinator.snapshot(1).allowance());
+        coordinator.pump();assertEquals(200,coordinator.snapshot(1).clock().committedTick());
         coordinator.stop();
     }
 }

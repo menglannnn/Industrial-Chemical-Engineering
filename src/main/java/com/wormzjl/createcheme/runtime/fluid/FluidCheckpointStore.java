@@ -1,7 +1,6 @@
 package com.wormzjl.createcheme.runtime.fluid;
 
 import com.wormzjl.createcheme.CreateChemE;
-import com.wormzjl.createcheme.science.fluid.network.ApproximationAnchor;
 import com.wormzjl.createcheme.science.fluid.state.EnergyReference;
 import com.wormzjl.createcheme.science.fluid.thermo.FluidThermodynamics;
 import net.minecraft.nbt.*;
@@ -18,38 +17,28 @@ import java.util.function.Function;
 import java.util.regex.Pattern;
 
 /**
- * Where checkpoint format 8 lives, and what a save writes. The owner's decision (F3): per-island storage with the
- * mod's own dirty tracking, no world-wide size bound, a small core record in the world's saved data.
+ * Where checkpoint format 11 lives, and what a save writes (the owner's decision F3): per-island storage with the mod's
+ * own dirty tracking, no world-wide size bound, a small core record in the world's saved data.
  *
- * <p><b>Layout.</b> The core record ({@link FluidCheckpointCodec#coreTag}) is the world's saved data file
+ * <p>Layout: the core record ({@link FluidCheckpointCodec#coreTag}) is the world's saved data file
  * {@code data/createcheme_fluid_core.dat}. Every island (and the world topology) is one storage unit; units live in
  * pack files {@code data/createcheme_fluid/fluid-<n>.pack}, and the core record's index says, per island, which pack,
- * offset, length and SHA-256 hold its unit. A save writes one new pack (more only past 256 MiB): the units whose
- * island changed since they were written (revision and payload generation), plus any live units it moves out of a
- * pack that has become mostly dead (compaction). Unchanged units are neither encoded nor written: they keep their place in their pack. A
- * pack is a sequence of units whose own headers repeat their island, revision and generation.
+ * offset, length and SHA-256 hold its unit. A save writes one new pack (more only past 256 MiB): the units whose island
+ * changed since they were written (revision and payload generation), plus any live units it moves out of a pack that
+ * has become mostly dead; unchanged units keep their place in their pack. Packs rather than one file per island
+ * because a durable atomic file write costs about 2.5 ms whatever its size (2.4 s of the IO thread for 1,000 changed
+ * islands at every autosave, 10,000 file opens at every load), while a pack costs one flushed write per save (6 ms for
+ * 5 MB) and a bounded number of files.</p>
  *
- * <p><b>Why packs rather than one file per island.</b> A durable atomic file write (write a temporary file, flush it
- * to disk, rename it over the target) costs about 2.3 to 2.7 ms on this machine whatever its size between 5 and 50
- * KB (measured, F3 review): one file per island would cost 2.4 s of the IO thread for 1,000 changed islands and 24 s
- * for 10,000 at every autosave, 10,000 file opens at every load, and 10,000 files for every world backup to copy.
- * Packs cost one flushed write per save (6 ms for 5 MB, 37 ms for 50 MB) and a bounded number of files, and still
- * rewrite only what changed. Fixed shards by island identity would rewrite a whole shard for one changed island;
- * per-island {@code SavedData} instances would be one file each, with no removal (the storage keeps every instance it
- * ever loaded), no ordering between the core and its units, and a failed read logged and treated as absent.
- *
- * <p><b>Commit protocol.</b> The new pack is written first (temporary file, flushed, atomically renamed), then the core
- * record the same way; a crash before the core's rename leaves the previous core and every pack it references
- * intact, and the new pack an orphan. Packs are never modified after they are written; a pack is deleted only when
- * neither the new core record nor the one before it references it (so a copy of the world taken during a save still
- * finds the packs of the core it copied), and a load deletes every pack its core does not reference and any leftover
- * temporary file. Commits run on the IO thread in submission order; a commit whose predecessor failed is not written
- * either, and the next save writes every unit afresh.
- *
- * <p><b>Load.</b> Every pack the core lists must be present with exactly the listed size and header; every unit's
- * SHA-256 must match the index and its header the island, revision and generation the index gives. Anything else
- * refuses the world with the fresh-world instruction, and a refused world's files are left exactly as they are. The
- * loaded index seeds the dirty tracking: the first save after a load writes nothing for an island that did not change.
+ * <p>Commit protocol: the new pack is written first (temporary file, flushed, atomically renamed), then the core record
+ * the same way; a crash before the core's rename leaves the previous core and every pack it references intact. Packs
+ * are never modified after they are written; a pack is deleted only when neither the new core record nor the one
+ * before it references it, and a load deletes every pack its core does not reference. Commits run on the IO thread in
+ * submission order; a commit whose predecessor failed is not written either, and the next save writes every unit
+ * afresh. Load: every pack the core lists must be present with exactly the listed size and header, every unit's
+ * SHA-256 must match the index and its header the island, revision and generation the index gives; anything else
+ * refuses the world with the fresh-world instruction, its files left as they are. The loaded index seeds the dirty
+ * tracking.</p>
  */
 public final class FluidCheckpointStore {
     static final int PACK_MAGIC=0x43434650,PACK_FORMAT=1;
@@ -177,7 +166,7 @@ public final class FluidCheckpointStore {
         for(var entry:checkpoint.islands()) {
             var s=entry.snapshot();
             if(s.clock().onlineTick()>epoch)throw new IllegalStateException("Island "+s.id()+" at online tick "+s.clock().onlineTick()+" is ahead of the world epoch "+epoch);
-            var key=new FluidCheckpointCodec.PackageKey(entry.packageId(),entry.compressibility());
+            var key=entry.key();
             if(!packages.containsKey(key))packages.put(key,FluidCheckpointCodec.PackageRecord.of(key,Objects.requireNonNull(models.apply(key))));
             var old=islands.get(s.id());Ref ref;
             if(old!=null&&s.payloadGeneration()!=0&&old.revision==s.revision()&&old.payloadGeneration==s.payloadGeneration()) {
@@ -318,7 +307,7 @@ public final class FluidCheckpointStore {
         var byKey=new HashMap<FluidCheckpointCodec.PackageKey,FluidThermodynamics>();
         for(var p:core.packages()) {
             var model=Objects.requireNonNull(models.apply(p.key()));
-            if(!p.propertyRevision().equals(ApproximationAnchor.thermodynamicRevision(model)))throw new IllegalArgumentException("Incompatible fluid property basis; use a fresh development world: "+p.packageId());
+            if(!p.propertyRevision().equals(model.thermodynamicRevision()))throw new IllegalArgumentException("Incompatible fluid property basis; use a fresh development world: "+p.packageId());
             var reference=EnergyReference.sensible(model.components());
             if(!p.energyRevision().equals(reference.revision())||!p.energyComponents().equals(reference.components())||reference.formationDataQualified())
                 throw new IllegalArgumentException("Saved energy reference is not this build's; use a fresh development world");
@@ -347,7 +336,10 @@ public final class FluidCheckpointStore {
             var unit=core.topology();
             if(unit!=null&&unit.pack()==p) {
                 if(!MessageDigest.isEqual(FluidCheckpointCodec.sha256(bytes,(int)unit.offset(),unit.length()),unit.sha256()))throw new IllegalArgumentException("Topology checkpoint checksum mismatch");
-                world=Optional.of(FluidCheckpointCodec.topology(bytes,(int)unit.offset(),unit.length(),core.topologyGeneration(),core.epoch()));
+                // Pending recoveries read their solids as records of the topology's basis package: the model checked
+                // against the package table when an island uses it, else the world's own.
+                world=Optional.of(FluidCheckpointCodec.topology(bytes,(int)unit.offset(),unit.length(),core.topologyGeneration(),core.epoch(),
+                        key->{var known=byKey.get(key);return known!=null?known:models.apply(key);}));
             }
         }
         var refs=new LinkedHashMap<Long,Ref>();

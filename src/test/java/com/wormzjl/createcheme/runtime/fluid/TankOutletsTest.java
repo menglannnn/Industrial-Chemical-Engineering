@@ -40,7 +40,6 @@ class TankOutletsTest {
         var faces=compiled.tankFaces().get(1L);
         assertTrue(TankOutlets.of(model,graph,tank,null,faces).stream().allMatch(o->o.massFlow()==0&&o.drawn()==FluidView.Outlet.NONE),"no interval: no flow");
         var result=new PassiveIntervalSolver(model).solve(graph,5,PassiveIntervalSolver.Settings.defaults(),()->{});
-        assertEquals(PassiveStepSolver.Acceptance.FULL,result.acceptance());
         var outlets=TankOutlets.of(model,result.graph(),tank,result,faces);
         assertEquals(3,outlets.size());var byPort=new EnumMap<PassiveNetwork.PhasePort,FluidView.Outlet>(PassiveNetwork.PhasePort.class);
         for(var o:outlets)assertNull(byPort.put(o.port(),o),"one outlet per port kind here");

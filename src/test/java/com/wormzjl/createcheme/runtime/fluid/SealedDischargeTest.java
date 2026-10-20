@@ -32,7 +32,7 @@ class SealedDischargeTest {
         w.place(-2,0,-4,Kind.PIPE,NORTH,passive,null,.05);
         w.place(-1,0,-1,Kind.PIPE,NORTH,passive,null,.05);
         w.place(-2,0,-3,Kind.GENERATOR,NORTH,passive,EventPathWorld.pure(MaterialTestBasis.NETWORK,298.15,101325),.05);
-        w.place(-1,0,-3,Kind.PUMP,SOUTH,new FlowControl.Pump(.01,500000,1),null,.05);
+        w.place(-1,0,-3,Kind.PUMP,SOUTH,new FlowControl.Pump(.01,500000),null,.05);
         w.runTo(158+120*100);w.assertKeptUp("a pump discharging into its generator");
         for(var s:w.coordinator.snapshots()) {
             var result=s.lastResult().orElseThrow();
@@ -59,7 +59,7 @@ class SealedDischargeTest {
         w.place(1,0,1,Kind.PIPE,NORTH,passive,null,.05);
         w.place(1,3,-1,Kind.VOID,NORTH,.05);
         w.place(1,0,0,Kind.GENERATOR,NORTH,passive,EventPathWorld.pure(MaterialTestBasis.NETWORK,298.15,101325),.05);
-        w.place(0,0,0,Kind.PUMP,SOUTH,new FlowControl.Pump(.01,500000,1),null,.05);
+        w.place(0,0,0,Kind.PUMP,SOUTH,new FlowControl.Pump(.01,500000),null,.05);
         w.place(0,0,-4,Kind.RESERVOIR,NORTH,.05);
         w.place(0,0,-3,Kind.PIPE,NORTH,passive,null,.05);
         w.place(0,0,1,Kind.PIPE,NORTH,passive,null,.05);

@@ -22,7 +22,7 @@ import java.util.*;
 /** Independent P03-P05 references. No production resistance call supplies an oracle. */
 class HydraulicReferenceQualificationTest {
     private final FluidThermodynamics model = FluidThermodynamics.forNetwork(
-            MaterialCatalog.bundled(), "createcheme:tjl20_methane_nitrogen", 1e-9);
+            MaterialCatalog.bundled(), "createcheme:tjl20_methane_nitrogen");
 
     @Test void boundaryFlowsAcrossAllRegimesMatchOfflineDecimalFrictionInBothDirections() throws Exception {
         var rows = new ArrayList<Map<String, Object>>();
@@ -40,9 +40,13 @@ class HydraulicReferenceQualificationTest {
                     double mu = water ? model.viscosity.waterLiquid(350)
                             : model.viscosity.vapor(350, source.vapor(), 0);
                     double diameter = .02, length = 1, area = Math.PI * diameter * diameter / 4;
-                    double expectedFlow = re * Math.PI * mu * diameter / 4;
-                    double velocity = expectedFlow / (rho * area);
+                    double lawFlow = re * Math.PI * mu * diameter / 4;
+                    double velocity = lawFlow / (rho * area);
                     assertTrue(velocity < model.velocityLimit(source), "Reference must not activate the velocity cap");
+                    // The velocity cap is part of the line's law (PassiveStepSolver.saturated, 2026-10-18): the flow the
+                    // solver passes is the friction law's flow saturated at the cap flow of the end it leaves, 0.07 % under
+                    // the law at half the cap and bitwise the law far under it.
+                    double expectedFlow = PassiveStepSolver.saturated(lawFlow, rho * area * model.velocityLimit(source));
                     double pressureDrop = friction * length / diameter * rho * velocity * velocity / 2;
                     var sink = state(water, 200000 - pressureDrop);
                     var geometry = new PipeResistance.Geometry(length, diameter, roughness * diameter, 0);

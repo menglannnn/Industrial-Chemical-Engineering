@@ -4,7 +4,6 @@ import com.google.gson.JsonParser;
 import com.wormzjl.createcheme.network.ProcessSolveCoordinator;
 import com.wormzjl.createcheme.registry.ModBlocks;
 import com.wormzjl.createcheme.runtime.fluid.*;
-import com.wormzjl.createcheme.science.fluid.network.ApproximationAnchor;
 import com.wormzjl.createcheme.science.fluid.thermo.FluidThermodynamics;
 import com.wormzjl.createcheme.science.material.*;
 import com.wormzjl.createcheme.world.level.block.entity.FluidDeviceBlockEntity;
@@ -29,7 +28,7 @@ public final class FluidPropertyReloadGameTests {
         IslandCoordinator.Snapshot[] before={null};
         java.util.function.Supplier<IslandCoordinator.Snapshot> snapshot=()->world.capture().checkpoint().islands().stream().map(FluidCheckpointCodec.IslandEntry::snapshot)
                 .filter(s->s.graph().reservoirs().stream().anyMatch(n->n.id()==id)).findFirst().orElseThrow();
-        helper.startSequence().thenWaitUntil(()->helper.assertTrue(snapshot.get().lastResult().isPresent()&&snapshot.get().anchor().isPresent(),"Waiting for initial FULL interval"))
+        helper.startSequence().thenWaitUntil(()->helper.assertTrue(snapshot.get().lastResult().isPresent(),"Waiting for initial FULL interval"))
         .thenExecute(()->{
             before[0]=snapshot.get();
             try {
@@ -40,14 +39,12 @@ public final class FluidPropertyReloadGameTests {
                 helper.assertTrue(held.clock().committedTick()==before[0].clock().committedTick(),"Reload advanced old scientific state");
                 helper.assertTrue(world.view(id).status().contains("property data changed"),"Loaded view hides the property-data hold");
                 var capture=world.capture();
-                var model=FluidThermodynamics.forNetwork(original,FluidPresetCatalog.NETWORK_PACKAGE,1e-9);
+                var model=FluidThermodynamics.forNetwork(original,FluidPresetCatalog.NETWORK_PACKAGE);
                 var encoded=FluidCheckpointCodec.encode(capture.checkpoint(),capture.world().onlineTick(),key->model);
                 var roundTrip=FluidCheckpointCodec.decode(encoded,key->model);
-                helper.assertTrue(roundTrip.islands().getFirst().snapshot().allowance().equals(held.allowance()),"Save renewed degraded grace");
-                boolean refused=false;try{FluidCheckpointCodec.decode(encoded,key->FluidThermodynamics.forNetwork(changed,key.packageId(),key.compressibility()));}
+                boolean refused=false;try{FluidCheckpointCodec.decode(encoded,key->FluidThermodynamics.forNetwork(changed,key.packageId()));}
                 catch(IllegalArgumentException expected){refused=true;}
                 helper.assertTrue(refused,"Restart could silently reinterpret saved energy under changed science");
-                helper.assertTrue(!held.anchor().orElseThrow().propertyRevision().equals(ApproximationAnchor.revision(model)),"Reload retained an eligible fallback anchor");
             }catch(RuntimeException|AssertionError failure){MaterialRuntime.publish(original);FluidWorldAuthority.refreshProperties(server);helper.fail("Property reload scenario failed: "+failure);}
         }).thenIdle(10).thenExecute(()->{
             try {

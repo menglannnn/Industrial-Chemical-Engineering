@@ -41,7 +41,9 @@ class HydraulicMatrixQualificationTest {
             assertEquals(Math.pow(.012/.01,4)/2,result.massFlows()[1]/result.massFlows()[0],1e-4);
         }
     }
-    @Test void hydrostaticRestAndReversedElevationUseTheSameGravityEnergyLedger() {
+    /** A liquid at rest on its column, then falling 2 m: the internal energy alone is the ledger (owner decision D37, S1:
+     * no stream carries potential energy, so the fall does not warm the water). */
+    @Test void hydrostaticRestAndReversedElevationCloseTheInternalEnergyLedger() {
         var lower=state(true,200000);double rho=lower.mass()/lower.volume();double dz=2;
         var upper=state(true,200000-rho*PassiveStepSolver.GRAVITY*dz);
         var pipe=new PassiveNetwork.Pipe(3,0,1,new PipeResistance.Geometry(100,.01,0,0));
@@ -50,8 +52,8 @@ class HydraulicMatrixQualificationTest {
         var reversed=new PassiveNetwork(List.of(new PassiveNetwork.Reservoir(1,dz,lower),new PassiveNetwork.Reservoir(2,0,upper)),List.of(pipe));
         var result=new PassiveStepSolver(model).solve(reversed,.1,()->{});assertTrue(result.massFlows()[0]>0);
         double before=0,after=0;for(int i=0;i<2;i++) {
-            var node=reversed.reservoirs().get(i);before+=node.inventory().internalEnergy()+node.state().mass()*PassiveStepSolver.GRAVITY*node.elevation();
-            after+=result.inventories().get(i).internalEnergy()+result.states().get(i).mass()*PassiveStepSolver.GRAVITY*node.elevation();
+            var node=reversed.reservoirs().get(i);before+=node.inventory().internalEnergy();
+            after+=result.inventories().get(i).internalEnergy();
         }
         assertEquals(before,after,1e-4+1e-6*Math.abs(before));
     }

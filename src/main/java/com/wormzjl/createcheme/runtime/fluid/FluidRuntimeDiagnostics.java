@@ -69,13 +69,13 @@ public final class FluidRuntimeDiagnostics {
     public static final LongAdder certificatesDiscarded=new LongAdder();
     public static final LongAdder payloadsEncoded=new LongAdder();
     public static final LongAdder payloadsReused=new LongAdder();
-    /** The hold policy (IslandCoordinator.hold): held attempts the wall or soft budget cut, held attempts whose solve
+    /** The hold policy (IslandCoordinator.hold): held attempts the wall budget cut, held attempts whose solve
      * failed, and retries at the one-tick slice deferred past the next cadence. */
     public static final LongAdder budgetHolds=new LongAdder();
     public static final LongAdder numericalHolds=new LongAdder();
     public static final LongAdder retriesDeferred=new LongAdder();
-    /** Thermo-domain holds whose fresh-solver retry reproduced the same violation: the island waits for an input change. */
-    public static final LongAdder domainHolds=new LongAdder();
+    /** Phase holds whose fresh-solver retry reproduced the same hold: the island waits for an input change. */
+    public static final LongAdder phaseHolds=new LongAdder();
     /** Held islands that accepted a topology event at their committed tick, and the unsolved online ticks they dropped. */
     public static final LongAdder heldEventAcceptances=new LongAdder(),droppedHeldTicks=new LongAdder();
     /** Topology events (PhysicalRegistry): batches applied, events they applied, and devices they compiled - the
@@ -100,7 +100,7 @@ public final class FluidRuntimeDiagnostics {
         map.put("queuedInputs",queuedInputs);map.put("inputReplies",inputReplies);
         map.put("certificatesRestored",certificatesRestored);map.put("certificatesDiscarded",certificatesDiscarded);
         map.put("payloadsEncoded",payloadsEncoded);map.put("payloadsReused",payloadsReused);
-        map.put("budgetHolds",budgetHolds);map.put("numericalHolds",numericalHolds);map.put("retriesDeferred",retriesDeferred);map.put("domainHolds",domainHolds);
+        map.put("budgetHolds",budgetHolds);map.put("numericalHolds",numericalHolds);map.put("retriesDeferred",retriesDeferred);map.put("phaseHolds",phaseHolds);
         map.put("heldEventAcceptances",heldEventAcceptances);map.put("droppedHeldTicks",droppedHeldTicks);
         map.put("topologyBatches",topologyBatches);map.put("topologyEvents",topologyEvents);map.put("compiledDevices",compiledDevices);
         return Collections.unmodifiableMap(map);

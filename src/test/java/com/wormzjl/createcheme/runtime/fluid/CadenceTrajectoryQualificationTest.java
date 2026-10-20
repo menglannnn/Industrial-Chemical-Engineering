@@ -13,9 +13,12 @@ import static org.junit.jupiter.api.Assertions.*;
 /** P31 physical cadence qualification. CPU samples are injected to exercise clock policy;
  * this test does not claim that the aggregate-load classifier measures actual CPU saturation. */
 class CadenceTrajectoryQualificationTest {
-    /** Backward Euler (WP1 of the mixed-gas junction batch): the references are first order too, 0.5 s against 0.25 s
-     * ceilings differ by up to 0.18 % in cumulative flow (water; TR-BDF2 bound 0.1 %), and the fixed and adaptive cadences
-     * lag the refined trajectory by up to 1.5 % (water, 20 s cadence; TR-BDF2 bound 0.5 %). */
+    /** Backward Euler (WP1 of the mixed-gas junction batch): the references are first order too, 0.25 s against 0.125 s
+     * ceilings differ by up to 0.16 % in cumulative flow (water; TR-BDF2 bound 0.1 %), and the fixed and adaptive cadences
+     * lag the refined trajectory by up to 1.8 % (water, 20 s cadence; TR-BDF2 bound 0.5 %). The pair was 0.5 s against
+     * 0.25 s while liquid water had a flat compressibility of 1e-9 1/Pa. The engine's water (M2) is stiffer, 4.56e-10 1/Pa
+     * at 350 K, so the two rigid tanks equalise through the pipe with a time constant of 25 s instead of 56 s, and a
+     * first-order step's error grows with the step over that time constant (0.5 s against 0.25 s now differ by 0.33 %). */
     private static final double REFERENCE_TOLERANCE=.0025,CADENCE_TOLERANCE=.02;
     private final FluidThermodynamics model=FluidTestSupport.networkModel();
     private final double[] molecularWeights=FluidTestSupport.molecularWeights(model);
@@ -29,7 +32,7 @@ class CadenceTrajectoryQualificationTest {
         var rows=new ArrayList<Map<String,Object>>();var digests=new TreeMap<String,String>();
         for(String fluid:List.of("nitrogen","water","wet-crude")) {
             var initial=initial(fluid);
-            var coarse=reference(initial,.5);var fine=reference(initial,.25);
+            var coarse=reference(initial,.25);var fine=reference(initial,.125);
             compare(fluid,"reference-refinement",coarse,fine,REFERENCE_TOLERANCE,rows);
             for(int cadence:new int[]{1,5,20}){var fixed=runFixed(initial,cadence);digests.put(fluid+"/fixed-"+cadence,digest(fixed));compare(fluid,"fixed-"+cadence,fixed,fine,CADENCE_TOLERANCE,rows);}
             var adaptive=runAdaptive(initial);digests.put(fluid+"/adaptive-controlled-cpu",digest(adaptive));
@@ -40,7 +43,7 @@ class CadenceTrajectoryQualificationTest {
         // Ordered maps throughout, so an unchanged trajectory writes a byte-identical report.
         var output=Path.of("build/reports/fluid/P31-cadence-trajectories.json");Files.createDirectories(output.getParent());
         var report=new LinkedHashMap<String,Object>();
-        report.put("reference","backward Euler with 0.5/0.25 s ceilings; refinement <=0.25%");
+        report.put("reference","backward Euler with 0.25/0.125 s ceilings; refinement <=0.25%");
         report.put("scope","Fixed 1/5/20 s and production clock with injected CPU observations; not aggregate-load performance qualification");
         report.put("trajectoryDigests",digests);report.put("rows",rows);
         Files.writeString(output,new GsonBuilder().setPrettyPrinting().create().toJson(report));
@@ -88,14 +91,14 @@ class CadenceTrajectoryQualificationTest {
         var dispatch=new Dispatch();double[] moved={0};var frames=new ArrayList<Frame>();var published=new ArrayList<Frame>();var clocks=new ArrayList<IslandClock.Snapshot>();var cadences=new TreeSet<Integer>();int[] intervals={0};
         var coordinator=new IslandCoordinator(dispatch,changes->{
             for(var state:changes) {
-                var result=state.lastResult().orElseThrow();assertEquals(PassiveStepSolver.Acceptance.FULL,result.acceptance());assertClosed(initial,state.graph());
+                var result=state.lastResult().orElseThrow();assertClosed(initial,state.graph());
                 moved[0]+=result.advancedSeconds()*result.averageMassFlows()[0];cadences.add(state.clock().cadenceTicks());intervals[0]++;
                 published.add(new Frame((int)state.clock().committedTick(),state.graph(),moved[0]));clocks.add(state.clock());
                 if(state.clock().committedTick()%400==0)frames.add(new Frame((int)state.clock().committedTick(),state.graph(),moved[0]));
             }
         // Certificates off: these rows qualify every solved interval and must stay byte-identical to the WP0 fingerprint.
         },()->0,new IslandCoordinator.Settings(2_000_000_000L,1_500_000_000L,64,true,100,CertificatePolicy.disabled()));
-        coordinator.register(new IslandCoordinator.Snapshot(1,0,initial,new IslandClock.Snapshot(0,0,0,100),FallbackAllowance.NONE,Optional.empty(),Optional.empty(),"READY"),model);
+        coordinator.register(new IslandCoordinator.Snapshot(1,0,initial,new IslandClock.Snapshot(0,0,0,100),Optional.empty(),"READY"),model);
         UUID boundary=UUID.randomUUID();coordinator.fence(boundary,400,List.of(1L));
         for(int tick=1;tick<=1600;tick++) {
             coordinator.tick();
@@ -103,7 +106,7 @@ class CadenceTrajectoryQualificationTest {
                 var attempt=dispatch.attempt;var command=dispatch.command;dispatch.attempt=null;dispatch.command=null;
                 var result=new PassiveIntervalSolver(model).solve(command.snapshot(),command.durationSeconds(),command.settings(),()->{});
                 long cpu=intervals[0]<3?1_600_000_000L:10_000_000L;
-                coordinator.completed(attempt,Optional.of(new ProcessSolveServices.FluidIslandSolveResult(Optional.of(result),"FULL",cpu,cpu,FallbackAllowance.NONE,Optional.of(ApproximationAnchor.fromFull(model,result)))));
+                coordinator.completed(attempt,Optional.of(new ProcessSolveServices.FluidIslandSolveResult(Optional.of(result),"FULL",cpu,cpu)));
                 coordinator.pump();
             }
             if(tick%400==0&&tick<1600){coordinator.releaseFence(boundary,List.of(1L));boundary=UUID.randomUUID();coordinator.fence(boundary,tick+400,List.of(1L));}

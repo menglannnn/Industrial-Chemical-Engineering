@@ -96,7 +96,7 @@ import static org.junit.jupiter.api.Assertions.*;
  *
  * <p>Owner decision D12 (a generator only pushes when its pressure allows and never receives, from the cold start's first
  * pass): the cold start's rate seed now closes before its pass 0 the generator runs that a one-way pressure estimate of the
- * island shows receiving, and starts its junctions from that estimate ({@code PassiveStepSolver.closeColdReceivingGenerators}),
+ * island shows receiving, and starts its junctions from that estimate ({@code PassiveStepSolver.balanceStart}: the balanced start of 2026-10-19 reads the same closure off the balance),
  * so the seed converges and the first step's {@code closeIllegalStarts} starts it with one-way generators.
  * {@link #theFullCasesIntegrateAtTheDefaultCap} is the regression: the full fixtures at the default cap run every oracle of
  * the passing cases. The reproduction of the hold (a {@code FULL_CASES_OPEN_DEFECT} flag that made that test assert the
@@ -124,7 +124,7 @@ class ExtremeTopologyIslandTest {
     /** The configuration's largest maximumVelocityMetresPerSecond (CreateChemE's defineInRange). */
     static final double LARGEST_CONFIGURED_VELOCITY=100000;
     private final FluidThermodynamics defaultModel=FluidTestSupport.networkModel();
-    private final FluidThermodynamics uncappedModel=FluidThermodynamics.forNetwork(MaterialCatalog.bundled(),"createcheme:tjl20_methane_nitrogen",1e-9,LARGEST_CONFIGURED_VELOCITY);
+    private final FluidThermodynamics uncappedModel=FluidThermodynamics.forNetwork(MaterialCatalog.bundled(),"createcheme:tjl20_methane_nitrogen",LARGEST_CONFIGURED_VELOCITY, FluidThermodynamics.DEFAULT_TRACE_CUTOFF_MOLE_FRACTION);
 
     enum Geometry{GRID,ALTERNATING,ALTERNATING_BOTH_SIDES}
     record Case(Geometry geometry,int pairs,double spread) {
@@ -199,7 +199,7 @@ class ExtremeTopologyIslandTest {
         int lowest=tanks.stream().min(Comparator.comparingDouble(i->nodes.get(i).state().pressure())).orElseThrow();
         var slot=new HashMap<Long,Integer>();for(int g=0;g<generators.size();g++)slot.put(nodes.get(generators.get(g)).id(),g);
         double[] initial=totals(graph),external=new double[initial.length],supplied=new double[generators.size()];
-        double initialEnergy=energy(graph,mw),externalEnergy=0,totalSupplied=0;
+        double initialEnergy=energy(graph),externalEnergy=0,totalSupplied=0;
         double[][] history=new double[tanks.size()][count+1];for(int t=0;t<tanks.size();t++)history[t][0]=nodes.get(tanks.get(t)).state().pressure();
         double lowestTank=tanks.stream().mapToDouble(i->nodes.get(i).state().pressure()).min().orElseThrow();
         var solver=new PassiveIntervalSolver(model);PassiveIntervalSolver.Result committed=null;
@@ -213,7 +213,7 @@ class ExtremeTopologyIslandTest {
                 try{result=solver.solve(graph,slice,PassiveIntervalSolver.Settings.defaults(),()->{});}
                 catch(RuntimeException held){run.failure="interval "+(i+1)+" (t="+String.format(Locale.ROOT,"%.1f",slice*i)+" s): "+held;break;}
                 String at="interval "+(i+1)+": ";
-                if(result.acceptance()!=PassiveStepSolver.Acceptance.FULL||result.advancedSeconds()!=slice)run.violations.add(at+"not a full interval: "+result.acceptance()+" advanced "+result.advancedSeconds());
+                if(result.advancedSeconds()!=slice)run.violations.add(at+"not a full interval: advanced "+result.advancedSeconds());
                 committed=result;graph=result.graph();run.completed++;run.accepted+=result.acceptedSubsteps();run.rejected+=result.rejectedSubsteps();
                 result.rejectionReasons().forEach((k,v)->run.reasons.merge(k,v,Integer::sum));
                 double[] intervalSupply=new double[generators.size()];
@@ -235,7 +235,7 @@ class ExtremeTopologyIslandTest {
                     double error=Math.abs(sum[k]-initial[k]-external[k])/Math.max(1,initial[k]);run.worstMoles=Math.max(run.worstMoles,error);
                     if(error>=COMPONENT_LEDGER)run.violations.add(at+"component "+k+" ledger "+error);
                 }
-                double energyError=Math.abs(energy(graph,mw)-initialEnergy-externalEnergy)/Math.max(1,Math.abs(initialEnergy));
+                double energyError=Math.abs(energy(graph)-initialEnergy-externalEnergy)/Math.max(1,Math.abs(initialEnergy));
                 run.worstEnergy=Math.max(run.worstEnergy,energyError);if(energyError>=ENERGY_LEDGER)run.violations.add(at+"energy ledger "+energyError);
                 var now=graph.reservoirs();double min=Double.POSITIVE_INFINITY;
                 for(int t=0;t<tanks.size();t++) {
@@ -300,11 +300,12 @@ class ExtremeTopologyIslandTest {
         }
         return totals;
     }
-    /** A junction's owned inventory (energy field m h) is counted like a tank's, as in MixedGasJunctionTransientTest. */
-    private static double energy(PassiveNetwork graph,double[] mw) {
+    /** A junction's owned inventory (energy field m h) is counted like a tank's, as in MixedGasJunctionTransientTest; no
+     * potential energy (owner decision D37 S1). */
+    private static double energy(PassiveNetwork graph) {
         double energy=0;
         for(var node:graph.reservoirs())if(node.kind()==PassiveNetwork.NodeKind.RESERVOIR||node.junction())
-            energy+=node.inventory().internalEnergy()+mass(node,mw)*PassiveStepSolver.GRAVITY*node.elevation();
+            energy+=node.inventory().internalEnergy();
         return energy;
     }
 

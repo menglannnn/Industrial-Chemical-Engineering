@@ -32,7 +32,7 @@ abstract class BlockLineHarness {
     /** A block at (x, y, 0) with its kind's default control. */
     static PhysicalFluidTopology.Device device(long id,int x,int y,TopologyCompiler.Kind kind,PhysicalFluidTopology.Direction facing) {
         var control=switch(kind) {
-            case PUMP->new FlowControl.Pump(.01,PUMP_HEAD,1);
+            case PUMP->new FlowControl.Pump(.01,PUMP_HEAD);
             case VALVE->new FlowControl.PressureValve(200000);
             default->new FlowControl.Passive();
         };
