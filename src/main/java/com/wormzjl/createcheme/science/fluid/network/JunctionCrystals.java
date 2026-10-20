@@ -4,6 +4,7 @@ import com.wormzjl.createcheme.science.fluid.state.SolidInventory;
 import com.wormzjl.createcheme.science.fluid.thermo.FluidThermodynamics;
 import com.wormzjl.createcheme.science.fluid.thermo.NetworkCrystals;
 import com.wormzjl.createcheme.science.material.SolidMaterialCatalog.SolidMaterial;
+import java.util.List;
 import java.util.TreeMap;
 
 /**
@@ -30,19 +31,20 @@ final class JunctionCrystals {
     /** Per node, the crystals that melt there by material id; null for a node where none does. */
     private final TreeMap<String,NetworkCrystals.Crystal>[] melting;
     /**
-     * The island's solid populations, its holders' and its injections': the basis the reconstruction labels every solid
-     * stream with ({@link ConservativeTransport}), and so what a Newton state carries whose moments its seed names no
-     * population of (see {@link #split}).
+     * The island's solid populations, its holders' and its injections' merged by key, in key order: the basis the
+     * reconstruction labels every solid stream with ({@link ConservativeTransport}), and so what a Newton state carries
+     * whose moments its seed names no population of (see {@link #split}). A list, not a stock: an island's union may pass
+     * the {@link SolidInventory#MAXIMUM_POPULATIONS} one stock holds.
      */
-    private final SolidInventory island;
-    private JunctionCrystals(TreeMap<String,NetworkCrystals.Crystal>[] melting,SolidInventory island){this.melting=melting;this.island=island;}
+    private final List<SolidInventory.Population> island;
+    private JunctionCrystals(TreeMap<String,NetworkCrystals.Crystal>[] melting,List<SolidInventory.Population> island){this.melting=melting;this.island=island;}
 
     /** The junctions of {@code graph} above the melting point of a crystal the island holds; null where none is. */
     @SuppressWarnings("unchecked")
     static JunctionCrystals of(PassiveNetwork graph,FluidThermodynamics model) {
-        TreeMap<String,SolidMaterial> materials=null;var island=SolidInventory.EMPTY;
-        for(var node:graph.reservoirs()){materials=crystals(node.inventory().solids(),materials);materials=crystals(node.state().solids(),materials);island=island.plus(node.inventory().solids());}
-        for(var transfer:graph.scheduledTransfers())if(transfer instanceof ScheduledTransfer.Injection in){materials=crystals(in.solidsPerSecond(),materials);island=island.plus(in.solidsPerSecond());}
+        TreeMap<String,SolidMaterial> materials=null;
+        for(var node:graph.reservoirs()){materials=crystals(node.inventory().solids(),materials);materials=crystals(node.state().solids(),materials);}
+        for(var transfer:graph.scheduledTransfers())if(transfer instanceof ScheduledTransfer.Injection in)materials=crystals(in.solidsPerSecond(),materials);
         if(materials==null)return null;
         var crystals=model.crystalSolids();
         var melting=new TreeMap[graph.reservoirs().size()];boolean any=false;
@@ -52,7 +54,15 @@ final class JunctionCrystals {
             for(var material:materials.values()){var crystal=crystals.of(material);
                 if(t>crystal.meltingTemperature(p)){if(melting[i]==null)melting[i]=new TreeMap<String,NetworkCrystals.Crystal>();melting[i].put(material.id(),crystal);any=true;}}
         }
-        return any?new JunctionCrystals(melting,island):null;
+        if(!any)return null;
+        var island=new TreeMap<SolidInventory.Key,SolidInventory.Population>();
+        for(var node:graph.reservoirs())merge(node.inventory().solids(),island);
+        for(var transfer:graph.scheduledTransfers())if(transfer instanceof ScheduledTransfer.Injection in)merge(in.solidsPerSecond(),island);
+        return new JunctionCrystals(melting,List.copyOf(island.values()));
+    }
+    /** {@code into} with {@code stock}'s populations added by key, as {@link SolidInventory#plus} sums them. */
+    private static void merge(SolidInventory stock,TreeMap<SolidInventory.Key,SolidInventory.Population> into) {
+        for(var p:stock.populations())into.merge(p.key(),p,(a,b)->new SolidInventory.Population(a.material(),a.size(),a.massKg()+b.massKg()));
     }
     /** {@code into} with the crystal materials of {@code stock} added (allocated on the first one; null while there is none). */
     private static TreeMap<String,SolidMaterial> crystals(SolidInventory stock,TreeMap<String,SolidMaterial> into) {
@@ -77,9 +87,10 @@ final class JunctionCrystals {
      * 244 K gas junction, about 1 kW of melting; 12 refused steps, each passed only after refinement).</p>
      */
     Split split(int node,SolidInventory list,int components) {
-        if(!(list.massKg()>0))list=island;
-        double total=list.massKg();var mass=new double[components];double energy=0,volume=0,capacity=0;boolean all=total>0;
-        if(total>0)for(var p:list.populations()) {
+        var populations=list.massKg()>0?list.populations():island;
+        double total=0;for(var p:populations)total+=p.massKg();
+        var mass=new double[components];double energy=0,volume=0,capacity=0;boolean all=total>0;
+        if(total>0)for(var p:populations) {
             var crystal=melts(node,p.material());if(crystal==null){all=false;continue;}
             double f=p.massKg()/total;mass[crystal.component()]+=f;
             energy+=f*p.material().crystal().energyOffset();volume+=f/p.material().density();capacity+=f*p.material().heatCapacity();
