@@ -575,7 +575,7 @@ public final class PassiveStepSolver {
             // read the same phases.
             if(recordFolds(graph,states,projection.states(),foldedPhases)){SolverDiagnostics.count(SolverDiagnostics.traceFoldPasses);seeds=projection.states();continue;}
             var changedSeeds=phaseCorrection(graph,projection.states(),checkpoint,equations.cachedPrepared,foldedPhases);
-            if(changedSeeds!=null){proposal=Proposal.of(projection.states(),changedSeeds);seeds=changedSeeds;continue;}
+            if(changedSeeds!=null){changedSeeds=balancedProposal(graph,modes,boundaryClosed,projection.states(),changedSeeds,checkpoint);proposal=Proposal.of(projection.states(),changedSeeds);seeds=changedSeeds;continue;}
             var reconstructed=x.clone();
             for(int node=0;node<projection.states().size();node++)if(equations.layout[node]!=null){var encoded=equations.layout[node].encode(projection.states().get(node));System.arraycopy(encoded,0,reconstructed,equations.offsets[node],encoded.length);}
             SolverDiagnostics.count(SolverDiagnostics.verificationResiduals);
@@ -1618,6 +1618,48 @@ public final class PassiveStepSolver {
             var corrected=new ArrayList<>(states);corrected.set(i,checked);return corrected;
         }
         return null;
+    }
+    /** The vapour bits of {@link FluidThermodynamics#phaseBits}: hydrocarbon vapour and steam. */
+    private static final int VAPOUR_BITS=2|8;
+    /**
+     * A phase the check adds to a junction ({@link #phaseCorrection}), seeded at the pressure the island puts the
+     * junction at once that phase is there. A junction holds no pressure of its own; its connections set it. The point
+     * that was checked is the network's answer for the layout that lacked the phase. A liquid-only layout carries the
+     * same mass out at a liquid's density, so it leaves a flashing junction too low: a cold LNG line opened to the air
+     * through 10 mm stood at 449 kPa, about a third of its bubble pressure. Once the vapour is there, the outflow at the
+     * velocity cap is lighter and the junction backs up. Pass 1 seeded at 449 kPa stalled at every step size down to 1/160
+     * (cold fuzz seed 170). The pass that converged put it near 0.92 MPa.
+     *
+     * <p>The pressure is the balance start's ({@link #balanceStart}) on the corrected states. Every junction's net inflow
+     * vanishes there, and the flashing junction's density and cap follow its own pressure (its {@link BalanceNet} table);
+     * for that line the balance gives 801 kPa. The junction's own split ({@link FluidThermodynamics#junctionSplit}) is
+     * formed again at that pressure. The phase is still decided at the checked point. The pressure is only where the
+     * proposal starts, and the passes after it close or refute it (D39 B). Where the balance does not converge, or the
+     * split there does not add exactly the proposed phases, the proposal stands as the check formed it.
+     *
+     * <p>Only a vapour appearing in a junction that held none is restated. A liquid condensing in a gas junction makes
+     * the outflow heavier, and the point's own pressure is the better start. On cold fuzz seed 118 the balance moved 4 of
+     * 98 such proposals, cost 127 ms each, and the island ran out of its wall budget.
+     */
+    private List<FluidThermodynamics.State> balancedProposal(PassiveNetwork graph,List<FlowControl.Mode> modes,boolean[] boundaryClosed,
+                                                             List<FluidThermodynamics.State> point,List<FluidThermodynamics.State> corrected,Runnable checkpoint) {
+        var proposal=Proposal.of(point,corrected);
+        if(proposal==null||!graph.reservoirs().get(proposal.node()).junction()||(proposal.phases()&VAPOUR_BITS)==0
+                ||(FluidThermodynamics.phaseBits(point.get(proposal.node()))&VAPOUR_BITS)!=0)return corrected;
+        int j=proposal.node();var seed=corrected.get(j);
+        var reservoirs=new ArrayList<PassiveNetwork.Reservoir>(graph.reservoirs().size());
+        for(int i=0;i<graph.reservoirs().size();i++){var r=graph.reservoirs().get(i);reservoirs.add(r.fixed()?r:new PassiveNetwork.Reservoir(r.id(),r.elevation(),corrected.get(i),r.kind(),r.inventory()));}
+        var balanced=balanceStart(new PassiveNetwork(reservoirs,graph.pipes(),graph.scheduledTransfers()),new ArrayList<>(modes),boundaryClosed.clone(),null,checkpoint,graph);
+        double p=balanced.graph().reservoirs().get(j).state().pressure();
+        if(!balanced.converged()||!(p>0)||p==seed.pressure())return corrected;
+        double[] n=PhaseLayout.totalAmounts(seed);FluidThermodynamics.State own;
+        try{var engine=model.equilibriumPH(seed.temperature(),p,seed.enthalpy()-seed.solidMoments().enthalpy(seed.temperature(),seed.pressure()),n,false,checkpoint);
+            own=engine==null?null:model.junctionSplit(n,seed.enthalpy(),seed.mass(),p,engine.withSolidState(seed.solids(),seed.solidMoments()),checkpoint);}
+        catch(com.wormzjl.createcheme.science.fluid.thermo.ThermoHold outside){return corrected;}
+        if(own==null)return corrected;
+        var restated=model.folded(own.withSolidState(seed.solids(),seed.solidMoments()),true);
+        if((FluidThermodynamics.phaseBits(restated)&~FluidThermodynamics.phaseBits(point.get(j)))!=proposal.phases())return corrected;
+        var result=new ArrayList<>(corrected);result.set(j,restated);return result;
     }
     /**
      * The check of a failed pass's last iterate, node by node (owner decisions D28 A' and D39): the iterate with the
