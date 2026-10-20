@@ -2356,13 +2356,26 @@ public final class PassiveStepSolver {
             if(pipe.control() instanceof FlowControl.Mover pump) {
                 allowed[e][1]=false;var a=graph.reservoirs().get(pipe.first());
                 if(mode==FlowControl.Mode.PUMP_TARGET)prescribed[e]=suctionMassFlow(pump.targetVolumeFlow(),a.state(),pipe.firstPort());
+                // A pump that arrives on its suction limit is stated as the balance puts one there: its suction junction anchored at
+                // the floor, the pump passing what arrives ({@link #solve} sets the flow once the island balances around it). Anchored
+                // on the hydrocarbon floor alone, a water pump's suction was free again in the next round, the pump drew 72.6 kg/s
+                // on its rise law and the junction fell to the hull's 101 Pa, stated as steam (PumpCavitationTest, starved suction).
+                else if(mode==FlowControl.Mode.PUMP_SUCTION_LIMIT&&a.junction()&&suctionFloor(e)<Double.POSITIVE_INFINITY){anchor[pipe.first()]=suctionFloor(e);suctionLimited[e]=true;prescribed[e]=0;}
                 else mover[e]=true;
                 rises+=riseLimit(pump,rho[e][0],a.state().pressure());
-                if(mode==FlowControl.Mode.PUMP_SUCTION_LIMIT&&a.junction()&&e<suctionFloors.length&&suctionFloors[e]<Double.POSITIVE_INFINITY)anchor[pipe.first()]=suctionFloors[e];
             } else if(pipe.control() instanceof FlowControl.PressureValve valve) {
                 allowed[e][1]=false;
                 if(mode==FlowControl.Mode.VALVE_REGULATING&&graph.reservoirs().get(pipe.first()).junction())anchor[pipe.first()]=valve.targetPressure();
             }
+        }
+        /** The floor of the liquid the pump on connection {@code e} draws: a two-phase hydrocarbon supplier's own pressure
+         * ({@link #suctionFloors}, K6), or the water curve where its suction junction holds free water (D59 (4)); infinite
+         * where neither. One statement for a pump the balance puts on its suction limit and for one that arrives there. */
+        private double suctionFloor(int e) {
+            var pipe=graph.pipes().get(e);var a=graph.reservoirs().get(pipe.first());var sa=a.state();
+            double floor=e<suctionFloors.length?suctionFloors[e]:Double.POSITIVE_INFINITY;
+            if(a.junction()&&FluidThermodynamics.holdsPhase(sa,FluidThermodynamics.WATER)&&pipe.control() instanceof FlowControl.Pump&&pipe.firstPort()!=PassiveNetwork.PhasePort.VAPOR){try{floor=Math.min(floor,model.saturationPressure(sa.temperature()));}catch(IllegalArgumentException outsideData){}}
+            return floor;
         }
         /** Linear interpolation of {@code table} in ln P at {@code pressure}, clamped to the table's range. */
         private double at(int node,double[] table,double pressure) {
@@ -2517,10 +2530,7 @@ public final class PassiveStepSolver {
                     double dz=graph.reservoirs().get(b).elevation()-graph.reservoirs().get(a).elevation();
                     double rhoA=tableP[a]!=null?at(a,tableRho[a],pa):rho[e][0]*scale(a,pa);
                     if(mode==FlowControl.Mode.PUMP_TARGET&&pb-pa+rhoA*GRAVITY*dz>riseLimit(pump,rhoA,pa)*(1+1e-9)){modes.set(e,FlowControl.Mode.PUMP_HEAD_LIMIT);prescribed[e]=Double.NaN;mover[e]=true;changed=true;continue;}
-                    // The floor of the liquid the pump draws: a two-phase hydrocarbon supplier's own pressure ({@link #suctionFloors}, K6), or
-                    // the water curve where the suction junction holds free water (D59 (4)).
-                    double floor=e<suctionFloors.length?suctionFloors[e]:Double.POSITIVE_INFINITY;var sa=graph.reservoirs().get(a).state();
-                    if(graph.reservoirs().get(a).junction()&&FluidThermodynamics.holdsPhase(sa,FluidThermodynamics.WATER)&&pipe.control() instanceof FlowControl.Pump&&pipe.firstPort()!=PassiveNetwork.PhasePort.VAPOR){try{floor=Math.min(floor,model.saturationPressure(sa.temperature()));}catch(IllegalArgumentException outsideData){}}
+                    double floor=suctionFloor(e);
                     if((mode==FlowControl.Mode.PUMP_TARGET||mode==FlowControl.Mode.PUMP_HEAD_LIMIT)&&graph.reservoirs().get(a).junction()&&floor<Double.POSITIVE_INFINITY&&pa<floor*(1-1e-9)) {
                         modes.set(e,FlowControl.Mode.PUMP_SUCTION_LIMIT);anchor[a]=floor;p[a]=floor;mover[e]=false;suctionLimited[e]=true;prescribed[e]=Math.max(0,inflowExcept(a,e,p));changed=true;
                     } else if(suctionLimited[e]){double q=Math.max(0,inflowExcept(a,e,p));if(Math.abs(q-prescribed[e])>1e-9*Math.max(1,q)){prescribed[e]=q;changed=true;}}

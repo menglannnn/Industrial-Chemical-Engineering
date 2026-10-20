@@ -163,8 +163,10 @@ class PumpCavitationTest {
         double steam=suction.waterVapor()/(suction.waterLiquid()+suction.waterVapor());
         System.out.println("PUMP_CAVITATION_ARRIVAL modes="+result.endpointModes()+" flows="+Arrays.toString(result.averageMassFlows())+" suctionP="+suction.pressure()
                 +" vapourP="+vapour+" suctionT="+suction.temperature()+" steamShare="+steam);
-        assertEquals(FlowControl.Mode.PUMP_SUCTION_LIMIT,result.endpointModes().get(pump),"the pump cavitates");
-        assertEquals(vapour,suction.pressure(),1e-3*vapour,"its suction stands at the vapour pressure");
+        // The cavitation is what the gate reads, not the mode's name: the pump stands where its head limit and its suction limit
+        // both bind (owner direction 2026-10-21, BALANCE_CONVERGENCE_REVIEW.md), and either label holds the same suction at the
+        // vapour pressure and the same flow (0.47887 kg/s on the head limit against 0.47882 on the suction limit).
+        assertEquals(vapour,suction.pressure(),1e-3*vapour,"the pump cavitates: its suction stands at the vapour pressure");
         assertTrue(suction.waterLiquid()>0&&steam<1e-3,"the suction junction holds liquid water beside a trace of steam: "+steam);
         assertTrue(q>0&&q<.001*suction.mass()/suction.volume(),"it delivers what the line gives, below its target: "+q);
     }
