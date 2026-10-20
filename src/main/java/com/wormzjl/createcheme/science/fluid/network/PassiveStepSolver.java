@@ -2231,8 +2231,16 @@ public final class PassiveStepSolver {
      * minimum of the co-content (every junction's net inflow zero under every connection's own law: the loss inverted on
      * the drive in the donor's column, saturated at the donor's cap, nothing in a refused direction, a mover's rise or
      * prescribed flow, a filter's cake law) and (2) each junction's state as the upwind mixture of what the balanced flows
-     * deliver, flashed at its balanced pressure (PH); then the law flow of every open connection at the balanced ends and
-     * the passive connections the one-way law leaves nothing to carry. A starting point only: no inventory moves.
+     * deliver, flashed at its balanced pressure (PH); then the law flow of every open connection at the balanced ends and,
+     * where the balance converged, the passive connections the one-way law leaves nothing to carry. A starting point only:
+     * no inventory moves.
+     *
+     * <p>A closure is read only off ends that balance. Cold fuzz seed 654 (B): a void placed at 101.3 kPa became the only
+     * outlet of a run of three junctions at 99.0 kPa that two choked lines fed 0.10 kg/s, so the run must stand just over
+     * the void and discharge into it. The balance ended unconverged with those 0.10 kg/s left in the run and its last
+     * iterate still at 99.0 kPa, and the one-way law read off that iterate closed the void line for the solve. The run
+     * then had no outlet, only inflows deep in saturation (slope about 1e-3) set its pressure, and every pass went to 13
+     * to 15 MPa.
      */
     private Start balanceStart(PassiveNetwork graph,List<FlowControl.Mode> modes,boolean[] boundaryClosed,boolean[] keep,Runnable checkpoint) {return balanceStart(graph,modes,boundaryClosed,keep,checkpoint,graph);}
     /** {@link #balanceStart} with the junctions' buffers {@code buffers}: the solve's input graph; null for the mint, which has none yet. */
@@ -2256,9 +2264,10 @@ public final class PassiveStepSolver {
             if(boundaryClosed[e]||modes.get(e)==FlowControl.Mode.CLOSED||modes.get(e)==FlowControl.Mode.INLET_WRONG_PHASE)continue;
             double pa=endPressure(current,pipe,pipe.first()),pb=endPressure(current,pipe,pipe.second());
             law[e]=net.suctionLimited[e]?net.prescribed[e]:lawFlow(current,pipe,pa,pb);
-            if(!(pipe.control() instanceof FlowControl.Passive)||keep!=null&&keep[e])continue;
+            if(!(pipe.control() instanceof FlowControl.Passive)||keep!=null&&keep[e]||!converged)continue;
             // A passive connection the balanced ends can only drive the way its boundary forbids carries nothing this solve
-            // (the closure the one-way estimate and the start closures stated by hand).
+            // (the closure the one-way estimate and the start closures stated by hand). Only ends that balance state it: an
+            // unconverged balance's last iterate is no state of the island, and the closure holds for the whole solve.
             var a=current.reservoirs().get(pipe.first());var b=current.reservoirs().get(pipe.second());
             double dz=b.elevation()-a.elevation(),difference=pa-pb,band=reopenBand(pa,pb);
             double forward=difference-columnDensity(a.state(),pipe.firstPort(),pipe.volume())*GRAVITY*dz,reverse=difference-columnDensity(b.state(),pipe.secondPort(),pipe.volume())*GRAVITY*dz;
