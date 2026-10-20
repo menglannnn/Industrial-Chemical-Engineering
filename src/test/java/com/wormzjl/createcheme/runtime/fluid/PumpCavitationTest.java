@@ -129,4 +129,43 @@ class PumpCavitationTest {
             assertTrue(q>0&&q<.01*suction.mass()/suction.volume(),"it delivers what the head pushes through the line, below its target: "+q);
             return null;});
     }
+
+    /**
+     * The arriving-phase seed of a junction is its own split of the enthalpy that arrives (f983306b, 8fd61a13): bundled
+     * fuzz seed 889 pair-minimized to 11 blocks (OD4_COLD285_GATE889_REVIEW.md, 2026-10-20). A 326.6 K, 398 kPa water
+     * generator 3 m up feeds, through 20 and 10 mm lines, a junction beside a nitrogen tank and a 10 mm suction line into a
+     * pump [0.001 m3/s, 1 MPa], which discharges through 10 mm into a second nitrogen tank. Its target needs more
+     * suction-line loss than the 413 kPa the supply has above the water's vapour pressure (14.6 kPa), so it cavitates.
+     * Water reaching the suction junction at its vapour pressure is liquid beside a trace of steam; the TP flash at the
+     * mixed temperature, which leaves out the latent heat, made all of it steam, the suction limit's row had no vapour
+     * pressure to stand at, and the island held at tick 2875 on a nonfinite trial residual.
+     */
+    @Test void waterArrivingAtACavitatingSuctionStaysLiquid() {
+        var w=new EventPathWorld();var passive=new FlowControl.Passive();
+        double[] n2=new double[21];n2[19]=1;double[] water=new double[21];water[20]=1;
+        w.runTo(152);w.place(2,0,0,Kind.RESERVOIR,NORTH,passive,new FluidDeviceSpec(1.0,298.15,101325.0,n2),.01);
+        w.runTo(194);w.place(-2,0,2,Kind.PIPE,NORTH,passive,null,.01);
+        w.runTo(255);w.place(-1,0,1,Kind.PIPE,NORTH,passive,null,.02);
+        w.runTo(312);w.place(-2,0,1,Kind.PIPE,NORTH,passive,null,.01);
+        w.runTo(504);w.place(-2,2,2,Kind.PIPE,NORTH,passive,null,.02);
+        w.runTo(1442);w.place(1,0,0,Kind.PIPE,NORTH,passive,null,.01);
+        w.runTo(1496);w.place(0,0,1,Kind.RESERVOIR,NORTH,passive,new FluidDeviceSpec(1.0,298.15,101325.0,n2),.02);
+        w.runTo(2341);w.place(-2,1,2,Kind.PIPE,NORTH,passive,null,.02);
+        w.runTo(2642);w.place(-2,3,2,Kind.GENERATOR,NORTH,passive,new FluidDeviceSpec(1.0,326.5875545469788,397553.9461096364,water),.02);
+        w.runTo(2873);w.place(-1,0,0,Kind.PIPE,NORTH,passive,null,.01);
+        w.place(0,0,0,Kind.PUMP,EAST,new FlowControl.Pump(.001,1000000),null,.05);
+        w.runTo(2873+120*100);w.assertKeptUp("water arriving at a cavitating pump suction");
+        var s=w.coordinator.snapshots().stream().filter(sn->sn.graph().pipes().stream().anyMatch(p->p.control() instanceof FlowControl.Pump)).findFirst().orElseThrow();
+        var result=s.lastResult().orElseThrow();var graph=s.graph();
+        int pump=-1;for(int e=0;e<graph.pipes().size();e++)if(graph.pipes().get(e).control() instanceof FlowControl.Pump)pump=e;
+        var suction=graph.reservoirs().get(graph.pipes().get(pump).first()).state();
+        double vapour=w.model.saturationPressure(suction.temperature()),q=result.averageMassFlows()[pump];
+        double steam=suction.waterVapor()/(suction.waterLiquid()+suction.waterVapor());
+        System.out.println("PUMP_CAVITATION_ARRIVAL modes="+result.endpointModes()+" flows="+Arrays.toString(result.averageMassFlows())+" suctionP="+suction.pressure()
+                +" vapourP="+vapour+" suctionT="+suction.temperature()+" steamShare="+steam);
+        assertEquals(FlowControl.Mode.PUMP_SUCTION_LIMIT,result.endpointModes().get(pump),"the pump cavitates");
+        assertEquals(vapour,suction.pressure(),1e-3*vapour,"its suction stands at the vapour pressure");
+        assertTrue(suction.waterLiquid()>0&&steam<1e-3,"the suction junction holds liquid water beside a trace of steam: "+steam);
+        assertTrue(q>0&&q<.001*suction.mass()/suction.volume(),"it delivers what the line gives, below its target: "+q);
+    }
 }

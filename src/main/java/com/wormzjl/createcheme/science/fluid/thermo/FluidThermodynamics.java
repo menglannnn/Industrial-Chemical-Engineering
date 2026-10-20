@@ -3,6 +3,7 @@ package com.wormzjl.createcheme.science.fluid.thermo;
 import com.wormzjl.createcheme.science.column.v3.thermo.V3WaterProperties;
 import com.wormzjl.createcheme.science.fluid.diagnostics.SolverDiagnostics;
 import com.wormzjl.createcheme.science.fluid.solver.PhaseLayout;
+import com.wormzjl.createcheme.science.fluid.solver.SparseNewton;
 import com.wormzjl.createcheme.science.fluid.transport.MixtureViscosity;
 import com.wormzjl.createcheme.science.material.MaterialCatalog;
 import com.wormzjl.createcheme.science.material.SolidMaterialCatalog;
@@ -863,13 +864,16 @@ public final class FluidThermodynamics {
      * ({@link #condensedShareOnly}, owner decision D31 B) is no liquid of the node's own and never makes it
      * liquid-complete; in a TP answer it is a phase like any other, decided by the node's own split ({@link #lacking});</li>
      * <li>where the TP answer ({@link #flashTP}) holds a phase the node lacks that is not in the solve's record
-     * ({@code record}, A85), the node's own split decides it (D26): a pipe junction's PH answer at its pressure and
-     * enthalpy ({@link #equilibriumPH}), a vessel's {@code vesselSplit}, the network's closure of its inventory (UV while
-     * its wall is taut, PH at the ambient while slack), started from the vessel's own state at the crossing (owner
-     * decision D40 A, {@link #crossing}). The TP answer says which phase is missing, never how much a vessel holds: its
-     * amounts ignore the vessel's volume. A vessel with no crossing, or whose closure from it fails, proposes nothing.
-     * Where a junction's PH answer fails, the TP answer with the junction's populated phases ({@link #tpSeed}) seeds
-     * instead;</li>
+     * ({@code record}, A85), the node's own split decides it (D26): the network's closure of what the node holds, the rows
+     * its passes state. A vessel's {@code vesselSplit} closes its inventory (UV while its wall is taut, PH at the ambient
+     * while slack) from the vessel's own state at the crossing (owner decision D40 A, {@link #crossing}). A pipe junction's
+     * {@link #junctionSplit} closes its own rows at its pressure and enthalpy from the engine's PH answer there
+     * ({@link #equilibriumPH}; the TP answer with the junction's populated phases, {@link #tpSeed}, where that fails). The
+     * engine's answers say which phase is missing, never whether the node's rows hold it: under the crystal competition a
+     * supersaturated CO2 frosts in them, while the network carries its share dissolved until a vessel's refresh (D23), and
+     * LNG holding 4.9 % CO2 at a pump's discharge junction (182 kPa, 120 K) was proposed 4.2 mol/kg of vapour, paid by the
+     * frost's heat and its stripped liquid, that its rows refuted at every step (OD4's cold fuzz seed 285). A node whose
+     * own split has no start, fails or drives a phase to nothing on its way proposes nothing;</li>
      * <li>the own split decides by where its closure went, converged or not (the D26 amendment): a proposed phase it drove
      * under the trace share, that it is driving to nothing ({@link #vanishing}) or that it leaves vanishing against
      * {@code from} is refused, and the refusal is written to the record so the TP answer does not propose it again in
@@ -887,7 +891,8 @@ public final class FluidThermodynamics {
      * {@code junction}: whether the node is a pipe junction; {@code from}: the node's state where the solve that reached
      * {@code state} started, which the vanishing rule reads, or {@code null}; {@code prepared}: the node's prepared
      * temperature state, used only at exactly that temperature; {@code vesselSplit}: a vessel's own split from a start
-     * holding the phases to lay it out with, {@code null} where its closure fails (ignored for a junction).
+     * holding the phases to lay it out with, {@code null} where its closure fails (ignored for a junction, whose own split
+     * is {@link #junctionSplit}).
      *
      * @return {@code state} itself when it keeps its phases and gains none; otherwise the node's new seed
      */
@@ -908,26 +913,30 @@ public final class FluidThermodynamics {
             int proposed=lacking(kept,equilibrium)&~excluded;
             if(proposed!=0) {
                 State start,own;
-                // A junction's energy is its enthalpy (its mixing rows, D46): the solve's, before the fold restated it.
-                if(junction){start=tpSeed(kept,equilibrium,prepared);own=equilibriumPH(kept.temperature(),kept.pressure(),state.enthalpy()-state.solidMoments().enthalpy(state.temperature(),state.pressure()),totals,checkpoint);}
+                // A junction's energy is its enthalpy (its mixing rows, D46): the solve's, before the fold restated it. Its own
+                // split is its rows' closure, started from the engine's PH answer there (the TP answer where that fails).
+                if(junction) {
+                    var engine=equilibriumPH(kept.temperature(),kept.pressure(),state.enthalpy()-state.solidMoments().enthalpy(state.temperature(),state.pressure()),totals,checkpoint);
+                    start=engine!=null?engine.withSolidState(kept.solids(),kept.solidMoments()):tpSeed(kept,equilibrium,prepared);
+                    own=junctionSplit(totals,state.enthalpy(),state.mass(),kept.pressure(),start,checkpoint);
+                }
                 // Owner decision D40 A: a vessel starts from its own state at the crossing, never from the TP answer's amounts.
                 else{start=crossing(state,kept,proposed,totals,checkpoint);own=start==null||vesselSplit==null?null:vesselSplit.apply(start);}
-                if(own!=null)SolverDiagnostics.count(SolverDiagnostics.phaseSeeds);
-                if(own!=null||junction) {
-                    var seed=folded(own==null?start:own.withSolidState(kept.solids(),kept.solidMoments()),junction);
+                if(own!=null) {
+                    SolverDiagnostics.count(SolverDiagnostics.phaseSeeds);
+                    var seed=folded(own.withSolidState(kept.solids(),kept.solidMoments()),junction);
                     // The D26 amendment, amended by the owner on 2026-10-19 (t40's trace of bundled seed 678): the own split's
-                    // verdict on a proposed phase is where its closure took it, a vessel's closure or a junction's PH answer
-                    // (D38 C); a proposed phase the closure holds below the vanishing share of the node's fluid (belowShare) is
-                    // nothing, whatever its direction ({@link #nothing}: the amended fold's statement applied to a phase
-                    // arriving), so the two direction tests against the solve's start go. A receiver landing on its
-                    // bubble point was proposed 5.8e-11 m3 of vapour (6.5e-7 of its volume) that its closure grew slightly,
-                    // which no direction test refused, and the pass laid out with it had no root. A junction's TP-based
-                    // fallback seed is no closure and refuses nothing.
-                    if(own!=null)refused=proposed&(~lacking(kept,seed)|nothing(own));
+                    // verdict on a proposed phase is where its closure took it (D38 C); a proposed phase the closure holds below
+                    // the vanishing share of the node's fluid (belowShare) is nothing, whatever its direction ({@link #nothing}:
+                    // the amended fold's statement applied to a phase arriving), so the two direction tests against the
+                    // solve's start go. A receiver landing on its bubble point was proposed 5.8e-11 m3 of vapour (6.5e-7 of its
+                    // volume) that its closure grew slightly, which no direction test refused, and the pass laid out with it
+                    // had no root.
+                    refused=proposed&(~lacking(kept,seed)|nothing(own));
                     int added=lacking(kept,seed)&~excluded;
                     if(added!=0&&(added&refused)==0)checked=seed;
                 }
-                // A vessel with no crossing, or whose closure from it fails, proposes nothing (D40 A).
+                // A node with no start, or whose own split fails or drives a phase to nothing, proposes nothing (D40 A).
                 else refused=proposed;
                 if(refused!=0)SolverDiagnostics.count(SolverDiagnostics.phaseRefusals);
             }
@@ -1041,6 +1050,34 @@ public final class FluidThermodynamics {
         double wl=b>0?water*(a/(a+b)):water,wv=water-wl,p=kept.pressure();
         try{return adoptingState(kept.temperature(),p,l,v,wl,wv,nv>0&&wv>0?p*(nv/(nv+wv)):p,prepared).withSolidState(kept.solids(),kept.solidMoments());}
         catch(IllegalArgumentException steamLimit){return equilibrium;}
+    }
+    /**
+     * A pipe junction's own split (owner decision D26, {@link #phaseCheck}; the arriving-phase seed of
+     * {@code PassiveStepSolver.arrivingPhases}): its own rows ({@link PhaseLayout#junctionResidual}), isolated at the
+     * pressure {@code p} it holds, with the amounts {@code amounts} (the conserved basis, water last), the enthalpy
+     * {@code enthalpy} (J, the network's datum) and the mass {@code mass} its rows weigh them by, closed from {@code start}
+     * in {@code start}'s phase layout. A vessel's own split is its closure the same way ({@code InventoryEquilibrium}), so
+     * a phase is proposed only where the rows the next pass states hold it: the engine's answer is the start, not the
+     * verdict. The closed point is restated at exactly {@code p} and {@code amounts}. {@code null} where the closure fails
+     * or drives a phase of {@code start} to nothing on its way ({@link #vanishing}, owner decision D38 C, read at every
+     * point it evaluates): a phase the rows empty is crawled to by a Newton that cannot converge with it present (a
+     * junction's trace vapour cost cold fuzz seed 118 174 710 closure iterations before this exit, 12 147 with it).
+     */
+    public State junctionSplit(double[] amounts,double enthalpy,double mass,double p,State start,Runnable checkpoint) {
+        try {
+            var layout=new PhaseLayout(this,start,null,null,PhaseLayout.support(this,start,null,null,true));
+            int n=hydrocarbon.componentCount();double[] fractions=new double[n+1];
+            for(int i=0;i<=n;i++)fractions[i]=amounts[i]*(i==n?waterMolecularWeight:hydrocarbon.molecularWeight(i))/mass;
+            var solved=SparseNewton.solve(layout.junctionClosure(fractions,enthalpy/mass,p,start),layout.encode(start),
+                    new SparseNewton.Settings(SparseNewton.ITERATIONS,1e-10,1e-6,24),checkpoint);
+            var closed=layout.decode(solved.variables(),0);
+            // Exactly what the junction holds: each component split as the closure split it, at exactly the retained pressure.
+            double[] l=closed.liquid(),v=closed.vapor();
+            for(int i=0;i<n;i++){double total=l[i]+v[i];l[i]=total>0?amounts[i]*(l[i]/total):amounts[i];v[i]=amounts[i]-l[i];}
+            double water=closed.waterLiquid()+closed.waterVapor(),wl=water>0?amounts[n]*(closed.waterLiquid()/water):amounts[n];
+            return state(closed.temperature(),p,l,v,wl,amounts[n]-wl,closed.hydrocarbonPartialPressure()*(p/closed.pressure())).withSolidState(start.solids(),start.solidMoments());
+        }
+        catch(PhaseLayout.Vanished|SparseNewton.Nonconvergence|IllegalArgumentException failed){return null;}
     }
     /**
      * A vessel's own state at a crossing (owner decision D40 A), the start of its own split in {@link #phaseCheck}: the

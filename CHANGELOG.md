@@ -15,6 +15,10 @@ All notable changes to CreateChemE are recorded in this file. The format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- A pipe junction's own split is its own rows (owner validation 2026-10-20 of option (a), batch folder: `2026-10-15-custom-equipment-rendering`, `OD4_COLD285_GATE889_REVIEW.md`): `FluidThermodynamics.junctionSplit` closes the junction's rows (`PhaseLayout.junctionClosure`) at its pressure and enthalpy from the engine's answer, for the outer phase check and the arriving-phase seed; a closure that fails or empties a phase proposes nothing (D40 A, D38 C). Cold fuzz seed 285 (LNG with 4.9 % CO2 at a pump's 182 kPa discharge junction, whose crystal-competing check proposed vapour its rows refuted every step) is clean and steady. The arriving-phase seed's gate: `PumpCavitationTest.waterArrivingAtACavitatingSuctionStaysLiquid` (bundled seed 889 minimized).
+
 ## [0.10.0] - 2026-10-20
 
 ### Added

@@ -533,6 +533,35 @@ public final class PhaseLayout {
         double[] n=Arrays.copyOf(l,l.length+1);
         for(int i=0;i<l.length;i++)n[i]+=v[i];n[l.length]=state.waterLiquid()+state.waterVapor();return n;
     }
+    /** Thrown by {@link #junctionClosure} at a point where a phase of its start is vanishing: the closure's verdict that its
+     * rows empty that phase (owner decision D38 C), reached without crawling to the boundary. */
+    public static final class Vanished extends RuntimeException {
+        Vanished(){super(null,null,false,false);}
+    }
+    /**
+     * A pipe junction's own rows isolated ({@code FluidThermodynamics.junctionSplit}): {@link #junctionResidual} with the
+     * mass fractions {@code massFractions} and specific enthalpy {@code specificEnthalpy} it holds as its inflow, no net
+     * flow and {@code pressure} retained, the pressure no connection decides here. Every point it evaluates is read by the
+     * vanishing rule against {@code start} ({@code FluidThermodynamics.vanishing}); one that empties a phase of the start
+     * ends the closure with {@link Vanished}.
+     */
+    public SparseNewton.Equations junctionClosure(double[] massFractions,double specificEnthalpy,double pressure,FluidThermodynamics.State start) {
+        double[] w=massFractions.clone();
+        return new SparseNewton.Equations(){
+            private volatile FluidThermodynamics.Prepared prepared;
+            public int size(){return PhaseLayout.this.size;}
+            public double differenceScale(int column,double value){return PhaseLayout.this.differenceStepScale(column,value);}
+            public double maximumStep(double[] x,double[] direction){double alpha=1;for(int c=0;c<x.length;c++)if(totalAmountVariable(c)&&x[c]>0&&direction[c]<0)alpha=Math.min(alpha,.99*x[c]/-direction[c]);return alpha;}
+            public int[][] columnRows(){int[][] rows=new int[size()][size()];for(int[] column:rows)for(int i=0;i<column.length;i++)column[i]=i;return rows;}
+            public double[] residual(double[] x){
+                double temperature=PhaseLayout.this.temperature(x,0);var local=prepared;
+                if(local==null||local.temperature()!=temperature)prepared=local=model.prepare(temperature);
+                var state=decode(x,0,local);
+                if(FluidThermodynamics.vanishing(start,state)!=0)throw new Vanished();
+                double[] f=new double[size()];junctionResidual(state,w,specificEnthalpy,0,pressure,f,0,x,local,1);return f;
+            }
+        };
+    }
     /** A vessel's closure at what it holds: the amounts, the energy and the wall ({@link #balanceRows}; {@code workFrom} as
      * there). */
     public SparseNewton.Equations wallClosure(double[] amounts,double energy,double capacity,double workFrom) {

@@ -1043,9 +1043,11 @@ public final class PassiveStepSolver {
      * floor (an 11 g air buffer receiving about 7 kg/s of water). Each junction's mixture over the step is its stock plus
      * what its connections deliver at the pass's start flows ({@link #startPoint}) over {@code dt}, each the stream its
      * donor end draws ({@link #endMoles}), at the seed's pressure and the enthalpy of stock and deliveries, split as the
-     * junction's own split is (D26, {@link FluidThermodynamics#equilibriumPH}, from the mass-weighted temperature, fluid
-     * only: a starting basis books no crystal, the seed keeps the junction's own solids; the TP flash there where the
-     * engine answers nothing, as for an empty bag) and folded as the pass folds a junction (D34, D41). The stock is what
+     * junction's own split is (D26, {@link FluidThermodynamics#junctionSplit}: its rows closed from the engine's PH answer
+     * at the mass-weighted temperature, fluid only, a starting basis booking no crystal, the seed keeping the junction's
+     * own solids; from the TP flash there where the engine answers nothing, as for an empty bag; formed only where the
+     * engine's answer holds a phase the seed lacks, and nothing taken where the closure fails or empties that phase) and
+     * folded as the pass folds a junction (D34, D41). The stock is what
      * the junction's own rows mix (D46): its buffer's amounts and energy field, which is in enthalpy form, its solids'
      * enthalpy left out. Its property state can be another mixture (the balance states a junction as what is delivered
      * to it, {@code BalanceNet.seeded}), and that state's specific enthalpy over the buffer's amounts made a subcooled LNG buffer (134.35 K, 656 kPa, 27 kJ/kg apart) a
@@ -1106,9 +1108,14 @@ public final class PassiveStepSolver {
                 double stock=buffer.internalEnergy()-buffer.solids().moments().enthalpy(at.temperature(),at.pressure());
                 double scale=seed.mass()/mass,enthalpy=(stock+heat)*scale;
                 for(int c=0;c<n.length;c++)n[c]*=scale;
-                FluidThermodynamics.State mixture;
-                try{var split=model.equilibriumPH(weighted/mass,seed.pressure(),enthalpy,n,false,checkpoint);mixture=model.folded(split!=null?split:model.flashTP(weighted/mass,seed.pressure(),n,checkpoint),true);}
+                FluidThermodynamics.State engine;
+                try{var split=model.equilibriumPH(weighted/mass,seed.pressure(),enthalpy,n,false,checkpoint);engine=split!=null?split:model.flashTP(weighted/mass,seed.pressure(),n,checkpoint);}
                 catch(com.wormzjl.createcheme.science.fluid.thermo.ThermoHold outside){continue;}
+                if((phaseCode(model.folded(engine,true))&~phaseCode(seed)&15)==0)continue;
+                // The engine's answer is the start of the junction's own split, not its verdict (D26): its rows decide the phase.
+                var own=model.junctionSplit(n,enthalpy,molarMass(n),seed.pressure(),engine,checkpoint);
+                if(own==null)continue;
+                var mixture=model.folded(own,true);
                 if((phaseCode(mixture)&~phaseCode(seed)&15)==0)continue;
                 if(result==null)result=new ArrayList<>(seeds);
                 result.set(j,mixture.withSolidState(seed.solids(),seed.solidMoments()));changed=true;

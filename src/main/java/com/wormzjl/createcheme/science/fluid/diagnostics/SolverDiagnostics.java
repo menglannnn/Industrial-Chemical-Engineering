@@ -101,7 +101,7 @@ public final class SolverDiagnostics {
     public static final LongAdder traceFolds=new LongAdder();
     public static final LongAdder traceFoldPasses=new LongAdder();
     /** Outer phase checks that seeded a phase a node lacks at the node's own split ({@code FluidThermodynamics.phaseCheck},
-     * decision D26: a vessel's closure of its inventory, a junction's PH answer). */
+     * decision D26: a vessel's closure of its inventory, a junction's closure of its own rows). */
     public static final LongAdder phaseSeeds=new LongAdder();
     /** Outer phase checks whose own split refused a proposed phase, its closure having driven it under the trace share or
      * driving it to nothing (the D26 amendment of 2026-10-16, by direction in form 4), and proposals the next pass refuted
