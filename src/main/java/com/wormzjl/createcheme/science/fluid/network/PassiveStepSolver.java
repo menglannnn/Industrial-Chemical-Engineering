@@ -404,6 +404,7 @@ public final class PassiveStepSolver {
         // and an entry trace seeded behind it for a component only it could bring puts an unknown on a nonnegativity
         // boundary whose only root is zero, which refused the whole Newton step ({@link #closeDeadHeads}).
         var reachable=reachableComponents(graph,boundaryClosed);
+        flashRestated=null;
         var seeds=initialPhaseSeeds(graph,dt,checkpoint,reachable,modes,boundaryClosed);
         var seen=new HashSet<PassKey>();
         // Constant for this solve: every pass keys on the same graph identity and component support.
@@ -443,6 +444,7 @@ public final class PassiveStepSolver {
             byte[] modeCodes=new byte[modes.size()];for(int i=0;i<modeCodes.length;i++)modeCodes[i]=(byte)modes.get(i).ordinal();
             var supports=supports(graph,seeds,reachable,promoted);
             var equations=new Equations(graph,dt,modes,boundaryClosed,seeds,reachable,supports,pipeIdentities);
+            flashRestated=null;
             // The active-set state is what varies between passes, so the structure key is also the cycle key: repeating one
             // means the pass sequence cannot make progress. The frozen junction donors, the phase-port segments and the static
             // columns belong to it for the same reason the modes do: they decide which equations this pass states (see
@@ -575,7 +577,7 @@ public final class PassiveStepSolver {
             // read the same phases.
             if(recordFolds(graph,states,projection.states(),foldedPhases)){SolverDiagnostics.count(SolverDiagnostics.traceFoldPasses);seeds=projection.states();continue;}
             var changedSeeds=phaseCorrection(graph,projection.states(),checkpoint,equations.cachedPrepared,foldedPhases);
-            if(changedSeeds!=null){changedSeeds=balancedProposal(graph,modes,boundaryClosed,projection.states(),changedSeeds,checkpoint);proposal=Proposal.of(projection.states(),changedSeeds);seeds=changedSeeds;continue;}
+            if(changedSeeds!=null){changedSeeds=flashSeeds(graph,modes,boundaryClosed,projection.states(),changedSeeds,checkpoint);proposal=Proposal.of(projection.states(),changedSeeds);seeds=changedSeeds;continue;}
             var reconstructed=x.clone();
             for(int node=0;node<projection.states().size();node++)if(equations.layout[node]!=null){var encoded=equations.layout[node].encode(projection.states().get(node));System.arraycopy(encoded,0,reconstructed,equations.offsets[node],encoded.length);}
             SolverDiagnostics.count(SolverDiagnostics.verificationResiduals);
@@ -1122,7 +1124,7 @@ public final class PassiveStepSolver {
             }
             if(!changed)break;
         }
-        return result==null?seeds:result;
+        return result==null?seeds:flashSeeds(graph,modes,boundaryClosed,seeds,result,checkpoint);
     }
     /**
      * Decisions D54 and D26: an empty bag's own split of what arrives over a step, the amounts {@code n} with the enthalpy
@@ -1236,6 +1238,7 @@ public final class PassiveStepSolver {
             // Decision D54: a dry end gives nothing, so an estimate out of one starts at rest (A190's rule for a carried flow).
             flows[i]=outOfDryEnd(graph,pipe,estimate[i])?0:estimate[i];
         }
+        if(flashRestated!=null&&seeds!=null)restateFlashFlows(graph,modes,boundaryClosed,seeds,flows);
         if(!hasSolids(graph)&&graph.pipes().stream().noneMatch(pipe->pipe.filter()!=null))return;
         int nodes=graph.reservoirs().size();int[] degree=new int[nodes];
         for(var pipe:graph.pipes()){degree[pipe.first()]++;degree[pipe.second()]++;}
@@ -1606,9 +1609,17 @@ public final class PassiveStepSolver {
      * not add them back and records there what its fold removes and its own split refuses, so the pass sequence stays
      * finite. A failed pass's last iterate is not checked here: it is only folded ({@link #foldedIterate}) and read for
      * whether it refutes a phase this check added ({@link Proposal}).
+     *
+     * <p>The nodes are checked from the lowest pressure up, so a run of junctions that must flash flashes from its
+     * downstream end. A liquid stream reaching a junction that already holds vapour has a root there; a two-phase stream
+     * reaching a junction laid out as a liquid below its bubble point has none (cold fuzz seed 757: vapour proposed at a
+     * junction at 563 kPa, 24 % of its moles at 138 K, fed a liquid-only junction at 484 kPa and 162 K, and the pass
+     * stalled on that junction's rows).
      */
     private List<FluidThermodynamics.State> phaseCorrection(PassiveNetwork graph,List<FluidThermodynamics.State> states,Runnable checkpoint,FluidThermodynamics.Prepared[] prepared,int[] foldedPhases) {
-        for(int i=0;i<states.size();i++) {
+        Integer[] order=new Integer[states.size()];for(int i=0;i<order.length;i++)order[i]=i;
+        Arrays.sort(order,(a,b)->{int c=Double.compare(states.get(a).pressure(),states.get(b).pressure());return c!=0?c:Integer.compare(a,b);});
+        for(int i:order) {
             var state=states.get(i);var node=graph.reservoirs().get(i);if(node.fixed())continue;
             FluidThermodynamics.State checked;
             try{checked=model.phaseCheck(state,node.junction(),inputStates.get(i),foldedPhases,i,prepared==null?null:prepared[i],
@@ -1622,44 +1633,126 @@ public final class PassiveStepSolver {
     /** The vapour bits of {@link FluidThermodynamics#phaseBits}: hydrocarbon vapour and steam. */
     private static final int VAPOUR_BITS=2|8;
     /**
-     * A phase the check adds to a junction ({@link #phaseCorrection}), seeded at the pressure the island puts the
-     * junction at once that phase is there. A junction holds no pressure of its own; its connections set it. The point
-     * that was checked is the network's answer for the layout that lacked the phase. A liquid-only layout carries the
-     * same mass out at a liquid's density, so it leaves a flashing junction too low: a cold LNG line opened to the air
-     * through 10 mm stood at 449 kPa, about a third of its bubble pressure. Once the vapour is there, the outflow at the
-     * velocity cap is lighter and the junction backs up. Pass 1 seeded at 449 kPa stalled at every step size down to 1/160
-     * (cold fuzz seed 170). The pass that converged put it near 0.92 MPa.
+     * The seeds {@code corrected} with every junction where a vapour first appears ({@link #flashes}) seeded just under
+     * the pressure its connections settle it at ({@link #settledFlash}), its connections restarted there
+     * ({@link #restateFlashFlows}); {@code point} is what the seeds were formed from: a converged pass's point for the
+     * phase check's proposal ({@link #phaseCorrection}), the step's seeds for what arrives ({@link #arrivingPhases}).
      *
-     * <p>The pressure is the balance start's ({@link #balanceStart}) on the corrected states. Every junction's net inflow
-     * vanishes there, and the flashing junction's density and cap follow its own pressure (its {@link BalanceNet} table);
-     * for that line the balance gives 801 kPa. The junction's own split ({@link FluidThermodynamics#junctionSplit}) is
-     * formed again at that pressure. The phase is still decided at the checked point. The pressure is only where the
-     * proposal starts, and the passes after it close or refute it (D39 B). Where the balance does not converge, or the
-     * split there does not add exactly the proposed phases, the proposal stands as the check formed it.
+     * <p>A junction holds no pressure of its own; its connections set it. The pressure a vapour first appears at is the
+     * answer of a layout without it. A liquid-only layout carries its outflow at a liquid's density and velocity cap, so a
+     * junction that must flash is left far below its bubble pressure. With the vapour there, the outflow is the mixture's,
+     * much lighter, and the junction backs up until what leaves passes what arrives. Cold fuzz seed 509: LNG at 4.34 MPa
+     * and 160 K enters through 0.1 m at its cap, 311.9 kg/s. As a liquid (377 kg/m3) the junction drains to 170 kPa, a
+     * tenth of its bubble pressure. As the mixture its two 0.1 m outlets pass 311.9 kg/s only at about 206 kg/m3, which it
+     * is at 1.24 MPa. Seeded at 170 kPa every step stalled; seed 170 is the same at 449 kPa against 0.92 MPa.
      *
-     * <p>Only a vapour appearing in a junction that held none is restated. A liquid condensing in a gas junction makes
-     * the outflow heavier, and the point's own pressure is the better start. On cold fuzz seed 118 the balance moved 4 of
-     * 98 such proposals, cost 127 ms each, and the island ran out of its wall budget.
+     * <p>Only a vapour appearing in a junction that held none is restated. A liquid condensing in a gas junction makes the
+     * outflow heavier, and the point's own pressure is the better start (cold fuzz seed 118: 98 such proposals).
      */
-    private List<FluidThermodynamics.State> balancedProposal(PassiveNetwork graph,List<FlowControl.Mode> modes,boolean[] boundaryClosed,
-                                                             List<FluidThermodynamics.State> point,List<FluidThermodynamics.State> corrected,Runnable checkpoint) {
-        var proposal=Proposal.of(point,corrected);
-        if(proposal==null||!graph.reservoirs().get(proposal.node()).junction()||(proposal.phases()&VAPOUR_BITS)==0
-                ||(FluidThermodynamics.phaseBits(point.get(proposal.node()))&VAPOUR_BITS)!=0)return corrected;
-        int j=proposal.node();var seed=corrected.get(j);
+    private List<FluidThermodynamics.State> flashSeeds(PassiveNetwork graph,List<FlowControl.Mode> modes,boolean[] boundaryClosed,
+                                                       List<FluidThermodynamics.State> point,List<FluidThermodynamics.State> corrected,Runnable checkpoint) {
+        List<FluidThermodynamics.State> result=null;
+        for(int j=0;j<corrected.size();j++) {
+            if(!flashes(graph,point,corrected,j))continue;
+            var settled=settledFlash(graph,modes,boundaryClosed,result==null?corrected:result,j,point.get(j),checkpoint);
+            if(settled==null)continue;
+            if(result==null)result=new ArrayList<>(corrected);
+            result.set(j,settled);
+            if(flashRestated==null)flashRestated=new boolean[corrected.size()];
+            flashRestated[j]=true;
+        }
+        return result==null?corrected:result;
+    }
+    /** The junctions {@link #flashSeeds} restated for the next pass, whose connections start from the restated ends
+     * ({@link #restateFlashFlows}); null when none. The pass loop clears it once that pass's equations are built. */
+    private boolean[] flashRestated;
+    /**
+     * The start flows of the connections of every junction {@link #flashSeeds} restated: each one's own law at the
+     * seeded end pressures ({@link #lawFlow}), nothing in a direction its boundary forbids. A carried flow belongs to the
+     * pressure the junction had: cold fuzz seed 170's junction went from 450 to 674 kPa, and the pass after it stalled
+     * on the hydraulic rows of its three connections.
+     */
+    private void restateFlashFlows(PassiveNetwork graph,List<FlowControl.Mode> modes,boolean[] boundaryClosed,List<FluidThermodynamics.State> seeds,double[] flows) {
         var reservoirs=new ArrayList<PassiveNetwork.Reservoir>(graph.reservoirs().size());
-        for(int i=0;i<graph.reservoirs().size();i++){var r=graph.reservoirs().get(i);reservoirs.add(r.fixed()?r:new PassiveNetwork.Reservoir(r.id(),r.elevation(),corrected.get(i),r.kind(),r.inventory()));}
-        var balanced=balanceStart(new PassiveNetwork(reservoirs,graph.pipes(),graph.scheduledTransfers()),new ArrayList<>(modes),boundaryClosed.clone(),null,checkpoint,graph);
-        double p=balanced.graph().reservoirs().get(j).state().pressure();
-        if(!balanced.converged()||!(p>0)||p==seed.pressure())return corrected;
-        double[] n=PhaseLayout.totalAmounts(seed);FluidThermodynamics.State own;
-        try{var engine=model.equilibriumPH(seed.temperature(),p,seed.enthalpy()-seed.solidMoments().enthalpy(seed.temperature(),seed.pressure()),n,false,checkpoint);
-            own=engine==null?null:model.junctionSplit(n,seed.enthalpy(),seed.mass(),p,engine.withSolidState(seed.solids(),seed.solidMoments()),checkpoint);}
-        catch(com.wormzjl.createcheme.science.fluid.thermo.ThermoHold outside){return corrected;}
-        if(own==null)return corrected;
-        var restated=model.folded(own.withSolidState(seed.solids(),seed.solidMoments()),true);
-        if((FluidThermodynamics.phaseBits(restated)&~FluidThermodynamics.phaseBits(point.get(j)))!=proposal.phases())return corrected;
-        var result=new ArrayList<>(corrected);result.set(j,restated);return result;
+        for(int i=0;i<graph.reservoirs().size();i++){var r=graph.reservoirs().get(i);reservoirs.add(r.fixed()?r:new PassiveNetwork.Reservoir(r.id(),r.elevation(),seeds.get(i),r.kind(),r.inventory()));}
+        var g=new PassiveNetwork(reservoirs,graph.pipes(),graph.scheduledTransfers());
+        for(int e=0;e<flows.length;e++) {
+            var pipe=g.pipes().get(e);
+            if(!(flashRestated[pipe.first()]||flashRestated[pipe.second()])||pipe.control() instanceof FlowControl.Mover)continue;
+            if(boundaryClosed[e]||modes.get(e)==FlowControl.Mode.CLOSED)continue;
+            double law=lawFlow(g,pipe,endPressure(g,pipe,pipe.first()),endPressure(g,pipe,pipe.second()));
+            flows[e]=boundaryAllowed(g,pipe,law)?law:0;
+        }
+    }
+    /** Whether {@code corrected} gives junction {@code j} a vapour ({@link #VAPOUR_BITS}) that {@code point} holds none of. */
+    private static boolean flashes(PassiveNetwork graph,List<FluidThermodynamics.State> point,List<FluidThermodynamics.State> corrected,int j) {
+        var node=graph.reservoirs().get(j);
+        if(!node.junction()||node.fixed()||corrected.get(j)==point.get(j))return false;
+        int before=FluidThermodynamics.phaseBits(point.get(j));
+        return (before&VAPOUR_BITS)==0&&(FluidThermodynamics.phaseBits(corrected.get(j))&~before&VAPOUR_BITS)!=0;
+    }
+    /** The pressure ratio of the march up from the pressure a vapour appears at, and its most steps. */
+    private static final double FLASH_STEP=1.5;private static final int FLASH_STEPS=12;
+    /**
+     * Junction {@code j}'s flashed seed under the pressure its own balance settles it at, every other node held at
+     * {@code states}. The balance is where the net inflow of its connections ({@link #netInflow}) vanishes: each at its
+     * own law, saturated at the cap of the end it leaves, the junction the donor of what leaves at its own split there
+     * ({@link FluidThermodynamics#junctionSplit}: its amounts and enthalpy, from the trial below it). The net inflow falls
+     * as the pressure rises: less arrives at a smaller drive, and what leaves is denser. So the root lies above the seed's
+     * pressure where the flashed junction takes in more than it passes, and below the pressure its vapour vanishes at.
+     * The march goes up by {@link #FLASH_STEP} (never past the highest pressure of a neighbour) and keeps the last trial
+     * that still takes in more than it passes: within one step under the root, on the side where the vapour holds.
+     * At the root itself a junction that barely flashes sits just under its bubble point, and the two-phase layout ends
+     * there. Cold fuzz seed 592: LNG must pass 298 kg/s through 9.8e-3 m2 of outlets at about 304 kg/m3, against 356 as a
+     * liquid; the root is 1.78 MPa, the bubble point about 1.86 MPa. Every step from the root walked off to an all-vapour
+     * iterate. Seeded at 1.24 MPa, the march's last trial, the island is clean in 4 266 Newton iterations (5 153 on
+     * 0.10.0, whose junction stayed a liquid at 552 kPa). Null where the seed passes what arrives already, or where no
+     * trial keeps the vapour.
+     */
+    private FluidThermodynamics.State settledFlash(PassiveNetwork graph,List<FlowControl.Mode> modes,boolean[] boundaryClosed,
+                                                   List<FluidThermodynamics.State> states,int j,FluidThermodynamics.State before,Runnable checkpoint) {
+        var seed=states.get(j);
+        if(!(netInflow(graph,modes,boundaryClosed,states,j,seed)>0))return null;
+        double[] n=PhaseLayout.totalAmounts(seed);int added=FluidThermodynamics.phaseBits(seed)&~FluidThermodynamics.phaseBits(before);
+        double ceiling=0;
+        for(var pipe:graph.pipes())if(pipe.first()==j||pipe.second()==j){int other=pipe.first()==j?pipe.second():pipe.first();ceiling=Math.max(ceiling,states.get(other).pressure());}
+        var low=seed;
+        for(int k=0;k<FLASH_STEPS;k++) {
+            double p=Math.min(low.pressure()*FLASH_STEP,ceiling);if(!(p>low.pressure()))break;
+            var trial=flashAt(n,seed,p,low,added,checkpoint);
+            if(trial==null||!(netInflow(graph,modes,boundaryClosed,states,j,trial)>0))break;
+            low=trial;
+        }
+        return low==seed?null:low;
+    }
+    /** The junction's own split of {@code seed}'s amounts {@code n} and enthalpy at pressure {@code p}, from {@code start},
+     * folded as the pass folds a junction; null where it fails or no longer holds the {@code added} phases. */
+    private FluidThermodynamics.State flashAt(double[] n,FluidThermodynamics.State seed,double p,FluidThermodynamics.State start,int added,Runnable checkpoint) {
+        FluidThermodynamics.State own;
+        try{own=model.junctionSplit(n,seed.enthalpy(),seed.mass(),p,start,checkpoint);}
+        catch(com.wormzjl.createcheme.science.fluid.thermo.ThermoHold outside){return null;}
+        if(own==null)return null;
+        var folded=model.folded(own.withSolidState(seed.solids(),seed.solidMoments()),true);
+        return (FluidThermodynamics.phaseBits(folded)&added)==added?folded:null;
+    }
+    /** The net mass inflow (kg/s) of junction {@code j} stated as {@code trial}, every other node as {@code states}: each open
+     * connection at its law's flow on those end pressures ({@link #lawFlow}), saturated at its donor's cap
+     * ({@link #transported}), nothing in a direction its boundary forbids. */
+    private double netInflow(PassiveNetwork graph,List<FlowControl.Mode> modes,boolean[] boundaryClosed,List<FluidThermodynamics.State> states,int j,FluidThermodynamics.State trial) {
+        var reservoirs=new ArrayList<PassiveNetwork.Reservoir>(graph.reservoirs().size());
+        for(int i=0;i<graph.reservoirs().size();i++){var r=graph.reservoirs().get(i);reservoirs.add(r.fixed()?r:new PassiveNetwork.Reservoir(r.id(),r.elevation(),i==j?trial:states.get(i),r.kind(),r.inventory()));}
+        var g=new PassiveNetwork(reservoirs,graph.pipes(),graph.scheduledTransfers());
+        double net=0;
+        for(int e=0;e<g.pipes().size();e++) {
+            var pipe=g.pipes().get(e);if(pipe.first()!=j&&pipe.second()!=j)continue;
+            var mode=modes.get(e);
+            if(boundaryClosed[e]||mode==FlowControl.Mode.CLOSED||mode==FlowControl.Mode.INLET_WRONG_PHASE)continue;
+            double law=lawFlow(g,pipe,endPressure(g,pipe,pipe.first()),endPressure(g,pipe,pipe.second()));
+            if(!boundaryAllowed(g,pipe,law))continue;
+            double q=transported(g,pipe,law);
+            net+=pipe.second()==j?q:-q;
+        }
+        return net;
     }
     /**
      * The check of a failed pass's last iterate, node by node (owner decisions D28 A' and D39): the iterate with the
