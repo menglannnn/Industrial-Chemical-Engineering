@@ -420,7 +420,10 @@ public final class PassiveIntervalSolver {
         var key=new ArrayList<Long>();for(var pipe:graph.pipes()){key.add(pipe.id());key.add((long)pipe.blockedDirections());}
         return key;
     }
-    private double[] carriedFlows(PassiveNetwork graph) {
+    /** The flows the last accepted step left, where {@code graph} keeps their structure; null otherwise. The island's own flows
+     * at an interval's start: this solver's first guard reads them, and the solid event integrator's still pipes where its
+     * rate solve fails. */
+    double[] carriedFlows(PassiveNetwork graph) {
         return carriedFlows!=null&&carriedModes!=null&&carriedKey.equals(flowKey(graph))?carriedFlows:null;
     }
     /** Reference density for a vessel's mass change, kg/m3 (owner decision 2026-09-27: liquid hydrocarbon service). A

@@ -58,8 +58,9 @@ final class SolidEventIntegrator {
      * The pipes still at an interval's start (owner decision of 2026-10-19 on t53's final test): a pipe at rest carries no
      * solids, so it deposits, refuses and delivers nothing, and the sign of a roundoff flow names no donor (t48's trace of
      * cold fuzz seed 850: 1.3e-23 m/s in a still pipe from a tank holding crystals read DEPOSITION, and its rejections
-     * stalled the island). Still is roundoff: a flow of the interval-start rate solve within the Newton's own tolerance
-     * ({@link PassiveStepSolver#NEWTON_TOLERANCE}) of its largest flow, at least 1 kg/s. It is decided once, where the
+     * stalled the island). Still is roundoff: a flow of the interval-start rate solve (where it fails, of the last accepted
+     * step) within the Newton's own tolerance ({@link PassiveStepSolver#NEWTON_TOLERANCE}) of its largest flow, at least
+     * 1 kg/s. It is decided once, where the
      * closures are decided, and such a pipe keeps its state for the interval: no threshold on a real flow fires inside a
      * step (D42's resolution flow, read as still before, is about 1 kg/s in 1 m of 100 mm LNG line, and cold fuzz seed
      * 829's draining tank, 0.38 m/s, met it inside its step).
@@ -320,7 +321,12 @@ final class SolidEventIntegrator {
         // (PassiveStepSolver.portRate); it only pre-empts a closure the steps would find, so a rate solve that fails declares
         // no new closure and the steps decide (hold class E1), but a closure carried without it (carriedWithoutRate) is
         // declared, and the rate solve tried again with it closed. The same rate solve decides which pipes are still (still):
-        // they keep their state for the whole interval, its steps included, a closed one its closure.
+        // they keep their state for the whole interval, its steps included, a closed one its closure. Where it fails, the
+        // flows the last accepted step left on this structure decide (the t0 flows the interval solver's own start-of-step
+        // check reads, PassiveIntervalSolver.carriedFlows): a pipe at rest is still whether or not the port graph converges.
+        // Cold fuzz seed 850 at rest: the rate solve, its taut tank held as a port 1.36 kPa under the junction beside it,
+        // failed on eight intervals in a row; with no pipe still, the 2e-12 kg/s the step left in the pipe to the tank read
+        // DEPOSITION against its 1.275 m/s suspension velocity, 25 refusals in one interval.
         boolean[] still=null;
         for(int attempt=0;SolidMobility.closable(model,graph)&&attempt<=2*blocked.length;attempt++) {
             checkpoint.run();graph=masks(graph,blocked);
@@ -330,7 +336,10 @@ final class SolidEventIntegrator {
                 still=still(candidate.massFlows());
                 failure=failed(graph,candidate.states(),candidate.massFlows(),still);
                 if(failure==null)failure=carried(graph,committed,blocked,candidate.states(),still);
-            } else failure=carriedWithoutRate(graph,committed,blocked);
+            } else {
+                var carriedFlows=integrator.carriedFlows(graph);still=carriedFlows==null?null:still(carriedFlows);
+                failure=carriedWithoutRate(graph,committed,blocked);
+            }
             if(failure==null)break;
             blocked[failure.edge]|=BOTH_DIRECTIONS;
             // A cake the last interval's final step left at capacity is declared here, at the next interval's t0, and
