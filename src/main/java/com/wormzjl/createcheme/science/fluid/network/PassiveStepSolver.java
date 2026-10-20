@@ -1061,10 +1061,10 @@ public final class PassiveStepSolver {
      * the latent heat a temperature mix leaves out: liquid water at 326.648 K reaching a pump suction held at its vapour
      * pressure (14.63 kPa, its saturation at 326.606 K) is liquid beside 6.6e-6 of its mass as steam, where the TP flash
      * at the mixed temperature made all of it steam, and the suction limit's row then had no vapour pressure to stand at
-     * (bundled fuzz seed 889, hold E9). Where that mixture holds a phase the seed lacks, the seed becomes the mixture
-     * at the seed's mass; a junction donor delivers its own updated seed, so a phase reaches a run of junctions in one
-     * stage. A seed that already holds every phase of its mixture is kept to the bit; a rate-only solve holds a
-     * junction's composition at its stock and this does nothing there.
+     * (bundled fuzz seed 889, hold E9). Where the seed is not laid out for that mixture ({@link #laidOutFor}), the seed
+     * becomes the mixture at the seed's mass; a junction donor delivers its own updated seed, so a phase reaches a run of
+     * junctions in one stage. A seed laid out for its mixture is kept to the bit; a rate-only solve holds a junction's
+     * composition at its stock and this does nothing there.
      *
      * <p>A vessel that holds no fluid (decision D54) is laid out from what its connections deliver over {@code dt}, beside
      * its solids: the delivered amounts at the bag's own split (decision D26, {@link #emptyBagSplit}), at the ambient while
@@ -1117,12 +1117,12 @@ public final class PassiveStepSolver {
                 FluidThermodynamics.State engine;
                 try{var split=model.equilibriumPH(weighted/mass,seed.pressure(),enthalpy,n,false,checkpoint);engine=split!=null?split:model.flashTP(weighted/mass,seed.pressure(),n,checkpoint);}
                 catch(com.wormzjl.createcheme.science.fluid.thermo.ThermoHold outside){continue;}
-                if((phaseCode(model.folded(engine,true))&~phaseCode(seed)&15)==0)continue;
+                if(laidOutFor(phaseCode(model.folded(engine,true)),phaseCode(seed)))continue;
                 // The engine's answer is the start of the junction's own split, not its verdict (D26): its rows decide the phase.
                 var own=model.junctionSplit(n,enthalpy,molarMass(n),seed.pressure(),engine,checkpoint);
                 if(own==null)continue;
                 var mixture=model.folded(own,true);
-                if((phaseCode(mixture)&~phaseCode(seed)&15)==0)continue;
+                if(laidOutFor(phaseCode(mixture),phaseCode(seed)))continue;
                 if(result==null)result=new ArrayList<>(seeds);
                 result.set(j,mixture.withSolidState(seed.solids(),seed.solidMoments()));changed=true;
             }
@@ -1840,6 +1840,17 @@ public final class PassiveStepSolver {
     }
     /** Which phases this state carries: the four fluid flags of {@link FluidThermodynamics#phaseBits} (hydrocarbon liquid 1,
      * hydrocarbon vapour 2, free water 4, steam 8) and 16 for solids. */
+    /**
+     * Whether a junction seed of phase code {@code seed} is laid out for its step's mixture of code {@code mixture}
+     * ({@link #arrivingPhases}): the same hydrocarbon phases, liquid and gas, and every water phase of the mixture. A pass
+     * cannot empty a phase, so a hydrocarbon phase the mixture lacks counts as much as one it holds and the seed does not:
+     * the balance stated four junctions as the 215.5 K CO2-rich gas and liquid delivered to them while each held 3 to 14 g
+     * of warm gas (stock enthalpy -10 to +44 kJ/kg against -131 to -136), and every step down to 1.1e-6 s started in a
+     * layout its answer was not in (cold fuzz seed 994, E6). Water keeps the superset: a seed's water may be the entry
+     * trace of decision D10, which a mixture nothing wet reaches lacks, and dropping it left the rows without the water the
+     * reconstruction then booked (bundled fuzz seed 157, E4).
+     */
+    private static boolean laidOutFor(int mixture,int seed){return ((mixture^seed)&3)==0&&(mixture&~seed&12)==0;}
     private static int phaseCode(FluidThermodynamics.State state) {
         return (state.solidMoments().mass()>0?16:0)|FluidThermodynamics.phaseBits(state);
     }
