@@ -181,6 +181,13 @@ class JunctionSeedingGateTest {
      * 0.011 kg while 21.5 kg/s of water passed (a 0.5 ms mixing lag where the mint's rule gives 0.44 s), each interval cost
      * 2 to 3.5 times the work and at 3767 the step failed 19 times on the junction inventory (E9). Sized on its carried
      * water by the mint's rule, the buffer holds 9.5 kg and the island keeps up.
+     *
+     * <p>Since rule OD4 (batch 2026-10-15-custom-equipment-rendering: an actuator's half links take the bore of the pipe
+     * they join) the valve is 50 mm, not its own 10 mm, so the second tank fills too and then drains through the valve: at
+     * the end 46.0 kg/s pass, 33.5 kg/s by the drain and 12.56 kg/s by the valve, wide open (154.6 kPa upstream, above
+     * its 150 kPa set point), and the drain's junction holds 9.54 kg. When the second tank turns liquid-full at 3767, the
+     * valve's junction still holds the placeholder gas, and its static column decides whether it stands above or below
+     * the set point; the cycle key carries the columns (PassiveStepSolver.PassKey), else the island held E7 at 3867.
      */
     @Test void aJunctionCarriedAcrossAReplacementHasItsBufferSizedOnWhatItHolds() {
         var w=new EventPathWorld();var passive=new FlowControl.Passive();
