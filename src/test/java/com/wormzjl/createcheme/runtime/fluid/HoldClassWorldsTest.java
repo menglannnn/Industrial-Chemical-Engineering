@@ -76,8 +76,9 @@ class HoldClassWorldsTest {
      * package: at tick 404 two pipes join an empty tank to a junction fed by a CO2-rich gas generator (4.89 MPa, 293 K)
      * and an LNG generator (884 kPa, 128 K); nothing can cool below about 110 K. Before the rule a junction's failed
      * iterates on the 1 Pa box floor were flashed and the island held at tick 406 on "a third fluid phase ... at 17.35 K"
-     * (class C). The world still holds a step stall (class E5, open), so it is not asserted to keep up: it pins that no
-     * hold is a capability hold.
+     * (class C). It then held a step stall (E5), and from a6b14b22 on (1e-9 slopes) the mint's balance ended unconverged,
+     * the step held E6 at 406 (COLD430_889_REVIEW.md, 2026-10-21): its Newton steps left the hull and the line search
+     * accepted 4e-8 of each, never reaching the sweep. With the sweep first where a step leaves half the hull it keeps up.
      */
     @Test void aFailedIterateRaisesNoPhaseHold() {
         cold(w->{
@@ -88,9 +89,9 @@ class HoldClassWorldsTest {
             w.runTo(364);w.place(-2,-1,0,Kind.GENERATOR,NORTH,pilot(128.26444287849995,884476.301554819,0.0015460461379406321,0.9680838334702262,0.010807740847289705,0.01956237954454346,0),.02);
             w.runTo(404);w.place(-4,-1,0,Kind.PIPE,NORTH,.02);w.place(-4,0,0,Kind.PIPE,NORTH,.05);
             w.runTo(404+100);
-            for(var h:w.held)System.out.println("FAILED_ITERATE_HELD "+h);
             assertTrue(w.held.stream().noneMatch(h->h.status().startsWith(com.wormzjl.createcheme.runtime.ProcessSolveServices.PHASE_HOLD)),
                     "no capability hold about a failed iterate: "+w.held);
+            w.assertKeptUp("a CO2-rich gas and an LNG generator joining an empty tank");
         });
     }
 
