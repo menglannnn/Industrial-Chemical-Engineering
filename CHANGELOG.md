@@ -15,9 +15,12 @@ All notable changes to Industrial Chemical Engineering (IChemE, formerly CreateC
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-10-21
+
 ### Changed
 
-- Mod renamed to Industrial Chemical Engineering (IChemE) (owner request 2026-10-21, batch folder: `2026-10-21-rename-icheme`): mod id `createcheme` → `icheme`, Java package `com.wormzjl.icheme`, main classes `IChemE` and `IChemEClient`, every resource namespace and lang key, config file `icheme-common.toml`, saved data `icheme_fluid_core` / `icheme_fluid`, GameTest namespaces `icheme_*`, client preset folder `<game>/IChemE/`. The regrouped Transformer sidecar's `packageId` follows the namespace, so its pipeline SHA-256 is now `80dda6de…`. **Breaking, no upgrade:** blocks, items and fluid state of a world saved by 0.10.1 do not load; use a fresh world.
+- Mod renamed to Industrial Chemical Engineering (IChemE) (owner request 2026-10-21, batch folder: `2026-10-21-rename-icheme`, review `RENAME_REVIEW.md`, commits `8033aed8`, `d456d090`): mod id `createcheme` → `icheme`, Java package `com.wormzjl.icheme`, main classes `IChemE` and `IChemEClient`, every resource namespace and lang key, config file `icheme-common.toml`, saved data `icheme_fluid_core` / `icheme_fluid`, GameTest namespaces `icheme_*`, client preset folder `<game>/IChemE/`. The regrouped Transformer sidecar's `packageId` follows the namespace, so its pipeline SHA-256 is now `80dda6de…`. **Breaking, no upgrade:** blocks, items and fluid state of a world saved by 0.10.1 do not load; use a fresh world.
+- README: the current status at 0.10.1, short. Tooling: the live harnesses in the main checkout's `tools/` (hold-fuzz, quick lane, d40 javac lane, test world) and the code guide follow the rename; the d40 lane gains Create's catnip on its main classpath.
 
 ## [0.10.1] - 2026-10-21
 
