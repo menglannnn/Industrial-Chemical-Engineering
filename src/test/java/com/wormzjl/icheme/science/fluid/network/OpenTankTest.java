@@ -12,9 +12,10 @@ import static org.junit.jupiter.api.Assertions.*;
 /**
  * The open vessel of batch 2026-10-21-floating-roof-tanks ({@link OpenVessel}, plan section 3.1, WP1): a floating-roof
  * tank's surface stands at the ambient pressure, its gas vents over the step after it arrives, the liquid above its fill
- * height leaves only through its OVERFLOW port, and the liquid above its shell top spills. Non-volatile cases only (owner
- * decision of 2026-10-21: the tank is not designed for volatile compounds): water carrying nitrogen, and a stabilised
- * crude. Every run closes the component and energy ledgers over the vessels and the boundary transfers.
+ * height leaves only through its OVERFLOW port, and the liquid above its shell top spills; vent and spill are rates (a
+ * step releases dt / RELEASE_TIME of its start excess). Water carrying nitrogen, nitrogen alone and a stabilised crude
+ * here; boiling feeds are in design too (owner decision of 2026-10-21) and are covered by the fuzz campaign. Every run
+ * closes the component and energy ledgers over the vessels and the boundary transfers.
  */
 class OpenTankTest extends PortFixture {
     private static final double COMPONENT_LEDGER=1e-10,ENERGY_LEDGER=1e-9,G=PassiveStepSolver.GRAVITY,P0=PhaseLayout.AMBIENT_PRESSURE;
