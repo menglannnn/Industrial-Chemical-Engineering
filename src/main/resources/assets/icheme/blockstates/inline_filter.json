@@ -1,0 +1,7 @@
+{
+  "variants": {
+    "": {
+      "model": "icheme:block/inline_filter"
+    }
+  }
+}

@@ -36,7 +36,7 @@ def default_artifact():
     for line in Path("gradle.properties").read_text(encoding="utf-8").splitlines():
         key, _, value = line.partition("=")
         if key.strip() == "mod_version":
-            return Path(f"build/libs/createcheme-{value.strip()}.jar")
+            return Path(f"build/libs/icheme-{value.strip()}.jar")
     raise SystemExit("gradle.properties has no mod_version; pass --artifact explicitly")
 
 
@@ -820,7 +820,7 @@ def build_parser():
         dest="artifact",
         type=Path,
         default=None,
-        help="Candidate jar; defaults to build/libs/createcheme-<mod_version>.jar",
+        help="Candidate jar; defaults to build/libs/icheme-<mod_version>.jar",
     )
     summary_parser.add_argument(
         "--runtime-root",
@@ -840,7 +840,7 @@ def build_parser():
         "--artifact",
         type=Path,
         default=None,
-        help="Candidate jar; defaults to build/libs/createcheme-<mod_version>.jar",
+        help="Candidate jar; defaults to build/libs/icheme-<mod_version>.jar",
     )
 
     memory_parser = commands.add_parser(

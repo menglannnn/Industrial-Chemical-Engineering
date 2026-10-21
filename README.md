@@ -1,8 +1,8 @@
-# CreateChemE
+# Industrial Chemical Engineering (IChemE)
 
 ## Intent
 
-CreateChemE is a Minecraft 1.21.1 NeoForge addon for Create that aims to turn chemical and petroleum processing into playable factory systems. Its scientific model is intended to be lightweight enough for real-time game simulation while retaining consistent component, mass, element, phase, and energy balances.
+Industrial Chemical Engineering (IChemE) is a Minecraft 1.21.1 NeoForge addon for Create that aims to turn chemical and petroleum processing into playable factory systems. Its scientific model is intended to be lightweight enough for real-time game simulation while retaining consistent component, mass, element, phase, and energy balances.
 
 The planned material system combines real chemical species with petroleum pseudocomponents, phase equilibrium, heat transfer, fluid transport, reaction kinetics, catalyst state, and conservative coupling between reaction and separation processes. Public thermodynamic and process data will provide the scientific basis, with clearly identified gameplay approximations where industrial data are unavailable.
 
@@ -10,7 +10,7 @@ Planned equipment includes storage drums, pumps, compressors, heat exchangers, b
 
 ## Current status
 
-The mod is in an early proof-of-concept stage. The NeoForge 1.21.1 project integrates with Create, JEI, and KubeJS and provides the experimental V3 column calculator (`createcheme:column_calculator_v3`).
+The mod is in an early proof-of-concept stage. The NeoForge 1.21.1 project integrates with Create, JEI, and KubeJS and provides the experimental V3 column calculator (`icheme:column_calculator_v3`).
 
 The calculator provides editable column inputs, literature presets, side draws, steam feeds, pumparounds, and stream/composition results. A simultaneous MESH solver with stage and pressure continuation runs through one bounded server-owned solve service. Results must pass convergence and conservation checks before publication; server-authoritative admission and revision checks protect against stale results.
 
@@ -34,6 +34,6 @@ Run the unit suite with:
 ./gradlew test
 ```
 
-Runtime sources, resources, the Gradle wrapper, regression tests and their fixtures are tracked. The bundled Transformer weights and their model card under `src/main/resources/data/createcheme/neural/` are required runtime/provenance assets and stay in the repository. The server defaults to learned-first initialization with classical fallback; experimental models are not required to build or run the mod.
+Runtime sources, resources, the Gradle wrapper, regression tests and their fixtures are tracked. The bundled Transformer weights and their model card under `src/main/resources/data/icheme/neural/` are required runtime/provenance assets and stay in the repository. The server defaults to learned-first initialization with classical fallback; experimental models are not required to build or run the mod.
 
 Research datasets, retired models, training/evaluation tools, branch handoffs and standalone timing/memory diagnostics are local, ignored files. Existing local research tasks can be loaded from `tools/development.gradle` when that file is present. A fresh clone builds and tests without those files. Scientific regression fixtures under `src/test/resources/` remain tracked.

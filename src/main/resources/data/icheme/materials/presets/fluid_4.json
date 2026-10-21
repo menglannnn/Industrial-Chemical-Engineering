@@ -1,0 +1,8 @@
+{
+  "schema_version": 1,
+  "id": "icheme:cold_lake_blend",
+  "kind": "fluid",
+  "label": "Cold Lake Blend",
+  "package": "icheme:cold_lake_blend_tjl20",
+  "assay": "icheme:cold_lake_blend"
+}

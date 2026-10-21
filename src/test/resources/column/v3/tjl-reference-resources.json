@@ -1,6 +1,6 @@
 [
  {
-  "path": "data/createcheme/materials/components/ethane.json",
+  "path": "data/icheme/materials/components/ethane.json",
   "record": {
    "id": "Ethane",
    "kind": "lump",
@@ -15,7 +15,7 @@
   }
  },
  {
-  "path": "data/createcheme/materials/properties/test_tjl_ethane.json",
+  "path": "data/icheme/materials/properties/test_tjl_ethane.json",
   "record": {
    "schema_version": 1,
    "id": "test:tjl_ethane",
@@ -52,7 +52,7 @@
   }
  },
  {
-  "path": "data/createcheme/materials/components/propane.json",
+  "path": "data/icheme/materials/components/propane.json",
   "record": {
    "id": "Propane",
    "kind": "lump",
@@ -67,7 +67,7 @@
   }
  },
  {
-  "path": "data/createcheme/materials/properties/test_tjl_propane.json",
+  "path": "data/icheme/materials/properties/test_tjl_propane.json",
   "record": {
    "schema_version": 1,
    "id": "test:tjl_propane",
@@ -104,7 +104,7 @@
   }
  },
  {
-  "path": "data/createcheme/materials/components/isobutane.json",
+  "path": "data/icheme/materials/components/isobutane.json",
   "record": {
    "id": "Isobutane",
    "kind": "lump",
@@ -119,7 +119,7 @@
   }
  },
  {
-  "path": "data/createcheme/materials/properties/test_tjl_isobutane.json",
+  "path": "data/icheme/materials/properties/test_tjl_isobutane.json",
   "record": {
    "schema_version": 1,
    "id": "test:tjl_isobutane",
@@ -156,7 +156,7 @@
   }
  },
  {
-  "path": "data/createcheme/materials/components/n_butane.json",
+  "path": "data/icheme/materials/components/n_butane.json",
   "record": {
    "id": "N-butane",
    "kind": "lump",
@@ -171,7 +171,7 @@
   }
  },
  {
-  "path": "data/createcheme/materials/properties/test_tjl_n_butane.json",
+  "path": "data/icheme/materials/properties/test_tjl_n_butane.json",
   "record": {
    "schema_version": 1,
    "id": "test:tjl_n_butane",
@@ -208,7 +208,7 @@
   }
  },
  {
-  "path": "data/createcheme/materials/components/isopentane.json",
+  "path": "data/icheme/materials/components/isopentane.json",
   "record": {
    "id": "Isopentane",
    "kind": "lump",
@@ -223,7 +223,7 @@
   }
  },
  {
-  "path": "data/createcheme/materials/properties/test_tjl_isopentane.json",
+  "path": "data/icheme/materials/properties/test_tjl_isopentane.json",
   "record": {
    "schema_version": 1,
    "id": "test:tjl_isopentane",
@@ -260,7 +260,7 @@
   }
  },
  {
-  "path": "data/createcheme/materials/components/n_pentane.json",
+  "path": "data/icheme/materials/components/n_pentane.json",
   "record": {
    "id": "N-pentane",
    "kind": "lump",
@@ -275,7 +275,7 @@
   }
  },
  {
-  "path": "data/createcheme/materials/properties/test_tjl_n_pentane.json",
+  "path": "data/icheme/materials/properties/test_tjl_n_pentane.json",
   "record": {
    "schema_version": 1,
    "id": "test:tjl_n_pentane",
@@ -312,7 +312,7 @@
   }
  },
  {
-  "path": "data/createcheme/materials/components/tjl19_pc01.json",
+  "path": "data/icheme/materials/components/tjl19_pc01.json",
   "record": {
    "id": "tjl19_pc01",
    "kind": "lump",
@@ -327,7 +327,7 @@
   }
  },
  {
-  "path": "data/createcheme/materials/properties/test_tjl_tjl19_pc01.json",
+  "path": "data/icheme/materials/properties/test_tjl_tjl19_pc01.json",
   "record": {
    "schema_version": 1,
    "id": "test:tjl_tjl19_pc01",
@@ -364,7 +364,7 @@
   }
  },
  {
-  "path": "data/createcheme/materials/components/tjl19_pc02.json",
+  "path": "data/icheme/materials/components/tjl19_pc02.json",
   "record": {
    "id": "tjl19_pc02",
    "kind": "lump",
@@ -379,7 +379,7 @@
   }
  },
  {
-  "path": "data/createcheme/materials/properties/test_tjl_tjl19_pc02.json",
+  "path": "data/icheme/materials/properties/test_tjl_tjl19_pc02.json",
   "record": {
    "schema_version": 1,
    "id": "test:tjl_tjl19_pc02",
@@ -416,7 +416,7 @@
   }
  },
  {
-  "path": "data/createcheme/materials/components/tjl19_pc03.json",
+  "path": "data/icheme/materials/components/tjl19_pc03.json",
   "record": {
    "id": "tjl19_pc03",
    "kind": "lump",
@@ -431,7 +431,7 @@
   }
  },
  {
-  "path": "data/createcheme/materials/properties/test_tjl_tjl19_pc03.json",
+  "path": "data/icheme/materials/properties/test_tjl_tjl19_pc03.json",
   "record": {
    "schema_version": 1,
    "id": "test:tjl_tjl19_pc03",
@@ -468,7 +468,7 @@
   }
  },
  {
-  "path": "data/createcheme/materials/components/tjl19_pc04.json",
+  "path": "data/icheme/materials/components/tjl19_pc04.json",
   "record": {
    "id": "tjl19_pc04",
    "kind": "lump",
@@ -483,7 +483,7 @@
   }
  },
  {
-  "path": "data/createcheme/materials/properties/test_tjl_tjl19_pc04.json",
+  "path": "data/icheme/materials/properties/test_tjl_tjl19_pc04.json",
   "record": {
    "schema_version": 1,
    "id": "test:tjl_tjl19_pc04",
@@ -520,7 +520,7 @@
   }
  },
  {
-  "path": "data/createcheme/materials/components/tjl19_pc05.json",
+  "path": "data/icheme/materials/components/tjl19_pc05.json",
   "record": {
    "id": "tjl19_pc05",
    "kind": "lump",
@@ -535,7 +535,7 @@
   }
  },
  {
-  "path": "data/createcheme/materials/properties/test_tjl_tjl19_pc05.json",
+  "path": "data/icheme/materials/properties/test_tjl_tjl19_pc05.json",
   "record": {
    "schema_version": 1,
    "id": "test:tjl_tjl19_pc05",
@@ -572,7 +572,7 @@
   }
  },
  {
-  "path": "data/createcheme/materials/components/tjl19_pc06.json",
+  "path": "data/icheme/materials/components/tjl19_pc06.json",
   "record": {
    "id": "tjl19_pc06",
    "kind": "lump",
@@ -587,7 +587,7 @@
   }
  },
  {
-  "path": "data/createcheme/materials/properties/test_tjl_tjl19_pc06.json",
+  "path": "data/icheme/materials/properties/test_tjl_tjl19_pc06.json",
   "record": {
    "schema_version": 1,
    "id": "test:tjl_tjl19_pc06",
@@ -624,7 +624,7 @@
   }
  },
  {
-  "path": "data/createcheme/materials/components/tjl19_pc07.json",
+  "path": "data/icheme/materials/components/tjl19_pc07.json",
   "record": {
    "id": "tjl19_pc07",
    "kind": "lump",
@@ -639,7 +639,7 @@
   }
  },
  {
-  "path": "data/createcheme/materials/properties/test_tjl_tjl19_pc07.json",
+  "path": "data/icheme/materials/properties/test_tjl_tjl19_pc07.json",
   "record": {
    "schema_version": 1,
    "id": "test:tjl_tjl19_pc07",
@@ -676,7 +676,7 @@
   }
  },
  {
-  "path": "data/createcheme/materials/components/tjl19_pc08.json",
+  "path": "data/icheme/materials/components/tjl19_pc08.json",
   "record": {
    "id": "tjl19_pc08",
    "kind": "lump",
@@ -691,7 +691,7 @@
   }
  },
  {
-  "path": "data/createcheme/materials/properties/test_tjl_tjl19_pc08.json",
+  "path": "data/icheme/materials/properties/test_tjl_tjl19_pc08.json",
   "record": {
    "schema_version": 1,
    "id": "test:tjl_tjl19_pc08",
@@ -728,7 +728,7 @@
   }
  },
  {
-  "path": "data/createcheme/materials/components/tjl19_pc09.json",
+  "path": "data/icheme/materials/components/tjl19_pc09.json",
   "record": {
    "id": "tjl19_pc09",
    "kind": "lump",
@@ -743,7 +743,7 @@
   }
  },
  {
-  "path": "data/createcheme/materials/properties/test_tjl_tjl19_pc09.json",
+  "path": "data/icheme/materials/properties/test_tjl_tjl19_pc09.json",
   "record": {
    "schema_version": 1,
    "id": "test:tjl_tjl19_pc09",
@@ -780,7 +780,7 @@
   }
  },
  {
-  "path": "data/createcheme/materials/components/tjl19_pc10.json",
+  "path": "data/icheme/materials/components/tjl19_pc10.json",
   "record": {
    "id": "tjl19_pc10",
    "kind": "lump",
@@ -795,7 +795,7 @@
   }
  },
  {
-  "path": "data/createcheme/materials/properties/test_tjl_tjl19_pc10.json",
+  "path": "data/icheme/materials/properties/test_tjl_tjl19_pc10.json",
   "record": {
    "schema_version": 1,
    "id": "test:tjl_tjl19_pc10",
@@ -832,7 +832,7 @@
   }
  },
  {
-  "path": "data/createcheme/materials/components/tjl19_pc11.json",
+  "path": "data/icheme/materials/components/tjl19_pc11.json",
   "record": {
    "id": "tjl19_pc11",
    "kind": "lump",
@@ -847,7 +847,7 @@
   }
  },
  {
-  "path": "data/createcheme/materials/properties/test_tjl_tjl19_pc11.json",
+  "path": "data/icheme/materials/properties/test_tjl_tjl19_pc11.json",
   "record": {
    "schema_version": 1,
    "id": "test:tjl_tjl19_pc11",
@@ -884,7 +884,7 @@
   }
  },
  {
-  "path": "data/createcheme/materials/components/tjl19_pc12.json",
+  "path": "data/icheme/materials/components/tjl19_pc12.json",
   "record": {
    "id": "tjl19_pc12",
    "kind": "lump",
@@ -899,7 +899,7 @@
   }
  },
  {
-  "path": "data/createcheme/materials/properties/test_tjl_tjl19_pc12.json",
+  "path": "data/icheme/materials/properties/test_tjl_tjl19_pc12.json",
   "record": {
    "schema_version": 1,
    "id": "test:tjl_tjl19_pc12",
@@ -936,7 +936,7 @@
   }
  },
  {
-  "path": "data/createcheme/materials/components/tjl19_pc13.json",
+  "path": "data/icheme/materials/components/tjl19_pc13.json",
   "record": {
    "id": "tjl19_pc13",
    "kind": "lump",
@@ -951,7 +951,7 @@
   }
  },
  {
-  "path": "data/createcheme/materials/properties/test_tjl_tjl19_pc13.json",
+  "path": "data/icheme/materials/properties/test_tjl_tjl19_pc13.json",
   "record": {
    "schema_version": 1,
    "id": "test:tjl_tjl19_pc13",
@@ -988,10 +988,10 @@
   }
  },
  {
-  "path": "data/createcheme/materials/packages/tjl19.json",
+  "path": "data/icheme/materials/packages/tjl19.json",
   "record": {
    "schema_version": 1,
-   "id": "createcheme:tjl19_dwsim",
+   "id": "icheme:tjl19_dwsim",
    "revision": "tjl19-dwsim-10.2.3-r1",
    "model": "pr78",
    "components": [
@@ -1036,9 +1036,9 @@
     "test:tjl_tjl19_pc12",
     "test:tjl_tjl19_pc13"
    ],
-   "interactions": "createcheme:tjl19",
+   "interactions": "icheme:tjl19",
    "missing_interactions": "zero",
-   "water_model": "createcheme:water",
+   "water_model": "icheme:water",
    "aliases": {},
    "advisory_evidence": [
     "RECONSTRUCTED_PETROLEUM_PROPERTIES: frozen TJL19 reconstruction, not original HYSYS properties; 60 F standard-liquid basis assumed",
@@ -1053,7 +1053,7 @@
   }
  },
  {
-  "path": "data/createcheme/materials/assays/tjl19.json",
+  "path": "data/icheme/materials/assays/tjl19.json",
   "record": {
    "amounts": [
     0.0011953330290416187,
@@ -1077,8 +1077,8 @@
     0.001377815752112468
    ],
    "schema_version": 1,
-   "id": "createcheme:tia_juana_light",
-   "package": "createcheme:tjl19_dwsim",
+   "id": "icheme:tia_juana_light",
+   "package": "icheme:tjl19_dwsim",
    "components": [
     "Ethane",
     "Propane",
@@ -1109,7 +1109,7 @@
   }
  },
  {
-  "path": "data/createcheme/materials/components/methane.json",
+  "path": "data/icheme/materials/components/methane.json",
   "record": {
    "id": "Methane",
    "kind": "lump",
@@ -1124,7 +1124,7 @@
   }
  },
  {
-  "path": "data/createcheme/materials/properties/test_tjl_methane.json",
+  "path": "data/icheme/materials/properties/test_tjl_methane.json",
   "record": {
    "schema_version": 1,
    "id": "test:tjl_methane",
@@ -1161,7 +1161,7 @@
   }
  },
  {
-  "path": "data/createcheme/materials/components/ethane.json",
+  "path": "data/icheme/materials/components/ethane.json",
   "record": {
    "id": "Ethane",
    "kind": "lump",
@@ -1176,7 +1176,7 @@
   }
  },
  {
-  "path": "data/createcheme/materials/properties/test_tjl_ethane.json",
+  "path": "data/icheme/materials/properties/test_tjl_ethane.json",
   "record": {
    "schema_version": 1,
    "id": "test:tjl_ethane",
@@ -1213,7 +1213,7 @@
   }
  },
  {
-  "path": "data/createcheme/materials/components/propane.json",
+  "path": "data/icheme/materials/components/propane.json",
   "record": {
    "id": "Propane",
    "kind": "lump",
@@ -1228,7 +1228,7 @@
   }
  },
  {
-  "path": "data/createcheme/materials/properties/test_tjl_propane.json",
+  "path": "data/icheme/materials/properties/test_tjl_propane.json",
   "record": {
    "schema_version": 1,
    "id": "test:tjl_propane",
@@ -1265,7 +1265,7 @@
   }
  },
  {
-  "path": "data/createcheme/materials/components/isobutane.json",
+  "path": "data/icheme/materials/components/isobutane.json",
   "record": {
    "id": "Isobutane",
    "kind": "lump",
@@ -1280,7 +1280,7 @@
   }
  },
  {
-  "path": "data/createcheme/materials/properties/test_tjl_isobutane.json",
+  "path": "data/icheme/materials/properties/test_tjl_isobutane.json",
   "record": {
    "schema_version": 1,
    "id": "test:tjl_isobutane",
@@ -1317,7 +1317,7 @@
   }
  },
  {
-  "path": "data/createcheme/materials/components/n_butane.json",
+  "path": "data/icheme/materials/components/n_butane.json",
   "record": {
    "id": "N-butane",
    "kind": "lump",
@@ -1332,7 +1332,7 @@
   }
  },
  {
-  "path": "data/createcheme/materials/properties/test_tjl_n_butane.json",
+  "path": "data/icheme/materials/properties/test_tjl_n_butane.json",
   "record": {
    "schema_version": 1,
    "id": "test:tjl_n_butane",
@@ -1369,7 +1369,7 @@
   }
  },
  {
-  "path": "data/createcheme/materials/components/isopentane.json",
+  "path": "data/icheme/materials/components/isopentane.json",
   "record": {
    "id": "Isopentane",
    "kind": "lump",
@@ -1384,7 +1384,7 @@
   }
  },
  {
-  "path": "data/createcheme/materials/properties/test_tjl_isopentane.json",
+  "path": "data/icheme/materials/properties/test_tjl_isopentane.json",
   "record": {
    "schema_version": 1,
    "id": "test:tjl_isopentane",
@@ -1421,7 +1421,7 @@
   }
  },
  {
-  "path": "data/createcheme/materials/components/n_pentane.json",
+  "path": "data/icheme/materials/components/n_pentane.json",
   "record": {
    "id": "N-pentane",
    "kind": "lump",
@@ -1436,7 +1436,7 @@
   }
  },
  {
-  "path": "data/createcheme/materials/properties/test_tjl_n_pentane.json",
+  "path": "data/icheme/materials/properties/test_tjl_n_pentane.json",
   "record": {
    "schema_version": 1,
    "id": "test:tjl_n_pentane",
@@ -1473,7 +1473,7 @@
   }
  },
  {
-  "path": "data/createcheme/materials/components/tjl19_pc01.json",
+  "path": "data/icheme/materials/components/tjl19_pc01.json",
   "record": {
    "id": "tjl19_pc01",
    "kind": "lump",
@@ -1488,7 +1488,7 @@
   }
  },
  {
-  "path": "data/createcheme/materials/properties/test_tjl_tjl19_pc01.json",
+  "path": "data/icheme/materials/properties/test_tjl_tjl19_pc01.json",
   "record": {
    "schema_version": 1,
    "id": "test:tjl_tjl19_pc01",
@@ -1525,7 +1525,7 @@
   }
  },
  {
-  "path": "data/createcheme/materials/components/tjl19_pc02.json",
+  "path": "data/icheme/materials/components/tjl19_pc02.json",
   "record": {
    "id": "tjl19_pc02",
    "kind": "lump",
@@ -1540,7 +1540,7 @@
   }
  },
  {
-  "path": "data/createcheme/materials/properties/test_tjl_tjl19_pc02.json",
+  "path": "data/icheme/materials/properties/test_tjl_tjl19_pc02.json",
   "record": {
    "schema_version": 1,
    "id": "test:tjl_tjl19_pc02",
@@ -1577,7 +1577,7 @@
   }
  },
  {
-  "path": "data/createcheme/materials/components/tjl19_pc03.json",
+  "path": "data/icheme/materials/components/tjl19_pc03.json",
   "record": {
    "id": "tjl19_pc03",
    "kind": "lump",
@@ -1592,7 +1592,7 @@
   }
  },
  {
-  "path": "data/createcheme/materials/properties/test_tjl_tjl19_pc03.json",
+  "path": "data/icheme/materials/properties/test_tjl_tjl19_pc03.json",
   "record": {
    "schema_version": 1,
    "id": "test:tjl_tjl19_pc03",
@@ -1629,7 +1629,7 @@
   }
  },
  {
-  "path": "data/createcheme/materials/components/tjl19_pc04.json",
+  "path": "data/icheme/materials/components/tjl19_pc04.json",
   "record": {
    "id": "tjl19_pc04",
    "kind": "lump",
@@ -1644,7 +1644,7 @@
   }
  },
  {
-  "path": "data/createcheme/materials/properties/test_tjl_tjl19_pc04.json",
+  "path": "data/icheme/materials/properties/test_tjl_tjl19_pc04.json",
   "record": {
    "schema_version": 1,
    "id": "test:tjl_tjl19_pc04",
@@ -1681,7 +1681,7 @@
   }
  },
  {
-  "path": "data/createcheme/materials/components/tjl19_pc05.json",
+  "path": "data/icheme/materials/components/tjl19_pc05.json",
   "record": {
    "id": "tjl19_pc05",
    "kind": "lump",
@@ -1696,7 +1696,7 @@
   }
  },
  {
-  "path": "data/createcheme/materials/properties/test_tjl_tjl19_pc05.json",
+  "path": "data/icheme/materials/properties/test_tjl_tjl19_pc05.json",
   "record": {
    "schema_version": 1,
    "id": "test:tjl_tjl19_pc05",
@@ -1733,7 +1733,7 @@
   }
  },
  {
-  "path": "data/createcheme/materials/components/tjl19_pc06.json",
+  "path": "data/icheme/materials/components/tjl19_pc06.json",
   "record": {
    "id": "tjl19_pc06",
    "kind": "lump",
@@ -1748,7 +1748,7 @@
   }
  },
  {
-  "path": "data/createcheme/materials/properties/test_tjl_tjl19_pc06.json",
+  "path": "data/icheme/materials/properties/test_tjl_tjl19_pc06.json",
   "record": {
    "schema_version": 1,
    "id": "test:tjl_tjl19_pc06",
@@ -1785,7 +1785,7 @@
   }
  },
  {
-  "path": "data/createcheme/materials/components/tjl19_pc07.json",
+  "path": "data/icheme/materials/components/tjl19_pc07.json",
   "record": {
    "id": "tjl19_pc07",
    "kind": "lump",
@@ -1800,7 +1800,7 @@
   }
  },
  {
-  "path": "data/createcheme/materials/properties/test_tjl_tjl19_pc07.json",
+  "path": "data/icheme/materials/properties/test_tjl_tjl19_pc07.json",
   "record": {
    "schema_version": 1,
    "id": "test:tjl_tjl19_pc07",
@@ -1837,7 +1837,7 @@
   }
  },
  {
-  "path": "data/createcheme/materials/components/tjl19_pc08.json",
+  "path": "data/icheme/materials/components/tjl19_pc08.json",
   "record": {
    "id": "tjl19_pc08",
    "kind": "lump",
@@ -1852,7 +1852,7 @@
   }
  },
  {
-  "path": "data/createcheme/materials/properties/test_tjl_tjl19_pc08.json",
+  "path": "data/icheme/materials/properties/test_tjl_tjl19_pc08.json",
   "record": {
    "schema_version": 1,
    "id": "test:tjl_tjl19_pc08",
@@ -1889,7 +1889,7 @@
   }
  },
  {
-  "path": "data/createcheme/materials/components/tjl19_pc09.json",
+  "path": "data/icheme/materials/components/tjl19_pc09.json",
   "record": {
    "id": "tjl19_pc09",
    "kind": "lump",
@@ -1904,7 +1904,7 @@
   }
  },
  {
-  "path": "data/createcheme/materials/properties/test_tjl_tjl19_pc09.json",
+  "path": "data/icheme/materials/properties/test_tjl_tjl19_pc09.json",
   "record": {
    "schema_version": 1,
    "id": "test:tjl_tjl19_pc09",
@@ -1941,7 +1941,7 @@
   }
  },
  {
-  "path": "data/createcheme/materials/components/tjl19_pc10.json",
+  "path": "data/icheme/materials/components/tjl19_pc10.json",
   "record": {
    "id": "tjl19_pc10",
    "kind": "lump",
@@ -1956,7 +1956,7 @@
   }
  },
  {
-  "path": "data/createcheme/materials/properties/test_tjl_tjl19_pc10.json",
+  "path": "data/icheme/materials/properties/test_tjl_tjl19_pc10.json",
   "record": {
    "schema_version": 1,
    "id": "test:tjl_tjl19_pc10",
@@ -1993,7 +1993,7 @@
   }
  },
  {
-  "path": "data/createcheme/materials/components/tjl19_pc11.json",
+  "path": "data/icheme/materials/components/tjl19_pc11.json",
   "record": {
    "id": "tjl19_pc11",
    "kind": "lump",
@@ -2008,7 +2008,7 @@
   }
  },
  {
-  "path": "data/createcheme/materials/properties/test_tjl_tjl19_pc11.json",
+  "path": "data/icheme/materials/properties/test_tjl_tjl19_pc11.json",
   "record": {
    "schema_version": 1,
    "id": "test:tjl_tjl19_pc11",
@@ -2045,7 +2045,7 @@
   }
  },
  {
-  "path": "data/createcheme/materials/components/tjl19_pc12.json",
+  "path": "data/icheme/materials/components/tjl19_pc12.json",
   "record": {
    "id": "tjl19_pc12",
    "kind": "lump",
@@ -2060,7 +2060,7 @@
   }
  },
  {
-  "path": "data/createcheme/materials/properties/test_tjl_tjl19_pc12.json",
+  "path": "data/icheme/materials/properties/test_tjl_tjl19_pc12.json",
   "record": {
    "schema_version": 1,
    "id": "test:tjl_tjl19_pc12",
@@ -2097,7 +2097,7 @@
   }
  },
  {
-  "path": "data/createcheme/materials/components/tjl19_pc13.json",
+  "path": "data/icheme/materials/components/tjl19_pc13.json",
   "record": {
    "id": "tjl19_pc13",
    "kind": "lump",
@@ -2112,7 +2112,7 @@
   }
  },
  {
-  "path": "data/createcheme/materials/properties/test_tjl_tjl19_pc13.json",
+  "path": "data/icheme/materials/properties/test_tjl_tjl19_pc13.json",
   "record": {
    "schema_version": 1,
    "id": "test:tjl_tjl19_pc13",
@@ -2149,10 +2149,10 @@
   }
  },
  {
-  "path": "data/createcheme/materials/packages/tjl20.json",
+  "path": "data/icheme/materials/packages/tjl20.json",
   "record": {
    "schema_version": 1,
-   "id": "createcheme:tjl20_methane",
+   "id": "icheme:tjl20_methane",
    "revision": "tjl20-methane-nist-r1",
    "model": "pr78",
    "components": [
@@ -2199,9 +2199,9 @@
     "test:tjl_tjl19_pc12",
     "test:tjl_tjl19_pc13"
    ],
-   "interactions": "createcheme:tjl20",
+   "interactions": "icheme:tjl20",
    "missing_interactions": "zero",
-   "water_model": "createcheme:water",
+   "water_model": "icheme:water",
    "aliases": {},
    "advisory_evidence": [
     "RECONSTRUCTED_PETROLEUM_PROPERTIES: frozen TJL19 reconstruction, not original HYSYS properties; 60 F standard-liquid basis assumed",
@@ -2218,7 +2218,7 @@
   }
  },
  {
-  "path": "data/createcheme/materials/assays/tjl20.json",
+  "path": "data/icheme/materials/assays/tjl20.json",
   "record": {
    "amounts": [
     0.005,
@@ -2243,8 +2243,8 @@
     0.0013709266733519057
    ],
    "schema_version": 1,
-   "id": "createcheme:tia_juana_light_methane",
-   "package": "createcheme:tjl20_methane",
+   "id": "icheme:tia_juana_light_methane",
+   "package": "icheme:tjl20_methane",
    "components": [
     "Methane",
     "Ethane",

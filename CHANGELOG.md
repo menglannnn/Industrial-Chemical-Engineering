@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to CreateChemE are recorded in this file. The format follows [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.1.0/), and `mod_version` in `gradle.properties` follows [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0.0.html).
+All notable changes to Industrial Chemical Engineering (IChemE, formerly CreateChemE) are recorded in this file. The format follows [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.1.0/), and `mod_version` in `gradle.properties` follows [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0.0.html).
 
 ## Version rule
 
@@ -14,6 +14,10 @@ All notable changes to CreateChemE are recorded in this file. The format follows
 - `0.1.0` is the state of `main` before this changelog existed. Its section was backfilled from `git log --first-parent main --date=short` since 2026-08-01. No git tags exist for these versions; they are identified by commit id (`0.1.0` = `3c27271`).
 
 ## [Unreleased]
+
+### Changed
+
+- Mod renamed to Industrial Chemical Engineering (IChemE) (owner request 2026-10-21, batch folder: `2026-10-21-rename-icheme`): mod id `createcheme` → `icheme`, Java package `com.wormzjl.icheme`, main classes `IChemE` and `IChemEClient`, every resource namespace and lang key, config file `icheme-common.toml`, saved data `icheme_fluid_core` / `icheme_fluid`, GameTest namespaces `icheme_*`, client preset folder `<game>/IChemE/`. The regrouped Transformer sidecar's `packageId` follows the namespace, so its pipeline SHA-256 is now `80dda6de…`. **Breaking, no upgrade:** blocks, items and fluid state of a world saved by 0.10.1 do not load; use a fresh world.
 
 ## [0.10.1] - 2026-10-21
 

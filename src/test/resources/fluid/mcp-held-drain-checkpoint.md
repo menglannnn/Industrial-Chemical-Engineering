@@ -1,6 +1,6 @@
 # MCP drain regression provenance
 
-Captured from the isolated `Fluid M8 MCP` world on 2026-09-16, before adding velocity clamping. The source was the gzip-compressed `run/mcp-client/saves/Fluid M8 MCP/data/createcheme_fluid_core.dat`; its checkpoint SHA-256 was verified before extraction. Only island 13 was retained. This island had no module transfers; unrelated islands were excluded and the empty module/transfer envelope was normalized.
+Captured from the isolated `Fluid M8 MCP` world on 2026-09-16, before adding velocity clamping. The source was the gzip-compressed `run/mcp-client/saves/Fluid M8 MCP/data/icheme_fluid_core.dat`; its checkpoint SHA-256 was verified before extraction. Only island 13 was retained. This island had no module transfers; unrelated islands were excluded and the empty module/transfer envelope was normalized.
 
 The fixture retains the exact canonical inventories, energy, phase guesses, historical flow, clocks, fallback state and old `Unsupported sonic flow` status. It is generated gameplay data, not a thermodynamic reference oracle. `McpGameplayRegressionTest` verifies that the new bounded hydraulic law advances it without changing the EOS/flash or losing components/energy. Keep the pre-clamp checkpoint unchanged for reproducibility.
 

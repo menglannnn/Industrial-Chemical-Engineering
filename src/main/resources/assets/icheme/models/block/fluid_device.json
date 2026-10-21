@@ -1,0 +1,22 @@
+{
+  "parent": "minecraft:block/block",
+  "textures": {
+    "shell": "icheme:block/vessel_shell",
+    "head": "icheme:block/vessel_head",
+    "support": "icheme:block/vessel_support",
+    "pipe": "icheme:block/equipment_pipe",
+    "flange": "icheme:block/equipment_flange",
+    "bolt": "icheme:block/equipment_bolt",
+    "opening": "icheme:block/equipment_opening",
+    "cladding": "icheme:block/equipment_cladding",
+    "grating": "icheme:block/equipment_grating",
+    "handrail": "icheme:block/equipment_handrail",
+    "steelwork": "icheme:block/equipment_steelwork",
+    "machine": "icheme:block/equipment_machine",
+    "motor": "icheme:block/equipment_motor",
+    "actuator": "icheme:block/equipment_actuator",
+    "feed": "icheme:block/equipment_feed",
+    "drain": "icheme:block/equipment_drain",
+    "particle": "icheme:block/equipment_pipe"
+  }
+}

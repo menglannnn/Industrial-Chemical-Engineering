@@ -1,0 +1,198 @@
+package com.wormzjl.icheme.runtime.fluid;
+
+import com.wormzjl.icheme.fluid.support.FluidTestSupport;
+import com.wormzjl.icheme.science.fluid.network.*;
+import com.wormzjl.icheme.science.fluid.state.SolidInventory;
+import com.wormzjl.icheme.science.fluid.thermo.FluidThermodynamics;
+import com.wormzjl.icheme.science.fluid.topology.TopologyCompiler;
+import com.wormzjl.icheme.science.material.MaterialTestBasis;
+import java.util.*;
+import org.junit.jupiter.api.Test;
+import static org.junit.jupiter.api.Assertions.*;
+
+/**
+ * The block lines {@link FilterBlockLineIslandTest} builds, stood on end.
+ *
+ * <p>Every fluid fixture, block-line test and GameTest in the tree places its devices at one y, so
+ * the static head {@code rho*GRAVITY*(z_b-z_a)} of
+ * {@code PassiveStepSolver.Equations.edgeRows} is identically zero in all of them and the density
+ * in it was never exercised. These are the first islands with a real elevation difference across a
+ * connection, which is where that density stops being free: it used to be read off the upwind end
+ * of the current iterate's flow, and a water generator against a nitrogen-charged tank differs by
+ * most of water's density, so the row had a finite jump at exactly zero flow. Measured at 400 kPa
+ * over four blocks the jump was 2.754e-2 of the row's own scale, the linear model predicted 1.08e-19
+ * and the full step produced 2.76e-2; see documentation/ELEVATED_LINE_PROBE.md. The density is now
+ * a column stated once per pass by {@code PassiveStepSolver.Equations.headDensities}.
+ *
+ * <p>They run the way the world runs a placed island - consecutive five-second intervals on one
+ * retained solver from {@link com.wormzjl.icheme.fluid.support.FluidTestSupport#COLD_START_SECONDS} - because an elevated line only
+ * reaches the interesting point after it has filled its tank and settled against it.
+ */
+class ElevatedBlockLineIslandTest extends BlockLineHarness {
+    /** The elevation a stack of pipe blocks puts between the generator and the tank. */
+    private static final int LIFT=4;
+
+    /** generator at the bottom - pipes straight up - tank {@link #LIFT} blocks above it. */
+    private PassiveNetwork risingLine(double generatorPressure,double tankPressure) {
+        var devices=new ArrayList<PhysicalFluidTopology.Device>();
+        devices.add(device(1,0,BOTTOM,TopologyCompiler.Kind.GENERATOR));
+        for(int i=1;i<LIFT;i++)devices.add(device(1+i,0,BOTTOM+i,TopologyCompiler.Kind.PIPE));
+        devices.add(device(1+LIFT,0,BOTTOM+LIFT,TopologyCompiler.Kind.RESERVOIR));
+        return island(devices,Map.of(1L,generatorSpec(generatorPressure),(long)(1+LIFT),tankSpec(tankPressure)));
+    }
+    private PassiveNetwork risingLine(double generatorPressure){return risingLine(generatorPressure,101325);}
+    /** The same stack upside down: the generator on top, the tank {@link #LIFT} blocks below it. */
+    private PassiveNetwork fallingLine(double generatorPressure) {
+        var devices=new ArrayList<PhysicalFluidTopology.Device>();
+        devices.add(device(1,0,BOTTOM+LIFT,TopologyCompiler.Kind.GENERATOR));
+        for(int i=1;i<LIFT;i++)devices.add(device(1+i,0,BOTTOM+LIFT-i,TopologyCompiler.Kind.PIPE));
+        devices.add(device(1+LIFT,0,BOTTOM,TopologyCompiler.Kind.RESERVOIR));
+        return island(devices,Map.of(1L,generatorSpec(generatorPressure),(long)(1+LIFT),tankSpec(101325)));
+    }
+    /** generator - pipe - inline filter - pipe - tank, all of it vertical. */
+    private PassiveNetwork risingFilterLine(double generatorPressure,double tankPressure) {
+        var devices=List.of(device(1,0,BOTTOM,TopologyCompiler.Kind.GENERATOR),device(2,0,BOTTOM+1,TopologyCompiler.Kind.PIPE),
+                device(3,0,BOTTOM+2,TopologyCompiler.Kind.FILTER,PhysicalFluidTopology.Direction.UP),
+                device(4,0,BOTTOM+3,TopologyCompiler.Kind.PIPE),device(5,0,BOTTOM+LIFT,TopologyCompiler.Kind.RESERVOIR));
+        return island(devices,Map.of(1L,generatorSpec(generatorPressure),5L,tankSpec(tankPressure)));
+    }
+    /** generator - pipe - pump - pipe - tank, all of it vertical (a pipe block below the pump since only pipes connect,
+     * decision D20; the pump stood on the generator until 2026-09-28). The pump.s outlet junction sits two
+     * blocks above the generator, so its head is added there and only the remaining two blocks of
+     * column stand between it and the tank. */
+    private PassiveNetwork risingPumpLine(double generatorPressure) {
+        var devices=List.of(device(1,0,BOTTOM,TopologyCompiler.Kind.GENERATOR),
+                device(6,0,BOTTOM+1,TopologyCompiler.Kind.PIPE),device(2,0,BOTTOM+2,TopologyCompiler.Kind.PUMP,PhysicalFluidTopology.Direction.UP),
+                device(4,0,BOTTOM+3,TopologyCompiler.Kind.PIPE),
+                device(5,0,BOTTOM+LIFT,TopologyCompiler.Kind.RESERVOIR));
+        return island(devices,Map.of(1L,generatorSpec(generatorPressure),5L,tankSpec(101325)));
+    }
+    /** The flat control: the same blocks in a row at one y. */
+    private PassiveNetwork flatLine(double generatorPressure,double tankPressure) {
+        var devices=new ArrayList<PhysicalFluidTopology.Device>();
+        devices.add(device(1,0,BOTTOM,TopologyCompiler.Kind.GENERATOR));
+        for(int i=1;i<LIFT;i++)devices.add(device(1+i,i,BOTTOM,TopologyCompiler.Kind.PIPE));
+        devices.add(device(1+LIFT,LIFT,BOTTOM,TopologyCompiler.Kind.RESERVOIR));
+        return island(devices,Map.of(1L,generatorSpec(generatorPressure),(long)(1+LIFT),tankSpec(tankPressure)));
+    }
+
+    private double head(double pressure,int lift){return waterDensity(pressure)*PassiveStepSolver.GRAVITY*lift;}
+    /** The level head of a tank's bottom (LIQUID) port on its final state (decision D9 of the phase-ports batch):
+     * {@code g m_c H / V}, the condensed mass over a fixed 1 m height. */
+    private double levelHead(Run run) {
+        var tank=run.tankNode();return PassiveStepSolver.GRAVITY*model.liquidMass(tank.state())*PassiveStepSolver.LEVEL_HEAD_HEIGHT/tank.inventory().volume();
+    }
+
+
+    /**
+     * What a vertical line compiles to, which is the statement the rest of this file rests on: the
+     * stack of pipe blocks collapses into one connection whose two endpoint elevations differ by
+     * {@link #LIFT}, so the static head is on a real row and not merely on a node record.
+     */
+    @Test void aVerticalPipeStackCompilesToOneEdgeWithAnElevationDifference() {
+        var graph=risingLine(101325);
+        System.out.println("rising line:"+shape(graph));
+        assertEquals(2,graph.reservoirs().size(),"generator and tank; the pipe run is collapsed");
+        assertEquals(1,graph.pipes().size());
+        var pipe=graph.pipes().getFirst();
+        double dz=graph.reservoirs().get(pipe.second()).elevation()-graph.reservoirs().get(pipe.first()).elevation();
+        assertEquals(LIFT,Math.abs(dz),0,"The compiled connection must carry the block stack's elevation");
+        assertEquals(BOTTOM,graph.reservoirs().stream().mapToDouble(PassiveNetwork.Reservoir::elevation).min().orElseThrow());
+    }
+
+    /**
+     * The driven probe: every elevated shape against its flat control, at a generator pressure that
+     * can actually lift the column.
+     *
+     * <p>The tank endpoint carries a hydrostatic offset the flat control does not, and that offset
+     * is the physics rather than an error: a connection is at rest when
+     * {@code P_generator - P_tank = rho*g*dz}, so a tank {@link #LIFT} m above a 400 kPa water
+     * generator settles 39.08 kPa below it and one {@link #LIFT} m below settles that much above
+     * it. Every line here lands within a pascal of that. The pumped line's suction junction is two
+     * blocks up (decision D20), so its shutoff pressure is the generator's plus the pump's head less two blocks of
+     * column, and only two blocks of column stand between that and the tank - which is the same
+     * total {@link #LIFT} of head, because the column is continuous.
+     *
+     * <p>Since the phase-ports batch (WP5) a rising line enters its tank through the tank's DOWN face, its bottom port,
+     * whose pressure is the headspace's plus the level head of the tank's water (decision D9): there {@code P_tank} is that
+     * bottom pressure, and the headspace rests one level head (about 7 kPa here) lower.
+     */
+    @Test void elevatedLinesIntegrateFortyIntervalsLikeTheirFlatControl() {
+        double pressure=400000;
+        var flat=run(flatLine(pressure,101325),40);
+        System.out.println("\n=== generator at "+(long)pressure+" Pa, water column over "+LIFT+" m = "+head(pressure,LIFT)+" Pa ===");
+        System.out.println("(flat control)  "+flat.detail()+"\n   tank P="+flat.tank().pressure()+" mass="+flat.tank().mass());
+        assertTrue(flat.ok(),flat.detail());
+        var lines=new LinkedHashMap<String,Run>();
+        lines.put("rising  generator->3 pipes up->tank",run(risingLine(pressure),40));
+        lines.put("falling generator->3 pipes down->tank",run(fallingLine(pressure),40));
+        lines.put("rising  generator->pipe->filter->pipe->tank",run(risingFilterLine(pressure,101325),40));
+        lines.put("rising  generator->pipe->pump->pipe->tank",run(risingPumpLine(pressure),40));
+        lines.forEach((name,line)->System.out.println("("+name+") "+line.detail()
+                +(line.ok()?"\n   tank P="+line.tank().pressure()+" mass="+line.tank().mass()
+                +" offset vs flat="+(line.tank().pressure()-flat.tank().pressure())+" Pa level head="+levelHead(line)+" liquid="+model.liquidMass(line.tank())
+                +" T="+line.tank().temperature()+" bottom="+(line.tank().pressure()+levelHead(line)):"")));
+        lines.forEach((name,line)->assertTrue(line.ok(),name+": "+line.detail()));
+        // The rising lines reach their tank through its DOWN face, which compiles to its bottom (LIQUID) port (phase-ports
+        // WP5, default A1), where the level head of the water it holds adds to the headspace pressure (decision D9, H = 1 m).
+        // So it is the tank's bottom, P + g m_c H / V, that settles one water column below the generator: the headspace
+        // rests about one level head lower (re-baselined in WP5: headspace 360918.3081 Pa before, 353969.4046 Pa now, level
+        // head 6948.90 Pa of 708.6 kg of water, bottom 360918.3068 Pa; PHASE_PORTS_REVIEW.md WP5). The falling line enters
+        // through the tank's UP face, its top (VAPOR) port, which has no head: unchanged.
+        var rising=lines.get("rising  generator->3 pipes up->tank");
+        assertEquals(pressure-head(pressure,LIFT),rising.tank().pressure()+levelHead(rising),1e-5*pressure,
+                "A tank above its generator must settle with its bottom one water column below it");
+        assertEquals(pressure+head(pressure,LIFT),lines.get("falling generator->3 pipes down->tank").tank().pressure(),1e-5*pressure,
+                "A tank below its generator must settle one water column above it");
+        // Re-baselined in WP5 like the plain rising line: headspace 360918.3787 Pa before, 353969.7255 Pa now, bottom 360918.6286 Pa.
+        var risingFilter=lines.get("rising  generator->pipe->filter->pipe->tank");
+        assertEquals(pressure-head(pressure,LIFT),risingFilter.tank().pressure()+levelHead(risingFilter),1e-5*pressure,
+                "A filter block may not change where the column settles");
+        // The pump's shutoff is its rise limit, the setting scaled by its suction's density over the pump reference
+        // density (the suction is the junction two blocks above the generator since decision D20), less the column: the model's exact
+        // shutoff. The earlier expectation took the rise as exactly PUMP_HEAD and was 144.5 Pa low; TR-BDF2 met it only
+        // while its pump row stood on the discharge column (HANDOFF_REVIEW.md 8.9 (e) of the mixed-gas junction batch,
+        // decision D6). A hundred pascals rather than the four the passive lines hold to, because the pump does work on
+        // the water in the middle of the column.
+        // Re-baselined in WP5: the pump discharges into the tank's bottom port, so its bottom (headspace plus level head)
+        // closes the pump: headspace 861062.9819 Pa before, 852452.8285 Pa now, level head 8610.21 Pa, bottom 861063.0384 Pa.
+        // Rebuilt for decision D20 (a pipe block between the generator and the pump, 2026-09-28): the suction two blocks up,
+        // headspace 852448.0673 Pa, level head 8610.20 Pa, bottom 861058.2704 Pa (4.77 Pa lower: the rise scales with the
+        // density of water one block higher up the column).
+        double suctionDensity=waterDensity(pressure-head(pressure,2));var pumped=lines.get("rising  generator->pipe->pump->pipe->tank");
+        assertEquals(pressure+PUMP_HEAD*suctionDensity/model.pumpReferenceDensity()-head(pressure,LIFT),pumped.tank().pressure()+levelHead(pumped),
+                1e-4*(pressure+PUMP_HEAD),"A pumped tank must settle with its bottom one water column below its own shutoff pressure");
+    }
+
+    /**
+     * The case designed to sit on the switch: the tank is charged to the hydrostatic balance of the
+     * generator below it, so the line starts and stays at zero flow with water under nitrogen and
+     * the connection's upwind end is undecided from the first substep. This is the shape that used
+     * to hold at interval 1 with 511 accepted and 514 rejected substeps, on a residual of
+     * 1.0000001544e-9 - the same tolerance floor the tank behind a valve used to stall on.
+     */
+    @Test void aLineChargedToItsOwnHydrostaticBalanceIntegratesAtZeroFlow() {
+        double pressure=400000,balance=pressure-head(pressure,LIFT);
+        var line=run(risingLine(pressure,balance),40);
+        System.out.println("\n(balanced) generator at "+(long)pressure+" Pa, tank charged at "+balance+" Pa: "+line.detail()
+                +(line.ok()?"\n   tank P="+line.tank().pressure()+" mass="+line.tank().mass():""));
+        assertTrue(line.ok(),line.detail());
+        assertEquals(balance,line.tank().pressure(),1e-6*pressure,"A balanced line must stay where it was charged");
+    }
+
+    /**
+     * A water generator at 1 atm with a nitrogen tank four blocks above it at the same pressure cannot lift the column;
+     * that line, its flat equivalent and their filter versions rest at zero flow (DeadHeadedLineIslandTest). The same
+     * line the other way up carries the column and runs: gravity is not the obstacle, and the tank's endpoint is offset
+     * by exactly the column.
+     */
+    @Test void aFallingLineCarriesTheColumnADeadHeadedRisingLineCannotLift() {
+        double pressure=101325,column=head(pressure,LIFT);
+        var falling=run(fallingLine(pressure),40);
+        System.out.println("(falling plain) "+falling.detail()
+                +(falling.ok()?"\n   tank P="+falling.tank().pressure()+" mass="+falling.tank().mass():""));
+        assertTrue(falling.ok(),falling.detail());
+        assertEquals(pressure+column,falling.tank().pressure(),1e-5*pressure,
+                "A tank four blocks under an atmospheric generator must settle one water column above it");
+    }
+}

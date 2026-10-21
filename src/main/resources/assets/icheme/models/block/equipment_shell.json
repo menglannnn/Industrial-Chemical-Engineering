@@ -1,0 +1,31 @@
+{
+  "loader": "icheme:equipment_shell",
+  "textures": {
+    "shell": "icheme:block/painted_shell",
+    "head": "icheme:block/painted_head",
+    "support": "icheme:block/painted_support",
+    "pipe": "icheme:block/equipment_pipe",
+    "flange": "icheme:block/equipment_flange",
+    "bolt": "icheme:block/equipment_bolt",
+    "opening": "icheme:block/equipment_opening",
+    "cladding": "icheme:block/painted_cladding",
+    "grating": "icheme:block/equipment_grating",
+    "handrail": "icheme:block/equipment_handrail",
+    "steelwork": "icheme:block/painted_steelwork",
+    "machine": "icheme:block/painted_machine",
+    "motor": "icheme:block/equipment_motor",
+    "actuator": "icheme:block/equipment_actuator",
+    "feed": "icheme:block/equipment_feed",
+    "drain": "icheme:block/equipment_drain",
+    "ac_fan": "icheme:block/ac_fan",
+    "ac_ring": "icheme:block/ac_ring",
+    "ac_motor": "icheme:block/ac_motor",
+    "ac_fins": "icheme:block/ac_fins",
+    "ac_header": "icheme:block/ac_header",
+    "ac_plenum": "icheme:block/ac_plenum",
+    "heater": "icheme:block/painted_heater",
+    "concrete": "icheme:block/equipment_concrete",
+    "guard": "icheme:block/equipment_guard",
+    "particle": "icheme:block/vessel_shell"
+  }
+}

@@ -8,7 +8,7 @@ import urllib.request
 import numpy as np
 
 ROOT = Path(__file__).resolve().parents[1]
-OUT = ROOT / "src/main/resources/data/createcheme/fluid"
+OUT = ROOT / "src/main/resources/data/icheme/fluid"
 REF = ROOT / "src/test/resources/fluid/reference"
 
 
@@ -20,7 +20,7 @@ def fetch(name, **state):
     if path.exists():
         text = path.read_text(encoding="utf-8")
     else:
-        request = urllib.request.Request(url, headers={"User-Agent": "CreateChemE property-reference research"})
+        request = urllib.request.Request(url, headers={"User-Agent": "IChemE property-reference research"})
         with urllib.request.urlopen(request, timeout=30) as response:
             text = response.read().decode("utf-8")
         path.write_text(text, encoding="utf-8")
@@ -55,7 +55,7 @@ if __name__ == "__main__":
     checks_t = np.linspace(273.16, 900, 3002)
     maximum_error = float(np.max(np.abs(fit(checks_t-298.15)/shomate(checks_t)-1)))
     assert maximum_error < .001
-    prop = dict(schema_version=1, id="createcheme:fluid_nitrogen", component="Nitrogen", revision="fluid-nitrogen-nist-r1",
+    prop = dict(schema_version=1, id="icheme:fluid_nitrogen", component="Nitrogen", revision="fluid-nitrogen-nist-r1",
                 source="NIST WebBook nitrogen Shomate Cp fit and viscosity tables; PR constants from CoolProp nitrogen reference page. Nitrogen cross-interactions initially estimated zero.",
                 molecular_weight_kg_per_mol=.0280134, normal_boiling_point_kelvin=77.355,
                 standard_liquid_density_kg_per_m3=.0280134/(float(liquid[0][3])*.001),

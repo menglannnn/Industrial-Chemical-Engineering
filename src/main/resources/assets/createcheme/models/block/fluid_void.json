@@ -1,5 +1,0 @@
-{
-  "parent": "createcheme:block/fluid_device",
-  "loader": "createcheme:fluid_device",
-  "kind": "void"
-}

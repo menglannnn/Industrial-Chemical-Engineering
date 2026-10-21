@@ -1,0 +1,86 @@
+package com.wormzjl.icheme.client;
+
+import com.wormzjl.icheme.IChemE;
+import com.wormzjl.icheme.client.gui.screens.EquipmentConstructorScreen;
+import com.wormzjl.icheme.client.gui.screens.VesselScreen;
+import com.wormzjl.icheme.client.model.EquipmentShellModel;
+import com.wormzjl.icheme.world.level.block.entity.EquipmentConstructorBlockEntity;
+import net.minecraft.core.BlockPos;
+import com.wormzjl.icheme.registry.ModBlocks;
+import com.wormzjl.icheme.science.equipment.Paint;
+import com.wormzjl.icheme.science.equipment.ShapeRasterizer;
+import com.wormzjl.icheme.world.level.block.entity.EquipmentShellBlockEntity;
+import com.wormzjl.icheme.world.level.block.EquipmentStructure;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.renderer.RenderType;
+import net.neoforged.api.distmarker.Dist;
+import net.neoforged.bus.api.SubscribeEvent;
+import net.neoforged.fml.common.EventBusSubscriber;
+import net.neoforged.neoforge.client.event.ModelEvent;
+import net.neoforged.neoforge.client.event.RegisterColorHandlersEvent;
+import net.neoforged.neoforge.client.event.RenderHighlightEvent;
+
+/**
+ * Client side of parametric vessels: the shell model loader, the tint of painted parts, one outline for the whole vessel
+ * instead of per-cell boxes (its silhouette as seen from the camera), and the screens the blocks open (blocks call
+ * {@link #openConstructor} and {@link #openVessel} on the client only).
+ */
+@EventBusSubscriber(modid = IChemE.MOD_ID, value = Dist.CLIENT)
+public final class EquipmentClient {
+    private EquipmentClient() {
+    }
+
+    @SubscribeEvent
+    public static void registerGeometryLoaders(ModelEvent.RegisterGeometryLoaders event) {
+        event.register(EquipmentShellModel.LOADER_ID, EquipmentShellModel.LOADER);
+        event.register(com.wormzjl.icheme.client.model.FluidDeviceModel.LOADER_ID, com.wormzjl.icheme.client.model.FluidDeviceModel.LOADER);
+    }
+
+    /**
+     * A painted quad of a shell cell (tint index: its {@link Paint} channel) takes the cell's paint, scaled to show on the
+     * neutral painted sprites; a cell not yet bound shows the default paint.
+     */
+    @SubscribeEvent
+    public static void registerBlockColours(RegisterColorHandlersEvent.Block event) {
+        event.register((state, level, position, tint) -> Paint.tint((level != null && position != null
+                && level.getBlockEntity(position) instanceof EquipmentShellBlockEntity shell ? shell.paint() : Paint.DEFAULT).colour(tint)), ModBlocks.EQUIPMENT_SHELL.get());
+    }
+
+    /** Called by the constructor block on the client only: open its design screen. */
+    public static void openConstructor(BlockPos position) {
+        var mc = Minecraft.getInstance();
+        if (mc.level != null && mc.level.getBlockEntity(position) instanceof EquipmentConstructorBlockEntity constructor)
+            mc.setScreen(new EquipmentConstructorScreen(position, constructor.facing(), constructor.design()));
+    }
+
+    /** Called by shell and interior cells on the client only: open the screen of the vessel the cell belongs to. */
+    public static void openVessel(BlockPos position) {
+        var mc = Minecraft.getInstance();
+        var vessel = mc.level == null ? null : EquipmentStructure.find(mc.level, position);
+        if (vessel != null) mc.setScreen(new VesselScreen(vessel));
+    }
+
+    @SubscribeEvent
+    public static void highlight(RenderHighlightEvent.Block event) {
+        var level = Minecraft.getInstance().level;
+        var position = event.getTarget().getBlockPos();
+        if (level == null) return;
+        var state = level.getBlockState(position);
+        if (!state.is(ModBlocks.EQUIPMENT_SHELL.get()) && !state.is(ModBlocks.EQUIPMENT_INTERIOR.get())) return;
+        var vessel = EquipmentStructure.find(level, position);
+        if (vessel == null) return;
+        var camera = event.getCamera().getPosition();
+        double ox = vessel.origin().getX() - camera.x, oy = vessel.origin().getY() - camera.y, oz = vessel.origin().getZ() - camera.z;
+        var pose = event.getPoseStack().last();
+        var lines = event.getMultiBufferSource().getBuffer(RenderType.lines());
+        for (var s : ShapeRasterizer.outline(vessel.shape(), -ox, -oy, -oz)) {
+            float x0 = (float) (ox + s[0]), y0 = (float) (oy + s[1]), z0 = (float) (oz + s[2]);
+            float x1 = (float) (ox + s[3]), y1 = (float) (oy + s[4]), z1 = (float) (oz + s[5]);
+            float dx = x1 - x0, dy = y1 - y0, dz = z1 - z0, length = (float) Math.sqrt(dx * dx + dy * dy + dz * dz);
+            if (length == 0) continue;
+            lines.addVertex(pose, x0, y0, z0).setColor(0, 0, 0, .4F).setNormal(pose, dx / length, dy / length, dz / length);
+            lines.addVertex(pose, x1, y1, z1).setColor(0, 0, 0, .4F).setNormal(pose, dx / length, dy / length, dz / length);
+        }
+        event.setCanceled(true);
+    }
+}

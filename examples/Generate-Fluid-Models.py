@@ -3,7 +3,7 @@ import json
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1] / 'src/main/resources'
-ASSETS = ROOT / 'assets/createcheme'
+ASSETS = ROOT / 'assets/icheme'
 
 def write(path, value):
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -33,17 +33,17 @@ rotation={'north':{},'east':{'y':90},'south':{'y':180},'west':{'y':270},'up':{'x
 names={'fluid_reservoir':'Fluid Reservoir','fluid_pipe':'Process Fluid Pipe','fluid_pump':'Process Fluid Pump','pressure_control_valve':'Pressure Control Valve','fluid_generator':'Fluid Generator','fluid_void':'Fluid Void'}
 for name, title in names.items():
     if name == 'fluid_pipe':
-        state={'multipart':[{'apply':{'model':'createcheme:block/fluid_pipe_core'}}] + [{'when':{d:'true'},'apply':{'model':'createcheme:block/fluid_pipe_arm',**r}} for d,r in rotation.items()]}
+        state={'multipart':[{'apply':{'model':'icheme:block/fluid_pipe_core'}}] + [{'when':{d:'true'},'apply':{'model':'icheme:block/fluid_pipe_arm',**r}} for d,r in rotation.items()]}
     else:
-        state={'variants':{f'facing={d}':{'model':f'createcheme:block/{name}',**r} for d,r in rotation.items()}}
+        state={'variants':{f'facing={d}':{'model':f'icheme:block/{name}',**r} for d,r in rotation.items()}}
     write(ASSETS/f'blockstates/{name}.json',state)
-    write(ASSETS/f'models/item/{name}.json',{'parent':f'createcheme:block/{name}'})
-    write(ROOT/f'data/createcheme/loot_table/blocks/{name}.json',{'type':'minecraft:block','pools':[{'rolls':1,'entries':[{'type':'minecraft:item','name':f'createcheme:{name}'}],'conditions':[{'condition':'minecraft:survives_explosion'}]}]})
+    write(ASSETS/f'models/item/{name}.json',{'parent':f'icheme:block/{name}'})
+    write(ROOT/f'data/icheme/loot_table/blocks/{name}.json',{'type':'minecraft:block','pools':[{'rolls':1,'entries':[{'type':'minecraft:item','name':f'icheme:{name}'}],'conditions':[{'condition':'minecraft:survives_explosion'}]}]})
 write(ASSETS/'models/item/fluid_debugger.json',{'parent':'minecraft:item/handheld','textures':{'layer0':'minecraft:item/clock_00'}})
 lang_path=ASSETS/'lang/en_us.json'
 lang=json.loads(lang_path.read_text(encoding='utf-8')) if lang_path.exists() else {}
-lang.update({f'block.createcheme.{name}':title for name,title in names.items()})
-lang['item.createcheme.fluid_debugger']='Fluid Network Probe'
+lang.update({f'block.icheme.{name}':title for name,title in names.items()})
+lang['item.icheme.fluid_debugger']='Fluid Network Probe'
 write(lang_path,lang)
-write(ROOT/'data/create/tags/block/non_movable.json',{'replace':False,'values':[f'createcheme:{name}' for name in names]})
-write(ROOT/'data/minecraft/tags/block/mineable/pickaxe.json',{'replace':False,'values':[f'createcheme:{name}' for name in names]})
+write(ROOT/'data/create/tags/block/non_movable.json',{'replace':False,'values':[f'icheme:{name}' for name in names]})
+write(ROOT/'data/minecraft/tags/block/mineable/pickaxe.json',{'replace':False,'values':[f'icheme:{name}' for name in names]})

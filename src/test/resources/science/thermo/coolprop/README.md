@@ -1,6 +1,6 @@
 # CoolProp fluid files and parity fixtures (test resources)
 
-Test-only data for the Java Helmholtz reference oracle in `src/test/java/com/wormzjl/createcheme/science/thermo/reference`
+Test-only data for the Java Helmholtz reference oracle in `src/test/java/com/wormzjl/icheme/science/thermo/reference`
 (batch `2026-09-24-coolprop-low-temperature`, plan P1 item 1, decision D4). Nothing here enters the mod jar.
 
 ## Fluid files

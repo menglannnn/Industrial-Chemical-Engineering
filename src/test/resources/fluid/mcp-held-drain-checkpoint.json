@@ -3,11 +3,11 @@
   "islands": [
     {
       "dimension": "minecraft:overworld",
-      "packageId": "createcheme:tjl20_methane_nitrogen",
+      "packageId": "icheme:tjl20_methane_nitrogen",
       "compressibility": 1e-09,
       "propertyRevision": "fluid-trbdf2-r1:b661160bfc2a10505c26c4e968808580d5746a1c539599aab1df8b801b090ef3:fluid-shared-k-v1:ambient-293.15-v1:catalog-volume-reference-v1:k=0x1.12e0be826d695p-30:afecafc46ffc1549552ed9f6315f57d731c040f66b201916e2bbb98a8bb5eb9d:log-liquid-pair-groups-wilke-v2:catalog-conditional-solute-v1",
       "reference": {
-        "revision": "createcheme:sensible-298.15K-v1",
+        "revision": "icheme:sensible-298.15K-v1",
         "components": [
           "Methane",
           "Ethane",

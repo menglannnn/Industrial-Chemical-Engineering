@@ -1,0 +1,173 @@
+package com.wormzjl.icheme.runtime.fluid;
+
+import com.wormzjl.icheme.science.fluid.network.FlowControl;
+import com.wormzjl.icheme.science.fluid.network.PassiveNetwork;
+import com.wormzjl.icheme.science.fluid.thermo.FluidMaterialCatalog;
+import com.wormzjl.icheme.science.fluid.thermo.FluidThermodynamics;
+import com.wormzjl.icheme.science.fluid.topology.TopologyCompiler.Kind;
+import com.wormzjl.icheme.science.material.MaterialRuntime;
+import com.wormzjl.icheme.science.material.MaterialTestBasis;
+import com.wormzjl.icheme.science.material.PilotCryogenicTestCatalog;
+import java.util.Arrays;
+import org.junit.jupiter.api.Test;
+import static com.wormzjl.icheme.runtime.fluid.PhysicalFluidTopology.Direction.*;
+import static org.junit.jupiter.api.Assertions.*;
+
+/**
+ * Owner decision D59 (4) of the phase-ports batch (A335): a pump cannot pull its suction below the vapour pressure of the
+ * liquid it draws. There it cavitates and delivers only what its suction line gives with the suction standing at
+ * {@code P_vapour(T)}: the row {@code P_suction = P_vapour(T_suction)} replaces the target-flow row while the target would
+ * pull the suction below it, as the head limit replaces it while the target would need more head than the pump has.
+ */
+class PumpCavitationTest {
+    /**
+     * The smallest world of world-defaults fuzz seed 696 (11 blocks, all placed at tick 143; minimized in
+     * tools/phase-ports-probes/hold-classes logs cc04). A 1 atm water generator 2 m above the pump's suction feeds it through
+     * a vertical line; the pump discharges towards a second 1 atm generator and a placed tank 3 m below. The head-limit trial
+     * pulls the suction junction to the data's 100 Pa floor, where the water flashes to its triple point: without the suction
+     * limit the island held at tick 1570 (water at 273.1599 K at the suction junction, the ice hold of the time; since WP4 of
+     * the range-extrapolation plan such a flash freezes, 83 % ice and 17 % steam at 252.8 K from 25 °C at 100 Pa,
+     * FreeWaterIceTest, which a step carries as the stand-in, supercooled liquid, until a vessel's refresh freezes it). With
+     * it the failed trial puts the pump
+     * on its suction limit, that pass converges with the suction line giving more than the target (22.5 kg/s), the pump
+     * returns to its target and then its head limit as the full tank's pressure rises, and stands at its shutoff once the
+     * tank is pressed to it; the island keeps up for 120 slices.
+     */
+    @Test void aHeadLimitTrialBelowTheVapourPressureIsSolvedOnTheSuctionLimit() {
+        var w=new EventPathWorld();var passive=new FlowControl.Passive();
+        var water=EventPathWorld.pure(MaterialTestBasis.NETWORK,298.15,101325);
+        w.runTo(143);
+        w.place(0,0,-3,Kind.PIPE,NORTH,passive,null,.05);
+        w.place(0,-3,1,Kind.RESERVOIR,NORTH,.05);
+        w.place(0,0,1,Kind.PIPE,NORTH,passive,null,.05);
+        w.place(0,2,-3,Kind.GENERATOR,NORTH,passive,water,.05);
+        w.place(0,1,-3,Kind.PIPE,NORTH,passive,null,.05);
+        w.place(0,-1,1,Kind.PIPE,NORTH,passive,null,.05);
+        w.place(0,-2,1,Kind.PIPE,NORTH,passive,null,.05);
+        w.place(0,0,0,Kind.PUMP,SOUTH,new FlowControl.Pump(.01,500000),null,.05);
+        w.place(0,0,-2,Kind.PIPE,NORTH,passive,null,.05);
+        w.place(0,0,-1,Kind.PIPE,NORTH,passive,null,.05);
+        w.place(0,0,2,Kind.GENERATOR,NORTH,passive,water,.05);
+        w.runTo(143+120*100);w.assertKeptUp("a head-limit trial below the vapour pressure");
+        for(var s:w.coordinator.snapshots()) {
+            var result=s.lastResult().orElseThrow();
+            System.out.println("PUMP_CAVITATION_696 island "+s.id()+" modes="+result.endpointModes()+" flows="+Arrays.toString(result.averageMassFlows()));
+            for(int e=0;e<s.graph().pipes().size();e++)if(s.graph().pipes().get(e).control() instanceof FlowControl.Pump)
+                assertEquals(FlowControl.Mode.CLOSED,result.endpointModes().get(e),"the pump stands at its shutoff against the full tank");
+        }
+    }
+
+    /**
+     * Cavitation as the steady state: a 1 atm water generator feeds a pump through two 1 m pipes of 30 mm bore, and the pump
+     * discharges into a 1 atm void. The target, 0.01 m3/s (10 kg/s), would need about 134 kPa of suction-line loss, more than
+     * the 98 kPa between the generator and the vapour pressure of water at 298 K (3.17 kPa): the pump stands on its suction
+     * limit, its suction junction at the vapour pressure, and delivers what the line gives there, below its target.
+     */
+    @Test void aPumpWhoseSuctionLineCannotFeedItsTargetStandsOnItsSuctionLimit() {
+        var w=new EventPathWorld();var passive=new FlowControl.Passive();
+        w.runTo(100);
+        w.place(0,0,-3,Kind.GENERATOR,NORTH,passive,EventPathWorld.pure(MaterialTestBasis.NETWORK,298.15,101325),.05);
+        w.place(0,0,-2,Kind.PIPE,NORTH,passive,null,.03);
+        w.place(0,0,-1,Kind.PIPE,NORTH,passive,null,.03);
+        w.place(0,0,0,Kind.PUMP,SOUTH,new FlowControl.Pump(.01,500000),null,.05);
+        w.place(0,0,1,Kind.PIPE,NORTH,passive,null,.05);
+        w.place(0,0,2,Kind.VOID,NORTH,passive,null,.05);
+        w.runTo(100+20*100);w.assertKeptUp("a pump on a starved suction");
+        var s=w.coordinator.snapshots().getFirst();var result=s.lastResult().orElseThrow();var graph=s.graph();
+        int pump=-1;for(int e=0;e<graph.pipes().size();e++)if(graph.pipes().get(e).control() instanceof FlowControl.Pump)pump=e;
+        var suction=graph.reservoirs().get(graph.pipes().get(pump).first()).state();
+        double vapour=w.model.saturationPressure(suction.temperature()),q=result.averageMassFlows()[pump];
+        System.out.println("PUMP_CAVITATION_STEADY modes="+result.endpointModes()+" flows="+Arrays.toString(result.averageMassFlows())
+                +" suctionP="+suction.pressure()+" vapourP="+vapour);
+        assertEquals(FlowControl.Mode.PUMP_SUCTION_LIMIT,result.endpointModes().get(pump),"the pump cavitates");
+        assertEquals(vapour,suction.pressure(),1e-3*vapour,"its suction stands at the vapour pressure");
+        assertTrue(q>0&&q<.01*suction.mass()/suction.volume(),"it delivers what the line gives, below its target: "+q);
+    }
+
+    /**
+     * Owner decision on the t38 plan (2026-10-18, K6): a pump's suction limit reads the liquid it draws, and a two-phase
+     * supplier's own pressure is its bubble pressure (no new thermodynamics). From cold fuzz seed 397's world: its LNG
+     * (111.66 K, 89 % methane with ethane and CO2) boils at about 99 kPa; the seed's generator stood subcooled at 222 kPa,
+     * and the pump [0.01 m3/s, 500 kPa] pulled the suction junction of its 10 mm line to 40 kPa, where the liquid flashed
+     * and the two-phase junction's pass stalled (a hold outside this rule, which reads a two-phase supplier only). Here
+     * the same LNG at 111.8 K fills a tank from a generator at 222 kPa and boils there: the tank fills to its wall and
+     * stands two-phase at about 128 kPa and 115 K, two metres above the pump, which draws through the tank's bottom port
+     * (liquid, so the pump is not refused). The available head is the column and the level head alone, the target would
+     * need far more line loss, so the pump stands on its suction limit with the junction at the tank's pressure and
+     * delivers what that head pushes through two metres of 10 mm line (0.086 kg/s against a target of 4.2 kg/s). Without
+     * the rule (the water-only limit of A390) the junction is pulled below the bubble pressure and flashes: the island
+     * holds at tick 1327 on a line-search stall.
+     */
+    @Test void anLngSupplierAtItsBubblePointHoldsItsPumpOnTheSuctionLimit() {
+        var catalog=PilotCryogenicTestCatalog.catalog();var network=FluidMaterialCatalog.networkPackage(catalog);
+        MaterialRuntime.with(catalog,network,()->{
+            var w=new EventPathWorld(catalog,FluidThermodynamics.forNetwork(catalog,network));var passive=new FlowControl.Passive();
+            // Seed 397's LNG on the pilot basis [nitrogen, methane, ethane, CO2, water] at 111.8 K: subcooled in the generator
+            // at 222 kPa, boiling in the tank. A placed tank holds nothing (owner direction D52): it fills from the generator
+            // through its side, and the pump draws from its bottom port.
+            var lng=new FluidDeviceSpec(1,111.8,222268.7652191971,new double[]{0.0019051322577280617,0.8927278421557977,0.06093423437004952,0.04443279121642472,0});
+            w.runTo(100);
+            w.place(2,2,-1,Kind.GENERATOR,NORTH,passive,lng,.01);
+            w.place(1,2,-1,Kind.PIPE,NORTH,passive,null,.01);
+            w.place(0,2,-1,Kind.RESERVOIR,NORTH,.01);
+            w.place(0,1,-1,Kind.PIPE,NORTH,passive,null,.01);
+            w.place(0,0,-1,Kind.PIPE,NORTH,passive,null,.01);
+            w.place(0,0,0,Kind.PUMP,SOUTH,new FlowControl.Pump(.01,500000),null,.01);
+            w.place(0,0,1,Kind.PIPE,NORTH,passive,null,.01);
+            w.place(0,0,2,Kind.VOID,NORTH,passive,new FluidDeviceSpec(1,298.15,101325,new double[]{1,0,0,0,0}),.01);
+            w.runTo(100+20*100);w.assertKeptUp("an LNG supplier at its bubble point feeding a pump");
+            var s=w.coordinator.snapshots().stream().filter(sn->sn.graph().pipes().stream().anyMatch(p->p.control() instanceof FlowControl.Pump)).findFirst().orElseThrow();
+            var result=s.lastResult().orElseThrow();var graph=s.graph();
+            int pump=-1;for(int e=0;e<graph.pipes().size();e++)if(graph.pipes().get(e).control() instanceof FlowControl.Pump)pump=e;
+            var tank=graph.reservoirs().stream().filter(r->r.kind()==PassiveNetwork.NodeKind.RESERVOIR).findFirst().orElseThrow().state();
+            var suction=graph.reservoirs().get(graph.pipes().get(pump).first()).state();double q=result.averageMassFlows()[pump];
+            System.out.println("PUMP_CAVITATION_LNG modes="+result.endpointModes()+" flows="+Arrays.toString(result.averageMassFlows())+" tankP="+tank.pressure()+" tankT="+tank.temperature()
+                    +" tankLiquidV="+tank.liquidVolume()+" tankVapourV="+tank.vaporVolume()+" suctionP="+suction.pressure()+" suctionT="+suction.temperature());
+            assertTrue(tank.liquidVolume()>0&&tank.vaporVolume()>0,"the tank boils: two-phase");
+            assertEquals(FlowControl.Mode.PUMP_SUCTION_LIMIT,result.endpointModes().get(pump),"the pump stands on its suction limit");
+            assertEquals(tank.pressure(),suction.pressure(),.01*tank.pressure(),"its suction stands at the tank's bubble pressure");
+            assertTrue(q>0&&q<.01*suction.mass()/suction.volume(),"it delivers what the head pushes through the line, below its target: "+q);
+            return null;});
+    }
+
+    /**
+     * The arriving-phase seed of a junction is its own split of the enthalpy that arrives (f983306b, 8fd61a13): bundled
+     * fuzz seed 889 pair-minimized to 11 blocks (OD4_COLD285_GATE889_REVIEW.md, 2026-10-20). A 326.6 K, 398 kPa water
+     * generator 3 m up feeds, through 20 and 10 mm lines, a junction beside a nitrogen tank and a 10 mm suction line into a
+     * pump [0.001 m3/s, 1 MPa], which discharges through 10 mm into a second nitrogen tank. Its target needs more
+     * suction-line loss than the 413 kPa the supply has above the water's vapour pressure (14.6 kPa), so it cavitates.
+     * Water reaching the suction junction at its vapour pressure is liquid beside a trace of steam; the TP flash at the
+     * mixed temperature, which leaves out the latent heat, made all of it steam, the suction limit's row had no vapour
+     * pressure to stand at, and the island held at tick 2875 on a nonfinite trial residual.
+     */
+    @Test void waterArrivingAtACavitatingSuctionStaysLiquid() {
+        var w=new EventPathWorld();var passive=new FlowControl.Passive();
+        double[] n2=new double[21];n2[19]=1;double[] water=new double[21];water[20]=1;
+        w.runTo(152);w.place(2,0,0,Kind.RESERVOIR,NORTH,passive,new FluidDeviceSpec(1.0,298.15,101325.0,n2),.01);
+        w.runTo(194);w.place(-2,0,2,Kind.PIPE,NORTH,passive,null,.01);
+        w.runTo(255);w.place(-1,0,1,Kind.PIPE,NORTH,passive,null,.02);
+        w.runTo(312);w.place(-2,0,1,Kind.PIPE,NORTH,passive,null,.01);
+        w.runTo(504);w.place(-2,2,2,Kind.PIPE,NORTH,passive,null,.02);
+        w.runTo(1442);w.place(1,0,0,Kind.PIPE,NORTH,passive,null,.01);
+        w.runTo(1496);w.place(0,0,1,Kind.RESERVOIR,NORTH,passive,new FluidDeviceSpec(1.0,298.15,101325.0,n2),.02);
+        w.runTo(2341);w.place(-2,1,2,Kind.PIPE,NORTH,passive,null,.02);
+        w.runTo(2642);w.place(-2,3,2,Kind.GENERATOR,NORTH,passive,new FluidDeviceSpec(1.0,326.5875545469788,397553.9461096364,water),.02);
+        w.runTo(2873);w.place(-1,0,0,Kind.PIPE,NORTH,passive,null,.01);
+        w.place(0,0,0,Kind.PUMP,EAST,new FlowControl.Pump(.001,1000000),null,.05);
+        w.runTo(2873+120*100);w.assertKeptUp("water arriving at a cavitating pump suction");
+        var s=w.coordinator.snapshots().stream().filter(sn->sn.graph().pipes().stream().anyMatch(p->p.control() instanceof FlowControl.Pump)).findFirst().orElseThrow();
+        var result=s.lastResult().orElseThrow();var graph=s.graph();
+        int pump=-1;for(int e=0;e<graph.pipes().size();e++)if(graph.pipes().get(e).control() instanceof FlowControl.Pump)pump=e;
+        var suction=graph.reservoirs().get(graph.pipes().get(pump).first()).state();
+        double vapour=w.model.saturationPressure(suction.temperature()),q=result.averageMassFlows()[pump];
+        double steam=suction.waterVapor()/(suction.waterLiquid()+suction.waterVapor());
+        System.out.println("PUMP_CAVITATION_ARRIVAL modes="+result.endpointModes()+" flows="+Arrays.toString(result.averageMassFlows())+" suctionP="+suction.pressure()
+                +" vapourP="+vapour+" suctionT="+suction.temperature()+" steamShare="+steam);
+        // The cavitation is what the gate reads, not the mode's name: the pump stands where its head limit and its suction limit
+        // both bind (owner direction 2026-10-21, BALANCE_CONVERGENCE_REVIEW.md), and either label holds the same suction at the
+        // vapour pressure and the same flow (0.47887 kg/s on the head limit against 0.47882 on the suction limit).
+        assertEquals(vapour,suction.pressure(),1e-3*vapour,"the pump cavitates: its suction stands at the vapour pressure");
+        assertTrue(suction.waterLiquid()>0&&steam<1e-3,"the suction junction holds liquid water beside a trace of steam: "+steam);
+        assertTrue(q>0&&q<.001*suction.mass()/suction.volume(),"it delivers what the line gives, below its target: "+q);
+    }
+}

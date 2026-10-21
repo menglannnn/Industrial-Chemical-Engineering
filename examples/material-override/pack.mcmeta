@@ -1,6 +1,6 @@
 {
   "pack": {
     "pack_format": 48,
-    "description": "CreateChemE example: override methane liquid density"
+    "description": "IChemE example: override methane liquid density"
   }
 }

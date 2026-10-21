@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "id": "icheme:network",
+  "extends": "icheme:crude_19",
+  "components": [
+    "Nitrogen"
+  ],
+  "properties": [
+    "icheme:fluid_nitrogen"
+  ]
+}

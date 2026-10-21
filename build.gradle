@@ -79,10 +79,10 @@ neoForge {
             def fixtureRun = providers.gradleProperty('fluidGameTestRunId').getOrElse('')
             if (!(fixtureRun ==~ /[A-Za-z0-9_-]*/)) throw new GradleException('Invalid fluidGameTestRunId')
             gameDirectory = layout.projectDirectory.dir(fixtureRun.isEmpty() ? 'run/fluid-gametest' : "run/fluid-gametest-${fixtureRun}")
-            systemProperty 'neoforge.enabledGameTestNamespaces', 'createcheme_fluid_test'
-            systemProperty 'createcheme.fluid.testFailure', providers.gradleProperty('fluidGameTestDeliberateFailure').getOrElse('false')
+            systemProperty 'neoforge.enabledGameTestNamespaces', 'icheme_fluid_test'
+            systemProperty 'icheme.fluid.testFailure', providers.gradleProperty('fluidGameTestDeliberateFailure').getOrElse('false')
             // Re-derive every island's schedule from scratch at each pump and tick; any drift fails the run.
-            systemProperty 'createcheme.fluid.scheduler.verify', 'true'
+            systemProperty 'icheme.fluid.scheduler.verify', 'true'
         }
         columnGameTestServer {
             type = 'gameTestServer'
@@ -90,7 +90,7 @@ neoForge {
             def fixtureRun = providers.gradleProperty('columnGameTestRunId').getOrElse('manual')
             if (!(fixtureRun ==~ /[A-Za-z0-9_-]+/)) throw new GradleException('Invalid columnGameTestRunId')
             gameDirectory = layout.projectDirectory.dir("run/column-gametest-${fixtureRun}")
-            systemProperty 'neoforge.enabledGameTestNamespaces', 'createcheme_column_test'
+            systemProperty 'neoforge.enabledGameTestNamespaces', 'icheme_column_test'
         }
         fluidBenchmarkServer {
             type = 'gameTestServer'
@@ -98,24 +98,24 @@ neoForge {
             def runId = providers.gradleProperty('fluidBenchmarkRunId').getOrElse('manual')
             if (!(runId ==~ /[A-Za-z0-9_-]+/)) throw new GradleException('Use an alphanumeric fluidBenchmarkRunId')
             gameDirectory = layout.projectDirectory.dir("run/fluid-benchmark/${runId}")
-            systemProperty 'neoforge.enabledGameTestNamespaces', 'createcheme_fluid_benchmark'
-            systemProperty 'createcheme.fluid.benchmark', 'true'
-            systemProperty 'createcheme.fluid.benchmark.profile', providers.gradleProperty('fluidBenchmarkProfile').getOrElse('one')
-            systemProperty 'createcheme.fluid.benchmark.pilot', providers.gradleProperty('fluidBenchmarkPilot').getOrElse('false')
-            systemProperty 'createcheme.fluid.benchmark.pilotWarmupSeconds', providers.gradleProperty('fluidBenchmarkPilotWarmupSeconds').getOrElse('5')
-            systemProperty 'createcheme.fluid.stress.warmupSeconds', providers.gradleProperty('fluidStressWarmupSeconds').getOrElse('60')
-            systemProperty 'createcheme.fluid.stress.measurementSeconds', providers.gradleProperty('fluidStressMeasurementSeconds').getOrElse('60')
-            systemProperty 'createcheme.fluid.stress.profile', providers.gradleProperty('fluidStressProfile').getOrElse('false')
-            systemProperty 'createcheme.fluid.benchmark.memory', providers.gradleProperty('fluidBenchmarkMemory').getOrElse('false')
-            systemProperty 'createcheme.fluid.benchmark.diagnostics', providers.gradleProperty('fluidBenchmarkDiagnostics').getOrElse('false')
+            systemProperty 'neoforge.enabledGameTestNamespaces', 'icheme_fluid_benchmark'
+            systemProperty 'icheme.fluid.benchmark', 'true'
+            systemProperty 'icheme.fluid.benchmark.profile', providers.gradleProperty('fluidBenchmarkProfile').getOrElse('one')
+            systemProperty 'icheme.fluid.benchmark.pilot', providers.gradleProperty('fluidBenchmarkPilot').getOrElse('false')
+            systemProperty 'icheme.fluid.benchmark.pilotWarmupSeconds', providers.gradleProperty('fluidBenchmarkPilotWarmupSeconds').getOrElse('5')
+            systemProperty 'icheme.fluid.stress.warmupSeconds', providers.gradleProperty('fluidStressWarmupSeconds').getOrElse('60')
+            systemProperty 'icheme.fluid.stress.measurementSeconds', providers.gradleProperty('fluidStressMeasurementSeconds').getOrElse('60')
+            systemProperty 'icheme.fluid.stress.profile', providers.gradleProperty('fluidStressProfile').getOrElse('false')
+            systemProperty 'icheme.fluid.benchmark.memory', providers.gradleProperty('fluidBenchmarkMemory').getOrElse('false')
+            systemProperty 'icheme.fluid.benchmark.diagnostics', providers.gradleProperty('fluidBenchmarkDiagnostics').getOrElse('false')
             if (providers.gradleProperty('fluidBenchmarkHeapMiB').isPresent()) {
                 def heapMiB = providers.gradleProperty('fluidBenchmarkHeapMiB').get().toInteger()
                 if (heapMiB < 512 || heapMiB > 16384) throw new GradleException('fluidBenchmarkHeapMiB must be between 512 and 16384')
                 jvmArguments.addAll("-Xms${heapMiB}m", "-Xmx${heapMiB}m")
             }
-            systemProperty 'createcheme.fluid.benchmark.testFailure', providers.gradleProperty('fluidBenchmarkTestFailure').getOrElse('false')
-            systemProperty 'createcheme.fluid.benchmark.output', layout.buildDirectory.file("reports/fluid/M9/${runId}/report.json").get().asFile.absolutePath
-            systemProperty 'createcheme.fluid.benchmark.manifest', layout.projectDirectory.file("run/fluid-benchmark/${runId}/manifest.json").asFile.absolutePath
+            systemProperty 'icheme.fluid.benchmark.testFailure', providers.gradleProperty('fluidBenchmarkTestFailure').getOrElse('false')
+            systemProperty 'icheme.fluid.benchmark.output', layout.buildDirectory.file("reports/fluid/M9/${runId}/report.json").get().asFile.absolutePath
+            systemProperty 'icheme.fluid.benchmark.manifest', layout.projectDirectory.file("run/fluid-benchmark/${runId}/manifest.json").asFile.absolutePath
         }
 
         mcpClient {
@@ -139,16 +139,16 @@ neoForge {
         "${mod_id}" {
             sourceSet sourceSets.main
         }
-        createcheme_fluid_test {
+        icheme_fluid_test {
             sourceSet sourceSets.fluidGameTest
         }
-        createcheme_mcp_compat {
+        icheme_mcp_compat {
             sourceSet sourceSets.mcpCompat
         }
     }
     runs.configureEach {
-        loadedMods = name in ['fluidGameTestServer', 'fluidBenchmarkServer', 'columnGameTestServer'] ? [mods.createcheme, mods.createcheme_fluid_test]
-                : name == 'mcpClient' ? [mods.createcheme, mods.createcheme_mcp_compat] : [mods.createcheme]
+        loadedMods = name in ['fluidGameTestServer', 'fluidBenchmarkServer', 'columnGameTestServer'] ? [mods.icheme, mods.icheme_fluid_test]
+                : name == 'mcpClient' ? [mods.icheme, mods.icheme_mcp_compat] : [mods.icheme]
     }
 }
 
@@ -256,8 +256,8 @@ tasks.withType(Test).matching { it.name in ['test', 'fluidScienceTest'] }.config
     systemProperty 'fluid.modJar', tasks.named('jar', Jar).flatMap { it.archiveFile }.get().asFile.absolutePath
 }
 
-['fluidScienceTest': 'com.wormzjl.createcheme.science.fluid.*',
- 'fluidRuntimeTest': 'com.wormzjl.createcheme.runtime.fluid.*'].each { taskName, pattern ->
+['fluidScienceTest': 'com.wormzjl.icheme.science.fluid.*',
+ 'fluidRuntimeTest': 'com.wormzjl.icheme.runtime.fluid.*'].each { taskName, pattern ->
     tasks.register(taskName, Test) {
         group = 'verification'
         description = "Runs the discovered ${taskName} checkpoint tests; no matching tests is a failure."
@@ -265,11 +265,11 @@ tasks.withType(Test).matching { it.name in ['test', 'fluidScienceTest'] }.config
         classpath = sourceSets.test.runtimeClasspath
         filter {
             includeTestsMatching pattern
-            if (taskName == 'fluidRuntimeTest') includeTestsMatching 'com.wormzjl.createcheme.runtime.Fluid*Test'
+            if (taskName == 'fluidRuntimeTest') includeTestsMatching 'com.wormzjl.icheme.runtime.Fluid*Test'
             failOnNoMatchingTests = true
         }
         // Re-derive every island's schedule from scratch at each pump and tick; any drift fails the test.
-        systemProperty 'createcheme.fluid.scheduler.verify', 'true'
+        systemProperty 'icheme.fluid.scheduler.verify', 'true'
     }
 }
 
@@ -282,7 +282,7 @@ tasks.withType(Test).matching { it.name in ['test', 'fluidScienceTest'] }.config
         testClassesDirs = sourceSets.test.output.classesDirs
         classpath = sourceSets.test.runtimeClasspath
         filter {
-            includeTestsMatching "com.wormzjl.createcheme.fluid.benchmark.${fixture}"
+            includeTestsMatching "com.wormzjl.icheme.fluid.benchmark.${fixture}"
             failOnNoMatchingTests = true
         }
         outputs.upToDateWhen { false }
@@ -309,7 +309,7 @@ def prepareFluidBenchmark = tasks.register('prepareFluidBenchmark') {
         if (new File(directory, 'world').exists()) throw new GradleException('Benchmark runs require a fresh world; choose a new fluidBenchmarkRunId')
         def workers = fluidBenchmarkWorkerCount
         if (workers < 0 || workers > 32) throw new GradleException('Invalid benchmark worker count')
-        def config = new File(directory, 'config/createcheme-common.toml')
+        def config = new File(directory, 'config/icheme-common.toml')
         config.parentFile.mkdirs()
         def restDetection = fluidBenchmarkRestDetection
         if (!(restDetection in ['true', 'false'])) throw new GradleException('fluidRestDetection must be true or false')
@@ -355,7 +355,7 @@ tasks.register('fluidSolverRegression', Test) {
     description = 'Replays the chain-100 fixture against its captured solver reference states and reports solver cost.'
     testClassesDirs = sourceSets.test.output.classesDirs
     classpath = sourceSets.test.runtimeClasspath
-    filter { includeTestsMatching 'com.wormzjl.createcheme.fluid.benchmark.FluidSolverRegressionTest'; failOnNoMatchingTests = true }
+    filter { includeTestsMatching 'com.wormzjl.icheme.fluid.benchmark.FluidSolverRegressionTest'; failOnNoMatchingTests = true }
     maxParallelForks = 1
     testLogging { showStandardStreams = true }
     if (providers.gradleProperty('fluidRegressionReferences').isPresent())
@@ -368,7 +368,7 @@ tasks.register('fluidSolverRegression', Test) {
 }
 tasks.named('test', Test) {
     exclude '**/fluid/benchmark/**'
-    systemProperty 'createcheme.fluid.scheduler.verify', 'true'
+    systemProperty 'icheme.fluid.scheduler.verify', 'true'
 }
 
 tasks.register('v3HollandBenchmark', Test) {
@@ -377,7 +377,7 @@ tasks.register('v3HollandBenchmark', Test) {
     testClassesDirs = sourceSets.test.output.classesDirs
     classpath = sourceSets.test.runtimeClasspath
     filter {
-        includeTestsMatching 'com.wormzjl.createcheme.science.column.v3.HollandExample32BenchmarkTest'
+        includeTestsMatching 'com.wormzjl.icheme.science.column.v3.HollandExample32BenchmarkTest'
     }
     def hollandReport = providers.gradleProperty('v3HollandReport').getOrElse(
             layout.buildDirectory.file('reports/benchmarks/v3-holland-example-3-2.json').get().asFile.absolutePath)

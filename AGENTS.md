@@ -1,4 +1,4 @@
-# Agent rules for CreateChemE
+# Agent rules for Industrial Chemical Engineering (IChemE)
 
 Standing rules from the project owner. They apply to every agent working in this repository (Claude, Codex, subagents) for every task, unless the owner states otherwise for a specific task.
 
@@ -77,7 +77,7 @@ The owner's words: "try to shorten the tests, they are taking too long/too much 
 
 ## Documentation, research, tools and versions (recorded 2026-09-23)
 
-- Working documents, research material and offline tooling are local and git-ignored, in three folders of the main checkout (`D:/Minecraft/Modding/1.21/CreateChemE`), which holds the canonical copy:
+- Working documents, research material and offline tooling are local and git-ignored, in three folders of the main checkout (`D:/Minecraft/Modding/1.21/CreateChemE`; the folder keeps the mod's former name, owner decision 2026-10-21), which holds the canonical copy:
   - `documentation/`: one folder per batch of work, named `YYYY-MM-DD-topic/` after the day the batch started, plus `reference/` and `repository/`. `documentation/INDEX.md` lists every batch with its status; `documentation/README.md` explains the layout.
   - `research/`: datasets, literature sources, study harnesses and journals, grouped by batch, indexed in `research/INDEX.md`.
   - `tools/`: offline scripts and harnesses, one folder per tool, indexed in `tools/INDEX.md`. `tools/development.gradle` stays at that path.

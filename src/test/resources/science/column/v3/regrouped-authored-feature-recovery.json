@@ -2,8 +2,8 @@
   "source": "Frozen regrouping holdout exposed a coarse recovery publishing an unrequested dry surrogate. No expected solution is inferred from that invalid result.",
   "input": {
     "schemaVersion": 1,
-    "packageId": "createcheme:dalia_tjl20",
-    "assayId": "createcheme:dalia",
+    "packageId": "icheme:dalia_tjl20",
+    "assayId": "icheme:dalia",
     "componentBasis": {
       "componentIds": [
         "Methane",

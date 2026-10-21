@@ -1,0 +1,207 @@
+package com.wormzjl.icheme.runtime.fluid;
+
+import com.wormzjl.icheme.fluid.support.FluidTestSupport;
+import com.wormzjl.icheme.science.fluid.network.*;
+import com.wormzjl.icheme.science.fluid.state.SolidInventory;
+import com.wormzjl.icheme.science.fluid.thermo.FluidThermodynamics;
+import com.wormzjl.icheme.science.fluid.topology.TopologyCompiler;
+import com.wormzjl.icheme.science.material.MaterialTestBasis;
+import java.util.*;
+import org.junit.jupiter.api.Test;
+import static org.junit.jupiter.api.Assertions.*;
+
+/**
+ * The line a player builds that the generator cannot drive: a water generator against a tank that
+ * already stands above it, either because the tank is charged higher or because it sits four blocks
+ * up and the generator cannot lift the column.
+ *
+ * <p>There is no flow such a line can carry. The only direction with a root is the tank pushing its
+ * gas back down into the generator, which {@code PassiveStepSolver.boundaryAllowed} forbids, so the
+ * model answer is a flow of exactly zero reached through the boundary closure. The solve used not to
+ * get there: the reverse root lies across zero flow, where the friction slope changes by three
+ * orders between a liquid and a gas, and the tank carried a phantom water trace at
+ * {@code total*1e-12} - the entry trace {@code initialPhaseSeeds} plants for every reachable
+ * component - whose only root is exactly zero and which nothing delivers, so
+ * {@code Equations.maximumStep} pinned the step length at {@code 1.6e-8} down to {@code 4.0e-18} and
+ * the line search reported a stall at a residual its own direction would have removed in one step.
+ * The island then held for good: it took no configuration or topology event, survived block removal,
+ * a save and a client restart, and the player's only way out was to build elsewhere.
+ *
+ * <p>The closure is now taken before the pass, from the point the pass starts at, by
+ * {@code PassiveStepSolver.closeDeadHeads}. See {@code documentation/DEAD_HEADED_LINE.md}; the
+ * residuals quoted below are the ones this file measured before that rule existed, and
+ * {@code documentation/ELEVATED_LINE_PROBE.md} section 6 recorded the same digits on the unmodified
+ * solver, so they are the defect's fingerprint rather than one branch's accident.
+ */
+class DeadHeadedLineIslandTest extends BlockLineHarness {
+    /** The elevation a stack of pipe blocks puts between the generator and the tank. */
+    private static final int LIFT=4;
+    private static final double GENERATOR=101325;
+
+    /* ---------------- the block lines ---------------- */
+
+    private List<PhysicalFluidTopology.Device> flatBlocks() {
+        var devices=new ArrayList<PhysicalFluidTopology.Device>();
+        devices.add(device(1,0,BOTTOM,TopologyCompiler.Kind.GENERATOR));
+        for(int i=1;i<LIFT;i++)devices.add(device(1+i,i,BOTTOM,TopologyCompiler.Kind.PIPE));
+        devices.add(device(1+LIFT,LIFT,BOTTOM,TopologyCompiler.Kind.RESERVOIR));
+        return List.copyOf(devices);
+    }
+    /** The bricking scenario itself: generator at the bottom, three pipes up, tank four blocks above. */
+    private List<PhysicalFluidTopology.Device> risingBlocks() {
+        var devices=new ArrayList<PhysicalFluidTopology.Device>();
+        devices.add(device(1,0,BOTTOM,TopologyCompiler.Kind.GENERATOR));
+        for(int i=1;i<LIFT;i++)devices.add(device(1+i,0,BOTTOM+i,TopologyCompiler.Kind.PIPE));
+        devices.add(device(1+LIFT,0,BOTTOM+LIFT,TopologyCompiler.Kind.RESERVOIR));
+        return List.copyOf(devices);
+    }
+    private List<PhysicalFluidTopology.Device> flatFilterBlocks() {
+        return List.of(device(1,0,BOTTOM,TopologyCompiler.Kind.GENERATOR),device(2,1,BOTTOM,TopologyCompiler.Kind.PIPE),
+                device(3,2,BOTTOM,TopologyCompiler.Kind.FILTER,PhysicalFluidTopology.Direction.EAST),
+                device(4,3,BOTTOM,TopologyCompiler.Kind.PIPE),device(5,4,BOTTOM,TopologyCompiler.Kind.RESERVOIR));
+    }
+    private List<PhysicalFluidTopology.Device> risingFilterBlocks() {
+        return List.of(device(1,0,BOTTOM,TopologyCompiler.Kind.GENERATOR),device(2,0,BOTTOM+1,TopologyCompiler.Kind.PIPE),
+                device(3,0,BOTTOM+2,TopologyCompiler.Kind.FILTER,PhysicalFluidTopology.Direction.UP),
+                device(4,0,BOTTOM+3,TopologyCompiler.Kind.PIPE),device(5,0,BOTTOM+LIFT,TopologyCompiler.Kind.RESERVOIR));
+    }
+
+    /** The island as the world first activates it, both boundaries freshly initialized. */
+    private PassiveNetwork line(List<PhysicalFluidTopology.Device> devices,double generator,double tank) {
+        var stock=new LinkedHashMap<Long,PassiveNetwork.Reservoir>();
+        long last=devices.getLast().id();
+        stock.put(1L,generatorSpec(generator).initialize(devices.getFirst(),model,()->{}));
+        stock.put(last,FluidTestSupport.chargedBoundary(tankSpec(tank),devices.getLast(),model));
+        return compile(devices,stock,emptyFilters(devices));
+    }
+    /**
+     * A configuration event on a live island, driven the way {@link FullTankSolidsEventTest} drives
+     * one: the edited boundary is re-initialized from its new setting, every other boundary keeps
+     * the state it has reached, and the island is recompiled.
+     */
+    private PassiveNetwork raiseGenerator(PassiveNetwork live,List<PhysicalFluidTopology.Device> devices,double pressure) {
+        var stock=new LinkedHashMap<Long,PassiveNetwork.Reservoir>();
+        for(var node:live.reservoirs())if(!node.junction()&&node.id()>0)stock.put(node.id(),node);
+        stock.put(1L,generatorSpec(pressure).initialize(devices.getFirst(),model,()->{}));
+        return compile(devices,stock,emptyFilters(devices));
+    }
+
+    private double column(double pressure){return waterDensity(pressure)*PassiveStepSolver.GRAVITY*LIFT;}
+    /** The level head of the tank's bottom (LIQUID) port on a run's final state (decision D9 of the phase-ports batch). */
+    private double levelHead(Run run) {
+        var tank=tankOf(run.finished());return PassiveStepSolver.GRAVITY*model.liquidMass(tank.state())*PassiveStepSolver.LEVEL_HEAD_HEIGHT/tank.inventory().volume();
+    }
+
+    /**
+     * Every connection of a dead-headed line is closed and carries <em>exactly</em> zero; the tank
+     * then comes out of forty intervals with the inventory it went in with, to within the
+     * reconstruction's own roundoff - measured at one unit in the last place of its nitrogen over
+     * the forty, against the {@code 1e-12} relative bound asserted here, and a nanopascal of
+     * pressure. Nothing is transferred, because there is nothing for a zero flow to transfer; what
+     * moves is the last bit of a state that is re-decoded from that inventory each substep. An island the rest stage takes
+     * before anything is solved (owner decisions D19, D58: nothing can drive it) reports a connection open both ways as
+     * PASSIVE, carrying the same exact zero; the generator's connection reports CLOSED either way.
+     */
+    private void assertAtRest(Run run,PassiveNetwork.Reservoir before,String what) {
+        assertTrue(run.ok(),what+": "+run.detail());
+        for(int edge=0;edge<run.modes().size();edge++)assertTrue(run.modes().get(edge)==FlowControl.Mode.CLOSED||run.modes().get(edge)==FlowControl.Mode.PASSIVE,
+                what+": connection "+edge+" must be closed or at rest, modes="+run.modes());
+        assertTrue(run.modes().contains(FlowControl.Mode.CLOSED),what+": the generator's connection is closed in the direction its boundary forbids, modes="+run.modes());
+        for(double flow:run.flows())assertEquals(0,flow,0,what+": a closed line carries exactly zero");
+        var after=tankOf(run.finished());
+        double[] was=before.inventory().moles(),now=after.inventory().moles();
+        for(int c=0;c<was.length;c++)assertEquals(was[c],now[c],1e-12*Math.max(1e-30,was[c]),
+                what+": a closed line may not move component "+c+" into or out of the tank");
+        assertEquals(before.inventory().internalEnergy(),after.inventory().internalEnergy(),
+                1e-12*Math.abs(before.inventory().internalEnergy()),what+": nor any energy");
+        assertEquals(before.state().pressure(),after.state().pressure(),1e-9*before.state().pressure(),
+                what+": the tank's pressure must not move");
+    }
+
+    /* ---------------- the fixtures ---------------- */
+
+    /**
+     * The flat equivalent at the four adverse pressures {@code ELEVATED_LINE_PROBE.md} section 6
+     * measured on the unmodified solver, where they held at residuals
+     * {@code 1.9355024035429073E-5}, {@code 0.0788636363636365}, {@code 0.27828626375583176} and
+     * {@code 0.493375} - the last of which is {@code 98675/200000}, the whole adverse pressure
+     * showing on a row whose flow cannot move at all.
+     */
+    @Test void aTankChargedAboveItsGeneratorRestsInsteadOfHolding() {
+        for(double charge:new double[]{101326,110000,140395,200000}) {
+            var graph=line(flatBlocks(),GENERATOR,charge);
+            var before=tankOf(graph);
+            var run=run(graph,40);
+            System.out.println("(flat, tank charged at "+(long)charge+" Pa, adverse "+(long)(charge-GENERATOR)+" Pa) "+run.detail());
+            assertAtRest(run,before,"charged at "+(long)charge);
+        }
+    }
+
+    /**
+     * The line the player actually builds, and the one the in-game confirmation places with
+     * {@code /setblock}: a water generator at its default pressure with a tank four blocks above it,
+     * which held at {@code Newton line search stalled at residual 5.066656785680298E-4} - the same
+     * digits the dev client's own log printed for the placed blocks.
+     */
+    @Test void aDeadHeadedElevatedLineRestsInsteadOfHolding() {
+        var graph=line(risingBlocks(),GENERATOR,GENERATOR);
+        var before=tankOf(graph);
+        var run=run(graph,40);
+        System.out.println("(rising, "+(long)GENERATOR+" Pa against "+column(GENERATOR)+" Pa of column) "+run.detail());
+        assertAtRest(run,before,"dead-headed elevated line");
+    }
+
+    /**
+     * The same two shapes with an inline filter in them, which held at
+     * {@code Newton iteration limit at residual 0.29469706587678757} flat and at
+     * {@code Empty fluid initialization} rising - a junction mixture of what nothing delivers. The
+     * closure reaches them because it is stated across the whole passive run through the filter's
+     * two degree-two junctions rather than across one connection.
+     */
+    @Test void aDeadHeadedFilterLineRestsInsteadOfHolding() {
+        var flat=line(flatFilterBlocks(),GENERATOR,GENERATOR+column(GENERATOR));
+        var flatBefore=tankOf(flat);
+        var flatRun=run(flat,40);
+        System.out.println("(flat filter)   "+flatRun.detail());
+        assertAtRest(flatRun,flatBefore,"flat filter line");
+
+        var rising=line(risingFilterBlocks(),GENERATOR,GENERATOR);
+        var risingBefore=tankOf(rising);
+        var risingRun=run(rising,40);
+        System.out.println("(rising filter) "+risingRun.detail());
+        assertAtRest(risingRun,risingBefore,"rising filter line");
+    }
+
+    /**
+     * The way out the player never had. The closure is a statement of one solve, so a generator
+     * turned up afterwards is decided again from the new starting point: the line opens, fills, and
+     * settles one water column below the generator.
+     */
+    @Test void raisingTheGeneratorReopensADeadHeadedLineAndFillsTheTank() {
+        var blocks=risingBlocks();
+        var held=run(line(blocks,GENERATOR,GENERATOR),10);
+        assertTrue(held.ok(),"the dead-headed line must rest first: "+held.detail());
+
+        var raised=raiseGenerator(held.finished(),blocks,400000);
+        var filled=run(raised,40);
+        System.out.println("(reopened at 400 kPa) "+filled.detail()+" tank P="+filled.tank().pressure()+" mass="+filled.tank().mass()+" level head="+levelHead(filled)
+                +" bottom="+(filled.tank().pressure()+levelHead(filled)));
+        assertTrue(filled.ok(),"raising the generator must re-open the line: "+filled.detail());
+        // The line enters the tank through its DOWN face, its bottom (LIQUID) port (phase-ports WP5, default A1), where the
+        // level head of its water adds to the headspace (decision D9): the bottom settles one water column below the
+        // generator. Re-baselined in WP5: headspace 360918.3081 Pa before, 353969.4046 Pa now (PHASE_PORTS_REVIEW.md WP5).
+        double expected=400000-column(400000);
+        assertEquals(expected,filled.tank().pressure()+levelHead(filled),1e-5*expected,
+                "a tank four blocks above a 400 kPa generator must settle with its bottom one water column below it");
+        assertTrue(filled.tank().mass()>700,"the tank must actually have filled with water: "+filled.tank().mass()+" kg");
+        // And once it is full it is dead-headed again, at its own hydrostatic balance rather than
+        // against an adverse charge, so the same closure holds it there. That is the end state a
+        // filled line is supposed to have, and it is the one the in-game tank shows as FULL.
+
+        // And back down again: the same line at the old setting is at rest, not held.
+        var lowered=raiseGenerator(filled.finished(),blocks,GENERATOR);
+        var resting=run(lowered,40);
+        System.out.println("(lowered back to 101.325 kPa) "+resting.detail()+" tank P="+resting.tank().pressure());
+        assertTrue(resting.ok(),"putting the generator back must leave the line at rest: "+resting.detail());
+    }
+}

@@ -1,0 +1,276 @@
+package com.wormzjl.icheme.network;
+
+import com.google.gson.Gson;
+import com.wormzjl.icheme.IChemE;
+import com.wormzjl.icheme.runtime.fluid.*;
+import com.wormzjl.icheme.science.fluid.network.*;
+import com.wormzjl.icheme.science.fluid.topology.TopologyCompiler;
+import com.wormzjl.icheme.world.inventory.FluidDeviceMenu;
+import net.minecraft.core.BlockPos;
+import net.minecraft.network.RegistryFriendlyByteBuf;
+import net.minecraft.network.codec.StreamCodec;
+import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
+import net.minecraft.resources.ResourceLocation;
+import net.minecraft.server.level.ServerPlayer;
+import net.neoforged.neoforge.network.PacketDistributor;
+import net.neoforged.neoforge.network.event.RegisterPayloadHandlersEvent;
+import net.neoforged.neoforge.network.handling.IPayloadContext;
+import net.neoforged.neoforge.network.registration.HandlerThread;
+import java.util.*;
+
+/**
+ * Menu protocol {@value #PROTOCOL}: position/identity/revision-bound controls; clients never send inventory or
+ * solver results. Opening a GUI immediately receives the last published server snapshot, when available.
+ * Subsequent menu updates receive a static payload (kind, components,
+ * presets, material names) and a live payload (view, controls, the engine's reply) on its island's
+ * presentation bucket ({@link FluidPresentation}); the static payload again only when the device's registration
+ * revision changed. An edit or recovery packet is validated as before, queued as a ledger event, and its reply -
+ * {@code Queued for simulation event at tick N}, {@code Applied} or {@code Not applied: <reason>} - arrives with
+ * the next bucket.
+ *
+ * <p>{@code fluid-10} (owner decision D23, crystals are solids): a solid population's material carries its crystal
+ * record (the component it is made of and its energy offset) when it is a crystal, so a tank's dry ice reaches the
+ * Solids tab and the solid share as a solid; a menu refuses a crystal made of a component off its axis.</p>
+ */
+public final class FluidNetwork {
+    public static final String PROTOCOL="fluid-10";
+    private static final Gson JSON=new Gson();
+    public static final int MAX_JSON=262144;
+    public static final int MAX_EDIT_JSON=4096;
+    private FluidNetwork() {}
+    /** The compressor's pressure-ratio bounds (plan Appendix B): at least 1 % over the suction, at most tenfold. */
+    public static final double MINIMUM_PRESSURE_RATIO=1.01,MAXIMUM_PRESSURE_RATIO=10,DEFAULT_PRESSURE_RATIO=3.0;
+    /** Whether a compressor's maximum pressure ratio lies within its bounds: the one test {@link Controls} and the screen both apply. */
+    public static boolean pressureRatioAllowed(double ratio){return ratio>=MINIMUM_PRESSURE_RATIO&&ratio<=MAXIMUM_PRESSURE_RATIO;}
+    /** The two bounds as a player reads them ("1.01", "10"), for the screen's refusal of a ratio outside them. */
+    public static String[] pressureRatioBoundsText(){return new String[]{plainNumber(MINIMUM_PRESSURE_RATIO),plainNumber(MAXIMUM_PRESSURE_RATIO)};}
+    private static String plainNumber(double value){return java.math.BigDecimal.valueOf(value).stripTrailingZeros().toPlainString();}
+    public record Controls(double temperature,double pressure,double diameter,double roughness,double volumeFlow,double maximumAddedPressure,double[] composition,SlurryFeed solids,double maximumPressureRatio) {
+        public Controls(double temperature,double pressure,double diameter,double roughness,double volumeFlow,double maximumAddedPressure,double[] composition,SlurryFeed solids){this(temperature,pressure,diameter,roughness,volumeFlow,maximumAddedPressure,composition,solids,DEFAULT_PRESSURE_RATIO);}
+        public Controls(double temperature,double pressure,double diameter,double roughness,double volumeFlow,double maximumAddedPressure,double[] composition){this(temperature,pressure,diameter,roughness,volumeFlow,maximumAddedPressure,composition,SlurryFeed.NONE);}
+        public Controls {
+            Objects.requireNonNull(solids);composition=composition.clone();
+            for(double value:new double[]{temperature,pressure,diameter,roughness,volumeFlow,maximumAddedPressure,maximumPressureRatio})if(!Double.isFinite(value))throw new IllegalArgumentException("All controls must be finite numbers");
+            if(!pressureRatioAllowed(maximumPressureRatio))throw new IllegalArgumentException("The pressure ratio must lie between "+MINIMUM_PRESSURE_RATIO+" and "+MAXIMUM_PRESSURE_RATIO);
+            // Temperature and pressure are only required to be physical here: the input box is the property package's
+            // envelope, so the server checks it against the model when the edit arrives (see edit below).
+            if(!(temperature>0)||!(pressure>0)||diameter<.001||diameter>1||roughness<0||roughness>=diameter||volumeFlow<0||volumeFlow>10||maximumAddedPressure<=0||maximumAddedPressure>2e6||(composition.length<1||composition.length>com.wormzjl.icheme.science.material.MaterialAxis.MAX_CONSERVED_COMPONENTS))throw new IllegalArgumentException("Controls are outside the supported range");
+            double sum=0;for(double n:composition){if(!Double.isFinite(n)||n<0)throw new IllegalArgumentException("Composition entries must be nonnegative");sum+=n;}if(!Double.isFinite(sum)||sum<=0)throw new IllegalArgumentException("Composition cannot be empty");
+        }
+        @Override public double[] composition(){return composition.clone();}
+        public static Controls from(WorldTopologyLedger.Registration record) {
+            var d=record.device();double flow=d.control() instanceof FlowControl.Mover m?m.targetVolumeFlow():.01;
+            double head=d.control() instanceof FlowControl.Pump p?p.maximumAddedPressure():500000;
+            double ratio=d.control() instanceof FlowControl.Compressor c?c.maximumPressureRatio():DEFAULT_PRESSURE_RATIO;
+            double pressure=d.control() instanceof FlowControl.PressureValve v?v.targetPressure():record.spec().pressure();
+            return new Controls(record.spec().temperature(),pressure,d.geometry().diameter(),d.geometry().roughness(),flow,head,record.spec().composition(),record.spec().solids(),ratio);
+        }
+    }
+    /**
+     * What a menu shows: a static part and a live part as one validated record. The server builds it at a bucket
+     * and splits it for the wire; the client joins the two parts it received and validates the whole again.
+     */
+    public record MenuData(TopologyCompiler.Kind kind,FluidView view,Controls controls,List<String> components,List<FluidPresetCatalog.Preset> presets,String message,
+            Map<String,com.wormzjl.icheme.science.material.MaterialName> materialNames,List<Double> molecularWeights) {
+        public MenuData {
+            Objects.requireNonNull(kind);Objects.requireNonNull(view);Objects.requireNonNull(controls);Objects.requireNonNull(message);
+            components=new com.wormzjl.icheme.science.material.MaterialAxis(components).ids();presets=List.copyOf(presets);materialNames=Map.copyOf(materialNames);molecularWeights=validatedWeights(molecularWeights,components.size());
+            if(controls.composition().length!=components.size()||presets.size()>com.wormzjl.icheme.science.material.MaterialPresets.MAX_PRESETS
+                    ||presets.stream().map(FluidPresetCatalog.Preset::id).distinct().count()!=presets.size()||materialNames.size()>components.size()
+                    ||!components.containsAll(materialNames.keySet()))throw new IllegalArgumentException("Invalid bounded fluid menu state");
+            if(kind!=TopologyCompiler.Kind.RESERVOIR&&!view.outlets().isEmpty())throw new IllegalArgumentException("Only a tank lists outlets");
+            if((kind==TopologyCompiler.Kind.PIPE||kind==TopologyCompiler.Kind.FILTER)&&view.pipeInfo()==null)
+                throw new IllegalArgumentException("Missing pipe inspection");
+            if(view.pipeInfo()!=null){
+                requirePhaseAxis(view.pipeInfo().contents().phaseMoles(),components.size());
+            }
+            if(view.state()!=null)requirePhaseAxis(view.state().phaseMoles(),components.size());
+            for(var transfer:view.pipeHistory()){requirePhaseAxis(transfer.forward().phaseMoles(),components.size());requirePhaseAxis(transfer.reverse().phaseMoles(),components.size());}
+            // A crystal (owner decision D23) is made of a component of the axis, wherever the view shows solids.
+            if(view.state()!=null)requireCrystalAxis(view.state().solids(),components);
+            if(view.pipeInfo()!=null)requireCrystalAxis(view.pipeInfo().contents().solids(),components);
+            if(view.filter()!=null)requireCrystalAxis(view.filter().captured(),components);
+            for(var transfer:view.pipeHistory()){requireCrystalAxis(transfer.forward().solids(),components);requireCrystalAxis(transfer.reverse().solids(),components);}
+            for(var p:presets)if(p.moleFractions().length!=components.size())throw new IllegalArgumentException("Fluid preset axis mismatch");
+            for(var e:materialNames.entrySet())if(!e.getKey().equals(e.getValue().id()))throw new IllegalArgumentException("Fluid name identity mismatch");
+        }
+        /** Joins what a menu received: its last static payload and the live payload just delivered. */
+        public static MenuData of(StaticData fixed,LiveData live){return new MenuData(fixed.kind(),live.view(),live.controls(),fixed.components(),fixed.presets(),live.message(),fixed.materialNames(),fixed.molecularWeights());}
+        public StaticData staticData(long revision){return new StaticData(kind,revision,components,presets,materialNames,molecularWeights);}
+    }
+    /** The static payload: what changes only with the device's registration revision (and never within one server run otherwise). */
+    public record StaticData(TopologyCompiler.Kind kind,long revision,List<String> components,List<FluidPresetCatalog.Preset> presets,Map<String,com.wormzjl.icheme.science.material.MaterialName> materialNames,List<Double> molecularWeights) {
+        public StaticData {
+            Objects.requireNonNull(kind);components=new com.wormzjl.icheme.science.material.MaterialAxis(components).ids();presets=List.copyOf(presets);materialNames=Map.copyOf(materialNames);molecularWeights=validatedWeights(molecularWeights,components.size());
+            if(revision<0||presets.size()>com.wormzjl.icheme.science.material.MaterialPresets.MAX_PRESETS||materialNames.size()>components.size()||!components.containsAll(materialNames.keySet()))
+                throw new IllegalArgumentException("Invalid bounded fluid static state");
+            for(var p:presets)if(p.moleFractions().length!=components.size())throw new IllegalArgumentException("Fluid preset axis mismatch");
+        }
+    }
+    /** The live payload: the bucket's view, the device's current controls, and the engine's reply (empty for none). */
+    public record LiveData(FluidView view,Controls controls,String message) {
+        public LiveData {
+            Objects.requireNonNull(view);Objects.requireNonNull(controls);Objects.requireNonNull(message);
+            if(message.length()>1024||view.pipeHistory().size()>12||view.pipeRoutes().size()>12||view.status().length()>2048)throw new IllegalArgumentException("Fluid view exceeds display bounds");
+        }
+    }
+    private static List<Double> validatedWeights(List<Double> values,int count){
+        Objects.requireNonNull(values,"Missing molecular weights");var copy=List.copyOf(values);
+        if(copy.size()!=count||copy.stream().anyMatch(w->!Double.isFinite(w)||w<=0))
+            throw new IllegalArgumentException("Invalid molecular weights");
+        return copy;
+    }
+    private static void requirePhaseAxis(double[][] phases,int components) {
+        if(phases.length!=3)throw new IllegalArgumentException("Fluid phase count mismatch");
+        for(var phase:phases)if(phase.length!=components)throw new IllegalArgumentException("Fluid phase axis mismatch");
+    }
+    private static void requireCrystalAxis(com.wormzjl.icheme.science.fluid.state.SolidInventory solids,List<String> components) {
+        for(var p:solids.crystals())if(!components.contains(p.material().crystal().component()))throw new IllegalArgumentException("Crystal off the fluid axis: "+p.material().id());
+    }
+    public record EditPayload(int menuId,BlockPos position,long identity,long revision,String json) implements CustomPacketPayload {
+        public static final Type<EditPayload> TYPE=new Type<>(ResourceLocation.fromNamespaceAndPath(IChemE.MOD_ID,"fluid_edit"));
+        public static final StreamCodec<RegistryFriendlyByteBuf,EditPayload> STREAM_CODEC=new StreamCodec<>() {
+            public EditPayload decode(RegistryFriendlyByteBuf b){return new EditPayload(b.readVarInt(),b.readBlockPos(),b.readLong(),b.readLong(),b.readUtf(MAX_EDIT_JSON));}
+            public void encode(RegistryFriendlyByteBuf b,EditPayload p){b.writeVarInt(p.menuId);b.writeBlockPos(p.position);b.writeLong(p.identity);b.writeLong(p.revision);b.writeUtf(p.json,MAX_EDIT_JSON);}
+        };
+        @Override public Type<? extends CustomPacketPayload> type(){return TYPE;}
+    }
+    public record RecoverPayload(int menuId,BlockPos position,long identity,long revision) implements CustomPacketPayload {
+        public static final Type<RecoverPayload> TYPE=new Type<>(ResourceLocation.fromNamespaceAndPath(IChemE.MOD_ID,"fluid_recover_solids"));
+        public static final StreamCodec<RegistryFriendlyByteBuf,RecoverPayload> STREAM_CODEC=new StreamCodec<>() {
+            public RecoverPayload decode(RegistryFriendlyByteBuf b){return new RecoverPayload(b.readVarInt(),b.readBlockPos(),b.readLong(),b.readLong());}
+            public void encode(RegistryFriendlyByteBuf b,RecoverPayload p){b.writeVarInt(p.menuId);b.writeBlockPos(p.position);b.writeLong(p.identity);b.writeLong(p.revision);}
+        };
+        @Override public Type<? extends CustomPacketPayload> type(){return TYPE;}
+    }
+    /** Server to client, at a bucket: the static part of a menu's state, as JSON of {@link StaticData}. */
+    public record StaticPayload(int menuId,long identity,String json) implements CustomPacketPayload {
+        public static final Type<StaticPayload> TYPE=new Type<>(ResourceLocation.fromNamespaceAndPath(IChemE.MOD_ID,"fluid_static"));
+        public static final StreamCodec<RegistryFriendlyByteBuf,StaticPayload> STREAM_CODEC=new StreamCodec<>() {
+            public StaticPayload decode(RegistryFriendlyByteBuf b){return new StaticPayload(b.readVarInt(),b.readLong(),b.readUtf(MAX_JSON));}
+            public void encode(RegistryFriendlyByteBuf b,StaticPayload p){b.writeVarInt(p.menuId);b.writeLong(p.identity);b.writeUtf(p.json,MAX_JSON);}
+        };
+        @Override public Type<? extends CustomPacketPayload> type(){return TYPE;}
+    }
+    /** Server to client, at every bucket of an open menu: the live part, as JSON of {@link LiveData}. */
+    public record LivePayload(int menuId,long identity,String json) implements CustomPacketPayload {
+        public static final Type<LivePayload> TYPE=new Type<>(ResourceLocation.fromNamespaceAndPath(IChemE.MOD_ID,"fluid_live"));
+        public static final StreamCodec<RegistryFriendlyByteBuf,LivePayload> STREAM_CODEC=new StreamCodec<>() {
+            public LivePayload decode(RegistryFriendlyByteBuf b){return new LivePayload(b.readVarInt(),b.readLong(),b.readUtf(MAX_JSON));}
+            public void encode(RegistryFriendlyByteBuf b,LivePayload p){b.writeVarInt(p.menuId);b.writeLong(p.identity);b.writeUtf(p.json,MAX_JSON);}
+        };
+        @Override public Type<? extends CustomPacketPayload> type(){return TYPE;}
+    }
+    public static void register(RegisterPayloadHandlersEvent event) {
+        var registrar=event.registrar(PROTOCOL).executesOn(HandlerThread.MAIN);
+        registrar.playToServer(EditPayload.TYPE,EditPayload.STREAM_CODEC,FluidNetwork::edit);
+        registrar.playToServer(RecoverPayload.TYPE,RecoverPayload.STREAM_CODEC,FluidNetwork::recover);
+        registrar.playToClient(StaticPayload.TYPE,StaticPayload.STREAM_CODEC,(payload,context)->{
+            if(context.player().containerMenu instanceof FluidDeviceMenu menu&&menu.containerId==payload.menuId&&menu.identity()==payload.identity)menu.acceptStatic(decodeStatic(payload.json));
+        });
+        registrar.playToClient(LivePayload.TYPE,LivePayload.STREAM_CODEC,(payload,context)->{
+            if(context.player().containerMenu instanceof FluidDeviceMenu menu&&menu.containerId==payload.menuId&&menu.identity()==payload.identity)menu.acceptLive(decodeLive(payload.json));
+        });
+    }
+    public static StaticData decodeStatic(String json){return Objects.requireNonNull(JSON.fromJson(json,StaticData.class));}
+    public static LiveData decodeLive(String json){return Objects.requireNonNull(JSON.fromJson(json,LiveData.class));}
+
+    // ---- server: scheduled snapshots and requested cached opening delivery ----
+
+    /** Captures one coherent GUI snapshot at a presentation bucket; no viewer-specific reply is cached. */
+    public static MenuData snapshot(FluidWorldAuthority world,WorldTopologyLedger.Registration record,FluidView view){
+        if(view.identity()!=record.device().id()||view.inputRevision()!=record.revision())
+            throw new IllegalArgumentException("Presentation snapshot registration mismatch");
+        return new MenuData(record.device().kind(),view,Controls.from(record),world.components(),world.presets(),"",
+            world.materialNames(),Arrays.stream(world.model().molecularWeights()).boxed().toList());
+    }
+    /** Sends a published snapshot to an installed, requested menu; replay uses an empty reply. The presentation checked
+     * that the menu is open ({@code FluidPresentation.Host.open}) and the snapshot is its device's. */
+    public static void deliver(FluidDeviceMenu menu,boolean withStatic,MenuData data,String reply) {
+        var player=menu.serverPlayer();
+        if(withStatic) {
+            PacketDistributor.sendToPlayer(player,new StaticPayload(menu.containerId,menu.identity(),JSON.toJson(data.staticData(data.view().inputRevision()))));
+            FluidRuntimeDiagnostics.count(FluidRuntimeDiagnostics.menuPackets);FluidRuntimeDiagnostics.count(FluidRuntimeDiagnostics.staticPayloads);
+        }
+        PacketDistributor.sendToPlayer(player,new LivePayload(menu.containerId,menu.identity(),JSON.toJson(new LiveData(data.view(),data.controls(),reply))));
+        FluidRuntimeDiagnostics.count(FluidRuntimeDiagnostics.menuPackets);
+    }
+
+    // ---- server: inputs are queued, never answered here ----
+
+    public static void recoverSolids(FluidDeviceMenu menu,long revision){PacketDistributor.sendToServer(new RecoverPayload(menu.containerId,menu.position(),menu.identity(),revision));}
+    private static void recover(RecoverPayload payload,IPayloadContext context){if(context.player() instanceof ServerPlayer player)recover(payload,player);}
+    /** The recovery handler: the same admission as an edit; the recovery is queued as a ledger event and the handler returns without a reply. */
+    public static void recover(RecoverPayload payload,ServerPlayer player) {
+        if(!(player.containerMenu instanceof FluidDeviceMenu menu))return;
+        if(menu.containerId!=payload.menuId||menu.identity()!=payload.identity||!menu.position().equals(payload.position)||!menu.stillValid(player)||menu.debug()||!player.mayBuild()||player.isSpectator()||!player.level().mayInteract(player,payload.position)||!menu.admitEdit(player.server.getTickCount()))return;
+        FluidWorldAuthority.find(player.server).ifPresent(world->{
+            WorldTopologyLedger.Event event=null;String refusal=null;
+            try{event=world.recoverFilter(payload.identity,payload.revision,player);}catch(RuntimeException rejected){refusal=reason(rejected);}
+            world.input(menu,event,refusal);
+        });
+    }
+    public static void sendEdit(FluidDeviceMenu menu,long revision,Controls controls){PacketDistributor.sendToServer(new EditPayload(menu.containerId,menu.position(),menu.identity(),revision,JSON.toJson(controls)));}
+    private static void edit(EditPayload payload,IPayloadContext context){if(context.player() instanceof ServerPlayer player)edit(payload,player);}
+    /**
+     * The edit handler: validates the menu, the player and the payload's revision and bounds as before, queues the
+     * change as a ledger event, and returns without a reply. The engine composes the reply with the menu's next
+     * bucket. An inadmissible packet (wrong menu, position or identity, a probe, a distant, read-only or flooding
+     * player) is dropped with no reply at all, as before.
+     */
+    public static void edit(EditPayload payload,ServerPlayer player) {
+        if(!(player.containerMenu instanceof FluidDeviceMenu menu))return;
+        if(menu.containerId!=payload.menuId||menu.identity()!=payload.identity||!menu.position().equals(payload.position)||!menu.stillValid(player)||menu.debug()||!player.mayBuild()||player.isSpectator()||!player.level().mayInteract(player,payload.position)||!menu.admitEdit(player.server.getTickCount()))return;
+        FluidWorldAuthority.find(player.server).ifPresent(world->{
+            WorldTopologyLedger.Event event=null;String refusal=null;
+            try {
+                var controls=Objects.requireNonNull(JSON.fromJson(payload.json,Controls.class));
+                if(controls.composition().length!=world.components().size())throw new IllegalArgumentException("Composition differs from the server network axis");
+                var old=Objects.requireNonNull(world.registrations().get(payload.identity));var d=old.device();
+                var geometry=d.geometry();var control=d.control();var spec=old.spec();
+                switch(d.kind()) {
+                    case PIPE,FILTER->geometry=new PipeResistance.Geometry(geometry.length(),controls.diameter,PipeResistance.DEFAULT_ROUGHNESS_METRES,geometry.minorLoss());
+                    case PUMP->control=new FlowControl.Pump(controls.volumeFlow,controls.maximumAddedPressure);
+                    case COMPRESSOR->control=new FlowControl.Compressor(controls.volumeFlow,controls.maximumPressureRatio);
+                    case VALVE->control=new FlowControl.PressureValve(controls.pressure);
+                    case GENERATOR->spec=new FluidDeviceSpec(spec.volume(),controls.temperature,controls.pressure,controls.composition,controls.solids);
+                    case VOID->spec=new FluidDeviceSpec(spec.volume(),spec.temperature(),controls.pressure,spec.composition());
+                    case RESERVOIR->throw new IllegalArgumentException("Reservoir initialization is fixed; existing fluid is conserved.");
+                }
+                // Refused here, before anything is queued, outside the package envelope (the input box, plan decision 9):
+                // the reply with the next bucket reads "Not applied: ..." with the envelope named.
+                switch(d.kind()) {
+                    case GENERATOR,VOID->spec.validate(world.model(),d.kind());
+                    case VALVE->world.model().domain().requireInputPressure(controls.pressure);
+                    default->{}
+                }
+                event=world.edit(d.id(),payload.revision,new PhysicalFluidTopology.Device(d.id(),d.position(),d.kind(),d.facing(),geometry,control,d.ports()),spec);
+            }catch(RuntimeException rejected){refusal=reason(rejected);}
+            world.input(menu,event,refusal);
+        });
+    }
+
+    /**
+     * The player-facing reason of a refused input: the innermost refusal message. A control refused by its own
+     * validation reaches the handler wrapped by the JSON reader, whose message names the constructor and its
+     * arguments; the player reads the control's reason.
+     */
+    public static String reason(Throwable refused) {
+        String message=null;
+        for(Throwable t=refused;t!=null;t=t.getCause()==t?null:t.getCause())if(t.getMessage()!=null&&(t instanceof IllegalArgumentException||t instanceof IllegalStateException))message=t.getMessage();
+        return message!=null?message:String.valueOf(refused.getMessage());
+    }
+
+    // ---- client: the last delivered view of each device ----
+
+    private static final int REMEMBERED_VIEWS=32;
+    private static final Map<Long,MenuData> DELIVERED=new LinkedHashMap<>(16,.75f,true) {
+        @Override protected boolean removeEldestEntry(Map.Entry<Long,MenuData> eldest){return size()>REMEMBERED_VIEWS;}
+    };
+    /** Client: remembers the last state delivered for a device, so a menu reopened on it shows that view until its next bucket. */
+    public static synchronized void remember(long identity,MenuData data){DELIVERED.put(identity,Objects.requireNonNull(data));}
+    /** Client: the last state delivered in this session, or null, shown until the requested server snapshot arrives. */
+    public static synchronized MenuData lastDelivered(long identity){return DELIVERED.get(identity);}
+    /** Client: forgets every delivered state (leaving a world; identities belong to a world). */
+    public static synchronized void forgetDelivered(){DELIVERED.clear();}
+}

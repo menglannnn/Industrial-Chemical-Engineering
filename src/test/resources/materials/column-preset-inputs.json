@@ -3,8 +3,8 @@
     "id": "tia_juana",
     "input": {
       "schemaVersion": 1,
-      "packageId": "createcheme:tjl20_methane",
-      "assayId": "createcheme:tia_juana_light_methane",
+      "packageId": "icheme:tjl20_methane",
+      "assayId": "icheme:tia_juana_light_methane",
       "componentBasis": {
         "componentIds": [
           "Methane",
@@ -113,8 +113,8 @@
     "id": "wti_light_export",
     "input": {
       "schemaVersion": 1,
-      "packageId": "createcheme:wti_light_export_tjl20",
-      "assayId": "createcheme:wti_light_export",
+      "packageId": "icheme:wti_light_export_tjl20",
+      "assayId": "icheme:wti_light_export",
       "componentBasis": {
         "componentIds": [
           "Methane",
@@ -223,8 +223,8 @@
     "id": "upper_zakum",
     "input": {
       "schemaVersion": 1,
-      "packageId": "createcheme:upper_zakum_tjl20",
-      "assayId": "createcheme:upper_zakum",
+      "packageId": "icheme:upper_zakum_tjl20",
+      "assayId": "icheme:upper_zakum",
       "componentBasis": {
         "componentIds": [
           "Methane",
@@ -333,8 +333,8 @@
     "id": "bonga",
     "input": {
       "schemaVersion": 1,
-      "packageId": "createcheme:bonga_tjl20",
-      "assayId": "createcheme:bonga",
+      "packageId": "icheme:bonga_tjl20",
+      "assayId": "icheme:bonga",
       "componentBasis": {
         "componentIds": [
           "Methane",
@@ -443,8 +443,8 @@
     "id": "dalia",
     "input": {
       "schemaVersion": 1,
-      "packageId": "createcheme:dalia_tjl20",
-      "assayId": "createcheme:dalia",
+      "packageId": "icheme:dalia_tjl20",
+      "assayId": "icheme:dalia",
       "componentBasis": {
         "componentIds": [
           "Methane",
@@ -553,8 +553,8 @@
     "id": "cold_lake_blend",
     "input": {
       "schemaVersion": 1,
-      "packageId": "createcheme:cold_lake_blend_tjl20",
-      "assayId": "createcheme:cold_lake_blend",
+      "packageId": "icheme:cold_lake_blend_tjl20",
+      "assayId": "icheme:cold_lake_blend",
       "componentBasis": {
         "componentIds": [
           "Methane",

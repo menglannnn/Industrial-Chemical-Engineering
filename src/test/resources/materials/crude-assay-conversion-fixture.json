@@ -22,8 +22,8 @@
   ],
   "crudes": [
     {
-      "package_id": "createcheme:wti_light_export_tjl20",
-      "assay_id": "createcheme:wti_light_export",
+      "package_id": "icheme:wti_light_export_tjl20",
+      "assay_id": "icheme:wti_light_export",
       "mole_fractions": [
         0.0,
         0.0010093302616791375,
@@ -68,8 +68,8 @@
       ]
     },
     {
-      "package_id": "createcheme:upper_zakum_tjl20",
-      "assay_id": "createcheme:upper_zakum",
+      "package_id": "icheme:upper_zakum_tjl20",
+      "assay_id": "icheme:upper_zakum",
       "mole_fractions": [
         0.0,
         0.0,
@@ -114,8 +114,8 @@
       ]
     },
     {
-      "package_id": "createcheme:bonga_tjl20",
-      "assay_id": "createcheme:bonga",
+      "package_id": "icheme:bonga_tjl20",
+      "assay_id": "icheme:bonga",
       "mole_fractions": [
         0.0,
         0.0007265879994318369,
@@ -160,8 +160,8 @@
       ]
     },
     {
-      "package_id": "createcheme:dalia_tjl20",
-      "assay_id": "createcheme:dalia",
+      "package_id": "icheme:dalia_tjl20",
+      "assay_id": "icheme:dalia",
       "mole_fractions": [
         0.0,
         0.0,
@@ -206,8 +206,8 @@
       ]
     },
     {
-      "package_id": "createcheme:cold_lake_blend_tjl20",
-      "assay_id": "createcheme:cold_lake_blend",
+      "package_id": "icheme:cold_lake_blend_tjl20",
+      "assay_id": "icheme:cold_lake_blend",
       "mole_fractions": [
         0.0,
         0.0,

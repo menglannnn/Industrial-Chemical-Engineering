@@ -28,7 +28,7 @@ def fetch(point):
     else:
         for attempt in range(3):
             try:
-                request = urllib.request.Request(url, headers={"User-Agent": "CreateChemE property-reference research"})
+                request = urllib.request.Request(url, headers={"User-Agent": "IChemE property-reference research"})
                 with urllib.request.urlopen(request, timeout=25) as response:
                     data = response.read().decode("utf-8")
                 break

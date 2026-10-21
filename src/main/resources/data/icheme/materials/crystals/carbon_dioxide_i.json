@@ -1,0 +1,38 @@
+{
+  "schema_version": 1,
+  "id": "icheme:crystal_carbon_dioxide_i",
+  "component": "CarbonDioxide",
+  "crystal": "CO2 solid phase I (dry ice), the phase described by Trusler 2011 and Jaeger and Span 2012",
+  "revision": "crystal-carbon_dioxide-i-r2",
+  "source": "P4 stage 1 of batch 2026-09-24-coolprop-low-temperature: the Gibbs energy equation of Jaeger and Span 2012 (J. Chem. Eng. Data 57, 590-597, doi:10.1021/je2011677; local copy jaeger-span-2012-jced-57-590.pdf, SHA-256 d52376688d9dcd83b42703178d313a2428824e758a444ae9e58bede21f9ce32d), equation 8 with equations 9, 10, 21 and 22 and every constant of Table 1 transcribed from the rendered page and checked against the PDF text layer. The integration constants g0 and g1 are solved at runtime from the fluid family's liquid at the triple point (plan section 4, D1); the published values are carried only for the Table 5 check. Independent cross-check: Trusler 2011 (J. Phys. Chem. Ref. Data 40, 043105, doi:10.1063/1.3664915; local copy trusler-2011-jpcrd-40-043105.pdf, SHA-256 692eb94231f8df00795d97e8b0ef8bfa52ddd238d7518aaddf33c4da68231586), auxiliary equations 47 to 50, not implemented as a model. Evidence: documentation/2026-09-24-coolprop-low-temperature/P4_SOLID_CO2_MODEL.md.",
+  "gibbs_function": {
+    "type": "jaeger_span_2012",
+    "reference_temperature_kelvin": 150,
+    "reference_pressure_pascal": 101325,
+    "reference_molar_volume_m3_per_mol": 2.7186286e-5,
+    "gas_constant_j_per_mol_kelvin": 8.314472,
+    "n": 7,
+    "g2_to_g10": [-2.0109135, -2.7976237, 2.6427834e-1, 3.8259935, 3.1711996e-1, 2.2087195e-3, -1.1289668, 9.2923982e-3, 3.3914617e3],
+    "g_alpha_0_to_8": [3.9993365e-2, 2.3945101e-3, 3.2839467e-1, 5.7918471e-2, 2.3945101e-3, -2.6531689e-3, 1.6419734e-1, 1.7594802e-1, 2.6531689e-3],
+    "g_kappa_0_to_2": [2.2690751e-1, -7.5019750e-2, 2.6442913e-1],
+    "published_g0": -2.6385478,
+    "published_g1": 4.5088732,
+    "temperature_min_kelvin": 80,
+    "temperature_max_kelvin": 300,
+    "pressure_min_pascal": 0,
+    "pressure_max_pascal": 5e8,
+    "source": "Jaeger and Span 2012: equation 8, reference state T0 = 150 K, p0 = 101325 Pa, v0 = 2.7186286e-5 m3/mol (equation 10), R = 8.314472 J/(mol K), n = 7 and g2 to g10, g_alpha_0 to g_alpha_8, g_kappa_0 to g_kappa_2 from Table 1 (page 591); published g0 and g1 (Table 1) on the reference state of Span and Wagner 1996, used only to reproduce Table 5; validity 80 to 300 K and 0 to 500 MPa (Range of Validity, page 594)"
+  },
+  "anchor": {
+    "type": "triple_point",
+    "temperature_kelvin": 216.592,
+    "pressure_pascal": 517950,
+    "fusion_enthalpy_j_per_mol": 9019,
+    "estimated": true,
+    "source": "triple point 216.592 K and 0.51795 MPa: Span and Wagner 1996 (J. Phys. Chem. Ref. Data 25, 1509), as Jaeger and Span 2012 take it. Fusion enthalpy 9019 J/mol: the Air Liquide Gas Encyclopedia value as quoted by Wikipedia 'Carbon dioxide (data page)' (secondary), chosen by measurement for the pilot family icheme:pilot_cryogenic (P4_SOLID_CO2_MODEL.md section 5): it compensates the translated PR78's -0.51 % vaporization enthalpy at the triple point, holding the sublimation pressure within 2.9 % of Span-Wagner and Fray-Schmitt from 150 K to the triple point (8875 J/mol: 6.7 %) and the sublimation enthalpy at 195 K within 0.06 % of 25.2 kJ/mol (8875 J/mol: 0.63 %). It is an effective value of this family, not a measured optimum: Jaeger and Span fitted 8875 J/mol with the Span-Wagner fluid, Trusler 2011 derives 8870 J/mol from his solid and the same fluid, and the three calorimetric values Trusler cites are 7950, 8050 and 8340 J/mol."
+  },
+  "coverage": {
+    "grade": "estimated_declared_error",
+    "evidence": "P4 stage 1 (P4_SOLID_CO2_MODEL.md): Table 5 of Jaeger and Span reproduced to the printed ten digits; anchored to the Span-Wagner oracle with 8875 J/mol the solid recovers the published g0 and g1 (3.6e-5, 9.7e-7) and reproduces the paper's Figures 9 and 11 (sublimation within the Span-Wagner uncertainty except 170 to 185 K, up to 1.5 times it as the paper shows; melting within it to 270 K). On the pilot family: sublimation pressure within 2.9 % of Span-Wagner and Fray-Schmitt from 150 K to the triple point and 3.9 % of Fray-Schmitt at 130 K, melting temperature within 0.13 K of Span-Wagner up to 10 MPa, sublimation enthalpy at 195 K within 0.06 % of 25.2 kJ/mol. Declared: the solid's volume differs from Trusler 2011 by up to 0.26 % on the sublimation curve and its expansion coefficient by -22 % at the triple point (the two reference equations disagree there); the fusion enthalpy is the pilot family's effective value (anchor source)."
+  }
+}

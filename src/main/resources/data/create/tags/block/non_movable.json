@@ -1,14 +1,14 @@
 {
   "replace": false,
   "values": [
-    "createcheme:fluid_reservoir",
-    "createcheme:fluid_pipe",
-    "createcheme:fluid_pump",
-    "createcheme:fluid_compressor",
-    "createcheme:pressure_control_valve",
-    "createcheme:fluid_generator",
-    "createcheme:fluid_void",
-    "createcheme:equipment_shell",
-    "createcheme:equipment_interior"
+    "icheme:fluid_reservoir",
+    "icheme:fluid_pipe",
+    "icheme:fluid_pump",
+    "icheme:fluid_compressor",
+    "icheme:pressure_control_valve",
+    "icheme:fluid_generator",
+    "icheme:fluid_void",
+    "icheme:equipment_shell",
+    "icheme:equipment_interior"
   ]
 }
