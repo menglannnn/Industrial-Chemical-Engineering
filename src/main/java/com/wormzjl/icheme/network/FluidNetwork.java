@@ -31,9 +31,13 @@ import java.util.*;
  * <p>{@code fluid-10} (owner decision D23, crystals are solids): a solid population's material carries its crystal
  * record (the component it is made of and its energy offset) when it is a crystal, so a tank's dry ice reaches the
  * Solids tab and the solid share as a solid; a menu refuses a crystal made of a component off its axis.</p>
+ *
+ * <p>{@code fluid-11} (batch 2026-10-21-floating-roof-tanks): a vessel's view carries its {@link FluidView.Tank} (level
+ * height, open flag, vent and spill rates), and a vessel's nozzle states its own port class, OVERFLOW among them, whichever
+ * way it faces.</p>
  */
 public final class FluidNetwork {
-    public static final String PROTOCOL="fluid-10";
+    public static final String PROTOCOL="fluid-11";
     private static final Gson JSON=new Gson();
     public static final int MAX_JSON=262144;
     public static final int MAX_EDIT_JSON=4096;

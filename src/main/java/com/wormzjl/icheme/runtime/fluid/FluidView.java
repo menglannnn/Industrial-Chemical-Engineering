@@ -10,18 +10,36 @@ import com.wormzjl.icheme.science.fluid.network.InlineFilter;
 public record FluidView(long identity,long inputRevision,long committedTick,long onlineTick,String status,State state,
                         double massFlow,List<PipeTransfer> pipeHistory,Double devicePressureChange,
                         double intervalSeconds,List<PipeRoute> pipeRoutes,InlineFilter filter,PipeInfo pipeInfo,
-                        List<Outlet> outlets) {
+                        List<Outlet> outlets,Tank tank) {
     /** A tank has six faces and each face one neighbour, so it has at most six connections. */
     public static final int MAXIMUM_OUTLETS=6;
     /** Source-side convenience for devices without pipe inspection, not a wire-format fallback. */
     public FluidView(long identity,long inputRevision,long committedTick,long onlineTick,String status,State state,double massFlow,List<PipeTransfer> pipeHistory,Double devicePressureChange,double intervalSeconds,List<PipeRoute> pipeRoutes,InlineFilter filter){
-        this(identity,inputRevision,committedTick,onlineTick,status,state,massFlow,pipeHistory,devicePressureChange,intervalSeconds,pipeRoutes,filter,null,List.of());
+        this(identity,inputRevision,committedTick,onlineTick,status,state,massFlow,pipeHistory,devicePressureChange,intervalSeconds,pipeRoutes,filter,null,List.of(),null);
     }
     public FluidView withPipeInfo(PipeInfo info){
-        return new FluidView(identity,inputRevision,committedTick,onlineTick,status,state,massFlow,pipeHistory,devicePressureChange,intervalSeconds,pipeRoutes,filter,info,outlets);
+        return new FluidView(identity,inputRevision,committedTick,onlineTick,status,state,massFlow,pipeHistory,devicePressureChange,intervalSeconds,pipeRoutes,filter,info,outlets,tank);
     }
     public FluidView withOutlets(List<Outlet> list){
-        return new FluidView(identity,inputRevision,committedTick,onlineTick,status,state,massFlow,pipeHistory,devicePressureChange,intervalSeconds,pipeRoutes,filter,pipeInfo,list);
+        return new FluidView(identity,inputRevision,committedTick,onlineTick,status,state,massFlow,pipeHistory,devicePressureChange,intervalSeconds,pipeRoutes,filter,pipeInfo,list,tank);
+    }
+    public FluidView withTank(Tank value){
+        return new FluidView(identity,inputRevision,committedTick,onlineTick,status,state,massFlow,pipeHistory,devicePressureChange,intervalSeconds,pipeRoutes,filter,pipeInfo,outlets,value);
+    }
+    /**
+     * A vessel's own geometry and what it gave the atmosphere over the last completed interval (batch
+     * 2026-10-21-floating-roof-tanks, {@code fluid-11}): the height its level head stands over (its fill height, for an
+     * open tank), whether it is open under a floating roof, and its vent and spill (kg/s, from its VENT and SPILL boundary
+     * transfers). Null for a node that is not a vessel.
+     */
+    public record Tank(double levelHeight,boolean open,double ventKgPerSecond,double spillKgPerSecond) {
+        public Tank {
+            if(!(levelHeight>0)||!Double.isFinite(levelHeight)||!(ventKgPerSecond>=0)||!Double.isFinite(ventKgPerSecond)||!(spillKgPerSecond>=0)||!Double.isFinite(spillKgPerSecond))
+                throw new IllegalArgumentException("Invalid tank presentation");
+        }
+        /** The liquid's height over the bottom, m: its condensed volume (both liquids and the solids) over the footprint
+         * {@code capacity / levelHeight}. */
+        public double level(State state){return (state.phaseVolumes()[0]+state.phaseVolumes()[1]+state.solids().volume())*levelHeight/state.capacity();}
     }
     /**
      * One connection of a tank, as its page lists it (plan 4.3 under decision D11): the port the connection's end at the
@@ -30,15 +48,15 @@ public record FluidView(long identity,long inputRevision,long committedTick,long
      * #NONE} when it drew nothing, else the phase index of {@link PipeTransfer.Stream}: 0 hydrocarbon liquid, 1 free
      * water, 2 vapour), and, at a bottom port, the level head of the committed state (Pa; 0 elsewhere). {@code face} is
      * the face of the tank the connection leaves by, as the compile that made the graph recorded it (the page names each
-     * row with it, so two side connections can be told apart); required on the wire since fluid-8.
+     * row with it, so two side connections can be told apart); required on the wire since fluid-8. A one-block tank's
+     * port is its face's (top VAPOR, bottom LIQUID, sides BULK); a vessel's nozzle states its own class whichever way it
+     * faces (a drum's, a floating-roof tank's bottom LIQUID and top OVERFLOW nozzles on its front, a sphere's bottom
+     * outlet routed to its front).
      */
     public record Outlet(long pipeId,PhysicalFluidTopology.Direction face,com.wormzjl.icheme.science.fluid.network.PassiveNetwork.PhasePort port,double massFlow,double moleFlow,int drawn,double head) {
         public static final int NONE=-1;
         public Outlet {
             Objects.requireNonNull(face,"Tank outlet without its face");Objects.requireNonNull(port);
-            // The face and the port come from the same compile (plan 4.1, A1): top VAPOR, bottom LIQUID, sides BULK.
-            var expected=switch(face){case UP->com.wormzjl.icheme.science.fluid.network.PassiveNetwork.PhasePort.VAPOR;case DOWN->com.wormzjl.icheme.science.fluid.network.PassiveNetwork.PhasePort.LIQUID;default->com.wormzjl.icheme.science.fluid.network.PassiveNetwork.PhasePort.BULK;};
-            if(port!=expected)throw new IllegalArgumentException("Tank outlet face "+face+" does not match its port "+port);
             if(!Double.isFinite(massFlow)||!Double.isFinite(moleFlow)||drawn<NONE||drawn>2||!Double.isFinite(head)||head<0)throw new IllegalArgumentException("Invalid tank outlet");
         }
     }

@@ -18,11 +18,11 @@ import java.util.*;
 import java.util.function.Function;
 
 /**
- * Checkpoint format 12 of committed science and runtime state: what one storage unit holds and what the core record
+ * Checkpoint format 13 of committed science and runtime state: what one storage unit holds and what the core record
  * holds. Rebuilds properties through the immutable model; it never deserializes implementation caches or creates a
  * nitrogen charge. Where the units live is {@link FluidCheckpointStore}'s business.
  *
- * <p>Core record (one NBT compound, the world's saved data): {@code FluidFormat = 12} ({@link #VERSION}); the world {@code Epoch};
+ * <p>Core record (one NBT compound, the world's saved data): {@code FluidFormat = 13} ({@link #VERSION}); the world {@code Epoch};
  * {@code Strings}, an append-only table of the long texts units refer to; {@code Packages}, one entry per property
  * package with the thermodynamic revision and energy reference the units were written under; the pack files and their
  * sizes; the topology unit's reference; and {@code Islands}, the island index in columns: identity, revision and unit
@@ -32,7 +32,7 @@ import java.util.function.Function;
  *
  * <p>Island unit (binary, {@link Writer}, {@link Reader}): a header naming the island, its revision and the unit's
  * generation (all three must match the index), then its dimension and package, status and fences; the graph's topology
- * once (node identities, elevations, kinds, volumes and level heights, pipe ends, sections, controls as tag 0 passive,
+ * once (node identities, elevations, kinds, volumes, level heights and open flags, pipe ends, sections, controls as tag 0 passive,
  * 1 pump, 2 valve, 3 compressor, and the two ends' phase ports) and its state; the last solved interval with its end
  * flows, which the island's next job starts from; and, for a certified island, its certificate signature and the graph
  * its certified interval started from. Nothing derived is stored, and a certified island's unit records its certificate
@@ -40,18 +40,20 @@ import java.util.function.Function;
  * each population as its material's id, revision, density and heat capacity, then its size and mass; the id names a
  * crystal the package admits or a custom solid (owner decision D23), and the reader refuses an id that names no record
  * of the package or saved constants that are not the record's. The topology unit's registrations carry a vessel's
- * ports (cell, face, phase port) and its spec's level height. No other format is read: format 11 and older are refused
- * with the instruction to create a fresh world (format 12, unit format 5, added vessel ports to registrations and level
+ * ports (cell, face, phase port) and its spec's level height and open flag; every boundary transfer its kind. No other
+ * format is read: format 12 and older are refused with the instruction to create a fresh world (format 13, unit format 6,
+ * added the open vessels of batch 2026-10-21-floating-roof-tanks: the open flag of specs and inventories, the OVERFLOW
+ * phase port and the boundary transfers' kinds; format 12, unit format 5, added vessel ports to registrations and level
  * heights to specs and inventories with the drums of batch 2026-10-15-custom-equipment-rendering; format 11 dropped
  * the velocity-limit modes among the endpoint modes, 2026-10-18, and unit format 4 states their eight ordinals,
  * 2026-10-19; format 10, unit format 3, dropped the movers' efficiency, the approximate fallback and the saved
  * interval's acceptance: every interval is a full solve).</p>
  */
 public final class FluidCheckpointCodec {
-    public static final int VERSION=12;
+    public static final int VERSION=13;
     /** The {@code Base} of an awake island: it carries no certificate. */
     public static final long AWAKE=-1;
-    static final int UNIT_MAGIC=0x43434655,UNIT_FORMAT=5;
+    static final int UNIT_MAGIC=0x43434655,UNIT_FORMAT=6;
     static final byte ISLAND=1,TOPOLOGY=2;
     /** Magic, format, kind, identity, revision, generation. */
     static final int UNIT_HEADER=4+1+1+8+8+8;
@@ -62,6 +64,7 @@ public final class FluidCheckpointCodec {
     private static final boolean VERIFY=Boolean.getBoolean("icheme.fluid.scheduler.verify");
     private static final FlowControl.Mode[] MODES=FlowControl.Mode.values();
     private static final PassiveNetwork.NodeKind[] NODE_KINDS=PassiveNetwork.NodeKind.values();
+    private static final ConservativeTransport.BoundaryTransfer.Kind[] BOUNDARY_KINDS=ConservativeTransport.BoundaryTransfer.Kind.values();
     private static final PassiveNetwork.PhasePort[] PHASE_PORTS=PassiveNetwork.PhasePort.values();
     private FluidCheckpointCodec() {}
 
@@ -184,7 +187,7 @@ public final class FluidCheckpointCodec {
         var s=r.spec();w.f64(s.volume());w.f64(s.temperature());w.f64(s.pressure());w.varint(tables.composition(s.composition()));
         w.f64(s.solids().volumeFraction());w.varint(s.solids().grades().size());
         for(var g:s.solids().grades()){w.varint(tables.text(g.material()));w.varint(tables.text(g.size().metres()));w.f64(g.massShare());}
-        w.f64(s.levelHeight());
+        w.f64(s.levelHeight());w.bool(s.open());
         w.varlong(r.revision());
     }
     private static WorldTopologyLedger.Registration registration(Reader r,Object[][] tables) {
@@ -204,8 +207,8 @@ public final class FluidCheckpointCodec {
         double volume=r.f64(),temperature=r.f64(),pressure=r.f64();var composition=compositions[r.varint(compositions.length-1)];
         double fraction=r.f64();int gradeCount=r.varint(64);var grades=new ArrayList<SlurryFeed.Grade>(gradeCount);
         for(int i=0;i<gradeCount;i++)grades.add(new SlurryFeed.Grade(text(r,texts),new ParticleSize(text(r,texts)),r.f64()));
-        double levelHeight=r.f64();
-        return new WorldTopologyLedger.Registration(device,new FluidDeviceSpec(volume,temperature,pressure,composition,new SlurryFeed(fraction,grades),levelHeight),r.varlong());
+        double levelHeight=r.f64();boolean open=r.bool();
+        return new WorldTopologyLedger.Registration(device,new FluidDeviceSpec(volume,temperature,pressure,composition,new SlurryFeed(fraction,grades),levelHeight,open),r.varlong());
     }
     private static void position(Writer w,PhysicalFluidTopology.Position p,Tables tables){w.varint(tables.text(p.dimension()));w.i32(p.x());w.i32(p.y());w.i32(p.z());}
     private static PhysicalFluidTopology.Position position(Reader r,String[] texts){return new PhysicalFluidTopology.Position(text(r,texts),r.i32(),r.i32(),r.i32());}
@@ -303,7 +306,7 @@ public final class FluidCheckpointCodec {
             var r=result.orElseThrow();w.u8(1);
             w.f64(r.advancedSeconds());w.sparse(r.averageMassFlows());w.varint(r.acceptedSubsteps());w.varint(r.rejectedSubsteps());w.f64(r.pumpWorkJoule());
             w.varint(r.boundaries().size());
-            for(var b:r.boundaries()){w.i64(b.nodeId());w.sparse(b.moles());w.f64(b.totalEnergyJoule());solids(w,b.solids());w.u8(b.solidDirection()+1);}
+            for(var b:r.boundaries()){w.i64(b.nodeId());w.sparse(b.moles());w.f64(b.totalEnergyJoule());solids(w,b.solids());w.u8(b.solidDirection()+1);w.u8(b.kind().ordinal());}
             var reasons=new TreeMap<>(r.rejectionReasons());w.varint(reasons.size());for(var reason:reasons.entrySet()){w.text(reason.getKey());w.i32(reason.getValue());}
             modes(w,r.endpointModes());w.sparse(r.endpointHeads());w.sparse(r.endpointFlows());
             w.varint(r.pipeTransfers().size());
@@ -333,7 +336,7 @@ public final class FluidCheckpointCodec {
     }
     private static void topology(Writer w,PassiveNetwork graph) {
         w.varint(graph.reservoirs().size());
-        for(var n:graph.reservoirs()){w.i64(n.id());w.f64(n.elevation());w.u8(n.kind().ordinal());w.f64(n.inventory().volume());w.f64(n.inventory().levelHeight());}
+        for(var n:graph.reservoirs()){w.i64(n.id());w.f64(n.elevation());w.u8(n.kind().ordinal());w.f64(n.inventory().volume());w.f64(n.inventory().levelHeight());w.bool(n.inventory().open());}
         w.varint(graph.pipes().size());
         for(var p:graph.pipes()) {
             w.i64(p.id());w.varint(p.first());w.varint(p.second());w.varint(p.sections().size());
@@ -378,7 +381,7 @@ public final class FluidCheckpointCodec {
     record IndexRow(long id,long revision,long generation,long online,long committed,long retry,int cadence,long base,long since,long start,long horizon,UnitRef unit) {}
     /** Where a unit lies: its pack, offset, length and SHA-256. */
     record UnitRef(long pack,long offset,int length,byte[] sha256) {}
-    private record Topology(long[] ids,double[] elevations,PassiveNetwork.NodeKind[] kinds,double[] volumes,double[] heights,long[] pipeIds,int[] first,int[] second,
+    private record Topology(long[] ids,double[] elevations,PassiveNetwork.NodeKind[] kinds,double[] volumes,double[] heights,boolean[] opens,long[] pipeIds,int[] first,int[] second,
                             List<List<PipeResistance.Geometry>> sections,List<FlowControl> controls,PassiveNetwork.PhasePort[] firstPorts,PassiveNetwork.PhasePort[] secondPorts) {}
     private static PassiveNetwork.PhasePort port(Reader r){int port=r.u8();if(port>=PHASE_PORTS.length)throw r.invalid("unknown pipe port "+port);return PHASE_PORTS[port];}
 
@@ -408,7 +411,7 @@ public final class FluidCheckpointCodec {
             int pipes=graph.pipes().size();
             double seconds=r.f64();var flows=r.sparse(MAXIMUM_PIPES);int accepted=r.varint(Integer.MAX_VALUE),rejected=r.varint(Integer.MAX_VALUE);double pumpWork=r.f64();
             int boundaryCount=r.varint(MAXIMUM_BOUNDARIES);var boundaries=new ArrayList<ConservativeTransport.BoundaryTransfer>(boundaryCount);
-            for(int i=0;i<boundaryCount;i++){long node=r.i64();var moles=r.sparse(MAXIMUM_ARRAY);double energy=r.f64();var solids=solids(r,model);int direction=r.u8()-1;boundaries.add(new ConservativeTransport.BoundaryTransfer(node,moles,energy,solids,direction));}
+            for(int i=0;i<boundaryCount;i++){long node=r.i64();var moles=r.sparse(MAXIMUM_ARRAY);double energy=r.f64();var solids=solids(r,model);int direction=r.u8()-1;int kind=r.u8();if(kind>=BOUNDARY_KINDS.length)throw r.invalid("unknown boundary kind "+kind);boundaries.add(new ConservativeTransport.BoundaryTransfer(node,moles,energy,solids,direction,BOUNDARY_KINDS[kind]));}
             int reasonCount=r.varint(MAXIMUM_REASONS);var reasons=new LinkedHashMap<String,Integer>();
             for(int i=0;i<reasonCount;i++)if(reasons.put(r.text(),r.i32())!=null)throw r.invalid("duplicate rejection reason");
             var endpointModes=modes(r,MAXIMUM_PIPES);var heads=r.sparse(MAXIMUM_PIPES);var endFlows=r.sparse(MAXIMUM_PIPES);
@@ -456,10 +459,10 @@ public final class FluidCheckpointCodec {
     }
     private static Topology topology(Reader r) {
         int nodes=r.varint(MAXIMUM_NODES);if(nodes==0)throw new IllegalArgumentException("Invalid saved graph size");
-        var ids=new long[nodes];var elevations=new double[nodes];var kinds=new PassiveNetwork.NodeKind[nodes];var volumes=new double[nodes];var heights=new double[nodes];
+        var ids=new long[nodes];var elevations=new double[nodes];var kinds=new PassiveNetwork.NodeKind[nodes];var volumes=new double[nodes];var heights=new double[nodes];var opens=new boolean[nodes];
         for(int n=0;n<nodes;n++) {
             ids[n]=r.i64();elevations[n]=r.f64();int kind=r.u8();if(kind>=NODE_KINDS.length)throw r.invalid("unknown node kind "+kind);
-            kinds[n]=NODE_KINDS[kind];if(kinds[n]==PassiveNetwork.NodeKind.PORT)throw new IllegalArgumentException("Internal port cannot be persisted");volumes[n]=r.f64();heights[n]=r.f64();
+            kinds[n]=NODE_KINDS[kind];if(kinds[n]==PassiveNetwork.NodeKind.PORT)throw new IllegalArgumentException("Internal port cannot be persisted");volumes[n]=r.f64();heights[n]=r.f64();opens[n]=r.bool();
         }
         int pipes=r.varint(MAXIMUM_PIPES);var pipeIds=new long[pipes];var first=new int[pipes];var second=new int[pipes];
         var sections=new ArrayList<List<PipeResistance.Geometry>>(pipes);var controls=new ArrayList<FlowControl>(pipes);
@@ -472,14 +475,14 @@ public final class FluidCheckpointCodec {
                 case 3->new FlowControl.Compressor(r.f64(),r.f64());default->throw new IllegalArgumentException("Unknown saved control");});
             firstPorts[p]=port(r);secondPorts[p]=port(r);
         }
-        return new Topology(ids,elevations,kinds,volumes,heights,pipeIds,first,second,sections,controls,firstPorts,secondPorts);
+        return new Topology(ids,elevations,kinds,volumes,heights,opens,pipeIds,first,second,sections,controls,firstPorts,secondPorts);
     }
     private static PassiveNetwork state(Reader r,Topology t,FluidThermodynamics model) {
         var nodes=new ArrayList<PassiveNetwork.Reservoir>(t.ids.length);
         for(int n=0;n<t.ids.length;n++) {
             var moles=r.sparse(MAXIMUM_ARRAY);double energy=r.f64();var solids=solids(r,model);
             double temperature=r.f64(),pressure=r.f64();var liquid=r.sparse(MAXIMUM_ARRAY);var vapor=r.sparse(MAXIMUM_ARRAY);double waterLiquid=r.f64(),waterVapor=r.f64(),hydrocarbonPressure=r.f64();
-            var inventory=new PassiveNetwork.Inventory(t.volumes[n],moles,energy,solids,t.heights[n]);
+            var inventory=new PassiveNetwork.Inventory(t.volumes[n],moles,energy,solids,t.heights[n],t.opens[n]);
             var state=Arrays.stream(moles).sum()==0&&!solids.empty()?model.solidState(temperature,pressure,solids):model.state(temperature,pressure,liquid,vapor,waterLiquid,waterVapor,hydrocarbonPressure).withSolids(solids);
             nodes.add(new PassiveNetwork.Reservoir(t.ids[n],t.elevations[n],state,t.kinds[n],inventory));
         }
@@ -578,7 +581,7 @@ public final class FluidCheckpointCodec {
     }
     private static final List<String> LONG_COLUMNS=List.of("Id","Revision","Generation","Online","Committed","Retry","Base","Since","Start","Horizon","Pack","Offset");
     /**
-     * Reads and validates a core record: format 12 only (older formats are refused with the instruction to create a
+     * Reads and validates a core record: format 13 only (older formats are refused with the instruction to create a
      * fresh world), every field present and typed, the envelope digest, the string and package tables,
      * the pack list, and every index row's unit reference lying inside a listed pack. The units themselves are read by
      * {@link #island} and {@link #topology}.

@@ -178,7 +178,7 @@ public final class IslandCoordinator {
         private Island(Snapshot saved,FluidThermodynamics model,LongSupplier epoch) {
             id=saved.id;revision=saved.revision;this.model=Objects.requireNonNull(model);graph=saved.graph;
             clock=new IslandClock(saved.clock,epoch);lastResult=saved.lastResult;status=saved.status;fences.putAll(saved.fences);
-            notice=com.wormzjl.icheme.science.fluid.thermo.DataRangeNotices.suffix(saved.status);
+            notice=releaseLine(saved.lastResult,model)+com.wormzjl.icheme.science.fluid.thermo.DataRangeNotices.suffix(saved.status);
             payloadGeneration=saved.payloadGeneration!=0?saved.payloadGeneration:PAYLOAD_GENERATIONS.incrementAndGet();
         }
         private Snapshot snapshot(){return new Snapshot(id,revision,graph,clock.snapshot(),lastResult,
@@ -508,7 +508,7 @@ public final class IslandCoordinator {
                 else {
                     island.graph=candidate.graph();island.lastResult=Optional.of(candidate);
                     island.pipeSpeed.accepted(attempt.slice.startTick(),attempt.slice.endTick(),candidate.pipeTransfers());
-                    island.notice=com.wormzjl.icheme.science.fluid.thermo.DataRangeNotices.line(outcome.notices(),nodeNames);
+                    island.notice=releaseLine(island.lastResult,island.model)+com.wormzjl.icheme.science.fluid.thermo.DataRangeNotices.line(outcome.notices(),nodeNames);
                     island.status=outcome.detail()+island.notice;
                 }
             }
@@ -882,6 +882,17 @@ public final class IslandCoordinator {
         island.lastInterval=null;island.streak=0;island.refusal=null;
         // Only here, after the terminal completion that produced the qualifying interval, so no worker owns the caches.
         island.retained=null;island.status=certifiedStatus(island);FluidRuntimeDiagnostics.count(FluidRuntimeDiagnostics.certificatesIssued);
+    }
+    /**
+     * The open vessels' notice of an island's last interval (batch 2026-10-21-floating-roof-tanks, owner decision FR8):
+     * {@code "; venting x kg/s"} and {@code "; spilling y kg/s"}, the mass its VENT and SPILL boundary transfers took to
+     * the atmosphere over the interval's seconds; empty for none. Non-blocking, like the data-range notice it precedes.
+     */
+    static String releaseLine(Optional<PassiveIntervalSolver.Result> last,FluidThermodynamics model) {
+        var rates=TankOutlets.released(model,last.orElse(null),null);var line=new StringBuilder();
+        if(rates[0]>0)line.append(String.format(Locale.ROOT,"; venting %.3g kg/s",rates[0]));
+        if(rates[1]>0)line.append(String.format(Locale.ROOT,"; spilling %.3g kg/s",rates[1]));
+        return line.toString();
     }
     private static String certifiedStatus(Island island) {
         var certificate=island.certificate;double since=island.certifiedSince/20.0;

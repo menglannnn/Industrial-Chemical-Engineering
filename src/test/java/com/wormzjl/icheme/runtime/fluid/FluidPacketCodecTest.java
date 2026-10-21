@@ -98,13 +98,14 @@ class FluidPacketCodecTest {
         var view=new FluidView(9,4,1200,1300,"RESTING: no flow since 55.0 s",null,0,List.of());
         return new FluidNetwork.MenuData(TopologyCompiler.Kind.GENERATOR,view,new FluidNetwork.Controls(298.15,150000,.05,.000045,.01,500000,amounts),names,presets,message,Map.of("component_0",descriptor),weights(names.size()));
     }
-    /** The protocol is fluid-10 (fluid-6 plus the compressor's ratio control and a tank's outlets, phase-ports WP5; fluid-8
+    /** The protocol is fluid-11 (fluid-6 plus the compressor's ratio control and a tank's outlets, phase-ports WP5; fluid-8
      * adds each outlet's face, GUI fix F4; fluid-9 drops the unread hydraulicOwner and intervalQuality view fields; fluid-10
-     * carries a crystal's record with its solid, D23) and every payload has its own wire identity. A tank's dry ice crosses
+     * carries a crystal's record with its solid, D23; fluid-11 a vessel's tank presentation, batch
+     * 2026-10-21-floating-roof-tanks) and every payload has its own wire identity. A tank's dry ice crosses
      * the live payload as a solid with its crystal record and comes back equal; a crystal made of a component off the
      * menu's axis is refused. Test name kept. */
     @Test void theProtocolIsFluidSixWithDistinctStaticAndLivePayloads() {
-        assertEquals("fluid-10",FluidNetwork.PROTOCOL);
+        assertEquals("fluid-11",FluidNetwork.PROTOCOL);
         var ids=java.util.Set.of(FluidNetwork.EditPayload.TYPE.id(),FluidNetwork.RecoverPayload.TYPE.id(),FluidNetwork.StaticPayload.TYPE.id(),FluidNetwork.LivePayload.TYPE.id());
         assertEquals(4,ids.size());
         var base=generatorMenu("");int count=base.components().size();
@@ -219,12 +220,13 @@ class FluidPacketCodecTest {
         assertThrows(IllegalArgumentException.class,()->new FluidView.Outlet(1,PhysicalFluidTopology.Direction.DOWN,com.wormzjl.icheme.science.fluid.network.PassiveNetwork.PhasePort.LIQUID,1,1,1,-1));
         var json=com.google.gson.JsonParser.parseString(new Gson().toJson(live(data))).getAsJsonObject();json.getAsJsonObject("view").remove("outlets");
         assertThrows(RuntimeException.class,()->FluidNetwork.decodeLive(json.toString()),"a live view without its outlet list is refused");
-        // The face (fluid-8, GUI fix F4): required on the wire, and it must be the face the port compiles from.
+        // The face (fluid-8, GUI fix F4): required on the wire. A vessel's nozzle states its own class whichever way it faces
+        // (fluid-11, batch 2026-10-21-floating-roof-tanks: a floating-roof tank's front LIQUID and OVERFLOW nozzles).
         var faceless=com.google.gson.JsonParser.parseString(new Gson().toJson(live(data))).getAsJsonObject();
         faceless.getAsJsonObject("view").getAsJsonArray("outlets").get(1).getAsJsonObject().remove("face");
         assertThrows(RuntimeException.class,()->FluidNetwork.decodeLive(faceless.toString()),"an outlet without its face is refused");
-        assertThrows(IllegalArgumentException.class,()->new FluidView.Outlet(1,PhysicalFluidTopology.Direction.NORTH,com.wormzjl.icheme.science.fluid.network.PassiveNetwork.PhasePort.VAPOR,1,1,2,0),"a side face is a BULK port");
-        assertThrows(IllegalArgumentException.class,()->new FluidView.Outlet(1,PhysicalFluidTopology.Direction.UP,com.wormzjl.icheme.science.fluid.network.PassiveNetwork.PhasePort.BULK,1,1,2,0),"the top face is the VAPOR port");
+        assertEquals(com.wormzjl.icheme.science.fluid.network.PassiveNetwork.PhasePort.OVERFLOW,
+                new FluidView.Outlet(1,PhysicalFluidTopology.Direction.NORTH,com.wormzjl.icheme.science.fluid.network.PassiveNetwork.PhasePort.OVERFLOW,1,1,0,0).port(),"a vessel's front overflow nozzle");
     }
     /**
      * The compressor screen refuses a ratio outside its bounds with a message naming the field and the bounds (GUI fix F5):

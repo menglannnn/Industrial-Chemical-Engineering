@@ -100,9 +100,13 @@ class EventPathWorld {
     long place(int x,int y,int z,Kind kind,PhysicalFluidTopology.Direction facing){return place(x,y,z,kind,facing,kind==Kind.GENERATOR?FluidDeviceSpec.water(catalog):FluidDeviceSpec.nitrogen(catalog),.05);}
     /** A drum as FluidWorldAuthority.placeVessel registers it: an empty reservoir at its node cell with its ports, volume and level height. */
     long placeVessel(PhysicalFluidTopology.Position node,List<PhysicalFluidTopology.Port> ports,double volume,double levelHeight) {
+        return placeVessel(node,ports,volume,levelHeight,false);
+    }
+    /** {@link #placeVessel} open to the atmosphere when {@code open} (a floating-roof tank). */
+    long placeVessel(PhysicalFluidTopology.Position node,List<PhysicalFluidTopology.Port> ports,double volume,double levelHeight,boolean open) {
         long id=ledger.nextIdentity();
         var device=new PhysicalFluidTopology.Device(id,node,Kind.RESERVOIR,PhysicalFluidTopology.Direction.NORTH,new PipeResistance.Geometry(1,.05,PipeResistance.DEFAULT_ROUGHNESS_METRES,0),new FlowControl.Passive(),ports);
-        var spec=new FluidDeviceSpec(volume,298.15,101325,FluidDeviceSpec.nitrogen(catalog).composition(),SlurryFeed.NONE,levelHeight);
+        var spec=new FluidDeviceSpec(volume,298.15,101325,FluidDeviceSpec.nitrogen(catalog).composition(),SlurryFeed.NONE,levelHeight,open);
         registry.submit(List.of(new WorldTopologyLedger.Edit(id,new WorldTopologyLedger.Registration(device,spec,0))),id+1,null);
         return id;
     }

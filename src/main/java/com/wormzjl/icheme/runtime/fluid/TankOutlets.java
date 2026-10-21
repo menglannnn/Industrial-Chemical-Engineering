@@ -36,7 +36,7 @@ public final class TankOutlets {
                     massFlow=(out.massKg()-in.massKg())/seconds;moleFlow=(total(out)-total(in))/seconds;
                     if(massFlow>0)drawn=leading(out,weights);
                 }
-                double head=port==PassiveNetwork.PhasePort.LIQUID&&!tank.empty()
+                double head=(port==PassiveNetwork.PhasePort.LIQUID||port==PassiveNetwork.PhasePort.OVERFLOW)&&!tank.empty()
                         ?PassiveStepSolver.GRAVITY*model.liquidMass(tank.state())*tank.inventory().levelHeight()/tank.inventory().volume():0;
                 var face=faces.get(pipe.id());
                 if(face==null)throw new IllegalStateException("No compiled face for tank connection "+pipe.id());
@@ -44,6 +44,27 @@ public final class TankOutlets {
             }
         }
         return List.copyOf(outlets);
+    }
+    /** The vessel's geometry and what it gave the atmosphere over the last interval ({@link FluidView.Tank}): the mass of
+     * the VENT and SPILL boundary transfers booked at it, over the interval's seconds; none without an interval. */
+    public static FluidView.Tank tank(FluidThermodynamics model,PassiveNetwork.Reservoir tank,PassiveIntervalSolver.Result result) {
+        var rates=released(model,result,tank.id());
+        return new FluidView.Tank(tank.inventory().levelHeight(),tank.inventory().open(),rates[0],rates[1]);
+    }
+    /** The mass rates (kg/s) the VENT and SPILL boundary transfers of {@code result} took to the atmosphere at node
+     * {@code nodeId} (at every node when null), over the interval's seconds: {@code [vent, spill]}; zeros without an
+     * interval. */
+    static double[] released(FluidThermodynamics model,PassiveIntervalSolver.Result result,Long nodeId) {
+        double[] weights=model.molecularWeights(),rates=new double[2];double seconds=result==null?0:result.advancedSeconds();
+        if(!(seconds>0))return rates;
+        for(var b:result.boundaries()) {
+            boolean vent=b.kind()==ConservativeTransport.BoundaryTransfer.Kind.VENT;
+            if(!vent&&b.kind()!=ConservativeTransport.BoundaryTransfer.Kind.SPILL||nodeId!=null&&b.nodeId()!=nodeId)continue;
+            double mass=b.solids().massKg();var n=b.moles();for(int c=0;c<n.length;c++)mass-=n[c]*weights[c];
+            rates[vent?0:1]+=mass/seconds;
+        }
+        rates[0]=Math.max(0,rates[0]);rates[1]=Math.max(0,rates[1]);
+        return rates;
     }
     /** The phase that carried the most mass in what a connection drew, or {@link FluidView.Outlet#NONE} if it drew none. */
     static int leading(PipeTransfer.Stream stream,double[] weights) {

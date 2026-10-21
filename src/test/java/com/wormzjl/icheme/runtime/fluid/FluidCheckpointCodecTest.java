@@ -168,7 +168,7 @@ class FluidCheckpointCodecTest {
         assertEquals(FlowControl.Mode.INLET_WRONG_PHASE,full.endpointModes().get(2),"the compressor on the tank's bulk is refused");
         var state=new IslandCoordinator.Snapshot(1,4,full.graph(),new IslandClock.Snapshot(350,200,400,100),Optional.of(full),"FULL");
         var before=new FluidCheckpointCodec.Checkpoint(List.of(new FluidCheckpointCodec.IslandEntry("minecraft:overworld",PACKAGE,state)));
-        var image=FluidCheckpointCodec.encode(before,key->model);assertEquals(12,image.core().getInt("FluidFormat"));
+        var image=FluidCheckpointCodec.encode(before,key->model);assertEquals(13,image.core().getInt("FluidFormat"));
         var after=FluidCheckpointCodec.decode(image,key->model).islands().getFirst().snapshot();
         assertEquals(full.graph().pipes(),after.graph().pipes(),"ends, sections, controls, blocked masks and the ports of every pipe");
         assertEquals(PassiveNetwork.PhasePort.LIQUID,after.graph().pipes().get(0).firstPort());assertEquals(PassiveNetwork.PhasePort.VAPOR,after.graph().pipes().get(3).firstPort());
