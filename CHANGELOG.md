@@ -15,6 +15,12 @@ All notable changes to Industrial Chemical Engineering (IChemE, formerly CreateC
 
 ## [Unreleased]
 
+## [0.11.2] - 2026-10-21
+
+### Changed
+
+- AGENTS.md consolidated (owner request 2026-10-21, batch folder: `2026-10-21-agents-md-consolidation`, review `AGENTS_MD_REVIEW.md`): rules stated as instructions without their history, grouped by subject; obsolete pointers corrected (final lane `lane.sh` with `test slowGates` instead of `gates.sh`, bridge jar in `run/mcp-client-mods/` for `runMcpClient` instead of `run/mods`); standing owner rules on version pace, never staging ignored logs, one in-game check per task, no desktop input and assumption-dependent fixes added. README: version 0.11.2.
+
 ## [0.11.1] - 2026-10-21
 
 ### Changed
