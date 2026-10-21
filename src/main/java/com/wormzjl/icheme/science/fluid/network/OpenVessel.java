@@ -31,6 +31,30 @@ public final class OpenVessel {
     private OpenVessel() {}
     /** The shell's height over the fill height, m: the roof's own depth when it stands at the overflow nozzle. */
     public static final double FREEBOARD=1;
+    /**
+     * The speed at which the vent's gas leaves through the roof, m/s. The vent is a rate the vessel's size sets: this
+     * speed times the roof's area (the footprint) in gas volume at the vessel's state (owner direction of 2026-10-21: a
+     * release to the world flows at a rate that is a function of the equipment's size; trace 354/678: a release of the whole
+     * start excess over any step is a rate without bound as the step shrinks, which no refinement converges).
+     */
+    public static final double VENT_SPEED=1;
+    /** The spill's weir coefficient, m^0.5/s: a sharp-crested weir round the shell top passes {@code WEIR L h^1.5} m3/s,
+     * {@code L} the rim's length and {@code h} the liquid's height over it (Francis). */
+    static final double WEIR=1.84;
+
+    /** The vessel's footprint, m2: its volume over its fill height. */
+    static double footprint(PassiveNetwork.Inventory inventory){return inventory.volume()/inventory.levelHeight();}
+    /** The share of its start gas, {@code gasVolume} m3, an open vessel vents over a step of {@code dt} s: at most all of it. */
+    static double ventShare(PassiveNetwork.Inventory inventory,double gasVolume,double dt) {
+        return gasVolume>0?Math.min(1,VENT_SPEED*footprint(inventory)*dt/gasVolume):0;
+    }
+    /** The share of its liquid above the shell top, {@code excess} m3, an open vessel spills over a step of {@code dt} s: the
+     * weir's flow at the start height over the rim, a round footprint's circumference long; at most all of it. */
+    static double spillShare(PassiveNetwork.Inventory inventory,double excess,double dt) {
+        if(!(excess>0))return 0;
+        double area=footprint(inventory),over=excess/area,rim=2*Math.sqrt(Math.PI*area);
+        return Math.min(1,WEIR*rim*over*Math.sqrt(over)*dt/excess);
+    }
 
     /** What one release takes out of its vessel over a step: amounts (mol, water last), energy {@code sum m h} (J),
      * solids and their moments. */
@@ -42,8 +66,9 @@ public final class OpenVessel {
             return mass;
         }
     }
-    /** A vessel's vent and spill over one step; either may be null. */
-    public record Releases(Release vent,Release spill) {
+    /** A vessel's vent and spill over one step, either may be null, and the shares of its start gas and of its liquid above
+     * the shell top they take ({@link #ventShare}, {@link #spillShare}). */
+    public record Releases(Release vent,Release spill,double ventShare,double spillShare) {
         /** The vent and the spill that are present, in that order. */
         java.util.List<Release> each(){return vent==null?spill==null?java.util.List.of():java.util.List.of(spill):spill==null?java.util.List.of(vent):java.util.List.of(vent,spill);}
     }
@@ -104,39 +129,40 @@ public final class OpenVessel {
     }
 
     /**
-     * What {@code node} gives the atmosphere over a step that starts from its state: its gas (the vent, when the
-     * vessel holds liquid as well) and the liquid above its shell top (the spill). Null for a node that is not an open
-     * vessel or gives nothing. Each component's release is at most what the vessel holds of it, so roundoff between a
-     * state's phase split and its inventory never books out more than it holds.
+     * What {@code node} gives the atmosphere over a step of {@code dt} s that starts from its state: the {@link #ventShare}
+     * of its gas (the vent) and the {@link #spillShare} of its liquid above its shell top (the spill). Null for a node that
+     * is not an open vessel or gives nothing. Each component's release is at most what the vessel holds of it, so roundoff
+     * between a state's phase split and its inventory never books out more than it holds.
      */
-    static Releases releases(FluidThermodynamics model,PassiveNetwork.Reservoir node) {
+    static Releases releases(FluidThermodynamics model,PassiveNetwork.Reservoir node,double dt) {
         if(node.kind()!=PassiveNetwork.NodeKind.RESERVOIR||!node.inventory().open()||node.empty()||PassiveStepSolver.holdsNoFluid(node))return null;
         var state=node.state();var held=node.inventory().moles();
-        Release vent=null,spill=null;
-        if(FluidThermodynamics.holdsPhase(state,GAS)) {
-            var n=FluidThermodynamics.phaseMoles(state,GAS);
-            for(int c=0;c<n.length;c++){n[c]=Math.min(n[c],held[c]);held[c]-=n[c];}
-            vent=new Release(n,model.phaseMass(state,GAS)*model.phaseSpecificEnthalpy(state,GAS,null),SolidInventory.EMPTY,SolidInventory.Moments.ZERO);
-        }
         double top=topVolume(node.inventory()),liquid=condensedVolume(state);
-        if(liquid>top) {
+        double ventShare=FluidThermodynamics.holdsPhase(state,GAS)?ventShare(node.inventory(),state.vaporVolume(),dt):0,spillShare=spillShare(node.inventory(),liquid-top,dt);
+        Release vent=null,spill=null;
+        if(ventShare>0) {
+            var n=FluidThermodynamics.phaseMoles(state,GAS);
+            for(int c=0;c<n.length;c++){n[c]=Math.min(ventShare*n[c],held[c]);held[c]-=n[c];}
+            vent=new Release(n,ventShare*model.phaseMass(state,GAS)*model.phaseSpecificEnthalpy(state,GAS,null),SolidInventory.EMPTY,SolidInventory.Moments.ZERO);
+        }
+        if(spillShare>0) {
             var band=band(model,state,top,liquid);double[] n=new double[held.length];double energy=0;
             var solids=SolidInventory.EMPTY;double solidMass=0,solidVolume=0,solidCapacity=0;
             for(int phase=OIL;phase<=WATER;phase++) {
                 if(!(band[phase]>0))continue;
-                double share=band[phase]/FluidThermodynamics.phaseVolume(state,phase);
+                double part=spillShare*band[phase]/FluidThermodynamics.phaseVolume(state,phase);
                 var phaseMoles=FluidThermodynamics.phaseMoles(state,phase);
-                for(int c=0;c<n.length;c++)n[c]+=share*phaseMoles[c];
-                energy+=share*model.phaseMass(state,phase)*model.phaseSpecificEnthalpy(state,phase,null);
+                for(int c=0;c<n.length;c++)n[c]+=part*phaseMoles[c];
+                energy+=part*model.phaseMass(state,phase)*model.phaseSpecificEnthalpy(state,phase,null);
                 var moments=FluidThermodynamics.phaseSolidMoments(state,phase);
                 if(moments.mass()>0) {
-                    solids=solids.plus(state.solids().scale(share*FluidThermodynamics.phaseSolidShare(state,phase)));
-                    solidMass+=share*moments.mass();solidVolume+=share*moments.volume();solidCapacity+=share*moments.heatCapacity();
+                    solids=solids.plus(state.solids().scale(part*FluidThermodynamics.phaseSolidShare(state,phase)));
+                    solidMass+=part*moments.mass();solidVolume+=part*moments.volume();solidCapacity+=part*moments.heatCapacity();
                 }
             }
             for(int c=0;c<n.length;c++)n[c]=Math.min(n[c],held[c]);
             spill=new Release(n,energy,solids,new SolidInventory.Moments(solidMass,solidVolume,solidCapacity));
         }
-        return vent==null&&spill==null?null:new Releases(vent,spill);
+        return vent==null&&spill==null?null:new Releases(vent,spill,ventShare,spillShare);
     }
 }
