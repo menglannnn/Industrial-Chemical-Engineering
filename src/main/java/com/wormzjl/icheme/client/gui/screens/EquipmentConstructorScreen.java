@@ -76,7 +76,7 @@ public final class EquipmentConstructorScreen extends Screen {
 
     /** What the constructor builds, by group; a horizontal drum lies along or across the constructor's facing, every other is its placement form. */
     private enum Equipment {
-        VERTICAL_DRUM(Category.VESSELS), HORIZONTAL_DRUM(Category.VESSELS), COLUMN(Category.VESSELS), ADSORBER(Category.VESSELS), CYCLONE(Category.VESSELS),
+        VERTICAL_DRUM(Category.VESSELS), HORIZONTAL_DRUM(Category.VESSELS), COLUMN(Category.VESSELS), FLOATING_ROOF_TANK(Category.VESSELS), SPHERE(Category.VESSELS), ADSORBER(Category.VESSELS), CYCLONE(Category.VESSELS),
         EXCHANGER(Category.HEAT), KETTLE(Category.HEAT), AIR_COOLER(Category.HEAT), VERTICAL_HEATER(Category.HEAT), CABIN_HEATER(Category.HEAT),
         PUMP(Category.MACHINES), COMPRESSOR(Category.MACHINES), CENTRIFUGAL_COMPRESSOR(Category.MACHINES), EJECTOR(Category.MACHINES),
         STEAM_TURBINE(Category.MACHINES), CONDENSING_TURBINE(Category.MACHINES),
@@ -258,7 +258,7 @@ public final class EquipmentConstructorScreen extends Screen {
         var change = Button.builder(Component.translatable(KEY + "change"), b -> show(Page.CHOOSE)).bounds(PANEL - 80, TOP - 1, 74, 16).build();
         change.setTooltip(Tooltip.create(Component.translatable(KEY + "change.hint")));
         addRenderableWidget(change);
-        if (form.unit()) {
+        if (form.designed()) {
             unitDesign();
             return;
         }
@@ -592,7 +592,7 @@ public final class EquipmentConstructorScreen extends Screen {
      * bundle diameters long.
      */
     private void diameter(int steps) {
-        if (form.unit()) {
+        if (form.designed()) {
             var kind = form.kind();
             diameter = ProcessUnit.snap(kind, diameter + steps * ProcessUnit.diameterStep(kind));
             tangentLength = unitLength(kind, tangentLength);
@@ -628,7 +628,7 @@ public final class EquipmentConstructorScreen extends Screen {
             case HORIZONTAL_DRUM -> Equipment.of(form) == Equipment.HORIZONTAL_DRUM ? form : VesselPlacement.Form.LENGTHWISE;
             default -> VesselPlacement.Form.valueOf(equipment.name());
         };
-        if (form.unit()) {
+        if (form.designed()) {
             var kind = form.kind();
             diameter = ProcessUnit.snap(kind, diameter);
             // A new kind starts at its design's second size and support; the same kind keeps the player's.
@@ -637,7 +637,7 @@ public final class EquipmentConstructorScreen extends Screen {
         } else {
             diameter = vesselDiameter(diameter);
             tangentLength = clamp(tangentLength, 1, (int) EquipmentShape.MAX_TANGENT_LENGTH);
-            if (before.unit() || before.orientation() != form.orientation()) support = EquipmentShape.defaultSupport(diameter, form.orientation());
+            if (before.designed() || before.orientation() != form.orientation()) support = EquipmentShape.defaultSupport(diameter, form.orientation());
         }
         support = Math.max(support, minimumSupport());
         // A drum laid down or stood up takes that form's connection: its sides face other ways (a standing drum's left
@@ -659,7 +659,7 @@ public final class EquipmentConstructorScreen extends Screen {
     }
 
     private int minimumSupport() {
-        if (form.unit()) return ProcessUnit.minSupport(form.kind(), diameter, tangentLength);
+        if (form.designed()) return ProcessUnit.minSupport(form.kind(), diameter, tangentLength);
         if (form.column()) return EquipmentShape.minimumSkirt(diameter);
         if (form.orientation() == EquipmentShape.Orientation.VERTICAL) return EquipmentShape.minimumSkirt(diameter);
         return hasBoot() ? EquipmentShape.minimumBootSupport(diameter, tangentLength) : 1;
@@ -807,7 +807,7 @@ public final class EquipmentConstructorScreen extends Screen {
         var shape = layout.shape();
         // The middle line says what the equipment holds or does: a vessel's volume, a unit's as its design says it
         // ({@link UnitDesign#held}: an exchanger's tube surface, a pump's flow and motor, a heater's duty, ...).
-        var does = form.unit() ? UnitDesign.of(form.kind()).held(shape) : new UnitDesign.Line("volume", number(shape.volume()), number(shape.surfaceArea()));
+        var does = form.designed() ? UnitDesign.of(form.kind()).held(shape) : new UnitDesign.Line("volume", number(shape.volume()), number(shape.surfaceArea()));
         String middle = does.key();
         Component held = Component.translatable(KEY + middle, does.args());
         int y = LINES;

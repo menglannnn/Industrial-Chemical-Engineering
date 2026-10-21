@@ -354,7 +354,7 @@ public final class EquipmentShellBlockEntity extends BlockEntity implements Flui
         var front = EquipmentShape.Heading.valueOf(tag.getString("Front").toUpperCase(Locale.ROOT));
         if (kind == EquipmentShape.Kind.COLUMN)
             return EquipmentShape.column(tag.getDouble("Diameter"), ColumnTrays.decode(tag.getIntArray("Trays")), front, tag.getInt("Support"));
-        if (kind.unit()) return EquipmentShape.unit(kind, tag.getDouble("Diameter"), tag.getDouble("TangentLength"), front, tag.getInt("Support"),
+        if (kind.designed()) return EquipmentShape.designed(kind, tag.getDouble("Diameter"), tag.getDouble("TangentLength"), front, tag.getInt("Support"),
                     kind == EquipmentShape.Kind.AIR_COOLER ? ProcessUnit.Bank.decode(tag.getIntArray("Bank")) : ProcessUnit.Bank.ONE);
         if (!tag.contains("Connections")) throw new IllegalArgumentException("A drum lists its side connections");
         return EquipmentShape.drum(tag.getDouble("Diameter"), tag.getDouble("TangentLength"),

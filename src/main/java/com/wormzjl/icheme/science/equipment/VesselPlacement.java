@@ -13,12 +13,14 @@ public record VesselPlacement(int forward, int right, int up) {
 
     /**
      * A drum standing, or lying with its axis along the constructor's facing (lengthwise) or across it (crosswise); a
-     * distillation column; or a unit (owner requests 2026-10-16 and 2026-10-17): a heat exchanger, a kettle reboiler, an
+     * distillation column; a floating-roof tank or a storage sphere (owner request 2026-10-21); or a unit (owner requests
+     * 2026-10-16 and 2026-10-17): a heat exchanger, a kettle reboiler, an
      * air cooler bay, a steam ejector, a centrifugal pump, a reciprocating compressor, a vertical or a cabin heater, lying
      * lengthwise or standing.
      */
     public enum Form {
         VERTICAL(EquipmentShape.Kind.DRUM), LENGTHWISE(EquipmentShape.Kind.DRUM), CROSSWISE(EquipmentShape.Kind.DRUM), COLUMN(EquipmentShape.Kind.COLUMN),
+        FLOATING_ROOF_TANK(EquipmentShape.Kind.TANK), SPHERE(EquipmentShape.Kind.SPHERE),
         EXCHANGER(EquipmentShape.Kind.EXCHANGER), KETTLE(EquipmentShape.Kind.KETTLE), AIR_COOLER(EquipmentShape.Kind.AIR_COOLER), EJECTOR(EquipmentShape.Kind.EJECTOR),
         PUMP(EquipmentShape.Kind.PUMP), COMPRESSOR(EquipmentShape.Kind.COMPRESSOR), VERTICAL_HEATER(EquipmentShape.Kind.VERTICAL_HEATER),
         CABIN_HEATER(EquipmentShape.Kind.CABIN_HEATER), STIRRED_REACTOR(EquipmentShape.Kind.STIRRED_REACTOR), ADSORBER(EquipmentShape.Kind.ADSORBER),
@@ -41,7 +43,7 @@ public record VesselPlacement(int forward, int right, int up) {
         }
 
         public EquipmentShape.Orientation orientation() {
-            if (unit()) return ProcessUnit.orientation(kind());
+            if (designed()) return ProcessUnit.orientation(kind());
             return this == LENGTHWISE || this == CROSSWISE ? EquipmentShape.Orientation.HORIZONTAL : EquipmentShape.Orientation.VERTICAL;
         }
 
@@ -51,6 +53,11 @@ public record VesselPlacement(int forward, int right, int up) {
 
         public boolean unit() {
             return kind().unit();
+        }
+
+        /** A shape its kind's design draws ({@link EquipmentShape.Kind#designed()}): a storage vessel or a unit. */
+        public boolean designed() {
+            return kind().designed();
         }
 
         /**

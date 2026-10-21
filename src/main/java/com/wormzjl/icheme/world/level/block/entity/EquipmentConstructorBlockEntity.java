@@ -74,8 +74,8 @@ public final class EquipmentConstructorBlockEntity extends BlockEntity {
 
         private static EquipmentShape shape(double diameter, int tangentLength, VesselPlacement.Form form, int support, ColumnTrays trays,
                                             List<EquipmentShape.Connection> connections, ProcessUnit.Bank bank, boolean boot, EquipmentShape.Heading front) {
-            if (form.unit())
-                return EquipmentShape.unit(form.kind(), diameter, tangentLength, front, support, form.kind() == EquipmentShape.Kind.AIR_COOLER ? bank : ProcessUnit.Bank.ONE);
+            if (form.designed())
+                return EquipmentShape.designed(form.kind(), diameter, tangentLength, front, support, form.kind() == EquipmentShape.Kind.AIR_COOLER ? bank : ProcessUnit.Bank.ONE);
             return form.column() ? EquipmentShape.column(diameter, trays, front, support)
                     : EquipmentShape.drum(diameter, tangentLength, form.orientation(), front, support, connections, boot && form.orientation().horizontal());
         }

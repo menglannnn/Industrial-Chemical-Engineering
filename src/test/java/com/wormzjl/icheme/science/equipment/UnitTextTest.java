@@ -67,16 +67,20 @@ class UnitTextTest {
         for (String category : new String[]{"vessels", "heat", "machines", "reactors", "solid_fuel"})
             fits(over, "category", text(lang, C + "current", text(lang, C + "category." + category)), CATEGORY);
         for (var kind : Kind.values()) {
-            if (!kind.unit()) continue;
+            if (!kind.designed()) continue;
             var design = UnitDesign.of(kind);
             String name = kind.name().toLowerCase(Locale.ROOT);
-            String full = text(lang, C + "equipment." + name), shorter = text(lang, C + "equipment." + name + ".short");
+            // The constructor names a form: a tank's is the floating-roof tank.
+            String form = kind == Kind.TANK ? "floating_roof_tank" : name;
+            String full = text(lang, C + "equipment." + form), shorter = text(lang, C + "equipment." + form + ".short");
             if (width(full) > LABEL) fits(over, kind + " short title", shorter, LABEL);
             fits(over, kind + " kind button", text(lang, C + "current", shorter), KIND);
             for (String row : new String[]{design.sizeRow(), design.lengthRow(), design.supportRow()})
                 if (row != null) fits(over, kind + " row", text(lang, C + row), LABEL);
         }
-        for (var shape : ProcessUnitTest.everySize()) {
+        var shapes = new ArrayList<>(ProcessUnitTest.everySize());
+        shapes.addAll(ShapeRasterizerTest.everyStorageSize());
+        for (var shape : shapes) {
             var design = UnitDesign.of(shape.kind());
             String name = shape.kind().name().toLowerCase(Locale.ROOT), at = shape.kind() + " " + shape.diameter() + " x " + (int) shape.tangentLength();
             var held = design.held(shape);

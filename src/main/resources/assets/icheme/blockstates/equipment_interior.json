@@ -1,6 +1,9 @@
 {
   "variants": {
-    "": {
+    "open=false": {
+      "model": "icheme:block/equipment_interior"
+    },
+    "open=true": {
       "model": "icheme:block/equipment_interior"
     }
   }

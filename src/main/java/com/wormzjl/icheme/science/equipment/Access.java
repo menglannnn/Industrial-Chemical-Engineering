@@ -433,6 +433,263 @@ final class Access {
         m.block(around(cx, cz, reach - s * .05, t, top - 1.07), scale(radial, .07), new double[]{0, .07, 0}, scale(tangent, .07), Material.STEELWORK);
     }
 
+    /** A wound stair's tread going on its walk line, m, and its steepest slope, as rise over going (about 40°, the plant stair's; photo survey 2026-10-21). */
+    static final double WOUND_GOING = .25, WOUND_SLOPE = .84;
+    /**
+     * Where a wound stair turns towards its body's axis, the share of each tread's going it may take inward or outward
+     * (the rest runs round): it climbs no steeper than the body's own surface there allows, so it keeps its stand-off.
+     * At most 0.35 bends its walk line by 20° at a node: at 0.8 (53°) the tread after next swung into a player standing
+     * on the stair where a sphere's stair leaves its legs (walk test 2026-10-21).
+     */
+    static final double RADIAL_SHARE = .35;
+    /**
+     * A wound stair's width between its outer stringers, m: room for a player between its side fences where it runs
+     * across the block grid ({@link #PLAYER}: the game's player box stays aligned with the world), the two fences
+     * {@link #NARROW_BAND} deep, and where the walk line bends at a node by its steepest turn ({@link #RADIAL_SHARE}) the
+     * tread behind's fence that much nearer (half a going times the share, each side), to the next 5 cm: 1.4 m.
+     */
+    static final double WOUND_WIDTH = Math.ceil((PLAYER + 2 * NARROW_BAND + WOUND_GOING * RADIAL_SHARE) * 20) / 20;
+
+    /**
+     * A stair wound round a body of revolution about the vertical line through (cx, cz) (owner approval 2026-10-21: a
+     * floating-roof tank's stair round its shell, a sphere's round its legs and over its upper half), {@code width}
+     * between its outer stringers ({@link #WOUND_WIDTH}). Its walk line runs through {@code nodes} ({x, y, z} each, from
+     * its foot), each {@link #WOUND_GOING} apart along the ground; tread k (1 to {@link #steps}) runs from node k - 1 to
+     * node k, its walking surface at node k's height, the last level with the landing beyond the stair. A player steps up
+     * the treads between fences {@link #NARROW_BAND} deep either side, but on the inner side over the {@code openings}
+     * (stations along the walk line, {from, to} each), where the stair meets a deck beside it, and across the stair's top
+     * end where {@code closedEnd}. Planned by {@link #wind}.
+     */
+    record WoundStair(double cx, double cz, double width, double[][] nodes, List<double[]> openings, boolean closedEnd) {
+        /** The highest post spacing along the stair, in treads. */
+        private static final int POST_TREADS = (int) Math.ceil(POSTS / WOUND_GOING);
+
+        /**
+         * Plans a stair from walking level {@code base} at angle {@code start} (from +x towards +z) up to {@code top},
+         * winding {@code turn} (+1 counter-clockwise seen from above, towards +z from +x; -1 the other way) at
+         * {@code standOff} beyond the body, whose radius at height y is {@code radius(y)} (a cylinder's constant; a sphere's
+         * envelope over its legs and its upper half): its walk line half its width further out. Each tread rises
+         * {@link #WOUND_GOING} times the {@code slope} (rise over going), or less where the body's radius changes so fast that
+         * the stair would leave its stand-off ({@link #RADIAL_SHARE}), taken at the height each tread starts from; one factor on
+         * every rise ends the last tread at {@code top}.
+         */
+        static WoundStair wind(double cx, double cz, java.util.function.DoubleUnaryOperator radius, double standOff, double start, int turn, double base,
+                               double top, double width, double slope, List<double[]> openings, boolean closedEnd) {
+            if (!(top > base)) throw new IllegalArgumentException("A stair climbs: " + base + " to " + top);
+            java.util.function.DoubleUnaryOperator walk = y -> radius.applyAsDouble(y) + standOff + width / 2;
+            // A tread's rise from height y: the slope's, or less where the walk line's radius changes faster anywhere over
+            // the slope's rise from y (a kink in the body's profile is met wherever a tread lands on it).
+            java.util.function.DoubleUnaryOperator rule = y -> {
+                double full = WOUND_GOING * slope, steepest = 0;
+                for (int i = 0; i < 8; i++)
+                    steepest = Math.max(steepest, Math.abs(walk.applyAsDouble(y + full * (i + 1) / 8) - walk.applyAsDouble(y + full * i / 8)) / (full / 8));
+                return WOUND_GOING * Math.min(slope, RADIAL_SHARE / Math.max(1e-9, steepest));
+            };
+            int steps = 0;
+            for (double y = base; y < top - 1e-9; y += rule.applyAsDouble(y))
+                if (++steps > 4096) throw new IllegalStateException("A stair of more than 4096 treads from " + base + " to " + top);
+            // One factor on every rise, each taken at the height its tread really starts from, so the last tread ends at top.
+            double lo = 0, hi = 1;
+            for (int i = 0; i < 60; i++) {
+                double mid = (lo + hi) / 2, y = base;
+                for (int k = 0; k < steps; k++) y += mid * rule.applyAsDouble(y);
+                if (y < top) lo = mid;
+                else hi = mid;
+            }
+            double factor = (lo + hi) / 2;
+            var nodes = new double[steps + 1][];
+            double angle = start, height = base, r = walk.applyAsDouble(base);
+            nodes[0] = new double[]{cx + r * DeterministicMath.cos(angle), base, cz + r * DeterministicMath.sin(angle)};
+            for (int k = 1; k <= steps; k++) {
+                height = k == steps ? top : height + factor * rule.applyAsDouble(height);
+                double next = walk.applyAsDouble(height), dr = Math.max(-.95 * WOUND_GOING, Math.min(.95 * WOUND_GOING, next - r));
+                angle += turn * Math.sqrt(WOUND_GOING * WOUND_GOING - dr * dr) / ((r + next) / 2);
+                r = next;
+                nodes[k] = new double[]{cx + r * DeterministicMath.cos(angle), height, cz + r * DeterministicMath.sin(angle)};
+            }
+            return new WoundStair(cx, cz, width, nodes, List.copyOf(openings), closedEnd);
+        }
+
+        int steps() {
+            return nodes.length - 1;
+        }
+
+        double base() {
+            return nodes[0][1];
+        }
+
+        double top() {
+            return nodes[nodes.length - 1][1];
+        }
+
+        /** The walk line's length along the ground, m. */
+        double length() {
+            return steps() * WOUND_GOING;
+        }
+
+        /** Tread {@code k}'s walking surface. */
+        double tread(int k) {
+            return nodes[k][1];
+        }
+
+        /** Tread {@code k}'s rise from the one below (the ground or the landing at the foot). */
+        double rise(int k) {
+            return nodes[k][1] - nodes[k - 1][1];
+        }
+
+        /** The angle of node {@code j} about the axis (from +x towards +z). */
+        double angle(int j) {
+            return DeterministicMath.atan2(nodes[j][2] - cz, nodes[j][0] - cx);
+        }
+
+        /** The horizontal unit along tread {@code k}, from node k - 1 to node k. */
+        double[] along(int k) {
+            double dx = nodes[k][0] - nodes[k - 1][0], dz = nodes[k][2] - nodes[k - 1][2], l = Math.sqrt(dx * dx + dz * dz);
+            return new double[]{dx / l, 0, dz / l};
+        }
+
+        /** The horizontal unit across tread {@code k}, square to its going, pointing away from the axis. */
+        double[] across(int k) {
+            var u = along(k);
+            double mx = (nodes[k][0] + nodes[k - 1][0]) / 2 - cx, mz = (nodes[k][2] + nodes[k - 1][2]) / 2 - cz;
+            double[] a = {u[2], 0, -u[0]};
+            return a[0] * mx + a[2] * mz >= 0 ? a : new double[]{-a[0], 0, -a[2]};
+        }
+
+        /** Across the stair at node {@code j}: between the treads either side of it. */
+        private double[] acrossAt(int j) {
+            if (j == 0) return across(1);
+            if (j == steps()) return across(steps());
+            var a = across(j);
+            var b = across(j + 1);
+            return unit(a[0] + b[0], 0, a[2] + b[2]);
+        }
+
+        /**
+         * The point at station {@code s} along the walk line (0 at the foot, {@link #length} at the top), {@code off}
+         * across it (positive away from the axis), at height {@code y}.
+         */
+        double[] at(double s, double off, double y) {
+            int k = Math.max(1, Math.min(steps(), (int) Math.floor(s / WOUND_GOING) + 1));
+            double t = s / WOUND_GOING - (k - 1);
+            var a = across(k);
+            return new double[]{nodes[k - 1][0] + t * (nodes[k][0] - nodes[k - 1][0]) + off * a[0], y, nodes[k - 1][2] + t * (nodes[k][2] - nodes[k - 1][2]) + off * a[2]};
+        }
+
+        /** Whether station {@code s} lies in an opening of the inner side. */
+        boolean open(double s) {
+            for (var o : openings) if (s > o[0] - 1e-9 && s < o[1] + 1e-9) return true;
+            return false;
+        }
+
+        /** The station at which the walk line first reaches height {@code y}: the start of the first tread whose surface is at or over it. */
+        double station(double y) {
+            for (int k = 1; k <= steps(); k++) if (nodes[k][1] >= y - 1e-9) return (k - 1) * WOUND_GOING;
+            return length();
+        }
+
+        /** The nosing line's height at node {@code j}: the surface of the tread that starts there (the last one's at the top). */
+        private double nosing(int j) {
+            return nodes[Math.min(j + 1, steps())][1];
+        }
+
+        /** Node {@code j}'s point {@code off} across the stair at height {@code y}. */
+        private double[] side(int j, double off, double y) {
+            var a = acrossAt(j);
+            return new double[]{nodes[j][0] + off * a[0], y, nodes[j][2] + off * a[2]};
+        }
+
+        /**
+         * What a player meets: each tread filled down to the one below (the game's collision steps a player up it), and
+         * its fences either side {@link #FENCE} high, but on the inner side over the openings; a fence across the top
+         * where the end is closed. Each piece runs 0.02 m past its tread's ends, so the pieces meet round the bends.
+         */
+        List<ProcessUnit.Solid> solids() {
+            var out = new ArrayList<ProcessUnit.Solid>();
+            double half = width / 2;
+            for (int k = 1; k <= steps(); k++) {
+                double[] u = along(k), a = across(k), p = nodes[k - 1], q = nodes[k];
+                double l = Math.sqrt((q[0] - p[0]) * (q[0] - p[0]) + (q[2] - p[2]) * (q[2] - p[2])) / 2 + .02, rise = rise(k), y = tread(k);
+                double[] mid = {(p[0] + q[0]) / 2, y - rise / 2, (p[2] + q[2]) / 2}, ex = scale(u, l);
+                out.add(ProcessUnit.Solid.block(mid, ex, new double[]{0, rise / 2, 0}, scale(a, half)));
+                for (int side = -1; side <= 1; side += 2) {
+                    if (side < 0 && open((k - .5) * WOUND_GOING)) continue;
+                    double off = side * (half - NARROW_BAND / 2);
+                    out.add(ProcessUnit.Solid.block(new double[]{mid[0] + off * a[0], y + FENCE / 2, mid[2] + off * a[2]}, ex, new double[]{0, FENCE / 2, 0},
+                            scale(a, NARROW_BAND / 2)));
+                }
+            }
+            if (closedEnd) {
+                int n = steps();
+                double[] u = along(n), a = across(n), q = nodes[n];
+                out.add(ProcessUnit.Solid.block(new double[]{q[0] - u[0] * NARROW_BAND / 2, q[1] + FENCE / 2, q[2] - u[2] * NARROW_BAND / 2}, scale(u, NARROW_BAND / 2),
+                        new double[]{0, FENCE / 2, 0}, scale(a, half)));
+            }
+            return out;
+        }
+
+        /**
+         * Draws the stair: grating treads, a channel stringer along each side under the nosings, and on each side a
+         * handrail and mid rail 0.9 m and 0.45 m over the nosings on posts at most {@link #POSTS} apart (OSHA 1910.29),
+         * broken over the openings of the inner side; a rail across a closed top end.
+         */
+        void draw(Mesh m) {
+            double half = width / 2;
+            int n = steps();
+            for (int k = 1; k <= n; k++) {
+                double[] u = along(k), a = across(k), p = nodes[k - 1], q = nodes[k];
+                double l = Math.sqrt((q[0] - p[0]) * (q[0] - p[0]) + (q[2] - p[2]) * (q[2] - p[2])) / 2;
+                m.block(new double[]{(p[0] + q[0]) / 2, tread(k) - .02, (p[2] + q[2]) / 2}, scale(u, l), new double[]{0, .02, 0}, scale(a, half - .06), Material.GRATING);
+            }
+            for (int side = -1; side <= 1; side += 2) {
+                double off = side * (half - .03);
+                // The stringer: a channel 0.2 m deep under the nosing line, a block per tread, bent at each node.
+                for (int j = 1; j <= n; j++) {
+                    double[] p = side(j - 1, off, nosing(j - 1) - .12), q = side(j, off, nosing(j) - .12), a = across(j);
+                    double[] d = sub(q, p), depth = unit(cross(cross(d, UP), d));
+                    if (depth[1] < 0) depth = neg(depth);
+                    m.block(lerp(p, q, .5), scale(d, .5), scale(depth, .1), scale(a, .03), Material.STEELWORK);
+                }
+                // Rails and posts, piece by piece between the openings (the outer side runs whole).
+                var pieces = new ArrayList<int[]>();
+                int from = -1;
+                for (int j = 0; j <= n; j++) {
+                    boolean railed = side > 0 || !open(j * WOUND_GOING);
+                    if (railed && from < 0) from = j;
+                    if ((!railed || j == n) && from >= 0) {
+                        int to = railed ? j : j - 1;
+                        if (to > from) pieces.add(new int[]{from, to});
+                        from = -1;
+                    }
+                }
+                for (var piece : pieces) {
+                    for (double over : new double[]{.9, .45}) {
+                        var points = new ArrayList<double[]>();
+                        for (int j = piece[0]; j <= piece[1]; j++) points.add(side(j, off, nosing(j) + over));
+                        m.rail(points, BAR, UP, NO_ENDS, Material.HANDRAIL);
+                    }
+                    for (int j = piece[0]; j <= piece[1]; j++) {
+                        if (j != piece[0] && j != piece[1] && (j - piece[0]) % POST_TREADS != 0) continue;
+                        m.bar(side(j, off, nosing(j) - .04), side(j, off, nosing(j) + .9 + BAR / 2), BAR, acrossAt(j), NO_ENDS, Material.HANDRAIL);
+                    }
+                }
+            }
+            if (closedEnd) for (double over : new double[]{.9, .45})
+                m.bar(side(n, -(half - .03), top() + over), side(n, half - .03, top() + over), BAR, UP, NO_ENDS, Material.HANDRAIL);
+        }
+
+        /** The stair's outer edges along both sides at the nosing line, for the outline: {x0, y0, z0, x1, y1, z1} each. */
+        List<double[]> edges() {
+            var out = new ArrayList<double[]>();
+            for (int side = -1; side <= 1; side += 2)
+                for (int j = 1; j <= steps(); j++) {
+                    double[] p = side(j - 1, side * width / 2, nosing(j - 1)), q = side(j, side * width / 2, nosing(j));
+                    out.add(new double[]{p[0], p[1], p[2], q[0], q[1], q[2]});
+                }
+            return out;
+        }
+    }
+
     /** The point {@code r} out from the vertical axis through (cx, cz) at angle {@code t}, at height {@code y}. */
     static double[] around(double cx, double cz, double r, double t, double y) {
         return new double[]{cx + r * DeterministicMath.cos(t), y, cz + r * DeterministicMath.sin(t)};

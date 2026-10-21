@@ -88,7 +88,10 @@ public record EquipmentShape(Kind kind, double diameter, double tangentLength, O
     public static final double HEAD_AREA_FACTOR = Math.PI * (.25 + DeterministicMath.log(7 + 4 * Math.sqrt(3)) / (16 * Math.sqrt(3)));
 
     public enum Kind {
-        DRUM, COLUMN, EXCHANGER, KETTLE, AIR_COOLER, EJECTOR, PUMP, COMPRESSOR, VERTICAL_HEATER, CABIN_HEATER,
+        DRUM, COLUMN,
+        // Storage vessels (owner request 2026-10-21, batch 2026-10-21-floating-roof-tanks): reservoirs built from their parts.
+        TANK, SPHERE,
+        EXCHANGER, KETTLE, AIR_COOLER, EJECTOR, PUMP, COMPRESSOR, VERTICAL_HEATER, CABIN_HEATER,
         // New units (owner request 2026-10-18, NEW_UNITS_PLAN.md).
         STIRRED_REACTOR, ADSORBER, TRICKLE_BED_REACTOR, EBULLATED_BED_REACTOR, CENTRIFUGAL_COMPRESSOR, STEAM_TURBINE, CONDENSING_TURBINE, CYCLONE,
         FCC_CONVERTER, DELAYED_COKER, FLUIDIZED_BED_BOILER, FLUIDIZED_BED_GASIFIER, GRATE_BOILER, FIXED_BED_GASIFIER;
@@ -96,6 +99,24 @@ public record EquipmentShape(Kind kind, double diameter, double tangentLength, O
         /** A standalone unit, built from its parts ({@link ProcessUnit}); a drum and a column are vessels of revolution. */
         public boolean unit() {
             return ordinal() >= EXCHANGER.ordinal();
+        }
+
+        /**
+         * A floating-roof tank or a storage sphere: a fluid reservoir as a drum is, but drawn from its parts by its design
+         * ({@link UnitDesign}), with fixed ports and no side connections.
+         */
+        public boolean storage() {
+            return this == TANK || this == SPHERE;
+        }
+
+        /** Drawn from its parts by a {@link UnitDesign}: a storage vessel or a unit. */
+        public boolean designed() {
+            return ordinal() >= TANK.ordinal();
+        }
+
+        /** A fluid reservoir: one node, a port per nozzle, its design volume and level height. */
+        public boolean reservoir() {
+            return this == DRUM || storage();
         }
     }
 
@@ -158,7 +179,9 @@ public record EquipmentShape(Kind kind, double diameter, double tangentLength, O
         REGENERATION_OUTLET(PortClass.BULK), HYDROGEN(PortClass.BULK), EFFLUENT(PortClass.BULK), QUENCH(PortClass.BULK), CATALYST_INLET(PortClass.BULK), AIR(PortClass.BULK),
         OXIDANT(PortClass.BULK), WATER(PortClass.BULK), CUTTING_WATER(PortClass.BULK), BLOWDOWN(PortClass.BULK), SOLIDS_INLET(PortClass.BULK), FEEDWATER(PortClass.BULK),
         VENT(PortClass.VAPOUR), EXHAUST(PortClass.VAPOUR), FLUE_GAS(PortClass.VAPOUR), RELIEF(PortClass.VAPOUR), SYNGAS(PortClass.VAPOUR),
-        DRAIN(PortClass.LIQUID), CONDENSATE(PortClass.LIQUID), CATALYST_OUTLET(PortClass.LIQUID), SOLIDS_OUTLET(PortClass.LIQUID);
+        DRAIN(PortClass.LIQUID), CONDENSATE(PortClass.LIQUID), CATALYST_OUTLET(PortClass.LIQUID), SOLIDS_OUTLET(PortClass.LIQUID),
+        // A floating-roof tank's (owner change 2026-10-21): two identical bottom nozzles, and the overflow at the fill height.
+        BOTTOM(PortClass.LIQUID), OVERFLOW(PortClass.OVERFLOW);
 
         public final PortClass port;
 
@@ -167,9 +190,12 @@ public record EquipmentShape(Kind kind, double diameter, double tangentLength, O
         }
     }
 
-    /** The phase a nozzle draws first: the top outlet's vapour, a bottom outlet's liquid, or the bulk. */
+    /**
+     * The phase a nozzle draws first: the top outlet's vapour, a bottom outlet's liquid, or the bulk; a floating-roof
+     * tank's overflow draws only the liquid held above its fill height (plan 2026-10-21-floating-roof-tanks, section 3.1).
+     */
     public enum PortClass {
-        VAPOUR, BULK, LIQUID
+        VAPOUR, BULK, LIQUID, OVERFLOW
     }
 
     /**
@@ -310,6 +336,20 @@ public record EquipmentShape(Kind kind, double diameter, double tangentLength, O
     }
 
     /**
+     * A storage vessel (owner request 2026-10-21): a floating-roof tank of {@code diameter} and {@code shell} height, or a
+     * storage sphere of {@code diameter} standing {@code support} metres clear of the ground (its {@code shell} is 1).
+     */
+    public static EquipmentShape storage(Kind kind, double diameter, double shell, Heading front, int support) {
+        if (!kind.storage()) throw new IllegalArgumentException(kind + " is not a storage vessel");
+        return new EquipmentShape(kind, diameter, shell, ProcessUnit.orientation(kind), front, support, null, List.of(), ProcessUnit.Bank.ONE, false);
+    }
+
+    /** A shape of any designed kind ({@link Kind#designed()}): a storage vessel, or a unit in {@code bank} (an air cooler's). */
+    public static EquipmentShape designed(Kind kind, double diameter, double length, Heading front, int support, ProcessUnit.Bank bank) {
+        return kind.storage() ? storage(kind, diameter, length, front, support) : unit(kind, diameter, length, front, support, bank);
+    }
+
+    /**
      * A new drum's side connections: its former standard inlet, a standing drum's in the upper shell (0.4 D below the
      * top tangent line) facing the right, a lying drum's on top near its front end when the drum is long enough for it
      * beside the vapour outlet.
@@ -388,8 +428,10 @@ public record EquipmentShape(Kind kind, double diameter, double tangentLength, O
         Objects.requireNonNull(front, "front");
         Objects.requireNonNull(bank, "bank");
         connections = List.copyOf(connections);
-        if (kind.unit()) {
-            if (trays != null || !connections.isEmpty()) throw new IllegalArgumentException("A unit has no trays and no side connections");
+        if (kind.designed()) {
+            // A storage vessel's ports are fixed (owner decision 2026-10-21): it takes no side connections, as a unit takes none.
+            if (trays != null || !connections.isEmpty()) throw new IllegalArgumentException("A " + kind.name().toLowerCase(java.util.Locale.ROOT)
+                    + " has no trays and no side connections");
             ProcessUnit.validate(kind, diameter, tangentLength, orientation, support, bank);
             if (boot) throw new IllegalArgumentException("Only a lying drum has a boot");
         } else {
@@ -523,9 +565,24 @@ public record EquipmentShape(Kind kind, double diameter, double tangentLength, O
         return kind.unit();
     }
 
-    /** A vessel's skirt; a unit's supports are its own parts. */
+    /** A floating-roof tank or a storage sphere ({@link Kind#storage()}). */
+    public boolean storage() {
+        return kind.storage();
+    }
+
+    /** Drawn from its parts by its design ({@link Kind#designed()}): a storage vessel or a unit. */
+    public boolean designed() {
+        return kind.designed();
+    }
+
+    /** A fluid reservoir: a drum or a storage vessel. */
+    public boolean reservoir() {
+        return kind.reservoir();
+    }
+
+    /** A vessel's skirt; a designed shape's supports are its own parts. */
     public boolean skirt() {
-        return !unit() && orientation == Orientation.VERTICAL && support > 0;
+        return !designed() && orientation == Orientation.VERTICAL && support > 0;
     }
 
     /** A lying drum's two saddles; a unit's supports are its own parts. */
@@ -561,33 +618,55 @@ public record EquipmentShape(Kind kind, double diameter, double tangentLength, O
         return facets() / 4;
     }
 
-    /** Length of the vessel from apex to apex, m: tangent length plus two head depths; a unit's along its frame z. */
+    /** Length of the vessel from apex to apex, m: tangent length plus two head depths; a designed shape's along its frame z. */
     public double overallLength() {
-        return unit() ? ProcessUnit.of(this).length() : tangentLength + diameter / 2;
+        return designed() ? ProcessUnit.of(this).length() : tangentLength + diameter / 2;
     }
 
     /** Height of the vessel's top above the ground, m. */
     public double topElevation() {
-        return unit() ? ProcessUnit.of(this).height() : orientation.horizontal() ? support + axis() + radius() : top();
+        return designed() ? ProcessUnit.of(this).height() : orientation.horizontal() ? support + axis() + radius() : top();
     }
 
-    /** Design volume of the smooth vessel, m³: the cylinder plus two 2:1 heads of π D³/24 each. Supports and nozzles hold no volume. */
+    /**
+     * A floating-roof tank's fill height, m: its shell less the roof's own depth (plan 2026-10-21-floating-roof-tanks,
+     * section 3.3), where its overflow stands; 0 for any other shape.
+     */
+    public double fillHeight() {
+        return kind == Kind.TANK ? tangentLength - TankDesign.FREEBOARD : 0;
+    }
+
+    /**
+     * Design volume of the smooth vessel, m³: the cylinder plus two 2:1 heads of π D³/24 each; a floating-roof tank's
+     * cylinder up to its fill height, π D²/4 · H, and a sphere's π D³/6. Supports and nozzles hold no volume.
+     */
     public double volume() {
+        if (kind == Kind.TANK) return Math.PI * diameter * diameter / 4 * fillHeight();
+        if (kind == Kind.SPHERE) return Math.PI * diameter * diameter * diameter / 6;
         var b = bootPlace();
         double boot = b == null ? 0 : Math.PI * b.diameter() * b.diameter() / 4 * b.length() + Math.PI * b.diameter() * b.diameter() * b.diameter() / 24;
         return Math.PI * diameter * diameter / 4 * tangentLength + Math.PI * diameter * diameter * diameter / 12 + boot;
     }
 
-    /** Outside area of the smooth vessel, m²: the cylinder plus two 2:1 heads (supports and nozzles excluded). */
+    /**
+     * Outside area of the smooth vessel, m²: the cylinder plus two 2:1 heads (supports and nozzles excluded); a
+     * floating-roof tank's shell and bottom, a sphere's π D².
+     */
     public double surfaceArea() {
+        if (kind == Kind.TANK) return Math.PI * diameter * tangentLength + Math.PI * diameter * diameter / 4;
+        if (kind == Kind.SPHERE) return Math.PI * diameter * diameter;
         return Math.PI * diameter * tangentLength + 2 * HEAD_AREA_FACTOR * diameter * diameter;
     }
 
     /**
      * The height over which the vessel's liquid level stands, m, for its liquid head {@code g m_c H / V}: a vertical
-     * vessel's apex-to-apex length, a horizontal one's diameter.
+     * vessel's apex-to-apex length, a horizontal one's diameter; a floating-roof tank's fill height (the head
+     * {@code ρ g h} is then exact at every level, plan section 1), a sphere's diameter (exact at half full, as a lying
+     * drum's).
      */
     public double levelHeight() {
+        if (kind == Kind.TANK) return fillHeight();
+        if (kind == Kind.SPHERE) return diameter;
         return orientation.horizontal() ? diameter : overallLength();
     }
 
@@ -649,7 +728,7 @@ public record EquipmentShape(Kind kind, double diameter, double tangentLength, O
      * davit), widened to every nozzle's flange face, in whole cells; a unit's from its parts ({@link ProcessUnit#box()}).
      */
     double[] frameBox() {
-        if (unit()) return ProcessUnit.of(this).box();
+        if (designed()) return ProcessUnit.of(this).box();
         double x0 = orientation.horizontal() ? -support : 0, x1 = width(), y0 = 0, z0 = 0, z1 = width();
         double y1 = column() ? Math.max(axialCells(), Math.ceil(ColumnStructure.plan(this).davitTop())) : axialCells();
         for (var nozzle : nozzles()) {
@@ -678,7 +757,7 @@ public record EquipmentShape(Kind kind, double diameter, double tangentLength, O
 
     /** The nozzles in the frame: a drum's standard set, a column's from its trays, a unit's own. */
     public List<Nozzle> nozzles() {
-        if (unit()) return ProcessUnit.of(this).nozzles();
+        if (designed()) return ProcessUnit.of(this).nozzles();
         var out = new ArrayList<Nozzle>();
         double a = axis(), r = radius(), bT = bottomTangent(), tT = topTangent(), apothem = r * DeterministicMath.cos(Math.PI / facets());
         if (column()) {
