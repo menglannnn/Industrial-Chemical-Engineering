@@ -2580,22 +2580,12 @@ public final class PassiveStepSolver {
                 double[][] jacobian=new double[count][2*band+1];residual(p,new double[count],jacobian);
                 double floor=0;for(int i=0;i<count;i++)floor=Math.max(floor,Math.abs(jacobian[i][band]));floor=Math.max(floor*1e-12,Double.MIN_NORMAL);
                 for(int i=0;i<count;i++)if(Math.abs(jacobian[i][band])<floor)jacobian[i][band]=-floor;
-                double[] step=solveBanded(jacobian,band,residual);boolean accepted=false,swept=false;double largest=0,took=0;
+                double[] step=solveBanded(jacobian,band,residual);boolean accepted=false;double largest=0,took=0;
                 if(step!=null) {
                     for(double s:step)largest=Math.max(largest,Math.abs(s));
                     double limit=Math.min(1,.5*(high-low)/Math.max(largest,Double.MIN_NORMAL));
-                    // A step longer than half the hull puts the linear model's root outside the island's pressures: a flat row's, a
-                    // junction whose every line is choked or one-way, and the sweep bisects such a junction onto its root. So the
-                    // sweep goes first there and the Newton only where it does not improve. Cold fuzz seed 430's mint: in its second
-                    // round the steps were 1e13 to 1e16 Pa, the line search took 4e-8 of each for 1e-7 of the merit as a descent,
-                    // and thirty iterations never reached the sweep (on the secants over 1e-7 of the pressure the tenth escaped by chance).
-                    if(limit<1&&sweeps<12) {
-                        swept=true;sweeps++;double[] was=p.clone(),wasResidual=residual.clone();sweep(p);double next=residual(p,residual,null);
-                        if(next<merit){merit=next;accepted=true;}
-                        else{System.arraycopy(was,0,p,0,nodes);System.arraycopy(wasResidual,0,residual,0,count);}
-                    }
                     double[] trial=p.clone(),trialResidual=new double[count];
-                    for(double fraction=limit;!accepted&&fraction>1e-3*limit;fraction*=.5) {
+                    for(double fraction=limit;fraction>1e-3*limit;fraction*=.5) {
                         for(int i=0;i<nodes;i++)if(unknown[i]>=0)trial[i]=Math.clamp(p[i]-fraction*step[unknown[i]],low,high);
                         double trialMerit=residual(trial,trialResidual,null);
                         if(trialMerit<(1-1e-4*fraction)*merit){System.arraycopy(trial,0,p,0,nodes);System.arraycopy(trialResidual,0,residual,0,count);merit=trialMerit;accepted=true;took=fraction;break;}
@@ -2604,7 +2594,7 @@ public final class PassiveStepSolver {
                 // Where the Newton step does not descend (a cap or a one-way kink), one Gauss-Seidel sweep, kept only where it
                 // improves on the Newton's point: a sweep across a choked junction's flat range can walk away from a root the
                 // Newton has all but reached, and then neither method improves on the other.
-                if(!accepted){if(swept||++sweeps>12)break;double[] was=p.clone(),wasResidual=residual.clone();double wasMerit=merit;sweep(p);merit=residual(p,residual,null);
+                if(!accepted){if(++sweeps>12)break;double[] was=p.clone(),wasResidual=residual.clone();double wasMerit=merit;sweep(p);merit=residual(p,residual,null);
                     if(!(merit<wasMerit)){System.arraycopy(was,0,p,0,nodes);System.arraycopy(wasResidual,0,residual,0,count);merit=wasMerit;break;}
                     double moved=0;for(int i=0;i<nodes;i++)if(unknown[i]>=0)moved=Math.max(moved,Math.abs(p[i]-was[i])/Math.max(1,Math.abs(was[i])));
                     if(moved<1e-12)break;}
