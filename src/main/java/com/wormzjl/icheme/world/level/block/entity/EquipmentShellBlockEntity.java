@@ -76,6 +76,11 @@ public final class EquipmentShellBlockEntity extends BlockEntity implements Flui
     private static final Set<EquipmentShellBlockEntity> CLIENT_MOVING = Collections.newSetFromMap(new WeakHashMap<>());
     /** Client: the moving parts whose pivots this cell holds, by index ({@link ShapeRasterizer#moving}). */
     private int[] moving = new int[0];
+    /**
+     * Client: the node cells of floating-roof tanks (batch 2026-10-21-floating-roof-tanks), whose roof, ladder and sight
+     * glass the client draws from the tank's display ({@code TankRenderer}). Render thread only; weak, as above.
+     */
+    private static final Set<EquipmentShellBlockEntity> CLIENT_TANKS = Collections.newSetFromMap(new WeakHashMap<>());
 
     public EquipmentShellBlockEntity(BlockPos position, BlockState state) {
         super(ModBlockEntities.EQUIPMENT_SHELL.get(), position, state);
@@ -119,11 +124,22 @@ public final class EquipmentShellBlockEntity extends BlockEntity implements Flui
         return moving;
     }
 
-    /** Client: lists the moving parts whose pivots lie in this cell ({@link ShapeRasterizer#moving}) for the client that moves them. */
+    /** Client: the node cells of the floating-roof tanks in the client's level. */
+    public static List<EquipmentShellBlockEntity> clientTankCells() {
+        return List.copyOf(CLIENT_TANKS);
+    }
+
+    /**
+     * Client: lists the moving parts whose pivots lie in this cell ({@link ShapeRasterizer#moving}) for the client that moves
+     * them, and a floating-roof tank's node cell for the client that draws its roof.
+     */
     private void trackMoving() {
         moving = new int[0];
         CLIENT_MOVING.remove(this);
-        if (shape == null || level == null || !level.isClientSide || !shape.unit() || !ProcessUnit.moves(shape.kind())) return;
+        CLIENT_TANKS.remove(this);
+        if (shape == null || level == null || !level.isClientSide) return;
+        if (shape.kind() == EquipmentShape.Kind.TANK && cell().equals(ShapeRasterizer.fluidCell(shape))) CLIENT_TANKS.add(this);
+        if (!shape.unit() || !ProcessUnit.moves(shape.kind())) return;
         var parts = ShapeRasterizer.moving(shape);
         var here = new ArrayList<Integer>();
         for (int k = 0; k < parts.size(); k++) {
@@ -166,6 +182,7 @@ public final class EquipmentShellBlockEntity extends BlockEntity implements Flui
     /** Unloaded or removed: publications stop marking the drum; the client stops moving its parts. */
     private void released() {
         CLIENT_MOVING.remove(this);
+        CLIENT_TANKS.remove(this);
         if (identity != 0 && level instanceof ServerLevel serverLevel && serverLevel.getServer().isSameThread())
             FluidWorldAuthority.find(serverLevel.getServer()).ifPresent(world -> world.deviceUnloaded(identity));
     }

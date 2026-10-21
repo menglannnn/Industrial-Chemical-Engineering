@@ -1,6 +1,7 @@
 package com.wormzjl.icheme.runtime.fluid;
 
 import com.wormzjl.icheme.science.material.MaterialCatalog;
+import com.wormzjl.icheme.science.math.DeterministicMath;
 import java.util.List;
 
 /**
@@ -47,10 +48,10 @@ public record TankDisplay(float level,float waterLevel,float height,int oilArgb,
             var look=catalog.componentAppearance(packageId,components.get(c));int rgb=look.rgb();
             r+=w*log((rgb>>16&255)/255.0);g+=w*log((rgb>>8&255)/255.0);b+=w*log((rgb&255)/255.0);clear+=w*log(look.transparency());
         }
-        int alpha=(int)Math.round((1-Math.exp(clear))*255);
+        int alpha=(int)Math.round((1-DeterministicMath.exp(clear))*255);
         return alpha<<24|channel(r)<<16|channel(g)<<8|channel(b);
     }
     /** {@code ln x}, floored at the 8-bit channel's darkest step so a black or opaque component does not take the log to minus infinity. */
-    private static double log(double x){return Math.log(Math.max(x,.5/255));}
-    private static int channel(double logTransmittance){return (int)Math.round(Math.min(1,Math.exp(logTransmittance))*255);}
+    private static double log(double x){return DeterministicMath.log(Math.max(x,.5/255));}
+    private static int channel(double logTransmittance){return (int)Math.round(Math.min(1,DeterministicMath.exp(logTransmittance))*255);}
 }

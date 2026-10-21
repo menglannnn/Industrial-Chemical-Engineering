@@ -1,0 +1,277 @@
+package com.wormzjl.icheme.client;
+
+import com.mojang.blaze3d.systems.RenderSystem;
+import com.mojang.blaze3d.vertex.BufferBuilder;
+import com.mojang.blaze3d.vertex.ByteBufferBuilder;
+import com.mojang.blaze3d.vertex.DefaultVertexFormat;
+import com.mojang.blaze3d.vertex.VertexBuffer;
+import com.mojang.blaze3d.vertex.VertexConsumer;
+import com.mojang.blaze3d.vertex.VertexFormat;
+import com.wormzjl.icheme.IChemE;
+import com.wormzjl.icheme.client.model.EquipmentShellModel;
+import com.wormzjl.icheme.runtime.fluid.TankDisplay;
+import com.wormzjl.icheme.runtime.fluid.TankWatchers;
+import com.wormzjl.icheme.science.equipment.EquipmentShape;
+import com.wormzjl.icheme.science.equipment.Mesh;
+import com.wormzjl.icheme.science.equipment.Paint;
+import com.wormzjl.icheme.science.equipment.ShapeRasterizer;
+import com.wormzjl.icheme.world.level.block.entity.EquipmentShellBlockEntity;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.renderer.LevelRenderer;
+import net.minecraft.client.renderer.RenderType;
+import net.minecraft.client.renderer.ShaderInstance;
+import net.minecraft.client.renderer.texture.OverlayTexture;
+import net.minecraft.client.renderer.texture.TextureAtlasSprite;
+import net.minecraft.core.BlockPos;
+import net.minecraft.resources.ResourceLocation;
+import net.minecraft.world.inventory.InventoryMenu;
+import net.minecraft.world.phys.AABB;
+import net.neoforged.api.distmarker.Dist;
+import net.neoforged.bus.api.SubscribeEvent;
+import net.neoforged.fml.common.EventBusSubscriber;
+import net.neoforged.neoforge.client.event.ClientTickEvent;
+import net.neoforged.neoforge.client.event.RenderLevelStageEvent;
+import org.jetbrains.annotations.Nullable;
+import org.joml.Matrix4f;
+
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.Map;
+
+/**
+ * A floating-roof tank's client-drawn parts (batch 2026-10-21-floating-roof-tanks, plan section 3.4, owner decisions FR4
+ * and FR7): the roof floats with its underside on the liquid ({@link ShapeRasterizer.Floating#underside}), the rolling
+ * ladder turns down until its foot rests on the roof's deck ({@link ShapeRasterizer.Floating#pitch}), and the sight glass
+ * shows the free water and the hydrocarbon liquid over it as two bands in their colours. The level and the colours are the
+ * tank's display ({@link TankDisplays}), which the server sends on its own schedule to a client that watches the tank:
+ * once a second this watches the tanks whose node cells stand within {@link #WATCH_RANGE}, nearest first, and releases the
+ * others. A tank with no display yet shows its roof landed on its legs and an empty glass.
+ *
+ * <p>The roof and the ladder are drawn as {@link MachineAnimation} draws moving parts: uploaded to the GPU once per tank
+ * shape, part, paint and light, then one matrix and one draw call each a frame. The glass's bands are drawn translucent
+ * on the block atlas, as {@link EquipmentGhost} draws, so that a shader pack keeps them.</p>
+ */
+@EventBusSubscriber(modid = IChemE.MOD_ID, value = Dist.CLIENT)
+public final class TankRenderer {
+    /** Watched within this, blocks: inside the server's {@link TankWatchers#RANGE}, so a watch it keeps is never one the server has dropped. */
+    static final double WATCH_RANGE = TankWatchers.RANGE - 8;
+    /** Tanks are drawn while their node cell stands within this of the camera, blocks. */
+    private static final double DRAW_RANGE = 192;
+    private static final int WATCH_TICKS = 20;
+    private static final int MAX_BUFFERS = 64;
+    /** The sight glass's bands: their half width round the column (the glass is 0.05 m), and the least opacity a clear liquid shows with. */
+    private static final double BAND = .06;
+    private static final int LEAST_ALPHA = 96;
+    private static final ResourceLocation WHITE = ResourceLocation.withDefaultNamespace("block/white_concrete");
+    private static final RenderType BANDS = RenderType.entityTranslucentCull(InventoryMenu.BLOCK_ATLAS);
+    private static final Map<Key, VertexBuffer> BUFFERS = new HashMap<>();
+    private static @Nullable TextureAtlasSprite builtWith;
+    private static int age;
+
+    private record Key(EquipmentShape shape, boolean roof, Paint paint, int light) {
+    }
+
+    private TankRenderer() {
+    }
+
+    /** Once a second: watch the tanks within range, nearest first, and release the rest. */
+    @SubscribeEvent
+    public static void tick(ClientTickEvent.Post event) {
+        if (age++ % WATCH_TICKS != 0) return;
+        var mc = Minecraft.getInstance();
+        if (mc.level == null || mc.player == null || mc.getConnection() == null) return;
+        var player = mc.player.position();
+        var near = new ArrayList<BlockPos>();
+        for (var cell : EquipmentShellBlockEntity.clientTankCells())
+            if (!cell.isRemoved() && cell.getLevel() == mc.level && cell.getBlockPos().distToCenterSqr(player) <= WATCH_RANGE * WATCH_RANGE) near.add(cell.getBlockPos());
+        near.sort(Comparator.comparingDouble(pos -> pos.distToCenterSqr(player)));
+        TankDisplays.track(near);
+    }
+
+    /** The roof and the ladder, solid, where the tank's liquid puts them. */
+    @SubscribeEvent
+    public static void render(RenderLevelStageEvent event) {
+        if (event.getStage() != RenderLevelStageEvent.Stage.AFTER_SOLID_BLOCKS) return;
+        var level = Minecraft.getInstance().level;
+        var marker = EquipmentShellModel.sprite(Mesh.Material.PIPE);
+        if (level == null || marker == null) return;
+        var cells = EquipmentShellBlockEntity.clientTankCells();
+        if (cells.isEmpty()) return;
+        if (marker != builtWith) {
+            release();
+            builtWith = marker;
+        }
+        var camera = event.getCamera().getPosition();
+        var frustum = event.getFrustum();
+        var type = RenderType.solid();
+        ShaderInstance shader = null;
+        VertexBuffer bound = null;
+        for (var cell : cells) {
+            var shape = cell.shape();
+            var origin = cell.origin();
+            if (cell.isRemoved() || cell.getLevel() != level || shape == null || origin == null) continue;
+            if (cell.getBlockPos().distToCenterSqr(camera) > DRAW_RANGE * DRAW_RANGE) continue;
+            if (!frustum.isVisible(new AABB(origin.getX(), origin.getY(), origin.getZ(), origin.getX() + shape.sizeX(), origin.getY() + shape.sizeY(), origin.getZ() + shape.sizeZ())))
+                continue;
+            var f = ShapeRasterizer.floating(shape);
+            if (f == null) continue;
+            double liquid = level(cell.getBlockPos());
+            double lift = f.underside(liquid) - f.landed(), pitch = f.pitch(liquid);
+            if (shader == null) {
+                type.setupRenderState();
+                shader = RenderSystem.getShader();
+                if (shader == null) {
+                    type.clearRenderState();
+                    return;
+                }
+                shader.setDefaultUniforms(VertexFormat.Mode.TRIANGLES, event.getModelViewMatrix(), event.getProjectionMatrix(), Minecraft.getInstance().getWindow());
+                if (shader.CHUNK_OFFSET != null) shader.CHUNK_OFFSET.set(0F, 0F, 0F);
+                shader.apply();
+            }
+            if (shader.MODEL_VIEW_MATRIX == null) continue;
+            double ox = origin.getX() - camera.x, oy = origin.getY() - camera.y, oz = origin.getZ() - camera.z;
+            // The roof: lifted from where it lies landed, lit at its deck's middle.
+            int roofLight = LevelRenderer.getLightColor(level, BlockPos.containing(origin.getX() + shape.sizeX() / 2.0, origin.getY() + f.underside(liquid) + f.deck() + .5, origin.getZ() + shape.sizeZ() / 2.0));
+            var pose = new Matrix4f(event.getModelViewMatrix()).translate((float) ox, (float) (oy + lift), (float) oz);
+            bound = draw(shader, buffer(new Key(shape, true, cell.paint(), roofLight), f), pose, bound);
+            // The ladder: turned down about its axis at its pivot, its foot towards the axis going down.
+            double[] p = f.pivot(), a = f.axis(), along = f.along();
+            double down = a[2] * along[0] - a[0] * along[2] > 0 ? -1 : 1;
+            int ladderLight = LevelRenderer.getLightColor(level, BlockPos.containing(origin.getX() + p[0], origin.getY() + p[1], origin.getZ() + p[2]));
+            pose = new Matrix4f(event.getModelViewMatrix()).translate((float) (ox + p[0]), (float) (oy + p[1]), (float) (oz + p[2]))
+                    .rotate((float) (down * pitch), (float) a[0], (float) a[1], (float) a[2]);
+            bound = draw(shader, buffer(new Key(shape, false, cell.paint(), ladderLight), f), pose, bound);
+        }
+        if (shader != null) {
+            shader.clear();
+            VertexBuffer.unbind();
+            type.clearRenderState();
+        }
+    }
+
+    /** The sight glass's bands, translucent: free water from the glass's foot, the hydrocarbon liquid over it to the level. */
+    @SubscribeEvent
+    public static void renderGlass(RenderLevelStageEvent event) {
+        if (event.getStage() != RenderLevelStageEvent.Stage.AFTER_PARTICLES) return;
+        var mc = Minecraft.getInstance();
+        var level = mc.level;
+        if (level == null) return;
+        var cells = EquipmentShellBlockEntity.clientTankCells();
+        if (cells.isEmpty()) return;
+        var sprite = mc.getModelManager().getAtlas(InventoryMenu.BLOCK_ATLAS).getSprite(WHITE);
+        float u = sprite.getU(.5F), v = sprite.getV(.5F);
+        var camera = event.getCamera().getPosition();
+        var pose = event.getPoseStack();
+        var buffers = mc.renderBuffers().bufferSource();
+        VertexConsumer consumer = null;
+        for (var cell : cells) {
+            var shape = cell.shape();
+            var origin = cell.origin();
+            var display = TankDisplays.get(cell.getBlockPos());
+            if (display == null || cell.isRemoved() || cell.getLevel() != level || shape == null || origin == null) continue;
+            if (cell.getBlockPos().distToCenterSqr(camera) > DRAW_RANGE * DRAW_RANGE) continue;
+            var f = ShapeRasterizer.floating(shape);
+            if (f == null) continue;
+            double low = f.glassLow(), high = f.glassHigh(), water = Math.min(display.waterLevel(), high), oil = Math.min(display.level(), high);
+            double[] g = f.glass();
+            if (!event.getFrustum().isVisible(new AABB(origin.getX() + g[0] - BAND, origin.getY() + low, origin.getZ() + g[1] - BAND, origin.getX() + g[0] + BAND, origin.getY() + high, origin.getZ() + g[1] + BAND)))
+                continue;
+            int light = LevelRenderer.getLightColor(level, BlockPos.containing(origin.getX() + g[0], origin.getY() + (low + high) / 2, origin.getZ() + g[1]));
+            if (consumer == null) consumer = buffers.getBuffer(BANDS);
+            pose.pushPose();
+            pose.translate(origin.getX() + g[0] - camera.x, origin.getY() - camera.y, origin.getZ() + g[1] - camera.z);
+            var last = pose.last();
+            if (water > low) band(consumer, last, low, water, display.waterArgb(), light, u, v);
+            if (oil > Math.max(low, water)) band(consumer, last, Math.max(low, water), oil, display.oilArgb(), light, u, v);
+            pose.popPose();
+        }
+        if (consumer != null) buffers.endBatch(BANDS);
+    }
+
+    /** The liquid's depth over the tank's floor, m, from its display; 0 (the roof on its legs) before the first one. */
+    private static double level(BlockPos node) {
+        TankDisplay display = TankDisplays.get(node);
+        return display == null ? 0 : display.level();
+    }
+
+    /** One band: a square prism round the glass's column from {@code y0} to {@code y1}, its four sides and its top. */
+    private static void band(VertexConsumer consumer, com.mojang.blaze3d.vertex.PoseStack.Pose last, double y0, double y1, int argb, int light, float u, float v) {
+        int r = argb >> 16 & 255, g = argb >> 8 & 255, b = argb & 255, alpha = Math.max(argb >>> 24, LEAST_ALPHA);
+        float w = (float) BAND, lo = (float) y0, hi = (float) y1;
+        float[][] sides = {{-w, -w, w, -w, 0, -1}, {w, -w, w, w, 1, 0}, {w, w, -w, w, 0, 1}, {-w, w, -w, -w, -1, 0}};
+        for (var s : sides) {
+            vertex(consumer, last, s[0], lo, s[1], r, g, b, alpha, u, v, light, s[4], 0, s[5]);
+            vertex(consumer, last, s[2], lo, s[3], r, g, b, alpha, u, v, light, s[4], 0, s[5]);
+            vertex(consumer, last, s[2], hi, s[3], r, g, b, alpha, u, v, light, s[4], 0, s[5]);
+            vertex(consumer, last, s[0], hi, s[1], r, g, b, alpha, u, v, light, s[4], 0, s[5]);
+        }
+        vertex(consumer, last, -w, hi, -w, r, g, b, alpha, u, v, light, 0, 1, 0);
+        vertex(consumer, last, -w, hi, w, r, g, b, alpha, u, v, light, 0, 1, 0);
+        vertex(consumer, last, w, hi, w, r, g, b, alpha, u, v, light, 0, 1, 0);
+        vertex(consumer, last, w, hi, -w, r, g, b, alpha, u, v, light, 0, 1, 0);
+    }
+
+    private static void vertex(VertexConsumer consumer, com.mojang.blaze3d.vertex.PoseStack.Pose last, float x, float y, float z, int r, int g, int b, int a, float u, float v, int light,
+                               float nx, float ny, float nz) {
+        consumer.addVertex(last, x, y, z).setColor(r, g, b, a).setUv(u, v).setOverlay(OverlayTexture.NO_OVERLAY).setLight(light).setNormal(last, nx, ny, nz);
+    }
+
+    private static VertexBuffer draw(ShaderInstance shader, @Nullable VertexBuffer buffer, Matrix4f pose, @Nullable VertexBuffer bound) {
+        if (buffer == null || shader.MODEL_VIEW_MATRIX == null) return bound;
+        shader.MODEL_VIEW_MATRIX.set(pose);
+        shader.MODEL_VIEW_MATRIX.upload();
+        if (buffer != bound) buffer.bind();
+        buffer.draw();
+        return buffer;
+    }
+
+    private static @Nullable VertexBuffer buffer(Key key, ShapeRasterizer.Floating f) {
+        var buffer = BUFFERS.get(key);
+        if (buffer != null) return buffer;
+        if (BUFFERS.size() >= MAX_BUFFERS) release();
+        buffer = build(key.roof() ? f.roof() : f.ladder(), key.paint(), key.light());
+        if (buffer != null) BUFFERS.put(key, buffer);
+        return buffer;
+    }
+
+    /**
+     * A part's triangles as the shell model bakes them: the directional shade of their smooth normals, a painted material
+     * tinted by its channel of the tank's paint as the chunk model tints it, each material's sprite, one light.
+     */
+    private static @Nullable VertexBuffer build(java.util.List<Mesh.Polygon> polygons, Paint paint, int light) {
+        int vertices = 0;
+        for (var polygon : polygons) vertices += 3 * (polygon.size() - 2);
+        int[] tints = {Paint.tint(paint.body()), Paint.tint(paint.structure())};
+        try (var bytes = new ByteBufferBuilder(Math.max(256, vertices * DefaultVertexFormat.BLOCK.getVertexSize()))) {
+            var builder = new BufferBuilder(bytes, VertexFormat.Mode.TRIANGLES, DefaultVertexFormat.BLOCK);
+            for (var polygon : polygons) {
+                var sprite = EquipmentShellModel.sprite(polygon.material());
+                if (sprite == null) return null;
+                int channel = polygon.material().channel(), tint = channel < 0 || channel >= tints.length ? 0xFFFFFF : tints[channel];
+                double[] p = polygon.positions(), uv = polygon.uvs(), n = polygon.normals();
+                for (int k = 1; k + 1 < polygon.size(); k++)
+                    for (int c : new int[]{0, k, k + 1}) {
+                        int shade = EquipmentShellModel.shade(polygon, c);
+                        builder.addVertex((float) p[3 * c], (float) p[3 * c + 1], (float) p[3 * c + 2])
+                                .setColor(shade * (tint >> 16 & 255) / 255, shade * (tint >> 8 & 255) / 255, shade * (tint & 255) / 255, 255)
+                                .setUv(sprite.getU((float) uv[2 * c]), sprite.getV((float) uv[2 * c + 1]))
+                                .setLight(light)
+                                .setNormal((float) n[3 * c], (float) n[3 * c + 1], (float) n[3 * c + 2]);
+                    }
+            }
+            var mesh = builder.build();
+            if (mesh == null) return null;
+            var buffer = new VertexBuffer(VertexBuffer.Usage.STATIC);
+            buffer.bind();
+            buffer.upload(mesh);
+            VertexBuffer.unbind();
+            return buffer;
+        }
+    }
+
+    private static void release() {
+        BUFFERS.values().forEach(VertexBuffer::close);
+        BUFFERS.clear();
+    }
+}
