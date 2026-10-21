@@ -825,8 +825,10 @@ public final class ProcessUnit {
         round(a, y, c0, end, r);
 
         double tube = Math.min(1, .4 * d), shellOd = Math.min(1, d / 2), flange = PipeSizes.flange(shellOd);
-        nozzles.add(radial(Role.TUBE_INLET, a, y, r, n, zn, -1, tube, ColumnStructure.size(.25 * d, tube)));
-        nozzles.add(radial(Role.TUBE_OUTLET, a, y, r, n, zn, 1, tube, ColumnStructure.size(.25 * d, tube)));
+        // Owner request 2026-10-21: nozzle roots follow the pipe; the channel's necks have half its diameter, 0.1 m inside its flanges.
+        double tubeRoom = Math.min(PipeSizes.MAX_OUTSIDE, d / 2);
+        nozzles.add(radial(Role.TUBE_INLET, a, y, r, n, zn, -1, tubeRoom, ColumnStructure.size(.25 * d, tube)));
+        nozzles.add(radial(Role.TUBE_OUTLET, a, y, r, n, zn, 1, tubeRoom, ColumnStructure.size(.25 * d, tube)));
         // The shell nozzles near the tubesheets, two rows at least behind the channel's (one free block between pipes).
         double zIn = Math.max(Math.floor(s1 - flange / 2 - .1 - .5) + .5, zn + 2), zOut = Math.max(Math.ceil(s0 + flange / 2 + .1 - .5) + .5, zn + 2);
         nozzles.add(radial(Role.SHELL_INLET, a, y, r, n, zIn, 1, shellOd, ColumnStructure.size(.3 * d, shellOd)));
@@ -870,18 +872,22 @@ public final class ProcessUnit {
         round(a, y, s0, s1, rk);
 
         double tube = Math.min(1, .4 * db), liquid = Math.min(1, db / 2), vapour = Math.min(1, dk / 2), flange = PipeSizes.flange(liquid);
-        nozzles.add(radial(Role.TUBE_INLET, a, y, rb, nb, zn, 1, tube, ColumnStructure.size(.25 * db, tube)));
-        nozzles.add(radial(Role.TUBE_OUTLET, a, y, rb, nb, zn, -1, tube, ColumnStructure.size(.15 * db, tube)));
-        // The feed near the cone, two rows at least behind the channel's outlet (one free block between pipes).
-        double zFeed = Math.max(Math.ceil(s0 + flange / 2 + .1 - .5) + .5, zn + 2);
-        nozzles.add(radial(Role.FEED, a, y, rk, n, zFeed, -1, liquid, ColumnStructure.size(.15 * db, liquid)));
+        // Owner request 2026-10-21: nozzle roots follow the pipe; the channel's necks have half its diameter.
+        double tubeRoom = Math.min(PipeSizes.MAX_OUTSIDE, db / 2);
+        nozzles.add(radial(Role.TUBE_INLET, a, y, rb, nb, zn, 1, tubeRoom, ColumnStructure.size(.25 * db, tube)));
+        nozzles.add(radial(Role.TUBE_OUTLET, a, y, rb, nb, zn, -1, tubeRoom, ColumnStructure.size(.15 * db, tube)));
+        // The feed near the cone, two rows at least behind the channel's outlet (one free block between pipes); its neck
+        // has half the kettle's diameter, on the shell clear of the cone.
+        double zFeed = Math.max(Math.ceil(s0 + flange / 2 + .1 - .5) + .5, zn + 2), feedRoom = Math.min(Math.min(PipeSizes.MAX_OUTSIDE, dk / 2), 2 * (zFeed - s0 - .05));
+        nozzles.add(radial(Role.FEED, a, y, rk, n, zFeed, -1, Math.max(liquid, feedRoom), ColumnStructure.size(.15 * db, liquid)));
         nozzles.add(radial(Role.VAPOUR_OUTLET, a, y, rk, n, Math.floor((s0 + s1) / 2) + .5, 1, vapour, ColumnStructure.size(.3 * dk, vapour)));
-        // The product: low on the back head, at the lowest cell centre 0.3 m over the shell's bottom.
+        // The product: low on the back head, at the lowest cell centre 0.3 m over the shell's bottom; its neck within 0.85
+        // of the head's radius from the axis, half the kettle's diameter at most.
         double yP = Math.ceil(shape.support() + .3 - .5) + .5, e = y - yP, depth = dk / 4;
-        double od = Math.min(liquid, 2 * (.85 * rk - Math.abs(e)));
-        double edge = (Math.abs(e) + od / 2) / rk, under = depth * Math.sqrt(Math.max(0, 1 - edge * edge)), start = s1 + under - .03;
-        double nearest = Math.max(0, Math.abs(e) - od / 2) / rk, bulge = depth * Math.sqrt(Math.max(0, 1 - nearest * nearest));
-        nozzles.add(new Nozzle(Role.LIQUID_OUTLET, new double[]{a, yP, start}, 2, 1, Math.ceil(s1 + depth + EquipmentShape.STAND_OUT) - start, od,
+        double od = Math.min(liquid, 2 * (.85 * rk - Math.abs(e))), room = Math.max(od, Math.min(Math.min(PipeSizes.MAX_OUTSIDE, dk / 2), 2 * (.85 * rk - Math.abs(e))));
+        double edge = (Math.abs(e) + room / 2) / rk, under = depth * Math.sqrt(Math.max(0, 1 - edge * edge)), start = s1 + under - .03;
+        double nearest = Math.max(0, Math.abs(e) - room / 2) / rk, bulge = depth * Math.sqrt(Math.max(0, 1 - nearest * nearest));
+        nozzles.add(new Nozzle(Role.LIQUID_OUTLET, new double[]{a, yP, start}, 2, 1, Math.ceil(s1 + depth + EquipmentShape.STAND_OUT) - start, room,
                 ColumnStructure.size(.15 * db, od), 0, bulge - under + .03));
         double w = saddleWidth(rk), length = s1 - s0;
         saddle(saddleAt(s0 + .2 * length, w, s0, s1, zFeed), a, y, rk, w, 0);
@@ -966,8 +972,11 @@ public final class ProcessUnit {
                         Material.STEELWORK, true);
         // The process in at the front, on top; out at the back, underneath.
         double zIn = .5, zOut = end + .5;
+        // Owner request 2026-10-21: nozzle roots follow the pipe; a single train's inlet neck has its header's top, 0.05 m
+        // in from its edges.
+        double inRoom = Math.max(stub, Math.min(PipeSizes.MAX_OUTSIDE, Math.min(h - .1, w - .2)));
         if (trains == 1) nozzles.add(new Nozzle(Role.PROCESS_INLET, new double[]{a, high - .03, zIn}, 1, 1, Math.ceil(high + EquipmentShape.STAND_OUT) - high + .03,
-                stub, stub, 0, .03));
+                inRoom, stub, 0, .03));
         else {
             double ym = high + .1 + manifold / 2;
             manifold(x0 + w / 2, x1 - w / 2, ym, zIn, manifold);
@@ -1119,7 +1128,10 @@ public final class ProcessUnit {
         solids.add(Solid.rod(new double[]{a, 0, a}, 1, exit, chest, rc, 0));
         solids.add(Solid.rod(new double[]{a, 0, a}, 1, chest, top, .225 * s, 0));
         round(a, a, chamber, chest, rc, 1);
-        nozzles.add(radialSide(Role.SUCTION, a, row + .5, a, rc, n, -1, s, s));
+        // Owner request 2026-10-21: nozzle roots follow the pipe; the suction's neck within 0.85 of the chamber's radius
+        // across and 0.05 m inside its ends along it.
+        double suctionRoom = Math.max(s, Math.min(PipeSizes.MAX_OUTSIDE, Math.min(1.7 * rc, 1.5 * s - .1)));
+        nozzles.add(radialSide(Role.SUCTION, a, row + .5, a, rc, n, -1, suctionRoom, s));
         // The motive inlet's flange on the block face over the steam chest, and at least two rows over the suction's (one
         // free block between their pipes): a small ejector's stub runs up to it.
         double motive = Math.max(PipeSizes.MIN_OUTSIDE, .45 * s), motiveFace = Math.max(Math.ceil(top + EquipmentShape.STAND_OUT), row + 2);
@@ -2262,11 +2274,18 @@ public final class ProcessUnit {
         // The convection coil in near the top of its front header box and out near its bottom; the radiant coil in at the
         // front under the roof, two rows under the convection outlet, and out just over the floor; fuel gas to the ring
         // header's front from the front. Every pipe block keeps one free block from the next.
-        double feed = ColumnStructure.size(.1 + .02 * dia, process), zIn = a - hz - HEADER_BOX + .03;
-        nozzles.add(front(Role.CONVECTION_INLET, a, Math.floor(y2 - .7) + .5, zIn, process, feed));
-        nozzles.add(front(Role.CONVECTION_OUTLET, a, yConvection, zIn, process, feed));
-        nozzles.add(radialSide(Role.RADIANT_INLET, a, Math.min(Math.floor(y1 - .7 - process / 2) + .5, yConvection - 2), a, r, n, -1, process, feed));
-        nozzles.add(radialSide(Role.RADIANT_OUTLET, a, floor + .5, a, r, n, -1, process, feed));
+        // Owner request 2026-10-21: nozzle roots follow the pipe. Each neck's room: the convection's on its header box
+        // (hx - 0.1 each side, from 0.2 over the roof to 0.2 under the section's top) 0.05 m inside its edges; the radiant
+        // inlet's under the roof; the radiant outlet's over the floor, in the hearth platform's front gap (1.2 m).
+        double feed = ColumnStructure.size(.1 + .02 * dia, process), zIn = a - hz - HEADER_BOX + .03, yConvIn = Math.floor(y2 - .7) + .5;
+        double yRadiantIn = Math.min(Math.floor(y1 - .7 - process / 2) + .5, yConvection - 2), across = Math.min(PipeSizes.MAX_OUTSIDE, 2 * hx - .3);
+        double convInRoom = Math.max(process, Math.min(across, 2 * (y2 - .2 - yConvIn - .05)));
+        double convOutRoom = Math.max(process, Math.min(across, 2 * (yConvection - y1 - .2 - .05)));
+        double radiantInRoom = Math.max(process, Math.min(PipeSizes.MAX_OUTSIDE, 2 * (y1 - yRadiantIn - .05))), radiantOutRoom = Math.max(process, Math.min(PipeSizes.MAX_OUTSIDE, r));
+        nozzles.add(front(Role.CONVECTION_INLET, a, yConvIn, zIn, convInRoom, feed));
+        nozzles.add(front(Role.CONVECTION_OUTLET, a, yConvection, zIn, convOutRoom, feed));
+        nozzles.add(radialSide(Role.RADIANT_INLET, a, yRadiantIn, a, r, n, -1, radiantInRoom, feed));
+        nozzles.add(radialSide(Role.RADIANT_OUTLET, a, floor + .5, a, r, n, -1, radiantOutRoom, feed));
         // The ring's front: a burner's riser where there is an odd number, else the chord between two.
         double zFuel = a - circle * (burners % 2 == 1 ? 1 : DeterministicMath.cos(Math.PI / burners)) + .03, fuel = .3;
         nozzles.add(new Nozzle(Role.FUEL, new double[]{a, yFuel, zFuel}, 2, -1, zFuel - Math.floor(a - r - EquipmentShape.STAND_OUT), fuel,
@@ -2472,11 +2491,17 @@ public final class ProcessUnit {
         // (+x, seen from the constructor) and out of the right one; a twin's coils fed from an inlet manifold between their inner header boxes and joined in
         // an outlet manifold between their outer ones, both across the front of the aisle.
         double feed = ColumnStructure.size(.1 + .02 * w * Math.sqrt(cells), process), zIn = zs - HEADER_BOX + .03, yIn = Math.floor(y1 - 1.2) + .5, yOut = floor + .5;
-        nozzles.add(front(Role.CONVECTION_INLET, a, Math.floor(y2 - .7) + .5, zIn, process, feed));
-        nozzles.add(front(Role.CONVECTION_OUTLET, a, yConvection, zIn, process, feed));
+        // Owner request 2026-10-21: nozzle roots follow the pipe. Each neck's room on its header box, 0.05 m inside its
+        // edges: the convection's (0.1 in from the section's sides, from 0.2 over its floor to 0.2 under its top), a
+        // radiant one's (0.8 wide, from the floor to 0.4 under the eaves).
+        double yConvIn = Math.floor(y2 - .7) + .5, across = Math.min(PipeSizes.MAX_OUTSIDE, c1 - c0 - .3);
+        double convInRoom = Math.max(process, Math.min(across, 2 * (y2 - .2 - yConvIn - .05))), convOutRoom = Math.max(process, Math.min(across, 2 * (yConvection - yr - .2 - .05)));
+        nozzles.add(front(Role.CONVECTION_INLET, a, yConvIn, zIn, convInRoom, feed));
+        nozzles.add(front(Role.CONVECTION_OUTLET, a, yConvection, zIn, convOutRoom, feed));
         if (cells == 1) {
-            nozzles.add(front(Role.RADIANT_INLET, a + out, yIn, zIn, process, feed));
-            nozzles.add(front(Role.RADIANT_OUTLET, a - out, yOut, zIn, process, feed));
+            double radiantInRoom = Math.max(process, Math.min(.7, 2 * (y1 - .4 - yIn - .05))), radiantOutRoom = Math.max(process, Math.min(.7, 2 * (yOut - floor - .05)));
+            nozzles.add(front(Role.RADIANT_INLET, a + out, yIn, zIn, radiantInRoom, feed));
+            nozzles.add(front(Role.RADIANT_OUTLET, a - out, yOut, zIn, radiantOutRoom, feed));
         } else {
             double manifold = feed / 2 + .05, zm = zs - HEADER_BOX - manifold - .1, face = zs - HEADER_BOX;
             for (double[] ends : new double[][]{{cellX[0] + out, cellX[1] - out, yIn}, {cellX[0] - out, cellX[1] + out, yOut}})

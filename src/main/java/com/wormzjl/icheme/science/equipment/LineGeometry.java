@@ -31,8 +31,6 @@ public final class LineGeometry {
     public static final int[][] STEPS = {{0, -1, 0}, {0, 1, 0}, {0, 0, -1}, {0, 0, 1}, {-1, 0, 0}, {1, 0, 0}};
     /** A line nozzle with no pipe met and no size of its own: 0.1 m, a 3" line. */
     public static final double NOZZLE = .1;
-    /** The largest device nozzle: 0.6 m, a 24" line. */
-    public static final double MAX_NOZZLE = .6;
     private static final double[] CENTRE = {.5, .5, .5};
     private static final int UP = 1, NORTH = 2, SOUTH = 3;
 
@@ -246,20 +244,12 @@ public final class LineGeometry {
 
     // ---- Pipeline devices ------------------------------------------------------------------------------------------
 
-    /**
-     * The outside of a device's nozzle to a line of outside {@code line}: the line's own, at most 0.6 m (24"), where a
-     * larger line narrows in a reducer at the device. A pipe meeting a device flanges at this size too.
-     */
-    public static double nozzle(double line) {
-        return Math.min(MAX_NOZZLE, line);
-    }
-
     /** The size of the line through an in-line device: the larger pipe met on its axis, else its own size (at least a 3" stub). */
     private static double line(Key key) {
         int a = key.facing() & ~1;
         double od = Math.max(key.face(a), key.face(a ^ 1)) > 0 ? PipeSizes.outsideOf(Math.max(key.face(a), key.face(a ^ 1)))
                 : Math.max(NOZZLE, PipeSizes.outsideOf(key.outside()));
-        return nozzle(od);
+        return od;
     }
 
     /**
@@ -269,7 +259,7 @@ public final class LineGeometry {
     private static void lineNozzles(Mesh m, Key key, double from, double od) {
         int a = key.facing() & ~1;
         for (int i : new int[]{a, a ^ 1}) {
-            double size = key.face(i) > 0 ? nozzle(PipeSizes.outsideOf(key.face(i))) : od;
+            double size = key.face(i) > 0 ? PipeSizes.outsideOf(key.face(i)) : od;
             arm(m, i, from, size, End.flanged(size), ref(i), PipeSizes.sides(size), true);
         }
     }
@@ -278,7 +268,7 @@ public final class LineGeometry {
     private static void faceNozzles(Mesh m, Key key, double[] from) {
         for (int i = 0; i < 6; i++) {
             if (!key.connected(i) || key.face(i) == 0) continue;
-            double size = nozzle(PipeSizes.outsideOf(key.face(i)));
+            double size = PipeSizes.outsideOf(key.face(i));
             arm(m, i, from[i], size, End.flanged(size), ref(i), PipeSizes.sides(size), true);
         }
     }

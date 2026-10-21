@@ -82,6 +82,11 @@ class ShapeRasterizerTest {
             // The ladder forms with their rest platforms (owner change 2026-10-21): two rests up a tall small tank, one beside a small sphere.
             EquipmentShape.storage(Kind.TANK, 5, 22, Heading.WEST, 0), EquipmentShape.storage(Kind.SPHERE, 9, 1, Heading.EAST, 8));
 
+    /** The drums, columns, units and storage sampled here. */
+    static List<EquipmentShape> shapes() {
+        return SHAPES;
+    }
+
     @Test
     void rejectsShapesOffTheGrid() {
         for (double[] bad : new double[][]{{.25, 3}, {2.25, 3}, {10.5, 3}, {Double.NaN, 3}, {2, 0}, {2, 1.5}, {2, 65}, {2, Double.POSITIVE_INFINITY}})

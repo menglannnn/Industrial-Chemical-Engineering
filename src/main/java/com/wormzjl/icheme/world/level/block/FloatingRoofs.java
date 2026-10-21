@@ -38,6 +38,13 @@ public final class FloatingRoofs {
     static final double LIFT = .6;
     /** How near the rolling ladder's line an entity's middle must be to climb it, m. */
     static final double LADDER_REACH = .8;
+    /** How far past its head, up its line, the rolling ladder still holds a climber, m. */
+    static final double HEAD_REACH = 1.2;
+    /**
+     * Climbing the rolling ladder ({@link #climb}): the least pace up its slope that climbs, the most a tick rises (a
+     * running climb), and the fall a tick's gravity takes, m per tick.
+     */
+    static final double CLIMB_PACE = .01, MAX_CLIMB = .3, GRAVITY = .08;
     /** The surface's height steps, per metre: the collision shapes of a cell are cached by step. */
     static final int STEPS = 64;
     private static final VoxelShape[] SLABS = new VoxelShape[STEPS + 1];
@@ -181,13 +188,18 @@ public final class FloatingRoofs {
     /** Whether a body whose middle is at {@code x}, {@code y}, {@code z} in the cell {@code cell} is on the rolling ladder at game tick {@code tick}. */
     boolean ladder(BlockPos cell, double x, double y, double z, long tick) {
         var tank = at(cell);
-        if (tank == null) return false;
+        return tank != null && onLadder(tank, x, y, z, tick);
+    }
+
+    /** Whether a body whose middle is at {@code x}, {@code y}, {@code z} is on {@code tank}'s rolling ladder at game tick {@code tick}. */
+    private static boolean onLadder(Tank tank, double x, double y, double z, long tick) {
         var roof = tank.roof;
         double pitch = roof.pitch(tank.level(tick)), c = DeterministicMath.cos(pitch), s = DeterministicMath.sin(pitch);
         double[] p = roof.pivot(), a = roof.along();
         double dx = a[0] * c, dy = -s, dz = a[2] * c;
         double ex = x - (tank.origin.getX() + p[0]), ey = y - (tank.origin.getY() + p[1]), ez = z - (tank.origin.getZ() + p[2]);
-        double t = Math.max(0, Math.min(roof.length(), ex * dx + ey * dy + ez * dz));
+        // Past its head too, by a player's height: a climber keeps hold until stepping onto the platform.
+        double t = Math.max(-HEAD_REACH, Math.min(roof.length(), ex * dx + ey * dy + ez * dz));
         double rx = ex - t * dx, ry = ey - t * dy, rz = ez - t * dz;
         return rx * rx + ry * ry + rz * rz < LADDER_REACH * LADDER_REACH;
     }
@@ -212,13 +224,37 @@ public final class FloatingRoofs {
         }
     }
 
-    /** Client, once a tick: the client's own player rides the roof under it. */
+    /** Client, once a tick: the client's own player rides the roof under it, and walks up the rolling ladder it is on. */
     public static void carry(Player player) {
         if (player.isSpectator() || player.getAbilities().flying || player.isPassenger()) return;
         var index = LEVELS.get(player.level());
         if (index == null || index.byNode.isEmpty()) return;
         long tick = player.level().getGameTime();
-        for (var tank : index.byNode.values()) lift(tank, player, tank.level(tick));
+        for (var tank : index.byNode.values()) {
+            lift(tank, player, tank.level(tick));
+            climb(tank, player, tick);
+        }
+    }
+
+    /**
+     * A player on the rolling ladder who walks towards its head climbs it along its slope (owner report 2026-10-21: the
+     * ladder did not work). A vanilla ladder climbs only against a wall or with a jump; this one is pitched, with no wall to
+     * walk into, so the player's pace up its slope sets its rise, plus what gravity takes in the next tick, at most a
+     * running climb. Down the slope, the ladder's own hold (a climbable's slowed fall) lets the player down.
+     */
+    private static void climb(Tank tank, Player player, long tick) {
+        double middle = player.getY() + player.getBbHeight() / 2;
+        if (!onLadder(tank, player.getX(), middle, player.getZ(), tick)) return;
+        var roof = tank.roof;
+        double pitch = roof.pitch(tank.level(tick));
+        double[] a = roof.along();
+        var motion = player.getDeltaMovement();
+        // Up the ladder is towards its head: against {@code along}, which runs from the head into the tank.
+        double up = -(motion.x * a[0] + motion.z * a[2]);
+        if (up <= CLIMB_PACE) return;
+        double rise = Math.min(MAX_CLIMB, up * DeterministicMath.sin(pitch) / Math.max(.2, DeterministicMath.cos(pitch)) + GRAVITY);
+        if (rise > motion.y) player.setDeltaMovement(motion.x, rise, motion.z);
+        player.resetFallDistance();
     }
 
     /** Lifts {@code entity} onto the roof of {@code tank} at {@code level} when its feet stand just under the surface. */

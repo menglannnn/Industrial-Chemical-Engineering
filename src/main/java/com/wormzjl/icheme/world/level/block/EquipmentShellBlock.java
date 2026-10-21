@@ -64,7 +64,9 @@ public final class EquipmentShellBlock extends BaseEntityBlock {
     public boolean isLadder(BlockState state, net.minecraft.world.level.LevelReader level, BlockPos position, net.minecraft.world.entity.LivingEntity entity) {
         if (!(level.getBlockEntity(position) instanceof EquipmentShellBlockEntity shell) || shell.shape() == null) return false;
         var origin = shell.origin();
-        return ShapeRasterizer.climbable(shell.shape(), entity.getX() - origin.getX(), entity.getY() - origin.getY(), entity.getZ() - origin.getZ());
+        // A floating-roof tank's rolling ladder passes its rim's cells too (owner report 2026-10-21: climbable from the platform).
+        return ShapeRasterizer.climbable(shell.shape(), entity.getX() - origin.getX(), entity.getY() - origin.getY(), entity.getZ() - origin.getZ())
+                || FloatingRoofs.of(entity.level()).ladder(position, entity, entity.level().getGameTime());
     }
 
     @Override

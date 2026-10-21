@@ -287,6 +287,33 @@ class ProcessUnitTest {
             }
     }
 
+    /**
+     * Nozzles whose necks met their unit at their largest before the roots followed the pipe (the room gate's baseline at
+     * 4b842f30, batch 2026-10-21-floating-roof-tanks), by kind and role: kept at their sizes, open items for the owner.
+     */
+    private static final Set<String> MET_BEFORE = Set.of("CONDENSING_TURBINE COOLANT_INLET", "EBULLATED_BED_REACTOR FEED",
+            "EBULLATED_BED_REACTOR HYDROGEN", "GRATE_BOILER BLOWDOWN", "GRATE_BOILER FEEDWATER", "KETTLE TUBE_INLET", "KETTLE TUBE_OUTLET",
+            "TRICKLE_BED_REACTOR FEED", "TRICKLE_BED_REACTOR HYDROGEN", "VERTICAL_HEATER FUEL");
+
+    /**
+     * Owner request 2026-10-21 (a nozzle's root follows the connected pipe, up to the room the vessel has there): every
+     * nozzle's neck at its largest size stands clear of the rest of its shape beyond {@link NozzleRoom#SURFACE} from where
+     * it leaves the vessel, on every gated size, drums, columns and storage too.
+     */
+    @Test
+    void everyNozzleNeckAtItsLargestStandsClear() {
+        var shapes = new ArrayList<>(everySize());
+        shapes.addAll(ShapeRasterizerTest.shapes());
+        var failures = new ArrayList<String>();
+        for (var shape : shapes)
+            for (int k = 0; k < shape.nozzles().size(); k++) {
+                var nozzle = shape.nozzles().get(k);
+                if (!MET_BEFORE.contains(shape.kind() + " " + nozzle.role()) && !NozzleRoom.clear(shape, k, nozzle.maxOd()))
+                    failures.add(shape + " " + nozzle.role() + " at " + nozzle.maxOd());
+            }
+        assertEquals(List.of(), failures);
+    }
+
     @Test
     void everyNozzleLeavesAFreeBlockForItsPipe() {
         for (var shape : everySize()) {

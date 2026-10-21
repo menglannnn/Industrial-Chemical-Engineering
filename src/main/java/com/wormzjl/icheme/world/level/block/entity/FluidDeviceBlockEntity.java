@@ -2,7 +2,6 @@ package com.wormzjl.icheme.world.level.block.entity;
 
 import com.wormzjl.icheme.registry.ModBlockEntities;
 import com.wormzjl.icheme.runtime.fluid.*;
-import com.wormzjl.icheme.science.equipment.LineGeometry;
 import com.wormzjl.icheme.science.equipment.PipeSizes;
 import com.wormzjl.icheme.science.fluid.topology.TopologyCompiler;
 import com.wormzjl.icheme.world.inventory.FluidDeviceMenu;
@@ -119,13 +118,14 @@ public final class FluidDeviceBlockEntity extends BlockEntity implements FluidVi
                 if(neighbour instanceof FluidDeviceBlockEntity other) {
                     boolean otherPipe=other.kind()==TopologyCompiler.Kind.PIPE;
                     // A pipe meets the next pipe's size (for its reducer), welded. At equipment both sides flange at the
-                    // device's nozzle size: the pipe's own, at most 24" (a larger pipe narrows to it); two devices bolt
-                    // together at the larger of their sizes.
+                    // pipe's size, whatever it is (owner request 2026-10-21: nozzles and their flanges follow the pipe
+                    // everywhere); two devices bolt together at the larger of their sizes.
                     if(pipe&&otherPipe)code=PipeSizes.code(PipeSizes.outside(other.bore));
-                    else{code=PipeSizes.code(LineGeometry.nozzle(PipeSizes.outside(pipe?bore:otherPipe?other.bore:Math.max(bore,other.bore))));flanged=true;}
+                    else{code=PipeSizes.code(PipeSizes.outside(pipe?bore:otherPipe?other.bore:Math.max(bore,other.bore)));flanged=true;}
                 } else if(pipe&&neighbour instanceof EquipmentShellBlockEntity shell) {
                     var nozzle=shell.nozzleFacing(direction.getOpposite());
-                    if(nozzle!=null){code=PipeSizes.code(Math.min(nozzle.maxOd(),PipeSizes.outside(bore)));flanged=true;}
+                    // The vessel's flange is the pipe's size (its neck follows up to the room the vessel has): the pipe's flange matches it.
+                    if(nozzle!=null){code=PipeSizes.code(PipeSizes.outside(bore));flanged=true;}
                 }
             }
             faces[direction.ordinal()]=(byte)(code|(flanged?FLANGED:0));

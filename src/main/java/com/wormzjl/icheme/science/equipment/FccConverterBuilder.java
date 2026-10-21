@@ -100,8 +100,11 @@ final class FccConverterBuilder {
         manway(0, 0, r, MANWAY, low + .9, n);
         manway(0, 0, r, MANWAY, high + .9, n);
         // Fresh catalyst in at the front over the bed; equilibrium catalyst out at the back just over the bottom tangent.
-        u.nozzles.add(ProcessUnit.radialSide(Role.CATALYST_INLET, O, y0 + 4.5, O, r, n, -1, .15, .1));
-        u.nozzles.add(ProcessUnit.radialSide(Role.CATALYST_OUTLET, O, y0 + .5, O, r, n, 1, .2, .15));
+        // Owner request 2026-10-21: nozzle roots follow the pipe. The inlet's neck in the platforms' gap at the front (their
+        // arcs stop 0.35 rad short of it) 0.1 m inside its edges; the outlet's 0.05 m over the bottom tangent, both at most 0.9.
+        double inRoom = Math.max(.15, Math.min(.9, 2 * ((r + .1) * DeterministicMath.sin(.35) - .1)));
+        u.nozzles.add(ProcessUnit.radialSide(Role.CATALYST_INLET, O, y0 + 4.5, O, r, n, -1, inRoom, .1));
+        u.nozzles.add(ProcessUnit.radialSide(Role.CATALYST_OUTLET, O, y0 + .5, O, r, n, 1, .9, .15));
     }
 
     /**
@@ -212,7 +215,8 @@ final class FccConverterBuilder {
         // The burner box and the fuel gas nozzle under it on the front.
         double box = Math.min(.4, .25 * hr + .15), yFuel = Math.floor(yt - .6) + .5, zBox = hz - hr - .45;
         u.box(p(-box, yFuel - box, zBox), p(box, yFuel + box, hz - hr + .1), Material.MACHINE, true);
-        u.nozzles.add(ProcessUnit.front(Role.FUEL, O, yFuel, zBox + O, .15, .1));
+        // Owner request 2026-10-21: nozzle roots follow the pipe; the fuel's neck on the box's front, 0.05 m inside its edges.
+        u.nozzles.add(ProcessUnit.front(Role.FUEL, O, yFuel, zBox + O, Math.max(.15, 2 * box - .1), .1));
         // The air riser beside the heater: its nozzle low at the front, an elbow up, an elbow into the heater's side.
         double yLow = Math.ceil(ra - .35 - 1e-9) + .5, r1 = -ax - hr, r2 = a;
         var top = u.elbow(p(ax, l.airIn - r1, hz), UP, PLUS_X, r1, ra, np, pieces(r1), Material.PIPE);

@@ -184,10 +184,12 @@ final class ColumnStructure {
     private static List<EquipmentShape.Nozzle> place(EquipmentShape s) {
         var t = s.trays();
         double d = s.diameter(), a = s.axis(), yB = s.bottomTangent();
-        double topOd = size(.4 * d, 1), start = s.headSurface(topOd / 2) - .03;
+        // Owner request 2026-10-21: nozzle roots follow the pipe; the top neck's room is half the head, at most a pipe's largest.
+        double topOd = size(.4 * d, 1), topRoom = Math.max(topOd, Math.min(PipeSizes.MAX_OUTSIDE, d / 2));
+        double start = s.headSurface(topRoom / 2) - .03;
         var out = new ArrayList<EquipmentShape.Nozzle>();
         out.add(new EquipmentShape.Nozzle(EquipmentShape.Role.VAPOUR_OUTLET, new double[]{a, start, a}, 1, 1, Math.ceil(s.top() + EquipmentShape.STAND_OUT) - start,
-                topOd, topOd, 0, s.headSurface(0) - start));
+                topRoom, topOd, 0, s.headSurface(0) - start));
         double sump = ColumnTrays.bottomSpace(d);
         var clearance = new Clearance(s);
         var placed = new ArrayList<EquipmentShape.Nozzle>();
@@ -229,11 +231,14 @@ final class ColumnStructure {
         for (int step = 0; step <= 2 * rows; step++) {
             double at = wanted + (step % 2 == 0 ? step / 2 : -(step + 1) / 2);
             if (at - half < yB + .05 || at + half > yT - .05) continue;
-            var nozzle = s.side(role, s.axis(), at, axis, sign, s.outerRadius() * DeterministicMath.cos(Math.PI / s.facets()), od, od);
+            // Owner request 2026-10-21: nozzle roots follow the pipe. The neck's room: its cell row (which the structure
+            // leaves clear), the straight shell between the tangent lines, half the diameter; the rows keep the duty size.
+            double room = Math.max(od, Math.min(Math.min(PipeSizes.MAX_OUTSIDE, s.diameter() / 2), 2 * Math.min(at - yB - .05, yT - .05 - at)));
+            var nozzle = s.side(role, s.axis(), at, axis, sign, s.outerRadius() * DeterministicMath.cos(Math.PI / s.facets()), room, od);
             boolean free = true;
             // Flanges on one side never overlap, and no two pipes stand in touching blocks (one free block between).
             for (var other : placed)
-                if (other.axis() == axis && other.sign() == sign && Math.abs(other.base()[1] - at) < half + PipeSizes.flange(other.maxOd()) / 2 + .05 || nozzle.crowds(other)) free = false;
+                if (other.axis() == axis && other.sign() == sign && Math.abs(other.base()[1] - at) < half + PipeSizes.flange(other.defaultOd()) / 2 + .05 || nozzle.crowds(other)) free = false;
             if (!free || clearance.blocked(Math.floor(at), heading)) continue;
             placed.add(nozzle);
             return;

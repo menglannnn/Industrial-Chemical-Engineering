@@ -179,8 +179,11 @@ final class TrickleBedReactorDesign extends UnitDesign {
 
         // ---- The bottom ports: the effluent through its sleeve to the front, the quench out of its trunk to the left.
         double corner = ProcessUnit.pedestalCorner(skirt + PEDESTAL_REACH), zFace = Math.floor(a - corner - .1), eff = Math.min(1, .15 * d), zEff = a - skirt + .15;
-        u.nozzles.add(new Nozzle(Role.EFFLUENT, new double[]{a, PORT_ROW, zEff}, 2, -1, zEff - zFace, eff, PipeSizes.od(.15 * d, .1, eff), 0, .17));
-        u.mesh.ring(Frame.of(new double[]{a, PORT_ROW, 0}, 2, 1), eff / 2 + .01, eff / 2 + .07, a - skirt - .06, a - skirt + .04, ProcessUnit.sides(eff), 1, Material.SUPPORT);
+        // Owner request 2026-10-21: nozzle roots follow the pipe; the effluent's neck, and the skirt's sleeve round it, under
+        // the bottom head's pole with 0.05 m to spare.
+        double effRoom = Math.max(eff, Math.min(PipeSizes.MAX_OUTSIDE, 2 * (yB - shell / 2 - PORT_ROW - .05)));
+        u.nozzles.add(new Nozzle(Role.EFFLUENT, new double[]{a, PORT_ROW, zEff}, 2, -1, zEff - zFace, effRoom, PipeSizes.od(.15 * d, .1, eff), 0, .17));
+        u.mesh.ring(Frame.of(new double[]{a, PORT_ROW, 0}, 2, 1), effRoom / 2 + .01, effRoom / 2 + .07, a - skirt - .06, a - skirt + .04, ProcessUnit.sides(effRoom), 1, Material.SUPPORT);
         double q = Math.min(1, Math.max(.1, .05 * d)), rq = Math.max(.08, .7 * q), rr = wall + .12 + rq / 2, xFace = Math.ceil(a + Math.max(corner, rr + q / 2) + .15);
         u.nozzles.add(new Nozzle(Role.QUENCH, new double[]{a + rr, PORT_ROW, a}, 0, 1, xFace - a - rr, q, PipeSizes.od(.05 * d, .1, q), 0, q / 2 + .03));
 
@@ -247,7 +250,10 @@ final class TrickleBedReactorDesign extends UnitDesign {
         u.solids.add(Solid.rod(new double[]{a, run, 0}, 2, zTee - p / 2, zEnd, p / 2, 0));
         double zFeed = Math.floor(a - edge - .05), xH2 = Math.ceil(a + edge + .05);
         u.nozzles.add(new Nozzle(Role.FEED, new double[]{a, run, zTee + .03}, 2, -1, zTee + .03 - zFeed, p, PipeSizes.od(p, .1, p), 0, h2 / 2 + .03));
-        u.nozzles.add(new Nozzle(Role.HYDROGEN, new double[]{a, run, zTee}, 0, 1, xH2 - a, h2, PipeSizes.od(h2, .1, h2), 0, p / 2 + .03));
+        // Owner request 2026-10-21: nozzle roots follow the pipe; the hydrogen's neck up to the run's size (an equal tee),
+        // short of the elbow by 0.05 m.
+        double h2Room = Math.max(h2, Math.min(p, 2 * (zEnd - zTee - .05)));
+        u.nozzles.add(new Nozzle(Role.HYDROGEN, new double[]{a, run, zTee}, 0, 1, xH2 - a, h2Room, PipeSizes.od(h2, .1, h2), 0, p / 2 + .03));
         double deck = level + Access.DECK;
         u.davit(a, a, 3 * Math.PI / 4, wall + .6, deck, Math.max(deck + 3, run + p / 2 + 1.4), -.2);
 

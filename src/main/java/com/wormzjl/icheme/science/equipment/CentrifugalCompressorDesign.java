@@ -371,8 +371,11 @@ final class CentrifugalCompressorDesign extends UnitDesign {
         for (double zj : new double[]{zl0 - .12 * odC, zl1 + .12 * odC})
             u.line(rw, Material.PIPE, new double[]{xcc, yc0 + .8 * rC, zj}, new double[]{xcc, yc1 - .8 * rC, zj});
         double tip0 = zl0 - odC / 4, face0 = Math.floor(tip0 - EquipmentShape.STAND_OUT), tip1 = zl1 + odC / 4, face1 = Math.ceil(tip1 + EquipmentShape.STAND_OUT);
-        u.nozzles.add(new Nozzle(Role.COOLANT_INLET, new double[]{xcc, yc0, zl0 - .02}, 2, -1, zl0 - .02 - face0, .15, odW, 0, zl0 - .02 - tip0));
-        u.nozzles.add(new Nozzle(Role.COOLANT_OUTLET, new double[]{xcc, yc0, zl1 + .02}, 2, 1, face1 - zl1 - .02, .15, odW, 0, tip1 - zl1 - .02));
+        // Owner request 2026-10-21: nozzle roots follow the pipe; a head's neck within 0.7 of the cooler's diameter, under
+        // the water jumper that leaves the head at 0.8 of its radius.
+        double coolantRoom = Math.max(.15, Math.min(PipeSizes.MAX_OUTSIDE, .7 * odC));
+        u.nozzles.add(new Nozzle(Role.COOLANT_INLET, new double[]{xcc, yc0, zl0 - .02}, 2, -1, zl0 - .02 - face0, coolantRoom, odW, 0, zl0 - .02 - tip0));
+        u.nozzles.add(new Nozzle(Role.COOLANT_OUTLET, new double[]{xcc, yc0, zl1 + .02}, 2, 1, face1 - zl1 - .02, coolantRoom, odW, 0, tip1 - zl1 - .02));
         // The oil supply and return lines rise into the slab's left edge between its last two columns.
         double zcol = zt0 + c / 2 + (zt1 - zt0 - c) * (count - 1.5) / (count - 1), xo = xk0 + .3;
         for (int j = 0; j < 2; j++) {

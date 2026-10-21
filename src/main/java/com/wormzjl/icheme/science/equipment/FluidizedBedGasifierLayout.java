@@ -574,30 +574,40 @@ final class FluidizedBedGasifierLayout {
      * SOLIDS_OUTLET down out of the ash lock.
      */
     void nozzles() {
-        // OXIDANT: survey clamp(0.05 ID, 0.05, 0.25).
+        // OXIDANT: survey clamp(0.05 ID, 0.05, 0.25); its neck the header's own size, the line it ends (owner request
+        // 2026-10-21: nozzle roots follow the pipe, a line's end no larger than the line).
         double ox = Math.max(.05, Math.min(.25, .05 * id)), ro = r + .3, xo = Math.floor(a - .56 * ro) + .5, zo = Math.floor(za - Math.sqrt(ro * ro - (a - xo) * (a - xo))) + .5;
         double yo = distributor();
         u.line(header() / 2, Material.PIPE, new double[]{xo, yo, za - Math.sqrt(Math.max(0, ro * ro - (a - xo) * (a - xo)))}, new double[]{xo, yo, zo}, new double[]{xo, 1.5, zo});
-        u.nozzles.add(ProcessUnit.front(Role.OXIDANT, xo, 1.5, zo - header() / 2, Math.min(.4, 1.6 * ox), ox));
-        // SYNGAS: survey clamp(0.17 ID, 0.25, 1.0).
-        double sg = Math.max(.25, Math.min(1, .17 * id)), ysg = Math.floor(ysc0 + .3 + sg / 2) + .5;
-        u.nozzles.add(ProcessUnit.radialSide(Role.SYNGAS, a, ysg, zs, dsc / 2, ProcessUnit.sides(dsc), 1, Math.min(1, 1.3 * sg), sg));
-        // The drum's water and steam: 0.04 ID.
-        double ws = Math.max(.05, .04 * id), rd = ddr / 2, x0 = a - lr / 2, x1 = a + lr / 2;
-        u.nozzles.add(ProcessUnit.end(Role.FEEDWATER, new double[]{x1 + rd / 2 - .03, ydr, zs}, 0, 1, 1.5 * ws, ws));
-        u.nozzles.add(ProcessUnit.end(Role.BLOWDOWN, new double[]{x0 - rd / 2 + .03, ydr, zs}, 0, -1, 1.5 * ws, ws));
-        double xst = Math.floor(a + .25 * lr) + .5;
-        u.nozzles.add(ProcessUnit.end(Role.STEAM, new double[]{xst, ydr + rd - sag(rd, 1.5 * ws) - .03, zs}, 1, 1, 1.5 * ws, ws));
+        u.nozzles.add(ProcessUnit.front(Role.OXIDANT, xo, 1.5, zo - header() / 2, header(), ox));
+        // SYNGAS: survey clamp(0.17 ID, 0.25, 1.0); its neck's room (owner request 2026-10-21: nozzle roots follow the pipe)
+        // half the cooler's diameter, on the shell between the bottom tangent and the beams' hoop.
+        double sg = Math.max(.25, Math.min(1, .17 * id)), ysg = Math.floor(ysc0 + .3 + sg / 2) + .5, mid = (ysc0 + ysc1) / 2;
+        double sgRoom = Math.max(Math.min(1, 1.3 * sg), Math.min(Math.min(PipeSizes.MAX_OUTSIDE, dsc / 2), 2 * Math.min(ysg - ysc0 - .05, mid - .45 - ysg - .05)));
+        u.nozzles.add(ProcessUnit.radialSide(Role.SYNGAS, a, ysg, zs, dsc / 2, ProcessUnit.sides(dsc), 1, sgRoom, sg));
+        // The drum's water and steam: 0.04 ID. Each neck's room the drum's radius across (owner request 2026-10-21: nozzle
+        // roots follow the pipe), rooted under the drum where the neck's edge meets it; the flange faces stay put.
+        double ws = Math.max(.05, .04 * id), rd = ddr / 2, x0 = a - lr / 2, x1 = a + lr / 2, drumRoom = Math.max(1.5 * ws, Math.min(PipeSizes.MAX_OUTSIDE, rd));
+        double edge = drumRoom / 2 / rd, dip = rd / 2 * (1 - Math.sqrt(Math.max(0, 1 - edge * edge))) + .03;
+        double east = Math.ceil(x1 + rd / 2 + EquipmentShape.STAND_OUT), west = Math.floor(x0 - rd / 2 - EquipmentShape.STAND_OUT);
+        u.nozzles.add(new EquipmentShape.Nozzle(Role.FEEDWATER, new double[]{x1 + rd / 2 - dip, ydr, zs}, 0, 1, east - (x1 + rd / 2 - dip), drumRoom, ws, 0, dip));
+        u.nozzles.add(new EquipmentShape.Nozzle(Role.BLOWDOWN, new double[]{x0 - rd / 2 + dip, ydr, zs}, 0, -1, x0 - rd / 2 + dip - west, drumRoom, ws, 0, dip));
+        double xst = Math.floor(a + .25 * lr) + .5, steamBase = ydr + rd - sag(rd, drumRoom) - .03, steamFace = Math.ceil(ydr + rd - sag(rd, 1.5 * ws) + EquipmentShape.STAND_OUT);
+        u.nozzles.add(new EquipmentShape.Nozzle(Role.STEAM, new double[]{xst, steamBase, zs}, 1, 1, steamFace - steamBase, drumRoom, ws, 0, ydr + rd - steamBase));
         // NITROGEN and VENT: from the lock hopper's cylinder foot out past the stack's decks, up past the bin's top beside
-        // its inlet (lock gas in, depressurising gas out to the flare: survey 0.05 to 0.1 and 0.1 to 0.15 m).
+        // its inlet (lock gas in, depressurising gas out to the flare: survey 0.05 to 0.1 and 0.1 to 0.15 m); each neck
+        // its line's size, the line it ends.
         double yl = vesselBottom(1) + cone + .3, top = Math.ceil(binTop() + .15) - .2, reach = dv / 2 + 1.3;
         double xv = Math.ceil(a + reach - .5) + .5, zn = Math.floor(zl - reach - .5) + .5;
         u.line(.05, Material.PIPE, new double[]{a + dv / 2 - .05, yl, zl}, new double[]{xv, yl, zl}, new double[]{xv, top, zl});
         u.line(.04, Material.PIPE, new double[]{a, yl, zl - dv / 2 + .05}, new double[]{a, yl, zn}, new double[]{a, top, zn});
-        u.nozzles.add(ProcessUnit.end(Role.VENT, new double[]{xv, top - .03, zl}, 1, 1, .15, .12));
-        u.nozzles.add(ProcessUnit.end(Role.NITROGEN, new double[]{a, top - .03, zn}, 1, 1, .1, .08));
-        // The solids: up out of the bin's head and down out of the ash lock's outlet.
-        u.nozzles.add(ProcessUnit.end(Role.SOLIDS_INLET, new double[]{a, binTop() - .03, zl}, 1, 1, .5, .3));
+        u.nozzles.add(ProcessUnit.end(Role.VENT, new double[]{xv, top - .03, zl}, 1, 1, .1, .1));
+        u.nozzles.add(ProcessUnit.end(Role.NITROGEN, new double[]{a, top - .03, zn}, 1, 1, .08, .08));
+        // The solids: up out of the bin's head (its neck's room the bin's radius across, rooted under the head where the
+        // neck's edge meets it) and down out of the ash lock's outlet.
+        double rb = dv / 2, binRoom = Math.max(.5, Math.min(PipeSizes.MAX_OUTSIDE, rb)), binEdge = binRoom / 2 / rb, binDip = rb / 2 * (1 - Math.sqrt(Math.max(0, 1 - binEdge * binEdge))) + .03;
+        u.nozzles.add(new EquipmentShape.Nozzle(Role.SOLIDS_INLET, new double[]{a, binTop() - binDip, zl}, 1, 1, Math.ceil(binTop() + EquipmentShape.STAND_OUT) - binTop() + binDip, binRoom,
+                .3, 0, binDip));
         u.nozzles.add(ProcessUnit.end(Role.SOLIDS_OUTLET, new double[]{a, ashOutlet() + .03, zal}, 1, -1, .5, .3));
     }
 }

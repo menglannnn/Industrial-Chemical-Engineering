@@ -276,7 +276,10 @@ final class DelayedCokerDrums {
         u.pipe(CUT_OD / 2, Material.PIPE, true, new double[]{p.xd[0], yr, p.zCut}, new double[]{xr, yr, p.zCut}, new double[]{xr, 1.5, p.zCut}, new double[]{xr + .25, 1.5, p.zCut});
         cap(u, new double[]{p.xd[0], yr, p.zCut}, 0, -1, CUT_OD);
         u.nozzles.add(ProcessUnit.end(Role.VAPOUR_OUTLET, new double[]{xa, yv, p.zVapour}, 0, -1, p.vapourOd, PipeSizes.od(p.vapourOd, .1, p.vapourOd)));
-        u.nozzles.add(ProcessUnit.end(Role.QUENCH, new double[]{xq, yv + p.vapourOd / 2 - .03, p.zVapour}, 1, 1, QUENCH_OD, QUENCH_OD));
+        // Owner request 2026-10-21: nozzle roots follow the pipe; the quench's neck up to the header's own size (an equal
+        // tee), its root under the header's crown where the neck's edge meets it.
+        double quenchRoom = p.vapourOd, rv = p.vapourOd / 2, qs = Math.sqrt(Math.max(0, rv * rv - quenchRoom * quenchRoom / 4)) - .03, qFace = Math.ceil(yv + rv + EquipmentShape.STAND_OUT);
+        u.nozzles.add(new Nozzle(Role.QUENCH, new double[]{xq, yv + qs, p.zVapour}, 1, 1, qFace - yv - qs, quenchRoom, QUENCH_OD, 0, rv - qs));
         u.nozzles.add(ProcessUnit.end(Role.BLOWDOWN, new double[]{p.x1 - .2, yv, p.zBlow}, 0, 1, p.blowdownOd, PipeSizes.od(p.blowdownOd, .1, p.blowdownOd)));
         u.nozzles.add(ProcessUnit.end(Role.RELIEF, new double[]{xRel, yr, p.zb - .2}, 2, 1, p.reliefOd, PipeSizes.od(p.reliefOd, .1, p.reliefOd)));
         u.nozzles.add(ProcessUnit.end(Role.CUTTING_WATER, new double[]{xr + .25, 1.5, p.zCut}, 0, 1, CUT_OD, CUT_OD));

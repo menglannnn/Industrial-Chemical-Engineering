@@ -822,16 +822,23 @@ final class GrateBoilerDesign extends UnitDesign {
         void nozzles() {
             double steam = clamp(.025 * w + .1, .15, .6), fw = clamp(.015 * w + .08, .1, .45), blow = clamp(.04 + .004 * w, .05, .08), fuel = clamp(.04 + .005 * w, .05, .1);
             int n = ProcessUnit.sides(2 * rs);
+            // Owner request 2026-10-21: nozzle roots follow the pipe. A drum's neck has its radius across, on the shell 0.05 m
+            // inside its tangent lines (a head's rooted under the head where the neck's edge meets it).
+            double drumRoom = Math.min(PipeSizes.MAX_OUTSIDE, rs);
             if (bi) {
-                double zs = steamStation();
-                u.nozzles.add(ProcessUnit.radial(Role.STEAM, bmid, yS, rs, n, zs, 1, .6, ColumnStructure.size(steam, .6)));
+                double zs = steamStation(), s0 = zf + .2 + rs / 2, s1 = zb - .2 - rs / 2;
+                u.nozzles.add(ProcessUnit.radial(Role.STEAM, bmid, yS, rs, n, zs, 1, Math.max(.6, onShell(drumRoom, zs, s0, s1)), ColumnStructure.size(steam, .6)));
+                // The drum-side feedwater and blowdown keep their sizes: their necks already meet the drum deck's rail (the
+                // nozzle room gate's baseline, 2026-10-21); a larger neck would cross it further.
                 u.nozzles.add(drumSide(Role.FEEDWATER, zs, n, .45, ColumnStructure.size(fw, .45)));
                 u.nozzles.add(drumSide(Role.BLOWDOWN, zs - 2, n, blow, blow));
             } else {
-                double xs = steamStation(), zs = drumLine();
-                u.nozzles.add(ProcessUnit.radial(Role.STEAM, xs, yS, rs, n, zs, 1, .6, ColumnStructure.size(steam, .6)));
+                double xs = steamStation(), zs = drumLine(), s0 = fx0 + .4 + rs / 2, s1 = fx1 - .4 - rs / 2;
+                u.nozzles.add(ProcessUnit.radial(Role.STEAM, xs, yS, rs, n, zs, 1, Math.max(.6, onShell(drumRoom, xs, s0, s1)), ColumnStructure.size(steam, .6)));
+                // The feedwater's neck no larger than the economiser's inlet header it leaves (0.24 m).
                 double yf = feedwaterHeight(), bx = fx1 + .17, face = Math.ceil(fx1 + STAY + EquipmentShape.STAND_OUT);
-                u.nozzles.add(new Nozzle(Role.FEEDWATER, new double[]{bx, yf, zs}, 0, 1, face - bx, .45, ColumnStructure.size(fw, .45), 0, .12));
+                u.nozzles.add(new Nozzle(Role.FEEDWATER, new double[]{bx, yf, zs}, 0, 1, face - bx, .24, ColumnStructure.size(fw, .24), 0, .12));
+                // The blowdown keeps its size: its neck already meets the drum deck's rail (as the drum-side ones).
                 double base = fx1 - .4 - .05;
                 u.nozzles.add(new Nozzle(Role.BLOWDOWN, new double[]{base, yS, zs}, 0, 1, blowdownFace() - base, blow, blow, 0, .05));
             }
@@ -839,14 +846,16 @@ final class GrateBoilerDesign extends UnitDesign {
             double xd = Math.floor(fx0 + 1.5) + .5, zd = Math.max(Math.ceil(zt + tw / 2 + .15), Math.ceil(zb)) + .5, yh = yL + .15;
             u.line(.035, Material.PIPE, new double[]{xd, yh, zb - .05}, new double[]{xd, yh, zd}, new double[]{xd, 1.3, zd});
             u.nozzles.add(ProcessUnit.end(Role.DRAIN, new double[]{xd, 1.3, zd}, 1, -1, .05, .05));
-            // The start-up burner on the front wall over the conveyor, its windbox and register.
+            // The start-up burner on the front wall over the conveyor, its windbox and register; the fuel's neck through the
+            // register ring's bore (0.3 m).
             double yb = Math.floor(fuelBase + 1.5) + .5, xb = Math.floor(fx0 + 1) + .5;
             u.box(new double[]{xb - .4, yb - .4, zf - .4}, new double[]{xb + .4, yb + .4, zf}, Mesh.ALL_FACES & ~32, Material.MACHINE, true);
             u.mesh.ring(Frame.of(new double[]{xb, yb, 0}, 2, -1), .15, .3, -(zf - .4), -(zf - .48), 12, 3, Material.FLANGE);
-            u.nozzles.add(ProcessUnit.front(Role.FUEL, xb, yb, zf - .37, fuel, ColumnStructure.size(fuel, fuel)));
-            // Fuel into the conveyor's end, ash out of the trough's chute.
-            double feed = Math.min(.6, conveyorWidth() - .1);
-            u.nozzles.add(ProcessUnit.end(Role.SOLIDS_INLET, new double[]{inlet[0], inlet[1] - .03, inlet[2]}, 1, 1, feed, ColumnStructure.size(.2 + .02 * w, feed)));
+            u.nozzles.add(ProcessUnit.front(Role.FUEL, xb, yb, zf - .37, .3, ColumnStructure.size(fuel, fuel)));
+            // Fuel into the conveyor's end, ash out of the trough's chute; the fuel's neck on the conveyor's top 0.05 m inside
+            // its sides and its end.
+            double feed = Math.min(.6, conveyorWidth() - .1), feedRoom = Math.max(feed, Math.min(conveyorWidth() - .1, .7));
+            u.nozzles.add(ProcessUnit.end(Role.SOLIDS_INLET, new double[]{inlet[0], inlet[1] - .03, inlet[2]}, 1, 1, feedRoom, ColumnStructure.size(.2 + .02 * w, feed)));
             u.nozzles.add(ProcessUnit.end(Role.SOLIDS_OUTLET, new double[]{outlet[0], outlet[1] + .3, outlet[2]}, 1, -1, outlet[3], ColumnStructure.size(outlet[3] - .05, outlet[3])));
         }
 
@@ -854,6 +863,11 @@ final class GrateBoilerDesign extends UnitDesign {
         Nozzle drumSide(Role role, double z, int n, double maxOd, double defaultOd) {
             double apothem = rs * DeterministicMath.cos(Math.PI / n), start = Math.sqrt(apothem * apothem - maxOd * maxOd / 4) - .03;
             return new Nozzle(role, new double[]{bmid + start, yS, z}, 0, 1, blowdownFace() - bmid - start, maxOd, defaultOd, 0, rs - start);
+        }
+
+        /** A drum's neck of {@code room} at station {@code at} narrowed to stay 0.05 m inside the tangent lines {@code s0} to {@code s1}. */
+        double onShell(double room, double at, double s0, double s1) {
+            return Math.min(room, 2 * Math.min(at - s0, s1 - at) - .1);
         }
 
     }

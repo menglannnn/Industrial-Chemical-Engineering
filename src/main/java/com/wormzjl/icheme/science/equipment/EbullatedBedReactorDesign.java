@@ -287,6 +287,8 @@ final class EbullatedBedReactorDesign extends UnitDesign {
         plenumLine(u, a, xF, a, yB, shell, odc, PORT_ROW);
         u.mesh.sphere(new double[]{xF, PORT_ROW, a}, .55 * odc, ProcessUnit.sides(odc), Material.PIPE);
         double corner = Math.max(skirt, ProcessUnit.pedestalCorner(skirt + PEDESTAL_REACH)) + .15, zFeed = Math.floor(a - corner), zH2 = Math.ceil(a + corner);
+        // The branches keep their sizes (owner request 2026-10-21, nozzle roots follow the pipe, left out here): their necks
+        // already meet their skirt openings' edges (the nozzle room gate's baseline); a larger neck would cut further.
         u.nozzles.add(new Nozzle(Role.FEED, new double[]{xF, PORT_ROW, a}, 2, -1, a - zFeed, odF, PipeSizes.od(odF, .1, odF), 0, .55 * odc + .02));
         u.nozzles.add(new Nozzle(Role.HYDROGEN, new double[]{xF, PORT_ROW, a}, 2, 1, zH2 - a, odH, PipeSizes.od(odH, .1, odH), 0, .55 * odc + .02));
 
@@ -390,9 +392,13 @@ final class EbullatedBedReactorDesign extends UnitDesign {
         u.solids.add(Solid.rod(new double[]{a, 0, a + rhoA}, 1, yA0 - rv / 2, yA1, rv, rv / 2));
         u.solids.add(Solid.rod(new double[]{a, 0, a + rhoA}, 1, yHa - .1, yA0, .15, 0));
         u.round(a, a + rhoA, yA0, yA1, rv, 1);
+        // Owner request 2026-10-21: nozzle roots follow the pipe; the inlet's neck within 0.85 of the vessel's radius from
+        // its axis, half its diameter at most, its root under the head where the neck's outer edge meets it.
         int kI = (int) Math.round(rhoA);
-        double shift = (kI - rhoA) / rv, yInlet = yA1 + rv / 2 * Math.sqrt(Math.max(0, 1 - shift * shift)) - .05;
-        u.nozzles.add(new Nozzle(Role.CATALYST_INLET, new double[]{a, yInlet, a + kI}, 1, 1, Math.ceil(yA1 + rv / 2 + .25) - yInlet, .1, .1, 0, .05));
+        double offA = Math.abs(kI - rhoA), inletRoom = Math.max(.1, Math.min(Math.min(PipeSizes.MAX_OUTSIDE, rv), 2 * (.85 * rv - offA)));
+        double outerA = (offA + inletRoom / 2) / rv, nearA = Math.max(0, offA - inletRoom / 2) / rv;
+        double yInlet = yA1 + rv / 2 * Math.sqrt(Math.max(0, 1 - outerA * outerA)) - .05, crown = yA1 + rv / 2 * Math.sqrt(Math.max(0, 1 - nearA * nearA));
+        u.nozzles.add(new Nozzle(Role.CATALYST_INLET, new double[]{a, yInlet, a + kI}, 1, 1, Math.ceil(yA1 + rv / 2 + .25) - yInlet, inletRoom, .1, 0, crown - yInlet));
 
         // ---- Trunnions under the top deck's corners; density gauges up the front left; thermowells at the back right.
         var fittings = new ArrayList<double[]>();

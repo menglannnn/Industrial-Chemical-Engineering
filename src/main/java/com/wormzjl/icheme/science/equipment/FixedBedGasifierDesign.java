@@ -652,32 +652,37 @@ final class FixedBedGasifierDesign extends UnitDesign {
         void nozzles() {
             double ya = agentY();
             double ox = clamp(.03 * d, .05, .2), steam = clamp(.05 * d, .08, .3);
-            u.nozzles.add(side(Role.OXIDANT, ya, -1, ox, ColumnStructure.size(ox, ox)));
-            u.nozzles.add(side(Role.STEAM, ya, 1, steam, ColumnStructure.size(steam, steam)));
+            u.nozzles.add(side(Role.OXIDANT, ya, -1, room(ya, ox), ColumnStructure.size(ox, ox)));
+            u.nozzles.add(side(Role.STEAM, ya, 1, room(ya, steam), ColumnStructure.size(steam, steam)));
             // Feedwater low on the jacket's front, two rows at least over the oxidant, clear of the floors.
             double fw = .1, yf = clear(Math.max(st.yb + .5, ya + 2), st.yt - 1);
-            u.nozzles.add(side(Role.FEEDWATER, yf, -1, fw, fw));
+            u.nozzles.add(side(Role.FEEDWATER, yf, -1, room(yf, fw), fw));
             // Lock gas into the ash lock's front, two rows clear of the oxidant.
             double lock = .1, yn = clear(st.y1 + .3, st.y2 - .3);
             if (Math.abs(yn - ya) < 2) yn = clear(Math.max(st.y1 + .2, ya - 4), ya - 2);
-            u.nozzles.add(side(Role.NITROGEN, yn, -1, lock, lock));
+            u.nozzles.add(side(Role.NITROGEN, yn, -1, room(yn, lock), lock));
             // The vent up through the roof.
             double vent = ventOd(), base = st.roof + Access.DECK + .2;
             u.nozzles.add(ProcessUnit.end(Role.VENT, new double[]{a - ventOut(), base, c - 1}, 1, 1, vent, vent));
             // Coal into the bunker's roof, ash out of the chute 1 m over grade.
             double coal = Math.min(1, ColumnStructure.size(.2 * d + .2, 1)), roof = st.y11;
-            u.nozzles.add(ProcessUnit.end(Role.SOLIDS_INLET, new double[]{a, roof - .03, c}, 1, 1, coal, coal));
+            // Owner request 2026-10-21: nozzle roots follow the pipe; the coal's neck on the bunker's flat lid, its radius across.
+            u.nozzles.add(ProcessUnit.end(Role.SOLIDS_INLET, new double[]{a, roof - .03, c}, 1, 1, Math.max(coal, Math.min(PipeSizes.MAX_OUTSIDE, st.rBunker)), coal));
             double ash = 2 * st.rChute;
             u.nozzles.add(ProcessUnit.end(Role.SOLIDS_OUTLET, new double[]{a, 1.3, c}, 1, -1, ash, ColumnStructure.size(ash, ash)));
             // The wash cooler: quench liquor on top, gas liquor out of the bottom, syngas out of its east side near the bottom.
+            // Each neck's room is the cooler's radius across (owner request 2026-10-21: nozzle roots follow the pipe), a head's
+            // rooted under the head where the neck's edge meets it, the syngas's on the shell between the bottom tangent and the lugs.
             double rw = washRadius(), top = washTop() + rw / 2, bottom = washBottom() - rw / 2, liquor = clamp(.03 * d, .05, .15), gas = clamp(.1 * d, .2, .6);
-            u.nozzles.add(new Nozzle(Role.QUENCH, new double[]{xw, top - .04, c}, 1, 1, Math.ceil(top + EquipmentShape.STAND_OUT) - top + .04, liquor, liquor, 0, .04));
+            double headRoom = Math.max(liquor, Math.min(PipeSizes.MAX_OUTSIDE, rw)), edge = headRoom / 2 / rw, dip = rw / 2 * (1 - Math.sqrt(Math.max(0, 1 - edge * edge))) + .04;
+            u.nozzles.add(new Nozzle(Role.QUENCH, new double[]{xw, top - dip, c}, 1, 1, Math.ceil(top + EquipmentShape.STAND_OUT) - top + dip, headRoom, liquor, 0, dip));
             double faceL = Math.floor(bottom - EquipmentShape.STAND_OUT);
-            u.nozzles.add(new Nozzle(Role.LIQUID_OUTLET, new double[]{xw, bottom + .04, c}, 1, -1, bottom + .04 - faceL, liquor, liquor, 0, .04));
+            u.nozzles.add(new Nozzle(Role.LIQUID_OUTLET, new double[]{xw, bottom + dip, c}, 1, -1, bottom + dip - faceL, headRoom, liquor, 0, dip));
             double ys = Math.ceil(Math.max(washBottom() + gas / 2 + .15, faceL + 1.5) - .5) + .5;
-            double apothem = rw * DeterministicMath.cos(Math.PI / ProcessUnit.sides(2 * rw)), start = Math.sqrt(Math.max(0, apothem * apothem - gas * gas / 4)) - .03;
-            u.nozzles.add(new Nozzle(Role.SYNGAS, new double[]{xw + start, ys, c}, 0, 1, Math.ceil(xw + rw + EquipmentShape.STAND_OUT) - xw - start, gas, ColumnStructure.size(gas, gas), 0,
-                    rw - start));
+            double syngasRoom = Math.max(gas, Math.min(Math.min(PipeSizes.MAX_OUTSIDE, rw), 2 * Math.min(ys - washBottom() - .05, washTop() - .3 - ys - .05)));
+            double apothem = rw * DeterministicMath.cos(Math.PI / ProcessUnit.sides(2 * rw)), start = Math.sqrt(Math.max(0, apothem * apothem - syngasRoom * syngasRoom / 4)) - .03;
+            u.nozzles.add(new Nozzle(Role.SYNGAS, new double[]{xw + start, ys, c}, 0, 1, Math.ceil(xw + rw + EquipmentShape.STAND_OUT) - xw - start, syngasRoom,
+                    ColumnStructure.size(gas, gas), 0, rw - start));
         }
 
         /** The lowest cell centre from {@code lo} to {@code hi} whose cell keeps clear of every floor's deck and beams; {@code lo}'s where there is none. */
@@ -691,17 +696,46 @@ final class FixedBedGasifierDesign extends UnitDesign {
         }
 
         /**
+         * A side nozzle's room at height y (owner request 2026-10-21: nozzle roots follow the pipe), {@code duty} at least:
+         * to 0.05 m, the largest neck the stack's radius there across that stays 0.05 m off every floor's deck and beams
+         * and over whose height the stack's outline moves no more than 0.25 m (the grate housing's cone, not a head's
+         * shoulder or a valve), at most a pipe's largest.
+         */
+        double room(double y, double duty) {
+            double gap = Double.MAX_VALUE, r = st.radius(y), best = duty;
+            for (var f : st.floors) gap = Math.min(gap, y > f[0] ? y - f[0] - Access.DECK : f[0] - BEAM - y);
+            for (int k = 1; k / 20.0 <= Math.min(Math.min(PipeSizes.MAX_OUTSIDE, r), 2 * (gap - .05)) + 1e-9; k++) {
+                double od = k / 20.0, lo = r, hi = r;
+                for (double h = y - od / 2; h <= y + od / 2 + 1e-9; h += .025) {
+                    lo = Math.min(lo, st.radius(h));
+                    hi = Math.max(hi, st.radius(h));
+                }
+                if (hi - lo > .25) break;
+                best = Math.max(best, od);
+            }
+            return best;
+        }
+
+        /**
          * A nozzle out of the stack's front ({@code sign} -1, frame -z) or back (+1) at height y: its neck from under the
-         * surface there ({@link #radius} at y, as {@link ProcessUnit#radialSide}), its flange face on the block face beyond
-         * the stack's widest over the pipe block's height (the grate housing's cone widens upwards).
+         * surface where the stack is narrowest over the neck's height ({@link #radius}, as {@link ProcessUnit#radialSide}),
+         * clear of it where it is widest, its flange face on the block face beyond the stack's widest over the pipe block's
+         * height (the grate housing's cone widens upwards).
          */
         Nozzle side(Role role, double y, int sign, double maxOd, double defaultOd) {
-            double r = st.radius(y) - .06, widest = 0;
+            double lo = Double.MAX_VALUE, hi = 0, widest = 0;
+            for (double h = y - maxOd / 2; h <= y + maxOd / 2 + 1e-9; h += .025) {
+                lo = Math.min(lo, st.radius(h));
+                hi = Math.max(hi, st.radius(h));
+            }
             for (double h = Math.floor(y); h <= Math.floor(y) + 1 + 1e-9; h += .05) widest = Math.max(widest, st.radius(h));
+            double r = lo - .06;
             int n = ProcessUnit.sides(2 * r);
             double apothem = r * DeterministicMath.cos(Math.PI / n), start = Math.sqrt(Math.max(0, apothem * apothem - maxOd * maxOd / 4)) - .03, base = c + sign * start;
             double plane = sign < 0 ? Math.floor(c - widest - EquipmentShape.STAND_OUT) : Math.ceil(c + widest + EquipmentShape.STAND_OUT);
-            return new Nozzle(role, new double[]{a, y, base}, 2, sign, Math.abs(plane - base), maxOd, defaultOd, 0, r - start);
+            // Where the outline moves over the neck, the neck has left it past its widest (the solid cone reaches its flange).
+            double out = hi - lo > 1e-9 ? hi + .01 : r;
+            return new Nozzle(role, new double[]{a, y, base}, 2, sign, Math.abs(plane - base), maxOd, defaultOd, 0, out - start);
         }
     }
 

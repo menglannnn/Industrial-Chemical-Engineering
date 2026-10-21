@@ -316,9 +316,12 @@ final class CondensingTurbineDesign extends UnitDesign {
             u.nozzles.add(ProcessUnit.front(Role.COOLANT_OUTLET, a, rowOut, zwb - box / 2 - cover + .03, cw, cw));
             double rc = condensate / 2, cz = zp + .3 * rc;
             u.nozzles.add(new Nozzle(Role.CONDENSATE, new double[]{a, .5, cz}, 2, 1, Math.ceil(zp + rc + EquipmentShape.STAND_OUT) - cz, condensate, condensate, 0, .7 * rc + .03));
-            double e = Math.abs(yVent - yk), low = Math.max(0, e - .5), xs = Math.sqrt(Math.max(0, r * r - low * low)), start = Math.sqrt(Math.max(0, apothem * apothem - (e + vent / 2) * (e + vent / 2))) - .03;
+            // Owner request 2026-10-21: nozzle roots follow the pipe; the vent's neck within 0.85 of the shell's radius from
+            // its axis and 0.05 m under the slab.
+            double e = Math.abs(yVent - yk), ventRoom = Math.max(vent, Math.min(PipeSizes.MAX_OUTSIDE, 2 * Math.min(.85 * r - e, under - yVent - .05)));
+            double low = Math.max(0, e - .5), xs = Math.sqrt(Math.max(0, r * r - low * low)), start = Math.sqrt(Math.max(0, apothem * apothem - (e + ventRoom / 2) * (e + ventRoom / 2))) - .03;
             double ventFace = Math.min(Math.floor(a - xs - EquipmentShape.STAND_OUT), a - 1.5);
-            u.nozzles.add(new Nozzle(Role.VENT, new double[]{a - start, yVent, zVent}, 0, -1, a - start - ventFace, vent, vent, 0, r - start));
+            u.nozzles.add(new Nozzle(Role.VENT, new double[]{a - start, yVent, zVent}, 0, -1, a - start - ventFace, ventRoom, vent, 0, r - start));
         }
 
         /**
