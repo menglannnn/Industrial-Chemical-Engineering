@@ -21,6 +21,7 @@ All notable changes to Industrial Chemical Engineering (IChemE, formerly CreateC
 
 - Test review (owner request 2026-10-21, batch folder: `2026-10-21-test-review`, `TEST_REVIEW.md`, commit `d13e72d1`): every test class judged against one written bar (keep a test that is the only guard of conservation, a format, an owner rule, a reference, determinism or a core contract). Archived to the main checkout's `tools/test-archive-2026-10-21/`: 9 unit classes (`Cdu17TestCatalogTest`, `ComponentSearchTest`, `TextInputPriorityTest`, `V3PumparoundDraftTest`, `TranslatedPengRobinsonPairInteractionsTest`, G3F4, G3F6, G5F5 with its three holdout tables, `HelmholtzReferenceTest`), 15 methods trimmed from 5 classes, the helper `LegacyLiquidPath`, the two benchmark tests with the `fluidPropertyBenchmark` / `fluidNetworkBenchmark` tasks, and 12 of the 31 fluid GameTests (G5 is now 19) whose contracts unit tests hold. `PhysicalRegistryTest.placementCostIsFlatInWorldSize` no longer asserts wall time.
 - Slow gates split (owner decision 2026-10-21, same batch): the 18 classes of 3 s or more (216 of the suite's 262 s) leave the everyday `test` for the new `slowGates` task; `check`, so `build`, and the final lane run both.
+- README: version 0.11.1; `./gradlew test` is the quick suite, `./gradlew test slowGates` (or `build`) runs everything.
 
 ## [0.11.0] - 2026-10-21
 

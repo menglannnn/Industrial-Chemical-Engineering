@@ -10,7 +10,7 @@ Planned equipment includes storage drums, pumps, compressors, heat exchangers, b
 
 ## Current status
 
-Version 0.10.1, early development (see [CHANGELOG.md](CHANGELOG.md)). Saves do not carry over between versions; start a fresh world after updating.
+Version 0.11.1, early development (see [CHANGELOG.md](CHANGELOG.md)). Saves do not carry over between versions; start a fresh world after updating.
 
 - **Distillation column calculator:** solves a crude column with side draws, steam and pumparounds.
 - **Fluid network:** pipes, tanks, pumps, compressors and valves with multiphase flow and equilibrium.
@@ -26,12 +26,18 @@ Build the mod with Java 21 using the Gradle wrapper:
 ./gradlew build
 ```
 
-The build includes regression tests. The wrapper can provision the Java 21 toolchain. Mod jars are written to `build/libs/`.
+The build runs every test, including the slow gates. The wrapper can provision the Java 21 toolchain. Mod jars are written to `build/libs/`.
 
-Run the unit suite with:
+Run the quick test suite (about a minute) with:
 
 ```text
 ./gradlew test
+```
+
+Run the slow gate tests as well, as before a merge, with:
+
+```text
+./gradlew test slowGates
 ```
 
 Runtime sources, resources, the Gradle wrapper, regression tests and their fixtures are tracked. The bundled Transformer weights and their model card under `src/main/resources/data/icheme/neural/` are required runtime/provenance assets and stay in the repository. The server defaults to learned-first initialization with classical fallback; experimental models are not required to build or run the mod.
