@@ -20,7 +20,7 @@ import java.util.List;
  * <p>In the chunk mesh: the shell in 2 m courses (rows clear of everything else are body rows), the top angle, the wind
  * girder 1.2 m below the top with its walkway (API 650 5.9.6), one stair wound round the shell at about 40° from grade to
  * the gauger's platform at the rim (owner approval 2026-10-21), which it passes beside the walkway and opens onto it, the
- * platform over the rim, and the level gauge, a standpipe apart in the front-left corner piped from the shell's foot. A tank under {@link #STAIR_SIZE} across has neither
+ * platform over the rim, and the level gauge on the front, reaching grade. A tank under {@link #STAIR_SIZE} across has neither
  * walkway nor stair but caged ladders up its back to the platform (owner change 2026-10-21). Drawn by the client, apart ({@link ProcessUnit#floating}):
  * the roof (pontoon ring 0.1 D wide, centre deck, rim seal, legs 1.8 m, drain sump), floating on the liquid and landing on
  * its legs, and the rolling ladder, as long as the fill height, hinged at the platform with its foot on a runway on the
@@ -48,14 +48,15 @@ final class TankDesign extends UnitDesign {
     /** The roof: its legs, the pontoon ring's width over D, the rim gap to the shell, the pontoon's depth, the deck's top over the roof's underside, m. */
     static final double LEGS = 1.8, PONTOON = .1, RIM_GAP = .2, PONTOON_DEPTH = .6, DECK = .15;
     /**
-     * The level gauge (owner requests 2026-10-21: the gauge was hard to pick out; stand it apart, piped, reaching the
-     * bottom): a standpipe in the box's front-left corner, {@code GAUGE_OUT} beyond the stair or the access deck and at
-     * least {@code GAUGE_EDGE} inside the box, on a concrete pad {@code PAD} high, piped from the shell at {@code TAP}
-     * over grade. The tank is open to the air, so the standpipe needs only the bottom line and a vent: the liquid stands in
-     * it at the tank's level. A 6" chamber ({@code GLASS_RADIUS}) on a safety-yellow scale board ({@code SCALE_HALF}
-     * either side) ticked every metre, longer every 5 m; its mast's clips every {@code CLIP} m.
+     * The level gauge on the shell (owner requests 2026-10-21: the gauge was hard to pick out; it reaches the bottom, on the
+     * tank as before): its column {@code GLASS_OUT} off the shell, from {@code GAUGE_LOW} over grade, piped from the shell at
+     * {@code TAP} and at the fill height, clipped to it every {@code CLIP} m between; on the front {@code GLASS_OFFSET} to
+     * the left of its middle (between the overflow's flange and the left bottom nozzle's, in the walkway's front gap) on a
+     * tank with the walkway, on the left side on a smaller one (its ladders stand at the back and the right). A 6" chamber
+     * ({@code GLASS_RADIUS}) on a safety-yellow scale board ({@code SCALE_HALF} either side) ticked every metre, longer
+     * every 5 m.
      */
-    static final double GAUGE_OUT = .5, GAUGE_EDGE = .3, PAD = .15, TAP = .45, GLASS_RADIUS = .08, SCALE_HALF = .14, CLIP = 2;
+    static final double GLASS_OFFSET = .85, GLASS_OUT = .5, GAUGE_LOW = .3, TAP = .45, GLASS_RADIUS = .08, SCALE_HALF = .14, CLIP = 3;
     /** The largest necks of the bottom nozzles (over the ringwall's top) and the overflow (under the top angle), m: the room the tank has there. */
     static final double BOTTOM_ROOM = 2 * (.5 - RINGWALL - .02), OVERFLOW_ROOM = 2 * (.5 - TOP_ANGLE - .02);
     /** Half the walkway's gap across the front, m: the overflow's pipe stands there. */
@@ -157,7 +158,8 @@ final class TankDesign extends UnitDesign {
             double r = d / 2, band = r + WALKWAY + Access.GAP, outer = d >= STAIR_SIZE ? band + Access.WOUND_WIDTH + Access.GAP : r + Access.MIN_DECK;
             int n = Math.max(12, 4 * (int) Math.ceil(.75 * Math.PI * d));
             return new Plan(d, shell, r, ProcessUnit.centre(outer + .05), shell - FREEBOARD, n, shell - GIRDER_DROP, band, outer,
-                    Math.max(1, (int) Math.round(r / 6)), PipeSizes.od(.1 + .007 * d, .15, .35));
+                    // A tank with the walkway keeps its bottom nozzles 2 m or more off the middle: the level gauge stands between.
+                    Math.max(d >= STAIR_SIZE ? 2 : 1, (int) Math.round(r / 6)), PipeSizes.od(.1 + .007 * d, .15, .35));
         }
 
         /** The point {@code rho} from the axis at angle {@code t} (from +x towards +z), at height {@code y}. */
@@ -165,10 +167,11 @@ final class TankDesign extends UnitDesign {
             return Access.around(a, a, rho, t, y);
         }
 
-        /** The level gauge's axis (x, z): in the box's front-left corner, beyond the stair or the deck ({@link #GAUGE_OUT}). */
-        double[] gauge() {
-            double c = Math.min((outer + GAUGE_OUT) / Math.sqrt(2), a - GAUGE_EDGE);
-            return new double[]{a + c, a - c};
+        /** The level gauge's place ({@link #GLASS_OFFSET}): its column's axis (x, z) and the box axis it faces out along. */
+        Gauge gauge() {
+            double rho = r + GLASS_OUT;
+            if (stairway()) return new Gauge(a + GLASS_OFFSET, a - Math.sqrt(rho * rho - GLASS_OFFSET * GLASS_OFFSET), new double[]{0, 0, -1});
+            return new Gauge(a + rho, a, new double[]{1, 0, 0});
         }
 
         /** Whether the tank carries the wound stair and the walkway ({@link #STAIR_SIZE}). */
@@ -178,6 +181,10 @@ final class TankDesign extends UnitDesign {
     }
 
     private static final double[] UP = {0, 1, 0};
+
+    /** The level gauge's column axis (x, z) and the box axis it faces out along. */
+    record Gauge(double x, double z, double[] out) {
+    }
 
     @Override
     void build(ProcessUnit u) {
@@ -216,7 +223,7 @@ final class TankDesign extends UnitDesign {
      * A small tank's access ({@link #STAIR_SIZE}): caged ladders from grade to the gauger's platform, the top one at the
      * back ({@link #LADDER}), split by part-ring rest platforms where the climb is over {@link Access#MAX_CLIMB}, the
      * ladders alternating between the right and the back with each rest running the quarter turn between them (the
-     * columns' pattern, {@link ProcessUnit#ringAccess}); all clear of the front's nozzles and the level gauge.
+     * columns' pattern, {@link ProcessUnit#ringAccess}); all clear of the front's nozzles and of the level gauge on the left.
      */
     private static void ladders(ProcessUnit u, Plan p) {
         var levels = Access.climbs(0, List.of(), p.shell);
@@ -349,7 +356,7 @@ final class TankDesign extends UnitDesign {
     }
 
     /**
-     * The wind girder, a ring under the walkway, and its walkway round the shell but across the front (the overflow stands
+     * The wind girder, a ring under the walkway, and its walkway round the shell but across the front (the overflow and the level gauge stand
      * there) and under the gauger's platform from {@code from} to {@code to}: one deck or two, railed
      * across their ends, open towards the stair over its landing.
      */
@@ -411,8 +418,9 @@ final class TankDesign extends UnitDesign {
         for (double t : new double[]{from + .15 * span, to - .15 * span})
             u.mesh.bar(p.at(p.r + .02, t, s - 1.5), p.at(p.outer - .1, t, s - .03), .08, new double[]{-DeterministicMath.sin(t), 0, DeterministicMath.cos(t)}, Material.STEELWORK);
         double mid = (from + to) / 2;
-        var hinge = p.at(p.r - OVERHANG, mid, deck - .1);
-        u.mesh.block(hinge, Mesh.scale(new double[]{DeterministicMath.cos(mid), 0, DeterministicMath.sin(mid)}, .1), new double[]{0, .1, 0},
+        // Under the deck's slab, clear of its faces (owner report 2026-10-21: the hinge's top flickered in the grating's plane).
+        var hinge = p.at(p.r - OVERHANG + .1, mid, s - .07);
+        u.mesh.block(hinge, Mesh.scale(new double[]{DeterministicMath.cos(mid), 0, DeterministicMath.sin(mid)}, .1), new double[]{0, .06, 0},
                 Mesh.scale(new double[]{-DeterministicMath.sin(mid), 0, DeterministicMath.cos(mid)}, .4), Material.STEELWORK);
     }
 
@@ -429,20 +437,19 @@ final class TankDesign extends UnitDesign {
 
     /** The level gauge's chamber bottom over grade, m: where its bands start. */
     static double gaugeLow() {
-        return PAD + .15;
+        return GAUGE_LOW;
     }
 
     /**
-     * The level gauge ({@link #GAUGE_OUT}): its pad, the chamber (a dark column; the client shows the liquid's bands in
-     * it, plan section 3.4) from just over the pad to above the fill height, closed by a drain below and a vent cap above,
-     * the line from the shell with a flange pair at each end, the mast behind with its clips, and the safety-yellow scale
-     * board between, with dark ticks at each metre over the floor, the fifth ones across the whole board.
+     * The level gauge ({@link Plan#gauge}): the chamber (a dark column; the client shows the liquid's bands in it, plan
+     * section 3.4) from just over grade to above the fill height, its drain down to grade and its vent cap above; its
+     * lines from the shell at its foot ({@link #TAP}) and at the fill height, and its clips to the shell between; the
+     * safety-yellow scale board behind it, ticked dark at each metre over the floor, the fifth ones across the whole board.
      */
     private static void gauge(ProcessUnit u, Plan p) {
-        double[] g = p.gauge();
-        double x = g[0], z = g[1], low = gaugeLow(), high = p.fill + .3, flange = GLASS_RADIUS + .03;
-        double t = DeterministicMath.atan2(z - p.a, x - p.a), rho = Math.sqrt((x - p.a) * (x - p.a) + (z - p.a) * (z - p.a));
-        u.mesh.box(new double[]{x - .35, 0, z - .35}, new double[]{x + .35, PAD, z + .35}, 63 & ~4, Material.CONCRETE);
+        var g = p.gauge();
+        double x = g.x(), z = g.z(), low = GAUGE_LOW, high = p.fill + .3, flange = GLASS_RADIUS + .03;
+        double[] out = g.out(), side = {-out[2], 0, out[0]};
         var column = Frame.of(new double[]{x, 0, z}, 1, 1);
         u.mesh.prism(column, GLASS_RADIUS, low, high, 12, Material.OPENING);
         for (double[] cap : new double[][]{{low - .06, low}, {high, high + .06}}) {
@@ -450,32 +457,32 @@ final class TankDesign extends UnitDesign {
             u.mesh.annulus(column, 0, flange, cap[0], 12, -1, Material.FLANGE);
             u.mesh.annulus(column, 0, flange, cap[1], 12, 1, Material.FLANGE);
         }
-        u.mesh.bar(new double[]{x, PAD, z}, new double[]{x, low - .06, z}, .05, UP, Mesh.NO_ENDS, Material.PIPE);
+        u.mesh.bar(new double[]{x, 0, z}, new double[]{x, low - .06, z}, .05, UP, Mesh.NO_ENDS, Material.PIPE);
         u.mesh.bar(new double[]{x, high + .06, z}, new double[]{x, high + .3, z}, .05, UP, Mesh.END, Material.PIPE);
-        // The line from the shell to the chamber's foot, flanged at the shell's nozzle and at the chamber.
-        double[] out = {DeterministicMath.cos(t), 0, DeterministicMath.sin(t)};
-        var line = new Frame(p.at(p.r - .03, t, TAP), out, UP);
-        double length = rho - GLASS_RADIUS + .02 - (p.r - .03);
-        u.mesh.prism(line, .05, 0, length, 8, Material.PIPE);
-        for (double s : new double[]{RINGWALL_OUT + .2, length - .25}) {
-            u.mesh.prism(line, .11, s - .025, s + .025, 12, Material.FLANGE);
-            u.mesh.annulus(line, .05, .11, s - .025, 12, -1, Material.FLANGE);
-            u.mesh.annulus(line, .05, .11, s + .025, 12, 1, Material.FLANGE);
+        // Its lines from the shell, straight out behind it, and its clips to the shell.
+        double offset = (x - p.a) * side[0] + (z - p.a) * side[2], radial = Math.sqrt(p.r * p.r - offset * offset);
+        double[] shell = {p.a + offset * side[0] + radial * out[0], 0, p.a + offset * side[2] + radial * out[2]};
+        for (double y = TAP; y <= p.fill + 1e-9; y = y + CLIP > p.fill - .3 && y < p.fill ? p.fill : y + CLIP) {
+            boolean line = y == TAP || y == p.fill;
+            u.mesh.bar(new double[]{shell[0] + .02 * out[0], y, shell[2] + .02 * out[2]}, new double[]{x - GLASS_RADIUS * out[0], y, z - GLASS_RADIUS * out[2]},
+                    line ? .06 : .04, UP, Mesh.END, line ? Material.PIPE : Material.STEELWORK);
         }
-        // The mast behind the board, its clips to the chamber.
-        double mast = z + .3;
-        u.mesh.bar(new double[]{x, PAD, mast}, new double[]{x, high, mast}, .1, new double[]{0, 0, 1}, Mesh.END, Material.STEELWORK);
-        for (double y = low + CLIP; y < high - .2; y += CLIP)
-            u.mesh.bar(new double[]{x, y, z + GLASS_RADIUS}, new double[]{x, y, mast - .05}, .05, UP, Mesh.NO_ENDS, Material.STEELWORK);
         // The scale board just behind the chamber, and its ticks on its face either side of it.
-        double back = z + GLASS_RADIUS, face = back - .02;
-        u.mesh.box(new double[]{x - SCALE_HALF, low, face}, new double[]{x + SCALE_HALF, p.fill + .1, back + .02}, 63, Material.GUARD);
+        double[] face = {x - (GLASS_RADIUS - .02) * out[0], 0, z - (GLASS_RADIUS - .02) * out[2]};
+        board(u, face, out, side, -SCALE_HALF, SCALE_HALF, low, p.fill + .1, .04, Material.GUARD);
         for (int m = 1; m <= p.fill + 1e-9; m++) {
             boolean fifth = m % 5 == 0;
             double half = fifth ? .03 : .015;
-            u.mesh.box(new double[]{x - SCALE_HALF, m - half, face - .01}, new double[]{x - GLASS_RADIUS - .005, m + half, face}, 63, Material.BOLT);
-            if (fifth) u.mesh.box(new double[]{x + GLASS_RADIUS + .005, m - half, face - .01}, new double[]{x + SCALE_HALF, m + half, face}, 63, Material.BOLT);
+            double[] proud = {face[0] + .01 * out[0], 0, face[2] + .01 * out[2]};
+            board(u, proud, out, side, -SCALE_HALF, -GLASS_RADIUS - .005, m - half, m + half, .01, Material.BOLT);
+            if (fifth) board(u, proud, out, side, GLASS_RADIUS + .005, SCALE_HALF, m - half, m + half, .01, Material.BOLT);
         }
+    }
+
+    /** An axis-aligned plate whose face is the plane through {@code face} facing {@code out}, {@code depth} thick behind it, from {@code s0} to {@code s1} along {@code side}, from {@code y0} to {@code y1}. */
+    private static void board(ProcessUnit u, double[] face, double[] out, double[] side, double s0, double s1, double y0, double y1, double depth, Material material) {
+        double[] a = {face[0] + s0 * side[0], y0, face[2] + s0 * side[2]}, b = {face[0] + s1 * side[0] - depth * out[0], y1, face[2] + s1 * side[2] - depth * out[2]};
+        u.mesh.box(new double[]{Math.min(a[0], b[0]), y0, Math.min(a[2], b[2])}, new double[]{Math.max(a[0], b[0]), y1, Math.max(a[2], b[2])}, 63, material);
     }
 
     /**
@@ -518,8 +525,9 @@ final class TankDesign extends UnitDesign {
         // The ladder's hinge over the rim, the runway from the rim towards the axis along the deck.
         double length = p.fill, runway = Math.min(length, 2 * rr - .6);
         double[] along = {-DeterministicMath.cos(hinge), 0, -DeterministicMath.sin(hinge)}, axis = {along[2], 0, -along[0]};
-        // The hinge under the platform's inner edge: the ladder's head lies flush with the deck there, nothing over it.
-        var pivot = p.at(p.r - OVERHANG, hinge, p.shell + Access.DECK - .1);
+        // The ladder's head at the platform's inner edge, level with its deck (a climber steps off it onto the deck with
+        // nothing overhead; owner report 2026-10-21), its hinge under the deck's slab.
+        var pivot = p.at(p.r - OVERHANG, hinge, p.shell + Access.DECK);
         for (double side : new double[]{-.3, .3}) {
             var from = p.at(rr - .1, hinge, deck + .03);
             from[0] += side * axis[0];
@@ -535,9 +543,9 @@ final class TankDesign extends UnitDesign {
             u.ladder.bar(new double[]{c[0] - .3 * axis[0], c[1], c[2] - .3 * axis[2]}, new double[]{c[0] + .3 * axis[0], c[1], c[2] + .3 * axis[2]}, .05, UP,
                     Mesh.NO_ENDS, Material.HANDRAIL);
         }
-        double[] gauge = p.gauge();
-        u.floating = new ProcessUnit.Floating(under, p.fill, DECK, pivot, along, axis, length, runway, gauge, gaugeLow(), p.fill,
-                Mesh.unit(gauge[0] - p.a, 0, gauge[1] - p.a));
+        var gauge = p.gauge();
+        u.floating = new ProcessUnit.Floating(under, p.fill, DECK, pivot, along, axis, length, runway, new double[]{gauge.x(), gauge.z()}, gaugeLow(), p.fill,
+                gauge.out());
         u.roofPlan = new ProcessUnit.RoofPlan(new double[]{p.a, 0, p.a}, rr, rr - pw, PONTOON_DEPTH);
     }
 }
