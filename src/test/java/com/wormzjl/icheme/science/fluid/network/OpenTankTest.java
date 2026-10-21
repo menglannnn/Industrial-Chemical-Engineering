@@ -107,6 +107,33 @@ class OpenTankTest extends PortFixture {
         System.out.println("OPEN_TANK_FEED arrived="+arrived+" vented="+vented+" level="+OpenVessel.condensedVolume(tank(run.last())));
     }
 
+    /**
+     * Owner rule of 2026-10-21 (seed 895): an open tank holding only gas keeps what arrives and vents what it started the
+     * step with. With nothing arriving its nitrogen vents over the first step and it ends that step empty, at the ambient.
+     */
+    @Test void aGasOnlyOpenTankVentsItsGasAndEndsEmpty() {
+        var start=nitrogenAt(P0);double held=start.vapor()[nitrogen];
+        var run=drive("gas only",new PassiveNetwork(List.of(openTank(1,0,start,1,1)),List.of()),5,3);
+        assertEquals(held,-run.booked(Kind.VENT,0,nitrogen),1e-9*held,"the first step vents all it held");
+        for(var g:run.graphs())assertTrue(g.reservoirs().getFirst().empty(),"it ends every step empty");
+    }
+
+    /**
+     * Owner rule of 2026-10-21 (seed 895): nitrogen fed at 1.5 bar into an empty open tank is held over the step it arrives
+     * in and vented over the next, so the tank holds about one step's inflow and in the steady slices vents what arrives.
+     */
+    @Test void aGasOnlyOpenTankHoldsAStepsInflowAndVentsItNext() {
+        var nodes=List.of(PassiveNetwork.emptyVessel(1,0,1,1,true,model),new PassiveNetwork.Reservoir(2,0,nitrogenAt(1.5e5),PassiveNetwork.NodeKind.GENERATOR));
+        var run=drive("gas fed",new PassiveNetwork(nodes,List.of(pipe(90,1,0,line(5,.025),PhasePort.BULK,PhasePort.BULK))),5,4);
+        int slice=run.slices().size()-1;
+        var transfer=run.slices().get(slice).pipeTransfers().stream().filter(t->t.pipeId()==90).findFirst().orElseThrow().forward();
+        double arrived=0;for(var p:transfer.phaseMoles())arrived+=p[nitrogen];
+        double vented=-run.booked(Kind.VENT,slice,nitrogen),kept=run.last().reservoirs().getFirst().inventory().moles()[nitrogen];
+        assertTrue(arrived>0&&kept>0,"nitrogen arrives and is held: "+arrived+", "+kept);
+        assertEquals(arrived,vented,.1*arrived,"the steady vent is the arriving nitrogen");
+        for(var g:run.graphs())assertEquals(P0,tank(g).pressure(),1e-6*P0,"at the ambient pressure");
+    }
+
     /** A stabilised crude (the network package's heavy cuts) in an open tank vents nothing and holds no gas. */
     @Test void aStabilisedCrudeVentsNothing() {
         var crude=stabilisedCrude(.6);assertFalse(FluidThermodynamics.holdsPhase(crude,FluidThermodynamics.GAS),"the crude holds no gas at 298 K and 1 atm");

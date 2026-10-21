@@ -611,9 +611,18 @@ public final class PassiveStepSolver {
             if(SolverDiagnostics.ENABLED)SolverDiagnostics.count(SolverDiagnostics.solidMomentProjectionsAtAcceptedPoints,
                     equations.negativeSolidUnknowns(x)+equations.negativeSolidUnknowns(reconstructed));
             lastSolve=new LastSolve(equations,x);
-            // A vessel that ran dry within the step holds nothing at its end and shows the ambient (decision D54).
-            var endStates=projection.states();
-            if(emptying!=null){var ambient=NetworkReduction.ambient(model);endStates=new ArrayList<>(endStates);for(int i=0;i<emptying.length;i++)if(emptying[i])endStates.set(i,ambient);}
+            // A vessel that ran dry within the step, or an open one that vented all it held (owner rule of 2026-10-21), holds
+            // nothing at its end and shows the ambient (decision D54).
+            var endStates=projection.states();List<FluidThermodynamics.State> shown=null;
+            for(int i=0;i<endStates.size();i++) {
+                var node=original.reservoirs().get(i);var end=projection.inventories().get(i);
+                boolean dry=emptying!=null&&emptying[i]||node.kind()==PassiveNetwork.NodeKind.RESERVOIR&&!end.equals(node.inventory())
+                        &&new PassiveNetwork.Reservoir(node.id(),node.elevation(),endStates.get(i),node.kind(),end).empty();
+                if(!dry)continue;
+                if(shown==null)shown=new ArrayList<>(endStates);
+                shown.set(i,NetworkReduction.ambient(model));
+            }
+            if(shown!=null)endStates=shown;
             var accepted=new Result(endStates,flows,dt,numerical,acceptedModes,heads,projection.pumpWork(),projection.externalMoles(),projection.externalEnergy(),projection.inventories(),projection.boundaries(),PipeTransfer.sample(model,graph,projection.states(),flows,dt,draws),projection.filters());
             // The retained last solve keeps its equations and point, not their per-node decode caches (states, transport
             // rows, prepared temperature workspaces): a later reader re-decodes (review 8.7 (c) E2).

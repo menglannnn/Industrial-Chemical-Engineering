@@ -243,9 +243,15 @@ public final class ConservativeTransport {
         boolean[] reached=new boolean[nodes],kept=new boolean[nodes];
         for(int edge=0;edge<flows.length;edge++)if(flows[edge]!=0){var pipe=graph.pipes().get(edge);reached[flows[edge]>0?pipe.second():pipe.first()]=true;}
         for(var transfer:graph.scheduledTransfers())if(transfer instanceof ScheduledTransfer.Injection)reached[transfer.node()]=true;
+        // Owner rule of 2026-10-21 (seed 895): an open vessel keeps the gas it receives and vents what it started with. One whose
+        // releases take all it holds and that no connection reaches or draws from ends the step with nothing (decision D54), a
+        // kept node: what it held leaves as its vent and spill, and the ambient's work on its collapsing bag at the vessel.
+        boolean[] drawnFrom=new boolean[nodes],ventedEmpty=new boolean[nodes];
+        for(int edge=0;edge<flows.length;edge++)if(flows[edge]!=0){var pipe=graph.pipes().get(edge);drawnFrom[flows[edge]>0?pipe.first():pipe.second()]=true;}
         for(int node=0;node<nodes;node++) {
             var reservoir=graph.reservoirs().get(node);old[node]=reservoir.inventory().moles();
             if(PassiveStepSolver.holdsNoFluidVessel(reservoir)&&!reached[node]){kept[node]=true;continue;}
+            if(releases!=null&&!reached[node]&&!drawnFrom[node]&&OpenVessel.releasesAll(reservoir,releases[node])){kept[node]=ventedEmpty[node]=true;continue;}
             for(int c=0;c<components;c++)endMass[node]+=old[node][c]*molecularWeight[c];
             endMass[node]+=reservoir.inventory().solids().massKg();
             if(frozen&&reservoir.junction()) {
@@ -413,7 +419,7 @@ public final class ConservativeTransport {
         for(int node=0;node<nodes;node++) {
             var reservoir=graph.reservoirs().get(node);
             if(index[node]<0) {
-                moles[node]=old[node];
+                moles[node]=old[node];if(ventedEmpty[node])moles[node]=new double[components];
                 // A kept vessel is stated with the solids it holds, not with the candidate's. A pass
                 // that laid it out from an arrival the pinned flows then booked as nothing leaves the candidate a roundoff of
                 // that arrival, solids included, and the vessel's inventory takes its state's solids below: cold fuzz seed 85
@@ -484,6 +490,7 @@ public final class ConservativeTransport {
             energy[node]-=released.energyJoule();externalEnergy-=released.energyJoule();
             boundaries.add(new BoundaryTransfer(graph.reservoirs().get(node).id(),moved,-released.energyJoule(),released.solids(),released.solids().empty()?0:-1,kind));
         }
+        for(int node=0;node<nodes;node++)if(ventedEmpty[node]){double ambient=-energy[node];energy[node]=0;externalEnergy+=ambient;boundaries.add(new BoundaryTransfer(graph.reservoirs().get(node).id(),new double[components],ambient));}
         var filters=new HashMap<Long,InlineFilter>();
         // A frozen booking tallies what each junction gains and loses over its connections, to form its pseudo-boundary
         // below, solids included.

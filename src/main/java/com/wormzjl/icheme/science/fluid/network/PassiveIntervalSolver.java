@@ -321,21 +321,11 @@ public final class PassiveIntervalSolver {
      * owner decision D37). The interval's ledger therefore closes by construction and a checkpoint sees the flush as any
      * other boundary transfer; a certificate is not issued on an interval that contains one, since a one-time removal
      * is not a rate. Returns null when nothing was flushed.
-     *
-     * <p>An open vessel ({@link OpenVessel}) that holds gas and no liquid is emptied here, its gas booked as a flush at it
-     * (energy {@code -U}, its whole change): a step vents only the gas of a vessel that also holds liquid, whose balance
-     * then keeps a positive mass.</p>
      */
     private Flush flushTraces(PassiveNetwork graph,Runnable checkpoint) {
         List<PassiveNetwork.Reservoir> nodes=null;List<ConservativeTransport.BoundaryTransfer> booked=null;
         for(int i=0;i<graph.reservoirs().size();i++) {
             var node=graph.reservoirs().get(i);if(node.fixed())continue;
-            var vented=ventOpen(node,checkpoint);
-            if(vented!=null) {
-                if(nodes==null){nodes=new ArrayList<>(graph.reservoirs());booked=new ArrayList<>();}
-                nodes.set(i,vented.node());booked.add(vented.booked());node=vented.node();
-                if(node.empty())continue;
-            }
             var held=node.inventory().moles();double total=0;for(double amount:held)total+=amount;
             double[] kept=null;
             for(int c=0;c<held.length;c++)if(held[c]>0&&held[c]<TRACE_FLUSH_FRACTION*total){if(kept==null)kept=held.clone();kept[c]=0;}
@@ -352,26 +342,6 @@ public final class PassiveIntervalSolver {
             SolverDiagnostics.count(SolverDiagnostics.traceFlushes);
         }
         return nodes==null?null:new Flush(new PassiveNetwork(nodes,graph.pipes(),graph.scheduledTransfers()),booked);
-    }
-    private record Vented(PassiveNetwork.Reservoir node,ConservativeTransport.BoundaryTransfer booked) {}
-    /** The open vessel {@code node} that holds gas and no liquid, emptied after an accepted step ({@link #flushTraces}),
-     * and the removal's booking; null when nothing is removed. */
-    private Vented ventOpen(PassiveNetwork.Reservoir node,Runnable checkpoint) {
-        if(node.kind()!=PassiveNetwork.NodeKind.RESERVOIR||!node.inventory().open()||node.empty())return null;
-        var old=node.state();var inventory=node.inventory();
-        if(!FluidThermodynamics.holdsPhase(old,FluidThermodynamics.GAS)||FluidThermodynamics.holdsLiquid(old))return null;
-        checkpoint.run();
-        var removed=inventory.moles();for(int c=0;c<removed.length;c++)removed[c]=-removed[c];
-        // What stays is nothing (an empty vessel, decision D54: the ambient as its state), its solids kept as a dry-solids
-        // vessel's.
-        PassiveNetwork.Reservoir after;
-        if(inventory.solids().empty())after=PassiveNetwork.emptyVessel(node.id(),node.elevation(),inventory.volume(),inventory.levelHeight(),true,model);
-        else {
-            var state=model.solidState(old.temperature(),PhaseLayout.AMBIENT_PRESSURE,inventory.solids());
-            after=new PassiveNetwork.Reservoir(node.id(),node.elevation(),state,node.kind(),inventory.with(new double[removed.length],state.internalEnergy(),inventory.solids()));
-        }
-        double energy=after.inventory().internalEnergy()-inventory.internalEnergy();
-        return new Vented(after,new ConservativeTransport.BoundaryTransfer(node.id(),removed,energy,com.wormzjl.icheme.science.fluid.state.SolidInventory.EMPTY,0,ConservativeTransport.BoundaryTransfer.Kind.FLUSH));
     }
     private static void count(Map<String,Integer> reasons,String reason) {
         if(reasons.size()<8||reasons.containsKey(reason))reasons.merge(reason,1,Integer::sum);else reasons.merge("Other",1,Integer::sum);

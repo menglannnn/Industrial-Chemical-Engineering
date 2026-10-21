@@ -15,8 +15,9 @@ import static com.wormzjl.icheme.science.fluid.thermo.FluidThermodynamics.WATER;
  * <ul>
  * <li><b>Vent.</b> The gas a step starts with leaves over that step at its start composition and enthalpy, as
  * a phase drawn at its capacity is drawn (decision D11): constant terms in the vessel's balance rows, no unknown. Gas
- * that forms within the step leaves in the next one. A vessel that starts a step with gas and no liquid vents nothing in
- * the step; the accepted step's flush empties it ({@code PassiveIntervalSolver.flushTraces}).</li>
+ * that forms within the step leaves in the next one. A vessel that holds only gas vents it the same way and keeps
+ * what arrives (owner rule of 2026-10-21, seed 895); one whose releases take all it holds and that nothing reaches ends
+ * the step empty ({@code ConservativeTransport.reconstruct}, decision D54).</li>
  * <li><b>Overflow.</b> The liquid held above the vessel's volume (its fill height) up to the shell top is what an
  * {@link PassiveNetwork.PhasePort#OVERFLOW} port can draw over the step, lighter liquid first.</li>
  * <li><b>Spill.</b> The liquid above the shell top, {@link #FREEBOARD} over the fill height, leaves over the step like
@@ -67,6 +68,15 @@ public final class OpenVessel {
         return FluidThermodynamics.holdsPhase(node.state(),GAS)||overflows(node);
     }
 
+    /** Whether {@code released}, {@code node}'s releases over a step, take all it holds: it has no solids and its vent and
+     * spill book out every amount it holds (they are clamped to it, so the test is exact). */
+    static boolean releasesAll(PassiveNetwork.Reservoir node,Releases released) {
+        if(released==null||!node.inventory().solids().empty())return false;
+        var left=node.inventory().moles();
+        for(var release:released.each()){var n=release.moles();for(int c=0;c<n.length;c++)left[c]-=n[c];}
+        for(double n:left)if(n!=0)return false;
+        return true;
+    }
     /**
      * The volume of each phase (by phase id, gas none) the stratified liquids of {@code state} hold between the heights
      * whose volumes from the bottom are {@code lower} and {@code upper}, m3: the heavier liquid fills from the bottom, the
@@ -102,7 +112,6 @@ public final class OpenVessel {
     static Releases releases(FluidThermodynamics model,PassiveNetwork.Reservoir node) {
         if(node.kind()!=PassiveNetwork.NodeKind.RESERVOIR||!node.inventory().open()||node.empty()||PassiveStepSolver.holdsNoFluid(node))return null;
         var state=node.state();var held=node.inventory().moles();
-        if(!FluidThermodynamics.holdsLiquid(state))return null;
         Release vent=null,spill=null;
         if(FluidThermodynamics.holdsPhase(state,GAS)) {
             var n=FluidThermodynamics.phaseMoles(state,GAS);
