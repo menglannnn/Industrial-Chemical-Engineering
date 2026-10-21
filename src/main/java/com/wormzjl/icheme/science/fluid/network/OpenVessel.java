@@ -13,7 +13,7 @@ import static com.wormzjl.icheme.science.fluid.thermo.FluidThermodynamics.WATER;
  * at the ambient pressure (its wall is never taut, {@link PassiveNetwork.Inventory#wallCapacity}) and the vessel keeps
  * only its liquid:
  * <ul>
- * <li><b>Vent (form B).</b> The gas a step starts with leaves over that step at its start composition and enthalpy, as
+ * <li><b>Vent.</b> The gas a step starts with leaves over that step at its start composition and enthalpy, as
  * a phase drawn at its capacity is drawn (decision D11): constant terms in the vessel's balance rows, no unknown. Gas
  * that forms within the step leaves in the next one. A vessel that starts a step with gas and no liquid vents nothing in
  * the step; the accepted step's flush empties it ({@code PassiveIntervalSolver.flushTraces}).</li>
@@ -30,12 +30,6 @@ public final class OpenVessel {
     private OpenVessel() {}
     /** The shell's height over the fill height, m: the roof's own depth when it stands at the overflow nozzle. */
     public static final double FREEBOARD=1;
-    /**
-     * Form A of the vent, the comparison form of the plan (section 3.1): the accepted step's flush removes every open
-     * vessel's gas, and the step itself vents nothing. Off (form B) unless the system property
-     * {@code icheme.openTank.postStepVent} is {@code true}; read by the quick check's comparison only.
-     */
-    static final boolean POST_STEP_VENT=Boolean.getBoolean("icheme.openTank.postStepVent");
 
     /** What one release takes out of its vessel over a step: amounts (mol, water last), energy {@code sum m h} (J),
      * solids and their moments. */
@@ -100,7 +94,7 @@ public final class OpenVessel {
     }
 
     /**
-     * What {@code node} gives the atmosphere over a step that starts from its state: its gas (the vent, form B, when the
+     * What {@code node} gives the atmosphere over a step that starts from its state: its gas (the vent, when the
      * vessel holds liquid as well) and the liquid above its shell top (the spill). Null for a node that is not an open
      * vessel or gives nothing. Each component's release is at most what the vessel holds of it, so roundoff between a
      * state's phase split and its inventory never books out more than it holds.
@@ -110,7 +104,7 @@ public final class OpenVessel {
         var state=node.state();var held=node.inventory().moles();
         if(!FluidThermodynamics.holdsLiquid(state))return null;
         Release vent=null,spill=null;
-        if(!POST_STEP_VENT&&FluidThermodynamics.holdsPhase(state,GAS)) {
+        if(FluidThermodynamics.holdsPhase(state,GAS)) {
             var n=FluidThermodynamics.phaseMoles(state,GAS);
             for(int c=0;c<n.length;c++){n[c]=Math.min(n[c],held[c]);held[c]-=n[c];}
             vent=new Release(n,model.phaseMass(state,GAS)*model.phaseSpecificEnthalpy(state,GAS,null),SolidInventory.EMPTY,SolidInventory.Moments.ZERO);
