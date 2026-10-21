@@ -2284,6 +2284,8 @@ public final class PassiveStepSolver {
         final PassiveNetwork buffers;
         final int[] unknown;final double[] anchor;int count,anchored,iterations,sweeps;boolean converged;double finalResidual;
         final double[][] rho,mu,cap,column,endP,filterR;final boolean[][] allowed;final boolean[] gas,mover;final double[] reference,prescribed;
+        /** Per connection, its pump's suction floor once worked out ({@link #suctionFloor}); NaN before. */
+        final double[] floors;
         /** Per unknown junction, its bulk density and density times velocity limit as a function of its own pressure: the
          * PH equilibrium of what it holds at TABLE points spaced in ln P over the hull (a flashing LNG junction is vapour at
          * 1 atm and liquid at its bubble pressure, and its caps follow); null where the engine answers nothing. */
@@ -2304,7 +2306,7 @@ public final class PassiveStepSolver {
             this.graph=graph;this.modes=modes;edges=graph.pipes().size();nodes=graph.reservoirs().size();
             closed=new boolean[edges];hardClosed=new boolean[edges];unknown=new int[nodes];Arrays.fill(unknown,-1);anchor=new double[nodes];Arrays.fill(anchor,Double.NaN);
             rho=new double[edges][2];mu=new double[edges][2];cap=new double[edges][2];column=new double[edges][2];endP=new double[edges][2];filterR=new double[edges][2];
-            allowed=new boolean[edges][2];gas=new boolean[nodes];mover=new boolean[edges];reference=new double[nodes];prescribed=new double[edges];Arrays.fill(prescribed,Double.NaN);
+            allowed=new boolean[edges][2];gas=new boolean[nodes];mover=new boolean[edges];reference=new double[nodes];prescribed=new double[edges];Arrays.fill(prescribed,Double.NaN);floors=new double[edges];Arrays.fill(floors,Double.NaN);
             for(int i=0;i<nodes;i++){var node=graph.reservoirs().get(i);var s=node.state();reference[i]=s.pressure();gas[i]=node.junction()&&s.liquidVolume()==0&&s.waterVolume()==0&&s.pressure()>0;}
             low=Double.POSITIVE_INFINITY;high=Double.NEGATIVE_INFINITY;scale=0;
             for(int i=0;i<nodes;i++){zLow=Math.min(zLow,graph.reservoirs().get(i).elevation());zHigh=Math.max(zHigh,graph.reservoirs().get(i).elevation());}
@@ -2312,7 +2314,7 @@ public final class PassiveStepSolver {
                 var pipe=graph.pipes().get(e);var mode=modes.get(e);
                 hardClosed[e]=boundaryClosed[e]||pipe.blockedDirections()==3||mode==FlowControl.Mode.INLET_WRONG_PHASE;
                 closed[e]=hardClosed[e]||mode==FlowControl.Mode.CLOSED;
-                if(!closed[e])prepare(e);
+                if(!closed[e])prepare(e,checkpoint);
             }
             // The unknowns: junctions a node that holds its pressure reaches through pressure-coupling connections (a
             // prescribed flow couples nothing), numbered breadth first so the Jacobian is banded; an anchored junction is a
@@ -2342,7 +2344,7 @@ public final class PassiveStepSolver {
         }
         /** The held data of open connection {@code e}: each end's density, viscosity, cap, column and end pressure, its one-way
          * rules and filter law, a mover's prescribed flow or rise, a regulating valve's anchor; the hull and scale grow with it. */
-        private void prepare(int e) {
+        private void prepare(int e,Runnable checkpoint) {
             var pipe=graph.pipes().get(e);var mode=modes.get(e);
             for(int dir=0;dir<2;dir++) {
                 int donor=dir==0?pipe.first():pipe.second();var node=graph.reservoirs().get(donor);var port=pipe.portAt(donor);var s=node.state();
@@ -2360,7 +2362,7 @@ public final class PassiveStepSolver {
                 // the floor, the pump passing what arrives ({@link #solve} sets the flow once the island balances around it). Anchored
                 // on the hydrocarbon floor alone, a water pump's suction was free again in the next round, the pump drew 72.6 kg/s
                 // on its rise law and the junction fell to the hull's 101 Pa, stated as steam (PumpCavitationTest, starved suction).
-                else if(mode==FlowControl.Mode.PUMP_SUCTION_LIMIT&&a.junction()&&suctionFloor(e)<Double.POSITIVE_INFINITY){anchor[pipe.first()]=suctionFloor(e);suctionLimited[e]=true;prescribed[e]=0;}
+                else if(mode==FlowControl.Mode.PUMP_SUCTION_LIMIT&&a.junction()&&suctionFloor(e,checkpoint)<Double.POSITIVE_INFINITY){anchor[pipe.first()]=suctionFloor(e,checkpoint);suctionLimited[e]=true;prescribed[e]=0;}
                 else mover[e]=true;
                 rises+=riseLimit(pump,rho[e][0],a.state().pressure());
             } else if(pipe.control() instanceof FlowControl.PressureValve valve) {
@@ -2369,13 +2371,36 @@ public final class PassiveStepSolver {
             }
         }
         /** The floor of the liquid the pump on connection {@code e} draws: a two-phase hydrocarbon supplier's own pressure
-         * ({@link #suctionFloors}, K6), or the water curve where its suction junction holds free water (D59 (4)); infinite
-         * where neither. One statement for a pump the balance puts on its suction limit and for one that arrives there. */
-        private double suctionFloor(int e) {
+         * ({@link #suctionFloors}, K6), or the water curve where its suction junction holds free water (D59 (4),
+         * {@link #waterFloor}); infinite where neither. One statement for a pump the balance puts on its suction limit and for
+         * one that arrives there, worked out once per connection. */
+        private double suctionFloor(int e,Runnable checkpoint) {
+            if(!Double.isNaN(floors[e]))return floors[e];
             var pipe=graph.pipes().get(e);var a=graph.reservoirs().get(pipe.first());var sa=a.state();
             double floor=e<suctionFloors.length?suctionFloors[e]:Double.POSITIVE_INFINITY;
-            if(a.junction()&&FluidThermodynamics.holdsPhase(sa,FluidThermodynamics.WATER)&&pipe.control() instanceof FlowControl.Pump&&pipe.firstPort()!=PassiveNetwork.PhasePort.VAPOR){try{floor=Math.min(floor,model.saturationPressure(sa.temperature()));}catch(IllegalArgumentException outsideData){}}
-            return floor;
+            if(a.junction()&&FluidThermodynamics.holdsPhase(sa,FluidThermodynamics.WATER)&&pipe.control() instanceof FlowControl.Pump&&pipe.firstPort()!=PassiveNetwork.PhasePort.VAPOR){try{floor=Math.min(floor,waterFloor(sa,checkpoint));}catch(IllegalArgumentException outsideData){}}
+            return floors[e]=floor;
+        }
+        /** The vapour pressure junction state {@code s}'s free water stands at when a pump draws it down. Water alone and
+         * liquid: the saturation pressure at the temperature its liquid reaches on the saturation curve at its own enthalpy
+         * (one Newton step on the saturated liquid's enthalpy). A liquid stated at a higher pressure is compressed, and
+         * throttled to its vapour pressure it warms by its excess enthalpy over the saturated liquid's. Else (vapour beside
+         * the water, which is then saturated, or a hydrocarbon beside it): the saturation pressure at its temperature.
+         * PumpCavitationTest's starved suction: water at 298.15 K and 1 atm, drawn down to its vapour pressure, is 91 J/kg
+         * over the saturated liquid there and stands at 298.172 K and 3 173.9 Pa. Held at the 3 169.8 Pa of its stated
+         * temperature, 3.7e-5 of what arrived flashed, and the pure-water junction holding steam beside its water made the
+         * suction limit's row its own phase rule: the step's Jacobian was singular. */
+        private double waterFloor(FluidThermodynamics.State s,Runnable checkpoint) {
+            double t=s.temperature(),saturation=model.saturationPressure(t);
+            double fluid=s.mass()-s.solidMoments().mass();double[] y=PhaseLayout.totalAmounts(s);double hydrocarbon=0;
+            for(int c=0;c<y.length-1;c++)hydrocarbon+=y[c];
+            if(hydrocarbon>0||!(fluid>0)||FluidThermodynamics.holdsPhase(s,FluidThermodynamics.GAS))return saturation;
+            for(int c=0;c<y.length;c++)y[c]/=fluid;
+            double h=(s.enthalpy()-s.solidMoments().enthalpy(t,s.pressure()))/fluid,dt=1e-3;
+            var at=model.flashTP(t,saturation*(1+1e-9),y.clone(),checkpoint);var up=model.flashTP(t+dt,model.saturationPressure(t+dt)*(1+1e-9),y.clone(),checkpoint);
+            if(FluidThermodynamics.holdsPhase(at,FluidThermodynamics.GAS)||FluidThermodynamics.holdsPhase(up,FluidThermodynamics.GAS))return saturation;
+            double slope=(up.enthalpy()/up.mass()-at.enthalpy()/at.mass())/dt;
+            return slope>0?model.saturationPressure(t+(h-at.enthalpy()/at.mass())/slope):saturation;
         }
         /** Linear interpolation of {@code table} in ln P at {@code pressure}, clamped to the table's range. */
         private double at(int node,double[] table,double pressure) {
@@ -2514,7 +2539,7 @@ public final class PassiveStepSolver {
                         if(mode==FlowControl.Mode.CLOSED) {
                             double pa=endAt(e,0,p),pb=endAt(e,1,p),dz=graph.reservoirs().get(b).elevation()-graph.reservoirs().get(a).elevation();
                             double drive=pa-pb-columnDensity(graph.reservoirs().get(a).state(),pipe.firstPort(),pipe.volume())*GRAVITY*dz;
-                            if(pa>target+.01&&drive>.01){closed[e]=false;modes.set(e,FlowControl.Mode.VALVE_REGULATING);prepare(e);anchor[a]=target;changed=true;}
+                            if(pa>target+.01&&drive>.01){closed[e]=false;modes.set(e,FlowControl.Mode.VALVE_REGULATING);prepare(e,checkpoint);anchor[a]=target;changed=true;}
                         } else if(mode==FlowControl.Mode.VALVE_REGULATING) {
                             double inflow=inflowExcept(a,e,p),pass=flow(e,target,endAt(e,1,p));
                             if(inflow<=0){modes.set(e,FlowControl.Mode.CLOSED);closed[e]=true;anchor[a]=Double.NaN;changed=true;}
@@ -2530,7 +2555,7 @@ public final class PassiveStepSolver {
                     double dz=graph.reservoirs().get(b).elevation()-graph.reservoirs().get(a).elevation();
                     double rhoA=tableP[a]!=null?at(a,tableRho[a],pa):rho[e][0]*scale(a,pa);
                     if(mode==FlowControl.Mode.PUMP_TARGET&&pb-pa+rhoA*GRAVITY*dz>riseLimit(pump,rhoA,pa)*(1+1e-9)){modes.set(e,FlowControl.Mode.PUMP_HEAD_LIMIT);prescribed[e]=Double.NaN;mover[e]=true;changed=true;continue;}
-                    double floor=suctionFloor(e);
+                    double floor=suctionFloor(e,checkpoint);
                     if((mode==FlowControl.Mode.PUMP_TARGET||mode==FlowControl.Mode.PUMP_HEAD_LIMIT)&&graph.reservoirs().get(a).junction()&&floor<Double.POSITIVE_INFINITY&&pa<floor*(1-1e-9)) {
                         modes.set(e,FlowControl.Mode.PUMP_SUCTION_LIMIT);anchor[a]=floor;p[a]=floor;mover[e]=false;suctionLimited[e]=true;prescribed[e]=Math.max(0,inflowExcept(a,e,p));changed=true;
                     } else if(suctionLimited[e]){double q=Math.max(0,inflowExcept(a,e,p));if(Math.abs(q-prescribed[e])>1e-9*Math.max(1,q)){prescribed[e]=q;changed=true;}}
@@ -2661,7 +2686,14 @@ public final class PassiveStepSolver {
             return true;
         }
         /** The mixture per kilogram at {@code pressure} with the delivered specific enthalpy: the engine's PH answer, else a
-         * temperature bisection inside the streams' window (20 K either side, inside the numerical box: no data range narrows a seed, owner rule of 2026-10-16). */
+         * temperature bisection inside the streams' window (20 K either side, inside the numerical box: no data range narrows a seed, owner rule of 2026-10-16).
+         * The bisection ends on the bracket side whose state is nearer the delivered enthalpy. Water alone (no engine answer) has
+         * no two-phase TP state at its own vapour pressure: its enthalpy jumps by the latent heat across the saturation, and the
+         * midpoint's side is round-off. A pump suction the balance holds at its own liquid's vapour pressure ({@link #waterFloor})
+         * is delivered the saturated liquid's enthalpy to round-off: the liquid side is that round-off away, the steam side the
+         * latent heat. Bundled fuzz seed 889, while the floor read the junction's stated temperature: water arriving 0.06 K
+         * warmer from the friction of its 309 kPa descent (1e-4 of it flashes there) was stated all steam, and the step's
+         * junction held a steam stock no pass could empty. */
         private FluidThermodynamics.State mixed(double[] amounts,double mass,double heat,double tMix,double tLow,double tHigh,double pressure,Runnable checkpoint) {
             double[] y=new double[amounts.length];for(int c=0;c<y.length;c++)y[c]=amounts[c]/mass;
             double hydrocarbon=0;for(int c=0;c<y.length-1;c++)hydrocarbon+=y[c];
@@ -2672,7 +2704,9 @@ public final class PassiveStepSolver {
                 double t=.5*(lower+upper);var point=model.flashTP(t,pressure,y.clone(),checkpoint);
                 if(point.enthalpy()/point.mass()<heat/mass)lower=t;else upper=t;
             }
-            return model.folded(model.flashTP(.5*(lower+upper),pressure,y.clone(),checkpoint),true);
+            var below=model.flashTP(lower,pressure,y.clone(),checkpoint);var above=model.flashTP(upper,pressure,y.clone(),checkpoint);
+            double target=heat/mass;
+            return model.folded(Math.abs(below.enthalpy()/below.mass()-target)<=Math.abs(above.enthalpy()/above.mass()-target)?below:above,true);
         }
     }
     // ======== end of the t44 balance ========
