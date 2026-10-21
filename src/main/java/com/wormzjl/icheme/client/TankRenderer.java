@@ -103,6 +103,7 @@ public final class TankRenderer {
             builtWith = marker;
         }
         var camera = event.getCamera().getPosition();
+        double ticks = level.getGameTime() + event.getPartialTick().getGameTimeDeltaPartialTick(false);
         var frustum = event.getFrustum();
         var type = RenderType.solid();
         ShaderInstance shader = null;
@@ -116,7 +117,7 @@ public final class TankRenderer {
                 continue;
             var f = ShapeRasterizer.floating(shape);
             if (f == null) continue;
-            double liquid = level(cell.getBlockPos());
+            double liquid = level(cell.getBlockPos(), ticks);
             double lift = f.underside(liquid) - f.landed(), pitch = f.pitch(liquid);
             if (shader == null) {
                 type.setupRenderState();
@@ -162,13 +163,14 @@ public final class TankRenderer {
         var sprite = mc.getModelManager().getAtlas(InventoryMenu.BLOCK_ATLAS).getSprite(WHITE);
         float u = sprite.getU(.5F), v = sprite.getV(.5F);
         var camera = event.getCamera().getPosition();
+        double ticks = level.getGameTime() + event.getPartialTick().getGameTimeDeltaPartialTick(false);
         var pose = event.getPoseStack();
         var buffers = mc.renderBuffers().bufferSource();
         VertexConsumer consumer = null;
         for (var cell : cells) {
             var shape = cell.shape();
             var origin = cell.origin();
-            var display = TankDisplays.get(cell.getBlockPos());
+            var display = TankDisplays.get(cell.getBlockPos(), ticks);
             if (display == null || cell.isRemoved() || cell.getLevel() != level || shape == null || origin == null) continue;
             if (cell.getBlockPos().distToCenterSqr(camera) > DRAW_RANGE * DRAW_RANGE) continue;
             var f = ShapeRasterizer.floating(shape);
@@ -189,9 +191,9 @@ public final class TankRenderer {
         if (consumer != null) buffers.endBatch(BANDS);
     }
 
-    /** The liquid's depth over the tank's floor, m, from its display; 0 (the roof on its legs) before the first one. */
-    private static double level(BlockPos node) {
-        TankDisplay display = TankDisplays.get(node);
+    /** The liquid's depth over the tank's floor at game time {@code ticks}, m, from its display gliding to the latest; 0 (the roof on its legs) before the first one. */
+    private static double level(BlockPos node, double ticks) {
+        TankDisplay display = TankDisplays.get(node, ticks);
         return display == null ? 0 : display.level();
     }
 
