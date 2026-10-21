@@ -2,7 +2,7 @@
 
 ## Intent
 
-Industrial Chemical Engineering (IChemE) is a Minecraft 1.21.1 NeoForge addon for Create that aims to turn chemical and petroleum processing into playable factory systems. Its scientific model is intended to be lightweight enough for real-time game simulation while retaining consistent component, mass, element, phase, and energy balances.
+Industrial Chemical Engineering (IChemE, formerly CreateChemE) is a Minecraft 1.21.1 NeoForge addon for Create that aims to turn chemical and petroleum processing into playable factory systems. Its scientific model is intended to be lightweight enough for real-time game simulation while retaining consistent component, mass, element, phase, and energy balances.
 
 The planned material system combines real chemical species with petroleum pseudocomponents, phase equilibrium, heat transfer, fluid transport, reaction kinetics, catalyst state, and conservative coupling between reaction and separation processes. Public thermodynamic and process data will provide the scientific basis, with clearly identified gameplay approximations where industrial data are unavailable.
 
@@ -10,13 +10,13 @@ Planned equipment includes storage drums, pumps, compressors, heat exchangers, b
 
 ## Current status
 
-The mod is in an early proof-of-concept stage. The NeoForge 1.21.1 project integrates with Create, JEI, and KubeJS and provides the experimental V3 column calculator (`icheme:column_calculator_v3`).
+Version 0.10.1, early development (see [CHANGELOG.md](CHANGELOG.md)). Saves do not carry over between versions; start a fresh world after updating.
 
-The calculator provides editable column inputs, literature presets, side draws, steam feeds, pumparounds, and stream/composition results. A simultaneous MESH solver with stage and pressure continuation runs through one bounded server-owned solve service. Results must pass convergence and conservation checks before publication; server-authoritative admission and revision checks protect against stale results.
+- **Distillation column calculator:** solves a crude column with side draws, steam and pumparounds.
+- **Fluid network:** pipes, tanks, pumps, compressors and valves with multiphase flow and equilibrium.
+- **Equipment constructor:** builds drums, columns and process units in the world; drums join the fluid network.
 
-V3 has its own Minecraft-independent thermodynamics implementation under `science.column.v3.thermo`. The reusable foundation under `science.thermo` and the single equilibrium-stage solver remain covered by thermodynamic-identity, flash, and conservation tests. Additional property reconstructions and research notes are kept locally under `docs/`.
-
-The custom multicomponent fluid system, connected plant simulation, reaction models, continuous equipment operation, and final multiblock structures are not implemented yet.
+Not implemented yet: reactions, and process models for the other units.
 
 ## Building and verification
 
