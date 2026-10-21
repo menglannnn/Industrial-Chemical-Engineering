@@ -28,7 +28,7 @@ import net.neoforged.neoforge.network.registration.HandlerThread;
  * import reads the calculator's stored input (nothing is solved) and comes back as the constructor's synced design.
  */
 public final class EquipmentNetwork {
-    public static final String PROTOCOL = "equipment-9";
+    public static final String PROTOCOL = "equipment-10";
     /** A player edits or builds only within this distance of the constructor, blocks. */
     private static final double REACH = 8;
     /** A column calculator is imported from within this many blocks of the constructor. */
@@ -146,7 +146,7 @@ public final class EquipmentNetwork {
             var at = vessel.origin().toShortString();
             player.sendSystemMessage(design.form().column()
                     ? Component.translatable("message.icheme.equipment.built_column", design.diameter(), design.trays().trays(), placed, at)
-                    : vessel.shape().unit() ? Component.translatable("message.icheme.equipment.built_unit",
+                    : vessel.shape().designed() ? Component.translatable("message.icheme.equipment.built_unit",
                     Component.translatable("gui.icheme.vessel.title." + vessel.shape().kind().name().toLowerCase(java.util.Locale.ROOT)), placed, at)
                     : Component.translatable("message.icheme.equipment.built", design.diameter(), design.tangentLength(), placed, at));
         } catch (IllegalStateException blocked) {

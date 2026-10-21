@@ -75,7 +75,10 @@ class ShapeRasterizerTest {
             EquipmentShape.unit(Kind.EJECTOR, 1, 1, Heading.WEST, 2), EquipmentShape.unit(Kind.PUMP, .05, 1, Heading.NORTH, 0),
             EquipmentShape.unit(Kind.PUMP, .4, 1, Heading.EAST, 0), EquipmentShape.unit(Kind.COMPRESSOR, .15, 2, Heading.SOUTH, ProcessUnit.minSupport(Kind.COMPRESSOR, .15, 2)),
             EquipmentShape.unit(Kind.COMPRESSOR, .8, 6, Heading.NORTH, ProcessUnit.minSupport(Kind.COMPRESSOR, .8, 6)),
-            EquipmentShape.unit(Kind.VERTICAL_HEATER, 4, 8, Heading.NORTH, 3), EquipmentShape.unit(Kind.CABIN_HEATER, 6, 12, Heading.WEST, 3));
+            EquipmentShape.unit(Kind.VERTICAL_HEATER, 4, 8, Heading.NORTH, 3), EquipmentShape.unit(Kind.CABIN_HEATER, 6, 12, Heading.WEST, 3),
+            // Storage (owner request 2026-10-21): the least tank, a mid one turned, the least sphere on its highest legs, the concept sheet's sphere.
+            EquipmentShape.storage(Kind.TANK, 4, 4, Heading.NORTH, 0), EquipmentShape.storage(Kind.TANK, 20, 12, Heading.EAST, 0),
+            EquipmentShape.storage(Kind.SPHERE, 4, 1, Heading.SOUTH, 8), EquipmentShape.storage(Kind.SPHERE, 14, 1, Heading.NORTH, 2));
 
     @Test
     void rejectsShapesOffTheGrid() {
@@ -167,7 +170,7 @@ class ShapeRasterizerTest {
                     assertTrue(sameUpToRotation(actual.get(i), shared.get(i)), shape + " " + cell + " polygon " + i);
             }
             // A long drum has plain rows; a column only where its platforms and nozzles leave some, a unit none.
-            if (shape.drum() && shape.tangentLength() >= 9) assertTrue(bodies > 0, shape + " has no body rows");
+            if (shape.drum() && shape.tangentLength() >= 9 || shape.kind() == Kind.TANK && shape.tangentLength() >= 8) assertTrue(bodies > 0, shape + " has no body rows");
         }
     }
 
@@ -178,9 +181,12 @@ class ShapeRasterizerTest {
             var occupied = new HashSet<ShapeRasterizer.Cell>(layout.shell());
             occupied.addAll(layout.interior());
             for (var cell : layout.interior())
-                for (int[] d : new int[][]{{1, 0, 0}, {-1, 0, 0}, {0, 1, 0}, {0, -1, 0}, {0, 0, 1}, {0, 0, -1}})
+                for (int[] d : new int[][]{{1, 0, 0}, {-1, 0, 0}, {0, 1, 0}, {0, -1, 0}, {0, 0, 1}, {0, 0, -1}}) {
+                    // A floating-roof tank is open at its top and stands on its foundation.
+                    if (shape.kind() == Kind.TANK && d[1] != 0) continue;
                     assertTrue(occupied.contains(new ShapeRasterizer.Cell(cell.x() + d[0], cell.y() + d[1], cell.z() + d[2])),
                             shape + " interior " + cell + " touches the outside");
+                }
         }
     }
 
@@ -206,7 +212,7 @@ class ShapeRasterizerTest {
                 volume += vessel / (double) (s * s * s);
             }
             // A unit has no vessel formula: its boxes match its samples above, its parts are checked by ProcessUnitTest.
-            if (shape.unit()) continue;
+            if (shape.designed()) continue;
             // A misclassified sample lies within half a sample diagonal of the surface.
             double exact = facetedVolume(shape) + nozzleVolume(shape), band = ShapeRasterizer.facetArea(shape) * Math.sqrt(3) / (2 * s);
             assertEquals(exact, volume, band, shape.toString());
@@ -219,7 +225,7 @@ class ShapeRasterizerTest {
     @Test
     void aDrumsFluidNodeIsAShellCell() {
         for (var shape : SHAPES)
-            if (shape.drum()) assertTrue(ShapeRasterizer.layout(shape).shell().contains(ShapeRasterizer.fluidCell(shape)), shape.toString());
+            if (shape.reservoir()) assertTrue(ShapeRasterizer.layout(shape).shell().contains(ShapeRasterizer.fluidCell(shape)), shape.toString());
             else assertNull(ShapeRasterizer.fluidCell(shape), shape.toString());
     }
 
@@ -312,7 +318,7 @@ class ShapeRasterizerTest {
             var lying = drum(3, 6, Orientation.HORIZONTAL, heading, 1);
             for (var shape : List.of(standing, lying)) {
                 var ports = ShapeRasterizer.ports(shape);
-                assertEquals(Set.of(EquipmentShape.PortClass.values()), Set.copyOf(ports.stream().map(ShapeRasterizer.Port::port).toList()), shape.toString());
+                assertEquals(Set.of(EquipmentShape.PortClass.VAPOUR, EquipmentShape.PortClass.LIQUID, EquipmentShape.PortClass.BULK), Set.copyOf(ports.stream().map(ShapeRasterizer.Port::port).toList()), shape.toString());
                 int lowest = Integer.MAX_VALUE, liquid = 0;
                 for (var port : ports) {
                     int[] d = {port.dx(), port.dy(), port.dz()};
@@ -687,11 +693,142 @@ class ShapeRasterizerTest {
         assertEquals(2, drum(2, 3, Orientation.HORIZONTAL, Heading.NORTH, 1).levelHeight(), 0);
         // The faceted vessel is inscribed in the smooth one: smaller, and closer for finer facets. Supports are not vessel.
         for (var shape : SHAPES) {
-            if (shape.unit()) continue;
+            if (shape.designed()) continue;
             double volume = vesselVolume(shape), area = vesselArea(shape);
             assertTrue(volume < shape.volume() && volume > .88 * shape.volume(), shape + " volume " + volume + " of " + shape.volume());
             assertTrue(area < shape.surfaceArea() && area > .9 * shape.surfaceArea(), shape + " area " + area + " of " + shape.surfaceArea());
         }
+    }
+
+    // ---- Storage vessels (owner request 2026-10-21, batch 2026-10-21-floating-roof-tanks, plan sections 3.3 and 3.5) ---
+
+    /** Every floating-roof tank (D 4 to 40 m by 1 m, shell 4 to 24 m) and every sphere (D 4 to 24 m by 1 m, 2 to 8 m under it). */
+    static List<EquipmentShape> everyStorageSize() {
+        var out = new java.util.ArrayList<EquipmentShape>();
+        for (int d = 4; d <= 40; d++) for (int shell = 4; shell <= 24; shell++) out.add(EquipmentShape.storage(Kind.TANK, d, shell, Heading.NORTH, 0));
+        for (int d = 4; d <= 24; d++) for (int s = 2; s <= 8; s++) out.add(EquipmentShape.storage(Kind.SPHERE, d, 1, Heading.NORTH, s));
+        return out;
+    }
+
+    @Test
+    void storageGridsRefuseWhatThePlanLeavesOut() {
+        for (double[] bad : new double[][]{{3, 8}, {41, 8}, {12.5, 8}, {12, 3}, {12, 25}, {Double.NaN, 8}})
+            assertThrows(IllegalArgumentException.class, () -> EquipmentShape.storage(Kind.TANK, bad[0], bad[1], Heading.NORTH, 0), "tank " + bad[0] + " x " + bad[1]);
+        assertThrows(IllegalArgumentException.class, () -> EquipmentShape.storage(Kind.TANK, 12, 8, Heading.NORTH, 1), "a tank stands at grade");
+        for (double[] bad : new double[][]{{3, 2}, {25, 2}, {8.5, 2}, {8, 1}, {8, 9}})
+            assertThrows(IllegalArgumentException.class, () -> EquipmentShape.storage(Kind.SPHERE, bad[0], 1, Heading.NORTH, (int) bad[1]), "sphere " + bad[0] + " on " + bad[1]);
+        assertThrows(IllegalArgumentException.class, () -> EquipmentShape.storage(Kind.SPHERE, 8, 2, Heading.NORTH, 2), "a sphere has no second size");
+        assertThrows(IllegalArgumentException.class, () -> EquipmentShape.storage(Kind.DRUM, 2, 3, Heading.NORTH, 0));
+        // Neither takes side connections or trays: their ports are fixed.
+        assertThrows(IllegalArgumentException.class, () -> new EquipmentShape(Kind.TANK, 12, 8, Orientation.VERTICAL, Heading.NORTH, 0, null,
+                List.of(new Connection(0, 1, 0)), ProcessUnit.Bank.ONE, false));
+        assertThrows(IllegalArgumentException.class, () -> new EquipmentShape(Kind.SPHERE, 8, 1, Orientation.VERTICAL, Heading.NORTH, 2, ColumnTrays.simple(12, 6),
+                List.of(), ProcessUnit.Bank.ONE, false));
+        assertEquals(37 * 21 + 21 * 7, everyStorageSize().size());
+    }
+
+    @Test
+    void storageHoldsWhatThePlanSays() {
+        // A tank holds liquid up to its fill height, the shell less the roof's 1 m; a sphere as a drum, its head over its diameter.
+        var tank = EquipmentShape.storage(Kind.TANK, 20, 12, Heading.NORTH, 0);
+        assertEquals(11, tank.fillHeight(), 0);
+        assertEquals(Math.PI * 100 * 11, tank.volume(), 1e-9);
+        assertEquals(11, tank.levelHeight(), 0);
+        assertEquals(37.7, EquipmentShape.storage(Kind.TANK, 4, 4, Heading.NORTH, 0).volume(), .05);
+        assertEquals(28_903, EquipmentShape.storage(Kind.TANK, 40, 24, Heading.NORTH, 0).volume(), 1);
+        var sphere = EquipmentShape.storage(Kind.SPHERE, 14, 1, Heading.NORTH, 2);
+        assertEquals(Math.PI * 14 * 14 * 14 / 6, sphere.volume(), 1e-9);
+        assertEquals(14, sphere.levelHeight(), 0);
+        assertEquals(33.5, EquipmentShape.storage(Kind.SPHERE, 4, 1, Heading.NORTH, 2).volume(), .05);
+        assertEquals(7238.2, EquipmentShape.storage(Kind.SPHERE, 24, 1, Heading.NORTH, 2).volume(), .05);
+        // Its interior cells fill its inside but the cells its shell passes through.
+        for (var shape : List.of(tank, sphere)) {
+            double inside = shape.kind() == Kind.TANK ? Math.PI * 100 * 12 : shape.volume(), cells = ShapeRasterizer.layout(shape).interior().size();
+            assertTrue(cells < inside && cells > .65 * inside, shape + ": " + cells + " interior cells for " + inside + " m3 inside");
+        }
+    }
+
+    @Test
+    void storagePortsStandWhereThePlanPutsThem() {
+        for (var heading : Heading.values()) {
+            // A tank: two alike bottom nozzles on the lowest row either side of the front's middle, the overflow over the fill
+            // height; all towards the constructor.
+            var tank = EquipmentShape.storage(Kind.TANK, 20, 12, heading, 0);
+            var ports = ShapeRasterizer.ports(tank);
+            assertEquals(List.of(EquipmentShape.Role.BOTTOM, EquipmentShape.Role.BOTTOM, EquipmentShape.Role.OVERFLOW), tank.nozzles().stream().map(EquipmentShape.Nozzle::role).toList());
+            assertEquals(List.of(EquipmentShape.PortClass.LIQUID, EquipmentShape.PortClass.LIQUID, EquipmentShape.PortClass.OVERFLOW),
+                    ports.stream().map(ShapeRasterizer.Port::port).toList(), tank.toString());
+            for (var port : ports) assertArrayEquals(new int[]{heading.dx, 0, heading.dz}, new int[]{port.dx(), port.dy(), port.dz()}, tank.toString());
+            var a = ports.get(0).cell();
+            var b = ports.get(1).cell();
+            var overflow = ports.get(2).cell();
+            assertEquals(List.of(0, 0, 11), List.of(a.y(), b.y(), overflow.y()), tank.toString());
+            // Mirrored about the overflow's column, on the front's face.
+            assertEquals(2 * (heading.dx != 0 ? overflow.z() : overflow.x()), heading.dx != 0 ? a.z() + b.z() : a.x() + b.x(), tank.toString());
+            assertEquals(heading.dx != 0 ? overflow.x() : overflow.z(), heading.dx != 0 ? a.x() : a.z(), tank.toString());
+            // A sphere: the vapour outlet up at its top, the liquid outlet on the lowest row at the box's front edge.
+            var sphere = EquipmentShape.storage(Kind.SPHERE, 14, 1, heading, 2);
+            var sp = ShapeRasterizer.ports(sphere);
+            assertEquals(List.of(EquipmentShape.PortClass.VAPOUR, EquipmentShape.PortClass.LIQUID), sp.stream().map(ShapeRasterizer.Port::port).toList(), sphere.toString());
+            assertArrayEquals(new int[]{0, 1, 0}, new int[]{sp.get(0).dx(), sp.get(0).dy(), sp.get(0).dz()}, sphere.toString());
+            assertTrue(sp.get(0).cell().y() >= sphere.support() + sphere.diameter(), sphere.toString());
+            assertArrayEquals(new int[]{heading.dx, 0, heading.dz}, new int[]{sp.get(1).dx(), sp.get(1).dy(), sp.get(1).dz()}, sphere.toString());
+            var front = sp.get(1).cell();
+            int fx = front.x() + heading.dx, fz = front.z() + heading.dz;
+            assertEquals(0, front.y(), sphere.toString());
+            assertTrue(fx < 0 || fz < 0 || fx >= sphere.sizeX() || fz >= sphere.sizeZ(), sphere + ": the liquid outlet ends at the front edge");
+        }
+    }
+
+    /** Every size: its decks and its wound stair are walked (at frame level), its pipes kept one block apart. */
+    @Test
+    void everyStorageSizeIsWalkedAndKeepsItsPipesApart() {
+        for (var shape : everyStorageSize()) {
+            var unit = ProcessUnit.of(shape);
+            ProcessUnitTest.walkedInFrame(unit);
+            assertEquals(1, unit.woundStairs().size(), shape.toString());
+            var nozzles = shape.nozzles();
+            assertEquals(shape.kind() == Kind.TANK ? 3 : 2, nozzles.size(), shape.toString());
+            for (int i = 0; i < nozzles.size(); i++)
+                for (int j = i + 1; j < nozzles.size(); j++) assertFalse(nozzles.get(i).crowds(nozzles.get(j)), shape + ": " + nozzles.get(i).role() + " and " + nozzles.get(j).role());
+        }
+    }
+
+    /** The sampled sizes walked in the box: decks, closed ends stopping and railed, and the wound stair at the game's collision. */
+    @Test
+    void storageDecksAndStairsAreWalkedInTheBox() {
+        for (var shape : SHAPES) if (shape.storage()) ProcessUnitTest.walkedAndClimbed(shape);
+    }
+
+    @Test
+    void aTanksRoofAndLadderAreDrawnApart() {
+        var tank = EquipmentShape.storage(Kind.TANK, 20, 12, Heading.NORTH, 0);
+        var f = ShapeRasterizer.floating(tank);
+        assertNotNull(f);
+        assertFalse(f.roof().isEmpty());
+        assertFalse(f.ladder().isEmpty());
+        // The roof floats on the liquid between its legs' 1.8 m and the fill height; the ladder turns down as it sinks.
+        assertEquals(1.8, f.underside(0), 0);
+        assertEquals(6, f.underside(6), 0);
+        assertEquals(11, f.underside(50), 0);
+        assertTrue(f.pitch(11) < f.pitch(6) && f.pitch(6) < f.pitch(0), f.pitch(11) + " " + f.pitch(6) + " " + f.pitch(0));
+        assertEquals(tank.fillHeight(), f.length(), 0);
+        double roof = 0;
+        for (var p : f.roof()) roof += area(p);
+        assertTrue(roof > Math.PI * 100, "the roof's area " + roof);
+        assertNull(ShapeRasterizer.floating(EquipmentShape.storage(Kind.SPHERE, 14, 1, Heading.NORTH, 2)));
+    }
+
+    /** A timing note (plan section 3.3): the largest tank's layout, about 30 000 interior cells; not a gate. */
+    @Test
+    void theLargestTankLaysOut() {
+        var shape = EquipmentShape.storage(Kind.TANK, 40, 24, Heading.NORTH, 0);
+        long start = System.nanoTime();
+        var layout = ShapeRasterizer.layout(shape);
+        long ms = (System.nanoTime() - start) / 1_000_000;
+        System.out.println("TIMING largest tank " + shape.sizeX() + " x " + shape.sizeY() + " x " + shape.sizeZ() + ": " + layout.shell().size() + " shell, "
+                + layout.interior().size() + " interior cells laid out in " + ms + " ms");
+        assertTrue(layout.interior().size() > 25_000, layout.interior().size() + " interior cells");
     }
 
     /** A frame point inside the solid. */

@@ -184,6 +184,36 @@ public final class ShapeRasterizer {
         return geometry(shape).moving();
     }
 
+    /**
+     * A floating-roof tank's client-drawn parts in the box (plan section 3.4), cut at the cell grid as the chunk mesh cuts
+     * them: the roof's polygons where it lies landed (the client lifts them by {@link #underside} less {@code landed}), the
+     * rolling ladder's relative to its {@code pivot}, drawn level along {@code along} (the client turns them down by
+     * {@link #pitch} about {@code axis}); the sight glass's column at {@code glass} (x, z) from {@code glassLow} to
+     * {@code glassHigh}, its front facing {@code facing}. Heights are box y, a liquid {@code level} m deep over the floor.
+     */
+    public record Floating(List<Polygon> roof, List<Polygon> ladder, double landed, double top, double deck, double[] pivot, double[] along, double[] axis,
+                           double length, double runway, double[] glass, double glassLow, double glassHigh, double[] facing) {
+        /** The roof's underside for a liquid {@code level} m deep: on the liquid, between its legs' height and the fill height. */
+        public double underside(double level) {
+            return frame().underside(level);
+        }
+
+        /** The ladder's turn down from level, radians, its foot on the roof's deck. */
+        public double pitch(double level) {
+            return frame().pitch(level);
+        }
+
+        private ProcessUnit.Floating frame() {
+            return new ProcessUnit.Floating(landed, top, deck, pivot, along, axis, length, runway, glass, glassLow, glassHigh, facing);
+        }
+    }
+
+    /** A floating-roof tank's client-drawn parts in the box, or null for any other shape. */
+    public static @Nullable Floating floating(EquipmentShape shape) {
+        if (!drawing) throw new IllegalStateException("A dedicated server keeps no surfaces");
+        return geometry(shape).floating();
+    }
+
     /** Greedy merge of the cell's solid sampled at {@link #SOLID_RESOLUTION}: along z, then x, then y. */
     public static List<Box> solid(CellKey key) {
         var g = geometry(key.shape());
@@ -424,7 +454,7 @@ public final class ShapeRasterizer {
             radius = shape.radius();
             outer = shape.outerRadius();
             column = shape.column() ? new ColumnStructure(shape) : null;
-            unit = shape.unit() ? ProcessUnit.of(shape) : null;
+            unit = shape.designed() ? ProcessUnit.of(shape) : null;
             var along = transform.direction(new double[]{0, 1, 0});
             axial = along[0] != 0 ? 0 : along[1] != 0 ? 1 : 2;
             // A lying vessel's frame has the ground below it at x = -support (world y = 0).
@@ -469,8 +499,11 @@ public final class ShapeRasterizer {
             manway = shape.manway();
             boot = shape.bootPlace();
 
-            if (unit != null) mesh.include(unit.mesh());
-            else {
+            if (unit != null) {
+                // The design's facets one for one: those from its irregular index on cross its body rows (a tank's stair).
+                mesh.include(unit.mesh());
+                irregularFrom = unit.irregularFrom;
+            } else {
                 build();
                 if (shape.skirt()) skirtBase();
                 if (shape.skirt() && shape.drum()) junction();
@@ -511,6 +544,9 @@ public final class ShapeRasterizer {
                 var low = shape.orientation().horizontal()
                         ? transform.point(new double[]{axis - radius + .01, (shape.bottomTangent() + shape.topTangent()) / 2, axis})
                         : transform.point(new double[]{axis, shape.bottomTangent() - shape.headDepth() + .01, axis});
+                fluidCell = new Cell(floor(low[0]), floor(low[1]), floor(low[2]));
+            } else if (unit != null && unit.fluidPoint != null) {
+                var low = transform.point(unit.fluidPoint);
                 fluidCell = new Cell(floor(low[0]), floor(low[1]), floor(low[2]));
             } else fluidCell = null;
             layout = buildLayout();
@@ -1076,32 +1112,63 @@ public final class ShapeRasterizer {
                 var motion = motions.get(k).in(transform);
                 var pivot = motion.pivot();
                 var polygons = new ArrayList<Polygon>();
-                double reach = 0;
-                var pieces = new ArrayList<Polygon>();
-                var reached = new HashSet<Cell>();
-                for (var facet : byPart.get(k)) {
-                    // The cells the chunk mesh cuts the facet into (a facet in a cell face belongs to the cell on its inner
-                    // side): a piston rod's end lying on a block face was lost from the moving rod (2026-10-18).
-                    reached.clear();
-                    cells(facet, reached);
-                    for (var cell : reached) {
-                        pieces.clear();
-                        mesh.cell(facet, cell.x(), cell.y(), cell.z(), pieces);
-                        for (var piece : pieces) {
-                            var p = piece.positions().clone();
-                            for (int i = 0; i < p.length; i += 3) {
-                                p[i] += cell.x() - pivot[0];
-                                p[i + 1] += cell.y() - pivot[1];
-                                p[i + 2] += cell.z() - pivot[2];
-                                reach = Math.max(reach, Math.sqrt(p[i] * p[i] + p[i + 1] * p[i + 1] + p[i + 2] * p[i + 2]));
-                            }
-                            polygons.add(new Polygon(p, piece.uvs(), piece.normals(), piece.material()));
-                        }
-                    }
-                }
+                double reach = cut(mesh, byPart.get(k), pivot, polygons);
                 parts.add(new Moving(motion, List.copyOf(polygons), reach));
             }
             return moving = List.copyOf(parts);
+        }
+
+        /**
+         * The polygons of {@code facets} (of {@code source}) cut at the cell grid as the chunk mesh cuts them, relative to
+         * {@code origin}, into {@code out}; their farthest point from it.
+         */
+        private double cut(Mesh source, List<Facet> facets, double[] origin, List<Polygon> out) {
+            double reach = 0;
+            var pieces = new ArrayList<Polygon>();
+            var reached = new HashSet<Cell>();
+            for (var facet : facets) {
+                // The cells the chunk mesh cuts the facet into (a facet in a cell face belongs to the cell on its inner
+                // side): a piston rod's end lying on a block face was lost from the moving rod (2026-10-18).
+                reached.clear();
+                cells(facet, reached);
+                for (var cell : reached) {
+                    pieces.clear();
+                    source.cell(facet, cell.x(), cell.y(), cell.z(), pieces);
+                    for (var piece : pieces) {
+                        var p = piece.positions().clone();
+                        for (int i = 0; i < p.length; i += 3) {
+                            p[i] += cell.x() - origin[0];
+                            p[i + 1] += cell.y() - origin[1];
+                            p[i + 2] += cell.z() - origin[2];
+                            reach = Math.max(reach, Math.sqrt(p[i] * p[i] + p[i + 1] * p[i + 1] + p[i + 2] * p[i + 2]));
+                        }
+                        out.add(new Polygon(p, piece.uvs(), piece.normals(), piece.material()));
+                    }
+                }
+            }
+            return reach;
+        }
+
+        private volatile Floating floating;
+
+        /** A floating-roof tank's client-drawn parts in the box, drawn and cut once; null for any other shape. */
+        @Nullable Floating floating() {
+            var out = floating;
+            if (out != null || unit == null || unit.floating == null) return out;
+            var drawn = unit.drawing();
+            var f = drawn.floating;
+            var pivot = transform.point(f.pivot());
+            var roof = new ArrayList<Polygon>();
+            var ladder = new ArrayList<Polygon>();
+            for (var part : List.of(drawn.roof, drawn.ladder)) {
+                var m = new Mesh();
+                m.transform(transform);
+                m.include(part);
+                cut(m, m.facets(), part == drawn.roof ? new double[3] : pivot, part == drawn.roof ? roof : ladder);
+            }
+            var glass = transform.point(new double[]{f.glass()[0], 0, f.glass()[1]});
+            return floating = new Floating(List.copyOf(roof), List.copyOf(ladder), f.landed(), f.top(), f.deck(), pivot, transform.direction(f.along()),
+                    transform.direction(f.axis()), f.length(), f.runway(), new double[]{glass[0], glass[2]}, f.glassLow(), f.glassHigh(), transform.direction(f.facing()));
         }
 
         /** Body rows along the axis and their texture classes: rows wholly in the cylinder, clear of supports, opening and nozzles. */
@@ -1117,8 +1184,9 @@ public final class ShapeRasterizer {
                 probe[axial] = a + .5;
                 double low = transform.local(probe)[1] - .5;
                 if (!body(low)) continue;
-                // Rows of one class share geometry and the texture phase: region (skirt or shell) and course pair.
-                int signature = (low < yB ? 0 : 4) + Math.floorMod((int) Math.round(low) - floor(yB), 4);
+                // Rows of one class share geometry and the texture phase: region (skirt or shell) and course pair; a
+                // design's class is its own.
+                int signature = unit != null ? unit.bodyClass(low) : (low < yB ? 0 : 4) + Math.floorMod((int) Math.round(low) - floor(yB), 4);
                 Integer known = classes.get(signature);
                 if (known == null) {
                     known = firstRows.size();
@@ -1135,8 +1203,9 @@ public final class ShapeRasterizer {
          * (a column's: the cladding's lower edge, its flashing rings, and its platforms with their manways).
          */
         private boolean body(double low) {
-            if (unit != null) return false;
             double high = low + 1, start = shape.skirt() ? 1 : shape.bottomTangent(), half = EquipmentShape.SADDLE_WIDTH / 2;
+            // A design's body rows are its own ({@link ProcessUnit#bodyRows}): a tank's plain shell courses, clear of its nozzles.
+            if (unit != null) return unit.bodyClass(low) >= 0 && clearOfNozzles(low, high);
             if (low < start - EPS || high > shape.topTangent() + EPS) return false;
             if (column != null) {
                 double yB = shape.bottomTangent();
@@ -1156,6 +1225,11 @@ public final class ShapeRasterizer {
             if (boot != null && low < boot.station() + boot.diameter() / 2 + .05 + EPS && high > boot.station() - boot.diameter() / 2 - .05 - EPS) return false;
             // A hollow skirt shows its bottom head in the rows it reaches.
             if (hollow && high > shape.bottomTangent() - shape.headDepth() - EPS && low < shape.bottomTangent() + EPS) return false;
+            return clearOfNozzles(low, high);
+        }
+
+        /** Whether the frame rows [low, high) are clear of every nozzle's neck, flange and riser. */
+        private boolean clearOfNozzles(double low, double high) {
             for (var nozzle : nozzles) {
                 double reach = PipeSizes.flange(nozzle.maxOd()) / 2, y0, y1;
                 if (nozzle.axis() == 1) {

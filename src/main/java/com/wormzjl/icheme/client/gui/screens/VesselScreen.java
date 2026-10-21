@@ -50,8 +50,11 @@ public final class VesselScreen extends Screen {
         var cell = layout.controller();
         var controller = vessel.origin().offset(cell.x(), cell.y(), cell.z());
         var lines = new ArrayList<Component>();
-        if (shape.unit()) lines.addAll(unit(shape));
-        else {
+        if (shape.designed()) {
+            lines.addAll(unit(shape));
+            // A storage vessel's volume and area, as a drum's.
+            if (shape.storage()) lines.addAll(List.of(Component.translatable(KEY + "volume", number(shape.volume())), Component.translatable(KEY + "area", number(shape.surfaceArea()))));
+        } else {
             var support = shape.saddles()
                     ? Component.translatable(KEY + "saddles", shape.support(), number(EquipmentShape.SADDLE_POSITION * shape.tangentLength()))
                     : shape.skirt() ? Component.translatable(KEY + "skirt", shape.support()) : Component.translatable(KEY + "unsupported");

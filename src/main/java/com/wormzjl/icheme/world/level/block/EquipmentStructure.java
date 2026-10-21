@@ -17,6 +17,7 @@ import com.wormzjl.icheme.science.equipment.Paint;
 import com.wormzjl.icheme.science.equipment.PipeSizes;
 import com.wormzjl.icheme.science.equipment.ProcessUnit;
 import com.wormzjl.icheme.science.equipment.ShapeRasterizer;
+import com.wormzjl.icheme.science.equipment.UnitDesign;
 import com.wormzjl.icheme.science.fluid.topology.TopologyCompiler;
 import com.wormzjl.icheme.world.level.block.entity.EquipmentShellBlockEntity;
 import com.wormzjl.icheme.world.level.block.entity.FluidDeviceBlockEntity;
@@ -130,11 +131,11 @@ public final class EquipmentStructure {
         }
         for (var cell : layout.interior()) {
             if (cell.y() >= rows) continue;
-            level.setBlock(origin.offset(cell.x(), cell.y(), cell.z()), ModBlocks.EQUIPMENT_INTERIOR.get().defaultBlockState(), flags);
+            level.setBlock(origin.offset(cell.x(), cell.y(), cell.z()), interior(shape), flags);
             placed++;
         }
         var vessel = new Vessel(origin, shape);
-        if (shape.drum() && rows >= shape.sizeY()) register(level, vessel);
+        if (shape.reservoir() && rows >= shape.sizeY()) register(level, vessel);
         reconnect(level, vessel);
         refreshNozzles(level, vessel);
         return placed;
@@ -147,6 +148,13 @@ public final class EquipmentStructure {
      */
     private static void register(ServerLevel level, Vessel vessel) {
         var node = node(vessel);
+        // TODO(WP2, plan section 3.2): MAX_VOLUME rises to 30 000 m³; until then the largest tanks stand unregistered.
+        if (vessel.shape().volume() > FluidDeviceSpec.MAX_VOLUME) {
+            IChemE.LOGGER.warn("A {} of {} m³ is over the fluid model's {} m³: not registered", vessel.shape().kind().name().toLowerCase(Locale.ROOT),
+                    Math.round(vessel.shape().volume()), Math.round(FluidDeviceSpec.MAX_VOLUME));
+            return;
+        }
+        // TODO(WP2, plan section 3.2): a floating-roof tank registers open (placeVessel's open flag).
         FluidWorldAuthority.find(level.getServer()).ifPresent(world -> {
             var record = world.placeVessel(position(level, node), ports(level, vessel), vessel.shape().volume(), vessel.shape().levelHeight());
             if (level.getBlockEntity(node) instanceof EquipmentShellBlockEntity entity) entity.bindIdentity(record.device().id());
@@ -173,6 +181,8 @@ public final class EquipmentStructure {
                 case VAPOUR -> PassiveNetwork.PhasePort.VAPOR;
                 case LIQUID -> PassiveNetwork.PhasePort.LIQUID;
                 case BULK -> PassiveNetwork.PhasePort.BULK;
+                // TODO(WP1, plan section 3.1): the overflow's own phase port draws only the liquid over the fill height.
+                case OVERFLOW -> PassiveNetwork.PhasePort.LIQUID;
             };
             ports.add(new PhysicalFluidTopology.Port(position(level, cell), face, phase));
         }
@@ -248,10 +258,18 @@ public final class EquipmentStructure {
         return contains(vessel, position) ? vessel : null;
     }
 
+    /** The longest walk over interior cells: across the widest body, a column's or a floating-roof tank's. */
+    private static final int FIND_STEPS = (int) Math.ceil(Math.max(EquipmentShape.MAX_COLUMN_DIAMETER, UnitDesign.of(EquipmentShape.Kind.TANK).maxSize())) + 2;
+
+    /** The interior cell of {@code shape}: a floating-roof tank's passes light (its roof shows from above). */
+    private static net.minecraft.world.level.block.state.BlockState interior(EquipmentShape shape) {
+        return ModBlocks.EQUIPMENT_INTERIOR.get().defaultBlockState().setValue(EquipmentInteriorBlock.OPEN, shape.kind() == EquipmentShape.Kind.TANK);
+    }
+
     /** The first bound shell cell a walk east, or else south, over interior cells reaches from {@code position}, or null. */
     private static @Nullable EquipmentShellBlockEntity shellReached(BlockGetter level, BlockPos position) {
         for (var direction : new Direction[]{Direction.EAST, Direction.SOUTH})
-            for (int step = 0; step <= EquipmentShape.MAX_COLUMN_DIAMETER + 2; step++) {
+            for (int step = 0; step <= FIND_STEPS; step++) {
                 var at = position.relative(direction, step);
                 if (level.getBlockEntity(at) instanceof EquipmentShellBlockEntity shell && shell.shape() != null) return shell;
                 if (step > 0 && !level.getBlockState(at).is(ModBlocks.EQUIPMENT_INTERIOR.get())) break;
@@ -264,7 +282,7 @@ public final class EquipmentStructure {
         if (dismantling || level.isClientSide()) return;
         dismantling = true;
         try {
-            if (level instanceof ServerLevel server && vessel.shape().drum()) unregister(server, vessel);
+            if (level instanceof ServerLevel server && vessel.shape().reservoir()) unregister(server, vessel);
             var layout = ShapeRasterizer.layout(vessel.shape());
             for (var list : java.util.List.of(layout.shell(), layout.interior()))
                 for (var cell : list) {
@@ -387,14 +405,14 @@ public final class EquipmentStructure {
                     }
                 }
             }
-            for (var cell : plan.interior()) level.setBlock(placed.offset(cell.x(), cell.y(), cell.z()), ModBlocks.EQUIPMENT_INTERIOR.get().defaultBlockState(), flags);
+            for (var cell : plan.interior()) level.setBlock(placed.offset(cell.x(), cell.y(), cell.z()), interior(shape), flags);
         } finally {
             dismantling = false;
         }
         for (int x = low.getX() >> 4; x <= high.getX() >> 4; x++)
             for (int z = low.getZ() >> 4; z <= high.getZ() >> 4; z++) level.getChunkSource().chunkMap.waitForLightBeforeSending(new ChunkPos(x, z), 0);
         var vessel = new Vessel(placed, shape);
-        if (shape.drum()) reregister(level, vessel, oldNode);
+        if (shape.reservoir()) reregister(level, vessel, oldNode);
         // Pipes beside a dropped, added or redrawn cell take up or drop their connection (old nozzles included).
         for (var at : touched)
             for (var direction : Direction.values()) {
@@ -503,7 +521,7 @@ public final class EquipmentStructure {
         // kind's ranges.
         var at = Commands.argument("position", BlockPosArgument.blockPos());
         for (var kind : EquipmentShape.Kind.values()) {
-            if (!kind.unit()) continue;
+            if (!kind.designed()) continue;
             var support = Commands.argument("support", IntegerArgumentType.integer(0, EquipmentShape.MAX_SUPPORT))
                     .executes(context -> placeUnit(context, kind, EquipmentShape.Heading.NORTH, false));
             for (var front : EquipmentShape.Heading.values())
@@ -547,7 +565,7 @@ public final class EquipmentStructure {
     private static int placeUnit(CommandContext<CommandSourceStack> context, EquipmentShape.Kind kind, EquipmentShape.Heading front, boolean banked) throws CommandSyntaxException {
         EquipmentShape shape;
         try {
-            shape = EquipmentShape.unit(kind, DoubleArgumentType.getDouble(context, "size"), IntegerArgumentType.getInteger(context, "length"), front,
+            shape = EquipmentShape.designed(kind, DoubleArgumentType.getDouble(context, "size"), IntegerArgumentType.getInteger(context, "length"), front,
                     IntegerArgumentType.getInteger(context, "support"), banked ? new ProcessUnit.Bank(IntegerArgumentType.getInteger(context, "parallel"),
                             IntegerArgumentType.getInteger(context, "series")) : ProcessUnit.Bank.ONE);
         } catch (IllegalArgumentException invalid) {

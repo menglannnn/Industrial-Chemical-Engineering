@@ -454,18 +454,33 @@ public final class ProcessUnit {
      * {@code hi} round the line through {@code centre} (a cone where they differ), with a 2:1 head of depth {@code headLo}
      * beyond its low end and one of {@code headHi} beyond its high end (0: flat); a cylinder may be hollow inside
      * {@code inner} and cut to the angles [from, to] (counter-clockwise from +x towards +z about a vertical axis; from = to:
-     * whole), a deck's ring.
+     * whole), a deck's ring; or a box turned any way ({@code axis} -2): its {@code centre} and three orthogonal half-extent
+     * vectors, nine numbers in {@code extents} (a wound stair's tread or fence, {@link Access.WoundStair}).
      */
     record Solid(double[] min, double[] max, int axis, double[] centre, double radius, double radiusHi, double lo, double hi, double headLo, double headHi,
-                         double inner, double from, double to) {
+                         double inner, double from, double to, double[] extents) {
         static Solid box(double[] min, double[] max) {
-            return new Solid(min, max, -1, null, 0, 0, 0, 0, 0, 0, 0, 0, 0);
+            return new Solid(min, max, -1, null, 0, 0, 0, 0, 0, 0, 0, 0, 0, null);
+        }
+
+        /** A box turned any way: its centre and three orthogonal half-extent vectors. */
+        static Solid block(double[] centre, double[] ex, double[] ey, double[] ez) {
+            double[] min = centre.clone(), max = centre.clone();
+            for (int a = 0; a < 3; a++) {
+                double h = Math.abs(ex[a]) + Math.abs(ey[a]) + Math.abs(ez[a]);
+                min[a] -= h;
+                max[a] += h;
+            }
+            return new Solid(min, max, -2, centre.clone(), 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                    new double[]{ex[0], ex[1], ex[2], ey[0], ey[1], ey[2], ez[0], ez[1], ez[2]});
         }
 
         /** A ring about the vertical line through (x, z), from {@code inner} to {@code outer} out and {@code lo} to {@code hi} up, over the angles [from, to]. */
         static Solid ring(double x, double z, double lo, double hi, double inner, double outer, double from, double to) {
             var whole = cone(new double[]{x, 0, z}, 1, lo, hi, outer, outer, 0);
-            return new Solid(whole.min, whole.max, 1, whole.centre, outer, outer, lo, hi, 0, 0, inner, from, to);
+            // A full turn is whole: its two half-planes meet on one line, where both tests read rounding noise.
+            if (to - from >= 2 * Math.PI - 1e-9) from = to = 0;
+            return new Solid(whole.min, whole.max, 1, whole.centre, outer, outer, lo, hi, 0, 0, inner, from, to, null);
         }
 
         static Solid rod(double[] centre, int axis, double lo, double hi, double radius, double headHi) {
@@ -491,11 +506,19 @@ public final class ProcessUnit {
             }
             min[axis] = lo - headLo;
             max[axis] = hi + headHi;
-            return new Solid(min, max, axis, centre, radius, radiusHi, lo, hi, headLo, headHi, 0, 0, 0);
+            return new Solid(min, max, axis, centre, radius, radiusHi, lo, hi, headLo, headHi, 0, 0, 0, null);
         }
 
         boolean contains(double[] p) {
             for (int a = 0; a < 3; a++) if (p[a] < min[a] || p[a] > max[a]) return false;
+            if (axis == -2) {
+                double dx = p[0] - centre[0], dy = p[1] - centre[1], dz = p[2] - centre[2];
+                for (int e = 0; e < 9; e += 3) {
+                    double ex = extents[e], ey = extents[e + 1], ez = extents[e + 2];
+                    if (Math.abs(dx * ex + dy * ey + dz * ez) > ex * ex + ey * ey + ez * ez) return false;
+                }
+                return true;
+            }
             if (axis < 0) return true;
             double rho2 = 0;
             for (int a = 0; a < 3; a++) if (a != axis) rho2 += (p[a] - centre[a]) * (p[a] - centre[a]);
@@ -555,6 +578,45 @@ public final class ProcessUnit {
     /** A stair tread's going and its highest rise (an industrial stair of about 39°, OSHA 1910.25), m. */
     static final double STAIR_GOING = .25, STAIR_RISE = .2;
     final List<Stair> stairs = new ArrayList<>();
+    /** Stairs wound round a body of revolution ({@link Access.WoundStair}): a floating-roof tank's and a sphere's (owner approval 2026-10-21). */
+    final List<Access.WoundStair> woundStairs = new ArrayList<>();
+    /** A storage vessel's fluid node: a frame point in the shell cell at its lowest inside, or null for a unit. */
+    double[] fluidPoint;
+    /**
+     * Frame heights {low, high, phase} between which whole cell rows are body rows (a floating-roof tank's plain shell
+     * courses, {@link ShapeRasterizer}): their cells repeat every {@link ShapeRasterizer#COURSE} pair from {@code phase},
+     * but in the box columns the facets from {@link #irregularFrom} on reach (the stair, the sight glass). Null: none.
+     */
+    double[] bodyRows;
+    int irregularFrom = Integer.MAX_VALUE;
+    /**
+     * A floating-roof tank's parts the client draws, not the chunk mesh (plan section 3.4): the roof, drawn landed on its
+     * legs, and the rolling ladder, drawn level from its pivot; null for any other shape.
+     */
+    Floating floating;
+    final Mesh roof = new Mesh(), ladder = new Mesh();
+
+    /**
+     * Where a floating-roof tank's client-drawn parts stand, in the frame (plan section 3.4). The roof is drawn with its
+     * underside at {@code landed} (on its legs) and floats with its underside on the liquid, up to {@code top} (the fill
+     * height); its deck's top stands {@code deck} over its underside. The rolling ladder, {@code length} long, is drawn
+     * level from its {@code pivot} along {@code along} (towards the axis) and turns down about {@code axis} (horizontal,
+     * along the gauger's platform) until its foot rests on the runway, which runs {@code runway} along the deck from the
+     * rim. The sight glass stands at {@code glass} (x, z) from {@code glassLow} to {@code glassHigh}, facing {@code facing}.
+     */
+    record Floating(double landed, double top, double deck, double[] pivot, double[] along, double[] axis, double length, double runway, double[] glass,
+                    double glassLow, double glassHigh, double[] facing) {
+        /** The roof's underside over the floor for a liquid {@code level} m deep: on the liquid, between its legs' and the fill height. */
+        double underside(double level) {
+            return Math.max(landed, Math.min(top, level));
+        }
+
+        /** The ladder's turn down from level, radians, with its foot on the roof's deck at {@code level}: straight down where it cannot reach. */
+        double pitch(double level) {
+            double drop = pivot[1] - (underside(level) + deck);
+            return drop >= length ? Math.PI / 2 : drop <= 0 ? 0 : DeterministicMath.asin(drop / length);
+        }
+    }
 
     /** A heater's deck: its run along its wall, the height under its walking surface, its width, whether a rail closes each end. */
     record Deck(Access.Run run, double level, double width, boolean closedStart, boolean closedEnd) {
@@ -562,6 +624,9 @@ public final class ProcessUnit {
 
     final List<Deck> decks = new ArrayList<>();
     private final Map<Long, List<Solid>> solidCells = new HashMap<>(), volumeCells = new HashMap<>();
+    /** Solids whose box spans more than {@link #LARGE} cells (a tank's shell, its rings), tested at every point instead of filed under each cell. */
+    private final List<Solid> largeSolids = new ArrayList<>(), largeVolumes = new ArrayList<>();
+    static final int LARGE = 256;
     final List<Nozzle> nozzles = new ArrayList<>();
     /** Fixed outline edges, {x0, y0, z0, x1, y1, z1}; round bodies outlined against the eye, {x, y, z on the axis, axis, radius, lo, hi}. */
     final List<double[]> edges = new ArrayList<>(), rounds = new ArrayList<>();
@@ -576,8 +641,8 @@ public final class ProcessUnit {
         box = box(mesh.bounds());
         if (drawing) return;
         mesh = null;
-        index(solids, solidCells);
-        index(volumes, volumeCells);
+        index(solids, solidCells, largeSolids);
+        index(volumes, volumeCells, largeVolumes);
     }
 
     /** A unit of {@code shape} drawn by {@code design} instead of its kind's (uncached): the kit's pieces under test. */
@@ -587,7 +652,16 @@ public final class ProcessUnit {
 
     /** The parts' facets in the frame, drawn afresh: the layout is deterministic. */
     Mesh mesh() {
-        return new ProcessUnit(shape, design, true).mesh;
+        return drawing().mesh;
+    }
+
+    /** The unit drawn afresh, its meshes kept: the chunk mesh's parts and a floating-roof tank's client-drawn ones. */
+    ProcessUnit drawing() {
+        return new ProcessUnit(shape, design, true);
+    }
+
+    List<Access.WoundStair> woundStairs() {
+        return List.copyOf(woundStairs);
     }
 
     List<Nozzle> nozzles() {
@@ -637,9 +711,18 @@ public final class ProcessUnit {
 
     /** Whether a frame point lies in a part a player collides with: the parts, and a ladder's rung plane (a player climbs by pressing against it). */
     boolean inside(double[] p) {
-        if (within(solidCells, p)) return true;
+        if (within(solidCells, largeSolids, p)) return true;
         for (var climb : ladders) if (climb.rungs(p)) return true;
         return false;
+    }
+
+    /**
+     * Whether whole frame rows [low, low + 1) are body rows ({@link #bodyRows}), and their texture class: the course pair's
+     * phase, 0 to 3; -1 where they are not.
+     */
+    int bodyClass(double low) {
+        if (bodyRows == null || low < bodyRows[0] - 1e-9 || low + 1 > bodyRows[1] + 1e-9) return -1;
+        return Math.floorMod((int) Math.round(low - bodyRows[2]), (int) (2 * ShapeRasterizer.COURSE));
     }
 
     /** Whether a frame point lies where a ladder is climbed: in front of its rungs, inside its cage, from its foot to its top. */
@@ -650,7 +733,7 @@ public final class ProcessUnit {
 
     /** Whether a frame point lies inside a closed body (a shell, a plenum): no cell there is open. */
     boolean filled(double[] p) {
-        return within(volumeCells, p);
+        return within(volumeCells, largeVolumes, p);
     }
 
     /** Outline edges in the frame: the round bodies' rims and the air cooler's bundle. */
@@ -678,18 +761,25 @@ public final class ProcessUnit {
         }
     }
 
-    static boolean within(Map<Long, List<Solid>> cells, double[] p) {
+    static boolean within(Map<Long, List<Solid>> cells, List<Solid> large, double[] p) {
+        for (var s : large) if (s.contains(p)) return true;
         var list = cells.get(key(Mesh.floor(p[0]), Mesh.floor(p[1]), Mesh.floor(p[2])));
         if (list == null) return false;
         for (var s : list) if (s.contains(p)) return true;
         return false;
     }
 
-    static void index(List<Solid> parts, Map<Long, List<Solid>> cells) {
-        for (var s : parts)
+    static void index(List<Solid> parts, Map<Long, List<Solid>> cells, List<Solid> large) {
+        for (var s : parts) {
+            long span = (long) (Mesh.floor(s.max()[0]) - Mesh.floor(s.min()[0]) + 1) * (Mesh.floor(s.max()[1]) - Mesh.floor(s.min()[1]) + 1) * (Mesh.floor(s.max()[2]) - Mesh.floor(s.min()[2]) + 1);
+            if (span > LARGE) {
+                large.add(s);
+                continue;
+            }
             for (int x = Mesh.floor(s.min()[0]); x <= Mesh.floor(s.max()[0]); x++)
                 for (int y = Mesh.floor(s.min()[1]); y <= Mesh.floor(s.max()[1]); y++)
                     for (int z = Mesh.floor(s.min()[2]); z <= Mesh.floor(s.max()[2]); z++) cells.computeIfAbsent(key(x, y, z), k -> new ArrayList<>()).add(s);
+        }
     }
 
     static long key(int x, int y, int z) {
@@ -2980,6 +3070,18 @@ public final class ProcessUnit {
             segment(f.at(0, side * half, base + rise), f.at(length, side * half, top));
         }
         return length;
+    }
+
+    /**
+     * A stair wound round a body of revolution ({@link Access.WoundStair}, planned by {@link Access.WoundStair#wind}): drawn,
+     * collided with, walked and outlined, as a straight flight is ({@link #stair}).
+     */
+    Access.WoundStair woundStair(Access.WoundStair stair) {
+        stair.draw(mesh);
+        solids.addAll(stair.solids());
+        woundStairs.add(stair);
+        edges.addAll(stair.edges());
+        return stair;
     }
 
     // ---- Access parts -----------------------------------------------------------------------------------------------

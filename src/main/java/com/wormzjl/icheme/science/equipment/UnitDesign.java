@@ -116,6 +116,8 @@ public abstract class UnitDesign {
     private static final Map<Kind, UnitDesign> DESIGNS = new EnumMap<>(Kind.class);
 
     static {
+        DESIGNS.put(Kind.TANK, new TankDesign());
+        DESIGNS.put(Kind.SPHERE, new SphereDesign());
         DESIGNS.put(Kind.EXCHANGER, new ExchangerDesign());
         DESIGNS.put(Kind.KETTLE, new KettleDesign());
         DESIGNS.put(Kind.AIR_COOLER, new AirCoolerDesign());
@@ -140,10 +142,10 @@ public abstract class UnitDesign {
         DESIGNS.put(Kind.FIXED_BED_GASIFIER, new FixedBedGasifierDesign());
     }
 
-    /** The design of unit kind {@code kind}. */
+    /** The design of a designed kind ({@link Kind#designed()}): a storage vessel's or a unit's. */
     public static UnitDesign of(Kind kind) {
         var design = DESIGNS.get(kind);
-        if (design == null) throw new IllegalArgumentException(kind + " is not a unit");
+        if (design == null) throw new IllegalArgumentException(kind + " is not drawn from a design");
         return design;
     }
 

@@ -482,7 +482,7 @@ class ProcessUnitTest {
         }
         var owners = new HashMap<String, Set<Kind>>();
         for (var kind : Kind.values()) {
-            if (!kind.unit()) continue;
+            if (!kind.designed()) continue;
             String prefix = UnitDesign.of(kind).getClass().getSimpleName().replace("Design", "");
             for (var name : names) if (name.startsWith(prefix)) owners.computeIfAbsent(name, n -> EnumSet.noneOf(Kind.class)).add(kind);
         }
@@ -539,6 +539,7 @@ class ProcessUnitTest {
                     assertTrue(in(shape, st.at(s, side * (st.width() / 2 - .1), y + .8)), shape + " stair fence " + side + " at tread " + k);
             }
         }
+        woundStairsWalked(unit.woundStairs(), p -> in(shape, p), starts, shape.toString());
         climbedFromShellCells(shape, unit.ladders());
         stoppedAtClosedEnds(shape, unit.decks());
         railedAtClosedEnds(shape, unit);
@@ -618,12 +619,12 @@ class ProcessUnitTest {
      * and, between them, room for a player (0.6 m) at the game's 1/8-block collision; so is each landing piece under 1.2 m
      * across between its ends.
      */
-    private static void walkedInFrame(ProcessUnit unit) {
+    static void walkedInFrame(ProcessUnit unit) {
         var starts = new HashSet<Double>(List.of(0.0));
         for (var deck : unit.decks()) {
             var run = deck.run();
             double mid = run.length() / 2, off = (Access.GAP + deck.width() - Access.RAIL_BAND) / 2, y = deck.level() + Access.DECK;
-            assertTrue(unit.inside(run.at(mid, off, deck.level() + Access.DECK / 2)), "deck at " + deck.level());
+            assertTrue(unit.inside(run.at(mid, off, deck.level() + Access.DECK / 2)), unit.shape + " deck at " + deck.level() + " " + run);
             assertFalse(unit.inside(run.at(mid, off, y + .3)), "room over the deck at " + deck.level());
             starts.add(y);
             for (int e = 0; e < 2; e++)
@@ -640,6 +641,34 @@ class ProcessUnitTest {
                 assertFalse(unit.inside(st.at(s, 0, y + .3)), "room over stair tread " + k + " at " + y);
                 for (int side = -1; side <= 1; side += 2) assertTrue(unit.inside(st.at(s, side * (st.width() / 2 - .1), y + .8)), "stair fence " + side + " at tread " + k);
                 assertTrue(clear(unit, st.at(s, -st.width() / 2, y + .6), st.at(s, st.width() / 2, y + .6)) >= .6, "room for a player on tread " + k + " at " + y);
+            }
+        }
+        woundStairsWalked(unit.woundStairs(), unit::inside, starts, unit.shape.toString());
+    }
+
+    /**
+     * A wound stair (owner approval 2026-10-21) runs from the ground or a deck up to a deck; each tread is stepped on, a
+     * fence stands either side (but where the inner side opens onto a deck), and a player's box, 0.6 m square and aligned
+     * with the world, stands on the tread's middle at the walk line without meeting a solid 1/8-block voxel from over the
+     * second tread up to head height. {@code solid} says whether a frame point is solid.
+     */
+    static void woundStairsWalked(List<Access.WoundStair> stairs, java.util.function.Predicate<double[]> solid, Set<Double> starts, String name) {
+        for (var st : stairs) {
+            assertTrue(starts.contains(st.base()) && starts.contains(st.top()), name + " a wound stair from " + st.base() + " to " + st.top() + " joins decks or the ground");
+            for (int k = 1; k <= st.steps(); k++) {
+                double s = (k - .5) * Access.WOUND_GOING, y = st.tread(k);
+                assertTrue(solid.test(st.at(s, 0, y - Math.min(.04, st.rise(k) / 2))), name + " wound tread " + k + " at " + y);
+                assertFalse(solid.test(st.at(s, 0, y + .3)), name + " room over wound tread " + k + " at " + y);
+                for (int side = -1; side <= 1; side += 2) {
+                    if (side < 0 && st.open(s)) continue;
+                    assertTrue(solid.test(st.at(s, side * (st.width() / 2 - Access.NARROW_BAND / 2), y + .8)), name + " wound stair fence " + side + " at tread " + k);
+                }
+                var c = st.at(s, 0, y);
+                for (int i = (int) Math.floor((c[0] - .3) * 8); i / 8.0 < c[0] + .3; i++)
+                    for (int j = (int) Math.ceil((y + .45) * 8 - .5); (j + .5) / 8 <= y + 1.75; j++)
+                        for (int l = (int) Math.floor((c[2] - .3) * 8); l / 8.0 < c[2] + .3; l++)
+                            assertFalse(solid.test(new double[]{(i + .5) / 8, (j + .5) / 8, (l + .5) / 8}),
+                                    name + " a player on wound tread " + k + " at " + y + " meets the voxel at " + (i + .5) / 8 + ", " + (j + .5) / 8 + ", " + (l + .5) / 8);
             }
         }
     }
