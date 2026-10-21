@@ -909,6 +909,7 @@
   "gui.icheme.fluid.outlet.side": "Side (%s): mixed outlet",
   "gui.icheme.fluid.outlet.bottom": "Bottom (%s): liquid outlet",
   "gui.icheme.fluid.outlet.bottom_head": "Bottom (%s): liquid outlet (head %s kPa)",
+  "gui.icheme.fluid.outlet.overflow": "Overflow (%s): liquid above the fill height",
   "gui.icheme.fluid.face.down": "down",
   "gui.icheme.fluid.face.up": "up",
   "gui.icheme.fluid.face.north": "north",

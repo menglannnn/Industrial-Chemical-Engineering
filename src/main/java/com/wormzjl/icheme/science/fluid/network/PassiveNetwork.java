@@ -19,8 +19,14 @@ public record PassiveNetwork(List<Reservoir> reservoirs,List<Pipe> pipes,List<Sc
      * a per-end offset ({@code PassiveStepSolver.endPressure}: the level head at a LIQUID port, decision D9). Only a
      * finite vessel has phases to select from, so a non-BULK port is valid only on a {@link NodeKind#RESERVOIR} or its
      * rate-solve copy, a {@link NodeKind#PORT}.
+     *
+     * <p>{@code OVERFLOW} (batch 2026-10-21-floating-roof-tanks) is a nozzle at the vessel's fill height: it draws only the
+     * liquid held above the vessel's volume at the step start, the lighter liquid first ({@link OpenVessel}), and nothing
+     * while the level stands at or below it (a dry end, {@code PassiveStepSolver.dryEnd}). Its driving pressure is a
+     * LIQUID port's: the line below the nozzle stands full of the same liquid, so the level head over the bottom is the
+     * nozzle's head over the line's datum.</p>
      */
-    public enum PhasePort { BULK, VAPOR, LIQUID }
+    public enum PhasePort { BULK, VAPOR, LIQUID, OVERFLOW }
     public PassiveNetwork {
         reservoirs=List.copyOf(reservoirs);pipes=List.copyOf(pipes);scheduledTransfers=List.copyOf(scheduledTransfers);
         if(reservoirs.isEmpty())throw new IllegalArgumentException("Empty island");
@@ -139,8 +145,12 @@ public record PassiveNetwork(List<Reservoir> reservoirs,List<Pipe> pipes,List<Sc
     }
     /** {@link #emptyVessel} whose level head stands over {@code levelHeight} metres. */
     public static Reservoir emptyVessel(long id,double elevation,double capacity,double levelHeight,FluidThermodynamics model) {
+        return emptyVessel(id,elevation,capacity,levelHeight,false,model);
+    }
+    /** {@link #emptyVessel} open to the atmosphere when {@code open} ({@link Inventory#open}). */
+    public static Reservoir emptyVessel(long id,double elevation,double capacity,double levelHeight,boolean open,FluidThermodynamics model) {
         var ambient=NetworkReduction.ambient(model);
-        return new Reservoir(id,elevation,ambient,NodeKind.RESERVOIR,new Inventory(capacity,new double[ambient.componentCount()],0,SolidInventory.EMPTY,levelHeight));
+        return new Reservoir(id,elevation,ambient,NodeKind.RESERVOIR,new Inventory(capacity,new double[ambient.componentCount()],0,SolidInventory.EMPTY,levelHeight,open));
     }
     /** A vessel stores its inventory; a junction carries a small buffer, its relaxation row's state (see
      * {@link #sizeJunctionHoldups}; owner decision D46); a generator, a void and a port hold a prescribed state. */
@@ -160,22 +170,36 @@ public record PassiveNetwork(List<Reservoir> reservoirs,List<Pipe> pipes,List<Sc
      * {@code volume} and {@code levelHeight} are the vessel's geometry, not its contents: the height its level head stands
      * over ({@link PassiveStepSolver#portHead}), {@link PassiveStepSolver#LEVEL_HEAD_HEIGHT} for a one-block tank, a
      * drum's own height (batch 2026-10-15-custom-equipment-rendering, owner decision 2026-10-16). {@link #with} keeps
-     * both while the contents change.
+     * all three while the contents change.
+     *
+     * <p>{@code open} (batch 2026-10-21-floating-roof-tanks): a vessel whose top is open to the atmosphere under a floating
+     * roof. Its wall is never taut ({@link #wallCapacity}): its surface stands at the ambient pressure whatever it holds.
+     * {@code volume} is then its volume at the fill height {@code levelHeight}, the overflow nozzle's; the shell rises
+     * {@link OpenVessel#FREEBOARD} above it. Its gas leaves to the atmosphere and the liquid above the shell spills
+     * ({@link OpenVessel}).</p>
      */
-    public record Inventory(double volume,double[] moles,double internalEnergy,SolidInventory solids,double levelHeight) {
+    public record Inventory(double volume,double[] moles,double internalEnergy,SolidInventory solids,double levelHeight,boolean open) {
         public Inventory(double volume,double[] moles,double internalEnergy){this(volume,moles,internalEnergy,SolidInventory.EMPTY);}
         public Inventory(double volume,double[] moles,double internalEnergy,SolidInventory solids){this(volume,moles,internalEnergy,solids,PassiveStepSolver.LEVEL_HEAD_HEIGHT);}
+        public Inventory(double volume,double[] moles,double internalEnergy,SolidInventory solids,double levelHeight){this(volume,moles,internalEnergy,solids,levelHeight,false);}
         public Inventory {
             Objects.requireNonNull(solids);
             moles=moles.clone();if(!Double.isFinite(volume)||volume<=0||!Double.isFinite(internalEnergy)||!Double.isFinite(levelHeight)||levelHeight<=0)throw new IllegalArgumentException("Invalid inventory volume/energy/level height");
             double total=0;for(double n:moles){if(!Double.isFinite(n)||n<0)throw new IllegalArgumentException("Negative/nonfinite inventory");total+=n;}
             if(moles.length==0||!Double.isFinite(total)||(total==0&&solids.empty()&&internalEnergy!=0))throw new IllegalArgumentException("Invalid empty/overflowed inventory");
         }
-        /** The same vessel (volume and level height) holding these contents. */
-        public Inventory with(double[] moles,double internalEnergy,SolidInventory solids){return new Inventory(volume,moles,internalEnergy,solids,levelHeight);}
+        /** The same vessel (volume, level height and opening) holding these contents. */
+        public Inventory with(double[] moles,double internalEnergy,SolidInventory solids){return new Inventory(volume,moles,internalEnergy,solids,levelHeight,open);}
+        /**
+         * The capacity the wall law reads (decision D54, {@code PhaseLayout.wallRow}): the volume of a closed vessel, and
+         * infinity for an open one, whose wall is never taut, so its rows keep the slack branch ({@code P = P_ambient}) and
+         * its bag is always its contents' own volume. Every reading of the wall goes through here; the geometry (the level
+         * head's footprint, a vessel's resolution {@code HOLDS_NOTHING}) keeps {@link #volume}.
+         */
+        public double wallCapacity(){return open?Double.POSITIVE_INFINITY:volume;}
         @Override public double[] moles(){return moles.clone();}
-        @Override public boolean equals(Object other){return other instanceof Inventory value&&Double.doubleToLongBits(volume)==Double.doubleToLongBits(value.volume)&&Double.doubleToLongBits(levelHeight)==Double.doubleToLongBits(value.levelHeight)&&Double.doubleToLongBits(internalEnergy)==Double.doubleToLongBits(value.internalEnergy)&&Arrays.equals(moles,value.moles)&&solids.equals(value.solids);}
-        @Override public int hashCode(){return 31*Objects.hash(volume,levelHeight,internalEnergy,solids)+Arrays.hashCode(moles);}
+        @Override public boolean equals(Object other){return other instanceof Inventory value&&open==value.open&&Double.doubleToLongBits(volume)==Double.doubleToLongBits(value.volume)&&Double.doubleToLongBits(levelHeight)==Double.doubleToLongBits(value.levelHeight)&&Double.doubleToLongBits(internalEnergy)==Double.doubleToLongBits(value.internalEnergy)&&Arrays.equals(moles,value.moles)&&solids.equals(value.solids);}
+        @Override public int hashCode(){return 31*Objects.hash(volume,levelHeight,internalEnergy,solids,open)+Arrays.hashCode(moles);}
     }
     /**
      * {@code blockedDirections} is a two-bit mask (1 forbids flow from {@link #first} to {@link #second}, 2 the reverse),

@@ -33,11 +33,16 @@ final class PhaseDraw {
     /** The priority order of {@code port} on {@code state} (phase ids of {@link FluidThermodynamics}): null for BULK, which
      * draws the bulk, but the gas alone where the bulk end of a donor holding solids but no liquid draws its gas (owner
      * decision D33, {@link FluidThermodynamics#bulkDrawsGas}). A BULK end has no segment either way: what it carries in a
-     * step is its node's transport ({@code PassiveStepSolver.Equations}). */
+     * step is its node's transport ({@code PassiveStepSolver.Equations}). An OVERFLOW port skims the surface: the lighter
+     * liquid, then the heavier, then the gas ({@link OpenVessel}). */
     static int[] order(FluidThermodynamics model,FluidThermodynamics.State state,PassiveNetwork.PhasePort port) {
         if(port==PassiveNetwork.PhasePort.BULK)return FluidThermodynamics.bulkDrawsGas(state)?new int[]{GAS}:null;
         int heavy=model.heavierLiquid(state),light=heavy==OIL?WATER:OIL;
-        return port==PassiveNetwork.PhasePort.LIQUID?new int[]{heavy,light,GAS}:new int[]{GAS,light,heavy};
+        return switch(port) {
+            case LIQUID->new int[]{heavy,light,GAS};
+            case OVERFLOW->new int[]{light,heavy,GAS};
+            default->new int[]{GAS,light,heavy};
+        };
     }
     /** The phase a port draws at a vanishing flow: the first of its order {@code state} holds; -1 for a BULK end drawing the
      * bulk and for a state holding none of the three (then the port draws the bulk). The stream every reader of what a port

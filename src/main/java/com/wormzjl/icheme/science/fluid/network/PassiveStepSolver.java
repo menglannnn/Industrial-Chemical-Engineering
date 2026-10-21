@@ -326,7 +326,9 @@ public final class PassiveStepSolver {
         lastSolve=null;
         if(!Double.isFinite(dt)||dt<=0)throw new IllegalArgumentException("Positive finite substep required");
         var graph=inputGraph;
-        if(graph.pipes().isEmpty()&&graph.scheduledTransfers().isEmpty())return new Result(graph.reservoirs().stream().map(PassiveNetwork.Reservoir::state).toList(),new double[0],dt,
+        // An island of unconnected nodes changes nothing in a step, unless an open vessel in it gives the atmosphere its gas
+        // or its spill (OpenVessel).
+        if(graph.pipes().isEmpty()&&graph.scheduledTransfers().isEmpty()&&(rateOnly||graph.reservoirs().stream().noneMatch(OpenVessel::releasing)))return new Result(graph.reservoirs().stream().map(PassiveNetwork.Reservoir::state).toList(),new double[0],dt,
                 new SparseNewton.Result(new double[0],0,0,0,0,0),List.of(),new double[0],0,new double[model.hydrocarbon.componentCount()+1],0,
                 graph.reservoirs().stream().map(PassiveNetwork.Reservoir::inventory).toList(),List.of(),List.of());
         var modes=new ArrayList<FlowControl.Mode>();
@@ -467,7 +469,7 @@ public final class PassiveStepSolver {
             for(int i=0;i<seeds.size();i++) {
                 var node=graph.reservoirs().get(i);var kind=node.kind();
                 if(kind!=PassiveNetwork.NodeKind.RESERVOIR&&kind!=PassiveNetwork.NodeKind.PORT||dry(node,seeds.get(i))||holdsNoFluid(node))continue;
-                if(seeds.get(i).vaporVolume()/seeds.get(i).volume()<.01&&PhaseLayout.taut(seeds.get(i),node.inventory().volume())){smallHeadspace=true;break;}
+                if(seeds.get(i).vaporVolume()/seeds.get(i).volume()<.01&&PhaseLayout.taut(seeds.get(i),node.inventory().wallCapacity())){smallHeadspace=true;break;}
             }
             // 1e-11 stalls on caloric cancellation in nearly liquid-full water with trace N2.
             // Keep two orders of margin to the unchanged 1e-8 full-equation gate; every final
@@ -562,7 +564,7 @@ public final class PassiveStepSolver {
             // What each phase-port outflow drew, phase by phase, at these flows on this candidate: the reconstruction books it
             // and the transfer samples it (decision D11).
             var draws=equations.draws(flows,states);
-            var projection=ConservativeTransport.reconstruct(graph,states,flows,heads,dt,model,checkpoint,transport,rateOnly,draws,equations.supports,emptyings);
+            var projection=ConservativeTransport.reconstruct(graph,states,flows,heads,dt,model,checkpoint,transport,rateOnly,draws,equations.supports,emptyings,equations.releases);
             // Decision D54: a dry vessel this pass's flows reached holds what they delivered (booked at the ambient, closed
             // at its wall); the pass is solved again with it laid out from that state, so its end is the step's implicit
             // end like every vessel's.
@@ -680,7 +682,7 @@ public final class PassiveStepSolver {
         }
         if(equations.segmentsMoved(flows))return null;
         var draws=equations.draws(flows,states);
-        var projection=ConservativeTransport.reconstruct(graph,states,flows,heads,dt,model,checkpoint,transport,rateOnly,draws,equations.supports,emptyings);
+        var projection=ConservativeTransport.reconstruct(graph,states,flows,heads,dt,model,checkpoint,transport,rateOnly,draws,equations.supports,emptyings,equations.releases);
         if(phaseAppeared(graph,states,projection.states())||phaseFolded(graph,states,projection.states())
                 ||phaseCorrection(graph,projection.states(),checkpoint,equations.cachedPrepared,foldedPhases.clone())!=null)return null;
         var reconstructed=variables.clone();
@@ -1101,7 +1103,7 @@ public final class PassiveStepSolver {
                     try{delivered=model.folded(model.flashTP(weighted/mass,PhaseLayout.AMBIENT_PRESSURE,n,checkpoint),false);}
                     catch(com.wormzjl.icheme.science.fluid.thermo.ThermoHold outside){continue;}
                     // What arrives may itself be nothing at the bag's resolution: the vessel then stays dry.
-                    if(PhaseLayout.bagVolume(delivered,node.inventory().volume())<=HOLDS_NOTHING*node.inventory().volume())continue;
+                    if(PhaseLayout.bagVolume(delivered,node.inventory().wallCapacity())<=HOLDS_NOTHING*node.inventory().volume())continue;
                     var own=emptyBagSplit(node,weighted/mass,n,heat,checkpoint);
                     if(result==null)result=new ArrayList<>(seeds);
                     var arrived=own==null?delivered:own;var held=node.inventory().solids();
@@ -1436,12 +1438,14 @@ public final class PassiveStepSolver {
      * amounts, evaluated by every caller on the state it is stating a pressure for (so the block Jacobian carries its
      * derivative with no new structural entry); a pressure, so inflow through a bottom port works against it; not in the
      * port's capacities nor the step controller. A VAPOR or BULK port, any other node kind and a state with no condensed
-     * mass get exactly {@code 0.0}, so gas-only and all-BULK islands are the doubles they were.
+     * mass get exactly {@code 0.0}, so gas-only and all-BULK islands are the doubles they were. An OVERFLOW port
+     * ({@link OpenVessel}) states the LIQUID port's head: its nozzle stands at the fill height, and the line below it full of
+     * the same liquid adds back the head the nozzle stands above the bottom.
      */
     double portHead(PassiveNetwork.Reservoir node,PassiveNetwork.PhasePort port,FluidThermodynamics.State state){return portHead(model,node,port,state);}
     /** {@link #portHead} for a caller outside a solve (the network reduction stage): the same arithmetic on {@code model}. */
     static double portHead(FluidThermodynamics model,PassiveNetwork.Reservoir node,PassiveNetwork.PhasePort port,FluidThermodynamics.State state) {
-        if(port!=PassiveNetwork.PhasePort.LIQUID||node.kind()!=PassiveNetwork.NodeKind.RESERVOIR&&node.kind()!=PassiveNetwork.NodeKind.PORT)return 0;
+        if(port!=PassiveNetwork.PhasePort.LIQUID&&port!=PassiveNetwork.PhasePort.OVERFLOW||node.kind()!=PassiveNetwork.NodeKind.RESERVOIR&&node.kind()!=PassiveNetwork.NodeKind.PORT)return 0;
         double condensed=model.liquidMass(state);
         return condensed>0?GRAVITY*condensed*node.inventory().levelHeight()/node.inventory().volume():0;
     }
@@ -1781,7 +1785,7 @@ public final class PassiveStepSolver {
      * pressure while slack; {@code null} where that closure fails.
      */
     private FluidThermodynamics.State vesselSplit(PassiveNetwork.Reservoir node,FluidThermodynamics.State state,FluidThermodynamics.State start,Runnable checkpoint) {
-        double capacity=node.inventory().volume();
+        double capacity=node.inventory().wallCapacity();
         return InventoryEquilibrium.split(model,start,node.inventory().with(PhaseLayout.totalAmounts(state),state.internalEnergy(),state.solids()),
                 PhaseLayout.bagVolume(state,capacity),checkpoint);
     }
@@ -2801,13 +2805,15 @@ public final class PassiveStepSolver {
      * Decision D54 (every vessel a bag with a stiff wall): an end with nothing behind it to draw. A vessel that holds no
      * fluid ({@link #holdsNoFluid}: placed empty, or holding only solids, which ride the liquid, decision D33) has nothing
      * to carry anything out, so all its ports are dry; a top (VAPOR) port of a slack vessel that holds no gas is dry too:
-     * what is above the liquid is the atmosphere the model does not carry.
+     * what is above the liquid is the atmosphere the model does not carry. An OVERFLOW port is dry while the vessel holds
+     * no liquid above its fill height at the step start ({@link OpenVessel#overflows}): its nozzle stands above the level.
      */
     static boolean dryEnd(PassiveNetwork.Reservoir node,PassiveNetwork.PhasePort port) {
         if(node.kind()!=PassiveNetwork.NodeKind.RESERVOIR&&node.kind()!=PassiveNetwork.NodeKind.PORT)return false;
         if(holdsNoFluid(node))return true;
+        if(port==PassiveNetwork.PhasePort.OVERFLOW)return !OpenVessel.overflows(node);
         return port==PassiveNetwork.PhasePort.VAPOR&&!FluidThermodynamics.holdsPhase(node.state(),FluidThermodynamics.GAS)
-                &&!PhaseLayout.taut(node.state(),node.inventory().volume());
+                &&!PhaseLayout.taut(node.state(),node.inventory().wallCapacity());
     }
     /**
      * A vessel, or its rate-solve copy, that holds no fluid (decision D54): its fluid, the bag less its solids, at most
@@ -2828,7 +2834,7 @@ public final class PassiveStepSolver {
     static boolean holdsNoFluid(PassiveNetwork.Inventory inventory,FluidThermodynamics.State state) {
         boolean none=true;for(double n:inventory.moles())if(n!=0){none=false;break;}
         if(none)return true;
-        double capacity=inventory.volume(),bag=PhaseLayout.bagVolume(state,capacity);
+        double capacity=inventory.volume(),bag=PhaseLayout.bagVolume(state,inventory.wallCapacity());
         return (inventory.solids().empty()?bag:bag-inventory.solids().volume())<=HOLDS_NOTHING*capacity;
     }
     /**
@@ -2863,7 +2869,7 @@ public final class PassiveStepSolver {
         var nodes=new ArrayList<>(graph.reservoirs());
         for(int i=0;i<emptying.length;i++)if(emptying[i]) {
             var node=graph.reservoirs().get(i);var stock=node.inventory();
-            double work=PhaseLayout.AMBIENT_PRESSURE*PhaseLayout.bagVolume(node.state(),stock.volume());
+            double work=PhaseLayout.AMBIENT_PRESSURE*PhaseLayout.bagVolume(node.state(),stock.wallCapacity());
             nodes.set(i,new PassiveNetwork.Reservoir(node.id(),node.elevation(),node.state(),PassiveNetwork.NodeKind.JUNCTION,
                     stock.with(stock.moles(),stock.internalEnergy()+work,stock.solids())));
         }
@@ -2878,7 +2884,7 @@ public final class PassiveStepSolver {
         for(int i=0;i<emptying.length;i++)if(emptying[i]) {
             var node=graph.reservoirs().get(i);var stock=node.inventory();
             result[i]=new ConservativeTransport.Emptying((molarMass(stock.moles())+stock.solids().massKg())/dt,
-                    PhaseLayout.AMBIENT_PRESSURE*PhaseLayout.bagVolume(node.state(),stock.volume()));
+                    PhaseLayout.AMBIENT_PRESSURE*PhaseLayout.bagVolume(node.state(),stock.wallCapacity()));
         }
         return result;
     }
@@ -3049,6 +3055,16 @@ public final class PassiveStepSolver {
          * draws the first phase of its order its vessel holds.
          */
         final double[][] capacities;
+        /**
+         * Each open vessel's per-phase capacity at its OVERFLOW ports, kg/s by phase id ({@link OpenVessel#overflowBand}
+         * over the step and over its OVERFLOW ends that may carry outflow); null for a node with none. Infinite in a rate
+         * solve, like {@link #capacities}. The ends' total is also their flow's cap ({@link #cap}): the port draws what
+         * stands above its nozzle and no more.
+         */
+        final double[][] overflowCapacities;
+        /** What each open vessel gives the atmosphere over the step ({@link OpenVessel#releases}): constant terms of its
+         * balance rows; null for a rate solve and for an island without one. */
+        final OpenVessel.Releases[] releases;
         /** Which phases each node's seed of this pass holds ({@link PhaseDraw#held}). */
         final boolean[][] seedHeld;
         /** The phase streams of each node with a phase port on the accepted state the step starts from, by phase id (null
@@ -3168,7 +3184,8 @@ public final class PassiveStepSolver {
                 if(this.boundaryClosed[edge]&&pipe.control() instanceof FlowControl.Passive)continue;
                 if((end==0?pipe.firstPort():pipe.secondPort())!=PassiveNetwork.PhasePort.BULK)drawsPhase[end==0?pipe.first():pipe.second()]=true;
             }
-            capacities=capacities(graph,dt);
+            releases=rateOnly?null:releases(graph);
+            capacities=capacities(graph,dt);overflowCapacities=overflowCapacities(graph,dt);
             seedHeld=new boolean[count][];startPhases=new Transport[count][];
             for(int i=0;i<count;i++)if(drawsPhase[i]){seedHeld[i]=PhaseDraw.held(this.seeds.get(i));startPhases[i]=transport(i,graph.reservoirs().get(i).state(),null).phases;}
             int cursor=0;dry=new boolean[count];bagStart=new double[count];
@@ -3176,7 +3193,7 @@ public final class PassiveStepSolver {
                 var node=graph.reservoirs().get(i);
                 dry[i]=dry(node,this.seeds.get(i));
                 // The bag volume the step starts from, whose wall work each vessel's energy row books (decision D54).
-                if(node.kind()==PassiveNetwork.NodeKind.RESERVOIR)bagStart[i]=node.empty()?0:PhaseLayout.bagVolume(node.state(),node.inventory().volume());
+                if(node.kind()==PassiveNetwork.NodeKind.RESERVOIR)bagStart[i]=node.empty()?0:PhaseLayout.bagVolume(node.state(),node.inventory().wallCapacity());
             }
             for(int i=0;i<count;i++) {
                 var state=graph.reservoirs().get(i).state();offsets[i]=cursor;oldAmounts[i]=graph.reservoirs().get(i).inventory().moles();
@@ -3318,21 +3335,69 @@ public final class PassiveStepSolver {
         /** Whether connection {@code edge}'s law is saturated at its velocity cap in this pass ({@link PassiveStepSolver#saturates}): a
          * throttling mode and not closed. */
         boolean saturates(int edge){return PassiveStepSolver.saturates(modes.get(edge))&&!boundaryClosed[edge];}
-        /** {@link #capacities} of {@code graph} (its states are the step's start states). */
-        private double[][] capacities(PassiveNetwork graph,double dt) {
-            int nodes=graph.reservoirs().size();int[] ends=new int[nodes];
+        /** {@link #releases} of {@code graph}: null when no node releases anything. */
+        private OpenVessel.Releases[] releases(PassiveNetwork graph) {
+            OpenVessel.Releases[] result=null;
+            for(int node=0;node<graph.reservoirs().size();node++) {
+                var released=OpenVessel.releases(model,graph.reservoirs().get(node));if(released==null)continue;
+                if(result==null)result=new OpenVessel.Releases[graph.reservoirs().size()];
+                result[node]=released;
+            }
+            return result;
+        }
+        /** The number of {@code port} ends (of the phase ports other than OVERFLOW when {@code port} is null) of each node
+         * whose connection may carry outflow from it by the static rule. */
+        private int[] drawingEnds(PassiveNetwork graph,PassiveNetwork.PhasePort port) {
+            int[] ends=new int[graph.reservoirs().size()];
             for(var pipe:graph.pipes())for(int end=0;end<2;end++) {
-                if((end==0?pipe.firstPort():pipe.secondPort())==PassiveNetwork.PhasePort.BULK||!boundaryAllowed(graph,pipe,end==0?1:-1))continue;
+                var at=end==0?pipe.firstPort():pipe.secondPort();
+                if(port==null?at==PassiveNetwork.PhasePort.BULK||at==PassiveNetwork.PhasePort.OVERFLOW:at!=port)continue;
+                if(!boundaryAllowed(graph,pipe,end==0?1:-1))continue;
                 ends[end==0?pipe.first():pipe.second()]++;
             }
+            return ends;
+        }
+        /** {@link #capacities} of {@code graph} (its states are the step's start states). An open vessel's leave out what it
+         * releases over the step ({@link #releases}): its vented gas and its spilled liquid. */
+        private double[][] capacities(PassiveNetwork graph,double dt) {
+            int nodes=graph.reservoirs().size();int[] ends=drawingEnds(graph,null);
             double[][] result=new double[nodes][];
             for(int node=0;node<nodes;node++) {
                 if(ends[node]==0)continue;
                 var start=graph.reservoirs().get(node).state();result[node]=new double[3];
                 for(int phase=0;phase<3;phase++)result[node][phase]=rateOnly?Double.POSITIVE_INFINITY
                         :FluidThermodynamics.holdsPhase(start,phase)?model.phaseMass(start,phase)/(ends[node]*dt):0;
+                if(releases!=null&&releases[node]!=null)released(node,start,result[node],ends[node]*dt);
             }
             return result;
+        }
+        /** {@code capacity} less what open vessel {@code node} releases from its start state {@code start} over the step, each
+         * phase's release shared over {@code span}, its drawing ends times the step. */
+        private void released(int node,FluidThermodynamics.State start,double[] capacity,double span) {
+            var released=releases[node];
+            if(released.vent()!=null)capacity[FluidThermodynamics.GAS]=0;
+            if(released.spill()==null)return;
+            var band=OpenVessel.band(model,start,OpenVessel.topVolume(graph.reservoirs().get(node).inventory()),OpenVessel.condensedVolume(start));
+            for(int phase=FluidThermodynamics.OIL;phase<=FluidThermodynamics.WATER;phase++)if(band[phase]>0)
+                capacity[phase]=Math.max(0,capacity[phase]-model.phaseMass(start,phase)*band[phase]/FluidThermodynamics.phaseVolume(start,phase)/span);
+        }
+        /** {@link #overflowCapacities} of {@code graph}. */
+        private double[][] overflowCapacities(PassiveNetwork graph,double dt) {
+            int nodes=graph.reservoirs().size();int[] ends=drawingEnds(graph,PassiveNetwork.PhasePort.OVERFLOW);
+            double[][] result=null;
+            for(int node=0;node<nodes;node++) {
+                if(ends[node]==0)continue;
+                if(result==null)result=new double[nodes][];
+                var band=OpenVessel.overflowBand(model,graph.reservoirs().get(node));result[node]=new double[3];
+                for(int phase=0;phase<3;phase++)result[node][phase]=band[phase]>0?rateOnly?Double.POSITIVE_INFINITY:band[phase]/(ends[node]*dt):0;
+            }
+            return result;
+        }
+        /** The cap of an OVERFLOW end at {@code node}: its capacities' total, kg/s; infinite for a node without. */
+        private double overflowCap(int node) {
+            if(overflowCapacities==null||overflowCapacities[node]==null)return Double.POSITIVE_INFINITY;
+            double total=0;for(double c:overflowCapacities[node])total+=c;
+            return total;
         }
         /** The segment of every open phase-port end at the connection flows {@code flows} and this pass's seeds; each end's
          * priority order is read off the node's state on the accepted state the step starts from, like its capacities. */
@@ -3343,8 +3408,10 @@ public final class PassiveStepSolver {
                 if(port==PassiveNetwork.PhasePort.BULK||boundaryClosed[edge]&&pipe.control() instanceof FlowControl.Passive)continue;
                 var order=PhaseDraw.order(model,graph.reservoirs().get(node).state(),port);
                 // An end no connection of which may carry outflow from its vessel (into a generator, blocked) draws nothing
-                // over the step; its capacities are none, and the first phase its seed holds names its stream.
-                var capacity=capacities[node]==null?new double[3]:capacities[node];
+                // over the step; its capacities are none, and the first phase its seed holds names its stream. An OVERFLOW
+                // end draws the liquid above its nozzle (OpenVessel).
+                var capacities=port==PassiveNetwork.PhasePort.OVERFLOW?overflowCapacities:this.capacities;
+                var capacity=capacities==null||capacities[node]==null?new double[3]:capacities[node];
                 result[edge][end]=PhaseDraw.Segment.decide(order,capacity,seedHeld[node],end==0?flows[edge]:-flows[edge]);
             }
             return result;
@@ -3361,17 +3428,20 @@ public final class PassiveStepSolver {
         List<FluidThermodynamics.State> drainedSeeds(Runnable checkpoint) {
             List<FluidThermodynamics.State> result=null;
             for(int node=0;node<layout.length;node++) {
-                if(layout[node]==null||!drawsPhase[node]||capacities[node]==null)continue;
+                // An open vessel's vent draws its whole start gas (OpenVessel), as a phase pinned at its capacity does.
+                boolean vents=releases!=null&&releases[node]!=null&&releases[node].vent()!=null;
+                if(layout[node]==null||!vents&&(!drawsPhase[node]||capacities[node]==null))continue;
                 var seed=seeds.get(node);var start=graph.reservoirs().get(node).state();
                 double[] drawn=new double[3];
-                for(int edge=0;edge<segments.length;edge++)for(int end=0;end<2;end++) {
+                if(vents)drawn[FluidThermodynamics.GAS]=model.phaseMass(start,FluidThermodynamics.GAS);
+                if(drawsPhase[node])for(int edge=0;edge<segments.length;edge++)for(int end=0;end<2;end++) {
                     var segment=segments[edge][end];var pipe=graph.pipes().get(edge);
                     if(segment==null||(end==0?pipe.first():pipe.second())!=node)continue;
                     for(int phase:segment.pinned())drawn[phase]+=segment.capacity()[phase]*dt;
                 }
                 double[] amounts=PhaseLayout.totalAmounts(seed);boolean any=false;
                 for(int phase=0;phase<3;phase++) {
-                    if(!seedHeld[node][phase]||!FluidThermodynamics.holdsPhase(start,phase)||drawn[phase]<model.phaseMass(start,phase)*(1-1e-9))continue;
+                    if(!(seedHeld[node]==null?FluidThermodynamics.holdsPhase(seed,phase):seedHeld[node][phase])||!FluidThermodynamics.holdsPhase(start,phase)||drawn[phase]<model.phaseMass(start,phase)*(1-1e-9))continue;
                     var n=FluidThermodynamics.phaseMoles(start,phase);
                     for(int c=0;c<amounts.length;c++)amounts[c]=Math.max(0,amounts[c]-n[c]);
                     any=true;
@@ -3484,6 +3554,8 @@ public final class PassiveStepSolver {
         /** {@link #cap} under {@code segment} at the end {@code end} the flow leaves, on that end's node transport {@code donor}. */
         private double cap(PhaseDraw.Segment segment,int edge,int end,Transport donor,double y) {
             var pipe=graph.pipes().get(edge);double limit=capLimit(segment,edge,end,donor);
+            // An OVERFLOW end carries at most what stands above its nozzle over the step (OpenVessel).
+            if((end==0?pipe.firstPort():pipe.secondPort())==PassiveNetwork.PhasePort.OVERFLOW)limit=Math.min(limit,overflowCap(end==0?pipe.first():pipe.second()));
             return pipe.filter()==null?limit:filterCapFlow(edge,limit,drawn(segment,edge,end,donor,saturated(y,limit)));
         }
         /** The transported flow (kg/s) of connection {@code edge} for its edge unknown {@code y}, the law's flow: its
@@ -3630,14 +3702,14 @@ public final class PassiveStepSolver {
             }
             // Decision A423: a vessel whose wall changed branch since the build is on slopes the Jacobian does not state.
             if(builtWall!=null)for(int node=0;node<layout.length;node++)if(builtWall[node]!=null
-                    &&!builtWall[node].equals(PhaseLayout.wall(cachedStates[node],graph.reservoirs().get(node).inventory().volume())))return false;
+                    &&!builtWall[node].equals(PhaseLayout.wall(cachedStates[node],graph.reservoirs().get(node).inventory().wallCapacity())))return false;
             return true;
         }
         /** Decision A423: the wall's branches of every vessel at {@code base}, read by the sweep's rows and the chord test. */
         @Override public void linearising(double[] base) {
             decode(base);var walls=new PhaseLayout.Wall[layout.length];
             for(int node=0;node<layout.length;node++)if(layout[node]!=null&&!graph.reservoirs().get(node).junction())
-                walls[node]=PhaseLayout.wall(cachedStates[node],graph.reservoirs().get(node).inventory().volume());
+                walls[node]=PhaseLayout.wall(cachedStates[node],graph.reservoirs().get(node).inventory().wallCapacity());
             builtWall=sweepWall=walls;
         }
         @Override public void linearised(){sweepWall=null;}
@@ -3781,6 +3853,12 @@ public final class PassiveStepSolver {
                     var moments=input.solidsPerSecond().moments().values();for(int c=0;c<3;c++)solidTargets[node][c]+=dt*moments[c];
                     stored+=dt*input.totalEnergyPerSecond();
                 }
+            }
+            // An open vessel's vent and spill (OpenVessel): fixed amounts read off the step's start state.
+            if(releases!=null&&releases[node]!=null)for(var released:releases[node].each()) {
+                var n=released.moles();for(int c=0;c<n.length;c++)target[c]-=n[c];
+                var moments=released.moments().values();for(int c=0;c<3;c++)solidTargets[node][c]-=moments[c];
+                stored-=released.energyJoule();
             }
             for(int edge:nodeEdges[node]) {
                 var pipe=graph.pipes().get(edge);int a=pipe.first(),b=pipe.second();double flow=flow(edge,x[edgeOffset+edge],tr);
@@ -4002,7 +4080,7 @@ public final class PassiveStepSolver {
         /** The balance, energy, volume, equilibrium and closure rows this node owns. */
         private void nodeRows(int node,double[] x,FluidThermodynamics.State[] st,FluidThermodynamics.Prepared[] pr,double[] f) {
             if(!graph.reservoirs().get(node).junction())
-                layout[node].residual(st[node],targets[node],energy[node],graph.reservoirs().get(node).inventory().volume(),bagStart[node],f,offsets[node],x,pr[node],sweepWall==null?null:sweepWall[node]);
+                layout[node].residual(st[node],targets[node],energy[node],graph.reservoirs().get(node).inventory().wallCapacity(),bagStart[node],f,offsets[node],x,pr[node],sweepWall==null?null:sweepWall[node]);
             else layout[node].junctionResidual(st[node],fractions,junctionInflow(node),netMass[node],retainedPressures[node],f,offsets[node],x,pr[node],junctionWeight);
             nodeSolidRows(node,x,st,f);
         }
@@ -4014,7 +4092,7 @@ public final class PassiveStepSolver {
          */
         private void nodeTargetRows(int node,double[] x,FluidThermodynamics.State[] st,double[] f) {
             if(!graph.reservoirs().get(node).junction())
-                layout[node].balanceRows(st[node],targets[node],energy[node],graph.reservoirs().get(node).inventory().volume(),bagStart[node],f,offsets[node],x,sweepWall==null?null:sweepWall[node]);
+                layout[node].balanceRows(st[node],targets[node],energy[node],graph.reservoirs().get(node).inventory().wallCapacity(),bagStart[node],f,offsets[node],x,sweepWall==null?null:sweepWall[node]);
             else layout[node].junctionRows(st[node],fractions,junctionInflow(node),netMass[node],retainedPressures[node],f,offsets[node],x,junctionWeight);
             nodeSolidRows(node,x,st,f);
         }

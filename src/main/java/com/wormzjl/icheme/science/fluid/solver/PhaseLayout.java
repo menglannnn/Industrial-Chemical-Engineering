@@ -283,10 +283,15 @@ public final class PhaseLayout {
      * row it replaces, to the bit) and {@code slack = 2 (P_ambient - P)/P_ambient}, twice as steep in pressure as any
      * contents' own volume, so a vessel exactly at the kink reads the taut row. Continuous and smooth on each branch; a
      * Newton on it takes the slopes of the branch the iterate is on ({@code branch}, {@link Wall}).
+     *
+     * <p>An infinite {@code capacity} is an open vessel's (batch 2026-10-21-floating-roof-tanks,
+     * {@code PassiveNetwork.Inventory#wallCapacity}): its wall is never taut, so the row is the slack branch alone, the
+     * same row count, and its bag is the contents' own volume ({@link #bagVolume}).</p>
      */
     public static double wallRow(FluidThermodynamics.State state,double capacity){return wallRow(state,capacity,null);}
     /** {@link #wallRow} stated on {@code branch}'s branch ({@link Wall#taut}); on the state's own when it is null. */
     public static double wallRow(FluidThermodynamics.State state,double capacity,Wall branch) {
+        if(capacity==Double.POSITIVE_INFINITY)return 2*(AMBIENT_PRESSURE-state.pressure())/AMBIENT_PRESSURE;
         double taut=(state.volume()-capacity)/capacity,slack=2*(AMBIENT_PRESSURE-state.pressure())/AMBIENT_PRESSURE;
         return (branch==null?taut>=slack:branch.taut())?taut:slack;
     }
@@ -309,6 +314,7 @@ public final class PhaseLayout {
     }
     /** Whether the wall carries the contents ({@link #wallRow} on its taut branch). */
     public static boolean taut(FluidThermodynamics.State state,double capacity) {
+        if(capacity==Double.POSITIVE_INFINITY)return false;
         return (state.volume()-capacity)/capacity>=2*(AMBIENT_PRESSURE-state.pressure())/AMBIENT_PRESSURE;
     }
     /**

@@ -132,7 +132,7 @@ public final class InletPhase {
         return switch(node.kind()) {
             case GENERATOR->Double.POSITIVE_INFINITY;
             case VOID,JUNCTION->0;
-            case RESERVOIR,PORT->PassiveStepSolver.dryEnd(node,port)?0:PhaseLayout.bagVolume(node.state(),node.inventory().volume())/node.inventory().volume();
+            case RESERVOIR,PORT->PassiveStepSolver.dryEnd(node,port)?0:PhaseLayout.bagVolume(node.state(),node.inventory().wallCapacity())/node.inventory().volume();
         };
     }
 

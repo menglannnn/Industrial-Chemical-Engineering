@@ -92,8 +92,8 @@ public final class IslandCertificate {
             for(var boundary:result.boundaries()){for(double n:boundary.moles())if(n!=0)zero=false;if(boundary.totalEnergyJoule()!=0||!boundary.solids().empty())zero=false;}
             boolean flush=false;
             // A boundary transfer at a vessel is a flush when it carries material; the wall's work on the ambient (decision
-            // D54) is booked there as energy alone.
-            for(var boundary:result.boundaries())for(var node:after.reservoirs())if(node.id()==boundary.nodeId()&&!node.fixed()&&carriesMaterial(boundary))flush=true;
+            // D54) is booked there as energy alone, and an open vessel's vent and spill are rates a steady island repeats.
+            for(var boundary:result.boundaries())for(var node:after.reservoirs())if(node.id()==boundary.nodeId()&&!node.fixed()&&carriesMaterial(boundary)&&!rate(boundary))flush=true;
             flushed=flush;
             boolean closures=true,filter=false;
             for(int p=0;p<after.pipes().size();p++) {
@@ -114,6 +114,10 @@ public final class IslandCertificate {
         /** Which of vapour, hydrocarbon liquid and free water a node holds. */
         static int phases(com.wormzjl.icheme.science.fluid.thermo.FluidThermodynamics.State state) {
             return (state.vaporVolume()>0?1:0)|(state.liquidVolume()>0?2:0)|(state.waterVolume()>0?4:0);
+        }
+        private static boolean rate(com.wormzjl.icheme.science.fluid.network.ConservativeTransport.BoundaryTransfer boundary) {
+            var kind=boundary.kind();
+            return kind==com.wormzjl.icheme.science.fluid.network.ConservativeTransport.BoundaryTransfer.Kind.VENT||kind==com.wormzjl.icheme.science.fluid.network.ConservativeTransport.BoundaryTransfer.Kind.SPILL;
         }
         private static boolean carriesMaterial(com.wormzjl.icheme.science.fluid.network.ConservativeTransport.BoundaryTransfer boundary) {
             if(!boundary.solids().empty())return true;
@@ -461,7 +465,7 @@ public final class IslandCertificate {
         var boundaries=new ArrayList<ConservativeTransport.BoundaryTransfer>(recorded.boundaries().size());
         for(var b:recorded.boundaries()) {
             var moles=b.moles();for(int c=0;c<moles.length;c++)moles[c]*=g;
-            boundaries.add(new ConservativeTransport.BoundaryTransfer(b.nodeId(),moles,g*b.totalEnergyJoule(),b.solids().scale(g),b.solidDirection()));
+            boundaries.add(new ConservativeTransport.BoundaryTransfer(b.nodeId(),moles,g*b.totalEnergyJoule(),b.solids().scale(g),b.solidDirection(),b.kind()));
         }
         var pipes=new ArrayList<PipeTransfer>(recorded.pipeTransfers().size());
         for(var p:recorded.pipeTransfers())pipes.add(new PipeTransfer(p.pipeId(),scale(p.forward(),g),scale(p.reverse(),g)));

@@ -107,7 +107,8 @@ public final class NetworkReduction {
      * identity and it is not solved ({@link PassiveIntervalSolver#solve} returns {@link #restInterval}; the island then
      * certifies as at rest). Decided from the structure and the present states only, before any Newton:
      * <ul>
-     * <li>Only islands holding no trace an accepted step would flush (decision D16) and no module transfer are asked.
+     * <li>Only islands holding no trace an accepted step would flush (decision D16), no module transfer and no open vessel
+     * that vents or overflows ({@link OpenVessel#releasing}) are asked.
      * Solids do not keep an island awake (owner decision D23 (6)): a particle moves only with the flow that carries it
      * and grows or melts only in a vessel's refresh, which runs before this test. At an interval start every transport
      * closure is read as open (owner decision D33), since that interval re-decides them ({@link #reopened}); a filter
@@ -138,6 +139,8 @@ public final class NetworkReduction {
             if(node.kind()==PassiveNetwork.NodeKind.PORT)return false;
             stock|=node.kind()==PassiveNetwork.NodeKind.GENERATOR||node.kind()==PassiveNetwork.NodeKind.RESERVOIR&&!PassiveStepSolver.holdsNoFluid(node);
             if(!node.fixed()&&flushable(node))return false;
+            // An open vessel holding gas or liquid above its fill height gives it to the atmosphere (OpenVessel).
+            if(OpenVessel.releasing(node))return false;
         }
         // Nothing to move: no generator, no vessel holding fluid (solids alone do not move, D33: they ride the liquid; voids
         // only receive, and a junction's buffer is its relaxation row's state, never material, D46; a minted one no source

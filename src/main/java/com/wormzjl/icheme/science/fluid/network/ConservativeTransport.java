@@ -59,9 +59,17 @@ public final class ConservativeTransport {
             return 31*(31*(31*size+Arrays.hashCode(offsets))+Arrays.hashCode(rows))+Arrays.hashCode(zeros);
         }
     }
-    public record BoundaryTransfer(long nodeId,double[] moles,double totalEnergyJoule,SolidInventory solids,int solidDirection) {
+    /**
+     * What crossed the island's boundary at one node over a step. {@code kind} says what crossed it: an {@link Kind#EXCHANGE}
+     * with a fixed node, a module or the ambient (the wall's work), a one-time {@link Kind#FLUSH} of a vessel's trace or
+     * gas, or an open vessel's {@link Kind#VENT} and {@link Kind#SPILL} to the atmosphere ({@link OpenVessel}), which are
+     * rates a steady island repeats.
+     */
+    public record BoundaryTransfer(long nodeId,double[] moles,double totalEnergyJoule,SolidInventory solids,int solidDirection,Kind kind) {
+        public enum Kind { EXCHANGE, FLUSH, VENT, SPILL }
         public BoundaryTransfer(long nodeId,double[] moles,double totalEnergyJoule){this(nodeId,moles,totalEnergyJoule,SolidInventory.EMPTY,0);}
-        public BoundaryTransfer{moles=moles.clone();Objects.requireNonNull(solids);if(solidDirection < -1||solidDirection > 1||!solids.empty()&&solidDirection==0)throw new IllegalArgumentException("Invalid solid boundary direction");}
+        public BoundaryTransfer(long nodeId,double[] moles,double totalEnergyJoule,SolidInventory solids,int solidDirection){this(nodeId,moles,totalEnergyJoule,solids,solidDirection,Kind.EXCHANGE);}
+        public BoundaryTransfer{moles=moles.clone();Objects.requireNonNull(solids);Objects.requireNonNull(kind);if(solidDirection < -1||solidDirection > 1||!solids.empty()&&solidDirection==0)throw new IllegalArgumentException("Invalid solid boundary direction");}
         @Override public double[] moles(){return moles.clone();}
     }
     /**
@@ -97,7 +105,7 @@ public final class ConservativeTransport {
     /** One-shot: a caller with no retained island workspace builds fresh linear algebra, as before. */
     public static Projection reconstruct(PassiveNetwork graph,List<FluidThermodynamics.State> candidate,double[] flows,double[] heads,
                                          double dt,FluidThermodynamics model,Runnable checkpoint) {
-        return reconstruct(graph,candidate,flows,heads,dt,model,checkpoint,null,false,null,null,null);
+        return reconstruct(graph,candidate,flows,heads,dt,model,checkpoint,null,false,null,null,null,null);
     }
     /** A vessel that runs dry within the step (decision D54): its stock's mass {@code drain} and the ambient's {@code work}. */
     public record Emptying(double drain,double work) {}
@@ -113,14 +121,18 @@ public final class ConservativeTransport {
      * vessel that runs dry within the step and stands in {@code graph} as a junction holding its stock (decision D54):
      * {@link Emptying#drain} its stock's mass over dt and {@link Emptying#work} the ambient's work on its collapsing bag;
      * its booking pins its end mass to zero, and its energy's residual leaves to the ambient boundary at the vessel.
+     * {@code releases} (null: none): per node, what an open vessel gives the atmosphere over the step ({@link OpenVessel}),
+     * booked out of it as fixed amounts and as {@link BoundaryTransfer.Kind#VENT} and {@link BoundaryTransfer.Kind#SPILL}
+     * boundaries at it.
      */
     public static Projection reconstruct(PassiveNetwork graph,List<FluidThermodynamics.State> candidate,double[] flows,double[] heads,
                                          double dt,FluidThermodynamics model,Runnable checkpoint,Workspace workspace,boolean frozenJunctions,double[][] draws,
-                                         PhaseSupport[][] supports,Emptying[] emptying) {
+                                         PhaseSupport[][] supports,Emptying[] emptying,OpenVessel.Releases[] releases) {
         if(draws!=null&&draws.length!=flows.length)throw new IllegalArgumentException("Invalid phase draws");
-        if(!SolverDiagnostics.ENABLED)return reconstruct0(graph,candidate,flows,heads,dt,model,checkpoint,workspace,frozenJunctions,draws,supports,emptying);
+        if(releases!=null&&releases.length!=graph.reservoirs().size())throw new IllegalArgumentException("Invalid open-vessel releases");
+        if(!SolverDiagnostics.ENABLED)return reconstruct0(graph,candidate,flows,heads,dt,model,checkpoint,workspace,frozenJunctions,draws,supports,emptying,releases);
         long started=System.nanoTime();boolean previous=SolverDiagnostics.enterReconstruct();
-        try{return reconstruct0(graph,candidate,flows,heads,dt,model,checkpoint,workspace,frozenJunctions,draws,supports,emptying);}
+        try{return reconstruct0(graph,candidate,flows,heads,dt,model,checkpoint,workspace,frozenJunctions,draws,supports,emptying,releases);}
         finally {
             SolverDiagnostics.leaveReconstruct(previous);
             SolverDiagnostics.reconstructNanos.add(System.nanoTime()-started);SolverDiagnostics.reconstructCalls.increment();
@@ -210,7 +222,7 @@ public final class ConservativeTransport {
     }
     private static Projection reconstruct0(PassiveNetwork graph,List<FluidThermodynamics.State> candidate,double[] solvedFlows,double[] heads,
                                          double dt,FluidThermodynamics model,Runnable checkpoint,Workspace workspace,boolean frozen,double[][] draws,
-                                         PhaseSupport[][] supports,Emptying[] emptying) {
+                                         PhaseSupport[][] supports,Emptying[] emptying,OpenVessel.Releases[] releases) {
         int nodes=graph.reservoirs().size(),components=model.hydrocarbon.componentCount()+1;
         if(candidate.size()!=nodes||solvedFlows.length!=graph.pipes().size()||heads.length!=solvedFlows.length)throw new IllegalArgumentException("Invalid transport reconstruction");
         for(double q:solvedFlows)if(!Double.isFinite(q))throw new IllegalArgumentException("Nonfinite candidate flow/head");
@@ -283,6 +295,8 @@ public final class ConservativeTransport {
             if(transfer instanceof ScheduledTransfer.Withdrawal out){outgoing[node]+=out.massKgPerSecond();endMass[node]-=dt*out.massKgPerSecond();}
             else if(transfer instanceof ScheduledTransfer.Injection in){var n=in.molesPerSecond();for(int c=0;c<components;c++)endMass[node]+=dt*n[c]*molecularWeight[c];endMass[node]+=dt*in.solidsPerSecond().massKg();}
         }
+        // An open vessel's vent and spill leave it as fixed amounts (OpenVessel), off its right-hand side below.
+        if(releases!=null)for(int node=0;node<nodes;node++)if(releases[node]!=null)for(var released:releases[node].each())endMass[node]-=released.mass(molecularWeight);
         // Owner decision D61 (JunctionCrystals): per solved junction, the crystal each population is if it melts there (else
         // null), and the mass of it melted over the step, booked as its component's; only where the booked flows can bring
         // the population (its holders' reach), since elsewhere the junction holds none of it exactly and the booking is the
@@ -342,6 +356,10 @@ public final class ConservativeTransport {
         for(var transfer:graph.scheduledTransfers())if(transfer instanceof ScheduledTransfer.Injection in&&index[in.node()]>=0) {
             var n=in.molesPerSecond();for(int c=0;c<components;c++)rhs[c][index[in.node()]]+=dt*n[c]*molecularWeight[c];
             for(int c=0;c<populationKeys.size();c++)rhs[components+c][index[in.node()]]+=dt*in.solidsPerSecond().mass(populationKeys.get(c));
+        }
+        if(releases!=null)for(int node=0;node<nodes;node++)if(releases[node]!=null&&index[node]>=0)for(var released:releases[node].each()) {
+            var n=released.moles();for(int c=0;c<components;c++)rhs[c][index[node]]-=n[c]*molecularWeight[c];
+            for(int c=0;c<populationKeys.size();c++)rhs[components+c][index[node]]-=released.solids().mass(populationKeys.get(c));
         }
         double[][] solved;
         // One backward-error check on the first component vector qualifies this factorization; the
@@ -460,6 +478,12 @@ public final class ConservativeTransport {
             for(int c=0;c<components;c++)external[c]+=moved[c];externalEnergy+=movedEnergy;
             boundaries.add(new BoundaryTransfer(transfer.id(),moved,movedEnergy,movedSolids,solidDirection));
         }
+        if(releases!=null)for(int node=0;node<nodes;node++)if(releases[node]!=null)for(var kind:new BoundaryTransfer.Kind[]{BoundaryTransfer.Kind.VENT,BoundaryTransfer.Kind.SPILL}) {
+            var released=kind==BoundaryTransfer.Kind.VENT?releases[node].vent():releases[node].spill();if(released==null)continue;
+            var moved=released.moles();for(int c=0;c<components;c++){moved[c]=-moved[c];external[c]+=moved[c];}
+            energy[node]-=released.energyJoule();externalEnergy-=released.energyJoule();
+            boundaries.add(new BoundaryTransfer(graph.reservoirs().get(node).id(),moved,-released.energyJoule(),released.solids(),released.solids().empty()?0:-1,kind));
+        }
         var filters=new HashMap<Long,InlineFilter>();
         // A frozen booking tallies what each junction gains and loses over its connections, to form its pseudo-boundary
         // below, solids included.
@@ -554,7 +578,7 @@ public final class ConservativeTransport {
         // P_ambient (V_bag,end - V_bag,start), which leaves the island as the ambient boundary's energy, booked at the vessel.
         for(int node=0;node<nodes;node++) {
             var reservoir=graph.reservoirs().get(node);if(index[node]<0||reservoir.junction())continue;
-            checkpoint.run();var state=states.get(node);double capacity=reservoir.inventory().volume();
+            checkpoint.run();var state=states.get(node);double capacity=reservoir.inventory().wallCapacity();
             double workFrom=reservoir.empty()?0:PhaseLayout.bagVolume(reservoir.state(),capacity);
             var booked=reservoir.inventory().with(moles[node],energy[node],state.solids());
             try{states.set(node,dryVessel(reservoir,supports,node)?InventoryEquilibrium.solve(model,state,booked,workFrom,checkpoint)

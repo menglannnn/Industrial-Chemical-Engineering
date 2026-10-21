@@ -447,6 +447,7 @@ public final class FluidDeviceScreen extends AbstractContainerScreen<FluidDevice
             case VAPOR->tr("outlet.top",face);
             case BULK->tr("outlet.side",face);
             case LIQUID->outlet.head()>0?tr("outlet.bottom_head",face,number(outlet.head()/1000)):tr("outlet.bottom",face);
+            case OVERFLOW->tr("outlet.overflow",face);
         };
     }
     private String outletState(com.wormzjl.icheme.runtime.fluid.FluidView.Outlet outlet){

@@ -108,7 +108,7 @@ final class VesselCrystals {
         // Main's dry-solids vessel (OD-P4): no fluid for a crystal to exchange its mass with.
         if(PhaseLayout.sum(inventory.moles())==0)return null;
         double[] totals=totals(crystals,inventory,held);
-        double t=closed.temperature(),p=closed.pressure(),capacity=inventory.volume();
+        double t=closed.temperature(),p=closed.pressure(),capacity=inventory.wallCapacity();
         double trueEnergy=inventory.internalEnergy();for(int k=0;k<count;k++)trueEnergy+=held[k]*all.get(k).material().crystal().energyOffset();
         // The package's crystals compete at or below their ceiling, the free water's ice wherever the vessel holds water
         // (WP4); neither: what a vessel holds melts. A held crystal that cannot be present melts in the crystal test.
@@ -227,7 +227,7 @@ final class VesselCrystals {
      * from the bag volume of {@code closed}. */
     private static Settled melt(FluidThermodynamics model,PassiveNetwork.Inventory inventory,FluidThermodynamics.State closed,double[] totals,
                                 double trueEnergy,Runnable checkpoint) {
-        double capacity=inventory.volume(),bag=PhaseLayout.bagVolume(closed,capacity);
+        double capacity=inventory.wallCapacity(),bag=PhaseLayout.bagVolume(closed,capacity);
         var inert=inventory.solids().withoutCrystals();
         var state=InventoryEquilibrium.solve(model,closed.withSolids(inert),inventory.with(totals,trueEnergy,inert),bag,checkpoint);
         double work=PhaseLayout.AMBIENT_PRESSURE*(PhaseLayout.bagVolume(state,capacity)-bag);
@@ -244,7 +244,7 @@ final class VesselCrystals {
         for(double n:left)if(n!=0)throw new FluidThermodynamics.UnsupportedPhases(model.domain().packageId(),Double.NaN,Double.NaN,FluidThermodynamics.UnsupportedPhases.Kind.CRYSTAL_STEP,
                 "the crystals would hold every amount of a vessel whose other species need a fluid");
         var solids=stock(inventory.solids(),inert,null,all,held,mass);
-        double capacity=inventory.volume(),bag=PhaseLayout.bagVolume(closed,capacity);
+        double capacity=inventory.wallCapacity(),bag=PhaseLayout.bagVolume(closed,capacity);
         double stored=trueEnergy;for(int k=0;k<all.size();k++)stored-=mass[k]*all.get(k).material().crystal().energyOffset();
         // A bag holding only solids carries no load: slack at the ambient around the solids' own volume (D54), and the
         // ambient works on it as it shrinks there.
@@ -261,7 +261,7 @@ final class VesselCrystals {
         for(var crystal:joint.crystals){int c=crystal.component();mass[all.indexOf(crystal)]=(totals[c]-left[c])*crystal.molarMass();}
         var beside=ConservativeTransport.repartition(model,joint.fluid(solved),left);
         var solids=stock(inventory.solids(),inert,freezing(closed,beside),all,held,mass);
-        double capacity=inventory.volume();
+        double capacity=inventory.wallCapacity();
         var fluid=beside.withSolids(solids);
         double work=PhaseLayout.AMBIENT_PRESSURE*(PhaseLayout.bagVolume(fluid,capacity)-bag);
         double stored=trueEnergy-work;for(int k=0;k<all.size();k++)stored-=mass[k]*all.get(k).material().crystal().energyOffset();

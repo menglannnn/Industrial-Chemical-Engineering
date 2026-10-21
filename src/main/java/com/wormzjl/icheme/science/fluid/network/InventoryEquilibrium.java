@@ -228,10 +228,10 @@ public final class InventoryEquilibrium {
      */
     public static FluidThermodynamics.State close(FluidThermodynamics model,FluidThermodynamics.State state,PassiveNetwork.Inventory inventory,PhaseSupport[] support,
                                                   double workFrom,Runnable checkpoint) {
-        var n=inventory.moles();double energy=inventory.internalEnergy(),volume=inventory.volume();
+        var n=inventory.moles();double energy=inventory.internalEnergy(),volume=inventory.wallCapacity();
         if(Arrays.stream(n).sum()==0) {
             if(inventory.solids().empty())throw new IllegalArgumentException("Empty inventory has no initialized thermodynamic state");
-            if(inventory.solids().volume()>volume)throw new IllegalArgumentException("Dry solids exceed vessel capacity");
+            if(inventory.solids().volume()>inventory.volume())throw new IllegalArgumentException("Dry solids exceed vessel capacity");
             double temperature=com.wormzjl.icheme.science.material.SolidMaterialCatalog.SolidMaterial.REFERENCE_TEMPERATURE+energy/inventory.solids().moments().heatCapacity();
             return model.solidState(temperature,state.pressure(),inventory.solids());
         }
