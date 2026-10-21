@@ -211,8 +211,8 @@ public final class EquipmentStructure {
 
     /**
      * Server: each nozzle drawn at the size of the pipe connected to it (owner decisions 2026-10-16: its flange always the
-     * pipe's, a reducer where the vessel cannot carry the pipe's size); an unconnected nozzle shows its default size under
-     * a blind flange. Only the cells the nozzles reach change, each keeping the sizes of the nozzles reaching it.
+     * pipe's; 2026-10-21: its neck too, a 1 m pipe has a 1 m root); an unconnected nozzle shows its default size under a
+     * blind flange. Only the cells the nozzles reach change, each keeping the sizes of the nozzles reaching it.
      */
     public static void refreshNozzles(Level level, Vessel vessel) {
         if (level.isClientSide()) return;

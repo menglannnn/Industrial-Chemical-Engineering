@@ -309,19 +309,17 @@ final class CondensingTurbineDesign extends UnitDesign {
 
             // The nozzles.
             double steamFace = Math.max(Math.ceil(xv + rp + EquipmentShape.STAND_OUT), Math.ceil(a + half + .1));
-            u.nozzles.add(new Nozzle(Role.STEAM, new double[]{xv, ys, zv}, 0, 1, steamFace - xv, steam, steam, 0, rp + .03));
+            u.nozzles.add(new Nozzle(Role.STEAM, new double[]{xv, ys, zv}, 0, 1, steamFace - xv, steam, 0));
             int nk = ProcessUnit.sides(2 * r);
-            double apothem = r * DeterministicMath.cos(Math.PI / nk), in = Math.sqrt(Math.max(0, apothem * apothem - cw * cw / 4)) - .03;
-            u.nozzles.add(new Nozzle(Role.COOLANT_INLET, new double[]{a, yk - in, zwb}, 1, -1, yk - in - inletFace, cw, cw, 0, r - in));
-            u.nozzles.add(ProcessUnit.front(Role.COOLANT_OUTLET, a, rowOut, zwb - box / 2 - cover + .03, cw, cw));
+            // Necks rooted where a pipe's largest neck's edge meets the shell (owner decision 2026-10-21: a 1 m pipe has a 1 m root).
+            double apothem = r * DeterministicMath.cos(Math.PI / nk), big = PipeSizes.MAX_OUTSIDE / 2, in = Math.sqrt(Math.max(0, apothem * apothem - big * big)) - .03;
+            u.nozzles.add(new Nozzle(Role.COOLANT_INLET, new double[]{a, yk - in, zwb}, 1, -1, yk - in - inletFace, cw, 0));
+            u.nozzles.add(ProcessUnit.front(Role.COOLANT_OUTLET, a, rowOut, zwb - box / 2 - cover + .03, cw));
             double rc = condensate / 2, cz = zp + .3 * rc;
-            u.nozzles.add(new Nozzle(Role.CONDENSATE, new double[]{a, .5, cz}, 2, 1, Math.ceil(zp + rc + EquipmentShape.STAND_OUT) - cz, condensate, condensate, 0, .7 * rc + .03));
-            // Owner request 2026-10-21: nozzle roots follow the pipe; the vent's neck within 0.85 of the shell's radius from
-            // its axis and 0.05 m under the slab.
-            double e = Math.abs(yVent - yk), ventRoom = Math.max(vent, Math.min(PipeSizes.MAX_OUTSIDE, 2 * Math.min(.85 * r - e, under - yVent - .05)));
-            double low = Math.max(0, e - .5), xs = Math.sqrt(Math.max(0, r * r - low * low)), start = Math.sqrt(Math.max(0, apothem * apothem - (e + ventRoom / 2) * (e + ventRoom / 2))) - .03;
+            u.nozzles.add(new Nozzle(Role.CONDENSATE, new double[]{a, .5, cz}, 2, 1, Math.ceil(zp + rc + EquipmentShape.STAND_OUT) - cz, condensate, 0));
+            double e = Math.abs(yVent - yk), low = Math.max(0, e - .5), xs = Math.sqrt(Math.max(0, r * r - low * low)), start = Math.sqrt(Math.max(0, apothem * apothem - (e + big) * (e + big))) - .03;
             double ventFace = Math.min(Math.floor(a - xs - EquipmentShape.STAND_OUT), a - 1.5);
-            u.nozzles.add(new Nozzle(Role.VENT, new double[]{a - start, yVent, zVent}, 0, -1, a - start - ventFace, ventRoom, vent, 0, r - start));
+            u.nozzles.add(new Nozzle(Role.VENT, new double[]{a - start, yVent, zVent}, 0, -1, a - start - ventFace, vent, 0));
         }
 
         /**

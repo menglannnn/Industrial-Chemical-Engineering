@@ -59,15 +59,19 @@ public record EquipmentShape(Kind kind, double diameter, double tangentLength, O
     /** A nozzle's flange face stands at least this far beyond the vessel surface (photo survey: 150-300 mm), on the next block face. */
     public static final double STAND_OUT = .15;
     /**
-     * The lowest row a skirted vessel's bottom outlet line leaves the skirt on, through the centre of its skirt port: the
-     * lowest cell centre. A taller skirt lifts the line until it carries its full size ({@link #openingHeight}).
+     * The row a skirted vessel's bottom outlet line leaves the skirt on, through the centre of its skirt port: the lowest
+     * cell centre where a pipe's largest line's port (its clearance and collar) clears the base plate and its flange grade
+     * (owner decision 2026-10-21: the hole takes the pipe's size, up to 1 m).
      */
-    public static final double SKIRT_OUTLET = .5;
+    public static final double SKIRT_OUTLET = 1.5;
     /**
-     * A drum's skirt port, m: its bore leaves this much round the line at the line's drawn size, and a collar this wide
-     * rings the hole cut for the largest line (owner request 2026-10-16: the port scales with the line).
+     * A skirt port, m: the hole in the skirt plate is the line's outside this much round it, at every pipe size, and a
+     * collar this wide rings it (owner requests 2026-10-16: the port scales with the line; 2026-10-21: "Skirt hole needs
+     * to adapt to the size of the pipe to max 1m").
      */
     public static final double PORT_CLEARANCE = .05, PORT_COLLAR = 1 / 32.0;
+    /** How far under the bottom head's pole a skirt's outlet line's elbow (bend radius 1 D) tops out, m. */
+    public static final double ELBOW_CLEARANCE = .05;
     /** A drum's skirt plate, m (a texel), drawn on both faces: its inside shows through the opening and the slots. */
     public static final double SKIRT_WALL = 1 / 16.0;
     /** The most side connections a drum takes: with its two fixed outlets, every nozzle's size fits in a cell key. */
@@ -203,13 +207,13 @@ public record EquipmentShape(Kind kind, double diameter, double tangentLength, O
      * {@code direction} (a frame axis) for {@code length} metres to its flange face, which lies on a block face. Its
      * flange and outer end take the connected pipe's size, whatever it is, so a pipe never steps at the flange (owner
      * decision 2026-10-16: resizing starts at the port-to-vessel connection); unconnected it shows {@code defaultOd} under
-     * a blind flange. The neck takes the pipe's size up to {@code maxOd}, the largest the vessel carries there; a larger
-     * pipe's neck widens in a concentric reducer from {@code exit}, the distance from {@code base} where the neck at
-     * {@code maxOd} has left the vessel (a skirted bottom outlet: its skirt), to the flange. A line coming down from the
-     * vessel ({@code riser} > 0, a skirted drum's bottom outlet) rises to frame height {@code riser} at {@code maxOd} behind
-     * {@code base}, turning into the neck through an elbow of bend radius 1 D of the line drawn and a straight run.
+     * a blind flange. The neck takes the connected pipe's size too, whatever it is, from {@code base} to the flange face
+     * (owner decision 2026-10-21: a 1 m pipe has a 1 m root): {@code base} lies under the vessel's surface deep enough for
+     * a neck of a pipe's largest ({@link PipeSizes#MAX_OUTSIDE}). A line coming down from the vessel ({@code riser} > 0, a
+     * skirted drum's bottom outlet) rises to frame height {@code riser} a pipe's largest behind {@code base}, turning into
+     * the neck through an elbow of bend radius 1 D of the line drawn and a straight run.
      */
-    public record Nozzle(Role role, double[] base, int axis, int sign, double length, double maxOd, double defaultOd, double riser, double exit) {
+    public record Nozzle(Role role, double[] base, int axis, int sign, double length, double defaultOd, double riser) {
         public double[] direction() {
             var d = new double[3];
             d[axis] = sign;
@@ -540,17 +544,21 @@ public record EquipmentShape(Kind kind, double diameter, double tangentLength, O
         return new Manway(new double[]{a, y, a}, new double[]{0, 0, 1}, new double[]{0, 1, 0}, size, Math.sqrt(apothem * apothem - rr * rr) - .03, r, r + Manway.REACH);
     }
 
-    /** The lowest skirt that still encloses the bottom head, m. */
+    /**
+     * The lowest skirt, m: one whose bottom outlet line carries a pipe's largest on {@link #SKIRT_OUTLET}, its elbow (bend
+     * radius 1 D) {@link #ELBOW_CLEARANCE} under the bottom head's pole (owner decision 2026-10-21: a 1 m pipe has a 1 m
+     * root and the skirt gives way; 3 m for D 0.5 to 1.5, 4 m to D 5.5, 5 m to D 9.5, 7 m for a D 15 column).
+     */
     public static int minimumSkirt(double diameter) {
-        return (int) Math.ceil(diameter / 4);
+        return (int) Math.ceil(SKIRT_OUTLET + PipeSizes.MAX_OUTSIDE + ELBOW_CLEARANCE + diameter / 4 - 1e-9);
     }
 
     /**
      * The support a new design proposes: a skirt leaving at least 1 m under the bottom head for the outlet piping and the
-     * bottoms pump's suction head (2 m for D 2, 3 m for D 6, 4 m for D 10); saddles 1 m high.
+     * bottoms pump's suction head, and no lower than {@link #minimumSkirt}; saddles 1 m high.
      */
     public static int defaultSupport(double diameter, Orientation orientation) {
-        return orientation.horizontal() ? 1 : (int) Math.ceil(diameter / 4 + 1);
+        return orientation.horizontal() ? 1 : Math.max(minimumSkirt(diameter), (int) Math.ceil(diameter / 4 + 1));
     }
 
     public boolean column() {
@@ -767,9 +775,8 @@ public record EquipmentShape(Kind kind, double diameter, double tangentLength, O
         if (!orientation.horizontal()) {
             // Top head centre: the vapour outlet.
             double topOd = Math.min(1, diameter / 2);
-            double topBase = headSurface(topOd / 2) - .03;
-            out.add(new Nozzle(Role.VAPOUR_OUTLET, new double[]{a, topBase, a}, 1, 1, Math.ceil(top() + STAND_OUT) - topBase, topOd, clampOd(.2 * diameter, topOd), 0,
-                    headSurface(0) - topBase));
+            double topBase = headSurface(PipeSizes.MAX_OUTSIDE / 2) - .03;
+            out.add(new Nozzle(Role.VAPOUR_OUTLET, new double[]{a, topBase, a}, 1, 1, Math.ceil(top() + STAND_OUT) - topBase, clampOd(.2 * diameter, topOd), 0));
             // Liquid outlet. On a skirt it is the bottom outlet (owner report 2026-10-16), through the skirt's port.
             var bottom = skirtOutlet(Role.LIQUID_OUTLET, .1 * diameter);
             if (bottom != null) out.add(bottom);
@@ -778,7 +785,7 @@ public record EquipmentShape(Kind kind, double diameter, double tangentLength, O
                 double yL = Math.ceil(bT + .25 - .5) + .5;
                 double liquidOd = Math.min(Math.min(1, diameter / 2), 2 * (Math.min(yL - bT, tT - yL) - .05));
                 if (yL < tT && liquidOd > .05)
-                    out.add(side(Role.LIQUID_OUTLET, a, yL, 2, -1, apothem, liquidOd, clampOd(.1 * diameter, liquidOd)));
+                    out.add(side(Role.LIQUID_OUTLET, a, yL, 2, -1, apothem, clampOd(.1 * diameter, liquidOd)));
             }
             for (var c : connections) out.add(connection(c, a, bT, tT, apothem));
             return out;
@@ -788,44 +795,41 @@ public record EquipmentShape(Kind kind, double diameter, double tangentLength, O
         // A drum too short for a connection beside it: the outlet at the cell centre nearest its middle.
         double far = Math.floor(tT - 1) + .5;
         if (far < Math.ceil(bT) + .5) far = Math.floor((bT + tT) / 2) + .5;
-        double rise = Math.ceil(a + r + STAND_OUT) - (Math.sqrt(apothem * apothem - topOd * topOd / 4) + a - .03);
-        double topStart = Math.sqrt(apothem * apothem - topOd * topOd / 4) - .03;
-        out.add(new Nozzle(Role.VAPOUR_OUTLET, new double[]{topStart + a, far, a}, 0, 1, rise, topOd, clampOd(.2 * diameter, topOd), 0, r - topStart));
+        double topStart = Math.sqrt(Math.max(0, apothem * apothem - PipeSizes.MAX_OUTSIDE * PipeSizes.MAX_OUTSIDE / 4)) - .03;
+        out.add(new Nozzle(Role.VAPOUR_OUTLET, new double[]{topStart + a, far, a}, 0, 1, Math.ceil(a + r + STAND_OUT) - (topStart + a), clampOd(.2 * diameter, topOd), 0));
         // Low on the front head: the lowest cell centre at least 0.3 m above the shell's bottom.
         double xH = Math.ceil(a - r + .3 - .5) + .5, e = a - xH;
         double headOd = Math.min(Math.min(1, diameter / 2), 2 * (.85 * r - Math.abs(e)));
         if (headOd > .05) {
-            double edge = (Math.abs(e) + headOd / 2) / r, depth = headDepth() * Math.sqrt(Math.max(0, 1 - edge * edge));
+            double edge = (Math.abs(e) + PipeSizes.MAX_OUTSIDE / 2) / r, depth = headDepth() * Math.sqrt(Math.max(0, 1 - edge * edge));
             double start = bT - depth + .03;
-            double nearest = Math.max(0, Math.abs(e) - headOd / 2) / r, bulge = headDepth() * Math.sqrt(Math.max(0, 1 - nearest * nearest));
-            out.add(new Nozzle(Role.LIQUID_OUTLET, new double[]{xH, start, a}, 1, -1, start - Math.floor(-STAND_OUT), headOd, clampOd(.1 * diameter, headOd), 0,
-                    bulge - depth + .03));
+            out.add(new Nozzle(Role.LIQUID_OUTLET, new double[]{xH, start, a}, 1, -1, start - Math.floor(-STAND_OUT), clampOd(.1 * diameter, headOd), 0));
         }
         var b = bootPlace();
         if (b != null) {
             // The boot's drain at its bottom head's centre, facing down (photo survey A), its pipe straight down.
             double rb = b.diameter() / 2, bottom = a - r - b.length(), depth = b.diameter() / 4, od = Math.min(1, rb);
-            double edge = od / 2 / rb, base = bottom - depth * Math.sqrt(Math.max(0, 1 - edge * edge)) + .03, apex = bottom - depth;
-            out.add(new Nozzle(Role.BOOT_DRAIN, new double[]{base, b.station(), a}, 0, -1, base - Math.floor(apex - STAND_OUT), od, clampOd(.05 * diameter, od), 0, base - apex));
+            double edge = PipeSizes.MAX_OUTSIDE / 2 / rb, base = bottom - depth * Math.sqrt(Math.max(0, 1 - edge * edge)) + .03, apex = bottom - depth;
+            out.add(new Nozzle(Role.BOOT_DRAIN, new double[]{base, b.station(), a}, 0, -1, base - Math.floor(apex - STAND_OUT), clampOd(.05 * diameter, od), 0));
         }
         for (var c : connections) out.add(connection(c, a, bT, tT, apothem));
         return out;
     }
 
     /**
-     * Side connection {@code c} as a nozzle. Its largest size keeps its edge 0.05 m inside the tangent lines and within
-     * 0.85 of the radius across; its neck starts under the shell at its edge, its flange face on the next block face.
+     * Side connection {@code c} as a nozzle. Its default size keeps its edge 0.05 m inside the tangent lines and within
+     * 0.85 of the radius across; its neck starts under the shell where a pipe's largest neck's edge meets it (owner
+     * decision 2026-10-21: a 1 m pipe has a 1 m root), its flange face on the next block face.
      */
     private Nozzle connection(Connection c, double a, double bT, double tT, double apothem) {
         double y = c.station() + .5, off = Math.abs(c.offset());
         double od = Math.min(Math.min(1, diameter / 2), 2 * Math.min(Math.min(y - bT, tT - y) - .05, .85 * radius() - off));
-        double edge = off + od / 2, start = Math.sqrt(Math.max(0, apothem * apothem - edge * edge)) - .03;
+        double edge = off + PipeSizes.MAX_OUTSIDE / 2, start = Math.sqrt(Math.max(0, apothem * apothem - edge * edge)) - .03;
         double surface = a + c.sign() * outerRadius(), plane = c.sign() > 0 ? Math.ceil(surface + STAND_OUT) : Math.floor(surface - STAND_OUT);
         var base = new double[]{a, y, a};
         base[c.axis()] = a + c.sign() * start;
         base[c.across()] = a + c.offset();
-        double nearest = Math.max(0, off - od / 2), exit = Math.sqrt(outerRadius() * outerRadius() - nearest * nearest) - start;
-        return new Nozzle(Role.SIDE, base, c.axis(), c.sign(), Math.abs(plane - base[c.axis()]), od, clampOd(.15 * diameter, od), 0, exit);
+        return new Nozzle(Role.SIDE, base, c.axis(), c.sign(), Math.abs(plane - base[c.axis()]), clampOd(.15 * diameter, od), 0);
     }
 
     /**
@@ -878,19 +882,44 @@ public record EquipmentShape(Kind kind, double diameter, double tangentLength, O
         return out;
     }
 
-    /** A nozzle's room with the largest pipe, {x0, y0, z0, x1, y1, z1} in the frame: its neck and flange, and a riser's line. */
-    private static double[] reach(Nozzle n) {
+    /**
+     * A nozzle's room with the largest pipe outside the drum, {x0, y0, z0, x1, y1, z1} in the frame: its neck from where its
+     * centre line leaves the drum ({@link #leaves}) and its flange, and a riser's line. The neck's root under the shell,
+     * deep enough for a pipe's largest (owner decision 2026-10-21: a 1 m pipe has a 1 m root), lies inside the drum.
+     */
+    private double[] reach(Nozzle n) {
         double half = PipeSizes.flange(PipeSizes.MAX_OUTSIDE) / 2;
         var box = new double[6];
         for (int a = 0; a < 3; a++) {
             box[a] = n.base()[a] - half;
             box[a + 3] = n.base()[a] + half;
         }
-        double face = n.face()[n.axis()];
-        box[n.axis()] = Math.min(n.base()[n.axis()], face);
-        box[n.axis() + 3] = Math.max(n.base()[n.axis()], face);
+        double face = n.face()[n.axis()], from = leaves(n);
+        box[n.axis()] = Math.min(from, face);
+        box[n.axis() + 3] = Math.max(from, face);
         if (n.riser() > 0) box[4] = Math.max(box[4], n.riser());
         return box;
+    }
+
+    /**
+     * Where nozzle {@code n}'s centre line leaves the drum's outside, its frame coordinate along the nozzle's axis: through
+     * a head (the 2:1 ellipsoid at the line's distance from the axis) or the straight shell; its base where that lies
+     * further out or the line meets neither (a skirted outlet's line, a boot's drain).
+     */
+    private double leaves(Nozzle n) {
+        double[] b = n.base();
+        int ax = n.axis();
+        double a = axis(), at = b[ax], out;
+        if (n.riser() > 0) return at;
+        if (ax == 1) {
+            double dip = headSurface(Math.sqrt((b[0] - a) * (b[0] - a) + (b[2] - a) * (b[2] - a))) - topTangent();
+            out = n.sign() > 0 ? topTangent() + dip : bottomTangent() - dip;
+        } else {
+            if (b[1] < bottomTangent() || b[1] > topTangent()) return at;
+            double off = b[2 - ax] - a, ro = outerRadius();
+            out = a + n.sign() * Math.sqrt(Math.max(0, ro * ro - off * off));
+        }
+        return n.sign() > 0 ? Math.max(at, out) : Math.min(at, out);
     }
 
     private static boolean overlap(double[] a, double[] b) {
@@ -901,54 +930,49 @@ public record EquipmentShape(Kind kind, double diameter, double tangentLength, O
     /**
      * A skirted vessel's bottom outlet (a drum's liquid outlet, owner report 2026-10-16; a column's bottoms, owner request
      * 2026-10-16: "output on the skirt like the drum"), or null when the skirt leaves it no room: its line drops from the
-     * bottom head's lowest point inside the skirt, turns in an elbow of bend radius maxOd, and leaves through the skirt's
-     * port towards the front (frame -z) on the row {@link #skirtOutletLine} picks, which also sizes all three.
+     * bottom head's lowest point inside the skirt, turns in an elbow of bend radius 1 D of the line drawn, and leaves
+     * through the skirt's port towards the front (frame -z) on {@link #SKIRT_OUTLET}. The riser stands at the axis, a
+     * pipe's largest behind the neck's start, and the flange face at least a pipe's largest neck with its hub beyond that
+     * (owner decision 2026-10-21: a 1 m pipe has a 1 m root; on a vessel under about 2 m the face steps out to give way).
      */
     @Nullable Nozzle skirtOutlet(Role role, double defaultOd) {
-        var line = skirtOutletLine();
-        if (line == null) return null;
-        double od = line[1], a = axis(), pole = bottomTangent() - headDepth(), start = a - od, plane = Math.floor(a - outerRadius() - STAND_OUT);
-        return new Nozzle(role, new double[]{a, line[0], start}, 2, -1, start - plane, od, clampOd(defaultOd, od), pole + .03, radius() + SKIRT_WALL + .02 - od);
+        if (!skirtOutletFits()) return null;
+        double a = axis(), pole = bottomTangent() - headDepth(), start = a - PipeSizes.MAX_OUTSIDE;
+        double plane = Math.floor(Math.min(a - outerRadius() - STAND_OUT, start - PipeSizes.flangeThickness(PipeSizes.MAX_OUTSIDE) - PipeSizes.hub(PipeSizes.MAX_OUTSIDE) - .02));
+        return new Nozzle(role, new double[]{a, SKIRT_OUTLET, start}, 2, -1, start - plane, clampOd(defaultOd, PipeSizes.MAX_OUTSIDE), pole + .03);
     }
 
     /**
-     * A skirted vessel's bottom outlet line, {run centre height, largest size}, or null when it has none (owner requests
-     * 2026-10-16: the line follows the pipe; "1m pipe on the bottom of drum & column still looks weird", decided: the line
-     * rises with the skirt). On a row of cell centres, its elbow (bend radius 1 D) stays under the bottom head, and its
-     * skirt port, the line's clearance and collar round it, clears the base plate (so its flange clears grade) and the
-     * head seam. The line takes the lowest row that carries its full size, half the diameter and at most one block; a
-     * skirt too short for that leaves it on the row that carries the largest, and a larger pipe meets a reducer outside.
+     * Whether a skirted vessel's bottom outlet line fits under its head (owner requests 2026-10-16: the line follows the
+     * pipe and rises with the skirt; 2026-10-21: the skirt hole takes the pipe's size, up to 1 m): on
+     * {@link #SKIRT_OUTLET}, a pipe's largest line's elbow {@link #ELBOW_CLEARANCE} under the bottom head's pole and its
+     * port, the line's clearance and collar round it, 0.1 m under the head seam. Every skirt from {@link #minimumSkirt} up.
      */
-    private double @Nullable [] skirtOutletLine() {
-        if (!skirt()) return null;
-        double ring = PORT_CLEARANCE + PORT_COLLAR, pole = bottomTangent() - headDepth(), full = Math.min(diameter / 2, PipeSizes.MAX_OUTSIDE);
-        double[] best = null;
-        for (double c = SKIRT_OUTLET; c < pole && (best == null || best[1] < full - 1e-9); c++) {
-            double od = Math.min(Math.min(full, pole - c - .05), 2 * Math.min(c - PLATE - .01 - ring, bottomTangent() - .1 - c - ring));
-            if (od > .05 && (best == null || od > best[1] + 1e-9)) best = new double[]{c, od};
-        }
-        return best;
+    private boolean skirtOutletFits() {
+        double max = PipeSizes.MAX_OUTSIDE, pole = bottomTangent() - headDepth();
+        return skirt() && SKIRT_OUTLET + max + ELBOW_CLEARANCE <= pole + 1e-9 && SKIRT_OUTLET + max / 2 + PORT_CLEARANCE + PORT_COLLAR <= bottomTangent() - .1;
     }
 
-    /** Radius of a skirt's port, or 0: cut for its largest bottom outlet line (the port's bore follows the line drawn). */
+    /**
+     * Radius of a skirt's port at its largest, or 0: the hole a pipe's largest line takes; the hole drawn is the line's
+     * own outside and {@link #PORT_CLEARANCE} ({@link ShapeRasterizer}, per pipe size).
+     */
     public double openingRadius() {
-        var line = skirtOutletLine();
-        return line != null ? line[1] / 2 + PORT_CLEARANCE : 0;
+        return skirtOutletFits() ? PipeSizes.MAX_OUTSIDE / 2 + PORT_CLEARANCE : 0;
     }
 
     /** Centre height of a skirt's port, or 0: on its bottom outlet line. */
     public double openingHeight() {
-        var line = skirtOutletLine();
-        return line != null ? line[0] : 0;
+        return skirtOutletFits() ? SKIRT_OUTLET : 0;
     }
 
     /** A radial nozzle on the cylindrical shell (a column's cladding) at height {@code y}, along frame axis {@code axis} in direction {@code sign}. */
-    Nozzle side(Role role, double a, double y, int axis, int sign, double apothem, double maxOd, double defaultOd) {
-        double start = Math.sqrt(Math.max(0, apothem * apothem - maxOd * maxOd / 4)) - .03;
+    Nozzle side(Role role, double a, double y, int axis, int sign, double apothem, double defaultOd) {
+        double start = Math.sqrt(Math.max(0, apothem * apothem - PipeSizes.MAX_OUTSIDE * PipeSizes.MAX_OUTSIDE / 4)) - .03;
         double surface = a + sign * outerRadius(), plane = sign > 0 ? Math.ceil(surface + STAND_OUT) : Math.floor(surface - STAND_OUT);
         var base = new double[]{a, y, a};
         base[axis] = a + sign * start;
-        return new Nozzle(role, base, axis, sign, Math.abs(plane - base[axis]), maxOd, defaultOd, 0, outerRadius() - start);
+        return new Nozzle(role, base, axis, sign, Math.abs(plane - base[axis]), defaultOd, 0);
     }
 
     private static double clampOd(double od, double max) {

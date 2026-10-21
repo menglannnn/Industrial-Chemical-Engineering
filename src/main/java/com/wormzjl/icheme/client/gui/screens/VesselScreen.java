@@ -19,7 +19,7 @@ import java.util.List;
 import java.util.Locale;
 
 import static com.wormzjl.icheme.science.equipment.UnitDesign.number;
-import static com.wormzjl.icheme.science.equipment.UnitDesign.size;
+
 
 /**
  * A column's or a process unit's screen: its datasheet, with its nozzles. A drum shows the same datasheet on a tab of
@@ -71,14 +71,15 @@ public final class VesselScreen extends Screen {
         }
         lines.add(Component.translatable(KEY + "cells", layout.shell().size(), layout.interior().size()));
         lines.add(Component.translatable(KEY + "controller", controller.toShortString()));
-        // Each nozzle: what it is for, the port its position makes it, where it faces, and the widest neck the vessel carries there (any pipe connects).
+        // Each nozzle: what it is for, the port its position makes it and where it faces (any pipe connects; its neck takes
+        // the pipe's size, owner decision 2026-10-21: a 1 m pipe has a 1 m root).
         var transform = shape.transform();
         for (var nozzle : shape.nozzles()) {
             var out = transform.direction(nozzle.direction());
             var facing = Direction.getNearest(out[0], out[1], out[2]).getSerializedName();
             lines.add(Component.translatable(KEY + "nozzle", Component.translatable(KEY + "role." + nozzle.role().name().toLowerCase(Locale.ROOT)),
                     Component.translatable(KEY + "port." + nozzle.role().port.name().toLowerCase(Locale.ROOT)),
-                    Component.translatable(KEY + "facing." + facing), size(nozzle.maxOd())));
+                    Component.translatable(KEY + "facing." + facing)));
         }
         return List.copyOf(lines);
     }

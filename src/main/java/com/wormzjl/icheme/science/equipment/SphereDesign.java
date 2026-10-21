@@ -53,11 +53,6 @@ final class SphereDesign extends UnitDesign {
     static final double STAIR_SIZE = 10;
     /** A small sphere's ladder stands at the back (+z), midway between two legs, and its bridge's width, m. */
     static final double LADDER = Math.PI / 2, BRIDGE = 1.1;
-    /**
-     * The nozzles' largest necks, m (owner request 2026-10-21: a nozzle's root follows the pipe up to the room the vessel
-     * has): the top one a pipe's largest, through the platform's hole; the bottom line on the lowest row, clear of grade.
-     */
-    static final double TOP_ROOM = PipeSizes.MAX_OUTSIDE, BOTTOM_ROOM = 2 * (.5 - .05);
 
     @Override
     public double minSize() {
@@ -245,8 +240,9 @@ final class SphereDesign extends UnitDesign {
      * two relief valves and their stacks, and the manway, on the ring away from the access.
      */
     private static void crown(ProcessUnit u, Plan p, double mid, double half) {
-        // The deck's hole clears the top nozzle's flange at its usual size and its neck at its largest (the flange stands over the deck).
-        double inner = Math.max(PipeSizes.flange(p.topOd) / 2, TOP_ROOM / 2 + .03) + .02, wall = inner - Access.GAP, width = p.rp - wall, deck = p.level + Access.DECK;
+        // The deck's hole clears the top nozzle's flange at its usual size and a pipe's largest neck (the flange stands over
+        // the deck; owner decision 2026-10-21: a 1 m pipe has a 1 m root).
+        double inner = Math.max(PipeSizes.flange(p.topOd) / 2, PipeSizes.MAX_OUTSIDE / 2 + .03) + .02, wall = inner - Access.GAP, width = p.rp - wall, deck = p.level + Access.DECK;
         var ring = new Access.Arc(p.a, p.a, wall, mid - Math.PI, mid + Math.PI, p.rp, Access.Arc.step(p.rp));
         double centre = Math.PI * p.rp;
         u.platform(ring, p.level, width, Access.RAILED, false, false, centre - half, centre + half);
@@ -310,23 +306,25 @@ final class SphereDesign extends UnitDesign {
     }
 
     /**
-     * N1, VAPOUR: at the top pole, facing up, its neck from under the shell at its largest size's edge, its flange face on
-     * the block face 0.4 m or more over the platform's walking surface.
+     * N1, VAPOUR: at the top pole, facing up, its neck from under the shell where a pipe's largest neck's edge meets it
+     * (owner decision 2026-10-21: a 1 m pipe has a 1 m root), its flange face on the block face 0.4 m or more over the
+     * platform's walking surface.
      */
     private static Nozzle top(Plan p) {
-        double surface = p.yc + p.r, start = p.yc + Math.sqrt(p.r * p.r - TOP_ROOM * TOP_ROOM / 4) * apothem(p) - .03;
+        double big = PipeSizes.MAX_OUTSIDE / 2, start = p.yc + Math.sqrt(Math.max(0, p.r * p.r - big * big)) * apothem(p) - .03;
         double plane = Math.ceil(p.level + Access.DECK + .4 + .03);
-        return new Nozzle(Role.VAPOUR_OUTLET, new double[]{p.a, start, p.a}, 1, 1, plane - start, TOP_ROOM, p.topDefault, 0, surface - start);
+        return new Nozzle(Role.VAPOUR_OUTLET, new double[]{p.a, start, p.a}, 1, 1, plane - start, p.topDefault, 0);
     }
 
     /**
      * N2, LIQUID: from the bottom pole, as a skirted drum's bottom outlet: the riser drops from the pole, the elbow turns it
-     * to the front, the line runs on the lowest row between the two front legs to its flange face on the box's front edge.
+     * to the front, the line runs on the lowest row between the two front legs to its flange face on the box's front edge;
+     * the riser stands a pipe's largest behind the neck's start (owner decision 2026-10-21: a 1 m pipe has a 1 m root).
      */
     private static Nozzle bottom(Plan p) {
-        double y = .5, base = p.a - BOTTOM_ROOM, plane = Math.floor(p.a - p.outer - .03 + 1e-9);
+        double y = .5, base = p.a - PipeSizes.MAX_OUTSIDE, plane = Math.floor(p.a - p.outer - .03 + 1e-9);
         double pole = p.s + p.r * (1 - apothem(p)) + .05;
-        return new Nozzle(Role.LIQUID_OUTLET, new double[]{p.a, y, base}, 2, -1, base - plane, BOTTOM_ROOM, p.bottomDefault, pole, p.r + p.wl + Access.GAP - BOTTOM_ROOM);
+        return new Nozzle(Role.LIQUID_OUTLET, new double[]{p.a, y, base}, 2, -1, base - plane, p.bottomDefault, pole);
     }
 
     /** How far the drawn sphere's facets stand inside its radius at a pole, as a share of it. */

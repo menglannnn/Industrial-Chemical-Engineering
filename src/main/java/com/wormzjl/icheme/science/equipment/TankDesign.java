@@ -57,8 +57,7 @@ final class TankDesign extends UnitDesign {
      * every 5 m.
      */
     static final double GLASS_OFFSET = .85, GLASS_OUT = .5, GAUGE_LOW = .3, TAP = .45, GLASS_RADIUS = .08, SCALE_HALF = .14, CLIP = 3;
-    /** The largest necks of the bottom nozzles (over the ringwall's top) and the overflow (under the top angle), m: the room the tank has there. */
-    static final double BOTTOM_ROOM = 2 * (.5 - RINGWALL - .02), OVERFLOW_ROOM = 2 * (.5 - TOP_ANGLE - .02);
+
     /** Half the walkway's gap across the front, m: the overflow's pipe stands there. */
     static final double FRONT_GAP = 1.2;
     /**
@@ -151,7 +150,7 @@ final class TankDesign extends UnitDesign {
      * A tank's sizes, m, in its frame (y up from grade, front -z): its diameter, shell height and radius, the axis (x and
      * z), the fill height, the shell's facets, the walkway's walking level, the stair's inner radius (beyond the walkway)
      * and the platform's outer radius (a small tank's: its ladders' decks'), the bottom nozzles' offset from the front's
-     * middle, and the nozzles' default size (their largest is the room they have: {@link #BOTTOM_ROOM}, {@link #OVERFLOW_ROOM}).
+     * middle, and the nozzles' default size.
      */
     record Plan(double d, int shell, double r, double a, double fill, int n, double walk, double band, double outer, int k, double defaultOd) {
         static Plan of(double d, int shell) {
@@ -212,9 +211,9 @@ final class TankDesign extends UnitDesign {
             hinge = from + span / 2;
         }
         gauge(u, p);
-        u.nozzles.add(front(Role.BOTTOM, p, p.k, .5, BOTTOM_ROOM));
-        u.nozzles.add(front(Role.BOTTOM, p, -p.k, .5, BOTTOM_ROOM));
-        u.nozzles.add(front(Role.OVERFLOW, p, 0, p.shell - .5, OVERFLOW_ROOM));
+        u.nozzles.add(front(Role.BOTTOM, p, p.k, .5));
+        u.nozzles.add(front(Role.BOTTOM, p, -p.k, .5));
+        u.nozzles.add(front(Role.OVERFLOW, p, 0, p.shell - .5));
         u.fluidPoint = new double[]{p.a, .01, p.a - p.r + .02};
         floating(u, p, hinge);
     }
@@ -487,14 +486,14 @@ final class TankDesign extends UnitDesign {
 
     /**
      * A bottom nozzle or the overflow: out of the front (frame -z) at {@code offset} from its middle and height {@code y},
-     * square to the front (a hillside nozzle off the middle), its neck from under the shell, its flange face on the next
-     * block face {@link EquipmentShape#STAND_OUT} beyond the shell.
+     * square to the front (a hillside nozzle off the middle), its neck from under the shell where a pipe's largest neck's
+     * edge meets it (owner decision 2026-10-21: a 1 m pipe has a 1 m root), its flange face on the next block face
+     * {@link EquipmentShape#STAND_OUT} beyond the shell.
      */
-    private static Nozzle front(Role role, Plan p, double offset, double y, double room) {
-        double apothem = p.r * DeterministicMath.cos(Math.PI / p.n), edge = Math.abs(offset) + room / 2, start = Math.sqrt(apothem * apothem - edge * edge) - .03;
-        double plane = Math.floor(p.a - p.r - EquipmentShape.STAND_OUT), nearest = Math.max(0, Math.abs(offset) - room / 2);
-        double base = p.a - start, exit = Math.sqrt(p.r * p.r - nearest * nearest) - start;
-        return new Nozzle(role, new double[]{p.a + offset, y, base}, 2, -1, base - plane, room, p.defaultOd, 0, exit);
+    private static Nozzle front(Role role, Plan p, double offset, double y) {
+        double apothem = p.r * DeterministicMath.cos(Math.PI / p.n), edge = Math.abs(offset) + PipeSizes.MAX_OUTSIDE / 2;
+        double start = Math.sqrt(Math.max(0, apothem * apothem - edge * edge)) - .03, plane = Math.floor(p.a - p.r - EquipmentShape.STAND_OUT), base = p.a - start;
+        return new Nozzle(role, new double[]{p.a + offset, y, base}, 2, -1, base - plane, p.defaultOd, 0);
     }
 
     /**

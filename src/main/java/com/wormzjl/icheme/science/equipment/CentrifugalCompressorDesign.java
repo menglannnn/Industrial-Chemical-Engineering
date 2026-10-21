@@ -237,7 +237,7 @@ final class CentrifugalCompressorDesign extends UnitDesign {
             u.solids.add(Solid.rod(new double[]{ax, 0, z}, 1, h + .1, top, PipeSizes.flange(od) / 2, 0));
             if (which == 1) u.mesh.prism(down, od / 2, h, h + .1, nn, Material.PIPE);
         }
-        u.nozzles.add(new Nozzle(Role.SUCTION, new double[]{ax, h + .1, zs}, 1, -1, h + .1 - (h - SLAB), odS, odS, 0, .03));
+        u.nozzles.add(new Nozzle(Role.SUCTION, new double[]{ax, h + .1, zs}, 1, -1, h + .1 - (h - SLAB), odS, 0));
         // Balance line and bearing drains from 0.6 m.
         if (d >= .6 - 1e-9) {
             double xb = ax - (xj + .1 * d + .1), yb = ys - .5 * r;
@@ -297,7 +297,7 @@ final class CentrifugalCompressorDesign extends UnitDesign {
         u.solids.add(Solid.rod(new double[]{xv, 0, zv}, 1, yd + bend, y0, rd, 0));
         u.solids.add(ProcessUnit.span(new double[]{xn, yd - rd, Math.min(zv, zd) - rd}, new double[]{xv + rd, yd + bend, Math.max(zv, zd) + rd}));
         u.post(xr, zv, 0, yd - rd, .12, false);
-        u.nozzles.add(new Nozzle(Role.DISCHARGE, new double[]{xn, yd, zd}, 0, -1, xn - faceD, odD, odD, 0, .03));
+        u.nozzles.add(new Nozzle(Role.DISCHARGE, new double[]{xn, yd, zd}, 0, -1, xn - faceD, odD, 0));
         // The table-top on columns at both edges at most 5 m apart, the right-hand ones clear of the discharge's pipe.
         double c = .6 + .4 * k;
         int count = Math.max(2, (int) Math.ceil((zt1 - zt0 - c) / 5 - 1e-9) + 1);
@@ -371,11 +371,8 @@ final class CentrifugalCompressorDesign extends UnitDesign {
         for (double zj : new double[]{zl0 - .12 * odC, zl1 + .12 * odC})
             u.line(rw, Material.PIPE, new double[]{xcc, yc0 + .8 * rC, zj}, new double[]{xcc, yc1 - .8 * rC, zj});
         double tip0 = zl0 - odC / 4, face0 = Math.floor(tip0 - EquipmentShape.STAND_OUT), tip1 = zl1 + odC / 4, face1 = Math.ceil(tip1 + EquipmentShape.STAND_OUT);
-        // Owner request 2026-10-21: nozzle roots follow the pipe; a head's neck within 0.7 of the cooler's diameter, under
-        // the water jumper that leaves the head at 0.8 of its radius.
-        double coolantRoom = Math.max(.15, Math.min(PipeSizes.MAX_OUTSIDE, .7 * odC));
-        u.nozzles.add(new Nozzle(Role.COOLANT_INLET, new double[]{xcc, yc0, zl0 - .02}, 2, -1, zl0 - .02 - face0, coolantRoom, odW, 0, zl0 - .02 - tip0));
-        u.nozzles.add(new Nozzle(Role.COOLANT_OUTLET, new double[]{xcc, yc0, zl1 + .02}, 2, 1, face1 - zl1 - .02, coolantRoom, odW, 0, tip1 - zl1 - .02));
+        u.nozzles.add(new Nozzle(Role.COOLANT_INLET, new double[]{xcc, yc0, zl0 - .02}, 2, -1, zl0 - .02 - face0, odW, 0));
+        u.nozzles.add(new Nozzle(Role.COOLANT_OUTLET, new double[]{xcc, yc0, zl1 + .02}, 2, 1, face1 - zl1 - .02, odW, 0));
         // The oil supply and return lines rise into the slab's left edge between its last two columns.
         double zcol = zt0 + c / 2 + (zt1 - zt0 - c) * (count - 1.5) / (count - 1), xo = xk0 + .3;
         for (int j = 0; j < 2; j++) {

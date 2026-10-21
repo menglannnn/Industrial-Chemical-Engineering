@@ -741,21 +741,20 @@ final class FluidizedBedBoilerLayout {
     void nozzles() {
         double zm = Math.floor((zb0 + zb1) / 2) + .5;
         double fw = Math.max(.1, Math.min(.45, .015 * w + .08)), st = Math.max(.15, Math.min(.6, .025 * w + .1));
-        // Owner request 2026-10-21: nozzle roots follow the pipe. The back pass's necks on its wall 0.05 m inside its edges;
-        // the blowdown's the drum's radius across, rooted under the head where the neck's edge meets it.
-        double wallRoom = Math.min(PipeSizes.MAX_OUTSIDE, 2 * Math.min(zm - zb0, zb1 - zm) - .1);
-        u.nozzles.add(ProcessUnit.end(Role.FEEDWATER, new double[]{ab + hxb - .03, feedwaterY(), zm}, 0, 1, Math.max(fw, wallRoom), fw));
-        u.nozzles.add(ProcessUnit.end(Role.STEAM, new double[]{ab + hxb - .03, steamY(), zm}, 0, 1, Math.max(st, wallRoom), st));
-        double blowRoom = Math.min(PipeSizes.MAX_OUTSIDE, rd), edge = blowRoom / 2 / rd, dip = rd / 2 * (1 - Math.sqrt(Math.max(0, 1 - edge * edge))) + .05;
+        u.nozzles.add(ProcessUnit.end(Role.FEEDWATER, new double[]{ab + hxb - .03, feedwaterY(), zm}, 0, 1, fw));
+        u.nozzles.add(ProcessUnit.end(Role.STEAM, new double[]{ab + hxb - .03, steamY(), zm}, 0, 1, st));
+        // The blowdown's neck rooted under the drum's head where a pipe's largest neck's edge meets it (owner decision
+        // 2026-10-21: a 1 m pipe has a 1 m root).
+        double edge = PipeSizes.MAX_OUTSIDE / 2 / rd, dip = rd / 2 * (1 - Math.sqrt(Math.max(0, 1 - edge * edge))) + .05;
         u.nozzles.add(new EquipmentShape.Nozzle(Role.BLOWDOWN, new double[]{a + w / 2 + 1 + rd / 2 - dip, yd, zdr}, 0, 1,
-                Math.ceil(a + w / 2 + 1 + rd / 2 - .02 + EquipmentShape.STAND_OUT) - (a + w / 2 + 1 + rd / 2 - dip), blowRoom, .06, 0, dip));
+                Math.ceil(a + w / 2 + 1 + rd / 2 - .02 + EquipmentShape.STAND_OUT) - (a + w / 2 + 1 + rd / 2 - dip), .06, 0));
         // The drain from the right lower header down to grade.
         double rh = .15 + .004 * w, xd = a - hx - rh, zd = zF + Math.ceil(s - .4) + .5;
         u.line(.04, Material.PIPE, new double[]{xd, g + rh, zd}, new double[]{xd, .5, zd});
-        u.nozzles.add(ProcessUnit.end(Role.DRAIN, new double[]{xd + .03, .5, zd}, 0, -1, .08, .05));
-        u.nozzles.add(ProcessUnit.front(Role.FUEL, fuelX(), g + 2.5, zF - .2, .1, .08));
+        u.nozzles.add(ProcessUnit.end(Role.DRAIN, new double[]{xd + .03, .5, zd}, 0, -1, .05));
+        u.nozzles.add(ProcessUnit.front(Role.FUEL, fuelX(), g + 2.5, zF - .2, .08));
         double zb = zF - binAt, roof = chutes > 1 ? binTop() + 1 : binTop();
-        u.nozzles.add(ProcessUnit.end(Role.SOLIDS_INLET, new double[]{a, roof - .03, zb}, 1, 1, chutes > 1 ? .5 : Math.min(1, binWidth - .4), .3));
-        u.nozzles.add(ProcessUnit.end(Role.SOLIDS_OUTLET, new double[]{outletX(), 1.63, ashZ}, 1, -1, .5, .3));
+        u.nozzles.add(ProcessUnit.end(Role.SOLIDS_INLET, new double[]{a, roof - .03, zb}, 1, 1, .3));
+        u.nozzles.add(ProcessUnit.end(Role.SOLIDS_OUTLET, new double[]{outletX(), 1.63, ashZ}, 1, -1, .3));
     }
 }

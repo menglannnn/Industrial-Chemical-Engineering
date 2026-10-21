@@ -124,7 +124,7 @@ public final class FluidDeviceBlockEntity extends BlockEntity implements FluidVi
                     else{code=PipeSizes.code(PipeSizes.outside(pipe?bore:otherPipe?other.bore:Math.max(bore,other.bore)));flanged=true;}
                 } else if(pipe&&neighbour instanceof EquipmentShellBlockEntity shell) {
                     var nozzle=shell.nozzleFacing(direction.getOpposite());
-                    // The vessel's flange is the pipe's size (its neck follows up to the room the vessel has): the pipe's flange matches it.
+                    // The vessel's flange is the pipe's size, its neck too (owner decision 2026-10-21: a 1 m pipe has a 1 m root): the pipe's flange matches it.
                     if(nozzle!=null){code=PipeSizes.code(PipeSizes.outside(bore));flanged=true;}
                 }
             }

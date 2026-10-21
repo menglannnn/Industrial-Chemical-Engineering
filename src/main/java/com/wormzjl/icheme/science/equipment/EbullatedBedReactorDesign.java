@@ -212,7 +212,10 @@ final class EbullatedBedReactorDesign extends UnitDesign {
         double yM = PEDESTAL + DROP, yLow = yM + lm, yJ = yLow + tj + .01, yC = yJ + hc, yP = yB - shell;
         double off = Math.max(.3 * d, dc / 2 + .1 + odd);
         int offF = (int) Math.max(1, Math.ceil(ring + odc / 2 + .05 - 1e-9));
-        double hw = Math.max(.3 * d, offF + odF / 2 + .15), top = yB - Math.max(1, .25 * d);
+        // The front and back openings take the feed's and hydrogen's lines at a pipe's largest with the port's clearance,
+        // every skirt facet they cross cut (owner decision 2026-10-21: the skirt hole takes the pipe's size, up to 1 m).
+        double crossed = DeterministicMath.asin(Math.min(1, (offF + PipeSizes.MAX_OUTSIDE / 2 + EquipmentShape.PORT_CLEARANCE) / skirt)) + Math.PI / n;
+        double hw = Math.max(.3 * d, crossed >= Math.PI / 2 ? skirt : skirt * DeterministicMath.sin(crossed)), top = yB - Math.max(1, .25 * d);
         double[] front = {-Math.PI / 2, hw}, back = {Math.PI / 2, hw};
 
         // ---- The clad shell over its top head, the cladding's end and the bottom head over the bay (a solid's head under
@@ -287,10 +290,8 @@ final class EbullatedBedReactorDesign extends UnitDesign {
         plenumLine(u, a, xF, a, yB, shell, odc, PORT_ROW);
         u.mesh.sphere(new double[]{xF, PORT_ROW, a}, .55 * odc, ProcessUnit.sides(odc), Material.PIPE);
         double corner = Math.max(skirt, ProcessUnit.pedestalCorner(skirt + PEDESTAL_REACH)) + .15, zFeed = Math.floor(a - corner), zH2 = Math.ceil(a + corner);
-        // The branches keep their sizes (owner request 2026-10-21, nozzle roots follow the pipe, left out here): their necks
-        // already meet their skirt openings' edges (the nozzle room gate's baseline); a larger neck would cut further.
-        u.nozzles.add(new Nozzle(Role.FEED, new double[]{xF, PORT_ROW, a}, 2, -1, a - zFeed, odF, PipeSizes.od(odF, .1, odF), 0, .55 * odc + .02));
-        u.nozzles.add(new Nozzle(Role.HYDROGEN, new double[]{xF, PORT_ROW, a}, 2, 1, zH2 - a, odH, PipeSizes.od(odH, .1, odH), 0, .55 * odc + .02));
+        u.nozzles.add(new Nozzle(Role.FEED, new double[]{xF, PORT_ROW, a}, 2, -1, a - zFeed, PipeSizes.od(odF, .1, odF), 0));
+        u.nozzles.add(new Nozzle(Role.HYDROGEN, new double[]{xF, PORT_ROW, a}, 2, 1, zH2 - a, PipeSizes.od(odH, .1, odH), 0));
 
         // ---- The withdrawal vessel at grade to the left, as near the skirt as its line's sleeve keeps off the openings.
         double dv = catalystVessel(d), rv = dv / 2, tv = catalystVesselLength(d);
@@ -310,7 +311,7 @@ final class EbullatedBedReactorDesign extends UnitDesign {
         u.solids.add(Solid.cone(new double[]{xv, 0, zv}, 1, yA, yV0, .07, rv, 0));
         u.round(xv, zv, yA, yV1, rv, 1);
         double xOut = Math.ceil(xv + rv + .3);
-        u.nozzles.add(new Nozzle(Role.CATALYST_OUTLET, new double[]{xv + .1, .5, zv}, 0, 1, xOut - xv - .1, .1, .1, yA + .03, .2));
+        u.nozzles.add(new Nozzle(Role.CATALYST_OUTLET, new double[]{xv + .1, .5, zv}, 0, 1, xOut - xv - .1, .1, yA + .03));
         // The spent catalyst line: from the bottom head 0.8 of its radius out, a ball valve, through the skirt's sleeve,
         // over the vessel and down into it (a second valve where the drop has room); its leg out runs radially, so it
         // collides as a ring sector.
@@ -367,7 +368,7 @@ final class EbullatedBedReactorDesign extends UnitDesign {
         double p = Math.min(1, .12 * d);
         var run = topNozzle(u, a, a, yT + wall, p, deck + Access.RAIL + .12 + p / 2);
         double zEff = Math.floor(a - wall - TOP_DECK - .05);
-        u.nozzles.add(new Nozzle(Role.EFFLUENT, new double[]{a, run[0], run[1]}, 2, -1, run[1] - zEff, p, PipeSizes.od(.12 * d, .1, p), 0, .05));
+        u.nozzles.add(new Nozzle(Role.EFFLUENT, new double[]{a, run[0], run[1]}, 2, -1, run[1] - zEff, PipeSizes.od(.12 * d, .1, p), 0));
         u.davit(a, a, -3 * Math.PI / 4, wall + .6, deck, Math.max(deck + 3, run[0] + p / 2 + 1.4), -.2);
 
         // ---- The catalyst addition vessel on legs on the top head behind the nozzle (clear of its flanges, on a cell
@@ -392,13 +393,11 @@ final class EbullatedBedReactorDesign extends UnitDesign {
         u.solids.add(Solid.rod(new double[]{a, 0, a + rhoA}, 1, yA0 - rv / 2, yA1, rv, rv / 2));
         u.solids.add(Solid.rod(new double[]{a, 0, a + rhoA}, 1, yHa - .1, yA0, .15, 0));
         u.round(a, a + rhoA, yA0, yA1, rv, 1);
-        // Owner request 2026-10-21: nozzle roots follow the pipe; the inlet's neck within 0.85 of the vessel's radius from
-        // its axis, half its diameter at most, its root under the head where the neck's outer edge meets it.
+        // The inlet's neck rooted under the head where a pipe's largest neck's outer edge meets it (owner decision
+        // 2026-10-21: a 1 m pipe has a 1 m root).
         int kI = (int) Math.round(rhoA);
-        double offA = Math.abs(kI - rhoA), inletRoom = Math.max(.1, Math.min(Math.min(PipeSizes.MAX_OUTSIDE, rv), 2 * (.85 * rv - offA)));
-        double outerA = (offA + inletRoom / 2) / rv, nearA = Math.max(0, offA - inletRoom / 2) / rv;
-        double yInlet = yA1 + rv / 2 * Math.sqrt(Math.max(0, 1 - outerA * outerA)) - .05, crown = yA1 + rv / 2 * Math.sqrt(Math.max(0, 1 - nearA * nearA));
-        u.nozzles.add(new Nozzle(Role.CATALYST_INLET, new double[]{a, yInlet, a + kI}, 1, 1, Math.ceil(yA1 + rv / 2 + .25) - yInlet, inletRoom, .1, 0, crown - yInlet));
+        double outerA = (Math.abs(kI - rhoA) + PipeSizes.MAX_OUTSIDE / 2) / rv, yInlet = yA1 + rv / 2 * Math.sqrt(Math.max(0, 1 - outerA * outerA)) - .05;
+        u.nozzles.add(new Nozzle(Role.CATALYST_INLET, new double[]{a, yInlet, a + kI}, 1, 1, Math.ceil(yA1 + rv / 2 + .25) - yInlet, .1, 0));
 
         // ---- Trunnions under the top deck's corners; density gauges up the front left; thermowells at the back right.
         var fittings = new ArrayList<double[]>();

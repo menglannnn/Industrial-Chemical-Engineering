@@ -239,10 +239,10 @@ final class DelayedCokerDrums {
         cap(u, new double[]{p.xp[p.pairs - 1], yf, p.zWater}, 0, 1, p.waterOd);
         u.pipe(p.steamOd / 2, Material.PIPE, true, new double[]{p.x0 + .2, p.ySteam, p.zSteam}, new double[]{p.xp[p.pairs - 1], p.ySteam, p.zSteam});
         cap(u, new double[]{p.xp[p.pairs - 1], p.ySteam, p.zSteam}, 0, 1, p.steamOd);
-        u.nozzles.add(ProcessUnit.end(Role.FEED, new double[]{xf, yf, p.z0 + .2}, 2, -1, p.feedOd, p.feedOd));
-        u.nozzles.add(ProcessUnit.end(Role.WATER, new double[]{xw, yf, p.zb - .2}, 2, 1, p.waterOd, PipeSizes.od(p.waterOd, .1, p.waterOd)));
-        u.nozzles.add(ProcessUnit.end(Role.STEAM, new double[]{p.x0 + .2, p.ySteam, p.zSteam}, 0, -1, p.steamOd, PipeSizes.od(p.steamOd, .1, p.steamOd)));
-        u.nozzles.add(new Nozzle(Role.SOLIDS_OUTLET, new double[]{p.xd[0], 1.6, zc}, 1, -1, .6, SOLIDS_OD, SOLIDS_OD, 0, .03));
+        u.nozzles.add(ProcessUnit.end(Role.FEED, new double[]{xf, yf, p.z0 + .2}, 2, -1, p.feedOd));
+        u.nozzles.add(ProcessUnit.end(Role.WATER, new double[]{xw, yf, p.zb - .2}, 2, 1, PipeSizes.od(p.waterOd, .1, p.waterOd)));
+        u.nozzles.add(ProcessUnit.end(Role.STEAM, new double[]{p.x0 + .2, p.ySteam, p.zSteam}, 0, -1, PipeSizes.od(p.steamOd, .1, p.steamOd)));
+        u.nozzles.add(new Nozzle(Role.SOLIDS_OUTLET, new double[]{p.xd[0], 1.6, zc}, 1, -1, .6, SOLIDS_OD, 0));
     }
 
     /** The FEED line's x: the cell centre just past the front table column at the unit's middle. */
@@ -275,14 +275,14 @@ final class DelayedCokerDrums {
         double xr = p.x1 + .5;
         u.pipe(CUT_OD / 2, Material.PIPE, true, new double[]{p.xd[0], yr, p.zCut}, new double[]{xr, yr, p.zCut}, new double[]{xr, 1.5, p.zCut}, new double[]{xr + .25, 1.5, p.zCut});
         cap(u, new double[]{p.xd[0], yr, p.zCut}, 0, -1, CUT_OD);
-        u.nozzles.add(ProcessUnit.end(Role.VAPOUR_OUTLET, new double[]{xa, yv, p.zVapour}, 0, -1, p.vapourOd, PipeSizes.od(p.vapourOd, .1, p.vapourOd)));
-        // Owner request 2026-10-21: nozzle roots follow the pipe; the quench's neck up to the header's own size (an equal
-        // tee), its root under the header's crown where the neck's edge meets it.
-        double quenchRoom = p.vapourOd, rv = p.vapourOd / 2, qs = Math.sqrt(Math.max(0, rv * rv - quenchRoom * quenchRoom / 4)) - .03, qFace = Math.ceil(yv + rv + EquipmentShape.STAND_OUT);
-        u.nozzles.add(new Nozzle(Role.QUENCH, new double[]{xq, yv + qs, p.zVapour}, 1, 1, qFace - yv - qs, quenchRoom, QUENCH_OD, 0, rv - qs));
-        u.nozzles.add(ProcessUnit.end(Role.BLOWDOWN, new double[]{p.x1 - .2, yv, p.zBlow}, 0, 1, p.blowdownOd, PipeSizes.od(p.blowdownOd, .1, p.blowdownOd)));
-        u.nozzles.add(ProcessUnit.end(Role.RELIEF, new double[]{xRel, yr, p.zb - .2}, 2, 1, p.reliefOd, PipeSizes.od(p.reliefOd, .1, p.reliefOd)));
-        u.nozzles.add(ProcessUnit.end(Role.CUTTING_WATER, new double[]{xr + .25, 1.5, p.zCut}, 0, 1, CUT_OD, CUT_OD));
+        u.nozzles.add(ProcessUnit.end(Role.VAPOUR_OUTLET, new double[]{xa, yv, p.zVapour}, 0, -1, PipeSizes.od(p.vapourOd, .1, p.vapourOd)));
+        // The quench's neck rooted under the header's crown where a pipe's largest neck's edge meets it (owner decision
+        // 2026-10-21: a 1 m pipe has a 1 m root).
+        double rv = p.vapourOd / 2, big = PipeSizes.MAX_OUTSIDE / 2, qs = Math.sqrt(Math.max(0, rv * rv - big * big)) - .03, qFace = Math.ceil(yv + rv + EquipmentShape.STAND_OUT);
+        u.nozzles.add(new Nozzle(Role.QUENCH, new double[]{xq, yv + qs, p.zVapour}, 1, 1, qFace - yv - qs, QUENCH_OD, 0));
+        u.nozzles.add(ProcessUnit.end(Role.BLOWDOWN, new double[]{p.x1 - .2, yv, p.zBlow}, 0, 1, PipeSizes.od(p.blowdownOd, .1, p.blowdownOd)));
+        u.nozzles.add(ProcessUnit.end(Role.RELIEF, new double[]{xRel, yr, p.zb - .2}, 2, 1, PipeSizes.od(p.reliefOd, .1, p.reliefOd)));
+        u.nozzles.add(ProcessUnit.end(Role.CUTTING_WATER, new double[]{xr + .25, 1.5, p.zCut}, 0, 1, CUT_OD));
     }
 
     /** A blind end of a line of {@code od} at {@code at}, facing {@code sign} along frame axis {@code axis}. */

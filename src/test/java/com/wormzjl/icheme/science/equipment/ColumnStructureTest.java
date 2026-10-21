@@ -17,10 +17,10 @@ import static org.junit.jupiter.api.Assertions.*;
 class ColumnStructureTest {
     /** A small column, a crude-like one with draws, pumparounds and steam, a slim one, and the widest on its tallest skirt. */
     private static final List<EquipmentShape> COLUMNS = List.of(
-            EquipmentShape.column(3, ColumnTrays.simple(12, 6), Heading.SOUTH, 2),
+            EquipmentShape.column(3, ColumnTrays.simple(12, 6), Heading.SOUTH, 4),
             EquipmentShape.column(6, new ColumnTrays(40, 20, List.of(10, 25), List.of(41),
-                    List.of(new ColumnTrays.Pumparound(12, 10), new ColumnTrays.Pumparound(30, 28))), Heading.NORTH, 4),
-            EquipmentShape.column(1, ColumnTrays.simple(20, 10), Heading.EAST, 1),
+                    List.of(new ColumnTrays.Pumparound(12, 10), new ColumnTrays.Pumparound(30, 28))), Heading.NORTH, 5),
+            EquipmentShape.column(1, ColumnTrays.simple(20, 10), Heading.EAST, 3),
             EquipmentShape.column(15, ColumnTrays.simple(30, 15), Heading.WEST, 16));
 
     @Test
@@ -164,7 +164,7 @@ class ColumnStructureTest {
     void everyNozzleLeavesAFreeBlockForItsPipe() {
         // A crowded design (draws and pumparounds on neighbouring trays) keeps its pipes apart too.
         var crowded = EquipmentShape.column(4, new ColumnTrays(30, 15, List.of(8, 9, 20, 21), List.of(31),
-                List.of(new ColumnTrays.Pumparound(11, 10), new ColumnTrays.Pumparound(23, 22))), Heading.NORTH, 3);
+                List.of(new ColumnTrays.Pumparound(11, 10), new ColumnTrays.Pumparound(23, 22))), Heading.NORTH, 4);
         assertEquals(14, crowded.nozzles().size());
         for (var shape : java.util.stream.Stream.concat(COLUMNS.stream(), java.util.stream.Stream.of(crowded)).toList()) {
             ProcessUnitTest.pipesApart(shape);

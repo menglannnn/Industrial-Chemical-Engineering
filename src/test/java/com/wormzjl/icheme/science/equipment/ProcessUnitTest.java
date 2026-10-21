@@ -265,7 +265,7 @@ class ProcessUnitTest {
             assertEquals(sides.size(), nozzles.size(), shape.toString());
             for (var nozzle : nozzles) {
                 assertEquals(sides.get(nozzle.role()), nozzle.axis() + (nozzle.sign() > 0 ? "+" : "-"), shape + " " + nozzle.role());
-                assertTrue(nozzle.defaultOd() > 0 && nozzle.defaultOd() <= nozzle.maxOd(), shape + " " + nozzle.role());
+                assertTrue(nozzle.defaultOd() > 0 && nozzle.defaultOd() <= PipeSizes.MAX_OUTSIDE, shape + " " + nozzle.role());
             }
         }
     }
@@ -296,9 +296,9 @@ class ProcessUnitTest {
             "TRICKLE_BED_REACTOR FEED", "TRICKLE_BED_REACTOR HYDROGEN", "VERTICAL_HEATER FUEL");
 
     /**
-     * Owner request 2026-10-21 (a nozzle's root follows the connected pipe, up to the room the vessel has there): every
-     * nozzle's neck at its largest size stands clear of the rest of its shape beyond {@link NozzleRoom#SURFACE} from where
-     * it leaves the vessel, on every gated size, drums, columns and storage too.
+     * Owner decision 2026-10-21 (a 1 m pipe has a 1 m root; other components give way): every nozzle's neck at a pipe's
+     * largest stands clear of the rest of its shape beyond {@link NozzleRoom#SURFACE} from where it leaves the vessel, on
+     * every gated size, drums, columns and storage too.
      */
     @Test
     void everyNozzleNeckAtItsLargestStandsClear() {
@@ -308,8 +308,8 @@ class ProcessUnitTest {
         for (var shape : shapes)
             for (int k = 0; k < shape.nozzles().size(); k++) {
                 var nozzle = shape.nozzles().get(k);
-                if (!MET_BEFORE.contains(shape.kind() + " " + nozzle.role()) && !NozzleRoom.clear(shape, k, nozzle.maxOd()))
-                    failures.add(shape + " " + nozzle.role() + " at " + nozzle.maxOd());
+                if (!MET_BEFORE.contains(shape.kind() + " " + nozzle.role()) && !NozzleRoom.clear(shape, k, PipeSizes.MAX_OUTSIDE))
+                    failures.add(shape + " " + nozzle.role());
             }
         assertEquals(List.of(), failures);
     }
@@ -355,7 +355,7 @@ class ProcessUnitTest {
 
     /** The box of a nozzle's largest flange in the frame: its thickness behind the face, its radius across. */
     private static double[][] flange(EquipmentShape.Nozzle nozzle) {
-        double r = PipeSizes.flange(nozzle.maxOd()) / 2, t = PipeSizes.flangeThickness(nozzle.maxOd());
+        double r = PipeSizes.flange(PipeSizes.MAX_OUTSIDE) / 2, t = PipeSizes.flangeThickness(PipeSizes.MAX_OUTSIDE);
         double[] face = nozzle.face(), lo = new double[3], hi = new double[3];
         for (int a = 0; a < 3; a++) {
             lo[a] = face[a] - r;
@@ -730,7 +730,7 @@ class ProcessUnitTest {
             }
         }
         // The cage clearance, the least deck and the longest climb are the columns'.
-        var column = EquipmentShape.column(3, ColumnTrays.simple(12, 6), Heading.SOUTH, 2);
+        var column = EquipmentShape.column(3, ColumnTrays.simple(12, 6), Heading.SOUTH, 4);
         assertEquals(ColumnStructure.clearance(column), Access.clearance(column.outerRadius()));
         assertEquals(ColumnStructure.MIN_DECK, Access.MIN_DECK);
         assertEquals(ColumnStructure.MAX_CLIMB, Access.MAX_CLIMB);

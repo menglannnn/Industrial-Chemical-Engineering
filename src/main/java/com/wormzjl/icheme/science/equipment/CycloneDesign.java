@@ -303,7 +303,7 @@ final class CycloneDesign extends UnitDesign {
                     u.solids.add(Solid.rod(new double[]{x, 0, az}, 1, yOut - chute, yOut, PipeSizes.flange(lock) / 2, 0));
                     yOut -= chute;
                 }
-                u.nozzles.add(ProcessUnit.end(Role.SOLIDS_OUTLET, new double[]{x, yOut + .03, az}, 1, -1, lock, lock));
+                u.nozzles.add(ProcessUnit.end(Role.SOLIDS_OUTLET, new double[]{x, yOut + .03, az}, 1, -1, lock));
             }
         }
         // The structure: column lines at the row's ends and half a pitch between cyclones.
@@ -315,7 +315,7 @@ final class CycloneDesign extends UnitDesign {
         structure(u, columns, x0, pitch, count, az, e, b, ps, bd, bw, yBeam, deck ? yRoof : yBeam, endLow, .06 + .04 * d);
         // The gas in: one cyclone's nozzle at its transition's round end; several cyclones' run straight into the inlet
         // manifold in front, the nozzle on its front near the middle.
-        if (count == 1) u.nozzles.add(ProcessUnit.front(Role.FEED, xf, yFeed, zEnd + .02, feedOd, feedOd));
+        if (count == 1) u.nozzles.add(ProcessUnit.front(Role.FEED, xf, yFeed, zEnd + .02, feedOd));
         else {
             double rm = rf * Math.sqrt(count), zm = zT - .3 - rm, xa = xt0, xb = xt0 + (count - 1) * pitch;
             int nm = ProcessUnit.sides(2 * rm);
@@ -327,7 +327,7 @@ final class CycloneDesign extends UnitDesign {
                 u.post(xp, zm, 0, yFeed - rm, ps, true);
                 u.box(new double[]{xp - .6 * rm, yFeed - rm - .04, zm - ps / 2}, new double[]{xp + .6 * rm, yFeed - .7 * rm, zm + ps / 2}, ALL_FACES & ~8, Material.STEELWORK, false);
             }
-            u.nozzles.add(ProcessUnit.radialSide(Role.FEED, Math.floor((xa + xb) / 2) + .5, yFeed, zm, rm, nm, -1, feedOd, feedOd));
+            u.nozzles.add(ProcessUnit.radialSide(Role.FEED, Math.floor((xa + xb) / 2) + .5, yFeed, zm, rm, nm, -1, feedOd));
         }
         // The gas out: one cyclone's outlet rises into a 90° elbow to the back; several rise into the outlet header over
         // the row, the nozzle on its back at the middle cyclone.
@@ -340,7 +340,7 @@ final class CycloneDesign extends UnitDesign {
             u.elbow(new double[]{x0, yE - bend, az}, new double[]{0, 1, 0}, new double[]{0, 0, 1}, bend, ro, no, 6, Material.PIPE);
             u.solids.add(Solid.rod(new double[]{x0, 0, az}, 1, yRoof, yE - bend, ro, 0));
             u.solids.add(ProcessUnit.span(new double[]{x0 - ro, yE - bend, az - ro}, new double[]{x0 + ro, yE + ro, az + bend}));
-            u.nozzles.add(ProcessUnit.end(Role.VAPOUR_OUTLET, new double[]{x0, yE, az + bend - .01}, 2, 1, outOd, outOd));
+            u.nozzles.add(ProcessUnit.end(Role.VAPOUR_OUTLET, new double[]{x0, yE, az + bend - .01}, 2, 1, outOd));
         } else {
             double rh = ro * Math.sqrt(count), yE = Math.ceil(yRoof + .4 * d + rh - .5 - 1e-9) + .5;
             int nh = ProcessUnit.sides(2 * rh);
@@ -352,7 +352,7 @@ final class CycloneDesign extends UnitDesign {
             }
             // A header lying along x: its axis on the frame's z, the outlet on its back (a radial nozzle along +z).
             header(u, x0, xLast, yE, az, rh, nh);
-            u.nozzles.add(ProcessUnit.radialSide(Role.VAPOUR_OUTLET, x0 + (count - 1) / 2 * pitch, yE, az, rh, nh, 1, outOd, outOd));
+            u.nozzles.add(ProcessUnit.radialSide(Role.VAPOUR_OUTLET, x0 + (count - 1) / 2 * pitch, yE, az, rh, nh, 1, outOd));
         }
         // Several cyclones' airlocks drop into a screw conveyor: its trough with lipped ends on beams across the column
         // lines, the drive at its left (+x) end, the spout (lengthened to bring the solids outlet's flange just over a block
@@ -377,7 +377,7 @@ final class CycloneDesign extends UnitDesign {
             u.solids.add(Solid.rod(new double[]{xs, 0, az}, 1, yOut, yT2, PipeSizes.flange(so) / 2, 0));
             double cd = .1 + .05 * d, cw = .08 + .03 * d;
             for (double xc : columns) u.box(new double[]{xc - cw / 2, yT2 - cd, az - e + ps / 2}, new double[]{xc + cw / 2, yT2, az + e - ps / 2}, Material.STEELWORK, true);
-            u.nozzles.add(ProcessUnit.end(Role.SOLIDS_OUTLET, new double[]{xs, yOut + .03, az}, 1, -1, so, so));
+            u.nozzles.add(ProcessUnit.end(Role.SOLIDS_OUTLET, new double[]{xs, yOut + .03, az}, 1, -1, so));
         }
         // From 1.2 m: the walkway along the front at roof level over the inlet ducts, from the right-hand frame's posts to
         // the left-hand one's, open at its right end for the caged ladders (rests).

@@ -280,7 +280,7 @@ final class StirredReactorDesign extends UnitDesign {
         u.box(new double[]{a + rb + .12, mid - box, a - .7 * box}, new double[]{a + rb + .12 + 1.6 * box, mid + box, a + .7 * box}, Material.ACTUATOR, false);
         u.mesh.cylinder(Frame.of(new double[]{a + rb + .12 + .8 * box, mid + box, a}, 2, 1), .45 * box, -1.1 * box, 1.1 * box, 12, Material.ACTUATOR);
         u.solids.add(ProcessUnit.Solid.rod(new double[]{a, 0, a}, 1, b0, p.yj, rb, 0));
-        u.nozzles.add(new Nozzle(Role.LIQUID_OUTLET, new double[]{a, b0 + .03, a}, 1, -1, b0 + .03 - y0, v, p.usualValve, 0, .03));
+        u.nozzles.add(new Nozzle(Role.LIQUID_OUTLET, new double[]{a, b0 + .03, a}, 1, -1, b0 + .03 - y0, p.usualValve, 0));
     }
 
     /**
@@ -295,31 +295,22 @@ final class StirredReactorDesign extends UnitDesign {
         double outRow = Math.floor(p.level - p.beam - .02 - 1) + .5, highest = Math.min(p.jacketTop - .1 - rr, p.level - p.beam - .1 - rr);
         double inRow = Math.ceil(p.bottom + .1 + rr - .5) + .5, lowest = p.bottom + .1 + rr;
         if (inRow > outRow) inRow = Math.min(Math.floor(lowest - .5) + .5, outRow);
-        double yIn = inRow >= lowest - 1e-9 && inRow <= highest + 1e-9 ? inRow : lowest, yOut = outRow >= lowest - 1e-9 && outRow <= highest + 1e-9 ? outRow : highest;
-        jacketNozzle(u, Role.COOLANT_INLET, a, p.rj, n, -1, yIn, inRow, most, usual, jacketRoom(p, yIn, most));
-        jacketNozzle(u, Role.COOLANT_OUTLET, a, p.rj, n, 1, yOut, outRow, most, usual, jacketRoom(p, yOut, most));
-    }
-
-    /**
-     * A jacket nozzle's room at height y (owner request 2026-10-21: nozzle roots follow the pipe), {@code most} at least:
-     * the jacket's radius across, 0.1 m clear of its bottom tangent and of its top or the deck's beams, whichever is lower.
-     */
-    private static double jacketRoom(Plan p, double y, double most) {
-        return Math.max(most, Math.min(Math.min(PipeSizes.MAX_OUTSIDE, p.rj), 2 * Math.min(y - p.bottom - .1, Math.min(p.jacketTop, p.level - p.beam) - .1 - y)));
+        jacketNozzle(u, Role.COOLANT_INLET, a, p.rj, n, -1, inRow >= lowest - 1e-9 && inRow <= highest + 1e-9 ? inRow : lowest, inRow, most, usual);
+        jacketNozzle(u, Role.COOLANT_OUTLET, a, p.rj, n, 1, outRow >= lowest - 1e-9 && outRow <= highest + 1e-9 ? outRow : highest, outRow, most, usual);
     }
 
     /**
      * A jacket nozzle at x {@code a} facing {@code sz} along z (-1 the front): out of the jacket (radius {@code rj}, {@code n}
-     * sides) at height {@code y}, its neck up to {@code room} across; where {@code row} is not {@code y}, flanged 0.1 m out
-     * and turned down (or up) in a spool to {@code row}, the nozzle on from its last bend (the spool's size). Its flange
-     * face on the next block face 0.25 m beyond.
+     * sides) at height {@code y}, its neck rooted where a pipe's largest neck's edge meets the jacket (owner decision
+     * 2026-10-21: a 1 m pipe has a 1 m root); where {@code row} is not {@code y}, flanged 0.1 m out and turned down (or up)
+     * in a spool to {@code row}, the nozzle on from its last bend. Its flange face on the next block face 0.25 m beyond.
      */
-    private static void jacketNozzle(ProcessUnit u, Role role, double a, double rj, int n, int sz, double y, double row, double most, double usual, double room) {
+    private static void jacketNozzle(ProcessUnit u, Role role, double a, double rj, int n, int sz, double y, double row, double most, double usual) {
         double rr = most / 2;
         if (Math.abs(row - y) < 1e-6) {
-            double apothem = rj * DeterministicMath.cos(Math.PI / n), start = Math.sqrt(Math.max(0, apothem * apothem - room * room / 4)) - .03;
+            double start = ProcessUnit.rootUnder(rj, n);
             double face = sz < 0 ? Math.floor(a - rj - EquipmentShape.STAND_OUT) : Math.ceil(a + rj + EquipmentShape.STAND_OUT), base = a + sz * start;
-            u.nozzles.add(new Nozzle(role, new double[]{a, row, base}, 2, sz, Math.abs(face - base), room, usual, 0, rj - start));
+            u.nozzles.add(new Nozzle(role, new double[]{a, row, base}, 2, sz, Math.abs(face - base), usual, 0));
             return;
         }
         double out = rj + .25, fl = PipeSizes.flange(most) / 2;
@@ -329,7 +320,7 @@ final class StirredReactorDesign extends UnitDesign {
         u.mesh.sphere(bend, 1.05 * rr, sides, Material.PIPE);
         u.mesh.cylinder(Frame.of(new double[]{a, y, a}, 2, sz), fl, rj + .06, rj + .12, sides, Material.FLANGE);
         double face = sz < 0 ? Math.floor(a - out - .25) : Math.ceil(a + out + .25);
-        u.nozzles.add(new Nozzle(role, bend, 2, sz, Math.abs(face - bend[2]), most, usual, 0, rr));
+        u.nozzles.add(new Nozzle(role, bend, 2, sz, Math.abs(face - bend[2]), usual, 0));
         u.solids.add(ProcessUnit.Solid.rod(new double[]{a, 0, a + sz * out}, 1, Math.min(y, row), Math.max(y, row), rr, 0));
     }
 
@@ -353,11 +344,10 @@ final class StirredReactorDesign extends UnitDesign {
             double face = 0;
             for (double m : most) face = Math.max(face, Math.ceil(p.head(corner - PipeSizes.flange(m) / 2) + EquipmentShape.STAND_OUT));
             for (int k = 0; k < 4; k++) {
-                // Owner request 2026-10-21: nozzle roots follow the pipe; a neck's room is the circle its duty flange takes on
-                // the head (the manway and sight glasses keep off it), within 0.9 R of the axis.
-                double room = Math.max(most[k], Math.min(Math.min(PipeSizes.MAX_OUTSIDE, PipeSizes.flange(most[k])), 2 * (.9 * r - corner)));
-                double x = a + corners[k][0], z = a + corners[k][1], base = p.head(corner + room / 2) - .03;
-                u.nozzles.add(new Nozzle(roles[k], new double[]{x, base, z}, 1, 1, face - base, room, usual[k], 0, p.head(corner - room / 2) - base + .01));
+                // A neck rooted under the head where a pipe's largest neck's edge meets it (owner decision 2026-10-21: a 1 m
+                // pipe has a 1 m root).
+                double x = a + corners[k][0], z = a + corners[k][1], base = p.head(corner + PipeSizes.MAX_OUTSIDE / 2) - .03;
+                u.nozzles.add(new Nozzle(roles[k], new double[]{x, base, z}, 1, 1, face - base, usual[k], 0));
                 taken.add(new double[]{x, z, PipeSizes.flange(most[k]) / 2});
             }
         } else {
@@ -377,7 +367,7 @@ final class StirredReactorDesign extends UnitDesign {
                 u.line(rr, Material.PIPE, new double[]{hx, surface + .2, hz}, new double[]{hx, rise, hz}, bend);
                 u.mesh.sphere(bend, 1.05 * rr, sides, Material.PIPE);
                 u.solids.add(ProcessUnit.Solid.rod(new double[]{hx, 0, hz}, 1, surface, rise, fl, 0));
-                u.nozzles.add(new Nozzle(roles[k], bend, 1, 1, face - rise, most[k], usual[k], 0, rr));
+                u.nozzles.add(new Nozzle(roles[k], bend, 1, 1, face - rise, usual[k], 0));
                 taken.add(new double[]{hx, hz, fl});
             }
         }

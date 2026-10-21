@@ -100,11 +100,8 @@ final class FccConverterBuilder {
         manway(0, 0, r, MANWAY, low + .9, n);
         manway(0, 0, r, MANWAY, high + .9, n);
         // Fresh catalyst in at the front over the bed; equilibrium catalyst out at the back just over the bottom tangent.
-        // Owner request 2026-10-21: nozzle roots follow the pipe. The inlet's neck in the platforms' gap at the front (their
-        // arcs stop 0.35 rad short of it) 0.1 m inside its edges; the outlet's 0.05 m over the bottom tangent, both at most 0.9.
-        double inRoom = Math.max(.15, Math.min(.9, 2 * ((r + .1) * DeterministicMath.sin(.35) - .1)));
-        u.nozzles.add(ProcessUnit.radialSide(Role.CATALYST_INLET, O, y0 + 4.5, O, r, n, -1, inRoom, .1));
-        u.nozzles.add(ProcessUnit.radialSide(Role.CATALYST_OUTLET, O, y0 + .5, O, r, n, 1, .9, .15));
+        u.nozzles.add(ProcessUnit.radialSide(Role.CATALYST_INLET, O, y0 + 4.5, O, r, n, -1, .1));
+        u.nozzles.add(ProcessUnit.radialSide(Role.CATALYST_OUTLET, O, y0 + .5, O, r, n, 1, .15));
     }
 
     /**
@@ -215,8 +212,7 @@ final class FccConverterBuilder {
         // The burner box and the fuel gas nozzle under it on the front.
         double box = Math.min(.4, .25 * hr + .15), yFuel = Math.floor(yt - .6) + .5, zBox = hz - hr - .45;
         u.box(p(-box, yFuel - box, zBox), p(box, yFuel + box, hz - hr + .1), Material.MACHINE, true);
-        // Owner request 2026-10-21: nozzle roots follow the pipe; the fuel's neck on the box's front, 0.05 m inside its edges.
-        u.nozzles.add(ProcessUnit.front(Role.FUEL, O, yFuel, zBox + O, Math.max(.15, 2 * box - .1), .1));
+        u.nozzles.add(ProcessUnit.front(Role.FUEL, O, yFuel, zBox + O, .1));
         // The air riser beside the heater: its nozzle low at the front, an elbow up, an elbow into the heater's side.
         double yLow = Math.ceil(ra - .35 - 1e-9) + .5, r1 = -ax - hr, r2 = a;
         var top = u.elbow(p(ax, l.airIn - r1, hz), UP, PLUS_X, r1, ra, np, pieces(r1), Material.PIPE);
@@ -230,7 +226,7 @@ final class FccConverterBuilder {
         var end = p(ax, yLow, zEnd);
         if (a > 1) end = u.reducer(end, MINUS_Z, ra, .5, taper(ra), np, Material.PIPE, false);
         double airOd = a > 1 ? 1 : PipeSizes.od(a, .1, 1);
-        u.nozzles.add(ProcessUnit.front(Role.AIR, end[0], yLow, end[2], airOd, airOd));
+        u.nozzles.add(ProcessUnit.front(Role.AIR, end[0], yLow, end[2], airOd));
         // Out of the heater's lower back, under the regenerator and up into its bottom head.
         double r3 = a, yo = l.airOut, apex = l.support - l.head;
         u.line(ra, np, Material.PIPE, p(0, yo, hz + hr - .2), p(0, yo, -r3));
@@ -354,8 +350,8 @@ final class FccConverterBuilder {
         double zF = -Math.sqrt(l.feedRing * l.feedRing - 1), zS = Math.sqrt(l.steamRing * l.steamRing - 1), zFront = -l.half - .3, zBack = l.half + .3;
         u.pipe(l.feedOd / 2, Material.PIPE, true, p(x + 1, l.feedY, zF), p(x + 1, yF, zF), p(x + 1, yF, zFront));
         u.pipe(l.steamOd / 2, Material.PIPE, true, p(x + 1, l.steamY, zS), p(x + 1, yS, zS), p(x + 1, yS, zBack));
-        u.nozzles.add(ProcessUnit.front(Role.FEED, x + 1 + O, yF, zFront + O, l.feedOd, l.feedOd));
-        u.nozzles.add(ProcessUnit.end(Role.STEAM, p(x + 1, yS, zBack), 2, 1, l.steamOd, l.steamOd));
+        u.nozzles.add(ProcessUnit.front(Role.FEED, x + 1 + O, yF, zFront + O, l.feedOd));
+        u.nozzles.add(ProcessUnit.end(Role.STEAM, p(x + 1, yS, zBack), 2, 1, l.steamOd));
     }
 
     /** A ring header round the riser at {@code y}, radius {@code ring}, from angle a0 to a1 (from +x towards +z), its ends capped. */
@@ -565,7 +561,7 @@ final class FccConverterBuilder {
         var end = p(xEnd, y, 0);
         if (l.flue > 1) end = u.reducer(end, MINUS_X, rf, .5, taper(rf), nf, Material.PIPE, false);
         double flueOd = l.flue > 1 ? 1 : PipeSizes.od(l.flue, .1, 1);
-        u.nozzles.add(ProcessUnit.end(Role.FLUE_GAS, end, 0, -1, flueOd, flueOd));
+        u.nozzles.add(ProcessUnit.end(Role.FLUE_GAS, end, 0, -1, flueOd));
         // Vapour, on past the stair tower's outer side.
         double rv = l.vapour / 2, bv = 1.5 * l.vapour, top = l.reactorTop + l.rr / 2, yv = vapourAxis(), x = l.x;
         int nv = lineSides(l.vapour);
@@ -579,7 +575,7 @@ final class FccConverterBuilder {
         var out = p(xv, yv, 0);
         if (l.vapour > 1) out = u.reducer(out, PLUS_X, rv, .5, taper(rv), nv, Material.CLADDING, false);
         double vapourOd = l.vapour > 1 ? 1 : PipeSizes.od(l.vapour, .1, 1);
-        u.nozzles.add(ProcessUnit.end(Role.VAPOUR_OUTLET, out, 0, 1, vapourOd, vapourOd));
+        u.nozzles.add(ProcessUnit.end(Role.VAPOUR_OUTLET, out, 0, 1, vapourOd));
     }
 
     /** The vapour line's horizontal axis: a cell centre at least its elbow and 0.3 m over the reactor's crown. */

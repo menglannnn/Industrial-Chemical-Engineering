@@ -53,7 +53,7 @@ class VesselPlacementTest {
             assertEquals(back, VesselPlacement.Form.VERTICAL.front(f[0], f[1]));
             assertEquals(back, VesselPlacement.Form.LENGTHWISE.front(f[0], f[1]));
             assertEquals(EquipmentShape.Heading.of(-f[1], f[0]), VesselPlacement.Form.CROSSWISE.front(f[0], f[1]));
-            var standing = EquipmentShape.drum(3, 4, EquipmentShape.Orientation.VERTICAL, back, 2);
+            var standing = EquipmentShape.drum(3, 4, EquipmentShape.Orientation.VERTICAL, back, EquipmentShape.minimumSkirt(3));
             for (var port : ShapeRasterizer.ports(standing)) {
                 int[] d = {port.dx(), port.dy(), port.dz()};
                 if (port.port() == EquipmentShape.PortClass.LIQUID) assertArrayEquals(new int[]{-f[0], 0, -f[1]}, d);

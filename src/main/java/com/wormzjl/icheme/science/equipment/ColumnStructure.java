@@ -184,12 +184,11 @@ final class ColumnStructure {
     private static List<EquipmentShape.Nozzle> place(EquipmentShape s) {
         var t = s.trays();
         double d = s.diameter(), a = s.axis(), yB = s.bottomTangent();
-        // Owner request 2026-10-21: nozzle roots follow the pipe; the top neck's room is half the head, at most a pipe's largest.
-        double topOd = size(.4 * d, 1), topRoom = Math.max(topOd, Math.min(PipeSizes.MAX_OUTSIDE, d / 2));
-        double start = s.headSurface(topRoom / 2) - .03;
+        // The top neck rooted under the head where a pipe's largest neck's edge meets it (owner decision 2026-10-21: a 1 m
+        // pipe has a 1 m root).
+        double topOd = size(.4 * d, 1), start = s.headSurface(PipeSizes.MAX_OUTSIDE / 2) - .03;
         var out = new ArrayList<EquipmentShape.Nozzle>();
-        out.add(new EquipmentShape.Nozzle(EquipmentShape.Role.VAPOUR_OUTLET, new double[]{a, start, a}, 1, 1, Math.ceil(s.top() + EquipmentShape.STAND_OUT) - start,
-                topRoom, topOd, 0, s.headSurface(0) - start));
+        out.add(new EquipmentShape.Nozzle(EquipmentShape.Role.VAPOUR_OUTLET, new double[]{a, start, a}, 1, 1, Math.ceil(s.top() + EquipmentShape.STAND_OUT) - start, topOd, 0));
         double sump = ColumnTrays.bottomSpace(d);
         var clearance = new Clearance(s);
         var placed = new ArrayList<EquipmentShape.Nozzle>();
@@ -231,10 +230,7 @@ final class ColumnStructure {
         for (int step = 0; step <= 2 * rows; step++) {
             double at = wanted + (step % 2 == 0 ? step / 2 : -(step + 1) / 2);
             if (at - half < yB + .05 || at + half > yT - .05) continue;
-            // Owner request 2026-10-21: nozzle roots follow the pipe. The neck's room: its cell row (which the structure
-            // leaves clear), the straight shell between the tangent lines, half the diameter; the rows keep the duty size.
-            double room = Math.max(od, Math.min(Math.min(PipeSizes.MAX_OUTSIDE, s.diameter() / 2), 2 * Math.min(at - yB - .05, yT - .05 - at)));
-            var nozzle = s.side(role, s.axis(), at, axis, sign, s.outerRadius() * DeterministicMath.cos(Math.PI / s.facets()), room, od);
+            var nozzle = s.side(role, s.axis(), at, axis, sign, s.outerRadius() * DeterministicMath.cos(Math.PI / s.facets()), od);
             boolean free = true;
             // Flanges on one side never overlap, and no two pipes stand in touching blocks (one free block between).
             for (var other : placed)
@@ -377,7 +373,7 @@ final class ColumnStructure {
         double half = Math.PI / n;
         for (var nozzle : nozzles) {
             if (nozzle.axis() == 1) continue;
-            double reach = PipeSizes.flange(nozzle.maxOd()) / 2 + .05;
+            double reach = PipeSizes.flange(PipeSizes.MAX_OUTSIDE) / 2 + .05;
             double heading = nozzle.axis() == 0 ? (nozzle.sign() > 0 ? 0 : Math.PI) : (nozzle.sign() > 0 ? Math.PI / 2 : 3 * Math.PI / 2);
             if (Math.abs(nozzle.base()[1] - y) < reach && apart(angle, heading) < reach / outer + half) return true;
         }

@@ -448,8 +448,11 @@ public final class ShapeRasterizer {
         private final Map<Cell, List<Facet>> facetsByCell = new HashMap<>();
         /** Outer radii (vertex) of a saddle's top plate and a skirt's base ring; a saddle's half width across the axis. */
         private final double saddleRadius, ringRadius, saddleLateral;
-        /** A skirt's access opening: centre height and radius (0: none). */
-        private final double openingHeight, openingRadius;
+        /**
+         * A skirt's port: centre height and radius at its largest (0: none), and the band of rows its skirt facets' pieces
+         * round it take, drawn in its bottom outlet's mesh with the hole at the pipe's size ({@link #skirtPort}).
+         */
+        private final double openingHeight, openingRadius, portLow, portHigh;
         /**
          * A skirt is hollow: drawn on both faces, with its bottom head (a column's bare, under its cladding), its outlet
          * line and a floor plate inside (owner report 2026-10-16; a column's too, owner request 2026-10-16). Its slots, from
@@ -521,6 +524,8 @@ public final class ShapeRasterizer {
             saddles = shape.saddleCentres();
             openingHeight = shape.openingHeight();
             openingRadius = shape.openingRadius();
+            portLow = openingHeight - openingRadius - EquipmentShape.PORT_COLLAR - .05;
+            portHigh = openingHeight + openingRadius + EquipmentShape.PORT_COLLAR + .05;
             hollow = shape.skirt();
             innerRadius = radius - EquipmentShape.SKIRT_WALL / apothemFactor;
             double slotTop = Math.min(shape.bottomTangent() - .2, .4 + 1.6);
@@ -541,7 +546,6 @@ public final class ShapeRasterizer {
                 if (shape.skirt() && shape.drum()) junction();
                 if (boot != null) boot();
                 if (manway != null) manway.draw(mesh);
-                if (openingRadius > 0) openingSleeve();
                 for (double c : saddles) saddle(c);
             }
             if (column != null) {
@@ -618,9 +622,9 @@ public final class ShapeRasterizer {
         private static final int[] NONE = new int[0];
 
         /**
-         * The shell, the skirt (with its opening cut out) and the heads. A column's shell and top head are clad: the
-         * cladding stands {@link EquipmentShape#INSULATION} out from the shell, in aluminium panels, its lower edge closed
-         * over the skirt at the bottom tangent line.
+         * The shell, the skirt (less its port's band, which its bottom outlet draws at the pipe's size) and the heads. A
+         * column's shell and top head are clad: the cladding stands {@link EquipmentShape#INSULATION} out from the shell, in
+         * aluminium panels, its lower edge closed over the skirt at the bottom tangent line.
          */
         private void build() {
             double yB = shape.bottomTangent(), yT = shape.topTangent(), plate = EquipmentShape.PLATE;
@@ -639,17 +643,11 @@ public final class ShapeRasterizer {
                 mesh.add(List.of(shell(i, yB), shell(i + 1, yB), shell(i + 1, yT), shell(i, yT)), centre, round, clad ? Material.CLADDING : Material.SHELL, plates, courses);
                 if (clad) mesh.flat(List.of(ring(i, yB), ring(i + 1, yB), shell(i + 1, yB), shell(i, yB)), new double[]{0, -1, 0}, Material.CLADDING);
                 if (shape.skirt()) {
-                    var skirtU = new Uv(a, neg(tangent), -i * chord, plateLength / 2);
-                    double apothem = radius * apothemFactor;
-                    for (var piece : skirtFacet(i, radius, apothem)) mesh.add(piece, centre, round, Material.SUPPORT, skirtU, skirtTiles);
-                    if (hollow) {
-                        // The inside face, seen through the opening and the slots, and the slots' cut edges.
-                        var beyond = new double[]{axis + 2 * radius * normalCos[i], yB / 2, axis + 2 * radius * normalSin[i]};
-                        var inward = new Inward(new double[]{axis, 0, axis}, up);
-                        for (var piece : skirtFacet(i, innerRadius, apothem - EquipmentShape.SKIRT_WALL))
-                            mesh.add(piece, beyond, inward, Material.SUPPORT, skirtU, skirtTiles);
-                        slotEdges(i);
-                    }
+                    if (portFacet(i)) {
+                        skirtFace(mesh, i, plate, portLow, 0);
+                        skirtFace(mesh, i, portHigh, yB, 0);
+                    } else skirtFace(mesh, i, plate, yB, 0);
+                    if (hollow) slotEdges(i);
                 }
                 for (int side = 0; side < 2; side++) {
                     double base = side == 0 ? yB : yT, sign = side == 0 ? -1 : 1;
@@ -674,14 +672,39 @@ public final class ShapeRasterizer {
         }
 
         /**
-         * Skirt facet {@code i} from the base ring to the bottom tangent line, its vertices at radius {@code r} (its plane
-         * at {@code apothem} from the axis), less the access opening and a slot where they reach it.
+         * Skirt facet {@code i} from {@code y0} to {@code y1}, its outer face and a hollow skirt's inner face (seen through
+         * the port and the slots), less a port hole of radius {@code port} (0: none) and a slot where they reach it, into
+         * {@code m}: the vessel's mesh, or the bottom outlet's at a pipe size for the port's band.
          */
-        private List<List<double[]>> skirtFacet(int i, double r, double apothem) {
-            double plate = EquipmentShape.PLATE, yB = shape.bottomTangent();
+        private void skirtFace(Mesh m, int i, double y0, double y1, double port) {
+            if (y1 <= y0) return;
+            double yB = shape.bottomTangent(), yT = shape.topTangent(), apothem = radius * apothemFactor;
+            var up = new double[]{0, 1, 0};
+            double[] a = shell(i, 0), b = shell(i + 1, 0), tangent = unit(b[0] - a[0], 0, b[2] - a[2]);
+            double chord = 2 * outer * DeterministicMath.sin(Math.PI / n);
+            var skirtU = new Uv(a, neg(tangent), -i * chord, plateLength / 2);
+            var skirtTiles = new Uv(new double[]{axis, yB, axis}, up, 0, SUPPORT_TILE);
+            var centre = new double[]{axis, (yB + yT) / 2, axis};
+            for (var piece : skirtFacet(i, radius, apothem, y0, y1, port)) m.add(piece, centre, new Radial(new double[]{axis, 0, axis}, up), Material.SUPPORT, skirtU, skirtTiles);
+            if (!hollow) return;
+            var beyond = new double[]{axis + 2 * radius * normalCos[i], yB / 2, axis + 2 * radius * normalSin[i]};
+            for (var piece : skirtFacet(i, innerRadius, apothem - EquipmentShape.SKIRT_WALL, y0, y1, port))
+                m.add(piece, beyond, new Inward(new double[]{axis, 0, axis}, up), Material.SUPPORT, skirtU, skirtTiles);
+        }
+
+        /** Whether the port at its largest reaches skirt facet {@code i}: its band is drawn with the bottom outlet. */
+        private boolean portFacet(int i) {
+            return openingRadius > 0 && hole(i, radius * apothemFactor, openingRadius + EquipmentShape.PORT_COLLAR) != null;
+        }
+
+        /**
+         * Skirt facet {@code i} from {@code y0} to {@code y1}, its vertices at radius {@code r} (its plane at {@code apothem}
+         * from the axis), less a port hole of radius {@code port} (0: none) and a slot where they reach it.
+         */
+        private List<List<double[]>> skirtFacet(int i, double r, double apothem, double y0, double y1, double port) {
             var normal = new double[]{normalCos[i], 0, normalSin[i]};
-            List<List<double[]>> pieces = List.of(List.of(vertex(i, r, plate), vertex(i + 1, r, plate), vertex(i + 1, r, yB), vertex(i, r, yB)));
-            var hole = openingRadius > 0 ? hole(i, apothem) : null;
+            List<List<double[]>> pieces = List.of(List.of(vertex(i, r, y0), vertex(i + 1, r, y0), vertex(i + 1, r, y1), vertex(i, r, y1)));
+            var hole = port > 0 ? hole(i, apothem, port) : null;
             if (hole != null) pieces = cut(pieces, hole, normal);
             var slot = slot(i, r);
             if (slot != null) pieces = cut(pieces, slot, normal);
@@ -695,17 +718,20 @@ public final class ShapeRasterizer {
         }
 
         /**
-         * The access opening on the plane of skirt facet {@code i} at {@code apothem} from the axis, or null when it does
-         * not reach that facet: the opening's circle around its horizontal axis towards the front (frame -z), projected
-         * along that axis onto the facet.
+         * The port's hole of radius {@code port} on the plane of skirt facet {@code i} at {@code apothem} from the axis, or
+         * null when it does not reach that facet: the circle around the port's horizontal axis towards the front (frame
+         * -z), projected along that axis onto the facet. A 32-gon whose edges stay outside the circle, so no plate lies
+         * inside it.
          */
-        private List<double[]> hole(int i, double apothem) {
+        private List<double[]> hole(int i, double apothem, double port) {
             if (normalSin[i] > -.3) return null;
             double low = Math.min(vertexCos[i], vertexCos[i + 1]) * radius, high = Math.max(vertexCos[i], vertexCos[i + 1]) * radius;
-            if (high < -openingRadius || low > openingRadius) return null;
-            var hole = new ArrayList<double[]>(16);
-            for (int j = 0; j < 16; j++) {
-                double angle = 2 * Math.PI * j / 16, x = openingRadius * DeterministicMath.cos(angle), y = openingHeight + openingRadius * DeterministicMath.sin(angle);
+            if (high < -port || low > port) return null;
+            int sides = 32;
+            double vertexRadius = port / DeterministicMath.cos(Math.PI / sides);
+            var hole = new ArrayList<double[]>(sides);
+            for (int j = 0; j < sides; j++) {
+                double angle = 2 * Math.PI * j / sides, x = vertexRadius * DeterministicMath.cos(angle), y = openingHeight + vertexRadius * DeterministicMath.sin(angle);
                 hole.add(new double[]{axis + x, y, axis + (apothem - x * normalCos[i]) / normalSin[i]});
             }
             return hole;
@@ -756,33 +782,22 @@ public final class ShapeRasterizer {
         }
 
         /**
-         * The opening's sleeve: a collar round the hole, standing proud of the skirt. A column's carries its bore and a dark
-         * back; a drum's (a hollow skirt's) is its skirt port, whose bore and faces its bottom outlet draws at the line's
-         * size ({@link #skirtPort}).
-         */
-        private void openingSleeve() {
-            var f = openingFrame();
-            double apothem = radius * apothemFactor, rim = openingRadius + EquipmentShape.PORT_COLLAR, outer = radius + 1 / 16.0, back = apothem - .12;
-            // A hollow skirt's sleeve is one tube through the plate (inside it the tube is hidden), closed at its inner end.
-            mesh.prism(f, rim, hollow ? back : Math.sqrt(apothem * apothem - rim * rim) - .02, outer, 16, Material.SUPPORT);
-            if (hollow) return;
-            mesh.bore(f, openingRadius, back, outer, 16, Material.SUPPORT);
-            mesh.annulus(f, openingRadius, rim, outer, 16, 1, Material.SUPPORT);
-            mesh.annulus(f, 0, openingRadius, back, 16, 1, Material.OPENING);
-        }
-
-        /**
-         * A drum's skirt port round its outlet line of radius {@code line} (owner request 2026-10-16: the port follows the
-         * line): its bore, the line's clearance wider, and the collar's outer and inner faces out to the hole cut for the
-         * largest line.
+         * A skirt's port round its outlet line of radius {@code line}, at the line's size (owner requests 2026-10-16: the
+         * port follows the line; 2026-10-21: "Skirt hole needs to adapt to the size of the pipe to max 1m"): the skirt
+         * facets' pieces in the port's band with the hole cut to the line's radius and {@link EquipmentShape#PORT_CLEARANCE},
+         * and the sleeve through the plate round it, its bore that wide, its collar {@link EquipmentShape#PORT_COLLAR}
+         * thick, closed at its inner end (inside the skirt the sleeve's tube is hidden).
          */
         private void skirtPort(Mesh m, double line) {
             var f = openingFrame();
-            double apothem = radius * apothemFactor, rim = openingRadius + EquipmentShape.PORT_COLLAR, outer = radius + 1 / 16.0, back = apothem - .12;
-            double port = Math.min(openingRadius, line + EquipmentShape.PORT_CLEARANCE);
-            m.bore(f, port, back, outer, 16, Material.SUPPORT);
-            m.annulus(f, port, rim, outer, 16, 1, Material.SUPPORT);
-            m.annulus(f, port, rim, back, 16, -1, Material.SUPPORT);
+            double apothem = radius * apothemFactor, port = line + EquipmentShape.PORT_CLEARANCE, rim = port + EquipmentShape.PORT_COLLAR;
+            double outer = radius + 1 / 16.0, back = apothem - .12;
+            for (int i = 0; i < n; i++) if (portFacet(i)) skirtFace(m, i, portLow, portHigh, port);
+            int sides = Math.max(16, PipeSizes.sides(2 * rim));
+            m.prism(f, rim, back, outer, sides, Material.SUPPORT);
+            m.bore(f, port, back, outer, sides, Material.SUPPORT);
+            m.annulus(f, port, rim, outer, sides, 1, Material.SUPPORT);
+            m.annulus(f, port, rim, back, sides, -1, Material.SUPPORT);
         }
 
         private Frame openingFrame() {
@@ -966,28 +981,26 @@ public final class ShapeRasterizer {
 
         /**
          * Nozzle {@code k} drawn at size {@code code} (0: unconnected, at its default size): a neck from under the vessel's
-         * surface and a flange at the pipe's size whose face lies on the block face. Up to the nozzle's largest size the
-         * neck is the pipe's and meets the flange in a weld-neck hub; a larger pipe's neck keeps that size until it has
-         * left the vessel and widens from there to the flange in a concentric reducer, so the size changes where the port
-         * meets the vessel and never at the flange (owner decision 2026-10-16). A bottom outlet's line also has its riser
-         * from the head and its elbow into the neck, and its skirt port round it, all at the neck's size (owner request
-         * 2026-10-16). Built once per size.
+         * surface and a flange at the pipe's size whose face lies on the block face. The neck is the pipe's, whatever its
+         * size, and meets the flange in a weld-neck hub (owner decision 2026-10-21: a 1 m pipe has a 1 m root). A bottom
+         * outlet's line also has its riser from the head and its elbow into the neck, and its skirt port round it, all at
+         * the neck's size (owner request 2026-10-16). Built once per size.
          */
         Mesh nozzle(int k, int code) {
             return nozzleMeshes.computeIfAbsent(k * 128 + code, key -> {
                 var nozzle = nozzles.get(k);
-                double od = code == 0 ? nozzle.defaultOd() : PipeSizes.outsideOf(code), neck = Math.min(od, nozzle.maxOd());
+                double od = code == 0 ? nozzle.defaultOd() : PipeSizes.outsideOf(code);
                 var m = new Mesh();
                 m.transform(transform);
                 var dir = nozzle.direction();
                 var ref = new double[3];
                 ref[(nozzle.axis() + 1) % 3] = 1;
                 var f = new Frame(nozzle.base(), dir, ref);
-                double r = neck / 2, flange = PipeSizes.flange(od) / 2, t = PipeSizes.flangeThickness(od), hub = PipeSizes.hub(od), length = nozzle.length();
+                double r = od / 2, flange = PipeSizes.flange(od) / 2, t = PipeSizes.flangeThickness(od), hub = PipeSizes.hub(od), length = nozzle.length();
                 double hubR = PipeSizes.hubOutside(od) / 2;
                 int sides = PipeSizes.sides(od);
-                // The neck's taper into the flange: a weld-neck hub, or the reducer from where the neck has left the vessel.
-                double taper = neck < od ? Math.max(0, Math.min(nozzle.exit(), length - t - .02)) : length - t - hub;
+                // The neck's taper into the flange: a weld-neck hub.
+                double taper = length - t - hub;
                 m.prism(f, r, 0, taper, sides, Material.PIPE);
                 m.frustum(f, r, hubR, taper, length - t, sides, Material.PIPE);
                 m.annulus(f, hubR, flange, length - t, sides, -1, Material.FLANGE);
@@ -996,9 +1009,9 @@ public final class ShapeRasterizer {
                 m.annulus(f, 0, flange, length, sides, 1, Material.FLANGE);
                 if (nozzle.riser() > 0) {
                     // Back from the neck's start: a straight run, the elbow (bend radius 1 D of the line drawn) and the riser
-                    // up into the head at its pole, maxOd behind the neck's start (owner request 2026-10-16: the line from
-                    // the drum's bottom to its port follows the pipe).
-                    double bend = neck, run = nozzle.maxOd() - bend, lift = nozzle.base()[1] + bend;
+                    // up into the head at its pole, a pipe's largest behind the neck's start (owner request 2026-10-16: the
+                    // line from the drum's bottom to its port follows the pipe; owner decision 2026-10-21: a 1 m pipe has a 1 m root).
+                    double bend = od, run = PipeSizes.MAX_OUTSIDE - bend, lift = nozzle.base()[1] + bend;
                     var down = new double[]{0, -1, 0};
                     m.prism(f, r, -run, 0, sides, Material.PIPE);
                     var corner = new double[]{nozzle.base()[0] - dir[0] * run, lift, nozzle.base()[2] - dir[2] * run};
@@ -1007,23 +1020,38 @@ public final class ShapeRasterizer {
                     m.prism(new Frame(foot, new double[]{0, 1, 0}, dir), r, 0, nozzle.riser() - lift, sides, Material.PIPE);
                 }
                 if (nozzle.riser() > 0 && hollow && openingRadius > 0) skirtPort(m, r);
+                var sleeve = unit != null ? unit.sleeves.get(k) : null;
+                if (sleeve != null) sleeve(m, f, sleeve, r);
                 return m;
             });
         }
 
-        /** Whether a frame point lies in nozzle {@code k} at size {@code code}: its neck (a larger pipe's reducer too), or its flange. */
+        /**
+         * A unit nozzle's sleeve through a closed skirt round its line of radius {@code line}, at the line's size (owner
+         * decision 2026-10-21: "Skirt hole needs to adapt to the size of the pipe to max 1m"): the hole, the line's
+         * clearance wider, dark just in front of the skirt; the sleeve's tube {@link EquipmentShape#PORT_COLLAR} thick from
+         * behind the skirt's face round it to 0.05 m proud, its bore and its front face.
+         */
+        private static void sleeve(Mesh m, Frame f, ProcessUnit.Sleeve sleeve, double line) {
+            double port = line + EquipmentShape.PORT_CLEARANCE, rim = port + EquipmentShape.PORT_COLLAR;
+            double face = sleeve.radius() - sleeve.fromAxis() + .01, front = face + .05;
+            double deep = Math.max(0, Math.sqrt(Math.max(0, sleeve.apothem() * sleeve.apothem() - rim * rim)) - .02 - sleeve.fromAxis());
+            int sides = Math.max(16, PipeSizes.sides(2 * rim));
+            m.prism(f, rim, Math.min(deep, face), front, sides, Material.SUPPORT);
+            m.bore(f, port, face, front, sides, Material.SUPPORT);
+            m.annulus(f, port, rim, front, sides, 1, Material.SUPPORT);
+            m.annulus(f, line, port, face, sides, 1, Material.OPENING);
+        }
+
+        /** Whether a frame point lies in nozzle {@code k} at size {@code code}: its neck, or its flange. */
         private boolean inNozzle(double[] p, int k, int code) {
             var nozzle = nozzles.get(k);
-            double od = code == 0 ? nozzle.defaultOd() : PipeSizes.outsideOf(code), neck = Math.min(od, nozzle.maxOd());
+            double od = code == 0 ? nozzle.defaultOd() : PipeSizes.outsideOf(code);
             var base = nozzle.base();
             double s = (p[nozzle.axis()] - base[nozzle.axis()]) * nozzle.sign(), rho2 = 0;
             for (int a = 0; a < 3; a++) if (a != nozzle.axis()) rho2 += (p[a] - base[a]) * (p[a] - base[a]);
             double t = PipeSizes.flangeThickness(od), flange = PipeSizes.flange(od) / 2;
-            double length = nozzle.length(), radius = neck / 2;
-            if (neck < od) {
-                double taper = Math.max(0, Math.min(nozzle.exit(), length - t - .02));
-                if (s > taper) radius += (PipeSizes.hubOutside(od) / 2 - radius) * Math.min(1, (s - taper) / (length - t - taper));
-            }
+            double length = nozzle.length(), radius = od / 2;
             return s >= 0 && s <= length - t && rho2 <= radius * radius || s > length - t && s <= length && rho2 <= flange * flange;
         }
 
@@ -1275,7 +1303,7 @@ public final class ShapeRasterizer {
         /** Whether the frame rows [low, high) are clear of every nozzle's neck, flange and riser. */
         private boolean clearOfNozzles(double low, double high) {
             for (var nozzle : nozzles) {
-                double reach = PipeSizes.flange(nozzle.maxOd()) / 2, y0, y1;
+                double reach = PipeSizes.flange(PipeSizes.MAX_OUTSIDE) / 2, y0, y1;
                 if (nozzle.axis() == 1) {
                     y0 = Math.min(nozzle.base()[1], nozzle.face()[1]);
                     y1 = Math.max(nozzle.base()[1], nozzle.face()[1]);

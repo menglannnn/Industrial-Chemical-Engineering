@@ -825,7 +825,7 @@ public final class EquipmentConstructorScreen extends Screen {
 
     /**
      * The connections page: the selected connection's side (on its button), height or place along the axis, and offset;
-     * the largest pipe its nozzle takes there and what its port draws; the first clash, if any.
+     * that its nozzle takes any pipe and what its port draws; the first clash, if any.
      */
     private void connectionRows(GuiGraphics graphics, int mouseX, int mouseY) {
         String[] names = rows();
@@ -845,9 +845,7 @@ public final class EquipmentConstructorScreen extends Screen {
             graphics.drawString(font, c.offset() == 0 ? Component.translatable(KEY + "offset")
                     : Component.translatable(KEY + "offset." + toward(c.across(), Integer.signum(c.offset()))), 8, TOP + 4 * ROW + 4, ProcessUi.TEXT);
             graphics.drawCenteredString(font, Math.abs(c.offset()) + " m", PANEL - 43, TOP + 4 * ROW + 4, ProcessUi.ACCENT);
-            var nozzles = layout.shape().nozzles();
-            var nozzle = nozzles.get(nozzles.size() - connections.size() + selected);
-            graphics.drawString(font, Component.translatable(KEY + "connection.size", String.format(Locale.ROOT, "%.2f", nozzle.maxOd())), 8, LINES, ProcessUi.MUTED);
+            graphics.drawString(font, Component.translatable(KEY + "connection.size"), 8, LINES, ProcessUi.MUTED);
             graphics.drawString(font, Component.translatable(KEY + "connection.port"), 8, LINES + LINE, ProcessUi.MUTED);
             var clash = clash();
             status = clash != null ? clashText(clash) : Component.translatable(KEY + "clash.none");

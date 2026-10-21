@@ -21,8 +21,8 @@ class EquipmentRefreshTest {
     @Test
     void theStampNamesALayoutOnBothSides() {
         // A cell saves its layout's stamp; an equal shape must give it again (on a dedicated server too), another layout another.
-        var shapes = List.of(drum(3, 6, Orientation.VERTICAL, Heading.NORTH, 3), drum(3, 7, Orientation.VERTICAL, Heading.NORTH, 3),
-                drum(3, 6, Orientation.VERTICAL, Heading.EAST, 3), EquipmentShape.unit(Kind.CYCLONE, 2.0, 1, Heading.NORTH, 8),
+        var shapes = List.of(drum(3, 6, Orientation.VERTICAL, Heading.NORTH, 4), drum(3, 7, Orientation.VERTICAL, Heading.NORTH, 4),
+                drum(3, 6, Orientation.VERTICAL, Heading.EAST, 4), EquipmentShape.unit(Kind.CYCLONE, 2.0, 1, Heading.NORTH, 8),
                 // The storage kinds (owner request 2026-10-21) refresh as every layout does.
                 EquipmentShape.storage(Kind.TANK, 12, 8, Heading.NORTH, 0), EquipmentShape.storage(Kind.SPHERE, 8, 1, Heading.NORTH, 2),
                 // Either side of the stair sizes (owner change 2026-10-21): a small one placed with a stair refreshes to its ladders.
@@ -34,7 +34,7 @@ class EquipmentRefreshTest {
             stamps.add(stamp);
         }
         assertEquals(shapes.size(), new HashSet<>(stamps).size(), "distinct layouts share a stamp");
-        assertEquals(stamps.getFirst(), ShapeRasterizer.stamp(drum(3, 6, Orientation.VERTICAL, Heading.NORTH, 3)));
+        assertEquals(stamps.getFirst(), ShapeRasterizer.stamp(drum(3, 6, Orientation.VERTICAL, Heading.NORTH, 4)));
         try {
             ShapeRasterizer.drawing(false);
             for (int k = 0; k < shapes.size(); k++) assertEquals(stamps.get(k), ShapeRasterizer.stamp(shapes.get(k)), shapes.get(k).toString());
@@ -55,7 +55,7 @@ class EquipmentRefreshTest {
     void anOlderLayoutIsBroughtToTheCurrentOne() {
         // The old layout lacked some shell cells, had stray ones outside the new layout (a larger old box) and held one of
         // the new interior cells as shell: the plan clears the strays and the misused cell and places what is missing.
-        var layout = ShapeRasterizer.layout(drum(3, 6, Orientation.VERTICAL, Heading.NORTH, 3));
+        var layout = ShapeRasterizer.layout(drum(3, 6, Orientation.VERTICAL, Heading.NORTH, 4));
         var world = held(layout);
         var missing = List.of(layout.shell().get(0), layout.shell().get(layout.shell().size() / 2));
         for (var cell : missing) world.remove(cell);
@@ -96,7 +96,7 @@ class EquipmentRefreshTest {
     @Test
     void anotherBlockInANewCellIsNeverOverwritten() {
         // A cell the new layout adds holds a player's block: it stays, and the cell is left out of the vessel.
-        var layout = ShapeRasterizer.layout(drum(3, 6, Orientation.VERTICAL, Heading.NORTH, 3));
+        var layout = ShapeRasterizer.layout(drum(3, 6, Orientation.VERTICAL, Heading.NORTH, 4));
         var world = held(layout);
         var shellCell = layout.shell().getLast();
         var interiorCell = layout.interior().getFirst();

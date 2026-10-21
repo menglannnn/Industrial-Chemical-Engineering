@@ -484,7 +484,7 @@ final class AdsorberDesign extends UnitDesign {
         u.mesh.cylinder(blind, fl, e1 - .06, e1, nf, Material.FLANGE);
         u.mesh.bolts(blind, p.main, rm + .01, fl, e1, 1, Material.BOLT);
         u.solids.add(ProcessUnit.Solid.rod(new double[]{xa, yh, 0}, 2, e1 - .12, e1, fl, 0));
-        u.nozzles.add(new Nozzle(Role.FEED, new double[]{xa, yh, e0 + .03}, 2, -1, e0 + .03, p.main, usualMain, 0, .03));
+        u.nozzles.add(new Nozzle(Role.FEED, new double[]{xa, yh, e0 + .03}, 2, -1, e0 + .03, usualMain, 0));
         // Regeneration outlet and vent.
         lagged(u, xb, yh, e0 + .35, e1 - .1, rg);
         u.reducer(new double[]{xb, yh, e0 + .35}, MINUS_Z, rg, vent / 2, .25, PipeSizes.sides(Math.max(2 * rg, vent)), Material.PIPE, true);
@@ -492,16 +492,16 @@ final class AdsorberDesign extends UnitDesign {
         cap(u, xb, yh, e0, vent / 2, -1);
         u.pipe(rg, Material.PIPE, true, new double[]{xb, yh, e1 - .1}, new double[]{xb, yh, e1});
         cap(u, xb, yh, e1, rg, 1);
-        u.nozzles.add(new Nozzle(Role.VENT, new double[]{xb, yh, e0 + .03}, 2, -1, e0 + .03, vent, usualVent, 0, .03));
-        u.nozzles.add(new Nozzle(Role.REGENERATION_OUTLET, new double[]{xb, yh, e1 - .03}, 2, 1, END + .03, p.regen, usualRegen, 0, .03));
+        u.nozzles.add(new Nozzle(Role.VENT, new double[]{xb, yh, e0 + .03}, 2, -1, e0 + .03, usualVent, 0));
+        u.nozzles.add(new Nozzle(Role.REGENERATION_OUTLET, new double[]{xb, yh, e1 - .03}, 2, 1, END + .03, usualRegen, 0));
         // Product and drain.
         u.pipe(rm, Material.PIPE, true, new double[]{xc, yb, e0}, new double[]{xc, yb, e1 - .35});
         cap(u, xc, yb, e0, rm, -1);
         u.reducer(new double[]{xc, yb, e1 - .35}, Z, rm, .05, .25, PipeSizes.sides(2 * rm), Material.PIPE, true);
         u.pipe(.05, Material.PIPE, true, new double[]{xc, yb, e1 - .1}, new double[]{xc, yb, e1});
         cap(u, xc, yb, e1, .05, 1);
-        u.nozzles.add(new Nozzle(Role.PRODUCT, new double[]{xc, yb, e0 + .03}, 2, -1, e0 + .03, p.main, usualMain, 0, .03));
-        u.nozzles.add(new Nozzle(Role.DRAIN, new double[]{xc, yb, e1 - .03}, 2, 1, END + .03, .1, .05, 0, .03));
+        u.nozzles.add(new Nozzle(Role.PRODUCT, new double[]{xc, yb, e0 + .03}, 2, -1, e0 + .03, usualMain, 0));
+        u.nozzles.add(new Nozzle(Role.DRAIN, new double[]{xc, yb, e1 - .03}, 2, 1, END + .03, .05, 0));
         // Regeneration inlet and nitrogen.
         lagged(u, xd, yb, e0 + .35, e1 - .1, rg);
         u.reducer(new double[]{xd, yb, e0 + .35}, MINUS_Z, rg, .05, .25, PipeSizes.sides(2 * rg), Material.PIPE, true);
@@ -509,8 +509,8 @@ final class AdsorberDesign extends UnitDesign {
         cap(u, xd, yb, e0, .05, -1);
         u.pipe(rg, Material.PIPE, true, new double[]{xd, yb, e1 - .1}, new double[]{xd, yb, e1});
         cap(u, xd, yb, e1, rg, 1);
-        u.nozzles.add(new Nozzle(Role.NITROGEN, new double[]{xd, yb, e0 + .03}, 2, -1, e0 + .03, .1, .05, 0, .03));
-        u.nozzles.add(new Nozzle(Role.REGENERATION_INLET, new double[]{xd, yb, e1 - .03}, 2, 1, END + .03, p.regen, usualRegen, 0, .03));
+        u.nozzles.add(new Nozzle(Role.NITROGEN, new double[]{xd, yb, e0 + .03}, 2, -1, e0 + .03, .05, 0));
+        u.nozzles.add(new Nozzle(Role.REGENERATION_INLET, new double[]{xd, yb, e1 - .03}, 2, 1, END + .03, usualRegen, 0));
     }
 
     /** A header's end face at z, facing {@code sign} along z, with the pipe's facets ({@link PipeSizes#sides}, as the kit's {@link ProcessUnit#pipe}). */
