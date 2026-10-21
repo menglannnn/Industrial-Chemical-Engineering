@@ -41,9 +41,10 @@ public final class OpenVessel {
     /**
      * The fastest the vent's gas leaves through the roof, m/s: the vent is capped at this speed times the roof's area (the
      * footprint), in gas volume at the vessel's state (owner direction of 2026-10-21: a release to the world flows at a
-     * rate the equipment's size sets).
+     * rate the equipment's size sets). The network's speed limit for every stream (owner decision of 2026-10-19): at 1 m/s
+     * the gas a 1 m2 tank's feed lines brought outran its vent and its pocket grew without bound (fuzz seed 678).
      */
-    public static final double VENT_SPEED=1;
+    public static final double VENT_SPEED=100;
 
     /** The vessel's footprint, m2: its volume over its fill height. */
     static double footprint(PassiveNetwork.Inventory inventory){return inventory.volume()/inventory.levelHeight();}
