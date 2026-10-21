@@ -75,21 +75,11 @@ public final class SolidCarbonDioxideReferences {
                 * (-14.740846 * theta + 2.4327015 * Math.pow(theta, 1.9) - 5.3061778 * Math.pow(theta, 2.9)));
     }
 
-    /** The stated uncertainty of equation 3.12, Pa. */
-    static double spanWagnerSublimationUncertainty(double t) {
-        return t < 170 ? 50 : t < 185 ? 100 : 250;
-    }
-
     /** Span and Wagner 1996 equation 3.10 from the CoolProp file, Pa. */
     public static double spanWagnerMeltingPressure(double t) {
         if (t < MELTING[0] || t > MELTING[4]) throw new IllegalArgumentException("melting line covers " + MELTING[0] + ".." + MELTING[4] + " K");
         double x = t / MELTING[0] - 1;
         return MELTING[1] * (1 + MELTING[2] * x + MELTING[3] * x * x);
-    }
-
-    /** The stated relative uncertainty of equation 3.10. */
-    public static double spanWagnerMeltingUncertainty(double t) {
-        return t <= 225 ? 0.015 : 0.005;
     }
 
     /** Trusler 2011 equation 48, Pa. */

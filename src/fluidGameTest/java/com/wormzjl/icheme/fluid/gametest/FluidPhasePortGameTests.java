@@ -15,8 +15,8 @@ import java.util.*;
 /**
  * The three devices of the phase-ports batch placed as blocks (plan section 6, phase-ports WP5): a tank's top, side and
  * bottom outlets each carrying their phase to a void; a liquid-only pump on a gas tank refused with its reason on its
- * status line; and a gas compressor moving nitrogen between two tanks on its target, then to its pressure-ratio limit, then
- * closed. Every observation is the device's view as the engine publishes it ({@link FluidWorldAuthority#view}).
+ * status line (the compressor's target, ratio limit and shutoff are CompressorTest's). Every observation is the device's
+ * view as the engine publishes it ({@link FluidWorldAuthority#view}).
  */
 @GameTestHolder("icheme_fluid_test")
 @PrefixGameTestTemplate(false)
@@ -143,54 +143,6 @@ public final class FluidPhasePortGameTests {
             var page=FluidNetwork.snapshot(world,world.registrations().get(pumpId),view);
             helper.assertTrue(page.view().status().contains(expected),"The pump's page shows the reason");
             System.out.println("PHASE_PORT_GAMETEST pump tick="+view.onlineTick()+" committed="+view.committedTick()+" status="+view.status());
-            done[0]=true;clear(helper,all);helper.succeed();
-        });
-    }
-
-    /**
-     * Plan section 6, scenario 3 (its gas half). Two nitrogen tanks with a compressor at its placement default (0.05 m3/s,
-     * ratio 3, plan Appendix B) facing from the first into the second: it runs on its suction-flow target (PUMP_TARGET),
-     * the discharge rises until it stands at three times the suction (its ratio limit), and it closes there (CLOSED, the
-     * mover's shutoff), the second tank then holding three times the first tank's pressure. A placed tank holds nothing
-     * (decision D54), so both are charged first ({@link TankCharge}), to 250 kPa: the transfer then ends near 125 and 375
-     * kPa with both bags taut, as the rigid 1 atm tanks this test was written on did (charged at 1 atm, the suction bag
-     * would go slack at the ambient and run dry before the discharge reached three atmospheres).
-     */
-    @GameTest(template="empty",timeoutTicks=40000,batch="fluid-compressor-transfer")
-    public static void aCompressorMovesNitrogenToItsRatioLimitAndCloses(GameTestHelper helper) {
-        var level=helper.getLevel();var world=FluidWorldAuthority.find(level.getServer()).orElseThrow();
-        var suction=helper.absolutePos(new BlockPos(0,1,0));var inlet=suction.east();var compressor=inlet.east();var outlet=compressor.east();var discharge=outlet.east();
-        var all=List.of(suction,inlet,compressor,outlet,discharge);
-        place(helper,suction,ModBlocks.FLUID_RESERVOIR.get().defaultBlockState());place(helper,discharge,ModBlocks.FLUID_RESERVOIR.get().defaultBlockState());
-        var charges=List.of(new TankCharge(helper,world,suction,Direction.SOUTH,250000),new TankCharge(helper,world,discharge,Direction.SOUTH,250000));
-        var seen=new LinkedHashSet<String>();boolean[] done={false},started={false};long[] ids=new long[3];long[] deadline={System.nanoTime()+240_000_000_000L};
-        helper.onEachTick(()->{
-            if(done[0])return;
-            java.util.concurrent.locks.LockSupport.parkNanos(1_000_000L);
-            if(!started[0]) {
-                helper.assertTrue(System.nanoTime()<deadline[0],"The tanks were not charged");
-                boolean charged=true;for(var charge:charges)charged&=charge.charged();
-                if(!charged)return;
-                place(helper,compressor,ModBlocks.FLUID_COMPRESSOR.get().defaultBlockState().setValue(FluidDeviceBlock.FACING,Direction.EAST));
-                ids[0]=identity(helper,suction);ids[1]=identity(helper,discharge);ids[2]=identity(helper,compressor);
-                var control=world.registrations().get(ids[2]).device().control();
-                helper.assertTrue(control.equals(new com.wormzjl.icheme.science.fluid.network.FlowControl.Compressor(.05,3)),"Placement default: "+control);
-                place(helper,inlet,ModBlocks.FLUID_PIPE.get().defaultBlockState());place(helper,outlet,ModBlocks.FLUID_PIPE.get().defaultBlockState());
-                started[0]=true;deadline[0]=System.nanoTime()+120_000_000_000L;return;
-            }
-            long suctionId=ids[0],dischargeId=ids[1],compressorId=ids[2];
-            var view=world.view(compressorId);
-            helper.assertTrue(System.nanoTime()<deadline[0],"The compressor did not close: "+view.status()+", seen "+seen);
-            helper.assertTrue(!view.status().startsWith("HELD"),"Held: "+view.status());
-            for(var mode:List.of("PUMP_TARGET","PUMP_HEAD_LIMIT","CLOSED","INLET_WRONG_PHASE"))if(view.status().contains(" / "+mode))seen.add(mode);
-            helper.assertTrue(!seen.contains("INLET_WRONG_PHASE"),"A compressor on nitrogen is not refused: "+view.status());
-            if(!view.status().contains(" / CLOSED")||!seen.contains("PUMP_TARGET"))return;
-            var a=world.view(suctionId).state();var b=world.view(dischargeId).state();
-            helper.assertTrue(view.status().contains("limit")&&view.status().contains("at this suction"),"The compressor shows its limit: "+view.status());
-            helper.assertTrue(Math.abs(b.pressure()/a.pressure()-3)<3e-3,"Closed at its ratio limit: "+b.pressure()+" / "+a.pressure()+" = "+b.pressure()/a.pressure());
-            helper.assertTrue(b.temperature()>a.temperature(),"The discharge is heated by the compression work");
-            System.out.println("PHASE_PORT_GAMETEST compressor tick="+view.onlineTick()+" committed="+view.committedTick()+" seen="+seen+" suction="+a.pressure()+" Pa "+a.temperature()+" K discharge="+b.pressure()+" Pa "
-                    +b.temperature()+" K ratio="+b.pressure()/a.pressure()+" status="+view.status());
             done[0]=true;clear(helper,all);helper.succeed();
         });
     }

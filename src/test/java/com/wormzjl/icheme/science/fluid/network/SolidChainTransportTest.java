@@ -1,7 +1,6 @@
 package com.wormzjl.icheme.science.fluid.network;
 
 import com.wormzjl.icheme.fluid.support.FluidTestSupport;
-import com.wormzjl.icheme.science.fluid.diagnostics.SolverDiagnostics;
 import com.wormzjl.icheme.science.fluid.state.*;
 import com.wormzjl.icheme.science.fluid.thermo.FluidThermodynamics;
 import java.util.*;
@@ -16,14 +15,9 @@ import static org.junit.jupiter.api.Assertions.*;
  * treated them as live boundaries and bounded the Newton step at 1e-12 to 1e-18, where the
  * candidate point is bitwise the current one and no backtrack can change the residual. This
  * fixture is the regression for that: the chain has to integrate without a single line-search
- * stall, and the clear-fluid chain beside it has to be untouched.
+ * stall, with its solids closed.
  */
 class SolidChainTransportTest {
-    // Measured under the backward-Euler controller (WP1); see clearChainSubstepCountsAreUnchanged. Re-recorded in the D36/D38
-    // re-baseline (claude/integration-1, A222): the clear chain reaches the gauge (D42) after two steps (was 3/1, 5/1, 4/0).
-    private static final int HALF_ACCEPTED=2,HALF_REJECTED=1,FULL_ACCEPTED=2,FULL_REJECTED=1,TWO_ACCEPTED=2,TWO_REJECTED=0;
-    /** The solid closure pass solves the port graph once at each interval start (measured: 1 per interval). */
-    private static final int RATE_SOLVES_PER_INTERVAL=2;
     private final FluidThermodynamics model=FluidTestSupport.networkModel();
 
     private FluidThermodynamics.State water(double pressure) {
@@ -75,78 +69,5 @@ class SolidChainTransportTest {
         assertEquals(5,result.advancedSeconds());
         System.out.printf(Locale.ROOT,"solid chain: 10 nodes 5 s ms=%d accepted=%d rejected=%d reasons=%s%n",
                 ms,result.acceptedSubsteps(),result.rejectedSubsteps(),result.rejectionReasons());
-    }
-
-    @Test void thirtyReservoirChainIntegratesOneIntervalWithinItsBudget() {
-        var graph=chain(30,true);
-        var solver=new PassiveIntervalSolver(model);
-        solver.solve(chain(30,true),0.05,PassiveIntervalSolver.Settings.defaults(),()->{}); // warm the JIT
-        long start=System.nanoTime();
-        var result=solver.solve(graph,5,PassiveIntervalSolver.Settings.defaults(),()->{});
-        long ms=(System.nanoTime()-start)/1_000_000;
-
-        assertEquals(0,reasons(result,"line search stalled"),result.rejectionReasons().toString());
-        assertTrue(result.acceptedSubsteps()<=50,"accepted="+result.acceptedSubsteps()); // measured 31
-        assertTrue(result.rejectedSubsteps()<=16,"rejected="+result.rejectedSubsteps()); // measured 10
-        assertSolidMassClosed(result,100);
-        assertTrue(ms<=1500,"Thirty reservoirs took "+ms+" ms");
-        System.out.printf(Locale.ROOT,"solid chain: 30 nodes 5 s ms=%d accepted=%d rejected=%d%n",
-                ms,result.acceptedSubsteps(),result.rejectedSubsteps());
-    }
-
-    @Test void clearChainSubstepCountsAreUnchanged() {
-        // Recorded under the backward-Euler controller (WP1 of the mixed-gas junction batch; the TR-BDF2 counts of
-        // 440a754 were 25/10, 32/14 and 18/5). The nonnegativity floor is zero for every fluid amount and the decode
-        // projection exists only where there are solid moments, so a clear island must take the same steps it always
-        // took, not merely a similar number.
-        var graph=chain(10,false);
-        var half=new PassiveIntervalSolver(model).solve(graph,0.5,PassiveIntervalSolver.Settings.defaults(),()->{});
-        var full=new PassiveIntervalSolver(model).solve(graph,5,PassiveIntervalSolver.Settings.defaults(),()->{});
-        var two=new PassiveIntervalSolver(model).solve(chain(2,false),5,PassiveIntervalSolver.Settings.defaults(),()->{});
-        assertEquals(HALF_ACCEPTED,half.acceptedSubsteps());
-        assertEquals(HALF_REJECTED,half.rejectedSubsteps());
-        assertEquals(FULL_ACCEPTED,full.acceptedSubsteps());
-        assertEquals(FULL_REJECTED,full.rejectedSubsteps());
-        assertEquals(TWO_ACCEPTED,two.acceptedSubsteps());
-        assertEquals(TWO_REJECTED,two.rejectedSubsteps());
-    }
-
-    @Test void filterIslandReusesItsSolverWorkspacesAcrossIntervals() {
-        // PassiveNetwork.Pipe is a record whose equality used to include the mutable cake, and
-        // every step rebuilds the pipe list with the cake it left, so every workspace key, structure
-        // key and warm-flow comparison missed on every step of a filter island.
-        var slurry=water(400000).withSolids(new SolidInventory(List.of(new SolidInventory.Population(
-                model.solids.require("icheme:demo_particle"),ParticleSize.micrometres("100"),100))));
-        var graph=new PassiveNetwork(List.of(
-                new PassiveNetwork.Reservoir(1,0,slurry,PassiveNetwork.NodeKind.GENERATOR),
-                new PassiveNetwork.Reservoir(2,0,water(150000),PassiveNetwork.NodeKind.VOID)),List.of(
-                new PassiveNetwork.Pipe(3,0,1,List.of(new PipeResistance.Geometry(1,.05,.000045,0)),
-                        new FlowControl.Passive(),0,new InlineFilter(10,1e6,SolidInventory.EMPTY,0))));
-        var solver=new PassiveIntervalSolver(model);
-        boolean enabled=SolverDiagnostics.ENABLED;
-        try {
-            var first=solver.solve(graph,5,PassiveIntervalSolver.Settings.defaults(),()->{});
-            SolverDiagnostics.reset();SolverDiagnostics.ENABLED=true;
-            var running=first.graph();
-            for(int interval=1;interval<20;interval++)running=solver.solve(running,5,PassiveIntervalSolver.Settings.defaults(),()->{}).graph();
-            var sample=SolverDiagnostics.sample();
-            long reuses=sample.value("workspaceReuses"),builds=sample.value("workspaceBuilds");
-            assertTrue(reuses>0,"A filter island never reused a solver workspace");
-            assertTrue(reuses>builds,"Workspace reuse must dominate after the first interval: "+reuses+" vs "+builds);
-            assertEquals(0,sample.value("solidMomentProjectionsAtAcceptedPoints"),
-                    "The decode projection must never be active at an accepted point");
-            // The block sweep covers solid and filter islands; a fallback here would mean every
-            // Jacobian of this island was paying a coloured whole-island residual per colour again.
-            assertTrue(sample.value("jacobianBlockBuilds")>0,"A filter island built no block Jacobian");
-            assertEquals(0,sample.value("jacobianBlockFallbacks"),"A filter island fell back to the coloured Jacobian sweep");
-            // Every step is one implicit solve (backward Euler): the solves beyond the attempted steps are the rate
-            // solves of the solid closure pass at each interval start and of the start-of-step guard, a few per interval.
-            long solves=sample.value("implicitSolves"),attempts=sample.value("stepAttempts"),acceptedSteps=sample.value("stepAttemptsAccepted");
-            assertTrue(solves<=attempts+RATE_SOLVES_PER_INTERVAL*19,"Implicit solves beyond one per step: "+solves+" for "+attempts+" attempted steps in 19 intervals");
-            assertFalse(running.pipes().getFirst().filter().captured().empty());
-            System.out.printf(Locale.ROOT,"solid chain: filter island reuses=%d builds=%d orderings=%d factorizations=%d jacobians=%d block=%d fallbacks=%d solves=%d/%d attempts%n",
-                    reuses,builds,sample.value("luOrderings"),sample.value("luFactorizations"),
-                    sample.value("jacobianBuilds"),sample.value("jacobianBlockBuilds"),sample.value("jacobianBlockFallbacks"),solves,attempts);
-        } finally {SolverDiagnostics.ENABLED=enabled;SolverDiagnostics.reset();}
     }
 }

@@ -273,24 +273,6 @@ tasks.withType(Test).matching { it.name in ['test', 'fluidScienceTest'] }.config
     }
 }
 
-// The property and network benchmark fixtures. A missing fixture fails instead of reporting an empty benchmark.
-['fluidPropertyBenchmark': 'FluidPropertyBenchmarkTest',
- 'fluidNetworkBenchmark': 'FluidNetworkBenchmarkTest'].each { taskName, fixture ->
-    tasks.register(taskName, Test) {
-        group = 'verification'
-        description = "Runs ${fixture}; no matching fixture is a failure."
-        testClassesDirs = sourceSets.test.output.classesDirs
-        classpath = sourceSets.test.runtimeClasspath
-        filter {
-            includeTestsMatching "com.wormzjl.icheme.fluid.benchmark.${fixture}"
-            failOnNoMatchingTests = true
-        }
-        outputs.upToDateWhen { false }
-        if (taskName == 'fluidNetworkBenchmark' && providers.gradleProperty('fluidProfile').getOrElse('false').toBoolean()) {
-            jvmArgs "-XX:StartFlightRecording=filename=${layout.buildDirectory.file('reports/fluid/network-profile.jfr').get().asFile.absolutePath},settings=profile,dumponexit=true"
-        }
-    }
-}
 def fluidBenchmarkRunId = providers.gradleProperty('fluidBenchmarkRunId').getOrElse('manual')
 def fluidBenchmarkDirectory = layout.projectDirectory.dir("run/fluid-benchmark/${fluidBenchmarkRunId}").asFile
 def fluidBenchmarkWorkerCount = providers.gradleProperty('fluidBenchmarkWorkers').getOrElse('2').toInteger()
@@ -366,10 +348,33 @@ tasks.register('fluidSolverRegression', Test) {
         systemProperty 'fluid.regression.traceCutoff', providers.gradleProperty('fluidRegressionTraceCutoff').get()
     outputs.upToDateWhen { false }
 }
+// The slow gates (3 s or more each at 0.11.0, 216 of the suite's 262 s): the everyday `test` leaves them out and
+// `slowGates` runs them; `check` (so `build`) and the final lane run both.
+def slowGateClasses = ['runtime.fluid.HoldClassWorldsTest', 'science.column.v3.thermo.RegroupedCrudeTest',
+        'science.equipment.ProcessUnitTest', 'science.column.v3.V3SideDrawCalculatorTest', 'science.column.v3.V3LearnedRecoveryTest',
+        'science.column.v3.V3ConvergenceClosureTest', 'science.column.v3.V3PumparoundCalculatorTest',
+        'science.column.v3.V3StageContinuationTest', 'science.column.v3.V3PumparoundSteamCalculatorTest',
+        'science.column.v3.V3MethaneColumnTest', 'runtime.fluid.JunctionSeedingGateTest', 'science.column.v3.V3ColumnCalculatorTest',
+        'science.column.v3.V3ColumnFeedAndDrawLimitsTest', 'science.column.v3.V3TrayHydraulicsColumnTest',
+        'science.column.v3.V3LiteraturePresetTest', 'runtime.fluid.IslandSchedulerTest', 'science.column.v3.V3ColdStartTest',
+        'runtime.fluid.ExtremeTopologyIslandTest'].collect { "com.wormzjl.icheme.${it}" }
 tasks.named('test', Test) {
     exclude '**/fluid/benchmark/**'
+    filter { slowGateClasses.each { excludeTestsMatching it } }
     systemProperty 'icheme.fluid.scheduler.verify', 'true'
 }
+def slowGates = tasks.register('slowGates', Test) {
+    group = 'verification'
+    description = 'Runs the slow gate classes the everyday test leaves out; a missing class is a failure.'
+    testClassesDirs = sourceSets.test.output.classesDirs
+    classpath = sourceSets.test.runtimeClasspath
+    filter {
+        slowGateClasses.each { includeTestsMatching it }
+        failOnNoMatchingTests = true
+    }
+    systemProperty 'icheme.fluid.scheduler.verify', 'true'
+}
+tasks.named('check') { dependsOn slowGates }
 
 tasks.register('v3HollandBenchmark', Test) {
     group = 'verification'

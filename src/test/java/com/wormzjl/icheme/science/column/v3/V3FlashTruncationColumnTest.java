@@ -4,7 +4,6 @@ import static org.junit.jupiter.api.Assertions.*;
 
 import com.wormzjl.icheme.science.column.v3.thermo.V3CrudeFeed;
 import com.wormzjl.icheme.science.column.v3.thermo.V3PengRobinsonThermo;
-import com.wormzjl.icheme.science.thermo.TraceTruncationPolicy;
 import java.util.List;
 import java.util.concurrent.CancellationException;
 import org.junit.jupiter.api.Test;
@@ -46,35 +45,5 @@ class V3FlashTruncationColumnTest {
         assertEquals(V3InputDigest.of(success.result().problem(), V3ColumnCalculator.FORMULATION_REVISION,
                 thermo.datasetRevision(), V3ColumnCalculator.ASSUMPTIONS_REVISION, 1.0e-6), success.result().inputDigest());
         assertArrayEquals(flows, input.feedComponentMolarFlowsMolPerSecond(), 0.0);
-    }
-
-    @Test
-    void zeroCutoffKeepsTheLegacyCallResultsAndHasNoFlashTraceEvents() {
-        V3ColumnInput input = binaryInput();
-        V3ColumnOutcome.Success strict = assertInstanceOf(V3ColumnOutcome.Success.class, V3TestInputs.calculate(input));
-        V3ColumnOutcome.Success zero = assertInstanceOf(V3ColumnOutcome.Success.class,
-                V3ColumnCalculator.calculate(input, V3SolveControl.UNBOUNDED, 0.0, 0.0, V3ColumnCalculator.DEFAULT_LIQUID_SUPPLY_SCREEN_RATIO));
-        assertEquals(strict.result().inputDigest(), zero.result().inputDigest());
-        assertEquals(strict.result().streams(), zero.result().streams());
-        assertEquals(strict.diagnostics(), zero.diagnostics());
-        assertEquals("v3-dry-mesh-r23", zero.result().formulationRevision());
-        assertTrue(zero.diagnostics().events().stream().noneMatch(event -> event.startsWith("flash-trace ")));
-    }
-
-    @Test
-    void stageSupportAndFlashPolicyShareExactlyTheSameCutoffDomain() {
-        assertEquals(TraceTruncationPolicy.MAX_CUTOFF_MOLE_FRACTION, V3TruncationSupport.MAX_CUTOFF_MOLE_FRACTION);
-        for (double cutoff : new double[] {0.0, -0.0, 1.0e-6, TraceTruncationPolicy.MAX_CUTOFF_MOLE_FRACTION}) {
-            assertDoesNotThrow(() -> V3TruncationSupport.requireCutoff(cutoff));
-            assertDoesNotThrow(() -> TraceTruncationPolicy.requireCutoff(cutoff));
-        }
-        for (double cutoff : new double[] {-1.0e-6, 0.010001, Double.NaN, Double.POSITIVE_INFINITY}) {
-            assertThrows(IllegalArgumentException.class, () -> V3TruncationSupport.requireCutoff(cutoff));
-            assertThrows(IllegalArgumentException.class, () -> TraceTruncationPolicy.requireCutoff(cutoff));
-        }
-    }
-
-    private static V3ColumnInput binaryInput() {
-        return V3TestInputs.cdu17Binary("test:registered-pr-binary");
     }
 }

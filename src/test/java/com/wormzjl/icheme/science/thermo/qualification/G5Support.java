@@ -159,35 +159,6 @@ final class G5Support {
         return points;
     }
 
-    /**
-     * Gao et al. 2012 (report only): Table 2, CO2 in liquid CH4 (no pressure printed: the liquid at Davis's locus pressure,
-     * the liquidus being nearly pressure-independent), and Table 4 with 10 to 70 % N2 in the solvent at the printed pressure.
-     */
-    static List<Point> gao() {
-        List<Point> points = new ArrayList<>();
-        for (String[] c : G4F1CarbonDioxideFrostPointHoldoutTest.rows("gao-2012-iecr-51-9403.tsv")) {
-            double t = number(c[2]);
-            if (c[0].equals("BIN")) {
-                double x = number(c[4]) * 1e-3;
-                points.add(new Point("Gao 2012", "CH4", t, davisPressure(t), z(0, 1 - x, 0, x), false, "x " + x));
-            } else {
-                double n2 = Integer.parseInt(c[0].substring(3)) / 100.0, x = number(c[4]) * 1e-6;
-                points.add(new Point("Gao 2012", c[0], t, number(c[3]) * 1e3, z((1 - x) * n2, (1 - x) * (1 - n2), 0, x), false, "x " + x));
-            }
-        }
-        return points;
-    }
-
-    /** Sampson et al. 2023 Table 2 (report only): compressed liquid CH4 with 52 to 500 ppm CO2 at 7 to 10 MPa. */
-    static List<Point> sampson() {
-        List<Point> points = new ArrayList<>();
-        for (String[] c : G4F1CarbonDioxideFrostPointHoldoutTest.rows("sampson-2023-aiche-aic18001-table2.tsv")) {
-            double x = number(c[0]) * 1e-6;
-            points.add(new Point("Sampson 2023", "CH4", number(c[3]), number(c[2]) * 1e6, z(0, 1 - x, 0, x), false, "u(T) " + c[4] + " K"));
-        }
-        return points;
-    }
-
     // Scoring.
 
     /** Accumulated scores of one group. */

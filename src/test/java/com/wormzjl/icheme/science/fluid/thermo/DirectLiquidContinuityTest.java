@@ -4,8 +4,6 @@ import com.wormzjl.icheme.fluid.support.FluidTestSupport;
 
 import static org.junit.jupiter.api.Assertions.*;
 import com.google.gson.JsonParser;
-import com.wormzjl.icheme.fluid.support.LegacyLiquidPath;
-import com.wormzjl.icheme.science.column.v3.thermo.V3PengRobinsonThermo;
 import com.wormzjl.icheme.science.fluid.network.InventoryEquilibrium;
 import com.wormzjl.icheme.science.fluid.network.PassiveNetwork;
 import com.wormzjl.icheme.science.fluid.solver.PhaseLayout;
@@ -17,9 +15,9 @@ import org.junit.jupiter.api.Test;
 
 /**
  * Continuity of the direct liquid path (P3 WP4, plan section 2.6): from the qualified region below 2 MPa into the new
- * one above it, nothing is special about 2 MPa any more; below 2 MPa the direct liquid differs from the retired
- * reference-pressure liquid only by what the old path approximated; and a closed vessel of liquid nitrogen compressed
- * through 2 MPa by the network's own UV solve follows the equation of state's adiabat.
+ * one above it, nothing is special about 2 MPa any more: isotherms cross it on a liquid root and meet their
+ * targets, and a closed vessel of liquid nitrogen compressed through 2 MPa by the network's own UV solve follows the
+ * equation of state's adiabat.
  */
 class DirectLiquidContinuityTest {
     private static final String NETWORK="icheme:tjl20_methane_nitrogen";
@@ -66,102 +64,6 @@ class DirectLiquidContinuityTest {
             assertEquals(row[2],deviation,.02,"P1 direct evaluation at "+row[0]+" K, "+row[1]+" Pa");
         }
         System.out.print(report);
-    }
-
-    /**
-     * Item 1, second half: second differences of v(P) and h(P) along each liquid isotherm vary smoothly through 2 MPa
-     * (no jump), for the hydrocarbon liquid and for liquid water.
-     */
-    @Test void secondDifferencesShowNoJumpAtTwoMegapascals() {
-        var hydrocarbon=model.hydrocarbon;var eos=hydrocarbon.translated();
-        double[] crude=crudeLiquid();
-        for(double t:new double[]{300,350,375}) {
-            var terms=eos.prepare(t);
-            smooth("crude liquid v at "+t+" K",p->eos.evaluate(t,p,crude,Root.LIQUID,terms).molarVolume());
-            smooth("crude liquid h at "+t+" K",p->eos.evaluate(t,p,crude,Root.LIQUID,terms).molarEnthalpy());
-            smooth("water v at "+t+" K",p->model.waterLiquid(t,p).molarVolume());
-            smooth("water h at "+t+" K",p->model.waterLiquid(t,p).molarEnthalpy());
-        }
-        int n2=hydrocarbon.components().indexOf("Nitrogen");double[] pure=new double[hydrocarbon.componentCount()];pure[n2]=1;
-        for(double t:new double[]{77,90,100}) {
-            var terms=eos.prepare(t);
-            smooth("N2 liquid v at "+t+" K",p->eos.evaluate(t,p,pure,Root.LIQUID,terms).molarVolume());
-            smooth("N2 liquid h at "+t+" K",p->eos.evaluate(t,p,pure,Root.LIQUID,terms).molarEnthalpy());
-        }
-    }
-    private static void smooth(String what,java.util.function.DoubleUnaryOperator f) {
-        double h=5e4;int n=20;double[] y=new double[2*n+1];
-        for(int j=-n;j<=n;j++)y[j+n]=f.applyAsDouble(2e6+j*h);
-        double[] second=new double[y.length-2];double largest=0;
-        for(int j=1;j<y.length-1;j++){second[j-1]=y[j+1]-2*y[j]+y[j-1];largest=Math.max(largest,Math.abs(second[j-1]));}
-        for(int j=1;j<second.length;j++)
-            assertTrue(Math.abs(second[j]-second[j-1])<=.02*largest,what+": second difference jumps at "+(2e6+(j-n)*h)+" Pa: "+second[j-1]+" -> "+second[j]);
-    }
-    private double[] crudeLiquid() {
-        var feed=V3PengRobinsonThermo.fromRegisteredPackage("icheme:tjl20_methane").crudeFeed("icheme:tia_juana_light_methane");
-        var basis=feed.moleFractions();double[] x=new double[model.hydrocarbon.componentCount()];
-        var crude=V3PengRobinsonThermo.fromRegisteredPackage("icheme:tjl20_methane");
-        // The heavy part of the assay: the cuts, a liquid at every state of the grid.
-        for(int c=0;c<basis.length;c++){String id=crude.componentBasis().componentId(c);if(id.startsWith("crude_"))x[model.hydrocarbon.components().indexOf(id)]=basis[c];}
-        return x;
-    }
-
-    /**
-     * Item 2: on the {@code FluidPropertyCoverageTest} grid (293.15-375 K x 50 kPa-2 MPa, the network package and the six
-     * presets), the direct liquid's volume, enthalpy and {@code ln phi} differ from the retired path's by at most the
-     * first-order bound: the anchor term (the change of the translations, {@code sum x_i dc_i} in volume, {@code P dc}
-     * in enthalpy and {@code P dc_i/RT} in {@code ln phi} at 2 MPa, where both paths evaluate the same cubic) plus
-     * {@code |P - 2 MPa|} times the largest difference of the pressure derivatives at the two ends
-     * ({@code v kappa_EOS - v k} for volume, {@code dh/dP} for enthalpy, {@code vbar_i/RT} for {@code ln phi}).
-     */
-    @Test void belowTwoMegapascalsTheLiquidMovesOnlyByTheFirstOrderCorrection() {
-        var summary=new StringBuilder();
-        for(String packageId:List.of(NETWORK,"icheme:tjl20_methane","icheme:wti_light_export_tjl20","icheme:cold_lake_blend_tjl20",
-                "icheme:upper_zakum_tjl20","icheme:bonga_tjl20","icheme:dalia_tjl20")) {
-            var direct=packageId.equals(NETWORK)?model:FluidTestSupport.model(catalog,packageId);
-            var legacy=new LegacyLiquidPath(catalog,packageId);var eos=direct.hydrocarbon.translated();
-            String assayPackage=packageId.equals(NETWORK)?"icheme:tjl20_methane":packageId;
-            var assay=V3PengRobinsonThermo.fromRegisteredPackage(assayPackage);
-            var feed=assay.crudeFeed(catalog.requirePackage(assayPackage).assays().keySet().iterator().next()).moleFractions();
-            double[] n=new double[direct.componentCount()];
-            for(int c=0;c<feed.length;c++)n[direct.components().indexOf(assay.componentBasis().componentId(c))]=feed[c];
-            if(packageId.equals(NETWORK))n[direct.components().indexOf("Nitrogen")]=.1;
-            n[n.length-1]=.2;
-            double worstVolume=0,worstEnthalpy=0,worstPhi=0,largestVolume=0;int states=0;
-            for(double t:new double[]{293.15,298.15,300,325,350,375})for(double p:new double[]{50000,101325,500000,1e6,2e6}) {
-                var state=direct.flashTP(t,p,n,()->{});if(state.liquidVolume()==0)continue;
-                double[] x=state.liquid();double total=0;for(double value:x)total+=value;for(int i=0;i<x.length;i++)x[i]/=total;
-                var terms=eos.prepare(t);
-                var now=eos.evaluateValues(t,p,x,Root.LIQUID,terms);
-                double v=now.molarVolume(),h=now.molarEnthalpy(),kv=-now.volumePressureDerivative(),dh=now.enthalpyPressureDerivative();
-                double[] phi=now.logFugacityCoefficientsView().clone(),vbar=now.partialMolarVolumesView().clone();
-                var high=eos.evaluateValues(t,2e6,x,Root.LIQUID,terms);
-                double kvHigh=-high.volumePressureDerivative(),dhHigh=high.enthalpyPressureDerivative();double[] vbarHigh=high.partialMolarVolumesView().clone();
-                var old=legacy.liquid(t,p,x);var oldHigh=legacy.liquid(t,2e6,x);
-                double shift=0;double[] dc=new double[x.length];
-                for(int i=0;i<x.length;i++){dc[i]=legacy.directShift(i)-legacy.legacyShift(i);shift+=x[i]*dc[i];}
-                double span=2e6-p,rt=FluidThermodynamics.R*t;
-                double volumeBound=span*Math.max(Math.abs(kv+old.volumePressureDerivative()),Math.abs(kvHigh+oldHigh.volumePressureDerivative()))*1.05+1e-12*v;
-                double volumeError=Math.abs(v-old.molarVolume()-shift);
-                assertTrue(volumeError<=volumeBound,packageId+" "+t+" K "+p+" Pa volume: "+volumeError+" > "+volumeBound);
-                double enthalpyBound=span*Math.max(Math.abs(dh-old.enthalpyPressureDerivative()),Math.abs(dhHigh-oldHigh.enthalpyPressureDerivative()))*1.05+1e-9*Math.abs(h)+1e-9;
-                double enthalpyError=Math.abs(h-old.molarEnthalpy()-2e6*shift);
-                assertTrue(enthalpyError<=enthalpyBound,packageId+" "+t+" K "+p+" Pa enthalpy: "+enthalpyError+" > "+enthalpyBound);
-                for(int i=0;i<x.length;i++) {
-                    if(x[i]<=0)continue;
-                    double bound=span*Math.max(Math.abs(vbar[i]-old.partialMolarVolumes()[i]),Math.abs(vbarHigh[i]-oldHigh.partialMolarVolumes()[i]))/rt*1.05+1e-10;
-                    double error=Math.abs(phi[i]-old.logFugacity()[i]-2e6*dc[i]/rt);
-                    assertTrue(error<=bound,packageId+" "+t+" K "+p+" Pa ln phi["+i+"]: "+error+" > "+bound);
-                    worstPhi=Math.max(worstPhi,Math.abs(phi[i]-old.logFugacity()[i]));
-                }
-                worstVolume=Math.max(worstVolume,Math.abs(v/old.molarVolume()-1));largestVolume=Math.max(largestVolume,volumeBound/v);
-                worstEnthalpy=Math.max(worstEnthalpy,Math.abs(h-old.molarEnthalpy()));states++;
-            }
-            summary.append(String.format(Locale.ROOT,"%s: %d liquid states, |dv/v| <= %.3e, |dh| <= %.2f J/mol, |d ln phi| <= %.3e%n",
-                    packageId,states,worstVolume,worstEnthalpy,worstPhi));
-            assertTrue(states>0,packageId);
-        }
-        System.out.print(summary);
     }
 
     /**

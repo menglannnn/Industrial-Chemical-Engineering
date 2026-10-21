@@ -83,7 +83,7 @@ final class SolverRegressionHarness {
     }
 
     /**
-     * The 100-reservoir cosine-pressure chain of {@link FluidNetworkBenchmarkTest}, on the
+     * The 100-reservoir cosine-pressure chain of FluidNetworkBenchmarkTest (archived 2026-10-21 to tools/test-archive-2026-10-21/), on the
      * configured network basis: the Tia Juana Light + methane assay placed by component name into
      * the model's basis, with 0.1 mole nitrogen and 0.2 mole water added. Nothing here depends on
      * the basis size, so a package that gains or loses a component moves the reference states,
