@@ -203,6 +203,7 @@ public final class IChemE {
         ModMenus.register(modEventBus);
         modEventBus.addListener(ColumnV3Network::register);
         modEventBus.addListener(com.wormzjl.icheme.network.FluidNetwork::register);
+        modEventBus.addListener(com.wormzjl.icheme.network.TankDisplayNetwork::register);
         modEventBus.addListener(com.wormzjl.icheme.network.EquipmentNetwork::register);
         modEventBus.addListener(IChemE::addCreativeTabItem);
         modContainer.registerConfig(ModConfig.Type.COMMON, CONFIG_SPEC, "icheme-common.toml");
@@ -217,6 +218,12 @@ public final class IChemE {
         gameEventBus.addListener(IChemE::onServerStopping);
         gameEventBus.addListener(IChemE::onServerStopped);
         gameEventBus.addListener(IChemE::onFluidChunkLoaded);
+        gameEventBus.addListener(IChemE::onPlayerLoggedOut);
+    }
+    /** A player who leaves watches no tank any more. */
+    private static void onPlayerLoggedOut(net.neoforged.neoforge.event.entity.player.PlayerEvent.PlayerLoggedOutEvent event) {
+        if(event.getEntity() instanceof net.minecraft.server.level.ServerPlayer player&&player.server.isSameThread())
+            com.wormzjl.icheme.runtime.fluid.FluidWorldAuthority.find(player.server).ifPresent(world->world.forgetWatcher(player.getUUID()));
     }
     private static void onFluidChunkLoaded(net.neoforged.neoforge.event.level.ChunkEvent.Load event) {
         if(event.getLevel() instanceof net.minecraft.server.level.ServerLevel level) {

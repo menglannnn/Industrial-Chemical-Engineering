@@ -43,6 +43,9 @@ public final class FluidWorldAuthority implements AutoCloseable {
     private final FluidPresentation<com.wormzjl.icheme.world.inventory.FluidDeviceMenu> presentation;
     /** Complete immutable snapshots from the last bucket; bounded by loaded/open devices, never player replies. */
     private final Map<Long,com.wormzjl.icheme.network.FluidNetwork.MenuData> publishedMenuData=new HashMap<>();
+    /** Open tanks' displays from their last bucket, and who watches them (owner decision FR4, request path R-B); bounded by loaded open tanks. */
+    private final Map<Long,TankDisplay> publishedDisplays=new HashMap<>();
+    private final TankWatchers tankWatchers=new TankWatchers();
     private boolean closed;
     private long lastDebugChat=Long.MIN_VALUE;
     private MaterialCatalog observedSolidData;
@@ -235,7 +238,43 @@ public final class FluidWorldAuthority implements AutoCloseable {
     /** A device's block entity loaded or was bound: marked for its bucket, never presented at once. */
     public void deviceLoaded(long id){owned();if(!closed)presentation.deviceLoaded(id);}
     /** A device's block entity unloaded or was removed: publications stop marking it. */
-    public void deviceUnloaded(long id){owned();presentation.deviceUnloaded(id);publishedMenuData.remove(id);}
+    public void deviceUnloaded(long id){owned();presentation.deviceUnloaded(id);publishedMenuData.remove(id);publishedDisplays.remove(id);}
+    /**
+     * A client's watch request for open tanks by their node cells (owner decision FR4, R-B): each new watch of a loaded
+     * open tank within {@link TankWatchers#RANGE} is answered with the tank's last published display, if it has one (a
+     * read of cached data: nothing solves, nothing is marked), and the tank's next buckets send it again. Cells that are
+     * no open tank, out of range or over the player's maximum are ignored.
+     */
+    public void watchTanks(net.minecraft.server.level.ServerPlayer player,List<BlockPos> watch,List<BlockPos> unwatch) {
+        owned();if(closed)return;var uuid=player.getUUID();
+        if(!unwatch.isEmpty())for(long device:tankWatchers.devices(uuid)){var record=registrations().get(device);if(record==null||unwatch.contains(cell(record)))tankWatchers.unwatch(uuid,device);}
+        var level=player.serverLevel();
+        for(var pos:watch) {
+            if(!level.hasChunkAt(pos)||!(level.getBlockEntity(pos) instanceof FluidView.Receiver receiver))continue;
+            var record=registrations().get(receiver.fluidIdentity());
+            if(record==null||!record.spec().open()||!cell(record).equals(pos)||!record.device().position().dimension().equals(level.dimension().location().toString())||!inRange(player,pos))continue;
+            long device=receiver.fluidIdentity();var display=publishedDisplays.get(device);
+            if(tankWatchers.watch(uuid,device)&&display!=null)com.wormzjl.icheme.network.TankDisplayNetwork.send(player,pos,display);
+        }
+    }
+    /** Ends every tank watch of a player who left. */
+    public void forgetWatcher(UUID player){owned();tankWatchers.forget(player);}
+    private static BlockPos cell(WorldTopologyLedger.Registration record){var p=record.device().position();return new BlockPos(p.x(),p.y(),p.z());}
+    private static boolean inRange(net.minecraft.server.level.ServerPlayer player,BlockPos pos){return player.position().distanceToSqr(pos.getCenter())<=TankWatchers.RANGE*TankWatchers.RANGE;}
+    /**
+     * An open tank's bucket: its display is read off the view just presented and sent to each watcher still online, in
+     * its dimension and within range; the others are dropped. Nothing is sent when nobody watches.
+     */
+    private void publishTank(WorldTopologyLedger.Registration record,net.minecraft.server.level.ServerLevel level,BlockPos pos,FluidView view) {
+        long id=record.device().id();var display=TankDisplay.of(view,componentNames,model.molecularWeights(),catalog,com.wormzjl.icheme.science.fluid.thermo.FluidMaterialCatalog.networkPackage(catalog));
+        if(display==null){publishedDisplays.remove(id);return;}
+        publishedDisplays.put(id,display);
+        for(var uuid:tankWatchers.watchers(id)) {
+            var player=server.getPlayerList().getPlayer(uuid);
+            if(player==null||player.hasDisconnected()||player.serverLevel()!=level||!inRange(player,pos)){tankWatchers.unwatch(uuid,id);continue;}
+            com.wormzjl.icheme.network.TankDisplayNetwork.send(player,pos,display);
+        }
+    }
     /** Marks a device for its next bucket (a test or tool asking for a refresh gets it on the engine's schedule). */
     public void markViewDirty(long id){owned();presentation.markDirty(id);}
     /** An open menu becomes a consumer of its device's bucket. The first delivery comes with that bucket. */
@@ -423,7 +462,9 @@ public final class FluidWorldAuthority implements AutoCloseable {
             var pos=new BlockPos(p.x(),p.y(),p.z());if(!level.hasChunkAt(pos))return false;
             // A drum's node cell carries the identity it was built with; it is never bound here.
             if(!record.device().ports().isEmpty()) {
-                if(level.getBlockEntity(pos) instanceof FluidView.Receiver receiver&&receiver.fluidIdentity()==id){unboundBindings.remove(id);receiver.acceptFluidView(view.get());return true;}
+                if(level.getBlockEntity(pos) instanceof FluidView.Receiver receiver&&receiver.fluidIdentity()==id){unboundBindings.remove(id);var presented=view.get();receiver.acceptFluidView(presented);
+                    if(record.spec().open())publishTank(record,level,pos,presented);
+                    return true;}
                 if(unboundBindings.add(id))IChemE.LOGGER.warn("fluid_binding={} status=UNBOUND detail=Loaded vessel cell mismatch; saved inventory and topology retained",id);
                 return false;
             }
@@ -452,7 +493,7 @@ public final class FluidWorldAuthority implements AutoCloseable {
         public boolean acceptsRecovery(UUID player){var online=server.getPlayerList().getPlayer(player);return online!=null&&online.getInventory().getFreeSlot()>=0;}
         public void refused(UUID event,String reason){refuseEvent(event,reason);}
         public void committed(Set<Long> removed,Set<Long> recompiled) {
-            unboundBindings.removeAll(removed);publishedMenuData.keySet().removeAll(removed);
+            unboundBindings.removeAll(removed);publishedMenuData.keySet().removeAll(removed);publishedDisplays.keySet().removeAll(removed);for(long device:removed)tankWatchers.remove(device);
             // Every recompiled device's cached snapshot predates the change, and one left in no island (a pipe whose only
             // tank was broken) gets no publication that would mark it: each is marked for its next bucket, which presents
             // its new view (its replacement island, or "no hydraulic boundary"); an opening menu waits for that bucket.
