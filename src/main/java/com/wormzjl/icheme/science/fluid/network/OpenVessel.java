@@ -32,29 +32,29 @@ public final class OpenVessel {
     /** The shell's height over the fill height, m: the roof's own depth when it stands at the overflow nozzle. */
     public static final double FREEBOARD=1;
     /**
-     * The speed at which the vent's gas leaves through the roof, m/s. The vent is a rate the vessel's size sets: this
-     * speed times the roof's area (the footprint) in gas volume at the vessel's state (owner direction of 2026-10-21: a
-     * release to the world flows at a rate that is a function of the equipment's size; trace 354/678: a release of the whole
-     * start excess over any step is a rate without bound as the step shrinks, which no refinement converges).
+     * The time over which an open vessel gives the world what it holds in excess at a step's start (its gas, its liquid
+     * above the shell top), s: a step of {@code dt} releases the share {@code dt / RELEASE_TIME} of it, all of it from this
+     * long on. Releases are rates (trace 354/678: releasing the whole start excess over any step is a rate without bound as
+     * the step shrinks, which no refinement converges; owner choice of 2026-10-21).
+     */
+    public static final double RELEASE_TIME=1;
+    /**
+     * The fastest the vent's gas leaves through the roof, m/s: the vent is capped at this speed times the roof's area (the
+     * footprint), in gas volume at the vessel's state (owner direction of 2026-10-21: a release to the world flows at a
+     * rate the equipment's size sets).
      */
     public static final double VENT_SPEED=1;
-    /** The spill's weir coefficient, m^0.5/s: a sharp-crested weir round the shell top passes {@code WEIR L h^1.5} m3/s,
-     * {@code L} the rim's length and {@code h} the liquid's height over it (Francis). */
-    static final double WEIR=1.84;
 
     /** The vessel's footprint, m2: its volume over its fill height. */
     static double footprint(PassiveNetwork.Inventory inventory){return inventory.volume()/inventory.levelHeight();}
-    /** The share of its start gas, {@code gasVolume} m3, an open vessel vents over a step of {@code dt} s: at most all of it. */
+    /** The share of its start gas, {@code gasVolume} m3, an open vessel vents over a step of {@code dt} s: {@code dt /
+     * RELEASE_TIME}, no faster than {@link #VENT_SPEED} through its roof, at most all of it. */
     static double ventShare(PassiveNetwork.Inventory inventory,double gasVolume,double dt) {
-        return gasVolume>0?Math.min(1,VENT_SPEED*footprint(inventory)*dt/gasVolume):0;
+        return gasVolume>0?Math.min(releaseShare(dt),VENT_SPEED*footprint(inventory)*dt/gasVolume):0;
     }
-    /** The share of its liquid above the shell top, {@code excess} m3, an open vessel spills over a step of {@code dt} s: the
-     * weir's flow at the start height over the rim, a round footprint's circumference long; at most all of it. */
-    static double spillShare(PassiveNetwork.Inventory inventory,double excess,double dt) {
-        if(!(excess>0))return 0;
-        double area=footprint(inventory),over=excess/area,rim=2*Math.sqrt(Math.PI*area);
-        return Math.min(1,WEIR*rim*over*Math.sqrt(over)*dt/excess);
-    }
+    /** The share of its start excess an open vessel releases over a step of {@code dt} s (its spill's share): {@code dt /
+     * RELEASE_TIME}, at most all of it. */
+    static double releaseShare(double dt){return Math.min(1,dt/RELEASE_TIME);}
 
     /** What one release takes out of its vessel over a step: amounts (mol, water last), energy {@code sum m h} (J),
      * solids and their moments. */
@@ -138,7 +138,7 @@ public final class OpenVessel {
         if(node.kind()!=PassiveNetwork.NodeKind.RESERVOIR||!node.inventory().open()||node.empty()||PassiveStepSolver.holdsNoFluid(node))return null;
         var state=node.state();var held=node.inventory().moles();
         double top=topVolume(node.inventory()),liquid=condensedVolume(state);
-        double ventShare=FluidThermodynamics.holdsPhase(state,GAS)?ventShare(node.inventory(),state.vaporVolume(),dt):0,spillShare=spillShare(node.inventory(),liquid-top,dt);
+        double ventShare=FluidThermodynamics.holdsPhase(state,GAS)?ventShare(node.inventory(),state.vaporVolume(),dt):0,spillShare=liquid>top?releaseShare(dt):0;
         Release vent=null,spill=null;
         if(ventShare>0) {
             var n=FluidThermodynamics.phaseMoles(state,GAS);
