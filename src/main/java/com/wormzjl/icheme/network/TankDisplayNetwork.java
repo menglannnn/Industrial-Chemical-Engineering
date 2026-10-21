@@ -21,8 +21,8 @@ import net.neoforged.neoforge.network.registration.HandlerThread;
 /**
  * The open tanks' display path (batch 2026-10-21-floating-roof-tanks, plan section 3.4, owner decision FR4 R-B): a client
  * asks to watch and to stop watching tanks by their node cells ({@link WatchPayload}); the server answers each new watch
- * with the tank's last published display, if it has one, and then sends one {@link DisplayPayload} at each of the tank's
- * presentation buckets ({@link TankWatchers}). About 32 bytes a tank every 5 s; nothing is sent unasked.
+ * with the tank's last published glide to its display, if it has one, and then sends one {@link DisplayPayload} at each
+ * of the tank's presentation buckets ({@link TankWatchers}). About 60 bytes a tank every 5 s; nothing is sent unasked.
  */
 public final class TankDisplayNetwork {
     private TankDisplayNetwork() {}
@@ -37,15 +37,17 @@ public final class TankDisplayNetwork {
             if(watch.size()>TankWatchers.MAXIMUM_PER_PLAYER||unwatch.size()>TankWatchers.MAXIMUM_PER_PLAYER)throw new IllegalArgumentException("Too many tanks in one watch request");}
         @Override public Type<? extends CustomPacketPayload> type(){return TYPE;}
     }
-    /** Server to client: one tank's display at its node cell. */
-    public record DisplayPayload(BlockPos node,TankDisplay display) implements CustomPacketPayload {
+    /** Server to client: one tank's glide to its latest display, at its node cell (whole, so the client's roof stands where the server's collides). */
+    public record DisplayPayload(BlockPos node,TankDisplay.Glide glide) implements CustomPacketPayload {
         public static final Type<DisplayPayload> TYPE=new Type<>(ResourceLocation.fromNamespaceAndPath(IChemE.MOD_ID,"tank_display"));
         public static final StreamCodec<RegistryFriendlyByteBuf,DisplayPayload> STREAM_CODEC=new StreamCodec<>() {
-            public DisplayPayload decode(RegistryFriendlyByteBuf b){return new DisplayPayload(b.readBlockPos(),new TankDisplay(b.readFloat(),b.readFloat(),b.readFloat(),b.readInt(),b.readInt()));}
-            public void encode(RegistryFriendlyByteBuf b,DisplayPayload p){var d=p.display;b.writeBlockPos(p.node);b.writeFloat(d.level());b.writeFloat(d.waterLevel());b.writeFloat(d.height());b.writeInt(d.oilArgb());b.writeInt(d.waterArgb());}
+            public DisplayPayload decode(RegistryFriendlyByteBuf b){var node=b.readBlockPos();var from=display(b);return new DisplayPayload(node,new TankDisplay.Glide(from,display(b),b.readLong()));}
+            public void encode(RegistryFriendlyByteBuf b,DisplayPayload p){b.writeBlockPos(p.node);display(b,p.glide.from());display(b,p.glide.to());b.writeLong(p.glide.tick());}
         };
         @Override public Type<? extends CustomPacketPayload> type(){return TYPE;}
     }
+    private static TankDisplay display(RegistryFriendlyByteBuf b){return new TankDisplay(b.readFloat(),b.readFloat(),b.readFloat(),b.readInt(),b.readInt());}
+    private static void display(RegistryFriendlyByteBuf b,TankDisplay d){b.writeFloat(d.level());b.writeFloat(d.waterLevel());b.writeFloat(d.height());b.writeInt(d.oilArgb());b.writeInt(d.waterArgb());}
     private static List<BlockPos> positions(RegistryFriendlyByteBuf b) {
         int count=b.readVarInt();if(count<0||count>TankWatchers.MAXIMUM_PER_PLAYER)throw new IllegalArgumentException("Too many tanks in one watch request");
         var list=new ArrayList<BlockPos>(count);for(int i=0;i<count;i++)list.add(b.readBlockPos());
@@ -56,13 +58,13 @@ public final class TankDisplayNetwork {
     public static void register(RegisterPayloadHandlersEvent event) {
         var registrar=event.registrar(FluidNetwork.PROTOCOL).executesOn(HandlerThread.MAIN);
         registrar.playToServer(WatchPayload.TYPE,WatchPayload.STREAM_CODEC,TankDisplayNetwork::watch);
-        registrar.playToClient(DisplayPayload.TYPE,DisplayPayload.STREAM_CODEC,(payload,context)->TankDisplays.accept(payload.node,payload.display));
+        registrar.playToClient(DisplayPayload.TYPE,DisplayPayload.STREAM_CODEC,(payload,context)->TankDisplays.accept(payload.node,payload.glide));
     }
     private static void watch(WatchPayload payload,IPayloadContext context) {
         if(context.player() instanceof ServerPlayer player)FluidWorldAuthority.find(player.server).ifPresent(world->world.watchTanks(player,payload.watch,payload.unwatch));
     }
-    /** Sends {@code display} of the tank at {@code node} to {@code player}. */
-    public static void send(ServerPlayer player,BlockPos node,TankDisplay display){PacketDistributor.sendToPlayer(player,new DisplayPayload(node,display));}
+    /** Sends {@code glide} of the tank at {@code node} to {@code player}. */
+    public static void send(ServerPlayer player,BlockPos node,TankDisplay.Glide glide){PacketDistributor.sendToPlayer(player,new DisplayPayload(node,glide));}
     /** Client side: asks the server to watch and to stop watching tanks. */
     public static void request(List<BlockPos> watch,List<BlockPos> unwatch){if(!watch.isEmpty()||!unwatch.isEmpty())PacketDistributor.sendToServer(new WatchPayload(watch,unwatch));}
 }

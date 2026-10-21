@@ -214,6 +214,38 @@ public final class ShapeRasterizer {
         return geometry(shape).floating();
     }
 
+    /**
+     * A floating-roof tank's roof as the world collides with it (owner request 2026-10-21: a player on the roof rides it),
+     * in box coordinates, kept on a dedicated server too: its axis ({@code x}, {@code z}), its outer {@code radius} and its
+     * deck's {@code inner} one, the heights of the deck and of the pontoon ring's top over the roof's underside, where the
+     * underside stands ({@link #underside}, as {@link Floating#underside}), and the rolling ladder: its hinge {@code
+     * pivot}, its level direction {@code along} and its {@code length}, turned down by {@link #pitch}.
+     */
+    public record Roof(double x, double z, double radius, double inner, double deck, double pontoon, double landed, double top, double[] pivot,
+                       double[] along, double length) {
+        /** The roof's underside over the floor for a liquid {@code level} m deep: on the liquid, between its legs' and the fill height. */
+        public double underside(double level) {
+            return Math.max(landed, Math.min(top, level));
+        }
+
+        /** The walking surface over the floor at {@code distance} m from the axis for a liquid {@code level} m deep: the deck
+         * inside the inner radius, the pontoon ring's top beyond it. */
+        public double surface(double distance, double level) {
+            return underside(level) + (distance < inner ? deck : pontoon);
+        }
+
+        /** The ladder's turn down from level, radians, its foot on the deck ({@link Floating#pitch}). */
+        public double pitch(double level) {
+            double drop = pivot[1] - (underside(level) + deck);
+            return drop >= length ? Math.PI / 2 : drop <= 0 ? 0 : DeterministicMath.asin(drop / length);
+        }
+    }
+
+    /** A floating-roof tank's {@link Roof}, or null for any other shape. */
+    public static @Nullable Roof roof(EquipmentShape shape) {
+        return geometry(shape).roof();
+    }
+
     /** Greedy merge of the cell's solid sampled at {@link #SOLID_RESOLUTION}: along z, then x, then y. */
     public static List<Box> solid(CellKey key) {
         var g = geometry(key.shape());
@@ -1150,6 +1182,18 @@ public final class ShapeRasterizer {
         }
 
         private volatile Floating floating;
+        private volatile Roof roof;
+
+        /** A floating-roof tank's roof in the box, from its layout (no surfaces); null for any other shape. */
+        @Nullable Roof roof() {
+            var out = roof;
+            if (out != null || unit == null || unit.floating == null || unit.roofPlan == null) return out;
+            var f = unit.floating;
+            var plan = unit.roofPlan;
+            var centre = transform.point(plan.centre());
+            return roof = new Roof(centre[0], centre[2], plan.radius(), plan.inner(), f.deck(), plan.pontoon(), f.landed(), f.top(),
+                    transform.point(f.pivot()), transform.direction(f.along()), f.length());
+        }
 
         /** A floating-roof tank's client-drawn parts in the box, drawn and cut once; null for any other shape. */
         @Nullable Floating floating() {

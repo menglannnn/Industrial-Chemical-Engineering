@@ -23,6 +23,29 @@ public record TankDisplay(float level,float waterLevel,float height,int oilArgb,
     public static TankDisplay empty(float height){return new TankDisplay(0,0,height,0,0);}
 
     /**
+     * A tank's display gliding to its latest one (owner requests 2026-10-21: the roof moves, and a player on it rides it): a
+     * display arrives once a presentation bucket, and the tank shows its levels moving linearly from where they stood
+     * ({@code from}) to the new ones ({@code to}) over the {@link FluidPresentation#BUCKET_TICKS} game ticks from {@code
+     * tick}. The server keeps one per loaded open tank and sends it whole, so the client's roof and the server's
+     * collision stand at the same height at the same game tick.
+     */
+    public record Glide(TankDisplay from,TankDisplay to,long tick) {
+        public Glide{java.util.Objects.requireNonNull(from);java.util.Objects.requireNonNull(to);}
+        /** The display at game time {@code ticks} (fractional on the client's frames). */
+        public TankDisplay at(double ticks) {
+            double t=Math.max(0,Math.min(1,(ticks-tick)/FluidPresentation.BUCKET_TICKS));
+            if(t>=1)return to;
+            return new TankDisplay((float)(from.level+(to.level-from.level)*t),(float)(from.waterLevel+(to.waterLevel-from.waterLevel)*t),to.height,to.oilArgb,to.waterArgb);
+        }
+        /** The liquid's level at game time {@code ticks}, m. */
+        public double level(double ticks){return at(ticks).level;}
+        /** The glide to {@code display} arriving at game tick {@code tick}, from where {@code old} (null: none) stands then. */
+        public static Glide next(Glide old,TankDisplay display,long tick){return new Glide(old==null?display:old.at(tick),display,tick);}
+        /** A tank standing still at {@code display}. */
+        public static Glide still(TankDisplay display){return new Glide(display,display,0);}
+    }
+
+    /**
      * The display of a vessel's view, or null for a view that is not a vessel's. {@code components} is the view's
      * component axis (water last), {@code molecularWeights} its molar masses (kg/mol), {@code packageId} the property
      * package whose appearances name the colours.

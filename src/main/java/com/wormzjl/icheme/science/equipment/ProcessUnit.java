@@ -595,6 +595,16 @@ public final class ProcessUnit {
      */
     Floating floating;
     final Mesh roof = new Mesh(), ladder = new Mesh();
+    /** A floating-roof tank's roof as the world collides with it, in the frame; null for any other shape. */
+    RoofPlan roofPlan;
+
+    /**
+     * A floating roof's outline for collision (owner request 2026-10-21: a player on the roof rides it): its axis {@code
+     * centre} (x, z in the frame), its outer {@code radius} and its deck's {@code inner} one (the pontoon ring between),
+     * and the pontoon ring's top over the roof's underside; the deck's is {@link Floating#deck}.
+     */
+    record RoofPlan(double[] centre, double radius, double inner, double pontoon) {
+    }
 
     /**
      * Where a floating-roof tank's client-drawn parts stand, in the frame (plan section 3.4). The roof is drawn with its

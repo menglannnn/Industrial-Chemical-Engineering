@@ -3,9 +3,12 @@ package com.wormzjl.icheme.world.level.block;
 import com.mojang.serialization.MapCodec;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.InteractionResult;
+import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.BlockGetter;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.level.LevelReader;
+import net.minecraft.world.level.chunk.LevelChunk;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.RenderShape;
 import net.minecraft.world.level.block.state.BlockState;
@@ -13,6 +16,8 @@ import net.minecraft.world.level.block.state.StateDefinition;
 import net.minecraft.world.level.block.state.properties.BooleanProperty;
 import net.minecraft.world.level.pathfinder.PathComputationType;
 import net.minecraft.world.phys.BlockHitResult;
+import net.minecraft.world.phys.shapes.CollisionContext;
+import net.minecraft.world.phys.shapes.EntityCollisionContext;
 import net.minecraft.world.phys.shapes.Shapes;
 import net.minecraft.world.phys.shapes.VoxelShape;
 
@@ -20,7 +25,8 @@ import net.minecraft.world.phys.shapes.VoxelShape;
  * A cell wholly inside a parametric vessel: an invisible full cube with no data of its own. It keeps mobs, fluids and
  * placed blocks out of the vessel. A closed vessel's cell is opaque: it casts its shadow and gives Distant Horizons a
  * solid voxel. An {@link #OPEN} cell (a floating-roof tank's, owner request 2026-10-21: its roof shows from above, plan
- * section 3.3) collides alike but passes light and hides no face beside it.
+ * section 3.3) passes light, hides no face beside it and collides up to the tank's floating roof where it stands now
+ * ({@link FloatingRoofs}); the rolling ladder down to the roof is climbable.
  */
 public final class EquipmentInteriorBlock extends Block {
     public static final MapCodec<EquipmentInteriorBlock> CODEC = simpleCodec(EquipmentInteriorBlock::new);
@@ -64,6 +70,31 @@ public final class EquipmentInteriorBlock extends Block {
     @Override
     protected float getShadeBrightness(BlockState state, BlockGetter level, BlockPos position) {
         return state.getValue(OPEN) ? 1 : super.getShadeBrightness(state, level, position);
+    }
+
+    @Override
+    protected VoxelShape getCollisionShape(BlockState state, BlockGetter level, BlockPos position, CollisionContext context) {
+        if (state.getValue(OPEN)) {
+            var world = level(level, context);
+            if (world != null) {
+                var shape = FloatingRoofs.of(world).collision(position, world.getGameTime());
+                if (shape != null) return shape;
+            }
+        }
+        return super.getCollisionShape(state, level, position, context);
+    }
+
+    /** The level a collision query reads (an entity's collisions read a chunk, not the level); null when none is at hand. */
+    private static Level level(BlockGetter getter, CollisionContext context) {
+        if (getter instanceof Level level) return level;
+        if (getter instanceof LevelChunk chunk) return chunk.getLevel();
+        if (context instanceof EntityCollisionContext entity && entity.getEntity() != null) return entity.getEntity().level();
+        return null;
+    }
+
+    @Override
+    public boolean isLadder(BlockState state, LevelReader level, BlockPos position, LivingEntity entity) {
+        return state.getValue(OPEN) && FloatingRoofs.of(entity.level()).ladder(position, entity, entity.level().getGameTime());
     }
 
     @Override

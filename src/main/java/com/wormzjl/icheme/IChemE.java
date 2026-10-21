@@ -219,6 +219,11 @@ public final class IChemE {
         gameEventBus.addListener(IChemE::onServerStopped);
         gameEventBus.addListener(IChemE::onFluidChunkLoaded);
         gameEventBus.addListener(IChemE::onPlayerLoggedOut);
+        gameEventBus.addListener(IChemE::onLevelTickPost);
+    }
+    /** The floating roofs that rise this tick lift what stands on them (a read of each tank's glide; nothing solves). */
+    private static void onLevelTickPost(net.neoforged.neoforge.event.tick.LevelTickEvent.Post event) {
+        if(!event.getLevel().isClientSide())com.wormzjl.icheme.world.level.block.FloatingRoofs.carry(event.getLevel());
     }
     /** A player who leaves watches no tank any more. */
     private static void onPlayerLoggedOut(net.neoforged.neoforge.event.entity.player.PlayerEvent.PlayerLoggedOutEvent event) {

@@ -49,6 +49,9 @@ public final class ModBlocks {
             com.wormzjl.icheme.world.level.block.EquipmentInteriorBlock::new,
             BlockBehaviour.Properties.of().mapColor(MapColor.METAL).strength(3.5F).sound(SoundType.METAL)
                     .pushReaction(net.minecraft.world.level.material.PushReaction.BLOCK).noLootTable()
+                    // An open tank's cells collide up to its floating roof, which moves (FloatingRoofs); nothing spawns on it.
+                    // A dynamic shape leaves the state unsolid, which lets fluids wash it away: forced solid.
+                    .dynamicShape().forceSolidOn().isValidSpawn((state, level, position, type) -> false)
     );
     public static final DeferredBlock<com.wormzjl.icheme.world.level.block.EquipmentConstructorBlock> EQUIPMENT_CONSTRUCTOR = BLOCKS.registerBlock(
             "equipment_constructor",

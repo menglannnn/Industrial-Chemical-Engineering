@@ -15,6 +15,7 @@ import com.wormzjl.icheme.science.equipment.EquipmentShape;
 import com.wormzjl.icheme.science.equipment.Mesh;
 import com.wormzjl.icheme.science.equipment.Paint;
 import com.wormzjl.icheme.science.equipment.ShapeRasterizer;
+import com.wormzjl.icheme.world.level.block.FloatingRoofs;
 import com.wormzjl.icheme.world.level.block.entity.EquipmentShellBlockEntity;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.LevelRenderer;
@@ -75,12 +76,13 @@ public final class TankRenderer {
     private TankRenderer() {
     }
 
-    /** Once a second: watch the tanks within range, nearest first, and release the rest. */
+    /** Each tick the player rides the roof under it ({@link FloatingRoofs#carry(net.minecraft.world.entity.player.Player)}); once a second: watch the tanks within range, nearest first, and release the rest. */
     @SubscribeEvent
     public static void tick(ClientTickEvent.Post event) {
-        if (age++ % WATCH_TICKS != 0) return;
         var mc = Minecraft.getInstance();
         if (mc.level == null || mc.player == null || mc.getConnection() == null) return;
+        FloatingRoofs.carry(mc.player);
+        if (age++ % WATCH_TICKS != 0) return;
         var player = mc.player.position();
         var near = new ArrayList<BlockPos>();
         for (var cell : EquipmentShellBlockEntity.clientTankCells())
@@ -191,10 +193,10 @@ public final class TankRenderer {
         if (consumer != null) buffers.endBatch(BANDS);
     }
 
-    /** The liquid's depth over the tank's floor at game time {@code ticks}, m, from its display gliding to the latest; 0 (the roof on its legs) before the first one. */
+    /** The liquid's depth over the tank's floor at game time {@code ticks}, m, where the level's roofs stand ({@link FloatingRoofs}): the tank's glide, or the level its node cell saved before the first one. */
     private static double level(BlockPos node, double ticks) {
-        TankDisplay display = TankDisplays.get(node, ticks);
-        return display == null ? 0 : display.level();
+        var level = Minecraft.getInstance().level;
+        return level == null ? 0 : FloatingRoofs.of(level).level(node, ticks);
     }
 
     /** One band: a square prism round the glass's column from {@code y0} to {@code y1}, its four sides and its top. */

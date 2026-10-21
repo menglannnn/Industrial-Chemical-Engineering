@@ -44,7 +44,8 @@ public final class FluidWorldAuthority implements AutoCloseable {
     /** Complete immutable snapshots from the last bucket; bounded by loaded/open devices, never player replies. */
     private final Map<Long,com.wormzjl.icheme.network.FluidNetwork.MenuData> publishedMenuData=new HashMap<>();
     /** Open tanks' displays from their last bucket, and who watches them (owner decision FR4, request path R-B); bounded by loaded open tanks. */
-    private final Map<Long,TankDisplay> publishedDisplays=new HashMap<>();
+    /** The open tanks' latest glides (their roofs' motion to the latest display), replayed to a new watcher. */
+    private final Map<Long,TankDisplay.Glide> publishedGlides=new HashMap<>();
     private final TankWatchers tankWatchers=new TankWatchers();
     private boolean closed;
     private long lastDebugChat=Long.MIN_VALUE;
@@ -238,7 +239,7 @@ public final class FluidWorldAuthority implements AutoCloseable {
     /** A device's block entity loaded or was bound: marked for its bucket, never presented at once. */
     public void deviceLoaded(long id){owned();if(!closed)presentation.deviceLoaded(id);}
     /** A device's block entity unloaded or was removed: publications stop marking it. */
-    public void deviceUnloaded(long id){owned();presentation.deviceUnloaded(id);publishedMenuData.remove(id);publishedDisplays.remove(id);}
+    public void deviceUnloaded(long id){owned();presentation.deviceUnloaded(id);publishedMenuData.remove(id);publishedGlides.remove(id);}
     /**
      * A client's watch request for open tanks by their node cells (owner decision FR4, R-B): each new watch of a loaded
      * open tank within {@link TankWatchers#RANGE} is answered with the tank's last published display, if it has one (a
@@ -253,8 +254,8 @@ public final class FluidWorldAuthority implements AutoCloseable {
             if(!level.hasChunkAt(pos)||!(level.getBlockEntity(pos) instanceof FluidView.Receiver receiver))continue;
             var record=registrations().get(receiver.fluidIdentity());
             if(record==null||!record.spec().open()||!cell(record).equals(pos)||!record.device().position().dimension().equals(level.dimension().location().toString())||!inRange(player,pos))continue;
-            long device=receiver.fluidIdentity();var display=publishedDisplays.get(device);
-            if(tankWatchers.watch(uuid,device)&&display!=null)com.wormzjl.icheme.network.TankDisplayNetwork.send(player,pos,display);
+            long device=receiver.fluidIdentity();var glide=publishedGlides.get(device);
+            if(tankWatchers.watch(uuid,device)&&glide!=null)com.wormzjl.icheme.network.TankDisplayNetwork.send(player,pos,glide);
         }
     }
     /** Ends every tank watch of a player who left. */
@@ -262,17 +263,20 @@ public final class FluidWorldAuthority implements AutoCloseable {
     private static BlockPos cell(WorldTopologyLedger.Registration record){var p=record.device().position();return new BlockPos(p.x(),p.y(),p.z());}
     private static boolean inRange(net.minecraft.server.level.ServerPlayer player,BlockPos pos){return player.position().distanceToSqr(pos.getCenter())<=TankWatchers.RANGE*TankWatchers.RANGE;}
     /**
-     * An open tank's bucket: its display is read off the view just presented and sent to each watcher still online, in
-     * its dimension and within range; the others are dropped. Nothing is sent when nobody watches.
+     * An open tank's bucket: its display is read off the view just presented, its roof glides to it from where it stands
+     * ({@link TankDisplay.Glide}, which the level's roofs collide by) and the glide is sent to each watcher still online,
+     * in its dimension and within range; the others are dropped. Nothing is sent when nobody watches.
      */
     private void publishTank(WorldTopologyLedger.Registration record,net.minecraft.server.level.ServerLevel level,BlockPos pos,FluidView view) {
         long id=record.device().id();var display=TankDisplay.of(view,componentNames,model.molecularWeights(),catalog,com.wormzjl.icheme.science.fluid.thermo.FluidMaterialCatalog.networkPackage(catalog));
-        if(display==null){publishedDisplays.remove(id);return;}
-        publishedDisplays.put(id,display);
+        var roofs=com.wormzjl.icheme.world.level.block.FloatingRoofs.of(level);
+        if(display==null){publishedGlides.remove(id);roofs.glide(pos,null);return;}
+        var glide=TankDisplay.Glide.next(publishedGlides.get(id),display,level.getGameTime());
+        publishedGlides.put(id,glide);roofs.glide(pos,glide);
         for(var uuid:tankWatchers.watchers(id)) {
             var player=server.getPlayerList().getPlayer(uuid);
             if(player==null||player.hasDisconnected()||player.serverLevel()!=level||!inRange(player,pos)){tankWatchers.unwatch(uuid,id);continue;}
-            com.wormzjl.icheme.network.TankDisplayNetwork.send(player,pos,display);
+            com.wormzjl.icheme.network.TankDisplayNetwork.send(player,pos,glide);
         }
     }
     /** Marks a device for its next bucket (a test or tool asking for a refresh gets it on the engine's schedule). */
@@ -493,7 +497,7 @@ public final class FluidWorldAuthority implements AutoCloseable {
         public boolean acceptsRecovery(UUID player){var online=server.getPlayerList().getPlayer(player);return online!=null&&online.getInventory().getFreeSlot()>=0;}
         public void refused(UUID event,String reason){refuseEvent(event,reason);}
         public void committed(Set<Long> removed,Set<Long> recompiled) {
-            unboundBindings.removeAll(removed);publishedMenuData.keySet().removeAll(removed);publishedDisplays.keySet().removeAll(removed);for(long device:removed)tankWatchers.remove(device);
+            unboundBindings.removeAll(removed);publishedMenuData.keySet().removeAll(removed);publishedGlides.keySet().removeAll(removed);for(long device:removed)tankWatchers.remove(device);
             // Every recompiled device's cached snapshot predates the change, and one left in no island (a pipe whose only
             // tank was broken) gets no publication that would mark it: each is marked for its next bucket, which presents
             // its new view (its replacement island, or "no hydraulic boundary"); an opening menu waits for that bucket.

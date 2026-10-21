@@ -486,5 +486,6 @@ final class TankDesign extends UnitDesign {
         double gx = p.a + GLASS_OFFSET, rho = p.r + GLASS_OUT, gz = p.a - Math.sqrt(rho * rho - GLASS_OFFSET * GLASS_OFFSET);
         u.floating = new ProcessUnit.Floating(under, p.fill, DECK, pivot, along, axis, length, runway, new double[]{gx, gz}, GLASS_LOW, p.fill,
                 Mesh.unit(gx - p.a, 0, gz - p.a));
+        u.roofPlan = new ProcessUnit.RoofPlan(new double[]{p.a, 0, p.a}, rr, rr - pw, PONTOON_DEPTH);
     }
 }

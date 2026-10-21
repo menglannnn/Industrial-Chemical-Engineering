@@ -7,6 +7,7 @@ import com.wormzjl.icheme.runtime.fluid.FluidWorldAuthority;
 import com.wormzjl.icheme.runtime.fluid.PhysicalFluidTopology;
 import com.wormzjl.icheme.world.inventory.FluidDeviceMenu;
 import com.wormzjl.icheme.world.level.block.EquipmentStructure;
+import com.wormzjl.icheme.world.level.block.FloatingRoofs;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
@@ -69,6 +70,11 @@ public final class EquipmentShellBlockEntity extends BlockEntity implements Flui
     private int[] box = new int[3];
     private @Nullable FluidView lastView;
     /**
+     * A floating-roof tank's node cell: the liquid's level its last view gave, m, saved with the cell and sent with its
+     * data, so the roof stands there ({@link FloatingRoofs}) until the tank's first display after a load.
+     */
+    private float roofLevel;
+    /**
      * Client: the cells holding a moving part's pivot, whose parts the client moves (owner requests 2026-10-16 and
      * 2026-10-18: air cooler fans, pump shafts and motor fans, compressor piston rods). Render thread only; weak, so an
      * unloaded level frees them.
@@ -95,6 +101,13 @@ public final class EquipmentShellBlockEntity extends BlockEntity implements Flui
     @Override
     public void acceptFluidView(FluidView view) {
         lastView = view;
+        var tank = view.tank();
+        if (tank == null || view.state() == null) return;
+        float now = (float) tank.level(view.state());
+        if (Float.isFinite(now) && Math.abs(now - roofLevel) > 1e-3f) {
+            roofLevel = Math.max(0, now);
+            setChanged();
+        }
     }
 
     public @Nullable FluidView lastView() {
@@ -151,10 +164,23 @@ public final class EquipmentShellBlockEntity extends BlockEntity implements Flui
         CLIENT_MOVING.add(this);
     }
 
+    /**
+     * A floating-roof tank's node cell enters its level's roof index (both sides), which its world collides with and
+     * rides; any other cell leaves it.
+     */
+    private void trackRoof() {
+        if (level == null) return;
+        var roofs = FloatingRoofs.of(level);
+        if (shape != null && shape.kind() == EquipmentShape.Kind.TANK && cell().equals(ShapeRasterizer.fluidCell(shape)))
+            roofs.add(worldPosition, origin(), shape, () -> roofLevel);
+        else roofs.remove(worldPosition);
+    }
+
     /** Server: a node cell binds the drum the ledger holds here, as a device block entity binds its registration; the client lists its moving parts. */
     @Override
     public void onLoad() {
         super.onLoad();
+        trackRoof();
         if (level != null && level.isClientSide) trackMoving();
         if (!(level instanceof ServerLevel serverLevel) || shape == null) return;
         if (stale()) EquipmentStructure.refreshLater(serverLevel, origin(), shape, box, worldPosition);
@@ -183,6 +209,7 @@ public final class EquipmentShellBlockEntity extends BlockEntity implements Flui
     private void released() {
         CLIENT_MOVING.remove(this);
         CLIENT_TANKS.remove(this);
+        if (level != null) FloatingRoofs.of(level).remove(worldPosition);
         if (identity != 0 && level instanceof ServerLevel serverLevel && serverLevel.getServer().isSameThread())
             FluidWorldAuthority.find(serverLevel.getServer()).ifPresent(world -> world.deviceUnloaded(identity));
     }
@@ -219,6 +246,7 @@ public final class EquipmentShellBlockEntity extends BlockEntity implements Flui
         stamp = ShapeRasterizer.stamp(shape);
         box = new int[]{shape.sizeX(), shape.sizeY(), shape.sizeZ()};
         setChanged();
+        trackRoof();
     }
 
     /** A cell inside the vessel's box takes its key; one a smaller layout left outside draws nothing until its vessel is refreshed. */
@@ -316,6 +344,11 @@ public final class EquipmentShellBlockEntity extends BlockEntity implements Flui
         box = new int[3];
         identity = tag.getLong("FluidIdentity");
         lastView = null;
+        roofLevel = tag.getFloat("RoofLevel");
+        if (!Float.isFinite(roofLevel) || roofLevel < 0) {
+            IChemE.LOGGER.warn("Equipment shell at {} has an invalid roof level {}; the roof lands", worldPosition, roofLevel);
+            roofLevel = 0;
+        }
         if (!tag.contains("Diameter")) return;
         try {
             var read = readShape(tag);
@@ -344,6 +377,7 @@ public final class EquipmentShellBlockEntity extends BlockEntity implements Flui
         tag.putIntArray("Paint", paint.encode());
         tag.putLong("Layout", stamp);
         tag.putIntArray("Box", box);
+        if (roofLevel > 0) tag.putFloat("RoofLevel", roofLevel);
     }
 
     /**
@@ -397,6 +431,7 @@ public final class EquipmentShellBlockEntity extends BlockEntity implements Flui
         super.onDataPacket(connection, packet, registries);
         requestModelDataUpdate();
         trackMoving();
+        trackRoof();
         if (level != null) level.sendBlockUpdated(worldPosition, getBlockState(), getBlockState(), 0);
     }
 
