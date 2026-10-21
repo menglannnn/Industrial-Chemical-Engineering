@@ -78,7 +78,9 @@ class ShapeRasterizerTest {
             EquipmentShape.unit(Kind.VERTICAL_HEATER, 4, 8, Heading.NORTH, 3), EquipmentShape.unit(Kind.CABIN_HEATER, 6, 12, Heading.WEST, 3),
             // Storage (owner request 2026-10-21): the least tank, a mid one turned, the least sphere on its highest legs, the concept sheet's sphere.
             EquipmentShape.storage(Kind.TANK, 4, 4, Heading.NORTH, 0), EquipmentShape.storage(Kind.TANK, 20, 12, Heading.EAST, 0),
-            EquipmentShape.storage(Kind.SPHERE, 4, 1, Heading.SOUTH, 8), EquipmentShape.storage(Kind.SPHERE, 14, 1, Heading.NORTH, 2));
+            EquipmentShape.storage(Kind.SPHERE, 4, 1, Heading.SOUTH, 8), EquipmentShape.storage(Kind.SPHERE, 14, 1, Heading.NORTH, 2),
+            // The ladder forms with their rest platforms (owner change 2026-10-21): two rests up a tall small tank, one beside a small sphere.
+            EquipmentShape.storage(Kind.TANK, 5, 22, Heading.WEST, 0), EquipmentShape.storage(Kind.SPHERE, 9, 1, Heading.EAST, 8));
 
     @Test
     void rejectsShapesOffTheGrid() {
@@ -780,13 +782,21 @@ class ShapeRasterizerTest {
         }
     }
 
-    /** Every size: its decks and its wound stair are walked (at frame level), its pipes kept one block apart. */
+    /**
+     * Every size: its decks and its wound stair or ladders are walked (at frame level), its pipes kept one block apart. The
+     * wound stair from {@link TankDesign#STAIR_SIZE} and {@link SphereDesign#STAIR_SIZE} across, caged ladders under (owner
+     * change 2026-10-21); every tank's roof and rolling ladder drawn apart.
+     */
     @Test
     void everyStorageSizeIsWalkedAndKeepsItsPipesApart() {
         for (var shape : everyStorageSize()) {
             var unit = ProcessUnit.of(shape);
             ProcessUnitTest.walkedInFrame(unit);
-            assertEquals(1, unit.woundStairs().size(), shape.toString());
+            boolean tank = shape.kind() == Kind.TANK, stair = shape.diameter() >= (tank ? TankDesign.STAIR_SIZE : SphereDesign.STAIR_SIZE);
+            assertEquals(stair ? 1 : 0, unit.woundStairs().size(), shape.toString());
+            assertEquals(stair, unit.ladders().isEmpty(), shape.toString());
+            for (var l : unit.ladders()) assertTrue(l.top() - Access.LANDING - l.base() <= Access.MAX_CLIMB + Access.DECK + 1e-9, shape + " climbs from " + l.base());
+            if (tank) assertEquals(shape.fillHeight(), unit.floating.length(), 0, shape.toString());
             var nozzles = shape.nozzles();
             assertEquals(shape.kind() == Kind.TANK ? 3 : 2, nozzles.size(), shape.toString());
             for (int i = 0; i < nozzles.size(); i++)

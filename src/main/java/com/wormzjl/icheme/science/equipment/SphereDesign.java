@@ -18,7 +18,8 @@ import java.util.List;
  * at least four, 0.05 D wide, their tops 1 m over the equator, with crossed tie rods in each bay below the equator (thin:
  * no collision). One stair wound round it (owner approval 2026-10-21) climbs from grade beside the front-right leg,
  * outside the legs below the equator and over the upper half, to a landing beside the top platform: a ring round the top
- * nozzle about 0.36 D across with its handrail, two relief valves with 2 m vertical stacks and a manway. Its ports are
+ * nozzle about 0.36 D across with its handrail, two relief valves with 2 m vertical stacks and a manway; a sphere under
+ * {@link #STAIR_SIZE} across has a caged ladder up its back and a bridge onto the ring instead (owner change 2026-10-21). Its ports are
  * fixed: N1 VAPOUR at the top pole, its flange facing up over the platform, and N2 LIQUID from the bottom pole, its line
  * dropping, turning to the front and ending at the front edge on the lowest row between the two front legs, as a skirted
  * drum's bottom outlet.
@@ -42,6 +43,16 @@ final class SphereDesign extends UnitDesign {
     static final double LANDING = 1.4;
     /** The relief valves' stacks over the platform's walking surface, m (photo survey: 2 m vertical stacks). */
     static final double STACK = 2;
+    /**
+     * The least diameter that carries the wound stair, m (owner change 2026-10-21, "only put round ladders on them when they
+     * are big enough"): the approved stair follows the upper half to the top, but its landing needs the top platform out to
+     * where the stair comes off the legs, over half the sphere's radius under 10 m (0.85 r at 4 m, 0.57 r at 8 m, 0.51 r at
+     * 10 m), so a smaller sphere's stair never reaches the shell it is to follow. A smaller one has the kit's caged climb
+     * up its back instead ({@link #ladder}), a bridge from it onto the platform.
+     */
+    static final double STAIR_SIZE = 10;
+    /** A small sphere's ladder stands at the back (+z), midway between two legs, and its bridge's width, m. */
+    static final double LADDER = Math.PI / 2, BRIDGE = 1.1;
 
     @Override
     public double minSize() {
@@ -92,7 +103,7 @@ final class SphereDesign extends UnitDesign {
     @Override
     public List<Line> datasheet(EquipmentShape shape) {
         var p = Plan.of(shape.diameter(), shape.support());
-        return List.of(new Line("sphere", size(p.d), p.n, size(p.wl)), new Line("sphere.access", number(p.level + Access.DECK)));
+        return List.of(new Line("sphere", size(p.d), p.n, size(p.wl)), new Line(p.stairway() ? "sphere.access" : "sphere.access.ladder", number(p.level + Access.DECK)));
     }
 
     /**
@@ -103,17 +114,35 @@ final class SphereDesign extends UnitDesign {
     record Plan(double d, double r, int s, double yc, int n, double wl, double legs, double a, double rp, double level, double outer, double topOd, double topDefault,
                 double bottomOd, double bottomDefault) {
         static Plan of(double d, int s) {
-            double r = d / 2, wl = Math.max(LEAST_LEG, LEG * d), outer = r + wl + Access.GAP + Access.WOUND_WIDTH;
+            double r = d / 2, wl = Math.max(LEAST_LEG, LEG * d), level = s + d + CROWN;
+            // A small sphere's box reaches past its ladder's cage, past its rest's outer ladder where it needs one.
+            boolean rest = Math.ceil(level - 1e-9) > Access.MAX_CLIMB;
+            double outer = d >= STAIR_SIZE ? r + wl + Access.GAP + Access.WOUND_WIDTH
+                    : Math.max(r + wl + Access.GAP, face(r) + (rest ? Access.MIN_DECK + Access.GAP : Access.GAP) + Access.Climb.REACH);
             int n = Math.max(4, 2 * (int) Math.round(Math.PI * d / (2 * LEG_SPACING)));
             double topOd = PipeSizes.od(.1 + .02 * d, .2, .6), bottomOd = PipeSizes.od(.1 + .015 * d, .2, .5);
             // The platform reaches out to where the stair stands half a metre under its walking level.
-            double rp = Math.max(Math.max(PLATFORM * d / 2, LEAST_PLATFORM), around(s + d + CROWN + Access.DECK - LEVEL_RUN, r, wl, s + r));
-            return new Plan(d, r, s, s + r, n, wl, r + wl / 2, ProcessUnit.centre(outer + .05), rp, s + d + CROWN, outer,
+            double rp = Math.max(PLATFORM * d / 2, LEAST_PLATFORM);
+            if (d >= STAIR_SIZE) rp = Math.max(rp, around(level + Access.DECK - LEVEL_RUN, r, wl, s + r));
+            return new Plan(d, r, s, s + r, n, wl, r + wl / 2, ProcessUnit.centre(outer + .05), rp, level, outer,
                     topOd, PipeSizes.od(.06 + .012 * d, .15, topOd), bottomOd, PipeSizes.od(.06 + .01 * d, .15, bottomOd));
         }
 
         double[] at(double rho, double t, double y) {
             return Access.around(a, a, rho, t, y);
+        }
+
+        /** Whether the sphere carries the wound stair ({@link #STAIR_SIZE}). */
+        boolean stairway() {
+            return d >= STAIR_SIZE;
+        }
+
+        /**
+         * A small sphere's ladder face: the plane square to the back ({@link #LADDER}) this far from the axis, its ladder's
+         * rung plane {@link Access#STANDOFF} off the equator.
+         */
+        static double face(double r) {
+            return r + Access.STANDOFF - Access.GAP;
         }
 
         /** Leg {@code i}'s angle: the front's middle (-π/2) between legs 0 and n - 1. */
@@ -140,9 +169,15 @@ final class SphereDesign extends UnitDesign {
         var p = Plan.of(u.shape.diameter(), u.shape.support());
         sphere(u, p);
         legs(u, p);
-        var stair = u.woundStair(stair(p));
-        double end = stair.angle(stair.steps()), span = LANDING / (p.rp + Access.GAP + Access.WOUND_WIDTH / 2);
-        crown(u, p, end, span);
+        if (p.stairway()) {
+            var stair = u.woundStair(stair(p));
+            double end = stair.angle(stair.steps()), span = LANDING / (p.rp + Access.GAP + Access.WOUND_WIDTH / 2);
+            crown(u, p, end - span / 2, span / 2 * p.rp + .05);
+            landing(u, p, end, span);
+        } else {
+            crown(u, p, LADDER, BRIDGE / 2 + .05);
+            ladder(u, p);
+        }
         u.nozzles.add(top(p));
         u.nozzles.add(bottom(p));
         u.fluidPoint = new double[]{p.a, p.s + .01, p.a};
@@ -201,27 +236,18 @@ final class SphereDesign extends UnitDesign {
 
     /**
      * The top platform: a ring deck round the top nozzle from its flange out to {@link Plan#rp}, railed round but where the
-     * landing joins it; the landing over the stair's band beyond the stair's top ({@code end} to {@code end - span}), railed
-     * round but towards the stair and the ring; braces under both to the sphere; the two relief valves and their stacks,
-     * and the manway, on the ring away from the landing.
+     * access joins it, {@code half} either side of angle {@code mid} along its edge; braces under it to the sphere; the
+     * two relief valves and their stacks, and the manway, on the ring away from the access.
      */
-    private static void crown(ProcessUnit u, Plan p, double end, double span) {
-        double inner = PipeSizes.flange(p.topOd) / 2 + .02, wall = inner - Access.GAP, width = p.rp - wall, deck = p.level + Access.DECK, mid = end - span / 2;
+    private static void crown(ProcessUnit u, Plan p, double mid, double half) {
+        double inner = PipeSizes.flange(p.topOd) / 2 + .02, wall = inner - Access.GAP, width = p.rp - wall, deck = p.level + Access.DECK;
         var ring = new Access.Arc(p.a, p.a, wall, mid - Math.PI, mid + Math.PI, p.rp, Access.Arc.step(p.rp));
-        double half = span / 2 * p.rp + .05, centre = Math.PI * p.rp;
+        double centre = Math.PI * p.rp;
         u.platform(ring, p.level, width, Access.RAILED, false, false, centre - half, centre + half);
-        double edge = p.rp + 2 * Access.GAP + Access.WOUND_WIDTH;
-        var landing = new Access.Arc(p.a, p.a, p.rp - Access.GAP, end - span, end, edge, Access.Arc.step(edge));
-        u.platform(landing, p.level, edge - p.rp + Access.GAP, Access.RAILED, true, false);
-        // The ring's and the landing's braces to the sphere.
         int count = Math.max(3, (int) Math.round(2 * Math.PI * p.rp / 2));
         for (int i = 0; i < count; i++) {
             double t = mid + Math.PI * (2 * i + 1) / count, rho = p.rp - .3;
             u.mesh.bar(p.at(rho, t, p.yc + p.heightAt(rho) - .05), p.at(rho, t, p.level), .08, new double[]{1, 0, 0}, Material.STEELWORK);
-        }
-        for (double t : new double[]{end - span + .1 / edge, end - .1 / edge}) {
-            double rho = Math.min(p.rp + .2, .98 * p.r);
-            u.mesh.bar(p.at(rho, t, p.yc + p.heightAt(rho) - .05), p.at(edge - .1, t, p.level - .02), .08, UP, Material.STEELWORK);
         }
         // The relief valves on the ring, their stacks up; the manway's cover, a step on the deck.
         double rv = Math.max(inner + .3, p.rp - .45);
@@ -237,6 +263,44 @@ final class SphereDesign extends UnitDesign {
         u.mesh.cylinder(cover, .36, -.4, .1, 16, Material.FLANGE);
         u.mesh.bolts(cover, .6, .3, .36, .1, 1, Material.BOLT);
         u.solids.add(ProcessUnit.Solid.rod(manway, 1, deck - .4, deck + .1, .36, 0));
+    }
+
+    /**
+     * The stair's landing over its band beyond its top ({@code end} to {@code end - span}), railed round but towards the
+     * stair and the ring, on two braces to the sphere.
+     */
+    private static void landing(ProcessUnit u, Plan p, double end, double span) {
+        double edge = p.rp + 2 * Access.GAP + Access.WOUND_WIDTH;
+        var landing = new Access.Arc(p.a, p.a, p.rp - Access.GAP, end - span, end, edge, Access.Arc.step(edge));
+        u.platform(landing, p.level, edge - p.rp + Access.GAP, Access.RAILED, true, false);
+        for (double t : new double[]{end - span + .1 / edge, end - .1 / edge}) {
+            double rho = Math.min(p.rp + .2, .98 * p.r);
+            u.mesh.bar(p.at(rho, t, p.yc + p.heightAt(rho) - .05), p.at(edge - .1, t, p.level - .02), .08, UP, Material.STEELWORK);
+        }
+    }
+
+    /**
+     * A small sphere's access ({@link #STAIR_SIZE}): the kit's caged climb ({@link ProcessUnit#climb}) up the back between
+     * two legs, its ladder on the face {@link Plan#face} out, on a post behind each section (and, over
+     * {@link Access#MAX_CLIMB}, its rest on four posts), walked through onto a bridge {@link #BRIDGE} wide from the face
+     * in to the top platform's ring, railed both sides, on a brace from the sphere and the upper section's post.
+     */
+    private static void ladder(ProcessUnit u, Plan p) {
+        double face = Plan.face(p.r), length = 1.5, out = p.a + face;
+        var run = new Access.Line(new double[]{p.a + length / 2, 0, out}, new double[]{-1, 0, 0}, new double[]{0, 0, 1}, length);
+        for (double rest : u.climb(run, 0, p.level + Access.DECK, length / 2, length / 2, .15)) {
+            var back = run.at(length / 2, Access.MIN_DECK - .05, 0);
+            u.post(back[0], back[2], 0, rest, .1, false);
+        }
+        u.post(p.a, out - .05, 0, p.level, .1, false);
+        // The bridge along +z from inside the ring's edge to the face; its deck's far side on the run line.
+        double from = p.a + p.rp - Access.GAP, bridge = out - from;
+        var deck = new Access.Line(new double[]{p.a + BRIDGE / 2, 0, from}, new double[]{0, 0, 1}, new double[]{-1, 0, 0}, bridge);
+        u.platform(deck, p.level, BRIDGE, Access.RAILED, false, false);
+        u.rails(new Access.Line(deck.at(0, BRIDGE, 0), deck.direction(), new double[]{1, 0, 0}, bridge), p.level, BRIDGE - Access.GAP, false, false);
+        double rho = Math.min((p.rp + p.r) / 2, .9 * p.r);
+        for (double x : new double[]{p.a - BRIDGE / 2 + .15, p.a + BRIDGE / 2 - .15})
+            u.mesh.bar(new double[]{x, p.yc + p.heightAt(rho) - .05, p.a + rho}, new double[]{x, p.level - .02, p.a + rho}, .08, new double[]{0, 0, 1}, Material.STEELWORK);
     }
 
     /**
