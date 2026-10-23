@@ -18,7 +18,7 @@ import java.util.*;
 import java.util.function.Function;
 
 /**
- * Checkpoint format 13 of committed science and runtime state: what one storage unit holds and what the core record
+ * Checkpoint format 15 of committed science and runtime state: what one storage unit holds and what the core record
  * holds. Rebuilds properties through the immutable model; it never deserializes implementation caches or creates a
  * nitrogen charge. Where the units live is {@link FluidCheckpointStore}'s business.
  *
@@ -41,7 +41,8 @@ import java.util.function.Function;
  * crystal the package admits or a custom solid (owner decision D23), and the reader refuses an id that names no record
  * of the package or saved constants that are not the record's. The topology unit's registrations carry a vessel's
  * ports (cell, face, phase port, connection role) and its spec's level height and open flag; every boundary transfer its kind. No other
- * format is read: format 14 and older are refused with the instruction to create a fresh world (format 15, unit format 8,
+ * format is decoded; world opening discards incompatible formats and rebuilds from placed blocks instead of upgrading
+ * them ({@link FluidSavedData#open}, owner choice 2026-10-23). Format 15, unit format 8,
  * added requested mover flow and the enabled flag, batch 2026-10-23-pump-compressor-switch-sound; format 14, unit format 7,
  * added directed multi-cell mover ports, batch 2026-10-23-functional-pumps-compressors; format 13, unit format 6,
  * added the open vessels of batch 2026-10-21-floating-roof-tanks: the open flag of specs and inventories, the OVERFLOW
@@ -49,7 +50,7 @@ import java.util.function.Function;
  * heights to specs and inventories with the drums of batch 2026-10-15-custom-equipment-rendering; format 11 dropped
  * the velocity-limit modes among the endpoint modes, 2026-10-18, and unit format 4 states their eight ordinals,
  * 2026-10-19; format 10, unit format 3, dropped the movers' efficiency, the approximate fallback and the saved
- * interval's acceptance: every interval is a full solve).</p>
+ * interval's acceptance: every interval is a full solve.</p>
  */
 public final class FluidCheckpointCodec {
     public static final int VERSION=15;
@@ -276,7 +277,7 @@ public final class FluidCheckpointCodec {
     }
     private static void requireHeader(Reader r,byte kind,long id,long revision,long generation,String what) {
         if(r.i32()!=UNIT_MAGIC)throw new IllegalArgumentException("Invalid saved unit of "+what+": not a fluid storage unit");
-        int format=r.u8();if(format!=UNIT_FORMAT)throw new IllegalArgumentException("Fluid storage unit format "+format+" of "+what+" cannot be read: this build reads unit format "+UNIT_FORMAT
+        int format=r.u8();if(format!=UNIT_FORMAT)throw new FormatMismatchException("Fluid storage unit format "+format+" of "+what+" cannot be read: this build reads unit format "+UNIT_FORMAT
                 +" only and has no upgrade from older formats. Create a fresh world for this development build.");
         int k=r.u8();long i=r.i64(),v=r.i64(),g=r.i64();
         if(k!=kind||i!=id||v!=revision||g!=generation)throw new IllegalArgumentException("The stored unit of "+what+" holds "+(k==ISLAND?"island "+i:"kind "+k)+" revision "+v+" generation "+g
@@ -584,8 +585,8 @@ public final class FluidCheckpointCodec {
     }
     private static final List<String> LONG_COLUMNS=List.of("Id","Revision","Generation","Online","Committed","Retry","Base","Since","Start","Horizon","Pack","Offset");
     /**
-     * Reads and validates a core record: format 13 only (older formats are refused with the instruction to create a
-     * fresh world), every field present and typed, the envelope digest, the string and package tables,
+     * Reads and validates a core record: the current format only, every field present and typed, the envelope digest,
+     * the string and package tables,
      * the pack list, and every index row's unit reference lying inside a listed pack. The units themselves are read by
      * {@link #island} and {@link #topology}.
      */
@@ -593,7 +594,7 @@ public final class FluidCheckpointCodec {
         Objects.requireNonNull(tag);
         if(!tag.contains("FluidFormat",Tag.TAG_INT))throw new IllegalArgumentException("Not a fluid checkpoint: no FluidFormat");
         int format=tag.getInt("FluidFormat");
-        if(format!=VERSION)throw new IllegalArgumentException("Fluid checkpoint format "+format+" cannot be read: this build reads format "+VERSION
+        if(format!=VERSION)throw new FormatMismatchException("Fluid checkpoint format "+format+" cannot be read: this build reads format "+VERSION
                 +" only and has no upgrade from older formats. Create a fresh world for this development build.");
         long epoch=requireLong(tag,"Epoch","checkpoint");if(epoch<0)throw new IllegalArgumentException("Negative world epoch");
         if(!(tag.get("Strings") instanceof ListTag stringList)||!stringList.isEmpty()&&stringList.getElementType()!=Tag.TAG_STRING)throw new IllegalArgumentException("Missing or mistyped fluid checkpoint field Strings");
@@ -710,6 +711,12 @@ public final class FluidCheckpointCodec {
     }
     private static int[] requireInts(CompoundTag tag,String key,String where) {
         if(!(tag.get(key) instanceof IntArrayTag values))throw new IllegalArgumentException("Missing or mistyped fluid "+where+" field "+key);return values.getAsIntArray();
+    }
+
+    /** A world may discard incompatible state; malformed data is a separate failure and must not trigger a reset. */
+    static final class FormatMismatchException extends IllegalArgumentException {
+        private static final long serialVersionUID=1L;
+        FormatMismatchException(String message){super(message);}
     }
 
     // ---------------- in-memory checkpoints, for tests and tools (edits: test CheckpointImages) ----------------

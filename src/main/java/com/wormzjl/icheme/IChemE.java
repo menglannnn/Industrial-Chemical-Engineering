@@ -239,7 +239,8 @@ public final class IChemE {
     private static void onFluidChunkLoaded(net.neoforged.neoforge.event.level.ChunkEvent.Load event) {
         if(event.getLevel() instanceof net.minecraft.server.level.ServerLevel level) {
             var server=level.getServer();var dimension=level.dimension();long chunk=event.getChunk().getPos().toLong();
-            server.execute(()->com.wormzjl.icheme.runtime.fluid.FluidWorldAuthority.find(server).ifPresent(world->world.loadedChunk(dimension,chunk)));
+            // Always queue: a load event may fire before the chunk is visible to getChunkNow, even on this thread.
+            server.tell(new net.minecraft.server.TickTask(server.getTickCount(),()->com.wormzjl.icheme.runtime.fluid.FluidWorldAuthority.loadedChunk(server,dimension,chunk)));
         }
     }
 

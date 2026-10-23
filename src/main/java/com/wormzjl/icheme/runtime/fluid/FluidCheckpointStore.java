@@ -325,7 +325,7 @@ public final class FluidCheckpointStore {
                     +": a half-written or damaged pack. Create a fresh world for this development build.");
             var header=ByteBuffer.wrap(bytes);
             if(header.getInt()!=PACK_MAGIC)throw new IllegalArgumentException("Fluid pack "+p+" is not a fluid pack");
-            int format=header.getInt();if(format!=PACK_FORMAT)throw new IllegalArgumentException("Fluid pack format "+format+" cannot be read: this build reads pack format "+PACK_FORMAT
+            int format=header.getInt();if(format!=PACK_FORMAT)throw new FluidCheckpointCodec.FormatMismatchException("Fluid pack format "+format+" cannot be read: this build reads pack format "+PACK_FORMAT
                     +" only and has no upgrade from older formats. Create a fresh world for this development build.");
             if(header.getLong()!=p)throw new IllegalArgumentException("Fluid pack "+p+" names another pack");
             for(int index:rowsByPack.getOrDefault(p,List.of())) {
@@ -358,6 +358,17 @@ public final class FluidCheckpointStore {
     /** Reads the committed core record from this store's backend and loads it. */
     public Optional<Loaded> read(Function<FluidCheckpointCodec.PackageKey,FluidThermodynamics> models) throws IOException {
         var core=backend.readCore();return core==null?Optional.empty():Optional.of(load(core,models));
+    }
+    /**
+     * An empty store after a rejected format, before any save. Retired packs survive until the replacement core is
+     * committed; new pack numbers skip them, so a failed replacement cannot overwrite the previous checkpoint.
+     */
+    FluidCheckpointStore resetForFormatChange() {
+        if(loaded||sequence!=0)throw new IllegalStateException("Only an unopened checkpoint can reset its format");
+        var fresh=new FluidCheckpointStore(backend,io);
+        try{for(long pack:backend.packs())fresh.nextPack=Math.max(fresh.nextPack,Math.addExact(pack,1));}
+        catch(IOException failure){throw new IllegalStateException("Cannot list retired fluid packs",failure);}
+        return fresh;
     }
     /** Deletes, after an accepted load, every pack the loaded core record does not reference and every temporary file
      * an interrupted write left: orphans of a crash between a pack and its core record. Returns how many. */

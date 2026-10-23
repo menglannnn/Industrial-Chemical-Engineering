@@ -15,7 +15,7 @@ import java.util.function.Function;
 
 /**
  * The world's fluid checkpoint as overworld saved data, independent of chunk residency: the core record of checkpoint
- * format 11 ({@link FluidCheckpointCodec}) is this saved data's file, and its island and topology units live in pack
+ * format {@link FluidCheckpointCodec#VERSION} is this saved data's file, and its island and topology units live in pack
  * files beside it ({@link FluidCheckpointStore}). A save is prepared on the server thread - the live authority is
  * captured (certified islands are materialised) and only the units whose island changed since they were written are
  * encoded - and committed on Minecraft's IO worker: the new pack, then the core record, each written atomically. The
@@ -104,8 +104,8 @@ public final class FluidSavedData extends SavedData {
         return tag.merge(plan.core().copy());
     }
     /**
-     * Reads format 11: the core record and the units of {@code store}. Any other format is refused with the instruction
-     * to create a fresh world: there is no upgrade from any older format.
+     * Strictly reads the current core record and units of {@code store}. No older format is decoded or upgraded;
+     * {@link #open} separately handles a world's format mismatch by starting an empty simulation.
      */
     public static FluidSavedData load(CompoundTag core,Function<FluidCheckpointCodec.PackageKey,FluidThermodynamics> models,FluidCheckpointStore store) {
         var loaded=store.load(core,models);var data=new FluidSavedData(loaded.checkpoint(),models,store);data.world=loaded.world();return data;
@@ -118,13 +118,20 @@ public final class FluidSavedData extends SavedData {
         if(a.toAbsolutePath().normalize().equals(b.toAbsolutePath().normalize()))return true;
         try{return a.getFileName().equals(b.getFileName())&&Files.isSameFile(a.toAbsolutePath().getParent(),b.toAbsolutePath().getParent());}catch(IOException unknown){return false;}
     }
-    /** A failed read must never be treated as an empty new world and reinitialize its reservoirs. */
+    /** World loads reset incompatible formats; every other failed read still preserves the saved authority. */
     public static FluidSavedData open(MinecraftServer server,Function<FluidCheckpointCodec.PackageKey,FluidThermodynamics> models) {
         if(!server.isSameThread())throw new IllegalStateException("Fluid world data requires the server thread");
         var dataFolder=server.getWorldPath(LevelResource.ROOT).resolve("data");
         var store=FluidCheckpointStore.directory(dataFolder,net.neoforged.neoforge.common.IOUtilities::withIOWorker,true);
         var storage=server.overworld().getDataStorage();
-        var factory=new SavedData.Factory<>(()->new FluidSavedData(new FluidCheckpointCodec.Checkpoint(List.of()),models,store),(tag,registries)->load(tag,models,store));
+        var factory=new SavedData.Factory<>(()->new FluidSavedData(new FluidCheckpointCodec.Checkpoint(List.of()),models,store),(tag,registries)->{
+            try{return load(tag,models,store);}
+            catch(FluidCheckpointCodec.FormatMismatchException mismatch) {
+                com.wormzjl.icheme.IChemE.LOGGER.warn("fluid_checkpoint status=RESET detail={} Inventories, controls and pending fluid events discarded; placed devices rebuild on chunk load.",mismatch.getMessage());
+                var fresh=new FluidSavedData(new FluidCheckpointCodec.Checkpoint(List.of()),models,store.resetForFormatChange());
+                fresh.setDirty();return fresh;
+            }
+        });
         var existing=storage.get(factory,DATA_NAME);
         var path=dataFolder.resolve(FluidCheckpointStore.CORE_NAME);
         if(existing!=null) {

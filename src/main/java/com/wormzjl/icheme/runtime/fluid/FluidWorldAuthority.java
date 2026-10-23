@@ -5,6 +5,11 @@ import com.wormzjl.icheme.science.fluid.network.*;
 import com.wormzjl.icheme.science.fluid.thermo.FluidThermodynamics;
 import com.wormzjl.icheme.science.fluid.topology.TopologyCompiler;
 import com.wormzjl.icheme.science.material.*;
+import com.wormzjl.icheme.world.level.block.EquipmentStructure;
+import com.wormzjl.icheme.world.level.block.EquipmentShellBlock;
+import com.wormzjl.icheme.world.level.block.FluidDeviceBlock;
+import com.wormzjl.icheme.world.level.block.entity.EquipmentShellBlockEntity;
+import com.wormzjl.icheme.world.level.block.entity.FluidDeviceBlockEntity;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.resources.ResourceKey;
@@ -13,9 +18,12 @@ import net.minecraft.server.MinecraftServer;
 import net.minecraft.world.level.Level;
 import java.util.*;
 
-/** Server-owned physical registry and hydraulic authority. Only presentation buckets inspect loaded block entities. */
+/** Server-owned hydraulic authority. Chunk events bind placed devices; engine buckets publish process presentation. */
 public final class FluidWorldAuthority implements AutoCloseable {
     private static final Map<MinecraftServer,FluidWorldAuthority> SERVERS=new IdentityHashMap<>();
+    private record LoadedChunk(ResourceKey<Level> dimension,long chunk) {}
+    /** Server-thread chunk notifications that arrived before ServerStarting installed the authority. */
+    private static final Map<MinecraftServer,Set<LoadedChunk>> EARLY_CHUNKS=new IdentityHashMap<>();
     private final MinecraftServer server;
     private final MaterialCatalog catalog;
     private final Map<FluidCheckpointCodec.PackageKey,FluidThermodynamics> models=new HashMap<>();
@@ -39,6 +47,8 @@ public final class FluidWorldAuthority implements AutoCloseable {
     /** How long an undeliverable recovery (offline player, full inventory, unloaded chunk) waits for its next attempt. */
     private static final int RECOVERY_RETRY_TICKS=20;
     private final Set<Long> unboundBindings=new HashSet<>();
+    /** Equipment whose remaining chunks must load before its complete structure can be registered. */
+    private final Map<PhysicalFluidTopology.Position,EquipmentStructure.Vessel> unboundStructures=new LinkedHashMap<>();
     /** Engine-owned presentation: loaded devices and open menus, updated on their island's bucket only. */
     private final FluidPresentation<com.wormzjl.icheme.world.inventory.FluidDeviceMenu> presentation;
     /** Complete immutable snapshots from the last bucket; bounded by loaded/open devices, never player replies. */
@@ -93,7 +103,18 @@ public final class FluidWorldAuthority implements AutoCloseable {
                 FluidCheckpointCodec.VERSION,topology.onlineTick(),loaded.size(),saved,restored,loaded.size()-restored);
         for(var s:loaded)if(s.status().startsWith("WAITING: saved "))IChemE.LOGGER.warn("fluid_island={} status=CERTIFICATE_DISCARDED detail={}",s.id(),s.status());
     }
-    public static void start(MinecraftServer server){if(SERVERS.containsKey(server))throw new IllegalStateException("Duplicate fluid world authority");SERVERS.put(server,new FluidWorldAuthority(server));}
+    public static void start(MinecraftServer server) {
+        if(SERVERS.containsKey(server))throw new IllegalStateException("Duplicate fluid world authority");
+        var world=new FluidWorldAuthority(server);SERVERS.put(server,world);
+        var early=EARLY_CHUNKS.remove(server);
+        if(early!=null)for(var loaded:early)world.loadedChunk(loaded.dimension(),loaded.chunk());
+    }
+    /** Retain early chunk loads as well as normal ones; called only on this server's thread. */
+    public static void loadedChunk(MinecraftServer server,ResourceKey<Level> dimension,long chunk) {
+        var world=find(server).orElse(null);
+        if(world==null)EARLY_CHUNKS.computeIfAbsent(server,k->new LinkedHashSet<>()).add(new LoadedChunk(dimension,chunk));
+        else world.loadedChunk(dimension,chunk);
+    }
     public static Optional<FluidWorldAuthority> find(MinecraftServer server){if(!server.isSameThread())throw new IllegalStateException("Fluid world lookup requires server thread");return Optional.ofNullable(SERVERS.get(server));}
     public static void tick(MinecraftServer server){find(server).ifPresent(FluidWorldAuthority::tick);}
     /** Also called before between-tick completion routing, so an old worker cannot win a reload race. */
@@ -111,7 +132,7 @@ public final class FluidWorldAuthority implements AutoCloseable {
         data.setDirty();
     }
     public static void stop(MinecraftServer server){find(server).ifPresent(FluidWorldAuthority::close);}
-    public static void forget(MinecraftServer server){com.wormzjl.icheme.network.ColumnV3Network.forgetPresentation(server);var world=SERVERS.remove(server);if(world!=null)world.close();}
+    public static void forget(MinecraftServer server){EARLY_CHUNKS.remove(server);com.wormzjl.icheme.network.ColumnV3Network.forgetPresentation(server);var world=SERVERS.remove(server);if(world!=null)world.close();}
     private void owned(){if(!server.isSameThread())throw new IllegalStateException("Fluid authority requires the logical server thread");}
     /** Every island of this world solves on a model built from the same captured options, so the
      * configured trace cutoff is one value for every worker and every retained solver: a retained
@@ -266,8 +287,38 @@ public final class FluidWorldAuthority implements AutoCloseable {
         if(registry.applyPending())deliverRecoveries();
         data.setDirty();
     }
-    /** A chunk loaded: its registered devices are marked for their buckets, which bind and present them. Nothing is pushed. */
-    public void loadedChunk(ResourceKey<Level> dimension,long chunk){owned();for(long id:registry.chunk(dimension.location().toString(),chunk))presentation.markDirty(id);}
+    /**
+     * Rebind placed devices, queue missing registrations, then mark their presentation buckets. This also rebuilds an
+     * empty authority after a format reset, including equipment spanning chunks. Never loads a chunk or runs a solve.
+     */
+    public void loadedChunk(ResourceKey<Level> dimension,long chunk) {
+        owned();if(closed)return;
+        var level=server.getLevel(dimension);if(level==null)return;
+        var at=new net.minecraft.world.level.ChunkPos(chunk);
+        var loaded=level.getChunkSource().getChunkNow(at.x,at.z);if(loaded==null)return;
+        String name=dimension.location().toString();
+        for(var cell:List.copyOf(loaded.getBlockEntitiesPos())) {
+            var block=loaded.getBlockState(cell).getBlock();
+            if(!(block instanceof FluidDeviceBlock)&&!(block instanceof EquipmentShellBlock))continue;
+            var entity=loaded.getBlockEntity(cell); // Includes saved cells not yet promoted from pending NBT.
+            if(entity instanceof FluidDeviceBlockEntity pipe) {
+                var position=new PhysicalFluidTopology.Position(name,cell.getX(),cell.getY(),cell.getZ());
+                var record=registry.at(position).orElseGet(()->place(position,pipe.kind(),PhysicalFluidTopology.Direction.valueOf(pipe.getBlockState().getValue(FluidDeviceBlock.FACING).name())));
+                if(pipe.fluidIdentity()!=record.device().id())pipe.bindIdentity(record.device().id());else deviceLoaded(record.device().id());
+            } else if(entity instanceof EquipmentShellBlockEntity shell&&shell.shape()!=null&&shell.shape().fluidDevice()) {
+                var origin=shell.origin();
+                unboundStructures.put(new PhysicalFluidTopology.Position(name,origin.getX(),origin.getY(),origin.getZ()),new EquipmentStructure.Vessel(origin,shell.shape()));
+            }
+        }
+        for(var it=unboundStructures.entrySet().iterator();it.hasNext();) {
+            var entry=it.next();if(!entry.getKey().dimension().equals(name))continue;
+            var vessel=entry.getValue();var origin=vessel.origin();
+            if(at.x<(origin.getX()>>4)||at.x>((origin.getX()+vessel.shape().sizeX()-1)>>4)
+                    ||at.z<(origin.getZ()>>4)||at.z>((origin.getZ()+vessel.shape().sizeZ()-1)>>4))continue;
+            if(EquipmentStructure.restoreFluidBinding(level,vessel))it.remove();
+        }
+        for(long id:registry.chunk(name,chunk))presentation.markDirty(id);
+    }
     /** A device's block entity loaded or was bound: marked for its bucket, never presented at once. */
     public void deviceLoaded(long id){owned();if(!closed)presentation.deviceLoaded(id);}
     /** A device's block entity unloaded or was removed: publications stop marking it. */
@@ -633,5 +684,5 @@ public final class FluidWorldAuthority implements AutoCloseable {
             });
         }
     }
-    @Override public void close(){owned();if(closed)return;closed=true;publishedMenuData.clear();publishedSightGlasses.clear();publishedMovers.clear();runtime.close();data.setDirty();}
+    @Override public void close(){owned();if(closed)return;closed=true;unboundStructures.clear();publishedMenuData.clear();publishedSightGlasses.clear();publishedMovers.clear();runtime.close();data.setDirty();}
 }

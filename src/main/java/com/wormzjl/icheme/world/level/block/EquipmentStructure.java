@@ -167,6 +167,35 @@ public final class EquipmentStructure {
         });
     }
 
+    /**
+     * Rebind a saved registration, or queue defaults for a complete placed structure with none. Returns false only
+     * while chunks are missing, so a later chunk-load event retries it. Partial or stale layouts stay inactive;
+     * normal construction or the existing layout refresh handles them. No blocks are changed and nothing solves.
+     */
+    public static boolean restoreFluidBinding(ServerLevel level,Vessel vessel) {
+        if(!vessel.shape().fluidDevice())return true;
+        var world=FluidWorldAuthority.find(level.getServer()).orElse(null);if(world==null)return false;
+        var node=node(vessel);var held=position(level,node);
+        var record=world.at(held).orElse(null);
+        if(record!=null) {
+            if(level.hasChunkAt(node)&&record.device().position().equals(held)&&!record.device().ports().isEmpty()
+                    &&level.getBlockEntity(node) instanceof EquipmentShellBlockEntity shell&&ours(shell,vessel.origin(),vessel.shape())) {
+                if(shell.fluidIdentity()!=record.device().id())shell.bindIdentity(record.device().id());else world.deviceLoaded(record.device().id());
+            }
+            return true;
+        }
+        var origin=vessel.origin();var shape=vessel.shape();
+        for(int x=origin.getX()>>4;x<=(origin.getX()+shape.sizeX()-1)>>4;x++)
+            for(int z=origin.getZ()>>4;z<=(origin.getZ()+shape.sizeZ()-1)>>4;z++)if(!level.hasChunk(x,z))return false;
+        var layout=ShapeRasterizer.layout(shape);
+        for(var cell:layout.shell()) {
+            var at=origin.offset(cell.x(),cell.y(),cell.z());
+            if(!(level.getBlockEntity(at) instanceof EquipmentShellBlockEntity shell)||!ours(shell,origin,shape)||shell.stale())return true;
+        }
+        for(var cell:layout.interior())if(!level.getBlockState(origin.offset(cell.x(),cell.y(),cell.z())).is(ModBlocks.EQUIPMENT_INTERIOR.get()))return true;
+        register(level,vessel);return true;
+    }
+
     /** A floating-roof tank registers open to the atmosphere (batch 2026-10-21-floating-roof-tanks); a drum and a sphere closed. */
     private static boolean open(Vessel vessel) {
         return vessel.shape().kind() == EquipmentShape.Kind.TANK;
