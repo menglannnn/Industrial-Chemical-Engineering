@@ -18,6 +18,7 @@
     "actuator": "icheme:block/equipment_actuator",
     "feed": "icheme:block/equipment_feed",
     "drain": "icheme:block/equipment_drain",
+    "guard": "icheme:block/equipment_guard",
     "particle": "icheme:block/equipment_pipe"
   }
 }
