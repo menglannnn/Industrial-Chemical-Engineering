@@ -353,8 +353,8 @@ public final class IslandCertificate {
             for(var section:pipe.sections()){d.real(section.length());d.real(section.diameter());d.real(section.roughness());d.real(section.minorLoss());}
             switch(pipe.control()) {
                 case FlowControl.Passive ignored->d.text("passive");
-                case FlowControl.Pump pump->{d.text("pump");d.real(pump.targetVolumeFlow());d.real(pump.maximumAddedPressure());}
-                case FlowControl.Compressor compressor->{d.text("compressor");d.real(compressor.targetVolumeFlow());d.real(compressor.maximumPressureRatio());}
+                case FlowControl.Pump pump->{d.text("pump");d.real(pump.requestedVolumeFlow());d.real(pump.maximumAddedPressure());d.integer(pump.enabled()?1:0);}
+                case FlowControl.Compressor compressor->{d.text("compressor");d.real(compressor.requestedVolumeFlow());d.real(compressor.maximumPressureRatio());d.integer(compressor.enabled()?1:0);}
                 case FlowControl.PressureValve valve->{d.text("valve");d.real(valve.targetPressure());}
             }
             d.integer(pipe.blockedDirections());

@@ -27,6 +27,7 @@ public final class IChemEClient {
         com.wormzjl.icheme.network.FluidNetwork.forgetDelivered();
         TankDisplays.clear();
         SightGlassDisplays.clear();
+        MoverSounds.clear();
     }
 
 }

@@ -35,9 +35,10 @@ import java.util.*;
  * <p>{@code fluid-11} (batch 2026-10-21-floating-roof-tanks): a vessel's view carries its {@link FluidView.Tank} (level
  * height, open flag, vent and spill rates), and a vessel's nozzle states its own port class, OVERFLOW among them, whichever
  * way it faces.</p>
+ * <p>{@code fluid-12}: controls carry a required ON/OFF power value for constructed movers, retaining their requested flow.</p>
  */
 public final class FluidNetwork {
-    public static final String PROTOCOL="fluid-11";
+    public static final String PROTOCOL="fluid-12";
     private static final Gson JSON=new Gson();
     public static final int MAX_JSON=262144;
     public static final int MAX_EDIT_JSON=4096;
@@ -49,11 +50,14 @@ public final class FluidNetwork {
     /** The two bounds as a player reads them ("1.01", "10"), for the screen's refusal of a ratio outside them. */
     public static String[] pressureRatioBoundsText(){return new String[]{plainNumber(MINIMUM_PRESSURE_RATIO),plainNumber(MAXIMUM_PRESSURE_RATIO)};}
     private static String plainNumber(double value){return java.math.BigDecimal.valueOf(value).stripTrailingZeros().toPlainString();}
-    public record Controls(double temperature,double pressure,double diameter,double roughness,double volumeFlow,double maximumAddedPressure,double[] composition,SlurryFeed solids,double maximumPressureRatio) {
+    /** Required on the wire; a missing or unknown value is rejected by Controls validation. */
+    public enum Power {ON,OFF}
+    public record Controls(double temperature,double pressure,double diameter,double roughness,double volumeFlow,double maximumAddedPressure,double[] composition,SlurryFeed solids,double maximumPressureRatio,Power power) {
+        public Controls(double temperature,double pressure,double diameter,double roughness,double volumeFlow,double maximumAddedPressure,double[] composition,SlurryFeed solids,double maximumPressureRatio){this(temperature,pressure,diameter,roughness,volumeFlow,maximumAddedPressure,composition,solids,maximumPressureRatio,Power.ON);}
         public Controls(double temperature,double pressure,double diameter,double roughness,double volumeFlow,double maximumAddedPressure,double[] composition,SlurryFeed solids){this(temperature,pressure,diameter,roughness,volumeFlow,maximumAddedPressure,composition,solids,DEFAULT_PRESSURE_RATIO);}
         public Controls(double temperature,double pressure,double diameter,double roughness,double volumeFlow,double maximumAddedPressure,double[] composition){this(temperature,pressure,diameter,roughness,volumeFlow,maximumAddedPressure,composition,SlurryFeed.NONE);}
         public Controls {
-            Objects.requireNonNull(solids);composition=composition.clone();
+            Objects.requireNonNull(solids);Objects.requireNonNull(power,"Missing mover power setting");composition=composition.clone();
             for(double value:new double[]{temperature,pressure,diameter,roughness,volumeFlow,maximumAddedPressure,maximumPressureRatio})if(!Double.isFinite(value))throw new IllegalArgumentException("All controls must be finite numbers");
             if(!pressureRatioAllowed(maximumPressureRatio))throw new IllegalArgumentException("The pressure ratio must lie between "+MINIMUM_PRESSURE_RATIO+" and "+MAXIMUM_PRESSURE_RATIO);
             // Temperature and pressure are only required to be physical here: the input box is the property package's
@@ -63,11 +67,12 @@ public final class FluidNetwork {
         }
         @Override public double[] composition(){return composition.clone();}
         public static Controls from(WorldTopologyLedger.Registration record) {
-            var d=record.device();double flow=d.control() instanceof FlowControl.Mover m?m.targetVolumeFlow():.01;
+            var d=record.device();double flow=d.control() instanceof FlowControl.Mover m?m.requestedVolumeFlow():.01;
             double head=d.control() instanceof FlowControl.Pump p?p.maximumAddedPressure():500000;
             double ratio=d.control() instanceof FlowControl.Compressor c?c.maximumPressureRatio():DEFAULT_PRESSURE_RATIO;
             double pressure=d.control() instanceof FlowControl.PressureValve v?v.targetPressure():record.spec().pressure();
-            return new Controls(record.spec().temperature(),pressure,d.geometry().diameter(),d.geometry().roughness(),flow,head,record.spec().composition(),record.spec().solids(),ratio);
+            var power=d.control() instanceof FlowControl.Mover m&&!m.enabled()?Power.OFF:Power.ON;
+            return new Controls(record.spec().temperature(),pressure,d.geometry().diameter(),d.geometry().roughness(),flow,head,record.spec().composition(),record.spec().solids(),ratio,power);
         }
     }
     /**
@@ -234,8 +239,8 @@ public final class FluidNetwork {
                 var geometry=d.geometry();var control=d.control();var spec=old.spec();
                 switch(d.kind()) {
                     case PIPE,FILTER->geometry=new PipeResistance.Geometry(geometry.length(),controls.diameter,PipeResistance.DEFAULT_ROUGHNESS_METRES,geometry.minorLoss());
-                    case PUMP->control=new FlowControl.Pump(controls.volumeFlow,controls.maximumAddedPressure);
-                    case COMPRESSOR->control=new FlowControl.Compressor(controls.volumeFlow,controls.maximumPressureRatio);
+                    case PUMP->control=new FlowControl.Pump(controls.volumeFlow,controls.maximumAddedPressure,controls.power==Power.ON);
+                    case COMPRESSOR->control=new FlowControl.Compressor(controls.volumeFlow,controls.maximumPressureRatio,controls.power==Power.ON);
                     case VALVE->control=new FlowControl.PressureValve(controls.pressure);
                     case GENERATOR->spec=new FluidDeviceSpec(spec.volume(),controls.temperature,controls.pressure,controls.composition,controls.solids);
                     case VOID->spec=new FluidDeviceSpec(spec.volume(),spec.temperature(),controls.pressure,spec.composition());

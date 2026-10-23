@@ -1,0 +1,10 @@
+{
+  "pump_running": {
+    "subtitle": "subtitles.icheme.pump_running",
+    "sounds": [{ "name": "icheme:pump_running", "stream": false }]
+  },
+  "compressor_running": {
+    "subtitle": "subtitles.icheme.compressor_running",
+    "sounds": [{ "name": "icheme:compressor_running", "stream": false }]
+  }
+}

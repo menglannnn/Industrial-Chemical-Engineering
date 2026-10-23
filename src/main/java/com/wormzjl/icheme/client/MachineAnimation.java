@@ -90,6 +90,7 @@ public final class MachineAnimation {
             var shape = cell.shape();
             var origin = cell.origin();
             if (cell.isRemoved() || cell.getLevel() != level || shape == null || origin == null) continue;
+            double motionSeconds=MoverSounds.running(cell)?seconds:0;
             var parts = ShapeRasterizer.moving(shape);
             double unitPhase = Math.floorMod(31L * origin.getX() + 7L * origin.getY() + origin.getZ(), 97) / 97.0;
             for (int index : cell.moving()) {
@@ -118,7 +119,7 @@ public final class MachineAnimation {
                 // Building or dropping buffers binds others.
                 if (BUFFERS.size() != cached) bound = null;
                 if (buffer == null || shader.MODEL_VIEW_MATRIX == null) continue;
-                double turns = motion.turns(seconds) + unitPhase;
+                double turns = motion.turns(motionSeconds) + unitPhase;
                 var pose = new Matrix4f(event.getModelViewMatrix()).translate((float) dx, (float) dy, (float) dz);
                 if (motion.slides()) {
                     double d = motion.offset(turns);

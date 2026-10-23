@@ -16,8 +16,12 @@ public sealed interface FlowControl permits FlowControl.Passive,FlowControl.Move
      * first end's pressure.
      */
     sealed interface Mover extends FlowControl permits Pump,Compressor {
-        /** Suction volume flow target (m3/s at suction conditions). */
-        double targetVolumeFlow();
+        /** Configured suction volume flow (m3/s), retained while switched off. */
+        double requestedVolumeFlow();
+        /** Whether the constructed mover is commanded on; one-block devices retain their enabled behavior. */
+        boolean enabled();
+        /** Effective target: Off uses the existing zero-flow closed regime. */
+        default double targetVolumeFlow(){return enabled()?requestedVolumeFlow():0;}
         /**
          * The largest pressure rise (Pa) the device can add over what its suction draws: {@code suctionDensity} (kg/m3) is
          * the density of the stream the first end draws, {@code suctionPressure} (Pa) the first end's driving pressure,
@@ -45,13 +49,14 @@ public sealed interface FlowControl permits FlowControl.Passive,FlowControl.Move
     /** Suction volumetric target (m3/s), maximum added pressure (Pa). A liquid pump (decision D1): it refuses a supply whose
      * vapour fills more than {@link #VAPOUR_REFUSE} of its fluid volume, and runs again once that share is below
      * {@link #VAPOUR_RESUME}. */
-    record Pump(double targetVolumeFlow,double maximumAddedPressure) implements Mover {
+    record Pump(double requestedVolumeFlow,double maximumAddedPressure,boolean enabled) implements Mover {
+        public Pump(double targetVolumeFlow,double maximumAddedPressure){this(targetVolumeFlow,maximumAddedPressure,true);}
         /** Vapour share of the supply's fluid volume above which a pump refuses (plan Appendix B, decision D6). */
         public static final double VAPOUR_REFUSE=.02;
         /** Vapour share below which a refused pump runs again. */
         public static final double VAPOUR_RESUME=.005;
         public Pump {
-            if(!Double.isFinite(targetVolumeFlow)||targetVolumeFlow<0||!Double.isFinite(maximumAddedPressure)||maximumAddedPressure<=0)
+            if(!Double.isFinite(requestedVolumeFlow)||requestedVolumeFlow<0||!Double.isFinite(maximumAddedPressure)||maximumAddedPressure<=0)
                 throw new IllegalArgumentException("Invalid pump settings");
         }
         /** The setting is the rise for the reference fluid (water at 298.15 K, 1 atm), scaled by the suction's density: a
@@ -79,13 +84,14 @@ public sealed interface FlowControl permits FlowControl.Passive,FlowControl.Move
      * {@link com.wormzjl.icheme.science.fluid.transport.SlurryTransport#DEFAULT_TRACE_VOLUME_FRACTION} of its volume,
      * and runs again once the condensed share is below {@link #CONDENSED_RESUME} (and no solid is above the trace).
      */
-    record Compressor(double targetVolumeFlow,double maximumPressureRatio) implements Mover {
+    record Compressor(double requestedVolumeFlow,double maximumPressureRatio,boolean enabled) implements Mover {
+        public Compressor(double targetVolumeFlow,double maximumPressureRatio){this(targetVolumeFlow,maximumPressureRatio,true);}
         /** Condensed share of the supply's mass above which a compressor refuses (plan Appendix B, decision D6). */
         public static final double CONDENSED_REFUSE=.01;
         /** Condensed share below which a refused compressor runs again. */
         public static final double CONDENSED_RESUME=.002;
         public Compressor {
-            if(!Double.isFinite(targetVolumeFlow)||targetVolumeFlow<0||!Double.isFinite(maximumPressureRatio)||maximumPressureRatio<=1)
+            if(!Double.isFinite(requestedVolumeFlow)||requestedVolumeFlow<0||!Double.isFinite(maximumPressureRatio)||maximumPressureRatio<=1)
                 throw new IllegalArgumentException("Invalid compressor settings");
         }
         /** {@code (r_max - 1) P_suction} (decision D7): the discharge stands at most {@code r_max} times the suction. */

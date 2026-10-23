@@ -203,10 +203,12 @@ public final class IChemE {
         ModItems.register(modEventBus);
         ModBlockEntities.register(modEventBus);
         ModMenus.register(modEventBus);
+        com.wormzjl.icheme.registry.ModSounds.register(modEventBus);
         modEventBus.addListener(ColumnV3Network::register);
         modEventBus.addListener(com.wormzjl.icheme.network.FluidNetwork::register);
         modEventBus.addListener(com.wormzjl.icheme.network.TankDisplayNetwork::register);
         modEventBus.addListener(com.wormzjl.icheme.network.SightGlassNetwork::register);
+        modEventBus.addListener(com.wormzjl.icheme.network.MoverNetwork::register);
         modEventBus.addListener(com.wormzjl.icheme.network.EquipmentNetwork::register);
         modEventBus.addListener(com.wormzjl.icheme.network.PipelineToolNetwork::register);
         modEventBus.addListener(IChemE::addCreativeTabItem);

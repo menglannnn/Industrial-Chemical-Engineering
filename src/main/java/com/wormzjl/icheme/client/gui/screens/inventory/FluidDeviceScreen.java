@@ -30,7 +30,7 @@ public final class FluidDeviceScreen extends AbstractContainerScreen<FluidDevice
     private String[][] particles=new String[64][3];
     private long revision=Long.MIN_VALUE,messageRevision;
     private int page,phase=2;
-    private boolean mass,templates,rebuildNext,hasConnections;
+    private boolean mass,templates,rebuildNext,hasConnections,powerOn=true;
     private String search="",message="",hovered;
     private V3ClientPresets library;
     private V3ClientPresets.Snapshot mixtureSnapshot;
@@ -56,6 +56,7 @@ public final class FluidDeviceScreen extends AbstractContainerScreen<FluidDevice
     private boolean pipe(){return menu.clientData()!=null&&menu.clientData().kind()==TopologyCompiler.Kind.PIPE;}
     private boolean transport(){return menu.clientData()!=null&&menu.clientData().view().pipeInfo()!=null;}
     private boolean canEdit(){return !menu.debug()&&menu.clientData()!=null;}
+    private boolean constructedMover(){var data=menu.clientData();return data!=null&&!datasheet.isEmpty()&&(data.kind()==TopologyCompiler.Kind.PUMP||data.kind()==TopologyCompiler.Kind.COMPRESSOR);}
     private int rail(){return Math.min(210,imageWidth/3);}
     // The rail below "Operating conditions" (its fields, the filter's button and the values) is one column clipped to
     // the area above the status separator and scrolled by its own bar on the rail/table divider when it is longer than
@@ -84,6 +85,7 @@ public final class FluidDeviceScreen extends AbstractContainerScreen<FluidDevice
         if(connected!=hasConnections){hasConnections=connected;if(!connected&&page==3)page=0;rebuildNext=true;}
         if(data.view().inputRevision()==revision)return;
         boolean first=revision==Long.MIN_VALUE;revision=data.view().inputRevision();var c=data.controls();
+        powerOn=c.power()==FluidNetwork.Power.ON;
         fields.clear();fields.put("temperature",new NumericDraft(temperatureUnit.display(c.temperature())));
         fields.put("pressure",new NumericDraft(c.pressure()));fields.put("diameter",new NumericDraft(c.diameter()));
         fields.put("volumeFlow",new NumericDraft(c.volumeFlow()));fields.put("maximumAddedPressure",new NumericDraft(c.maximumAddedPressure()));
@@ -129,7 +131,7 @@ public final class FluidDeviceScreen extends AbstractContainerScreen<FluidDevice
     /** Rail controls above the values: the fields a device's page edits, or a filter's recover button. */
     private int railControls(){
         var data=menu.clientData();if(data==null||!canEdit())return 0;
-        return switch(data.kind()){case GENERATOR,PUMP,COMPRESSOR->2;case VALVE,VOID,PIPE,FILTER->1;default->0;};
+        return switch(data.kind()){case PUMP,COMPRESSOR->constructedMover()?3:2;case GENERATOR->2;case VALVE,VOID,PIPE,FILTER->1;default->0;};
     }
     private void changePage(int target){page=target;templates=false;scroll.reset();rebuild();}
     private void toggleBasis(){
@@ -173,6 +175,10 @@ public final class FluidDeviceScreen extends AbstractContainerScreen<FluidDevice
         int datasheetX=tank()?252:116;
         if(!datasheet.isEmpty())action("datasheet",datasheetX,29,Math.min(100,imageWidth-datasheetX-10),()->changePage(5)).active=page!=5;
         railBuiltOffset=railOffset();int y=railTop()-railBuiltOffset;
+        if(canEdit()&&constructedMover()) {
+            var power=action(powerOn?"power_on":"power_off",12,y,rail()-4,()->{powerOn=!powerOn;rebuild();});
+            power.visible=inRail(y,20);y+=RAIL_CONTROL;
+        }
         if(canEdit())switch(data.kind()){
             case GENERATOR->{railField("pressure",tr("pressure_input"),y);railField("temperature",tr("temperature_input",temperatureUnit.symbol()),y+RAIL_CONTROL);}
             case PUMP->{railField("volumeFlow",tr("flow_input"),y);railField("maximumAddedPressure",tr("head_input"),y+RAIL_CONTROL);}
@@ -282,7 +288,7 @@ public final class FluidDeviceScreen extends AbstractContainerScreen<FluidDevice
         try{
             var controls=new FluidNetwork.Controls(temperatureUnit.kelvin(fields.get("temperature").value()),fields.get("pressure").value(),
                 fields.get("diameter").value(),PipeResistance.DEFAULT_ROUGHNESS_METRES,fields.get("volumeFlow").value(),
-                fields.get("maximumAddedPressure").value(),composition.moleFractions(),solids(),fields.get("maximumPressureRatio").value());
+                fields.get("maximumAddedPressure").value(),composition.moleFractions(),solids(),fields.get("maximumPressureRatio").value(),powerOn?FluidNetwork.Power.ON:FluidNetwork.Power.OFF);
             FluidNetwork.sendEdit(menu,revision,controls);message=tr("waiting");
         }catch(IllegalArgumentException e){message=tr("invalid_input");}
     }
@@ -388,6 +394,7 @@ public final class FluidDeviceScreen extends AbstractContainerScreen<FluidDevice
     /** A device's values on the rail from y (unscrolled: below its controls); returns the bottom of the last line. */
     private int renderDeviceRail(GuiGraphics g,int y){
         var data=menu.clientData();var view=data.view();
+        if(constructedMover()){railLine(g,"power_state",tr(data.controls().power()==FluidNetwork.Power.ON?"state_on":"state_off"),y);y+=RAIL_LINE;}
         if(view.state()!=null){
             var state=view.state();
             railLine(g,"temperature",number(temperatureUnit.display(state.temperature()))+" "+temperatureUnit.symbol(),y);y+=RAIL_LINE;

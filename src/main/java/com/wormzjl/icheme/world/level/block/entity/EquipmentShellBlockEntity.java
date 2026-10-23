@@ -119,8 +119,10 @@ public final class EquipmentShellBlockEntity extends BlockEntity implements Flui
         if (id <= 0) throw new IllegalStateException("Invalid fluid identity");
         identity = id;
         setChanged();
-        if (level instanceof ServerLevel serverLevel)
+        if (level instanceof ServerLevel serverLevel) {
             FluidWorldAuthority.find(serverLevel.getServer()).ifPresent(world -> world.deviceLoaded(id));
+            level.sendBlockUpdated(worldPosition,getBlockState(),getBlockState(),2);
+        }
     }
 
     /** This cell's position in the fluid topology. */
@@ -147,6 +149,7 @@ public final class EquipmentShellBlockEntity extends BlockEntity implements Flui
      * them, and a floating-roof tank's node cell for the client that draws its roof.
      */
     private void trackMoving() {
+        if(level!=null&&level.isClientSide())com.wormzjl.icheme.client.MoverSounds.track(this);
         moving = new int[0];
         CLIENT_MOVING.remove(this);
         CLIENT_TANKS.remove(this);
@@ -207,6 +210,7 @@ public final class EquipmentShellBlockEntity extends BlockEntity implements Flui
 
     /** Unloaded or removed: publications stop marking the drum; the client stops moving its parts. */
     private void released() {
+        if(level!=null&&level.isClientSide())com.wormzjl.icheme.client.MoverSounds.forget(this);
         CLIENT_MOVING.remove(this);
         CLIENT_TANKS.remove(this);
         if (level != null) FloatingRoofs.of(level).remove(worldPosition);
@@ -276,6 +280,7 @@ public final class EquipmentShellBlockEntity extends BlockEntity implements Flui
         released();
         identity = 0;
         setChanged();
+        if(level instanceof ServerLevel)level.sendBlockUpdated(worldPosition,getBlockState(),getBlockState(),2);
     }
 
     public @Nullable EquipmentShape shape() {
@@ -417,6 +422,7 @@ public final class EquipmentShellBlockEntity extends BlockEntity implements Flui
     public CompoundTag getUpdateTag(HolderLookup.Provider registries) {
         var tag = new CompoundTag();
         write(tag);
+        if(identity!=0)tag.putLong("FluidIdentity",identity);
         return tag;
     }
 

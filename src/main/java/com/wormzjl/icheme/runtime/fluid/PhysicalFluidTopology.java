@@ -47,6 +47,7 @@ public final class PhysicalFluidTopology {
             boolean valid=switch(kind) {case PUMP->control instanceof FlowControl.Pump;case COMPRESSOR->control instanceof FlowControl.Compressor;case VALVE->control instanceof FlowControl.PressureValve;default->control instanceof FlowControl.Passive;};
             if(!valid)throw new IllegalArgumentException("Device/control mismatch");
             ports=List.copyOf(ports);
+            if(ports.isEmpty()&&control instanceof FlowControl.Mover mover&&!mover.enabled())throw new IllegalArgumentException("Only constructed movers have a power switch");
             if(ports.size()>MAXIMUM_PORTS)throw new IllegalArgumentException("Too many device ports: "+ports.size());
             var seen=new HashSet<Contact>();
             int suction=0,discharge=0;

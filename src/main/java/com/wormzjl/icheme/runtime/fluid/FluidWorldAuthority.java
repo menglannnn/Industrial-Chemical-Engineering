@@ -49,6 +49,8 @@ public final class FluidWorldAuthority implements AutoCloseable {
     private final TankWatchers tankWatchers=new TankWatchers();
     private final TankWatchers sightGlassWatchers=new TankWatchers();
     private final Map<Long,Integer> publishedSightGlasses=new HashMap<>();
+    private final TankWatchers moverWatchers=new TankWatchers();
+    private final Map<Long,com.wormzjl.icheme.network.MoverNetwork.State> publishedMovers=new HashMap<>();
     private boolean closed;
     private long lastDebugChat=Long.MIN_VALUE;
     private MaterialCatalog observedSolidData;
@@ -269,7 +271,7 @@ public final class FluidWorldAuthority implements AutoCloseable {
     /** A device's block entity loaded or was bound: marked for its bucket, never presented at once. */
     public void deviceLoaded(long id){owned();if(!closed)presentation.deviceLoaded(id);}
     /** A device's block entity unloaded or was removed: publications stop marking it. */
-    public void deviceUnloaded(long id){owned();forgetSightGlass(id);presentation.deviceUnloaded(id);publishedMenuData.remove(id);publishedGlides.remove(id);}
+    public void deviceUnloaded(long id){owned();forgetSightGlass(id);forgetMover(id);presentation.deviceUnloaded(id);publishedMenuData.remove(id);publishedGlides.remove(id);}
     /**
      * A client's watch request for open tanks by their node cells (owner decision FR4, R-B): each new watch of a loaded
      * open tank within {@link TankWatchers#RANGE} is answered with the tank's last published display, if it has one (a
@@ -289,7 +291,38 @@ public final class FluidWorldAuthority implements AutoCloseable {
         }
     }
     /** Ends every tank watch of a player who left. */
-    public void forgetWatcher(UUID player){owned();tankWatchers.forget(player);for(long id:sightGlassWatchers.devices(player))unwatchSightGlass(player,id);}
+    public void forgetWatcher(UUID player){owned();tankWatchers.forget(player);for(long id:sightGlassWatchers.devices(player))unwatchSightGlass(player,id);for(long id:moverWatchers.devices(player))unwatchMover(player,id);}
+
+    /** A sound/animation subscription replays published operating state only; it never reads or advances a process. */
+    public void watchMovers(net.minecraft.server.level.ServerPlayer player,List<com.wormzjl.icheme.network.MoverNetwork.Target> watch,List<com.wormzjl.icheme.network.MoverNetwork.Target> unwatch) {
+        owned();if(closed)return;var uuid=player.getUUID();var level=player.serverLevel();
+        for(var target:unwatch)unwatchMover(uuid,target.identity());
+        for(var target:watch) {
+            var pos=target.position();
+            if(!level.hasChunkAt(pos)||!moverRange(player,pos)||!(level.getBlockEntity(pos) instanceof FluidView.Receiver receiver)||receiver.fluidIdentity()!=target.identity())continue;
+            var record=registrations().get(target.identity());
+            if(record==null||record.device().ports().isEmpty()||!(record.device().control() instanceof FlowControl.Mover)||!cell(record).equals(pos)||!record.device().position().dimension().equals(level.dimension().location().toString()))continue;
+            if(moverWatchers.watch(uuid,target.identity())) {
+                refreshObserved(target.identity());var state=publishedMovers.get(target.identity());
+                if(state!=null)com.wormzjl.icheme.network.MoverNetwork.send(player,state);
+            }
+        }
+    }
+    private static boolean moverRange(net.minecraft.server.level.ServerPlayer player,BlockPos pos){return pos.distToCenterSqr(player.position())<=com.wormzjl.icheme.network.MoverNetwork.RANGE*com.wormzjl.icheme.network.MoverNetwork.RANGE;}
+    private void refreshObserved(long id){if(moverWatchers.watchers(id).isEmpty()&&sightGlassWatchers.watchers(id).isEmpty())presentation.unobserve(id);else presentation.observe(id);}
+    private void unwatchMover(UUID player,long id){moverWatchers.unwatch(player,id);refreshObserved(id);}
+    private void forgetMover(long id){moverWatchers.remove(id);publishedMovers.remove(id);refreshObserved(id);}
+    private void publishMover(WorldTopologyLedger.Registration record,net.minecraft.server.level.ServerLevel level,BlockPos pos) {
+        if(record.device().ports().isEmpty()||!(record.device().control() instanceof FlowControl.Mover mover))return;
+        long id=record.device().id();var target=new com.wormzjl.icheme.network.MoverNetwork.Target(pos,id);
+        var state=new com.wormzjl.icheme.network.MoverNetwork.State(target,mover instanceof FlowControl.Compressor,mover.enabled()&&mover.requestedVolumeFlow()>0);
+        publishedMovers.put(id,state);
+        for(var uuid:moverWatchers.watchers(id)) {
+            var player=server.getPlayerList().getPlayer(uuid);
+            if(player==null||player.hasDisconnected()||player.serverLevel()!=level||!moverRange(player,pos)){unwatchMover(uuid,id);continue;}
+            com.wormzjl.icheme.network.MoverNetwork.send(player,state);
+        }
+    }
 
     /** Explicit visual requests replay cached colour only, then keep a future engine bucket scheduled. */
     public void watchSightGlasses(net.minecraft.server.level.ServerPlayer player,List<com.wormzjl.icheme.network.SightGlassNetwork.Target> watch,List<com.wormzjl.icheme.network.SightGlassNetwork.Target> unwatch) {
@@ -310,9 +343,9 @@ public final class FluidWorldAuthority implements AutoCloseable {
     }
     private void unwatchSightGlass(UUID player,long id) {
         sightGlassWatchers.unwatch(player,id);
-        if(sightGlassWatchers.watchers(id).isEmpty())presentation.unobserve(id);
+        refreshObserved(id);
     }
-    private void forgetSightGlass(long id){sightGlassWatchers.remove(id);presentation.unobserve(id);publishedSightGlasses.remove(id);}
+    private void forgetSightGlass(long id){sightGlassWatchers.remove(id);refreshObserved(id);publishedSightGlasses.remove(id);}
     private void publishSightGlass(WorldTopologyLedger.Registration record,net.minecraft.server.level.ServerLevel level,BlockPos pos,FluidView view) {
         long id=record.device().id();
         int colour=SightGlassDisplay.colour(view,componentNames,model.molecularWeights(),catalog,com.wormzjl.icheme.science.fluid.thermo.FluidMaterialCatalog.networkPackage(catalog));
@@ -532,6 +565,7 @@ public final class FluidWorldAuthority implements AutoCloseable {
             if(!record.device().ports().isEmpty()) {
                 if(level.getBlockEntity(pos) instanceof FluidView.Receiver receiver&&receiver.fluidIdentity()==id){unboundBindings.remove(id);var presented=view.get();receiver.acceptFluidView(presented);
                     if(record.spec().open())publishTank(record,level,pos,presented);
+                    publishMover(record,level,pos);
                     return true;}
                 if(unboundBindings.add(id))IChemE.LOGGER.warn("fluid_binding={} status=UNBOUND detail=Loaded vessel cell mismatch; saved inventory and topology retained",id);
                 return false;
@@ -564,11 +598,11 @@ public final class FluidWorldAuthority implements AutoCloseable {
         public boolean acceptsRecovery(UUID player){var online=server.getPlayerList().getPlayer(player);return online!=null&&online.getInventory().getFreeSlot()>=0;}
         public void refused(UUID event,String reason){refuseEvent(event,reason);}
         public void committed(Set<Long> removed,Set<Long> recompiled) {
-            unboundBindings.removeAll(removed);publishedMenuData.keySet().removeAll(removed);publishedGlides.keySet().removeAll(removed);for(long device:removed){tankWatchers.remove(device);forgetSightGlass(device);}
+            unboundBindings.removeAll(removed);publishedMenuData.keySet().removeAll(removed);publishedGlides.keySet().removeAll(removed);for(long device:removed){tankWatchers.remove(device);forgetSightGlass(device);forgetMover(device);}
             // Every recompiled device's cached snapshot predates the change, and one left in no island (a pipe whose only
             // tank was broken) gets no publication that would mark it: each is marked for its next bucket, which presents
             // its new view (its replacement island, or "no hydraulic boundary"); an opening menu waits for that bucket.
-            publishedMenuData.keySet().removeAll(recompiled);publishedSightGlasses.keySet().removeAll(recompiled);for(long device:recompiled)presentation.markIfLoaded(device);
+            publishedMenuData.keySet().removeAll(recompiled);publishedSightGlasses.keySet().removeAll(recompiled);publishedMovers.keySet().removeAll(recompiled);for(long device:recompiled)presentation.markIfLoaded(device);
             // Open menus follow their devices to the replacement islands' buckets.
             presentation.rekey();
             // A committed edit is drawn now: a loaded pipe takes its registered bore, and its neighbours their faces.
@@ -599,5 +633,5 @@ public final class FluidWorldAuthority implements AutoCloseable {
             });
         }
     }
-    @Override public void close(){owned();if(closed)return;closed=true;publishedMenuData.clear();publishedSightGlasses.clear();runtime.close();data.setDirty();}
+    @Override public void close(){owned();if(closed)return;closed=true;publishedMenuData.clear();publishedSightGlasses.clear();publishedMovers.clear();runtime.close();data.setDirty();}
 }

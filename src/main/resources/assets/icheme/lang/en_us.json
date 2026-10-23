@@ -1,4 +1,13 @@
 {
+  "gui.icheme.fluid.power_on": "Power: On",
+  "gui.icheme.fluid.power_off": "Power: Off",
+  "gui.icheme.fluid.power_state": "Power state",
+  "gui.icheme.fluid.state_on": "On",
+  "gui.icheme.fluid.state_off": "Off",
+  "gui.icheme.fluid.power_on.hint": "Switch off, then press Apply. Flow stops and settings are retained.",
+  "gui.icheme.fluid.power_off.hint": "Switch on, then press Apply. Resume with the retained settings.",
+  "subtitles.icheme.pump_running": "Pump running",
+  "subtitles.icheme.compressor_running": "Compressor running",
   "item.icheme.pipeline_sight_glass": "Pipeline Sight Glass",
   "item.icheme.pipeline_sight_glass.install": "Right-click a process pipe to install",
   "item.icheme.pipeline_sight_glass.straight_only": "Fits straight pipe sections only",

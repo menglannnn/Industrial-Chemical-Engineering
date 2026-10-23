@@ -22,7 +22,7 @@ import java.util.function.Function;
  * holds. Rebuilds properties through the immutable model; it never deserializes implementation caches or creates a
  * nitrogen charge. Where the units live is {@link FluidCheckpointStore}'s business.
  *
- * <p>Core record (one NBT compound, the world's saved data): {@code FluidFormat = 13} ({@link #VERSION}); the world {@code Epoch};
+ * <p>Core record (one NBT compound, the world's saved data): {@code FluidFormat = 15} ({@link #VERSION}); the world {@code Epoch};
  * {@code Strings}, an append-only table of the long texts units refer to; {@code Packages}, one entry per property
  * package with the thermodynamic revision and energy reference the units were written under; the pack files and their
  * sizes; the topology unit's reference; and {@code Islands}, the island index in columns: identity, revision and unit
@@ -41,7 +41,8 @@ import java.util.function.Function;
  * crystal the package admits or a custom solid (owner decision D23), and the reader refuses an id that names no record
  * of the package or saved constants that are not the record's. The topology unit's registrations carry a vessel's
  * ports (cell, face, phase port, connection role) and its spec's level height and open flag; every boundary transfer its kind. No other
- * format is read: format 13 and older are refused with the instruction to create a fresh world (format 14, unit format 7,
+ * format is read: format 14 and older are refused with the instruction to create a fresh world (format 15, unit format 8,
+ * added requested mover flow and the enabled flag, batch 2026-10-23-pump-compressor-switch-sound; format 14, unit format 7,
  * added directed multi-cell mover ports, batch 2026-10-23-functional-pumps-compressors; format 13, unit format 6,
  * added the open vessels of batch 2026-10-21-floating-roof-tanks: the open flag of specs and inventories, the OVERFLOW
  * phase port and the boundary transfers' kinds; format 12, unit format 5, added vessel ports to registrations and level
@@ -51,10 +52,10 @@ import java.util.function.Function;
  * interval's acceptance: every interval is a full solve).</p>
  */
 public final class FluidCheckpointCodec {
-    public static final int VERSION=14;
+    public static final int VERSION=15;
     /** The {@code Base} of an awake island: it carries no certificate. */
     public static final long AWAKE=-1;
-    static final int UNIT_MAGIC=0x43434655,UNIT_FORMAT=7;
+    static final int UNIT_MAGIC=0x43434655,UNIT_FORMAT=8;
     static final byte ISLAND=1,TOPOLOGY=2;
     /** Magic, format, kind, identity, revision, generation. */
     static final int UNIT_HEADER=4+1+1+8+8+8;
@@ -179,9 +180,9 @@ public final class FluidCheckpointCodec {
         var d=r.device();w.varlong(d.id());position(w,d.position(),tables);w.u8(d.kind().ordinal());w.u8(d.facing().ordinal());w.varint(tables.geometry(d.geometry()));
         switch(d.control()) {
             case FlowControl.Passive ignored->w.u8(0);
-            case FlowControl.Pump pump->{w.u8(1);w.f64(pump.targetVolumeFlow());w.f64(pump.maximumAddedPressure());}
+            case FlowControl.Pump pump->{w.u8(1);w.f64(pump.requestedVolumeFlow());w.f64(pump.maximumAddedPressure());w.bool(pump.enabled());}
             case FlowControl.PressureValve valve->{w.u8(2);w.f64(valve.targetPressure());}
-            case FlowControl.Compressor compressor->{w.u8(3);w.f64(compressor.targetVolumeFlow());w.f64(compressor.maximumPressureRatio());}
+            case FlowControl.Compressor compressor->{w.u8(3);w.f64(compressor.requestedVolumeFlow());w.f64(compressor.maximumPressureRatio());w.bool(compressor.enabled());}
         }
         // Multi-cell ports (cell, face, phase class, stable connection role).
         w.varint(d.ports().size());for(var port:d.ports()){position(w,port.cell(),tables);w.u8(port.face().ordinal());w.u8(port.port().ordinal());w.u8(port.role().code());}
@@ -196,8 +197,8 @@ public final class FluidCheckpointCodec {
         long id=r.varlong();var position=position(r,texts);int kind=r.u8();if(kind>=DEVICE_KINDS.length)throw r.invalid("unknown device kind "+kind);
         int facing=r.u8();if(facing>=DIRECTIONS.length)throw r.invalid("unknown facing "+facing);
         var geometry=geometries[r.varint(geometries.length-1)];
-        FlowControl control=switch(r.u8()){case 0->new FlowControl.Passive();case 1->new FlowControl.Pump(r.f64(),r.f64());case 2->new FlowControl.PressureValve(r.f64());
-            case 3->new FlowControl.Compressor(r.f64(),r.f64());default->throw r.invalid("unknown control");};
+        FlowControl control=switch(r.u8()){case 0->new FlowControl.Passive();case 1->new FlowControl.Pump(r.f64(),r.f64(),r.bool());case 2->new FlowControl.PressureValve(r.f64());
+            case 3->new FlowControl.Compressor(r.f64(),r.f64(),r.bool());default->throw r.invalid("unknown control");};
         int portCount=r.varint(PhysicalFluidTopology.MAXIMUM_PORTS);var ports=new ArrayList<PhysicalFluidTopology.Port>(portCount);
         for(int i=0;i<portCount;i++) {
             var cell=position(r,texts);int face=r.u8(),port=r.u8();
@@ -345,9 +346,9 @@ public final class FluidCheckpointCodec {
             for(var g:p.sections()){w.f64(g.length());w.f64(g.diameter());w.f64(g.roughness());w.f64(g.minorLoss());}
             switch(p.control()) {
                 case FlowControl.Passive ignored->w.u8(0);
-                case FlowControl.Pump pump->{w.u8(1);w.f64(pump.targetVolumeFlow());w.f64(pump.maximumAddedPressure());}
+                case FlowControl.Pump pump->{w.u8(1);w.f64(pump.requestedVolumeFlow());w.f64(pump.maximumAddedPressure());w.bool(pump.enabled());}
                 case FlowControl.PressureValve valve->{w.u8(2);w.f64(valve.targetPressure());}
-                case FlowControl.Compressor compressor->{w.u8(3);w.f64(compressor.targetVolumeFlow());w.f64(compressor.maximumPressureRatio());}
+                case FlowControl.Compressor compressor->{w.u8(3);w.f64(compressor.requestedVolumeFlow());w.f64(compressor.maximumPressureRatio());w.bool(compressor.enabled());}
             }
             // Format 6: the port of each end (PassiveNetwork.PhasePort ordinal), after the control.
             w.u8(p.firstPort().ordinal());w.u8(p.secondPort().ordinal());
@@ -473,8 +474,8 @@ public final class FluidCheckpointCodec {
             pipeIds[p]=r.i64();first[p]=r.varint(nodes);second[p]=r.varint(nodes);int count=r.varint(MAXIMUM_SECTIONS);
             var list=new ArrayList<PipeResistance.Geometry>(count);for(int s=0;s<count;s++)list.add(new PipeResistance.Geometry(r.f64(),r.f64(),r.f64(),r.f64()));
             sections.add(List.copyOf(list));
-            controls.add(switch(r.u8()){case 0->new FlowControl.Passive();case 1->new FlowControl.Pump(r.f64(),r.f64());case 2->new FlowControl.PressureValve(r.f64());
-                case 3->new FlowControl.Compressor(r.f64(),r.f64());default->throw new IllegalArgumentException("Unknown saved control");});
+            controls.add(switch(r.u8()){case 0->new FlowControl.Passive();case 1->new FlowControl.Pump(r.f64(),r.f64(),r.bool());case 2->new FlowControl.PressureValve(r.f64());
+                case 3->new FlowControl.Compressor(r.f64(),r.f64(),r.bool());default->throw new IllegalArgumentException("Unknown saved control");});
             firstPorts[p]=port(r);secondPorts[p]=port(r);
         }
         return new Topology(ids,elevations,kinds,volumes,heights,opens,pipeIds,first,second,sections,controls,firstPorts,secondPorts);
