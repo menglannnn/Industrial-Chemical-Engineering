@@ -15,6 +15,10 @@ All notable changes to Industrial Chemical Engineering (IChemE, formerly CreateC
 
 ## [Unreleased]
 
+### Added
+
+- Pipeline Tool: creative-only, per-item internal diameter settings (0.001–1 m), opened with Shift + right-click and applied to individual process pipes with right-click through queued engine edits; newly placed pipes inherit the largest connected adjacent pipe's diameter (commits `d30694ed`, `459eda31`, batch: `2026-10-23-pipeline-tool`).
+
 ## [0.11.2] - 2026-10-21
 
 ### Changed

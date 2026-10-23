@@ -13,6 +13,8 @@ public final class ModMenus {
     public static final DeferredRegister<MenuType<?>> MENU_TYPES =
             DeferredRegister.create(Registries.MENU, IChemE.MOD_ID);
     public static final DeferredHolder<MenuType<?>,MenuType<com.wormzjl.icheme.world.inventory.FluidDeviceMenu>> FLUID_DEVICE=MENU_TYPES.register("fluid_device",()->IMenuTypeExtension.create(com.wormzjl.icheme.world.inventory.FluidDeviceMenu::new));
+    public static final DeferredHolder<MenuType<?>, MenuType<com.wormzjl.icheme.world.inventory.PipelineToolMenu>> PIPELINE_TOOL =
+            MENU_TYPES.register("pipeline_tool", () -> IMenuTypeExtension.create(com.wormzjl.icheme.world.inventory.PipelineToolMenu::new));
 
     public static final DeferredHolder<MenuType<?>, MenuType<ColumnCalculatorV3Menu>> COLUMN_CALCULATOR_V3 =
             MENU_TYPES.register(
