@@ -2,5 +2,12 @@
   "parent": "icheme:block/fluid_device",
   "loader": "icheme:fluid_device",
   "kind": "pipe",
-  "shutoff_valve_accessory": true
+  "shutoff_valve_accessory": true,
+  "display": {
+    "gui": {
+      "rotation": [30, 45, 0],
+      "translation": [0, -1, 0],
+      "scale": [2, 2, 2]
+    }
+  }
 }

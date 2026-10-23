@@ -30,6 +30,10 @@ public final class FluidDeviceScreen extends AbstractContainerScreen<FluidDevice
     /** Client UI thread only; keep one time basis when moving between equipment screens this session. */
     private static FlowRateUnit preferredFlowRateUnit=FlowRateUnit.PER_SECOND;
     private FlowRateUnit flowRateUnit=preferredFlowRateUnit;
+    /** Independent of composition-entry basis; a client-session preference for the generator's phase bar. */
+    private static boolean preferredPhaseMass;
+    private boolean phaseMass=preferredPhaseMass;
+    private Button phaseBasisButton;
     private String[][] particles=new String[64][3];
     private long revision=Long.MIN_VALUE,messageRevision;
     private int page,phase=2;
@@ -170,7 +174,7 @@ public final class FluidDeviceScreen extends AbstractContainerScreen<FluidDevice
         rebuildNext=false;String focused=editors.entrySet().stream().filter(e->e.getValue()==getFocused()).map(Map.Entry::getKey).findFirst().orElse(null);
         int cursor=focused==null?0:editors.get(focused).getCursorPosition();
         boolean dropdownOpen=componentDropdown!=null&&componentDropdown.expanded();
-        clearWidgets();editors.clear();labels.clear();componentDropdown=null;
+        clearWidgets();editors.clear();labels.clear();componentDropdown=null;phaseBasisButton=null;
         action("overview",10,29,100,()->changePage(0)).active=page!=0;
         if(generator()&&canEdit()){
             action("composition",116,29,112,()->changePage(1)).active=page!=1;
@@ -187,6 +191,14 @@ public final class FluidDeviceScreen extends AbstractContainerScreen<FluidDevice
             .setTooltip(Tooltip.create(Component.translatable("gui.icheme.column.composition_basis.hint")));
         action("close",10,by,bottom[0],this::onClose);
         var data=menu.clientData();if(data==null)return;
+        if(generator()) {
+            phaseBasisButton=button(tr(phaseMass?"phase_ratio.mass_basis":"phase_ratio.volume_basis"),12,0,rail()-4,()->{
+                phaseMass=preferredPhaseMass=!phaseMass;
+                phaseBasisButton.setMessage(Component.literal(tr(phaseMass?"phase_ratio.mass_basis":"phase_ratio.volume_basis")));
+            });
+            phaseBasisButton.setTooltip(Tooltip.create(Component.translatable("gui.icheme.fluid.phase_ratio.basis_hint")));
+            layoutPhaseBasisButton();
+        }
         if(canEdit()&&data.kind()!=TopologyCompiler.Kind.RESERVOIR&&data.kind()!=TopologyCompiler.Kind.FILTER)
             action("apply",16+bottom[0],by,bottom[1],this::apply);
         if(pipe()&&data.view().pipeInfo().connections().size()>1)
@@ -366,6 +378,7 @@ public final class FluidDeviceScreen extends AbstractContainerScreen<FluidDevice
     private boolean railHover(int mx,int my,int y0,int y1){return mx>=12&&mx<rail()+10&&my>=Math.max(y0,railTop())&&my<Math.min(y1,railBottom());}
     @Override public void render(GuiGraphics g,int mouseX,int mouseY,float partialTick){
         ProcessUi.restoreCursor(minecraft,this);refresh();if(rebuildNext)rebuild();hovered=null;
+        layoutPhaseBasisButton();
         super.render(g,mouseX,mouseY,partialTick);
         if(hovered!=null&&(componentDropdown==null||!componentDropdown.popupContains(mouseX,mouseY))){
             var lines=new ArrayList<net.minecraft.util.FormattedCharSequence>();
@@ -373,6 +386,13 @@ public final class FluidDeviceScreen extends AbstractContainerScreen<FluidDevice
             g.renderTooltip(font,lines,mouseX,mouseY);
         }
         if(componentDropdown!=null)componentDropdown.renderSuggestions(g,mouseX,mouseY);
+    }
+    /** The generator rail has power, temperature, pressure and last-flow rows before its phase selector. */
+    private void layoutPhaseBasisButton() {
+        if(phaseBasisButton==null)return;
+        int y=railTop()-railOffset()+(railControls()==0?4:railControls()*RAIL_CONTROL)+4*RAIL_LINE+2;
+        phaseBasisButton.setPosition(leftPos+12,topPos+y);
+        phaseBasisButton.visible=menu.clientData().view().state()!=null&&inRail(y,20);
     }
     @Override protected void renderBg(GuiGraphics g,float partialTick,int mouseX,int mouseY){
         g.fill(leftPos,topPos,leftPos+imageWidth,topPos+imageHeight,BG);
@@ -441,7 +461,13 @@ public final class FluidDeviceScreen extends AbstractContainerScreen<FluidDevice
         if(data.kind()==TopologyCompiler.Kind.COMPRESSOR&&view.devicePressureChange()!=null&&view.state()!=null&&view.state().pressure()>0){
             railLine(g,"pressure_ratio",number((view.state().pressure()+view.devicePressureChange())/view.state().pressure()),y);y+=RAIL_LINE;}
         if(generator()&&view.state()!=null){
-            y+=2;y=renderPhaseRatio(g,hoverX,hoverY,y,view.state().phaseVolumes(),view.state().solids().volume(),"phase_ratio.generator_hint");
+            var state=view.state();double[] phases=state.phaseVolumes();double solids=state.solids().volume();
+            if(phaseMass) {
+                phases=new double[3];var n=state.phaseMoles();var weights=data.molecularWeights();
+                for(int p=0;p<3;p++)for(int c=0;c<n[p].length;c++)phases[p]+=n[p][c]*weights.get(c);
+                solids=state.solids().massKg();
+            }
+            y+=26;y=renderPhaseRatio(g,hoverX,hoverY,y,phases,solids,"phase_ratio.generator_hint",phaseMass);
         }
         // A tank reads like a pipe below its values: the phase ratio of what it holds, then the full status (its errors).
         if(tank()){
@@ -515,12 +541,16 @@ public final class FluidDeviceScreen extends AbstractContainerScreen<FluidDevice
      * percentages; returns the y below it. A pipe's volumes are what it carried over the last interval, a tank's what it holds.
      */
     private int renderPhaseRatio(GuiGraphics g,int mx,int my,int y,double[] phaseVolumes,double solidsVolume,String hint){
-        text(g,tr("phase_ratio"),12,y,MUTED,rail());y+=14;
-        double[] volumes=Arrays.copyOf(phaseVolumes,4);volumes[3]=solidsVolume;
-        double total=Arrays.stream(volumes).sum();int at=12;int[] colors={0xffd6a65a,0xff549bd2,0xffb3c0ca,0xffa28565};
-        for(int i=0;i<4;i++){int end=i==3?rail()+8:at+(total>0?(int)Math.round((rail()-4)*volumes[i]/total):0);if(total>0)g.fill(at,y,end,y+5,colors[i]);at=end;}
+        return renderPhaseRatio(g,mx,my,y,phaseVolumes,solidsVolume,hint,false);
+    }
+    /** Both arrays use the same selected basis: m3 for volume or kg for mass, including the solids. */
+    private int renderPhaseRatio(GuiGraphics g,int mx,int my,int y,double[] phaseValues,double solidsValue,String hint,boolean massBasis){
+        text(g,tr(massBasis?"phase_ratio.mass":"phase_ratio"),12,y,MUTED,rail());y+=14;
+        double[] values=Arrays.copyOf(phaseValues,4);values[3]=solidsValue;
+        double total=Arrays.stream(values).sum();int at=12;int[] colors={0xffd6a65a,0xff549bd2,0xffb3c0ca,0xffa28565};
+        for(int i=0;i<4;i++){int end=i==3?rail()+8:at+(total>0?(int)Math.round((rail()-4)*values[i]/total):0);if(total>0)g.fill(at,y,end,y+5,colors[i]);at=end;}
         y+=10;
-        for(int i=0;i<4;i++){int col=i%2,row=i/2;text(g,tr("phase_short."+i)+" "+(total>0?number(100*volumes[i]/total)+"%":"—"),12+col*rail()/2,y+row*13,TEXT,rail()/2-4);}
+        for(int i=0;i<4;i++){int col=i%2,row=i/2;text(g,tr("phase_short."+i)+" "+(total>0?number(100*values[i]/total)+"%":"—"),12+col*rail()/2,y+row*13,TEXT,rail()/2-4);}
         if(railHover(mx,my,y-24,y+26))hovered=tr(hint);
         return y+34;
     }
