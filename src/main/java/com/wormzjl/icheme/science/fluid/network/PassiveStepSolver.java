@@ -299,8 +299,10 @@ public final class PassiveStepSolver {
         @Override public double[] devicePressureChanges(){return devicePressureChanges.clone();}
         @Override public double[] externalMoles(){return externalMoles.clone();}
     }
-    public Result solve(PassiveNetwork graph,double dt,Runnable checkpoint){return solve(graph,dt,checkpoint,false);}
-    public Result solveRate(PassiveNetwork graph,Runnable checkpoint){return solve(graph,1,checkpoint,true);}
+    public Result solve(PassiveNetwork graph,double dt,Runnable checkpoint){return solve(graph,dt,checkpoint,false,null);}
+    /** The interval controller supplies only modes of its matching accepted endpoint, never a rejected attempt. */
+    Result solve(PassiveNetwork graph,double dt,Runnable checkpoint,List<FlowControl.Mode> acceptedEndpointModes){return solve(graph,dt,checkpoint,false,acceptedEndpointModes);}
+    public Result solveRate(PassiveNetwork graph,Runnable checkpoint){return solve(graph,1,checkpoint,true,null);}
     /**
      * One rate solve of {@code graph} with its vessels held as ports ({@link PassiveNetwork.NodeKind#PORT}, dt = 1), or
      * null when it has no connection or does not converge: the interval solver's guard and the solid closure check
@@ -315,7 +317,7 @@ public final class PassiveStepSolver {
         try{return solveRate(new PassiveNetwork(ports,graph.pipes()),checkpoint);}
         catch(SparseNewton.Nonconvergence|IllegalArgumentException failed){return null;}
     }
-    private Result solve(PassiveNetwork inputGraph,double dt,Runnable checkpoint,boolean rateOnly) {
+    private Result solve(PassiveNetwork inputGraph,double dt,Runnable checkpoint,boolean rateOnly,List<FlowControl.Mode> acceptedEndpointModes) {
         // A junction minted by its constructor and not yet sized to its connections is sized here (no-op otherwise).
         inputGraph=PassiveNetwork.sizeJunctionHoldups(inputGraph,model);
         this.rateOnly=rateOnly;
@@ -341,6 +343,18 @@ public final class PassiveStepSolver {
         // end, its suction walk's caps and one-way rules (suctionCapped), and the sealed pockets on either side of it
         // (relieveSealedPockets). A connection blocked elsewhere in the island changes none of them.
         modes.addAll(initialModes(graph));
+        // At exactly its setpoint a regulating valve may carry positive flow and throttling head. Re-closing it at
+        // every substep creates a different branch that must converge before it can reopen, coupled to phase draws.
+        // This seed is passed per attempt by the interval controller; mutable previousModes can include failed trials.
+        if(acceptedEndpointModes!=null) {
+            if(acceptedEndpointModes.size()!=graph.pipes().size())throw new IllegalArgumentException("Accepted endpoint mode count differs from graph");
+            for(int edge=0;edge<modes.size();edge++)if(graph.pipes().get(edge).control() instanceof FlowControl.PressureValve) {
+                var accepted=acceptedEndpointModes.get(edge);
+                if(accepted!=FlowControl.Mode.CLOSED&&accepted!=FlowControl.Mode.VALVE_OPEN&&accepted!=FlowControl.Mode.VALVE_REGULATING)
+                    throw new IllegalArgumentException("Invalid accepted pressure-valve mode");
+                modes.set(edge,accepted);
+            }
+        }
         // A pump the previous point left on its head limit, on its suction limit or at its shutoff corner opens there;
         // see {@link #previousModes}. Only those three: the target branch is decided against this
         // step's own states above, and the velocity cap is part of every line's law ({@link #saturated}).

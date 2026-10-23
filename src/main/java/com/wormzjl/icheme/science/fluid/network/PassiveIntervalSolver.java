@@ -230,7 +230,7 @@ public final class PassiveIntervalSolver {
                     if(coldSeedFor!=accepted){coldSeed=coldRateSeed(accepted,checkpoint);coldSeedFor=accepted;}
                     start=coldSeed;
                 }
-                var result=implicit.solve(start,step,checkpoint);
+                var result=implicit.solve(start,step,checkpoint,carriedFlows(accepted)!=null?carriedModes:null);
                 if(elapsed!=reopenElapsed||step!=reopenStep){reopened.clear();reopenElapsed=elapsed;reopenStep=step;}
                 var candidates=new LinkedHashSet<>(implicit.reopenable(start,result));candidates.removeAll(reopened);
                 if(!candidates.isEmpty()) {
