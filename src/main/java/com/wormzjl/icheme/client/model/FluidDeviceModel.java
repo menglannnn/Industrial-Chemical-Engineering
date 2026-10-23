@@ -3,6 +3,7 @@ package com.wormzjl.icheme.client.model;
 import com.wormzjl.icheme.IChemE;
 import com.wormzjl.icheme.science.equipment.LineGeometry;
 import com.wormzjl.icheme.science.equipment.PipeSizes;
+import com.wormzjl.icheme.science.equipment.SightGlassGeometry;
 import com.wormzjl.icheme.science.fluid.topology.TopologyCompiler;
 import com.wormzjl.icheme.world.level.block.FluidDeviceBlock;
 import com.wormzjl.icheme.world.level.block.entity.FluidDeviceBlockEntity;
@@ -45,17 +46,22 @@ public final class FluidDeviceModel implements IDynamicBakedModel {
     public static final ResourceLocation LOADER_ID = ResourceLocation.fromNamespaceAndPath(IChemE.MOD_ID, "fluid_device");
     /** {@code "loader": "icheme:fluid_device", "kind": "pipe"} (a {@link TopologyCompiler.Kind}), textures per material. */
     public static final IGeometryLoader<Geometry> LOADER = (json, context) ->
-            new Geometry(TopologyCompiler.Kind.valueOf(GsonHelper.getAsString(json, "kind").toUpperCase(Locale.ROOT)));
+            new Geometry(TopologyCompiler.Kind.valueOf(GsonHelper.getAsString(json, "kind").toUpperCase(Locale.ROOT)),GsonHelper.getAsBoolean(json,"sight_glass_accessory",false));
     private static final int CACHE = 4096;
     private static final ChunkRenderTypeSet SOLID = ChunkRenderTypeSet.of(RenderType.solid());
+    private static final ChunkRenderTypeSet GLASS = ChunkRenderTypeSet.of(RenderType.solid(),RenderType.translucent());
     private final TopologyCompiler.Kind kind;
+    private final boolean accessory;
     private final TextureAtlasSprite[] sprites;
     private final TextureAtlasSprite particle;
     private final ItemTransforms transforms;
-    private final Map<LineGeometry.Key, List<BakedQuad>> quads = new ConcurrentHashMap<>();
+    private record Look(LineGeometry.Key pipe,boolean sightGlass){}
+    private record Baked(List<BakedQuad> solid,List<BakedQuad> glass){}
+    private final Map<Look,Baked> quads = new ConcurrentHashMap<>();
 
-    private FluidDeviceModel(TopologyCompiler.Kind kind, TextureAtlasSprite[] sprites, TextureAtlasSprite particle, ItemTransforms transforms) {
+    private FluidDeviceModel(TopologyCompiler.Kind kind,boolean accessory, TextureAtlasSprite[] sprites, TextureAtlasSprite particle, ItemTransforms transforms) {
         this.kind = kind;
+        this.accessory=accessory;
         this.sprites = sprites;
         this.particle = particle;
         this.transforms = transforms;
@@ -64,15 +70,28 @@ public final class FluidDeviceModel implements IDynamicBakedModel {
     @Override
     public List<BakedQuad> getQuads(@Nullable BlockState state, @Nullable Direction side, RandomSource random, ModelData data, @Nullable RenderType renderType) {
         if (side != null) return List.of();
-        var key = key(state, data);
+        var key = new Look(key(state,data),accessory||state!=null&&FluidDeviceBlock.hasSightGlass(state));
         var cached = quads.get(key);
-        if (cached != null) return cached;
-        if (quads.size() >= CACHE) quads.clear();
-        return quads.computeIfAbsent(key, k -> EquipmentShellModel.bake(LineGeometry.polygons(k), sprites, false));
+        if(cached==null){if(quads.size()>=CACHE)quads.clear();cached=quads.computeIfAbsent(key,this::bake);}
+        if(renderType==RenderType.translucent())return cached.glass;
+        if(renderType!=null)return cached.solid;
+        return java.util.stream.Stream.concat(cached.solid.stream(),cached.glass.stream()).toList();
+    }
+
+    private Baked bake(Look look) {
+        if(!look.sightGlass)return new Baked(EquipmentShellModel.bake(LineGeometry.polygons(look.pipe),sprites,false),List.of());
+        var geometry=SightGlassGeometry.build(look.pipe,accessory);
+        return new Baked(EquipmentShellModel.bake(geometry.metal(),sprites,false),EquipmentShellModel.bake(geometry.glass(),sprites,false));
     }
 
     private LineGeometry.Key key(@Nullable BlockState state, ModelData data) {
         if (state == null || !(state.getBlock() instanceof FluidDeviceBlock block)) return LineGeometry.Key.item(kind);
+        return blockKey(state,data);
+    }
+
+    /** The same diameter/connection key for chunk geometry and the transient liquid overlay. */
+    public static LineGeometry.Key blockKey(BlockState state,ModelData data) {
+        var block=(FluidDeviceBlock)state.getBlock();
         int connections = 0;
         for (var direction : Direction.values()) if (state.getValue(FluidDeviceBlock.connection(direction))) connections |= 1 << direction.ordinal();
         int facing = state.getValue(FluidDeviceBlock.FACING).ordinal();
@@ -83,7 +102,7 @@ public final class FluidDeviceModel implements IDynamicBakedModel {
 
     @Override
     public ChunkRenderTypeSet getRenderTypes(BlockState state, RandomSource random, ModelData data) {
-        return SOLID;
+        return FluidDeviceBlock.hasSightGlass(state)?GLASS:SOLID;
     }
 
     @Override
@@ -121,10 +140,10 @@ public final class FluidDeviceModel implements IDynamicBakedModel {
         return ItemOverrides.EMPTY;
     }
 
-    public record Geometry(TopologyCompiler.Kind kind) implements IUnbakedGeometry<Geometry> {
+    public record Geometry(TopologyCompiler.Kind kind,boolean accessory) implements IUnbakedGeometry<Geometry> {
         @Override
         public BakedModel bake(IGeometryBakingContext context, ModelBaker baker, Function<Material, TextureAtlasSprite> sprites, ModelState state, ItemOverrides overrides) {
-            return new FluidDeviceModel(kind, EquipmentShellModel.sprites(context, sprites), sprites.apply(context.getMaterial("particle")), context.getTransforms());
+            return new FluidDeviceModel(kind,accessory, EquipmentShellModel.sprites(context, sprites), sprites.apply(context.getMaterial("particle")), context.getTransforms());
         }
     }
 }

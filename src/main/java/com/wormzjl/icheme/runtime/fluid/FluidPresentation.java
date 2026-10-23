@@ -6,14 +6,15 @@ import java.util.function.Supplier;
 /**
  * The engine-owned presentation schedule (plan R2 and section 3.4). Loaded devices and open menus receive
  * coalesced updates on staggered presentation buckets, about every {@value #BUCKET_TICKS} online ticks,
- * with one opening exception: an explicitly opened menu may replay its last published snapshot immediately.
+ * with one opening exception: an explicitly opened menu or requested display may replay its last publication immediately.
  * No process state is calculated by that replay, and no GUI contents are broadcast to unrequested clients.
  *
  * <p>A device or a menu belongs to bucket {@code key % 100}, where the key is the island that owns the device, or
  * the device itself when it has no hydraulic owner. An island's loaded devices and its menus are therefore
  * presented together, from one read of the island, at the online ticks {@code t} with
  * {@code t % 100 == key % 100}. A publication, a chunk load, a block-entity load or an identity binding only
- * marks a loaded device dirty; an open menu is presented at every bucket of its island, its static part only
+ * marks a loaded device dirty; a requested world-space display is presented at each bucket while observed. An open
+ * menu is presented at every bucket of its island, its static part only
  * when the device's registration revision changed since the menu last received it.
  *
  * <p>Player inputs are queued. An edit or a recovery is validated by its packet handler, queued as a ledger event
@@ -91,6 +92,8 @@ public final class FluidPresentation<C> {
     private final Map<Long,Integer> dirty=new HashMap<>();
     private final List<LinkedHashSet<Long>> dirtyBySlot=new ArrayList<>(BUCKET_TICKS);
     private final Set<Long> loaded=new HashSet<>();
+    /** Requested world-space displays refresh on the same buckets even while an island is idle. */
+    private final Set<Long> observed=new HashSet<>();
     private final BitSet active=new BitSet(BUCKET_TICKS);
     /** The last tick the hook has presented (flushed if due); marks are due from the tick after it. */
     private long flushedThrough;
@@ -120,9 +123,13 @@ public final class FluidPresentation<C> {
     public void deviceLoaded(long device){owned();loaded.add(device);markDirty(device);}
     /** A block entity unloaded or removed: no longer marked by publications, and a pending mark is dropped. */
     public void deviceUnloaded(long device) {
-        owned();loaded.remove(device);Integer slot=dirty.remove(device);
+        owned();loaded.remove(device);observed.remove(device);Integer slot=dirty.remove(device);
         if(slot!=null){dirtyBySlot.get(slot).remove(device);settle(slot);}
     }
+
+    /** Begins a visual request; only a future presentation bucket reads the view. */
+    public void observe(long device){owned();if(observed.add(device))markDirty(device);}
+    public void unobserve(long device){owned();observed.remove(device);}
 
     // ---- menus and inputs ----
 
@@ -149,6 +156,7 @@ public final class FluidPresentation<C> {
     /** Ownership changed (a topology commit replaced islands): every menu follows its device to its new island's bucket. */
     public void rekey() {
         owned();
+        for(long device:observed)markDirty(device);
         for(var subscription:subscriptions.values()) {
             int slot=slot(host.key(subscription.device));if(slot==subscription.slot)continue;
             int previous=subscription.slot;menusBySlot.get(previous).remove(subscription);settle(previous);place(subscription);
@@ -200,7 +208,8 @@ public final class FluidPresentation<C> {
         for(long device:drained) {
             boolean presented;
             try{presented=host.present(device,()->views.computeIfAbsent(device,d->host.view(d,islands)));}catch(RuntimeException failure){host.failed(device,failure);continue;}
-            if(presented){loaded.add(device);FluidRuntimeDiagnostics.count(FluidRuntimeDiagnostics.devicePresentations);}else loaded.remove(device);
+            if(presented){loaded.add(device);FluidRuntimeDiagnostics.count(FluidRuntimeDiagnostics.devicePresentations);if(observed.contains(device))markDirty(device);}
+            else{loaded.remove(device);observed.remove(device);}
         }
         settle(slot);
     }

@@ -26,16 +26,20 @@ public final class FluidDeviceBlock extends BaseEntityBlock {
     public static final MapCodec<FluidDeviceBlock> CODEC=RecordCodecBuilder.mapCodec(instance->instance.group(
             Codec.STRING.xmap(TopologyCompiler.Kind::valueOf,TopologyCompiler.Kind::name).fieldOf("device_kind").forGetter(block->block.kind),propertiesCodec()).apply(instance,FluidDeviceBlock::new));
     public static final DirectionProperty FACING=BlockStateProperties.FACING;
+    /** Static pipe accessory, with no hydraulic meaning. Changing it keeps this block and its entity. */
+    public static final BooleanProperty SIGHT_GLASS=BooleanProperty.create("sight_glass");
     private static final java.util.Map<Direction,BooleanProperty> CONNECTIONS=java.util.Map.of(
             Direction.DOWN,BlockStateProperties.DOWN,Direction.UP,BlockStateProperties.UP,Direction.NORTH,BlockStateProperties.NORTH,
             Direction.SOUTH,BlockStateProperties.SOUTH,Direction.WEST,BlockStateProperties.WEST,Direction.EAST,BlockStateProperties.EAST);
     private final TopologyCompiler.Kind kind;
     public FluidDeviceBlock(TopologyCompiler.Kind kind,BlockBehaviour.Properties properties) {
-        super(properties);this.kind=kind;var state=stateDefinition.any().setValue(FACING,Direction.NORTH);for(var property:CONNECTIONS.values())state=state.setValue(property,false);registerDefaultState(state);
+        super(properties);this.kind=kind;var state=stateDefinition.any().setValue(FACING,Direction.NORTH).setValue(SIGHT_GLASS,false);for(var property:CONNECTIONS.values())state=state.setValue(property,false);registerDefaultState(state);
     }
     public TopologyCompiler.Kind kind(){return kind;}
     @Override public MapCodec<FluidDeviceBlock> codec(){return CODEC;}
-    @Override protected void createBlockStateDefinition(StateDefinition.Builder<Block,BlockState> builder){builder.add(FACING);for(var property:CONNECTIONS.values())builder.add(property);}
+    @Override protected void createBlockStateDefinition(StateDefinition.Builder<Block,BlockState> builder){builder.add(FACING,SIGHT_GLASS);for(var property:CONNECTIONS.values())builder.add(property);}
+    public static boolean isJunction(BlockState state){int count=0;for(var property:CONNECTIONS.values())if(state.getValue(property))count++;return count>2;}
+    public static boolean hasSightGlass(BlockState state){return state.getBlock() instanceof FluidDeviceBlock block&&block.kind==TopologyCompiler.Kind.PIPE&&state.getValue(SIGHT_GLASS)&&!isJunction(state);}
     @Override public RenderShape getRenderShape(BlockState state){return RenderShape.MODEL;}
     /** Pipe shapes by drawn outside code and connected faces. */
     private static final java.util.Map<Integer,net.minecraft.world.phys.shapes.VoxelShape> PIPE_SHAPES=new java.util.concurrent.ConcurrentHashMap<>();
@@ -87,9 +91,19 @@ public final class FluidDeviceBlock extends BaseEntityBlock {
                 &&level.getBlockEntity(neighborPosition) instanceof com.wormzjl.icheme.world.level.block.entity.EquipmentShellBlockEntity shell&&shell.nozzleFacing(direction.getOpposite())!=null;
     }
     @Override protected BlockState updateShape(BlockState state,Direction direction,BlockState neighbor,LevelAccessor level,BlockPos position,BlockPos neighborPosition) {
+        var connected=state.setValue(CONNECTIONS.get(direction),connects(state,level,neighborPosition,neighbor,direction));
+        // Defer removal until the new connection state is installed. Several neighbour updates share one scheduled tick.
+        if(level instanceof ServerLevel&&kind==TopologyCompiler.Kind.PIPE&&connected.getValue(SIGHT_GLASS)&&isJunction(connected))level.scheduleTick(position,this,1);
         // The drawn faces follow the new connections once the state is in the world.
         if(level instanceof ServerLevel server)server.getServer().execute(()->{if(server.getBlockEntity(position) instanceof FluidDeviceBlockEntity entity)entity.refreshFacesAndSync();});
-        return super.updateShape(state.setValue(CONNECTIONS.get(direction),connects(state,level,neighborPosition,neighbor,direction)),direction,neighbor,level,position,neighborPosition);
+        return super.updateShape(connected,direction,neighbor,level,position,neighborPosition);
+    }
+    @Override protected void tick(BlockState state,ServerLevel level,BlockPos position,net.minecraft.util.RandomSource random) {
+        if(kind!=TopologyCompiler.Kind.PIPE||!state.getValue(SIGHT_GLASS)||!isJunction(state))return;
+        if(level.setBlock(position,state.setValue(SIGHT_GLASS,false),Block.UPDATE_ALL)) {
+            if(level.getBlockEntity(position) instanceof FluidDeviceBlockEntity entity)entity.refreshGeometry(entity.bore(),true);
+            Block.popResource(level,position,new ItemStack(com.wormzjl.icheme.registry.ModItems.PIPELINE_SIGHT_GLASS.get()));
+        }
     }
     @Override protected void onPlace(BlockState state,Level level,BlockPos position,BlockState previous,boolean moved) {
         super.onPlace(state,level,position,previous,moved);if(!(level instanceof ServerLevel serverLevel))return;

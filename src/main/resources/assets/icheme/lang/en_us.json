@@ -1,4 +1,8 @@
 {
+  "item.icheme.pipeline_sight_glass": "Pipeline Sight Glass",
+  "item.icheme.pipeline_sight_glass.install": "Right-click a process pipe to install",
+  "item.icheme.pipeline_sight_glass.junction": "Fits straight pipes and bends, not junctions",
+  "item.icheme.pipeline_sight_glass.recover": "Returned when the pipe is broken",
   "item.icheme.pipeline_tool": "Pipeline Tool",
   "item.icheme.pipeline_tool.target": "Target internal diameter: %s m",
   "item.icheme.pipeline_tool.configure": "Shift + right-click to set the target diameter",

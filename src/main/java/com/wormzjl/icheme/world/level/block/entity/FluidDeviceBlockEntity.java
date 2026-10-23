@@ -34,6 +34,16 @@ import java.util.Arrays;
  * vessel cell's shape.
  */
 public final class FluidDeviceBlockEntity extends BlockEntity implements FluidView.Receiver {
+    /** Accessed only by the client-thread lifecycle hooks and renderer, including in an integrated server. */
+    private static final java.util.Set<FluidDeviceBlockEntity> CLIENT_GLASSES=java.util.Collections.newSetFromMap(new java.util.WeakHashMap<>());
+    public static java.util.List<FluidDeviceBlockEntity> clientSightGlasses(){return java.util.List.copyOf(CLIENT_GLASSES);}
+    @Override public void setBlockState(BlockState state) {
+        boolean before=FluidDeviceBlock.hasSightGlass(getBlockState());super.setBlockState(state);
+        if(level!=null&&level.isClientSide()) {
+            if(FluidDeviceBlock.hasSightGlass(state))CLIENT_GLASSES.add(this);else CLIENT_GLASSES.remove(this);
+            if(before&&!FluidDeviceBlock.hasSightGlass(state))com.wormzjl.icheme.client.SightGlassDisplays.forget(worldPosition);
+        }
+    }
     /** Model data read while the chunk is meshed. */
     public static final ModelProperty<Drawn> DRAWN = new ModelProperty<>();
     /**
@@ -76,7 +86,9 @@ public final class FluidDeviceBlockEntity extends BlockEntity implements FluidVi
         if(level instanceof ServerLevel serverLevel){FluidWorldAuthority.find(serverLevel.getServer()).ifPresent(w->w.deviceLoaded(id));level.sendBlockUpdated(worldPosition,getBlockState(),getBlockState(),2);}
     }
     @Override public void onLoad() {
-        super.onLoad();if(!(level instanceof ServerLevel serverLevel))return;
+        super.onLoad();
+        if(level!=null&&level.isClientSide()&&FluidDeviceBlock.hasSightGlass(getBlockState())){com.wormzjl.icheme.client.SightGlassDisplays.forget(worldPosition);CLIENT_GLASSES.add(this);}
+        if(!(level instanceof ServerLevel serverLevel))return;
         FluidWorldAuthority.find(serverLevel.getServer()).ifPresent(world->{
             var p=new PhysicalFluidTopology.Position(level.dimension().location().toString(),worldPosition.getX(),worldPosition.getY(),worldPosition.getZ());
             world.at(p).ifPresent(record->{if(identity!=record.device().id())bindIdentity(record.device().id());else world.deviceLoaded(identity);});
@@ -117,10 +129,10 @@ public final class FluidDeviceBlockEntity extends BlockEntity implements FluidVi
                 var neighbour=level.getBlockEntity(worldPosition.relative(direction));
                 if(neighbour instanceof FluidDeviceBlockEntity other) {
                     boolean otherPipe=other.kind()==TopologyCompiler.Kind.PIPE;
-                    // A pipe meets the next pipe's size (for its reducer), welded. At equipment both sides flange at the
+                    // A pipe meets the next pipe's size (for its reducer), welded except at sight-glass fittings. At equipment both sides flange at the
                     // pipe's size, whatever it is (owner request 2026-10-21: nozzles and their flanges follow the pipe
                     // everywhere); two devices bolt together at the larger of their sizes.
-                    if(pipe&&otherPipe)code=PipeSizes.code(PipeSizes.outside(other.bore));
+                    if(pipe&&otherPipe){code=PipeSizes.code(PipeSizes.outside(other.bore));flanged=FluidDeviceBlock.hasSightGlass(getBlockState())||FluidDeviceBlock.hasSightGlass(other.getBlockState());}
                     else{code=PipeSizes.code(PipeSizes.outside(pipe?bore:otherPipe?other.bore:Math.max(bore,other.bore)));flanged=true;}
                 } else if(pipe&&neighbour instanceof EquipmentShellBlockEntity shell) {
                     var nozzle=shell.nozzleFacing(direction.getOpposite());
@@ -135,6 +147,7 @@ public final class FluidDeviceBlockEntity extends BlockEntity implements FluidVi
     @Override public void setRemoved(){super.setRemoved();released();}
     /** Unloaded or removed: publications stop marking this device. */
     private void released() {
+        if(level!=null&&level.isClientSide()){CLIENT_GLASSES.remove(this);com.wormzjl.icheme.client.SightGlassDisplays.forget(worldPosition);}
         if(identity!=0&&level instanceof ServerLevel serverLevel&&serverLevel.getServer().isSameThread())FluidWorldAuthority.find(serverLevel.getServer()).ifPresent(world->world.deviceUnloaded(identity));
     }
     /** The engine's bucket hands over this device's view (the authority checked the identity); the block entity keeps it for server-side readers. */

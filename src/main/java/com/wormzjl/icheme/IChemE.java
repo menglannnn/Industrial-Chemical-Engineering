@@ -206,6 +206,7 @@ public final class IChemE {
         modEventBus.addListener(ColumnV3Network::register);
         modEventBus.addListener(com.wormzjl.icheme.network.FluidNetwork::register);
         modEventBus.addListener(com.wormzjl.icheme.network.TankDisplayNetwork::register);
+        modEventBus.addListener(com.wormzjl.icheme.network.SightGlassNetwork::register);
         modEventBus.addListener(com.wormzjl.icheme.network.EquipmentNetwork::register);
         modEventBus.addListener(com.wormzjl.icheme.network.PipelineToolNetwork::register);
         modEventBus.addListener(IChemE::addCreativeTabItem);
@@ -297,6 +298,7 @@ public final class IChemE {
         if (event.getTabKey() == CreativeModeTabs.FUNCTIONAL_BLOCKS) {
             event.accept(ModItems.COLUMN_CALCULATOR_V3.get());
             event.accept(ModItems.PIPELINE_TOOL.get());
+            event.accept(ModItems.PIPELINE_SIGHT_GLASS.get());
             event.accept(ModItems.FLUID_RESERVOIR.get());event.accept(ModItems.FLUID_PIPE.get());event.accept(ModItems.FLUID_PUMP.get());event.accept(ModItems.FLUID_COMPRESSOR.get());event.accept(ModItems.PRESSURE_CONTROL_VALVE.get());event.accept(ModItems.FLUID_GENERATOR.get());event.accept(ModItems.FLUID_VOID.get());event.accept(ModItems.INLINE_FILTER.get());event.accept(ModItems.FLUID_DEBUGGER.get());event.accept(ModItems.EQUIPMENT_CONSTRUCTOR.get());
         }
     }

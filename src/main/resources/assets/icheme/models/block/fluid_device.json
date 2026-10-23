@@ -1,6 +1,7 @@
 {
   "parent": "minecraft:block/block",
   "textures": {
+    "glass": "minecraft:block/glass",
     "shell": "icheme:block/vessel_shell",
     "head": "icheme:block/vessel_head",
     "support": "icheme:block/vessel_support",

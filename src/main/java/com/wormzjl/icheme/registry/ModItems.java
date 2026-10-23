@@ -21,6 +21,8 @@ public final class ModItems {
     public static final DeferredItem<net.minecraft.world.item.Item> FLUID_DEBUGGER=ITEMS.registerSimpleItem("fluid_debugger",new net.minecraft.world.item.Item.Properties().stacksTo(1));
     public static final DeferredItem<com.wormzjl.icheme.world.item.PipelineToolItem> PIPELINE_TOOL =
             ITEMS.registerItem("pipeline_tool", com.wormzjl.icheme.world.item.PipelineToolItem::new);
+    public static final DeferredItem<com.wormzjl.icheme.world.item.PipelineSightGlassItem> PIPELINE_SIGHT_GLASS =
+            ITEMS.registerItem("pipeline_sight_glass", com.wormzjl.icheme.world.item.PipelineSightGlassItem::new);
 
     public static final DeferredItem<BlockItem> COLUMN_CALCULATOR_V3 = ITEMS.registerSimpleBlockItem(
             "column_calculator_v3",

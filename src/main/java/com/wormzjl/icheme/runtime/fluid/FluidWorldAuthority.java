@@ -47,6 +47,8 @@ public final class FluidWorldAuthority implements AutoCloseable {
     /** The open tanks' latest glides (their roofs' motion to the latest display), replayed to a new watcher. */
     private final Map<Long,TankDisplay.Glide> publishedGlides=new HashMap<>();
     private final TankWatchers tankWatchers=new TankWatchers();
+    private final TankWatchers sightGlassWatchers=new TankWatchers();
+    private final Map<Long,Integer> publishedSightGlasses=new HashMap<>();
     private boolean closed;
     private long lastDebugChat=Long.MIN_VALUE;
     private MaterialCatalog observedSolidData;
@@ -267,7 +269,7 @@ public final class FluidWorldAuthority implements AutoCloseable {
     /** A device's block entity loaded or was bound: marked for its bucket, never presented at once. */
     public void deviceLoaded(long id){owned();if(!closed)presentation.deviceLoaded(id);}
     /** A device's block entity unloaded or was removed: publications stop marking it. */
-    public void deviceUnloaded(long id){owned();presentation.deviceUnloaded(id);publishedMenuData.remove(id);publishedGlides.remove(id);}
+    public void deviceUnloaded(long id){owned();forgetSightGlass(id);presentation.deviceUnloaded(id);publishedMenuData.remove(id);publishedGlides.remove(id);}
     /**
      * A client's watch request for open tanks by their node cells (owner decision FR4, R-B): each new watch of a loaded
      * open tank within {@link TankWatchers#RANGE} is answered with the tank's last published display, if it has one (a
@@ -287,7 +289,41 @@ public final class FluidWorldAuthority implements AutoCloseable {
         }
     }
     /** Ends every tank watch of a player who left. */
-    public void forgetWatcher(UUID player){owned();tankWatchers.forget(player);}
+    public void forgetWatcher(UUID player){owned();tankWatchers.forget(player);for(long id:sightGlassWatchers.devices(player))unwatchSightGlass(player,id);}
+
+    /** Explicit visual requests replay cached colour only, then keep a future engine bucket scheduled. */
+    public void watchSightGlasses(net.minecraft.server.level.ServerPlayer player,List<com.wormzjl.icheme.network.SightGlassNetwork.Target> watch,List<com.wormzjl.icheme.network.SightGlassNetwork.Target> unwatch) {
+        owned();if(closed)return;var uuid=player.getUUID();var level=player.serverLevel();
+        for(var target:unwatch)unwatchSightGlass(uuid,target.identity());
+        for(var target:watch) {
+            var pos=target.position();
+            if(!level.hasChunkAt(pos)||!inRange(player,pos)||!com.wormzjl.icheme.world.level.block.FluidDeviceBlock.hasSightGlass(level.getBlockState(pos)))continue;
+            if(!(level.getBlockEntity(pos) instanceof FluidView.Receiver receiver)||receiver.fluidIdentity()!=target.identity())continue;
+            var record=registrations().get(target.identity());
+            if(record==null||record.device().kind()!=TopologyCompiler.Kind.PIPE||!cell(record).equals(pos)||!record.device().position().dimension().equals(level.dimension().location().toString()))continue;
+            if(sightGlassWatchers.watch(uuid,target.identity())) {
+                presentation.observe(target.identity());
+                var colour=publishedSightGlasses.get(target.identity());
+                if(colour!=null)com.wormzjl.icheme.network.SightGlassNetwork.send(player,target,colour);
+            }
+        }
+    }
+    private void unwatchSightGlass(UUID player,long id) {
+        sightGlassWatchers.unwatch(player,id);
+        if(sightGlassWatchers.watchers(id).isEmpty())presentation.unobserve(id);
+    }
+    private void forgetSightGlass(long id){sightGlassWatchers.remove(id);presentation.unobserve(id);publishedSightGlasses.remove(id);}
+    private void publishSightGlass(WorldTopologyLedger.Registration record,net.minecraft.server.level.ServerLevel level,BlockPos pos,FluidView view) {
+        long id=record.device().id();
+        int colour=SightGlassDisplay.colour(view,componentNames,model.molecularWeights(),catalog,com.wormzjl.icheme.science.fluid.thermo.FluidMaterialCatalog.networkPackage(catalog));
+        publishedSightGlasses.put(id,colour);
+        var target=new com.wormzjl.icheme.network.SightGlassNetwork.Target(pos,id);
+        for(var uuid:sightGlassWatchers.watchers(id)) {
+            var player=server.getPlayerList().getPlayer(uuid);
+            if(player==null||player.hasDisconnected()||player.serverLevel()!=level||!inRange(player,pos)){unwatchSightGlass(uuid,id);continue;}
+            com.wormzjl.icheme.network.SightGlassNetwork.send(player,target,colour);
+        }
+    }
     private static BlockPos cell(WorldTopologyLedger.Registration record){var p=record.device().position();return new BlockPos(p.x(),p.y(),p.z());}
     private static boolean inRange(net.minecraft.server.level.ServerPlayer player,BlockPos pos){return player.position().distanceToSqr(pos.getCenter())<=TankWatchers.RANGE*TankWatchers.RANGE;}
     /**
@@ -507,7 +543,10 @@ public final class FluidWorldAuthority implements AutoCloseable {
             unboundBindings.remove(id);
             if(level.getBlockEntity(pos) instanceof com.wormzjl.icheme.world.level.block.entity.FluidDeviceBlockEntity entity&&entity.fluidIdentity()!=id)entity.bindIdentity(id);
             if(!(level.getBlockEntity(pos) instanceof FluidView.Receiver receiver)||receiver.fluidIdentity()!=id)return false;
-            receiver.acceptFluidView(view.get());return true;
+            var presented=view.get();receiver.acceptFluidView(presented);
+            if(com.wormzjl.icheme.world.level.block.FluidDeviceBlock.hasSightGlass(level.getBlockState(pos)))publishSightGlass(record,level,pos,presented);
+            else forgetSightGlass(id);
+            return true;
         }
         public void failed(long device,RuntimeException failure){IChemE.LOGGER.error("fluid_presentation device={} status=FAILED detail=The view could not be presented at its bucket",device,failure);}
         public void deliver(com.wormzjl.icheme.world.inventory.FluidDeviceMenu menu,long device,boolean withStatic,FluidView view,String reply) {
@@ -525,11 +564,11 @@ public final class FluidWorldAuthority implements AutoCloseable {
         public boolean acceptsRecovery(UUID player){var online=server.getPlayerList().getPlayer(player);return online!=null&&online.getInventory().getFreeSlot()>=0;}
         public void refused(UUID event,String reason){refuseEvent(event,reason);}
         public void committed(Set<Long> removed,Set<Long> recompiled) {
-            unboundBindings.removeAll(removed);publishedMenuData.keySet().removeAll(removed);publishedGlides.keySet().removeAll(removed);for(long device:removed)tankWatchers.remove(device);
+            unboundBindings.removeAll(removed);publishedMenuData.keySet().removeAll(removed);publishedGlides.keySet().removeAll(removed);for(long device:removed){tankWatchers.remove(device);forgetSightGlass(device);}
             // Every recompiled device's cached snapshot predates the change, and one left in no island (a pipe whose only
             // tank was broken) gets no publication that would mark it: each is marked for its next bucket, which presents
             // its new view (its replacement island, or "no hydraulic boundary"); an opening menu waits for that bucket.
-            publishedMenuData.keySet().removeAll(recompiled);for(long device:recompiled)presentation.markIfLoaded(device);
+            publishedMenuData.keySet().removeAll(recompiled);publishedSightGlasses.keySet().removeAll(recompiled);for(long device:recompiled)presentation.markIfLoaded(device);
             // Open menus follow their devices to the replacement islands' buckets.
             presentation.rekey();
             // A committed edit is drawn now: a loaded pipe takes its registered bore, and its neighbours their faces.
@@ -560,5 +599,5 @@ public final class FluidWorldAuthority implements AutoCloseable {
             });
         }
     }
-    @Override public void close(){owned();if(closed)return;closed=true;publishedMenuData.clear();runtime.close();data.setDirty();}
+    @Override public void close(){owned();if(closed)return;closed=true;publishedMenuData.clear();publishedSightGlasses.clear();runtime.close();data.setDirty();}
 }
