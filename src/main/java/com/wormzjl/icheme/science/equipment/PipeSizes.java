@@ -40,14 +40,14 @@ public final class PipeSizes {
         return outside > .6 ? 1 / 16.0 : 1 / 32.0;
     }
 
-    /** Length of a weld-neck flange's hub taper. */
+    /** Length of the straight neck before a flange plate. */
     public static double hub(double outside) {
         return Math.min(.15, .04 + .25 * outside);
     }
 
-    /** Outside diameter of the hub where it meets the flange. */
+    /** A square flange shoulder: the neck keeps the pipe's outside diameter right up to the plate. */
     public static double hubOutside(double outside) {
-        return Math.min(flange(outside), 1.15 * outside);
+        return outside;
     }
 
     /**

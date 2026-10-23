@@ -207,7 +207,7 @@ public final class LineGeometry {
 
     /**
      * A line from {@code from} (metres from the block's centre along face {@code i}) to the face, at outside {@code od},
-     * ending as {@code end} says: a reducer, then a weld-neck flange, or a square cut where nothing connects. A
+     * ending as {@code end} says: a reducer, then a square-shouldered flange, or a square cut where nothing connects. A
      * {@code closed} arm also closes its start: it starts inside a ball or a device body whose facets need not cover its
      * rim, and as a closed solid it shows no opening wherever it pokes out. An arm starting within its flange is the
      * flange alone, closed by the flange's own back.
@@ -227,7 +227,7 @@ public final class LineGeometry {
     }
 
     /**
-     * A weld-neck flange whose face lies on the block face: its hub from {@code z}, the back of the flange, its rim and its
+     * A square-shouldered flange whose face lies on the block face: its straight neck from {@code z}, the back of the flange, its rim and its
      * face, a blind flange where nothing meets it. Where a flange of one size meets it, the two faces lie in one plane
      * and look opposite ways, so only one is ever towards the viewer, and it lies inside the other flange. Without a hub
      * (the line starts within the flange) its back is a whole disc.
