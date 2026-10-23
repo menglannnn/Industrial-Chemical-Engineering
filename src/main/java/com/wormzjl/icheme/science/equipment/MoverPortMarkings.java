@@ -7,29 +7,9 @@ import java.util.List;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 
-/** Static painted flow arrows on constructed movers' nozzle necks, independent of process state and collision. */
+/** Static painted flow arrows on pipes adjoining constructed movers, independent of process state and collision. */
 public final class MoverPortMarkings {
     private MoverPortMarkings() {}
-
-    /**
-     * Cell-local decals using the same seven-bit, nozzle-order diameter codes as the shell's surface. A suction arrow
-     * points into the machine, a discharge arrow out of it; decorative coolant connections receive no process marking.
-     */
-    public static List<Mesh.Polygon> surface(ShapeRasterizer.CellKey key) {
-        if(!key.shape().kind().mover())return List.of();
-        var cell=new ShapeRasterizer.Cell(key.x(),key.y(),key.z());
-        var nozzles=key.shape().nozzles();var out=new ArrayList<Mesh.Polygon>();int reaching=0;
-        for(int k=0;k<nozzles.size();k++) {
-            if(!ShapeRasterizer.nozzleCells(key.shape(),k).contains(cell))continue;
-            int code=(int)(key.nozzles()>>>(7*reaching++))&127;
-            var nozzle=nozzles.get(k);
-            if(nozzle.role()!=EquipmentShape.Role.SUCTION&&nozzle.role()!=EquipmentShape.Role.DISCHARGE)continue;
-            double od=code==0?nozzle.defaultOd():PipeSizes.outsideOf(code);
-            var mesh=new Mesh();mesh.transform(key.shape().transform());mark(mesh,nozzle,od);
-            out.addAll(mesh.cell(cell.x(),cell.y(),cell.z()));
-        }
-        return List.copyOf(out);
-    }
 
     /** Arrows on the actual exposed pipe facets adjoining mover ports: two role bits per Minecraft face. */
     public static List<Mesh.Polygon> pipe(List<Mesh.Polygon> surface,int roles) {
@@ -77,7 +57,7 @@ public final class MoverPortMarkings {
                 if(length<.025||width<.005)continue;
                 var side=Mesh.cross(axis,patch.normal);var origin=centre.clone();
                 for(int i=0;i<3;i++)origin[i]+=.5*(patch.left+patch.right)*side[i];
-                badge(new Label(mesh,new Mesh.Frame(origin,axis,patch.normal),0,patch.radius,(low+high)/2,role==1?1:-1),length,width);
+                badge(new Label(mesh,new Mesh.Frame(origin,axis,patch.normal),patch.radius,(low+high)/2,role==1?1:-1),length,width);
             }
         }
         return List.copyOf(mesh.cell(0,0,0));
@@ -90,21 +70,6 @@ public final class MoverPortMarkings {
         Patch(double[] normal,double radius){this.normal=normal;this.radius=radius;}
     }
 
-    private static void mark(Mesh mesh,EquipmentShape.Nozzle nozzle,double od) {
-        int sides=PipeSizes.sides(od),flow=nozzle.role()==EquipmentShape.Role.SUCTION?-1:1;
-        double end=nozzle.length()-PipeSizes.flangeThickness(od)-.055;
-        double length=Math.min(.65,Math.min(end-.02,Math.max(.28,1.6*od)));
-        if(length<=.02)return;
-        double width=.82*od*DeterministicMath.sin(Math.PI/sides);
-        double radius=od/2*DeterministicMath.cos(Math.PI/sides);
-        var frame=Mesh.Frame.of(nozzle.base(),nozzle.axis(),nozzle.sign());
-        for(int side=0;side<4;side++) {
-            double angle=2*Math.PI*(side*sides/4+.5)/sides;
-            var label=new Label(mesh,frame,angle,radius,end-length/2,flow);
-            badge(label,length,width);
-        }
-    }
-
     private static void badge(Label label,double length,double width) {
         label.rect(-length/2,-width/2,length/2,width/2,.001,Mesh.Material.OPENING);
         label.rect(-.48*length,-.45*width,.48*length,.45*width,.0015,Mesh.Material.GUARD);
@@ -114,18 +79,16 @@ public final class MoverPortMarkings {
     }
 
     /** Local axes keep arrows aligned with flow for either nozzle role and every equipment heading. */
-    private record Label(Mesh mesh,Mesh.Frame frame,double angle,double radius,double station,int flow) {
+    private record Label(Mesh mesh,Mesh.Frame frame,double radius,double station,int flow) {
         void rect(double x0,double y0,double x1,double y1,double lift,Mesh.Material material) {
             polygon(List.of(new double[]{x0,y0},new double[]{x1,y0},new double[]{x1,y1},new double[]{x0,y1}),lift,material);
         }
         void polygon(List<double[]> points,double lift,Mesh.Material material) {
-            double c=DeterministicMath.cos(angle),s=DeterministicMath.sin(angle);
-            double[] ref=frame.ref(),side=frame.side(),axis=frame.axis();
-            var normal=new double[3];for(int a=0;a<3;a++)normal[a]=c*ref[a]+s*side[a];
+            double[] normal=frame.ref(),side=frame.side(),axis=frame.axis();
             var centre=frame.along(station);var polygon=new ArrayList<double[]>(points.size());
             for(var point:points) {
                 var p=new double[3];
-                for(int a=0;a<3;a++)p[a]=centre[a]+(radius+lift)*normal[a]+flow*point[0]*axis[a]-flow*point[1]*(-s*ref[a]+c*side[a]);
+                for(int a=0;a<3;a++)p[a]=centre[a]+(radius+lift)*normal[a]+flow*point[0]*axis[a]-flow*point[1]*side[a];
                 polygon.add(p);
             }
             // Solid paint samples avoid borrowing the guard's perforation pattern for a small, legible stencil.
