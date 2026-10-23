@@ -26,6 +26,7 @@ All notable changes to Industrial Chemical Engineering (IChemE, formerly CreateC
 
 ### Fixed
 
+- Preserve accepted pressure-valve modes between implicit substeps, resolving spurious closure and convergence failures at equal-setpoint two-phase drum outlets while retaining the existing valve laws and conservation checks (commit `83e88bd0`, batch: `2026-10-23-valve-regime-convergence`).
 - Incompatible fluid checkpoint, pack or storage-unit versions now reset the simulation and rebuild placed pipes and complete equipment on chunk load, discarding fluid inventories/settings/pending edits instead of crashing world startup; current-format data still validates strictly (commit `49e57860`, batch: `2026-10-23-fluid-format-reset`).
 
 ### Changed
