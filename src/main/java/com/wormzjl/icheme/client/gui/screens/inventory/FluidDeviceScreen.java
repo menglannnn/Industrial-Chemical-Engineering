@@ -27,10 +27,13 @@ public final class FluidDeviceScreen extends AbstractContainerScreen<FluidDevice
     private RelativeComposition composition;
     private ComponentDropdown componentDropdown;
     private TemperatureUnit temperatureUnit=TemperatureUnit.CELSIUS;
+    /** Client UI thread only; keep one time basis when moving between equipment screens this session. */
+    private static FlowRateUnit preferredFlowRateUnit=FlowRateUnit.PER_SECOND;
+    private FlowRateUnit flowRateUnit=preferredFlowRateUnit;
     private String[][] particles=new String[64][3];
     private long revision=Long.MIN_VALUE,messageRevision;
     private int page,phase=2;
-    private boolean mass,templates,rebuildNext,hasConnections,powerOn=true;
+    private boolean mass,templates,rebuildNext,hasConnections,powerOn=true,phaseSelected;
     private String search="",message="",hovered;
     private V3ClientPresets library;
     private V3ClientPresets.Snapshot mixtureSnapshot;
@@ -57,6 +60,8 @@ public final class FluidDeviceScreen extends AbstractContainerScreen<FluidDevice
     private boolean transport(){return menu.clientData()!=null&&menu.clientData().view().pipeInfo()!=null;}
     private boolean canEdit(){return !menu.debug()&&menu.clientData()!=null;}
     private boolean constructedMover(){var data=menu.clientData();return data!=null&&!datasheet.isEmpty()&&(data.kind()==TopologyCompiler.Kind.PUMP||data.kind()==TopologyCompiler.Kind.COMPRESSOR);}
+    private boolean switchable(){return generator()||constructedMover();}
+    private String flowUnit(){return flowRateUnit.unit(mass?"kg":"kmol");}
     private int rail(){return Math.min(210,imageWidth/3);}
     // The rail below "Operating conditions" (its fields, the filter's button and the values) is one column clipped to
     // the area above the status separator and scrolled by its own bar on the rail/table divider when it is longer than
@@ -83,24 +88,27 @@ public final class FluidDeviceScreen extends AbstractContainerScreen<FluidDevice
         var data=menu.clientData();if(data==null)return;
         boolean connected=pipe()&&data.view().pipeInfo().connections().size()>1;
         if(connected!=hasConnections){hasConnections=connected;if(!connected&&page==3)page=0;rebuildNext=true;}
+        // An initially empty publication must not leave a newly flowing void on an absent default phase.
+        // Once the player chooses a phase, retain that choice across later publications.
+        if(!phaseSelected){
+            int selected=data.kind()==TopologyCompiler.Kind.FILTER?3:phase;double largest=0;
+            if(data.kind()!=TopologyCompiler.Kind.FILTER){
+                var phases=amounts();
+                for(int i=0;i<phases.length;i++){double amount=Arrays.stream(phases[i]).sum();if(amount>largest){largest=amount;selected=i;}}
+                if(largest==0&&!displayedSolids().empty())selected=3;
+            }
+            if(selected!=phase){phase=selected;scroll.reset();rebuildNext=true;}
+        }
         if(data.view().inputRevision()==revision)return;
-        boolean first=revision==Long.MIN_VALUE;revision=data.view().inputRevision();var c=data.controls();
+        revision=data.view().inputRevision();var c=data.controls();
         powerOn=c.power()==FluidNetwork.Power.ON;
         fields.clear();fields.put("temperature",new NumericDraft(temperatureUnit.display(c.temperature())));
         fields.put("pressure",new NumericDraft(c.pressure()));fields.put("diameter",new NumericDraft(c.diameter()));
-        fields.put("volumeFlow",new NumericDraft(c.volumeFlow()));fields.put("maximumAddedPressure",new NumericDraft(c.maximumAddedPressure()));
+        fields.put("volumeFlow",new NumericDraft(flowRateUnit.display(c.volumeFlow())));fields.put("maximumAddedPressure",new NumericDraft(c.maximumAddedPressure()));
         fields.put("maximumPressureRatio",new NumericDraft(c.maximumPressureRatio()));
         composition=new RelativeComposition(data.components(),data.molecularWeights(),c.composition());
         if(mass)composition.toggleBasis();
-        loadSolids(c.solids());if(data.kind()==TopologyCompiler.Kind.FILTER)phase=3;
-        else if(first&&data.view().state()!=null){
-            var phases=data.view().state().phaseMoles();double largest=0;
-            for(int i=0;i<phases.length;i++){double amount=Arrays.stream(phases[i]).sum();if(amount>largest){largest=amount;phase=i;}}
-        }
-        if(first&&pipe()&&data.view().pipeInfo()!=null){
-            var phases=data.view().pipeInfo().contents().phaseMoles();double largest=0;
-            for(int i=0;i<phases.length;i++){double amount=Arrays.stream(phases[i]).sum();if(amount>largest){largest=amount;phase=i;}}
-        }
+        loadSolids(c.solids());
         templates=false;scroll.reset();rebuildNext=true;
     }
     private void loadSolids(SlurryFeed solids){
@@ -124,14 +132,15 @@ public final class FluidDeviceScreen extends AbstractContainerScreen<FluidDevice
     /** A field of the scrolled rail: its label is clipped with the rail, the box shows only when it lies wholly inside. */
     private void railField(String key,String label,int y){field(key,label,12,y,rail()-4).visible=inRail(y+12,18);}
     private int[] bottomButtons(){
-        int[] widths={65,110,118,108};int natural=Arrays.stream(widths).sum(),room=imageWidth-38;
-        if(room<natural)for(int i=0;i<widths.length;i++)widths[i]=widths[i]*room/natural;
+        int[] widths={50,60,100,90,75},minimum={42,45,50,45,40};
+        int natural=Arrays.stream(widths).sum(),floor=Arrays.stream(minimum).sum(),room=imageWidth-44;
+        if(room<natural)for(int i=0;i<widths.length;i++)widths[i]=minimum[i]+(widths[i]-minimum[i])*(room-floor)/(natural-floor);
         return widths;
     }
     /** Rail controls above the values: the fields a device's page edits, or a filter's recover button. */
     private int railControls(){
         var data=menu.clientData();if(data==null||!canEdit())return 0;
-        return switch(data.kind()){case PUMP,COMPRESSOR->constructedMover()?3:2;case GENERATOR->2;case VALVE,VOID,PIPE,FILTER->1;default->0;};
+        return switch(data.kind()){case PUMP,COMPRESSOR->constructedMover()?3:2;case GENERATOR->3;case VALVE,VOID,PIPE,FILTER->1;default->0;};
     }
     private void changePage(int target){page=target;templates=false;scroll.reset();rebuild();}
     private void toggleBasis(){
@@ -147,6 +156,16 @@ public final class FluidDeviceScreen extends AbstractContainerScreen<FluidDevice
             rebuild();
         }catch(IllegalArgumentException e){message=tr("invalid_number");}
     }
+    private void toggleFlowRate(){
+        try{
+            var next=flowRateUnit.next();
+            if(fields.containsKey("volumeFlow")){
+                double perSecond=flowRateUnit.perSecond(fields.get("volumeFlow").value());
+                fields.put("volumeFlow",new NumericDraft(next.display(perSecond)));
+            }
+            flowRateUnit=preferredFlowRateUnit=next;rebuild();
+        }catch(IllegalArgumentException e){message=tr("invalid_flow_unit");}
+    }
     private void rebuild(){
         rebuildNext=false;String focused=editors.entrySet().stream().filter(e->e.getValue()==getFocused()).map(Map.Entry::getKey).findFirst().orElse(null);
         int cursor=focused==null?0:editors.get(focused).getCursorPosition();
@@ -157,12 +176,14 @@ public final class FluidDeviceScreen extends AbstractContainerScreen<FluidDevice
             action("composition",116,29,112,()->changePage(1)).active=page!=1;
             action("solids",234,29,100,()->changePage(2)).active=page!=2;
         }
-        // The button row: Close and Apply from the left, the basis and unit toggles from the right, all four narrowed in
-        // proportion when they do not fit side by side (their natural widths need 439 GUI px; a 427-wide screen has 411).
-        int[] bottom=bottomButtons();int by=imageHeight-27;
-        button(tr("temperature_unit",temperatureUnit.symbol()),imageWidth-10-bottom[3],by,bottom[3],this::toggleTemperature)
+        // Compact labels and minimum widths keep all five controls usable at the smallest supported GUI width.
+        int[] bottom=bottomButtons();int by=imageHeight-27;boolean compact=imageWidth<400;
+        int flowX=imageWidth-10-bottom[4],temperatureX=flowX-6-bottom[3],basisX=temperatureX-6-bottom[2];
+        button(compact?flowRateUnit.suffix():tr("flow_unit",flowRateUnit.suffix()),flowX,by,bottom[4],this::toggleFlowRate)
+            .setTooltip(Tooltip.create(Component.translatable("gui.icheme.fluid.flow_unit.hint")));
+        button(compact?temperatureUnit.symbol():tr("temperature_unit",temperatureUnit.symbol()),temperatureX,by,bottom[3],this::toggleTemperature)
             .setTooltip(Tooltip.create(Component.translatable("gui.icheme.column.temperature_unit.hint")));
-        button(tr(mass?"mass_basis":"mole_basis"),imageWidth-16-bottom[3]-bottom[2],by,bottom[2],this::toggleBasis)
+        button(tr(compact?(mass?"mass_basis_short":"mole_basis_short"):(mass?"mass_basis":"mole_basis")),basisX,by,bottom[2],this::toggleBasis)
             .setTooltip(Tooltip.create(Component.translatable("gui.icheme.column.composition_basis.hint")));
         action("close",10,by,bottom[0],this::onClose);
         var data=menu.clientData();if(data==null)return;
@@ -175,14 +196,14 @@ public final class FluidDeviceScreen extends AbstractContainerScreen<FluidDevice
         int datasheetX=tank()?252:116;
         if(!datasheet.isEmpty())action("datasheet",datasheetX,29,Math.min(100,imageWidth-datasheetX-10),()->changePage(5)).active=page!=5;
         railBuiltOffset=railOffset();int y=railTop()-railBuiltOffset;
-        if(canEdit()&&constructedMover()) {
+        if(canEdit()&&switchable()) {
             var power=action(powerOn?"power_on":"power_off",12,y,rail()-4,()->{powerOn=!powerOn;rebuild();});
             power.visible=inRail(y,20);y+=RAIL_CONTROL;
         }
         if(canEdit())switch(data.kind()){
             case GENERATOR->{railField("pressure",tr("pressure_input"),y);railField("temperature",tr("temperature_input",temperatureUnit.symbol()),y+RAIL_CONTROL);}
-            case PUMP->{railField("volumeFlow",tr("flow_input"),y);railField("maximumAddedPressure",tr("head_input"),y+RAIL_CONTROL);}
-            case COMPRESSOR->{railField("volumeFlow",tr("flow_input"),y);railField("maximumPressureRatio",tr("ratio_input"),y+RAIL_CONTROL);}
+            case PUMP->{railField("volumeFlow",tr("flow_input",flowRateUnit.unit("m³")),y);railField("maximumAddedPressure",tr("head_input"),y+RAIL_CONTROL);}
+            case COMPRESSOR->{railField("volumeFlow",tr("flow_input",flowRateUnit.unit("m³")),y);railField("maximumPressureRatio",tr("ratio_input"),y+RAIL_CONTROL);}
             case VALVE,VOID->railField("pressure",tr("pressure_input"),y);
             case PIPE->railField("diameter",tr("diameter_input"),y);
             default->{}
@@ -199,7 +220,7 @@ public final class FluidDeviceScreen extends AbstractContainerScreen<FluidDevice
     }
     private void buildContents(){
         int w=(tableWidth()-12)/4;
-        for(int i=0;i<4;i++){int selected=i;button(tr("phase."+i),tableX()+i*(w+4),pipe()?62:82,w,()->{phase=selected;scroll.reset();rebuild();}).active=phase!=i;}
+        for(int i=0;i<4;i++){int selected=i;button(tr("phase."+i),tableX()+i*(w+4),pipe()?62:82,w,()->{phase=selected;phaseSelected=true;scroll.reset();rebuild();}).active=phase!=i;}
         configureScroll(phase==3?shownSolids().size():present().size());
     }
     private void configureScroll(int size){scroll.configure(leftPos+imageWidth-16,topPos+tableTop(),imageHeight-64-tableTop(),visibleRows(),size);}
@@ -287,7 +308,7 @@ public final class FluidDeviceScreen extends AbstractContainerScreen<FluidDevice
         }
         try{
             var controls=new FluidNetwork.Controls(temperatureUnit.kelvin(fields.get("temperature").value()),fields.get("pressure").value(),
-                fields.get("diameter").value(),PipeResistance.DEFAULT_ROUGHNESS_METRES,fields.get("volumeFlow").value(),
+                fields.get("diameter").value(),PipeResistance.DEFAULT_ROUGHNESS_METRES,flowRateUnit.perSecond(fields.get("volumeFlow").value()),
                 fields.get("maximumAddedPressure").value(),composition.moleFractions(),solids(),fields.get("maximumPressureRatio").value(),powerOn?FluidNetwork.Power.ON:FluidNetwork.Power.OFF);
             FluidNetwork.sendEdit(menu,revision,controls);message=tr("waiting");
         }catch(IllegalArgumentException e){message=tr("invalid_input");}
@@ -306,16 +327,16 @@ public final class FluidDeviceScreen extends AbstractContainerScreen<FluidDevice
         if(view.pipeInfo()!=null){
             if(view.intervalSeconds()<=0)return Double.NaN;
             var stream=view.pipeInfo().contents();
-            if(mass)return stream.massKg()*3600/view.intervalSeconds();
+            if(mass)return flowRateUnit.display(stream.massKg()/view.intervalSeconds());
             double moles=0;for(var phase:stream.phaseMoles())for(double amount:phase)moles+=amount;
-            return moles*3.6/view.intervalSeconds();
+            return flowRateUnit.display(moles/1000/view.intervalSeconds());
         }
         double flow=view.massFlow()*(data.kind()==TopologyCompiler.Kind.VOID?-1:1);
-        if(mass||flow==0)return flow*3600;
+        if(mass||flow==0)return flowRateUnit.display(flow);
         if(view.state()==null)return Double.NaN;
         double moles=0;for(var phase:view.state().phaseMoles())for(double amount:phase)moles+=amount;
         // The bulk mass includes suspended solids, which do not contribute fluid moles.
-        return view.state().mass()>0?flow*moles/view.state().mass()*3.6:Double.NaN;
+        return view.state().mass()>0?flowRateUnit.display(flow*moles/view.state().mass()/1000):Double.NaN;
     }
     private SolidInventory displayedSolids(){
         var data=menu.clientData();if(data==null)return SolidInventory.EMPTY;var view=data.view();
@@ -394,10 +415,10 @@ public final class FluidDeviceScreen extends AbstractContainerScreen<FluidDevice
     /** A device's values on the rail from y (unscrolled: below its controls); returns the bottom of the last line. */
     private int renderDeviceRail(GuiGraphics g,int y){
         var data=menu.clientData();var view=data.view();
-        if(constructedMover()){railLine(g,"power_state",tr(data.controls().power()==FluidNetwork.Power.ON?"state_on":"state_off"),y);y+=RAIL_LINE;}
+        if(switchable()){railLine(g,"power_state",tr(data.controls().power()==FluidNetwork.Power.ON?"state_on":"state_off"),y);y+=RAIL_LINE;}
         if(view.state()!=null){
             var state=view.state();
-            railLine(g,"temperature",number(temperatureUnit.display(state.temperature()))+" "+temperatureUnit.symbol(),y);y+=RAIL_LINE;
+            if(data.kind()!=TopologyCompiler.Kind.VOID){railLine(g,"temperature",number(temperatureUnit.display(state.temperature()))+" "+temperatureUnit.symbol(),y);y+=RAIL_LINE;}
             railLine(g,"pressure",pressure(state.pressure()),y);y+=RAIL_LINE;
             if(data.kind()==TopologyCompiler.Kind.RESERVOIR){
                 railLine(g,"volume",number(state.volume()*1000)+" L",y);y+=RAIL_LINE;
@@ -407,7 +428,7 @@ public final class FluidDeviceScreen extends AbstractContainerScreen<FluidDevice
         }
         if(data.kind()==TopologyCompiler.Kind.PIPE||data.kind()==TopologyCompiler.Kind.PUMP||data.kind()==TopologyCompiler.Kind.COMPRESSOR||data.kind()==TopologyCompiler.Kind.VOID||generator()){
             double flow=displayedFlow();
-            railLine(g,"last_flow",(Double.isFinite(flow)?number(flow):"—")+(mass?" kg/h":" kmol/h"),y);y+=RAIL_LINE;
+            railLine(g,"last_flow",(Double.isFinite(flow)?number(flow):"—")+" "+flowUnit(),y);y+=RAIL_LINE;
         }
         if(view.filter()!=null){
             railLine(g,"filter_load",number(view.filter().loading()*100)+" %",y);y+=RAIL_LINE;
@@ -459,7 +480,7 @@ public final class FluidDeviceScreen extends AbstractContainerScreen<FluidDevice
         };
     }
     private String outletState(com.wormzjl.icheme.runtime.fluid.FluidView.Outlet outlet){
-        double flow=mass?outlet.massFlow()*3600:outlet.moleFlow()*3.6;String unit=mass?" kg/h":" kmol/h";
+        double flow=flowRateUnit.display(mass?outlet.massFlow():outlet.moleFlow()/1000);String unit=" "+flowUnit();
         if(outlet.massFlow()<0)return tr("outlet.receiving")+" · "+number(-flow)+unit;
         if(!(outlet.massFlow()>0))return tr("outlet.idle");
         String drawing=outlet.port()==com.wormzjl.icheme.science.fluid.network.PassiveNetwork.PhasePort.BULK?tr("outlet.drawing_all")
@@ -473,7 +494,7 @@ public final class FluidDeviceScreen extends AbstractContainerScreen<FluidDevice
         var view=menu.clientData().view();var info=view.pipeInfo();int y=base+46;
         if(info.junction()){text(g,tr("junction",info.connections().size()),12,base+34,ACCENT,rail());y=base+58;}
         double flow=displayedFlow();
-        railLine(g,"throughput",(Double.isFinite(flow)?number(flow):"—")+(mass?" kg/h":" kmol/h"),y);
+        railLine(g,"throughput",(Double.isFinite(flow)?number(flow):"—")+" "+flowUnit(),y);
         if(railHover(mx,my,y,y+27))hovered=tr("throughput.hint");
         y+=30;
         railLine(g,"velocity",metricRange(info.connections(),com.wormzjl.icheme.runtime.fluid.FluidView.PipeConnection::velocityMetresPerSecond," m/s"),y);
@@ -525,7 +546,7 @@ public final class FluidDeviceScreen extends AbstractContainerScreen<FluidDevice
     private void renderConnections(GuiGraphics g,int mx,int my){
         var view=menu.clientData().view();var metrics=view.pipeInfo().connections();int x=tableX(),w=tableWidth();
         text(g,tr("connections.hint"),x,64,MUTED,w);
-        ProcessUi.tableRow(g,font,new String[]{tr("connection"),tr(mass?"kg_h":"kmol_h"),tr("speed"),tr("dp_m")},x,tableTop()-16,w,true);
+        ProcessUi.tableRow(g,font,new String[]{tr("connection"),flowUnit(),tr("speed"),tr("dp_m")},x,tableTop()-16,w,true);
         configureScroll(metrics.size());
         for(int i=scroll.value();i<Math.min(metrics.size(),scroll.value()+visibleRows());i++){
             var metric=metrics.get(i);String name=tr("connection");
@@ -537,20 +558,23 @@ public final class FluidDeviceScreen extends AbstractContainerScreen<FluidDevice
     }
     private double connectionFlow(com.wormzjl.icheme.runtime.fluid.FluidView view,
             com.wormzjl.icheme.runtime.fluid.FluidView.PipeConnection metric){
-        if(mass)return metric.massRateKgPerSecond()*3600;
+        if(mass)return flowRateUnit.display(metric.massRateKgPerSecond());
         if(view.intervalSeconds()<=0)return 0;
         for(var transfer:view.pipeHistory())if(transfer.pipeId()==metric.pipeId())
-            return (Arrays.stream(transfer.forward().componentMoles()).sum()+Arrays.stream(transfer.reverse().componentMoles()).sum())*3.6/view.intervalSeconds();
+            return flowRateUnit.display((Arrays.stream(transfer.forward().componentMoles()).sum()+Arrays.stream(transfer.reverse().componentMoles()).sum())/1000/view.intervalSeconds());
         return 0;
     }
     private void renderContents(GuiGraphics g,int mx,int my){
         int x=tableX(),w=tableWidth();
         if(phase==3){
-            ProcessUi.tableRow(g,font,new String[]{tr("solid"),tr("mean_size"),tr("mass_kg")},x,tableTop()-16,w,true);
+            boolean rates=transport()&&menu.clientData().view().filter()==null;
+            double perInterval=transportMultiplier(rates);
+            ProcessUi.tableRow(g,font,new String[]{tr("solid"),tr("mean_size"),rates?flowRateUnit.unit("kg"):tr("mass_kg")},x,tableTop()-16,w,true);
             var populations=shownSolids();configureScroll(populations.size());
             for(int i=scroll.value();i<Math.min(populations.size(),scroll.value()+visibleRows());i++){
                 var p=populations.get(i);int y=tableTop()+(i-scroll.value())*18;
-                ProcessUi.tableRow(g,font,new String[]{solidName(p.material()),number(p.size().diameterMetres()*1e6),number(p.massKg())},x,y,w,false);
+                double kg=p.massKg()*perInterval;
+                ProcessUi.tableRow(g,font,new String[]{solidName(p.material()),number(p.size().diameterMetres()*1e6),Double.isFinite(kg)?number(kg):"—"},x,y,w,false);
                 if(mx>=x&&mx<x+w/2&&my>=y-2&&my<y+16)hovered=p.material().crystal()==null?p.material().id():solidName(p.material())+"\n"+p.material().id()+"\n"+tr("crystal.hint");
             }
             if(populations.isEmpty())text(g,tr("absent"),x,tableTop()+8,MUTED,w);return;
@@ -559,9 +583,9 @@ public final class FluidDeviceScreen extends AbstractContainerScreen<FluidDevice
         double[] weights=data.molecularWeights().stream().mapToDouble(Double::doubleValue).toArray();
         double total=0;for(int i=0;i<values.length;i++)total+=values[i]*(mass?weights[i]:1);
         // The percentage follows the basis toggle; the amount (or rate) shows on both bases, kmol and kg, side by side.
-        ProcessUi.tableRow(g,font,new String[]{tr("component"),tr(mass?"mass_percent":"mole_percent"),tr(rates?"kmol_h":"kmol"),tr(rates?"kg_h":"kg")},x,tableTop()-16,w,true);
+        ProcessUi.tableRow(g,font,new String[]{tr("component"),tr(mass?"mass_percent":"mole_percent"),rates?flowRateUnit.unit("kmol"):tr("kmol"),rates?flowRateUnit.unit("kg"):tr("kg")},x,tableTop()-16,w,true);
         var ids=present();configureScroll(ids.size());
-        double perInterval=!rates?1:data.view().intervalSeconds()>0?3600/data.view().intervalSeconds():Double.NaN;
+        double perInterval=transportMultiplier(rates);
         for(int i=scroll.value();i<Math.min(ids.size(),scroll.value()+visibleRows());i++){
             int id=ids.get(i),y=tableTop()+(i-scroll.value())*18;double amount=values[id]*(mass?weights[id]:1);
             // values are mol and the molecular weights kg/mol (FluidThermodynamics), so mol x weight is already kg.
@@ -570,6 +594,10 @@ public final class FluidDeviceScreen extends AbstractContainerScreen<FluidDevice
             if(mx>=x&&mx<x+w/2&&my>=y-2&&my<y+16)hovered=material(id)+"\n"+data.components().get(id);
         }
         if(ids.isEmpty())text(g,tr("absent"),x,tableTop()+8,MUTED,w);
+    }
+    private double transportMultiplier(boolean rates){
+        double seconds=menu.clientData().view().intervalSeconds();
+        return !rates?1:seconds>0?flowRateUnit.display(1/seconds):Double.NaN;
     }
     private void renderComposition(GuiGraphics g,int mx,int my){
         int x=tableX(),w=tableWidth();

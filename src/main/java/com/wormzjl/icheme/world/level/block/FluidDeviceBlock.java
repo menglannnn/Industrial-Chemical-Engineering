@@ -119,7 +119,7 @@ public final class FluidDeviceBlock extends BaseEntityBlock {
                 var record=world.place(p,kind,PhysicalFluidTopology.Direction.valueOf(state.getValue(FACING).name()));
                 if(level.getBlockEntity(position) instanceof FluidDeviceBlockEntity entity)entity.bindIdentity(record.device().id());
             } else if(previous.getValue(FACING)!=state.getValue(FACING)) {
-                world.at(p).ifPresent(old->{var d=old.device();world.edit(d.id(),old.revision(),new PhysicalFluidTopology.Device(d.id(),d.position(),d.kind(),PhysicalFluidTopology.Direction.valueOf(state.getValue(FACING).name()),d.geometry(),d.control()),old.spec());});
+                world.at(p).ifPresent(old->{var d=old.device();world.edit(d.id(),old.revision(),new PhysicalFluidTopology.Device(d.id(),d.position(),d.kind(),PhysicalFluidTopology.Direction.valueOf(state.getValue(FACING).name()),d.geometry(),d.control(),d.ports(),d.generatorEnabled()),old.spec());});
             }
         });
     }

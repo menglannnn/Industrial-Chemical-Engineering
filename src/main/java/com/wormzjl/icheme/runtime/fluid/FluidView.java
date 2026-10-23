@@ -18,7 +18,10 @@ public record FluidView(long identity,long inputRevision,long committedTick,long
         this(identity,inputRevision,committedTick,onlineTick,status,state,massFlow,pipeHistory,devicePressureChange,intervalSeconds,pipeRoutes,filter,null,List.of(),null);
     }
     public FluidView withPipeInfo(PipeInfo info){
-        return new FluidView(identity,inputRevision,committedTick,onlineTick,status,state,massFlow,pipeHistory,devicePressureChange,intervalSeconds,pipeRoutes,filter,info,outlets,tank);
+        return withPipeInfo(info,intervalSeconds);
+    }
+    public FluidView withPipeInfo(PipeInfo info,double seconds){
+        return new FluidView(identity,inputRevision,committedTick,onlineTick,status,state,massFlow,pipeHistory,devicePressureChange,seconds,pipeRoutes,filter,info,outlets,tank);
     }
     public FluidView withOutlets(List<Outlet> list){
         return new FluidView(identity,inputRevision,committedTick,onlineTick,status,state,massFlow,pipeHistory,devicePressureChange,intervalSeconds,pipeRoutes,filter,pipeInfo,list,tank);
@@ -60,7 +63,8 @@ public record FluidView(long identity,long inputRevision,long committedTick,long
             if(!Double.isFinite(massFlow)||!Double.isFinite(moleFlow)||drawn<NONE||drawn>2||!Double.isFinite(head)||head<0)throw new IllegalArgumentException("Invalid tank outlet");
         }
     }
-    /** Nonnegative interval transport; a junction counts outgoing material once, not every incident edge. */
+    /** Nonnegative interval transport; a junction counts outgoing material once. A void aggregates incoming rates
+     * from independent islands as one second of transport (intervalSeconds = 1), never its dummy boundary inventory. */
     public record PipeInfo(PipeTransfer.Stream contents,List<PipeConnection> connections,boolean junction,boolean changedDirection){
         public PipeInfo {
             Objects.requireNonNull(contents);connections=List.copyOf(connections);

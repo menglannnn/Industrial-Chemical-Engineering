@@ -35,10 +35,10 @@ import java.util.*;
  * <p>{@code fluid-11} (batch 2026-10-21-floating-roof-tanks): a vessel's view carries its {@link FluidView.Tank} (level
  * height, open flag, vent and spill rates), and a vessel's nozzle states its own port class, OVERFLOW among them, whichever
  * way it faces.</p>
- * <p>{@code fluid-12}: controls carry a required ON/OFF power value for constructed movers, retaining their requested flow.</p>
+ * <p>{@code fluid-13}: power also controls generators; void contents are accepted incoming transport, normalized to one second.</p>
  */
 public final class FluidNetwork {
-    public static final String PROTOCOL="fluid-12";
+    public static final String PROTOCOL="fluid-13";
     private static final Gson JSON=new Gson();
     public static final int MAX_JSON=262144;
     public static final int MAX_EDIT_JSON=4096;
@@ -57,7 +57,7 @@ public final class FluidNetwork {
         public Controls(double temperature,double pressure,double diameter,double roughness,double volumeFlow,double maximumAddedPressure,double[] composition,SlurryFeed solids){this(temperature,pressure,diameter,roughness,volumeFlow,maximumAddedPressure,composition,solids,DEFAULT_PRESSURE_RATIO);}
         public Controls(double temperature,double pressure,double diameter,double roughness,double volumeFlow,double maximumAddedPressure,double[] composition){this(temperature,pressure,diameter,roughness,volumeFlow,maximumAddedPressure,composition,SlurryFeed.NONE);}
         public Controls {
-            Objects.requireNonNull(solids);if(power==null)throw new IllegalArgumentException("Missing or unknown mover power setting");composition=composition.clone();
+            Objects.requireNonNull(solids);if(power==null)throw new IllegalArgumentException("Missing or unknown power setting");composition=composition.clone();
             for(double value:new double[]{temperature,pressure,diameter,roughness,volumeFlow,maximumAddedPressure,maximumPressureRatio})if(!Double.isFinite(value))throw new IllegalArgumentException("All controls must be finite numbers");
             if(!pressureRatioAllowed(maximumPressureRatio))throw new IllegalArgumentException("The pressure ratio must lie between "+MINIMUM_PRESSURE_RATIO+" and "+MAXIMUM_PRESSURE_RATIO);
             // Temperature and pressure are only required to be physical here: the input box is the property package's
@@ -71,7 +71,7 @@ public final class FluidNetwork {
             double head=d.control() instanceof FlowControl.Pump p?p.maximumAddedPressure():500000;
             double ratio=d.control() instanceof FlowControl.Compressor c?c.maximumPressureRatio():DEFAULT_PRESSURE_RATIO;
             double pressure=d.control() instanceof FlowControl.PressureValve v?v.targetPressure():record.spec().pressure();
-            var power=d.control() instanceof FlowControl.Mover m&&!m.enabled()?Power.OFF:Power.ON;
+            var power=!d.generatorEnabled()||d.control() instanceof FlowControl.Mover m&&!m.enabled()?Power.OFF:Power.ON;
             return new Controls(record.spec().temperature(),pressure,d.geometry().diameter(),d.geometry().roughness(),flow,head,record.spec().composition(),record.spec().solids(),ratio,power);
         }
     }
@@ -88,8 +88,8 @@ public final class FluidNetwork {
                     ||presets.stream().map(FluidPresetCatalog.Preset::id).distinct().count()!=presets.size()||materialNames.size()>components.size()
                     ||!components.containsAll(materialNames.keySet()))throw new IllegalArgumentException("Invalid bounded fluid menu state");
             if(kind!=TopologyCompiler.Kind.RESERVOIR&&!view.outlets().isEmpty())throw new IllegalArgumentException("Only a tank lists outlets");
-            if((kind==TopologyCompiler.Kind.PIPE||kind==TopologyCompiler.Kind.FILTER)&&view.pipeInfo()==null)
-                throw new IllegalArgumentException("Missing pipe inspection");
+            if((kind==TopologyCompiler.Kind.PIPE||kind==TopologyCompiler.Kind.FILTER||kind==TopologyCompiler.Kind.VOID)&&view.pipeInfo()==null)
+                throw new IllegalArgumentException("Missing accepted transport presentation");
             if(view.pipeInfo()!=null){
                 requirePhaseAxis(view.pipeInfo().contents().phaseMoles(),components.size());
             }
@@ -253,7 +253,8 @@ public final class FluidNetwork {
                     case VALVE->world.model().domain().requireInputPressure(controls.pressure);
                     default->{}
                 }
-                event=world.edit(d.id(),payload.revision,new PhysicalFluidTopology.Device(d.id(),d.position(),d.kind(),d.facing(),geometry,control,d.ports()),spec);
+                boolean generatorEnabled=d.kind()==TopologyCompiler.Kind.GENERATOR?controls.power==Power.ON:d.generatorEnabled();
+                event=world.edit(d.id(),payload.revision,new PhysicalFluidTopology.Device(d.id(),d.position(),d.kind(),d.facing(),geometry,control,d.ports(),generatorEnabled),spec);
             }catch(RuntimeException rejected){refusal=reason(rejected);}
             world.input(menu,event,refusal);
         });

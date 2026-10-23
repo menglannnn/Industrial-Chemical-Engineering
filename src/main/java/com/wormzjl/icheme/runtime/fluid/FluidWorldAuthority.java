@@ -176,7 +176,7 @@ public final class FluidWorldAuthority implements AutoCloseable {
         owned();
         long id=topology.nextIdentity();var control=switch(kind){case PUMP->new FlowControl.Pump(.01,500000);case COMPRESSOR->new FlowControl.Compressor(.05,3.0);case VALVE->new FlowControl.PressureValve(200000);default->new FlowControl.Passive();};
         double diameter=kind==TopologyCompiler.Kind.PIPE?placedPipeDiameter(position):.05;
-        var device=new PhysicalFluidTopology.Device(id,position,kind,facing,new PipeResistance.Geometry(1,diameter,PipeResistance.DEFAULT_ROUGHNESS_METRES,0),control,ports);
+        var device=new PhysicalFluidTopology.Device(id,position,kind,facing,new PipeResistance.Geometry(1,diameter,PipeResistance.DEFAULT_ROUGHNESS_METRES,0),control,ports,kind!=TopologyCompiler.Kind.GENERATOR);
         var spec=kind==TopologyCompiler.Kind.GENERATOR?FluidDeviceSpec.water(catalog):FluidDeviceSpec.nitrogen(catalog);
         // A reservoir is placed empty (decision D54): of its settings only the capacity means anything.
         if(kind==TopologyCompiler.Kind.RESERVOIR)spec=new FluidDeviceSpec(options.volume(),298.15,com.wormzjl.icheme.science.fluid.solver.PhaseLayout.AMBIENT_PRESSURE,spec.composition());
@@ -521,6 +521,12 @@ public final class FluidWorldAuthority implements AutoCloseable {
             view=view.withPipeInfo(PipePresentation.withBulkSpeed(
                 PipePresentation.inspect(registration.device(),snapshot.graph(),registry.pipeViews(id),history,seconds,componentNames.size()),
                 runtime.coordinator().bulkVolumeRates(owner),registration.device().geometry().area()));
+        if(registration.device().kind()==TopologyCompiler.Kind.VOID) {
+            var sources=new ArrayList<IslandCoordinator.Snapshot>();
+            for(long island:registry.islands(id))sources.add(islands.computeIfAbsent(island,runtime.coordinator()::presentation));
+            // Independent boundary islands can have different intervals: combine rates, expressed as one second of transport.
+            view=view.withPipeInfo(PipePresentation.boundaryInflow(id,sources,componentNames.size()),1);
+        }
         return view;
     }
     /**
@@ -598,7 +604,7 @@ public final class FluidWorldAuthority implements AutoCloseable {
         public FluidView view(long device,Map<Long,IslandCoordinator.Snapshot> islands){
             var view=FluidWorldAuthority.this.view(device,islands);
             var record=registrations().get(device);
-            if(record!=null&&(record.device().kind()==TopologyCompiler.Kind.PIPE||record.device().kind()==TopologyCompiler.Kind.FILTER)&&view.pipeInfo()==null)
+            if(record!=null&&(record.device().kind()==TopologyCompiler.Kind.PIPE||record.device().kind()==TopologyCompiler.Kind.FILTER||record.device().kind()==TopologyCompiler.Kind.VOID)&&view.pipeInfo()==null)
                 view=view.withPipeInfo(FluidView.PipeInfo.empty(componentNames.size()));
             if(record!=null)publishedMenuData.put(device,com.wormzjl.icheme.network.FluidNetwork.snapshot(FluidWorldAuthority.this,record,view));
             return view;

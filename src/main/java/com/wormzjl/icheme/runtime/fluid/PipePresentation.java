@@ -8,6 +8,23 @@ import java.util.*;
 /** Display-only reduction of accepted graph/history. No thermo calls, solver work or state mutation. */
 public final class PipePresentation {
     private PipePresentation(){}
+    /** Last accepted incoming streams, including solids; normalize each island's interval before summing. */
+    static FluidView.PipeInfo boundaryInflow(long identity,Collection<IslandCoordinator.Snapshot> snapshots,int components) {
+        var total=new Sum(components);
+        for(var snapshot:snapshots) {
+            var result=snapshot.lastResult().orElse(null);if(result==null||!(result.advancedSeconds()>0))continue;
+            var incoming=new HashMap<Long,Boolean>();var graph=snapshot.graph();
+            for(var pipe:graph.pipes()) {
+                if(graph.reservoirs().get(pipe.second()).id()==identity)incoming.put(pipe.id(),true);
+                else if(graph.reservoirs().get(pipe.first()).id()==identity)incoming.put(pipe.id(),false);
+            }
+            for(var transfer:result.pipeTransfers()) {
+                var forward=incoming.get(transfer.pipeId());
+                if(forward!=null)total.add(forward?transfer.forward():transfer.reverse(),1/result.advancedSeconds());
+            }
+        }
+        return new FluidView.PipeInfo(total.finish(),List.of(),false,false);
+    }
     public static FluidView.PipeInfo inspect(PhysicalFluidTopology.Device device,PassiveNetwork graph,
             List<PhysicalFluidTopology.View> mappings,List<PipeTransfer> history,double seconds,int components){
         if(!Double.isFinite(seconds)||seconds<0)throw new IllegalArgumentException("Invalid history interval");

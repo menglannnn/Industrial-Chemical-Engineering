@@ -39,13 +39,16 @@ public final class PhysicalFluidTopology {
      * cell, or a mover's suction cell) and its ports' cells, and meets pipes only at its ports.
      */
     public record Device(long id,Position position,TopologyCompiler.Kind kind,Direction facing,
-                         PipeResistance.Geometry geometry,FlowControl control,List<Port> ports) {
+                         PipeResistance.Geometry geometry,FlowControl control,List<Port> ports,boolean generatorEnabled) {
+        /** Authoring convenience; world placement explicitly creates generators switched off. */
+        public Device(long id,Position position,TopologyCompiler.Kind kind,Direction facing,PipeResistance.Geometry geometry,FlowControl control,List<Port> ports){this(id,position,kind,facing,geometry,control,ports,true);}
         public Device(long id,Position position,TopologyCompiler.Kind kind,Direction facing,PipeResistance.Geometry geometry,FlowControl control){this(id,position,kind,facing,geometry,control,List.of());}
         public Device {
             if(id<=0)throw new IllegalArgumentException("Physical identities must be positive");
             Objects.requireNonNull(position);Objects.requireNonNull(kind);Objects.requireNonNull(facing);Objects.requireNonNull(geometry);Objects.requireNonNull(control);
             boolean valid=switch(kind) {case PUMP->control instanceof FlowControl.Pump;case COMPRESSOR->control instanceof FlowControl.Compressor;case VALVE->control instanceof FlowControl.PressureValve;default->control instanceof FlowControl.Passive;};
             if(!valid)throw new IllegalArgumentException("Device/control mismatch");
+            if(kind!=TopologyCompiler.Kind.GENERATOR&&!generatorEnabled)throw new IllegalArgumentException("Only a generator has a source switch");
             ports=List.copyOf(ports);
             if(ports.isEmpty()&&control instanceof FlowControl.Mover mover&&!mover.enabled())throw new IllegalArgumentException("Only constructed movers have a power switch");
             if(ports.size()>MAXIMUM_PORTS)throw new IllegalArgumentException("Too many device ports: "+ports.size());
@@ -95,7 +98,8 @@ public final class PhysicalFluidTopology {
         boolean joins(Device other,Position from,Direction direction){return meets(from,direction)&&other.meets(from.offset(direction),opposite(direction))&&(kind==TopologyCompiler.Kind.PIPE||other.kind==TopologyCompiler.Kind.PIPE);}
         /** A generator or a void (owner decision D17): islands meet at it without being joined by it. */
         boolean fixed(){return TopologyCompiler.fixed(kind);}
-        boolean connects(Direction direction){return !actuator()&&kind!=TopologyCompiler.Kind.FILTER||direction.x*facing.x+direction.y*facing.y+direction.z*facing.z!=0;}
+        /** Off closes a generator's hydraulic contacts; its registered identity and fixed source specification stay put. */
+        boolean connects(Direction direction){return generatorEnabled&&(!actuator()&&kind!=TopologyCompiler.Kind.FILTER||direction.x*facing.x+direction.y*facing.y+direction.z*facing.z!=0);}
         /** The driven side is the actual discharge nozzle, independent of the node's position and the model's heading. */
         boolean outletAt(Position cell,Direction face) {
             if(!actuator())return false;
