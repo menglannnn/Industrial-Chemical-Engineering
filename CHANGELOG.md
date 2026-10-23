@@ -21,7 +21,7 @@ All notable changes to Industrial Chemical Engineering (IChemE, formerly CreateC
 
 ### Changed
 
-- Pipe and equipment-nozzle flanges now have square 90° shoulders: the neck stays at the pipe diameter up to the flange plate, replacing the sloped hub (commit `acd0fd14`, batch: `2026-10-23-square-flanges`).
+- Pipe and equipment-nozzle flanges now have square 90° shoulders, with visible joint lines between paired pipeline flange plates; pipe inspection requires the existing Fluid Debugger, while the Pipeline Tool keeps its resize/settings actions (commits `acd0fd14`, `fa81579b`, batch: `2026-10-23-square-flanges`).
 
 ## [0.11.2] - 2026-10-21
 
