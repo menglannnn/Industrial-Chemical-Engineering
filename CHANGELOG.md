@@ -32,6 +32,7 @@ All notable changes to Industrial Chemical Engineering (IChemE, formerly CreateC
 
 ### Changed
 
+- Enlarge Pipeline Sight Glass and Shutoff Valve inventory models with dedicated GUI transforms, and add an independent Volume/Mass selector to the generator's equilibrium phase bar; WTI at 200°C/3 bar remains 2.06% liquid by volume and 66.47% by mass, with no physics or format change (commit `c1e567da`, batch: `2026-10-23-fluid-display-followups`).
 - Pipe and equipment-nozzle flanges now have square 90° shoulders, with visible joint lines between paired pipeline flange plates; pipe inspection requires the existing Fluid Debugger, while the Pipeline Tool keeps its resize/settings actions (commits `acd0fd14`, `fa81579b`, batch: `2026-10-23-square-flanges`).
 
 ## [0.11.2] - 2026-10-21
