@@ -40,8 +40,9 @@ import java.util.function.Function;
  * each population as its material's id, revision, density and heat capacity, then its size and mass; the id names a
  * crystal the package admits or a custom solid (owner decision D23), and the reader refuses an id that names no record
  * of the package or saved constants that are not the record's. The topology unit's registrations carry a vessel's
- * ports (cell, face, phase port) and its spec's level height and open flag; every boundary transfer its kind. No other
- * format is read: format 12 and older are refused with the instruction to create a fresh world (format 13, unit format 6,
+ * ports (cell, face, phase port, connection role) and its spec's level height and open flag; every boundary transfer its kind. No other
+ * format is read: format 13 and older are refused with the instruction to create a fresh world (format 14, unit format 7,
+ * added directed multi-cell mover ports, batch 2026-10-23-functional-pumps-compressors; format 13, unit format 6,
  * added the open vessels of batch 2026-10-21-floating-roof-tanks: the open flag of specs and inventories, the OVERFLOW
  * phase port and the boundary transfers' kinds; format 12, unit format 5, added vessel ports to registrations and level
  * heights to specs and inventories with the drums of batch 2026-10-15-custom-equipment-rendering; format 11 dropped
@@ -50,10 +51,10 @@ import java.util.function.Function;
  * interval's acceptance: every interval is a full solve).</p>
  */
 public final class FluidCheckpointCodec {
-    public static final int VERSION=13;
+    public static final int VERSION=14;
     /** The {@code Base} of an awake island: it carries no certificate. */
     public static final long AWAKE=-1;
-    static final int UNIT_MAGIC=0x43434655,UNIT_FORMAT=6;
+    static final int UNIT_MAGIC=0x43434655,UNIT_FORMAT=7;
     static final byte ISLAND=1,TOPOLOGY=2;
     /** Magic, format, kind, identity, revision, generation. */
     static final int UNIT_HEADER=4+1+1+8+8+8;
@@ -182,8 +183,8 @@ public final class FluidCheckpointCodec {
             case FlowControl.PressureValve valve->{w.u8(2);w.f64(valve.targetPressure());}
             case FlowControl.Compressor compressor->{w.u8(3);w.f64(compressor.targetVolumeFlow());w.f64(compressor.maximumPressureRatio());}
         }
-        // A vessel's ports (cell, face, class).
-        w.varint(d.ports().size());for(var port:d.ports()){position(w,port.cell(),tables);w.u8(port.face().ordinal());w.u8(port.port().ordinal());}
+        // Multi-cell ports (cell, face, phase class, stable connection role).
+        w.varint(d.ports().size());for(var port:d.ports()){position(w,port.cell(),tables);w.u8(port.face().ordinal());w.u8(port.port().ordinal());w.u8(port.role().code());}
         var s=r.spec();w.f64(s.volume());w.f64(s.temperature());w.f64(s.pressure());w.varint(tables.composition(s.composition()));
         w.f64(s.solids().volumeFraction());w.varint(s.solids().grades().size());
         for(var g:s.solids().grades()){w.varint(tables.text(g.material()));w.varint(tables.text(g.size().metres()));w.f64(g.massShare());}
@@ -200,8 +201,9 @@ public final class FluidCheckpointCodec {
         int portCount=r.varint(PhysicalFluidTopology.MAXIMUM_PORTS);var ports=new ArrayList<PhysicalFluidTopology.Port>(portCount);
         for(int i=0;i<portCount;i++) {
             var cell=position(r,texts);int face=r.u8(),port=r.u8();
-            if(face>=DIRECTIONS.length||port>=PHASE_PORTS.length)throw r.invalid("unknown vessel port");
-            ports.add(new PhysicalFluidTopology.Port(cell,DIRECTIONS[face],PHASE_PORTS[port]));
+            if(face>=DIRECTIONS.length||port>=PHASE_PORTS.length)throw r.invalid("unknown device port");
+            var role=PhysicalFluidTopology.ConnectionRole.fromCode(r.u8());
+            ports.add(new PhysicalFluidTopology.Port(cell,DIRECTIONS[face],PHASE_PORTS[port],role));
         }
         var device=new PhysicalFluidTopology.Device(id,position,DEVICE_KINDS[kind],DIRECTIONS[facing],geometry,control,ports);
         double volume=r.f64(),temperature=r.f64(),pressure=r.f64();var composition=compositions[r.varint(compositions.length-1)];

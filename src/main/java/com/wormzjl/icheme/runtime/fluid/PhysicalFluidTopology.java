@@ -16,13 +16,18 @@ public final class PhysicalFluidTopology {
         public Position {Objects.requireNonNull(dimension);if(dimension.isBlank())throw new IllegalArgumentException("Missing dimension");}
         Position offset(Direction d){return new Position(dimension,Math.addExact(x,d.x),Math.addExact(y,d.y),Math.addExact(z,d.z));}
     }
-    /**
-     * A port of a vessel that spans several cells (a drum, batch 2026-10-15-custom-equipment-rendering): a nozzle whose
-     * flange face is the side of {@code cell} towards {@code face}, where a pipe in the next cell meets it, drawing
-     * {@code port} (owner decision 2026-10-16: the class is fixed by the nozzle's position on the vessel).
-     */
-    public record Port(Position cell,Direction face,PassiveNetwork.PhasePort port) {
-        public Port{Objects.requireNonNull(cell);Objects.requireNonNull(face);Objects.requireNonNull(port);}
+    /** A reservoir's phase outlet, or a mover's explicitly directed process connection. Stable checkpoint codes. */
+    public enum ConnectionRole {
+        VESSEL(0),SUCTION(1),DISCHARGE(2);
+        private final int code;
+        ConnectionRole(int code){this.code=code;}
+        public int code(){return code;}
+        public static ConnectionRole fromCode(int code){return switch(code){case 0->VESSEL;case 1->SUCTION;case 2->DISCHARGE;default->throw new IllegalArgumentException("Unknown connection role "+code);};}
+    }
+    /** A multi-cell device's nozzle: the face of {@code cell} where a pipe meets it, its phase class and connection role. */
+    public record Port(Position cell,Direction face,PassiveNetwork.PhasePort port,ConnectionRole role) {
+        public Port(Position cell,Direction face,PassiveNetwork.PhasePort port){this(cell,face,port,ConnectionRole.VESSEL);}
+        public Port{Objects.requireNonNull(cell);Objects.requireNonNull(face);Objects.requireNonNull(port);Objects.requireNonNull(role);}
     }
     /** Where a device meets the next block: one of its cells and the direction out of it. */
     public record Contact(Position cell,Direction direction) {}
@@ -31,7 +36,7 @@ public final class PhysicalFluidTopology {
     /**
      * A registered device. One block occupies {@code position} and meets its neighbours through its faces; a vessel with
      * {@code ports} occupies its node cell {@code position} (where its level head is measured from, its lowest inside
-     * cell) and its ports' cells, and meets pipes only at its ports.
+     * cell, or a mover's suction cell) and its ports' cells, and meets pipes only at its ports.
      */
     public record Device(long id,Position position,TopologyCompiler.Kind kind,Direction facing,
                          PipeResistance.Geometry geometry,FlowControl control,List<Port> ports) {
@@ -42,9 +47,24 @@ public final class PhysicalFluidTopology {
             boolean valid=switch(kind) {case PUMP->control instanceof FlowControl.Pump;case COMPRESSOR->control instanceof FlowControl.Compressor;case VALVE->control instanceof FlowControl.PressureValve;default->control instanceof FlowControl.Passive;};
             if(!valid)throw new IllegalArgumentException("Device/control mismatch");
             ports=List.copyOf(ports);
-            if(!ports.isEmpty()&&kind!=TopologyCompiler.Kind.RESERVOIR||ports.size()>MAXIMUM_PORTS)throw new IllegalArgumentException("Only a vessel has ports, at most "+MAXIMUM_PORTS);
+            if(ports.size()>MAXIMUM_PORTS)throw new IllegalArgumentException("Too many device ports: "+ports.size());
             var seen=new HashSet<Contact>();
-            for(var port:ports)if(!port.cell.dimension().equals(position.dimension())||!seen.add(new Contact(port.cell,port.face)))throw new IllegalArgumentException("Invalid vessel port");
+            int suction=0,discharge=0;
+            for(var port:ports) {
+                if(!port.cell.dimension().equals(position.dimension())||!seen.add(new Contact(port.cell,port.face)))throw new IllegalArgumentException("Invalid device port");
+                if(kind==TopologyCompiler.Kind.RESERVOIR) {
+                    if(port.role!=ConnectionRole.VESSEL)throw new IllegalArgumentException("A reservoir needs vessel ports");
+                } else if(kind==TopologyCompiler.Kind.PUMP||kind==TopologyCompiler.Kind.COMPRESSOR) {
+                    if(port.port!=PassiveNetwork.PhasePort.BULK)throw new IllegalArgumentException("A mover needs bulk ports");
+                    switch(port.role) {
+                        case SUCTION->{suction++;if(!port.cell.equals(position))throw new IllegalArgumentException("A mover's node must be its suction cell");}
+                        case DISCHARGE->discharge++;
+                        case VESSEL->throw new IllegalArgumentException("A mover needs suction and discharge ports");
+                    }
+                } else throw new IllegalArgumentException("Only reservoirs, pumps and compressors have ports");
+            }
+            if(!ports.isEmpty()&&kind!=TopologyCompiler.Kind.RESERVOIR&&(ports.size()!=2||suction!=1||discharge!=1))
+                throw new IllegalArgumentException("A mover needs exactly one suction and one discharge port");
         }
         boolean boundary(){return kind==TopologyCompiler.Kind.RESERVOIR||kind==TopologyCompiler.Kind.GENERATOR||kind==TopologyCompiler.Kind.VOID;}
         boolean actuator(){return kind==TopologyCompiler.Kind.PUMP||kind==TopologyCompiler.Kind.COMPRESSOR||kind==TopologyCompiler.Kind.VALVE;}
@@ -75,6 +95,13 @@ public final class PhysicalFluidTopology {
         /** A generator or a void (owner decision D17): islands meet at it without being joined by it. */
         boolean fixed(){return TopologyCompiler.fixed(kind);}
         boolean connects(Direction direction){return !actuator()&&kind!=TopologyCompiler.Kind.FILTER||direction.x*facing.x+direction.y*facing.y+direction.z*facing.z!=0;}
+        /** The driven side is the actual discharge nozzle, independent of the node's position and the model's heading. */
+        boolean outletAt(Position cell,Direction face) {
+            if(!actuator())return false;
+            if(ports.isEmpty())return cell.equals(position)&&face==facing;
+            for(var port:ports)if(port.cell.equals(cell)&&port.face==face)return port.role==ConnectionRole.DISCHARGE;
+            return false;
+        }
         /**
          * The port a pipe end met out of {@code cell} towards {@code face} compiles to (plan 4.1, default A1 of the
          * phase-ports batch): a vessel's port its declared class; a one-block tank's {@code UP} face the top outlet
@@ -123,7 +150,7 @@ public final class PhysicalFluidTopology {
         long virtual=-1,linkId=1;
         // The face of every link with a tank (RESERVOIR) end, as the direction from the tank to its neighbour, and the port
         // a pipe end at that tank compiles to (Device.portAt). Generators and voids stay BULK.
-        var tankFaces=new HashMap<Long,Direction>();var tankPorts=new HashMap<Long,PassiveNetwork.PhasePort>();
+        var tankFaces=new HashMap<Long,Direction>();var tankPorts=new HashMap<Long,PassiveNetwork.PhasePort>();var outletLinks=new HashSet<Long>();
         for(var d:physical.values())for(var contact:d.contacts()) {
             var direction=contact.direction();var next=contact.cell().offset(direction);
             var other=positions.get(next);
@@ -136,8 +163,8 @@ public final class PhysicalFluidTopology {
             } else {
                 long middle=virtual--;var a=points.get(d.id);var b=points.get(other.id);var p=new Point((a.x+b.x)/2,(a.y+b.y)/2,(a.z+b.z)/2);
                 points.put(middle,p);nodes.add(new TopologyCompiler.Node(middle,TopologyCompiler.Kind.PIPE,p.y));
-                links.add(new TopologyCompiler.Link(linkId,d.id,middle,half(d,other)));linkOwner.put(linkId++,d.id);
-                links.add(new TopologyCompiler.Link(linkId,middle,other.id,half(other,d)));linkOwner.put(linkId++,other.id);
+                links.add(new TopologyCompiler.Link(linkId,d.id,middle,half(d,other)));if(d.outletAt(contact.cell(),direction))outletLinks.add(linkId);linkOwner.put(linkId++,d.id);
+                links.add(new TopologyCompiler.Link(linkId,middle,other.id,half(other,d)));if(other.outletAt(next,opposite(direction)))outletLinks.add(linkId);linkOwner.put(linkId++,other.id);
             }
         }
         var compiled=TopologyCompiler.compile(nodes,links);var byLink=new HashMap<Long,TopologyCompiler.Link>();for(var link:links)byLink.put(link.id(),link);
@@ -183,7 +210,7 @@ public final class PhysicalFluidTopology {
                 if(run.first()==run.second()){for(var segment:run.segments())diagnostics.put(linkOwner.get(segment.linkId()),"NO FLOW: passive return loop");continue;}
                 var start=physical.get(run.first());var end=physical.get(run.second());
                 var startLink=byLink.get(run.segments().getFirst().linkId());var endLink=byLink.get(run.segments().getLast().linkId());
-                boolean fromStart=outlet(start,points.get(other(startLink,run.first()))),fromEnd=outlet(end,points.get(other(endLink,run.second())));
+                boolean fromStart=start!=null&&start.actuator()&&outletLinks.contains(startLink.id()),fromEnd=end!=null&&end.actuator()&&outletLinks.contains(endLink.id());
                 var startPort=endPort(start,startLink,tankPorts);var endPort=endPort(end,endLink,tankPorts);
                 var sections=run.segments().stream().map(TopologyCompiler.Segment::geometry).toList();
                 int a=indices.get(run.first()),b=indices.get(run.second());
@@ -256,10 +283,6 @@ public final class PhysicalFluidTopology {
         return device.control;
     }
     private static boolean positiveSide(Device device,Point neighbor){var p=device.position;var d=device.facing;return (neighbor.x-p.x)*d.x+(neighbor.y-p.y)*d.y+(neighbor.z-p.z)*d.z>0;}
-    private static boolean outlet(Device device,Point neighbor) {
-        if(device==null||!device.actuator())return false;var p=device.position;var d=device.facing;
-        return (neighbor.x-p.x)*d.x+(neighbor.y-p.y)*d.y+(neighbor.z-p.z)*d.z>0;
-    }
     /**
      * A device's half of its link to {@code line}: half its own geometry, except that a pump, compressor or valve takes the
      * bore and roughness of the pipe it is joined to (owner decision 2026-10-16, batch 2026-10-15-custom-equipment-rendering:

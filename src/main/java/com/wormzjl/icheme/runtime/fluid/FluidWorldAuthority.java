@@ -140,15 +140,32 @@ public final class FluidWorldAuthority implements AutoCloseable {
     private final LinkedHashMap<UUID,String> refusedEvents=new LinkedHashMap<>();
     private void refuseEvent(UUID event,String reason){refusedEvents.put(event,reason);if(refusedEvents.size()>WorldTopologyLedger.MAXIMUM_EVENTS)refusedEvents.remove(refusedEvents.keySet().iterator().next());}
     public WorldTopologyLedger.Registration place(PhysicalFluidTopology.Position position,TopologyCompiler.Kind kind,PhysicalFluidTopology.Direction facing) {
+        return place(position,kind,facing,List.of());
+    }
+    /** A complete multi-cell mover uses the same controls and geometry as its one-block counterpart. */
+    public WorldTopologyLedger.Registration placeMover(PhysicalFluidTopology.Position suction,TopologyCompiler.Kind kind,List<PhysicalFluidTopology.Port> ports) {
+        if(kind!=TopologyCompiler.Kind.PUMP&&kind!=TopologyCompiler.Kind.COMPRESSOR||ports.isEmpty())throw new IllegalArgumentException("Expected a multi-cell mover");
+        return place(suction,kind,PhysicalFluidTopology.Direction.NORTH,ports);
+    }
+    private WorldTopologyLedger.Registration place(PhysicalFluidTopology.Position position,TopologyCompiler.Kind kind,PhysicalFluidTopology.Direction facing,List<PhysicalFluidTopology.Port> ports) {
         owned();
         long id=topology.nextIdentity();var control=switch(kind){case PUMP->new FlowControl.Pump(.01,500000);case COMPRESSOR->new FlowControl.Compressor(.05,3.0);case VALVE->new FlowControl.PressureValve(200000);default->new FlowControl.Passive();};
         double diameter=kind==TopologyCompiler.Kind.PIPE?placedPipeDiameter(position):.05;
-        var device=new PhysicalFluidTopology.Device(id,position,kind,facing,new PipeResistance.Geometry(1,diameter,PipeResistance.DEFAULT_ROUGHNESS_METRES,0),control);
+        var device=new PhysicalFluidTopology.Device(id,position,kind,facing,new PipeResistance.Geometry(1,diameter,PipeResistance.DEFAULT_ROUGHNESS_METRES,0),control,ports);
         var spec=kind==TopologyCompiler.Kind.GENERATOR?FluidDeviceSpec.water(catalog):FluidDeviceSpec.nitrogen(catalog);
         // A reservoir is placed empty (decision D54): of its settings only the capacity means anything.
         if(kind==TopologyCompiler.Kind.RESERVOIR)spec=new FluidDeviceSpec(options.volume(),298.15,com.wormzjl.icheme.science.fluid.solver.PhaseLayout.AMBIENT_PRESSURE,spec.composition());
         var record=new WorldTopologyLedger.Registration(device,spec,0);
         submit(List.of(new WorldTopologyLedger.Edit(id,record)),Math.addExact(id,1));return record;
+    }
+    /** A layout refresh moves a mover's binding by one queued replacement, retaining its settings, never its own inventory. */
+    public WorldTopologyLedger.Registration relocateMover(long id,PhysicalFluidTopology.Position suction,List<PhysicalFluidTopology.Port> ports) {
+        owned();var old=registrations().get(id);
+        if(old==null||!(old.device().control() instanceof FlowControl.Mover)||old.device().ports().isEmpty()||ports.isEmpty())throw new IllegalArgumentException("Expected a registered multi-cell mover");
+        var d=old.device();long next=topology.nextIdentity();
+        var device=new PhysicalFluidTopology.Device(next,suction,d.kind(),d.facing(),d.geometry(),d.control(),ports);
+        var record=new WorldTopologyLedger.Registration(device,old.spec(),0);
+        submit(List.of(new WorldTopologyLedger.Edit(id,null),new WorldTopologyLedger.Edit(next,record)),Math.addExact(next,1));return record;
     }
     /** Pipes connect on every face. Inherit the largest adjacent pipe's latest queued bore, even below the standalone default. */
     private double placedPipeDiameter(PhysicalFluidTopology.Position position) {

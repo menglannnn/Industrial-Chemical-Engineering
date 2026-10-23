@@ -45,7 +45,7 @@ import java.util.WeakHashMap;
  * into its collision shape, so the cell needs nothing from any other cell or chunk. The nozzle sizes follow the pipes
  * connected to them; the server sets them ({@code EquipmentStructure}).
  *
- * <p>A drum is a reservoir of the fluid network: its node cell ({@link ShapeRasterizer#fluidCell}) carries the drum's
+ * <p>A reservoir or mover's node cell ({@link ShapeRasterizer#fluidCell}) carries the equipment's
  * fluid identity and is its presentation binding, as a device block entity is for a one-block tank. Nothing of the
  * drum's contents is kept here.
  */
@@ -60,7 +60,7 @@ public final class EquipmentShellBlockEntity extends BlockEntity implements Flui
     /** The vessel's paint, the same on every cell; the client tints the cell's painted parts with it. */
     private Paint paint = Paint.DEFAULT;
     private @Nullable ShapeRasterizer.CellKey key;
-    /** The drum's fluid identity, on its node cell only (0 elsewhere and while unregistered). */
+    /** The equipment's fluid identity, on its node cell only (0 elsewhere and while unregistered). */
     private long identity;
     /**
      * The layout this cell was placed by: its {@link ShapeRasterizer#stamp} and its box (0 for a cell saved before the
@@ -176,7 +176,7 @@ public final class EquipmentShellBlockEntity extends BlockEntity implements Flui
         else roofs.remove(worldPosition);
     }
 
-    /** Server: a node cell binds the drum the ledger holds here, as a device block entity binds its registration; the client lists its moving parts. */
+    /** Server: a node binds its saved registration without creating process state; the client lists moving parts. */
     @Override
     public void onLoad() {
         super.onLoad();
@@ -214,16 +214,16 @@ public final class EquipmentShellBlockEntity extends BlockEntity implements Flui
             FluidWorldAuthority.find(serverLevel.getServer()).ifPresent(world -> world.deviceUnloaded(identity));
     }
 
-    /** Server: opens the drum's tank screen; the player may stand anywhere within reach of the drum, not only of this cell. */
+    /** Opens equipment controls; the player may stand within reach of the whole structure, not only this cell. */
     public void open(ServerPlayer player, boolean debug) {
         if (identity == 0 || shape == null) {
-            player.displayClientMessage(Component.literal("Drum is waiting for its world identity."), true);
+            player.displayClientMessage(Component.translatable("gui.icheme.fluid.waiting_identity"), true);
             return;
         }
         double reach = FluidDeviceMenu.REACH + Math.max(shape.sizeX(), Math.max(shape.sizeY(), shape.sizeZ()));
         player.openMenu(new MenuProvider() {
             public Component getDisplayName() {
-                return Component.translatable("gui.icheme.vessel.title.drum");
+                return Component.translatable("gui.icheme.vessel.title." + shape.kind().name().toLowerCase(Locale.ROOT));
             }
 
             public AbstractContainerMenu createMenu(int containerId, Inventory inventory, Player player) {

@@ -135,7 +135,7 @@ public final class EquipmentStructure {
             placed++;
         }
         var vessel = new Vessel(origin, shape);
-        if (shape.reservoir() && rows >= shape.sizeY()) register(level, vessel);
+        if (shape.fluidDevice() && rows >= shape.sizeY()) register(level, vessel);
         reconnect(level, vessel);
         refreshNozzles(level, vessel);
         return placed;
@@ -148,6 +148,14 @@ public final class EquipmentStructure {
      */
     private static void register(ServerLevel level, Vessel vessel) {
         var node = node(vessel);
+        if (vessel.shape().kind().mover()) {
+            var kind = vessel.shape().kind() == EquipmentShape.Kind.PUMP ? TopologyCompiler.Kind.PUMP : TopologyCompiler.Kind.COMPRESSOR;
+            FluidWorldAuthority.find(level.getServer()).ifPresent(world -> {
+                var record = world.placeMover(position(level, node), kind, ports(level, vessel));
+                if (level.getBlockEntity(node) instanceof EquipmentShellBlockEntity entity) entity.bindIdentity(record.device().id());
+            });
+            return;
+        }
         if (vessel.shape().volume() > FluidDeviceSpec.MAX_VOLUME) {
             IChemE.LOGGER.warn("A {} of {} m³ is over the fluid model's {} m³: not registered", vessel.shape().kind().name().toLowerCase(Locale.ROOT),
                     Math.round(vessel.shape().volume()), Math.round(FluidDeviceSpec.MAX_VOLUME));
@@ -164,7 +172,7 @@ public final class EquipmentStructure {
         return vessel.shape().kind() == EquipmentShape.Kind.TANK;
     }
 
-    /** The drum's node: the shell cell at its lowest inside point ({@link ShapeRasterizer#fluidCell}). */
+    /** A reservoir's lowest inside cell, or a mover's suction nozzle cell ({@link ShapeRasterizer#fluidCell}). */
     private static BlockPos node(Vessel vessel) {
         var cell = ShapeRasterizer.fluidCell(vessel.shape());
         return vessel.origin().offset(cell.x(), cell.y(), cell.z());
@@ -174,10 +182,20 @@ public final class EquipmentStructure {
         return new PhysicalFluidTopology.Position(level.dimension().location().toString(), at.getX(), at.getY(), at.getZ());
     }
 
-    /** The drum's ports, one per nozzle, of the class its position fixes. */
+    /** Reservoir nozzles keep their phase classes; movers register only their explicitly directed process pair. */
     private static List<PhysicalFluidTopology.Port> ports(Level level, Vessel vessel) {
         var ports = new ArrayList<PhysicalFluidTopology.Port>();
+        var nozzles = vessel.shape().nozzles();
         for (var port : ShapeRasterizer.ports(vessel.shape())) {
+            var role = PhysicalFluidTopology.ConnectionRole.VESSEL;
+            if (vessel.shape().kind().mover()) {
+                role = switch (nozzles.get(port.nozzle()).role()) {
+                    case SUCTION -> PhysicalFluidTopology.ConnectionRole.SUCTION;
+                    case DISCHARGE -> PhysicalFluidTopology.ConnectionRole.DISCHARGE;
+                    default -> null;
+                };
+                if (role == null) continue; // Oil-cooler and other auxiliary nozzles remain decorative.
+            }
             var cell = vessel.origin().offset(port.cell().x(), port.cell().y(), port.cell().z());
             var face = PhysicalFluidTopology.Direction.valueOf(Direction.fromDelta(port.dx(), port.dy(), port.dz()).name());
             var phase = switch (port.port()) {
@@ -186,12 +204,12 @@ public final class EquipmentStructure {
                 case BULK -> PassiveNetwork.PhasePort.BULK;
                 case OVERFLOW -> PassiveNetwork.PhasePort.OVERFLOW;
             };
-            ports.add(new PhysicalFluidTopology.Port(position(level, cell), face, phase));
+            ports.add(new PhysicalFluidTopology.Port(position(level, cell), face, phase, role));
         }
         return ports;
     }
 
-    /** The drum's registration leaves the fluid network with its node cell (its contents go with it, as a broken tank's do). */
+    /** The equipment's registration leaves with its structure (a reservoir's contents go with it). */
     private static void unregister(ServerLevel level, Vessel vessel) {
         var position = position(level, node(vessel));
         FluidWorldAuthority.find(level.getServer()).ifPresent(world -> world.at(position)
@@ -284,7 +302,7 @@ public final class EquipmentStructure {
         if (dismantling || level.isClientSide()) return;
         dismantling = true;
         try {
-            if (level instanceof ServerLevel server && vessel.shape().reservoir()) unregister(server, vessel);
+            if (level instanceof ServerLevel server && vessel.shape().fluidDevice()) unregister(server, vessel);
             var layout = ShapeRasterizer.layout(vessel.shape());
             for (var list : java.util.List.of(layout.shell(), layout.interior()))
                 for (var cell : list) {
@@ -414,7 +432,7 @@ public final class EquipmentStructure {
         for (int x = low.getX() >> 4; x <= high.getX() >> 4; x++)
             for (int z = low.getZ() >> 4; z <= high.getZ() >> 4; z++) level.getChunkSource().chunkMap.waitForLightBeforeSending(new ChunkPos(x, z), 0);
         var vessel = new Vessel(placed, shape);
-        if (shape.reservoir()) reregister(level, vessel, oldNode);
+        if (shape.fluidDevice()) reregister(level, vessel, oldNode);
         // Pipes beside a dropped, added or redrawn cell take up or drop their connection (old nozzles included).
         for (var at : touched)
             for (var direction : Direction.values()) {
@@ -439,8 +457,8 @@ public final class EquipmentStructure {
 
     /**
      * A refreshed drum keeps its registration, so its contents: its ports, volume and level height follow by a queued
-     * edit. The ledger never moves a device, so a drum whose node cell the new layout moved registers anew, empty, as a
-     * rebuilt drum would; one that had no registration registers now. {@code oldNode} is the cell that held its identity.
+     * edit. Movers retain their controls too. The ledger never moves a device: a moved mover gets a queued replacement
+     * with the same controls; a moved reservoir registers anew, empty. {@code oldNode} held the former identity.
      */
     private static void reregister(ServerLevel level, Vessel vessel, @Nullable BlockPos oldNode) {
         var node = node(vessel);
@@ -454,6 +472,12 @@ public final class EquipmentStructure {
         }
         var device = record.device();
         if (!device.position().equals(position(level, node))) {
+            if (vessel.shape().kind().mover()) {
+                var replacement = world.relocateMover(device.id(), position(level, node), ports(level, vessel));
+                if (level.getBlockEntity(oldNode) instanceof EquipmentShellBlockEntity old && old.fluidIdentity() == device.id()) old.releaseIdentity();
+                if (level.getBlockEntity(node) instanceof EquipmentShellBlockEntity entity) entity.bindIdentity(replacement.device().id());
+                return;
+            }
             world.remove(device.id());
             if (level.getBlockEntity(oldNode) instanceof EquipmentShellBlockEntity old) old.releaseIdentity();
             register(level, vessel);
@@ -463,7 +487,7 @@ public final class EquipmentStructure {
         var spec = record.spec();
         world.edit(device.id(), record.revision(),
                 new PhysicalFluidTopology.Device(device.id(), device.position(), device.kind(), device.facing(), device.geometry(), device.control(), ports(level, vessel)),
-                new FluidDeviceSpec(vessel.shape().volume(), spec.temperature(), spec.pressure(), spec.composition(), spec.solids(), vessel.shape().levelHeight(), open(vessel)));
+                vessel.shape().kind().mover() ? spec : new FluidDeviceSpec(vessel.shape().volume(), spec.temperature(), spec.pressure(), spec.composition(), spec.solids(), vessel.shape().levelHeight(), open(vessel)));
         if (level.getBlockEntity(node) instanceof EquipmentShellBlockEntity entity && entity.fluidIdentity() != device.id()) entity.bindIdentity(device.id());
     }
 

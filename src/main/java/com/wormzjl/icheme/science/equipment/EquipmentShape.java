@@ -26,8 +26,8 @@ import java.util.Objects;
  * the pipes (owner decisions 2026-10-16). A <b>unit</b> (heat exchanger, kettle reboiler, air cooler, steam ejector;
  * owner request 2026-10-16; centrifugal pump, reciprocating compressor, vertical and cabin heaters, owner request
  * 2026-10-17) is built from its parts, not as a vessel of revolution ({@link ProcessUnit}): {@code diameter},
- * {@code tangentLength} and {@code support} are its own sizes there. Columns and units are drawn only: their nozzles take
- * the connected pipe's size, but they are not fluid devices yet.
+ * {@code tangentLength} and {@code support} are its own sizes there. Pumps and both compressor designs are fluid movers;
+ * other columns and units are drawn only. Every nozzle takes the connected pipe's size.
  *
  * <p>Supports. A vertical vessel stands on a skirt: a cylinder of the shell diameter from the ground to the bottom tangent
  * line, {@code support} metres high (0 = none: the vessel rests on its lower head, the debug command's bare form). The
@@ -121,6 +121,11 @@ public record EquipmentShape(Kind kind, double diameter, double tangentLength, O
         /** A fluid reservoir: one node, a port per nozzle, its design volume and level height. */
         public boolean reservoir() {
             return this == DRUM || storage();
+        }
+
+        /** A self-powered fluid mover, with one suction and one discharge nozzle. */
+        public boolean mover() {
+            return this == PUMP || this == COMPRESSOR || this == CENTRIFUGAL_COMPRESSOR;
         }
     }
 
@@ -586,6 +591,11 @@ public record EquipmentShape(Kind kind, double diameter, double tangentLength, O
     /** A fluid reservoir: a drum or a storage vessel. */
     public boolean reservoir() {
         return kind.reservoir();
+    }
+
+    /** Registers with the fluid engine when the whole structure has been built. */
+    public boolean fluidDevice() {
+        return reservoir() || kind.mover();
     }
 
     /** A vessel's skirt; a designed shape's supports are its own parts. */

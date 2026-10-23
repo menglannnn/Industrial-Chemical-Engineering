@@ -36,7 +36,7 @@ public final class FluidDeviceScreen extends AbstractContainerScreen<FluidDevice
     private V3ClientPresets.Snapshot mixtureSnapshot;
     private record Choice(String label,Runnable select){}
     private List<Choice> choices=List.of();
-    /** A drum's datasheet (page 5), from the cells the client has; empty for a one-block tank and every other device. */
+    /** Equipment datasheet (page 5), from the client's synced cells; empty for one-block devices. */
     private List<Component> datasheet=List.of();
 
     public FluidDeviceScreen(FluidDeviceMenu menu,Inventory inventory,Component title){super(menu,inventory,title);}
@@ -72,7 +72,7 @@ public final class FluidDeviceScreen extends AbstractContainerScreen<FluidDevice
     private int tableWidth(){return imageWidth-tableX()-22;}
     // Page 4 is a tank's "Connections by face": one two-line row per connection in the table area, scrolled like the
     // other tables, so the list is readable at every GUI scale (it was on the rail, below the tank's values, and did
-    // not fit below about 323 scaled pixels of height). Page 5 is a drum's datasheet, a line per row, scrolled the same way.
+    // not fit below about 323 scaled pixels of height). Page 5 is an equipment datasheet, scrolled the same way.
     private boolean tank(){return menu.clientData()!=null&&menu.clientData().kind()==TopologyCompiler.Kind.RESERVOIR;}
     private int tableTop(){return page==0?(pipe()?110:130):page==1?166:page==3?104:page==4||page==5?100:142;}
     private int rowHeight(){return page==0||page==3?18:page==4?24:page==5?12:25;}
@@ -170,7 +170,8 @@ public final class FluidDeviceScreen extends AbstractContainerScreen<FluidDevice
             action("connections",116,29,112,()->changePage(3)).active=page!=3;
         // The tab's hover hint is the outlets hint (the D11 rule), key "outlets.hint".
         if(tank())action("outlets",116,29,130,()->changePage(4)).active=page!=4;
-        if(tank()&&!datasheet.isEmpty())action("datasheet",252,29,Math.min(100,imageWidth-262),()->changePage(5)).active=page!=5;
+        int datasheetX=tank()?252:116;
+        if(!datasheet.isEmpty())action("datasheet",datasheetX,29,Math.min(100,imageWidth-datasheetX-10),()->changePage(5)).active=page!=5;
         railBuiltOffset=railOffset();int y=railTop()-railBuiltOffset;
         if(canEdit())switch(data.kind()){
             case GENERATOR->{railField("pressure",tr("pressure_input"),y);railField("temperature",tr("temperature_input",temperatureUnit.symbol()),y+RAIL_CONTROL);}

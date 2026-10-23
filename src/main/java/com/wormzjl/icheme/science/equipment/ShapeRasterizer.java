@@ -354,7 +354,7 @@ public final class ShapeRasterizer {
 
     /**
      * A drum's shell cell at its lowest inside point, where its fluid node stands: the bottom apex, or a lying drum's
-     * bottom line; null for a column or a unit, which are not fluid devices yet.
+     * bottom line; a mover's suction nozzle cell; null for other columns and units.
      */
     public static @Nullable Cell fluidCell(EquipmentShape shape) {
         return geometry(shape).fluidCell;
@@ -555,7 +555,7 @@ public final class ShapeRasterizer {
                 irregularFrom = mesh.facets().size();
                 mesh.facets().addAll(ladders.facets());
             }
-            // Every nozzle is a port: a drum's are its fluid ports; a column's and a unit's only take the pipe's size.
+            // Every nozzle takes the pipe's size. Reservoir ports and a mover's suction/discharge also join the engine.
             var byCell = new HashMap<Cell, List<Integer>>();
             for (int k = 0; k < nozzles.size(); k++) {
                 var nozzle = nozzles.get(k);
@@ -581,6 +581,9 @@ public final class ShapeRasterizer {
                         ? transform.point(new double[]{axis - radius + .01, (shape.bottomTangent() + shape.topTangent()) / 2, axis})
                         : transform.point(new double[]{axis, shape.bottomTangent() - shape.headDepth() + .01, axis});
                 fluidCell = new Cell(floor(low[0]), floor(low[1]), floor(low[2]));
+            } else if (shape.kind().mover()) {
+                fluidCell = ports.stream().filter(port -> nozzles.get(port.nozzle()).role() == EquipmentShape.Role.SUCTION)
+                        .findFirst().orElseThrow(() -> new IllegalStateException("A mover needs a suction nozzle")).cell();
             } else if (unit != null && unit.fluidPoint != null) {
                 var low = transform.point(unit.fluidPoint);
                 fluidCell = new Cell(floor(low[0]), floor(low[1]), floor(low[2]));

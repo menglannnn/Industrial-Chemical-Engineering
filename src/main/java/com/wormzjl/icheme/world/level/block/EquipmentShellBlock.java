@@ -99,25 +99,29 @@ public final class EquipmentShellBlock extends BaseEntityBlock {
         return use(level, position, player, false);
     }
 
-    /** The fluid debugger opens a reservoir's (a drum's, a tank's, a sphere's) tank screen with its diagnostics. */
+    /** The fluid debugger opens functional equipment with diagnostics. */
     @Override
     protected ItemInteractionResult useItemOn(ItemStack stack, BlockState state, Level level, BlockPos position, Player player, InteractionHand hand, BlockHitResult hit) {
+        return useDebugger(stack, level, position, player);
+    }
+
+    static ItemInteractionResult useDebugger(ItemStack stack, Level level, BlockPos position, Player player) {
         if (!stack.is(ModItems.FLUID_DEBUGGER.get())) return ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION;
         var vessel = EquipmentStructure.find(level, position);
-        if (vessel == null || !vessel.shape().reservoir()) return ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION;
+        if (vessel == null || !vessel.shape().fluidDevice()) return ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION;
         use(level, position, player, true);
         return ItemInteractionResult.sidedSuccess(level.isClientSide());
     }
 
     /**
      * Using any cell of a vessel, shell or interior: a reservoir (a drum, a floating-roof tank, a sphere) opens its tank screen, as a one-block tank's does, with its
-     * datasheet on a tab (owner request 2026-10-16); a column or a unit opens its datasheet, built on the client from synced
-     * cells. Both sides decide alike, since the cells carry the shape.
+     * datasheet on a tab (owner request 2026-10-16); a mover opens its operating controls with the same datasheet tab.
+     * Other columns and units open only their datasheet. Both sides decide alike from the synced shape.
      */
     static InteractionResult use(Level level, BlockPos position, Player player, boolean debug) {
         var vessel = EquipmentStructure.find(level, position);
         if (vessel == null) return InteractionResult.PASS;
-        if (!vessel.shape().reservoir()) {
+        if (!vessel.shape().fluidDevice()) {
             if (level.isClientSide()) EquipmentClient.openVessel(position);
         } else if (player instanceof ServerPlayer server) {
             var cell = ShapeRasterizer.fluidCell(vessel.shape());
