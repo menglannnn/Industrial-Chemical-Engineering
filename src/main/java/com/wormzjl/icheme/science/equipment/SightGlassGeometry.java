@@ -1,6 +1,7 @@
 package com.wormzjl.icheme.science.equipment;
 
 import java.util.List;
+import java.util.Objects;
 import com.wormzjl.icheme.science.math.DeterministicMath;
 import static com.wormzjl.icheme.science.equipment.Mesh.*;
 
@@ -10,6 +11,34 @@ public final class SightGlassGeometry {
     private static final int SIDES=32;
     private SightGlassGeometry(){}
 
+    /** World-coordinate axis of the paired window normals. */
+    public enum Axis {
+        X,Y,Z;
+        private double coordinate(double x,double y,double z){return switch(this){case X->x;case Y->y;case Z->z;};}
+        private double[] vector(){return switch(this){case X->new double[]{1,0,0};case Y->new double[]{0,1,0};case Z->new double[]{0,0,1};};}
+    }
+
+    /** A visual key, independent of the pipe's hydraulic facing. Window axes always remain perpendicular to the run. */
+    public record Key(LineGeometry.Key pipe,Axis window) {
+        public Key {
+            Objects.requireNonNull(pipe);Objects.requireNonNull(window);
+            var run=run(pipe.connections(),pipe.facing());if(window==run)window=defaultWindow(run);
+        }
+        public Key(LineGeometry.Key pipe){this(pipe,defaultWindow(run(pipe.connections(),pipe.facing())));}
+    }
+
+    /** The permitted window axis closest to the installer, using the eye offset from the block centre. */
+    public static Axis towards(int connections,int facing,double x,double y,double z) {
+        var run=run(connections,facing);var chosen=defaultWindow(run);
+        for(var axis:Axis.values())if(axis!=run&&Math.abs(axis.coordinate(x,y,z))>Math.abs(chosen.coordinate(x,y,z)))chosen=axis;
+        return chosen;
+    }
+    private static Axis run(int connections,int facing) {
+        int face=connections==0?facing:Integer.numberOfTrailingZeros(connections);
+        return switch(LineGeometry.axis(face)){case 0->Axis.X;case 1->Axis.Y;default->Axis.Z;};
+    }
+    private static Axis defaultWindow(Axis run){return run==Axis.Z?Axis.X:Axis.Z;}
+
     public record Geometry(List<Polygon> metal,List<Polygon> glass,List<Polygon> liquid) {
         public Geometry{metal=List.copyOf(metal);glass=List.copyOf(glass);liquid=List.copyOf(liquid);}
     }
@@ -17,8 +46,9 @@ public final class SightGlassGeometry {
     /** Unconnected and dead-end pipes draw straight; two contacts must be opposite. Corners and junctions are excluded. */
     public static boolean supports(int connections){return Integer.bitCount(connections)<=1||connections==3||connections==12||connections==48;}
 
-    /** Housing and straight arms at this pipe's existing geometry; accessory items show the housing alone. */
-    public static Geometry build(LineGeometry.Key key,boolean accessory) {
+    /** Housing and straight arms; static windows and transient liquid share the same saved visual orientation. */
+    public static Geometry build(Key look,boolean accessory) {
+        var key=look.pipe();
         if(!accessory&&!supports(key.connections()))return new Geometry(LineGeometry.polygons(key),List.of(),List.of());
         double od=PipeSizes.outsideOf(key.outside());
         // The body and viewing aperture both scale across the entire pipe range. The minimum is a readable fitting,
@@ -26,12 +56,11 @@ public final class SightGlassGeometry {
         double radius=.09+.37*od,window=.60*radius,depth=.04+.34*od;
         int mask=key.connections();
         if(Integer.bitCount(mask)<=1){int face=mask==0?key.facing():Integer.numberOfTrailingZeros(mask);mask=(1<<face)|(1<<(face^1));}
-        // Side windows are horizontal, perpendicular to the run. Vertical lines use north/south windows.
-        double[] view=(mask&12)!=0?new double[]{1,0,0}:new double[]{0,0,1};
-        var frame=new Frame(CENTRE,view,UP);var metal=new Mesh();var glass=new Mesh();var liquid=new Mesh();
+        double[] view=look.window().vector(),reference=look.window()==Axis.Y?new double[]{0,0,1}:UP;
+        var frame=new Frame(CENTRE,view,reference);var metal=new Mesh();var glass=new Mesh();var liquid=new Mesh();
         windowPlate(metal,frame,window,.93*radius,.93*radius,-depth,depth,3,Material.PIPE);
         for(int sign:new int[]{-1,1}) {
-            var side=new Frame(CENTRE,new double[]{sign*view[0],0,sign*view[2]},UP);
+            var side=new Frame(CENTRE,new double[]{sign*view[0],sign*view[1],sign*view[2]},reference);
             // A cast chamber, dark cover joint and bevelled four-bolt cover distinguish the fitting from a bare washer.
             windowPlate(metal,side,window,.96*radius,.96*radius,depth,depth+.025*radius,3,Material.OPENING);
             windowPlate(metal,side,.66*radius,radius,radius,depth+.025*radius,depth+.10*radius,1,Material.FLANGE);
@@ -43,7 +72,7 @@ public final class SightGlassGeometry {
             // Recessed gasket and glass remain behind the circular retaining lip, leaving a clear opening through the body.
             metal.ring(side,window*.98,.64*radius,depth+.07*radius,depth+.095*radius,SIDES,3,Material.OPENING);
             for(int bolt=0;bolt<4;bolt++) {
-                var fastener=new Frame(side.at(Math.PI/4+Math.PI*bolt/2,Math.sqrt(2)*.72*radius,depth+.14*radius),side.axis(),UP);
+                var fastener=new Frame(side.at(Math.PI/4+Math.PI*bolt/2,Math.sqrt(2)*.72*radius,depth+.14*radius),side.axis(),reference);
                 metal.cylinder(fastener,.13*radius,0,.012*radius,12,Material.FLANGE);
                 metal.cylinder(fastener,.18*radius/Math.sqrt(3),.012*radius,.077*radius,6,Material.BOLT);
                 metal.cylinder(fastener,.045*radius,.077*radius,.092*radius,8,Material.BOLT);

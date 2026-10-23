@@ -4,7 +4,6 @@ import com.mojang.blaze3d.vertex.VertexConsumer;
 import com.wormzjl.icheme.IChemE;
 import com.wormzjl.icheme.client.model.FluidDeviceModel;
 import com.wormzjl.icheme.network.SightGlassNetwork.Target;
-import com.wormzjl.icheme.science.equipment.LineGeometry;
 import com.wormzjl.icheme.science.equipment.Mesh;
 import com.wormzjl.icheme.science.equipment.SightGlassGeometry;
 import com.wormzjl.icheme.world.level.block.FluidDeviceBlock;
@@ -30,7 +29,7 @@ public final class SightGlassRenderer {
     private static final double RANGE=120;
     private static final RenderType LIQUID=RenderType.entityTranslucentCull(InventoryMenu.BLOCK_ATLAS);
     private static final ResourceLocation WHITE=ResourceLocation.withDefaultNamespace("block/white_concrete");
-    private static final Map<LineGeometry.Key,List<Mesh.Polygon>> SURFACES=new HashMap<>();
+    private static final Map<SightGlassGeometry.Key,List<Mesh.Polygon>> SURFACES=new HashMap<>();
     private static ClientLevel world;
     private static int age;
     private SightGlassRenderer(){}
@@ -57,7 +56,7 @@ public final class SightGlassRenderer {
             int argb=SightGlassDisplays.colour(entity);var pos=entity.getBlockPos();
             if(argb>>>24==0||entity.isRemoved()||entity.getLevel()!=level||!FluidDeviceBlock.hasSightGlass(entity.getBlockState())
                     ||pos.distToCenterSqr(camera)>128*128||!event.getFrustum().isVisible(new AABB(pos)))continue;
-            var key=FluidDeviceModel.blockKey(entity.getBlockState(),entity.getModelData());
+            var key=FluidDeviceModel.sightGlassKey(entity.getBlockState(),entity.getModelData());
             if(SURFACES.size()>=256)SURFACES.clear();
             var polygons=SURFACES.computeIfAbsent(key,k->SightGlassGeometry.build(k,false).liquid());
             int light=LevelRenderer.getLightColor(level,pos);

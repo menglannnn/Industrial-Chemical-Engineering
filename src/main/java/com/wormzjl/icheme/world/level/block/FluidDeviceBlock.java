@@ -28,20 +28,22 @@ public final class FluidDeviceBlock extends BaseEntityBlock {
     public static final DirectionProperty FACING=BlockStateProperties.FACING;
     /** Static pipe accessory, with no hydraulic meaning. Changing it keeps this block and its entity. */
     public static final BooleanProperty SIGHT_GLASS=BooleanProperty.create("sight_glass");
+    public static final EnumProperty<Direction.Axis> SIGHT_GLASS_AXIS=EnumProperty.create("sight_glass_axis",Direction.Axis.class);
     private static final java.util.Map<Direction,BooleanProperty> CONNECTIONS=java.util.Map.of(
             Direction.DOWN,BlockStateProperties.DOWN,Direction.UP,BlockStateProperties.UP,Direction.NORTH,BlockStateProperties.NORTH,
             Direction.SOUTH,BlockStateProperties.SOUTH,Direction.WEST,BlockStateProperties.WEST,Direction.EAST,BlockStateProperties.EAST);
     private final TopologyCompiler.Kind kind;
     public FluidDeviceBlock(TopologyCompiler.Kind kind,BlockBehaviour.Properties properties) {
-        super(properties);this.kind=kind;var state=stateDefinition.any().setValue(FACING,Direction.NORTH).setValue(SIGHT_GLASS,false);for(var property:CONNECTIONS.values())state=state.setValue(property,false);registerDefaultState(state);
+        super(properties);this.kind=kind;var state=stateDefinition.any().setValue(FACING,Direction.NORTH).setValue(SIGHT_GLASS,false).setValue(SIGHT_GLASS_AXIS,Direction.Axis.Z);for(var property:CONNECTIONS.values())state=state.setValue(property,false);registerDefaultState(state);
     }
     public TopologyCompiler.Kind kind(){return kind;}
     @Override public MapCodec<FluidDeviceBlock> codec(){return CODEC;}
-    @Override protected void createBlockStateDefinition(StateDefinition.Builder<Block,BlockState> builder){builder.add(FACING,SIGHT_GLASS);for(var property:CONNECTIONS.values())builder.add(property);}
+    @Override protected void createBlockStateDefinition(StateDefinition.Builder<Block,BlockState> builder){builder.add(FACING,SIGHT_GLASS,SIGHT_GLASS_AXIS);for(var property:CONNECTIONS.values())builder.add(property);}
+    /** Connected faces in Minecraft Direction order, shared by installation and model geometry. */
+    public static int connectionMask(BlockState state){int mask=0;for(var direction:Direction.values())if(state.getValue(CONNECTIONS.get(direction)))mask|=1<<direction.ordinal();return mask;}
     public static boolean supportsSightGlass(BlockState state) {
         if(!(state.getBlock() instanceof FluidDeviceBlock block)||block.kind!=TopologyCompiler.Kind.PIPE)return false;
-        int mask=0;for(var direction:Direction.values())if(state.getValue(CONNECTIONS.get(direction)))mask|=1<<direction.ordinal();
-        return com.wormzjl.icheme.science.equipment.SightGlassGeometry.supports(mask);
+        return com.wormzjl.icheme.science.equipment.SightGlassGeometry.supports(connectionMask(state));
     }
     public static boolean hasSightGlass(BlockState state){return supportsSightGlass(state)&&state.getValue(SIGHT_GLASS);}
     @Override public RenderShape getRenderShape(BlockState state){return RenderShape.MODEL;}

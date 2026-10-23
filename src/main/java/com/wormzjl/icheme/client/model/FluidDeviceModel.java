@@ -55,7 +55,7 @@ public final class FluidDeviceModel implements IDynamicBakedModel {
     private final TextureAtlasSprite[] sprites;
     private final TextureAtlasSprite particle;
     private final ItemTransforms transforms;
-    private record Look(LineGeometry.Key pipe,boolean sightGlass){}
+    private record Look(SightGlassGeometry.Key geometry,boolean sightGlass){}
     private record Baked(List<BakedQuad> solid,List<BakedQuad> glass){}
     private final Map<Look,Baked> quads = new ConcurrentHashMap<>();
 
@@ -70,7 +70,8 @@ public final class FluidDeviceModel implements IDynamicBakedModel {
     @Override
     public List<BakedQuad> getQuads(@Nullable BlockState state, @Nullable Direction side, RandomSource random, ModelData data, @Nullable RenderType renderType) {
         if (side != null) return List.of();
-        var key = new Look(key(state,data),accessory||state!=null&&FluidDeviceBlock.hasSightGlass(state));
+        var geometry=state!=null&&state.getBlock() instanceof FluidDeviceBlock?sightGlassKey(state,data):new SightGlassGeometry.Key(LineGeometry.Key.item(kind));
+        var key = new Look(geometry,accessory||state!=null&&FluidDeviceBlock.hasSightGlass(state));
         var cached = quads.get(key);
         if(cached==null){if(quads.size()>=CACHE)quads.clear();cached=quads.computeIfAbsent(key,this::bake);}
         if(renderType==RenderType.translucent())return cached.glass;
@@ -79,21 +80,20 @@ public final class FluidDeviceModel implements IDynamicBakedModel {
     }
 
     private Baked bake(Look look) {
-        if(!look.sightGlass)return new Baked(EquipmentShellModel.bake(LineGeometry.polygons(look.pipe),sprites,false),List.of());
-        var geometry=SightGlassGeometry.build(look.pipe,accessory);
+        if(!look.sightGlass)return new Baked(EquipmentShellModel.bake(LineGeometry.polygons(look.geometry.pipe()),sprites,false),List.of());
+        var geometry=SightGlassGeometry.build(look.geometry,accessory);
         return new Baked(EquipmentShellModel.bake(geometry.metal(),sprites,false),EquipmentShellModel.bake(geometry.glass(),sprites,false));
     }
 
-    private LineGeometry.Key key(@Nullable BlockState state, ModelData data) {
-        if (state == null || !(state.getBlock() instanceof FluidDeviceBlock block)) return LineGeometry.Key.item(kind);
-        return blockKey(state,data);
+    /** Installation orientation is part of both the chunk-model and liquid-surface cache key. */
+    public static SightGlassGeometry.Key sightGlassKey(BlockState state,ModelData data) {
+        return new SightGlassGeometry.Key(blockKey(state,data),SightGlassGeometry.Axis.valueOf(state.getValue(FluidDeviceBlock.SIGHT_GLASS_AXIS).name()));
     }
 
     /** The same diameter/connection key for chunk geometry and the transient liquid overlay. */
     public static LineGeometry.Key blockKey(BlockState state,ModelData data) {
         var block=(FluidDeviceBlock)state.getBlock();
-        int connections = 0;
-        for (var direction : Direction.values()) if (state.getValue(FluidDeviceBlock.connection(direction))) connections |= 1 << direction.ordinal();
+        int connections = FluidDeviceBlock.connectionMask(state);
         int facing = state.getValue(FluidDeviceBlock.FACING).ordinal();
         var drawn = data.get(FluidDeviceBlockEntity.DRAWN);
         if (drawn == null) return new LineGeometry.Key(block.kind(), facing, connections, PipeSizes.code(PipeSizes.outside(.05)), 0, 0, false);
