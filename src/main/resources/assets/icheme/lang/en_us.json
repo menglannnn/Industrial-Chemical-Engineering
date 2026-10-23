@@ -905,6 +905,8 @@
   "gui.icheme.fluid.recover": "Recover solids",
   "gui.icheme.fluid.temperature_unit": "Temp: %s",
   "gui.icheme.fluid.flow_unit": "Flow: %s",
+  "gui.icheme.fluid.phase_ratio.generator_hint": "Volume fractions of the generator feed, including suspended solids.",
+  "gui.icheme.fluid.volume_capacity.hint": "Current fluid volume / maximum reservoir volume, in litres.",
   "gui.icheme.fluid.flow_unit.hint": "Switch every flow rate and suction-flow input between per second and per hour. The physical flow setting stays the same.",
   "gui.icheme.fluid.invalid_flow_unit": "Enter a valid flow rate before changing flow units.",
   "gui.icheme.fluid.mass_basis_short": "Mass",

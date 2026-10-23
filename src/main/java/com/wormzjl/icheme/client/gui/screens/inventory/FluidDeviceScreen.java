@@ -421,7 +421,9 @@ public final class FluidDeviceScreen extends AbstractContainerScreen<FluidDevice
             if(data.kind()!=TopologyCompiler.Kind.VOID){railLine(g,"temperature",number(temperatureUnit.display(state.temperature()))+" "+temperatureUnit.symbol(),y);y+=RAIL_LINE;}
             railLine(g,"pressure",pressure(state.pressure()),y);y+=RAIL_LINE;
             if(data.kind()==TopologyCompiler.Kind.RESERVOIR){
-                railLine(g,"volume",number(state.volume()*1000)+" L",y);y+=RAIL_LINE;
+                String volume=number(state.volume()*1000)+" / "+number(state.capacity()*1000)+" L";
+                railLine(g,"volume",volume,y);
+                if(railHover(hoverX,hoverY,y,y+27))hovered=tr("volume_capacity.hint")+"\n"+volume;y+=RAIL_LINE;
                 railLine(g,"fill",number(state.fill()*100)+" %",y);y+=RAIL_LINE;
                 railLine(g,"mass",number(state.mass())+" kg",y);y+=RAIL_LINE;
             }
@@ -438,6 +440,9 @@ public final class FluidDeviceScreen extends AbstractContainerScreen<FluidDevice
         // The compressor's rise over its suction (its own junction, the state this rail shows): the quantity its ratio limits.
         if(data.kind()==TopologyCompiler.Kind.COMPRESSOR&&view.devicePressureChange()!=null&&view.state()!=null&&view.state().pressure()>0){
             railLine(g,"pressure_ratio",number((view.state().pressure()+view.devicePressureChange())/view.state().pressure()),y);y+=RAIL_LINE;}
+        if(generator()&&view.state()!=null){
+            y+=2;y=renderPhaseRatio(g,hoverX,hoverY,y,view.state().phaseVolumes(),view.state().solids().volume(),"phase_ratio.generator_hint");
+        }
         // A tank reads like a pipe below its values: the phase ratio of what it holds, then the full status (its errors).
         if(tank()){
             y+=2;if(view.state()!=null)y=renderPhaseRatio(g,hoverX,hoverY,y,view.state().phaseVolumes(),view.state().solids().volume(),"phase_ratio.tank_hint");
