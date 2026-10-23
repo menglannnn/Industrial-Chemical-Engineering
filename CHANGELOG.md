@@ -17,6 +17,7 @@ All notable changes to Industrial Chemical Engineering (IChemE, formerly CreateC
 
 ### Added
 
+- Constructed pump and compressor suction/discharge connections gain scalable, word-free flow arrows on their nozzle necks and adjoining pipe sections, aligned with each port's actual role (commit `07e45392`, batch: `2026-10-23-mover-port-markings`).
 - Constructed centrifugal pumps and reciprocating/centrifugal compressors gain persistent On/Off controls, retaining setpoints while Off closes flow, plus requested positional running audio and matching animation state; one-block devices keep their behavior, and checkpoint 15 / storage-unit 8 requires a fresh world (commits `4b4634f1`, `6e5c07e9`, batch: `2026-10-23-pump-compressor-switch-sound`).
 - Pipeline Sight Glass accessory for existing straight pipe sections: scalable cast housing with recessed round windows facing the installing player, passing-liquid colour and multiphase turbidity, requested display updates, survival recovery and automatic removal when a pipe becomes a corner or junction (commits `465f8af8`, `e1bffe54`, `065683c6`, batch: `2026-10-23-pipeline-sight-glass`).
 - Constructed centrifugal pumps and reciprocating/centrifugal compressors now operate through their suction/discharge nozzles with existing self-powered flow/pressure controls, phase protections, equipment GUI/datasheet access and persistent settings; fluid checkpoint 14 / storage-unit format 7 requires a fresh world (commit `4e96e8ab`, batch: `2026-10-23-functional-pumps-compressors`).
