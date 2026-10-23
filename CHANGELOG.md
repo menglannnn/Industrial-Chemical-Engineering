@@ -22,6 +22,10 @@ All notable changes to Industrial Chemical Engineering (IChemE, formerly CreateC
 - Constructed centrifugal pumps and reciprocating/centrifugal compressors now operate through their suction/discharge nozzles with existing self-powered flow/pressure controls, phase protections, equipment GUI/datasheet access and persistent settings; fluid checkpoint 14 / storage-unit format 7 requires a fresh world (commit `4e96e8ab`, batch: `2026-10-23-functional-pumps-compressors`).
 - Pipeline Tool: creative-only, per-item internal diameter settings (0.001–1 m), opened with Shift + right-click and applied to individual process pipes with right-click through queued engine edits; newly placed pipes inherit the largest connected adjacent pipe's diameter (commits `d30694ed`, `459eda31`, batch: `2026-10-23-pipeline-tool`).
 
+### Fixed
+
+- Incompatible fluid checkpoint, pack or storage-unit versions now reset the simulation and rebuild placed pipes and complete equipment on chunk load, discarding fluid inventories/settings/pending edits instead of crashing world startup; current-format data still validates strictly (commit `49e57860`, batch: `2026-10-23-fluid-format-reset`).
+
 ### Changed
 
 - Pipe and equipment-nozzle flanges now have square 90° shoulders, with visible joint lines between paired pipeline flange plates; pipe inspection requires the existing Fluid Debugger, while the Pipeline Tool keeps its resize/settings actions (commits `acd0fd14`, `fa81579b`, batch: `2026-10-23-square-flanges`).
