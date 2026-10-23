@@ -40,6 +40,9 @@ public final class PipeSizes {
         return outside > .6 ? 1 / 16.0 : 1 / 32.0;
     }
 
+    /** Width of the dark joint line between paired flange plates, m; adjoining blocks draw half each. */
+    public static final double FLANGE_SEAM = 1 / 128.0;
+
     /** Length of the straight neck before a flange plate. */
     public static double hub(double outside) {
         return Math.min(.15, .04 + .25 * outside);

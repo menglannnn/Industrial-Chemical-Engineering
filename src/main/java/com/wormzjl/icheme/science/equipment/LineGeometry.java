@@ -88,10 +88,10 @@ public final class LineGeometry {
 
     // ---- Pipes -----------------------------------------------------------------------------------------------------
 
-    /** How a line ends at a face: the outside it narrows to, whether it ends in a flange, and the length of both fittings. */
-    record End(double outside, boolean flange, double reducer, double tail) {
-        static End flanged(double outside) {
-            return new End(outside, true, 0, PipeSizes.flangeThickness(outside) + PipeSizes.hub(outside));
+    /** How a line ends at a face: its outside, flange/fitting lengths, and whether it mates with another block. */
+    record End(double outside, boolean flange, double reducer, double tail, boolean joined) {
+        static End flanged(double outside, boolean joined) {
+            return new End(outside, true, 0, PipeSizes.flangeThickness(outside) + PipeSizes.hub(outside), joined);
         }
     }
 
@@ -100,12 +100,12 @@ public final class LineGeometry {
      * is; where it meets nothing it ends in a blind flange of its own size (owner request 2026-10-16).
      */
     static End end(Key key, int i, double od) {
-        if (!key.connected(i)) return End.flanged(od);
+        if (!key.connected(i)) return End.flanged(od, false);
         int code = key.face(i);
         double met = code == 0 ? od : Math.min(od, PipeSizes.outsideOf(code));
         double reducer = met < od - EPS ? reducerLength(od) : 0;
         double tail = reducer + (key.flanged(i) ? PipeSizes.flangeThickness(met) + PipeSizes.hub(met) : 0);
-        return new End(met, key.flanged(i), reducer, tail);
+        return new End(met, key.flanged(i), reducer, tail, true);
     }
 
     /** A concentric reducer's length: ASME B16.9 gives 0.6 to 1.3 times the large end; 0.8 OD, a texel to 0.3 m. */
@@ -155,7 +155,10 @@ public final class LineGeometry {
             double t = PipeSizes.flangeThickness(od), hub = PipeSizes.hub(od);
             var f = frame(i, ref(i));
             double flange = PipeSizes.flange(od) / 2, hubR = PipeSizes.hubOutside(od) / 2;
-            m.prism(f, flange, -t, t, sides, Material.FLANGE);
+            double halfSeam = PipeSizes.FLANGE_SEAM / 2;
+            m.prism(f, flange, -t, -halfSeam, sides, Material.FLANGE);
+            m.prism(f, flange, -halfSeam, halfSeam, sides, Material.OPENING);
+            m.prism(f, flange, halfSeam, t, sides, Material.FLANGE);
             for (int side = -1; side <= 1; side += 2) {
                 m.annulus(f, hubR, flange, side * t, sides, side, Material.FLANGE);
                 m.bolts(f, od, hubR, flange, side * t, side, Material.BOLT);
@@ -180,7 +183,7 @@ public final class LineGeometry {
     static End fit(End end, double room) {
         if (end.tail() <= room || end.reducer() == 0) return end;
         double reducer = Math.max(1 / 16.0, end.reducer() - (end.tail() - room));
-        return new End(end.outside(), end.flange(), reducer, end.tail() - end.reducer() + reducer);
+        return new End(end.outside(), end.flange(), reducer, end.tail() - end.reducer() + reducer, end.joined());
     }
 
     /** A long-radius elbow from face {@code a} to face {@code b}, or a ball corner where the fittings leave no room for it. */
@@ -223,7 +226,7 @@ public final class LineGeometry {
             if (z1 > z + EPS) m.frustum(f, r, end.outside() / 2, z, z1, sides, Material.PIPE);
             z = z1;
         }
-        if (end.flange()) flange(m, f, end.outside(), z, sides);
+        if (end.flange()) flange(m, f, end.outside(), z, sides, end.joined());
     }
 
     /**
@@ -232,13 +235,15 @@ public final class LineGeometry {
      * and look opposite ways, so only one is ever towards the viewer, and it lies inside the other flange. Without a hub
      * (the line starts within the flange) its back is a whole disc.
      */
-    private static void flange(Mesh m, Frame f, double od, double z, int sides) {
+    private static void flange(Mesh m, Frame f, double od, double z, int sides, boolean joined) {
         double t = PipeSizes.flangeThickness(od), flange = PipeSizes.flange(od) / 2, hubR = PipeSizes.hubOutside(od) / 2;
         boolean hub = .5 - t > z + EPS;
         if (hub) m.frustum(f, od / 2, hubR, z, .5 - t, sides, Material.PIPE);
         m.annulus(f, hub ? hubR : 0, flange, .5 - t, sides, -1, Material.FLANGE);
         m.bolts(f, od, hub ? hubR : od / 2, flange, .5 - t, -1, Material.BOLT);
-        m.prism(f, flange, .5 - t, .5, sides, Material.FLANGE);
+        double seam = joined ? PipeSizes.FLANGE_SEAM / 2 : 0;
+        m.prism(f, flange, .5 - t, .5 - seam, sides, Material.FLANGE);
+        if (joined) m.prism(f, flange, .5 - seam, .5, sides, Material.OPENING);
         m.annulus(f, 0, flange, .5, sides, 1, Material.FLANGE);
     }
 
@@ -260,7 +265,7 @@ public final class LineGeometry {
         int a = key.facing() & ~1;
         for (int i : new int[]{a, a ^ 1}) {
             double size = key.face(i) > 0 ? PipeSizes.outsideOf(key.face(i)) : od;
-            arm(m, i, from, size, End.flanged(size), ref(i), PipeSizes.sides(size), true);
+            arm(m, i, from, size, End.flanged(size, key.connected(i)), ref(i), PipeSizes.sides(size), true);
         }
     }
 
@@ -269,7 +274,7 @@ public final class LineGeometry {
         for (int i = 0; i < 6; i++) {
             if (!key.connected(i) || key.face(i) == 0) continue;
             double size = PipeSizes.outsideOf(key.face(i));
-            arm(m, i, from[i], size, End.flanged(size), ref(i), PipeSizes.sides(size), true);
+            arm(m, i, from[i], size, End.flanged(size, true), ref(i), PipeSizes.sides(size), true);
         }
     }
 

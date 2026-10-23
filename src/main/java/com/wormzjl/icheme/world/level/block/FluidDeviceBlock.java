@@ -110,14 +110,11 @@ public final class FluidDeviceBlock extends BaseEntityBlock {
         super.onRemove(state,level,position,replacement,moved);
     }
     @Override protected InteractionResult useWithoutItem(BlockState state,Level level,BlockPos position,Player player,BlockHitResult hit) {
+        if(kind==TopologyCompiler.Kind.PIPE)return InteractionResult.PASS;
         if(player instanceof ServerPlayer serverPlayer&&level.getBlockEntity(position) instanceof FluidDeviceBlockEntity entity)entity.open(serverPlayer,false);
         return InteractionResult.sidedSuccess(level.isClientSide());
     }
     @Override protected ItemInteractionResult useItemOn(ItemStack stack,BlockState state,Level level,BlockPos position,Player player,InteractionHand hand,BlockHitResult hit) {
-        // Give an offhand pipeline tool its use-first hook before an empty main hand opens the pipe menu.
-        if(kind==TopologyCompiler.Kind.PIPE&&hand==InteractionHand.MAIN_HAND&&stack.isEmpty()
-                &&player.getOffhandItem().is(com.wormzjl.icheme.registry.ModItems.PIPELINE_TOOL.get()))
-            return ItemInteractionResult.SKIP_DEFAULT_BLOCK_INTERACTION;
         if(stack.is(com.wormzjl.icheme.registry.ModItems.FLUID_DEBUGGER.get())) {
             if(player instanceof ServerPlayer serverPlayer&&level.getBlockEntity(position) instanceof FluidDeviceBlockEntity entity)entity.open(serverPlayer,true);
             return ItemInteractionResult.sidedSuccess(level.isClientSide());
