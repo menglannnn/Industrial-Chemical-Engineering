@@ -17,6 +17,7 @@ All notable changes to Industrial Chemical Engineering (IChemE, formerly CreateC
 
 ### Added
 
+- Constructed centrifugal pumps and reciprocating/centrifugal compressors now operate through their suction/discharge nozzles with existing self-powered flow/pressure controls, phase protections, equipment GUI/datasheet access and persistent settings; fluid checkpoint 14 / storage-unit format 7 requires a fresh world (commit `4e96e8ab`, batch: `2026-10-23-functional-pumps-compressors`).
 - Pipeline Tool: creative-only, per-item internal diameter settings (0.001–1 m), opened with Shift + right-click and applied to individual process pipes with right-click through queued engine edits; newly placed pipes inherit the largest connected adjacent pipe's diameter (commits `d30694ed`, `459eda31`, batch: `2026-10-23-pipeline-tool`).
 
 ### Changed
