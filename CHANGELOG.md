@@ -19,6 +19,10 @@ All notable changes to Industrial Chemical Engineering (IChemE, formerly CreateC
 
 - Pipeline Tool: creative-only, per-item internal diameter settings (0.001–1 m), opened with Shift + right-click and applied to individual process pipes with right-click through queued engine edits; newly placed pipes inherit the largest connected adjacent pipe's diameter (commits `d30694ed`, `459eda31`, batch: `2026-10-23-pipeline-tool`).
 
+### Changed
+
+- Pipe and equipment-nozzle flanges now have square 90° shoulders: the neck stays at the pipe diameter up to the flange plate, replacing the sloped hub (commit `acd0fd14`, batch: `2026-10-23-square-flanges`).
+
 ## [0.11.2] - 2026-10-21
 
 ### Changed
