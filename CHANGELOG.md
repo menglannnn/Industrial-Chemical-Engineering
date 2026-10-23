@@ -17,6 +17,7 @@ All notable changes to Industrial Chemical Engineering (IChemE, formerly CreateC
 
 ### Added
 
+- Pipeline Shutoff Valve accessory for straight pipes: scalable flanged ball-valve housing and quarter-turn lever, empty-hand open/close controls, axis-locked mechanical joints and queued hydraulic isolation/reopening that preserves pipe identity and equipment contents; checkpoint 17 / storage-unit 10 requires a fresh world (commit `4dd96fde`, batch: `2026-10-23-pipeline-shutoff-valve`).
 - Fluid Void displays accepted incoming fluid/solid composition; Fluid Generators gain a persistent On/Off switch, place Off and show feed phase ratios; shared fluid equipment screens switch all flow rates and suction-flow inputs between seconds and hours, and reservoirs show current/maximum volume (commits `0f208c52`, `89168361`, batch: `2026-10-23-fluid-device-controls-display`).
 - Constructed pump and compressor suction/discharge connections gain scalable, word-free flow arrows on the adjoining pipe section only, aligned with each port's actual role, with no duplicate equipment-side marking (commits `07e45392`, `e612cff3`, batch: `2026-10-23-mover-port-markings`).
 - Constructed centrifugal pumps and reciprocating/centrifugal compressors gain persistent On/Off controls, retaining setpoints while Off closes flow, plus requested positional running audio and matching animation state; one-block devices keep their behavior, and checkpoint 15 / storage-unit 8 requires a fresh world (commits `4b4634f1`, `6e5c07e9`, batch: `2026-10-23-pump-compressor-switch-sound`).
