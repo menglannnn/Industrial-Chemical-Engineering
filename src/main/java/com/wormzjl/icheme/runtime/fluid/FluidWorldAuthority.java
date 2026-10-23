@@ -167,16 +167,23 @@ public final class FluidWorldAuthority implements AutoCloseable {
     public WorldTopologyLedger.Registration place(PhysicalFluidTopology.Position position,TopologyCompiler.Kind kind,PhysicalFluidTopology.Direction facing) {
         return place(position,kind,facing,List.of());
     }
+    /** Registry reconstruction reads installed cutoff state from the placed block. */
+    public WorldTopologyLedger.Registration place(PhysicalFluidTopology.Position position,TopologyCompiler.Kind kind,PhysicalFluidTopology.Direction facing,PhysicalFluidTopology.Cutoff cutoff) {
+        return place(position,kind,facing,List.of(),cutoff);
+    }
     /** A complete multi-cell mover uses the same controls and geometry as its one-block counterpart. */
     public WorldTopologyLedger.Registration placeMover(PhysicalFluidTopology.Position suction,TopologyCompiler.Kind kind,List<PhysicalFluidTopology.Port> ports) {
         if(kind!=TopologyCompiler.Kind.PUMP&&kind!=TopologyCompiler.Kind.COMPRESSOR||ports.isEmpty())throw new IllegalArgumentException("Expected a multi-cell mover");
         return place(suction,kind,PhysicalFluidTopology.Direction.NORTH,ports);
     }
     private WorldTopologyLedger.Registration place(PhysicalFluidTopology.Position position,TopologyCompiler.Kind kind,PhysicalFluidTopology.Direction facing,List<PhysicalFluidTopology.Port> ports) {
+        return place(position,kind,facing,ports,PhysicalFluidTopology.Cutoff.NONE);
+    }
+    private WorldTopologyLedger.Registration place(PhysicalFluidTopology.Position position,TopologyCompiler.Kind kind,PhysicalFluidTopology.Direction facing,List<PhysicalFluidTopology.Port> ports,PhysicalFluidTopology.Cutoff cutoff) {
         owned();
         long id=topology.nextIdentity();var control=switch(kind){case PUMP->new FlowControl.Pump(.01,500000);case COMPRESSOR->new FlowControl.Compressor(.05,3.0);case VALVE->new FlowControl.PressureValve(200000);default->new FlowControl.Passive();};
         double diameter=kind==TopologyCompiler.Kind.PIPE?placedPipeDiameter(position):.05;
-        var device=new PhysicalFluidTopology.Device(id,position,kind,facing,new PipeResistance.Geometry(1,diameter,PipeResistance.DEFAULT_ROUGHNESS_METRES,0),control,ports,kind!=TopologyCompiler.Kind.GENERATOR);
+        var device=new PhysicalFluidTopology.Device(id,position,kind,facing,new PipeResistance.Geometry(1,diameter,PipeResistance.DEFAULT_ROUGHNESS_METRES,0),control,ports,kind!=TopologyCompiler.Kind.GENERATOR,cutoff);
         var spec=kind==TopologyCompiler.Kind.GENERATOR?FluidDeviceSpec.water(catalog):FluidDeviceSpec.nitrogen(catalog);
         // A reservoir is placed empty (decision D54): of its settings only the capacity means anything.
         if(kind==TopologyCompiler.Kind.RESERVOIR)spec=new FluidDeviceSpec(options.volume(),298.15,com.wormzjl.icheme.science.fluid.solver.PhaseLayout.AMBIENT_PRESSURE,spec.composition());
@@ -192,12 +199,12 @@ public final class FluidWorldAuthority implements AutoCloseable {
         var record=new WorldTopologyLedger.Registration(device,old.spec(),0);
         submit(List.of(new WorldTopologyLedger.Edit(id,null),new WorldTopologyLedger.Edit(next,record)),Math.addExact(next,1));return record;
     }
-    /** Pipes connect on every face. Inherit the largest adjacent pipe's latest queued bore, even below the standalone default. */
+    /** Inherit the largest mechanically connected adjacent pipe's latest bore, including a closed axial cutoff. */
     private double placedPipeDiameter(PhysicalFluidTopology.Position position) {
         double largest=0;
         for(var direction:PhysicalFluidTopology.Direction.values()) {
             var neighbour=registry.at(position.offset(direction)).orElse(null);
-            if(neighbour!=null&&neighbour.device().kind()==TopologyCompiler.Kind.PIPE)
+            if(neighbour!=null&&neighbour.device().kind()==TopologyCompiler.Kind.PIPE&&neighbour.device().mechanicallyConnects(PhysicalFluidTopology.opposite(direction)))
                 largest=Math.max(largest,neighbour.device().geometry().diameter());
         }
         return largest>0?largest:.05;
@@ -226,6 +233,16 @@ public final class FluidWorldAuthority implements AutoCloseable {
         if(old.device().equals(device)&&old.spec().equals(spec))return null;
         return submit(List.of(new WorldTopologyLedger.Edit(id,new WorldTopologyLedger.Registration(device,spec,Math.addExact(expectedRevision,1)))),topology.nextIdentity());
     }
+    /** Installs against the projected revision, retaining pending diameter/configuration edits. */
+    public boolean installPipeCutoff(long id,PhysicalFluidTopology.Direction facing) {
+        owned();return registry.installPipeCutoff(id,facing);
+    }
+    /** Rapid clicks toggle the latest queued value, never the older drawn lever. */
+    public void togglePipeCutoff(long id) {
+        owned();registry.togglePipeCutoff(id);
+    }
+    /** Reading committed static configuration never advances or materialises process state. */
+    public Optional<PhysicalFluidTopology.Device> committedDevice(long id){owned();var record=topology.active().get(id);return record==null?Optional.empty():Optional.of(record.device());}
     public void remove(long id){owned();var old=registrations().get(id);if(old!=null)submit(List.of(new WorldTopologyLedger.Edit(id,null)),topology.nextIdentity(),old.device().kind()==TopologyCompiler.Kind.FILTER?new WorldTopologyLedger.Recovery(id,null):null);}
     /**
      * Queues a filter's solid recovery as a ledger event and returns it, as an edit is queued: nothing is applied or
@@ -303,7 +320,7 @@ public final class FluidWorldAuthority implements AutoCloseable {
             var entity=loaded.getBlockEntity(cell); // Includes saved cells not yet promoted from pending NBT.
             if(entity instanceof FluidDeviceBlockEntity pipe) {
                 var position=new PhysicalFluidTopology.Position(name,cell.getX(),cell.getY(),cell.getZ());
-                var record=registry.at(position).orElseGet(()->place(position,pipe.kind(),PhysicalFluidTopology.Direction.valueOf(pipe.getBlockState().getValue(FluidDeviceBlock.FACING).name())));
+                var record=registry.at(position).orElseGet(()->place(position,pipe.kind(),PhysicalFluidTopology.Direction.valueOf(pipe.getBlockState().getValue(FluidDeviceBlock.FACING).name()),FluidDeviceBlock.cutoff(pipe.getBlockState())));
                 if(pipe.fluidIdentity()!=record.device().id())pipe.bindIdentity(record.device().id());else deviceLoaded(record.device().id());
             } else if(entity instanceof EquipmentShellBlockEntity shell&&shell.shape()!=null&&shell.shape().fluidDevice()) {
                 var origin=shell.origin();

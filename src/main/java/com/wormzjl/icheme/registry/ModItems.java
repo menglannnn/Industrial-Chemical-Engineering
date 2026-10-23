@@ -23,6 +23,8 @@ public final class ModItems {
             ITEMS.registerItem("pipeline_tool", com.wormzjl.icheme.world.item.PipelineToolItem::new);
     public static final DeferredItem<com.wormzjl.icheme.world.item.PipelineSightGlassItem> PIPELINE_SIGHT_GLASS =
             ITEMS.registerItem("pipeline_sight_glass", com.wormzjl.icheme.world.item.PipelineSightGlassItem::new);
+    public static final DeferredItem<com.wormzjl.icheme.world.item.PipelineShutoffValveItem> PIPELINE_SHUTOFF_VALVE =
+            ITEMS.registerItem("pipeline_shutoff_valve", com.wormzjl.icheme.world.item.PipelineShutoffValveItem::new);
 
     public static final DeferredItem<BlockItem> COLUMN_CALCULATOR_V3 = ITEMS.registerSimpleBlockItem(
             "column_calculator_v3",

@@ -106,6 +106,28 @@ public final class PhysicalRegistry {
 
     /** Every registration with the queued events applied: what the world has been told, applied or not. A live view. */
     public Map<Long,WorldTopologyLedger.Registration> registrations(){return topology.latest();}
+    /** Queue a new cutoff on the latest pipe revision, preserving its pending geometry and spec. */
+    public boolean installPipeCutoff(long id,PhysicalFluidTopology.Direction axis) {
+        var record=registrations().get(id);
+        if(record==null||record.device().kind()!=TopologyCompiler.Kind.PIPE||record.device().cutoff()!=PhysicalFluidTopology.Cutoff.NONE)return false;
+        // Check projected physical neighbours too: chunk loading or an unapplied branch must not hide a junction.
+        for(var direction:PhysicalFluidTopology.Direction.values()) {
+            var next=record.device().position().offset(direction);var neighbour=topology.latestAt(next);
+            if(neighbour!=null&&neighbour.device().mechanicallyMeets(next,PhysicalFluidTopology.opposite(direction))
+                    &&direction.x*axis.x+direction.y*axis.y+direction.z*axis.z==0)return false;
+        }
+        queueCutoff(record,axis,PhysicalFluidTopology.Cutoff.OPEN);return true;
+    }
+    /** Clicks compose on pending state instead of all toggling the last published lever. */
+    public void togglePipeCutoff(long id) {
+        var record=registrations().get(id);
+        if(record==null||record.device().cutoff()==PhysicalFluidTopology.Cutoff.NONE)return;
+        queueCutoff(record,record.device().facing(),record.device().cutoff().toggled());
+    }
+    private void queueCutoff(WorldTopologyLedger.Registration record,PhysicalFluidTopology.Direction axis,PhysicalFluidTopology.Cutoff cutoff) {
+        var device=record.device().withCutoff(axis,cutoff);
+        submit(List.of(new WorldTopologyLedger.Edit(device.id(),new WorldTopologyLedger.Registration(device,record.spec(),Math.addExact(record.revision(),1)))),topology.nextIdentity(),null);
+    }
     /** The registration at a position, queued events applied. */
     public Optional<WorldTopologyLedger.Registration> at(PhysicalFluidTopology.Position position){return Optional.ofNullable(topology.latestAt(position));}
     /** The island that owns a device, or null; for a generator or a void in several islands, the lowest of them. */

@@ -58,8 +58,7 @@ public final class PipelineToolItem extends Item {
                     var geometry = device.geometry();
                     if (geometry.diameter() == settings.diameter()) return;
                     var resized = new PipeResistance.Geometry(geometry.length(), settings.diameter(), geometry.roughness(), geometry.minorLoss());
-                    world.edit(device.id(), record.revision(), new PhysicalFluidTopology.Device(device.id(), device.position(),
-                            device.kind(), device.facing(), resized, device.control(), device.ports()), record.spec());
+                    world.edit(device.id(), record.revision(), device.withGeometry(resized), record.spec());
                 });
             });
         }

@@ -1032,5 +1032,11 @@
   "gui.icheme.fluid.ready": "Ready.",
   "gui.icheme.fluid.junction": "Junction · %s connections",
   "gui.icheme.fluid.speed": "m/s",
-  "gui.icheme.fluid.dp_m": "Pa/m"
+  "gui.icheme.fluid.dp_m": "Pa/m",
+  "item.icheme.pipeline_shutoff_valve": "Pipeline Shutoff Valve",
+  "item.icheme.pipeline_shutoff_valve.install": "Right-click a straight pipe to install; starts open.",
+  "item.icheme.pipeline_shutoff_valve.toggle": "Empty both hands and right-click to open or close.",
+  "item.icheme.pipeline_shutoff_valve.straight_only": "Straight pipe sections only; locks the connection axis.",
+  "item.icheme.pipeline_shutoff_valve.one_accessory": "Only one accessory per pipe section.",
+  "item.icheme.pipeline_shutoff_valve.recover": "Breaking the pipe in survival returns the accessory."
 }

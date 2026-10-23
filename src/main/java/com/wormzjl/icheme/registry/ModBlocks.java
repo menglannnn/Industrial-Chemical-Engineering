@@ -24,7 +24,7 @@ public final class ModBlocks {
         // Every device model (the inline filter too, a Y-strainer since 2026-10-16) leaves part of its block space open:
         // none occludes the neighbouring block's faces in the chunk renderer, and light reaches inside each.
         properties.noOcclusion();
-        return BLOCKS.registerBlock(name,p->new com.wormzjl.icheme.world.level.block.FluidDeviceBlock(kind,p),properties);
+        return BLOCKS.registerBlock(name,p->com.wormzjl.icheme.world.level.block.FluidDeviceBlock.create(kind,p),properties);
     }
 
     public static final DeferredBlock<ColumnCalculatorV3Block> COLUMN_CALCULATOR_V3 = BLOCKS.registerBlock(

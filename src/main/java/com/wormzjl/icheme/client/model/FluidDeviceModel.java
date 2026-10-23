@@ -5,6 +5,7 @@ import com.wormzjl.icheme.science.equipment.LineGeometry;
 import com.wormzjl.icheme.science.equipment.MoverPortMarkings;
 import com.wormzjl.icheme.science.equipment.PipeSizes;
 import com.wormzjl.icheme.science.equipment.SightGlassGeometry;
+import com.wormzjl.icheme.science.equipment.ShutoffValveGeometry;
 import com.wormzjl.icheme.science.fluid.topology.TopologyCompiler;
 import com.wormzjl.icheme.world.level.block.FluidDeviceBlock;
 import com.wormzjl.icheme.world.level.block.entity.FluidDeviceBlockEntity;
@@ -47,22 +48,24 @@ public final class FluidDeviceModel implements IDynamicBakedModel {
     public static final ResourceLocation LOADER_ID = ResourceLocation.fromNamespaceAndPath(IChemE.MOD_ID, "fluid_device");
     /** {@code "loader": "icheme:fluid_device", "kind": "pipe"} (a {@link TopologyCompiler.Kind}), textures per material. */
     public static final IGeometryLoader<Geometry> LOADER = (json, context) ->
-            new Geometry(TopologyCompiler.Kind.valueOf(GsonHelper.getAsString(json, "kind").toUpperCase(Locale.ROOT)),GsonHelper.getAsBoolean(json,"sight_glass_accessory",false));
+            new Geometry(TopologyCompiler.Kind.valueOf(GsonHelper.getAsString(json, "kind").toUpperCase(Locale.ROOT)),GsonHelper.getAsBoolean(json,"sight_glass_accessory",false),GsonHelper.getAsBoolean(json,"shutoff_valve_accessory",false));
     private static final int CACHE = 4096;
     private static final ChunkRenderTypeSet SOLID = ChunkRenderTypeSet.of(RenderType.solid());
     private static final ChunkRenderTypeSet GLASS = ChunkRenderTypeSet.of(RenderType.solid(),RenderType.translucent());
     private final TopologyCompiler.Kind kind;
     private final boolean accessory;
+    private final boolean shutoffAccessory;
     private final TextureAtlasSprite[] sprites;
     private final TextureAtlasSprite particle;
     private final ItemTransforms transforms;
-    private record Look(SightGlassGeometry.Key geometry,boolean sightGlass,int moverPorts){}
+    private record Look(SightGlassGeometry.Key geometry,boolean sightGlass,FluidDeviceBlock.Shutoff shutoff,int moverPorts){}
     private record Baked(List<BakedQuad> solid,List<BakedQuad> glass){}
     private final Map<Look,Baked> quads = new ConcurrentHashMap<>();
 
-    private FluidDeviceModel(TopologyCompiler.Kind kind,boolean accessory, TextureAtlasSprite[] sprites, TextureAtlasSprite particle, ItemTransforms transforms) {
+    private FluidDeviceModel(TopologyCompiler.Kind kind,boolean accessory,boolean shutoffAccessory, TextureAtlasSprite[] sprites, TextureAtlasSprite particle, ItemTransforms transforms) {
         this.kind = kind;
         this.accessory=accessory;
+        this.shutoffAccessory=shutoffAccessory;
         this.sprites = sprites;
         this.particle = particle;
         this.transforms = transforms;
@@ -73,7 +76,8 @@ public final class FluidDeviceModel implements IDynamicBakedModel {
         if (side != null) return List.of();
         var geometry=state!=null&&state.getBlock() instanceof FluidDeviceBlock?sightGlassKey(state,data):new SightGlassGeometry.Key(LineGeometry.Key.item(kind));
         var drawn=data.get(FluidDeviceBlockEntity.DRAWN);
-        var key = new Look(geometry,accessory||state!=null&&FluidDeviceBlock.hasSightGlass(state),kind==TopologyCompiler.Kind.PIPE&&state!=null&&drawn!=null?drawn.moverPorts():0);
+        var shutoff=shutoffAccessory?FluidDeviceBlock.Shutoff.OPEN:state!=null&&FluidDeviceBlock.hasShutoff(state)?state.getValue(FluidDeviceBlock.SHUTOFF):FluidDeviceBlock.Shutoff.NONE;
+        var key = new Look(geometry,accessory||state!=null&&FluidDeviceBlock.hasSightGlass(state),shutoff,kind==TopologyCompiler.Kind.PIPE&&state!=null&&drawn!=null?drawn.moverPorts():0);
         var cached = quads.get(key);
         if(cached==null){if(quads.size()>=CACHE)quads.clear();cached=quads.computeIfAbsent(key,this::bake);}
         if(renderType==RenderType.translucent())return cached.glass;
@@ -82,6 +86,7 @@ public final class FluidDeviceModel implements IDynamicBakedModel {
     }
 
     private Baked bake(Look look) {
+        if(look.shutoff!=FluidDeviceBlock.Shutoff.NONE)return new Baked(marked(ShutoffValveGeometry.polygons(look.geometry.pipe(),look.shutoff==FluidDeviceBlock.Shutoff.OPEN,shutoffAccessory),look.moverPorts),List.of());
         if(!look.sightGlass)return new Baked(marked(LineGeometry.polygons(look.geometry.pipe()),look.moverPorts),List.of());
         var geometry=SightGlassGeometry.build(look.geometry,accessory);
         return new Baked(marked(geometry.metal(),look.moverPorts),EquipmentShellModel.bake(geometry.glass(),sprites,false));
@@ -148,10 +153,10 @@ public final class FluidDeviceModel implements IDynamicBakedModel {
         return ItemOverrides.EMPTY;
     }
 
-    public record Geometry(TopologyCompiler.Kind kind,boolean accessory) implements IUnbakedGeometry<Geometry> {
+    public record Geometry(TopologyCompiler.Kind kind,boolean accessory,boolean shutoffAccessory) implements IUnbakedGeometry<Geometry> {
         @Override
         public BakedModel bake(IGeometryBakingContext context, ModelBaker baker, Function<Material, TextureAtlasSprite> sprites, ModelState state, ItemOverrides overrides) {
-            return new FluidDeviceModel(kind,accessory, EquipmentShellModel.sprites(context, sprites), sprites.apply(context.getMaterial("particle")), context.getTransforms());
+            return new FluidDeviceModel(kind,accessory,shutoffAccessory, EquipmentShellModel.sprites(context, sprites), sprites.apply(context.getMaterial("particle")), context.getTransforms());
         }
     }
 }

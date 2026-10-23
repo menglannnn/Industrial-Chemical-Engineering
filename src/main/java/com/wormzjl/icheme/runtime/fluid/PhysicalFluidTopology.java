@@ -31,6 +31,15 @@ public final class PhysicalFluidTopology {
     }
     /** Where a device meets the next block: one of its cells and the direction out of it. */
     public record Contact(Position cell,Direction direction) {}
+    /** An installed pipe cutoff. Codes are part of the checkpoint, independent of enum ordering. */
+    public enum Cutoff {
+        NONE(0),OPEN(1),CLOSED(2);
+        private final int code;
+        Cutoff(int code){this.code=code;}
+        public int code(){return code;}
+        public Cutoff toggled(){return switch(this){case OPEN->CLOSED;case CLOSED->OPEN;case NONE->throw new IllegalStateException("No pipe cutoff installed");};}
+        public static Cutoff fromCode(int code){return switch(code){case 0->NONE;case 1->OPEN;case 2->CLOSED;default->throw new IllegalArgumentException("Unknown pipe cutoff "+code);};}
+    }
     /** The most ports a vessel registers. */
     public static final int MAXIMUM_PORTS=64;
     /**
@@ -39,13 +48,16 @@ public final class PhysicalFluidTopology {
      * cell, or a mover's suction cell) and its ports' cells, and meets pipes only at its ports.
      */
     public record Device(long id,Position position,TopologyCompiler.Kind kind,Direction facing,
-                         PipeResistance.Geometry geometry,FlowControl control,List<Port> ports,boolean generatorEnabled) {
+                         PipeResistance.Geometry geometry,FlowControl control,List<Port> ports,boolean generatorEnabled,Cutoff cutoff) {
+        public Device(long id,Position position,TopologyCompiler.Kind kind,Direction facing,PipeResistance.Geometry geometry,FlowControl control,List<Port> ports,boolean generatorEnabled){this(id,position,kind,facing,geometry,control,ports,generatorEnabled,Cutoff.NONE);}
         /** Authoring convenience; world placement explicitly creates generators switched off. */
         public Device(long id,Position position,TopologyCompiler.Kind kind,Direction facing,PipeResistance.Geometry geometry,FlowControl control,List<Port> ports){this(id,position,kind,facing,geometry,control,ports,true);}
         public Device(long id,Position position,TopologyCompiler.Kind kind,Direction facing,PipeResistance.Geometry geometry,FlowControl control){this(id,position,kind,facing,geometry,control,List.of());}
         public Device {
             if(id<=0)throw new IllegalArgumentException("Physical identities must be positive");
             Objects.requireNonNull(position);Objects.requireNonNull(kind);Objects.requireNonNull(facing);Objects.requireNonNull(geometry);Objects.requireNonNull(control);
+            Objects.requireNonNull(cutoff);
+            if(kind!=TopologyCompiler.Kind.PIPE&&cutoff!=Cutoff.NONE)throw new IllegalArgumentException("Only a pipe has a cutoff accessory");
             boolean valid=switch(kind) {case PUMP->control instanceof FlowControl.Pump;case COMPRESSOR->control instanceof FlowControl.Compressor;case VALVE->control instanceof FlowControl.PressureValve;default->control instanceof FlowControl.Passive;};
             if(!valid)throw new IllegalArgumentException("Device/control mismatch");
             if(kind!=TopologyCompiler.Kind.GENERATOR&&!generatorEnabled)throw new IllegalArgumentException("Only a generator has a source switch");
@@ -72,6 +84,10 @@ public final class PhysicalFluidTopology {
         }
         boolean boundary(){return kind==TopologyCompiler.Kind.RESERVOIR||kind==TopologyCompiler.Kind.GENERATOR||kind==TopologyCompiler.Kind.VOID;}
         boolean actuator(){return kind==TopologyCompiler.Kind.PUMP||kind==TopologyCompiler.Kind.COMPRESSOR||kind==TopologyCompiler.Kind.VALVE;}
+        /** Copy edits preserve accessories, ports and the independent generator switch. */
+        public Device withGeometry(PipeResistance.Geometry value){return new Device(id,position,kind,facing,value,control,ports,generatorEnabled,cutoff);}
+        public Device withFacing(Direction value){return new Device(id,position,kind,value,geometry,control,ports,generatorEnabled,cutoff);}
+        public Device withCutoff(Direction axis,Cutoff value){return new Device(id,position,kind,axis,geometry,control,ports,generatorEnabled,value);}
         /** Every cell the registry finds this device at: its own, and its ports'. */
         public Set<Position> cells() {
             var cells=new LinkedHashSet<Position>();cells.add(position);for(var port:ports)cells.add(port.cell);return cells;
@@ -89,6 +105,12 @@ public final class PhysicalFluidTopology {
             for(var port:ports)if(port.face==outward&&port.cell.equals(cell))return true;
             return false;
         }
+        /** Static fit, independent of power/cutoff state or whether the neighbouring chunk is loaded. */
+        boolean mechanicallyMeets(Position cell,Direction outward) {
+            if(ports.isEmpty())return cell.equals(position)&&mechanicallyConnects(outward);
+            for(var port:ports)if(port.face==outward&&port.cell.equals(cell))return true;
+            return false;
+        }
         /**
          * Step 1 of the network reduction stage, connectivity (owner decision D20: only pipes connect): this device, out of
          * its cell {@code from} towards {@code direction}, and {@code other} in the next cell are joined when each meets
@@ -99,7 +121,9 @@ public final class PhysicalFluidTopology {
         /** A generator or a void (owner decision D17): islands meet at it without being joined by it. */
         boolean fixed(){return TopologyCompiler.fixed(kind);}
         /** Off closes a generator's hydraulic contacts; its registered identity and fixed source specification stay put. */
-        boolean connects(Direction direction){return generatorEnabled&&(!actuator()&&kind!=TopologyCompiler.Kind.FILTER||direction.x*facing.x+direction.y*facing.y+direction.z*facing.z!=0);}
+        boolean connects(Direction direction){return generatorEnabled&&cutoff!=Cutoff.CLOSED&&mechanicallyConnects(direction);}
+        /** Fitting joints and bore inheritance remain axial even when hydraulic contacts are closed. */
+        public boolean mechanicallyConnects(Direction direction){return !actuator()&&kind!=TopologyCompiler.Kind.FILTER&&cutoff==Cutoff.NONE||direction.x*facing.x+direction.y*facing.y+direction.z*facing.z!=0;}
         /** The driven side is the actual discharge nozzle, independent of the node's position and the model's heading. */
         boolean outletAt(Position cell,Direction face) {
             if(!actuator())return false;

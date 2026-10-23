@@ -108,7 +108,16 @@ public final class FluidDeviceBlockEntity extends BlockEntity implements FluidVi
      * neighbour's faces depend on this block's bore only, so the refresh stops one block away.
      */
     public void refreshGeometry(double registeredBore,boolean neighbours) {
-        if(!(level instanceof ServerLevel))return;
+        if(!(level instanceof ServerLevel serverLevel))return;
+        // No uninstall action exists: NONE may be the older committed record of an installation still queued.
+        // Keep its installed flag for persistence and breaking drops; subsequent lever states come from commits only.
+        var committed=FluidWorldAuthority.find(serverLevel.getServer()).flatMap(world->world.committedDevice(identity)).orElse(null);
+        if(committed!=null&&committed.cutoff()!=PhysicalFluidTopology.Cutoff.NONE) {
+            var state=getBlockState();var updated=state.setValue(FluidDeviceBlock.SHUTOFF,FluidDeviceBlock.Shutoff.of(committed.cutoff()))
+                    .setValue(FluidDeviceBlock.FACING,Direction.valueOf(committed.facing().name()));
+            updated=FluidDeviceBlock.connectedState(updated,level,worldPosition);
+            if(updated!=state){level.setBlock(worldPosition,updated,net.minecraft.world.level.block.Block.UPDATE_ALL);neighbours=true;}
+        }
         boolean changed=bore!=registeredBore;bore=registeredBore;
         if(refreshFaces()||changed)sync();
         if(changed||neighbours)for(var direction:Direction.values()) {
@@ -132,10 +141,10 @@ public final class FluidDeviceBlockEntity extends BlockEntity implements FluidVi
                 var neighbour=level.getBlockEntity(worldPosition.relative(direction));
                 if(neighbour instanceof FluidDeviceBlockEntity other) {
                     boolean otherPipe=other.kind()==TopologyCompiler.Kind.PIPE;
-                    // A pipe meets the next pipe's size (for its reducer), welded except at sight-glass fittings. At equipment both sides flange at the
+                    // A pipe meets the next pipe's size (for its reducer), welded except at accessory fittings. At equipment both sides flange at the
                     // pipe's size, whatever it is (owner request 2026-10-21: nozzles and their flanges follow the pipe
                     // everywhere); two devices bolt together at the larger of their sizes.
-                    if(pipe&&otherPipe){code=PipeSizes.code(PipeSizes.outside(other.bore));flanged=FluidDeviceBlock.hasSightGlass(getBlockState())||FluidDeviceBlock.hasSightGlass(other.getBlockState());}
+                    if(pipe&&otherPipe){code=PipeSizes.code(PipeSizes.outside(other.bore));flanged=FluidDeviceBlock.hasFitting(getBlockState())||FluidDeviceBlock.hasFitting(other.getBlockState());}
                     else{code=PipeSizes.code(PipeSizes.outside(pipe?bore:otherPipe?other.bore:Math.max(bore,other.bore)));flanged=true;}
                 } else if(pipe&&neighbour instanceof EquipmentShellBlockEntity shell) {
                     var nozzle=shell.nozzleFacing(direction.getOpposite());
