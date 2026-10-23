@@ -138,12 +138,23 @@ public final class FluidWorldAuthority implements AutoCloseable {
     public WorldTopologyLedger.Registration place(PhysicalFluidTopology.Position position,TopologyCompiler.Kind kind,PhysicalFluidTopology.Direction facing) {
         owned();
         long id=topology.nextIdentity();var control=switch(kind){case PUMP->new FlowControl.Pump(.01,500000);case COMPRESSOR->new FlowControl.Compressor(.05,3.0);case VALVE->new FlowControl.PressureValve(200000);default->new FlowControl.Passive();};
-        var device=new PhysicalFluidTopology.Device(id,position,kind,facing,new PipeResistance.Geometry(1,.05,PipeResistance.DEFAULT_ROUGHNESS_METRES,0),control);
+        double diameter=kind==TopologyCompiler.Kind.PIPE?placedPipeDiameter(position):.05;
+        var device=new PhysicalFluidTopology.Device(id,position,kind,facing,new PipeResistance.Geometry(1,diameter,PipeResistance.DEFAULT_ROUGHNESS_METRES,0),control);
         var spec=kind==TopologyCompiler.Kind.GENERATOR?FluidDeviceSpec.water(catalog):FluidDeviceSpec.nitrogen(catalog);
         // A reservoir is placed empty (decision D54): of its settings only the capacity means anything.
         if(kind==TopologyCompiler.Kind.RESERVOIR)spec=new FluidDeviceSpec(options.volume(),298.15,com.wormzjl.icheme.science.fluid.solver.PhaseLayout.AMBIENT_PRESSURE,spec.composition());
         var record=new WorldTopologyLedger.Registration(device,spec,0);
         submit(List.of(new WorldTopologyLedger.Edit(id,record)),Math.addExact(id,1));return record;
+    }
+    /** Pipes connect on every face. Inherit the largest adjacent pipe's latest queued bore, even below the standalone default. */
+    private double placedPipeDiameter(PhysicalFluidTopology.Position position) {
+        double largest=0;
+        for(var direction:PhysicalFluidTopology.Direction.values()) {
+            var neighbour=registry.at(position.offset(direction)).orElse(null);
+            if(neighbour!=null&&neighbour.device().kind()==TopologyCompiler.Kind.PIPE)
+                largest=Math.max(largest,neighbour.device().geometry().diameter());
+        }
+        return largest>0?largest:.05;
     }
     /**
      * Registers a vessel that spans several cells (a drum, batch 2026-10-15-custom-equipment-rendering): its node at
