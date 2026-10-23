@@ -21,8 +21,8 @@ public final class PipelineSightGlassItem extends Item {
         var player=context.getPlayer();var level=context.getLevel();var pos=context.getClickedPos();var state=level.getBlockState(pos);
         if(!(state.getBlock() instanceof FluidDeviceBlock block)||block.kind()!=TopologyCompiler.Kind.PIPE)return InteractionResult.PASS;
         if(player==null||!player.mayBuild()||player.isSpectator()||!level.mayInteract(player,pos)||!player.mayUseItemAt(pos,context.getClickedFace(),stack))return InteractionResult.FAIL;
-        if(FluidDeviceBlock.isJunction(state)) {
-            if(!level.isClientSide())player.displayClientMessage(Component.translatable("item.icheme.pipeline_sight_glass.junction"),true);
+        if(!FluidDeviceBlock.supportsSightGlass(state)) {
+            if(!level.isClientSide())player.displayClientMessage(Component.translatable("item.icheme.pipeline_sight_glass.straight_only"),true);
             return InteractionResult.FAIL;
         }
         if(FluidDeviceBlock.hasSightGlass(state))return InteractionResult.sidedSuccess(level.isClientSide());
@@ -37,7 +37,7 @@ public final class PipelineSightGlassItem extends Item {
 
     @Override public void appendHoverText(ItemStack stack,TooltipContext context,List<Component> tooltip,TooltipFlag flag) {
         tooltip.add(Component.translatable("item.icheme.pipeline_sight_glass.install").withStyle(ChatFormatting.GRAY));
-        tooltip.add(Component.translatable("item.icheme.pipeline_sight_glass.junction").withStyle(ChatFormatting.GRAY));
+        tooltip.add(Component.translatable("item.icheme.pipeline_sight_glass.straight_only").withStyle(ChatFormatting.GRAY));
         tooltip.add(Component.translatable("item.icheme.pipeline_sight_glass.recover").withStyle(ChatFormatting.GRAY));
     }
 }

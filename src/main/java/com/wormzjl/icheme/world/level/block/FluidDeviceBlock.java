@@ -38,8 +38,12 @@ public final class FluidDeviceBlock extends BaseEntityBlock {
     public TopologyCompiler.Kind kind(){return kind;}
     @Override public MapCodec<FluidDeviceBlock> codec(){return CODEC;}
     @Override protected void createBlockStateDefinition(StateDefinition.Builder<Block,BlockState> builder){builder.add(FACING,SIGHT_GLASS);for(var property:CONNECTIONS.values())builder.add(property);}
-    public static boolean isJunction(BlockState state){int count=0;for(var property:CONNECTIONS.values())if(state.getValue(property))count++;return count>2;}
-    public static boolean hasSightGlass(BlockState state){return state.getBlock() instanceof FluidDeviceBlock block&&block.kind==TopologyCompiler.Kind.PIPE&&state.getValue(SIGHT_GLASS)&&!isJunction(state);}
+    public static boolean supportsSightGlass(BlockState state) {
+        if(!(state.getBlock() instanceof FluidDeviceBlock block)||block.kind!=TopologyCompiler.Kind.PIPE)return false;
+        int mask=0;for(var direction:Direction.values())if(state.getValue(CONNECTIONS.get(direction)))mask|=1<<direction.ordinal();
+        return com.wormzjl.icheme.science.equipment.SightGlassGeometry.supports(mask);
+    }
+    public static boolean hasSightGlass(BlockState state){return supportsSightGlass(state)&&state.getValue(SIGHT_GLASS);}
     @Override public RenderShape getRenderShape(BlockState state){return RenderShape.MODEL;}
     /** Pipe shapes by drawn outside code and connected faces. */
     private static final java.util.Map<Integer,net.minecraft.world.phys.shapes.VoxelShape> PIPE_SHAPES=new java.util.concurrent.ConcurrentHashMap<>();
@@ -93,13 +97,13 @@ public final class FluidDeviceBlock extends BaseEntityBlock {
     @Override protected BlockState updateShape(BlockState state,Direction direction,BlockState neighbor,LevelAccessor level,BlockPos position,BlockPos neighborPosition) {
         var connected=state.setValue(CONNECTIONS.get(direction),connects(state,level,neighborPosition,neighbor,direction));
         // Defer removal until the new connection state is installed. Several neighbour updates share one scheduled tick.
-        if(level instanceof ServerLevel&&kind==TopologyCompiler.Kind.PIPE&&connected.getValue(SIGHT_GLASS)&&isJunction(connected))level.scheduleTick(position,this,1);
+        if(level instanceof ServerLevel&&kind==TopologyCompiler.Kind.PIPE&&connected.getValue(SIGHT_GLASS)&&!supportsSightGlass(connected))level.scheduleTick(position,this,1);
         // The drawn faces follow the new connections once the state is in the world.
         if(level instanceof ServerLevel server)server.getServer().execute(()->{if(server.getBlockEntity(position) instanceof FluidDeviceBlockEntity entity)entity.refreshFacesAndSync();});
         return super.updateShape(connected,direction,neighbor,level,position,neighborPosition);
     }
     @Override protected void tick(BlockState state,ServerLevel level,BlockPos position,net.minecraft.util.RandomSource random) {
-        if(kind!=TopologyCompiler.Kind.PIPE||!state.getValue(SIGHT_GLASS)||!isJunction(state))return;
+        if(kind!=TopologyCompiler.Kind.PIPE||!state.getValue(SIGHT_GLASS)||supportsSightGlass(state))return;
         if(level.setBlock(position,state.setValue(SIGHT_GLASS,false),Block.UPDATE_ALL)) {
             if(level.getBlockEntity(position) instanceof FluidDeviceBlockEntity entity)entity.refreshGeometry(entity.bore(),true);
             Block.popResource(level,position,new ItemStack(com.wormzjl.icheme.registry.ModItems.PIPELINE_SIGHT_GLASS.get()));

@@ -7,80 +7,72 @@ import static com.wormzjl.icheme.science.equipment.Mesh.*;
 /** Diameter-driven round-window accessory. The viewing bore is genuinely open through both sides of the housing. */
 public final class SightGlassGeometry {
     private static final double[] CENTRE={.5,.5,.5},UP={0,1,0};
-    private static final int SIDES=24;
+    private static final int SIDES=32;
     private SightGlassGeometry(){}
 
     public record Geometry(List<Polygon> metal,List<Polygon> glass,List<Polygon> liquid) {
         public Geometry{metal=List.copyOf(metal);glass=List.copyOf(glass);liquid=List.copyOf(liquid);}
     }
 
-    /** Housing and all connected arms at this pipe's existing geometry; accessory items show the housing alone. */
+    /** Unconnected and dead-end pipes draw straight; two contacts must be opposite. Corners and junctions are excluded. */
+    public static boolean supports(int connections){return Integer.bitCount(connections)<=1||connections==3||connections==12||connections==48;}
+
+    /** Housing and straight arms at this pipe's existing geometry; accessory items show the housing alone. */
     public static Geometry build(LineGeometry.Key key,boolean accessory) {
-        if(!accessory&&Integer.bitCount(key.connections())>2)return new Geometry(LineGeometry.polygons(key),List.of(),List.of());
+        if(!accessory&&!supports(key.connections()))return new Geometry(LineGeometry.polygons(key),List.of(),List.of());
         double od=PipeSizes.outsideOf(key.outside());
         // The body and viewing aperture both scale across the entire pipe range. The minimum is a readable fitting,
         // not a second hydraulic bore. The largest fits the cell, as the existing line flanges do.
-        double radius=.065+.375*od,window=.66*radius,depth=.035+.24*radius,rim=.12*radius;
+        double radius=.09+.37*od,window=.60*radius,depth=.04+.34*od;
         int mask=key.connections();
         if(Integer.bitCount(mask)<=1){int face=mask==0?key.facing():Integer.numberOfTrailingZeros(mask);mask=(1<<face)|(1<<(face^1));}
-        double[] view=viewAxis(mask);
+        // Side windows are horizontal, perpendicular to the run. Vertical lines use north/south windows.
+        double[] view=(mask&12)!=0?new double[]{1,0,0}:new double[]{0,0,1};
         var frame=new Frame(CENTRE,view,UP);var metal=new Mesh();var glass=new Mesh();var liquid=new Mesh();
-        metal.ring(frame,window,radius*.92,-depth,depth,SIDES,3,Material.PIPE);
+        windowPlate(metal,frame,window,.93*radius,.93*radius,-depth,depth,3,Material.PIPE);
         for(int sign:new int[]{-1,1}) {
             var side=new Frame(CENTRE,new double[]{sign*view[0],0,sign*view[2]},UP);
-            metal.ring(side,window,radius,depth,depth+rim,SIDES,3,Material.FLANGE);
-            // Window-cover fasteners scale with the cover, independently of the pipeline flange's standard bolts.
-            for(int bolt=0;bolt<8;bolt++)metal.cylinder(new Frame(side.at(2*Math.PI*(bolt+.5)/8,(window+radius)/2,depth+rim),side.axis(),UP),
-                    .13*radius/Math.sqrt(3),0,.1*radius,6,Material.BOLT);
-            glass.annulus(side,0,window,depth+rim*.65,SIDES,1,Material.GLASS);
-            liquid.annulus(side,0,window*.995,depth+rim*.3,SIDES,1,Material.GLASS);
+            // A cast chamber, dark cover joint and bevelled four-bolt cover distinguish the fitting from a bare washer.
+            windowPlate(metal,side,window,.96*radius,.96*radius,depth,depth+.025*radius,3,Material.OPENING);
+            windowPlate(metal,side,.66*radius,radius,radius,depth+.025*radius,depth+.10*radius,1,Material.FLANGE);
+            windowPlate(metal,side,.66*radius,radius,.96*radius,depth+.10*radius,depth+.14*radius,2,Material.FLANGE);
+            metal.ring(side,window,.72*radius,depth+.10*radius,depth+.14*radius,SIDES,1,Material.FLANGE);
+            metal.frustum(side,.72*radius,.66*radius,depth+.14*radius,depth+.20*radius,SIDES,Material.FLANGE);
+            metal.bore(side,window,depth+.14*radius,depth+.20*radius,SIDES,Material.FLANGE);
+            metal.annulus(side,window,.66*radius,depth+.20*radius,SIDES,1,Material.FLANGE);
+            // Recessed gasket and glass remain behind the circular retaining lip, leaving a clear opening through the body.
+            metal.ring(side,window*.98,.64*radius,depth+.07*radius,depth+.095*radius,SIDES,3,Material.OPENING);
+            for(int bolt=0;bolt<4;bolt++) {
+                var fastener=new Frame(side.at(Math.PI/4+Math.PI*bolt/2,Math.sqrt(2)*.72*radius,depth+.14*radius),side.axis(),UP);
+                metal.cylinder(fastener,.13*radius,0,.012*radius,12,Material.FLANGE);
+                metal.cylinder(fastener,.18*radius/Math.sqrt(3),.012*radius,.077*radius,6,Material.BOLT);
+                metal.cylinder(fastener,.045*radius,.077*radius,.092*radius,8,Material.BOLT);
+            }
+            glass.annulus(side,0,window,depth+.09*radius,SIDES,1,Material.GLASS);
+            liquid.annulus(side,0,window*.995,depth+.08*radius,SIDES,1,Material.GLASS);
         }
-        var arms=new Mesh();
         if(!accessory)for(int face=0;face<6;face++)if((mask>>face&1)!=0) {
             var end=LineGeometry.end(key,face,od);
             end=new LineGeometry.End(end.outside(),true,end.reducer(),end.reducer()+PipeSizes.flangeThickness(end.outside())+PipeSizes.hub(end.outside()),end.joined());
-            double dot=LineGeometry.STEPS[face][0]*view[0]+LineGeometry.STEPS[face][2]*view[2];
-            double radial=.92*radius/Math.sqrt(Math.max(.25,1-dot*dot));
-            double axial=Math.abs(dot)<1e-9?Double.POSITIVE_INFINITY:depth/Math.abs(dot);
-            double from=.9*Math.min(.49,Math.min(radial,axial));
-            LineGeometry.arm(arms,face,from,od,end,LineGeometry.ref(face),PipeSizes.sides(od),false);
+            LineGeometry.arm(metal,face,.90*radius,od,end,LineGeometry.ref(face),Math.max(16,PipeSizes.sides(od)),false);
         }
-        // Nozzle walls can cross a diagonal bend's view. Cut the same polygonal viewing bore through those walls
-        // as through the housing, retaining their existing UV frames and normals rather than hiding a window behind metal.
-        metal.include(clearWindow(arms,frame,window));
         return new Geometry(metal.cell(0,0,0),glass.cell(0,0,0),liquid.cell(0,0,0));
     }
 
-    private static Mesh clearWindow(Mesh source,Frame frame,double radius) {
-        var out=new Mesh();var side=frame.side();double[][] normals=new double[SIDES][3];double[] offsets=new double[SIDES];
+    /** A chamfered square casting/cover with a circular bore. Different end widths make the cover's edge bevel. */
+    private static void windowPlate(Mesh mesh,Frame frame,double bore,double half0,double half1,double z0,double z1,int caps,Material material) {
+        mesh.bore(frame,bore,z0,z1,SIDES,material);
         for(int i=0;i<SIDES;i++) {
-            double angle=2*Math.PI*(i+.5)/SIDES,c=DeterministicMath.cos(angle),s=DeterministicMath.sin(angle);
-            for(int axis=0;axis<3;axis++)normals[i][axis]=c*frame.ref()[axis]+s*side[axis];
-            offsets[i]=-dot(normals[i],CENTRE)-radius*DeterministicMath.cos(Math.PI/SIDES);
+            double a=2*Math.PI*i/SIDES,b=2*Math.PI*(i+1)/SIDES;
+            var p0=frame.at(a,outline(a,half0),z0);var p1=frame.at(b,outline(b,half0),z0);
+            var p2=frame.at(b,outline(b,half1),z1);var p3=frame.at(a,outline(a,half1),z1);
+            mesh.add(List.of(p0,p1,p2,p3),frame.along((z0+z1)/2),FLAT,material,null,null);
+            if((caps&1)!=0)mesh.flat(List.of(frame.at(a,bore,z0),frame.at(b,bore,z0),p1,p0),neg(frame.axis()),material);
+            if((caps&2)!=0)mesh.flat(List.of(frame.at(a,bore,z1),frame.at(b,bore,z1),p2,p3),frame.axis(),material);
         }
-        for(var facet:source.facets()) {
-            var overlap=facet.positions();
-            for(int i=0;i<SIDES&&overlap.size()>=3;i++)overlap=clip(overlap,neg(normals[i]),-offsets[i]);
-            if(overlap.size()<3||area(overlap)<1e-12){append(out,facet.positions(),facet);continue;}
-            var remaining=facet.positions();
-            for(int i=0;i<SIDES&&remaining.size()>=3;i++) {
-                var outside=clip(remaining,normals[i],offsets[i]);
-                if(outside.size()>=3&&area(outside)>1e-12)append(out,outside,facet);
-                remaining=clip(remaining,neg(normals[i]),-offsets[i]);
-            }
-        }
-        return out;
     }
-    private static void append(Mesh mesh,List<double[]> polygon,Facet source) {
-        double[] inside=new double[3];for(var p:polygon)for(int axis=0;axis<3;axis++)inside[axis]+=p[axis]/polygon.size();
-        for(int axis=0;axis<3;axis++)inside[axis]-=source.normal()[axis];
-        mesh.add(polygon,inside,source.shading(),source.material(),source.u(),source.v());
-    }
-
-    /** Always horizontal: a free side axis, north/south for vertical lines, or the diagonal between bend axes. */
-    private static double[] viewAxis(int mask) {
-        boolean x=(mask&48)!=0,z=(mask&12)!=0;
-        if(x&&z){double d=1/Math.sqrt(2);return new double[]{d,0,d};}
-        return z?new double[]{1,0,0}:new double[]{0,0,1};
+    private static double outline(double angle,double half) {
+        double c=Math.abs(DeterministicMath.cos(angle)),s=Math.abs(DeterministicMath.sin(angle));
+        return half*Math.min(1/Math.max(c,s),1.68/(c+s));
     }
 }
