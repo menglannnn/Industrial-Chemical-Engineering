@@ -28,7 +28,7 @@ All notable changes to Industrial Chemical Engineering (IChemE, formerly CreateC
 
 ### Fixed
 
-- Move constructed pump/compressor flow arrows onto equipment nozzle necks behind their connection flanges; remove redundant inner pump flanges and pipe-side arrow metadata while preserving connection positions and check-valve markings (batch: `2026-10-24-mover-equipment-arrows`).
+- Move constructed pump/compressor flow arrows onto equipment nozzle necks behind their connection flanges; remove redundant inner pump flanges and pipe-side arrow metadata while preserving connection positions and check-valve markings (commit `7cb42268`, batch: `2026-10-24-mover-equipment-arrows`).
 
 - Keep a carried mover-limit rate result's phase basis with its flow/head guesses, resolving WTI pump-rate convergence holds; report accepted pump pressure/suction limits, inlet refusals and blocked forward flow through the normal equipment error status while retaining genuine solver failures (commits `9fa53354`, `c49f6654`, `98f3dce3`, batch: `2026-10-24-wti-pumping-rate-hold`).
 - Preserve accepted pressure-valve modes between implicit substeps, resolving spurious closure and convergence failures at equal-setpoint two-phase drum outlets while retaining the existing valve laws and conservation checks (commit `83e88bd0`, batch: `2026-10-23-valve-regime-convergence`).
