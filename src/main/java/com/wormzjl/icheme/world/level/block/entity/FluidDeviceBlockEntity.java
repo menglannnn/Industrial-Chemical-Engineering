@@ -62,7 +62,7 @@ public final class FluidDeviceBlockEntity extends BlockEntity implements FluidVi
     /** Bit of a face byte marking a flanged joint; the low seven bits hold the size code. */
     private static final int FLANGED = 128;
     /** Pipes are welded in spools of this many blocks; the block at each spool end carries a flange pair. */
-    public static final int SPOOL = 6;
+    public static final int SPOOL = 12;
     private long identity;
     private FluidView lastView;
     private double bore = .05;
