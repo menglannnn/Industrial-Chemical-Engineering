@@ -90,8 +90,9 @@ public sealed class FluidDeviceBlock extends BaseEntityBlock {
         double bore=level.getBlockEntity(position) instanceof FluidDeviceBlockEntity entity?entity.bore():.05;
         int code=com.wormzjl.icheme.science.equipment.PipeSizes.code(com.wormzjl.icheme.science.equipment.PipeSizes.outside(bore)),mask=0;
         for(var direction:Direction.values())if(state.getValue(CONNECTIONS.get(direction)))mask|=1<<direction.ordinal();
-        // Unconnected, it lies along its facing as drawn.
+        // Unconnected, it lies along its facing as drawn. A dead end likewise runs to a blind flange at the other face.
         if(mask==0)mask=3<<(state.getValue(FACING).ordinal()&~1);
+        else if(Integer.bitCount(mask)==1)mask|=1<<(Integer.numberOfTrailingZeros(mask)^1);
         return PIPE_SHAPES.computeIfAbsent(code<<6|mask,FluidDeviceBlock::pipeShape);
     }
     private static net.minecraft.world.phys.shapes.VoxelShape pipeShape(int key) {

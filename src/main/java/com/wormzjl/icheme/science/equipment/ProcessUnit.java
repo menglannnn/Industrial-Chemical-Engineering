@@ -638,6 +638,8 @@ public final class ProcessUnit {
     private final List<Solid> largeSolids = new ArrayList<>(), largeVolumes = new ArrayList<>();
     static final int LARGE = 256;
     final List<Nozzle> nozzles = new ArrayList<>();
+    /** Fixed casting radii at nozzle roots, by nozzle index: the pipe-sized nozzle blends into each casting. */
+    final Map<Integer, Double> nozzleRoots = new HashMap<>();
     /** The sleeves through a closed skirt, by nozzle index: drawn with the nozzle at its pipe's size ({@link Sleeve}). */
     final Map<Integer, Sleeve> sleeves = new HashMap<>();
 
@@ -1300,11 +1302,13 @@ public final class ProcessUnit {
         solids.add(Solid.rod(new double[]{a, y, 0}, 2, zf, zk, Math.max(rv1, joint), 0));
         solids.add(Solid.rod(new double[]{a, y, 0}, 2, zk, zb1 + .03, Math.max(rb + .03, .62 * di), 0));
         round(a, y, z0, z1, rv1);
-        // One equipment neck behind each connection flange, with a small overlap into its casting.
-        double suctionBase=zf+ts+.01;
+        // One equipment neck behind each connection flange, blending into its casting at the connected pipe's size.
+        double suctionBase = zf + ts + .01;
         nozzles.add(new Nozzle(Role.SUCTION, new double[]{a, y, suctionBase}, 2, -1, suctionBase, s, 0));
+        nozzleRoots.put(nozzles.size() - 1, .5 * s + .04);
         double base0 = neck - .01, face = Math.ceil(neck + td + EquipmentShape.STAND_OUT);
         nozzles.add(new Nozzle(Role.DISCHARGE, new double[]{a, base0, zc}, 1, 1, face - base0, d, 0));
+        nozzleRoots.put(nozzles.size() - 1, .5 * d + .025);
     }
 
     /**

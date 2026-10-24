@@ -1002,9 +1002,18 @@ public final class ShapeRasterizer {
                 double r = od / 2, flange = PipeSizes.flange(od) / 2, t = PipeSizes.flangeThickness(od), hub = PipeSizes.hub(od), length = nozzle.length();
                 double hubR = PipeSizes.hubOutside(od) / 2;
                 int sides = PipeSizes.sides(od);
+                // A unit's fixed casting ends 0.01 m ahead of the nozzle base. Blend its root into the connected neck and
+                // close the casting around a smaller neck; the outer neck and flange keep the pipe's size.
+                double taper = length - t - hub, neckStart = 0;
+                var root = unit != null ? unit.nozzleRoots.get(k) : null;
+                if (root != null) {
+                    double end = .01 + Math.min(.12, taper - .01);
+                    m.frustum(f, root, r, .01, end, sides, Material.MACHINE);
+                    if (root > r) m.annulus(f, r, root, .01, sides, 1, Material.MACHINE);
+                    neckStart = end;
+                }
                 // The neck's taper into the flange: a weld-neck hub.
-                double taper = length - t - hub;
-                m.prism(f, r, 0, taper, sides, Material.PIPE);
+                m.prism(f, r, neckStart, taper, sides, Material.PIPE);
                 m.frustum(f, r, hubR, taper, length - t, sides, Material.PIPE);
                 m.annulus(f, hubR, flange, length - t, sides, -1, Material.FLANGE);
                 m.bolts(f, od, hubR, flange, length - t, -1, Material.BOLT);
@@ -1055,6 +1064,14 @@ public final class ShapeRasterizer {
             for (int a = 0; a < 3; a++) if (a != nozzle.axis()) rho2 += (p[a] - base[a]) * (p[a] - base[a]);
             double t = PipeSizes.flangeThickness(od), flange = PipeSizes.flange(od) / 2;
             double length = nozzle.length(), radius = od / 2;
+            var root = unit != null ? unit.nozzleRoots.get(k) : null;
+            if (root != null) {
+                double end = .01 + Math.min(.12, length - t - PipeSizes.hub(od) - .01);
+                if (s >= .01 && s <= end) {
+                    double r = root + (radius - root) * (s - .01) / (end - .01);
+                    return rho2 <= r * r;
+                }
+            }
             return s >= 0 && s <= length - t && rho2 <= radius * radius || s > length - t && s <= length && rho2 <= flange * flange;
         }
 
