@@ -38,12 +38,12 @@ class TankDisplayTest {
         // A 100 m3 tank 10 m high (10 m2 footprint) holding 30 m3 of hydrocarbon over 20 m3 of free water.
         int c=AXIS.size();double[][] n=new double[3][c];n[0][0]=1000;n[1][c-1]=1000;
         var state=new FluidView.State(101325,298.15,50,40000,new double[]{30,20,0},n,SolidInventory.EMPTY,100);
-        var view=new FluidView(1,0,0,0,"STEADY",state,0,List.of()).withTank(new FluidView.Tank(10,true,0,0));
+        var view=new FluidView(1,0,0,0,"STEADY",state,0,List.of()).withTank(new FluidView.Tank(10,true,0,0,100,101325.0,140551.6));
         var display=TankDisplay.of(view,AXIS,WEIGHTS,EventPathWorld.CATALOG,PACKAGE);
         assertEquals(5,display.level(),1e-6);assertEquals(2,display.waterLevel(),1e-6);assertEquals(10,display.height(),1e-6);
         assertEquals(EventPathWorld.CATALOG.componentAppearance(PACKAGE,"Water").argb(),display.waterArgb());
         assertNull(TankDisplay.of(new FluidView(1,0,0,0,"STEADY",state,0,List.of()),AXIS,WEIGHTS,EventPathWorld.CATALOG,PACKAGE),"no tank, no display");
-        assertEquals(TankDisplay.empty(10),TankDisplay.of(new FluidView(1,0,0,0,"EMPTY",null,0,List.of()).withTank(new FluidView.Tank(10,true,0,0)),AXIS,WEIGHTS,EventPathWorld.CATALOG,PACKAGE));
+        assertEquals(TankDisplay.empty(10),TankDisplay.of(new FluidView(1,0,0,0,"EMPTY",null,0,List.of()).withTank(new FluidView.Tank(10,true,0,0,100,null,null)),AXIS,WEIGHTS,EventPathWorld.CATALOG,PACKAGE));
     }
 
     @Test void watchersAreBoundedAndEndWithThePlayerOrTheTank() {

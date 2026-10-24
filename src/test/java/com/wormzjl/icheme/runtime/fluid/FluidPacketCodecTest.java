@@ -88,7 +88,26 @@ class FluidPacketCodecTest {
             assertEquals(12,roundTrip.view().pipeHistory().size());assertArrayEquals(amounts[2],roundTrip.view().pipeHistory().get(11).reverse().phaseMoles()[2]);assertEquals(250,roundTrip.view().onlineTick());
         } finally {buffer.release();}
     }
-    // ---------------- fluid-6: static and live payloads ----------------
+    @Test void tankCapacityAndBothPressuresRoundTripAndMalformedReadingsAreRejected() {
+        var base=generatorMenu("");int count=base.components().size();double[][] amounts=new double[3][count];amounts[0][0]=1000;
+        var state=new FluidView.State(200000,298.15,1,10,new double[]{1,0,0},amounts,SolidInventory.EMPTY,10);
+        var tank=new FluidView.Tank(5,false,0,0,10,200000.0,200049.03325);
+        var view=new FluidView(9,4,1200,1300,"READY",state,0,List.of()).withTank(tank);
+        var data=new FluidNetwork.MenuData(TopologyCompiler.Kind.RESERVOIR,view,base.controls(),base.components(),List.of(),"",base.materialNames(),base.molecularWeights());
+        var gson=new Gson();String json=gson.toJson(live(data));var buffer=new RegistryFriendlyByteBuf(Unpooled.buffer(),RegistryAccess.EMPTY);
+        try {
+            var packet=new FluidNetwork.LivePayload(3,9,json);FluidNetwork.LivePayload.STREAM_CODEC.encode(buffer,packet);
+            var decoded=FluidNetwork.LivePayload.STREAM_CODEC.decode(buffer);
+            var joined=FluidNetwork.MenuData.of(data.staticData(4),FluidNetwork.decodeLive(decoded.json()));assertEquals(tank,joined.view().tank());
+            var missing=com.google.gson.JsonParser.parseString(json).getAsJsonObject();missing.getAsJsonObject("view").getAsJsonObject("tank").remove("capacity");
+            var rejected=assertThrows(RuntimeException.class,()->FluidNetwork.decodeLive(missing.toString()));
+            assertTrue(FluidNetwork.reason(rejected).contains("Invalid tank presentation"));
+            assertThrows(IllegalArgumentException.class,()->new FluidView.Tank(5,false,0,0,10,200000.0,100000.0));
+            assertThrows(IllegalArgumentException.class,()->new FluidView.Tank(5,false,0,0,10,null,200000.0));
+        }finally{buffer.release();}
+    }
+
+    // ---------------- distinct static and live payloads ----------------
 
     private static FluidNetwork.MenuData generatorMenu(String message) {
         int count=com.wormzjl.icheme.science.material.MaterialTestBasis.NETWORK+1;var names=new ArrayList<String>();for(int i=0;i<count;i++)names.add("component_"+i);
@@ -103,9 +122,9 @@ class FluidPacketCodecTest {
      * carries a crystal's record with its solid, D23; fluid-11 a vessel's tank presentation, batch
      * 2026-10-21-floating-roof-tanks) and every payload has its own wire identity. A tank's dry ice crosses
      * the live payload as a solid with its crystal record and comes back equal; a crystal made of a component off the
-     * menu's axis is refused. Test name kept. */
-    @Test void theProtocolIsFluidSixWithDistinctStaticAndLivePayloads() {
-        assertEquals("fluid-11",FluidNetwork.PROTOCOL);
+     * menu's axis is refused. fluid-14 adds a tank's capacity and paired pressures. */
+    @Test void theProtocolIsFluidFourteenWithDistinctStaticAndLivePayloads() {
+        assertEquals("fluid-14",FluidNetwork.PROTOCOL);
         var ids=java.util.Set.of(FluidNetwork.EditPayload.TYPE.id(),FluidNetwork.RecoverPayload.TYPE.id(),FluidNetwork.StaticPayload.TYPE.id(),FluidNetwork.LivePayload.TYPE.id());
         assertEquals(4,ids.size());
         var base=generatorMenu("");int count=base.components().size();

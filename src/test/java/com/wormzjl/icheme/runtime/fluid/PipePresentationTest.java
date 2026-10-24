@@ -22,6 +22,20 @@ class PipePresentationTest {
         return new PassiveNetwork.Reservoir(d.id(),d.position().y(),model.flashTP(350,pressure,n,()->{}),
             d.kind()==Kind.GENERATOR?PassiveNetwork.NodeKind.GENERATOR:PassiveNetwork.NodeKind.VOID);
     }
+    @Test void moverDisplayUsesOnlyItsAcceptedDischargeOnEitherFacing(){
+        for(var kind:List.of(Kind.PUMP,Kind.COMPRESSOR))for(var facing:List.of(PhysicalFluidTopology.Direction.EAST,PhysicalFluidTopology.Direction.WEST)){
+            var source=device(1,-2,0,0,Kind.GENERATOR);var sink=device(2,2,0,0,Kind.VOID);
+            FlowControl control=kind==Kind.PUMP?new FlowControl.Pump(.01,500000):new FlowControl.Compressor(.05,3);
+            var mover=new PhysicalFluidTopology.Device(100,new PhysicalFluidTopology.Position("minecraft:overworld",0,0,0),kind,facing,BORE,control);
+            var compiled=PhysicalFluidTopology.compile(List.of(source,device(3,-1,0,0,Kind.PIPE),mover,device(4,1,0,0,Kind.PIPE),sink),Map.of(1L,boundary(source,150000,0),2L,boundary(sink,101325,0)));
+            var graph=compiled.islands().getFirst().graph();var mappings=PipePresentation.actuatorMappings(mover,graph);assertEquals(1,mappings.size());
+            var discharge=graph.pipes().stream().filter(p->p.id()==mappings.getFirst().pipeId()).findFirst().orElseThrow();
+            assertEquals(mover.id(),graph.reservoirs().get(discharge.first()).id());assertEquals(control,discharge.control());
+            var history=graph.pipes().stream().map(p->new PipeTransfer(p.id(),moved(p.id()==discharge.id()?2:9,.25,0),moved(0,0,0))).toList();
+            var info=PipePresentation.inspect(mover,graph,mappings,history,2,model.components().size());
+            assertFalse(info.junction());assertEquals(1,info.connections().size());assertEquals(2,info.contents().massKg());assertEquals(1,info.connections().getFirst().massRateKgPerSecond());
+        }
+    }
     /** Actual block compiler, including vertical connections, with two nitrogen feeds and 2–4 outlets. */
     @Test void fourFiveAndSixEquipmentConnectionsBalanceWithoutDuplicatingDisplayedThroughput(){
         int[][] ports={{-1,0,0},{1,0,0},{0,0,-1},{0,0,1},{0,1,0},{0,-1,0}};

@@ -62,6 +62,15 @@ class TankOutletsTest {
         var committed=result.graph().reservoirs().get(tank);
         assertEquals(PassiveStepSolver.GRAVITY*model.liquidMass(committed.state())*PassiveStepSolver.LEVEL_HEAD_HEIGHT/committed.inventory().volume(),bottom.head(),0);
         assertEquals(0,top.head());assertEquals(0,side.head());
+        var readings=TankOutlets.tank(model,committed,result);
+        assertEquals(committed.state().pressure(),readings.topPressure());
+        assertEquals(readings.topPressure()+bottom.head(),readings.bottomPressure());
+        assertEquals(committed.inventory().volume(),readings.capacity());
+    }
+    @Test void anEmptyTankPublishesItsCapacityWithoutInventingPressures() {
+        var empty=PassiveNetwork.emptyVessel(1,64,25,5,model);
+        var readings=TankOutlets.tank(model,empty,null);
+        assertEquals(25,readings.capacity());assertNull(readings.topPressure());assertNull(readings.bottomPressure());assertEquals(0,readings.level(null));
     }
     @Test void theLeadingPhaseIsTheOneThatCarriedTheMostMass() {
         double[] w={.016,.028,.018};double[][] n=new double[3][3];

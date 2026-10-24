@@ -36,9 +36,10 @@ import java.util.*;
  * height, open flag, vent and spill rates), and a vessel's nozzle states its own port class, OVERFLOW among them, whichever
  * way it faces.</p>
  * <p>{@code fluid-13}: power also controls generators; void contents are accepted incoming transport, normalized to one second.</p>
+ * <p>{@code fluid-14}: a tank publishes capacity and separate top/bottom absolute pressures, including empty capacity.</p>
  */
 public final class FluidNetwork {
-    public static final String PROTOCOL="fluid-13";
+    public static final String PROTOCOL="fluid-14";
     private static final Gson JSON=new Gson();
     public static final int MAX_JSON=262144;
     public static final int MAX_EDIT_JSON=4096;
@@ -88,6 +89,7 @@ public final class FluidNetwork {
                     ||presets.stream().map(FluidPresetCatalog.Preset::id).distinct().count()!=presets.size()||materialNames.size()>components.size()
                     ||!components.containsAll(materialNames.keySet()))throw new IllegalArgumentException("Invalid bounded fluid menu state");
             if(kind!=TopologyCompiler.Kind.RESERVOIR&&!view.outlets().isEmpty())throw new IllegalArgumentException("Only a tank lists outlets");
+            if(view.tank()!=null&&(kind!=TopologyCompiler.Kind.RESERVOIR||(view.state()==null)!=(view.tank().topPressure()==null)||view.state()!=null&&view.tank().capacity()!=view.state().capacity()))throw new IllegalArgumentException("Tank geometry differs from its state");
             if((kind==TopologyCompiler.Kind.PIPE||kind==TopologyCompiler.Kind.FILTER||kind==TopologyCompiler.Kind.VOID)&&view.pipeInfo()==null)
                 throw new IllegalArgumentException("Missing accepted transport presentation");
             if(view.pipeInfo()!=null){

@@ -8,6 +8,13 @@ import java.util.*;
 /** Display-only reduction of accepted graph/history. No thermo calls, solver work or state mutation. */
 public final class PipePresentation {
     private PipePresentation(){}
+    /** A mover's accepted discharge history supplies its flow/phase display instead of a junction's resident stock. */
+    static List<PhysicalFluidTopology.View> actuatorMappings(PhysicalFluidTopology.Device device,PassiveNetwork graph) {
+        var result=new ArrayList<PhysicalFluidTopology.View>();
+        for(var pipe:graph.pipes())if(graph.reservoirs().get(pipe.first()).id()==device.id()&&!(pipe.control() instanceof FlowControl.Passive))
+            result.add(new PhysicalFluidTopology.View(0,pipe.id(),true));
+        return List.copyOf(result);
+    }
     /** Last accepted incoming streams, including solids; normalize each island's interval before summing. */
     static FluidView.PipeInfo boundaryInflow(long identity,Collection<IslandCoordinator.Snapshot> snapshots,int components) {
         var total=new Sum(components);

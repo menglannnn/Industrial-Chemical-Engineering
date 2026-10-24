@@ -31,9 +31,7 @@ public final class ProcessUi {
      * half the resolution reads as zero.
      */
     public static String pressure(double pascal){
-        if(!Double.isFinite(pascal))return "—";
-        double steps=Math.rint(pascal/PRESSURE_RESOLUTION);
-        return String.format(Locale.ROOT,"%.4f kPa",steps==0?0.0:steps*PRESSURE_RESOLUTION/1000);
+        return PressureUnit.KILOPASCAL.format(pascal);
     }
     /** Resource-pack translations over server-owned bounded scientific naming descriptors. */
     public static String materialName(MaterialName n) {
@@ -76,7 +74,7 @@ public final class ProcessUi {
     }
 
     /** Temperatures cross the wire in kelvin; display defaults to Celsius. */
-    public enum TemperatureUnit {
+    public enum TemperatureUnit implements DisplayUnit {
         CELSIUS("C",273.15), KELVIN("K",0);
         private final String symbol;
         private final double offset;
@@ -84,15 +82,22 @@ public final class ProcessUi {
         public String symbol(){return symbol;}
         public double display(double kelvin){return kelvin-offset;}
         public double kelvin(double displayed){return displayed+offset;}
+        @Override public double si(double displayed){return kelvin(displayed);}
         public TemperatureUnit next(){return this==CELSIUS?KELVIN:CELSIUS;}
     }
 
     /** Keeps untouched full-precision input values behind concise text. */
     public static final class NumericDraft {
         private final double exact;
+        private final double exactSi;
+        private final DisplayUnit unit;
         private final String initial;
         private String text;
-        public NumericDraft(double value){exact=value;initial=value!=0&&Math.abs(value)<1?String.format(java.util.Locale.ROOT,"%.4g",value):number(value);text=initial;}
+        public NumericDraft(double value){this(value,null);}
+        public NumericDraft(double si,DisplayUnit unit){
+            this.unit=unit;exactSi=si;exact=unit==null?si:unit.display(si);
+            initial=exact!=0&&Math.abs(exact)<1?String.format(java.util.Locale.ROOT,"%.4g",exact):number(exact);text=initial;
+        }
         public String text(){return text;}
         public void text(String value){text=value;}
         public double value(){
@@ -100,6 +105,13 @@ public final class ProcessUi {
             if(!Double.isFinite(value))throw new IllegalArgumentException("Enter a finite number");
             return value;
         }
+        /** Untouched drafts retain the original SI bits across repeated display-unit changes. */
+        public double si(){
+            double value=text.equals(initial)?exactSi:unit==null?value():unit.si(value());
+            if(!Double.isFinite(value))throw new IllegalArgumentException("Enter a finite number");
+            return value;
+        }
+        public NumericDraft in(DisplayUnit next){return new NumericDraft(si(),java.util.Objects.requireNonNull(next));}
     }
 
     /** Draggable row scrollbar, independent of a screen's data source. */
