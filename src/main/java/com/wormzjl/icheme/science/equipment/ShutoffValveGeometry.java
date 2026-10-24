@@ -35,10 +35,11 @@ public final class ShutoffValveGeometry {
         double length=Math.min(.95,Math.max(.36,1.10*od)),width=Math.max(.065,Math.min(.19,.24*od)),thickness=Math.max(.035,.085*od);
         var pivot=bonnet.along(radius+rise);double[] lever=open?run:cross(stem,run);
         bar(mesh,pivot,lever,stem,1.35*width,1.15*thickness,-.28*length,.12*length,Material.FLANGE);
-        bar(mesh,pivot,lever,stem,width,thickness,0,length,Material.FLANGE);
+        // Buried shaft/grip ends have no face: only the outer cap closes the tip, avoiding coplanar paint/metal.
+        bar(mesh,pivot,lever,stem,width,thickness,0,.54*length,START,Material.FLANGE);
         var rib=pivot.clone();for(int i=0;i<3;i++)rib[i]-=.65*thickness*stem[i];
         bar(mesh,rib,lever,stem,.48*width,.65*thickness,-.10*length,.65*length,Material.STEELWORK);
-        bar(mesh,pivot,lever,stem,1.28*width,1.50*thickness,.48*length,length,Material.GUARD);
+        bar(mesh,pivot,lever,stem,1.28*width,1.50*thickness,.48*length,.96*length,START,Material.GUARD);
         bar(mesh,pivot,lever,stem,1.30*width,1.55*thickness,.94*length,length,Material.BOLT);
         mesh.cylinder(new Frame(pivot,stem,run),Math.max(1.35*neck,.55*width),-thickness,1.05*thickness,6,Material.BOLT);
         if(!accessory)for(int face:new int[]{axis,axis^1}) {
@@ -50,9 +51,13 @@ public final class ShutoffValveGeometry {
     }
 
     private static void bar(Mesh mesh,double[] origin,double[] direction,double[] up,double width,double height,double from,double to,Material material) {
+        bar(mesh,origin,direction,up,width,height,from,to,BOTH_ENDS,material);
+    }
+    private static void bar(Mesh mesh,double[] origin,double[] direction,double[] up,double width,double height,double from,double to,int ends,Material material) {
         double[] side=cross(up,direction);var previous=mesh.transform();
         mesh.transform(new Transform(new int[]{(int)side[0],(int)up[0],(int)direction[0],(int)side[1],(int)up[1],(int)direction[1],(int)side[2],(int)up[2],(int)direction[2]},origin));
-        mesh.box(new double[]{-width/2,-height/2,from},new double[]{width/2,height/2,to},63,material);
+        int faces=(ALL_FACES&~48)|((ends&START)!=0?16:0)|((ends&END)!=0?32:0);
+        mesh.box(new double[]{-width/2,-height/2,from},new double[]{width/2,height/2,to},faces,material);
         mesh.transform(previous);
     }
 }
