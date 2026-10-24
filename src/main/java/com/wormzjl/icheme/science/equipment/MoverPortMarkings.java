@@ -77,9 +77,39 @@ public final class MoverPortMarkings {
         label.rect(-.4*length,-.13*width,.16*length,.13*width,.002,Mesh.Material.OPENING);
         label.polygon(List.of(new double[]{.12*length,-.35*width},new double[]{.42*length,0},new double[]{.12*length,.35*width}),.002,Mesh.Material.OPENING);
     }
-    /** One axial badge on a fitting; same painted arrow as the adjoining mover pipes. */
-    public static void fittingArrow(Mesh mesh,double[] origin,double[] direction,double[] normal,double radius,double length,double width) {
-        badge(new Label(mesh,new Mesh.Frame(origin,direction,normal),radius,0,1),length,width);
+    /** Paint on actual axial casting facets, within their available station/width bounds. */
+    public static List<Mesh.Polygon> fitting(List<Mesh.Polygon> surface,int facing,double from,double to) {
+        var mesh=new Mesh();var axis=LineGeometry.step(facing);var patches=new LinkedHashMap<Plane,Patch>();
+        for(var polygon:surface) {
+            if(polygon.material()!=Mesh.Material.FLANGE||polygon.size()<3)continue;
+            double[] p=polygon.positions(),a={p[3]-p[0],p[4]-p[1],p[5]-p[2]},b={p[6]-p[0],p[7]-p[1],p[8]-p[2]};
+            var normal=Mesh.cross(a,b);double norm=Math.sqrt(Mesh.dot(normal,normal));if(norm<1e-9)continue;
+            for(int i=0;i<3;i++)normal[i]/=norm;
+            if(Math.abs(Mesh.dot(normal,axis))>1e-6)continue;
+            var side=Mesh.cross(axis,normal);
+            double low=Double.POSITIVE_INFINITY,high=Double.NEGATIVE_INFINITY,left=low,right=high,radius=0;
+            for(int i=0;i<p.length;i+=3) {
+                double[] delta={p[i]-.5,p[i+1]-.5,p[i+2]-.5};
+                double along=Mesh.dot(delta,axis),across=Mesh.dot(delta,side);
+                low=Math.min(low,along);high=Math.max(high,along);left=Math.min(left,across);right=Math.max(right,across);radius=Mesh.dot(delta,normal);
+            }
+            low=Math.max(from,low);high=Math.min(to,high);if(high<=low||radius<=0)continue;
+            var plane=new Plane(Math.round(normal[0]*1e6),Math.round(normal[1]*1e6),Math.round(normal[2]*1e6),Math.round(radius*1e6));
+            var patch=patches.computeIfAbsent(plane,k->new Patch(normal,Mesh.dot(new double[]{p[0]-.5,p[1]-.5,p[2]-.5},normal)));
+            patch.low=Math.min(patch.low,low);patch.high=Math.max(patch.high,high);patch.left=Math.min(patch.left,left);patch.right=Math.max(patch.right,right);
+        }
+        int bodyFace=facing|1;var reference=LineGeometry.ref(bodyFace);var tangent=Mesh.cross(LineGeometry.step(bodyFace),reference);var selected=new LinkedHashSet<Patch>();
+        for(int q=0;q<4;q++) {
+            double angle=Math.PI/8+q*Math.PI/2,c=DeterministicMath.cos(angle),s=DeterministicMath.sin(angle),best=-2;Patch choice=null;
+            for(var patch:patches.values()) {double score=c*Mesh.dot(patch.normal,reference)+s*Mesh.dot(patch.normal,tangent);if(score>best){best=score;choice=patch;}}
+            if(choice!=null)selected.add(choice);
+        }
+        for(var patch:selected) {
+            var side=Mesh.cross(axis,patch.normal);double[] origin={.5,.5,.5};
+            for(int i=0;i<3;i++)origin[i]+=.5*(patch.left+patch.right)*side[i];
+            badge(new Label(mesh,new Mesh.Frame(origin,axis,patch.normal),patch.radius,(patch.low+patch.high)/2,1),.92*(patch.high-patch.low),.80*(patch.right-patch.left));
+        }
+        return List.copyOf(mesh.cell(0,0,0));
     }
 
     /** Local axes keep arrows aligned with flow for either nozzle role and every equipment heading. */
