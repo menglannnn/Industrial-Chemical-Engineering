@@ -808,7 +808,9 @@ class ShapeRasterizerTest {
             assertEquals(heading.dx != 0 ? overflow.z() : overflow.x(), heading.dx != 0 ? a.z() : a.x(), tank.toString());
             assertEquals(heading.dx != 0 ? a.z() : a.x(), heading.dx != 0 ? b.z() : b.x(), tank.toString());
             assertEquals(heading.dx != 0 ? overflow.x() : overflow.z(), heading.dx != 0 ? a.x() : a.z(), tank.toString());
-            assertTrue((a.x() - b.x()) * heading.dx + (a.z() - b.z()) * heading.dz > tank.diameter(), tank.toString());
+            var frontFace = tank.transform().point(tank.nozzles().get(0).face());
+            var backFace = tank.transform().point(tank.nozzles().get(1).face());
+            assertTrue((frontFace[0] - backFace[0]) * heading.dx + (frontFace[2] - backFace[2]) * heading.dz > tank.diameter(), tank.toString());
             // A sphere: the vapour outlet up at its top, the liquid outlet on the lowest row at the box's front edge.
             var sphere = EquipmentShape.storage(Kind.SPHERE, 14, 1, heading, 2);
             var sp = ShapeRasterizer.ports(sphere);

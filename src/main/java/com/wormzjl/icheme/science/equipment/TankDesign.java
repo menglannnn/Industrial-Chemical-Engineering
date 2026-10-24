@@ -21,7 +21,7 @@ import java.util.List;
  * girder 1.2 m below the top with its walkway (API 650 5.9.6), one stair wound round the shell at about 40° from grade to
  * the gauger's platform at the rim (owner approval 2026-10-21), which it passes beside the walkway and opens onto it, the
  * platform over the rim, and the level gauge on the front, reaching grade. A tank under {@link #STAIR_SIZE} across has neither
- * walkway nor stair but caged ladders up its back to the platform (owner change 2026-10-21). Drawn by the client, apart ({@link ProcessUnit#floating}):
+ * walkway nor stair but caged ladders on its right side to the platform. Drawn by the client, apart ({@link ProcessUnit#floating}):
  * the roof (pontoon ring 0.1 D wide, centre deck, rim seal, legs 1.8 m, drain sump), floating on the liquid and landing on
  * its legs, and the rolling ladder, as long as the fill height, hinged at the platform with its foot on a runway on the
  * deck. Nozzles, fixed: two identical bottom nozzles centered opposite each other at front and back ({@link Role#BOTTOM},
@@ -52,7 +52,7 @@ final class TankDesign extends UnitDesign {
      * tank as before): its column {@code GLASS_OUT} off the shell, from {@code GAUGE_LOW} over grade, piped from the shell at
      * {@code TAP} and at the fill height, clipped to it every {@code CLIP} m between; on the front {@code GLASS_OFFSET} to
      * the left of its middle (beside the centered nozzles, in the walkway's front gap) on a
-     * tank with the walkway, on the left side on a smaller one (its ladders stand at the back and the right). A steel-framed
+     * tank with the walkway, on the left side on a smaller one (its ladders stand on the right). A steel-framed
      * clear chamber on an unpainted pale scale board ({@code SCALE_HALF} either side), ticked dark every metre and longer
      * every 5 m; its cap radius is {@code GLASS_RADIUS} plus the flange allowance.
      */
@@ -64,12 +64,12 @@ final class TankDesign extends UnitDesign {
     /**
      * The least diameter that carries the wound stair, m (owner change 2026-10-21, "only put round ladders on them when they
      * are big enough"): spiral tank stairs start at about 20 ft (6 m) of diameter in practice, the size above API 650 Annex
-     * J's shop-assembled tanks (6 m at most), which carry caged ladders. A smaller tank has caged ladders up its back
+     * J's shop-assembled tanks (6 m at most), which carry caged ladders. A smaller tank has caged ladders on its right side
      * instead ({@link #ladders}) and no walkway: its top angle is its wind girder.
      */
     static final double STAIR_SIZE = 6;
-    /** A small tank's ladder onto the gauger's platform stands at the back (+z), the one below it at the right (seen from the front). */
-    static final double LADDER = Math.PI / 2;
+    /** Small-tank access stands on the right side (frame -x), clear of the centered front/back pipe lanes. */
+    static final double LADDER = Math.PI;
 
     @Override
     public double minSize() {
@@ -219,19 +219,19 @@ final class TankDesign extends UnitDesign {
 
     /**
      * A small tank's access ({@link #STAIR_SIZE}): caged ladders from grade to the gauger's platform, the top one at the
-     * back ({@link #LADDER}), split by part-ring rest platforms where the climb is over {@link Access#MAX_CLIMB}, the
-     * ladders alternating between the right and the back with each rest running the quarter turn between them (the
-     * columns' pattern, {@link ProcessUnit#ringAccess}); all clear of the front's nozzles and of the level gauge on the left.
+     * right side ({@link #LADDER}), split by part-ring rest platforms where the climb is over {@link Access#MAX_CLIMB},
+     * with successive sections beside one another in that side area ({@link ProcessUnit#ringAccess});
+     * both centered pipe lanes and the level gauge on the left remain clear.
      */
     private static void ladders(ProcessUnit u, Plan p) {
         var levels = Access.climbs(0, List.of(), p.shell);
         levels.removeLast();
         int m = levels.size();
-        double clear = Access.clearance(p.r), right = LADDER + Math.PI / 2;
+        double clear = Access.clearance(p.r), adjacent = LADDER + 2 * clear;
         var rings = new ArrayList<ProcessUnit.Ring>();
         for (int j = 0; j < m; j++) {
-            double in = (m - j) % 2 == 0 ? LADDER : right;
-            rings.add(in == LADDER ? new ProcessUnit.Ring(levels.get(j), in, in, right + clear) : new ProcessUnit.Ring(levels.get(j), in, LADDER - clear, in));
+            double in = (m - j) % 2 == 0 ? LADDER : adjacent;
+            rings.add(in == LADDER ? new ProcessUnit.Ring(levels.get(j), in, in, adjacent + clear) : new ProcessUnit.Ring(levels.get(j), in, LADDER - clear, in));
         }
         u.ringAccess(p.a, p.a, p.r, Access.MIN_DECK, 0, rings);
         u.verticalLadder(p.a, p.a, p.r, LADDER, m == 0 ? 0 : levels.getLast() + Access.DECK, p.shell + Access.DECK + Access.LANDING, false);
