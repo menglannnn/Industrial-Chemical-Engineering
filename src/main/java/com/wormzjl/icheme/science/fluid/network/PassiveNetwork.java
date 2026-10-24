@@ -208,9 +208,12 @@ public record PassiveNetwork(List<Reservoir> reservoirs,List<Pipe> pipes,List<Sc
      * carry 1 or 2. {@code firstPort} and {@code secondPort} are what the connection draws from its first and second node
      * when the flow leaves that node through it ({@link PhasePort}); every constructor but the canonical one passes
      * {@link PhasePort#BULK} at both ends.
+     * {@code forbiddenDirections} uses the same bits for permanent fitting restrictions; reopening a solids closure
+     * clears only {@code blockedDirections}. Both masks participate in the physical direction rule and solver identity.
      */
     public record Pipe(long id,int first,int second,List<PipeResistance.Geometry> sections,FlowControl control,int blockedDirections,InlineFilter filter,
-                       PhasePort firstPort,PhasePort secondPort) {
+                       PhasePort firstPort,PhasePort secondPort,int forbiddenDirections) {
+        public Pipe(long id,int first,int second,List<PipeResistance.Geometry> sections,FlowControl control,int blockedDirections,InlineFilter filter,PhasePort firstPort,PhasePort secondPort){this(id,first,second,sections,control,blockedDirections,filter,firstPort,secondPort,0);}
         public Pipe(long id,int first,int second,List<PipeResistance.Geometry> sections,FlowControl control,int blockedDirections,InlineFilter filter){this(id,first,second,sections,control,blockedDirections,filter,PhasePort.BULK,PhasePort.BULK);}
         public Pipe(long id,int first,int second,List<PipeResistance.Geometry> sections,FlowControl control,int blockedDirections){this(id,first,second,sections,control,blockedDirections,null);}
         public Pipe(long id,int first,int second,List<PipeResistance.Geometry> sections,FlowControl control){this(id,first,second,sections,control,0);}
@@ -223,17 +226,18 @@ public record PassiveNetwork(List<Reservoir> reservoirs,List<Pipe> pipes,List<Sc
          * outflow's donor terms read.
          */
         public record Identity(long id,int first,int second,List<PipeResistance.Geometry> sections,FlowControl control,
-                               int blockedDirections,FilterSettings filter,PhasePort firstPort,PhasePort secondPort) {}
+                               int blockedDirections,FilterSettings filter,PhasePort firstPort,PhasePort secondPort,int forbiddenDirections) {}
         /** The immutable half of an {@link InlineFilter}; the cake and its energy are the mutable half. */
         public record FilterSettings(double capacity,double cleanResistance) {}
         public Identity identity() {
             return new Identity(id,first,second,sections,control,blockedDirections,
-                    filter==null?null:new FilterSettings(filter.capacity(),filter.cleanResistance()),firstPort,secondPort);
+                    filter==null?null:new FilterSettings(filter.capacity(),filter.cleanResistance()),firstPort,secondPort,forbiddenDirections);
         }
-        public Pipe withBlockedDirections(int directions){return new Pipe(id,first,second,sections,control,directions,filter,firstPort,secondPort);}
-        public Pipe withFilter(InlineFilter value){return new Pipe(id,first,second,sections,control,blockedDirections,value,firstPort,secondPort);}
+        public Pipe withBlockedDirections(int directions){return new Pipe(id,first,second,sections,control,directions,filter,firstPort,secondPort,forbiddenDirections);}
+        public Pipe withForbiddenDirections(int directions){return new Pipe(id,first,second,sections,control,blockedDirections,filter,firstPort,secondPort,directions);}
+        public Pipe withFilter(InlineFilter value){return new Pipe(id,first,second,sections,control,blockedDirections,value,firstPort,secondPort,forbiddenDirections);}
         /** This connection with the given ports at its first and second end. */
-        public Pipe withPorts(PhasePort atFirst,PhasePort atSecond){return new Pipe(id,first,second,sections,control,blockedDirections,filter,atFirst,atSecond);}
+        public Pipe withPorts(PhasePort atFirst,PhasePort atSecond){return new Pipe(id,first,second,sections,control,blockedDirections,filter,atFirst,atSecond,forbiddenDirections);}
         /** The port of the end at {@code node}, which must be one of this connection's two nodes. */
         public PhasePort portAt(int node) {
             if(node==first)return firstPort;
@@ -244,10 +248,12 @@ public record PassiveNetwork(List<Reservoir> reservoirs,List<Pipe> pipes,List<Sc
         public PhasePort drawPort(double flow){return flow>=0?firstPort:secondPort;}
         /** Whether both ends draw their node's whole state. */
         public boolean bulk(){return firstPort==PhasePort.BULK&&secondPort==PhasePort.BULK;}
-        public boolean blocked(double flow){return (blockedDirections&(flow>=0?1:2))!=0;}
+        /** Permanent fitting restrictions survive reopening transient solid closures. */
+        public int effectiveBlockedDirections(){return blockedDirections|forbiddenDirections;}
+        public boolean blocked(double flow){return (effectiveBlockedDirections()&(flow>=0?1:2))!=0;}
         public Pipe(long id,int first,int second,PipeResistance.Geometry geometry){this(id,first,second,List.of(geometry),new FlowControl.Passive());}
         public Pipe(long id,int first,int second,PipeResistance.Geometry geometry,FlowControl control){this(id,first,second,List.of(geometry),control);}
-        public Pipe {Objects.requireNonNull(firstPort);Objects.requireNonNull(secondPort);if(filter!=null&&!(control instanceof FlowControl.Passive))throw new IllegalArgumentException("Filter must be passive");if(blockedDirections<0||blockedDirections>3)throw new IllegalArgumentException("Invalid pipe closure");sections=coalesce(sections);Objects.requireNonNull(control);if(sections.isEmpty())throw new IllegalArgumentException("Empty hydraulic run");}
+        public Pipe {Objects.requireNonNull(firstPort);Objects.requireNonNull(secondPort);if(filter!=null&&!(control instanceof FlowControl.Passive))throw new IllegalArgumentException("Filter must be passive");if(blockedDirections<0||blockedDirections>3)throw new IllegalArgumentException("Invalid pipe closure");if(forbiddenDirections<0||forbiddenDirections>3)throw new IllegalArgumentException("Invalid permanent pipe direction restriction");sections=coalesce(sections);Objects.requireNonNull(control);if(sections.isEmpty())throw new IllegalArgumentException("Empty hydraulic run");}
         private record SectionShape(double diameter,double roughness) {}
         private static List<PipeResistance.Geometry> coalesce(List<PipeResistance.Geometry> sections) {
             sections=List.copyOf(sections);if(sections.size()<2)return sections;

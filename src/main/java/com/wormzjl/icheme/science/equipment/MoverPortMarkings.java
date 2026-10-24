@@ -77,6 +77,10 @@ public final class MoverPortMarkings {
         label.rect(-.4*length,-.13*width,.16*length,.13*width,.002,Mesh.Material.OPENING);
         label.polygon(List.of(new double[]{.12*length,-.35*width},new double[]{.42*length,0},new double[]{.12*length,.35*width}),.002,Mesh.Material.OPENING);
     }
+    /** One axial badge on a fitting; same painted arrow as the adjoining mover pipes. */
+    public static void fittingArrow(Mesh mesh,double[] origin,double[] direction,double[] normal,double radius,double length,double width) {
+        badge(new Label(mesh,new Mesh.Frame(origin,direction,normal),radius,0,1),length,width);
+    }
 
     /** Local axes keep arrows aligned with flow for either nozzle role and every equipment heading. */
     private record Label(Mesh mesh,Mesh.Frame frame,double radius,double station,int flow) {

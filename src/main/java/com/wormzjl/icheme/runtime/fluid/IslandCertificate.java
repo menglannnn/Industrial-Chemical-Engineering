@@ -98,7 +98,7 @@ public final class IslandCertificate {
             boolean closures=true,filter=false;
             for(int p=0;p<after.pipes().size();p++) {
                 var x=before.pipes().get(p);var y=after.pipes().get(p);
-                if(x.id()!=y.id()||x.blockedDirections()!=y.blockedDirections()||!Objects.equals(x.filter(),y.filter()))closures=false;
+                if(x.id()!=y.id()||x.blockedDirections()!=y.blockedDirections()||x.forbiddenDirections()!=y.forbiddenDirections()||!Objects.equals(x.filter(),y.filter()))closures=false;
                 if(y.filter()!=null)filter=true;
             }
             boolean transport=false,gross=false;
@@ -246,7 +246,7 @@ public final class IslandCertificate {
         if(x.reservoirs().size()!=y.reservoirs().size()||x.pipes().size()!=y.pipes().size())return "structure changed";
         for(int p=0;p<y.pipes().size();p++) {
             var s=x.pipes().get(p);var t=y.pipes().get(p);
-            if(s.id()!=t.id()||s.blockedDirections()!=t.blockedDirections()||!Objects.equals(s.filter(),t.filter()))return "a closure or filter cake changed";
+            if(s.id()!=t.id()||s.blockedDirections()!=t.blockedDirections()||s.forbiddenDirections()!=t.forbiddenDirections()||!Objects.equals(s.filter(),t.filter()))return "a closure or filter cake changed";
         }
         for(int n=0;n<y.reservoirs().size();n++) {
             var s=x.reservoirs().get(n);var t=y.reservoirs().get(n);
@@ -357,7 +357,7 @@ public final class IslandCertificate {
                 case FlowControl.Compressor compressor->{d.text("compressor");d.real(compressor.requestedVolumeFlow());d.real(compressor.maximumPressureRatio());d.integer(compressor.enabled()?1:0);}
                 case FlowControl.PressureValve valve->{d.text("valve");d.real(valve.targetPressure());}
             }
-            d.integer(pipe.blockedDirections());
+            d.integer(pipe.blockedDirections());d.integer(pipe.forbiddenDirections());
             // What each end draws (PassiveNetwork.PhasePort): it changes the equations, so a replay holds only under it.
             d.integer(pipe.firstPort().ordinal());d.integer(pipe.secondPort().ordinal());
             var filter=pipe.filter();

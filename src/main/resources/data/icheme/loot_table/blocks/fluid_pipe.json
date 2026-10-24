@@ -68,6 +68,27 @@
           ]
         }
       ]
+    },
+    {
+      "rolls": 1,
+      "entries": [
+        {
+          "type": "minecraft:item",
+          "name": "icheme:pipeline_check_valve"
+        }
+      ],
+      "conditions": [
+        {
+          "condition": "minecraft:survives_explosion"
+        },
+        {
+          "condition": "minecraft:block_state_property",
+          "block": "icheme:fluid_pipe",
+          "properties": {
+            "shutoff": "check"
+          }
+        }
+      ]
     }
   ]
 }

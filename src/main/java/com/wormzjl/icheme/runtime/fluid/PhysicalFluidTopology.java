@@ -33,12 +33,12 @@ public final class PhysicalFluidTopology {
     public record Contact(Position cell,Direction direction) {}
     /** An installed pipe cutoff. Codes are part of the checkpoint, independent of enum ordering. */
     public enum Cutoff {
-        NONE(0),OPEN(1),CLOSED(2);
+        NONE(0),OPEN(1),CLOSED(2),CHECK(3);
         private final int code;
         Cutoff(int code){this.code=code;}
         public int code(){return code;}
-        public Cutoff toggled(){return switch(this){case OPEN->CLOSED;case CLOSED->OPEN;case NONE->throw new IllegalStateException("No pipe cutoff installed");};}
-        public static Cutoff fromCode(int code){return switch(code){case 0->NONE;case 1->OPEN;case 2->CLOSED;default->throw new IllegalArgumentException("Unknown pipe cutoff "+code);};}
+        public Cutoff toggled(){return switch(this){case OPEN->CLOSED;case CLOSED->OPEN;case CHECK->CHECK;case NONE->throw new IllegalStateException("No pipe cutoff installed");};}
+        public static Cutoff fromCode(int code){return switch(code){case 0->NONE;case 1->OPEN;case 2->CLOSED;case 3->CHECK;default->throw new IllegalArgumentException("Unknown pipe cutoff "+code);};}
     }
     /** The most ports a vessel registers. */
     public static final int MAXIMUM_PORTS=64;
@@ -196,7 +196,8 @@ public final class PhysicalFluidTopology {
                 links.add(new TopologyCompiler.Link(linkId,middle,other.id,half(other,d)));if(other.outletAt(next,opposite(direction)))outletLinks.add(linkId);linkOwner.put(linkId++,other.id);
             }
         }
-        var compiled=TopologyCompiler.compile(nodes,links);var byLink=new HashMap<Long,TopologyCompiler.Link>();for(var link:links)byLink.put(link.id(),link);
+        var checks=new HashSet<Long>();for(var d:physical.values())if(d.cutoff==Cutoff.CHECK)checks.add(d.id);
+        var compiled=TopologyCompiler.compile(nodes,links,checks);var byLink=new HashMap<Long,TopologyCompiler.Link>();for(var link:links)byLink.put(link.id(),link);
         var diagnostics=new HashMap<Long,String>();
         for(long link:compiled.deadEndLinks())diagnostics.put(linkOwner.get(link),"NO FLOW: dead-end pipe");
         for(long link:compiled.unanchoredLinks())diagnostics.put(linkOwner.get(link),"NO FLOW: no reservoir or boundary");
@@ -253,7 +254,8 @@ public final class PhysicalFluidTopology {
                 } else {
                     // The ports follow the ends through the swap: a run driven from its end is stated from b to a.
                     pipes.add(new PassiveNetwork.Pipe(pipeId,fromEnd?b:a,fromEnd?a:b,sections,fromStart?control(start,compiled.invalidPumpCycles()):fromEnd?control(end,compiled.invalidPumpCycles()):new FlowControl.Passive())
-                            .withPorts(fromEnd?endPort:startPort,fromEnd?startPort:endPort));
+                            .withPorts(fromEnd?endPort:startPort,fromEnd?startPort:endPort)
+                            .withForbiddenDirections(checkRestrictions(start,end,startLink,endLink,points,fromEnd)));
                     mapViews(views,run,linkOwner,physical,islandIndex,pipeId,!fromEnd);
                     // A tank is never an actuator, so only a run with at most one driven end has a tank end.
                     if(start!=null&&start.kind==TopologyCompiler.Kind.RESERVOIR)faces.computeIfAbsent(start.id,k->new HashMap<>()).put(pipeId,tankFaces.get(startLink.id()));
@@ -266,7 +268,7 @@ public final class PhysicalFluidTopology {
                 int negative=indices.get(id),positive=reservoirs.size();var device=physical.get(id);
                 reservoirs.add(new PassiveNetwork.Reservoir(virtual--,device.position.y,seed,PassiveNetwork.NodeKind.JUNCTION));
                 var positiveEdges=positiveFilterEdges.getOrDefault(id,Set.of());
-                for(int i=0;i<pipes.size();i++){var p=pipes.get(i);if(positiveEdges.contains(p.id()))pipes.set(i,new PassiveNetwork.Pipe(p.id(),p.first()==negative?positive:p.first(),p.second()==negative?positive:p.second(),p.sections(),p.control(),p.blockedDirections(),p.filter(),p.firstPort(),p.secondPort()));}
+                for(int i=0;i<pipes.size();i++){var p=pipes.get(i);if(positiveEdges.contains(p.id()))pipes.set(i,new PassiveNetwork.Pipe(p.id(),p.first()==negative?positive:p.first(),p.second()==negative?positive:p.second(),p.sections(),p.control(),p.blockedDirections(),p.filter(),p.firstPort(),p.secondPort(),p.forbiddenDirections()));}
                 long identity=filterIdentity(id);pipes.add(new PassiveNetwork.Pipe(identity,negative,positive,device.geometry).withFilter(filterStock.getOrDefault(id,InlineFilter.empty())));
                 views.put(id,List.of(new View(islandIndex,identity,true)));
             }
@@ -288,6 +290,13 @@ public final class PhysicalFluidTopology {
             islands.add(new Island(Set.of(device.id),dormant,Optional.empty()));views.put(device.id,List.of(new View(island,identity,true)));diagnostics.put(device.id,deadEnd?"NO FLOW: dead-end filter":"NO FLOW: disconnected filter");
         }
         return new Compiled(islands,views,diagnostics,faces);
+    }
+    /** Restrictions are in the run's traversal order, then swapped with a discharge-driven end. */
+    private static int checkRestrictions(Device start,Device end,TopologyCompiler.Link first,TopologyCompiler.Link last,Map<Long,Point> points,boolean reversed) {
+        int mask=0;
+        if(start!=null&&start.cutoff==Cutoff.CHECK)mask|=positiveSide(start,points.get(other(first,start.id)))?2:1;
+        if(end!=null&&end.cutoff==Cutoff.CHECK)mask|=positiveSide(end,points.get(other(last,end.id)))?1:2;
+        return reversed?((mask&1)<<1)|((mask&2)>>1):mask;
     }
     private static long other(TopologyCompiler.Link link,long id){return link.first()==id?link.second():link.first();}
     /**

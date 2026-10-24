@@ -237,6 +237,9 @@ public final class FluidWorldAuthority implements AutoCloseable {
     public boolean installPipeCutoff(long id,PhysicalFluidTopology.Direction facing) {
         owned();return registry.installPipeCutoff(id,facing);
     }
+    public boolean installPipeValve(long id,PhysicalFluidTopology.Direction facing,PhysicalFluidTopology.Cutoff kind) {
+        owned();return registry.installPipeValve(id,facing,kind);
+    }
     /** Rapid clicks toggle the latest queued value, never the older drawn lever. */
     public void togglePipeCutoff(long id) {
         owned();registry.togglePipeCutoff(id);

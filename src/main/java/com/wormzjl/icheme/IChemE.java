@@ -303,6 +303,7 @@ public final class IChemE {
             event.accept(ModItems.PIPELINE_TOOL.get());
             event.accept(ModItems.PIPELINE_SIGHT_GLASS.get());
             event.accept(ModItems.PIPELINE_SHUTOFF_VALVE.get());
+            event.accept(ModItems.PIPELINE_CHECK_VALVE.get());
             event.accept(ModItems.FLUID_RESERVOIR.get());event.accept(ModItems.FLUID_PIPE.get());event.accept(ModItems.FLUID_PUMP.get());event.accept(ModItems.FLUID_COMPRESSOR.get());event.accept(ModItems.PRESSURE_CONTROL_VALVE.get());event.accept(ModItems.FLUID_GENERATOR.get());event.accept(ModItems.FLUID_VOID.get());event.accept(ModItems.INLINE_FILTER.get());event.accept(ModItems.FLUID_DEBUGGER.get());event.accept(ModItems.EQUIPMENT_CONSTRUCTOR.get());
         }
     }

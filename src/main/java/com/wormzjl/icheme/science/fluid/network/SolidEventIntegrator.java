@@ -83,7 +83,7 @@ final class SolidEventIntegrator {
         for(int i=0;i<flows.length;i++) {
             var pipe=graph.pipes().get(i);double flow=flows[i];int direction=flow>=0?1:2;
             if(pipe.filter()!=null&&atCapacity(pipe.filter())&&pipe.blockedDirections()!=BOTH_DIRECTIONS)return clogged(i,pipe.id());
-            if((pipe.blockedDirections()&direction)!=0||still!=null&&still[i])continue;
+            if((pipe.effectiveBlockedDirections()&direction)!=0||still!=null&&still[i])continue;
             var check=mobility(graph,states,prepared,i,flow);
             boolean overPopulated=check.allowed()&&reach!=null&&flow!=0&&overPopulated(graph,pipe,flow,reach);
             if(check.allowed()&&!overPopulated)continue;

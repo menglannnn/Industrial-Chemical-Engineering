@@ -1,0 +1,13 @@
+{
+  "parent": "icheme:block/fluid_device",
+  "loader": "icheme:fluid_device",
+  "kind": "pipe",
+  "check_valve_accessory": true,
+  "display": {
+    "gui": {
+      "rotation": [30, 45, 0],
+      "translation": [0, 0, 0],
+      "scale": [2, 2, 2]
+    }
+  }
+}

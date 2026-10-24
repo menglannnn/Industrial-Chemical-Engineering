@@ -108,6 +108,10 @@ public final class PhysicalRegistry {
     public Map<Long,WorldTopologyLedger.Registration> registrations(){return topology.latest();}
     /** Queue a new cutoff on the latest pipe revision, preserving its pending geometry and spec. */
     public boolean installPipeCutoff(long id,PhysicalFluidTopology.Direction axis) {
+        return installPipeValve(id,axis,PhysicalFluidTopology.Cutoff.OPEN);
+    }
+    public boolean installPipeValve(long id,PhysicalFluidTopology.Direction axis,PhysicalFluidTopology.Cutoff kind) {
+        if(kind!=PhysicalFluidTopology.Cutoff.OPEN&&kind!=PhysicalFluidTopology.Cutoff.CHECK)throw new IllegalArgumentException("Invalid installed pipe valve");
         var record=registrations().get(id);
         if(record==null||record.device().kind()!=TopologyCompiler.Kind.PIPE||record.device().cutoff()!=PhysicalFluidTopology.Cutoff.NONE)return false;
         // Check projected physical neighbours too: chunk loading or an unapplied branch must not hide a junction.
@@ -116,13 +120,14 @@ public final class PhysicalRegistry {
             if(neighbour!=null&&neighbour.device().mechanicallyMeets(next,PhysicalFluidTopology.opposite(direction))
                     &&direction.x*axis.x+direction.y*axis.y+direction.z*axis.z==0)return false;
         }
-        queueCutoff(record,axis,PhysicalFluidTopology.Cutoff.OPEN);return true;
+        queueCutoff(record,axis,kind);return true;
     }
     /** Clicks compose on pending state instead of all toggling the last published lever. */
     public void togglePipeCutoff(long id) {
         var record=registrations().get(id);
         if(record==null||record.device().cutoff()==PhysicalFluidTopology.Cutoff.NONE)return;
-        queueCutoff(record,record.device().facing(),record.device().cutoff().toggled());
+        var facing=record.device().facing();
+        queueCutoff(record,record.device().cutoff()==PhysicalFluidTopology.Cutoff.CHECK?PhysicalFluidTopology.opposite(facing):facing,record.device().cutoff().toggled());
     }
     private void queueCutoff(WorldTopologyLedger.Registration record,PhysicalFluidTopology.Direction axis,PhysicalFluidTopology.Cutoff cutoff) {
         var device=record.device().withCutoff(axis,cutoff);

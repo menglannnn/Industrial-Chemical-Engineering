@@ -31,12 +31,12 @@ public sealed class FluidDeviceBlock extends BaseEntityBlock {
     public static final EnumProperty<Direction.Axis> SIGHT_GLASS_AXIS=EnumProperty.create("sight_glass_axis",Direction.Axis.class);
     /** Committed lever position; a newly installed accessory initially draws open. */
     public enum Shutoff implements net.minecraft.util.StringRepresentable {
-        NONE(PhysicalFluidTopology.Cutoff.NONE),OPEN(PhysicalFluidTopology.Cutoff.OPEN),CLOSED(PhysicalFluidTopology.Cutoff.CLOSED);
+        NONE(PhysicalFluidTopology.Cutoff.NONE),OPEN(PhysicalFluidTopology.Cutoff.OPEN),CLOSED(PhysicalFluidTopology.Cutoff.CLOSED),CHECK(PhysicalFluidTopology.Cutoff.CHECK);
         private final PhysicalFluidTopology.Cutoff cutoff;
         Shutoff(PhysicalFluidTopology.Cutoff cutoff){this.cutoff=cutoff;}
         public PhysicalFluidTopology.Cutoff cutoff(){return cutoff;}
         @Override public String getSerializedName(){return name().toLowerCase(java.util.Locale.ROOT);}
-        public static Shutoff of(PhysicalFluidTopology.Cutoff cutoff){return switch(cutoff){case NONE->NONE;case OPEN->OPEN;case CLOSED->CLOSED;};}
+        public static Shutoff of(PhysicalFluidTopology.Cutoff cutoff){return switch(cutoff){case NONE->NONE;case OPEN->OPEN;case CLOSED->CLOSED;case CHECK->CHECK;};}
     }
     public static final EnumProperty<Shutoff> SHUTOFF=EnumProperty.create("shutoff",Shutoff.class);
     private static final java.util.Map<Direction,BooleanProperty> CONNECTIONS=java.util.Map.of(
@@ -64,9 +64,10 @@ public sealed class FluidDeviceBlock extends BaseEntityBlock {
         return com.wormzjl.icheme.science.equipment.SightGlassGeometry.supports(connectionMask(state));
     }
     public static boolean hasSightGlass(BlockState state){return supportsSightGlass(state)&&state.getValue(SIGHT_GLASS);}
-    public static boolean hasShutoff(BlockState state){return state.getBlock() instanceof FluidDeviceBlock block&&block.kind==TopologyCompiler.Kind.PIPE&&state.getValue(SHUTOFF)!=Shutoff.NONE;}
+    public static boolean hasShutoff(BlockState state){return hasPipeValve(state)&&state.getValue(SHUTOFF)!=Shutoff.CHECK;}
+    public static boolean hasPipeValve(BlockState state){return state.getBlock() instanceof FluidDeviceBlock block&&block.kind==TopologyCompiler.Kind.PIPE&&state.getValue(SHUTOFF)!=Shutoff.NONE;}
     public static PhysicalFluidTopology.Cutoff cutoff(BlockState state){return state.getBlock() instanceof FluidDeviceBlock block&&block.kind==TopologyCompiler.Kind.PIPE?state.getValue(SHUTOFF).cutoff():PhysicalFluidTopology.Cutoff.NONE;}
-    public static boolean hasFitting(BlockState state){return hasSightGlass(state)||hasShutoff(state);}
+    public static boolean hasFitting(BlockState state){return hasSightGlass(state)||hasPipeValve(state);}
     /** Mechanical joints stay connected when a valve closes hydraulically. */
     public static BlockState connectedState(BlockState state,LevelReader level,BlockPos position) {
         for(var direction:Direction.values()){var at=position.relative(direction);state=state.setValue(CONNECTIONS.get(direction),connects(state,level,at,level.getBlockState(at),direction));}
@@ -114,7 +115,7 @@ public sealed class FluidDeviceBlock extends BaseEntityBlock {
     public static BooleanProperty connection(Direction direction){return CONNECTIONS.get(direction);}
     private static boolean boundary(TopologyCompiler.Kind kind){return kind==TopologyCompiler.Kind.RESERVOIR||kind==TopologyCompiler.Kind.GENERATOR||kind==TopologyCompiler.Kind.VOID;}
     private static boolean face(BlockState state,Direction direction) {
-        if(hasShutoff(state)&&state.getValue(FACING).getAxis()!=direction.getAxis())return false;
+        if(hasPipeValve(state)&&state.getValue(FACING).getAxis()!=direction.getAxis())return false;
         var block=(FluidDeviceBlock)state.getBlock();return block.kind!=TopologyCompiler.Kind.PUMP&&block.kind!=TopologyCompiler.Kind.COMPRESSOR&&block.kind!=TopologyCompiler.Kind.VALVE&&block.kind!=TopologyCompiler.Kind.FILTER||state.getValue(FACING).getAxis()==direction.getAxis();
     }
     /** Whether this block meets its neighbour towards {@code direction}: another device by the rules above, or, for a pipe, a vessel nozzle facing it. */
@@ -145,7 +146,7 @@ public sealed class FluidDeviceBlock extends BaseEntityBlock {
             if(previous.getBlock()!=this) {
                 var record=world.place(p,kind,PhysicalFluidTopology.Direction.valueOf(state.getValue(FACING).name()),cutoff(state));
                 if(level.getBlockEntity(position) instanceof FluidDeviceBlockEntity entity)entity.bindIdentity(record.device().id());
-            } else if(!hasShutoff(state)&&previous.getValue(FACING)!=state.getValue(FACING)) {
+            } else if(!hasPipeValve(state)&&previous.getValue(FACING)!=state.getValue(FACING)) {
                 world.at(p).ifPresent(old->{var d=old.device();world.edit(d.id(),old.revision(),d.withFacing(PhysicalFluidTopology.Direction.valueOf(state.getValue(FACING).name())),old.spec());});
             }
         });
@@ -157,7 +158,7 @@ public sealed class FluidDeviceBlock extends BaseEntityBlock {
         super.onRemove(state,level,position,replacement,moved);
     }
     @Override protected InteractionResult useWithoutItem(BlockState state,Level level,BlockPos position,Player player,BlockHitResult hit) {
-        if(hasShutoff(state)&&player.getMainHandItem().isEmpty()&&player.getOffhandItem().isEmpty()) {
+        if(hasPipeValve(state)&&player.getMainHandItem().isEmpty()&&player.getOffhandItem().isEmpty()) {
             if(!player.mayBuild()||player.isSpectator()||!level.mayInteract(player,position)||!player.mayUseItemAt(position,hit.getDirection(),ItemStack.EMPTY))return InteractionResult.FAIL;
             if(player instanceof ServerPlayer serverPlayer&&level.getBlockEntity(position) instanceof FluidDeviceBlockEntity entity)
                 FluidWorldAuthority.find(serverPlayer.server).ifPresent(world->world.togglePipeCutoff(entity.fluidIdentity()));

@@ -174,7 +174,7 @@ public final class PassiveStepSolver {
         boolean[] closed=new boolean[edges];boolean[] open=new boolean[nodes];boolean any=false;
         for(int e=0;e<edges;e++) {
             var pipe=graph.pipes().get(e);
-            closed[e]=pipe.control() instanceof FlowControl.Passive&&pipe.blockedDirections()!=3&&modes.get(e)==FlowControl.Mode.CLOSED;any|=closed[e];
+            closed[e]=pipe.control() instanceof FlowControl.Passive&&pipe.effectiveBlockedDirections()!=3&&modes.get(e)==FlowControl.Mode.CLOSED;any|=closed[e];
             if(modes.get(e)!=FlowControl.Mode.CLOSED&&modes.get(e)!=FlowControl.Mode.INLET_WRONG_PHASE){open[pipe.first()]=true;open[pipe.second()]=true;}
         }
         if(!any)return Set.of();
@@ -384,7 +384,7 @@ public final class PassiveStepSolver {
         // produces, actuator included: an actuator left on its setpoint across a closed edge is a second equation for a
         // flow the closure has decided, and on a junction whose other edges are closed the factorization is singular.
         boolean[] boundaryClosed=new boolean[graph.pipes().size()];
-        for(int i=0;i<boundaryClosed.length;i++)if(graph.pipes().get(i).blockedDirections()==3) {
+        for(int i=0;i<boundaryClosed.length;i++)if(graph.pipes().get(i).effectiveBlockedDirections()==3) {
             boundaryClosed[i]=true;
             if(!(graph.pipes().get(i).control() instanceof FlowControl.Passive))modes.set(i,FlowControl.Mode.CLOSED);
         }
@@ -2257,7 +2257,7 @@ public final class PassiveStepSolver {
         graph=new PassiveNetwork(seeded,graph.pipes(),graph.scheduledTransfers());
         suctionFloors=suctionFloors(graph,graph.reservoirs().stream().map(PassiveNetwork.Reservoir::state).toList());
         var modes=initialModes(graph);boolean[] closed=new boolean[graph.pipes().size()];
-        for(int i=0;i<closed.length;i++)if(graph.pipes().get(i).blockedDirections()==3){closed[i]=true;if(!(graph.pipes().get(i).control() instanceof FlowControl.Passive))modes.set(i,FlowControl.Mode.CLOSED);}
+        for(int i=0;i<closed.length;i++)if(graph.pipes().get(i).effectiveBlockedDirections()==3){closed[i]=true;if(!(graph.pipes().get(i).control() instanceof FlowControl.Passive))modes.set(i,FlowControl.Mode.CLOSED);}
         if(graph.pipes().stream().anyMatch(pipe->pipe.control() instanceof FlowControl.Mover)){boolean[] refused=InletPhase.decide(model,graph,null,0);for(int i=0;i<refused.length;i++)if(refused[i]){closed[i]=true;modes.set(i,FlowControl.Mode.INLET_WRONG_PHASE);}}
         closeDeadHeads(graph,closed,null);relieveSealedPockets(graph,modes,closed,new boolean[closed.length]);
         var start=balanceStart(graph,modes,closed,null,()->{},null);
@@ -2351,7 +2351,7 @@ public final class PassiveStepSolver {
             for(int i=0;i<nodes;i++){zLow=Math.min(zLow,graph.reservoirs().get(i).elevation());zHigh=Math.max(zHigh,graph.reservoirs().get(i).elevation());}
             for(int e=0;e<edges;e++) {
                 var pipe=graph.pipes().get(e);var mode=modes.get(e);
-                hardClosed[e]=boundaryClosed[e]||pipe.blockedDirections()==3||mode==FlowControl.Mode.INLET_WRONG_PHASE;
+                hardClosed[e]=boundaryClosed[e]||pipe.effectiveBlockedDirections()==3||mode==FlowControl.Mode.INLET_WRONG_PHASE;
                 closed[e]=hardClosed[e]||mode==FlowControl.Mode.CLOSED;
                 if(!closed[e])prepare(e,checkpoint);
             }

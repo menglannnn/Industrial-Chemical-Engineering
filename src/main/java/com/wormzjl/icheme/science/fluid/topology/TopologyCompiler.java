@@ -27,8 +27,13 @@ public final class TopologyCompiler {
         }
     }
     public static Compiled compile(List<Node> inputNodes,List<Link> inputLinks) {
+        return compile(inputNodes,inputLinks,Set.of());
+    }
+    /** Inline directional fittings retain a pressure node even on an otherwise straight run. */
+    public static Compiled compile(List<Node> inputNodes,List<Link> inputLinks,Set<Long> retainedPipes) {
         var nodes=new TreeMap<Long,Node>();var links=new TreeMap<Long,Link>();var adjacent=new HashMap<Long,List<Long>>();
         for(var node:inputNodes){if(nodes.putIfAbsent(node.id,node)!=null)throw new IllegalArgumentException("Duplicate node identity");adjacent.put(node.id,new ArrayList<>());}
+        for(long id:retainedPipes)if(!nodes.containsKey(id)||nodes.get(id).kind!=Kind.PIPE)throw new IllegalArgumentException("Only a pipe can be retained as an inline fitting");
         for(var link:inputLinks) {
             if(!nodes.containsKey(link.first)||!nodes.containsKey(link.second)||links.putIfAbsent(link.id,link)!=null)throw new IllegalArgumentException("Invalid graph link");
             adjacent.get(link.first).add(link.id);adjacent.get(link.second).add(link.id);
@@ -40,7 +45,7 @@ public final class TopologyCompiler {
         var active=new HashSet<>(links.keySet());
         var dead=NetworkReduction.pruneDeadEnds(adjacent,other,id->destination(nodes.get(id).kind),active);
         var retained=new TreeMap<Long,Node>();
-        for(var node:nodes.values())if(node.kind!=Kind.PIPE||adjacent.get(node.id).stream().filter(active::contains).count()!=2)retained.put(node.id,node);
+        for(var node:nodes.values())if(node.kind!=Kind.PIPE||retainedPipes.contains(node.id)||adjacent.get(node.id).stream().filter(active::contains).count()!=2)retained.put(node.id,node);
         var visited=new HashSet<Long>();var runs=new ArrayList<Run>();
         for(var start:retained.values())for(long firstLink:adjacent.get(start.id)) {
             if(!active.contains(firstLink)||visited.contains(firstLink))continue;

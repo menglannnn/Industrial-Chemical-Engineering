@@ -417,7 +417,7 @@ public final class PassiveIntervalSolver {
     private double[] carriedFlows;
     private List<Long> carriedKey=List.of();
     private static List<Long> flowKey(PassiveNetwork graph) {
-        var key=new ArrayList<Long>();for(var pipe:graph.pipes()){key.add(pipe.id());key.add((long)pipe.blockedDirections());}
+        var key=new ArrayList<Long>();for(var pipe:graph.pipes()){key.add(pipe.id());key.add((long)pipe.blockedDirections());key.add((long)pipe.forbiddenDirections());}
         return key;
     }
     /** The flows the last accepted step left, where {@code graph} keeps their structure; null otherwise. The island's own flows
