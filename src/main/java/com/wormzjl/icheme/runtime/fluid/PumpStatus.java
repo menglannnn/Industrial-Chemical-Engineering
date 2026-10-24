@@ -11,7 +11,7 @@ final class PumpStatus {
             case PUMP_TARGET->"pump running";
             case PUMP_HEAD_LIMIT->"ERROR: pump pressure rise limit reached; requested flow unavailable";
             case PUMP_SUCTION_LIMIT->"ERROR: pump cavitating: suction pressure limit reached";
-            case INLET_WRONG_PHASE->"ERROR: "+(inletReason.isBlank()?"pump inlet is dry or has the wrong phase":inletReason);
+            case INLET_WRONG_PHASE->inletReason.isBlank()?"ERROR: pump inlet is dry or has the wrong phase":inletReason;
             case CLOSED->pump.targetVolumeFlow()==0?"pump off":"ERROR: pump cannot drive forward flow";
             default->throw new IllegalArgumentException("Invalid pump operating mode: "+mode);
         };

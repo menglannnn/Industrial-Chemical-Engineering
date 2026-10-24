@@ -9,11 +9,12 @@ class PumpStatusTest {
 
     @Test void operatingLimitsAndRefusalsAreDeviceErrorsOnAnAdvancingIsland() {
         for(var mode:new FlowControl.Mode[]{FlowControl.Mode.PUMP_HEAD_LIMIT,FlowControl.Mode.PUMP_SUCTION_LIMIT,FlowControl.Mode.INLET_WRONG_PHASE,FlowControl.Mode.CLOSED}) {
-            String status=PumpStatus.of("FULL",pump,mode,"pump inlet is not liquid (from generator)");
+            String status=PumpStatus.of("FULL",pump,mode,"ERROR: pump inlet is not liquid (from generator)");
             assertTrue(status.startsWith("ERROR: pump"));assertTrue(status.endsWith(" / FULL"));assertFalse(status.contains("HELD"));
         }
         assertTrue(PumpStatus.of("FULL",pump,FlowControl.Mode.PUMP_HEAD_LIMIT,"").contains("requested flow unavailable"));
-        assertTrue(PumpStatus.of("FULL",pump,FlowControl.Mode.INLET_WRONG_PHASE,"pump inlet is not liquid (from generator)").contains("from generator"));
+        String inlet="ERROR: pump inlet is not liquid (from generator)";
+        assertEquals(inlet+" / FULL",PumpStatus.of("FULL",pump,FlowControl.Mode.INLET_WRONG_PHASE,inlet));
     }
 
     @Test void offIsNormalAndPresentationDoesNotHideARealSolverFailure() {

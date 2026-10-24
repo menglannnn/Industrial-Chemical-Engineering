@@ -136,7 +136,7 @@ public final class FluidPhasePortGameTests {
             }
             long pumpId=pumpIds[0];var view=world.view(pumpId);
             helper.assertTrue(System.nanoTime()<deadline[0],"The pump was not refused: "+view.status());
-            if(!view.status().contains("INLET_WRONG_PHASE"))return;
+            if(!view.status().startsWith("ERROR: pump inlet"))return;
             helper.assertTrue(view.status().contains(expected),"The reason names the tank: "+view.status());
             helper.assertTrue(view.massFlow()==0,"A refused pump carries nothing: "+view.massFlow());
             helper.assertTrue(!view.status().contains("limit"),"No limit is shown for a refused pump: "+view.status());
