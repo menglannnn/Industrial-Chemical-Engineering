@@ -190,7 +190,7 @@ public final class FluidNetwork {
     public static MenuData snapshot(FluidWorldAuthority world,WorldTopologyLedger.Registration record,FluidView view){
         if(view.identity()!=record.device().id()||view.inputRevision()!=record.revision())
             throw new IllegalArgumentException("Presentation snapshot registration mismatch");
-        return new MenuData(record.device().kind(),view,Controls.from(record),world.components(),world.presets(),"",
+        return new MenuData(record.device().hydraulicKind(),view,Controls.from(record),world.components(),world.presets(),"",
             world.materialNames(),Arrays.stream(world.model().molecularWeights()).boxed().toList());
     }
     /** Sends a published snapshot to an installed, requested menu; replay uses an empty reply. The presentation checked
@@ -237,7 +237,7 @@ public final class FluidNetwork {
                 if(controls.composition().length!=world.components().size())throw new IllegalArgumentException("Composition differs from the server network axis");
                 var old=Objects.requireNonNull(world.registrations().get(payload.identity));var d=old.device();
                 var geometry=d.geometry();var control=d.control();var spec=old.spec();
-                switch(d.kind()) {
+                switch(d.hydraulicKind()) {
                     case PIPE,FILTER->geometry=new PipeResistance.Geometry(geometry.length(),controls.diameter,PipeResistance.DEFAULT_ROUGHNESS_METRES,geometry.minorLoss());
                     case PUMP->control=new FlowControl.Pump(controls.volumeFlow,controls.maximumAddedPressure,controls.power==Power.ON);
                     case COMPRESSOR->control=new FlowControl.Compressor(controls.volumeFlow,controls.maximumPressureRatio,controls.power==Power.ON);
@@ -248,7 +248,7 @@ public final class FluidNetwork {
                 }
                 // Refused here, before anything is queued, outside the package envelope (the input box, plan decision 9):
                 // the reply with the next bucket reads "Not applied: ..." with the envelope named.
-                switch(d.kind()) {
+                switch(d.hydraulicKind()) {
                     case GENERATOR,VOID->spec.validate(world.model(),d.kind());
                     case VALVE->world.model().domain().requireInputPressure(controls.pressure);
                     default->{}

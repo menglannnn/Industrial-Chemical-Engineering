@@ -113,14 +113,26 @@ public final class PhysicalRegistry {
     public boolean installPipeValve(long id,PhysicalFluidTopology.Direction axis,PhysicalFluidTopology.Cutoff kind) {
         if(kind!=PhysicalFluidTopology.Cutoff.OPEN&&kind!=PhysicalFluidTopology.Cutoff.CHECK)throw new IllegalArgumentException("Invalid installed pipe valve");
         var record=registrations().get(id);
-        if(record==null||record.device().kind()!=TopologyCompiler.Kind.PIPE||record.device().cutoff()!=PhysicalFluidTopology.Cutoff.NONE)return false;
+        if(!canInstallValve(record,axis))return false;
+        queueCutoff(record,axis,kind);return true;
+    }
+    /** Uses the existing pressure-valve control on the same host pipe and projected revision. */
+    public boolean installPipePressureValve(long id,PhysicalFluidTopology.Direction axis) {
+        var record=registrations().get(id);if(!canInstallValve(record,axis))return false;
+        var d=record.device();var device=new PhysicalFluidTopology.Device(d.id(),d.position(),d.kind(),axis,d.geometry(),new FlowControl.PressureValve(200000),d.ports(),d.generatorEnabled(),d.cutoff());
+        submit(List.of(new WorldTopologyLedger.Edit(id,new WorldTopologyLedger.Registration(device,record.spec(),Math.addExact(record.revision(),1)))),topology.nextIdentity(),null);
+        return true;
+    }
+    private boolean canInstallValve(WorldTopologyLedger.Registration record,PhysicalFluidTopology.Direction axis) {
+        Objects.requireNonNull(axis);
+        if(record==null||record.device().kind()!=TopologyCompiler.Kind.PIPE||record.device().cutoff()!=PhysicalFluidTopology.Cutoff.NONE||!(record.device().control() instanceof FlowControl.Passive))return false;
         // Check projected physical neighbours too: chunk loading or an unapplied branch must not hide a junction.
         for(var direction:PhysicalFluidTopology.Direction.values()) {
             var next=record.device().position().offset(direction);var neighbour=topology.latestAt(next);
             if(neighbour!=null&&neighbour.device().mechanicallyMeets(next,PhysicalFluidTopology.opposite(direction))
                     &&direction.x*axis.x+direction.y*axis.y+direction.z*axis.z==0)return false;
         }
-        queueCutoff(record,axis,kind);return true;
+        return true;
     }
     /** Clicks compose on pending state instead of all toggling the last published lever. */
     public void togglePipeCutoff(long id) {

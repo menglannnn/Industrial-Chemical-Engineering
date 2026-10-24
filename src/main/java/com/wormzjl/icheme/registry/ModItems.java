@@ -12,7 +12,7 @@ public final class ModItems {
     public static final DeferredItem<BlockItem> FLUID_PIPE=ITEMS.registerSimpleBlockItem("fluid_pipe",ModBlocks.FLUID_PIPE);
     public static final DeferredItem<BlockItem> FLUID_PUMP=ITEMS.registerSimpleBlockItem("fluid_pump",ModBlocks.FLUID_PUMP);
     public static final DeferredItem<BlockItem> FLUID_COMPRESSOR=ITEMS.registerSimpleBlockItem("fluid_compressor",ModBlocks.FLUID_COMPRESSOR);
-    public static final DeferredItem<BlockItem> PRESSURE_CONTROL_VALVE=ITEMS.registerSimpleBlockItem("pressure_control_valve",ModBlocks.PRESSURE_CONTROL_VALVE);
+    public static final DeferredItem<com.wormzjl.icheme.world.item.PipelinePressureValveItem> PRESSURE_CONTROL_VALVE=ITEMS.registerItem("pressure_control_valve",com.wormzjl.icheme.world.item.PipelinePressureValveItem::new);
     public static final DeferredItem<BlockItem> FLUID_GENERATOR=ITEMS.registerSimpleBlockItem("fluid_generator",ModBlocks.FLUID_GENERATOR);
     public static final DeferredItem<BlockItem> FLUID_VOID=ITEMS.registerSimpleBlockItem("fluid_void",ModBlocks.FLUID_VOID);
     public static final DeferredItem<BlockItem> INLINE_FILTER=ITEMS.registerSimpleBlockItem("inline_filter",ModBlocks.INLINE_FILTER);

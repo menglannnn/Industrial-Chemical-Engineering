@@ -68,7 +68,21 @@ public final class LineGeometry {
 
     /** The block's polygons, cell-local. */
     public static List<Polygon> polygons(Key key) {
+        if(key.kind()==Kind.VALVE)return PressureValveGeometry.polygons(key,false);
         return mesh(key).cell(0, 0, 0);
+    }
+
+    /** Keep decorative overhangs in their owning block model, with UV/cell clipping intact. */
+    static List<Polygon> overhanging(Mesh mesh) {
+        var bounds=mesh.bounds();if(bounds==null)return List.of();var out=new ArrayList<Polygon>();
+        for(int x=(int)Math.floor(bounds[0]);x<=Math.floor(bounds[3]);x++)
+            for(int y=(int)Math.floor(bounds[1]);y<=Math.floor(bounds[4]);y++)
+                for(int z=(int)Math.floor(bounds[2]);z<=Math.floor(bounds[5]);z++)for(var polygon:mesh.cell(x,y,z)) {
+                    var positions=polygon.positions().clone();
+                    for(int v=0;v<positions.length;v+=3){positions[v]+=x;positions[v+1]+=y;positions[v+2]+=z;}
+                    out.add(new Polygon(positions,polygon.uvs(),polygon.normals(),polygon.material()));
+                }
+        return List.copyOf(out);
     }
 
     static Mesh mesh(Key key) {
@@ -283,47 +297,7 @@ public final class LineGeometry {
      * along the actuator's direction (up over a horizontal line, horizontal beside a vertical one).
      */
     private static void valve(Mesh m, Key key) {
-        double od = line(key), body = Math.min(.42, .6 * PipeSizes.flange(od));
-        int sides = PipeSizes.sides(2 * body);
-        m.sphere(CENTRE, body, Math.max(12, sides), Material.MACHINE);
-        lineNozzles(m, key, .7 * body, od);
-        int vertical = key.facing() >> 1 == 0 ? 1 : 0;
-        int up = vertical == 1 ? (key.facing() == UP ? NORTH : SOUTH) : UP;
-        var f = frame(up, ref(up));
-        double bonnet = body + .06, yoke = Math.max(.04, Math.min(.2, .3 * body + .06)), casing = Math.min(.7, .3 + .5 * od);
-        // The casing stands 0.3 of its diameter plus its 0.02 m rim above the yoke; all of it stays in the block.
-        double room = .49 - bonnet - .02;
-        if (yoke + .3 * casing > room) {
-            double k = Math.max(0, room) / (yoke + .3 * casing);
-            yoke *= k;
-            casing *= k;
-        }
-        m.frustum(f, .45 * body, .3 * body, .8 * body, bonnet, sides, Material.MACHINE);
-        m.annulus(f, 0, .3 * body, bonnet, sides, 1, Material.MACHINE);
-        if (casing < .08) return;
-        // Yoke: two legs from the bonnet to the casing, the stem between them.
-        double leg = Math.min(.025, .1 * casing), spread = .3 * body;
-        var across = side(f);
-        for (int s = -1; s <= 1; s += 2) {
-            var a = f.at(0, 0, bonnet);
-            var b = f.at(0, 0, bonnet + yoke);
-            for (int c = 0; c < 3; c++) {
-                a[c] += s * spread * across[c];
-                b[c] += s * spread * across[c];
-            }
-            m.bar(a, b, leg, f.ref(), Material.STEELWORK);
-        }
-        m.bar(f.along(bonnet), f.along(bonnet + yoke), .4 * leg, f.ref(), Material.STEELWORK);
-        // Diaphragm casing: two shallow cones about a rim, the lower one bolted to the yoke.
-        double rc = casing / 2, z0 = bonnet + yoke, zr = z0 + .12 * casing, z1 = zr + .02, top = z1 + .18 * casing;
-        int n = Math.max(12, PipeSizes.sides(casing));
-        m.frustum(f, .3 * rc, rc, z0, zr, n, Material.ACTUATOR);
-        m.annulus(f, 0, .3 * rc, z0, n, -1, Material.ACTUATOR);
-        m.prism(f, rc + .01, zr, z1, n, Material.ACTUATOR);
-        m.annulus(f, rc, rc + .01, zr, n, -1, Material.ACTUATOR);
-        m.annulus(f, rc, rc + .01, z1, n, 1, Material.ACTUATOR);
-        m.frustum(f, rc, .45 * rc, z1, top, n, Material.ACTUATOR);
-        m.annulus(f, 0, .45 * rc, top, n, 1, Material.ACTUATOR);
+        PressureValveGeometry.build(m,key);
     }
 
     /**

@@ -5,7 +5,6 @@
     "icheme:fluid_pipe",
     "icheme:fluid_pump",
     "icheme:fluid_compressor",
-    "icheme:pressure_control_valve",
     "icheme:fluid_generator",
     "icheme:fluid_void",
     "icheme:inline_filter",

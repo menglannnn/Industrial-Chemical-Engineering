@@ -16,21 +16,25 @@ import net.minecraft.world.item.*;
 import net.minecraft.world.item.context.UseOnContext;
 import net.minecraft.world.level.block.Block;
 
-/** Installs an axis-locked shutoff or directional valve without replacing the host pipe or its identity. */
+/** Installs an axis-locked valve without replacing the host pipe or its identity. */
 public abstract class PipelineValveItem extends Item {
+    protected enum Type {SHUTOFF,CHECK,PRESSURE}
+    private final Type type;
     private final PhysicalFluidTopology.Cutoff installed;
     private final String translation;
-    protected PipelineValveItem(Properties properties,PhysicalFluidTopology.Cutoff installed){
+    protected PipelineValveItem(Properties properties,Type type){
         super(properties.stacksTo(64));
-        if(installed!=PhysicalFluidTopology.Cutoff.OPEN&&installed!=PhysicalFluidTopology.Cutoff.CHECK)throw new IllegalArgumentException("Invalid valve accessory");
-        this.installed=installed;translation="item.icheme.pipeline_"+(installed==PhysicalFluidTopology.Cutoff.CHECK?"check":"shutoff")+"_valve.";
+        this.type=java.util.Objects.requireNonNull(type);
+        installed=switch(type){case SHUTOFF->PhysicalFluidTopology.Cutoff.OPEN;case CHECK->PhysicalFluidTopology.Cutoff.CHECK;case PRESSURE->PhysicalFluidTopology.Cutoff.NONE;};
+        translation=type==Type.PRESSURE?"item.icheme.pressure_control_valve.":"item.icheme.pipeline_"+(type==Type.CHECK?"check":"shutoff")+"_valve.";
     }
 
     @Override public InteractionResult onItemUseFirst(ItemStack stack,UseOnContext context) {
         var player=context.getPlayer();var level=context.getLevel();var pos=context.getClickedPos();var state=level.getBlockState(pos);
         if(!(state.getBlock() instanceof FluidDeviceBlock block)||block.kind()!=TopologyCompiler.Kind.PIPE)return InteractionResult.PASS;
         if(player==null||!player.mayBuild()||player.isSpectator()||!level.mayInteract(player,pos)||!player.mayUseItemAt(pos,context.getClickedFace(),stack))return InteractionResult.FAIL;
-        if(FluidDeviceBlock.cutoff(state)==installed||installed==PhysicalFluidTopology.Cutoff.OPEN&&FluidDeviceBlock.hasShutoff(state))return InteractionResult.sidedSuccess(level.isClientSide());
+        boolean duplicate=switch(type){case PRESSURE->FluidDeviceBlock.hasPressureValve(state);case SHUTOFF->FluidDeviceBlock.hasShutoff(state);case CHECK->FluidDeviceBlock.cutoff(state)==installed;};
+        if(duplicate)return InteractionResult.sidedSuccess(level.isClientSide());
         if(state.getValue(FluidDeviceBlock.SIGHT_GLASS)||FluidDeviceBlock.hasPipeValve(state)) {
             if(!level.isClientSide())player.displayClientMessage(Component.translatable(translation+"one_accessory"),true);
             return InteractionResult.FAIL;
@@ -47,15 +51,18 @@ public abstract class PipelineValveItem extends Item {
             var record=world.registrations().get(entity.fluidIdentity());
             var at=new PhysicalFluidTopology.Position(level.dimension().location().toString(),pos.getX(),pos.getY(),pos.getZ());
             if(record==null||record.device().kind()!=TopologyCompiler.Kind.PIPE||!record.device().position().equals(at))return InteractionResult.FAIL;
-            if(record.device().cutoff()!=PhysicalFluidTopology.Cutoff.NONE)return InteractionResult.SUCCESS;
+            if(record.device().cutoff()!=PhysicalFluidTopology.Cutoff.NONE||!(record.device().control() instanceof com.wormzjl.icheme.science.fluid.network.FlowControl.Passive))return InteractionResult.SUCCESS;
             var facing=mask==0?state.getValue(FluidDeviceBlock.FACING):Direction.values()[Integer.numberOfTrailingZeros(mask)];
-            if(installed==PhysicalFluidTopology.Cutoff.CHECK) {
+            if(type!=Type.SHUTOFF) {
                 var look=player.getLookAngle();double along=look.x*facing.getStepX()+look.y*facing.getStepY()+look.z*facing.getStepZ();
                 if(along<0)facing=facing.getOpposite();
             }
-            var changed=FluidDeviceBlock.connectedState(state.setValue(FluidDeviceBlock.SHUTOFF,FluidDeviceBlock.Shutoff.of(installed)).setValue(FluidDeviceBlock.FACING,facing),level,pos);
+            var changed=state.setValue(FluidDeviceBlock.FACING,facing);
+            changed=type==Type.PRESSURE?changed.setValue(FluidDeviceBlock.PRESSURE_CONTROL,true):changed.setValue(FluidDeviceBlock.SHUTOFF,FluidDeviceBlock.Shutoff.of(installed));
+            changed=FluidDeviceBlock.connectedState(changed,level,pos);
             if(!level.setBlock(pos,changed,Block.UPDATE_ALL))return InteractionResult.FAIL;
-            if(!world.installPipeValve(entity.fluidIdentity(),PhysicalFluidTopology.Direction.valueOf(facing.name()),installed)) {
+            var axis=PhysicalFluidTopology.Direction.valueOf(facing.name());
+            if(!(type==Type.PRESSURE?world.installPipePressureValve(entity.fluidIdentity(),axis):world.installPipeValve(entity.fluidIdentity(),axis,installed))) {
                 level.setBlock(pos,state,Block.UPDATE_ALL);return InteractionResult.FAIL;
             }
             entity.refreshGeometry(entity.bore(),true);

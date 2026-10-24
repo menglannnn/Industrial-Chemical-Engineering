@@ -55,13 +55,21 @@ class LineGeometryTest {
     }
 
     @Test
-    void everyPieceStaysInItsCellAndFacesOutwards() {
+    void everyPieceFitsItsDrawingEnvelopeAndFacesOutwards() {
         for (var key : keys()) {
             var polygons = LineGeometry.polygons(key);
             assertFalse(polygons.isEmpty(), key.toString());
             for (var polygon : polygons) {
                 assertTrue(polygon.size() >= 3);
-                for (double v : polygon.positions()) assertTrue(v >= 0 && v <= 1, key + " position " + v);
+                for(int i=0;i<polygon.positions().length;i++) {
+                    double v=polygon.positions()[i],lo=0,hi=1;
+                    // Only the pressure actuator's stem direction may overhang its host cell.
+                    if(key.kind()==Kind.VALVE) {
+                        if(key.facing()<2&&i%3==2)lo=-1.1;
+                        else if(key.facing()>=2&&i%3==1)hi=2.1;
+                    }
+                    assertTrue(v>=lo&&v<=hi,key+" position "+v);
+                }
                 for (double v : polygon.uvs()) assertTrue(v >= 0 && v <= 1, key + " uv " + v);
                 double[] face = newell(polygon), smooth = new double[3];
                 for (int i = 0; i < polygon.size(); i++)

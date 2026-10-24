@@ -61,6 +61,10 @@ public final class MoverPortMarkings {
     }
     /** Paint on actual axial casting facets, within their available station/width bounds. */
     public static List<Mesh.Polygon> fitting(List<Mesh.Polygon> surface,int facing,double from,double to) {
+        return fitting(surface,facing,from,to,Math.PI/8);
+    }
+    /** A bonnet can leave diagonal facets clearer than the cardinal panels of a plain casting. */
+    static List<Mesh.Polygon> fitting(List<Mesh.Polygon> surface,int facing,double from,double to,double angleOffset) {
         var mesh=new Mesh();var axis=LineGeometry.step(facing);var patches=new LinkedHashMap<Plane,Patch>();
         for(var polygon:surface) {
             if(polygon.material()!=Mesh.Material.FLANGE||polygon.size()<3)continue;
@@ -82,7 +86,7 @@ public final class MoverPortMarkings {
         }
         int bodyFace=facing|1;var reference=LineGeometry.ref(bodyFace);var tangent=Mesh.cross(LineGeometry.step(bodyFace),reference);var selected=new LinkedHashSet<Patch>();
         for(int q=0;q<4;q++) {
-            double angle=Math.PI/8+q*Math.PI/2,c=DeterministicMath.cos(angle),s=DeterministicMath.sin(angle),best=-2;Patch choice=null;
+            double angle=angleOffset+q*Math.PI/2,c=DeterministicMath.cos(angle),s=DeterministicMath.sin(angle),best=-2;Patch choice=null;
             for(var patch:patches.values()) {double score=c*Mesh.dot(patch.normal,reference)+s*Mesh.dot(patch.normal,tangent);if(score>best){best=score;choice=patch;}}
             if(choice!=null)selected.add(choice);
         }

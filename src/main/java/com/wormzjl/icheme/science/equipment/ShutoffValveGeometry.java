@@ -1,6 +1,5 @@
 package com.wormzjl.icheme.science.equipment;
 
-import java.util.ArrayList;
 import java.util.List;
 import static com.wormzjl.icheme.science.equipment.Mesh.*;
 
@@ -33,25 +32,21 @@ public final class ShutoffValveGeometry {
         mesh.cylinder(bonnet,1.65*neck,.80*radius,radius+.30*rise,12,Material.FLANGE);
         mesh.cylinder(bonnet,neck,radius,radius+rise,12,Material.BOLT);
         mesh.cylinder(bonnet,1.35*neck,radius+.50*rise,radius+.66*rise,6,Material.BOLT);
-        double length=Math.min(.43,Math.max(.16,.70*od)),width=Math.max(.028,Math.min(.115,.17*od)),thickness=Math.max(.014,.045*od);
+        double length=Math.min(.95,Math.max(.36,1.10*od)),width=Math.max(.065,Math.min(.19,.24*od)),thickness=Math.max(.035,.085*od);
         var pivot=bonnet.along(radius+rise);double[] lever=open?run:cross(stem,run);
-        bar(mesh,pivot,lever,stem,width,thickness,-.035,length,Material.FLANGE);
-        bar(mesh,pivot,lever,stem,1.08*width,1.2*thickness,.18*length,length,Material.GUARD);
-        mesh.cylinder(new Frame(pivot,stem,run),1.05*neck,-thickness,thickness,6,Material.BOLT);
+        bar(mesh,pivot,lever,stem,1.35*width,1.15*thickness,-.28*length,.12*length,Material.FLANGE);
+        bar(mesh,pivot,lever,stem,width,thickness,0,length,Material.FLANGE);
+        var rib=pivot.clone();for(int i=0;i<3;i++)rib[i]-=.65*thickness*stem[i];
+        bar(mesh,rib,lever,stem,.48*width,.65*thickness,-.10*length,.65*length,Material.STEELWORK);
+        bar(mesh,pivot,lever,stem,1.28*width,1.50*thickness,.48*length,length,Material.GUARD);
+        bar(mesh,pivot,lever,stem,1.30*width,1.55*thickness,.94*length,length,Material.BOLT);
+        mesh.cylinder(new Frame(pivot,stem,run),Math.max(1.35*neck,.55*width),-thickness,1.05*thickness,6,Material.BOLT);
         if(!accessory)for(int face:new int[]{axis,axis^1}) {
             var end=LineGeometry.end(key,face,od);
             end=new LineGeometry.End(end.outside(),true,end.reducer(),end.reducer()+PipeSizes.flangeThickness(end.outside())+PipeSizes.hub(end.outside()),end.joined());
             LineGeometry.arm(mesh,face,half,od,end,LineGeometry.ref(face),sides,true);
         }
-        // A handle can project past the pipe cell, like other vanilla decorative block models.
-        // Collect all clipped pieces back into the owning model so large handles are never sliced off.
-        var out=new ArrayList<Polygon>();
-        for(int x=-1;x<=1;x++)for(int y=-1;y<=1;y++)for(int z=-1;z<=1;z++)for(var polygon:mesh.cell(x,y,z)) {
-            var positions=polygon.positions().clone();
-            for(int v=0;v<positions.length;v+=3){positions[v]+=x;positions[v+1]+=y;positions[v+2]+=z;}
-            out.add(new Polygon(positions,polygon.uvs(),polygon.normals(),polygon.material()));
-        }
-        return List.copyOf(out);
+        return LineGeometry.overhanging(mesh);
     }
 
     private static void bar(Mesh mesh,double[] origin,double[] direction,double[] up,double width,double height,double from,double to,Material material) {
