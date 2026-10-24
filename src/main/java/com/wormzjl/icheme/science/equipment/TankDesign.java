@@ -51,8 +51,8 @@ final class TankDesign extends UnitDesign {
      * The level gauge on the shell (owner requests 2026-10-21: the gauge was hard to pick out; it reaches the bottom, on the
      * tank as before): its column {@code GLASS_OUT} off the shell, from {@code GAUGE_LOW} over grade, piped from the shell at
      * {@code TAP} and at the fill height, clipped to it every {@code CLIP} m between; on the front {@code GLASS_OFFSET} to
-     * the left of its middle (beside the centered nozzles, in the walkway's front gap) on a
-     * tank with the walkway, on the left side on a smaller one (its ladders stand on the right). A steel-framed
+     * the left of its middle beside the centered nozzles on every tank (in the walkway's front gap where fitted).
+     * The ladders of a small tank stand on its right side. A steel-framed
      * clear chamber on an unpainted pale scale board ({@code SCALE_HALF} either side), ticked dark every metre and longer
      * every 5 m; its cap radius is {@code GLASS_RADIUS} plus the flange allowance.
      */
@@ -168,8 +168,7 @@ final class TankDesign extends UnitDesign {
         /** The level gauge's place ({@link #GLASS_OFFSET}): its column's axis (x, z) and the box axis it faces out along. */
         Gauge gauge() {
             double rho = r + GLASS_OUT;
-            if (stairway()) return new Gauge(a + GLASS_OFFSET, a - Math.sqrt(rho * rho - GLASS_OFFSET * GLASS_OFFSET), new double[]{0, 0, -1});
-            return new Gauge(a + rho, a, new double[]{1, 0, 0});
+            return new Gauge(a + GLASS_OFFSET, a - Math.sqrt(rho * rho - GLASS_OFFSET * GLASS_OFFSET), new double[]{0, 0, -1});
         }
 
         /** Whether the tank carries the wound stair and the walkway ({@link #STAIR_SIZE}). */

@@ -789,9 +789,9 @@ class ShapeRasterizerTest {
 
     @Test
     void storagePortsStandWhereThePlanPutsThem() {
-        for (var heading : Heading.values()) {
+        for (var heading : Heading.values()) for (var dimensions : new int[][]{{4, 4}, {20, 12}}) {
             // A tank: centered front/back bottom nozzles on the lowest row; front overflow above the fill height.
-            var tank = EquipmentShape.storage(Kind.TANK, 20, 12, heading, 0);
+            var tank = EquipmentShape.storage(Kind.TANK, dimensions[0], dimensions[1], heading, 0);
             var ports = ShapeRasterizer.ports(tank);
             assertEquals(List.of(EquipmentShape.Role.BOTTOM, EquipmentShape.Role.BOTTOM, EquipmentShape.Role.OVERFLOW), tank.nozzles().stream().map(EquipmentShape.Nozzle::role).toList());
             assertEquals(List.of(EquipmentShape.PortClass.LIQUID, EquipmentShape.PortClass.LIQUID, EquipmentShape.PortClass.OVERFLOW),
@@ -803,7 +803,7 @@ class ShapeRasterizerTest {
             var a = ports.get(0).cell();
             var b = ports.get(1).cell();
             var overflow = ports.get(2).cell();
-            assertEquals(List.of(0, 0, 11), List.of(a.y(), b.y(), overflow.y()), tank.toString());
+            assertEquals(List.of(0, 0, dimensions[1] - 1), List.of(a.y(), b.y(), overflow.y()), tank.toString());
             // Both bottom ports share the overflow's centerline; the second ends at the opposite side of the tank.
             assertEquals(heading.dx != 0 ? overflow.z() : overflow.x(), heading.dx != 0 ? a.z() : a.x(), tank.toString());
             assertEquals(heading.dx != 0 ? a.z() : a.x(), heading.dx != 0 ? b.z() : b.x(), tank.toString());
@@ -811,6 +811,10 @@ class ShapeRasterizerTest {
             var frontFace = tank.transform().point(tank.nozzles().get(0).face());
             var backFace = tank.transform().point(tank.nozzles().get(1).face());
             assertTrue((frontFace[0] - backFace[0]) * heading.dx + (frontFace[2] - backFace[2]) * heading.dz > tank.diameter(), tank.toString());
+            var gauge = ShapeRasterizer.floating(tank);
+            assertArrayEquals(new double[]{heading.dx, 0, heading.dz}, gauge.facing(), 0, "gauge stays on the front: " + tank);
+            double side = (gauge.glass()[0] - frontFace[0]) * heading.dz - (gauge.glass()[1] - frontFace[2]) * heading.dx;
+            assertEquals(.85, Math.abs(side), 1e-9, "gauge stays beside the ports: " + tank);
             // A sphere: the vapour outlet up at its top, the liquid outlet on the lowest row at the box's front edge.
             var sphere = EquipmentShape.storage(Kind.SPHERE, 14, 1, heading, 2);
             var sp = ShapeRasterizer.ports(sphere);
