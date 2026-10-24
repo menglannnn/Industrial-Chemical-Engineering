@@ -30,6 +30,7 @@ All notable changes to Industrial Chemical Engineering (IChemE, formerly CreateC
 
 ### Fixed
 
+- Make the floating-roof tank gauge's level marker a hollow collar so full-level top faces cannot overlap and flicker (commit `fde01628`, batch: `2026-10-24-tank-gauge-cap-flicker`).
 - Remove the cutoff lever's overlapping shaft/grip/end-cap tip faces to prevent flickering, preserving the heavier handle's size and silhouette (commit `6f2f91e9`, batch: `2026-10-24-cutoff-handle-flicker`).
 
 - Move constructed pump/compressor flow arrows onto equipment nozzle necks behind their connection flanges; remove redundant inner pump flanges and pipe-side arrow metadata while preserving connection positions and check-valve markings (commit `7cb42268`, batch: `2026-10-24-mover-equipment-arrows`).
