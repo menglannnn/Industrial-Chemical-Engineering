@@ -195,7 +195,8 @@ public final class TankRenderer {
             double surface = Math.max(water, oil);
             if (oil > Math.max(low, water)) band(consumer, last, Math.max(low, water), oil, display.oilArgb(), light, u, v);
             double ring = Math.max(low, Math.min(high, surface));
-            band(consumer, last, Math.max(low, ring - MARKER / 2), Math.min(high, ring + MARKER / 2), FLOAT, light, u, v, TankGaugeGeometry.MARKER_HALF);
+            column(consumer, last, Math.max(low, ring - MARKER / 2), Math.min(high, ring + MARKER / 2), FLOAT, light, u, v,
+                    TankGaugeGeometry.MARKER_HALF, TankGaugeGeometry.markerFaces());
             pose.popPose();
         }
         if (consumer != null) buffers.endBatch(BANDS);
@@ -209,14 +210,15 @@ public final class TankRenderer {
 
     /** One band: a closed square column round the glass, wound outwards on every side and both ends. */
     private static void band(VertexConsumer consumer, com.mojang.blaze3d.vertex.PoseStack.Pose last, double y0, double y1, int argb, int light, float u, float v) {
-        band(consumer, last, y0, y1, argb, light, u, v, BAND);
+        column(consumer, last, y0, y1, argb, light, u, v, BAND, TankGaugeGeometry.bandFaces());
     }
 
-    /** One band of half width {@code half}. */
-    private static void band(VertexConsumer consumer, com.mojang.blaze3d.vertex.PoseStack.Pose last, double y0, double y1, int argb, int light, float u, float v, double half) {
+    /** One coloured column or hollow collar from cached faces, with half width {@code half}. */
+    private static void column(VertexConsumer consumer, com.mojang.blaze3d.vertex.PoseStack.Pose last, double y0, double y1, int argb, int light, float u, float v,
+                               double half, java.util.List<Mesh.Polygon> faces) {
         if (y1 <= y0) return;
         int r = argb >> 16 & 255, g = argb >> 8 & 255, b = argb & 255, alpha = Math.max(argb >>> 24, LEAST_ALPHA);
-        for (var face : TankGaugeGeometry.bandFaces()) {
+        for (var face : faces) {
             var p = face.positions();var n = face.normals();
             for (int i = 0; i < p.length; i += 3)
                 vertex(consumer, last, (float) (half * (2 * p[i] - 1)), (float) (y0 + (y1 - y0) * p[i + 1]), (float) (half * (2 * p[i + 2] - 1)),
