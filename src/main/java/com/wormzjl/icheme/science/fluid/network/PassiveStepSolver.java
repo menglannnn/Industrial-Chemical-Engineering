@@ -358,6 +358,7 @@ public final class PassiveStepSolver {
         // A pump the previous point left on its head limit, on its suction limit or at its shutoff corner opens there;
         // see {@link #previousModes}. Only those three: the target branch is decided against this
         // step's own states above, and the velocity cap is part of every line's law ({@link #saturated}).
+        boolean carriedMoverLimit=false;
         if(carryModes)for(int i=0;i<modes.size();i++) {
             var pipe=graph.pipes().get(i);
             if(!(pipe.control() instanceof FlowControl.Mover pump)||pump.targetVolumeFlow()==0)continue;
@@ -367,6 +368,7 @@ public final class PassiveStepSolver {
             // the water its first node holds); elsewhere the pump opens at its head limit and the pass loop decides.
             if(carried==FlowControl.Mode.PUMP_SUCTION_LIMIT&&!(suctionFloors[i]<Double.POSITIVE_INFINITY)&&!FluidThermodynamics.holdsPhase(inputStates.get(pipe.first()),FluidThermodynamics.WATER))carried=FlowControl.Mode.PUMP_HEAD_LIMIT;
             modes.set(i,carried);
+            if(carried==FlowControl.Mode.PUMP_HEAD_LIMIT||carried==FlowControl.Mode.PUMP_SUCTION_LIMIT)carriedMoverLimit=true;
             // The one place a pump that stood at its shutoff corner is offered its head limit back.
             // The test is taken on the accepted state this step starts from, once per solve, so it
             // is not a transition the pass sequence can take again; see {@link #atShutoff}.
@@ -424,7 +426,7 @@ public final class PassiveStepSolver {
         // A repeated rate query may carry a flashed root's flows/head-limit mode although its
         // unchanged input is liquid-only. Carry that root's phase basis with its point; restarting
         // on the input's phases pairs the cached point with different Newton coordinates.
-        var seeds=rateOnly&&previousRateOnly&&carriedPoint(graph,identities(graph))
+        var seeds=rateOnly&&previousRateOnly&&carriedMoverLimit&&carriedPoint(graph,identities(graph))
                 &&!samePhaseLayouts(previousOutputStates,inputStates)?previousOutputStates
                 :initialPhaseSeeds(graph,dt,checkpoint,reachable,modes,boundaryClosed);
         var seen=new HashSet<PassKey>();
