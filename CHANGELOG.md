@@ -40,6 +40,7 @@ All notable changes to Industrial Chemical Engineering (IChemE, formerly CreateC
 
 ### Changed
 
+- Unify fluid equipment readings and controls: separate reservoir top/bottom pressures, pressure-valve throughput, shared Volume/Mole/Mass phase ratios and Pa/kPa/bar/MPa units, with exact SI drafts, accepted mover-stream displays and adaptive tabs/footer; live tank data uses fluid-14 while checkpoint 18/unit 11 stays unchanged (commit `f44930f5`, batch: `2026-10-24-fluid-gui-consistency`).
 - Enlarge Pipeline Sight Glass and Shutoff Valve inventory models with dedicated GUI transforms, and add an independent Volume/Mass selector to the generator's equilibrium phase bar; WTI at 200°C/3 bar remains 2.06% liquid by volume and 66.47% by mass, with no physics or format change (commit `c1e567da`, batch: `2026-10-23-fluid-display-followups`).
 - Pipe and equipment-nozzle flanges now have square 90° shoulders, with visible joint lines between paired pipeline flange plates; pipe inspection requires the existing Fluid Debugger, while the Pipeline Tool keeps its resize/settings actions (commits `acd0fd14`, `fa81579b`, batch: `2026-10-23-square-flanges`).
 
