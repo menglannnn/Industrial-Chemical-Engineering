@@ -325,13 +325,6 @@ public final class PassiveStepSolver {
         suctionFloors=suctionFloors(inputGraph,inputStates);
         SolverDiagnostics.count(SolverDiagnostics.implicitSolves);
         ownership.check("Each executing island job needs its own step workspace");
-        // A new rate call receives the input graph again, not the last rate root. A flashed root's
-        // pump regime/flow guesses do not belong to its original liquid-only phase basis. Drop
-        // those cross-call rate guesses; committed endpoints and converged points within this
-        // solve keep their continuation. A replayed endpoint has no cached rate output.
-        if(rateOnly&&previousRateOnly&&!samePhaseLayouts(previousOutputStates,inputStates)) {
-            previousPipes=List.of();previousModes=List.of();
-        }
         lastSolve=null;
         if(!Double.isFinite(dt)||dt<=0)throw new IllegalArgumentException("Positive finite substep required");
         var graph=inputGraph;
@@ -428,7 +421,12 @@ public final class PassiveStepSolver {
         // boundary whose only root is zero, which refused the whole Newton step ({@link #closeDeadHeads}).
         var reachable=reachableComponents(graph,boundaryClosed);
         flashRestated=null;
-        var seeds=initialPhaseSeeds(graph,dt,checkpoint,reachable,modes,boundaryClosed);
+        // A repeated rate query may carry a flashed root's flows/head-limit mode although its
+        // unchanged input is liquid-only. Carry that root's phase basis with its point; restarting
+        // on the input's phases pairs the cached point with different Newton coordinates.
+        var seeds=rateOnly&&previousRateOnly&&carriedPoint(graph,identities(graph))
+                &&!samePhaseLayouts(previousOutputStates,inputStates)?previousOutputStates
+                :initialPhaseSeeds(graph,dt,checkpoint,reachable,modes,boundaryClosed);
         var seen=new HashSet<PassKey>();
         // Constant for this solve: every pass keys on the same graph identity and component support.
         var pipeIdentities=identities(graph);
