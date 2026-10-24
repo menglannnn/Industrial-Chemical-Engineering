@@ -327,8 +327,9 @@ public final class PassiveStepSolver {
         ownership.check("Each executing island job needs its own step workspace");
         // A new rate call receives the input graph again, not the last rate root. A flashed root's
         // pump regime/flow guesses do not belong to its original liquid-only phase basis. Drop
-        // those cross-call guesses; converged points still carry between passes within this solve.
-        if(rateOnly&&!samePhaseLayouts(previousOutputStates,inputStates)) {
+        // those cross-call rate guesses; committed endpoints and converged points within this
+        // solve keep their continuation. A replayed endpoint has no cached rate output.
+        if(rateOnly&&previousRateOnly&&!samePhaseLayouts(previousOutputStates,inputStates)) {
             previousPipes=List.of();previousModes=List.of();
         }
         lastSolve=null;
