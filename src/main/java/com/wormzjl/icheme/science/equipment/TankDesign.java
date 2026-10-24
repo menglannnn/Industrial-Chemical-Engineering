@@ -52,9 +52,9 @@ final class TankDesign extends UnitDesign {
      * tank as before): its column {@code GLASS_OUT} off the shell, from {@code GAUGE_LOW} over grade, piped from the shell at
      * {@code TAP} and at the fill height, clipped to it every {@code CLIP} m between; on the front {@code GLASS_OFFSET} to
      * the left of its middle (beside the centered nozzles, in the walkway's front gap) on a
-     * tank with the walkway, on the left side on a smaller one (its ladders stand at the back and the right). An enlarged chamber
-     * ({@code GLASS_RADIUS}) on a safety-yellow scale board ({@code SCALE_HALF} either side) ticked every metre, longer
-     * every 5 m.
+     * tank with the walkway, on the left side on a smaller one (its ladders stand at the back and the right). A steel-framed
+     * clear chamber on an unpainted pale scale board ({@code SCALE_HALF} either side), ticked dark every metre and longer
+     * every 5 m; its cap radius is {@code GLASS_RADIUS} plus the flange allowance.
      */
     static final double GLASS_OFFSET = .85, GLASS_OUT = .5, GAUGE_LOW = .3, TAP = .45, CLIP = 3;
     static final double GLASS_RADIUS = TankGaugeGeometry.CHAMBER_RADIUS, SCALE_HALF = TankGaugeGeometry.SCALE_HALF;
@@ -446,14 +446,17 @@ final class TankDesign extends UnitDesign {
      * The level gauge ({@link Plan#gauge}): the chamber (a dark column; the client shows the liquid's bands in it, plan
      * section 3.4) from just over grade to above the fill height, its drain down to grade and its vent cap above; its
      * lines from the shell at its foot ({@link #TAP}) and at the fill height, and its clips to the shell between; the
-     * safety-yellow scale board behind it, ticked dark at each metre over the floor, the fifth ones across the whole board.
+     * pale scale board behind it, ticked dark at each metre over the floor, the fifth ones across the whole board.
      */
     private static void gauge(ProcessUnit u, Plan p) {
         var g = p.gauge();
         double x = g.x(), z = g.z(), low = GAUGE_LOW, high = p.fill + .3, flange = GLASS_RADIUS + .03;
         double[] out = g.out(), side = {-out[2], 0, out[0]};
         var column = Frame.of(new double[]{x, 0, z}, 1, 1);
-        u.mesh.prism(column, GLASS_RADIUS, low, high, 12, Material.OPENING);
+        // Corner rails leave the front and sides clear; no opaque barrel hides the empty window or its liquid.
+        double rail = TankGaugeGeometry.BAND_HALF + .025;
+        for (int sx : new int[]{-1, 1}) for (int sz : new int[]{-1, 1})
+            u.mesh.bar(new double[]{x + sx * rail, low, z + sz * rail}, new double[]{x + sx * rail, high, z + sz * rail}, .022, out, Mesh.NO_ENDS, Material.FLANGE);
         for (double[] cap : new double[][]{{low - .06, low}, {high, high + .06}}) {
             u.mesh.prism(column, flange, cap[0], cap[1], 12, Material.FLANGE);
             u.mesh.annulus(column, 0, flange, cap[0], 12, -1, Material.FLANGE);
@@ -471,13 +474,14 @@ final class TankDesign extends UnitDesign {
         }
         // The scale board just behind the chamber, and its ticks on its face either side of it.
         double[] face = {x - (GLASS_RADIUS - .02) * out[0], 0, z - (GLASS_RADIUS - .02) * out[2]};
-        board(u, face, out, side, -SCALE_HALF, SCALE_HALF, low, p.fill + .1, .04, Material.GUARD);
+        board(u, face, out, side, -SCALE_HALF, SCALE_HALF, low, p.fill + .1, .04, Material.GAUGE_SCALE);
         for (int m = 1; m <= p.fill + 1e-9; m++) {
             boolean fifth = m % 5 == 0;
             double half = fifth ? .03 : .015;
             double[] proud = {face[0] + .01 * out[0], 0, face[2] + .01 * out[2]};
-            board(u, proud, out, side, -SCALE_HALF, -GLASS_RADIUS - .005, m - half, m + half, .01, Material.BOLT);
-            if (fifth) board(u, proud, out, side, GLASS_RADIUS + .005, SCALE_HALF, m - half, m + half, .01, Material.BOLT);
+            double window = TankGaugeGeometry.BAND_HALF + .045;
+            board(u, proud, out, side, -SCALE_HALF, -window, m - half, m + half, .01, Material.BOLT);
+            if (fifth) board(u, proud, out, side, window, SCALE_HALF, m - half, m + half, .01, Material.BOLT);
         }
     }
 

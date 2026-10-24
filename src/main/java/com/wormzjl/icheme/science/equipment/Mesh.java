@@ -39,7 +39,9 @@ public final class Mesh {
          * A fired heater's casing (panels between stiffeners 2 m apart), a machine's concrete plinth or block, a pump's
          * coupling guard in safety yellow (owner request 2026-10-17).
          */
-        HEATER(2, Paint.BODY), CONCRETE(2, -1), GUARD(1, -1), GLASS(1, -1);
+        HEATER(2, Paint.BODY), CONCRETE(2, -1), GUARD(1, -1), GLASS(1, -1),
+        /** Neutral, unpainted level-instrument scale. */
+        GAUGE_SCALE(1, -1);
 
         private final double period;
         private final int channel;

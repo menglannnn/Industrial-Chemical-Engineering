@@ -4,8 +4,8 @@ import java.util.List;
 
 /** Shared proportions and outward-wound faces for the tank's shell-mounted level indicator. */
 public final class TankGaugeGeometry {
-    public static final double CHAMBER_RADIUS = .12, BAND_HALF = .16, SCALE_HALF = .24;
-    public static final double MARKER_HALF = .20, MARKER_HEIGHT = .18;
+    public static final double CHAMBER_RADIUS = .20, BAND_HALF = .12, SCALE_HALF = .26;
+    public static final double MARKER_HALF = .16, MARKER_HEIGHT = .07;
     private static final List<Mesh.Polygon> BAND_FACES;
 
     static {

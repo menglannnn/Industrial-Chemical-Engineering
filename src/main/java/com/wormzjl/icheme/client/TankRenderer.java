@@ -64,11 +64,11 @@ public final class TankRenderer {
     private static final int MAX_BUFFERS = 64;
     /**
      * The sight glass's bands (owner report 2026-10-21: the gauge was hard to pick out): their half width round the column
-     * (shared with the enlarged chamber and scale board), the least opacity a clear liquid shows with, the empty
-     * glass above the liquid in light grey, and the float's red ring, {@code MARKER} m tall, at the liquid's surface.
+     * (shared with the instrument's chamber and scale), the least opacity a clear liquid shows with,
+     * and the float's slim red collar at the liquid's surface. Above the liquid the window stays clear.
      */
     private static final double BAND = TankGaugeGeometry.BAND_HALF, MARKER = TankGaugeGeometry.MARKER_HEIGHT;
-    private static final int LEAST_ALPHA = 200, EMPTY = 0xE0D8D8D8, FLOAT = 0xFFD02020;
+    private static final int LEAST_ALPHA = 200, FLOAT = 0xFFB84432;
     private static final ResourceLocation WHITE = ResourceLocation.withDefaultNamespace("block/white_concrete");
     private static final RenderType BANDS = RenderType.entityTranslucentCull(InventoryMenu.BLOCK_ATLAS);
     private static final Map<Key, VertexBuffer> BUFFERS = new HashMap<>();
@@ -194,7 +194,6 @@ public final class TankRenderer {
             if (water > low) band(consumer, last, low, water, display.waterArgb(), light, u, v);
             double surface = Math.max(water, oil);
             if (oil > Math.max(low, water)) band(consumer, last, Math.max(low, water), oil, display.oilArgb(), light, u, v);
-            if (high > Math.max(low, surface)) band(consumer, last, Math.max(low, surface), high, EMPTY, light, u, v);
             double ring = Math.max(low, Math.min(high, surface));
             band(consumer, last, Math.max(low, ring - MARKER / 2), Math.min(high, ring + MARKER / 2), FLOAT, light, u, v, TankGaugeGeometry.MARKER_HALF);
             pose.popPose();

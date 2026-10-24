@@ -26,6 +26,7 @@
     "heater": "icheme:block/painted_heater",
     "concrete": "icheme:block/equipment_concrete",
     "guard": "icheme:block/equipment_guard",
+    "gauge_scale": "minecraft:block/white_concrete",
     "particle": "icheme:block/vessel_shell"
   }
 }
