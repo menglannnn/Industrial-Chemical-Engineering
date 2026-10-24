@@ -27,6 +27,7 @@ All notable changes to Industrial Chemical Engineering (IChemE, formerly CreateC
 
 ### Fixed
 
+- Keep a cached rate result's phase basis with its flow/head guesses, resolving WTI pump-rate convergence holds; report accepted pump pressure/suction limits, inlet refusals and blocked forward flow through the normal equipment error status while retaining genuine solver failures (commits `9fa53354`, `c49f6654`, batch: `2026-10-24-wti-pumping-rate-hold`).
 - Preserve accepted pressure-valve modes between implicit substeps, resolving spurious closure and convergence failures at equal-setpoint two-phase drum outlets while retaining the existing valve laws and conservation checks (commit `83e88bd0`, batch: `2026-10-23-valve-regime-convergence`).
 - Incompatible fluid checkpoint, pack or storage-unit versions now reset the simulation and rebuild placed pipes and complete equipment on chunk load, discarding fluid inventories/settings/pending edits instead of crashing world startup; current-format data still validates strictly (commit `49e57860`, batch: `2026-10-23-fluid-format-reset`).
 
