@@ -498,18 +498,17 @@ public final class FluidWorldAuthority implements AutoCloseable {
                 history.add(value);
             }
             if(!history.isEmpty())flow=(history.getFirst().forward().massKg()-history.getFirst().reverse().massKg())/result.advancedSeconds();
-            if(registration.device().actuator())for(int i=0;i<snapshot.graph().pipes().size();i++){var pipe=snapshot.graph().pipes().get(i);if(pipe.first()==nodeIndex&&!(pipe.control() instanceof FlowControl.Passive)){flow=q[i];devicePressureChange=result.endpointHeads()[i];status+=" / "+result.endpointModes().get(i);
-                if(pipe.control() instanceof FlowControl.Mover mover&&!snapshot.graph().reservoirs().get(pipe.first()).empty()) {
-                    if(result.endpointModes().get(i)==FlowControl.Mode.INLET_WRONG_PHASE&&result.endpointModes().size()==snapshot.graph().pipes().size())status+=" / "+inletReason(snapshot.graph(),i,result.advancedSeconds());
-                    // Owner decision D59 (4): a pump on its suction limit delivers what its suction line gives at the vapour
-                    // pressure.
-                    else if(result.endpointModes().get(i)==FlowControl.Mode.PUMP_SUCTION_LIMIT)status+=" / pump cavitating: suction at the vapour pressure";
+            if(registration.device().actuator())for(int i=0;i<snapshot.graph().pipes().size();i++){var pipe=snapshot.graph().pipes().get(i);if(pipe.first()==nodeIndex&&!(pipe.control() instanceof FlowControl.Passive)){flow=q[i];devicePressureChange=result.endpointHeads()[i];var mode=result.endpointModes().get(i);
+                if(pipe.control() instanceof FlowControl.Mover mover) {
+                    String inlet=mode==FlowControl.Mode.INLET_WRONG_PHASE?inletReason(snapshot.graph(),i,result.advancedSeconds()):"";
+                    if(mover instanceof FlowControl.Pump pump)status=PumpStatus.of(status,pump,mode,inlet);
+                    else {status+=" / "+mode;if(!inlet.isEmpty())status+=" / "+inlet;}
                     // The limit on the suction stream the mover draws (its own junction, what arrives at its inlet; decision
                     // D4): a pump's setting is the rise for water and scales with the suction density, a compressor's is the
                     // ratio over the suction pressure.
-                    else {var suction=snapshot.graph().reservoirs().get(pipe.first()).state();double limit=mover.riseLimit(suction.mass()/suction.volume(),suction.pressure(),model.pumpReferenceDensity());
+                    if(!snapshot.graph().reservoirs().get(pipe.first()).empty()&&mode!=FlowControl.Mode.INLET_WRONG_PHASE&&mode!=FlowControl.Mode.PUMP_SUCTION_LIMIT) {var suction=snapshot.graph().reservoirs().get(pipe.first()).state();double limit=mover.riseLimit(suction.mass()/suction.volume(),suction.pressure(),model.pumpReferenceDensity());
                         status+=String.format(java.util.Locale.ROOT,mover instanceof FlowControl.Pump?" (limit %.0f Pa on this fluid)":" (limit %.0f Pa at this suction)",limit);}
-                }}}
+                }else status+=" / "+mode;}}
         }
         // A generator or a void in several islands (owner decision D17) reads the status of its owner (the lowest island) and
         // the net flow of all of them.

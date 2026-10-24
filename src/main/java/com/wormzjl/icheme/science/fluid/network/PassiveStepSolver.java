@@ -325,6 +325,12 @@ public final class PassiveStepSolver {
         suctionFloors=suctionFloors(inputGraph,inputStates);
         SolverDiagnostics.count(SolverDiagnostics.implicitSolves);
         ownership.check("Each executing island job needs its own step workspace");
+        // A new rate call receives the input graph again, not the last rate root. A flashed root's
+        // pump regime/flow guesses do not belong to its original liquid-only phase basis. Drop
+        // those cross-call guesses; converged points still carry between passes within this solve.
+        if(rateOnly&&!samePhaseLayouts(previousOutputStates,inputStates)) {
+            previousPipes=List.of();previousModes=List.of();
+        }
         lastSolve=null;
         if(!Double.isFinite(dt)||dt<=0)throw new IllegalArgumentException("Positive finite substep required");
         var graph=inputGraph;
@@ -2089,6 +2095,11 @@ public final class PassiveStepSolver {
         if(!(previousPipes.equals(pipeIdentities)&&Arrays.equals(previousNodeIds,nodeIds(graph))&&previousFlows.length==graph.pipes().size()&&previousLawFlows.length==graph.pipes().size()))return false;
         if(rateOnly&&!sameStates(previousInputStates,inputStates))return false;
         if(previousRateOnly&&!rateOnly&&!sameFluidStates(previousOutputStates,inputStates))return false;
+        return true;
+    }
+    private static boolean samePhaseLayouts(List<FluidThermodynamics.State> a,List<FluidThermodynamics.State> b) {
+        if(a.size()!=b.size())return false;
+        for(int i=0;i<a.size();i++)if(phaseCode(a.get(i))!=phaseCode(b.get(i)))return false;
         return true;
     }
     /** The initial device modes of a solve on {@code graph}'s states (the mint reads them too): the switch of {@link #solve}. */
