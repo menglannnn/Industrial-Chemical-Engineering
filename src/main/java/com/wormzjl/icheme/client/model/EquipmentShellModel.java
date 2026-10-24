@@ -3,6 +3,7 @@ package com.wormzjl.icheme.client.model;
 import com.wormzjl.icheme.IChemE;
 import com.wormzjl.icheme.client.MachineAnimation;
 import com.wormzjl.icheme.science.equipment.Mesh;
+import com.wormzjl.icheme.science.equipment.MoverPortMarkings;
 import com.wormzjl.icheme.science.equipment.ShapeRasterizer;
 import com.wormzjl.icheme.world.level.block.entity.EquipmentShellBlockEntity;
 import net.minecraft.client.renderer.RenderType;
@@ -90,9 +91,16 @@ public final class EquipmentShellModel implements IDynamicBakedModel {
      * quads carry its paint channel as their tint index, so the cell's paint colours them as the chunk is meshed.
      */
     private Baked bake(ShapeRasterizer.CellKey key) {
-        var still = bake(ShapeRasterizer.surface(key), sprites, true);
+        var markings = bake(MoverPortMarkings.surface(key), sprites, true);
+        var still = marked(bake(ShapeRasterizer.surface(key), sprites, true), markings);
         if (!ShapeRasterizer.moves(key)) return new Baked(still, still);
-        return new Baked(still, bake(ShapeRasterizer.fixedSurface(key), sprites, true));
+        return new Baked(still, marked(bake(ShapeRasterizer.fixedSurface(key), sprites, true), markings));
+    }
+
+    private static List<BakedQuad> marked(List<BakedQuad> surface,List<BakedQuad> markings) {
+        if(markings.isEmpty())return surface;
+        var out=new ArrayList<BakedQuad>(surface.size()+markings.size());out.addAll(surface);out.addAll(markings);
+        return List.copyOf(out);
     }
 
     /**

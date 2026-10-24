@@ -1204,8 +1204,8 @@ public final class ProcessUnit {
         double rh = .45 * di, rv0 = .55 * di, rv1 = .88 * di, width = .4 * di + .06, joint = .82 * di, tj = .04 + .04 * di;
         double plate = .15 + .1 * di, rm = motorDiameter(pumpPower(d)) / 2, lm = 3.2 * rm + .1, fin = .025 + .06 * rm;
         double rb = .08 + .22 * di, lb = .3 + .6 * di, lk = .2 + .3 * di, guard = .12 + .2 * di, spacer = .15 + .25 * di, shaft = .03 + .05 * di;
-        // The pump's own Class 300 flanges: about 15 % wider and 30 % thicker than the line's Class 150.
-        double fs = 1.15 * PipeSizes.flange(s) / 2, ts = 1.3 * PipeSizes.flangeThickness(s), fd = 1.15 * PipeSizes.flange(d) / 2, td = 1.3 * PipeSizes.flangeThickness(d);
+        // Keep the established port clearances; the shared nozzle mesh draws the flange at the connection face.
+        double ts = 1.3 * PipeSizes.flangeThickness(s), td = 1.3 * PipeSizes.flangeThickness(d);
         double bell = .08 + .7 * s, pot = d >= .1 ? .07 + .1 * d : 0;
         double half = Math.max(Math.max(rv1, joint) + .14, Math.max(Math.max(rm + fin, guard) + .08, pot > 0 ? .55 * di + 2 * pot + .17 : 0));
         double a = centre(half + .12);
@@ -1213,15 +1213,13 @@ public final class ProcessUnit {
         // clears the baseplate by 0.06 m, the pedestals taking what the plinth does not.
         double y = Math.max(.5, Math.ceil(.15 + .04 + plate + .06 + rv1 - .5) + .5);
         double plinth = Math.max(.15, Math.min(.45, y - rv1 - .3 - plate - .04)), top = plinth + .04 + plate;
-        // Along z: the line's spool, the suction flange and bell, the casing (its middle on a cell centre, the discharge's
+        // Along z: the line's spool, the suction neck and bell, the casing (its middle on a cell centre, the discharge's
         // line), the cover, the bracket, the bearing housing, the spacer under its guard, the motor.
         double zc = Math.ceil(.25 + ts + bell + .3 * width - .5) + .5, z0 = zc - width / 2, z1 = zc + width / 2, zh = zc - .3 * width, zf = zh - bell - ts;
         double zk = z1 + tj, zb0 = zk + lk, zb1 = zb0 + lb, zm0 = zb1 + .08 + spacer, zm1 = zm0 + lm, cowl = zm1 - .18 * lm, seal = zk + .45 * lk;
         var f = Frame.of(new double[]{a, y, 0}, 2, 1);
         int n = sides(2 * rv1), nm = sides(2 * rm), nb = sides(2 * rb);
-        // The suction flange and bell, the volute and its hub, the cover with its joint ring of studs.
-        mesh.cylinder(f, fs, zf, zf + ts, n, Material.FLANGE);
-        mesh.bolts(f, s, .5 * s + .03, fs, zf, -1, Material.BOLT);
+        // The suction bell, the volute and its hub, the cover with its joint ring of studs.
         mesh.frustum(f, .5 * s + .04, .43 * s + .04, zf + ts, zh, n, Material.MACHINE);
         scroll(a, y, z0, z1, zh, rh, rv0, rv1);
         mesh.prism(f, rh, zh, z1, n, Material.MACHINE);
@@ -1268,9 +1266,6 @@ public final class ProcessUnit {
         double hx = .6 * d + .03, hz = Math.min(.6 * d + .03, .45 * width), neck = y + rv1 + .12 + .2 * d;
         box(new double[]{a - hx, y + rh, zc - hz}, new double[]{a + hx, y + .98 * rv0, zc + hz}, Material.MACHINE, false);
         transition(1, a - hx, a + hx, zc - hz, zc + hz, y + .98 * rv0, a, zc, .5 * d + .025, neck, 4 * ((sides(d) + 3) / 4), Material.MACHINE, false);
-        var up = Frame.of(new double[]{a, 0, zc}, 1, 1);
-        mesh.cylinder(up, fd, neck, neck + td, n, Material.FLANGE);
-        mesh.bolts(up, d, .5 * d + .03, fd, neck + td, 1, Material.BOLT);
         // The baseplate on its grout line and chamfered plinth: its drain rim and drain.
         double zp0 = z0 - .1, zp1 = zm1 + .05;
         box(new double[]{a - half, plinth + .04, zp0}, new double[]{a + half, top, zp1}, Material.STEELWORK, true);
@@ -1305,9 +1300,10 @@ public final class ProcessUnit {
         solids.add(Solid.rod(new double[]{a, y, 0}, 2, zf, zk, Math.max(rv1, joint), 0));
         solids.add(Solid.rod(new double[]{a, y, 0}, 2, zk, zb1 + .03, Math.max(rb + .03, .62 * di), 0));
         round(a, y, z0, z1, rv1);
-        // The suction's line from its flange to the box's front face; the discharge's up from the neck's flange.
-        nozzles.add(new Nozzle(Role.SUCTION, new double[]{a, y, zf + .02}, 2, -1, zf + .02, s, 0));
-        double base0 = neck + td - .01, face = Math.ceil(neck + td + EquipmentShape.STAND_OUT);
+        // One equipment neck behind each connection flange, with a small overlap into its casting.
+        double suctionBase=zf+ts+.01;
+        nozzles.add(new Nozzle(Role.SUCTION, new double[]{a, y, suctionBase}, 2, -1, suctionBase, s, 0));
+        double base0 = neck - .01, face = Math.ceil(neck + td + EquipmentShape.STAND_OUT);
         nozzles.add(new Nozzle(Role.DISCHARGE, new double[]{a, base0, zc}, 1, 1, face - base0, d, 0));
     }
 
@@ -1364,16 +1360,16 @@ public final class ProcessUnit {
                 box(new double[]{x - .025, y + split, z - .025}, new double[]{x + .025, y + split + .06, z + .025}, Material.BOLT, false);
             }
         for (double z : new double[]{zc - .3 * lc, zc + .3 * lc}) box(new double[]{a - .03, y + rc - .05, z - .08}, new double[]{a + .03, y + rc + .12, z + .08}, Material.MACHINE, false);
-        // The suction branch to the constructor's right (-x), the discharge branch to its left, each with its Class 300 flange.
+        // Cast branches blend into the sized equipment necks; only the connection face carries a flange.
+        double root=rv+.05;
         for (int side = -1; side <= 1; side += 2) {
-            double bore = side < 0 ? s : d, reach = side < 0 ? reachS : reachD, fr = side < 0 ? fs : fd, ft = side < 0 ? ts : td;
+            double bore = side < 0 ? s : d;
             var branch = Frame.of(new double[]{a, yn, zc}, 0, side);
             int nn = sides(bore + .1);
-            mesh.frustum(branch, .6 * bore + .06, .5 * bore + .04, .5 * lx, reach, nn, Material.MACHINE);
-            mesh.cylinder(branch, fr, reach, reach + ft, nn, Material.FLANGE);
-            mesh.bolts(branch, bore, .5 * bore + .03, fr, reach + ft, 1, Material.BOLT);
-            double inner = a + side * .5 * lx, outer = a + side * (reach + ft);
-            solids.add(Solid.rod(new double[]{0, yn, zc}, 0, Math.min(inner, outer), Math.max(inner, outer), Math.max(fr, .6 * bore + .06), 0));
+            mesh.frustum(branch, .6 * bore + .06, .5 * bore + .04, .5 * lx, root+.01, nn, Material.MACHINE);
+            mesh.annulus(branch,0,.5*bore+.04,root+.01,nn,1,Material.MACHINE);
+            double inner = a + side * .5 * lx, outer = a + side * (root+.01);
+            solids.add(Solid.rod(new double[]{0, yn, zc}, 0, Math.min(inner, outer), Math.max(inner, outer), .6 * bore + .06, 0));
         }
         // The brackets, seal chambers and finned bearing housings at both ends; the shaft through them.
         bracket(f, rb + .03, .45 * di, zf1, z0, n);
@@ -1413,10 +1409,12 @@ public final class ProcessUnit {
         volumes.add(Solid.rod(new double[]{a, y, 0}, 2, z0 + .05, z1 - .05, rc - .05, 0));
         volumes.add(Solid.box(new double[]{a - lx + .05, low + .05, z0 + .05}, new double[]{a + lx - .05, y, z1 - .05}));
         round(a, y, zc - wv / 2, zc + wv / 2, rv);
-        // The nozzles: from each flange's face to the block face beyond it.
-        double bs = a - reachS - ts + .02, bd = a + reachD + td - .02;
-        nozzles.add(new Nozzle(Role.SUCTION, new double[]{bs, yn, zc}, 0, -1, bs - Math.floor(bs - .03 - EquipmentShape.STAND_OUT), s, 0));
-        nozzles.add(new Nozzle(Role.DISCHARGE, new double[]{bd, yn, zc}, 0, 1, Math.ceil(bd + .03 + EquipmentShape.STAND_OUT) - bd, d, 0));
+        // Preserve both connection planes while giving their necks clear space behind the flange.
+        double outerS=a-reachS-ts+.02,outerD=a+reachD+td-.02;
+        double faceS=Math.floor(outerS-.03-EquipmentShape.STAND_OUT),faceD=Math.ceil(outerD+.03+EquipmentShape.STAND_OUT);
+        double bs=a-root,bd=a+root;
+        nozzles.add(new Nozzle(Role.SUCTION, new double[]{bs, yn, zc}, 0, -1, bs-faceS, s, 0));
+        nozzles.add(new Nozzle(Role.DISCHARGE, new double[]{bd, yn, zc}, 0, 1, faceD-bd, d, 0));
     }
 
     /**

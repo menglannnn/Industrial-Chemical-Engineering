@@ -2,7 +2,6 @@ package com.wormzjl.icheme.client.model;
 
 import com.wormzjl.icheme.IChemE;
 import com.wormzjl.icheme.science.equipment.LineGeometry;
-import com.wormzjl.icheme.science.equipment.MoverPortMarkings;
 import com.wormzjl.icheme.science.equipment.PipeSizes;
 import com.wormzjl.icheme.science.equipment.SightGlassGeometry;
 import com.wormzjl.icheme.science.equipment.ShutoffValveGeometry;
@@ -60,7 +59,7 @@ public final class FluidDeviceModel implements IDynamicBakedModel {
     private final TextureAtlasSprite[] sprites;
     private final TextureAtlasSprite particle;
     private final ItemTransforms transforms;
-    private record Look(SightGlassGeometry.Key geometry,boolean sightGlass,FluidDeviceBlock.Shutoff shutoff,int moverPorts){}
+    private record Look(SightGlassGeometry.Key geometry,boolean sightGlass,FluidDeviceBlock.Shutoff shutoff){}
     private record Baked(List<BakedQuad> solid,List<BakedQuad> glass){}
     private final Map<Look,Baked> quads = new ConcurrentHashMap<>();
 
@@ -78,9 +77,8 @@ public final class FluidDeviceModel implements IDynamicBakedModel {
     public List<BakedQuad> getQuads(@Nullable BlockState state, @Nullable Direction side, RandomSource random, ModelData data, @Nullable RenderType renderType) {
         if (side != null) return List.of();
         var geometry=state!=null&&state.getBlock() instanceof FluidDeviceBlock?sightGlassKey(state,data):new SightGlassGeometry.Key(LineGeometry.Key.item(kind));
-        var drawn=data.get(FluidDeviceBlockEntity.DRAWN);
         var shutoff=checkAccessory?FluidDeviceBlock.Shutoff.CHECK:shutoffAccessory?FluidDeviceBlock.Shutoff.OPEN:state!=null&&FluidDeviceBlock.hasPipeValve(state)?state.getValue(FluidDeviceBlock.SHUTOFF):FluidDeviceBlock.Shutoff.NONE;
-        var key = new Look(geometry,accessory||state!=null&&FluidDeviceBlock.hasSightGlass(state),shutoff,kind==TopologyCompiler.Kind.PIPE&&state!=null&&drawn!=null?drawn.moverPorts():0);
+        var key = new Look(geometry,accessory||state!=null&&FluidDeviceBlock.hasSightGlass(state),shutoff);
         var cached = quads.get(key);
         if(cached==null){if(quads.size()>=CACHE)quads.clear();cached=quads.computeIfAbsent(key,this::bake);}
         if(renderType==RenderType.translucent())return cached.glass;
@@ -89,17 +87,11 @@ public final class FluidDeviceModel implements IDynamicBakedModel {
     }
 
     private Baked bake(Look look) {
-        if(look.shutoff==FluidDeviceBlock.Shutoff.CHECK)return new Baked(marked(CheckValveGeometry.polygons(look.geometry.pipe(),checkAccessory),look.moverPorts),List.of());
-        if(look.shutoff!=FluidDeviceBlock.Shutoff.NONE)return new Baked(marked(ShutoffValveGeometry.polygons(look.geometry.pipe(),look.shutoff==FluidDeviceBlock.Shutoff.OPEN,shutoffAccessory),look.moverPorts),List.of());
-        if(!look.sightGlass)return new Baked(marked(LineGeometry.polygons(look.geometry.pipe()),look.moverPorts),List.of());
+        if(look.shutoff==FluidDeviceBlock.Shutoff.CHECK)return new Baked(EquipmentShellModel.bake(CheckValveGeometry.polygons(look.geometry.pipe(),checkAccessory),sprites,false),List.of());
+        if(look.shutoff!=FluidDeviceBlock.Shutoff.NONE)return new Baked(EquipmentShellModel.bake(ShutoffValveGeometry.polygons(look.geometry.pipe(),look.shutoff==FluidDeviceBlock.Shutoff.OPEN,shutoffAccessory),sprites,false),List.of());
+        if(!look.sightGlass)return new Baked(EquipmentShellModel.bake(LineGeometry.polygons(look.geometry.pipe()),sprites,false),List.of());
         var geometry=SightGlassGeometry.build(look.geometry,accessory);
-        return new Baked(marked(geometry.metal(),look.moverPorts),EquipmentShellModel.bake(geometry.glass(),sprites,false));
-    }
-
-    private List<BakedQuad> marked(List<com.wormzjl.icheme.science.equipment.Mesh.Polygon> surface,int ports) {
-        if(ports==0)return EquipmentShellModel.bake(surface,sprites,false);
-        var out=new java.util.ArrayList<>(surface);out.addAll(MoverPortMarkings.pipe(surface,ports));
-        return EquipmentShellModel.bake(out,sprites,false);
+        return new Baked(EquipmentShellModel.bake(geometry.metal(),sprites,false),EquipmentShellModel.bake(geometry.glass(),sprites,false));
     }
 
     /** Installation orientation is part of both the chunk-model and liquid-surface cache key. */

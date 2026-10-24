@@ -50,7 +50,7 @@ public final class FluidDeviceBlockEntity extends BlockEntity implements FluidVi
      * What the model needs beyond the block state: the bore, the line met at each face (seven bits each), the faces whose
      * joint is flanged (a bit each: a line meeting equipment or a vessel nozzle), and whether this pipe ends a spool.
      */
-    public record Drawn(double bore, long faces, int flanged, boolean spool, int moverPorts) {
+    public record Drawn(double bore, long faces, int flanged, boolean spool) {
         public int face(Direction direction) {
             return (int) (faces >>> (7 * direction.ordinal()) & 127);
         }
@@ -66,8 +66,6 @@ public final class FluidDeviceBlockEntity extends BlockEntity implements FluidVi
     private long identity;
     private FluidView lastView;
     private double bore = .05;
-    /** Static neighboring nozzle roles: 0 none, 1 suction, 2 discharge, two bits per face. Rebuilt, never saved. */
-    private int moverPorts;
     private final byte[] faces = new byte[6];
     public FluidDeviceBlockEntity(BlockPos pos,BlockState state){super(ModBlockEntities.FLUID_DEVICE.get(),pos,state);}
     @Override public long fluidIdentity(){return identity;}
@@ -128,13 +126,12 @@ public final class FluidDeviceBlockEntity extends BlockEntity implements FluidVi
         }
     }
     /** Server: recompute the faces from the neighbours; true when they changed. */
-    public boolean refreshFaces(){var before=faces.clone();int oldPorts=moverPorts;computeFaces();return oldPorts!=moverPorts||!Arrays.equals(before,faces);}
+    public boolean refreshFaces(){var before=faces.clone();computeFaces();return !Arrays.equals(before,faces);}
     public void refreshFacesAndSync(){if(refreshFaces())sync();}
     private void sync(){setChanged();if(level!=null)level.sendBlockUpdated(worldPosition,getBlockState(),getBlockState(),2);}
     private void computeFaces() {
         if(level==null)return;
         boolean pipe=kind()==TopologyCompiler.Kind.PIPE;
-        moverPorts=0;
         for(var direction:Direction.values()) {
             int code=0;boolean flanged=false;
             if(getBlockState().getValue(FluidDeviceBlock.connection(direction))&&level.isLoaded(worldPosition.relative(direction))) {
@@ -151,10 +148,6 @@ public final class FluidDeviceBlockEntity extends BlockEntity implements FluidVi
                     // The vessel's flange is the pipe's size, its neck too (owner decision 2026-10-21: a 1 m pipe has a 1 m root): the pipe's flange matches it.
                     if(nozzle!=null){
                         code=PipeSizes.code(PipeSizes.outside(bore));flanged=true;
-                        if(shell.shape()!=null&&shell.shape().kind().mover()) {
-                            int role=switch(nozzle.role()){case SUCTION->1;case DISCHARGE->2;default->0;};
-                            moverPorts|=role<<(2*direction.ordinal());
-                        }
                     }
                 }
             }
@@ -184,11 +177,10 @@ public final class FluidDeviceBlockEntity extends BlockEntity implements FluidVi
     @Override protected void saveAdditional(CompoundTag tag,HolderLookup.Provider registries){super.saveAdditional(tag,registries);tag.putLong("FluidIdentity",identity);}
     @Override protected void loadAdditional(CompoundTag tag,HolderLookup.Provider registries){
         super.loadAdditional(tag,registries);identity=tag.getLong("FluidIdentity");lastView=null;
-        int roles=tag.getInt("MoverPorts");moverPorts=roles>=0&&roles<=0xfff?roles:0;
         if(tag.contains("Bore")){double read=tag.getDouble("Bore");if(read>0&&read<=1)bore=read;}
         if(tag.contains("Faces")){var read=tag.getByteArray("Faces");if(read.length==6)for(int i=0;i<6;i++){int v=read[i]&255;faces[i]=(byte)(Math.min(64,v&127)|v&FLANGED);}}
     }
-    @Override public CompoundTag getUpdateTag(HolderLookup.Provider registries){var tag=new CompoundTag();tag.putLong("FluidIdentity",identity);tag.putDouble("Bore",bore);tag.putByteArray("Faces",faces.clone());tag.putInt("MoverPorts",moverPorts);return tag;}
+    @Override public CompoundTag getUpdateTag(HolderLookup.Provider registries){var tag=new CompoundTag();tag.putLong("FluidIdentity",identity);tag.putDouble("Bore",bore);tag.putByteArray("Faces",faces.clone());return tag;}
     @Override public ClientboundBlockEntityDataPacket getUpdatePacket(){return ClientboundBlockEntityDataPacket.create(this);}
     /** Drawn geometry that arrives after the block was meshed: refresh the model data and rebuild the section. */
     @Override public void onDataPacket(net.minecraft.network.Connection connection,ClientboundBlockEntityDataPacket packet,HolderLookup.Provider registries) {
@@ -198,7 +190,7 @@ public final class FluidDeviceBlockEntity extends BlockEntity implements FluidVi
     @Override public ModelData getModelData() {
         long packed=0;int flanged=0;
         for(int i=0;i<6;i++){packed|=(long)(faces[i]&127)<<(7*i);if((faces[i]&FLANGED)!=0)flanged|=1<<i;}
-        return ModelData.of(DRAWN,new Drawn(bore,packed,flanged,spoolEnd(),moverPorts));
+        return ModelData.of(DRAWN,new Drawn(bore,packed,flanged,spoolEnd()));
     }
     /** A straight pipe whose coordinate along its run is a multiple of {@link #SPOOL}: it carries the flange pair between spools. */
     private boolean spoolEnd() {

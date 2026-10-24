@@ -7,60 +7,42 @@ import java.util.List;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 
-/** Static painted flow arrows on pipes adjoining constructed movers, independent of process state and collision. */
+/** Static flow arrows on constructed mover nozzles and valve castings, independent of process state and collision. */
 public final class MoverPortMarkings {
     private MoverPortMarkings() {}
 
-    /** Arrows on the actual exposed pipe facets adjoining mover ports: two role bits per Minecraft face. */
-    public static List<Mesh.Polygon> pipe(List<Mesh.Polygon> surface,int roles) {
-        if(roles==0)return List.of();
-        var mesh=new Mesh();double[] centre={.5,.5,.5};
-        for(int face=0;face<6;face++) {
-            int role=roles>>>(2*face)&3;if(role!=1&&role!=2)continue;
-            double[] axis=LineGeometry.step(face);
-            var patches=new LinkedHashMap<Plane,Patch>();
-            for(var polygon:surface) {
-                if(polygon.material()!=Mesh.Material.PIPE||polygon.size()<3)continue;
-                double[] p=polygon.positions(),a={p[3]-p[0],p[4]-p[1],p[5]-p[2]},b={p[6]-p[0],p[7]-p[1],p[8]-p[2]};
-                var normal=Mesh.cross(a,b);double norm=Math.sqrt(Mesh.dot(normal,normal));if(norm<1e-9)continue;
-                for(int i=0;i<3;i++)normal[i]/=norm;
-                if(Math.abs(Mesh.dot(normal,axis))>1e-6)continue; // Flat axial necks only, never reducers or window faces.
-                var side=Mesh.cross(axis,normal);
-                double low=Double.POSITIVE_INFINITY,high=Double.NEGATIVE_INFINITY,left=low,right=high,radius=0;
-                for(int i=0;i<p.length;i+=3) {
-                    double[] delta={p[i]-.5,p[i+1]-.5,p[i+2]-.5};
-                    double along=Mesh.dot(delta,axis),across=Mesh.dot(delta,side);
-                    low=Math.min(low,along);high=Math.max(high,along);left=Math.min(left,across);right=Math.max(right,across);
-                    radius=Mesh.dot(delta,normal);
-                }
-                low=Math.max(.12,low);high=Math.min(.42,high);
-                if(high<=low||radius<=0)continue;
-                var plane=new Plane(Math.round(normal[0]*1e6),Math.round(normal[1]*1e6),Math.round(normal[2]*1e6),Math.round(radius*1e6));
-                var patch=patches.get(plane);
-                if(patch==null){patch=new Patch(normal,radius);patches.put(plane,patch);}
-                patch.low=Math.min(patch.low,low);patch.high=Math.max(patch.high,high);
-                patch.left=Math.min(patch.left,left);patch.right=Math.max(patch.right,right);
-            }
-            // The hub and neck, and UV tile boundaries, can split one plane. Paint one arrow over their union.
-            var selected=new LinkedHashSet<Patch>();var reference=LineGeometry.ref(face);var tangent=Mesh.cross(axis,reference);
-            for(int q=0;q<4;q++) {
-                double angle=Math.PI/8+q*Math.PI/2,c=DeterministicMath.cos(angle),s=DeterministicMath.sin(angle),best=-2;
-                Patch choice=null;
-                for(var patch:patches.values()) {
-                    double score=c*Mesh.dot(patch.normal,reference)+s*Mesh.dot(patch.normal,tangent);
-                    if(score>best){best=score;choice=patch;}
-                }
-                if(choice!=null)selected.add(choice);
-            }
-            for(var patch:selected) {
-                double low=patch.low+.003,high=patch.high-.003,length=Math.min(.28,high-low),width=.82*(patch.right-patch.left);
-                if(length<.025||width<.005)continue;
-                var side=Mesh.cross(axis,patch.normal);var origin=centre.clone();
-                for(int i=0;i<3;i++)origin[i]+=.5*(patch.left+patch.right)*side[i];
-                badge(new Label(mesh,new Mesh.Frame(origin,axis,patch.normal),patch.radius,(low+high)/2,role==1?1:-1),length,width);
-            }
+    /** One arrow band on each process nozzle, clipped into the equipment cells that own its neck. */
+    public static List<Mesh.Polygon> surface(ShapeRasterizer.CellKey key) {
+        if(!key.shape().kind().mover())return List.of();
+        var cell=new ShapeRasterizer.Cell(key.x(),key.y(),key.z());
+        var nozzles=key.shape().nozzles();var out=new ArrayList<Mesh.Polygon>();int reaching=0;
+        for(int k=0;k<nozzles.size();k++) {
+            if(!ShapeRasterizer.nozzleCells(key.shape(),k).contains(cell))continue;
+            int code=(int)(key.nozzles()>>>(7*reaching++))&127;
+            var nozzle=nozzles.get(k);
+            if(nozzle.role()!=EquipmentShape.Role.SUCTION&&nozzle.role()!=EquipmentShape.Role.DISCHARGE)continue;
+            double od=code==0?nozzle.defaultOd():PipeSizes.outsideOf(code);
+            var mesh=new Mesh();mesh.transform(key.shape().transform());mark(mesh,nozzle,od);
+            out.addAll(mesh.cell(cell.x(),cell.y(),cell.z()));
         }
-        return List.copyOf(mesh.cell(0,0,0));
+        return List.copyOf(out);
+    }
+
+    private static void mark(Mesh mesh,EquipmentShape.Nozzle nozzle,double od) {
+        int sides=PipeSizes.sides(od),flow=nozzle.role()==EquipmentShape.Role.SUCTION?-1:1;
+        // Stay on the equipment neck, clear of the flange plate and its bolts.
+        double end=nozzle.length()-PipeSizes.flangeThickness(od)-.055;
+        double length=Math.min(.65,Math.min(end-.02,Math.max(.28,1.6*od)));
+        if(length<=.02)return;
+        double width=.82*od*DeterministicMath.sin(Math.PI/sides);
+        double radius=od/2*DeterministicMath.cos(Math.PI/sides);
+        var frame=Mesh.Frame.of(nozzle.base(),nozzle.axis(),nozzle.sign());var tangent=frame.side();
+        for(int side=0;side<4;side++) {
+            double angle=2*Math.PI*(side*sides/4+.5)/sides;
+            double c=DeterministicMath.cos(angle),s=DeterministicMath.sin(angle);var normal=new double[3];
+            for(int i=0;i<3;i++)normal[i]=c*frame.ref()[i]+s*tangent[i];
+            badge(new Label(mesh,new Mesh.Frame(frame.origin(),frame.axis(),normal),radius,end-length/2,flow),length,width);
+        }
     }
 
     private record Plane(long nx,long ny,long nz,long radius) {}
