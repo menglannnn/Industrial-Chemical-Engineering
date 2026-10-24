@@ -24,7 +24,7 @@ import java.util.List;
  * walkway nor stair but caged ladders up its back to the platform (owner change 2026-10-21). Drawn by the client, apart ({@link ProcessUnit#floating}):
  * the roof (pontoon ring 0.1 D wide, centre deck, rim seal, legs 1.8 m, drain sump), floating on the liquid and landing on
  * its legs, and the rolling ladder, as long as the fill height, hinged at the platform with its foot on a runway on the
- * deck. Nozzles, fixed (owner change 2026-10-21): two identical bottom nozzles on the front's lowest row ({@link Role#BOTTOM},
+ * deck. Nozzles, fixed: two identical bottom nozzles centered opposite each other at front and back ({@link Role#BOTTOM},
  * liquid ports), and the overflow on the front at the fill height ({@link Role#OVERFLOW}).
  *
  * <p>The interior holds the liquid: its cells collide as a drum's but pass light, so the roof shows from above (the
@@ -51,12 +51,13 @@ final class TankDesign extends UnitDesign {
      * The level gauge on the shell (owner requests 2026-10-21: the gauge was hard to pick out; it reaches the bottom, on the
      * tank as before): its column {@code GLASS_OUT} off the shell, from {@code GAUGE_LOW} over grade, piped from the shell at
      * {@code TAP} and at the fill height, clipped to it every {@code CLIP} m between; on the front {@code GLASS_OFFSET} to
-     * the left of its middle (between the overflow's flange and the left bottom nozzle's, in the walkway's front gap) on a
-     * tank with the walkway, on the left side on a smaller one (its ladders stand at the back and the right). A 6" chamber
+     * the left of its middle (beside the centered nozzles, in the walkway's front gap) on a
+     * tank with the walkway, on the left side on a smaller one (its ladders stand at the back and the right). An enlarged chamber
      * ({@code GLASS_RADIUS}) on a safety-yellow scale board ({@code SCALE_HALF} either side) ticked every metre, longer
      * every 5 m.
      */
-    static final double GLASS_OFFSET = .85, GLASS_OUT = .5, GAUGE_LOW = .3, TAP = .45, GLASS_RADIUS = .08, SCALE_HALF = .14, CLIP = 3;
+    static final double GLASS_OFFSET = .85, GLASS_OUT = .5, GAUGE_LOW = .3, TAP = .45, CLIP = 3;
+    static final double GLASS_RADIUS = TankGaugeGeometry.CHAMBER_RADIUS, SCALE_HALF = TankGaugeGeometry.SCALE_HALF;
 
     /** Half the walkway's gap across the front, m: the overflow's pipe stands there. */
     static final double FRONT_GAP = 1.2;
@@ -149,15 +150,13 @@ final class TankDesign extends UnitDesign {
     /**
      * A tank's sizes, m, in its frame (y up from grade, front -z): its diameter, shell height and radius, the axis (x and
      * z), the fill height, the shell's facets, the walkway's walking level, the stair's inner radius (beyond the walkway)
-     * and the platform's outer radius (a small tank's: its ladders' decks'), the bottom nozzles' offset from the front's
-     * middle, and the nozzles' default size.
+     * and the platform's outer radius (a small tank's: its ladders' decks'), the stair approach's setback, and the nozzles' default size.
      */
-    record Plan(double d, int shell, double r, double a, double fill, int n, double walk, double band, double outer, int k, double defaultOd) {
+    record Plan(double d, int shell, double r, double a, double fill, int n, double walk, double band, double outer, int accessSetback, double defaultOd) {
         static Plan of(double d, int shell) {
             double r = d / 2, band = r + WALKWAY + Access.GAP, outer = d >= STAIR_SIZE ? band + Access.WOUND_WIDTH + Access.GAP : r + Access.MIN_DECK;
             int n = Math.max(12, 4 * (int) Math.ceil(.75 * Math.PI * d));
             return new Plan(d, shell, r, ProcessUnit.centre(outer + .05), shell - FREEBOARD, n, shell - GIRDER_DROP, band, outer,
-                    // A tank with the walkway keeps its bottom nozzles 2 m or more off the middle: the level gauge stands between.
                     Math.max(d >= STAIR_SIZE ? 2 : 1, (int) Math.round(r / 6)), PipeSizes.od(.1 + .007 * d, .15, .35));
         }
 
@@ -211,9 +210,9 @@ final class TankDesign extends UnitDesign {
             hinge = from + span / 2;
         }
         gauge(u, p);
-        u.nozzles.add(front(Role.BOTTOM, p, p.k, .5));
-        u.nozzles.add(front(Role.BOTTOM, p, -p.k, .5));
-        u.nozzles.add(front(Role.OVERFLOW, p, 0, p.shell - .5));
+        u.nozzles.add(nozzle(Role.BOTTOM, p, -1, .5));
+        u.nozzles.add(nozzle(Role.BOTTOM, p, 1, .5));
+        u.nozzles.add(nozzle(Role.OVERFLOW, p, -1, p.shell - .5));
         u.fluidPoint = new double[]{p.a, .01, p.a - p.r + .02};
         floating(u, p, hinge);
     }
@@ -240,13 +239,15 @@ final class TankDesign extends UnitDesign {
 
     /**
      * The stair from grade to the gauger's platform, wound clockwise seen from above round the shell beyond the walkway,
-     * at the plant stair's slope. Its foot stands just to the right of the bottom nozzles (seen from the front), and it
+     * at the plant stair's slope. Its foot stands beside the front access gap, and it
      * climbs away from them; where that would meet the front's nozzles or bring the platform or the walkway's landing into
      * the walkway's front gap, it starts further round, in steps of 0.1 rad.
      */
     static Access.WoundStair stair(Plan p) {
         double hw = Access.WOUND_WIDTH / 2, rw = p.band + hw, top = p.shell + Access.DECK;
-        double zone = Math.max(p.k + .5, FRONT_GAP) + .5 + hw, first = -Math.PI / 2 - DeterministicMath.asin(Math.min(1, (p.k + 1 + hw) / rw));
+        // Retain the established access approach clearance, independent of the relocated nozzle centers.
+        double zone = Math.max(p.accessSetback + .5, FRONT_GAP) + .5 + hw;
+        double first = -Math.PI / 2 - DeterministicMath.asin(Math.min(1, (p.accessSetback + 1 + hw) / rw));
         for (int m = 0; m < 63; m++) {
             double start = first - .1 * m;
             var plain = Access.WoundStair.wind(p.a, p.a, y -> p.r, WALKWAY + Access.GAP, start, -1, 0, top, Access.WOUND_WIDTH, Access.WOUND_SLOPE, List.of(), false);
@@ -259,16 +260,18 @@ final class TankDesign extends UnitDesign {
     }
 
     /**
-     * Whether a planned stair keeps clear: its treads and fences pass the front (within {@code zone} of its middle) only
-     * over the bottom nozzles' row and under the overflow's; the gauger's platform at its top and its landing onto the
+     * Whether a planned stair keeps clear: its treads and fences pass front/back (within {@code zone} of the centerline) only
+     * over the bottom nozzles' row, and pass the front under the overflow; the gauger's platform at its top and its landing onto the
      * walkway ({@code opening}) stand outside the walkway's front gap, and the landing outside the platform.
      */
     private static boolean clear(Plan p, Access.WoundStair stair, double[] opening, double zone) {
         for (int k = 1; k <= stair.steps(); k++) {
             var q = stair.at((k - .5) * Access.WOUND_GOING, 0, 0);
-            if (Math.abs(q[0] - p.a) >= zone || q[2] >= p.a) continue;
+            // The front includes the gauge/access gap; the back has only its centered 1 m maximum nozzle.
+            double width = q[2] < p.a ? zone : PipeSizes.MAX_OUTSIDE / 2 + .5 + Access.WOUND_WIDTH / 2;
+            if (Math.abs(q[0] - p.a) >= width) continue;
             double low = stair.tread(k) - stair.rise(k) - .3, high = stair.tread(k) + Access.FENCE;
-            if (low < 1.1 || high > p.shell - 1.2 && low < p.shell + .2) return false;
+            if (low < 1.1 || q[2] < p.a && high > p.shell - 1.2 && low < p.shell + .2) return false;
         }
         double end = stair.angle(stair.steps()), span = PLATFORM / (p.band + Access.WOUND_WIDTH / 2), gap = frontGap(p), margin = .3 / p.r;
         if (meets(end - span - margin, end + margin, -Math.PI / 2 - gap, -Math.PI / 2 + gap)) return false;
@@ -485,15 +488,17 @@ final class TankDesign extends UnitDesign {
     }
 
     /**
-     * A bottom nozzle or the overflow: out of the front (frame -z) at {@code offset} from its middle and height {@code y},
-     * square to the front (a hillside nozzle off the middle), its neck from under the shell where a pipe's largest neck's
+     * A bottom nozzle or the overflow: centered on front (sign -1) or back (sign +1) at height {@code y},
+     * its neck from under the shell where a pipe's largest neck's
      * edge meets it (owner decision 2026-10-21: a 1 m pipe has a 1 m root), its flange face on the next block face
      * {@link EquipmentShape#STAND_OUT} beyond the shell.
      */
-    private static Nozzle front(Role role, Plan p, double offset, double y) {
-        double apothem = p.r * DeterministicMath.cos(Math.PI / p.n), edge = Math.abs(offset) + PipeSizes.MAX_OUTSIDE / 2;
-        double start = Math.sqrt(Math.max(0, apothem * apothem - edge * edge)) - .03, plane = Math.floor(p.a - p.r - EquipmentShape.STAND_OUT), base = p.a - start;
-        return new Nozzle(role, new double[]{p.a + offset, y, base}, 2, -1, base - plane, p.defaultOd, 0);
+    private static Nozzle nozzle(Role role, Plan p, int sign, double y) {
+        double apothem = p.r * DeterministicMath.cos(Math.PI / p.n), edge = PipeSizes.MAX_OUTSIDE / 2;
+        double start = Math.sqrt(apothem * apothem - edge * edge) - .03;
+        double plane = sign < 0 ? Math.floor(p.a - p.r - EquipmentShape.STAND_OUT) : Math.ceil(p.a + p.r + EquipmentShape.STAND_OUT);
+        double base = p.a + sign * start;
+        return new Nozzle(role, new double[]{p.a, y, base}, 2, sign, sign * (plane - base), p.defaultOd, 0);
     }
 
     /**

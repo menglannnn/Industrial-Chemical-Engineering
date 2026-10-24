@@ -790,21 +790,25 @@ class ShapeRasterizerTest {
     @Test
     void storagePortsStandWhereThePlanPutsThem() {
         for (var heading : Heading.values()) {
-            // A tank: two alike bottom nozzles on the lowest row either side of the front's middle, the overflow over the fill
-            // height; all towards the constructor.
+            // A tank: centered front/back bottom nozzles on the lowest row; front overflow above the fill height.
             var tank = EquipmentShape.storage(Kind.TANK, 20, 12, heading, 0);
             var ports = ShapeRasterizer.ports(tank);
             assertEquals(List.of(EquipmentShape.Role.BOTTOM, EquipmentShape.Role.BOTTOM, EquipmentShape.Role.OVERFLOW), tank.nozzles().stream().map(EquipmentShape.Nozzle::role).toList());
             assertEquals(List.of(EquipmentShape.PortClass.LIQUID, EquipmentShape.PortClass.LIQUID, EquipmentShape.PortClass.OVERFLOW),
                     ports.stream().map(ShapeRasterizer.Port::port).toList(), tank.toString());
-            for (var port : ports) assertArrayEquals(new int[]{heading.dx, 0, heading.dz}, new int[]{port.dx(), port.dy(), port.dz()}, tank.toString());
+            for (int i = 0; i < ports.size(); i++) {
+                var port = ports.get(i);int sign = i == 1 ? -1 : 1;
+                assertArrayEquals(new int[]{sign * heading.dx, 0, sign * heading.dz}, new int[]{port.dx(), port.dy(), port.dz()}, tank.toString());
+            }
             var a = ports.get(0).cell();
             var b = ports.get(1).cell();
             var overflow = ports.get(2).cell();
             assertEquals(List.of(0, 0, 11), List.of(a.y(), b.y(), overflow.y()), tank.toString());
-            // Mirrored about the overflow's column, on the front's face.
-            assertEquals(2 * (heading.dx != 0 ? overflow.z() : overflow.x()), heading.dx != 0 ? a.z() + b.z() : a.x() + b.x(), tank.toString());
+            // Both bottom ports share the overflow's centerline; the second ends at the opposite side of the tank.
+            assertEquals(heading.dx != 0 ? overflow.z() : overflow.x(), heading.dx != 0 ? a.z() : a.x(), tank.toString());
+            assertEquals(heading.dx != 0 ? a.z() : a.x(), heading.dx != 0 ? b.z() : b.x(), tank.toString());
             assertEquals(heading.dx != 0 ? overflow.x() : overflow.z(), heading.dx != 0 ? a.x() : a.z(), tank.toString());
+            assertTrue((a.x() - b.x()) * heading.dx + (a.z() - b.z()) * heading.dz > tank.diameter(), tank.toString());
             // A sphere: the vapour outlet up at its top, the liquid outlet on the lowest row at the box's front edge.
             var sphere = EquipmentShape.storage(Kind.SPHERE, 14, 1, heading, 2);
             var sp = ShapeRasterizer.ports(sphere);
@@ -817,6 +821,21 @@ class ShapeRasterizerTest {
             assertEquals(0, front.y(), sphere.toString());
             assertTrue(fx < 0 || fz < 0 || fx >= sphere.sizeX() || fz >= sphere.sizeZ(), sphere + ": the liquid outlet ends at the front edge");
         }
+    }
+
+    @Test
+    void tankGaugeFacesPointOutwardsIncludingTheUnderside() {
+        var faces = TankGaugeGeometry.bandFaces();assertEquals(6, faces.size());
+        var normals = new java.util.HashSet<String>();
+        for (var face : faces) {
+            var p = face.positions();var n = face.normals();
+            double[] a = {p[3] - p[0], p[4] - p[1], p[5] - p[2]}, b = {p[6] - p[0], p[7] - p[1], p[8] - p[2]};
+            double[] cross = {a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]};
+            assertTrue(cross[0] * (p[0] - .5) + cross[1] * (p[1] - .5) + cross[2] * (p[2] - .5) > 0, "inward face is culled from outside");
+            assertTrue(cross[0] * n[0] + cross[1] * n[1] + cross[2] * n[2] > 0, "winding and light normal disagree");
+            normals.add(n[0] + "," + n[1] + "," + n[2]);
+        }
+        assertEquals(6, normals.size());
     }
 
     /**

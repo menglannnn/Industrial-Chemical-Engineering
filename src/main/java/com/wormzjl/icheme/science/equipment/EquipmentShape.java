@@ -189,7 +189,7 @@ public record EquipmentShape(Kind kind, double diameter, double tangentLength, O
         OXIDANT(PortClass.BULK), WATER(PortClass.BULK), CUTTING_WATER(PortClass.BULK), BLOWDOWN(PortClass.BULK), SOLIDS_INLET(PortClass.BULK), FEEDWATER(PortClass.BULK),
         VENT(PortClass.VAPOUR), EXHAUST(PortClass.VAPOUR), FLUE_GAS(PortClass.VAPOUR), RELIEF(PortClass.VAPOUR), SYNGAS(PortClass.VAPOUR),
         DRAIN(PortClass.LIQUID), CONDENSATE(PortClass.LIQUID), CATALYST_OUTLET(PortClass.LIQUID), SOLIDS_OUTLET(PortClass.LIQUID),
-        // A floating-roof tank's (owner change 2026-10-21): two identical bottom nozzles, and the overflow at the fill height.
+        // A floating-roof tank: centered front/back bottom nozzles, and the front overflow at the fill height.
         BOTTOM(PortClass.LIQUID), OVERFLOW(PortClass.OVERFLOW);
 
         public final PortClass port;

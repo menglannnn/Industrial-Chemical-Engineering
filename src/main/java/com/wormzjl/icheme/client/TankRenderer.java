@@ -13,6 +13,7 @@ import com.wormzjl.icheme.runtime.fluid.TankDisplay;
 import com.wormzjl.icheme.runtime.fluid.TankWatchers;
 import com.wormzjl.icheme.science.equipment.EquipmentShape;
 import com.wormzjl.icheme.science.equipment.Mesh;
+import com.wormzjl.icheme.science.equipment.TankGaugeGeometry;
 import com.wormzjl.icheme.science.equipment.Paint;
 import com.wormzjl.icheme.science.equipment.ShapeRasterizer;
 import com.wormzjl.icheme.world.level.block.FloatingRoofs;
@@ -63,10 +64,10 @@ public final class TankRenderer {
     private static final int MAX_BUFFERS = 64;
     /**
      * The sight glass's bands (owner report 2026-10-21: the gauge was hard to pick out): their half width round the column
-     * (the chamber is {@code TankDesign.GLASS_RADIUS}, 0.08 m), the least opacity a clear liquid shows with, the empty
+     * (shared with the enlarged chamber and scale board), the least opacity a clear liquid shows with, the empty
      * glass above the liquid in light grey, and the float's red ring, {@code MARKER} m tall, at the liquid's surface.
      */
-    private static final double BAND = .1, MARKER = .1;
+    private static final double BAND = TankGaugeGeometry.BAND_HALF, MARKER = TankGaugeGeometry.MARKER_HEIGHT;
     private static final int LEAST_ALPHA = 200, EMPTY = 0xE0D8D8D8, FLOAT = 0xFFD02020;
     private static final ResourceLocation WHITE = ResourceLocation.withDefaultNamespace("block/white_concrete");
     private static final RenderType BANDS = RenderType.entityTranslucentCull(InventoryMenu.BLOCK_ATLAS);
@@ -195,7 +196,7 @@ public final class TankRenderer {
             if (oil > Math.max(low, water)) band(consumer, last, Math.max(low, water), oil, display.oilArgb(), light, u, v);
             if (high > Math.max(low, surface)) band(consumer, last, Math.max(low, surface), high, EMPTY, light, u, v);
             double ring = Math.max(low, Math.min(high, surface));
-            band(consumer, last, Math.max(low, ring - MARKER / 2), Math.min(high, ring + MARKER / 2), FLOAT, light, u, v, BAND + .005);
+            band(consumer, last, Math.max(low, ring - MARKER / 2), Math.min(high, ring + MARKER / 2), FLOAT, light, u, v, TankGaugeGeometry.MARKER_HALF);
             pose.popPose();
         }
         if (consumer != null) buffers.endBatch(BANDS);
@@ -207,26 +208,21 @@ public final class TankRenderer {
         return level == null ? 0 : FloatingRoofs.of(level).level(node, ticks);
     }
 
-    /** One band: a square prism round the glass's column from {@code y0} to {@code y1}, its four sides and its top. */
+    /** One band: a closed square column round the glass, wound outwards on every side and both ends. */
     private static void band(VertexConsumer consumer, com.mojang.blaze3d.vertex.PoseStack.Pose last, double y0, double y1, int argb, int light, float u, float v) {
         band(consumer, last, y0, y1, argb, light, u, v, BAND);
     }
 
     /** One band of half width {@code half}. */
     private static void band(VertexConsumer consumer, com.mojang.blaze3d.vertex.PoseStack.Pose last, double y0, double y1, int argb, int light, float u, float v, double half) {
+        if (y1 <= y0) return;
         int r = argb >> 16 & 255, g = argb >> 8 & 255, b = argb & 255, alpha = Math.max(argb >>> 24, LEAST_ALPHA);
-        float w = (float) half, lo = (float) y0, hi = (float) y1;
-        float[][] sides = {{-w, -w, w, -w, 0, -1}, {w, -w, w, w, 1, 0}, {w, w, -w, w, 0, 1}, {-w, w, -w, -w, -1, 0}};
-        for (var s : sides) {
-            vertex(consumer, last, s[0], lo, s[1], r, g, b, alpha, u, v, light, s[4], 0, s[5]);
-            vertex(consumer, last, s[2], lo, s[3], r, g, b, alpha, u, v, light, s[4], 0, s[5]);
-            vertex(consumer, last, s[2], hi, s[3], r, g, b, alpha, u, v, light, s[4], 0, s[5]);
-            vertex(consumer, last, s[0], hi, s[1], r, g, b, alpha, u, v, light, s[4], 0, s[5]);
+        for (var face : TankGaugeGeometry.bandFaces()) {
+            var p = face.positions();var n = face.normals();
+            for (int i = 0; i < p.length; i += 3)
+                vertex(consumer, last, (float) (half * (2 * p[i] - 1)), (float) (y0 + (y1 - y0) * p[i + 1]), (float) (half * (2 * p[i + 2] - 1)),
+                        r, g, b, alpha, u, v, light, (float) n[i], (float) n[i + 1], (float) n[i + 2]);
         }
-        vertex(consumer, last, -w, hi, -w, r, g, b, alpha, u, v, light, 0, 1, 0);
-        vertex(consumer, last, -w, hi, w, r, g, b, alpha, u, v, light, 0, 1, 0);
-        vertex(consumer, last, w, hi, w, r, g, b, alpha, u, v, light, 0, 1, 0);
-        vertex(consumer, last, w, hi, -w, r, g, b, alpha, u, v, light, 0, 1, 0);
     }
 
     private static void vertex(VertexConsumer consumer, com.mojang.blaze3d.vertex.PoseStack.Pose last, float x, float y, float z, int r, int g, int b, int a, float u, float v, int light,
