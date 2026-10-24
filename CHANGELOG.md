@@ -17,7 +17,7 @@ All notable changes to Industrial Chemical Engineering (IChemE, formerly CreateC
 
 ### Added
 
-- Convert the Pressure Control Valve into a straight-pipe accessory with the existing pressure controls, a scalable globe body and full-height diaphragm actuator; preserve host pipe identity, diameter and queued edits, and give cutoff valves larger reinforced levers and fitted inventory icons (batch: `2026-10-24-pressure-valve-accessory`).
+- Convert the Pressure Control Valve into a straight-pipe accessory with the existing pressure controls, a scalable globe body and full-height diaphragm actuator; preserve host pipe identity, diameter and queued edits, and give cutoff valves larger reinforced levers and fitted inventory icons (commit `dc174f27`, batch: `2026-10-24-pressure-valve-accessory`).
 
 - Pipeline Check Valve accessory for straight pipes: aim-directed arrows fitted to the casting facets, queued empty-hand direction reversal, permanent one-way transport that survives solid-closure reopening, and survival installation/recovery without replacing pipe identity/settings; checkpoint 18 / storage-unit 11 requires a fresh world (commits `4e5c504d`, `9ffb294f`, batch: `2026-10-24-pipeline-check-valve`).
 - Pipeline Shutoff Valve accessory for straight pipes: scalable flanged ball-valve housing and quarter-turn lever, empty-hand open/close controls, axis-locked mechanical joints and queued hydraulic isolation/reopening that preserves pipe identity and equipment contents; checkpoint 17 / storage-unit 10 requires a fresh world (commit `4dd96fde`, batch: `2026-10-23-pipeline-shutoff-valve`).
