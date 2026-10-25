@@ -211,6 +211,7 @@ public final class IChemE {
         modEventBus.addListener(com.wormzjl.icheme.network.MoverNetwork::register);
         modEventBus.addListener(com.wormzjl.icheme.network.EquipmentNetwork::register);
         modEventBus.addListener(com.wormzjl.icheme.network.PipelineToolNetwork::register);
+        modEventBus.addListener(com.wormzjl.icheme.network.InstrumentNetwork::register);
         modEventBus.addListener(IChemE::addCreativeTabItem);
         modContainer.registerConfig(ModConfig.Type.COMMON, CONFIG_SPEC, "icheme-common.toml");
         // A dedicated server never draws equipment: its geometries keep no facets once laid out.
@@ -300,6 +301,9 @@ public final class IChemE {
     private static void addCreativeTabItem(BuildCreativeModeTabContentsEvent event) {
         if (event.getTabKey() == CreativeModeTabs.FUNCTIONAL_BLOCKS) {
             event.accept(ModItems.COLUMN_CALCULATOR_V3.get());
+            event.accept(ModItems.PRESSURE_GAUGE.get());
+            event.accept(ModItems.TEMPERATURE_GAUGE.get());
+            event.accept(ModItems.ACCESSORY_WRENCH.get());
             event.accept(ModItems.PIPELINE_TOOL.get());
             event.accept(ModItems.PIPELINE_SIGHT_GLASS.get());
             event.accept(ModItems.PIPELINE_SHUTOFF_VALVE.get());

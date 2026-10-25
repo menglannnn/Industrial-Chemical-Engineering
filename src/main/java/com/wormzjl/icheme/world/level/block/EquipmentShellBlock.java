@@ -140,6 +140,8 @@ public final class EquipmentShellBlock extends BaseEntityBlock {
             server.getServer().execute(() -> EquipmentStructure.refreshNozzlesAt(level, position));
     }
 
+    @Override public BlockState playerWillDestroy(Level level,BlockPos pos,BlockState state,Player player){EquipmentStructure.breaking(level,pos,player);return super.playerWillDestroy(level,pos,state,player);}
+
     @Override
     protected void onRemove(BlockState state, Level level, BlockPos position, BlockState replacement, boolean moved) {
         if (!state.is(replacement.getBlock()) && level.getBlockEntity(position) instanceof EquipmentShellBlockEntity shell && shell.shape() != null)

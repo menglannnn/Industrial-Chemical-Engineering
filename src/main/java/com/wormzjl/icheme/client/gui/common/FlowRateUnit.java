@@ -1,4 +1,5 @@
 package com.wormzjl.icheme.client.gui.common;
+import com.wormzjl.icheme.science.display.DisplayUnit;
 
 /** Presentation time basis only. Network controls and process rates always use seconds. */
 public enum FlowRateUnit implements DisplayUnit {

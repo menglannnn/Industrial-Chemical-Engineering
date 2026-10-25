@@ -33,6 +33,10 @@ public final class ModItems {
             ModBlocks.COLUMN_CALCULATOR_V3
     );
 
+    public static final DeferredItem<com.wormzjl.icheme.world.item.GaugeItem> PRESSURE_GAUGE = ITEMS.registerItem("pressure_gauge", p -> new com.wormzjl.icheme.world.item.GaugeItem(p, com.wormzjl.icheme.world.item.GaugeSettings.PRESSURE));
+    public static final DeferredItem<com.wormzjl.icheme.world.item.GaugeItem> TEMPERATURE_GAUGE = ITEMS.registerItem("temperature_gauge", p -> new com.wormzjl.icheme.world.item.GaugeItem(p, com.wormzjl.icheme.world.item.GaugeSettings.TEMPERATURE));
+    public static final DeferredItem<com.wormzjl.icheme.world.item.AccessoryWrenchItem> ACCESSORY_WRENCH = ITEMS.registerItem("accessory_wrench", com.wormzjl.icheme.world.item.AccessoryWrenchItem::new);
+
     private ModItems() {
     }
 

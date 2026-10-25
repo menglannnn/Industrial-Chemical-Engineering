@@ -1,4 +1,6 @@
 package com.wormzjl.icheme.client.gui.common;
+import com.wormzjl.icheme.science.display.PressureUnit;
+import com.wormzjl.icheme.science.display.DisplayUnit;
 
 import com.wormzjl.icheme.science.material.MaterialName;
 import net.minecraft.network.chat.Component;

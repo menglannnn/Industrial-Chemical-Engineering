@@ -139,7 +139,7 @@ public sealed class FluidDeviceBlock extends BaseEntityBlock {
         if(kind!=TopologyCompiler.Kind.PIPE||!state.getValue(SIGHT_GLASS)||supportsSightGlass(state))return;
         if(level.setBlock(position,state.setValue(SIGHT_GLASS,false),Block.UPDATE_ALL)) {
             if(level.getBlockEntity(position) instanceof FluidDeviceBlockEntity entity)entity.refreshGeometry(entity.bore(),true);
-            Block.popResource(level,position,new ItemStack(com.wormzjl.icheme.registry.ModItems.PIPELINE_SIGHT_GLASS.get()));
+            if(level.getBlockEntity(position) instanceof FluidDeviceBlockEntity entity)FluidWorldAuthority.find(level.getServer()).ifPresent(w->w.instruments().recoverLegacy(entity.fluidIdentity(),level,position));
         }
     }
     @Override protected void onPlace(BlockState state,Level level,BlockPos position,BlockState previous,boolean moved) {
@@ -154,9 +154,10 @@ public sealed class FluidDeviceBlock extends BaseEntityBlock {
             }
         });
     }
+    @Override public BlockState playerWillDestroy(Level level,BlockPos pos,BlockState state,Player player){if(level.getBlockEntity(pos) instanceof com.wormzjl.icheme.runtime.instrument.AccessoryHost h)h.instruments().recoverOnBreak(!player.isCreative());return super.playerWillDestroy(level,pos,state,player);}
     @Override protected void onRemove(BlockState state,Level level,BlockPos position,BlockState replacement,boolean moved) {
         if(state.getBlock()!=replacement.getBlock()&&level instanceof ServerLevel serverLevel)FluidWorldAuthority.find(serverLevel.getServer()).ifPresent(world->{
-            var p=new PhysicalFluidTopology.Position(level.dimension().location().toString(),position.getX(),position.getY(),position.getZ());world.at(p).ifPresent(r->world.remove(r.device().id()));
+            var p=new PhysicalFluidTopology.Position(level.dimension().location().toString(),position.getX(),position.getY(),position.getZ());world.at(p).ifPresent(r->{boolean drops=!(level.getBlockEntity(position) instanceof com.wormzjl.icheme.runtime.instrument.AccessoryHost h)||h.instruments().recoverOnBreak();world.instruments().recover(r.device().id(),level,position,com.wormzjl.icheme.runtime.instrument.InstrumentHosts.legacy(state),drops);world.remove(r.device().id());});
         });
         super.onRemove(state,level,position,replacement,moved);
     }

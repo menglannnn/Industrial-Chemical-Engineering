@@ -22,6 +22,8 @@ public final class ModMenus {
                     () -> IMenuTypeExtension.create(ColumnCalculatorV3Menu::new)
             );
 
+    public static final DeferredHolder<MenuType<?>, MenuType<com.wormzjl.icheme.world.inventory.GaugeMenu>> GAUGE = MENU_TYPES.register("gauge", () -> IMenuTypeExtension.create(com.wormzjl.icheme.world.inventory.GaugeMenu::new));
+
     private ModMenus() {
     }
 

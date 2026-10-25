@@ -26,6 +26,12 @@ class PhysicalFluidTopologyTest {
         for(var views:compiled.pipeViews().values()){assertEquals(1,views.size());assertEquals(pipe.id(),views.getFirst().pipeId());}
         assertEquals(PipeResistance.evaluate(new PipeResistance.Geometry(10,.05,.000045,0),.1,1000,.001).pressureDrop(),pipe.loss(.1,1000,.001).pressureDrop(),1e-12);
     }
+    @Test void observationalTapsSelectTheCorrectHalfBetweenOpposingActuators(){
+        var devices=List.of(device(1,0,0,Kind.RESERVOIR,EAST),device(2,1,0,Kind.PIPE,EAST),device(3,2,0,Kind.COMPRESSOR,EAST),device(4,3,0,Kind.PIPE,EAST),device(5,4,0,Kind.PIPE,EAST),device(6,5,0,Kind.PIPE,EAST),device(7,6,0,Kind.COMPRESSOR,WEST),device(8,7,0,Kind.PIPE,EAST),device(9,8,0,Kind.RESERVOIR,EAST),device(10,0,-1,Kind.PIPE,NORTH),device(11,20,0,Kind.PIPE,EAST));
+        var compiled=PhysicalFluidTopology.compile(devices,Map.of(1L,reservoir(1),9L,reservoir(9)));var graph=compiled.islands().getFirst().graph();
+        for(long id:List.of(4L,5L,6L)){var views=compiled.pipeViews().get(id);assertEquals(2,views.size());var eligible=views.stream().filter(v->Double.isFinite(v.tap())).toList();assertEquals(id==5?2:1,eligible.size());for(var view:eligible){assertTrue(view.tap()>=0&&view.tap()<=1);var pipe=graph.pipes().stream().filter(p->p.id()==view.pipeId()).findFirst().orElseThrow();if(id!=5)assertEquals(id==4?3:7,graph.reservoirs().get(pipe.first()).id());}}
+        assertFalse(compiled.pipeViews().containsKey(10L));assertFalse(compiled.pipeViews().containsKey(11L));
+    }
     /** The mover between two nitrogen tanks is a compressor (decision D2; a liquid-only pump refuses the gas, D1), an actuator
      * that connects along its facing axis like the pump (plan 3.7); test name kept. */
     @Test void pumpControlUsesItsOutletDirectionAndItsSuctionJunctionInEitherOrientation() {

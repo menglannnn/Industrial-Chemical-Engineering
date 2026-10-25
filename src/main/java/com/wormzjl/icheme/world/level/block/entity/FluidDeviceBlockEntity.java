@@ -33,7 +33,7 @@ import java.util.Arrays;
  * changes and when a topology commit applies an edit (the engine's schedule), and the update tag carries it like a
  * vessel cell's shape.
  */
-public final class FluidDeviceBlockEntity extends BlockEntity implements FluidView.Receiver {
+public final class FluidDeviceBlockEntity extends BlockEntity implements com.wormzjl.icheme.runtime.instrument.AccessoryHost, FluidView.Receiver {
     /** Accessed only by the client-thread lifecycle hooks and renderer, including in an integrated server. */
     private static final java.util.Set<FluidDeviceBlockEntity> CLIENT_GLASSES=java.util.Collections.newSetFromMap(new java.util.WeakHashMap<>());
     public static java.util.List<FluidDeviceBlockEntity> clientSightGlasses(){return java.util.List.copyOf(CLIENT_GLASSES);}
@@ -64,6 +64,8 @@ public final class FluidDeviceBlockEntity extends BlockEntity implements FluidVi
     /** Pipes are welded in spools of this many blocks; the block at each spool end carries a flange pair. */
     public static final int SPOOL = 12;
     private long identity;
+    private final com.wormzjl.icheme.runtime.instrument.InstrumentMetadata instruments=new com.wormzjl.icheme.runtime.instrument.InstrumentMetadata();
+    @Override public com.wormzjl.icheme.runtime.instrument.InstrumentMetadata instruments(){return instruments;}
     private FluidView lastView;
     private double bore = .05;
     private final byte[] faces = new byte[6];
@@ -82,11 +84,11 @@ public final class FluidDeviceBlockEntity extends BlockEntity implements FluidVi
             bore=record.device().geometry().diameter();
             computeFaces();
         }
-        identity=id;setChanged();
+        identity=id;com.wormzjl.icheme.runtime.instrument.InstrumentHosts.loaded(this);setChanged();
         if(level instanceof ServerLevel serverLevel){FluidWorldAuthority.find(serverLevel.getServer()).ifPresent(w->w.deviceLoaded(id));level.sendBlockUpdated(worldPosition,getBlockState(),getBlockState(),2);}
     }
     @Override public void onLoad() {
-        super.onLoad();
+        super.onLoad();com.wormzjl.icheme.runtime.instrument.InstrumentHosts.loaded(this);
         if(level!=null&&level.isClientSide()&&FluidDeviceBlock.hasSightGlass(getBlockState())){com.wormzjl.icheme.client.SightGlassDisplays.forget(worldPosition);CLIENT_GLASSES.add(this);}
         if(!(level instanceof ServerLevel serverLevel))return;
         FluidWorldAuthority.find(serverLevel.getServer()).ifPresent(world->{
@@ -160,9 +162,11 @@ public final class FluidDeviceBlockEntity extends BlockEntity implements FluidVi
         }
     }
     @Override public void onChunkUnloaded(){super.onChunkUnloaded();released();}
-    @Override public void setRemoved(){super.setRemoved();released();}
+    @Override public void setRemoved(){super.setRemoved();com.wormzjl.icheme.runtime.instrument.InstrumentHosts.unloaded(this);if(level!=null&&level.isClientSide())com.wormzjl.icheme.client.InstrumentDisplays.forget(worldPosition);released();}
     /** Unloaded or removed: publications stop marking this device. */
     private void released() {
+        com.wormzjl.icheme.runtime.instrument.InstrumentHosts.unloaded(this);
+        if(level!=null&&level.isClientSide())com.wormzjl.icheme.client.InstrumentDisplays.forget(worldPosition);
         if(level!=null&&level.isClientSide()){CLIENT_GLASSES.remove(this);com.wormzjl.icheme.client.SightGlassDisplays.forget(worldPosition);}
         if(identity!=0&&level instanceof ServerLevel serverLevel&&serverLevel.getServer().isSameThread())FluidWorldAuthority.find(serverLevel.getServer()).ifPresent(world->world.deviceUnloaded(identity));
     }
@@ -179,17 +183,17 @@ public final class FluidDeviceBlockEntity extends BlockEntity implements FluidVi
         if(player.containerMenu instanceof FluidDeviceMenu menu&&menu.identity()==identity)
             FluidWorldAuthority.find(player.server).ifPresent(world->world.replayOnOpen(menu));
     }
-    @Override protected void saveAdditional(CompoundTag tag,HolderLookup.Provider registries){super.saveAdditional(tag,registries);tag.putLong("FluidIdentity",identity);}
+    @Override protected void saveAdditional(CompoundTag tag,HolderLookup.Provider registries){super.saveAdditional(tag,registries);instruments.write(tag);tag.putLong("FluidIdentity",identity);}
     @Override protected void loadAdditional(CompoundTag tag,HolderLookup.Provider registries){
-        super.loadAdditional(tag,registries);identity=tag.getLong("FluidIdentity");lastView=null;
+        super.loadAdditional(tag,registries);instruments.read(tag);identity=tag.getLong("FluidIdentity");lastView=null;
         if(tag.contains("Bore")){double read=tag.getDouble("Bore");if(read>0&&read<=1)bore=read;}
         if(tag.contains("Faces")){var read=tag.getByteArray("Faces");if(read.length==6)for(int i=0;i<6;i++){int v=read[i]&255;faces[i]=(byte)(Math.min(64,v&127)|v&FLANGED);}}
     }
-    @Override public CompoundTag getUpdateTag(HolderLookup.Provider registries){var tag=new CompoundTag();tag.putLong("FluidIdentity",identity);tag.putDouble("Bore",bore);tag.putByteArray("Faces",faces.clone());return tag;}
+    @Override public CompoundTag getUpdateTag(HolderLookup.Provider registries){var tag=new CompoundTag();instruments.write(tag);tag.putLong("FluidIdentity",identity);tag.putDouble("Bore",bore);tag.putByteArray("Faces",faces.clone());return tag;}
     @Override public ClientboundBlockEntityDataPacket getUpdatePacket(){return ClientboundBlockEntityDataPacket.create(this);}
     /** Drawn geometry that arrives after the block was meshed: refresh the model data and rebuild the section. */
     @Override public void onDataPacket(net.minecraft.network.Connection connection,ClientboundBlockEntityDataPacket packet,HolderLookup.Provider registries) {
-        super.onDataPacket(connection,packet,registries);requestModelDataUpdate();
+        super.onDataPacket(connection,packet,registries);com.wormzjl.icheme.runtime.instrument.InstrumentHosts.loaded(this);requestModelDataUpdate();
         if(level!=null)level.sendBlockUpdated(worldPosition,getBlockState(),getBlockState(),0);
     }
     @Override public ModelData getModelData() {
