@@ -440,7 +440,7 @@ public final class FluidWorldAuthority implements AutoCloseable {
     private void forgetSightGlass(long id){sightGlassWatchers.remove(id);refreshObserved(id);publishedSightGlasses.remove(id);}
     private void publishSightGlass(WorldTopologyLedger.Registration record,net.minecraft.server.level.ServerLevel level,BlockPos pos,FluidView view) {
         long id=record.device().id();
-        var sample=SightGlassDisplay.of(view,componentNames,model.molecularWeights(),catalog,com.wormzjl.icheme.science.fluid.thermo.FluidMaterialCatalog.networkPackage(catalog));
+        var sample=SightGlassDisplay.of(view,componentNames,model.molecularWeights(),catalog,com.wormzjl.icheme.science.fluid.thermo.FluidMaterialCatalog.networkPackage(catalog),registry.pipeViews(id));
         publishedSightGlasses.put(id,sample);
         var target=new com.wormzjl.icheme.network.SightGlassNetwork.Target(pos,id);
         for(var uuid:sightGlassWatchers.watchers(id)) {

@@ -32,6 +32,53 @@ class PhysicalFluidTopologyTest {
         for(long id:List.of(4L,5L,6L)){var views=compiled.pipeViews().get(id);assertEquals(2,views.size());var eligible=views.stream().filter(v->Double.isFinite(v.tap())).toList();assertEquals(id==5?2:1,eligible.size());for(var view:eligible){assertTrue(view.tap()>=0&&view.tap()<=1);var pipe=graph.pipes().stream().filter(p->p.id()==view.pipeId()).findFirst().orElseThrow();if(id!=5)assertEquals(id==4?3:7,graph.reservoirs().get(pipe.first()).id());}}
         assertFalse(compiled.pipeViews().containsKey(10L));assertFalse(compiled.pipeViews().containsKey(11L));
     }
+    @Test void pipeViewsDescribeGraphForwardDirectionOnEveryWorldAxisIndependentOfIdentityOrder(){
+        for(var direction:PhysicalFluidTopology.Direction.values())for(boolean reversed:new boolean[]{false,true}){
+            long source=reversed?2:1,sink=reversed?1:2;
+            var devices=List.of(at(source,0,0,0,Kind.GENERATOR,NORTH),at(100,direction.x,direction.y,direction.z,Kind.PIPE,NORTH),
+                    at(sink,2*direction.x,2*direction.y,2*direction.z,Kind.VOID,NORTH));
+            var compiled=PhysicalFluidTopology.compile(devices,Map.of(source,nitrogenAt(source,0,PassiveNetwork.NodeKind.GENERATOR,150000),
+                    sink,nitrogenAt(sink,2*direction.y,PassiveNetwork.NodeKind.VOID,101325)));
+            var mapping=compiled.pipeViews().get(100L).getFirst();
+            assertEquals(reversed?PhysicalFluidTopology.opposite(direction):direction,mapping.flowDirection(),direction+" reversed="+reversed);
+            assertEquals(1,compiled.pipeViews().get(100L).size());
+        }
+        assertNull(new PhysicalFluidTopology.View(0,9,true).flowDirection(),"synthetic views do not invent world geometry");
+    }
+    @Test void endDrivenRunsSwapTheirLocalFlowDirectionWithTheGraph(){
+        var devices=List.of(at(1,0,0,0,Kind.RESERVOIR,NORTH),at(3,1,0,0,Kind.PIPE,NORTH),
+                at(5,2,0,0,Kind.COMPRESSOR,WEST),at(4,3,0,0,Kind.PIPE,NORTH),at(2,4,0,0,Kind.RESERVOIR,NORTH));
+        var compiled=PhysicalFluidTopology.compile(devices,Map.of(1L,reservoir(1),2L,reservoir(2)));
+        var mapping=compiled.pipeViews().get(3L).getFirst();
+        assertFalse(mapping.forward(),"the compressor discharge reverses the reduction's traversal");
+        assertEquals(WEST,mapping.flowDirection());
+        var graph=compiled.islands().getFirst().graph();var pipe=pipeOf(compiled,graph,3);
+        assertEquals(5,graph.reservoirs().get(pipe.first()).id());assertEquals(1,graph.reservoirs().get(pipe.second()).id());
+    }
+    @Test void localFlowDirectionFollowsTheSectionRatherThanTheEndpointsOfABentRun(){
+        var devices=List.of(at(1,0,0,0,Kind.GENERATOR,NORTH),at(100,1,0,0,Kind.PIPE,NORTH),at(101,2,0,0,Kind.PIPE,NORTH),
+                at(102,2,0,1,Kind.PIPE,NORTH),at(103,2,0,2,Kind.PIPE,NORTH),at(2,2,0,3,Kind.VOID,NORTH));
+        var compiled=PhysicalFluidTopology.compile(devices,Map.of(1L,nitrogenAt(1,0,PassiveNetwork.NodeKind.GENERATOR,150000),
+                2L,nitrogenAt(2,0,PassiveNetwork.NodeKind.VOID,101325)));
+        assertEquals(1,compiled.islands().getFirst().graph().pipes().size());
+        assertEquals(EAST,compiled.pipeViews().get(100L).getFirst().flowDirection());
+        assertEquals(SOUTH,compiled.pipeViews().get(102L).getFirst().flowDirection());
+        assertEquals(SOUTH,compiled.pipeViews().get(103L).getFirst().flowDirection());
+        assertNull(compiled.pipeViews().get(101L).getFirst().flowDirection(),"the corner has no single local tangent and cannot carry a sight glass");
+        assertEquals(1,compiled.pipeViews().get(101L).size(),"direction metadata does not duplicate inspection mappings");
+    }
+    @Test void aConstructedMoversDischargeUsesItsNozzleContactInsteadOfItsRemoteSuctionDatum(){
+        var suction=new PhysicalFluidTopology.Position("minecraft:overworld",10,0,10);
+        var discharge=new PhysicalFluidTopology.Position("minecraft:overworld",0,2,0);
+        var ports=List.of(new PhysicalFluidTopology.Port(suction,WEST,PassiveNetwork.PhasePort.BULK,PhysicalFluidTopology.ConnectionRole.SUCTION),
+                new PhysicalFluidTopology.Port(discharge,EAST,PassiveNetwork.PhasePort.BULK,PhysicalFluidTopology.ConnectionRole.DISCHARGE));
+        var mover=new PhysicalFluidTopology.Device(10,suction,Kind.COMPRESSOR,NORTH,new PipeResistance.Geometry(1,.05,.000045,0),new FlowControl.Compressor(.05,3),ports);
+        var devices=List.of(at(1,8,0,10,Kind.GENERATOR,NORTH),at(20,9,0,10,Kind.PIPE,NORTH),mover,
+                at(30,1,2,0,Kind.PIPE,NORTH),at(2,2,2,0,Kind.VOID,NORTH));
+        var compiled=PhysicalFluidTopology.compile(devices,Map.of(1L,nitrogenAt(1,0,PassiveNetwork.NodeKind.GENERATOR,150000),
+                2L,nitrogenAt(2,2,PassiveNetwork.NodeKind.VOID,101325)));
+        assertEquals(EAST,compiled.pipeViews().get(30L).getFirst().flowDirection(),"discharge is locally east despite its westward and lower binding datum");
+    }
     /** The mover between two nitrogen tanks is a compressor (decision D2; a liquid-only pump refuses the gas, D1), an actuator
      * that connects along its facing axis like the pump (plan 3.7); test name kept. */
     @Test void pumpControlUsesItsOutletDirectionAndItsSuctionJunctionInEitherOrientation() {

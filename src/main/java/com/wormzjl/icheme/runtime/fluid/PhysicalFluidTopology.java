@@ -157,7 +157,11 @@ public final class PhysicalFluidTopology {
             return face==Direction.UP?PassiveNetwork.PhasePort.VAPOR:face==Direction.DOWN?PassiveNetwork.PhasePort.LIQUID:PassiveNetwork.PhasePort.BULK;
         }
     }
-    public record View(int islandIndex,long pipeId,boolean forward,double tap) { public View(int islandIndex,long pipeId,boolean forward){this(islandIndex,pipeId,forward,.5);} }
+    /** The local world direction of graph-forward transport; null for synthetic or non-straight mappings. */
+    public record View(int islandIndex,long pipeId,boolean forward,double tap,Direction flowDirection) {
+        public View(int islandIndex,long pipeId,boolean forward){this(islandIndex,pipeId,forward,.5,null);}
+        public View(int islandIndex,long pipeId,boolean forward,double tap){this(islandIndex,pipeId,forward,tap,null);}
+    }
     public record Island(Set<Long> physicalIds,PassiveNetwork graph,Optional<String> error) {
         public Island {physicalIds=Set.copyOf(physicalIds);Objects.requireNonNull(graph);Objects.requireNonNull(error);}
     }
@@ -194,12 +198,14 @@ public final class PhysicalFluidTopology {
         // The face of every link with a tank (RESERVOIR) end, as the direction from the tank to its neighbour, and the port
         // a pipe end at that tank compiles to (Device.portAt). Generators and voids stay BULK.
         var tankFaces=new HashMap<Long,Direction>();var tankPorts=new HashMap<Long,PassiveNetwork.PhasePort>();var outletLinks=new HashSet<Long>();
+        var linkDirections=new HashMap<Long,Direction>();
         for(var d:physical.values())for(var contact:d.contacts()) {
             var direction=contact.direction();var next=contact.cell().offset(direction);
             var other=positions.get(next);
             if(other==null||other.id<=d.id||!d.joins(other,contact.cell(),direction))continue;
             if(d.boundary()||other.boundary()) {
                 var owner=d.boundary()?other:d;links.add(new TopologyCompiler.Link(linkId,d.id,other.id,scaled(owner.geometry,.5)));
+                linkDirections.put(linkId,direction);
                 if(d.kind==TopologyCompiler.Kind.RESERVOIR){tankFaces.put(linkId,direction);tankPorts.put(linkId,d.portAt(contact.cell(),direction));}
                 else if(other.kind==TopologyCompiler.Kind.RESERVOIR){tankFaces.put(linkId,opposite(direction));tankPorts.put(linkId,other.portAt(next,opposite(direction)));}
                 if(d.outletAt(contact.cell(),direction)||other.outletAt(next,opposite(direction)))outletLinks.add(linkId);
@@ -207,8 +213,8 @@ public final class PhysicalFluidTopology {
             } else {
                 long middle=virtual--;var a=points.get(d.id);var b=points.get(other.id);var p=new Point((a.x+b.x)/2,(a.y+b.y)/2,(a.z+b.z)/2);
                 points.put(middle,p);nodes.add(new TopologyCompiler.Node(middle,TopologyCompiler.Kind.PIPE,p.y));
-                links.add(new TopologyCompiler.Link(linkId,d.id,middle,half(d,other)));if(d.outletAt(contact.cell(),direction))outletLinks.add(linkId);linkOwner.put(linkId++,d.id);
-                links.add(new TopologyCompiler.Link(linkId,middle,other.id,half(other,d)));if(other.outletAt(next,opposite(direction)))outletLinks.add(linkId);linkOwner.put(linkId++,other.id);
+                links.add(new TopologyCompiler.Link(linkId,d.id,middle,half(d,other)));linkDirections.put(linkId,direction);if(d.outletAt(contact.cell(),direction))outletLinks.add(linkId);linkOwner.put(linkId++,d.id);
+                links.add(new TopologyCompiler.Link(linkId,middle,other.id,half(other,d)));linkDirections.put(linkId,direction);if(other.outletAt(next,opposite(direction)))outletLinks.add(linkId);linkOwner.put(linkId++,other.id);
             }
         }
         var checks=new HashSet<Long>();for(var d:physical.values())if(d.cutoff==Cutoff.CHECK)checks.add(d.id);
@@ -263,15 +269,15 @@ public final class PhysicalFluidTopology {
                 if(fromStart&&fromEnd) {
                     int middle=reservoirs.size();reservoirs.add(new PassiveNetwork.Reservoir(virtual--,.5*(reservoirs.get(a).elevation()+reservoirs.get(b).elevation()),seed,PassiveNetwork.NodeKind.JUNCTION));
                     var halves=sections.stream().map(g->scaled(g,.5)).toList();
-                    pipes.add(new PassiveNetwork.Pipe(pipeId,a,middle,halves,control(start,compiled.invalidPumpCycles())).withPorts(startPort,PassiveNetwork.PhasePort.BULK));mapViews(views,run,linkOwner,physical,islandIndex,pipeId,true,true);
+                    pipes.add(new PassiveNetwork.Pipe(pipeId,a,middle,halves,control(start,compiled.invalidPumpCycles())).withPorts(startPort,PassiveNetwork.PhasePort.BULK));mapViews(views,run,linkOwner,linkDirections,physical,islandIndex,pipeId,true,true);
                     pipeId=runIdentity(run,linkOwner,1);if(!pipeIdentities.add(pipeId))throw new IllegalStateException("Compiled pipe identity collision");
-                    pipes.add(new PassiveNetwork.Pipe(pipeId,b,middle,halves,control(end,compiled.invalidPumpCycles())).withPorts(endPort,PassiveNetwork.PhasePort.BULK));mapViews(views,run,linkOwner,physical,islandIndex,pipeId,false,true);
+                    pipes.add(new PassiveNetwork.Pipe(pipeId,b,middle,halves,control(end,compiled.invalidPumpCycles())).withPorts(endPort,PassiveNetwork.PhasePort.BULK));mapViews(views,run,linkOwner,linkDirections,physical,islandIndex,pipeId,false,true);
                 } else {
                     // The ports follow the ends through the swap: a run driven from its end is stated from b to a.
                     pipes.add(new PassiveNetwork.Pipe(pipeId,fromEnd?b:a,fromEnd?a:b,sections,fromStart?control(start,compiled.invalidPumpCycles()):fromEnd?control(end,compiled.invalidPumpCycles()):new FlowControl.Passive())
                             .withPorts(fromEnd?endPort:startPort,fromEnd?startPort:endPort)
                             .withForbiddenDirections(checkRestrictions(start,end,startLink,endLink,points,fromEnd)));
-                    mapViews(views,run,linkOwner,physical,islandIndex,pipeId,!fromEnd);
+                    mapViews(views,run,linkOwner,linkDirections,physical,islandIndex,pipeId,!fromEnd);
                     // A tank is never an actuator, so only a run with at most one driven end has a tank end.
                     if(start!=null&&start.kind==TopologyCompiler.Kind.RESERVOIR)faces.computeIfAbsent(start.id,k->new HashMap<>()).put(pipeId,tankFaces.get(startLink.id()));
                     if(end!=null&&end.kind==TopologyCompiler.Kind.RESERVOIR)faces.computeIfAbsent(end.id,k->new HashMap<>()).put(pipeId,tankFaces.get(endLink.id()));
@@ -347,13 +353,19 @@ public final class PhysicalFluidTopology {
         return scaled(g,.5);
     }
     private static PipeResistance.Geometry scaled(PipeResistance.Geometry g,double fraction){return new PipeResistance.Geometry(g.length()*fraction,g.diameter(),g.roughness(),g.minorLoss()*fraction);}
-    private static void mapViews(Map<Long,List<View>> views,TopologyCompiler.Run run,Map<Long,Long> owners,Map<Long,Device> physical,int island,long pipe,boolean forward) {mapViews(views,run,owners,physical,island,pipe,forward,false);}
-    private static void mapViews(Map<Long,List<View>> views,TopologyCompiler.Run run,Map<Long,Long> owners,Map<Long,Device> physical,int island,long pipe,boolean forward,boolean split) {
+    private static void mapViews(Map<Long,List<View>> views,TopologyCompiler.Run run,Map<Long,Long> owners,Map<Long,Direction> linkDirections,Map<Long,Device> physical,int island,long pipe,boolean forward) {mapViews(views,run,owners,linkDirections,physical,island,pipe,forward,false);}
+    private static void mapViews(Map<Long,List<View>> views,TopologyCompiler.Run run,Map<Long,Long> owners,Map<Long,Direction> linkDirections,Map<Long,Device> physical,int island,long pipe,boolean forward,boolean split) {
         double total=run.segments().stream().mapToDouble(s->s.geometry().length()).sum(),cursor=0;var spans=new LinkedHashMap<Long,double[]>();
-        for(var segment:run.segments()){long id=owners.get(segment.linkId());double start=cursor;cursor+=segment.geometry().length();var span=spans.get(id);if(span==null)spans.put(id,new double[]{start,cursor});else span[1]=cursor;}
+        var directions=new HashMap<Long,Direction>();
+        for(var segment:run.segments()){
+            long id=owners.get(segment.linkId());double start=cursor;cursor+=segment.geometry().length();var span=spans.get(id);if(span==null)spans.put(id,new double[]{start,cursor});else span[1]=cursor;
+            var direction=linkDirections.get(segment.linkId());if(segment.forward()!=forward)direction=opposite(direction);
+            // A corner has two local tangents and cannot carry a sight glass. Keep one mapping without inventing a direction.
+            if(!directions.containsKey(id))directions.put(id,direction);else if(directions.get(id)!=direction)directions.put(id,null);
+        }
         for(var segment:run.segments()) {
             long id=owners.get(segment.linkId());if(physical.get(id).kind!=TopologyCompiler.Kind.PIPE)continue;
-            var span=spans.get(id);double tap=(span[0]+span[1])/(2*total);if(!forward)tap=1-tap;if(split)tap=tap<=.5?tap*2:Double.NaN;var entry=new View(island,pipe,forward,tap);var list=views.computeIfAbsent(id,ignored->new ArrayList<>());if(!list.contains(entry))list.add(entry);
+            var span=spans.get(id);double tap=(span[0]+span[1])/(2*total);if(!forward)tap=1-tap;if(split)tap=tap<=.5?tap*2:Double.NaN;var entry=new View(island,pipe,forward,tap,directions.get(id));var list=views.computeIfAbsent(id,ignored->new ArrayList<>());if(!list.contains(entry))list.add(entry);
         }
     }
 }

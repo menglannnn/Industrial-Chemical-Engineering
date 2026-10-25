@@ -6,13 +6,13 @@ import java.util.List;
 /** A display-only reduction of accepted transport. No inventory, equilibrium or optical model is calculated. */
 public final class SightGlassDisplay {
     private SightGlassDisplay(){}
-    public record Sample(int argb,int bubbles) {
-        public static final Sample CLEAR=new Sample(0,0);
-        public Sample{if(bubbles<0||bubbles>255||(argb>>>24==0&&bubbles!=0))throw new IllegalArgumentException("Invalid sight glass display");}
+    public record Sample(int argb,int bubbles,PhysicalFluidTopology.Direction flowDirection) {
+        public static final Sample CLEAR=new Sample(0,0,null);
+        public Sample{if(bubbles<0||bubbles>255||(argb>>>24==0&&(bubbles!=0||flowDirection!=null))||(bubbles>0&&flowDirection==null))throw new IllegalArgumentException("Invalid sight glass display");}
     }
 
     /** Colour and illustrative multiphase motion; speed uses the existing five-online-second window. */
-    public static Sample of(FluidView view,List<String> components,double[] weights,MaterialCatalog catalog,String packageId) {
+    public static Sample of(FluidView view,List<String> components,double[] weights,MaterialCatalog catalog,String packageId,List<PhysicalFluidTopology.View> mappings) {
         var info=view.pipeInfo();
         if(info==null||info.connections().stream().noneMatch(c->c.velocityMetresPerSecond()>0))return Sample.CLEAR;
         var moved=info.contents();var volumes=moved.phaseVolumes();
@@ -20,8 +20,20 @@ public final class SightGlassDisplay {
         var phases=moved.phaseMoles();double[] liquid=new double[components.size()];
         for(int c=0;c<liquid.length;c++)liquid[c]=phases[0][c]+phases[1][c];
         // Bubble density follows gas occupancy, r/(1+r) for gas/liquid ratio r; haze remains independent.
-        int bubbles=bubbleStrength(volumes);
-        return new Sample(turbid(TankDisplay.mix(liquid,components,weights,catalog,packageId),volumes,moved.solids().volume()),bubbles);
+        var direction=flowDirection(info,mappings);
+        int bubbles=direction==null?0:bubbleStrength(volumes);
+        return new Sample(turbid(TankDisplay.mix(liquid,components,weights,catalog,packageId),volumes,moved.solids().volume()),bubbles,direction);
+    }
+    /** Accepted graph direction, resolved at this physical section rather than between distant graph endpoints. */
+    static PhysicalFluidTopology.Direction flowDirection(FluidView.PipeInfo info,List<PhysicalFluidTopology.View> mappings){
+        double speed=0;PhysicalFluidTopology.Direction direction=null;
+        for(var connection:info.connections())if(connection.velocityMetresPerSecond()>speed)
+            for(var mapping:mappings)if(mapping.pipeId()==connection.pipeId()&&Double.isFinite(mapping.tap())&&mapping.flowDirection()!=null){
+                speed=connection.velocityMetresPerSecond();
+                direction=connection.reverse()?PhysicalFluidTopology.opposite(mapping.flowDirection()):mapping.flowDirection();
+                break;
+            }
+        return direction;
     }
     static int bubbleStrength(double[] volumes){
         double liquid=volumes[0]+volumes[1];

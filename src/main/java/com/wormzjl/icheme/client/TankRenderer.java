@@ -161,7 +161,8 @@ public final class TankRenderer {
     /** The sight glass's bands, translucent: free water from the glass's foot, the hydrocarbon liquid over it to the level. */
     @SubscribeEvent
     public static void renderGlass(RenderLevelStageEvent event) {
-        if (event.getStage() != RenderLevelStageEvent.Stage.AFTER_PARTICLES) return;
+        // Draw the contents before the chunk's translucent sleeve writes depth in front of them.
+        if (event.getStage() != RenderLevelStageEvent.Stage.AFTER_BLOCK_ENTITIES) return;
         var mc = Minecraft.getInstance();
         var level = mc.level;
         if (level == null) return;

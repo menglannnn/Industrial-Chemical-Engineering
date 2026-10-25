@@ -8,6 +8,20 @@ import java.util.List;
 public final class SightGlassBubbles {
     private SightGlassBubbles(){}
     public record Bubble(double x,double y,double radius){}
+    /** Unit travel direction in the front window's local plane. The rear window mirrors its horizontal coordinate. */
+    public record Motion(int x,int y){
+        public Motion{if(Math.abs(x)+Math.abs(y)!=1)throw new IllegalArgumentException("Invalid bubble motion");}
+        public static Motion along(SightGlassGeometry.Axis window,SightGlassGeometry.Axis run,boolean positive){
+            java.util.Objects.requireNonNull(window);java.util.Objects.requireNonNull(run);
+            if(window==run)throw new IllegalArgumentException("Flow must cross the window plane");
+            int sign=positive?1:-1;
+            return switch(window){
+                case X->run==SightGlassGeometry.Axis.Y?new Motion(0,sign):new Motion(-sign,0);
+                case Y->run==SightGlassGeometry.Axis.X?new Motion(sign,0):new Motion(0,-sign);
+                case Z->run==SightGlassGeometry.Axis.X?new Motion(sign,0):new Motion(0,sign);
+            };
+        }
+    }
 
     /** Pale translucent rim; the liquid behind its empty centre retains the published colour. */
     public static int colour(int base,int strength){
@@ -17,8 +31,9 @@ public final class SightGlassBubbles {
     }
 
     /** Game ticks animate a stable device seed; all rings remain completely inside the circular window. */
-    public static List<Bubble> at(double ticks,long seed,int strength){
+    public static List<Bubble> at(double ticks,long seed,int strength,Motion motion){
         if(!Double.isFinite(ticks)||strength<0||strength>255)throw new IllegalArgumentException("Invalid bubble display");
+        java.util.Objects.requireNonNull(motion);
         if(strength==0)return List.of();
         var result=new ArrayList<Bubble>();int count=Math.max(1,(8*strength+127)/255);
         for(int i=0;i<count;i++){
@@ -27,7 +42,7 @@ public final class SightGlassBubbles {
             double maximum=.10+.07*second,radius=maximum*DeterministicMath.sin(Math.PI*phase);
             double x=(2*first-1)*.62+.05*DeterministicMath.sin(2*Math.PI*phase+first*6);
             double room=.97-maximum,y=(2*phase-1)*Math.sqrt(room*room-x*x);
-            result.add(new Bubble(x,y,radius));
+            result.add(new Bubble(motion.y()*x+motion.x()*y,-motion.x()*x+motion.y()*y,radius));
         }
         return List.copyOf(result);
     }

@@ -78,7 +78,14 @@ public final class SightGlassRenderer {
                 }
             if(sample.bubbles()>0){
                 double ticks=level.getGameTime()+event.getPartialTick().getGameTimeDeltaPartialTick(false);
-                bubbles(pose,consumer,surface.window(),SightGlassBubbles.at(ticks,entity.fluidIdentity()^pos.asLong(),sample.bubbles()),argb,sample.bubbles(),light,u,v);
+                var direction=sample.flowDirection();
+                var run=switch(direction){case DOWN,UP->SightGlassGeometry.Axis.Y;case NORTH,SOUTH->SightGlassGeometry.Axis.Z;case WEST,EAST->SightGlassGeometry.Axis.X;};
+                // A stale sample can outlive a static pipe/window rotation until the next scheduled publication.
+                if(run!=surface.window().axis()){
+                    boolean positive=switch(direction){case UP,SOUTH,EAST->true;default->false;};
+                    var motion=SightGlassBubbles.Motion.along(surface.window().axis(),run,positive);
+                    bubbles(pose,consumer,surface.window(),SightGlassBubbles.at(ticks,entity.fluidIdentity()^pos.asLong(),sample.bubbles(),motion),argb,sample.bubbles(),light,u,v);
+                }
             }
             pose.popPose();
         }
@@ -95,7 +102,7 @@ public final class SightGlassRenderer {
                 if(bubble.radius()<.0001)continue;
                 for(int i=0;i<RING.length;i++)for(int corner=0;corner<4;corner++){
                     int angle=(corner==0||corner==3)?i:(i+1)%RING.length;double radius=bubble.radius()*(corner<2?1:.72);
-                    consumer.addVertex(pose.last(),(float)(window.radius()*(bubble.x()+RING[angle][0]*radius)),(float)(window.radius()*(bubble.y()+RING[angle][1]*radius)),0)
+                    consumer.addVertex(pose.last(),(float)(window.radius()*(side*bubble.x()+RING[angle][0]*radius)),(float)(window.radius()*(bubble.y()+RING[angle][1]*radius)),0)
                             .setColor(red,green,blue,alpha).setUv(u,v).setOverlay(OverlayTexture.NO_OVERLAY).setLight(light).setNormal(pose.last(),0,0,1);
                 }
             }

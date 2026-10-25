@@ -27,6 +27,7 @@
     "concrete": "icheme:block/equipment_concrete",
     "guard": "icheme:block/equipment_guard",
     "gauge_scale": "minecraft:block/white_concrete",
+    "glass": "icheme:block/gauge_glass",
     "particle": "icheme:block/vessel_shell"
   }
 }
