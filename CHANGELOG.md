@@ -17,7 +17,7 @@ All notable changes to Industrial Chemical Engineering (IChemE, formerly CreateC
 
 ### Changed
 
-- Refined gauge housings, legible scales and pipe tapping connections; immediate accessory attachment/removal, reading-only hover, compact fluid GUI readings and pipe-applied in-line filters with conserved solids recovery. Fluid checkpoint 19 / unit 12; batch `2026-10-25-accessory-refinements` (implementation commit recorded in its review).
+- Refined gauge housings, legible scales and pipe tapping connections; immediate accessory attachment/removal, reading-only hover, compact fluid GUI readings and pipe-applied in-line filters with conserved solids recovery. Fluid checkpoint 19 / unit 12; batch `2026-10-25-accessory-refinements` (implementation `5a6e1ecc`).
 
 ### Added
 
