@@ -233,21 +233,25 @@ final class DelayedCokerDrums {
             cap(u, new double[]{lo, yf, p.zFeed}, 0, -1, p.feedOd);
             cap(u, new double[]{hi, yf, p.zFeed}, 0, 1, p.feedOd);
         }
-        u.pipe(p.feedOd / 2, Material.PIPE, true, new double[]{xf, yf, p.zFeed}, new double[]{xf, yf, p.z0 + .2});
+        u.pipe(p.feedOd / 2, Material.PIPE, true, new double[]{xf, yf, p.zFeed}, new double[]{xf, yf, p.z0 + LINE_END});
         double xw = waterX(p);
-        u.pipe(p.waterOd / 2, Material.PIPE, true, new double[]{p.xp[p.pairs - 1], yf, p.zWater}, new double[]{xw, yf, p.zWater}, new double[]{xw, yf, p.zb - .2});
+        u.pipe(p.waterOd / 2, Material.PIPE, true, new double[]{p.xp[p.pairs - 1], yf, p.zWater}, new double[]{xw, yf, p.zWater}, new double[]{xw, yf, p.zb - LINE_END});
         cap(u, new double[]{p.xp[p.pairs - 1], yf, p.zWater}, 0, 1, p.waterOd);
-        u.pipe(p.steamOd / 2, Material.PIPE, true, new double[]{p.x0 + .2, p.ySteam, p.zSteam}, new double[]{p.xp[p.pairs - 1], p.ySteam, p.zSteam});
+        u.pipe(p.steamOd / 2, Material.PIPE, true, new double[]{p.x0 + LINE_END, p.ySteam, p.zSteam}, new double[]{p.xp[p.pairs - 1], p.ySteam, p.zSteam});
         cap(u, new double[]{p.xp[p.pairs - 1], p.ySteam, p.zSteam}, 0, 1, p.steamOd);
-        u.nozzles.add(ProcessUnit.end(Role.FEED, new double[]{xf, yf, p.z0 + .2}, 2, -1, p.feedOd));
-        u.nozzles.add(ProcessUnit.end(Role.WATER, new double[]{xw, yf, p.zb - .2}, 2, 1, PipeSizes.od(p.waterOd, .1, p.waterOd)));
-        u.nozzles.add(ProcessUnit.end(Role.STEAM, new double[]{p.x0 + .2, p.ySteam, p.zSteam}, 0, -1, PipeSizes.od(p.steamOd, .1, p.steamOd)));
+        u.nozzles.add(ProcessUnit.end(Role.FEED, new double[]{xf, yf, p.z0 + LINE_END}, 2, -1, p.feedOd));
+        u.nozzles.add(ProcessUnit.end(Role.WATER, new double[]{xw, yf, p.zb - LINE_END}, 2, 1, PipeSizes.od(p.waterOd, .1, p.waterOd)));
+        u.nozzles.add(ProcessUnit.end(Role.STEAM, new double[]{p.x0 + LINE_END, p.ySteam, p.zSteam}, 0, -1, PipeSizes.od(p.steamOd, .1, p.steamOd)));
         u.nozzles.add(new Nozzle(Role.SOLIDS_OUTLET, new double[]{p.xd[0], 1.6, zc}, 1, -1, .6, SOLIDS_OD, 0));
     }
 
-    /** The FEED line's x: the cell centre just past the front table column at the unit's middle. */
+    /**
+     * The FEED line's x: the first cell centre past the front table column at the unit's middle where a pipe's largest
+     * neck stands 0.05 m clear of it (owner decision 2026-10-21: a 1 m pipe has a 1 m root; the cell centre 0.3 m past
+     * the column's middle face fell inside it at some sizes, 2026-10-25).
+     */
     static double feedX(DelayedCokerPlan p) {
-        return Math.floor((p.xd[0] + p.xd[p.drums - 1]) / 2 + p.concrete / 2 + .3) + .5;
+        return Math.ceil((p.xd[0] + p.xd[p.drums - 1]) / 2 + p.concrete / 2 + PipeSizes.MAX_OUTSIDE / 2 + .05 - .5) + .5;
     }
 
     /** The WATER line's x: two metres short of drum 0's axis, clear of its valve and of the stair tower behind. */
@@ -263,26 +267,26 @@ final class DelayedCokerDrums {
      */
     static void overheads(ProcessUnit u, DelayedCokerPlan p) {
         double yv = p.yVapour, yr = p.yRelief, last = p.xd[p.drums - 1];
-        double xa = p.x0 + .3, xq = p.x0 + 1.5, xRel = p.x0 + 1.5;
+        double xa = p.x0 + LINE_END, xq = p.x0 + 1.5, xRel = p.x0 + 1.5;
         u.pipe(p.vapourOd / 2, Material.CLADDING, true, new double[]{xa, yv, p.zVapour}, new double[]{last - p.rho + .1, yv, p.zVapour});
         cap(u, new double[]{last - p.rho + .1, yv, p.zVapour}, 0, 1, p.vapourOd);
         double b0 = p.xd[0] - p.rho - .1;
-        u.pipe(p.blowdownOd / 2, Material.PIPE, true, new double[]{b0, yv, p.zBlow}, new double[]{p.x1 - .2, yv, p.zBlow});
+        u.pipe(p.blowdownOd / 2, Material.PIPE, true, new double[]{b0, yv, p.zBlow}, new double[]{p.x1 - LINE_END, yv, p.zBlow});
         cap(u, new double[]{b0, yv, p.zBlow}, 0, -1, p.blowdownOd);
         double r1 = last + p.rho + .1;
-        u.pipe(p.reliefOd / 2, Material.PIPE, true, new double[]{r1, yr, p.zBlow}, new double[]{xRel, yr, p.zBlow}, new double[]{xRel, yr, p.zb - .2});
+        u.pipe(p.reliefOd / 2, Material.PIPE, true, new double[]{r1, yr, p.zBlow}, new double[]{xRel, yr, p.zBlow}, new double[]{xRel, yr, p.zb - LINE_END});
         cap(u, new double[]{r1, yr, p.zBlow}, 0, 1, p.reliefOd);
         double xr = p.x1 + .5;
-        u.pipe(CUT_OD / 2, Material.PIPE, true, new double[]{p.xd[0], yr, p.zCut}, new double[]{xr, yr, p.zCut}, new double[]{xr, 1.5, p.zCut}, new double[]{xr + .25, 1.5, p.zCut});
+        u.pipe(CUT_OD / 2, Material.PIPE, true, new double[]{p.xd[0], yr, p.zCut}, new double[]{xr, yr, p.zCut}, new double[]{xr, 1.5, p.zCut}, new double[]{p.x1 + 1 - LINE_END, 1.5, p.zCut});
         cap(u, new double[]{p.xd[0], yr, p.zCut}, 0, -1, CUT_OD);
         u.nozzles.add(ProcessUnit.end(Role.VAPOUR_OUTLET, new double[]{xa, yv, p.zVapour}, 0, -1, PipeSizes.od(p.vapourOd, .1, p.vapourOd)));
         // The quench's neck rooted under the header's crown where a pipe's largest neck's edge meets it (owner decision
         // 2026-10-21: a 1 m pipe has a 1 m root).
-        double rv = p.vapourOd / 2, big = PipeSizes.MAX_OUTSIDE / 2, qs = Math.sqrt(Math.max(0, rv * rv - big * big)) - .03, qFace = Math.ceil(yv + rv + EquipmentShape.STAND_OUT);
+        double rv = p.vapourOd / 2, big = PipeSizes.MAX_OUTSIDE / 2, qs = Math.sqrt(Math.max(0, rv * rv - big * big)) - .03, qFace = Math.ceil(yv + rv + ProcessUnit.NECK);
         u.nozzles.add(new Nozzle(Role.QUENCH, new double[]{xq, yv + qs, p.zVapour}, 1, 1, qFace - yv - qs, QUENCH_OD, 0));
-        u.nozzles.add(ProcessUnit.end(Role.BLOWDOWN, new double[]{p.x1 - .2, yv, p.zBlow}, 0, 1, PipeSizes.od(p.blowdownOd, .1, p.blowdownOd)));
-        u.nozzles.add(ProcessUnit.end(Role.RELIEF, new double[]{xRel, yr, p.zb - .2}, 2, 1, PipeSizes.od(p.reliefOd, .1, p.reliefOd)));
-        u.nozzles.add(ProcessUnit.end(Role.CUTTING_WATER, new double[]{xr + .25, 1.5, p.zCut}, 0, 1, CUT_OD));
+        u.nozzles.add(ProcessUnit.end(Role.BLOWDOWN, new double[]{p.x1 - LINE_END, yv, p.zBlow}, 0, 1, PipeSizes.od(p.blowdownOd, .1, p.blowdownOd)));
+        u.nozzles.add(ProcessUnit.end(Role.RELIEF, new double[]{xRel, yr, p.zb - LINE_END}, 2, 1, PipeSizes.od(p.reliefOd, .1, p.reliefOd)));
+        u.nozzles.add(ProcessUnit.end(Role.CUTTING_WATER, new double[]{p.x1 + 1 - LINE_END, 1.5, p.zCut}, 0, 1, CUT_OD));
     }
 
     /** A blind end of a line of {@code od} at {@code at}, facing {@code sign} along frame axis {@code axis}. */

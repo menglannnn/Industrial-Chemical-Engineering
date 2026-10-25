@@ -179,8 +179,8 @@ final class SteamTurbineDesign extends UnitDesign {
         }
 
         // Steam into the valve from the side, its pipe block two columns at least from the exhaust's; the exhaust up.
-        double inlet = xv + rb + .08, steamFace = Math.max(Math.ceil(inlet + EquipmentShape.STAND_OUT), a + 1.5);
+        double inlet = xv + rb + .08, steamFace = Math.max(Math.ceil(inlet + ProcessUnit.NECK), a + 1.5);
         u.nozzles.add(new Nozzle(Role.STEAM, new double[]{inlet - .01, yv, zv}, 0, 1, steamFace - inlet + .01, od, 0));
-        u.nozzles.add(new Nozzle(Role.EXHAUST, new double[]{a, face - .01, zE}, 1, 1, Math.ceil(face + EquipmentShape.STAND_OUT) - face + .01, oe, 0));
+        u.nozzles.add(new Nozzle(Role.EXHAUST, new double[]{a, face - .01, zE}, 1, 1, Math.ceil(face + ProcessUnit.NECK) - face + .01, oe, 0));
     }
 }

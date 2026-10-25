@@ -747,7 +747,7 @@ final class FluidizedBedBoilerLayout {
         // 2026-10-21: a 1 m pipe has a 1 m root).
         double edge = PipeSizes.MAX_OUTSIDE / 2 / rd, dip = rd / 2 * (1 - Math.sqrt(Math.max(0, 1 - edge * edge))) + .05;
         u.nozzles.add(new EquipmentShape.Nozzle(Role.BLOWDOWN, new double[]{a + w / 2 + 1 + rd / 2 - dip, yd, zdr}, 0, 1,
-                Math.ceil(a + w / 2 + 1 + rd / 2 - .02 + EquipmentShape.STAND_OUT) - (a + w / 2 + 1 + rd / 2 - dip), .06, 0));
+                Math.ceil(a + w / 2 + 1 + rd / 2 - .02 + ProcessUnit.NECK) - (a + w / 2 + 1 + rd / 2 - dip), .06, 0));
         // The drain from the right lower header down to grade.
         double rh = .15 + .004 * w, xd = a - hx - rh, zd = zF + Math.ceil(s - .4) + .5;
         u.line(.04, Material.PIPE, new double[]{xd, g + rh, zd}, new double[]{xd, .5, zd});

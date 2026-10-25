@@ -85,7 +85,7 @@ final class CycloneDesign extends UnitDesign {
     /** The lowest dust outlet whose solids outlet keeps its pipe block over the ground. */
     @Override
     public int minSupport(double size, int length) {
-        return Math.max(1, (int) Math.ceil(1.04 + EquipmentShape.STAND_OUT + below(size, length)));
+        return Math.max(1, (int) Math.ceil(1.04 + ProcessUnit.NECK + below(size, length)));
     }
 
     @Override
@@ -180,11 +180,11 @@ final class CycloneDesign extends UnitDesign {
     }
 
     /**
-     * The chute that brings an outlet flange at {@code y} down to just over a block face (its nozzle's neck then 0.21 m
-     * long), m; none within 0.02 m.
+     * The chute that brings an outlet flange at {@code y} down to just over a block face (its nozzle's neck then
+     * {@link ProcessUnit#NECK} and 0.06 m long), m; none within 0.02 m.
      */
     static double chute(double y) {
-        double over = y - .18 - Math.floor(y - .18 + 1e-6);
+        double over = y - .03 - ProcessUnit.NECK - Math.floor(y - .03 - ProcessUnit.NECK + 1e-6);
         return over < .02 ? 0 : over;
     }
 

@@ -288,30 +288,67 @@ class ProcessUnitTest {
     }
 
     /**
-     * Nozzles whose necks met their unit at their largest before the roots followed the pipe (the room gate's baseline at
-     * 4b842f30, batch 2026-10-21-floating-roof-tanks), by kind and role: kept at their sizes, open items for the owner.
+     * A neck at a pipe's largest that touches its own unit, accepted (owner decisions 2026-10-21, "sometimes some overlap is
+     * fine", and 2026-10-25: pipes at most 0.8 m; columns are left alone): its kind and role, on these diameters.
      */
-    private static final Set<String> MET_BEFORE = Set.of("CONDENSING_TURBINE COOLANT_INLET", "EBULLATED_BED_REACTOR FEED",
-            "EBULLATED_BED_REACTOR HYDROGEN", "GRATE_BOILER BLOWDOWN", "GRATE_BOILER FEEDWATER", "KETTLE TUBE_INLET", "KETTLE TUBE_OUTLET",
-            "TRICKLE_BED_REACTOR FEED", "TRICKLE_BED_REACTOR HYDROGEN", "VERTICAL_HEATER FUEL");
+    private record Touch(Kind kind, Role role, List<Double> diameters) {
+        /** The listed diameter that is this shape's, for a nozzle of {@code role}; NaN if this touch is not its. */
+        double at(EquipmentShape shape, Role role) {
+            if (shape.kind() == kind && role == this.role)
+                for (double d : diameters) if (Math.abs(d - shape.diameter()) < 1e-9) return d;
+            return Double.NaN;
+        }
+    }
+
+    /**
+     * The accepted touches (batch 2026-10-21-floating-roof-tanks, 2026-10-25; they replace the room gate's baseline at
+     * 4b842f30), each with what the neck touches and how deep; every other neck stands clear.
+     */
+    private static final List<Touch> TOUCHES = List.of(
+            // Shell 0.75 m: hub 0.02 m clear of the 1.05 r rod, its base on the channel's girth flanges; 1.75 m: 0.01 m into the rod.
+            new Touch(Kind.EXCHANGER, Role.TUBE_OUTLET, List.of(.75, 1.75)),
+            // Shell 0.75 m: hub 0.02 m clear of the 1.05 r rod, its base on the shell's girth flange; 1.75 m: 0.01 m into the rod.
+            new Touch(Kind.EXCHANGER, Role.SHELL_INLET, List.of(.75, 1.75)),
+            // Channel 0.75 m: the hub's base on its girth flanges (1.12 rb rod); 1 m: 0.02 m into them.
+            new Touch(Kind.KETTLE, Role.TUBE_OUTLET, List.of(.75, 1.)),
+            // The smallest heater's front legs stand 0.68 m apart: the neck 0.08 m into each one's casing and footing (owner item).
+            new Touch(Kind.VERTICAL_HEATER, Role.FUEL, List.of(2.5)),
+            // Columns left alone: a 3 m column's top outlet stands 0.21 m, its hub's base 0.03 m into the head.
+            new Touch(Kind.COLUMN, Role.VAPOUR_OUTLET, List.of(3.)),
+            // Columns left alone: on a 0.5 m column the neck is the wider, its hub's base 0.06 m into the cladding.
+            new Touch(Kind.COLUMN, Role.REFLUX, List.of(.5)),
+            // Columns left alone: on a 0.5 m column the neck is the wider, its hub's base 0.06 m into the cladding.
+            new Touch(Kind.COLUMN, Role.FEED, List.of(.5)),
+            // Columns left alone: on a 0.5 m column the neck is the wider, its hub's base 0.06 m into the cladding.
+            new Touch(Kind.COLUMN, Role.PUMPAROUND_DRAW, List.of(.5)),
+            // Columns left alone: on a 0.5 m column the neck is the wider, its hub's base 0.06 m into the cladding.
+            new Touch(Kind.COLUMN, Role.RETURN, List.of(.5)),
+            // Columns left alone: on a 0.5 m column the neck is the wider, its hub's base 0.06 m into the cladding.
+            new Touch(Kind.COLUMN, Role.VAPOUR_RETURN, List.of(.5)));
 
     /**
      * Owner decision 2026-10-21 (a 1 m pipe has a 1 m root; other components give way): every nozzle's neck at a pipe's
      * largest stands clear of the rest of its shape beyond {@link NozzleRoom#SURFACE} from where it leaves the vessel, on
-     * every gated size, drums, columns and storage too.
+     * every gated size, drums, columns and storage too, but the {@link #TOUCHES}; each of those still touches (none stale).
      */
     @Test
     void everyNozzleNeckAtItsLargestStandsClear() {
         var shapes = new ArrayList<>(everySize());
         shapes.addAll(ShapeRasterizerTest.shapes());
         var failures = new ArrayList<String>();
+        var met = new HashSet<String>();
         for (var shape : shapes)
             for (int k = 0; k < shape.nozzles().size(); k++) {
                 var nozzle = shape.nozzles().get(k);
-                if (!MET_BEFORE.contains(shape.kind() + " " + nozzle.role()) && !NozzleRoom.clear(shape, k, PipeSizes.MAX_OUTSIDE))
-                    failures.add(shape + " " + nozzle.role());
+                if (NozzleRoom.clear(shape, k, PipeSizes.MAX_OUTSIDE)) continue;
+                var at = TOUCHES.stream().mapToDouble(t -> t.at(shape, nozzle.role())).filter(d -> !Double.isNaN(d)).findFirst();
+                if (at.isPresent()) met.add(shape.kind() + " " + nozzle.role() + " " + at.getAsDouble());
+                else failures.add(shape + " " + nozzle.role());
             }
         assertEquals(List.of(), failures);
+        var accepted = new HashSet<String>();
+        for (var t : TOUCHES) for (double d : t.diameters()) accepted.add(t.kind() + " " + t.role() + " " + d);
+        assertEquals(accepted, met, "accepted touches that no longer touch");
     }
 
     /**

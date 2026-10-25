@@ -253,10 +253,12 @@ final class EbullatedBedReactorDesign extends UnitDesign {
         u.solids.add(Solid.rod(axis, 1, yLow, yC + .15, ring, 0));
 
         // ---- The pump's frame: two beams under the motor's flange on four posts, ties between them, base plates.
-        // Its posts on the feed's side stand beyond the feed's line at a pipe's largest where the skirt has room for them
-        // (owner decision 2026-10-21: a 1 m pipe has a 1 m root, other components give way).
-        double post = .2, beam = .25, yTie = (PEDESTAL + yLow - beam) / 2, wide = offF + PipeSizes.MAX_OUTSIDE / 2 + post / 2 + .05;
-        double qL = q1 + post / 2 + .05 > offF - PipeSizes.MAX_OUTSIDE / 2 && Math.sqrt(wide * wide + q1 * q1) + post <= skirt - thick - .05 ? wide : q1;
+        // Its posts on the feed's side stand beyond the feed's line at a pipe's largest where the skirt has room for them,
+        // else inside it, a pipe's largest neck and 0.05 m clear of it (owner decision 2026-10-21: a 1 m pipe has a 1 m root,
+        // other components give way; at q1 the posts took 0.02 m of the neck, D 3.5 m and under, 2026-10-25).
+        double post = .2, beam = .25, yTie = (PEDESTAL + yLow - beam) / 2, wide = offF + PipeSizes.MAX_OUTSIDE / 2 + post / 2 + .05,
+                inside = offF - PipeSizes.MAX_OUTSIDE / 2 - post / 2 - .05;
+        double qL = q1 <= inside ? q1 : Math.sqrt(wide * wide + q1 * q1) + post <= skirt - thick - .05 ? wide : inside;
         for (int sz = -1; sz <= 1; sz += 2) {
             double z = a + sz * q1;
             u.box(new double[]{a - qL - post / 2, yLow - beam, z - .1}, new double[]{a + q1 + post / 2, yLow, z + .1}, Material.STEELWORK, true);

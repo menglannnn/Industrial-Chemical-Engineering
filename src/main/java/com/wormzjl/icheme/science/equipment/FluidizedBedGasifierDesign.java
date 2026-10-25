@@ -70,11 +70,12 @@ final class FluidizedBedGasifierDesign extends UnitDesign {
 
     /**
      * The lowest bottom tangent line: under the 2:1 head's apex the outlet's neck (0.4 m), the ash screw, its chute (0.3 m)
-     * and the lock's top valve (0.5 m), the ash lock, its bottom valve (0.5 m) and outlet (0.3 m), its flange face 0.15 m out and the pipe block under it.
+     * and the lock's top valve (0.5 m), the ash lock, its bottom valve (0.5 m) and outlet (0.3 m), its flange face
+     * {@link ProcessUnit#NECK} out (a pipe's largest root, owner decision 2026-10-21) and the pipe block under it.
      */
     @Override
     public int minSupport(double size, int length) {
-        double under = shell(size) / 4 + .4 + ashScrew(size) + .3 + .5 + 1.6 * ashLock(size) + .5 + .3 + 1.15;
+        double under = shell(size) / 4 + .4 + ashScrew(size) + .3 + .5 + 1.6 * ashLock(size) + .5 + .3 + 1 + ProcessUnit.NECK;
         return (int) Math.ceil(under - 1e-9);
     }
 

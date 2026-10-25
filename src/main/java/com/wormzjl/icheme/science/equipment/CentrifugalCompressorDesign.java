@@ -295,7 +295,7 @@ final class CentrifugalCompressorDesign extends UnitDesign {
         int nd = ProcessUnit.sides(odD);
         u.mesh.prism(Frame.of(new double[]{xv, 0, zv}, 1, 1), rd, yd + bend, y0, nd, Material.PIPE);
         u.mesh.torus(new Frame(new double[]{xv - bend, yd + bend, zv}, new double[]{0, 0, 1}, new double[]{1, 0, 0}), bend, rd, -Math.PI / 2, 0, 6, nd, Material.PIPE);
-        double xr = xv - bend - .1, faceD = Math.min(Math.floor(xr - jog - 1.1 * rd - .03 - EquipmentShape.STAND_OUT), ax - 1.5), xn = faceD + .03 + EquipmentShape.STAND_OUT;
+        double xr = xv - bend - .1, faceD = Math.min(Math.floor(xr - jog - 1.1 * rd - .03 - ProcessUnit.NECK), ax - 1.5), xn = faceD + .03 + ProcessUnit.NECK;
         u.line(rd, Material.PIPE, new double[]{xv - bend, yd, zv}, new double[]{xr, yd, zv}, new double[]{xr - jog, yd, zd}, new double[]{xn + .01, yd, zd});
         u.solids.add(Solid.rod(new double[]{xv, 0, zv}, 1, yd + bend, y0, rd, 0));
         u.solids.add(ProcessUnit.span(new double[]{xn, yd - rd, Math.min(zv, zd) - rd}, new double[]{xv + rd, yd + bend, Math.max(zv, zd) + rd}));
@@ -374,7 +374,7 @@ final class CentrifugalCompressorDesign extends UnitDesign {
         double odW = .06 + .08 * k, rw = .4 * odW;
         for (double zj : new double[]{zl0 - .12 * odC, zl1 + .12 * odC})
             u.line(rw, Material.PIPE, new double[]{xcc, yc0 + .8 * rC, zj}, new double[]{xcc, yc1 - .8 * rC, zj});
-        double tip0 = zl0 - odC / 4, face0 = Math.floor(tip0 - EquipmentShape.STAND_OUT), tip1 = zl1 + odC / 4, face1 = Math.ceil(tip1 + EquipmentShape.STAND_OUT);
+        double tip0 = zl0 - odC / 4, face0 = Math.floor(tip0 - ProcessUnit.NECK), tip1 = zl1 + odC / 4, face1 = Math.ceil(tip1 + ProcessUnit.NECK);
         u.nozzles.add(new Nozzle(Role.COOLANT_INLET, new double[]{xcc, yc0, zl0 - .02}, 2, -1, zl0 - .02 - face0, odW, 0));
         u.nozzles.add(new Nozzle(Role.COOLANT_OUTLET, new double[]{xcc, yc0, zl1 + .02}, 2, 1, face1 - zl1 - .02, odW, 0));
         // The oil supply and return lines rise into the slab's left edge between its last two columns.

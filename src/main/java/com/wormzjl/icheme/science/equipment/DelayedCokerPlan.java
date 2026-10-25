@@ -49,6 +49,12 @@ final class DelayedCokerPlan {
     static final double BED = .85, FILLED = .75, YIELD = .3, FILL_HOURS = 16;
     /** Fixed line sizes, m: quench oil into the overhead header, the cutting water riser [survey: 0.15 m], the coke outlet [Q5]. */
     static final double QUENCH_OD = .06, CUT_OD = .15, SOLIDS_OD = PipeSizes.MAX_OUTSIDE;
+    /**
+     * How far inside the structure's faces the lines end, m: a nozzle's neck at a pipe's largest and its 0.03 m inside the
+     * line ({@link ProcessUnit#end}), so their flange faces lie on the structure's faces (owner decision 2026-10-21: a 1 m
+     * pipe has a 1 m root; at 0.2 m its hub sat inside the line's end).
+     */
+    static final double LINE_END = .3;
 
     final double d, r, jacket, straight, cone, head, topFlange;
     final int pairs, drums, support, sides;

@@ -78,7 +78,8 @@ final class CondensingTurbineDesign extends UnitDesign {
 
     /**
      * The least deck: 2.4 Dc + 0.5 m and 3.5 m at least (survey), and the slab, a 0.15 m expansion joint, the condenser
-     * (1.6 Dc) and 1.15 m under it for the cooling-water inlet's flange and its pipe block.
+     * (1.6 Dc) and, under its water box's flanges, the cooling-water inlet's neck ({@link ProcessUnit#NECK}) and its pipe
+     * block.
      */
     @Override
     public int minSupport(double size, int length) {
@@ -90,18 +91,19 @@ final class CondensingTurbineDesign extends UnitDesign {
     /**
      * Where the condenser hangs under a deck {@code h} high: {j, rowOut, inletFace}, its neck's joint, the coolant outlet's
      * row and the coolant inlet's flange face; {@code null} where it does not fit. The joint is 0.15 + 0.15 Dc at least
-     * and leaves 1.15 m under the shell for the inlet's flange and pipe block; the outlet leaves the front cover's upper
+     * and leaves under the water box's flanges the inlet's neck at a pipe's largest ({@link ProcessUnit#NECK}; owner decision
+     * 2026-10-21: a 1 m pipe has a 1 m root) and its pipe block; the outlet leaves the front cover's upper
      * half (from 0.05 r under the axis to its flange 0.2 r inside the rim, under the slab) on a cell row, the highest such
      * row the joint reaches, nearest 0.35 r over the axis; where the two pipes' blocks share a column of cells along z
      * (a cover nearer its block's face than 0.35 m, Dc 1.1 m and less), the inlet's block lies two rows under the outlet's.
      */
     static double[] heights(double d, double h) {
-        double slab = slab(d), r = .8 * d, cw = Math.min(PipeSizes.MAX_OUTSIDE, .4 * d), box = Math.max(.35 * d, cw + .1), cover = .04 * d + .02, under = h - slab;
-        double j0 = .15 + .15 * d, jMax = under - 2 * r - 1.15;
+        double slab = slab(d), r = .8 * d, big = r + .04 * d + .01, cw = Math.min(PipeSizes.MAX_OUTSIDE, .4 * d), box = Math.max(.35 * d, cw + .1), cover = .04 * d + .02, under = h - slab;
+        double j0 = .15 + .15 * d, jMax = under - r - big - 1 - ProcessUnit.NECK;
         for (double c = Math.floor(Math.min(under - .2 * r - cw / 2 - .02 - j0, under - .5) - .5) + .5; c > 0 && under - 1.05 * r - c <= jMax + 1e-9; c--) {
             double lo = Math.max(j0, under - 1.05 * r - c), hi = Math.min(jMax, under - .2 * r - cw / 2 - .02 - c);
             if (lo > hi + 1e-9) continue;
-            double j = Math.max(lo, Math.min(hi, under - .65 * r - c)), face = Math.floor(under - j - 2 * r - EquipmentShape.STAND_OUT + 1e-9);
+            double j = Math.max(lo, Math.min(hi, under - .65 * r - c)), face = Math.floor(under - j - r - big - ProcessUnit.NECK + 1e-9);
             if (box / 2 + cover <= .35) face = Math.min(face, c - 1.5);
             return face >= 1 ? new double[]{j, c, face} : null;
         }
@@ -235,7 +237,7 @@ final class CondensingTurbineDesign extends UnitDesign {
             rising = -plan.end(0);
             foot = ProcessUnit.TowerPlan.foot(zT0, rising, rising > 0 ? plan.from() : plan.to());
             xMin = edge - 2;
-            zMin = Math.min(zT0, Math.floor(zwb - box / 2 - cover - EquipmentShape.STAND_OUT)) - .02;
+            zMin = Math.min(zT0, Math.floor(zwb - box / 2 - cover - ProcessUnit.NECK)) - .02;
         }
 
         /** The cell centre nearest {@code want} in [lo, hi]; with none there, the highest under {@code hi}. */
@@ -310,7 +312,7 @@ final class CondensingTurbineDesign extends UnitDesign {
             m.sphere(new double[]{xv, ys, zv}, 1.05 * rp, 12, Material.PIPE);
 
             // The nozzles.
-            double steamFace = Math.max(Math.ceil(xv + rp + EquipmentShape.STAND_OUT), Math.ceil(a + half + .1));
+            double steamFace = Math.max(Math.ceil(xv + rp + ProcessUnit.NECK), Math.ceil(a + half + .1));
             u.nozzles.add(new Nozzle(Role.STEAM, new double[]{xv, ys, zv}, 0, 1, steamFace - xv, steam, 0));
             int nk = ProcessUnit.sides(2 * r);
             // Necks rooted where a pipe's largest neck's edge meets the shell (owner decision 2026-10-21: a 1 m pipe has a 1 m root).
@@ -318,9 +320,9 @@ final class CondensingTurbineDesign extends UnitDesign {
             u.nozzles.add(new Nozzle(Role.COOLANT_INLET, new double[]{a, yk - in, zwb}, 1, -1, yk - in - inletFace, cw, 0));
             u.nozzles.add(ProcessUnit.front(Role.COOLANT_OUTLET, a, rowOut, zwb - box / 2 - cover + .03, cw));
             double rc = condensate / 2, cz = zp + .3 * rc;
-            u.nozzles.add(new Nozzle(Role.CONDENSATE, new double[]{a, .5, cz}, 2, 1, Math.ceil(zp + rc + EquipmentShape.STAND_OUT) - cz, condensate, 0));
+            u.nozzles.add(new Nozzle(Role.CONDENSATE, new double[]{a, .5, cz}, 2, 1, Math.ceil(zp + rc + ProcessUnit.NECK) - cz, condensate, 0));
             double e = Math.abs(yVent - yk), low = Math.max(0, e - .5), xs = Math.sqrt(Math.max(0, r * r - low * low)), start = Math.sqrt(Math.max(0, apothem * apothem - (e + big) * (e + big))) - .03;
-            double ventFace = Math.min(Math.floor(a - xs - EquipmentShape.STAND_OUT), a - 1.5);
+            double ventFace = Math.min(Math.floor(a - xs - ProcessUnit.NECK), a - 1.5);
             u.nozzles.add(new Nozzle(Role.VENT, new double[]{a - start, yVent, zVent}, 0, -1, a - start - ventFace, vent, 0));
         }
 

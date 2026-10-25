@@ -833,7 +833,7 @@ final class GrateBoilerDesign extends UnitDesign {
                 double xs = steamStation(), zs = drumLine();
                 u.nozzles.add(ProcessUnit.radial(Role.STEAM, xs, yS, rs, n, zs, 1, ColumnStructure.size(steam, .6)));
                 // The feedwater's default size no larger than the economiser's inlet header it leaves (0.24 m).
-                double yf = feedwaterHeight(), bx = fx1 + .17, face = Math.ceil(fx1 + STAY + EquipmentShape.STAND_OUT);
+                double yf = feedwaterHeight(), bx = fx1 + .17, face = Math.ceil(fx1 + STAY + ProcessUnit.NECK);
                 u.nozzles.add(new Nozzle(Role.FEEDWATER, new double[]{bx, yf, zs}, 0, 1, face - bx, ColumnStructure.size(fw, .24), 0));
                 double base = fx1 - .4 - .05;
                 u.nozzles.add(new Nozzle(Role.BLOWDOWN, new double[]{base, yS, zs}, 0, 1, blowdownFace() - base, blow, 0));

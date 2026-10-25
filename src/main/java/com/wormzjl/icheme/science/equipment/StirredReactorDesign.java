@@ -149,8 +149,9 @@ final class StirredReactorDesign extends UnitDesign {
         static Plan of(double d, int s, int support) {
             double r = d / 2, gap = d >= 3.2 - 1e-9 ? .075 : .05, rj = r + gap;
             double valve = PipeSizes.od(.06 * d, .1, .25), usual = PipeSizes.od(.05 * d, .1, valve), body = .15 + 1.6 * valve;
-            // From the valve's outlet face up: its neck, body, flange pair and the vessel's bottom nozzle through the jacket.
-            double yj = support + .12 + body + .06 + .1, bottom = yj + d / 4 + gap, top = bottom + s, level = top - (.2 * d + .1);
+            // From the valve's outlet face up: its neck (a pipe's largest hub and flange, ProcessUnit.NECK: owner decision
+            // 2026-10-21, a 1 m pipe has a 1 m root), body, flange pair and the vessel's bottom nozzle through the jacket.
+            double yj = support + ProcessUnit.NECK + body + .06 + .1, bottom = yj + d / 4 + gap, top = bottom + s, level = top - (.2 * d + .1);
             double hole = rj + .12;
             // About 1.1 m of grating round the opening, enough to cover its corners, and an odd number of post bays along
             // the front and back edges: no deck bracket hangs over the jacket nozzles' lines on the axis.
@@ -267,7 +268,7 @@ final class StirredReactorDesign extends UnitDesign {
      * actuator on a stem out to the left.
      */
     private static void bottomValve(ProcessUnit u, Plan p, double a) {
-        double v = p.valve, y0 = p.support, b0 = y0 + .12, b1 = b0 + p.body, fv = PipeSizes.flange(v) / 2, rb = .7 * v + .04;
+        double v = p.valve, y0 = p.support, b0 = y0 + ProcessUnit.NECK, b1 = b0 + p.body, fv = PipeSizes.flange(v) / 2, rb = .7 * v + .04;
         var f = Frame.of(new double[]{a, 0, a}, 1, 1);
         int n = ProcessUnit.sides(2 * fv);
         u.mesh.cylinder(f, fv, b0, b0 + .04, n, Material.FLANGE);
@@ -309,7 +310,7 @@ final class StirredReactorDesign extends UnitDesign {
         double rr = most / 2;
         if (Math.abs(row - y) < 1e-6) {
             double start = ProcessUnit.rootUnder(rj, n);
-            double face = sz < 0 ? Math.floor(a - rj - EquipmentShape.STAND_OUT) : Math.ceil(a + rj + EquipmentShape.STAND_OUT), base = a + sz * start;
+            double face = sz < 0 ? Math.floor(a - rj - ProcessUnit.NECK) : Math.ceil(a + rj + ProcessUnit.NECK), base = a + sz * start;
             u.nozzles.add(new Nozzle(role, new double[]{a, row, base}, 2, sz, Math.abs(face - base), usual, 0));
             return;
         }
@@ -342,7 +343,7 @@ final class StirredReactorDesign extends UnitDesign {
         if (corner + most[0] / 2 <= .9 * r) {
             // Straight up from the head over the corner cells, every flange on one block face over the head under it.
             double face = 0;
-            for (double m : most) face = Math.max(face, Math.ceil(p.head(corner - PipeSizes.flange(m) / 2) + EquipmentShape.STAND_OUT));
+            for (double m : most) face = Math.max(face, Math.ceil(p.head(corner - PipeSizes.flange(m) / 2) + ProcessUnit.NECK));
             for (int k = 0; k < 4; k++) {
                 // A neck rooted under the head where a pipe's largest neck's edge meets it (owner decision 2026-10-21: a 1 m
                 // pipe has a 1 m root).

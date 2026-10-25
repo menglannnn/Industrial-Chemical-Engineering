@@ -586,10 +586,10 @@ final class FluidizedBedGasifierLayout {
         // (owner decision 2026-10-21: a 1 m pipe has a 1 m root); the flange faces stay put.
         double ws = Math.max(.05, .04 * id), rd = ddr / 2, x0 = a - lr / 2, x1 = a + lr / 2;
         double edge = PipeSizes.MAX_OUTSIDE / 2 / rd, dip = rd / 2 * (1 - Math.sqrt(Math.max(0, 1 - edge * edge))) + .03;
-        double east = Math.ceil(x1 + rd / 2 + EquipmentShape.STAND_OUT), west = Math.floor(x0 - rd / 2 - EquipmentShape.STAND_OUT);
+        double east = Math.ceil(x1 + rd / 2 + ProcessUnit.NECK), west = Math.floor(x0 - rd / 2 - ProcessUnit.NECK);
         u.nozzles.add(new EquipmentShape.Nozzle(Role.FEEDWATER, new double[]{x1 + rd / 2 - dip, ydr, zs}, 0, 1, east - (x1 + rd / 2 - dip), ws, 0));
         u.nozzles.add(new EquipmentShape.Nozzle(Role.BLOWDOWN, new double[]{x0 - rd / 2 + dip, ydr, zs}, 0, -1, x0 - rd / 2 + dip - west, ws, 0));
-        double xst = Math.floor(a + .25 * lr) + .5, steamBase = ydr + rd - sag(rd, PipeSizes.MAX_OUTSIDE) - .03, steamFace = Math.ceil(ydr + rd - sag(rd, 1.5 * ws) + EquipmentShape.STAND_OUT);
+        double xst = Math.floor(a + .25 * lr) + .5, steamBase = ydr + rd - sag(rd, PipeSizes.MAX_OUTSIDE) - .03, steamFace = Math.ceil(ydr + rd - sag(rd, 1.5 * ws) + ProcessUnit.NECK);
         u.nozzles.add(new EquipmentShape.Nozzle(Role.STEAM, new double[]{xst, steamBase, zs}, 1, 1, steamFace - steamBase, ws, 0));
         // NITROGEN and VENT: from the lock hopper's cylinder foot out past the stack's decks, up past the bin's top beside
         // its inlet (lock gas in, depressurising gas out to the flare: survey 0.05 to 0.1 and 0.1 to 0.15 m).
@@ -602,7 +602,7 @@ final class FluidizedBedGasifierLayout {
         // The solids: up out of the bin's head (rooted under the head where a pipe's largest neck's edge meets it) and down
         // out of the ash lock's outlet.
         double rb = dv / 2, binEdge = PipeSizes.MAX_OUTSIDE / 2 / rb, binDip = rb / 2 * (1 - Math.sqrt(Math.max(0, 1 - binEdge * binEdge))) + .03;
-        u.nozzles.add(new EquipmentShape.Nozzle(Role.SOLIDS_INLET, new double[]{a, binTop() - binDip, zl}, 1, 1, Math.ceil(binTop() + EquipmentShape.STAND_OUT) - binTop() + binDip,
+        u.nozzles.add(new EquipmentShape.Nozzle(Role.SOLIDS_INLET, new double[]{a, binTop() - binDip, zl}, 1, 1, Math.ceil(binTop() + ProcessUnit.NECK) - binTop() + binDip,
                 .3, 0));
         u.nozzles.add(ProcessUnit.end(Role.SOLIDS_OUTLET, new double[]{a, ashOutlet() + .03, zal}, 1, -1, .3));
     }

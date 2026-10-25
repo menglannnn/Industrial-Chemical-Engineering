@@ -29,7 +29,7 @@ import static com.wormzjl.icheme.science.equipment.ProcessUnit.clamp;
  * it, D across and 0.8 D high. The jacket steam drum, 0.25 D across and 0.8 D long, lies beside the coal lock with its
  * risers and downcomer; the raw gas leaves near the vessel's top into the wash cooler, a vertical vessel 0.3 D across and
  * 1.5 D high beside it with the quench liquor sprayed in on top. The open gasifier house, about (D + 5) square (the
- * least odd number of metres of D + 4.9 at least) and a bay of 3 m on the wash cooler's side, carries its floors at the ash lock, the grate drives and agent inlet,
+ * least odd number of metres of D + 5.09 at least, {@link #bay}) and a bay of 3 m on the wash cooler's side, carries its floors at the ash lock, the grate drives and agent inlet,
  * the vessel's support (0.3 of its height), the gas outlet, the coal lock's bottom and top valves (with the distributor
  * drive) and the bunker's top (with the hoist beam over the coal lock), its columns cased in concrete up to the first
  * floor; the kit's stair tower beside its west face ({@link ProcessUnit#stairTower}), each floor open where the tower's
@@ -657,8 +657,11 @@ final class FixedBedGasifierDesign extends UnitDesign {
             // Feedwater low on the jacket's front, two rows at least over the oxidant, clear of the floors.
             double fw = .1, yf = clear(Math.max(st.yb + .5, ya + 2), st.yt - 1);
             u.nozzles.add(side(Role.FEEDWATER, yf, -1, fw));
-            // Lock gas into the ash lock's front, two rows clear of the oxidant.
+            // Lock gas into the ash lock's front, two rows clear of the oxidant; where a floor crosses the lock's shell, under
+            // it on the lock's cone (a pipe's largest neck under the floor's beams, owner decision 2026-10-21: a 1 m pipe has
+            // a 1 m root; at D 2 m the drive floor crosses the shell, 2026-10-25).
             double lock = .1, yn = clear(st.y1 + .3, st.y2 - .3);
+            if (!free(yn)) yn = clear(st.s + st.valve, st.y2 - .3);
             if (Math.abs(yn - ya) < 2) yn = clear(Math.max(st.y1 + .2, ya - 4), ya - 2);
             u.nozzles.add(side(Role.NITROGEN, yn, -1, lock));
             // The vent up through the roof.
@@ -674,23 +677,25 @@ final class FixedBedGasifierDesign extends UnitDesign {
             // a 1 m root): a head's under the head, the syngas's under the shell.
             double rw = washRadius(), top = washTop() + rw / 2, bottom = washBottom() - rw / 2, liquor = clamp(.03 * d, .05, .15), gas = clamp(.1 * d, .2, .6);
             double big = PipeSizes.MAX_OUTSIDE / 2, edge = big / rw, dip = rw / 2 * (1 - Math.sqrt(Math.max(0, 1 - edge * edge))) + .04;
-            u.nozzles.add(new Nozzle(Role.QUENCH, new double[]{xw, top - dip, c}, 1, 1, Math.ceil(top + EquipmentShape.STAND_OUT) - top + dip, liquor, 0));
-            double faceL = Math.floor(bottom - EquipmentShape.STAND_OUT);
+            u.nozzles.add(new Nozzle(Role.QUENCH, new double[]{xw, top - dip, c}, 1, 1, Math.ceil(top + ProcessUnit.NECK) - top + dip, liquor, 0));
+            double faceL = Math.floor(bottom - ProcessUnit.NECK);
             u.nozzles.add(new Nozzle(Role.LIQUID_OUTLET, new double[]{xw, bottom + dip, c}, 1, -1, bottom + dip - faceL, liquor, 0));
             double ys = Math.ceil(Math.max(washBottom() + gas / 2 + .15, faceL + 1.5) - .5) + .5;
             double apothem = rw * DeterministicMath.cos(Math.PI / ProcessUnit.sides(2 * rw)), start = Math.sqrt(Math.max(0, apothem * apothem - big * big)) - .03;
-            u.nozzles.add(new Nozzle(Role.SYNGAS, new double[]{xw + start, ys, c}, 0, 1, Math.ceil(xw + rw + EquipmentShape.STAND_OUT) - xw - start,
+            u.nozzles.add(new Nozzle(Role.SYNGAS, new double[]{xw + start, ys, c}, 0, 1, Math.ceil(xw + rw + ProcessUnit.NECK) - xw - start,
                     ColumnStructure.size(gas, gas), 0));
         }
 
-        /** The lowest cell centre from {@code lo} to {@code hi} whose cell keeps clear of every floor's deck and beams; {@code lo}'s where there is none. */
+        /** The lowest cell centre from {@code lo} to {@code hi} whose cell is {@link #free}; {@code lo}'s where there is none. */
         double clear(double lo, double hi) {
-            for (double y = Math.ceil(lo - .5) + .5; y <= hi + 1e-9; y++) {
-                boolean free = true;
-                for (var f : st.floors) if (y + .5 > f[0] - BEAM - .05 && y - .5 < f[0] + Access.DECK + .05) free = false;
-                if (free) return y;
-            }
+            for (double y = Math.ceil(lo - .5) + .5; y <= hi + 1e-9; y++) if (free(y)) return y;
             return Math.ceil(lo - .5) + .5;
+        }
+
+        /** Whether the cell round centre height {@code y} keeps clear of every floor's deck and beams. */
+        boolean free(double y) {
+            for (var f : st.floors) if (y + .5 > f[0] - BEAM - .05 && y - .5 < f[0] + Access.DECK + .05) return false;
+            return true;
         }
 
         /**
@@ -706,17 +711,19 @@ final class FixedBedGasifierDesign extends UnitDesign {
             double r = lo - .06;
             int n = ProcessUnit.sides(2 * r);
             double apothem = r * DeterministicMath.cos(Math.PI / n), start = Math.sqrt(Math.max(0, apothem * apothem - big * big)) - .03, base = c + sign * start;
-            double plane = sign < 0 ? Math.floor(c - widest - EquipmentShape.STAND_OUT) : Math.ceil(c + widest + EquipmentShape.STAND_OUT);
+            double plane = sign < 0 ? Math.floor(c - widest - ProcessUnit.NECK) : Math.ceil(c + widest + ProcessUnit.NECK);
             return new Nozzle(role, new double[]{a, y, base}, 2, sign, Math.abs(plane - base), defaultOd, 0);
         }
     }
 
     /**
-     * The house's bay, m: the least odd number of metres (the axis on a cell centre) of D + 4.9 at least, about the
-     * survey's D + 5, so that a nozzle out of the vessel's front keeps its pipe a block inside the house's edge rails.
+     * The house's bay, m: the least odd number of metres (the axis on a cell centre) of D + 4.6 + 2 {@link ProcessUnit#NECK}
+     * (D + 5.09) at least, about the survey's D + 5, so that a nozzle out of the vessel's front, its face a pipe's largest
+     * root out (owner decision 2026-10-21; D + 4.9 under the 0.15 m stand-out), keeps its pipe a block inside the house's
+     * edge rails.
      */
     static int bay(double d) {
-        int b = (int) Math.ceil(d + 4.9 - 1e-9);
+        int b = (int) Math.ceil(d + 4.6 + 2 * ProcessUnit.NECK - 1e-9);
         return b % 2 == 0 ? b + 1 : b;
     }
 
