@@ -61,7 +61,7 @@ public final class SightGlassRenderer {
         for(var entity:FluidDeviceBlockEntity.clientSightGlasses()) {
             var sample=SightGlassDisplays.display(entity);int argb=sample.argb();var pos=entity.getBlockPos();
             if(argb>>>24==0||entity.isRemoved()||entity.getLevel()!=level||!FluidDeviceBlock.hasSightGlass(entity.getBlockState())
-                    ||pos.distToCenterSqr(camera)>128*128||!event.getFrustum().isVisible(new AABB(pos)))continue;
+                    ||pos.distToCenterSqr(camera)>128*128||!event.getFrustum().isVisible(new AABB(pos).inflate(.15)))continue;
             var key=FluidDeviceModel.sightGlassKey(entity.getBlockState(),entity.getModelData());
             if(!SightGlassGeometry.supports(key.pipe().connections()))continue;
             if(SURFACES.size()>=256)SURFACES.clear();

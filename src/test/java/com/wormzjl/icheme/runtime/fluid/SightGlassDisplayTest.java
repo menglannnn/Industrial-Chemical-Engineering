@@ -19,13 +19,24 @@ class SightGlassDisplayTest {
     private static final List<String> COMPONENTS=List.of("crude_pc01","crude_pc12","Water");
     private static final double[] WEIGHTS={.1,.6,.018};
 
-    @Test void actualTransportedPhasesEnableBubblesRatherThanComponentCount(){
+    @Test void gasLiquidRatioControlsBubbleDensityAndOtherPhasesRetainHaze(){
         assertEquals(0,display(new double[]{1,0,0},SolidInventory.EMPTY,1).bubbles(),"two components in one liquid stay homogeneous");
-        for(double[] volumes:List.of(new double[]{.5,.5,0},new double[]{.5,0,.5},new double[]{.4,.4,.2})){
+        for(double[] volumes:List.of(new double[]{.5,0,.5},new double[]{.4,.4,.2})){
             var sample=display(volumes,SolidInventory.EMPTY,1);assertTrue(sample.bubbles()>0);assertTrue(sample.argb()>>>24>=200);
         }
         var solids=new SolidInventory(List.of(new SolidInventory.Population(CATALOG.solids().require("icheme:demo_particle"),ParticleSize.micrometres("100"),.25)));
-        assertTrue(display(new double[]{1,0,0},solids,1).bubbles()>0);
+        assertEquals(0,display(new double[]{1,0,0},solids,1).bubbles(),"suspended solids cause haze, not gas bubbles");
+        assertEquals(0,display(new double[]{.5,.5,0},SolidInventory.EMPTY,1).bubbles(),"two liquids retain haze without gas bubbles");
+        int previous=0,previousCount=0;
+        for(double gas:new double[]{.01,.1,1,9,99}){
+            var sample=display(new double[]{.4,.6,gas},SolidInventory.EMPTY,1);
+            assertTrue(sample.bubbles()>previous,"gas-rich flow must not lose bubbles as haze declines");previous=sample.bubbles();
+            int count=SightGlassBubbles.at(100,9,sample.bubbles()).size();assertTrue(count>=previousCount);previousCount=count;
+            assertEquals(sample.bubbles(),display(new double[]{4,6,10*gas},SolidInventory.EMPTY,1).bubbles(),"ratio is independent of total volume");
+            assertEquals(sample.bubbles(),display(new double[]{.4,.6,gas},solids,1).bubbles(),"solids do not dilute the gas/liquid ratio");
+        }
+        assertEquals(4,SightGlassBubbles.at(100,9,display(new double[]{1,0,1},SolidInventory.EMPTY,1).bubbles()).size());
+        assertEquals(8,SightGlassBubbles.at(100,9,display(new double[]{1,0,99},SolidInventory.EMPTY,1).bubbles()).size());
         assertEquals(SightGlassDisplay.Sample.CLEAR,display(new double[]{.5,0,.5},SolidInventory.EMPTY,0),"old stream with stopped speed clears");
         assertEquals(SightGlassDisplay.Sample.CLEAR,display(new double[]{0,0,1},SolidInventory.EMPTY,1));
         assertEquals(SightGlassDisplay.Sample.CLEAR,display(new double[3],SolidInventory.EMPTY,1));

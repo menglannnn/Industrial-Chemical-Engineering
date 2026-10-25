@@ -19,9 +19,13 @@ public final class SightGlassDisplay {
         if(!(volumes[0]+volumes[1]>0))return Sample.CLEAR;
         var phases=moved.phaseMoles();double[] liquid=new double[components.size()];
         for(int c=0;c<liquid.length;c++)liquid[c]=phases[0][c]+phases[1][c];
-        int count=moved.solids().volume()>0?1:0;for(double volume:volumes)if(volume>0)count++;
-        int bubbles=count>1?Math.max(1,(int)Math.round(255*haze(volumes,moved.solids().volume()))):0;
+        // Bubble density follows gas occupancy, r/(1+r) for gas/liquid ratio r; haze remains independent.
+        int bubbles=bubbleStrength(volumes);
         return new Sample(turbid(TankDisplay.mix(liquid,components,weights,catalog,packageId),volumes,moved.solids().volume()),bubbles);
+    }
+    static int bubbleStrength(double[] volumes){
+        double liquid=volumes[0]+volumes[1];
+        return liquid>0&&volumes[2]>0?Math.max(1,(int)Math.round(255*(volumes[2]/(liquid+volumes[2])))):0;
     }
 
     /** Presentation policy, also used by the offline render sheets; does not change material appearances or physics. */

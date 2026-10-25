@@ -20,7 +20,7 @@ public final class SightGlassBubbles {
     public static List<Bubble> at(double ticks,long seed,int strength){
         if(!Double.isFinite(ticks)||strength<0||strength>255)throw new IllegalArgumentException("Invalid bubble display");
         if(strength==0)return List.of();
-        var result=new ArrayList<Bubble>();int count=1+7*strength/255;
+        var result=new ArrayList<Bubble>();int count=Math.max(1,(8*strength+127)/255);
         for(int i=0;i<count;i++){
             double first=fraction(seed+0x9E3779B97F4A7C15L*i),second=fraction(seed+0x632BE59BD9B4E019L*(i+1));
             double period=65+55*second,phase=ticks/period+first;phase-=Math.floor(phase);

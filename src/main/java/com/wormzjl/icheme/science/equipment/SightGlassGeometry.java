@@ -46,8 +46,13 @@ public final class SightGlassGeometry {
     public record Window(double radius,double plane,Axis axis){
         public Window{Objects.requireNonNull(axis);if(!Double.isFinite(radius)||!Double.isFinite(plane)||radius<=0||plane<=0)throw new IllegalArgumentException("Invalid window aperture");}
     }
-    private record Size(double radius,double depth){}
-    private static Size size(Key look){double od=PipeSizes.outsideOf(look.pipe().outside());return new Size(.09+.37*od,.04+.34*od);}
+    private record Size(double radius,double depth,double crossScale,double root){}
+    private static Size size(Key look){
+        double od=PipeSizes.outsideOf(look.pipe().outside()),radius=.09+.37*od,half=.93*radius,cross=Math.max(half,.5*od+.01);
+        // Keep the axial flange clearance, while enclosing the full pipe rim across the run and window normal.
+        double root=Math.min(.90*radius,half*(1.66-(.5*od+.005)/cross));
+        return new Size(radius,Math.max(.04+.34*od,.5*od+.01),cross/half,root);
+    }
     public static Window window(Key look){var size=size(look);return new Window(.60*.995*size.radius(),size.depth()+.085*size.radius(),look.window());}
 
     /** Unconnected and dead-end pipes draw straight; two contacts must be opposite. Corners and junctions are excluded. */
@@ -58,14 +63,14 @@ public final class SightGlassGeometry {
         var key=look.pipe();
         if(!accessory&&!supports(key.connections()))return new Geometry(LineGeometry.polygons(key),List.of(),List.of());
         double od=PipeSizes.outsideOf(key.outside());
-        // The body and viewing aperture both scale across the entire pipe range. The minimum is a readable fitting,
-        // not a second hydraulic bore. The largest fits the cell, as the existing line flanges do.
+        // The body and viewing aperture scale with diameter. Large cross-run shoulders may overhang the host cell.
         var size=size(look);double radius=size.radius(),window=.60*radius,depth=size.depth();
         int mask=key.connections();
         if(Integer.bitCount(mask)<=1){int face=mask==0?key.facing():Integer.numberOfTrailingZeros(mask);mask=(1<<face)|(1<<(face^1));}
         double[] view=look.window().vector(),reference=look.window()==Axis.Y?new double[]{0,0,1}:UP;
         var frame=new Frame(CENTRE,view,reference);var metal=new Mesh();var glass=new Mesh();var liquid=new Mesh();
-        windowPlate(metal,frame,window,.93*radius,.93*radius,-depth,depth,3,Material.PIPE);
+        int crossAxis=3-run(key.connections(),key.facing()).ordinal()-look.window().ordinal();
+        windowPlate(metal,frame,window,.93*radius,.93*radius,-depth,depth,3,Material.PIPE,crossAxis,size.crossScale());
         for(int sign:new int[]{-1,1}) {
             var side=new Frame(CENTRE,new double[]{sign*view[0],sign*view[1],sign*view[2]},reference);
             // A cast chamber, dark cover joint and bevelled four-bolt cover distinguish the fitting from a bare washer.
@@ -90,23 +95,27 @@ public final class SightGlassGeometry {
         if(!accessory)for(int face=0;face<6;face++)if((mask>>face&1)!=0) {
             var end=LineGeometry.end(key,face,od);
             end=new LineGeometry.End(end.outside(),true,end.reducer(),end.reducer()+PipeSizes.flangeThickness(end.outside())+PipeSizes.hub(end.outside()),end.joined());
-            LineGeometry.arm(metal,face,.90*radius,od,end,LineGeometry.ref(face),Math.max(16,PipeSizes.sides(od)),false);
+            LineGeometry.arm(metal,face,size.root(),od,end,LineGeometry.ref(face),Math.max(16,PipeSizes.sides(od)),false);
         }
-        return new Geometry(metal.cell(0,0,0),glass.cell(0,0,0),liquid.cell(0,0,0));
+        return new Geometry(LineGeometry.overhanging(metal),LineGeometry.overhanging(glass),LineGeometry.overhanging(liquid));
     }
 
     /** A chamfered square casting/cover with a circular bore. Different end widths make the cover's edge bevel. */
     private static void windowPlate(Mesh mesh,Frame frame,double bore,double half0,double half1,double z0,double z1,int caps,Material material) {
+        windowPlate(mesh,frame,bore,half0,half1,z0,z1,caps,material,0,1);
+    }
+    private static void windowPlate(Mesh mesh,Frame frame,double bore,double half0,double half1,double z0,double z1,int caps,Material material,int crossAxis,double stretch) {
         mesh.bore(frame,bore,z0,z1,SIDES,material);
         for(int i=0;i<SIDES;i++) {
             double a=2*Math.PI*i/SIDES,b=2*Math.PI*(i+1)/SIDES;
-            var p0=frame.at(a,outline(a,half0),z0);var p1=frame.at(b,outline(b,half0),z0);
-            var p2=frame.at(b,outline(b,half1),z1);var p3=frame.at(a,outline(a,half1),z1);
+            var p0=outer(frame,a,half0,z0,crossAxis,stretch);var p1=outer(frame,b,half0,z0,crossAxis,stretch);
+            var p2=outer(frame,b,half1,z1,crossAxis,stretch);var p3=outer(frame,a,half1,z1,crossAxis,stretch);
             mesh.add(List.of(p0,p1,p2,p3),frame.along((z0+z1)/2),FLAT,material,null,null);
             if((caps&1)!=0)mesh.flat(List.of(frame.at(a,bore,z0),frame.at(b,bore,z0),p1,p0),neg(frame.axis()),material);
             if((caps&2)!=0)mesh.flat(List.of(frame.at(a,bore,z1),frame.at(b,bore,z1),p2,p3),frame.axis(),material);
         }
     }
+    private static double[] outer(Frame frame,double angle,double half,double z,int axis,double stretch){var p=frame.at(angle,outline(angle,half),z);p[axis]=frame.origin()[axis]+(p[axis]-frame.origin()[axis])*stretch;return p;}
     private static double outline(double angle,double half) {
         double c=Math.abs(DeterministicMath.cos(angle)),s=Math.abs(DeterministicMath.sin(angle));
         return half*Math.min(1/Math.max(c,s),1.68/(c+s));
