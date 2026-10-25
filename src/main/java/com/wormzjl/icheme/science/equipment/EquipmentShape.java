@@ -16,11 +16,12 @@ import java.util.Objects;
  *
  * <p>Two kinds (owner request 2026-10-16). A <b>drum</b> stands on a skirt or lies on two saddles (owner decisions
  * 2026-10-15) and is a fluid reservoir whose nozzles are its ports. Two are fixed: the vapour outlet (a standing drum's at
- * the top head's centre, a lying drum's on top near its far end) and the liquid outlet (a skirted drum's bottom outlet,
+ * the top head's centre, a lying drum's on top near its front end) and the liquid outlet (a skirted drum's bottom outlet,
  * whose line drops from the bottom head inside the skirt and leaves through its skirt port towards the front, owner
  * report 2026-10-16, or the side the player turns it to, {@link #outlet}, owner request 2026-10-25; without room under
  * the head a nozzle just above the bottom tangent line facing the front; a lying drum's low on its front head, or with a
- * boot underneath between the boot and the far head, {@link #bootFor}, owner request 2026-10-25). The rest are the
+ * boot underneath between the boot and the front head, {@link #bootFor}, owner request 2026-10-25). A lying drum's
+ * outlets all leave at its front end, its feed enters at the far end (owner decision 2026-10-25). The rest are the
  * player's side {@link Connection}s, up to {@link #MAX_CONNECTIONS}
  * (owner request 2026-10-16), a new drum's being its former standard inlet. A <b>column</b> is a tall vertical vessel
  * laid out by its trays ({@link ColumnTrays}), insulated and clad, with its platforms, ladders, manways and process
@@ -341,7 +342,7 @@ public record EquipmentShape(Kind kind, double diameter, double tangentLength, O
         return drum(diameter, tangentLength, orientation, front, support, connections, false);
     }
 
-    /** A drum; a lying one with a water {@code boot} under its far end ({@link #bootPlace}). */
+    /** A drum; a lying one with a water {@code boot} under its front end ({@link #bootPlace}). */
     public static EquipmentShape drum(double diameter, double tangentLength, Orientation orientation, Heading front, int support, List<Connection> connections, boolean boot) {
         return drum(diameter, tangentLength, orientation, front, support, connections, boot, 0);
     }
@@ -400,8 +401,8 @@ public record EquipmentShape(Kind kind, double diameter, double tangentLength, O
 
     /**
      * A new drum's side connections: its former standard inlet, a standing drum's in the upper shell (0.4 D below the
-     * top tangent line) facing the right, a lying drum's on top near its front end when the drum is long enough for it
-     * beside the vapour outlet.
+     * top tangent line) facing the right, a lying drum's on top near its far end, away from the outlets at the front
+     * (owner decision 2026-10-25), when the drum is long enough for it beside the vapour outlet.
      */
     public static List<Connection> defaultConnections(double diameter, double tangentLength, Orientation orientation, int support, boolean boot) {
         return defaultConnections(diameter, tangentLength, orientation, support, boot, 0);
@@ -413,7 +414,7 @@ public record EquipmentShape(Kind kind, double diameter, double tangentLength, O
         double bT = orientation.horizontal() || support == 0 ? diameter / 4 : support, tT = bT + tangentLength;
         if (orientation.horizontal()) {
             double near = Math.ceil(bT) + .5, far = Math.floor(tT - 1) + .5;
-            return far - near >= 1.5 ? fit(List.of(new Connection(1, (int) Math.floor(near), 0)), drum) : List.of();
+            return far - near >= 1.5 ? fit(List.of(new Connection(1, (int) Math.floor(far), 0)), drum) : List.of();
         }
         double y = Math.floor(Math.max(bT + .25, tT - .4 * diameter)) + .5;
         if (y > tT - .1) y -= 1;
@@ -549,34 +550,30 @@ public record EquipmentShape(Kind kind, double diameter, double tangentLength, O
      * vertical cylinder of {@code diameter} under the shell's bottom on the drum's axis, its 2:1 bottom head's tangent
      * {@code length} under the shell, centred at frame height {@code station} along the drum. It hangs from the shell with
      * no support of its own. Its drum's liquid outlet stands underneath at frame height {@code outlet}, between the boot
-     * and the far head (owner request 2026-10-25).
+     * and the front head (owner decision 2026-10-25).
      */
     public record Boot(double station, double diameter, double length, double outlet) {
     }
 
     /**
      * The boot a lying drum of {@code diameter} and {@code tangentLength} takes, and where its liquid outlet stands, or
-     * null where they have no room. A three-phase drum (owner request 2026-10-25, Kanes Dictionary's boot diagram, photo
-     * survey A): the feed enters at the front, free water settles into the boot near the far end, and the oil leaves
-     * behind an overflow baffle beyond it, through a nozzle facing down on the shell's bottom centre line between the boot
-     * and the far head. The boot: a third of the drum's diameter, at least 0.3, 0.4 or 0.5 m (under 0.9, 1.4 m and above)
-     * and at most half of it; 0.9 m or 0.6 D deep, the longer. The outlet on the cell centre nearest the far saddle that
-     * keeps a pipe's largest flange 0.15 m clear of it, inboard (survey A: bottom nozzles clear the saddle by 0.15 m); the
-     * boot whole cells ahead of it, at least two (one free block between their pipes, owner rule 2026-10-17) and as many as
-     * keep its shell clear of the outlet's largest flange beside it, and 0.15 m clear of the near saddle. Else the outlet
-     * just beyond the far saddle, as clear of it, its neck 0.05 m inside the far tangent line (a side connection's
-     * margin), the boot inboard of that saddle as clear of it and as far from the outlet. Else no boot.
+     * null where they have no room. A three-phase drum (owner decision 2026-10-25; Arnold and Stewart's three-phase
+     * separator, a reflux drum's general arrangement, photo survey A): the feed enters at the far end, free water settles
+     * into the boot at the outlet end, the front, and the oil leaves behind an overflow baffle beyond it, through a nozzle
+     * facing down on the shell's bottom centre line between the boot and the front head. The boot: a third of the drum's
+     * diameter, at least 0.3, 0.4 or 0.5 m (under 0.9, 1.4 m and above) and at most half of it; 0.9 m or 0.6 D deep, the
+     * longer; on the first cell centre inboard of the front saddle that keeps its shell 0.15 m clear of it, and as clear
+     * of the far saddle. The outlet on the last cell centre outboard of the front saddle that keeps a pipe's largest
+     * flange as clear of it (survey A: bottom nozzles clear the saddle by 0.15 m), its neck 0.05 m inside the front
+     * tangent line (a side connection's margin); the saddle between them keeps their pipes a free block apart (owner rule
+     * 2026-10-17). Else no boot.
      */
     public static @Nullable Boot bootFor(double diameter, double tangentLength) {
         double low = diameter < .9 ? .3 : diameter < 1.4 ? .4 : .5, size = Math.min(diameter / 2, Math.max(low, diameter / 3)), length = Math.max(.9, .6 * diameter);
         double bT = diameter / 4, tT = bT + tangentLength, saddle = SADDLE_WIDTH / 2 + .15, clear = saddle + size / 2, flange = PipeSizes.flange(PipeSizes.MAX_OUTSIDE) / 2;
         double near = bT + SADDLE_POSITION * tangentLength, far = tT - SADDLE_POSITION * tangentLength;
-        double apart = Math.max(2, Math.ceil(size / 2 + flange - 1e-9));
-        double outlet = Math.floor(far - saddle - flange - .5) + .5, station = outlet - apart;
-        if (station >= near + clear - 1e-9) return new Boot(station, size, length, outlet);
-        outlet = Math.ceil(far + saddle + flange - .5) + .5;
-        station = Math.min(Math.floor(far - clear - .5) + .5, outlet - apart);
-        return outlet + PipeSizes.MAX_OUTSIDE / 2 <= tT - .05 + 1e-9 && station >= near + clear - 1e-9 ? new Boot(station, size, length, outlet) : null;
+        double outlet = Math.floor(near - saddle - flange - .5) + .5, station = Math.ceil(near + clear - .5) + .5;
+        return outlet - PipeSizes.MAX_OUTSIDE / 2 >= bT + .05 - 1e-9 && station <= far - clear + 1e-9 ? new Boot(station, size, length, outlet) : null;
     }
 
     /** This drum's boot, or null when it has none. */
@@ -877,17 +874,18 @@ public record EquipmentShape(Kind kind, double diameter, double tangentLength, O
             for (var c : connections) out.add(connection(c, a, bT, tT, apothem));
             return out;
         }
-        // Horizontal: the vapour outlet on top (frame +x) near the far end, a liquid outlet low on the front head (frame -y)
-        // or, with a boot, underneath between the boot and the far head.
+        // Horizontal: the outlets leave at the front end, the feed enters at the far end (owner decision 2026-10-25). The
+        // vapour outlet on top (frame +x) near the front end, a liquid outlet low on the front head (frame -y) or, with a
+        // boot, underneath between the boot and the front head.
         double topOd = Math.min(PipeSizes.MAX_OUTSIDE, diameter / 2);
         // A drum too short for a connection beside it: the outlet at the cell centre nearest its middle.
-        double far = Math.floor(tT - 1) + .5;
-        if (far < Math.ceil(bT) + .5) far = Math.floor((bT + tT) / 2) + .5;
+        double front = Math.ceil(bT) + .5;
+        if (front > Math.floor(tT - 1) + .5) front = Math.floor((bT + tT) / 2) + .5;
         double topStart = Math.sqrt(Math.max(0, apothem * apothem - PipeSizes.MAX_OUTSIDE * PipeSizes.MAX_OUTSIDE / 4)) - .03;
-        out.add(new Nozzle(Role.VAPOUR_OUTLET, new double[]{topStart + a, far, a}, 0, 1, Math.ceil(a + r + STAND_OUT) - (topStart + a), clampOd(.2 * diameter, topOd), 0));
+        out.add(new Nozzle(Role.VAPOUR_OUTLET, new double[]{topStart + a, front, a}, 0, 1, Math.ceil(a + r + STAND_OUT) - (topStart + a), clampOd(.2 * diameter, topOd), 0));
         var b = bootPlace();
         if (b != null) {
-            // A three-phase drum's oil leaves behind the overflow baffle beyond the boot (owner request 2026-10-25, bootFor):
+            // A three-phase drum's oil leaves behind the overflow baffle beyond the boot (owner decision 2026-10-25, bootFor):
             // on the bottom centre line facing down, its root as deep under the shell as the vapour outlet's over it, its
             // face on the next block face under the shell.
             out.add(new Nozzle(Role.LIQUID_OUTLET, new double[]{a - topStart, b.outlet(), a}, 0, -1, a - topStart - Math.floor(a - r - STAND_OUT), clampOd(.1 * diameter, topOd), 0));

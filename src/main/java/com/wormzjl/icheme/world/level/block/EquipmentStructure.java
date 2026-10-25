@@ -541,7 +541,7 @@ public final class EquipmentStructure {
      * bare: vertical, on its lower head. The front (north, east, south, west; north by default) is where a standing drum's
      * liquid outlet and a lying drum's front head face; {@code outlet} turns a skirted drum's bottom outlet that many
      * quarter turns from the front (0 to 3: front, left, back, right, owner request 2026-10-25); {@code boot} hangs a water
-     * boot under a lying drum's far end. {@code /icheme equipment column <bottom centre> <diameter m> <trays> <skirt m>
+     * boot under a lying drum's front end. {@code /icheme equipment column <bottom centre> <diameter m> <trays> <skirt m>
      * [front]} places a column fed at its middle tray, its piping side to the front. {@code /icheme equipment unit
      * <bottom centre> <kind> <size m> <length> <support m> [front [parallel series | outlet <turns>]]} places a unit of any
      * unit kind, by its lower-case name. The kind's design gives the meaning and ranges of the size, the second size (a

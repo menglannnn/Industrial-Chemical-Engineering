@@ -519,14 +519,13 @@ public final class EquipmentConstructorScreen extends Screen {
     }
 
     /**
-     * Adds a side connection where it meets nothing ({@link EquipmentShape#place}): a standing drum's as high as it goes
-     * (an inlet's usual place), a lying drum's nearest its front head, each on its form's preferred sides. Where every
-     * place clashes it is added anyway at the first, and the status says what it meets.
+     * Adds a side connection where it meets nothing ({@link EquipmentShape#place}): a standing drum's as high as it goes,
+     * a lying drum's nearest its far head (an inlet's usual place, away from the outlets at the front, owner decision
+     * 2026-10-25), each on its form's preferred sides. Where every place clashes it is added anyway at the first, and the
+     * status says what it meets.
      */
     private void add() {
-        int[] stations = stations();
-        boolean lying = form.orientation().horizontal();
-        var wanted = new EquipmentShape.Connection(EquipmentShape.preferredSides(form.orientation())[0], lying ? stations[0] : stations[1], 0);
+        var wanted = new EquipmentShape.Connection(EquipmentShape.preferredSides(form.orientation())[0], stations()[1], 0);
         connections.add(EquipmentShape.place(connections, wanted, template()));
         selected = connections.size() - 1;
         refresh();

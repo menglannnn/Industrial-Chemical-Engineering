@@ -10,8 +10,11 @@ public final class PipeSizes {
     public static final double MIN_OUTSIDE = 1 / 16.0;
     /** The largest outside diameter: its flange, 1.25 OD + 85 mm, reaches one block. */
     public static final double MAX_OUTSIDE = .8;
-    /** The largest bore: the one whose outside is {@link #MAX_OUTSIDE} ({@link #outside}). */
-    public static final double MAX_BORE = MAX_OUTSIDE / 1.1;
+    /**
+     * The largest bore, as large as the largest outside (owner decision 2026-10-25): a large line's wall is thin (32"
+     * standard: 812.8 mm on a 793.7 mm bore), so a bore from 0.727 m draws at {@link #MAX_OUTSIDE} ({@link #outside}).
+     */
+    public static final double MAX_BORE = MAX_OUTSIDE;
 
     private PipeSizes() {
     }
@@ -24,7 +27,10 @@ public final class PipeSizes {
         return Math.max(least, Math.min(most, Math.round(want * 20) / 20.0));
     }
 
-    /** Outside diameter of a pipe of bore {@code bore}: the wall adds about a tenth (2" 52.5/60.3 mm, 12" 303/324 mm). */
+    /**
+     * Outside diameter of a pipe of bore {@code bore}: the wall adds about a tenth (2" 52.5/60.3 mm, 12" 303/324 mm), at
+     * most {@link #MAX_OUTSIDE}.
+     */
     public static double outside(double bore) {
         return Math.max(MIN_OUTSIDE, Math.min(MAX_OUTSIDE, 1.1 * bore));
     }

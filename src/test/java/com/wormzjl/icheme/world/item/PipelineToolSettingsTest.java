@@ -24,7 +24,7 @@ class PipelineToolSettingsTest {
                 buffer.release();
             }
         }
-        for (double diameter : new double[]{Double.NaN, Double.NEGATIVE_INFINITY, Double.POSITIVE_INFINITY, 0, -.1, .0009, .7273, 1}) {
+        for (double diameter : new double[]{Double.NaN, Double.NEGATIVE_INFINITY, Double.POSITIVE_INFINITY, 0, -.1, .0009, .8001, 1}) {
             assertThrows(IllegalArgumentException.class, () -> new PipelineToolSettings(diameter));
             assertTrue(PipelineToolSettings.CODEC.parse(NbtOps.INSTANCE, DoubleTag.valueOf(diameter)).error().isPresent());
             var buffer = Unpooled.buffer();
