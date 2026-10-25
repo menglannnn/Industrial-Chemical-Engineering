@@ -190,7 +190,7 @@ final class TankDesign extends UnitDesign {
         double hinge;
         if (p.stairway()) {
             var stair = stair(p);
-            double end = stair.angle(stair.steps()), span = PLATFORM / (p.band + Access.WOUND_WIDTH / 2);
+            double end = stair.angle(stair.steps()), span = span(p, p.band + Access.WOUND_WIDTH / 2);
             walkway(u, p, stair, end - span, end);
             platform(u, p, end - span, end, false);
             // Everything after this crosses the body rows: its box columns keep their own keys.
@@ -201,7 +201,7 @@ final class TankDesign extends UnitDesign {
             hinge = end - span / 2;
         } else {
             // The platform beside the top ladder, round from it towards the right.
-            double from = LADDER + Access.clearance(p.r), span = PLATFORM / (p.r + Access.MIN_DECK / 2);
+            double from = LADDER + Access.clearance(p.r), span = span(p, p.r + Access.MIN_DECK / 2);
             platform(u, p, from, from + span, true);
             u.bodyRows = new double[]{1, Math.floor(p.shell - TOP_ANGLE - .6 - 1e-9), 0};
             u.irregularFrom = u.mesh.facets().size();
@@ -214,6 +214,16 @@ final class TankDesign extends UnitDesign {
         u.nozzles.add(nozzle(Role.OVERFLOW, p, -1, p.shell - .5));
         u.fluidPoint = new double[]{p.a, .01, p.a - p.r + .02};
         floating(u, p, hinge);
+    }
+
+    /**
+     * The gauger's platform's angle round the axis: {@link #PLATFORM} long at radius {@code mid}, and its inner edge the
+     * ladder's opening and a rail band either side, where each of the inner rail's pieces ends at its posts. The platform
+     * narrows to its inner edge: on a tank under about 17 m the opening took the whole edge, the inner rail and its posts
+     * were left out and the rails across the open end stopped in the air (owner report 2026-10-25, a 7 m tank).
+     */
+    private static double span(Plan p, double mid) {
+        return Math.max(PLATFORM / mid, (LADDER_OPENING + 2 * Access.RAIL_BAND) / (p.r - OVERHANG));
     }
 
     /**

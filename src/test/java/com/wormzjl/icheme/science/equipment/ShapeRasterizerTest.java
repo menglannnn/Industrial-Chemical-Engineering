@@ -1075,11 +1075,28 @@ class ShapeRasterizerTest {
             assertEquals(stair ? 1 : 0, unit.woundStairs().size(), shape.toString());
             assertEquals(stair, unit.ladders().isEmpty(), shape.toString());
             for (var l : unit.ladders()) assertTrue(l.top() - Access.LANDING - l.base() <= Access.MAX_CLIMB + Access.DECK + 1e-9, shape + " climbs from " + l.base());
-            if (tank) assertEquals(shape.fillHeight(), unit.floating.length(), 0, shape.toString());
+            if (tank) {
+                assertEquals(shape.fillHeight(), unit.floating.length(), 0, shape.toString());
+                innerRailFlanksTheLadder(shape, unit.floating);
+            }
             var nozzles = shape.nozzles();
             assertEquals(shape.kind() == Kind.TANK ? 3 : 2, nozzles.size(), shape.toString());
             for (int i = 0; i < nozzles.size(); i++)
                 for (int j = i + 1; j < nozzles.size(); j++) assertFalse(nozzles.get(i).crowds(nozzles.get(j)), shape + ": " + nozzles.get(i).role() + " and " + nozzles.get(j).role());
+        }
+    }
+
+    /**
+     * The platform's inner rail stands in its band either side of the rolling ladder's opening, a rail band beyond it
+     * (owner report 2026-10-25: on a 7 m tank the opening took the whole inner edge, its rail and posts were left out).
+     */
+    private static void innerRailFlanksTheLadder(EquipmentShape shape, ProcessUnit.Floating f) {
+        double[] pivot = f.pivot(), along = f.along();
+        double inner = shape.diameter() / 2 - TankDesign.OVERHANG, cx = pivot[0] + inner * along[0], cz = pivot[2] + inner * along[2];
+        double hinge = Math.atan2(-along[2], -along[0]), rho = inner + Access.RAIL_BAND / 2;
+        for (int side : new int[]{-1, 1}) {
+            double t = hinge + side * (TankDesign.LADDER_OPENING + Access.RAIL_BAND) / 2 / inner;
+            assertTrue(in(shape, cx + rho * Math.cos(t), pivot[1] + .7, cz + rho * Math.sin(t)), shape + ": no inner rail on side " + side);
         }
     }
 
