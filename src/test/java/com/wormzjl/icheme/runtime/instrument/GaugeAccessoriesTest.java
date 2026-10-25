@@ -3,7 +3,7 @@ package com.wormzjl.icheme.runtime.instrument;
 import com.wormzjl.icheme.world.item.GaugeSettings;
 import com.wormzjl.icheme.world.item.GaugeSettings.*;
 import com.wormzjl.icheme.science.equipment.*;
-import com.wormzjl.icheme.science.fluid.network.PipeObservation;
+import com.wormzjl.icheme.science.fluid.network.PassiveStepSolver.PipeObservation;
 import io.netty.buffer.Unpooled;
 import net.minecraft.core.*;
 import net.minecraft.nbt.*;

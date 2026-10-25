@@ -45,7 +45,7 @@ public final class PassiveIntervalSolver {
     }
     public record Result(PassiveNetwork graph,double advancedSeconds,double[] averageMassFlows,int acceptedSubsteps,int rejectedSubsteps,
                          double pumpWorkJoule,List<ConservativeTransport.BoundaryTransfer> boundaries,Map<String,Integer> rejectionReasons,
-                         List<FlowControl.Mode> endpointModes,double[] endpointHeads,double[] endpointFlows,List<PipeTransfer> pipeTransfers,List<PipeObservation> observations) {
+                         List<FlowControl.Mode> endpointModes,double[] endpointHeads,double[] endpointFlows,List<PipeTransfer> pipeTransfers,List<PassiveStepSolver.PipeObservation> observations) {
         public Result(PassiveNetwork graph,double advancedSeconds,double[] averageMassFlows,int acceptedSubsteps,int rejectedSubsteps,double pumpWorkJoule,List<ConservativeTransport.BoundaryTransfer> boundaries,Map<String,Integer> rejectionReasons,List<FlowControl.Mode> endpointModes,double[] endpointHeads,double[] endpointFlows,List<PipeTransfer> pipeTransfers){this(graph,advancedSeconds,averageMassFlows,acceptedSubsteps,rejectedSubsteps,pumpWorkJoule,boundaries,rejectionReasons,endpointModes,endpointHeads,endpointFlows,pipeTransfers,List.of());}
         public Result {observations=List.copyOf(observations);averageMassFlows=averageMassFlows.clone();boundaries=List.copyOf(boundaries);rejectionReasons=Collections.unmodifiableMap(new LinkedHashMap<>(rejectionReasons));endpointModes=List.copyOf(endpointModes);endpointHeads=endpointHeads.clone();endpointFlows=endpointFlows.clone();pipeTransfers=List.copyOf(pipeTransfers);}
         @Override public double[] averageMassFlows(){return averageMassFlows.clone();}

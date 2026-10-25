@@ -344,10 +344,10 @@ public final class FluidNetwork {
         };}
     }
     /** Server to client: a sight glass's colour, bubble strength and flow direction, never process or menu contents. */
-    public record SightGlassPayload(Target target,SightGlassDisplay.Sample sample) implements CustomPacketPayload {
+    public record SightGlassPayload(Target target,PipePresentation.SightGlass sample) implements CustomPacketPayload {
         public static final Type<SightGlassPayload> TYPE=new Type<>(ResourceLocation.fromNamespaceAndPath(IChemE.MOD_ID,"sight_glass_display"));
         public static final StreamCodec<RegistryFriendlyByteBuf,SightGlassPayload> STREAM_CODEC=new StreamCodec<>() {
-            public SightGlassPayload decode(RegistryFriendlyByteBuf b){return new SightGlassPayload(readTarget(b),new SightGlassDisplay.Sample(b.readInt(),b.readUnsignedByte(),direction(b.readUnsignedByte())));}
+            public SightGlassPayload decode(RegistryFriendlyByteBuf b){return new SightGlassPayload(readTarget(b),new PipePresentation.SightGlass(b.readInt(),b.readUnsignedByte(),direction(b.readUnsignedByte())));}
             public void encode(RegistryFriendlyByteBuf b,SightGlassPayload p){writeTarget(b,p.target);b.writeInt(p.sample.argb());b.writeByte(p.sample.bubbles());b.writeByte(direction(p.sample.flowDirection()));}
         };
         public SightGlassPayload{Objects.requireNonNull(target);Objects.requireNonNull(sample);}
@@ -448,7 +448,7 @@ public final class FluidNetwork {
     }
     /** Server: sends {@code glide} of the tank at {@code node} to {@code player}. */
     public static void sendTank(ServerPlayer player,BlockPos node,TankDisplay.Glide glide){PacketDistributor.sendToPlayer(player,new TankDisplayPayload(node,glide));}
-    public static void sendSightGlass(ServerPlayer player,Target target,SightGlassDisplay.Sample sample){PacketDistributor.sendToPlayer(player,new SightGlassPayload(target,sample));}
+    public static void sendSightGlass(ServerPlayer player,Target target,PipePresentation.SightGlass sample){PacketDistributor.sendToPlayer(player,new SightGlassPayload(target,sample));}
     public static void sendMover(ServerPlayer player,MoverState state){PacketDistributor.sendToPlayer(player,state);}
     public static void sendInstrument(ServerPlayer player,InstrumentTarget target,Instrument.Sample sample,long tick){PacketDistributor.sendToPlayer(player,new InstrumentDisplay(target,sample,tick));}
     /** Client: asks the server to watch and to stop watching tanks. */

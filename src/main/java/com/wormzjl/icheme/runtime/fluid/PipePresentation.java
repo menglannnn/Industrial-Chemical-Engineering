@@ -3,6 +3,7 @@ package com.wormzjl.icheme.runtime.fluid;
 import com.wormzjl.icheme.science.fluid.network.*;
 import com.wormzjl.icheme.science.fluid.state.SolidInventory;
 import com.wormzjl.icheme.science.fluid.topology.TopologyCompiler;
+import com.wormzjl.icheme.science.material.MaterialCatalog;
 import java.util.*;
 
 /** Display-only reduction of accepted graph/history. No thermo calls, solver work or state mutation. */
@@ -124,5 +125,71 @@ public final class PipePresentation {
         private void prune(long end) {
             while (!spans.isEmpty() && spans.getFirst().end() <= end - TICKS) spans.removeFirst();
         }
+    }
+
+    // ---- a sight glass: a display-only reduction of accepted transport; no inventory, equilibrium or optical model is calculated ----
+    public record SightGlass(int argb,int bubbles,PhysicalFluidTopology.Direction flowDirection) {
+        public static final SightGlass CLEAR=new SightGlass(0,0,null);
+        public SightGlass{if(bubbles<0||bubbles>255||(argb>>>24==0&&(bubbles!=0||flowDirection!=null))||(bubbles>0&&flowDirection==null))throw new IllegalArgumentException("Invalid sight glass display");}
+    }
+
+    /** Colour and illustrative multiphase motion; speed uses the existing five-online-second window. */
+    public static SightGlass sightGlass(FluidView view,List<String> components,double[] weights,MaterialCatalog catalog,String packageId,List<PhysicalFluidTopology.View> mappings) {
+        var info=view.pipeInfo();
+        if(info==null||info.connections().stream().noneMatch(c->c.velocityMetresPerSecond()>0))return SightGlass.CLEAR;
+        var moved=info.contents();var volumes=moved.phaseVolumes();
+        if(!(volumes[0]+volumes[1]>0))return SightGlass.CLEAR;
+        var phases=moved.phaseMoles();double[] liquid=new double[components.size()];
+        for(int c=0;c<liquid.length;c++)liquid[c]=phases[0][c]+phases[1][c];
+        // Bubble density follows gas occupancy, r/(1+r) for gas/liquid ratio r; haze remains independent.
+        var direction=flowDirection(info,mappings);
+        int bubbles=direction==null?0:bubbleStrength(volumes);
+        return new SightGlass(turbid(TankDisplay.mix(liquid,components,weights,catalog,packageId),volumes,moved.solids().volume()),bubbles,direction);
+    }
+    /** Accepted graph direction, resolved at this physical section rather than between distant graph endpoints. */
+    static PhysicalFluidTopology.Direction flowDirection(FluidView.PipeInfo info,List<PhysicalFluidTopology.View> mappings){
+        double speed=0;PhysicalFluidTopology.Direction direction=null;
+        for(var connection:info.connections())if(connection.velocityMetresPerSecond()>speed)
+            for(var mapping:mappings)if(mapping.pipeId()==connection.pipeId()&&Double.isFinite(mapping.tap())&&mapping.flowDirection()!=null){
+                speed=connection.velocityMetresPerSecond();
+                direction=connection.reverse()?PhysicalFluidTopology.opposite(mapping.flowDirection()):mapping.flowDirection();
+                break;
+            }
+        return direction;
+    }
+    static int bubbleStrength(double[] volumes){
+        double liquid=volumes[0]+volumes[1];
+        return liquid>0&&volumes[2]>0?Math.max(1,(int)Math.round(255*(volumes[2]/(liquid+volumes[2])))):0;
+    }
+
+    /** Presentation policy, also used by the offline render sheets; does not change material appearances or physics. */
+    static int turbid(int base,double[] volumes,double solids) {
+        if(!(volumes[0]+volumes[1]>0))return 0;
+        double haze=haze(volumes,solids),white=.25*haze;
+        int alpha=Math.max(200,base>>>24);
+        alpha=(int)Math.round(alpha+(255-alpha)*haze);
+        return alpha<<24|whiten(base>>16&255,white)<<16|whiten(base>>8&255,white)<<8|whiten(base&255,white);
+    }
+
+    private static double haze(double[] volumes,double solids){
+        double total=volumes[0]+volumes[1]+volumes[2]+solids,squares=0;
+        for(double volume:volumes){double fraction=volume/total;squares+=fraction*fraction;}
+        double fraction=solids/total;return Math.clamp(2*(1-squares-fraction*fraction),0,1);
+    }
+
+    private static int whiten(int channel,double amount){return (int)Math.round(channel+(255-channel)*amount);}
+
+    /** A pump's accepted operating condition on its status line, presented without changing its island's solver status. */
+
+    static String pumpStatus(String islandStatus,FlowControl.Pump pump,FlowControl.Mode mode,String inletReason) {
+        String condition=switch(mode) {
+            case PUMP_TARGET->"pump running";
+            case PUMP_HEAD_LIMIT->"ERROR: pump pressure rise limit reached; requested flow unavailable";
+            case PUMP_SUCTION_LIMIT->"ERROR: pump cavitating: suction pressure limit reached";
+            case INLET_WRONG_PHASE->inletReason.isBlank()?"ERROR: pump inlet is dry or has the wrong phase":inletReason;
+            case CLOSED->pump.targetVolumeFlow()==0?"pump off":"ERROR: pump cannot drive forward flow";
+            default->throw new IllegalArgumentException("Invalid pump operating mode: "+mode);
+        };
+        return condition.startsWith("ERROR:")?condition+" / "+islandStatus:islandStatus+" / "+condition;
     }
 }

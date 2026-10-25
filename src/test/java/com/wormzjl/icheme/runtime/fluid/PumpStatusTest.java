@@ -9,17 +9,17 @@ class PumpStatusTest {
 
     @Test void operatingLimitsAndRefusalsAreDeviceErrorsOnAnAdvancingIsland() {
         for(var mode:new FlowControl.Mode[]{FlowControl.Mode.PUMP_HEAD_LIMIT,FlowControl.Mode.PUMP_SUCTION_LIMIT,FlowControl.Mode.INLET_WRONG_PHASE,FlowControl.Mode.CLOSED}) {
-            String status=PumpStatus.of("FULL",pump,mode,"ERROR: pump inlet is not liquid (from generator)");
+            String status=PipePresentation.pumpStatus("FULL",pump,mode,"ERROR: pump inlet is not liquid (from generator)");
             assertTrue(status.startsWith("ERROR: pump"));assertTrue(status.endsWith(" / FULL"));assertFalse(status.contains("HELD"));
         }
-        assertTrue(PumpStatus.of("FULL",pump,FlowControl.Mode.PUMP_HEAD_LIMIT,"").contains("requested flow unavailable"));
+        assertTrue(PipePresentation.pumpStatus("FULL",pump,FlowControl.Mode.PUMP_HEAD_LIMIT,"").contains("requested flow unavailable"));
         String inlet="ERROR: pump inlet is not liquid (from generator)";
-        assertEquals(inlet+" / FULL",PumpStatus.of("FULL",pump,FlowControl.Mode.INLET_WRONG_PHASE,inlet));
+        assertEquals(inlet+" / FULL",PipePresentation.pumpStatus("FULL",pump,FlowControl.Mode.INLET_WRONG_PHASE,inlet));
     }
 
     @Test void offIsNormalAndPresentationDoesNotHideARealSolverFailure() {
-        assertFalse(PumpStatus.of("FULL",pump,FlowControl.Mode.PUMP_TARGET,"").contains("ERROR:"));
-        assertFalse(PumpStatus.of("FULL",new FlowControl.Pump(2,500000,false),FlowControl.Mode.CLOSED,"").contains("ERROR:"));
-        assertTrue(PumpStatus.of("HELD: numerical failure",pump,FlowControl.Mode.PUMP_HEAD_LIMIT,"").contains("HELD: numerical failure"));
+        assertFalse(PipePresentation.pumpStatus("FULL",pump,FlowControl.Mode.PUMP_TARGET,"").contains("ERROR:"));
+        assertFalse(PipePresentation.pumpStatus("FULL",new FlowControl.Pump(2,500000,false),FlowControl.Mode.CLOSED,"").contains("ERROR:"));
+        assertTrue(PipePresentation.pumpStatus("HELD: numerical failure",pump,FlowControl.Mode.PUMP_HEAD_LIMIT,"").contains("HELD: numerical failure"));
     }
 }

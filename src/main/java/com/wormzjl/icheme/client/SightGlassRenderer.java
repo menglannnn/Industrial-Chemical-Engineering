@@ -7,7 +7,7 @@ import com.wormzjl.icheme.IChemE;
 import com.wormzjl.icheme.client.model.FluidDeviceModel;
 import com.wormzjl.icheme.network.FluidNetwork;
 import com.wormzjl.icheme.network.FluidNetwork.Target;
-import com.wormzjl.icheme.runtime.fluid.SightGlassDisplay;
+import com.wormzjl.icheme.runtime.fluid.PipePresentation;
 import net.minecraft.core.BlockPos;
 import com.wormzjl.icheme.science.equipment.Mesh;
 import com.wormzjl.icheme.science.equipment.SightGlassGeometry;
@@ -116,14 +116,14 @@ public final class SightGlassRenderer {
 
     // ---- the client's sight-glass displays ----
     // Ephemeral and identity-bound; never obtained through a block update tag. Client thread only.
-    private static final Map<Target,SightGlassDisplay.Sample> DISPLAYS=new HashMap<>();
+    private static final Map<Target,PipePresentation.SightGlass> DISPLAYS=new HashMap<>();
     private static final Set<Target> WATCHED=new HashSet<>();
-    public static void accept(Target target,SightGlassDisplay.Sample sample) {
+    public static void accept(Target target,PipePresentation.SightGlass sample) {
         var level=Minecraft.getInstance().level;
         if(level!=null&&WATCHED.contains(target)&&FluidDeviceBlock.hasSightGlass(level.getBlockState(target.position()))
                 &&level.getBlockEntity(target.position()) instanceof FluidDeviceBlockEntity entity&&entity.fluidIdentity()==target.identity())DISPLAYS.put(target,sample);
     }
-    static SightGlassDisplay.Sample display(FluidDeviceBlockEntity entity){long id=entity.fluidIdentity();return id<=0?SightGlassDisplay.Sample.CLEAR:DISPLAYS.getOrDefault(new Target(entity.getBlockPos(),id),SightGlassDisplay.Sample.CLEAR);}
+    static PipePresentation.SightGlass display(FluidDeviceBlockEntity entity){long id=entity.fluidIdentity();return id<=0?PipePresentation.SightGlass.CLEAR:DISPLAYS.getOrDefault(new Target(entity.getBlockPos(),id),PipePresentation.SightGlass.CLEAR);}
     /** Nearest first, bounded independently of tanks. */
     static void track(List<Target> near) {
         var wanted=new LinkedHashSet<Target>();for(var target:near){if(wanted.size()>=FluidNetwork.MAXIMUM_WATCHED)break;wanted.add(target);}

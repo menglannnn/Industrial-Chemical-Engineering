@@ -38,19 +38,19 @@ class SightGlassDisplayTest {
         }
         assertEquals(4,SightGlassGeometry.bubbles(100,9,display(new double[]{1,0,1},SolidInventory.EMPTY,1).bubbles(),UP).size());
         assertEquals(8,SightGlassGeometry.bubbles(100,9,display(new double[]{1,0,99},SolidInventory.EMPTY,1).bubbles(),UP).size());
-        assertEquals(SightGlassDisplay.Sample.CLEAR,display(new double[]{.5,0,.5},SolidInventory.EMPTY,0),"old stream with stopped speed clears");
-        assertEquals(SightGlassDisplay.Sample.CLEAR,display(new double[]{0,0,1},SolidInventory.EMPTY,1));
-        assertEquals(SightGlassDisplay.Sample.CLEAR,display(new double[3],SolidInventory.EMPTY,1));
-        assertEquals(SightGlassDisplay.Sample.CLEAR,SightGlassDisplay.of(base(),COMPONENTS,WEIGHTS,CATALOG,PACKAGE,List.of()));
+        assertEquals(PipePresentation.SightGlass.CLEAR,display(new double[]{.5,0,.5},SolidInventory.EMPTY,0),"old stream with stopped speed clears");
+        assertEquals(PipePresentation.SightGlass.CLEAR,display(new double[]{0,0,1},SolidInventory.EMPTY,1));
+        assertEquals(PipePresentation.SightGlass.CLEAR,display(new double[3],SolidInventory.EMPTY,1));
+        assertEquals(PipePresentation.SightGlass.CLEAR,PipePresentation.sightGlass(base(),COMPONENTS,WEIGHTS,CATALOG,PACKAGE,List.of()));
     }
 
     @Test void displayWireRoundTripsAndRejectsMotionWithoutLiquid(){
         var buffer=new RegistryFriendlyByteBuf(Unpooled.buffer(),RegistryAccess.EMPTY);
         var target=new FluidNetwork.Target(new BlockPos(-20,64,44),9);
         try{
-            var samples=new ArrayList<SightGlassDisplay.Sample>();
-            samples.add(SightGlassDisplay.Sample.CLEAR);samples.add(new SightGlassDisplay.Sample(0xC8A17A40,0,null));
-            for(var direction:PhysicalFluidTopology.Direction.values())samples.add(new SightGlassDisplay.Sample(0xFF9E9987,255,direction));
+            var samples=new ArrayList<PipePresentation.SightGlass>();
+            samples.add(PipePresentation.SightGlass.CLEAR);samples.add(new PipePresentation.SightGlass(0xC8A17A40,0,null));
+            for(var direction:PhysicalFluidTopology.Direction.values())samples.add(new PipePresentation.SightGlass(0xFF9E9987,255,direction));
             for(var sample:samples){
                 var payload=new FluidNetwork.SightGlassPayload(target,sample);FluidNetwork.SightGlassPayload.STREAM_CODEC.encode(buffer,payload);
                 assertEquals(payload,FluidNetwork.SightGlassPayload.STREAM_CODEC.decode(buffer));
@@ -61,9 +61,9 @@ class SightGlassDisplayTest {
                 buffer.clear();buffer.writeBlockPos(target.position());buffer.writeLong(target.identity());buffer.writeInt(0xFF123456);buffer.writeByte(1);buffer.writeByte(code);
                 assertThrows(IllegalArgumentException.class,()->FluidNetwork.SightGlassPayload.STREAM_CODEC.decode(buffer));
             }
-            assertThrows(IllegalArgumentException.class,()->new SightGlassDisplay.Sample(0xFF123456,-1,null));
-            assertThrows(IllegalArgumentException.class,()->new SightGlassDisplay.Sample(0xFF123456,256,PhysicalFluidTopology.Direction.EAST));
-            assertThrows(IllegalArgumentException.class,()->new SightGlassDisplay.Sample(0xFF123456,1,null));
+            assertThrows(IllegalArgumentException.class,()->new PipePresentation.SightGlass(0xFF123456,-1,null));
+            assertThrows(IllegalArgumentException.class,()->new PipePresentation.SightGlass(0xFF123456,256,PhysicalFluidTopology.Direction.EAST));
+            assertThrows(IllegalArgumentException.class,()->new PipePresentation.SightGlass(0xFF123456,1,null));
         }finally{buffer.release();}
     }
 
@@ -91,9 +91,9 @@ class SightGlassDisplayTest {
         for(var direction:PhysicalFluidTopology.Direction.values())for(boolean reverse:new boolean[]{false,true}){
             var info=new FluidView.PipeInfo(new PipeTransfer.Stream(0,new double[3][3],new double[3]),List.of(new FluidView.PipeConnection(7,1,1,0,reverse)),false,false);
             var mapping=new PhysicalFluidTopology.View(0,7,true,.5,direction);
-            assertEquals(reverse?PhysicalFluidTopology.opposite(direction):direction,SightGlassDisplay.flowDirection(info,List.of(mapping)));
-            assertNull(SightGlassDisplay.flowDirection(info,List.of(new PhysicalFluidTopology.View(0,7,true,Double.NaN,direction))));
-            assertNull(SightGlassDisplay.flowDirection(info,List.of(new PhysicalFluidTopology.View(0,7,true))));
+            assertEquals(reverse?PhysicalFluidTopology.opposite(direction):direction,PipePresentation.flowDirection(info,List.of(mapping)));
+            assertNull(PipePresentation.flowDirection(info,List.of(new PhysicalFluidTopology.View(0,7,true,Double.NaN,direction))));
+            assertNull(PipePresentation.flowDirection(info,List.of(new PhysicalFluidTopology.View(0,7,true))));
         }
     }
 
@@ -117,11 +117,11 @@ class SightGlassDisplayTest {
         return switch(window){case X->new double[]{0,y,-x};case Y->new double[]{x,0,-y};case Z->new double[]{x,y,0};};
     }
 
-    private static SightGlassDisplay.Sample display(double[] volumes,SolidInventory solids,double speed){
+    private static PipePresentation.SightGlass display(double[] volumes,SolidInventory solids,double speed){
         double[][] n=new double[3][3];n[0][0]=volumes[0];n[0][1]=volumes[0];n[1][2]=volumes[1];n[2][0]=volumes[2];
         var stream=new PipeTransfer.Stream(Arrays.stream(volumes).sum(),n,volumes,solids);
         var info=new FluidView.PipeInfo(stream,List.of(new FluidView.PipeConnection(7,1,speed,0,false)),false,false);
-        return SightGlassDisplay.of(base().withPipeInfo(info,1),COMPONENTS,WEIGHTS,CATALOG,PACKAGE,List.of(new PhysicalFluidTopology.View(0,7,true,.5,PhysicalFluidTopology.Direction.EAST)));
+        return PipePresentation.sightGlass(base().withPipeInfo(info,1),COMPONENTS,WEIGHTS,CATALOG,PACKAGE,List.of(new PhysicalFluidTopology.View(0,7,true,.5,PhysicalFluidTopology.Direction.EAST)));
     }
     private static FluidView base(){return new FluidView(1,0,0,0,"FULL",null,0,List.of(),null,1,List.of(),null);}
 }

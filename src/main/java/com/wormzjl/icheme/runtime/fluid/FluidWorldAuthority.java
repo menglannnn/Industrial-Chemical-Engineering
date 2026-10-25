@@ -58,7 +58,7 @@ public final class FluidWorldAuthority implements AutoCloseable {
     private final Map<Long,TankDisplay.Glide> publishedGlides=new HashMap<>();
     private final Watchers tankWatchers=new Watchers();
     private final Watchers sightGlassWatchers=new Watchers();
-    private final Map<Long,SightGlassDisplay.Sample> publishedSightGlasses=new HashMap<>();
+    private final Map<Long,PipePresentation.SightGlass> publishedSightGlasses=new HashMap<>();
     private final Watchers moverWatchers=new Watchers();
     private final Map<Long,com.wormzjl.icheme.network.FluidNetwork.MoverState> publishedMovers=new HashMap<>();
     private final com.wormzjl.icheme.runtime.instrument.InstrumentService instruments;
@@ -440,7 +440,7 @@ public final class FluidWorldAuthority implements AutoCloseable {
     private void forgetSightGlass(long id){sightGlassWatchers.remove(id);refreshObserved(id);publishedSightGlasses.remove(id);}
     private void publishSightGlass(WorldTopologyLedger.Registration record,net.minecraft.server.level.ServerLevel level,BlockPos pos,FluidView view) {
         long id=record.device().id();
-        var sample=SightGlassDisplay.of(view,componentNames,model.molecularWeights(),catalog,com.wormzjl.icheme.science.fluid.thermo.FluidMaterialCatalog.networkPackage(catalog),registry.pipeViews(id));
+        var sample=PipePresentation.sightGlass(view,componentNames,model.molecularWeights(),catalog,com.wormzjl.icheme.science.fluid.thermo.FluidMaterialCatalog.networkPackage(catalog),registry.pipeViews(id));
         publishedSightGlasses.put(id,sample);
         var target=new com.wormzjl.icheme.network.FluidNetwork.Target(pos,id);
         for(var uuid:sightGlassWatchers.watchers(id)) {
@@ -531,7 +531,7 @@ public final class FluidWorldAuthority implements AutoCloseable {
             if(registration.device().actuator())for(int i=0;i<snapshot.graph().pipes().size();i++){var pipe=snapshot.graph().pipes().get(i);if(pipe.first()==nodeIndex&&!(pipe.control() instanceof FlowControl.Passive)){flow=q[i];devicePressureChange=result.endpointHeads()[i];var mode=result.endpointModes().get(i);
                 if(pipe.control() instanceof FlowControl.Mover mover) {
                     String inlet=mode==FlowControl.Mode.INLET_WRONG_PHASE?inletReason(snapshot.graph(),i,result.advancedSeconds()):"";
-                    if(mover instanceof FlowControl.Pump pump)status=PumpStatus.of(status,pump,mode,inlet);
+                    if(mover instanceof FlowControl.Pump pump)status=PipePresentation.pumpStatus(status,pump,mode,inlet);
                     else {status+=" / "+mode;if(!inlet.isEmpty())status+=" / "+inlet;}
                     // The limit on the suction stream the mover draws (its own junction, what arrives at its inlet; decision
                     // D4): a pump's setting is the rise for water and scales with the suction density, a compressor's is the
