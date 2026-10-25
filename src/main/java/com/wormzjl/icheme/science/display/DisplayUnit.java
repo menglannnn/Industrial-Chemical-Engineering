@@ -1,4 +1,4 @@
-package com.wormzjl.icheme.client.gui.common;
+package com.wormzjl.icheme.science.display;
 
 /** A presentation unit. Controls cross the network in their original SI quantity. */
 public interface DisplayUnit {

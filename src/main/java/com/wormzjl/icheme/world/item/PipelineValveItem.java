@@ -48,6 +48,7 @@ public abstract class PipelineValveItem extends Item {
             if(!(level.getBlockEntity(pos) instanceof FluidDeviceBlockEntity entity))return InteractionResult.FAIL;
             var world=FluidWorldAuthority.find(server.getServer()).orElse(null);
             if(world==null||entity.fluidIdentity()==0)return InteractionResult.FAIL;
+            if(world.instruments().occupied(entity.fluidIdentity()))return InteractionResult.FAIL;
             var record=world.registrations().get(entity.fluidIdentity());
             var at=new PhysicalFluidTopology.Position(level.dimension().location().toString(),pos.getX(),pos.getY(),pos.getZ());
             if(record==null||record.device().kind()!=TopologyCompiler.Kind.PIPE||!record.device().position().equals(at))return InteractionResult.FAIL;
@@ -65,6 +66,7 @@ public abstract class PipelineValveItem extends Item {
             if(!(type==Type.PRESSURE?world.installPipePressureValve(entity.fluidIdentity(),axis):world.installPipeValve(entity.fluidIdentity(),axis,installed))) {
                 level.setBlock(pos,state,Block.UPDATE_ALL);return InteractionResult.FAIL;
             }
+            world.instruments().legacyInstalled(entity.fluidIdentity(),switch(type){case SHUTOFF->com.wormzjl.icheme.runtime.instrument.AccessoryStore.Type.SHUTOFF;case CHECK->com.wormzjl.icheme.runtime.instrument.AccessoryStore.Type.CHECK;case PRESSURE->com.wormzjl.icheme.runtime.instrument.AccessoryStore.Type.PRESSURE_VALVE;});
             entity.refreshGeometry(entity.bore(),true);
             if(!player.getAbilities().instabuild)stack.shrink(1);
         }

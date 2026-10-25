@@ -49,7 +49,7 @@ import java.util.WeakHashMap;
  * fluid identity and is its presentation binding, as a device block entity is for a one-block tank. Nothing of the
  * drum's contents is kept here.
  */
-public final class EquipmentShellBlockEntity extends BlockEntity implements FluidView.Receiver {
+public final class EquipmentShellBlockEntity extends BlockEntity implements com.wormzjl.icheme.runtime.instrument.AccessoryHost, FluidView.Receiver {
     /** Model data read by the shell model while the chunk is meshed. */
     public static final ModelProperty<ShapeRasterizer.CellKey> CELL = new ModelProperty<>();
     /** A saved cell or box beyond this many cells along any side is corrupt (the largest unit is under 100). */
@@ -62,6 +62,8 @@ public final class EquipmentShellBlockEntity extends BlockEntity implements Flui
     private @Nullable ShapeRasterizer.CellKey key;
     /** The equipment's fluid identity, on its node cell only (0 elsewhere and while unregistered). */
     private long identity;
+    private final com.wormzjl.icheme.runtime.instrument.InstrumentMetadata instruments=new com.wormzjl.icheme.runtime.instrument.InstrumentMetadata();
+    @Override public com.wormzjl.icheme.runtime.instrument.InstrumentMetadata instruments(){return instruments;}
     /**
      * The layout this cell was placed by: its {@link ShapeRasterizer#stamp} and its box (0 for a cell saved before the
      * stamp existed). Another stamp on load sends the vessel to {@link EquipmentStructure#refreshLater}.
@@ -117,7 +119,7 @@ public final class EquipmentShellBlockEntity extends BlockEntity implements Flui
     /** Server: the drum registered with this cell as its node takes its identity; its presentation follows the engine's buckets. */
     public void bindIdentity(long id) {
         if (id <= 0) throw new IllegalStateException("Invalid fluid identity");
-        identity = id;
+        identity = id;com.wormzjl.icheme.runtime.instrument.InstrumentHosts.loaded(this);
         setChanged();
         if (level instanceof ServerLevel serverLevel) {
             FluidWorldAuthority.find(serverLevel.getServer()).ifPresent(world -> world.deviceLoaded(id));
@@ -172,6 +174,7 @@ public final class EquipmentShellBlockEntity extends BlockEntity implements Flui
      * rides; any other cell leaves it.
      */
     private void trackRoof() {
+        com.wormzjl.icheme.runtime.instrument.InstrumentHosts.loaded(this);
         if (level == null) return;
         var roofs = FloatingRoofs.of(level);
         if (shape != null && shape.kind() == EquipmentShape.Kind.TANK && cell().equals(ShapeRasterizer.fluidCell(shape)))
@@ -182,7 +185,7 @@ public final class EquipmentShellBlockEntity extends BlockEntity implements Flui
     /** Server: a node binds its saved registration without creating process state; the client lists moving parts. */
     @Override
     public void onLoad() {
-        super.onLoad();
+        super.onLoad();com.wormzjl.icheme.runtime.instrument.InstrumentHosts.loaded(this);
         trackRoof();
         if (level != null && level.isClientSide) trackMoving();
         if (!(level instanceof ServerLevel serverLevel) || shape == null) return;
@@ -204,12 +207,14 @@ public final class EquipmentShellBlockEntity extends BlockEntity implements Flui
 
     @Override
     public void setRemoved() {
-        super.setRemoved();
+        super.setRemoved();com.wormzjl.icheme.runtime.instrument.InstrumentHosts.unloaded(this);if(level!=null&&level.isClientSide())com.wormzjl.icheme.client.InstrumentDisplays.forget(worldPosition);
         released();
     }
 
     /** Unloaded or removed: publications stop marking the drum; the client stops moving its parts. */
     private void released() {
+        com.wormzjl.icheme.runtime.instrument.InstrumentHosts.unloaded(this);
+        if(level!=null&&level.isClientSide())com.wormzjl.icheme.client.InstrumentDisplays.forget(worldPosition);
         if(level!=null&&level.isClientSide())com.wormzjl.icheme.client.MoverSounds.forget(this);
         CLIENT_MOVING.remove(this);
         CLIENT_TANKS.remove(this);
@@ -334,14 +339,14 @@ public final class EquipmentShellBlockEntity extends BlockEntity implements Flui
 
     @Override
     protected void saveAdditional(CompoundTag tag, HolderLookup.Provider registries) {
-        super.saveAdditional(tag, registries);
+        super.saveAdditional(tag, registries);instruments.write(tag);
         write(tag);
         if (identity != 0) tag.putLong("FluidIdentity", identity);
     }
 
     @Override
     protected void loadAdditional(CompoundTag tag, HolderLookup.Provider registries) {
-        super.loadAdditional(tag, registries);
+        super.loadAdditional(tag, registries);instruments.read(tag);
         shape = null;
         key = null;
         paint = Paint.DEFAULT;
@@ -420,7 +425,7 @@ public final class EquipmentShellBlockEntity extends BlockEntity implements Flui
 
     @Override
     public CompoundTag getUpdateTag(HolderLookup.Provider registries) {
-        var tag = new CompoundTag();
+        var tag = new CompoundTag();instruments.write(tag);
         write(tag);
         if(identity!=0)tag.putLong("FluidIdentity",identity);
         return tag;

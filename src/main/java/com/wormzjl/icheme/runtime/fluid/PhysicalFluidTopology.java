@@ -146,7 +146,7 @@ public final class PhysicalFluidTopology {
             return face==Direction.UP?PassiveNetwork.PhasePort.VAPOR:face==Direction.DOWN?PassiveNetwork.PhasePort.LIQUID:PassiveNetwork.PhasePort.BULK;
         }
     }
-    public record View(int islandIndex,long pipeId,boolean forward) {}
+    public record View(int islandIndex,long pipeId,boolean forward,double tap) { public View(int islandIndex,long pipeId,boolean forward){this(islandIndex,pipeId,forward,.5);} }
     public record Island(Set<Long> physicalIds,PassiveNetwork graph,Optional<String> error) {
         public Island {physicalIds=Set.copyOf(physicalIds);Objects.requireNonNull(graph);Objects.requireNonNull(error);}
     }
@@ -252,9 +252,9 @@ public final class PhysicalFluidTopology {
                 if(fromStart&&fromEnd) {
                     int middle=reservoirs.size();reservoirs.add(new PassiveNetwork.Reservoir(virtual--,.5*(reservoirs.get(a).elevation()+reservoirs.get(b).elevation()),seed,PassiveNetwork.NodeKind.JUNCTION));
                     var halves=sections.stream().map(g->scaled(g,.5)).toList();
-                    pipes.add(new PassiveNetwork.Pipe(pipeId,a,middle,halves,control(start,compiled.invalidPumpCycles())).withPorts(startPort,PassiveNetwork.PhasePort.BULK));mapViews(views,run,linkOwner,physical,islandIndex,pipeId,true);
+                    pipes.add(new PassiveNetwork.Pipe(pipeId,a,middle,halves,control(start,compiled.invalidPumpCycles())).withPorts(startPort,PassiveNetwork.PhasePort.BULK));mapViews(views,run,linkOwner,physical,islandIndex,pipeId,true,true);
                     pipeId=runIdentity(run,linkOwner,1);if(!pipeIdentities.add(pipeId))throw new IllegalStateException("Compiled pipe identity collision");
-                    pipes.add(new PassiveNetwork.Pipe(pipeId,b,middle,halves,control(end,compiled.invalidPumpCycles())).withPorts(endPort,PassiveNetwork.PhasePort.BULK));mapViews(views,run,linkOwner,physical,islandIndex,pipeId,false);
+                    pipes.add(new PassiveNetwork.Pipe(pipeId,b,middle,halves,control(end,compiled.invalidPumpCycles())).withPorts(endPort,PassiveNetwork.PhasePort.BULK));mapViews(views,run,linkOwner,physical,islandIndex,pipeId,false,true);
                 } else {
                     // The ports follow the ends through the swap: a run driven from its end is stated from b to a.
                     pipes.add(new PassiveNetwork.Pipe(pipeId,fromEnd?b:a,fromEnd?a:b,sections,fromStart?control(start,compiled.invalidPumpCycles()):fromEnd?control(end,compiled.invalidPumpCycles()):new FlowControl.Passive())
@@ -336,10 +336,13 @@ public final class PhysicalFluidTopology {
         return scaled(g,.5);
     }
     private static PipeResistance.Geometry scaled(PipeResistance.Geometry g,double fraction){return new PipeResistance.Geometry(g.length()*fraction,g.diameter(),g.roughness(),g.minorLoss()*fraction);}
-    private static void mapViews(Map<Long,List<View>> views,TopologyCompiler.Run run,Map<Long,Long> owners,Map<Long,Device> physical,int island,long pipe,boolean forward) {
+    private static void mapViews(Map<Long,List<View>> views,TopologyCompiler.Run run,Map<Long,Long> owners,Map<Long,Device> physical,int island,long pipe,boolean forward) {mapViews(views,run,owners,physical,island,pipe,forward,false);}
+    private static void mapViews(Map<Long,List<View>> views,TopologyCompiler.Run run,Map<Long,Long> owners,Map<Long,Device> physical,int island,long pipe,boolean forward,boolean split) {
+        double total=run.segments().stream().mapToDouble(s->s.geometry().length()).sum(),cursor=0;var spans=new LinkedHashMap<Long,double[]>();
+        for(var segment:run.segments()){long id=owners.get(segment.linkId());double start=cursor;cursor+=segment.geometry().length();var span=spans.get(id);if(span==null)spans.put(id,new double[]{start,cursor});else span[1]=cursor;}
         for(var segment:run.segments()) {
             long id=owners.get(segment.linkId());if(physical.get(id).kind!=TopologyCompiler.Kind.PIPE)continue;
-            var entry=new View(island,pipe,forward);var list=views.computeIfAbsent(id,ignored->new ArrayList<>());if(!list.contains(entry))list.add(entry);
+            var span=spans.get(id);double tap=(span[0]+span[1])/(2*total);if(!forward)tap=1-tap;if(split)tap=tap<=.5?tap*2:Double.NaN;var entry=new View(island,pipe,forward,tap);var list=views.computeIfAbsent(id,ignored->new ArrayList<>());if(!list.contains(entry))list.add(entry);
         }
     }
 }

@@ -326,6 +326,8 @@ public final class EquipmentStructure {
         return null;
     }
 
+    static void breaking(Level level,BlockPos position,net.minecraft.world.entity.player.Player player){var vessel=find(level,position);if(vessel==null||!vessel.shape().fluidDevice())return;var cell=ShapeRasterizer.fluidCell(vessel.shape());if(cell!=null&&level.getBlockEntity(vessel.origin().offset(cell.x(),cell.y(),cell.z())) instanceof EquipmentShellBlockEntity shell)shell.instruments().recoverOnBreak(!player.isCreative());}
+
     /** Removes every remaining cell of the vessel; nothing drops. */
     static void dismantle(Level level, Vessel vessel) {
         if (dismantling || level.isClientSide()) return;
@@ -507,10 +509,10 @@ public final class EquipmentStructure {
                 if (level.getBlockEntity(node) instanceof EquipmentShellBlockEntity entity) entity.bindIdentity(replacement.device().id());
                 return;
             }
-            world.remove(device.id());
+            var relocated=new PhysicalFluidTopology.Device(device.id(),position(level,node),device.kind(),device.facing(),device.geometry(),device.control(),ports(level,vessel),device.generatorEnabled(),device.cutoff());
+            world.edit(device.id(),record.revision(),relocated,record.spec());
             if (level.getBlockEntity(oldNode) instanceof EquipmentShellBlockEntity old) old.releaseIdentity();
-            register(level, vessel);
-            IChemE.LOGGER.info("equipment_refresh drum node moved {} -> {}: registered anew, empty", oldNode.toShortString(), node.toShortString());
+            if (level.getBlockEntity(node) instanceof EquipmentShellBlockEntity entity) entity.bindIdentity(device.id());
             return;
         }
         var spec = record.spec();

@@ -34,10 +34,13 @@ public final class PipelineSightGlassItem extends Item {
         if(FluidDeviceBlock.hasSightGlass(state))return InteractionResult.sidedSuccess(level.isClientSide());
         if(!level.isClientSide()) {
             if(!(level.getBlockEntity(pos) instanceof FluidDeviceBlockEntity entity))return InteractionResult.FAIL;
+            var world=com.wormzjl.icheme.runtime.fluid.FluidWorldAuthority.find(((net.minecraft.server.level.ServerLevel)level).getServer()).orElse(null);
+            if(world==null||world.instruments().occupied(entity.fluidIdentity()))return InteractionResult.FAIL;
             var eye=player.getEyePosition().subtract(pos.getCenter());
             var window=SightGlassGeometry.towards(FluidDeviceBlock.connectionMask(state),state.getValue(FluidDeviceBlock.FACING).ordinal(),eye.x,eye.y,eye.z);
             var installed=state.setValue(FluidDeviceBlock.SIGHT_GLASS,true).setValue(FluidDeviceBlock.SIGHT_GLASS_AXIS,Direction.Axis.valueOf(window.name()));
             if(!level.setBlock(pos,installed,Block.UPDATE_ALL))return InteractionResult.FAIL;
+            world.instruments().legacyInstalled(entity.fluidIdentity(),com.wormzjl.icheme.runtime.instrument.AccessoryStore.Type.SIGHT_GLASS);
             entity.refreshGeometry(entity.bore(),true);
             if(!player.getAbilities().instabuild)stack.shrink(1);
         }

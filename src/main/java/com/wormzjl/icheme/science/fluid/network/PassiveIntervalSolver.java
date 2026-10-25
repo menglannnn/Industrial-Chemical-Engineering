@@ -45,8 +45,9 @@ public final class PassiveIntervalSolver {
     }
     public record Result(PassiveNetwork graph,double advancedSeconds,double[] averageMassFlows,int acceptedSubsteps,int rejectedSubsteps,
                          double pumpWorkJoule,List<ConservativeTransport.BoundaryTransfer> boundaries,Map<String,Integer> rejectionReasons,
-                         List<FlowControl.Mode> endpointModes,double[] endpointHeads,double[] endpointFlows,List<PipeTransfer> pipeTransfers) {
-        public Result {averageMassFlows=averageMassFlows.clone();boundaries=List.copyOf(boundaries);rejectionReasons=Collections.unmodifiableMap(new LinkedHashMap<>(rejectionReasons));endpointModes=List.copyOf(endpointModes);endpointHeads=endpointHeads.clone();endpointFlows=endpointFlows.clone();pipeTransfers=List.copyOf(pipeTransfers);}
+                         List<FlowControl.Mode> endpointModes,double[] endpointHeads,double[] endpointFlows,List<PipeTransfer> pipeTransfers,List<PipeObservation> observations) {
+        public Result(PassiveNetwork graph,double advancedSeconds,double[] averageMassFlows,int acceptedSubsteps,int rejectedSubsteps,double pumpWorkJoule,List<ConservativeTransport.BoundaryTransfer> boundaries,Map<String,Integer> rejectionReasons,List<FlowControl.Mode> endpointModes,double[] endpointHeads,double[] endpointFlows,List<PipeTransfer> pipeTransfers){this(graph,advancedSeconds,averageMassFlows,acceptedSubsteps,rejectedSubsteps,pumpWorkJoule,boundaries,rejectionReasons,endpointModes,endpointHeads,endpointFlows,pipeTransfers,List.of());}
+        public Result {observations=List.copyOf(observations);averageMassFlows=averageMassFlows.clone();boundaries=List.copyOf(boundaries);rejectionReasons=Collections.unmodifiableMap(new LinkedHashMap<>(rejectionReasons));endpointModes=List.copyOf(endpointModes);endpointHeads=endpointHeads.clone();endpointFlows=endpointFlows.clone();pipeTransfers=List.copyOf(pipeTransfers);}
         @Override public double[] averageMassFlows(){return averageMassFlows.clone();}
         @Override public double[] endpointHeads(){return endpointHeads.clone();}
         /** The mass flows (kg/s) of the interval's last accepted step: the flows at its end state, which the next job's first
@@ -80,7 +81,7 @@ public final class PassiveIntervalSolver {
         // are refreshed here: an island where none may (no solids, no crystal able to form) reaches its rest test with no
         // closure and no checkpoint, as on a package without crystals before the ice.
         var conversions=InventoryEquilibrium.conversions(initial,model,checkpoint);
-        if(Double.isFinite(duration)&&duration>0&&!conversions.converted()&&NetworkReduction.atRest(initial,model,null,refused)){SolverDiagnostics.count(SolverDiagnostics.restIntervals);return committedInlets(NetworkReduction.restInterval(committed,duration,refused));}
+        if(Double.isFinite(duration)&&duration>0&&!conversions.converted()&&NetworkReduction.atRest(initial,model,null,refused)){SolverDiagnostics.count(SolverDiagnostics.restIntervals);return committedInlets(NetworkReduction.observedRestInterval(committed,duration,refused,model));}
         // Owner decision D37 (S3): the interval's one refresh completes the rest test's (InventoryEquilibrium.completed), and
         // the steps or the solid events start from it, its boundaries first. Whether the solid events run is read where the
         // rest test's refresh left the island when a stock converted, and on the island as it came otherwise.
@@ -301,7 +302,7 @@ public final class PassiveIntervalSolver {
         // transported mass.
         double normalizer=declared==null?duration:elapsed;
         for(int i=0;i<transferred.length;i++)transferred[i]/=normalizer;
-        return new Prefix(new Result(accepted,elapsed,transferred,acceptedCount,rejectedCount,work,boundaries,rejectionReasons,last.modes(),last.devicePressureChanges(),last.massFlows(),pipeTransfers.snapshot()),declared);
+        return new Prefix(new Result(accepted,elapsed,transferred,acceptedCount,rejectedCount,work,boundaries,rejectionReasons,last.modes(),last.devicePressureChanges(),last.massFlows(),pipeTransfers.snapshot(),last.observations()),declared);
     }
     /**
      * The share of a node's total amount below which a component is flushed at an accepted step (owner decision

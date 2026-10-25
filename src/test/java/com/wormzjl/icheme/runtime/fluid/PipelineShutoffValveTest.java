@@ -107,6 +107,16 @@ class PipelineShutoffValveTest {
         assertTrue(assertThrows(IllegalArgumentException.class,()->FluidCheckpointCodec.decodeTopology(illegalKind,0,key->model)).getMessage().contains("Only a pipe"));
         assertThrows(IllegalArgumentException.class,()->other.withCutoff(Direction.EAST,Cutoff.OPEN));
     }
+    @Test void wrenchRemovalRestoresOrdinaryPipeAndPreservesPendingDiameterAndContents(){
+        for(var axis:List.of(Direction.EAST,Direction.UP,Direction.SOUTH))for(int type=0;type<3;type++){
+            var world=line(axis);var before=stock(world);
+            if(type==0){world.registry.installPipeCutoff(3,axis);world.registry.togglePipeCutoff(3);}else if(type==1)world.registry.installPipeValve(3,axis,Cutoff.CHECK);else world.registry.installPipePressureValve(3,axis);
+            world.registry.applyPending();var record=world.registry.registrations().get(3L);var g=record.device().geometry();
+            world.registry.submit(List.of(new WorldTopologyLedger.Edit(3,new WorldTopologyLedger.Registration(record.device().withGeometry(new PipeResistance.Geometry(g.length(),.25,g.roughness(),g.minorLoss())),record.spec(),record.revision()+1))),world.ledger.nextIdentity(),null);
+            assertTrue(world.registry.removePipeAccessory(3));int pending=world.ledger.snapshot().events().size();assertTrue(world.registry.removePipeAccessory(3));assertEquals(pending,world.ledger.snapshot().events().size());
+            world.registry.applyPending();assertEquals(3,valve(world).id());assertEquals(.25,valve(world).geometry().diameter());assertEquals(Cutoff.NONE,valve(world).cutoff());assertInstanceOf(FlowControl.Passive.class,valve(world).control());assertEquals(world.registry.owner(1),world.registry.owner(5));assertEquals(before,stock(world));assertTrue(world.commands.isEmpty());
+        }
+    }
     private byte[] image(Device device) {
         var empty=WorldTopologyLedger.Snapshot.empty(EventPathWorld.CATALOG);
         var saved=new WorldTopologyLedger.Snapshot(0,2,Map.of(device.id(),new WorldTopologyLedger.Registration(device,FluidDeviceSpec.nitrogen(EventPathWorld.CATALOG),0)),List.of(),empty.constructed(),empty.destroyed(),empty.basis());

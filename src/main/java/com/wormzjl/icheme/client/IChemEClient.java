@@ -18,6 +18,7 @@ public final class IChemEClient {
     public static void registerScreens(RegisterMenuScreensEvent event) {
         event.register(ModMenus.COLUMN_CALCULATOR_V3.get(), ColumnCalculatorV3Screen::new);
         event.register(ModMenus.FLUID_DEVICE.get(),com.wormzjl.icheme.client.gui.screens.inventory.FluidDeviceScreen::new);
+        event.register(ModMenus.GAUGE.get(), com.wormzjl.icheme.client.gui.screens.inventory.GaugeScreen::new);
         event.register(ModMenus.PIPELINE_TOOL.get(), com.wormzjl.icheme.client.gui.screens.inventory.PipelineToolScreen::new);
     }
 

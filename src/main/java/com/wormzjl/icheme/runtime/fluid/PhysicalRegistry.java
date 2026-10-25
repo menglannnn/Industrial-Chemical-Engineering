@@ -123,6 +123,13 @@ public final class PhysicalRegistry {
         submit(List.of(new WorldTopologyLedger.Edit(id,new WorldTopologyLedger.Registration(device,record.spec(),Math.addExact(record.revision(),1)))),topology.nextIdentity(),null);
         return true;
     }
+    /** Removal composes with the latest projected geometry, controls and spec. */
+    public boolean removePipeAccessory(long id) {
+        var r=registrations().get(id);if(r==null||r.device().kind()!=TopologyCompiler.Kind.PIPE)return false;
+        var d=r.device();if(d.cutoff()==PhysicalFluidTopology.Cutoff.NONE&&d.control() instanceof FlowControl.Passive)return true;
+        var device=new PhysicalFluidTopology.Device(d.id(),d.position(),d.kind(),d.facing(),d.geometry(),new FlowControl.Passive(),d.ports(),d.generatorEnabled(),PhysicalFluidTopology.Cutoff.NONE);
+        submit(List.of(new WorldTopologyLedger.Edit(id,new WorldTopologyLedger.Registration(device,r.spec(),Math.addExact(r.revision(),1)))),topology.nextIdentity(),null);return true;
+    }
     private boolean canInstallValve(WorldTopologyLedger.Registration record,PhysicalFluidTopology.Direction axis) {
         Objects.requireNonNull(axis);
         if(record==null||record.device().kind()!=TopologyCompiler.Kind.PIPE||record.device().cutoff()!=PhysicalFluidTopology.Cutoff.NONE||!(record.device().control() instanceof FlowControl.Passive))return false;
@@ -297,6 +304,7 @@ public final class PhysicalRegistry {
                 if(previous!=null&&previous.kind()==PassiveNetwork.NodeKind.RESERVOIR){destroyed.add(previous);if(additions.remove(edit.id())==null)removed.put(edit.id(),previous);}
             } else {
                 changed.put(edit.id(),Optional.of(replacement));
+                if(old!=null&&replacement.device().boundary()&&!old.device().position().equals(replacement.device().position())&&stock.containsKey(edit.id())){var node=stock.get(edit.id());stock.put(edit.id(),new PassiveNetwork.Reservoir(node.id(),replacement.device().position().y(),node.state(),node.kind(),node.inventory()));}
                 if(replacement.device().boundary()&&(old==null||!old.spec().equals(replacement.spec()))) {
                     var initialized=replacement.spec().initialize(replacement.device(),model,()->{});stock.put(edit.id(),initialized);
                     if(initialized.kind()==PassiveNetwork.NodeKind.RESERVOIR){constructed.add(initialized);additions.put(edit.id(),initialized);}

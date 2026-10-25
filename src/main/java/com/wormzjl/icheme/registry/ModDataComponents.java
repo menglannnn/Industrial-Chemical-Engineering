@@ -16,6 +16,8 @@ public final class ModDataComponents {
             COMPONENTS.register("pipeline_tool_settings", () -> DataComponentType.<PipelineToolSettings>builder()
                     .persistent(PipelineToolSettings.CODEC).networkSynchronized(PipelineToolSettings.STREAM_CODEC).build());
 
+    public static final DeferredHolder<DataComponentType<?>, DataComponentType<com.wormzjl.icheme.world.item.GaugeSettings>> GAUGE_SETTINGS = COMPONENTS.register("gauge_settings", () -> DataComponentType.<com.wormzjl.icheme.world.item.GaugeSettings>builder().persistent(com.wormzjl.icheme.world.item.GaugeSettings.CODEC).networkSynchronized(com.wormzjl.icheme.world.item.GaugeSettings.STREAM_CODEC).build());
+
     private ModDataComponents() {
     }
 

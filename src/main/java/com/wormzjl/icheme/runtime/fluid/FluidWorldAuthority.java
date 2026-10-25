@@ -61,6 +61,8 @@ public final class FluidWorldAuthority implements AutoCloseable {
     private final Map<Long,Integer> publishedSightGlasses=new HashMap<>();
     private final TankWatchers moverWatchers=new TankWatchers();
     private final Map<Long,com.wormzjl.icheme.network.MoverNetwork.State> publishedMovers=new HashMap<>();
+    private final com.wormzjl.icheme.runtime.instrument.InstrumentService instruments;
+    public com.wormzjl.icheme.runtime.instrument.InstrumentService instruments(){owned();return instruments;}
     private boolean closed;
     private long lastDebugChat=Long.MIN_VALUE;
     private MaterialCatalog observedSolidData;
@@ -86,6 +88,7 @@ public final class FluidWorldAuthority implements AutoCloseable {
         for(var entry:data.checkpoint().islands())runtime.register(dimension(entry.dimension()),entry.snapshot(),model(entry.key()));
         logLoad();
         registry.load();data.bindCapture(this::capture);
+        instruments=new com.wormzjl.icheme.runtime.instrument.InstrumentService(server,this);
         // Block entities whose chunks loaded before this authority existed never reported themselves: every device
         // in an already loaded chunk is marked once, and its bucket binds and presents it. Nothing is pushed here.
         registry.forEachChunk((name,chunk,devices)->{var level=server.getLevel(dimension(name));var at=new net.minecraft.world.level.ChunkPos(chunk);
@@ -258,7 +261,7 @@ public final class FluidWorldAuthority implements AutoCloseable {
     }
     /** Reading committed static configuration never advances or materialises process state. */
     public Optional<PhysicalFluidTopology.Device> committedDevice(long id){owned();var record=topology.active().get(id);return record==null?Optional.empty():Optional.of(record.device());}
-    public void remove(long id){owned();var old=registrations().get(id);if(old!=null)submit(List.of(new WorldTopologyLedger.Edit(id,null)),topology.nextIdentity(),old.device().kind()==TopologyCompiler.Kind.FILTER?new WorldTopologyLedger.Recovery(id,null):null);}
+    public void remove(long id){owned();instruments.recoverHost(id);var old=registrations().get(id);if(old!=null)submit(List.of(new WorldTopologyLedger.Edit(id,null)),topology.nextIdentity(),old.device().kind()==TopologyCompiler.Kind.FILTER?new WorldTopologyLedger.Recovery(id,null):null);}
     /**
      * Queues a filter's solid recovery as a ledger event and returns it, as an edit is queued: nothing is applied or
      * delivered here. The engine applies it with the next batch of events, takes the cake the island holds then and
@@ -292,6 +295,7 @@ public final class FluidWorldAuthority implements AutoCloseable {
         owned();if(closed)return;refreshProperties();topology.tick();
         runtime.tick();
         if(topology.hasPendingEvents()){applyPending();runtime.coordinator().pumpIfUseful();}
+        instruments.tick(topology.onlineTick());
         presentation.tick(topology.onlineTick());
         com.wormzjl.icheme.network.ColumnV3Network.presentationTick(server, topology.onlineTick());
         data.setDirty();
@@ -352,9 +356,9 @@ public final class FluidWorldAuthority implements AutoCloseable {
         for(long id:registry.chunk(name,chunk))presentation.markDirty(id);
     }
     /** A device's block entity loaded or was bound: marked for its bucket, never presented at once. */
-    public void deviceLoaded(long id){owned();if(!closed)presentation.deviceLoaded(id);}
+    public void deviceLoaded(long id){owned();if(!closed){presentation.deviceLoaded(id);if(instruments!=null)instruments.bind(instrumentHost(id));}}
     /** A device's block entity unloaded or was removed: publications stop marking it. */
-    public void deviceUnloaded(long id){owned();forgetSightGlass(id);forgetMover(id);presentation.deviceUnloaded(id);publishedMenuData.remove(id);publishedGlides.remove(id);}
+    public void deviceUnloaded(long id){owned();instruments.forget(id);forgetSightGlass(id);forgetMover(id);presentation.deviceUnloaded(id);publishedMenuData.remove(id);publishedGlides.remove(id);}
     /**
      * A client's watch request for open tanks by their node cells (owner decision FR4, R-B): each new watch of a loaded
      * open tank within {@link TankWatchers#RANGE} is answered with the tank's last published display, if it has one (a
@@ -392,7 +396,7 @@ public final class FluidWorldAuthority implements AutoCloseable {
         }
     }
     private static boolean moverRange(net.minecraft.server.level.ServerPlayer player,BlockPos pos){return pos.distToCenterSqr(player.position())<=com.wormzjl.icheme.network.MoverNetwork.RANGE*com.wormzjl.icheme.network.MoverNetwork.RANGE;}
-    private void refreshObserved(long id){if(moverWatchers.watchers(id).isEmpty()&&sightGlassWatchers.watchers(id).isEmpty())presentation.unobserve(id);else presentation.observe(id);}
+    private void refreshObserved(long id){if(moverWatchers.watchers(id).isEmpty()&&sightGlassWatchers.watchers(id).isEmpty()&&(instruments==null||!instruments.observes(id)))presentation.unobserve(id);else presentation.observe(id);}
     private void unwatchMover(UUID player,long id){moverWatchers.unwatch(player,id);refreshObserved(id);}
     private void forgetMover(long id){moverWatchers.remove(id);publishedMovers.remove(id);refreshObserved(id);}
     private void publishMover(WorldTopologyLedger.Registration record,net.minecraft.server.level.ServerLevel level,BlockPos pos) {
@@ -460,6 +464,11 @@ public final class FluidWorldAuthority implements AutoCloseable {
         }
     }
     /** Marks a device for its next bucket (a test or tool asking for a refresh gets it on the engine's schedule). */
+    public com.wormzjl.icheme.runtime.instrument.InstrumentHosts.Host instrumentHost(long id){owned();var r=registrations().get(id);if(r==null)return null;var p=r.device().position();var level=server.getLevel(dimension(p.dimension()));if(level==null)return null;var h=com.wormzjl.icheme.runtime.instrument.InstrumentHosts.at(level,new BlockPos(p.x(),p.y(),p.z()));return h!=null&&h.identity()==id?h:null;}
+    public void instrumentObservationChanged(long id){owned();refreshObserved(id);}
+    public boolean removePipeAccessory(long id){owned();return registry.removePipeAccessory(id);}
+    public record InstrumentReading(double pressure,double temperature,boolean flowing){}
+    public InstrumentReading instrumentPipeReading(long id){owned();Long owner=registry.owner(id);if(owner==null)return null;var r=registrations().get(id);if(r==null)return null;var snapshot=runtime.coordinator().presentation(owner);if(snapshot.lastResult().isEmpty())return null;for(var mapping:registry.pipeViews(id)){if(!Double.isFinite(mapping.tap()))continue;for(var observed:snapshot.lastResult().get().observations())if(observed.pipe()==mapping.pipeId())return new InstrumentReading(observed.pressure(mapping.tap(),r.device().position().y(),!mapping.forward()),observed.temperature(),observed.flowing());}return null;}
     public void markViewDirty(long id){owned();presentation.markDirty(id);}
     /** An open menu becomes a consumer of its device's bucket. The first delivery comes with that bucket. */
     public void subscribe(com.wormzjl.icheme.world.inventory.FluidDeviceMenu menu){owned();if(!closed)presentation.subscribe(menu,menu.identity());}
@@ -652,7 +661,7 @@ public final class FluidWorldAuthority implements AutoCloseable {
             var pos=new BlockPos(p.x(),p.y(),p.z());if(!level.hasChunkAt(pos))return false;
             // A drum's node cell carries the identity it was built with; it is never bound here.
             if(!record.device().ports().isEmpty()) {
-                if(level.getBlockEntity(pos) instanceof FluidView.Receiver receiver&&receiver.fluidIdentity()==id){unboundBindings.remove(id);var presented=view.get();receiver.acceptFluidView(presented);
+                if(level.getBlockEntity(pos) instanceof FluidView.Receiver receiver&&receiver.fluidIdentity()==id){unboundBindings.remove(id);var presented=view.get();receiver.acceptFluidView(presented);instruments.publish(id,presented);
                     if(record.spec().open())publishTank(record,level,pos,presented);
                     publishMover(record,level,pos);
                     return true;}
@@ -666,7 +675,7 @@ public final class FluidWorldAuthority implements AutoCloseable {
             unboundBindings.remove(id);
             if(level.getBlockEntity(pos) instanceof com.wormzjl.icheme.world.level.block.entity.FluidDeviceBlockEntity entity&&entity.fluidIdentity()!=id)entity.bindIdentity(id);
             if(!(level.getBlockEntity(pos) instanceof FluidView.Receiver receiver)||receiver.fluidIdentity()!=id)return false;
-            var presented=view.get();receiver.acceptFluidView(presented);
+            var presented=view.get();receiver.acceptFluidView(presented);instruments.publish(id,presented);
             if(com.wormzjl.icheme.world.level.block.FluidDeviceBlock.hasSightGlass(level.getBlockState(pos)))publishSightGlass(record,level,pos,presented);
             else forgetSightGlass(id);
             return true;

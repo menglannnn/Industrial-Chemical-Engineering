@@ -1,4 +1,4 @@
-package com.wormzjl.icheme.client.gui.common;
+package com.wormzjl.icheme.science.display;
 
 import java.util.Locale;
 
@@ -15,8 +15,8 @@ public enum PressureUnit implements DisplayUnit {
     public PressureUnit next(){return switch(this){case PASCAL->KILOPASCAL;case KILOPASCAL->BAR;case BAR->MEGAPASCAL;case MEGAPASCAL->PASCAL;};}
     public String number(double si){
         if(!Double.isFinite(si))return "—";
-        double steps=Math.rint(si/ProcessUi.PRESSURE_RESOLUTION);
-        return String.format(Locale.ROOT,"%."+decimals+"f",display(steps==0?0:steps*ProcessUi.PRESSURE_RESOLUTION));
+        double steps=Math.rint(si/0.1);
+        return String.format(Locale.ROOT,"%."+decimals+"f",display(steps==0?0:steps*0.1));
     }
     public String format(double si){return Double.isFinite(si)?number(si)+" "+symbol:"—";}
 }

@@ -116,6 +116,8 @@ public final class EquipmentInteriorBlock extends Block {
         return EquipmentShellBlock.useDebugger(stack, level, position, player);
     }
 
+    @Override public BlockState playerWillDestroy(Level level,BlockPos pos,BlockState state,Player player){EquipmentStructure.breaking(level,pos,player);return super.playerWillDestroy(level,pos,state,player);}
+
     @Override
     protected void onRemove(BlockState state, Level level, BlockPos position, BlockState replacement, boolean moved) {
         if (!level.isClientSide() && !state.is(replacement.getBlock())) {

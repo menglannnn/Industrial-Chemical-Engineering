@@ -1074,5 +1074,21 @@
   "gui.icheme.fluid.phase_tab.0": "Org",
   "gui.icheme.fluid.phase_tab.1": "Aq",
   "gui.icheme.fluid.phase_tab.2": "Gas",
-  "gui.icheme.fluid.phase_tab.3": "Solid"
+  "gui.icheme.fluid.phase_tab.3": "Solid",
+  "item.icheme.pressure_gauge": "Pressure Gauge",
+  "item.icheme.temperature_gauge": "Temperature Gauge",
+  "item.icheme.accessory_wrench": "Accessory Wrench",
+  "tooltip.icheme.gauge.configure": "Shift + right-click: configure range and units",
+  "tooltip.icheme.gauge.install": "Aim at a socket and right-click to install",
+  "tooltip.icheme.accessory_wrench": "Shift + right-click a selected accessory to recover it",
+  "gui.icheme.gauge.minimum": "Minimum",
+  "gui.icheme.gauge.maximum": "Maximum",
+  "gui.icheme.gauge.relative": "Atmospheric-relative",
+  "gui.icheme.gauge.absolute": "Absolute pressure",
+  "gui.icheme.gauge.invalid": "Enter a valid physical range",
+  "gui.icheme.gauge.dial_only": "Range affects the dial only",
+  "gui.icheme.gauge.unavailable": "Measurement unavailable",
+  "gui.icheme.gauge.outside": "Outside dial range",
+  "gui.icheme.gauge.stale": "Stale — no accepted flow",
+  "gui.icheme.gauge.age": "Sample age: %s s"
 }
