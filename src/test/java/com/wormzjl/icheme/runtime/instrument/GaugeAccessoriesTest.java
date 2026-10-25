@@ -1,6 +1,8 @@
 package com.wormzjl.icheme.runtime.instrument;
 
+import com.mojang.serialization.JsonOps;
 import com.wormzjl.icheme.world.item.GaugeSettings;
+import com.wormzjl.icheme.world.item.PipelineToolItem;
 import com.wormzjl.icheme.world.item.GaugeSettings.*;
 import com.wormzjl.icheme.science.equipment.*;
 import com.wormzjl.icheme.science.fluid.network.PassiveStepSolver.PipeObservation;
@@ -29,6 +31,34 @@ class GaugeAccessoriesTest {
         assertThrows(IllegalArgumentException.class,()->new GaugeSettings(Kind.TEMPERATURE,0,10,Unit.BAR,false));
         var broken=(CompoundTag)GaugeSettings.CODEC.encodeStart(NbtOps.INSTANCE,GaugeSettings.PRESSURE).getOrThrow();broken.putDouble("minimum",-1);assertTrue(GaugeSettings.CODEC.parse(NbtOps.INSTANCE,broken).error().isPresent());broken.putString("unit","unknown");assertTrue(GaugeSettings.CODEC.parse(NbtOps.INSTANCE,broken).error().isPresent());
         var invalid=Unpooled.buffer();try{invalid.writeByte(99);invalid.writeByte(0);assertThrows(IllegalArgumentException.class,()->GaugeSettings.STREAM_CODEC.decode(invalid));}finally{invalid.release();}
+    }
+    /** The pipeline tool's diameter setting, the other accessory item component: the same exact round trip and rejections. */
+    @Test void pipelineToolSettingsRoundTripExactDiametersAndRejectInvalidStorageAndWireValues() {
+        for (double diameter : new double[]{.001, PipelineToolItem.Settings.DEFAULT.diameter(), .123456789012345, PipelineToolItem.Settings.MAX_DIAMETER}) {
+            var settings = new PipelineToolItem.Settings(diameter);
+            var saved = PipelineToolItem.Settings.CODEC.encodeStart(NbtOps.INSTANCE, settings).getOrThrow();
+            assertEquals(settings, PipelineToolItem.Settings.CODEC.parse(NbtOps.INSTANCE, saved).getOrThrow());
+            var buffer = Unpooled.buffer();
+            try {
+                PipelineToolItem.Settings.STREAM_CODEC.encode(buffer, settings);
+                assertEquals(settings, PipelineToolItem.Settings.STREAM_CODEC.decode(buffer));
+                assertFalse(buffer.isReadable());
+            } finally {
+                buffer.release();
+            }
+        }
+        for (double diameter : new double[]{Double.NaN, Double.NEGATIVE_INFINITY, Double.POSITIVE_INFINITY, 0, -.1, .0009, .8001, 1}) {
+            assertThrows(IllegalArgumentException.class, () -> new PipelineToolItem.Settings(diameter));
+            assertTrue(PipelineToolItem.Settings.CODEC.parse(NbtOps.INSTANCE, DoubleTag.valueOf(diameter)).error().isPresent());
+            var buffer = Unpooled.buffer();
+            try {
+                buffer.writeDouble(diameter);
+                assertThrows(IllegalArgumentException.class, () -> PipelineToolItem.Settings.STREAM_CODEC.decode(buffer));
+            } finally {
+                buffer.release();
+            }
+        }
+        assertTrue(PipelineToolItem.Settings.CODEC.parse(JsonOps.INSTANCE, new com.google.gson.JsonPrimitive("invalid")).error().isPresent());
     }
     @Test void nativeReservoirSocketsStayDistinctUprightAndStableAcrossHeadingsAndSizes(){
         for(var heading:EquipmentShape.Heading.values())for(double d:new double[]{.5,2,10}){
