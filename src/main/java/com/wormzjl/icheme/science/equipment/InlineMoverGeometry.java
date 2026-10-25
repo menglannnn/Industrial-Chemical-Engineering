@@ -61,7 +61,7 @@ public final class InlineMoverGeometry {
             boolean suction=face==(key.facing()^1);
             flowPassage(body,up,root,axial,r,low,od,suction,n);
             if(boundary){
-                end=new LineGeometry.End(end.outside(),true,end.reducer(),end.reducer()+PipeSizes.flangeThickness(end.outside())+PipeSizes.hub(end.outside()),end.joined());
+                end=LineGeometry.fittingEnd(key,face,od);
                 LineGeometry.arm(body,face,root,od,end,LineGeometry.ref(face),PipeSizes.sides(od),false);
             }else{
                 processJoint(body,nozzle,od,connection,n);

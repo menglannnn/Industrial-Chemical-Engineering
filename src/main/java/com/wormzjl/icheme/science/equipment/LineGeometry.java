@@ -68,7 +68,7 @@ public final class LineGeometry {
 
     /** The block's polygons, cell-local. */
     public static List<Polygon> polygons(Key key) {
-        if(key.kind()==Kind.VALVE)return PressureValveGeometry.polygons(key,false);
+        if(key.kind()==Kind.VALVE)return ValveGeometry.pressure(key,false);
         if(key.kind()==Kind.FILTER)return overhanging(mesh(key));
         return mesh(key).cell(0, 0, 0);
     }
@@ -124,6 +124,12 @@ public final class LineGeometry {
         double reducer = met < od - EPS ? reducerLength(od) : 0;
         double tail = reducer + (key.flanged(i) ? PipeSizes.flangeThickness(met) + PipeSizes.hub(met) : 0);
         return new End(met, key.flanged(i), reducer, tail, true);
+    }
+
+    /** The end of a fitting's own arm at face {@code i}: always flanged, its flange and hub after any reducer. */
+    static End fittingEnd(Key key, int i, double od) {
+        var end = end(key, i, od);
+        return new End(end.outside(), true, end.reducer(), end.reducer() + PipeSizes.flangeThickness(end.outside()) + PipeSizes.hub(end.outside()), end.joined());
     }
 
     /** A concentric reducer's length: ASME B16.9 gives 0.6 to 1.3 times the large end; 0.8 OD, a texel to 0.3 m. */
@@ -301,7 +307,7 @@ public final class LineGeometry {
      * along the actuator's direction (up over a horizontal line, horizontal beside a vertical one).
      */
     private static void valve(Mesh m, Key key) {
-        PressureValveGeometry.build(m,key);
+        ValveGeometry.pressure(m,key);
     }
 
     /**

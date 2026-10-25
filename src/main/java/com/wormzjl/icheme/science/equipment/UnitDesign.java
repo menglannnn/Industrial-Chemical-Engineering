@@ -158,6 +158,19 @@ public abstract class UnitDesign {
         return design;
     }
 
+    /**
+     * A constructed mover's running-loop gain, 0.10 to 0.60 over its kind's size range (its main size, and its stage or
+     * throw count where it has one); 0 for any other unit. Sound only: dimensions impose no hydraulic limits.
+     */
+    public static float soundGain(EquipmentShape shape) {
+        java.util.Objects.requireNonNull(shape);
+        if(!shape.kind().mover())return 0;
+        var design=of(shape.kind());double size=(shape.diameter()-design.minSize())/(design.maxSize()-design.minSize());
+        int least=design.minLength(shape.diameter()),most=design.maxLength(shape.diameter());
+        if(most>least)size=(size+(shape.tangentLength()-least)/(most-least))/2;
+        return (float)(.10+.50*Math.clamp(size,0,1));
+    }
+
     // ---- Formats ----------------------------------------------------------------------------------------------------
 
     /** One decimal. */

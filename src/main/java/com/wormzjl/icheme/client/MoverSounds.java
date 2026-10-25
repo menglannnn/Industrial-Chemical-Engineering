@@ -7,7 +7,7 @@ import com.wormzjl.icheme.registry.ModBlocks;
 import com.wormzjl.icheme.runtime.fluid.FluidView;
 import com.wormzjl.icheme.science.equipment.ShapeRasterizer;
 import com.wormzjl.icheme.science.equipment.EquipmentShape;
-import com.wormzjl.icheme.science.equipment.MoverSoundVolume;
+import com.wormzjl.icheme.science.equipment.UnitDesign;
 import com.wormzjl.icheme.world.level.block.entity.EquipmentShellBlockEntity;
 import java.util.*;
 import net.minecraft.client.Minecraft;
@@ -110,7 +110,7 @@ public final class MoverSounds {
         }
         private void refreshVolume(){
             if(level.getBlockEntity(target.position()) instanceof EquipmentShellBlockEntity shell&&shell.shape()!=shape){
-                shape=shell.shape();volume=shape==null?0:MoverSoundVolume.of(shape);
+                shape=shell.shape();volume=shape==null?0:UnitDesign.soundGain(shape);
             }
         }
     }

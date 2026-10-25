@@ -18,7 +18,7 @@ class SightGlassDisplayTest {
     private static final String PACKAGE="icheme:tjl20_methane";
     private static final List<String> COMPONENTS=List.of("crude_pc01","crude_pc12","Water");
     private static final double[] WEIGHTS={.1,.6,.018};
-    private static final SightGlassBubbles.Motion UP=new SightGlassBubbles.Motion(0,1);
+    private static final SightGlassGeometry.Motion UP=new SightGlassGeometry.Motion(0,1);
 
     @Test void gasLiquidRatioControlsBubbleDensityAndOtherPhasesRetainHaze(){
         assertEquals(0,display(new double[]{1,0,0},SolidInventory.EMPTY,1).bubbles(),"two components in one liquid stay homogeneous");
@@ -32,12 +32,12 @@ class SightGlassDisplayTest {
         for(double gas:new double[]{.01,.1,1,9,99}){
             var sample=display(new double[]{.4,.6,gas},SolidInventory.EMPTY,1);
             assertTrue(sample.bubbles()>previous,"gas-rich flow must not lose bubbles as haze declines");previous=sample.bubbles();
-            int count=SightGlassBubbles.at(100,9,sample.bubbles(),UP).size();assertTrue(count>=previousCount);previousCount=count;
+            int count=SightGlassGeometry.bubbles(100,9,sample.bubbles(),UP).size();assertTrue(count>=previousCount);previousCount=count;
             assertEquals(sample.bubbles(),display(new double[]{4,6,10*gas},SolidInventory.EMPTY,1).bubbles(),"ratio is independent of total volume");
             assertEquals(sample.bubbles(),display(new double[]{.4,.6,gas},solids,1).bubbles(),"solids do not dilute the gas/liquid ratio");
         }
-        assertEquals(4,SightGlassBubbles.at(100,9,display(new double[]{1,0,1},SolidInventory.EMPTY,1).bubbles(),UP).size());
-        assertEquals(8,SightGlassBubbles.at(100,9,display(new double[]{1,0,99},SolidInventory.EMPTY,1).bubbles(),UP).size());
+        assertEquals(4,SightGlassGeometry.bubbles(100,9,display(new double[]{1,0,1},SolidInventory.EMPTY,1).bubbles(),UP).size());
+        assertEquals(8,SightGlassGeometry.bubbles(100,9,display(new double[]{1,0,99},SolidInventory.EMPTY,1).bubbles(),UP).size());
         assertEquals(SightGlassDisplay.Sample.CLEAR,display(new double[]{.5,0,.5},SolidInventory.EMPTY,0),"old stream with stopped speed clears");
         assertEquals(SightGlassDisplay.Sample.CLEAR,display(new double[]{0,0,1},SolidInventory.EMPTY,1));
         assertEquals(SightGlassDisplay.Sample.CLEAR,display(new double[3],SolidInventory.EMPTY,1));
@@ -68,11 +68,11 @@ class SightGlassDisplayTest {
     }
 
     @Test void motionIsStableContainedAndBetweenTheLiquidAndGlass(){
-        assertEquals(List.of(),SightGlassBubbles.at(100,9,0,UP));
-        assertEquals(SightGlassBubbles.at(100,9,255,UP),SightGlassBubbles.at(100,9,255,UP));
-        assertNotEquals(SightGlassBubbles.at(100,9,255,UP),SightGlassBubbles.at(110,9,255,UP));
+        assertEquals(List.of(),SightGlassGeometry.bubbles(100,9,0,UP));
+        assertEquals(SightGlassGeometry.bubbles(100,9,255,UP),SightGlassGeometry.bubbles(100,9,255,UP));
+        assertNotEquals(SightGlassGeometry.bubbles(100,9,255,UP),SightGlassGeometry.bubbles(110,9,255,UP));
         for(int strength:new int[]{1,100,255})for(long seed:new long[]{0,9,Long.MAX_VALUE})for(int tick=0;tick<400;tick+=13)
-            for(var bubble:SightGlassBubbles.at(tick,seed,strength,UP)){
+            for(var bubble:SightGlassGeometry.bubbles(tick,seed,strength,UP)){
                 assertTrue(bubble.radius()>=0&&Double.isFinite(bubble.radius()));
                 assertTrue(Math.hypot(bubble.x(),bubble.y())+bubble.radius()<=.971,"entire ring fits inside the aperture");
             }
@@ -100,8 +100,8 @@ class SightGlassDisplayTest {
     @Test void bubbleTravelFollowsEveryRunAndAgreesThroughBothWindows(){
         for(var window:SightGlassGeometry.Axis.values())for(var run:SightGlassGeometry.Axis.values())if(run!=window)
             for(boolean positive:new boolean[]{false,true}){
-                var motion=SightGlassBubbles.Motion.along(window,run,positive);
-                var before=SightGlassBubbles.at(50,9,255,motion);var after=SightGlassBubbles.at(50.001,9,255,motion);
+                var motion=SightGlassGeometry.Motion.along(window,run,positive);
+                var before=SightGlassGeometry.bubbles(50,9,255,motion);var after=SightGlassGeometry.bubbles(50.001,9,255,motion);
                 for(int i=0;i<before.size();i++){
                     double[] front=world(window,before.get(i),false),back=world(window,before.get(i),true),next=world(window,after.get(i),false);
                     assertArrayEquals(front,back,1e-12,"paired windows show the same physical bubble path");
@@ -110,7 +110,7 @@ class SightGlassDisplayTest {
                 }
             }
     }
-    private static double[] world(SightGlassGeometry.Axis window,SightGlassBubbles.Bubble bubble,boolean back){
+    private static double[] world(SightGlassGeometry.Axis window,SightGlassGeometry.Bubble bubble,boolean back){
         double x=back?-bubble.x():bubble.x(),y=bubble.y();
         // The renderer turns the back face 180 degrees about local Y and mirrors its bubble centre.
         if(back)x=-x;

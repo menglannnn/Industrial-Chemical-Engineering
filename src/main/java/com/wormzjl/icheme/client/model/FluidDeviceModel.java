@@ -4,9 +4,7 @@ import com.wormzjl.icheme.IChemE;
 import com.wormzjl.icheme.science.equipment.LineGeometry;
 import com.wormzjl.icheme.science.equipment.PipeSizes;
 import com.wormzjl.icheme.science.equipment.SightGlassGeometry;
-import com.wormzjl.icheme.science.equipment.ShutoffValveGeometry;
-import com.wormzjl.icheme.science.equipment.CheckValveGeometry;
-import com.wormzjl.icheme.science.equipment.PressureValveGeometry;
+import com.wormzjl.icheme.science.equipment.ValveGeometry;
 import com.wormzjl.icheme.science.fluid.topology.TopologyCompiler;
 import com.wormzjl.icheme.world.level.block.FluidDeviceBlock;
 import com.wormzjl.icheme.world.level.block.entity.FluidDeviceBlockEntity;
@@ -94,9 +92,9 @@ public final class FluidDeviceModel implements IDynamicBakedModel {
     private Baked bake(Look look) {
         if(look.mover!=TopologyCompiler.Kind.PIPE)return new Baked(EquipmentShellModel.bake(com.wormzjl.icheme.science.equipment.InlineMoverGeometry.polygons(look.geometry.pipe(),look.mover==TopologyCompiler.Kind.COMPRESSOR,moverAccessory),sprites,false),List.of());
         if(look.filter)return new Baked(EquipmentShellModel.bake(LineGeometry.filterPolygons(look.geometry.pipe()),sprites,false),List.of());
-        if(look.pressureValve)return new Baked(EquipmentShellModel.bake(PressureValveGeometry.polygons(look.geometry.pipe(),pressureAccessory),sprites,false),List.of());
-        if(look.shutoff==FluidDeviceBlock.Shutoff.CHECK)return new Baked(EquipmentShellModel.bake(CheckValveGeometry.polygons(look.geometry.pipe(),checkAccessory),sprites,false),List.of());
-        if(look.shutoff!=FluidDeviceBlock.Shutoff.NONE)return new Baked(EquipmentShellModel.bake(ShutoffValveGeometry.polygons(look.geometry.pipe(),look.shutoff==FluidDeviceBlock.Shutoff.OPEN,shutoffAccessory),sprites,false),List.of());
+        if(look.pressureValve)return new Baked(EquipmentShellModel.bake(ValveGeometry.pressure(look.geometry.pipe(),pressureAccessory),sprites,false),List.of());
+        if(look.shutoff==FluidDeviceBlock.Shutoff.CHECK)return new Baked(EquipmentShellModel.bake(ValveGeometry.check(look.geometry.pipe(),checkAccessory),sprites,false),List.of());
+        if(look.shutoff!=FluidDeviceBlock.Shutoff.NONE)return new Baked(EquipmentShellModel.bake(ValveGeometry.shutoff(look.geometry.pipe(),look.shutoff==FluidDeviceBlock.Shutoff.OPEN,shutoffAccessory),sprites,false),List.of());
         if(!look.sightGlass)return new Baked(EquipmentShellModel.bake(LineGeometry.polygons(look.geometry.pipe()),sprites,false),List.of());
         var geometry=SightGlassGeometry.build(look.geometry,accessory);
         return new Baked(EquipmentShellModel.bake(geometry.metal(),sprites,false),EquipmentShellModel.bake(geometry.glass(),sprites,false));

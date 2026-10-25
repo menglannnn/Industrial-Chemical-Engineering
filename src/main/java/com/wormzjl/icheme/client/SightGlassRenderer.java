@@ -11,7 +11,6 @@ import com.wormzjl.icheme.runtime.fluid.SightGlassDisplay;
 import net.minecraft.core.BlockPos;
 import com.wormzjl.icheme.science.equipment.Mesh;
 import com.wormzjl.icheme.science.equipment.SightGlassGeometry;
-import com.wormzjl.icheme.science.equipment.SightGlassBubbles;
 import com.wormzjl.icheme.science.math.DeterministicMath;
 import com.wormzjl.icheme.world.level.block.FluidDeviceBlock;
 import com.wormzjl.icheme.world.level.block.entity.FluidDeviceBlockEntity;
@@ -86,8 +85,8 @@ public final class SightGlassRenderer {
                 // A stale sample can outlive a static pipe/window rotation until the next scheduled publication.
                 if(run!=surface.window().axis()){
                     boolean positive=switch(direction){case UP,SOUTH,EAST->true;default->false;};
-                    var motion=SightGlassBubbles.Motion.along(surface.window().axis(),run,positive);
-                    bubbles(pose,consumer,surface.window(),SightGlassBubbles.at(ticks,entity.fluidIdentity()^pos.asLong(),sample.bubbles(),motion),argb,sample.bubbles(),light,u,v);
+                    var motion=SightGlassGeometry.Motion.along(surface.window().axis(),run,positive);
+                    bubbles(pose,consumer,surface.window(),SightGlassGeometry.bubbles(ticks,entity.fluidIdentity()^pos.asLong(),sample.bubbles(),motion),argb,sample.bubbles(),light,u,v);
                 }
             }
             pose.popPose();
@@ -95,8 +94,8 @@ public final class SightGlassRenderer {
         if(consumer!=null)buffers.endBatch(LIQUID);
     }
 
-    private static void bubbles(PoseStack pose,VertexConsumer consumer,SightGlassGeometry.Window window,List<SightGlassBubbles.Bubble> bubbles,int argb,int strength,int light,float u,float v){
-        int colour=SightGlassBubbles.colour(argb,strength),red=colour>>16&255,green=colour>>8&255,blue=colour&255,alpha=colour>>>24;
+    private static void bubbles(PoseStack pose,VertexConsumer consumer,SightGlassGeometry.Window window,List<SightGlassGeometry.Bubble> bubbles,int argb,int strength,int light,float u,float v){
+        int colour=SightGlassGeometry.bubbleColour(argb,strength),red=colour>>16&255,green=colour>>8&255,blue=colour&255,alpha=colour>>>24;
         pose.pushPose();pose.translate(.5,.5,.5);
         switch(window.axis()){case X->pose.mulPose(Axis.YP.rotationDegrees(90));case Y->pose.mulPose(Axis.XP.rotationDegrees(-90));default->{}}
         for(int side:new int[]{1,-1}){
