@@ -17,6 +17,7 @@ All notable changes to Industrial Chemical Engineering (IChemE, formerly CreateC
 
 ### Changed
 
+- Scale sight-glass bubble counts with gas/liquid volume ratio, close large-bore housing/neck gaps and retain enlarged window faces, and scale constructed pump/compressor sound loudness with constructor size; batch `2026-10-25-sight-glass-ratio-seams-sound` (implementation `5d9d3b42`).
 - Animate bubble/droplet rings in sight glasses carrying multiple phases, using requested scheduled visual samples (`sight-glass-2`); derive bundled crude pseudo-component colours from NBP with darker heavy fractions while preserving datapack overrides and scientific data; batch `2026-10-25-sight-glass-bubbles` (implementation `2c9c6d00`).
 - Convert single-block pump/compressor items into horizontal straight-pipe accessories, with curved pump casting, suspended chamber/open base and owner-selected Sundyne LMC gearbox model, existing actuator physics/controls and wrench recovery; batch `2026-10-25-inline-pump-accessory` (implementation `e61751aa`, model refinement `8a910a20`, enclosed nozzle interiors `52b9f8b0`, grounded supports/block-face large-bore joints/wrapped casing textures `b2269322`).
 - Refined gauge housings, legible scales and pipe tapping connections; immediate accessory attachment/removal, reading-only hover, compact fluid GUI readings and pipe-applied in-line filters with conserved solids recovery. Fluid checkpoint 19 / unit 12; batch `2026-10-25-accessory-refinements` (implementation `5a6e1ecc`, filter enclosure/overhang qualification fix `ccf3a5d3`).
