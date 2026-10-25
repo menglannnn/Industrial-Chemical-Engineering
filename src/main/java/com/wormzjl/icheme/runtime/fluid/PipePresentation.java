@@ -38,7 +38,7 @@ public final class PipePresentation {
         var pipes=new HashMap<Long,PassiveNetwork.Pipe>();for(var p:graph.pipes())pipes.put(p.id(),p);
         var transfers=new HashMap<Long,PipeTransfer>();for(var t:history)transfers.put(t.pipeId(),t);
         int node=-1;for(int i=0;i<graph.reservoirs().size();i++)if(graph.reservoirs().get(i).id()==device.id())node=i;
-        boolean junction=device.kind()==TopologyCompiler.Kind.PIPE&&node>=0&&graph.reservoirs().get(node).junction();
+        boolean junction=device.hydraulicKind()==TopologyCompiler.Kind.PIPE&&node>=0&&graph.reservoirs().get(node).junction();
         var ids=new LinkedHashSet<Long>();for(var mapping:mappings)if(pipes.containsKey(mapping.pipeId()))ids.add(mapping.pipeId());
         double divisor=junction?1:Math.max(1,ids.size());
         var total=new Sum(components);var metrics=new ArrayList<FluidView.PipeConnection>();boolean reversal=false;

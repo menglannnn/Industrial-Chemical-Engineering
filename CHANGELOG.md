@@ -15,6 +15,11 @@ All notable changes to Industrial Chemical Engineering (IChemE, formerly CreateC
 
 ## [Unreleased]
 
+### Changed
+
+- Convert single-block pump/compressor items into horizontal straight-pipe accessories, with curved pump casting, suspended chamber/open base and owner-selected Sundyne LMC gearbox model, existing actuator physics/controls and wrench recovery; batch `2026-10-25-inline-pump-accessory` (implementation `e61751aa`, model refinement `8a910a20`, enclosed nozzle interiors `52b9f8b0`).
+- Refined gauge housings, legible scales and pipe tapping connections; immediate accessory attachment/removal, reading-only hover, compact fluid GUI readings and pipe-applied in-line filters with conserved solids recovery. Fluid checkpoint 19 / unit 12; batch `2026-10-25-accessory-refinements` (implementation `5a6e1ecc`).
+
 ### Added
 
 - Pressure Gauge, Temperature Gauge and Accessory Wrench: configurable passive dials on straight pipes and dedicated constructed-reservoir taps, queued installation/recovery, accepted local pipe/reservoir readings and requested display updates; equipment-only muted placement previews, accessory storage1 and instruments-1 retain checkpoint18/unit11/fluid-14 (commit `e927f599`, batch: `2026-10-24-gauge-accessories`).

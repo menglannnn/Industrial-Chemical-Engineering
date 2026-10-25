@@ -78,7 +78,7 @@ public final class FluidDeviceScreen extends AbstractContainerScreen<FluidDevice
     // the area above the status separator and scrolled by its own bar on the rail/table divider when it is longer than
     // that area, as the table area scrolls its rows. At 427x240 or 480x270 scaled pixels (GUI scale 2 at 854x480, the
     // automatic scale at 1920x1080) the screen is 250 GUI px high and a pump's or compressor's column does not fit.
-    private static final int RAIL_STEP=10,RAIL_CONTROL=42,RAIL_LINE=30;
+    private static final int RAIL_STEP=10,RAIL_CONTROL=42,RAIL_LINE=24;
     private final ProcessScroll railScroll=new ProcessScroll();
     private int railBuiltOffset,hoverX=-1,hoverY=-1,clipTop=Integer.MIN_VALUE,clipBottom=Integer.MAX_VALUE;
     private int railTop(){return 90;}
@@ -370,7 +370,7 @@ public final class FluidDeviceScreen extends AbstractContainerScreen<FluidDevice
         // A line cut to its column reads in full on hover, so a narrow screen drops nothing silently.
         if(shown.length()<value.length()&&hoverX>=x&&hoverX<x+width&&hoverY>=Math.max(y,clipTop)&&hoverY<Math.min(y+9,clipBottom))hovered=value;
     }
-    private void railLine(GuiGraphics g,String key,String value,int y){text(g,tr(key),12,y,MUTED,rail()-2);text(g,value,12,y+12,TEXT,rail()-2);}
+    private void railLine(GuiGraphics g,String key,String value,int y){text(g,tr(key),12,y,MUTED,rail()-2);text(g,value,12,y+10,TEXT,rail()-2);}
     private boolean railHover(int mx,int my,int y0,int y1){return mx>=12&&mx<rail()+10&&my>=Math.max(y0,railTop())&&my<Math.min(y1,railBottom());}
     @Override public void render(GuiGraphics g,int mouseX,int mouseY,float partialTick){
         ProcessUi.restoreCursor(minecraft,this);refresh();if(rebuildNext)rebuild();hovered=null;
@@ -471,7 +471,7 @@ public final class FluidDeviceScreen extends AbstractContainerScreen<FluidDevice
         if(pipe()&&view.pipeInfo().junction())text(g,tr("junction",view.pipeInfo().connections().size()),12,y-16,ACCENT,rail());
         for(var row:readings()){
             railLine(g,row.key(),row.value(),y);
-            if(row.hint()!=null&&railHover(hoverX,hoverY,y,y+27))hovered=row.hint();
+            if(row.hint()!=null&&railHover(hoverX,hoverY,y,y+RAIL_LINE-1))hovered=row.hint();
             y+=RAIL_LINE;
         }
         y=renderPhaseRatio(g,hoverX,hoverY,y+24);
