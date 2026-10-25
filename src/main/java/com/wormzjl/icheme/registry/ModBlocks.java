@@ -2,11 +2,15 @@ package com.wormzjl.icheme.registry;
 
 import com.wormzjl.icheme.IChemE;
 import com.wormzjl.icheme.world.level.block.ColumnCalculatorV3Block;
+import net.minecraft.core.registries.Registries;
+import net.minecraft.resources.ResourceLocation;
+import net.minecraft.sounds.SoundEvent;
 import net.minecraft.world.level.block.SoundType;
 import net.minecraft.world.level.block.state.BlockBehaviour;
 import net.minecraft.world.level.material.MapColor;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.neoforge.registries.DeferredBlock;
+import net.neoforged.neoforge.registries.DeferredHolder;
 import net.neoforged.neoforge.registries.DeferredRegister;
 
 public final class ModBlocks {
@@ -58,10 +62,17 @@ public final class ModBlocks {
             BlockBehaviour.Properties.of().mapColor(MapColor.WOOD).strength(2.5F).sound(SoundType.WOOD)
     );
 
+    /** Original positional machine loops of the constructed pumps and compressors; ordinary Blocks sound settings apply. */
+    private static final DeferredRegister<SoundEvent> SOUNDS=DeferredRegister.create(Registries.SOUND_EVENT,IChemE.MOD_ID);
+    public static final DeferredHolder<SoundEvent,SoundEvent> PUMP_RUNNING=loop("pump_running");
+    public static final DeferredHolder<SoundEvent,SoundEvent> COMPRESSOR_RUNNING=loop("compressor_running");
+    private static DeferredHolder<SoundEvent,SoundEvent> loop(String name){return SOUNDS.register(name,()->SoundEvent.createVariableRangeEvent(ResourceLocation.fromNamespaceAndPath(IChemE.MOD_ID,name)));}
+
     private ModBlocks() {
     }
 
     public static void register(IEventBus modEventBus) {
         BLOCKS.register(modEventBus);
+        SOUNDS.register(modEventBus);
     }
 }

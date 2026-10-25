@@ -1,15 +1,21 @@
 package com.wormzjl.icheme.world.item;
 
-import com.wormzjl.icheme.registry.ModDataComponents;
+import com.mojang.serialization.Codec;
+import com.mojang.serialization.DataResult;
+import com.wormzjl.icheme.registry.ModItems;
 import com.wormzjl.icheme.runtime.fluid.FluidWorldAuthority;
 import com.wormzjl.icheme.runtime.fluid.PhysicalFluidTopology;
+import com.wormzjl.icheme.science.equipment.PipeSizes;
 import com.wormzjl.icheme.science.fluid.network.PipeResistance;
 import com.wormzjl.icheme.science.fluid.topology.TopologyCompiler;
 import com.wormzjl.icheme.world.inventory.PipelineToolMenu;
 import com.wormzjl.icheme.world.level.block.FluidDeviceBlock;
 import com.wormzjl.icheme.world.level.block.entity.FluidDeviceBlockEntity;
 import net.minecraft.ChatFormatting;
+import io.netty.buffer.ByteBuf;
 import net.minecraft.network.chat.Component;
+import net.minecraft.network.codec.ByteBufCodecs;
+import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
@@ -26,7 +32,7 @@ import java.util.List;
 /** Item interactions read static registrations and queue edits; they never inspect or publish process state. */
 public final class PipelineToolItem extends Item {
     public PipelineToolItem(Properties properties) {
-        super(properties.stacksTo(1).component(ModDataComponents.PIPELINE_TOOL_SETTINGS.get(), PipelineToolSettings.DEFAULT));
+        super(properties.stacksTo(1).component(ModItems.PIPELINE_TOOL_SETTINGS.get(), Settings.DEFAULT));
     }
 
     @Override
@@ -45,7 +51,7 @@ public final class PipelineToolItem extends Item {
         var pos = context.getClickedPos();
         if (!(level.getBlockState(pos).getBlock() instanceof FluidDeviceBlock block)
                 || block.kind() != TopologyCompiler.Kind.PIPE) return InteractionResult.PASS;
-        var settings = stack.get(ModDataComponents.PIPELINE_TOOL_SETTINGS.get());
+        var settings = stack.get(ModItems.PIPELINE_TOOL_SETTINGS.get());
         if (settings == null || !player.mayBuild() || player.isSpectator() || !level.mayInteract(player, pos))
             return InteractionResult.FAIL;
         if (player instanceof ServerPlayer serverPlayer
@@ -66,7 +72,7 @@ public final class PipelineToolItem extends Item {
     }
 
     private static InteractionResult configure(Player player, InteractionHand hand) {
-        if (player.isSpectator() || player.getItemInHand(hand).get(ModDataComponents.PIPELINE_TOOL_SETTINGS.get()) == null)
+        if (player.isSpectator() || player.getItemInHand(hand).get(ModItems.PIPELINE_TOOL_SETTINGS.get()) == null)
             return InteractionResult.FAIL;
         if (player instanceof ServerPlayer serverPlayer) PipelineToolMenu.open(serverPlayer, hand);
         return InteractionResult.sidedSuccess(player.level().isClientSide());
@@ -74,10 +80,31 @@ public final class PipelineToolItem extends Item {
 
     @Override
     public void appendHoverText(ItemStack stack, TooltipContext context, List<Component> tooltip, TooltipFlag flag) {
-        var settings = stack.get(ModDataComponents.PIPELINE_TOOL_SETTINGS.get());
+        var settings = stack.get(ModItems.PIPELINE_TOOL_SETTINGS.get());
         if (settings != null) tooltip.add(Component.translatable("item.icheme.pipeline_tool.target", Double.toString(settings.diameter()))
                 .withStyle(ChatFormatting.AQUA));
         tooltip.add(Component.translatable("item.icheme.pipeline_tool.configure").withStyle(ChatFormatting.GRAY));
         tooltip.add(Component.translatable("item.icheme.pipeline_tool.apply").withStyle(ChatFormatting.GRAY));
+    }
+
+    /** The tool's internal diameter in metres; the same bounds govern storage, wire and editor input. */
+    public record Settings(double diameter) {
+        public static final double MIN_DIAMETER = .001;
+        public static final double MAX_DIAMETER = PipeSizes.MAX_BORE;
+        public static final Settings DEFAULT = new Settings(.05);
+        public static final Codec<Settings> CODEC = Codec.DOUBLE.comapFlatMap(
+                value -> valid(value) ? DataResult.success(new Settings(value))
+                        : DataResult.error(() -> "Pipeline diameter must be finite and between 0.001 and " + MAX_DIAMETER + " m"),
+                Settings::diameter);
+        public static final StreamCodec<ByteBuf, Settings> STREAM_CODEC = ByteBufCodecs.DOUBLE.map(
+                Settings::new, Settings::diameter);
+
+        public Settings {
+            if (!valid(diameter)) throw new IllegalArgumentException("Pipeline diameter must be finite and between 0.001 and " + MAX_DIAMETER + " m");
+        }
+
+        public static boolean valid(double diameter) {
+            return Double.isFinite(diameter) && diameter >= MIN_DIAMETER && diameter <= MAX_DIAMETER;
+        }
     }
 }

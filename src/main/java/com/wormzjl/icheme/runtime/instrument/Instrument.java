@@ -1,12 +1,22 @@
 package com.wormzjl.icheme.runtime.instrument;
 
 import com.wormzjl.icheme.world.item.GaugeSettings;
+import net.minecraft.core.Direction;
+import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.ListTag;
+import net.minecraft.nbt.NbtOps;
+import net.minecraft.world.phys.AABB;
+import net.minecraft.world.phys.Vec3;
+import java.util.List;
 import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
 
-/** Immutable persistent attachments and ephemeral published samples. */
+/** Immutable persistent attachments and ephemeral published samples, their mounts and their hosts' static metadata. */
 public final class Instrument {
     private Instrument(){}
+    /** What a player attaches: the two gauges and the pipe fittings. */
+    public enum Type { PRESSURE, TEMPERATURE, SIGHT_GLASS, SHUTOFF, CHECK, PRESSURE_VALVE, FILTER, PUMP, COMPRESSOR }
     public record Key(long host,String mount) {
         public Key{if(host<=0||mount==null||!java.util.Set.of("pipe_north","pipe_south","pipe_east","pipe_west","pipe_accessory","pressure_top","pressure_bottom","temperature_top","temperature_bottom").contains(mount))throw new IllegalArgumentException("Invalid instrument key");}
     }
@@ -18,5 +28,43 @@ public final class Instrument {
         public Sample{Objects.requireNonNull(availability);if(tick<0||!Double.isFinite(value))throw new IllegalArgumentException("Invalid instrument sample");}
         public static Sample unavailable(long tick){return new Sample(0,tick,Availability.UNAVAILABLE);}
         public static Sample temperature(Double flowing,Sample previous,long tick){return flowing!=null&&Double.isFinite(flowing)?new Sample(flowing,tick,Availability.AVAILABLE):previous!=null&&previous.availability!=Availability.UNAVAILABLE?new Sample(previous.value,previous.tick,Availability.NO_FLOW):unavailable(tick);}
+    }
+
+    /** A block entity that hosts attachments. Static metadata only; live readings use the requested instruments protocol. */
+    public interface Holder {
+        Metadata instruments();
+    }
+
+    /** Shared selectable extent for instrument sockets and existing model-based pipe accessories. */
+    public interface Selectable {
+        String id();
+        AABB bounds();
+    }
+
+    /** One source of truth for the dial transform, interaction bounds and ghost placement. */
+    public record Mount(String id,Vec3 centre,Direction face,Set<GaugeSettings.Kind> kinds,boolean top,Vec3 tap,boolean bottomEntry,double probeDepth) implements Selectable {
+        public Mount(String id,Vec3 centre,Direction face,Set<GaugeSettings.Kind> kinds,boolean top){this(id,centre,face,kinds,top,centre.add(Vec3.atLowerCornerOf(face.getNormal()).scale(-.17)),false,.12);}
+        public Mount{kinds=Set.copyOf(kinds);if(!Double.isFinite(probeDepth)||probeDepth<=0)throw new IllegalArgumentException("Invalid probe depth");if(face.getAxis()==Direction.Axis.Y)throw new IllegalArgumentException("Instrument face must stay upright");}
+        public Vec3 normal(){return Vec3.atLowerCornerOf(face.getNormal());}
+        public Vec3 right(){var n=normal();return new Vec3(n.z,0,-n.x);}
+        public Vec3 point(double x,double y,double depth){return centre.add(right().scale(x)).add(0,y,0).add(normal().scale(depth));}
+        public AABB bounds(){return new AABB(point(-.175,-.175,-.07),point(.175,.175,.07)).minmax(new AABB(tap.add(-.03,-.03,-.03),tap.add(.03,.03,.03))).inflate(.008);}
+        public double[] localTap(){var delta=tap.subtract(centre);return new double[]{delta.dot(right()),delta.y,delta.dot(normal())};}
+    }
+
+    /** Chunk-synchronized static attachment descriptions; the registry is the server's authority. */
+    public static final class Metadata {
+        private List<Installed> installed=List.of();
+        private long revision;
+        private boolean recoverOnBreak=true;
+        public boolean recoverOnBreak(){return recoverOnBreak;}
+        public void recoverOnBreak(boolean value){recoverOnBreak=value;}
+        public List<Installed> installed(){return installed;}
+        public long revision(){return revision;}
+        public void set(List<Installed> value,long revision){installed=List.copyOf(value);this.revision=revision;}
+        public void write(CompoundTag tag){tag.putLong("AccessoryRevision",revision);var list=new ListTag();for(var i:installed)list.add(encode(i));tag.put("Instruments",list);}
+        public void read(CompoundTag tag){revision=tag.getLong("AccessoryRevision");if(revision<0)throw new IllegalArgumentException("Invalid accessory revision");var list=tag.getList("Instruments",10);if(list.size()>6)throw new IllegalArgumentException("Too many host instruments");var result=new java.util.ArrayList<Installed>();for(var t:list)result.add(decode((CompoundTag)t));installed=List.copyOf(result);}
+        public static CompoundTag encode(Installed i){var t=new CompoundTag();t.putLong("host",i.key().host());t.putString("mount",i.key().mount());t.putUUID("instance",i.instance());t.putLong("revision",i.revision());t.put("settings",GaugeSettings.CODEC.encodeStart(NbtOps.INSTANCE,i.settings()).getOrThrow());return t;}
+        public static Installed decode(CompoundTag t){return new Installed(new Key(t.getLong("host"),t.getString("mount")),t.getUUID("instance"),t.getLong("revision"),GaugeSettings.CODEC.parse(NbtOps.INSTANCE,t.get("settings")).getOrThrow());}
     }
 }

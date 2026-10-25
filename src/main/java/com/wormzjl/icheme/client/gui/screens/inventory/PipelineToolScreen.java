@@ -3,7 +3,7 @@ package com.wormzjl.icheme.client.gui.screens.inventory;
 import com.wormzjl.icheme.client.gui.common.ProcessUi;
 import com.wormzjl.icheme.network.PipelineToolNetwork;
 import com.wormzjl.icheme.world.inventory.PipelineToolMenu;
-import com.wormzjl.icheme.world.item.PipelineToolSettings;
+import com.wormzjl.icheme.world.item.PipelineToolItem;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.EditBox;
@@ -50,7 +50,7 @@ public final class PipelineToolScreen extends AbstractContainerScreen<PipelineTo
         parsed = null;
         try {
             double value = Double.parseDouble(text.trim());
-            if (PipelineToolSettings.valid(value)) parsed = value;
+            if (PipelineToolItem.Settings.valid(value)) parsed = value;
         } catch (NumberFormatException invalid) {
             // Incomplete text is a normal editing state; retain it until the player enters a valid value.
         }

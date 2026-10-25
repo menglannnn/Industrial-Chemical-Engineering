@@ -33,7 +33,7 @@ import java.util.Arrays;
  * changes and when a topology commit applies an edit (the engine's schedule), and the update tag carries it like a
  * vessel cell's shape.
  */
-public final class FluidDeviceBlockEntity extends BlockEntity implements com.wormzjl.icheme.runtime.instrument.AccessoryHost, FluidView.Receiver {
+public final class FluidDeviceBlockEntity extends BlockEntity implements com.wormzjl.icheme.runtime.instrument.Instrument.Holder, FluidView.Receiver {
     /** Accessed only by the client-thread lifecycle hooks and renderer, including in an integrated server. */
     private static final java.util.Set<FluidDeviceBlockEntity> CLIENT_GLASSES=java.util.Collections.newSetFromMap(new java.util.WeakHashMap<>());
     public static java.util.List<FluidDeviceBlockEntity> clientSightGlasses(){return java.util.List.copyOf(CLIENT_GLASSES);}
@@ -64,8 +64,8 @@ public final class FluidDeviceBlockEntity extends BlockEntity implements com.wor
     /** Pipes are welded in spools of this many blocks; the block at each spool end carries a flange pair. */
     public static final int SPOOL = 12;
     private long identity;
-    private final com.wormzjl.icheme.runtime.instrument.InstrumentMetadata instruments=new com.wormzjl.icheme.runtime.instrument.InstrumentMetadata();
-    @Override public com.wormzjl.icheme.runtime.instrument.InstrumentMetadata instruments(){return instruments;}
+    private final com.wormzjl.icheme.runtime.instrument.Instrument.Metadata instruments=new com.wormzjl.icheme.runtime.instrument.Instrument.Metadata();
+    @Override public com.wormzjl.icheme.runtime.instrument.Instrument.Metadata instruments(){return instruments;}
     private FluidView lastView;
     private double bore = .05;
     private BlockState drawnState;

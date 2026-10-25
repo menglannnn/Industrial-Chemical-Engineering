@@ -3,7 +3,7 @@ package com.wormzjl.icheme.client;
 import com.wormzjl.icheme.IChemE;
 import com.wormzjl.icheme.network.MoverNetwork;
 import com.wormzjl.icheme.network.MoverNetwork.Target;
-import com.wormzjl.icheme.registry.ModSounds;
+import com.wormzjl.icheme.registry.ModBlocks;
 import com.wormzjl.icheme.runtime.fluid.FluidView;
 import com.wormzjl.icheme.runtime.fluid.TankWatchers;
 import com.wormzjl.icheme.science.equipment.ShapeRasterizer;
@@ -98,7 +98,7 @@ public final class MoverSounds {
         private final ClientLevel level;
         private EquipmentShape shape;
         private Loop(MoverNetwork.State state,ClientLevel level) {
-            super((state.compressor()?ModSounds.COMPRESSOR_RUNNING:ModSounds.PUMP_RUNNING).get(),SoundSource.BLOCKS,RandomSource.create());
+            super((state.compressor()?ModBlocks.COMPRESSOR_RUNNING:ModBlocks.PUMP_RUNNING).get(),SoundSource.BLOCKS,RandomSource.create());
             this.target=state.target();this.level=level;looping=true;delay=0;volume=0;pitch=1;refreshVolume();
             attenuation=net.minecraft.client.resources.sounds.SoundInstance.Attenuation.LINEAR;
             x=target.position().getX()+.5;y=target.position().getY()+.5;z=target.position().getZ()+.5;

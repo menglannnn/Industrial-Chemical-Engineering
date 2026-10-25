@@ -49,7 +49,7 @@ import java.util.WeakHashMap;
  * fluid identity and is its presentation binding, as a device block entity is for a one-block tank. Nothing of the
  * drum's contents is kept here.
  */
-public final class EquipmentShellBlockEntity extends BlockEntity implements com.wormzjl.icheme.runtime.instrument.AccessoryHost, FluidView.Receiver {
+public final class EquipmentShellBlockEntity extends BlockEntity implements com.wormzjl.icheme.runtime.instrument.Instrument.Holder, FluidView.Receiver {
     /** Model data read by the shell model while the chunk is meshed. */
     public static final ModelProperty<ShapeRasterizer.CellKey> CELL = new ModelProperty<>();
     /** A saved cell or box beyond this many cells along any side is corrupt (the largest unit is under 100). */
@@ -62,8 +62,8 @@ public final class EquipmentShellBlockEntity extends BlockEntity implements com.
     private @Nullable ShapeRasterizer.CellKey key;
     /** The equipment's fluid identity, on its node cell only (0 elsewhere and while unregistered). */
     private long identity;
-    private final com.wormzjl.icheme.runtime.instrument.InstrumentMetadata instruments=new com.wormzjl.icheme.runtime.instrument.InstrumentMetadata();
-    @Override public com.wormzjl.icheme.runtime.instrument.InstrumentMetadata instruments(){return instruments;}
+    private final com.wormzjl.icheme.runtime.instrument.Instrument.Metadata instruments=new com.wormzjl.icheme.runtime.instrument.Instrument.Metadata();
+    @Override public com.wormzjl.icheme.runtime.instrument.Instrument.Metadata instruments(){return instruments;}
     /**
      * The layout this cell was placed by: its {@link ShapeRasterizer#stamp} and its box (0 for a cell saved before the
      * stamp existed). Another stamp on load sends the vessel to {@link EquipmentStructure#refreshLater}.

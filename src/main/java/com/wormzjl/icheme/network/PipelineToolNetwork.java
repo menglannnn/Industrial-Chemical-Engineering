@@ -2,7 +2,7 @@ package com.wormzjl.icheme.network;
 
 import com.wormzjl.icheme.IChemE;
 import com.wormzjl.icheme.world.inventory.PipelineToolMenu;
-import com.wormzjl.icheme.world.item.PipelineToolSettings;
+import com.wormzjl.icheme.world.item.PipelineToolItem;
 import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.codec.ByteBufCodecs;
 import net.minecraft.network.codec.StreamCodec;
@@ -41,8 +41,8 @@ public final class PipelineToolNetwork {
 
     private static void save(SavePayload payload, IPayloadContext context) {
         if (!(context.player() instanceof ServerPlayer player) || !(player.containerMenu instanceof PipelineToolMenu menu)
-                || menu.containerId != payload.menuId() || !menu.stillValid(player) || !PipelineToolSettings.valid(payload.diameter())) return;
-        menu.save(new PipelineToolSettings(payload.diameter()));
+                || menu.containerId != payload.menuId() || !menu.stillValid(player) || !PipelineToolItem.Settings.valid(payload.diameter())) return;
+        menu.save(new PipelineToolItem.Settings(payload.diameter()));
         // The screen closes after sending Save. Also sync the inventory menu so its cached copy carries the new target.
         player.inventoryMenu.broadcastChanges();
     }

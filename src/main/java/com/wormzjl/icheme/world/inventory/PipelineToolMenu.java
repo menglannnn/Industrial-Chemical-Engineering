@@ -1,9 +1,8 @@
 package com.wormzjl.icheme.world.inventory;
 
-import com.wormzjl.icheme.registry.ModDataComponents;
 import com.wormzjl.icheme.registry.ModItems;
 import com.wormzjl.icheme.registry.ModMenus;
-import com.wormzjl.icheme.world.item.PipelineToolSettings;
+import com.wormzjl.icheme.world.item.PipelineToolItem;
 import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerPlayer;
@@ -21,13 +20,13 @@ public final class PipelineToolMenu extends AbstractContainerMenu {
     private final InteractionHand hand;
     private final int selectedSlot;
     private final ItemStack tool;
-    private final PipelineToolSettings initialSettings;
+    private final PipelineToolItem.Settings initialSettings;
 
     public PipelineToolMenu(int id, Inventory inventory, RegistryFriendlyByteBuf buffer) {
-        this(id, inventory, buffer.readEnum(InteractionHand.class), buffer.readVarInt(), PipelineToolSettings.STREAM_CODEC.decode(buffer));
+        this(id, inventory, buffer.readEnum(InteractionHand.class), buffer.readVarInt(), PipelineToolItem.Settings.STREAM_CODEC.decode(buffer));
     }
 
-    private PipelineToolMenu(int id, Inventory inventory, InteractionHand hand, int selectedSlot, PipelineToolSettings settings) {
+    private PipelineToolMenu(int id, Inventory inventory, InteractionHand hand, int selectedSlot, PipelineToolItem.Settings settings) {
         super(ModMenus.PIPELINE_TOOL.get(), id);
         this.hand = hand;
         this.selectedSlot = selectedSlot;
@@ -37,22 +36,22 @@ public final class PipelineToolMenu extends AbstractContainerMenu {
 
     public static void open(ServerPlayer player, InteractionHand hand) {
         int slot = player.getInventory().selected;
-        var settings = Objects.requireNonNull(player.getItemInHand(hand).get(ModDataComponents.PIPELINE_TOOL_SETTINGS.get()));
+        var settings = Objects.requireNonNull(player.getItemInHand(hand).get(ModItems.PIPELINE_TOOL_SETTINGS.get()));
         player.openMenu(new SimpleMenuProvider((id, inventory, owner) -> new PipelineToolMenu(id, inventory, hand, slot, settings),
                 Component.translatable("item.icheme.pipeline_tool")), buffer -> {
             buffer.writeEnum(hand);
             buffer.writeVarInt(slot);
-            PipelineToolSettings.STREAM_CODEC.encode(buffer, settings);
+            PipelineToolItem.Settings.STREAM_CODEC.encode(buffer, settings);
         });
     }
 
-    public PipelineToolSettings initialSettings() {
+    public PipelineToolItem.Settings initialSettings() {
         return initialSettings;
     }
 
     /** Server: the packet handler has checked this session's id, lifetime and diameter. */
-    public void save(PipelineToolSettings settings) {
-        tool.set(ModDataComponents.PIPELINE_TOOL_SETTINGS.get(), settings);
+    public void save(PipelineToolItem.Settings settings) {
+        tool.set(ModItems.PIPELINE_TOOL_SETTINGS.get(), settings);
     }
 
     @Override

@@ -33,13 +33,13 @@ class GaugeAccessoriesTest {
     @Test void nativeReservoirSocketsStayDistinctUprightAndStableAcrossHeadingsAndSizes(){
         for(var heading:EquipmentShape.Heading.values())for(double d:new double[]{.5,2,10}){
             var drum=EquipmentShape.drum(d,4,EquipmentShape.Orientation.VERTICAL,heading,0);var mounts=InstrumentHosts.reservoirMounts(drum,BlockPos.ZERO);
-            assertEquals(Set.of("pressure_top","pressure_bottom","temperature_bottom"),mounts.stream().map(InstrumentMount::id).collect(java.util.stream.Collectors.toSet()));
+            assertEquals(Set.of("pressure_top","pressure_bottom","temperature_bottom"),mounts.stream().map(Instrument.Mount::id).collect(java.util.stream.Collectors.toSet()));
             for(var m:mounts){assertEquals(heading.name(),m.face().name());assertEquals(0,m.right().y);assertTrue(m.bounds().contains(m.centre()));}
             for(int i=0;i<mounts.size();i++)for(int j=i+1;j<mounts.size();j++)assertFalse(mounts.get(i).bounds().intersects(mounts.get(j).bounds()));
         }
         for(var heading:EquipmentShape.Heading.values()){
-            var tank=EquipmentShape.storage(EquipmentShape.Kind.TANK,4,4,heading,0);assertEquals(List.of("pressure_bottom","temperature_bottom"),InstrumentHosts.reservoirMounts(tank,BlockPos.ZERO).stream().map(InstrumentMount::id).toList());
-            var sphere=EquipmentShape.storage(EquipmentShape.Kind.SPHERE,4,1,heading,2);assertEquals(List.of("pressure_top","temperature_top"),InstrumentHosts.reservoirMounts(sphere,BlockPos.ZERO).stream().map(InstrumentMount::id).toList());
+            var tank=EquipmentShape.storage(EquipmentShape.Kind.TANK,4,4,heading,0);assertEquals(List.of("pressure_bottom","temperature_bottom"),InstrumentHosts.reservoirMounts(tank,BlockPos.ZERO).stream().map(Instrument.Mount::id).toList());
+            var sphere=EquipmentShape.storage(EquipmentShape.Kind.SPHERE,4,1,heading,2);assertEquals(List.of("pressure_top","temperature_top"),InstrumentHosts.reservoirMounts(sphere,BlockPos.ZERO).stream().map(Instrument.Mount::id).toList());
         }
         assertTrue(InstrumentHosts.reservoirMounts(EquipmentShape.drum(2,4,EquipmentShape.Orientation.HORIZONTAL,EquipmentShape.Heading.NORTH,1),BlockPos.ZERO).isEmpty());
     }
@@ -78,22 +78,22 @@ class GaugeAccessoriesTest {
         var interval=new com.wormzjl.icheme.science.fluid.network.PassiveIntervalSolver(model).solve(graph,.1,com.wormzjl.icheme.science.fluid.network.PassiveIntervalSolver.Settings.defaults(),()->{});var observed=interval.observations().getFirst();assertFalse(observed.flowing());assertEquals(state.pressure(),observed.pressure(.5,0),.001);
     }
     @Test void allExistingPipeAccessoriesPersistAnInstanceAndRecoverExactlyOnce(){
-        for(var type:List.of(AccessoryStore.Type.SIGHT_GLASS,AccessoryStore.Type.SHUTOFF,AccessoryStore.Type.CHECK,AccessoryStore.Type.PRESSURE_VALVE,AccessoryStore.Type.FILTER,AccessoryStore.Type.PUMP,AccessoryStore.Type.COMPRESSOR)){
-            var store=new AccessoryStore();var fitting=store.installLegacy(7,type);assertEquals(fitting,store.installLegacy(7,type));
-            var image=store.save(new CompoundTag());var loaded=AccessoryStore.load(image);assertEquals(fitting,loaded.legacy(7));assertNull(loaded.removeLegacy(7,UUID.randomUUID()));assertNotNull(loaded.removeLegacy(7,fitting.instance()));assertNull(loaded.removeLegacy(7,fitting.instance()));assertEquals(2,loaded.revision(7));
+        for(var type:List.of(Instrument.Type.SIGHT_GLASS,Instrument.Type.SHUTOFF,Instrument.Type.CHECK,Instrument.Type.PRESSURE_VALVE,Instrument.Type.FILTER,Instrument.Type.PUMP,Instrument.Type.COMPRESSOR)){
+            var store=new InstrumentService.Store();var fitting=store.installLegacy(7,type);assertEquals(fitting,store.installLegacy(7,type));
+            var image=store.save(new CompoundTag());var loaded=InstrumentService.Store.load(image);assertEquals(fitting,loaded.legacy(7));assertNull(loaded.removeLegacy(7,UUID.randomUUID()));assertNotNull(loaded.removeLegacy(7,fitting.instance()));assertNull(loaded.removeLegacy(7,fitting.instance()));assertEquals(2,loaded.revision(7));
             var reinstall=loaded.installLegacy(7,type);assertNotEquals(fitting.instance(),reinstall.instance());assertNull(loaded.removeLegacy(7,fitting.instance()));
-            var invalid=image.copy();invalid.getList("fittings",10).getCompound(0).putString("type","TEMPERATURE");assertThrows(IllegalArgumentException.class,()->AccessoryStore.load(invalid));
+            var invalid=image.copy();invalid.getList("fittings",10).getCompound(0).putString("type","TEMPERATURE");assertThrows(IllegalArgumentException.class,()->InstrumentService.Store.load(invalid));
         }
     }
     @Test void configuredAttachmentsAndPendingTransactionsPersistAndRefundOnlyOnce(){
-        var store=new AccessoryStore();var key=new Instrument.Key(7,"pressure_top");var instance=UUID.randomUUID();var operation=new AccessoryStore.Pending(UUID.randomUUID(),UUID.randomUUID(),key,instance,0,true,AccessoryStore.Type.PRESSURE,GaugeSettings.PRESSURE,"minecraft:overworld",BlockPos.ZERO.asLong(),2,false);
+        var store=new InstrumentService.Store();var key=new Instrument.Key(7,"pressure_top");var instance=UUID.randomUUID();var operation=new InstrumentService.Store.Pending(UUID.randomUUID(),UUID.randomUUID(),key,instance,0,true,Instrument.Type.PRESSURE,GaugeSettings.PRESSURE,"minecraft:overworld",BlockPos.ZERO.asLong(),2,false);
         store.nextDue(1234);assertTrue(store.queue(operation));assertFalse(store.queue(operation));var installed=store.install(operation);assertNotNull(installed);assertNull(store.install(operation));store.finish(operation.request());
-        var remove=new AccessoryStore.Pending(UUID.randomUUID(),operation.player(),key,instance,store.revision(7),false,AccessoryStore.Type.PRESSURE,null,operation.dimension(),operation.position(),2,false);assertTrue(store.queue(remove));
-        var image=store.save(new CompoundTag());var reload=AccessoryStore.load(image);assertEquals(store.host(7),reload.host(7));assertEquals(store.pending(),reload.pending());assertEquals(1234,reload.nextDue());assertNotNull(reload.remove(key,instance));assertNull(reload.remove(key,instance));assertTrue(reload.host(7).isEmpty());assertEquals(2,reload.revision(7));
-        var invalid=image.copy();invalid.putInt("format",2);assertThrows(IllegalArgumentException.class,()->AccessoryStore.load(invalid));
-        var malformed=image.copy();malformed.getList("installed",10).getCompound(0).putLong("revision",99);assertThrows(IllegalArgumentException.class,()->AccessoryStore.load(malformed));
-        var pending=image.copy();pending.getList("pending",10).getCompound(0).putString("type","UNKNOWN");assertThrows(IllegalArgumentException.class,()->AccessoryStore.load(pending));
-        var missing=image.copy();missing.remove("pending");assertThrows(IllegalArgumentException.class,()->AccessoryStore.load(missing));
+        var remove=new InstrumentService.Store.Pending(UUID.randomUUID(),operation.player(),key,instance,store.revision(7),false,Instrument.Type.PRESSURE,null,operation.dimension(),operation.position(),2,false);assertTrue(store.queue(remove));
+        var image=store.save(new CompoundTag());var reload=InstrumentService.Store.load(image);assertEquals(store.host(7),reload.host(7));assertEquals(store.pending(),reload.pending());assertEquals(1234,reload.nextDue());assertNotNull(reload.remove(key,instance));assertNull(reload.remove(key,instance));assertTrue(reload.host(7).isEmpty());assertEquals(2,reload.revision(7));
+        var invalid=image.copy();invalid.putInt("format",2);assertThrows(IllegalArgumentException.class,()->InstrumentService.Store.load(invalid));
+        var malformed=image.copy();malformed.getList("installed",10).getCompound(0).putLong("revision",99);assertThrows(IllegalArgumentException.class,()->InstrumentService.Store.load(malformed));
+        var pending=image.copy();pending.getList("pending",10).getCompound(0).putString("type","UNKNOWN");assertThrows(IllegalArgumentException.class,()->InstrumentService.Store.load(pending));
+        var missing=image.copy();missing.remove("pending");assertThrows(IllegalArgumentException.class,()->InstrumentService.Store.load(missing));
     }
     @Test void housingIsClosedAtObliqueAnglesAndEveryConnectorRemainsFinite(){
         var edges=new HashMap<String,Integer>();

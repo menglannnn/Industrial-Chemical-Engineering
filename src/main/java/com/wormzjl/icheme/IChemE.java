@@ -5,7 +5,6 @@ import com.wormzjl.icheme.network.ColumnV3Network;
 import com.wormzjl.icheme.network.ProcessSolveCoordinator;
 import com.wormzjl.icheme.registry.ModBlockEntities;
 import com.wormzjl.icheme.registry.ModBlocks;
-import com.wormzjl.icheme.registry.ModDataComponents;
 import com.wormzjl.icheme.registry.ModItems;
 import com.wormzjl.icheme.registry.ModMenus;
 import com.wormzjl.icheme.runtime.ProcessSolveServices;
@@ -198,12 +197,10 @@ public final class IChemE {
     }
 
     public IChemE(IEventBus modEventBus, ModContainer modContainer) {
-        ModDataComponents.register(modEventBus);
         ModBlocks.register(modEventBus);
         ModItems.register(modEventBus);
         ModBlockEntities.register(modEventBus);
         ModMenus.register(modEventBus);
-        com.wormzjl.icheme.registry.ModSounds.register(modEventBus);
         modEventBus.addListener(ColumnV3Network::register);
         modEventBus.addListener(com.wormzjl.icheme.network.FluidNetwork::register);
         modEventBus.addListener(com.wormzjl.icheme.network.TankDisplayNetwork::register);
