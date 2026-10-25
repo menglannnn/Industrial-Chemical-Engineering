@@ -567,7 +567,8 @@ public record EquipmentShape(Kind kind, double diameter, double tangentLength, O
      * facing down on the bottom centre line between the boot and the front head. The boot: a third of the drum's
      * diameter, at least 0.3, 0.4 or 0.5 m (under 0.9, 1.4 m and above) and at most half of it; 0.9 m or 0.6 D deep, the
      * longer, less what lifts its drain's face a block (owner request 2026-10-25: saddles a block lower; 0.02 to 0.97 m,
-     * so at least 0.4 m deep); on the first cell centre inboard of the front saddle that keeps its shell 0.05 m clear of
+     * so at least 0.4 m deep) and what its drain's neck needs at a pipe's largest ({@link #bootDrop}, up to 0.07 m);
+     * on the first cell centre inboard of the front saddle that keeps its shell 0.05 m clear of
      * it (their welds apart; owner report 2026-10-25 with a reflux drum's drawing: the boot leans to the outlet end, its
      * centre a quarter of T/T from the tangent line, so not a whole block further in for 0.1 m), and as clear of the far
      * saddle. The outlet on the last cell centre outboard of the front saddle that keeps its largest pipe's
@@ -583,9 +584,10 @@ public record EquipmentShape(Kind kind, double diameter, double tangentLength, O
         double low = diameter < .9 ? .3 : diameter < 1.4 ? .4 : .5, size = Math.min(diameter / 2, Math.max(low, diameter / 3));
         // The drain's face stands STAND_OUT under the boot's apex on a block face (minimumBootSupport): the boot stops
         // short of the block line its preferred depth would reach under that face (a micrometre short, so the face's
-        // floor lands on that line in floating point).
+        // floor lands on that line in floating point), and shorter by what a pipe's largest neck needs beyond that
+        // (bootDrop): the boot gives way, the saddles stay.
         double shell = lyingAxis(diameter) - diameter / 2, reach = shell - size / 4 - STAND_OUT;
-        double length = Math.max(.4, reach - Math.floor(reach - Math.max(.9, .6 * diameter)) - 1 - 1e-6);
+        double length = Math.max(.4, reach - Math.floor(reach - Math.max(.9, .6 * diameter)) - 1 - 1e-6 - (bootDrop(size) - size / 4 - STAND_OUT));
         double od = outletLargest(diameter), flange = PipeSizes.flange(od) / 2;
         double bT = diameter / 4, tT = bT + tangentLength, saddle = SADDLE_WIDTH / 2 + .15, clear = SADDLE_WIDTH / 2 + .05 + size / 2;
         double near = bT + SADDLE_POSITION * tangentLength, far = tT - SADDLE_POSITION * tangentLength;
@@ -597,6 +599,18 @@ public record EquipmentShape(Kind kind, double diameter, double tangentLength, O
         boolean under = bT - outlet <= .6 * bT + 1e-9 && outlet > od / 2;
         if (!under && headOutletLargest(diameter) <= .05) return null;
         return new Boot(station, size, length, under ? outlet : Double.NaN);
+    }
+
+    /**
+     * How far under its bottom tangent line a boot {@code size} across sets its drain's face at least, m: STAND_OUT under
+     * its head's apex, and a unit's neck ({@link ProcessUnit#NECK}) under where a pipe's largest leaves the head (owner
+     * decision 2026-10-21: a 0.8 m pipe has a 0.8 m root). On a boot from about 1.1 m across the head is flat enough
+     * under that neck that STAND_OUT alone left its hub and flange in the head (batch 2026-10-21-floating-roof-tanks,
+     * 2026-10-25: 0.21 m of neck on an 8 m drum's boot).
+     */
+    private static double bootDrop(double size) {
+        double depth = size / 4, edge = PipeSizes.MAX_OUTSIDE / size;
+        return Math.max(depth + STAND_OUT, depth * Math.sqrt(Math.max(0, 1 - edge * edge)) + ProcessUnit.NECK);
     }
 
     /** A lying drum's axis height in its frame: the middle of its box's odd count of cells across ({@link #width}). */
@@ -633,8 +647,8 @@ public record EquipmentShape(Kind kind, double diameter, double tangentLength, O
     public static int minimumBootSupport(double diameter, double tangentLength) {
         var b = bootFor(diameter, tangentLength);
         if (b == null) return MAX_SUPPORT + 1;
-        double apex = lyingAxis(diameter) - diameter / 2 - b.length() - b.diameter() / 4;
-        return Math.max(1, 1 - (int) Math.floor(apex - STAND_OUT));
+        double bottom = lyingAxis(diameter) - diameter / 2 - b.length();
+        return Math.max(1, 1 - (int) Math.floor(bottom - bootDrop(b.diameter())));
     }
 
     /** The boot's room, {x0, y0, z0, x1, y1, z1} in the frame, or null. */
@@ -949,8 +963,8 @@ public record EquipmentShape(Kind kind, double diameter, double tangentLength, O
         if (b != null) {
             // The boot's drain at its bottom head's centre, facing down (photo survey A), its pipe straight down.
             double rb = b.diameter() / 2, bottom = a - r - b.length(), depth = b.diameter() / 4, od = Math.min(PipeSizes.MAX_OUTSIDE, rb);
-            double edge = PipeSizes.MAX_OUTSIDE / 2 / rb, base = bottom - depth * Math.sqrt(Math.max(0, 1 - edge * edge)) + .03, apex = bottom - depth;
-            out.add(new Nozzle(Role.BOOT_DRAIN, new double[]{base, b.station(), a}, 0, -1, base - Math.floor(apex - STAND_OUT), clampOd(.05 * diameter, od), 0));
+            double edge = PipeSizes.MAX_OUTSIDE / 2 / rb, base = bottom - depth * Math.sqrt(Math.max(0, 1 - edge * edge)) + .03;
+            out.add(new Nozzle(Role.BOOT_DRAIN, new double[]{base, b.station(), a}, 0, -1, base - Math.floor(bottom - bootDrop(b.diameter())), clampOd(.05 * diameter, od), 0));
         }
         for (var c : connections) out.add(connection(c, a, bT, tT, apothem));
         return out;

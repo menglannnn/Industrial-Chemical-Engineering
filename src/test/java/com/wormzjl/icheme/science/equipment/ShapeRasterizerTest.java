@@ -743,6 +743,10 @@ class ShapeRasterizerTest {
                     for (double saddle : drum.saddleCentres())
                         assertTrue(Math.abs(boot.station() - saddle) >= EquipmentShape.SADDLE_WIDTH / 2 + .05 + boot.diameter() / 2 - 1e-9, drum.toString());
                     assertEquals(1, drum.nozzles().stream().filter(n -> n.role() == EquipmentShape.Role.BOOT_DRAIN).count(), drum.toString());
+                    // Its drain's face a unit's neck beyond where a pipe's largest leaves the boot's head, its root 0.03 m
+                    // inside it (owner decision 2026-10-21: a 0.8 m pipe has a 0.8 m root).
+                    var drain = drum.nozzles().stream().filter(n -> n.role() == EquipmentShape.Role.BOOT_DRAIN).findFirst().orElseThrow();
+                    assertTrue(drain.length() >= ProcessUnit.NECK + .03 - 1e-9, drum + " drain neck " + drain.length());
                     if (support > 1) assertThrows(IllegalArgumentException.class, () -> drum(drum.diameter(), drum.tangentLength(), orientation, Heading.NORTH, support - 1, List.of(), true));
                 }
         assertTrue(boots > 50, "boots checked: " + boots);
@@ -804,8 +808,9 @@ class ShapeRasterizerTest {
                 assertEquals(Math.rint(face), face, 1e-9, at);
                 assertTrue(face <= drum.axis() - drum.radius() - EquipmentShape.STAND_OUT + 1e-9 && face - 1 >= -support - 1e-9, at + " face at " + face);
                 assertTrue(drum.bottomTangent() - b.outlet() <= .6 * drum.headDepth() + 1e-9 && outlet.base()[0] > drum.axis() - drum.radius(), at);
+                // Its depth within a block of the preferred, less up to 0.07 m for its drain's neck.
                 double preferred = Math.max(.9, .6 * d);
-                assertTrue(b.length() >= .4 - 1e-9 && b.length() < preferred && b.length() > preferred - 1 - 1e-5, at + " boot depth " + b.length());
+                assertTrue(b.length() >= .4 - 1e-9 && b.length() < preferred && b.length() > preferred - 1.07 - 1e-5, at + " boot depth " + b.length());
                 double gap = b.station() - b.outlet();
                 assertEquals(Math.rint(gap), gap, 1e-9, at);
                 assertTrue(gap >= 2 && gap >= b.diameter() / 2 + flange - 1e-9, at);
