@@ -61,7 +61,7 @@ public final class FluidPhasePortGameTests {
             if(stage[0]==-1) {
                 if(!charge.charged())return;
                 place(helper,generator,ModBlocks.FLUID_GENERATOR.get().defaultBlockState());long generatorId=identity(helper,generator);
-                var old=world.registrations().get(generatorId);world.edit(generatorId,old.revision(),old.device(),new FluidDeviceSpec(1,298.15,130000,old.spec().composition()));
+                TankCharge.run(world,generatorId,new FluidDeviceSpec(1,298.15,130000,world.registrations().get(generatorId).spec().composition()));
                 place(helper,feedPipe,ModBlocks.FLUID_PIPE.get().defaultBlockState());
                 stage[0]=0;deadline[0]=System.nanoTime()+90_000_000_000L;return;
             }

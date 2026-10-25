@@ -42,7 +42,7 @@ public final class SolidPhaseGameTests {
         long filterId=((FluidDeviceBlockEntity)level.getBlockEntity(filter)).fluidIdentity();
         long tankId=((FluidDeviceBlockEntity)level.getBlockEntity(tank)).fluidIdentity();
         var registration=world.registrations().get(sourceId);
-        world.edit(sourceId,registration.revision(),registration.device(),new FluidDeviceSpec(1,298.15,101325,registration.spec().composition(),SlurryFeed.demo()));
+        TankCharge.run(world,sourceId,new FluidDeviceSpec(1,298.15,101325,registration.spec().composition(),SlurryFeed.demo()));
         var player=FakePlayerFactory.get(level,new GameProfile(UUID.fromString("9f5c1da7-915c-4d47-8c9f-1a4b29fe91c0"),"SolidFilterTest"));
         InlineFilter[] first={null},second={null};
         helper.startSequence()

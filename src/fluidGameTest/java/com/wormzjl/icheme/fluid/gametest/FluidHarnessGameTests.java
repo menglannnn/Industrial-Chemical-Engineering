@@ -24,7 +24,7 @@ public final class FluidHarnessGameTests {
         long sourceId=((com.wormzjl.icheme.world.level.block.entity.FluidDeviceBlockEntity)level.getBlockEntity(source)).fluidIdentity();
         long tankId=((com.wormzjl.icheme.world.level.block.entity.FluidDeviceBlockEntity)level.getBlockEntity(reservoir)).fluidIdentity();
         var registration=world.registrations().get(sourceId);var spec=registration.spec();
-        world.edit(sourceId,registration.revision(),registration.device(),new com.wormzjl.icheme.runtime.fluid.FluidDeviceSpec(spec.volume(),spec.temperature(),200000,spec.composition()));
+        TankCharge.run(world,sourceId,new com.wormzjl.icheme.runtime.fluid.FluidDeviceSpec(spec.volume(),spec.temperature(),200000,spec.composition()));
         // A placed tank holds nothing (decision D54): no nitrogen at the start, and none may appear.
         var initialState=world.view(tankId).state();double initialNitrogen=initialState==null?0:initialState.phaseMoles()[2][com.wormzjl.icheme.science.fluid.thermo.FluidMaterialCatalog.nitrogenIndex()];int[] phase={0};double[] before={0};long[] changedAt={0};
         helper.succeedWhen(()->{

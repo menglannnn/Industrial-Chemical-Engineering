@@ -104,7 +104,7 @@ public final class FluidPresentationGameTests {
         level.setBlock(source,ModBlocks.FLUID_GENERATOR.get().defaultBlockState(),3);long generator=identity(helper,source);
         // Water at 2.5 bar into the nitrogen tank: the island keeps filling (awake) for the whole test.
         var initial=world.registrations().get(generator);var spec=initial.spec();
-        world.edit(generator,initial.revision(),initial.device(),new FluidDeviceSpec(spec.volume(),spec.temperature(),250000,spec.composition()));
+        TankCharge.run(world,generator,new FluidDeviceSpec(spec.volume(),spec.temperature(),250000,spec.composition()));
         var player=player(helper,"PresentationEdit",source);var menu=open(player,source,generator,71);
         var gson=new Gson();
         // 0: wait for a quiet, awake island and its first delivery; 1: queued edit sent; 2: queued reply seen; 3: applied seen; 4: stale edit sent; 5: done.
@@ -188,7 +188,7 @@ public final class FluidPresentationGameTests {
         for(int x=1;x<=3;x++){var p=source.east(x);level.setBlock(p,ModBlocks.FLUID_PIPE.get().defaultBlockState(),3);line.add(p);}
         var sink=source.east(4);level.setBlock(sink,ModBlocks.FLUID_VOID.get().defaultBlockState(),3);line.add(sink);
         long generator=identity(helper,source);var record=world.registrations().get(generator);var nitrogen=FluidDeviceSpec.nitrogen(com.wormzjl.icheme.science.material.MaterialRuntime.active());
-        world.edit(generator,record.revision(),record.device(),new FluidDeviceSpec(1,298.15,150000,nitrogen.composition()));
+        TankCharge.run(world,generator,new FluidDeviceSpec(1,298.15,150000,nitrogen.composition()));
         var restPlayer=player(helper,"PresentationRest",tank);var steadyPlayer=player(helper,"PresentationSteady",source);
         var rest=open(restPlayer,tank,tankId,81);var steady=open(steadyPlayer,source,generator,82);
         String[] failure={null};
