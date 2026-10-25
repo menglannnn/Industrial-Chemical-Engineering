@@ -20,8 +20,8 @@ import static com.wormzjl.icheme.science.equipment.ProcessUnit.tangential;
  * {@link ProcessUnit#skirt}, {@link ProcessUnit#studs}).
  */
 final class HydroprocessingParts {
-    /** The pedestal's height and its reach beyond the skirt; the skirt's fireproofing; flashing bands' section, m. */
-    static final double PEDESTAL = .3, PEDESTAL_REACH = .25, FIREPROOFING = .05, BAND = 1 / 16.0;
+    /** Flashing bands' section, m. */
+    static final double BAND = 1 / 16.0;
     /**
      * The square top deck's width beyond the cladding, m: room in front of the caged ladder coming up through it for a player
      * (0.86 m) and the handrail's band (survey: about 1 m beyond the OD); its girders' width.
@@ -47,7 +47,7 @@ final class HydroprocessingParts {
     /**
      * The clad shell (radius {@code wall} about the vertical axis through (a, a), {@code n} sides) from the bottom tangent
      * {@code yB} to the top {@code yT} and over its clad top head, the cladding's end over the skirt of radius
-     * {@code skirt}, the vessel's solid and volume; the octagonal pedestal under the skirt.
+     * {@code skirt}, the vessel's solid and volume.
      */
     static void cladShell(ProcessUnit u, double a, double wall, double skirt, double yB, double yT, int n) {
         double[] axis = {a, 0, a};
@@ -58,7 +58,6 @@ final class HydroprocessingParts {
         u.solids.add(Solid.rod(axis, 1, yB, yT, wall, wall));
         u.volumes.add(Solid.rod(axis, 1, yB, yT, .94 * wall, .94 * wall));
         u.round(a, a, yB, yT, wall, 1);
-        u.pedestal(a, a, skirt + PEDESTAL_REACH, PEDESTAL);
     }
 
     /**

@@ -3567,92 +3567,94 @@ public final class ProcessUnit {
     }
 
     /**
-     * An octagonal concrete pedestal (a pile cap, ACI 351.2) of apothem {@code apothem} round the vertical axis through
-     * (x, z), {@code h} high, its faces square to the frame; its top reaches every cell under it; it collides.
+     * A skirt's foot on grade as a drum's or a column's (ShapeRasterizer's skirt base; owner report 2026-10-25: the
+     * reactors' skirts in line with theirs): the base plate {@link EquipmentShape#PLATE} thick under the skirt of outer
+     * radius {@code r} round the vertical axis through (x, z), {@code n} sides, its ring {@link EquipmentShape#BASE_RING}
+     * proud, and the anchor chairs on it ({@link EquipmentShape#CHAIR} square, a drum's count for {@code diameter}), none
+     * in an opening reaching down to them; an open skirt's floor plate inside. Openings as {@link #skirt}'s.
      */
-    void pedestal(double x, double z, double apothem, double h) {
-        double rc = pedestalCorner(apothem);
-        var top = new ArrayList<double[]>();
-        for (int k = 0; k < 8; k++) {
-            double t0 = -Math.PI / 8 + k * Math.PI / 4, t1 = t0 + Math.PI / 4;
-            mesh.flat(List.of(Access.around(x, z, rc, t0, 0), Access.around(x, z, rc, t1, 0), Access.around(x, z, rc, t1, h), Access.around(x, z, rc, t0, h)), outward(t0 + Math.PI / 8),
-                    Material.CONCRETE);
-            top.add(Access.around(x, z, rc, t0, h));
-        }
-        mesh.flat(top, new double[]{0, 1, 0}, Material.CONCRETE);
-        solids.add(Solid.rod(new double[]{x, 0, z}, 1, 0, h, rc, 0));
-    }
-
-    /** The circumradius of a {@link #pedestal} of apothem {@code apothem}. */
-    static double pedestalCorner(double apothem) {
-        return apothem / DeterministicMath.cos(Math.PI / 8);
-    }
-
-    /**
-     * A skirt's base ring on its pedestal and its anchor chairs (one per 1.5 m of circumference or so, in fours; a drum's
-     * count, {@link EquipmentShape#anchorChairs}; Brownell and Young ch. 10) round the vertical axis through (x, z), the
-     * skirt's outer radius {@code r}, its foot at {@code y}, the vessel {@code diameter} across; none in the skirt's
-     * {@code openings} ({centre angle, half width (m)}).
-     */
-    void baseRing(double x, double z, double r, double y, double diameter, int n, double[]... openings) {
-        var up = Frame.of(new double[]{x, 0, z}, 1, 1);
-        mesh.ring(up, r, r + .1, y, y + .06, n, 2, Material.SUPPORT);
-        int chairs = 4 * (int) Math.max(1, Math.round(Math.PI * diameter / 6));
+    void baseRing(double x, double z, double r, double diameter, int n, double[]... openings) {
+        double plate = EquipmentShape.PLATE, ring = EquipmentShape.BASE_RING, chair = EquipmentShape.CHAIR;
+        mesh.ring(Frame.of(new double[]{x, 0, z}, 1, 1), openings.length > 0 ? 0 : r - EquipmentShape.SKIRT_WALL, r + ring, 0, plate, n, 2, Material.SUPPORT);
+        int chairs = EquipmentShape.anchorChairs(diameter);
         for (int k = 0; k < chairs; k++) {
             double t = 2 * Math.PI * (k + .5) / chairs;
             boolean open = false;
-            for (var o : openings) open |= apart(t, o[0]) < DeterministicMath.asin(Math.min(1, o[1] / r)) + .12 / r;
-            if (open) continue;
-            mesh.block(Access.around(x, z, r + .1, t, y + .21), scale(outward(t), .1), new double[]{0, .15, 0}, scale(tangential(t), .12), Material.SUPPORT);
-            mesh.cylinder(Frame.of(Access.around(x, z, r + .12, t, 0), 1, 1), .03, y + .36, y + .42, 6, Material.BOLT);
+            for (var o : openings) open |= o[2] < plate + chair && apart(t, o[0]) < DeterministicMath.asin(Math.min(1, o[1] / r)) + chair / r;
+            if (!open)
+                mesh.block(Access.around(x, z, r + ring / 2, t, plate + chair / 2), scale(outward(t), ring / 2), new double[]{0, chair / 2, 0}, scale(tangential(t), chair / 2),
+                        Material.SUPPORT);
         }
     }
 
     /**
-     * A skirt of outer radius {@code r} round the vertical axis through (x, z) from {@code y0} to {@code y1}, {@code n}
-     * sides, fireproofed (concrete faced, API 2218); its plate {@code thick} through. Open from its foot up to {@code top}
-     * over the angles of each of {@code openings} ({centre angle, half width (m)}), where its inside face, the openings'
-     * jambs and lintels are drawn; closed, its inside is never seen and is not drawn. It collides as drawn.
+     * A skirt as a drum's or a column's (owner report 2026-10-25: the reactors' skirts in line with theirs): a steel
+     * plate {@link EquipmentShape#SKIRT_WALL} through, of outer radius {@code r} round the vertical axis through (x, z),
+     * from grade to {@code y1}, {@code n} sides, in the structure's paint. Cut through over each of {@code openings}
+     * ({centre angle, half width (m), sill, head}): a slot or a bay, the skirt's inside face and the cut's sill, head and
+     * jambs drawn; closed, its inside is never seen and is not drawn. It collides solid, as a drum's, unless an opening
+     * reaches grade (a bay one walks into), then as drawn.
      */
-    void skirt(double x, double z, double r, double thick, double y0, double y1, double top, int n, double[]... openings) {
+    void skirt(double x, double z, double r, double y1, int n, double[]... openings) {
         double[] axis = {x, 0, z}, up = {0, 1, 0}, down = {0, -1, 0};
         var outside = new Radial(axis, up);
         var inside = new Inward(axis, up);
-        double ri = r - thick;
-        boolean open = openings.length > 0;
-        var cut = new boolean[n];
+        double ri = r - EquipmentShape.SKIRT_WALL;
+        boolean open = openings.length > 0, bay = false;
+        for (var o : openings) bay |= o[2] <= 0;
+        var cut = new double[n][];
         for (int i = 0; i < n; i++) {
             double mid = 2 * Math.PI * (i + .5) / n;
-            for (var o : openings) cut[i] |= apart(mid, o[0]) < DeterministicMath.asin(Math.min(1, o[1] / r));
+            for (var o : openings) if (apart(mid, o[0]) < DeterministicMath.asin(Math.min(1, o[1] / r))) cut[i] = o;
         }
         for (int i = 0; i < n; i++) {
-            double a0 = 2 * Math.PI * i / n, a1 = 2 * Math.PI * (i + 1) / n, lo = cut[i] ? top : y0;
-            mesh.add(List.of(Access.around(x, z, r, a0, lo), Access.around(x, z, r, a1, lo), Access.around(x, z, r, a1, y1), Access.around(x, z, r, a0, y1)),
-                    new double[]{x, (lo + y1) / 2, z}, outside, Material.CONCRETE, null, null);
-            if (open)
-                mesh.add(List.of(Access.around(x, z, ri, a0, lo), Access.around(x, z, ri, a1, lo), Access.around(x, z, ri, a1, y1), Access.around(x, z, ri, a0, y1)),
-                        Access.around(x, z, 2 * r, (a0 + a1) / 2, (lo + y1) / 2), inside, Material.CONCRETE, null, null);
-            if (cut[i])
-                mesh.flat(List.of(Access.around(x, z, ri, a0, top), Access.around(x, z, ri, a1, top), Access.around(x, z, r, a1, top), Access.around(x, z, r, a0, top)), down,
-                        Material.CONCRETE);
-            if (cut[i] != cut[(i + n - 1) % n]) {
-                // A jamb at this facet's edge, facing into the opening.
-                double[] facing = cut[i] ? tangential(a0) : neg(tangential(a0));
-                mesh.flat(List.of(Access.around(x, z, ri, a0, y0), Access.around(x, z, r, a0, y0), Access.around(x, z, r, a0, top), Access.around(x, z, ri, a0, top)), facing,
-                        Material.CONCRETE);
+            double a0 = 2 * Math.PI * i / n, a1 = 2 * Math.PI * (i + 1) / n;
+            var o = cut[i];
+            for (var span : o == null ? List.of(new double[]{0, y1}) : List.of(new double[]{0, o[2]}, new double[]{o[3], y1})) {
+                if (span[1] - span[0] < 1e-9) continue;
+                mesh.add(List.of(Access.around(x, z, r, a0, span[0]), Access.around(x, z, r, a1, span[0]), Access.around(x, z, r, a1, span[1]), Access.around(x, z, r, a0, span[1])),
+                        new double[]{x, (span[0] + span[1]) / 2, z}, outside, Material.SUPPORT, null, null);
+                if (open)
+                    mesh.add(List.of(Access.around(x, z, ri, a0, span[0]), Access.around(x, z, ri, a1, span[0]), Access.around(x, z, ri, a1, span[1]), Access.around(x, z, ri, a0, span[1])),
+                            Access.around(x, z, 2 * r, (a0 + a1) / 2, (span[0] + span[1]) / 2), inside, Material.SUPPORT, null, null);
+            }
+            if (o != null) {
+                // The cut's head, and its sill where it stands off the ground.
+                mesh.flat(List.of(Access.around(x, z, ri, a0, o[3]), Access.around(x, z, ri, a1, o[3]), Access.around(x, z, r, a1, o[3]), Access.around(x, z, r, a0, o[3])), down,
+                        Material.SUPPORT);
+                if (o[2] > 0)
+                    mesh.flat(List.of(Access.around(x, z, r, a0, o[2]), Access.around(x, z, r, a1, o[2]), Access.around(x, z, ri, a1, o[2]), Access.around(x, z, ri, a0, o[2])), up,
+                            Material.SUPPORT);
+            }
+            var before = cut[(i + n - 1) % n];
+            if (o == before) continue;
+            // A jamb at this facet's edge facing into each opening it ends.
+            for (var j : new double[][]{o, before}) {
+                if (j == null) continue;
+                double[] facing = j == o ? tangential(a0) : neg(tangential(a0));
+                mesh.flat(List.of(Access.around(x, z, ri, a0, j[2]), Access.around(x, z, r, a0, j[2]), Access.around(x, z, r, a0, j[3]), Access.around(x, z, ri, a0, j[3])), facing,
+                        Material.SUPPORT);
             }
         }
-        if (!open) {
-            solids.add(Solid.rod(axis, 1, y0, y1, r, 0));
+        if (!bay) {
+            solids.add(Solid.rod(axis, 1, 0, y1, r, 0));
             return;
         }
-        solids.add(Solid.ring(x, z, top, y1, ri, r, 0, 0));
-        // The walls between the openings, each from one opening's edge round to the next's.
-        for (int i = 0; i < n; i++) {
-            if (cut[i] || !cut[(i + n - 1) % n]) continue;
-            int j = i;
-            while (!cut[(j + 1) % n]) j++;
-            solids.add(Solid.ring(x, z, y0, top, ri, r, 2 * Math.PI * i / n, 2 * Math.PI * (j + 1) / n));
+        // Each run of facets alike (one opening, or none): whole where uncut, under the sill and over the head where cut.
+        int first = 0;
+        while (first < n && cut[first] == cut[(first + n - 1) % n]) first++;
+        for (int done = 0, i = first % n; done < n; ) {
+            int run = 1;
+            while (done + run < n && cut[(i + run) % n] == cut[i]) run++;
+            double from = 2 * Math.PI * i / n, to = 2 * Math.PI * (i + run) / n;
+            var o = cut[i];
+            if (o == null) solids.add(Solid.ring(x, z, 0, y1, ri, r, from, to));
+            else {
+                if (o[2] > 0) solids.add(Solid.ring(x, z, 0, o[2], ri, r, from, to));
+                solids.add(Solid.ring(x, z, o[3], y1, ri, r, from, to));
+            }
+            done += run;
+            i = (i + run) % n;
         }
     }
 

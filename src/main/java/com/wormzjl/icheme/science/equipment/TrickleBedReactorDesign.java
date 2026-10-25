@@ -36,9 +36,10 @@ import static com.wormzjl.icheme.science.equipment.ProcessUnit.tangential;
  * round the skirt on their brackets; caged ladders alternating between the back and the right
  * ({@link ProcessUnit#ringAccess}); the quench trunk up the left side, its ring header round the front left under the
  * lowest platform and a riser per quench zone to its nozzle; a thermowell at the top, middle and bottom of each bed; two
- * lifting trunnions (0.15 D across, 0.12 D proud) under the top deck's girders; the fireproofed skirt (the shell's OD) on
- * its base ring, anchor chairs and octagonal pedestal, with two access openings, a vent row, the effluent's sleeve and a
- * 45° catalyst dump nozzle at the front right, blind-flanged.
+ * lifting trunnions (0.15 D across, 0.12 D proud) under the top deck's girders; the skirt (the shell's OD) as a column's,
+ * on grade on its base ring and anchor chairs, with a column's slots at the quarters but the effluent's, the effluent's
+ * sleeve and a 45° catalyst dump nozzle at the front right, blind-flanged (owner report 2026-10-25: in line with the
+ * drums' and columns' skirts).
  *
  * <p>Nozzles: FEED (oil and hydrogen mixed, 0.15 D, 0.15 to 1 m) leaves the elbow's run to the front above the top deck's
  * handrail; HYDROGEN (0.1 D) leaves the tee on that run to the left; both faces stand at the top deck's edge. EFFLUENT
@@ -189,7 +190,7 @@ final class TrickleBedReactorDesign extends UnitDesign {
 
     @Override
     void build(ProcessUnit u) {
-        double d = u.shape.diameter(), r = d / 2, shell = r + wall(d), wall = shell + insulation(d), skirt = shell + FIREPROOFING;
+        double d = u.shape.diameter(), r = d / 2, shell = r + wall(d), wall = shell + insulation(d), skirt = shell;
         int beds = (int) u.shape.tangentLength(), s = u.shape.support();
         double hb = bed(d), zq = quenchZone(d), zt = topZone(d), yB = s, yT = s + tangentLength(d, beds);
         int n = ProcessUnit.sides(2 * wall), level = (int) Math.floor(yT);
@@ -197,21 +198,18 @@ final class TrickleBedReactorDesign extends UnitDesign {
         double[] axis = {a, 0, a};
         var up = Frame.of(axis, 1, 1);
 
-        // ---- The clad shell over its top head, the cladding's end under it; the skirt and its pedestal.
+        // ---- The clad shell over its top head, the cladding's end under it; the skirt as a column's (ShapeRasterizer):
+        // on grade on its base ring, a slot one facet wide from 0.4 m to 2 m up at each quarter but the effluent's.
         cladShell(u, a, wall, skirt, yB, yT, n);
-        u.skirt(a, a, skirt, wall(d) + FIREPROOFING, PEDESTAL, yB, yB, n);
-        u.volumes.add(Solid.rod(axis, 1, PEDESTAL + .05, yB, skirt - .1, 0));
-        u.baseRing(a, a, skirt, PEDESTAL, d, n);
-        // Two access openings (closed covers seen dark), a vent row under the head seam.
-        double half = Math.min(.3, .35 * skirt);
-        for (double t : new double[]{Math.PI / 4, 5 * Math.PI / 4}) {
-            u.mesh.block(around(a, a, skirt + .02, t, PEDESTAL + .7), scale(outward(t), .02), new double[]{0, .5, 0}, scale(tangential(t), half + .06), Material.SUPPORT);
-            u.mesh.block(around(a, a, skirt + .045, t, PEDESTAL + .7), scale(outward(t), .005), new double[]{0, .42, 0}, scale(tangential(t), half), Material.OPENING);
-        }
-        for (int k = 0; k < 8; k++) {
-            double t = Math.PI / 8 + k * Math.PI / 4;
-            u.mesh.block(around(a, a, skirt + .005, t, yB - .4), scale(outward(t), .005), new double[]{0, .05, 0}, scale(tangential(t), .05), Material.OPENING);
-        }
+        int[] side = EquipmentShape.SIDES[u.shape.outlet()];
+        double effluentAt = side[0] == 2 ? side[1] * Math.PI / 2 : side[1] > 0 ? 0 : Math.PI, slotTop = Math.min(yB - .2, 2);
+        var slots = new ArrayList<double[]>();
+        for (int q = 0; q < 4 && slotTop - .4 >= .4; q++)
+            if (ProcessUnit.apart(q * Math.PI / 2, effluentAt) > .1) slots.add(new double[]{q * Math.PI / 2 + Math.PI / n, .15, .4, slotTop});
+        var cuts = slots.toArray(double[][]::new);
+        u.skirt(a, a, skirt, yB, n, cuts);
+        u.volumes.add(Solid.rod(axis, 1, .05, yB, skirt - .1, 0));
+        u.baseRing(a, a, skirt, d, n, cuts);
         // A catalyst dump nozzle from the bottom head (0.6 of its radius out), 45° down through a sleeve in the skirt at the
         // front right, where no platform runs (the part rings round the skirt run over the back right).
         double dump = Math.max(.06, .04 * d), rho = .6 * r, yDump = yB - Math.sqrt(shell * shell - rho * rho) - (skirt - rho);
@@ -219,8 +217,7 @@ final class TrickleBedReactorDesign extends UnitDesign {
 
         // ---- The bottom ports: the effluent through its sleeve to its side (the front unless turned), the quench out of
         // its trunk to the left, or to the front where the effluent leaves to the left.
-        int[] side = EquipmentShape.SIDES[u.shape.outlet()];
-        double corner = ProcessUnit.pedestalCorner(skirt + PEDESTAL_REACH), eff = Math.min(PipeSizes.MAX_OUTSIDE, .15 * d), inside = skirt - .15;
+        double corner = skirt + EquipmentShape.BASE_RING, eff = Math.min(PipeSizes.MAX_OUTSIDE, .15 * d), inside = skirt - .15;
         double[] effluent = {a, PORT_ROW, a};
         effluent[side[0]] = a + side[1] * inside;
         double face = side[1] > 0 ? Math.ceil(a + corner + .1) : Math.floor(a - corner - .1);
@@ -314,7 +311,7 @@ final class TrickleBedReactorDesign extends UnitDesign {
             }
         }
         bands(u, up, wall, n, yB, yT, level, girder, levels, fittings);
-        u.round(a, a, PEDESTAL, yB, skirt, 1);
+        u.round(a, a, 0, yB, skirt, 1);
     }
 
     /**

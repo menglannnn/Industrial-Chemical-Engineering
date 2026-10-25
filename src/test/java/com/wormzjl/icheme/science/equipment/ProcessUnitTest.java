@@ -1016,19 +1016,21 @@ class ProcessUnitTest {
         assertTrue(standing.motions().isEmpty());
         var diagonal = kit(u -> u.motor(new Mesh.Frame(new double[]{2.5, 1, 2.5}, Mesh.unit(1, 0, 1), new double[]{0, 1, 0}), .2, 1, 2, .03, 0, ProcessUnit.MotorDetail.PLAIN));
         assertTrue(diagonal.inside(new double[]{2.5 + 1.5 / Math.sqrt(2), 1, 2.5 + 1.5 / Math.sqrt(2)}));
-        // A stack on its breeching; a pipe with a long-radius elbow; a skirt on its pedestal and a davit.
+        // A stack on its breeching; a pipe with a long-radius elbow; a skirt on grade with a bay, and a davit.
         var stack = kit(u -> u.stack(3.5, 3.5, 1, ProcessUnit.sides(1), 2, 20, Mesh.Material.HEATER, new ProcessUnit.Breeching(2, 5, 2.5, 4.5), true));
         assertTrue(stack.inside(new double[]{3.5, 10, 3.5}));
         assertTrue(stack.inside(new double[]{2.2, 2.3, 3}), "the breeching");
         var pipe = kit(u -> u.pipe(.1, Mesh.Material.PIPE, true, new double[]{1, 1, 1}, new double[]{1, 1, 4}, new double[]{4, 1, 4}));
         assertTrue(pipe.inside(new double[]{1, 1, 2}) && pipe.inside(new double[]{3, 1, 4}));
+        double[] bay = {Math.PI / 2, .8, 0, 2};
         var vessel = kit(u -> {
-            u.pedestal(4.5, 4.5, 2, .3);
-            u.skirt(4.5, 4.5, 1.5, .1, .3, 3, 2, 24);
+            u.skirt(4.5, 4.5, 1.5, 3, 24, bay);
+            u.baseRing(4.5, 4.5, 1.5, 3, 24, bay);
             u.davit(4.5, 4.5, Math.PI / 2, 1.8, 3, 7, 0);
         });
-        assertTrue(vessel.inside(new double[]{4.5, .1, 4.5 + 1.9}), "the pedestal");
-        assertTrue(vessel.inside(new double[]{4.5 + 1.45, 2, 4.5}), "the skirt");
+        assertTrue(vessel.inside(new double[]{4.5 + 1.47, 2, 4.5}), "the skirt");
+        assertFalse(vessel.inside(new double[]{4.5, 1, 4.5 + 1.47}), "its bay");
+        assertTrue(vessel.inside(new double[]{4.5, 2.5, 4.5 + 1.47}), "the skirt over its bay");
         assertTrue(vessel.inside(new double[]{4.5, 5, 4.5 + 1.8}), "the davit's mast");
     }
 

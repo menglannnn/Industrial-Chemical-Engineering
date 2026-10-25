@@ -52,7 +52,8 @@ import static com.wormzjl.icheme.science.equipment.ProcessUnit.tangential;
  * ({@link ProcessUnit#ringAccess}); five nuclear density-gauge detectors in a row up the front left tracking the bed level
  * (0.4 to 0.8 of the tangent length); three thermowells at the back right; two lifting trunnions under the top deck; the
  * barrier-oil cooler (0.3 by 1.5 m) on brackets outside the skirt at the front left with its two lines to the motor; the
- * skirt's base ring, anchor chairs and octagonal pedestal, the bay's floor. No moving parts: the canned motor hides its
+ * skirt as a column's on grade (owner report 2026-10-25: in line with the drums' and columns' skirts), its base ring and
+ * anchor chairs, the bay's floor plate. No moving parts: the canned motor hides its
  * rotation (survey Q5).
  */
 final class EbullatedBedReactorDesign extends UnitDesign {
@@ -99,7 +100,7 @@ final class EbullatedBedReactorDesign extends UnitDesign {
      * ring, the casing, and the suction (forged neck 0.2, its heavy flange pair, the casing's hub 0.15).
      */
     static double stack(double d) {
-        return PEDESTAL + DROP + motorLength(d) + jointFlange(d) + .01 + casingHeight(d) + .36 + .6 * suction(d);
+        return EquipmentShape.PLATE + DROP + motorLength(d) + jointFlange(d) + .01 + casingHeight(d) + .36 + .6 * suction(d);
     }
 
     /** The recycle, m³/s, and the pump's shaft power, kW. */
@@ -198,7 +199,7 @@ final class EbullatedBedReactorDesign extends UnitDesign {
 
     @Override
     void build(ProcessUnit u) {
-        double d = u.shape.diameter(), r = d / 2, shell = r + wall(d), wall = shell + insulation(d), skirt = shell + FIREPROOFING;
+        double d = u.shape.diameter(), r = d / 2, shell = r + wall(d), wall = shell + insulation(d), skirt = shell;
         int length = (int) u.shape.tangentLength(), s = u.shape.support();
         double yB = s, yT = s + length;
         int n = ProcessUnit.sides(2 * wall), level = (int) Math.floor(yT + 1e-9);
@@ -209,24 +210,24 @@ final class EbullatedBedReactorDesign extends UnitDesign {
         // ---- The pump's stations, the loop's offsets and the skirt's openings.
         double dc = casing(d), hc = casingHeight(d), dm = motor(d), lm = motorLength(d), ods = suction(d), odd = .12 * d, odc = .12 * d;
         double odF = .08 * d, odH = .06 * d, tj = jointFlange(d), ring = .575 * dc, q1 = .5 * dc + .05;
-        double yM = PEDESTAL + DROP, yLow = yM + lm, yJ = yLow + tj + .01, yC = yJ + hc, yP = yB - shell;
+        double yM = EquipmentShape.PLATE + DROP, yLow = yM + lm, yJ = yLow + tj + .01, yC = yJ + hc, yP = yB - shell;
         double off = Math.max(.3 * d, dc / 2 + .1 + odd);
         int offF = (int) Math.max(1, Math.ceil(ring + odc / 2 + .05 - 1e-9));
         // The front and back openings take the feed's and hydrogen's lines at a pipe's largest with the port's clearance,
         // every skirt facet they cross cut (owner decision 2026-10-21: the skirt hole takes the pipe's size, up to 1 m).
-        double thick = .05 + .02 * d, crossed = DeterministicMath.asin(Math.min(1, (offF + PipeSizes.MAX_OUTSIDE / 2 + EquipmentShape.PORT_CLEARANCE) / (skirt - thick))) + Math.PI / n;
+        double thick = EquipmentShape.SKIRT_WALL, crossed = DeterministicMath.asin(Math.min(1, (offF + PipeSizes.MAX_OUTSIDE / 2 + EquipmentShape.PORT_CLEARANCE) / (skirt - thick))) + Math.PI / n;
         double hw = Math.max(.3 * d, crossed >= Math.PI / 2 ? skirt : skirt * DeterministicMath.sin(crossed)), top = yB - Math.max(1, .25 * d);
-        double[] front = {-Math.PI / 2, hw}, back = {Math.PI / 2, hw};
+        double[] front = {-Math.PI / 2, hw, 0, top}, back = {Math.PI / 2, hw, 0, top};
 
         // ---- The clad shell over its top head, the cladding's end and the bottom head over the bay (a solid's head under
-        // its low end), the open skirt and its pedestal.
+        // its low end), the open skirt on grade.
         cladShell(u, a, wall, skirt, yB, yT, n);
         u.mesh.head(Frame.of(axis, 1, -1), shell, -yB, shell, n, Material.CLADDING);
         u.solids.add(Solid.rod(axis, 1, yB, yB, shell, shell, 0));
         u.volumes.add(Solid.rod(axis, 1, yB, yB, .94 * shell, .94 * shell, 0));
-        u.skirt(a, a, skirt, thick, PEDESTAL, yB, top, n, front, back);
-        u.baseRing(a, a, skirt, PEDESTAL, d, n, front, back);
-        u.round(a, a, PEDESTAL, yB, skirt, 1);
+        u.skirt(a, a, skirt, yB, n, front, back);
+        u.baseRing(a, a, skirt, d, n, front, back);
+        u.round(a, a, 0, yB, skirt, 1);
 
         // ---- The motor's pressure housing: banded, its dished bottom cover, the terminal box towards the front opening.
         int nm = ProcessUnit.sides(dm), nc = ProcessUnit.sides(2 * ring);
@@ -236,9 +237,9 @@ final class EbullatedBedReactorDesign extends UnitDesign {
         for (double y = yM + .4; y < yLow - .35; y += .5) u.mesh.ring(up, dm / 2, dm / 2 + .03, y, y + .05, nm, 3, Material.MACHINE);
         double yBox = yM + .55 * lm, zBox = a - dm / 2 - .1;
         u.mesh.block(new double[]{a, yBox, zBox}, new double[]{.18, 0, 0}, new double[]{0, .2, 0}, new double[]{0, 0, .12}, Material.MOTOR);
-        u.line(.03, Material.PIPE, new double[]{a, yBox - .2, zBox}, new double[]{a, PEDESTAL, zBox});
+        u.line(.03, Material.PIPE, new double[]{a, yBox - .2, zBox}, new double[]{a, EquipmentShape.PLATE, zBox});
         u.solids.add(Solid.rod(axis, 1, yM - .08 - dm / 4, yLow, dm / 2 + .06, 0));
-        u.solids.add(ProcessUnit.span(new double[]{a - .18, PEDESTAL, zBox - .12}, new double[]{a + .18, yBox + .2, zBox + .12}));
+        u.solids.add(ProcessUnit.span(new double[]{a - .18, EquipmentShape.PLATE, zBox - .12}, new double[]{a + .18, yBox + .2, zBox + .12}));
 
         // ---- The joint ring (the signature): the motor's flange and the casing's, the gasket between, 24 or 32 studs.
         u.mesh.cylinder(up, ring, yLow, yLow + tj, nc, Material.FLANGE);
@@ -256,13 +257,13 @@ final class EbullatedBedReactorDesign extends UnitDesign {
         // Its posts on the feed's side stand beyond the feed's line at a pipe's largest where the skirt has room for them,
         // else inside it, a pipe's largest neck and 0.05 m clear of it (owner decision 2026-10-21: a 1 m pipe has a 1 m root,
         // other components give way; at q1 the posts took 0.02 m of the neck, D 3.5 m and under, 2026-10-25).
-        double post = .2, beam = .25, yTie = (PEDESTAL + yLow - beam) / 2, wide = offF + PipeSizes.MAX_OUTSIDE / 2 + post / 2 + .05,
+        double post = .2, beam = .25, yTie = (EquipmentShape.PLATE + yLow - beam) / 2, wide = offF + PipeSizes.MAX_OUTSIDE / 2 + post / 2 + .05,
                 inside = offF - PipeSizes.MAX_OUTSIDE / 2 - post / 2 - .05;
         double qL = q1 <= inside ? q1 : Math.sqrt(wide * wide + q1 * q1) + post <= skirt - thick - .05 ? wide : inside;
         for (int sz = -1; sz <= 1; sz += 2) {
             double z = a + sz * q1;
             u.box(new double[]{a - qL - post / 2, yLow - beam, z - .1}, new double[]{a + q1 + post / 2, yLow, z + .1}, Material.STEELWORK, true);
-            for (int sx = -1; sx <= 1; sx += 2) u.post(sx < 0 ? a - qL : a + q1, z, PEDESTAL, yLow - beam, post, true);
+            for (int sx = -1; sx <= 1; sx += 2) u.post(sx < 0 ? a - qL : a + q1, z, EquipmentShape.PLATE, yLow - beam, post, true);
         }
         for (int sx = -1; sx <= 1; sx += 2) {
             double x = sx < 0 ? a - qL : a + q1;
@@ -293,7 +294,7 @@ final class EbullatedBedReactorDesign extends UnitDesign {
         double xF = a - offF;
         plenumLine(u, a, xF, a, yB, shell, odc, PORT_ROW);
         u.mesh.sphere(new double[]{xF, PORT_ROW, a}, .55 * odc, ProcessUnit.sides(odc), Material.PIPE);
-        double corner = Math.max(skirt, ProcessUnit.pedestalCorner(skirt + PEDESTAL_REACH)) + .15, zFeed = Math.floor(a - corner), zH2 = Math.ceil(a + corner);
+        double corner = skirt + EquipmentShape.BASE_RING + .15, zFeed = Math.floor(a - corner), zH2 = Math.ceil(a + corner);
         u.nozzles.add(new Nozzle(Role.FEED, new double[]{xF, PORT_ROW, a}, 2, -1, a - zFeed, PipeSizes.od(odF, .1, odF), 0));
         u.nozzles.add(new Nozzle(Role.HYDROGEN, new double[]{xF, PORT_ROW, a}, 2, 1, zH2 - a, PipeSizes.od(odH, .1, odH), 0));
 
@@ -333,7 +334,7 @@ final class EbullatedBedReactorDesign extends UnitDesign {
         u.mesh.ring(new Frame(around(a, a, skirt - .08, tw, yL), outward(tw), UP), .05, .11, 0, .12, 12, 3, Material.SUPPORT);
 
         // ---- The barrier-oil cooler on brackets off the skirt at the front left, its supply and return to the motor.
-        double xc = a + skirt + .3, yc = PEDESTAL + 2, zc = a - .35;
+        double xc = a + skirt + .3, yc = EquipmentShape.PLATE + 2, zc = a - .35;
         var cool = Frame.of(new double[]{xc, yc, 0}, 2, 1);
         u.mesh.prism(cool, .15, zc - .6, zc + .6, 12, Material.SHELL);
         u.mesh.cylinder(cool, .19, zc - .75, zc - .6, 12, Material.FLANGE);

@@ -833,7 +833,12 @@ public record EquipmentShape(Kind kind, double diameter, double tangentLength, O
      * where a chair would be wider than a shell facet.
      */
     public int anchorChairs() {
-        return skirt() && diameter >= 1.5 ? 4 * (int) Math.max(1, Math.round(Math.PI * diameter / 6)) : 0;
+        return skirt() ? anchorChairs(diameter) : 0;
+    }
+
+    /** The anchor chairs round a skirt under a vessel {@code diameter} across ({@link #anchorChairs()}). */
+    public static int anchorChairs(double diameter) {
+        return diameter >= 1.5 ? 4 * (int) Math.max(1, Math.round(Math.PI * diameter / 6)) : 0;
     }
 
     /** Size of the vessel's box in cells along world x. */
