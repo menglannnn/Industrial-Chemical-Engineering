@@ -69,6 +69,7 @@ public final class LineGeometry {
     /** The block's polygons, cell-local. */
     public static List<Polygon> polygons(Key key) {
         if(key.kind()==Kind.VALVE)return PressureValveGeometry.polygons(key,false);
+        if(key.kind()==Kind.FILTER)return overhanging(mesh(key));
         return mesh(key).cell(0, 0, 0);
     }
 
@@ -351,8 +352,9 @@ public final class LineGeometry {
         double od=PipeSizes.outsideOf(key.outside()),rb=Math.max(.025,.62*od),half=Math.max(.06,Math.min(.32,.4*od));
         int a=key.facing()&~1,n=Math.max(12,PipeSizes.sides(2*rb));var f=frame(a,ref(a));
         m.prism(f,rb,-half,half,n,Material.MACHINE);
-        m.annulus(f,od/2,rb,-half,n,-1,Material.MACHINE);
-        m.annulus(f,od/2,rb,half,n,1,Material.MACHINE);
+        // Close the opaque casting behind its nozzles; their lower-sided rims need not match its facets.
+        m.annulus(f,0,rb,-half,n,-1,Material.MACHINE);
+        m.annulus(f,0,rb,half,n,1,Material.MACHINE);
         lineNozzles(m,key,half,od);
         double[] downstream=step(key.facing()),drop=axis(key.facing())==1?step(NORTH):step(0);
         var direction=unit(downstream[0]+drop[0],downstream[1]+drop[1],downstream[2]+drop[2]);var leg=new Frame(CENTRE,direction,unit(cross(downstream,drop)));

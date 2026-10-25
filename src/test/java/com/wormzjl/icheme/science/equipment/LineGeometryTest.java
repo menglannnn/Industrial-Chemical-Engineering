@@ -68,6 +68,8 @@ class LineGeometryTest {
                         if(key.facing()<2&&i%3==2)lo=-1.1;
                         else if(key.facing()>=2&&i%3==1)hi=2.1;
                     }
+                    // The scalable filter body and diagonal service cover retain their decorative overhang.
+                    if(key.kind()==Kind.FILTER){lo=-1;hi=2;}
                     assertTrue(v>=lo&&v<=hi,key+" position "+v);
                 }
                 for (double v : polygon.uvs()) assertTrue(v >= 0 && v <= 1, key + " uv " + v);
@@ -180,15 +182,9 @@ class LineGeometryTest {
         var vertical = centroid(LineGeometry.polygons(key(Kind.VALVE, UP, .1, new int[0], 0, 0, false)), Material.ACTUATOR);
         assertTrue(vertical[2] < .3 && Math.abs(vertical[1] - .5) < .1, List.of(vertical[0], vertical[1], vertical[2]).toString());
         assertTrue(centroid(LineGeometry.polygons(key(Kind.PUMP, NORTH, .1, new int[0], 0, 0, false)), Material.MOTOR)[1] > .7);
-        var leg = new double[3];
-        int count = 0;
-        for (var polygon : LineGeometry.polygons(key(Kind.FILTER, EAST, .15, new int[0], 0, 0, false)))
-            for (int i = 0; i < polygon.size(); i++)
-                if (polygon.positions()[3 * i + 1] < .3) {
-                    for (int c = 0; c < 3; c++) leg[c] += polygon.positions()[3 * i + c];
-                    count++;
-                }
-        assertTrue(count > 0 && leg[0] / count > .6, "leg points downstream");
+        // The two connection flanges balance about the line; the service cover shifts their centre down/downstream.
+        var cover = centroid(LineGeometry.polygons(key(Kind.FILTER, EAST, .15, new int[0], 0, 0, false)), Material.FLANGE);
+        assertTrue(cover[0] > .5 && cover[1] < .5, "filter service cover lies below and downstream of the line");
     }
 
     /** Largest distance from the line's centre of {@code material} vertices on the plane {@code axis} = {@code plane}. */
