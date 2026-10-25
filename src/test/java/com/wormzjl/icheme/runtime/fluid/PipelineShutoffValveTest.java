@@ -108,9 +108,9 @@ class PipelineShutoffValveTest {
         assertThrows(IllegalArgumentException.class,()->other.withCutoff(Direction.EAST,Cutoff.OPEN));
     }
     @Test void wrenchRemovalRestoresOrdinaryPipeAndPreservesPendingDiameterAndContents(){
-        for(var axis:List.of(Direction.EAST,Direction.UP,Direction.SOUTH))for(int type=0;type<3;type++){
+        for(var axis:List.of(Direction.EAST,Direction.UP,Direction.SOUTH))for(int type=0;type<4;type++){
             var world=line(axis);var before=stock(world);
-            if(type==0){world.registry.installPipeCutoff(3,axis);world.registry.togglePipeCutoff(3);}else if(type==1)world.registry.installPipeValve(3,axis,Cutoff.CHECK);else world.registry.installPipePressureValve(3,axis);
+            if(type==0){world.registry.installPipeCutoff(3,axis);world.registry.togglePipeCutoff(3);}else if(type==1)world.registry.installPipeValve(3,axis,Cutoff.CHECK);else if(type==2)world.registry.installPipePressureValve(3,axis);else world.registry.installPipeFilter(3,axis);
             world.registry.applyPending();var record=world.registry.registrations().get(3L);var g=record.device().geometry();
             world.registry.submit(List.of(new WorldTopologyLedger.Edit(3,new WorldTopologyLedger.Registration(record.device().withGeometry(new PipeResistance.Geometry(g.length(),.25,g.roughness(),g.minorLoss())),record.spec(),record.revision()+1))),world.ledger.nextIdentity(),null);
             assertTrue(world.registry.removePipeAccessory(3));int pending=world.ledger.snapshot().events().size();assertTrue(world.registry.removePipeAccessory(3));assertEquals(pending,world.ledger.snapshot().events().size());

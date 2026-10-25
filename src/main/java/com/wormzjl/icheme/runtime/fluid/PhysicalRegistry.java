@@ -76,7 +76,7 @@ public final class PhysicalRegistry {
             }
             for(var pipe:island.graph().pipes()){byPipe.put(pipe.id(),island.id());if(pipe.filter()!=null)cakes.put(pipe.id()-Long.MIN_VALUE,pipe.filter());}
         }
-        for(var r:topology.latest().values())if(r.device().kind()==TopologyCompiler.Kind.FILTER)cakes.putIfAbsent(r.device().id(),emptyFilter);
+        for(var r:topology.latest().values())if(r.device().filter())cakes.putIfAbsent(r.device().id(),emptyFilter);
         var active=topology.active();
         for(var entry:stock.entrySet()){var r=active.get(entry.getKey());if(r!=null&&r.device().fixed())fixedStates.put(entry.getKey(),entry.getValue());}
         // A disconnected filter's ports stand at the ambient (NetworkReduction.ambient), as an empty vessel does.
@@ -123,16 +123,21 @@ public final class PhysicalRegistry {
         submit(List.of(new WorldTopologyLedger.Edit(id,new WorldTopologyLedger.Registration(device,record.spec(),Math.addExact(record.revision(),1)))),topology.nextIdentity(),null);
         return true;
     }
+    public boolean installPipeFilter(long id,PhysicalFluidTopology.Direction axis) {
+        var r=registrations().get(id);if(!canInstallValve(r,axis))return false;
+        var d=r.device().withInlineFilter(axis,true);
+        submit(List.of(new WorldTopologyLedger.Edit(id,new WorldTopologyLedger.Registration(d,r.spec(),Math.addExact(r.revision(),1)))),topology.nextIdentity(),null);return true;
+    }
     /** Removal composes with the latest projected geometry, controls and spec. */
     public boolean removePipeAccessory(long id) {
         var r=registrations().get(id);if(r==null||r.device().kind()!=TopologyCompiler.Kind.PIPE)return false;
-        var d=r.device();if(d.cutoff()==PhysicalFluidTopology.Cutoff.NONE&&d.control() instanceof FlowControl.Passive)return true;
+        var d=r.device();if(!d.inlineFilter()&&d.cutoff()==PhysicalFluidTopology.Cutoff.NONE&&d.control() instanceof FlowControl.Passive)return true;
         var device=new PhysicalFluidTopology.Device(d.id(),d.position(),d.kind(),d.facing(),d.geometry(),new FlowControl.Passive(),d.ports(),d.generatorEnabled(),PhysicalFluidTopology.Cutoff.NONE);
-        submit(List.of(new WorldTopologyLedger.Edit(id,new WorldTopologyLedger.Registration(device,r.spec(),Math.addExact(r.revision(),1)))),topology.nextIdentity(),null);return true;
+        submit(List.of(new WorldTopologyLedger.Edit(id,new WorldTopologyLedger.Registration(device,r.spec(),Math.addExact(r.revision(),1)))),topology.nextIdentity(),d.inlineFilter()?new WorldTopologyLedger.Recovery(id,null):null);return true;
     }
     private boolean canInstallValve(WorldTopologyLedger.Registration record,PhysicalFluidTopology.Direction axis) {
         Objects.requireNonNull(axis);
-        if(record==null||record.device().kind()!=TopologyCompiler.Kind.PIPE||record.device().cutoff()!=PhysicalFluidTopology.Cutoff.NONE||!(record.device().control() instanceof FlowControl.Passive))return false;
+        if(record==null||record.device().kind()!=TopologyCompiler.Kind.PIPE||record.device().inlineFilter()||record.device().cutoff()!=PhysicalFluidTopology.Cutoff.NONE||!(record.device().control() instanceof FlowControl.Passive))return false;
         // Check projected physical neighbours too: chunk loading or an unapplied branch must not hide a junction.
         for(var direction:PhysicalFluidTopology.Direction.values()) {
             var next=record.device().position().offset(direction);var neighbour=topology.latestAt(next);
@@ -175,7 +180,7 @@ public final class PhysicalRegistry {
     public InlineFilter cake(long filter) {
         Long island=owners.get(filter);
         if(island!=null)for(var pipe:host.coordinator().snapshot(island).graph().pipes())if(pipe.filter()!=null&&pipe.id()==PhysicalFluidTopology.filterIdentity(filter))return pipe.filter();
-        var record=topology.latest().get(filter);return record!=null&&record.device().kind()==TopologyCompiler.Kind.FILTER?emptyFilter:null;
+        var record=topology.latest().get(filter);return record!=null&&record.device().filter()?emptyFilter:null;
     }
     /** Events queued since the last {@link #applyPending()}. */
     public int unapplied(){return unapplied;}
@@ -338,13 +343,13 @@ public final class PhysicalRegistry {
                 var state=stock.get(id);if(state==null&&record.device().fixed())state=fixedStates.get(id);
                 if(state==null)throw new IllegalStateException("Topology event reached boundary "+id+" outside the islands it fenced");componentStock.put(id,state);
             }
-            if(record.device().kind()==TopologyCompiler.Kind.FILTER) {
+            if(record.device().filter()) {
                 var cake=cakes.get(id);
                 // A filter on a dead-end branch (owner decision D18) sits in a dormant island of its own, which the walk may
                 // reach beyond the islands the batch replaces without the event touching it: its cake is read from there, and
                 // it must come out of this compile dormant again (checked below), so that island stays as it is.
                 if(cake==null&&active.containsKey(id)&&dormantFilter(id)&&!affected.contains(owners.get(id)))cake=dormantCake(id);
-                if(cake==null){if(active.containsKey(id))throw new IllegalStateException("Topology event reached filter "+id+" outside the islands it fenced");cake=emptyFilter;}
+                if(cake==null){if(active.containsKey(id)&&active.get(id).device().filter())throw new IllegalStateException("Topology event reached filter "+id+" outside the islands it fenced");cake=emptyFilter;}
                 componentCakes.put(id,cake);
             }
         }
@@ -423,7 +428,7 @@ public final class PhysicalRegistry {
     /** Whether an applied filter sits in a dormant island of its own (no destination on its branch, or no boundary at all). */
     private boolean dormantFilter(long filter) {
         Long owner=owners.get(filter);var record=topology.active().get(filter);
-        return owner!=null&&record!=null&&record.device().kind()==TopologyCompiler.Kind.FILTER&&members.getOrDefault(owner,List.of()).size()==1;
+        return owner!=null&&record!=null&&record.device().filter()&&members.getOrDefault(owner,List.of()).size()==1;
     }
     /** A dormant filter's cake, as its island holds it (read without materialising: nothing moves it there). */
     private InlineFilter dormantCake(long filter) {

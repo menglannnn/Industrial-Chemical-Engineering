@@ -61,7 +61,7 @@ public final class FluidDeviceModel implements IDynamicBakedModel {
     private final TextureAtlasSprite[] sprites;
     private final TextureAtlasSprite particle;
     private final ItemTransforms transforms;
-    private record Look(SightGlassGeometry.Key geometry,boolean sightGlass,FluidDeviceBlock.Shutoff shutoff,boolean pressureValve){}
+    private record Look(SightGlassGeometry.Key geometry,boolean sightGlass,FluidDeviceBlock.Shutoff shutoff,boolean pressureValve,boolean filter){}
     private record Baked(List<BakedQuad> solid,List<BakedQuad> glass){}
     private final Map<Look,Baked> quads = new ConcurrentHashMap<>();
 
@@ -81,7 +81,7 @@ public final class FluidDeviceModel implements IDynamicBakedModel {
         if (side != null) return List.of();
         var geometry=state!=null&&state.getBlock() instanceof FluidDeviceBlock?sightGlassKey(state,data):new SightGlassGeometry.Key(LineGeometry.Key.item(kind));
         var shutoff=checkAccessory?FluidDeviceBlock.Shutoff.CHECK:shutoffAccessory?FluidDeviceBlock.Shutoff.OPEN:state!=null&&FluidDeviceBlock.hasPipeValve(state)?state.getValue(FluidDeviceBlock.SHUTOFF):FluidDeviceBlock.Shutoff.NONE;
-        var key = new Look(geometry,accessory||state!=null&&FluidDeviceBlock.hasSightGlass(state),shutoff,pressureAccessory||state!=null&&FluidDeviceBlock.hasPressureValve(state));
+        var key = new Look(geometry,accessory||state!=null&&FluidDeviceBlock.hasSightGlass(state),shutoff,pressureAccessory||state!=null&&FluidDeviceBlock.hasPressureValve(state),state!=null&&FluidDeviceBlock.hasFilter(state));
         var cached = quads.get(key);
         if(cached==null){if(quads.size()>=CACHE)quads.clear();cached=quads.computeIfAbsent(key,this::bake);}
         if(renderType==RenderType.translucent())return cached.glass;
@@ -90,6 +90,7 @@ public final class FluidDeviceModel implements IDynamicBakedModel {
     }
 
     private Baked bake(Look look) {
+        if(look.filter)return new Baked(EquipmentShellModel.bake(LineGeometry.filterPolygons(look.geometry.pipe()),sprites,false),List.of());
         if(look.pressureValve)return new Baked(EquipmentShellModel.bake(PressureValveGeometry.polygons(look.geometry.pipe(),pressureAccessory),sprites,false),List.of());
         if(look.shutoff==FluidDeviceBlock.Shutoff.CHECK)return new Baked(EquipmentShellModel.bake(CheckValveGeometry.polygons(look.geometry.pipe(),checkAccessory),sprites,false),List.of());
         if(look.shutoff!=FluidDeviceBlock.Shutoff.NONE)return new Baked(EquipmentShellModel.bake(ShutoffValveGeometry.polygons(look.geometry.pipe(),look.shutoff==FluidDeviceBlock.Shutoff.OPEN,shutoffAccessory),sprites,false),List.of());

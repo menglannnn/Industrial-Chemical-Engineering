@@ -46,7 +46,7 @@ class GaugeAccessoriesTest {
     @Test void pipeSocketsRejectBendsAndJunctionsAndShareSelectionBounds(){
         for(var axis:Direction.values())for(double bore:new double[]{.001,.05,1}){
             int mask=(1<<axis.ordinal())|(1<<axis.getOpposite().ordinal());var mounts=InstrumentHosts.pipeMounts(BlockPos.ZERO,bore,mask,axis);
-            assertFalse(mounts.isEmpty());for(var m:mounts){assertNotEquals(axis.getAxis(),m.face().getAxis());assertTrue(m.kinds().containsAll(Set.of(Kind.PRESSURE,Kind.TEMPERATURE)));}
+            assertFalse(mounts.isEmpty());for(var m:mounts){assertNotEquals(Direction.Axis.Y,m.face().getAxis());assertTrue(m.bottomEntry());assertTrue(m.tap().y<=m.centre().y);assertTrue(m.kinds().containsAll(Set.of(Kind.PRESSURE,Kind.TEMPERATURE)));}
             assertFalse(InstrumentHosts.pipeMounts(BlockPos.ZERO,bore,1<<axis.ordinal(),axis).isEmpty());assertFalse(InstrumentHosts.pipeMounts(BlockPos.ZERO,bore,0,axis).isEmpty());
             var lateral=axis.getAxis()==Direction.Axis.X?Direction.NORTH:Direction.EAST;
             assertTrue(InstrumentHosts.pipeMounts(BlockPos.ZERO,bore,(1<<axis.ordinal())|(1<<lateral.ordinal()),axis).isEmpty());assertTrue(InstrumentHosts.pipeMounts(BlockPos.ZERO,bore,mask|(1<<lateral.ordinal()),axis).isEmpty());
@@ -78,7 +78,7 @@ class GaugeAccessoriesTest {
         var interval=new com.wormzjl.icheme.science.fluid.network.PassiveIntervalSolver(model).solve(graph,.1,com.wormzjl.icheme.science.fluid.network.PassiveIntervalSolver.Settings.defaults(),()->{});var observed=interval.observations().getFirst();assertFalse(observed.flowing());assertEquals(state.pressure(),observed.pressure(.5,0),.001);
     }
     @Test void allExistingPipeAccessoriesPersistAnInstanceAndRecoverExactlyOnce(){
-        for(var type:List.of(AccessoryStore.Type.SIGHT_GLASS,AccessoryStore.Type.SHUTOFF,AccessoryStore.Type.CHECK,AccessoryStore.Type.PRESSURE_VALVE)){
+        for(var type:List.of(AccessoryStore.Type.SIGHT_GLASS,AccessoryStore.Type.SHUTOFF,AccessoryStore.Type.CHECK,AccessoryStore.Type.PRESSURE_VALVE,AccessoryStore.Type.FILTER)){
             var store=new AccessoryStore();var fitting=store.installLegacy(7,type);assertEquals(fitting,store.installLegacy(7,type));
             var image=store.save(new CompoundTag());var loaded=AccessoryStore.load(image);assertEquals(fitting,loaded.legacy(7));assertNull(loaded.removeLegacy(7,UUID.randomUUID()));assertNotNull(loaded.removeLegacy(7,fitting.instance()));assertNull(loaded.removeLegacy(7,fitting.instance()));assertEquals(2,loaded.revision(7));
             var reinstall=loaded.installLegacy(7,type);assertNotEquals(fitting.instance(),reinstall.instance());assertNull(loaded.removeLegacy(7,fitting.instance()));
@@ -95,4 +95,18 @@ class GaugeAccessoriesTest {
         var pending=image.copy();pending.getList("pending",10).getCompound(0).putString("type","UNKNOWN");assertThrows(IllegalArgumentException.class,()->AccessoryStore.load(pending));
         var missing=image.copy();missing.remove("pending");assertThrows(IllegalArgumentException.class,()->AccessoryStore.load(missing));
     }
+    @Test void housingIsClosedAtObliqueAnglesAndEveryConnectorRemainsFinite(){
+        var edges=new HashMap<String,Integer>();
+        for(var q:InstrumentGeometry.housing()){
+            if(q.colour()==0xff101517)continue;var v=q.vertices();
+            for(int i=0;i<4;i++){int j=(i+1)%4;String x=vertex(v,3*i),y=vertex(v,3*j);if(!x.equals(y))edges.merge(x.compareTo(y)<0?x+"/"+y:y+"/"+x,1,Integer::sum);}
+        }
+        assertTrue(edges.values().stream().allMatch(n->n==2),"bezel, inner wall, dial, shell and back must share every boundary");
+        assertTrue(InstrumentGeometry.FACE<InstrumentGeometry.TICKS&&InstrumentGeometry.TICKS<InstrumentGeometry.LABEL&&InstrumentGeometry.LABEL<InstrumentGeometry.NEEDLE&&InstrumentGeometry.NEEDLE<InstrumentGeometry.RIM);
+        for(var axis:Direction.values())for(double bore:new double[]{.001,.05,1})for(var m:InstrumentHosts.pipeMounts(BlockPos.ZERO,bore,0,axis))for(boolean temperature:List.of(false,true)){
+            var connector=InstrumentGeometry.connection(m.localTap(),m.bottomEntry(),temperature,m.probeDepth());assertTrue(m.probeDepth()<=.12);assertFalse(connector.isEmpty());for(var q:connector)for(double coordinate:q.vertices())assertTrue(Double.isFinite(coordinate));
+            if(axis.getAxis()!=Direction.Axis.Y&&bore==1)assertTrue(m.bounds().maxY>1,"full-size pipe gauge can overhang the block");
+        }
+    }
+    private static String vertex(double[] v,int i){return Math.round(v[i]*1e9)+","+Math.round(v[i+1]*1e9)+","+Math.round(v[i+2]*1e9);}
 }

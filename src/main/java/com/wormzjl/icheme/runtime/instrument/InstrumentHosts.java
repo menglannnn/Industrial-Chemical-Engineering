@@ -37,10 +37,30 @@ public final class InstrumentHosts {
         return null;
     }
     public static List<InstrumentMount> pipeMounts(BlockPos pos,double bore,net.minecraft.world.level.block.state.BlockState state){return pipeMounts(pos,bore,FluidDeviceBlock.connectionMask(state),state.getValue(FluidDeviceBlock.FACING));}
-    public static List<InstrumentMount> pipeMounts(BlockPos pos,double bore,int mask,Direction facing){if(!com.wormzjl.icheme.science.equipment.SightGlassGeometry.supports(mask))return List.of();Direction.Axis axis=facing.getAxis();for(var d:Direction.values())if((mask&(1<<d.ordinal()))!=0){axis=d.getAxis();break;}var mounts=new ArrayList<InstrumentMount>();double radius=PipeSizes.outside(bore)/2;for(var face:Direction.Plane.HORIZONTAL){if(face.getAxis()==axis)continue;mounts.add(new InstrumentMount("pipe_"+face.getName(),pos.getCenter().add(Vec3.atLowerCornerOf(face.getNormal()).scale(radius+.13)),face,Set.of(GaugeSettings.Kind.PRESSURE,GaugeSettings.Kind.TEMPERATURE),false));}return mounts;}
+    public static List<InstrumentMount> pipeMounts(BlockPos pos,double bore,int mask,Direction facing){
+        if(!com.wormzjl.icheme.science.equipment.SightGlassGeometry.supports(mask))return List.of();
+        Direction.Axis axis=facing.getAxis();for(var d:Direction.values())if((mask&(1<<d.ordinal()))!=0){axis=d.getAxis();break;}
+        var mounts=new ArrayList<InstrumentMount>();double radius=PipeSizes.outside(bore)/2;
+        for(var face:Direction.Plane.HORIZONTAL){
+            var normal=Vec3.atLowerCornerOf(face.getNormal());boolean vertical=axis==Direction.Axis.Y;
+            var tap=vertical?pos.getCenter().add(normal.scale(radius+.005)):pos.getCenter().add(0,radius+.005,0);
+            var centre=vertical?pos.getCenter().add(normal.scale(radius+.24)).add(0,.29,0):pos.getCenter().add(0,radius+.32,0);
+            mounts.add(new InstrumentMount("pipe_"+face.getName(),centre,face,Set.of(GaugeSettings.Kind.PRESSURE,GaugeSettings.Kind.TEMPERATURE),false,tap,true,Math.min(.12,.005+(PipeSizes.outside(bore)-bore)/2+2*bore/3)));
+        }
+        return List.copyOf(mounts);
+    }
+    /** A vanilla pipe hit installs on its process tap, not on an invisible preview hit box. */
+    public static Selection pipeSelection(net.minecraft.world.entity.player.Player player,GaugeSettings.Kind kind){
+        var hit=player.pick(player.blockInteractionRange(),0,false);if(!(hit instanceof BlockHitResult block)||hit.getType()!=HitResult.Type.BLOCK)return null;
+        var host=at(player.level(),block.getBlockPos());if(host==null||!host.pipe()||host.mounts().isEmpty())return null;
+        var toward=player.getEyePosition().subtract(block.getBlockPos().getCenter());
+        var mount=host.mounts().stream().filter(m->m.kinds().contains(kind)).max(Comparator.comparingDouble(m->m.normal().dot(toward))).orElse(null);
+        return mount==null?null:new Selection(host,mount,hit.getLocation().distanceTo(player.getEyePosition()));
+    }
+    public static boolean pipeReachable(net.minecraft.world.entity.player.Player player,Host host){var hit=player.pick(player.blockInteractionRange(),0,false);return hit instanceof BlockHitResult b&&hit.getType()==HitResult.Type.BLOCK&&b.getBlockPos().equals(host.entity().getBlockPos());}
     public static List<InstrumentMount> reservoirMounts(EquipmentShape shape,BlockPos origin){return com.wormzjl.icheme.science.equipment.InstrumentSockets.of(shape).stream().map(t->new InstrumentMount(t.id(),new Vec3(origin.getX()+t.x(),origin.getY()+t.y(),origin.getZ()+t.z()),Direction.valueOf(shape.front().name()),Set.of(t.pressure()?GaugeSettings.Kind.PRESSURE:GaugeSettings.Kind.TEMPERATURE),t.top())).toList();}
     public static Selection select(Collection<Host> hosts,Vec3 eye,Vec3 direction,double reach,GaugeSettings.Kind kind,boolean installedOnly){Selection best=null;Vec3 end=eye.add(direction.scale(reach));for(var h:hosts)for(var m:h.mounts){if(kind!=null&&!m.kinds().contains(kind))continue;if(installedOnly&&h.metadata().installed().stream().noneMatch(i->i.key().mount().equals(m.id())))continue;var hit=m.bounds().clip(eye,end);if(hit.isEmpty())continue;double d=hit.get().distanceTo(eye);if(best==null||d<best.distance)best=new Selection(h,m,d);}return best;}
     public static boolean reachable(net.minecraft.world.entity.player.Player player,Host host,AccessorySelection mount){var eye=player.getEyePosition();if(mount.bounds().distanceToSqr(eye)>player.blockInteractionRange()*player.blockInteractionRange())return false;var point=mount.bounds().clip(eye,mount.bounds().getCenter()).orElse(mount.bounds().getCenter());var hit=player.level().clip(new net.minecraft.world.level.ClipContext(eye,point,net.minecraft.world.level.ClipContext.Block.COLLIDER,net.minecraft.world.level.ClipContext.Fluid.NONE,player));return hit.getType()==HitResult.Type.MISS||hit.getLocation().distanceTo(eye)+.025>=point.distanceTo(eye);}
     public static boolean clear(Level level,Host host,InstrumentMount mount){for(var pos:BlockPos.betweenClosedStream(mount.bounds()).toList()){if(!level.hasChunkAt(pos))return false;if(pos.equals(host.entity().getBlockPos())||level.getBlockState(pos).canBeReplaced())continue;var owner=at(level,pos);if(owner==null||owner.identity()!=host.identity())return false;}return true;}
-    public static AccessoryStore.Type legacy(net.minecraft.world.level.block.state.BlockState state){if(FluidDeviceBlock.hasSightGlass(state))return AccessoryStore.Type.SIGHT_GLASS;if(FluidDeviceBlock.hasPressureValve(state))return AccessoryStore.Type.PRESSURE_VALVE;if(!state.hasProperty(FluidDeviceBlock.SHUTOFF))return null;return switch(FluidDeviceBlock.cutoff(state)){case NONE->null;case CHECK->AccessoryStore.Type.CHECK;default->AccessoryStore.Type.SHUTOFF;};}
+    public static AccessoryStore.Type legacy(net.minecraft.world.level.block.state.BlockState state){if(FluidDeviceBlock.hasFilter(state))return AccessoryStore.Type.FILTER;if(FluidDeviceBlock.hasSightGlass(state))return AccessoryStore.Type.SIGHT_GLASS;if(FluidDeviceBlock.hasPressureValve(state))return AccessoryStore.Type.PRESSURE_VALVE;if(!state.hasProperty(FluidDeviceBlock.SHUTOFF))return null;return switch(FluidDeviceBlock.cutoff(state)){case NONE->null;case CHECK->AccessoryStore.Type.CHECK;default->AccessoryStore.Type.SHUTOFF;};}
 }

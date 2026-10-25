@@ -23,7 +23,7 @@ public final class PipelineSightGlassItem extends Item {
         var player=context.getPlayer();var level=context.getLevel();var pos=context.getClickedPos();var state=level.getBlockState(pos);
         if(!(state.getBlock() instanceof FluidDeviceBlock block)||block.kind()!=TopologyCompiler.Kind.PIPE)return InteractionResult.PASS;
         if(player==null||!player.mayBuild()||player.isSpectator()||!level.mayInteract(player,pos)||!player.mayUseItemAt(pos,context.getClickedFace(),stack))return InteractionResult.FAIL;
-        if(FluidDeviceBlock.hasPipeValve(state)) {
+        if(FluidDeviceBlock.hasAxialAccessory(state)) {
             if(!level.isClientSide())player.displayClientMessage(Component.translatable("item.icheme.pipeline_shutoff_valve.one_accessory"),true);
             return InteractionResult.FAIL;
         }

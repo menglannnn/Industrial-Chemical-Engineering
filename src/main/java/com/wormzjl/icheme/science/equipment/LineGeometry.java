@@ -72,6 +72,9 @@ public final class LineGeometry {
         return mesh(key).cell(0, 0, 0);
     }
 
+    /** Native Y-strainer, sized from its host pipe and retaining overhanging screen geometry. */
+    public static List<Polygon> filterPolygons(Key pipe){return overhanging(mesh(new Key(Kind.FILTER,pipe.facing,pipe.connections,pipe.outside,pipe.faces,pipe.flanged,pipe.spool)));}
+
     /** Keep decorative overhangs in their owning block model, with UV/cell clipping intact. */
     static List<Polygon> overhanging(Mesh mesh) {
         var bounds=mesh.bounds();if(bounds==null)return List.of();var out=new ArrayList<Polygon>();
@@ -345,24 +348,21 @@ public final class LineGeometry {
 
     /** A Y-strainer: a body on the line, its screen leg 45° down and downstream (the facing), closed by a blind flange. */
     private static void strainer(Mesh m, Key key) {
-        double od = line(key), rb = Math.min(.3, .5 * PipeSizes.flange(od)), half = Math.max(.1, Math.min(.35, .8 * PipeSizes.flange(od)));
-        int a = key.facing() & ~1, n = Math.max(8, PipeSizes.sides(2 * rb));
-        var f = frame(a, ref(a));
-        m.prism(f, rb, -half, half, n, Material.MACHINE);
-        m.annulus(f, 0, rb, -half, n, -1, Material.MACHINE);
-        m.annulus(f, 0, rb, half, n, 1, Material.MACHINE);
-        lineNozzles(m, key, half, od);
-        double[] downstream = step(key.facing());
-        var axis = unit(downstream[0], -1, downstream[2]);
-        var lateral = cross(downstream, new double[]{0, 1, 0});
-        var leg = new Frame(CENTRE, axis, unit(lateral));
-        double rl = .8 * rb, cover = Math.min(.48, PipeSizes.flange(2 * rl) / 2), length = Math.min(1.6 * rb + .08, (.47 - cover) * Math.sqrt(2));
-        m.prism(leg, rl, 0, length - .03, n, Material.MACHINE);
-        m.annulus(leg, rl, cover, length - .03, n, -1, Material.FLANGE);
-        m.prism(leg, cover, length - .03, length, n, Material.FLANGE);
-        m.annulus(leg, 0, cover, length, n, 1, Material.FLANGE);
-        m.bolts(leg, 2 * rl, rl, cover, length, 1, Material.BOLT);
-        m.cylinder(leg, Math.min(.03, .3 * rl), length, length + .03, 8, Material.FLANGE);
+        double od=PipeSizes.outsideOf(key.outside()),rb=Math.max(.025,.62*od),half=Math.max(.06,Math.min(.32,.4*od));
+        int a=key.facing()&~1,n=Math.max(12,PipeSizes.sides(2*rb));var f=frame(a,ref(a));
+        m.prism(f,rb,-half,half,n,Material.MACHINE);
+        m.annulus(f,od/2,rb,-half,n,-1,Material.MACHINE);
+        m.annulus(f,od/2,rb,half,n,1,Material.MACHINE);
+        lineNozzles(m,key,half,od);
+        double[] downstream=step(key.facing()),drop=axis(key.facing())==1?step(NORTH):step(0);
+        var direction=unit(downstream[0]+drop[0],downstream[1]+drop[1],downstream[2]+drop[2]);var leg=new Frame(CENTRE,direction,unit(cross(downstream,drop)));
+        double rl=.72*rb,cover=1.3*rl,length=1.65*rb+.05,thickness=Math.max(.014,.07*od);
+        m.prism(leg,rl,0,length-thickness,n,Material.MACHINE);
+        m.annulus(leg,rl,cover,length-thickness,n,-1,Material.FLANGE);
+        m.prism(leg,cover,length-thickness,length,n,Material.FLANGE);
+        m.annulus(leg,0,cover,length,n,1,Material.FLANGE);
+        m.bolts(leg,2*rl,rl,cover,length,1,Material.BOLT);
+        m.cylinder(leg,Math.max(.006,.14*rl),length,length+thickness,8,Material.FLANGE);
     }
 
     /** A small vertical tank on four legs, with dished heads, and a flanged nozzle to each line met. */

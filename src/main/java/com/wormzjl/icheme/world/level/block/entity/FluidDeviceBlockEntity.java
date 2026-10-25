@@ -68,6 +68,7 @@ public final class FluidDeviceBlockEntity extends BlockEntity implements com.wor
     @Override public com.wormzjl.icheme.runtime.instrument.InstrumentMetadata instruments(){return instruments;}
     private FluidView lastView;
     private double bore = .05;
+    private BlockState drawnState;
     private final byte[] faces = new byte[6];
     public FluidDeviceBlockEntity(BlockPos pos,BlockState state){super(ModBlockEntities.FLUID_DEVICE.get(),pos,state);}
     @Override public long fluidIdentity(){return identity;}
@@ -109,22 +110,26 @@ public final class FluidDeviceBlockEntity extends BlockEntity implements com.wor
      */
     public void refreshGeometry(double registeredBore,boolean neighbours) {
         if(!(level instanceof ServerLevel serverLevel))return;
-        // No uninstall action exists: NONE may be the older committed record of an installation still queued.
-        // Keep its installed flag for persistence and breaking drops; subsequent lever states come from commits only.
-        var committed=FluidWorldAuthority.find(serverLevel.getServer()).flatMap(world->world.committedDevice(identity)).orElse(null);
-        if(committed!=null&&committed.kind()==TopologyCompiler.Kind.PIPE&&committed.control() instanceof com.wormzjl.icheme.science.fluid.network.FlowControl.PressureValve) {
-            var state=getBlockState();var updated=FluidDeviceBlock.connectedState(state.setValue(FluidDeviceBlock.PRESSURE_CONTROL,true)
-                    .setValue(FluidDeviceBlock.FACING,Direction.valueOf(committed.facing().name())),level,worldPosition);
-            if(updated!=state){level.setBlock(worldPosition,updated,net.minecraft.world.level.block.Block.UPDATE_ALL);neighbours=true;}
-        }
-        if(committed!=null&&committed.cutoff()!=PhysicalFluidTopology.Cutoff.NONE) {
-            var state=getBlockState();var updated=state.setValue(FluidDeviceBlock.SHUTOFF,FluidDeviceBlock.Shutoff.of(committed.cutoff()))
-                    .setValue(FluidDeviceBlock.FACING,Direction.valueOf(committed.facing().name()));
+        // Attachment presence follows accepted player input immediately. Lever state still follows commits.
+        var world=FluidWorldAuthority.find(serverLevel.getServer()).orElse(null);
+        var projected=world==null?null:world.registrations().get(identity);
+        var committed=world==null?null:world.committedDevice(identity).orElse(null);
+        if(projected!=null&&projected.device().kind()==TopologyCompiler.Kind.PIPE){
+            var d=projected.device();var state=getBlockState();
+            var updated=state.setValue(FluidDeviceBlock.PRESSURE_CONTROL,d.control() instanceof com.wormzjl.icheme.science.fluid.network.FlowControl.PressureValve)
+                    .setValue(FluidDeviceBlock.INLINE_FILTER,d.inlineFilter());
+            if(d.cutoff()==PhysicalFluidTopology.Cutoff.NONE)updated=updated.setValue(FluidDeviceBlock.SHUTOFF,FluidDeviceBlock.Shutoff.NONE);
+            else if(committed!=null&&committed.cutoff()!=PhysicalFluidTopology.Cutoff.NONE)
+                updated=updated.setValue(FluidDeviceBlock.SHUTOFF,FluidDeviceBlock.Shutoff.of(committed.cutoff()));
+            if(d.inlineFilter()||d.control() instanceof com.wormzjl.icheme.science.fluid.network.FlowControl.PressureValve||d.cutoff()!=PhysicalFluidTopology.Cutoff.NONE)
+                updated=updated.setValue(FluidDeviceBlock.FACING,Direction.valueOf((d.cutoff()!=PhysicalFluidTopology.Cutoff.NONE&&committed!=null&&committed.cutoff()!=PhysicalFluidTopology.Cutoff.NONE?committed:d).facing().name()));
             updated=FluidDeviceBlock.connectedState(updated,level,worldPosition);
             if(updated!=state){level.setBlock(worldPosition,updated,net.minecraft.world.level.block.Block.UPDATE_ALL);neighbours=true;}
         }
         boolean changed=bore!=registeredBore;bore=registeredBore;
-        if(refreshFaces()||changed)sync();
+        boolean appearanceChanged=drawnState!=getBlockState();drawnState=getBlockState();
+        // Static fitting changes need a model-data refresh even on an isolated pipe with unchanged bore/faces.
+        if(refreshFaces()||changed||appearanceChanged)sync();
         if(changed||neighbours)for(var direction:Direction.values()) {
             var at=worldPosition.relative(direction);
             if(!level.isLoaded(at))continue;
@@ -176,7 +181,7 @@ public final class FluidDeviceBlockEntity extends BlockEntity implements com.wor
     public void open(ServerPlayer player,boolean debug) {
         if(identity==0){player.displayClientMessage(Component.literal("Fluid device is waiting for its world identity."),true);return;}
         player.openMenu(new MenuProvider() {
-            public Component getDisplayName(){return Component.translatable(FluidDeviceBlock.hasPressureValve(getBlockState())?"item.icheme.pressure_control_valve":getBlockState().getBlock().getDescriptionId());}
+            public Component getDisplayName(){return Component.translatable(FluidDeviceBlock.hasFilter(getBlockState())?"item.icheme.inline_filter":FluidDeviceBlock.hasPressureValve(getBlockState())?"item.icheme.pressure_control_valve":getBlockState().getBlock().getDescriptionId());}
             public AbstractContainerMenu createMenu(int containerId,Inventory inventory,Player player){return new FluidDeviceMenu(containerId,inventory,worldPosition,identity,debug,FluidDeviceMenu.REACH);}
         },buffer->{buffer.writeBlockPos(worldPosition);buffer.writeLong(identity);buffer.writeBoolean(debug);buffer.writeDouble(FluidDeviceMenu.REACH);});
         // Replay only after the opening packet and server menu exist, preserving packet order.

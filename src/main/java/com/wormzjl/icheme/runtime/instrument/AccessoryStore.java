@@ -9,7 +9,7 @@ import java.util.*;
 /** Format 1: static instruments, slot tombstones and accepted, uncommitted player operations. */
 public final class AccessoryStore extends SavedData {
     public static final int FORMAT=1;
-    public enum Type { PRESSURE, TEMPERATURE, SIGHT_GLASS, SHUTOFF, CHECK, PRESSURE_VALVE }
+    public enum Type { PRESSURE, TEMPERATURE, SIGHT_GLASS, SHUTOFF, CHECK, PRESSURE_VALVE, FILTER }
     public record Legacy(Instrument.Key key,UUID instance,long revision,Type type) {
         public Legacy{Objects.requireNonNull(key);Objects.requireNonNull(instance);Objects.requireNonNull(type);if(!key.mount().equals("pipe_accessory")||revision<=0||type==Type.PRESSURE||type==Type.TEMPERATURE)throw new IllegalArgumentException("Invalid pipe accessory");}
     }

@@ -48,7 +48,8 @@ public final class PhysicalFluidTopology {
      * cell, or a mover's suction cell) and its ports' cells, and meets pipes only at its ports.
      */
     public record Device(long id,Position position,TopologyCompiler.Kind kind,Direction facing,
-                         PipeResistance.Geometry geometry,FlowControl control,List<Port> ports,boolean generatorEnabled,Cutoff cutoff) {
+                         PipeResistance.Geometry geometry,FlowControl control,List<Port> ports,boolean generatorEnabled,Cutoff cutoff,boolean inlineFilter) {
+        public Device(long id,Position position,TopologyCompiler.Kind kind,Direction facing,PipeResistance.Geometry geometry,FlowControl control,List<Port> ports,boolean generatorEnabled,Cutoff cutoff){this(id,position,kind,facing,geometry,control,ports,generatorEnabled,cutoff,false);}
         public Device(long id,Position position,TopologyCompiler.Kind kind,Direction facing,PipeResistance.Geometry geometry,FlowControl control,List<Port> ports,boolean generatorEnabled){this(id,position,kind,facing,geometry,control,ports,generatorEnabled,Cutoff.NONE);}
         /** Authoring convenience; world placement explicitly creates generators switched off. */
         public Device(long id,Position position,TopologyCompiler.Kind kind,Direction facing,PipeResistance.Geometry geometry,FlowControl control,List<Port> ports){this(id,position,kind,facing,geometry,control,ports,true);}
@@ -57,6 +58,7 @@ public final class PhysicalFluidTopology {
             if(id<=0)throw new IllegalArgumentException("Physical identities must be positive");
             Objects.requireNonNull(position);Objects.requireNonNull(kind);Objects.requireNonNull(facing);Objects.requireNonNull(geometry);Objects.requireNonNull(control);
             Objects.requireNonNull(cutoff);
+            if(inlineFilter&&(kind!=TopologyCompiler.Kind.PIPE||cutoff!=Cutoff.NONE||!(control instanceof FlowControl.Passive)))throw new IllegalArgumentException("Invalid pipe filter accessory");
             if(kind!=TopologyCompiler.Kind.PIPE&&cutoff!=Cutoff.NONE)throw new IllegalArgumentException("Only a pipe has a cutoff accessory");
             boolean valid=switch(kind) {case PUMP->control instanceof FlowControl.Pump;case COMPRESSOR->control instanceof FlowControl.Compressor;case VALVE->control instanceof FlowControl.PressureValve;case PIPE->control instanceof FlowControl.Passive||control instanceof FlowControl.PressureValve;default->control instanceof FlowControl.Passive;};
             if(!valid)throw new IllegalArgumentException("Device/control mismatch");
@@ -84,13 +86,16 @@ public final class PhysicalFluidTopology {
                 throw new IllegalArgumentException("A mover needs exactly one suction and one discharge port");
         }
         boolean boundary(){return kind==TopologyCompiler.Kind.RESERVOIR||kind==TopologyCompiler.Kind.GENERATOR||kind==TopologyCompiler.Kind.VOID;}
-        /** A pipe keeps its mechanical identity when an installed pressure controller makes it an actuator. */
-        public TopologyCompiler.Kind hydraulicKind(){return kind==TopologyCompiler.Kind.PIPE&&control instanceof FlowControl.PressureValve?TopologyCompiler.Kind.VALVE:kind;}
+        /** Includes an installed filter without changing the mechanical host identity. */
+        public boolean filter(){return inlineFilter||kind==TopologyCompiler.Kind.FILTER;}
+        /** Mechanical pipes compile through the existing valve or filter law when fitted. */
+        public TopologyCompiler.Kind hydraulicKind(){if(inlineFilter)return TopologyCompiler.Kind.FILTER;return kind==TopologyCompiler.Kind.PIPE&&control instanceof FlowControl.PressureValve?TopologyCompiler.Kind.VALVE:kind;}
         boolean actuator(){var hydraulic=hydraulicKind();return hydraulic==TopologyCompiler.Kind.PUMP||hydraulic==TopologyCompiler.Kind.COMPRESSOR||hydraulic==TopologyCompiler.Kind.VALVE;}
         /** Copy edits preserve accessories, ports and the independent generator switch. */
-        public Device withGeometry(PipeResistance.Geometry value){return new Device(id,position,kind,facing,value,control,ports,generatorEnabled,cutoff);}
-        public Device withFacing(Direction value){return new Device(id,position,kind,value,geometry,control,ports,generatorEnabled,cutoff);}
-        public Device withCutoff(Direction axis,Cutoff value){return new Device(id,position,kind,axis,geometry,control,ports,generatorEnabled,value);}
+        public Device withGeometry(PipeResistance.Geometry value){return new Device(id,position,kind,facing,value,control,ports,generatorEnabled,cutoff,inlineFilter);}
+        public Device withFacing(Direction value){return new Device(id,position,kind,value,geometry,control,ports,generatorEnabled,cutoff,inlineFilter);}
+        public Device withCutoff(Direction axis,Cutoff value){return new Device(id,position,kind,axis,geometry,control,ports,generatorEnabled,value,inlineFilter);}
+        public Device withInlineFilter(Direction axis,boolean installed){return new Device(id,position,kind,axis,geometry,control,ports,generatorEnabled,cutoff,installed);}
         /** Every cell the registry finds this device at: its own, and its ports'. */
         public Set<Position> cells() {
             var cells=new LinkedHashSet<Position>();cells.add(position);for(var port:ports)cells.add(port.cell);return cells;
@@ -126,7 +131,7 @@ public final class PhysicalFluidTopology {
         /** Off closes a generator's hydraulic contacts; its registered identity and fixed source specification stay put. */
         boolean connects(Direction direction){return generatorEnabled&&cutoff!=Cutoff.CLOSED&&mechanicallyConnects(direction);}
         /** Fitting joints and bore inheritance remain axial even when hydraulic contacts are closed. */
-        public boolean mechanicallyConnects(Direction direction){return !actuator()&&kind!=TopologyCompiler.Kind.FILTER&&cutoff==Cutoff.NONE||direction.x*facing.x+direction.y*facing.y+direction.z*facing.z!=0;}
+        public boolean mechanicallyConnects(Direction direction){return !actuator()&&!filter()&&cutoff==Cutoff.NONE||direction.x*facing.x+direction.y*facing.y+direction.z*facing.z!=0;}
         /** The driven side is the actual discharge nozzle, independent of the node's position and the model's heading. */
         boolean outletAt(Position cell,Direction face) {
             if(!actuator())return false;
@@ -264,11 +269,11 @@ public final class PhysicalFluidTopology {
                     // A tank is never an actuator, so only a run with at most one driven end has a tank end.
                     if(start!=null&&start.kind==TopologyCompiler.Kind.RESERVOIR)faces.computeIfAbsent(start.id,k->new HashMap<>()).put(pipeId,tankFaces.get(startLink.id()));
                     if(end!=null&&end.kind==TopologyCompiler.Kind.RESERVOIR)faces.computeIfAbsent(end.id,k->new HashMap<>()).put(pipeId,tankFaces.get(endLink.id()));
-                    if(start!=null&&start.kind==TopologyCompiler.Kind.FILTER&&positiveSide(start,points.get(other(startLink,run.first()))))positiveFilterEdges.computeIfAbsent(start.id,k->new HashSet<>()).add(pipeId);
-                    if(end!=null&&end.kind==TopologyCompiler.Kind.FILTER&&positiveSide(end,points.get(other(endLink,run.second()))))positiveFilterEdges.computeIfAbsent(end.id,k->new HashSet<>()).add(pipeId);
+                    if(start!=null&&start.filter()&&positiveSide(start,points.get(other(startLink,run.first()))))positiveFilterEdges.computeIfAbsent(start.id,k->new HashSet<>()).add(pipeId);
+                    if(end!=null&&end.filter()&&positiveSide(end,points.get(other(endLink,run.second()))))positiveFilterEdges.computeIfAbsent(end.id,k->new HashSet<>()).add(pipeId);
                 }
             }
-            for(long id:new TreeSet<>(members))if(physical.containsKey(id)&&physical.get(id).kind==TopologyCompiler.Kind.FILTER){
+            for(long id:new TreeSet<>(members))if(physical.containsKey(id)&&physical.get(id).filter()){
                 int negative=indices.get(id),positive=reservoirs.size();var device=physical.get(id);
                 reservoirs.add(new PassiveNetwork.Reservoir(virtual--,device.position.y,seed,PassiveNetwork.NodeKind.JUNCTION));
                 var positiveEdges=positiveFilterEdges.getOrDefault(id,Set.of());
@@ -285,7 +290,7 @@ public final class PhysicalFluidTopology {
         // and no finite fluid ownership; they keep the filter's simulation clock available for later edits. A filter on a
         // dead-end branch (owner decision D18, NetworkReduction step 2) is one of them: its cake stays, frozen, until a
         // topology event gives its branch a destination.
-        for(var device:physical.values())if(device.kind==TopologyCompiler.Kind.FILTER&&!views.containsKey(device.id)){
+        for(var device:physical.values())if(device.filter()&&!views.containsKey(device.id)){
             boolean deadEnd=diagnostics.containsKey(device.id);
             if(idleSeed==null)throw new IllegalArgumentException("Disconnected filter needs a zero-flow property seed");
             long identity=filterIdentity(device.id);int island=islands.size();double y=device.position.y;
