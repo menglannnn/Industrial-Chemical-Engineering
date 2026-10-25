@@ -17,6 +17,7 @@ All notable changes to Industrial Chemical Engineering (IChemE, formerly CreateC
 
 ### Changed
 
+- Consolidate the floating-roof-tanks branch code: fold the instrument types, pipe-fitting items, small registries, display channels, client caches, valve geometries and presentation helpers into their owners, and merge the per-accessory tests into shared classes (main files 356 to 320, test files 329 to 319, every test kept, no format or protocol change); batch `2026-10-21-floating-roof-tanks` (`7b3137bf`, `2d3593c8`, `38825518`, `36fb0965`, `65886b15`, `CONSOLIDATION_REVIEW.md`).
 - Enclose the tank level indicator in custom clear glass with continuous highlights, and connect its end manifolds to the shell with round pipework and union fittings; batch `2026-10-25-tank-gauge-enclosure` (implementation `db936513`).
 - Make sight-glass bubbles travel along each section's accepted flow direction, including reversals and consistent views through both windows; visual protocol `sight-glass-3`, batch `2026-10-25-sight-glass-flow-direction` (implementation `e5591c04`).
 - Scale sight-glass bubble counts with gas/liquid volume ratio, close large-bore housing/neck gaps and retain enlarged window faces, and scale constructed pump/compressor sound loudness with constructor size; batch `2026-10-25-sight-glass-ratio-seams-sound` (implementation `5d9d3b42`).
