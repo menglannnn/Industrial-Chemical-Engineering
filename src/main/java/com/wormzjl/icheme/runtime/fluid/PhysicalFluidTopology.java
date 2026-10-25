@@ -40,6 +40,7 @@ public final class PhysicalFluidTopology {
         public Cutoff toggled(){return switch(this){case OPEN->CLOSED;case CLOSED->OPEN;case CHECK->CHECK;case NONE->throw new IllegalStateException("No pipe cutoff installed");};}
         public static Cutoff fromCode(int code){return switch(code){case 0->NONE;case 1->OPEN;case 2->CLOSED;case 3->CHECK;default->throw new IllegalArgumentException("Unknown pipe cutoff "+code);};}
     }
+    public static FlowControl.Mover defaultMover(TopologyCompiler.Kind kind){return switch(kind){case PUMP->new FlowControl.Pump(.01,500000);case COMPRESSOR->new FlowControl.Compressor(.05,3);default->throw new IllegalArgumentException("Not a mover");};}
     /** The most ports a vessel registers. */
     public static final int MAXIMUM_PORTS=64;
     /**
@@ -60,9 +61,10 @@ public final class PhysicalFluidTopology {
             Objects.requireNonNull(cutoff);
             if(inlineFilter&&(kind!=TopologyCompiler.Kind.PIPE||cutoff!=Cutoff.NONE||!(control instanceof FlowControl.Passive)))throw new IllegalArgumentException("Invalid pipe filter accessory");
             if(kind!=TopologyCompiler.Kind.PIPE&&cutoff!=Cutoff.NONE)throw new IllegalArgumentException("Only a pipe has a cutoff accessory");
-            boolean valid=switch(kind) {case PUMP->control instanceof FlowControl.Pump;case COMPRESSOR->control instanceof FlowControl.Compressor;case VALVE->control instanceof FlowControl.PressureValve;case PIPE->control instanceof FlowControl.Passive||control instanceof FlowControl.PressureValve;default->control instanceof FlowControl.Passive;};
+            boolean valid=switch(kind) {case PUMP->control instanceof FlowControl.Pump;case COMPRESSOR->control instanceof FlowControl.Compressor;case VALVE->control instanceof FlowControl.PressureValve;case PIPE->control instanceof FlowControl.Passive||control instanceof FlowControl.PressureValve||control instanceof FlowControl.Mover;default->control instanceof FlowControl.Passive;};
             if(!valid)throw new IllegalArgumentException("Device/control mismatch");
             if(control instanceof FlowControl.PressureValve&&cutoff!=Cutoff.NONE)throw new IllegalArgumentException("A pressure valve cannot carry a cutoff accessory");
+            if(kind==TopologyCompiler.Kind.PIPE&&control instanceof FlowControl.Mover&&(cutoff!=Cutoff.NONE||facing.y!=0))throw new IllegalArgumentException("An inline mover needs a horizontal pipe without a cutoff");
             if(kind!=TopologyCompiler.Kind.GENERATOR&&!generatorEnabled)throw new IllegalArgumentException("Only a generator has a source switch");
             ports=List.copyOf(ports);
             if(ports.isEmpty()&&control instanceof FlowControl.Mover mover&&!mover.enabled())throw new IllegalArgumentException("Only constructed movers have a power switch");
@@ -89,7 +91,11 @@ public final class PhysicalFluidTopology {
         /** Includes an installed filter without changing the mechanical host identity. */
         public boolean filter(){return inlineFilter||kind==TopologyCompiler.Kind.FILTER;}
         /** Mechanical pipes compile through the existing valve or filter law when fitted. */
-        public TopologyCompiler.Kind hydraulicKind(){if(inlineFilter)return TopologyCompiler.Kind.FILTER;return kind==TopologyCompiler.Kind.PIPE&&control instanceof FlowControl.PressureValve?TopologyCompiler.Kind.VALVE:kind;}
+        public TopologyCompiler.Kind hydraulicKind(){
+            if(inlineFilter)return TopologyCompiler.Kind.FILTER;
+            if(kind==TopologyCompiler.Kind.PIPE)return switch(control){case FlowControl.Pump p->TopologyCompiler.Kind.PUMP;case FlowControl.Compressor c->TopologyCompiler.Kind.COMPRESSOR;case FlowControl.PressureValve v->TopologyCompiler.Kind.VALVE;default->kind;};
+            return kind;
+        }
         boolean actuator(){var hydraulic=hydraulicKind();return hydraulic==TopologyCompiler.Kind.PUMP||hydraulic==TopologyCompiler.Kind.COMPRESSOR||hydraulic==TopologyCompiler.Kind.VALVE;}
         /** Copy edits preserve accessories, ports and the independent generator switch. */
         public Device withGeometry(PipeResistance.Geometry value){return new Device(id,position,kind,facing,value,control,ports,generatorEnabled,cutoff,inlineFilter);}

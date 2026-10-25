@@ -117,11 +117,12 @@ public final class FluidDeviceBlockEntity extends BlockEntity implements com.wor
         if(projected!=null&&projected.device().kind()==TopologyCompiler.Kind.PIPE){
             var d=projected.device();var state=getBlockState();
             var updated=state.setValue(FluidDeviceBlock.PRESSURE_CONTROL,d.control() instanceof com.wormzjl.icheme.science.fluid.network.FlowControl.PressureValve)
-                    .setValue(FluidDeviceBlock.INLINE_FILTER,d.inlineFilter());
+                    .setValue(FluidDeviceBlock.INLINE_FILTER,d.inlineFilter())
+                    .setValue(FluidDeviceBlock.INLINE_MOVER,d.control() instanceof com.wormzjl.icheme.science.fluid.network.FlowControl.Pump?FluidDeviceBlock.InlineMover.PUMP:d.control() instanceof com.wormzjl.icheme.science.fluid.network.FlowControl.Compressor?FluidDeviceBlock.InlineMover.COMPRESSOR:FluidDeviceBlock.InlineMover.NONE);
             if(d.cutoff()==PhysicalFluidTopology.Cutoff.NONE)updated=updated.setValue(FluidDeviceBlock.SHUTOFF,FluidDeviceBlock.Shutoff.NONE);
             else if(committed!=null&&committed.cutoff()!=PhysicalFluidTopology.Cutoff.NONE)
                 updated=updated.setValue(FluidDeviceBlock.SHUTOFF,FluidDeviceBlock.Shutoff.of(committed.cutoff()));
-            if(d.inlineFilter()||d.control() instanceof com.wormzjl.icheme.science.fluid.network.FlowControl.PressureValve||d.cutoff()!=PhysicalFluidTopology.Cutoff.NONE)
+            if(d.inlineFilter()||d.control() instanceof com.wormzjl.icheme.science.fluid.network.FlowControl.Mover||d.control() instanceof com.wormzjl.icheme.science.fluid.network.FlowControl.PressureValve||d.cutoff()!=PhysicalFluidTopology.Cutoff.NONE)
                 updated=updated.setValue(FluidDeviceBlock.FACING,Direction.valueOf((d.cutoff()!=PhysicalFluidTopology.Cutoff.NONE&&committed!=null&&committed.cutoff()!=PhysicalFluidTopology.Cutoff.NONE?committed:d).facing().name()));
             updated=FluidDeviceBlock.connectedState(updated,level,worldPosition);
             if(updated!=state){level.setBlock(worldPosition,updated,net.minecraft.world.level.block.Block.UPDATE_ALL);neighbours=true;}
@@ -181,7 +182,7 @@ public final class FluidDeviceBlockEntity extends BlockEntity implements com.wor
     public void open(ServerPlayer player,boolean debug) {
         if(identity==0){player.displayClientMessage(Component.literal("Fluid device is waiting for its world identity."),true);return;}
         player.openMenu(new MenuProvider() {
-            public Component getDisplayName(){return Component.translatable(FluidDeviceBlock.hasFilter(getBlockState())?"item.icheme.inline_filter":FluidDeviceBlock.hasPressureValve(getBlockState())?"item.icheme.pressure_control_valve":getBlockState().getBlock().getDescriptionId());}
+            public Component getDisplayName(){return Component.translatable(FluidDeviceBlock.hasPump(getBlockState())?"item.icheme.fluid_pump":FluidDeviceBlock.hasCompressor(getBlockState())?"item.icheme.fluid_compressor":FluidDeviceBlock.hasFilter(getBlockState())?"item.icheme.inline_filter":FluidDeviceBlock.hasPressureValve(getBlockState())?"item.icheme.pressure_control_valve":getBlockState().getBlock().getDescriptionId());}
             public AbstractContainerMenu createMenu(int containerId,Inventory inventory,Player player){return new FluidDeviceMenu(containerId,inventory,worldPosition,identity,debug,FluidDeviceMenu.REACH);}
         },buffer->{buffer.writeBlockPos(worldPosition);buffer.writeLong(identity);buffer.writeBoolean(debug);buffer.writeDouble(FluidDeviceMenu.REACH);});
         // Replay only after the opening packet and server menu exist, preserving packet order.

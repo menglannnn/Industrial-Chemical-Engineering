@@ -78,7 +78,7 @@ class GaugeAccessoriesTest {
         var interval=new com.wormzjl.icheme.science.fluid.network.PassiveIntervalSolver(model).solve(graph,.1,com.wormzjl.icheme.science.fluid.network.PassiveIntervalSolver.Settings.defaults(),()->{});var observed=interval.observations().getFirst();assertFalse(observed.flowing());assertEquals(state.pressure(),observed.pressure(.5,0),.001);
     }
     @Test void allExistingPipeAccessoriesPersistAnInstanceAndRecoverExactlyOnce(){
-        for(var type:List.of(AccessoryStore.Type.SIGHT_GLASS,AccessoryStore.Type.SHUTOFF,AccessoryStore.Type.CHECK,AccessoryStore.Type.PRESSURE_VALVE,AccessoryStore.Type.FILTER)){
+        for(var type:List.of(AccessoryStore.Type.SIGHT_GLASS,AccessoryStore.Type.SHUTOFF,AccessoryStore.Type.CHECK,AccessoryStore.Type.PRESSURE_VALVE,AccessoryStore.Type.FILTER,AccessoryStore.Type.PUMP,AccessoryStore.Type.COMPRESSOR)){
             var store=new AccessoryStore();var fitting=store.installLegacy(7,type);assertEquals(fitting,store.installLegacy(7,type));
             var image=store.save(new CompoundTag());var loaded=AccessoryStore.load(image);assertEquals(fitting,loaded.legacy(7));assertNull(loaded.removeLegacy(7,UUID.randomUUID()));assertNotNull(loaded.removeLegacy(7,fitting.instance()));assertNull(loaded.removeLegacy(7,fitting.instance()));assertEquals(2,loaded.revision(7));
             var reinstall=loaded.installLegacy(7,type);assertNotEquals(fitting.instance(),reinstall.instance());assertNull(loaded.removeLegacy(7,fitting.instance()));

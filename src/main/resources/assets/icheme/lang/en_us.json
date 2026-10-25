@@ -1096,5 +1096,17 @@
   "item.icheme.inline_filter.straight_only": "Install on straight pipe sections only.",
   "item.icheme.inline_filter.one_accessory": "A pipe section accepts one accessory.",
   "item.icheme.inline_filter.recover": "Shift-right-click with the Accessory Wrench to recover.",
-  "item.icheme.inline_filter": "In-line Filter"
+  "item.icheme.inline_filter": "In-line Filter",
+  "item.icheme.fluid_pump": "In-line Pump",
+  "item.icheme.fluid_pump.install": "Right-click a bare horizontal straight pipe to install.",
+  "item.icheme.fluid_pump.toggle": "Aim along the pipe to choose the discharge arrow; right-click installed equipment for controls.",
+  "item.icheme.fluid_pump.straight_only": "Install on horizontal straight pipe sections only.",
+  "item.icheme.fluid_pump.one_accessory": "A pipe section accepts one accessory.",
+  "item.icheme.fluid_pump.recover": "Shift-right-click with the Accessory Wrench to recover.",
+  "item.icheme.fluid_compressor": "In-line Compressor",
+  "item.icheme.fluid_compressor.install": "Right-click a bare horizontal straight pipe to install.",
+  "item.icheme.fluid_compressor.toggle": "Aim along the pipe to choose the discharge arrow; right-click installed equipment for controls.",
+  "item.icheme.fluid_compressor.straight_only": "Install on horizontal straight pipe sections only.",
+  "item.icheme.fluid_compressor.one_accessory": "A pipe section accepts one accessory.",
+  "item.icheme.fluid_compressor.recover": "Shift-right-click with the Accessory Wrench to recover."
 }

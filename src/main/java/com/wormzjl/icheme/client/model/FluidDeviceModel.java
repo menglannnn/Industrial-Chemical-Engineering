@@ -49,7 +49,7 @@ public final class FluidDeviceModel implements IDynamicBakedModel {
     public static final ResourceLocation LOADER_ID = ResourceLocation.fromNamespaceAndPath(IChemE.MOD_ID, "fluid_device");
     /** {@code "loader": "icheme:fluid_device", "kind": "pipe"} (a {@link TopologyCompiler.Kind}), textures per material. */
     public static final IGeometryLoader<Geometry> LOADER = (json, context) ->
-            new Geometry(TopologyCompiler.Kind.valueOf(GsonHelper.getAsString(json, "kind").toUpperCase(Locale.ROOT)),GsonHelper.getAsBoolean(json,"sight_glass_accessory",false),GsonHelper.getAsBoolean(json,"shutoff_valve_accessory",false),GsonHelper.getAsBoolean(json,"check_valve_accessory",false),GsonHelper.getAsBoolean(json,"pressure_valve_accessory",false));
+            new Geometry(TopologyCompiler.Kind.valueOf(GsonHelper.getAsString(json, "kind").toUpperCase(Locale.ROOT)),GsonHelper.getAsBoolean(json,"sight_glass_accessory",false),GsonHelper.getAsBoolean(json,"shutoff_valve_accessory",false),GsonHelper.getAsBoolean(json,"check_valve_accessory",false),GsonHelper.getAsBoolean(json,"pressure_valve_accessory",false),GsonHelper.getAsBoolean(json,"inline_mover_accessory",false));
     private static final int CACHE = 4096;
     private static final ChunkRenderTypeSet SOLID = ChunkRenderTypeSet.of(RenderType.solid());
     private static final ChunkRenderTypeSet GLASS = ChunkRenderTypeSet.of(RenderType.solid(),RenderType.translucent());
@@ -58,19 +58,21 @@ public final class FluidDeviceModel implements IDynamicBakedModel {
     private final boolean shutoffAccessory;
     private final boolean checkAccessory;
     private final boolean pressureAccessory;
+    private final boolean moverAccessory;
     private final TextureAtlasSprite[] sprites;
     private final TextureAtlasSprite particle;
     private final ItemTransforms transforms;
-    private record Look(SightGlassGeometry.Key geometry,boolean sightGlass,FluidDeviceBlock.Shutoff shutoff,boolean pressureValve,boolean filter){}
+    private record Look(SightGlassGeometry.Key geometry,boolean sightGlass,FluidDeviceBlock.Shutoff shutoff,boolean pressureValve,boolean filter,TopologyCompiler.Kind mover){}
     private record Baked(List<BakedQuad> solid,List<BakedQuad> glass){}
     private final Map<Look,Baked> quads = new ConcurrentHashMap<>();
 
-    private FluidDeviceModel(TopologyCompiler.Kind kind,boolean accessory,boolean shutoffAccessory,boolean checkAccessory,boolean pressureAccessory, TextureAtlasSprite[] sprites, TextureAtlasSprite particle, ItemTransforms transforms) {
+    private FluidDeviceModel(TopologyCompiler.Kind kind,boolean accessory,boolean shutoffAccessory,boolean checkAccessory,boolean pressureAccessory,boolean moverAccessory, TextureAtlasSprite[] sprites, TextureAtlasSprite particle, ItemTransforms transforms) {
         this.kind = kind;
         this.accessory=accessory;
         this.shutoffAccessory=shutoffAccessory;
         this.checkAccessory=checkAccessory;
         this.pressureAccessory=pressureAccessory;
+        this.moverAccessory=moverAccessory;
         this.sprites = sprites;
         this.particle = particle;
         this.transforms = transforms;
@@ -81,7 +83,7 @@ public final class FluidDeviceModel implements IDynamicBakedModel {
         if (side != null) return List.of();
         var geometry=state!=null&&state.getBlock() instanceof FluidDeviceBlock?sightGlassKey(state,data):new SightGlassGeometry.Key(LineGeometry.Key.item(kind));
         var shutoff=checkAccessory?FluidDeviceBlock.Shutoff.CHECK:shutoffAccessory?FluidDeviceBlock.Shutoff.OPEN:state!=null&&FluidDeviceBlock.hasPipeValve(state)?state.getValue(FluidDeviceBlock.SHUTOFF):FluidDeviceBlock.Shutoff.NONE;
-        var key = new Look(geometry,accessory||state!=null&&FluidDeviceBlock.hasSightGlass(state),shutoff,pressureAccessory||state!=null&&FluidDeviceBlock.hasPressureValve(state),state!=null&&FluidDeviceBlock.hasFilter(state));
+        var key = new Look(geometry,accessory||state!=null&&FluidDeviceBlock.hasSightGlass(state),shutoff,pressureAccessory||state!=null&&FluidDeviceBlock.hasPressureValve(state),state!=null&&FluidDeviceBlock.hasFilter(state),state!=null&&FluidDeviceBlock.hasMover(state)?state.getValue(FluidDeviceBlock.INLINE_MOVER).kind():moverAccessory?kind:TopologyCompiler.Kind.PIPE);
         var cached = quads.get(key);
         if(cached==null){if(quads.size()>=CACHE)quads.clear();cached=quads.computeIfAbsent(key,this::bake);}
         if(renderType==RenderType.translucent())return cached.glass;
@@ -90,6 +92,7 @@ public final class FluidDeviceModel implements IDynamicBakedModel {
     }
 
     private Baked bake(Look look) {
+        if(look.mover!=TopologyCompiler.Kind.PIPE)return new Baked(EquipmentShellModel.bake(com.wormzjl.icheme.science.equipment.InlineMoverGeometry.polygons(look.geometry.pipe(),look.mover==TopologyCompiler.Kind.COMPRESSOR,moverAccessory),sprites,false),List.of());
         if(look.filter)return new Baked(EquipmentShellModel.bake(LineGeometry.filterPolygons(look.geometry.pipe()),sprites,false),List.of());
         if(look.pressureValve)return new Baked(EquipmentShellModel.bake(PressureValveGeometry.polygons(look.geometry.pipe(),pressureAccessory),sprites,false),List.of());
         if(look.shutoff==FluidDeviceBlock.Shutoff.CHECK)return new Baked(EquipmentShellModel.bake(CheckValveGeometry.polygons(look.geometry.pipe(),checkAccessory),sprites,false),List.of());
@@ -154,10 +157,10 @@ public final class FluidDeviceModel implements IDynamicBakedModel {
         return ItemOverrides.EMPTY;
     }
 
-    public record Geometry(TopologyCompiler.Kind kind,boolean accessory,boolean shutoffAccessory,boolean checkAccessory,boolean pressureAccessory) implements IUnbakedGeometry<Geometry> {
+    public record Geometry(TopologyCompiler.Kind kind,boolean accessory,boolean shutoffAccessory,boolean checkAccessory,boolean pressureAccessory,boolean moverAccessory) implements IUnbakedGeometry<Geometry> {
         @Override
         public BakedModel bake(IGeometryBakingContext context, ModelBaker baker, Function<Material, TextureAtlasSprite> sprites, ModelState state, ItemOverrides overrides) {
-            return new FluidDeviceModel(kind,accessory,shutoffAccessory,checkAccessory,pressureAccessory, EquipmentShellModel.sprites(context, sprites), sprites.apply(context.getMaterial("particle")), context.getTransforms());
+            return new FluidDeviceModel(kind,accessory,shutoffAccessory,checkAccessory,pressureAccessory,moverAccessory, EquipmentShellModel.sprites(context, sprites), sprites.apply(context.getMaterial("particle")), context.getTransforms());
         }
     }
 }

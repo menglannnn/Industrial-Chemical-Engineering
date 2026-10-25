@@ -64,7 +64,10 @@ public final class MoverPortMarkings {
         return fitting(surface,facing,from,to,Math.PI/8);
     }
     /** A bonnet can leave diagonal facets clearer than the cardinal panels of a plain casting. */
-    static List<Mesh.Polygon> fitting(List<Mesh.Polygon> surface,int facing,double from,double to,double angleOffset) {
+    static List<Mesh.Polygon> fitting(List<Mesh.Polygon> surface,int facing,double from,double to,double angleOffset) {return fitting(surface,facing,from,to,angleOffset,false);}
+    /** Two lateral arrow panels remain clear of an upright motor/gearbox, including overhanging castings. */
+    static List<Mesh.Polygon> fittingOverhanging(List<Mesh.Polygon> surface,int facing,double from,double to){return fitting(surface,facing,from,to,0,true);}
+    private static List<Mesh.Polygon> fitting(List<Mesh.Polygon> surface,int facing,double from,double to,double angleOffset,boolean overhang) {
         var mesh=new Mesh();var axis=LineGeometry.step(facing);var patches=new LinkedHashMap<Plane,Patch>();
         for(var polygon:surface) {
             if(polygon.material()!=Mesh.Material.FLANGE||polygon.size()<3)continue;
@@ -85,8 +88,8 @@ public final class MoverPortMarkings {
             patch.low=Math.min(patch.low,low);patch.high=Math.max(patch.high,high);patch.left=Math.min(patch.left,left);patch.right=Math.max(patch.right,right);
         }
         int bodyFace=facing|1;var reference=LineGeometry.ref(bodyFace);var tangent=Mesh.cross(LineGeometry.step(bodyFace),reference);var selected=new LinkedHashSet<Patch>();
-        for(int q=0;q<4;q++) {
-            double angle=angleOffset+q*Math.PI/2,c=DeterministicMath.cos(angle),s=DeterministicMath.sin(angle),best=-2;Patch choice=null;
+        for(int q=0;q<(overhang?2:4);q++) {
+            double angle=overhang?(reference[1]==0?0:Math.PI/2)+q*Math.PI:angleOffset+q*Math.PI/2;double c=DeterministicMath.cos(angle),s=DeterministicMath.sin(angle),best=-2;Patch choice=null;
             for(var patch:patches.values()) {double score=c*Mesh.dot(patch.normal,reference)+s*Mesh.dot(patch.normal,tangent);if(score>best){best=score;choice=patch;}}
             if(choice!=null)selected.add(choice);
         }
@@ -95,7 +98,7 @@ public final class MoverPortMarkings {
             for(int i=0;i<3;i++)origin[i]+=.5*(patch.left+patch.right)*side[i];
             badge(new Label(mesh,new Mesh.Frame(origin,axis,patch.normal),patch.radius,(patch.low+patch.high)/2,1),.92*(patch.high-patch.low),.80*(patch.right-patch.left));
         }
-        return List.copyOf(mesh.cell(0,0,0));
+        return overhang?LineGeometry.overhanging(mesh):List.copyOf(mesh.cell(0,0,0));
     }
 
     /** Local axes keep arrows aligned with flow for either nozzle role and every equipment heading. */

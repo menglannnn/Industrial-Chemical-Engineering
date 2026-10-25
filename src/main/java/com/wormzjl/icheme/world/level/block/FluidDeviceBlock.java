@@ -29,6 +29,12 @@ public sealed class FluidDeviceBlock extends BaseEntityBlock {
     /** Static pipe accessory, with no hydraulic meaning. Changing it keeps this block and its entity. */
     public static final BooleanProperty SIGHT_GLASS=BooleanProperty.create("sight_glass");
     public static final EnumProperty<Direction.Axis> SIGHT_GLASS_AXIS=EnumProperty.create("sight_glass_axis",Direction.Axis.class);
+    public enum InlineMover implements net.minecraft.util.StringRepresentable {
+        NONE,PUMP,COMPRESSOR;
+        @Override public String getSerializedName(){return name().toLowerCase(java.util.Locale.ROOT);}
+        public TopologyCompiler.Kind kind(){return this==NONE?TopologyCompiler.Kind.PIPE:TopologyCompiler.Kind.valueOf(name());}
+    }
+    public static final EnumProperty<InlineMover> INLINE_MOVER=EnumProperty.create("inline_mover",InlineMover.class);
     public static final BooleanProperty INLINE_FILTER=BooleanProperty.create("inline_filter");
     public static final BooleanProperty PRESSURE_CONTROL=BooleanProperty.create("pressure_control");
     /** Committed lever position; a newly installed accessory initially draws open. */
@@ -49,12 +55,12 @@ public sealed class FluidDeviceBlock extends BaseEntityBlock {
     public static FluidDeviceBlock create(TopologyCompiler.Kind kind,BlockBehaviour.Properties properties){return kind==TopologyCompiler.Kind.PIPE?new Pipe(properties):new FluidDeviceBlock(kind,properties);}
     private FluidDeviceBlock(TopologyCompiler.Kind kind,BlockBehaviour.Properties properties) {
         super(properties);this.kind=kind;var state=stateDefinition.any().setValue(FACING,Direction.NORTH).setValue(SIGHT_GLASS,false).setValue(SIGHT_GLASS_AXIS,Direction.Axis.Z);
-        if(kind==TopologyCompiler.Kind.PIPE)state=state.setValue(SHUTOFF,Shutoff.NONE).setValue(PRESSURE_CONTROL,false).setValue(INLINE_FILTER,false);
+        if(kind==TopologyCompiler.Kind.PIPE)state=state.setValue(SHUTOFF,Shutoff.NONE).setValue(PRESSURE_CONTROL,false).setValue(INLINE_FILTER,false).setValue(INLINE_MOVER,InlineMover.NONE);
         for(var property:CONNECTIONS.values())state=state.setValue(property,false);registerDefaultState(state);
     }
     private static final class Pipe extends FluidDeviceBlock {
         private Pipe(BlockBehaviour.Properties properties){super(TopologyCompiler.Kind.PIPE,properties);}
-        @Override protected void createBlockStateDefinition(StateDefinition.Builder<Block,BlockState> builder){super.createBlockStateDefinition(builder);builder.add(SHUTOFF,PRESSURE_CONTROL,INLINE_FILTER);}
+        @Override protected void createBlockStateDefinition(StateDefinition.Builder<Block,BlockState> builder){super.createBlockStateDefinition(builder);builder.add(SHUTOFF,PRESSURE_CONTROL,INLINE_FILTER,INLINE_MOVER);}
     }
     public TopologyCompiler.Kind kind(){return kind;}
     @Override public MapCodec<FluidDeviceBlock> codec(){return CODEC;}
@@ -68,7 +74,10 @@ public sealed class FluidDeviceBlock extends BaseEntityBlock {
     public static boolean hasSightGlass(BlockState state){return supportsSightGlass(state)&&state.getValue(SIGHT_GLASS);}
     public static boolean hasPressureValve(BlockState state){return state.getBlock() instanceof FluidDeviceBlock block&&block.kind==TopologyCompiler.Kind.PIPE&&state.getValue(PRESSURE_CONTROL);}
     public static boolean hasFilter(BlockState s){return s.hasProperty(INLINE_FILTER)&&s.getValue(INLINE_FILTER);}
-    public static boolean hasAxialAccessory(BlockState s){return hasPipeValve(s)||hasFilter(s);}
+    public static boolean hasMover(BlockState s){return s.hasProperty(INLINE_MOVER)&&s.getValue(INLINE_MOVER)!=InlineMover.NONE;}
+    public static boolean hasPump(BlockState s){return hasMover(s)&&s.getValue(INLINE_MOVER)==InlineMover.PUMP;}
+    public static boolean hasCompressor(BlockState s){return hasMover(s)&&s.getValue(INLINE_MOVER)==InlineMover.COMPRESSOR;}
+    public static boolean hasAxialAccessory(BlockState s){return hasPipeValve(s)||hasFilter(s)||hasMover(s);}
     public static boolean hasShutoff(BlockState state){return hasPipeValve(state)&&(state.getValue(SHUTOFF)==Shutoff.OPEN||state.getValue(SHUTOFF)==Shutoff.CLOSED);}
     public static boolean hasPipeValve(BlockState state){return state.getBlock() instanceof FluidDeviceBlock block&&block.kind==TopologyCompiler.Kind.PIPE&&(state.getValue(SHUTOFF)!=Shutoff.NONE||state.getValue(PRESSURE_CONTROL));}
     public static PhysicalFluidTopology.Cutoff cutoff(BlockState state){return state.getBlock() instanceof FluidDeviceBlock block&&block.kind==TopologyCompiler.Kind.PIPE?state.getValue(SHUTOFF).cutoff():PhysicalFluidTopology.Cutoff.NONE;}
@@ -150,7 +159,7 @@ public sealed class FluidDeviceBlock extends BaseEntityBlock {
         FluidWorldAuthority.find(serverLevel.getServer()).ifPresent(world->{
             var p=new PhysicalFluidTopology.Position(level.dimension().location().toString(),position.getX(),position.getY(),position.getZ());
             if(previous.getBlock()!=this) {
-                var record=world.place(p,kind,PhysicalFluidTopology.Direction.valueOf(state.getValue(FACING).name()),cutoff(state),hasPressureValve(state),hasFilter(state));
+                var record=world.place(p,kind,PhysicalFluidTopology.Direction.valueOf(state.getValue(FACING).name()),cutoff(state),hasPressureValve(state),hasFilter(state),hasMover(state)?state.getValue(INLINE_MOVER).kind():TopologyCompiler.Kind.PIPE);
                 if(level.getBlockEntity(position) instanceof FluidDeviceBlockEntity entity)entity.bindIdentity(record.device().id());
             } else if(!hasAxialAccessory(state)&&!hasAxialAccessory(previous)&&previous.getValue(FACING)!=state.getValue(FACING)) {
                 world.at(p).ifPresent(old->{var d=old.device();world.edit(d.id(),old.revision(),d.withFacing(PhysicalFluidTopology.Direction.valueOf(state.getValue(FACING).name())),old.spec());});
@@ -165,7 +174,7 @@ public sealed class FluidDeviceBlock extends BaseEntityBlock {
         super.onRemove(state,level,position,replacement,moved);
     }
     @Override protected InteractionResult useWithoutItem(BlockState state,Level level,BlockPos position,Player player,BlockHitResult hit) {
-        if(hasPressureValve(state)||hasFilter(state)) {
+        if(hasPressureValve(state)||hasFilter(state)||hasMover(state)) {
             if(player instanceof ServerPlayer serverPlayer&&level.getBlockEntity(position) instanceof FluidDeviceBlockEntity entity)entity.open(serverPlayer,false);
             return InteractionResult.sidedSuccess(level.isClientSide());
         }
