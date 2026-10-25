@@ -284,11 +284,14 @@ final class CentrifugalCompressorDesign extends UnitDesign {
         double tod = .6 + .5 * k, tl = 1.5 + 1.5 * k, sw = tod / 2 + .05, xt = ax + .6 * hm + .4 * terminal + .25 + sw;
         double left = Math.max(xj + .2 * d, 1.7 * hm) + .6, right = Math.max(Math.max(xj + .5 + pd + .4, xt - ax + sw + .4), .7 * hm + .5);
         double x0 = ax - left, x1 = ax + right, zt0 = cover - .8, zt1 = zm0 + lm + .7, y0 = h - SLAB;
-        double q = Math.max(odS / 2 + .08, PipeSizes.flange(odS) / 2 + .03);
+        // The slab's opening round the suction takes a pipe's largest neck and flange (owner decision 2026-10-21: a 1 m
+        // pipe has a 1 m root, other components give way).
+        double q = Math.max(PipeSizes.MAX_OUTSIDE / 2 + .08, PipeSizes.flange(PipeSizes.MAX_OUTSIDE) / 2 + .03);
         // The discharge leaves the slab's underside (a dog-leg hidden in it keeps it clear of the suction's pipe on a short
         // casing), drops to an elbow and runs out to the right, jogged onto a cell centre, to its flange.
         double rd = odD / 2, bend = Math.max(.15, odD), xv = zv - zs >= .55 + rd ? ax : ax - .55 - rd;
-        double yd = Math.floor(y0 - .1 - bend - .5) + .5, zd = Math.floor(zv) + .5, jog = Math.abs(zd - zv);
+        // Its run low enough under the slab for a pipe's largest neck at its flange (owner decision 2026-10-21).
+        double yd = Math.floor(Math.min(y0 - .1 - bend, y0 - .05 - PipeSizes.MAX_OUTSIDE / 2) - .5) + .5, zd = Math.floor(zv) + .5, jog = Math.abs(zd - zv);
         int nd = ProcessUnit.sides(odD);
         u.mesh.prism(Frame.of(new double[]{xv, 0, zv}, 1, 1), rd, yd + bend, y0, nd, Material.PIPE);
         u.mesh.torus(new Frame(new double[]{xv - bend, yd + bend, zv}, new double[]{0, 0, 1}, new double[]{1, 0, 0}), bend, rd, -Math.PI / 2, 0, 6, nd, Material.PIPE);
@@ -342,10 +345,11 @@ final class CentrifugalCompressorDesign extends UnitDesign {
 
         // The lube-oil console at grade on the left: its skid, the reservoir with its two pumps and filters on top, and
         // the twin coolers stacked on its outer side, the changeover's water jumpers between them (cooling water in at
-        // the lower one's front head, out at its back head; the skid stops short of both so their pipes find room).
+        // the lower one's front head, out at its back head; the skid stops at both heads' tangent lines, so their pipes
+        // find room at a pipe's largest: owner decision 2026-10-21, a 1 m pipe has a 1 m root).
         double odC = .25 + .25 * k, rC = odC / 2, wc = 1.2 + 1.8 * k, lc = 2.4 + 1.8 * k;
         double xcc = Math.ceil(x1 + .3 + wc - .15 - rC - .5 - 1e-9) + .5, xk1 = xcc + rC + .15, xk0 = xk1 - wc;
-        double zl1 = zt1 - .7 - odC / 4, zl0 = zl1 - lc, zk0 = zl0 - odC / 4 - .1, zk1 = zl1 + odC / 4 + .1;
+        double zl1 = zt1 - .7 - odC / 4, zl0 = zl1 - lc, zk0 = zl0 - .1, zk1 = zl1 + .1;
         u.box(new double[]{xk0, 0, zk0}, new double[]{xk1, .15, zk1}, Material.STEELWORK, true);
         double hr = .9 + 1.1 * k, xr1 = xk0 + .5 * wc;
         u.box(new double[]{xk0 + .08, .15, zk0 + .15}, new double[]{xr1, .15 + hr, zk1 - .15}, Material.MACHINE, true);

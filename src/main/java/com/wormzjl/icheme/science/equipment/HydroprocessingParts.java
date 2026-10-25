@@ -135,11 +135,12 @@ final class HydroprocessingParts {
      * each flange 2.15 p across and 0.45 p thick, the ring showing between them; 12 to 24 studs of 0.16 p, their nuts and
      * ends above and below ({@link ProcessUnit#studs}: the signature, kept at every size); a hub down to the line; a spool
      * and a long-radius elbow (1.5 p) turning to the front (frame -z). The run's centre line lies on the lowest cell centre
-     * at least {@code over} high. Returns {the run's height, the elbow's end along z}.
+     * where a line at a pipe's largest passes over the rails of the top deck walked at {@code deck} (owner decision
+     * 2026-10-21: a 1 m pipe has a 1 m root, other components give way). Returns {the run's height, the elbow's end along z}.
      */
-    static double[] topNozzle(ProcessUnit u, double x, double z, double apex, double p, double over) {
+    static double[] topNozzle(ProcessUnit u, double x, double z, double apex, double p, double deck) {
         double rn = .65 * p, rf = 1.075 * p, tf = Math.max(.04, .45 * p), gap = .01 + .01 * p, hub = .5 * p, bend = 1.5 * p;
-        double y0 = apex + .25 + .3 * p, y1 = y0 + tf + gap, y2 = y1 + tf + hub;
+        double y0 = apex + .25 + .3 * p, y1 = y0 + tf + gap, y2 = y1 + tf + hub, over = deck + Access.FENCE + .05 + PipeSizes.MAX_OUTSIDE / 2;
         double run = Math.ceil(Math.max(y2 + .05 + bend, over) - .5) + .5, e0 = run - bend;
         var up = Frame.of(new double[]{x, 0, z}, 1, 1);
         int nf = ProcessUnit.sides(2 * rf), np = ProcessUnit.sides(p);

@@ -354,7 +354,7 @@ public final class ProcessUnit {
 
         /**
          * The suction header across: every cylinder's flow at about 12 m/s, 0.5 b √n; the discharge header 0.7 of it (a
-         * pressure ratio of about 2); at most 1 m ({@code MACHINES_SCALE_RESEARCH.md}).
+         * pressure ratio of about 2); at most a pipe's largest ({@code MACHINES_SCALE_RESEARCH.md}).
          */
         double suctionHeader() {
             return Math.min(PipeSizes.MAX_OUTSIDE, .5 * bore * Math.sqrt(throwCount) + .05);
@@ -839,7 +839,7 @@ public final class ProcessUnit {
         volumes.add(Solid.rod(new double[]{a, y, 0}, 2, c0 + .1, end, .94 * r, .9 * d / 4));
         round(a, y, c0, end, r);
 
-        double tube = Math.min(1, .4 * d), shellOd = Math.min(1, d / 2), flange = PipeSizes.flange(shellOd);
+        double tube = Math.min(PipeSizes.MAX_OUTSIDE, .4 * d), shellOd = Math.min(PipeSizes.MAX_OUTSIDE, d / 2), flange = PipeSizes.flange(shellOd);
         nozzles.add(radial(Role.TUBE_INLET, a, y, r, n, zn, -1, ColumnStructure.size(.25 * d, tube)));
         nozzles.add(radial(Role.TUBE_OUTLET, a, y, r, n, zn, 1, ColumnStructure.size(.25 * d, tube)));
         // The shell nozzles near the tubesheets, two rows at least behind the channel's (one free block between pipes).
@@ -884,7 +884,7 @@ public final class ProcessUnit {
         round(a, y, c0, ch1 + .1, rb);
         round(a, y, s0, s1, rk);
 
-        double tube = Math.min(1, .4 * db), liquid = Math.min(1, db / 2), vapour = Math.min(1, dk / 2), flange = PipeSizes.flange(liquid);
+        double tube = Math.min(PipeSizes.MAX_OUTSIDE, .4 * db), liquid = Math.min(PipeSizes.MAX_OUTSIDE, db / 2), vapour = Math.min(PipeSizes.MAX_OUTSIDE, dk / 2), flange = PipeSizes.flange(liquid);
         nozzles.add(radial(Role.TUBE_INLET, a, y, rb, nb, zn, 1, ColumnStructure.size(.25 * db, tube)));
         nozzles.add(radial(Role.TUBE_OUTLET, a, y, rb, nb, zn, -1, ColumnStructure.size(.15 * db, tube)));
         // The feed near the cone, two rows at least behind the channel's outlet (one free block between pipes).
@@ -2262,7 +2262,9 @@ public final class ProcessUnit {
             double t = 2 * Math.PI * (i + .5) / burners;
             at[i] = new double[]{a + circle * DeterministicMath.sin(t), a + circle * DeterministicMath.cos(t)};
         }
-        double yFuel = Math.floor(y0 - 1.2 - .5) + .5, pipe = .04 + .004 * dia;
+        // The ring header low enough that the fuel's line at a pipe's largest passes under the burners' mufflers (owner
+        // decision 2026-10-21: a 1 m pipe has a 1 m root, other components give way).
+        double yFuel = Math.floor(Math.min(y0 - 1.2, y0 - BURNER_DROP - .05 - PipeSizes.MAX_OUTSIDE / 2) - .5) + .5, pipe = .04 + .004 * dia;
         burners(at, register, y0, yFuel, pipe);
         for (int i = 0; i < burners; i++) {
             double[] p = {at[i][0], yFuel, at[i][1]}, q = {at[(i + 1) % burners][0], yFuel, at[(i + 1) % burners][1]};
@@ -2636,13 +2638,16 @@ public final class ProcessUnit {
         box(new double[]{Math.min(wall, outer), y - up, z - across}, new double[]{Math.max(wall, outer), y + up, z + across}, Material.MACHINE, false);
     }
 
+    /** How far a burner's muffler hangs under the floor, m. */
+    static final double BURNER_DROP = 1.05;
+
     /**
      * A heater's burners under its floor ({@code y0}) at {@code at}, {x, z} each: the air register drum ({@code register}
      * across, its louvre band and lever) under the floor, the muffler drum (1.3 times as wide, open underneath) under it,
      * and the gas riser from the fuel header at {@code yFuel} up through the muffler.
      */
     void burners(double[][] at, double register, double y0, double yFuel, double pipe) {
-        double muffler = 1.3 * register, low = y0 - 1.05;
+        double muffler = 1.3 * register, low = y0 - BURNER_DROP;
         for (var p : at) {
             var up = Frame.of(new double[]{p[0], 0, p[1]}, 1, 1);
             mesh.cylinder(up, register, y0 - .45, y0, 12, Material.MACHINE);
@@ -2874,6 +2879,12 @@ public final class ProcessUnit {
         double apothem = r * DeterministicMath.cos(Math.PI / n), half = PipeSizes.MAX_OUTSIDE / 2;
         return Math.sqrt(Math.max(0, apothem * apothem - half * half)) - .03;
     }
+
+    /**
+     * The least a nozzle's flange face stands off the surface its neck leaves: a pipe's largest hub and flange behind a
+     * 0.1 m neck (owner decision 2026-10-21: a 1 m pipe has a 1 m root, other components give way).
+     */
+    static final double NECK = .1 + PipeSizes.flangeThickness(PipeSizes.MAX_OUTSIDE) + PipeSizes.hub(PipeSizes.MAX_OUTSIDE) + .02;
 
     /** {@code v} held between {@code lo} and {@code hi}. */
     static double clamp(double v, double lo, double hi) {

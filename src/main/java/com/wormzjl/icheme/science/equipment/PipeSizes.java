@@ -2,14 +2,16 @@ package com.wormzjl.icheme.science.equipment;
 
 /**
  * Drawn proportions of a line and its flanges from its bore, shared by pipes, vessel nozzles and pipeline devices
- * (photo survey 2026-10-16, section 0: ASME B36.10 pipe and B16.5 / B16.47 Class 150 flanges). Sizes are capped at one
- * block (owner request 2026-10-16: pipes capped at 1 m for now).
+ * (photo survey 2026-10-16, section 0: ASME B36.10 pipe and B16.5 / B16.47 Class 150 flanges). A pipe is at most 0.8 m
+ * across, so that its flange stays within one block (owner decision 2026-10-25).
  */
 public final class PipeSizes {
     /** The smallest drawn outside diameter: one texel. */
     public static final double MIN_OUTSIDE = 1 / 16.0;
-    /** The largest drawn outside diameter: one block. */
-    public static final double MAX_OUTSIDE = 1;
+    /** The largest outside diameter: its flange, 1.25 OD + 85 mm, reaches one block. */
+    public static final double MAX_OUTSIDE = .8;
+    /** The largest bore: the one whose outside is {@link #MAX_OUTSIDE} ({@link #outside}). */
+    public static final double MAX_BORE = MAX_OUTSIDE / 1.1;
 
     private PipeSizes() {
     }

@@ -96,7 +96,7 @@ final class CondensingTurbineDesign extends UnitDesign {
      * (a cover nearer its block's face than 0.35 m, Dc 1.1 m and less), the inlet's block lies two rows under the outlet's.
      */
     static double[] heights(double d, double h) {
-        double slab = slab(d), r = .8 * d, cw = Math.min(1, .4 * d), box = Math.max(.35 * d, cw + .1), cover = .04 * d + .02, under = h - slab;
+        double slab = slab(d), r = .8 * d, cw = Math.min(PipeSizes.MAX_OUTSIDE, .4 * d), box = Math.max(.35 * d, cw + .1), cover = .04 * d + .02, under = h - slab;
         double j0 = .15 + .15 * d, jMax = under - 2 * r - 1.15;
         for (double c = Math.floor(Math.min(under - .2 * r - cw / 2 - .02 - j0, under - .5) - .5) + .5; c > 0 && under - 1.05 * r - c <= jMax + 1e-9; c--) {
             double lo = Math.max(j0, under - 1.05 * r - c), hi = Math.min(jMax, under - .2 * r - cw / 2 - .02 - c);
@@ -181,7 +181,7 @@ final class CondensingTurbineDesign extends UnitDesign {
             r = .8 * d;
             ring = .04 * d + .01;
             tube = .05 * d + .02;
-            cw = Math.min(1, .4 * d);
+            cw = Math.min(PipeSizes.MAX_OUTSIDE, .4 * d);
             box = Math.max(.35 * d, cw + .1);
             cover = .04 * d + .02;
             steam = t.steamLine();
@@ -201,7 +201,9 @@ final class CondensingTurbineDesign extends UnitDesign {
             xv = a + Math.max(t.valveOffset(), r + ring + steam / 2 + .08);
             half = Math.max(Math.max(r + ring + .3 + column, t.rightReach(xv - a) + .25), t.leftReach() + .25);
             yv = Math.max(h + .13 + rb, h + t.chestAxis() - .35 * d);
-            ys = Math.floor(h - Math.max(slab + .1 + steam / 2, 1.23) - .5) + .5;
+            // The steam's elbow under the deck low enough for a pipe's largest neck under the slab (owner decision 2026-10-21:
+            // a 1 m pipe has a 1 m root, other components give way).
+            ys = Math.floor(h - Math.max(slab + .05 + PipeSizes.MAX_OUTSIDE / 2, 1.23) - .5) + .5;
             // Along z: the table from just before the governor actuator; the condenser's shell under the exhaust neck, its
             // front water box as near the train's front as that allows, its middle on a cell centre (the inlet's line).
             zT0 = z0 - t.frontReach() - .15;

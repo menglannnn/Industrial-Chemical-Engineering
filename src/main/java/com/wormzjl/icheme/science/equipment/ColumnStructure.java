@@ -186,7 +186,7 @@ final class ColumnStructure {
         double d = s.diameter(), a = s.axis(), yB = s.bottomTangent();
         // The top neck rooted under the head where a pipe's largest neck's edge meets it (owner decision 2026-10-21: a 1 m
         // pipe has a 1 m root).
-        double topOd = size(.4 * d, 1), start = s.headSurface(PipeSizes.MAX_OUTSIDE / 2) - .03;
+        double topOd = size(.4 * d, PipeSizes.MAX_OUTSIDE), start = s.headSurface(PipeSizes.MAX_OUTSIDE / 2) - .03;
         var out = new ArrayList<EquipmentShape.Nozzle>();
         out.add(new EquipmentShape.Nozzle(EquipmentShape.Role.VAPOUR_OUTLET, new double[]{a, start, a}, 1, 1, Math.ceil(s.top() + EquipmentShape.STAND_OUT) - start, topOd, 0));
         double sump = ColumnTrays.bottomSpace(d);
@@ -198,7 +198,7 @@ final class ColumnStructure {
             side(s, clearance, placed, EquipmentShape.Role.PUMPAROUND_DRAW, yB + t.trayHeight(d, p.draw()) - .2, 0, -1, size(d / 6, .6));
             side(s, clearance, placed, EquipmentShape.Role.RETURN, yB + t.trayHeight(d, p.ret()) + .3, 0, -1, size(d / 6, .6));
         }
-        side(s, clearance, placed, EquipmentShape.Role.VAPOUR_RETURN, yB + .75 * sump, 0, 1, size(.27 * d, 1));
+        side(s, clearance, placed, EquipmentShape.Role.VAPOUR_RETURN, yB + .75 * sump, 0, 1, size(.27 * d, PipeSizes.MAX_OUTSIDE));
         for (int draw : t.draws()) side(s, clearance, placed, EquipmentShape.Role.DRAW, yB + t.trayHeight(d, draw) - .2, 0, 1, size(d / 8, .5));
         for (int stage : t.steam())
             side(s, clearance, placed, EquipmentShape.Role.STEAM, yB + (stage > t.trays() ? sump : t.trayHeight(d, stage)) - .3, 0, 1, size(d / 8, .5));

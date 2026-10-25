@@ -30,7 +30,8 @@ class MoverSoundVolumeTest {
             assertEquals(MoverSoundVolume.of(original),MoverSoundVolume.of(raised));
         }
         assertEquals(0,MoverSoundVolume.of(EquipmentShape.drum(2,4,EquipmentShape.Orientation.VERTICAL,EquipmentShape.Heading.NORTH,4)));
-        assertEquals(.35,MoverSoundVolume.of(shape(EquipmentShape.Kind.PUMP,.4,1,EquipmentShape.Heading.NORTH)),1e-6);
+        // The pump range ends at 0.6 m (its suction a pipe's largest, 0.8 m): a 0.4 m pump sits 0.35 / 0.55 along it.
+        assertEquals(.10+.50*.35/.55,MoverSoundVolume.of(shape(EquipmentShape.Kind.PUMP,.4,1,EquipmentShape.Heading.NORTH)),1e-6);
     }
     private static EquipmentShape shape(EquipmentShape.Kind kind,double size,int count,EquipmentShape.Heading front){return EquipmentShape.unit(kind,size,count,front,UnitDesign.of(kind).defaultSupport(size,count));}
 }

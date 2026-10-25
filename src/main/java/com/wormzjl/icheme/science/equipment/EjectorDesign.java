@@ -13,7 +13,7 @@ final class EjectorDesign extends UnitDesign {
 
     @Override
     public double maxSize() {
-        return 1;
+        return PipeSizes.MAX_OUTSIDE;
     }
 
     @Override

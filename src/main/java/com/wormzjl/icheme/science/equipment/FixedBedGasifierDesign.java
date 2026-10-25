@@ -665,10 +665,10 @@ final class FixedBedGasifierDesign extends UnitDesign {
             double vent = ventOd(), base = st.roof + Access.DECK + .2;
             u.nozzles.add(ProcessUnit.end(Role.VENT, new double[]{a - ventOut(), base, c - 1}, 1, 1, vent));
             // Coal into the bunker's roof, ash out of the chute 1 m over grade.
-            double coal = Math.min(1, ColumnStructure.size(.2 * d + .2, 1)), roof = st.y11;
+            double coal = ColumnStructure.size(.2 * d + .2, PipeSizes.MAX_OUTSIDE), roof = st.y11;
             u.nozzles.add(ProcessUnit.end(Role.SOLIDS_INLET, new double[]{a, roof - .03, c}, 1, 1, coal));
             double ash = 2 * st.rChute;
-            u.nozzles.add(ProcessUnit.end(Role.SOLIDS_OUTLET, new double[]{a, 1.3, c}, 1, -1, ColumnStructure.size(ash, ash)));
+            u.nozzles.add(ProcessUnit.end(Role.SOLIDS_OUTLET, new double[]{a, 1.3, c}, 1, -1, ColumnStructure.size(ash, Math.min(ash, PipeSizes.MAX_OUTSIDE))));
             // The wash cooler: quench liquor on top, gas liquor out of the bottom, syngas out of its east side near the bottom.
             // Each neck rooted where a pipe's largest neck's edge meets the cooler (owner decision 2026-10-21: a 1 m pipe has
             // a 1 m root): a head's under the head, the syngas's under the shell.

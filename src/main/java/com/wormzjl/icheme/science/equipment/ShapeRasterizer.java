@@ -524,7 +524,7 @@ public final class ShapeRasterizer {
             saddles = shape.saddleCentres();
             openingHeight = shape.openingHeight();
             openingRadius = shape.openingRadius();
-            portLow = openingHeight - openingRadius - EquipmentShape.PORT_COLLAR - .05;
+            portLow = Math.max(EquipmentShape.PLATE, openingHeight - openingRadius - EquipmentShape.PORT_COLLAR - .05);
             portHigh = openingHeight + openingRadius + EquipmentShape.PORT_COLLAR + .05;
             hollow = shape.skirt();
             innerRadius = radius - EquipmentShape.SKIRT_WALL / apothemFactor;
@@ -793,7 +793,7 @@ public final class ShapeRasterizer {
          */
         private void skirtPort(Mesh m, double line) {
             var f = openingFrame();
-            double apothem = radius * apothemFactor, port = line + EquipmentShape.PORT_CLEARANCE, rim = port + EquipmentShape.PORT_COLLAR;
+            double apothem = radius * apothemFactor, port = EquipmentShape.portRadius(2 * line), rim = port + EquipmentShape.PORT_COLLAR;
             double outer = radius + 1 / 16.0, back = apothem - .12;
             for (int i = 0; i < n; i++) if (portFacet(i)) skirtFace(m, i, portLow, portHigh, port);
             int sides = Math.max(16, PipeSizes.sides(2 * rim));

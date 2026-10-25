@@ -259,7 +259,9 @@ final class GrateBoilerDesign extends UnitDesign {
             }
             yM = s + .4;
             rs = .5 + .03 * w;
-            yS = Math.ceil(yR + 1.3 - .5) + .5;
+            // The steam drum's line on a cell centre high enough that its side lines at a pipe's largest pass over the drum
+            // deck's rail (owner decision 2026-10-21: a 1 m pipe has a 1 m root, other components give way).
+            yS = Math.ceil(yR + Access.DECK + Access.FENCE + .05 + PipeSizes.MAX_OUTSIDE / 2 - .5) + .5;
         }
 
         void run() {

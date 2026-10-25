@@ -394,7 +394,7 @@ class ProcessUnitTest {
         var bank = new ProcessUnit.Bank(2, 2);
         var cases = Map.of(EquipmentShape.unit(Kind.AIR_COOLER, 3, 6, Heading.EAST, 4, bank), bank.bays() * ProcessUnit.fans(3, 6).count(),
                 EquipmentShape.unit(Kind.PUMP, .05, 1, Heading.NORTH, 0), 2, EquipmentShape.unit(Kind.PUMP, .25, 1, Heading.EAST, 0), 2,
-                EquipmentShape.unit(Kind.PUMP, .75, 1, Heading.SOUTH, 0), 2, EquipmentShape.unit(Kind.COMPRESSOR, .15, 2, Heading.NORTH, 2), 3,
+                EquipmentShape.unit(Kind.PUMP, .6, 1, Heading.SOUTH, 0), 2, EquipmentShape.unit(Kind.COMPRESSOR, .15, 2, Heading.NORTH, 2), 3,
                 EquipmentShape.unit(Kind.COMPRESSOR, .45, 4, Heading.WEST, ProcessUnit.minSupport(Kind.COMPRESSOR, .45, 4)), 5,
                 EquipmentShape.unit(Kind.EXCHANGER, 1, 4, Heading.NORTH, 2), 0, EquipmentShape.unit(Kind.VERTICAL_HEATER, 2.5, 4, Heading.NORTH, 3), 0);
         for (var entry : cases.entrySet()) {

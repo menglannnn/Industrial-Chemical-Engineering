@@ -60,10 +60,11 @@ public record EquipmentShape(Kind kind, double diameter, double tangentLength, O
     public static final double STAND_OUT = .15;
     /**
      * The row a skirted vessel's bottom outlet line leaves the skirt on, through the centre of its skirt port: the lowest
-     * cell centre where a pipe's largest line's port (its clearance and collar) clears the base plate and its flange grade
-     * (owner decision 2026-10-21: the hole takes the pipe's size, up to 1 m).
+     * cell centre, where a pipe's largest line clears the base plate and its flange touches grade (owner decisions
+     * 2026-10-21: the hole takes the pipe's size; 2026-10-25: pipes at most 0.8 m, a lower skirt). The hole's clearance
+     * narrows over the base plate ({@link #portRadius}).
      */
-    public static final double SKIRT_OUTLET = 1.5;
+    public static final double SKIRT_OUTLET = .5;
     /**
      * A skirt port, m: the hole in the skirt plate is the line's outside this much round it, at every pipe size, and a
      * collar this wide rings it (owner requests 2026-10-16: the port scales with the line; 2026-10-21: "Skirt hole needs
@@ -72,6 +73,15 @@ public record EquipmentShape(Kind kind, double diameter, double tangentLength, O
     public static final double PORT_CLEARANCE = .05, PORT_COLLAR = 1 / 32.0;
     /** How far under the bottom head's pole a skirt's outlet line's elbow (bend radius 1 D) tops out, m. */
     public static final double ELBOW_CLEARANCE = .05;
+
+    /**
+     * A skirt port's hole round a line of outside {@code line}, radius: the line's half and {@link #PORT_CLEARANCE}, the
+     * clearance narrowing so the hole stays 5 mm over the base plate (a line near a pipe's largest on
+     * {@link #SKIRT_OUTLET}); its collar may reach over the base ring there.
+     */
+    public static double portRadius(double line) {
+        return Math.min(line / 2 + PORT_CLEARANCE, SKIRT_OUTLET - PLATE - .005);
+    }
     /** A drum's skirt plate, m (a texel), drawn on both faces: its inside shows through the opening and the slots. */
     public static final double SKIRT_WALL = 1 / 16.0;
     /** The most side connections a drum takes: with its two fixed outlets, every nozzle's size fits in a cell key. */
@@ -551,8 +561,8 @@ public record EquipmentShape(Kind kind, double diameter, double tangentLength, O
 
     /**
      * The lowest skirt, m: one whose bottom outlet line carries a pipe's largest on {@link #SKIRT_OUTLET}, its elbow (bend
-     * radius 1 D) {@link #ELBOW_CLEARANCE} under the bottom head's pole (owner decision 2026-10-21: a 1 m pipe has a 1 m
-     * root and the skirt gives way; 3 m for D 0.5 to 1.5, 4 m to D 5.5, 5 m to D 9.5, 7 m for a D 15 column).
+     * radius 1 D) {@link #ELBOW_CLEARANCE} under the bottom head's pole (owner decisions 2026-10-21: the skirt gives way
+     * to the line; 2026-10-25: a lower skirt; 2 m to D 2.5, 3 m to D 6.5, 4 m to D 10.5, 6 m for a D 15 column).
      */
     public static int minimumSkirt(double diameter) {
         return (int) Math.ceil(SKIRT_OUTLET + PipeSizes.MAX_OUTSIDE + ELBOW_CLEARANCE + diameter / 4 - 1e-9);
@@ -784,7 +794,7 @@ public record EquipmentShape(Kind kind, double diameter, double tangentLength, O
         }
         if (!orientation.horizontal()) {
             // Top head centre: the vapour outlet.
-            double topOd = Math.min(1, diameter / 2);
+            double topOd = Math.min(PipeSizes.MAX_OUTSIDE, diameter / 2);
             double topBase = headSurface(PipeSizes.MAX_OUTSIDE / 2) - .03;
             out.add(new Nozzle(Role.VAPOUR_OUTLET, new double[]{a, topBase, a}, 1, 1, Math.ceil(top() + STAND_OUT) - topBase, clampOd(.2 * diameter, topOd), 0));
             // Liquid outlet. On a skirt it is the bottom outlet (owner report 2026-10-16), through the skirt's port.
@@ -793,7 +803,7 @@ public record EquipmentShape(Kind kind, double diameter, double tangentLength, O
             else {
                 // Without room under the head: the lowest cell centre at least 0.25 m above the bottom tangent, facing the front (frame -z).
                 double yL = Math.ceil(bT + .25 - .5) + .5;
-                double liquidOd = Math.min(Math.min(1, diameter / 2), 2 * (Math.min(yL - bT, tT - yL) - .05));
+                double liquidOd = Math.min(Math.min(PipeSizes.MAX_OUTSIDE, diameter / 2), 2 * (Math.min(yL - bT, tT - yL) - .05));
                 if (yL < tT && liquidOd > .05)
                     out.add(side(Role.LIQUID_OUTLET, a, yL, 2, -1, apothem, clampOd(.1 * diameter, liquidOd)));
             }
@@ -801,7 +811,7 @@ public record EquipmentShape(Kind kind, double diameter, double tangentLength, O
             return out;
         }
         // Horizontal: the vapour outlet on top (frame +x) near the far end, a liquid outlet low on the front head (frame -y).
-        double topOd = Math.min(1, diameter / 2);
+        double topOd = Math.min(PipeSizes.MAX_OUTSIDE, diameter / 2);
         // A drum too short for a connection beside it: the outlet at the cell centre nearest its middle.
         double far = Math.floor(tT - 1) + .5;
         if (far < Math.ceil(bT) + .5) far = Math.floor((bT + tT) / 2) + .5;
@@ -809,7 +819,7 @@ public record EquipmentShape(Kind kind, double diameter, double tangentLength, O
         out.add(new Nozzle(Role.VAPOUR_OUTLET, new double[]{topStart + a, far, a}, 0, 1, Math.ceil(a + r + STAND_OUT) - (topStart + a), clampOd(.2 * diameter, topOd), 0));
         // Low on the front head: the lowest cell centre at least 0.3 m above the shell's bottom.
         double xH = Math.ceil(a - r + .3 - .5) + .5, e = a - xH;
-        double headOd = Math.min(Math.min(1, diameter / 2), 2 * (.85 * r - Math.abs(e)));
+        double headOd = Math.min(Math.min(PipeSizes.MAX_OUTSIDE, diameter / 2), 2 * (.85 * r - Math.abs(e)));
         if (headOd > .05) {
             double edge = (Math.abs(e) + PipeSizes.MAX_OUTSIDE / 2) / r, depth = headDepth() * Math.sqrt(Math.max(0, 1 - edge * edge));
             double start = bT - depth + .03;
@@ -818,7 +828,7 @@ public record EquipmentShape(Kind kind, double diameter, double tangentLength, O
         var b = bootPlace();
         if (b != null) {
             // The boot's drain at its bottom head's centre, facing down (photo survey A), its pipe straight down.
-            double rb = b.diameter() / 2, bottom = a - r - b.length(), depth = b.diameter() / 4, od = Math.min(1, rb);
+            double rb = b.diameter() / 2, bottom = a - r - b.length(), depth = b.diameter() / 4, od = Math.min(PipeSizes.MAX_OUTSIDE, rb);
             double edge = PipeSizes.MAX_OUTSIDE / 2 / rb, base = bottom - depth * Math.sqrt(Math.max(0, 1 - edge * edge)) + .03, apex = bottom - depth;
             out.add(new Nozzle(Role.BOOT_DRAIN, new double[]{base, b.station(), a}, 0, -1, base - Math.floor(apex - STAND_OUT), clampOd(.05 * diameter, od), 0));
         }
@@ -833,7 +843,7 @@ public record EquipmentShape(Kind kind, double diameter, double tangentLength, O
      */
     private Nozzle connection(Connection c, double a, double bT, double tT, double apothem) {
         double y = c.station() + .5, off = Math.abs(c.offset());
-        double od = Math.min(Math.min(1, diameter / 2), 2 * Math.min(Math.min(y - bT, tT - y) - .05, .85 * radius() - off));
+        double od = Math.min(Math.min(PipeSizes.MAX_OUTSIDE, diameter / 2), 2 * Math.min(Math.min(y - bT, tT - y) - .05, .85 * radius() - off));
         double edge = off + PipeSizes.MAX_OUTSIDE / 2, start = Math.sqrt(Math.max(0, apothem * apothem - edge * edge)) - .03;
         double surface = a + c.sign() * outerRadius(), plane = c.sign() > 0 ? Math.ceil(surface + STAND_OUT) : Math.floor(surface - STAND_OUT);
         var base = new double[]{a, y, a};
@@ -956,11 +966,11 @@ public record EquipmentShape(Kind kind, double diameter, double tangentLength, O
      * Whether a skirted vessel's bottom outlet line fits under its head (owner requests 2026-10-16: the line follows the
      * pipe and rises with the skirt; 2026-10-21: the skirt hole takes the pipe's size, up to 1 m): on
      * {@link #SKIRT_OUTLET}, a pipe's largest line's elbow {@link #ELBOW_CLEARANCE} under the bottom head's pole and its
-     * port, the line's clearance and collar round it, 0.1 m under the head seam. Every skirt from {@link #minimumSkirt} up.
+     * port, its hole and collar round it, 0.1 m under the head seam. Every skirt from {@link #minimumSkirt} up.
      */
     private boolean skirtOutletFits() {
         double max = PipeSizes.MAX_OUTSIDE, pole = bottomTangent() - headDepth();
-        return skirt() && SKIRT_OUTLET + max + ELBOW_CLEARANCE <= pole + 1e-9 && SKIRT_OUTLET + max / 2 + PORT_CLEARANCE + PORT_COLLAR <= bottomTangent() - .1;
+        return skirt() && SKIRT_OUTLET + max + ELBOW_CLEARANCE <= pole + 1e-9 && SKIRT_OUTLET + portRadius(max) + PORT_COLLAR <= bottomTangent() - .1;
     }
 
     /**
@@ -968,7 +978,7 @@ public record EquipmentShape(Kind kind, double diameter, double tangentLength, O
      * own outside and {@link #PORT_CLEARANCE} ({@link ShapeRasterizer}, per pipe size).
      */
     public double openingRadius() {
-        return skirtOutletFits() ? PipeSizes.MAX_OUTSIDE / 2 + PORT_CLEARANCE : 0;
+        return skirtOutletFits() ? portRadius(PipeSizes.MAX_OUTSIDE) : 0;
     }
 
     /** Centre height of a skirt's port, or 0: on its bottom outlet line. */

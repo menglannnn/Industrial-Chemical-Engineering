@@ -579,8 +579,8 @@ final class FluidizedBedGasifierLayout {
         double yo = distributor();
         u.line(header() / 2, Material.PIPE, new double[]{xo, yo, za - Math.sqrt(Math.max(0, ro * ro - (a - xo) * (a - xo)))}, new double[]{xo, yo, zo}, new double[]{xo, 1.5, zo});
         u.nozzles.add(ProcessUnit.front(Role.OXIDANT, xo, 1.5, zo - header() / 2, ox));
-        // SYNGAS: survey clamp(0.17 ID, 0.25, 1.0).
-        double sg = Math.max(.25, Math.min(1, .17 * id)), ysg = Math.floor(ysc0 + .3 + sg / 2) + .5;
+        // SYNGAS: survey clamp(0.17 ID, 0.25, 1.0), held at a pipe's largest.
+        double sg = Math.max(.25, Math.min(PipeSizes.MAX_OUTSIDE, .17 * id)), ysg = Math.floor(ysc0 + .3 + sg / 2) + .5;
         u.nozzles.add(ProcessUnit.radialSide(Role.SYNGAS, a, ysg, zs, dsc / 2, ProcessUnit.sides(dsc), 1, sg));
         // The drum's water and steam: 0.04 ID. Each neck rooted under the drum where a pipe's largest neck's edge meets it
         // (owner decision 2026-10-21: a 1 m pipe has a 1 m root); the flange faces stay put.

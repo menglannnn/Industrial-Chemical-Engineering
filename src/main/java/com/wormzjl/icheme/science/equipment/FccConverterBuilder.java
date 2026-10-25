@@ -32,8 +32,8 @@ import static com.wormzjl.icheme.science.equipment.Mesh.*;
  * <li>The stair tower on the +x face ({@link ProcessUnit#stairTower}): two lanes of 0.9 m flights, at most 3.6 m a flight,
  * landings 1.2 m deep at both ends on corner posts and beams, opening onto every floor through its +x handrail.</li>
  * </ul>
- * Lines wider than 1 m (air, flue gas, vapour) are drawn at their size and end in a 15° concentric reducer to a 1 m
- * nozzle. The layout's x and z are shifted half a block ({@link #O}) so both axes run through cell centres.
+ * Lines wider than a pipe's largest (air, flue gas, vapour; {@link PipeSizes#MAX_OUTSIDE}) are drawn at their size and end
+ * in a 15° concentric reducer to a nozzle of that size. The layout's x and z are shifted half a block ({@link #O}) so both axes run through cell centres.
  */
 final class FccConverterBuilder {
     private static final double[] UP = {0, 1, 0}, DOWN = {0, -1, 0}, PLUS_X = {1, 0, 0}, MINUS_X = {-1, 0, 0}, PLUS_Z = {0, 0, 1}, MINUS_Z = {0, 0, -1};
@@ -224,8 +224,8 @@ final class FccConverterBuilder {
         u.solids.add(Solid.rod(p(ax, 0, hz), 1, yLow + r2, l.airIn - r1, ra, 0));
         u.solids.add(Solid.rod(p(ax, yLow, 0), 2, zEnd + O, hz - r2 + O, ra, 0));
         var end = p(ax, yLow, zEnd);
-        if (a > 1) end = u.reducer(end, MINUS_Z, ra, .5, taper(ra), np, Material.PIPE, false);
-        double airOd = a > 1 ? 1 : PipeSizes.od(a, .1, 1);
+        if (a > PipeSizes.MAX_OUTSIDE) end = u.reducer(end, MINUS_Z, ra, PipeSizes.MAX_OUTSIDE / 2, taper(ra), np, Material.PIPE, false);
+        double airOd = PipeSizes.od(a, .1, PipeSizes.MAX_OUTSIDE);
         u.nozzles.add(ProcessUnit.front(Role.AIR, end[0], yLow, end[2], airOd));
         // Out of the heater's lower back, under the regenerator and up into its bottom head.
         double r3 = a, yo = l.airOut, apex = l.support - l.head;
@@ -559,8 +559,8 @@ final class FccConverterBuilder {
         u.solids.add(Solid.rod(p(0, y, 0), 0, xEnd + O, -bend + O, rf, 0));
         u.round(p(0, y, 0), 0, xEnd + O, -bend + O, rf);
         var end = p(xEnd, y, 0);
-        if (l.flue > 1) end = u.reducer(end, MINUS_X, rf, .5, taper(rf), nf, Material.PIPE, false);
-        double flueOd = l.flue > 1 ? 1 : PipeSizes.od(l.flue, .1, 1);
+        if (l.flue > PipeSizes.MAX_OUTSIDE) end = u.reducer(end, MINUS_X, rf, PipeSizes.MAX_OUTSIDE / 2, taper(rf), nf, Material.PIPE, false);
+        double flueOd = PipeSizes.od(l.flue, .1, PipeSizes.MAX_OUTSIDE);
         u.nozzles.add(ProcessUnit.end(Role.FLUE_GAS, end, 0, -1, flueOd));
         // Vapour, on past the stair tower's outer side.
         double rv = l.vapour / 2, bv = 1.5 * l.vapour, top = l.reactorTop + l.rr / 2, yv = vapourAxis(), x = l.x;
@@ -573,8 +573,8 @@ final class FccConverterBuilder {
         u.solids.add(Solid.rod(p(0, yv, 0), 0, x + bv + O, xv + O, rv, 0));
         u.round(p(0, yv, 0), 0, x + bv + O, xv + O, rv);
         var out = p(xv, yv, 0);
-        if (l.vapour > 1) out = u.reducer(out, PLUS_X, rv, .5, taper(rv), nv, Material.CLADDING, false);
-        double vapourOd = l.vapour > 1 ? 1 : PipeSizes.od(l.vapour, .1, 1);
+        if (l.vapour > PipeSizes.MAX_OUTSIDE) out = u.reducer(out, PLUS_X, rv, PipeSizes.MAX_OUTSIDE / 2, taper(rv), nv, Material.CLADDING, false);
+        double vapourOd = PipeSizes.od(l.vapour, .1, PipeSizes.MAX_OUTSIDE);
         u.nozzles.add(ProcessUnit.end(Role.VAPOUR_OUTLET, out, 0, 1, vapourOd));
     }
 
@@ -595,9 +595,9 @@ final class FccConverterBuilder {
         return Math.max(3, (int) Math.ceil(bend * Math.PI / 2 / .9));
     }
 
-    /** The length of a 15° concentric reducer ({@link ProcessUnit#reducer}) from a line of radius {@code r} down to the 1 m nozzle. */
+    /** The length of a 15° concentric reducer ({@link ProcessUnit#reducer}) from a line of radius {@code r} down to a pipe's largest. */
     private static double taper(double r) {
-        return (r - .5) / FccConverterLayout.TAN15;
+        return (r - PipeSizes.MAX_OUTSIDE / 2) / FccConverterLayout.TAN15;
     }
 
     // ---- Frame helpers ------------------------------------------------------------------------------------------------

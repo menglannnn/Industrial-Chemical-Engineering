@@ -72,7 +72,7 @@ class ShapeRasterizerTest {
             EquipmentShape.unit(Kind.EXCHANGER, 2.5, 12, Heading.WEST, 3), EquipmentShape.unit(Kind.KETTLE, .5, 2, Heading.SOUTH, 2),
             EquipmentShape.unit(Kind.KETTLE, 2, 10, Heading.EAST, 2), EquipmentShape.unit(Kind.AIR_COOLER, 3, 6, Heading.NORTH, 5),
             EquipmentShape.unit(Kind.EJECTOR, .1, 1, Heading.NORTH, 1), EquipmentShape.unit(Kind.EJECTOR, .3, 1, Heading.EAST, 5),
-            EquipmentShape.unit(Kind.EJECTOR, 1, 1, Heading.WEST, 2), EquipmentShape.unit(Kind.PUMP, .05, 1, Heading.NORTH, 0),
+            EquipmentShape.unit(Kind.EJECTOR, PipeSizes.MAX_OUTSIDE, 1, Heading.WEST, 2), EquipmentShape.unit(Kind.PUMP, .05, 1, Heading.NORTH, 0),
             EquipmentShape.unit(Kind.PUMP, .4, 1, Heading.EAST, 0), EquipmentShape.unit(Kind.COMPRESSOR, .15, 2, Heading.SOUTH, ProcessUnit.minSupport(Kind.COMPRESSOR, .15, 2)),
             EquipmentShape.unit(Kind.COMPRESSOR, .8, 6, Heading.NORTH, ProcessUnit.minSupport(Kind.COMPRESSOR, .8, 6)),
             EquipmentShape.unit(Kind.VERTICAL_HEATER, 4, 8, Heading.NORTH, 3), EquipmentShape.unit(Kind.CABIN_HEATER, 6, 12, Heading.WEST, 3),
@@ -101,9 +101,12 @@ class ShapeRasterizerTest {
         assertThrows(IllegalArgumentException.class, () -> EquipmentShape.column(3, ColumnTrays.simple(12, 6), Heading.NORTH, 0));
         assertThrows(IllegalArgumentException.class, () -> new EquipmentShape(EquipmentShape.Kind.COLUMN, 3, 4, Orientation.VERTICAL, Heading.NORTH, 2, ColumnTrays.simple(12, 6), List.of(),
                 ProcessUnit.Bank.ONE, false));
-        assertEquals(5, EquipmentShape.minimumSkirt(6));
-        assertEquals(5, EquipmentShape.defaultSupport(6, Orientation.VERTICAL));
-        assertEquals(6, EquipmentShape.defaultSupport(10, Orientation.VERTICAL));
+        // Owner decision 2026-10-25: a lower skirt, the bottom line on the lowest row: ceil(0.5 + 0.8 + 0.05 + D/4).
+        assertEquals(2, EquipmentShape.minimumSkirt(2.5));
+        assertEquals(3, EquipmentShape.minimumSkirt(6));
+        assertEquals(6, EquipmentShape.minimumSkirt(15));
+        assertEquals(3, EquipmentShape.defaultSupport(6, Orientation.VERTICAL));
+        assertEquals(4, EquipmentShape.defaultSupport(10, Orientation.VERTICAL));
         assertEquals(1, EquipmentShape.defaultSupport(10, Orientation.HORIZONTAL));
     }
 
@@ -124,15 +127,13 @@ class ShapeRasterizerTest {
 
     @Test
     void partsCarryTheirMaterials() {
-        // Skirt row 0 (base ring, chairs, floor plate), row 1 (the bottom outlet with its flange and bolts leaving through
-        // its port, at 1.5 m so a pipe's largest and its elbow fit under the head: owner decision 2026-10-21), the skirt row
-        // under the head seam (the head inside it, the band over the seam, the vents' dark bores), a shell row, the top head
-        // with its nozzle.
-        var standing = drum(6, 10, Orientation.VERTICAL, Heading.NORTH, 5);
-        assertEquals(EnumSet.of(Material.SUPPORT), materials(standing, 0, 1));
-        assertEquals(EnumSet.of(Material.SUPPORT, Material.PIPE, Material.FLANGE, Material.BOLT), materials(standing, 1, 2));
-        assertEquals(EnumSet.of(Material.SUPPORT, Material.HEAD, Material.FLANGE, Material.OPENING), materials(standing, 4, 5));
-        assertEquals(Set.of(Material.SHELL), materials(standing, 7, 8));
+        // Skirt row 0 (base ring, chairs, floor plate, the bottom outlet with its flange and bolts leaving through its port
+        // on the lowest row: owner decision 2026-10-25, a lower skirt), the skirt row under the head seam (the head inside
+        // it, the band over the seam, the vents' dark bores), a shell row, the top head with its nozzle.
+        var standing = drum(6, 10, Orientation.VERTICAL, Heading.NORTH, 3);
+        assertEquals(EnumSet.of(Material.SUPPORT, Material.PIPE, Material.FLANGE, Material.BOLT), materials(standing, 0, 1));
+        assertEquals(EnumSet.of(Material.SUPPORT, Material.HEAD, Material.FLANGE, Material.OPENING), materials(standing, 2, 3));
+        assertEquals(Set.of(Material.SHELL), materials(standing, 5, 6));
         assertTrue(materials(standing, standing.sizeY() - 1, standing.sizeY()).containsAll(Set.of(Material.HEAD, Material.PIPE, Material.FLANGE)));
         // A lying drum's lowest row holds only its saddles.
         assertEquals(Set.of(Material.SUPPORT), materials(drum(3, 9, Orientation.HORIZONTAL, Heading.NORTH, 2), 0, 1));
@@ -235,6 +236,8 @@ class ShapeRasterizerTest {
     void aDrumsFluidNodeIsAShellCell() {
         for (var shape : SHAPES)
             if (shape.reservoir()) assertTrue(ShapeRasterizer.layout(shape).shell().contains(ShapeRasterizer.fluidCell(shape)), shape.toString());
+            // A mover's node is its suction nozzle's port cell (batch 2026-10-23-functional-pumps-compressors).
+            else if (shape.kind().mover()) assertTrue(ShapeRasterizer.ports(shape).stream().anyMatch(p -> p.cell().equals(ShapeRasterizer.fluidCell(shape))), shape.toString());
             else assertNull(ShapeRasterizer.fluidCell(shape), shape.toString());
     }
 
@@ -421,15 +424,17 @@ class ShapeRasterizerTest {
     @Test
     void aPipeOfAnySizeHasANeckOfItsOwnSize() {
         // Owner decision 2026-10-16: resizing starts where the port meets the vessel, never at the flange; 2026-10-21: "if I
-        // have a 1m pipe then the root needs to be 1m". A 1 m line on the bottom outlet, whose skirt port is cut for a
-        // 0.69 m line: the flange is the line's, and so is the neck from its root to the flange's hub, with no reducer.
+        // have a 1m pipe then the root needs to be 1m"; 2026-10-25: pipes at most 0.8 m. A line of a pipe's largest on the
+        // bottom outlet: the flange is the line's, and so is the neck from its root to the flange's hub, with no reducer.
         var standing = drum(3, 4, Orientation.VERTICAL, Heading.NORTH, 4);
         int k = 0;
         while (standing.nozzles().get(k).role() != EquipmentShape.Role.LIQUID_OUTLET) k++;
         var nozzle = standing.nozzles().get(k);
         double[] line = new double[standing.nozzles().size()];
-        line[k] = 1;
-        double flange = 0, neck = 0, hub = 0, taper = nozzle.length() - PipeSizes.flangeThickness(1) - PipeSizes.hub(1);
+        // Drawn in 1/64 m steps: 0.8 m is drawn at 51/64.
+        double max = PipeSizes.outsideOf(PipeSizes.code(PipeSizes.MAX_OUTSIDE));
+        line[k] = max;
+        double flange = 0, neck = 0, hub = 0, taper = nozzle.length() - PipeSizes.flangeThickness(max) - PipeSizes.hub(max);
         for (var cell : ShapeRasterizer.nozzleCells(standing, k))
             for (var polygon : ShapeRasterizer.surface(ShapeRasterizer.key(standing, cell.x(), cell.y(), cell.z(), ShapeRasterizer.cellCodes(standing, cell, line))))
                 for (int i = 0; i < polygon.size(); i++) {
@@ -444,20 +449,20 @@ class ShapeRasterizerTest {
                         if (s <= taper + 1e-9) neck = Math.max(neck, rho);
                         else hub = Math.max(hub, rho);
                 }
-        assertEquals(PipeSizes.flange(1) / 2, flange, 1e-6);
-        assertEquals(.5, neck, 1e-6);
-        assertEquals(PipeSizes.hubOutside(1) / 2, hub, 1e-6);
+        assertEquals(PipeSizes.flange(max) / 2, flange, 1e-6);
+        assertEquals(max / 2, neck, 1e-6);
+        assertEquals(PipeSizes.hubOutside(max) / 2, hub, 1e-6);
     }
 
     @Test
     void bottomLineCarriesAPipesLargestOnEverySkirt() {
         // Owner requests 2026-10-16 ("1m pipe on the bottom of drum & column still looks weird", decided: the line rises
-        // with the skirt) and 2026-10-21 ("Skirt hole needs to adapt to the size of the pipe to max 1m"; the skirt gives
-        // way): every skirted drum and column carries a 1 m line on SKIRT_OUTLET, its flange clear of grade, its port (the
-        // line's clearance and collar) clear of the base plate and the head seam, its elbow (bend 1 D) under the head's
-        // pole, its riser up from the elbow at the axis, and its neck's hub before its flange face. One metre less skirt is
-        // refused.
-        double max = PipeSizes.MAX_OUTSIDE, ring = EquipmentShape.PORT_CLEARANCE + EquipmentShape.PORT_COLLAR;
+        // with the skirt), 2026-10-21 ("Skirt hole needs to adapt to the size of the pipe to max 1m"; the skirt gives way)
+        // and 2026-10-25 (pipes at most 0.8 m, a lower skirt): every skirted drum and column carries a line of a pipe's
+        // largest on SKIRT_OUTLET, its flange clear of grade, the line and its hole clear of the base plate, the hole and
+        // collar under the head seam, its elbow (bend 1 D) under the head's pole, its riser up from the elbow at the axis,
+        // and its neck's hub before its flange face. One metre less skirt is refused.
+        double max = PipeSizes.MAX_OUTSIDE, port = EquipmentShape.portRadius(max);
         for (boolean column : new boolean[]{false, true})
             for (double d = EquipmentShape.MIN_DIAMETER; d <= (column ? EquipmentShape.MAX_COLUMN_DIAMETER : EquipmentShape.MAX_DIAMETER); d += .5) {
                 double size = d;
@@ -473,10 +478,11 @@ class ShapeRasterizerTest {
                     String at = shape + " line at " + c;
                     assertEquals(EquipmentShape.SKIRT_OUTLET, c, 0, at);
                     assertEquals(c, shape.openingHeight(), 0, at);
-                    assertEquals(max / 2 + EquipmentShape.PORT_CLEARANCE, shape.openingRadius(), 1e-12, at);
-                    assertTrue(c - PipeSizes.flange(max) / 2 >= 0, at);
-                    assertTrue(c - max / 2 - ring >= EquipmentShape.PLATE, at);
-                    assertTrue(c + max / 2 + ring <= shape.bottomTangent() - .1, at);
+                    assertEquals(port, shape.openingRadius(), 1e-12, at);
+                    assertTrue(c - PipeSizes.flange(max) / 2 >= -1e-12, at);
+                    assertTrue(c - port >= EquipmentShape.PLATE, at);
+                    assertTrue(port >= max / 2 + .03, at);
+                    assertTrue(c + port + EquipmentShape.PORT_COLLAR <= shape.bottomTangent() - .1, at);
                     assertTrue(c + max + EquipmentShape.ELBOW_CLEARANCE <= pole + 1e-9, at);
                     assertTrue(line.riser() > c + max, at);
                     assertEquals(shape.axis(), line.base()[2] + max, 1e-12, at);
@@ -507,15 +513,19 @@ class ShapeRasterizerTest {
                 String at = shape + " line " + od;
                 double from = a - od - .02;
                 assertEquals(0, crossings(shape, new double[]{a, c, from}, new double[]{a, c, outside}, sizes), at + " centre");
-                // From inside the skirt but in front of the elbow, which turns up at the axis.
-                double rim = r + EquipmentShape.PORT_CLEARANCE + EquipmentShape.PORT_COLLAR + .02, behind = Math.min(a - inner + .2, from);
+                // Inside the line from in front of the elbow, which turns up at the axis; just outside the collar from just
+                // inside the plate's inner face there (the elbow, the line's width, lies nearer the middle), where the plate
+                // stands (a line near a pipe's largest on the lowest row has its collar over the base ring), to just past its
+                // outer face (an anchor chair may stand beside the collar).
+                double rim = EquipmentShape.portRadius(od) + EquipmentShape.PORT_COLLAR + .02;
                 for (int j = 0; j < 16; j++) {
                     double t = 2 * Math.PI * j / 16, x = Math.cos(t), y = Math.sin(t);
                     assertEquals(0, crossings(shape, new double[]{a + .95 * r * x, c + .95 * r * y, from}, new double[]{a + .95 * r * x, c + .95 * r * y, outside}, sizes),
                             at + " inside at " + j);
                     // Just outside the collar, where the skirt's front faces stand, the plate's two faces.
-                    if (Math.abs(rim * x) < .5 * shape.radius())
-                        assertEquals(2, crossings(shape, new double[]{a + rim * x, c + rim * y, behind}, new double[]{a + rim * x, c + rim * y, outside}, sizes),
+                    double behind = a - Math.sqrt(inner * inner - rim * x * rim * x) + .02, past = a - Math.sqrt(shape.radius() * shape.radius() - rim * x * rim * x) - .02;
+                    if (Math.abs(rim * x) < .5 * shape.radius() && c + rim * y > EquipmentShape.PLATE + .01)
+                        assertEquals(2, crossings(shape, new double[]{a + rim * x, c + rim * y, behind}, new double[]{a + rim * x, c + rim * y, past}, sizes),
                                 at + " collar at " + j);
                 }
             }
@@ -559,10 +569,10 @@ class ShapeRasterizerTest {
             assertTrue(openingCentres(column).isEmpty(), heading + " the column's access opening gave way to its port");
         }
         // A port only where a bottom outlet line leaves a skirt: none on a bare or lying drum; at its largest a pipe's
-        // largest and the clearance, on a small drum too (owner decision 2026-10-21: the hole takes the pipe's size, up to 1 m).
+        // largest and its clearance, on a small drum too (owner decision 2026-10-21: the hole takes the pipe's size).
         assertEquals(0, new EquipmentShape(3, 4).openingRadius());
         assertEquals(0, drum(3, 4, Orientation.HORIZONTAL, Heading.NORTH, 2).openingRadius());
-        assertEquals(PipeSizes.MAX_OUTSIDE / 2 + EquipmentShape.PORT_CLEARANCE, drum(.5, 4, Orientation.VERTICAL, Heading.NORTH, EquipmentShape.minimumSkirt(.5)).openingRadius(), 1e-12);
+        assertEquals(EquipmentShape.portRadius(PipeSizes.MAX_OUTSIDE), drum(.5, 4, Orientation.VERTICAL, Heading.NORTH, EquipmentShape.minimumSkirt(.5)).openingRadius(), 1e-12);
     }
 
     @Test

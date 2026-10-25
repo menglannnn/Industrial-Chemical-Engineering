@@ -16,7 +16,8 @@ final class PumpDesign extends UnitDesign {
 
     @Override
     public double maxSize() {
-        return .75;
+        // The largest discharge whose suction, one size larger (ProcessUnit.pumpSuction), is a pipe's largest.
+        return .6;
     }
 
     @Override

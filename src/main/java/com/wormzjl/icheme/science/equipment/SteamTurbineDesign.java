@@ -145,8 +145,8 @@ final class SteamTurbineDesign extends UnitDesign {
         u.motor(oil, ro, base + .6 * ro, base + 3 * ro, 0, base, ProcessUnit.MotorDetail.PLAIN);
 
         // The exhaust: a branch up from the barrel's top, its flange pair, the expansion joint's convolutions, a reducer
-        // to a nozzle of 1 m where the branch is larger, the exhaust flange and its nuts.
-        double len = t.exhaustEnd - t.coneEnd, rbr = Math.min(.2 * d, .5 * len - .02 * d), oe = Math.min(1, 2 * rbr);
+        // to a nozzle of a pipe's largest where the branch is larger, the exhaust flange and its nuts.
+        double len = t.exhaustEnd - t.coneEnd, rbr = Math.min(.2 * d, .5 * len - .02 * d), oe = Math.min(PipeSizes.MAX_OUTSIDE, 2 * rbr);
         var up = Frame.of(new double[]{a, 0, zE}, 1, 1);
         int ne = ProcessUnit.sides(2 * rbr);
         double y1 = shaft + d / 2 + .06 * d + .04, joint = Math.max(.15, .15 * d), y2 = y1 + joint, rr = rbr + .03 + .02 * d, tf = .03 + .01 * d;

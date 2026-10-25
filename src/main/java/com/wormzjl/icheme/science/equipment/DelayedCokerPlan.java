@@ -48,7 +48,7 @@ final class DelayedCokerPlan {
      */
     static final double BED = .85, FILLED = .75, YIELD = .3, FILL_HOURS = 16;
     /** Fixed line sizes, m: quench oil into the overhead header, the cutting water riser [survey: 0.15 m], the coke outlet [Q5]. */
-    static final double QUENCH_OD = .06, CUT_OD = .15, SOLIDS_OD = 1;
+    static final double QUENCH_OD = .06, CUT_OD = .15, SOLIDS_OD = PipeSizes.MAX_OUTSIDE;
 
     final double d, r, jacket, straight, cone, head, topFlange;
     final int pairs, drums, support, sides;
@@ -109,7 +109,7 @@ final class DelayedCokerPlan {
         feedOd = Math.max(.15, .03 * d);
         steamOd = Math.max(.1, .02 * d);
         waterOd = .03 * d;
-        vapourOd = Math.min(1, .08 * d);
+        vapourOd = Math.min(PipeSizes.MAX_OUTSIDE, .08 * d);
         overheadOd = Math.max(.3, .06 * d);
         blowdownOd = .05 * d;
         reliefOd = .04 * d;
@@ -127,12 +127,13 @@ final class DelayedCokerPlan {
         derrick = cone + straight + head + 5;
         yTop = yCut + derrick;
         // Lines under the slab: feed and water headers either side of the spools, steam in front of the valve bodies, over
-        // the head of a player on the switch deck.
-        yFeed = s - 1.5;
+        // the head of a player on the switch deck. A pipe's largest leaves the feed and water headers' ends under the slab,
+        // and the steam's end behind the front columns (owner decision 2026-10-21: a 1 m pipe has a 1 m root).
+        yFeed = yUnder - .05 - PipeSizes.MAX_OUTSIDE / 2;
         ySteam = s - 1.85;
         zFeed = zc - 1.8;
         zWater = zc + 1.8;
-        zSteam = zc - 3;
+        zSteam = Math.max(zc - 3, z0 + concrete + .05 + PipeSizes.MAX_OUTSIDE / 2);
         // Over the heads: the vapour header over the front shoulders, blowdown and relief over the back ones, clear of the
         // top spool; the cutting water line a metre in front of the axes (its riser's foot on a cell centre).
         zVapour = zc - Math.max(Math.ceil(.85 + vapourOd / 2 + .15 - 1e-9), Math.round(.7 * r));

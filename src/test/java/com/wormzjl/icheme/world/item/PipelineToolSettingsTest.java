@@ -11,7 +11,7 @@ import static org.junit.jupiter.api.Assertions.*;
 class PipelineToolSettingsTest {
     @Test
     void componentRoundTripsExactDiametersAndRejectsInvalidStorageAndWireValues() {
-        for (double diameter : new double[]{.001, PipelineToolSettings.DEFAULT.diameter(), .123456789012345, 1}) {
+        for (double diameter : new double[]{.001, PipelineToolSettings.DEFAULT.diameter(), .123456789012345, PipelineToolSettings.MAX_DIAMETER}) {
             var settings = new PipelineToolSettings(diameter);
             var saved = PipelineToolSettings.CODEC.encodeStart(NbtOps.INSTANCE, settings).getOrThrow();
             assertEquals(settings, PipelineToolSettings.CODEC.parse(NbtOps.INSTANCE, saved).getOrThrow());
@@ -24,7 +24,7 @@ class PipelineToolSettingsTest {
                 buffer.release();
             }
         }
-        for (double diameter : new double[]{Double.NaN, Double.NEGATIVE_INFINITY, Double.POSITIVE_INFINITY, 0, -.1, .0009, 1.001}) {
+        for (double diameter : new double[]{Double.NaN, Double.NEGATIVE_INFINITY, Double.POSITIVE_INFINITY, 0, -.1, .0009, .7273, 1}) {
             assertThrows(IllegalArgumentException.class, () -> new PipelineToolSettings(diameter));
             assertTrue(PipelineToolSettings.CODEC.parse(NbtOps.INSTANCE, DoubleTag.valueOf(diameter)).error().isPresent());
             var buffer = Unpooled.buffer();

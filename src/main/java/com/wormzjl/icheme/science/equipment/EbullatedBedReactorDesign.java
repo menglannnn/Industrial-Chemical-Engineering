@@ -214,7 +214,7 @@ final class EbullatedBedReactorDesign extends UnitDesign {
         int offF = (int) Math.max(1, Math.ceil(ring + odc / 2 + .05 - 1e-9));
         // The front and back openings take the feed's and hydrogen's lines at a pipe's largest with the port's clearance,
         // every skirt facet they cross cut (owner decision 2026-10-21: the skirt hole takes the pipe's size, up to 1 m).
-        double crossed = DeterministicMath.asin(Math.min(1, (offF + PipeSizes.MAX_OUTSIDE / 2 + EquipmentShape.PORT_CLEARANCE) / skirt)) + Math.PI / n;
+        double thick = .05 + .02 * d, crossed = DeterministicMath.asin(Math.min(1, (offF + PipeSizes.MAX_OUTSIDE / 2 + EquipmentShape.PORT_CLEARANCE) / (skirt - thick))) + Math.PI / n;
         double hw = Math.max(.3 * d, crossed >= Math.PI / 2 ? skirt : skirt * DeterministicMath.sin(crossed)), top = yB - Math.max(1, .25 * d);
         double[] front = {-Math.PI / 2, hw}, back = {Math.PI / 2, hw};
 
@@ -224,7 +224,7 @@ final class EbullatedBedReactorDesign extends UnitDesign {
         u.mesh.head(Frame.of(axis, 1, -1), shell, -yB, shell, n, Material.CLADDING);
         u.solids.add(Solid.rod(axis, 1, yB, yB, shell, shell, 0));
         u.volumes.add(Solid.rod(axis, 1, yB, yB, .94 * shell, .94 * shell, 0));
-        u.skirt(a, a, skirt, .05 + .02 * d, PEDESTAL, yB, top, n, front, back);
+        u.skirt(a, a, skirt, thick, PEDESTAL, yB, top, n, front, back);
         u.baseRing(a, a, skirt, PEDESTAL, d, n, front, back);
         u.round(a, a, PEDESTAL, yB, skirt, 1);
 
@@ -253,17 +253,19 @@ final class EbullatedBedReactorDesign extends UnitDesign {
         u.solids.add(Solid.rod(axis, 1, yLow, yC + .15, ring, 0));
 
         // ---- The pump's frame: two beams under the motor's flange on four posts, ties between them, base plates.
-        double post = .2, beam = .25, yTie = (PEDESTAL + yLow - beam) / 2;
+        // Its posts on the feed's side stand beyond the feed's line at a pipe's largest where the skirt has room for them
+        // (owner decision 2026-10-21: a 1 m pipe has a 1 m root, other components give way).
+        double post = .2, beam = .25, yTie = (PEDESTAL + yLow - beam) / 2, wide = offF + PipeSizes.MAX_OUTSIDE / 2 + post / 2 + .05;
+        double qL = q1 + post / 2 + .05 > offF - PipeSizes.MAX_OUTSIDE / 2 && Math.sqrt(wide * wide + q1 * q1) + post <= skirt - thick - .05 ? wide : q1;
         for (int sz = -1; sz <= 1; sz += 2) {
             double z = a + sz * q1;
-            u.box(new double[]{a - q1 - post / 2, yLow - beam, z - .1}, new double[]{a + q1 + post / 2, yLow, z + .1}, Material.STEELWORK, true);
-            for (int sx = -1; sx <= 1; sx += 2) {
-                double x = a + sx * q1;
-                u.post(x, z, PEDESTAL, yLow - beam, post, true);
-            }
+            u.box(new double[]{a - qL - post / 2, yLow - beam, z - .1}, new double[]{a + q1 + post / 2, yLow, z + .1}, Material.STEELWORK, true);
+            for (int sx = -1; sx <= 1; sx += 2) u.post(sx < 0 ? a - qL : a + q1, z, PEDESTAL, yLow - beam, post, true);
         }
-        for (int sx = -1; sx <= 1; sx += 2)
-            u.box(new double[]{a + sx * q1 - .07, yTie - .07, a - q1 + post / 2}, new double[]{a + sx * q1 + .07, yTie + .07, a + q1 - post / 2}, Material.STEELWORK, true);
+        for (int sx = -1; sx <= 1; sx += 2) {
+            double x = sx < 0 ? a - qL : a + q1;
+            u.box(new double[]{x - .07, yTie - .07, a - q1 + post / 2}, new double[]{x + .07, yTie + .07, a + q1 - post / 2}, Material.STEELWORK, true);
+        }
 
         // ---- The suction: the forged neck from the pole, its heavy flange pair (the joint taking the head's growth), the spool.
         double tjs = Math.max(.03, .3 * ods), yNs = yP - .2, js = yNs - tjs - .005;
@@ -296,7 +298,7 @@ final class EbullatedBedReactorDesign extends UnitDesign {
         // ---- The withdrawal vessel at grade to the left, as near the skirt as its line's sleeve keeps off the openings.
         double dv = catalystVessel(d), rv = dv / 2, tv = catalystVesselLength(d);
         int nv = ProcessUnit.sides(dv);
-        double most = Math.max(.2, Math.PI / 2 - DeterministicMath.asin(Math.min(1, hw / skirt)) - .17), dist = skirt + .35 + rv;
+        double most = Math.max(.2, Math.PI / 2 - DeterministicMath.asin(Math.min(1, hw / skirt)) - .17), dist = skirt + .35 + Math.max(rv, legCircle(rv));
         int kz = (int) Math.max(1, Math.round(dist * DeterministicMath.sin(Math.min(most, Math.PI / 7))));
         double xo = Math.max(Math.sqrt(Math.max(0, dist * dist - kz * kz)), kz * DeterministicMath.cos(most) / DeterministicMath.sin(most));
         double xv = a + xo, zv = a + kz, tw = DeterministicMath.atan2(kz, xo);
@@ -365,8 +367,8 @@ final class EbullatedBedReactorDesign extends UnitDesign {
         access(u, a, wall, skirt, levels, low, rings, upAngle, level, girder);
 
         // ---- The top: the effluent nozzle, its elbow and run to the front; the davit at the front right.
-        double p = Math.min(1, .12 * d);
-        var run = topNozzle(u, a, a, yT + wall, p, deck + Access.RAIL + .12 + p / 2);
+        double p = Math.min(PipeSizes.MAX_OUTSIDE, .12 * d);
+        var run = topNozzle(u, a, a, yT + wall, p, deck);
         double zEff = Math.floor(a - wall - TOP_DECK - .05);
         u.nozzles.add(new Nozzle(Role.EFFLUENT, new double[]{a, run[0], run[1]}, 2, -1, run[1] - zEff, PipeSizes.od(.12 * d, .1, p), 0));
         u.davit(a, a, -3 * Math.PI / 4, wall + .6, deck, Math.max(deck + 3, run[0] + p / 2 + 1.4), -.2);
@@ -439,11 +441,28 @@ final class EbullatedBedReactorDesign extends UnitDesign {
         u.solids.add(Solid.rod(new double[]{x, 0, z}, 1, yN, inside - .1, rn, 0));
     }
 
-    /** Four legs of a vertical vessel of radius {@code rv} on the axis through (x, z), at 45°, from {@code y0} to {@code y1}, on base plates. */
+    /**
+     * The radius of the circle a vessel's legs stand on: at its shell, or wide enough that its outlet line at a pipe's
+     * largest leaves between two of them (owner decision 2026-10-21: a 1 m pipe has a 1 m root, other components give way).
+     */
+    static double legCircle(double rv) {
+        return Math.max(rv + .06, (PipeSizes.MAX_OUTSIDE / 2 + .05 + .06) / DeterministicMath.sin(Math.PI / 4));
+    }
+
+    /**
+     * Four legs of a vertical vessel of radius {@code rv} on the axis through (x, z), at 45°, from {@code y0} to {@code y1},
+     * on base plates, on their {@link #legCircle}; a bracket from the shell to each leg standing off it.
+     */
     private static void legs(ProcessUnit u, double x, double z, double rv, double y0, double y1) {
+        double out = legCircle(rv), gap = out - .06 - rv;
         for (int k = 0; k < 4; k++) {
-            double t = Math.PI / 4 + k * Math.PI / 2, lx = x + (rv + .06) * DeterministicMath.cos(t), lz = z + (rv + .06) * DeterministicMath.sin(t);
+            double t = Math.PI / 4 + k * Math.PI / 2, lx = x + out * DeterministicMath.cos(t), lz = z + out * DeterministicMath.sin(t);
             u.post(lx, lz, y0, y1, .12, true);
+            if (gap > .01) {
+                double[] centre = around(x, z, rv + gap / 2, t, y1 - .1), ex = scale(outward(t), gap / 2 + .02), ey = {0, .1, 0}, ez = scale(tangential(t), .05);
+                u.mesh.block(centre, ex, ey, ez, Material.STEELWORK);
+                u.solids.add(Solid.block(centre, ex, ey, ez));
+            }
         }
     }
 

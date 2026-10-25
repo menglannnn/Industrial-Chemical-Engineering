@@ -179,11 +179,12 @@ final class TrickleBedReactorDesign extends UnitDesign {
         dumpNozzle(u, a, skirt, -3 * Math.PI / 4, yDump, dump, .3 + 2 * dump);
 
         // ---- The bottom ports: the effluent through its sleeve to the front, the quench out of its trunk to the left.
-        double corner = ProcessUnit.pedestalCorner(skirt + PEDESTAL_REACH), zFace = Math.floor(a - corner - .1), eff = Math.min(1, .15 * d), zEff = a - skirt + .15;
+        double corner = ProcessUnit.pedestalCorner(skirt + PEDESTAL_REACH), zFace = Math.floor(a - corner - .1), eff = Math.min(PipeSizes.MAX_OUTSIDE, .15 * d), zEff = a - skirt + .15;
         u.nozzles.add(new Nozzle(Role.EFFLUENT, new double[]{a, PORT_ROW, zEff}, 2, -1, zEff - zFace, PipeSizes.od(.15 * d, .1, eff), 0));
         // Its sleeve through the skirt at the pipe's size (owner decision 2026-10-21: the skirt hole takes the pipe's size, up to 1 m).
         u.sleeves.put(u.nozzles.size() - 1, new ProcessUnit.Sleeve(a - zEff, skirt, skirt * DeterministicMath.cos(Math.PI / n)));
-        double q = Math.min(1, Math.max(.1, .05 * d)), rq = Math.max(.08, .7 * q), rr = wall + .12 + rq / 2, xFace = Math.ceil(a + Math.max(corner, rr + q / 2) + .15);
+        // The quench's face far enough out for a pipe's largest hub and flange clear of its trunk (ProcessUnit.NECK).
+        double q = Math.min(PipeSizes.MAX_OUTSIDE, Math.max(.1, .05 * d)), rq = Math.max(.08, .7 * q), rr = wall + .12 + rq / 2, xFace = Math.ceil(a + Math.max(corner + .15, rr + q / 2 + ProcessUnit.NECK));
         u.nozzles.add(new Nozzle(Role.QUENCH, new double[]{a + rr, PORT_ROW, a}, 0, 1, xFace - a - rr, PipeSizes.od(.05 * d, .1, q), 0));
 
         // ---- The quench zones and the platforms: a full ring 1.2 m under each injection, part rings resting climbs over
@@ -242,8 +243,8 @@ final class TrickleBedReactorDesign extends UnitDesign {
         if (beds == 1 && yh - PORT_ROW >= 1.2) u.valve(a + rr, (PORT_ROW + yh) / 2, a, q / 2, new double[]{1, 0, 0});
 
         // ---- The top: the nozzle, its elbow's run to the front with the hydrogen tee, the davit.
-        double p = Math.min(1, Math.max(.15, .15 * d)), h2 = Math.min(1, Math.max(.1, .1 * d)), edge = wall + TOP_DECK;
-        var top = topNozzle(u, a, a, yT + wall, p, level + Access.DECK + Access.RAIL + .12 + p / 2);
+        double p = Math.min(PipeSizes.MAX_OUTSIDE, Math.max(.15, .15 * d)), h2 = Math.min(PipeSizes.MAX_OUTSIDE, Math.max(.1, .1 * d)), edge = wall + TOP_DECK;
+        var top = topNozzle(u, a, a, yT + wall, p, level + Access.DECK);
         double run = top[0], zEnd = top[1], zTee = Math.floor(zEnd - h2 / 2 - .08 - .5) + .5;
         u.mesh.prism(Frame.of(new double[]{a, run, 0}, 2, 1), p / 2, zTee, zEnd, ProcessUnit.sides(p), Material.PIPE);
         u.solids.add(Solid.rod(new double[]{a, run, 0}, 2, zTee - p / 2, zEnd, p / 2, 0));

@@ -33,7 +33,7 @@ import static com.wormzjl.icheme.science.equipment.Mesh.*;
  * (0.02 D, 0.1 m at least) at its -x end; VAPOUR_OUTLET 0- (0.08 D, 1 m at most) at the vapour
  * header's end, QUENCH 1+ (0.06 m) on its top near that end, BLOWDOWN 0+ (0.05 D) at the blowdown header's end, RELIEF
  * 2+ (0.04 D) off the relief header's -x end to the back; CUTTING_WATER 0+ (0.15 m) at the foot of the riser outside the
- * +x end; SOLIDS_OUTLET 1- (1 m) at drum 0's chute toe.
+ * +x end; SOLIDS_OUTLET 1- (a pipe's largest) at drum 0's chute toe.
  */
 final class DelayedCokerDrums {
     /** How far up the cone is drawn over its flange, m: as far as is seen through the table's opening (its radius there about 2.4 m). */
