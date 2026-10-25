@@ -59,9 +59,14 @@ class InlineMoverAccessoryTest {
             if(mask!=0)expected=SightGlassGeometry.supports(mask)&&(mask&3)==0;
             assertEquals(expected,InlineMoverGeometry.supports(mask,face));
         }
-        for(int face:new int[]{2,3,4,5})for(double bore:new double[]{.001,.05,1})for(boolean compressor:List.of(false,true)){
+        for(int face:new int[]{2,3,4,5})for(double bore:new double[]{.001,.05,.2,.21,.4,1})for(boolean compressor:List.of(false,true)){
             var key=new LineGeometry.Key(Kind.PIPE,face,3<<(face&~1),PipeSizes.code(PipeSizes.outside(bore)),0,0,false);var polygons=InlineMoverGeometry.polygons(key,compressor,false);
             assertFalse(polygons.isEmpty());double top=0;for(var p:polygons)for(int i=0;i<p.positions().length;i++){assertTrue(Double.isFinite(p.positions()[i]));if(i%3==1)top=Math.max(top,p.positions()[i]);}assertTrue(top>1,"upright motor can exceed one block");assertTrue(polygons.stream().anyMatch(p->p.material()==Mesh.Material.GUARD),"body-owned flow arrow");
+            boolean foot=false;for(var p:polygons){boolean base=p.material()==Mesh.Material.MACHINE&&p.normals()[1]<-.9;for(int i=1;i<p.positions().length;i+=3){assertTrue(p.positions()[i]>=-1e-9,"supporting block stays clear");base&=Math.abs(p.positions()[i])<1e-9;}foot|=base;}assertTrue(foot,"a support foot rests on the block below");
+            int axis=face<4?2:0;for(int end=0;end<=1;end++){
+                boolean flange=false;for(var p:polygons){boolean at=p.material()==Mesh.Material.FLANGE&&p.normals()[axis]*(end==0?-1:1)>.9;for(int i=axis;i<p.positions().length;i+=3)at&=Math.abs(p.positions()[i]-end)<1e-9;flange|=at;}
+                assertEquals(bore>.2,flange,"large-bore connection flange is on the block face");
+            }
             for(var p:polygons){var v=p.positions();var normals=p.normals();for(int i=1;i<p.size()-1;i++){
                 double ax=v[3*i]-v[0],ay=v[3*i+1]-v[1],az=v[3*i+2]-v[2],bx=v[3*i+3]-v[0],by=v[3*i+4]-v[1],bz=v[3*i+5]-v[2];
                 assertTrue((ay*bz-az*by)*normals[0]+(az*bx-ax*bz)*normals[1]+(ax*by-ay*bx)*normals[2]>=-1e-9,"winding follows the native outward shading normal");

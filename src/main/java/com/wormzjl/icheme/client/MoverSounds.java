@@ -7,6 +7,8 @@ import com.wormzjl.icheme.registry.ModSounds;
 import com.wormzjl.icheme.runtime.fluid.FluidView;
 import com.wormzjl.icheme.runtime.fluid.TankWatchers;
 import com.wormzjl.icheme.science.equipment.ShapeRasterizer;
+import com.wormzjl.icheme.science.equipment.EquipmentShape;
+import com.wormzjl.icheme.science.equipment.MoverSoundVolume;
 import com.wormzjl.icheme.world.level.block.entity.EquipmentShellBlockEntity;
 import java.util.*;
 import net.minecraft.client.Minecraft;
@@ -94,9 +96,10 @@ public final class MoverSounds {
     private static final class Loop extends AbstractTickableSoundInstance {
         private final Target target;
         private final ClientLevel level;
+        private EquipmentShape shape;
         private Loop(MoverNetwork.State state,ClientLevel level) {
             super((state.compressor()?ModSounds.COMPRESSOR_RUNNING:ModSounds.PUMP_RUNNING).get(),SoundSource.BLOCKS,RandomSource.create());
-            this.target=state.target();this.level=level;looping=true;delay=0;volume=.35F;pitch=1;
+            this.target=state.target();this.level=level;looping=true;delay=0;volume=0;pitch=1;refreshVolume();
             attenuation=net.minecraft.client.resources.sounds.SoundInstance.Attenuation.LINEAR;
             x=target.position().getX()+.5;y=target.position().getY()+.5;z=target.position().getZ()+.5;
         }
@@ -104,6 +107,12 @@ public final class MoverSounds {
             var mc=Minecraft.getInstance();var state=STATES.get(target);
             if(mc.level!=level||state==null||!state.running()||!WATCHED.contains(target)||!valid(target)||mc.player==null
                     ||target.position().distToCenterSqr(mc.player.position())>24*24)stop();
+            else refreshVolume();
+        }
+        private void refreshVolume(){
+            if(level.getBlockEntity(target.position()) instanceof EquipmentShellBlockEntity shell&&shell.shape()!=shape){
+                shape=shell.shape();volume=shape==null?0:MoverSoundVolume.of(shape);
+            }
         }
     }
 }

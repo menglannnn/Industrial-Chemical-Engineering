@@ -82,8 +82,8 @@ public sealed class FluidDeviceBlock extends BaseEntityBlock {
     public static boolean hasPipeValve(BlockState state){return state.getBlock() instanceof FluidDeviceBlock block&&block.kind==TopologyCompiler.Kind.PIPE&&(state.getValue(SHUTOFF)!=Shutoff.NONE||state.getValue(PRESSURE_CONTROL));}
     public static PhysicalFluidTopology.Cutoff cutoff(BlockState state){return state.getBlock() instanceof FluidDeviceBlock block&&block.kind==TopologyCompiler.Kind.PIPE?state.getValue(SHUTOFF).cutoff():PhysicalFluidTopology.Cutoff.NONE;}
     public static boolean hasFitting(BlockState state){return hasSightGlass(state)||hasAxialAccessory(state);}
-    /** Inline movers carry their own compact internal joints; their outer pipe tails retain ordinary pipe joints. */
-    public static boolean hasBoundaryFitting(BlockState state){return hasFitting(state)&&!hasMover(state);}
+    /** Small movers carry compact internal joints; larger movers flange at the block faces. */
+    public static boolean hasBoundaryFitting(BlockState state,double bore){return hasFitting(state)&&(!hasMover(state)||com.wormzjl.icheme.science.equipment.InlineMoverGeometry.boundaryJoints(com.wormzjl.icheme.science.equipment.PipeSizes.code(com.wormzjl.icheme.science.equipment.PipeSizes.outside(bore))));}
     /** Mechanical joints stay connected when a valve closes hydraulically. */
     public static BlockState connectedState(BlockState state,LevelReader level,BlockPos position) {
         for(var direction:Direction.values()){var at=position.relative(direction);state=state.setValue(CONNECTIONS.get(direction),connects(state,level,at,level.getBlockState(at),direction));}

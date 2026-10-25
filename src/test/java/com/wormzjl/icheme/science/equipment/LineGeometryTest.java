@@ -162,6 +162,26 @@ class LineGeometryTest {
         assertEquals(wide, rimRadius(meetsLarge, 0, 0, Material.PIPE), 1e-9);
     }
 
+    @Test void sightGlassNecksAreEnclosedWithoutClosingTheViewingBore(){
+        var random=new java.util.Random(61);var holes=new ArrayList<String>();
+        for(double bore:new double[]{.05,.21,.5,1})for(int face:new int[]{UP,NORTH,EAST})for(var axis:SightGlassGeometry.Axis.values()){
+            if(axis.ordinal()==LineGeometry.axis(face))continue;
+            var key=key(Kind.PIPE,face,PipeSizes.outside(bore),new int[]{face,face^1},0,0,false);
+            var metal=SightGlassGeometry.build(new SightGlassGeometry.Key(key,axis),false).metal();
+            double[] eye={.5,.5,.5},through=new double[3];eye[axis.ordinal()]+=2;through[axis.ordinal()]=-1;
+            for(var p:metal)assertTrue(Double.isNaN(hit(p,eye,through)),"the clear centreline must not intersect metal");
+            for(int ray=0;ray<80;ray++){
+                double[] target={random.nextDouble(),random.nextDouble(),random.nextDouble()},dir={random.nextGaussian(),random.nextGaussian(),random.nextGaussian()};
+                double length=Math.sqrt(dir[0]*dir[0]+dir[1]*dir[1]+dir[2]*dir[2]);for(int c=0;c<3;c++)dir[c]/=length;
+                double[] origin={target[0]-3*dir[0],target[1]-3*dir[1],target[2]-3*dir[2]};if(key.connected(entryFace(origin,dir)))continue;
+                double front=Double.POSITIVE_INFINITY,back=Double.POSITIVE_INFINITY;
+                for(var p:metal){double t=hit(p,origin,dir);if(Double.isNaN(t))continue;var n=newell(p);if(n[0]*dir[0]+n[1]*dir[1]+n[2]*dir[2]<0)front=Math.min(front,t);else back=Math.min(back,t);}
+                if(back<front-1e-7){holes.add("bore="+bore+" facing="+face+" window="+axis);break;}
+            }
+        }
+        assertEquals(List.of(),holes,"the outside must not expose an uncapped neck or clipped housing face");
+    }
+
     @Test
     void flangePairsMatchAcrossTheJoint() {
         // A pipe flanged to a pump on its east face and the pump's west nozzle draw flanges of one size on the shared plane.
