@@ -17,6 +17,7 @@ All notable changes to Industrial Chemical Engineering (IChemE, formerly CreateC
 
 ### Changed
 
+- Enclose the tank level indicator in custom clear glass with continuous highlights, and connect its end manifolds to the shell with round pipework and union fittings; batch `2026-10-25-tank-gauge-enclosure`.
 - Make sight-glass bubbles travel along each section's accepted flow direction, including reversals and consistent views through both windows; visual protocol `sight-glass-3`, batch `2026-10-25-sight-glass-flow-direction`.
 - Scale sight-glass bubble counts with gas/liquid volume ratio, close large-bore housing/neck gaps and retain enlarged window faces, and scale constructed pump/compressor sound loudness with constructor size; batch `2026-10-25-sight-glass-ratio-seams-sound` (implementation `5d9d3b42`).
 - Animate bubble/droplet rings in sight glasses carrying multiple phases, using requested scheduled visual samples (`sight-glass-2`); derive bundled crude pseudo-component colours from NBP with darker heavy fractions while preserving datapack overrides and scientific data; batch `2026-10-25-sight-glass-bubbles` (implementation `2c9c6d00`).
