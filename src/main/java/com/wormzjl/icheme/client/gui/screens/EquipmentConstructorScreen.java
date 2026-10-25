@@ -121,6 +121,8 @@ public final class EquipmentConstructorScreen extends Screen {
     private final List<EquipmentShape.Connection> connections = new ArrayList<>();
     /** The drum's diameter, length, support and orientation the connections were last fitted to. */
     private @Nullable List<Double> fittedFor;
+    /** The default connections of the drum {@link #fittedFor} describes: while the player's are these, they follow the design. */
+    private List<EquipmentShape.Connection> defaults = List.of();
     private int selected;
     /** The paint, and the channel the paint page edits ({@link Paint#BODY} or {@link Paint#STRUCTURE}). */
     private Paint paint;
@@ -229,16 +231,19 @@ public final class EquipmentConstructorScreen extends Screen {
 
     /**
      * Fits a drum's side connections to its design once its size, support, form or boot changed ({@link EquipmentShape#fit}):
-     * each stays where it meets nothing, or moves to the nearest free place. Moving one on the Nozzles page changes no
-     * size, so the player may still put it where it clashes and read the status. A column or a unit keeps them for when
-     * it is a drum again.
+     * connections the player has not changed from the drum's defaults become the new design's defaults (owner report
+     * 2026-10-25: a lying drum lengthened kept its inlet mid-shell instead of near its far head); others each stay where
+     * they meet nothing, or move to the nearest free place. Moving one on the Nozzles page changes no size, so the player
+     * may still put it where it clashes and read the status. A column or a unit keeps them for when it is a drum again.
      */
     private void fitConnections() {
         if (form.kind() != EquipmentShape.Kind.DRUM) return;
         var drum = List.of(diameter, (double) tangentLength, (double) support, (double) form.orientation().ordinal(), hasBoot() ? 1.0 : 0, (double) outlet());
         if (drum.equals(fittedFor)) return;
+        boolean untouched = fittedFor != null && connections.equals(defaults);
         fittedFor = drum;
-        var fitted = EquipmentShape.fit(connections, template());
+        defaults = EquipmentShape.defaultConnections(diameter, tangentLength, form.orientation(), support, hasBoot(), outlet());
+        var fitted = untouched ? defaults : EquipmentShape.fit(connections, template());
         connections.clear();
         connections.addAll(fitted);
         selected = clamp(selected, 0, Math.max(0, connections.size() - 1));

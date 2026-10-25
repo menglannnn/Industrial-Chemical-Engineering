@@ -37,7 +37,7 @@ import java.util.Objects;
  * skirt is a {@link #SKIRT_WALL} plate showing its inside (the bottom head, a column's bare under its cladding, the outlet
  * line, a floor plate) through its outlet's port and three slots. The skirt stands on a base ring projecting
  * {@link #BASE_RING} beyond it, with {@link #anchorChairs()} anchor-bolt chairs. A horizontal vessel lies on two saddles centred {@link #SADDLE_POSITION} ×
- * T/T from each tangent line (Zick), cradling the bottom {@link #SADDLE_CONTACT_DEGREES}° of the shell; {@code support}
+ * T/T from each tangent line, cradling the bottom {@link #SADDLE_CONTACT_DEGREES}° of the shell; {@code support}
  * is the height of the shell's box above the ground.
  *
  * <p>Frames. The vessel is built in its own frame, axis along +y, in cells of a box whose width is odd so the axis runs
@@ -55,8 +55,11 @@ public record EquipmentShape(Kind kind, double diameter, double tangentLength, O
                              @Nullable ColumnTrays trays, List<Connection> connections, ProcessUnit.Bank bank, boolean boot, int outlet) {
     public static final double MIN_DIAMETER = .5, MAX_DIAMETER = 10, MAX_COLUMN_DIAMETER = 15, MAX_TANGENT_LENGTH = 64;
     public static final int MAX_SUPPORT = 16;
-    /** Saddles: centred this fraction of T/T from each tangent line, this wide along the axis (m), over this arc of the shell. */
-    public static final double SADDLE_POSITION = .2, SADDLE_WIDTH = .375, SADDLE_CONTACT_DEGREES = 120;
+    /**
+     * Saddles: centred this fraction of T/T from each tangent line (owner decision 2026-10-25 from a reflux drum's drawing,
+     * Ø900 x 4000 mm on saddles 500 mm inside its tangent lines), this wide along the axis (m), over this arc of the shell.
+     */
+    public static final double SADDLE_POSITION = .125, SADDLE_WIDTH = .375, SADDLE_CONTACT_DEGREES = 120;
     /**
      * Support parts, m, at one to two texels (1/16 m) so they read at block scale: thin plates (saddle top and base plates,
      * skirt base ring), the saddle's web and rib thickness, the base ring's projection beyond the skirt, and the width and
@@ -550,7 +553,8 @@ public record EquipmentShape(Kind kind, double diameter, double tangentLength, O
      * vertical cylinder of {@code diameter} under the shell's bottom on the drum's axis, its 2:1 bottom head's tangent
      * {@code length} under the shell, centred at frame height {@code station} along the drum. It hangs from the shell with
      * no support of its own. Its drum's liquid outlet stands underneath at frame height {@code outlet}, between the boot
-     * and the front head (owner decision 2026-10-25).
+     * and the front head (owner decision 2026-10-25), or, where {@code outlet} is NaN, low on the front head as a drum's
+     * without a boot.
      */
     public record Boot(double station, double diameter, double length, double outlet) {
     }
@@ -563,27 +567,52 @@ public record EquipmentShape(Kind kind, double diameter, double tangentLength, O
      * facing down on the bottom centre line between the boot and the front head. The boot: a third of the drum's
      * diameter, at least 0.3, 0.4 or 0.5 m (under 0.9, 1.4 m and above) and at most half of it; 0.9 m or 0.6 D deep, the
      * longer, less what lifts its drain's face a block (owner request 2026-10-25: saddles a block lower; 0.02 to 0.97 m,
-     * so at least 0.4 m deep); on the first cell centre inboard of the front saddle that keeps its shell 0.15 m clear of it, and as clear
-     * of the far saddle. The outlet on the last cell centre outboard of the front saddle that keeps its largest pipe's
+     * so at least 0.4 m deep); on the first cell centre inboard of the front saddle that keeps its shell 0.05 m clear of
+     * it (their welds apart; owner report 2026-10-25 with a reflux drum's drawing: the boot leans to the outlet end, its
+     * centre a quarter of T/T from the tangent line, so not a whole block further in for 0.1 m), and as clear of the far
+     * saddle. The outlet on the last cell centre outboard of the front saddle that keeps its largest pipe's
      * flange as clear of it (survey A: bottom nozzles clear the saddle by 0.15 m); the saddle between them keeps their
      * pipes a free block apart (owner rule 2026-10-17). The outlet may stand on the head's bottom near the tangent line,
      * its centre at most 0.6 of the head's depth beyond it, where the head's bottom is within 0.2 R of the shell's, and
-     * its largest neck short of the head's apex (owner request 2026-10-25: every drum from 6 m long takes a boot where
-     * the boot fits between its saddles). Else no boot.
+     * its largest neck short of the head's apex. Without that room it stays low on the front head (owner request
+     * 2026-10-25: every drum from 6 m long takes a boot). Each pipe drops through a block column clear of the saddles'
+     * blocks. A drum whose saddles cannot keep the boot clear has none, nor one whose oil has room neither beyond the
+     * saddle nor on its front head (a 0.5 m drum under 9 m).
      */
     public static @Nullable Boot bootFor(double diameter, double tangentLength) {
         double low = diameter < .9 ? .3 : diameter < 1.4 ? .4 : .5, size = Math.min(diameter / 2, Math.max(low, diameter / 3));
         // The drain's face stands STAND_OUT under the boot's apex on a block face (minimumBootSupport): the boot stops
         // short of the block line its preferred depth would reach under that face (a micrometre short, so the face's
         // floor lands on that line in floating point).
-        int cells = (int) Math.ceil(diameter);
-        double shell = (cells % 2 == 0 ? cells + 1 : cells) / 2.0 - diameter / 2, reach = shell - size / 4 - STAND_OUT;
+        double shell = lyingAxis(diameter) - diameter / 2, reach = shell - size / 4 - STAND_OUT;
         double length = Math.max(.4, reach - Math.floor(reach - Math.max(.9, .6 * diameter)) - 1 - 1e-6);
         double od = outletLargest(diameter), flange = PipeSizes.flange(od) / 2;
-        double bT = diameter / 4, tT = bT + tangentLength, saddle = SADDLE_WIDTH / 2 + .15, clear = saddle + size / 2;
+        double bT = diameter / 4, tT = bT + tangentLength, saddle = SADDLE_WIDTH / 2 + .15, clear = SADDLE_WIDTH / 2 + .05 + size / 2;
         double near = bT + SADDLE_POSITION * tangentLength, far = tT - SADDLE_POSITION * tangentLength;
-        double outlet = Math.floor(near - saddle - flange - .5) + .5, station = Math.ceil(near + clear - .5) + .5;
-        return bT - outlet <= .6 * bT + 1e-9 && outlet > od / 2 && station <= far - clear + 1e-9 ? new Boot(station, size, length, outlet) : null;
+        // Each pipe drops through a block column clear of the saddles' blocks.
+        double half = SADDLE_WIDTH / 2;
+        double outlet = Math.min(Math.floor(near - saddle - flange - .5) + .5, Math.floor(near - half) - .5);
+        double station = Math.max(Math.ceil(near + clear - .5) + .5, Math.floor(near + half - 1e-9) + 1.5);
+        if (station > Math.min(far - clear + 1e-9, Math.floor(far - half) - .5)) return null;
+        boolean under = bT - outlet <= .6 * bT + 1e-9 && outlet > od / 2;
+        if (!under && headOutletLargest(diameter) <= .05) return null;
+        return new Boot(station, size, length, under ? outlet : Double.NaN);
+    }
+
+    /** A lying drum's axis height in its frame: the middle of its box's odd count of cells across ({@link #width}). */
+    private static double lyingAxis(double diameter) {
+        int cells = (int) Math.ceil(diameter);
+        return (cells % 2 == 0 ? cells + 1 : cells) / 2.0;
+    }
+
+    /** Frame height of a lying drum's liquid outlet low on its front head: the lowest cell centre at least 0.3 m above the shell's bottom. */
+    private static double headOutletHeight(double diameter) {
+        return Math.ceil(lyingAxis(diameter) - diameter / 2 + .3 - .5) + .5;
+    }
+
+    /** That outlet's largest pipe, its edge within 0.85 of the radius across; at most 0.05 m (none) on a drum too small for it. */
+    private static double headOutletLargest(double diameter) {
+        return Math.min(outletLargest(diameter), 2 * (.85 * diameter / 2 - Math.abs(lyingAxis(diameter) - headOutletHeight(diameter))));
     }
 
     /** The largest pipe a drum's fixed outlets take: 0.8 m, at most half the drum's diameter. */
@@ -604,8 +633,7 @@ public record EquipmentShape(Kind kind, double diameter, double tangentLength, O
     public static int minimumBootSupport(double diameter, double tangentLength) {
         var b = bootFor(diameter, tangentLength);
         if (b == null) return MAX_SUPPORT + 1;
-        int cells = (int) Math.ceil(diameter);
-        double a = (cells % 2 == 0 ? cells + 1 : cells) / 2.0, apex = a - diameter / 2 - b.length() - b.diameter() / 4;
+        double apex = lyingAxis(diameter) - diameter / 2 - b.length() - b.diameter() / 4;
         return Math.max(1, 1 - (int) Math.floor(apex - STAND_OUT));
     }
 
@@ -899,7 +927,7 @@ public record EquipmentShape(Kind kind, double diameter, double tangentLength, O
         double topStart = Math.sqrt(Math.max(0, apothem * apothem - PipeSizes.MAX_OUTSIDE * PipeSizes.MAX_OUTSIDE / 4)) - .03;
         out.add(new Nozzle(Role.VAPOUR_OUTLET, new double[]{topStart + a, front, a}, 0, 1, Math.ceil(a + r + STAND_OUT) - (topStart + a), clampOd(.2 * diameter, topOd), 0));
         var b = bootPlace();
-        if (b != null) {
+        if (b != null && !Double.isNaN(b.outlet())) {
             // A three-phase drum's oil leaves behind the overflow baffle beyond the boot (owner decision 2026-10-25, bootFor):
             // on the bottom centre line facing down, its root buried for its largest neck under the shell or, near the
             // tangent line, under the head's bottom where the neck's far edge meets it, its face on the next block face
@@ -908,19 +936,21 @@ public record EquipmentShape(Kind kind, double diameter, double tangentLength, O
             double under = s <= 0 ? apothem : apothem * Math.sqrt(Math.max(0, 1 - s * s / (h * h)));
             double root = a - Math.sqrt(Math.max(0, under * under - rn * rn)) + .03;
             out.add(new Nozzle(Role.LIQUID_OUTLET, new double[]{root, b.outlet(), a}, 0, -1, root - Math.floor(a - r - STAND_OUT), clampOd(.1 * diameter, topOd), 0));
-            // The boot's drain at its bottom head's centre, facing down (photo survey A), its pipe straight down.
-            double rb = b.diameter() / 2, bottom = a - r - b.length(), depth = b.diameter() / 4, od = Math.min(PipeSizes.MAX_OUTSIDE, rb);
-            double edge = PipeSizes.MAX_OUTSIDE / 2 / rb, base = bottom - depth * Math.sqrt(Math.max(0, 1 - edge * edge)) + .03, apex = bottom - depth;
-            out.add(new Nozzle(Role.BOOT_DRAIN, new double[]{base, b.station(), a}, 0, -1, base - Math.floor(apex - STAND_OUT), clampOd(.05 * diameter, od), 0));
         } else {
-            // Low on the front head: the lowest cell centre at least 0.3 m above the shell's bottom.
-            double xH = Math.ceil(a - r + .3 - .5) + .5, e = a - xH;
-            double headOd = Math.min(Math.min(PipeSizes.MAX_OUTSIDE, diameter / 2), 2 * (.85 * r - Math.abs(e)));
+            // Low on the front head (a boot drum's too where it has no room under the shell beyond its front saddle): the
+            // lowest cell centre at least 0.3 m above the shell's bottom.
+            double xH = headOutletHeight(diameter), e = a - xH, headOd = headOutletLargest(diameter);
             if (headOd > .05) {
                 double edge = (Math.abs(e) + PipeSizes.MAX_OUTSIDE / 2) / r, depth = headDepth() * Math.sqrt(Math.max(0, 1 - edge * edge));
                 double start = bT - depth + .03;
                 out.add(new Nozzle(Role.LIQUID_OUTLET, new double[]{xH, start, a}, 1, -1, start - Math.floor(-STAND_OUT), clampOd(.1 * diameter, headOd), 0));
             }
+        }
+        if (b != null) {
+            // The boot's drain at its bottom head's centre, facing down (photo survey A), its pipe straight down.
+            double rb = b.diameter() / 2, bottom = a - r - b.length(), depth = b.diameter() / 4, od = Math.min(PipeSizes.MAX_OUTSIDE, rb);
+            double edge = PipeSizes.MAX_OUTSIDE / 2 / rb, base = bottom - depth * Math.sqrt(Math.max(0, 1 - edge * edge)) + .03, apex = bottom - depth;
+            out.add(new Nozzle(Role.BOOT_DRAIN, new double[]{base, b.station(), a}, 0, -1, base - Math.floor(apex - STAND_OUT), clampOd(.05 * diameter, od), 0));
         }
         for (var c : connections) out.add(connection(c, a, bT, tT, apothem));
         return out;

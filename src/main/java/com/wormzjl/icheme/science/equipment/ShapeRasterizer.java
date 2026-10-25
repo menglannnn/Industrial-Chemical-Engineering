@@ -1409,15 +1409,17 @@ public final class ShapeRasterizer {
         private boolean inSaddle(double[] p) {
             double dx = p[0] - axis, dz = Math.abs(p[2] - axis), deck = ground + EquipmentShape.PLATE;
             for (double c : saddles) {
-                double along = Math.abs(p[1] - c);
-                if (along > EquipmentShape.SADDLE_WIDTH / 2 || p[0] < ground || dx > 0 || dz > saddleLateral) continue;
+                // Half-open along the axis: a saddle centred on the sampling lattice (every saddle is, 1/8 of a T/T of
+                // whole metres in from a tangent line D/4 deep) samples its own width and its web's, not a layer more.
+                double along = p[1] - c;
+                if (along < -EquipmentShape.SADDLE_WIDTH / 2 || along >= EquipmentShape.SADDLE_WIDTH / 2 || p[0] < ground || dx > 0 || dz > saddleLateral) continue;
                 if (p[0] <= deck) return true;
                 if (inPolygon(p, saddleRadius)) {
                     // Within the contact sector: the angle from straight down is at most half the contact angle.
                     if (dz * vertexCos[contact] <= -dx * vertexSin[contact]) return true;
                     continue;
                 }
-                if (dz >= saddleLateral - EquipmentShape.SADDLE_RIB || along <= EquipmentShape.SADDLE_WEB / 2) return true;
+                if (dz >= saddleLateral - EquipmentShape.SADDLE_RIB || along >= -EquipmentShape.SADDLE_WEB / 2 && along < EquipmentShape.SADDLE_WEB / 2) return true;
             }
             return false;
         }

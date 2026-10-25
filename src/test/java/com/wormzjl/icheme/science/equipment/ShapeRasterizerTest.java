@@ -63,7 +63,7 @@ class ShapeRasterizerTest {
             drum(3, 9, Orientation.HORIZONTAL, Heading.EAST, EquipmentShape.minimumBootSupport(3, 9),
                     EquipmentShape.defaultConnections(3, 9, Orientation.HORIZONTAL, EquipmentShape.minimumBootSupport(3, 9), true), true),
             // Boot drums (owner decision 2026-10-25: the outlets at the front end, the oil between the boot and the front head):
-            // a 1 m drum 6 m long (owner request: a boot from 6 m) and an 8 m drum at its shortest with a boot.
+            // a 1 m drum 6 m long (owner request: a boot from 6 m; its oil leaves the front head) and an 8 m drum 7 m long.
             drum(1, 6, Orientation.HORIZONTAL, Heading.SOUTH, EquipmentShape.minimumBootSupport(1, 6), List.of(), true),
             drum(8, 7, Orientation.HORIZONTAL, Heading.WEST, EquipmentShape.minimumBootSupport(8, 7),
                     EquipmentShape.defaultConnections(8, 7, Orientation.HORIZONTAL, EquipmentShape.minimumBootSupport(8, 7), true), true),
@@ -725,7 +725,7 @@ class ShapeRasterizerTest {
 
     @Test
     void bootsAndManwaysStandClear() {
-        // Owner request 2026-10-16 (photo survey A, D): a boot hangs inboard of the front saddle and 0.15 m clear of it,
+        // Owner request 2026-10-16 (photo survey A, D): a boot hangs inboard of the front saddle and 0.05 m clear of it,
         // its drain facing down with a block for its pipe above the ground; every drum from 0.9 m carries a manway; the
         // default connections meet neither.
         int boots = 0;
@@ -741,7 +741,7 @@ class ShapeRasterizerTest {
                     var drum = drum(d, length, orientation, Heading.NORTH, support, EquipmentShape.defaultConnections(d, length, orientation, support, true), true);
                     assertEquals(List.of(), drum.clashes(), drum.toString());
                     for (double saddle : drum.saddleCentres())
-                        assertTrue(Math.abs(boot.station() - saddle) >= EquipmentShape.SADDLE_WIDTH / 2 + .15 + boot.diameter() / 2 - 1e-9, drum.toString());
+                        assertTrue(Math.abs(boot.station() - saddle) >= EquipmentShape.SADDLE_WIDTH / 2 + .05 + boot.diameter() / 2 - 1e-9, drum.toString());
                     assertEquals(1, drum.nozzles().stream().filter(n -> n.role() == EquipmentShape.Role.BOOT_DRAIN).count(), drum.toString());
                     if (support > 1) assertThrows(IllegalArgumentException.class, () -> drum(drum.diameter(), drum.tangentLength(), orientation, Heading.NORTH, support - 1, List.of(), true));
                 }
@@ -772,14 +772,15 @@ class ShapeRasterizerTest {
         // under the shell with a block for its pipe above the ground. Its largest flange (0.8 m, at most D / 2) stands
         // 0.15 m clear of both saddles; the boot stands whole cells behind it, at least two (one free block between their
         // pipes), its shell clear of that flange. The vapour outlet stands on top nearer the front head than the default
-        // inlet. Owner request 2026-10-25: every drum from 6 m long takes a boot where the boot fits between its saddles
-        // (at least as long as wide); a drum with no room takes none.
+        // inlet. Owner request 2026-10-25: every drum from 6 m long takes a boot; where the outlet has no room beyond the
+        // front saddle it stays low on the front head (a 0.5 m drum has room on neither). The boot's and the outlet's pipes
+        // drop through block columns clear of the saddles' blocks. A drum whose saddles cannot keep the boot clear takes none.
         double saddle = EquipmentShape.SADDLE_WIDTH / 2 + .15;
         int boots = 0;
         for (double d = EquipmentShape.MIN_DIAMETER; d <= EquipmentShape.MAX_DIAMETER; d += .5)
             for (int length = 1; length <= 40; length++) {
                 var b = EquipmentShape.bootFor(d, length);
-                if (length >= Math.max(6, d)) assertNotNull(b, d + " x " + length);
+                if (length >= 6 && d >= 1) assertNotNull(b, d + " x " + length);
                 double size = d, flange = PipeSizes.flange(Math.min(PipeSizes.MAX_OUTSIDE, d / 2)) / 2;
                 int tangent = length;
                 if (b == null) {
@@ -794,6 +795,10 @@ class ShapeRasterizerTest {
                 assertEquals(List.of(), drum.clashes(), at);
                 var outlet = drum.nozzles().stream().filter(n -> n.role() == EquipmentShape.Role.LIQUID_OUTLET).findFirst().orElseThrow();
                 assertEquals(1, drum.nozzles().stream().filter(n -> n.role() == EquipmentShape.Role.LIQUID_OUTLET).count(), at);
+                if (Double.isNaN(b.outlet())) {
+                    assertArrayEquals(new double[]{1, -1}, new double[]{outlet.axis(), outlet.sign()}, 0, at + " on the front head");
+                    continue;
+                }
                 assertArrayEquals(new double[]{0, -1, b.outlet(), drum.axis()}, new double[]{outlet.axis(), outlet.sign(), outlet.base()[1], outlet.base()[2]}, 0, at);
                 double face = outlet.face()[0];
                 assertEquals(Math.rint(face), face, 1e-9, at);
@@ -805,6 +810,11 @@ class ShapeRasterizerTest {
                 assertEquals(Math.rint(gap), gap, 1e-9, at);
                 assertTrue(gap >= 2 && gap >= b.diameter() / 2 + flange - 1e-9, at);
                 double[] saddles = drum.saddleCentres();
+                for (double c : saddles)
+                    for (double pipe : new double[]{b.station(), b.outlet()}) {
+                        int column = (int) Math.floor(pipe);
+                        assertTrue(column < Math.floor(c - EquipmentShape.SADDLE_WIDTH / 2) || column > Math.floor(c + EquipmentShape.SADDLE_WIDTH / 2 - 1e-9), at + " pipe at " + pipe + " over the saddle at " + c);
+                    }
                 double front = Math.min(saddles[0], saddles[1]);
                 assertTrue(b.outlet() < front && front < b.station(), at);
                 for (double c : saddles) assertTrue(Math.abs(b.outlet() - c) >= saddle + flange - 1e-9, at + " saddle at " + c);
@@ -812,11 +822,16 @@ class ShapeRasterizerTest {
                 for (var c : drum.connections()) assertTrue(vapour.base()[1] < c.station() + .5, at + " connection at " + c.station());
             }
         assertTrue(boots > 700, boots + " boots");
-        // The 3 x 9 drum's boot hangs 1 m inboard of its front saddle (2.55 m), its oil outlet between that saddle and the
-        // front head; a 2 x 6 drum's outlet stands on its front tangent line; a 1 x 4 drum (sampled before) has no room.
-        assertArrayEquals(new double[]{3.5, 1.5}, new double[]{EquipmentShape.bootFor(3, 9).station(), EquipmentShape.bootFor(3, 9).outlet()}, 1e-12);
-        assertArrayEquals(new double[]{2.5, .5}, new double[]{EquipmentShape.bootFor(2, 6).station(), EquipmentShape.bootFor(2, 6).outlet()}, 1e-12);
-        assertNull(EquipmentShape.bootFor(1, 4));
+        // Owner decision 2026-10-25 (a reflux drum's drawing: saddles 500 mm inside the tangent lines of a 4000 mm drum, the
+        // boot leaning to the outlet end, its centre about a quarter of T/T from the tangent line): the 3 x 9 drum's boot
+        // hangs 2.75 m from its front tangent line, its oil outlet on its head's bottom beyond the saddle at 1.875 m; the
+        // 2 x 7 drum's 2 m (0.29 T/T), its outlet on the tangent line; the 2 x 6 drum's outlet stays on the front head; a
+        // 3 x 2 drum has no room for a boot between its saddles.
+        assertArrayEquals(new double[]{3.5, .5}, new double[]{EquipmentShape.bootFor(3, 9).station(), EquipmentShape.bootFor(3, 9).outlet()}, 1e-12);
+        assertArrayEquals(new double[]{2.5, .5}, new double[]{EquipmentShape.bootFor(2, 7).station(), EquipmentShape.bootFor(2, 7).outlet()}, 1e-12);
+        assertEquals(2.5, EquipmentShape.bootFor(2, 6).station(), 1e-12);
+        assertTrue(Double.isNaN(EquipmentShape.bootFor(2, 6).outlet()));
+        assertNull(EquipmentShape.bootFor(3, 2));
         // Owner request 2026-10-25: a boot stops short of the block line its preferred depth (0.9 m or 0.6 D) would reach,
         // so its drum stands a block lower: 3 x 9 on 3 m saddles (were 4), 2 x 6 on 2 m (were 3).
         assertArrayEquals(new int[]{3, 2}, new int[]{EquipmentShape.minimumBootSupport(3, 9), EquipmentShape.minimumBootSupport(2, 6)});
@@ -860,11 +875,13 @@ class ShapeRasterizerTest {
         assertFalse(in(skirted, a + 3.2, .03, a));
         var bare = new EquipmentShape(6, 10);
         assertFalse(in(bare, bare.axis() + 2.8, .5, bare.axis()));
-        // Saddles a fifth of T/T in from each tangent line, under the axis; nothing under the vessel between them.
+        // Saddles an eighth of T/T in from each tangent line (owner decision 2026-10-25), under the axis; nothing under the
+        // vessel between them.
         for (var lying : List.of(drum(3, 9, Orientation.HORIZONTAL, Heading.NORTH, 2), drum(4, 12, Orientation.HORIZONTAL, Heading.EAST, 1))) {
             double bottom = lying.bottomTangent(), length = lying.tangentLength(), under = -lying.support() / 2.0;
             assertEquals(lying.support() + lying.width() / 2.0 + lying.radius(), lying.topElevation(), 0);
-            for (double along : new double[]{bottom + .2 * length, bottom + .8 * length, bottom + .5 * length}) {
+            double at = EquipmentShape.SADDLE_POSITION * length;
+            for (double along : new double[]{bottom + at, bottom + length - at, bottom + .5 * length}) {
                 boolean saddle = along != bottom + .5 * length;
                 assertEquals(saddle, in(lying, under, along, lying.axis()), lying + " at " + along);
             }
