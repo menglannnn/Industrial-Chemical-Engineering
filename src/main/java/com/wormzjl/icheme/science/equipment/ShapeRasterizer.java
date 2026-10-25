@@ -22,7 +22,8 @@ import static com.wormzjl.icheme.science.equipment.Mesh.*;
  * <p>The vessel is built in its own frame ({@link EquipmentShape}), axis along +y: a profile of revolution (skirt or
  * bottom head, cylinder, top head), a skirt's base ring, anchor chairs and access opening (a drum's skirt hollow, with
  * slots, its inside drawn), and, lying down, two saddles below it. {@link EquipmentShape#transform()} then turns it into
- * the box; a rotation keeps every polygon counter-clockwise seen from outside.
+ * the box; a rotation keeps every polygon counter-clockwise seen from outside. A turned bottom outlet (owner request
+ * 2026-10-25) turns its port, and the slots keep to the other three sides.
  *
  * <p>A unit ({@link EquipmentShape.Kind#unit()}) has no body of revolution: its parts ({@link ProcessUnit}) give its
  * facets, collision and interior, and every cell it reaches is its own.
@@ -454,10 +455,15 @@ public final class ShapeRasterizer {
          */
         private final double openingHeight, openingRadius, portLow, portHigh;
         /**
+         * The way the port faces, frame x and z ({@link EquipmentShape#SIDES}[{@link EquipmentShape#outlet}]: the front,
+         * -z, unless turned, owner request 2026-10-25), and the shell vertex it is centred on.
+         */
+        private final int portX, portZ, portVertex;
+        /**
          * A skirt is hollow: drawn on both faces, with its bottom head (a column's bare, under its cladding), its outlet
          * line and a floor plate inside (owner report 2026-10-16; a column's too, owner request 2026-10-16). Its slots, from
-         * {@code slotLow} to {@code slotHigh} (0: none), are one facet wide and centred on the shell vertices at frame +x, +z
-         * and -x: the left, the back and the right.
+         * {@code slotLow} to {@code slotHigh} (0: none), are one facet wide and centred on the three of the shell vertices
+         * at frame +x, +z, -x and -z its port leaves free: the left, the back and the right for a port at the front.
          */
         private final boolean hollow;
         private final double slotLow, slotHigh, innerRadius;
@@ -526,6 +532,11 @@ public final class ShapeRasterizer {
             openingRadius = shape.openingRadius();
             portLow = Math.max(EquipmentShape.PLATE, openingHeight - openingRadius - EquipmentShape.PORT_COLLAR - .05);
             portHigh = openingHeight + openingRadius + EquipmentShape.PORT_COLLAR + .05;
+            int[] side = EquipmentShape.SIDES[shape.outlet()];
+            portX = side[0] == 0 ? side[1] : 0;
+            portZ = side[0] == 2 ? side[1] : 0;
+            // Vertex n/4 lies at frame +z; the front's -z at 3n/4, each turn a quarter on.
+            portVertex = Math.floorMod(3 * n / 4 + shape.outlet() * n / 4, n);
             hollow = shape.skirt();
             innerRadius = radius - EquipmentShape.SKIRT_WALL / apothemFactor;
             double slotTop = Math.min(shape.bottomTangent() - .2, .4 + 1.6);
@@ -722,20 +733,24 @@ public final class ShapeRasterizer {
 
         /**
          * The port's hole of radius {@code port} on the plane of skirt facet {@code i} at {@code apothem} from the axis, or
-         * null when it does not reach that facet: the circle around the port's horizontal axis towards the front (frame
-         * -z), projected along that axis onto the facet. A 32-gon whose edges stay outside the circle, so no plate lies
-         * inside it.
+         * null when it does not reach that facet: the circle around the port's horizontal axis (towards {@link #portX},
+         * {@link #portZ}), projected along that axis onto the facet. A 32-gon whose edges stay outside the circle, so no
+         * plate lies inside it. Across the port runs the direction a quarter turn back from it (frame +x for the front's -z).
          */
         private List<double[]> hole(int i, double apothem, double port) {
-            if (normalSin[i] > -.3) return null;
-            double low = Math.min(vertexCos[i], vertexCos[i + 1]) * radius, high = Math.max(vertexCos[i], vertexCos[i + 1]) * radius;
+            double facing = normalCos[i] * portX + normalSin[i] * portZ;
+            if (facing < .3) return null;
+            int ux = -portZ, uz = portX;
+            double across = normalCos[i] * ux + normalSin[i] * uz, v0 = vertexCos[i] * ux + vertexSin[i] * uz, v1 = vertexCos[i + 1] * ux + vertexSin[i + 1] * uz;
+            double low = Math.min(v0, v1) * radius, high = Math.max(v0, v1) * radius;
             if (high < -port || low > port) return null;
             int sides = 32;
             double vertexRadius = port / DeterministicMath.cos(Math.PI / sides);
             var hole = new ArrayList<double[]>(sides);
             for (int j = 0; j < sides; j++) {
                 double angle = 2 * Math.PI * j / sides, x = vertexRadius * DeterministicMath.cos(angle), y = openingHeight + vertexRadius * DeterministicMath.sin(angle);
-                hole.add(new double[]{axis + x, y, axis + (apothem - x * normalCos[i]) / normalSin[i]});
+                double out = (apothem - x * across) / facing;
+                hole.add(new double[]{axis + x * ux + out * portX, y, axis + x * uz + out * portZ});
             }
             return hole;
         }
@@ -748,9 +763,10 @@ public final class ShapeRasterizer {
             return null;
         }
 
+        /** Whether a slot is centred on shell vertex {@code v}: the quarter vertices but the port's. */
         private boolean slotVertex(int v) {
             v = Math.floorMod(v, n);
-            return v == 0 || v == n / 4 || v == n / 2;
+            return v % (n / 4) == 0 && v != portVertex;
         }
 
         /** The slot's rectangle on skirt facet {@code i} at vertex radius {@code r}, or null. */
@@ -803,8 +819,9 @@ public final class ShapeRasterizer {
             m.annulus(f, port, rim, back, sides, -1, Material.SUPPORT);
         }
 
+        /** The port's frame: along its line out of the skirt, its reference across it as {@link #hole} runs. */
         private Frame openingFrame() {
-            return new Frame(new double[]{axis, openingHeight, axis}, new double[]{0, 0, -1}, new double[]{1, 0, 0});
+            return new Frame(new double[]{axis, openingHeight, axis}, new double[]{portX, 0, portZ}, new double[]{-portZ, 0, portX});
         }
 
         /** A skirt's foot: the plate under it and its base ring, the ring's top and rim, and the anchor chairs. */
@@ -891,9 +908,10 @@ public final class ShapeRasterizer {
         }
 
         /**
-         * The shell facet anchor chair {@code k} of {@code chairs} stands against. A drum's skirt is pierced on its axes (the
-         * access opening at the front, slots at the left, back and right), so its chairs stand between them; a column's
-         * ladders come down on the diagonals, so its chairs keep to the axes.
+         * The shell facet anchor chair {@code k} of {@code chairs} stands against. A drum's skirt is pierced on its axes (its
+         * outlet's port on one, slots on the other three), so its chairs stand between them: chairs come in fours, so a
+         * quarter turn of the port (owner request 2026-10-25) maps their set onto itself and they stay between the
+         * piercings. A column's ladders come down on the diagonals, so its chairs keep to the axes.
          */
         private int chairFacet(int k, int chairs) {
             return shape.column() ? k * n / chairs : (2 * k + 1) * n / (2 * chairs);

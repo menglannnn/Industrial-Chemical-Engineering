@@ -26,7 +26,9 @@ class EquipmentRefreshTest {
                 // The storage kinds (owner request 2026-10-21) refresh as every layout does.
                 EquipmentShape.storage(Kind.TANK, 12, 8, Heading.NORTH, 0), EquipmentShape.storage(Kind.SPHERE, 8, 1, Heading.NORTH, 2),
                 // Either side of the stair sizes (owner change 2026-10-21): a small one placed with a stair refreshes to its ladders.
-                EquipmentShape.storage(Kind.TANK, 5, 8, Heading.NORTH, 0), EquipmentShape.storage(Kind.SPHERE, 12, 1, Heading.NORTH, 2));
+                EquipmentShape.storage(Kind.TANK, 5, 8, Heading.NORTH, 0), EquipmentShape.storage(Kind.SPHERE, 12, 1, Heading.NORTH, 2),
+                // A bottom outlet turned to the back (owner request 2026-10-25) is a layout of its own, which the shell keeps.
+                drum(3, 6, Orientation.VERTICAL, Heading.NORTH, 4, EquipmentShape.defaultConnections(3, 6, Orientation.VERTICAL, 4, false, 2), false, 2));
         var stamps = new ArrayList<Long>();
         for (var shape : shapes) {
             long stamp = ShapeRasterizer.stamp(shape);

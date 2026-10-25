@@ -36,24 +36,27 @@ public final class EquipmentConstructorBlockEntity extends BlockEntity {
      * reads diameter, length and support as its own sizes ({@link ProcessUnit}). Like the placement, the form only becomes
      * a world direction with the constructor's facing. The drum's length and connections, the column's trays and the air
      * cooler's bank are all kept, so changing the form loses none of them; so is the boot, which only a lying drum carries.
- * The paint colours whatever is built.
+     * The paint colours whatever is built. {@code outlet}: the quarter turns from the front a bottom outlet leaving through
+     * a skirt takes (owner request 2026-10-25), valid for the form ({@link EquipmentShape#outlets}): a standing drum's or
+     * a trickle-bed reactor's; 0 for every other form.
      */
     public record Design(double diameter, int tangentLength, VesselPlacement.Form form, int support, VesselPlacement placement, ColumnTrays trays,
-                         List<EquipmentShape.Connection> connections, Paint paint, ProcessUnit.Bank bank, boolean boot) {
+                         List<EquipmentShape.Connection> connections, Paint paint, ProcessUnit.Bank bank, boolean boot, int outlet) {
         /** A new column's trays: twenty, fed in the middle. */
         public static final ColumnTrays TRAYS = ColumnTrays.simple(20, 10);
         /**
          * A 2 m drum, 4 m between tangent lines, on a 2 m skirt, right in front of its constructor, with a new drum's side
-         * connection, in the built-in paint; a new constructor proposes it in the configured paint ({@link #fresh}).
+         * connection, its bottom outlet to the front, in the built-in paint; a new constructor proposes it in the configured
+         * paint ({@link #fresh}).
          */
         public static final Design DEFAULT = new Design(2, 4, VesselPlacement.Form.VERTICAL, EquipmentShape.defaultSupport(2, Orientation.VERTICAL),
                 VesselPlacement.DEFAULT, TRAYS, EquipmentShape.defaultConnections(2, 4, Orientation.VERTICAL, EquipmentShape.defaultSupport(2, Orientation.VERTICAL), false),
-                Paint.DEFAULT, ProcessUnit.Bank.ONE, false);
+                Paint.DEFAULT, ProcessUnit.Bank.ONE, false, 0);
 
         /** What a new constructor proposes: {@link #DEFAULT} in the config's primary and secondary colours. */
         public static Design fresh() {
             var d = DEFAULT;
-            return new Design(d.diameter, d.tangentLength, d.form, d.support, d.placement, d.trays, d.connections, IChemE.defaultPaint(), d.bank, d.boot);
+            return new Design(d.diameter, d.tangentLength, d.form, d.support, d.placement, d.trays, d.connections, IChemE.defaultPaint(), d.bank, d.boot, d.outlet);
         }
 
         public Design {
@@ -65,19 +68,23 @@ public final class EquipmentConstructorBlockEntity extends BlockEntity {
             connections = List.copyOf(connections);
             // Validates the shape from the parameters (a compact constructor assigns the fields after its body); the
             // facing does not change what is valid.
-            shape(diameter, tangentLength, form, support, trays, connections, bank, boot, EquipmentShape.Heading.NORTH);
+            shape(diameter, tangentLength, form, support, trays, connections, bank, boot, outlet, EquipmentShape.Heading.NORTH);
         }
 
         public EquipmentShape shape(Direction facing) {
-            return shape(diameter, tangentLength, form, support, trays, connections, bank, boot, form.front(facing.getStepX(), facing.getStepZ()));
+            return shape(diameter, tangentLength, form, support, trays, connections, bank, boot, outlet, form.front(facing.getStepX(), facing.getStepZ()));
         }
 
+        /** The shape; an outlet the form does not turn to is refused ({@link EquipmentShape#outlets}). */
         private static EquipmentShape shape(double diameter, int tangentLength, VesselPlacement.Form form, int support, ColumnTrays trays,
-                                            List<EquipmentShape.Connection> connections, ProcessUnit.Bank bank, boolean boot, EquipmentShape.Heading front) {
+                                            List<EquipmentShape.Connection> connections, ProcessUnit.Bank bank, boolean boot, int outlet, EquipmentShape.Heading front) {
             if (form.designed())
-                return EquipmentShape.designed(form.kind(), diameter, tangentLength, front, support, form.kind() == EquipmentShape.Kind.AIR_COOLER ? bank : ProcessUnit.Bank.ONE);
-            return form.column() ? EquipmentShape.column(diameter, trays, front, support)
-                    : EquipmentShape.drum(diameter, tangentLength, form.orientation(), front, support, connections, boot && form.orientation().horizontal());
+                return EquipmentShape.designed(form.kind(), diameter, tangentLength, front, support, form.kind() == EquipmentShape.Kind.AIR_COOLER ? bank : ProcessUnit.Bank.ONE, outlet);
+            if (form.column()) {
+                if (outlet != 0) throw new IllegalArgumentException("A column's bottoms leave to the front");
+                return EquipmentShape.column(diameter, trays, front, support);
+            }
+            return EquipmentShape.drum(diameter, tangentLength, form.orientation(), front, support, connections, boot && form.orientation().horizontal(), outlet);
         }
     }
 
@@ -157,7 +164,8 @@ public final class EquipmentConstructorBlockEntity extends BlockEntity {
             if (offsets.length != 3) throw new IllegalArgumentException("Offsets must hold forward, right and up");
             design = new Design(tag.getDouble("Diameter"), tag.getInt("TangentLength"), VesselPlacement.Form.valueOf(tag.getString("Form").toUpperCase(Locale.ROOT)),
                     tag.getInt("Support"), new VesselPlacement(offsets[0], offsets[1], offsets[2]), ColumnTrays.decode(tag.getIntArray("Trays")),
-                    EquipmentShape.Connection.decode(tag.getIntArray("Connections")), Paint.decode(tag.getIntArray("Paint")), ProcessUnit.Bank.decode(tag.getIntArray("Bank")), tag.getBoolean("Boot"));
+                    EquipmentShape.Connection.decode(tag.getIntArray("Connections")), Paint.decode(tag.getIntArray("Paint")), ProcessUnit.Bank.decode(tag.getIntArray("Bank")), tag.getBoolean("Boot"),
+                    tag.getInt("Outlet"));
         } catch (IllegalArgumentException invalid) {
             IChemE.LOGGER.warn("Equipment constructor at {} has an invalid design and proposes the default: {}", worldPosition, invalid.getMessage());
         }
@@ -175,6 +183,7 @@ public final class EquipmentConstructorBlockEntity extends BlockEntity {
         tag.putIntArray("Paint", design.paint().encode());
         tag.putIntArray("Bank", design.bank().encode());
         tag.putBoolean("Boot", design.boot());
+        tag.putInt("Outlet", design.outlet());
     }
 
     /**
@@ -200,7 +209,7 @@ public final class EquipmentConstructorBlockEntity extends BlockEntity {
         double diameter = sized > 0 ? Math.max(EquipmentShape.MIN_DIAMETER, Math.min(EquipmentShape.MAX_COLUMN_DIAMETER, Math.round(sized * 2) / 2.0))
                 : Math.min(EquipmentShape.MAX_COLUMN_DIAMETER, design.diameter());
         return java.util.Optional.of(new Design(diameter, design.tangentLength(), VesselPlacement.Form.COLUMN, Math.max(design.support(), EquipmentShape.minimumSkirt(diameter)),
-                design.placement(), ColumnTrays.of(input), design.connections(), design.paint(), design.bank(), design.boot()));
+                design.placement(), ColumnTrays.of(input), design.connections(), design.paint(), design.bank(), design.boot(), 0));
     }
 
     @Override

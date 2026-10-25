@@ -314,6 +314,80 @@ class ProcessUnitTest {
         assertEquals(List.of(), failures);
     }
 
+    /**
+     * Owner request 2026-10-25 ("make drum/reactor bottom outlet rotatable"): a trickle-bed reactor's effluent leaves its
+     * skirt to the front; to the left, its quench port then mirrored to the front; and to the back or the right, whichever
+     * the ladder from grade leaves free, the other refused. Each turn keeps its pipes apart, its effluent's and quench's
+     * necks clear at a pipe's largest, a free block for every pipe, its effluent line off the ladders, and its decks and
+     * ladders as they were. No other unit's bottom outlet leaves a skirt sideways: theirs stay where they are.
+     */
+    @Test
+    void aTrickleBedsEffluentTurnsWhereNoLadderComesDown() {
+        var kind = Kind.TRICKLE_BED_REACTOR;
+        int built = 0;
+        for (double d = ProcessUnit.minDiameter(kind); d <= ProcessUnit.maxDiameter(kind) + 1e-9; d += ProcessUnit.diameterStep(kind))
+            for (int beds = ProcessUnit.minLength(kind, d); beds <= ProcessUnit.maxLength(kind, d); beds++) {
+                int least = ProcessUnit.minSupport(kind, d, beds);
+                for (int s : new int[]{least, least + 1}) {
+                    var front = EquipmentShape.unit(kind, d, beds, Heading.NORTH, s);
+                    int sides = EquipmentShape.outlets(kind, d, beds, EquipmentShape.Orientation.VERTICAL, s);
+                    assertEquals(0b0011, sides & 0b0011, front.toString());
+                    assertEquals(1, Integer.bitCount(sides & 0b1100), front.toString());
+                    var grade = ProcessUnit.of(front).ladders().stream().filter(l -> l.base() == 0).toList();
+                    assertEquals(1, grade.size(), front.toString());
+                    for (int q = 0; q < EquipmentShape.CONNECTION_SIDES; q++) {
+                        int[] side = EquipmentShape.side(q);
+                        boolean ladder = Math.abs(grade.getFirst().outX() - (side[0] == 0 ? side[1] : 0)) < 1e-9 && Math.abs(grade.getFirst().outZ() - (side[0] == 2 ? side[1] : 0)) < 1e-9;
+                        String at = front + " turned " + q;
+                        assertEquals(ladder, (sides >> q & 1) == 0, at);
+                        double size = d;
+                        int b = beds, skirt = s, turn = q;
+                        if (ladder) {
+                            assertThrows(IllegalArgumentException.class, () -> EquipmentShape.unit(kind, size, b, Heading.NORTH, skirt, ProcessUnit.Bank.ONE, turn), at);
+                            continue;
+                        }
+                        var shape = EquipmentShape.unit(kind, d, beds, Heading.NORTH, s, ProcessUnit.Bank.ONE, q);
+                        assertTrue(shape.outletTurns(), at);
+                        int effluent = role(shape, Role.EFFLUENT), quench = role(shape, Role.QUENCH);
+                        var e = shape.nozzles().get(effluent);
+                        var qn = shape.nozzles().get(quench);
+                        assertArrayEquals(side, new int[]{e.axis(), e.sign()}, at);
+                        assertArrayEquals(q == 1 ? new int[]{2, -1} : new int[]{0, 1}, new int[]{qn.axis(), qn.sign()}, at);
+                        pipesApart(shape);
+                        assertTrue(NozzleRoom.clear(shape, effluent, PipeSizes.MAX_OUTSIDE), at + " effluent");
+                        assertTrue(NozzleRoom.clear(shape, quench, PipeSizes.MAX_OUTSIDE), at + " quench");
+                        var layout = ShapeRasterizer.layout(shape);
+                        var occupied = new HashSet<ShapeRasterizer.Cell>(layout.shell());
+                        occupied.addAll(layout.interior());
+                        for (var port : ShapeRasterizer.ports(shape))
+                            assertFalse(occupied.contains(new ShapeRasterizer.Cell(port.cell().x() + port.dx(), port.cell().y() + port.dy(), port.cell().z() + port.dz())),
+                                    at + " " + shape.nozzles().get(port.nozzle()).role());
+                        // The effluent's line, a pipe's largest round it, out to its face: no rung or cage.
+                        int across = 2 - side[0];
+                        for (double t = 0; t <= e.length() + 1e-9; t += .1)
+                            for (double[] off : new double[][]{{0, 0}, {.4, 0}, {-.4, 0}, {0, .4}, {0, -.4}}) {
+                                var p = e.base().clone();
+                                p[side[0]] += side[1] * t;
+                                p[across] += off[0];
+                                p[1] += off[1];
+                                assertFalse(climbable(shape, p), at + " effluent line on a ladder at " + t);
+                            }
+                        if (q != 0) walkedAndClimbed(shape);
+                        built++;
+                    }
+                }
+            }
+        assertEquals(9 * 4 * 2 * 3, built);
+        for (var shape : everySize())
+            if (shape.kind() != kind)
+                assertEquals(1, EquipmentShape.outlets(shape.kind(), shape.diameter(), shape.tangentLength(), shape.orientation(), shape.support()), shape.toString());
+    }
+
+    private static int role(EquipmentShape shape, Role role) {
+        for (int k = 0; k < shape.nozzles().size(); k++) if (shape.nozzles().get(k).role() == role) return k;
+        throw new AssertionError(shape + " has no " + role);
+    }
+
     @Test
     void everyNozzleLeavesAFreeBlockForItsPipe() {
         for (var shape : everySize()) {

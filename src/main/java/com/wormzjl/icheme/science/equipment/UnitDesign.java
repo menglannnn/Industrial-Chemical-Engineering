@@ -72,6 +72,15 @@ public abstract class UnitDesign {
     void check(double size, int length, int support, ProcessUnit.Bank bank) {
     }
 
+    /**
+     * The quarter turns from the front the unit's bottom outlet may take at these sizes, as bits (bit q: q turns, through
+     * {@link EquipmentShape#SIDES}; the front, bit 0, always): only a unit whose bottom outlet leaves horizontally through
+     * its skirt turns it (owner request 2026-10-25), to the sides its other parts leave free. The ranges hold.
+     */
+    public int outlets(double size, int length, int support) {
+        return 1;
+    }
+
     /** Whether units of the kind have moving parts: their datasheet carries the switch. */
     public boolean moves() {
         return false;

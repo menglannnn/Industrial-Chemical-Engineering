@@ -45,7 +45,9 @@ import static com.wormzjl.icheme.science.equipment.UnitDesign.whole;
  * paint have pages of their own (owner requests 2026-10-16). It edits a local draft; the server receives the design when
  * the screen closes, or with a build request on Build. A column is designed here by its trays and feed, or imported whole
  * (draws, pumparounds and steam too) from the nearest column calculator; its schematic is the calculator's
- * ({@link ColumnDiagram}).
+ * ({@link ColumnDiagram}). A bottom outlet leaving through a skirt turns to the sides its form allows (owner request
+ * 2026-10-25, {@link EquipmentShape#outlets}): a standing drum's on its Nozzles page, a trickle-bed reactor's effluent on
+ * its design page.
  */
 public final class EquipmentConstructorScreen extends Screen {
     /** The screen's pages: what to build, its design, a drum's side connections and the paint. */
@@ -126,6 +128,8 @@ public final class EquipmentConstructorScreen extends Screen {
     private ProcessUnit.Bank bank;
     /** Whether a lying drum has a boot, the player's choice kept for the other forms ({@link #hasBoot}). */
     private boolean boot;
+    /** The bottom outlet's quarter turns from the front, the player's choice kept for the other forms ({@link #outlet()}). */
+    private int outlet;
     private int channel = Paint.BODY;
     private @Nullable EditBox custom;
     /** The paint page's body and structure buttons (null off that page). */
@@ -133,6 +137,11 @@ public final class EquipmentConstructorScreen extends Screen {
     private @Nullable Button build;
     /** A lying drum's boot toggle, on the Nozzles page with the drain it carries (null off that page). */
     private @Nullable Button bootButton;
+    /**
+     * The bottom outlet's side (owner request 2026-10-25): a standing drum's on the Nozzles page where a lying drum's boot
+     * stands, a trickle-bed reactor's on its design page under its skirt (null elsewhere).
+     */
+    private @Nullable Button outletButton;
     private ShapeRasterizer.Layout layout;
     /** Set by Import until the constructor's synced design changes; the draft then takes it. */
     private @Nullable Design importing;
@@ -151,6 +160,7 @@ public final class EquipmentConstructorScreen extends Screen {
         diameter = design.diameter();
         tangentLength = design.tangentLength();
         boot = design.boot();
+        outlet = design.outlet();
         support = Math.max(design.support(), minimumSupport());
         forward = design.placement().forward();
         right = design.placement().right();
@@ -172,7 +182,7 @@ public final class EquipmentConstructorScreen extends Screen {
 
     /** The draft; always valid, because every stepper is clamped to the bounds of its parameter. */
     public Design design() {
-        return new Design(diameter, tangentLength, form, support, new VesselPlacement(forward, right, up), trays, List.copyOf(connections), paint, bank, hasBoot());
+        return new Design(diameter, tangentLength, form, support, new VesselPlacement(forward, right, up), trays, List.copyOf(connections), paint, bank, hasBoot(), outlet());
     }
 
     /** Whether the draft has a boot: a lying drum's, where it has room for one. */
@@ -180,9 +190,35 @@ public final class EquipmentConstructorScreen extends Screen {
         return boot && form.kind() == EquipmentShape.Kind.DRUM && form.orientation().horizontal() && EquipmentShape.bootFor(diameter, tangentLength) != null;
     }
 
+    /** The sides the draft's bottom outlet may face, as bits ({@link EquipmentShape#outlets}): the front only but on a standing drum or a trickle-bed reactor. */
+    private int outlets() {
+        return form.column() ? 1 : EquipmentShape.outlets(form.kind(), diameter, tangentLength, form.orientation(), support);
+    }
+
+    /** The draft's bottom outlet turns: the player's where the form turns it that way, else the front. */
+    private int outlet() {
+        return (outlets() >> outlet & 1) != 0 ? outlet : 0;
+    }
+
+    /** What the bottom outlet's button says: the side it faces as seen from the constructor. */
+    private Component outletLabel() {
+        int[] side = EquipmentShape.side(outlet());
+        return Component.translatable(KEY + "side." + toward(side[0], side[1]));
+    }
+
+    /** The bottom outlet's button on row {@code row}: a click turns the outlet to the next side its form allows. */
+    private void addOutletButton(int row) {
+        outletButton = addRenderableWidget(Button.builder(outletLabel(), b -> {
+            int allowed = outlets(), next = outlet();
+            do next = (next + 1) % EquipmentShape.CONNECTION_SIDES; while ((allowed >> next & 1) == 0);
+            outlet = next;
+            refresh();
+        }).bounds(PANEL - 80, TOP + row * ROW, 74, 16).tooltip(Tooltip.create(Component.translatable(KEY + "outlet.hint"))).build());
+    }
+
     /** The draft's drum with no side connections, which fitting and adding them place around. */
     private EquipmentShape template() {
-        return EquipmentShape.drum(diameter, tangentLength, form.orientation(), front(), support, List.of(), hasBoot());
+        return EquipmentShape.drum(diameter, tangentLength, form.orientation(), front(), support, List.of(), hasBoot(), outlet());
     }
 
     /** The vessel the draft would build, for the ghost; null on the choice page and once the constructor is gone. */
@@ -199,7 +235,7 @@ public final class EquipmentConstructorScreen extends Screen {
      */
     private void fitConnections() {
         if (form.kind() != EquipmentShape.Kind.DRUM) return;
-        var drum = List.of(diameter, (double) tangentLength, (double) support, (double) form.orientation().ordinal(), hasBoot() ? 1.0 : 0);
+        var drum = List.of(diameter, (double) tangentLength, (double) support, (double) form.orientation().ordinal(), hasBoot() ? 1.0 : 0, (double) outlet());
         if (drum.equals(fittedFor)) return;
         fittedFor = drum;
         var fitted = EquipmentShape.fit(connections, template());
@@ -216,6 +252,7 @@ public final class EquipmentConstructorScreen extends Screen {
     protected void init() {
         build = null;
         bootButton = null;
+        outletButton = null;
         custom = null;
         channelButtons[0] = channelButtons[1] = null;
         switch (page) {
@@ -394,6 +431,8 @@ public final class EquipmentConstructorScreen extends Screen {
             // A compressor's throws come in opposed pairs.
             stepper(row++, step -> tangentLength = unitLength(kind, tangentLength + (lengthStep > 1 ? lengthStep * Integer.signum(step) : step)));
         if (ProcessUnit.maxSupport(kind) > 0) stepper(row++, step -> support = clamp(support + step, minimumSupport(), ProcessUnit.maxSupport(kind)));
+        // A bottom outlet leaving through the skirt turns where the design lets it (a trickle-bed reactor's effluent).
+        if (outletRow()) addOutletButton(row++);
         stepper(row, step -> forward = clamp(forward + step, 1, VesselPlacement.MAX_FORWARD));
         stepper(row + 1, step -> right = clamp(right + step, -VesselPlacement.MAX_SHIFT, VesselPlacement.MAX_SHIFT));
         stepper(row + 2, step -> up = clamp(up + step, -VesselPlacement.MAX_SHIFT, VesselPlacement.MAX_SHIFT));
@@ -403,6 +442,11 @@ public final class EquipmentConstructorScreen extends Screen {
     /** Whether a unit's design has a length row: tubes, throws, a heater's radiant height or length (not a bay's, an ejector's or a pump's). */
     private static boolean lengthRow(EquipmentShape.Kind kind) {
         return UnitDesign.of(kind).lengthRow() != null;
+    }
+
+    /** Whether a unit's design page has a bottom outlet row: its design turns the outlet (a trickle-bed reactor's effluent). */
+    private boolean outletRow() {
+        return form.designed() && Integer.bitCount(outlets()) > 1;
     }
 
     /**
@@ -453,7 +497,7 @@ public final class EquipmentConstructorScreen extends Screen {
                 refresh();
             }).bounds(PANEL - 80, TOP + 6 * ROW, 74, 16).tooltip(Tooltip.create(Component.translatable(KEY + "boot.hint"))).build());
             bootButton.active = EquipmentShape.bootFor(diameter, tangentLength) != null;
-        }
+        } else if (Integer.bitCount(outlets()) > 1) addOutletButton(6);
         bottomRow(Button.builder(Component.translatable(KEY + "back"), b -> show(Page.DESIGN)).tooltip(Tooltip.create(Component.translatable(KEY + "back.hint"))));
     }
 
@@ -534,6 +578,7 @@ public final class EquipmentConstructorScreen extends Screen {
     private String[] rows() {
         if (page == Page.CONNECTIONS)
             return form.orientation().horizontal() ? new String[]{"connections", "connection", "faces", "along", "offset", "", "boot"}
+                    : Integer.bitCount(outlets()) > 1 ? new String[]{"connections", "connection", "faces", "height", "offset", "", "outlet"}
                     : new String[]{"connections", "connection", "faces", "height", "offset"};
         if (page == Page.PAINT) return new String[]{"paint", "paint.body", "paint.structure", "paint.palette", "paint.palette", "custom", "paint.default"};
         return switch (Equipment.of(form)) {
@@ -547,6 +592,7 @@ public final class EquipmentConstructorScreen extends Screen {
                 var names = new ArrayList<String>(List.of("equipment", design.sizeRow()));
                 if (design.lengthRow() != null) names.add(design.lengthRow());
                 if (design.supportRow() != null) names.add(design.supportRow());
+                if (outletRow()) names.add("outlet");
                 names.addAll(List.of("forward", "right", "up"));
                 yield names.toArray(String[]::new);
             }
@@ -644,7 +690,7 @@ public final class EquipmentConstructorScreen extends Screen {
         // is a lying drum's underside, onto its saddles).
         if (form.kind() == EquipmentShape.Kind.DRUM && before.orientation() != form.orientation()) {
             connections.clear();
-            connections.addAll(EquipmentShape.defaultConnections(diameter, tangentLength, form.orientation(), support, hasBoot()));
+            connections.addAll(EquipmentShape.defaultConnections(diameter, tangentLength, form.orientation(), support, hasBoot(), outlet()));
             selected = 0;
         }
         refresh();
@@ -670,7 +716,10 @@ public final class EquipmentConstructorScreen extends Screen {
         return Component.translatable(KEY + (EquipmentShape.bootFor(diameter, tangentLength) == null ? "boot.none" : hasBoot() ? "boot.on" : "boot.off"));
     }
 
-    /** Follows an edit: a boot raises the saddles to what its drain needs; the connections fit the drum again. */
+    /**
+     * Follows an edit: a boot raises the saddles to what its drain needs; the connections fit the drum again; the bottom
+     * outlet's button says its side (the front where the edit left the player's side refused).
+     */
     private void refresh() {
         support = Math.max(support, minimumSupport());
         if (bootButton != null) {
@@ -680,6 +729,7 @@ public final class EquipmentConstructorScreen extends Screen {
         fitConnections();
         var shape = design().shape(facing);
         if (!shape.equals(layout.shape())) layout = ShapeRasterizer.layout(shape);
+        if (outletButton != null) outletButton.setMessage(outletLabel());
         if (build != null) build.active = clash() == null;
     }
 
@@ -791,6 +841,7 @@ public final class EquipmentConstructorScreen extends Screen {
                 var shown = new ArrayList<String>(List.of("", across));
                 if (design.lengthRow() != null) shown.add(design.lengthInMetres() ? tangentLength + " m" : Integer.toString(tangentLength));
                 if (design.supportRow() != null) shown.add(support + " m");
+                if (outletRow()) shown.add("");
                 shown.addAll(List.of(place, shift, lift));
                 yield shown.toArray(String[]::new);
             }
@@ -851,6 +902,7 @@ public final class EquipmentConstructorScreen extends Screen {
             status = clash != null ? clashText(clash) : Component.translatable(KEY + "clash.none");
         }
         if (form.orientation().horizontal()) graphics.drawString(font, Component.translatable(KEY + "boot"), 8, TOP + 6 * ROW + 4, ProcessUi.TEXT);
+        else if (outletButton != null) graphics.drawString(font, Component.translatable(KEY + "outlet"), 8, TOP + 6 * ROW + 4, ProcessUi.TEXT);
         graphics.drawString(font, status, 8, STATUS, clash() == null ? ProcessUi.ACCENT : ProcessUi.WARN);
         describe(mouseX, mouseY, connections.isEmpty() ? 2 : names.length, connections.isEmpty() ? new String[0] : new String[]{"connection.size", "connection.port"});
     }

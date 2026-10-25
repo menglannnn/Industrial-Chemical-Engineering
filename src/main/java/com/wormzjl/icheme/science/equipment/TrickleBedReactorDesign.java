@@ -42,9 +42,12 @@ import static com.wormzjl.icheme.science.equipment.ProcessUnit.tangential;
  *
  * <p>Nozzles: FEED (oil and hydrogen mixed, 0.15 D, 0.15 to 1 m) leaves the elbow's run to the front above the top deck's
  * handrail; HYDROGEN (0.1 D) leaves the tee on that run to the left; both faces stand at the top deck's edge. EFFLUENT
- * (0.15 D) from the bottom head's centre turns inside the skirt and leaves through it to the front 1.5 m over grade;
- * QUENCH (0.05 D, 0.1 m at least) leaves the foot of the quench trunk to the left at the same height (real plants mix the
- * hydrogen upstream; the tee gives it a port of its own, survey Q2). A single bed has no quench zone: its riser trims the
+ * (0.15 D) from the bottom head's centre turns inside the skirt and leaves through it 1.5 m over grade, to the front or
+ * the side the player turns it to ({@link #outlets}, owner request 2026-10-25); QUENCH (0.05 D, 0.1 m at least) leaves
+ * the foot of the quench trunk to the left at the same height (real plants mix the hydrogen upstream; the tee gives it a
+ * port of its own, survey Q2), or to the front where the effluent leaves to the left: the trunk, its header and the
+ * risers give way, mirrored about the front-left diagonal, so they keep the quarter between the front and the left, which
+ * no platform's part ring, ladder, thermowell or dump nozzle takes. A single bed has no quench zone: its riser trims the
  * inlet in the top zone.
  */
 final class TrickleBedReactorDesign extends UnitDesign {
@@ -107,6 +110,42 @@ final class TrickleBedReactorDesign extends UnitDesign {
     @Override
     public int minSupport(double size, int length) {
         return (int) Math.ceil(Math.max(size / 2 + wall(size) + 1.5, PORT_ROW + .05 + .15 * size + size / 2 + wall(size)) - 1e-9);
+    }
+
+    /**
+     * The effluent's sides (owner request 2026-10-25: "make drum/reactor bottom outlet rotatable"): the front; the left,
+     * where the quench trunk then gives way to the front; and the back or the right, whichever the ladder from grade leaves
+     * free (its line 1.5 m up would run through the ladder's rungs). The ladders alternate between the back and the right,
+     * the top deck's at the back, so the one from grade stands at the back over an even count of platform levels (none
+     * too: the top deck's own) and at the right over an odd one.
+     */
+    @Override
+    public int outlets(double size, int length, int support) {
+        return 0b0011 | (platforms(size, length, support).levels().size() % 2 == 0 ? 1 << 3 : 1 << 2);
+    }
+
+    /** The quench injection heights, the platform levels wanted under them, and every platform level under the top deck, rising. */
+    private record Platforms(double[] quench, List<Integer> wanted, List<Integer> levels) {
+    }
+
+    /**
+     * The quench zones and the platforms of a reactor of inside diameter {@code d}, {@code beds} beds on a skirt {@code s}
+     * high: a full ring 1.2 m under each injection, part rings resting climbs over 9 m (Access.climbs). None on the
+     * bottom tangent, where its brackets would hang off the skirt's top: a metre lower onto the skirt, or higher where the
+     * climb over it would then be too long.
+     */
+    private static Platforms platforms(double d, int beds, int s) {
+        double hb = bed(d), zq = quenchZone(d), zt = topZone(d), yT = s + tangentLength(d, beds);
+        int level = (int) Math.floor(yT), risers = Math.max(1, beds - 1);
+        var quench = new double[risers];
+        var wanted = new ArrayList<Integer>();
+        if (beds == 1) quench[0] = Math.min(yT - zt / 2, level - .8);
+        for (int k = 1; k < beds; k++) quench[k - 1] = yT - zt - k * hb - (k - .5) * zq;
+        for (int k = beds - 1; k >= 1; k--) wanted.add((int) Math.floor(quench[k - 1] - 1.2));
+        var levels = Access.climbs(0, wanted, level);
+        levels.removeLast();
+        offTangent(levels, s, level);
+        return new Platforms(quench, wanted, levels);
     }
 
     @Override
@@ -178,27 +217,34 @@ final class TrickleBedReactorDesign extends UnitDesign {
         double dump = Math.max(.06, .04 * d), rho = .6 * r, yDump = yB - Math.sqrt(shell * shell - rho * rho) - (skirt - rho);
         dumpNozzle(u, a, skirt, -3 * Math.PI / 4, yDump, dump, .3 + 2 * dump);
 
-        // ---- The bottom ports: the effluent through its sleeve to the front, the quench out of its trunk to the left.
-        double corner = ProcessUnit.pedestalCorner(skirt + PEDESTAL_REACH), zFace = Math.floor(a - corner - .1), eff = Math.min(PipeSizes.MAX_OUTSIDE, .15 * d), zEff = a - skirt + .15;
-        u.nozzles.add(new Nozzle(Role.EFFLUENT, new double[]{a, PORT_ROW, zEff}, 2, -1, zEff - zFace, PipeSizes.od(.15 * d, .1, eff), 0));
+        // ---- The bottom ports: the effluent through its sleeve to its side (the front unless turned), the quench out of
+        // its trunk to the left, or to the front where the effluent leaves to the left.
+        int[] side = EquipmentShape.SIDES[u.shape.outlet()];
+        double corner = ProcessUnit.pedestalCorner(skirt + PEDESTAL_REACH), eff = Math.min(PipeSizes.MAX_OUTSIDE, .15 * d), inside = skirt - .15;
+        double[] effluent = {a, PORT_ROW, a};
+        effluent[side[0]] = a + side[1] * inside;
+        double face = side[1] > 0 ? Math.ceil(a + corner + .1) : Math.floor(a - corner - .1);
+        u.nozzles.add(new Nozzle(Role.EFFLUENT, effluent, side[0], side[1], Math.abs(face - effluent[side[0]]), PipeSizes.od(.15 * d, .1, eff), 0));
         // Its sleeve through the skirt at the pipe's size (owner decision 2026-10-21: the skirt hole takes the pipe's size, up to 1 m).
-        u.sleeves.put(u.nozzles.size() - 1, new ProcessUnit.Sleeve(a - zEff, skirt, skirt * DeterministicMath.cos(Math.PI / n)));
-        // The quench's face far enough out for a pipe's largest hub and flange clear of its trunk (ProcessUnit.NECK).
-        double q = Math.min(PipeSizes.MAX_OUTSIDE, Math.max(.1, .05 * d)), rq = Math.max(.08, .7 * q), rr = wall + .12 + rq / 2, xFace = Math.ceil(a + Math.max(corner + .15, rr + q / 2 + ProcessUnit.NECK));
-        u.nozzles.add(new Nozzle(Role.QUENCH, new double[]{a + rr, PORT_ROW, a}, 0, 1, xFace - a - rr, PipeSizes.od(.05 * d, .1, q), 0));
+        u.sleeves.put(u.nozzles.size() - 1, new ProcessUnit.Sleeve(inside, skirt, skirt * DeterministicMath.cos(Math.PI / n)));
+        // The quench's trunk at angle t0, its risers spreading round towards the front (towards the left where mirrored);
+        // its face far enough out for a pipe's largest hub and flange clear of its trunk (ProcessUnit.NECK).
+        boolean mirrored = u.shape.outlet() == 1;
+        int qa = mirrored ? 2 : 0, qs = mirrored ? -1 : 1;
+        double t0 = mirrored ? -Math.PI / 2 : 0, spread = mirrored ? 1 : -1;
+        double q = Math.min(PipeSizes.MAX_OUTSIDE, Math.max(.1, .05 * d)), rq = Math.max(.08, .7 * q), rr = wall + .12 + rq / 2, reach = Math.max(corner + .15, rr + q / 2 + ProcessUnit.NECK);
+        double[] port = {a, PORT_ROW, a}, facing = new double[3];
+        port[qa] += qs * rr;
+        facing[qa] = qs;
+        double qFace = qs > 0 ? Math.ceil(a + reach) : Math.floor(a - reach);
+        u.nozzles.add(new Nozzle(Role.QUENCH, port.clone(), qa, qs, Math.abs(qFace - port[qa]), PipeSizes.od(.05 * d, .1, q), 0));
 
-        // ---- The quench zones and the platforms: a full ring 1.2 m under each injection, part rings resting climbs over
-        // 9 m (Access.climbs). None on the bottom tangent, where its brackets would hang off the skirt's top: a metre lower
-        // onto the skirt, or higher where the climb over it would then be too long.
+        // ---- The quench zones and the platforms (platforms).
         int risers = Math.max(1, beds - 1);
-        var quench = new double[risers];
-        var wanted = new ArrayList<Integer>();
-        if (beds == 1) quench[0] = Math.min(yT - zt / 2, level - .8);
-        for (int k = 1; k < beds; k++) quench[k - 1] = yT - zt - k * hb - (k - .5) * zq;
-        for (int k = beds - 1; k >= 1; k--) wanted.add((int) Math.floor(quench[k - 1] - 1.2));
-        var levels = Access.climbs(0, wanted, level);
-        levels.removeLast();
-        offTangent(levels, s, level);
+        var plan = platforms(d, beds, s);
+        double[] quench = plan.quench();
+        var wanted = plan.wanted();
+        var levels = plan.levels();
         // Caged ladders alternate between the back and the right, the one onto the top deck at the back (the column's
         // pattern); a part ring runs the quarter turn from where its ladder comes up to the next one's foot; decks under
         // the bottom tangent round the skirt (HydroprocessingParts.access).
@@ -213,24 +259,25 @@ final class TrickleBedReactorDesign extends UnitDesign {
         double girder = girder(d);
         access(u, a, wall, skirt, levels, low, rings, Math.PI / 2, level, girder);
 
-        // ---- The quench trunk up the left from its port to the ring header round the front left at the skirt's top, a
-        // riser from it to each zone's nozzle with its valve 0.8 m over the zone's deck; the first riser is the trunk's.
+        // ---- The quench trunk up the left (the front where mirrored) from its port to the ring header round the front
+        // left at the skirt's top, a riser from it to each zone's nozzle with its valve 0.8 m over the zone's deck; the
+        // first riser is the trunk's.
         double step = (rq + .3) / rr, yh = Math.max(PORT_ROW + .9, Math.min(yB - .6, (levels.isEmpty() ? level : levels.getFirst()) - .9));
-        double[] port = {a + rr, PORT_ROW, a}, branch = {a + rr, yh, a};
+        double[] branch = {port[0], yh, port[2]};
         int nq = ProcessUnit.sides(q);
         u.line(q / 2, Material.PIPE, port, branch);
         u.mesh.sphere(port, .52 * q, nq, Material.PIPE);
-        u.solids.add(Solid.rod(new double[]{a + rr, 0, a}, 1, PORT_ROW, yh, q / 2, 0));
+        u.solids.add(Solid.rod(new double[]{port[0], 0, port[2]}, 1, PORT_ROW, yh, q / 2, 0));
         if (risers > 1) {
-            double last = -(risers - 1) * step;
-            u.mesh.bend(new Frame(new double[]{a, yh, a}, new double[]{0, -1, 0}, new double[]{1, 0, 0}), rr, q / 2, last, 0, (int) Math.ceil(-last / .35), nq, true, Material.PIPE);
+            double last = t0 + spread * (risers - 1) * step, from = Math.min(t0, last), to = Math.max(t0, last);
+            u.mesh.bend(new Frame(new double[]{a, yh, a}, new double[]{0, -1, 0}, new double[]{1, 0, 0}), rr, q / 2, from, to, (int) Math.ceil((to - from) / .35), nq, true, Material.PIPE);
             u.mesh.sphere(branch, .52 * q, nq, Material.PIPE);
             u.mesh.sphere(around(a, a, rr, last, yh), .52 * q, nq, Material.PIPE);
-            u.solids.add(Solid.ring(a, a, yh - q / 2, yh + q / 2, rr - q / 2, rr + q / 2, last - q / 2 / rr, q / 2 / rr));
+            u.solids.add(Solid.ring(a, a, yh - q / 2, yh + q / 2, rr - q / 2, rr + q / 2, from - q / 2 / rr, to + q / 2 / rr));
         }
         var fittings = new ArrayList<double[]>();
         for (int k = 1; k <= risers; k++) {
-            double t = -(k - 1) * step, y = quench[k - 1];
+            double t = t0 + spread * (k - 1) * step, y = quench[k - 1];
             double[] foot = around(a, a, rr, t, yh), bend = around(a, a, rr, t, y), into = around(a, a, wall - .05, t, y);
             u.line(rq / 2, Material.PIPE, foot, bend, into);
             if (k > 1) u.mesh.sphere(foot, .52 * q, nq, Material.PIPE);
@@ -240,7 +287,7 @@ final class TrickleBedReactorDesign extends UnitDesign {
             fittings.add(new double[]{y - .2, y + .2});
             if (beds > 1) u.valve(foot[0], wanted.get(beds - 1 - k) + Access.DECK + .8, foot[2], rq / 2, outward(t));
         }
-        if (beds == 1 && yh - PORT_ROW >= 1.2) u.valve(a + rr, (PORT_ROW + yh) / 2, a, q / 2, new double[]{1, 0, 0});
+        if (beds == 1 && yh - PORT_ROW >= 1.2) u.valve(port[0], (PORT_ROW + yh) / 2, port[2], q / 2, facing);
 
         // ---- The top: the nozzle, its elbow's run to the front with the hydrogen tee, the davit.
         double p = Math.min(PipeSizes.MAX_OUTSIDE, Math.max(.15, .15 * d)), h2 = Math.min(PipeSizes.MAX_OUTSIDE, Math.max(.1, .1 * d)), edge = wall + TOP_DECK;

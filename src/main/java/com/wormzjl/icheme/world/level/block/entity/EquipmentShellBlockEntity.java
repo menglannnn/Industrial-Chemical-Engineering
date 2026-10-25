@@ -392,7 +392,8 @@ public final class EquipmentShellBlockEntity extends BlockEntity implements com.
 
     /**
      * A shape's NBT: kind, diameter, tangent length, orientation, front, support, a column's trays, a drum's side
-     * connections and whether it has a boot, an air cooler's bank.
+     * connections and whether it has a boot, an air cooler's bank; a drum's and a designed shape's bottom outlet turns
+     * (a column's leaves to the front).
      */
     public static void writeShape(CompoundTag tag, EquipmentShape shape) {
         tag.putString("Kind", shape.kind().name().toLowerCase(Locale.ROOT));
@@ -402,9 +403,12 @@ public final class EquipmentShellBlockEntity extends BlockEntity implements com.
         tag.putString("Front", shape.front().name().toLowerCase(Locale.ROOT));
         tag.putInt("Support", shape.support());
         if (shape.trays() != null) tag.putIntArray("Trays", shape.trays().encode());
-        else if (shape.drum()) {
-            tag.putIntArray("Connections", EquipmentShape.Connection.encode(shape.connections()));
-            tag.putBoolean("Boot", shape.boot());
+        else {
+            if (shape.drum()) {
+                tag.putIntArray("Connections", EquipmentShape.Connection.encode(shape.connections()));
+                tag.putBoolean("Boot", shape.boot());
+            }
+            tag.putInt("Outlet", shape.outlet());
         }
         if (shape.kind() == EquipmentShape.Kind.AIR_COOLER) tag.putIntArray("Bank", shape.bank().encode());
     }
@@ -416,11 +420,11 @@ public final class EquipmentShellBlockEntity extends BlockEntity implements com.
         if (kind == EquipmentShape.Kind.COLUMN)
             return EquipmentShape.column(tag.getDouble("Diameter"), ColumnTrays.decode(tag.getIntArray("Trays")), front, tag.getInt("Support"));
         if (kind.designed()) return EquipmentShape.designed(kind, tag.getDouble("Diameter"), tag.getDouble("TangentLength"), front, tag.getInt("Support"),
-                    kind == EquipmentShape.Kind.AIR_COOLER ? ProcessUnit.Bank.decode(tag.getIntArray("Bank")) : ProcessUnit.Bank.ONE);
+                    kind == EquipmentShape.Kind.AIR_COOLER ? ProcessUnit.Bank.decode(tag.getIntArray("Bank")) : ProcessUnit.Bank.ONE, tag.getInt("Outlet"));
         if (!tag.contains("Connections")) throw new IllegalArgumentException("A drum lists its side connections");
         return EquipmentShape.drum(tag.getDouble("Diameter"), tag.getDouble("TangentLength"),
                 EquipmentShape.Orientation.valueOf(tag.getString("Orientation").toUpperCase(Locale.ROOT)), front, tag.getInt("Support"),
-                EquipmentShape.Connection.decode(tag.getIntArray("Connections")), tag.getBoolean("Boot"));
+                EquipmentShape.Connection.decode(tag.getIntArray("Connections")), tag.getBoolean("Boot"), tag.getInt("Outlet"));
     }
 
     @Override

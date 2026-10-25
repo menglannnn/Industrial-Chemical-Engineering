@@ -28,7 +28,7 @@ import net.neoforged.neoforge.network.registration.HandlerThread;
  * import reads the calculator's stored input (nothing is solved) and comes back as the constructor's synced design.
  */
 public final class EquipmentNetwork {
-    public static final String PROTOCOL = "equipment-10";
+    public static final String PROTOCOL = "equipment-11";
     /** A player edits or builds only within this distance of the constructor, blocks. */
     private static final double REACH = 8;
     /** A column calculator is imported from within this many blocks of the constructor. */
@@ -41,15 +41,17 @@ public final class EquipmentNetwork {
      * Client to server: a constructor's design ({@code form} is the ordinal of its {@link VesselPlacement.Form},
      * {@code trays} its column's {@link ColumnTrays#encode()},
      * {@code connections} its drum's {@link EquipmentShape.Connection#encode}, {@code paint} its {@link Paint#encode},
-     * {@code bank} an air cooler's {@link ProcessUnit.Bank#encode}, {@code boot} whether a lying drum has one), and whether to build it now.
+     * {@code bank} an air cooler's {@link ProcessUnit.Bank#encode}, {@code boot} whether a lying drum has one,
+     * {@code outlet} its bottom outlet's quarter turns from the front), and whether to build it now.
      */
     public record ConstructorPayload(BlockPos position, double diameter, int tangentLength, int form, int support, int forward, int right, int up,
-                                     int[] trays, int[] connections, int[] paint, int[] bank, boolean boot, boolean build) implements CustomPacketPayload {
+                                     int[] trays, int[] connections, int[] paint, int[] bank, boolean boot, int outlet, boolean build) implements CustomPacketPayload {
         public static final Type<ConstructorPayload> TYPE = new Type<>(ResourceLocation.fromNamespaceAndPath(IChemE.MOD_ID, "equipment_constructor"));
         public static final StreamCodec<RegistryFriendlyByteBuf, ConstructorPayload> STREAM_CODEC = new StreamCodec<>() {
             public ConstructorPayload decode(RegistryFriendlyByteBuf b) {
                 return new ConstructorPayload(b.readBlockPos(), b.readDouble(), b.readVarInt(), b.readVarInt(), b.readVarInt(), b.readVarInt(), b.readVarInt(),
-                        b.readVarInt(), b.readVarIntArray(ColumnTrays.MAX_ENCODED), b.readVarIntArray(3 * EquipmentShape.MAX_CONNECTIONS), b.readVarIntArray(2), b.readVarIntArray(2), b.readBoolean(), b.readBoolean());
+                        b.readVarInt(), b.readVarIntArray(ColumnTrays.MAX_ENCODED), b.readVarIntArray(3 * EquipmentShape.MAX_CONNECTIONS), b.readVarIntArray(2), b.readVarIntArray(2), b.readBoolean(), b.readVarInt(),
+                        b.readBoolean());
             }
 
             public void encode(RegistryFriendlyByteBuf b, ConstructorPayload p) {
@@ -66,6 +68,7 @@ public final class EquipmentNetwork {
                 b.writeVarIntArray(p.paint);
                 b.writeVarIntArray(p.bank);
                 b.writeBoolean(p.boot);
+                b.writeVarInt(p.outlet);
                 b.writeBoolean(p.build);
             }
         };
@@ -73,7 +76,7 @@ public final class EquipmentNetwork {
         public static ConstructorPayload of(BlockPos position, EquipmentConstructorBlockEntity.Design design, boolean build) {
             var p = design.placement();
             return new ConstructorPayload(position, design.diameter(), design.tangentLength(), design.form().ordinal(), design.support(), p.forward(), p.right(), p.up(),
-                    design.trays().encode(), EquipmentShape.Connection.encode(design.connections()), design.paint().encode(), design.bank().encode(), design.boot(), build);
+                    design.trays().encode(), EquipmentShape.Connection.encode(design.connections()), design.paint().encode(), design.bank().encode(), design.boot(), design.outlet(), build);
         }
 
         @Override
@@ -128,7 +131,7 @@ public final class EquipmentNetwork {
             if (payload.form() < 0 || payload.form() >= forms.length) throw new IllegalArgumentException("Unknown form " + payload.form());
             design = new EquipmentConstructorBlockEntity.Design(payload.diameter(), payload.tangentLength(), forms[payload.form()], payload.support(),
                     new VesselPlacement(payload.forward(), payload.right(), payload.up()), ColumnTrays.decode(payload.trays()),
-                    EquipmentShape.Connection.decode(payload.connections()), Paint.decode(payload.paint()), ProcessUnit.Bank.decode(payload.bank()), payload.boot());
+                    EquipmentShape.Connection.decode(payload.connections()), Paint.decode(payload.paint()), ProcessUnit.Bank.decode(payload.bank()), payload.boot(), payload.outlet());
         } catch (IllegalArgumentException invalid) {
             player.sendSystemMessage(Component.translatable("message.icheme.equipment.invalid", invalid.getMessage()).withStyle(ChatFormatting.RED));
             return;

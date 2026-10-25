@@ -537,28 +537,34 @@ public final class EquipmentStructure {
 
     /**
      * {@code /icheme equipment place <bottom centre> <diameter m> <tangent length m> [rows | vertical <skirt m>
-     * [front] | horizontal <saddle m> [front [boot]]]} (operators only). Without a support the drum is bare: vertical, on
-     * its lower head. The front (north, east, south, west; north by default) is where a standing drum's liquid outlet and a
-     * lying drum's front head face; {@code boot} hangs a water boot under a lying drum's far end. {@code /icheme equipment column <bottom centre> <diameter m> <trays> <skirt m>
+     * [front [outlet <turns>]] | horizontal <saddle m> [front [boot]]]} (operators only). Without a support the drum is
+     * bare: vertical, on its lower head. The front (north, east, south, west; north by default) is where a standing drum's
+     * liquid outlet and a lying drum's front head face; {@code outlet} turns a skirted drum's bottom outlet that many
+     * quarter turns from the front (0 to 3: front, left, back, right, owner request 2026-10-25); {@code boot} hangs a water
+     * boot under a lying drum's far end. {@code /icheme equipment column <bottom centre> <diameter m> <trays> <skirt m>
      * [front]} places a column fed at its middle tray, its piping side to the front. {@code /icheme equipment unit
-     * <bottom centre> <kind> <size m> <length> <support m> [front]} places a unit of any unit kind, by its lower-case name.
-     * The kind's design gives the meaning and ranges of the size, the second size (a length, a height or a count: an air
-     * cooler's size and length are a bay's, a compressor's its throws, 1 where the kind has none) and the support (0 where
-     * the unit stands at grade); its channel, suction, feed or process nozzles face the front.
+     * <bottom centre> <kind> <size m> <length> <support m> [front [parallel series | outlet <turns>]]} places a unit of any
+     * unit kind, by its lower-case name. The kind's design gives the meaning and ranges of the size, the second size (a
+     * length, a height or a count: an air cooler's size and length are a bay's, a compressor's its throws, 1 where the kind
+     * has none) and the support (0 where the unit stands at grade); its channel, suction, feed or process nozzles face the
+     * front, its bottom outlet as turned where its design turns it (a trickle-bed reactor's effluent).
      */
     @SubscribeEvent
     public static void registerCommands(RegisterCommandsEvent event) {
         var rows = Commands.argument("rows", IntegerArgumentType.integer(1))
-                .executes(context -> place(context, IntegerArgumentType.getInteger(context, "rows"), EquipmentShape.Orientation.VERTICAL, 0, EquipmentShape.Heading.NORTH, false));
+                .executes(context -> place(context, IntegerArgumentType.getInteger(context, "rows"), EquipmentShape.Orientation.VERTICAL, 0, EquipmentShape.Heading.NORTH, false, 0));
         var tangentLength = Commands.argument("tangentLength", IntegerArgumentType.integer(1, (int) EquipmentShape.MAX_TANGENT_LENGTH))
-                .executes(context -> place(context, Integer.MAX_VALUE, EquipmentShape.Orientation.VERTICAL, 0, EquipmentShape.Heading.NORTH, false)).then(rows);
+                .executes(context -> place(context, Integer.MAX_VALUE, EquipmentShape.Orientation.VERTICAL, 0, EquipmentShape.Heading.NORTH, false, 0)).then(rows);
         for (var orientation : EquipmentShape.Orientation.values()) {
             var support = Commands.argument("support", IntegerArgumentType.integer(0, EquipmentShape.MAX_SUPPORT))
-                    .executes(context -> place(context, Integer.MAX_VALUE, orientation, IntegerArgumentType.getInteger(context, "support"), EquipmentShape.Heading.NORTH, false));
+                    .executes(context -> place(context, Integer.MAX_VALUE, orientation, IntegerArgumentType.getInteger(context, "support"), EquipmentShape.Heading.NORTH, false, 0));
             for (var front : EquipmentShape.Heading.values())
                 support.then(Commands.literal(front.name().toLowerCase(Locale.ROOT))
-                        .executes(context -> place(context, Integer.MAX_VALUE, orientation, IntegerArgumentType.getInteger(context, "support"), front, false))
-                        .then(Commands.literal("boot").executes(context -> place(context, Integer.MAX_VALUE, orientation, IntegerArgumentType.getInteger(context, "support"), front, true))));
+                        .executes(context -> place(context, Integer.MAX_VALUE, orientation, IntegerArgumentType.getInteger(context, "support"), front, false, 0))
+                        .then(Commands.literal("boot").executes(context -> place(context, Integer.MAX_VALUE, orientation, IntegerArgumentType.getInteger(context, "support"), front, true, 0)))
+                        .then(Commands.literal("outlet").then(Commands.argument("outlet", IntegerArgumentType.integer(0, EquipmentShape.CONNECTION_SIDES - 1))
+                                .executes(context -> place(context, Integer.MAX_VALUE, orientation, IntegerArgumentType.getInteger(context, "support"), front, false,
+                                        IntegerArgumentType.getInteger(context, "outlet"))))));
             tangentLength.then(Commands.literal(orientation.name().toLowerCase(Locale.ROOT)).then(support));
         }
         var diameter = Commands.argument("diameter", DoubleArgumentType.doubleArg(EquipmentShape.MIN_DIAMETER, EquipmentShape.MAX_DIAMETER)).then(tangentLength);
@@ -580,11 +586,13 @@ public final class EquipmentStructure {
         for (var kind : EquipmentShape.Kind.values()) {
             if (!kind.designed()) continue;
             var support = Commands.argument("support", IntegerArgumentType.integer(0, EquipmentShape.MAX_SUPPORT))
-                    .executes(context -> placeUnit(context, kind, EquipmentShape.Heading.NORTH, false));
+                    .executes(context -> placeUnit(context, kind, EquipmentShape.Heading.NORTH, false, 0));
             for (var front : EquipmentShape.Heading.values())
-                support.then(Commands.literal(front.name().toLowerCase(Locale.ROOT)).executes(context -> placeUnit(context, kind, front, false))
+                support.then(Commands.literal(front.name().toLowerCase(Locale.ROOT)).executes(context -> placeUnit(context, kind, front, false, 0))
                         .then(Commands.argument("parallel", IntegerArgumentType.integer(1, ProcessUnit.Bank.MAX_PARALLEL))
-                                .then(Commands.argument("series", IntegerArgumentType.integer(1, ProcessUnit.Bank.MAX_SERIES)).executes(context -> placeUnit(context, kind, front, true)))));
+                                .then(Commands.argument("series", IntegerArgumentType.integer(1, ProcessUnit.Bank.MAX_SERIES)).executes(context -> placeUnit(context, kind, front, true, 0))))
+                        .then(Commands.literal("outlet").then(Commands.argument("outlet", IntegerArgumentType.integer(0, EquipmentShape.CONNECTION_SIDES - 1))
+                                .executes(context -> placeUnit(context, kind, front, false, IntegerArgumentType.getInteger(context, "outlet"))))));
             at.then(Commands.literal(kind.name().toLowerCase(Locale.ROOT)).then(Commands.argument("size", DoubleArgumentType.doubleArg(ProcessUnit.SUCTION_STEP, ProcessUnit.maxDiameter(kind)))
                     .then(Commands.argument("length", IntegerArgumentType.integer(1, (int) EquipmentShape.MAX_TANGENT_LENGTH)).then(support))));
         }
@@ -593,12 +601,13 @@ public final class EquipmentStructure {
                 .then(Commands.literal("equipment").then(place).then(column).then(unit)));
     }
 
-    private static int place(CommandContext<CommandSourceStack> context, int rows, EquipmentShape.Orientation orientation, int support, EquipmentShape.Heading front, boolean boot) throws CommandSyntaxException {
+    private static int place(CommandContext<CommandSourceStack> context, int rows, EquipmentShape.Orientation orientation, int support, EquipmentShape.Heading front, boolean boot,
+                             int outlet) throws CommandSyntaxException {
         EquipmentShape shape;
         try {
             double diameter = DoubleArgumentType.getDouble(context, "diameter");
             int length = IntegerArgumentType.getInteger(context, "tangentLength");
-            shape = EquipmentShape.drum(diameter, length, orientation, front, support, EquipmentShape.defaultConnections(diameter, length, orientation, support, boot), boot);
+            shape = EquipmentShape.drum(diameter, length, orientation, front, support, EquipmentShape.defaultConnections(diameter, length, orientation, support, boot, outlet), boot, outlet);
         } catch (IllegalArgumentException invalid) {
             context.getSource().sendFailure(Component.literal(invalid.getMessage()));
             return 0;
@@ -619,12 +628,13 @@ public final class EquipmentStructure {
         return place(context, shape, Integer.MAX_VALUE, shape.diameter() + " m column of " + trays + " trays");
     }
 
-    private static int placeUnit(CommandContext<CommandSourceStack> context, EquipmentShape.Kind kind, EquipmentShape.Heading front, boolean banked) throws CommandSyntaxException {
+    private static int placeUnit(CommandContext<CommandSourceStack> context, EquipmentShape.Kind kind, EquipmentShape.Heading front, boolean banked, int outlet)
+            throws CommandSyntaxException {
         EquipmentShape shape;
         try {
             shape = EquipmentShape.designed(kind, DoubleArgumentType.getDouble(context, "size"), IntegerArgumentType.getInteger(context, "length"), front,
                     IntegerArgumentType.getInteger(context, "support"), banked ? new ProcessUnit.Bank(IntegerArgumentType.getInteger(context, "parallel"),
-                            IntegerArgumentType.getInteger(context, "series")) : ProcessUnit.Bank.ONE);
+                            IntegerArgumentType.getInteger(context, "series")) : ProcessUnit.Bank.ONE, outlet);
         } catch (IllegalArgumentException invalid) {
             context.getSource().sendFailure(Component.literal(invalid.getMessage()));
             return 0;

@@ -17,9 +17,11 @@ import java.util.Objects;
  * <p>Two kinds (owner request 2026-10-16). A <b>drum</b> stands on a skirt or lies on two saddles (owner decisions
  * 2026-10-15) and is a fluid reservoir whose nozzles are its ports. Two are fixed: the vapour outlet (a standing drum's at
  * the top head's centre, a lying drum's on top near its far end) and the liquid outlet (a skirted drum's bottom outlet,
- * whose line drops from the bottom head inside the skirt and leaves through the access opening towards the front, owner
- * report 2026-10-16; without room under the head a nozzle just above the bottom tangent line facing the front; a lying
- * drum's low on its front head). The rest are the player's side {@link Connection}s, up to {@link #MAX_CONNECTIONS}
+ * whose line drops from the bottom head inside the skirt and leaves through its skirt port towards the front, owner
+ * report 2026-10-16, or the side the player turns it to, {@link #outlet}, owner request 2026-10-25; without room under
+ * the head a nozzle just above the bottom tangent line facing the front; a lying drum's low on its front head, or with a
+ * boot underneath between the boot and the far head, {@link #bootFor}, owner request 2026-10-25). The rest are the
+ * player's side {@link Connection}s, up to {@link #MAX_CONNECTIONS}
  * (owner request 2026-10-16), a new drum's being its former standard inlet. A <b>column</b> is a tall vertical vessel
  * laid out by its trays ({@link ColumnTrays}), insulated and clad, with its platforms, ladders, manways and process
  * nozzles at fixed sides ({@link ColumnStructure}); the player places its condenser, drum, reboiler and pumps and runs
@@ -39,13 +41,17 @@ import java.util.Objects;
  *
  * <p>Frames. The vessel is built in its own frame, axis along +y, in cells of a box whose width is odd so the axis runs
  * through cell centres: then every nozzle's centre line does too and its flange face lies on a block face, where a pipe
- * meets it. Vertical: frame x and z are box-aligned before the turn, and the front (where the liquid outlet and a skirt's
- * access opening face) is frame -z. Horizontal: frame x is up, frame y the axis, frame z across; the front head is the
+ * meets it. Vertical: frame x and z are box-aligned before the turn, and the front (where the liquid outlet and its skirt
+ * port face unless turned) is frame -z. Horizontal: frame x is up, frame y the axis, frame z across; the front head is the
  * frame's y = 0 end. {@link #transform()} turns the frame by quarter turns so the front faces {@link #front()} and shifts
  * the box to start at the origin.
+ *
+ * <p>{@code outlet}: the quarter turns from the front a bottom outlet leaving through a skirt takes, an index into
+ * {@link #SIDES} (owner request 2026-10-25: "make drum/reactor bottom outlet rotatable"): a skirted drum's on any side, a
+ * trickle-bed reactor's effluent on the sides its design leaves free ({@link #outlets}); 0 for every other shape.
  */
 public record EquipmentShape(Kind kind, double diameter, double tangentLength, Orientation orientation, Heading front, int support,
-                             @Nullable ColumnTrays trays, List<Connection> connections, ProcessUnit.Bank bank, boolean boot) {
+                             @Nullable ColumnTrays trays, List<Connection> connections, ProcessUnit.Bank bank, boolean boot, int outlet) {
     public static final double MIN_DIAMETER = .5, MAX_DIAMETER = 10, MAX_COLUMN_DIAMETER = 15, MAX_TANGENT_LENGTH = 64;
     public static final int MAX_SUPPORT = 16;
     /** Saddles: centred this fraction of T/T from each tangent line, this wide along the axis (m), over this arc of the shell. */
@@ -88,11 +94,17 @@ public record EquipmentShape(Kind kind, double diameter, double tangentLength, O
     public static final int MAX_CONNECTIONS = 6;
     /**
      * The frame directions a side connection faces, as {axis, sign}: -z, +x, +z, -x. A standing drum's front (towards
-     * the constructor), left, back and right; a lying drum's sides and its top (+x) and bottom (-x).
+     * the constructor), left, back and right; a lying drum's sides and its top (+x) and bottom (-x). A bottom outlet's
+     * {@link #outlet} turns are quarter turns through them from the front.
      */
     static final int[][] SIDES = {{2, -1}, {0, 1}, {2, 1}, {0, -1}};
     /** The number of sides a connection may face. */
     public static final int CONNECTION_SIDES = SIDES.length;
+
+    /** The frame direction of {@link #SIDES}[{@code side}], {axis, sign}: a connection's, or a bottom outlet turned that many quarter turns. */
+    public static int[] side(int side) {
+        return SIDES[side].clone();
+    }
     /** A column's insulation under its aluminium cladding, m (photo survey: 50-150 mm); a drum is bare. */
     public static final double INSULATION = .1;
     /**
@@ -317,7 +329,7 @@ public record EquipmentShape(Kind kind, double diameter, double tangentLength, O
 
     /** A bare vertical drum resting on its lower head, front to the north: the debug command's form. */
     public EquipmentShape(double diameter, double tangentLength) {
-        this(Kind.DRUM, diameter, tangentLength, Orientation.VERTICAL, Heading.NORTH, 0, null, defaultConnections(diameter, tangentLength, Orientation.VERTICAL, 0, false), ProcessUnit.Bank.ONE, false);
+        this(Kind.DRUM, diameter, tangentLength, Orientation.VERTICAL, Heading.NORTH, 0, null, defaultConnections(diameter, tangentLength, Orientation.VERTICAL, 0, false), ProcessUnit.Bank.ONE, false, 0);
     }
 
     /** A drum with a new drum's side connection ({@link #defaultConnections}). */
@@ -331,16 +343,23 @@ public record EquipmentShape(Kind kind, double diameter, double tangentLength, O
 
     /** A drum; a lying one with a water {@code boot} under its far end ({@link #bootPlace}). */
     public static EquipmentShape drum(double diameter, double tangentLength, Orientation orientation, Heading front, int support, List<Connection> connections, boolean boot) {
-        return new EquipmentShape(Kind.DRUM, diameter, tangentLength, orientation, front, support, null, connections, ProcessUnit.Bank.ONE, boot);
+        return drum(diameter, tangentLength, orientation, front, support, connections, boot, 0);
+    }
+
+    /** A drum as {@link #drum(double, double, Orientation, Heading, int, List, boolean)}, a skirted one's bottom outlet turned {@code outlet} quarter turns from the front. */
+    public static EquipmentShape drum(double diameter, double tangentLength, Orientation orientation, Heading front, int support, List<Connection> connections, boolean boot,
+                                      int outlet) {
+        return new EquipmentShape(Kind.DRUM, diameter, tangentLength, orientation, front, support, null, connections, ProcessUnit.Bank.ONE, boot, outlet);
     }
 
     /** This drum with {@code connections} instead of its own. */
     public EquipmentShape withConnections(List<Connection> connections) {
-        return new EquipmentShape(kind, diameter, tangentLength, orientation, front, support, trays, connections, bank, boot);
+        return new EquipmentShape(kind, diameter, tangentLength, orientation, front, support, trays, connections, bank, boot, outlet);
     }
 
+    /** A column: its bottoms leave through its skirt to the front (the owner leaves columns alone, 2026-10-25). */
     public static EquipmentShape column(double diameter, ColumnTrays trays, Heading front, int skirt) {
-        return new EquipmentShape(Kind.COLUMN, diameter, trays.tangentLength(diameter), Orientation.VERTICAL, front, skirt, trays, List.of(), ProcessUnit.Bank.ONE, false);
+        return new EquipmentShape(Kind.COLUMN, diameter, trays.tangentLength(diameter), Orientation.VERTICAL, front, skirt, trays, List.of(), ProcessUnit.Bank.ONE, false, 0);
     }
 
     /** A standalone unit of kind {@code kind}, its sizes as {@link ProcessUnit} reads them; it lies or stands as its kind does. */
@@ -350,8 +369,13 @@ public record EquipmentShape(Kind kind, double diameter, double tangentLength, O
 
     /** A unit as {@link #unit(Kind, double, double, Heading, int)}; an air cooler built as a bank of bays. */
     public static EquipmentShape unit(Kind kind, double diameter, double tangentLength, Heading front, int support, ProcessUnit.Bank bank) {
+        return unit(kind, diameter, tangentLength, front, support, bank, 0);
+    }
+
+    /** A unit as {@link #unit(Kind, double, double, Heading, int, ProcessUnit.Bank)}, its bottom outlet turned {@code outlet} quarter turns from the front where its design turns it. */
+    public static EquipmentShape unit(Kind kind, double diameter, double tangentLength, Heading front, int support, ProcessUnit.Bank bank, int outlet) {
         if (!kind.unit()) throw new IllegalArgumentException(kind + " is not a unit");
-        return new EquipmentShape(kind, diameter, tangentLength, ProcessUnit.orientation(kind), front, support, null, List.of(), bank, false);
+        return new EquipmentShape(kind, diameter, tangentLength, ProcessUnit.orientation(kind), front, support, null, List.of(), bank, false, outlet);
     }
 
     /**
@@ -360,12 +384,18 @@ public record EquipmentShape(Kind kind, double diameter, double tangentLength, O
      */
     public static EquipmentShape storage(Kind kind, double diameter, double shell, Heading front, int support) {
         if (!kind.storage()) throw new IllegalArgumentException(kind + " is not a storage vessel");
-        return new EquipmentShape(kind, diameter, shell, ProcessUnit.orientation(kind), front, support, null, List.of(), ProcessUnit.Bank.ONE, false);
+        return new EquipmentShape(kind, diameter, shell, ProcessUnit.orientation(kind), front, support, null, List.of(), ProcessUnit.Bank.ONE, false, 0);
     }
 
     /** A shape of any designed kind ({@link Kind#designed()}): a storage vessel, or a unit in {@code bank} (an air cooler's). */
     public static EquipmentShape designed(Kind kind, double diameter, double length, Heading front, int support, ProcessUnit.Bank bank) {
-        return kind.storage() ? storage(kind, diameter, length, front, support) : unit(kind, diameter, length, front, support, bank);
+        return designed(kind, diameter, length, front, support, bank, 0);
+    }
+
+    /** A designed shape as {@link #designed(Kind, double, double, Heading, int, ProcessUnit.Bank)}, its bottom outlet turned {@code outlet} quarter turns ({@link #outlets}). */
+    public static EquipmentShape designed(Kind kind, double diameter, double length, Heading front, int support, ProcessUnit.Bank bank, int outlet) {
+        if (!kind.designed()) throw new IllegalArgumentException(kind + " is not drawn from a design");
+        return new EquipmentShape(kind, diameter, length, ProcessUnit.orientation(kind), front, support, null, List.of(), kind.storage() ? ProcessUnit.Bank.ONE : bank, false, outlet);
     }
 
     /**
@@ -374,7 +404,12 @@ public record EquipmentShape(Kind kind, double diameter, double tangentLength, O
      * beside the vapour outlet.
      */
     public static List<Connection> defaultConnections(double diameter, double tangentLength, Orientation orientation, int support, boolean boot) {
-        var drum = new EquipmentShape(Kind.DRUM, diameter, tangentLength, orientation, Heading.NORTH, support, null, List.of(), ProcessUnit.Bank.ONE, boot);
+        return defaultConnections(diameter, tangentLength, orientation, support, boot, 0);
+    }
+
+    /** A new drum's side connections ({@link #defaultConnections(double, double, Orientation, int, boolean)}) fitted round its bottom outlet turned {@code outlet}. */
+    public static List<Connection> defaultConnections(double diameter, double tangentLength, Orientation orientation, int support, boolean boot, int outlet) {
+        var drum = new EquipmentShape(Kind.DRUM, diameter, tangentLength, orientation, Heading.NORTH, support, null, List.of(), ProcessUnit.Bank.ONE, boot, outlet);
         double bT = orientation.horizontal() || support == 0 ? diameter / 4 : support, tT = bT + tangentLength;
         if (orientation.horizontal()) {
             double near = Math.ceil(bT) + .5, far = Math.floor(tT - 1) + .5;
@@ -447,6 +482,7 @@ public record EquipmentShape(Kind kind, double diameter, double tangentLength, O
         Objects.requireNonNull(front, "front");
         Objects.requireNonNull(bank, "bank");
         connections = List.copyOf(connections);
+        if (outlet < 0 || outlet >= SIDES.length) throw new IllegalArgumentException("A bottom outlet turns 0 to 3 quarter turns from the front, not " + outlet);
         if (kind.designed()) {
             // A storage vessel's ports are fixed (owner decision 2026-10-21): it takes no side connections, as a unit takes none.
             if (trays != null || !connections.isEmpty()) throw new IllegalArgumentException("A " + kind.name().toLowerCase(java.util.Locale.ROOT)
@@ -473,7 +509,7 @@ public record EquipmentShape(Kind kind, double diameter, double tangentLength, O
             if (boot) {
                 if (kind != Kind.DRUM || !orientation.horizontal()) throw new IllegalArgumentException("Only a lying drum has a boot");
                 if (bootFor(diameter, tangentLength) == null)
-                    throw new IllegalArgumentException("A " + tangentLength + " m drum has no room for a boot between or beyond its saddles");
+                    throw new IllegalArgumentException("A " + tangentLength + " m drum has no room for a boot and its liquid outlet between or beyond its saddles");
                 if (support < minimumBootSupport(diameter, tangentLength))
                     throw new IllegalArgumentException("A drum with a boot stands at least " + minimumBootSupport(diameter, tangentLength) + " m up, not " + support);
             }
@@ -487,31 +523,60 @@ public record EquipmentShape(Kind kind, double diameter, double tangentLength, O
                 if (Math.abs(c.offset()) > across) throw new IllegalArgumentException("A side connection's offset is at most " + across + ", not " + c.offset());
             }
         }
+        if ((outlets(kind, diameter, tangentLength, orientation, support) >> outlet & 1) == 0)
+            throw new IllegalArgumentException("This " + kind.name().toLowerCase(java.util.Locale.ROOT) + "'s bottom outlet does not turn " + outlet + " quarter turns from the front");
+    }
+
+    /**
+     * The quarter turns from the front a bottom outlet leaving horizontally through a skirt may take, as bits (bit q:
+     * {@link #SIDES}[q]; the front, bit 0, always), owner request 2026-10-25: "make drum/reactor bottom outlet rotatable".
+     * A skirted drum's port, its slots and its chairs turn together, so every side; a column's stays at the front (the
+     * owner leaves columns alone); a lying or bare drum has no skirt port; a designed shape's as its design says
+     * ({@link UnitDesign#outlets}). The ranges must already hold.
+     */
+    public static int outlets(Kind kind, double diameter, double length, Orientation orientation, int support) {
+        if (kind.designed()) return UnitDesign.of(kind).outlets(diameter, (int) length, support);
+        return kind == Kind.DRUM && !orientation.horizontal() && support > 0 ? (1 << SIDES.length) - 1 : 1;
+    }
+
+    /** Whether this shape's bottom outlet may face more than the front: the constructor shows its control. */
+    public boolean outletTurns() {
+        return Integer.bitCount(outlets(kind, diameter, tangentLength, orientation, support)) > 1;
     }
 
     /**
      * A lying drum's water boot (owner request 2026-10-16; photo survey EQUIPMENT_DETAILS_PHOTO_SURVEY.md, section A): a
      * vertical cylinder of {@code diameter} under the shell's bottom on the drum's axis, its 2:1 bottom head's tangent
      * {@code length} under the shell, centred at frame height {@code station} along the drum. It hangs from the shell with
-     * no support of its own.
+     * no support of its own. Its drum's liquid outlet stands underneath at frame height {@code outlet}, between the boot
+     * and the far head (owner request 2026-10-25).
      */
-    public record Boot(double station, double diameter, double length) {
+    public record Boot(double station, double diameter, double length, double outlet) {
     }
 
     /**
-     * The boot a lying drum of {@code diameter} and {@code tangentLength} takes, or null where it has no room: a third of
-     * the drum's diameter, at least 0.3, 0.4 or 0.5 m (under 0.9, 1.4 m and above) and at most half of it; 0.9 m or 0.6 D
-     * deep, the longer; at the far end, away from the inlet, inboard of the far saddle and 0.15 m clear of it, on the cell
-     * centre that keeps that, else just beyond that saddle, short of the head.
+     * The boot a lying drum of {@code diameter} and {@code tangentLength} takes, and where its liquid outlet stands, or
+     * null where they have no room. A three-phase drum (owner request 2026-10-25, Kanes Dictionary's boot diagram, photo
+     * survey A): the feed enters at the front, free water settles into the boot near the far end, and the oil leaves
+     * behind an overflow baffle beyond it, through a nozzle facing down on the shell's bottom centre line between the boot
+     * and the far head. The boot: a third of the drum's diameter, at least 0.3, 0.4 or 0.5 m (under 0.9, 1.4 m and above)
+     * and at most half of it; 0.9 m or 0.6 D deep, the longer. The outlet on the cell centre nearest the far saddle that
+     * keeps a pipe's largest flange 0.15 m clear of it, inboard (survey A: bottom nozzles clear the saddle by 0.15 m); the
+     * boot whole cells ahead of it, at least two (one free block between their pipes, owner rule 2026-10-17) and as many as
+     * keep its shell clear of the outlet's largest flange beside it, and 0.15 m clear of the near saddle. Else the outlet
+     * just beyond the far saddle, as clear of it, its neck 0.05 m inside the far tangent line (a side connection's
+     * margin), the boot inboard of that saddle as clear of it and as far from the outlet. Else no boot.
      */
     public static @Nullable Boot bootFor(double diameter, double tangentLength) {
         double low = diameter < .9 ? .3 : diameter < 1.4 ? .4 : .5, size = Math.min(diameter / 2, Math.max(low, diameter / 3)), length = Math.max(.9, .6 * diameter);
-        double bT = diameter / 4, tT = bT + tangentLength, clear = SADDLE_WIDTH / 2 + .15 + size / 2;
+        double bT = diameter / 4, tT = bT + tangentLength, saddle = SADDLE_WIDTH / 2 + .15, clear = saddle + size / 2, flange = PipeSizes.flange(PipeSizes.MAX_OUTSIDE) / 2;
         double near = bT + SADDLE_POSITION * tangentLength, far = tT - SADDLE_POSITION * tangentLength;
-        double inboard = Math.floor(far - clear - .5) + .5;
-        if (inboard >= near + clear) return new Boot(inboard, size, length);
-        double beyond = Math.ceil(far + clear - .5) + .5;
-        return beyond <= tT - size / 2 - .05 ? new Boot(beyond, size, length) : null;
+        double apart = Math.max(2, Math.ceil(size / 2 + flange - 1e-9));
+        double outlet = Math.floor(far - saddle - flange - .5) + .5, station = outlet - apart;
+        if (station >= near + clear - 1e-9) return new Boot(station, size, length, outlet);
+        outlet = Math.ceil(far + saddle + flange - .5) + .5;
+        station = Math.min(Math.floor(far - clear - .5) + .5, outlet - apart);
+        return outlet + PipeSizes.MAX_OUTSIDE / 2 <= tT - .05 + 1e-9 && station >= near + clear - 1e-9 ? new Boot(station, size, length, outlet) : null;
     }
 
     /** This drum's boot, or null when it has none. */
@@ -521,7 +586,8 @@ public record EquipmentShape(Kind kind, double diameter, double tangentLength, O
 
     /**
      * The lowest saddles a drum with a boot stands on, m: its boot's drain keeps a block for its pipe above the ground
-     * (photo survey A: boot drums stand visibly higher).
+     * (photo survey A: boot drums stand visibly higher). The liquid outlet beside the boot faces down from the shell's
+     * bottom, at least the boot's 0.9 m higher, so its pipe has that block too.
      */
     public static int minimumBootSupport(double diameter, double tangentLength) {
         var b = bootFor(diameter, tangentLength);
@@ -543,7 +609,8 @@ public record EquipmentShape(Kind kind, double diameter, double tangentLength, O
      * A drum's manway (owner request 2026-10-16; photo survey D), or null for a drum under 0.9 m: a standing drum's on its
      * shell 0.76 m over the bottom tangent line facing the back, where the outlets and the standard inlet leave it room,
      * and none where the shell is too short to hold its cover there (a short pot has a body flange or an inspection hole); a lying drum's on its far head's centre, its davit above it (the front head carries
-     * the liquid outlet).
+     * the liquid outlet, a boot drum's leaves underneath). A turned bottom outlet leaves its skirt under the bottom head,
+     * clear of a standing drum's manway on the shell above it.
      */
     public @Nullable Manway manway() {
         double size = Manway.size(diameter);
@@ -797,7 +864,7 @@ public record EquipmentShape(Kind kind, double diameter, double tangentLength, O
             double topOd = Math.min(PipeSizes.MAX_OUTSIDE, diameter / 2);
             double topBase = headSurface(PipeSizes.MAX_OUTSIDE / 2) - .03;
             out.add(new Nozzle(Role.VAPOUR_OUTLET, new double[]{a, topBase, a}, 1, 1, Math.ceil(top() + STAND_OUT) - topBase, clampOd(.2 * diameter, topOd), 0));
-            // Liquid outlet. On a skirt it is the bottom outlet (owner report 2026-10-16), through the skirt's port.
+            // Liquid outlet. On a skirt it is the bottom outlet (owner report 2026-10-16), through the skirt's port on its side.
             var bottom = skirtOutlet(Role.LIQUID_OUTLET, .1 * diameter);
             if (bottom != null) out.add(bottom);
             else {
@@ -810,27 +877,33 @@ public record EquipmentShape(Kind kind, double diameter, double tangentLength, O
             for (var c : connections) out.add(connection(c, a, bT, tT, apothem));
             return out;
         }
-        // Horizontal: the vapour outlet on top (frame +x) near the far end, a liquid outlet low on the front head (frame -y).
+        // Horizontal: the vapour outlet on top (frame +x) near the far end, a liquid outlet low on the front head (frame -y)
+        // or, with a boot, underneath between the boot and the far head.
         double topOd = Math.min(PipeSizes.MAX_OUTSIDE, diameter / 2);
         // A drum too short for a connection beside it: the outlet at the cell centre nearest its middle.
         double far = Math.floor(tT - 1) + .5;
         if (far < Math.ceil(bT) + .5) far = Math.floor((bT + tT) / 2) + .5;
         double topStart = Math.sqrt(Math.max(0, apothem * apothem - PipeSizes.MAX_OUTSIDE * PipeSizes.MAX_OUTSIDE / 4)) - .03;
         out.add(new Nozzle(Role.VAPOUR_OUTLET, new double[]{topStart + a, far, a}, 0, 1, Math.ceil(a + r + STAND_OUT) - (topStart + a), clampOd(.2 * diameter, topOd), 0));
-        // Low on the front head: the lowest cell centre at least 0.3 m above the shell's bottom.
-        double xH = Math.ceil(a - r + .3 - .5) + .5, e = a - xH;
-        double headOd = Math.min(Math.min(PipeSizes.MAX_OUTSIDE, diameter / 2), 2 * (.85 * r - Math.abs(e)));
-        if (headOd > .05) {
-            double edge = (Math.abs(e) + PipeSizes.MAX_OUTSIDE / 2) / r, depth = headDepth() * Math.sqrt(Math.max(0, 1 - edge * edge));
-            double start = bT - depth + .03;
-            out.add(new Nozzle(Role.LIQUID_OUTLET, new double[]{xH, start, a}, 1, -1, start - Math.floor(-STAND_OUT), clampOd(.1 * diameter, headOd), 0));
-        }
         var b = bootPlace();
         if (b != null) {
+            // A three-phase drum's oil leaves behind the overflow baffle beyond the boot (owner request 2026-10-25, bootFor):
+            // on the bottom centre line facing down, its root as deep under the shell as the vapour outlet's over it, its
+            // face on the next block face under the shell.
+            out.add(new Nozzle(Role.LIQUID_OUTLET, new double[]{a - topStart, b.outlet(), a}, 0, -1, a - topStart - Math.floor(a - r - STAND_OUT), clampOd(.1 * diameter, topOd), 0));
             // The boot's drain at its bottom head's centre, facing down (photo survey A), its pipe straight down.
             double rb = b.diameter() / 2, bottom = a - r - b.length(), depth = b.diameter() / 4, od = Math.min(PipeSizes.MAX_OUTSIDE, rb);
             double edge = PipeSizes.MAX_OUTSIDE / 2 / rb, base = bottom - depth * Math.sqrt(Math.max(0, 1 - edge * edge)) + .03, apex = bottom - depth;
             out.add(new Nozzle(Role.BOOT_DRAIN, new double[]{base, b.station(), a}, 0, -1, base - Math.floor(apex - STAND_OUT), clampOd(.05 * diameter, od), 0));
+        } else {
+            // Low on the front head: the lowest cell centre at least 0.3 m above the shell's bottom.
+            double xH = Math.ceil(a - r + .3 - .5) + .5, e = a - xH;
+            double headOd = Math.min(Math.min(PipeSizes.MAX_OUTSIDE, diameter / 2), 2 * (.85 * r - Math.abs(e)));
+            if (headOd > .05) {
+                double edge = (Math.abs(e) + PipeSizes.MAX_OUTSIDE / 2) / r, depth = headDepth() * Math.sqrt(Math.max(0, 1 - edge * edge));
+                double start = bT - depth + .03;
+                out.add(new Nozzle(Role.LIQUID_OUTLET, new double[]{xH, start, a}, 1, -1, start - Math.floor(-STAND_OUT), clampOd(.1 * diameter, headOd), 0));
+            }
         }
         for (var c : connections) out.add(connection(c, a, bT, tT, apothem));
         return out;
@@ -951,15 +1024,20 @@ public record EquipmentShape(Kind kind, double diameter, double tangentLength, O
      * A skirted vessel's bottom outlet (a drum's liquid outlet, owner report 2026-10-16; a column's bottoms, owner request
      * 2026-10-16: "output on the skirt like the drum"), or null when the skirt leaves it no room: its line drops from the
      * bottom head's lowest point inside the skirt, turns in an elbow of bend radius 1 D of the line drawn, and leaves
-     * through the skirt's port towards the front (frame -z) on {@link #SKIRT_OUTLET}. The riser stands at the axis, a
-     * pipe's largest behind the neck's start, and the flange face at least a pipe's largest neck with its hub beyond that
-     * (owner decision 2026-10-21: a 1 m pipe has a 1 m root; on a vessel under about 2 m the face steps out to give way).
+     * through the skirt's port on {@link #SKIRT_OUTLET} towards {@link #SIDES}[{@link #outlet}]: the front (frame -z)
+     * unless a drum's is turned (owner request 2026-10-25), its port, slots and chairs turning with it
+     * ({@link ShapeRasterizer}). The riser stands at the axis, a pipe's largest behind the neck's start, and the flange
+     * face at least a pipe's largest neck with its hub beyond that (owner decision 2026-10-21: a 1 m pipe has a 1 m root;
+     * on a vessel under about 2 m the face steps out to give way), on the next block face.
      */
     @Nullable Nozzle skirtOutlet(Role role, double defaultOd) {
         if (!skirtOutletFits()) return null;
-        double a = axis(), pole = bottomTangent() - headDepth(), start = a - PipeSizes.MAX_OUTSIDE;
-        double plane = Math.floor(Math.min(a - outerRadius() - STAND_OUT, start - PipeSizes.flangeThickness(PipeSizes.MAX_OUTSIDE) - PipeSizes.hub(PipeSizes.MAX_OUTSIDE) - .02));
-        return new Nozzle(role, new double[]{a, SKIRT_OUTLET, start}, 2, -1, start - plane, clampOd(defaultOd, PipeSizes.MAX_OUTSIDE), pole + .03);
+        int axis = SIDES[outlet][0], sign = SIDES[outlet][1];
+        double a = axis(), pole = bottomTangent() - headDepth(), max = PipeSizes.MAX_OUTSIDE;
+        double out = Math.max(outerRadius() + STAND_OUT, max + PipeSizes.flangeThickness(max) + PipeSizes.hub(max) + .02), plane = sign > 0 ? Math.ceil(a + out) : Math.floor(a - out);
+        var base = new double[]{a, SKIRT_OUTLET, a};
+        base[axis] = a + sign * max;
+        return new Nozzle(role, base, axis, sign, Math.abs(plane - base[axis]), clampOd(defaultOd, max), pole + .03);
     }
 
     /**

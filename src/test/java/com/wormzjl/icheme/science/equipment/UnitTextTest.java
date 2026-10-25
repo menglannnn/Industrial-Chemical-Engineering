@@ -78,6 +78,8 @@ class UnitTextTest {
             for (String row : new String[]{design.sizeRow(), design.lengthRow(), design.supportRow()})
                 if (row != null) fits(over, kind + " row", text(lang, C + row), LABEL);
         }
+        // The bottom outlet's row (owner request 2026-10-25): a standing drum's Nozzles page, a trickle-bed reactor's design page.
+        fits(over, "outlet row", text(lang, C + "outlet"), LABEL);
         var shapes = new ArrayList<>(ProcessUnitTest.everySize());
         shapes.addAll(ShapeRasterizerTest.everyStorageSize());
         for (var shape : shapes) {
