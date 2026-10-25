@@ -325,8 +325,10 @@ final class TankDesign extends UnitDesign {
 
     /**
      * The shell, outside and in (its inside shows over the roof), in courses of {@link ShapeRasterizer#COURSE} from grade
-     * on plates about {@link ShapeRasterizer#PLATE_LENGTH} long, as a drum's; its top angle and its ringwall. It collides
-     * and encloses its inside up to its top, as a drum does.
+     * on plates about {@link ShapeRasterizer#PLATE_LENGTH} long, as a drum's; its top angle and its ringwall. It encloses
+     * its inside up to its top, as a drum does, but collides only as a wall {@link Access#NARROW_BAND} thick: inside it the
+     * floating roof collides ({@code FloatingRoofs}), in the cells the wall crosses too (owner report 2026-10-25: the whole
+     * inside collided in those cells, and a climber on the rolling ladder met it under the platform).
      */
     private static void shell(ProcessUnit u, Plan p) {
         double r = p.r, in = r - EquipmentShape.PLATE, s = p.shell, chord = 2 * r * DeterministicMath.sin(Math.PI / p.n), circumference = p.n * chord;
@@ -349,7 +351,7 @@ final class TankDesign extends UnitDesign {
         u.mesh.hoop(up, r, r + TOP_ANGLE, s - TOP_ANGLE, s, p.n, Material.HEAD);
         u.mesh.prism(up, r + RINGWALL_OUT, 0, RINGWALL, p.n, Material.CONCRETE);
         u.mesh.annulus(up, r, r + RINGWALL_OUT, RINGWALL, p.n, 1, Material.CONCRETE);
-        u.solids.add(ProcessUnit.Solid.rod(axis, 1, 0, s, r, 0));
+        u.solids.add(ProcessUnit.Solid.ring(p.a, p.a, 0, s, r - Access.NARROW_BAND, r, 0, 0));
         u.solids.add(ProcessUnit.Solid.ring(p.a, p.a, 0, RINGWALL, r, r + RINGWALL_OUT, 0, 0));
         u.solids.add(ProcessUnit.Solid.ring(p.a, p.a, s - TOP_ANGLE, s, r, r + TOP_ANGLE, 0, 0));
         u.volumes.add(ProcessUnit.Solid.rod(axis, 1, 0, s, r, 0));
@@ -540,13 +542,16 @@ final class TankDesign extends UnitDesign {
             from[0] += side * axis[0];
             from[2] += side * axis[2];
             roof.bar(from, new double[]{from[0] + runway * along[0], deck + .03, from[2] + runway * along[2]}, .06, UP, Material.STEELWORK);
+            // The stringers and treads under the walking line through the pivot, their tops on it (they stood half over it,
+            // through the deck's edge at the head); the first tread half a pitch from the head, at the deck's edge.
             var foot = pivot.clone();
             foot[0] += side * axis[0];
+            foot[1] -= .04;
             foot[2] += side * axis[2];
             u.ladder.bar(foot, new double[]{foot[0] + length * along[0], foot[1], foot[2] + length * along[2]}, .08, UP, Material.STEELWORK);
         }
-        for (double s = .3; s < length - .1; s += .3) {
-            double[] c = {pivot[0] + s * along[0], pivot[1], pivot[2] + s * along[2]};
+        for (double s = .15; s < length - .1; s += .3) {
+            double[] c = {pivot[0] + s * along[0], pivot[1] - .025, pivot[2] + s * along[2]};
             u.ladder.bar(new double[]{c[0] - .3 * axis[0], c[1], c[2] - .3 * axis[2]}, new double[]{c[0] + .3 * axis[0], c[1], c[2] + .3 * axis[2]}, .05, UP,
                     Mesh.NO_ENDS, Material.HANDRAIL);
         }

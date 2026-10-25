@@ -11,7 +11,6 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.BlockGetter;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.LevelReader;
-import net.minecraft.world.level.chunk.LevelChunk;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.RenderShape;
 import net.minecraft.world.level.block.state.BlockState;
@@ -20,7 +19,6 @@ import net.minecraft.world.level.block.state.properties.BooleanProperty;
 import net.minecraft.world.level.pathfinder.PathComputationType;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.shapes.CollisionContext;
-import net.minecraft.world.phys.shapes.EntityCollisionContext;
 import net.minecraft.world.phys.shapes.Shapes;
 import net.minecraft.world.phys.shapes.VoxelShape;
 
@@ -78,21 +76,13 @@ public final class EquipmentInteriorBlock extends Block {
     @Override
     protected VoxelShape getCollisionShape(BlockState state, BlockGetter level, BlockPos position, CollisionContext context) {
         if (state.getValue(OPEN)) {
-            var world = level(level, context);
+            var world = FloatingRoofs.level(level, context);
             if (world != null) {
                 var shape = FloatingRoofs.of(world).collision(position, world.getGameTime());
                 if (shape != null) return shape;
             }
         }
         return super.getCollisionShape(state, level, position, context);
-    }
-
-    /** The level a collision query reads (an entity's collisions read a chunk, not the level); null when none is at hand. */
-    private static Level level(BlockGetter getter, CollisionContext context) {
-        if (getter instanceof Level level) return level;
-        if (getter instanceof LevelChunk chunk) return chunk.getLevel();
-        if (context instanceof EntityCollisionContext entity && entity.getEntity() != null) return entity.getEntity().level();
-        return null;
     }
 
     @Override

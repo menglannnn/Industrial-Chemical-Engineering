@@ -5,10 +5,17 @@ import com.wormzjl.icheme.runtime.fluid.TankDisplay;
 import com.wormzjl.icheme.science.equipment.EquipmentShape;
 import com.wormzjl.icheme.science.equipment.EquipmentShape.Heading;
 import com.wormzjl.icheme.science.equipment.EquipmentShape.Kind;
+import com.wormzjl.icheme.science.equipment.PlayerWalk;
 import com.wormzjl.icheme.science.equipment.ShapeRasterizer;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.world.phys.shapes.VoxelShape;
+import org.jetbrains.annotations.Nullable;
 import org.junit.jupiter.api.Test;
+
+import java.util.Arrays;
+import java.util.HashSet;
+import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -97,6 +104,73 @@ class FloatingRoofsTest {
         assertFalse(roofs.ladder(cell, x, y + 2, z, 0), "two metres over it");
         double cx = ORIGIN.getX() + roof.x(), cz = ORIGIN.getZ() + roof.z(), cy = ORIGIN.getY() + roof.surface(0, 3) + 1;
         assertFalse(roofs.ladder(BlockPos.containing(cx, cy, cz), cx, cy, cz, 0), "the middle of the deck");
+    }
+
+    /**
+     * A player walks up the rolling ladder from the roof onto the gauger's platform and back down (owner report
+     * 2026-10-25: "I cannot reach the platform using the moving ladder"; the feet followed the treads at the body's middle
+     * and the box met the deck's edge under its height). The player moves as the game moves one ({@link PlayerWalk})
+     * against the tank's collision, its shell cells' 1/8-block voxels and its open cells up to the roof, and the ladder
+     * sets its motion before each tick as the client's tick hook does. The roof landed on its legs (the steepest pitch), at
+     * mid height and full.
+     */
+    @Test
+    void aPlayerWalksTheRollingLadderBetweenTheRoofAndThePlatform() {
+        var roof = ShapeRasterizer.roof(TANK);
+        var layout = ShapeRasterizer.layout(TANK);
+        Set<ShapeRasterizer.Cell> shell = new HashSet<>(layout.shell()), interior = new HashSet<>(layout.interior());
+        double[] pivot = roof.pivot(), a = roof.along(), across = {-a[2], 0, a[0]};
+        double[] head = {ORIGIN.getX() + pivot[0], ORIGIN.getY() + pivot[1], ORIGIN.getZ() + pivot[2]};
+        double lead = FloatingRoofs.lead(a, PlayerWalk.HALF);
+        for (double level : new double[]{TANK.fillHeight() / 2, TANK.fillHeight(), 3, 1, 0}) {
+            var roofs = new FloatingRoofs();
+            roofs.add(ORIGIN, ORIGIN, TANK, () -> level);
+            var walk = new PlayerWalk((i, j, k) -> {
+                int x = Math.floorDiv(i, 8), y = Math.floorDiv(j, 8), z = Math.floorDiv(k, 8);
+                var cell = new ShapeRasterizer.Cell(x - ORIGIN.getX(), y - ORIGIN.getY(), z - ORIGIN.getZ());
+                if (shell.contains(cell))
+                    return ShapeRasterizer.inside(TANK, (i + .5) / 8 - ORIGIN.getX(), (j + .5) / 8 - ORIGIN.getY(), (k + .5) / 8 - ORIGIN.getZ())
+                            || in(roofs.rim(new BlockPos(x, y, z), 0), (i + .5) / 8 - x, (j + .5) / 8 - y, (k + .5) / 8 - z);
+                if (interior.contains(cell)) return (j + .5) / 8 - y < top(roofs, new BlockPos(x, y, z), 0);
+                return j < ORIGIN.getY() * 8;
+            }, q -> roofs.ladder(BlockPos.containing(q[0], q[1], q[2]), q[0], q[1] + FloatingRoofs.FEET, q[2], 0));
+            double run = roof.length() * Math.cos(roof.pitch(level)), start = run + lead + 1;
+            walk.p = new double[]{head[0] + start * a[0], ORIGIN.getY() + roof.underside(level) + roof.pontoon() + .3, head[2] + start * a[2]};
+            String where = "level " + level + ", run " + run;
+            assertTrue(walk(roofs, walk, head, a, across, -1, w -> in(w, head, a) < -.1 && w.onGround && Math.abs(w.p[1] - head[1]) < .07),
+                    where + ": up onto the platform, stopped at " + Arrays.toString(walk.p) + " by " + walk.blocker);
+            assertTrue(walk(roofs, walk, head, a, across, 1, w -> in(w, head, a) > run + lead + .1 && w.onGround && w.p[1] < head[1] - .5),
+                    where + ": down onto the roof, stopped at " + Arrays.toString(walk.p) + " by " + walk.blocker);
+            double surface = ORIGIN.getY() + roof.underside(level);
+            assertTrue(walk.p[1] >= surface + roof.deck() - .07 && walk.p[1] <= surface + roof.pontoon() + .07, where + ": on the roof, feet at " + walk.p[1]);
+        }
+    }
+
+    /**
+     * Walks {@code walk} along the ladder's level direction {@code a} out ({@code sign} -1) or in (+1), kept to its middle
+     * line, the ladder setting the motion before each tick; whether {@code there} held within 600 ticks.
+     */
+    private static boolean walk(FloatingRoofs roofs, PlayerWalk walk, double[] head, double[] a, double[] across, int sign, java.util.function.Predicate<PlayerWalk> there) {
+        for (int i = 0; i < 600; i++) {
+            var next = roofs.climb(walk.p[0], walk.p[1], walk.p[2], PlayerWalk.HALF, walk.v, 0);
+            if (next != null) walk.v = next;
+            double off = (walk.p[0] - head[0]) * across[0] + (walk.p[2] - head[2]) * across[2], c = Math.max(-1, Math.min(1, -4 * off));
+            double[] wish = {sign * a[0] + c * across[0], 0, sign * a[2] + c * across[2]};
+            double l = Math.hypot(wish[0], wish[2]);
+            walk.tick(new double[]{wish[0] / l, 0, wish[2] / l}, false);
+            if (i > 10 && there.test(walk)) return true;
+        }
+        return false;
+    }
+
+    /** Whether the cell-local point lies in {@code shape} (null: none). */
+    private static boolean in(@Nullable VoxelShape shape, double x, double y, double z) {
+        return shape != null && shape.toAabbs().stream().anyMatch(b -> b.contains(x, y, z));
+    }
+
+    /** How far in from the ladder's head, along its level direction {@code a}, the player's middle stands, m. */
+    private static double in(PlayerWalk walk, double[] head, double[] a) {
+        return (walk.p[0] - head[0]) * a[0] + (walk.p[2] - head[2]) * a[2];
     }
 
     /** The top of the collision shape of {@code cell} at {@code tick}, as a fraction of the cell. */

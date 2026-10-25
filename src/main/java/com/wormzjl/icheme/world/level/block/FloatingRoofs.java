@@ -8,8 +8,13 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.core.SectionPos;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.level.BlockGetter;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.level.chunk.LevelChunk;
 import net.minecraft.world.phys.AABB;
+import net.minecraft.world.phys.shapes.BooleanOp;
+import net.minecraft.world.phys.shapes.CollisionContext;
+import net.minecraft.world.phys.shapes.EntityCollisionContext;
 import net.minecraft.world.phys.shapes.Shapes;
 import net.minecraft.world.phys.shapes.VoxelShape;
 import org.jetbrains.annotations.Nullable;
@@ -45,6 +50,11 @@ public final class FloatingRoofs {
      * slowed fall), m per tick, and the steepest rise per metre in it follows (a ladder near upright is climbed as one).
      */
     static final double MAX_CLIMB = .3, DESCENT = .15, MAX_SLOPE = 4;
+    /**
+     * Half a collision voxel, m: the platform's deck collides in 1/8-block voxels solid at their centres, so its edge stands
+     * up to this far proud of where it is drawn.
+     */
+    static final double PROUD = .5 / ShapeRasterizer.SOLID_RESOLUTION;
     /** The surface's height steps, per metre: the collision shapes of a cell are cached by step. */
     static final int STEPS = 64;
     private static final VoxelShape[] SLABS = new VoxelShape[STEPS + 1];
@@ -54,6 +64,10 @@ public final class FloatingRoofs {
         SLABS[STEPS] = Shapes.block();
     }
     private static final Map<Level, FloatingRoofs> LEVELS = Collections.synchronizedMap(new WeakHashMap<>());
+    /** The roof's shapes in shell cells by voxel columns ({@link #rim}) and their joins with the cells' own ({@link #join}), each cleared at this many. */
+    private static final int RIM_CACHE = 4096;
+    private static final Map<Long, VoxelShape[]> RIMS = new ConcurrentHashMap<>();
+    private static final Map<Join, VoxelShape> JOINS = new ConcurrentHashMap<>();
 
     /** One loaded tank: its node cell, box, roof and the glide its display gives. */
     static final class Tank {
@@ -87,6 +101,23 @@ public final class FloatingRoofs {
         double level(double ticks) {
             var g = glide;
             return g == null ? saved.getAsDouble() : g.level(ticks);
+        }
+
+        /**
+         * The 1/8-block voxel columns of the column of cells at {@code x}, {@code z} (world block coordinates) whose middles
+         * lie inside the roof's radius, one bit each (x-th column across times 8 plus z-th): all of them for a cell wholly
+         * inside it.
+         */
+        long under(int x, int z) {
+            int s = ShapeRasterizer.SOLID_RESOLUTION;
+            double r2 = roof.radius() * roof.radius();
+            long bits = 0;
+            for (int i = 0; i < s; i++)
+                for (int k = 0; k < s; k++) {
+                    double dx = x + (i + .5) / s - axisX, dz = z + (k + .5) / s - axisZ;
+                    if (dx * dx + dz * dz < r2) bits |= 1L << (i * s + k);
+                }
+            return bits;
         }
 
         /**
@@ -180,6 +211,61 @@ public final class FloatingRoofs {
         return SLABS[(int) Math.round(height * STEPS)];
     }
 
+    /**
+     * The roof's collision in the shell cell {@code cell} at game tick {@code tick}: as an open cell's
+     * ({@link #collision}), in those of the cell's 1/8-block columns inside the roof's radius (the cells the shell's wall
+     * crosses, and those a part over the roof reaches); null when no loaded tank holds the cell, none of its columns lies
+     * inside or the roof stands under the cell.
+     */
+    @Nullable VoxelShape rim(BlockPos cell, long tick) {
+        var tank = at(cell);
+        if (tank == null) return null;
+        long columns = tank.under(cell.getX(), cell.getZ());
+        double height = tank.surface(cell.getX(), cell.getZ(), tank.level(tick)) - cell.getY();
+        int step = height >= 1 ? STEPS : (int) Math.round(Math.max(0, height) * STEPS);
+        if (columns == 0 || step == 0) return null;
+        if (columns == -1L) return SLABS[step];
+        if (RIMS.size() >= RIM_CACHE) RIMS.clear();
+        var shapes = RIMS.computeIfAbsent(columns, k -> new VoxelShape[STEPS + 1]);
+        var shape = shapes[step];
+        if (shape == null) shapes[step] = shape = columns(columns, (double) step / STEPS);
+        return shape;
+    }
+
+    /** The voxel columns {@code columns} ({@link Tank#under}) from the cell's floor up to {@code height} (a fraction of the cell). */
+    private static VoxelShape columns(long columns, double height) {
+        int s = ShapeRasterizer.SOLID_RESOLUTION;
+        VoxelShape out = Shapes.empty();
+        for (int i = 0; i < s; i++)
+            for (int k = 0; k < s; k++) {
+                if ((columns >>> (i * s + k) & 1) == 0) continue;
+                int end = k;
+                while (end + 1 < s && (columns >>> (i * s + end + 1) & 1) != 0) end++;
+                out = Shapes.joinUnoptimized(out, Shapes.box((double) i / s, 0, (double) k / s, (double) (i + 1) / s, height, (double) (end + 1) / s), BooleanOp.OR);
+                k = end;
+            }
+        return out.optimize();
+    }
+
+    /** A shell cell's collision ({@code solid}, its parts) and the roof's in it ({@link #rim}), joined once per pair. */
+    static VoxelShape join(VoxelShape solid, @Nullable VoxelShape rim) {
+        if (rim == null) return solid;
+        if (JOINS.size() >= RIM_CACHE) JOINS.clear();
+        return JOINS.computeIfAbsent(new Join(solid, rim), j -> Shapes.or(j.solid(), j.rim()));
+    }
+
+    /** Two cached shapes, equal by identity. */
+    private record Join(VoxelShape solid, VoxelShape rim) {
+    }
+
+    /** The level a collision query reads (an entity's collisions read a chunk, not the level); null when none is at hand. */
+    static @Nullable Level level(BlockGetter getter, CollisionContext context) {
+        if (getter instanceof Level level) return level;
+        if (getter instanceof LevelChunk chunk) return chunk.getLevel();
+        if (context instanceof EntityCollisionContext entity && entity.getEntity() != null) return entity.getEntity().level();
+        return null;
+    }
+
     /** Whether {@code entity} in the open interior cell {@code cell} is on the rolling ladder at game tick {@code tick}. */
     boolean ladder(BlockPos cell, Entity entity, long tick) {
         return ladder(cell, entity.getX(), entity.getY() + FEET, entity.getZ(), tick);
@@ -230,38 +316,78 @@ public final class FloatingRoofs {
         var index = LEVELS.get(player.level());
         if (index == null || index.byNode.isEmpty()) return;
         long tick = player.level().getGameTime();
-        for (var tank : index.byNode.values()) {
-            lift(tank, player, tank.level(tick));
-            climb(tank, player, tick);
-        }
+        for (var tank : index.byNode.values()) lift(tank, player, tank.level(tick));
+        var motion = player.getDeltaMovement();
+        var next = index.climb(player.getX(), player.getY(), player.getZ(), player.getBbWidth() / 2, new double[]{motion.x, motion.y, motion.z}, tick);
+        if (next == null) return;
+        player.setDeltaMovement(next[0], next[1], next[2]);
+        player.resetFallDistance();
     }
 
     /**
-     * A player on the rolling ladder stands on its treads (owner reports 2026-10-21: the ladder did not climb, then a
-     * climber stuck under the platform's edge): its feet follow the ladder's line, so walking along it climbs or descends
-     * it as a ramp, and at its head, level with the platform's deck at the deck's edge, the climber walks off onto the deck
-     * with nothing overhead. A vanilla ladder climbs only against a wall or with a jump; this one is pitched, with no wall.
-     * The next tick's rise brings the feet to the line, at most a running climb up; down, at most a ladder's slowed fall,
-     * the pace in along it held to what that fall follows.
+     * The motion a rolling ladder gives a body {@code half} m wide each way, its feet at {@code x}, {@code feet}, {@code z}
+     * (world), moving {@code motion}, at game tick {@code tick} ({@link #climb(Tank, double, double, double, double, double[], long)}); null on none.
      */
-    private static void climb(Tank tank, Player player, long tick) {
-        double feet = player.getY();
-        if (!onLadder(tank, player.getX(), feet + FEET, player.getZ(), tick)) return;
-        var roof = tank.roof;
-        double pitch = roof.pitch(tank.level(tick)), cos = DeterministicMath.cos(pitch);
-        double[] p = roof.pivot(), a = roof.along();
-        // How far in from its head, along its level direction, the player stands; over the deck or past its foot the deck or the roof carries it.
-        double in = (player.getX() - (tank.origin.getX() + p[0])) * a[0] + (player.getZ() - (tank.origin.getZ() + p[2])) * a[2];
-        if (in < 0 || in > roof.length() * cos) return;
-        double slope = Math.min(MAX_SLOPE, DeterministicMath.sin(pitch) / Math.max(1e-6, cos)), line = tank.origin.getY() + p[1] - in * slope;
-        var motion = player.getDeltaMovement();
-        double inward = motion.x * a[0] + motion.z * a[2], held = DESCENT / slope, x = motion.x, z = motion.z;
-        if (inward > held) {
-            x -= (inward - held) * a[0];
-            z -= (inward - held) * a[2];
+    double @Nullable [] climb(double x, double feet, double z, double half, double[] motion, long tick) {
+        for (var tank : byNode.values()) {
+            var next = climb(tank, x, feet, z, half, motion, tick);
+            if (next != null) return next;
         }
-        player.setDeltaMovement(x, Math.max(-DESCENT, Math.min(MAX_CLIMB, line - feet)), z);
-        player.resetFallDistance();
+        return null;
+    }
+
+    /**
+     * A body on the rolling ladder stands on its treads (owner reports 2026-10-21: the ladder did not climb, then a climber
+     * stuck under the platform's edge): its feet follow the treads' line ({@link #tread}), so walking along it climbs or
+     * descends it as a ramp. A vanilla ladder climbs only against a wall or with a jump; this one is pitched, with no wall.
+     * The next tick's rise brings the feet to the line, at most a running climb up; down, at most a ladder's slowed fall,
+     * the pace in along it held to what that fall follows. The motion of a body {@code half} m wide each way, its feet at
+     * {@code x}, {@code feet}, {@code z} (world), moving {@code motion}, at game tick {@code tick}; null where it is not on
+     * the ladder or its box is off the ladder's run (over the deck the platform carries it, past the foot the roof).
+     */
+    static double @Nullable [] climb(Tank tank, double x, double feet, double z, double half, double[] motion, long tick) {
+        if (!onLadder(tank, x, feet + FEET, z, tick)) return null;
+        var roof = tank.roof;
+        double level = tank.level(tick), slope = slope(roof, level);
+        double[] p = roof.pivot(), a = roof.along();
+        // How far in from its head, along its level direction, the body's middle stands.
+        double in = (x - (tank.origin.getX() + p[0])) * a[0] + (z - (tank.origin.getZ() + p[2])) * a[2];
+        if (in < 0 || in - lead(a, half) > roof.length() * DeterministicMath.cos(roof.pitch(level))) return null;
+        double line = tank.origin.getY() + tread(roof, level, in, half);
+        double inward = motion[0] * a[0] + motion[2] * a[2], held = DESCENT / slope, mx = motion[0], mz = motion[2];
+        if (inward > held) {
+            mx -= (inward - held) * a[0];
+            mz -= (inward - held) * a[2];
+        }
+        return new double[]{mx, Math.max(-DESCENT, Math.min(MAX_CLIMB, line - feet)), mz};
+    }
+
+    /**
+     * The treads' height, box y, under a body {@code half} m wide each way whose middle stands {@code in} m in from the
+     * rolling ladder's head along its level direction, the liquid {@code level} m deep. A box on a ramp rests on its uphill
+     * edge: the line is taken {@link #lead} nearer the head (owner report 2026-10-25: "I cannot reach the platform using
+     * the moving ladder"; taken at the middle, the feet stood 0.3 to 0.42 m of run under the deck's height as the box met
+     * the deck's edge, and the box ran into the edge). So the feet reach the deck's height as the box reaches the deck,
+     * the box clears the roof as its edge leaves the ladder's foot, and on a steep ladder the box stands in front of the
+     * ladder, as on a vanilla one.
+     */
+    static double tread(ShapeRasterizer.Roof roof, double level, double in, double half) {
+        return roof.pivot()[1] - Math.max(0, in - lead(roof.along(), half)) * slope(roof, level);
+    }
+
+    /**
+     * How far a body {@code half} m wide each way reaches from its middle towards the ladder's head along its level
+     * direction {@code a}, m: the world-aligned box's reach (its diagonal on a ladder at an angle) and the deck's
+     * {@link #PROUD} edge.
+     */
+    static double lead(double[] a, double half) {
+        return half * (Math.abs(a[0]) + Math.abs(a[2])) + PROUD;
+    }
+
+    /** The rolling ladder's rise per metre of run, the liquid {@code level} m deep: {@link #MAX_SLOPE} at most. */
+    static double slope(ShapeRasterizer.Roof roof, double level) {
+        double pitch = roof.pitch(level);
+        return Math.min(MAX_SLOPE, DeterministicMath.sin(pitch) / Math.max(1e-6, DeterministicMath.cos(pitch)));
     }
 
     /** Lifts {@code entity} onto the roof of {@code tank} at {@code level} when its feet stand just under the surface. */

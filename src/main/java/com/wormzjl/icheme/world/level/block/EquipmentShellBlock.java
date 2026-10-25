@@ -3,6 +3,7 @@ package com.wormzjl.icheme.world.level.block;
 import com.mojang.serialization.MapCodec;
 import com.wormzjl.icheme.client.EquipmentClient;
 import com.wormzjl.icheme.registry.ModItems;
+import com.wormzjl.icheme.science.equipment.EquipmentShape;
 import com.wormzjl.icheme.science.equipment.ShapeRasterizer;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.InteractionHand;
@@ -57,6 +58,19 @@ public final class EquipmentShellBlock extends BaseEntityBlock {
     protected VoxelShape getShape(BlockState state, BlockGetter level, BlockPos position, CollisionContext context) {
         return level.getBlockEntity(position) instanceof EquipmentShellBlockEntity shell && shell.key() != null
                 ? EquipmentStructure.collision(shell.key()) : Shapes.block();
+    }
+
+    /**
+     * The cell's solid; in a floating-roof tank, the roof's too where it lies inside the shell (FloatingRoofs#rim; owner
+     * report 2026-10-25: the shell's cells collided as the tank's whole inside, and a climber on the rolling ladder met them).
+     */
+    @Override
+    protected VoxelShape getCollisionShape(BlockState state, BlockGetter level, BlockPos position, CollisionContext context) {
+        var solid = getShape(state, level, position, context);
+        if (!(level.getBlockEntity(position) instanceof EquipmentShellBlockEntity shell) || shell.shape() == null || shell.shape().kind() != EquipmentShape.Kind.TANK)
+            return solid;
+        var world = FloatingRoofs.level(level, context);
+        return world == null ? solid : FloatingRoofs.join(solid, FloatingRoofs.of(world).rim(position, world.getGameTime()));
     }
 
     /** A column's or a heater's ladder is climbed where the entity stands in front of its rungs, inside its cage (not anywhere in its cells); other shapes have none. */
