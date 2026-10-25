@@ -17,6 +17,8 @@ All notable changes to Industrial Chemical Engineering (IChemE, formerly CreateC
 
 ### Added
 
+- Pressure Gauge, Temperature Gauge and Accessory Wrench: configurable passive dials on straight pipes and dedicated constructed-reservoir taps, queued installation/recovery, accepted local pipe/reservoir readings and requested display updates; equipment-only muted placement previews, accessory storage1 and instruments-1 retain checkpoint18/unit11/fluid-14 (commit `e927f599`, batch: `2026-10-24-gauge-accessories`).
+
 - Convert the Pressure Control Valve into a straight-pipe accessory with the existing pressure controls, a scalable globe body and full-height diaphragm actuator; preserve host pipe identity, diameter and queued edits, and give cutoff valves larger reinforced levers and fitted inventory icons (commit `dc174f27`, batch: `2026-10-24-pressure-valve-accessory`).
 
 - Pipeline Check Valve accessory for straight pipes: aim-directed arrows fitted to the casting facets, queued empty-hand direction reversal, permanent one-way transport that survives solid-closure reopening, and survival installation/recovery without replacing pipe identity/settings; checkpoint 18 / storage-unit 11 requires a fresh world (commits `4e5c504d`, `9ffb294f`, batch: `2026-10-24-pipeline-check-valve`).
