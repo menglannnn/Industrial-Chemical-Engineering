@@ -560,20 +560,28 @@ public record EquipmentShape(Kind kind, double diameter, double tangentLength, O
      * null where they have no room. A three-phase drum (owner decision 2026-10-25; Arnold and Stewart's three-phase
      * separator, a reflux drum's general arrangement, photo survey A): the feed enters at the far end, free water settles
      * into the boot at the outlet end, the front, and the oil leaves behind an overflow baffle beyond it, through a nozzle
-     * facing down on the shell's bottom centre line between the boot and the front head. The boot: a third of the drum's
+     * facing down on the bottom centre line between the boot and the front head. The boot: a third of the drum's
      * diameter, at least 0.3, 0.4 or 0.5 m (under 0.9, 1.4 m and above) and at most half of it; 0.9 m or 0.6 D deep, the
      * longer; on the first cell centre inboard of the front saddle that keeps its shell 0.15 m clear of it, and as clear
-     * of the far saddle. The outlet on the last cell centre outboard of the front saddle that keeps a pipe's largest
-     * flange as clear of it (survey A: bottom nozzles clear the saddle by 0.15 m), its neck 0.05 m inside the front
-     * tangent line (a side connection's margin); the saddle between them keeps their pipes a free block apart (owner rule
-     * 2026-10-17). Else no boot.
+     * of the far saddle. The outlet on the last cell centre outboard of the front saddle that keeps its largest pipe's
+     * flange as clear of it (survey A: bottom nozzles clear the saddle by 0.15 m); the saddle between them keeps their
+     * pipes a free block apart (owner rule 2026-10-17). The outlet may stand on the head's bottom near the tangent line,
+     * its centre at most 0.6 of the head's depth beyond it, where the head's bottom is within 0.2 R of the shell's, and
+     * its largest neck short of the head's apex (owner request 2026-10-25: every drum from 6 m long takes a boot where
+     * the boot fits between its saddles). Else no boot.
      */
     public static @Nullable Boot bootFor(double diameter, double tangentLength) {
         double low = diameter < .9 ? .3 : diameter < 1.4 ? .4 : .5, size = Math.min(diameter / 2, Math.max(low, diameter / 3)), length = Math.max(.9, .6 * diameter);
-        double bT = diameter / 4, tT = bT + tangentLength, saddle = SADDLE_WIDTH / 2 + .15, clear = saddle + size / 2, flange = PipeSizes.flange(PipeSizes.MAX_OUTSIDE) / 2;
+        double od = outletLargest(diameter), flange = PipeSizes.flange(od) / 2;
+        double bT = diameter / 4, tT = bT + tangentLength, saddle = SADDLE_WIDTH / 2 + .15, clear = saddle + size / 2;
         double near = bT + SADDLE_POSITION * tangentLength, far = tT - SADDLE_POSITION * tangentLength;
         double outlet = Math.floor(near - saddle - flange - .5) + .5, station = Math.ceil(near + clear - .5) + .5;
-        return outlet - PipeSizes.MAX_OUTSIDE / 2 >= bT + .05 - 1e-9 && station <= far - clear + 1e-9 ? new Boot(station, size, length, outlet) : null;
+        return bT - outlet <= .6 * bT + 1e-9 && outlet > od / 2 && station <= far - clear + 1e-9 ? new Boot(station, size, length, outlet) : null;
+    }
+
+    /** The largest pipe a drum's fixed outlets take: 0.8 m, at most half the drum's diameter. */
+    private static double outletLargest(double diameter) {
+        return Math.min(PipeSizes.MAX_OUTSIDE, diameter / 2);
     }
 
     /** This drum's boot, or null when it has none. */
@@ -858,7 +866,7 @@ public record EquipmentShape(Kind kind, double diameter, double tangentLength, O
         }
         if (!orientation.horizontal()) {
             // Top head centre: the vapour outlet.
-            double topOd = Math.min(PipeSizes.MAX_OUTSIDE, diameter / 2);
+            double topOd = outletLargest(diameter);
             double topBase = headSurface(PipeSizes.MAX_OUTSIDE / 2) - .03;
             out.add(new Nozzle(Role.VAPOUR_OUTLET, new double[]{a, topBase, a}, 1, 1, Math.ceil(top() + STAND_OUT) - topBase, clampOd(.2 * diameter, topOd), 0));
             // Liquid outlet. On a skirt it is the bottom outlet (owner report 2026-10-16), through the skirt's port on its side.
@@ -877,7 +885,7 @@ public record EquipmentShape(Kind kind, double diameter, double tangentLength, O
         // Horizontal: the outlets leave at the front end, the feed enters at the far end (owner decision 2026-10-25). The
         // vapour outlet on top (frame +x) near the front end, a liquid outlet low on the front head (frame -y) or, with a
         // boot, underneath between the boot and the front head.
-        double topOd = Math.min(PipeSizes.MAX_OUTSIDE, diameter / 2);
+        double topOd = outletLargest(diameter);
         // A drum too short for a connection beside it: the outlet at the cell centre nearest its middle.
         double front = Math.ceil(bT) + .5;
         if (front > Math.floor(tT - 1) + .5) front = Math.floor((bT + tT) / 2) + .5;
@@ -886,9 +894,13 @@ public record EquipmentShape(Kind kind, double diameter, double tangentLength, O
         var b = bootPlace();
         if (b != null) {
             // A three-phase drum's oil leaves behind the overflow baffle beyond the boot (owner decision 2026-10-25, bootFor):
-            // on the bottom centre line facing down, its root as deep under the shell as the vapour outlet's over it, its
-            // face on the next block face under the shell.
-            out.add(new Nozzle(Role.LIQUID_OUTLET, new double[]{a - topStart, b.outlet(), a}, 0, -1, a - topStart - Math.floor(a - r - STAND_OUT), clampOd(.1 * diameter, topOd), 0));
+            // on the bottom centre line facing down, its root buried for its largest neck under the shell or, near the
+            // tangent line, under the head's bottom where the neck's far edge meets it, its face on the next block face
+            // under the shell.
+            double rn = topOd / 2, s = bT - b.outlet() + rn, h = headDepth();
+            double under = s <= 0 ? apothem : apothem * Math.sqrt(Math.max(0, 1 - s * s / (h * h)));
+            double root = a - Math.sqrt(Math.max(0, under * under - rn * rn)) + .03;
+            out.add(new Nozzle(Role.LIQUID_OUTLET, new double[]{root, b.outlet(), a}, 0, -1, root - Math.floor(a - r - STAND_OUT), clampOd(.1 * diameter, topOd), 0));
             // The boot's drain at its bottom head's centre, facing down (photo survey A), its pipe straight down.
             double rb = b.diameter() / 2, bottom = a - r - b.length(), depth = b.diameter() / 4, od = Math.min(PipeSizes.MAX_OUTSIDE, rb);
             double edge = PipeSizes.MAX_OUTSIDE / 2 / rb, base = bottom - depth * Math.sqrt(Math.max(0, 1 - edge * edge)) + .03, apex = bottom - depth;
