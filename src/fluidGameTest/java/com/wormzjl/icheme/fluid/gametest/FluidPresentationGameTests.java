@@ -213,8 +213,10 @@ public final class FluidPresentationGameTests {
     }
 
     /**
-     * Identity binding on a chunk load is not an update: the loaded block entity carries its identity and nothing
-     * else, no view is built or handed over at the load, and the view arrives with the island's next bucket.
+     * Identity binding on a chunk load is not an update: the loaded block entity carries its identity and its drawn state
+     * and nothing else, no view is built or handed over at the load, and the view arrives with the island's next bucket.
+     * The load's marking is a queued server task (49e57860, batch 2026-10-23-fluid-format-reset: a load event may fire
+     * before the chunk is visible), so the mark is read on the next tick, before the bucket.
      */
     @GameTest(template="empty",timeoutTicks=3000,batch="fluid-presentation-load")
     public static void identityBindingOnAChunkLoadCarriesNoViewData(GameTestHelper helper) {
@@ -222,7 +224,7 @@ public final class FluidPresentationGameTests {
         var origin=helper.absolutePos(BlockPos.ZERO);var pos=new BlockPos(((origin.getX()>>4)+112)*16+8,80,(origin.getZ()>>4)*16+8);
         var chunk=new net.minecraft.world.level.ChunkPos(pos);level.setChunkForced(chunk.x,chunk.z,true);level.setBlock(pos,ModBlocks.FLUID_RESERVOIR.get().defaultBlockState(),3);
         long id=((FluidDeviceBlockEntity)level.getBlockEntity(pos)).fluidIdentity();level.setChunkForced(chunk.x,chunk.z,false);
-        long[] loadedAt={-1};String[] failure={null};boolean[] removed={false};
+        long[] loadedAt={-1};String[] failure={null};boolean[] removed={false},markRead={false};
         helper.onEachTick(()->{
             if(failure[0]!=null)helper.fail(failure[0]);
             if(removed[0])return;
@@ -231,16 +233,16 @@ public final class FluidPresentationGameTests {
                 // Reload with a ticket: the block entity loads with its saved identity and only marks itself.
                 level.setChunkForced(chunk.x,chunk.z,true);level.getChunk(pos);loadedAt[0]=world.onlineTick();
                 var entity=(FluidDeviceBlockEntity)level.getBlockEntity(pos);
-                if(entity.fluidIdentity()!=id)failure[0]="The reload changed the identity";
-                if(entity.lastView()!=null)failure[0]="A view was present at the load";
+                if(entity.fluidIdentity()!=id)failure[0]=(failure[0]==null?"":failure[0]+" | ")+"The reload changed the identity";
+                if(entity.lastView()!=null)failure[0]=(failure[0]==null?"":failure[0]+" | ")+"A view was present at the load";
                 var tag=entity.getUpdateTag(level.registryAccess());
-                // The identity and the drawn geometry (bore and faces, static like a block state; batch
-                // 2026-10-15-custom-equipment-rendering), no view data.
-                if(!tag.getAllKeys().equals(Set.of("FluidIdentity","Bore","Faces")))failure[0]="The binding update carries more than the identity and the drawn geometry: "+tag;
-                if(!world.viewDirty(id))failure[0]="The load did not mark the device for its bucket";
+                // The identity and the drawn state, static like a block state: the bore and faces (batch
+                // 2026-10-15-custom-equipment-rendering) and the pipe's accessories (batch 2026-10-24-gauge-accessories); no view data.
+                if(!tag.getAllKeys().equals(Set.of("FluidIdentity","Bore","Faces","AccessoryRevision","Instruments")))failure[0]=(failure[0]==null?"":failure[0]+" | ")+"The binding update carries more than the identity and the drawn state: "+tag;
                 return;
             }
             var entity=(FluidDeviceBlockEntity)level.getBlockEntity(pos);long bucket=nextBucket(loadedAt[0],world.presentationKey(id));
+            if(!markRead[0]){markRead[0]=true;if(!world.viewDirty(id)&&entity.lastView()==null)failure[0]="The load did not mark the device for its bucket";}
             if(world.onlineTick()<bucket&&entity.lastView()!=null)failure[0]="A view arrived at "+entity.lastView().onlineTick()+" before the bucket "+bucket;
             if(world.onlineTick()>=bucket&&(entity.lastView()==null||entity.lastView().onlineTick()!=bucket))failure[0]="No view at the bucket "+bucket+": "+entity.lastView();
         });
