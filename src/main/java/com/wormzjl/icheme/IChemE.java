@@ -203,12 +203,7 @@ public final class IChemE {
         ModMenus.register(modEventBus);
         modEventBus.addListener(ColumnV3Network::register);
         modEventBus.addListener(com.wormzjl.icheme.network.FluidNetwork::register);
-        modEventBus.addListener(com.wormzjl.icheme.network.TankDisplayNetwork::register);
-        modEventBus.addListener(com.wormzjl.icheme.network.SightGlassNetwork::register);
-        modEventBus.addListener(com.wormzjl.icheme.network.MoverNetwork::register);
         modEventBus.addListener(com.wormzjl.icheme.network.EquipmentNetwork::register);
-        modEventBus.addListener(com.wormzjl.icheme.network.PipelineToolNetwork::register);
-        modEventBus.addListener(com.wormzjl.icheme.network.InstrumentNetwork::register);
         modEventBus.addListener(IChemE::addCreativeTabItem);
         modContainer.registerConfig(ModConfig.Type.COMMON, CONFIG_SPEC, "icheme-common.toml");
         // A dedicated server never draws equipment: its geometries keep no facets once laid out.

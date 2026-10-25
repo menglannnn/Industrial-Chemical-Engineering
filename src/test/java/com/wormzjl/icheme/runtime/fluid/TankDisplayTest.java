@@ -9,7 +9,7 @@ import static org.junit.jupiter.api.Assertions.*;
 /**
  * An open tank's display and its watchers (batch 2026-10-21-floating-roof-tanks, WP4, owner decisions FR4 and FR7): the
  * liquid's colour is the subtractive (Beer-Lambert) mix of its components by mass fraction, the level reads the condensed
- * volume over the footprint, and a player watches at most {@link TankWatchers#MAXIMUM_PER_PLAYER} tanks, each until it
+ * volume over the footprint, and a player watches at most {@link com.wormzjl.icheme.network.FluidNetwork#MAXIMUM_WATCHED} tanks, each until it
  * unwatches, leaves or the tank goes.
  */
 class TankDisplayTest {
@@ -47,8 +47,8 @@ class TankDisplayTest {
     }
 
     @Test void watchersAreBoundedAndEndWithThePlayerOrTheTank() {
-        var watchers=new TankWatchers();var alice=UUID.randomUUID();var bob=UUID.randomUUID();
-        for(long d=0;d<TankWatchers.MAXIMUM_PER_PLAYER;d++)assertTrue(watchers.watch(alice,d));
+        var watchers=new FluidWorldAuthority.Watchers();var alice=UUID.randomUUID();var bob=UUID.randomUUID();
+        for(long d=0;d<com.wormzjl.icheme.network.FluidNetwork.MAXIMUM_WATCHED;d++)assertTrue(watchers.watch(alice,d));
         assertFalse(watchers.watch(alice,1000),"over the maximum");assertFalse(watchers.watch(alice,3),"already watched");
         assertTrue(watchers.watch(bob,3));assertEquals(Set.of(alice,bob),watchers.watchers(3));
         watchers.unwatch(alice,3);assertEquals(Set.of(bob),watchers.watchers(3));assertTrue(watchers.watch(alice,1000),"a freed slot");

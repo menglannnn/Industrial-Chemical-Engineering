@@ -41,7 +41,7 @@ public final class FluidDeviceBlockEntity extends BlockEntity implements com.wor
         boolean before=FluidDeviceBlock.hasSightGlass(getBlockState());super.setBlockState(state);
         if(level!=null&&level.isClientSide()) {
             if(FluidDeviceBlock.hasSightGlass(state))CLIENT_GLASSES.add(this);else CLIENT_GLASSES.remove(this);
-            if(before&&!FluidDeviceBlock.hasSightGlass(state))com.wormzjl.icheme.client.SightGlassDisplays.forget(worldPosition);
+            if(before&&!FluidDeviceBlock.hasSightGlass(state))com.wormzjl.icheme.client.SightGlassRenderer.forget(worldPosition);
         }
     }
     /** Model data read while the chunk is meshed. */
@@ -90,7 +90,7 @@ public final class FluidDeviceBlockEntity extends BlockEntity implements com.wor
     }
     @Override public void onLoad() {
         super.onLoad();com.wormzjl.icheme.runtime.instrument.InstrumentHosts.loaded(this);
-        if(level!=null&&level.isClientSide()&&FluidDeviceBlock.hasSightGlass(getBlockState())){com.wormzjl.icheme.client.SightGlassDisplays.forget(worldPosition);CLIENT_GLASSES.add(this);}
+        if(level!=null&&level.isClientSide()&&FluidDeviceBlock.hasSightGlass(getBlockState())){com.wormzjl.icheme.client.SightGlassRenderer.forget(worldPosition);CLIENT_GLASSES.add(this);}
         if(!(level instanceof ServerLevel serverLevel))return;
         FluidWorldAuthority.find(serverLevel.getServer()).ifPresent(world->{
             var p=new PhysicalFluidTopology.Position(level.dimension().location().toString(),worldPosition.getX(),worldPosition.getY(),worldPosition.getZ());
@@ -168,12 +168,12 @@ public final class FluidDeviceBlockEntity extends BlockEntity implements com.wor
         }
     }
     @Override public void onChunkUnloaded(){super.onChunkUnloaded();released();}
-    @Override public void setRemoved(){super.setRemoved();com.wormzjl.icheme.runtime.instrument.InstrumentHosts.unloaded(this);if(level!=null&&level.isClientSide())com.wormzjl.icheme.client.InstrumentDisplays.forget(worldPosition);released();}
+    @Override public void setRemoved(){super.setRemoved();com.wormzjl.icheme.runtime.instrument.InstrumentHosts.unloaded(this);if(level!=null&&level.isClientSide())com.wormzjl.icheme.client.InstrumentRenderer.forget(worldPosition);released();}
     /** Unloaded or removed: publications stop marking this device. */
     private void released() {
         com.wormzjl.icheme.runtime.instrument.InstrumentHosts.unloaded(this);
-        if(level!=null&&level.isClientSide())com.wormzjl.icheme.client.InstrumentDisplays.forget(worldPosition);
-        if(level!=null&&level.isClientSide()){CLIENT_GLASSES.remove(this);com.wormzjl.icheme.client.SightGlassDisplays.forget(worldPosition);}
+        if(level!=null&&level.isClientSide())com.wormzjl.icheme.client.InstrumentRenderer.forget(worldPosition);
+        if(level!=null&&level.isClientSide()){CLIENT_GLASSES.remove(this);com.wormzjl.icheme.client.SightGlassRenderer.forget(worldPosition);}
         if(identity!=0&&level instanceof ServerLevel serverLevel&&serverLevel.getServer().isSameThread())FluidWorldAuthority.find(serverLevel.getServer()).ifPresent(world->world.deviceUnloaded(identity));
     }
     /** The engine's bucket hands over this device's view (the authority checked the identity); the block entity keeps it for server-side readers. */

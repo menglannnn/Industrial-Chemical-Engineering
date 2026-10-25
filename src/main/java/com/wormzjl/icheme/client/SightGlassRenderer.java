@@ -5,7 +5,10 @@ import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.math.Axis;
 import com.wormzjl.icheme.IChemE;
 import com.wormzjl.icheme.client.model.FluidDeviceModel;
-import com.wormzjl.icheme.network.SightGlassNetwork.Target;
+import com.wormzjl.icheme.network.FluidNetwork;
+import com.wormzjl.icheme.network.FluidNetwork.Target;
+import com.wormzjl.icheme.runtime.fluid.SightGlassDisplay;
+import net.minecraft.core.BlockPos;
 import com.wormzjl.icheme.science.equipment.Mesh;
 import com.wormzjl.icheme.science.equipment.SightGlassGeometry;
 import com.wormzjl.icheme.science.equipment.SightGlassBubbles;
@@ -42,13 +45,13 @@ public final class SightGlassRenderer {
 
     @SubscribeEvent public static void tick(ClientTickEvent.Post event) {
         var mc=Minecraft.getInstance();
-        if(world!=mc.level){if(mc.getConnection()!=null)SightGlassDisplays.track(List.of());else SightGlassDisplays.clear();SURFACES.clear();world=mc.level;age=0;}
+        if(world!=mc.level){if(mc.getConnection()!=null)track(List.of());else clear();SURFACES.clear();world=mc.level;age=0;}
         if(mc.level==null||mc.player==null||mc.getConnection()==null||age++%20!=0)return;
         var point=mc.player.position();var near=new ArrayList<FluidDeviceBlockEntity>();
         for(var entity:FluidDeviceBlockEntity.clientSightGlasses())if(!entity.isRemoved()&&entity.getLevel()==mc.level&&entity.fluidIdentity()>0
                 &&FluidDeviceBlock.hasSightGlass(entity.getBlockState())&&entity.getBlockPos().distToCenterSqr(point)<=RANGE*RANGE)near.add(entity);
         near.sort(Comparator.comparingDouble((FluidDeviceBlockEntity entity)->entity.getBlockPos().distToCenterSqr(point)).thenComparingLong(entity->entity.getBlockPos().asLong()));
-        SightGlassDisplays.track(near.stream().map(entity->new Target(entity.getBlockPos(),entity.fluidIdentity())).toList());
+        track(near.stream().map(entity->new Target(entity.getBlockPos(),entity.fluidIdentity())).toList());
     }
 
     @SubscribeEvent public static void render(RenderLevelStageEvent event) {
@@ -59,7 +62,7 @@ public final class SightGlassRenderer {
         float u=sprite.getU(.5F),v=sprite.getV(.5F);var camera=event.getCamera().getPosition();
         var pose=event.getPoseStack();var buffers=mc.renderBuffers().bufferSource();VertexConsumer consumer=null;
         for(var entity:FluidDeviceBlockEntity.clientSightGlasses()) {
-            var sample=SightGlassDisplays.display(entity);int argb=sample.argb();var pos=entity.getBlockPos();
+            var sample=display(entity);int argb=sample.argb();var pos=entity.getBlockPos();
             if(argb>>>24==0||entity.isRemoved()||entity.getLevel()!=level||!FluidDeviceBlock.hasSightGlass(entity.getBlockState())
                     ||pos.distToCenterSqr(camera)>128*128||!event.getFrustum().isVisible(new AABB(pos).inflate(.15)))continue;
             var key=FluidDeviceModel.sightGlassKey(entity.getBlockState(),entity.getModelData());
@@ -111,4 +114,30 @@ public final class SightGlassRenderer {
         pose.popPose();
     }
     private static float[][] ring(){var points=new float[12][2];for(int i=0;i<points.length;i++){double a=2*Math.PI*i/points.length;points[i][0]=(float)DeterministicMath.cos(a);points[i][1]=(float)DeterministicMath.sin(a);}return points;}
+
+    // ---- the client's sight-glass displays ----
+    // Ephemeral and identity-bound; never obtained through a block update tag. Client thread only.
+    private static final Map<Target,SightGlassDisplay.Sample> DISPLAYS=new HashMap<>();
+    private static final Set<Target> WATCHED=new HashSet<>();
+    public static void accept(Target target,SightGlassDisplay.Sample sample) {
+        var level=Minecraft.getInstance().level;
+        if(level!=null&&WATCHED.contains(target)&&FluidDeviceBlock.hasSightGlass(level.getBlockState(target.position()))
+                &&level.getBlockEntity(target.position()) instanceof FluidDeviceBlockEntity entity&&entity.fluidIdentity()==target.identity())DISPLAYS.put(target,sample);
+    }
+    static SightGlassDisplay.Sample display(FluidDeviceBlockEntity entity){long id=entity.fluidIdentity();return id<=0?SightGlassDisplay.Sample.CLEAR:DISPLAYS.getOrDefault(new Target(entity.getBlockPos(),id),SightGlassDisplay.Sample.CLEAR);}
+    /** Nearest first, bounded independently of tanks. */
+    static void track(List<Target> near) {
+        var wanted=new LinkedHashSet<Target>();for(var target:near){if(wanted.size()>=FluidNetwork.MAXIMUM_WATCHED)break;wanted.add(target);}
+        var watch=new ArrayList<Target>();for(var target:wanted)if(!WATCHED.contains(target))watch.add(target);
+        var unwatch=new ArrayList<Target>();for(var target:WATCHED)if(!wanted.contains(target))unwatch.add(target);
+        WATCHED.removeAll(unwatch);unwatch.forEach(DISPLAYS::remove);WATCHED.addAll(watch);
+        FluidNetwork.request(FluidNetwork.Watch.SIGHT_GLASSES,watch,unwatch);
+    }
+    /** A replaced/unloaded client binding must explicitly request again even if its chunk reloads within one poll. */
+    public static void forget(BlockPos pos) {
+        var gone=WATCHED.stream().filter(t->t.position().equals(pos)).toList();
+        WATCHED.removeAll(gone);gone.forEach(DISPLAYS::remove);
+        if(Minecraft.getInstance().getConnection()!=null)FluidNetwork.request(FluidNetwork.Watch.SIGHT_GLASSES,List.of(),gone);
+    }
+    public static void clear(){DISPLAYS.clear();WATCHED.clear();}
 }

@@ -1,11 +1,10 @@
 package com.wormzjl.icheme.client;
 
 import com.wormzjl.icheme.IChemE;
-import com.wormzjl.icheme.network.MoverNetwork;
-import com.wormzjl.icheme.network.MoverNetwork.Target;
+import com.wormzjl.icheme.network.FluidNetwork;
+import com.wormzjl.icheme.network.FluidNetwork.Target;
 import com.wormzjl.icheme.registry.ModBlocks;
 import com.wormzjl.icheme.runtime.fluid.FluidView;
-import com.wormzjl.icheme.runtime.fluid.TankWatchers;
 import com.wormzjl.icheme.science.equipment.ShapeRasterizer;
 import com.wormzjl.icheme.science.equipment.EquipmentShape;
 import com.wormzjl.icheme.science.equipment.MoverSoundVolume;
@@ -28,7 +27,7 @@ import net.neoforged.neoforge.client.event.ClientTickEvent;
 public final class MoverSounds {
     private static final Set<BlockEntity> CELLS=Collections.newSetFromMap(new WeakHashMap<>());
     private static final Set<Target> WATCHED=new HashSet<>();
-    private static final Map<Target,MoverNetwork.State> STATES=new HashMap<>();
+    private static final Map<Target,FluidNetwork.MoverState> STATES=new HashMap<>();
     private static final Map<Target,Loop> LOOPS=new HashMap<>();
     private static ClientLevel world;
     private static int age;
@@ -49,7 +48,7 @@ public final class MoverSounds {
         var level=Minecraft.getInstance().level;
         return level!=null&&level.hasChunkAt(target.position())&&target.equals(target(level.getBlockEntity(target.position())));
     }
-    public static void accept(MoverNetwork.State state) {
+    public static void accept(FluidNetwork.MoverState state) {
         if(!WATCHED.contains(state.target())||!valid(state.target()))return;
         STATES.put(state.target(),state);if(!state.running())stop(state.target());
     }
@@ -57,7 +56,7 @@ public final class MoverSounds {
     private static void drop(Target target){STATES.remove(target);stop(target);}
     private static void forget(BlockPos pos) {
         var gone=WATCHED.stream().filter(t->t.position().equals(pos)).toList();WATCHED.removeAll(gone);gone.forEach(MoverSounds::drop);
-        if(Minecraft.getInstance().getConnection()!=null)MoverNetwork.request(List.of(),gone);
+        if(Minecraft.getInstance().getConnection()!=null)FluidNetwork.request(FluidNetwork.Watch.MOVERS,List.of(),gone);
     }
     public static void clear(){for(var target:List.copyOf(LOOPS.keySet()))stop(target);STATES.clear();WATCHED.clear();CELLS.clear();world=null;age=0;}
     /** Unknown or stopped movers are drawn at rest. Non-mover units keep their existing cosmetic animation. */
@@ -70,7 +69,7 @@ public final class MoverSounds {
     @SubscribeEvent public static void tick(ClientTickEvent.Post event) {
         var mc=Minecraft.getInstance();
         if(world!=mc.level){
-            if(mc.getConnection()!=null)MoverNetwork.request(List.of(),List.copyOf(WATCHED));
+            if(mc.getConnection()!=null)FluidNetwork.request(FluidNetwork.Watch.MOVERS,List.of(),List.copyOf(WATCHED));
             for(var target:List.copyOf(LOOPS.keySet()))stop(target);STATES.clear();WATCHED.clear();
             CELLS.removeIf(cell->cell.getLevel()!=mc.level);world=mc.level;age=0;
         }
@@ -78,12 +77,12 @@ public final class MoverSounds {
         var point=mc.player.position();var near=new ArrayList<Target>();
         for(var cell:List.copyOf(CELLS)) {
             var target=target(cell);
-            if(target!=null&&cell.getLevel()==mc.level&&target.position().distToCenterSqr(point)<=(MoverNetwork.RANGE-8)*(MoverNetwork.RANGE-8))near.add(target);
+            if(target!=null&&cell.getLevel()==mc.level&&target.position().distToCenterSqr(point)<=(FluidNetwork.MOVER_RANGE-8)*(FluidNetwork.MOVER_RANGE-8))near.add(target);
         }
         near.sort(Comparator.comparingDouble((Target t)->t.position().distToCenterSqr(point)).thenComparingLong(Target::identity));
-        var wanted=new LinkedHashSet<Target>();for(var target:near){if(wanted.size()>=TankWatchers.MAXIMUM_PER_PLAYER)break;wanted.add(target);}
+        var wanted=new LinkedHashSet<Target>();for(var target:near){if(wanted.size()>=FluidNetwork.MAXIMUM_WATCHED)break;wanted.add(target);}
         var unwatch=WATCHED.stream().filter(t->!wanted.contains(t)).toList();var watch=wanted.stream().filter(t->!WATCHED.contains(t)).toList();
-        WATCHED.removeAll(unwatch);unwatch.forEach(MoverSounds::drop);WATCHED.addAll(watch);MoverNetwork.request(watch,unwatch);
+        WATCHED.removeAll(unwatch);unwatch.forEach(MoverSounds::drop);WATCHED.addAll(watch);FluidNetwork.request(FluidNetwork.Watch.MOVERS,watch,unwatch);
         for(var target:List.copyOf(STATES.keySet())) {
             var state=STATES.get(target);
             boolean audible=state.running()&&valid(target)&&target.position().distToCenterSqr(point)<=24*24
@@ -97,7 +96,7 @@ public final class MoverSounds {
         private final Target target;
         private final ClientLevel level;
         private EquipmentShape shape;
-        private Loop(MoverNetwork.State state,ClientLevel level) {
+        private Loop(FluidNetwork.MoverState state,ClientLevel level) {
             super((state.compressor()?ModBlocks.COMPRESSOR_RUNNING:ModBlocks.PUMP_RUNNING).get(),SoundSource.BLOCKS,RandomSource.create());
             this.target=state.target();this.level=level;looping=true;delay=0;volume=0;pitch=1;refreshVolume();
             attenuation=net.minecraft.client.resources.sounds.SoundInstance.Attenuation.LINEAR;

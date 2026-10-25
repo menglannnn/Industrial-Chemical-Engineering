@@ -10,7 +10,7 @@ import com.mojang.blaze3d.vertex.VertexFormat;
 import com.wormzjl.icheme.IChemE;
 import com.wormzjl.icheme.client.model.EquipmentShellModel;
 import com.wormzjl.icheme.runtime.fluid.TankDisplay;
-import com.wormzjl.icheme.runtime.fluid.TankWatchers;
+import com.wormzjl.icheme.network.FluidNetwork;
 import com.wormzjl.icheme.science.equipment.EquipmentShape;
 import com.wormzjl.icheme.science.equipment.Mesh;
 import com.wormzjl.icheme.science.equipment.TankGaugeGeometry;
@@ -39,14 +39,18 @@ import org.joml.Matrix4f;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * A floating-roof tank's client-drawn parts (batch 2026-10-21-floating-roof-tanks, plan section 3.4, owner decisions FR4
  * and FR7): the roof floats with its underside on the liquid ({@link ShapeRasterizer.Floating#underside}), the rolling
  * ladder turns down until its foot rests on the roof's deck ({@link ShapeRasterizer.Floating#pitch}), and the sight glass
  * shows the free water and the hydrocarbon liquid over it as two bands in their colours. The level and the colours are the
- * tank's display ({@link TankDisplays}), which the server sends on its own schedule to a client that watches the tank:
+ * tank's display ({@link #accept}), which the server sends on its own schedule to a client that watches the tank:
  * once a second this watches the tanks whose node cells stand within {@link #WATCH_RANGE}, nearest first, and releases the
  * others. A tank with no display yet shows its roof landed on its legs and an empty glass.
  *
@@ -56,8 +60,8 @@ import java.util.Map;
  */
 @EventBusSubscriber(modid = IChemE.MOD_ID, value = Dist.CLIENT)
 public final class TankRenderer {
-    /** Watched within this, blocks: inside the server's {@link TankWatchers#RANGE}, so a watch it keeps is never one the server has dropped. */
-    static final double WATCH_RANGE = TankWatchers.RANGE - 8;
+    /** Watched within this, blocks: inside the server's {@link FluidNetwork#WATCH_RANGE}, so a watch it keeps is never one the server has dropped. */
+    static final double WATCH_RANGE = FluidNetwork.WATCH_RANGE - 8;
     /** Tanks are drawn while their node cell stands within this of the camera, blocks. */
     private static final double DRAW_RANGE = 192;
     private static final int WATCH_TICKS = 20;
@@ -93,7 +97,7 @@ public final class TankRenderer {
         for (var cell : EquipmentShellBlockEntity.clientTankCells())
             if (!cell.isRemoved() && cell.getLevel() == mc.level && cell.getBlockPos().distToCenterSqr(player) <= WATCH_RANGE * WATCH_RANGE) near.add(cell.getBlockPos());
         near.sort(Comparator.comparingDouble(pos -> pos.distToCenterSqr(player)));
-        TankDisplays.track(near);
+        track(near);
     }
 
     /** The roof and the ladder, solid, where the tank's liquid puts them. */
@@ -178,7 +182,7 @@ public final class TankRenderer {
         for (var cell : cells) {
             var shape = cell.shape();
             var origin = cell.origin();
-            var display = TankDisplays.get(cell.getBlockPos(), ticks);
+            var display = get(cell.getBlockPos(), ticks);
             if (display == null || cell.isRemoved() || cell.getLevel() != level || shape == null || origin == null) continue;
             if (cell.getBlockPos().distToCenterSqr(camera) > DRAW_RANGE * DRAW_RANGE) continue;
             var f = ShapeRasterizer.floating(shape);
@@ -289,4 +293,39 @@ public final class TankRenderer {
         BUFFERS.values().forEach(VertexBuffer::close);
         BUFFERS.clear();
     }
+
+    // ---- the client's open-tank displays ----
+    // By node cell: what the server sent for each tank this client watches (owner decision FR4 R-B). track keeps the watch
+    // set to the tanks within WATCH_RANGE, nearest first, at most FluidNetwork.MAXIMUM_WATCHED, and asks the server only for
+    // the difference. A new display arrives once a presentation bucket inside the glide the server gave the tank
+    // (TankDisplay.Glide, owner requests 2026-10-21: the roof moves, and a player on it rides it): the roof moves from where
+    // it stood to it over that time on the game clock, here as on the server, and the level's roofs (FloatingRoofs) collide
+    // by it. The server sends nothing more. Plain Java on the client's main thread.
+    private static final Map<BlockPos,TankDisplay.Glide> DISPLAYS=new HashMap<>();
+    private static final Set<BlockPos> WATCHED=new HashSet<>();
+
+    /** A glide the server sent; dropped if the tank is no longer watched. */
+    public static void accept(BlockPos node,TankDisplay.Glide glide) {
+        if(!WATCHED.contains(node))return;
+        DISPLAYS.put(node.immutable(),glide);
+        var level=Minecraft.getInstance().level;if(level!=null)FloatingRoofs.of(level).glide(node,glide);
+    }
+    /** The display of the tank at {@code node} at game time {@code ticks} (with the frame's partial tick), or null before the first one arrives. */
+    static TankDisplay get(BlockPos node,double ticks){var glide=DISPLAYS.get(node);return glide==null?null:glide.at(ticks);}
+    /**
+     * Watches exactly {@code inRange} (node cells within range, nearest first; the tail beyond the maximum is not
+     * watched): asks the server for the new ones and releases the others.
+     */
+    static void track(List<BlockPos> inRange) {
+        var wanted=new LinkedHashSet<BlockPos>();
+        for(var pos:inRange){if(wanted.size()>=FluidNetwork.MAXIMUM_WATCHED)break;wanted.add(pos.immutable());}
+        var watch=new ArrayList<BlockPos>();for(var pos:wanted)if(!WATCHED.contains(pos))watch.add(pos);
+        var unwatch=new ArrayList<BlockPos>();for(var pos:WATCHED)if(!wanted.contains(pos))unwatch.add(pos);
+        if(watch.isEmpty()&&unwatch.isEmpty())return;
+        WATCHED.removeAll(unwatch);unwatch.forEach(DISPLAYS::remove);WATCHED.addAll(watch);
+        var level=Minecraft.getInstance().level;if(level!=null)for(var pos:unwatch)FloatingRoofs.of(level).glide(pos,null);
+        FluidNetwork.requestTanks(watch,unwatch);
+    }
+    /** Forgets every display (the client left the world). */
+    public static void clear(){DISPLAYS.clear();WATCHED.clear();}
 }

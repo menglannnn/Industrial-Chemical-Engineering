@@ -207,14 +207,14 @@ public final class EquipmentShellBlockEntity extends BlockEntity implements com.
 
     @Override
     public void setRemoved() {
-        super.setRemoved();com.wormzjl.icheme.runtime.instrument.InstrumentHosts.unloaded(this);if(level!=null&&level.isClientSide())com.wormzjl.icheme.client.InstrumentDisplays.forget(worldPosition);
+        super.setRemoved();com.wormzjl.icheme.runtime.instrument.InstrumentHosts.unloaded(this);if(level!=null&&level.isClientSide())com.wormzjl.icheme.client.InstrumentRenderer.forget(worldPosition);
         released();
     }
 
     /** Unloaded or removed: publications stop marking the drum; the client stops moving its parts. */
     private void released() {
         com.wormzjl.icheme.runtime.instrument.InstrumentHosts.unloaded(this);
-        if(level!=null&&level.isClientSide())com.wormzjl.icheme.client.InstrumentDisplays.forget(worldPosition);
+        if(level!=null&&level.isClientSide())com.wormzjl.icheme.client.InstrumentRenderer.forget(worldPosition);
         if(level!=null&&level.isClientSide())com.wormzjl.icheme.client.MoverSounds.forget(this);
         CLIENT_MOVING.remove(this);
         CLIENT_TANKS.remove(this);

@@ -3,11 +3,17 @@ package com.wormzjl.icheme.network;
 import com.google.gson.Gson;
 import com.wormzjl.icheme.IChemE;
 import com.wormzjl.icheme.runtime.fluid.*;
+import com.wormzjl.icheme.runtime.instrument.Instrument;
 import com.wormzjl.icheme.science.fluid.network.*;
 import com.wormzjl.icheme.science.fluid.topology.TopologyCompiler;
 import com.wormzjl.icheme.world.inventory.FluidDeviceMenu;
+import com.wormzjl.icheme.world.inventory.GaugeMenu;
+import com.wormzjl.icheme.world.inventory.PipelineToolMenu;
+import com.wormzjl.icheme.world.item.GaugeSettings;
+import com.wormzjl.icheme.world.item.PipelineToolItem;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.RegistryFriendlyByteBuf;
+import net.minecraft.network.codec.ByteBufCodecs;
 import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
 import net.minecraft.resources.ResourceLocation;
@@ -16,6 +22,7 @@ import net.neoforged.neoforge.network.PacketDistributor;
 import net.neoforged.neoforge.network.event.RegisterPayloadHandlersEvent;
 import net.neoforged.neoforge.network.handling.IPayloadContext;
 import net.neoforged.neoforge.network.registration.HandlerThread;
+import net.neoforged.neoforge.network.registration.PayloadRegistrar;
 import java.util.*;
 
 /**
@@ -176,6 +183,7 @@ public final class FluidNetwork {
         var registrar=event.registrar(PROTOCOL).executesOn(HandlerThread.MAIN);
         registrar.playToServer(EditPayload.TYPE,EditPayload.STREAM_CODEC,FluidNetwork::edit);
         registrar.playToServer(RecoverPayload.TYPE,RecoverPayload.STREAM_CODEC,FluidNetwork::recover);
+        registerDisplays(event,registrar);
         registrar.playToClient(StaticPayload.TYPE,StaticPayload.STREAM_CODEC,(payload,context)->{
             if(context.player().containerMenu instanceof FluidDeviceMenu menu&&menu.containerId==payload.menuId&&menu.identity()==payload.identity)menu.acceptStatic(decodeStatic(payload.json));
         });
@@ -272,6 +280,184 @@ public final class FluidNetwork {
         for(Throwable t=refused;t!=null;t=t.getCause()==t?null:t.getCause())if(t.getMessage()!=null&&(t instanceof IllegalArgumentException||t instanceof IllegalStateException))message=t.getMessage();
         return message!=null?message:String.valueOf(refused.getMessage());
     }
+
+    // ---- requested world-space displays and item settings ----
+    // Each requested display keeps its own payload ids and protocol version string: the open tanks' display path rides on
+    // PROTOCOL, the others on their own registrars (registerDisplays), so their wire registration is unchanged.
+
+    /** How far from a watcher an open tank's node cell or a sight glass may stand, blocks. */
+    public static final double WATCH_RANGE=128;
+    /** How far from a watcher a constructed mover's fluid cell may stand, blocks. */
+    public static final double MOVER_RANGE=96;
+    /** The most open tanks, sight glasses or movers one player watches, each kind on its own. */
+    public static final int MAXIMUM_WATCHED=64;
+
+    /**
+     * The open tanks' display path (batch 2026-10-21-floating-roof-tanks, plan section 3.4, owner decision FR4 R-B): a client
+     * asks to watch and to stop watching tanks by their node cells ({@link TankWatch}); the server answers each new watch
+     * with the tank's last published glide to its display, if it has one, and then sends one {@link TankDisplayPayload} at
+     * each of the tank's presentation buckets. About 60 bytes a tank every 5 s; nothing is sent unasked.
+     */
+    public record TankWatch(List<BlockPos> watch,List<BlockPos> unwatch) implements CustomPacketPayload {
+        public static final Type<TankWatch> TYPE=new Type<>(ResourceLocation.fromNamespaceAndPath(IChemE.MOD_ID,"tank_watch"));
+        public static final StreamCodec<RegistryFriendlyByteBuf,TankWatch> STREAM_CODEC=new StreamCodec<>() {
+            public TankWatch decode(RegistryFriendlyByteBuf b){return new TankWatch(positions(b),positions(b));}
+            public void encode(RegistryFriendlyByteBuf b,TankWatch p){positions(b,p.watch);positions(b,p.unwatch);}
+        };
+        public TankWatch{watch=List.copyOf(watch);unwatch=List.copyOf(unwatch);
+            if(watch.size()>MAXIMUM_WATCHED||unwatch.size()>MAXIMUM_WATCHED)throw new IllegalArgumentException("Too many tanks in one watch request");}
+        @Override public Type<? extends CustomPacketPayload> type(){return TYPE;}
+    }
+    /** Server to client: one tank's glide to its latest display, at its node cell (whole, so the client's roof stands where the server's collides). */
+    public record TankDisplayPayload(BlockPos node,TankDisplay.Glide glide) implements CustomPacketPayload {
+        public static final Type<TankDisplayPayload> TYPE=new Type<>(ResourceLocation.fromNamespaceAndPath(IChemE.MOD_ID,"tank_display"));
+        public static final StreamCodec<RegistryFriendlyByteBuf,TankDisplayPayload> STREAM_CODEC=new StreamCodec<>() {
+            public TankDisplayPayload decode(RegistryFriendlyByteBuf b){var node=b.readBlockPos();var from=display(b);return new TankDisplayPayload(node,new TankDisplay.Glide(from,display(b),b.readLong()));}
+            public void encode(RegistryFriendlyByteBuf b,TankDisplayPayload p){b.writeBlockPos(p.node);display(b,p.glide.from());display(b,p.glide.to());b.writeLong(p.glide.tick());}
+        };
+        @Override public Type<? extends CustomPacketPayload> type(){return TYPE;}
+    }
+    private static TankDisplay display(RegistryFriendlyByteBuf b){return new TankDisplay(b.readFloat(),b.readFloat(),b.readFloat(),b.readInt(),b.readInt());}
+    private static void display(RegistryFriendlyByteBuf b,TankDisplay d){b.writeFloat(d.level());b.writeFloat(d.waterLevel());b.writeFloat(d.height());b.writeInt(d.oilArgb());b.writeInt(d.waterArgb());}
+    private static List<BlockPos> positions(RegistryFriendlyByteBuf b) {
+        int count=b.readVarInt();if(count<0||count>MAXIMUM_WATCHED)throw new IllegalArgumentException("Too many tanks in one watch request");
+        var list=new ArrayList<BlockPos>(count);for(int i=0;i<count;i++)list.add(b.readBlockPos());
+        return list;
+    }
+    private static void positions(RegistryFriendlyByteBuf b,List<BlockPos> list){b.writeVarInt(list.size());for(var pos:list)b.writeBlockPos(pos);}
+
+    /** A watched sight glass or constructed mover: its cell and its fluid identity. */
+    public record Target(BlockPos position,long identity) {
+        public Target{position=position.immutable();if(identity<=0)throw new IllegalArgumentException("Invalid watched identity");}
+    }
+    /**
+     * Client to server: explicit, bounded visual subscriptions to sight glasses ({@link #SIGHT_GLASSES}) or to movers
+     * ({@link #MOVERS}): the targets to start and to stop watching. The payload type names the kind.
+     */
+    public record Watch(Type<Watch> type,List<Target> watch,List<Target> unwatch) implements CustomPacketPayload {
+        public static final Type<Watch> SIGHT_GLASSES=new Type<>(ResourceLocation.fromNamespaceAndPath(IChemE.MOD_ID,"sight_glass_watch"));
+        public static final Type<Watch> MOVERS=new Type<>(ResourceLocation.fromNamespaceAndPath(IChemE.MOD_ID,"mover_watch"));
+        public Watch{Objects.requireNonNull(type);watch=List.copyOf(watch);unwatch=List.copyOf(unwatch);validate(watch);validate(unwatch);}
+        static StreamCodec<RegistryFriendlyByteBuf,Watch> codec(Type<Watch> type){return new StreamCodec<>() {
+            public Watch decode(RegistryFriendlyByteBuf b){return new Watch(type,targets(b),targets(b));}
+            public void encode(RegistryFriendlyByteBuf b,Watch p){targets(b,p.watch);targets(b,p.unwatch);}
+        };}
+    }
+    /** Server to client: a sight glass's colour, bubble strength and flow direction, never process or menu contents. */
+    public record SightGlassPayload(Target target,SightGlassDisplay.Sample sample) implements CustomPacketPayload {
+        public static final Type<SightGlassPayload> TYPE=new Type<>(ResourceLocation.fromNamespaceAndPath(IChemE.MOD_ID,"sight_glass_display"));
+        public static final StreamCodec<RegistryFriendlyByteBuf,SightGlassPayload> STREAM_CODEC=new StreamCodec<>() {
+            public SightGlassPayload decode(RegistryFriendlyByteBuf b){return new SightGlassPayload(readTarget(b),new SightGlassDisplay.Sample(b.readInt(),b.readUnsignedByte(),direction(b.readUnsignedByte())));}
+            public void encode(RegistryFriendlyByteBuf b,SightGlassPayload p){writeTarget(b,p.target);b.writeInt(p.sample.argb());b.writeByte(p.sample.bubbles());b.writeByte(direction(p.sample.flowDirection()));}
+        };
+        public SightGlassPayload{Objects.requireNonNull(target);Objects.requireNonNull(sample);}
+        @Override public Type<? extends CustomPacketPayload> type(){return TYPE;}
+    }
+    /** Server to client: a constructed mover's requested presentation (which loop, running or not); no process inventory or solver results. */
+    public record MoverState(Target target,boolean compressor,boolean running) implements CustomPacketPayload {
+        public MoverState{Objects.requireNonNull(target);}
+        public static final Type<MoverState> TYPE=new Type<>(ResourceLocation.fromNamespaceAndPath(IChemE.MOD_ID,"mover_state"));
+        public static final StreamCodec<RegistryFriendlyByteBuf,MoverState> STREAM_CODEC=new StreamCodec<>() {
+            public MoverState decode(RegistryFriendlyByteBuf b){return new MoverState(readTarget(b),flag(b),flag(b));}
+            public void encode(RegistryFriendlyByteBuf b,MoverState p){writeTarget(b,p.target);b.writeBoolean(p.compressor);b.writeBoolean(p.running);}
+        };
+        @Override public Type<? extends CustomPacketPayload> type(){return TYPE;}
+    }
+    private static PhysicalFluidTopology.Direction direction(int code){return switch(code){case 0->null;case 1->PhysicalFluidTopology.Direction.DOWN;case 2->PhysicalFluidTopology.Direction.UP;case 3->PhysicalFluidTopology.Direction.NORTH;case 4->PhysicalFluidTopology.Direction.SOUTH;case 5->PhysicalFluidTopology.Direction.WEST;case 6->PhysicalFluidTopology.Direction.EAST;default->throw new IllegalArgumentException("Invalid sight glass flow direction");};}
+    private static int direction(PhysicalFluidTopology.Direction direction){return direction==null?0:switch(direction){case DOWN->1;case UP->2;case NORTH->3;case SOUTH->4;case WEST->5;case EAST->6;};}
+    private static boolean flag(RegistryFriendlyByteBuf b){int flag=b.readUnsignedByte();if(flag>1)throw new IllegalArgumentException("Invalid mover state flag");return flag==1;}
+    private static void validate(List<Target> list){if(list.size()>MAXIMUM_WATCHED||new HashSet<>(list).size()!=list.size())throw new IllegalArgumentException("Invalid watch list");}
+    private static Target readTarget(RegistryFriendlyByteBuf b){return new Target(b.readBlockPos(),b.readLong());}
+    private static void writeTarget(RegistryFriendlyByteBuf b,Target t){b.writeBlockPos(t.position);b.writeLong(t.identity);}
+    private static List<Target> targets(RegistryFriendlyByteBuf b){int count=b.readVarInt();if(count<0||count>MAXIMUM_WATCHED)throw new IllegalArgumentException("Too many watched targets");var result=new ArrayList<Target>(count);for(int i=0;i<count;i++)result.add(readTarget(b));return result;}
+    private static void targets(RegistryFriendlyByteBuf b,List<Target> list){b.writeVarInt(list.size());for(var t:list)writeTarget(b,t);}
+
+    /** An installed instrument a client watches: its host's cell, its key and its instance. Ordinary block updates carry no live measurements. */
+    public record InstrumentTarget(BlockPos position,Instrument.Key key,UUID instance) {
+        public InstrumentTarget{position=position.immutable();Objects.requireNonNull(key);Objects.requireNonNull(instance);}
+    }
+    /** Client to server: explicit bounded instrument watches. */
+    public record InstrumentWatch(List<InstrumentTarget> watch,List<InstrumentTarget> unwatch) implements CustomPacketPayload {
+        public static final Type<InstrumentWatch> TYPE=new Type<>(ResourceLocation.fromNamespaceAndPath(IChemE.MOD_ID,"instrument_watch"));
+        public static final StreamCodec<RegistryFriendlyByteBuf,InstrumentWatch> CODEC=new StreamCodec<>(){
+            public InstrumentWatch decode(RegistryFriendlyByteBuf b){return new InstrumentWatch(instrumentTargets(b),instrumentTargets(b));}
+            public void encode(RegistryFriendlyByteBuf b,InstrumentWatch p){instrumentTargets(b,p.watch);instrumentTargets(b,p.unwatch);}
+        };
+        public InstrumentWatch{watch=List.copyOf(watch);unwatch=List.copyOf(unwatch);for(var l:List.of(watch,unwatch))if(l.size()>64||new HashSet<>(l).size()!=l.size())throw new IllegalArgumentException("Invalid instrument watches");}
+        @Override public Type<? extends CustomPacketPayload> type(){return TYPE;}
+    }
+    /** Server to client: one instrument's latest published sample. */
+    public record InstrumentDisplay(InstrumentTarget target,Instrument.Sample sample,long publishedTick) implements CustomPacketPayload {
+        public static final Type<InstrumentDisplay> TYPE=new Type<>(ResourceLocation.fromNamespaceAndPath(IChemE.MOD_ID,"instrument_display"));
+        public static final StreamCodec<RegistryFriendlyByteBuf,InstrumentDisplay> CODEC=new StreamCodec<>(){
+            public InstrumentDisplay decode(RegistryFriendlyByteBuf b){var t=instrumentTarget(b);double value=b.readDouble();long tick=b.readLong();int code=b.readUnsignedByte();if(code>=Instrument.Availability.values().length)throw new IllegalArgumentException("Invalid instrument availability");return new InstrumentDisplay(t,new Instrument.Sample(value,tick,Instrument.Availability.fromCode(code)),b.readLong());}
+            public void encode(RegistryFriendlyByteBuf b,InstrumentDisplay p){instrumentTarget(b,p.target);b.writeDouble(p.sample.value());b.writeLong(p.sample.tick());b.writeByte(p.sample.availability().code());b.writeLong(p.publishedTick);}
+        };
+        public InstrumentDisplay{if(publishedTick<sample.tick())throw new IllegalArgumentException("Invalid publication age");}
+        @Override public Type<? extends CustomPacketPayload> type(){return TYPE;}
+    }
+    private static InstrumentTarget instrumentTarget(RegistryFriendlyByteBuf b){return new InstrumentTarget(b.readBlockPos(),new Instrument.Key(b.readLong(),b.readUtf(64)),b.readUUID());}
+    private static void instrumentTarget(RegistryFriendlyByteBuf b,InstrumentTarget t){b.writeBlockPos(t.position);b.writeLong(t.key.host());b.writeUtf(t.key.mount(),64);b.writeUUID(t.instance);}
+    private static List<InstrumentTarget> instrumentTargets(RegistryFriendlyByteBuf b){int n=b.readVarInt();if(n<0||n>64)throw new IllegalArgumentException("Too many instrument targets");var l=new ArrayList<InstrumentTarget>();for(int i=0;i<n;i++)l.add(instrumentTarget(b));return l;}
+    private static void instrumentTargets(RegistryFriendlyByteBuf b,List<InstrumentTarget> l){b.writeVarInt(l.size());l.forEach(t->instrumentTarget(b,t));}
+
+    /** Client to server: a gauge's edited settings, from its open settings menu. */
+    public record GaugeSave(int menu,GaugeSettings settings) implements CustomPacketPayload {
+        public static final Type<GaugeSave> TYPE=new Type<>(ResourceLocation.fromNamespaceAndPath(IChemE.MOD_ID,"gauge_save"));
+        public static final StreamCodec<RegistryFriendlyByteBuf,GaugeSave> CODEC=new StreamCodec<>(){
+            public GaugeSave decode(RegistryFriendlyByteBuf b){return new GaugeSave(b.readVarInt(),GaugeSettings.STREAM_CODEC.decode(b));}
+            public void encode(RegistryFriendlyByteBuf b,GaugeSave p){b.writeVarInt(p.menu);GaugeSettings.STREAM_CODEC.encode(b,p.settings);}
+        };
+        @Override public Type<? extends CustomPacketPayload> type(){return TYPE;}
+    }
+    /** Client to server: the pipeline tool's target diameter. Settings only: it does not read, edit or subscribe to a fluid process. */
+    public record PipelineToolSave(int menuId,double diameter) implements CustomPacketPayload {
+        public static final Type<PipelineToolSave> TYPE=new Type<>(ResourceLocation.fromNamespaceAndPath(IChemE.MOD_ID,"pipeline_tool_save"));
+        public static final StreamCodec<RegistryFriendlyByteBuf,PipelineToolSave> STREAM_CODEC=StreamCodec.composite(
+                ByteBufCodecs.VAR_INT,PipelineToolSave::menuId,ByteBufCodecs.DOUBLE,PipelineToolSave::diameter,PipelineToolSave::new);
+        @Override public Type<? extends CustomPacketPayload> type(){return TYPE;}
+    }
+
+    /** The requested displays and the item settings saves: the tanks' on the fluid registrar, the others each on its own version string. */
+    private static void registerDisplays(RegisterPayloadHandlersEvent event,PayloadRegistrar fluid) {
+        fluid.playToServer(TankWatch.TYPE,TankWatch.STREAM_CODEC,(payload,context)->{
+            if(context.player() instanceof ServerPlayer player)FluidWorldAuthority.find(player.server).ifPresent(world->world.watchTanks(player,payload.watch,payload.unwatch));
+        });
+        fluid.playToClient(TankDisplayPayload.TYPE,TankDisplayPayload.STREAM_CODEC,(payload,context)->com.wormzjl.icheme.client.TankRenderer.accept(payload.node,payload.glide));
+        var sightGlass=event.registrar("sight-glass-3").executesOn(HandlerThread.MAIN);
+        sightGlass.playToServer(Watch.SIGHT_GLASSES,Watch.codec(Watch.SIGHT_GLASSES),(payload,context)->{
+            if(context.player() instanceof ServerPlayer player)FluidWorldAuthority.find(player.server).ifPresent(world->world.watchSightGlasses(player,payload.watch,payload.unwatch));
+        });
+        sightGlass.playToClient(SightGlassPayload.TYPE,SightGlassPayload.STREAM_CODEC,(payload,context)->com.wormzjl.icheme.client.SightGlassRenderer.accept(payload.target,payload.sample));
+        var mover=event.registrar("mover-1").executesOn(HandlerThread.MAIN);
+        mover.playToServer(Watch.MOVERS,Watch.codec(Watch.MOVERS),(p,context)->{
+            if(context.player() instanceof ServerPlayer player)FluidWorldAuthority.find(player.server).ifPresent(world->world.watchMovers(player,p.watch,p.unwatch));
+        });
+        mover.playToClient(MoverState.TYPE,MoverState.STREAM_CODEC,(p,context)->com.wormzjl.icheme.client.MoverSounds.accept(p));
+        var instruments=event.registrar("instruments-1").executesOn(HandlerThread.MAIN);
+        instruments.playToServer(InstrumentWatch.TYPE,InstrumentWatch.CODEC,(p,c)->{if(c.player() instanceof ServerPlayer player)FluidWorldAuthority.find(player.server).ifPresent(w->w.instruments().watch(player,p.watch,p.unwatch));});
+        instruments.playToClient(InstrumentDisplay.TYPE,InstrumentDisplay.CODEC,(p,c)->com.wormzjl.icheme.client.InstrumentRenderer.accept(p));
+        instruments.playToServer(GaugeSave.TYPE,GaugeSave.CODEC,(p,c)->{if(c.player() instanceof ServerPlayer player&&player.containerMenu instanceof GaugeMenu menu&&menu.containerId==p.menu&&menu.stillValid(player)&&menu.initial().kind()==p.settings.kind()){menu.save(p.settings);player.inventoryMenu.broadcastChanges();}});
+        event.registrar("pipeline-tool-1").executesOn(HandlerThread.MAIN).playToServer(PipelineToolSave.TYPE,PipelineToolSave.STREAM_CODEC,(payload,context)->{
+            if(!(context.player() instanceof ServerPlayer player)||!(player.containerMenu instanceof PipelineToolMenu menu)
+                    ||menu.containerId!=payload.menuId()||!menu.stillValid(player)||!PipelineToolItem.Settings.valid(payload.diameter()))return;
+            menu.save(new PipelineToolItem.Settings(payload.diameter()));
+            // The screen closes after sending Save. Also sync the inventory menu so its cached copy carries the new target.
+            player.inventoryMenu.broadcastChanges();
+        });
+    }
+    /** Server: sends {@code glide} of the tank at {@code node} to {@code player}. */
+    public static void sendTank(ServerPlayer player,BlockPos node,TankDisplay.Glide glide){PacketDistributor.sendToPlayer(player,new TankDisplayPayload(node,glide));}
+    public static void sendSightGlass(ServerPlayer player,Target target,SightGlassDisplay.Sample sample){PacketDistributor.sendToPlayer(player,new SightGlassPayload(target,sample));}
+    public static void sendMover(ServerPlayer player,MoverState state){PacketDistributor.sendToPlayer(player,state);}
+    public static void sendInstrument(ServerPlayer player,InstrumentTarget target,Instrument.Sample sample,long tick){PacketDistributor.sendToPlayer(player,new InstrumentDisplay(target,sample,tick));}
+    /** Client: asks the server to watch and to stop watching tanks. */
+    public static void requestTanks(List<BlockPos> watch,List<BlockPos> unwatch){if(!watch.isEmpty()||!unwatch.isEmpty())PacketDistributor.sendToServer(new TankWatch(watch,unwatch));}
+    /** Client: asks the server to watch and to stop watching sight glasses ({@link Watch#SIGHT_GLASSES}) or movers ({@link Watch#MOVERS}). */
+    public static void request(CustomPacketPayload.Type<Watch> kind,List<Target> watch,List<Target> unwatch){if(!watch.isEmpty()||!unwatch.isEmpty())PacketDistributor.sendToServer(new Watch(kind,watch,unwatch));}
+    public static void requestInstruments(List<InstrumentTarget> watch,List<InstrumentTarget> unwatch){if(!watch.isEmpty()||!unwatch.isEmpty())PacketDistributor.sendToServer(new InstrumentWatch(watch,unwatch));}
+    public static void saveGauge(int menu,GaugeSettings settings){PacketDistributor.sendToServer(new GaugeSave(menu,settings));}
+    public static void savePipelineTool(int menuId,double diameter){PacketDistributor.sendToServer(new PipelineToolSave(menuId,diameter));}
 
     // ---- client: the last delivered view of each device ----
 

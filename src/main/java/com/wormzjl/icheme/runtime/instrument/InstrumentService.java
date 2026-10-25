@@ -2,7 +2,7 @@ package com.wormzjl.icheme.runtime.instrument;
 
 import com.wormzjl.icheme.registry.ModItems;
 import com.wormzjl.icheme.runtime.fluid.*;
-import com.wormzjl.icheme.network.InstrumentNetwork;
+import com.wormzjl.icheme.network.FluidNetwork;
 import com.wormzjl.icheme.world.item.*;
 import com.wormzjl.icheme.world.level.block.FluidDeviceBlock;
 import net.minecraft.core.*;
@@ -23,7 +23,7 @@ public final class InstrumentService {
     private final FluidWorldAuthority world;
     private final Store store;
     private final Map<UUID,ItemStack> exactStacks=new HashMap<>();
-    private final Map<UUID,Set<InstrumentNetwork.Target>> watchers=new HashMap<>();
+    private final Map<UUID,Set<FluidNetwork.InstrumentTarget>> watchers=new HashMap<>();
     private final Map<UUID,Instrument.Sample> samples=new HashMap<>();
 
     public InstrumentService(MinecraftServer server,FluidWorldAuthority world){this.server=server;this.world=world;store=server.overworld().getDataStorage().computeIfAbsent(new SavedData.Factory<>(Store::new,Store::load),"icheme_accessories");}
@@ -53,15 +53,15 @@ public final class InstrumentService {
     public static ItemStack item(Instrument.Installed i){var stack=item(i.settings().kind()==GaugeSettings.Kind.PRESSURE?Instrument.Type.PRESSURE:Instrument.Type.TEMPERATURE);stack.set(ModItems.GAUGE_SETTINGS.get(),i.settings());return stack;}
     public static ItemStack item(Instrument.Type type){return new ItemStack(switch(type){case PRESSURE->ModItems.PRESSURE_GAUGE.get();case TEMPERATURE->ModItems.TEMPERATURE_GAUGE.get();case SIGHT_GLASS->ModItems.PIPELINE_SIGHT_GLASS.get();case SHUTOFF->ModItems.PIPELINE_SHUTOFF_VALVE.get();case CHECK->ModItems.PIPELINE_CHECK_VALVE.get();case PRESSURE_VALVE->ModItems.PRESSURE_CONTROL_VALVE.get();case FILTER->ModItems.INLINE_FILTER.get();case PUMP->ModItems.FLUID_PUMP.get();case COMPRESSOR->ModItems.FLUID_COMPRESSOR.get();});}
     private static void refund(ServerPlayer player,Level level,BlockPos pos,ItemStack stack){if(player!=null){if(player.getInventory().add(stack))return;player.drop(stack,false);}else Block.popResource(level,pos,stack);}
-    public void watch(ServerPlayer player,List<InstrumentNetwork.Target> add,List<InstrumentNetwork.Target> remove){var set=watchers.computeIfAbsent(player.getUUID(),k->new HashSet<>());for(var t:remove){set.remove(t);world.instrumentObservationChanged(t.key().host());}for(var t:add){if(set.size()>=64||!valid(player,t))continue;set.add(t);world.instrumentObservationChanged(t.key().host());var sample=samples.get(t.instance());if(sample!=null)InstrumentNetwork.send(player,t,sample,world.onlineTick());}}
-    private boolean valid(ServerPlayer p,InstrumentNetwork.Target t){var i=store.get(t.key());var host=world.instrumentHost(t.key().host());var mount=host==null?null:host.mount(t.key().mount());return i!=null&&i.instance().equals(t.instance())&&host!=null&&host.entity().getLevel()==p.serverLevel()&&host.entity().getBlockPos().equals(t.position())&&mount!=null&&mount.centre().distanceToSqr(p.position())<=128*128;}
+    public void watch(ServerPlayer player,List<FluidNetwork.InstrumentTarget> add,List<FluidNetwork.InstrumentTarget> remove){var set=watchers.computeIfAbsent(player.getUUID(),k->new HashSet<>());for(var t:remove){set.remove(t);world.instrumentObservationChanged(t.key().host());}for(var t:add){if(set.size()>=64||!valid(player,t))continue;set.add(t);world.instrumentObservationChanged(t.key().host());var sample=samples.get(t.instance());if(sample!=null)FluidNetwork.sendInstrument(player,t,sample,world.onlineTick());}}
+    private boolean valid(ServerPlayer p,FluidNetwork.InstrumentTarget t){var i=store.get(t.key());var host=world.instrumentHost(t.key().host());var mount=host==null?null:host.mount(t.key().mount());return i!=null&&i.instance().equals(t.instance())&&host!=null&&host.entity().getLevel()==p.serverLevel()&&host.entity().getBlockPos().equals(t.position())&&mount!=null&&mount.centre().distanceToSqr(p.position())<=128*128;}
     private void prune(){var hosts=new HashSet<Long>();for(var it=watchers.entrySet().iterator();it.hasNext();){var e=it.next();var p=server.getPlayerList().getPlayer(e.getKey());e.getValue().removeIf(t->{boolean remove=p==null||p.hasDisconnected()||!valid(p,t);if(remove)hosts.add(t.key().host());return remove;});if(e.getValue().isEmpty())it.remove();}hosts.forEach(world::instrumentObservationChanged);}
     public void forget(long id){var removed=store.host(id);removed.forEach(i->samples.remove(i.instance()));for(var set:watchers.values())set.removeIf(t->t.key().host()==id);world.instrumentObservationChanged(id);}
     public void publish(long id,FluidView view){var host=world.instrumentHost(id);if(host==null)return;bind(host);for(var i:store.host(id)){var mount=host.mount(i.key().mount());if(mount==null)continue;long tick=view.committedTick();Instrument.Sample sample;
         if(host.pipe()){var reading=world.instrumentPipeReading(id);if(i.settings().kind()==GaugeSettings.Kind.PRESSURE)sample=reading!=null&&Double.isFinite(reading.pressure())?new Instrument.Sample(reading.pressure(),tick,Instrument.Availability.AVAILABLE):Instrument.Sample.unavailable(tick);else sample=Instrument.Sample.temperature(reading!=null&&reading.flowing()&&world.onlineTick()-tick<=100?reading.temperature():null,samples.get(i.instance()),tick);}
         else if(i.settings().kind()==GaugeSettings.Kind.TEMPERATURE)sample=view.state()!=null?new Instrument.Sample(view.state().temperature(),tick,Instrument.Availability.AVAILABLE):Instrument.Sample.unavailable(tick);
         else {Double pressure=view.tank()==null?null:mount.top()?view.tank().topPressure():view.tank().bottomPressure();sample=pressure==null?Instrument.Sample.unavailable(tick):new Instrument.Sample(pressure,tick,Instrument.Availability.AVAILABLE);}
-        samples.put(i.instance(),sample);var target=new InstrumentNetwork.Target(host.entity().getBlockPos(),i.key(),i.instance());for(var e:watchers.entrySet())if(e.getValue().contains(target)){var player=server.getPlayerList().getPlayer(e.getKey());if(player!=null&&valid(player,target))InstrumentNetwork.send(player,target,sample,world.onlineTick());}
+        samples.put(i.instance(),sample);var target=new FluidNetwork.InstrumentTarget(host.entity().getBlockPos(),i.key(),i.instance());for(var e:watchers.entrySet())if(e.getValue().contains(target)){var player=server.getPlayerList().getPlayer(e.getKey());if(player!=null&&valid(player,target))FluidNetwork.sendInstrument(player,target,sample,world.onlineTick());}
     }}
 
     /** Format 1: static instruments, slot tombstones and accepted, uncommitted player operations. */

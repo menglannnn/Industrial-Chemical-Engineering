@@ -26,8 +26,8 @@ public final class IChemEClient {
     @SubscribeEvent
     public static void loggingOut(ClientPlayerNetworkEvent.LoggingOut event) {
         com.wormzjl.icheme.network.FluidNetwork.forgetDelivered();
-        TankDisplays.clear();
-        SightGlassDisplays.clear();
+        TankRenderer.clear();
+        SightGlassRenderer.clear();
         MoverSounds.clear();
     }
 

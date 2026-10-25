@@ -1,7 +1,7 @@
 package com.wormzjl.icheme.client.gui.screens.inventory;
 
 import com.wormzjl.icheme.client.gui.common.ProcessUi;
-import com.wormzjl.icheme.network.PipelineToolNetwork;
+import com.wormzjl.icheme.network.FluidNetwork;
 import com.wormzjl.icheme.world.inventory.PipelineToolMenu;
 import com.wormzjl.icheme.world.item.PipelineToolItem;
 import net.minecraft.client.gui.GuiGraphics;
@@ -59,7 +59,7 @@ public final class PipelineToolScreen extends AbstractContainerScreen<PipelineTo
 
     private void save() {
         if (parsed == null) return;
-        PipelineToolNetwork.sendSave(menu.containerId, parsed);
+        FluidNetwork.savePipelineTool(menu.containerId, parsed);
         onClose();
     }
 

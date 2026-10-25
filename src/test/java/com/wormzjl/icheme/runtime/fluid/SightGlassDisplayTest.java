@@ -1,6 +1,6 @@
 package com.wormzjl.icheme.runtime.fluid;
 
-import com.wormzjl.icheme.network.SightGlassNetwork;
+import com.wormzjl.icheme.network.FluidNetwork;
 import com.wormzjl.icheme.science.equipment.*;
 import com.wormzjl.icheme.science.fluid.network.PipeTransfer;
 import com.wormzjl.icheme.science.fluid.state.*;
@@ -46,20 +46,20 @@ class SightGlassDisplayTest {
 
     @Test void displayWireRoundTripsAndRejectsMotionWithoutLiquid(){
         var buffer=new RegistryFriendlyByteBuf(Unpooled.buffer(),RegistryAccess.EMPTY);
-        var target=new SightGlassNetwork.Target(new BlockPos(-20,64,44),9);
+        var target=new FluidNetwork.Target(new BlockPos(-20,64,44),9);
         try{
             var samples=new ArrayList<SightGlassDisplay.Sample>();
             samples.add(SightGlassDisplay.Sample.CLEAR);samples.add(new SightGlassDisplay.Sample(0xC8A17A40,0,null));
             for(var direction:PhysicalFluidTopology.Direction.values())samples.add(new SightGlassDisplay.Sample(0xFF9E9987,255,direction));
             for(var sample:samples){
-                var payload=new SightGlassNetwork.DisplayPayload(target,sample);SightGlassNetwork.DisplayPayload.STREAM_CODEC.encode(buffer,payload);
-                assertEquals(payload,SightGlassNetwork.DisplayPayload.STREAM_CODEC.decode(buffer));
+                var payload=new FluidNetwork.SightGlassPayload(target,sample);FluidNetwork.SightGlassPayload.STREAM_CODEC.encode(buffer,payload);
+                assertEquals(payload,FluidNetwork.SightGlassPayload.STREAM_CODEC.decode(buffer));
             }
             buffer.clear();buffer.writeBlockPos(target.position());buffer.writeLong(target.identity());buffer.writeInt(0);buffer.writeByte(1);buffer.writeByte(0);
-            assertThrows(IllegalArgumentException.class,()->SightGlassNetwork.DisplayPayload.STREAM_CODEC.decode(buffer));
+            assertThrows(IllegalArgumentException.class,()->FluidNetwork.SightGlassPayload.STREAM_CODEC.decode(buffer));
             for(int code:new int[]{7,255}){
                 buffer.clear();buffer.writeBlockPos(target.position());buffer.writeLong(target.identity());buffer.writeInt(0xFF123456);buffer.writeByte(1);buffer.writeByte(code);
-                assertThrows(IllegalArgumentException.class,()->SightGlassNetwork.DisplayPayload.STREAM_CODEC.decode(buffer));
+                assertThrows(IllegalArgumentException.class,()->FluidNetwork.SightGlassPayload.STREAM_CODEC.decode(buffer));
             }
             assertThrows(IllegalArgumentException.class,()->new SightGlassDisplay.Sample(0xFF123456,-1,null));
             assertThrows(IllegalArgumentException.class,()->new SightGlassDisplay.Sample(0xFF123456,256,PhysicalFluidTopology.Direction.EAST));
