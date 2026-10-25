@@ -509,6 +509,16 @@ public final class ProcessUnit {
             return new Solid(min, max, axis, centre, radius, radiusHi, lo, hi, headLo, headHi, 0, 0, 0, null);
         }
 
+        /** This solid cut to the box from {@code low} to {@code high}. */
+        Solid clip(double[] low, double[] high) {
+            double[] a = min.clone(), b = max.clone();
+            for (int k = 0; k < 3; k++) {
+                a[k] = Math.max(a[k], low[k]);
+                b[k] = Math.min(b[k], high[k]);
+            }
+            return new Solid(a, b, axis, centre, radius, radiusHi, lo, hi, headLo, headHi, inner, from, to, extents);
+        }
+
         boolean contains(double[] p) {
             for (int a = 0; a < 3; a++) if (p[a] < min[a] || p[a] > max[a]) return false;
             if (axis == -2) {
@@ -2458,7 +2468,7 @@ public final class ProcessUnit {
             // grade ladder's at the other, and the way along z from the first to the other.
             double first = side < 0 ? zs : ze, last = side < 0 ? ze : zs, in = side < 0 ? 1 : -1;
             double zGrade = last - in * .6, zMid = first + in * .5, start = zs - .3;
-            platform(new Access.Line(new double[]{wallX, 0, start}, along, outward, length + .6), floor, walk, true, true, zGrade - .3 - start, zGrade + .3 - start);
+            platform(new Access.Line(new double[]{wallX, 0, start}, along, outward, length + .6), floor, walk, true, true, zGrade - Access.WALK_THROUGH - start, zGrade + Access.WALK_THROUGH - start);
             // The climb from grade up the walkway's outer edge, resting on posts beyond it where the floor stands over 9 m.
             double zRest = Math.min(zGrade, zGrade - in * 1.2) - .6;
             climb(new Access.Line(new double[]{wallX + side * walk, 0, zRest}, along, outward, 2.4), 0, floor + Access.DECK, zGrade - in * 1.2 - zRest, zGrade - zRest, .15);
@@ -2475,7 +2485,7 @@ public final class ProcessUnit {
             }
             // The convection walkway's ladder on the highest walkway, away from the ladder that reached it.
             double zConv = count > 0 && count % 2 == 0 ? first + in * 1.6 : last - in * 1.6;
-            platform(new Access.Line(new double[]{edge, 0, zs}, along, outward, length), convection, Math.abs(wall - edge) + .12, true, true, zConv - .3 - zs, zConv + .3 - zs);
+            platform(new Access.Line(new double[]{edge, 0, zs}, along, outward, length), convection, Math.abs(wall - edge) + .12, true, true, zConv - Access.WALK_THROUGH - zs, zConv + Access.WALK_THROUGH - zs);
             ladder(wallX + side * .05, zConv, outward, .05, top + Access.DECK, convection + Access.DECK + Access.LANDING, true);
             for (int k = 0; k < bays; k++) {
                 double z = zs + length * (k + .5) / bays;
@@ -3046,7 +3056,8 @@ public final class ProcessUnit {
      * through onto it: one ladder at station {@code upper} of {@code run} (its start on the face, along it, out from it)
      * {@link Access#GAP} out where the climb is {@link Access#MAX_CLIMB} or less (with that deck's grating). A longer one
      * is split ({@link Access#climbs}; owner decision C1 2026-10-18, the old OSHA 1910.27(d)(2): a landing every 30 ft of a
-     * caged ladder, the sections offset) by a rest platform {@link Access#MIN_DECK} out along the run, railed on every
+     * caged ladder, the sections offset) by a rest platform {@link Access#MIN_DECK} out along the run (on past its ends
+     * where a section stands nearer than its opening and a fence band), railed on every
      * side (the face is open steelwork) but at each section: the lower one from base just outside its outer edge at
      * station {@code lower}, walked through onto it; the upper one from its deck at the face at {@code upper}, so a fall
      * from the upper section ends on the rest. The rest stands on four posts {@code post} square on base plates with
@@ -3060,16 +3071,20 @@ public final class ProcessUnit {
         var rests = new ArrayList<Double>();
         double from = base, w = Access.MIN_DECK, length = run.length();
         if (stops.size() == 2) {
-            double rest = base + stops.getFirst() - Access.DECK, beam = .2;
-            platform(run, rest, w, post > 0 ? Access.RAILED | Access.WALL_EDGE : Access.ALL_PARTS, true, true, lower - .3, lower + .3);
-            rails(new Access.Line(run.at(0, w, 0), run.direction(), neg(out), length), rest, w - Access.GAP, false, false, upper - .3, upper + .3);
+            // The rest reaches past each section by its opening and a closed end's band, so a climber passes between its ends
+            // (2026-10-25: a cyclone's rest ended 0.22 m beside its ladder's middle).
+            double need = Access.WALK_THROUGH + Access.RAIL_BAND, s0 = Math.min(0, Math.min(lower, upper) - need);
+            var deck = (Access.Line) Access.part(run, s0, Math.max(length, Math.max(lower, upper) + need));
+            double rest = base + stops.getFirst() - Access.DECK, beam = .2, low = lower - s0, high = upper - s0, span = deck.length();
+            platform(deck, rest, w, post > 0 ? Access.RAILED | Access.WALL_EDGE : Access.ALL_PARTS, true, true, low - Access.WALK_THROUGH, low + Access.WALK_THROUGH);
+            rails(new Access.Line(deck.at(0, w, 0), deck.direction(), neg(out), span), rest, w - Access.GAP, false, false, high - Access.WALK_THROUGH, high + Access.WALK_THROUGH);
             if (post > 0)
-                for (double s : new double[]{0, length - post}) {
+                for (double s : new double[]{0, span - post}) {
                     for (double off : new double[]{Access.GAP + post / 2, w - post / 2}) {
-                        var p = run.at(s + post / 2, off, 0);
+                        var p = deck.at(s + post / 2, off, 0);
                         post(p[0], p[2], 0, rest - beam, post, true);
                     }
-                    double[] p = run.at(s, Access.GAP, rest - beam), q = run.at(s + post, w, rest);
+                    double[] p = deck.at(s, Access.GAP, rest - beam), q = deck.at(s + post, w, rest);
                     beam(new double[]{Math.min(p[0], q[0]), p[1], Math.min(p[2], q[2])}, new double[]{Math.max(p[0], q[0]), q[1], Math.max(p[2], q[2])});
                 }
             var foot = run.at(lower, w + Access.GAP, 0);
@@ -3286,8 +3301,8 @@ public final class ProcessUnit {
      * half side {@code half} round it in a deck at {@code level}: quads from the body's polygon of {@code sides} (a
      * multiple of 8, so the square's corners are its rays' ends; angle 0 towards +x, as a vertical prism's of a multiple of
      * 4) out to the square along its radii, drawn on top and underneath (its edge along the body is inside the body and
-     * never seen); it collides as a ring out to the square's corners (the strips round the opening collide beyond its
-     * sides).
+     * never seen); it collides as a ring out to the square's corners, cut at its sides (the strips round the opening
+     * collide beyond them).
      */
     void fill(double x, double z, double half, double body, int sides, double level) {
         double top = level + Access.DECK;
@@ -3299,7 +3314,9 @@ public final class ProcessUnit {
                 mesh.flat(List.of(new double[]{x + body * c0, y, z + body * s0}, new double[]{x + body * c1, y, z + body * s1}, new double[]{x + q1 * c1, y, z + q1 * s1},
                         new double[]{x + q0 * c0, y, z + q0 * s0}), new double[]{0, y == top ? 1 : -1, 0}, Material.GRATING);
         }
-        solids.add(Solid.ring(x, z, level, top, body, half * Math.sqrt(2), 0, 0));
+        // Out to the square's corners and no further: beyond its sides the strips collide, or a ladder comes up through
+        // a hole in one (a climber's head met the ring there, 2026-10-25).
+        solids.add(Solid.ring(x, z, level, top, body, half * Math.sqrt(2), 0, 0).clip(new double[]{x - half, level, z - half}, new double[]{x + half, top, z + half}));
     }
 
     /** A concrete table's column pads: their height, m (a pedestal's grout and base, ACI 351.3 practice). */

@@ -644,6 +644,28 @@ class ProcessUnitTest {
         for (var shape : everySize()) walkedAndClimbed(shape);
     }
 
+    /**
+     * A player climbs every ladder of every unit and storage vessel from its foot and gets off at its landing, moving as the
+     * game moves one ({@link PlayerWalk#leave}; owner report 2026-10-25: "I cannot move to side platforms when climbing the
+     * ladder on the furnace as well, review other ladders"). The fluidized-bed gasifier is left to its rework (owner
+     * 2026-10-25: "These big structures will need a major rework later, leave them for now"): one of its stack's ladders
+     * lands beside too narrow a ring deck.
+     */
+    @Test
+    void aPlayerClimbsEveryLadderAndGetsOffAtItsLanding() {
+        var shapes = new ArrayList<EquipmentShape>();
+        for (var shape : everySize()) if (shape.kind() != Kind.FLUIDIZED_BED_GASIFIER) shapes.add(shape);
+        for (int d : new int[]{4, 5, 8, 12, 20, 30, 40}) for (int shell : new int[]{4, 8, 12, 24}) shapes.add(EquipmentShape.storage(Kind.TANK, d, shell, Heading.NORTH, 0));
+        for (int d : new int[]{4, 9, 14, 24}) for (int support : new int[]{2, 5, 8}) shapes.add(EquipmentShape.storage(Kind.SPHERE, d, 1, Heading.NORTH, support));
+        var stuck = new ArrayList<String>();
+        for (var shape : shapes)
+            for (var l : ShapeRasterizer.climbs(shape)) {
+                String why = PlayerWalk.leave(shape, l);
+                if (why != null) stuck.add(shape + " " + l + ": " + why);
+            }
+        assertEquals(List.of(), stuck);
+    }
+
     /** The shape's decks are walked on with head room over them, its ladders climbed from a deck or the ground. */
     static void walkedAndClimbed(EquipmentShape shape) {
         var unit = ProcessUnit.of(shape);

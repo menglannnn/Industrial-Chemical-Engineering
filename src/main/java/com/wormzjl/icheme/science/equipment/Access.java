@@ -21,6 +21,13 @@ final class Access {
     /** Ladder: rung plane beyond the wall, half width between the rails, rung pitch, cage half width, cage start above the foot, hoop pitch, rails above the landing. */
     static final double STANDOFF = .2, LADDER_HALF = .225, RUNG = .25, CAGE_HALF = .35, CAGE_START = 2.2, HOOP = 1, LANDING = 1.07;
     /**
+     * Half the opening in a deck's handrail where a ladder is walked through, m: a player's 0.6 m and one 1/8-block voxel
+     * either side. The fence collides in whole voxels whose centres lie in it, so it stands up to half a voxel past its
+     * end, and the other half is room to spare (owner report 2026-10-25: at 0.3 m a player climbing to a furnace's
+     * walkway could not step onto it).
+     */
+    static final double WALK_THROUGH = (.6 + 2.0 / ShapeRasterizer.SOLID_RESOLUTION) / 2;
+    /**
      * Collision walls: the handrail's band inside the deck edge (and across a closed end), and the rung plane's face beyond
      * the rung line, m. The game collides with a shell's solid sampled at the centres of 1/8-block voxels
      * ({@link ShapeRasterizer#solid}), so a wall a player must meet is at least that thick; a 0.1 m end fence fell between the

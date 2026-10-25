@@ -410,7 +410,7 @@ final class AdsorberDesign extends UnitDesign {
         double a = p.a, h = p.hole, half = p.half, level = p.walk - Access.DECK;
         var centres = new double[p.beds];
         for (int i = 0; i < p.beds; i++) centres[i] = p.z(i);
-        u.squareDeck(a - half, a + half, FRONT, p.zb, level, 2, a, h, centres, p.rc + .04, 32, Access.RAILED, new double[][]{null, null, {a - .3, a + .3}, null}, null);
+        u.squareDeck(a - half, a + half, FRONT, p.zb, level, 2, a, h, centres, p.rc + .04, 32, Access.RAILED, new double[][]{null, null, {a - Access.WALK_THROUGH, a + Access.WALK_THROUGH}, null}, null);
         climb(u, p);
         double lo = level - beam(p.d), fb = ProcessUnit.FLANGE_BEAM / 2;
         for (double off : new double[]{h + fb, half - fb})

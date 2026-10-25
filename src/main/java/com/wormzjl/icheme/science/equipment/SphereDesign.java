@@ -51,8 +51,12 @@ final class SphereDesign extends UnitDesign {
      * up its back instead ({@link #ladder}), a bridge from it onto the platform.
      */
     static final double STAIR_SIZE = 10;
-    /** A small sphere's ladder stands at the back (+z), midway between two legs, and its bridge's width, m. */
-    static final double LADDER = Math.PI / 2, BRIDGE = 1.1;
+    /**
+     * A small sphere's ladder stands at the back (+z), midway between two legs, and its bridge's width, m: a walk-through
+     * opening ({@link Access#WALK_THROUGH}) between its rails' bands (2026-10-25: at 1.1 m the bands left 0.625 m of
+     * collision, and a player off the ladder's middle by 0.05 m could not walk onto the bridge).
+     */
+    static final double LADDER = Math.PI / 2, BRIDGE = Access.GAP + 2 * (Access.RAIL_BAND + Access.WALK_THROUGH);
 
     @Override
     public double minSize() {

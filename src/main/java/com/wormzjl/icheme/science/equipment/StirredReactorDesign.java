@@ -230,7 +230,7 @@ final class StirredReactorDesign extends UnitDesign {
     private static void deck(ProcessUnit u, Plan p, double a) {
         double h = p.hole, half = p.half, level = p.level, beam = p.beam, fb = ProcessUnit.FLANGE_BEAM / 2;
         u.squareDeck(a - half, a + half, a - half, a + half, level, 0, a, h, new double[]{a}, p.rj + .04, 32, Access.RAILED,
-                new double[][]{null, {a - .3, a + .3}, null, null}, null);
+                new double[][]{null, {a - Access.WALK_THROUGH, a + Access.WALK_THROUGH}, null, null}, null);
         // The beams: round the opening under the lugs, and along the deck's edges.
         for (double off : new double[]{h + .05, half - fb})
             for (int s = -1; s <= 1; s += 2) {

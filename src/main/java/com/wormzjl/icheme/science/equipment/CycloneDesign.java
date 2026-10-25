@@ -384,7 +384,9 @@ final class CycloneDesign extends UnitDesign {
         if (deck) {
             double xs0 = x0 - e - ps / 2, xs1 = xLast + e + ps / 2, wall = az - e + .1;
             u.platform(new Access.Line(new double[]{xs0, 0, wall}, new double[]{1, 0, 0}, new double[]{0, 0, -1}, xs1 - xs0), yRoof, WALK, false, true);
-            climb(u, xs0, wall - (Access.GAP + WALK) / 2, az - e + ps / 2, yRoof, ps);
+            // The climb lands on the middle of the walkway's clear width, between its wall and its handrail's band (a player
+            // centred on the deck's whole width met the band, 2026-10-25).
+            climb(u, xs0, wall - (Access.GAP + WALK - Access.RAIL_BAND) / 2, az - e + ps / 2, yRoof, ps);
         }
     }
 

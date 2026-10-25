@@ -514,7 +514,7 @@ final class FluidizedBedGasifierLayout {
         // The feed floor: against the vessel's front, under the screws' drives; its ladder lands at its front's right.
         double back = za - r - .5, depth = back - zFront, ladderX = a - xw + .6;
         u.platform(new Access.Line(new double[]{a + xw, 0, back}, new double[]{-1, 0, 0}, new double[]{0, 0, -1}, 2 * xw), feedFloor, depth, true, true,
-                a + xw - ladderX - .3, a + xw - ladderX + .3);
+                a + xw - ladderX - Access.WALK_THROUGH, a + xw - ladderX + Access.WALK_THROUGH);
         u.climb(new Access.Line(new double[]{ladderX - .6, 0, zFront}, new double[]{1, 0, 0}, new double[]{0, 0, -1}, 2.4), 0, feedFloor + Access.DECK, 1.8, .6, .15);
         // The vessel's decks and ladders, the stack's.
         round(a, za, r + .45, vesselLevels(), 0, true);

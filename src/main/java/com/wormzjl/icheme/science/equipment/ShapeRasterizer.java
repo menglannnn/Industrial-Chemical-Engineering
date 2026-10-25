@@ -296,6 +296,11 @@ public final class ShapeRasterizer {
         return false;
     }
 
+    /** The shape's ladders in its frame: a column's or a unit's (a storage vessel's too); none for a drum. */
+    static List<Access.Climb> climbs(EquipmentShape shape) {
+        return geometry(shape).climbs();
+    }
+
     /** A box column (x, z) of a standing vessel as one number. */
     private static long column(int x, int z) {
         return (long) x << 32 | z & 0xffffffffL;
