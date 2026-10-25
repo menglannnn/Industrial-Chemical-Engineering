@@ -22,7 +22,7 @@ import static com.wormzjl.icheme.science.equipment.ProcessUnit.tangential;
  * and hydrogen flow up through a grid; the ebullating pump draws gas-free liquid from the recycle cup near the top down
  * the central downcomer and returns it under the grid, keeping the catalyst bed expanded (US 7,815,870). Sizes: inside
  * diameter D 2.5 to 6 m in 0.5 m steps (commercial reactors 3 to 6 m); tangent to tangent 4 D to 7 D in whole metres (the
- * survey's default 5 D is the constructor's to offer); the skirt bay from the pedestal to the bottom tangent,
+ * survey's default 5 D is the constructor's to offer); the skirt bay from grade to the bottom tangent,
  * {@link #minSupport} at least.
  *
  * <p>Proportions (survey): wall t = 0.055 D, insulation 0.1 + 0.02 D under aluminium cladding, hemispherical heads. The
@@ -30,7 +30,7 @@ import static com.wormzjl.icheme.science.equipment.ProcessUnit.tangential;
  * oil cooled outside, no shaft in sight) stands coaxially under the bottom head in the open skirt bay: its forged casing
  * 0.25 D across (0.9 m at least) and 0.2 D tall; the bolted joint ring 1.15 times the casing across with 24 or 32 studs
  * (the signature); the motor's pressure housing 0.18 D across (0.7 m at least), 0.35 D + 0.8 m long, hung under the
- * casing from a steel frame bearing on the joint ring, {@link #DROP} clear over the pedestal to lower the motor out.
+ * casing from a steel frame bearing on the joint ring, {@link #DROP} clear over the base plate to lower the motor out.
  * The bay is D/2 + t + 1.2 + 0.5 D + 2 m high at least (the survey's Hs), more where the stack and its suction joint need
  * it. The recycle loop: the suction (0.15 D) from the bottom head's pole straight down into the casing, its heavy joint
  * taking the head's growth; the discharge (0.12 D) out of the casing's side to the left, a short-radius elbow up into
@@ -57,7 +57,7 @@ import static com.wormzjl.icheme.science.equipment.ProcessUnit.tangential;
  * rotation (survey Q5).
  */
 final class EbullatedBedReactorDesign extends UnitDesign {
-    /** The motor housing's foot over the pedestal: room to lower the motor out, m. */
+    /** The motor housing's foot over the base plate: room to lower the motor out, m. */
     static final double DROP = 1.2;
     /** The liquid upflow that keeps the bed expanded (m/s), the pump's head (Pa) and efficiency (survey: 4 to 5 cm/s, 3.5 bar). */
     static final double UPFLOW = .045, HEAD = 3.5e5, EFFICIENCY = .7;
@@ -96,7 +96,7 @@ final class EbullatedBedReactorDesign extends UnitDesign {
     }
 
     /**
-     * The pump stack's height from grade to the bottom head's pole, m: the pedestal, the motor's drop, the motor, the joint
+     * The pump stack's height from grade to the bottom head's pole, m: the base plate, the motor's drop, the motor, the joint
      * ring, the casing, and the suction (forged neck 0.2, its heavy flange pair, the casing's hub 0.15).
      */
     static double stack(double d) {

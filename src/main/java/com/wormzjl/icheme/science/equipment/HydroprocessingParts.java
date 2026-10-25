@@ -13,7 +13,7 @@ import static com.wormzjl.icheme.science.equipment.ProcessUnit.tangential;
 
 /**
  * Parts the two hydroprocessing reactors share, the trickle-bed and the ebullated-bed reactor (NEW_UNITS_PLAN.md;
- * {@code NEW_UNITS_SURVEY_HYDROPROCESSING.md} sections 1 and 2): the clad shell on its fireproofed skirt's pedestal,
+ * {@code NEW_UNITS_SURVEY_HYDROPROCESSING.md} sections 1 and 2): the clad shell on its skirt,
  * the platforms moved off the bottom tangent, the square top deck the caged ladder comes up through on its girders, the
  * forged top nozzle with its Class 2500 flange pair, the lifting trunnions and the cladding's flashing bands. Valves,
  * thermowells, skirts and studs are the kit's ({@link ProcessUnit#valve}, {@link ProcessUnit#thermowell},
@@ -27,7 +27,7 @@ final class HydroprocessingParts {
      * (0.86 m) and the handrail's band (survey: about 1 m beyond the OD); its girders' width.
      */
     static final double TOP_DECK = 1.2, GIRDER_WIDTH = .15;
-    /** The bottom ports' row: the cell centre 1.5 m over grade, clear of the pedestal (survey: 0.8 to 1.2 m, 1.5 m). */
+    /** The bottom ports' row: the cell centre 1.5 m over grade, clear of the base ring (survey: 0.8 to 1.2 m, 1.5 m). */
     static final double PORT_ROW = 1.5;
     private static final double[] UP = {0, 1, 0};
 

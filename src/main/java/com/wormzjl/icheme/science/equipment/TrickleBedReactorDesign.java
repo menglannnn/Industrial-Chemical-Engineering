@@ -20,7 +20,7 @@ import static com.wormzjl.icheme.science.equipment.ProcessUnit.tangential;
  * A refinery hot-wall trickle-bed reactor (hydrotreater, hydrocracker; owner request 2026-10-18, NEW_UNITS_PLAN.md, form
  * logged from {@code NEW_UNITS_SURVEY_HYDROPROCESSING.md} section 1): oil runs down over fixed catalyst beds with hydrogen,
  * cold hydrogen quenching the flow between beds. Sizes: inside diameter D 1 to 5 m in 0.5 m steps (forged reactors reach
- * 5.5 m, L&T; the GE Massa hydrocracker is 5.5 m by 42 m), 1 to 4 beds; the skirt from the pedestal to the bottom
+ * 5.5 m, L&T; the GE Massa hydrocracker is 5.5 m by 42 m), 1 to 4 beds; the skirt from grade to the bottom
  * tangent, {@link #minSupport} at least.
  *
  * <p>Proportions (survey): wall t = 0.05 D (0.03 m at least), insulation 0.1 + 0.02 D under aluminium cladding; bed
