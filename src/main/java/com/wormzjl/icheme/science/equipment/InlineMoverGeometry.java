@@ -14,10 +14,15 @@ public final class InlineMoverGeometry {
         int axis=mask==0?facing:Integer.numberOfTrailingZeros(mask);
         return axis>=2&&axis<6;
     }
+    /** Above approximately 0.2 m bore, use block-face joints at the model key's drawn-size precision. */
+    public static boolean boundaryJoints(int outside){return outside>PipeSizes.code(PipeSizes.outside(.2));}
     public static List<Polygon> polygons(LineGeometry.Key key,boolean compressor,boolean item){
         if(!supports(key.connections(),key.facing()))throw new IllegalArgumentException("Inline movers require horizontal straight pipe");
         double od=PipeSizes.outsideOf(key.outside()),r=Math.max(compressor?.15:.12,(compressor?.78:.72)*od+.04);
-        double axial=Math.min(.25,.96*r),low=-Math.max(1.10*r,.65*od),lid=Math.max(.57*r,.53*od);
+        boolean boundary=boundaryJoints(key.outside());
+        double thickness=PipeSizes.flangeThickness(od),connection=boundary?.5:Math.min(.16+.40*od,.5-2*thickness-.015);
+        double root=connection-thickness-(boundary?.04:0);
+        double axial=Math.min(boundary?root-.02:.25,.96*r),low=Math.max(-.39,-Math.max(1.10*r,.65*od)),lid=Math.max(.57*r,.53*od);
         int n=Math.max(20,PipeSizes.sides(2*r)),axis=key.facing()&~1;var along=LineGeometry.step(key.facing());
         var body=new Mesh();var up=new Frame(CENTRE,UP,along);
         // The wet end wraps around the vertical shaft; its horizontal nozzles enter below the top cover.
@@ -47,16 +52,21 @@ public final class InlineMoverGeometry {
             body.ring(up,.35*r,.66*r,lid+.008,shoulder,n,3,Material.MACHINE);
             stand(body,up,.48*r,shoulder,motorBase,along);
         }
-        mountingFeet(body,up,axial,r,low);
+        mountingFeet(body,up,axial,r);
         var drain=new Frame(up.along(low+.007),neg(UP),along);
         body.cylinder(drain,Math.max(.011,.07*r),0,.025,10,Material.MACHINE);
         body.cylinder(drain,Math.max(.014,.085*r),.023,.041,6,Material.BOLT);
         for(int face:new int[]{axis,axis^1}){
             var nozzle=new Frame(CENTRE,LineGeometry.step(face),UP);var end=LineGeometry.end(key,face,od);
-            double thickness=PipeSizes.flangeThickness(od),connection=Math.min(.16+.40*od,.5-2*thickness-.015);
-            double root=connection-thickness;boolean suction=face==(key.facing()^1);
-            flowPassage(body,up,root,axial,r,od,suction,n);processJoint(body,nozzle,od,connection,n);
-            if(!item)LineGeometry.arm(body,face,connection+thickness-.002,od,end,LineGeometry.ref(face),PipeSizes.sides(od),false);
+            boolean suction=face==(key.facing()^1);
+            flowPassage(body,up,root,axial,r,low,od,suction,n);
+            if(boundary){
+                end=new LineGeometry.End(end.outside(),true,end.reducer(),end.reducer()+PipeSizes.flangeThickness(end.outside())+PipeSizes.hub(end.outside()),end.joined());
+                LineGeometry.arm(body,face,root,od,end,LineGeometry.ref(face),PipeSizes.sides(od),false);
+            }else{
+                processJoint(body,nozzle,od,connection,n);
+                if(!item)LineGeometry.arm(body,face,connection+thickness-.002,od,end,LineGeometry.ref(face),PipeSizes.sides(od),false);
+            }
         }
         double rm=Math.max(compressor?.11:.09,(compressor?.32:.27)*od+.06),height=(compressor?.42:.30)+(compressor?.66:.45)*od;
         motor(body,up,rm,motorBase,height,along,n);
@@ -96,8 +106,10 @@ public final class InlineMoverGeometry {
             var p=ringPoint(f,major,tube,axialScale,a,c);var q=ringPoint(f,major,tube,axialScale,a,d);
             var r=ringPoint(f,major,tube,axialScale,b,d);var s=ringPoint(f,major,tube,axialScale,b,c);
             var centre=ellipsePoint(f,major*axialScale,major,(a+b)/2,0);
-            m.flat(List.of(p,q,r),sub(plus(plus(p,q),r),scale(centre,3)),Material.MACHINE);
-            m.flat(List.of(p,r,s),sub(plus(plus(p,r),s),scale(centre,3)),Material.MACHINE);
+            var around=new Uv(p,unit(sub(s,p)),major*a,Material.MACHINE.period());
+            var round=new Uv(p,unit(sub(q,p)),tube*c,Material.MACHINE.period());
+            castingFace(m,List.of(p,q,r),sub(plus(plus(p,q),r),scale(centre,3)),around,round);
+            castingFace(m,List.of(p,r,s),sub(plus(plus(p,r),s),scale(centre,3)),around,round);
         }
     }
     private static double[] ringPoint(Frame f,double major,double tube,double axialScale,double angle,double round){
@@ -106,11 +118,11 @@ public final class InlineMoverGeometry {
     }
     private static double[] castingPoint(Frame f,double along,double y,double side){return plus(f.along(y),plus(scale(f.ref(),along),scale(f.side(),side)));}
     /** Curved cast passages blend the same-level flanges into the lower inlet bowl and upper scroll. */
-    private static void flowPassage(Mesh m,Frame f,double root,double axial,double r,double od,boolean suction,int sides){
+    private static void flowPassage(Mesh m,Frame f,double root,double axial,double r,double low,double od,boolean suction,int sides){
         double sign=suction?-1:1;double[][] c={castingPoint(f,sign*root,0,0),castingPoint(f,sign*.62*root,0,0),
-                suction?castingPoint(f,-.50*axial,-.52*r,0):castingPoint(f,.48*axial,.10*r,-.63*r),
-                suction?castingPoint(f,-.08*axial,-.65*r,0):castingPoint(f,.12*axial,.05*r,-.65*r)};
-        int segments=10,around=Math.min(20,sides);double[][] previous=null;double[] oldCentre=null;
+                suction?castingPoint(f,-.50*axial,.47*low,0):castingPoint(f,.48*axial,.10*r,-.63*r),
+                suction?castingPoint(f,-.08*axial,.59*low,0):castingPoint(f,.12*axial,.05*r,-.65*r)};
+        int segments=10,around=Math.min(20,sides);double[][] previous=null;double[] oldCentre=null;double travelled=0;
         for(int i=0;i<=segments;i++){
             double t=i/(double)segments,u=1-t;var centre=new double[3];var tangent=new double[3];
             for(int k=0;k<3;k++){centre[k]=u*u*u*c[0][k]+3*u*u*t*c[1][k]+3*u*t*t*c[2][k]+t*t*t*c[3][k];tangent[k]=3*u*u*(c[1][k]-c[0][k])+6*u*t*(c[2][k]-c[1][k])+3*t*t*(c[3][k]-c[2][k]);}
@@ -119,13 +131,32 @@ public final class InlineMoverGeometry {
             // Large bores widen the casting laterally; the swept wall must remain behind its mating flange.
             double va=dot(vertical,f.ref()),sa=dot(sideways,f.ref()),extent=radius*Math.sqrt(va*va+sa*sa);
             double room=Math.max(0,root-Math.abs(dot(sub(centre,f.origin()),f.ref()))),squeeze=extent==0?1:Math.min(1,room/extent);
+            // The large-bore wet end flattens toward its bowl, leaving the supporting block unobstructed.
+            double yExtent=radius*Math.sqrt(vertical[1]*vertical[1]+sideways[1]*sideways[1]);
+            double yRoom=centre[1]-f.origin()[1]-((1-t)*(-.5*od)+t*low),ySqueeze=yExtent==0?1:Math.min(1,Math.max(0,yRoom)/yExtent);
             var ring=new double[around][];for(int j=0;j<around;j++){
                 double a=2*Math.PI*j/around;var offset=plus(scale(vertical,radius*com.wormzjl.icheme.science.math.DeterministicMath.cos(a)),scale(sideways,radius*com.wormzjl.icheme.science.math.DeterministicMath.sin(a)));
+                offset[1]*=ySqueeze;
                 ring[j]=plus(centre,sub(offset,scale(f.ref(),dot(offset,f.ref())*(1-squeeze))));
             }
-            if(previous!=null)for(int j=0;j<around;j++){int k=(j+1)%around;var normal=sub(plus(plus(previous[j],previous[k]),plus(ring[j],ring[k])),scale(plus(oldCentre,centre),2));m.flat(List.of(previous[j],previous[k],ring[k]),normal,Material.MACHINE);m.flat(List.of(previous[j],ring[k],ring[j]),normal,Material.MACHINE);}
+            if(previous!=null){
+                var advance=sub(centre,oldCentre);double distance=Math.sqrt(dot(advance,advance));
+                for(int j=0;j<around;j++){
+                    int k=(j+1)%around;var normal=sub(plus(plus(previous[j],previous[k]),plus(ring[j],ring[k])),scale(plus(oldCentre,centre),2));
+                    var circum=new Uv(previous[j],unit(sub(previous[k],previous[j])),j*Math.PI*od/around,Material.MACHINE.period());
+                    var length=new Uv(oldCentre,unit(advance),travelled,Material.MACHINE.period());
+                    castingFace(m,List.of(previous[j],previous[k],ring[k]),normal,circum,length);
+                    castingFace(m,List.of(previous[j],ring[k],ring[j]),normal,circum,length);
+                }
+                travelled+=distance;
+            }
             previous=ring;oldCentre=centre;
         }
+    }
+    /** Wrap the casting texture across each patch instead of changing box projection between adjacent triangles. */
+    private static void castingFace(Mesh m,List<double[]> points,double[] outward,Uv u,Uv v){
+        var centre=new double[3];for(var point:points)for(int i=0;i<3;i++)centre[i]+=point[i]/points.size();
+        m.add(points,sub(centre,outward),FLAT,Material.MACHINE,u,v);
     }
     private static double[] ellipsePoint(Frame f,double axial,double side,double angle,double height){
         return plus(f.along(height),plus(scale(f.ref(),axial*com.wormzjl.icheme.science.math.DeterministicMath.cos(angle)),scale(f.side(),side*com.wormzjl.icheme.science.math.DeterministicMath.sin(angle))));
@@ -135,7 +166,10 @@ public final class InlineMoverGeometry {
             double a=2*Math.PI*i/sides,b=2*Math.PI*(i+1)/sides;
             var p=ellipsePoint(f,axial*from,side*from,a,low);var q=ellipsePoint(f,axial*from,side*from,b,low);
             var r=ellipsePoint(f,axial*to,side*to,b,high);var s=ellipsePoint(f,axial*to,side*to,a,high);
-            var normal=sub(ellipsePoint(f,1,1,(a+b)/2,0),f.origin());m.flat(List.of(p,q,r,s),normal,material);
+            var normal=sub(ellipsePoint(f,1,1,(a+b)/2,0),f.origin());
+            var around=new Uv(p,unit(sub(q,p)),a*Math.sqrt((axial*axial+side*side)/2),material.period());
+            var height=new Uv(f.origin(),f.axis(),0,material.period());
+            var centre=scale(plus(plus(p,q),plus(r,s)),.25);m.add(List.of(p,q,r,s),sub(centre,normal),FLAT,material,around,height);
         }
     }
     private static void ellipticalCap(Mesh m,Frame f,double axial,double side,double inner,double at,int sign,int sides,Material material){
@@ -146,11 +180,11 @@ public final class InlineMoverGeometry {
             else m.flat(List.of(ellipsePoint(f,axial*inner,side*inner,a,at),p,q,ellipsePoint(f,axial*inner,side*inner,b,at)),scale(f.axis(),sign),material);
         }
     }
-    private static void mountingFeet(Mesh m,Frame up,double axial,double r,double low){
-        double floor=low-.18*r-.025,thick=Math.max(.016,.045*r);
+    private static void mountingFeet(Mesh m,Frame up,double axial,double r){
+        double thick=Math.max(1/32d,.045*r),floor=-.5+thick/2;
         for(int a:new int[]{-1,1})for(int b:new int[]{-1,1}){
             var lateral=plus(scale(up.ref(),a*.72*axial),scale(up.side(),b*.75*r));
-            m.bar(plus(up.along(.06*r),lateral),plus(up.along(floor+thick/2-.003),lateral),Math.max(.016,.10*r),up.ref(),Material.MACHINE);
+            m.bar(plus(up.along(.06*r),lateral),plus(up.along(floor+thick/2-.003),lateral),Math.max(1/32d,.10*r),up.ref(),Material.MACHINE);
         }
         m.block(up.along(floor),scale(up.ref(),1.02*axial),scale(UP,thick/2),scale(up.side(),.96*r),Material.MACHINE);
         for(int a:new int[]{-1,1})for(int b:new int[]{-1,1}){

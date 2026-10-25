@@ -154,7 +154,7 @@ public final class FluidDeviceBlockEntity extends BlockEntity implements com.wor
                     // A pipe meets the next pipe's size (for its reducer), welded except at accessory fittings. At equipment both sides flange at the
                     // pipe's size, whatever it is (owner request 2026-10-21: nozzles and their flanges follow the pipe
                     // everywhere); two devices bolt together at the larger of their sizes.
-                    if(pipe&&otherPipe){code=PipeSizes.code(PipeSizes.outside(other.bore));flanged=FluidDeviceBlock.hasBoundaryFitting(getBlockState())||FluidDeviceBlock.hasBoundaryFitting(other.getBlockState());}
+                    if(pipe&&otherPipe){code=PipeSizes.code(PipeSizes.outside(other.bore));flanged=FluidDeviceBlock.hasBoundaryFitting(getBlockState(),bore)||FluidDeviceBlock.hasBoundaryFitting(other.getBlockState(),other.bore);}
                     else{code=PipeSizes.code(PipeSizes.outside(pipe?bore:otherPipe?other.bore:Math.max(bore,other.bore)));flanged=true;}
                 } else if(pipe&&neighbour instanceof EquipmentShellBlockEntity shell) {
                     var nozzle=shell.nozzleFacing(direction.getOpposite());
