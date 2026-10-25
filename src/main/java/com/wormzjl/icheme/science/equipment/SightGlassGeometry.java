@@ -42,6 +42,13 @@ public final class SightGlassGeometry {
     public record Geometry(List<Polygon> metal,List<Polygon> glass,List<Polygon> liquid) {
         public Geometry{metal=List.copyOf(metal);glass=List.copyOf(glass);liquid=List.copyOf(liquid);}
     }
+    /** Shared dynamic-overlay aperture, with its plane between liquid and clear glass. */
+    public record Window(double radius,double plane,Axis axis){
+        public Window{Objects.requireNonNull(axis);if(!Double.isFinite(radius)||!Double.isFinite(plane)||radius<=0||plane<=0)throw new IllegalArgumentException("Invalid window aperture");}
+    }
+    private record Size(double radius,double depth){}
+    private static Size size(Key look){double od=PipeSizes.outsideOf(look.pipe().outside());return new Size(.09+.37*od,.04+.34*od);}
+    public static Window window(Key look){var size=size(look);return new Window(.60*.995*size.radius(),size.depth()+.085*size.radius(),look.window());}
 
     /** Unconnected and dead-end pipes draw straight; two contacts must be opposite. Corners and junctions are excluded. */
     public static boolean supports(int connections){return Integer.bitCount(connections)<=1||connections==3||connections==12||connections==48;}
@@ -53,7 +60,7 @@ public final class SightGlassGeometry {
         double od=PipeSizes.outsideOf(key.outside());
         // The body and viewing aperture both scale across the entire pipe range. The minimum is a readable fitting,
         // not a second hydraulic bore. The largest fits the cell, as the existing line flanges do.
-        double radius=.09+.37*od,window=.60*radius,depth=.04+.34*od;
+        var size=size(look);double radius=size.radius(),window=.60*radius,depth=size.depth();
         int mask=key.connections();
         if(Integer.bitCount(mask)<=1){int face=mask==0?key.facing():Integer.numberOfTrailingZeros(mask);mask=(1<<face)|(1<<(face^1));}
         double[] view=look.window().vector(),reference=look.window()==Axis.Y?new double[]{0,0,1}:UP;

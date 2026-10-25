@@ -58,7 +58,7 @@ public final class FluidWorldAuthority implements AutoCloseable {
     private final Map<Long,TankDisplay.Glide> publishedGlides=new HashMap<>();
     private final TankWatchers tankWatchers=new TankWatchers();
     private final TankWatchers sightGlassWatchers=new TankWatchers();
-    private final Map<Long,Integer> publishedSightGlasses=new HashMap<>();
+    private final Map<Long,SightGlassDisplay.Sample> publishedSightGlasses=new HashMap<>();
     private final TankWatchers moverWatchers=new TankWatchers();
     private final Map<Long,com.wormzjl.icheme.network.MoverNetwork.State> publishedMovers=new HashMap<>();
     private final com.wormzjl.icheme.runtime.instrument.InstrumentService instruments;
@@ -416,7 +416,7 @@ public final class FluidWorldAuthority implements AutoCloseable {
         }
     }
 
-    /** Explicit visual requests replay cached colour only, then keep a future engine bucket scheduled. */
+    /** Explicit visual requests replay cached appearance only, then keep a future engine bucket scheduled. */
     public void watchSightGlasses(net.minecraft.server.level.ServerPlayer player,List<com.wormzjl.icheme.network.SightGlassNetwork.Target> watch,List<com.wormzjl.icheme.network.SightGlassNetwork.Target> unwatch) {
         owned();if(closed)return;var uuid=player.getUUID();var level=player.serverLevel();
         for(var target:unwatch)unwatchSightGlass(uuid,target.identity());
@@ -428,8 +428,8 @@ public final class FluidWorldAuthority implements AutoCloseable {
             if(record==null||record.device().kind()!=TopologyCompiler.Kind.PIPE||!cell(record).equals(pos)||!record.device().position().dimension().equals(level.dimension().location().toString()))continue;
             if(sightGlassWatchers.watch(uuid,target.identity())) {
                 presentation.observe(target.identity());
-                var colour=publishedSightGlasses.get(target.identity());
-                if(colour!=null)com.wormzjl.icheme.network.SightGlassNetwork.send(player,target,colour);
+                var sample=publishedSightGlasses.get(target.identity());
+                if(sample!=null)com.wormzjl.icheme.network.SightGlassNetwork.send(player,target,sample);
             }
         }
     }
@@ -440,13 +440,13 @@ public final class FluidWorldAuthority implements AutoCloseable {
     private void forgetSightGlass(long id){sightGlassWatchers.remove(id);refreshObserved(id);publishedSightGlasses.remove(id);}
     private void publishSightGlass(WorldTopologyLedger.Registration record,net.minecraft.server.level.ServerLevel level,BlockPos pos,FluidView view) {
         long id=record.device().id();
-        int colour=SightGlassDisplay.colour(view,componentNames,model.molecularWeights(),catalog,com.wormzjl.icheme.science.fluid.thermo.FluidMaterialCatalog.networkPackage(catalog));
-        publishedSightGlasses.put(id,colour);
+        var sample=SightGlassDisplay.of(view,componentNames,model.molecularWeights(),catalog,com.wormzjl.icheme.science.fluid.thermo.FluidMaterialCatalog.networkPackage(catalog));
+        publishedSightGlasses.put(id,sample);
         var target=new com.wormzjl.icheme.network.SightGlassNetwork.Target(pos,id);
         for(var uuid:sightGlassWatchers.watchers(id)) {
             var player=server.getPlayerList().getPlayer(uuid);
             if(player==null||player.hasDisconnected()||player.serverLevel()!=level||!inRange(player,pos)){unwatchSightGlass(uuid,id);continue;}
-            com.wormzjl.icheme.network.SightGlassNetwork.send(player,target,colour);
+            com.wormzjl.icheme.network.SightGlassNetwork.send(player,target,sample);
         }
     }
     private static BlockPos cell(WorldTopologyLedger.Registration record){var p=record.device().position();return new BlockPos(p.x(),p.y(),p.z());}

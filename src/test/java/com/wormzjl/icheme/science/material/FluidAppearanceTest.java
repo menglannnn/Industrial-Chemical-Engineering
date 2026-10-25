@@ -10,6 +10,18 @@ class FluidAppearanceTest {
 
     @AfterEach void reset() { MaterialRuntime.reset(); }
 
+    @Test void bundledCrudeFractionsDarkenWithNormalBoilingPoint(){
+        var catalog=MaterialCatalog.bundled();
+        var fractions=catalog.requirePackage(PACKAGE).properties().stream().filter(p->catalog.name(p.component()).kind().equals("petroleum_fraction"))
+                .sorted(java.util.Comparator.comparingDouble(MaterialCatalog.Property::normalBoilingPoint)).toList();
+        assertTrue(fractions.size()>1);int previous=0xFFFFFF;
+        for(var fraction:fractions){
+            int rgb=catalog.componentAppearance(PACKAGE,fraction.component()).rgb();
+            for(int shift:new int[]{0,8,16})assertTrue((rgb>>shift&255)<(previous>>shift&255),fraction.component()+" gets darker as NBP increases");
+            previous=rgb;
+        }
+    }
+
     @Test void bundledComponentsWaterAndAssaysHaveIndependentAppearances() {
         var catalog = MaterialCatalog.bundled();
         assertThrows(IllegalArgumentException.class,()->catalog.componentAppearance(PACKAGE,"TJL_PC07"));
