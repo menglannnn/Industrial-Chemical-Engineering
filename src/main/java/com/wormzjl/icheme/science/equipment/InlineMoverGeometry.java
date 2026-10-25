@@ -71,6 +71,8 @@ public final class InlineMoverGeometry {
         m.ring(f,.44*od,outside,at+seam,at+t,sides,3,Material.FLANGE);
         m.bolts(f,od,.50*od,outside,at-t,-1,Material.BOLT);m.bolts(f,od,.50*od,outside,at+t,1,Material.BOLT);
         m.bore(f,.44*od,at-seam,at+seam,sides,Material.OPENING);
+        // The opaque casing has no modeled internal cavity; terminate its recessed throat ahead of the casting walls.
+        m.annulus(f,0,.44*od,at-t+.001,sides,1,Material.OPENING);
     }
     private static void volute(Mesh m,Frame up,double axial,double r,double low,double lid,int sides){
         // A broad scroll/manifold at pipe height, with the impeller bowl visibly suspended below it.
