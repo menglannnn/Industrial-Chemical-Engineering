@@ -799,6 +799,8 @@ class ShapeRasterizerTest {
                 assertEquals(Math.rint(face), face, 1e-9, at);
                 assertTrue(face <= drum.axis() - drum.radius() - EquipmentShape.STAND_OUT + 1e-9 && face - 1 >= -support - 1e-9, at + " face at " + face);
                 assertTrue(drum.bottomTangent() - b.outlet() <= .6 * drum.headDepth() + 1e-9 && outlet.base()[0] > drum.axis() - drum.radius(), at);
+                double preferred = Math.max(.9, .6 * d);
+                assertTrue(b.length() >= .4 - 1e-9 && b.length() < preferred && b.length() > preferred - 1 - 1e-5, at + " boot depth " + b.length());
                 double gap = b.station() - b.outlet();
                 assertEquals(Math.rint(gap), gap, 1e-9, at);
                 assertTrue(gap >= 2 && gap >= b.diameter() / 2 + flange - 1e-9, at);
@@ -815,6 +817,9 @@ class ShapeRasterizerTest {
         assertArrayEquals(new double[]{3.5, 1.5}, new double[]{EquipmentShape.bootFor(3, 9).station(), EquipmentShape.bootFor(3, 9).outlet()}, 1e-12);
         assertArrayEquals(new double[]{2.5, .5}, new double[]{EquipmentShape.bootFor(2, 6).station(), EquipmentShape.bootFor(2, 6).outlet()}, 1e-12);
         assertNull(EquipmentShape.bootFor(1, 4));
+        // Owner request 2026-10-25: a boot stops short of the block line its preferred depth (0.9 m or 0.6 D) would reach,
+        // so its drum stands a block lower: 3 x 9 on 3 m saddles (were 4), 2 x 6 on 2 m (were 3).
+        assertArrayEquals(new int[]{3, 2}, new int[]{EquipmentShape.minimumBootSupport(3, 9), EquipmentShape.minimumBootSupport(2, 6)});
     }
 
     @Test

@@ -562,7 +562,8 @@ public record EquipmentShape(Kind kind, double diameter, double tangentLength, O
      * into the boot at the outlet end, the front, and the oil leaves behind an overflow baffle beyond it, through a nozzle
      * facing down on the bottom centre line between the boot and the front head. The boot: a third of the drum's
      * diameter, at least 0.3, 0.4 or 0.5 m (under 0.9, 1.4 m and above) and at most half of it; 0.9 m or 0.6 D deep, the
-     * longer; on the first cell centre inboard of the front saddle that keeps its shell 0.15 m clear of it, and as clear
+     * longer, less what lifts its drain's face a block (owner request 2026-10-25: saddles a block lower; 0.02 to 0.97 m,
+     * so at least 0.4 m deep); on the first cell centre inboard of the front saddle that keeps its shell 0.15 m clear of it, and as clear
      * of the far saddle. The outlet on the last cell centre outboard of the front saddle that keeps its largest pipe's
      * flange as clear of it (survey A: bottom nozzles clear the saddle by 0.15 m); the saddle between them keeps their
      * pipes a free block apart (owner rule 2026-10-17). The outlet may stand on the head's bottom near the tangent line,
@@ -571,7 +572,13 @@ public record EquipmentShape(Kind kind, double diameter, double tangentLength, O
      * the boot fits between its saddles). Else no boot.
      */
     public static @Nullable Boot bootFor(double diameter, double tangentLength) {
-        double low = diameter < .9 ? .3 : diameter < 1.4 ? .4 : .5, size = Math.min(diameter / 2, Math.max(low, diameter / 3)), length = Math.max(.9, .6 * diameter);
+        double low = diameter < .9 ? .3 : diameter < 1.4 ? .4 : .5, size = Math.min(diameter / 2, Math.max(low, diameter / 3));
+        // The drain's face stands STAND_OUT under the boot's apex on a block face (minimumBootSupport): the boot stops
+        // short of the block line its preferred depth would reach under that face (a micrometre short, so the face's
+        // floor lands on that line in floating point).
+        int cells = (int) Math.ceil(diameter);
+        double shell = (cells % 2 == 0 ? cells + 1 : cells) / 2.0 - diameter / 2, reach = shell - size / 4 - STAND_OUT;
+        double length = Math.max(.4, reach - Math.floor(reach - Math.max(.9, .6 * diameter)) - 1 - 1e-6);
         double od = outletLargest(diameter), flange = PipeSizes.flange(od) / 2;
         double bT = diameter / 4, tT = bT + tangentLength, saddle = SADDLE_WIDTH / 2 + .15, clear = saddle + size / 2;
         double near = bT + SADDLE_POSITION * tangentLength, far = tT - SADDLE_POSITION * tangentLength;
