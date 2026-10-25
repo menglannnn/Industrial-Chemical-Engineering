@@ -17,7 +17,7 @@ All notable changes to Industrial Chemical Engineering (IChemE, formerly CreateC
 
 ### Changed
 
-- Convert single-block pump/compressor items into horizontal straight-pipe accessories, with Grundfos-style pump and owner-selected Sundyne LMC compressor models, existing actuator physics/controls and wrench recovery; batch `2026-10-25-inline-pump-accessory` (implementation `e61751aa`).
+- Convert single-block pump/compressor items into horizontal straight-pipe accessories, with curved pump casting, suspended chamber/open base and owner-selected Sundyne LMC gearbox model, existing actuator physics/controls and wrench recovery; batch `2026-10-25-inline-pump-accessory` (implementation `e61751aa`, model refinement `8a910a20`).
 - Refined gauge housings, legible scales and pipe tapping connections; immediate accessory attachment/removal, reading-only hover, compact fluid GUI readings and pipe-applied in-line filters with conserved solids recovery. Fluid checkpoint 19 / unit 12; batch `2026-10-25-accessory-refinements` (implementation `5a6e1ecc`).
 
 ### Added
