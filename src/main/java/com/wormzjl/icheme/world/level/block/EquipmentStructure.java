@@ -488,8 +488,9 @@ public final class EquipmentStructure {
 
     /**
      * A refreshed drum keeps its registration, so its contents: its ports, volume and level height follow by a queued
-     * edit. Movers retain their controls too. The ledger never moves a device: a moved mover gets a queued replacement
-     * with the same controls; a moved reservoir registers anew, empty. {@code oldNode} held the former identity.
+     * edit. Movers retain their controls too. A moved mover gets a queued replacement with the same controls and a new
+     * identity ({@code relocateMover}); a moved reservoir keeps its identity and contents through a queued edit to its
+     * new node. {@code oldNode} held the former identity.
      */
     private static void reregister(ServerLevel level, Vessel vessel, @Nullable BlockPos oldNode) {
         var node = node(vessel);

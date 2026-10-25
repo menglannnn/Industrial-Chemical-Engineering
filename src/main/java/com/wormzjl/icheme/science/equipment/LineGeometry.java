@@ -17,7 +17,7 @@ import static com.wormzjl.icheme.science.equipment.Mesh.*;
  * fitting), more a tee or cross along a straight run, or a ball core where no two arms are in line; one arm, or none,
  * runs straight through. Where the next pipe is smaller, a concentric reducer in the larger pipe's block narrows to it
  * at the face. Flanges stand only where a line meets equipment or a vessel nozzle, as a pair in the middle of every
- * sixth straight block (spool ends; photo survey section 3), and as a blind flange where a line ends unconnected
+ * twelfth straight block (spool ends; photo survey section 3), and as a blind flange where a line ends unconnected
  * (owner request 2026-10-16); pipes are welded elsewhere.
  *
  * <p>Pipeline devices draw their bodies from photographs (survey section 4): a globe control valve with its diaphragm
