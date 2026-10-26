@@ -316,7 +316,7 @@ final class V3SimultaneousColumnSolver {
             V3FiniteDifferenceJacobian.Jacobian jacobian = usesFrozenFineJacobian
                     ? cachedFineJacobian
                     : V3FiniteDifferenceJacobian.evaluateCompact(
-                            evaluator, coordinates, state, workspaceFactory, differenceScale, control);
+                            evaluator, coordinates, state, residual, workspaceFactory, differenceScale, control);
             trace.finiteDifferenceJacobian(iteration, usesFrozenFineJacobian);
             if (!usesFrozenFineJacobian && differenceScale == V3FiniteDifferenceJacobian.DifferenceScale.FINE) {
                 cachedFineJacobian = jacobian;
