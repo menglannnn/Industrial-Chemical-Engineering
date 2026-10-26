@@ -28,13 +28,20 @@ class MaterialCatalogTest {
         assertTrue(c.name("crude_pc12").english().contains("above"));
         assertTrue(c.name("crude_pc07").english().endsWith("(estimated)"));
     }
-    @Test void numericalEditsInvalidateFingerprintEvenWithoutRevisionBumpButNamesDoNot() {
+    /**
+     * Data are identified by their declared revisions, nothing is hashed (owner decision 2026-10-26): a numerical edit
+     * declares itself with its package's revision bump, which makes earlier results stale and turns the neural
+     * initializer off until a model is trained on the new revision; a name edit changes no identity.
+     */
+    @Test void aRevisionBumpMakesEarlierResultsStaleButNamesDoNot() {
         var before=MaterialCatalog.bundled().requirePackage(ID);
         var names=MaterialCatalog.parse(changed("components/crude_pc07.json",o->o.addProperty("fallback","Petroleum")));
-        assertEquals(before.fingerprint(),names.requirePackage(ID).fingerprint());
-        var science=MaterialCatalog.parse(changed("properties/crude_pc07.json",o->o.addProperty("molecular_weight_kg_per_mol",.31)));
-        assertEquals(before.revision(),science.requirePackage(ID).revision());
-        assertNotEquals(before.fingerprint(),science.requirePackage(ID).fingerprint());
+        assertEquals(before.scientificRevision(),names.requirePackage(ID).scientificRevision());
+        var resources=changed("properties/crude_pc07.json",o->o.addProperty("molecular_weight_kg_per_mol",.31));
+        var record=JsonParser.parseString(resources.get(ROOT+"packages/tjl20.json")).getAsJsonObject();
+        record.addProperty("revision",record.get("revision").getAsString()+"-edited");resources.put(ROOT+"packages/tjl20.json",record.toString());
+        var science=MaterialCatalog.parse(resources);
+        assertNotEquals(before.scientificRevision(),science.requirePackage(ID).scientificRevision());
         assertFalse(MaterialRuntime.with(science,ID,()->MaterialRuntime.isCurrent(ID,before.scientificRevision())));
         assertTrue(MaterialRuntime.with(names,ID,()->MaterialRuntime.isCurrent(ID,before.scientificRevision())));
         var input=com.wormzjl.icheme.science.column.v3.V3TestInputs.methaneCduInput();

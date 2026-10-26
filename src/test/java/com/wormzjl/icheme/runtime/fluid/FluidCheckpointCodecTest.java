@@ -88,6 +88,10 @@ class FluidCheckpointCodecTest {
             var coefficients=correlation.getAsJsonArray("coefficients");
             coefficients.set(0,new com.google.gson.JsonPrimitive(coefficients.get(0).getAsDouble()*1.001));
             resources.put(path,property.toString());
+            // Nothing is hashed (owner decision 2026-10-26): the edit declares itself with the package's revision.
+            String packagePath="data/icheme/materials/packages/tjl20_nitrogen.json";
+            var record=com.google.gson.JsonParser.parseString(resources.get(packagePath)).getAsJsonObject();
+            record.addProperty("revision",record.get("revision").getAsString()+"-edited");resources.put(packagePath,record.toString());
             var overridden=FluidThermodynamics.forNetwork(MaterialCatalog.parse(resources),PACKAGE);
             assertTrue(assertThrows(IllegalArgumentException.class,()->FluidCheckpointCodec.decode(image,key->overridden),field).getMessage().contains("property data of package"),field);
         }

@@ -59,7 +59,7 @@ public class MaterialReloadGameTests {
         server.reloadResources(withOverride).whenComplete((ignored,error)->server.execute(()-> {
             if(error!=null){helper.fail("Valid material override reload failed: "+error);return;}
             var changed=MaterialRuntime.active();
-            if(changed.requirePackage(packageId).fingerprint().equals(original.requirePackage(packageId).fingerprint())
+            if(changed.requirePackage(packageId).equals(original.requirePackage(packageId))
                     || changed.requirePackage(packageId).properties().getFirst().molecularWeight()!=.017) {
                 helper.fail("Higher priority pack was not published");return;
             }
@@ -68,7 +68,7 @@ public class MaterialReloadGameTests {
             server.reloadResources(withOverride).whenComplete((unused,invalid)->server.execute(()-> {
                 if(invalid==null || MaterialRuntime.active()!=changed){helper.fail("Invalid reload replaced the valid snapshot");return;}
                 server.reloadResources(selected).whenComplete((done,restore)->server.execute(()-> {
-                    if(restore!=null || !MaterialRuntime.active().requirePackage(packageId).fingerprint().equals(original.requirePackage(packageId).fingerprint()))
+                    if(restore!=null || !MaterialRuntime.active().requirePackage(packageId).equals(original.requirePackage(packageId)))
                         helper.fail("Restoring the original data pack selection failed");
                     else helper.succeed();
                 }));

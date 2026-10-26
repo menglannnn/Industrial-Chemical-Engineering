@@ -35,10 +35,13 @@ import java.util.function.Function;
  * behaviour before the field existed. A record with more fields than this build reads was written by a newer build and
  * is refused. Enum constants are written by name; {@link #ALIASES} maps a renamed or removed one. An optional value is a
  * list of at most one.</p>
+ *
+ * <p>Schema history: 1, the first; 2, the world's basis retires its hash of the package data and appends the data's
+ * declared revision (owner decision 2026-10-26).</p>
  */
 final class FluidFacts {
-    static final int SCHEMA=1;
-    /** Renamed or removed enum constants, per enum: the saved name to the current one. None at schema 1. */
+    static final int SCHEMA=2;
+    /** Renamed or removed enum constants, per enum: the saved name to the current one. None at schema 2. */
     private static final Map<Class<?>,Map<String,String>> ALIASES=Map.of();
     private static final int MAXIMUM_FIELDS=256,MAXIMUM_ITEMS=1<<22,MAXIMUM_TEXTS=1<<20,MAXIMUM_ARRAY=4096;
     /** The cadence an island rebuilt from facts starts at (ticks): the shortest the clock allows, as after a merge. */
@@ -167,7 +170,7 @@ final class FluidFacts {
     }
     static byte[] world(WorldTopologyLedger.Snapshot s) {
         return section(f->{
-            var b=s.basis();f.count(s.nextIdentity()).record(q->q.text(b.packageId()).list(b.components(),(c,id)->c.text(id)).text(b.scientificFingerprint()));
+            var b=s.basis();f.count(s.nextIdentity()).record(q->q.text(b.packageId()).list(b.components(),(c,id)->c.text(id)).text("").text(b.revision()));
             var active=new ArrayList<>(s.active().values());active.sort(Comparator.comparingLong(r->r.device().id()));
             f.list(active,FluidFacts::registration);
             f.record(t->total(t,s.constructed())).record(t->total(t,s.destroyed()));
@@ -182,8 +185,11 @@ final class FluidFacts {
     static World world(byte[] data,int offset,int length) {
         return read(data,offset,length,"facts of the topology unit",f->{
             long next=f.count(0);
-            var basis=f.record(null,q->{var id=q.text("");var components=q.list(List.of(),c->c.text(""));var fingerprint=q.text("");
-                return valid(q,"basis",()->new WorldTopologyLedger.FluidBasis(id,components,fingerprint));});
+            // The third field is retired (schema 1's hash of the package data, owner decision 2026-10-26): written empty,
+            // read as empty or as that hash, never used. A schema 1 basis has no revision: "" restates the world once.
+            var basis=f.record(null,q->{var id=q.text("");var components=q.list(List.of(),c->c.text(""));var retired=q.text("");var revision=q.text("");
+                if(!retired.isEmpty()&&!retired.matches("[0-9a-f]{64}:[0-9a-f]{64}"))throw q.invalid("basis: invalid retired fingerprint");
+                return valid(q,"basis",()->new WorldTopologyLedger.FluidBasis(id,components,revision));});
             var registrations=f.list(List.of(),FluidFacts::registration);
             var constructed=f.record(null,FluidFacts::total);var destroyed=f.record(null,FluidFacts::total);
             var recoveries=f.list(List.of(),q->{var id=required(uuid(q),q,"recovery identity");var position=required(position(q),q,"recovery position");

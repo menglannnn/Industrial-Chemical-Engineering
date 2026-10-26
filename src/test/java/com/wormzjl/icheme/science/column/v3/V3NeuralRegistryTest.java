@@ -10,7 +10,7 @@ import java.util.concurrent.*;
 import org.junit.jupiter.api.*;
 
 class V3NeuralRegistryTest {
-    private static final String MAIN="icheme:tjl20_methane",NETWORK="icheme:tjl20_methane_nitrogen";
+    private static final String MAIN="icheme:tjl20_methane",NETWORK="icheme:tjl20_methane_nitrogen",REFERENCE="icheme:wti_light_export_tjl20";
     @AfterEach void reset(){MaterialRuntime.reset();}
     private static V3ColumnInput input() {
         var p=MaterialCatalog.bundled().requirePackage(MAIN);double[] feed=new double[p.components().size()];
@@ -26,8 +26,10 @@ class V3NeuralRegistryTest {
     }
     private static V3NeuralRegistry.Entry entry(String name,int priority,boolean extra,boolean missing) throws Exception {
         var d=V3RegroupedTransformerTest.document(input());d.addProperty("modelId",name);
-        // Explicit equivalent reference supplies only absent, qualified zero components.
-        d.addProperty("packageId","icheme:wti_light_export_tjl20");
+        // Explicit equivalent reference supplies only absent, qualified zero components; the model was trained on its
+        // declared revision.
+        d.addProperty("packageId",REFERENCE);
+        d.addProperty("propertyRevision",MaterialCatalog.bundled().requirePackage(REFERENCE).scientificRevision());
         var model=V3AnchorTransformerInitializer.read(stream(d.toString()), V3FactorizedNeuralFeatures.DecodeOptions.NONE);
         return new V3NeuralRegistry.Entry(priority,model,"0".repeat(64),extra,missing);
     }
@@ -71,7 +73,14 @@ class V3NeuralRegistryTest {
         var data=JsonParser.parseString(resources.get(path)).getAsJsonObject();
         if(physics)data.addProperty("molecular_weight_kg_per_mol",.017);
         else {var amounts=data.getAsJsonObject("amounts_by_component");amounts.addProperty("Methane",amounts.get("Methane").getAsDouble()*2);}
-        resources.put(path,data.toString());return MaterialCatalog.parse(resources);
+        resources.put(path,data.toString());
+        // Nothing is hashed (owner decision 2026-10-26): an edit of the shared methane record declares itself with the
+        // revision of every package that reads it, here the input's and the model's reference.
+        if(physics)for(String record:List.of("data/icheme/materials/packages/tjl20.json","data/icheme/materials/packages/wti_light_export_tjl20.json")) {
+            var json=JsonParser.parseString(resources.get(record)).getAsJsonObject();
+            json.addProperty("revision",json.get("revision").getAsString()+"-edited");resources.put(record,json.toString());
+        }
+        return MaterialCatalog.parse(resources);
     }
     @Test void admissionSnapshotSurvivesReloadAndAssayEditsDoNotChangePhysicsEligibility() throws Exception {
         var catalog=MaterialCatalog.bundled();var registry=new V3NeuralRegistry(List.of(entry("test:captured",1,false,false)));var input=input();

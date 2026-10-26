@@ -208,6 +208,28 @@ class FluidFactsCompatTest {
             }
         }
     }
+    /**
+     * A world written before 2026-10-26 identifies its property basis by a hash of the package data (facts schema 1):
+     * loaded as it is, it restates once onto the declared revisions, every amount kept, the same data giving the same
+     * energy, and saves as an exact checkpoint again.
+     */
+    @Test void aSchemaOneWorldRestatesOnceOntoTheDeclaredRevisions() throws IOException {
+        var folder=CORPUS.resolve("schema-1");var image=read(folder);
+        var expected=new Properties();try(var in=Files.newBufferedReader(folder.resolve("expected.properties"))){expected.load(in);}
+        var restated=load(image,key->model,CATALOG);
+        assertEquals(FluidCheckpointStore.Route.FACTS,restated.route());
+        assertTrue(restated.reason().contains("property data of package "+PACKAGE+" changed"),restated.reason());
+        var ledger=restated.world().orElseThrow();
+        assertEquals(WorldTopologyLedger.FluidBasis.capture(CATALOG),ledger.basis());
+        double total=Arrays.stream(moles(restated.checkpoint(),model.componentCount())).sum();
+        assertEquals(Double.parseDouble(expected.getProperty("moles")),total,1e-12*total,"every amount kept");
+        assertTrue(ledger.restated().removedMoles().isEmpty()&&ledger.restated().removedSolids().isEmpty());
+        double energy=0;for(var e:restated.checkpoint().islands())for(var n:e.snapshot().graph().reservoirs())
+            if(n.kind()==PassiveNetwork.NodeKind.RESERVOIR)energy+=Math.abs(n.inventory().internalEnergy());
+        assertEquals(0,ledger.restated().energy(),1e-9*energy,"the same data gives the same energy");
+        var reloaded=new EventPathWorld(1,ledger,restated.checkpoint().islands().stream().map(FluidCheckpointCodec.IslandEntry::snapshot).toList());
+        assertEquals(FluidCheckpointStore.Route.EXACT,load(image(reloaded),key->model,CATALOG).route(),"restated once");
+    }
     private void write(FluidCheckpointCodec.Image image,Path folder) throws IOException {
         Files.createDirectories(folder);NbtIo.writeCompressed(image.core(),folder.resolve("core.dat"));
         for(var pack:image.packs().entrySet())Files.write(folder.resolve("pack-"+pack.getKey()+".bin"),pack.getValue());

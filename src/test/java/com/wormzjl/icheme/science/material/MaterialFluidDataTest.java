@@ -8,16 +8,18 @@ import org.junit.jupiter.api.*;
 class MaterialFluidDataTest {
  private static final String ID="icheme:tjl20_methane",ROOT="data/icheme/materials/transport/";
  @AfterEach void reset(){MaterialRuntime.reset();}
- @Test void fluidReferenceEditsInvalidateOnlyTheirConsumersAndCapturedModelsStayStable() throws Exception {
+ /** Appends {@code -edited} to a record's {@code revision}: the bump a numerical edit declares (owner decision 2026-10-26). */
+ private static void bump(JsonObject record){record.addProperty("revision",record.get("revision").getAsString()+"-edited");}
+ @Test void fluidReferenceEditsMoveTheFluidRevisionNotThePhysicsAndCapturedModelsStayStable() throws Exception {
   var original=MaterialCatalog.bundled();var resources=new HashMap<>(original.resources());String path=ROOT+"dissolved_viscosity.json";
   var data=JsonParser.parseString(resources.get(path)).getAsJsonObject();var first=data.getAsJsonArray("curves").get(0).getAsJsonObject();
-  var values=first.getAsJsonArray("viscosities_pascal_seconds");values.set(0,new JsonPrimitive(values.get(0).getAsDouble()*2));resources.put(path,data.toString());
+  var values=first.getAsJsonArray("viscosities_pascal_seconds");values.set(0,new JsonPrimitive(values.get(0).getAsDouble()*2));bump(data);resources.put(path,data.toString());
   var changed=MaterialCatalog.parse(resources);var p=original.requirePackage(ID);var amounts=new double[p.components().size()];
   amounts[p.components().indexOf("Methane")]=.05;amounts[p.components().indexOf("crude_pc12")]=.95;
   var captured=new MixtureViscosity(original,ID);double before=captured.liquid(293.15,amounts).pascalSeconds();
-  assertEquals(original.physicsFingerprint(ID,p.components()),changed.physicsFingerprint(ID,p.components()));
-  assertEquals(original.fluidThermoFingerprint(ID),changed.fluidThermoFingerprint(ID));
-  assertNotEquals(original.viscosityFingerprint(ID),changed.viscosityFingerprint(ID));
+  assertEquals(original.physicsContent(ID,p.components()),changed.physicsContent(ID,p.components()));
+  assertNotEquals(original.fluidRevision(ID),changed.fluidRevision(ID));
+  assertNotEquals(captured.revision(),new MixtureViscosity(changed,ID).revision());
   var admitted=new CountDownLatch(1);var released=new CountDownLatch(1);
   try(var worker=Executors.newSingleThreadExecutor()) {
    var result=worker.submit(()->{admitted.countDown();if(!released.await(5,TimeUnit.SECONDS))throw new AssertionError("release");return captured.liquid(293.15,amounts).pascalSeconds();});
@@ -26,24 +28,32 @@ class MaterialFluidDataTest {
   } finally {released.countDown();}
   assertEquals(Math.pow(2,.05),new MixtureViscosity(changed,ID).liquid(293.15,amounts).pascalSeconds()/before,1e-12);
   path=ROOT+"liquid_calibration.json";data=JsonParser.parseString(resources.get(path)).getAsJsonObject();
-  first=data.getAsJsonArray("points").get(0).getAsJsonObject();first.addProperty("molarVolumeCubicMetres",first.get("molarVolumeCubicMetres").getAsDouble()*1.01);resources.put(path,data.toString());
+  first=data.getAsJsonArray("points").get(0).getAsJsonObject();first.addProperty("molarVolumeCubicMetres",first.get("molarVolumeCubicMetres").getAsDouble()*1.01);bump(data);resources.put(path,data.toString());
   var recalibrated=MaterialCatalog.parse(resources);
-  assertNotEquals(changed.fluidThermoFingerprint(ID),recalibrated.fluidThermoFingerprint(ID));
-  assertEquals(changed.physicsFingerprint(ID,p.components()),recalibrated.physicsFingerprint(ID,p.components()));
+  assertNotEquals(changed.fluidRevision(ID),recalibrated.fluidRevision(ID));
+  assertEquals(changed.physicsContent(ID,p.components()),recalibrated.physicsContent(ID,p.components()));
  }
  /** A package without a spine anchors its liquid volumes by the calibration points (HydrocarbonModel reads no
-  * volume_translation), so its fingerprint hashes the point of a component whose record carries a translation too
-  * (t44d's MATERIALS.md reading: the point was dropped, and a recalibration left the revision unchanged). */
- @Test void aCalibrationPointMovesTheFingerprintOfAPackageWithoutASpineWhateverTheRecordTranslates() {
+  * volume_translation), whatever its property record translates (t44d's MATERIALS.md reading: the point was dropped from
+  * the identity, and a recalibration went unseen): the recalibrated point is the model's liquid volume there. */
+ @Test void aCalibrationPointAnchorsAPackageWithoutASpineWhateverTheRecordTranslates() {
   var resources=new HashMap<>(MaterialCatalog.bundled().resources());String property="data/icheme/materials/properties/tjl20_methane.json";
   var methane=JsonParser.parseString(resources.get(property)).getAsJsonObject();
   var pilot=JsonParser.parseString(resources.get("data/icheme/materials/properties/pilot_methane.json")).getAsJsonObject();
   methane.add("volume_translation",pilot.get("volume_translation"));resources.put(property,methane.toString());
   var translated=MaterialCatalog.parse(resources);assertTrue(translated.volumeTranslation(ID,"Methane").isPresent());
+  var point=translated.fluidData().volumeReferences().get("Methane");
   String path=ROOT+"liquid_calibration.json";var data=JsonParser.parseString(resources.get(path)).getAsJsonObject();
   var first=data.getAsJsonArray("points").get(0).getAsJsonObject();assertEquals("Methane",first.get("component").getAsString());
-  first.addProperty("molarVolumeCubicMetres",first.get("molarVolumeCubicMetres").getAsDouble()*1.01);resources.put(path,data.toString());
-  assertNotEquals(translated.fluidThermoFingerprint(ID),MaterialCatalog.parse(resources).fluidThermoFingerprint(ID));
+  first.addProperty("molarVolumeCubicMetres",first.get("molarVolumeCubicMetres").getAsDouble()*1.01);bump(data);resources.put(path,data.toString());
+  var recalibrated=MaterialCatalog.parse(resources);
+  assertNotEquals(translated.fluidRevision(ID),recalibrated.fluidRevision(ID));
+  var components=translated.requirePackage(ID).components();double[] pure=new double[components.size()];pure[components.indexOf("Methane")]=1;
+  var liquid=com.wormzjl.icheme.science.thermo.PengRobinsonKernel.Root.LIQUID;
+  double before=new com.wormzjl.icheme.science.fluid.thermo.HydrocarbonModel(translated,ID).phase(point.temperatureKelvin(),point.pressurePascal(),pure,liquid).molarVolume();
+  double after=new com.wormzjl.icheme.science.fluid.thermo.HydrocarbonModel(recalibrated,ID).phase(point.temperatureKelvin(),point.pressurePascal(),pure,liquid).molarVolume();
+  assertEquals(point.molarVolumeCubicMetres(),before,1e-9*before,"the calibration point, not the record's translation");
+  assertEquals(1.01,after/before,1e-9,"the recalibrated point");
  }
  /** The network package's water model without its ice fails loading, with the water record's file and the field, so a
   * /reload of such data is refused before publication instead of holding a running network at its model build. */

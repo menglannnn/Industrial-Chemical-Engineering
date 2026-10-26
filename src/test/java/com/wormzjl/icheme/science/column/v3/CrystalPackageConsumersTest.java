@@ -31,7 +31,7 @@ import org.junit.jupiter.api.Test;
  * </ul>
  *
  * The eight bundled packages admit no crystal, so none of these guards changes them (their pins are unmoved:
- * {@code bundledPackageFingerprintsAreUnchanged}, {@code LegacyNetworkPathPinTest}). Ported from the branch's
+ * {@code bundledPackageRevisionsAndSharedPhysicsAreUnchanged}, {@code LegacyNetworkPathPinTest}). Ported from the branch's
  * {@code 7bf22842} in milestone M4 of the unified thermo port (main's registry is {@link V3NeuralRegistry}).
  */
 class CrystalPackageConsumersTest {

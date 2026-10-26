@@ -88,7 +88,7 @@ class SpineNetworkPathTest {
         EnergyReference formation = data.formationReference();
         assertTrue(formation.formationDataQualified());
         assertEquals(hydrocarbon.components(), formation.components());
-        assertEquals(SpinePackageData.FORMATION_DATUM + ":" + pilot.spineFingerprint(), formation.revision());
+        assertEquals(SpinePackageData.FORMATION_DATUM + ":" + catalog.spineRevision(PILOT), formation.revision());
         assertEquals(-393477.0, formation.offsetJoulesPerMole(3), 0.0);
         // Free water keeps the network's datum and density: the same water record as the bundled network package.
         var bundled = FluidTestSupport.model(catalog, "icheme:tjl20_methane_nitrogen");
@@ -438,40 +438,44 @@ class SpineNetworkPathTest {
         var catalog = MaterialCatalog.bundled();
         var model = pilot();
         // The network's revision is its package's identity on the network family (main keeps the revision, not the identity).
-        var identity = ThermoIdentity.of(catalog, PILOT, HydrocarbonModel.NETWORK_FAMILY, catalog.requirePackage(PILOT).spineFingerprint(),
+        var identity = ThermoIdentity.of(catalog, PILOT, HydrocarbonModel.NETWORK_FAMILY, catalog.spineRevision(PILOT),
                 com.wormzjl.icheme.science.thermo.phase.WaterParticipation.SEPARATE_FREE_WATER);
         assertEquals(identity.revision(), model.revision());
-        assertEquals(catalog.fluidThermoFingerprint(PILOT), identity.packageFingerprint());
+        assertEquals(catalog.fluidRevision(PILOT), identity.packageRevision());
         assertEquals(HydrocarbonModel.NETWORK_FAMILY, identity.evaluatorFamily());
         assertEquals("pr78_translated_v1:direct-liquid-v1:tp-engine-v1:range-continuation-v1:spine-sensible-datum-v1", identity.evaluatorFamily());
-        assertEquals(catalog.requirePackage(PILOT).spineFingerprint(), identity.spineFingerprint());
+        assertEquals(catalog.spineRevision(PILOT), identity.spineRevision());
         assertEquals(ThermoIdentity.SEPARATE_FREE_WATER_FORMULATION + ":" + catalog.requirePackage(PILOT).water().revision(),
                 identity.waterModelRevision());
-        assertTrue(model.revision().startsWith("thermo-identity-v1;"), model.revision());
+        assertTrue(model.revision().startsWith("thermo-identity-v2;"), model.revision());
         System.out.println("WP5 pilot network revision: " + model.revision());
         String base = model.revision();
-        // A spine edit (the methane standard entropy): the spine fingerprint and so the revision move.
+        // Each part is a declared revision (owner decision 2026-10-26: nothing hashed), so each edit below bumps the
+        // revision of the record it changes.
+        // A spine edit (the methane standard entropy): the spine part and so the revision move.
         var entropy = PilotCryogenicTestCatalog.parseWith("data/icheme/materials/spine/methane.json",
-                o -> o.getAsJsonObject("standard_entropy").addProperty("value_j_per_mol_kelvin", 186.3703));
+                o -> { o.getAsJsonObject("standard_entropy").addProperty("value_j_per_mol_kelvin", 186.3703); PilotCryogenicTestCatalog.bump(o); });
         var entropyModel = new HydrocarbonModel(entropy, PILOT);
-        assertTrue(!base.equals(entropyModel.revision()) && entropy.fluidThermoFingerprint(PILOT).equals(identity.packageFingerprint())
-                && !entropy.requirePackage(PILOT).spineFingerprint().equals(identity.spineFingerprint()), "a spine edit moves the spine part only");
-        // An interaction edit (A of the CH4/N2 group pair): the package fingerprint and so the revision move.
-        var interaction = PilotCryogenicTestCatalog.parseWith("data/icheme/materials/group_interactions/eppr78_2022.json", o -> {
-            for (var element : o.getAsJsonArray("pairs")) {
-                var pair = element.getAsJsonObject();
-                if (pair.get("first").getAsString().equals("CH4") && pair.get("second").getAsString().equals("N2")) pair.addProperty("a_mpa", 30.89);
-            }
-        });
+        assertTrue(!base.equals(entropyModel.revision()) && entropy.fluidRevision(PILOT).equals(identity.packageRevision())
+                && !entropy.spineRevision(PILOT).equals(identity.spineRevision()), "a spine edit moves the spine part only");
+        // An interaction edit (A of the CH4/N2 group pair, which the package's revision covers): the package part moves.
+        var interaction = PilotCryogenicTestCatalog.parseWith(java.util.Map.<String, java.util.function.Consumer<com.google.gson.JsonObject>>of(
+                "data/icheme/materials/group_interactions/eppr78_2022.json", o -> {
+                    for (var element : o.getAsJsonArray("pairs")) {
+                        var pair = element.getAsJsonObject();
+                        if (pair.get("first").getAsString().equals("CH4") && pair.get("second").getAsString().equals("N2")) pair.addProperty("a_mpa", 30.89);
+                    }
+                },
+                "data/icheme/materials/packages/pilot_cryogenic.json", PilotCryogenicTestCatalog::bump));
         var interactionModel = new HydrocarbonModel(interaction, PILOT);
-        assertTrue(!base.equals(interactionModel.revision()) && interaction.requirePackage(PILOT).spineFingerprint().equals(identity.spineFingerprint())
-                && !interaction.fluidThermoFingerprint(PILOT).equals(identity.packageFingerprint()), "an interaction edit moves the package part only");
+        assertTrue(!base.equals(interactionModel.revision()) && interaction.spineRevision(PILOT).equals(identity.spineRevision())
+                && !interaction.fluidRevision(PILOT).equals(identity.packageRevision()), "an interaction edit moves the package part only");
         // A text edit of a spine moves nothing.
         var text = PilotCryogenicTestCatalog.parseWith("data/icheme/materials/spine/methane.json", o -> o.addProperty("source", "edited text"));
         assertEquals(base, new HydrocarbonModel(text, PILOT).revision());
         // D10: the formation enthalpy moves the identity and the formation reference, not the network's energies.
         var formation = PilotCryogenicTestCatalog.parseWith("data/icheme/materials/spine/methane.json",
-                o -> o.getAsJsonObject("formation_enthalpy").addProperty("value_j_per_mol", -73513));
+                o -> { o.getAsJsonObject("formation_enthalpy").addProperty("value_j_per_mol", -73513); PilotCryogenicTestCatalog.bump(o); });
         var shifted = new HydrocarbonModel(formation, PILOT);
         assertTrue(!base.equals(shifted.revision()));
         assertEquals(-73513.0, shifted.spine().orElseThrow().formationReference().offsetJoulesPerMole(1), 0.0);

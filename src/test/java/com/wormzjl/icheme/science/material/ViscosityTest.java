@@ -55,8 +55,9 @@ class ViscosityTest {
         assertEquals(1.1e-5, vapor.dynamicViscosityPascalSeconds(300, ViscosityCorrelation.Phase.VAPOR), 1e-20);
         assertTrue(vapor.dynamicViscosityPascalSeconds(600, ViscosityCorrelation.Phase.VAPOR) > vapor.dynamicViscosityPascalSeconds(300, ViscosityCorrelation.Phase.VAPOR));
         assertTrue(liquid.estimated());
-        assertEquals(MaterialCatalog.bundled().requirePackage(PACKAGE).fingerprint(), catalog.requirePackage(PACKAGE).fingerprint());
-        assertNotEquals(MaterialCatalog.bundled().viscosityFingerprint(PACKAGE), catalog.viscosityFingerprint(PACKAGE));
+        var axis = catalog.requirePackage(PACKAGE).components();
+        assertEquals(MaterialCatalog.bundled().physicsContent(PACKAGE, axis), catalog.physicsContent(PACKAGE, axis), "transport is not phase physics");
+        assertNotEquals(MaterialCatalog.bundled().viscosity(PACKAGE, "Methane", ViscosityCorrelation.Phase.LIQUID), Optional.of(liquid));
     }
 
     @Test void malformedFitsFailCatalogLoadingWithAFieldPath() {
@@ -81,13 +82,15 @@ class ViscosityTest {
         assertThrows(IllegalArgumentException.class, () -> MaterialCatalog.parse(resources));
     }
 
-    @Test void transportFingerprintAndSnapshotTrackViscosityWithoutInvalidatingPrSeeds() {
+    @Test void transportSnapshotTracksViscosityAndLeavesThePhasePhysics() {
         var original = MaterialCatalog.bundled();
         var replacement = MaterialCatalog.parse(waterChange(v -> v.getAsJsonArray("coefficients").set(0, new JsonPrimitive(.0003))));
-        assertNotEquals(original.viscosityFingerprint(PACKAGE), replacement.viscosityFingerprint(PACKAGE));
-        assertEquals(original.requirePackage(PACKAGE).scientificRevision(), replacement.requirePackage(PACKAGE).scientificRevision());
+        var water = ViscosityCorrelation.Phase.LIQUID;
+        assertNotEquals(original.viscosity(PACKAGE, "Water", water), replacement.viscosity(PACKAGE, "Water", water));
+        var axis = original.requirePackage(PACKAGE).components();
+        assertEquals(original.physicsContent(PACKAGE, axis), replacement.physicsContent(PACKAGE, axis), "the phase physics the column compares");
         var citationOnly = MaterialCatalog.parse(waterChange(v -> v.addProperty("source", "Corrected source citation")));
-        assertEquals(original.viscosityFingerprint(PACKAGE), citationOnly.viscosityFingerprint(PACKAGE));
+        assertEquals(original.viscosity(PACKAGE, "Water", water).orElseThrow().coefficients(), citationOnly.viscosity(PACKAGE, "Water", water).orElseThrow().coefficients());
         try {
             MaterialRuntime.with(original, PACKAGE, () -> {
                 MaterialRuntime.publish(replacement);

@@ -73,9 +73,12 @@ class LegacyNetworkPathPinTest {
      * data) replace main 0.8.0's: a fresh world. Since WP4 it carries the free water's formulation and revision
      * ({@code separate-free-water-v2:water-iapws-shomate-r2}: its ice), as a spine package's identity does, and the
      * fingerprint hashes the ice's science. Since D37 S4 the {@code cp-segments-v1} tag is gone with the segments, and the
-     * fingerprint is the nitrogen record r3's.
+     * fingerprint is the nitrogen record r3's. Since 2026-10-26 nothing is hashed (owner decision): the fingerprint (last
+     * {@code 7b222959...}) is the package data's declared revisions, {@link MaterialCatalog#fluidRevision}.
      */
-    static final String REVISION = "7b2229595dd3a815b0bd569f3fd1e7561f7c3671919be682f9c1d6656740cd92:direct-liquid-v1:tp-engine-v1:range-continuation-v1"
+    static final String REVISION = "icheme:tjl20_methane_nitrogen@crude-regrouped-r1;water=water-iapws-shomate-r2;ice=crystal-ice-ih-r1"
+            + ";fluid-data=conditional_solute_log_tables@dwsim-conditional-solute-ambient-v2,liquid_volume_reference_points@nist-liquid-calibration-20260915"
+            + ":direct-liquid-v1:tp-engine-v1:range-continuation-v1"
             + ":separate-free-water-v2:water-iapws-shomate-r2:fluid-domain-data-v1:catalog-volume-reference-v1";
 
     @Test
@@ -86,9 +89,9 @@ class LegacyNetworkPathPinTest {
         System.out.println("legacy network revision: " + revision);
         String digest = digest(catalog, model);
         System.out.println("legacy network digest: " + digest);
-        // The revision keeps WP4's layout: the package's fluid thermodynamic fingerprint and the formulation tags, with the
+        // The revision keeps WP4's layout: the package data's declared revisions and the formulation tags, with the
         // free water's formulation and revision since the free water's ice (WP4 of the range-extrapolation plan).
-        assertEquals(catalog.fluidThermoFingerprint(NETWORK) + ":" + HydrocarbonModel.FORMULATION + ":" + ThermoIdentity.SEPARATE_FREE_WATER_FORMULATION
+        assertEquals(catalog.fluidRevision(NETWORK) + ":" + HydrocarbonModel.FORMULATION + ":" + ThermoIdentity.SEPARATE_FREE_WATER_FORMULATION
                 + ":" + catalog.requirePackage(NETWORK).water().revision() + ":fluid-domain-data-v1:catalog-volume-reference-v1", revision);
         assertEquals(REVISION, revision);
         assertEquals(DIGEST, digest);

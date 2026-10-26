@@ -31,8 +31,8 @@ import java.util.Optional;
  *       each unordered pair at most once. A pair absent from the list is absent from the matrix: a species pair that
  *       needs it is refused when a package resolves its interactions ({@link GroupContributionInteractions}).</li>
  * </ul>
- * <p>Nothing in this record is hashed by itself: the values a package actually uses enter that package's fingerprints
- * through {@link GroupContributionInteractions}, so an edit of a pair no bundled package uses moves no fingerprint.</p>
+ * <p>A package that resolves its interactions from this record covers it with the package's declared revision: an edit
+ * of a pair that package uses bumps it. The values it uses are compared through {@link GroupContributionInteractions}.</p>
  */
 public final class GroupInteractionMatrix {
     /** The unit the record's A and B carry; the data object converts to pascal. */

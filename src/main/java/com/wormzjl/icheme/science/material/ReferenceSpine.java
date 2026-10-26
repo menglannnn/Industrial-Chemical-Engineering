@@ -9,7 +9,6 @@ import com.wormzjl.icheme.science.thermo.IdealGasFunction;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.TreeMap;
 
 /**
  * The reference spine of one species (a {@code materials/spine/<species>.json} record): its formation enthalpy,
@@ -92,7 +91,6 @@ public final class ReferenceSpine implements IdealGasFunction {
     private final String groupScheme;
     private final Map<String, Integer> groups;
     private final MaterialCoverage coverage;
-    private final Object science;
 
     private ReferenceSpine(String id, String component, String revision, String source, double molarMass,
             ReferenceValue formationEnthalpy, ReferenceValue standardEntropy, double maximumCpStepFraction,
@@ -142,10 +140,6 @@ public final class ReferenceSpine implements IdealGasFunction {
         var info = new ArrayList<SegmentInfo>();
         for (Segment s : segments) info.add(new SegmentInfo(s.type, s.minimum, s.maximum, s.gasConstant, s.source, s.revision, s.coverage));
         segmentInfo = List.copyOf(info);
-        var segmentScience = new ArrayList<Object>();
-        for (Segment s : segments) segmentScience.add(s.science());
-        science = List.of(component, molarMass, formationEnthalpy.value(), standardEntropy.value(), maximumCpStepFraction,
-                segmentScience, groupScheme, new TreeMap<>(groups));
     }
 
     private void fixReference(int k) {
@@ -217,8 +211,6 @@ public final class ReferenceSpine implements IdealGasFunction {
         var own = segments[segment(temperatureKelvin)].coverage;
         return own == null ? coverage : own;
     }
-    /** Numeric content for the package spine fingerprint: no id, revision, source or coverage text. */
-    Object science() { return science; }
 
     // ---------------------------------------------------------------------------------------------------------------
     // Loading
@@ -304,12 +296,6 @@ public final class ReferenceSpine implements IdealGasFunction {
         return result;
     }
 
-    private static List<Double> boxed(double[] values) {
-        var list = new ArrayList<Double>(values.length);
-        for (double v : values) list.add(v);
-        return list;
-    }
-
     // ---------------------------------------------------------------------------------------------------------------
     // Segments: Cp and the closed-form antiderivatives of Cp (enthalpy) and Cp/T (entropy at 1e5 Pa), each up to a
     // constant the loader replaces.
@@ -364,7 +350,6 @@ public final class ReferenceSpine implements IdealGasFunction {
         abstract double heatCapacity(double t);
         abstract double enthalpy(double t);
         abstract double entropy(double t);
-        abstract Object science();
     }
 
     /**
@@ -393,7 +378,6 @@ public final class ReferenceSpine implements IdealGasFunction {
         private double[] planckTheta = new double[0];
         private double[] coshN = new double[0];
         private double[] coshTheta = new double[0];
-        private final List<Object> termScience = new ArrayList<>();
 
         HelmholtzTerms(JsonObject o) {
             super("helmholtz_ideal_terms", o, Double.NaN);
@@ -416,20 +400,17 @@ public final class ReferenceSpine implements IdealGasFunction {
                 case "log_tau" -> {
                     double a = JsonFields.number(term, "a");
                     logTau += a;
-                    termScience.add(List.of(kind, a));
                 }
                 case "power" -> {
                     double[] n = doubles(term, "n", 1, 32), t = doubles(term, "t", 1, 32);
                     if (n.length != t.length) throw new IllegalArgumentException("power: n and t differ in length");
                     powerN = concat(powerN, n); powerT = concat(powerT, t);
-                    termScience.add(List.of(kind, boxed(n), boxed(t)));
                 }
                 case "planck_einstein" -> {
                     double[] n = doubles(term, "n", 1, 32), t = doubles(term, "t", 1, 32);
                     if (n.length != t.length) throw new IllegalArgumentException("planck_einstein: n and t differ in length");
                     for (double theta : t) if (!(theta > 0)) throw new IllegalArgumentException("planck_einstein: t must be positive");
                     planckN = concat(planckN, n); planckTheta = concat(planckTheta, t);
-                    termScience.add(List.of(kind, boxed(n), boxed(t)));
                 }
                 case "planck_einstein_function_t" -> {
                     double[] n = doubles(term, "n", 1, 32), v = doubles(term, "v", 1, 32);
@@ -441,14 +422,12 @@ public final class ReferenceSpine implements IdealGasFunction {
                         theta[i] = v[i] / critical;
                     }
                     planckN = concat(planckN, n); planckTheta = concat(planckTheta, theta);
-                    termScience.add(List.of(kind, boxed(n), boxed(v), critical));
                 }
                 case "planck_einstein_cosh" -> {
                     double[] n = doubles(term, "n", 1, 32), t = doubles(term, "t", 1, 32);
                     if (n.length != t.length) throw new IllegalArgumentException("planck_einstein_cosh: n and t differ in length");
                     for (double theta : t) if (!(theta > 0)) throw new IllegalArgumentException("planck_einstein_cosh: t must be positive");
                     coshN = concat(coshN, n); coshTheta = concat(coshTheta, t);
-                    termScience.add(List.of(kind, boxed(n), boxed(t)));
                 }
                 default -> throw new IllegalArgumentException("type: unsupported Helmholtz term " + kind
                         + " (expected log_tau, power, planck_einstein, planck_einstein_function_t or planck_einstein_cosh)");
@@ -502,8 +481,6 @@ public final class ReferenceSpine implements IdealGasFunction {
             }
             return gasConstant * sum;
         }
-
-        @Override Object science() { return List.of(type, minimum, maximum, gasConstant, reducingTemperature, termScience); }
     }
 
     /**
@@ -514,12 +491,10 @@ public final class ReferenceSpine implements IdealGasFunction {
      */
     private static final class Nasa9 extends Segment {
         private final double[] a;
-        private final double[] all;
 
         Nasa9(JsonObject o) {
             super("nasa9", o, CEA_GAS_CONSTANT);
-            all = doubles(o, "coefficients", 9, 9);
-            a = java.util.Arrays.copyOf(all, 7);
+            a = java.util.Arrays.copyOf(doubles(o, "coefficients", 9, 9), 7);
         }
 
         @Override double heatCapacity(double t) {
@@ -533,8 +508,6 @@ public final class ReferenceSpine implements IdealGasFunction {
         @Override double entropy(double t) {
             return gasConstant * (-a[0] / (2 * t * t) - a[1] / t + a[2] * DeterministicMath.log(t) + t * (a[3] + t * (a[4] / 2 + t * (a[5] / 3 + t * a[6] / 4))));
         }
-
-        @Override Object science() { return List.of(type, minimum, maximum, gasConstant, boxed(all)); }
     }
 
     /**
@@ -544,12 +517,10 @@ public final class ReferenceSpine implements IdealGasFunction {
      */
     private static final class Nasa7 extends Segment {
         private final double[] a;
-        private final double[] all;
 
         Nasa7(JsonObject o) {
             super("nasa7", o, CEA_GAS_CONSTANT);
-            all = doubles(o, "coefficients", 7, 7);
-            a = java.util.Arrays.copyOf(all, 5);
+            a = java.util.Arrays.copyOf(doubles(o, "coefficients", 7, 7), 5);
         }
 
         @Override double heatCapacity(double t) {
@@ -563,7 +534,5 @@ public final class ReferenceSpine implements IdealGasFunction {
         @Override double entropy(double t) {
             return gasConstant * (a[0] * DeterministicMath.log(t) + t * (a[1] + t * (a[2] / 2 + t * (a[3] / 3 + t * a[4] / 4))));
         }
-
-        @Override Object science() { return List.of(type, minimum, maximum, gasConstant, boxed(all)); }
     }
 }

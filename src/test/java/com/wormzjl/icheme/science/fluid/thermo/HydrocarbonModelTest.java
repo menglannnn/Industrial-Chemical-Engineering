@@ -12,7 +12,7 @@ class HydrocarbonModelTest {
      * compressibility; the column's data is untouched.
      */
     @Test void aLiquidIsTheEquationOfStateAtTheStatePressureWithItsOwnCompressibility() {
-        var catalog=MaterialCatalog.bundled();var original=catalog.requirePackage("icheme:tjl20_methane").fingerprint();
+        var catalog=MaterialCatalog.bundled();var original=catalog.requirePackage("icheme:tjl20_methane");
         var model=new HydrocarbonModel(catalog,"icheme:tjl20_methane");
         var eos=model.translated();
         double[] liquid=new double[model.componentCount()];liquid[6]=1;
@@ -35,7 +35,7 @@ class HydrocarbonModelTest {
         liquid[6]=.05;liquid[12]=.45;liquid[com.wormzjl.icheme.science.material.MaterialTestBasis.CRUDE-1]=.5;
         var crude=model.phase(350,1e6,liquid,PengRobinsonKernel.Root.LIQUID);
         assertTrue(crude.molarVolume()>0&&crude.isothermalCompressibility()>0);
-        assertEquals(original,catalog.requirePackage("icheme:tjl20_methane").fingerprint());
+        assertSame(original,catalog.requirePackage("icheme:tjl20_methane"));
         assertTrue(model.revision().contains(":"+HydrocarbonModel.FORMULATION+":"),model.revision());
         assertFalse(model.revision().contains("k="),"no compressibility in the revision");
     }

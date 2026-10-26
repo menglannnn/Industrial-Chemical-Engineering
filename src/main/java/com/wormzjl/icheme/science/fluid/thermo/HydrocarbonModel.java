@@ -65,7 +65,7 @@ public final class HydrocarbonModel {
                     data.formationEnthalpies(),data.translations());
             for(int i=0;i<data.anchors().size();i++)
                 requireLiquidRoot(packageId,data.components().get(i),i,data.anchors().get(i).temperature(),data.anchors().get(i).pressure());
-            revision=ThermoIdentity.of(catalog,packageId,NETWORK_FAMILY,propertyPackage.spineFingerprint(),WaterParticipation.SEPARATE_FREE_WATER).revision();
+            revision=ThermoIdentity.of(catalog,packageId,NETWORK_FAMILY,catalog.spineRevision(packageId),WaterParticipation.SEPARATE_FREE_WATER).revision();
             return;
         }
         spine=null;
@@ -101,7 +101,7 @@ public final class HydrocarbonModel {
         // single vapour-like root there would translate the component by a gas volume.
         for(int i=0;i<count;i++)requireLiquidRoot(packageId,components.get(i),i,anchorT[i],anchorP[i]);
         // The free water's formulation and revision, as a spine package's identity carries them (WP4: its ice).
-        revision=catalog.fluidThermoFingerprint(packageId)+":"+FORMULATION+":"+ThermoIdentity.SEPARATE_FREE_WATER_FORMULATION+":"+propertyPackage.water().revision()
+        revision=catalog.fluidRevision(packageId)+":"+FORMULATION+":"+ThermoIdentity.SEPARATE_FREE_WATER_FORMULATION+":"+propertyPackage.water().revision()
                 +":fluid-domain-data-v1:catalog-volume-reference-v1";
     }
 
@@ -131,9 +131,9 @@ public final class HydrocarbonModel {
 
     /**
      * The network's thermodynamic revision. For a package without a reference spine it is the coefficient path's
-     * string (the fluid thermodynamic fingerprint, the formulation tags and the free-water revision); for a spine package it is its
-     * {@link ThermoIdentity}'s revision: the fluid thermodynamic fingerprint, the {@link #NETWORK_FAMILY}, the spine
-     * fingerprint and the free-water revision.
+     * string (the package data's declared revisions, the formulation tags and the free-water revision); for a spine package it
+     * is its {@link ThermoIdentity}'s revision: the package data's declared revisions, the {@link #NETWORK_FAMILY}, the spine
+     * revision and the free-water revision.
      */
     public String revision() { return revision; }
     /** The resolved spine inputs; empty for a package without a spine. */

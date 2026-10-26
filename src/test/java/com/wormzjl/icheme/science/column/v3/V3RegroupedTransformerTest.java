@@ -28,7 +28,7 @@ class V3RegroupedTransformerTest {
         d.addProperty("baselineRevision",V3AnchorTransformerInitializer.NativeAnchor.REVISION); d.addProperty("modelId","test:synthetic");
         d.addProperty("packageId",input.packageId());
         var p=MaterialCatalog.bundled().requirePackage(input.packageId());
-        d.addProperty("propertyRevision",p.scientificRevision()); d.addProperty("physicsFingerprint",MaterialCatalog.bundled().physicsFingerprint(input.packageId(),p.components()));
+        d.addProperty("propertyRevision",p.scientificRevision());
         d.add("components",JSON.toJsonTree(input.componentBasis().componentIds()));
         double[] z=input.feedComponentMolarFlowsMolPerSecond(); double total=Arrays.stream(z).sum();
         for(int i=0;i<z.length;i++)z[i]/=total;
@@ -101,7 +101,12 @@ class V3RegroupedTransformerTest {
         var edited=JsonParser.parseString(records.get(key)).getAsJsonObject();
         var pr=edited.getAsJsonObject("models").getAsJsonObject("pr78");
         pr.addProperty("critical_temperature_kelvin",pr.get("critical_temperature_kelvin").getAsDouble()+1);
-        records.put(key,edited.toString()); var changed=MaterialCatalog.parse(records);
+        records.put(key,edited.toString());
+        // Nothing is hashed (owner decision 2026-10-26): the edit declares itself with the package's revision.
+        String packageKey="data/icheme/materials/packages/tjl20.json";
+        var record=JsonParser.parseString(records.get(packageKey)).getAsJsonObject();
+        record.addProperty("revision",record.get("revision").getAsString()+"-edited");records.put(packageKey,record.toString());
+        var changed=MaterialCatalog.parse(records);
         assertFalse(com.wormzjl.icheme.science.material.MaterialRuntime.with(changed,input.packageId(),()->model.supported(input)));
         assertTrue(com.wormzjl.icheme.science.material.MaterialRuntime.with(original,input.packageId(),()->model.supported(input)));
     }

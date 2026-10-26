@@ -17,7 +17,7 @@ import org.junit.jupiter.api.Test;
 /**
  * P3 WP2 (batch 2026-09-24-coolprop-low-temperature, plan {@code P3_PILOT_ENGINE_PLAN.md} sections 4.1 and 4.3): the
  * {@code group_interactions} record kind, the E-PPR78 {@code rule} of an interactions record, the per-pair terms it
- * resolves from the spines' group counts, the loader's refusals, and the fingerprint behaviour.
+ * resolves from the spines' group counts, the loader's refusals, and the physics the package compares.
  */
 class GroupContributionInteractionsTest {
     private static final String MATRIX = "data/icheme/materials/group_interactions/eppr78_2022.json";
@@ -256,39 +256,38 @@ class GroupContributionInteractionsTest {
     }
 
     @Test
-    void fingerprintsFollowTheValuesAPackageUses() {
+    void physicsFollowsTheValuesAPackageUses() {
         var base = PilotCryogenicTestCatalog.catalog();
         var p = pilot(base);
-        String physics = base.physicsFingerprint(p.id(), p.components());
+        String physics = base.physicsContent(p.id(), p.components());
         var nitrogenMethane = List.of("Nitrogen", "Methane");
-        String subAxis = base.physicsFingerprint(p.id(), nitrogenMethane);
-        // A and B of a pair the pilot uses: both fingerprints move.
+        String subAxis = base.physicsContent(p.id(), nitrogenMethane);
+        // A and B of a pair the pilot uses: the physics on both axes moves.
         for (String field : new String[] {"a_mpa", "b_mpa"}) {
             var edited = PilotCryogenicTestCatalog.parseWith(MATRIX, o -> pair(o, "CH4", "N2").addProperty(field, field.equals("a_mpa") ? 30.89 : 37.07));
-            assertNotEquals(p.fingerprint(), pilot(edited).fingerprint(), field);
-            assertNotEquals(physics, edited.physicsFingerprint(p.id(), p.components()), field);
-            assertNotEquals(subAxis, edited.physicsFingerprint(p.id(), nitrogenMethane), field);
-            assertBundledPinsHold(edited);
+            assertNotEquals(physics, edited.physicsContent(p.id(), p.components()), field);
+            assertNotEquals(subAxis, edited.physicsContent(p.id(), nitrogenMethane), field);
+            assertBundledPackagesHold(edited);
         }
-        // A pair outside the sub-axis moves the full fingerprint, not the sub-axis one.
+        // A pair outside the sub-axis moves the full axis, not the sub-axis.
         var co2 = PilotCryogenicTestCatalog.parseWith(MATRIX, o -> pair(o, "CO2", "N2").addProperty("a_mpa", 114.0));
-        assertNotEquals(p.fingerprint(), pilot(co2).fingerprint());
-        assertEquals(subAxis, co2.physicsFingerprint(p.id(), nitrogenMethane));
+        assertNotEquals(physics, co2.physicsContent(p.id(), p.components()));
+        assertEquals(subAxis, co2.physicsContent(p.id(), nitrogenMethane));
         // A pair no package uses, or a text: nothing moves.
         var unused = PilotCryogenicTestCatalog.parseWith(MATRIX, o -> { firstPair(o).addProperty("a_mpa", 65.55); o.addProperty("source", "edited text"); });
-        assertEquals(p.fingerprint(), pilot(unused).fingerprint());
-        assertEquals(physics, unused.physicsFingerprint(p.id(), p.components()));
-        assertBundledPinsHold(unused);
+        assertEquals(physics, unused.physicsContent(p.id(), p.components()));
+        assertBundledPackagesHold(unused);
         // A projected inference view would drop the pair terms: refused.
         assertThrows(IllegalArgumentException.class, () -> base.inferenceView(p.id(), nitrogenMethane, p.id(), false));
     }
 
-    private static void assertBundledPinsHold(MaterialCatalog catalog) {
+    /** Every bundled package but the pilot is untouched by a group-matrix edit: its record and its physics. */
+    private static void assertBundledPackagesHold(MaterialCatalog catalog) {
         var bundled = MaterialCatalog.bundled();
         for (var p : bundled.packages().values()) {
             if (p.id().equals(PilotCryogenicTestCatalog.PACKAGE_ID)) continue;
-            assertEquals(p.fingerprint(), catalog.requirePackage(p.id()).fingerprint(), p.id());
-            assertEquals(bundled.physicsFingerprint(p.id(), p.components()), catalog.physicsFingerprint(p.id(), p.components()), p.id());
+            assertEquals(p, catalog.requirePackage(p.id()), p.id());
+            assertEquals(bundled.physicsContent(p.id(), p.components()), catalog.physicsContent(p.id(), p.components()), p.id());
         }
     }
 

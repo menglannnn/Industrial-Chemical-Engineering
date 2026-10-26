@@ -53,8 +53,7 @@ final class V3AnchorTransformerInitializer implements V3NeuralInitializer {
                 || m.branchesSeen == null || m.branchesSeen.length != 3 || !(m.branchesSeen[0] || m.branchesSeen[1] || m.branchesSeen[2])
                 || m.presenceThreshold != .02 || m.traceFloorFraction != V3TruncationSupport.TRACE_FLOOR_FRACTION
                 || m.normalization == null || m.weights == null || m.weights.size() != 34 || m.designConstraints == null
-                || !NativeAnchor.REVISION.equals(m.baselineRevision) || m.physicsFingerprint == null
-                || !m.physicsFingerprint.matches("[0-9a-f]{64}"))
+                || !NativeAnchor.REVISION.equals(m.baselineRevision))
             throw new IllegalArgumentException("Invalid transformer manifest");
         for (String name : List.of("xm", "xscale", "ym", "yscale", "gm", "gscale", "bm", "bscale")) {
             int count = name.startsWith("x") ? nodeWidth(m) : name.startsWith("g") ? globalWidth(m) : outputWidth(m);
@@ -107,7 +106,6 @@ final class V3AnchorTransformerInitializer implements V3NeuralInitializer {
     String propertyRevision(String packageId) { return com.wormzjl.icheme.science.material.MaterialRuntime.current().requirePackage(packageId).scientificRevision(); }
 
     List<String> componentIds() { return List.copyOf(model.components); }
-    String physicsFingerprint() { return model.physicsFingerprint; }
     String referencePackage() { return model.packageId; }
 
     long parameterCount() { return parameterStorageBytes() / Double.BYTES; }
@@ -133,10 +131,13 @@ final class V3AnchorTransformerInitializer implements V3NeuralInitializer {
 
     boolean supported(V3ColumnInput input) {
         var catalog=com.wormzjl.icheme.science.material.MaterialRuntime.current();
-        if (!catalog.packages().containsKey(input.packageId())
+        // The model was trained on the reference package's declared revision; the input's physics on the model's axis
+        // must be the reference's, compared directly (owner decision 2026-10-26: no hash).
+        if (!catalog.packages().containsKey(input.packageId()) || !catalog.packages().containsKey(model.packageId)
                 || !input.componentBasis().componentIds().equals(model.components)
                 || !catalog.requirePackage(input.packageId()).components().equals(model.components)
-                || !catalog.physicsFingerprint(input.packageId(),model.components).equals(model.physicsFingerprint)) return false;
+                || !catalog.requirePackage(model.packageId).scientificRevision().equals(model.propertyRevision)
+                || !catalog.samePhysics(input.packageId(),model.packageId,model.components)) return false;
         if (!input.componentBasis().componentIds().equals(model.components)                || input.stageCount() < 2 || input.stageCount() > 64 || input.feedStageNumber() < 1 || input.feedStageNumber() > input.stageCount()
                 || input.pumparounds().size() > 4 || input.sideDraws().size() > 3 || input.steamFeeds().size() > 2
                 || !model.formulationRevisions.contains(V3ColumnCalculator.formulationRevision(input, 0, V3ConvergenceEvidence.MAXIMUM_LOG_FLOW_CHANGE))) return false;
@@ -285,8 +286,8 @@ final class V3AnchorTransformerInitializer implements V3NeuralInitializer {
     private static final class Tensor { int[] shape; double[] values; }
     private static final class Design { double minimumNodePressurePascal, maximumNodePressurePascal; boolean steamAtSumpOnly; List<V3PumparoundSpec.Split> pumparoundSplits; }
     private static final class Document {
-        String featureRevision, modelType, modelId, packageId, propertyRevision, propertyFingerprint, anchorLayout, baselineRevision;
-        String physicsFingerprint; double[][][] compositionEdges;
+        String featureRevision, modelType, modelId, packageId, propertyRevision, anchorLayout, baselineRevision;
+        double[][][] compositionEdges;
         List<String> components, formulationRevisions; boolean[] branchesSeen;
         double presenceThreshold, traceFloorFraction; double[] globalMin, globalMax;
         Map<String, double[]> normalization; Map<String, Tensor> weights; Design designConstraints;

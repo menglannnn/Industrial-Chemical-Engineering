@@ -40,8 +40,10 @@ class MaterialPresetsTest {
         resources.put(path,example);
         var replaced=MaterialCatalog.parse(resources);String id="icheme:tjl20_methane";
         assertEquals(357,replaced.requirePackage(id).properties().getFirst().density());
-        assertEquals(original.viscosityFingerprint(id),replaced.viscosityFingerprint(id));
-        assertNotEquals(original.physicsFingerprint(id,original.requirePackage(id).components()),replaced.physicsFingerprint(id,replaced.requirePackage(id).components()));
+        var component=replaced.requirePackage(id).properties().getFirst().component();
+        for(var phase:ViscosityCorrelation.Phase.values())assertEquals(original.viscosity(id,component,phase),replaced.viscosity(id,component,phase),phase.name());
+        assertEquals(original.liquidMixture(id),replaced.liquidMixture(id));
+        assertNotEquals(original.physicsContent(id,original.requirePackage(id).components()),replaced.physicsContent(id,replaced.requirePackage(id).components()));
     }
     @Test void customPresetIsServerDefinedAndInvalidOverridesFailBeforePublication() {
         var original=MaterialCatalog.bundled();var resources=new HashMap<>(original.resources());String path=ROOT+"presets/column_custom.json";
@@ -51,7 +53,7 @@ class MaterialPresetsTest {
         var changed=MaterialCatalog.parse(resources);var choice=ColumnInputPreset.fromId(changed,"custom_crude");
         assertEquals(650,choice.input(changed).feedTemperatureKelvin());assertTrue(changed.presets().visibleColumns().contains(choice.descriptor(changed)));
         assertThrows(IllegalArgumentException.class,()->ColumnInputPreset.fromId(original,"custom_crude"));
-        assertEquals(original.physicsFingerprint("icheme:dalia_tjl20",original.requirePackage("icheme:dalia_tjl20").components()),changed.physicsFingerprint("icheme:dalia_tjl20",changed.requirePackage("icheme:dalia_tjl20").components()));
+        assertEquals(original.physicsContent("icheme:dalia_tjl20",original.requirePackage("icheme:dalia_tjl20").components()),changed.physicsContent("icheme:dalia_tjl20",changed.requirePackage("icheme:dalia_tjl20").components()));
         preset.getAsJsonObject("operating").addProperty("stageCount",2);resources.put(path,preset.toString());
         var failure=assertThrows(IllegalArgumentException.class,()->MaterialCatalog.parse(resources));assertTrue(failure.getMessage().contains(path));
         preset.addProperty("assay","missing:assay");resources.put(path,preset.toString());

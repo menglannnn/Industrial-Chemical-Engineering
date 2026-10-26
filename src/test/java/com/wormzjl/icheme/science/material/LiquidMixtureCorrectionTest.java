@@ -43,15 +43,16 @@ class LiquidMixtureCorrectionTest {
         assertThrows(IllegalArgumentException.class,()->model().logCorrection(300,new double[4]));
         assertThrows(IllegalArgumentException.class,()->model().logCorrection(300,new double[]{1,0,-1,0}));
     }
-    @Test void transportEditChangesOnlyTransportFingerprintAndNamesResourceOnError() {
+    @Test void transportEditChangesOnlyTransportAndNamesResourceOnError() {
         String packageId="icheme:tjl20_methane",path="data/icheme/materials/packages/tjl20.json";
         var baseline=MaterialCatalog.bundled();var resources=new HashMap<>(baseline.resources());
         resources.keySet().removeIf(key->key.contains("/networks/")); // Isolated column transport override, not a shared network preset.
         var record=JsonParser.parseString(resources.get(path)).getAsJsonObject();
         record.add("liquid_mixture",JsonParser.parseString("{\"type\":\"symmetric_pair_groups_v1\",\"coefficients\":[1,2,3,4],\"reference_kelvin\":323.15,\"slope_cap_kelvin\":373.15}"));
         resources.put(path,record.toString());var changed=MaterialCatalog.parse(resources);
-        assertEquals(baseline.requirePackage(packageId).fingerprint(),changed.requirePackage(packageId).fingerprint());
-        assertNotEquals(baseline.viscosityFingerprint(packageId),changed.viscosityFingerprint(packageId));
+        var axis=baseline.requirePackage(packageId).components();
+        assertEquals(baseline.physicsContent(packageId,axis),changed.physicsContent(packageId,axis),"the phase physics is untouched");
+        assertNotEquals(baseline.liquidMixture(packageId),changed.liquidMixture(packageId));
         record.getAsJsonObject("liquid_mixture").addProperty("slope_cap_kelvin",-1);
         resources.put(path,record.toString());
         assertTrue(assertThrows(IllegalArgumentException.class,()->MaterialCatalog.parse(resources)).getMessage().contains(path));
