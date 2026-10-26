@@ -49,11 +49,11 @@ public final class TankOutlets {
     public static FluidView.Tank tank(FluidThermodynamics model,PassiveNetwork.Reservoir tank,PassiveIntervalSolver.Result result) {
         var rates=released(model,result,tank.id());
         Double top=tank.empty()?null:tank.state().pressure();
-        return new FluidView.Tank(tank.inventory().levelHeight(),tank.inventory().open(),rates[0],rates[1],tank.inventory().volume(),top,top==null?null:top+bottomHead(model,tank));
+        return new FluidView.Tank(tank.inventory().levelHeight(),tank.inventory().open(),rates[0],rates[1],tank.inventory().volume(),top,top==null?null:top+bottomHead(model,tank),tank.inventory().geometry());
     }
     /** The same condensed head used by bottom/overflow hydraulic ports; no flash or process advancement. */
     private static double bottomHead(FluidThermodynamics model,PassiveNetwork.Reservoir tank){
-        return tank.empty()?0:PassiveStepSolver.GRAVITY*model.liquidMass(tank.state())*tank.inventory().levelHeight()/tank.inventory().volume();
+        return tank.empty()?0:PassiveStepSolver.portHead(model,tank,PassiveNetwork.PhasePort.LIQUID,tank.state());
     }
     /** The mass rates (kg/s) the VENT and SPILL boundary transfers of {@code result} took to the atmosphere at node
      * {@code nodeId} (at every node when null), over the interval's seconds: {@code [vent, spill]}; zeros without an

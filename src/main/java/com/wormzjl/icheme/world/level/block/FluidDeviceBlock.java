@@ -191,7 +191,7 @@ public sealed class FluidDeviceBlock extends BaseEntityBlock {
                 FluidWorldAuthority.find(serverPlayer.server).ifPresent(world->world.togglePipeCutoff(entity.fluidIdentity()));
             return InteractionResult.sidedSuccess(level.isClientSide());
         }
-        if(kind==TopologyCompiler.Kind.PIPE)return InteractionResult.PASS;
+        if(kind==TopologyCompiler.Kind.PIPE&&!(level.getBlockEntity(position) instanceof FluidDeviceBlockEntity pipe&&!pipe.instruments().sensors().isEmpty()))return InteractionResult.PASS;
         if(player instanceof ServerPlayer serverPlayer&&level.getBlockEntity(position) instanceof FluidDeviceBlockEntity entity)entity.open(serverPlayer,false);
         return InteractionResult.sidedSuccess(level.isClientSide());
     }

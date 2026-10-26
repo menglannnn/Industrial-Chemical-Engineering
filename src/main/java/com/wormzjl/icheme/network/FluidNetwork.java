@@ -46,7 +46,7 @@ import java.util.*;
  * <p>{@code fluid-14}: a tank publishes capacity and separate top/bottom absolute pressures, including empty capacity.</p>
  */
 public final class FluidNetwork {
-    public static final String PROTOCOL="fluid-14";
+    public static final String PROTOCOL="fluid-15";
     private static final Gson JSON=new Gson();
     public static final int MAX_JSON=262144;
     public static final int MAX_EDIT_JSON=4096;
@@ -60,12 +60,13 @@ public final class FluidNetwork {
     private static String plainNumber(double value){return java.math.BigDecimal.valueOf(value).stripTrailingZeros().toPlainString();}
     /** Required on the wire; a missing or unknown value is rejected by Controls validation. */
     public enum Power {ON,OFF}
-    public record Controls(double temperature,double pressure,double diameter,double roughness,double volumeFlow,double maximumAddedPressure,double[] composition,SlurryFeed solids,double maximumPressureRatio,Power power) {
+    public record Controls(double temperature,double pressure,double diameter,double roughness,double volumeFlow,double maximumAddedPressure,double[] composition,SlurryFeed solids,double maximumPressureRatio,Power power,FlowControl.ValveSource valveSource,double massFlow) {
+        public Controls(double temperature,double pressure,double diameter,double roughness,double volumeFlow,double maximumAddedPressure,double[] composition,SlurryFeed solids,double maximumPressureRatio,Power power){this(temperature,pressure,diameter,roughness,volumeFlow,maximumAddedPressure,composition,solids,maximumPressureRatio,power,FlowControl.ValveSource.NONE,1);}
         public Controls(double temperature,double pressure,double diameter,double roughness,double volumeFlow,double maximumAddedPressure,double[] composition,SlurryFeed solids,double maximumPressureRatio){this(temperature,pressure,diameter,roughness,volumeFlow,maximumAddedPressure,composition,solids,maximumPressureRatio,Power.ON);}
         public Controls(double temperature,double pressure,double diameter,double roughness,double volumeFlow,double maximumAddedPressure,double[] composition,SlurryFeed solids){this(temperature,pressure,diameter,roughness,volumeFlow,maximumAddedPressure,composition,solids,DEFAULT_PRESSURE_RATIO);}
         public Controls(double temperature,double pressure,double diameter,double roughness,double volumeFlow,double maximumAddedPressure,double[] composition){this(temperature,pressure,diameter,roughness,volumeFlow,maximumAddedPressure,composition,SlurryFeed.NONE);}
         public Controls {
-            Objects.requireNonNull(solids);if(power==null)throw new IllegalArgumentException("Missing or unknown power setting");composition=composition.clone();
+            Objects.requireNonNull(valveSource);if(!Double.isFinite(massFlow)||massFlow<0)throw new IllegalArgumentException("Invalid mass-flow target");Objects.requireNonNull(solids);if(power==null)throw new IllegalArgumentException("Missing or unknown power setting");composition=composition.clone();
             for(double value:new double[]{temperature,pressure,diameter,roughness,volumeFlow,maximumAddedPressure,maximumPressureRatio})if(!Double.isFinite(value))throw new IllegalArgumentException("All controls must be finite numbers");
             if(!pressureRatioAllowed(maximumPressureRatio))throw new IllegalArgumentException("The pressure ratio must lie between "+MINIMUM_PRESSURE_RATIO+" and "+MAXIMUM_PRESSURE_RATIO);
             // Temperature and pressure are only required to be physical here: the input box is the property package's
@@ -78,9 +79,11 @@ public final class FluidNetwork {
             var d=record.device();double flow=d.control() instanceof FlowControl.Mover m?m.requestedVolumeFlow():.01;
             double head=d.control() instanceof FlowControl.Pump p?p.maximumAddedPressure():500000;
             double ratio=d.control() instanceof FlowControl.Compressor c?c.maximumPressureRatio():DEFAULT_PRESSURE_RATIO;
-            double pressure=d.control() instanceof FlowControl.PressureValve v?v.targetPressure():record.spec().pressure();
+            double pressure=d.control() instanceof FlowControl.Valve v?v.targetPressure():record.spec().pressure();
+            var valve=d.control() instanceof FlowControl.ControlValve v?v:null;
+            if(valve!=null)flow=valve.volumeTarget();
             var power=!d.generatorEnabled()||d.control() instanceof FlowControl.Mover m&&!m.enabled()?Power.OFF:Power.ON;
-            return new Controls(record.spec().temperature(),pressure,d.geometry().diameter(),d.geometry().roughness(),flow,head,record.spec().composition(),record.spec().solids(),ratio,power);
+            return new Controls(record.spec().temperature(),pressure,d.geometry().diameter(),d.geometry().roughness(),flow,head,record.spec().composition(),record.spec().solids(),ratio,power,valve==null?(d.control() instanceof FlowControl.PressureValve?FlowControl.ValveSource.PRESSURE:FlowControl.ValveSource.NONE):valve.source(),valve==null?1:valve.massTarget());
         }
     }
     /**
@@ -88,8 +91,10 @@ public final class FluidNetwork {
      * and splits it for the wire; the client joins the two parts it received and validates the whole again.
      */
     public record MenuData(TopologyCompiler.Kind kind,FluidView view,Controls controls,List<String> components,List<FluidPresetCatalog.Preset> presets,String message,
-            Map<String,com.wormzjl.icheme.science.material.MaterialName> materialNames,List<Double> molecularWeights) {
+            Map<String,com.wormzjl.icheme.science.material.MaterialName> materialNames,List<Double> molecularWeights,List<com.wormzjl.icheme.runtime.instrument.Sensor.Reading> sensors,ValveData valve) {
+        public MenuData(TopologyCompiler.Kind kind,FluidView view,Controls controls,List<String> components,List<FluidPresetCatalog.Preset> presets,String message,Map<String,com.wormzjl.icheme.science.material.MaterialName> materialNames,List<Double> molecularWeights){this(kind,view,controls,components,presets,message,materialNames,molecularWeights,List.of(),null);}
         public MenuData {
+            sensors=List.copyOf(sensors);if(sensors.size()>8)throw new IllegalArgumentException("Too many sensor readings");
             Objects.requireNonNull(kind);Objects.requireNonNull(view);Objects.requireNonNull(controls);Objects.requireNonNull(message);
             components=new com.wormzjl.icheme.science.material.MaterialAxis(components).ids();presets=List.copyOf(presets);materialNames=Map.copyOf(materialNames);molecularWeights=validatedWeights(molecularWeights,components.size());
             if(controls.composition().length!=components.size()||presets.size()>com.wormzjl.icheme.science.material.MaterialPresets.MAX_PRESETS
@@ -113,7 +118,7 @@ public final class FluidNetwork {
             for(var e:materialNames.entrySet())if(!e.getKey().equals(e.getValue().id()))throw new IllegalArgumentException("Fluid name identity mismatch");
         }
         /** Joins what a menu received: its last static payload and the live payload just delivered. */
-        public static MenuData of(StaticData fixed,LiveData live){return new MenuData(fixed.kind(),live.view(),live.controls(),fixed.components(),fixed.presets(),live.message(),fixed.materialNames(),fixed.molecularWeights());}
+        public static MenuData of(StaticData fixed,LiveData live){return new MenuData(fixed.kind(),live.view(),live.controls(),fixed.components(),fixed.presets(),live.message(),fixed.materialNames(),fixed.molecularWeights(),live.sensors(),live.valve());}
         public StaticData staticData(long revision){return new StaticData(kind,revision,components,presets,materialNames,molecularWeights);}
     }
     /** The static payload: what changes only with the device's registration revision (and never within one server run otherwise). */
@@ -126,9 +131,11 @@ public final class FluidNetwork {
         }
     }
     /** The live payload: the bucket's view, the device's current controls, and the engine's reply (empty for none). */
-    public record LiveData(FluidView view,Controls controls,String message) {
+    public record ValveData(boolean configured,double opening,String status){public ValveData{if(!Double.isFinite(opening)||opening<0||opening>1)throw new IllegalArgumentException("Invalid opening");Objects.requireNonNull(status);}}
+    public record LiveData(FluidView view,Controls controls,String message,List<com.wormzjl.icheme.runtime.instrument.Sensor.Reading> sensors,ValveData valve) {
+        public LiveData(FluidView view,Controls controls,String message){this(view,controls,message,List.of(),null);}
         public LiveData {
-            Objects.requireNonNull(view);Objects.requireNonNull(controls);Objects.requireNonNull(message);
+            sensors=List.copyOf(sensors);if(sensors.size()>8)throw new IllegalArgumentException("Too many sensor readings");Objects.requireNonNull(view);Objects.requireNonNull(controls);Objects.requireNonNull(message);
             if(message.length()>1024||view.pipeHistory().size()>12||view.pipeRoutes().size()>12||view.status().length()>2048)throw new IllegalArgumentException("Fluid view exceeds display bounds");
         }
     }
@@ -201,7 +208,22 @@ public final class FluidNetwork {
         if(view.identity()!=record.device().id()||view.inputRevision()!=record.revision())
             throw new IllegalArgumentException("Presentation snapshot registration mismatch");
         return new MenuData(record.device().hydraulicKind(),view,Controls.from(record),world.components(),world.presets(),"",
-            world.materialNames(),Arrays.stream(world.model().molecularWeights()).boxed().toList());
+            world.materialNames(),Arrays.stream(world.model().molecularWeights()).boxed().toList(),world.instruments().sensorReadings(record.device().id(),view),valveData(world,record,view));
+    }
+    private static ValveData valveData(FluidWorldAuthority world,WorldTopologyLedger.Registration record,FluidView view){
+        if(!(record.device().control() instanceof FlowControl.Valve valve))return null;
+        if(valve.bare())return new ValveData(false,1,"Lacking components");
+        double head=view.devicePressureChange()==null?0:Math.max(0,view.devicePressureChange());
+        double rho=view.state()==null?1:view.state().mass()/Math.max(1e-300,view.state().volume());
+        var reading=world.instrumentPipeReading(record.device().id());double flow=reading==null?view.massFlow():reading.massFlow();if(reading!=null&&reading.volumeFlow()!=null&&reading.volumeFlow()!=0)rho=reading.massFlow()/reading.volumeFlow();
+        double d=record.device().geometry().diameter(),u=view.status().contains("/ CLOSED")?0:view.status().contains("/ VALVE_OPEN")?1:FlowControl.opening(flow,head,rho,Math.PI*d*d/4);
+        if(view.status().contains("CONTROL_CONFLICT")||view.status().contains("VALVE_CONFLICT"))return new ValveData(true,u,"Control conflict; holding opening");
+        if(view.committedTick()==0&&view.state()==null&&reading==null)return new ValveData(true,u,"Signal unavailable");
+        boolean limited;
+        if(valve.pressureControl())limited=view.state()==null||Math.abs(view.state().pressure()-valve.targetPressure())>Math.max(.01,1e-6*valve.targetPressure());
+        else if(valve instanceof FlowControl.ControlValve modular){double measured=modular.source()==FlowControl.ValveSource.MASS_FLOW?flow:reading!=null&&reading.volumeFlow()!=null?reading.volumeFlow():Double.NaN;limited=!Double.isFinite(measured)||Math.abs(measured-modular.target())>Math.max(1e-10,1e-6*modular.target());}
+        else limited=false;
+        return new ValveData(true,u,u<=1e-8?(limited?"Closed / target limited":"Closed"):u>=1-1e-8?(limited?"Fully open / target limited":"Fully open"):"Regulating");
     }
     /** Sends a published snapshot to an installed, requested menu; replay uses an empty reply. The presentation checked
      * that the menu is open ({@code FluidPresentation.Host.open}) and the snapshot is its device's. */
@@ -211,7 +233,7 @@ public final class FluidNetwork {
             PacketDistributor.sendToPlayer(player,new StaticPayload(menu.containerId,menu.identity(),JSON.toJson(data.staticData(data.view().inputRevision()))));
             FluidRuntimeDiagnostics.count(FluidRuntimeDiagnostics.menuPackets);FluidRuntimeDiagnostics.count(FluidRuntimeDiagnostics.staticPayloads);
         }
-        PacketDistributor.sendToPlayer(player,new LivePayload(menu.containerId,menu.identity(),JSON.toJson(new LiveData(data.view(),data.controls(),reply))));
+        PacketDistributor.sendToPlayer(player,new LivePayload(menu.containerId,menu.identity(),JSON.toJson(new LiveData(data.view(),data.controls(),reply,data.sensors(),data.valve()))));
         FluidRuntimeDiagnostics.count(FluidRuntimeDiagnostics.menuPackets);
     }
 
@@ -251,7 +273,17 @@ public final class FluidNetwork {
                     case PIPE,FILTER->geometry=new PipeResistance.Geometry(geometry.length(),controls.diameter,PipeResistance.DEFAULT_ROUGHNESS_METRES,geometry.minorLoss());
                     case PUMP->control=new FlowControl.Pump(controls.volumeFlow,controls.maximumAddedPressure,controls.power==Power.ON);
                     case COMPRESSOR->control=new FlowControl.Compressor(controls.volumeFlow,controls.maximumPressureRatio,controls.power==Power.ON);
-                    case VALVE->control=new FlowControl.PressureValve(controls.pressure);
+                    case VALVE->{
+                        if(control instanceof FlowControl.ControlValve valve){
+                            if(valve.bare())throw new IllegalArgumentException("Lacking components");
+                            var source=valve.source();
+                            if(source!=FlowControl.ValveSource.PRESSURE){
+                                if(controls.valveSource!=FlowControl.ValveSource.MASS_FLOW&&controls.valveSource!=FlowControl.ValveSource.VOLUME_FLOW)throw new IllegalArgumentException("Flowmeter required for flow control");
+                                source=controls.valveSource;
+                            }else if(controls.valveSource!=FlowControl.ValveSource.PRESSURE)throw new IllegalArgumentException("Pressure probe controls upstream pressure");
+                            control=new FlowControl.ControlValve(source,controls.pressure,controls.massFlow,controls.volumeFlow,valve.sensor(),Math.addExact(valve.revision(),1));
+                        }else control=new FlowControl.PressureValve(controls.pressure);
+                    }
                     case GENERATOR->spec=new FluidDeviceSpec(spec.volume(),controls.temperature,controls.pressure,controls.composition,controls.solids);
                     case VOID->spec=new FluidDeviceSpec(spec.volume(),spec.temperature(),controls.pressure,spec.composition());
                     case RESERVOIR->throw new IllegalArgumentException("Reservoir initialization is fixed; existing fluid is conserved.");
@@ -260,7 +292,7 @@ public final class FluidNetwork {
                 // the reply with the next bucket reads "Not applied: ..." with the envelope named.
                 switch(d.hydraulicKind()) {
                     case GENERATOR,VOID->spec.validate(world.model(),d.kind());
-                    case VALVE->world.model().domain().requireInputPressure(controls.pressure);
+                    case VALVE->{if(control instanceof FlowControl.Valve valve&&valve.pressureControl())world.model().domain().requireInputPressure(controls.pressure);}
                     default->{}
                 }
                 boolean generatorEnabled=d.kind()==TopologyCompiler.Kind.GENERATOR?controls.power==Power.ON:d.generatorEnabled();

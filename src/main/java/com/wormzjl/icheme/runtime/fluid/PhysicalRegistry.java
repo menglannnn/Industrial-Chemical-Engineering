@@ -58,6 +58,9 @@ public final class PhysicalRegistry {
     private final Map<ChunkKey,Set<Long>> chunkMembers=new HashMap<>();
     private int unapplied;
 
+    private final Set<Long> flowmeters=new HashSet<>();
+    public void flowmeters(Collection<Long> hosts){flowmeters.clear();flowmeters.addAll(hosts);}
+    public void flowmeter(long host,boolean installed){if(installed)flowmeters.add(host);else flowmeters.remove(host);}
     /** {@code emptyFilter} is a new filter's cake: the configured capacity and resistance, nothing captured. */
     public PhysicalRegistry(WorldTopologyLedger topology,FluidThermodynamics model,InlineFilter emptyFilter,Host host) {
         this.topology=Objects.requireNonNull(topology);this.model=Objects.requireNonNull(model);weights=model.molecularWeights();
@@ -81,7 +84,7 @@ public final class PhysicalRegistry {
         for(var entry:stock.entrySet()){var r=active.get(entry.getKey());if(r!=null&&r.device().fixed())fixedStates.put(entry.getKey(),entry.getValue());}
         // A disconnected filter's ports stand at the ambient (NetworkReduction.ambient), as an empty vessel does.
         var compiled=PhysicalFluidTopology.compile(active.values().stream().map(WorldTopologyLedger.Registration::device).toList(),stock,cakes,
-                com.wormzjl.icheme.science.fluid.network.NetworkReduction.ambient(model));
+                com.wormzjl.icheme.science.fluid.network.NetworkReduction.ambient(model),flowmeters);
         diagnostics.putAll(compiled.diagnostics());pipeViews.putAll(compiled.pipeViews());tankFaces.putAll(compiled.tankFaces());
         for(var island:compiled.islands()) {
             var graph=island.graph();
@@ -119,7 +122,7 @@ public final class PhysicalRegistry {
     /** Uses the existing pressure-valve control on the same host pipe and projected revision. */
     public boolean installPipePressureValve(long id,PhysicalFluidTopology.Direction axis) {
         var record=registrations().get(id);if(!canInstallFitting(record,axis))return false;
-        var d=record.device();var device=new PhysicalFluidTopology.Device(d.id(),d.position(),d.kind(),axis,d.geometry(),new FlowControl.PressureValve(200000),d.ports(),d.generatorEnabled(),d.cutoff());
+        var d=record.device();var device=new PhysicalFluidTopology.Device(d.id(),d.position(),d.kind(),axis,d.geometry(),FlowControl.ControlValve.unconfigured(),d.ports(),d.generatorEnabled(),d.cutoff());
         submit(List.of(new WorldTopologyLedger.Edit(id,new WorldTopologyLedger.Registration(device,record.spec(),Math.addExact(record.revision(),1)))),topology.nextIdentity(),null);
         return true;
     }
@@ -325,7 +328,7 @@ public final class PhysicalRegistry {
                     var node=stock.get(edit.id());if(node==null)throw new IllegalStateException("Topology event reached vessel "+edit.id()+" outside the islands it fenced");
                     if(moved||respecified) {
                         var spec=replacement.spec();var held=node.inventory();
-                        var inventory=respecified?new PassiveNetwork.Inventory(spec.volume(),held.moles(),held.internalEnergy(),held.solids(),spec.levelHeight(),spec.open()):held;
+                        var inventory=respecified?new PassiveNetwork.Inventory(spec.volume(),held.moles(),held.internalEnergy(),held.solids(),spec.levelHeight(),spec.open(),spec.geometry()):held;
                         var rebuilt=new PassiveNetwork.Reservoir(node.id(),replacement.device().position().y(),node.state(),node.kind(),inventory);
                         stock.put(edit.id(),rebuilt);if(additions.containsKey(edit.id()))additions.put(edit.id(),rebuilt);
                     }
@@ -374,7 +377,7 @@ public final class PhysicalRegistry {
             }
         }
         var compiled=PhysicalFluidTopology.compile(component.values().stream().map(WorldTopologyLedger.Registration::device).toList(),componentStock,componentCakes,
-                com.wormzjl.icheme.science.fluid.network.NetworkReduction.ambient(model));
+                com.wormzjl.icheme.science.fluid.network.NetworkReduction.ambient(model),flowmeters);
         FluidRuntimeDiagnostics.count(FluidRuntimeDiagnostics.topologyBatches);FluidRuntimeDiagnostics.count(FluidRuntimeDiagnostics.topologyEvents,events.size());
         FluidRuntimeDiagnostics.count(FluidRuntimeDiagnostics.compiledDevices,component.size());
         var replacements=new ArrayList<IslandCoordinator.Replacement>();var replacementMembers=new LinkedHashMap<Long,List<Long>>();long nextId=topology.nextIdentity();

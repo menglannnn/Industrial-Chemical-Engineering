@@ -38,4 +38,67 @@ class FlowControlTest {
         assertEquals(FlowControl.Mode.VALVE_REGULATING,regulated.modes().getFirst());assertEquals(175000,regulated.states().getFirst().pressure(),.01);
         assertTrue(regulated.massFlows()[0]>0);assertTrue(regulated.devicePressureChanges()[0]>0);
     }
+    @Test void modularFlowValveMeetsMassAndActualVolumeTargetsWithoutWork(){
+        for(var source:java.util.List.of(FlowControl.ValveSource.MASS_FLOW,FlowControl.ValveSource.VOLUME_FLOW)){
+            double target=source==FlowControl.ValveSource.MASS_FLOW?.01:.001;
+            var result=run(300000,101325,0,new FlowControl.ControlValve(source,target,new java.util.UUID(1,1),1),.1);
+            assertEquals(FlowControl.Mode.VALVE_REGULATING,result.modes().getFirst());
+            double rho=result.states().getFirst().mass()/result.states().getFirst().volume();
+            assertEquals(target,source==FlowControl.ValveSource.MASS_FLOW?result.massFlows()[0]:result.massFlows()[0]/rho,1e-8*target);
+            assertTrue(result.devicePressureChanges()[0]>=0);assertEquals(0,result.pumpWorkJoule(),1e-12);
+        }
+    }
+    @Test void bareValveIsFullyOpenAndLargeFlowTargetSaturates(){
+        var passive=run(300000,101325,0,new FlowControl.Passive(),.1);
+        var bare=run(300000,101325,0,FlowControl.ControlValve.unconfigured(),.1);
+        assertEquals(passive.massFlows()[0],bare.massFlows()[0],1e-8*Math.abs(passive.massFlows()[0]));
+        assertEquals(FlowControl.Mode.VALVE_OPEN,bare.modes().getFirst());
+        var saturated=run(300000,101325,0,new FlowControl.ControlValve(FlowControl.ValveSource.MASS_FLOW,100,new java.util.UUID(1,2),1),.1);
+        assertEquals(FlowControl.Mode.VALVE_OPEN,saturated.modes().getFirst());
+        assertTrue(saturated.massFlows()[0]<100);
+    }
+    @Test void removingASensorRetainsIndependentSiTargets(){
+        var v=new FlowControl.ControlValve(FlowControl.ValveSource.PRESSURE,350000,2,.03,new java.util.UUID(1,1),1);
+        var removed=v.withSource(v.source(),null,2);assertTrue(removed.bare());assertEquals(350000,removed.targetPressure());assertEquals(.03,removed.volumeTarget());assertEquals(2,removed.massTarget());
+    }
+    @Test void twoFlowValvesInSeriesDoNotCreateADependentSolve(){
+        double[] n=new double[model.componentCount()];n[0]=1;
+        var a=model.flashTP(350,300000,n,()->{});double[] n2=n.clone();for(int c=0;c<n.length;c++)n[c]/=a.volume();a=model.flashTP(350,300000,n,()->{});var b=model.flashTP(350,101325,n2,()->{});for(int c=0;c<n2.length;c++)n2[c]/=b.volume();b=model.flashTP(350,101325,n2,()->{});
+        var nodes=java.util.List.of(new PassiveNetwork.Reservoir(1,0,a,PassiveNetwork.NodeKind.GENERATOR),new PassiveNetwork.Reservoir(2,0,b,PassiveNetwork.NodeKind.JUNCTION),new PassiveNetwork.Reservoir(3,0,b,PassiveNetwork.NodeKind.VOID));
+        var line=new PipeResistance.Geometry(10,.05,.000045,0);
+        for(double second:new double[]{.01,.02}){
+            var graph=new PassiveNetwork(nodes,java.util.List.of(new PassiveNetwork.Pipe(5,0,1,line,new FlowControl.ControlValve(FlowControl.ValveSource.MASS_FLOW,.01,new java.util.UUID(1,1),1)),
+                    new PassiveNetwork.Pipe(6,1,2,line,new FlowControl.ControlValve(FlowControl.ValveSource.MASS_FLOW,second,new java.util.UUID(1,2),1))));
+            var result=new PassiveStepSolver(model).solve(graph,.1,()->{});
+            assertTrue(result.massFlows()[0]>=0);assertTrue(result.massFlows()[1]>=0);
+            assertEquals(List.of(FlowControl.Mode.VALVE_CONFLICT,FlowControl.Mode.VALVE_CONFLICT),result.modes());
+            assertArrayEquals(new double[]{0,0},result.devicePressureChanges(),1e-5);
+            var rate=new PassiveStepSolver(model).solveRate(graph,()->{});assertEquals(result.modes(),rate.modes());
+            assertArrayEquals(result.massFlows(),new PassiveStepSolver(model).solve(graph,.1,()->{}).massFlows());
+        }
+    }
+    @Test void conflictFallbackUsesAcceptedOpeningAndLeavesIndependentLoopActive(){
+        double[] n=new double[model.componentCount()];n[0]=1;
+        var high=model.flashTP(350,300000,n,()->{});var low=model.flashTP(350,101325,n,()->{});
+        var nodes=List.of(new PassiveNetwork.Reservoir(1,0,high,PassiveNetwork.NodeKind.GENERATOR),new PassiveNetwork.Reservoir(2,0,low,PassiveNetwork.NodeKind.JUNCTION),new PassiveNetwork.Reservoir(3,0,low,PassiveNetwork.NodeKind.VOID));
+        var line=new PipeResistance.Geometry(10,.05,.000045,0);
+        var valve=new PassiveNetwork.Pipe(5,0,1,line,new FlowControl.ControlValve(FlowControl.ValveSource.MASS_FLOW,.01,new UUID(1,1),1));
+        var original=new PassiveNetwork(nodes,List.of(valve,new PassiveNetwork.Pipe(6,1,2,line,new FlowControl.Passive())));
+        var solver=new PassiveStepSolver(model);var accepted=solver.solve(original,.1,()->{});solver.markBackwardEulerAccepted(original,accepted);
+        double rho=accepted.states().getFirst().mass()/accepted.states().getFirst().volume(),area=valve.minimumArea();
+        double opening=FlowControl.opening(accepted.massFlows()[0],accepted.devicePressureChanges()[0],rho,area);assertTrue(opening>0&&opening<1);
+        var other=new PassiveNetwork.Pipe(6,1,2,line,new FlowControl.ControlValve(FlowControl.ValveSource.MASS_FLOW,.02,new UUID(1,2),1));
+        var independent=new PassiveNetwork.Pipe(7,0,2,line,new FlowControl.ControlValve(FlowControl.ValveSource.MASS_FLOW,.005,new UUID(1,3),1));
+        var conflict=new PassiveNetwork(nodes,List.of(valve,other,independent));var result=solver.solve(conflict,.1,()->{});
+        assertEquals(FlowControl.Mode.VALVE_CONFLICT,result.modes().getFirst());assertEquals(FlowControl.Mode.VALVE_REGULATING,result.modes().get(2));
+        rho=result.states().getFirst().mass()/result.states().getFirst().volume();
+        assertEquals(opening,FlowControl.opening(result.massFlows()[0],result.devicePressureChanges()[0],rho,area),1e-8);
+        assertEquals(.005,result.massFlows()[2],1e-10);assertEquals(0,result.pumpWorkJoule());
+    }
+
+    @Test void aBareValvePassesReverseFlowLikeItsPipe(){
+        var plain=run(101325,300000,0,new FlowControl.Passive(),.1);var bare=run(101325,300000,0,FlowControl.ControlValve.unconfigured(),.1);
+        assertTrue(bare.massFlows()[0]<0);assertEquals(plain.massFlows()[0],bare.massFlows()[0],1e-10);assertEquals(0,bare.devicePressureChanges()[0],1e-8);
+    }
+
 }

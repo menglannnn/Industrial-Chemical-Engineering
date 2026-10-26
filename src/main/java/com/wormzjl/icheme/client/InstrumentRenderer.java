@@ -34,15 +34,24 @@ public final class InstrumentRenderer {
         if(event.getStage()!=RenderLevelStageEvent.Stage.AFTER_PARTICLES)return;
         var mc=Minecraft.getInstance();if(mc.level==null||mc.player==null)return;
         var camera=event.getCamera().getPosition();var buffers=mc.renderBuffers().bufferSource();var pose=event.getPoseStack();
-        GaugeSettings draft=null;boolean wrench=false;
+        GaugeSettings draft=null;Sensor.Kind sensorDraft=null;boolean wrench=false;
         for(var hand:net.minecraft.world.InteractionHand.values()) {
             var stack=mc.player.getItemInHand(hand);
+            if(stack.getItem() instanceof SensorItem sensorItem)sensorDraft=sensorItem.kind();
             if(stack.getItem() instanceof GaugeItem)draft=stack.get(ModItems.GAUGE_SETTINGS.get());
             if(stack.getItem() instanceof AccessoryWrenchItem&&mc.player.isShiftKeyDown())wrench=true;
         }
-        var hosts=InstrumentHosts.nearby(mc.level,mc.player.position(),120,draft==null&&!wrench);
+        var hosts=InstrumentHosts.nearby(mc.level,mc.player.position(),120,draft==null&&sensorDraft==null&&!wrench);
         var selected=draft==null?null:InstrumentHosts.select(hosts,mc.player.getEyePosition(),mc.player.getLookAngle(),mc.player.blockInteractionRange(),draft.kind(),false);
         for(var host:hosts) {
+            for(var sensor:host.metadata().sensors())for(var mount:Sensor.mounts(host,sensor.kind()))if(mount.id().equals(sensor.key().mount()))drawSensor(pose,buffers,mount,camera,sensor.kind(),255);
+            if(sensorDraft!=null)for(var mount:Sensor.mounts(host,sensorDraft)){
+                if(mount.centre().distanceToSqr(mc.player.getEyePosition())>64)continue;
+                boolean occupied=host.metadata().sensors().stream().anyMatch(s->s.key().mount().equals(mount.id()))||host.metadata().installed().stream().anyMatch(s->s.key().mount().equals(mount.id()))||host.pipe()&&!mount.id().equals("valve_sensor")&&host.occupied(mount);
+                boolean blocked=occupied||!InstrumentHosts.clear(mc.level,host,mount);
+                if(!occupied)drawSensor(pose,buffers,mount,camera,sensorDraft,70);
+                outline(pose,buffers,mount,camera,blocked?0xad7770:0x73a38e);
+            }
             for(var installed:host.metadata().installed()) {
                 var mount=host.mount(installed.key().mount());if(mount==null)continue;
                 var display=get(new FluidNetwork.InstrumentTarget(host.entity().getBlockPos(),installed.key(),installed.instance()));
@@ -77,6 +86,12 @@ public final class InstrumentRenderer {
                 for(var point:List.of(first,second))lines.addVertex(pose.last(),(float)point.x,(float)point.y,(float)point.z).setColor(colour>>16&255,colour>>8&255,colour&255,135).setNormal(pose.last(),(float)direction.x,(float)direction.y,(float)direction.z);
             }
         } else LevelRenderer.renderLineBox(pose,lines,selection.bounds().move(camera.scale(-1)),(colour>>16&255)/255f,(colour>>8&255)/255f,(colour&255)/255f,.53f);
+    }
+    private static void drawSensor(PoseStack pose,MultiBufferSource buffers,Instrument.Mount mount,Vec3 camera,Sensor.Kind kind,int alpha){
+        var consumer=buffers.getBuffer(alpha==255?TYPE:GHOST);
+        for(var q:InstrumentGeometry.transmitter(kind==Sensor.Kind.LEVEL))quad(pose,consumer,mount,camera,q,0,alpha);
+        var tap=mount.localTap();var key=new Connector(List.of(tap[0],tap[1],tap[2]),mount.bottomEntry(),kind==Sensor.Kind.TEMPERATURE,mount.probeDepth());if(CONNECTORS.size()>2048)CONNECTORS.clear();
+        for(var q:CONNECTORS.computeIfAbsent(key,k->InstrumentGeometry.connection(tap,k.bottom(),k.temperature(),k.probeDepth())))quad(pose,consumer,mount,camera,q,0,alpha);
     }
     private static void draw(PoseStack pose,MultiBufferSource buffers,Instrument.Mount mount,Vec3 camera,GaugeSettings settings,double ratio,int tint,int alpha){
         var consumer=buffers.getBuffer(alpha==255?TYPE:GHOST);

@@ -61,9 +61,9 @@ public final class PhysicalFluidTopology {
             Objects.requireNonNull(cutoff);
             if(inlineFilter&&(kind!=TopologyCompiler.Kind.PIPE||cutoff!=Cutoff.NONE||!(control instanceof FlowControl.Passive)))throw new IllegalArgumentException("Invalid pipe filter accessory");
             if(kind!=TopologyCompiler.Kind.PIPE&&cutoff!=Cutoff.NONE)throw new IllegalArgumentException("Only a pipe has a cutoff accessory");
-            boolean valid=switch(kind) {case PUMP->control instanceof FlowControl.Pump;case COMPRESSOR->control instanceof FlowControl.Compressor;case VALVE->control instanceof FlowControl.PressureValve;case PIPE->control instanceof FlowControl.Passive||control instanceof FlowControl.PressureValve||control instanceof FlowControl.Mover;default->control instanceof FlowControl.Passive;};
+            boolean valid=switch(kind) {case PUMP->control instanceof FlowControl.Pump;case COMPRESSOR->control instanceof FlowControl.Compressor;case VALVE->control instanceof FlowControl.Valve;case PIPE->control instanceof FlowControl.Passive||control instanceof FlowControl.Valve||control instanceof FlowControl.Mover;default->control instanceof FlowControl.Passive;};
             if(!valid)throw new IllegalArgumentException("Device/control mismatch");
-            if(control instanceof FlowControl.PressureValve&&cutoff!=Cutoff.NONE)throw new IllegalArgumentException("A pressure valve cannot carry a cutoff accessory");
+            if(control instanceof FlowControl.Valve&&cutoff!=Cutoff.NONE)throw new IllegalArgumentException("A pressure valve cannot carry a cutoff accessory");
             if(kind==TopologyCompiler.Kind.PIPE&&control instanceof FlowControl.Mover&&(cutoff!=Cutoff.NONE||facing.y!=0))throw new IllegalArgumentException("An inline mover needs a horizontal pipe without a cutoff");
             if(kind!=TopologyCompiler.Kind.GENERATOR&&!generatorEnabled)throw new IllegalArgumentException("Only a generator has a source switch");
             ports=List.copyOf(ports);
@@ -93,7 +93,7 @@ public final class PhysicalFluidTopology {
         /** Mechanical pipes compile through the existing valve or filter law when fitted. */
         public TopologyCompiler.Kind hydraulicKind(){
             if(inlineFilter)return TopologyCompiler.Kind.FILTER;
-            if(kind==TopologyCompiler.Kind.PIPE)return switch(control){case FlowControl.Pump p->TopologyCompiler.Kind.PUMP;case FlowControl.Compressor c->TopologyCompiler.Kind.COMPRESSOR;case FlowControl.PressureValve v->TopologyCompiler.Kind.VALVE;default->kind;};
+            if(kind==TopologyCompiler.Kind.PIPE)return switch(control){case FlowControl.Pump p->TopologyCompiler.Kind.PUMP;case FlowControl.Compressor c->TopologyCompiler.Kind.COMPRESSOR;case FlowControl.Valve v->TopologyCompiler.Kind.VALVE;default->kind;};
             return kind;
         }
         boolean actuator(){var hydraulic=hydraulicKind();return hydraulic==TopologyCompiler.Kind.PUMP||hydraulic==TopologyCompiler.Kind.COMPRESSOR||hydraulic==TopologyCompiler.Kind.VALVE;}
@@ -183,7 +183,8 @@ public final class PhysicalFluidTopology {
     public static Compiled compile(Collection<Device> devices,Map<Long,PassiveNetwork.Reservoir> boundaryStates) {
         return compile(devices,boundaryStates,Map.of(),boundaryStates.values().stream().findFirst().map(PassiveNetwork.Reservoir::state).orElse(null));
     }
-    public static Compiled compile(Collection<Device> devices,Map<Long,PassiveNetwork.Reservoir> boundaryStates,Map<Long,InlineFilter> filterStock,com.wormzjl.icheme.science.fluid.thermo.FluidThermodynamics.State idleSeed) {
+    public static Compiled compile(Collection<Device> devices,Map<Long,PassiveNetwork.Reservoir> boundaryStates,Map<Long,InlineFilter> filterStock,com.wormzjl.icheme.science.fluid.thermo.FluidThermodynamics.State idleSeed) {return compile(devices,boundaryStates,filterStock,idleSeed,Set.of());}
+    public static Compiled compile(Collection<Device> devices,Map<Long,PassiveNetwork.Reservoir> boundaryStates,Map<Long,InlineFilter> filterStock,com.wormzjl.icheme.science.fluid.thermo.FluidThermodynamics.State idleSeed,Set<Long> flowmeters) {
         var physical=new TreeMap<Long,Device>();var positions=new HashMap<Position,Device>();var points=new HashMap<Long,Point>();
         var nodes=new ArrayList<TopologyCompiler.Node>();var links=new ArrayList<TopologyCompiler.Link>();var linkOwner=new HashMap<Long,Long>();
         for(var d:devices) {
@@ -297,6 +298,18 @@ public final class PhysicalFluidTopology {
             }
             var ids=new TreeSet<Long>();for(long id:members)if(physical.containsKey(id))ids.add(id);
             Optional<String> error=ids.stream().filter(compiled.invalidPumpCycles()::contains).findFirst().map(id->diagnostics.get(id));
+            for(int p=0;p<pipes.size();p++){
+                var pipe=pipes.get(p);var measurementPoints=new ArrayList<PassiveNetwork.Pipe.ObservationPoint>();
+                for(long host:flowmeters){var device=physical.get(host);if(device==null)continue;
+                    if(device.actuator()&&reservoirs.get(pipe.first()).id()==host&&pipe.control() instanceof FlowControl.Valve){
+                        measurementPoints.add(new PassiveNetwork.Pipe.ObservationPoint(host,0,device.position().y(),false));continue;
+                    }
+                    if(device.actuator())continue;
+                    for(var view:views.getOrDefault(host,List.of()))if(view.islandIndex()==islandIndex&&view.pipeId()==pipe.id()&&Double.isFinite(view.tap()))
+                        measurementPoints.add(new PassiveNetwork.Pipe.ObservationPoint(host,view.tap(),device.position().y(),!view.forward()));
+                }
+                if(!measurementPoints.isEmpty())pipes.set(p,pipe.withObservationPoints(measurementPoints));
+            }
             islands.add(new Island(ids,new PassiveNetwork(reservoirs,pipes),error));
         }
         for(var d:physical.values())if(d.kind==TopologyCompiler.Kind.PIPE&&!views.containsKey(d.id))diagnostics.putIfAbsent(d.id,"NO FLOW: unconnected pipe");

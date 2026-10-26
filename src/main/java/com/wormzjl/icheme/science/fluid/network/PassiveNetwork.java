@@ -26,7 +26,7 @@ public record PassiveNetwork(List<Reservoir> reservoirs,List<Pipe> pipes,List<Sc
      * LIQUID port's: the line below the nozzle stands full of the same liquid, so the level head over the bottom is the
      * nozzle's head over the line's datum.</p>
      */
-    public enum PhasePort { BULK, VAPOR, LIQUID, OVERFLOW }
+    public enum PhasePort { BULK, VAPOR, LIQUID, OVERFLOW, BOOT_WATER, BOOT_HC }
     public PassiveNetwork {
         reservoirs=List.copyOf(reservoirs);pipes=List.copyOf(pipes);scheduledTransfers=List.copyOf(scheduledTransfers);
         if(reservoirs.isEmpty())throw new IllegalArgumentException("Empty island");
@@ -178,18 +178,19 @@ public record PassiveNetwork(List<Reservoir> reservoirs,List<Pipe> pipes,List<Sc
      * {@link OpenVessel#FREEBOARD} above it. Its gas leaves to the atmosphere and the liquid above the shell spills
      * ({@link OpenVessel}).</p>
      */
-    public record Inventory(double volume,double[] moles,double internalEnergy,SolidInventory solids,double levelHeight,boolean open) {
+    public record Inventory(double volume,double[] moles,double internalEnergy,SolidInventory solids,double levelHeight,boolean open,VesselGeometry geometry) {
+        public Inventory(double volume,double[] moles,double internalEnergy,SolidInventory solids,double levelHeight,boolean open){this(volume,moles,internalEnergy,solids,levelHeight,open,VesselGeometry.prism(volume,levelHeight));}
         public Inventory(double volume,double[] moles,double internalEnergy){this(volume,moles,internalEnergy,SolidInventory.EMPTY);}
         public Inventory(double volume,double[] moles,double internalEnergy,SolidInventory solids){this(volume,moles,internalEnergy,solids,PassiveStepSolver.LEVEL_HEAD_HEIGHT);}
         public Inventory(double volume,double[] moles,double internalEnergy,SolidInventory solids,double levelHeight){this(volume,moles,internalEnergy,solids,levelHeight,false);}
         public Inventory {
-            Objects.requireNonNull(solids);
+            Objects.requireNonNull(solids);Objects.requireNonNull(geometry);
             moles=moles.clone();if(!Double.isFinite(volume)||volume<=0||!Double.isFinite(internalEnergy)||!Double.isFinite(levelHeight)||levelHeight<=0)throw new IllegalArgumentException("Invalid inventory volume/energy/level height");
             double total=0;for(double n:moles){if(!Double.isFinite(n)||n<0)throw new IllegalArgumentException("Negative/nonfinite inventory");total+=n;}
             if(moles.length==0||!Double.isFinite(total)||(total==0&&solids.empty()&&internalEnergy!=0))throw new IllegalArgumentException("Invalid empty/overflowed inventory");
         }
         /** The same vessel (volume, level height and opening) holding these contents. */
-        public Inventory with(double[] moles,double internalEnergy,SolidInventory solids){return new Inventory(volume,moles,internalEnergy,solids,levelHeight,open);}
+        public Inventory with(double[] moles,double internalEnergy,SolidInventory solids){return new Inventory(volume,moles,internalEnergy,solids,levelHeight,open,geometry);}
         /** Whether {@code other} holds the same contents, bit for bit: its moles, energy and solids, whatever the vessel's
          * geometry. A topology event conserves these; a layout refresh may rebuild the vessel around them (batch
          * 2026-10-26-backward-compat). */
@@ -202,8 +203,8 @@ public record PassiveNetwork(List<Reservoir> reservoirs,List<Pipe> pipes,List<Sc
          */
         public double wallCapacity(){return open?Double.POSITIVE_INFINITY:volume;}
         @Override public double[] moles(){return moles.clone();}
-        @Override public boolean equals(Object other){return other instanceof Inventory value&&open==value.open&&Double.doubleToLongBits(volume)==Double.doubleToLongBits(value.volume)&&Double.doubleToLongBits(levelHeight)==Double.doubleToLongBits(value.levelHeight)&&Double.doubleToLongBits(internalEnergy)==Double.doubleToLongBits(value.internalEnergy)&&Arrays.equals(moles,value.moles)&&solids.equals(value.solids);}
-        @Override public int hashCode(){return 31*Objects.hash(volume,levelHeight,internalEnergy,solids,open)+Arrays.hashCode(moles);}
+        @Override public boolean equals(Object other){return other instanceof Inventory value&&geometry.equals(value.geometry)&&open==value.open&&Double.doubleToLongBits(volume)==Double.doubleToLongBits(value.volume)&&Double.doubleToLongBits(levelHeight)==Double.doubleToLongBits(value.levelHeight)&&Double.doubleToLongBits(internalEnergy)==Double.doubleToLongBits(value.internalEnergy)&&Arrays.equals(moles,value.moles)&&solids.equals(value.solids);}
+        @Override public int hashCode(){return 31*Objects.hash(volume,levelHeight,internalEnergy,solids,open,geometry)+Arrays.hashCode(moles);}
     }
     /**
      * {@code blockedDirections} is a two-bit mask (1 forbids flow from {@link #first} to {@link #second}, 2 the reverse),
@@ -216,7 +217,9 @@ public record PassiveNetwork(List<Reservoir> reservoirs,List<Pipe> pipes,List<Sc
      * clears only {@code blockedDirections}. Both masks participate in the physical direction rule and solver identity.
      */
     public record Pipe(long id,int first,int second,List<PipeResistance.Geometry> sections,FlowControl control,int blockedDirections,InlineFilter filter,
-                       PhasePort firstPort,PhasePort secondPort,int forbiddenDirections) {
+                       PhasePort firstPort,PhasePort secondPort,int forbiddenDirections,List<ObservationPoint> observationPoints) {
+        public record ObservationPoint(long host,double fraction,double elevation,boolean reversed){public ObservationPoint{if(host<=0||!Double.isFinite(fraction)||fraction<0||fraction>1||!Double.isFinite(elevation))throw new IllegalArgumentException("Invalid observation point");}}
+        public Pipe(long id,int first,int second,List<PipeResistance.Geometry> sections,FlowControl control,int blockedDirections,InlineFilter filter,PhasePort firstPort,PhasePort secondPort,int forbiddenDirections){this(id,first,second,sections,control,blockedDirections,filter,firstPort,secondPort,forbiddenDirections,List.of());}
         public Pipe(long id,int first,int second,List<PipeResistance.Geometry> sections,FlowControl control,int blockedDirections,InlineFilter filter,PhasePort firstPort,PhasePort secondPort){this(id,first,second,sections,control,blockedDirections,filter,firstPort,secondPort,0);}
         public Pipe(long id,int first,int second,List<PipeResistance.Geometry> sections,FlowControl control,int blockedDirections,InlineFilter filter){this(id,first,second,sections,control,blockedDirections,filter,PhasePort.BULK,PhasePort.BULK);}
         public Pipe(long id,int first,int second,List<PipeResistance.Geometry> sections,FlowControl control,int blockedDirections){this(id,first,second,sections,control,blockedDirections,null);}
@@ -237,11 +240,11 @@ public record PassiveNetwork(List<Reservoir> reservoirs,List<Pipe> pipes,List<Sc
             return new Identity(id,first,second,sections,control,blockedDirections,
                     filter==null?null:new FilterSettings(filter.capacity(),filter.cleanResistance()),firstPort,secondPort,forbiddenDirections);
         }
-        public Pipe withBlockedDirections(int directions){return new Pipe(id,first,second,sections,control,directions,filter,firstPort,secondPort,forbiddenDirections);}
-        public Pipe withForbiddenDirections(int directions){return new Pipe(id,first,second,sections,control,blockedDirections,filter,firstPort,secondPort,directions);}
-        public Pipe withFilter(InlineFilter value){return new Pipe(id,first,second,sections,control,blockedDirections,value,firstPort,secondPort,forbiddenDirections);}
+        public Pipe withBlockedDirections(int directions){return new Pipe(id,first,second,sections,control,directions,filter,firstPort,secondPort,forbiddenDirections,observationPoints);}
+        public Pipe withForbiddenDirections(int directions){return new Pipe(id,first,second,sections,control,blockedDirections,filter,firstPort,secondPort,directions,observationPoints);}
+        public Pipe withFilter(InlineFilter value){return new Pipe(id,first,second,sections,control,blockedDirections,value,firstPort,secondPort,forbiddenDirections,observationPoints);}
         /** This connection with the given ports at its first and second end. */
-        public Pipe withPorts(PhasePort atFirst,PhasePort atSecond){return new Pipe(id,first,second,sections,control,blockedDirections,filter,atFirst,atSecond,forbiddenDirections);}
+        public Pipe withPorts(PhasePort atFirst,PhasePort atSecond){return new Pipe(id,first,second,sections,control,blockedDirections,filter,atFirst,atSecond,forbiddenDirections,observationPoints);}
         /** The port of the end at {@code node}, which must be one of this connection's two nodes. */
         public PhasePort portAt(int node) {
             if(node==first)return firstPort;
@@ -257,7 +260,8 @@ public record PassiveNetwork(List<Reservoir> reservoirs,List<Pipe> pipes,List<Sc
         public boolean blocked(double flow){return (effectiveBlockedDirections()&(flow>=0?1:2))!=0;}
         public Pipe(long id,int first,int second,PipeResistance.Geometry geometry){this(id,first,second,List.of(geometry),new FlowControl.Passive());}
         public Pipe(long id,int first,int second,PipeResistance.Geometry geometry,FlowControl control){this(id,first,second,List.of(geometry),control);}
-        public Pipe {Objects.requireNonNull(firstPort);Objects.requireNonNull(secondPort);if(filter!=null&&!(control instanceof FlowControl.Passive))throw new IllegalArgumentException("Filter must be passive");if(blockedDirections<0||blockedDirections>3)throw new IllegalArgumentException("Invalid pipe closure");if(forbiddenDirections<0||forbiddenDirections>3)throw new IllegalArgumentException("Invalid permanent pipe direction restriction");sections=coalesce(sections);Objects.requireNonNull(control);if(sections.isEmpty())throw new IllegalArgumentException("Empty hydraulic run");}
+        public Pipe withObservationPoints(List<ObservationPoint> points){return new Pipe(id,first,second,sections,control,blockedDirections,filter,firstPort,secondPort,forbiddenDirections,points);}
+        public Pipe {observationPoints=List.copyOf(observationPoints);Objects.requireNonNull(firstPort);Objects.requireNonNull(secondPort);if(filter!=null&&!(control instanceof FlowControl.Passive))throw new IllegalArgumentException("Filter must be passive");if(blockedDirections<0||blockedDirections>3)throw new IllegalArgumentException("Invalid pipe closure");if(forbiddenDirections<0||forbiddenDirections>3)throw new IllegalArgumentException("Invalid permanent pipe direction restriction");sections=coalesce(sections);Objects.requireNonNull(control);if(sections.isEmpty())throw new IllegalArgumentException("Empty hydraulic run");}
         private record SectionShape(double diameter,double roughness) {}
         private static List<PipeResistance.Geometry> coalesce(List<PipeResistance.Geometry> sections) {
             sections=List.copyOf(sections);if(sections.size()<2)return sections;

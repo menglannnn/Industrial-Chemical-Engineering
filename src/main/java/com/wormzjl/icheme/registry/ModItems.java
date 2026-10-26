@@ -49,6 +49,12 @@ public final class ModItems {
     public static final DeferredItem<com.wormzjl.icheme.world.item.GaugeItem> TEMPERATURE_GAUGE = ITEMS.registerItem("temperature_gauge", p -> new com.wormzjl.icheme.world.item.GaugeItem(p, GaugeSettings.TEMPERATURE));
     public static final DeferredItem<com.wormzjl.icheme.world.item.AccessoryWrenchItem> ACCESSORY_WRENCH = ITEMS.registerItem("accessory_wrench", com.wormzjl.icheme.world.item.AccessoryWrenchItem::new);
 
+    public static final DeferredItem<com.wormzjl.icheme.world.item.SensorItem> PRESSURE_PROBE=sensor("pressure_probe",com.wormzjl.icheme.runtime.instrument.Sensor.Kind.PRESSURE);
+    public static final DeferredItem<com.wormzjl.icheme.world.item.SensorItem> TEMPERATURE_PROBE=sensor("temperature_probe",com.wormzjl.icheme.runtime.instrument.Sensor.Kind.TEMPERATURE);
+    public static final DeferredItem<com.wormzjl.icheme.world.item.SensorItem> FLOWMETER=sensor("flowmeter",com.wormzjl.icheme.runtime.instrument.Sensor.Kind.FLOW);
+    public static final DeferredItem<com.wormzjl.icheme.world.item.SensorItem> DIGITAL_LEVEL_METER=sensor("digital_level_meter",com.wormzjl.icheme.runtime.instrument.Sensor.Kind.LEVEL);
+    private static DeferredItem<com.wormzjl.icheme.world.item.SensorItem> sensor(String name,com.wormzjl.icheme.runtime.instrument.Sensor.Kind kind){return ITEMS.registerItem(name,p->new com.wormzjl.icheme.world.item.SensorItem(p,kind));}
+
     private ModItems() {
     }
 

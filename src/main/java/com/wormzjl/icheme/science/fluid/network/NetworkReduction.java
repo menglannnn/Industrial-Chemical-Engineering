@@ -160,7 +160,8 @@ public final class NetworkReduction {
             // A closed mover carries nothing either way.
             if(closed[i]){drives[i][0]=drives[i][1]=Double.NEGATIVE_INFINITY;continue;}
             // A pressure valve passes only from its first end, and only while that end stands above its set point (A211).
-            if(graph.pipes().get(i).control() instanceof FlowControl.PressureValve valve) {
+            if(graph.pipes().get(i).control() instanceof FlowControl.Valve valve&&!valve.bare()) {
+                if(!valve.pressureControl())return false;
                 drives[i][0]=Math.min(drives[i][0],graph.reservoirs().get(graph.pipes().get(i).first()).state().pressure()-valve.targetPressure());
                 drives[i][1]=Double.NEGATIVE_INFINITY;
             }

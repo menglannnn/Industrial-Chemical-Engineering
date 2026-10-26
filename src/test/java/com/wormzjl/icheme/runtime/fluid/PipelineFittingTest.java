@@ -213,7 +213,7 @@ class PipelineFittingTest {
 
     // ---- Pressure-control valve -----------------------------------------------------------------------------------
 
-    @Test void allSixDirectionsUseExistingPressureControlAndPreservePipeAndReservoirs() {
+    @Test void allSixDirectionsInstallAnUnconfiguredValveAndPreservePipeAndReservoirs() {
         for(var axis:Direction.values()) {
             var world=line(axis);var before=stock(world);var original=world.registry.registrations().get(3L);
             assertFalse(world.registry.installPipePressureValve(3,axis.y!=0?Direction.EAST:Direction.UP));
@@ -224,7 +224,7 @@ class PipelineFittingTest {
             assertEquals(Kind.PIPE,d.kind());assertEquals(Kind.VALVE,d.hydraulicKind());
             assertFalse(d.mechanicallyConnects(axis.y!=0?Direction.EAST:Direction.UP));
             world.registry.applyPending();assertEquals(before,stock(world));
-            assertTrue(graph(world).pipes().stream().anyMatch(p->p.control().equals(new FlowControl.PressureValve(200000))));
+            assertTrue(graph(world).pipes().stream().anyMatch(p->p.control().equals(FlowControl.ControlValve.unconfigured())));
             assertFalse(world.registry.installPipeCutoff(3,axis));assertTrue(world.commands.isEmpty());
         }
     }

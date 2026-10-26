@@ -520,7 +520,7 @@ public final class FluidThermodynamics {
     public static double phaseSolidShare(State state,int phase) {
         if(phase==GAS)return 0;
         double oil=state.liquidVolume(),water=state.waterVolume();
-        return phase==OIL?oil/(oil+water):water/(oil+water);
+        return oil+water>0?(phase==OIL?oil/(oil+water):water/(oil+water)):0;
     }
     /** The own density (no solids) of a liquid phase the state holds: its fluid mass over its volume. */
     public double liquidPhaseDensity(State state,int phase) {

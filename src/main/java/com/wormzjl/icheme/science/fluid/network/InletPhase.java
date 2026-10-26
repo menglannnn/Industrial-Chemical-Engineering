@@ -146,6 +146,7 @@ public final class InletPhase {
         if(port==PassiveNetwork.PhasePort.BULK)return null;
         var state=graph.reservoirs().get(node).state();
         if(!(volume>0)) {
+            if(PhaseDraw.mixedLiquids(state,port)){var sample=new double[3];sample[FluidThermodynamics.OIL]=.5;sample[FluidThermodynamics.WATER]=.5;return sample;}
             int leading=PhaseDraw.leading(model,state,port);if(leading<0)return null;
             double[] drawn=new double[3];drawn[leading]=1;return drawn;
         }
@@ -155,7 +156,7 @@ public final class InletPhase {
             if((end==0?pipe.first():pipe.second())!=node||(end==0?pipe.firstPort():pipe.secondPort())==PassiveNetwork.PhasePort.BULK)continue;
             if(PassiveStepSolver.boundaryAllowed(graph,pipe,end==0?1:-1))ends++;
         }
-        return PhaseDraw.fill(state,PhaseDraw.order(model,state,port),volume,Math.max(1,ends));
+        return port==PassiveNetwork.PhasePort.LIQUID?PhaseDraw.fillMixed(state,volume,Math.max(1,ends)):PhaseDraw.fill(state,PhaseDraw.order(model,state,port),volume,Math.max(1,ends));
     }
 
     private static Supply measure(FluidThermodynamics model,FluidThermodynamics.State state,double[] drawn,int node,long id,PassiveNetwork.PhasePort port,double held) {

@@ -44,6 +44,15 @@ class FluidFactsCompatTest {
         assertTrue(Arrays.stream(((PassiveNetwork.Inventory)stock.get(first)).moles()).sum()>10,"the generator charged the vessels: "+stock.get(first));
         return world;
     }
+    private EventPathWorld corpusWorld(){
+        var world=world();var g=VesselGeometry.round(VesselGeometry.Form.HORIZONTAL_DRUM,2,6,2.0/3,.7);
+        world.place(20,64,0,Kind.RESERVOIR,Direction.EAST,new FluidDeviceSpec(g.capacity(),298.15,101325,FluidDeviceSpec.nitrogen(CATALOG).composition(),SlurryFeed.NONE,g.height(),false,g),.05);
+        long valve=world.place(22,64,0,Kind.VALVE,Direction.EAST);
+        var r=world.registry.registrations().get(valve);var d=r.device();
+        var control=new FlowControl.ControlValve(FlowControl.ValveSource.VOLUME_FLOW,200000,1,.02,new UUID(1,2),1);
+        world.registry.submit(List.of(new WorldTopologyLedger.Edit(valve,new WorldTopologyLedger.Registration(new PhysicalFluidTopology.Device(d.id(),d.position(),d.kind(),d.facing(),d.geometry(),control,d.ports(),d.generatorEnabled(),d.cutoff()),r.spec(),r.revision()+1))),world.ledger.nextIdentity(),null);
+        world.runTo(700);return world;
+    }
     private FluidCheckpointCodec.Image image(EventPathWorld world) {
         var checkpoint=new FluidCheckpointCodec.Checkpoint(world.coordinator.snapshots().stream().map(s->new FluidCheckpointCodec.IslandEntry(EventPathWorld.DIM,PACKAGE,s)).toList());
         var store=FluidCheckpointStore.memory();store.commit(store.prepare(checkpoint,Optional.of(world.ledger.snapshot()),world.ledger.onlineTick(),key->model));
@@ -191,7 +200,7 @@ class FluidFactsCompatTest {
     @Test void everyCorpusImageRebuildsFromItsFactsToItsRecordedTotals() throws IOException {
         var current=CORPUS.resolve("schema-"+FluidFacts.SCHEMA);
         if(!Files.isDirectory(current)) {
-            var written=Path.of("build/compat/fluid/schema-"+FluidFacts.SCHEMA);write(image(world()),written);
+            var written=Path.of("build/compat/fluid/schema-"+FluidFacts.SCHEMA);write(image(corpusWorld()),written);
             fail("No corpus image of facts schema "+FluidFacts.SCHEMA+": copy "+written.toAbsolutePath()+" to "+current);
         }
         try(var images=Files.list(CORPUS)) {
