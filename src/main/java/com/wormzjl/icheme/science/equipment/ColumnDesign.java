@@ -5,24 +5,27 @@ import com.wormzjl.icheme.science.column.v3.V3ColumnSpecification;
 import com.wormzjl.icheme.science.column.v3.V3SteamFeedSpec;
 
 import java.util.Objects;
+import java.util.Optional;
 
 /**
- * A column design saved by a column calculator (batch 2026-10-26-multi-machine-framework, plan section 4.3): the trays,
- * the diameter and the components an equipment constructor builds the column from. Saving checks the structure only; the
- * run checks the thermodynamics.
+ * A column design saved by a column calculator (batch 2026-10-26-multi-machine-framework, plan section 4.3): the trays
+ * with their components and the diameter an equipment constructor builds the column from. Saving checks the structure
+ * only; the run checks the thermodynamics.
  *
- * @param trays      the tray layout, by the calculator's numbers
- * @param diameter   the column's diameter, m: the calculator's to the next half metre
- * @param components the component design, its flags resolved from the design's numbers
+ * @param trays    the tray layout, by the calculator's numbers, with its component design
+ * @param diameter the column's diameter, m: the calculator's to the nearest half metre
  */
-public record ColumnDesign(ColumnTrays trays, double diameter, ColumnComponents components) {
+public record ColumnDesign(ColumnTrays trays, double diameter) {
     public ColumnDesign {
         Objects.requireNonNull(trays, "trays");
-        Objects.requireNonNull(components, "components");
+        if (trays.components() == null) throw new IllegalArgumentException("A saved column design has its components");
         if (!(diameter >= EquipmentShape.MIN_DIAMETER && diameter <= EquipmentShape.MAX_COLUMN_DIAMETER) || diameter * 2 != Math.rint(diameter * 2))
             throw new IllegalArgumentException("A column's diameter is " + EquipmentShape.MIN_DIAMETER + " to " + EquipmentShape.MAX_COLUMN_DIAMETER + " m in half metres, not " + diameter);
-        if (components.pumparoundPumps().size() != trays.pumparounds().size())
-            throw new IllegalArgumentException("One pumparound pump per pumparound: " + components.pumparoundPumps().size() + " pumps, " + trays.pumparounds().size() + " pumparounds");
+    }
+
+    /** The component design, its flags resolved from the design's numbers when it was saved. */
+    public ColumnComponents components() {
+        return trays.components();
     }
 
     /** The diameter a column is built at from a calculator's sized diameter: to the nearest half metre, within the column sizes. */
@@ -33,8 +36,9 @@ public record ColumnDesign(ColumnTrays trays, double diameter, ColumnComponents 
     /**
      * The design of a calculator input with the player's component choices, after the structure checks: the column has a
      * diameter and at least one tray, its draws, steam feeds and pumparounds lie on its trays, every nozzle finds a row on
-     * its side of the shell, and a column without reboiler duty is stripped by steam into its sump (the column solver
-     * refuses it otherwise: nothing boils up at the bottom).
+     * its side of the shell (on the least skirt; the constructor checks its own again, {@link #misfit}), and a column
+     * without reboiler duty is stripped by steam into its sump (the column solver refuses it otherwise: nothing boils up
+     * at the bottom).
      *
      * @throws IllegalArgumentException with the reason, in words for the player
      */
@@ -52,12 +56,24 @@ public record ColumnDesign(ColumnTrays trays, double diameter, ColumnComponents 
         if (!ColumnComponents.kettleRequired(duty) && !V3SteamFeedSpec.hasSumpFeed(input))
             throw new IllegalArgumentException("without reboiler duty the column needs stripping steam into its bottom tray");
         double diameter = builtDiameter(input.columnDiameterMetres());
-        var shape = EquipmentShape.column(diameter, trays, EquipmentShape.Heading.NORTH, EquipmentShape.minimumSkirt(diameter));
-        var missing = ColumnStructure.unplaced(shape);
-        if (!missing.isEmpty())
-            throw new IllegalArgumentException(nozzle(missing.getFirst()) + " has no free row on the " + side(missing.getFirst()) + " side of a "
-                    + (input.stageCount() + 2) + "-tray column");
-        return new ColumnDesign(trays, diameter, ColumnComponents.resolve(choices, input.topPressurePascal(), duty, trays.pumparounds().size()));
+        var design = new ColumnDesign(trays.withComponents(ColumnComponents.resolve(choices, input.topPressurePascal(), duty, trays.pumparounds().size())), diameter);
+        misfit(EquipmentShape.column(diameter, design.trays(), EquipmentShape.Heading.NORTH, EquipmentShape.minimumSkirt(diameter)))
+                .ifPresent(reason -> {
+                    throw new IllegalArgumentException(reason);
+                });
+        return design;
+    }
+
+    /**
+     * Why a column's shape cannot carry its design: the first nozzle with no free row on its side, in words for the player
+     * with the tray count the calculator shows (its trays and the condenser and reboiler); empty when every nozzle fits.
+     */
+    public static Optional<String> misfit(EquipmentShape column) {
+        var missing = ColumnStructure.unplaced(column);
+        if (missing.isEmpty()) return Optional.empty();
+        var u = missing.getFirst();
+        return Optional.of(nozzle(u) + " has no free row on the " + (u.axis() == 2 ? "front" : u.sign() < 0 ? "right" : "left") + " side of a "
+                + (column.trays().trays() + 2) + "-tray column");
     }
 
     private static String nozzle(ColumnStructure.Unplaced u) {
@@ -72,9 +88,5 @@ public record ColumnDesign(ColumnTrays trays, double diameter, ColumnComponents 
             case BOTTOMS -> "the bottoms nozzle";
             default -> u.role().name().toLowerCase(java.util.Locale.ROOT);
         };
-    }
-
-    private static String side(ColumnStructure.Unplaced u) {
-        return u.axis() == 2 ? "front" : u.sign() < 0 ? "right" : "left";
     }
 }

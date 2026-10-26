@@ -5,6 +5,7 @@ import com.wormzjl.icheme.client.EquipmentGhost;
 import com.wormzjl.icheme.client.gui.common.ColumnDiagram;
 import com.wormzjl.icheme.client.gui.common.ProcessUi;
 import com.wormzjl.icheme.network.EquipmentNetwork;
+import com.wormzjl.icheme.science.equipment.ColumnDesign;
 import com.wormzjl.icheme.science.equipment.ColumnTrays;
 import com.wormzjl.icheme.science.equipment.EquipmentShape;
 import com.wormzjl.icheme.science.equipment.Paint;
@@ -43,9 +44,9 @@ import static com.wormzjl.icheme.science.equipment.UnitDesign.whole;
  * compressor, a vertical or a cabin heater; owner requests 2026-10-16 and 2026-10-17), then its
  * design, in a panel on the left beside the world and the vessel's ghost; a drum's side connections and every kind's
  * paint have pages of their own (owner requests 2026-10-16). It edits a local draft; the server receives the design when
- * the screen closes, or with a build request on Build. A column is designed here by its trays and feed, or imported whole
- * (draws, pumparounds and steam too) from the nearest column calculator; its schematic is the calculator's
- * ({@link ColumnDiagram}). A bottom outlet leaving through a skirt turns to the sides its form allows (owner request
+ * the screen closes, or with a build request on Build. A column is imported whole (its diameter, trays, feed, draws,
+ * pumparounds, steam and components) from the design saved in the nearest column calculator and built from it only
+ * (batch 2026-10-26-multi-machine-framework); its schematic is the calculator's ({@link ColumnDiagram}). A bottom outlet leaving through a skirt turns to the sides its form allows (owner request
  * 2026-10-25, {@link EquipmentShape#outlets}): a standing drum's on its Nozzles page, a trickle-bed reactor's effluent on
  * its design page.
  */
@@ -117,6 +118,8 @@ public final class EquipmentConstructorScreen extends Screen {
     private double diameter;
     private int tangentLength, support, forward, right, up;
     private ColumnTrays trays;
+    /** The column design imported from a column calculator, the only one a column is built from (plan 2026-10-26, section 4.5); null before an import. */
+    private @Nullable ColumnDesign column;
     /** A drum's side connections, fitted to the drum ({@link #fitConnections}), and the one the page edits. */
     private final List<EquipmentShape.Connection> connections = new ArrayList<>();
     /** The drum's diameter, length, support and orientation the connections were last fitted to. */
@@ -159,6 +162,7 @@ public final class EquipmentConstructorScreen extends Screen {
     private void load(Design design) {
         saved = design;
         form = design.form();
+        column = design.column();
         diameter = design.diameter();
         tangentLength = design.tangentLength();
         boot = design.boot();
@@ -184,7 +188,13 @@ public final class EquipmentConstructorScreen extends Screen {
 
     /** The draft; always valid, because every stepper is clamped to the bounds of its parameter. */
     public Design design() {
-        return new Design(diameter, tangentLength, form, support, new VesselPlacement(forward, right, up), trays, List.copyOf(connections), paint, bank, hasBoot(), outlet());
+        return new Design(diameter, tangentLength, form, support, new VesselPlacement(forward, right, up), trays, List.copyOf(connections), paint, bank, hasBoot(), outlet(),
+                column);
+    }
+
+    /** The trays the column form shows and builds: the imported design's, else the constructor's own (which build nothing). */
+    private ColumnTrays shownTrays() {
+        return column != null ? column.trays() : trays;
     }
 
     /** Whether the draft has a boot: a lying drum's, where it has room for one. */
@@ -304,13 +314,13 @@ public final class EquipmentConstructorScreen extends Screen {
             unitDesign();
             return;
         }
-        stepper(1, this::diameter);
         int next = 3;
-        if (form.column()) {
-            stepper(2, step -> trays = trays.withTrays(clamp(trays.trays() + step, 1, ColumnTrays.MAX_TRAYS)));
-            stepper(3, step -> trays = trays.withFeed(clamp(trays.feed() + step, 1, trays.trays() + 1)));
-            next = 4;
-        } else stepper(2, step -> tangentLength = clamp(tangentLength + step, 1, (int) EquipmentShape.MAX_TANGENT_LENGTH));
+        // A column's diameter, trays and feed are its imported design's: shown, not edited (plan 2026-10-26, section 4.5).
+        if (form.column()) next = 4;
+        else {
+            stepper(1, this::diameter);
+            stepper(2, step -> tangentLength = clamp(tangentLength + step, 1, (int) EquipmentShape.MAX_TANGENT_LENGTH));
+        }
         if (Equipment.of(form) == Equipment.HORIZONTAL_DRUM) {
             var axis = Button.builder(Component.translatable(KEY + "form." + form.name().toLowerCase(Locale.ROOT)), b -> {
                 form = form == VesselPlacement.Form.LENGTHWISE ? VesselPlacement.Form.CROSSWISE : VesselPlacement.Form.LENGTHWISE;
@@ -512,7 +522,7 @@ public final class EquipmentConstructorScreen extends Screen {
         for (int i = 0; i < own.length; i++) addRenderableWidget(own[i].bounds(8 + i * (span + gap), BUTTONS, span, 20).build());
         build = addRenderableWidget(Button.builder(Component.translatable(KEY + "build"), b -> build()).bounds(8 + own.length * (span + gap), BUTTONS, span, 20).build());
         addRenderableWidget(Button.builder(Component.translatable(KEY + "done"), b -> onClose()).bounds(8 + (own.length + 1) * (span + gap), BUTTONS, span, 20).build());
-        build.active = clash() == null;
+        build.active = clash() == null && design().buildable();
     }
 
     private EquipmentShape.Connection connection() {
@@ -710,7 +720,7 @@ public final class EquipmentConstructorScreen extends Screen {
 
     private int minimumSupport() {
         if (form.designed()) return ProcessUnit.minSupport(form.kind(), diameter, tangentLength);
-        if (form.column()) return EquipmentShape.minimumSkirt(diameter);
+        if (form.column()) return EquipmentShape.minimumSkirt(column != null ? column.diameter() : diameter);
         if (form.orientation() == EquipmentShape.Orientation.VERTICAL) return EquipmentShape.minimumSkirt(diameter);
         return hasBoot() ? EquipmentShape.minimumBootSupport(diameter, tangentLength) : 1;
     }
@@ -734,7 +744,7 @@ public final class EquipmentConstructorScreen extends Screen {
         var shape = design().shape(facing);
         if (!shape.equals(layout.shape())) layout = ShapeRasterizer.layout(shape);
         if (outletButton != null) outletButton.setMessage(outletLabel());
-        if (build != null) build.active = clash() == null;
+        if (build != null) build.active = clash() == null && design().buildable();
     }
 
     private static int clamp(int value, int low, int high) {
@@ -823,6 +833,7 @@ public final class EquipmentConstructorScreen extends Screen {
         int blocked = EquipmentGhost.blockedCount();
         var clash = clash();
         var status = importing != null ? Component.translatable(KEY + "importing")
+                : !design().buildable() ? Component.translatable(KEY + "import_needed")
                 : clash != null ? clashText(clash)
                 : EquipmentGhost.standing() ? Component.translatable(KEY + "standing")
                 : blocked == 0 ? Component.translatable(KEY + "clear") : Component.translatable(KEY + "blocked", blocked);
@@ -836,7 +847,9 @@ public final class EquipmentConstructorScreen extends Screen {
         String[] values = switch (equipment) {
             case VERTICAL_DRUM -> new String[]{"", across, tangentLength + " m", support + " m", place, shift, lift};
             case HORIZONTAL_DRUM -> new String[]{"", across, tangentLength + " m", "", support + " m", place, shift, lift};
-            case COLUMN -> new String[]{"", across, Integer.toString(trays.trays()), Integer.toString(trays.feed()), support + " m", place, shift, lift};
+            // The calculator's numbering: its trays and the condenser and reboiler; the feed counted from the condenser.
+            case COLUMN -> new String[]{"", size(column != null ? column.diameter() : diameter) + " m", Integer.toString(shownTrays().trays() + 2),
+                    Integer.toString(shownTrays().feed() + 1), support + " m", place, shift, lift};
             // A bay's width × length in m, without spaces or unit: a value stands in the 34 pixels between its − and +.
             case AIR_COOLER -> new String[]{"", size(diameter) + "×" + tangentLength, Integer.toString(bank.parallel()),
                     Integer.toString(bank.series()), support + " m", place, shift, lift};
@@ -936,6 +949,7 @@ public final class EquipmentConstructorScreen extends Screen {
      * right strip: the draw marks end 4 pixels inside its right edge, the steam lines start at least 7 inside its left one.
      */
     private void schematic(GuiGraphics g) {
+        var trays = shownTrays();
         int x = width - 8 - ColumnDiagram.MARK - 13, top = 32, bottom = height - 54, n = trays.trays();
         double pitch = (bottom - top - 34) / (double) Math.max(1, n);
         IntUnaryOperator at = k -> top + 14 + (int) Math.round((k - 1) * pitch);
@@ -943,7 +957,7 @@ public final class EquipmentConstructorScreen extends Screen {
         for (int k = 1; k <= n; k++) if (pitch >= 3 || k % 5 == 0 || k == 1 || k == n) ColumnDiagram.tray(g, x, at.applyAsInt(k), ProcessUi.MUTED);
         int fy = at.applyAsInt(trays.feed());
         ColumnDiagram.feed(g, x, x - 70, fy, ProcessUi.ACCENT);
-        g.drawString(font, Component.translatable(KEY + "schematic.feed", trays.feed()), x - 70, fy - 10, ProcessUi.ACCENT);
+        g.drawString(font, Component.translatable(KEY + "schematic.feed", trays.feed() + 1), x - 70, fy - 10, ProcessUi.ACCENT);
         for (int draw : trays.draws()) ColumnDiagram.draw(g, x, at.applyAsInt(draw), ProcessUi.ACCENT);
         for (int i = 0; i < trays.pumparounds().size(); i++) {
             var p = trays.pumparounds().get(i);

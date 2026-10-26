@@ -9,8 +9,13 @@ import java.util.Objects;
  * 2026-10-15-custom-equipment-rendering): the interior trays at the column solver's 0.6 m spacing, numbered from the top
  * as in the column calculator (tray 1 under the condenser, stage {@code trays + 1} the sump), the feed tray, side draws,
  * steam stages and pumparounds. A design imported from a column calculator keeps its numbers.
+ *
+ * <p>{@code components}: the component design a column calculator saved with these trays (batch
+ * 2026-10-26-multi-machine-framework, plan section 4.5), or null for a column built without one, which is every column
+ * built before the field existed. Saved by name beside the trays; {@link #encode()} carries the trays only.
  */
-public record ColumnTrays(int trays, int feed, List<Integer> draws, List<Integer> steam, List<Pumparound> pumparounds) {
+public record ColumnTrays(int trays, int feed, List<Integer> draws, List<Integer> steam, List<Pumparound> pumparounds,
+                          @org.jetbrains.annotations.Nullable ColumnComponents components) {
     /** Tray spacing (the solver's {@code V3TrayHydraulics} spacing) and the disengagement space above the top tray, m. */
     public static final double SPACING = .6, TOP_SPACE = 1.2;
     public static final int MAX_TRAYS = 64, MAX_DRAWS = 4, MAX_STEAM = 2, MAX_PUMPAROUNDS = 4;
@@ -31,6 +36,25 @@ public record ColumnTrays(int trays, int feed, List<Integer> draws, List<Integer
         for (int stage : steam) if (stage < 1 || stage > trays + 1) throw new IllegalArgumentException("Steam stage outside the column: " + stage);
         for (var p : pumparounds)
             if (p.ret < 1 || p.ret > p.draw || p.draw > trays) throw new IllegalArgumentException("Pumparound must return at or above its draw tray: " + p);
+        if (components != null && components.pumparoundPumps().size() != pumparounds.size())
+            throw new IllegalArgumentException("One pumparound pump per pumparound: " + components.pumparoundPumps().size() + " pumps, " + pumparounds.size() + " pumparounds");
+    }
+
+    /** Trays without a component design. */
+    public ColumnTrays(int trays, int feed, List<Integer> draws, List<Integer> steam, List<Pumparound> pumparounds) {
+        this(trays, feed, draws, steam, pumparounds, null);
+    }
+
+    /** These trays with the component design {@code next} (null: none). */
+    public ColumnTrays withComponents(@org.jetbrains.annotations.Nullable ColumnComponents next) {
+        return new ColumnTrays(trays, feed, draws, steam, pumparounds, next);
+    }
+
+    /** The record's text, with the components only where there are some: a column without them reads as it did before the field. */
+    @Override
+    public String toString() {
+        return "ColumnTrays[trays=" + trays + ", feed=" + feed + ", draws=" + draws + ", steam=" + steam + ", pumparounds=" + pumparounds
+                + (components == null ? "" : ", components=" + components) + "]";
     }
 
     /** A plain column: trays and the feed, nothing else. */
@@ -68,12 +92,15 @@ public record ColumnTrays(int trays, int feed, List<Integer> draws, List<Integer
                 .refit(Math.max(1, input.stageCount()), draws, steam, pumparounds);
     }
 
-    /** The same layout over {@code trays} trays: the feed kept within the column, draws, steam and pumparounds that no longer fit dropped. */
+    /**
+     * The same layout over {@code trays} trays: the feed kept within the column, draws, steam and pumparounds that no longer
+     * fit dropped; no component design (an edited layout is no longer the one the calculator saved).
+     */
     public ColumnTrays withTrays(int trays) {
         return refit(trays, draws, steam, pumparounds);
     }
 
-    /** The same layout with the feed on {@code feed}. */
+    /** The same layout with the feed on {@code feed}; no component design. */
     public ColumnTrays withFeed(int feed) {
         return new ColumnTrays(trays, feed, draws, steam, pumparounds);
     }

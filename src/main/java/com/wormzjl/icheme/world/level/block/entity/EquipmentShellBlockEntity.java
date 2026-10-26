@@ -445,9 +445,9 @@ public final class EquipmentShellBlockEntity extends BlockEntity implements com.
     }
 
     /**
-     * A shape's NBT: kind, diameter, tangent length, orientation, front, support, a column's trays, a drum's side
-     * connections and whether it has a boot, an air cooler's bank; a drum's and a designed shape's bottom outlet turns
-     * (a column's leaves to the front).
+     * A shape's NBT: kind, diameter, tangent length, orientation, front, support, a column's trays and its component
+     * design (shape fields 2, batch 2026-10-26-multi-machine-framework), a drum's side connections and whether it has a
+     * boot, an air cooler's bank; a drum's and a designed shape's bottom outlet turns (a column's leaves to the front).
      */
     public static void writeShape(CompoundTag tag, EquipmentShape shape) {
         tag.putString("Kind", shape.kind().name().toLowerCase(Locale.ROOT));
@@ -456,8 +456,10 @@ public final class EquipmentShellBlockEntity extends BlockEntity implements com.
         tag.putString("Orientation", shape.orientation().name().toLowerCase(Locale.ROOT));
         tag.putString("Front", shape.front().name().toLowerCase(Locale.ROOT));
         tag.putInt("Support", shape.support());
-        if (shape.trays() != null) tag.putIntArray("Trays", shape.trays().encode());
-        else {
+        if (shape.trays() != null) {
+            tag.putIntArray("Trays", shape.trays().encode());
+            if (shape.trays().components() != null) tag.put("Components", ColumnDesignTags.writeComponents(shape.trays().components()));
+        } else {
             if (shape.drum()) {
                 tag.putIntArray("Connections", EquipmentShape.Connection.encode(shape.connections()));
                 tag.putBoolean("Boot", shape.boot());
@@ -480,7 +482,7 @@ public final class EquipmentShellBlockEntity extends BlockEntity implements com.
         return new ShapeRepair.Saved(tag.getString("Kind"), tag.getString("Front"), tag.contains("Orientation") ? tag.getString("Orientation") : null,
                 tag.getDouble("Diameter"), tag.getDouble("TangentLength"), tag.getInt("Support"), tag.contains("Trays") ? tag.getIntArray("Trays") : null,
                 tag.contains("Connections") ? tag.getIntArray("Connections") : null, tag.getBoolean("Boot"), tag.getInt("Outlet"),
-                tag.contains("Bank") ? tag.getIntArray("Bank") : null);
+                tag.contains("Bank") ? tag.getIntArray("Bank") : null, ColumnDesignTags.saved(tag, "Components"));
     }
 
     @Override

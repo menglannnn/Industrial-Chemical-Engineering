@@ -2,6 +2,7 @@ package com.wormzjl.icheme.world.level.block.entity;
 
 import com.wormzjl.icheme.IChemE;
 import com.wormzjl.icheme.registry.ModBlockEntities;
+import com.wormzjl.icheme.science.equipment.ColumnDesign;
 import com.wormzjl.icheme.science.equipment.ColumnTrays;
 import com.wormzjl.icheme.science.equipment.EquipmentShape;
 import com.wormzjl.icheme.science.equipment.EquipmentShape.Orientation;
@@ -40,9 +41,15 @@ public final class EquipmentConstructorBlockEntity extends BlockEntity {
      * The paint colours whatever is built. {@code outlet}: the quarter turns from the front a bottom outlet leaving through
      * a skirt takes (owner request 2026-10-25), valid for the form ({@link EquipmentShape#outlets}): a standing drum's or
      * a trickle-bed reactor's; 0 for every other form.
+     *
+     * <p>{@code column}: the column design imported from a column calculator (batch 2026-10-26-multi-machine-framework,
+     * plan section 4.5), or null. A column is built from it only: its diameter, trays and components; the skirt, the
+     * placement and the paint stay the player's. Without one, the column form shows {@code trays} at {@code diameter} (a
+     * design saved before imports were required) and builds nothing.
      */
     public record Design(double diameter, int tangentLength, VesselPlacement.Form form, int support, VesselPlacement placement, ColumnTrays trays,
-                         List<EquipmentShape.Connection> connections, Paint paint, ProcessUnit.Bank bank, boolean boot, int outlet) {
+                         List<EquipmentShape.Connection> connections, Paint paint, ProcessUnit.Bank bank, boolean boot, int outlet,
+                         @org.jetbrains.annotations.Nullable ColumnDesign column) {
         /** A new column's trays: twenty, fed in the middle. */
         public static final ColumnTrays TRAYS = ColumnTrays.simple(20, 10);
         /**
@@ -52,7 +59,13 @@ public final class EquipmentConstructorBlockEntity extends BlockEntity {
          */
         public static final Design DEFAULT = new Design(2, 4, VesselPlacement.Form.VERTICAL, EquipmentShape.defaultSupport(2, Orientation.VERTICAL),
                 VesselPlacement.DEFAULT, TRAYS, EquipmentShape.defaultConnections(2, 4, Orientation.VERTICAL, EquipmentShape.defaultSupport(2, Orientation.VERTICAL), false),
-                Paint.DEFAULT, ProcessUnit.Bank.ONE, false, 0);
+                Paint.DEFAULT, ProcessUnit.Bank.ONE, false, 0, null);
+
+        /** A design without an imported column. */
+        public Design(double diameter, int tangentLength, VesselPlacement.Form form, int support, VesselPlacement placement, ColumnTrays trays,
+                      List<EquipmentShape.Connection> connections, Paint paint, ProcessUnit.Bank bank, boolean boot, int outlet) {
+            this(diameter, tangentLength, form, support, placement, trays, connections, paint, bank, boot, outlet, null);
+        }
 
         /** What a new constructor proposes: {@link #DEFAULT} in the config's primary and secondary colours. */
         public static Design fresh() {
@@ -69,21 +82,43 @@ public final class EquipmentConstructorBlockEntity extends BlockEntity {
             connections = List.copyOf(connections);
             // Validates the shape from the parameters (a compact constructor assigns the fields after its body); the
             // facing does not change what is valid.
-            shape(diameter, tangentLength, form, support, trays, connections, bank, boot, outlet, EquipmentShape.Heading.NORTH);
+            shape(diameter, tangentLength, form, support, trays, connections, bank, boot, outlet, column, EquipmentShape.Heading.NORTH);
         }
 
         public EquipmentShape shape(Direction facing) {
-            return shape(diameter, tangentLength, form, support, trays, connections, bank, boot, outlet, form.front(facing.getStepX(), facing.getStepZ()));
+            return shape(diameter, tangentLength, form, support, trays, connections, bank, boot, outlet, column, form.front(facing.getStepX(), facing.getStepZ()));
+        }
+
+        /** Whether this design builds: anything but a column without an imported design. */
+        public boolean buildable() {
+            return !form.column() || column != null;
+        }
+
+        /**
+         * This design with the column {@code imported}: the column form, its diameter, the skirt at least the column's
+         * least, the bottoms to the front; the placement, the paint and the other forms' fields kept.
+         */
+        public Design imported(ColumnDesign imported) {
+            double d = imported.diameter();
+            return new Design(d, tangentLength, VesselPlacement.Form.COLUMN, Math.max(support, EquipmentShape.minimumSkirt(d)), placement, trays, connections, paint,
+                    bank, boot, 0, imported);
+        }
+
+        /** {@code edited}, a design the player sent, with this design's imported column: only an import sets it. */
+        public Design keepingColumn(Design edited) {
+            return new Design(edited.diameter, edited.tangentLength, edited.form, edited.support, edited.placement, edited.trays, edited.connections, edited.paint,
+                    edited.bank, edited.boot, edited.outlet, column);
         }
 
         /** The shape; an outlet the form does not turn to is refused ({@link EquipmentShape#outlets}). */
         private static EquipmentShape shape(double diameter, int tangentLength, VesselPlacement.Form form, int support, ColumnTrays trays,
-                                            List<EquipmentShape.Connection> connections, ProcessUnit.Bank bank, boolean boot, int outlet, EquipmentShape.Heading front) {
+                                            List<EquipmentShape.Connection> connections, ProcessUnit.Bank bank, boolean boot, int outlet,
+                                            @org.jetbrains.annotations.Nullable ColumnDesign column, EquipmentShape.Heading front) {
             if (form.designed())
                 return EquipmentShape.designed(form.kind(), diameter, tangentLength, front, support, form.kind() == EquipmentShape.Kind.AIR_COOLER ? bank : ProcessUnit.Bank.ONE, outlet);
             if (form.column()) {
                 if (outlet != 0) throw new IllegalArgumentException("A column's bottoms leave to the front");
-                return EquipmentShape.column(diameter, trays, front, support);
+                return column != null ? EquipmentShape.column(column.diameter(), column.trays(), front, support) : EquipmentShape.column(diameter, trays, front, support);
             }
             return EquipmentShape.drum(diameter, tangentLength, form.orientation(), front, support, connections, boot && form.orientation().horizontal(), outlet);
         }
@@ -207,11 +242,29 @@ public final class EquipmentConstructorBlockEntity extends BlockEntity {
         var shape = read.shape();
         // A column's own length follows its trays; the design keeps the drum length it was saved with for another form.
         int length = form.column() ? (int) Math.max(1, Math.min(EquipmentShape.MAX_TANGENT_LENGTH, tag.getInt("TangentLength"))) : (int) shape.tangentLength();
-        return new Design(shape.diameter(), length, form, shape.support(), placement, shape.trays() != null ? shape.trays() : trays, shape.connections(), paint,
+        var design = new Design(shape.diameter(), length, form, shape.support(), placement, shape.trays() != null ? shape.trays() : trays, shape.connections(), paint,
                 shape.bank(), shape.boot(), shape.outlet());
+        if (!tag.contains("Column")) return design;
+        // The imported column (shape fields 2): its own checks, then the skirt at least its least.
+        try {
+            if (!tag.contains("Column", net.minecraft.nbt.Tag.TAG_COMPOUND)) throw new IllegalArgumentException("not a compound");
+            var column = ColumnDesignTags.read(tag.getCompound("Column"));
+            int skirt = Math.max(design.support(), EquipmentShape.minimumSkirt(column.diameter()));
+            if (form.column() && skirt != design.support()) repairs.accept("support " + design.support() + " -> " + skirt);
+            return new Design(design.diameter(), design.tangentLength(), form, form.column() ? skirt : design.support(), placement, design.trays(), design.connections(),
+                    paint, design.bank(), design.boot(), design.outlet(), column);
+        } catch (IllegalArgumentException invalid) {
+            repairs.accept("column design (" + invalid.getMessage() + ") -> none");
+            return design;
+        }
     }
 
     private void write(CompoundTag tag) {
+        writeDesign(tag, design);
+    }
+
+    /** A design's tags, which {@link #readDesign} reads: its fields by name; an imported column (shape fields 2) under {@code Column}. */
+    public static void writeDesign(CompoundTag tag, Design design) {
         tag.putDouble("Diameter", design.diameter());
         tag.putInt("TangentLength", design.tangentLength());
         tag.putString("Form", design.form().name().toLowerCase(Locale.ROOT));
@@ -224,14 +277,15 @@ public final class EquipmentConstructorBlockEntity extends BlockEntity {
         tag.putIntArray("Bank", design.bank().encode());
         tag.putBoolean("Boot", design.boot());
         tag.putInt("Outlet", design.outlet());
+        if (design.column() != null) tag.put("Column", ColumnDesignTags.write(design.column()));
     }
 
     /**
-     * Server: the design of the column calculator nearest this constructor within {@code reach} blocks, as a column with
-     * this design's support (at least the column's least skirt) and placement; its diameter where the calculator sizes
-     * its trays (otherwise this design's). A read of the calculator's stored input: nothing is solved.
+     * Server: the column calculator nearest this constructor within {@code reach} blocks (empty when there is none), and
+     * this design with its saved design imported ({@link Design#imported}; empty when it has none). A read: nothing is
+     * solved.
      */
-    public java.util.Optional<Design> importColumn(int reach) {
+    public java.util.Optional<java.util.Optional<Design>> importColumn(int reach) {
         if (level == null) return java.util.Optional.empty();
         ColumnCalculatorV3BlockEntity nearest = null;
         double best = Double.MAX_VALUE;
@@ -244,12 +298,7 @@ public final class EquipmentConstructorBlockEntity extends BlockEntity {
             }
         }
         if (nearest == null) return java.util.Optional.empty();
-        var input = nearest.currentInput();
-        double sized = input.columnDiameterMetres();
-        double diameter = sized > 0 ? Math.max(EquipmentShape.MIN_DIAMETER, Math.min(EquipmentShape.MAX_COLUMN_DIAMETER, Math.round(sized * 2) / 2.0))
-                : Math.min(EquipmentShape.MAX_COLUMN_DIAMETER, design.diameter());
-        return java.util.Optional.of(new Design(diameter, design.tangentLength(), VesselPlacement.Form.COLUMN, Math.max(design.support(), EquipmentShape.minimumSkirt(diameter)),
-                design.placement(), ColumnTrays.of(input), design.connections(), design.paint(), design.bank(), design.boot(), 0));
+        return java.util.Optional.of(nearest.savedDesign().map(design::imported));
     }
 
     @Override

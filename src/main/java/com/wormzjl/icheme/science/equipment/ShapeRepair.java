@@ -26,9 +26,29 @@ public final class ShapeRepair {
     private ShapeRepair() {
     }
 
-    /** A shape as saved, before any rule reads it: names as written, numbers, and the arrays a shape was saved with (null when absent). */
+    /**
+     * A shape as saved, before any rule reads it: names as written, numbers, and the arrays a shape was saved with (null
+     * when absent); a column's component design (null when absent: a column built without one).
+     */
     public record Saved(String kind, String front, @Nullable String orientation, double diameter, double length, int support, int @Nullable [] trays,
-                        int @Nullable [] connections, boolean boot, int outlet, int @Nullable [] bank) {
+                        int @Nullable [] connections, boolean boot, int outlet, int @Nullable [] bank, @Nullable SavedComponents components) {
+        /** A shape saved before its column could carry a component design. */
+        public Saved(String kind, String front, @Nullable String orientation, double diameter, double length, int support, int @Nullable [] trays,
+                     int @Nullable [] connections, boolean boot, int outlet, int @Nullable [] bank) {
+            this(kind, front, orientation, diameter, length, support, trays, connections, boot, outlet, bank, null);
+        }
+    }
+
+    /** A column's component design as saved: its kinds by name and its two flags (batch 2026-10-26-multi-machine-framework). */
+    public record SavedComponents(String condenser, String refluxPump, List<String> pumparoundPumps, boolean ejector, boolean kettle) {
+        public SavedComponents {
+            pumparoundPumps = List.copyOf(pumparoundPumps);
+        }
+
+        /** @throws IllegalArgumentException naming a kind this build does not have, or too many pumps */
+        public ColumnComponents resolve() {
+            return ColumnComponents.named(condenser, refluxPump, pumparoundPumps, ejector, kettle);
+        }
     }
 
     /** The shape read, or the name of a {@link #retired} kind; and each change a repair made, as {@code field from -> to}. */
@@ -96,6 +116,12 @@ public final class ShapeRepair {
                 trays = DEFAULT_TRAYS;
                 repairs.add("trays (" + invalid.getMessage() + ") -> " + DEFAULT_TRAYS.trays() + " trays");
             }
+            if (saved.components() != null)
+                try {
+                    trays = trays.withComponents(saved.components().resolve());
+                } catch (IllegalArgumentException invalid) {
+                    repairs.add("components (" + invalid.getMessage() + ") -> none");
+                }
         }
         List<Connection> connections = List.of();
         if (kind == Kind.DRUM) {

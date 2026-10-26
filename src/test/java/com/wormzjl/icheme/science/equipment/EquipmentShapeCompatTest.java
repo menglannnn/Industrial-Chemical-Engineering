@@ -20,12 +20,19 @@ import static org.junit.jupiter.api.Assertions.*;
  * a kind this build no longer has is retired, and no saved value makes the reader throw.
  */
 class EquipmentShapeCompatTest {
+    /** A component design with an exchanger condenser, an In-line reflux pump, one pumparound pump and an ejector. */
+    static final ColumnComponents COMPONENTS = new ColumnComponents(ColumnComponents.Condenser.EXCHANGER, ColumnComponents.Pump.IN_LINE,
+            List.of(ColumnComponents.Pump.STANDARD), true, false);
+
     /** One shape of every kind at its default size, and a lying drum. */
     static List<EquipmentShape> everyKind() {
         var shapes = new ArrayList<EquipmentShape>();
         shapes.add(EquipmentShape.drum(2, 4, Orientation.VERTICAL, Heading.NORTH, EquipmentShape.defaultSupport(2, Orientation.VERTICAL)));
         shapes.add(EquipmentShape.drum(2, 6, Orientation.HORIZONTAL, Heading.EAST, EquipmentShape.defaultSupport(2, Orientation.HORIZONTAL)));
         shapes.add(EquipmentShape.column(2, ColumnTrays.simple(20, 10), Heading.SOUTH, EquipmentShape.minimumSkirt(2)));
+        // Shape fields 2: a column built from a calculator's design carries its components.
+        shapes.add(EquipmentShape.column(3, new ColumnTrays(20, 15, List.of(8), List.of(21), List.of(new ColumnTrays.Pumparound(8, 6)),
+                COMPONENTS), Heading.NORTH, EquipmentShape.minimumSkirt(3)));
         for (var kind : Kind.values()) {
             if (!kind.designed()) continue;
             double size = ProcessUnit.minDiameter(kind);int length = ProcessUnit.defaultLength(kind, size);
@@ -99,6 +106,57 @@ class EquipmentShapeCompatTest {
         assertTrue(retired > 0 && repaired > 1000, "retired " + retired + ", repaired " + repaired);
     }
 
+    /** A column's components are read by name; one this build cannot read is dropped and named, the column kept (batch 2026-10-26-multi-machine-framework). */
+    @Test
+    void aColumnsComponentsReadByNameAndAnUnknownKindIsRepairedAway() {
+        var built = everyKind().stream().filter(s -> s.trays() != null && s.trays().components() != null).findFirst().orElseThrow();
+        var tag = saved(built);
+        assertEquals("EXCHANGER", tag.getCompound("Components").getString("Condenser"), "kinds saved by name");
+        tag.getCompound("Components").putString("RefluxPump", "jet_pump");
+        var read = EquipmentShellBlockEntity.readShape(tag);
+        assertEquals(built.trays().withComponents(null), read.shape().trays());
+        assertEquals(1, read.repairs().size(), read.repairs().toString());
+        assertTrue(read.repairs().getFirst().startsWith("components (reflux pump: unknown kind jet_pump)"), read.repairs().toString());
+        // A field that is not a compound is named too.
+        var broken = saved(built);broken.putInt("Components", 7);
+        assertFalse(EquipmentShellBlockEntity.readShape(broken).repairs().isEmpty());
+    }
+
+    /**
+     * A constructor builds a column from an imported design only (plan section 4.5): the import sets the form, the
+     * diameter, the trays and components and a skirt at least the column's least; a design the player sends keeps the
+     * import; the imported column round-trips through the constructor's tags.
+     */
+    @Test
+    void aConstructorBuildsAColumnFromItsImportedDesignOnly() {
+        var fresh = EquipmentConstructorBlockEntity.Design.DEFAULT;
+        assertFalse(new EquipmentConstructorBlockEntity.Design(fresh.diameter(), fresh.tangentLength(), VesselPlacement.Form.COLUMN, EquipmentShape.minimumSkirt(2),
+                fresh.placement(), fresh.trays(), fresh.connections(), fresh.paint(), fresh.bank(), false, 0).buildable(), "no import, no column");
+        var column = new ColumnDesign(new ColumnTrays(20, 15, List.of(8), List.of(21), List.of(new ColumnTrays.Pumparound(8, 6)), COMPONENTS), 6);
+        var imported = fresh.imported(column);
+        assertTrue(imported.buildable());
+        assertEquals(VesselPlacement.Form.COLUMN, imported.form());
+        var shape = imported.shape(net.minecraft.core.Direction.SOUTH);
+        assertEquals(6, shape.diameter());
+        assertEquals(column.trays(), shape.trays(), "the trays carry the components into the shape");
+        assertTrue(imported.support() >= EquipmentShape.minimumSkirt(6));
+        assertEquals(fresh.placement(), imported.placement());
+        // The player's edit (a drum diameter, other trays) keeps the imported column.
+        var edited = new EquipmentConstructorBlockEntity.Design(2, imported.tangentLength(), VesselPlacement.Form.COLUMN, imported.support(), imported.placement(),
+                ColumnTrays.simple(5, 2), imported.connections(), imported.paint(), imported.bank(), false, 0);
+        var kept = imported.keepingColumn(edited);
+        assertEquals(column, kept.column());
+        assertEquals(shape, kept.shape(net.minecraft.core.Direction.SOUTH));
+        // The constructor's tags: written and read with no repair.
+        var tag = new CompoundTag();
+        EquipmentConstructorBlockEntity.writeDesign(tag, imported);
+        var repairs = new ArrayList<String>();
+        var read = EquipmentConstructorBlockEntity.readDesign(tag, fresh, repairs::add);
+        assertEquals(column, read.column());
+        assertEquals(shape, read.shape(net.minecraft.core.Direction.SOUTH));
+        assertEquals(List.of(), repairs);
+    }
+
     @Test
     void aConstructorDesignIsRepairedKeepingItsPlacementAndPaint() {
         var fresh = EquipmentConstructorBlockEntity.Design.DEFAULT;
@@ -119,8 +177,8 @@ class EquipmentShapeCompatTest {
     // ---------------- the corpus: saved shell tags per shape-field change ----------------
 
     private static final Path CORPUS = Path.of("src/test/resources/compat/equipment");
-    /** The shape fields' revision: the corpus file this build's tags are kept in. Raise it with a shape-field change. */
-    private static final int SHAPE_FIELDS = 1;
+    /** The shape fields' revision: the corpus file this build's tags are kept in. Raise it with a shape-field change (2: a column's components). */
+    private static final int SHAPE_FIELDS = 2;
 
     /**
      * Every corpus file's saved shell tags read with no repair, to the shapes recorded beside them. The file of this

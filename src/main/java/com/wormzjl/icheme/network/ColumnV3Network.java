@@ -491,7 +491,7 @@ public final class ColumnV3Network {
             var condenser = readKind(buffer, ColumnComponents.Condenser.class);
             var reflux = readKind(buffer, ColumnComponents.Pump.class);
             var pumps = readPumps(buffer);
-            return new ColumnDesign(trays, diameter, new ColumnComponents(condenser, reflux, pumps, buffer.readBoolean(), buffer.readBoolean()));
+            return new ColumnDesign(trays.withComponents(new ColumnComponents(condenser, reflux, pumps, buffer.readBoolean(), buffer.readBoolean())), diameter);
         } catch (IllegalArgumentException invalid) {
             throw new DecoderException("Invalid V3 column design", invalid);
         }
