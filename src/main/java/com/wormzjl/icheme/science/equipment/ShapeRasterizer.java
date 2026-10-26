@@ -158,17 +158,13 @@ public final class ShapeRasterizer {
         return surface(key.shape(), c[0], c[1], c[2], key.nozzles(), true);
     }
 
-    /** A cell's surface without its moving parts' facets ({@link ProcessUnit.Motion}): the client draws those moving. */
+    /**
+     * A cell's surface without its moving parts' facets ({@link ProcessUnit.Motion}): the chunk mesh; the client draws
+     * those parts, moving or at rest.
+     */
     public static List<Polygon> fixedSurface(CellKey key) {
         int[] c = cell(key);
         return surface(key.shape(), c[0], c[1], c[2], key.nozzles(), false);
-    }
-
-    /** Whether facets of a moving part reach the cell: its surface differs while the parts move. */
-    public static boolean moves(CellKey key) {
-        int[] c = cell(key);
-        for (var facet : geometry(key.shape()).facetsIn(new Cell(c[0], c[1], c[2]))) if (facet.part() >= 0) return true;
-        return false;
     }
 
     /**
