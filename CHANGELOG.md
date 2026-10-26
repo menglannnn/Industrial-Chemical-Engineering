@@ -15,6 +15,10 @@ All notable changes to Industrial Chemical Engineering (IChemE, formerly CreateC
 
 ## [Unreleased]
 
+### Fixed
+
+- The datasheet's "Moving parts" switch no longer reloads every chunk (owner report 2026-10-26, batch folder: `2026-10-26-air-cooler-chunk-rendering`, review `AIR_COOLER_CHUNK_RELOAD_REVIEW.md`): it stops units' parts as a stopped pump's stand, and the chunk mesh never holds moving parts.
+
 ## [0.12.2] - 2026-10-26
 
 ### Changed

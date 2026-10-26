@@ -33,13 +33,14 @@ import java.util.Map;
 /**
  * Units' moving parts (owner requests 2026-10-16, "add a working animation for AC (can be switched on and off) and check
  * FPS, try to be FPS efficient", and 2026-10-18, "give compressor and pump working animations"): air cooler fans, pump
- * shafts and motor fans turn, compressor piston rods slide ({@link ProcessUnit.Motion}). While it is on, the shell model
- * leaves the moving parts out of the chunk mesh ({@link EquipmentShellModel}) and this draws each part within
- * {@link #RANGE} blocks and in view once a frame, turned about its axis or slid along it. A part is uploaded to the GPU
+ * shafts and motor fans turn, compressor piston rods slide ({@link ProcessUnit.Motion}). The shell model leaves the moving
+ * parts out of the chunk mesh ({@link EquipmentShellModel}) and this draws each part within {@link #RANGE} blocks and in
+ * view once a frame, turned about its axis or slid along it, or at rest where it stands still. A part is uploaded to the GPU
  * once per unit, part and light; the shader is set up once a frame, and each part then costs a light lookup, its matrix
  * and one draw call, whatever its triangles (measured 2026-10-16 on a 6 × 4 air cooler bank in view: 48 turning fans
  * cost about 0.03 ms a frame against still ones). Every unit starts from its own angle (its position), so neighbours do
- * not move in step. The switch is on a moving unit's datasheet, for debugging; it is not saved.
+ * not move in step. The switch on a moving unit's datasheet stops every unit's parts as a stopped mover's stand (owner
+ * report 2026-10-26: it re-meshed every chunk while it moved the parts in and out of the mesh); it is not saved.
  */
 @EventBusSubscriber(modid = IChemE.MOD_ID, value = Dist.CLIENT)
 public final class MachineAnimation {
@@ -47,7 +48,7 @@ public final class MachineAnimation {
     public static final double RANGE = 96;
     /** Part buffers kept, by unit, part and light; all are dropped when it fills. */
     private static final int MAX_BUFFERS = 256;
-    private static boolean enabled = true;
+    private static boolean running = true;
     private static final Map<Key, VertexBuffer> BUFFERS = new HashMap<>();
     /** A sprite the buffers hold texture coordinates of: a resource reload makes them stale. */
     private static @Nullable TextureAtlasSprite builtWith;
@@ -58,19 +59,19 @@ public final class MachineAnimation {
     private MachineAnimation() {
     }
 
-    public static boolean enabled() {
-        return enabled;
+    /** Whether units' parts move; off, every part stands at rest as a stopped mover's does. */
+    public static boolean running() {
+        return running;
     }
 
-    /** The datasheet's switch: the chunks are meshed again with or without the parts at rest. */
+    /** The datasheet's switch: parts stop or move again. The chunk mesh never holds them, so no chunk is meshed again. */
     public static void toggle() {
-        enabled = !enabled;
-        Minecraft.getInstance().levelRenderer.allChanged();
+        running = !running;
     }
 
     @SubscribeEvent
     public static void render(RenderLevelStageEvent event) {
-        if (!enabled || event.getStage() != RenderLevelStageEvent.Stage.AFTER_SOLID_BLOCKS) return;
+        if (event.getStage() != RenderLevelStageEvent.Stage.AFTER_SOLID_BLOCKS) return;
         var level = Minecraft.getInstance().level;
         var marker = EquipmentShellModel.sprite(Mesh.Material.PIPE);
         if (level == null || marker == null) return;
@@ -90,7 +91,7 @@ public final class MachineAnimation {
             var shape = cell.shape();
             var origin = cell.origin();
             if (cell.isRemoved() || cell.getLevel() != level || shape == null || origin == null) continue;
-            double motionSeconds=MoverSounds.running(cell)?seconds:0;
+            double motionSeconds = running && MoverSounds.running(cell) ? seconds : 0;
             var parts = ShapeRasterizer.moving(shape);
             double unitPhase = Math.floorMod(31L * origin.getX() + 7L * origin.getY() + origin.getZ(), 97) / 97.0;
             for (int index : cell.moving()) {

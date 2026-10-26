@@ -522,7 +522,7 @@
   "gui.icheme.vessel.fans": "%s fans of %s m per bay, %s %% of its bundle",
   "gui.icheme.vessel.motion.running": "Moving parts: running",
   "gui.icheme.vessel.motion.still": "Moving parts: still",
-  "gui.icheme.vessel.motion.hint": "Debug switch for every unit: air cooler fans, pump shafts and motor fans turn and compressor piston rods slide, or all stand still in the chunk mesh, to compare frame rates. Not saved",
+  "gui.icheme.vessel.motion.hint": "Switch for every unit: air cooler fans, pump shafts and motor fans turn and compressor piston rods slide, or all stand still as a stopped pump's do. Not saved",
   "gui.icheme.vessel.suction": "Suction %s m, length %s m",
   "gui.icheme.vessel.pump": "Discharge %s m, suction %s m",
   "gui.icheme.vessel.pump_duty": "About %s m³/h, %s kW at a 100 m head",

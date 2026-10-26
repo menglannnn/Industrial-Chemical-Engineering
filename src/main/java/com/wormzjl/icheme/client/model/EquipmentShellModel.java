@@ -43,8 +43,8 @@ import java.util.function.Function;
  * no ambient occlusion; their directional shade is baked into the vertex colour from the smooth normal (owner report
  * 2026-10-16: the per-quad six-step shade banded a round shell), so vanilla and Sodium shade them alike.
  * Without model data (Distant Horizons asks that way) the model is empty and the particle sprite gives the colour.
- * While units' parts move ({@link MachineAnimation}) the moving parts are left out: a cell holding one keeps both lists,
- * every other cell one list for both states. Each state caches solid/glass layers separately; only cells containing
+ * Units' moving parts are left out ({@link ShapeRasterizer#fixedSurface}): {@link MachineAnimation} draws them, moving or
+ * at rest, so its switch meshes no chunk again. A cell caches solid and glass layers separately; only cells containing
  * glass request the translucent chunk pass.
  */
 public final class EquipmentShellModel implements IDynamicBakedModel {
@@ -56,7 +56,7 @@ public final class EquipmentShellModel implements IDynamicBakedModel {
     private final TextureAtlasSprite[] sprites;
     private final TextureAtlasSprite particle;
     /** Rebuilt with the model on every resource reload, since quads embed atlas coordinates. Meshing threads share them. */
-    private final Map<ShapeRasterizer.CellKey, Baked> quads = new ConcurrentHashMap<>();
+    private final Map<ShapeRasterizer.CellKey, Layers> quads = new ConcurrentHashMap<>();
     /** The sprites of the model last baked, for parts drawn outside the chunk mesh ({@link #sprite}). */
     private static volatile TextureAtlasSprite @Nullable [] current;
 
@@ -76,13 +76,12 @@ public final class EquipmentShellModel implements IDynamicBakedModel {
     public List<BakedQuad> getQuads(@Nullable BlockState state, @Nullable Direction side, RandomSource random, ModelData data, @Nullable RenderType renderType) {
         var key = data.get(EquipmentShellBlockEntity.CELL);
         if (side != null || key == null) return List.of();
-        var baked = baked(key);
-        var layers = MachineAnimation.enabled() ? baked.moving() : baked.still();
+        var layers = baked(key);
         if (renderType == RenderType.translucent()) return layers.glass();
         return renderType == null ? layers.all() : layers.solid();
     }
 
-    private Baked baked(ShapeRasterizer.CellKey key) {
+    private Layers baked(ShapeRasterizer.CellKey key) {
         var baked = quads.get(key);
         if (baked == null) {
             if (quads.size() >= CACHE) quads.clear();
@@ -91,21 +90,16 @@ public final class EquipmentShellModel implements IDynamicBakedModel {
         return baked;
     }
 
-    /** A cell's quads with its moving parts at rest, and without them while they move: one list where it holds none. */
+    /** A cell's quads without its moving parts. */
     private record Layers(List<BakedQuad> solid, List<BakedQuad> glass, List<BakedQuad> all) {
-    }
-    private record Baked(Layers still, Layers moving) {
     }
 
     /**
      * Each convex polygon becomes a fan of quads; a last single triangle repeats its final vertex. A painted material's
      * quads carry its paint channel as their tint index, so the cell's paint colours them as the chunk is meshed.
      */
-    private Baked bake(ShapeRasterizer.CellKey key) {
-        var markings = bake(MoverPortMarkings.surface(key), sprites, true);
-        var still = layers(ShapeRasterizer.surface(key), markings);
-        if (!ShapeRasterizer.moves(key)) return new Baked(still, still);
-        return new Baked(still, layers(ShapeRasterizer.fixedSurface(key), markings));
+    private Layers bake(ShapeRasterizer.CellKey key) {
+        return layers(ShapeRasterizer.fixedSurface(key), bake(MoverPortMarkings.surface(key), sprites, true));
     }
 
     private Layers layers(List<Mesh.Polygon> polygons, List<BakedQuad> markings) {
@@ -210,7 +204,7 @@ public final class EquipmentShellModel implements IDynamicBakedModel {
     @Override
     public ChunkRenderTypeSet getRenderTypes(BlockState state, RandomSource random, ModelData data) {
         var key = data.get(EquipmentShellBlockEntity.CELL);
-        return key != null && !baked(key).still().glass().isEmpty() ? GLASS : SOLID;
+        return key != null && !baked(key).glass().isEmpty() ? GLASS : SOLID;
     }
 
     @Override

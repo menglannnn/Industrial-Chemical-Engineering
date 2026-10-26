@@ -108,7 +108,7 @@ public final class VesselScreen extends Screen {
         tall = lines.size() * pitch + FRAME;
         top = Math.max(0, (height - tall) / 2);
         int y = top + tall - 26;
-        // A moving unit's debug switch: its fans, shafts and rods move, or stand still in the chunk mesh, to compare frame rates.
+        // A moving unit's switch: every unit's fans, shafts and rods move, or stand still as a stopped mover's do.
         if (moving) addRenderableWidget(Button.builder(motionLabel(), b -> {
             MachineAnimation.toggle();
             b.setMessage(motionLabel());
@@ -118,7 +118,7 @@ public final class VesselScreen extends Screen {
     }
 
     private static Component motionLabel() {
-        return Component.translatable(KEY + (MachineAnimation.enabled() ? "motion.running" : "motion.still"));
+        return Component.translatable(KEY + (MachineAnimation.running() ? "motion.running" : "motion.still"));
     }
 
     @Override
