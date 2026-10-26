@@ -2,6 +2,7 @@
   "schema_version": 1,
   "id": "icheme:tjl19",
   "model": "pr78",
+  "revision": "tjl19-frozen-kij-r1",
   "source": "Frozen production binary interaction matrix",
   "pairs": [
     {

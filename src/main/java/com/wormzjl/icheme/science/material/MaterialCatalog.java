@@ -32,8 +32,8 @@ public final class MaterialCatalog {
      * a package's the envelope of its states and the input box of device settings. Leaving either never holds a state
      * (owner rule of 2026-10-16: the models continue and a notice reports it). Read from the {@code fluid_domain} object
      * of a property or package record. It is kept beside the records rather than in them: the records' own ranges are the
-     * column's admission bounds. Like every other field, a change to it bumps the package's declared revision
-     * ({@link Package#scientificRevision}).
+     * column's admission bounds. Like every other field, a change to it bumps the declared revision of the record that
+     * holds it, the property's or the package's, which moves {@link Package#scientificRevision}.
      */
     public record Validity(double minimumTemperature, double maximumTemperature, double minimumPressure, double maximumPressure,
             String evidence) {
@@ -76,30 +76,41 @@ public final class MaterialCatalog {
      * 0.0 and is not the pair's kij: a consumer takes kij(T) from {@code groupContributions} for every pair it lists
      * and the constant matrix for the others.</p>
      *
-     * <p>Identity (owner decision 2026-10-26): data are identified by declared revisions, never by a hash of their
-     * content. {@code revision} covers the package's own fields and the records it uses for its phase physics and
-     * transport (its properties with their viscosities, interactions, group matrix, assays and domains); a change to any
-     * of them bumps it. The spine and crystal records ({@link MaterialCatalog#spineRevision}), the water model, its ice
-     * and the fluid reference data carry their own revisions.</p>
+     * <p>Identity (owner decisions of 2026-10-26: nothing is hashed, and every record declares its own revision): data
+     * are identified by declared revisions, never by a hash of their content. {@code revision} is the package record's
+     * own, for its own fields (components, bounds, domains, aliases, mixture correction). {@code scientificRevision}, the
+     * column's identity, is composed at load from the declared revision of every record the package names for its phase
+     * physics, in a fixed order: the package, each property record, the interactions record and its group matrix, and the
+     * water model. An edit bumps the revision of the record it changes, and the identity of every package that names that
+     * record moves with it. What only the fluid network reads is identified apart: the viscosities, each by its own
+     * revision, the water's ice and the fluid reference data in {@link MaterialCatalog#fluidRevision}, and the spine and
+     * crystal records (the column refuses such packages) record by record in {@link MaterialCatalog#spineRevision}.
+     * Assays are compositions, not physics: no identity carries them.</p>
      */
     public record Package(String id, String revision, String model, List<String> components,
             List<Property> properties, List<List<Double>> interactions, List<NrtlPair> nrtlPairs,
             Map<String, String> aliases, Map<String, Assay> assays, Water water,
             double minimumTemperature, double maximumTemperature, double minimumPressure,
             double maximumPressure, List<String> evidence, List<String> spine, List<String> crystals,
-            GroupContributionInteractions groupContributions) {
-        /** The longest {@link #scientificRevision}: the column's result payloads carry it. */
-        public static final int MAX_SCIENTIFIC_REVISION = 128;
+            GroupContributionInteractions groupContributions, String scientificRevision) {
         public Package {
             components = List.copyOf(components); properties = List.copyOf(properties);
             interactions = interactions.stream().map(List::copyOf).toList(); nrtlPairs = List.copyOf(nrtlPairs);
             aliases = Map.copyOf(aliases); assays = Map.copyOf(assays); evidence = List.copyOf(evidence);
-            spine = List.copyOf(spine); crystals = List.copyOf(crystals);
+            spine = List.copyOf(spine); crystals = List.copyOf(crystals); Objects.requireNonNull(scientificRevision);
         }
         public String canonicalId(String id) { return aliases.getOrDefault(id, id); }
-        /** The package's scientific identity: its id, its declared revision and its water model's. */
-        public String scientificRevision() { return id + "@" + revision + ";water=" + water.revision(); }
+        /** An identity's first part, the package id and the package record's own revision: what a screen shows of it. */
+        public static String label(String scientificRevision) {
+            int end = scientificRevision.indexOf(';');
+            return end < 0 ? scientificRevision : scientificRevision.substring(0, end);
+        }
     }
+    /**
+     * The longest identity, {@link Package#scientificRevision} or {@link #fluidRevision}: the column's result payloads, the
+     * neural models and the fluid saves carry them. A catalog whose identity would be longer is refused at load.
+     */
+    public static final int MAX_IDENTITY = 16384;
     private final SolidMaterialCatalog solids;
     public SolidMaterialCatalog solids(){return solids;}
     private final FluidData fluidData;
@@ -161,15 +172,31 @@ public final class MaterialCatalog {
         return Optional.ofNullable(p.properties().get(i).volumeTranslation());
     }
     /**
-     * The fluid network's identity of a package's data: its {@link Package#scientificRevision} (which covers its domains
-     * and its water model), the revision of the water's ice record, and the declared revisions of the fluid reference
-     * data (the liquid volume references and the dissolved-solute viscosities). Nothing is hashed (owner decision
-     * 2026-10-26): a data change bumps the revision of the record it changes, and a changed identity is a changed
-     * property basis (a world restates its contents once).
+     * The fluid network's identity of a package's data: its {@link Package#scientificRevision}, then what only the fluid
+     * network reads, each by its declared revision: the viscosities of the property records and of the water model
+     * ({@code id/phase@revision}, in component order, then the water), the water's ice crystal record and the fluid
+     * reference records (the liquid volume references and the dissolved-solute viscosities). The column's identity
+     * leaves them out, so a viscosity-only edit keeps the column's results and neural models. Nothing is hashed: a
+     * changed identity is a changed property basis (a world restates its contents once).
      */
     public String fluidRevision(String packageId) {
-        var p=requirePackage(packageId);var ice=p.water().ice();
-        return p.scientificRevision()+(ice==null?"":";ice="+crystals.get(ice.crystal()).revision())+";fluid-data="+fluidData.revision();
+        return fluidIdentity(requirePackage(packageId),waterModels.get(packageId),viscosities,crystals,fluidData);
+    }
+    private static String fluidIdentity(Package p,String waterId,Map<String,Map<ViscosityCorrelation.Phase,ViscosityCorrelation>> viscosities,
+            Map<String,CrystalReference> crystals,FluidData fluidData) {
+        var transport=new ArrayList<String>();
+        for(var property:p.properties())viscosityRevisions(transport,property.id(),viscosities.getOrDefault("properties/"+property.id(),Map.of()));
+        viscosityRevisions(transport,waterId,viscosities.getOrDefault("water/"+waterId,Map.of()));
+        var ice=p.water().ice();
+        return p.scientificRevision()+";viscosity="+String.join(",",transport)
+                +(ice==null?"":";ice="+ice.crystal()+"@"+crystals.get(ice.crystal()).revision())+";fluid-data="+fluidData.revision();
+    }
+    /** A record's viscosities, {@code id/liquid@revision} and {@code id/vapor@revision} for the phases it has. */
+    private static void viscosityRevisions(List<String> parts,String id,Map<ViscosityCorrelation.Phase,ViscosityCorrelation> viscosities) {
+        for(var phase:ViscosityCorrelation.Phase.values()) {
+            var viscosity=viscosities.get(phase);
+            if(viscosity!=null)parts.add(id+"/"+phase.name().toLowerCase(Locale.ROOT)+"@"+viscosity.revision());
+        }
     }
     /**
      * The identity of a package's spine and crystal data: each record's id and declared revision, spines in component
@@ -294,10 +321,12 @@ public final class MaterialCatalog {
             }
             interactions.add(row);
         }
-        // A projected inference view is a PR78 axis only: it carries no reference spine or crystals.
+        // A projected inference view is a PR78 axis only: it carries no reference spine or crystals. It keeps its source's
+        // identity: it is a lens on that package for one inference, never published.
         var view=new Package(source.id(),source.revision(),source.model(),axis,properties,
                 interactions,List.of(),Map.of(),Map.of(),source.water(),source.minimumTemperature(),
-                source.maximumTemperature(),source.minimumPressure(),source.maximumPressure(),source.evidence(),List.of(),List.of(),null);
+                source.maximumTemperature(),source.minimumPressure(),source.maximumPressure(),source.evidence(),List.of(),List.of(),null,
+                source.scientificRevision());
         var projected=new HashMap<>(packages);projected.put(packageId,view);
         return new MaterialCatalog(names,projected,resources,viscosities,waterModels,assayAppearances,
                 componentAppearances,liquidMixtures,presets,fluidData,propertyValidity,packageValidity,spines,crystals);
@@ -369,6 +398,7 @@ public final class MaterialCatalog {
         var packageValidity = new HashMap<String, Validity>();
         var spines = new HashMap<String, ReferenceSpine>();
         var crystals = new HashMap<String, CrystalReference>();
+        var propertyRevisions = new HashMap<String, String>();
         for (var o : group(groups,"components").values()) checked(origins,o,() -> {
             JsonObject cut = o.has("cut") ? object(o,"cut") : null;
             String id=text(o,"id"), kind=text(o,"kind");
@@ -396,7 +426,7 @@ public final class MaterialCatalog {
             String id=text(o,"id"), component=text(o,"component"); require(names,component,"component");
             viscosities.put("properties/" + id, readViscosities(o));
             descriptors.put(id,LiquidMixtureCorrection.Descriptor.read(o));
-            text(o,"revision"); text(o,"source");
+            propertyRevisions.put(id,revision(o,"revision")); text(o,"source");
             // ideal_gas_cp is optional: a record without it is usable only in a package that declares a reference
             // spine (D6, one ideal-gas source per species; checked per package below). Its cp is then empty.
             JsonObject cp=o.has("ideal_gas_cp")?object(o,"ideal_gas_cp"):null;
@@ -442,16 +472,17 @@ public final class MaterialCatalog {
                 text(sublimation,"source");
                 ice=new Water.Ice(crystal.id(),counted(sublimation,"coefficients",3),counted(sublimation,"exponents",3));
             }
-            Water w=new Water(text(o,"revision"),positive(o,"molar_mass"),positive(o,"triple_point"),positive(o,"critical_temperature"),
+            Water w=new Water(revision(o,"revision"),positive(o,"molar_mass"),positive(o,"triple_point"),positive(o,"critical_temperature"),
                     positive(o,"critical_pressure"),positive(o,"max_enthalpy_temperature"),positive(o,"reference_boiling_temperature"),
                     positive(o,"reference_vaporization_enthalpy"),positive(o,"watson_exponent"),counted(o,"saturation_coefficients",6),counted(o,"shomate_coefficients",7),ice);
             range(w.triplePoint(),w.boilingTemperature(),"water boiling"); range(w.boilingTemperature(),w.criticalTemperature(),"water critical");
             range(w.triplePoint(),w.maximumTemperature(),"water enthalpy"); require(names,"Water","component"); waters.put(text(o,"id"),w);
         });
         for (var o : group(groups,"interactions").values()) checked(origins,o,() -> validateInteractions(o,names,matrices));
+        // The fluid reference records come before the packages: each package's fluid identity is bounded at load.
+        var fluidData=FluidData.read(group(groups,"transport"),origins,names.keySet());
         for (var o : group(groups,"packages").values()) checked(origins,o,() -> {
             String id=text(o,"id"), model=text(o,"model"), policy=text(o,"missing_interactions");
-            if(text(o,"revision").length()>63)throw new IllegalArgumentException("revision: maximum 63 characters");
             var evidence=strings(o,"advisory_evidence");
             if(evidence.size()>32 || evidence.stream().anyMatch(e->e.length()>256))throw new IllegalArgumentException("advisory_evidence: exceeds reporting bounds");
             if (!Set.of("pr78","nrtl").contains(model)) throw new IllegalArgumentException("Unsupported model: " + model);
@@ -560,15 +591,26 @@ public final class MaterialCatalog {
                 var crystal=require(crystals,crystalId,"crystals");
                 if(!ids.contains(crystal.component()))throw new IllegalArgumentException("crystals: "+crystalId+" is for "+crystal.component()+", outside the package components");
             }
+            // The column's identity: every record the package names for its phase physics, each by its declared revision,
+            // checked as a token where the record was read (see Package).
+            String waterId=text(o,"water_model");var identity=new ArrayList<String>();
+            identity.add(id+"@"+revision(o,"revision"));
+            identity.add("properties="+String.join(",",refs.stream().map(ref->ref+"@"+propertyRevisions.get(ref)).toList()));
+            identity.add("interactions="+text(interaction,"id")+"@"+text(interaction,"revision"));
+            if(interaction.has("rule")) {
+                var groupMatrix=matrices.get(text(object(interaction,"rule"),"group_interactions"));
+                identity.add("group-interactions="+groupMatrix.id()+"@"+groupMatrix.revision());
+            }
+            identity.add("water="+waterId+"@"+water.revision());
             var parsed=new Package(id,text(o,"revision"),model,ids,ps,rows,nrtl,aliases,assays,water,tmin,tmax,pmin,pmax,strings(o,"advisory_evidence"),
-                    spineIds,crystalIds,groupContributions);
-            if(parsed.scientificRevision().length()>Package.MAX_SCIENTIFIC_REVISION)
-                throw new IllegalArgumentException("revision: the package's identity "+parsed.scientificRevision()+" exceeds "+Package.MAX_SCIENTIFIC_REVISION+" characters");
+                    spineIds,crystalIds,groupContributions,String.join(";",identity));
+            int longest=fluidIdentity(parsed,waterId,viscosities,crystals,fluidData).length();
+            if(longest>MAX_IDENTITY)throw new IllegalArgumentException("the package's fluid identity is "+longest+" characters, above "+MAX_IDENTITY);
             packages.put(id,parsed);
         });
         for(var a:group(groups,"assays").values()) checked(origins,a,() -> require(packages,text(a,"package"),"assay package"));
         if(packages.isEmpty()) throw new IllegalArgumentException("Material catalog has no packages");
-        var result=new MaterialCatalog(names,packages,resources,viscosities,waterModels,assayAppearances,componentAppearances,liquidMixtures,MaterialPresets.read(group(groups,"presets"),group(groups,"networks"),origins,packages,names.keySet()),FluidData.read(group(groups,"transport"),origins,names.keySet()),
+        var result=new MaterialCatalog(names,packages,resources,viscosities,waterModels,assayAppearances,componentAppearances,liquidMixtures,MaterialPresets.read(group(groups,"presets"),group(groups,"networks"),origins,packages,names.keySet()),fluidData,
                 propertyValidity,packageValidity,spines,crystals);
         for(var row:group(groups,"presets").values())if(text(row,"kind").equals("column"))checked(origins,row,()->
                 MaterialRuntime.with(result,text(row,"package"),()->{com.wormzjl.icheme.science.column.v3.V3ColumnProblemResolver.validateInput(result.presets().column(text(row,"id")).input(result));return null;}));
@@ -633,7 +675,7 @@ public final class MaterialCatalog {
                 result.put(phase, new ViscosityCorrelation(model, positive(o,"temperature_min_kelvin"), positive(o,"temperature_max_kelvin"),
                         positive(o,"pressure_min_pascal"), positive(o,"pressure_max_pascal"), positive(o,"reference_temperature_kelvin"),
                         counted(o,"coefficients",count), o.has("exponents") ? counted(o,"exponents",count) : List.of(),
-                        text(o,"revision"), text(o,"source"), bool(o,"estimated"),
+                        revision(o,"revision"), text(o,"source"), bool(o,"estimated"),
                         o.has("temperatures_kelvin") ? counted(o,"temperatures_kelvin",count) : List.of()));
             } catch (RuntimeException error) {
                 throw new IllegalArgumentException("viscosity." + entry.getKey() + ": " + error.getMessage(), error);
@@ -642,7 +684,7 @@ public final class MaterialCatalog {
         return Map.copyOf(result);
     }
     private static void validateInteractions(JsonObject o,Map<String,MaterialName> names,Map<String,GroupInteractionMatrix> matrices) {
-        String model=text(o,"model"); text(o,"source");
+        String model=text(o,"model"); text(o,"source"); revision(o,"revision");
         if(!Set.of("pr78","nrtl").contains(model)) throw new IllegalArgumentException("Unknown interaction model");
         if(o.has("rule")) {
             // A group-contribution rule resolves, per package, every pair without an explicit constant (P3 E-PPR78).
@@ -765,7 +807,7 @@ public final class MaterialCatalog {
             var volumes=new HashMap<String,VolumeReference>();var curves=new HashMap<String,ViscosityCorrelation>();var revisions=new ArrayList<String>();
             for(var row:records.values())try {
                 String type=text(row,"type"),revision=text(row,"revision"),source=text(row,"source");
-                revisions.add(type+"@"+revision);
+                revisions.add(type+"@"+token(revision,"revision"));
                 if(type.equals("liquid_volume_reference_points")) {
                     for(var entry:array(row,"points")) {
                         var point=entry.getAsJsonObject();String id=component(point,components);

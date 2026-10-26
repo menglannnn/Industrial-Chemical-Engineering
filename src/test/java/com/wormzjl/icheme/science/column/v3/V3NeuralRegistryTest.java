@@ -71,15 +71,12 @@ class V3NeuralRegistryTest {
         var resources=new HashMap<>(MaterialCatalog.bundled().resources());
         String path=physics?"data/icheme/materials/properties/tjl20_methane.json":"data/icheme/materials/assays/tjl20.json";
         var data=JsonParser.parseString(resources.get(path)).getAsJsonObject();
-        if(physics)data.addProperty("molecular_weight_kg_per_mol",.017);
+        // Nothing is hashed, and each record declares its own revision (owner decisions 2026-10-26): the edit of the shared
+        // methane record bumps that record alone, which moves the identity of every package that reads it, here the
+        // input's and the model's reference. An assay edit is a composition, which no identity carries.
+        if(physics){data.addProperty("molecular_weight_kg_per_mol",.017);data.addProperty("revision",data.get("revision").getAsString()+"-edited");}
         else {var amounts=data.getAsJsonObject("amounts_by_component");amounts.addProperty("Methane",amounts.get("Methane").getAsDouble()*2);}
         resources.put(path,data.toString());
-        // Nothing is hashed (owner decision 2026-10-26): an edit of the shared methane record declares itself with the
-        // revision of every package that reads it, here the input's and the model's reference.
-        if(physics)for(String record:List.of("data/icheme/materials/packages/tjl20.json","data/icheme/materials/packages/wti_light_export_tjl20.json")) {
-            var json=JsonParser.parseString(resources.get(record)).getAsJsonObject();
-            json.addProperty("revision",json.get("revision").getAsString()+"-edited");resources.put(record,json.toString());
-        }
         return MaterialCatalog.parse(resources);
     }
     @Test void admissionSnapshotSurvivesReloadAndAssayEditsDoNotChangePhysicsEligibility() throws Exception {

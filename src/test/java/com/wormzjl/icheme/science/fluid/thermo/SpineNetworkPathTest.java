@@ -458,15 +458,15 @@ class SpineNetworkPathTest {
         var entropyModel = new HydrocarbonModel(entropy, PILOT);
         assertTrue(!base.equals(entropyModel.revision()) && entropy.fluidRevision(PILOT).equals(identity.packageRevision())
                 && !entropy.spineRevision(PILOT).equals(identity.spineRevision()), "a spine edit moves the spine part only");
-        // An interaction edit (A of the CH4/N2 group pair, which the package's revision covers): the package part moves.
-        var interaction = PilotCryogenicTestCatalog.parseWith(java.util.Map.<String, java.util.function.Consumer<com.google.gson.JsonObject>>of(
-                "data/icheme/materials/group_interactions/eppr78_2022.json", o -> {
+        // An interaction edit (A of the CH4/N2 group pair, declared with the group matrix's own revision, which the package's
+        // identity carries): the package part moves.
+        var interaction = PilotCryogenicTestCatalog.parseWith("data/icheme/materials/group_interactions/eppr78_2022.json", o -> {
                     for (var element : o.getAsJsonArray("pairs")) {
                         var pair = element.getAsJsonObject();
                         if (pair.get("first").getAsString().equals("CH4") && pair.get("second").getAsString().equals("N2")) pair.addProperty("a_mpa", 30.89);
                     }
-                },
-                "data/icheme/materials/packages/pilot_cryogenic.json", PilotCryogenicTestCatalog::bump));
+                    PilotCryogenicTestCatalog.bump(o);
+                });
         var interactionModel = new HydrocarbonModel(interaction, PILOT);
         assertTrue(!base.equals(interactionModel.revision()) && interaction.spineRevision(PILOT).equals(identity.spineRevision())
                 && !interaction.fluidRevision(PILOT).equals(identity.packageRevision()), "an interaction edit moves the package part only");

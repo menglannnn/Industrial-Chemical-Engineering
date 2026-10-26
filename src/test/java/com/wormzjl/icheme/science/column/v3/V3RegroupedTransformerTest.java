@@ -101,11 +101,9 @@ class V3RegroupedTransformerTest {
         var edited=JsonParser.parseString(records.get(key)).getAsJsonObject();
         var pr=edited.getAsJsonObject("models").getAsJsonObject("pr78");
         pr.addProperty("critical_temperature_kelvin",pr.get("critical_temperature_kelvin").getAsDouble()+1);
+        // Nothing is hashed (owner decisions 2026-10-26): the edit declares itself with the record's own revision.
+        edited.addProperty("revision",edited.get("revision").getAsString()+"-edited");
         records.put(key,edited.toString());
-        // Nothing is hashed (owner decision 2026-10-26): the edit declares itself with the package's revision.
-        String packageKey="data/icheme/materials/packages/tjl20.json";
-        var record=JsonParser.parseString(records.get(packageKey)).getAsJsonObject();
-        record.addProperty("revision",record.get("revision").getAsString()+"-edited");records.put(packageKey,record.toString());
         var changed=MaterialCatalog.parse(records);
         assertFalse(com.wormzjl.icheme.science.material.MaterialRuntime.with(changed,input.packageId(),()->model.supported(input)));
         assertTrue(com.wormzjl.icheme.science.material.MaterialRuntime.with(original,input.packageId(),()->model.supported(input)));

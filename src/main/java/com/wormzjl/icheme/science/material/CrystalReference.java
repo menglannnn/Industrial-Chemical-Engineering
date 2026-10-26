@@ -70,7 +70,7 @@ public final class CrystalReference {
         id = JsonFields.text(o, "id");
         component = JsonFields.text(o, "component");
         crystal = JsonFields.text(o, "crystal");
-        revision = ReferenceSpine.revision(o, "revision");
+        revision = JsonFields.revision(o, "revision");
         source = JsonFields.text(o, "source");
         coverage = MaterialCoverage.read(o);
         var gaps = new ArrayList<String>();

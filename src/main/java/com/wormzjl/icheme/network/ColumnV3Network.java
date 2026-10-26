@@ -58,8 +58,9 @@ public final class ColumnV3Network {
     // Version 15 supports two-terminal-stage pots and total-tray presentation.
     public static final int WIRE_SCHEMA_VERSION = 16;
 
-    // Both peers must use the same engine-scheduled inspection protocol.
-    private static final String PROTOCOL_VERSION = "11";
+    // Both peers must use the same engine-scheduled inspection protocol. 12: the dataset revision is the package's data
+    // identity, every record's declared revision (up to MaterialCatalog.MAX_IDENTITY characters).
+    private static final String PROTOCOL_VERSION = "12";
 
     private static final int MAX_IDENTIFIER_LENGTH = 128;
     private static final int MAX_COMPONENT_IDENTIFIER_LENGTH = 64;
@@ -632,7 +633,7 @@ public final class ColumnV3Network {
         buffer.writeUtf(result.inputDigest(), 64);
         buffer.writeUtf(result.formulationRevision(), MAX_REVISION_LENGTH);
         buffer.writeUtf(result.assumptionsRevision(), MAX_REVISION_LENGTH);
-        buffer.writeUtf(result.datasetRevision(), MAX_REVISION_LENGTH);
+        buffer.writeUtf(result.datasetRevision(), com.wormzjl.icheme.science.material.MaterialCatalog.MAX_IDENTITY);
         buffer.writeVarInt(result.newtonIterations());
         buffer.writeDouble(result.maximumScaledResidual());
         buffer.writeVarInt(result.acceptanceCheckCount());
@@ -712,7 +713,7 @@ public final class ColumnV3Network {
             String digest = buffer.readUtf(64);
             String formulation = buffer.readUtf(MAX_REVISION_LENGTH);
             String assumptions = buffer.readUtf(MAX_REVISION_LENGTH);
-            String dataset = buffer.readUtf(MAX_REVISION_LENGTH);
+            String dataset = buffer.readUtf(com.wormzjl.icheme.science.material.MaterialCatalog.MAX_IDENTITY);
             int iterations = buffer.readVarInt();
             double residual = finite(buffer.readDouble(), "maximum residual");
             int acceptanceChecks = buffer.readVarInt();

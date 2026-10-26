@@ -31,9 +31,10 @@ public record V3ColumnDisplayResult(
         Objects.requireNonNull(trayHydraulics, "trayHydraulics");
         V3ConvergenceEvidence.requireClosure(closureTolerance);
         inputDigest = boundedDigest(inputDigest);
-        formulationRevision = boundedRevision(formulationRevision, "formulationRevision");
-        assumptionsRevision = boundedRevision(assumptionsRevision, "assumptionsRevision");
-        datasetRevision = boundedRevision(datasetRevision, "datasetRevision");
+        formulationRevision = boundedRevision(formulationRevision, "formulationRevision", 128);
+        assumptionsRevision = boundedRevision(assumptionsRevision, "assumptionsRevision", 128);
+        // The package's data identity, every record's declared revision (MaterialCatalog.Package).
+        datasetRevision = boundedRevision(datasetRevision, "datasetRevision", com.wormzjl.icheme.science.material.MaterialCatalog.MAX_IDENTITY);
         if (newtonIterations < 0 || !Double.isFinite(maximumScaledResidual) || maximumScaledResidual < 0.0
                 || acceptanceCheckCount < 1 || acceptanceCheckCount > 64) {
             throw new IllegalArgumentException("Invalid compact V3 display certificate");
@@ -68,9 +69,9 @@ public record V3ColumnDisplayResult(
         return value;
     }
 
-    private static String boundedRevision(String value, String name) {
+    private static String boundedRevision(String value, String name, int maximumLength) {
         value = Objects.requireNonNull(value, name);
-        if (value.isBlank() || value.length() > 128) {
+        if (value.isBlank() || value.length() > maximumLength) {
             throw new IllegalArgumentException(name + " is outside the bounded display contract");
         }
         return value;

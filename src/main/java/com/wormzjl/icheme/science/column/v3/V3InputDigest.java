@@ -47,9 +47,10 @@ public record V3InputDigest(String hexadecimalSha256) {
         problem = Objects.requireNonNull(problem, "problem");
         MessageDigest digest = sha256();
         put(digest, "v3-input-digest-schema", V3ColumnInput.SCHEMA_VERSION);
-        put(digest, "formulation-revision", revision(formulationRevision, "formulationRevision"));
-        put(digest, "property-data-revision", revision(propertyDataRevision, "propertyDataRevision"));
-        put(digest, "assumptions-revision", revision(assumptionsRevision, "assumptionsRevision"));
+        put(digest, "formulation-revision", revision(formulationRevision, "formulationRevision", 128));
+        put(digest, "property-data-revision", revision(propertyDataRevision, "propertyDataRevision",
+                com.wormzjl.icheme.science.material.MaterialCatalog.MAX_IDENTITY));
+        put(digest, "assumptions-revision", revision(assumptionsRevision, "assumptionsRevision", 128));
         if (stageTraceCutoffMoleFraction > 0.0) {
             put(digest, "stage-trace-cutoff-mole-fraction-bits", canonicalBits(stageTraceCutoffMoleFraction));
         }
@@ -121,9 +122,10 @@ public record V3InputDigest(String hexadecimalSha256) {
         }
     }
 
-    private static String revision(String value, String name) {
+    /** A revision tag of the formulation or the assumptions, or the property data's identity, a package's composed revisions. */
+    private static String revision(String value, String name, int maximumLength) {
         value = Objects.requireNonNull(value, name);
-        if (value.isBlank() || value.length() > 128) throw new IllegalArgumentException(name + " is outside the bounded contract");
+        if (value.isBlank() || value.length() > maximumLength) throw new IllegalArgumentException(name + " is outside the bounded contract");
         return value;
     }
 

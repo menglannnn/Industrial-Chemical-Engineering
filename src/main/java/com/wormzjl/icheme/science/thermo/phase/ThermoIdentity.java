@@ -9,8 +9,8 @@ import java.util.Objects;
  *
  * <p>Parts:</p>
  * <ul>
- *   <li>{@code packageRevision}: the declared revisions of the package's data (the package's own, its water's, its
- *   ice crystal's and the fluid reference data's); {@link #of} takes {@link MaterialCatalog#fluidRevision(String)}.</li>
+ *   <li>{@code packageRevision}: the package's data identity, the declared revision of every record its fluid models
+ *   read; {@link #of} takes {@link MaterialCatalog#fluidRevision(String)}.</li>
  *   <li>{@code evaluatorFamily}: the residual formulation, {@link CubicPhaseEvaluator#family()}.</li>
  *   <li>{@code spineRevision}: the ideal-gas and formation data (the data spine, decision D6),
  *   {@link MaterialCatalog#spineRevision(String)}, the spine and crystal records' declared revisions; {@link #NO_SPINE} for a package without either.</li>

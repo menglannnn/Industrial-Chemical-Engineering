@@ -37,7 +37,7 @@ import java.util.function.Function;
  * list of at most one.</p>
  *
  * <p>Schema history: 1, the first; 2, the world's basis retires its hash of the package data and appends the data's
- * declared revision (owner decision 2026-10-26).</p>
+ * identity, the declared revision of every record it reads (owner decisions 2026-10-26).</p>
  */
 final class FluidFacts {
     static final int SCHEMA=2;

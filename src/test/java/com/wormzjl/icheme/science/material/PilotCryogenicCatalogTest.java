@@ -32,21 +32,22 @@ class PilotCryogenicCatalogTest {
     private static final String CALIBRATION = "data/icheme/materials/transport/liquid_calibration.json";
 
     /**
-     * Package id and scientific revision of every bundled column and network package: the package's id, its declared
-     * revision and its water model's. Until 2026-10-26 these pins were hashes of the data, with a physics fingerprint per
-     * package (their history is in this file's git log); since then nothing is hashed (owner decision): an edit of a
-     * package's data bumps its declared revision, and the physics the packages share is compared directly
-     * ({@link #TJL20_PHYSICS}).
+     * Package id and identity label of every bundled column and network package: the package's id and its record's own
+     * declared revision, the first part of its identity ({@link MaterialCatalog.Package#label}). Until 2026-10-26 these
+     * pins were hashes of the data, with a physics fingerprint per package (their history is in this file's git log);
+     * since then nothing is hashed and each record declares its own revision (owner decisions): the rest of an identity
+     * is every record's revision (MaterialCatalogTest checks the composition), and the physics the packages share is
+     * compared directly ({@link #TJL20_PHYSICS}).
      */
     private static final String[][] BUNDLED_PINS = {
-        {"icheme:bonga_tjl20", "icheme:bonga_tjl20@crude-regrouped-r1;water=water-iapws-shomate-r2"},
-        {"icheme:cold_lake_blend_tjl20", "icheme:cold_lake_blend_tjl20@crude-regrouped-r1;water=water-iapws-shomate-r2"},
-        {"icheme:dalia_tjl20", "icheme:dalia_tjl20@crude-regrouped-r1;water=water-iapws-shomate-r2"},
-        {"icheme:tjl19_dwsim", "icheme:tjl19_dwsim@crude-regrouped-r1;water=water-iapws-shomate-r2"},
-        {"icheme:tjl20_methane", "icheme:tjl20_methane@crude-regrouped-r1;water=water-iapws-shomate-r2"},
-        {"icheme:tjl20_methane_nitrogen", "icheme:tjl20_methane_nitrogen@crude-regrouped-r1;water=water-iapws-shomate-r2"},
-        {"icheme:upper_zakum_tjl20", "icheme:upper_zakum_tjl20@crude-regrouped-r1;water=water-iapws-shomate-r2"},
-        {"icheme:wti_light_export_tjl20", "icheme:wti_light_export_tjl20@crude-regrouped-r1;water=water-iapws-shomate-r2"},
+        {"icheme:bonga_tjl20", "icheme:bonga_tjl20@crude-regrouped-r1"},
+        {"icheme:cold_lake_blend_tjl20", "icheme:cold_lake_blend_tjl20@crude-regrouped-r1"},
+        {"icheme:dalia_tjl20", "icheme:dalia_tjl20@crude-regrouped-r1"},
+        {"icheme:tjl19_dwsim", "icheme:tjl19_dwsim@crude-regrouped-r1"},
+        {"icheme:tjl20_methane", "icheme:tjl20_methane@crude-regrouped-r1"},
+        {"icheme:tjl20_methane_nitrogen", "icheme:tjl20_methane_nitrogen@crude-regrouped-r1"},
+        {"icheme:upper_zakum_tjl20", "icheme:upper_zakum_tjl20@crude-regrouped-r1"},
+        {"icheme:wti_light_export_tjl20", "icheme:wti_light_export_tjl20@crude-regrouped-r1"},
     };
     private static final String TJL20 = "icheme:tjl20_methane";
     /**
@@ -59,11 +60,21 @@ class PilotCryogenicCatalogTest {
     /**
      * The pilot package as committed in P3 WP3 (pilot records r1, the E-PPR78 rule on icheme:eppr78_2022 r1), with
      * the spine records of P3 WP9a (N2, CH4 and C2H6 r2, CO2 r3) and the CO2-I crystal of P4 stage 1 (r2): the package's
-     * declared revision, and the spine identity of its spine and crystal records' declared revisions. An edit of a record
-     * bumps the record's revision, which moves the pin. Until 2026-10-26 these were hashes of the data (history in this
-     * file's git log).
+     * identity, every record it names for its phase physics by its declared revision (its viscosities are in the fluid
+     * identity), and the spine identity of its spine and crystal records' declared revisions. An edit of a record bumps
+     * the record's revision, which moves the pin. Until 2026-10-26 these were hashes of the data (history in this file's
+     * git log).
      */
-    private static final String PILOT_SCIENTIFIC_REVISION = "icheme:pilot_cryogenic@pilot-cryogenic-p3-r1;water=water-iapws-shomate-r2";
+    private static final String PILOT_SCIENTIFIC_REVISION = String.join(";",
+            "icheme:pilot_cryogenic@pilot-cryogenic-p3-r1",
+            "properties=" + String.join(",",
+                    "icheme:pilot_nitrogen@pilot-nitrogen-p3-r1",
+                    "icheme:pilot_methane@pilot-methane-p3-r1",
+                    "icheme:pilot_ethane@pilot-ethane-p3-r1",
+                    "icheme:pilot_carbon_dioxide@pilot-carbon-dioxide-p3-r1"),
+            "interactions=icheme:pilot_cryogenic@pilot-cryogenic-eppr78-r1",
+            "group-interactions=icheme:eppr78_2022@eppr78-2022-si-table-s4-r2",
+            "water=icheme:water@water-iapws-shomate-r2");
     private static final String PILOT_SPINE_REVISION = "spine:icheme:spine_nitrogen@spine-nitrogen-r2,icheme:spine_methane@spine-methane-r2,"
             + "icheme:spine_ethane@spine-ethane-r2,icheme:spine_carbon_dioxide@spine-carbon_dioxide-r3,icheme:crystal_carbon_dioxide_i@crystal-carbon_dioxide-i-r2";
 
@@ -72,7 +83,7 @@ class PilotCryogenicCatalogTest {
         for (MaterialCatalog catalog : List.of(MaterialCatalog.bundled(), PilotCryogenicTestCatalog.catalog())) {
             for (String[] pin : BUNDLED_PINS) {
                 var p = catalog.requirePackage(pin[0]);
-                assertEquals(pin[1], p.scientificRevision(), pin[0]);
+                assertEquals(pin[1], MaterialCatalog.Package.label(p.scientificRevision()), pin[0]);
                 assertTrue(p.spine().isEmpty() && p.crystals().isEmpty() && catalog.spineRevision(pin[0]).isEmpty() && p.groupContributions() == null, pin[0]);
             }
             var axis = catalog.requirePackage(TJL20).components();
@@ -234,7 +245,7 @@ class PilotCryogenicCatalogTest {
         refused(NITROGEN, o -> o.getAsJsonObject("coverage").addProperty("grade", "good"), "coverage.grade: expected");
         refused(NITROGEN, o -> o.addProperty("component", "Argon"), "component: unresolved Argon");
         refused(CRYSTAL, o -> o.remove("coverage"), "coverage: required field");
-        refused(NITROGEN, o -> o.addProperty("revision", "spine nitrogen r1"), "revision: expected a stable identifier");
+        refused(NITROGEN, o -> o.addProperty("revision", "spine nitrogen r1"), "revision: \"spine nitrogen r1\" must be a token");
     }
 
     static void refused(String path, Consumer<com.google.gson.JsonObject> edit, String message) {

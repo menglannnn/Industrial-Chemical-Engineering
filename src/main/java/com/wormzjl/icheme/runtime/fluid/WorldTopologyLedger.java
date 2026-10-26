@@ -296,14 +296,14 @@ public final class WorldTopologyLedger {
     }
     /**
      * Persisted identity for topology/accounting even when a world has no active hydraulic islands. {@code revision} is
-     * the declared revision of the network package's data ({@link MaterialCatalog#fluidRevision}); a world written before
-     * the field existed reads "" and restates once.
+     * the network package's data identity, the declared revision of every record it reads
+     * ({@link MaterialCatalog#fluidRevision}); a world written before the field existed reads "" and restates once.
      */
     public record FluidBasis(String packageId,List<String> components,String revision) {
         public FluidBasis {
             Objects.requireNonNull(packageId);Objects.requireNonNull(revision);
             components=new MaterialAxis(components).ids();
-            if(!packageId.matches("[a-z][a-z0-9_.:-]{0,127}")||revision.length()>4096||revision.chars().anyMatch(Character::isISOControl)
+            if(!packageId.matches("[a-z][a-z0-9_.:-]{0,127}")||revision.length()>MaterialCatalog.MAX_IDENTITY||revision.chars().anyMatch(Character::isISOControl)
                     ||!components.getLast().equals("Water")||!components.contains("Nitrogen"))throw new IllegalArgumentException("Invalid fluid basis contract");
         }
         public static FluidBasis capture(MaterialCatalog catalog) {

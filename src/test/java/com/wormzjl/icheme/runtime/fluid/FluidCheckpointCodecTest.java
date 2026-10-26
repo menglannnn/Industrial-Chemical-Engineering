@@ -87,11 +87,11 @@ class FluidCheckpointCodecTest {
             if(field.equals("viscosity"))correlation=correlation.getAsJsonObject("liquid");
             var coefficients=correlation.getAsJsonArray("coefficients");
             coefficients.set(0,new com.google.gson.JsonPrimitive(coefficients.get(0).getAsDouble()*1.001));
+            // Nothing is hashed (owner decisions 2026-10-26): the edit declares itself with the revision of what it changes,
+            // the viscosity's own or the property record's.
+            var declared=field.equals("viscosity")?correlation:property;
+            declared.addProperty("revision",declared.get("revision").getAsString()+"-edited");
             resources.put(path,property.toString());
-            // Nothing is hashed (owner decision 2026-10-26): the edit declares itself with the package's revision.
-            String packagePath="data/icheme/materials/packages/tjl20_nitrogen.json";
-            var record=com.google.gson.JsonParser.parseString(resources.get(packagePath)).getAsJsonObject();
-            record.addProperty("revision",record.get("revision").getAsString()+"-edited");resources.put(packagePath,record.toString());
             var overridden=FluidThermodynamics.forNetwork(MaterialCatalog.parse(resources),PACKAGE);
             assertTrue(assertThrows(IllegalArgumentException.class,()->FluidCheckpointCodec.decode(image,key->overridden),field).getMessage().contains("property data of package"),field);
         }
@@ -140,7 +140,8 @@ class FluidCheckpointCodecTest {
         assertEquals(world.constructed().solidMasses(),decoded.constructed().solidMasses());assertArrayEquals(world.destroyed().moles(),decoded.destroyed().moles());
         assertEquals(world.basis(),decoded.basis());assertEquals(world.recoveries(),decoded.recoveries());
         assertArrayEquals(bytes,FluidCheckpointCodec.encodeTopology(decoded),"a decoded topology re-encodes to the same bytes");
-        assertTrue(bytes.length<2_500,"the facts and events of five devices: "+bytes.length+" bytes");
+        // The basis identity (a package's composed revisions, about 3.3 KB of ASCII) is stored once per world.
+        assertTrue(bytes.length-world.basis().revision().length()<2_500,"the facts and events of five devices: "+bytes.length+" bytes with the basis");
         assertTrue(assertThrows(IllegalArgumentException.class,()->FluidCheckpointCodec.decodeTopology(Arrays.copyOf(bytes,bytes.length+1),0,key->model)).getMessage().contains("trailing bytes"));
         assertThrows(IllegalArgumentException.class,()->FluidCheckpointCodec.decodeTopology(Arrays.copyOf(bytes,bytes.length/2),0,key->model));
     }

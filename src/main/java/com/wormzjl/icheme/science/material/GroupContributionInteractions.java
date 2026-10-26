@@ -34,7 +34,8 @@ import java.util.TreeMap;
  * weight present in the matrix ("unresolved group pair" otherwise). A group pair with A_kl = 0 and B_kl != 0, for which
  * the formula is undefined, is refused; A_kl = B_kl = 0 is a zero term and is dropped.</p>
  *
- * <p>Identity: the group matrix is one of the records the package's declared revision covers. {@link #science} (rule,
+ * <p>Identity: the group matrix declares its own revision, which the identity of every package that resolves its
+ * interactions from it carries ({@link MaterialCatalog.Package#scientificRevision}). {@link #science} (rule,
  * scheme, and per resolved pair the component ids and every term's groups, A, B and weight, in MPa as the record
  * carries them) is the content {@link MaterialCatalog#samePhysics} compares, only for a package that has a rule.</p>
  */

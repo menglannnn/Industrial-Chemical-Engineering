@@ -41,6 +41,17 @@ final class JsonFields {
         if(s.isBlank()||s.length()>MAX_TEXT)throw new IllegalArgumentException(label+": invalid text");
         return s;
     }
+    /**
+     * A record's declared revision: a token of letters, digits, '_', '.' and '-' that starts with a letter or digit, at
+     * most 64 characters, so the separators of a package identity ({@code @ , ; / =}) read back unambiguously.
+     */
+    static String revision(JsonObject o,String key){return token(text(o,key),key);}
+    static String token(String revision,String label) {
+        if(!REVISION.matcher(revision).matches())throw new IllegalArgumentException(label+": \""+revision
+                +"\" must be a token of letters, digits, '_', '.' and '-', at most 64 characters");
+        return revision;
+    }
+    private static final java.util.regex.Pattern REVISION=java.util.regex.Pattern.compile("[A-Za-z0-9][A-Za-z0-9_.-]{0,63}");
     static boolean bool(JsonObject o,String key) {
         var e=required(o,key);
         if(!e.isJsonPrimitive()||!e.getAsJsonPrimitive().isBoolean())throw new IllegalArgumentException(key+": expected boolean");

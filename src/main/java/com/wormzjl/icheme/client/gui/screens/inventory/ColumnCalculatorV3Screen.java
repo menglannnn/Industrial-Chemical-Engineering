@@ -633,7 +633,7 @@ public final class ColumnCalculatorV3Screen extends AbstractContainerScreen<Colu
             lines.add(tr("iterations",r.newtonIterations()));lines.add(tr("residual",fraction(r.maximumScaledResidual())));
             lines.add(tr("closure",fraction(r.closureTolerance())));
             r.inspection().ifPresent(v->{for(var check:v.audit().checks())lines.add(tr("audit_value",check.family(),fraction(check.value()),fraction(check.limit())));});
-            lines.add(tr("dataset",r.datasetRevision()));lines.add(tr("formulation",r.formulationRevision()));lines.add(tr("digest",r.inputDigest()));
+            lines.add(tr("dataset",com.wormzjl.icheme.science.material.MaterialCatalog.Package.label(r.datasetRevision())));lines.add(tr("formulation",r.formulationRevision()));lines.add(tr("digest",r.inputDigest()));
         });
         if(state!=null&&state.status()==V3Status.FAILED)wrap(lines,tr("solver_failed_hint"),imageWidth-35);
         drawLines(g,lines,10,CONTENT,imageWidth-20);

@@ -131,7 +131,7 @@ final class V3AnchorTransformerInitializer implements V3NeuralInitializer {
 
     boolean supported(V3ColumnInput input) {
         var catalog=com.wormzjl.icheme.science.material.MaterialRuntime.current();
-        // The model was trained on the reference package's declared revision; the input's physics on the model's axis
+        // The model was trained on the reference package's data identity (every record's declared revision); the input's physics on the model's axis
         // must be the reference's, compared directly (owner decision 2026-10-26: no hash).
         if (!catalog.packages().containsKey(input.packageId()) || !catalog.packages().containsKey(model.packageId)
                 || !input.componentBasis().componentIds().equals(model.components)

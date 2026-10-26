@@ -32,11 +32,11 @@ class MaterialPresetsTest {
     @Test void exampleWholeRecordOverridePreservesAllExistingTransportData() throws Exception {
         var original=MaterialCatalog.bundled();var resources=new HashMap<>(original.resources());String path=ROOT+"properties/tjl20_methane.json";
         String example=java.nio.file.Files.readString(java.nio.file.Path.of("examples/material-override/"+path));
-        // The example is the bundled record with its density and source edited, nothing else, so it never drifts into an
-        // older copy (t44d found one whose fluid_domain ended at 2 MPa where the bundled record ends at 10 MPa).
+        // The example is the bundled record with its density, source and revision edited, nothing else, so it never drifts
+        // into an older copy (t44d found one whose fluid_domain ended at 2 MPa where the bundled record ends at 10 MPa).
         var edited=JsonParser.parseString(example).getAsJsonObject();var bundled=JsonParser.parseString(resources.get(path)).getAsJsonObject();
-        for(var field:new String[]{"standard_liquid_density_kg_per_m3","source"}){edited.remove(field);bundled.remove(field);}
-        assertEquals(bundled,edited,"the example differs from the bundled record only in its density and source");
+        for(var field:new String[]{"standard_liquid_density_kg_per_m3","source","revision"}){edited.remove(field);bundled.remove(field);}
+        assertEquals(bundled,edited,"the example differs from the bundled record only in its density, source and revision");
         resources.put(path,example);
         var replaced=MaterialCatalog.parse(resources);String id="icheme:tjl20_methane";
         assertEquals(357,replaced.requirePackage(id).properties().getFirst().density());
@@ -44,6 +44,9 @@ class MaterialPresetsTest {
         for(var phase:ViscosityCorrelation.Phase.values())assertEquals(original.viscosity(id,component,phase),replaced.viscosity(id,component,phase),phase.name());
         assertEquals(original.liquidMixture(id),replaced.liquidMixture(id));
         assertNotEquals(original.physicsContent(id,original.requirePackage(id).components()),replaced.physicsContent(id,replaced.requirePackage(id).components()));
+        // The edit declares itself with its record's revision bump (owner decisions 2026-10-26), which moves the identities.
+        assertNotEquals(original.requirePackage(id).scientificRevision(),replaced.requirePackage(id).scientificRevision());
+        assertNotEquals(original.fluidRevision(id),replaced.fluidRevision(id));
     }
     @Test void customPresetIsServerDefinedAndInvalidOverridesFailBeforePublication() {
         var original=MaterialCatalog.bundled();var resources=new HashMap<>(original.resources());String path=ROOT+"presets/column_custom.json";

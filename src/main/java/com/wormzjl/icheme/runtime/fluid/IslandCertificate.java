@@ -312,9 +312,12 @@ public final class IslandCertificate {
      * discarded on load and the island keeps its inventory.
      */
     public record Signature(String propertyRevision,String policy,String graph) {
+        /** The longest property revision: the model's carries the package's fluid identity twice (its thermodynamics and its
+         * viscosity), each at most {@link com.wormzjl.icheme.science.material.MaterialCatalog#MAX_IDENTITY}, and its tags. */
+        static final int MAXIMUM_PROPERTY_REVISION=1<<16;
         public Signature {
             Objects.requireNonNull(propertyRevision);Objects.requireNonNull(policy);Objects.requireNonNull(graph);
-            if(propertyRevision.isBlank()||propertyRevision.length()>4096||policy.isBlank()||policy.length()>512||!graph.matches("[0-9a-f]{64}"))
+            if(propertyRevision.isBlank()||propertyRevision.length()>MAXIMUM_PROPERTY_REVISION||policy.isBlank()||policy.length()>512||!graph.matches("[0-9a-f]{64}"))
                 throw new IllegalArgumentException("Invalid certificate signature");
         }
         /** The signature a certificate of this graph gets under this model and policy. */

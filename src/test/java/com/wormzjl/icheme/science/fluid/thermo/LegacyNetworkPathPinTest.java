@@ -73,13 +73,67 @@ class LegacyNetworkPathPinTest {
      * data) replace main 0.8.0's: a fresh world. Since WP4 it carries the free water's formulation and revision
      * ({@code separate-free-water-v2:water-iapws-shomate-r2}: its ice), as a spine package's identity does, and the
      * fingerprint hashes the ice's science. Since D37 S4 the {@code cp-segments-v1} tag is gone with the segments, and the
-     * fingerprint is the nitrogen record r3's. Since 2026-10-26 nothing is hashed (owner decision): the fingerprint (last
-     * {@code 7b222959...}) is the package data's declared revisions, {@link MaterialCatalog#fluidRevision}.
+     * fingerprint is the nitrogen record r3's. Since 2026-10-26 nothing is hashed and each record declares its own
+     * revision (owner decisions): the fingerprint (last {@code 7b222959...}) is every record's declared revision,
+     * {@link MaterialCatalog#fluidRevision}: the column's identity, then each viscosity by its own revision, the ice and
+     * the fluid reference records. The nitrogen record's r3 is visible in it.
      */
-    static final String REVISION = "icheme:tjl20_methane_nitrogen@crude-regrouped-r1;water=water-iapws-shomate-r2;ice=crystal-ice-ih-r1"
-            + ";fluid-data=conditional_solute_log_tables@dwsim-conditional-solute-ambient-v2,liquid_volume_reference_points@nist-liquid-calibration-20260915"
+    static final String REVISION = String.join(";",
+            "icheme:tjl20_methane_nitrogen@crude-regrouped-r1",
+            "properties=" + String.join(",",
+                    "icheme:tjl20_methane@tjl20-methane-nist-r1",
+                    "icheme:tjl19_ethane@tjl19-dwsim-10.2.3-r1",
+                    "icheme:tjl19_propane@tjl19-dwsim-10.2.3-r1",
+                    "icheme:tjl19_isobutane@tjl19-dwsim-10.2.3-r1",
+                    "icheme:tjl19_n_butane@tjl19-dwsim-10.2.3-r1",
+                    "icheme:tjl19_isopentane@tjl19-dwsim-10.2.3-r1",
+                    "icheme:tjl19_n_pentane@tjl19-dwsim-10.2.3-r1",
+                    "icheme:crude_pc01@crude-regrouped-r1",
+                    "icheme:crude_pc02@crude-regrouped-r1",
+                    "icheme:crude_pc03@crude-regrouped-r1",
+                    "icheme:crude_pc04@crude-regrouped-r1",
+                    "icheme:crude_pc05@crude-regrouped-r1",
+                    "icheme:crude_pc06@crude-regrouped-r1",
+                    "icheme:crude_pc07@crude-regrouped-r1",
+                    "icheme:crude_pc08@crude-regrouped-r1",
+                    "icheme:crude_pc09@crude-regrouped-r1",
+                    "icheme:crude_pc10@crude-regrouped-r1",
+                    "icheme:crude_pc11@crude-regrouped-r1",
+                    "icheme:crude_pc12@crude-regrouped-r1",
+                    "icheme:fluid_nitrogen@fluid-nitrogen-nist-r3"),
+            "interactions=icheme:tjl20@tjl20-frozen-kij-r1",
+            "water=icheme:water@water-iapws-shomate-r2",
+            "viscosity=" + String.join(",",
+                    viscosities("icheme:tjl20_methane", "dwsim-viscosity-api-r1", "dwsim-viscosity-api-ambient-r2"),
+                    viscosities("icheme:tjl19_ethane", "dwsim-viscosity-api-r1", "dwsim-viscosity-api-ambient-r2"),
+                    viscosities("icheme:tjl19_propane", "dwsim-viscosity-api-r1", "dwsim-viscosity-api-ambient-r2"),
+                    viscosities("icheme:tjl19_isobutane", "dwsim-viscosity-api-r1", "dwsim-viscosity-api-ambient-r2"),
+                    viscosities("icheme:tjl19_n_butane", "dwsim-viscosity-api-r1", "dwsim-viscosity-api-ambient-r2"),
+                    viscosities("icheme:tjl19_isopentane", "dwsim-viscosity-api-r1", "dwsim-viscosity-api-ambient-r2"),
+                    viscosities("icheme:tjl19_n_pentane", "dwsim-viscosity-api-r1", "dwsim-viscosity-api-ambient-r2"),
+                    viscosities("icheme:crude_pc01", "crude-regrouped-r1-dalia", "dwsim-viscosity-api-ambient-r2"),
+                    viscosities("icheme:crude_pc02", "crude-regrouped-r1-dalia", "dwsim-viscosity-api-ambient-r2"),
+                    viscosities("icheme:crude_pc03", "crude-regrouped-r1-dalia", "dwsim-viscosity-api-ambient-r2"),
+                    viscosities("icheme:crude_pc04", "crude-regrouped-r1-dalia", "dwsim-viscosity-api-ambient-r2"),
+                    viscosities("icheme:crude_pc05", "crude-regrouped-r1-dalia", "dwsim-viscosity-api-ambient-r2"),
+                    viscosities("icheme:crude_pc06", "crude-regrouped-r1-dalia", "dwsim-viscosity-api-ambient-r2"),
+                    viscosities("icheme:crude_pc07", "crude-regrouped-r1-dalia", "dwsim-viscosity-api-ambient-r2"),
+                    viscosities("icheme:crude_pc08", "crude-regrouped-r1-dalia", "crude-regrouped-r1-vapor"),
+                    viscosities("icheme:crude_pc09", "crude-regrouped-r1-dalia", "crude-regrouped-r1-vapor"),
+                    viscosities("icheme:crude_pc10", "crude-regrouped-r1-dalia", "crude-regrouped-r1-vapor"),
+                    viscosities("icheme:crude_pc11", "crude-regrouped-r1-dalia", "crude-regrouped-r1-vapor"),
+                    viscosities("icheme:crude_pc12", "crude-regrouped-r1-dalia", "crude-regrouped-r1-vapor"),
+                    viscosities("icheme:fluid_nitrogen", "nitrogen-nist-viscosity-r2", "nitrogen-nist-viscosity-r2"),
+                    "icheme:water/liquid@iapws-sr6-2011-viscosity-r1"),
+            "ice=icheme:crystal_ice_ih@crystal-ice-ih-r1",
+            "fluid-data=conditional_solute_log_tables@dwsim-conditional-solute-ambient-v2,liquid_volume_reference_points@nist-liquid-calibration-20260915")
             + ":direct-liquid-v1:tp-engine-v1:range-continuation-v1"
             + ":separate-free-water-v2:water-iapws-shomate-r2:fluid-domain-data-v1:catalog-volume-reference-v1";
+
+    /** A property record's two viscosities in the fluid identity: {@code id/liquid@revision,id/vapor@revision}. */
+    private static String viscosities(String id, String liquid, String vapor) {
+        return id + "/liquid@" + liquid + "," + id + "/vapor@" + vapor;
+    }
 
     @Test
     void theBundledNetworkPackageKeepsItsCoefficientPathBitForBit() {

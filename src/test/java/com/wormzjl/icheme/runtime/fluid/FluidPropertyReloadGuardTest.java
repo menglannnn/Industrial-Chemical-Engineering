@@ -22,28 +22,28 @@ class FluidPropertyReloadGuardTest {
     /** The record's {@code revision} with {@code -edited} appended: the bump a numerical edit declares. */
     private static void bump(com.google.gson.JsonObject record){record.addProperty("revision",record.get("revision").getAsString()+"-edited");}
     /**
-     * Data are identified by their declared revisions, nothing is hashed (owner decision 2026-10-26): a name edit keeps the
-     * qualified science, a numerical edit holds the world through the bump of its package's revision, and the same edit
-     * left undeclared is not seen.
+     * Data are identified by their declared revisions, nothing is hashed, and each record declares its own (owner decisions
+     * 2026-10-26): a name edit keeps the qualified science; a numerical edit holds the world through the bump of the edited
+     * record's revision alone, the package record untouched; the same edit left undeclared is not seen.
      */
-    @Test void metadataOnlyReloadKeepsQualifiedScienceAndARevisionBumpHolds() {
+    @Test void metadataOnlyReloadKeepsQualifiedScienceAndARecordsRevisionBumpHolds() {
         var guard=guard();assertTrue(guard.inspect(original).isEmpty());
         var names=changed("components/crude_pc07.json",j->j.addProperty("fallback","Renamed petroleum"));
         assertTrue(guard.inspect(names).isEmpty());
         java.util.function.Consumer<com.google.gson.JsonObject> heavier=j->j.addProperty("molecular_weight_kg_per_mol",.31);
         assertTrue(guard.inspect(changed("properties/crude_pc07.json",heavier)).isEmpty(),"an undeclared numerical edit: the revision is the identity");
-        var science=changed(java.util.Map.of("properties/crude_pc07.json",heavier,"packages/tjl20_nitrogen.json",FluidPropertyReloadGuardTest::bump));
-        assertEquals(packageId,science.requirePackage(packageId).id());
-        assertNotEquals(original.requirePackage(packageId).revision(),science.requirePackage(packageId).revision());
+        var science=changed("properties/crude_pc07.json",heavier.andThen(FluidPropertyReloadGuardTest::bump));
+        assertEquals(original.requirePackage(packageId).revision(),science.requirePackage(packageId).revision(),"the package record is untouched");
+        assertNotEquals(original.fluidRevision(packageId),science.fluidRevision(packageId));
         assertTrue(guard.inspect(science).isPresent());assertTrue(guard.inspect(science).isPresent());
         assertTrue(guard.inspect(MaterialCatalog.parse(original.resources())).isEmpty());
     }
-    @Test void aBumpedWaterRecordInvalidatesThePinnedFluidModel() {
+    @Test void aBumpedWaterViscosityInvalidatesThePinnedFluidModel() {
         var resources=new HashMap<>(original.resources());
         var path=resources.keySet().stream().filter(p->p.contains("/water/")).findFirst().orElseThrow();
         var json=JsonParser.parseString(resources.get(path)).getAsJsonObject();
-        var coefficients=json.getAsJsonObject("viscosity").getAsJsonObject("liquid").getAsJsonArray("coefficients");
-        coefficients.set(0,new com.google.gson.JsonPrimitive(coefficients.get(0).getAsDouble()*1.01));bump(json);
+        var liquid=json.getAsJsonObject("viscosity").getAsJsonObject("liquid");var coefficients=liquid.getAsJsonArray("coefficients");
+        coefficients.set(0,new com.google.gson.JsonPrimitive(coefficients.get(0).getAsDouble()*1.01));bump(liquid);
         resources.put(path,json.toString());var changed=MaterialCatalog.parse(resources);
         assertNotEquals(original.fluidRevision(packageId),changed.fluidRevision(packageId));
         assertTrue(guard().inspect(changed).isPresent());

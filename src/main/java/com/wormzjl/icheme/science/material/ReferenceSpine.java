@@ -217,7 +217,7 @@ public final class ReferenceSpine implements IdealGasFunction {
 
     static ReferenceSpine read(JsonObject o) {
         String id = JsonFields.text(o, "id"), component = JsonFields.text(o, "component");
-        String revision = revision(o, "revision"), source = JsonFields.text(o, "source");
+        String revision = JsonFields.revision(o, "revision"), source = JsonFields.text(o, "source");
         double molarMass = JsonFields.positive(o, "molar_mass_kg_per_mol");
         JsonObject formation = JsonFields.object(o, "formation_enthalpy");
         if (JsonFields.number(formation, "temperature_kelvin") != REFERENCE_TEMPERATURE)
@@ -269,12 +269,6 @@ public final class ReferenceSpine implements IdealGasFunction {
                 segments, scheme, java.util.Collections.unmodifiableMap(decomposition), MaterialCoverage.read(o));
     }
 
-    static String revision(JsonObject o, String key) {
-        String value = JsonFields.text(o, key);
-        if (!value.matches("[A-Za-z0-9][A-Za-z0-9_.:+-]{0,62}"))
-            throw new IllegalArgumentException(key + ": expected a stable identifier of at most 63 characters");
-        return value;
-    }
 
     static double nonNegative(JsonObject o, String key) {
         double value = JsonFields.number(o, key);
@@ -324,7 +318,7 @@ public final class ReferenceSpine implements IdealGasFunction {
             if (Math.abs(gasConstant / GAS_CONSTANT - 1) > 1e-5)
                 throw new IllegalArgumentException("gas_constant_j_per_mol_kelvin: " + gasConstant + " is not a molar gas constant in J/(mol K)");
             source = JsonFields.text(o, "source");
-            revision = ReferenceSpine.revision(o, "revision");
+            revision = JsonFields.revision(o, "revision");
             if (revision.startsWith("cea-") && gasConstant != CEA_GAS_CONSTANT)
                 throw new IllegalArgumentException("gas_constant_j_per_mol_kelvin: " + gasConstant + " J/(mol K) in a NASA CEA segment (revision "
                         + revision + "); CEA's polynomials use " + CEA_GAS_CONSTANT + " J/(mol K) (nasa/cea source/param.f90.in)");

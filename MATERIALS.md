@@ -16,9 +16,11 @@ The active crude family has 12 pseudocomponents (`crude_pc01`–`crude_pc12`): 1
 Copy `examples/material-override` into a world's `datapacks` directory, enable it with `/datapack enable`, and run
 `/reload`. The example replaces the property record `icheme:tjl20_methane` to give methane an illustrative
 standard-liquid density (357.0 instead of 356.07 kg/m³); it is an editing example, not a measured reference dataset.
-Its other fields are the bundled record's (a test keeps them so). Methane belongs to the network package, so a changed
-density is a changed fluid revision: on a running world the reload holds the fluid network until the data is restored
-(see "Reloads"); a fresh world starts on the edited record.
+Its other fields are the bundled record's (a test keeps them so), except its `revision`
+(`tjl20-methane-nist-r1-example-density`): an edit declares itself with a bump of the edited record's revision. Methane
+belongs to the network package, so the bumped revision changes the network's fluid identity: on a running world the
+reload holds the fluid network until the data is restored or the world is reopened (see "Reloads"); a new world starts
+on the edited record.
 
 Records live under `data/<namespace>/materials/<kind>/<filename>.json`. Minecraft chooses the highest-priority
 resource at each path. A replacement is a **whole record**, not a field merge. Different resource paths declaring
@@ -88,7 +90,7 @@ activity model: its binary parameters belong in an interaction set, not in this 
 
 Separate datasets may reference the same component. The bundled crude packages share their selected property records; the methane-free package omits Methane, the network package adds Nitrogen (`icheme:fluid_nitrogen`), and the pilot has its own `icheme:pilot_*` records.
 
-`fluid_domain` (fluid network only) gives the component's data range on the network: `temperature_min_kelvin`, `temperature_max_kelvin`, `pressure_min_pascal`, `pressure_max_pascal` and `evidence`. It is separate from the record's own range, which is the column's, and it is not part of the physics fingerprints the column and its neural registry pin; the network's thermodynamic revision hashes it. In a package without spines its temperature range sets the `ideal_gas_cp` fit's data range (above); in a spine package the ideal-gas data range comes from the spine segments instead. Leaving it never refuses a state. The bundled crude and light records declare 293.15..900 K (the ambient continuation of their 298.15 K fits), nitrogen 63.151..900 K and the pilot records their triple point..1200 K.
+`fluid_domain` (fluid network only) gives the component's data range on the network: `temperature_min_kelvin`, `temperature_max_kelvin`, `pressure_min_pascal`, `pressure_max_pascal` and `evidence`. It is separate from the record's own range, which is the column's, and the column's physics comparison (`samePhysics`) leaves it out; like every field of the record, an edit of it bumps the record's `revision`. In a package without spines its temperature range sets the `ideal_gas_cp` fit's data range (above); in a spine package the ideal-gas data range comes from the spine segments instead. Leaving it never refuses a state. The bundled crude and light records declare 293.15..900 K (the ambient continuation of their 298.15 K fits), nitrogen 63.151..900 K and the pilot records their triple point..1200 K.
 
 ### `interactions`
 
@@ -121,7 +123,7 @@ The symmetric A_kl/B_kl matrix of a group-contribution rule. Required: `id`, `re
 
 ### `spine`
 
-One species' ideal gas and formation data; in a package that lists spines they are the only ideal-gas source (decision D6). Required: `id`, `component`, `revision` (a stable identifier of at most 63 characters, as for crystals and group matrices), `source`, `molar_mass_kg_per_mol`, `formation_enthalpy` (`value_j_per_mol`, `uncertainty_j_per_mol`, `temperature_kelvin` = 298.15, `source`), `standard_entropy` (`value_j_per_mol_kelvin`, `pressure_pascal` = 100000, `source`, optional `uncertainty_j_per_mol_kelvin`), `ideal_gas`, `groups` (`scheme: "eppr78-2022"` and `counts`, a positive integer per group name) and `coverage` (`grade` `qualified`, `estimated_declared_error`, `research_only` or `unavailable`, and `evidence`).
+One species' ideal gas and formation data; in a package that lists spines they are the only ideal-gas source (decision D6). Required: `id`, `component`, `revision` (a revision token, see "Reloads, scientific identity, and verification"), `source`, `molar_mass_kg_per_mol`, `formation_enthalpy` (`value_j_per_mol`, `uncertainty_j_per_mol`, `temperature_kelvin` = 298.15, `source`), `standard_entropy` (`value_j_per_mol_kelvin`, `pressure_pascal` = 100000, `source`, optional `uncertainty_j_per_mol_kelvin`), `ideal_gas`, `groups` (`scheme: "eppr78-2022"` and `counts`, a positive integer per group name) and `coverage` (`grade` `qualified`, `estimated_declared_error`, `research_only` or `unavailable`, and `evidence`).
 
 `ideal_gas.segments` holds 1–16 contiguous segments that contain 298.15 K, each with `type`, `temperature_min_kelvin`, `temperature_max_kelvin`, `source`, `revision` and an optional own `coverage`: `helmholtz_ideal_terms` (CoolProp's ideal-gas Helmholtz terms: `reducing_temperature_kelvin`, `gas_constant_j_per_mol_kelvin` and 1–16 `terms` of type `log_tau`, `power`, `planck_einstein`, `planck_einstein_function_t` or `planck_einstein_cosh`), or the NASA polynomials `nasa9`/`nasa7` (nine or seven `coefficients`; the gas constant defaults to CEA's 8.31451 J/(mol·K), which a `cea-` revision must use). Every gas constant is the molar gas constant within 1e-5 relative. Enthalpy and entropy are integrated in closed form and chained so that h(298.15 K) is the formation enthalpy and s(298.15 K, 1e5 Pa) the standard entropy; a Cp step at a join above `ideal_gas.maximum_cp_step_fraction` (default 0.005) fails loading. Past the segments Cp is held and integrated. The four bundled spines belong to the pilot.
 
@@ -131,7 +133,7 @@ One pure crystal of a component, anchored at its triple point to the fluid model
 
 ### `packages`
 
-Required: `id`, `revision` (at most 63 characters), `model`, ordered `components`, parallel ordered `properties` references (or a `basis`, see "Shared bases"), `interactions`, `missing_interactions`, `water_model`, `aliases`, `advisory_evidence` (at most 32 entries of 256 characters), `temperature_min_kelvin`, `temperature_max_kelvin`, `pressure_min_pascal`, and `pressure_max_pascal`. There must be 1–64 unique components. Each property record must describe the component at the same index. Package ranges must fit selected property ranges; they are the column's domain and bound column preset operating values. Optional: `liquid_mixture`, `fluid_domain`, `spine`, `crystals`.
+Required: `id`, `revision` (a revision token), `model`, ordered `components`, parallel ordered `properties` references (or a `basis`, see "Shared bases"), `interactions`, `missing_interactions`, `water_model`, `aliases`, `advisory_evidence` (at most 32 entries of 256 characters), `temperature_min_kelvin`, `temperature_max_kelvin`, `pressure_min_pascal`, and `pressure_max_pascal`. There must be 1–64 unique components. Each property record must describe the component at the same index. Package ranges must fit selected property ranges; they are the column's domain and bound column preset operating values. Optional: `liquid_mixture`, `fluid_domain`, `spine`, `crystals`.
 
 A package the fluid network is built on declares a `fluid_domain` (same fields): its envelope, the data range of the package as a whole and the input box of device settings. A generator's or void's temperature and pressure and a valve's set pressure are refused outside it when the player sets them; a state the network reaches by itself may leave it. No range has to lie inside another. The bundled packages declare 273.16..900 K and 100 Pa..10 MPa (`tjl19_dwsim` 2 MPa), the network package 63.151..900 K and the pilot 63.151..1200 K.
 
@@ -167,7 +169,7 @@ Wagner–Pruss auxiliary equation. Shomate order is [A,B,C,D,E,F,−H] using t =
 1000 × (At + Bt²/2 + Ct³/3 + Dt⁴/4 − E/t + F − H) J/mol. The final array entry already contains −H.
 The existing NIST fit's lower-temperature continuation and reference-consistent Watson liquid enthalpy are preserved.
 
-Optional `ice` names a usable `crystal` of `Water` anchored at the record's `triple_point` and gives its `sublimation_pressure` (`type: "iapws_r14_08"`, three `coefficients`, three `exponents`, `source`; IAPWS R14-08 equation 6). On every package, free water below its melting line freezes as that crystal. The ice is hashed into the network's thermodynamic revision, not into the physics fingerprint the column and neural registry pin. On the network the record also supplies the saturation pressure and the ideal steam; liquid water is IAPWS-IF97 Region 1 in Java. The bundled `icheme:water` uses `icheme:crystal_ice_ih`. The water model of the network package must carry `ice`: loading, and so a `/reload`, refuses data without it, naming the water file and the field.
+Optional `ice` names a usable `crystal` of `Water` anchored at the record's `triple_point` and gives its `sublimation_pressure` (`type: "iapws_r14_08"`, three `coefficients`, three `exponents`, `source`; IAPWS R14-08 equation 6). On every package, free water below its melting line freezes as that crystal. The ice crystal record's revision is part of the fluid identity only, not of the column's identity: the column never reaches the water's melting line. On the network the record also supplies the saturation pressure and the ideal steam; liquid water is IAPWS-IF97 Region 1 in Java. The bundled `icheme:water` uses `icheme:crystal_ice_ih`. The water model of the network package must carry `ice`: loading, and so a `/reload`, refuses data without it, naming the water file and the field.
 
 ### `solids`
 
@@ -232,7 +234,7 @@ ambient extension. Run `Export-DwsimViscosity.ps1 -Ambient -Characterization <so
 Fluid generators preserve temperature/pressure when selecting a composition. The bundled crude and light records' fluid data start at 293.15 K (20°C), a five-kelvin continuation of their existing caloric fits; this is a near-ambient approximation, not a new laboratory qualification or a wax/gel model.
 Changed property records retain their declared limits. The column property domains remain unchanged; the regrouped PR/Cp values are versioned, while fluid-model and transport revisions invalidate incompatible fluid caches. Ambient generation
 is tested at 293.15, 298, 298.15 and 300 K; colder states are continued and reported, not refused.
-Old fluid property fingerprints are refused.
+A world saved under another fluid identity restates its contents once when it loads.
 
 Adaptive subdivision checks quarter, midpoint, and three-quarter temperatures until log interpolation agrees with
 the API within 0.05% at those check points. This measures interpolation error only, not physical model accuracy.
@@ -249,10 +251,11 @@ package aliases and the package's selected water model are respected. `MaterialR
 the calling calculation's pinned catalog. Call `dynamicViscosityPascalSeconds(T, phase)` to evaluate μ (the phase selects the continuation); a kinematic
 viscosity ν = μ/ρ needs the density at the same state, never the standard-liquid density. For display, 1 mPa·s = 10⁻³ Pa·s and 1 cSt = 10⁻⁶ m²/s.
 
-Viscosity is a transport property and is not consumed by the equilibrium/enthalpy solvers. A separate
-`catalog.viscosityFingerprint(packageId)` tracks selected viscosity parameters, phase assignments, limits, estimation flags, the `liquid_mixture` correction, molecular weights and the conditional solute curves; transport caches must use it. Viscosity-only edits preserve PR scientific revisions and neural
-eligibility, while reloads still validate and atomically publish the complete catalog; the fluid network's thermodynamic revision includes this fingerprint. Source-text-only edits do
-not change the transport fingerprint. Pressure corrections and GUI viscosity reporting are not provided.
+Viscosity is a transport property and is not consumed by the equilibrium/enthalpy solvers. Each viscosity declares its
+own `revision`, and an edit of it bumps that revision, not the property record's. The fluid identity lists every
+viscosity revision and the column identity none, so a viscosity-only edit keeps column results and neural eligibility
+and holds a running fluid world until restored; reloads still validate and atomically publish the complete catalog.
+Source-text-only edits need no bump. Pressure corrections and GUI viscosity reporting are not provided.
 
 ## Fluid color and transparency
 
@@ -305,13 +308,25 @@ Invalid initial catalogs fail world loading; invalid subsequent reloads leave th
 Background requests capture a snapshot at admission. A scoped, finally-restored calculation context carries it through
 legacy static PR/water entry points, including continuation and reporting. No running solve reads a replacement catalog.
 
-Results and neural seeds carry a scientific revision with a SHA-256 fingerprint of resolved data. Changing numerical
-data invalidates reuse even if an author forgets to update `revision`. Names, cut-label metadata, and translations do
-not change the scientific fingerprint. Completed results preserve their original identity and become stale when it
-differs from the live package. Open calculators refresh after publication; closed ones check when reopened.
-The bundled neural registry pins its verified ordered physics fingerprint. Changed physical data disables that model; the normal
-LNN_FIRST mode uses numerical fallback (explicit LNN_ONLY retains its existing failure semantics).
-A running fluid world keeps the catalog it started with: a reload that changes its network package's fluid revision (any property, range, transport, spine, crystal or ice data) holds the fluid network with `HELD: property data changed; restore the qualified data or create a fresh world` until the data is restored.
+Data are identified by declared revisions; nothing is hashed (owner decisions of 2026-10-26). A record's `revision`
+names the version of its values: an edit of a value bumps the revision of the record that holds it, and a viscosity
+edit bumps the viscosity's own `revision`. A package's `revision` changes only when the package record changes. A
+revision is a token of letters, digits, `_`, `.` and `-` that starts with a letter or digit, at most 64 characters;
+loading refuses another, naming the record's file. An edit without a bump is not detected: results stay current and a
+running world does not hold. Assays, names, cut-label metadata, translations and source texts are in no identity.
+
+A package's column identity, `Package.scientificRevision`, lists the declared revisions of the records the column reads:
+`<package>@<revision>;properties=<id>@<revision>,…;interactions=<id>@<revision>[;group-interactions=<id>@<revision>];water=<id>@<revision>`.
+The fluid identity, `catalog.fluidRevision(packageId)`, adds what only the fluid network reads:
+`;viscosity=<id>/<phase>@<revision>,…` (in component order, then the water), `;ice=<crystal>@<revision>` and
+`;fluid-data=<type>@<revision>,…`. Spine and crystal records are identified record by record in
+`catalog.spineRevision(packageId)`. The calculator shows an identity's first part, `<package>@<revision>`.
+
+Results and neural seeds carry the column identity. Completed results preserve their original identity and become stale
+when it differs from the live package. Open calculators refresh after publication; closed ones check when reopened.
+The bundled neural registry pins its reference package's column identity. A changed identity disables that model; the
+normal LNN_FIRST mode uses numerical fallback (explicit LNN_ONLY retains its existing failure semantics).
+A running fluid world keeps the catalog it started with: a reload that changes its network package's fluid or spine identity holds the fluid network with `HELD: property data changed; save and reopen the world to restate the fluid network on the new data`. Restoring the data resumes it; a reopened world restates its contents on the new data.
 
 `MaterialCatalog.bundled()` uses the same parser with `materials-index.json` for standalone tools/tests. Add new bundled
 files to that index; Minecraft itself discovers data-pack resources dynamically and does not use the index. Keep
@@ -354,7 +369,7 @@ q = 1000 K × (1/min(T, slope_cap_kelvin) − 1/reference_kelvin)
 
 The crude components' fluid data start at 293.15 K (20°C). Colder states are continued from those ranges (heat capacity held, liquid viscosity continued in 1/T) and reported on the island's status line; nothing is clamped or held. Reaching a data boundary is not a viscosity or solidification criterion.
 
-All pair terms vanish for a pure component. The implementation evaluates factored sums in O(component count). These coefficients and descriptors participate in the transport fingerprint, while scientific PR/caloric fingerprints remain independent. The bundled coefficients are a global fit to Dalia whole crude and its 370°C+ residue, holding out whole crude at 40°C and residue at 60°C for verification. Other crudes' discrepancies are accepted and reported as a global approximation.
+All pair terms vanish for a pure component. The implementation evaluates factored sums in O(component count). These coefficients and descriptors belong to the package and property records: an edit bumps the record's `revision`. The bundled coefficients are a global fit to Dalia whole crude and its 370°C+ residue, holding out whole crude at 40°C and residue at 60°C for verification. Other crudes' discrepancies are accepted and reported as a global approximation.
 
 Column operating values reside in `presets` records. `operating.feedStandardVolumeCubicMetresPerSecond` is the positive feed volume at the selected property density reference; molar throughput is derived from the current assay and molecular weights. `operating.sideDraws` contains explicit tray numbers and mol/s rates. Captured pre-regrouping physical throughputs are retained, and gameplay draws are recalibrated against accepted pre-regrouping volume targets. The hidden literature preset retains its published molar rates. Cold Lake has no accepted old yield targets and retains its authored rates.
 
@@ -397,9 +412,9 @@ A fluid model captures these immutable records with its catalog. Volume referenc
 
 `data/icheme/neural/registry.json` is a bounded classpath registry, not a datapack weight loader. Schema 1 permits up to 16 entries with `priority`, `modelId`, `payload`, `sidecar` and `pipelineSha256`. Highest priority wins; equal priorities are resolved by model ID. Duplicate IDs, unsafe resource paths, wrong hashes, malformed shapes or unsupported policies reject the registry. An empty or unavailable registry preserves classical fallback.
 
-The trained payload uses schema 1 and contains immutable weights, normalization, component axis and encoding/anchor revisions. Sidecar schema 2 contains `physicsFingerprint`, reference package, model ID, formulation/branch coverage, composition blend segments, numerical bounds, decoder/candidate/correction policy, and explicit `allowExtraZeroComponents` / `allowMissingZeroComponents` flags. The pipeline hash is SHA-256 of the ASCII string `payloadSha256:sidecarSha256`. Altering metadata does not rewrite weights, but requires whole-pipeline requalification.
+The trained payload uses schema 1 and contains immutable weights, normalization, component axis and encoding/anchor revisions. Sidecar schema 2 contains `propertyRevision` (the reference package's column identity), reference package, model ID, formulation/branch coverage, composition blend segments, numerical bounds, decoder/candidate/correction policy, and explicit `allowExtraZeroComponents` / `allowMissingZeroComponents` flags. The pipeline hash is SHA-256 of the ASCII string `payloadSha256:sidecarSha256`. Altering metadata does not rewrite weights, but requires whole-pipeline requalification.
 
-Physics eligibility includes ordered component properties, EOS/interactions, water/caloric data and admitted domains. It excludes assay identity/composition, labels, provenance text, transport and declared revisions. Actual feed composition must still belong to the model's qualified composition domain. Every nonzero feed species must be represented. Reordering is by exact ID; discarding extra zero species and filling missing zero species require the respective explicit qualification flag. A missing species draws properties and cross-interactions only from the named reference package, and the complete projected fingerprint must match. No missing interaction is inferred as zero. A package with crystals or rule interactions is never projected. The deployed regrouped model keeps both padding flags disabled; methane-free and nitrogen-extended requests use classical initialization.
+Physics eligibility is the reference package's current column identity equal to the sidecar's `propertyRevision`, and the requested package's values on the model's axis equal to the reference's (`samePhysics`, a direct comparison: ordered component properties, EOS/interactions and water/caloric data; not assays, labels, provenance text, transport or declared revisions). Actual feed composition must still belong to the model's qualified composition domain. Every nonzero feed species must be represented. Reordering is by exact ID; discarding extra zero species and filling missing zero species require the respective explicit qualification flag. A missing species draws properties and cross-interactions only from the named reference package, and the complete projected physics must match (`samePhysics`). No missing interaction is inferred as zero. A package with crystals or rule interactions is never projected. The deployed regrouped model keeps both padding flags disabled; methane-free and nitrogen-extended requests use classical initialization.
 
 Selection binds one model and one immutable catalog when a job is admitted. Native anchors run against that captured view, predictions scatter back to the request axis, and returned seeds retain the original request identity. Reloads cannot change running jobs. This projection is only an inference operation, never an old-save conversion. Result freshness remains tied to the original full scientific dataset.
 
