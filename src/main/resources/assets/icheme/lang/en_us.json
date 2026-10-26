@@ -61,6 +61,7 @@
   "message.icheme.pipe_laying.route.too_long": "No route within 128 blocks of pipe",
   "message.icheme.pipe_laying.route.broken": "The route is not continuous",
   "message.icheme.pipe_laying.route.joints": "The line would join its end twice",
+  "message.icheme.pipe_laying.route.one_slot": "A one-block pipe takes one slot: aim the end at the start's slot",
   "item.icheme.pipeline_tool.target": "Target internal diameter: %s m",
   "item.icheme.pipeline_tool.configure": "Shift + right-click to set the target diameter",
   "item.icheme.pipeline_tool.apply": "Right-click a process pipe to resize it",

@@ -288,6 +288,35 @@ class PipeRouteTest {
     }
 
     /**
+     * Owner report 2026-10-27: "you cannot place single-block pipe on the rack". A one-block line has no route to pass on
+     * to: it is the aimed lane, open at both its faces, whichever half each click aimed at. Two clicks on one slot lay it;
+     * two slots are refused; a pipe or lane it meets in that cell joins it on either of its faces, and on no other.
+     */
+    @Test
+    void aOneBlockLineOnARackIsTheAimedLane() {
+        var rooms = row(1, 8, 0);
+        var cell = new Cell(5, 0, 0);
+        int slot = RackGeometry.option(1, RackGeometry.TIER), along = 1 << WEST | 1 << EAST;
+        var start = new End(cell, -1, -1, slot, WEST, EAST);
+        for (var end : List.of(new End(cell, -1, -1, slot, WEST, EAST), new End(cell, -1, -1, slot, EAST, WEST), new End(cell, EAST), new End(cell, WEST))) {
+            var route = search(start, WEST, end, with(rooms));
+            assertTrue(route.found(), end + ": " + route.refusal());
+            assertEquals(List.of(cell), route.cells());
+            assertEquals(List.of(slot), route.options());
+            assertEquals(along, PipeRoute.arms(route.cells(), start, WEST, end)[0], "the aimed lane, across the cell: " + end);
+            assertEquals(end.joint() < 0 ? 0 : 1 << end.joint(), PipeRoute.laidJoints(route.cells(), start, end)[0]);
+            assertNull(PipeRoute.check(route.cells(), route.options(), start, end, 128));
+            assertEquals(-1, PipeRoute.blocked(route.cells(), route.options(), start, WEST, end, SMALL, with(rooms)));
+        }
+        var jointed = new End(cell, WEST);
+        assertTrue(search(jointed, EAST, new End(cell, -1, -1, slot, WEST, EAST), with(rooms)).found(), "from a pipe on the lane's face to the aimed slot");
+        assertEquals(Refusal.ONE_SLOT, search(start, WEST, new End(cell, -1, -1, RackGeometry.option(2, RackGeometry.TIER), WEST, EAST), with(rooms)).refusal());
+        var side = new End(cell, NORTH);
+        assertEquals(Refusal.BLOCKED, search(start, WEST, side, with(rooms)).refusal(), "a pipe beside the cell does not meet the aimed lane");
+        assertEquals(0, PipeRoute.blocked(List.of(cell), List.of(slot), start, WEST, side, SMALL, with(rooms)), "the server refuses a joint off the lane's faces");
+    }
+
+    /**
      * Racks facing east along x 1 to 8: from every slot and face of one cell to every slot and face of another, 2" and
      * 14". Every route the client finds is one the server lays: each cell once, the aimed slots and faces kept, every cell
      * admitted.

@@ -127,7 +127,7 @@ public final class PipeRoute {
     }
 
     /** Why a route cannot be laid; each has a player message. */
-    public enum Refusal {START_OCCUPIED, END_OCCUPIED, SAME_FACE, BLOCKED, TOO_LONG, BROKEN, JOINTS}
+    public enum Refusal {START_OCCUPIED, END_OCCUPIED, SAME_FACE, BLOCKED, TOO_LONG, BROKEN, JOINTS, ONE_SLOT}
 
     /** A route's cells and each cell's lane option (-1 in a plain cell), or why there is none. */
     public record Result(List<Cell> cells, List<Integer> options, Refusal refusal) {
@@ -185,11 +185,15 @@ public final class PipeRoute {
             return Result.refused(Refusal.END_OCCUPIED);
         if (start.cell.equals(end.cell)) {
             if (start.joint >= 0 && start.joint == end.joint) return Result.refused(Refusal.SAME_FACE);
-            // One cell: the lane runs from its start's entry to the end's exit, which an aimed end on either side must pass through.
-            if (start.through >= 0 && end.exit(heading ^ 1) != start.through || end.through >= 0 && (heading ^ 1) != end.through) return Result.refused(Refusal.SAME_FACE);
-            int options = finishing(startRoom, startOptions, heading ^ 1, end, line);
-            if (startRoom.admit == Admit.RACK && options == 0) return Result.refused(Refusal.END_OCCUPIED);
+            // One cell is one lane, or one pipe block (ends): an aimed end's lane, which both aimed ends must name, with
+            // each end's joint on one of its faces.
+            if (start.option >= 0 && end.option >= 0 && start.option != end.option) return Result.refused(Refusal.ONE_SLOT);
             var cells = List.of(start.cell);
+            int[] arms = ends(cells, start, heading, end)[0];
+            if (arms[0] == arms[1]) return Result.refused(Refusal.SAME_FACE);
+            if (!on(start.joint, arms) || !on(end.joint, arms)) return Result.refused(Refusal.BLOCKED);
+            int options = finishing(startRoom, startOptions, arms[0], arms[1], end, line);
+            if (startRoom.admit == Admit.RACK && options == 0) return Result.refused(Refusal.END_OCCUPIED);
             return new Result(cells, choose(cells, List.of(options), start, heading, end, line, room), null);
         }
         int lowX = Math.min(start.cell.x, end.cell.x) - limits.margin, highX = Math.max(start.cell.x, end.cell.x) + limits.margin;
@@ -249,7 +253,7 @@ public final class PipeRoute {
                 int options = 0;
                 if (rack) {
                     options = entering(there, face ^ 1, lane ? points(here, leaving, face, line) : null, line);
-                    if (last) options = finishing(there, options, face ^ 1, end, line);
+                    if (last) options = finishing(there, options, face ^ 1, end.exit(face ^ 1), end, line);
                     if (options == 0) continue;
                 }
                 double g = node.g + (rack && RackGeometry.along(there.rack, face ^ 1) ? RACK_STEP : STEP) + (face != node.heading ? ELBOW : 0) + (face < 2 ? VERTICAL : 0)
@@ -324,15 +328,19 @@ public final class PipeRoute {
         return out;
     }
 
+    /** Whether {@code joint} (-1: none) is one of the two faces {@code arms}. */
+    private static boolean on(int joint, int[] arms) {
+        return joint < 0 || joint == arms[0] || joint == arms[1];
+    }
+
     private static boolean fits(Room room, int option, int arms, Line line) {
         return RackGeometry.valid(room.rack, option, line.width, arms) && RackGeometry.fits(room.rack, room.lanes, new RackGeometry.Lane(option, line.width, arms, 0, line.code));
     }
 
-    /** The end cell's options: those leaving through the end's joint (at its point), its aimed open face, or straight on where the end is open. */
-    private static int finishing(Room room, int options, int entry, End end, Line line) {
-        if (room.admit != Admit.RACK) return 0;
-        int exit = end.exit(entry), out = 0;
-        if (exit == entry) return 0;
+    /** The end cell's options: those of the end's aimed slot, or any, running from {@code entry} to {@code exit} and meeting the end's point on its joint. */
+    private static int finishing(Room room, int options, int entry, int exit, End end, Line line) {
+        if (room.admit != Admit.RACK || exit == entry) return 0;
+        int out = 0;
         options &= aimed(end);
         for (int option = 0; option < RackGeometry.OPTIONS; option++)
             if ((options >> option & 1) != 0 && fits(room, option, 1 << entry | 1 << exit, line)
@@ -352,7 +360,8 @@ public final class PipeRoute {
     /**
      * The faces each cell of a route runs to: the faces towards the cells before and after it; at the start the start's
      * joint, or for an open start the face behind the heading; at the end the end's joint, its aimed open face, or for an
-     * open end straight on.
+     * open end straight on. A line of one cell with an aimed end is that end's lane, the start's where both are aimed: its
+     * two faces, whichever half each click aimed at, as a one-block line has no route to pass on to.
      */
     public static int[][] ends(List<Cell> cells, End start, int heading, End end) {
         int n = cells.size();
@@ -361,6 +370,8 @@ public final class PipeRoute {
             out[i][0] = i == 0 ? (start.joint >= 0 ? start.joint : heading ^ 1) : cells.get(i).faceTowards(cells.get(i - 1));
             out[i][1] = i + 1 < n ? cells.get(i).faceTowards(cells.get(i + 1)) : end.exit(out[i][0]);
         }
+        var aimed = start.option >= 0 ? start : end;
+        if (n == 1 && aimed.option >= 0) out[0] = new int[]{aimed.through, aimed.open};
         return out;
     }
 
@@ -593,8 +604,9 @@ public final class PipeRoute {
     /**
      * Server: the first cell of a checked line that {@code space} does not admit as the search would, or -1: a plain cell
      * free; a rack cell whose lane, with the option sent and the arms the route gives it, suits and fits it, meets the
-     * lane before and after it on their shared faces and the end's point; and no step between a lane and a plain cell
-     * through a rack face that another lane already has a joint on. The ends' own joints are the anchors' to check.
+     * lane before and after it on their shared faces and the end's point; the ends' joints on the faces their cells run
+     * to (one cell: its lane's); and no step between a lane and a plain cell through a rack face that another lane already
+     * has a joint on. Whether the ends' own hosts take the joints is the anchors' to check.
      */
     public static int blocked(List<Cell> cells, List<Integer> options, End start, int heading, End end, double outside, Space space) {
         var line = Line.of(outside);
@@ -605,6 +617,7 @@ public final class PipeRoute {
             int option = options.get(i);
             boolean lane = option >= 0;
             if (room.admit == Admit.BLOCKED || lane != (room.admit == Admit.RACK)) return i;
+            if (i == 0 && !on(start.joint, ends[0]) || i == cells.size() - 1 && !on(end.joint, ends[i])) return i;
             if (lane) {
                 if (!fits(room, option, 1 << ends[i][0] | 1 << ends[i][1], line)) return i;
                 if (i == 0 && start.point >= 0 && RackGeometry.point(room.rack, option, line.width, line.outside, start.joint) != start.point) return i;
