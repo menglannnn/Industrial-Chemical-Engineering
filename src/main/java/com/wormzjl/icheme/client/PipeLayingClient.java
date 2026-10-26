@@ -120,7 +120,7 @@ public final class PipeLayingClient {
         if (hit == null) return;
         if (start == null) {
             var resolved = PipeAnchor.resolve(mc.level, hit);
-            var refusal = resolved.anchor() == null ? resolved.refusal() : resolved.anchor().refuses(width(settingsDiameter(player)));
+            var refusal = resolved.anchor() == null ? resolved.refusal() : resolved.anchor().refuses(PipeSizes.outside(settingsDiameter(player)));
             if (refusal != null) {
                 say(player, PipeLaying.message("anchor." + name(refusal)));
                 return;
@@ -240,7 +240,7 @@ public final class PipeLayingClient {
         int width = width(diameter);
         var from = start.anchor;
         for (var anchor : List.of(from, resolved.anchor()))
-            if (anchor.refuses(width) != null) return new Plan(end, resolved.anchor(), nothing, PipeLaying.message("anchor." + name(anchor.refuses(width))), none, none);
+            if (anchor.refuses(PipeSizes.outside(diameter)) != null) return new Plan(end, resolved.anchor(), nothing, PipeLaying.message("anchor." + name(anchor.refuses(PipeSizes.outside(diameter)))), none, none);
         int heading = from.heading(resolved.anchor().end().cell());
         var route = PipeRoute.search(from.end(), heading, resolved.anchor().end(), width, PipeAnchor.space(level), PipeRoute.Limits.DEFAULT);
         if (!route.found()) return new Plan(end, resolved.anchor(), route, PipeLaying.message("route." + name(route.refusal())), none, none);
@@ -257,6 +257,25 @@ public final class PipeLayingClient {
         int elbows = PipeRoute.elbows(plan.route.cells(), start.anchor.end(), plan.anchor.end());
         return PipeLaying.message("hud.route", describe(start.anchor), describe(plan.anchor), cells, elbows, String.format(Locale.ROOT, "%.3f", diameter),
                 player.getAbilities().instabuild ? Component.literal("—") : Component.literal(Integer.toString(cells)));
+    }
+
+    /**
+     * The off-centre step of the lane route cell {@code i} meets through {@code face} (the same along every axis: a lane's
+     * centre lies on its rack's diagonal): the route's own lane next to it, or the lane the line starts or ends on; 0
+     * where it meets none.
+     */
+    private static int laneStep(Plan shown, int i, int face, int width) {
+        var cells = shown.route.cells();
+        var step = LineGeometry.STEPS[face];
+        var next = new PipeRoute.Cell(cells.get(i).x() + step[0], cells.get(i).y() + step[1], cells.get(i).z() + step[2]);
+        for (int j : new int[]{i - 1, i + 1})
+            if (j >= 0 && j < cells.size() && cells.get(j).equals(next) && shown.route.slots().get(j) >= 0) return RackGeometry.offset(shown.route.slots().get(j), width);
+        var first = start;
+        for (var anchor : new PipeAnchor[]{i == 0 && first != null ? first.anchor : null, i == cells.size() - 1 ? shown.anchor : null})
+            // A lane anchor takes lines no wider than its lane: its fit's widest is the lane's width.
+            if (anchor != null && anchor.kind() == PipeAnchor.Kind.LANE && anchor.joint() != null && anchor.joint().ordinal() == face)
+                return RackGeometry.offset(anchor.hostLane() - 1, anchor.fit().maxWidth());
+        return 0;
     }
 
     private static Component describe(PipeAnchor anchor) {
@@ -350,9 +369,15 @@ public final class PipeLayingClient {
             // A lane is drawn in its slots as the rack will draw it, welded at every joint.
             if (slot >= 0) polygons = RackGeometry.lane(new RackGeometry.Lane(slot, width, shown.joints[i], shown.joints[i], code), shown.facings[i]);
             else {
-                long faces = 0;
-                for (int face = 0; face < 6; face++) if ((shown.joints[i] >> face & 1) != 0) faces |= (long) code << 7 * face;
-                polygons = LineGeometry.polygons(new LineGeometry.Key(TopologyCompiler.Kind.PIPE, shown.facings[i], shown.joints[i], code, faces, 0, false));
+                long faces = 0, offsets = 0;
+                for (int face = 0; face < 6; face++) {
+                    if ((shown.joints[i] >> face & 1) == 0) continue;
+                    faces |= (long) code << 7 * face;
+                    // A plain cell beside a lane is a transition pipe to the lane's off-centre point.
+                    int at = laneStep(shown, i, face, width);
+                    if (at != 0) offsets |= LineGeometry.Key.offsets(face, at, at);
+                }
+                polygons = LineGeometry.polygons(new LineGeometry.Key(TopologyCompiler.Kind.PIPE, shown.facings[i], shown.joints[i], code, faces, 0, false, offsets));
             }
             pose.pushPose();
             pose.translate(cell.x() - camera.x, cell.y() - camera.y, cell.z() - camera.z);

@@ -51,6 +51,14 @@ public final class RackGeometry {
         return FIRST + PITCH * (slot + (width - 1) / 2.0);
     }
 
+    /**
+     * How far a lane's centre lies off the block's centre along each axis, in {@link LineGeometry#OFFSET} steps: the
+     * off-centre point of its open faces, where a transition pipe meets it (plan 6). Slot centres are multiples of 3/32 m.
+     */
+    public static int offset(int slot, int width) {
+        return (int) Math.round((centre(slot, width) - .5) / LineGeometry.OFFSET);
+    }
+
     /** The slots a line of outside diameter {@code outside} takes: (OD + 1/64) / (3/16), rounded up; five for the largest line. */
     public static int width(double outside) {
         return Math.min(SLOTS, (int) Math.ceil((outside + CLEARANCE) / PITCH - 1e-9));

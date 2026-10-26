@@ -112,7 +112,7 @@ public final class FluidDeviceModel implements IDynamicBakedModel {
         int facing = state.getValue(FluidDeviceBlock.FACING).ordinal();
         var drawn = data.get(FluidDeviceBlockEntity.DRAWN);
         if (drawn == null) return new LineGeometry.Key(block.kind(), facing, connections, PipeSizes.code(PipeSizes.outside(.05)), 0, 0, false);
-        return new LineGeometry.Key(block.kind(), facing, connections, PipeSizes.code(PipeSizes.outside(drawn.bore())), drawn.faces(), drawn.flanged(), drawn.spool());
+        return new LineGeometry.Key(block.kind(), facing, connections, PipeSizes.code(PipeSizes.outside(drawn.bore())), drawn.faces(), drawn.flanged(), drawn.spool(), drawn.offsets());
     }
 
     @Override

@@ -162,6 +162,11 @@ public final class PipeLayingGameTests {
             }
             helper.assertTrue(connected(level, first, Direction.WEST) && connected(level, first, Direction.EAST) && connected(level, last, Direction.NORTH) && connected(level, last, Direction.SOUTH),
                     "The plain ends do not join the tanks and the lanes");
+            // W4: the plain ends are transition pipes to the lane's off-centre point; a tee there would cut the lane off.
+            for (var at : List.of(first, last))
+                helper.assertTrue(level.getBlockEntity(at) instanceof FluidDeviceBlockEntity pipe && pipe.transition() == (RackGeometry.offset(slot, 1) != 0),
+                        "Not a transition pipe at " + at.toShortString());
+            helper.assertTrue(PipeAnchor.resolve(level, new PipeAnchor.Click(first, Direction.UP)).refusal() == PipeAnchor.Refusal.TRANSITION, "A tee beside a rack lane was offered");
             long westTank = world.at(position(level, west)).orElseThrow().device().id(), southTank = world.at(position(level, south)).orElseThrow().device().id();
             helper.assertTrue(joined(world, westTank, southTank), "The tanks are not one island through the racks");
 

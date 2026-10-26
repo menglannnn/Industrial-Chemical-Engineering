@@ -733,12 +733,20 @@ public final class Mesh {
 
     /** An elbow: a quarter (or any arc) of torus of bend radius {@code bend} and tube radius {@code r} from angle a0 to a1. */
     void torus(Frame f, double bend, double r, double a0, double a1, int segments, int n, Material material) {
+        torus(f, bend, r, a0, a1, segments, n, 0, material);
+    }
+
+    /**
+     * A torus whose section's vertices start {@code phase} round from the outward radial, towards the frame's axis: a
+     * straight pipe whose facet reference lies at that angle meets it vertex to vertex.
+     */
+    void torus(Frame f, double bend, double r, double a0, double a1, int segments, int n, double phase, Material material) {
         var shading = new Torus(f.origin, f.axis, bend);
         double chord = 2 * r * DeterministicMath.sin(Math.PI / n);
         for (int s = 0; s < segments; s++) {
             double phi0 = a0 + (a1 - a0) * s / segments, phi1 = a0 + (a1 - a0) * (s + 1) / segments;
             for (int i = 0; i < n; i++) {
-                double t0 = 2 * Math.PI * i / n, t1 = 2 * Math.PI * (i + 1) / n;
+                double t0 = phase + 2 * Math.PI * i / n, t1 = phase + 2 * Math.PI * (i + 1) / n;
                 var p00 = torusPoint(f, bend, r, phi0, t0);
                 var p01 = torusPoint(f, bend, r, phi0, t1);
                 var p11 = torusPoint(f, bend, r, phi1, t1);

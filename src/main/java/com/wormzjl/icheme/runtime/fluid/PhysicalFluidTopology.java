@@ -167,12 +167,18 @@ public final class PhysicalFluidTopology {
             var to=from.offset(direction);if(to.lane()!=other.position.lane())to=other.position;
             return meets(from,direction)&&other.meets(to,opposite(direction))&&(kind==TopologyCompiler.Kind.PIPE||other.kind==TopologyCompiler.Kind.PIPE)&&lanesMeet(other);
         }
-        /** Two lanes meet only on the same slot range; a lane meets a plain cell only through a plain pipe there (plan 5.2). */
+        /**
+         * Two lanes meet only on the same slot range. A lane meets a plain cell only through a transition pipe there (plan
+         * 5.2 and 6): a laid plain pipe of at most two joints and no fitting, whose run can bend to the lane's off-centre
+         * point.
+         */
         private boolean lanesMeet(Device other) {
             if(slots==0&&other.slots==0)return true;
             if(slots>0&&other.slots>0)return position.lane()==other.position.lane()&&slots==other.slots;
-            var plain=slots==0?this:other;return plain.kind==TopologyCompiler.Kind.PIPE&&plain.ports.isEmpty();
+            return (slots==0?this:other).transitionPipe();
         }
+        /** A pipe that may meet a rack lane: laid, of at most two joints, plain and without fittings. */
+        public boolean transitionPipe(){return kind==TopologyCompiler.Kind.PIPE&&ports.isEmpty()&&slots==0&&joints!=ALL_FACES&&Integer.bitCount(joints)<=2&&!actuator()&&!filter()&&cutoff==Cutoff.NONE;}
         /** A generator or a void (owner decision D17): islands meet at it without being joined by it. */
         boolean fixed(){return TopologyCompiler.fixed(kind);}
         /** Off closes a generator's hydraulic contacts; its registered identity and fixed source specification stay put. */

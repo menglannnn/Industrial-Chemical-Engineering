@@ -2,6 +2,7 @@ package com.wormzjl.icheme.world.level.block.entity;
 
 import com.wormzjl.icheme.registry.ModBlockEntities;
 import com.wormzjl.icheme.runtime.fluid.*;
+import com.wormzjl.icheme.science.equipment.LineGeometry;
 import com.wormzjl.icheme.science.equipment.PipeSizes;
 import com.wormzjl.icheme.science.fluid.topology.TopologyCompiler;
 import com.wormzjl.icheme.world.inventory.FluidDeviceMenu;
@@ -48,9 +49,10 @@ public final class FluidDeviceBlockEntity extends BlockEntity implements com.wor
     public static final ModelProperty<Drawn> DRAWN = new ModelProperty<>();
     /**
      * What the model needs beyond the block state: the bore, the line met at each face (seven bits each), the faces whose
-     * joint is flanged (a bit each: a line meeting equipment or a vessel nozzle), and whether this pipe ends a spool.
+     * joint is flanged (a bit each: a line meeting equipment or a vessel nozzle), whether this pipe ends a spool, and where
+     * the line met at each face leaves the face's centre ({@link LineGeometry.Key#offsets}; a transition pipe's).
      */
-    public record Drawn(double bore, long faces, int flanged, boolean spool) {
+    public record Drawn(double bore, long faces, int flanged, boolean spool, long offsets) {
         public int face(Direction direction) {
             return (int) (faces >>> (7 * direction.ordinal()) & 127);
         }
@@ -70,6 +72,8 @@ public final class FluidDeviceBlockEntity extends BlockEntity implements com.wor
     private double bore = .05;
     private BlockState drawnState;
     private final byte[] faces = new byte[6];
+    /** Drawn state beside {@link #faces}: the off-centre point of the line met at each face, as {@link LineGeometry.Key#offsets}. */
+    private long offsets;
     /**
      * The faces this pipe may connect through (batch 2026-10-26-pipe-laying-system), a copy of its registration's joints:
      * drawing reads it, and a block that has lost its registration (the D4 reset) registers again with it. Saved only
@@ -150,12 +154,15 @@ public final class FluidDeviceBlockEntity extends BlockEntity implements com.wor
         }
     }
     /** Server: recompute the faces from the neighbours; true when they changed. */
-    public boolean refreshFaces(){var before=faces.clone();computeFaces();return !Arrays.equals(before,faces);}
+    public boolean refreshFaces(){var before=faces.clone();long offsetsBefore=offsets;computeFaces();return !Arrays.equals(before,faces)||offsets!=offsetsBefore;}
+    /** A transition pipe (plan 6): a line met off a face's centre. Its run is not straight, so it takes no fitting or gauge. */
+    public boolean transition(){return offsets!=0;}
     public void refreshFacesAndSync(){if(refreshFaces())sync();}
     private void sync(){setChanged();if(level!=null)level.sendBlockUpdated(worldPosition,getBlockState(),getBlockState(),2);}
     private void computeFaces() {
         if(level==null)return;
         boolean pipe=kind()==TopologyCompiler.Kind.PIPE;
+        offsets=0;
         for(var direction:Direction.values()) {
             int code=0;boolean flanged=false;
             if(getBlockState().getValue(FluidDeviceBlock.connection(direction))&&level.isLoaded(worldPosition.relative(direction))) {
@@ -170,7 +177,12 @@ public final class FluidDeviceBlockEntity extends BlockEntity implements com.wor
                 } else if(pipe&&neighbour instanceof PipeRackBlockEntity rack) {
                     // A lane is welded to the pipe that continues it, at the lane's size (plan 5.2: no flanges at racks).
                     var lane=rack.laneTowards(direction.getOpposite());
-                    if(lane!=null)code=PipeSizes.code(PipeSizes.outside(lane.bore()));
+                    if(lane!=null){
+                        code=PipeSizes.code(PipeSizes.outside(lane.bore()));
+                        // The lane's centre lies on the block's diagonal: the same off-centre step along both of the face's axes.
+                        int at=com.wormzjl.icheme.science.equipment.RackGeometry.offset(lane.slot(),lane.width());
+                        offsets|=LineGeometry.Key.offsets(direction.ordinal(),at,at);
+                    }
                 } else if(pipe&&neighbour instanceof EquipmentShellBlockEntity shell) {
                     var nozzle=shell.nozzleFacing(direction.getOpposite());
                     // The vessel's flange is the pipe's size, its neck too (owner decision 2026-10-21: a 1 m pipe has a 1 m root): the pipe's flange matches it.
@@ -212,8 +224,10 @@ public final class FluidDeviceBlockEntity extends BlockEntity implements com.wor
         int savedJoints=tag.contains("Joints")?tag.getByte("Joints")&255:PhysicalFluidTopology.ALL_FACES;joints=(savedJoints&~PhysicalFluidTopology.ALL_FACES)==0?savedJoints:PhysicalFluidTopology.ALL_FACES;
         if(tag.contains("Bore")){double read=tag.getDouble("Bore");if(read>0&&read<=com.wormzjl.icheme.science.equipment.PipeSizes.MAX_BORE)bore=read;}
         if(tag.contains("Faces")){var read=tag.getByteArray("Faces");if(read.length==6)for(int i=0;i<6;i++){int v=read[i]&255;faces[i]=(byte)(Math.min(64,v&127)|v&FLANGED);}}
+        // Drawn state from the update tag only: ten bits a face, the bits past the six faces cleared.
+        offsets=tag.getLong("Offsets")&(1L<<60)-1;
     }
-    @Override public CompoundTag getUpdateTag(HolderLookup.Provider registries){var tag=new CompoundTag();instruments.write(tag);tag.putLong("FluidIdentity",identity);tag.putDouble("Bore",bore);tag.putByteArray("Faces",faces.clone());writeJoints(tag);return tag;}
+    @Override public CompoundTag getUpdateTag(HolderLookup.Provider registries){var tag=new CompoundTag();instruments.write(tag);tag.putLong("FluidIdentity",identity);tag.putDouble("Bore",bore);tag.putByteArray("Faces",faces.clone());if(offsets!=0)tag.putLong("Offsets",offsets);writeJoints(tag);return tag;}
     @Override public ClientboundBlockEntityDataPacket getUpdatePacket(){return ClientboundBlockEntityDataPacket.create(this);}
     /** Drawn geometry that arrives after the block was meshed: refresh the model data and rebuild the section. */
     @Override public void onDataPacket(net.minecraft.network.Connection connection,ClientboundBlockEntityDataPacket packet,HolderLookup.Provider registries) {
@@ -223,7 +237,7 @@ public final class FluidDeviceBlockEntity extends BlockEntity implements com.wor
     @Override public ModelData getModelData() {
         long packed=0;int flanged=0;
         for(int i=0;i<6;i++){packed|=(long)(faces[i]&127)<<(7*i);if((faces[i]&FLANGED)!=0)flanged|=1<<i;}
-        return ModelData.of(DRAWN,new Drawn(bore,packed,flanged,spoolEnd()));
+        return ModelData.of(DRAWN,new Drawn(bore,packed,flanged,spoolEnd(),offsets));
     }
     /** A straight pipe whose coordinate along its run is a multiple of {@link #SPOOL}: it carries the flange pair between spools. */
     private boolean spoolEnd() {

@@ -107,6 +107,19 @@ class PipeJointsTest {
         assertTrue(compiled.diagnostics().get(21L).startsWith("NO FLOW"),compiled.diagnostics().toString());
     }
 
+    /**
+     * A lane meets a plain cell only through a transition pipe (plan 6): a laid pipe of two joints at most and no fitting,
+     * whose run can bend to the lane's off-centre point. A hand-placed pipe, a tee and a valve beside the rack meet none.
+     */
+    @Test void aLaneMeetsOnlyATransitionPipe() {
+        var valve=new PhysicalFluidTopology.Device(10,new PhysicalFluidTopology.Position("minecraft:overworld",0,0,0),Kind.PIPE,EAST,new PipeResistance.Geometry(1,.05,.000045,0),
+                new FlowControl.Passive(),List.of(),true,PhysicalFluidTopology.Cutoff.OPEN,false,ALONG_X);
+        for(var beside:List.of(pipe(10,0,0,PhysicalFluidTopology.ALL_FACES),pipe(10,0,0,ALONG_X|1<<UP.ordinal()),valve))
+            assertEquals(2,islands(List.of(tank(1,-1,0),beside,lane(11,1,0,2,1,ALONG_X),pipe(12,2,0,ALONG_X),tank(2,3,0)),1,2),"beside the rack: "+beside);
+        assertEquals(1,islands(List.of(tank(1,0,1),pipe(10,0,0,1<<SOUTH.ordinal()|1<<EAST.ordinal()),lane(11,1,0,2,1,ALONG_X),pipe(12,2,0,ALONG_X),tank(2,3,0)),1,2),
+                "an elbow into the rack meets the lane");
+    }
+
     @Test void aLaneIsAPlainPipeOfAtMostTwoJointsWithinTheRack() {
         assertThrows(IllegalArgumentException.class,()->lane(1,0,0,2,1,ALONG_X|1<<UP.ordinal()),"a junction in a rack");
         assertThrows(IllegalArgumentException.class,()->lane(1,0,0,5,2,ALONG_X),"past the fifth slot");

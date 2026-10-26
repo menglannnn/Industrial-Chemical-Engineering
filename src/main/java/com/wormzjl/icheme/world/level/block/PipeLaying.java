@@ -52,7 +52,7 @@ public final class PipeLaying {
         var end = PipeAnchor.resolve(level, endClick);
         if (end.anchor() == null) return message("anchor." + name(end.refusal()));
         for (var anchor : List.of(start.anchor(), end.anchor()))
-            if (anchor.refuses(width) != null) return message("anchor." + name(anchor.refuses(width)));
+            if (anchor.refuses(PipeSizes.outside(settings.diameter())) != null) return message("anchor." + name(anchor.refuses(PipeSizes.outside(settings.diameter()))));
         var cells = path.stream().map(PipeAnchor::cell).toList();
         var refusal = PipeRoute.check(cells, slots, start.anchor().end(), end.anchor().end(), width, PipeRoute.Limits.DEFAULT.cells());
         if (refusal != null) return message("route." + name(refusal));

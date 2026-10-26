@@ -2,6 +2,7 @@ package com.wormzjl.icheme.world.level.block;
 
 import com.wormzjl.icheme.runtime.fluid.PhysicalFluidTopology;
 import com.wormzjl.icheme.science.equipment.PipeRoute;
+import com.wormzjl.icheme.science.equipment.PipeSizes;
 import com.wormzjl.icheme.science.equipment.RackGeometry;
 import com.wormzjl.icheme.science.fluid.topology.TopologyCompiler;
 import com.wormzjl.icheme.world.level.block.entity.EquipmentShellBlockEntity;
@@ -30,16 +31,31 @@ import org.jetbrains.annotations.Nullable;
  * @param kind     what the line meets
  * @param heading  the face the player clicked: a line starting here leaves along it; for a rack, along its axis
  * @param slot     the slot the line's lane must take in {@code cell} (a lane continued from the next rack), or -1
- * @param width    a continued lane's width in slots, 0 for any other anchor
+ * @param fit      the lines the anchor takes
  */
-public record PipeAnchor(Kind kind, BlockPos cell, @Nullable Direction joint, @Nullable BlockPos host, int hostLane, int joints, Direction heading, int slot, int width) {
+public record PipeAnchor(Kind kind, BlockPos cell, @Nullable Direction joint, @Nullable BlockPos host, int hostLane, int joints, Direction heading, int slot, Fit fit) {
     public enum Kind {FREE, PIPE, DEVICE, NOZZLE, RACK, LANE}
 
     /** Why a click is no anchor; each has a player message. */
-    public enum Refusal {FITTING, JUNCTION, DEVICE_FACE, OCCUPIED, OUTSIDE, LANE_CLOSED, FACE_TAKEN, LANE_SIZE}
+    public enum Refusal {FITTING, JUNCTION, DEVICE_FACE, OCCUPIED, OUTSIDE, LANE_CLOSED, FACE_TAKEN, LANE_SIZE, TRANSITION}
 
     /** An anchor, or why the click gives none. */
     public record Resolved(@Nullable PipeAnchor anchor, @Nullable Refusal refusal) {
+    }
+
+    /**
+     * The lines an anchor at a rack takes (plan 6), from {@code minWidth} to {@code maxWidth} slots wide
+     * ({@link RackGeometry#width}): a continued lane keeps its width, a line out of a lane is no wider than it (it meets
+     * the lane's off-centre point), and a lane a pipe leads into is at least as wide as the pipe (which meets it there).
+     */
+    public record Fit(int minWidth, int maxWidth) {
+        public static final Fit ANY = new Fit(1, RackGeometry.SLOTS);
+
+        /** Why a line of outside diameter {@code outside} does not fit, or null. */
+        public @Nullable Refusal refuses(double outside) {
+            int width = RackGeometry.width(outside);
+            return width < minWidth || width > maxWidth ? Refusal.LANE_SIZE : null;
+        }
     }
 
     /** A click: the block, its face, and where on the block it landed (block-local, 0 to 1), which picks a rack's lane. */
@@ -75,9 +91,9 @@ public record PipeAnchor(Kind kind, BlockPos cell, @Nullable Direction joint, @N
         return new PhysicalFluidTopology.Position(dimension, host.getX(), host.getY(), host.getZ(), hostLane);
     }
 
-    /** Why a line {@code width} slots wide cannot start or end here, or null: a continued lane keeps its own width. */
-    public @Nullable Refusal refuses(int width) {
-        return kind == Kind.LANE && slot >= 0 && width != this.width ? Refusal.LANE_SIZE : null;
+    /** Why a line of outside diameter {@code outside} cannot start or end here, or null. */
+    public @Nullable Refusal refuses(double outside) {
+        return fit.refuses(outside);
     }
 
     /**
@@ -105,12 +121,15 @@ public record PipeAnchor(Kind kind, BlockPos cell, @Nullable Direction joint, @N
      * <ul>
      * <li>a pipe: the next cell beyond that face. A hand-placed pipe (every face) needs no edit, unless an axial fitting
      * closes that face. A laid pipe takes a joint on that face (an open end extends, a pipe becomes a tee or a cross),
-     * unless it has a fitting or four joints already. A rack next door takes the line as a lane there;</li>
+     * unless it has a fitting or four joints already. A rack next door takes the line as a lane there, at least as wide
+     * as the pipe, which becomes a transition pipe (plan 6): a pipe that meets a lane, or will, keeps two joints at most
+     * and no fitting or gauge;</li>
      * <li>another fluid device: the cell in front of a face it connects through;</li>
      * <li>an equipment cell with a nozzle on that face: the cell in front of the nozzle;</li>
      * <li>a lane on a rack: the cell beyond its open end, the clicked one where it has two (D11): an arm without a joint,
      * which takes one, or a joint nothing meets any more. A lane with no open end is refused, as a rack carries no
-     * junctions. Into the next rack the line continues the lane's slots;</li>
+     * junctions. Into the next rack the line continues the lane's slots; into a plain cell a line no wider than the
+     * lane meets it there;</li>
      * <li>a rack anywhere else, or a free spot inside one: a new lane in that rack, in any free slots;</li>
      * <li>anything else: a free end, in the clicked block if it is replaceable (grass), else beside the clicked face.</li>
      * </ul>
@@ -138,29 +157,42 @@ public record PipeAnchor(Kind kind, BlockPos cell, @Nullable Direction joint, @N
                 for (var other : rack.lanes())
                     if (!continued && other != lane && (other.joints() >> out.ordinal() & 1) != 0) return new Resolved(null, Refusal.FACE_TAKEN);
                 int edit = (lane.joints() >> out.ordinal() & 1) != 0 ? -1 : lane.joints() | 1 << out.ordinal();
-                anchor = new PipeAnchor(Kind.LANE, beyond, out.getOpposite(), clicked, lane.slot() + 1, edit, out, continued ? lane.slot() : -1, lane.width());
+                // On into the next rack the lane keeps its slots; into a plain cell, a line no wider than the lane fits
+                // its off-centre point.
+                var fit = new Fit(continued ? lane.width() : 1, lane.width());
+                anchor = new PipeAnchor(Kind.LANE, beyond, out.getOpposite(), clicked, lane.slot() + 1, edit, out, continued ? lane.slot() : -1, fit);
             }
         } else if (state.getBlock() instanceof FluidDeviceBlock block) {
             if (!FluidDeviceBlock.face(state, face)) return new Resolved(null, block.kind() == TopologyCompiler.Kind.PIPE ? Refusal.FITTING : Refusal.DEVICE_FACE);
             if (block.kind() == TopologyCompiler.Kind.PIPE) {
-                int joints = level.getBlockEntity(clicked) instanceof FluidDeviceBlockEntity entity ? entity.joints() : PhysicalFluidTopology.ALL_FACES;
+                var entity = level.getBlockEntity(clicked) instanceof FluidDeviceBlockEntity e ? e : null;
+                int joints = entity != null ? entity.joints() : PhysicalFluidTopology.ALL_FACES;
                 int edit = -1;
                 if (joints != PhysicalFluidTopology.ALL_FACES && (joints >> face.ordinal() & 1) == 0) {
                     if (FluidDeviceBlock.hasFitting(state)) return new Resolved(null, Refusal.FITTING);
                     if (Integer.bitCount(joints) > 3) return new Resolved(null, Refusal.JUNCTION);
                     edit = joints | 1 << face.ordinal();
                 }
-                if (level.hasChunkAt(next) && level.getBlockEntity(next) instanceof PipeRackBlockEntity rack && rack.laneTowards(face.getOpposite()) != null)
-                    return new Resolved(null, Refusal.FACE_TAKEN);
-                anchor = new PipeAnchor(Kind.PIPE, next, face.getOpposite(), clicked, 0, edit, face, -1, 0);
-            } else anchor = new PipeAnchor(Kind.DEVICE, next, face.getOpposite(), clicked, 0, -1, face, -1, 0);
+                var fit = Fit.ANY;
+                boolean intoRack = level.hasChunkAt(next) && level.getBlockEntity(next) instanceof PipeRackBlockEntity;
+                if (intoRack) {
+                    if (((PipeRackBlockEntity) level.getBlockEntity(next)).laneTowards(face.getOpposite()) != null) return new Resolved(null, Refusal.FACE_TAKEN);
+                    // The pipe becomes a transition pipe at the new lane's centre: the lane is at least as wide as it.
+                    fit = new Fit(RackGeometry.width(PipeSizes.outside(entity != null ? entity.bore() : .05)), RackGeometry.SLOTS);
+                }
+                // A pipe that meets a lane, or will, stays a transition pipe: laid, of two joints at most, and with no
+                // fitting or gauge, as its run bends.
+                if ((intoRack || meetsLane(level, clicked, joints)) && (!FluidDeviceBlock.transition(state, edit >= 0 ? edit : joints)
+                        || entity != null && !entity.instruments().installed().isEmpty())) return new Resolved(null, Refusal.TRANSITION);
+                anchor = new PipeAnchor(Kind.PIPE, next, face.getOpposite(), clicked, 0, edit, face, -1, fit);
+            } else anchor = new PipeAnchor(Kind.DEVICE, next, face.getOpposite(), clicked, 0, -1, face, -1, Fit.ANY);
         } else if (state.getBlock() instanceof EquipmentShellBlock && level.getBlockEntity(clicked) instanceof EquipmentShellBlockEntity shell && shell.nozzleFacing(face) != null) {
-            anchor = new PipeAnchor(Kind.NOZZLE, next, face.getOpposite(), clicked, 0, -1, face, -1, 0);
+            anchor = new PipeAnchor(Kind.NOZZLE, next, face.getOpposite(), clicked, 0, -1, face, -1, Fit.ANY);
         } else {
             var target = state.canBeReplaced() ? clicked : next;
             // A rack's frame is open: a click through it on the block behind starts a lane in the rack.
             anchor = level.hasChunkAt(target) && level.getBlockEntity(target) instanceof PipeRackBlockEntity rack ? rack(target, rack)
-                    : new PipeAnchor(Kind.FREE, target, null, null, 0, -1, face, -1, 0);
+                    : new PipeAnchor(Kind.FREE, target, null, null, 0, -1, face, -1, Fit.ANY);
         }
         if (level.isOutsideBuildHeight(anchor.cell) || !level.getWorldBorder().isWithinBounds(anchor.cell) || !level.hasChunkAt(anchor.cell)) return new Resolved(null, Refusal.OUTSIDE);
         // A rack cell takes the line as a lane: whether its slots have room for it is the route's to say.
@@ -172,7 +204,18 @@ public record PipeAnchor(Kind kind, BlockPos cell, @Nullable Direction joint, @N
 
     private static PipeAnchor rack(BlockPos at, PipeRackBlockEntity rack) {
         var axis = Direction.Axis.values()[rack.axis()];
-        return new PipeAnchor(Kind.RACK, at, null, null, 0, -1, Direction.fromAxisAndDirection(axis, Direction.AxisDirection.POSITIVE), -1, 0);
+        return new PipeAnchor(Kind.RACK, at, null, null, 0, -1, Direction.fromAxisAndDirection(axis, Direction.AxisDirection.POSITIVE), -1, Fit.ANY);
+    }
+
+    /** Whether the laid pipe at {@code pipe} with {@code joints} meets a rack lane through one of them. */
+    private static boolean meetsLane(Level level, BlockPos pipe, int joints) {
+        if (joints == PhysicalFluidTopology.ALL_FACES) return false;
+        for (var direction : Direction.values()) {
+            var at = pipe.relative(direction);
+            if ((joints >> direction.ordinal() & 1) != 0 && level.hasChunkAt(at) && level.getBlockEntity(at) instanceof PipeRackBlockEntity rack
+                    && rack.laneTowards(direction.getOpposite()) != null) return true;
+        }
+        return false;
     }
 
     /** A cell a line may take: loaded, inside the world and replaceable (air, plants, fluids). */
