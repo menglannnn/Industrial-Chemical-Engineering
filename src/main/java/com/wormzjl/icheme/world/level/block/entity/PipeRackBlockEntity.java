@@ -70,6 +70,8 @@ public final class PipeRackBlockEntity extends BlockEntity {
 
     public static final ModelProperty<Drawn> DRAWN = new ModelProperty<>();
     private static final ConcurrentHashMap<Integer, VoxelShape> FRAMES = new ConcurrentHashMap<>();
+    /** Client thread only; weak, so a level dropped without unloading its racks frees them. */
+    private static final java.util.Set<PipeRackBlockEntity> CLIENT_RACKS = java.util.Collections.newSetFromMap(new java.util.WeakHashMap<>());
 
     private List<Lane> lanes = List.of();
     private int[] joined = new int[0];
@@ -102,8 +104,11 @@ public final class PipeRackBlockEntity extends BlockEntity {
         return faces;
     }
 
+    /** The route search's view of this cell: its lanes with the faces their arms run to. */
     public PipeRoute.Room room() {
-        return PipeRoute.Room.rack(used(), faces(), axis());
+        var out = new ArrayList<PipeRoute.RackLane>(lanes.size());
+        for (var lane : lanes) out.add(new PipeRoute.RackLane(lane.slot, lane.width, lane.joints, RackGeometry.arms(lane.joints, lane.facing)));
+        return PipeRoute.Room.rack(axis(), out);
     }
 
     public List<RackGeometry.Lane> drawnLanes() {
@@ -278,6 +283,16 @@ public final class PipeRackBlockEntity extends BlockEntity {
         return true;
     }
 
+    /**
+     * The faces where lane {@code index} ends open: an arm without a joint, or a joint nothing meets any more (the next
+     * lane or pipe was dismantled). A line laid from there extends the lane (D11).
+     */
+    public int openFaces(int index) {
+        var lane = lanes.get(index);
+        var drawn = drawnLanes().get(index);
+        return RackGeometry.arms(drawn, lane.facing) & ~lane.joints | lane.joints & ~drawn.joined();
+    }
+
     /** Server: the lane meeting {@code direction}'s neighbour through that face, if one has a joint there. */
     public @Nullable Lane laneTowards(Direction direction) {
         for (var lane : lanes) if ((lane.joints >> direction.ordinal() & 1) != 0) return lane;
@@ -292,7 +307,25 @@ public final class PipeRackBlockEntity extends BlockEntity {
     @Override
     public void onLoad() {
         super.onLoad();
+        if (level != null && level.isClientSide()) CLIENT_RACKS.add(this);
         if (level instanceof ServerLevel serverLevel) FluidWorldAuthority.find(serverLevel.getServer()).ifPresent(this::bind);
+    }
+
+    @Override
+    public void onChunkUnloaded() {
+        super.onChunkUnloaded();
+        CLIENT_RACKS.remove(this);
+    }
+
+    @Override
+    public void setRemoved() {
+        super.setRemoved();
+        CLIENT_RACKS.remove(this);
+    }
+
+    /** Client: the racks in the client's level, whose open lane ends the pipe laying tool marks. */
+    public static List<PipeRackBlockEntity> clientRacks() {
+        return List.copyOf(CLIENT_RACKS);
     }
 
     // ---- saved format ----

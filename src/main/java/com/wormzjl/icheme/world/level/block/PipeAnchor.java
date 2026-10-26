@@ -147,9 +147,7 @@ public record PipeAnchor(Kind kind, BlockPos cell, @Nullable Direction joint, @N
             if (pick.lane() < 0) anchor = rack(clicked, rack);
             else {
                 var lane = rack.lanes().get(pick.lane());
-                var drawn = rack.drawnLanes().get(pick.lane());
-                // An open end: an arm without a joint, or a joint nothing meets any more (the next lane or pipe was dismantled).
-                int open = RackGeometry.arms(drawn, lane.facing()) & ~lane.joints() | lane.joints() & ~drawn.joined();
+                int open = rack.openFaces(pick.lane());
                 if (open == 0) return new Resolved(null, Refusal.LANE_CLOSED);
                 var out = Direction.values()[(open >> pick.face() & 1) != 0 ? pick.face() : Integer.numberOfTrailingZeros(open)];
                 var beyond = clicked.relative(out);

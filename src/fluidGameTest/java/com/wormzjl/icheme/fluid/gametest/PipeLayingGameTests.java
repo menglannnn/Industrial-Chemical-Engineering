@@ -83,7 +83,7 @@ public final class PipeLayingGameTests {
                 var record = world.at(position(level, cell)).orElseThrow();
                 helper.assertTrue(record.device().kind() == TopologyCompiler.Kind.PIPE && record.device().joints() == ALONG_X && record.device().geometry().diameter() == .1,
                         "Laid block " + cell.toShortString() + " registered as " + record.device());
-                helper.assertTrue(level.getBlockEntity(cell) instanceof FluidDeviceBlockEntity entity && entity.fluidIdentity() == record.device().id() && entity.joints() == ALONG_X,
+                helper.assertTrue(level.getBlockEntity(cell) instanceof FluidDeviceBlockEntity entity && entity.fluidIdentity() == record.device().id() && entity.joints() == ALONG_X && entity.openEnds() == 0,
                         "Laid block " + cell.toShortString() + " not bound to its registration");
                 helper.assertTrue(connected(level, cell, Direction.WEST) && connected(level, cell, Direction.EAST), "Laid block " + cell.toShortString() + " not joined along the line");
             }
@@ -95,6 +95,7 @@ public final class PipeLayingGameTests {
             helper.assertTrue(level.getBlockState(cells.get(1)).isAir() && world.at(position(level, cells.get(1))).isEmpty(), "The dismantled block remains");
             helper.assertTrue(world.at(position(level, cells.get(0))).orElseThrow().device().joints() == ALONG_X && !connected(level, cells.get(0), Direction.EAST),
                     "The neighbour did not become an open end");
+            helper.assertTrue(((FluidDeviceBlockEntity) level.getBlockEntity(cells.get(0))).openEnds() == 1 << Direction.EAST.ordinal(), "The open end is not marked towards the gap");
             helper.assertTrue(PipeLaying.dismantle(player, InteractionHand.MAIN_HAND, new PipeAnchor.Click(west, Direction.UP)) != null, "Dismantled a tank");
 
             // A one-block line between the two open ends joins them again; the ends need no edit.
@@ -180,6 +181,7 @@ public final class PipeLayingGameTests {
             var straightRack = (PipeRackBlockEntity) level.getBlockEntity(straight);
             helper.assertTrue(straightRack.lanes().getFirst().joints() == expected[0] && straightRack.drawnLanes().getFirst().joined() == 1 << Direction.WEST.ordinal(),
                     "The lane next to the gap did not become an open end: " + straightRack.drawnLanes());
+            helper.assertTrue(straightRack.openFaces(0) == 1 << Direction.EAST.ordinal(), "The lane's open end is not towards the gap");
             helper.assertTrue(!joined(world, westTank, southTank), "The tanks are still joined across the gap");
 
             // A one-cell lane from one open end to the other: both lanes keep their joints, the gap lane takes the corner.

@@ -11,7 +11,7 @@ import java.util.function.Function;
 
 /**
  * The cells a laid pipe takes between its two ends (batch 2026-10-26-pipe-laying-system, plan section 4.3). The client
- * searches the route with a weighted A* and sends it; the server checks the cells it is sent ({@link #check}) and never
+ * searches the route with an A* and sends it; the server checks the cells it is sent ({@link #check}) and never
  * searches, so the two cannot disagree on the route.
  *
  * <p>Faces follow {@link LineGeometry#STEPS} (Minecraft's direction order): face {@code f}'s opposite is {@code f ^ 1}. A
@@ -21,7 +21,10 @@ import java.util.function.Function;
  *
  * <p>In a rack cell the line is a lane on a slot range ({@link RackGeometry}), which it keeps along a run of racks: a
  * route's slot in each cell is the lane's first slot, or -1 in a plain cell. Steps along a rack are cheap, so routes follow
- * racks as plant piping does.</p>
+ * racks as plant piping does. Which range a portion (consecutive rack cells) takes does not change what the route costs,
+ * so the search carries every range still free along the portion and the range is chosen once the route is found
+ * ({@link #choose}, plan 5.3): the fewest crossings of other lanes' arms, then outer ranges for a wide line, then the
+ * lower index.</p>
  */
 public final class PipeRoute {
     /** A step through a free cell; a change of heading (an elbow); the extra for a vertical step. */
@@ -51,14 +54,34 @@ public final class PipeRoute {
 
     /**
      * A cell as the route sees it: free, blocked, or a rack cell with the slots its lanes use (a bit per slot), the faces
-     * they have joints on (a bit per face), and its axis (0 x, 1 y, 2 z).
+     * they have joints on (a bit per face), its axis (0 x, 1 y, 2 z), and its lanes where the slot choice should know
+     * which arms a new lane would cross.
      */
-    public record Room(Admit admit, int used, int faces, int axis) {
-        public static final Room FREE = new Room(Admit.FREE, 0, 0, -1), BLOCKED = new Room(Admit.BLOCKED, 0, 0, -1);
+    public record Room(Admit admit, int used, int faces, int axis, List<RackLane> lanes) {
+        public static final Room FREE = new Room(Admit.FREE, 0, 0, -1, List.of()), BLOCKED = new Room(Admit.BLOCKED, 0, 0, -1, List.of());
 
-        public static Room rack(int used, int faces, int axis) {
-            return new Room(Admit.RACK, used, faces, axis);
+        public Room {
+            lanes = List.copyOf(lanes);
         }
+
+        /** A rack cell known only by its used slots and joint faces. */
+        public static Room rack(int used, int faces, int axis) {
+            return new Room(Admit.RACK, used, faces, axis, List.of());
+        }
+
+        /** A rack cell with these lanes. */
+        public static Room rack(int axis, List<RackLane> lanes) {
+            int used = 0, faces = 0;
+            for (var lane : lanes) {
+                used |= ((1 << lane.width) - 1) << lane.slot;
+                faces |= lane.joints;
+            }
+            return new Room(Admit.RACK, used, faces, axis, lanes);
+        }
+    }
+
+    /** A lane in a rack cell: its first slot, width, joint faces, and the faces its arms run to ({@link RackGeometry#arms}). */
+    public record RackLane(int slot, int width, int joints, int arms) {
     }
 
     /** The world as the route sees it. */
@@ -131,21 +154,25 @@ public final class PipeRoute {
      * The cheapest route from {@code start} to {@code end} for a line {@code width} slots wide in a rack, by the costs
      * above, entering the start cell along {@code heading} (the face the player clicked: it steers the first leg). An A*
      * search with {@link Estimate}, which never overestimates, so the route found is a cheapest one. Deterministic: ties
-     * go to the lower f, then the lower h, then the earlier push; pushes follow the face order, and in a rack the order of
-     * {@link RackGeometry#free}.
+     * go to the lower f, then the lower h, then the earlier push; pushes follow the face order. A state in a rack portion
+     * holds the slot ranges free in every cell of the portion so far (a bit per first slot), so equal choices of range
+     * are one state, not one each.
      */
     public static Result search(End start, int heading, End end, int width, Space space, Limits limits) {
         if (heading < 0 || heading > 5 || start.joint >= 0 && start.joint != (heading ^ 1)) throw new IllegalArgumentException("Heading does not leave the start's joint");
         var rooms = new HashMap<Cell, Room>();
         Function<Cell, Room> room = cell -> rooms.computeIfAbsent(cell, space::room);
-        var startSlots = slots(room.apply(start.cell), start.slot, width);
-        if (startSlots.isEmpty()) return Result.refused(Refusal.START_OCCUPIED);
-        var endSlots = slots(room.apply(end.cell), end.slot, width);
-        if (endSlots.isEmpty()) return Result.refused(Refusal.END_OCCUPIED);
+        var startRoom = room.apply(start.cell);
+        int startRanges = ranges(startRoom, start.slot, width);
+        if (startRoom.admit == Admit.BLOCKED || startRoom.admit == Admit.RACK && startRanges == 0) return Result.refused(Refusal.START_OCCUPIED);
+        var endRoom = room.apply(end.cell);
+        int endRanges = ranges(endRoom, end.slot, width);
+        if (endRoom.admit == Admit.BLOCKED || endRoom.admit == Admit.RACK && endRanges == 0) return Result.refused(Refusal.END_OCCUPIED);
         if (start.cell.equals(end.cell)) {
             if (start.joint >= 0 && start.joint == end.joint) return Result.refused(Refusal.SAME_FACE);
-            for (int slot : startSlots) if (endSlots.contains(slot)) return new Result(List.of(start.cell), List.of(slot), null);
-            return Result.refused(Refusal.END_OCCUPIED);
+            if (startRoom.admit == Admit.RACK && (startRanges & endRanges) == 0) return Result.refused(Refusal.END_OCCUPIED);
+            var cells = List.of(start.cell);
+            return new Result(cells, choose(cells, List.of(startRanges & endRanges), start, end, heading, width, room), null);
         }
         int lowX = Math.min(start.cell.x, end.cell.x) - limits.margin, highX = Math.max(start.cell.x, end.cell.x) + limits.margin;
         int lowY = Math.min(start.cell.y, end.cell.y) - limits.margin, highY = Math.max(start.cell.y, end.cell.y) + limits.margin;
@@ -154,16 +181,24 @@ public final class PipeRoute {
         var open = new PriorityQueue<Node>();
         var best = new HashMap<State, Double>();
         long pushes = 0;
-        for (int slot : startSlots) {
-            open.add(new Node(start.cell, heading, slot, 0, estimate.at(start.cell, heading), 1, null, pushes++));
-            best.put(new State(start.cell, heading, slot), 0.0);
-        }
+        open.add(new Node(start.cell, heading, startRanges, 0, estimate.at(start.cell, heading), 1, null, pushes++));
+        best.put(new State(start.cell, heading, startRanges), 0.0);
         int expansions = 0;
         boolean capped = false;
         while (!open.isEmpty()) {
             var node = open.poll();
-            if (node.g > best.getOrDefault(new State(node.cell, node.heading, node.slot), Double.MAX_VALUE)) continue;
-            if (node.cell.equals(end.cell)) return new Result(path(node), slots(node), null);
+            if (node.g > best.getOrDefault(new State(node.cell, node.heading, node.ranges), Double.MAX_VALUE)) continue;
+            if (node.cell.equals(end.cell)) {
+                var cells = new ArrayList<Cell>();
+                var ranges = new ArrayList<Integer>();
+                for (var at = node; at != null; at = at.parent) {
+                    cells.add(at.cell);
+                    ranges.add(at.ranges);
+                }
+                Collections.reverse(cells);
+                Collections.reverse(ranges);
+                return new Result(cells, choose(cells, ranges, start, end, heading, width, room), null);
+            }
             if (++expansions > limits.expansions) {
                 capped = true;
                 break;
@@ -179,7 +214,7 @@ public final class PipeRoute {
                 }
                 var there = room.apply(next);
                 if (there.admit == Admit.BLOCKED) continue;
-                boolean lane = node.slot >= 0, rack = there.admit == Admit.RACK;
+                boolean lane = node.ranges != 0, rack = there.admit == Admit.RACK;
                 // A rack face towards a plain cell carries at most one lane (plan 5.2): no lane of the rack may point there already.
                 if (lane && !rack && (here.faces >> face & 1) != 0) continue;
                 if (!lane && rack && (there.faces >> (face ^ 1) & 1) != 0) continue;
@@ -191,26 +226,74 @@ public final class PipeRoute {
                     if (end.joint == (face ^ 1)) continue;
                     if (end.joint != face) g += ELBOW;
                 }
-                List<Integer> candidates = !rack ? List.of(-1) : lane ? fits(there, node.slot, width) ? List.of(node.slot) : List.of() : RackGeometry.free(there.used, width);
-                for (int slot : candidates) {
-                    if (last && !endSlots.contains(slot)) continue;
-                    var state = new State(next, face, slot);
-                    if (g >= best.getOrDefault(state, Double.MAX_VALUE)) continue;
-                    best.put(state, g);
-                    open.add(new Node(next, face, slot, g, estimate.at(next, face), node.length + 1, node, pushes++));
+                // A lane keeps to the ranges free all along its portion; a new portion may take any range free here.
+                int ranges = 0;
+                if (rack) {
+                    ranges = ranges(there, -1, width) & (lane ? node.ranges : -1) & (last ? endRanges : -1);
+                    if (ranges == 0) continue;
                 }
+                var state = new State(next, face, ranges);
+                if (g >= best.getOrDefault(state, Double.MAX_VALUE)) continue;
+                best.put(state, g);
+                open.add(new Node(next, face, ranges, g, estimate.at(next, face), node.length + 1, node, pushes++));
             }
         }
         return Result.refused(capped ? Refusal.TOO_LONG : Refusal.BLOCKED);
     }
 
-    /** The slots a line may take in {@code room}: -1 in a free cell; in a rack the free ranges, or only {@code fixed}; none when blocked. */
-    private static List<Integer> slots(Room room, int fixed, int width) {
-        return switch (room.admit) {
-            case FREE -> List.of(-1);
-            case BLOCKED -> List.of();
-            case RACK -> fixed >= 0 ? fits(room, fixed, width) ? List.of(fixed) : List.of() : RackGeometry.free(room.used, width);
-        };
+    /** The slot ranges a line may take in a rack cell, a bit per first slot: the free ones, or only {@code fixed}; 0 elsewhere. */
+    private static int ranges(Room room, int fixed, int width) {
+        if (room.admit != Admit.RACK) return 0;
+        int free = 0;
+        for (int slot = 0; slot + width <= RackGeometry.SLOTS; slot++) if (fits(room, slot, width)) free |= 1 << slot;
+        return fixed >= 0 ? free & 1 << fixed : free;
+    }
+
+    /**
+     * Each cell's slot along a found route: -1 in a plain cell; in a rack portion one range of those free all along it
+     * ({@code ranges} at its last cell). The range whose arms cross the fewest arms of the portion's other lanes wins;
+     * then the order of {@link RackGeometry#free}: outer ranges for a wide line, then the lower index (plan 5.3).
+     */
+    private static List<Integer> choose(List<Cell> cells, List<Integer> ranges, End start, End end, int heading, int width, Function<Cell, Room> room) {
+        int n = cells.size();
+        var joints = laidJoints(cells, start, end);
+        var facings = facings(cells, heading);
+        var slots = new ArrayList<Integer>(Collections.nCopies(n, -1));
+        for (int first = 0; first < n; first++) {
+            if (ranges.get(first) == 0) continue;
+            int last = first;
+            while (last + 1 < n && ranges.get(last + 1) != 0) last++;
+            int chosen = -1, fewest = Integer.MAX_VALUE;
+            for (int slot : RackGeometry.free(0, width)) {
+                if ((ranges.get(last) >> slot & 1) == 0) continue;
+                int crossed = 0;
+                for (int i = first; i <= last; i++) crossed += crossings(slot, width, RackGeometry.arms(joints[i], facings[i]), room.apply(cells.get(i)).lanes);
+                if (crossed < fewest) {
+                    chosen = slot;
+                    fewest = crossed;
+                }
+            }
+            for (int i = first; i <= last; i++) slots.set(i, chosen);
+            first = last;
+        }
+        return slots;
+    }
+
+    /**
+     * How often a lane on {@code slot} with arms to the faces {@code arms} crosses the arms of {@code lanes}, seen along
+     * an axis. Arms along one axis never cross: they lie at their lanes' own diagonal coordinates. Arms along two axes
+     * cross, seen along the third, where the lower lane's arm runs to the high side and the higher lane's to the low side.
+     */
+    static int crossings(int slot, int width, int arms, List<RackLane> lanes) {
+        double centre = RackGeometry.centre(slot, width);
+        int crossed = 0;
+        for (var other : lanes) {
+            boolean below = centre < RackGeometry.centre(other.slot, other.width);
+            for (int a = 0; a < 6; a++)
+                for (int b = 0; b < 6; b++)
+                    if ((arms >> a & 1) != 0 && (other.arms >> b & 1) != 0 && a >> 1 != b >> 1 && (a & 1) == (below ? 1 : 0) && (b & 1) == (below ? 0 : 1)) crossed++;
+        }
+        return crossed;
     }
 
     /** The axis a step through {@code face} runs along, 0 x, 1 y, 2 z: faces pair up as y, z, x in {@link LineGeometry#STEPS} order. */
@@ -241,7 +324,7 @@ public final class PipeRoute {
             var rows = new HashMap<List<Integer>, List<Integer>>();
             for (var cell : racks) {
                 var r = room.apply(cell);
-                if (r.admit != Admit.RACK || RackGeometry.free(r.used, width).isEmpty()) continue;
+                if (ranges(r, -1, width) == 0) continue;
                 int[] c = {cell.x, cell.y, cell.z};
                 int a = r.axis;
                 rows.computeIfAbsent(List.of(a, c[(a + 1) % 3], c[(a + 2) % 3]), k -> new ArrayList<>()).add(c[a]);
@@ -299,20 +382,6 @@ public final class PipeRoute {
             }
             return nearest;
         }
-    }
-
-    private static List<Cell> path(Node node) {
-        var cells = new ArrayList<Cell>();
-        for (var at = node; at != null; at = at.parent) cells.add(at.cell);
-        Collections.reverse(cells);
-        return cells;
-    }
-
-    private static List<Integer> slots(Node node) {
-        var slots = new ArrayList<Integer>();
-        for (var at = node; at != null; at = at.parent) slots.add(at.slot);
-        Collections.reverse(slots);
-        return slots;
     }
 
     private static int[] masks(List<Cell> cells) {
@@ -405,10 +474,11 @@ public final class PipeRoute {
         return joints;
     }
 
-    private record State(Cell cell, int heading, int slot) {
+    /** A search state: the cell, the heading it was entered along, and in a rack the slot ranges still open (0 in a plain cell). */
+    private record State(Cell cell, int heading, int ranges) {
     }
 
-    private record Node(Cell cell, int heading, int slot, double g, double h, int length, Node parent, long order) implements Comparable<Node> {
+    private record Node(Cell cell, int heading, int ranges, double g, double h, int length, Node parent, long order) implements Comparable<Node> {
         double f() {
             return g + h;
         }

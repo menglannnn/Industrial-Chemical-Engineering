@@ -195,10 +195,35 @@ class PipeRouteTest {
         assertTrue(route.found(), "a 91-block route within four expansions per block: " + route.refusal());
         assertEquals(91, route.cells().size());
         assertEquals(2, PipeRoute.elbows(route.cells(), new End(O, -1), end));
-        // Beside a rack run the estimate falls to what the rack allows. Every free slot is an equal choice there, so the
-        // search walks each one along the run: about one expansion per block and free slot.
-        var beside = PipeRoute.search(new End(O, -1), EAST, new End(new Cell(22, 0, 0), -1), 1, with(rack(21, 0, 0)), new PipeRoute.Limits(128, 6 * 23, 8));
-        assertTrue(beside.found() && beside.slots().stream().anyMatch(slot -> slot >= 0), "the rack route within six expansions per block: " + beside.refusal());
+        // Beside a rack run the estimate falls to what the rack allows. The free slot ranges are one state, not one each, so
+        // the search walks the run once.
+        var beside = PipeRoute.search(new End(O, -1), EAST, new End(new Cell(22, 0, 0), -1), 1, with(rack(21, 0, 0)), new PipeRoute.Limits(128, 2 * 23, 8));
+        assertTrue(beside.found() && beside.slots().stream().anyMatch(slot -> slot >= 0), "the rack route within two expansions per block: " + beside.refusal());
+    }
+
+    private static int laneSlot(PipeRoute.Result route) {
+        return route.slots().stream().filter(slot -> slot >= 0).findFirst().orElseThrow();
+    }
+
+    @Test
+    void aPortionTakesTheRangeThatCrossesTheFewestLanes() {
+        // A rack along x from x 1 to 10; from x 2 on, a straight lane on slot 2, the block centre.
+        var rooms = new HashMap<Cell, Room>();
+        var straight = List.of(new PipeRoute.RackLane(2, 1, 1 << WEST | 1 << EAST, 1 << WEST | 1 << EAST));
+        for (int x = 1; x <= 10; x++) rooms.put(new Cell(x, 0, 0), Room.rack(0, x == 1 ? List.of() : straight));
+        // Leaving the rack upwards at its far end, a lane below slot 2 rises across the other lane's arm; one above stays clear.
+        var up = search(new End(O, -1), EAST, new End(new Cell(10, 1, 0), -1), with(rooms));
+        assertEquals(3, laneSlot(up), "upwards: the lowest range above the other lane");
+        assertTrue(up.slots().subList(1, 11).stream().allMatch(slot -> slot == 3), "one range along the portion: " + up.slots());
+        var down = search(new End(O, -1), EAST, new End(new Cell(10, -1, 0), -1), with(rooms));
+        assertEquals(0, laneSlot(down), "downwards: the lowest range, below the other lane");
+        int turnUp = 1 << WEST | 1 << UP;
+        assertEquals(1, PipeRoute.crossings(0, 1, turnUp, straight));
+        assertEquals(0, PipeRoute.crossings(3, 1, turnUp, straight));
+        assertEquals(0, PipeRoute.crossings(0, 1, 1 << WEST | 1 << EAST, straight), "parallel arms never cross");
+        // A range not free in every cell of the portion is never chosen: slot 3 taken at x 5 leaves slot 4 the clear one.
+        rooms.put(new Cell(5, 0, 0), Room.rack(0, List.of(straight.getFirst(), new PipeRoute.RackLane(3, 1, 1 << WEST | 1 << EAST, 1 << WEST | 1 << EAST))));
+        assertEquals(4, laneSlot(search(new End(O, -1), EAST, new End(new Cell(10, 1, 0), -1), with(rooms))));
     }
 
     @Test

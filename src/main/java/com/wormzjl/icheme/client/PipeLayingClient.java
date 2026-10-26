@@ -14,6 +14,7 @@ import com.wormzjl.icheme.world.level.block.FluidDeviceBlock;
 import com.wormzjl.icheme.world.level.block.PipeAnchor;
 import com.wormzjl.icheme.world.level.block.PipeLaying;
 import com.wormzjl.icheme.world.level.block.entity.EquipmentShellBlockEntity;
+import com.wormzjl.icheme.world.level.block.entity.FluidDeviceBlockEntity;
 import com.wormzjl.icheme.world.level.block.entity.PipeRackBlockEntity;
 import net.createmod.catnip.outliner.Outliner;
 import net.minecraft.client.Minecraft;
@@ -60,12 +61,12 @@ public final class PipeLayingClient {
     private static final Object START_SLOT = "icheme:pipe_start", ROUTE_SLOT = "icheme:pipe_route";
     /** A pipe block is one box to outline, a lane at most two arms. */
     private static final Object[] REMOVE_SLOTS = {"icheme:pipe_remove", "icheme:pipe_remove_arm"};
-    private static final int START_COLOUR = 0x55FF55, REFUSED_COLOUR = 0xFF5555, CONNECTED_COLOUR = 0x808080;
+    private static final int START_COLOUR = 0x55FF55, REFUSED_COLOUR = 0xFF5555, CONNECTED_COLOUR = 0x808080, OPEN_COLOUR = 0xFFDD33, FREE_COLOUR = 0x55FF55;
     /** Port classes' outline colours: vapour, bulk, liquid, overflow ({@link EquipmentShape.PortClass} order). */
     private static final int[] PORT_COLOURS = {0xF0F0F0, 0x55DDFF, 0x3377FF, 0xFF9933};
-    /** A start this far from the player is dropped, blocks; ports are marked this far, at most {@link #MAX_PORTS}. */
+    /** A start this far from the player is dropped, blocks; ports and open ends are marked this far, at most {@link #MAX_MARKS} of each. */
     private static final double DROP_RANGE = 96, PORT_RANGE = 48;
-    private static final int MAX_PORTS = 256, RECHECK_TICKS = 20, HUD_TICKS = 5;
+    private static final int MAX_MARKS = 256, RECHECK_TICKS = 20, HUD_TICKS = 5;
     private static final ResourceLocation PLATE = ResourceLocation.fromNamespaceAndPath(IChemE.MOD_ID, "block/painted_shell");
     private static final RenderType TYPE = RenderType.entityTranslucentCull(InventoryMenu.BLOCK_ATLAS);
     private static final int GHOST = 0xB0D8FF, ALPHA = 140;
@@ -81,7 +82,8 @@ public final class PipeLayingClient {
     private static @Nullable Plan plan;
     private static boolean armed = true;
     private static int age;
-    private static Set<Object> portSlots = Set.of();
+    /** The outliner slots of the marks shown last tick: ports, open ends and an aimed rack's free slots. */
+    private static Set<Object> markSlots = Set.of();
 
     private PipeLayingClient() {
     }
@@ -150,12 +152,12 @@ public final class PipeLayingClient {
         var outliner = Outliner.getInstance();
         if (!mc.options.keyUse.isDown()) armed = true;
         if (player == null || mc.level == null || !holding(player)) {
-            if (start != null || plan != null || !portSlots.isEmpty()) {
+            if (start != null || plan != null || !markSlots.isEmpty()) {
                 start = null;
                 plan = null;
                 for (var slot : List.of(START_SLOT, ROUTE_SLOT, REMOVE_SLOTS[0], REMOVE_SLOTS[1])) outliner.remove(slot);
-                for (var slot : portSlots) outliner.remove(slot);
-                portSlots = Set.of();
+                for (var slot : markSlots) outliner.remove(slot);
+                markSlots = Set.of();
             }
             return;
         }
@@ -188,7 +190,12 @@ public final class PipeLayingClient {
             var label = portLabel(mc.level, hit);
             if (label != null) say(player, label);
         }
-        ports(mc.level, player, outliner);
+        var shown = new HashSet<Object>();
+        ports(mc.level, player, outliner, shown);
+        openEnds(mc.level, player, outliner, shown);
+        freeSlots(mc.level, hit, outliner, shown);
+        for (var slot : markSlots) if (!shown.contains(slot)) outliner.remove(slot);
+        markSlots = shown;
     }
 
     private static @Nullable PipeAnchor.Click aimed(Minecraft mc) {
@@ -308,9 +315,9 @@ public final class PipeLayingClient {
     /**
      * Marks the ports of the equipment around the player: a square on each nozzle's flange face in its port class's
      * colour, grey when a pipe is on it. Re-shown each tick from the client's index of port cells; at most
-     * {@link #MAX_PORTS}, nearest first.
+     * {@link #MAX_MARKS}, nearest first.
      */
-    private static void ports(Level level, LocalPlayer player, Outliner outliner) {
+    private static void ports(Level level, LocalPlayer player, Outliner outliner, Set<Object> shown) {
         var marks = new ArrayList<Mark>();
         for (var shell : EquipmentShellBlockEntity.clientPortCells()) {
             if (shell.isRemoved() || shell.getLevel() != level || shell.shape() == null) continue;
@@ -323,28 +330,83 @@ public final class PipeLayingClient {
             }
         }
         marks.sort((a, b) -> Double.compare(a.distance, b.distance));
-        var shown = new HashSet<Object>();
-        for (var mark : marks.subList(0, Math.min(MAX_PORTS, marks.size()))) {
-            var slot = mark.slot();
+        for (var mark : marks.subList(0, Math.min(MAX_MARKS, marks.size()))) {
+            var slot = "icheme:port:" + mark.cell.asLong() + ":" + mark.face.ordinal();
             shown.add(slot);
             int colour = connected(level, mark.cell, mark.face) ? CONNECTED_COLOUR : PORT_COLOURS[mark.port.ordinal()];
-            outliner.showAABB(slot, flange(mark.cell, mark.face)).colored(colour).lineWidth(1 / 32F);
+            outliner.showAABB(slot, square(mark.cell, mark.face, .5, .3)).colored(colour).lineWidth(1 / 32F);
         }
-        for (var slot : portSlots) if (!shown.contains(slot)) outliner.remove(slot);
-        portSlots = shown;
     }
 
     private record Mark(BlockPos cell, Direction face, EquipmentShape.PortClass port, double distance) {
-        Object slot() {
-            return "icheme:port:" + cell.asLong() + ":" + face.ordinal();
+    }
+
+    /**
+     * Marks the open line ends around the player in yellow (plan 4.7), where a line laid to them joins: a square on each
+     * open face of a pipe, and on each open face of a rack lane at the lane's point there; at most {@link #MAX_MARKS},
+     * nearest first.
+     */
+    private static void openEnds(Level level, LocalPlayer player, Outliner outliner, Set<Object> shown) {
+        var ends = new ArrayList<End>();
+        for (var pipe : FluidDeviceBlockEntity.clientOpenEnds()) {
+            if (pipe.isRemoved() || pipe.getLevel() != level) continue;
+            double distance = pipe.getBlockPos().getCenter().distanceToSqr(player.position());
+            if (distance > PORT_RANGE * PORT_RANGE) continue;
+            int open = pipe.openEnds();
+            for (var face : Direction.values())
+                if ((open >> face.ordinal() & 1) != 0) ends.add(new End(pipe.getBlockPos(), face, -1, .5, PipeSizes.outside(pipe.bore()), distance));
+        }
+        for (var rack : PipeRackBlockEntity.clientRacks()) {
+            if (rack.isRemoved() || rack.getLevel() != level) continue;
+            double distance = rack.getBlockPos().getCenter().distanceToSqr(player.position());
+            if (distance > PORT_RANGE * PORT_RANGE) continue;
+            var lanes = rack.lanes();
+            for (int i = 0; i < lanes.size(); i++) {
+                int open = rack.openFaces(i);
+                var lane = lanes.get(i);
+                for (var face : Direction.values())
+                    if ((open >> face.ordinal() & 1) != 0)
+                        ends.add(new End(rack.getBlockPos(), face, lane.slot(), RackGeometry.centre(lane.slot(), lane.width()), PipeSizes.outside(lane.bore()), distance));
+            }
+        }
+        ends.sort((a, b) -> Double.compare(a.distance, b.distance));
+        for (var end : ends.subList(0, Math.min(MAX_MARKS, ends.size()))) {
+            var slot = "icheme:open:" + end.cell.asLong() + ":" + end.face.ordinal() + ":" + end.slot;
+            shown.add(slot);
+            outliner.showAABB(slot, square(end.cell, end.face, end.at, Math.min(.45, end.outside / 2 + .04))).colored(OPEN_COLOUR).lineWidth(1 / 32F);
         }
     }
 
-    /** A flat square 0.6 blocks across on {@code face} of {@code cell}. */
-    private static AABB flange(BlockPos cell, Direction face) {
-        var centre = Vec3.atCenterOf(cell).add(face.getStepX() * .5, face.getStepY() * .5, face.getStepZ() * .5);
-        double x = face.getAxis() == Direction.Axis.X ? .01 : .3, y = face.getAxis() == Direction.Axis.Y ? .01 : .3, z = face.getAxis() == Direction.Axis.Z ? .01 : .3;
-        return new AABB(centre.x - x, centre.y - y, centre.z - z, centre.x + x, centre.y + y, centre.z + z);
+    /** An open end: its cell and face, the lane's first slot (-1 for a pipe), where on the face it lies, and its size. */
+    private record End(BlockPos cell, Direction face, int slot, double at, double outside, double distance) {
+    }
+
+    /** While a rack is aimed, a small cube at the centre of each slot no lane uses: where a new lane may go. */
+    private static void freeSlots(Level level, @Nullable PipeAnchor.Click hit, Outliner outliner, Set<Object> shown) {
+        if (hit == null || !(level.getBlockEntity(hit.clicked()) instanceof PipeRackBlockEntity rack)) return;
+        int used = rack.used();
+        for (int slot = 0; slot < RackGeometry.SLOTS; slot++) {
+            if ((used >> slot & 1) != 0) continue;
+            double c = RackGeometry.centre(slot), half = .04;
+            var key = "icheme:free_slot:" + slot;
+            shown.add(key);
+            outliner.showAABB(key, new AABB(c - half, c - half, c - half, c + half, c + half, c + half).move(hit.clicked())).colored(FREE_COLOUR).lineWidth(1 / 32F);
+        }
+    }
+
+    /**
+     * A flat square {@code 2 half} blocks across on {@code face} of {@code cell}, centred at {@code at} along both of the
+     * face's own axes (0.5: the face's centre; a lane's diagonal coordinate for a lane).
+     */
+    private static AABB square(BlockPos cell, Direction face, double at, double half) {
+        double[] low = new double[3], high = new double[3];
+        for (int a = 0; a < 3; a++) {
+            boolean normal = a == face.getAxis().ordinal();
+            double centre = normal ? face.getAxisDirection() == Direction.AxisDirection.POSITIVE ? 1 : 0 : at, extent = normal ? .01 : half;
+            low[a] = centre - extent;
+            high[a] = centre + extent;
+        }
+        return new AABB(low[0], low[1], low[2], high[0], high[1], high[2]).move(cell);
     }
 
     /** The found route drawn translucent at the tool's size, as the pipe blocks it would place are drawn. */

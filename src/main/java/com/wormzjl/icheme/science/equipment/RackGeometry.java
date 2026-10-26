@@ -98,7 +98,11 @@ public final class RackGeometry {
 
     /** The faces a lane runs along: its joints, or straight through along {@code facing} where it has fewer than two. */
     public static int arms(Lane lane, int facing) {
-        int joints = lane.joints;
+        return arms(lane.joints, facing);
+    }
+
+    /** The faces a lane with {@code joints} runs along (see {@link #arms(Lane, int)}). */
+    public static int arms(int joints, int facing) {
         if (Integer.bitCount(joints) >= 2) return joints;
         int axis = joints == 0 ? facing & ~1 : Integer.numberOfTrailingZeros(joints) & ~1;
         return 1 << axis | 1 << (axis + 1);
