@@ -15,9 +15,11 @@ All notable changes to Industrial Chemical Engineering (IChemE, formerly CreateC
 
 ## [Unreleased]
 
+## [0.13.0] - 2026-10-26
+
 ### Changed
 
-- Backward compatibility for the fluid network and equipment models (owner request 2026-10-26, batch folder: `2026-10-26-backward-compat`, plan `BACKWARD_COMPAT_PLAN.md`, commits `97a8a714`, `a470b3bd`, `b432efc4`, `7f058499`, `c7e8f4e8`): saves keep facts and rebuild state (fluid checkpoint envelope 1, state format 20, facts schema 1); a material or model change restates contents at their temperature and books the difference; shapes are read by name and repaired, a retired kind is removed whole; a refreshed vessel or machine keeps its registration, its nozzles' pipes first; a blocked refresh tries again at the next load. Worlds saved by 0.12.3 or older get one last reset (D4).
+- Backward compatibility for the fluid network and equipment models (owner request 2026-10-26, batch folder: `2026-10-26-backward-compat`, plan `BACKWARD_COMPAT_PLAN.md`, review `BACKWARD_COMPAT_REVIEW.md`, commits `97a8a714`, `a470b3bd`, `b432efc4`, `7f058499`, `c7e8f4e8`): saves keep facts and rebuild state (fluid checkpoint envelope 1, state format 20, facts schema 1); a material or model change restates contents at their temperature and books the difference; shapes are read by name and repaired, a retired kind is removed whole; a refreshed vessel or machine keeps its registration, its nozzles' pipes first; a blocked refresh tries again at the next load. Worlds saved by 0.12.4 or older get one last fluid-network reset (D4).
 
 ## [0.12.4] - 2026-10-26
 
