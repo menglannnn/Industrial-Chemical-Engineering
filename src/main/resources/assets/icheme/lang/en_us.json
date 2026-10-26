@@ -1111,5 +1111,10 @@
   "item.icheme.fluid_compressor.toggle": "Aim along the pipe to choose the discharge arrow; right-click installed equipment for controls.",
   "item.icheme.fluid_compressor.straight_only": "Install on horizontal straight pipe sections only.",
   "item.icheme.fluid_compressor.one_accessory": "A pipe section accepts one accessory.",
-  "item.icheme.fluid_compressor.recover": "Shift-right-click with the Accessory Wrench to recover."
+  "itemGroup.icheme": "Industrial Chemical Engineering",
+  "item.icheme.fluid_compressor.recover": "Shift-right-click with the Accessory Wrench to recover.",
+  "tooltip.icheme.recovered_solids.empty": "No captured solids",
+  "tooltip.icheme.recovered_solids.mass": "Captured solids: %s kg",
+  "tooltip.icheme.recovered_solids.more": "More particle grades stored in this container",
+  "tooltip.icheme.recovered_solids.grade": "%s · %s µm · %s kg"
 }

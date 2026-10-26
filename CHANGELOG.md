@@ -15,6 +15,10 @@ All notable changes to Industrial Chemical Engineering (IChemE, formerly CreateC
 
 ## [Unreleased]
 
+### Added
+
+- Chinese (`zh_cn`) language file, and a dedicated creative tab for this mod's items. Recovered-solids tooltips and the "waiting for world identity" message use translation keys (`itemGroup.icheme`, `tooltip.icheme.recovered_solids.*`, `gui.icheme.fluid.waiting_identity`).
+
 ## [0.13.2] - 2026-10-26
 
 ### Fixed
