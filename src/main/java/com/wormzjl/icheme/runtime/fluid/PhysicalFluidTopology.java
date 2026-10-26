@@ -43,13 +43,20 @@ public final class PhysicalFluidTopology {
     public static FlowControl.Mover defaultMover(TopologyCompiler.Kind kind){return switch(kind){case PUMP->new FlowControl.Pump(.01,500000);case COMPRESSOR->new FlowControl.Compressor(.05,3);default->throw new IllegalArgumentException("Not a mover");};}
     /** The most ports a vessel registers. */
     public static final int MAXIMUM_PORTS=64;
+    /** Every face, in {@link Direction} order: the joints of a hand-placed pipe and of every device that is not a laid pipe. */
+    public static final int ALL_FACES=63;
     /**
      * A registered device. One block occupies {@code position} and meets its neighbours through its faces; a vessel with
      * {@code ports} occupies its node cell {@code position} (where its level head is measured from, its lowest inside
      * cell, or a mover's suction cell) and its ports' cells, and meets pipes only at its ports.
+     *
+     * <p>{@code joints} (batch 2026-10-26-pipe-laying-system): the faces, a bit per {@link Direction} ordinal, a pipe may
+     * connect through. A laid pipe has the faces its path uses, so a line laid beside another does not join it; every other
+     * device has {@link #ALL_FACES}, the behaviour before the field existed.</p>
      */
     public record Device(long id,Position position,TopologyCompiler.Kind kind,Direction facing,
-                         PipeResistance.Geometry geometry,FlowControl control,List<Port> ports,boolean generatorEnabled,Cutoff cutoff,boolean inlineFilter) {
+                         PipeResistance.Geometry geometry,FlowControl control,List<Port> ports,boolean generatorEnabled,Cutoff cutoff,boolean inlineFilter,int joints) {
+        public Device(long id,Position position,TopologyCompiler.Kind kind,Direction facing,PipeResistance.Geometry geometry,FlowControl control,List<Port> ports,boolean generatorEnabled,Cutoff cutoff,boolean inlineFilter){this(id,position,kind,facing,geometry,control,ports,generatorEnabled,cutoff,inlineFilter,ALL_FACES);}
         public Device(long id,Position position,TopologyCompiler.Kind kind,Direction facing,PipeResistance.Geometry geometry,FlowControl control,List<Port> ports,boolean generatorEnabled,Cutoff cutoff){this(id,position,kind,facing,geometry,control,ports,generatorEnabled,cutoff,false);}
         public Device(long id,Position position,TopologyCompiler.Kind kind,Direction facing,PipeResistance.Geometry geometry,FlowControl control,List<Port> ports,boolean generatorEnabled){this(id,position,kind,facing,geometry,control,ports,generatorEnabled,Cutoff.NONE);}
         /** Authoring convenience; world placement explicitly creates generators switched off. */
@@ -59,6 +66,8 @@ public final class PhysicalFluidTopology {
             if(id<=0)throw new IllegalArgumentException("Physical identities must be positive");
             Objects.requireNonNull(position);Objects.requireNonNull(kind);Objects.requireNonNull(facing);Objects.requireNonNull(geometry);Objects.requireNonNull(control);
             Objects.requireNonNull(cutoff);
+            if((joints&~ALL_FACES)!=0)throw new IllegalArgumentException("Invalid pipe joints "+joints);
+            if(joints!=ALL_FACES&&(kind!=TopologyCompiler.Kind.PIPE||!ports.isEmpty()))throw new IllegalArgumentException("Only a laid pipe has explicit joints");
             if(inlineFilter&&(kind!=TopologyCompiler.Kind.PIPE||cutoff!=Cutoff.NONE||!(control instanceof FlowControl.Passive)))throw new IllegalArgumentException("Invalid pipe filter accessory");
             if(kind!=TopologyCompiler.Kind.PIPE&&cutoff!=Cutoff.NONE)throw new IllegalArgumentException("Only a pipe has a cutoff accessory");
             boolean valid=switch(kind) {case PUMP->control instanceof FlowControl.Pump;case COMPRESSOR->control instanceof FlowControl.Compressor;case VALVE->control instanceof FlowControl.PressureValve;case PIPE->control instanceof FlowControl.Passive||control instanceof FlowControl.PressureValve||control instanceof FlowControl.Mover;default->control instanceof FlowControl.Passive;};
@@ -98,12 +107,16 @@ public final class PhysicalFluidTopology {
         }
         boolean actuator(){var hydraulic=hydraulicKind();return hydraulic==TopologyCompiler.Kind.PUMP||hydraulic==TopologyCompiler.Kind.COMPRESSOR||hydraulic==TopologyCompiler.Kind.VALVE;}
         /** Copy edits preserve accessories, ports and the independent generator switch. */
-        public Device withGeometry(PipeResistance.Geometry value){return new Device(id,position,kind,facing,value,control,ports,generatorEnabled,cutoff,inlineFilter);}
-        public Device withFacing(Direction value){return new Device(id,position,kind,value,geometry,control,ports,generatorEnabled,cutoff,inlineFilter);}
-        public Device withCutoff(Direction axis,Cutoff value){return new Device(id,position,kind,axis,geometry,control,ports,generatorEnabled,value,inlineFilter);}
-        public Device withInlineFilter(Direction axis,boolean installed){return new Device(id,position,kind,axis,geometry,control,ports,generatorEnabled,cutoff,installed);}
+        public Device withGeometry(PipeResistance.Geometry value){return new Device(id,position,kind,facing,value,control,ports,generatorEnabled,cutoff,inlineFilter,joints);}
+        public Device withFacing(Direction value){return new Device(id,position,kind,value,geometry,control,ports,generatorEnabled,cutoff,inlineFilter,joints);}
+        public Device withCutoff(Direction axis,Cutoff value){return new Device(id,position,kind,axis,geometry,control,ports,generatorEnabled,value,inlineFilter,joints);}
+        public Device withInlineFilter(Direction axis,boolean installed){return new Device(id,position,kind,axis,geometry,control,ports,generatorEnabled,cutoff,installed,joints);}
         /** The same device standing at {@code value} with {@code nozzles}: a layout refresh rebuilding a vessel or a machine (decision D7). */
-        public Device withPlacement(Position value,List<Port> nozzles){return new Device(id,value,kind,facing,geometry,control,nozzles,generatorEnabled,cutoff,inlineFilter);}
+        public Device withPlacement(Position value,List<Port> nozzles){return new Device(id,value,kind,facing,geometry,control,nozzles,generatorEnabled,cutoff,inlineFilter,joints);}
+        /** The same pipe with another joint set: a line laid to one of its faces (a tee or an extension). */
+        public Device withJoints(int value){return new Device(id,position,kind,facing,geometry,control,ports,generatorEnabled,cutoff,inlineFilter,value);}
+        /** Whether a pipe may connect through {@code direction} at all, whatever its fitting or switch. */
+        public boolean jointAt(Direction direction){return (joints>>direction.ordinal()&1)!=0;}
         /** Every cell the registry finds this device at: its own, and its ports'. */
         public Set<Position> cells() {
             var cells=new LinkedHashSet<Position>();cells.add(position);for(var port:ports)cells.add(port.cell);return cells;
@@ -139,7 +152,7 @@ public final class PhysicalFluidTopology {
         /** Off closes a generator's hydraulic contacts; its registered identity and fixed source specification stay put. */
         boolean connects(Direction direction){return generatorEnabled&&cutoff!=Cutoff.CLOSED&&mechanicallyConnects(direction);}
         /** Fitting joints and bore inheritance remain axial even when hydraulic contacts are closed. */
-        public boolean mechanicallyConnects(Direction direction){return !actuator()&&!filter()&&cutoff==Cutoff.NONE||direction.x*facing.x+direction.y*facing.y+direction.z*facing.z!=0;}
+        public boolean mechanicallyConnects(Direction direction){return jointAt(direction)&&(!actuator()&&!filter()&&cutoff==Cutoff.NONE||direction.x*facing.x+direction.y*facing.y+direction.z*facing.z!=0);}
         /** The driven side is the actual discharge nozzle, independent of the node's position and the model's heading. */
         boolean outletAt(Position cell,Direction face) {
             if(!actuator())return false;

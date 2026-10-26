@@ -140,9 +140,20 @@ public sealed class FluidDeviceBlock extends BaseEntityBlock {
         if(hasAxialAccessory(state)&&state.getValue(FACING).getAxis()!=direction.getAxis())return false;
         var block=(FluidDeviceBlock)state.getBlock();return block.kind!=TopologyCompiler.Kind.PUMP&&block.kind!=TopologyCompiler.Kind.COMPRESSOR&&block.kind!=TopologyCompiler.Kind.VALVE&&block.kind!=TopologyCompiler.Kind.FILTER||state.getValue(FACING).getAxis()==direction.getAxis();
     }
-    /** Whether this block meets its neighbour towards {@code direction}: another device by the rules above, or, for a pipe, a vessel nozzle facing it. */
+    /**
+     * The faces the fluid block at {@code position} may connect through (batch 2026-10-26-pipe-laying-system): a laid
+     * pipe's joints from its block entity; every face for any other block, and for a block not yet placed.
+     */
+    public static int joints(BlockGetter level,BlockPos position){return level.getBlockEntity(position) instanceof FluidDeviceBlockEntity entity?entity.joints():PhysicalFluidTopology.ALL_FACES;}
+    private static boolean joint(BlockGetter level,BlockPos position,Direction direction){return (joints(level,position)>>direction.ordinal()&1)!=0;}
+    /**
+     * Whether this block meets its neighbour towards {@code direction}: another device by the rules above, or, for a pipe,
+     * a vessel nozzle facing it. Each side must have a joint on the shared face, so a laid line never joins a block it was
+     * only laid beside.
+     */
     private static boolean connects(BlockState state,BlockGetter level,BlockPos neighborPosition,BlockState neighbor,Direction direction) {
-        if(neighbor.getBlock() instanceof FluidDeviceBlock other)return !(boundary(((FluidDeviceBlock)state.getBlock()).kind)&&boundary(other.kind))&&face(state,direction)&&face(neighbor,direction.getOpposite());
+        if(!joint(level,neighborPosition.relative(direction.getOpposite()),direction))return false;
+        if(neighbor.getBlock() instanceof FluidDeviceBlock other)return !(boundary(((FluidDeviceBlock)state.getBlock()).kind)&&boundary(other.kind))&&face(state,direction)&&face(neighbor,direction.getOpposite())&&joint(level,neighborPosition,direction.getOpposite());
         return ((FluidDeviceBlock)state.getBlock()).kind==TopologyCompiler.Kind.PIPE&&face(state,direction)&&neighbor.getBlock() instanceof EquipmentShellBlock
                 &&level.getBlockEntity(neighborPosition) instanceof com.wormzjl.icheme.world.level.block.entity.EquipmentShellBlockEntity shell&&shell.nozzleFacing(direction.getOpposite())!=null;
     }

@@ -264,7 +264,7 @@ public final class FluidNetwork {
                     default->{}
                 }
                 boolean generatorEnabled=d.kind()==TopologyCompiler.Kind.GENERATOR?controls.power==Power.ON:d.generatorEnabled();
-                event=world.edit(d.id(),payload.revision,new PhysicalFluidTopology.Device(d.id(),d.position(),d.kind(),d.facing(),geometry,control,d.ports(),generatorEnabled,d.cutoff(),d.inlineFilter()),spec);
+                event=world.edit(d.id(),payload.revision,new PhysicalFluidTopology.Device(d.id(),d.position(),d.kind(),d.facing(),geometry,control,d.ports(),generatorEnabled,d.cutoff(),d.inlineFilter(),d.joints()),spec);
             }catch(RuntimeException rejected){refusal=reason(rejected);}
             world.input(menu,event,refusal);
         });

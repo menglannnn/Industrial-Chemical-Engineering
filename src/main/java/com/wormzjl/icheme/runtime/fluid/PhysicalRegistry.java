@@ -119,7 +119,7 @@ public final class PhysicalRegistry {
     /** Uses the existing pressure-valve control on the same host pipe and projected revision. */
     public boolean installPipePressureValve(long id,PhysicalFluidTopology.Direction axis) {
         var record=registrations().get(id);if(!canInstallFitting(record,axis))return false;
-        var d=record.device();var device=new PhysicalFluidTopology.Device(d.id(),d.position(),d.kind(),axis,d.geometry(),new FlowControl.PressureValve(200000),d.ports(),d.generatorEnabled(),d.cutoff());
+        var d=record.device();var device=new PhysicalFluidTopology.Device(d.id(),d.position(),d.kind(),axis,d.geometry(),new FlowControl.PressureValve(200000),d.ports(),d.generatorEnabled(),d.cutoff(),false,d.joints());
         submit(List.of(new WorldTopologyLedger.Edit(id,new WorldTopologyLedger.Registration(device,record.spec(),Math.addExact(record.revision(),1)))),topology.nextIdentity(),null);
         return true;
     }
@@ -127,7 +127,7 @@ public final class PhysicalRegistry {
     public boolean installPipeMover(long id,PhysicalFluidTopology.Direction axis,TopologyCompiler.Kind kind){
         var control=PhysicalFluidTopology.defaultMover(kind);var record=registrations().get(id);
         if(axis==null||axis.y!=0||!canInstallFitting(record,axis))return false;
-        var d=record.device();var replacement=new PhysicalFluidTopology.Device(d.id(),d.position(),d.kind(),axis,d.geometry(),control,d.ports(),d.generatorEnabled(),d.cutoff(),d.inlineFilter());
+        var d=record.device();var replacement=new PhysicalFluidTopology.Device(d.id(),d.position(),d.kind(),axis,d.geometry(),control,d.ports(),d.generatorEnabled(),d.cutoff(),d.inlineFilter(),d.joints());
         submit(List.of(new WorldTopologyLedger.Edit(id,new WorldTopologyLedger.Registration(replacement,record.spec(),Math.addExact(record.revision(),1)))),topology.nextIdentity(),null);return true;
     }
     public boolean installPipeFilter(long id,PhysicalFluidTopology.Direction axis) {
@@ -139,7 +139,7 @@ public final class PhysicalRegistry {
     public boolean removePipeAccessory(long id) {
         var r=registrations().get(id);if(r==null||r.device().kind()!=TopologyCompiler.Kind.PIPE)return false;
         var d=r.device();if(!d.inlineFilter()&&d.cutoff()==PhysicalFluidTopology.Cutoff.NONE&&d.control() instanceof FlowControl.Passive)return true;
-        var device=new PhysicalFluidTopology.Device(d.id(),d.position(),d.kind(),d.facing(),d.geometry(),new FlowControl.Passive(),d.ports(),d.generatorEnabled(),PhysicalFluidTopology.Cutoff.NONE);
+        var device=new PhysicalFluidTopology.Device(d.id(),d.position(),d.kind(),d.facing(),d.geometry(),new FlowControl.Passive(),d.ports(),d.generatorEnabled(),PhysicalFluidTopology.Cutoff.NONE,false,d.joints());
         submit(List.of(new WorldTopologyLedger.Edit(id,new WorldTopologyLedger.Registration(device,r.spec(),Math.addExact(r.revision(),1)))),topology.nextIdentity(),d.inlineFilter()?new WorldTopologyLedger.Recovery(id,null):null);return true;
     }
     private boolean canInstallFitting(WorldTopologyLedger.Registration record,PhysicalFluidTopology.Direction axis) {
@@ -148,7 +148,7 @@ public final class PhysicalRegistry {
         // Check projected physical neighbours too: chunk loading or an unapplied branch must not hide a junction.
         for(var direction:PhysicalFluidTopology.Direction.values()) {
             var next=record.device().position().offset(direction);var neighbour=topology.latestAt(next);
-            if(neighbour!=null&&neighbour.device().mechanicallyMeets(next,PhysicalFluidTopology.opposite(direction))
+            if(neighbour!=null&&record.device().jointAt(direction)&&neighbour.device().mechanicallyMeets(next,PhysicalFluidTopology.opposite(direction))
                     &&direction.x*axis.x+direction.y*axis.y+direction.z*axis.z==0)return false;
         }
         return true;

@@ -70,11 +70,21 @@ public final class FluidDeviceBlockEntity extends BlockEntity implements com.wor
     private double bore = .05;
     private BlockState drawnState;
     private final byte[] faces = new byte[6];
+    /**
+     * The faces this pipe may connect through (batch 2026-10-26-pipe-laying-system), a copy of its registration's joints:
+     * drawing reads it, and a block that has lost its registration (the D4 reset) registers again with it. Saved only
+     * when it is not every face, so a hand-placed pipe saves as before.
+     */
+    private int joints = PhysicalFluidTopology.ALL_FACES;
     public FluidDeviceBlockEntity(BlockPos pos,BlockState state){super(ModBlockEntities.FLUID_DEVICE.get(),pos,state);}
     @Override public long fluidIdentity(){return identity;}
     public TopologyCompiler.Kind kind(){return ((FluidDeviceBlock)getBlockState().getBlock()).kind();}
     /** The bore the line has at this block: a pipe's or filter's own, else that of a pipe it meets (0 when none). */
     public double bore(){return bore;}
+    /** The faces this pipe may connect through; every face for a hand-placed pipe and every other device. */
+    public int joints(){return joints;}
+    /** Sets the joints before the block is first drawn: the laying tool, before the block's neighbours read them. */
+    public void presetJoints(int value){if((value&~PhysicalFluidTopology.ALL_FACES)!=0)throw new IllegalArgumentException("Invalid joints "+value);joints=value;}
     public void bindIdentity(long id) {
         if(id<=0)throw new IllegalStateException("Invalid fluid identity");
         if(level instanceof ServerLevel serverLevel) {
@@ -82,7 +92,7 @@ public final class FluidDeviceBlockEntity extends BlockEntity implements com.wor
             var p=new PhysicalFluidTopology.Position(level.dimension().location().toString(),worldPosition.getX(),worldPosition.getY(),worldPosition.getZ());
             var record=world.at(p).orElseThrow();
             if(record.device().id()!=id)throw new IllegalStateException("Fluid identity belongs to a different position");
-            bore=record.device().geometry().diameter();
+            bore=record.device().geometry().diameter();joints=record.device().joints();
             computeFaces();
         }
         identity=id;com.wormzjl.icheme.runtime.instrument.InstrumentHosts.loaded(this);setChanged();
@@ -113,8 +123,11 @@ public final class FluidDeviceBlockEntity extends BlockEntity implements com.wor
         var world=FluidWorldAuthority.find(serverLevel.getServer()).orElse(null);
         var projected=world==null?null:world.registrations().get(identity);
         var committed=world==null?null:world.committedDevice(identity).orElse(null);
+        boolean jointsChanged=false;
         if(projected!=null&&projected.device().kind()==TopologyCompiler.Kind.PIPE){
             var d=projected.device();var state=getBlockState();
+            // The joints follow accepted player input at once, as a fitting does: the connected faces below read them.
+            if(joints!=d.joints()){joints=d.joints();jointsChanged=true;neighbours=true;}
             var updated=state.setValue(FluidDeviceBlock.PRESSURE_CONTROL,d.control() instanceof com.wormzjl.icheme.science.fluid.network.FlowControl.PressureValve)
                     .setValue(FluidDeviceBlock.INLINE_FILTER,d.inlineFilter())
                     .setValue(FluidDeviceBlock.INLINE_MOVER,d.control() instanceof com.wormzjl.icheme.science.fluid.network.FlowControl.Pump?FluidDeviceBlock.InlineMover.PUMP:d.control() instanceof com.wormzjl.icheme.science.fluid.network.FlowControl.Compressor?FluidDeviceBlock.InlineMover.COMPRESSOR:FluidDeviceBlock.InlineMover.NONE);
@@ -129,7 +142,7 @@ public final class FluidDeviceBlockEntity extends BlockEntity implements com.wor
         boolean changed=bore!=registeredBore;bore=registeredBore;
         boolean appearanceChanged=drawnState!=getBlockState();drawnState=getBlockState();
         // Static fitting changes need a model-data refresh even on an isolated pipe with unchanged bore/faces.
-        if(refreshFaces()||changed||appearanceChanged)sync();
+        if(refreshFaces()||changed||appearanceChanged||jointsChanged)sync();
         if(changed||neighbours)for(var direction:Direction.values()) {
             var at=worldPosition.relative(direction);
             if(!level.isLoaded(at))continue;
@@ -188,13 +201,16 @@ public final class FluidDeviceBlockEntity extends BlockEntity implements com.wor
         if(player.containerMenu instanceof FluidDeviceMenu menu&&menu.identity()==identity)
             FluidWorldAuthority.find(player.server).ifPresent(world->world.replayOnOpen(menu));
     }
-    @Override protected void saveAdditional(CompoundTag tag,HolderLookup.Provider registries){super.saveAdditional(tag,registries);instruments.write(tag);tag.putLong("FluidIdentity",identity);}
+    @Override protected void saveAdditional(CompoundTag tag,HolderLookup.Provider registries){super.saveAdditional(tag,registries);instruments.write(tag);tag.putLong("FluidIdentity",identity);writeJoints(tag);}
+    private void writeJoints(CompoundTag tag){if(joints!=PhysicalFluidTopology.ALL_FACES)tag.putByte("Joints",(byte)joints);}
     @Override protected void loadAdditional(CompoundTag tag,HolderLookup.Provider registries){
         super.loadAdditional(tag,registries);instruments.read(tag);identity=tag.getLong("FluidIdentity");lastView=null;
+        // Absent: every face, as every pipe connected before joints existed. A value past the six faces is not a joint set.
+        int savedJoints=tag.contains("Joints")?tag.getByte("Joints")&255:PhysicalFluidTopology.ALL_FACES;joints=(savedJoints&~PhysicalFluidTopology.ALL_FACES)==0?savedJoints:PhysicalFluidTopology.ALL_FACES;
         if(tag.contains("Bore")){double read=tag.getDouble("Bore");if(read>0&&read<=com.wormzjl.icheme.science.equipment.PipeSizes.MAX_BORE)bore=read;}
         if(tag.contains("Faces")){var read=tag.getByteArray("Faces");if(read.length==6)for(int i=0;i<6;i++){int v=read[i]&255;faces[i]=(byte)(Math.min(64,v&127)|v&FLANGED);}}
     }
-    @Override public CompoundTag getUpdateTag(HolderLookup.Provider registries){var tag=new CompoundTag();instruments.write(tag);tag.putLong("FluidIdentity",identity);tag.putDouble("Bore",bore);tag.putByteArray("Faces",faces.clone());return tag;}
+    @Override public CompoundTag getUpdateTag(HolderLookup.Provider registries){var tag=new CompoundTag();instruments.write(tag);tag.putLong("FluidIdentity",identity);tag.putDouble("Bore",bore);tag.putByteArray("Faces",faces.clone());writeJoints(tag);return tag;}
     @Override public ClientboundBlockEntityDataPacket getUpdatePacket(){return ClientboundBlockEntityDataPacket.create(this);}
     /** Drawn geometry that arrives after the block was meshed: refresh the model data and rebuild the section. */
     @Override public void onDataPacket(net.minecraft.network.Connection connection,ClientboundBlockEntityDataPacket packet,HolderLookup.Provider registries) {

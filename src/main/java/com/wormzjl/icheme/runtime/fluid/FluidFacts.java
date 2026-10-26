@@ -37,8 +37,9 @@ import java.util.function.Function;
  * list of at most one.</p>
  */
 final class FluidFacts {
-    static final int SCHEMA=1;
-    /** Renamed or removed enum constants, per enum: the saved name to the current one. None at schema 1. */
+    /** 1: the 0.13.0 records. 2: a registration's {@code joints} (batch 2026-10-26-pipe-laying-system). */
+    static final int SCHEMA=2;
+    /** Renamed or removed enum constants, per enum: the saved name to the current one. None at schema 2. */
     private static final Map<Class<?>,Map<String,String>> ALIASES=Map.of();
     private static final int MAXIMUM_FIELDS=256,MAXIMUM_ITEMS=1<<22,MAXIMUM_TEXTS=1<<20,MAXIMUM_ARRAY=4096;
     /** The cadence an island rebuilt from facts starts at (ticks): the shortest the clock allows, as after a merge. */
@@ -214,7 +215,7 @@ final class FluidFacts {
                 .record(q->q.f64(s.volume()).f64(s.temperature()).f64(s.pressure()).doubles(s.composition())
                         .record(feed->feed.f64(s.solids().volumeFraction()).list(s.solids().grades(),(e,grade)->e.text(grade.material()).text(grade.size().metres()).f64(grade.massShare())))
                         .f64(s.levelHeight()).bool(s.open()))
-                .count(r.revision());
+                .count(r.revision()).count(d.joints());
     }
     private static WorldTopologyLedger.Registration registration(Record f) {
         long id=f.count(0);var position=position(f);
@@ -231,8 +232,10 @@ final class FluidFacts {
             double levelHeight=q.f64(com.wormzjl.icheme.science.fluid.network.PassiveStepSolver.LEVEL_HEAD_HEIGHT);boolean open=q.bool(false);
             required(composition,q,"composition");return valid(q,"device spec",()->new FluidDeviceSpec(volume,temperature,pressure,composition,feed,levelHeight,open));});
         long revision=f.count(0);
+        // Schema 2: a record written before joints existed connects through every face, as every pipe did then.
+        long joints=f.count(PhysicalFluidTopology.ALL_FACES);if(joints>PhysicalFluidTopology.ALL_FACES)throw f.invalid("joints "+joints);
         required(position,f,"device position");required(kind,f,"device kind");required(facing,f,"device facing");required(geometry,f,"device geometry");required(spec,f,"device spec");
-        return valid(f,"registration "+id,()->new WorldTopologyLedger.Registration(new PhysicalFluidTopology.Device(id,position,kind,facing,geometry,control,ports,generatorEnabled,cutoff,filter),spec,revision));
+        return valid(f,"registration "+id,()->new WorldTopologyLedger.Registration(new PhysicalFluidTopology.Device(id,position,kind,facing,geometry,control,ports,generatorEnabled,cutoff,filter,(int)joints),spec,revision));
     }
     private static void control(Fields f,FlowControl control) {
         switch(control) {
