@@ -94,14 +94,13 @@ public final class FluidDeviceBlockEntity extends BlockEntity implements com.wor
         if(!(level instanceof ServerLevel serverLevel))return;
         FluidWorldAuthority.find(serverLevel.getServer()).ifPresent(world->{
             var p=new PhysicalFluidTopology.Position(level.dimension().location().toString(),worldPosition.getX(),worldPosition.getY(),worldPosition.getZ());
-            world.at(p).ifPresent(record->{if(identity!=record.device().id())bindIdentity(record.device().id());else world.deviceLoaded(identity);});
-        });
-        // Drawn geometry once the chunk is in the level (its neighbours are not readable while it loads); a neighbour
-        // loaded before this block drew no line here, so both sides refresh.
-        serverLevel.getServer().execute(()->{
-            if(isRemoved()||!(level instanceof ServerLevel loaded))return;
-            FluidWorldAuthority.find(loaded.getServer()).flatMap(world->world.at(new PhysicalFluidTopology.Position(level.dimension().location().toString(),worldPosition.getX(),worldPosition.getY(),worldPosition.getZ())))
-                    .ifPresent(record->refreshGeometry(record.device().geometry().diameter(),true));
+            world.at(p).ifPresent(record->{
+                if(identity!=record.device().id())bindIdentity(record.device().id());else world.deviceLoaded(identity);
+                // Drawn geometry: onLoad runs once the chunk is in the level (Level.tickBlockEntities), so its loaded
+                // neighbours are readable; a neighbour loaded before this block drew no line here, so both sides refresh.
+                // Neighbours in unloaded chunks keep their saved joints (FluidDeviceBlock.connectedState).
+                refreshGeometry(record.device().geometry().diameter(),true);
+            });
         });
     }
     /**

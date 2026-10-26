@@ -21,6 +21,8 @@ public record TankDisplay(float level,float waterLevel,float height,int oilArgb,
     }
     /** An empty tank of fill height {@code height}. */
     public static TankDisplay empty(float height){return new TankDisplay(0,0,height,0,0);}
+    /** This display with its liquid at {@code level} m and its free water no higher; this display itself for a level that is NaN, infinite or negative. */
+    private TankDisplay standingAt(double level){return !Double.isFinite(level)||level<0?this:new TankDisplay((float)level,Math.min(waterLevel,(float)level),height,oilArgb,waterArgb);}
 
     /**
      * A tank's display gliding to its latest one (owner requests 2026-10-21: the roof moves, and a player on it rides it): a
@@ -39,8 +41,14 @@ public record TankDisplay(float level,float waterLevel,float height,int oilArgb,
         }
         /** The liquid's level at game time {@code ticks}, m. */
         public double level(double ticks){return at(ticks).level;}
-        /** The glide to {@code display} arriving at game tick {@code tick}, from where {@code old} (null: none) stands then. */
-        public static Glide next(Glide old,TankDisplay display,long tick){return new Glide(old==null?display:old.at(tick),display,tick);}
+        /**
+         * The glide to {@code display} arriving at game tick {@code tick}, from where the roof stands then: where {@code old}
+         * has it, or with no glide yet ({@code old} null: the tank has just loaded) at {@code standing} m, the level its
+         * node cell saved (NaN: at {@code display}). The island runs on while the tank's chunk is unloaded, so a reloaded
+         * roof glides from where it stood to the level reached, and what stands on it rides (review
+         * 2026-10-26-chunk-loading-review, D2).
+         */
+        public static Glide next(Glide old,double standing,TankDisplay display,long tick){return new Glide(old!=null?old.at(tick):display.standingAt(standing),display,tick);}
         /** A tank standing still at {@code display}. */
         public static Glide still(TankDisplay display){return new Glide(display,display,0);}
     }

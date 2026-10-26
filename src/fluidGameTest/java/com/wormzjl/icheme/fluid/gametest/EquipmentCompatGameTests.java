@@ -112,7 +112,13 @@ public final class EquipmentCompatGameTests {
         }).thenWaitUntil(()->{
             helper.assertTrue(level.getBlockEntity(blockedAt) instanceof EquipmentShellBlockEntity,"Waiting for the cleared cell to be placed");
             for(var c:layout.shell())helper.assertFalse(((EquipmentShellBlockEntity)level.getBlockEntity(origin.offset(c.x(),c.y(),c.z()))).stale(),"Waiting for every cell's stamp at "+c);
-        }).thenExecute(()->helper.assertTrue(world.at(position).map(r->r.device().id()).orElse(0L)==identity[0],"the drum keeps its registration"))
+        }).thenExecute(()->{
+            helper.assertTrue(world.at(position).map(r->r.device().id()).orElse(0L)==identity[0],"the drum keeps its registration");
+            // The drum leaves with its registration. GameTest areas are not cleared between batches, and a later test may
+            // need a world with no registration (FluidHarnessGameTests' cleanup check): whether the next test's clearing
+            // happened to reach the drum depended on its grid slot.
+            level.removeBlock(nodeAt,false);
+        }).thenWaitUntil(()->helper.assertTrue(world.at(position).isEmpty(),"Waiting for the drum's registration to leave"))
         .thenSucceed();
     }
 }

@@ -189,6 +189,18 @@ public final class ColumnCalculatorV3BlockEntity extends BlockEntity implements 
 
     /** The stored column design (an equipment constructor imports its trays): a read, nothing is solved or published. */
     public V3ColumnInput currentInput() { return currentInput; }
+
+    /**
+     * Unloaded or broken (a chunk unload calls this after {@code onChunkUnloaded}): the running solve is cancelled. The
+     * operation is not saved, so no calculator could take its result; the cancel frees the worker and this block's solve
+     * slot, which a reloaded calculator's next Calculate needs (review 2026-10-26-chunk-loading-review, D3).
+     */
+    @Override
+    public void setRemoved() {
+        super.setRemoved();
+        if (activeOperation != null && level instanceof ServerLevel serverLevel && serverLevel.getServer().isSameThread())
+            com.wormzjl.icheme.runtime.ProcessSolveServices.cancelRequest(serverLevel.getServer(), activeOperation.operationId());
+    }
     /** Recorded by the presentation bucket that published {@code state}. */
     public void markPublished(V3State state) {
         if (Objects.requireNonNull(state).clientNonce() != 0L) throw new IllegalArgumentException("A published snapshot acknowledges no client");

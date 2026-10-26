@@ -84,9 +84,14 @@ public sealed class FluidDeviceBlock extends BaseEntityBlock {
     public static boolean hasFitting(BlockState state){return hasSightGlass(state)||hasAxialAccessory(state);}
     /** Small movers carry compact internal joints; larger movers flange at the block faces. */
     public static boolean hasBoundaryFitting(BlockState state,double bore){return hasFitting(state)&&(!hasMover(state)||com.wormzjl.icheme.science.equipment.InlineMoverGeometry.boundaryJoints(com.wormzjl.icheme.science.equipment.PipeSizes.code(com.wormzjl.icheme.science.equipment.PipeSizes.outside(bore))));}
-    /** Mechanical joints stay connected when a valve closes hydraulically. */
+    /**
+     * Mechanical joints stay connected when a valve closes hydraulically. A face whose neighbour lies in a chunk that is not
+     * loaded keeps its saved joint: on a server, reading that neighbour would load its chunk on the main thread, and a
+     * pipe on the loaded area's edge would load the next chunk on each load, along the whole run (review
+     * 2026-10-26-chunk-loading-review, D1). The neighbour's own load settles both sides.
+     */
     public static BlockState connectedState(BlockState state,LevelReader level,BlockPos position) {
-        for(var direction:Direction.values()){var at=position.relative(direction);state=state.setValue(CONNECTIONS.get(direction),connects(state,level,at,level.getBlockState(at),direction));}
+        for(var direction:Direction.values()){var at=position.relative(direction);if(!level.hasChunkAt(at))continue;state=state.setValue(CONNECTIONS.get(direction),connects(state,level,at,level.getBlockState(at),direction));}
         return state;
     }
     @Override public RenderShape getRenderShape(BlockState state){return RenderShape.MODEL;}

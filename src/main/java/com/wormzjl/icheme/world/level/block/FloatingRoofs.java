@@ -186,8 +186,17 @@ public final class FloatingRoofs {
 
     /** The liquid's level in the tank at {@code node} at game time {@code ticks}, m; 0 for no such tank. */
     public double level(BlockPos node, double ticks) {
+        double standing = standing(node, ticks);
+        return Double.isNaN(standing) ? 0 : standing;
+    }
+
+    /**
+     * Where the roof of the tank at {@code node} stands at game time {@code ticks}, m: on its glide, or before its first one
+     * at the level its node cell saved; NaN for no such tank.
+     */
+    public double standing(BlockPos node, double ticks) {
         var tank = byNode.get(node);
-        return tank == null ? 0 : tank.level(ticks);
+        return tank == null ? Double.NaN : tank.level(ticks);
     }
 
     private @Nullable Tank at(BlockPos cell) {

@@ -356,8 +356,8 @@ public final class FluidWorldAuthority implements AutoCloseable {
     }
     /** A device's block entity loaded or was bound: marked for its bucket, never presented at once. */
     public void deviceLoaded(long id){owned();if(!closed){presentation.deviceLoaded(id);if(instruments!=null)instruments.bind(instrumentHost(id));}}
-    /** A device's block entity unloaded or was removed: publications stop marking it. */
-    public void deviceUnloaded(long id){owned();instruments.forget(id);forgetSightGlass(id);forgetMover(id);presentation.deviceUnloaded(id);publishedMenuData.remove(id);publishedGlides.remove(id);}
+    /** A device's block entity unloaded or was removed: publications stop marking it, and its watches end (a client asks again when it loads the device). */
+    public void deviceUnloaded(long id){owned();instruments.forget(id);forgetSightGlass(id);forgetMover(id);tankWatchers.remove(id);presentation.deviceUnloaded(id);publishedMenuData.remove(id);publishedGlides.remove(id);}
     /**
      * A client's watch request for open tanks by their node cells (owner decision FR4, R-B): each new watch of a loaded
      * open tank within {@link com.wormzjl.icheme.network.FluidNetwork#WATCH_RANGE} is answered with the tank's last published display, if it has one (a
@@ -448,13 +448,14 @@ public final class FluidWorldAuthority implements AutoCloseable {
     /**
      * An open tank's bucket: its display is read off the view just presented, its roof glides to it from where it stands
      * ({@link TankDisplay.Glide}, which the level's roofs collide by) and the glide is sent to each watcher still online,
-     * in its dimension and within range; the others are dropped. Nothing is sent when nobody watches.
+     * in its dimension and within range; the others are dropped. Nothing is sent when nobody watches. A tank with no glide
+     * since it loaded glides from the level its node cell saved, so this runs before the cell takes the new view.
      */
     private void publishTank(WorldTopologyLedger.Registration record,net.minecraft.server.level.ServerLevel level,BlockPos pos,FluidView view) {
         long id=record.device().id();var display=TankDisplay.of(view,componentNames,model.molecularWeights(),catalog,com.wormzjl.icheme.science.fluid.thermo.FluidMaterialCatalog.networkPackage(catalog));
         var roofs=com.wormzjl.icheme.world.level.block.FloatingRoofs.of(level);
         if(display==null){publishedGlides.remove(id);roofs.glide(pos,null);return;}
-        var glide=TankDisplay.Glide.next(publishedGlides.get(id),display,level.getGameTime());
+        long now=level.getGameTime();var glide=TankDisplay.Glide.next(publishedGlides.get(id),roofs.standing(pos,now),display,now);
         publishedGlides.put(id,glide);roofs.glide(pos,glide);
         for(var uuid:tankWatchers.watchers(id)) {
             var player=server.getPlayerList().getPlayer(uuid);
@@ -660,8 +661,10 @@ public final class FluidWorldAuthority implements AutoCloseable {
             var pos=new BlockPos(p.x(),p.y(),p.z());if(!level.hasChunkAt(pos))return false;
             // A drum's node cell carries the identity it was built with; it is never bound here.
             if(!record.device().ports().isEmpty()) {
-                if(level.getBlockEntity(pos) instanceof FluidView.Receiver receiver&&receiver.fluidIdentity()==id){unboundBindings.remove(id);var presented=view.get();receiver.acceptFluidView(presented);instruments.publish(id,presented);
+                if(level.getBlockEntity(pos) instanceof FluidView.Receiver receiver&&receiver.fluidIdentity()==id){unboundBindings.remove(id);var presented=view.get();
+                    // The roof glides from the level the node cell saved: read before the cell takes this view (publishTank).
                     if(record.spec().open())publishTank(record,level,pos,presented);
+                    receiver.acceptFluidView(presented);instruments.publish(id,presented);
                     publishMover(record,level,pos);
                     return true;}
                 if(unboundBindings.add(id))IChemE.LOGGER.warn("fluid_binding={} status=UNBOUND detail=Loaded vessel cell mismatch; saved inventory and topology retained",id);

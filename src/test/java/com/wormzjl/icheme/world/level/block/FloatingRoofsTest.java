@@ -52,16 +52,43 @@ class FloatingRoofsTest {
 
     @Test
     void theRoofGlidesToEachDisplayOverABucketOnTheGameClock() {
-        var first = TankDisplay.Glide.next(null, at(4), 1000);
-        assertEquals(4, first.level(1000), 0, "the first display stands at once");
-        var second = TankDisplay.Glide.next(first, at(6), 1000 + FluidPresentation.BUCKET_TICKS);
+        var first = TankDisplay.Glide.next(null, Double.NaN, at(4), 1000);
+        assertEquals(4, first.level(1000), 0, "with no saved level the first display stands at once");
+        var second = TankDisplay.Glide.next(first, Double.NaN, at(6), 1000 + FluidPresentation.BUCKET_TICKS);
         assertEquals(4, second.level(1000 + FluidPresentation.BUCKET_TICKS), 1e-6);
         assertEquals(5, second.level(1000 + 1.5 * FluidPresentation.BUCKET_TICKS), 1e-6);
         assertEquals(6, second.level(1000 + 2 * FluidPresentation.BUCKET_TICKS), 0);
         assertEquals(6, second.level(1e9), 0);
         // A display arriving mid-glide starts from where the roof stands then, so the roof never jumps.
-        var early = TankDisplay.Glide.next(second, at(2), 1000 + FluidPresentation.BUCKET_TICKS * 3 / 2);
-        assertEquals(5, early.level(early.tick()), 1e-6);
+        var early = TankDisplay.Glide.next(second, 9, at(2), 1000 + FluidPresentation.BUCKET_TICKS * 3 / 2);
+        assertEquals(5, early.level(early.tick()), 1e-6, "a running glide, not the saved level, is where the roof stands");
+    }
+
+    /**
+     * Review 2026-10-26-chunk-loading-review, D2: the island runs on while a tank's chunk is unloaded, so the first display
+     * after a load may stand metres from the roof, which stands at the level its node cell saved. The roof glides there
+     * over a bucket instead of jumping, so a rising roof lifts what stands on it and a falling one lets it follow.
+     */
+    @Test
+    void aReloadedRoofGlidesFromTheLevelItsNodeCellSaved() {
+        var roofs = new FloatingRoofs();
+        BlockPos node = ORIGIN.offset(1, 0, 1);
+        assertTrue(Double.isNaN(roofs.standing(node, 0)), "no tank: no standing level");
+        roofs.add(node, ORIGIN, TANK, () -> 2);
+        assertEquals(2, roofs.standing(node, 5000), 0, "before its first glide the roof stands at the saved level");
+        var reloaded = TankDisplay.Glide.next(null, roofs.standing(node, 5000), at(4.3), 5000);
+        assertEquals(2, reloaded.level(5000), 1e-6, "no jump when the display arrives");
+        assertEquals(3.15, reloaded.level(5000 + FluidPresentation.BUCKET_TICKS / 2.0), 1e-6);
+        assertEquals(4.3, reloaded.level(5000 + FluidPresentation.BUCKET_TICKS), 1e-6);
+        // A rise of 2.3 m over a bucket lifts a rider 0.023 m a tick, far inside what the carry lifts.
+        assertTrue((4.3 - 2) / FluidPresentation.BUCKET_TICKS < FloatingRoofs.LIFT);
+        roofs.glide(node, reloaded);
+        assertEquals(4.3, roofs.standing(node, 5000 + FluidPresentation.BUCKET_TICKS), 1e-6, "then the roof stands on its glide");
+        // The free water under the oil starts no higher than the saved level.
+        var wet = TankDisplay.Glide.next(null, 1, new TankDisplay(4, 1.5f, (float) TANK.fillHeight(), 0, 0), 0);
+        assertEquals(1, wet.from().level(), 0);
+        assertEquals(1, wet.from().waterLevel(), 0);
+        assertEquals(1.5, wet.at(FluidPresentation.BUCKET_TICKS).waterLevel(), 1e-6);
     }
 
     @Test
@@ -83,7 +110,7 @@ class FloatingRoofsTest {
         double ring = 6 + roof.pontoon();
         assertEquals(ring - Math.floor(ring), top(roofs, new BlockPos(rim, ORIGIN.getY() + (int) Math.floor(ring), az), 0), 1. / FloatingRoofs.STEPS);
         // The display takes over from the saved level and the cells follow its glide.
-        roofs.glide(node, TankDisplay.Glide.next(TankDisplay.Glide.still(at(6)), at(8), 0));
+        roofs.glide(node, TankDisplay.Glide.next(TankDisplay.Glide.still(at(6)), Double.NaN, at(8), 0));
         assertEquals(1, top(roofs, new BlockPos(ax, ORIGIN.getY() + floor, az), FluidPresentation.BUCKET_TICKS), 0, "the deck rose past the cell");
         assertNull(roofs.collision(ORIGIN.offset(-1, 0, 0), 0), "no tank there");
         roofs.remove(node);
