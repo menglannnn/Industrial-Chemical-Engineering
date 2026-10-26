@@ -10,7 +10,7 @@ Planned equipment includes storage drums, pumps, compressors, heat exchangers, b
 
 ## Current status
 
-Version 0.13.0, early development (see [CHANGELOG.md](CHANGELOG.md)). From 0.13.0 a world keeps its fluid network and placed equipment across updates. A world saved by 0.12.4 or older resets its fluid network once: inventories, controls and pending fluid events are discarded, and placed devices rebuild on chunk load. Column calculator blocks lose their input when their format changes.
+Version 0.13.1, early development (see [CHANGELOG.md](CHANGELOG.md)). From 0.13.0 a world keeps its fluid network and placed equipment across updates, and from 0.13.1 its installed gauges and pipe fittings. A world saved by 0.12.4 or older resets its fluid network once: inventories, controls and pending fluid events are discarded, and placed devices rebuild on chunk load. Column calculator blocks lose their input when their format changes.
 
 - **Distillation column calculator:** solves a crude column with side draws, steam and pumparounds.
 - **Fluid network:** pipes, tanks, pumps, compressors and valves with multiphase flow and equilibrium.

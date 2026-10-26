@@ -15,6 +15,8 @@ All notable changes to Industrial Chemical Engineering (IChemE, formerly CreateC
 
 ## [Unreleased]
 
+## [0.13.1] - 2026-10-26
+
 ### Fixed
 
 - Accessory store under the saves rule (batch folder: `2026-10-26-accessory-store-compat`, design `ACCESSORY_STORE_COMPAT_PLAN.md`, commits `ae7951f7`, `65754348`): installed gauges, pipe fittings and slot revisions are facts read by name (facts schema 1, the 0.13.0 keys); a later schema, a field from a newer build, an unknown name or damaged facts refuse the world with `icheme_accessories.dat` left as it is (before, Minecraft replaced an unreadable store with an empty one that the next autosave wrote over the file); pending operations are state (`state_format` 1), dropped when unusable; a host's unreadable block-entity copy is dropped and restored from the store instead of failing the block entity's load; the `gauge_settings` item component and the store read gauge kind and unit names through shared alias tables (`GaugeSettings.KIND_ALIASES`, `UNIT_ALIASES`). Gate `AccessoryStoreCompatTest`, corpus `compat/accessories/schema-1.snbt`.
