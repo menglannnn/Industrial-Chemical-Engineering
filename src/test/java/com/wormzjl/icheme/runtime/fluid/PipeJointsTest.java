@@ -72,9 +72,14 @@ class PipeJointsTest {
         assertFalse(laid.mechanicallyConnects(NORTH));assertTrue(laid.mechanicallyConnects(EAST));
     }
 
+    /** A lane on option {@code lane - 1}, {@code slots} wide, whose point on each joint face stands for that place: lanes of one place meet. */
     private PhysicalFluidTopology.Device lane(long id,int x,int z,int lane,int slots,int joints) {
+        long points=0;for(int face=0;face<6;face++)if((joints>>face&1)!=0)points|=(long)(lane*8+slots)<<10*face;
+        return lane(id,x,z,lane,slots,joints,points);
+    }
+    private PhysicalFluidTopology.Device lane(long id,int x,int z,int lane,int slots,int joints,long points) {
         return new PhysicalFluidTopology.Device(id,new PhysicalFluidTopology.Position("minecraft:overworld",x,0,z,lane),Kind.PIPE,EAST,new PipeResistance.Geometry(1,.05,.000045,0),
-                new FlowControl.Passive(),List.of(),true,PhysicalFluidTopology.Cutoff.NONE,false,joints,slots);
+                new FlowControl.Passive(),List.of(),true,PhysicalFluidTopology.Cutoff.NONE,false,joints,slots,points);
     }
     private int islands(List<PhysicalFluidTopology.Device> devices,long... tanks) {
         var boundaries=new HashMap<Long,PassiveNetwork.Reservoir>();for(long tank:tanks)boundaries.put(tank,reservoir(tank));
@@ -89,9 +94,13 @@ class PipeJointsTest {
         assertEquals(1,compiled.islands().getFirst().graph().pipes().size());
         assertEquals(4,compiled.islands().getFirst().graph().pipes().getFirst().sections().stream().mapToDouble(PipeResistance.Geometry::length).sum());
         assertEquals(2,islands(List.of(tank(1,-1,0),pipe(10,0,0,ALONG_X),lane(11,1,0,2,1,ALONG_X),lane(12,2,0,3,1,ALONG_X),pipe(13,3,0,ALONG_X),tank(2,4,0)),1,2),
-                "lanes on other slots do not meet");
+                "lanes on other positions do not meet");
         assertEquals(2,islands(List.of(tank(1,-1,0),pipe(10,0,0,ALONG_X),lane(11,1,0,2,1,ALONG_X),lane(12,2,0,2,2,ALONG_X),pipe(13,3,0,ALONG_X),tank(2,4,0)),1,2),
                 "lanes of other widths do not meet");
+        // Racks of opposite facings in line: option 1 in one is option 2 in the other, at the same point (RACK_LAYERS_PLAN I2).
+        long shared=(long)77<<10*WEST.ordinal()|(long)77<<10*EAST.ordinal();
+        assertEquals(1,islands(List.of(tank(1,-1,0),pipe(10,0,0,ALONG_X),lane(11,1,0,2,1,ALONG_X,shared),lane(12,2,0,3,1,ALONG_X,shared),pipe(13,3,0,ALONG_X),tank(2,4,0)),1,2),
+                "lanes of other options meet where their points coincide");
         assertEquals(2,islands(List.of(tank(1,0,0),lane(11,1,0,2,1,ALONG_X),lane(12,2,0,2,1,ALONG_X),pipe(13,3,0,ALONG_X),tank(2,4,0)),1,2),
                 "a lane meets a tank only through a plain pipe");
     }
@@ -99,7 +108,7 @@ class PipeJointsTest {
     @Test void parallelLanesInOneRackStayApart() {
         var devices=new ArrayList<PhysicalFluidTopology.Device>(List.of(tank(1,-1,0),pipe(10,0,0,ALONG_X),pipe(13,3,0,ALONG_X),tank(2,4,0)));
         // A second line on another slot of the same rack cells, open at both ends.
-        for(int x=1;x<=2;x++){devices.add(lane(10+x,x,0,1,1,ALONG_X));devices.add(lane(20+x,x,0,4,2,ALONG_X));}
+        for(int x=1;x<=2;x++){devices.add(lane(10+x,x,0,1,1,ALONG_X));devices.add(lane(20+x,x,0,3,2,ALONG_X));}
         var compiled=PhysicalFluidTopology.compile(devices,Map.of(1L,reservoir(1),2L,reservoir(2)));
         assertEquals(1,compiled.islands().size(),"the open lane pair reaches no tank: "+compiled.diagnostics());
         assertTrue(compiled.islands().getFirst().physicalIds().containsAll(List.of(1L,10L,11L,12L,13L,2L)));
@@ -122,17 +131,22 @@ class PipeJointsTest {
 
     @Test void aLaneIsAPlainPipeOfAtMostTwoJointsWithinTheRack() {
         assertThrows(IllegalArgumentException.class,()->lane(1,0,0,2,1,ALONG_X|1<<UP.ordinal()),"a junction in a rack");
-        assertThrows(IllegalArgumentException.class,()->lane(1,0,0,5,2,ALONG_X),"past the fifth slot");
+        assertThrows(IllegalArgumentException.class,()->lane(1,0,0,4,2,ALONG_X),"past the fourth position");
+        assertThrows(IllegalArgumentException.class,()->lane(1,0,0,13,2,ALONG_X),"a crossing wider than one position");
+        assertThrows(IllegalArgumentException.class,()->lane(1,0,0,2,5,ALONG_X),"wider than the tier");
         assertThrows(IllegalArgumentException.class,()->lane(1,0,0,0,1,ALONG_X),"a width without a lane");
         assertThrows(IllegalArgumentException.class,()->lane(1,0,0,2,0,ALONG_X),"a lane without a width");
         assertThrows(IllegalArgumentException.class,()->lane(1,0,0,2,1,PhysicalFluidTopology.ALL_FACES),"automatic joints");
-        assertThrows(IllegalArgumentException.class,()->new PhysicalFluidTopology.Position("minecraft:overworld",0,0,0,6));
-        var copied=lane(1,0,0,2,1,ALONG_X).withGeometry(new PipeResistance.Geometry(1,.1,.000045,0));assertEquals(1,copied.slots());assertEquals(2,copied.position().lane());
+        assertThrows(IllegalArgumentException.class,()->lane(1,0,0,0,0,ALONG_X,1),"points without a lane");
+        assertThrows(IllegalArgumentException.class,()->lane(1,0,0,2,1,ALONG_X,1L<<60),"points past the six faces");
+        assertThrows(IllegalArgumentException.class,()->new PhysicalFluidTopology.Position("minecraft:overworld",0,0,0,PhysicalFluidTopology.RACK_PLACES+1));
+        var copied=lane(1,0,0,14,1,ALONG_X).withGeometry(new PipeResistance.Geometry(1,.1,.000045,0));
+        assertEquals(1,copied.slots());assertEquals(14,copied.position().lane());assertEquals(14*8+1,copied.point(WEST));
     }
 
     /** Facts schema 2 writes the joints after the revision; the schema-1 corpus image (no joints field) reads every face. */
     @Test void jointsRoundTripThroughTheFacts() {
-        for(var device:List.of(pipe(7,3,0,ALONG_X|1<<UP.ordinal()),pipe(7,3,0,PhysicalFluidTopology.ALL_FACES),pipe(7,3,0,0),lane(7,3,0,4,2,ALONG_X))) {
+        for(var device:List.of(pipe(7,3,0,ALONG_X|1<<UP.ordinal()),pipe(7,3,0,PhysicalFluidTopology.ALL_FACES),pipe(7,3,0,0),lane(7,3,0,3,2,ALONG_X),lane(7,3,0,13,1,ALONG_X))) {
             var laid=new WorldTopologyLedger.Registration(device,FluidDeviceSpec.nitrogen(EventPathWorld.CATALOG),4);
             var bytes=FluidFacts.events(List.of(new WorldTopologyLedger.Event(UUID.randomUUID(),12,List.of(new WorldTopologyLedger.Edit(7,laid)),Set.of(7L))));
             assertEquals(laid,FluidFacts.events(bytes,0,bytes.length).getFirst().edits().getFirst().replacement());

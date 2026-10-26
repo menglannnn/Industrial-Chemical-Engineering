@@ -61,8 +61,8 @@ import java.util.Set;
 @EventBusSubscriber(modid = IChemE.MOD_ID, value = Dist.CLIENT)
 public final class PipeLayingClient {
     private static final Object START_SLOT = "icheme:pipe_start", ROUTE_SLOT = "icheme:pipe_route";
-    /** A pipe block is one box to outline, a lane at most two arms. */
-    private static final Object[] REMOVE_SLOTS = {"icheme:pipe_remove", "icheme:pipe_remove_arm"};
+    /** A pipe block is one box to outline, a lane at most three legs. */
+    private static final Object[] REMOVE_SLOTS = {"icheme:pipe_remove", "icheme:pipe_remove_arm", "icheme:pipe_remove_leg"};
     private static final int START_COLOUR = 0x55FF55, REFUSED_COLOUR = 0xFF5555, CONNECTED_COLOUR = 0x808080, OPEN_COLOUR = 0xFFDD33, FREE_COLOUR = 0x55FF55;
     /** Port classes' outline colours: vapour, bulk, liquid, overflow ({@link EquipmentShape.PortClass} order). */
     private static final int[] PORT_COLOURS = {0xF0F0F0, 0x55DDFF, 0x3377FF, 0xFF9933};
@@ -76,8 +76,8 @@ public final class PipeLayingClient {
     private record Start(PipeAnchor.Click click, PipeAnchor anchor, ResourceKey<Level> dimension) {
     }
 
-    /** The route to the aimed click, or why there is none; its ghost cells and their joints when found. */
-    private record Plan(PipeAnchor.Click end, @Nullable PipeAnchor anchor, PipeRoute.Result route, @Nullable Component refusal, int[] joints, int[] facings) {
+    /** The route to the aimed click, or why there is none; its ghost cells, their joints, facings and arms when found. */
+    private record Plan(PipeAnchor.Click end, @Nullable PipeAnchor anchor, PipeRoute.Result route, @Nullable Component refusal, int[] joints, int[] facings, int[] arms) {
     }
 
     private static @Nullable Start start;
@@ -141,7 +141,7 @@ public final class PipeLayingClient {
             return;
         }
         var cells = current.route.cells().stream().map(c -> new BlockPos(c.x(), c.y(), c.z())).toList();
-        FluidNetwork.layPipe(offHand, start.click, hit, cells, current.route.slots());
+        FluidNetwork.layPipe(offHand, start.click, hit, cells, current.route.options());
         event.setSwingHand(true);
         start = null;
         plan = null;
@@ -157,7 +157,8 @@ public final class PipeLayingClient {
             if (start != null || plan != null || !markSlots.isEmpty()) {
                 start = null;
                 plan = null;
-                for (var slot : List.of(START_SLOT, ROUTE_SLOT, REMOVE_SLOTS[0], REMOVE_SLOTS[1])) outliner.remove(slot);
+                for (var slot : List.of(START_SLOT, ROUTE_SLOT)) outliner.remove(slot);
+                for (var slot : REMOVE_SLOTS) outliner.remove(slot);
                 for (var slot : markSlots) outliner.remove(slot);
                 markSlots = Set.of();
             }
@@ -223,15 +224,10 @@ public final class PipeLayingClient {
         if (level.getBlockEntity(at) instanceof PipeRackBlockEntity rack) {
             var pick = rack.pick(click.local().x, click.local().y, click.local().z);
             if (pick.lane() < 0) return null;
-            return RackGeometry.boxes(rack.drawnLanes().get(pick.lane()), rack.lanes().get(pick.lane()).facing()).stream()
+            return RackGeometry.boxes(rack.frame(), rack.drawnLanes().get(pick.lane())).stream()
                     .map(b -> new AABB(b[0], b[1], b[2], b[3], b[4], b[5]).move(at)).toList();
         }
         return level.getBlockState(at).getBlock() instanceof FluidDeviceBlock block && block.kind() == TopologyCompiler.Kind.PIPE ? List.of(new AABB(at)) : null;
-    }
-
-    /** The slots a line of the tool's size takes in a rack. */
-    private static int width(double diameter) {
-        return RackGeometry.width(PipeSizes.outside(diameter));
     }
 
     private static double settingsDiameter(LocalPlayer player) {
@@ -245,16 +241,16 @@ public final class PipeLayingClient {
         var none = new int[0];
         var nothing = new PipeRoute.Result(List.of(), List.of(), null);
         var resolved = PipeAnchor.resolve(level, end);
-        if (resolved.anchor() == null) return new Plan(end, null, nothing, PipeLaying.message("anchor." + name(resolved.refusal())), none, none);
-        int width = width(diameter);
+        if (resolved.anchor() == null) return new Plan(end, null, nothing, PipeLaying.message("anchor." + name(resolved.refusal())), none, none, none);
         var from = start.anchor;
         for (var anchor : List.of(from, resolved.anchor()))
-            if (anchor.refuses(PipeSizes.outside(diameter)) != null) return new Plan(end, resolved.anchor(), nothing, PipeLaying.message("anchor." + name(anchor.refuses(PipeSizes.outside(diameter)))), none, none);
+            if (anchor.refuses(PipeSizes.outside(diameter)) != null)
+                return new Plan(end, resolved.anchor(), nothing, PipeLaying.message("anchor." + name(anchor.refuses(PipeSizes.outside(diameter)))), none, none, none);
         int heading = from.heading(resolved.anchor().end().cell());
-        var route = PipeRoute.search(from.end(), heading, resolved.anchor().end(), width, PipeAnchor.space(level), PipeRoute.Limits.DEFAULT);
-        if (!route.found()) return new Plan(end, resolved.anchor(), route, PipeLaying.message("route." + name(route.refusal())), none, none);
+        var route = PipeRoute.search(from.end(), heading, resolved.anchor().end(), PipeSizes.outside(diameter), PipeAnchor.space(level), PipeRoute.Limits.DEFAULT);
+        if (!route.found()) return new Plan(end, resolved.anchor(), route, PipeLaying.message("route." + name(route.refusal())), none, none, none);
         var joints = PipeRoute.laidJoints(route.cells(), from.end(), resolved.anchor().end());
-        return new Plan(end, resolved.anchor(), route, null, joints, PipeRoute.facings(route.cells(), heading));
+        return new Plan(end, resolved.anchor(), route, null, joints, PipeRoute.facings(route.cells(), heading), PipeRoute.arms(route.cells(), from.end(), heading, resolved.anchor().end()));
     }
 
     /** Start → end, the length, the elbows, the size and the pipes needed; or why the aimed spot takes no line. */
@@ -269,22 +265,26 @@ public final class PipeLayingClient {
     }
 
     /**
-     * The off-centre step of the lane route cell {@code i} meets through {@code face} (the same along every axis: a lane's
-     * centre lies on its rack's diagonal): the route's own lane next to it, or the lane the line starts or ends on; 0
-     * where it meets none.
+     * Where plain route cell {@code i} meets a lane through {@code face}, as steps off the face's centre along its in-plane
+     * axes: the route's own lane next to it, or the lane the line starts or ends on; null where it meets none.
      */
-    private static int laneStep(Plan shown, int i, int face, int width) {
+    private static int @Nullable [] lanePoint(Level level, Plan shown, int i, int face, double outside) {
         var cells = shown.route.cells();
-        var step = LineGeometry.STEPS[face];
-        var next = new PipeRoute.Cell(cells.get(i).x() + step[0], cells.get(i).y() + step[1], cells.get(i).z() + step[2]);
-        for (int j : new int[]{i - 1, i + 1})
-            if (j >= 0 && j < cells.size() && cells.get(j).equals(next) && shown.route.slots().get(j) >= 0) return RackGeometry.offset(shown.route.slots().get(j), width);
+        var next = cells.get(i).step(face);
+        for (int j : new int[]{i - 1, i + 1}) {
+            if (j < 0 || j >= cells.size() || !cells.get(j).equals(next)) continue;
+            int option = shown.route.options().get(j);
+            if (option < 0 || !(level.getBlockEntity(new BlockPos(next.x(), next.y(), next.z())) instanceof PipeRackBlockEntity rack)) return null;
+            double standard = PipeSizes.outsideOf(PipeSizes.code(outside));
+            return RackGeometry.steps(RackGeometry.point(rack.rack(), option, RackGeometry.width(standard), standard, face ^ 1));
+        }
         var first = start;
-        for (var anchor : new PipeAnchor[]{i == 0 && first != null ? first.anchor : null, i == cells.size() - 1 ? shown.anchor : null})
-            // A lane anchor takes lines no wider than its lane: its fit's widest is the lane's width.
-            if (anchor != null && anchor.kind() == PipeAnchor.Kind.LANE && anchor.joint() != null && anchor.joint().ordinal() == face)
-                return RackGeometry.offset(anchor.hostLane() - 1, anchor.fit().maxWidth());
-        return 0;
+        for (var anchor : new PipeAnchor[]{i == 0 && first != null ? first.anchor : null, i == cells.size() - 1 ? shown.anchor : null}) {
+            if (anchor == null || anchor.kind() != PipeAnchor.Kind.LANE || anchor.joint() == null || anchor.joint().ordinal() != face) continue;
+            if (!(level.getBlockEntity(anchor.host()) instanceof PipeRackBlockEntity rack)) continue;
+            for (var lane : rack.lanes()) if (lane.option() == anchor.hostLane() - 1) return RackGeometry.steps(rack.point(lane, face ^ 1));
+        }
+        return null;
     }
 
     private static Component describe(PipeAnchor anchor) {
@@ -336,7 +336,7 @@ public final class PipeLayingClient {
             var slot = "icheme:port:" + mark.cell.asLong() + ":" + mark.face.ordinal();
             shown.add(slot);
             int colour = connected(level, mark.cell, mark.face) ? CONNECTED_COLOUR : PORT_COLOURS[mark.port.ordinal()];
-            outliner.showAABB(slot, square(mark.cell, mark.face, .5, .3)).colored(colour).lineWidth(1 / 32F);
+            outliner.showAABB(slot, square(mark.cell, mark.face, faceCentre(mark.face), .3)).colored(colour).lineWidth(1 / 32F);
         }
     }
 
@@ -356,7 +356,7 @@ public final class PipeLayingClient {
             if (distance > PORT_RANGE * PORT_RANGE) continue;
             int open = pipe.openEnds();
             for (var face : Direction.values())
-                if ((open >> face.ordinal() & 1) != 0) ends.add(new End(pipe.getBlockPos(), face, -1, .5, PipeSizes.outside(pipe.bore()), distance));
+                if ((open >> face.ordinal() & 1) != 0) ends.add(new End(pipe.getBlockPos(), face, -1, faceCentre(face), PipeSizes.outside(pipe.bore()), distance));
         }
         for (var rack : PipeRackBlockEntity.clientRacks()) {
             if (rack.isRemoved() || rack.getLevel() != level) continue;
@@ -368,45 +368,47 @@ public final class PipeLayingClient {
                 var lane = lanes.get(i);
                 for (var face : Direction.values())
                     if ((open >> face.ordinal() & 1) != 0)
-                        ends.add(new End(rack.getBlockPos(), face, lane.slot(), RackGeometry.centre(lane.slot(), lane.width()), PipeSizes.outside(lane.bore()), distance));
+                        ends.add(new End(rack.getBlockPos(), face, lane.option(), RackGeometry.facePoint(rack.rack(), lane.drawn(0), face.ordinal()), lane.outside(), distance));
             }
         }
         ends.sort((a, b) -> Double.compare(a.distance, b.distance));
         for (var end : ends.subList(0, Math.min(MAX_MARKS, ends.size()))) {
-            var slot = "icheme:open:" + end.cell.asLong() + ":" + end.face.ordinal() + ":" + end.slot;
+            var slot = "icheme:open:" + end.cell.asLong() + ":" + end.face.ordinal() + ":" + end.option;
             shown.add(slot);
-            outliner.showAABB(slot, square(end.cell, end.face, end.at, Math.min(.45, end.outside / 2 + .04))).colored(OPEN_COLOUR).lineWidth(1 / 32F);
+            outliner.showAABB(slot, square(end.cell, end.face, end.point, Math.min(.45, end.outside / 2 + .04))).colored(OPEN_COLOUR).lineWidth(1 / 32F);
         }
     }
 
-    /** An open end: its cell and face, the lane's first slot (-1 for a pipe), where on the face it lies, and its size. */
-    private record End(BlockPos cell, Direction face, int slot, double at, double outside, double distance) {
+    /** An open end: its cell and face, the lane's option (-1 for a pipe), its point on the face (block-local), and its size. */
+    private record End(BlockPos cell, Direction face, int option, double[] point, double outside, double distance) {
     }
 
-    /** While a rack is aimed, a small cube at the centre of each slot no lane uses: where a new lane may go. */
+    private static double[] faceCentre(Direction face) {
+        return new double[]{.5 + .5 * face.getStepX(), .5 + .5 * face.getStepY(), .5 + .5 * face.getStepZ()};
+    }
+
+    /** While a rack is aimed, a small cube on each tier position no lane takes: where a new lane may go. */
     private static void freeSlots(Level level, @Nullable PipeAnchor.Click hit, Outliner outliner, Set<Object> shown) {
         if (hit == null || !(level.getBlockEntity(hit.clicked()) instanceof PipeRackBlockEntity rack)) return;
-        int used = rack.used();
-        for (int slot = 0; slot < RackGeometry.SLOTS; slot++) {
-            if ((used >> slot & 1) != 0) continue;
-            double c = RackGeometry.centre(slot), half = .04;
-            var key = "icheme:free_slot:" + slot;
+        var frame = rack.rack();
+        int taken = RackGeometry.taken(frame, rack.drawnLanes());
+        for (int position = 0; position < RackGeometry.POSITIONS; position++) {
+            if ((taken >> position & 1) != 0) continue;
+            var c = frame.world(RackGeometry.centre(position, 1), (RackGeometry.BEAM_TOP + 2) * LineGeometry.OFFSET, .5);
+            double half = .04;
+            var key = "icheme:free_slot:" + position;
             shown.add(key);
-            outliner.showAABB(key, new AABB(c - half, c - half, c - half, c + half, c + half, c + half).move(hit.clicked())).colored(FREE_COLOUR).lineWidth(1 / 32F);
+            outliner.showAABB(key, new AABB(c[0] - half, c[1] - half, c[2] - half, c[0] + half, c[1] + half, c[2] + half).move(hit.clicked())).colored(FREE_COLOUR).lineWidth(1 / 32F);
         }
     }
 
-    /**
-     * A flat square {@code 2 half} blocks across on {@code face} of {@code cell}, centred at {@code at} along both of the
-     * face's own axes (0.5: the face's centre; a lane's diagonal coordinate for a lane).
-     */
-    private static AABB square(BlockPos cell, Direction face, double at, double half) {
+    /** A flat square {@code 2 half} blocks across on {@code face} of {@code cell}, centred at block-local {@code point} on that face. */
+    private static AABB square(BlockPos cell, Direction face, double[] point, double half) {
         double[] low = new double[3], high = new double[3];
         for (int a = 0; a < 3; a++) {
-            boolean normal = a == face.getAxis().ordinal();
-            double centre = normal ? face.getAxisDirection() == Direction.AxisDirection.POSITIVE ? 1 : 0 : at, extent = normal ? .01 : half;
-            low[a] = centre - extent;
-            high[a] = centre + extent;
+            double extent = a == face.getAxis().ordinal() ? .01 : half;
+            low[a] = point[a] - extent;
+            high[a] = point[a] + extent;
         }
         return new AABB(low[0], low[1], low[2], high[0], high[1], high[2]).move(cell);
     }
@@ -424,25 +426,27 @@ public final class PipeLayingClient {
         var buffers = mc.renderBuffers().bufferSource();
         var consumer = buffers.getBuffer(TYPE);
         double diameter = settingsDiameter(mc.player);
-        int code = PipeSizes.code(PipeSizes.outside(diameter)), width = width(diameter);
+        int code = PipeSizes.code(PipeSizes.outside(diameter)), width = RackGeometry.width(PipeSizes.outsideOf(code));
         // A painted line's ghost shows its paint on the neutral plate sprite, as a vessel's ghost does; a bare one the ghost blue.
         int paint = PipeLayingToolItem.paint(tool(mc.player.getMainHandItem()) ? mc.player.getMainHandItem() : mc.player.getOffhandItem());
         int colour = paint == Paint.BARE ? GHOST : Paint.tint(paint);
         var cells = shown.route.cells();
         for (int i = 0; i < cells.size(); i++) {
             var cell = cells.get(i);
-            int slot = shown.route.slots().get(i);
+            int option = shown.route.options().get(i);
             List<com.wormzjl.icheme.science.equipment.Mesh.Polygon> polygons;
-            // A lane is drawn in its slots as the rack will draw it, welded at every joint.
-            if (slot >= 0) polygons = RackGeometry.lane(new RackGeometry.Lane(slot, width, shown.joints[i], shown.joints[i], code), shown.facings[i]);
-            else {
+            // A lane is drawn where the rack will draw it, welded at every joint.
+            if (option >= 0) {
+                if (!(mc.level.getBlockEntity(new BlockPos(cell.x(), cell.y(), cell.z())) instanceof PipeRackBlockEntity rack)) continue;
+                polygons = RackGeometry.lane(rack.frame(), new RackGeometry.Lane(option, width, shown.arms[i], shown.joints[i], code));
+            } else {
                 long faces = 0, offsets = 0;
                 for (int face = 0; face < 6; face++) {
                     if ((shown.joints[i] >> face & 1) == 0) continue;
                     faces |= (long) code << 7 * face;
                     // A plain cell beside a lane is a transition pipe to the lane's off-centre point.
-                    int at = laneStep(shown, i, face, width);
-                    if (at != 0) offsets |= LineGeometry.Key.offsets(face, at, at);
+                    var at = lanePoint(mc.level, shown, i, face, PipeSizes.outside(diameter));
+                    if (at != null) offsets |= LineGeometry.Key.offsets(face, at[0], at[1]);
                 }
                 polygons = LineGeometry.polygons(new LineGeometry.Key(TopologyCompiler.Kind.PIPE, shown.facings[i], shown.joints[i], code, faces, 0, false, offsets));
             }

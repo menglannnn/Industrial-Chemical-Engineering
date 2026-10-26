@@ -38,7 +38,7 @@ public final class PipeLaying {
     }
 
     /** Why a command did nothing, for the player; null when it was done. */
-    public static @Nullable Component lay(ServerPlayer player, InteractionHand hand, PipeAnchor.Click startClick, PipeAnchor.Click endClick, List<BlockPos> path, List<Integer> slots) {
+    public static @Nullable Component lay(ServerPlayer player, InteractionHand hand, PipeAnchor.Click startClick, PipeAnchor.Click endClick, List<BlockPos> path, List<Integer> options) {
         var stack = player.getItemInHand(hand);
         var settings = stack.get(ModItems.PIPE_LAYING_SETTINGS.get());
         if (!stack.is(ModItems.PIPE_LAYING_TOOL.get()) || settings == null || player.isSpectator() || !player.mayBuild()) return message("not_allowed");
@@ -47,7 +47,6 @@ public final class PipeLaying {
         var endClicked = endClick.clicked();
         if (!player.canInteractWithBlock(endClicked, 1) || startClicked.getCenter().distanceToSqr(player.position()) > START_RANGE * START_RANGE) return message("out_of_reach");
         if (!level.hasChunkAt(startClicked) || !level.hasChunkAt(endClicked)) return message("anchor.outside");
-        int width = RackGeometry.width(PipeSizes.outside(settings.diameter()));
         var start = PipeAnchor.resolve(level, startClick);
         if (start.anchor() == null) return message("anchor." + name(start.refusal()));
         var end = PipeAnchor.resolve(level, endClick);
@@ -55,9 +54,10 @@ public final class PipeLaying {
         for (var anchor : List.of(start.anchor(), end.anchor()))
             if (anchor.refuses(PipeSizes.outside(settings.diameter())) != null) return message("anchor." + name(anchor.refuses(PipeSizes.outside(settings.diameter()))));
         var cells = path.stream().map(PipeAnchor::cell).toList();
-        var refusal = PipeRoute.check(cells, slots, start.anchor().end(), end.anchor().end(), width, PipeRoute.Limits.DEFAULT.cells());
+        var refusal = PipeRoute.check(cells, options, start.anchor().end(), end.anchor().end(), PipeRoute.Limits.DEFAULT.cells());
         if (refusal != null) return message("route." + name(refusal));
-        int blocked = PipeRoute.blocked(cells, slots, width, PipeAnchor.space(level));
+        int heading = start.anchor().heading(cells.getLast());
+        int blocked = PipeRoute.blocked(cells, options, start.anchor().end(), heading, end.anchor().end(), PipeSizes.outside(settings.diameter()), PipeAnchor.space(level));
         if (blocked >= 0) return message("occupied", path.get(blocked).toShortString());
         for (var cell : path) if (!level.mayInteract(player, cell)) return message("occupied", cell.toShortString());
         var world = FluidWorldAuthority.find(player.server).orElse(null);
@@ -77,12 +77,26 @@ public final class PipeLaying {
         }
         if (!player.getAbilities().instabuild && !take(player, path.size())) return message("items", path.size());
         var joints = PipeRoute.laidJoints(cells, start.anchor().end(), end.anchor().end());
-        var facings = PipeRoute.facings(cells, start.anchor().heading(cells.getLast()));
+        var facings = PipeRoute.facings(cells, heading);
+        var arms = PipeRoute.arms(cells, start.anchor().end(), heading, end.anchor().end());
+        int width = RackGeometry.width(PipeSizes.drawn(settings.diameter()));
+        // Each lane as its rack will hold it: its option, width, arms and joints; it registers with its face points, and a
+        // facing that gives back its open end.
+        var lanes = new ArrayList<PipeRackBlockEntity.Lane>();
         var laid = new ArrayList<FluidWorldAuthority.Laid>();
         for (int i = 0; i < path.size(); i++) {
             var at = path.get(i);
-            var position = new PhysicalFluidTopology.Position(dimension, at.getX(), at.getY(), at.getZ(), slots.get(i) + 1);
-            laid.add(new FluidWorldAuthority.Laid(position, PhysicalFluidTopology.Direction.values()[facings[i]], joints[i], slots.get(i) >= 0 ? width : 0));
+            int option = options.get(i);
+            var position = new PhysicalFluidTopology.Position(dimension, at.getX(), at.getY(), at.getZ(), option + 1);
+            if (option < 0) {
+                lanes.add(null);
+                laid.add(new FluidWorldAuthority.Laid(position, PhysicalFluidTopology.Direction.values()[facings[i]], joints[i], 0, 0));
+                continue;
+            }
+            var rack = (PipeRackBlockEntity) level.getBlockEntity(at);
+            var lane = new PipeRackBlockEntity.Lane(0, option, width, arms[i], joints[i], settings.diameter());
+            lanes.add(lane);
+            laid.add(new FluidWorldAuthority.Laid(position, PhysicalFluidTopology.Direction.values()[lane.facing()], joints[i], lane.width(), rack.points(lane)));
         }
         var records = world.lay(laid, settings.diameter(), hosts);
         // The new pipes and lanes take the tool's paints (a lane draws no flange, so it keeps only the primary); the pipes
@@ -94,9 +108,10 @@ public final class PipeLaying {
         FluidDeviceBlock.laying = true;
         try {
             for (int i = 0; i < path.size(); i++) {
-                if (slots.get(i) >= 0) {
+                var lane = lanes.get(i);
+                if (lane != null) {
                     var rack = (PipeRackBlockEntity) level.getBlockEntity(path.get(i));
-                    rack.addLane(new PipeRackBlockEntity.Lane(records.get(i).device().id(), slots.get(i), width, joints[i], facings[i], settings.diameter(), paint));
+                    rack.addLane(new PipeRackBlockEntity.Lane(records.get(i).device().id(), lane.option(), lane.width(), lane.arms(), lane.joints(), lane.bore(), paint));
                     racks.add(rack);
                     continue;
                 }
@@ -118,7 +133,7 @@ public final class PipeLaying {
         for (var host : edited)
             if (level.getBlockEntity(host) instanceof FluidDeviceBlockEntity entity) entity.refreshGeometry(entity.bore(), true);
         for (int i = 0; i < path.size(); i++)
-            if (slots.get(i) < 0 && level.getBlockEntity(path.get(i)) instanceof FluidDeviceBlockEntity entity) entity.refreshGeometry(settings.diameter(), true);
+            if (options.get(i) < 0 && level.getBlockEntity(path.get(i)) instanceof FluidDeviceBlockEntity entity) entity.refreshGeometry(settings.diameter(), true);
         for (var rack : racks) rack.refresh(true);
         return null;
     }

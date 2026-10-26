@@ -189,7 +189,7 @@ public final class FluidDeviceBlockEntity extends BlockEntity implements com.wor
             var at=worldPosition.relative(direction);
             if(!level.isLoaded(at))continue;
             if(level.getBlockEntity(at) instanceof FluidDeviceBlockEntity neighbour){if(neighbour.refreshFaces())neighbour.sync();}
-            else if(level.getBlockEntity(at) instanceof PipeRackBlockEntity rack){if(rack.refreshJoined())level.sendBlockUpdated(at,rack.getBlockState(),rack.getBlockState(),2);}
+            else if(level.getBlockEntity(at) instanceof PipeRackBlockEntity rack){if(rack.refreshDrawn())level.sendBlockUpdated(at,rack.getBlockState(),rack.getBlockState(),2);}
             else EquipmentStructure.refreshNozzlesAt(level,at);
         }
     }
@@ -219,9 +219,9 @@ public final class FluidDeviceBlockEntity extends BlockEntity implements com.wor
                     var lane=rack.laneTowards(direction.getOpposite());
                     if(lane!=null){
                         code=PipeSizes.code(PipeSizes.outside(lane.bore()));
-                        // The lane's centre lies on the block's diagonal: the same off-centre step along both of the face's axes.
-                        int at=com.wormzjl.icheme.science.equipment.RackGeometry.offset(lane.slot(),lane.width());
-                        offsets|=LineGeometry.Key.offsets(direction.ordinal(),at,at);
+                        // The pipe meets the lane at the lane's point on the shared face, whose in-plane axes are this face's too.
+                        var at=com.wormzjl.icheme.science.equipment.RackGeometry.steps(rack.point(lane,direction.getOpposite().ordinal()));
+                        offsets|=LineGeometry.Key.offsets(direction.ordinal(),at[0],at[1]);
                     }
                 } else if(pipe&&neighbour instanceof EquipmentShellBlockEntity shell) {
                     var nozzle=shell.nozzleFacing(direction.getOpposite());

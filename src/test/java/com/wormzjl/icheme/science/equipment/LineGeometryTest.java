@@ -120,31 +120,60 @@ class LineGeometryTest {
         }
     }
 
+    /** The line sizes the transition keys use: each rack width's largest line, the largest resting four-position line, and the largest lowered one. */
+    private static final int[] LANE_CODES = {11, 23, 35, 36, 47};
+
     /**
-     * Transition pipes (batch 2026-10-26-pipe-laying-system, plan 6): beside every lane off its block's centre, at the
-     * lane's widest line and the smallest, on to the opposite face, round to each adjacent one, or a dead end; between
-     * that lane and every lane of its width in a second rack, opposite and round a corner; and from a flanged off-centre
-     * point, as an off-centre nozzle's would be.
+     * Every point off its face's centre where a lane of size {@code code} meets rack face {@code face}, as packed offsets:
+     * over every facing and corner a rack cell takes, every option, and every pair of arms the cell takes alone.
+     */
+    private static java.util.TreeSet<Integer> lanePoints(int face, int code) {
+        var out = new java.util.TreeSet<Integer>();
+        double outside = PipeSizes.outsideOf(code);
+        for (int facing = 2; facing < 6; facing++)
+            for (int corner = RackGeometry.STRAIGHT; corner <= RackGeometry.FRONT_RIGHT; corner++) {
+                var rack = new RackGeometry.Rack(facing, corner);
+                for (int option = 0; option < RackGeometry.OPTIONS; option++)
+                    for (int a = 0; a < 6; a++) {
+                        int arms = 1 << face | 1 << a;
+                        if (a == face) continue;
+                        int width = RackGeometry.width(outside);
+                        if (!RackGeometry.takes(option, width)) continue;
+                        var lane = new RackGeometry.Lane(option, width, arms, arms, code);
+                        if (!RackGeometry.fits(rack, List.of(), lane)) continue;
+                        int point = RackGeometry.point(rack, option, width, outside, face);
+                        if (point != 0) out.add(point);
+                    }
+            }
+        return out;
+    }
+
+    /**
+     * Transition pipes (batch 2026-10-26-pipe-laying-system, plan 6; RACK_LAYERS_PLAN I2): beside every point off its
+     * face's centre where a lane meets a rack face, at each lane size and the smallest line, on to the opposite face,
+     * round to each adjacent one, or a dead end; between that point and every point a lane of its size meets in a second
+     * rack, opposite and above; and from a flanged off-centre point, as an off-centre nozzle's would be.
      */
     private static List<Key> transitions() {
         var keys = new ArrayList<Key>();
         int small = PipeSizes.code(PipeSizes.MIN_OUTSIDE);
-        for (int width = 1; width < RackGeometry.SLOTS; width++)
-            for (int slot = 0; slot + width <= RackGeometry.SLOTS; slot++) {
-                int at = RackGeometry.offset(slot, width), lane = PipeSizes.code(RackGeometry.largest(width));
-                if (at == 0) continue;
+        for (int lane : LANE_CODES) {
+            // The pipe's west face meets a rack to its west, through that rack's east face.
+            for (int at : lanePoints(EAST, lane)) {
+                var step = RackGeometry.steps(at);
                 for (int own : new int[]{lane, small})
                     for (int b : new int[]{-1, EAST, UP, DOWN, NORTH, SOUTH}) {
                         long faces = (long) lane << 7 * WEST | (b < 0 ? 0 : (long) own << 7 * b);
-                        keys.add(new Key(Kind.PIPE, EAST, 1 << WEST | (b < 0 ? 0 : 1 << b), own, faces, 0, false, Key.offsets(WEST, at, at)));
+                        keys.add(new Key(Kind.PIPE, EAST, 1 << WEST | (b < 0 ? 0 : 1 << b), own, faces, 0, false, Key.offsets(WEST, step[0], step[1])));
                     }
-                for (int other = 0; other + width <= RackGeometry.SLOTS; other++) {
-                    int there = RackGeometry.offset(other, width);
-                    for (int b : new int[]{EAST, UP})
+                for (int b : new int[]{EAST, UP})
+                    for (int there : lanePoints(b ^ 1, lane)) {
+                        var other = RackGeometry.steps(there);
                         keys.add(new Key(Kind.PIPE, EAST, 1 << WEST | 1 << b, lane, (long) lane << 7 * WEST | (long) lane << 7 * b, 0, false,
-                                Key.offsets(WEST, at, at) | Key.offsets(b, there, there)));
-                }
+                                Key.offsets(WEST, step[0], step[1]) | Key.offsets(b, other[0], other[1])));
+                    }
             }
+        }
         for (double od : new double[]{.1, .2})
             for (int b : new int[]{EAST, UP, NORTH}) {
                 int code = PipeSizes.code(od);
@@ -156,7 +185,7 @@ class LineGeometryTest {
     @Test
     void transitionPipesStayInTheirBlockAndAreWatertight() {
         var keys = transitions();
-        assertEquals(242, keys.size());
+        assertEquals(289, keys.size());
         for (var key : keys) {
             assertTrue(LineGeometry.transition(key), key.toString());
             var bounds = LineGeometry.mesh(key).bounds();

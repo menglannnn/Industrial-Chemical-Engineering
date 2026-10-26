@@ -37,7 +37,7 @@ import java.util.function.Function;
  * list of at most one.</p>
  */
 final class FluidFacts {
-    /** 1: the 0.13.0 records. 2 (batch 2026-10-26-pipe-laying-system): a registration's {@code joints} and lane width, a position's rack lane. */
+    /** 1: the 0.13.0 records. 2 (batch 2026-10-26-pipe-laying-system): a registration's {@code joints}, a rack lane's width and face points, a position's rack lane (RACK_LAYERS_PLAN RD9: redefined in place while only this batch's branch wrote it). */
     static final int SCHEMA=2;
     /** Renamed or removed enum constants, per enum: the saved name to the current one. None at schema 2. */
     private static final Map<Class<?>,Map<String,String>> ALIASES=Map.of();
@@ -216,7 +216,7 @@ final class FluidFacts {
                 .record(q->q.f64(s.volume()).f64(s.temperature()).f64(s.pressure()).doubles(s.composition())
                         .record(feed->feed.f64(s.solids().volumeFraction()).list(s.solids().grades(),(e,grade)->e.text(grade.material()).text(grade.size().metres()).f64(grade.massShare())))
                         .f64(s.levelHeight()).bool(s.open()))
-                .count(r.revision()).count(d.joints()).count(d.slots());
+                .count(r.revision()).count(d.joints()).count(d.slots()).count(d.points());
     }
     private static WorldTopologyLedger.Registration registration(Record f) {
         long id=f.count(0);var position=position(f);
@@ -235,9 +235,10 @@ final class FluidFacts {
         long revision=f.count(0);
         // Schema 2: a record written before joints existed connects through every face, as every pipe did then.
         long joints=f.count(PhysicalFluidTopology.ALL_FACES);if(joints>PhysicalFluidTopology.ALL_FACES)throw f.invalid("joints "+joints);
-        long slots=f.count(0);if(slots>PhysicalFluidTopology.RACK_SLOTS)throw f.invalid("lane width "+slots);
+        long slots=f.count(0);if(slots>PhysicalFluidTopology.RACK_WIDTH)throw f.invalid("lane width "+slots);
+        long points=f.count(0);if(points>>>60!=0)throw f.invalid("lane points "+points);
         required(position,f,"device position");required(kind,f,"device kind");required(facing,f,"device facing");required(geometry,f,"device geometry");required(spec,f,"device spec");
-        return valid(f,"registration "+id,()->new WorldTopologyLedger.Registration(new PhysicalFluidTopology.Device(id,position,kind,facing,geometry,control,ports,generatorEnabled,cutoff,filter,(int)joints,(int)slots),spec,revision));
+        return valid(f,"registration "+id,()->new WorldTopologyLedger.Registration(new PhysicalFluidTopology.Device(id,position,kind,facing,geometry,control,ports,generatorEnabled,cutoff,filter,(int)joints,(int)slots,points),spec,revision));
     }
     private static void control(Fields f,FlowControl control) {
         switch(control) {

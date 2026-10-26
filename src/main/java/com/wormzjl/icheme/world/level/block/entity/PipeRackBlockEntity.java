@@ -4,8 +4,8 @@ import com.wormzjl.icheme.IChemE;
 import com.wormzjl.icheme.registry.ModBlockEntities;
 import com.wormzjl.icheme.runtime.fluid.FluidWorldAuthority;
 import com.wormzjl.icheme.runtime.fluid.PhysicalFluidTopology;
-import com.wormzjl.icheme.science.equipment.PipeRoute;
 import com.wormzjl.icheme.science.equipment.Paint;
+import com.wormzjl.icheme.science.equipment.PipeRoute;
 import com.wormzjl.icheme.science.equipment.PipeSizes;
 import com.wormzjl.icheme.science.equipment.RackGeometry;
 import com.wormzjl.icheme.science.fluid.topology.TopologyCompiler;
@@ -31,65 +31,91 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
 import java.util.List;
-import java.util.Locale;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * A pipe rack cell's lanes (batch 2026-10-26-pipe-laying-system, plan 5.4). Each lane is a laid pipe registered in the
- * fluid ledger at this block's position, lane number slot + 1. The block entity keeps a copy of each lane's facts, its
- * identity, slot range, joints, facing and bore: drawing, the shape and picking read it, and it registers a lane again
- * when the ledger has none (a facts reset), as a laid pipe's block entity keeps its joints. Which joint faces meet a line
- * next door ({@code joined}) is drawn state: computed on the server from loaded neighbours, sent in the update tag, never
- * saved.
+ * A pipe rack cell's lanes (batch 2026-10-26-pipe-laying-system, RACK_LAYERS_PLAN option A). Each lane is a laid pipe
+ * registered in the fluid ledger at this block's position, lane number option + 1, with its face points (I1, I2). The
+ * block entity keeps a copy of each lane's facts, its identity, option, width, arms, joints and bore: drawing, the shape
+ * and picking read it, and it registers a lane again when the ledger has none (a facts reset), as a laid pipe's block
+ * entity keeps its joints. Which arms meet a line next door ({@code joined}) and the drawn steel ({@code frame}: bents,
+ * stacked posts, sides joined by a rack beside it) are drawn state: computed on the server from loaded neighbours, sent
+ * in the update tag, never saved.
  *
- * <p>Saved format {@value #FORMAT} (AGENTS.md, saves): a list {@code Lanes} of compounds, read by name and validated; a
- * damaged lane is dropped from the copy, and the ledger's registration, the fact, puts it back at the next load. A lane's
- * paint (rack-2) is a fact only the copy holds: absent it reads bare, as rack-1 lanes looked, and a damaged one is
- * repaired to bare, the lane kept.</p>
+ * <p>Saved format {@value #FORMAT} (AGENTS.md, saves; redefined in place by RD9, as only this batch's branch wrote rack
+ * lanes): a list {@code Lanes} of compounds, read by name and validated; a damaged lane, or one this cell's shape does
+ * not take, is dropped from the copy, and the ledger's registration, the fact, puts it back at the next load where the
+ * shape takes it. A lane's paint is a fact only the copy holds: absent it reads bare, and a damaged one is repaired to
+ * bare, the lane kept.</p>
  */
 public final class PipeRackBlockEntity extends BlockEntity {
-    public static final String FORMAT = "rack-2";
+    public static final String FORMAT = "rack-1";
 
     /**
-     * A lane's saved copy: its identity in the ledger, its first slot and width, joints, facing (a face index), bore, and
-     * paint (0xRRGGBB, or {@link Paint#BARE}).
+     * A lane's saved copy: its identity in the ledger, its option and width in the cell ({@link RackGeometry}), its arms
+     * (the two faces its pipe runs to) and the joints among them, its bore, and its paint (0xRRGGBB, or {@link Paint#BARE}).
      */
-    public record Lane(long identity, int slot, int width, int joints, int facing, double bore, int paint) {
+    public record Lane(long identity, int option, int width, int arms, int joints, double bore, int paint) {
         public Lane {
-            if (slot < 0 || width < 1 || slot + width > RackGeometry.SLOTS || (joints & ~PhysicalFluidTopology.ALL_FACES) != 0 || Integer.bitCount(joints) > 2
-                    || facing < 0 || facing > 5 || !(bore > 0 && bore <= PipeSizes.MAX_BORE) || !Paint.line(paint))
-                throw new IllegalArgumentException("Invalid rack lane " + slot + "+" + width);
+            if (!RackGeometry.takes(option, width) || Integer.bitCount(arms) != 2 || (arms & ~PhysicalFluidTopology.ALL_FACES) != 0
+                    || (joints & ~arms) != 0 || !(bore > 0 && bore <= PipeSizes.MAX_BORE) || !Paint.line(paint))
+                throw new IllegalArgumentException("Invalid rack lane " + option + "+" + width);
         }
 
         /** A bare lane. */
-        public Lane(long identity, int slot, int width, int joints, int facing, double bore) {
-            this(identity, slot, width, joints, facing, bore, Paint.BARE);
+        public Lane(long identity, int option, int width, int arms, int joints, double bore) {
+            this(identity, option, width, arms, joints, bore, Paint.BARE);
         }
 
         public Lane painted(int rgb) {
-            return new Lane(identity, slot, width, joints, facing, bore, rgb);
+            return new Lane(identity, option, width, arms, joints, bore, rgb);
         }
 
-        public int mask() {
-            return ((1 << width) - 1) << slot;
+        public double outside() {
+            return PipeSizes.outsideOf(code());
         }
 
-        int outside() {
+        int code() {
             return PipeSizes.code(PipeSizes.outside(bore));
+        }
+
+        /** As drawn, with the arms a line next door meets. */
+        public RackGeometry.Lane drawn(int joined) {
+            return new RackGeometry.Lane(option, width, arms, joined & arms, code());
+        }
+
+        /**
+         * The facing its registration carries: an arm without a joint (where the lane ends open), else its lowest joint.
+         * With its joints it gives back the arms ({@link #arms(int, int)}).
+         */
+        public int facing() {
+            int open = arms & ~joints;
+            return Integer.numberOfTrailingZeros(open != 0 ? open : joints);
+        }
+
+        /** A registration's arms from its joints and facing: its two joints; one and its open end; or straight through along its facing. */
+        public static int arms(int joints, int facing) {
+            return switch (Integer.bitCount(joints)) {
+                case 2 -> joints;
+                case 1 -> joints | 1 << facing;
+                default -> 1 << facing | 1 << (facing ^ 1);
+            };
         }
     }
 
-    /** What the model draws: each lane with the faces it meets a line through, its facing, and its paint. */
-    public record Drawn(List<RackGeometry.Lane> lanes, List<Integer> facings, List<Integer> paints) {
+    /** What the model draws: the cell's frame and each lane with the arms it meets a line through, and its paint. */
+    public record Drawn(RackGeometry.Rack rack, List<RackGeometry.Lane> lanes, List<Integer> paints) {
     }
 
     public static final ModelProperty<Drawn> DRAWN = new ModelProperty<>();
-    private static final ConcurrentHashMap<Integer, VoxelShape> FRAMES = new ConcurrentHashMap<>();
+    private static final ConcurrentHashMap<RackGeometry.Rack, VoxelShape> FRAMES = new ConcurrentHashMap<>();
     /** Client thread only; weak, so a level dropped without unloading its racks frees them. */
     private static final java.util.Set<PipeRackBlockEntity> CLIENT_RACKS = java.util.Collections.newSetFromMap(new java.util.WeakHashMap<>());
 
     private List<Lane> lanes = List.of();
     private int[] joined = new int[0];
+    /** The drawn steel: bents (bits 0 and 1), stacked (bit 2), sides joined (bits 3 and 4). */
+    private int frame = 3;
     private @Nullable VoxelShape shape;
 
     public PipeRackBlockEntity(BlockPos position, BlockState state) {
@@ -100,16 +126,15 @@ public final class PipeRackBlockEntity extends BlockEntity {
         return lanes;
     }
 
-    /** The rack's axis: 0 x, 1 y, 2 z. */
-    public int axis() {
-        return getBlockState().getValue(PipeRackBlock.AXIS).ordinal();
+    /** The cell's lane geometry: its facing and corner. */
+    public RackGeometry.Rack rack() {
+        return PipeRackBlock.rack(getBlockState());
     }
 
-    /** The slots the lanes use, a bit per slot. */
-    public int used() {
-        int used = 0;
-        for (var lane : lanes) used |= lane.mask();
-        return used;
+    /** The cell's frame as drawn: its lane geometry, the steel its neighbours give it, and its beams beneath its lanes. */
+    public RackGeometry.Rack frame() {
+        var rack = rack();
+        return new RackGeometry.Rack(rack.facing(), rack.corner(), frame & 3, (frame >> 2 & 1) != 0, frame >> 3 & 3, RackGeometry.beam(drawnLanes()));
     }
 
     /** The faces the lanes have joints on, a bit per face. */
@@ -119,53 +144,56 @@ public final class PipeRackBlockEntity extends BlockEntity {
         return faces;
     }
 
-    /** The route search's view of this cell: its lanes with the faces their arms run to. */
+    /** The route search's view of this cell: its frame, its lanes, and the faces they have joints on. */
     public PipeRoute.Room room() {
-        var out = new ArrayList<PipeRoute.RackLane>(lanes.size());
-        for (var lane : lanes) out.add(new PipeRoute.RackLane(lane.slot, lane.width, lane.joints, RackGeometry.arms(lane.joints, lane.facing)));
-        return PipeRoute.Room.rack(axis(), out);
+        var out = new ArrayList<RackGeometry.Lane>(lanes.size());
+        for (var lane : lanes) out.add(lane.drawn(0));
+        return PipeRoute.Room.rack(rack(), out, faces());
     }
 
     public List<RackGeometry.Lane> drawnLanes() {
         var out = new ArrayList<RackGeometry.Lane>();
-        for (int i = 0; i < lanes.size(); i++) {
-            var lane = lanes.get(i);
-            out.add(new RackGeometry.Lane(lane.slot, lane.width, lane.joints, joined[i] & lane.joints, lane.outside()));
-        }
+        for (int i = 0; i < lanes.size(); i++) out.add(lanes.get(i).drawn(i < joined.length ? joined[i] : 0));
         return out;
-    }
-
-    public List<Integer> facings() {
-        return lanes.stream().map(Lane::facing).toList();
     }
 
     /** The lane a click at cell-local point {@code (x, y, z)} hits, and its arm; {@link RackGeometry#NONE} for the frame. */
     public RackGeometry.Pick pick(double x, double y, double z) {
-        return RackGeometry.pick(drawnLanes(), facings(), x, y, z);
+        return RackGeometry.pick(rack(), drawnLanes(), x, y, z);
     }
 
-    /** The frame and the lanes' arms: collision, outline and picking all use it. */
+    /** Where {@code lane} meets face {@code face} ({@link RackGeometry#point}), or -1 where it has no arm there. */
+    public int point(Lane lane, int face) {
+        return RackGeometry.point(rack(), lane.option, lane.width, lane.outside(), face);
+    }
+
+    /** The frame and the lanes' legs: collision, outline and picking all use it. */
     public VoxelShape shape() {
         var cached = shape;
         if (cached != null) return cached;
-        var out = frame(axis());
-        var drawn = drawnLanes();
-        for (int i = 0; i < drawn.size(); i++)
-            for (var box : RackGeometry.boxes(drawn.get(i), lanes.get(i).facing)) out = Shapes.or(out, Shapes.box(box[0], box[1], box[2], box[3], box[4], box[5]));
+        var rack = frame();
+        var out = frame(rack);
+        for (var lane : drawnLanes())
+            for (var box : RackGeometry.boxes(rack, lane)) out = Shapes.or(out, Shapes.box(box[0], box[1], box[2], box[3], box[4], box[5]));
         return shape = out.optimize();
     }
 
-    public static VoxelShape frame(int axis) {
-        return FRAMES.computeIfAbsent(axis, a -> {
+    public static VoxelShape frame(RackGeometry.Rack rack) {
+        return FRAMES.computeIfAbsent(rack, r -> {
             var out = Shapes.empty();
-            for (var box : RackGeometry.members(a)) out = Shapes.or(out, Shapes.box(box[0], box[1], box[2], box[3], box[4], box[5]));
+            for (var box : RackGeometry.members(r)) out = Shapes.or(out, Shapes.box(box[0], box[1], box[2], box[3], box[4], box[5]));
             return out.optimize();
         });
     }
 
-    /** The ledger position of the lane on {@code slot}. */
-    public PhysicalFluidTopology.Position position(int slot) {
-        return new PhysicalFluidTopology.Position(level.dimension().location().toString(), worldPosition.getX(), worldPosition.getY(), worldPosition.getZ(), slot + 1);
+    /** The ledger position of the lane of {@code option}. */
+    public PhysicalFluidTopology.Position position(int option) {
+        return new PhysicalFluidTopology.Position(level.dimension().location().toString(), worldPosition.getX(), worldPosition.getY(), worldPosition.getZ(), option + 1);
+    }
+
+    /** A lane's face points in this cell, as its registration carries them. */
+    public long points(Lane lane) {
+        return RackGeometry.points(rack(), lane.drawn(0));
     }
 
     // ---- server ----
@@ -173,7 +201,9 @@ public final class PipeRackBlockEntity extends BlockEntity {
     /** Server: a lane just laid here, bound to its registration; drawn by {@link #refresh} once its line is placed. */
     public void addLane(Lane lane) {
         var next = new ArrayList<>(lanes);
-        if ((used() & lane.mask()) != 0) throw new IllegalStateException("Rack slots already used");
+        var others = new ArrayList<RackGeometry.Lane>();
+        for (var other : lanes) others.add(other.drawn(0));
+        if (!RackGeometry.fits(rack(), others, lane.drawn(0))) throw new IllegalStateException("The rack has no room for the lane");
         next.add(lane);
         setLanes(next, null);
     }
@@ -189,7 +219,7 @@ public final class PipeRackBlockEntity extends BlockEntity {
     private void setLanes(List<Lane> next, int @Nullable [] nextJoined) {
         var previous = lanes;
         var previousJoined = joined;
-        next.sort(Comparator.comparingInt(Lane::slot));
+        next.sort(Comparator.comparingInt(Lane::option));
         lanes = List.copyOf(next);
         joined = new int[lanes.size()];
         // A lane keeps its drawn joins while it stays; a new one starts open until refreshed.
@@ -202,48 +232,52 @@ public final class PipeRackBlockEntity extends BlockEntity {
 
     /**
      * Server: matches the copy to the ledger, which holds the fluid facts. A lane with a registration takes its identity;
-     * a lane without one registers again from the copy; a registration with no copy is adopted, bare. Each lane keeps
-     * the copy's paint, which the ledger does not hold. Then every lane is drawn.
+     * a lane without one registers again from the copy; a registration with no copy is adopted, bare. A lane this cell's
+     * shape does not take, or with no room beside the lanes before it, is dropped from the copy. Each lane keeps the
+     * copy's paint, which the ledger does not hold. Then every lane is drawn.
      */
     public void bind(FluidWorldAuthority world) {
         if (!(level instanceof ServerLevel)) return;
         var next = new ArrayList<Lane>();
-        int used = 0;
+        var taken = new ArrayList<RackGeometry.Lane>();
         for (var lane : lanes) {
-            var record = world.at(position(lane.slot)).orElse(null);
-            if (record == null) record = world.placeLane(position(lane.slot), PhysicalFluidTopology.Direction.values()[lane.facing], lane.joints, lane.width, lane.bore);
-            var copied = copy(record.device());
-            if (copied != null && (used & copied.mask()) == 0) {
+            var record = world.at(position(lane.option)).orElse(null);
+            if (record == null && RackGeometry.valid(rack(), lane.option, lane.width, lane.arms))
+                record = world.placeLane(position(lane.option), PhysicalFluidTopology.Direction.values()[lane.facing()], lane.joints, lane.width, points(lane), lane.bore);
+            var copied = record == null ? null : copy(record.device());
+            if (copied != null && RackGeometry.fits(rack(), taken, copied.drawn(0))) {
                 next.add(copied.painted(lane.paint));
-                used |= copied.mask();
+                taken.add(copied.drawn(0));
             }
         }
-        for (int slot = 0; slot < RackGeometry.SLOTS; slot++) {
-            if ((used >> slot & 1) != 0) continue;
-            var record = world.at(position(slot)).orElse(null);
+        for (int option = 0; option < RackGeometry.OPTIONS; option++) {
+            int o = option;
+            if (next.stream().anyMatch(lane -> lane.option == o)) continue;
+            var record = world.at(position(option)).orElse(null);
             var copied = record == null ? null : copy(record.device());
-            if (copied != null && (used & copied.mask()) == 0) {
+            if (copied != null && RackGeometry.fits(rack(), taken, copied.drawn(0))) {
                 next.add(copied);
-                used |= copied.mask();
+                taken.add(copied.drawn(0));
             }
         }
         setLanes(next, null);
         refresh(true);
     }
 
-    /** A registered lane as its copy, or null when the registration is no lane this rack can draw. */
-    private static @Nullable Lane copy(PhysicalFluidTopology.Device device) {
+    /** A registered lane as its copy, or null when the registration is no lane this cell can draw. */
+    private @Nullable Lane copy(PhysicalFluidTopology.Device device) {
         if (device.kind() != TopologyCompiler.Kind.PIPE || device.slots() == 0) return null;
         try {
-            return new Lane(device.id(), device.position().lane() - 1, device.slots(), device.joints(), device.facing().ordinal(), device.geometry().diameter());
+            var lane = new Lane(device.id(), device.position().lane() - 1, device.slots(), Lane.arms(device.joints(), device.facing().ordinal()), device.joints(), device.geometry().diameter());
+            return RackGeometry.valid(rack(), lane.option, lane.width, lane.arms) ? lane : null;
         } catch (IllegalArgumentException invalid) {
             return null;
         }
     }
 
     /**
-     * Server: each lane takes its registered joints, facing and bore (accepted input, as a laid pipe's joints do), and
-     * the faces it meets a line through; with {@code neighbours}, the blocks next door redraw their side too.
+     * Server: each lane takes its registered joints and bore (accepted input, as a laid pipe's joints do), and the arms it
+     * meets a line through; with {@code neighbours}, the blocks next door redraw their side too.
      */
     public void refresh(boolean neighbours) {
         if (!(level instanceof ServerLevel serverLevel)) return;
@@ -252,26 +286,29 @@ public final class PipeRackBlockEntity extends BlockEntity {
         for (var lane : lanes) {
             var record = world == null ? null : world.registrations().get(lane.identity);
             var copied = record == null ? null : copy(record.device());
-            next.add(copied != null && copied.slot == lane.slot && copied.width == lane.width ? copied.painted(lane.paint) : lane);
+            next.add(copied != null && copied.option == lane.option && copied.width == lane.width && copied.arms == lane.arms ? copied.painted(lane.paint) : lane);
         }
         boolean changed = !next.equals(lanes);
         if (changed) setLanes(next, null);
-        if (refreshJoined() || changed) sync();
+        if (refreshDrawn() || changed) sync();
         if (neighbours) for (var direction : Direction.values()) {
             var at = worldPosition.relative(direction);
             if (!level.isLoaded(at)) continue;
             var neighbour = level.getBlockEntity(at);
             if (neighbour instanceof FluidDeviceBlockEntity pipe) pipe.refreshGeometry(pipe.bore(), false);
-            else if (neighbour instanceof PipeRackBlockEntity rack && rack.refreshJoined()) rack.sync();
+            else if (neighbour instanceof PipeRackBlockEntity rack && rack.refreshDrawn()) rack.sync();
         }
     }
 
     /**
-     * Server: which joint faces of each lane meet a line next door: the same lane range with the opposite joint in the
-     * next rack, or a pipe connected towards this rack. A face whose neighbour is in an unloaded chunk keeps what it
-     * showed (reading it would load the chunk). True when anything changed.
+     * Server: the drawn state from the loaded neighbours. Which joints of each lane meet a line next door: a lane of the
+     * next rack with the opposite joint at the same point, or a pipe connected towards this rack; a face whose neighbour
+     * is in an unloaded chunk keeps what it showed (reading it would load the chunk). And the steel: a straight cell
+     * stands a bent in its low face's plane every third block along its run (counted in world coordinates) and in the
+     * plane of each end without a rack beyond; its posts run on up under a rack; a side with a straight rack of its run's
+     * axis beside it joins it. True when anything changed.
      */
-    public boolean refreshJoined() {
+    public boolean refreshDrawn() {
         if (level == null || level.isClientSide()) return false;
         var next = new int[lanes.size()];
         for (int i = 0; i < lanes.size(); i++) {
@@ -281,22 +318,50 @@ public final class PipeRackBlockEntity extends BlockEntity {
                 if ((lane.joints >> face & 1) == 0) continue;
                 var at = worldPosition.relative(direction);
                 if (!level.isLoaded(at)) {
-                    next[i] |= joined[i] & 1 << face;
+                    next[i] |= (i < joined.length ? joined[i] : 0) & 1 << face;
                     continue;
                 }
                 var neighbour = level.getBlockEntity(at);
                 boolean meets = false;
                 if (neighbour instanceof PipeRackBlockEntity rack) {
+                    int point = point(lane, face);
                     for (var other : rack.lanes)
-                        if (other.slot == lane.slot && other.width == lane.width && (other.joints >> (face ^ 1) & 1) != 0) meets = true;
+                        if ((other.joints >> (face ^ 1) & 1) != 0 && rack.point(other, face ^ 1) == point) meets = true;
                 } else if (neighbour instanceof FluidDeviceBlockEntity pipe && pipe.kind() == TopologyCompiler.Kind.PIPE)
                     meets = pipe.getBlockState().getValue(FluidDeviceBlock.connection(direction.getOpposite()));
                 if (meets) next[i] |= 1 << face;
             }
         }
-        if (Arrays.equals(next, joined)) return false;
+        int drawn = steel();
+        if (Arrays.equals(next, joined) && drawn == frame) return false;
         joined = next;
+        frame = drawn;
+        shape = null;
         return true;
+    }
+
+    /** The drawn steel bits from the loaded neighbours ({@link #frame}); a neighbour in an unloaded chunk keeps its bit. */
+    private int steel() {
+        var facing = getBlockState().getValue(PipeRackBlock.FACING);
+        int out = bit(Direction.UP, 4, state -> state.getBlock() instanceof PipeRackBlock);
+        if (getBlockState().getValue(PipeRackBlock.SHAPE) != PipeRackBlock.Shape.STRAIGHT) return out;
+        int along = facing.getAxis().choose(worldPosition.getX(), worldPosition.getY(), worldPosition.getZ());
+        // The low face: the back where the facing points up the axis, the front where it points down.
+        if (Math.floorMod(along, 3) == 0) out |= facing.getAxisDirection() == Direction.AxisDirection.POSITIVE ? 1 : 2;
+        out |= bit(facing.getOpposite(), 1, state -> !(state.getBlock() instanceof PipeRackBlock));
+        out |= bit(facing, 2, state -> !(state.getBlock() instanceof PipeRackBlock));
+        java.util.function.Predicate<BlockState> beside = state -> state.getBlock() instanceof PipeRackBlock && state.getValue(PipeRackBlock.SHAPE) == PipeRackBlock.Shape.STRAIGHT
+                && state.getValue(PipeRackBlock.FACING).getAxis() == facing.getAxis();
+        out |= bit(facing.getCounterClockWise(), 8, beside);
+        out |= bit(facing.getClockWise(), 16, beside);
+        return out;
+    }
+
+    /** {@code mask} where the neighbour beyond {@code direction} passes {@code test}; in an unloaded chunk, the bit as drawn before. */
+    private int bit(Direction direction, int mask, java.util.function.Predicate<BlockState> test) {
+        var at = worldPosition.relative(direction);
+        if (!level.isLoaded(at)) return frame & mask;
+        return test.test(level.getBlockState(at)) ? mask : 0;
     }
 
     /**
@@ -305,8 +370,8 @@ public final class PipeRackBlockEntity extends BlockEntity {
      */
     public int openFaces(int index) {
         var lane = lanes.get(index);
-        var drawn = drawnLanes().get(index);
-        return RackGeometry.arms(drawn, lane.facing) & ~lane.joints | lane.joints & ~drawn.joined();
+        int met = index < joined.length ? joined[index] : 0;
+        return lane.arms & ~lane.joints | lane.joints & ~met;
     }
 
     /** Server: the lane meeting {@code direction}'s neighbour through that face, if one has a joint there. */
@@ -344,6 +409,12 @@ public final class PipeRackBlockEntity extends BlockEntity {
         return List.copyOf(CLIENT_RACKS);
     }
 
+    @Override
+    public void setBlockState(BlockState state) {
+        super.setBlockState(state);
+        shape = null;
+    }
+
     // ---- saved format ----
 
     @Override
@@ -358,6 +429,7 @@ public final class PipeRackBlockEntity extends BlockEntity {
         var read = read(tag);
         int[] readJoined = null;
         if (tag.contains("Joined", Tag.TAG_INT_ARRAY) && tag.getIntArray("Joined").length == read.size()) readJoined = tag.getIntArray("Joined");
+        if (tag.contains("Frame", Tag.TAG_INT)) frame = tag.getInt("Frame") & 31;
         setLanes(new ArrayList<>(read), readJoined);
     }
 
@@ -367,10 +439,10 @@ public final class PipeRackBlockEntity extends BlockEntity {
         for (var lane : lanes) {
             var entry = new CompoundTag();
             entry.putLong("Identity", lane.identity);
-            entry.putInt("Slot", lane.slot);
+            entry.putInt("Option", lane.option);
             entry.putInt("Width", lane.width);
+            entry.putInt("Arms", lane.arms);
             entry.putInt("Joints", lane.joints);
-            entry.putString("Facing", Direction.values()[lane.facing].getSerializedName());
             entry.putDouble("Bore", lane.bore);
             if (lane.paint != Paint.BARE) entry.putInt("Paint", lane.paint);
             list.add(entry);
@@ -380,34 +452,34 @@ public final class PipeRackBlockEntity extends BlockEntity {
     }
 
     /**
-     * Reads format {@value #FORMAT}: every lane whose fields are present and valid, in slot order; a lane overlapping one
-     * read before it, or damaged, is dropped and logged. Absent: no lanes.
+     * Reads format {@value #FORMAT}: every lane whose fields are present and valid, in option order; a lane on an option
+     * read before it, or damaged, is dropped and logged. Whether the cell's shape takes it, and its room beside the
+     * others, is {@link #bind}'s to check. Absent: no lanes.
      */
     public static List<Lane> read(CompoundTag tag) {
         var out = new ArrayList<Lane>();
         int used = 0;
         for (var element : tag.getList("Lanes", Tag.TAG_COMPOUND)) {
             var entry = (CompoundTag) element;
-            var facing = Direction.byName(entry.getString("Facing").toLowerCase(Locale.ROOT));
             Lane lane = null;
-            if (entry.contains("Identity", Tag.TAG_LONG) && entry.contains("Slot", Tag.TAG_INT) && entry.contains("Width", Tag.TAG_INT) && entry.contains("Joints", Tag.TAG_INT)
-                    && facing != null && entry.contains("Bore", Tag.TAG_DOUBLE))
+            if (entry.contains("Identity", Tag.TAG_LONG) && entry.contains("Option", Tag.TAG_INT) && entry.contains("Width", Tag.TAG_INT) && entry.contains("Arms", Tag.TAG_INT)
+                    && entry.contains("Joints", Tag.TAG_INT) && entry.contains("Bore", Tag.TAG_DOUBLE))
                 try {
-                    lane = new Lane(entry.getLong("Identity"), entry.getInt("Slot"), entry.getInt("Width"), entry.getInt("Joints"), facing.ordinal(), entry.getDouble("Bore"), paint(entry));
+                    lane = new Lane(entry.getLong("Identity"), entry.getInt("Option"), entry.getInt("Width"), entry.getInt("Arms"), entry.getInt("Joints"), entry.getDouble("Bore"), paint(entry));
                 } catch (IllegalArgumentException ignored) {
                 }
-            if (lane == null || (used & lane.mask()) != 0) {
-                IChemE.LOGGER.warn("pipe_rack status=DROPPED detail=Damaged or overlapping lane copy {}; the ledger's registration restores it", entry);
+            if (lane == null || (used >> lane.option & 1) != 0) {
+                IChemE.LOGGER.warn("pipe_rack status=DROPPED detail=Damaged or repeated lane copy {}; the ledger's registration restores it", entry);
                 continue;
             }
-            used |= lane.mask();
+            used |= 1 << lane.option;
             out.add(lane);
         }
-        out.sort(Comparator.comparingInt(Lane::slot));
+        out.sort(Comparator.comparingInt(Lane::option));
         return List.copyOf(out);
     }
 
-    /** A saved lane's paint: absent, bare (a rack-1 lane); a value that is no colour, repaired to bare and logged. */
+    /** A saved lane's paint: absent, bare; a value that is no colour, repaired to bare and logged. */
     private static int paint(CompoundTag entry) {
         if (!entry.contains("Paint")) return Paint.BARE;
         int saved = entry.contains("Paint", Tag.TAG_INT) ? entry.getInt("Paint") : Integer.MIN_VALUE;
@@ -422,6 +494,7 @@ public final class PipeRackBlockEntity extends BlockEntity {
     public CompoundTag getUpdateTag(HolderLookup.Provider registries) {
         var tag = write(lanes, new CompoundTag());
         tag.putIntArray("Joined", joined.clone());
+        tag.putInt("Frame", frame);
         return tag;
     }
 
@@ -439,6 +512,6 @@ public final class PipeRackBlockEntity extends BlockEntity {
 
     @Override
     public ModelData getModelData() {
-        return ModelData.of(DRAWN, new Drawn(drawnLanes(), facings(), lanes.stream().map(Lane::paint).toList()));
+        return ModelData.of(DRAWN, new Drawn(frame(), drawnLanes(), lanes.stream().map(Lane::paint).toList()));
     }
 }

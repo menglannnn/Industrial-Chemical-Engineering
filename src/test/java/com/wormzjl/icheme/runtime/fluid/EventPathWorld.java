@@ -99,11 +99,11 @@ class EventPathWorld {
         registry.submit(List.of(new WorldTopologyLedger.Edit(id,new WorldTopologyLedger.Registration(device,FluidDeviceSpec.nitrogen(catalog),0))),id+1,null);
         return id;
     }
-    /** A rack lane: a laid pipe in slots {@code lane - 1} onwards of a rack cell, {@code slots} wide. */
-    long placeLane(int x,int y,int z,int lane,int slots,PhysicalFluidTopology.Direction facing,double bore,int joints) {
+    /** A rack lane: a laid pipe on option {@code lane - 1} of a rack cell, {@code slots} positions wide, meeting its neighbours at {@code points} (PhysicalFluidTopology.Device). */
+    long placeLane(int x,int y,int z,int lane,int slots,long points,PhysicalFluidTopology.Direction facing,double bore,int joints) {
         long id=ledger.nextIdentity();
         var device=new PhysicalFluidTopology.Device(id,new PhysicalFluidTopology.Position(DIM,x,y,z,lane),Kind.PIPE,facing,new PipeResistance.Geometry(1,bore,PipeResistance.DEFAULT_ROUGHNESS_METRES,0),
-                new FlowControl.Passive(),List.of(),true,PhysicalFluidTopology.Cutoff.NONE,false,joints,slots);
+                new FlowControl.Passive(),List.of(),true,PhysicalFluidTopology.Cutoff.NONE,false,joints,slots,points);
         registry.submit(List.of(new WorldTopologyLedger.Edit(id,new WorldTopologyLedger.Registration(device,FluidDeviceSpec.nitrogen(catalog),0))),id+1,null);
         return id;
     }

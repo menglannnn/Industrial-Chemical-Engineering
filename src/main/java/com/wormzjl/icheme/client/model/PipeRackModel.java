@@ -33,9 +33,9 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Function;
 
 /**
- * Chunk-meshed model of a pipe rack cell (batch 2026-10-26-pipe-laying-system, plan 5.4): the frame along the block's
- * axis and the lanes its block entity hands over as model data; {@link RackGeometry} builds the polygons and each key is
- * baked once. Without model data, and as an item, the bare frame along x.
+ * Chunk-meshed model of a pipe rack cell (batch 2026-10-26-pipe-laying-system, RACK_LAYERS_PLAN option A): the frame and
+ * the lanes its block entity hands over as model data; {@link RackGeometry} builds the polygons and each key is baked
+ * once. Without model data, the bare frame its block state gives, with a bent at each end; as an item, one facing north.
  */
 public final class PipeRackModel implements IDynamicBakedModel {
     public static final ResourceLocation LOADER_ID = ResourceLocation.fromNamespaceAndPath(IChemE.MOD_ID, "pipe_rack");
@@ -44,8 +44,8 @@ public final class PipeRackModel implements IDynamicBakedModel {
     private static final int CACHE = 4096;
     private static final ChunkRenderTypeSet SOLID = ChunkRenderTypeSet.of(RenderType.solid());
 
-    /** The cache key; {@code painted}: a bit per lane with a paint, whose colour the block tint gives (tint index: the lane's first slot). */
-    private record Look(int axis, List<RackGeometry.Lane> lanes, List<Integer> facings, int painted) {
+    /** The cache key; {@code painted}: a bit per lane with a paint, whose colour the block tint gives (tint index: the lane's option). */
+    private record Look(RackGeometry.Rack rack, List<RackGeometry.Lane> lanes, int painted) {
     }
 
     private final TextureAtlasSprite[] sprites, paintedSprites;
@@ -63,11 +63,11 @@ public final class PipeRackModel implements IDynamicBakedModel {
     @Override
     public List<BakedQuad> getQuads(@Nullable BlockState state, @Nullable Direction side, RandomSource random, ModelData data, @Nullable RenderType renderType) {
         if (side != null) return List.of();
-        int axis = state != null && state.getBlock() instanceof PipeRackBlock ? state.getValue(PipeRackBlock.AXIS).ordinal() : 0;
+        var bare = state != null && state.getBlock() instanceof PipeRackBlock ? PipeRackBlock.rack(state) : new RackGeometry.Rack(2, RackGeometry.STRAIGHT);
         var drawn = data.get(PipeRackBlockEntity.DRAWN);
         int painted = 0;
         if (drawn != null) for (int i = 0; i < drawn.paints().size(); i++) if (drawn.paints().get(i) != Paint.BARE) painted |= 1 << i;
-        var key = drawn == null ? new Look(axis, List.of(), List.of(), 0) : new Look(axis, drawn.lanes(), drawn.facings(), painted);
+        var key = drawn == null ? new Look(new RackGeometry.Rack(bare.facing(), bare.corner(), 3, false, 0, RackGeometry.BEAM_TOP), List.of(), 0) : new Look(drawn.rack(), drawn.lanes(), painted);
         var cached = quads.get(key);
         if (cached == null) {
             if (quads.size() >= CACHE) quads.clear();
@@ -77,15 +77,15 @@ public final class PipeRackModel implements IDynamicBakedModel {
     }
 
     /**
-     * The frame, then each lane: a painted one with the neutral pipe sprite, tinted by its slot. A lane draws no flange,
+     * The frame, then each lane: a painted one with the neutral pipe sprite, tinted by its option. A lane draws no flange,
      * so it takes only a line's primary paint.
      */
     private List<BakedQuad> bake(Look look) {
-        var out = new ArrayList<>(EquipmentShellModel.bake(RackGeometry.polygons(look.axis, List.of(), List.of()), sprites, false));
+        var out = new ArrayList<>(EquipmentShellModel.bake(RackGeometry.polygons(look.rack), sprites, false));
         for (int i = 0; i < look.lanes.size(); i++) {
             var lane = look.lanes.get(i);
-            var polygons = RackGeometry.lane(lane, look.facings.get(i));
-            int tint = lane.slot();
+            var polygons = RackGeometry.lane(look.rack, lane);
+            int tint = lane.option();
             out.addAll((look.painted >> i & 1) != 0 ? EquipmentShellModel.bake(polygons, paintedSprites, EquipmentShellModel.lineTints(1 << Paint.BODY, tint - Paint.BODY))
                     : EquipmentShellModel.bake(polygons, sprites, false));
         }

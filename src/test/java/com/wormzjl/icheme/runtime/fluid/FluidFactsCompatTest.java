@@ -1,6 +1,8 @@
 package com.wormzjl.icheme.runtime.fluid;
 
 import com.wormzjl.icheme.fluid.support.FluidTestSupport;
+import com.wormzjl.icheme.science.equipment.PipeSizes;
+import com.wormzjl.icheme.science.equipment.RackGeometry;
 import com.wormzjl.icheme.science.fluid.network.*;
 import com.wormzjl.icheme.science.fluid.thermo.FluidMaterialCatalog;
 import com.wormzjl.icheme.science.fluid.thermo.FluidThermodynamics;
@@ -39,8 +41,11 @@ class FluidFactsCompatTest {
         world.place(7,64,0,Kind.RESERVOIR,Direction.EAST);
         // Facts schema 2: a pipe laid beside the line with its joints along the line, so it does not join it.
         world.placeLaid(2,64,1,Direction.EAST,.05,1<<Direction.WEST.ordinal()|1<<Direction.EAST.ordinal());
-        // And a rack lane, slots 2 and 3 of the cell beside the second vessel's line: the lane field of a position.
-        world.placeLane(5,64,1,3,2,Direction.EAST,.1,1<<Direction.WEST.ordinal()|1<<Direction.EAST.ordinal());
+        // And a rack lane on positions 2 and 3 of a rack facing east beside the second vessel's line: the lane field of a
+        // position, the width and the points it meets its neighbours at.
+        int along=1<<Direction.WEST.ordinal()|1<<Direction.EAST.ordinal();
+        long points=RackGeometry.points(new RackGeometry.Rack(5,RackGeometry.STRAIGHT),new RackGeometry.Lane(2,2,along,along,PipeSizes.code(PipeSizes.outside(.1))));
+        world.placeLane(5,64,1,3,2,points,Direction.EAST,.1,along);
         world.runTo(20);assertTrue(world.registry.installPipeFilter(generator+2,Direction.EAST));world.runTo(400);
         world.registry.submit(List.of(new WorldTopologyLedger.Edit(generator,null)),world.ledger.nextIdentity(),null);world.runTo(600);
         world.assertKeptUp("the saved line");

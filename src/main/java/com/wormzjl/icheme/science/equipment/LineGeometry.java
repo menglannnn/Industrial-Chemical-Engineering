@@ -287,6 +287,8 @@ public final class LineGeometry {
             z = z1;
         }
         if (end.flange()) flange(m, f, end.outside(), z, sides, end.joined());
+        // A bare end meeting nothing (a rack lane's) is capped.
+        else if (!end.joined()) m.annulus(f, 0, r, z, sides, 1, Material.PIPE);
     }
 
     /**
@@ -421,10 +423,15 @@ public final class LineGeometry {
      * each corner's turn (a bend of radius R takes R tan from each leg beside it), its end fittings shortened to fit, and
      * the one bend radius all its corners take: 1.5 OD, less where the legs between corners are short.
      */
-    private record Fitted(List<double[]> points, double[][] dirs, double[] lengths, double[] tans, End ea, End eb, double bend) {
+    record Fitted(List<double[]> points, double[][] dirs, double[] lengths, double[] tans, End ea, End eb, double bend) {
     }
 
-    private static Fitted fitted(List<double[]> path, End ea, End eb, double od) {
+    static Fitted fitted(List<double[]> path, End ea, End eb, double od) {
+        return fitted(path, ea, eb, od, Double.MAX_VALUE);
+    }
+
+    /** As {@link #fitted(List, End, End, double)}, with bends of radius {@code most} at most. */
+    static Fitted fitted(List<double[]> path, End ea, End eb, double od, double most) {
         var points = new ArrayList<>(path);
         // A stop on a straight, or on the stop before it, is no corner.
         for (int k = points.size() - 2; k >= 1; k--) {
@@ -449,7 +456,7 @@ public final class LineGeometry {
         }
         ea = fit(ea, Math.max(0, lengths[0] - 1.05 * r * tans[1]));
         eb = fit(eb, Math.max(0, lengths[legs - 1] - 1.05 * r * tans[legs - 1]));
-        double bend = 1.5 * od;
+        double bend = Math.min(1.5 * od, most);
         for (int k = 0; k < legs; k++) {
             double need = tans[k] + tans[k + 1], room = lengths[k] - (k == 0 ? ea.tail() : 0) - (k == legs - 1 ? eb.tail() : 0);
             if (need > 0) bend = Math.min(bend, room / need);
@@ -463,7 +470,7 @@ public final class LineGeometry {
      * leave the facets at each face where a centred pipe or a lane has them. Where not even a bend of about one radius
      * fits, the corners are balls.
      */
-    private static void line(Mesh m, Fitted line, int a, int b, double od, int sides) {
+    static void line(Mesh m, Fitted line, int a, int b, double od, int sides) {
         var points = line.points();
         double[][] dirs = line.dirs();
         double[] lengths = line.lengths(), tans = line.tans();
