@@ -82,3 +82,6 @@ CLAUDE.md
 /examples/crude-assays/screen_estimation_methods.py
 /examples/crude-assays/source-quality.json
 /examples/crude-assays/test_quality.py
+
+# Local JDK installation
+/oracleJdk-25/
