@@ -85,27 +85,17 @@ public final class PipeRackBlock extends BaseEntityBlock {
         return defaultBlockState().setValue(FACING, facing).setValue(SHAPE, shape(context.getLevel(), context.getClickedPos(), facing));
     }
 
-    /**
-     * The shape a rack facing {@code facing} at {@code position} takes from its neighbours: a corner towards the first
-     * side (right, then left) where a rack runs across, from the end where its run continues (the back where neither or
-     * one only at the back does); straight where no rack runs across beside it, or where its run continues at both ends.
-     */
+    /** The shape a rack facing {@code facing} at {@code position} takes from its neighbours ({@link RackGeometry#corner}). */
     static Shape shape(BlockGetter level, BlockPos position, Direction facing) {
-        boolean front = inLine(level, position, facing, facing), back = inLine(level, position, facing.getOpposite(), facing);
-        if (front && back) return Shape.STRAIGHT;
-        for (var side : new Direction[]{facing.getClockWise(), facing.getCounterClockWise()}) {
-            var neighbour = level.getBlockState(position.relative(side));
-            if (!(neighbour.getBlock() instanceof PipeRackBlock) || neighbour.getValue(FACING).getAxis() != side.getAxis()) continue;
-            boolean right = side == facing.getClockWise();
-            return front && !back ? right ? Shape.FRONT_RIGHT : Shape.FRONT_LEFT : right ? Shape.BACK_RIGHT : Shape.BACK_LEFT;
-        }
-        return Shape.STRAIGHT;
+        return Shape.values()[RackGeometry.corner(neighbours(level, position), facing.ordinal())];
     }
 
-    /** Whether the rack at {@code position} facing {@code facing} has a rack in line beyond its face {@code towards}. */
-    private static boolean inLine(BlockGetter level, BlockPos position, Direction towards, Direction facing) {
-        var neighbour = level.getBlockState(position.relative(towards));
-        return neighbour.getBlock() instanceof PipeRackBlock && neighbour.getValue(FACING).getAxis() == facing.getAxis();
+    /** The racks next to {@code position}, as {@link RackGeometry} sees them. */
+    public static RackGeometry.Neighbours neighbours(BlockGetter level, BlockPos position) {
+        return face -> {
+            var neighbour = level.getBlockState(position.relative(Direction.values()[face]));
+            return neighbour.getBlock() instanceof PipeRackBlock ? rack(neighbour) : null;
+        };
     }
 
     @Override

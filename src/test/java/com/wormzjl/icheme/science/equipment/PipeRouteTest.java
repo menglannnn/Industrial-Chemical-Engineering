@@ -290,6 +290,21 @@ class PipeRouteTest {
     }
 
     @Test
+    void aLineRisesFromARackIntoTheRackStackedOnIt() {
+        // Racks facing east: x 0 to 5 on y 0, and stacked on them x 0 to 10 on y 1. Every other cell is blocked, so the
+        // line from the lower run's west end to past the upper run's east end climbs from one tier to the next.
+        var rooms = row(0, 5, 0);
+        for (int x = 0; x <= 10; x++) rooms.put(new Cell(x, 1, 0), rack(EAST, RackGeometry.STRAIGHT));
+        var start = new End(new Cell(-1, 0, 0), -1);
+        var end = new End(new Cell(11, 1, 0), -1);
+        var space = PipeRoute.Space.of(cell -> rooms.containsKey(cell) ? rooms.get(cell) : cell.equals(start.cell()) || cell.equals(end.cell()) ? Room.FREE : Room.BLOCKED, rooms.keySet());
+        var route = search(start, EAST, end, space);
+        assertTrue(route.found(), "the line climbs between the stacked tiers: " + route.refusal());
+        assertTrue(route.options().subList(1, route.options().size() - 1).stream().allMatch(option -> option >= 0), "a lane in every cell: " + route.options());
+        assertEquals(-1, PipeRoute.blocked(route.cells(), route.options(), start, EAST, end, SMALL, space));
+    }
+
+    @Test
     void anExtendedLaneKeepsItsPointAndAnEmptyRackTakesAnyFree() {
         var rooms = run(10, lane(1, 1, SMALL, 1 << WEST | 1 << EAST));
         var rackOf = new RackGeometry.Rack(EAST, RackGeometry.STRAIGHT);

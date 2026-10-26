@@ -103,8 +103,12 @@ public final class PipelineToolScreen extends AbstractContainerScreen<PipelineTo
     /** The channels' label keys under {@code gui.icheme.pipeline_tool.}, by {@link Paint#BODY} and {@link Paint#STRUCTURE}. */
     private static final String[] CHANNELS = {"paint.primary", "paint.secondary"};
 
-    /** Paints the edited channel {@code rgb}: its button names the colour, and the custom field shows it unless typed in. */
+    /**
+     * Paints the edited channel {@code rgb}: its button names the colour, and the custom field shows it unless typed in.
+     * As on the constructor's Paint page, an unchanged colour stops here: the field's responder hears its own setValue.
+     */
     private void paint(int rgb) {
+        if (paints[channel] == rgb) return;
         paints[channel] = rgb;
         if (channelButtons[channel] != null) channelButtons[channel].setMessage(colourName(rgb));
         if (custom != null && !custom.isFocused()) custom.setValue(rgb == Paint.BARE ? "" : Paint.hex(rgb));

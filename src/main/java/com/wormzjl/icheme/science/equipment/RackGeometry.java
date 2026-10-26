@@ -212,6 +212,73 @@ public final class RackGeometry {
         return cw(cw(cw(face)));
     }
 
+    // ---- groups ----------------------------------------------------------------------------------------------------
+
+    /** A rack cell's neighbours, as its shape and its drawn steel see them. */
+    public interface Neighbours {
+        /** The rack beyond face {@code face} (its facing and corner), or null where none stands. */
+        Rack rack(int face);
+
+        /** Whether what stands beyond {@code face} is known: false in an unloaded chunk, where the steel keeps what it drew. */
+        default boolean known(int face) {
+            return true;
+        }
+    }
+
+    /**
+     * The corner a rack facing {@code facing} takes from its neighbours: towards the first side (right, then left) where
+     * a rack runs across, from the end where its run continues (the back where neither or only the back does); straight
+     * where no rack runs across beside it, or where its run continues at both ends. A corner whose turn comes in through
+     * an end continues the run there, so a turn several racks wide nests: each run turns at its own corner, on the
+     * diagonal between the two runs, and the outer runs pass the inner corners straight.
+     */
+    public static int corner(Neighbours around, int facing) {
+        boolean front = inLine(around.rack(facing), facing, facing), back = inLine(around.rack(facing ^ 1), facing, facing ^ 1);
+        if (front && back) return STRAIGHT;
+        for (int side : new int[]{cw(facing), ccw(facing)}) {
+            var neighbour = around.rack(side);
+            if (neighbour == null || LineGeometry.axis(neighbour.facing) != LineGeometry.axis(side)) continue;
+            boolean right = side == cw(facing);
+            return front && !back ? right ? FRONT_RIGHT : FRONT_LEFT : right ? BACK_RIGHT : BACK_LEFT;
+        }
+        return STRAIGHT;
+    }
+
+    /** Whether the rack beyond {@code face} continues the run of a rack facing {@code facing}: it runs the same way, or it turns into this one. */
+    private static boolean inLine(Rack neighbour, int facing, int face) {
+        return neighbour != null && (LineGeometry.axis(neighbour.facing) == LineGeometry.axis(facing) || neighbour.cornered() && neighbour.side() == (face ^ 1));
+    }
+
+    /**
+     * The drawn steel of {@code rack} at {@code along} (its coordinate along its run), as {@link Rack}'s bents, stacked
+     * and sides packed (bents bits 0 and 1, stacked bit 2, sides bits 3 and 4); a bit whose neighbour is not known keeps
+     * its value in {@code previous}. A straight cell stands a bent in its low face's plane every third block along its
+     * run and in the plane of each end without a rack beyond; its posts run on up under a rack; a side with a straight
+     * rack of its run's axis beside it joins it.
+     */
+    public static int steel(Neighbours around, Rack rack, int along, int previous) {
+        int out = bit(around, 1, 4, previous, r -> r != null);
+        if (rack.cornered()) return out;
+        boolean up = rack.facing == 3 || rack.facing == 5;
+        if (Math.floorMod(along, 3) == 0) out |= up ? 1 : 2;
+        out |= bit(around, rack.back(), 1, previous, r -> r == null);
+        out |= bit(around, rack.front(), 2, previous, r -> r == null);
+        java.util.function.Predicate<Rack> beside = r -> r != null && !r.cornered() && LineGeometry.axis(r.facing) == LineGeometry.axis(rack.facing);
+        out |= bit(around, rack.left(), 8, previous, beside);
+        out |= bit(around, rack.right(), 16, previous, beside);
+        return out;
+    }
+
+    private static int bit(Neighbours around, int face, int mask, int previous, java.util.function.Predicate<Rack> test) {
+        if (!around.known(face)) return previous & mask;
+        return test.test(around.rack(face)) ? mask : 0;
+    }
+
+    /** A frame from its lane geometry and the packed steel of {@link #steel}, its beams at {@code beam}. */
+    public static Rack framed(Rack rack, int steel, int beam) {
+        return new Rack(rack.facing, rack.corner, steel & 3, (steel >> 2 & 1) != 0, steel >> 3 & 3, beam);
+    }
+
     // ---- lanes -----------------------------------------------------------------------------------------------------
 
     /**

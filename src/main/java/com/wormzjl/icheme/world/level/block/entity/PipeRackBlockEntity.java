@@ -133,8 +133,7 @@ public final class PipeRackBlockEntity extends BlockEntity {
 
     /** The cell's frame as drawn: its lane geometry, the steel its neighbours give it, and its beams beneath its lanes. */
     public RackGeometry.Rack frame() {
-        var rack = rack();
-        return new RackGeometry.Rack(rack.facing(), rack.corner(), frame & 3, (frame >> 2 & 1) != 0, frame >> 3 & 3, RackGeometry.beam(drawnLanes()));
+        return RackGeometry.framed(rack(), frame, RackGeometry.beam(drawnLanes()));
     }
 
     /** The faces the lanes have joints on, a bit per face. */
@@ -340,28 +339,22 @@ public final class PipeRackBlockEntity extends BlockEntity {
         return true;
     }
 
-    /** The drawn steel bits from the loaded neighbours ({@link #frame}); a neighbour in an unloaded chunk keeps its bit. */
+    /** The drawn steel bits from the loaded neighbours ({@link RackGeometry#steel}); a neighbour in an unloaded chunk keeps its bit. */
     private int steel() {
-        var facing = getBlockState().getValue(PipeRackBlock.FACING);
-        int out = bit(Direction.UP, 4, state -> state.getBlock() instanceof PipeRackBlock);
-        if (getBlockState().getValue(PipeRackBlock.SHAPE) != PipeRackBlock.Shape.STRAIGHT) return out;
-        int along = facing.getAxis().choose(worldPosition.getX(), worldPosition.getY(), worldPosition.getZ());
-        // The low face: the back where the facing points up the axis, the front where it points down.
-        if (Math.floorMod(along, 3) == 0) out |= facing.getAxisDirection() == Direction.AxisDirection.POSITIVE ? 1 : 2;
-        out |= bit(facing.getOpposite(), 1, state -> !(state.getBlock() instanceof PipeRackBlock));
-        out |= bit(facing, 2, state -> !(state.getBlock() instanceof PipeRackBlock));
-        java.util.function.Predicate<BlockState> beside = state -> state.getBlock() instanceof PipeRackBlock && state.getValue(PipeRackBlock.SHAPE) == PipeRackBlock.Shape.STRAIGHT
-                && state.getValue(PipeRackBlock.FACING).getAxis() == facing.getAxis();
-        out |= bit(facing.getCounterClockWise(), 8, beside);
-        out |= bit(facing.getClockWise(), 16, beside);
-        return out;
-    }
+        var loaded = PipeRackBlock.neighbours(level, worldPosition);
+        var around = new RackGeometry.Neighbours() {
+            @Override
+            public RackGeometry.Rack rack(int face) {
+                return loaded.rack(face);
+            }
 
-    /** {@code mask} where the neighbour beyond {@code direction} passes {@code test}; in an unloaded chunk, the bit as drawn before. */
-    private int bit(Direction direction, int mask, java.util.function.Predicate<BlockState> test) {
-        var at = worldPosition.relative(direction);
-        if (!level.isLoaded(at)) return frame & mask;
-        return test.test(level.getBlockState(at)) ? mask : 0;
+            @Override
+            public boolean known(int face) {
+                return level.isLoaded(worldPosition.relative(Direction.values()[face]));
+            }
+        };
+        var facing = getBlockState().getValue(PipeRackBlock.FACING);
+        return RackGeometry.steel(around, rack(), facing.getAxis().choose(worldPosition.getX(), worldPosition.getY(), worldPosition.getZ()), frame);
     }
 
     /**
