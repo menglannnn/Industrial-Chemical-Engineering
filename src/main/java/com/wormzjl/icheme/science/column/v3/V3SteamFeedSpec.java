@@ -29,7 +29,8 @@ public record V3SteamFeedSpec(int stageNumber, double molarFlowMolPerSecond, dou
         return profile;
     }
 
-    static boolean hasSumpFeed(V3ColumnInput input) {
+    /** Whether steam enters the sump (stage {@code stageCount + 1}): a column without reboiler duty needs it. */
+    public static boolean hasSumpFeed(V3ColumnInput input) {
         return input.steamFeeds().stream().anyMatch(feed -> feed.stageNumber() == input.stageCount() + 1);
     }
 }

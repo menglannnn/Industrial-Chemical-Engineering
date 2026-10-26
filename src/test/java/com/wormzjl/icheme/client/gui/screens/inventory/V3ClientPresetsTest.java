@@ -19,7 +19,7 @@ class V3ClientPresetsTest {
     @Test void bundledLibrariesAreIndependentAndPreserveAuthoredOperatingData(){
         var l=library();var columns=l.refresh(V3ClientPresets.Kind.COLUMN);var mixtures=l.refresh(V3ClientPresets.Kind.MIXTURE);
         assertTrue(columns.problems().isEmpty(),()->columns.problems().toString());assertTrue(mixtures.problems().isEmpty());
-        assertEquals(8,columns.entries().size());assertEquals(8,mixtures.entries().size());
+        assertEquals(8,columns.entries().size());assertEquals(9,mixtures.entries().size());
         for(var entry:columns.entries()){
             if(entry.file().equals("holland_3_2.json")||entry.file().equals("pot.json"))continue;
             var d=draft();var column=(V3ClientPresets.Column)entry.preset();d.loadColumn(column.fields());
@@ -30,13 +30,29 @@ class V3ClientPresetsTest {
             assertEquals(source.steamFeeds(),changed.steamFeeds());
         }
     }
+    /** The VDU feed template (batch 2026-10-26-multi-machine-framework, plan 4.4): the crude from 378 C up in its own proportions, and a 5 % gas oil tail. */
+    @Test void theVduFeedTemplateIsTheCrudesResidueWithAGasOilTail(){
+        var mixtures=library().refresh(V3ClientPresets.Kind.MIXTURE).entries();
+        var residue=(V3ClientPresets.Mixture)mixtures.stream().filter(e->e.file().equals("tia_juana_residue.json")).findFirst().orElseThrow().preset();
+        var crude=(V3ClientPresets.Mixture)mixtures.stream().filter(e->e.file().equals("tia_juana.json")).findFirst().orElseThrow().preset();
+        assertEquals(reference().packageId(),residue.packageId());assertFalse(residue.mass());
+        var d=draft();d.composition().load(residue.amounts(),residue.mass());
+        var ids=List.copyOf(reference().componentBasis().componentIds());var x=d.composition().moleFractions();
+        assertEquals(.05,x[ids.indexOf("crude_pc07")],1e-12);
+        double heavy=0,crudeHeavy=0;
+        for(int k=8;k<=12;k++){heavy+=x[ids.indexOf("crude_pc"+k(k))];crudeHeavy+=crude.amounts().get("crude_pc"+k(k));}
+        assertEquals(.95,heavy,1e-12);
+        for(int k=8;k<=12;k++)assertEquals(crude.amounts().get("crude_pc"+k(k))/crudeHeavy,x[ids.indexOf("crude_pc"+k(k))]/heavy,1e-5,"pc"+k(k));
+        for(int i=0;i<ids.size();i++)if(!ids.get(i).matches("crude_pc(0[7-9]|1[0-2])"))assertEquals(0,x[i],ids.get(i));
+    }
+    private static String k(int k){return String.format(Locale.ROOT,"%02d",k);}
     @Test void customFilesRefreshOnlyOnRequestAndNeverOverwriteAnExistingFile()throws Exception{
         var l=library();var first=l.refresh(V3ClientPresets.Kind.MIXTURE);var d=draft();
         d.composition().clear();d.composition().add(0);d.composition().set(0,"27");
         String json=V3ClientPresets.mixtureJson("custom",d.composition());
         Path file=l.save(V3ClientPresets.Kind.MIXTURE,"custom",json);
         assertEquals(game.resolve("IChemE/mixturepreset/custom.json"),file);
-        assertEquals(8,first.entries().size());assertEquals(9,l.refresh(V3ClientPresets.Kind.MIXTURE).entries().size());
+        assertEquals(9,first.entries().size());assertEquals(10,l.refresh(V3ClientPresets.Kind.MIXTURE).entries().size());
         assertNotEquals(file,l.save(V3ClientPresets.Kind.MIXTURE,"custom",json));assertEquals(json,Files.readString(file));
         assertThrows(IllegalArgumentException.class,()->l.save(V3ClientPresets.Kind.MIXTURE,"../escape",json));
     }

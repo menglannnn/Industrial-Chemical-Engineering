@@ -16,7 +16,7 @@ class MaterialNamesCodecTest {
     @Test void serverNamingDescriptorsRoundTripWithoutClientCatalogLookup() throws Exception {
         var input=V3TestInputs.methaneCduInput();
         var descriptor=new MaterialName("custom_cut","custom.translation","Crude oil","petroleum_fraction",600.,650.,true);
-        var state=new V3State(1,2,0,1,-1,V3Status.DIRTY,input,Optional.empty(),List.of(),Map.of("custom_cut",descriptor),V3EditorCatalog.EMPTY);
+        var state=new V3State(1,2,0,1,-1,V3Status.DIRTY,input,Optional.empty(),List.of(),Map.of("custom_cut",descriptor),V3EditorCatalog.EMPTY,Optional.empty());
         assertEquals(state,ColumnCodecs.wireRoundTrip(state));
     }
     @Test void retiredAxesAreRejectedByTheActualNbtReader() throws Exception {

@@ -24,7 +24,7 @@ class V3EditorCatalogCodecTest {
     }
     @Test void realStatePacketCarriesTemplatesAndPreciseMolecularWeights() throws Exception {
         var c=catalog();var input=c.templates().values().iterator().next();
-        var state=new V3State(1,2,0,3,-1,V3Status.DIRTY,input,Optional.empty(),List.of("Ready"),Map.of(),c);
+        var state=new V3State(1,2,0,3,-1,V3Status.DIRTY,input,Optional.empty(),List.of("Ready"),Map.of(),c,Optional.empty());
         assertEquals(state,ColumnCodecs.wireRoundTrip(state));
     }
     @Test void rejectsTruncatedTrailingOversizedAndNonphysicalData(){

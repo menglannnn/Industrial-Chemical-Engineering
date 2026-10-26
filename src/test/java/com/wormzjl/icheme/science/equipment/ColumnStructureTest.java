@@ -180,6 +180,26 @@ class ColumnStructureTest {
         }
     }
 
+    /**
+     * Finding F1 (batch 2026-10-26-multi-machine-framework): a short column with four draws and two steam feeds has no row
+     * for every nozzle on its left side (the reboiler's vapour return, the draws, the steam); the ones left out are listed,
+     * not dropped in silence. The other designs place all.
+     */
+    @Test
+    void aNozzleWithoutAFreeRowIsListedAsUnplaced() {
+        var crowded = EquipmentShape.column(2, new ColumnTrays(4, 2, List.of(1, 2, 3, 4), List.of(4, 5), List.of()), Heading.NORTH, 3);
+        var unplaced = ColumnStructure.unplaced(crowded);
+        assertFalse(unplaced.isEmpty(), "seven nozzles on the left of a 5 m shell");
+        for (var u : unplaced) {
+            assertTrue(u.role() == Role.VAPOUR_RETURN || u.role() == Role.DRAW || u.role() == Role.STEAM, u.toString());
+            assertEquals(0, u.axis());
+            assertEquals(1, u.sign(), "the left side");
+        }
+        // Vapour outlet, reflux, feed, vapour return, four draws, two steam and the bottoms through the skirt, less those left out.
+        assertEquals(11 - unplaced.size(), crowded.nozzles().size());
+        for (var shape : COLUMNS) assertEquals(List.of(), ColumnStructure.unplaced(shape), shape.toString());
+    }
+
     /** A design imported from a column calculator keeps its numbers; cutting trays drops what no longer fits; the layout round-trips. */
     @Test
     void traysComeFromACalculatorAndRefitWhenCut() {

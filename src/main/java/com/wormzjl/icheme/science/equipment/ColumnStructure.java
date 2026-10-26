@@ -60,9 +60,17 @@ final class ColumnStructure {
         }
     }
 
+    /** A side nozzle the shell has no row for: its role, which one of its role it is (from 1, in the trays' order) and its side. */
+    record Unplaced(EquipmentShape.Role role, int index, int axis, int sign) {
+    }
+
+    /** The placed nozzles of a shape and those its shell has no row for (finding F1, batch 2026-10-26-multi-machine-framework). */
+    private record Layout(List<EquipmentShape.Nozzle> nozzles, List<Unplaced> unplaced) {
+    }
+
     private static final int CACHE = 64;
-    /** The nozzles of each shape: every box and transform reads them, and placing them tests the structure row by row. */
-    private static final Map<EquipmentShape, List<EquipmentShape.Nozzle>> NOZZLES = new ConcurrentHashMap<>();
+    /** The nozzle layout of each shape: every box and transform reads it, and placing the nozzles tests the structure row by row. */
+    private static final Map<EquipmentShape, Layout> LAYOUTS = new ConcurrentHashMap<>();
 
     private final EquipmentShape shape;
     private final Plan plan;
@@ -170,18 +178,28 @@ final class ColumnStructure {
      * between the sump's level and the bottom tray, the side draws under their trays and the stripping steam under its
      * stage. Sizes follow the column diameter; each takes any pipe. A nozzle moves to the nearest row where it meets no
      * other nozzle on its side and leaves its neck and the block beyond its flange clear of the access structure
-     * ({@link Clearance}), so a pipe can always meet it. Cached per shape.
+     * ({@link Clearance}), so a pipe can always meet it; a nozzle with no such row is left out and listed by
+     * {@link #unplaced}. Cached per shape.
      */
     static void nozzles(EquipmentShape s, List<EquipmentShape.Nozzle> out) {
-        var cached = NOZZLES.get(s);
-        if (cached == null) {
-            if (NOZZLES.size() >= CACHE) NOZZLES.clear();
-            cached = NOZZLES.computeIfAbsent(s, ColumnStructure::place);
-        }
-        out.addAll(cached);
+        out.addAll(layout(s).nozzles());
     }
 
-    private static List<EquipmentShape.Nozzle> place(EquipmentShape s) {
+    /** The side nozzles the shell of {@code s} has no row for, in placing order: a column calculator refuses to save such a design. */
+    static List<Unplaced> unplaced(EquipmentShape s) {
+        return layout(s).unplaced();
+    }
+
+    private static Layout layout(EquipmentShape s) {
+        var cached = LAYOUTS.get(s);
+        if (cached == null) {
+            if (LAYOUTS.size() >= CACHE) LAYOUTS.clear();
+            cached = LAYOUTS.computeIfAbsent(s, ColumnStructure::place);
+        }
+        return cached;
+    }
+
+    private static Layout place(EquipmentShape s) {
         var t = s.trays();
         double d = s.diameter(), a = s.axis(), yB = s.bottomTangent();
         // The top neck rooted under the head where a pipe's largest neck's edge meets it (owner decision 2026-10-21: a 1 m
@@ -190,23 +208,25 @@ final class ColumnStructure {
         var out = new ArrayList<EquipmentShape.Nozzle>();
         out.add(new EquipmentShape.Nozzle(EquipmentShape.Role.VAPOUR_OUTLET, new double[]{a, start, a}, 1, 1, Math.ceil(s.top() + EquipmentShape.STAND_OUT) - start, topOd, 0));
         double sump = ColumnTrays.bottomSpace(d);
-        var clearance = new Clearance(s);
-        var placed = new ArrayList<EquipmentShape.Nozzle>();
-        side(s, clearance, placed, EquipmentShape.Role.REFLUX, yB + t.trayHeight(d, 1) + .45, 0, -1, size(d / 8, .5));
-        side(s, clearance, placed, EquipmentShape.Role.FEED, yB + (t.feed() > t.trays() ? sump - .3 : t.trayHeight(d, t.feed()) + .3), 2, -1, size(d / 5, .8));
-        for (var p : t.pumparounds()) {
-            side(s, clearance, placed, EquipmentShape.Role.PUMPAROUND_DRAW, yB + t.trayHeight(d, p.draw()) - .2, 0, -1, size(d / 6, .6));
-            side(s, clearance, placed, EquipmentShape.Role.RETURN, yB + t.trayHeight(d, p.ret()) + .3, 0, -1, size(d / 6, .6));
+        var rows = new Rows(s);
+        rows.side(EquipmentShape.Role.REFLUX, 1, yB + t.trayHeight(d, 1) + .45, 0, -1, size(d / 8, .5));
+        rows.side(EquipmentShape.Role.FEED, 1, yB + (t.feed() > t.trays() ? sump - .3 : t.trayHeight(d, t.feed()) + .3), 2, -1, size(d / 5, .8));
+        for (int i = 0; i < t.pumparounds().size(); i++) {
+            var p = t.pumparounds().get(i);
+            rows.side(EquipmentShape.Role.PUMPAROUND_DRAW, i + 1, yB + t.trayHeight(d, p.draw()) - .2, 0, -1, size(d / 6, .6));
+            rows.side(EquipmentShape.Role.RETURN, i + 1, yB + t.trayHeight(d, p.ret()) + .3, 0, -1, size(d / 6, .6));
         }
-        side(s, clearance, placed, EquipmentShape.Role.VAPOUR_RETURN, yB + .75 * sump, 0, 1, size(.27 * d, PipeSizes.MAX_OUTSIDE));
-        for (int draw : t.draws()) side(s, clearance, placed, EquipmentShape.Role.DRAW, yB + t.trayHeight(d, draw) - .2, 0, 1, size(d / 8, .5));
-        for (int stage : t.steam())
-            side(s, clearance, placed, EquipmentShape.Role.STEAM, yB + (stage > t.trays() ? sump : t.trayHeight(d, stage)) - .3, 0, 1, size(d / 8, .5));
+        rows.side(EquipmentShape.Role.VAPOUR_RETURN, 1, yB + .75 * sump, 0, 1, size(.27 * d, PipeSizes.MAX_OUTSIDE));
+        for (int i = 0; i < t.draws().size(); i++) rows.side(EquipmentShape.Role.DRAW, i + 1, yB + t.trayHeight(d, t.draws().get(i)) - .2, 0, 1, size(d / 8, .5));
+        for (int i = 0; i < t.steam().size(); i++) {
+            int stage = t.steam().get(i);
+            rows.side(EquipmentShape.Role.STEAM, i + 1, yB + (stage > t.trays() ? sump : t.trayHeight(d, stage)) - .3, 0, 1, size(d / 8, .5));
+        }
         var bottoms = s.skirtOutlet(EquipmentShape.Role.BOTTOMS, size(d / 6, .6));
-        if (bottoms == null) side(s, clearance, placed, EquipmentShape.Role.BOTTOMS, yB + .3, 2, -1, size(d / 6, .6));
-        out.addAll(placed);
+        if (bottoms == null) rows.side(EquipmentShape.Role.BOTTOMS, 1, yB + .3, 2, -1, size(d / 6, .6));
+        out.addAll(rows.placed);
         if (bottoms != null) out.add(bottoms);
-        return List.copyOf(out);
+        return new Layout(List.copyOf(out), List.copyOf(rows.unplaced));
     }
 
     /**
@@ -217,27 +237,40 @@ final class ColumnStructure {
         return Math.min(max, Math.max(.1, Math.round(od * 20) / 20.0));
     }
 
-    /**
-     * Adds a radial nozzle at the cell row nearest {@code y} on its side where it meets no other nozzle there, its pipe
-     * block keeps one free block from every other ({@link EquipmentShape.Nozzle#crowds}), and the structure leaves its
-     * neck and pipe block clear; nothing when the shell has no such row.
-     */
-    private static void side(EquipmentShape s, Clearance clearance, List<EquipmentShape.Nozzle> placed, EquipmentShape.Role role, double y, int axis, int sign,
-                             double od) {
-        double half = PipeSizes.flange(od) / 2, yB = s.bottomTangent(), yT = s.topTangent(), heading = heading(axis, sign);
-        double wanted = Math.floor(y) + .5;
-        int rows = (int) Math.ceil(yT - yB) + 2;
-        for (int step = 0; step <= 2 * rows; step++) {
-            double at = wanted + (step % 2 == 0 ? step / 2 : -(step + 1) / 2);
-            if (at - half < yB + .05 || at + half > yT - .05) continue;
-            var nozzle = s.side(role, s.axis(), at, axis, sign, s.outerRadius() * DeterministicMath.cos(Math.PI / s.facets()), od);
-            boolean free = true;
-            // Flanges on one side never overlap, and no two pipes stand in touching blocks (one free block between).
-            for (var other : placed)
-                if (other.axis() == axis && other.sign() == sign && Math.abs(other.base()[1] - at) < half + PipeSizes.flange(other.defaultOd()) / 2 + .05 || nozzle.crowds(other)) free = false;
-            if (!free || clearance.blocked(Math.floor(at), heading)) continue;
-            placed.add(nozzle);
-            return;
+    /** The side nozzles placed so far on a shape, and those its shell had no row for. */
+    private static final class Rows {
+        private final EquipmentShape s;
+        private final Clearance clearance;
+        final List<EquipmentShape.Nozzle> placed = new ArrayList<>();
+        final List<Unplaced> unplaced = new ArrayList<>();
+
+        Rows(EquipmentShape s) {
+            this.s = s;
+            clearance = new Clearance(s);
+        }
+
+        /**
+         * Adds a radial nozzle at the cell row nearest {@code y} on its side where it meets no other nozzle there, its pipe
+         * block keeps one free block from every other ({@link EquipmentShape.Nozzle#crowds}), and the structure leaves its
+         * neck and pipe block clear; lists it as unplaced when the shell has no such row.
+         */
+        void side(EquipmentShape.Role role, int index, double y, int axis, int sign, double od) {
+            double half = PipeSizes.flange(od) / 2, yB = s.bottomTangent(), yT = s.topTangent(), heading = heading(axis, sign);
+            double wanted = Math.floor(y) + .5;
+            int rows = (int) Math.ceil(yT - yB) + 2;
+            for (int step = 0; step <= 2 * rows; step++) {
+                double at = wanted + (step % 2 == 0 ? step / 2 : -(step + 1) / 2);
+                if (at - half < yB + .05 || at + half > yT - .05) continue;
+                var nozzle = s.side(role, s.axis(), at, axis, sign, s.outerRadius() * DeterministicMath.cos(Math.PI / s.facets()), od);
+                boolean free = true;
+                // Flanges on one side never overlap, and no two pipes stand in touching blocks (one free block between).
+                for (var other : placed)
+                    if (other.axis() == axis && other.sign() == sign && Math.abs(other.base()[1] - at) < half + PipeSizes.flange(other.defaultOd()) / 2 + .05 || nozzle.crowds(other)) free = false;
+                if (!free || clearance.blocked(Math.floor(at), heading)) continue;
+                placed.add(nozzle);
+                return;
+            }
+            unplaced.add(new Unplaced(role, index, axis, sign));
         }
     }
 
