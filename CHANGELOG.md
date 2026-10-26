@@ -15,6 +15,12 @@ All notable changes to Industrial Chemical Engineering (IChemE, formerly CreateC
 
 ## [Unreleased]
 
+## [0.13.2] - 2026-10-26
+
+### Fixed
+
+- Chunk loading of the fluid network and equipment (batch folder: `2026-10-26-chunk-loading-review`, review `CHUNK_LOADING_REVIEW.md`, commit `7147d431`): a loading pipe keeps its saved joint towards a neighbour in a chunk that is not loaded instead of reading it, which loaded that chunk on the main thread and chained along pipe runs (`FluidDeviceBlock.connectedState`); a floating roof reloaded after its tank ran on glides from the level its node cell saved instead of jumping (`TankDisplay.Glide.next`, `FloatingRoofs.standing`); a column calculator that unloads or breaks while it calculates cancels its solve; an unloaded tank's watches end. Gates: `FloatingRoofsTest`, `ChunkLoadGameTests` (2 fluid GameTests). `EquipmentCompatGameTests.aBlockedRefreshTriesAgainAtTheNextLoad` now removes its drum: GameTest areas are not cleared between batches, so its registration could outlive it and fail `FluidHarnessGameTests`' cleanup check, depending on its grid slot.
+
 ## [0.13.1] - 2026-10-26
 
 ### Fixed
