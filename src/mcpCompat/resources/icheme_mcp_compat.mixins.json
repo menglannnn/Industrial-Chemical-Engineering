@@ -3,6 +3,6 @@
   "minVersion": "0.8",
   "package": "com.wormzjl.icheme.mcpcompat.mixin",
   "compatibilityLevel": "JAVA_21",
-  "client": ["ScreenInputMixin", "HotkeyMixin", "UseItemMixin", "WindowHandleMixin", "MinecraftInputInvoker"],
+  "client": ["ScreenInputMixin", "HotkeyMixin", "UseItemMixin", "WindowHandleMixin", "MinecraftInputInvoker", "BackgroundCursorMixin"],
   "injectors": {"defaultRequire": 1}
 }
