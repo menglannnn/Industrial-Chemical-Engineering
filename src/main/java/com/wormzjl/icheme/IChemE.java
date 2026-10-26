@@ -204,6 +204,7 @@ public final class IChemE {
         modEventBus.addListener(ColumnV3Network::register);
         modEventBus.addListener(com.wormzjl.icheme.network.FluidNetwork::register);
         modEventBus.addListener(com.wormzjl.icheme.network.EquipmentNetwork::register);
+        modEventBus.addListener(com.wormzjl.icheme.network.AssemblyNetwork::register);
         modEventBus.addListener(IChemE::addCreativeTabItem);
         modContainer.registerConfig(ModConfig.Type.COMMON, CONFIG_SPEC, "icheme-common.toml");
         // A dedicated server never draws equipment: its geometries keep no facets once laid out.

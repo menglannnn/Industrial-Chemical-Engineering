@@ -1,7 +1,7 @@
 package com.wormzjl.icheme.world.level.block;
 
 import com.mojang.serialization.MapCodec;
-import com.wormzjl.icheme.client.EquipmentClient;
+import com.wormzjl.icheme.network.AssemblyNetwork;
 import com.wormzjl.icheme.registry.ModItems;
 import com.wormzjl.icheme.science.equipment.EquipmentShape;
 import com.wormzjl.icheme.science.equipment.ShapeRasterizer;
@@ -128,21 +128,32 @@ public final class EquipmentShellBlock extends BaseEntityBlock {
     }
 
     /**
-     * Using any cell of a vessel, shell or interior: a reservoir (a drum, a floating-roof tank, a sphere) opens its tank screen, as a one-block tank's does, with its
-     * datasheet on a tab (owner request 2026-10-16); a mover opens its operating controls with the same datasheet tab.
-     * Other columns and units open only their datasheet. Both sides decide alike from the synced shape.
+     * Using any cell of a vessel, shell or interior; the server decides what opens (batch 2026-10-26-multi-machine-framework,
+     * plan section 10): a column opens its assembly GUI; a unit that a column's report holds opens that column's GUI with
+     * the unit selected; any other structure opens its own screen ({@link #openOwn}). The fluid debugger opens a fluid
+     * device's own screen with diagnostics.
      */
     static InteractionResult use(Level level, BlockPos position, Player player, boolean debug) {
         var vessel = EquipmentStructure.find(level, position);
         if (vessel == null) return InteractionResult.PASS;
-        if (!vessel.shape().fluidDevice()) {
-            if (level.isClientSide()) EquipmentClient.openVessel(position);
-        } else if (player instanceof ServerPlayer server) {
-            var cell = ShapeRasterizer.fluidCell(vessel.shape());
-            var node = vessel.origin().offset(cell.x(), cell.y(), cell.z());
-            if (level.isLoaded(node) && level.getBlockEntity(node) instanceof EquipmentShellBlockEntity entity) entity.open(server, debug);
-        }
+        if (player instanceof ServerPlayer server && (debug || !AssemblyNetwork.open(server, vessel, position))) openOwn(server, vessel, position, debug);
         return InteractionResult.sidedSuccess(level.isClientSide());
+    }
+
+    /**
+     * A structure's own screen: a reservoir (a drum, a floating-roof tank, a sphere) opens its tank screen, as a one-block
+     * tank's does, with its datasheet on a tab (owner request 2026-10-16); a mover opens its operating controls with the
+     * same datasheet tab; other columns and units open only their datasheet.
+     */
+    public static void openOwn(ServerPlayer player, EquipmentStructure.Vessel vessel, BlockPos cell, boolean debug) {
+        if (!vessel.shape().fluidDevice()) {
+            AssemblyNetwork.datasheet(player, cell);
+            return;
+        }
+        var level = player.serverLevel();
+        var fluid = ShapeRasterizer.fluidCell(vessel.shape());
+        var node = vessel.origin().offset(fluid.x(), fluid.y(), fluid.z());
+        if (level.isLoaded(node) && level.getBlockEntity(node) instanceof EquipmentShellBlockEntity entity) entity.open(player, debug);
     }
 
     /** A pipe placed, removed or changed in front of a nozzle: the vessel redraws its nozzles at the pipe's size. */

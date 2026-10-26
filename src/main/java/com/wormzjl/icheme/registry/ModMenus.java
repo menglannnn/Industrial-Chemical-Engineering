@@ -23,6 +23,7 @@ public final class ModMenus {
             );
 
     public static final DeferredHolder<MenuType<?>, MenuType<com.wormzjl.icheme.world.inventory.GaugeMenu>> GAUGE = MENU_TYPES.register("gauge", () -> IMenuTypeExtension.create(com.wormzjl.icheme.world.inventory.GaugeMenu::new));
+    public static final DeferredHolder<MenuType<?>, MenuType<com.wormzjl.icheme.world.inventory.AssemblyMenu>> ASSEMBLY = MENU_TYPES.register("assembly", () -> IMenuTypeExtension.create(com.wormzjl.icheme.world.inventory.AssemblyMenu::new));
 
     private ModMenus() {
     }

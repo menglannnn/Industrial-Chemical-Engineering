@@ -144,7 +144,7 @@ public final class FluidWorldAuthority implements AutoCloseable {
         data.setDirty();
     }
     public static void stop(MinecraftServer server){find(server).ifPresent(FluidWorldAuthority::close);}
-    public static void forget(MinecraftServer server){EARLY_CHUNKS.remove(server);com.wormzjl.icheme.network.ColumnV3Network.forgetPresentation(server);var world=SERVERS.remove(server);if(world!=null)world.close();}
+    public static void forget(MinecraftServer server){EARLY_CHUNKS.remove(server);com.wormzjl.icheme.network.ColumnV3Network.forgetPresentation(server);com.wormzjl.icheme.network.AssemblyNetwork.forget(server);var world=SERVERS.remove(server);if(world!=null)world.close();}
     private void owned(){if(!server.isSameThread())throw new IllegalStateException("Fluid authority requires the logical server thread");}
     /** Every island of this world solves on a model built from the same captured options, so the
      * configured trace cutoff is one value for every worker and every retained solver: a retained
@@ -315,6 +315,7 @@ public final class FluidWorldAuthority implements AutoCloseable {
         instruments.tick(topology.onlineTick());
         presentation.tick(topology.onlineTick());
         com.wormzjl.icheme.network.ColumnV3Network.presentationTick(server, topology.onlineTick());
+        com.wormzjl.icheme.network.AssemblyNetwork.presentationTick(server, topology.onlineTick());
         data.setDirty();
     }
     /** Attempted when a recovery is queued and on its retry deadline, never polled; delivery stays exactly-once. */

@@ -6,6 +6,7 @@ import com.wormzjl.icheme.runtime.assembly.AssemblyStore.Status;
 import com.wormzjl.icheme.runtime.fluid.FluidWorldAuthority;
 import com.wormzjl.icheme.runtime.fluid.PhysicalFluidTopology;
 import com.wormzjl.icheme.science.assembly.AssemblyMatcher;
+import com.wormzjl.icheme.science.assembly.AssemblyView;
 import com.wormzjl.icheme.science.assembly.ColumnBlueprint;
 import com.wormzjl.icheme.science.equipment.EquipmentShape;
 import com.wormzjl.icheme.science.equipment.ShapeRasterizer;
@@ -73,6 +74,49 @@ public final class AssemblyService {
     /** The entry of the column at {@code origin}, or null. */
     public static @Nullable Entry entry(ServerLevel level, BlockPos origin) {
         return AssemblyStore.of(level).entry(origin.asLong());
+    }
+
+    /**
+     * What the GUI of the column holding {@code cell} shows: a read of its stored entry, which walks nothing. Null when no
+     * column stands there.
+     */
+    public static @Nullable AssemblyView view(ServerLevel level, BlockPos cell) {
+        var vessel = EquipmentStructure.find(level, cell);
+        if (vessel == null || vessel.shape().kind() != EquipmentShape.Kind.COLUMN) return null;
+        if (!designed(vessel.shape())) return AssemblyView.NO_DESIGN;
+        var entry = entry(level, vessel.origin());
+        if (entry == null) return AssemblyView.NOT_VALIDATED;
+        var status = switch (entry.status()) {
+            case NOT_VALIDATED -> AssemblyView.Status.NOT_VALIDATED;
+            case CHECKED -> AssemblyView.Status.CHECKED;
+            case COMPLETE -> AssemblyView.Status.COMPLETE;
+        };
+        return new AssemblyView(status, entry.report(), entry.changedAt());
+    }
+
+    /** The column whose report holds the unit at {@code origin}, or null: a click on that unit opens the column's GUI. */
+    public static @Nullable Long holder(ServerLevel level, BlockPos origin) {
+        var store = AssemblyStore.of(level);
+        long o = origin.asLong();
+        // The least, should two reports hold it.
+        return store.mastersAt(o).stream().filter(m -> m != o && store.entry(m) != null && store.entry(m).holds(o)).min(Long::compare).orElse(null);
+    }
+
+    /**
+     * A loaded shell cell of the unit at {@code origin} that {@code master}'s report reached: one of its coded nozzles
+     * (a unit's origin can be an air cell). Null when the report reached none.
+     */
+    public static @Nullable BlockPos cellOf(ServerLevel level, long master, long origin) {
+        var entry = AssemblyStore.of(level).entry(master);
+        if (entry == null) return null;
+        for (var coded : entry.codes().entrySet()) {
+            if (coded.getValue() >= 0) continue;
+            var at = BlockPos.of(coded.getKey());
+            if (!level.isLoaded(at)) continue;
+            var vessel = EquipmentStructure.find(level, at);
+            if (vessel != null && vessel.origin().asLong() == origin) return at;
+        }
+        return null;
     }
 
     /** Queues a validation of the structure holding {@code cell}. */
@@ -208,7 +252,7 @@ public final class AssemblyService {
     private static void revert(ServerLevel level, AssemblyStore store, long master, BlockPos at, String why) {
         var status = status(store, master);
         if (status == null || status == Status.NOT_VALIDATED) return;
-        store.revert(master);
+        store.revert(master, at.asLong());
         IChemE.LOGGER.info("assembly status=REVERTED master={} was={} at={} reason={}", BlockPos.of(master).toShortString(), status, at.toShortString(), why);
     }
 

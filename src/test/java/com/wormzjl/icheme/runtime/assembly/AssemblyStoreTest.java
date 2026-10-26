@@ -61,10 +61,11 @@ class AssemblyStoreTest {
         var store = new AssemblyStore();
         store.put(COLUMN, Entry.of(report(State.WRONG_KIND), Map.of(PIPE, 7)));
         assertEquals(Status.CHECKED, store.entry(COLUMN).status());
-        store.revert(COLUMN);
-        assertEquals(Entry.NOT_VALIDATED, store.entry(COLUMN));
+        store.revert(COLUMN, PIPE);
+        assertEquals(Entry.reverted(PIPE), store.entry(COLUMN));
         assertEquals(Set.of(), store.mastersAt(PIPE));
         assertEquals(Set.of(), store.mastersInChunk(ChunkPos.asLong(15 >> 4, 10 >> 4)));
+        assertEquals(PIPE, roundTrip(store).entry(COLUMN).changedAt(), "where the structure changed is kept");
         store.forget(COLUMN);
         assertNull(store.entry(COLUMN));
         assertTrue(roundTrip(store).entries().isEmpty());
@@ -97,7 +98,8 @@ class AssemblyStoreTest {
 
     @Test
     void aReportGoesWithACheckedStatusOnly() {
-        assertThrows(IllegalArgumentException.class, () -> new Entry(Status.CHECKED, null, Map.of()));
-        assertThrows(IllegalArgumentException.class, () -> new Entry(Status.NOT_VALIDATED, report(State.OK), Map.of()));
+        assertThrows(IllegalArgumentException.class, () -> new Entry(Status.CHECKED, null, Map.of(), AssemblyReport.NONE));
+        assertThrows(IllegalArgumentException.class, () -> new Entry(Status.NOT_VALIDATED, report(State.OK), Map.of(), AssemblyReport.NONE));
+        assertThrows(IllegalArgumentException.class, () -> new Entry(Status.CHECKED, report(State.WRONG_KIND), Map.of(), PIPE));
     }
 }

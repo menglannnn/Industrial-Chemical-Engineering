@@ -22,8 +22,8 @@ import net.neoforged.neoforge.client.event.RenderHighlightEvent;
 
 /**
  * Client side of parametric vessels: the shell model loader, the tint of painted parts, one outline for the whole vessel
- * instead of per-cell boxes (its silhouette as seen from the camera), and the screens the blocks open (blocks call
- * {@link #openConstructor} and {@link #openVessel} on the client only).
+ * instead of per-cell boxes (its silhouette as seen from the camera), and the screens the blocks open (the constructor
+ * block calls {@link #openConstructor} on the client; the server sends {@link #openVessel} for a structure's datasheet).
  */
 @EventBusSubscriber(modid = IChemE.MOD_ID, value = Dist.CLIENT)
 public final class EquipmentClient {
@@ -53,7 +53,7 @@ public final class EquipmentClient {
             mc.setScreen(new EquipmentConstructorScreen(position, constructor.facing(), constructor.design()));
     }
 
-    /** Called by shell and interior cells on the client only: open the screen of the vessel the cell belongs to. */
+    /** The server asked for the datasheet of the structure {@code position} belongs to (the assembly network's routing). */
     public static void openVessel(BlockPos position) {
         var mc = Minecraft.getInstance();
         var vessel = mc.level == null ? null : EquipmentStructure.find(mc.level, position);

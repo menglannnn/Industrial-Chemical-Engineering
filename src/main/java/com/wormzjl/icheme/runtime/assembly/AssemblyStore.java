@@ -38,21 +38,28 @@ public final class AssemblyStore extends SavedData {
     }
 
     /**
-     * A master's entry: its status, its last report (none while not validated), and the structural code of each block and
-     * nozzle the report relied on, by packed position.
+     * A master's entry: its status, its last report (none while not validated), the structural code of each block and
+     * nozzle the report relied on, by packed position, and where the change that reverted a report happened
+     * ({@link AssemblyReport#NONE} for a column never validated).
      */
-    public record Entry(Status status, @Nullable AssemblyReport report, Map<Long, Integer> codes) {
-        public static final Entry NOT_VALIDATED = new Entry(Status.NOT_VALIDATED, null, Map.of());
+    public record Entry(Status status, @Nullable AssemblyReport report, Map<Long, Integer> codes, long changedAt) {
+        public static final Entry NOT_VALIDATED = reverted(AssemblyReport.NONE);
 
         public Entry {
             Objects.requireNonNull(status, "status");
             codes = Map.copyOf(codes);
             if ((status == Status.NOT_VALIDATED) != (report == null)) throw new IllegalArgumentException("A report goes with a checked status only");
+            if (report != null && changedAt != AssemblyReport.NONE) throw new IllegalArgumentException("A change goes with a reverted report only");
         }
 
         /** The entry of a fresh report: complete or checked. */
         public static Entry of(AssemblyReport report, Map<Long, Integer> codes) {
-            return new Entry(report.complete() ? Status.COMPLETE : Status.CHECKED, report, codes);
+            return new Entry(report.complete() ? Status.COMPLETE : Status.CHECKED, report, codes, AssemblyReport.NONE);
+        }
+
+        /** The entry of a report reverted by a change at {@code at}. */
+        public static Entry reverted(long at) {
+            return new Entry(Status.NOT_VALIDATED, null, Map.of(), at);
         }
 
         /** The positions the entry relies on: the coded blocks and nozzles, and its members' origins. */
@@ -109,9 +116,9 @@ public final class AssemblyStore extends SavedData {
         return net.minecraft.world.level.ChunkPos.asLong(at.getX() >> 4, at.getZ() >> 4);
     }
 
-    /** The master's report dropped: back to not validated. */
-    public void revert(long master) {
-        if (entries.containsKey(master) && entries.get(master).status() != Status.NOT_VALIDATED) put(master, Entry.NOT_VALIDATED);
+    /** The master's report dropped by a change at {@code at}: back to not validated. */
+    public void revert(long master, long at) {
+        if (entries.containsKey(master) && entries.get(master).status() != Status.NOT_VALIDATED) put(master, Entry.reverted(at));
     }
 
     /** The master's entry removed: its column is gone. */
@@ -211,7 +218,10 @@ public final class AssemblyStore extends SavedData {
         t.putLongArray("coded", positions);
         t.putIntArray("codes", codes);
         var report = entry.report();
-        if (report == null) return t;
+        if (report == null) {
+            t.putLong("changed", entry.changedAt());
+            return t;
+        }
         var slots = new ListTag();
         for (var s : report.slots()) {
             var st = new CompoundTag();
@@ -248,7 +258,7 @@ public final class AssemblyStore extends SavedData {
         for (int i = 0; i < positions.length; i++) if (codes.put(positions[i], codeValues[i]) != null) throw new IllegalArgumentException("a position coded twice");
         if (status == Status.NOT_VALIDATED) {
             if (t.contains("slots") || !codes.isEmpty()) throw new IllegalArgumentException("a report without a checked status");
-            return Entry.NOT_VALIDATED;
+            return Entry.reverted(t.contains("changed") ? t.getLong("changed") : AssemblyReport.NONE);
         }
         var slotList = t.getList("slots", Tag.TAG_COMPOUND);
         var portList = t.getList("ports", Tag.TAG_COMPOUND);
