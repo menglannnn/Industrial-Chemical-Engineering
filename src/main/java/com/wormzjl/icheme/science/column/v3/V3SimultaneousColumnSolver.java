@@ -15,6 +15,8 @@ final class V3SimultaneousColumnSolver {
     private static final int MAXIMUM_FROZEN_FINE_JACOBIAN_STEPS = 1;
     private static final int UNLIMITED_LOCAL_BLOCK_ATTEMPTS = Integer.MAX_VALUE;
     private static final int LOCAL_BLOCK_JACOBIAN_MINIMUM_COORDINATES = 96;
+    /** Stop rebuilding a local predictor after two consecutive Armijo rejections in one attempt. */
+    private static final int MAXIMUM_CONSECUTIVE_LOCAL_BLOCK_REJECTIONS = 2;
     private static final double FALLBACK_MAXIMUM_LOG_FLOW_CHANGE = 0.25;
     private static final double FALLBACK_MAXIMUM_TEMPERATURE_CHANGE_KELVIN = 10.0;
     private static final double INITIAL_GAUSS_NEWTON_DAMPING = 1.0e-8;
@@ -43,6 +45,11 @@ final class V3SimultaneousColumnSolver {
         coordinates = Objects.requireNonNull(coordinates, "coordinates");
         initialState = Objects.requireNonNull(initialState, "initialState");
         workspaceFactory = Objects.requireNonNull(workspaceFactory, "workspaceFactory");
+        // A Newton attempt evaluates residuals serially.  Reusing one caller-owned thermo
+        // workspace keeps the PR temperature cache and scratch arrays alive across probes and
+        // line-search trials; no residual retains or mutates the workspace after it returns.
+        V3ThermoWorkspace sharedWorkspace = workspaceFactory.newWorkspace();
+        workspaceFactory = () -> sharedWorkspace;
         initialConvergenceEvidence = Objects.requireNonNull(initialConvergenceEvidence, "initialConvergenceEvidence");
         return solve(problem, evaluator, coordinates, initialState, workspaceFactory, initialConvergenceEvidence,
                 maximumIterations, scaledTolerance, V3FiniteDifferenceJacobian.DifferenceScale.FINE, V3SolveControl.UNBOUNDED);
@@ -196,6 +203,8 @@ final class V3SimultaneousColumnSolver {
         V3FiniteDifferenceJacobian.Jacobian cachedFineJacobian = null;
         int frozenFineJacobianSteps = 0;
         int localBlockAttempts = 0;
+        int consecutiveLocalBlockRejections = 0;
+        boolean localBlocksDisabled = false;
         for (int iteration = 0; iteration <= maximumIterations; iteration++) {
             control.checkpoint();
             V3MeshResidual residual;
@@ -267,7 +276,7 @@ final class V3SimultaneousColumnSolver {
                                     + earlier + " and " + maximumResidual + " now", lastConvergenceEvidence));
                 }
             }
-            if (maximumLocalBlockAttempts > localBlockAttempts
+            if (!localBlocksDisabled && maximumLocalBlockAttempts > localBlockAttempts
                     && differenceScale == V3FiniteDifferenceJacobian.DifferenceScale.FINE
                     && coordinates.coordinateCount() >= LOCAL_BLOCK_JACOBIAN_MINIMUM_COORDINATES) {
                 localBlockAttempts++;
@@ -284,6 +293,7 @@ final class V3SimultaneousColumnSolver {
                                 maximumLineSearchSteps, control);
                         if (localTrial != null) {
                             localBlockAccepted = true;
+                            consecutiveLocalBlockRejections = 0;
                             trace.localBlockDirection(iteration, true);
                             state = localTrial.state();
                             lastMerit = localTrial.merit();
@@ -298,6 +308,8 @@ final class V3SimultaneousColumnSolver {
                     // one-sided PR probe crosses a property/root boundary.
                 }
                 if (!localBlockAccepted) trace.localBlockDirection(iteration, false);
+                if (!localBlockAccepted && ++consecutiveLocalBlockRejections
+                        >= MAXIMUM_CONSECUTIVE_LOCAL_BLOCK_REJECTIONS) localBlocksDisabled = true;
             }
             boolean usesFrozenFineJacobian = differenceScale == V3FiniteDifferenceJacobian.DifferenceScale.FINE
                     && cachedFineJacobian != null && frozenFineJacobianSteps < maximumFrozenFineJacobianSteps;
