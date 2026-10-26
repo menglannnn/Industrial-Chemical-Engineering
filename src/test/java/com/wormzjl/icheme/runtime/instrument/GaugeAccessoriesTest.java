@@ -32,6 +32,20 @@ class GaugeAccessoriesTest {
         var broken=(CompoundTag)GaugeSettings.CODEC.encodeStart(NbtOps.INSTANCE,GaugeSettings.PRESSURE).getOrThrow();broken.putDouble("minimum",-1);assertTrue(GaugeSettings.CODEC.parse(NbtOps.INSTANCE,broken).error().isPresent());broken.putString("unit","unknown");assertTrue(GaugeSettings.CODEC.parse(NbtOps.INSTANCE,broken).error().isPresent());
         var invalid=Unpooled.buffer();try{invalid.writeByte(99);invalid.writeByte(0);assertThrows(IllegalArgumentException.class,()->GaugeSettings.STREAM_CODEC.decode(invalid));}finally{invalid.release();}
     }
+    /**
+     * Saved kind and unit names read through their alias tables (AGENTS.md: a renamed or removed constant gets an alias).
+     * Without an alias an unknown name fails the component as before, and the stack keeps its item's default settings.
+     */
+    @Test void gaugeSettingsNamesReadThroughTheirAliasTables(){
+        var settings=new GaugeSettings(Kind.PRESSURE,0,5e5,Unit.KPA,false);
+        var current=(CompoundTag)GaugeSettings.CODEC.encodeStart(NbtOps.INSTANCE,settings).getOrThrow();
+        var renamed=current.copy();renamed.putString("kind","PRESSURE_GAUGE");renamed.putString("unit","KILOPASCAL");
+        var aliased=GaugeSettings.codec(Map.of("PRESSURE_GAUGE","PRESSURE"),Map.of("KILOPASCAL","KPA"));
+        assertEquals(settings,aliased.parse(NbtOps.INSTANCE,renamed).getOrThrow());assertEquals(settings,aliased.parse(NbtOps.INSTANCE,current).getOrThrow());
+        assertTrue(GaugeSettings.CODEC.parse(NbtOps.INSTANCE,renamed).error().isPresent(),"no alias: the component fails");
+        // The accessory store reads the item's encoding, through the same tables.
+        assertEquals(settings,AccessoryFacts.settings(current,"item"));
+    }
     /** The pipeline tool's diameter setting, the other accessory item component: the same exact round trip and rejections. */
     @Test void pipelineToolSettingsRoundTripExactDiametersAndRejectInvalidStorageAndWireValues() {
         for (double diameter : new double[]{.001, PipelineToolItem.Settings.DEFAULT.diameter(), .123456789012345, PipelineToolItem.Settings.MAX_DIAMETER}) {

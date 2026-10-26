@@ -22,8 +22,11 @@ import java.util.function.Supplier;
  */
 final class AccessoryFacts {
     static final int SCHEMA=1,STATE=1;
-    /** Renamed or removed saved names, per name set (type, kind, unit, mount): the saved name to the current one. None at schema 1. */
-    private static final Map<String,Map<String,String>> ALIASES=Map.of();
+    /**
+     * Renamed or removed saved names, per name set: the saved name to the current one. A gauge's kind and unit share the
+     * item component's tables, so one alias serves both. None at schema 1.
+     */
+    private static final Map<String,Map<String,String>> ALIASES=Map.of("type",Map.of(),"mount",Map.of(),"kind",GaugeSettings.KIND_ALIASES,"unit",GaugeSettings.UNIT_ALIASES);
     private AccessoryFacts(){}
 
     /** The current name of {@code saved} in the name set {@code set}, through {@code aliases}. */

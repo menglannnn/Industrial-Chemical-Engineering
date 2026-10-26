@@ -7,6 +7,7 @@ import com.wormzjl.icheme.science.display.DisplayUnit.PressureUnit;
 import io.netty.buffer.ByteBuf;
 import net.minecraft.network.codec.StreamCodec;
 import java.util.Locale;
+import java.util.Map;
 
 /** Absolute SI endpoints. Changing display units/reference preserves both physical endpoints. */
 public record GaugeSettings(Kind kind, double minimum, double maximum, Unit unit, boolean relative) {
@@ -25,13 +26,25 @@ public record GaugeSettings(Kind kind, double minimum, double maximum, Unit unit
     public static final GaugeSettings PRESSURE=new GaugeSettings(Kind.PRESSURE,ATMOSPHERE,ATMOSPHERE+1e6,Unit.BAR,true);
     public static final GaugeSettings TEMPERATURE=new GaugeSettings(Kind.TEMPERATURE,273.15,473.15,Unit.CELSIUS,false);
     private record Encoded(String kind,double min,double max,String unit,boolean relative) {}
-    public static final Codec<GaugeSettings> CODEC=RecordCodecBuilder.<Encoded>create(i->i.group(
-        Codec.STRING.fieldOf("kind").forGetter(Encoded::kind),Codec.DOUBLE.fieldOf("minimum").forGetter(Encoded::min),
-        Codec.DOUBLE.fieldOf("maximum").forGetter(Encoded::max),Codec.STRING.fieldOf("unit").forGetter(Encoded::unit),
-        Codec.BOOL.fieldOf("relative").forGetter(Encoded::relative)).apply(i,Encoded::new)).comapFlatMap(e->{
-            try{return DataResult.success(new GaugeSettings(Kind.valueOf(e.kind),e.min,e.max,Unit.valueOf(e.unit),e.relative));}
-            catch(IllegalArgumentException ex){return DataResult.error(()->"Invalid gauge settings: "+ex.getMessage());}
-        },s->new Encoded(s.kind.name(),s.minimum,s.maximum,s.unit.name(),s.relative));
+    /**
+     * Renamed or removed saved names of {@link Kind} and {@link Unit} constants: the saved name to the current one (AGENTS.md,
+     * "Saves and data formats"). The item component and the accessory store read the names through them. None yet.
+     */
+    public static final Map<String,String> KIND_ALIASES=Map.of(),UNIT_ALIASES=Map.of();
+    public static final Codec<GaugeSettings> CODEC=codec(KIND_ALIASES,UNIT_ALIASES);
+    /**
+     * The item component's codec, its names read through {@code kinds} and {@code units}. A value it cannot read fails the
+     * component: Minecraft drops that component and the stack keeps its item's default settings (owner decision 2026-10-26).
+     */
+    public static Codec<GaugeSettings> codec(Map<String,String> kinds,Map<String,String> units) {
+        return RecordCodecBuilder.<Encoded>create(i->i.group(
+            Codec.STRING.fieldOf("kind").forGetter(Encoded::kind),Codec.DOUBLE.fieldOf("minimum").forGetter(Encoded::min),
+            Codec.DOUBLE.fieldOf("maximum").forGetter(Encoded::max),Codec.STRING.fieldOf("unit").forGetter(Encoded::unit),
+            Codec.BOOL.fieldOf("relative").forGetter(Encoded::relative)).apply(i,Encoded::new)).comapFlatMap(e->{
+                try{return DataResult.success(new GaugeSettings(Kind.valueOf(kinds.getOrDefault(e.kind,e.kind)),e.min,e.max,Unit.valueOf(units.getOrDefault(e.unit,e.unit)),e.relative));}
+                catch(IllegalArgumentException ex){return DataResult.error(()->"Invalid gauge settings: "+ex.getMessage());}
+            },s->new Encoded(s.kind.name(),s.minimum,s.maximum,s.unit.name(),s.relative));
+    }
     public static final StreamCodec<ByteBuf,GaugeSettings> STREAM_CODEC=new StreamCodec<>() {
         public GaugeSettings decode(ByteBuf b){int kind=b.readUnsignedByte(),unit=b.readUnsignedByte();if(kind>=Kind.values().length||unit>=Unit.values().length)throw new IllegalArgumentException("Invalid gauge units");return new GaugeSettings(Kind.fromCode(kind),b.readDouble(),b.readDouble(),Unit.fromCode(unit),b.readBoolean());}
         public void encode(ByteBuf b,GaugeSettings s){b.writeByte(s.kind.code());b.writeByte(s.unit.code());b.writeDouble(s.minimum);b.writeDouble(s.maximum);b.writeBoolean(s.relative);}
