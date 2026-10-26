@@ -85,8 +85,9 @@ public final class PipeLaying {
             laid.add(new FluidWorldAuthority.Laid(position, PhysicalFluidTopology.Direction.values()[facings[i]], joints[i], slots.get(i) >= 0 ? width : 0));
         }
         var records = world.lay(laid, settings.diameter(), hosts);
-        // The new pipes and lanes take the tool's paint; the pipes and lanes the line starts or ends at keep theirs.
-        int paint = PipeLayingToolItem.paint(stack);
+        // The new pipes and lanes take the tool's paints (a lane draws no flange, so it keeps only the primary); the pipes
+        // and lanes the line starts or ends at keep theirs.
+        int paint = PipeLayingToolItem.paint(stack), secondary = PipeLayingToolItem.secondary(stack);
         // The blocks and lanes bind to their queued registrations, then take their connections: every new block's joints
         // are set before any neighbour reads them, as EquipmentStructure.place sets its cells before it reconnects them.
         var racks = new ArrayList<PipeRackBlockEntity>();
@@ -102,7 +103,7 @@ public final class PipeLaying {
                 var state = ModBlocks.FLUID_PIPE.get().defaultBlockState().setValue(FluidDeviceBlock.FACING, Direction.values()[facings[i]]);
                 level.setBlock(path.get(i), state, Block.UPDATE_CLIENTS | Block.UPDATE_KNOWN_SHAPE);
                 if (level.getBlockEntity(path.get(i)) instanceof FluidDeviceBlockEntity entity) {
-                    entity.paint(paint);
+                    entity.paint(paint, secondary);
                     entity.bindIdentity(records.get(i).device().id());
                 }
             }

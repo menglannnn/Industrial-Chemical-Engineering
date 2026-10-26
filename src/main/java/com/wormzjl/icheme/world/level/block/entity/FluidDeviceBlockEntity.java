@@ -68,9 +68,10 @@ public final class FluidDeviceBlockEntity extends BlockEntity implements com.wor
      * What the model needs beyond the block state: the bore, the line met at each face (seven bits each), the faces whose
      * joint is flanged (a bit each: a line meeting equipment or a vessel nozzle), whether this pipe ends a spool, and where
      * the line met at each face leaves the face's centre ({@link LineGeometry.Key#offsets}; a transition pipe's), and the
-     * line's paint ({@link com.wormzjl.icheme.science.equipment.Paint#BARE} when it has none).
+     * line's primary paint (its pipe) and secondary paint (its flanges), each
+     * {@link com.wormzjl.icheme.science.equipment.Paint#BARE} when it has none.
      */
-    public record Drawn(double bore, long faces, int flanged, boolean spool, long offsets, int paint) {
+    public record Drawn(double bore, long faces, int flanged, boolean spool, long offsets, int paint, int secondary) {
         public int face(Direction direction) {
             return (int) (faces >>> (7 * direction.ordinal()) & 127);
         }
@@ -101,16 +102,23 @@ public final class FluidDeviceBlockEntity extends BlockEntity implements com.wor
     /**
      * The paint of a laid line (batch 2026-10-26-pipe-laying-system), 0xRRGGBB, or bare steel: a fact the player chose
      * with the laying tool, kept on the block as a vessel's paint is kept on its cells. Saved only when painted, so a
-     * pipe saved before paint existed reads bare, as it looked.
+     * pipe saved before paint existed reads bare, as it looked. This is the primary paint, the pipe's.
      */
     private int paint = com.wormzjl.icheme.science.equipment.Paint.BARE;
+    /**
+     * The secondary paint, the flanges' (owner request 2026-10-26: primary and secondary, as a vessel has). Saved only when
+     * it differs from {@link #paint}, so a pipe saved before it existed reads with its flanges in its paint, as it looked.
+     */
+    private int secondary = com.wormzjl.icheme.science.equipment.Paint.BARE;
     public FluidDeviceBlockEntity(BlockPos pos,BlockState state){super(ModBlockEntities.FLUID_DEVICE.get(),pos,state);}
-    /** The line's paint: 0xRRGGBB, or {@link com.wormzjl.icheme.science.equipment.Paint#BARE}. */
+    /** The line's primary paint, its pipe's: 0xRRGGBB, or {@link com.wormzjl.icheme.science.equipment.Paint#BARE}. */
     public int paint(){return paint;}
-    /** Server: paints this pipe (the laying tool's paint at a lay) and redraws it. */
-    public void paint(int rgb){
-        if(!com.wormzjl.icheme.science.equipment.Paint.line(rgb))throw new IllegalArgumentException("A line's paint is 0xRRGGBB or bare");
-        if(paint==rgb)return;paint=rgb;sync();
+    /** The line's secondary paint, its flanges': 0xRRGGBB, or {@link com.wormzjl.icheme.science.equipment.Paint#BARE}. */
+    public int secondary(){return secondary;}
+    /** Server: paints this pipe (the laying tool's paints at a lay) and redraws it. */
+    public void paint(int primary,int secondary){
+        if(!com.wormzjl.icheme.science.equipment.Paint.line(primary)||!com.wormzjl.icheme.science.equipment.Paint.line(secondary))throw new IllegalArgumentException("A line's paint is 0xRRGGBB or bare");
+        if(paint==primary&&this.secondary==secondary)return;paint=primary;this.secondary=secondary;sync();
     }
     @Override public long fluidIdentity(){return identity;}
     public TopologyCompiler.Kind kind(){return ((FluidDeviceBlock)getBlockState().getBlock()).kind();}
@@ -248,11 +256,12 @@ public final class FluidDeviceBlockEntity extends BlockEntity implements com.wor
         if(player.containerMenu instanceof FluidDeviceMenu menu&&menu.identity()==identity)
             FluidWorldAuthority.find(player.server).ifPresent(world->world.replayOnOpen(menu));
     }
-    @Override protected void saveAdditional(CompoundTag tag,HolderLookup.Provider registries){super.saveAdditional(tag,registries);instruments.write(tag);tag.putLong("FluidIdentity",identity);writeLine(joints,paint,tag);}
-    /** Writes a pipe's line facts: its joints when not every face, its paint when painted. */
-    public static CompoundTag writeLine(int joints,int paint,CompoundTag tag){
+    @Override protected void saveAdditional(CompoundTag tag,HolderLookup.Provider registries){super.saveAdditional(tag,registries);instruments.write(tag);tag.putLong("FluidIdentity",identity);writeLine(joints,paint,secondary,tag);}
+    /** Writes a pipe's line facts: its joints when not every face, its paint when painted, its secondary paint when it differs. */
+    public static CompoundTag writeLine(int joints,int paint,int secondary,CompoundTag tag){
         if(joints!=PhysicalFluidTopology.ALL_FACES)tag.putByte("Joints",(byte)joints);
         if(paint!=com.wormzjl.icheme.science.equipment.Paint.BARE)tag.putInt("Paint",paint);
+        if(secondary!=paint)tag.putInt("Secondary",secondary);
         return tag;
     }
     /** A pipe's saved joints. Absent: every face, as every pipe connected before joints existed. A value past the six faces is not a joint set. */
@@ -265,15 +274,26 @@ public final class FluidDeviceBlockEntity extends BlockEntity implements com.wor
         com.wormzjl.icheme.IChemE.LOGGER.warn("pipe_compat repair=paint ({}) -> bare",tag.get("Paint"));
         return com.wormzjl.icheme.science.equipment.Paint.BARE;
     }
+    /**
+     * A pipe's saved secondary paint. Absent: {@code paint}, as the flanges looked before the secondary paint existed. A
+     * value that is neither a colour nor bare is repaired to {@code paint} and logged.
+     */
+    public static int readSecondary(CompoundTag tag,int paint){
+        if(!tag.contains("Secondary"))return paint;
+        int saved=tag.contains("Secondary",net.minecraft.nbt.Tag.TAG_INT)?tag.getInt("Secondary"):Integer.MIN_VALUE;
+        if(com.wormzjl.icheme.science.equipment.Paint.line(saved))return saved;
+        com.wormzjl.icheme.IChemE.LOGGER.warn("pipe_compat repair=secondary ({}) -> paint",tag.get("Secondary"));
+        return paint;
+    }
     @Override protected void loadAdditional(CompoundTag tag,HolderLookup.Provider registries){
         super.loadAdditional(tag,registries);instruments.read(tag);identity=tag.getLong("FluidIdentity");lastView=null;
-        joints=readJoints(tag);paint=readPaint(tag);
+        joints=readJoints(tag);paint=readPaint(tag);secondary=readSecondary(tag,paint);
         if(tag.contains("Bore")){double read=tag.getDouble("Bore");if(read>0&&read<=com.wormzjl.icheme.science.equipment.PipeSizes.MAX_BORE)bore=read;}
         if(tag.contains("Faces")){var read=tag.getByteArray("Faces");if(read.length==6)for(int i=0;i<6;i++){int v=read[i]&255;faces[i]=(byte)(Math.min(64,v&127)|v&FLANGED);}}
         // Drawn state from the update tag only: ten bits a face, the bits past the six faces cleared.
         offsets=tag.getLong("Offsets")&(1L<<60)-1;
     }
-    @Override public CompoundTag getUpdateTag(HolderLookup.Provider registries){var tag=new CompoundTag();instruments.write(tag);tag.putLong("FluidIdentity",identity);tag.putDouble("Bore",bore);tag.putByteArray("Faces",faces.clone());if(offsets!=0)tag.putLong("Offsets",offsets);writeLine(joints,paint,tag);return tag;}
+    @Override public CompoundTag getUpdateTag(HolderLookup.Provider registries){var tag=new CompoundTag();instruments.write(tag);tag.putLong("FluidIdentity",identity);tag.putDouble("Bore",bore);tag.putByteArray("Faces",faces.clone());if(offsets!=0)tag.putLong("Offsets",offsets);writeLine(joints,paint,secondary,tag);return tag;}
     @Override public ClientboundBlockEntityDataPacket getUpdatePacket(){return ClientboundBlockEntityDataPacket.create(this);}
     /** Drawn geometry that arrives after the block was meshed: refresh the model data and rebuild the section. */
     @Override public void onDataPacket(net.minecraft.network.Connection connection,ClientboundBlockEntityDataPacket packet,HolderLookup.Provider registries) {
@@ -283,7 +303,7 @@ public final class FluidDeviceBlockEntity extends BlockEntity implements com.wor
     @Override public ModelData getModelData() {
         long packed=0;int flanged=0;
         for(int i=0;i<6;i++){packed|=(long)(faces[i]&127)<<(7*i);if((faces[i]&FLANGED)!=0)flanged|=1<<i;}
-        return ModelData.of(DRAWN,new Drawn(bore,packed,flanged,spoolEnd(),offsets,paint));
+        return ModelData.of(DRAWN,new Drawn(bore,packed,flanged,spoolEnd(),offsets,paint,secondary));
     }
     /** A straight pipe whose coordinate along its run is a multiple of {@link #SPOOL}: it carries the flange pair between spools. */
     private boolean spoolEnd() {

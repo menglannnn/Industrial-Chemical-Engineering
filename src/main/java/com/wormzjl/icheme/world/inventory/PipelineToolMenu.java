@@ -27,32 +27,34 @@ public final class PipelineToolMenu extends AbstractContainerMenu {
     private final int selectedSlot;
     private final ItemStack tool;
     private final PipelineToolItem.Settings initialSettings;
-    private final int initialPaint;
+    private final int initialPaint, initialSecondary;
 
     public PipelineToolMenu(int id, Inventory inventory, RegistryFriendlyByteBuf buffer) {
-        this(id, inventory, buffer.readEnum(InteractionHand.class), buffer.readVarInt(), PipelineToolItem.Settings.STREAM_CODEC.decode(buffer), buffer.readInt());
+        this(id, inventory, buffer.readEnum(InteractionHand.class), buffer.readVarInt(), PipelineToolItem.Settings.STREAM_CODEC.decode(buffer), buffer.readInt(), buffer.readInt());
     }
 
-    private PipelineToolMenu(int id, Inventory inventory, InteractionHand hand, int selectedSlot, PipelineToolItem.Settings settings, int paint) {
+    private PipelineToolMenu(int id, Inventory inventory, InteractionHand hand, int selectedSlot, PipelineToolItem.Settings settings, int paint, int secondary) {
         super(ModMenus.PIPELINE_TOOL.get(), id);
         this.hand = hand;
         this.selectedSlot = selectedSlot;
         tool = inventory.player.getItemInHand(hand);
         initialSettings = Objects.requireNonNull(settings);
         initialPaint = Paint.line(paint) ? paint : Paint.BARE;
+        initialSecondary = Paint.line(secondary) ? secondary : initialPaint;
     }
 
     public static void open(ServerPlayer player, InteractionHand hand) {
         int slot = player.getInventory().selected;
         var stack = player.getItemInHand(hand);
         var settings = Objects.requireNonNull(stack.get(component(stack)));
-        int paint = PipeLayingToolItem.paint(stack);
-        player.openMenu(new SimpleMenuProvider((id, inventory, owner) -> new PipelineToolMenu(id, inventory, hand, slot, settings, paint),
+        int paint = PipeLayingToolItem.paint(stack), secondary = PipeLayingToolItem.secondary(stack);
+        player.openMenu(new SimpleMenuProvider((id, inventory, owner) -> new PipelineToolMenu(id, inventory, hand, slot, settings, paint, secondary),
                 stack.getHoverName()), buffer -> {
             buffer.writeEnum(hand);
             buffer.writeVarInt(slot);
             PipelineToolItem.Settings.STREAM_CODEC.encode(buffer, settings);
             buffer.writeInt(paint);
+            buffer.writeInt(secondary);
         });
     }
 
@@ -65,9 +67,14 @@ public final class PipelineToolMenu extends AbstractContainerMenu {
         return initialSettings;
     }
 
-    /** The laying tool's paint when the session opened; {@link Paint#BARE} for the sizing tool. */
+    /** The laying tool's primary paint when the session opened; {@link Paint#BARE} for the sizing tool. */
     public int initialPaint() {
         return initialPaint;
+    }
+
+    /** The laying tool's secondary paint when the session opened. */
+    public int initialSecondary() {
+        return initialSecondary;
     }
 
     /** Whether the tool lays lines, which take a paint: the laying tool, not the sizing tool. */
@@ -75,12 +82,14 @@ public final class PipelineToolMenu extends AbstractContainerMenu {
         return tool.is(ModItems.PIPE_LAYING_TOOL.get());
     }
 
-    /** Server: the packet handler has checked this session's id, lifetime, diameter and paint. The sizing tool keeps no paint. */
-    public void save(PipelineToolItem.Settings settings, int paint) {
+    /** Server: the packet handler has checked this session's id, lifetime, diameter and paints. The sizing tool keeps no paint; a secondary paint equal to the primary is kept as unset. */
+    public void save(PipelineToolItem.Settings settings, int paint, int secondary) {
         tool.set(component(tool), settings);
         if (paints()) {
             if (paint == Paint.BARE) tool.remove(ModItems.PIPE_LAYING_PAINT.get());
             else tool.set(ModItems.PIPE_LAYING_PAINT.get(), paint);
+            if (secondary == paint) tool.remove(ModItems.PIPE_LAYING_SECONDARY.get());
+            else tool.set(ModItems.PIPE_LAYING_SECONDARY.get(), secondary);
         }
     }
 

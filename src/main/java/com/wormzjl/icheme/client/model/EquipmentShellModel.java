@@ -4,6 +4,7 @@ import com.wormzjl.icheme.IChemE;
 import com.wormzjl.icheme.client.MachineAnimation;
 import com.wormzjl.icheme.science.equipment.Mesh;
 import com.wormzjl.icheme.science.equipment.MoverPortMarkings;
+import com.wormzjl.icheme.science.equipment.Paint;
 import com.wormzjl.icheme.science.equipment.ShapeRasterizer;
 import com.wormzjl.icheme.world.level.block.entity.EquipmentShellBlockEntity;
 import net.minecraft.client.renderer.RenderType;
@@ -135,19 +136,32 @@ public final class EquipmentShellModel implements IDynamicBakedModel {
     }
 
     /**
-     * A painted line's sprites (batch 2026-10-26-pipe-laying-system): {@code sprites} with the pipe and the flange swapped
-     * for the neutral {@code painted_pipe} and {@code painted_flange}, which the line's tint colours.
+     * A painted line's sprites (batch 2026-10-26-pipe-laying-system): {@code sprites} with its painted parts swapped for
+     * the neutral sprites the line's tint colours. {@code painted}: a bit per channel with a paint, {@link Paint#BODY}
+     * the primary (the pipe, {@code painted_pipe}) and {@link Paint#STRUCTURE} the secondary (the flanges,
+     * {@code painted_flange}).
      */
-    public static TextureAtlasSprite[] paintedLine(IGeometryBakingContext context, Function<Material, TextureAtlasSprite> sprites, TextureAtlasSprite[] bare) {
+    public static TextureAtlasSprite[] paintedLine(IGeometryBakingContext context, Function<Material, TextureAtlasSprite> sprites, TextureAtlasSprite[] bare, int painted) {
         var out = bare.clone();
-        if (context.hasMaterial("painted_pipe")) out[Mesh.Material.PIPE.ordinal()] = sprites.apply(context.getMaterial("painted_pipe"));
-        if (context.hasMaterial("painted_flange")) out[Mesh.Material.FLANGE.ordinal()] = sprites.apply(context.getMaterial("painted_flange"));
+        if ((painted >> Paint.BODY & 1) != 0 && context.hasMaterial("painted_pipe")) out[Mesh.Material.PIPE.ordinal()] = sprites.apply(context.getMaterial("painted_pipe"));
+        if ((painted >> Paint.STRUCTURE & 1) != 0 && context.hasMaterial("painted_flange")) out[Mesh.Material.FLANGE.ordinal()] = sprites.apply(context.getMaterial("painted_flange"));
         return out;
     }
 
-    /** The tint index a painted line's quads take: its pipe and flanges, 0; bolts, valves and the rest keep their colours. */
-    public static int lineTint(Mesh.Material material) {
-        return material == Mesh.Material.PIPE || material == Mesh.Material.FLANGE ? 0 : -1;
+    /** {@link #paintedLine} for every {@code painted} mask, indexed by it: index 0 is {@code bare}. */
+    public static TextureAtlasSprite[][] paintedLines(IGeometryBakingContext context, Function<Material, TextureAtlasSprite> sprites, TextureAtlasSprite[] bare) {
+        var out = new TextureAtlasSprite[4][];
+        for (int painted = 0; painted < 4; painted++) out[painted] = paintedLine(context, sprites, bare, painted);
+        return out;
+    }
+
+    /**
+     * The tint indices a line's quads take: its pipe {@code tint} + {@link Paint#BODY} and its flanges {@code tint} +
+     * {@link Paint#STRUCTURE}, each where {@code painted} has that channel; bolts, valves and the rest keep their colours.
+     */
+    public static java.util.function.ToIntFunction<Mesh.Material> lineTints(int painted, int tint) {
+        return material -> material == Mesh.Material.PIPE && (painted >> Paint.BODY & 1) != 0 ? tint + Paint.BODY
+                : material == Mesh.Material.FLANGE && (painted >> Paint.STRUCTURE & 1) != 0 ? tint + Paint.STRUCTURE : -1;
     }
 
     /** One sprite per material from the model's textures (named {@link Mesh.Material#texture()}), the particle where one is missing. */

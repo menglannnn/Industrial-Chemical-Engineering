@@ -76,14 +76,17 @@ public final class PipeRackModel implements IDynamicBakedModel {
         return cached;
     }
 
-    /** The frame, then each lane: a painted one with the neutral line sprites, its pipe and flanges tinted by its slot. */
+    /**
+     * The frame, then each lane: a painted one with the neutral pipe sprite, tinted by its slot. A lane draws no flange,
+     * so it takes only a line's primary paint.
+     */
     private List<BakedQuad> bake(Look look) {
         var out = new ArrayList<>(EquipmentShellModel.bake(RackGeometry.polygons(look.axis, List.of(), List.of()), sprites, false));
         for (int i = 0; i < look.lanes.size(); i++) {
             var lane = look.lanes.get(i);
             var polygons = RackGeometry.lane(lane, look.facings.get(i));
             int tint = lane.slot();
-            out.addAll((look.painted >> i & 1) != 0 ? EquipmentShellModel.bake(polygons, paintedSprites, material -> EquipmentShellModel.lineTint(material) < 0 ? -1 : tint)
+            out.addAll((look.painted >> i & 1) != 0 ? EquipmentShellModel.bake(polygons, paintedSprites, EquipmentShellModel.lineTints(1 << Paint.BODY, tint - Paint.BODY))
                     : EquipmentShellModel.bake(polygons, sprites, false));
         }
         return List.copyOf(out);
@@ -133,7 +136,7 @@ public final class PipeRackModel implements IDynamicBakedModel {
         @Override
         public BakedModel bake(IGeometryBakingContext context, ModelBaker baker, Function<Material, TextureAtlasSprite> sprites, ModelState state, ItemOverrides overrides) {
             var bare = EquipmentShellModel.sprites(context, sprites);
-            return new PipeRackModel(bare, EquipmentShellModel.paintedLine(context, sprites, bare), sprites.apply(context.getMaterial("particle")), context.getTransforms());
+            return new PipeRackModel(bare, EquipmentShellModel.paintedLine(context, sprites, bare, 1 << Paint.BODY), sprites.apply(context.getMaterial("particle")), context.getTransforms());
         }
     }
 }

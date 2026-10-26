@@ -40,8 +40,8 @@ import java.util.UUID;
 @PrefixGameTestTemplate(false)
 public final class PipeLayingGameTests {
     private static final int ALONG_X = 1 << Direction.WEST.ordinal() | 1 << Direction.EAST.ordinal();
-    /** RAL 5015 sky blue: the paint the rack test lays its line in. */
-    private static final int SKY_BLUE = 0x2271B3;
+    /** RAL 5015 sky blue and RAL 3000 flame red: the primary and secondary paints the rack test lays its line in. */
+    private static final int SKY_BLUE = 0x2271B3, FLAME_RED = 0xA72920;
 
     private PipeLayingGameTests() {
     }
@@ -86,7 +86,7 @@ public final class PipeLayingGameTests {
                 var record = world.at(position(level, cell)).orElseThrow();
                 helper.assertTrue(record.device().kind() == TopologyCompiler.Kind.PIPE && record.device().joints() == ALONG_X && record.device().geometry().diameter() == .1,
                         "Laid block " + cell.toShortString() + " registered as " + record.device());
-                helper.assertTrue(level.getBlockEntity(cell) instanceof FluidDeviceBlockEntity entity && entity.fluidIdentity() == record.device().id() && entity.joints() == ALONG_X && entity.openEnds() == 0 && entity.paint() == Paint.BARE,
+                helper.assertTrue(level.getBlockEntity(cell) instanceof FluidDeviceBlockEntity entity && entity.fluidIdentity() == record.device().id() && entity.joints() == ALONG_X && entity.openEnds() == 0 && entity.paint() == Paint.BARE && entity.secondary() == Paint.BARE,
                         "Laid block " + cell.toShortString() + " not bound to its registration");
                 helper.assertTrue(connected(level, cell, Direction.WEST) && connected(level, cell, Direction.EAST), "Laid block " + cell.toShortString() + " not joined along the line");
             }
@@ -140,8 +140,9 @@ public final class PipeLayingGameTests {
         player.setPos(west.getX() + 2.5, west.getY(), west.getZ() - 1.5);
         var tool = new ItemStack(ModItems.PIPE_LAYING_TOOL.get());
         tool.set(ModItems.PIPE_LAYING_SETTINGS.get(), new PipelineToolItem.Settings(.1));
-        // A painted tool: its lines take the paint, the pipes and lanes they end at keep theirs.
+        // A painted tool: its lines take the paints, the pipes and lanes they end at keep theirs.
         tool.set(ModItems.PIPE_LAYING_PAINT.get(), SKY_BLUE);
+        tool.set(ModItems.PIPE_LAYING_SECONDARY.get(), FLAME_RED);
         player.setItemInHand(InteractionHand.MAIN_HAND, tool);
         player.getInventory().add(new ItemStack(ModItems.FLUID_PIPE.get(), 6));
         try {
@@ -157,7 +158,7 @@ public final class PipeLayingGameTests {
             helper.assertTrue(route.slots().equals(List.of(-1, slot, slot, slot, -1)), "Not one lane through the racks: " + route.slots());
             helper.assertTrue(PipeLaying.lay(player, InteractionHand.MAIN_HAND, start, end, path, route.slots()) == null, "The line was refused");
             for (var cell : List.of(first, last))
-                helper.assertTrue(((FluidDeviceBlockEntity) level.getBlockEntity(cell)).paint() == SKY_BLUE, "Laid pipe " + cell.toShortString() + " not painted");
+                helper.assertTrue(level.getBlockEntity(cell) instanceof FluidDeviceBlockEntity pipe && pipe.paint() == SKY_BLUE && pipe.secondary() == FLAME_RED, "Laid pipe " + cell.toShortString() + " not painted");
             for (var cell : List.of(straight, corner, turned))
                 helper.assertTrue(((PipeRackBlockEntity) level.getBlockEntity(cell)).lanes().getFirst().paint() == SKY_BLUE, "Lane at " + cell.toShortString() + " not painted");
             helper.assertTrue(player.getInventory().countItem(ModItems.FLUID_PIPE.get()) == 1, "Not one pipe item per cell, lanes included");

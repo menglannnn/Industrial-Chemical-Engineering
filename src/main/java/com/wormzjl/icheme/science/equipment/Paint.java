@@ -40,7 +40,8 @@ public record Paint(int body, int structure) {
     public static final Paint DEFAULT = new Paint(0xA1A1A0, 0x5B686D);
     /**
      * A laid line's paint when it has none (batch 2026-10-26-pipe-laying-system): bare steel, the look of every pipe
-     * before lines could be painted. A line's paint is one colour, 0xRRGGBB, or this.
+     * before lines could be painted. A line has a primary paint (its pipe) and a secondary one (its flanges), each
+     * 0xRRGGBB or this.
      */
     public static final int BARE = -1;
 
