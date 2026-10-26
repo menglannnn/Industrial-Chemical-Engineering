@@ -128,6 +128,32 @@ class FluidFactsCompatTest {
         assertEquals(WorldTopologyLedger.FluidBasis.capture(CATALOG),restated.world().orElseThrow().basis());
     }
 
+    /**
+     * A component the property data no longer has: its amounts leave the vessels and the ledger books them by id, the
+     * islands' status line names them, and every other amount is kept on the current axis.
+     */
+    @Test void aComponentTheDataNoLongerHasIsBookedAsRemovedAndNamedOnTheStatusLine() {
+        var image=image(world());var core=FluidCheckpointCodec.readCore(image.core());
+        var t=core.topology();var topologyPack=image.packs().get(t.pack());
+        var world=FluidCheckpointCodec.worldFacts(topologyPack,FluidCheckpointCodec.topologySections(topologyPack,(int)t.offset(),t.length(),core.topologyGeneration()));
+        // The saved island's axis has one more component, "Retired", which every vessel holds 2.5 mol of.
+        var placed=new ArrayList<FluidFacts.Placed>();var kept=new TreeMap<Long,double[]>();int vessels=0;
+        for(var row:core.islands()) {
+            var pack=image.packs().get(row.unit().pack());var facts=FluidCheckpointCodec.islandFacts(pack,FluidCheckpointCodec.islandSections(pack,row),row.id());
+            var components=new ArrayList<>(facts.components());components.add("Retired");
+            var widened=facts.vessels().stream().map(v->{var moles=Arrays.copyOf(v.moles(),v.moles().length+1);moles[moles.length-1]=2.5;kept.put(v.id(),v.moles());
+                return new FluidFacts.Vessel(v.id(),v.volume(),v.levelHeight(),v.open(),moles,v.energy(),v.solids(),v.temperature(),v.pressure(),v.liquid(),v.vapor(),v.waterLiquid(),v.waterVapor(),v.hydrocarbonPressure());}).toList();
+            vessels+=widened.size();
+            placed.add(new FluidFacts.Placed(new FluidFacts.Island(facts.dimension(),facts.packageId(),components,widened,facts.filters(),null),row.committed()));
+        }
+        var rebuilt=FluidFacts.rebuild(world,placed,core.epoch(),key->model,CATALOG,true,"test");
+        assertEquals(Map.of("Retired",2.5*vessels),rebuilt.world().restated().removedMoles(),"the ledger books the removed component by id");
+        for(var entry:rebuilt.checkpoint().islands()) {
+            assertTrue(entry.snapshot().status().contains("removed by the property data: Retired "+(2.5*vessels)+" mol"),entry.snapshot().status());
+            for(var n:entry.snapshot().graph().reservoirs())if(kept.containsKey(n.id()))assertArrayEquals(kept.get(n.id()),n.inventory().moles(),"vessel "+n.id()+": every other amount is kept");
+        }
+    }
+
     /** A facts section is read by every later build: one this build cannot read refuses the world, its files kept. */
     @Test void aFactsSectionThisBuildCannotReadRefusesTheWorld() {
         var world=world();var image=image(world);long island=world.coordinator.snapshots().getFirst().id();

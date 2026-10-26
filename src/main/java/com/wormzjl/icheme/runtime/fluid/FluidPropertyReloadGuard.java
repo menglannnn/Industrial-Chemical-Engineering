@@ -5,10 +5,11 @@ import com.wormzjl.icheme.science.material.MaterialCatalog;
 import java.util.Objects;
 import java.util.Optional;
 
-/** Owner-thread check against the qualified startup property snapshot. A new scientific
- * model holds the world until the qualified data is restored or a fresh world is created; replacing names alone does not pause science. */
+/** Owner-thread check against the qualified startup property snapshot. A new scientific model (a datapack reload while
+ * the world runs) holds the network until the world is saved and reopened: the reopened world restates its contents on
+ * the new data from its saved facts (AGENTS.md, "Saves and data formats"). Replacing names alone does not pause science. */
 public final class FluidPropertyReloadGuard {
-    public static final String HOLD="HELD: property data changed; restore the qualified data or create a fresh world";
+    public static final String HOLD="HELD: property data changed; save and reopen the world to restate the fluid network on the new data";
     private final String packageId,qualifiedRevision;
     private final double maximumVelocity,traceCutoff;
     private final com.wormzjl.icheme.science.fluid.transport.SlurryTransport.Settings solids;

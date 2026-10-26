@@ -322,7 +322,12 @@ public final class FluidCheckpointStore {
         String why=core.stateFormat()!=FluidCheckpointCodec.VERSION?"state format "+core.stateFormat()+", this build's is "+FluidCheckpointCodec.VERSION:null;boolean restate=false;
         var byKey=new HashMap<FluidCheckpointCodec.PackageKey,FluidThermodynamics>();
         for(var p:core.packages()) {
-            var model=Objects.requireNonNull(models.apply(p.key()));byKey.put(p.key(),model);
+            // A package this build no longer models (the network's package changed) is a model change too: the world is
+            // restated onto the current package, its amounts mapped by component id.
+            FluidThermodynamics model;
+            try{model=Objects.requireNonNull(models.apply(p.key()));}
+            catch(IllegalArgumentException unavailable){restate=true;why="package "+p.packageId()+" is no longer modelled: "+unavailable.getMessage();continue;}
+            byKey.put(p.key(),model);
             var reference=EnergyReference.sensible(model.components());
             if(reference.formationDataQualified())throw new IllegalArgumentException("This build's energy reference of package "+p.packageId()+" is formation-qualified, which a checkpoint cannot carry");
             if(!p.propertyRevision().equals(model.thermodynamicRevision())||!p.energyRevision().equals(reference.revision())||!p.energyComponents().equals(reference.components())) {

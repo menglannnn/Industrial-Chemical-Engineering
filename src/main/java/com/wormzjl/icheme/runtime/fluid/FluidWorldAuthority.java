@@ -125,7 +125,7 @@ public final class FluidWorldAuthority implements AutoCloseable {
     private void refreshProperties() {
         owned();if(closed)return;
         var current=MaterialRuntime.active();String next=propertyReload.inspect(current).orElse(null);
-        if(current!=observedSolidData){observedSolidData=current;try{var saved=capture();FluidPropertyReloadGuard.validateSolids(current.solids(),saved.checkpoint(),saved.world());solidPropertyHold=null;}catch(IllegalArgumentException incompatible){solidPropertyHold="HELD: solid property data changed; restore the definitions this world was saved with or create a fresh world";}}
+        if(current!=observedSolidData){observedSolidData=current;try{var saved=capture();FluidPropertyReloadGuard.validateSolids(current.solids(),saved.checkpoint(),saved.world());solidPropertyHold=null;}catch(IllegalArgumentException incompatible){solidPropertyHold="HELD: solid property data changed; save and reopen the world to read its solids on the new data";}}
         if(next==null)next=solidPropertyHold;
         if(Objects.equals(next,propertyHold))return;
         propertyHold=next;
