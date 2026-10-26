@@ -185,8 +185,8 @@ public final class FluidWorldAuthority implements AutoCloseable {
     public WorldTopologyLedger.Registration place(PhysicalFluidTopology.Position position,TopologyCompiler.Kind kind,PhysicalFluidTopology.Direction facing,PhysicalFluidTopology.Cutoff cutoff,boolean pressureValve,boolean filter,TopologyCompiler.Kind inlineMover){return place(position,kind,facing,List.of(),cutoff,pressureValve,filter,inlineMover,PhysicalFluidTopology.ALL_FACES);}
     /** A placed block registered again from what it holds (a chunk load after the D4 reset): a laid pipe keeps its joints. */
     public WorldTopologyLedger.Registration place(PhysicalFluidTopology.Position position,TopologyCompiler.Kind kind,PhysicalFluidTopology.Direction facing,PhysicalFluidTopology.Cutoff cutoff,boolean pressureValve,boolean filter,TopologyCompiler.Kind inlineMover,int joints){return place(position,kind,facing,List.of(),cutoff,pressureValve,filter,inlineMover,joints);}
-    /** A cell of a laid line: its position, its facing (along its run) and its joints. */
-    public record Laid(PhysicalFluidTopology.Position position,PhysicalFluidTopology.Direction facing,int joints){}
+    /** A cell of a laid line: its position (a rack lane's too), its facing (along its run), its joints and a lane's width in slots (0: a pipe block). */
+    public record Laid(PhysicalFluidTopology.Position position,PhysicalFluidTopology.Direction facing,int joints,int slots){}
     /**
      * Registers a laid line as one ledger event (batch 2026-10-26-pipe-laying-system, plan 4.4): a passive pipe of bore
      * {@code diameter} per cell, with its joints, and the new joints of the laid pipes it starts or ends at
@@ -199,7 +199,7 @@ public final class FluidWorldAuthority implements AutoCloseable {
         for(int i=0;i<cells.size();i++) {
             var cell=cells.get(i);
             var device=new PhysicalFluidTopology.Device(first+i,cell.position(),TopologyCompiler.Kind.PIPE,cell.facing(),new PipeResistance.Geometry(1,diameter,PipeResistance.DEFAULT_ROUGHNESS_METRES,0),
-                    new FlowControl.Passive(),List.of(),true,PhysicalFluidTopology.Cutoff.NONE,false,cell.joints());
+                    new FlowControl.Passive(),List.of(),true,PhysicalFluidTopology.Cutoff.NONE,false,cell.joints(),cell.slots());
             var record=new WorldTopologyLedger.Registration(device,FluidDeviceSpec.nitrogen(catalog),0);placed.add(record);edits.add(new WorldTopologyLedger.Edit(first+i,record));
         }
         for(var host:new TreeMap<>(hosts).entrySet()) {
@@ -208,6 +208,14 @@ public final class FluidWorldAuthority implements AutoCloseable {
             edits.add(new WorldTopologyLedger.Edit(host.getKey(),new WorldTopologyLedger.Registration(old.device().withJoints(host.getValue()),old.spec(),Math.addExact(old.revision(),1))));
         }
         submit(edits,Math.addExact(first,cells.size()));return placed;
+    }
+    /** A rack lane registered again from its rack's copy (a chunk load after the D4 reset): its joints, width and bore. */
+    public WorldTopologyLedger.Registration placeLane(PhysicalFluidTopology.Position position,PhysicalFluidTopology.Direction facing,int joints,int slots,double diameter) {
+        owned();long id=topology.nextIdentity();
+        var device=new PhysicalFluidTopology.Device(id,position,TopologyCompiler.Kind.PIPE,facing,new PipeResistance.Geometry(1,diameter,PipeResistance.DEFAULT_ROUGHNESS_METRES,0),
+                new FlowControl.Passive(),List.of(),true,PhysicalFluidTopology.Cutoff.NONE,false,joints,slots);
+        var record=new WorldTopologyLedger.Registration(device,FluidDeviceSpec.nitrogen(catalog),0);
+        submit(List.of(new WorldTopologyLedger.Edit(id,record)),Math.addExact(id,1));return record;
     }
     /** A complete multi-cell mover uses the same controls and geometry as its one-block counterpart. */
     public WorldTopologyLedger.Registration placeMover(PhysicalFluidTopology.Position suction,TopologyCompiler.Kind kind,List<PhysicalFluidTopology.Port> ports) {
@@ -360,9 +368,10 @@ public final class FluidWorldAuthority implements AutoCloseable {
         String name=dimension.location().toString();
         for(var cell:List.copyOf(loaded.getBlockEntitiesPos())) {
             var block=loaded.getBlockState(cell).getBlock();
-            if(!(block instanceof FluidDeviceBlock)&&!(block instanceof EquipmentShellBlock))continue;
+            if(!(block instanceof FluidDeviceBlock)&&!(block instanceof EquipmentShellBlock)&&!(block instanceof com.wormzjl.icheme.world.level.block.PipeRackBlock))continue;
             var entity=loaded.getBlockEntity(cell); // Includes saved cells not yet promoted from pending NBT.
-            if(entity instanceof FluidDeviceBlockEntity pipe) {
+            if(entity instanceof com.wormzjl.icheme.world.level.block.entity.PipeRackBlockEntity rack)rack.bind(this);
+            else if(entity instanceof FluidDeviceBlockEntity pipe) {
                 var position=new PhysicalFluidTopology.Position(name,cell.getX(),cell.getY(),cell.getZ());
                 var record=registry.at(position).orElseGet(()->place(position,pipe.kind(),PhysicalFluidTopology.Direction.valueOf(pipe.getBlockState().getValue(FluidDeviceBlock.FACING).name()),FluidDeviceBlock.cutoff(pipe.getBlockState()),FluidDeviceBlock.hasPressureValve(pipe.getBlockState()),FluidDeviceBlock.hasFilter(pipe.getBlockState()),FluidDeviceBlock.hasMover(pipe.getBlockState())?pipe.getBlockState().getValue(FluidDeviceBlock.INLINE_MOVER).kind():TopologyCompiler.Kind.PIPE,pipe.kind()==TopologyCompiler.Kind.PIPE?pipe.joints():PhysicalFluidTopology.ALL_FACES));
                 if(pipe.fluidIdentity()!=record.device().id())pipe.bindIdentity(record.device().id());else deviceLoaded(record.device().id());
@@ -684,6 +693,8 @@ public final class FluidWorldAuthority implements AutoCloseable {
         /** Binds a loaded block entity that does not yet carry its identity, then hands it the view. Never loads a chunk. */
         public boolean present(long id,java.util.function.Supplier<FluidView> view) {
             var record=registrations().get(id);if(record==null)return false;var p=record.device().position();var level=server.getLevel(dimension(p.dimension()));if(level==null)return false;
+            // A rack lane has no screen and no view receiver: its rack draws it from its own copy.
+            if(p.lane()!=0)return false;
             var pos=new BlockPos(p.x(),p.y(),p.z());if(!level.hasChunkAt(pos))return false;
             // A drum's node cell carries the identity it was built with; it is never bound here.
             if(!record.device().ports().isEmpty()) {
@@ -737,7 +748,9 @@ public final class FluidWorldAuthority implements AutoCloseable {
         private void drawn(long device) {
             var record=registrations().get(device);if(record==null)return;var p=record.device().position();var level=server.getLevel(dimension(p.dimension()));if(level==null)return;
             var pos=new BlockPos(p.x(),p.y(),p.z());
-            if(level.isLoaded(pos)&&level.getBlockEntity(pos) instanceof com.wormzjl.icheme.world.level.block.entity.FluidDeviceBlockEntity entity)entity.refreshGeometry(record.device().geometry().diameter(),false);
+            if(!level.isLoaded(pos))return;
+            if(level.getBlockEntity(pos) instanceof com.wormzjl.icheme.world.level.block.entity.FluidDeviceBlockEntity entity)entity.refreshGeometry(record.device().geometry().diameter(),false);
+            else if(p.lane()!=0&&level.getBlockEntity(pos) instanceof com.wormzjl.icheme.world.level.block.entity.PipeRackBlockEntity rack)rack.refresh(true);
         }
     }
     /** A certified island's materialisation: only accounting (the diagnostic observer) and the save mark need it.

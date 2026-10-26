@@ -148,14 +148,15 @@ public sealed class FluidDeviceBlock extends BaseEntityBlock {
     private static boolean joint(BlockGetter level,BlockPos position,Direction direction){return (joints(level,position)>>direction.ordinal()&1)!=0;}
     /**
      * Whether this block meets its neighbour towards {@code direction}: another device by the rules above, or, for a pipe,
-     * a vessel nozzle facing it. Each side must have a joint on the shared face, so a laid line never joins a block it was
-     * only laid beside.
+     * a vessel nozzle facing it or a rack lane with a joint towards it (plan 5.2). Each side must have a joint on the
+     * shared face, so a laid line never joins a block it was only laid beside.
      */
     private static boolean connects(BlockState state,BlockGetter level,BlockPos neighborPosition,BlockState neighbor,Direction direction) {
         if(!joint(level,neighborPosition.relative(direction.getOpposite()),direction))return false;
         if(neighbor.getBlock() instanceof FluidDeviceBlock other)return !(boundary(((FluidDeviceBlock)state.getBlock()).kind)&&boundary(other.kind))&&face(state,direction)&&face(neighbor,direction.getOpposite())&&joint(level,neighborPosition,direction.getOpposite());
-        return ((FluidDeviceBlock)state.getBlock()).kind==TopologyCompiler.Kind.PIPE&&face(state,direction)&&neighbor.getBlock() instanceof EquipmentShellBlock
-                &&level.getBlockEntity(neighborPosition) instanceof com.wormzjl.icheme.world.level.block.entity.EquipmentShellBlockEntity shell&&shell.nozzleFacing(direction.getOpposite())!=null;
+        if(((FluidDeviceBlock)state.getBlock()).kind!=TopologyCompiler.Kind.PIPE||!face(state,direction))return false;
+        if(neighbor.getBlock() instanceof PipeRackBlock)return level.getBlockEntity(neighborPosition) instanceof com.wormzjl.icheme.world.level.block.entity.PipeRackBlockEntity rack&&rack.laneTowards(direction.getOpposite())!=null;
+        return neighbor.getBlock() instanceof EquipmentShellBlock&&level.getBlockEntity(neighborPosition) instanceof com.wormzjl.icheme.world.level.block.entity.EquipmentShellBlockEntity shell&&shell.nozzleFacing(direction.getOpposite())!=null;
     }
     @Override protected BlockState updateShape(BlockState state,Direction direction,BlockState neighbor,LevelAccessor level,BlockPos position,BlockPos neighborPosition) {
         var connected=state.setValue(CONNECTIONS.get(direction),connects(state,level,neighborPosition,neighbor,direction));

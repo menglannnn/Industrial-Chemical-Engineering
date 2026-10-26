@@ -428,16 +428,17 @@ public final class FluidNetwork {
         public static final StreamCodec<RegistryFriendlyByteBuf,PipeLayingOpen> STREAM_CODEC=StreamCodec.composite(ByteBufCodecs.BOOL,PipeLayingOpen::offHand,PipeLayingOpen::new);
         @Override public Type<? extends CustomPacketPayload> type(){return TYPE;}
     }
-    /** Lay {@code cells} from the anchor clicked at {@code start} on {@code startFace} to the one at {@code end} on {@code endFace}. */
-    public record PipeLay(boolean offHand,BlockPos start,Direction startFace,BlockPos end,Direction endFace,List<BlockPos> cells) implements CustomPacketPayload {
+    /** Lay {@code cells}, a lane on {@code slots} where one is not -1, from the anchor clicked at {@code start} to the one clicked at {@code end}. */
+    public record PipeLay(boolean offHand,com.wormzjl.icheme.world.level.block.PipeAnchor.Click start,com.wormzjl.icheme.world.level.block.PipeAnchor.Click end,List<BlockPos> cells,List<Integer> slots) implements CustomPacketPayload {
         public static final Type<PipeLay> TYPE=new Type<>(ResourceLocation.fromNamespaceAndPath(IChemE.MOD_ID,"pipe_lay"));
-        public static final StreamCodec<RegistryFriendlyByteBuf,PipeLay> STREAM_CODEC=StreamCodec.composite(ByteBufCodecs.BOOL,PipeLay::offHand,BlockPos.STREAM_CODEC,PipeLay::start,Direction.STREAM_CODEC,PipeLay::startFace,
-                BlockPos.STREAM_CODEC,PipeLay::end,Direction.STREAM_CODEC,PipeLay::endFace,BlockPos.STREAM_CODEC.apply(ByteBufCodecs.list(com.wormzjl.icheme.science.equipment.PipeRoute.Limits.DEFAULT.cells())),PipeLay::cells,PipeLay::new);
+        public static final StreamCodec<RegistryFriendlyByteBuf,PipeLay> STREAM_CODEC=StreamCodec.composite(ByteBufCodecs.BOOL,PipeLay::offHand,com.wormzjl.icheme.world.level.block.PipeAnchor.Click.STREAM_CODEC,PipeLay::start,
+                com.wormzjl.icheme.world.level.block.PipeAnchor.Click.STREAM_CODEC,PipeLay::end,BlockPos.STREAM_CODEC.apply(ByteBufCodecs.list(com.wormzjl.icheme.science.equipment.PipeRoute.Limits.DEFAULT.cells())),PipeLay::cells,
+                ByteBufCodecs.VAR_INT.apply(ByteBufCodecs.list(com.wormzjl.icheme.science.equipment.PipeRoute.Limits.DEFAULT.cells())),PipeLay::slots,PipeLay::new);
         @Override public Type<? extends CustomPacketPayload> type(){return TYPE;}
     }
-    public record PipeDismantle(boolean offHand,BlockPos position) implements CustomPacketPayload {
+    public record PipeDismantle(boolean offHand,com.wormzjl.icheme.world.level.block.PipeAnchor.Click click) implements CustomPacketPayload {
         public static final Type<PipeDismantle> TYPE=new Type<>(ResourceLocation.fromNamespaceAndPath(IChemE.MOD_ID,"pipe_dismantle"));
-        public static final StreamCodec<RegistryFriendlyByteBuf,PipeDismantle> STREAM_CODEC=StreamCodec.composite(ByteBufCodecs.BOOL,PipeDismantle::offHand,BlockPos.STREAM_CODEC,PipeDismantle::position,PipeDismantle::new);
+        public static final StreamCodec<RegistryFriendlyByteBuf,PipeDismantle> STREAM_CODEC=StreamCodec.composite(ByteBufCodecs.BOOL,PipeDismantle::offHand,com.wormzjl.icheme.world.level.block.PipeAnchor.Click.STREAM_CODEC,PipeDismantle::click,PipeDismantle::new);
         @Override public Type<? extends CustomPacketPayload> type(){return TYPE;}
     }
     private static InteractionHand hand(boolean offHand){return offHand?InteractionHand.OFF_HAND:InteractionHand.MAIN_HAND;}
@@ -476,11 +477,11 @@ public final class FluidNetwork {
             if(c.player() instanceof ServerPlayer player&&!player.isSpectator()&&player.getItemInHand(hand(p.offHand)).is(com.wormzjl.icheme.registry.ModItems.PIPE_LAYING_TOOL.get()))PipelineToolMenu.open(player,hand(p.offHand));
         });
         tools.playToServer(PipeLay.TYPE,PipeLay.STREAM_CODEC,(p,c)->{
-            if(c.player() instanceof ServerPlayer player)answer(player,com.wormzjl.icheme.world.level.block.PipeLaying.lay(player,hand(p.offHand),p.start,p.startFace,p.end,p.endFace,p.cells),
+            if(c.player() instanceof ServerPlayer player)answer(player,com.wormzjl.icheme.world.level.block.PipeLaying.lay(player,hand(p.offHand),p.start,p.end,p.cells,p.slots),
                     com.wormzjl.icheme.world.level.block.PipeLaying.message("laid",p.cells.size()));
         });
         tools.playToServer(PipeDismantle.TYPE,PipeDismantle.STREAM_CODEC,(p,c)->{
-            if(c.player() instanceof ServerPlayer player)answer(player,com.wormzjl.icheme.world.level.block.PipeLaying.dismantle(player,hand(p.offHand),p.position),
+            if(c.player() instanceof ServerPlayer player)answer(player,com.wormzjl.icheme.world.level.block.PipeLaying.dismantle(player,hand(p.offHand),p.click),
                     com.wormzjl.icheme.world.level.block.PipeLaying.message("dismantled"));
         });
     }
@@ -497,8 +498,8 @@ public final class FluidNetwork {
     public static void saveGauge(int menu,GaugeSettings settings){PacketDistributor.sendToServer(new GaugeSave(menu,settings));}
     public static void savePipelineTool(int menuId,double diameter){PacketDistributor.sendToServer(new PipelineToolSave(menuId,diameter));}
     public static void openPipeLaying(boolean offHand){PacketDistributor.sendToServer(new PipeLayingOpen(offHand));}
-    public static void layPipe(boolean offHand,BlockPos start,Direction startFace,BlockPos end,Direction endFace,List<BlockPos> cells){PacketDistributor.sendToServer(new PipeLay(offHand,start,startFace,end,endFace,cells));}
-    public static void dismantlePipe(boolean offHand,BlockPos position){PacketDistributor.sendToServer(new PipeDismantle(offHand,position));}
+    public static void layPipe(boolean offHand,com.wormzjl.icheme.world.level.block.PipeAnchor.Click start,com.wormzjl.icheme.world.level.block.PipeAnchor.Click end,List<BlockPos> cells,List<Integer> slots){PacketDistributor.sendToServer(new PipeLay(offHand,start,end,cells,slots));}
+    public static void dismantlePipe(boolean offHand,com.wormzjl.icheme.world.level.block.PipeAnchor.Click click){PacketDistributor.sendToServer(new PipeDismantle(offHand,click));}
 
     // ---- client: the last delivered view of each device ----
 

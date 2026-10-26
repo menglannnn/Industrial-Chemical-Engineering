@@ -298,6 +298,7 @@ public final class IChemE {
             event.accept(ModItems.ACCESSORY_WRENCH.get());
             event.accept(ModItems.PIPELINE_TOOL.get());
             event.accept(ModItems.PIPE_LAYING_TOOL.get());
+            event.accept(ModItems.PIPE_RACK.get());
             event.accept(ModItems.PIPELINE_SIGHT_GLASS.get());
             event.accept(ModItems.PIPELINE_SHUTOFF_VALVE.get());
             event.accept(ModItems.PIPELINE_CHECK_VALVE.get());

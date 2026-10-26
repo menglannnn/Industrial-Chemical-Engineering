@@ -1,0 +1,4 @@
+{
+  "parent": "icheme:block/fluid_device",
+  "loader": "icheme:pipe_rack"
+}

@@ -99,6 +99,14 @@ class EventPathWorld {
         registry.submit(List.of(new WorldTopologyLedger.Edit(id,new WorldTopologyLedger.Registration(device,FluidDeviceSpec.nitrogen(catalog),0))),id+1,null);
         return id;
     }
+    /** A rack lane: a laid pipe in slots {@code lane - 1} onwards of a rack cell, {@code slots} wide. */
+    long placeLane(int x,int y,int z,int lane,int slots,PhysicalFluidTopology.Direction facing,double bore,int joints) {
+        long id=ledger.nextIdentity();
+        var device=new PhysicalFluidTopology.Device(id,new PhysicalFluidTopology.Position(DIM,x,y,z,lane),Kind.PIPE,facing,new PipeResistance.Geometry(1,bore,PipeResistance.DEFAULT_ROUGHNESS_METRES,0),
+                new FlowControl.Passive(),List.of(),true,PhysicalFluidTopology.Cutoff.NONE,false,joints,slots);
+        registry.submit(List.of(new WorldTopologyLedger.Edit(id,new WorldTopologyLedger.Registration(device,FluidDeviceSpec.nitrogen(catalog),0))),id+1,null);
+        return id;
+    }
     /** A block with its kind's default control and a nitrogen spec (boundaries: a 1 m3 charge at 298.15 K, 1 atm). */
     long place(int x,int y,int z,Kind kind,PhysicalFluidTopology.Direction facing,double bore){return place(x,y,z,kind,facing,defaultControl(kind),null,bore);}
     /** A block with its kind's default control and a player's spec and bore set at placement. */

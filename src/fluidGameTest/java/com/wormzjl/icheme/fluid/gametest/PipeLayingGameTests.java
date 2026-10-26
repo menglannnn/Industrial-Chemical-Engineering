@@ -8,7 +8,12 @@ import com.wormzjl.icheme.runtime.fluid.PhysicalFluidTopology;
 import com.wormzjl.icheme.science.fluid.topology.TopologyCompiler;
 import com.wormzjl.icheme.world.item.PipelineToolItem;
 import com.wormzjl.icheme.world.level.block.FluidDeviceBlock;
+import com.wormzjl.icheme.world.level.block.PipeAnchor;
 import com.wormzjl.icheme.world.level.block.PipeLaying;
+import com.wormzjl.icheme.world.level.block.PipeRackBlock;
+import com.wormzjl.icheme.world.level.block.entity.PipeRackBlockEntity;
+import com.wormzjl.icheme.science.equipment.PipeRoute;
+import com.wormzjl.icheme.science.equipment.RackGeometry;
 import com.wormzjl.icheme.world.level.block.entity.FluidDeviceBlockEntity;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
@@ -64,14 +69,14 @@ public final class PipeLayingGameTests {
         try {
             int registered = world.registrations().size();
             helper.assertTrue(cells.stream().allMatch(c -> level.getBlockState(c).canBeReplaced()), "The path is not clear: " + cells.stream().map(c -> c.toShortString() + "=" + level.getBlockState(c)).toList());
-            var refused = PipeLaying.lay(player, InteractionHand.MAIN_HAND, west, Direction.EAST, east, Direction.WEST, cells);
+            var refused = lay(player, west, Direction.EAST, east, Direction.WEST, cells);
             helper.assertTrue(refused != null && refused.getString().equals(PipeLaying.message("items", 4).getString()), "Laid four blocks with three pipe items: " + refused);
             helper.assertTrue(level.getBlockState(cells.getFirst()).isAir() && world.registrations().size() == registered,
                     "A refused lay changed the world: " + level.getBlockState(cells.getFirst()) + ", registrations " + registered + " -> " + world.registrations().size());
             player.getInventory().add(new ItemStack(ModItems.FLUID_PIPE.get(), 1));
-            helper.assertTrue(PipeLaying.lay(player, InteractionHand.MAIN_HAND, west, Direction.EAST, east, Direction.WEST, List.of(cells.get(0), cells.get(2), cells.get(3))) != null,
+            helper.assertTrue(lay(player, west, Direction.EAST, east, Direction.WEST, List.of(cells.get(0), cells.get(2), cells.get(3))) != null,
                     "A route with a gap was laid");
-            helper.assertTrue(PipeLaying.lay(player, InteractionHand.MAIN_HAND, west, Direction.EAST, east, Direction.WEST, cells) == null, "The line was refused");
+            helper.assertTrue(lay(player, west, Direction.EAST, east, Direction.WEST, cells) == null, "The line was refused");
             helper.assertTrue(world.registrations().size() == registered + 4, "Not one registration per laid block");
             helper.assertTrue(player.getInventory().countItem(ModItems.FLUID_PIPE.get()) == 0, "The pipe items were not taken");
             for (var cell : cells) {
@@ -86,15 +91,15 @@ public final class PipeLayingGameTests {
             helper.assertTrue(world.at(position(level, beside)).orElseThrow().device().joints() == PhysicalFluidTopology.ALL_FACES, "The hand-placed pipe lost its automatic joints");
 
             // One block out at once: its neighbours keep their joints towards it and show open ends.
-            helper.assertTrue(PipeLaying.dismantle(player, InteractionHand.MAIN_HAND, cells.get(1)) == null, "The dismantle was refused");
+            helper.assertTrue(PipeLaying.dismantle(player, InteractionHand.MAIN_HAND, new PipeAnchor.Click(cells.get(1), Direction.UP)) == null, "The dismantle was refused");
             helper.assertTrue(level.getBlockState(cells.get(1)).isAir() && world.at(position(level, cells.get(1))).isEmpty(), "The dismantled block remains");
             helper.assertTrue(world.at(position(level, cells.get(0))).orElseThrow().device().joints() == ALONG_X && !connected(level, cells.get(0), Direction.EAST),
                     "The neighbour did not become an open end");
-            helper.assertTrue(PipeLaying.dismantle(player, InteractionHand.MAIN_HAND, west) != null, "Dismantled a tank");
+            helper.assertTrue(PipeLaying.dismantle(player, InteractionHand.MAIN_HAND, new PipeAnchor.Click(west, Direction.UP)) != null, "Dismantled a tank");
 
             // A one-block line between the two open ends joins them again; the ends need no edit.
             player.getInventory().add(new ItemStack(ModItems.FLUID_PIPE.get(), 1));
-            helper.assertTrue(PipeLaying.lay(player, InteractionHand.MAIN_HAND, cells.get(0), Direction.EAST, cells.get(2), Direction.WEST, List.of(cells.get(1))) == null, "The gap was not refilled");
+            helper.assertTrue(lay(player, cells.get(0), Direction.EAST, cells.get(2), Direction.WEST, List.of(cells.get(1))) == null, "The gap was not refilled");
             for (var cell : cells)
                 helper.assertTrue(connected(level, cell, Direction.WEST) && connected(level, cell, Direction.EAST), "Block " + cell.toShortString() + " not joined after the refill");
             helper.killAllEntities();
@@ -102,6 +107,103 @@ public final class PipeLayingGameTests {
         } finally {
             for (var at : placed) level.removeBlock(at, false);
         }
+    }
+
+    /**
+     * W3: the route between two tanks follows three rack cells and turns in the corner one; it lays as plain pipes at
+     * both ends and lanes in the racks, and joins the tanks into one island. A rack that carries a lane is not broken;
+     * one lane comes out alone, and a one-cell lane between the two open ends it leaves joins them again.
+     */
+    @GameTest(template = "empty", timeoutTicks = 200, batch = "pipe-laying")
+    public static void aLineThroughARackCornerJoinsItsTanksAndALaneComesOutAlone(GameTestHelper helper) {
+        var level = helper.getLevel();
+        var world = FluidWorldAuthority.find(level.getServer()).orElseThrow();
+        var west = helper.absolutePos(new BlockPos(0, 1, 1));
+        var first = west.east();
+        var straight = west.east(2);
+        var corner = west.east(3);
+        var turned = corner.south();
+        var last = turned.south();
+        var south = last.south();
+        var placed = List.of(west, first, straight, corner, turned, last, south);
+        for (var at : placed) level.setBlock(at, net.minecraft.world.level.block.Blocks.AIR.defaultBlockState(), 3);
+        level.setBlock(west, ModBlocks.FLUID_RESERVOIR.get().defaultBlockState(), 3);
+        level.setBlock(south, ModBlocks.FLUID_RESERVOIR.get().defaultBlockState(), 3);
+        for (var at : List.of(straight, corner)) level.setBlock(at, ModBlocks.PIPE_RACK.get().defaultBlockState().setValue(PipeRackBlock.AXIS, Direction.Axis.X), 3);
+        level.setBlock(turned, ModBlocks.PIPE_RACK.get().defaultBlockState().setValue(PipeRackBlock.AXIS, Direction.Axis.Z), 3);
+        var player = FakePlayerFactory.get(level, new GameProfile(UUID.randomUUID(), "PipeRackTest"));
+        player.setGameMode(GameType.SURVIVAL);
+        player.setPos(west.getX() + 2.5, west.getY(), west.getZ() - 1.5);
+        var tool = new ItemStack(ModItems.PIPE_LAYING_TOOL.get());
+        tool.set(ModItems.PIPE_LAYING_SETTINGS.get(), new PipelineToolItem.Settings(.1));
+        player.setItemInHand(InteractionHand.MAIN_HAND, tool);
+        player.getInventory().add(new ItemStack(ModItems.FLUID_PIPE.get(), 6));
+        try {
+            // The route the client searches: into the rack run, round its corner, out to the far tank.
+            var start = new PipeAnchor.Click(west, Direction.EAST);
+            var end = new PipeAnchor.Click(south, Direction.NORTH);
+            var from = PipeAnchor.resolve(level, start).anchor();
+            var to = PipeAnchor.resolve(level, end).anchor();
+            var route = PipeRoute.search(from.end(), from.heading(to.end().cell()), to.end(), 1, PipeAnchor.space(level), PipeRoute.Limits.DEFAULT);
+            var path = List.of(first, straight, corner, turned, last);
+            helper.assertTrue(route.found() && route.cells().equals(path.stream().map(PipeAnchor::cell).toList()), "The route does not follow the racks: " + route);
+            int slot = route.slots().get(1);
+            helper.assertTrue(route.slots().equals(List.of(-1, slot, slot, slot, -1)), "Not one lane through the racks: " + route.slots());
+            helper.assertTrue(PipeLaying.lay(player, InteractionHand.MAIN_HAND, start, end, path, route.slots()) == null, "The line was refused");
+            helper.assertTrue(player.getInventory().countItem(ModItems.FLUID_PIPE.get()) == 1, "Not one pipe item per cell, lanes included");
+            int[] expected = {1 << Direction.WEST.ordinal() | 1 << Direction.EAST.ordinal(), 1 << Direction.WEST.ordinal() | 1 << Direction.SOUTH.ordinal(),
+                    1 << Direction.NORTH.ordinal() | 1 << Direction.SOUTH.ordinal()};
+            for (int i = 0; i < 3; i++) {
+                var rack = (PipeRackBlockEntity) level.getBlockEntity(path.get(i + 1));
+                helper.assertTrue(rack.lanes().size() == 1 && rack.lanes().getFirst().slot() == slot && rack.lanes().getFirst().joints() == expected[i]
+                        && rack.drawnLanes().getFirst().joined() == expected[i], "Rack " + path.get(i + 1).toShortString() + " lanes " + rack.lanes() + " drawn " + rack.drawnLanes());
+                var record = world.registrations().get(rack.lanes().getFirst().identity());
+                helper.assertTrue(record != null && record.device().position().lane() == slot + 1 && record.device().slots() == 1, "Lane not registered in its slot: " + record);
+            }
+            helper.assertTrue(connected(level, first, Direction.WEST) && connected(level, first, Direction.EAST) && connected(level, last, Direction.NORTH) && connected(level, last, Direction.SOUTH),
+                    "The plain ends do not join the tanks and the lanes");
+            long westTank = world.at(position(level, west)).orElseThrow().device().id(), southTank = world.at(position(level, south)).orElseThrow().device().id();
+            helper.assertTrue(joined(world, westTank, southTank), "The tanks are not one island through the racks");
+
+            // D9: a rack carrying a lane stands; one lane comes out alone, its neighbours keep their joints towards it.
+            helper.assertTrue(!player.gameMode.destroyBlock(straight) && level.getBlockState(straight).getBlock() instanceof PipeRackBlock && ((PipeRackBlockEntity) level.getBlockEntity(straight)).lanes().size() == 1,
+                    "A rack with a lane was broken");
+            var cornerRack = (PipeRackBlockEntity) level.getBlockEntity(corner);
+            helper.assertTrue(PipeLaying.dismantle(player, InteractionHand.MAIN_HAND, onLane(corner, cornerRack, 0)) == null, "The lane dismantle was refused");
+            helper.assertTrue(cornerRack.lanes().isEmpty() && world.at(position(level, corner).withLane(slot + 1)).isEmpty(), "The corner lane remains");
+            helper.assertTrue(player.getInventory().countItem(ModItems.FLUID_PIPE.get()) == 2, "The lane's pipe was not refunded");
+            var straightRack = (PipeRackBlockEntity) level.getBlockEntity(straight);
+            helper.assertTrue(straightRack.lanes().getFirst().joints() == expected[0] && straightRack.drawnLanes().getFirst().joined() == 1 << Direction.WEST.ordinal(),
+                    "The lane next to the gap did not become an open end: " + straightRack.drawnLanes());
+            helper.assertTrue(!joined(world, westTank, southTank), "The tanks are still joined across the gap");
+
+            // A one-cell lane from one open end to the other: both lanes keep their joints, the gap lane takes the corner.
+            var refill = PipeLaying.lay(player, InteractionHand.MAIN_HAND, onLane(straight, straightRack, 0), onLane(turned, (PipeRackBlockEntity) level.getBlockEntity(turned), 0), List.of(corner), List.of(slot));
+            helper.assertTrue(refill == null, "The gap was not refilled: " + refill);
+            helper.assertTrue(cornerRack.lanes().size() == 1 && cornerRack.lanes().getFirst().joints() == expected[1] && cornerRack.drawnLanes().getFirst().joined() == expected[1],
+                    "The refilled corner lane " + cornerRack.drawnLanes());
+            helper.assertTrue(joined(world, westTank, southTank), "The tanks are not joined again");
+            helper.killAllEntities();
+            helper.succeed();
+        } finally {
+            for (var at : placed) level.removeBlock(at, false);
+        }
+    }
+
+    /** A click on the middle of lane {@code index}'s first arm. */
+    private static PipeAnchor.Click onLane(BlockPos at, PipeRackBlockEntity rack, int index) {
+        var box = RackGeometry.boxes(rack.drawnLanes().get(index), rack.lanes().get(index).facing()).getFirst();
+        return new PipeAnchor.Click(at, Direction.UP, new net.minecraft.world.phys.Vec3((box[0] + box[3]) / 2, (box[1] + box[4]) / 2, (box[2] + box[5]) / 2));
+    }
+
+    /** Whether the two tanks lie in one island once the queued topology applies. */
+    private static boolean joined(FluidWorldAuthority world, long a, long b) {
+        return world.diagnosticSnapshots().stream().anyMatch(s -> s.graph().reservoirs().stream().anyMatch(n -> n.id() == a) && s.graph().reservoirs().stream().anyMatch(n -> n.id() == b));
+    }
+
+    /** A plain line laid with the tool in the main hand: no cell is a rack lane. */
+    static net.minecraft.network.chat.Component lay(net.minecraft.server.level.ServerPlayer player, BlockPos start, Direction startFace, BlockPos end, Direction endFace, List<BlockPos> cells) {
+        return PipeLaying.lay(player, InteractionHand.MAIN_HAND, new PipeAnchor.Click(start, startFace), new PipeAnchor.Click(end, endFace), cells, java.util.Collections.nCopies(cells.size(), -1));
     }
 
     private static boolean connected(net.minecraft.world.level.Level level, BlockPos at, Direction face) {

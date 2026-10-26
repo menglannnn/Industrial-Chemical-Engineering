@@ -226,16 +226,16 @@ public final class PhysicalRegistry {
         // is met through its contacts: its faces, or a vessel's ports in other cells.
         for(var start:starts) {
             var before=topology.latestAt(start);
-            if(before!=null)for(var contact:before.device().contacts()){var next=contact.cell().offset(contact.direction());if(joined(before,topology.latestAt(next),contact))queue.add(next);}
+            if(before!=null)for(var contact:before.device().contacts()){var next=PhysicalFluidTopology.across(topology::latestAt,WorldTopologyLedger.Registration::device,before.device(),contact.cell(),contact.direction());if(joined(before,next,contact))queue.add(next.device().position());}
             var after=at.apply(start);
-            if(after!=null)for(var contact:after.device().contacts()){var next=contact.cell().offset(contact.direction());if(joined(after,at.apply(next),contact))queue.add(next);}
+            if(after!=null)for(var contact:after.device().contacts()){var next=PhysicalFluidTopology.across(at,WorldTopologyLedger.Registration::device,after.device(),contact.cell(),contact.direction());if(joined(after,next,contact))queue.add(next.device().position());}
         }
         while(!queue.isEmpty()) {
             var position=queue.removeFirst();var record=at.apply(position);if(record==null)continue;long id=record.device().id();if(!seen.add(id))continue;touched.add(id);
             // A fixed boundary the event does not edit is never walked through: what lies beyond it is another island.
             if(!starts.contains(record.device().position())&&(record.device().fixed()||standsForItsComponent(id)||topology.pending(id)))continue;
             for(var contact:record.device().contacts()) {
-                var neighbor=at.apply(contact.cell().offset(contact.direction()));if(neighbor!=null&&record.device().joins(neighbor.device(),contact.cell(),contact.direction()))queue.add(neighbor.device().position());
+                var neighbor=PhysicalFluidTopology.across(at,WorldTopologyLedger.Registration::device,record.device(),contact.cell(),contact.direction());if(neighbor!=null&&record.device().joins(neighbor.device(),contact.cell(),contact.direction()))queue.add(neighbor.device().position());
             }
         }
         var edited=new HashSet<Long>();for(var edit:edits)edited.add(edit.id());
@@ -350,7 +350,7 @@ public final class PhysicalRegistry {
         while(!queue.isEmpty()) {
             var record=queue.removeFirst();if(record.device().fixed()&&!editedIds.contains(record.device().id()))continue;
             for(var contact:record.device().contacts()) {
-                var neighbor=at.apply(contact.cell().offset(contact.direction()));
+                var neighbor=PhysicalFluidTopology.across(at,WorldTopologyLedger.Registration::device,record.device(),contact.cell(),contact.direction());
                 if(neighbor!=null&&record.device().joins(neighbor.device(),contact.cell(),contact.direction())&&component.putIfAbsent(neighbor.device().id(),neighbor)==null)queue.add(neighbor);
             }
         }
@@ -432,7 +432,7 @@ public final class PhysicalRegistry {
             var record=queue.removeFirst();long id=record.device().id();
             found.addAll(standsFor(id,edited));if(record.device().fixed()||standsForItsComponent(id))continue;
             for(var contact:record.device().contacts()) {
-                var neighbor=topology.activeAt(contact.cell().offset(contact.direction()));
+                var neighbor=PhysicalFluidTopology.across(topology::activeAt,WorldTopologyLedger.Registration::device,record.device(),contact.cell(),contact.direction());
                 if(neighbor!=null&&record.device().joins(neighbor.device(),contact.cell(),contact.direction())&&seen.add(neighbor.device().id()))queue.add(neighbor);
             }
         }

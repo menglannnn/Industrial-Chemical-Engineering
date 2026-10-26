@@ -145,6 +145,7 @@ public final class FluidDeviceBlockEntity extends BlockEntity implements com.wor
             var at=worldPosition.relative(direction);
             if(!level.isLoaded(at))continue;
             if(level.getBlockEntity(at) instanceof FluidDeviceBlockEntity neighbour){if(neighbour.refreshFaces())neighbour.sync();}
+            else if(level.getBlockEntity(at) instanceof PipeRackBlockEntity rack){if(rack.refreshJoined())level.sendBlockUpdated(at,rack.getBlockState(),rack.getBlockState(),2);}
             else EquipmentStructure.refreshNozzlesAt(level,at);
         }
     }
@@ -166,6 +167,10 @@ public final class FluidDeviceBlockEntity extends BlockEntity implements com.wor
                     // everywhere); two devices bolt together at the larger of their sizes.
                     if(pipe&&otherPipe){code=PipeSizes.code(PipeSizes.outside(other.bore));flanged=FluidDeviceBlock.hasBoundaryFitting(getBlockState(),bore)||FluidDeviceBlock.hasBoundaryFitting(other.getBlockState(),other.bore);}
                     else{code=PipeSizes.code(PipeSizes.outside(pipe?bore:otherPipe?other.bore:Math.max(bore,other.bore)));flanged=true;}
+                } else if(pipe&&neighbour instanceof PipeRackBlockEntity rack) {
+                    // A lane is welded to the pipe that continues it, at the lane's size (plan 5.2: no flanges at racks).
+                    var lane=rack.laneTowards(direction.getOpposite());
+                    if(lane!=null)code=PipeSizes.code(PipeSizes.outside(lane.bore()));
                 } else if(pipe&&neighbour instanceof EquipmentShellBlockEntity shell) {
                     var nozzle=shell.nozzleFacing(direction.getOpposite());
                     // The vessel's flange is the pipe's size, its neck too (owner decision 2026-10-21: a 1 m pipe has a 1 m root): the pipe's flange matches it.

@@ -39,6 +39,8 @@ class FluidFactsCompatTest {
         world.place(7,64,0,Kind.RESERVOIR,Direction.EAST);
         // Facts schema 2: a pipe laid beside the line with its joints along the line, so it does not join it.
         world.placeLaid(2,64,1,Direction.EAST,.05,1<<Direction.WEST.ordinal()|1<<Direction.EAST.ordinal());
+        // And a rack lane, slots 2 and 3 of the cell beside the second vessel's line: the lane field of a position.
+        world.placeLane(5,64,1,3,2,Direction.EAST,.1,1<<Direction.WEST.ordinal()|1<<Direction.EAST.ordinal());
         world.runTo(20);assertTrue(world.registry.installPipeFilter(generator+2,Direction.EAST));world.runTo(400);
         world.registry.submit(List.of(new WorldTopologyLedger.Edit(generator,null)),world.ledger.nextIdentity(),null);world.runTo(600);
         world.assertKeptUp("the saved line");
@@ -205,6 +207,7 @@ class FluidFactsCompatTest {
                 assertEquals(Integer.parseInt(expected.getProperty("registrations")),ledger.active().size(),folder+": registrations");
                 // Schema 2 wrote joints; an image of schema 1 reads every registration with all six faces, as pipes were then.
                 assertEquals(Long.parseLong(expected.getProperty("laid","0")),ledger.active().values().stream().filter(r->r.device().joints()!=PhysicalFluidTopology.ALL_FACES).count(),folder+": laid pipes");
+                assertEquals(Long.parseLong(expected.getProperty("lanes","0")),ledger.active().values().stream().filter(r->r.device().position().lane()!=0).count(),folder+": rack lanes");
                 long vessels=rebuilt.checkpoint().islands().stream().flatMap(e->e.snapshot().graph().reservoirs().stream()).filter(n->n.kind()==PassiveNetwork.NodeKind.RESERVOIR).count();
                 assertEquals(Long.parseLong(expected.getProperty("vessels")),vessels,folder+": vessels");
                 double total=Arrays.stream(moles(rebuilt.checkpoint(),model.componentCount())).sum();
@@ -218,6 +221,7 @@ class FluidFactsCompatTest {
         var loaded=load(image,key->model,CATALOG);var props=new Properties();
         props.setProperty("registrations",Integer.toString(loaded.world().orElseThrow().active().size()));
         props.setProperty("laid",Long.toString(loaded.world().orElseThrow().active().values().stream().filter(r->r.device().joints()!=PhysicalFluidTopology.ALL_FACES).count()));
+        props.setProperty("lanes",Long.toString(loaded.world().orElseThrow().active().values().stream().filter(r->r.device().position().lane()!=0).count()));
         props.setProperty("vessels",Long.toString(contents(loaded.checkpoint()).values().stream().filter(v->v instanceof PassiveNetwork.Inventory).count()));
         props.setProperty("moles",Double.toString(Arrays.stream(moles(loaded.checkpoint(),model.componentCount())).sum()));
         try(var out=Files.newBufferedWriter(folder.resolve("expected.properties"))){props.store(out,"Facts schema "+FluidFacts.SCHEMA+" corpus image, state format "+FluidCheckpointCodec.VERSION);}

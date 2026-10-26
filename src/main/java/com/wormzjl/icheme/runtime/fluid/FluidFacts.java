@@ -37,7 +37,7 @@ import java.util.function.Function;
  * list of at most one.</p>
  */
 final class FluidFacts {
-    /** 1: the 0.13.0 records. 2: a registration's {@code joints} (batch 2026-10-26-pipe-laying-system). */
+    /** 1: the 0.13.0 records. 2 (batch 2026-10-26-pipe-laying-system): a registration's {@code joints} and lane width, a position's rack lane. */
     static final int SCHEMA=2;
     /** Renamed or removed enum constants, per enum: the saved name to the current one. None at schema 2. */
     private static final Map<Class<?>,Map<String,String>> ALIASES=Map.of();
@@ -139,10 +139,11 @@ final class FluidFacts {
     }
     private static void uuid(Fields f,UUID id){f.record(u->u.i64(id.getMostSignificantBits()).i64(id.getLeastSignificantBits()));}
     private static UUID uuid(Record r){return r.record(null,u->new UUID(u.i64(0),u.i64(0)));}
-    private static void position(Fields f,PhysicalFluidTopology.Position p){f.record(q->q.text(p.dimension()).i32(p.x()).i32(p.y()).i32(p.z()));}
+    /** A rack lane is written only when there is one: a block's position keeps its schema-1 record. */
+    private static void position(Fields f,PhysicalFluidTopology.Position p){f.record(q->{q.text(p.dimension()).i32(p.x()).i32(p.y()).i32(p.z());if(p.lane()!=0)q.i32(p.lane());});}
     private static PhysicalFluidTopology.Position position(Record r) {
-        return r.record(null,q->{var dimension=q.text("");int x=q.i32(0),y=q.i32(0),z=q.i32(0);
-            try{return new PhysicalFluidTopology.Position(dimension,x,y,z);}catch(IllegalArgumentException invalid){throw q.invalid(invalid.getMessage());}});
+        return r.record(null,q->{var dimension=q.text("");int x=q.i32(0),y=q.i32(0),z=q.i32(0),lane=q.i32(0);
+            try{return new PhysicalFluidTopology.Position(dimension,x,y,z,lane);}catch(IllegalArgumentException invalid){throw q.invalid(invalid.getMessage());}});
     }
     private static <T> T required(T value,Record r,String what){if(value==null)throw r.invalid("missing "+what);return value;}
     private static <T> T valid(Record r,String what,java.util.function.Supplier<T> build) {
@@ -215,7 +216,7 @@ final class FluidFacts {
                 .record(q->q.f64(s.volume()).f64(s.temperature()).f64(s.pressure()).doubles(s.composition())
                         .record(feed->feed.f64(s.solids().volumeFraction()).list(s.solids().grades(),(e,grade)->e.text(grade.material()).text(grade.size().metres()).f64(grade.massShare())))
                         .f64(s.levelHeight()).bool(s.open()))
-                .count(r.revision()).count(d.joints());
+                .count(r.revision()).count(d.joints()).count(d.slots());
     }
     private static WorldTopologyLedger.Registration registration(Record f) {
         long id=f.count(0);var position=position(f);
@@ -234,8 +235,9 @@ final class FluidFacts {
         long revision=f.count(0);
         // Schema 2: a record written before joints existed connects through every face, as every pipe did then.
         long joints=f.count(PhysicalFluidTopology.ALL_FACES);if(joints>PhysicalFluidTopology.ALL_FACES)throw f.invalid("joints "+joints);
+        long slots=f.count(0);if(slots>PhysicalFluidTopology.RACK_SLOTS)throw f.invalid("lane width "+slots);
         required(position,f,"device position");required(kind,f,"device kind");required(facing,f,"device facing");required(geometry,f,"device geometry");required(spec,f,"device spec");
-        return valid(f,"registration "+id,()->new WorldTopologyLedger.Registration(new PhysicalFluidTopology.Device(id,position,kind,facing,geometry,control,ports,generatorEnabled,cutoff,filter,(int)joints),spec,revision));
+        return valid(f,"registration "+id,()->new WorldTopologyLedger.Registration(new PhysicalFluidTopology.Device(id,position,kind,facing,geometry,control,ports,generatorEnabled,cutoff,filter,(int)joints,(int)slots),spec,revision));
     }
     private static void control(Fields f,FlowControl control) {
         switch(control) {
