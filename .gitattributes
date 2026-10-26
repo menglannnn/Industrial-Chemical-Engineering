@@ -17,3 +17,7 @@ tools/benchmark-population/v1/**/*.json -text
 
 # CoolProp fluid files (MIT) are stored as fetched, so their SHA-256 in the directory README stays verifiable.
 src/test/resources/science/thermo/coolprop/** -text
+
+# Backward-compatibility corpus images (batch 2026-10-26-backward-compat): frozen bytes the gates read.
+src/test/resources/compat/**/*.dat binary
+src/test/resources/compat/**/*.bin binary

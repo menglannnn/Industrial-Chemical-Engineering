@@ -71,7 +71,7 @@ public final class FluidWorldAuthority implements AutoCloseable {
 
     private FluidWorldAuthority(MinecraftServer server) {
         this.server=server;owned();catalog=MaterialRuntime.active();
-        options=IChemE.fluidOptions();data=FluidSavedData.open(server,this::model);
+        options=IChemE.fluidOptions();data=FluidSavedData.open(server,this::model,catalog);
         model=model(new FluidCheckpointCodec.PackageKey(com.wormzjl.icheme.science.fluid.thermo.FluidMaterialCatalog.networkPackage(catalog)));
         propertyReload=new FluidPropertyReloadGuard(catalog,com.wormzjl.icheme.science.fluid.thermo.FluidMaterialCatalog.networkPackage(catalog),model);
         presetCache=FluidPresetCatalog.resolve(catalog);componentNames=model.components();
@@ -102,8 +102,8 @@ public final class FluidWorldAuthority implements AutoCloseable {
         var loaded=runtime.coordinator().observe();
         long saved=data.checkpoint().islands().stream().filter(e->e.snapshot().certificate().flatMap(IslandCoordinator.Certified::saved).isPresent()).count();
         long restored=loaded.stream().filter(s->s.certificate().isPresent()).count();
-        IChemE.LOGGER.info("fluid_world status=LOADED format={} online_tick={} islands={} certificates_saved={} certificates_restored={} awake={}",
-                FluidCheckpointCodec.VERSION,topology.onlineTick(),loaded.size(),saved,restored,loaded.size()-restored);
+        IChemE.LOGGER.info("fluid_world status=LOADED format={} route={} online_tick={} islands={} certificates_saved={} certificates_restored={} awake={}{}",
+                FluidCheckpointCodec.VERSION,data.route(),topology.onlineTick(),loaded.size(),saved,restored,loaded.size()-restored,data.reason().isEmpty()?"":" reason="+data.reason());
         for(var s:loaded)if(s.status().startsWith("WAITING: saved "))IChemE.LOGGER.warn("fluid_island={} status=CERTIFICATE_DISCARDED detail={}",s.id(),s.status());
     }
     public static void start(MinecraftServer server) {

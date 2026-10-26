@@ -12,7 +12,7 @@ import java.util.*;
 import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
 
-/** Checkpoint format 10, one island: round trip, field refusals, a changed basis, energy datum or velocity limit, and
+/** The checkpoint of one island: round trip, field refusals, a changed basis, energy datum or velocity limit, and
  * solids read back as their records (crystals beside custom solids). */
 class FluidCheckpointCodecTest {
     private static final String PACKAGE="icheme:tjl20_methane_nitrogen";
@@ -32,7 +32,7 @@ class FluidCheckpointCodecTest {
 
     @Test void roundTripRetainsStockDebtAndFences() {
         var before=fixture();var image=FluidCheckpointCodec.encode(before,key->model);
-        assertEquals(FluidCheckpointCodec.VERSION,image.core().getInt("FluidFormat"));assertEquals(350,FluidCheckpointCodec.epoch(image.core()),"epoch of a core-only checkpoint: its most advanced island");
+        assertEquals(FluidCheckpointCodec.ENVELOPE,image.core().getInt("Envelope"));assertEquals(FluidCheckpointCodec.VERSION,image.core().getInt("StateFormat"));assertEquals(350,FluidCheckpointCodec.epoch(image.core()),"epoch of a core-only checkpoint: its most advanced island");
         var loaded=FluidCheckpointCodec.decode(image,key->model);var a=before.islands().getFirst().snapshot();var b=loaded.islands().getFirst().snapshot();
         assertEquals(a.graph().reservoirs().getFirst().inventory(),b.graph().reservoirs().getFirst().inventory());assertEquals(a.clock(),b.clock());assertEquals(a.fences(),b.fences());
         assertEquals(a.revision(),b.revision());assertEquals(a.status(),b.status());
@@ -60,18 +60,25 @@ class FluidCheckpointCodecTest {
         assertTrue(assertThrows(IllegalArgumentException.class,()->FluidCheckpointCodec.decode(corrupt,key->model)).getMessage().contains("checksum"),"an unsealed change is caught by the envelope digest");
         var packs=new HashMap<>(image.packs());var bytes=packs.get(1L).clone();bytes[bytes.length/2]^=1;packs.put(1L,bytes);
         assertTrue(assertThrows(IllegalArgumentException.class,()->FluidCheckpointCodec.decode(new FluidCheckpointCodec.Image(image.core(),packs),key->model)).getMessage().contains("checksum"),"a flipped unit byte");
-        var version=copy(image);version.core().putInt("FluidFormat",999);
-        assertThrows(IllegalArgumentException.class,()->FluidCheckpointCodec.decode(version,key->model));
-        // A changed thermodynamic identity (the package key has no compressibility since format 9) is
-        // aChangedThermodynamicBasisRequiresANewWorldAndNeverReinterpretsStock.
+        // A newer build's envelope or facts schema: unreadable, so the world is refused with its files kept.
+        var envelope=copy(image);envelope.core().putInt("Envelope",2);
+        assertTrue(assertThrows(FluidCheckpointCodec.Unreadable.class,()->FluidCheckpointCodec.decode(envelope,key->model)).getMessage().contains("envelope 2"));
+        var schema=copy(image);schema.core().putInt("FactsSchema",999);CheckpointImages.reseal(schema.core());
+        assertTrue(assertThrows(FluidCheckpointCodec.Unreadable.class,()->FluidCheckpointCodec.decode(schema,key->model)).getMessage().contains("facts schema 999"));
+        // Another state format rebuilds from facts, which an image of islands alone does not carry (FluidFactsCompatTest
+        // rebuilds a world image).
+        var state=copy(image);state.core().putInt("StateFormat",FluidCheckpointCodec.VERSION+1);CheckpointImages.reseal(state.core());
+        assertTrue(assertThrows(IllegalArgumentException.class,()->FluidCheckpointCodec.decode(state,key->model)).getMessage().contains("no topology unit"));
     }
-    @Test void aChangedThermodynamicBasisRequiresANewWorldAndNeverReinterpretsStock() {
+    /** A changed thermodynamic basis restates the world from its facts (FluidFactsCompatTest); an image of islands alone
+     * has no registry to rebuild them from, so it is refused, and its stock is never read on the new basis. */
+    @Test void aChangedThermodynamicBasisRebuildsFromFactsAndNeverReinterpretsStock() {
         var image=FluidCheckpointCodec.encode(fixture(),key->model);
         var retired=copy(image);
         ((ListTag)retired.core().get("Packages")).getCompound(0).putString("PropertyRevision","fluid-trbdf2-r1:fluid-nitrogen-r1:7781afaaad17de4926015ebf321c0b106766dd5c131668f54962a8825ed25bd5:fluid-shared-k-v1:nist-liquid-calibration-20260915:k=0x1.12e0be826d695p-30:cb6773ed32b52aefb268f9c5610e288c8cecdbc6c682522b54d0be703c92b533:log-liquid-wilke-v1:dwsim-conditional-solute-v1");
         CheckpointImages.reseal(retired.core());
         var refusal=assertThrows(IllegalArgumentException.class,()->FluidCheckpointCodec.decode(retired,key->model));
-        assertTrue(refusal.getMessage().contains("fresh development world"));
+        assertTrue(refusal.getMessage().contains("property data of package "+PACKAGE+" changed")&&refusal.getMessage().contains("no topology unit"),refusal.getMessage());
         for(String field:List.of("ideal_gas_cp","viscosity")) {
             var resources=new HashMap<>(MaterialCatalog.bundled().resources());
             String path="data/icheme/materials/properties/crude_pc04.json";
@@ -82,15 +89,16 @@ class FluidCheckpointCodecTest {
             coefficients.set(0,new com.google.gson.JsonPrimitive(coefficients.get(0).getAsDouble()*1.001));
             resources.put(path,property.toString());
             var overridden=FluidThermodynamics.forNetwork(MaterialCatalog.parse(resources),PACKAGE);
-            assertTrue(assertThrows(IllegalArgumentException.class,()->FluidCheckpointCodec.decode(image,key->overridden),field).getMessage().contains("fresh development world"),field);
+            assertTrue(assertThrows(IllegalArgumentException.class,()->FluidCheckpointCodec.decode(image,key->overridden),field).getMessage().contains("property data of package"),field);
         }
     }
-    @Test void anEnergyDatumChangeIsRefused() {
+    /** An energy datum change is a basis change: the saved energies are on another reference, so they are never read. */
+    @Test void anEnergyDatumChangeRestatesAndNeverReadsTheSavedEnergy() {
         var image=FluidCheckpointCodec.encode(fixture(),key->model);
         var revision=copy(image);var entry=((ListTag)revision.core().get("Packages")).getCompound(0);entry.putString("EnergyRevision",entry.getString("EnergyRevision")+"-offset");CheckpointImages.reseal(revision.core());
-        assertTrue(assertThrows(IllegalArgumentException.class,()->FluidCheckpointCodec.decode(revision,key->model)).getMessage().contains("fresh development world"));
+        assertTrue(assertThrows(IllegalArgumentException.class,()->FluidCheckpointCodec.decode(revision,key->model)).getMessage().contains("property data of package"));
         var components=copy(image);((ListTag)((ListTag)components.core().get("Packages")).getCompound(0).get("EnergyComponents")).remove(0);CheckpointImages.reseal(components.core());
-        assertTrue(assertThrows(IllegalArgumentException.class,()->FluidCheckpointCodec.decode(components,key->model)).getMessage().contains("fresh development world"));
+        assertTrue(assertThrows(IllegalArgumentException.class,()->FluidCheckpointCodec.decode(components,key->model)).getMessage().contains("property data of package"));
     }
     /** The topology unit: every field of the world ledger comes back exactly and re-encodes to the same bytes. */
     @Test void aTopologyRoundTripsEveryFieldExactlyAndRefusesAMalformedUnit() {
@@ -128,7 +136,7 @@ class FluidCheckpointCodecTest {
         assertEquals(world.constructed().solidMasses(),decoded.constructed().solidMasses());assertArrayEquals(world.destroyed().moles(),decoded.destroyed().moles());
         assertEquals(world.basis(),decoded.basis());assertEquals(world.recoveries(),decoded.recoveries());
         assertArrayEquals(bytes,FluidCheckpointCodec.encodeTopology(decoded),"a decoded topology re-encodes to the same bytes");
-        assertTrue(bytes.length<2_000,"binary topology of five devices: "+bytes.length+" bytes");
+        assertTrue(bytes.length<2_500,"the facts and events of five devices: "+bytes.length+" bytes");
         assertTrue(assertThrows(IllegalArgumentException.class,()->FluidCheckpointCodec.decodeTopology(Arrays.copyOf(bytes,bytes.length+1),0,key->model)).getMessage().contains("trailing bytes"));
         assertThrows(IllegalArgumentException.class,()->FluidCheckpointCodec.decodeTopology(Arrays.copyOf(bytes,bytes.length/2),0,key->model));
     }
@@ -168,7 +176,7 @@ class FluidCheckpointCodecTest {
         assertEquals(FlowControl.Mode.INLET_WRONG_PHASE,full.endpointModes().get(2),"the compressor on the tank's bulk is refused");
         var state=new IslandCoordinator.Snapshot(1,4,full.graph(),new IslandClock.Snapshot(350,200,400,100),Optional.of(full),"FULL");
         var before=new FluidCheckpointCodec.Checkpoint(List.of(new FluidCheckpointCodec.IslandEntry("minecraft:overworld",PACKAGE,state)));
-        var image=FluidCheckpointCodec.encode(before,key->model);assertEquals(19,image.core().getInt("FluidFormat"));
+        var image=FluidCheckpointCodec.encode(before,key->model);assertEquals(FluidCheckpointCodec.VERSION,image.core().getInt("StateFormat"));
         var after=FluidCheckpointCodec.decode(image,key->model).islands().getFirst().snapshot();
         assertEquals(full.graph().pipes(),after.graph().pipes(),"ends, sections, controls, blocked masks and the ports of every pipe");
         assertEquals(PassiveNetwork.PhasePort.LIQUID,after.graph().pipes().get(0).firstPort());assertEquals(PassiveNetwork.PhasePort.VAPOR,after.graph().pipes().get(3).firstPort());
@@ -179,7 +187,7 @@ class FluidCheckpointCodecTest {
         assertArrayEquals(full.endpointFlows(),after.lastResult().orElseThrow().endpointFlows(),"the committed end flows (format 7)");
         assertSameImage(image,FluidCheckpointCodec.encode(FluidCheckpointCodec.decode(image,key->model),key->model),"a reloaded checkpoint re-encodes to the same bytes");
     }
-    /** The world ledger's compressor registration (control tag 3) comes back exactly; an unknown control tag is refused. */
+    /** The world ledger's compressor registration comes back exactly; an unknown control kind is refused. */
     @Test void aCompressorRegistrationRoundTripsInTheTopologyUnit() {
         var empty=WorldTopologyLedger.Snapshot.empty(MaterialCatalog.bundled());int count=empty.basis().components().size();
         var nitrogen=new double[count];nitrogen[com.wormzjl.icheme.science.material.MaterialTestBasis.NITROGEN]=1;
@@ -189,11 +197,9 @@ class FluidCheckpointCodecTest {
                 WorldTopologyLedger.MaterialTotal.empty(count),WorldTopologyLedger.MaterialTotal.empty(count),empty.basis(),Map.of());
         var bytes=FluidCheckpointCodec.encodeTopology(world);var decoded=FluidCheckpointCodec.decodeTopology(bytes,12,key->model);
         assertEquals(world.active(),decoded.active());assertArrayEquals(bytes,FluidCheckpointCodec.encodeTopology(decoded));
-        // The control tag follows the facing byte and the geometry reference; find the one byte 3 whose change to 4 is refused.
-        boolean refused=false;
-        for(int i=0;i<bytes.length&&!refused;i++)if(bytes[i]==3){var corrupt=bytes.clone();corrupt[i]=4;
-            try{FluidCheckpointCodec.decodeTopology(corrupt,12,key->model);}catch(IllegalArgumentException e){refused=e.getMessage().contains("unknown control");}}
-        assertTrue(refused,"an unknown control tag is refused");
+        // The control is saved by its kind's name: a name this build does not know is refused.
+        var corrupt=CheckpointImages.renamed(bytes,"compressor","compressar");
+        assertTrue(assertThrows(IllegalArgumentException.class,()->FluidCheckpointCodec.decodeTopology(corrupt,12,key->model)).getMessage().contains("unknown control compressar"),"an unknown control kind is refused");
     }
 
     // ---------------- solids name their records: crystals beside custom solids (D23, milestone M4) ----------------
@@ -235,7 +241,7 @@ class FluidCheckpointCodecTest {
         var foreign=new SolidMaterial("icheme:crystal_methane_i",crystal.revision(),crystal.density(),crystal.heatCapacity(),new SolidMaterial.Crystal("Methane",crystal.crystal().energyOffset()));
         var unknown=FluidCheckpointCodec.encode(island(holding(graph,replaced(solids,crystal,foreign))),key->pilot);
         var refusal=assertThrows(IllegalArgumentException.class,()->FluidCheckpointCodec.decode(unknown,key->pilot)).getMessage();
-        assertTrue(refusal.contains("icheme:crystal_methane_i")&&refusal.contains(PILOT)&&refusal.contains("create a fresh world"),refusal);
+        assertTrue(refusal.contains("icheme:crystal_methane_i")&&refusal.contains(PILOT)&&refusal.contains("this data does not have"),refusal);
         var denser=new SolidMaterial(crystal.id(),crystal.revision(),crystal.density()*1.001,crystal.heatCapacity(),crystal.crystal());
         var changed=FluidCheckpointCodec.encode(island(holding(graph,replaced(solids,crystal,denser))),key->pilot);
         refusal=assertThrows(IllegalArgumentException.class,()->FluidCheckpointCodec.decode(changed,key->pilot)).getMessage();

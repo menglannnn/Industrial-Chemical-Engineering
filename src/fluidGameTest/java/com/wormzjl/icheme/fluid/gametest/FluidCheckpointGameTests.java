@@ -41,7 +41,7 @@ public final class FluidCheckpointGameTests {
         helper.startSequence().thenWaitUntil(()->helper.assertTrue(stored.get().certificate().isPresent(),"Waiting for the tank to certify"))
         .thenExecute(()->{
             // The world's saved data, saved exactly as an autosave saves it: Minecraft's SavedData.save(File) path.
-            data[0]=FluidSavedData.open(server,models);data[0].setDirty();data[0].save(dataFolder.resolve(FluidCheckpointStore.CORE_NAME).toFile(),level.registryAccess());
+            data[0]=FluidSavedData.open(server,models,MaterialRuntime.active());data[0].setDirty();data[0].save(dataFolder.resolve(FluidCheckpointStore.CORE_NAME).toFile(),level.registryAccess());
             helper.assertTrue(!data[0].isDirty()&&data[0].lastSave().writeNanos()==0,"The save was not handed to the IO worker");
         }).thenWaitUntil(()->helper.assertTrue(data[0].store().committed(),"Waiting for the IO worker's commit"))
         .thenExecute(()->{
@@ -52,9 +52,10 @@ public final class FluidCheckpointGameTests {
                 Files.createDirectories(restart.resolve(FluidCheckpointStore.UNIT_DIRECTORY));Files.copy(core,restart.resolve(FluidCheckpointStore.CORE_NAME));
                 try(var files=Files.list(packs)){for(var file:(Iterable<Path>)files::iterator)Files.copy(file,restart.resolve(FluidCheckpointStore.UNIT_DIRECTORY).resolve(file.getFileName()));}
                 var raw=net.minecraft.nbt.NbtIo.readCompressed(core,net.minecraft.nbt.NbtAccounter.unlimitedHeap());
-                helper.assertTrue(raw.getCompound("data").getInt("FluidFormat")==FluidCheckpointCodec.VERSION&&raw.contains("DataVersion"),"Not format 5 as a saved data file");
+                helper.assertTrue(raw.getCompound("data").getInt("Envelope")==FluidCheckpointCodec.ENVELOPE&&raw.getCompound("data").getInt("StateFormat")==FluidCheckpointCodec.VERSION&&raw.contains("DataVersion"),"Not this build's envelope as a saved data file");
                 var store=FluidCheckpointStore.directory(restart,net.neoforged.neoforge.common.IOUtilities::withIOWorker,true);
                 var loaded=FluidSavedData.read(store,models).orElseThrow();
+                helper.assertTrue(loaded.route()==FluidCheckpointStore.Route.EXACT,"The saved world was rebuilt from facts: "+loaded.reason());
                 helper.assertTrue(loaded.world().orElseThrow().onlineTick()==raw.getCompound("data").getLong("Epoch"),"The topology and the epoch did not round-trip");
                 var entry=loaded.checkpoint().islands().stream().filter(e->e.snapshot().graph().reservoirs().stream().anyMatch(n->n.id()==device)).findFirst().orElseThrow();
                 saved[0]=entry.snapshot();var live=stored.get();status[0]=live.status();

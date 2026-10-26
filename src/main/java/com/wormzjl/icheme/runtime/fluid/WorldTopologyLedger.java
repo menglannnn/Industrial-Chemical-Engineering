@@ -59,8 +59,29 @@ public final class WorldTopologyLedger {
             return new MaterialTotal(total,energy,solids);
         }
     }
+    /**
+     * What property data changes did to the world's contents (AGENTS.md, "Saves and data formats"), cumulative: the
+     * energy (J) the vessels gained by being restated at their temperature under the new data (negative for a loss),
+     * and the moles of each component and the kilograms of each solid (by id, a custom solid by id and size) that the
+     * new data no longer has and so left the world. Not live stock.
+     */
+    public record Restated(double energy,Map<String,Double> removedMoles,Map<String,Double> removedSolids) {
+        public static final Restated NONE=new Restated(0,Map.of(),Map.of());
+        public Restated {
+            if(!Double.isFinite(energy))throw new IllegalArgumentException("Invalid restated energy");
+            removedMoles=Map.copyOf(removedMoles);removedSolids=Map.copyOf(removedSolids);
+            for(var amounts:List.of(removedMoles,removedSolids))for(var e:amounts.entrySet())
+                if(e.getKey().isBlank()||e.getKey().length()>256||!Double.isFinite(e.getValue())||e.getValue()<0)throw new IllegalArgumentException("Invalid removed amount "+e.getKey());
+        }
+        public Restated plus(Restated other) {
+            var moles=new HashMap<>(removedMoles);other.removedMoles.forEach((k,v)->moles.merge(k,v,Double::sum));
+            var solids=new HashMap<>(removedSolids);other.removedSolids.forEach((k,v)->solids.merge(k,v,Double::sum));
+            return new Restated(energy+other.energy,moles,solids);
+        }
+    }
     public record Snapshot(long onlineTick,long nextIdentity,Map<Long,Registration> active,List<Event> events,
-                           MaterialTotal constructed,MaterialTotal destroyed,FluidBasis basis,Map<UUID,RecoveredSolid> recoveries) {
+                           MaterialTotal constructed,MaterialTotal destroyed,FluidBasis basis,Map<UUID,RecoveredSolid> recoveries,Restated restated) {
+        public Snapshot(long onlineTick,long nextIdentity,Map<Long,Registration> active,List<Event> events,MaterialTotal constructed,MaterialTotal destroyed,FluidBasis basis,Map<UUID,RecoveredSolid> recoveries){this(onlineTick,nextIdentity,active,events,constructed,destroyed,basis,recoveries,Restated.NONE);}
         public Snapshot(long onlineTick,long nextIdentity,Map<Long,Registration> active,List<Event> events,MaterialTotal constructed,MaterialTotal destroyed,FluidBasis basis){this(onlineTick,nextIdentity,active,events,constructed,destroyed,basis,Map.of());}
         public Snapshot(long onlineTick,long nextIdentity,Map<Long,Registration> active,List<Event> events,MaterialTotal constructed,MaterialTotal destroyed) {
             this(onlineTick,nextIdentity,active,events,constructed,destroyed,FluidBasis.capture(com.wormzjl.icheme.science.material.MaterialRuntime.current()));
@@ -69,7 +90,7 @@ public final class WorldTopologyLedger {
             FluidRuntimeDiagnostics.count(FluidRuntimeDiagnostics.topologySnapshots);
             recoveries=Map.copyOf(recoveries);if(recoveries.size()>MAXIMUM_EVENTS)throw new IllegalArgumentException("Recovery queue is full");
             if(onlineTick<0||nextIdentity<1||events.size()>MAXIMUM_EVENTS)throw new IllegalArgumentException("Invalid world topology snapshot");
-            active=Map.copyOf(active);events=List.copyOf(events);Objects.requireNonNull(constructed);Objects.requireNonNull(destroyed);
+            active=Map.copyOf(active);events=List.copyOf(events);Objects.requireNonNull(constructed);Objects.requireNonNull(destroyed);Objects.requireNonNull(restated);
             Objects.requireNonNull(basis);int count=basis.components().size();
             if(constructed.moles().length!=count||destroyed.moles().length!=count)throw new IllegalArgumentException("Topology accounting axis mismatch");
             for(var registration:active.values())if(registration.spec().composition().length!=count)throw new IllegalArgumentException("Topology device axis mismatch");
@@ -114,6 +135,7 @@ public final class WorldTopologyLedger {
     private long onlineTick,nextIdentity,version;
     private final FluidBasis basis;
     private MaterialTotal constructed,destroyed;
+    private final Restated restated;
     private final Map<Long,Registration> active=new HashMap<>(),latest=new HashMap<>();
     private final Map<PhysicalFluidTopology.Position,Long> activeAt=new HashMap<>(),latestAt=new HashMap<>();
     private final ArrayList<Event> events=new ArrayList<>();
@@ -123,7 +145,7 @@ public final class WorldTopologyLedger {
     private final Map<UUID,RecoveredSolid> recoveriesView=Collections.unmodifiableMap(recoveries);
     private Snapshot shared;private long sharedVersion;
     public WorldTopologyLedger(Snapshot restored) {
-        Objects.requireNonNull(restored);onlineTick=restored.onlineTick;nextIdentity=restored.nextIdentity;basis=restored.basis;constructed=restored.constructed;destroyed=restored.destroyed;
+        Objects.requireNonNull(restored);onlineTick=restored.onlineTick;nextIdentity=restored.nextIdentity;basis=restored.basis;constructed=restored.constructed;destroyed=restored.destroyed;restated=restored.restated;
         for(var r:restored.active.values()){active.put(r.device.id(),r);for(var cell:r.device.cells())activeAt.put(cell,r.device.id());}
         latest.putAll(active);latestAt.putAll(activeAt);
         // Every queued event must apply to the registry before it, in order, as when it was queued.
@@ -135,8 +157,8 @@ public final class WorldTopologyLedger {
     /** The ledger as a checkpoint saves it. While the ledger is unchanged every snapshot shares the same immutable parts. */
     public Snapshot snapshot() {
         owned();
-        if(sharedVersion!=version){shared=new Snapshot(onlineTick,nextIdentity,Map.copyOf(active),List.copyOf(events),constructed,destroyed,basis,Map.copyOf(recoveries));sharedVersion=version;}
-        else if(shared.onlineTick!=onlineTick)shared=new Snapshot(onlineTick,shared.nextIdentity,shared.active,shared.events,shared.constructed,shared.destroyed,shared.basis,shared.recoveries);
+        if(sharedVersion!=version){shared=new Snapshot(onlineTick,nextIdentity,Map.copyOf(active),List.copyOf(events),constructed,destroyed,basis,Map.copyOf(recoveries),restated);sharedVersion=version;}
+        else if(shared.onlineTick!=onlineTick)shared=new Snapshot(onlineTick,shared.nextIdentity,shared.active,shared.events,shared.constructed,shared.destroyed,shared.basis,shared.recoveries,shared.restated);
         return shared;
     }
     public long onlineTick(){owned();return onlineTick;}

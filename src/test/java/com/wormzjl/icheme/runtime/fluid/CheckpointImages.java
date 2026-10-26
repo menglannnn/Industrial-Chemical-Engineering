@@ -34,7 +34,19 @@ final class CheckpointImages {
         var models2=new HashMap<FluidCheckpointCodec.PackageKey,FluidThermodynamics>();for(var p:core.packages())models2.put(p.key(),models.apply(p.key()));
         var row=core.islands().stream().filter(x->x.id()==id).findFirst().orElseThrow();
         var entry=edit.apply(FluidCheckpointCodec.island(image.packs().get(row.unit().pack()),row,core.epoch(),strings,models2));
-        return withUnit(image,id,FluidCheckpointCodec.islandUnit(entry,row.generation(),strings),strings);
+        return withUnit(image,id,FluidCheckpointCodec.islandUnit(entry,row.generation(),strings,models2.get(entry.key()).components()),strings);
+    }
+    /**
+     * A copy of {@code bytes} whose one entry {@code from} of a facts section's text table reads {@code to} (of the same
+     * UTF-8 length): a saved name a test makes unknown or illegal. The table holds each text once.
+     */
+    static byte[] renamed(byte[] bytes,String from,String to) {
+        byte[] a=from.getBytes(java.nio.charset.StandardCharsets.UTF_8),b=to.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        if(a.length!=b.length||a.length>127)throw new IllegalArgumentException("renamed texts of different lengths");
+        int found=-1;
+        for(int i=0;i+a.length<bytes.length;i++)if(bytes[i]==a.length&&Arrays.equals(bytes,i+1,i+1+a.length,a,0,a.length)){if(found>=0)throw new IllegalArgumentException("two entries "+from);found=i+1;}
+        if(found<0)throw new IllegalArgumentException("no entry "+from);
+        var copy=bytes.clone();System.arraycopy(b,0,copy,found,b.length);return copy;
     }
     /** A copy of a checkpoint with island {@code id}'s unit replaced by {@code unit} in a new pack and every digest recomputed. */
     static FluidCheckpointCodec.Image withUnit(FluidCheckpointCodec.Image image,long id,byte[] unit){return withUnit(image,id,unit,null);}

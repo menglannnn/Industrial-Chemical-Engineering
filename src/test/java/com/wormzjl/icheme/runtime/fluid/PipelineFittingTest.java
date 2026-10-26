@@ -49,11 +49,6 @@ class PipelineFittingTest {
         var saved=new WorldTopologyLedger.Snapshot(0,device.id()+1,Map.of(device.id(),new WorldTopologyLedger.Registration(device,FluidDeviceSpec.nitrogen(EventPathWorld.CATALOG),0)),List.of(),empty.constructed(),empty.destroyed(),empty.basis());
         return FluidCheckpointCodec.encodeTopology(saved);
     }
-    private static int difference(byte[] a,byte[] b) {
-        assertEquals(a.length,b.length);int changed=-1;
-        for(int i=0;i<a.length;i++)if(a[i]!=b[i]){assertEquals(-1,changed,"only the requested discriminator differs");changed=i;}
-        assertTrue(changed>=0);return changed;
-    }
 
     // ---- Check valve ------------------------------------------------------------------------------------------------
 
@@ -106,9 +101,8 @@ class PipelineFittingTest {
         assertThrows(IllegalArgumentException.class,()->Cutoff.fromCode(4));
         var d=new Device(20,new Position(DIM,10,64,0),Kind.VOID,Direction.EAST,new PipeResistance.Geometry(1,.05,.000045,0),new FlowControl.Passive());
         assertThrows(IllegalArgumentException.class,()->d.withCutoff(Direction.EAST,Cutoff.CHECK));
-        var a=image(valve(world));var b=image(valve(world).withCutoff(Direction.NORTH,Cutoff.OPEN));
-        int at=difference(a,b);var bad=a.clone();bad[at]=4;
-        assertThrows(IllegalArgumentException.class,()->FluidCheckpointCodec.decodeTopology(bad,0,key->model));
+        var bad=CheckpointImages.renamed(image(valve(world)),"CHECK","CHECX");
+        assertTrue(assertThrows(IllegalArgumentException.class,()->FluidCheckpointCodec.decodeTopology(bad,0,key->model)).getMessage().contains("unknown Cutoff CHECX"));
     }
 
     @Test void checkNodesRetainPressureAndRestrictionsSurviveDrivenEndSwapping() {
@@ -199,11 +193,10 @@ class PipelineFittingTest {
 
     @Test void malformedCodesAndCutoffsOnOtherDeviceKindsAreRejectedByTheReader() {
         var device=new Device(1,new Position(DIM,0,64,0),Kind.PIPE,Direction.EAST,new PipeResistance.Geometry(1,.05,.000045,0),new FlowControl.Passive());
-        var open=image(device.withCutoff(Direction.EAST,Cutoff.OPEN));var closed=image(device.withCutoff(Direction.EAST,Cutoff.CLOSED));
-        int code=difference(open,closed);var bad=open.clone();bad[code]=(byte)255;
-        assertTrue(assertThrows(IllegalArgumentException.class,()->FluidCheckpointCodec.decodeTopology(bad,0,key->model)).getMessage().contains("Unknown pipe cutoff"));
+        var open=image(device.withCutoff(Direction.EAST,Cutoff.OPEN));var bad=CheckpointImages.renamed(open,"OPEN","OPEX");
+        assertTrue(assertThrows(IllegalArgumentException.class,()->FluidCheckpointCodec.decodeTopology(bad,0,key->model)).getMessage().contains("unknown Cutoff OPEX"));
         var other=new Device(1,device.position(),Kind.VOID,device.facing(),device.geometry(),device.control());
-        var pipe=image(device);var sink=image(other);int kind=difference(pipe,sink);var illegalKind=open.clone();illegalKind[kind]=sink[kind];
+        var illegalKind=CheckpointImages.renamed(open,"PIPE","VOID");
         assertTrue(assertThrows(IllegalArgumentException.class,()->FluidCheckpointCodec.decodeTopology(illegalKind,0,key->model)).getMessage().contains("Only a pipe"));
         assertThrows(IllegalArgumentException.class,()->other.withCutoff(Direction.EAST,Cutoff.OPEN));
     }

@@ -18,55 +18,67 @@ import java.util.*;
 import java.util.function.Function;
 
 /**
- * Checkpoint format 19 of committed science and runtime state: what one storage unit holds and what the core record
- * holds. Rebuilds properties through the immutable model; it never deserializes implementation caches or creates a
- * nitrogen charge. Where the units live is {@link FluidCheckpointStore}'s business.
+ * The fluid checkpoint's envelope and its state, format {@link #VERSION} (AGENTS.md, "Saves and data formats"). A
+ * checkpoint is a core record (one NBT compound, the world's saved data) and units in packs ({@link FluidCheckpointStore}
+ * says where). The envelope is frozen ({@link #ENVELOPE}): the core record's frame and every unit's header, then the
+ * unit's two sections, each with its own schema or format and its length. The facts section ({@link FluidFacts}) holds
+ * what the player built and put in, in an encoding every later build reads; the state section holds what the engine can
+ * compute again, in this build's state format only. A build that cannot use a checkpoint's state rebuilds its islands
+ * from the facts; nothing it holds is migrated. Rebuilds properties through the immutable model; it never deserializes
+ * implementation caches or creates a nitrogen charge.
  *
- * <p>Core record (one NBT compound, the world's saved data): {@code FluidFormat = 19} ({@link #VERSION}); the world {@code Epoch};
- * {@code Strings}, an append-only table of the long texts units refer to; {@code Packages}, one entry per property
- * package with the thermodynamic revision and energy reference the units were written under; the pack files and their
- * sizes; the topology unit's reference; and {@code Islands}, the island index in columns: identity, revision and unit
- * generation, the clock ({@code Online}, {@code Committed}, {@code Retry}, {@code Cadence}), the certificate summary
+ * <p>Core record: {@code Envelope = 1}, {@code StateFormat} and {@code FactsSchema}; the world {@code Epoch};
+ * {@code Strings}, an append-only table of the long texts state sections refer to; {@code Packages}, one entry per
+ * property package with the thermodynamic revision and energy reference the units were written under; the pack files and
+ * their sizes; the topology unit's reference; and {@code Islands}, the island index in columns: identity, revision and
+ * unit generation, the clock ({@code Online}, {@code Committed}, {@code Retry}, {@code Cadence}), the certificate summary
  * ({@code Base} or {@link #AWAKE}, {@code Since}, {@code Start}, {@code Horizon}) and where the island's unit lies with
- * its SHA-256. {@code SHA256} covers every field.</p>
+ * its SHA-256. {@code SHA256} covers every field. A core record of state format 19 or older has no envelope: its world
+ * is reset ({@link FluidSavedData#open}, owner decision D4 of batch 2026-10-26-backward-compat).</p>
  *
- * <p>Island unit (binary, {@link Writer}, {@link Reader}): a header naming the island, its revision and the unit's
- * generation (all three must match the index), then its dimension and package, status and fences; the graph's topology
- * once (node identities, elevations, kinds, volumes, level heights and open flags, pipe ends, sections, controls as tag 0 passive,
- * 1 pump, 2 valve, 3 compressor, and the two ends' phase ports) and its state; the last solved interval with its end
- * flows, which the island's next job starts from; and, for a certified island, its certificate signature and the graph
- * its certified interval started from. Nothing derived is stored, and a certified island's unit records its certificate
- * base, so while it stays certified its unit never changes. Solids (every stock, stream, cake and pending recovery):
- * each population as its material's id, revision, density and heat capacity, then its size and mass; the id names a
- * crystal the package admits or a custom solid (owner decision D23), and the reader refuses an id that names no record
- * of the package or saved constants that are not the record's. The topology unit's registrations carry a vessel's
- * ports (cell, face, phase port, connection role) and its spec's level height and open flag; every boundary transfer its kind. No other
- * format is decoded; world opening discards incompatible formats and rebuilds from placed blocks instead of upgrading
- * them ({@link FluidSavedData#open}, owner choice 2026-10-23). Format 19, unit format 12, adds validated pipe-filter registrations (active and pending), batch 2026-10-25-accessory-refinements. Format 18, unit format 11,
- * adds CHECK cutoff registrations and permanent per-connection direction masks, batch 2026-10-24-pipeline-check-valve. Format 17, unit format 10,
- * adds the validated pipe-cutoff code to active and pending registrations, batch 2026-10-23-pipeline-shutoff-valve. Format 16, unit format 9,
- * added a strict generator-enabled flag to active and pending registrations, batch 2026-10-23-fluid-device-controls-display. Format 15, unit format 8,
- * added requested mover flow and the enabled flag, batch 2026-10-23-pump-compressor-switch-sound; format 14, unit format 7,
- * added directed multi-cell mover ports, batch 2026-10-23-functional-pumps-compressors; format 13, unit format 6,
- * added the open vessels of batch 2026-10-21-floating-roof-tanks: the open flag of specs and inventories, the OVERFLOW
- * phase port and the boundary transfers' kinds; format 12, unit format 5, added vessel ports to registrations and level
- * heights to specs and inventories with the drums of batch 2026-10-15-custom-equipment-rendering; format 11 dropped
- * the velocity-limit modes among the endpoint modes, 2026-10-18, and unit format 4 states their eight ordinals,
- * 2026-10-19; format 10, unit format 3, dropped the movers' efficiency, the approximate fallback and the saved
- * interval's acceptance: every interval is a full solve.</p>
+ * <p>Unit: magic, {@link #UNIT_ENVELOPE}, kind, identity, revision and generation (all four must match the index), then
+ * the facts section (its schema and length) and the state section (its format and length). The topology unit's facts are
+ * the registry, totals, recoveries and identity counter ({@link FluidFacts#world}); its state is the queued events. An
+ * island unit's facts are its vessels' contents and filters' cakes, and a certified island's drift ({@link FluidFacts#island});
+ * its state is its dimension and package, status and fences, the graph's topology once (node identities, elevations,
+ * kinds, volumes, level heights and open flags, pipe ends, sections, controls as tag 0 passive, 1 pump, 2 valve,
+ * 3 compressor, the two ends' phase ports and the forbidden-direction mask) and its state; the last solved interval with
+ * its end flows, which the island's next job starts from; and, for a certified island, its certificate signature and the
+ * graph its certified interval started from. A certified island's unit records its certificate base, so while it stays
+ * certified its unit never changes. Solids (every stock, stream, cake and pending recovery): each population as its
+ * material's id, revision, density and heat capacity, then its size and mass; the id names a crystal the package admits
+ * or a custom solid (owner decision D23), and the state reader refuses an id that names no record of the package or
+ * saved constants that are not the record's (the facts path then reads the current record). An exact load reads both
+ * sections and checks that they agree ({@link FluidFacts#disagreement}).</p>
+ *
+ * <p>State formats: 20 (batch 2026-10-26-backward-compat) put the envelope and the facts around state format 19's
+ * units; the registry and the topology unit's totals left its state for its facts. Format 19, unit format 12, added
+ * validated pipe-filter registrations (active and pending), batch 2026-10-25-accessory-refinements; 18, unit 11, CHECK
+ * cutoff registrations and permanent per-connection direction masks, batch 2026-10-24-pipeline-check-valve; 17, unit 10,
+ * the pipe-cutoff code, batch 2026-10-23-pipeline-shutoff-valve; 16, unit 9, the generator-enabled flag, batch
+ * 2026-10-23-fluid-device-controls-display; 15, unit 8, requested mover flow and the enabled flag, batch
+ * 2026-10-23-pump-compressor-switch-sound; 14, unit 7, directed multi-cell mover ports, batch
+ * 2026-10-23-functional-pumps-compressors; 13, unit 6, the open vessels of batch 2026-10-21-floating-roof-tanks; 12,
+ * unit 5, vessel ports and level heights with the drums of batch 2026-10-15-custom-equipment-rendering; 11 dropped the
+ * velocity-limit modes among the endpoint modes, 2026-10-18, and unit format 4 states their eight ordinals, 2026-10-19;
+ * 10, unit 3, dropped the movers' efficiency, the approximate fallback and the saved interval's acceptance.</p>
  */
 public final class FluidCheckpointCodec {
-    public static final int VERSION=19;
+    /** The state format: the core record's {@code StateFormat} and every unit's state section. */
+    public static final int VERSION=20;
+    /** The envelope: the core record's frame, the unit header and the section layout. Frozen. */
+    public static final int ENVELOPE=1;
     /** The {@code Base} of an awake island: it carries no certificate. */
     public static final long AWAKE=-1;
-    static final int UNIT_MAGIC=0x43434655,UNIT_FORMAT=12;
+    /** The unit header's envelope byte, frozen; a unit of state format 19 or older held its unit format (12 at most) here. */
+    static final int UNIT_MAGIC=0x43434655,UNIT_ENVELOPE=13;
     static final byte ISLAND=1,TOPOLOGY=2;
-    /** Magic, format, kind, identity, revision, generation. */
+    /** Magic, envelope, kind, identity, revision, generation. */
     static final int UNIT_HEADER=4+1+1+8+8+8;
     private static final int MAXIMUM_NODES=10000,MAXIMUM_PIPES=100000,MAXIMUM_SECTIONS=100000,MAXIMUM_ARRAY=4096,MAXIMUM_TEXT=1<<20,
             MAXIMUM_FENCES=1<<16,MAXIMUM_BOUNDARIES=1<<20,MAXIMUM_REASONS=1<<16,MAXIMUM_STRINGS=1<<20;
     /** Tests and GameTests (the scheduler's self-verification switch) also re-encode every reused unit and fail if
-     * the stored one differs. */
+     * the stored one differs, and fail a load whose facts and state disagree. */
     private static final boolean VERIFY=Boolean.getBoolean("icheme.fluid.scheduler.verify");
     private static final FlowControl.Mode[] MODES=FlowControl.Mode.values();
     private static final PassiveNetwork.NodeKind[] NODE_KINDS=PassiveNetwork.NodeKind.values();
@@ -94,159 +106,70 @@ public final class FluidCheckpointCodec {
         public PackageKey {Objects.requireNonNull(packageId);if(packageId.isBlank())throw new IllegalArgumentException("Invalid saved package");}
     }
 
-    // ---------------- the world topology ledger (binary, in its own unit) ----------------
 
-    private static final TopologyCompiler.Kind[] DEVICE_KINDS=TopologyCompiler.Kind.values();
-    private static final PhysicalFluidTopology.Direction[] DIRECTIONS=PhysicalFluidTopology.Direction.values();
-    /** A value compared by the exact bits of its doubles, for the tables a topology unit shares among its devices. */
-    private record Bits(long[] bits) {
-        static Bits of(double... values){var bits=new long[values.length];for(int i=0;i<values.length;i++)bits[i]=Double.doubleToRawLongBits(values[i]);return new Bits(bits);}
-        @Override public boolean equals(Object other){return other instanceof Bits b&&Arrays.equals(bits,b.bits);}
-        @Override public int hashCode(){return Arrays.hashCode(bits);}
+    // ---------------- units: the envelope's sections ----------------
+
+    /** Where a unit's two sections lie: the facts with their schema, the state with its format. */
+    record Sections(int factsSchema,int factsOffset,int factsLength,int stateFormat,int stateOffset,int stateLength) {}
+    /** A unit's sections: the facts with this build's schema, the state with this build's format. */
+    private static byte[] sections(byte[] facts,byte[] state) {
+        var w=new Writer();w.varint(FluidFacts.SCHEMA);w.varint(facts.length);w.raw(facts);w.varint(VERSION);w.varint(state.length);w.raw(state);return w.toByteArray();
     }
-    /** The tables a topology unit writes once and its entries refer to by index: texts, pipe geometries, compositions. */
-    private static final class Tables {
-        final Map<String,Integer> texts=new LinkedHashMap<>();final Map<Bits,Integer> geometries=new LinkedHashMap<>();final Map<Bits,Integer> compositions=new LinkedHashMap<>();
-        final List<PipeResistance.Geometry> geometryValues=new ArrayList<>();final List<double[]> compositionValues=new ArrayList<>();
-        int text(String value){return texts.computeIfAbsent(Objects.requireNonNull(value),ignored->texts.size());}
-        int geometry(PipeResistance.Geometry g){return geometries.computeIfAbsent(Bits.of(g.length(),g.diameter(),g.roughness(),g.minorLoss()),ignored->{geometryValues.add(g);return geometryValues.size()-1;});}
-        int composition(double[] c){return compositions.computeIfAbsent(Bits.of(c),ignored->{compositionValues.add(c);return compositionValues.size()-1;});}
+    /** Reads the section layout that follows a unit's header, to the unit's end. Facts of a later schema refuse the unit. */
+    private static Sections sections(Reader r,String what) {
+        try {
+            int schema=r.varint(Integer.MAX_VALUE);
+            if(schema<1||schema>FluidFacts.SCHEMA)throw r.invalid("facts schema "+schema+": this build reads schemas 1 to "+FluidFacts.SCHEMA+", so a newer build wrote it");
+            int factsLength=r.varint(Integer.MAX_VALUE);int factsOffset=r.position();r.skip(factsLength);
+            int format=r.varint(Integer.MAX_VALUE);int stateLength=r.varint(Integer.MAX_VALUE);int stateOffset=r.position();r.skip(stateLength);r.end();
+            return new Sections(schema,factsOffset,factsLength,format,stateOffset,stateLength);
+        } catch(Unreadable unreadable){throw unreadable;}
+        catch(IllegalArgumentException invalid){throw new Unreadable("The unit of "+what+" cannot be read: "+invalid.getMessage(),invalid);}
     }
+
+    // ---------------- the world topology ledger (its own unit) ----------------
+
     /**
-     * The world topology ledger without its online tick, which a checkpoint keeps as its epoch: what a save writes.
-     * Binary, in a fixed order (devices by identity, touched sets and totals sorted), with the texts, pipe geometries
-     * and compositions its devices share written once. It changes only when the ledger commits, so a save keeps the
-     * unit of an unchanged ledger.
+     * The world topology ledger without its online tick, which a checkpoint keeps as its epoch: its facts (the registry,
+     * totals, recoveries and identity counter) and its state (the queued events), as a unit's two sections. It changes
+     * only when the ledger commits, so a save keeps the unit of an unchanged ledger.
      */
-    public static byte[] encodeTopology(WorldTopologyLedger.Snapshot world) {
-        var tables=new Tables();var body=new Writer();
-        var active=new ArrayList<>(world.active().values());active.sort(Comparator.comparingLong(r->r.device().id()));
-        body.varint(active.size());for(var r:active)registration(body,r,tables);
-        body.varint(world.events().size());
-        for(var event:world.events()) {
-            uuid(body,event.id());body.varlong(event.tick());body.varint(event.edits().size());
-            for(var edit:event.edits()){body.varlong(edit.id());body.bool(edit.replacement()!=null);if(edit.replacement()!=null)registration(body,edit.replacement(),tables);}
-            var touched=new ArrayList<>(event.touched());Collections.sort(touched);body.varint(touched.size());for(long id:touched)body.varlong(id);
-            var recovery=event.recovery();body.bool(recovery!=null);
-            if(recovery!=null){body.varlong(recovery.filterId());body.bool(recovery.player()!=null);if(recovery.player()!=null)uuid(body,recovery.player());}
-        }
-        total(body,world.constructed(),tables);total(body,world.destroyed(),tables);
-        var basis=world.basis();body.varint(tables.text(basis.packageId()));body.varint(basis.components().size());for(var c:basis.components())body.varint(tables.text(c));body.varint(tables.text(basis.scientificFingerprint()));
-        var recoveries=new TreeMap<>(world.recoveries());body.varint(recoveries.size());
-        for(var e:recoveries.entrySet()) {
-            var r=e.getValue();uuid(body,e.getKey());position(body,r.position(),tables);body.bool(r.player()!=null);if(r.player()!=null)uuid(body,r.player());solids(body,r.solids());body.f64(r.energyJoule());
-        }
-        var w=new Writer();w.varlong(world.nextIdentity());
-        w.varint(tables.texts.size());for(var text:tables.texts.keySet())w.text(text);
-        w.varint(tables.geometryValues.size());for(var g:tables.geometryValues){w.f64(g.length());w.f64(g.diameter());w.f64(g.roughness());w.f64(g.minorLoss());}
-        w.varint(tables.compositionValues.size());for(var c:tables.compositionValues)w.sparse(c);
-        w.append(body,0,body.size());return w.toByteArray();
-    }
+    public static byte[] encodeTopology(WorldTopologyLedger.Snapshot world){return sections(FluidFacts.world(world),FluidFacts.events(world.events()));}
     /**
      * A topology {@link #encodeTopology} wrote, at {@code onlineTick}, validated as the ledger itself validates it. Its
      * pending recoveries' solids are read as records of its basis package, whose model {@code models} gives (asked only
-     * when a recovery is pending).
+     * when a recovery is pending), with their saved constants.
      */
     public static WorldTopologyLedger.Snapshot decodeTopology(byte[] bytes,long onlineTick,Function<PackageKey,FluidThermodynamics> models) {
-        return topologyBody(new Reader(bytes,0,bytes.length,"topology unit"),onlineTick,models);
+        var r=new Reader(bytes,0,bytes.length,"topology unit");return topology(bytes,sections(r,"the topology"),onlineTick,models);
     }
-    private static WorldTopologyLedger.Snapshot topologyBody(Reader r,long onlineTick,Function<PackageKey,FluidThermodynamics> models) {
-        long nextIdentity=r.varlong();
-        int textCount=r.varint(MAXIMUM_STRINGS);var texts=new String[textCount];for(int i=0;i<textCount;i++)texts[i]=r.text();
-        int geometryCount=r.varint(MAXIMUM_PIPES);var geometries=new PipeResistance.Geometry[geometryCount];for(int i=0;i<geometryCount;i++)geometries[i]=new PipeResistance.Geometry(r.f64(),r.f64(),r.f64(),r.f64());
-        int compositionCount=r.varint(MAXIMUM_PIPES);var compositions=new double[compositionCount][];for(int i=0;i<compositionCount;i++)compositions[i]=r.sparse(MAXIMUM_ARRAY);
-        var tables=new Object[][]{texts,geometries,compositions};
-        int activeCount=r.varint(Integer.MAX_VALUE);var active=new HashMap<Long,WorldTopologyLedger.Registration>();
-        for(int i=0;i<activeCount;i++){var registration=registration(r,tables);if(active.put(registration.device().id(),registration)!=null)throw r.invalid("duplicate device "+registration.device().id());}
-        int eventCount=r.varint(WorldTopologyLedger.MAXIMUM_EVENTS);var events=new ArrayList<WorldTopologyLedger.Event>(eventCount);
-        for(int i=0;i<eventCount;i++) {
-            var id=uuid(r);long tick=r.varlong();int editCount=r.varint(Integer.MAX_VALUE);var edits=new ArrayList<WorldTopologyLedger.Edit>(editCount);
-            for(int e=0;e<editCount;e++){long device=r.varlong();edits.add(new WorldTopologyLedger.Edit(device,r.bool()?registration(r,tables):null));}
-            int touchedCount=r.varint(Integer.MAX_VALUE);var touched=new HashSet<Long>();for(int t=0;t<touchedCount;t++)if(!touched.add(r.varlong()))throw r.invalid("duplicate touched device");
-            WorldTopologyLedger.Recovery recovery=null;
-            if(r.bool()){long filter=r.varlong();recovery=new WorldTopologyLedger.Recovery(filter,r.bool()?uuid(r):null);}
-            events.add(new WorldTopologyLedger.Event(id,tick,edits,touched,recovery));
-        }
-        var constructed=total(r,texts);var destroyed=total(r,texts);
-        String packageId=text(r,texts);int componentCount=r.varint(MAXIMUM_ARRAY);var components=new ArrayList<String>(componentCount);for(int i=0;i<componentCount;i++)components.add(text(r,texts));
-        var basis=new WorldTopologyLedger.FluidBasis(packageId,components,text(r,texts));
-        int recoveryCount=r.varint(WorldTopologyLedger.MAXIMUM_EVENTS);var recoveries=new HashMap<UUID,WorldTopologyLedger.RecoveredSolid>();
-        var model=recoveryCount==0?null:Objects.requireNonNull(models.apply(new PackageKey(basis.packageId())));
-        for(int i=0;i<recoveryCount;i++) {
-            var id=uuid(r);var position=position(r,texts);var player=r.bool()?uuid(r):null;
-            if(recoveries.put(id,new WorldTopologyLedger.RecoveredSolid(position,player,solids(r,model),r.f64()))!=null)throw r.invalid("duplicate recovery "+id);
-        }
-        r.end();
-        var snapshot=new WorldTopologyLedger.Snapshot(onlineTick,nextIdentity,active,events,constructed,destroyed,basis,recoveries);
-        new WorldTopologyLedger(snapshot);return snapshot;
+    static WorldTopologyLedger.Snapshot topology(byte[] data,Sections s,long onlineTick,Function<PackageKey,FluidThermodynamics> models) {
+        var world=worldFacts(data,s);
+        if(s.stateFormat()!=VERSION)throw new IllegalArgumentException("The topology's state is of format "+s.stateFormat()+"; this build reads "+VERSION);
+        var events=FluidFacts.events(data,s.stateOffset(),s.stateLength());
+        var model=new FluidThermodynamics[1];
+        return world.snapshot(onlineTick,events,saved->{
+            if(model[0]==null)model[0]=Objects.requireNonNull(models.apply(new PackageKey(world.basis().packageId())));
+            return record(new SolidMaterial(saved.id(),saved.revision(),saved.density(),saved.heatCapacity()),model[0]);
+        });
     }
-    private static void registration(Writer w,WorldTopologyLedger.Registration r,Tables tables) {
-        var d=r.device();w.varlong(d.id());position(w,d.position(),tables);w.u8(d.kind().ordinal());w.u8(d.facing().ordinal());w.varint(tables.geometry(d.geometry()));
-        switch(d.control()) {
-            case FlowControl.Passive ignored->w.u8(0);
-            case FlowControl.Pump pump->{w.u8(1);w.f64(pump.requestedVolumeFlow());w.f64(pump.maximumAddedPressure());w.bool(pump.enabled());}
-            case FlowControl.PressureValve valve->{w.u8(2);w.f64(valve.targetPressure());}
-            case FlowControl.Compressor compressor->{w.u8(3);w.f64(compressor.requestedVolumeFlow());w.f64(compressor.maximumPressureRatio());w.bool(compressor.enabled());}
-        }
-        w.bool(d.generatorEnabled());
-        w.u8(d.cutoff().code());w.bool(d.inlineFilter());
-        // Multi-cell ports (cell, face, phase class, stable connection role).
-        w.varint(d.ports().size());for(var port:d.ports()){position(w,port.cell(),tables);w.u8(port.face().ordinal());w.u8(port.port().ordinal());w.u8(port.role().code());}
-        var s=r.spec();w.f64(s.volume());w.f64(s.temperature());w.f64(s.pressure());w.varint(tables.composition(s.composition()));
-        w.f64(s.solids().volumeFraction());w.varint(s.solids().grades().size());
-        for(var g:s.solids().grades()){w.varint(tables.text(g.material()));w.varint(tables.text(g.size().metres()));w.f64(g.massShare());}
-        w.f64(s.levelHeight());w.bool(s.open());
-        w.varlong(r.revision());
+    /** The facts of a topology unit; facts this build cannot read refuse the world. */
+    static FluidFacts.World worldFacts(byte[] data,Sections s) {
+        try{return FluidFacts.world(data,s.factsOffset(),s.factsLength());}
+        catch(IllegalArgumentException invalid){throw new Unreadable("The topology's facts cannot be read: "+invalid.getMessage(),invalid);}
     }
-    private static WorldTopologyLedger.Registration registration(Reader r,Object[][] tables) {
-        var texts=(String[])tables[0];var geometries=(PipeResistance.Geometry[])tables[1];var compositions=(double[][])tables[2];
-        long id=r.varlong();var position=position(r,texts);int kind=r.u8();if(kind>=DEVICE_KINDS.length)throw r.invalid("unknown device kind "+kind);
-        int facing=r.u8();if(facing>=DIRECTIONS.length)throw r.invalid("unknown facing "+facing);
-        var geometry=geometries[r.varint(geometries.length-1)];
-        FlowControl control=switch(r.u8()){case 0->new FlowControl.Passive();case 1->new FlowControl.Pump(r.f64(),r.f64(),r.bool());case 2->new FlowControl.PressureValve(r.f64());
-            case 3->new FlowControl.Compressor(r.f64(),r.f64(),r.bool());default->throw r.invalid("unknown control");};
-        boolean generatorEnabled=r.bool();
-        var cutoff=PhysicalFluidTopology.Cutoff.fromCode(r.u8());boolean inlineFilter=r.bool();
-        int portCount=r.varint(PhysicalFluidTopology.MAXIMUM_PORTS);var ports=new ArrayList<PhysicalFluidTopology.Port>(portCount);
-        for(int i=0;i<portCount;i++) {
-            var cell=position(r,texts);int face=r.u8(),port=r.u8();
-            if(face>=DIRECTIONS.length||port>=PHASE_PORTS.length)throw r.invalid("unknown device port");
-            var role=PhysicalFluidTopology.ConnectionRole.fromCode(r.u8());
-            ports.add(new PhysicalFluidTopology.Port(cell,DIRECTIONS[face],PHASE_PORTS[port],role));
-        }
-        var device=new PhysicalFluidTopology.Device(id,position,DEVICE_KINDS[kind],DIRECTIONS[facing],geometry,control,ports,generatorEnabled,cutoff,inlineFilter);
-        double volume=r.f64(),temperature=r.f64(),pressure=r.f64();var composition=compositions[r.varint(compositions.length-1)];
-        double fraction=r.f64();int gradeCount=r.varint(64);var grades=new ArrayList<SlurryFeed.Grade>(gradeCount);
-        for(int i=0;i<gradeCount;i++)grades.add(new SlurryFeed.Grade(text(r,texts),new ParticleSize(text(r,texts)),r.f64()));
-        double levelHeight=r.f64();boolean open=r.bool();
-        return new WorldTopologyLedger.Registration(device,new FluidDeviceSpec(volume,temperature,pressure,composition,new SlurryFeed(fraction,grades),levelHeight,open),r.varlong());
-    }
-    private static void position(Writer w,PhysicalFluidTopology.Position p,Tables tables){w.varint(tables.text(p.dimension()));w.i32(p.x());w.i32(p.y());w.i32(p.z());}
-    private static PhysicalFluidTopology.Position position(Reader r,String[] texts){return new PhysicalFluidTopology.Position(text(r,texts),r.i32(),r.i32(),r.i32());}
-    private static void total(Writer w,WorldTopologyLedger.MaterialTotal total,Tables tables) {
-        w.sparse(total.moles());w.f64(total.totalEnergy());var solids=new TreeMap<>(total.solidMasses());w.varint(solids.size());for(var e:solids.entrySet()){w.varint(tables.text(e.getKey()));w.f64(e.getValue());}
-    }
-    private static WorldTopologyLedger.MaterialTotal total(Reader r,String[] texts) {
-        var moles=r.sparse(MAXIMUM_ARRAY);double energy=r.f64();int count=r.varint(MAXIMUM_STRINGS);var solids=new HashMap<String,Double>();
-        for(int i=0;i<count;i++)if(solids.put(text(r,texts),r.f64())!=null)throw r.invalid("duplicate solid total");
-        return new WorldTopologyLedger.MaterialTotal(moles,energy,solids);
-    }
-    private static String text(Reader r,String[] texts){return texts[r.varint(texts.length-1)];}
-    private static void uuid(Writer w,UUID id){w.i64(id.getMostSignificantBits());w.i64(id.getLeastSignificantBits());}
-    private static UUID uuid(Reader r){return new UUID(r.i64(),r.i64());}
     /** Whether two ledger snapshots hold the same ledger, whatever their online ticks: a snapshot shares the ledger's
      * immutable parts with the state it was taken from, so an unchanged ledger is the same objects. */
     public static boolean sameWorldBody(WorldTopologyLedger.Snapshot a,WorldTopologyLedger.Snapshot b) {
         return a.nextIdentity()==b.nextIdentity()&&a.active()==b.active()&&a.events()==b.events()&&a.constructed()==b.constructed()
-                &&a.destroyed()==b.destroyed()&&a.basis()==b.basis()&&a.recoveries()==b.recoveries();
+                &&a.destroyed()==b.destroyed()&&a.basis()==b.basis()&&a.recoveries()==b.recoveries()&&a.restated()==b.restated();
     }
     static byte[] topologyUnit(WorldTopologyLedger.Snapshot world,long generation) {
         var w=new Writer();header(w,TOPOLOGY,0,0,generation);w.raw(encodeTopology(world));return w.toByteArray();
     }
-    static WorldTopologyLedger.Snapshot topology(byte[] data,int offset,int length,long generation,long epoch,Function<PackageKey,FluidThermodynamics> models) {
-        var r=new Reader(data,offset,length,"topology unit");
-        requireHeader(r,TOPOLOGY,0,0,generation,"the topology");
-        return topologyBody(r,epoch,models);
+    /** The topology unit at {@code unit}: its header checked against the index, its sections located. */
+    static Sections topologySections(byte[] data,int offset,int length,long generation) {
+        var r=new Reader(data,offset,length,"topology unit");requireHeader(r,TOPOLOGY,0,0,generation,"the topology");return sections(r,"the topology");
     }
     static boolean verifying(){return VERIFY;}
 
@@ -280,32 +203,37 @@ public final class FluidCheckpointCodec {
     // ---------------- island units ----------------
 
     private static void header(Writer w,byte kind,long id,long revision,long generation) {
-        w.i32(UNIT_MAGIC);w.u8(UNIT_FORMAT);w.u8(kind);w.i64(id);w.i64(revision);w.i64(generation);
+        w.i32(UNIT_MAGIC);w.u8(UNIT_ENVELOPE);w.u8(kind);w.i64(id);w.i64(revision);w.i64(generation);
     }
+    /** The frozen header: a unit that is not this envelope's, or not the one the index names, refuses the world. */
     private static void requireHeader(Reader r,byte kind,long id,long revision,long generation,String what) {
-        if(r.i32()!=UNIT_MAGIC)throw new IllegalArgumentException("Invalid saved unit of "+what+": not a fluid storage unit");
-        int format=r.u8();if(format!=UNIT_FORMAT)throw new FormatMismatchException("Fluid storage unit format "+format+" of "+what+" cannot be read: this build reads unit format "+UNIT_FORMAT
-                +" only and has no upgrade from older formats. Create a fresh world for this development build.");
-        int k=r.u8();long i=r.i64(),v=r.i64(),g=r.i64();
-        if(k!=kind||i!=id||v!=revision||g!=generation)throw new IllegalArgumentException("The stored unit of "+what+" holds "+(k==ISLAND?"island "+i:"kind "+k)+" revision "+v+" generation "+g
-                +" but the index expects "+(kind==ISLAND?"island "+id:"the topology")+" revision "+revision+" generation "+generation
-                +": the world's fluid data is inconsistent. Create a fresh world for this development build.");
+        try {
+            if(r.i32()!=UNIT_MAGIC)throw new IllegalArgumentException("Invalid saved unit of "+what+": not a fluid storage unit");
+            int envelope=r.u8();if(envelope!=UNIT_ENVELOPE)throw new IllegalArgumentException("The stored unit of "+what+" has envelope "+envelope+"; this build reads envelope "+UNIT_ENVELOPE);
+            int k=r.u8();long i=r.i64(),v=r.i64(),g=r.i64();
+            if(k!=kind||i!=id||v!=revision||g!=generation)throw new IllegalArgumentException("The stored unit of "+what+" holds "+(k==ISLAND?"island "+i:"kind "+k)+" revision "+v+" generation "+g
+                    +" but the index expects "+(kind==ISLAND?"island "+id:"the topology")+" revision "+revision+" generation "+generation+": the world's fluid data is inconsistent");
+        } catch(IllegalArgumentException invalid){throw new Unreadable(invalid.getMessage(),invalid);}
     }
     /** Where a graph's topology and state were written, so a second graph can be compared with the first. */
     private record Written(int topologyStart,int stateStart,int end) {}
 
     /**
-     * One island's unit. A certified island records its certificate base (the solved interval's end state, with the
-     * interval itself and the graph it started from), not its materialised state. The certificate's starting graph is
-     * written as "the same graph" or as a state over the same topology whenever it is.
+     * One island's unit: its facts on the package's component axis {@code components} ({@link FluidFacts#island}), then
+     * its state. A certified island records its certificate base (the solved interval's end state, with the interval
+     * itself and the graph it started from), not its materialised state. The certificate's starting graph is written as
+     * "the same graph" or as a state over the same topology whenever it is.
      */
-    static byte[] islandUnit(IslandEntry entry,long generation,Strings strings) {
+    static byte[] islandUnit(IslandEntry entry,long generation,Strings strings,List<String> components) {
+        var s=entry.snapshot;var w=new Writer();header(w,ISLAND,s.id(),s.revision(),generation);
+        w.raw(sections(FluidFacts.island(entry,components),islandState(entry,strings)));return w.toByteArray();
+    }
+    private static byte[] islandState(IslandEntry entry,Strings strings) {
         var s=entry.snapshot;var persisted=s.certificate().flatMap(IslandCoordinator.Certified::saved);
         var graph=persisted.map(saved->saved.interval().result().graph()).orElse(s.graph());
         var result=persisted.isPresent()?Optional.of(persisted.orElseThrow().interval().result()):s.lastResult();
         if(!graph.scheduledTransfers().isEmpty())throw new IllegalArgumentException("Request-scoped transfers must be resolved into the committed ledger before saving");
         var w=new Writer();
-        header(w,ISLAND,s.id(),s.revision(),generation);
         w.varint(strings.ref(entry.dimension));w.varint(strings.ref(entry.packageId));
         w.text(s.status());
         var fences=new TreeMap<>(s.fences());w.varint(fences.size());
@@ -396,16 +324,42 @@ public final class FluidCheckpointCodec {
                             List<List<PipeResistance.Geometry>> sections,List<FlowControl> controls,PassiveNetwork.PhasePort[] firstPorts,PassiveNetwork.PhasePort[] secondPorts,int[] forbiddenDirections) {}
     private static PassiveNetwork.PhasePort port(Reader r){int port=r.u8();if(port>=PHASE_PORTS.length)throw r.invalid("unknown pipe port "+port);return PHASE_PORTS[port];}
 
+    /** The sections of an island's unit, its header checked against its index row. */
+    static Sections islandSections(byte[] data,IndexRow row) {
+        var r=new Reader(data,(int)row.unit.offset,row.unit.length,"unit of island "+row.id);
+        requireHeader(r,ISLAND,row.id,row.revision,row.generation,"island "+row.id);return sections(r,"island "+row.id);
+    }
+    /** The facts of an island's unit; facts this build cannot read refuse the world. */
+    static FluidFacts.Island islandFacts(byte[] data,Sections s,long id) {
+        try{return FluidFacts.island(data,s.factsOffset(),s.factsLength(),"island "+id);}
+        catch(IllegalArgumentException invalid){throw new Unreadable("The facts of island "+id+" cannot be read: "+invalid.getMessage(),invalid);}
+    }
     /**
-     * Reads one island unit and validates it against its index row, as format 3 validated its island compound and
-     * payload: a changed thermodynamic basis or energy datum was already refused with the package; here a unit whose
-     * identity, revision or generation is not the index's, a malformed field, a fence before the committed tick, an
-     * island ahead of the epoch and every invalid certificate field. A certified island is materialised from its base
-     * to its committed tick without a solve; whether its certificate still holds is decided when it is registered.
+     * Reads one island unit in full and validates it against its index row: its facts, then its state, then that the two
+     * agree (a disagreement fails a verifying run and is logged otherwise, the state kept). The state must be this
+     * build's format: a unit whose identity, revision or generation is not the index's refuses the world; a malformed
+     * state field, a fence before the committed tick, an island ahead of the epoch or an invalid certificate field is an
+     * {@link IllegalArgumentException} the store answers by rebuilding from facts. A certified island is materialised
+     * from its base to its committed tick without a solve; whether its certificate still holds is decided when it is
+     * registered.
      */
     static IslandEntry island(byte[] data,IndexRow row,long epoch,Strings strings,Map<PackageKey,FluidThermodynamics> models) {
-        long id=row.id;var r=new Reader(data,(int)row.unit.offset,row.unit.length,"unit of island "+id);
-        requireHeader(r,ISLAND,id,row.revision,row.generation,"island "+id);
+        var s=islandSections(data,row);return island(data,row,s,islandFacts(data,s,row.id),epoch,strings,models);
+    }
+    /** {@link #island} with the unit's sections and facts already read. */
+    static IslandEntry island(byte[] data,IndexRow row,Sections s,FluidFacts.Island facts,long epoch,Strings strings,Map<PackageKey,FluidThermodynamics> models) {
+        if(s.stateFormat()!=VERSION)throw new IllegalArgumentException("The state of island "+row.id+" is of format "+s.stateFormat()+"; this build reads "+VERSION);
+        var entry=islandState(data,s,row,epoch,strings,models);
+        String difference=!facts.dimension().equals(entry.dimension)||!facts.packageId().equals(entry.packageId)?"its dimension or package"
+                :!facts.components().equals(models.get(entry.key()).components())?"its component axis":FluidFacts.disagreement(facts,entry.snapshot.graph(),row.committed);
+        if(difference!=null) {
+            if(VERIFY)throw new IllegalStateException("Island "+row.id+": its facts and its state disagree: "+difference);
+            com.wormzjl.icheme.IChemE.LOGGER.error("fluid_checkpoint status=FACTS_DISAGREE island={} detail={}; the state is kept",row.id,difference);
+        }
+        return entry;
+    }
+    private static IslandEntry islandState(byte[] data,Sections s,IndexRow row,long epoch,Strings strings,Map<PackageKey,FluidThermodynamics> models) {
+        long id=row.id;var r=new Reader(data,s.stateOffset(),s.stateLength(),"state of island "+id);
         String dimension=strings.get(r.varint(Integer.MAX_VALUE),"unit of island "+id),packageId=strings.get(r.varint(Integer.MAX_VALUE),"unit of island "+id);
         var model=models.get(new PackageKey(packageId));
         if(model==null)throw new IllegalArgumentException("Island "+id+": its package "+packageId+" is not in the checkpoint's package table");
@@ -508,7 +462,7 @@ public final class FluidCheckpointCodec {
     }
     /** A saved filter under the current solid settings: capacity and clean resistance are the configured ones, and a
      * filter stopped at capacity stays stopped only if the capacity did not change (as in format 3). */
-    private static InlineFilter currentFilter(double capacity,SolidInventory captured,double energy,boolean stopped,FluidThermodynamics model) {
+    static InlineFilter currentFilter(double capacity,SolidInventory captured,double energy,boolean stopped,FluidThermodynamics model) {
         var settings=model.solidSettings;return new InlineFilter(settings.filterCapacity(),settings.filterResistance(),captured,energy,stopped&&capacity==settings.filterCapacity());
     }
     private static SolidInventory solids(Reader r,FluidThermodynamics model) {
@@ -524,12 +478,12 @@ public final class FluidCheckpointCodec {
     }
     /** The record a saved population's id names in the model's package ({@link FluidThermodynamics#solid}), whose
      * constants the saved ones must equal exactly: a population is read back as its record, crystal or custom solid. */
-    private static SolidMaterial record(SolidMaterial saved,FluidThermodynamics model) {
+    static SolidMaterial record(SolidMaterial saved,FluidThermodynamics model) {
         SolidMaterial record;
         try{record=model.solid(saved.id());}
-        catch(IllegalArgumentException unknown){throw new IllegalArgumentException(unknown.getMessage()+" (no migration; create a fresh world)",unknown);}
+        catch(IllegalArgumentException unknown){throw new IllegalArgumentException(unknown.getMessage()+": the saved state names a solid this data does not have",unknown);}
         if(!saved.revision().equals(record.revision())||Double.compare(saved.density(),record.density())!=0||Double.compare(saved.heatCapacity(),record.heatCapacity())!=0)
-            throw new IllegalArgumentException("Saved solid properties differ from the loaded data (no migration; create a fresh world): "+saved.id());
+            throw new IllegalArgumentException("Saved solid properties differ from the loaded data, so the saved state cannot be used: "+saved.id());
         return record;
     }
     private static List<FlowControl.Mode> modes(Reader r,int maximum) {
@@ -554,13 +508,13 @@ public final class FluidCheckpointCodec {
             return new PackageRecord(key.packageId(),model.thermodynamicRevision(),reference.revision(),List.copyOf(reference.components()));
         }
     }
-    record CoreRecord(long epoch,Strings strings,List<PackageRecord> packages,long[] packs,long[] packBytes,long nextPack,long nextGeneration,
+    record CoreRecord(int stateFormat,int factsSchema,long epoch,Strings strings,List<PackageRecord> packages,long[] packs,long[] packBytes,long nextPack,long nextGeneration,
                       long topologyGeneration,UnitRef topology,List<IndexRow> islands) {}
 
     /** Builds and seals a core record. */
     static CompoundTag coreTag(CoreRecord core) {
         var tag=new CompoundTag();
-        tag.putInt("FluidFormat",VERSION);tag.putLong("Epoch",core.epoch);
+        tag.putInt("Envelope",ENVELOPE);tag.putInt("StateFormat",VERSION);tag.putInt("FactsSchema",FluidFacts.SCHEMA);tag.putLong("Epoch",core.epoch);
         tag.put("Strings",core.strings.tag());
         var packages=new ListTag();
         for(var p:core.packages) {
@@ -593,17 +547,24 @@ public final class FluidCheckpointCodec {
     }
     private static final List<String> LONG_COLUMNS=List.of("Id","Revision","Generation","Online","Committed","Retry","Base","Since","Start","Horizon","Pack","Offset");
     /**
-     * Reads and validates a core record: the current format only, every field present and typed, the envelope digest,
-     * the string and package tables,
-     * the pack list, and every index row's unit reference lying inside a listed pack. The units themselves are read by
-     * {@link #island} and {@link #topology}.
+     * Reads and validates a core record: the envelope, every field present and typed, the envelope digest, the string
+     * and package tables, the pack list, and every index row's unit reference lying inside a listed pack. The units
+     * themselves are read by {@link #island} and {@link #topology}. A core record of state format 19 or older (no
+     * envelope) is a {@link FormatMismatchException}; a later envelope or facts schema, which a newer build wrote, is
+     * {@link Unreadable}. Any state format reads: the store rebuilds what another format holds from the facts.
      */
     static CoreRecord readCore(CompoundTag tag) {
         Objects.requireNonNull(tag);
-        if(!tag.contains("FluidFormat",Tag.TAG_INT))throw new IllegalArgumentException("Not a fluid checkpoint: no FluidFormat");
-        int format=tag.getInt("FluidFormat");
-        if(format!=VERSION)throw new FormatMismatchException("Fluid checkpoint format "+format+" cannot be read: this build reads format "+VERSION
-                +" only and has no upgrade from older formats. Create a fresh world for this development build.");
+        if(!tag.contains("Envelope",Tag.TAG_INT)) {
+            if(tag.contains("FluidFormat",Tag.TAG_INT))throw new FormatMismatchException("Fluid checkpoint format "+tag.getInt("FluidFormat")+" has no envelope: this build keeps the facts of"
+                    +" checkpoints written from state format "+VERSION+" on (batch 2026-10-26-backward-compat), and the world's fluid network was saved before them.");
+            throw new IllegalArgumentException("Not a fluid checkpoint: no Envelope");
+        }
+        int envelope=tag.getInt("Envelope");
+        if(envelope!=ENVELOPE)throw new Unreadable("Fluid checkpoint envelope "+envelope+" cannot be read: this build reads envelope "+ENVELOPE+", so a newer build wrote it");
+        int stateFormat=requireInt(tag,"StateFormat","checkpoint"),factsSchema=requireInt(tag,"FactsSchema","checkpoint");
+        if(stateFormat<20)throw new Unreadable("Fluid checkpoint state format "+stateFormat+" in an envelope: envelopes carry state formats from 20 on");
+        if(factsSchema<1||factsSchema>FluidFacts.SCHEMA)throw new Unreadable("Fluid checkpoint facts schema "+factsSchema+" cannot be read: this build reads schemas 1 to "+FluidFacts.SCHEMA+", so a newer build wrote it");
         long epoch=requireLong(tag,"Epoch","checkpoint");if(epoch<0)throw new IllegalArgumentException("Negative world epoch");
         if(!(tag.get("Strings") instanceof ListTag stringList)||!stringList.isEmpty()&&stringList.getElementType()!=Tag.TAG_STRING)throw new IllegalArgumentException("Missing or mistyped fluid checkpoint field Strings");
         if(!(tag.get("Packages") instanceof ListTag packageList)||!packageList.isEmpty()&&packageList.getElementType()!=Tag.TAG_COMPOUND)throw new IllegalArgumentException("Missing or mistyped fluid checkpoint field Packages");
@@ -655,7 +616,7 @@ public final class FluidCheckpointCodec {
             generation(generations,row.generation,nextGeneration,"island "+row.id);
             rows.add(row);
         }
-        return new CoreRecord(epoch,strings,packages,packs,packBytes,nextPack,nextGeneration,topologyGeneration,topology,rows);
+        return new CoreRecord(stateFormat,factsSchema,epoch,strings,packages,packs,packBytes,nextPack,nextGeneration,topologyGeneration,topology,rows);
     }
     private static UnitRef unit(Map<Long,Long> sizes,long pack,long offset,int length,byte[] sha256,String what) {
         Long size=sizes.get(pack);
@@ -674,7 +635,8 @@ public final class FluidCheckpointCodec {
 
     /** The envelope digest: every field of the core record in a fixed order, every text with its length. */
     static byte[] manifest(CompoundTag tag) {
-        var d=new Digest();d.text("icheme-fluid-checkpoint-5");d.number(requireLong(tag,"Epoch","checkpoint"));
+        var d=new Digest();d.text("icheme-fluid-checkpoint-envelope-1");
+        d.number(requireInt(tag,"Envelope","checkpoint"));d.number(requireInt(tag,"StateFormat","checkpoint"));d.number(requireInt(tag,"FactsSchema","checkpoint"));d.number(requireLong(tag,"Epoch","checkpoint"));
         var strings=(ListTag)tag.get("Strings");d.number(strings.size());for(int i=0;i<strings.size();i++)d.text(strings.getString(i));
         var packages=(ListTag)tag.get("Packages");d.number(packages.size());
         for(int i=0;i<packages.size();i++) {
@@ -721,10 +683,16 @@ public final class FluidCheckpointCodec {
         if(!(tag.get(key) instanceof IntArrayTag values))throw new IllegalArgumentException("Missing or mistyped fluid "+where+" field "+key);return values.getAsIntArray();
     }
 
-    /** A world may discard incompatible state; malformed data is a separate failure and must not trigger a reset. */
+    /** A checkpoint saved before the envelope (state format 19 or older): its world is reset once (owner decision D4). Malformed data is a separate failure and must not trigger a reset. */
     static final class FormatMismatchException extends IllegalArgumentException {
         private static final long serialVersionUID=1L;
         FormatMismatchException(String message){super(message);}
+    }
+    /** A checkpoint whose envelope or facts this build cannot read: the world is refused and its files stay as they are. */
+    static final class Unreadable extends IllegalArgumentException {
+        private static final long serialVersionUID=1L;
+        Unreadable(String message){super(message);}
+        Unreadable(String message,Throwable cause){super(message,cause);}
     }
 
     // ---------------- in-memory checkpoints, for tests and tools (edits: test CheckpointImages) ----------------
@@ -818,6 +786,9 @@ public final class FluidCheckpointCodec {
             catch(CharacterCodingException malformed){throw invalid("malformed text");}
         }
         byte[] raw(int length){need(length);var bytes=Arrays.copyOfRange(data,position,position+length);position+=length;return bytes;}
+        int position(){return position;}
+        /** Passes over {@code length} bytes, which must lie inside the unit. */
+        void skip(int length){need(length);position+=length;}
         double[] sparse(int maximumLength) {
             int length=varint(maximumLength);int maskBytes=(length+7)/8;need(maskBytes);int mask=position;position+=maskBytes;
             if(length%8!=0&&(data[mask+maskBytes-1]&0xFF)>>>(length%8)!=0)throw invalid("mask bits beyond the array");

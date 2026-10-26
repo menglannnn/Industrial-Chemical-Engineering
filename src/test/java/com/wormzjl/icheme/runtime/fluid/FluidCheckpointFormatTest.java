@@ -134,9 +134,10 @@ class FluidCheckpointFormatTest extends CertifyingRig.Islands {
             var refusal=assertThrows(IllegalArgumentException.class,()->FluidCheckpointCodec.decode(edited,key->model));
             assertTrue(refusal.getMessage().contains(c.expected()),c.expected()+" / got: "+refusal.getMessage());
         }
-        // Nonfinite deltas: the energy between the interval's start and its base overflows.
-        var overflow=CheckpointImages.withIsland(image,2,key->model,entry->withCertificateGraphs(entry,g->withNodeEnergy(g,1.7e308),g->withNodeEnergy(g,-1.7e308)));
-        assertTrue(assertThrows(IllegalArgumentException.class,()->FluidCheckpointCodec.decode(overflow,key->model)).getMessage().contains("nonfinite energy delta"));
+        // Nonfinite deltas: the energy between the interval's start and its base overflows, so the island's facts (its
+        // certificate's drift) cannot even be written.
+        assertTrue(assertThrows(IllegalArgumentException.class,()->CheckpointImages.withIsland(image,2,key->model,entry->withCertificateGraphs(entry,g->withNodeEnergy(g,1.7e308),g->withNodeEnergy(g,-1.7e308))))
+                .getMessage().contains("nonfinite energy delta"));
         // A fence before the committed tick: a fence at the committed tick, then the committed tick moved past it.
         var event=UUID.randomUUID();
         var fenced=CheckpointImages.withIsland(image,2,key->model,entry->{var s=entry.snapshot();return new FluidCheckpointCodec.IslandEntry(entry.dimension(),entry.packageId(),
@@ -150,9 +151,10 @@ class FluidCheckpointFormatTest extends CertifyingRig.Islands {
         assertTrue(assertThrows(IllegalArgumentException.class,()->FluidCheckpointCodec.decode(truncated,key->model)).getMessage().contains("Invalid saved unit of island 2"));
         var trailing=CheckpointImages.withUnit(image,2,Arrays.copyOf(bytes,bytes.length+3));
         assertTrue(assertThrows(IllegalArgumentException.class,()->FluidCheckpointCodec.decode(trailing,key->model)).getMessage().contains("trailing bytes"));
+        // The header's envelope byte is frozen: a unit of another envelope is not this checkpoint's, so the world is refused.
         var otherFormat=bytes.clone();otherFormat[4]=1;
-        var refused=assertThrows(IllegalArgumentException.class,()->FluidCheckpointCodec.decode(CheckpointImages.withUnit(image,2,otherFormat),key->model)).getMessage();
-        assertTrue(refused.contains("unit format 1")&&refused.contains("Create a fresh world"),refused);
+        var refused=assertThrows(FluidCheckpointCodec.Unreadable.class,()->FluidCheckpointCodec.decode(CheckpointImages.withUnit(image,2,otherFormat),key->model)).getMessage();
+        assertTrue(refused.contains("has envelope 1")&&refused.contains("reads envelope "+FluidCheckpointCodec.UNIT_ENVELOPE),refused);
     }
 
     /** restDetection=false discards every saved certificate; the island keeps its materialised inventory and solves again. */
@@ -317,16 +319,16 @@ class FluidCheckpointFormatTest extends CertifyingRig.Islands {
 
     // ---------------- other formats ----------------
 
-    /** Older formats (3 and before, 7 with its ledger, 8 with the liquid compressibility in its package key, and 9 with the
-     * movers' efficiency in its units, 10 with the velocity-limit modes among its endpoint modes, and 11 without vessel
-     * ports and level heights) are refused with the instruction to create a fresh world, and nothing in the tag is changed. */
-    @Test void olderFormatsAreRefusedWithAFreshWorldInstructionAndLeftUntouched() {
-        for(int format:new int[]{1,2,3,7,8,9,10,11}) {
+    /** Formats saved before the envelope (state format 19 and older: 3 and before, 7 with its ledger, ... 19) are a
+     * format mismatch, which a world open answers with its one reset (owner decision D4), and nothing in the tag is
+     * changed; a newer build's pack format is unreadable, so the world is refused. */
+    @Test void preEnvelopeFormatsAreAMismatchAndANewerPackIsUnreadable() {
+        for(int format:new int[]{1,2,3,7,8,9,10,11,19}) {
             var old=new CompoundTag();old.putInt("FluidFormat",format);old.putLong("Epoch",40);
             byte[] json=("{\"version\":"+format+",\"islands\":[],\"transfers\":{\"revision\":0,\"buffers\":[],\"pending\":[]}}").getBytes(StandardCharsets.UTF_8);
             old.putByteArray(format==3?"Ledger":"Checkpoint",json);old.put("Islands",new ListTag());old.putByteArray("SHA256",new byte[32]);var before=old.copy();
-            var refusal=assertThrows(IllegalArgumentException.class,()->FluidSavedData.load(old,key->model,FluidCheckpointStore.memory()));
-            assertTrue(refusal.getMessage().contains("format "+format)&&refusal.getMessage().contains("Create a fresh world"),refusal.getMessage());
+            var refusal=assertThrows(FluidCheckpointCodec.FormatMismatchException.class,()->FluidSavedData.load(old,key->model,FluidCheckpointStore.memory()));
+            assertTrue(refusal.getMessage().contains("format "+format)&&refusal.getMessage().contains("has no envelope"),refusal.getMessage());
             assertEquals(before,old,"a refused save is left exactly as it was");
         }
         var data=new FluidSavedData(new FluidCheckpointCodec.Checkpoint(List.of()),world(40),key->{throw new AssertionError("no model needed");});
@@ -337,9 +339,9 @@ class FluidCheckpointFormatTest extends CertifyingRig.Islands {
         assertEquals(41,FluidSavedData.load(moved,key->{throw new AssertionError();},FluidCheckpointStore.memory(new FluidCheckpointCodec.Image(moved,packs))).world().orElseThrow().onlineTick());
         var unsigned=current.copy();unsigned.remove("SHA256");
         assertThrows(IllegalArgumentException.class,()->FluidSavedData.load(unsigned,key->{throw new AssertionError();},FluidCheckpointStore.memory(new FluidCheckpointCodec.Image(unsigned,packs))));
-        // A pack of another pack format is refused likewise.
+        // A pack of a later pack format: a newer build wrote it.
         var otherPacks=new HashMap<>(packs);var pack=otherPacks.get(1L).clone();pack[7]=2;otherPacks.put(1L,pack);
-        var refusal=assertThrows(IllegalArgumentException.class,()->FluidSavedData.load(current,key->{throw new AssertionError();},FluidCheckpointStore.memory(new FluidCheckpointCodec.Image(current,otherPacks)))).getMessage();
-        assertTrue(refusal.contains("pack format 2")&&refusal.contains("Create a fresh world"),refusal);
+        var refusal=assertThrows(FluidCheckpointCodec.Unreadable.class,()->FluidSavedData.load(current,key->{throw new AssertionError();},FluidCheckpointStore.memory(new FluidCheckpointCodec.Image(current,otherPacks)))).getMessage();
+        assertTrue(refusal.contains("pack format 2")&&refusal.contains("newer build"),refusal);
     }
 }

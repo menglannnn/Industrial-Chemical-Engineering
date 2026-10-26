@@ -3,6 +3,8 @@ package com.wormzjl.icheme.runtime.fluid;
 import com.wormzjl.icheme.IChemE;
 import com.wormzjl.icheme.science.fluid.state.EnergyReference;
 import com.wormzjl.icheme.science.fluid.thermo.FluidThermodynamics;
+import com.wormzjl.icheme.science.material.MaterialCatalog;
+import com.wormzjl.icheme.science.material.MaterialRuntime;
 import net.minecraft.nbt.*;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -97,7 +99,10 @@ public final class FluidCheckpointStore {
         public CompoundTag core(){return core;}
         public Stats stats(){return stats;}
     }
-    public record Loaded(FluidCheckpointCodec.Checkpoint checkpoint,Optional<WorldTopologyLedger.Snapshot> world) {}
+    /** How a load read its checkpoint: exactly as saved, or rebuilt from its facts. */
+    public enum Route {EXACT,FACTS}
+    /** What a load read: the islands and the world ledger, how, and (rebuilt from facts) why. */
+    public record Loaded(FluidCheckpointCodec.Checkpoint checkpoint,Optional<WorldTopologyLedger.Snapshot> world,Route route,String reason) {}
 
     private final Backend backend;private final Executor io;
     // Save state, on the saving (server) thread.
@@ -167,14 +172,15 @@ public final class FluidCheckpointStore {
             var s=entry.snapshot();
             if(s.clock().onlineTick()>epoch)throw new IllegalStateException("Island "+s.id()+" at online tick "+s.clock().onlineTick()+" is ahead of the world epoch "+epoch);
             var key=entry.key();
-            if(!packages.containsKey(key))packages.put(key,FluidCheckpointCodec.PackageRecord.of(key,Objects.requireNonNull(models.apply(key))));
+            var packageModel=Objects.requireNonNull(models.apply(key));
+            if(!packages.containsKey(key))packages.put(key,FluidCheckpointCodec.PackageRecord.of(key,packageModel));
             var old=islands.get(s.id());Ref ref;
             if(old!=null&&s.payloadGeneration()!=0&&old.revision==s.revision()&&old.payloadGeneration==s.payloadGeneration()) {
                 ref=old;reused++;
-                if(FluidCheckpointCodec.verifying()&&!MessageDigest.isEqual(FluidCheckpointCodec.sha256(FluidCheckpointCodec.islandUnit(entry,old.generation,strings)),old.unit.sha256()))
+                if(FluidCheckpointCodec.verifying()&&!MessageDigest.isEqual(FluidCheckpointCodec.sha256(FluidCheckpointCodec.islandUnit(entry,old.generation,strings,packageModel.components())),old.unit.sha256()))
                     throw new IllegalStateException("Stored unit of island "+s.id()+" at payload generation "+s.payloadGeneration()+" no longer matches the island");
             } else {
-                long generation=nextGeneration++;byte[] unit=FluidCheckpointCodec.islandUnit(entry,generation,strings);
+                long generation=nextGeneration++;byte[] unit=FluidCheckpointCodec.islandUnit(entry,generation,strings,packageModel.components());
                 ref=new Ref(s.revision(),s.payloadGeneration(),generation,layout.place(new Bytes(unit),unit.length,FluidCheckpointCodec.sha256(unit)));
                 encoded++;encodedBytes+=unit.length;
             }
@@ -225,7 +231,7 @@ public final class FluidCheckpointStore {
         }
         if(topologyRef!=null)topologyBytes=topologyRef.unit.length();
         long[] packs=referenced.stream().mapToLong(Long::longValue).toArray();long[] sizes=Arrays.stream(packs).map(packSizes::get).toArray();
-        var core=FluidCheckpointCodec.coreTag(new FluidCheckpointCodec.CoreRecord(epoch,strings,List.copyOf(packages.values()),packs,sizes,nextPack,nextGeneration,
+        var core=FluidCheckpointCodec.coreTag(new FluidCheckpointCodec.CoreRecord(FluidCheckpointCodec.VERSION,FluidFacts.SCHEMA,epoch,strings,List.copyOf(packages.values()),packs,sizes,nextPack,nextGeneration,
                 topologyRef==null?0:topologyRef.generation,topologyRef==null?null:topologyRef.unit,rows));
         long packBytes=newPacks.stream().mapToLong(NewPack::size).sum();
         var stats=new Stats(rows.size(),encoded,reused,copied,encodedBytes,copiedBytes,islandBytes,topologyBytes,topologyEncoded,full,
@@ -296,51 +302,71 @@ public final class FluidCheckpointStore {
     // ---------------- load ----------------
 
     /**
-     * Reads a world's checkpoint from its core record and this store's packs, validating everything (see the class
-     * comment), and seeds the dirty tracking from what it read. Packs are read one at a time, and each is released
-     * once its units are decoded. Only a store that has neither loaded nor saved yet can load. Nothing is written or
-     * deleted; {@link #cleanOrphans} does that once the load is accepted.
+     * Reads a world's checkpoint from its core record and this store's packs (AGENTS.md, "Saves and data formats"),
+     * validating everything (see the class comment). The load is exact when the checkpoint's state is this build's
+     * format, its property basis is the current one and every state section decodes: the islands resume as saved, and
+     * the loaded index seeds the dirty tracking. Otherwise the world is rebuilt from its facts alone
+     * ({@link FluidFacts#rebuild}, restating its contents when the property data changed); nothing is reused, so the
+     * next save writes every unit afresh, and the packs read stay until its core record replaces this one. An envelope
+     * or facts section this build cannot read, a missing or damaged pack and a digest mismatch refuse the world.
+     * Packs are read one at a time, and each is released once its units are read. Only a store that has neither loaded
+     * nor saved yet can load. Nothing is written or deleted; {@link #cleanOrphans} does that once the load is accepted.
      */
-    public Loaded load(CompoundTag coreTag,Function<FluidCheckpointCodec.PackageKey,FluidThermodynamics> models) {
+    public Loaded load(CompoundTag coreTag,Function<FluidCheckpointCodec.PackageKey,FluidThermodynamics> models){return load(coreTag,models,MaterialRuntime.current());}
+    /** {@link #load} with the material data {@code catalog} the models were built from, which a rebuild from facts reads. */
+    public Loaded load(CompoundTag coreTag,Function<FluidCheckpointCodec.PackageKey,FluidThermodynamics> models,MaterialCatalog catalog) {
         if(loaded||sequence!=0)throw new IllegalStateException("A fluid checkpoint store loads once, before any save");
+        Objects.requireNonNull(catalog);
         var core=FluidCheckpointCodec.readCore(coreTag);
+        // Why the state cannot be used, once known: the load then reads facts only.
+        String why=core.stateFormat()!=FluidCheckpointCodec.VERSION?"state format "+core.stateFormat()+", this build's is "+FluidCheckpointCodec.VERSION:null;boolean restate=false;
         var byKey=new HashMap<FluidCheckpointCodec.PackageKey,FluidThermodynamics>();
         for(var p:core.packages()) {
-            var model=Objects.requireNonNull(models.apply(p.key()));
-            if(!p.propertyRevision().equals(model.thermodynamicRevision()))throw new IllegalArgumentException("Incompatible fluid property basis; use a fresh development world: "+p.packageId());
+            var model=Objects.requireNonNull(models.apply(p.key()));byKey.put(p.key(),model);
             var reference=EnergyReference.sensible(model.components());
-            if(!p.energyRevision().equals(reference.revision())||!p.energyComponents().equals(reference.components())||reference.formationDataQualified())
-                throw new IllegalArgumentException("Saved energy reference is not this build's; use a fresh development world");
-            byKey.put(p.key(),model);
+            if(reference.formationDataQualified())throw new IllegalArgumentException("This build's energy reference of package "+p.packageId()+" is formation-qualified, which a checkpoint cannot carry");
+            if(!p.propertyRevision().equals(model.thermodynamicRevision())||!p.energyRevision().equals(reference.revision())||!p.energyComponents().equals(reference.components())) {
+                restate=true;why="the property data of package "+p.packageId()+" changed";
+            }
         }
         var rowsByPack=new HashMap<Long,List<Integer>>();
         for(int i=0;i<core.islands().size();i++)rowsByPack.computeIfAbsent(core.islands().get(i).unit().pack(),ignored->new ArrayList<>()).add(i);
-        var entries=new FluidCheckpointCodec.IslandEntry[core.islands().size()];Optional<WorldTopologyLedger.Snapshot> world=Optional.empty();
+        var entries=new FluidCheckpointCodec.IslandEntry[core.islands().size()];var facts=new FluidFacts.Island[entries.length];
+        Optional<WorldTopologyLedger.Snapshot> world=Optional.empty();FluidFacts.World worldFacts=null;
         for(int i=0;i<core.packs().length;i++) {
-            long p=core.packs()[i];byte[] bytes;
-            try{bytes=backend.readPack(p);}
-            catch(NoSuchFileException missing){throw new IllegalArgumentException("Fluid pack "+p+" is missing: the world's fluid data is incomplete. Create a fresh world for this development build.");}
-            catch(IOException failure){throw new IllegalArgumentException("Fluid pack "+p+" cannot be read: "+failure.getMessage());}
-            if(bytes.length!=core.packBytes()[i])throw new IllegalArgumentException("Fluid pack "+p+" holds "+bytes.length+" bytes but the checkpoint expects "+core.packBytes()[i]
-                    +": a half-written or damaged pack. Create a fresh world for this development build.");
-            var header=ByteBuffer.wrap(bytes);
-            if(header.getInt()!=PACK_MAGIC)throw new IllegalArgumentException("Fluid pack "+p+" is not a fluid pack");
-            int format=header.getInt();if(format!=PACK_FORMAT)throw new FluidCheckpointCodec.FormatMismatchException("Fluid pack format "+format+" cannot be read: this build reads pack format "+PACK_FORMAT
-                    +" only and has no upgrade from older formats. Create a fresh world for this development build.");
-            if(header.getLong()!=p)throw new IllegalArgumentException("Fluid pack "+p+" names another pack");
+            long p=core.packs()[i];byte[] bytes=pack(p,core.packBytes()[i]);
             for(int index:rowsByPack.getOrDefault(p,List.of())) {
                 var row=core.islands().get(index);var unit=row.unit();
                 if(!MessageDigest.isEqual(FluidCheckpointCodec.sha256(bytes,(int)unit.offset(),unit.length()),unit.sha256()))throw new IllegalArgumentException("Fluid checkpoint checksum mismatch in the unit of island "+row.id());
-                entries[index]=FluidCheckpointCodec.island(bytes,row,core.epoch(),core.strings(),byKey);
+                var sections=FluidCheckpointCodec.islandSections(bytes,row);facts[index]=FluidCheckpointCodec.islandFacts(bytes,sections,row.id());
+                if(why==null)try{entries[index]=FluidCheckpointCodec.island(bytes,row,sections,facts[index],core.epoch(),core.strings(),byKey);}
+                catch(FluidCheckpointCodec.Unreadable unreadable){throw unreadable;}
+                catch(IllegalArgumentException state){why="the state of island "+row.id()+" cannot be used: "+state.getMessage();}
             }
             var unit=core.topology();
             if(unit!=null&&unit.pack()==p) {
                 if(!MessageDigest.isEqual(FluidCheckpointCodec.sha256(bytes,(int)unit.offset(),unit.length()),unit.sha256()))throw new IllegalArgumentException("Topology checkpoint checksum mismatch");
+                var sections=FluidCheckpointCodec.topologySections(bytes,(int)unit.offset(),unit.length(),core.topologyGeneration());worldFacts=FluidCheckpointCodec.worldFacts(bytes,sections);
                 // Pending recoveries read their solids as records of the topology's basis package: the model checked
                 // against the package table when an island uses it, else the world's own.
-                world=Optional.of(FluidCheckpointCodec.topology(bytes,(int)unit.offset(),unit.length(),core.topologyGeneration(),core.epoch(),
-                        key->{var known=byKey.get(key);return known!=null?known:models.apply(key);}));
+                if(why==null)try{world=Optional.of(FluidCheckpointCodec.topology(bytes,sections,core.epoch(),key->{var known=byKey.get(key);return known!=null?known:models.apply(key);}));}
+                catch(FluidCheckpointCodec.Unreadable unreadable){throw unreadable;}
+                catch(IllegalArgumentException state){why="the topology's state cannot be used: "+state.getMessage();}
             }
+        }
+        if(why==null&&worldFacts!=null&&!worldFacts.basis().equals(WorldTopologyLedger.FluidBasis.capture(catalog))){restate=true;why="the fluid property data changed";}
+        nextGeneration=core.nextGeneration();nextPack=core.nextPack();
+        try{for(long p:backend.packs())nextPack=Math.max(nextPack,p+1);}catch(IOException ignored){}
+        loaded=true;loadedPacks=core.packs().clone();
+        synchronized(lock){var previous=new HashSet<Long>();for(long p:loadedPacks)previous.add(p);previousReferenced=Set.copyOf(previous);}
+        if(why!=null) {
+            if(worldFacts==null)throw new IllegalArgumentException("The fluid checkpoint's state cannot be used ("+why+") and it holds no topology unit to rebuild its islands from");
+            var placed=new ArrayList<FluidFacts.Placed>(facts.length);for(int i=0;i<facts.length;i++)placed.add(new FluidFacts.Placed(facts[i],core.islands().get(i).committed()));
+            var rebuilt=FluidFacts.rebuild(worldFacts,placed,core.epoch(),models,catalog,restate,why);
+            // Nothing stored is reused: the next save writes every unit afresh.
+            islands.clear();topology=null;topologySource=null;packSizes.clear();strings=new FluidCheckpointCodec.Strings();selfContained=true;
+            IChemE.LOGGER.warn("fluid_checkpoint status=FACTS reason={} saved_islands={} islands={} vessels={} restated={}",why,facts.length,rebuilt.checkpoint().islands().size(),rebuilt.vessels(),rebuilt.restated());
+            return new Loaded(rebuilt.checkpoint(),Optional.of(rebuilt.world()),Route.FACTS,why);
         }
         var refs=new LinkedHashMap<Long,Ref>();
         for(int i=0;i<entries.length;i++){var row=core.islands().get(i);refs.put(row.id(),new Ref(row.revision(),entries[i].snapshot().payloadGeneration(),row.generation(),row.unit()));}
@@ -349,11 +375,21 @@ public final class FluidCheckpointStore {
         // its unit where it is until something it records changes.
         islands.clear();islands.putAll(refs);topology=core.topology()==null?null:new Ref(0,0,core.topologyGeneration(),core.topology());topologySource=world.orElse(null);
         packSizes.clear();for(int i=0;i<core.packs().length;i++)packSizes.put(core.packs()[i],core.packBytes()[i]);
-        strings=core.strings();nextGeneration=core.nextGeneration();nextPack=core.nextPack();
-        try{for(long p:backend.packs())nextPack=Math.max(nextPack,p+1);}catch(IOException ignored){}
-        selfContained=false;loaded=true;loadedPacks=core.packs().clone();
-        synchronized(lock){var previous=new HashSet<Long>();for(long p:loadedPacks)previous.add(p);previousReferenced=Set.copyOf(previous);}
-        return new Loaded(checkpoint,world);
+        strings=core.strings();selfContained=false;
+        return new Loaded(checkpoint,world,Route.EXACT,"");
+    }
+    /** A listed pack's bytes, its size and header checked: a missing, short or foreign pack refuses the world. */
+    private byte[] pack(long p,long size) {
+        byte[] bytes;
+        try{bytes=backend.readPack(p);}
+        catch(NoSuchFileException missing){throw new IllegalArgumentException("Fluid pack "+p+" is missing: the world's fluid data is incomplete.");}
+        catch(IOException failure){throw new IllegalArgumentException("Fluid pack "+p+" cannot be read: "+failure.getMessage());}
+        if(bytes.length!=size)throw new IllegalArgumentException("Fluid pack "+p+" holds "+bytes.length+" bytes but the checkpoint expects "+size+": a half-written or damaged pack.");
+        var header=ByteBuffer.wrap(bytes);
+        if(header.getInt()!=PACK_MAGIC)throw new IllegalArgumentException("Fluid pack "+p+" is not a fluid pack");
+        int format=header.getInt();if(format!=PACK_FORMAT)throw new FluidCheckpointCodec.Unreadable("Fluid pack format "+format+" cannot be read: this build reads pack format "+PACK_FORMAT+", so a newer build wrote it");
+        if(header.getLong()!=p)throw new IllegalArgumentException("Fluid pack "+p+" names another pack");
+        return bytes;
     }
     /** Reads the committed core record from this store's backend and loads it. */
     public Optional<Loaded> read(Function<FluidCheckpointCodec.PackageKey,FluidThermodynamics> models) throws IOException {

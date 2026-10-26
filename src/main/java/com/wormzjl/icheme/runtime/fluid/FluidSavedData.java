@@ -1,6 +1,7 @@
 package com.wormzjl.icheme.runtime.fluid;
 
 import com.wormzjl.icheme.science.fluid.thermo.FluidThermodynamics;
+import com.wormzjl.icheme.science.material.MaterialCatalog;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.server.MinecraftServer;
@@ -29,6 +30,10 @@ public final class FluidSavedData extends SavedData {
     private final FluidCheckpointStore store;
     private FluidCheckpointCodec.Checkpoint checkpoint;
     private Optional<WorldTopologyLedger.Snapshot> world=Optional.empty();
+    private FluidCheckpointStore.Route route=FluidCheckpointStore.Route.EXACT;private String reason="";
+    /** How the load read this data, and (rebuilt from facts) why: the authority logs it and names it on rebuilt islands. */
+    public FluidCheckpointStore.Route route(){return route;}
+    public String reason(){return reason;}
     public record Capture(FluidCheckpointCodec.Checkpoint checkpoint,WorldTopologyLedger.Snapshot world) {}
     private java.util.function.Supplier<Capture> capture;
     /**
@@ -104,28 +109,37 @@ public final class FluidSavedData extends SavedData {
         return tag.merge(plan.core().copy());
     }
     /**
-     * Strictly reads the current core record and units of {@code store}. No older format is decoded or upgraded;
-     * {@link #open} separately handles a world's format mismatch by starting an empty simulation.
+     * Reads the core record and units of {@code store} ({@link FluidCheckpointStore#load}): exactly, or rebuilt from
+     * the saved facts when the state cannot be used, which marks the data dirty so the next save writes the rebuilt
+     * world. {@link #open} separately resets a world saved before the envelope (owner decision D4).
      */
     public static FluidSavedData load(CompoundTag core,Function<FluidCheckpointCodec.PackageKey,FluidThermodynamics> models,FluidCheckpointStore store) {
-        var loaded=store.load(core,models);var data=new FluidSavedData(loaded.checkpoint(),models,store);data.world=loaded.world();return data;
+        return of(store.load(core,models),models,store);
+    }
+    public static FluidSavedData load(CompoundTag core,Function<FluidCheckpointCodec.PackageKey,FluidThermodynamics> models,MaterialCatalog catalog,FluidCheckpointStore store) {
+        return of(store.load(core,models,catalog),models,store);
+    }
+    private static FluidSavedData of(FluidCheckpointStore.Loaded loaded,Function<FluidCheckpointCodec.PackageKey,FluidThermodynamics> models,FluidCheckpointStore store) {
+        var data=new FluidSavedData(loaded.checkpoint(),models,store);data.world=loaded.world();data.route=loaded.route();data.reason=loaded.reason();
+        if(loaded.route()==FluidCheckpointStore.Route.FACTS)data.setDirty();
+        return data;
     }
     /** Reads the checkpoint {@code store} committed last, if any. */
     public static Optional<FluidSavedData> read(FluidCheckpointStore store,Function<FluidCheckpointCodec.PackageKey,FluidThermodynamics> models) throws IOException {
-        return store.read(models).map(loaded->{var data=new FluidSavedData(loaded.checkpoint(),models,store);data.world=loaded.world();return data;});
+        return store.read(models).map(loaded->of(loaded,models,store));
     }
     private static boolean sameFile(Path a,Path b) {
         if(a.toAbsolutePath().normalize().equals(b.toAbsolutePath().normalize()))return true;
         try{return a.getFileName().equals(b.getFileName())&&Files.isSameFile(a.toAbsolutePath().getParent(),b.toAbsolutePath().getParent());}catch(IOException unknown){return false;}
     }
-    /** World loads reset incompatible formats; every other failed read still preserves the saved authority. */
-    public static FluidSavedData open(MinecraftServer server,Function<FluidCheckpointCodec.PackageKey,FluidThermodynamics> models) {
+    /** A world saved before the envelope is reset (owner decision D4); one this build cannot read is refused, its files kept. */
+    public static FluidSavedData open(MinecraftServer server,Function<FluidCheckpointCodec.PackageKey,FluidThermodynamics> models,MaterialCatalog catalog) {
         if(!server.isSameThread())throw new IllegalStateException("Fluid world data requires the server thread");
         var dataFolder=server.getWorldPath(LevelResource.ROOT).resolve("data");
         var store=FluidCheckpointStore.directory(dataFolder,net.neoforged.neoforge.common.IOUtilities::withIOWorker,true);
         var storage=server.overworld().getDataStorage();
         var factory=new SavedData.Factory<>(()->new FluidSavedData(new FluidCheckpointCodec.Checkpoint(List.of()),models,store),(tag,registries)->{
-            try{return load(tag,models,store);}
+            try{return load(tag,models,catalog,store);}
             catch(FluidCheckpointCodec.FormatMismatchException mismatch) {
                 com.wormzjl.icheme.IChemE.LOGGER.warn("fluid_checkpoint status=RESET detail={} Inventories, controls and pending fluid events discarded; placed devices rebuild on chunk load.",mismatch.getMessage());
                 var fresh=new FluidSavedData(new FluidCheckpointCodec.Checkpoint(List.of()),models,store.resetForFormatChange());
@@ -144,10 +158,10 @@ public final class FluidSavedData extends SavedData {
         try {
             Files.readAttributes(path,BasicFileAttributes.class);
             // The storage logs the failure and returns nothing; read the checkpoint again so the refusal names its
-            // reason (an older format, a checksum, a missing or damaged pack, a changed property basis). Nothing is
+            // reason (a newer envelope or facts schema, a checksum, a missing or damaged pack). Nothing is
             // written or deleted: the core record and every pack are left exactly as they are.
             String reason;
-            try{load(net.minecraft.nbt.NbtIo.readCompressed(path,net.minecraft.nbt.NbtAccounter.unlimitedHeap()).getCompound("data"),models,FluidCheckpointStore.directory(dataFolder,Runnable::run,false));reason="unknown reason";}
+            try{load(net.minecraft.nbt.NbtIo.readCompressed(path,net.minecraft.nbt.NbtAccounter.unlimitedHeap()).getCompound("data"),models,catalog,FluidCheckpointStore.directory(dataFolder,Runnable::run,false));reason="unknown reason";}
             catch(IOException|RuntimeException failure){reason=failure.getMessage();}
             throw new IllegalStateException("Existing fluid authority could not be read: "+reason+" Refusing to replace its inventories: "+path);
         }catch(NoSuchFileException missing) {
