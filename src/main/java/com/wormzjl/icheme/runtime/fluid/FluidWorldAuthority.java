@@ -71,7 +71,10 @@ public final class FluidWorldAuthority implements AutoCloseable {
 
     private FluidWorldAuthority(MinecraftServer server) {
         this.server=server;owned();catalog=MaterialRuntime.active();
-        options=IChemE.fluidOptions();data=FluidSavedData.open(server,this::model,catalog);
+        options=IChemE.fluidOptions();
+        // Both stores open before anything starts: one this build cannot read refuses the world with its files as they are.
+        var accessories=com.wormzjl.icheme.runtime.instrument.InstrumentService.Store.open(server);
+        data=FluidSavedData.open(server,this::model,catalog);
         model=model(new FluidCheckpointCodec.PackageKey(com.wormzjl.icheme.science.fluid.thermo.FluidMaterialCatalog.networkPackage(catalog)));
         propertyReload=new FluidPropertyReloadGuard(catalog,com.wormzjl.icheme.science.fluid.thermo.FluidMaterialCatalog.networkPackage(catalog),model);
         presetCache=FluidPresetCatalog.resolve(catalog);componentNames=model.components();
@@ -88,7 +91,7 @@ public final class FluidWorldAuthority implements AutoCloseable {
         for(var entry:data.checkpoint().islands())runtime.register(dimension(entry.dimension()),entry.snapshot(),model(entry.key()));
         logLoad();
         registry.load();data.bindCapture(this::capture);
-        instruments=new com.wormzjl.icheme.runtime.instrument.InstrumentService(server,this);
+        instruments=new com.wormzjl.icheme.runtime.instrument.InstrumentService(server,this,accessories);
         // Block entities whose chunks loaded before this authority existed never reported themselves: every device
         // in an already loaded chunk is marked once, and its bucket binds and presents it. Nothing is pushed here.
         registry.forEachChunk((name,chunk,devices)->{var level=server.getLevel(dimension(name));var at=new net.minecraft.world.level.ChunkPos(chunk);

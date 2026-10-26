@@ -122,8 +122,9 @@ class GaugeAccessoriesTest {
         var image=store.save(new CompoundTag());var reload=InstrumentService.Store.load(image);assertEquals(store.host(7),reload.host(7));assertEquals(store.pending(),reload.pending());assertEquals(1234,reload.nextDue());assertNotNull(reload.remove(key,instance));assertNull(reload.remove(key,instance));assertTrue(reload.host(7).isEmpty());assertEquals(2,reload.revision(7));
         var invalid=image.copy();invalid.putInt("format",2);assertThrows(IllegalArgumentException.class,()->InstrumentService.Store.load(invalid));
         var malformed=image.copy();malformed.getList("installed",10).getCompound(0).putLong("revision",99);assertThrows(IllegalArgumentException.class,()->InstrumentService.Store.load(malformed));
-        var pending=image.copy();pending.getList("pending",10).getCompound(0).putString("type","UNKNOWN");assertThrows(IllegalArgumentException.class,()->InstrumentService.Store.load(pending));
-        var missing=image.copy();missing.remove("pending");assertThrows(IllegalArgumentException.class,()->InstrumentService.Store.load(missing));
+        // Pending operations are state: one that does not validate drops the state, the installed gauge kept.
+        var pending=image.copy();pending.getList("pending",10).getCompound(0).putString("type","UNKNOWN");var dropped=InstrumentService.Store.load(pending);assertTrue(dropped.pending().isEmpty());assertEquals(store.host(7),dropped.host(7));
+        var missing=image.copy();missing.remove("pending");var none=InstrumentService.Store.load(missing);assertTrue(none.pending().isEmpty());assertEquals(store.host(7),none.host(7));
     }
     @Test void housingIsClosedAtObliqueAnglesAndEveryConnectorRemainsFinite(){
         var edges=new HashMap<String,Integer>();

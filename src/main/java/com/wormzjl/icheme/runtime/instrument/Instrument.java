@@ -4,7 +4,6 @@ import com.wormzjl.icheme.world.item.GaugeSettings;
 import net.minecraft.core.Direction;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
-import net.minecraft.nbt.NbtOps;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 import java.util.List;
@@ -17,8 +16,10 @@ public final class Instrument {
     private Instrument(){}
     /** What a player attaches: the two gauges and the pipe fittings. */
     public enum Type { PRESSURE, TEMPERATURE, SIGHT_GLASS, SHUTOFF, CHECK, PRESSURE_VALVE, FILTER, PUMP, COMPRESSOR }
+    /** Every mount name; saved by name, like an enum constant. */
+    public static final Set<String> MOUNTS=Set.of("pipe_north","pipe_south","pipe_east","pipe_west","pipe_accessory","pressure_top","pressure_bottom","temperature_top","temperature_bottom");
     public record Key(long host,String mount) {
-        public Key{if(host<=0||mount==null||!java.util.Set.of("pipe_north","pipe_south","pipe_east","pipe_west","pipe_accessory","pressure_top","pressure_bottom","temperature_top","temperature_bottom").contains(mount))throw new IllegalArgumentException("Invalid instrument key");}
+        public Key{if(host<=0||mount==null||!MOUNTS.contains(mount))throw new IllegalArgumentException("Invalid instrument key");}
     }
     public record Installed(Key key,UUID instance,long revision,GaugeSettings settings) {
         public Installed{Objects.requireNonNull(key);Objects.requireNonNull(instance);Objects.requireNonNull(settings);if(revision<=0||key.mount().equals("pipe_accessory")||key.mount().startsWith("pressure_")&&settings.kind()!=GaugeSettings.Kind.PRESSURE||key.mount().startsWith("temperature_")&&settings.kind()!=GaugeSettings.Kind.TEMPERATURE)throw new IllegalArgumentException("Invalid instrument revision or mount kind");}
@@ -52,7 +53,11 @@ public final class Instrument {
         public double[] localTap(){var delta=tap.subtract(centre);return new double[]{delta.dot(right()),delta.y,delta.dot(normal())};}
     }
 
-    /** Chunk-synchronized static attachment descriptions; the registry is the server's authority. */
+    /**
+     * Chunk-synchronized static attachment descriptions; the registry is the server's authority. The host's saved copy is
+     * state: {@link InstrumentService#bind} restores it from the store when the device loads, so a copy this build cannot
+     * read is dropped, never thrown at the block entity's load (which would drop the block entity with its other fields).
+     */
     public static final class Metadata {
         private List<Installed> installed=List.of();
         private long revision;
@@ -62,9 +67,15 @@ public final class Instrument {
         public List<Installed> installed(){return installed;}
         public long revision(){return revision;}
         public void set(List<Installed> value,long revision){installed=List.copyOf(value);this.revision=revision;}
-        public void write(CompoundTag tag){tag.putLong("AccessoryRevision",revision);var list=new ListTag();for(var i:installed)list.add(encode(i));tag.put("Instruments",list);}
-        public void read(CompoundTag tag){revision=tag.getLong("AccessoryRevision");if(revision<0)throw new IllegalArgumentException("Invalid accessory revision");var list=tag.getList("Instruments",10);if(list.size()>6)throw new IllegalArgumentException("Too many host instruments");var result=new java.util.ArrayList<Installed>();for(var t:list)result.add(decode((CompoundTag)t));installed=List.copyOf(result);}
-        public static CompoundTag encode(Installed i){var t=new CompoundTag();t.putLong("host",i.key().host());t.putString("mount",i.key().mount());t.putUUID("instance",i.instance());t.putLong("revision",i.revision());t.put("settings",GaugeSettings.CODEC.encodeStart(NbtOps.INSTANCE,i.settings()).getOrThrow());return t;}
-        public static Installed decode(CompoundTag t){return new Installed(new Key(t.getLong("host"),t.getString("mount")),t.getUUID("instance"),t.getLong("revision"),GaugeSettings.CODEC.parse(NbtOps.INSTANCE,t.get("settings")).getOrThrow());}
+        public void write(CompoundTag tag){tag.putLong("AccessoryRevision",revision);var list=new ListTag();for(var i:installed)list.add(AccessoryFacts.installed(i));tag.put("Instruments",list);}
+        public void read(CompoundTag tag) {
+            try {
+                long saved=tag.getLong("AccessoryRevision");if(saved<0)throw new IllegalArgumentException("Invalid accessory revision");
+                var list=tag.getList("Instruments",10);if(list.size()>6)throw new IllegalArgumentException("Too many host instruments");
+                var result=new java.util.ArrayList<Installed>();for(var t:list)result.add(AccessoryFacts.installed((CompoundTag)t));installed=List.copyOf(result);revision=saved;
+            } catch(IllegalArgumentException unreadable) {
+                installed=List.of();revision=0;com.wormzjl.icheme.IChemE.LOGGER.warn("accessory_copy status=DROPPED detail={}",unreadable.getMessage());
+            }
+        }
     }
 }

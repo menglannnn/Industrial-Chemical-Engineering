@@ -26,7 +26,8 @@ public final class InstrumentService {
     private final Map<UUID,Set<FluidNetwork.InstrumentTarget>> watchers=new HashMap<>();
     private final Map<UUID,Instrument.Sample> samples=new HashMap<>();
 
-    public InstrumentService(MinecraftServer server,FluidWorldAuthority world){this.server=server;this.world=world;store=server.overworld().getDataStorage().computeIfAbsent(new SavedData.Factory<>(Store::new,Store::load),"icheme_accessories");}
+    /** {@code store} is the overworld's, opened by {@link Store#open} before the fluid authority starts anything. */
+    public InstrumentService(MinecraftServer server,FluidWorldAuthority world,Store store){this.server=server;this.world=world;this.store=store;}
     public boolean occupied(long host){return !store.host(host).isEmpty()||store.pending().stream().anyMatch(p->p.key().host()==host&&p.install());}
     public boolean observes(long host){return watchers.values().stream().anyMatch(set->set.stream().anyMatch(t->t.key().host()==host));}
     public void request(ServerPlayer player,InteractionHand hand,boolean remove){if(player.isSpectator()||!player.mayBuild())return;var held=player.getItemInHand(hand);GaugeSettings.Kind kind=held.getItem() instanceof GaugeItem g?g.kind():null;if(!remove&&kind==null||remove&&!held.is(ModItems.ACCESSORY_WRENCH.get()))return;double reach=player.blockInteractionRange();var hosts=InstrumentHosts.nearby(player.level(),player.getEyePosition(),8);var selected=InstrumentHosts.select(hosts,player.getEyePosition(),player.getLookAngle(),reach,kind,remove);if(!remove){var pipeHit=InstrumentHosts.pipeSelection(player,kind);if(pipeHit!=null)selected=pipeHit;}
@@ -64,9 +65,13 @@ public final class InstrumentService {
         samples.put(i.instance(),sample);var target=new FluidNetwork.InstrumentTarget(host.entity().getBlockPos(),i.key(),i.instance());for(var e:watchers.entrySet())if(e.getValue().contains(target)){var player=server.getPlayerList().getPlayer(e.getKey());if(player!=null&&valid(player,target))FluidNetwork.sendInstrument(player,target,sample,world.onlineTick());}
     }}
 
-    /** Format 1: static instruments, slot tombstones and accepted, uncommitted player operations. */
+    /**
+     * Overworld saved data {@value #DATA_NAME}: the installed instruments, the pipe fittings and the slot tombstones (facts),
+     * and the accepted, uncommitted player operations with the retry deadline (state). {@link AccessoryFacts} gives the
+     * records and their rules.
+     */
     public static final class Store extends SavedData {
-        public static final int FORMAT=1;
+        public static final String DATA_NAME="icheme_accessories";
         public record Legacy(Instrument.Key key,UUID instance,long revision,Instrument.Type type) {
             public Legacy{Objects.requireNonNull(key);Objects.requireNonNull(instance);Objects.requireNonNull(type);if(!key.mount().equals("pipe_accessory")||revision<=0||type==Instrument.Type.PRESSURE||type==Instrument.Type.TEMPERATURE)throw new IllegalArgumentException("Invalid pipe accessory");}
         }
@@ -88,6 +93,7 @@ public final class InstrumentService {
         public Instrument.Installed get(Instrument.Key key){return installed.get(key);}
         public List<Instrument.Installed> host(long host){return installed.values().stream().filter(i->i.key().host()==host).toList();}
         public long revision(long host){return revisions.getOrDefault(host,0L);}
+        Map<Long,Long> revisions(){return Map.copyOf(revisions);}
         public List<Pending> pending(){return List.copyOf(pending.values());}
         public boolean queue(Pending p){if(pending.containsKey(p.request)||p.expectedRevision!=revision(p.key.host())||pending.size()>=4096||pending.values().stream().anyMatch(v->v.key.equals(p.key)))return false;pending.put(p.request,p);setDirty();return true;}
         public void finish(UUID request){if(pending.remove(request)!=null)setDirty();}
@@ -96,9 +102,66 @@ public final class InstrumentService {
         public void changed(long host){advance(host);setDirty();}
         private long advance(long host){long next=Math.addExact(revision(host),1);revisions.put(host,next);return next;}
         @Override public CompoundTag save(CompoundTag t,HolderLookup.Provider provider){return save(t);}
-        public CompoundTag save(CompoundTag t){t.putInt("format",FORMAT);t.putLong("next_due",nextDue);var list=new ListTag();installed.values().forEach(i->list.add(Instrument.Metadata.encode(i)));t.put("installed",list);var fittings=new ListTag();for(var f:legacy.values()){var e=new CompoundTag();e.putLong("host",f.key().host());e.putUUID("instance",f.instance());e.putLong("revision",f.revision());e.putString("type",f.type().name());fittings.add(e);}t.put("fittings",fittings);var revs=new ListTag();revisions.forEach((id,rev)->{var r=new CompoundTag();r.putLong("host",id);r.putLong("revision",rev);revs.add(r);});t.put("revisions",revs);var events=new ListTag();for(var p:pending.values()){var e=new CompoundTag();e.putUUID("request",p.request);e.putUUID("player",p.player);e.putLong("host",p.key.host());e.putString("mount",p.key.mount());e.putUUID("instance",p.instance);e.putLong("revision",p.expectedRevision);e.putBoolean("install",p.install);e.putString("type",p.type.name());if(p.settings!=null)e.put("settings",GaugeSettings.CODEC.encodeStart(NbtOps.INSTANCE,p.settings).getOrThrow());e.putString("dimension",p.dimension);e.putLong("position",p.position);e.putInt("slot",p.slot);e.putBoolean("offhand",p.offhand);events.add(e);}t.put("pending",events);return t;}
-        private static ListTag list(CompoundTag t,String key){var value=t.get(key);if(!(value instanceof ListTag list)||!list.isEmpty()&&list.getElementType()!=10)throw new IllegalArgumentException("Invalid accessory list "+key);return list;}
+        public CompoundTag save(CompoundTag t) {
+            t.putInt("format",AccessoryFacts.SCHEMA);
+            var list=new ListTag();installed.values().forEach(i->list.add(AccessoryFacts.installed(i)));t.put("installed",list);
+            var fittings=new ListTag();legacy.values().forEach(f->fittings.add(AccessoryFacts.fitting(f)));t.put("fittings",fittings);
+            var revs=new ListTag();revisions.forEach((id,rev)->revs.add(AccessoryFacts.revision(id,rev)));t.put("revisions",revs);
+            t.putInt("state_format",AccessoryFacts.STATE);t.putLong("next_due",nextDue);
+            var events=new ListTag();pending.values().forEach(p->events.add(AccessoryFacts.pending(p)));t.put("pending",events);
+            return t;
+        }
         public static Store load(CompoundTag t,HolderLookup.Provider ignored){return load(t);}
-        public static Store load(CompoundTag t){if(t.getInt("format")!=FORMAT||!t.contains("next_due",4)||!t.contains("installed",9)||!t.contains("revisions",9)||!t.contains("pending",9)||!t.contains("fittings",9))throw new IllegalArgumentException("Unsupported accessory storage format");var s=new Store();s.nextDue(t.getLong("next_due"));var revs=list(t,"revisions");for(var v:revs){var r=(CompoundTag)v;long host=r.getLong("host"),rev=r.getLong("revision");if(host<=0||rev<=0||s.revisions.put(host,rev)!=null)throw new IllegalArgumentException("Invalid accessory revision");}for(var v:list(t,"installed")){var i=Instrument.Metadata.decode((CompoundTag)v);if(i.revision()>s.revision(i.key().host())||i.key().mount().startsWith("pipe_")&&!s.host(i.key().host()).isEmpty()||s.host(i.key().host()).stream().anyMatch(existing->existing.key().mount().startsWith("pipe_"))||s.installed.put(i.key(),i)!=null)throw new IllegalArgumentException("Invalid installed instrument");}for(var v:list(t,"fittings")){var e=(CompoundTag)v;var f=new Legacy(new Instrument.Key(e.getLong("host"),"pipe_accessory"),e.getUUID("instance"),e.getLong("revision"),Instrument.Type.valueOf(e.getString("type")));if(f.revision()>s.revision(f.key().host())||!s.host(f.key().host()).isEmpty()||s.legacy.put(f.key().host(),f)!=null)throw new IllegalArgumentException("Invalid pipe fitting");}var events=list(t,"pending");if(events.size()>4096)throw new IllegalArgumentException("Too many accessory operations");for(var v:events){var e=(CompoundTag)v;for(String field:List.of("revision","position"))if(!e.contains(field,4))throw new IllegalArgumentException("Missing accessory operation field");for(String field:List.of("install","offhand"))if(!e.contains(field,1))throw new IllegalArgumentException("Missing accessory operation flag");if(!e.contains("slot",3))throw new IllegalArgumentException("Missing accessory slot");var p=new Pending(e.getUUID("request"),e.getUUID("player"),new Instrument.Key(e.getLong("host"),e.getString("mount")),e.getUUID("instance"),e.getLong("revision"),e.getBoolean("install"),Instrument.Type.valueOf(e.getString("type")),e.contains("settings")?GaugeSettings.CODEC.parse(NbtOps.INSTANCE,e.get("settings")).getOrThrow():null,e.getString("dimension"),e.getLong("position"),e.getInt("slot"),e.getBoolean("offhand"));if(p.expectedRevision()>s.revision(p.key().host())||s.pending.values().stream().anyMatch(existing->existing.key().equals(p.key()))||s.pending.put(p.request,p)!=null)throw new IllegalArgumentException("Duplicate accessory operation");}return s;}
+        /**
+         * A saved store: facts this build cannot read (a later schema, a field from a newer build, a damaged or conflicting
+         * record) throw; state it cannot use (another state format, a record that does not validate) is dropped, the
+         * facts kept.
+         */
+        public static Store load(CompoundTag t) {
+            var root=new AccessoryFacts.Fields(t,"accessory store");int schema=root.i32("format");
+            if(schema>AccessoryFacts.SCHEMA)throw root.invalid("facts schema "+schema+" cannot be read: this build reads schemas 1 to "+AccessoryFacts.SCHEMA+", so a newer build wrote it");
+            if(schema<1)throw root.invalid("facts schema "+schema);
+            var s=new Store();
+            for(var r:root.list("revisions")){var e=AccessoryFacts.revision(r);if(s.revisions.put(e.getKey(),e.getValue())!=null)throw root.invalid("two revisions of host "+e.getKey());}
+            for(var v:root.list("installed")){var i=AccessoryFacts.installed(v);long host=i.key().host();
+                if(i.revision()>s.revision(host)||i.key().mount().startsWith("pipe_")&&!s.host(host).isEmpty()||s.host(host).stream().anyMatch(existing->existing.key().mount().startsWith("pipe_"))||s.installed.put(i.key(),i)!=null)
+                    throw root.invalid("the gauge at "+i.key()+" conflicts with its host's records");}
+            for(var v:root.list("fittings")){var f=AccessoryFacts.fitting(v);long host=f.key().host();
+                if(f.revision()>s.revision(host)||!s.host(host).isEmpty()||s.legacy.put(host,f)!=null)throw root.invalid("the fitting on host "+host+" conflicts with its host's records");}
+            root.claim("state_format","next_due","pending");root.end();
+            try{s.state(new AccessoryFacts.Fields(t,"accessory state"));}
+            catch(IllegalArgumentException|NullPointerException dropped) {
+                s.nextDue=0;s.pending.clear();com.wormzjl.icheme.IChemE.LOGGER.warn("accessory_store status=STATE_DROPPED detail={}",dropped.getMessage());
+            }
+            return s;
+        }
+        /** Reads the state beside the facts; a store saved before the state format carried state format 1. */
+        private void state(AccessoryFacts.Fields f) {
+            int format=f.i32("state_format",1);if(format!=AccessoryFacts.STATE)throw f.invalid("state format "+format+": this build reads state format "+AccessoryFacts.STATE);
+            long due=f.i64("next_due",0);if(due<0)throw f.invalid("deadline "+due);nextDue=due;
+            var events=f.list("pending",List.of());if(events.size()>4096)throw f.invalid("too many operations");
+            for(var v:events){var p=AccessoryFacts.pending(v);
+                if(p.expectedRevision()>revision(p.key().host())||pending.values().stream().anyMatch(existing->existing.key().equals(p.key()))||pending.put(p.request,p)!=null)throw f.invalid("the operation "+p.request()+" conflicts with the store");}
+        }
+        /**
+         * The overworld's store. A world without one starts empty. A store this build cannot read refuses the world
+         * (AGENTS.md, "Saves and data formats"), its file left as it is: the server does not start, and nothing replaces
+         * the installed accessories.
+         */
+        public static Store open(MinecraftServer server) {
+            var store=read(server.getWorldPath(net.minecraft.world.level.storage.LevelResource.ROOT).resolve("data").resolve(DATA_NAME+".dat"));
+            server.overworld().getDataStorage().set(DATA_NAME,store);return store;
+        }
+        /** The store saved at {@code file}, an empty one when there is none; one this build cannot read throws, the file untouched. */
+        static Store read(java.nio.file.Path file) {
+            CompoundTag saved;
+            try{saved=NbtIo.readCompressed(file,NbtAccounter.unlimitedHeap());}
+            catch(java.nio.file.NoSuchFileException absent){return new Store();}
+            catch(java.io.IOException|RuntimeException failure){throw refused(file,failure);}
+            try{return load(saved.getCompound("data"));}catch(RuntimeException failure){throw refused(file,failure);}
+        }
+        private static IllegalStateException refused(java.nio.file.Path file,Exception failure) {
+            return new IllegalStateException("The accessory store cannot be read: "+failure.getMessage()+". Refusing to open the world and replace its accessories: "+file,failure);
+        }
     }
 }
