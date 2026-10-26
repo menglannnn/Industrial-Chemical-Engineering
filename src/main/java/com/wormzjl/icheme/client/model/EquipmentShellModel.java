@@ -119,13 +119,35 @@ public final class EquipmentShellModel implements IDynamicBakedModel {
      * {@code painted}: tinted by the material's paint channel (a vessel's), or never (a pipeline device's).
      */
     public static List<BakedQuad> bake(List<Mesh.Polygon> polygons, TextureAtlasSprite[] sprites, boolean painted) {
+        java.util.function.ToIntFunction<Mesh.Material> tints = painted ? Mesh.Material::channel : material -> -1;
+        return bake(polygons, sprites, tints);
+    }
+
+    /** As {@link #bake(List, TextureAtlasSprite[], boolean)}, each material's quads with the tint index {@code tint} gives it (-1: none). */
+    public static List<BakedQuad> bake(List<Mesh.Polygon> polygons, TextureAtlasSprite[] sprites, java.util.function.ToIntFunction<Mesh.Material> tints) {
         var out = new ArrayList<BakedQuad>();
         for (var polygon : polygons) {
-            int tint = painted ? polygon.material().channel() : -1;
+            int tint = tints.applyAsInt(polygon.material());
             for (int first = 1; first + 1 < polygon.size(); first += 2)
                 out.add(quad(polygon, sprites[polygon.material().ordinal()], tint, 0, first, first + 1, Math.min(first + 2, polygon.size() - 1)));
         }
         return List.copyOf(out);
+    }
+
+    /**
+     * A painted line's sprites (batch 2026-10-26-pipe-laying-system): {@code sprites} with the pipe and the flange swapped
+     * for the neutral {@code painted_pipe} and {@code painted_flange}, which the line's tint colours.
+     */
+    public static TextureAtlasSprite[] paintedLine(IGeometryBakingContext context, Function<Material, TextureAtlasSprite> sprites, TextureAtlasSprite[] bare) {
+        var out = bare.clone();
+        if (context.hasMaterial("painted_pipe")) out[Mesh.Material.PIPE.ordinal()] = sprites.apply(context.getMaterial("painted_pipe"));
+        if (context.hasMaterial("painted_flange")) out[Mesh.Material.FLANGE.ordinal()] = sprites.apply(context.getMaterial("painted_flange"));
+        return out;
+    }
+
+    /** The tint index a painted line's quads take: its pipe and flanges, 0; bolts, valves and the rest keep their colours. */
+    public static int lineTint(Mesh.Material material) {
+        return material == Mesh.Material.PIPE || material == Mesh.Material.FLANGE ? 0 : -1;
     }
 
     /** One sprite per material from the model's textures (named {@link Mesh.Material#texture()}), the particle where one is missing. */

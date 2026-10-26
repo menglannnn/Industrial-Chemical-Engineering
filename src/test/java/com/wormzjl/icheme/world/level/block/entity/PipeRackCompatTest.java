@@ -1,5 +1,6 @@
 package com.wormzjl.icheme.world.level.block.entity;
 
+import com.wormzjl.icheme.science.equipment.Paint;
 import com.wormzjl.icheme.world.level.block.entity.PipeRackBlockEntity.Lane;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.TagParser;
@@ -20,16 +21,20 @@ import static org.junit.jupiter.api.Assertions.*;
 class PipeRackCompatTest {
     private static final int DOWN = 0, UP = 1, NORTH = 2, SOUTH = 3, WEST = 4, EAST = 5;
 
-    /** A straight lane, a wide elbow, and an open one-cell lane with no joints. */
+    /** A straight lane, a wide elbow painted RAL 5015, and an open one-cell lane with no joints. */
     static List<Lane> corpusLanes() {
-        return List.of(new Lane(41, 0, 1, 1 << WEST | 1 << EAST, EAST, .1), new Lane(42, 1, 2, 1 << NORTH | 1 << UP, NORTH, .25), new Lane(43, 4, 1, 0, SOUTH, .05));
+        return List.of(new Lane(41, 0, 1, 1 << WEST | 1 << EAST, EAST, .1), new Lane(42, 1, 2, 1 << NORTH | 1 << UP, NORTH, .25, 0x2271B3), new Lane(43, 4, 1, 0, SOUTH, .05));
     }
 
     static String describe(List<Lane> lanes) {
         var out = new StringBuilder();
-        for (var lane : lanes)
+        for (var lane : lanes) {
             out.append("lane ").append(lane.identity()).append(" slots ").append(lane.slot()).append('+').append(lane.width()).append(" joints ").append(lane.joints())
-                    .append(" facing ").append(lane.facing()).append(" bore ").append(lane.bore()).append("; ");
+                    .append(" facing ").append(lane.facing()).append(" bore ").append(lane.bore());
+            // A bare lane's description is as before paint existed, so a rack-1 image still reads to what it recorded.
+            if (lane.paint() != Paint.BARE) out.append(" paint ").append(Paint.hex(lane.paint()));
+            out.append("; ");
+        }
         return out.toString();
     }
 
@@ -53,6 +58,18 @@ class PipeRackCompatTest {
         }
         var overlapping = PipeRackBlockEntity.write(List.of(lanes.get(1), new Lane(44, 2, 2, 1 << DOWN | 1 << UP, UP, .2), lanes.get(0)), new CompoundTag());
         assertEquals(List.of(lanes.get(0), lanes.get(1)), PipeRackBlockEntity.read(overlapping), "the lane read second over used slots is dropped; the rest in slot order");
+    }
+
+    @Test
+    void aLaneSavedBareOrWithADamagedPaintReadsBareAndIsKept() {
+        var painted = corpusLanes().get(1);
+        assertEquals(0x2271B3, PipeRackBlockEntity.read(PipeRackBlockEntity.write(List.of(painted), new CompoundTag())).getFirst().paint());
+        for (var damage : List.<java.util.function.Consumer<CompoundTag>>of(e -> e.remove("Paint"), e -> e.putString("Paint", "blue"), e -> e.putInt("Paint", 0x1000000), e -> e.putInt("Paint", -2))) {
+            var saved = PipeRackBlockEntity.write(List.of(painted), new CompoundTag());
+            damage.accept(saved.getList("Lanes", 10).getCompound(0));
+            assertEquals(List.of(painted.painted(Paint.BARE)), PipeRackBlockEntity.read(saved), "paint " + saved.getList("Lanes", 10).getCompound(0).get("Paint"));
+        }
+        assertFalse(PipeRackBlockEntity.write(List.of(painted.painted(Paint.BARE)), new CompoundTag()).getList("Lanes", 10).getCompound(0).contains("Paint"), "a bare lane saves no paint");
     }
 
     private static final Path CORPUS = Path.of("src/test/resources/compat/racks");

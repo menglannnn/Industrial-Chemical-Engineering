@@ -25,6 +25,12 @@ public final class ModItems {
     public static final DeferredHolder<DataComponentType<?>, DataComponentType<PipelineToolItem.Settings>> PIPE_LAYING_SETTINGS =
             COMPONENTS.register("pipe_laying_settings", () -> DataComponentType.<PipelineToolItem.Settings>builder()
                     .persistent(PipelineToolItem.Settings.CODEC).networkSynchronized(PipelineToolItem.Settings.STREAM_CODEC).build());
+    /** The paint the laying tool's lines take, 0xRRGGBB; absent: bare steel ({@link com.wormzjl.icheme.science.equipment.Paint#BARE}). */
+    public static final DeferredHolder<DataComponentType<?>, DataComponentType<Integer>> PIPE_LAYING_PAINT =
+            COMPONENTS.register("pipe_laying_paint", () -> DataComponentType.<Integer>builder()
+                    .persistent(com.mojang.serialization.Codec.INT.validate(rgb -> com.wormzjl.icheme.science.equipment.Paint.line(rgb) ? com.mojang.serialization.DataResult.success(rgb)
+                            : com.mojang.serialization.DataResult.error(() -> "A line's paint is 0xRRGGBB or -1 (bare), not " + rgb)))
+                    .networkSynchronized(net.minecraft.network.codec.ByteBufCodecs.INT).build());
 
     public static final DeferredRegister.Items ITEMS = DeferredRegister.createItems(IChemE.MOD_ID);
     public static final DeferredItem<BlockItem> FLUID_RESERVOIR=ITEMS.registerSimpleBlockItem("fluid_reservoir",ModBlocks.FLUID_RESERVOIR);

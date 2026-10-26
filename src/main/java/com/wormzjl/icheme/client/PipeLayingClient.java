@@ -5,11 +5,13 @@ import com.wormzjl.icheme.network.FluidNetwork;
 import com.wormzjl.icheme.registry.ModItems;
 import com.wormzjl.icheme.science.equipment.EquipmentShape;
 import com.wormzjl.icheme.science.equipment.LineGeometry;
+import com.wormzjl.icheme.science.equipment.Paint;
 import com.wormzjl.icheme.science.equipment.PipeRoute;
 import com.wormzjl.icheme.science.equipment.PipeSizes;
 import com.wormzjl.icheme.science.equipment.RackGeometry;
 import com.wormzjl.icheme.science.equipment.ShapeRasterizer;
 import com.wormzjl.icheme.science.fluid.topology.TopologyCompiler;
+import com.wormzjl.icheme.world.item.PipeLayingToolItem;
 import com.wormzjl.icheme.world.level.block.FluidDeviceBlock;
 import com.wormzjl.icheme.world.level.block.PipeAnchor;
 import com.wormzjl.icheme.world.level.block.PipeLaying;
@@ -423,6 +425,9 @@ public final class PipeLayingClient {
         var consumer = buffers.getBuffer(TYPE);
         double diameter = settingsDiameter(mc.player);
         int code = PipeSizes.code(PipeSizes.outside(diameter)), width = width(diameter);
+        // A painted line's ghost shows its paint on the neutral plate sprite, as a vessel's ghost does; a bare one the ghost blue.
+        int paint = PipeLayingToolItem.paint(tool(mc.player.getMainHandItem()) ? mc.player.getMainHandItem() : mc.player.getOffhandItem());
+        int colour = paint == Paint.BARE ? GHOST : Paint.tint(paint);
         var cells = shown.route.cells();
         for (int i = 0; i < cells.size(); i++) {
             var cell = cells.get(i);
@@ -450,7 +455,7 @@ public final class PipeLayingClient {
                 for (int first = 1; first + 1 < polygon.size(); first += 2)
                     for (int corner : new int[]{0, first, first + 1, Math.min(first + 2, polygon.size() - 1)})
                         consumer.addVertex(last, (float) p[3 * corner], (float) p[3 * corner + 1], (float) p[3 * corner + 2])
-                                .setColor(GHOST >> 16 & 0xFF, GHOST >> 8 & 0xFF, GHOST & 0xFF, ALPHA)
+                                .setColor(colour >> 16 & 0xFF, colour >> 8 & 0xFF, colour & 0xFF, ALPHA)
                                 .setUv(sprite.getU((float) uv[2 * corner]), sprite.getV((float) uv[2 * corner + 1]))
                                 .setOverlay(OverlayTexture.NO_OVERLAY).setLight(LightTexture.FULL_BRIGHT)
                                 .setNormal(last, (float) n[3 * corner], (float) n[3 * corner + 1], (float) n[3 * corner + 2]);

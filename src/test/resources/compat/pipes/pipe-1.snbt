@@ -1,0 +1,3 @@
+{Expected:"joints 63 paint bare",Saved:{FluidIdentity:7L}}
+{Expected:"joints 12 paint bare",Saved:{FluidIdentity:8L,Joints:12b}}
+{Expected:"joints 48 paint #2271B3",Saved:{FluidIdentity:9L,Joints:48b,Paint:2257331}}

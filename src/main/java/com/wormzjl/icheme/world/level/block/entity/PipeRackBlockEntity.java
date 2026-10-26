@@ -5,6 +5,7 @@ import com.wormzjl.icheme.registry.ModBlockEntities;
 import com.wormzjl.icheme.runtime.fluid.FluidWorldAuthority;
 import com.wormzjl.icheme.runtime.fluid.PhysicalFluidTopology;
 import com.wormzjl.icheme.science.equipment.PipeRoute;
+import com.wormzjl.icheme.science.equipment.Paint;
 import com.wormzjl.icheme.science.equipment.PipeSizes;
 import com.wormzjl.icheme.science.equipment.RackGeometry;
 import com.wormzjl.icheme.science.fluid.topology.TopologyCompiler;
@@ -42,17 +43,31 @@ import java.util.concurrent.ConcurrentHashMap;
  * saved.
  *
  * <p>Saved format {@value #FORMAT} (AGENTS.md, saves): a list {@code Lanes} of compounds, read by name and validated; a
- * damaged lane is dropped from the copy, and the ledger's registration, the fact, puts it back at the next load.</p>
+ * damaged lane is dropped from the copy, and the ledger's registration, the fact, puts it back at the next load. A lane's
+ * paint (rack-2) is a fact only the copy holds: absent it reads bare, as rack-1 lanes looked, and a damaged one is
+ * repaired to bare, the lane kept.</p>
  */
 public final class PipeRackBlockEntity extends BlockEntity {
-    public static final String FORMAT = "rack-1";
+    public static final String FORMAT = "rack-2";
 
-    /** A lane's saved copy: its identity in the ledger, its first slot and width, joints, facing (a face index) and bore. */
-    public record Lane(long identity, int slot, int width, int joints, int facing, double bore) {
+    /**
+     * A lane's saved copy: its identity in the ledger, its first slot and width, joints, facing (a face index), bore, and
+     * paint (0xRRGGBB, or {@link Paint#BARE}).
+     */
+    public record Lane(long identity, int slot, int width, int joints, int facing, double bore, int paint) {
         public Lane {
             if (slot < 0 || width < 1 || slot + width > RackGeometry.SLOTS || (joints & ~PhysicalFluidTopology.ALL_FACES) != 0 || Integer.bitCount(joints) > 2
-                    || facing < 0 || facing > 5 || !(bore > 0 && bore <= PipeSizes.MAX_BORE))
+                    || facing < 0 || facing > 5 || !(bore > 0 && bore <= PipeSizes.MAX_BORE) || !Paint.line(paint))
                 throw new IllegalArgumentException("Invalid rack lane " + slot + "+" + width);
+        }
+
+        /** A bare lane. */
+        public Lane(long identity, int slot, int width, int joints, int facing, double bore) {
+            this(identity, slot, width, joints, facing, bore, Paint.BARE);
+        }
+
+        public Lane painted(int rgb) {
+            return new Lane(identity, slot, width, joints, facing, bore, rgb);
         }
 
         public int mask() {
@@ -64,8 +79,8 @@ public final class PipeRackBlockEntity extends BlockEntity {
         }
     }
 
-    /** What the model draws: each lane with the faces it meets a line through, and its facing. */
-    public record Drawn(List<RackGeometry.Lane> lanes, List<Integer> facings) {
+    /** What the model draws: each lane with the faces it meets a line through, its facing, and its paint. */
+    public record Drawn(List<RackGeometry.Lane> lanes, List<Integer> facings, List<Integer> paints) {
     }
 
     public static final ModelProperty<Drawn> DRAWN = new ModelProperty<>();
@@ -186,8 +201,9 @@ public final class PipeRackBlockEntity extends BlockEntity {
     }
 
     /**
-     * Server: matches the copy to the ledger, which holds the facts. A lane with a registration takes its identity; a lane
-     * without one registers again from the copy; a registration with no copy is adopted. Then every lane is drawn.
+     * Server: matches the copy to the ledger, which holds the fluid facts. A lane with a registration takes its identity;
+     * a lane without one registers again from the copy; a registration with no copy is adopted, bare. Each lane keeps
+     * the copy's paint, which the ledger does not hold. Then every lane is drawn.
      */
     public void bind(FluidWorldAuthority world) {
         if (!(level instanceof ServerLevel)) return;
@@ -198,7 +214,7 @@ public final class PipeRackBlockEntity extends BlockEntity {
             if (record == null) record = world.placeLane(position(lane.slot), PhysicalFluidTopology.Direction.values()[lane.facing], lane.joints, lane.width, lane.bore);
             var copied = copy(record.device());
             if (copied != null && (used & copied.mask()) == 0) {
-                next.add(copied);
+                next.add(copied.painted(lane.paint));
                 used |= copied.mask();
             }
         }
@@ -236,7 +252,7 @@ public final class PipeRackBlockEntity extends BlockEntity {
         for (var lane : lanes) {
             var record = world == null ? null : world.registrations().get(lane.identity);
             var copied = record == null ? null : copy(record.device());
-            next.add(copied != null && copied.slot == lane.slot && copied.width == lane.width ? copied : lane);
+            next.add(copied != null && copied.slot == lane.slot && copied.width == lane.width ? copied.painted(lane.paint) : lane);
         }
         boolean changed = !next.equals(lanes);
         if (changed) setLanes(next, null);
@@ -356,6 +372,7 @@ public final class PipeRackBlockEntity extends BlockEntity {
             entry.putInt("Joints", lane.joints);
             entry.putString("Facing", Direction.values()[lane.facing].getSerializedName());
             entry.putDouble("Bore", lane.bore);
+            if (lane.paint != Paint.BARE) entry.putInt("Paint", lane.paint);
             list.add(entry);
         }
         tag.put("Lanes", list);
@@ -376,7 +393,7 @@ public final class PipeRackBlockEntity extends BlockEntity {
             if (entry.contains("Identity", Tag.TAG_LONG) && entry.contains("Slot", Tag.TAG_INT) && entry.contains("Width", Tag.TAG_INT) && entry.contains("Joints", Tag.TAG_INT)
                     && facing != null && entry.contains("Bore", Tag.TAG_DOUBLE))
                 try {
-                    lane = new Lane(entry.getLong("Identity"), entry.getInt("Slot"), entry.getInt("Width"), entry.getInt("Joints"), facing.ordinal(), entry.getDouble("Bore"));
+                    lane = new Lane(entry.getLong("Identity"), entry.getInt("Slot"), entry.getInt("Width"), entry.getInt("Joints"), facing.ordinal(), entry.getDouble("Bore"), paint(entry));
                 } catch (IllegalArgumentException ignored) {
                 }
             if (lane == null || (used & lane.mask()) != 0) {
@@ -388,6 +405,15 @@ public final class PipeRackBlockEntity extends BlockEntity {
         }
         out.sort(Comparator.comparingInt(Lane::slot));
         return List.copyOf(out);
+    }
+
+    /** A saved lane's paint: absent, bare (a rack-1 lane); a value that is no colour, repaired to bare and logged. */
+    private static int paint(CompoundTag entry) {
+        if (!entry.contains("Paint")) return Paint.BARE;
+        int saved = entry.contains("Paint", Tag.TAG_INT) ? entry.getInt("Paint") : Integer.MIN_VALUE;
+        if ((saved & ~0xFFFFFF) == 0) return saved;
+        IChemE.LOGGER.warn("pipe_rack repair=paint ({}) -> bare", entry.get("Paint"));
+        return Paint.BARE;
     }
 
     // ---- client ----
@@ -413,6 +439,6 @@ public final class PipeRackBlockEntity extends BlockEntity {
 
     @Override
     public ModelData getModelData() {
-        return ModelData.of(DRAWN, new Drawn(drawnLanes(), facings()));
+        return ModelData.of(DRAWN, new Drawn(drawnLanes(), facings(), lanes.stream().map(Lane::paint).toList()));
     }
 }

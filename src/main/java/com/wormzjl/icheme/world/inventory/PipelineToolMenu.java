@@ -2,6 +2,8 @@ package com.wormzjl.icheme.world.inventory;
 
 import com.wormzjl.icheme.registry.ModItems;
 import com.wormzjl.icheme.registry.ModMenus;
+import com.wormzjl.icheme.science.equipment.Paint;
+import com.wormzjl.icheme.world.item.PipeLayingToolItem;
 import com.wormzjl.icheme.world.item.PipelineToolItem;
 import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.chat.Component;
@@ -17,35 +19,40 @@ import java.util.Objects;
 
 /**
  * A slot-free settings session bound to the exact held stack; it requests no fluid presentation. It serves the sizing
- * tool and the laying tool (batch 2026-10-26-pipe-laying-system): each keeps its bore in its own item component.
+ * tool and the laying tool (batch 2026-10-26-pipe-laying-system): each keeps its bore in its own item component, and
+ * the laying tool also the paint of its lines.
  */
 public final class PipelineToolMenu extends AbstractContainerMenu {
     private final InteractionHand hand;
     private final int selectedSlot;
     private final ItemStack tool;
     private final PipelineToolItem.Settings initialSettings;
+    private final int initialPaint;
 
     public PipelineToolMenu(int id, Inventory inventory, RegistryFriendlyByteBuf buffer) {
-        this(id, inventory, buffer.readEnum(InteractionHand.class), buffer.readVarInt(), PipelineToolItem.Settings.STREAM_CODEC.decode(buffer));
+        this(id, inventory, buffer.readEnum(InteractionHand.class), buffer.readVarInt(), PipelineToolItem.Settings.STREAM_CODEC.decode(buffer), buffer.readInt());
     }
 
-    private PipelineToolMenu(int id, Inventory inventory, InteractionHand hand, int selectedSlot, PipelineToolItem.Settings settings) {
+    private PipelineToolMenu(int id, Inventory inventory, InteractionHand hand, int selectedSlot, PipelineToolItem.Settings settings, int paint) {
         super(ModMenus.PIPELINE_TOOL.get(), id);
         this.hand = hand;
         this.selectedSlot = selectedSlot;
         tool = inventory.player.getItemInHand(hand);
         initialSettings = Objects.requireNonNull(settings);
+        initialPaint = Paint.line(paint) ? paint : Paint.BARE;
     }
 
     public static void open(ServerPlayer player, InteractionHand hand) {
         int slot = player.getInventory().selected;
         var stack = player.getItemInHand(hand);
         var settings = Objects.requireNonNull(stack.get(component(stack)));
-        player.openMenu(new SimpleMenuProvider((id, inventory, owner) -> new PipelineToolMenu(id, inventory, hand, slot, settings),
+        int paint = PipeLayingToolItem.paint(stack);
+        player.openMenu(new SimpleMenuProvider((id, inventory, owner) -> new PipelineToolMenu(id, inventory, hand, slot, settings, paint),
                 stack.getHoverName()), buffer -> {
             buffer.writeEnum(hand);
             buffer.writeVarInt(slot);
             PipelineToolItem.Settings.STREAM_CODEC.encode(buffer, settings);
+            buffer.writeInt(paint);
         });
     }
 
@@ -58,9 +65,23 @@ public final class PipelineToolMenu extends AbstractContainerMenu {
         return initialSettings;
     }
 
-    /** Server: the packet handler has checked this session's id, lifetime and diameter. */
-    public void save(PipelineToolItem.Settings settings) {
+    /** The laying tool's paint when the session opened; {@link Paint#BARE} for the sizing tool. */
+    public int initialPaint() {
+        return initialPaint;
+    }
+
+    /** Whether the tool lays lines, which take a paint: the laying tool, not the sizing tool. */
+    public boolean paints() {
+        return tool.is(ModItems.PIPE_LAYING_TOOL.get());
+    }
+
+    /** Server: the packet handler has checked this session's id, lifetime, diameter and paint. The sizing tool keeps no paint. */
+    public void save(PipelineToolItem.Settings settings, int paint) {
         tool.set(component(tool), settings);
+        if (paints()) {
+            if (paint == Paint.BARE) tool.remove(ModItems.PIPE_LAYING_PAINT.get());
+            else tool.set(ModItems.PIPE_LAYING_PAINT.get(), paint);
+        }
     }
 
     @Override

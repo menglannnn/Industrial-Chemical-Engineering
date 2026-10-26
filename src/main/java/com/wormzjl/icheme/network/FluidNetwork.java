@@ -413,10 +413,10 @@ public final class FluidNetwork {
         @Override public Type<? extends CustomPacketPayload> type(){return TYPE;}
     }
     /** Client to server: the pipeline tool's target diameter. Settings only: it does not read, edit or subscribe to a fluid process. */
-    public record PipelineToolSave(int menuId,double diameter) implements CustomPacketPayload {
+    public record PipelineToolSave(int menuId,double diameter,int paint) implements CustomPacketPayload {
         public static final Type<PipelineToolSave> TYPE=new Type<>(ResourceLocation.fromNamespaceAndPath(IChemE.MOD_ID,"pipeline_tool_save"));
         public static final StreamCodec<RegistryFriendlyByteBuf,PipelineToolSave> STREAM_CODEC=StreamCodec.composite(
-                ByteBufCodecs.VAR_INT,PipelineToolSave::menuId,ByteBufCodecs.DOUBLE,PipelineToolSave::diameter,PipelineToolSave::new);
+                ByteBufCodecs.VAR_INT,PipelineToolSave::menuId,ByteBufCodecs.DOUBLE,PipelineToolSave::diameter,ByteBufCodecs.INT,PipelineToolSave::paint,PipelineToolSave::new);
         @Override public Type<? extends CustomPacketPayload> type(){return TYPE;}
     }
     /**
@@ -468,8 +468,8 @@ public final class FluidNetwork {
         var tools=event.registrar("pipeline-tool-2").executesOn(HandlerThread.MAIN);
         tools.playToServer(PipelineToolSave.TYPE,PipelineToolSave.STREAM_CODEC,(payload,context)->{
             if(!(context.player() instanceof ServerPlayer player)||!(player.containerMenu instanceof PipelineToolMenu menu)
-                    ||menu.containerId!=payload.menuId()||!menu.stillValid(player)||!PipelineToolItem.Settings.valid(payload.diameter()))return;
-            menu.save(new PipelineToolItem.Settings(payload.diameter()));
+                    ||menu.containerId!=payload.menuId()||!menu.stillValid(player)||!PipelineToolItem.Settings.valid(payload.diameter())||!com.wormzjl.icheme.science.equipment.Paint.line(payload.paint()))return;
+            menu.save(new PipelineToolItem.Settings(payload.diameter()),payload.paint());
             // The screen closes after sending Save. Also sync the inventory menu so its cached copy carries the new target.
             player.inventoryMenu.broadcastChanges();
         });
@@ -496,7 +496,7 @@ public final class FluidNetwork {
     public static void request(CustomPacketPayload.Type<Watch> kind,List<Target> watch,List<Target> unwatch){if(!watch.isEmpty()||!unwatch.isEmpty())PacketDistributor.sendToServer(new Watch(kind,watch,unwatch));}
     public static void requestInstruments(List<InstrumentTarget> watch,List<InstrumentTarget> unwatch){if(!watch.isEmpty()||!unwatch.isEmpty())PacketDistributor.sendToServer(new InstrumentWatch(watch,unwatch));}
     public static void saveGauge(int menu,GaugeSettings settings){PacketDistributor.sendToServer(new GaugeSave(menu,settings));}
-    public static void savePipelineTool(int menuId,double diameter){PacketDistributor.sendToServer(new PipelineToolSave(menuId,diameter));}
+    public static void savePipelineTool(int menuId,double diameter,int paint){PacketDistributor.sendToServer(new PipelineToolSave(menuId,diameter,paint));}
     public static void openPipeLaying(boolean offHand){PacketDistributor.sendToServer(new PipeLayingOpen(offHand));}
     public static void layPipe(boolean offHand,com.wormzjl.icheme.world.level.block.PipeAnchor.Click start,com.wormzjl.icheme.world.level.block.PipeAnchor.Click end,List<BlockPos> cells,List<Integer> slots){PacketDistributor.sendToServer(new PipeLay(offHand,start,end,cells,slots));}
     public static void dismantlePipe(boolean offHand,com.wormzjl.icheme.world.level.block.PipeAnchor.Click click){PacketDistributor.sendToServer(new PipeDismantle(offHand,click));}

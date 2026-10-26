@@ -1,6 +1,7 @@
 package com.wormzjl.icheme.world.item;
 
 import com.wormzjl.icheme.registry.ModItems;
+import com.wormzjl.icheme.science.equipment.Paint;
 import net.minecraft.ChatFormatting;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.item.Item;
@@ -24,7 +25,21 @@ public final class PipeLayingToolItem extends Item {
     public void appendHoverText(ItemStack stack, TooltipContext context, List<Component> tooltip, TooltipFlag flag) {
         var settings = stack.get(ModItems.PIPE_LAYING_SETTINGS.get());
         if (settings != null) tooltip.add(Component.translatable("item.icheme.pipe_laying_tool.size", Double.toString(settings.diameter())).withStyle(ChatFormatting.AQUA));
+        tooltip.add(Component.translatable("item.icheme.pipe_laying_tool.paint", paintName(paint(stack))).withStyle(ChatFormatting.AQUA));
         for (var line : List.of("lay", "cancel", "dismantle", "configure", "apart"))
             tooltip.add(Component.translatable("item.icheme.pipe_laying_tool." + line).withStyle(ChatFormatting.GRAY));
+    }
+
+    /** The paint {@code stack} lays its lines in: 0xRRGGBB, or {@link Paint#BARE}. */
+    public static int paint(ItemStack stack) {
+        return stack.getOrDefault(ModItems.PIPE_LAYING_PAINT.get(), Paint.BARE);
+    }
+
+    /** A line's paint as the tool names it: its palette number, #RRGGBB, or bare steel. */
+    public static Component paintName(int rgb) {
+        if (rgb == Paint.BARE) return Component.translatable("gui.icheme.pipeline_tool.paint.bare");
+        var swatch = Paint.swatch(rgb);
+        return swatch != null ? Component.translatable("gui.icheme.equipment_constructor.paint.swatch", swatch.ral(), Component.translatable("gui.icheme.paint." + swatch.key()))
+                : Component.literal(Paint.hex(rgb));
     }
 }

@@ -1,6 +1,7 @@
 package com.wormzjl.icheme.client.model;
 
 import com.wormzjl.icheme.IChemE;
+import com.wormzjl.icheme.science.equipment.Paint;
 import com.wormzjl.icheme.science.equipment.RackGeometry;
 import com.wormzjl.icheme.world.level.block.PipeRackBlock;
 import com.wormzjl.icheme.world.level.block.entity.PipeRackBlockEntity;
@@ -25,6 +26,7 @@ import net.neoforged.neoforge.client.model.geometry.IGeometryLoader;
 import net.neoforged.neoforge.client.model.geometry.IUnbakedGeometry;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -42,16 +44,18 @@ public final class PipeRackModel implements IDynamicBakedModel {
     private static final int CACHE = 4096;
     private static final ChunkRenderTypeSet SOLID = ChunkRenderTypeSet.of(RenderType.solid());
 
-    private record Look(int axis, List<RackGeometry.Lane> lanes, List<Integer> facings) {
+    /** The cache key; {@code painted}: a bit per lane with a paint, whose colour the block tint gives (tint index: the lane's first slot). */
+    private record Look(int axis, List<RackGeometry.Lane> lanes, List<Integer> facings, int painted) {
     }
 
-    private final TextureAtlasSprite[] sprites;
+    private final TextureAtlasSprite[] sprites, paintedSprites;
     private final TextureAtlasSprite particle;
     private final ItemTransforms transforms;
     private final Map<Look, List<BakedQuad>> quads = new ConcurrentHashMap<>();
 
-    private PipeRackModel(TextureAtlasSprite[] sprites, TextureAtlasSprite particle, ItemTransforms transforms) {
+    private PipeRackModel(TextureAtlasSprite[] sprites, TextureAtlasSprite[] paintedSprites, TextureAtlasSprite particle, ItemTransforms transforms) {
         this.sprites = sprites;
+        this.paintedSprites = paintedSprites;
         this.particle = particle;
         this.transforms = transforms;
     }
@@ -61,13 +65,28 @@ public final class PipeRackModel implements IDynamicBakedModel {
         if (side != null) return List.of();
         int axis = state != null && state.getBlock() instanceof PipeRackBlock ? state.getValue(PipeRackBlock.AXIS).ordinal() : 0;
         var drawn = data.get(PipeRackBlockEntity.DRAWN);
-        var key = drawn == null ? new Look(axis, List.of(), List.of()) : new Look(axis, drawn.lanes(), drawn.facings());
+        int painted = 0;
+        if (drawn != null) for (int i = 0; i < drawn.paints().size(); i++) if (drawn.paints().get(i) != Paint.BARE) painted |= 1 << i;
+        var key = drawn == null ? new Look(axis, List.of(), List.of(), 0) : new Look(axis, drawn.lanes(), drawn.facings(), painted);
         var cached = quads.get(key);
         if (cached == null) {
             if (quads.size() >= CACHE) quads.clear();
-            cached = quads.computeIfAbsent(key, look -> EquipmentShellModel.bake(RackGeometry.polygons(look.axis, look.lanes, look.facings), sprites, false));
+            cached = quads.computeIfAbsent(key, this::bake);
         }
         return cached;
+    }
+
+    /** The frame, then each lane: a painted one with the neutral line sprites, its pipe and flanges tinted by its slot. */
+    private List<BakedQuad> bake(Look look) {
+        var out = new ArrayList<>(EquipmentShellModel.bake(RackGeometry.polygons(look.axis, List.of(), List.of()), sprites, false));
+        for (int i = 0; i < look.lanes.size(); i++) {
+            var lane = look.lanes.get(i);
+            var polygons = RackGeometry.lane(lane, look.facings.get(i));
+            int tint = lane.slot();
+            out.addAll((look.painted >> i & 1) != 0 ? EquipmentShellModel.bake(polygons, paintedSprites, material -> EquipmentShellModel.lineTint(material) < 0 ? -1 : tint)
+                    : EquipmentShellModel.bake(polygons, sprites, false));
+        }
+        return List.copyOf(out);
     }
 
     @Override
@@ -113,7 +132,8 @@ public final class PipeRackModel implements IDynamicBakedModel {
     public record Geometry() implements IUnbakedGeometry<Geometry> {
         @Override
         public BakedModel bake(IGeometryBakingContext context, ModelBaker baker, Function<Material, TextureAtlasSprite> sprites, ModelState state, ItemOverrides overrides) {
-            return new PipeRackModel(EquipmentShellModel.sprites(context, sprites), sprites.apply(context.getMaterial("particle")), context.getTransforms());
+            var bare = EquipmentShellModel.sprites(context, sprites);
+            return new PipeRackModel(bare, EquipmentShellModel.paintedLine(context, sprites, bare), sprites.apply(context.getMaterial("particle")), context.getTransforms());
         }
     }
 }

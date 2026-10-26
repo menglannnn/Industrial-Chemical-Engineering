@@ -9,6 +9,7 @@ import com.wormzjl.icheme.science.equipment.PipeSizes;
 import com.wormzjl.icheme.science.equipment.RackGeometry;
 import com.wormzjl.icheme.science.fluid.topology.TopologyCompiler;
 import com.wormzjl.icheme.world.level.block.entity.FluidDeviceBlockEntity;
+import com.wormzjl.icheme.world.item.PipeLayingToolItem;
 import com.wormzjl.icheme.world.level.block.entity.PipeRackBlockEntity;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
@@ -84,6 +85,8 @@ public final class PipeLaying {
             laid.add(new FluidWorldAuthority.Laid(position, PhysicalFluidTopology.Direction.values()[facings[i]], joints[i], slots.get(i) >= 0 ? width : 0));
         }
         var records = world.lay(laid, settings.diameter(), hosts);
+        // The new pipes and lanes take the tool's paint; the pipes and lanes the line starts or ends at keep theirs.
+        int paint = PipeLayingToolItem.paint(stack);
         // The blocks and lanes bind to their queued registrations, then take their connections: every new block's joints
         // are set before any neighbour reads them, as EquipmentStructure.place sets its cells before it reconnects them.
         var racks = new ArrayList<PipeRackBlockEntity>();
@@ -92,13 +95,16 @@ public final class PipeLaying {
             for (int i = 0; i < path.size(); i++) {
                 if (slots.get(i) >= 0) {
                     var rack = (PipeRackBlockEntity) level.getBlockEntity(path.get(i));
-                    rack.addLane(new PipeRackBlockEntity.Lane(records.get(i).device().id(), slots.get(i), width, joints[i], facings[i], settings.diameter()));
+                    rack.addLane(new PipeRackBlockEntity.Lane(records.get(i).device().id(), slots.get(i), width, joints[i], facings[i], settings.diameter(), paint));
                     racks.add(rack);
                     continue;
                 }
                 var state = ModBlocks.FLUID_PIPE.get().defaultBlockState().setValue(FluidDeviceBlock.FACING, Direction.values()[facings[i]]);
                 level.setBlock(path.get(i), state, Block.UPDATE_CLIENTS | Block.UPDATE_KNOWN_SHAPE);
-                if (level.getBlockEntity(path.get(i)) instanceof FluidDeviceBlockEntity entity) entity.bindIdentity(records.get(i).device().id());
+                if (level.getBlockEntity(path.get(i)) instanceof FluidDeviceBlockEntity entity) {
+                    entity.paint(paint);
+                    entity.bindIdentity(records.get(i).device().id());
+                }
             }
         } finally {
             FluidDeviceBlock.laying = false;

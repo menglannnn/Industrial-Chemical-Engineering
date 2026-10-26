@@ -10,6 +10,8 @@ import com.wormzjl.icheme.registry.ModBlocks;
 import com.wormzjl.icheme.science.equipment.Paint;
 import com.wormzjl.icheme.science.equipment.ShapeRasterizer;
 import com.wormzjl.icheme.world.level.block.entity.EquipmentShellBlockEntity;
+import com.wormzjl.icheme.world.level.block.entity.FluidDeviceBlockEntity;
+import com.wormzjl.icheme.world.level.block.entity.PipeRackBlockEntity;
 import com.wormzjl.icheme.world.level.block.EquipmentStructure;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.RenderType;
@@ -45,6 +47,15 @@ public final class EquipmentClient {
     public static void registerBlockColours(RegisterColorHandlersEvent.Block event) {
         event.register((state, level, position, tint) -> Paint.tint((level != null && position != null
                 && level.getBlockEntity(position) instanceof EquipmentShellBlockEntity shell ? shell.paint() : Paint.DEFAULT).colour(tint)), ModBlocks.EQUIPMENT_SHELL.get());
+        // A painted laid line (batch 2026-10-26-pipe-laying-system): a pipe's tinted quads take its paint, a rack's those
+        // of the lane whose first slot is the tint index. Only painted lines bake tinted quads.
+        event.register((state, level, position, tint) -> level != null && position != null && level.getBlockEntity(position) instanceof FluidDeviceBlockEntity pipe
+                && pipe.paint() != Paint.BARE ? Paint.tint(pipe.paint()) : -1, ModBlocks.FLUID_PIPE.get());
+        event.register((state, level, position, tint) -> {
+            if (level != null && position != null && level.getBlockEntity(position) instanceof PipeRackBlockEntity rack)
+                for (var lane : rack.lanes()) if (lane.slot() == tint && lane.paint() != Paint.BARE) return Paint.tint(lane.paint());
+            return -1;
+        }, ModBlocks.PIPE_RACK.get());
     }
 
     /** Called by the constructor block on the client only: open its design screen. */
