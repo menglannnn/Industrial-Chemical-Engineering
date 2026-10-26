@@ -15,6 +15,10 @@ All notable changes to Industrial Chemical Engineering (IChemE, formerly CreateC
 
 ## [Unreleased]
 
+### Changed
+
+- `./gradlew test` also compiles the fluid GameTests, so a change that breaks them fails the quick suite on the day it lands (owner request 2026-10-26, batch: `2026-10-21-floating-roof-tanks`, `FINAL_LANE_E8EC6455_REVIEW.md`).
+
 ## [0.12.0] - 2026-10-26
 
 ### Added
