@@ -7,9 +7,9 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
-/** MCP 0.4.7 guesses the GLFW window handle as the first no-argument long method of Minecraft's window that answers
+/** MCP 0.4.x guesses the GLFW window handle as the first no-argument long method of Minecraft's window that answers
  * non-zero; a mod mixing such a method into the window (Sodium does) hands GLFW a value that is not a window, and the
- * input guard's glfwGetWin32Window faults on the next client tick. Give the bridge the window's own handle.
+ * background input mode's per-tick glfwGetInputMode faults on it. Give the bridge the window's own handle.
  */
 @Pseudo
 @Mixin(targets="xyz.langyo.minecraft.mcp.common.WindowHelper",remap=false)

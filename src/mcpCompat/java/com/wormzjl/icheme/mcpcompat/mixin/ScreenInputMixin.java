@@ -10,7 +10,7 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
-/** MCP 0.4.x (the dependency range [0.4.7,0.5.0) of neoforge.mods.toml) misses inherited interface charTyped and falls back to Screen.insertText, a no-op.
+/** MCP 0.4.x (the dependency range [0.4.18,0.5.0) of neoforge.mods.toml) misses inherited interface charTyped and falls back to Screen.insertText, a no-op.
  * Forward the already-authorized MCP input to Minecraft's real focused widget and responder.
  */
 @Pseudo

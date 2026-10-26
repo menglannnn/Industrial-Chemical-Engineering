@@ -19,6 +19,12 @@ All notable changes to Industrial Chemical Engineering (IChemE, formerly CreateC
 
 - Backward compatibility for the fluid network and equipment models (owner request 2026-10-26, batch folder: `2026-10-26-backward-compat`, plan `BACKWARD_COMPAT_PLAN.md`, commits `97a8a714`, `a470b3bd`, `b432efc4`, `7f058499`, `c7e8f4e8`): saves keep facts and rebuild state (fluid checkpoint envelope 1, state format 20, facts schema 1); a material or model change restates contents at their temperature and books the difference; shapes are read by name and repaired, a retired kind is removed whole; a refreshed vessel or machine keeps its registration, its nozzles' pipes first; a blocked refresh tries again at the next load. Worlds saved by 0.12.3 or older get one last reset (D4).
 
+## [0.12.4] - 2026-10-26
+
+### Fixed
+
+- MCP test lane (batch folder: `2026-10-16-minecraft-mcp-mouse-input`, review `BRIDGE_OFFICIAL_0418_REVIEW.md`, commit `1c3d4191`): `runMcpClient` pins the official Minecraft MCP bridge v0.4.18 and runs it in its background input mode (`mcp.background_input=true`, upstream #57), replacing the local 0.4.7-osguard build; the compat mod accepts `mcpmod` `[0.4.18,0.5.0)`. While the client is in the background the bridge's own tools leave the OS cursor alone; the compat mixin `BackgroundCursorMixin` (`ce6923d9`) skips vanilla's cursor grab and release (world join, screen open and close) while the game window is not the foreground window, so the desktop cursor stays where the user put it.
+
 ## [0.12.3] - 2026-10-26
 
 ### Fixed
