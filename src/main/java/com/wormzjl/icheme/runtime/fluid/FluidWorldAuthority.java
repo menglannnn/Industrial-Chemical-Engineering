@@ -185,6 +185,30 @@ public final class FluidWorldAuthority implements AutoCloseable {
     public WorldTopologyLedger.Registration place(PhysicalFluidTopology.Position position,TopologyCompiler.Kind kind,PhysicalFluidTopology.Direction facing,PhysicalFluidTopology.Cutoff cutoff,boolean pressureValve,boolean filter,TopologyCompiler.Kind inlineMover){return place(position,kind,facing,List.of(),cutoff,pressureValve,filter,inlineMover,PhysicalFluidTopology.ALL_FACES);}
     /** A placed block registered again from what it holds (a chunk load after the D4 reset): a laid pipe keeps its joints. */
     public WorldTopologyLedger.Registration place(PhysicalFluidTopology.Position position,TopologyCompiler.Kind kind,PhysicalFluidTopology.Direction facing,PhysicalFluidTopology.Cutoff cutoff,boolean pressureValve,boolean filter,TopologyCompiler.Kind inlineMover,int joints){return place(position,kind,facing,List.of(),cutoff,pressureValve,filter,inlineMover,joints);}
+    /** A cell of a laid line: its position, its facing (along its run) and its joints. */
+    public record Laid(PhysicalFluidTopology.Position position,PhysicalFluidTopology.Direction facing,int joints){}
+    /**
+     * Registers a laid line as one ledger event (batch 2026-10-26-pipe-laying-system, plan 4.4): a passive pipe of bore
+     * {@code diameter} per cell, with its joints, and the new joints of the laid pipes it starts or ends at
+     * ({@code hosts}, by identity). Returns the new pipes' registrations in the order of {@code cells}.
+     */
+    public List<WorldTopologyLedger.Registration> lay(List<Laid> cells,double diameter,Map<Long,Integer> hosts) {
+        owned();
+        if(cells.isEmpty())throw new IllegalArgumentException("An empty line");
+        long first=topology.nextIdentity();var edits=new ArrayList<WorldTopologyLedger.Edit>();var placed=new ArrayList<WorldTopologyLedger.Registration>();
+        for(int i=0;i<cells.size();i++) {
+            var cell=cells.get(i);
+            var device=new PhysicalFluidTopology.Device(first+i,cell.position(),TopologyCompiler.Kind.PIPE,cell.facing(),new PipeResistance.Geometry(1,diameter,PipeResistance.DEFAULT_ROUGHNESS_METRES,0),
+                    new FlowControl.Passive(),List.of(),true,PhysicalFluidTopology.Cutoff.NONE,false,cell.joints());
+            var record=new WorldTopologyLedger.Registration(device,FluidDeviceSpec.nitrogen(catalog),0);placed.add(record);edits.add(new WorldTopologyLedger.Edit(first+i,record));
+        }
+        for(var host:new TreeMap<>(hosts).entrySet()) {
+            var old=registrations().get(host.getKey());
+            if(old==null||old.device().kind()!=TopologyCompiler.Kind.PIPE)throw new IllegalStateException("A laid line's host pipe is gone");
+            edits.add(new WorldTopologyLedger.Edit(host.getKey(),new WorldTopologyLedger.Registration(old.device().withJoints(host.getValue()),old.spec(),Math.addExact(old.revision(),1))));
+        }
+        submit(edits,Math.addExact(first,cells.size()));return placed;
+    }
     /** A complete multi-cell mover uses the same controls and geometry as its one-block counterpart. */
     public WorldTopologyLedger.Registration placeMover(PhysicalFluidTopology.Position suction,TopologyCompiler.Kind kind,List<PhysicalFluidTopology.Port> ports) {
         if(kind!=TopologyCompiler.Kind.PUMP&&kind!=TopologyCompiler.Kind.COMPRESSOR||ports.isEmpty())throw new IllegalArgumentException("Expected a multi-cell mover");

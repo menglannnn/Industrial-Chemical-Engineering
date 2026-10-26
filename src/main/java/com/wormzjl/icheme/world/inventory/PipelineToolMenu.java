@@ -15,7 +15,10 @@ import net.minecraft.world.item.ItemStack;
 
 import java.util.Objects;
 
-/** A slot-free settings session bound to the exact held stack; it requests no fluid presentation. */
+/**
+ * A slot-free settings session bound to the exact held stack; it requests no fluid presentation. It serves the sizing
+ * tool and the laying tool (batch 2026-10-26-pipe-laying-system): each keeps its bore in its own item component.
+ */
 public final class PipelineToolMenu extends AbstractContainerMenu {
     private final InteractionHand hand;
     private final int selectedSlot;
@@ -36,13 +39,19 @@ public final class PipelineToolMenu extends AbstractContainerMenu {
 
     public static void open(ServerPlayer player, InteractionHand hand) {
         int slot = player.getInventory().selected;
-        var settings = Objects.requireNonNull(player.getItemInHand(hand).get(ModItems.PIPELINE_TOOL_SETTINGS.get()));
+        var stack = player.getItemInHand(hand);
+        var settings = Objects.requireNonNull(stack.get(component(stack)));
         player.openMenu(new SimpleMenuProvider((id, inventory, owner) -> new PipelineToolMenu(id, inventory, hand, slot, settings),
-                Component.translatable("item.icheme.pipeline_tool")), buffer -> {
+                stack.getHoverName()), buffer -> {
             buffer.writeEnum(hand);
             buffer.writeVarInt(slot);
             PipelineToolItem.Settings.STREAM_CODEC.encode(buffer, settings);
         });
+    }
+
+    /** The component holding {@code stack}'s bore: the laying tool's own, else the sizing tool's. */
+    private static net.minecraft.core.component.DataComponentType<PipelineToolItem.Settings> component(ItemStack stack) {
+        return stack.is(ModItems.PIPE_LAYING_TOOL.get()) ? ModItems.PIPE_LAYING_SETTINGS.get() : ModItems.PIPELINE_TOOL_SETTINGS.get();
     }
 
     public PipelineToolItem.Settings initialSettings() {
@@ -51,12 +60,12 @@ public final class PipelineToolMenu extends AbstractContainerMenu {
 
     /** Server: the packet handler has checked this session's id, lifetime and diameter. */
     public void save(PipelineToolItem.Settings settings) {
-        tool.set(ModItems.PIPELINE_TOOL_SETTINGS.get(), settings);
+        tool.set(component(tool), settings);
     }
 
     @Override
     public boolean stillValid(Player player) {
-        return !player.isSpectator() && tool.is(ModItems.PIPELINE_TOOL.get()) && player.getItemInHand(hand) == tool
+        return !player.isSpectator() && (tool.is(ModItems.PIPELINE_TOOL.get()) || tool.is(ModItems.PIPE_LAYING_TOOL.get())) && player.getItemInHand(hand) == tool
                 && (hand == InteractionHand.OFF_HAND || player.getInventory().selected == selectedSlot);
     }
 

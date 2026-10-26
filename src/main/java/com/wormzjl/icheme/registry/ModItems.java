@@ -21,6 +21,10 @@ public final class ModItems {
             COMPONENTS.register("pipeline_tool_settings", () -> DataComponentType.<PipelineToolItem.Settings>builder()
                     .persistent(PipelineToolItem.Settings.CODEC).networkSynchronized(PipelineToolItem.Settings.STREAM_CODEC).build());
     public static final DeferredHolder<DataComponentType<?>, DataComponentType<GaugeSettings>> GAUGE_SETTINGS = COMPONENTS.register("gauge_settings", () -> DataComponentType.<GaugeSettings>builder().persistent(GaugeSettings.CODEC).networkSynchronized(GaugeSettings.STREAM_CODEC).build());
+    /** The pipe laying tool's settings (batch 2026-10-26-pipe-laying-system): the bore it lays, as the sizing tool's. */
+    public static final DeferredHolder<DataComponentType<?>, DataComponentType<PipelineToolItem.Settings>> PIPE_LAYING_SETTINGS =
+            COMPONENTS.register("pipe_laying_settings", () -> DataComponentType.<PipelineToolItem.Settings>builder()
+                    .persistent(PipelineToolItem.Settings.CODEC).networkSynchronized(PipelineToolItem.Settings.STREAM_CODEC).build());
 
     public static final DeferredRegister.Items ITEMS = DeferredRegister.createItems(IChemE.MOD_ID);
     public static final DeferredItem<BlockItem> FLUID_RESERVOIR=ITEMS.registerSimpleBlockItem("fluid_reservoir",ModBlocks.FLUID_RESERVOIR);
@@ -36,6 +40,8 @@ public final class ModItems {
     public static final DeferredItem<net.minecraft.world.item.Item> FLUID_DEBUGGER=ITEMS.registerSimpleItem("fluid_debugger",new net.minecraft.world.item.Item.Properties().stacksTo(1));
     public static final DeferredItem<PipelineToolItem> PIPELINE_TOOL =
             ITEMS.registerItem("pipeline_tool", PipelineToolItem::new);
+    public static final DeferredItem<com.wormzjl.icheme.world.item.PipeLayingToolItem> PIPE_LAYING_TOOL =
+            ITEMS.registerItem("pipe_laying_tool", com.wormzjl.icheme.world.item.PipeLayingToolItem::new);
     public static final DeferredItem<PipelineFittingItem> PIPELINE_SIGHT_GLASS=fitting("pipeline_sight_glass",Instrument.Type.SIGHT_GLASS);
     public static final DeferredItem<PipelineFittingItem> PIPELINE_SHUTOFF_VALVE=fitting("pipeline_shutoff_valve",Instrument.Type.SHUTOFF);
     public static final DeferredItem<PipelineFittingItem> PIPELINE_CHECK_VALVE=fitting("pipeline_check_valve",Instrument.Type.CHECK);

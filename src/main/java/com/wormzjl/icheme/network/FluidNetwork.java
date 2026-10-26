@@ -12,6 +12,8 @@ import com.wormzjl.icheme.world.inventory.PipelineToolMenu;
 import com.wormzjl.icheme.world.item.GaugeSettings;
 import com.wormzjl.icheme.world.item.PipelineToolItem;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
+import net.minecraft.world.InteractionHand;
 import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.codec.ByteBufCodecs;
 import net.minecraft.network.codec.StreamCodec;
@@ -417,6 +419,30 @@ public final class FluidNetwork {
                 ByteBufCodecs.VAR_INT,PipelineToolSave::menuId,ByteBufCodecs.DOUBLE,PipelineToolSave::diameter,PipelineToolSave::new);
         @Override public Type<? extends CustomPacketPayload> type(){return TYPE;}
     }
+    /**
+     * Client to server: the laying tool's commands (batch 2026-10-26-pipe-laying-system, plan 4.1). The client decides
+     * which a use means, because only it knows whether a line has a start; the server checks each against its own world.
+     */
+    public record PipeLayingOpen(boolean offHand) implements CustomPacketPayload {
+        public static final Type<PipeLayingOpen> TYPE=new Type<>(ResourceLocation.fromNamespaceAndPath(IChemE.MOD_ID,"pipe_laying_open"));
+        public static final StreamCodec<RegistryFriendlyByteBuf,PipeLayingOpen> STREAM_CODEC=StreamCodec.composite(ByteBufCodecs.BOOL,PipeLayingOpen::offHand,PipeLayingOpen::new);
+        @Override public Type<? extends CustomPacketPayload> type(){return TYPE;}
+    }
+    /** Lay {@code cells} from the anchor clicked at {@code start} on {@code startFace} to the one at {@code end} on {@code endFace}. */
+    public record PipeLay(boolean offHand,BlockPos start,Direction startFace,BlockPos end,Direction endFace,List<BlockPos> cells) implements CustomPacketPayload {
+        public static final Type<PipeLay> TYPE=new Type<>(ResourceLocation.fromNamespaceAndPath(IChemE.MOD_ID,"pipe_lay"));
+        public static final StreamCodec<RegistryFriendlyByteBuf,PipeLay> STREAM_CODEC=StreamCodec.composite(ByteBufCodecs.BOOL,PipeLay::offHand,BlockPos.STREAM_CODEC,PipeLay::start,Direction.STREAM_CODEC,PipeLay::startFace,
+                BlockPos.STREAM_CODEC,PipeLay::end,Direction.STREAM_CODEC,PipeLay::endFace,BlockPos.STREAM_CODEC.apply(ByteBufCodecs.list(com.wormzjl.icheme.science.equipment.PipeRoute.Limits.DEFAULT.cells())),PipeLay::cells,PipeLay::new);
+        @Override public Type<? extends CustomPacketPayload> type(){return TYPE;}
+    }
+    public record PipeDismantle(boolean offHand,BlockPos position) implements CustomPacketPayload {
+        public static final Type<PipeDismantle> TYPE=new Type<>(ResourceLocation.fromNamespaceAndPath(IChemE.MOD_ID,"pipe_dismantle"));
+        public static final StreamCodec<RegistryFriendlyByteBuf,PipeDismantle> STREAM_CODEC=StreamCodec.composite(ByteBufCodecs.BOOL,PipeDismantle::offHand,BlockPos.STREAM_CODEC,PipeDismantle::position,PipeDismantle::new);
+        @Override public Type<? extends CustomPacketPayload> type(){return TYPE;}
+    }
+    private static InteractionHand hand(boolean offHand){return offHand?InteractionHand.OFF_HAND:InteractionHand.MAIN_HAND;}
+    /** The server's answer to a laying command, on the player's action bar. */
+    private static void answer(ServerPlayer player,net.minecraft.network.chat.Component refusal,net.minecraft.network.chat.Component done){player.displayClientMessage(refusal!=null?refusal:done,true);}
 
     /** The requested displays and the item settings saves: the tanks' on the fluid registrar, the others each on its own version string. */
     private static void registerDisplays(RegisterPayloadHandlersEvent event,PayloadRegistrar fluid) {
@@ -438,12 +464,24 @@ public final class FluidNetwork {
         instruments.playToServer(InstrumentWatch.TYPE,InstrumentWatch.CODEC,(p,c)->{if(c.player() instanceof ServerPlayer player)FluidWorldAuthority.find(player.server).ifPresent(w->w.instruments().watch(player,p.watch,p.unwatch));});
         instruments.playToClient(InstrumentDisplay.TYPE,InstrumentDisplay.CODEC,(p,c)->com.wormzjl.icheme.client.InstrumentRenderer.accept(p));
         instruments.playToServer(GaugeSave.TYPE,GaugeSave.CODEC,(p,c)->{if(c.player() instanceof ServerPlayer player&&player.containerMenu instanceof GaugeMenu menu&&menu.containerId==p.menu&&menu.stillValid(player)&&menu.initial().kind()==p.settings.kind()){menu.save(p.settings);player.inventoryMenu.broadcastChanges();}});
-        event.registrar("pipeline-tool-1").executesOn(HandlerThread.MAIN).playToServer(PipelineToolSave.TYPE,PipelineToolSave.STREAM_CODEC,(payload,context)->{
+        var tools=event.registrar("pipeline-tool-2").executesOn(HandlerThread.MAIN);
+        tools.playToServer(PipelineToolSave.TYPE,PipelineToolSave.STREAM_CODEC,(payload,context)->{
             if(!(context.player() instanceof ServerPlayer player)||!(player.containerMenu instanceof PipelineToolMenu menu)
                     ||menu.containerId!=payload.menuId()||!menu.stillValid(player)||!PipelineToolItem.Settings.valid(payload.diameter()))return;
             menu.save(new PipelineToolItem.Settings(payload.diameter()));
             // The screen closes after sending Save. Also sync the inventory menu so its cached copy carries the new target.
             player.inventoryMenu.broadcastChanges();
+        });
+        tools.playToServer(PipeLayingOpen.TYPE,PipeLayingOpen.STREAM_CODEC,(p,c)->{
+            if(c.player() instanceof ServerPlayer player&&!player.isSpectator()&&player.getItemInHand(hand(p.offHand)).is(com.wormzjl.icheme.registry.ModItems.PIPE_LAYING_TOOL.get()))PipelineToolMenu.open(player,hand(p.offHand));
+        });
+        tools.playToServer(PipeLay.TYPE,PipeLay.STREAM_CODEC,(p,c)->{
+            if(c.player() instanceof ServerPlayer player)answer(player,com.wormzjl.icheme.world.level.block.PipeLaying.lay(player,hand(p.offHand),p.start,p.startFace,p.end,p.endFace,p.cells),
+                    com.wormzjl.icheme.world.level.block.PipeLaying.message("laid",p.cells.size()));
+        });
+        tools.playToServer(PipeDismantle.TYPE,PipeDismantle.STREAM_CODEC,(p,c)->{
+            if(c.player() instanceof ServerPlayer player)answer(player,com.wormzjl.icheme.world.level.block.PipeLaying.dismantle(player,hand(p.offHand),p.position),
+                    com.wormzjl.icheme.world.level.block.PipeLaying.message("dismantled"));
         });
     }
     /** Server: sends {@code glide} of the tank at {@code node} to {@code player}. */
@@ -458,6 +496,9 @@ public final class FluidNetwork {
     public static void requestInstruments(List<InstrumentTarget> watch,List<InstrumentTarget> unwatch){if(!watch.isEmpty()||!unwatch.isEmpty())PacketDistributor.sendToServer(new InstrumentWatch(watch,unwatch));}
     public static void saveGauge(int menu,GaugeSettings settings){PacketDistributor.sendToServer(new GaugeSave(menu,settings));}
     public static void savePipelineTool(int menuId,double diameter){PacketDistributor.sendToServer(new PipelineToolSave(menuId,diameter));}
+    public static void openPipeLaying(boolean offHand){PacketDistributor.sendToServer(new PipeLayingOpen(offHand));}
+    public static void layPipe(boolean offHand,BlockPos start,Direction startFace,BlockPos end,Direction endFace,List<BlockPos> cells){PacketDistributor.sendToServer(new PipeLay(offHand,start,startFace,end,endFace,cells));}
+    public static void dismantlePipe(boolean offHand,BlockPos position){PacketDistributor.sendToServer(new PipeDismantle(offHand,position));}
 
     // ---- client: the last delivered view of each device ----
 

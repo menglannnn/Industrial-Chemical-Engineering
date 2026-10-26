@@ -136,7 +136,7 @@ public sealed class FluidDeviceBlock extends BaseEntityBlock {
     }
     public static BooleanProperty connection(Direction direction){return CONNECTIONS.get(direction);}
     private static boolean boundary(TopologyCompiler.Kind kind){return kind==TopologyCompiler.Kind.RESERVOIR||kind==TopologyCompiler.Kind.GENERATOR||kind==TopologyCompiler.Kind.VOID;}
-    private static boolean face(BlockState state,Direction direction) {
+    static boolean face(BlockState state,Direction direction) {
         if(hasAxialAccessory(state)&&state.getValue(FACING).getAxis()!=direction.getAxis())return false;
         var block=(FluidDeviceBlock)state.getBlock();return block.kind!=TopologyCompiler.Kind.PUMP&&block.kind!=TopologyCompiler.Kind.COMPRESSOR&&block.kind!=TopologyCompiler.Kind.VALVE&&block.kind!=TopologyCompiler.Kind.FILTER||state.getValue(FACING).getAxis()==direction.getAxis();
     }
@@ -172,8 +172,10 @@ public sealed class FluidDeviceBlock extends BaseEntityBlock {
             if(level.getBlockEntity(position) instanceof FluidDeviceBlockEntity entity)FluidWorldAuthority.find(level.getServer()).ifPresent(w->w.instruments().recoverLegacy(entity.fluidIdentity(),level,position));
         }
     }
+    /** Server thread: the laying tool is placing the blocks of a line it registered itself ({@link PipeLaying}). */
+    static boolean laying;
     @Override protected void onPlace(BlockState state,Level level,BlockPos position,BlockState previous,boolean moved) {
-        super.onPlace(state,level,position,previous,moved);if(!(level instanceof ServerLevel serverLevel))return;
+        super.onPlace(state,level,position,previous,moved);if(!(level instanceof ServerLevel serverLevel)||laying)return;
         FluidWorldAuthority.find(serverLevel.getServer()).ifPresent(world->{
             var p=new PhysicalFluidTopology.Position(level.dimension().location().toString(),position.getX(),position.getY(),position.getZ());
             if(previous.getBlock()!=this) {

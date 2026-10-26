@@ -83,8 +83,6 @@ public final class FluidDeviceBlockEntity extends BlockEntity implements com.wor
     public double bore(){return bore;}
     /** The faces this pipe may connect through; every face for a hand-placed pipe and every other device. */
     public int joints(){return joints;}
-    /** Sets the joints before the block is first drawn: the laying tool, before the block's neighbours read them. */
-    public void presetJoints(int value){if((value&~PhysicalFluidTopology.ALL_FACES)!=0)throw new IllegalArgumentException("Invalid joints "+value);joints=value;}
     public void bindIdentity(long id) {
         if(id<=0)throw new IllegalStateException("Invalid fluid identity");
         if(level instanceof ServerLevel serverLevel) {
