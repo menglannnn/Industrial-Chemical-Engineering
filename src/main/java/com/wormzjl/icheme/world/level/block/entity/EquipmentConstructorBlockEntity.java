@@ -7,6 +7,7 @@ import com.wormzjl.icheme.science.equipment.EquipmentShape;
 import com.wormzjl.icheme.science.equipment.EquipmentShape.Orientation;
 import com.wormzjl.icheme.science.equipment.Paint;
 import com.wormzjl.icheme.science.equipment.ProcessUnit;
+import com.wormzjl.icheme.science.equipment.ShapeRepair;
 import com.wormzjl.icheme.science.equipment.VesselPlacement;
 import com.wormzjl.icheme.world.level.block.EquipmentConstructorBlock;
 import com.wormzjl.icheme.world.level.block.EquipmentStructure;
@@ -160,15 +161,54 @@ public final class EquipmentConstructorBlockEntity extends BlockEntity {
         design = Design.fresh();
         if (!tag.contains("Diameter")) return;
         try {
-            int[] offsets = tag.getIntArray("Offsets");
-            if (offsets.length != 3) throw new IllegalArgumentException("Offsets must hold forward, right and up");
-            design = new Design(tag.getDouble("Diameter"), tag.getInt("TangentLength"), VesselPlacement.Form.valueOf(tag.getString("Form").toUpperCase(Locale.ROOT)),
-                    tag.getInt("Support"), new VesselPlacement(offsets[0], offsets[1], offsets[2]), ColumnTrays.decode(tag.getIntArray("Trays")),
-                    EquipmentShape.Connection.decode(tag.getIntArray("Connections")), Paint.decode(tag.getIntArray("Paint")), ProcessUnit.Bank.decode(tag.getIntArray("Bank")), tag.getBoolean("Boot"),
-                    tag.getInt("Outlet"));
+            design = readDesign(tag, design, repair -> IChemE.LOGGER.warn("equipment_compat constructor at={} repair={}", worldPosition.toShortString(), repair));
         } catch (IllegalArgumentException invalid) {
-            IChemE.LOGGER.warn("Equipment constructor at {} has an invalid design and proposes the default: {}", worldPosition, invalid.getMessage());
+            IChemE.LOGGER.error("Equipment constructor at {} has a design its repair cannot read and proposes the default: {}", worldPosition, invalid.getMessage());
         }
+    }
+
+    /**
+     * A saved design read onto the current rules (batch 2026-10-26-backward-compat): its shape through {@link ShapeRepair},
+     * its placement and paint kept where valid; a form this build no longer has proposes the default shape with the
+     * saved placement and paint, as {@code fresh} (what a new constructor proposes) has them otherwise. Each change goes to
+     * {@code repairs}.
+     */
+    public static Design readDesign(CompoundTag tag, Design fresh, java.util.function.Consumer<String> repairs) {
+        var placement = fresh.placement();
+        int[] offsets = tag.getIntArray("Offsets");
+        try {
+            if (offsets.length != 3) throw new IllegalArgumentException("Offsets must hold forward, right and up");
+            placement = new VesselPlacement(offsets[0], offsets[1], offsets[2]);
+        } catch (IllegalArgumentException invalid) {
+            repairs.accept("placement (" + invalid.getMessage() + ") -> default");
+        }
+        var paint = fresh.paint();
+        try {
+            paint = Paint.decode(tag.getIntArray("Paint"));
+        } catch (IllegalArgumentException invalid) {
+            repairs.accept("paint (" + invalid.getMessage() + ") -> default");
+        }
+        var form = ShapeRepair.form(tag.getString("Form")).orElse(null);
+        if (form == null) {
+            repairs.accept("form " + tag.getString("Form") + " -> " + fresh.form().name().toLowerCase(Locale.ROOT) + " (this build no longer has it)");
+            return new Design(fresh.diameter(), fresh.tangentLength(), fresh.form(), fresh.support(), placement, fresh.trays(), fresh.connections(), paint, fresh.bank(), fresh.boot(), fresh.outlet());
+        }
+        var trays = Design.TRAYS;
+        if (tag.contains("Trays"))
+            try {
+                trays = ColumnTrays.decode(tag.getIntArray("Trays"));
+            } catch (IllegalArgumentException invalid) {
+                repairs.accept("trays (" + invalid.getMessage() + ") -> " + Design.TRAYS.trays() + " trays");
+            }
+        var read = ShapeRepair.read(new ShapeRepair.Saved(form.kind().name(), "north", form.orientation().name(), tag.getDouble("Diameter"), tag.getInt("TangentLength"),
+                tag.getInt("Support"), trays.encode(), tag.contains("Connections") ? tag.getIntArray("Connections") : null, tag.getBoolean("Boot"), tag.getInt("Outlet"),
+                tag.contains("Bank") ? tag.getIntArray("Bank") : null));
+        read.repairs().forEach(repairs);
+        var shape = read.shape();
+        // A column's own length follows its trays; the design keeps the drum length it was saved with for another form.
+        int length = form.column() ? (int) Math.max(1, Math.min(EquipmentShape.MAX_TANGENT_LENGTH, tag.getInt("TangentLength"))) : (int) shape.tangentLength();
+        return new Design(shape.diameter(), length, form, shape.support(), placement, shape.trays() != null ? shape.trays() : trays, shape.connections(), paint,
+                shape.bank(), shape.boot(), shape.outlet());
     }
 
     private void write(CompoundTag tag) {

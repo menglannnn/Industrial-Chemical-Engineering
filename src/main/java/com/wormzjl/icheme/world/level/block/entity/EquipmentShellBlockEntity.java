@@ -15,7 +15,7 @@ import net.minecraft.world.MenuProvider;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.inventory.AbstractContainerMenu;
-import com.wormzjl.icheme.science.equipment.ColumnTrays;
+import com.wormzjl.icheme.science.equipment.ShapeRepair;
 import com.wormzjl.icheme.science.equipment.EquipmentShape;
 import com.wormzjl.icheme.science.equipment.Paint;
 import com.wormzjl.icheme.science.equipment.ProcessUnit;
@@ -70,6 +70,13 @@ public final class EquipmentShellBlockEntity extends BlockEntity implements com.
      */
     private long stamp;
     private int[] box = new int[3];
+    /**
+     * The saved kind of a cell whose kind this build no longer has (owner decision D6, batch 2026-10-26-backward-compat):
+     * the cell stays unbound, and its load removes its whole structure ({@link EquipmentStructure#removeRetiredLater}).
+     */
+    private @Nullable String retired;
+    /** A retired cell's data as it was saved, written back unchanged until the cell is removed. */
+    private @Nullable CompoundTag retiredData;
     private @Nullable FluidView lastView;
     /**
      * A floating-roof tank's node cell: the liquid's level its last view gave, m, saved with the cell and sent with its
@@ -188,6 +195,10 @@ public final class EquipmentShellBlockEntity extends BlockEntity implements com.
         super.onLoad();com.wormzjl.icheme.runtime.instrument.InstrumentHosts.loaded(this);
         trackRoof();
         if (level != null && level.isClientSide) trackMoving();
+        if (level instanceof ServerLevel serverLevel && retired != null) {
+            EquipmentStructure.removeRetiredLater(serverLevel, worldPosition.offset(-cellX, -cellY, -cellZ), retired, box, worldPosition);
+            return;
+        }
         if (!(level instanceof ServerLevel serverLevel) || shape == null) return;
         if (stale()) EquipmentStructure.refreshLater(serverLevel, origin(), shape, box, worldPosition);
         var here = fluidPosition();
@@ -279,6 +290,16 @@ public final class EquipmentShellBlockEntity extends BlockEntity implements com.
         return box.clone();
     }
 
+    /** The saved kind name of a cell whose kind this build no longer has, or null. */
+    public @Nullable String retired() {
+        return retired;
+    }
+
+    /** The origin a retired cell was placed from (its saved cell coordinates), or null for any other cell. */
+    public @Nullable BlockPos retiredOrigin() {
+        return retired == null ? null : worldPosition.offset(-cellX, -cellY, -cellZ);
+    }
+
     /** Server: a refreshed drum's node moved elsewhere; this cell no longer stands for its fluid identity. */
     public void releaseIdentity() {
         if (identity == 0) return;
@@ -359,9 +380,10 @@ public final class EquipmentShellBlockEntity extends BlockEntity implements com.
             IChemE.LOGGER.warn("Equipment shell at {} has an invalid roof level {}; the roof lands", worldPosition, roofLevel);
             roofLevel = 0;
         }
+        retired = null;
+        retiredData = null;
         if (!tag.contains("Diameter")) return;
         try {
-            var read = readShape(tag);
             // A cell outside the box of the current layout stays bound until its vessel is refreshed (it was placed by
             // a larger one); the box it was placed by, when saved, bounds it.
             int[] cell = tag.getIntArray("Cell"), placed = tag.contains("Box") ? tag.getIntArray("Box") : new int[3];
@@ -369,17 +391,39 @@ public final class EquipmentShellBlockEntity extends BlockEntity implements com.
                 throw new IllegalArgumentException("Cell outside any vessel");
             if (placed.length != 3 || placed[0] < 0 || placed[1] < 0 || placed[2] < 0 || placed[0] > MAX_CELL || placed[1] > MAX_CELL || placed[2] > MAX_CELL)
                 throw new IllegalArgumentException("Invalid placed box");
-            var painted = Paint.decode(tag.getIntArray("Paint"));
-            assign(read, new ShapeRasterizer.Cell(cell[0], cell[1], cell[2]), tag.getLong("Nozzles"));
+            cellX = cell[0];
+            cellY = cell[1];
+            cellZ = cell[2];
+            box = placed;
+            var read = readShape(tag);
+            if (read.retired() != null) {
+                // Kept as saved until its structure is removed, so a save before then loses nothing of it.
+                retired = read.retired();
+                retiredData = tag.copy();
+                return;
+            }
+            for (var repair : read.repairs())
+                IChemE.LOGGER.warn("equipment_compat kind={} at={} repair={}", read.shape().kind().name().toLowerCase(Locale.ROOT), worldPosition.toShortString(), repair);
+            Paint painted;
+            try {
+                painted = Paint.decode(tag.getIntArray("Paint"));
+            } catch (IllegalArgumentException invalid) {
+                painted = Paint.DEFAULT;
+                IChemE.LOGGER.warn("equipment_compat at={} repair=paint ({}) -> default", worldPosition.toShortString(), invalid.getMessage());
+            }
+            assign(read.shape(), new ShapeRasterizer.Cell(cell[0], cell[1], cell[2]), tag.getLong("Nozzles"));
             paint = painted;
             stamp = tag.getLong("Layout");
-            box = placed;
         } catch (IllegalArgumentException invalid) {
             IChemE.LOGGER.warn("Equipment shell at {} has invalid data and stays unbound: {}", worldPosition, invalid.getMessage());
         }
     }
 
     private void write(CompoundTag tag) {
+        if (retiredData != null) {
+            for (var name : retiredData.getAllKeys()) if (!tag.contains(name)) tag.put(name, retiredData.get(name).copy());
+            return;
+        }
         if (shape == null) return;
         writeShape(tag, shape);
         tag.putIntArray("Cell", new int[]{cellX, cellY, cellZ});
@@ -413,18 +457,20 @@ public final class EquipmentShellBlockEntity extends BlockEntity implements com.
         if (shape.kind() == EquipmentShape.Kind.AIR_COOLER) tag.putIntArray("Bank", shape.bank().encode());
     }
 
-    /** @throws IllegalArgumentException for a missing or invalid field */
-    public static EquipmentShape readShape(CompoundTag tag) {
-        var kind = EquipmentShape.Kind.valueOf(tag.getString("Kind").toUpperCase(Locale.ROOT));
-        var front = EquipmentShape.Heading.valueOf(tag.getString("Front").toUpperCase(Locale.ROOT));
-        if (kind == EquipmentShape.Kind.COLUMN)
-            return EquipmentShape.column(tag.getDouble("Diameter"), ColumnTrays.decode(tag.getIntArray("Trays")), front, tag.getInt("Support"));
-        if (kind.designed()) return EquipmentShape.designed(kind, tag.getDouble("Diameter"), tag.getDouble("TangentLength"), front, tag.getInt("Support"),
-                    kind == EquipmentShape.Kind.AIR_COOLER ? ProcessUnit.Bank.decode(tag.getIntArray("Bank")) : ProcessUnit.Bank.ONE, tag.getInt("Outlet"));
-        if (!tag.contains("Connections")) throw new IllegalArgumentException("A drum lists its side connections");
-        return EquipmentShape.drum(tag.getDouble("Diameter"), tag.getDouble("TangentLength"),
-                EquipmentShape.Orientation.valueOf(tag.getString("Orientation").toUpperCase(Locale.ROOT)), front, tag.getInt("Support"),
-                EquipmentShape.Connection.decode(tag.getIntArray("Connections")), tag.getBoolean("Boot"), tag.getInt("Outlet"));
+    /**
+     * A saved shape read onto the current rules ({@link ShapeRepair}): every field by name, a missing one at its
+     * default, a refused one repaired, a kind this build no longer has named as retired. Never throws.
+     */
+    public static ShapeRepair.Read readShape(CompoundTag tag) {
+        return ShapeRepair.read(saved(tag));
+    }
+
+    /** The shape fields of {@code tag} as written, before any rule reads them. */
+    public static ShapeRepair.Saved saved(CompoundTag tag) {
+        return new ShapeRepair.Saved(tag.getString("Kind"), tag.getString("Front"), tag.contains("Orientation") ? tag.getString("Orientation") : null,
+                tag.getDouble("Diameter"), tag.getDouble("TangentLength"), tag.getInt("Support"), tag.contains("Trays") ? tag.getIntArray("Trays") : null,
+                tag.contains("Connections") ? tag.getIntArray("Connections") : null, tag.getBoolean("Boot"), tag.getInt("Outlet"),
+                tag.contains("Bank") ? tag.getIntArray("Bank") : null);
     }
 
     @Override

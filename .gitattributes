@@ -21,3 +21,4 @@ src/test/resources/science/thermo/coolprop/** -text
 # Backward-compatibility corpus images (batch 2026-10-26-backward-compat): frozen bytes the gates read.
 src/test/resources/compat/**/*.dat binary
 src/test/resources/compat/**/*.bin binary
+src/test/resources/compat/**/*.snbt -text

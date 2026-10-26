@@ -86,6 +86,15 @@ public final class EquipmentStructure {
         }
     }
 
+    /** Structures of a retired kind waiting for their removal, by level and origin, each with the region its cells span. */
+    private static final Map<ServerLevel, Map<BlockPos, Retired>> RETIRED = new WeakHashMap<>();
+
+    record Retired(String kind, BlockPos low, BlockPos high) {
+        Retired with(Retired other) {
+            return new Retired(kind, min(low, other.low), max(high, other.high));
+        }
+    }
+
     private EquipmentStructure() {
     }
 
@@ -364,10 +373,87 @@ public final class EquipmentStructure {
         STALE.computeIfAbsent(level, k -> new LinkedHashMap<>()).merge(origin.immutable(), stale, Stale::with);
     }
 
-    /** At most one stale vessel a tick, the first whose region is ready; on most ticks there is none. */
+    /**
+     * Server, from the load of a shell cell whose kind this build no longer has (owner decision D6, batch
+     * 2026-10-26-backward-compat: "simply remove it, and don't leave ghost blocks behind"): its structure is removed whole on
+     * a later tick, once every chunk of the box it was placed by is loaded ({@link #removeRetired}). {@code box} is that
+     * box (zeros when saved before stamps), {@code cell} the cell's position, which widens the region.
+     */
+    public static void removeRetiredLater(ServerLevel level, BlockPos origin, String kind, int[] box, BlockPos cell) {
+        var high = origin.offset(Math.max(1, box[0]) - 1, Math.max(1, box[1]) - 1, Math.max(1, box[2]) - 1);
+        var retired = new Retired(kind, min(origin, cell), max(high, cell));
+        RETIRED.computeIfAbsent(level, k -> new LinkedHashMap<>()).merge(origin.immutable(), retired, Retired::with);
+    }
+
+    /**
+     * Removes a structure of a retired kind as a dismantle removes one: its fluid registration leaves (a reservoir's
+     * contents with it, its gauges refunded, as a broken vessel's), then every cell it placed is cleared, its interior
+     * cells (found from a shell cell of the same origin and saved kind, its shape being unreadable) and its shell cells.
+     * No other block is touched.
+     */
+    static void removeRetired(ServerLevel level, BlockPos origin, Retired retired) {
+        var shells = new ArrayList<BlockPos>();var interior = new ArrayList<BlockPos>();
+        for (var at : BlockPos.betweenClosed(retired.low(), retired.high()))
+            if (retiredShell(level, at, origin, retired.kind())) shells.add(at.immutable());
+            else if (level.getBlockState(at).is(ModBlocks.EQUIPMENT_INTERIOR.get()) && retiredReached(level, at, origin, retired.kind())) interior.add(at.immutable());
+        if (shells.isEmpty()) return;
+        var world = FluidWorldAuthority.find(level.getServer()).orElse(null);
+        for (var at : shells)
+            if (world != null && level.getBlockEntity(at) instanceof EquipmentShellBlockEntity shell && shell.fluidIdentity() != 0) world.remove(shell.fluidIdentity());
+        int flags = Block.UPDATE_CLIENTS | Block.UPDATE_KNOWN_SHAPE;
+        dismantling = true;
+        try {
+            for (var at : interior) level.setBlock(at, net.minecraft.world.level.block.Blocks.AIR.defaultBlockState(), flags);
+            for (var at : shells) level.setBlock(at, net.minecraft.world.level.block.Blocks.AIR.defaultBlockState(), flags);
+        } finally {
+            dismantling = false;
+        }
+        for (int x = retired.low().getX() >> 4; x <= retired.high().getX() >> 4; x++)
+            for (int z = retired.low().getZ() >> 4; z <= retired.high().getZ() >> 4; z++) level.getChunkSource().chunkMap.waitForLightBeforeSending(new ChunkPos(x, z), 0);
+        // Pipes that ran into the removed nozzles drop their connection.
+        for (var list : List.of(shells, interior))
+            for (var at : list)
+                for (var direction : Direction.values()) {
+                    var next = at.relative(direction);
+                    var state = level.getBlockState(next);
+                    if (state.getBlock() instanceof FluidDeviceBlock) Block.updateOrDestroy(state, Block.updateFromNeighbourShapes(state, level, next), level, next, Block.UPDATE_ALL);
+                }
+        IChemE.LOGGER.warn("equipment_compat status=REMOVED kind={} origin={} shell={} interior={} detail=this build no longer has the kind (owner decision D6)",
+                retired.kind(), origin.toShortString(), shells.size(), interior.size());
+    }
+
+    private static boolean retiredShell(BlockGetter level, BlockPos at, BlockPos origin, String kind) {
+        return level.getBlockEntity(at) instanceof EquipmentShellBlockEntity shell && origin.equals(shell.retiredOrigin()) && kind.equals(shell.retired());
+    }
+
+    /** Whether a walk east, or else south, over interior cells from {@code position} reaches a retired shell cell of {@code origin}. */
+    private static boolean retiredReached(BlockGetter level, BlockPos position, BlockPos origin, String kind) {
+        for (var direction : new Direction[]{Direction.EAST, Direction.SOUTH})
+            for (int step = 1; step <= FIND_STEPS; step++) {
+                var at = position.relative(direction, step);
+                if (retiredShell(level, at, origin, kind)) return true;
+                if (!level.getBlockState(at).is(ModBlocks.EQUIPMENT_INTERIOR.get())) break;
+            }
+        return false;
+    }
+
+    /** At most one stale or retired vessel a tick, the first whose region is ready; on most ticks there is none. */
     @SubscribeEvent
     public static void onLevelTick(LevelTickEvent.Post event) {
         if (!(event.getLevel() instanceof ServerLevel level)) return;
+        var retired = RETIRED.get(level);
+        if (retired != null)
+            for (var it = retired.entrySet().iterator(); it.hasNext(); ) {
+                var entry = it.next();
+                if (!ready(level, entry.getValue().low(), entry.getValue().high())) continue;
+                it.remove();
+                try {
+                    removeRetired(level, entry.getKey(), entry.getValue());
+                } catch (RuntimeException failed) {
+                    IChemE.LOGGER.error("equipment_compat removal failed at {}", entry.getKey().toShortString(), failed);
+                }
+                return;
+            }
         var pending = STALE.get(level);
         if (pending == null || pending.isEmpty()) return;
         for (var it = pending.entrySet().iterator(); it.hasNext(); ) {

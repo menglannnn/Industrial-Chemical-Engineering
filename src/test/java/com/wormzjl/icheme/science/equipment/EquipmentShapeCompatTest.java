@@ -1,0 +1,152 @@
+package com.wormzjl.icheme.science.equipment;
+
+import com.wormzjl.icheme.science.equipment.EquipmentShape.Heading;
+import com.wormzjl.icheme.science.equipment.EquipmentShape.Kind;
+import com.wormzjl.icheme.science.equipment.EquipmentShape.Orientation;
+import com.wormzjl.icheme.world.level.block.entity.EquipmentConstructorBlockEntity;
+import com.wormzjl.icheme.world.level.block.entity.EquipmentShellBlockEntity;
+import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.TagParser;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.*;
+import java.util.*;
+import org.junit.jupiter.api.Test;
+import static org.junit.jupiter.api.Assertions.*;
+
+/**
+ * Backward compatibility of saved equipment shapes (batch 2026-10-26-backward-compat, plan section 5.1): a shell's or
+ * a constructor's saved shape is read by name with defaults, a value the current rules refuse is repaired and named,
+ * a kind this build no longer has is retired, and no saved value makes the reader throw.
+ */
+class EquipmentShapeCompatTest {
+    /** One shape of every kind at its default size, and a lying drum. */
+    static List<EquipmentShape> everyKind() {
+        var shapes = new ArrayList<EquipmentShape>();
+        shapes.add(EquipmentShape.drum(2, 4, Orientation.VERTICAL, Heading.NORTH, EquipmentShape.defaultSupport(2, Orientation.VERTICAL)));
+        shapes.add(EquipmentShape.drum(2, 6, Orientation.HORIZONTAL, Heading.EAST, EquipmentShape.defaultSupport(2, Orientation.HORIZONTAL)));
+        shapes.add(EquipmentShape.column(2, ColumnTrays.simple(20, 10), Heading.SOUTH, EquipmentShape.minimumSkirt(2)));
+        for (var kind : Kind.values()) {
+            if (!kind.designed()) continue;
+            double size = ProcessUnit.minDiameter(kind);int length = ProcessUnit.defaultLength(kind, size);
+            shapes.add(EquipmentShape.designed(kind, size, length, Heading.WEST, ProcessUnit.defaultSupport(kind, size, length), ProcessUnit.Bank.ONE, 0));
+        }
+        return shapes;
+    }
+
+    private static CompoundTag saved(EquipmentShape shape) {
+        var tag = new CompoundTag();EquipmentShellBlockEntity.writeShape(tag, shape);return tag;
+    }
+
+    @Test
+    void everyKindRoundTripsThroughItsSavedFieldsWithNoRepair() {
+        for (var shape : everyKind()) {
+            var read = EquipmentShellBlockEntity.readShape(saved(shape));
+            assertEquals(shape, read.shape(), shape.kind().toString());
+            assertTrue(read.repairs().isEmpty(), shape.kind() + ": " + read.repairs());
+        }
+    }
+
+    @Test
+    void aKindThisBuildNoLongerHasIsRetired() {
+        var tag = saved(everyKind().getFirst());tag.putString("Kind", "pressure_cooker");
+        var read = EquipmentShellBlockEntity.readShape(tag);
+        assertNull(read.shape());assertEquals("pressure_cooker", read.retired());
+    }
+
+    @Test
+    void outOfRangeSizesAreClampedAndSnappedAndEachRepairIsNamed() {
+        var tag = saved(EquipmentShape.drum(2, 4, Orientation.VERTICAL, Heading.NORTH, 0));
+        tag.putDouble("Diameter", 2.3);tag.putDouble("TangentLength", 70);tag.putString("Front", "up");
+        var read = EquipmentShellBlockEntity.readShape(tag);
+        assertEquals(2.5, read.shape().diameter());assertEquals(EquipmentShape.MAX_TANGENT_LENGTH, read.shape().tangentLength());assertEquals(Heading.NORTH, read.shape().front());
+        assertTrue(read.repairs().containsAll(List.of("front up -> north", "diameter 2.3 -> 2.5", "length 70.0 -> 64.0")), read.repairs().toString());
+        // A unit's size snaps to its own grid and range.
+        var cyclone = EquipmentShape.unit(Kind.CYCLONE, 2.0, 1, Heading.NORTH, 8);var unit = saved(cyclone);
+        unit.putDouble("Diameter", ProcessUnit.maxDiameter(Kind.CYCLONE) * 3);
+        var big = EquipmentShellBlockEntity.readShape(unit).shape();
+        assertEquals(ProcessUnit.maxDiameter(Kind.CYCLONE), big.diameter(), 1e-9);
+    }
+
+    @Test
+    void aDrumSavedBeforeItListedItsConnectionsGetsTheStandardInlet() {
+        var shape = EquipmentShape.drum(3, 6, Orientation.VERTICAL, Heading.NORTH, 4);var tag = saved(shape);tag.remove("Connections");
+        var read = EquipmentShellBlockEntity.readShape(tag);
+        assertEquals(EquipmentShape.defaultConnections(3, 6, Orientation.VERTICAL, 4, false), read.shape().connections(), "the behaviour before the field existed");
+        assertTrue(read.repairs().isEmpty(), read.repairs().toString());
+    }
+
+    /** Any saved value: the reader gives a valid shape or a retired kind, and never throws. */
+    @Test
+    void anySavedValueReadsToAValidShapeOrARetiredKind() {
+        var random = new Random(20261026);
+        var kinds = new ArrayList<String>();for (var kind : Kind.values()) kinds.add(kind.name().toLowerCase(Locale.ROOT));kinds.add("retired_unit");
+        var headings = List.of("north", "east", "south", "west", "up", "");
+        int retired = 0, repaired = 0;
+        for (int i = 0; i < 3000; i++) {
+            double diameter = random.nextInt(20) == 0 ? Double.NaN : -5 + 35 * random.nextDouble(), length = -5 + 105 * random.nextDouble();
+            int[] garbage = random.ints(random.nextInt(8), -3, 40).toArray();
+            var saved = new ShapeRepair.Saved(kinds.get(random.nextInt(kinds.size())), headings.get(random.nextInt(headings.size())), random.nextBoolean() ? "horizontal" : "sideways",
+                    diameter, length, random.nextInt(45) - 5, random.nextBoolean() ? ColumnTrays.simple(5 + random.nextInt(40), 2).encode() : garbage,
+                    random.nextBoolean() ? null : garbage, random.nextBoolean(), random.nextInt(8) - 2, random.nextBoolean() ? null : garbage);
+            var read = assertDoesNotThrow(() -> ShapeRepair.read(saved), saved.toString());
+            if (read.retired() != null) {
+                retired++;assertEquals("retired_unit", read.retired());continue;
+            }
+            assertNotNull(read.shape());if (!read.repairs().isEmpty()) repaired++;
+            if (i % 100 == 0) assertNotEquals(0, ShapeRasterizer.stamp(read.shape()), "the repaired shape is drawn: " + read.shape());
+        }
+        assertTrue(retired > 0 && repaired > 1000, "retired " + retired + ", repaired " + repaired);
+    }
+
+    @Test
+    void aConstructorDesignIsRepairedKeepingItsPlacementAndPaint() {
+        var fresh = EquipmentConstructorBlockEntity.Design.DEFAULT;
+        var tag = new CompoundTag();
+        tag.putDouble("Diameter", 0.2);tag.putInt("TangentLength", 4);tag.putString("Form", "vertical");tag.putInt("Support", 0);
+        tag.putIntArray("Offsets", new int[]{3, -1, 0});tag.putIntArray("Paint", new Paint(0x123456, 0x654321).encode());
+        var repairs = new ArrayList<String>();
+        var design = EquipmentConstructorBlockEntity.readDesign(tag, fresh, repairs::add);
+        assertEquals(EquipmentShape.MIN_DIAMETER, design.diameter());assertEquals(new VesselPlacement(3, -1, 0), design.placement());
+        assertEquals(new Paint(0x123456, 0x654321), design.paint());assertTrue(repairs.contains("diameter 0.2 -> 0.5"), repairs.toString());
+        // A form this build no longer has: the default shape, with the saved placement and paint.
+        tag.putString("Form", "pressure_cooker");repairs.clear();
+        var retired = EquipmentConstructorBlockEntity.readDesign(tag, fresh, repairs::add);
+        assertEquals(fresh.form(), retired.form());assertEquals(new VesselPlacement(3, -1, 0), retired.placement());assertEquals(new Paint(0x123456, 0x654321), retired.paint());
+        assertEquals(1, repairs.size(), repairs.toString());
+    }
+
+    // ---------------- the corpus: saved shell tags per shape-field change ----------------
+
+    private static final Path CORPUS = Path.of("src/test/resources/compat/equipment");
+    /** The shape fields' revision: the corpus file this build's tags are kept in. Raise it with a shape-field change. */
+    private static final int SHAPE_FIELDS = 1;
+
+    /**
+     * Every corpus file's saved shell tags read with no repair, to the shapes recorded beside them. The file of this
+     * build's shape fields must exist (AGENTS.md: a shape-field change adds one); when it is missing the test writes it
+     * under {@code build/compat/equipment/} to be copied into the corpus.
+     */
+    @Test
+    void everyCorpusShapeReadsAsItWasSaved() throws IOException, com.mojang.brigadier.exceptions.CommandSyntaxException {
+        var current = CORPUS.resolve("shapes-" + SHAPE_FIELDS + ".snbt");
+        if (!Files.exists(current)) {
+            var written = Path.of("build/compat/equipment/shapes-" + SHAPE_FIELDS + ".snbt");Files.createDirectories(written.getParent());
+            var lines = new ArrayList<String>();
+            for (var shape : everyKind()) {
+                var entry = new CompoundTag();entry.put("Saved", saved(shape));entry.putString("Expected", shape.toString());lines.add(entry.toString());
+            }
+            Files.write(written, lines, StandardCharsets.UTF_8);
+            fail("No corpus file of shape fields " + SHAPE_FIELDS + ": copy " + written.toAbsolutePath() + " to " + current);
+        }
+        try (var files = Files.list(CORPUS)) {
+            for (var file : files.sorted().toList())
+                for (var line : Files.readAllLines(file, StandardCharsets.UTF_8)) {
+                    if (line.isBlank()) continue;
+                    var entry = TagParser.parseTag(line);var read = EquipmentShellBlockEntity.readShape(entry.getCompound("Saved"));
+                    assertNotNull(read.shape(), file + ": " + line);assertTrue(read.repairs().isEmpty(), file + ": " + read.repairs());
+                    assertEquals(entry.getString("Expected"), read.shape().toString(), file.toString());
+                }
+        }
+    }
+}
