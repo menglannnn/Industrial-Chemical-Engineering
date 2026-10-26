@@ -147,6 +147,7 @@ public final class EquipmentStructure {
         if (shape.fluidDevice() && rows >= shape.sizeY()) register(level, vessel);
         reconnect(level, vessel);
         refreshNozzles(level, vessel);
+        com.wormzjl.icheme.runtime.assembly.AssemblyService.placed(level, vessel);
         return placed;
     }
 
@@ -342,6 +343,7 @@ public final class EquipmentStructure {
         if (dismantling || level.isClientSide()) return;
         dismantling = true;
         try {
+            if (level instanceof ServerLevel server) com.wormzjl.icheme.runtime.assembly.AssemblyService.removed(server, vessel);
             if (level instanceof ServerLevel server && vessel.shape().fluidDevice()) unregister(server, vessel);
             var layout = ShapeRasterizer.layout(vessel.shape());
             for (var list : java.util.List.of(layout.shell(), layout.interior()))
@@ -511,6 +513,8 @@ public final class EquipmentStructure {
             else if (!state.canBeReplaced()) world.put(cell, EquipmentRefresh.Holding.OTHER);
         }
         if (paint == null) return;
+        // A rebuilt structure is a structural change to every assembly report that relied on it.
+        com.wormzjl.icheme.runtime.assembly.AssemblyService.removed(level, new Vessel(origin, shape));
         var layout = ShapeRasterizer.layout(shape);
         var plan = EquipmentRefresh.plan(layout, world);
         var placed = origin.offset(plan.shift().x(), 0, plan.shift().z());
@@ -564,6 +568,7 @@ public final class EquipmentStructure {
             }
         reconnect(level, vessel);
         refreshNozzles(level, vessel);
+        com.wormzjl.icheme.runtime.assembly.AssemblyService.placed(level, vessel);
         IChemE.LOGGER.info("equipment_refresh kind={} origin={} shift={},{} cleared={} placed={} blocked={}", shape.kind().name().toLowerCase(Locale.ROOT),
                 origin.toShortString(), plan.shift().x(), plan.shift().z(), plan.clear().size(), plan.shell().size() + plan.interior().size(), plan.blocked().size());
         if (!plan.blocked().isEmpty()) {

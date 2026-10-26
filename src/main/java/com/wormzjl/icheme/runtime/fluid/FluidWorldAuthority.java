@@ -24,6 +24,12 @@ public final class FluidWorldAuthority implements AutoCloseable {
     private record LoadedChunk(ResourceKey<Level> dimension,long chunk) {}
     /** Server-thread chunk notifications that arrived before ServerStarting installed the authority. */
     private static final Map<MinecraftServer,Set<LoadedChunk>> EARLY_CHUNKS=new IdentityHashMap<>();
+    /** A registered device before and after a queued topology edit, null for none. */
+    public record DeviceChange(PhysicalFluidTopology.Position position,PhysicalFluidTopology.Device before,PhysicalFluidTopology.Device after) {}
+    /** Told of each queued topology edit (batch 2026-10-26-multi-machine-framework: assembly reports revert on it). */
+    @FunctionalInterface public interface EditListener{void edited(MinecraftServer server,List<DeviceChange> changes);}
+    private static final List<EditListener> LISTENERS=new java.util.concurrent.CopyOnWriteArrayList<>();
+    public static void listen(EditListener listener){LISTENERS.add(Objects.requireNonNull(listener));}
     private final MinecraftServer server;
     private final MaterialCatalog catalog;
     private final Map<FluidCheckpointCodec.PackageKey,FluidThermodynamics> models=new HashMap<>();
@@ -274,9 +280,21 @@ public final class FluidWorldAuthority implements AutoCloseable {
     private WorldTopologyLedger.Event submit(List<WorldTopologyLedger.Edit> edits,long nextId){return submit(edits,nextId,null);}
     private WorldTopologyLedger.Event submit(List<WorldTopologyLedger.Edit> edits,long nextId,WorldTopologyLedger.Recovery recovery) {
         if(closed)throw new IllegalStateException("Fluid world is closed");
+        var changes=LISTENERS.isEmpty()?List.<DeviceChange>of():changes(edits);
         var event=registry.submit(edits,nextId,recovery);data.setDirty();
         if(registry.unapplied()>=APPLY_BATCH)applyPending();
+        for(var listener:LISTENERS)listener.edited(server,changes);
         return event;
+    }
+    /** Each edit's device before and after it, at each position it stands at; a moved device stands at two. */
+    private List<DeviceChange> changes(List<WorldTopologyLedger.Edit> edits) {
+        var out=new ArrayList<DeviceChange>();
+        for(var edit:edits) {
+            var old=registry.registrations().get(edit.id());var before=old==null?null:old.device();var after=edit.replacement()==null?null:edit.replacement().device();
+            if(before!=null&&after!=null&&!before.position().equals(after.position())){out.add(new DeviceChange(before.position(),before,null));out.add(new DeviceChange(after.position(),null,after));}
+            else if(before!=null||after!=null)out.add(new DeviceChange(before!=null?before.position():after.position(),before,after));
+        }
+        return out;
     }
     /** Applies the events queued since the last application before a read that must see them. */
     private void flush(){if(!closed&&registry.unapplied()>0)applyPending();}
