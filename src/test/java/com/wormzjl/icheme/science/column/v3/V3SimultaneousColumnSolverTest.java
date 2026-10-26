@@ -150,6 +150,29 @@ class V3SimultaneousColumnSolverTest {
                 .audit(warmConverged.state(), thermo.newWorkspace(), V3SolveControl.UNBOUNDED).accepted());
     }
 
+    @Test
+    void insideOutFrozenPropertyPredictorStillRequiresStrictPrCertification() {
+        V3PengRobinsonThermo thermo = V3PengRobinsonThermo.fromRegisteredPackage("icheme:cdu17_tjl_acs2018");
+        V3ColumnProblem problem = V3ColumnProblemResolver.resolve(
+                V3TestInputs.cdu17Binary("test:inside-out-gate"), V3CondenserPhaseBranch.TWO_PHASE);
+        V3FlashResult feedFlash = thermo.flashTP(problem.input().feedTemperatureKelvin(),
+                problem.nodePressurePascal(problem.topology().feedTrayNumber()),
+                problem.input().feedComponentMolarFlowsMolPerSecond(), thermo.newWorkspace());
+        V3MeshResidualEvaluator evaluator = new V3MeshResidualEvaluator(
+                problem, thermo, feedFlash.molarEnthalpyJoulesPerMol());
+        V3DryMeshCoordinateMap coordinates = new V3DryMeshCoordinateMap(problem);
+        V3DryMeshState seed = V3ColumnInitializer.initialize(problem, thermo, thermo.newWorkspace()).state();
+
+        V3SimultaneousColumnSolver.Attempt attempt = V3SimultaneousColumnSolver.solveWithInsideOut(
+                problem, evaluator, coordinates, seed, thermo::newWorkspace, 128, 1.0e-8,
+                V3SolveControl.UNBOUNDED, V3SimultaneousColumnSolver.NewtonTrace.NONE);
+
+        V3SimultaneousColumnSolver.Attempt.Converged converged = assertInstanceOf(
+                V3SimultaneousColumnSolver.Attempt.Converged.class, attempt, attempt::toString);
+        assertTrue(converged.evidence().convergenceEvidence().satisfiesGates());
+        assertTrue(evaluator.evaluate(converged.state(), thermo.newWorkspace()).maximumAbsoluteScaledResidual() <= 1.0e-8);
+    }
+
     /**
      * The stall stop belongs to the budget that asks for it and to no other solve.
      *

@@ -82,6 +82,13 @@ public final class V3ColumnCalculator {
     /** Free-water tray-set refreshes within one attempt; only a converged attempt spends one. */
     private static final int MAXIMUM_WET_TRAY_REFRESHES = 3;
     /**
+     * A large wet request has to run the classical steam/heat ramp after a learned seed is rejected.  The bundled
+     * model's correction is not trained for that high-dimensional wet lane and can spend its whole two-second
+     * allowance before handing back the unchanged classical route.  Give it a short probe instead; a candidate that
+     * closes quickly is still accepted, while a poor candidate falls back almost immediately.
+     */
+    private static final int LARGE_WET_NEURAL_PROBE_MILLISECONDS = 100;
+    /**
      * Newton budget of the one refresh that follows a stalled attempt and only removes points.
      *
      * <p>Measured on the 40 MW return-tray case: all four such refreshes stalled again with a worse final
@@ -149,7 +156,9 @@ public final class V3ColumnCalculator {
     private enum ContinuationJacobianPolicy {
         NONE,
         STAGE_LOCAL_BLOCKS,
-        PRESSURE_LOCAL_PREDICTOR
+        PRESSURE_LOCAL_PREDICTOR,
+        /** Boston-Sullivan outer thermodynamics with a frozen-property inner MESH correction. */
+        INSIDE_OUT
     }
 
     private V3ColumnCalculator() {}
@@ -249,10 +258,11 @@ public final class V3ColumnCalculator {
         V3ColumnOutcome.Failure coolingFailure = staticCoolingAdmission(input);
         if (coolingFailure != null) return coolingFailure;
         long started = System.nanoTime();
+        int neuralBudgetMilliseconds = neuralBudgetMilliseconds(input, options);
         NeuralProgress progress = new NeuralProgress(trace);
         V3SolveControl neuralControl = () -> {
             control.checkpoint(); // Whole-request cancellation always wins over the local neural budget.
-            if (System.nanoTime() - started >= options.budgetMilliseconds() * 1_000_000L)
+            if (System.nanoTime() - started >= neuralBudgetMilliseconds * 1_000_000L)
                 throw new NeuralBudgetExceeded();
         };
         String reason = "model unavailable or outside coverage";
@@ -323,6 +333,8 @@ public final class V3ColumnCalculator {
                 || lastFailure.code() == V3SolverFailureCode.INFEASIBLE_SPECIFICATION)) return lastFailure;
         String event = "initializer=" + (options.mode() == V3InitializationOptions.Mode.LNN_ONLY ? "LNN_FAILED" : "CURRENT_BACKUP")
                 + "; model=" + modelId + "; neuralMs=" + (System.nanoTime() - started) / 1_000_000
+                + (neuralBudgetMilliseconds == options.budgetMilliseconds()
+                ? "" : "; neuralBudgetMs=" + neuralBudgetMilliseconds)
                 + "; " + reason;
         if (options.mode() == V3InitializationOptions.Mode.LNN_ONLY)
             return initializationEvent(lastFailure != null ? lastFailure
@@ -1145,9 +1157,17 @@ public final class V3ColumnCalculator {
                     ? initializeForSolve(stageProblem, thermo, V3ColumnInitializer.Mode.SEQUENTIAL_MATERIAL_VLE)
                     : continuationSeed(stageProblem, previousTopology, previousState, thermo, control);
             V3SolvePass preceding = lastPass;
+            // Only the authored dry cold seed tries the inside-out preconditioner.  Feature-bearing requests use
+            // their dry surrogate later in a bounded ramp, but that surrogate can already be close enough that
+            // the extra property snapshot costs more than it saves on the small seed grids.
+            ContinuationJacobianPolicy stageJacobianPolicy = !featureRampRequired
+                    && input.stageCount() >= 4
+                    && previousState == null
+                    ? ContinuationJacobianPolicy.INSIDE_OUT
+                    : ContinuationJacobianPolicy.STAGE_LOCAL_BLOCKS;
             lastPass = solveSingleProblem(stageProblem, thermo,
                     seed, control, "cold/stage-continuation/" + stagePath + "/fine-fd",
-                    ContinuationJacobianPolicy.STAGE_LOCAL_BLOCKS, policy);
+                    stageJacobianPolicy, policy);
             if (preceding != null) lastPass = withPriorSupportNotes(preceding, lastPass);
             PhaseCorrection phaseCorrection = correctCondenserPhase(lastPass, thermo, control, policy, condenserAttempts);
             lastPass = phaseCorrection.pass();
@@ -1447,7 +1467,7 @@ public final class V3ColumnCalculator {
             V3ColumnProblem attemptProblem = prepared.problem();
             V3MeshResidualEvaluator evaluator = new V3MeshResidualEvaluator(
                     attemptProblem, thermo, feedMolarEnthalpy);
-            telemetry = new SolveTelemetry(attemptProblem, policy.progress());
+            telemetry = new SolveTelemetry(attemptProblem, policy.progress(), jacobianPolicy == ContinuationJacobianPolicy.INSIDE_OUT);
             V3DryMeshCoordinateMap coordinates = new V3DryMeshCoordinateMap(attemptProblem);
             V3DryMeshState attemptSeed = prepared.seed();
             if (policy.progress() != null) {
@@ -1465,6 +1485,9 @@ public final class V3ColumnCalculator {
                         attemptProblem, evaluator, coordinates, attemptSeed, thermo::newWorkspace,
                         nextIterations, policy.closureTolerance(), control, telemetry, budget, extension);
                 case PRESSURE_LOCAL_PREDICTOR -> V3SimultaneousColumnSolver.solveWithOneLocalBlockPredictor(
+                        attemptProblem, evaluator, coordinates, attemptSeed, thermo::newWorkspace,
+                        nextIterations, policy.closureTolerance(), control, telemetry);
+                case INSIDE_OUT -> V3SimultaneousColumnSolver.solveWithInsideOut(
                         attemptProblem, evaluator, coordinates, attemptSeed, thermo::newWorkspace,
                         nextIterations, policy.closureTolerance(), control, telemetry);
             };
@@ -2312,6 +2335,15 @@ public final class V3ColumnCalculator {
 
     private static boolean featureRampRequired(V3ColumnInput input) {
         return !input.sideDraws().isEmpty() || !input.steamFeeds().isEmpty() || !input.pumparounds().isEmpty();
+    }
+
+    private static int neuralBudgetMilliseconds(V3ColumnInput input, V3InitializationOptions options) {
+        if (options.mode() != V3InitializationOptions.Mode.LNN_FIRST
+                || input.stageCount() < 32
+                || !featureRampRequired(input)) {
+            return options.budgetMilliseconds();
+        }
+        return Math.min(options.budgetMilliseconds(), LARGE_WET_NEURAL_PROBE_MILLISECONDS);
     }
 
     private static V3SolvePass withRampEvents(V3SolvePass pass, List<String> events) {
@@ -3234,6 +3266,7 @@ public final class V3ColumnCalculator {
         private final V3ColumnProblem problem;
         /** Where a learned pass keeps its in-flight evidence; null on every classical solve. */
         private final NeuralProgress progress;
+        private final boolean insideOut;
         private int acceptedLocalBlockDirections;
         private int rejectedLocalBlockDirections;
         private int freshFiniteDifferenceJacobians;
@@ -3244,9 +3277,10 @@ public final class V3ColumnCalculator {
         private double finalDominantPhysicalResidual;
         private V3DryMeshState finalState;
 
-        private SolveTelemetry(V3ColumnProblem problem, NeuralProgress progress) {
+        private SolveTelemetry(V3ColumnProblem problem, NeuralProgress progress, boolean insideOut) {
             this.problem = Objects.requireNonNull(problem, "problem");
             this.progress = progress;
+            this.insideOut = insideOut;
         }
 
         @Override
@@ -3287,6 +3321,7 @@ public final class V3ColumnCalculator {
 
         List<String> events() {
             List<String> events = new ArrayList<>();
+            if (insideOut) events.add("Boston-Sullivan inside-out: frozen K/H inner predictor with strict PR certification");
             if (Double.isFinite(initialMaximumScaledResidual)) {
                 events.add("scaled residual: initial=" + initialMaximumScaledResidual
                         + ", final=" + finalMaximumScaledResidual);
