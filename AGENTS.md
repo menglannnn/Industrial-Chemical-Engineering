@@ -115,6 +115,7 @@ Every merge to `main` includes, in the same merge:
 
 - Before a batch merges, sort everything it created for measurement or investigation. Keep in the code only tests that a gate task runs, code the product needs, and harnesses that a documented Gradle task runs.
 - Move everything else (one-off probes, campaign and analysis scripts, in-game rigs, instrumentation, baseline patches, run configurations and Gradle switches that only served them) to the main checkout's `tools/<tool-folder>/`, with a row in `tools/INDEX.md`. Do not leave it in `documentation/` batch folders or in a worktree.
-- Each tool folder has a `README.md` with its purpose, the batch it served and how to run it. For code removed from a tracked path, the README also gives the removing commit and how to re-attach it: source files plus a patch against that commit, so that `git show <sha>:<path>` and the stored copy agree.
+- The folder's row in `tools/INDEX.md` holds only the folder, the purpose in a few words, the batch and the status with its date.
+- Each tool folder has a `README.md` with its purpose, the batch it served, how to run it, its entry points and its history. For code removed from a tracked path, the README also gives the removing commit and how to re-attach it: source files plus a patch against that commit, so that `git show <sha>:<path>` and the stored copy agree.
 - The batch review names the tool folders.
 - A cleanup does not widen or narrow a gate suite. Re-run the gates after it, record them in the batch review, and add a `CHANGELOG.md` line for the detached code.
