@@ -2,11 +2,14 @@ package com.wormzjl.icheme.client.gui.screens;
 
 import com.wormzjl.icheme.client.MachineAnimation;
 import com.wormzjl.icheme.client.gui.common.ProcessUi;
+import com.wormzjl.icheme.registry.ModBlocks;
 import com.wormzjl.icheme.science.equipment.EquipmentShape;
 import com.wormzjl.icheme.science.equipment.ProcessUnit;
 import com.wormzjl.icheme.science.equipment.ShapeRasterizer;
 import com.wormzjl.icheme.science.equipment.UnitDesign;
 import com.wormzjl.icheme.world.level.block.EquipmentStructure;
+import com.wormzjl.icheme.world.level.block.entity.EquipmentShellBlockEntity;
+import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.Tooltip;
@@ -70,6 +73,8 @@ public final class VesselScreen extends Screen {
                     Component.translatable(KEY + "area", number(shape.surfaceArea()))));
         }
         lines.add(Component.translatable(KEY + "cells", layout.shell().size(), layout.interior().size()));
+        int blocked = blocked(vessel, layout);
+        if (blocked > 0) lines.add(Component.translatable(KEY + "blocked", blocked));
         lines.add(Component.translatable(KEY + "controller", controller.toShortString()));
         // Each nozzle: what it is for, the port its position makes it and where it faces (any pipe connects; its neck takes
         // the pipe's size, owner decision 2026-10-21: a 1 m pipe has a 1 m root).
@@ -82,6 +87,21 @@ public final class VesselScreen extends Screen {
                     Component.translatable(KEY + "facing." + facing)));
         }
         return List.copyOf(lines);
+    }
+
+    /**
+     * The layout's cells the client finds no part of the vessel in: cells a refresh left out where other blocks stand
+     * ({@code EquipmentRefresh}, batch 2026-10-26-backward-compat), until the player clears them and the world loads again.
+     */
+    private static int blocked(EquipmentStructure.Vessel vessel, ShapeRasterizer.Layout layout) {
+        var level = Minecraft.getInstance().level;
+        if (level == null) return 0;
+        int found = 0;
+        for (var cell : layout.shell())
+            if (!(level.getBlockEntity(vessel.origin().offset(cell.x(), cell.y(), cell.z())) instanceof EquipmentShellBlockEntity shell && vessel.origin().equals(shell.origin()))) found++;
+        for (var cell : layout.interior())
+            if (!level.getBlockState(vessel.origin().offset(cell.x(), cell.y(), cell.z())).is(ModBlocks.EQUIPMENT_INTERIOR.get())) found++;
+        return found;
     }
 
     /** A unit's kind and sizes, as its design says them ({@link UnitDesign#datasheet}), then its length, top and support's height. */

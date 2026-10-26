@@ -258,9 +258,12 @@ public final class WorldTopologyLedger {
     private static void check(Map<Long,Registration> records,Map<PhysicalFluidTopology.Position,Long> at,List<Edit> edits){new Overlay(records,at).check(edits);}
     /**
      * A registry with checked, not yet applied edits on top of it, so a whole event (or a batch) is validated without
-     * touching the registry: every edit names a live identity or a new one at revision 0, keeps its position and kind,
-     * advances its revision by one and never re-initialises a finite reservoir; after each event no two devices share a
-     * position. Only the positions an event changes are examined; the rest of the registry is valid already.
+     * touching the registry: every edit names a live identity or a new one at revision 0, keeps its kind and dimension,
+     * advances its revision by one and never re-initialises a finite reservoir (a vessel's edit changes at most its
+     * geometry, {@link FluidDeviceSpec#sameCharge}); after each event no two devices share a position. A device may move:
+     * a layout refresh rebuilds a vessel or a machine where it now stands, and it keeps its identity and contents (batch
+     * 2026-10-26-backward-compat, decision D7). Only the positions an event changes are examined; the rest of the
+     * registry is valid already.
      */
     private static final class Overlay {
         private final Map<Long,Registration> base;private final Map<PhysicalFluidTopology.Position,Long> baseAt;
@@ -275,9 +278,9 @@ public final class WorldTopologyLedger {
                 if(!seen.add(edit.id))throw new IllegalArgumentException("Duplicate identity in topology event");
                 var previous=get(edit.id);var replacement=edit.replacement;
                 if(replacement==null) {if(previous==null)throw new IllegalStateException("Missing removed device");for(var cell:previous.device.cells())at(cell).remove(edit.id);changed.put(edit.id,Optional.empty());continue;}
-                if(previous!=null&&(!previous.device.position().equals(replacement.device.position())||previous.device.kind()!=replacement.device.kind()||replacement.revision!=Math.addExact(previous.revision,1)))throw new IllegalStateException("Moved or stale device edit");
+                if(previous!=null&&(!previous.device.position().dimension().equals(replacement.device.position().dimension())||previous.device.kind()!=replacement.device.kind()||replacement.revision!=Math.addExact(previous.revision,1)))throw new IllegalStateException("Stale device edit or a changed kind or dimension");
                 if(previous==null&&replacement.revision!=0)throw new IllegalStateException("New device has a stale revision");
-                if(previous!=null&&previous.device.kind()==com.wormzjl.icheme.science.fluid.topology.TopologyCompiler.Kind.RESERVOIR&&!previous.spec.equals(replacement.spec))throw new IllegalStateException("Finite-reservoir initialization cannot be reapplied");
+                if(previous!=null&&previous.device.kind()==com.wormzjl.icheme.science.fluid.topology.TopologyCompiler.Kind.RESERVOIR&&!previous.spec.sameCharge(replacement.spec))throw new IllegalStateException("Finite-reservoir initialization cannot be reapplied");
                 if(previous!=null)for(var cell:previous.device.cells())at(cell).remove(edit.id);
                 changed.put(edit.id,Optional.of(replacement));for(var cell:replacement.device.cells()){at(cell).add(edit.id);placed.add(cell);}
             }

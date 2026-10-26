@@ -316,8 +316,21 @@ public final class PhysicalRegistry {
                 if(previous!=null&&previous.kind()==PassiveNetwork.NodeKind.RESERVOIR){destroyed.add(previous);if(additions.remove(edit.id())==null)removed.put(edit.id(),previous);}
             } else {
                 changed.put(edit.id(),Optional.of(replacement));
-                if(old!=null&&replacement.device().boundary()&&!old.device().position().equals(replacement.device().position())&&stock.containsKey(edit.id())){var node=stock.get(edit.id());stock.put(edit.id(),new PassiveNetwork.Reservoir(node.id(),replacement.device().position().y(),node.state(),node.kind(),node.inventory()));}
-                if(replacement.device().boundary()&&(old==null||!old.spec().equals(replacement.spec()))) {
+                boolean moved=old!=null&&!old.device().position().equals(replacement.device().position()),respecified=old==null||!old.spec().equals(replacement.spec());
+                if(old!=null&&old.device().kind()==com.wormzjl.icheme.science.fluid.topology.TopologyCompiler.Kind.RESERVOIR) {
+                    // A vessel rebuilt where it now stands or to another size (a layout refresh, batch
+                    // 2026-10-26-backward-compat) keeps what it holds: its moles, energy and solids, in its new geometry.
+                    // No stream carries potential energy (D37, S1), so a move books nothing; the island's next interval
+                    // start closes its state to the new capacity (InventoryEquilibrium.refresh), never this tick.
+                    var node=stock.get(edit.id());if(node==null)throw new IllegalStateException("Topology event reached vessel "+edit.id()+" outside the islands it fenced");
+                    if(moved||respecified) {
+                        var spec=replacement.spec();var held=node.inventory();
+                        var inventory=respecified?new PassiveNetwork.Inventory(spec.volume(),held.moles(),held.internalEnergy(),held.solids(),spec.levelHeight(),spec.open()):held;
+                        var rebuilt=new PassiveNetwork.Reservoir(node.id(),replacement.device().position().y(),node.state(),node.kind(),inventory);
+                        stock.put(edit.id(),rebuilt);if(additions.containsKey(edit.id()))additions.put(edit.id(),rebuilt);
+                    }
+                } else if(moved&&replacement.device().boundary()&&!respecified&&stock.containsKey(edit.id())){var node=stock.get(edit.id());stock.put(edit.id(),new PassiveNetwork.Reservoir(node.id(),replacement.device().position().y(),node.state(),node.kind(),node.inventory()));}
+                else if(replacement.device().boundary()&&respecified) {
                     var initialized=replacement.spec().initialize(replacement.device(),model,()->{});stock.put(edit.id(),initialized);
                     if(initialized.kind()==PassiveNetwork.NodeKind.RESERVOIR){constructed.add(initialized);additions.put(edit.id(),initialized);}
                 }
@@ -381,7 +394,8 @@ public final class PhysicalRegistry {
         var preparation=topology.applyBatch(List.copyOf(eventIds),constructed,destroyed,weights,nextId);
         var prepared=recovered==null?preparation:topology.withRecovery(preparation,recovered);
         var removedDevices=new HashSet<Long>();var removedRecords=new ArrayList<WorldTopologyLedger.Registration>();var addedRecords=new ArrayList<WorldTopologyLedger.Registration>();
-        for(var entry:changed.entrySet()){var before=active.get(entry.getKey());if(entry.getValue().isEmpty()){if(before!=null){removedDevices.add(entry.getKey());removedRecords.add(before);}}else if(before==null)addedRecords.add(entry.getValue().orElseThrow());}
+        // The chunk index follows a moved device (a layout refresh, decision D7): out of its old chunk, into its new one.
+        for(var entry:changed.entrySet()){var before=active.get(entry.getKey());if(entry.getValue().isEmpty()){if(before!=null){removedDevices.add(entry.getKey());removedRecords.add(before);}}else{var after=entry.getValue().orElseThrow();if(before==null)addedRecords.add(after);else if(!before.device().position().equals(after.device().position())){removedRecords.add(before);addedRecords.add(after);}}}
         host.topology(batch.dimension(),eventIds,affected,replacements,batch.tick(),topology.onlineTick(),additions,removed.keySet(),recovered==null?Map.of():Map.of(PhysicalFluidTopology.filterIdentity(recoveredFilter),released),()->{
             topology.commit(prepared);
             for(long id:component.keySet()){diagnostics.remove(id);pipeViews.remove(id);tankFaces.remove(id);}

@@ -205,15 +205,6 @@ public final class FluidWorldAuthority implements AutoCloseable {
         var record=new WorldTopologyLedger.Registration(device,spec,0);
         submit(List.of(new WorldTopologyLedger.Edit(id,record)),Math.addExact(id,1));return record;
     }
-    /** A layout refresh moves a mover's binding by one queued replacement, retaining its settings, never its own inventory. */
-    public WorldTopologyLedger.Registration relocateMover(long id,PhysicalFluidTopology.Position suction,List<PhysicalFluidTopology.Port> ports) {
-        owned();var old=registrations().get(id);
-        if(old==null||!(old.device().control() instanceof FlowControl.Mover)||old.device().ports().isEmpty()||ports.isEmpty())throw new IllegalArgumentException("Expected a registered multi-cell mover");
-        var d=old.device();long next=topology.nextIdentity();
-        var device=new PhysicalFluidTopology.Device(next,suction,d.kind(),d.facing(),d.geometry(),d.control(),ports);
-        var record=new WorldTopologyLedger.Registration(device,old.spec(),0);
-        submit(List.of(new WorldTopologyLedger.Edit(id,null),new WorldTopologyLedger.Edit(next,record)),Math.addExact(next,1));return record;
-    }
     /** Inherit the largest mechanically connected adjacent pipe's latest bore, including a closed axial cutoff. */
     private double placedPipeDiameter(PhysicalFluidTopology.Position position) {
         double largest=0;

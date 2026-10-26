@@ -60,4 +60,59 @@ public final class EquipmentCompatGameTests {
                 helper.assertFalse(level.getBlockState(at).is(ModBlocks.EQUIPMENT_INTERIOR.get())||level.getBlockState(at).is(ModBlocks.EQUIPMENT_SHELL.get()),"no ghost block at "+at.toShortString());
         }).thenSucceed();
     }
+
+    /**
+     * A refresh that finds another block in one of its layout's cells leaves the cell out and the block where it stands, and
+     * the cells it wrote keep no stamp (batch 2026-10-26-backward-compat): the next load tries again and, the block cleared,
+     * places the cell. The drum keeps its registration throughout.
+     */
+    @GameTest(template="empty",timeoutTicks=400,batch="equipment-compat-blocked")
+    public static void aBlockedRefreshTriesAgainAtTheNextLoad(GameTestHelper helper) {
+        var level=helper.getLevel();var world=FluidWorldAuthority.find(level.getServer()).orElseThrow();
+        var shape=EquipmentShape.drum(3,3,EquipmentShape.Orientation.VERTICAL,EquipmentShape.Heading.NORTH,0);
+        var origin=helper.absolutePos(new BlockPos(1,1,1));var layout=ShapeRasterizer.layout(shape);
+        var node=ShapeRasterizer.fluidCell(shape);var nodeAt=origin.offset(node.x(),node.y(),node.z());
+        var nozzles=new HashSet<ShapeRasterizer.Cell>();for(var port:ShapeRasterizer.ports(shape))nozzles.add(port.cell());
+        // Two shell cells that are neither the node nor a nozzle's, as an older layout lacked them: a player's block stands in
+        // one, the other is free.
+        var free=layout.shell().stream().filter(c->!c.equals(node)&&!nozzles.contains(c)).limit(2).toList();
+        var blockedAt=origin.offset(free.get(0).x(),free.get(0).y(),free.get(0).z());var missingAt=origin.offset(free.get(1).x(),free.get(1).y(),free.get(1).z());
+        EquipmentStructure.place(level,origin,shape,Paint.DEFAULT,Integer.MAX_VALUE);
+        var position=new PhysicalFluidTopology.Position(level.dimension().location().toString(),nodeAt.getX(),nodeAt.getY(),nodeAt.getZ());
+        long[] identity={0};
+        Runnable reload=()->{
+            // Every shell cell reloads as an older layout placed it: no stamp of the current one.
+            for(var c:layout.shell()) {
+                var at=origin.offset(c.x(),c.y(),c.z());
+                if(!(level.getBlockEntity(at) instanceof EquipmentShellBlockEntity shell))continue;
+                var tag=shell.saveWithoutMetadata(level.registryAccess());tag.putLong("Layout",0);shell.loadWithComponents(tag,level.registryAccess());shell.onLoad();
+            }
+        };
+        helper.startSequence().thenWaitUntil(()->helper.assertTrue(world.at(position).isPresent(),"Waiting for the drum's registration"))
+        .thenExecute(()->{
+            identity[0]=world.at(position).orElseThrow().device().id();
+            // The cells leave without the dismantle a broken cell starts (their shape unread first).
+            for(var at:List.of(blockedAt,missingAt)) {
+                var shell=(EquipmentShellBlockEntity)level.getBlockEntity(at);
+                var tag=shell.saveWithoutMetadata(level.registryAccess());tag.putString("Kind","pressure_cooker");shell.loadWithComponents(tag,level.registryAccess());
+            }
+            level.setBlock(blockedAt,Blocks.STONE.defaultBlockState(),3);level.setBlock(missingAt,Blocks.AIR.defaultBlockState(),3);
+            helper.assertTrue(world.at(position).isPresent(),"the drum stands");
+            reload.run();
+        }).thenWaitUntil(()->helper.assertTrue(level.getBlockEntity(missingAt) instanceof EquipmentShellBlockEntity,"Waiting for the refresh to place the free cell"))
+        .thenExecute(()->{
+            helper.assertTrue(level.getBlockState(blockedAt).is(Blocks.STONE),"the player's block stands");
+            for(var c:layout.shell()) {
+                var at=origin.offset(c.x(),c.y(),c.z());if(at.equals(blockedAt))continue;
+                helper.assertTrue(((EquipmentShellBlockEntity)level.getBlockEntity(at)).stale(),"a cell the blocked refresh wrote keeps no stamp: "+c);
+            }
+            helper.assertTrue(world.at(position).map(r->r.device().id()).orElse(0L)==identity[0],"the drum keeps its registration");
+            level.setBlock(blockedAt,Blocks.AIR.defaultBlockState(),3);
+            reload.run();
+        }).thenWaitUntil(()->{
+            helper.assertTrue(level.getBlockEntity(blockedAt) instanceof EquipmentShellBlockEntity,"Waiting for the cleared cell to be placed");
+            for(var c:layout.shell())helper.assertFalse(((EquipmentShellBlockEntity)level.getBlockEntity(origin.offset(c.x(),c.y(),c.z()))).stale(),"Waiting for every cell's stamp at "+c);
+        }).thenExecute(()->helper.assertTrue(world.at(position).map(r->r.device().id()).orElse(0L)==identity[0],"the drum keeps its registration"))
+        .thenSucceed();
+    }
 }

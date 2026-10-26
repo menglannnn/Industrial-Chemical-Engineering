@@ -115,6 +115,10 @@ public final class NetworkReduction {
      * stopped at its capacity stays closed. A pressure valve drives forward by the smaller of its static drive and its
      * excess over the set point, never back; the rest interval reports it CLOSED. An empty vessel stands at the ambient
      * and gives nothing (decision D54).</li>
+     * <li>A vessel whose wall moved is not at rest: a layout refresh rebuilt it to another capacity (batch
+     * 2026-10-26-backward-compat), and its contents still stand at the old one, its state missing its wall row
+     * ({@link PhaseLayout#wallRow}) by more than the gauge reads ({@link #WALL_RESOLUTION}). The interval's refresh closes
+     * it to the new wall, and the step moves what that drives.</li>
      * <li>An island that holds no stock (no generator, no vessel holding anything) is at rest whatever its devices are
      * set to: a junction's buffer is never material (D46), and one no source reaches holds a placeholder (D55).</li>
      * <li>A pump or compressor that cannot move anything this slice (set to no flow, or refused for the slice,
@@ -141,6 +145,7 @@ public final class NetworkReduction {
             if(!node.fixed()&&flushable(node))return false;
             // An open vessel holding gas or liquid above its fill height gives it to the atmosphere (OpenVessel).
             if(OpenVessel.releasing(node))return false;
+            if(node.kind()==PassiveNetwork.NodeKind.RESERVOIR&&!PassiveStepSolver.holdsNoFluid(node)&&Math.abs(PhaseLayout.wallRow(node.state(),node.inventory().wallCapacity()))>WALL_RESOLUTION)return false;
         }
         // Nothing to move: no generator, no vessel holding fluid (solids alone do not move, D33: they ride the liquid; voids
         // only receive, and a junction's buffer is its relaxation row's state, never material, D46; a minted one no source
@@ -204,6 +209,12 @@ public final class NetworkReduction {
      * is ever rounded.
      */
     public static final double REST_RESOLUTION=.1;
+    /**
+     * The gauge resolution on a vessel's wall row ({@link PhaseLayout#wallRow}): {@link #REST_RESOLUTION} on its slack
+     * branch, about 2e-6. A closed state meets the row to {@code InventoryEquilibrium.CLOSURE} (1e-11) and a step's end to
+     * the Newton's 1e-9; a vessel rebuilt to another capacity misses it by the fraction its capacity moved.
+     */
+    static final double WALL_RESOLUTION=2*REST_RESOLUTION/PhaseLayout.AMBIENT_PRESSURE;
     /**
      * The flow (kg/s) that {@link #REST_RESOLUTION} drives through connection {@code edge}: the connection's own law on its
      * laminar branch, the resolution over the law's slope at zero flow (a run's Poiseuille slope; an inline filter's clean

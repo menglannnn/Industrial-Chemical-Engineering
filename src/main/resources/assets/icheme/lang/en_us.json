@@ -619,6 +619,7 @@
   "gui.icheme.vessel.volume": "Volume %s m³",
   "gui.icheme.vessel.area": "Outside area %s m²",
   "gui.icheme.vessel.cells": "Cells: %s shell, %s interior",
+  "gui.icheme.vessel.blocked": "%s cells blocked by other blocks: clear them, then reload the world",
   "gui.icheme.vessel.controller": "Controller cell %s",
   "gui.icheme.vessel.stirred_reactor": "Shell %s m across, %s m straight side, jacket %s m across",
   "gui.icheme.vessel.stirred_reactor.drive": "About %s m³, motor %s kW, agitator about %s rpm",

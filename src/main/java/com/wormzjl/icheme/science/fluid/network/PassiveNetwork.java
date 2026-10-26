@@ -190,6 +190,10 @@ public record PassiveNetwork(List<Reservoir> reservoirs,List<Pipe> pipes,List<Sc
         }
         /** The same vessel (volume, level height and opening) holding these contents. */
         public Inventory with(double[] moles,double internalEnergy,SolidInventory solids){return new Inventory(volume,moles,internalEnergy,solids,levelHeight,open);}
+        /** Whether {@code other} holds the same contents, bit for bit: its moles, energy and solids, whatever the vessel's
+         * geometry. A topology event conserves these; a layout refresh may rebuild the vessel around them (batch
+         * 2026-10-26-backward-compat). */
+        public boolean sameContents(Inventory other){return Double.doubleToLongBits(internalEnergy)==Double.doubleToLongBits(other.internalEnergy)&&Arrays.equals(moles,other.moles)&&solids.equals(other.solids);}
         /**
          * The capacity the wall law reads (decision D54, {@code PhaseLayout.wallRow}): the volume of a closed vessel, and
          * infinity for an open one, whose wall is never taut, so its rows keep the slack branch ({@code P = P_ambient}) and

@@ -711,8 +711,10 @@ public final class IslandCoordinator {
             for(var node:replacement.graph.reservoirs()) {
                 if(node.kind()==PassiveNetwork.NodeKind.PORT)throw new IllegalArgumentException("Internal port in topology");
                 if(node.kind()!=PassiveNetwork.NodeKind.RESERVOIR)continue;
+                // What a vessel holds is conserved; where it stands and its geometry follow the registry (a layout refresh
+                // rebuilds it, decision D7), and no ledger carries potential energy (D37, S1).
                 var old=stock.get(node.id());
-                if(!seen.add(node.id())||old==null||!old.inventory().equals(node.inventory())||old.elevation()!=node.elevation())throw new IllegalStateException("Topology event changed stock or elevation energy");
+                if(!seen.add(node.id())||old==null||!old.inventory().sameContents(node.inventory()))throw new IllegalStateException("Topology event changed stock");
             }
             // Owner decision of 2026-10-19 (t46's trace of bundled 483): a replacement whose graph is one original's (the same pipe
             // identities and node ids) carries that island's committed junction states and interval endpoint, the warm carry

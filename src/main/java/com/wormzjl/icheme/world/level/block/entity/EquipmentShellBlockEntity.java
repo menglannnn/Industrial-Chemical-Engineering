@@ -269,6 +269,16 @@ public final class EquipmentShellBlockEntity extends BlockEntity implements com.
         trackRoof();
     }
 
+    /**
+     * The vessel's layout stands incomplete: a refresh left cells of it out where other blocks stand. The cell keeps no
+     * stamp, so the next load refreshes the vessel again and places what the player has cleared since (batch
+     * 2026-10-26-backward-compat).
+     */
+    public void layoutIncomplete() {
+        stamp = 0;
+        setChanged();
+    }
+
     /** A cell inside the vessel's box takes its key; one a smaller layout left outside draws nothing until its vessel is refreshed. */
     private void assign(EquipmentShape shape, ShapeRasterizer.Cell cell, long nozzles) {
         this.shape = shape;

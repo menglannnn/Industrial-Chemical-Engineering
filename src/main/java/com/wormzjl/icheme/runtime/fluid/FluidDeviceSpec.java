@@ -51,6 +51,14 @@ public record FluidDeviceSpec(double volume,double temperature,double pressure,d
             default->{}
         }
     }
+    /**
+     * Whether {@code other} differs from these settings at most in the vessel's geometry (its volume, level height and
+     * opening): the only edit a placed vessel takes, a layout refresh rebuilding it to another size (batch
+     * 2026-10-26-backward-compat), which keeps what it holds.
+     */
+    public boolean sameCharge(FluidDeviceSpec other) {
+        return temperature==other.temperature&&pressure==other.pressure&&Arrays.equals(composition,other.composition)&&solids.equals(other.solids);
+    }
     /** Called for first activation, never to reconcile an already owned finite reservoir. */
     public PassiveNetwork.Reservoir initialize(PhysicalFluidTopology.Device device,FluidThermodynamics model,Runnable checkpoint) {
         validate(model,device.kind());

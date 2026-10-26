@@ -112,6 +112,40 @@ class EquipmentRefreshTest {
         assertFalse(plan.interior().contains(interiorCell));
     }
 
+    @Test
+    void theNewLayoutStandsWhereItsNozzlesKeepTheirPipes() {
+        // Ports first (batch 2026-10-26-backward-compat): the old body, one block east of where the new layout's nozzles
+        // meet the pipes, matches more cells shifted one east; the plan keeps the nozzles on their pipes instead.
+        var layout = ShapeRasterizer.layout(drum(3, 6, Orientation.VERTICAL, Heading.NORTH, 4));
+        var world = new HashMap<Cell, Holding>();
+        for (var entry : held(layout).entrySet()) world.put(new Cell(entry.getKey().x() + 1, entry.getKey().y(), entry.getKey().z()), entry.getValue());
+        world.remove(new Cell(layout.shell().getFirst().x() + 1, layout.shell().getFirst().y(), layout.shell().getFirst().z()));
+        var pipes = new ArrayList<Cell>();
+        for (var nozzle : ShapeRasterizer.ports(layout.shape())) {
+            var pipe = new Cell(nozzle.cell().x() + nozzle.dx(), nozzle.cell().y() + nozzle.dy(), nozzle.cell().z() + nozzle.dz());
+            if (!world.containsKey(pipe)) {
+                world.put(pipe, Holding.PIPE);
+                pipes.add(pipe);
+            }
+        }
+        assertFalse(pipes.isEmpty(), "a nozzle's pipe block lies outside the old body");
+        var plan = EquipmentRefresh.plan(layout, world);
+        assertEquals(new Cell(0, 0, 0), plan.shift(), "the nozzles stay on their pipes: " + plan);
+        for (var pipe : pipes) assertFalse(plan.shell().contains(pipe) || plan.interior().contains(pipe) || plan.clear().contains(pipe), "a pipe is left as it is");
+        // With no pipe to keep, the cells decide: the body stays where it stood.
+        world.values().removeIf(held -> held == Holding.PIPE);
+        assertEquals(new Cell(1, 0, 0), EquipmentRefresh.plan(layout, world).shift());
+    }
+
+    @Test
+    void aPipeInANewCellIsLeftOutAsAnotherBlockIs() {
+        var layout = ShapeRasterizer.layout(drum(3, 6, Orientation.VERTICAL, Heading.NORTH, 4));
+        var world = held(layout);
+        var cell = layout.shell().getLast();
+        world.put(cell, Holding.PIPE);
+        assertEquals(List.of(cell), EquipmentRefresh.plan(layout, world).blocked());
+    }
+
     /** The world as the layout places it. */
     private static Map<Cell, Holding> held(ShapeRasterizer.Layout layout) {
         var world = new HashMap<Cell, Holding>();

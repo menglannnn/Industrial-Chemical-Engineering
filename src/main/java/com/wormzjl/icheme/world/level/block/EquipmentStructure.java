@@ -363,12 +363,12 @@ public final class EquipmentStructure {
      * refreshed on a later tick, once every chunk its old and new cells span is loaded and block-ticking; blocks are not
      * changed while a chunk loads. {@code box} is the box the cell was placed by (zeros when saved before stamps),
      * {@code cell} its position, so a cell an old, larger box left outside the new one widens the region; the new box may
-     * stand {@link EquipmentRefresh#REACH} from the old one along x and z.
+     * stand {@link EquipmentRefresh#REACH} from the old one along x and z, and its nozzles' pipe blocks one cell beyond it.
      */
     public static void refreshLater(ServerLevel level, BlockPos origin, EquipmentShape shape, int[] box, BlockPos cell) {
-        int reach = EquipmentRefresh.REACH;
-        var low = origin.offset(-reach, 0, -reach);
-        var high = origin.offset(Math.max(shape.sizeX(), box[0]) - 1 + reach, Math.max(shape.sizeY(), box[1]) - 1, Math.max(shape.sizeZ(), box[2]) - 1 + reach);
+        int reach = EquipmentRefresh.REACH + 1;
+        var low = origin.offset(-reach, -1, -reach);
+        var high = origin.offset(Math.max(shape.sizeX(), box[0]) - 1 + reach, Math.max(shape.sizeY(), box[1]), Math.max(shape.sizeZ(), box[2]) - 1 + reach);
         var stale = new Stale(shape, min(low, cell), max(high, cell));
         STALE.computeIfAbsent(level, k -> new LinkedHashMap<>()).merge(origin.immutable(), stale, Stale::with);
     }
@@ -507,7 +507,8 @@ public final class EquipmentStructure {
             } else if (state.is(ModBlocks.EQUIPMENT_INTERIOR.get())) {
                 var shell = shellReached(level, at);
                 world.put(cell, shell != null && ours(shell, origin, shape) ? EquipmentRefresh.Holding.INTERIOR : EquipmentRefresh.Holding.OTHER);
-            } else if (!state.canBeReplaced()) world.put(cell, EquipmentRefresh.Holding.OTHER);
+            } else if (state.getBlock() instanceof FluidDeviceBlock) world.put(cell, EquipmentRefresh.Holding.PIPE);
+            else if (!state.canBeReplaced()) world.put(cell, EquipmentRefresh.Holding.OTHER);
         }
         if (paint == null) return;
         var layout = ShapeRasterizer.layout(shape);
@@ -543,6 +544,10 @@ public final class EquipmentStructure {
                 }
             }
             for (var cell : plan.interior()) level.setBlock(placed.offset(cell.x(), cell.y(), cell.z()), interior(shape), flags);
+            // Cells left out where other blocks stand: the cells written keep no stamp, so the next load tries again.
+            if (!blocked.isEmpty())
+                for (var cell : layout.shell())
+                    if (!blocked.contains(cell) && level.getBlockEntity(placed.offset(cell.x(), cell.y(), cell.z())) instanceof EquipmentShellBlockEntity entity) entity.layoutIncomplete();
         } finally {
             dismantling = false;
         }
@@ -573,10 +578,10 @@ public final class EquipmentStructure {
     }
 
     /**
-     * A refreshed drum keeps its registration, so its contents: its ports, volume and level height follow by a queued
-     * edit. Movers retain their controls too. A moved mover gets a queued replacement with the same controls and a new
-     * identity ({@code relocateMover}); a moved reservoir keeps its identity and contents through a queued edit to its
-     * new node. {@code oldNode} held the former identity.
+     * A refreshed vessel or machine keeps its registration (decision D7): one queued edit moves it to its new node with
+     * its new ports, and a vessel takes its new volume, level height and opening. It keeps its identity, its controls and
+     * what it holds ({@code PhysicalRegistry}: a vessel's moles, energy and solids in its new geometry), so nothing the
+     * network or a gauge knows of it changes but where it stands. {@code oldNode} held the identity.
      */
     private static void reregister(ServerLevel level, Vessel vessel, @Nullable BlockPos oldNode) {
         var node = node(vessel);
@@ -589,23 +594,10 @@ public final class EquipmentStructure {
             return;
         }
         var device = record.device();
-        if (!device.position().equals(position(level, node))) {
-            if (vessel.shape().kind().mover()) {
-                var replacement = world.relocateMover(device.id(), position(level, node), ports(level, vessel));
-                if (level.getBlockEntity(oldNode) instanceof EquipmentShellBlockEntity old && old.fluidIdentity() == device.id()) old.releaseIdentity();
-                if (level.getBlockEntity(node) instanceof EquipmentShellBlockEntity entity) entity.bindIdentity(replacement.device().id());
-                return;
-            }
-            var relocated=new PhysicalFluidTopology.Device(device.id(),position(level,node),device.kind(),device.facing(),device.geometry(),device.control(),ports(level,vessel),device.generatorEnabled(),device.cutoff());
-            world.edit(device.id(),record.revision(),relocated,record.spec());
-            if (level.getBlockEntity(oldNode) instanceof EquipmentShellBlockEntity old) old.releaseIdentity();
-            if (level.getBlockEntity(node) instanceof EquipmentShellBlockEntity entity) entity.bindIdentity(device.id());
-            return;
-        }
         var spec = record.spec();
-        world.edit(device.id(), record.revision(),
-                new PhysicalFluidTopology.Device(device.id(), device.position(), device.kind(), device.facing(), device.geometry(), device.control(), ports(level, vessel)),
+        world.edit(device.id(), record.revision(), device.withPlacement(position(level, node), ports(level, vessel)),
                 vessel.shape().kind().mover() ? spec : new FluidDeviceSpec(vessel.shape().volume(), spec.temperature(), spec.pressure(), spec.composition(), spec.solids(), vessel.shape().levelHeight(), open(vessel)));
+        if (oldNode != null && !oldNode.equals(node) && level.getBlockEntity(oldNode) instanceof EquipmentShellBlockEntity old && old.fluidIdentity() == device.id()) old.releaseIdentity();
         if (level.getBlockEntity(node) instanceof EquipmentShellBlockEntity entity && entity.fluidIdentity() != device.id()) entity.bindIdentity(device.id());
     }
 

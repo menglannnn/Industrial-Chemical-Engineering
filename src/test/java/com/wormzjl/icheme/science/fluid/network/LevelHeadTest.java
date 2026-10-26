@@ -177,8 +177,10 @@ class LevelHeadTest extends PortFixture {
     @Test void aGeneratorBelowTheBottomPressureStaysDeadHeadedWithoutReopens() {
         for(double interval:new double[]{5,.1}) {
             String label="against-"+interval;
-            var start=bottomFeed(100000,101325);var tank=start.reservoirs().getFirst();
-            assertTrue(tank.state().pressure()<101325&&bottom(tank)>101325,"the generator stands between the headspace and the bottom");
+            // The headspace stands above the ambient: a tank charged below it is a slack bag at it (decision D54), which the rest
+            // test restates (a state off its wall is not at rest, batch 2026-10-26-backward-compat).
+            var start=bottomFeed(200000,201325);var tank=start.reservoirs().getFirst();
+            assertTrue(tank.state().pressure()<201325&&bottom(tank)>201325,"the generator stands between the headspace and the bottom");
             var run=drive(label,start,interval,interval<1?100:12);
             for(int i=0;i<run.slices().size();i++) {
                 var s=run.slices().get(i);
