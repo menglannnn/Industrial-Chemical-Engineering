@@ -3,7 +3,7 @@ package com.wormzjl.icheme.client.model;
 import com.wormzjl.icheme.IChemE;
 import com.wormzjl.icheme.client.MachineAnimation;
 import com.wormzjl.icheme.science.equipment.Mesh;
-import com.wormzjl.icheme.science.equipment.MoverPortMarkings;
+import com.wormzjl.icheme.science.equipment.PortMarkings;
 import com.wormzjl.icheme.science.equipment.ShapeRasterizer;
 import com.wormzjl.icheme.world.level.block.entity.EquipmentShellBlockEntity;
 import net.minecraft.client.renderer.RenderType;
@@ -99,7 +99,7 @@ public final class EquipmentShellModel implements IDynamicBakedModel {
      * quads carry its paint channel as their tint index, so the cell's paint colours them as the chunk is meshed.
      */
     private Layers bake(ShapeRasterizer.CellKey key) {
-        return layers(ShapeRasterizer.fixedSurface(key), bake(MoverPortMarkings.surface(key), sprites, true));
+        return layers(ShapeRasterizer.fixedSurface(key), bake(PortMarkings.surface(key), sprites, true));
     }
 
     private Layers layers(List<Mesh.Polygon> polygons, List<BakedQuad> markings) {
