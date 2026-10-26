@@ -10,7 +10,7 @@ Planned equipment includes storage drums, pumps, compressors, heat exchangers, b
 
 ## Current status
 
-Version 0.12.0, early development (see [CHANGELOG.md](CHANGELOG.md)). Saves do not carry over between versions; start a fresh world after updating.
+Version 0.12.1, early development (see [CHANGELOG.md](CHANGELOG.md)). Saves do not carry over between versions; start a fresh world after updating.
 
 - **Distillation column calculator:** solves a crude column with side draws, steam and pumparounds.
 - **Fluid network:** pipes, tanks, pumps, compressors and valves with multiphase flow and equilibrium.

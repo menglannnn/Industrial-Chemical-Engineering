@@ -15,9 +15,11 @@ All notable changes to Industrial Chemical Engineering (IChemE, formerly CreateC
 
 ## [Unreleased]
 
+## [0.12.1] - 2026-10-26
+
 ### Changed
 
-- Documentation index rule (owner request 2026-10-26, batch folder: `2026-10-26-index-consolidation`, commit `54efd856`): the local `documentation/INDEX.md` keeps one short row per batch (folder, purpose, status with its date); a batch's history, documents, code areas and open items go to the batch folder's `README.md` (AGENTS.md). The index went from 195 KB to 16 KB; the old-name lookup moved to `documentation/repository/FILE_LOOKUP.md`.
+- Documentation index rule (owner request 2026-10-26, batch folder: `2026-10-26-index-consolidation`, review `INDEX_CONSOLIDATION_REVIEW.md`, commit `54efd856`): the local `documentation/INDEX.md` keeps one short row per batch (folder, purpose, status with its date); a batch's history, documents, code areas and open items go to the batch folder's `README.md` (AGENTS.md). The index went from 195 KB to 16 KB; the old-name lookup moved to `documentation/repository/FILE_LOOKUP.md`.
 
 ## [0.12.0] - 2026-10-26
 
