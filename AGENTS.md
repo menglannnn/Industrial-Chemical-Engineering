@@ -85,8 +85,10 @@ These rules apply to every agent working in this repository (Claude, Codex, suba
 - Do not add top-level folders for documents or scripts. Leave `examples/` (tracked, used by the build and tests) where it is.
 - Write each review or audit to `documentation/<batch>/<TOPIC>_REVIEW.md` and each plan to `documentation/<batch>/<TOPIC>_PLAN.md`.
 - After every task, in the same session:
-  - Put the task's documents in its batch folder. Create a new dated folder for a new batch.
-  - Update the batch row of `documentation/INDEX.md`, and `research/INDEX.md` or `tools/INDEX.md` if they changed. Give the status with its date: Implemented (date it reached `main`), In progress since, Planned, Concluded (research only), or Abandoned / Superseded with the reason.
+  - Put the task's documents in its batch folder. Create a new dated folder, with a `README.md`, for a new batch.
+  - Update the batch's row in `documentation/INDEX.md`. The row holds only the folder, the purpose in a few words and the status with its date: Implemented (date it reached `main`), In progress since, Planned, Concluded (research only), or Abandoned / Superseded.
+  - Write everything else about the batch in its `README.md`: the status, one history line per task (commits, gates, decisions), the documents, the code areas and the open items.
+  - Update `research/INDEX.md` or `tools/INDEX.md` if they changed.
 - Copy documents written in a worktree to the main checkout's `documentation/<batch>/` when the work merges, or when the task ends if it never merges.
 - Store logs compressed in the main checkout, `tools/<tool-folder>/logs/<name>-logs-<date>.tar.gz`.
 
