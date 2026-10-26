@@ -15,10 +15,6 @@ All notable changes to Industrial Chemical Engineering (IChemE, formerly CreateC
 
 ## [Unreleased]
 
-### Changed
-
-- `./gradlew test` also compiles the fluid GameTests, so a change that breaks them fails the quick suite on the day it lands (owner request 2026-10-26, batch: `2026-10-21-floating-roof-tanks`, `FINAL_LANE_E8EC6455_REVIEW.md`).
-
 ## [0.12.0] - 2026-10-26
 
 ### Added
@@ -50,6 +46,7 @@ All notable changes to Industrial Chemical Engineering (IChemE, formerly CreateC
 - Pipe and equipment-nozzle flanges now have square 90° shoulders, with visible joint lines between paired pipeline flange plates; pipe inspection requires the existing Fluid Debugger, while the Pipeline Tool keeps its resize/settings actions (commits `acd0fd14`, `fa81579b`, batch: `2026-10-23-square-flanges`).
 - Pump castings adapt to their connected pipes: cast reducers sized to each nozzle's pipe, with closing shoulders (commit `b52732c9`, batch: `2026-10-24-pump-inlet-adapter`).
 - Straight pipes carry their flanged spool joints every 12 blocks instead of every 6 (commit `9ab5f6cf`, batch: `2026-10-24-pipe-flange-spacing`).
+- `./gradlew test` also compiles the fluid GameTests, so a change that breaks them fails the quick suite on the day it lands (owner request 2026-10-26, batch: `2026-10-21-floating-roof-tanks`, `FINAL_LANE_E8EC6455_REVIEW.md`).
 
 ### Fixed
 
