@@ -134,25 +134,28 @@ public final class ColumnCalculatorV3Screen extends AbstractContainerScreen<Colu
     private void choose(ColumnComponents.Choices next){choices=next;choicesEdited=true;notice="";rebuild();}
     private static <E extends Enum<E>> E next(E kind){var all=kind.getDeclaringClass().getEnumConstants();return all[(kind.ordinal()+1)%all.length];}
     private static String kindKey(Enum<?> kind){return kind.name().toLowerCase(Locale.ROOT);}
-    private int componentsTextY(){return CONTENT+2+(2+(candidate==null?0:candidate.pumparounds().size()))*22+4;}
+    /** The choice rows' pitch: 22, closer (down to a button's height and a pixel) where the page would run past its body. */
+    private int componentPitch(){return Math.clamp((bodyBottom()-CONTENT-6)/(2+(candidate==null?0:candidate.pumparounds().size())),19,22);}
+    private int componentsTextY(){return CONTENT+2+(2+(candidate==null?0:candidate.pumparounds().size()))*componentPitch()+4;}
     private void buildComponents(){
-        checkDesign();int y=CONTENT+2,w=Math.max(60,Math.min(200,imageWidth-200));
+        checkDesign();int y=CONTENT+2,w=Math.max(60,Math.min(200,imageWidth-200)),p=componentPitch();
         labels.add(new Label(tr("component_condenser"),10,y+5,150));
         button(tr("condenser."+kindKey(choices.condenser())),170,y,w,()->choose(choices.withCondenser(next(choices.condenser()))))
             .setTooltip(Tooltip.create(Component.literal(tr("condenser.hint"))));
-        labels.add(new Label(tr("component_reflux_pump"),10,y+27,150));
-        button(tr("pump."+kindKey(choices.refluxPump())),170,y+22,w,()->choose(choices.withRefluxPump(next(choices.refluxPump()))))
+        labels.add(new Label(tr("component_reflux_pump"),10,y+p+5,150));
+        button(tr("pump."+kindKey(choices.refluxPump())),170,y+p,w,()->choose(choices.withRefluxPump(next(choices.refluxPump()))))
             .setTooltip(Tooltip.create(Component.literal(tr("pump.hint"))));
         if(candidate!=null){
             var fitted=choices.fit(candidate.pumparounds().size());
             for(int i=0;i<candidate.pumparounds().size();i++){
                 int at=i;var pump=fitted.pumparoundPumps().get(i);
-                labels.add(new Label(tr("component_pa_pump",i+1),10,y+49+22*i,150));
-                button(tr("pump."+kindKey(pump)),170,y+44+22*i,w,()->choose(choices.withPumparoundPump(at,next(pump))))
+                labels.add(new Label(tr("component_pa_pump",i+1),10,y+(2+i)*p+5,150));
+                button(tr("pump."+kindKey(pump)),170,y+(2+i)*p,w,()->choose(choices.withPumparoundPump(at,next(pump))))
                     .setTooltip(Tooltip.create(Component.literal(tr("pump.hint"))));
             }
         }
-        action("save_design",10,componentsTextY()+5*15+4,130,this::saveDesign).active=designPreview!=null&&!busy()&&!conflict&&state!=null;
+        // In the page's action row, as every page keeps its actions, so it shows at any window size.
+        action("save_design",10,54,130,this::saveDesign).active=designPreview!=null&&!busy()&&!conflict&&state!=null;
     }
     private void changePage(int target){page=target;connectionMenu=false;offset=listScroll.value=0;presetKind=null;savingPreset=false;rebuild();}
     private int bodyBottom(){return imageHeight-(conflict?73:48);}
@@ -693,15 +696,20 @@ public final class ColumnCalculatorV3Screen extends AbstractContainerScreen<Colu
             {"component_kettle",candidate==null?"—":reboilerDuty(candidate)>0?tr("kettle_required",fmt(reboilerDuty(candidate)/1e6)):tr("kettle_none")},
             {"component_receiver",tr("receiver")},{"component_reflux_line",tr("reflux_line")},
             {"component_valves",candidate==null?"—":tr("valves",candidate.steamFeeds().size(),candidate.sideDraws().size())}};
-        for(int i=0;i<rows.length;i++){text(g,tr(rows[i][0]),10,y+15*i,MUTED,150);text(g,rows[i][1],170,y+15*i,TEXT,w);}
-        y+=5*15+30;
+        // The fixed components while they fit above the footer; the choices above them always do.
+        int shown=0;
+        for(int i=0;i<rows.length&&y+15*i+9<=bodyBottom();i++,shown++){text(g,tr(rows[i][0]),10,y+15*i,MUTED,150);text(g,rows[i][1],170,y+15*i,TEXT,w);}
+        // The save state beside Save design; how the saved design differs under the fixed components, if there is room.
         var saved=state==null?Optional.<ColumnDesign>empty():state.design();
-        if(designPreview==null)text(g,tr("design_not_saved",designProblem),10,y,WARN,imageWidth-20);
-        else if(saved.isPresent()&&saved.get().equals(designPreview))text(g,tr("design_saved"),10,y,ACCENT,imageWidth-20);
-        else text(g,tr("design_ready",designPreview.trays().trays()+2,fmt(designPreview.diameter())),10,y,TEXT,imageWidth-20);
+        int x=146,right=imageWidth-x-10;
+        if(designPreview==null)text(g,tr("design_not_saved",designProblem),x,59,WARN,right);
+        else if(saved.isPresent()&&saved.get().equals(designPreview))text(g,tr("design_saved"),x,59,ACCENT,right);
+        else text(g,tr("design_ready",designPreview.trays().trays()+2,fmt(designPreview.diameter())),x,59,TEXT,right);
+        y+=shown*15+6;
+        if(y+9>bodyBottom())return;
         if(saved.isPresent()&&!saved.get().equals(designPreview))
-            text(g,tr("design_differs",saved.get().trays().trays()+2,fmt(saved.get().diameter())),10,y+15,MUTED,imageWidth-20);
-        else if(saved.isEmpty())text(g,tr("design_none"),10,y+15,MUTED,imageWidth-20);
+            text(g,tr("design_differs",saved.get().trays().trays()+2,fmt(saved.get().diameter())),10,y,MUTED,imageWidth-20);
+        else if(saved.isEmpty())text(g,tr("design_none"),10,y,MUTED,imageWidth-20);
     }
     private static double reboilerDuty(V3ColumnInput input){
         return input.specifications().stream().filter(V3ColumnSpecification.ReboilerDuty.class::isInstance)

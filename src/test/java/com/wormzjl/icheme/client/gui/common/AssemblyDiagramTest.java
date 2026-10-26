@@ -75,6 +75,45 @@ class AssemblyDiagramTest {
         assertEquals(2800, checked);
     }
 
+    /**
+     * Every text the drawing names, and every text the screen builds from a report (its status line, its words, a part's
+     * state with each detail the matcher writes, a port's state), has its English line: the hover texts are judged here,
+     * as the bridge cannot hover in the game.
+     */
+    @Test
+    void everyTextHasItsEnglishLine() throws java.io.IOException {
+        java.util.Set<String> lang;
+        try (var in = AssemblyDiagramTest.class.getResourceAsStream("/assets/icheme/lang/en_us.json")) {
+            lang = com.google.gson.JsonParser.parseReader(new java.io.InputStreamReader(java.util.Objects.requireNonNull(in), java.nio.charset.StandardCharsets.UTF_8))
+                    .getAsJsonObject().keySet();
+        }
+        var keys = new HashSet<String>();
+        for (var trays : designs()) {
+            var d = AssemblyDiagram.of(trays);
+            for (var p : d.parts()) {
+                for (var t : java.util.Arrays.asList(p.label(), p.name(), p.where(), p.wanted())) if (t != null) keys.add(t.key());
+            }
+            for (var l : d.labels()) keys.add(l.text().key());
+            for (var p : d.pills()) keys.add(p.text().key());
+        }
+        // The screen's own texts (AssemblyScreen).
+        keys.addAll(List.of("title", "heading", "validate", "open_unit", "datasheet", "tab.operation", "tab.structure", "no_design", "operation", "queued",
+                "status.no_design", "status.not_validated", "status.changed", "status.checked", "status.complete", "word.not_validated", "word.connected",
+                "word.misplaced", "word.missing", "word.not_checked", "state.not_validated", "state.ok", "state.missing", "state.missing.terminal",
+                "state.missing.returns", "state.missing.found", "state.open_end", "state.open_end.unconnected", "state.not_loaded", "state.wrong_kind",
+                "state.backwards", "state.wrong_port", "state.wrong_port.returns", "state.valve_reversed", "state.extra_valve", "state.wrong_order",
+                "state.branched", "state.shared", "port", "port.needed"));
+        for (var s : com.wormzjl.icheme.science.assembly.AssemblyReport.PortState.values()) keys.add("port." + s.name().toLowerCase(java.util.Locale.ROOT));
+        for (var f : List.of("drum", "drum_no_boot", "drum_standing", "control_valve", "inline_pump", "other")) keys.add("found." + f);
+        var missing = keys.stream().map(k -> AssemblyDiagram.KEY + k).filter(k -> !lang.contains(k)).sorted().toList();
+        assertEquals(List.of(), missing);
+        // A unit the matcher names by its kind takes the datasheet's title; a role its datasheet name.
+        for (var kind : com.wormzjl.icheme.science.equipment.EquipmentShape.Kind.values())
+            if (kind.designed() || kind == com.wormzjl.icheme.science.equipment.EquipmentShape.Kind.DRUM)
+                assertTrue(lang.contains("gui.icheme.vessel.title." + kind.name().toLowerCase(java.util.Locale.ROOT)), kind::name);
+        for (var role : Role.values()) assertTrue(lang.contains("gui.icheme.vessel.role." + role.name().toLowerCase(java.util.Locale.ROOT)), role::name);
+    }
+
     @Test
     void everyPortALineStartsFromOrEndsAtHasASquare() {
         for (var trays : designs()) {

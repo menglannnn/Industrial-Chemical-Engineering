@@ -551,6 +551,7 @@
   "gui.icheme.vessel.role.vapour_outlet": "Vapour outlet",
   "gui.icheme.vessel.role.side": "Side connection",
   "gui.icheme.vessel.role.liquid_outlet": "Liquid outlet",
+  "gui.icheme.vessel.role.boot_drain": "Boot drain",
   "gui.icheme.vessel.role.feed": "Feed",
   "gui.icheme.vessel.role.reflux": "Reflux",
   "gui.icheme.vessel.role.draw": "Side draw",

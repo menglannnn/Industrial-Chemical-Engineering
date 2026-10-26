@@ -43,7 +43,10 @@ import java.util.Locale;
 public final class AssemblyScreen extends AbstractContainerScreen<AssemblyMenu> {
     private static final String KEY = AssemblyDiagram.KEY;
     private static final int TEAL_FILL = 0xFF12392F, TEAL = 0xFF1D9E75, TEAL_TEXT = 0xFF9FE1CB, YELLOW_FILL = 0xFF3D2E0F, YELLOW = 0xFFEF9F27,
-            YELLOW_TEXT = 0xFFFAC775, RED_FILL = 0xFF3F1A1A, RED = 0xFFE24B4A, RED_TEXT = 0xFFF7C1C1, BODY = 0xFF33434D, EDGE = 0xFF444441, ROW = 11;
+            YELLOW_TEXT = 0xFFFAC775, RED_FILL = 0xFF3F1A1A, RED = 0xFFE24B4A, RED_TEXT = 0xFFF7C1C1, BODY = 0xFF33434D, EDGE = 0xFF444441, ROW = 11,
+            LIST_MIN = 150, LIST_MAX = 260;
+    /** The design's labels against the 9-pixel font, and the smallest font drawn. */
+    private static final double FONT = 1.2, MIN_FONT = 0.5;
 
     private final @Nullable ColumnTrays trays;
     private final @Nullable AssemblyDiagram diagram;
@@ -96,10 +99,12 @@ public final class AssemblyScreen extends AbstractContainerScreen<AssemblyMenu> 
         super.init();
         bodyTop = 34;
         bodyBottom = imageHeight - 30;
-        listW = Math.clamp(imageWidth * 3 / 10, 120, 200);
+        // The drawing is sized by the height first; the parts list takes the width it leaves, at least LIST_MIN.
+        int areaH = bodyBottom - bodyTop;
+        scale = Math.min(areaH / (double) AssemblyDiagram.HEIGHT, (imageWidth - 24 - LIST_MIN) / (double) AssemblyDiagram.WIDTH);
+        listW = Math.min(LIST_MAX, imageWidth - 24 - (int) Math.ceil(AssemblyDiagram.WIDTH * scale));
         listX = imageWidth - listW - 8;
-        int areaW = listX - 16, areaH = bodyBottom - bodyTop;
-        scale = Math.min(areaW / (double) AssemblyDiagram.WIDTH, areaH / (double) AssemblyDiagram.HEIGHT);
+        int areaW = listX - 16;
         ox = leftPos + 8 + (int) ((areaW - AssemblyDiagram.WIDTH * scale) / 2);
         oy = topPos + bodyTop + (int) ((areaH - AssemblyDiagram.HEIGHT * scale) / 2);
         int y = topPos + imageHeight - 25;
@@ -247,10 +252,11 @@ public final class AssemblyScreen extends AbstractContainerScreen<AssemblyMenu> 
         for (var p : d.pills()) {
             g.fill(x(p.x()), y(p.y() - 11), x(p.x() + p.w()), y(p.y() + 11), ProcessUi.PANEL);
             g.renderOutline(x(p.x()), y(p.y() - 11), x(p.x() + p.w()) - x(p.x()), y(p.y() + 11) - y(p.y() - 11), ProcessUi.LINE);
-            label(g, text(p.text()), p.x() + p.w() / 2, p.y(), Align.CENTRE, ProcessUi.MUTED);
+            fitted(g, text(p.text()), p.x() + p.w() / 2, p.y(), p.w(), ProcessUi.MUTED);
         }
         for (var part : d.parts()) part(g, part);
-        for (var l : d.labels()) label(g, text(l.text()), l.x(), l.y(), l.align(), ProcessUi.MUTED);
+        // Free labels only where the font keeps the design's proportion; below it they would cover the parts.
+        if (scale * FONT >= MIN_FONT) for (var l : d.labels()) label(g, text(l.text()), l.x(), l.y(), l.align(), ProcessUi.MUTED);
         for (var m : d.ports()) port(g, m);
     }
 
@@ -315,7 +321,7 @@ public final class AssemblyScreen extends AbstractContainerScreen<AssemblyMenu> 
                 g.hLine(cx - 1, cx + 1, cy + r, look[1]);
             }
         }
-        if (part.label() != null) label(g, text(part.label()), part.x() + part.w() / 2, part.y() + part.h() / 2, Align.CENTRE, look[2]);
+        if (part.label() != null) fitted(g, text(part.label()), part.x() + part.w() / 2, part.y() + part.h() / 2, part.w(), look[2]);
         if (part.slot().equals(selected)) g.renderOutline(x0 - 2, y0 - 2, x1 - x0 + 4, y1 - y0 + 4, ProcessUi.TEXT);
     }
 
@@ -347,9 +353,18 @@ public final class AssemblyScreen extends AbstractContainerScreen<AssemblyMenu> 
         g.fill(cx - half, cy - half, cx + half, cy + half, 0xFF000000 | fill);
     }
 
-    /** A label at design point ({@code x}, {@code y}), in a font scaled with the drawing, never below half size. */
+    private float fontScale() {
+        return (float) Math.clamp(scale * FONT, MIN_FONT, 1.0);
+    }
+
+    /** A label centred on design point ({@code x}, {@code y}), drawn only if it fits {@code width} design units. */
+    private void fitted(GuiGraphics g, Component text, int x, int y, int width, int colour) {
+        if (font.width(text) * fontScale() <= width * scale - 2) label(g, text, x, y, Align.CENTRE, colour);
+    }
+
+    /** A label at design point ({@code x}, {@code y}), in a font scaled with the drawing, never below {@link #MIN_FONT}. */
     private void label(GuiGraphics g, Component text, int x, int y, Align align, int colour) {
-        float fs = (float) Math.clamp(scale * 1.35, 0.5, 1.0);
+        float fs = fontScale();
         float w = font.width(text) * fs;
         float tx = switch (align) {
             case LEFT -> x(x);
