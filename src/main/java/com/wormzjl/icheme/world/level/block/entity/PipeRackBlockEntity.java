@@ -45,21 +45,28 @@ import java.util.concurrent.ConcurrentHashMap;
  * <p>Saved format {@value #FORMAT} (AGENTS.md, saves; redefined in place by RD9, as only this batch's branch wrote rack
  * lanes): a list {@code Lanes} of compounds, read by name and validated; a damaged lane, or one this cell's shape does
  * not take, is dropped from the copy, and the ledger's registration, the fact, puts it back at the next load where the
- * shape takes it. A lane's paint is a fact only the copy holds: absent it reads bare, and a damaged one is repaired to
- * bare, the lane kept.</p>
+ * shape takes it. A lane's paints are facts only the copy holds: an absent paint reads bare, an absent secondary paint
+ * reads the paint (as a laid pipe's does), and a damaged one is repaired to that, the lane kept. Format rack-2 added the
+ * secondary paint, saved only when it differs from the paint; a rack-1 copy reads as it did.</p>
  */
 public final class PipeRackBlockEntity extends BlockEntity {
-    public static final String FORMAT = "rack-1";
+    public static final String FORMAT = "rack-2";
 
     /**
      * A lane's saved copy: its identity in the ledger, its option and width in the cell ({@link RackGeometry}), its arms
-     * (the two faces its pipe runs to) and the joints among them, its bore, and its paint (0xRRGGBB, or {@link Paint#BARE}).
+     * (the two faces its pipe runs to) and the joints among them, its bore, and its paints, each 0xRRGGBB or
+     * {@link Paint#BARE}: the primary (its pipe) and the secondary (its flanges).
      */
-    public record Lane(long identity, int option, int width, int arms, int joints, double bore, int paint) {
+    public record Lane(long identity, int option, int width, int arms, int joints, double bore, int paint, int secondary) {
         public Lane {
             if (!RackGeometry.takes(option, width) || Integer.bitCount(arms) != 2 || (arms & ~PhysicalFluidTopology.ALL_FACES) != 0
-                    || (joints & ~arms) != 0 || !(bore > 0 && bore <= PipeSizes.MAX_BORE) || !Paint.line(paint))
+                    || (joints & ~arms) != 0 || !(bore > 0 && bore <= PipeSizes.MAX_BORE) || !Paint.line(paint) || !Paint.line(secondary))
                 throw new IllegalArgumentException("Invalid rack lane " + option + "+" + width);
+        }
+
+        /** A lane in one paint, its flanges as its pipe. */
+        public Lane(long identity, int option, int width, int arms, int joints, double bore, int paint) {
+            this(identity, option, width, arms, joints, bore, paint, paint);
         }
 
         /** A bare lane. */
@@ -68,7 +75,11 @@ public final class PipeRackBlockEntity extends BlockEntity {
         }
 
         public Lane painted(int rgb) {
-            return new Lane(identity, option, width, arms, joints, bore, rgb);
+            return painted(rgb, rgb);
+        }
+
+        public Lane painted(int primary, int secondary) {
+            return new Lane(identity, option, width, arms, joints, bore, primary, secondary);
         }
 
         public double outside() {
@@ -103,8 +114,12 @@ public final class PipeRackBlockEntity extends BlockEntity {
         }
     }
 
-    /** What the model draws: the cell's frame and each lane with the arms it meets a line through, and its paint. */
-    public record Drawn(RackGeometry.Rack rack, List<RackGeometry.Lane> lanes, List<Integer> paints) {
+    /**
+     * What the model draws: the cell's frame and each lane with the arms it meets a line through, its paints (the pipe's
+     * and the flanges'), and {@code spools}, a bit per lane that carries a flange pair between spools here
+     * ({@link RackGeometry#spool}).
+     */
+    public record Drawn(RackGeometry.Rack rack, List<RackGeometry.Lane> lanes, List<Integer> paints, List<Integer> secondaries, int spools) {
     }
 
     public static final ModelProperty<Drawn> DRAWN = new ModelProperty<>();
@@ -131,6 +146,11 @@ public final class PipeRackBlockEntity extends BlockEntity {
     /** The cell's lane geometry: its facing and corner. */
     public RackGeometry.Rack rack() {
         return PipeRackBlock.rack(getBlockState());
+    }
+
+    /** The cell's world coordinate along its facing: where its bents and spools fall on the run. */
+    private int along() {
+        return getBlockState().getValue(PipeRackBlock.FACING).getAxis().choose(worldPosition.getX(), worldPosition.getY(), worldPosition.getZ());
     }
 
     /** The cell's frame as drawn: its lane geometry, the steel its neighbours give it, and its beams beneath its lanes. */
@@ -247,7 +267,7 @@ public final class PipeRackBlockEntity extends BlockEntity {
                 record = world.placeLane(position(lane.option), PhysicalFluidTopology.Direction.values()[lane.facing()], lane.joints, lane.width, points(lane), lane.bore);
             var copied = record == null ? null : copy(record.device());
             if (copied != null && RackGeometry.fits(rack(), taken, copied.drawn(0))) {
-                next.add(copied.painted(lane.paint));
+                next.add(copied.painted(lane.paint, lane.secondary));
                 taken.add(copied.drawn(0));
             }
         }
@@ -287,7 +307,7 @@ public final class PipeRackBlockEntity extends BlockEntity {
         for (var lane : lanes) {
             var record = world == null ? null : world.registrations().get(lane.identity);
             var copied = record == null ? null : copy(record.device());
-            next.add(copied != null && copied.option == lane.option && copied.width == lane.width && copied.arms == lane.arms ? copied.painted(lane.paint) : lane);
+            next.add(copied != null && copied.option == lane.option && copied.width == lane.width && copied.arms == lane.arms ? copied.painted(lane.paint, lane.secondary) : lane);
         }
         boolean changed = !next.equals(lanes);
         if (changed) setLanes(next, null);
@@ -353,8 +373,7 @@ public final class PipeRackBlockEntity extends BlockEntity {
                 return level.isLoaded(worldPosition.relative(Direction.values()[face]));
             }
         };
-        var facing = getBlockState().getValue(PipeRackBlock.FACING);
-        return RackGeometry.steel(around, rack(), facing.getAxis().choose(worldPosition.getX(), worldPosition.getY(), worldPosition.getZ()), frame);
+        return RackGeometry.steel(around, rack(), along(), frame);
     }
 
     /**
@@ -438,6 +457,7 @@ public final class PipeRackBlockEntity extends BlockEntity {
             entry.putInt("Joints", lane.joints);
             entry.putDouble("Bore", lane.bore);
             if (lane.paint != Paint.BARE) entry.putInt("Paint", lane.paint);
+            if (lane.secondary != lane.paint) entry.putInt("Secondary", lane.secondary);
             list.add(entry);
         }
         tag.put("Lanes", list);
@@ -458,7 +478,7 @@ public final class PipeRackBlockEntity extends BlockEntity {
             if (entry.contains("Identity", Tag.TAG_LONG) && entry.contains("Option", Tag.TAG_INT) && entry.contains("Width", Tag.TAG_INT) && entry.contains("Arms", Tag.TAG_INT)
                     && entry.contains("Joints", Tag.TAG_INT) && entry.contains("Bore", Tag.TAG_DOUBLE))
                 try {
-                    lane = new Lane(entry.getLong("Identity"), entry.getInt("Option"), entry.getInt("Width"), entry.getInt("Arms"), entry.getInt("Joints"), entry.getDouble("Bore"), paint(entry));
+                    lane = new Lane(entry.getLong("Identity"), entry.getInt("Option"), entry.getInt("Width"), entry.getInt("Arms"), entry.getInt("Joints"), entry.getDouble("Bore"), paint(entry), secondary(entry, paint(entry)));
                 } catch (IllegalArgumentException ignored) {
                 }
             if (lane == null || (used >> lane.option & 1) != 0) {
@@ -479,6 +499,18 @@ public final class PipeRackBlockEntity extends BlockEntity {
         if ((saved & ~0xFFFFFF) == 0) return saved;
         IChemE.LOGGER.warn("pipe_rack repair=paint ({}) -> bare", entry.get("Paint"));
         return Paint.BARE;
+    }
+
+    /**
+     * A saved lane's secondary paint: absent (rack-1, or the same as the paint), {@code paint}; a value that is no colour,
+     * repaired to {@code paint} and logged.
+     */
+    private static int secondary(CompoundTag entry, int paint) {
+        if (!entry.contains("Secondary")) return paint;
+        int saved = entry.contains("Secondary", Tag.TAG_INT) ? entry.getInt("Secondary") : Integer.MIN_VALUE;
+        if (Paint.line(saved)) return saved;
+        IChemE.LOGGER.warn("pipe_rack repair=secondary ({}) -> paint", entry.get("Secondary"));
+        return paint;
     }
 
     // ---- client ----
@@ -505,6 +537,10 @@ public final class PipeRackBlockEntity extends BlockEntity {
 
     @Override
     public ModelData getModelData() {
-        return ModelData.of(DRAWN, new Drawn(frame(), drawnLanes(), lanes.stream().map(Lane::paint).toList()));
+        var rack = frame();
+        var drawn = drawnLanes();
+        int along = along(), spools = 0;
+        for (int i = 0; i < drawn.size(); i++) if (RackGeometry.spool(rack, drawn.get(i), along)) spools |= 1 << i;
+        return ModelData.of(DRAWN, new Drawn(rack, drawn, lanes.stream().map(Lane::paint).toList(), lanes.stream().map(Lane::secondary).toList(), spools));
     }
 }

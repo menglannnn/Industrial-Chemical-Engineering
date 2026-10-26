@@ -33,6 +33,8 @@ public final class LineGeometry {
     public static final double NOZZLE = .1;
     /** The step of a face point's offset from the face's centre: 1/32 m, so a rack slot's centre is a whole number of steps. */
     public static final double OFFSET = 1 / 32.0;
+    /** Pipes are welded in spools of this many blocks; the block at each spool end carries a flange pair (a rack lane's, staggered by its position). */
+    public static final int SPOOL = 12;
     private static final double[] CENTRE = {.5, .5, .5};
     private static final int UP = 1, NORTH = 2, SOUTH = 3;
 
@@ -205,24 +207,28 @@ public final class LineGeometry {
 
     /** A straight length through faces {@code i} and its opposite, with a flange pair in the middle at a spool end. */
     private static void run(Mesh m, Key key, int i, double od, int sides, boolean spool) {
-        double from = 0;
-        if (spool) {
-            double t = PipeSizes.flangeThickness(od), hub = PipeSizes.hub(od);
-            var f = frame(i, ref(i));
-            double flange = PipeSizes.flange(od) / 2, hubR = PipeSizes.hubOutside(od) / 2;
-            double halfSeam = PipeSizes.FLANGE_SEAM / 2;
-            m.prism(f, flange, -t, -halfSeam, sides, Material.FLANGE);
-            m.prism(f, flange, -halfSeam, halfSeam, sides, Material.OPENING);
-            m.prism(f, flange, halfSeam, t, sides, Material.FLANGE);
-            for (int side = -1; side <= 1; side += 2) {
-                m.annulus(f, hubR, flange, side * t, sides, side, Material.FLANGE);
-                m.bolts(f, od, hubR, flange, side * t, side, Material.BOLT);
-                m.frustum(f, hubR, od / 2, side * t, side * (t + hub), sides, Material.PIPE);
-            }
-            from = t + hub;
-        }
+        double from = spool ? spoolPair(m, frame(i, ref(i)), od, sides) : 0;
         arm(m, i, from, od, end(key, i, od), ref(i), sides, false);
         arm(m, i ^ 1, from, od, end(key, i ^ 1, od), ref(i ^ 1), sides, false);
+    }
+
+    /**
+     * The flange pair between two spools, its seam at {@code f}'s origin square to its axis, and the necks either side;
+     * returns how far along the axis each side reaches, where the pipe goes on.
+     */
+    static double spoolPair(Mesh m, Frame f, double od, int sides) {
+        double t = PipeSizes.flangeThickness(od), hub = PipeSizes.hub(od);
+        double flange = PipeSizes.flange(od) / 2, hubR = PipeSizes.hubOutside(od) / 2;
+        double halfSeam = PipeSizes.FLANGE_SEAM / 2;
+        m.prism(f, flange, -t, -halfSeam, sides, Material.FLANGE);
+        m.prism(f, flange, -halfSeam, halfSeam, sides, Material.OPENING);
+        m.prism(f, flange, halfSeam, t, sides, Material.FLANGE);
+        for (int side = -1; side <= 1; side += 2) {
+            m.annulus(f, hubR, flange, side * t, sides, side, Material.FLANGE);
+            m.bolts(f, od, hubR, flange, side * t, side, Material.BOLT);
+            m.frustum(f, hubR, od / 2, side * t, side * (t + hub), sides, Material.PIPE);
+        }
+        return t + hub;
     }
 
     /**
@@ -297,7 +303,7 @@ public final class LineGeometry {
      * and look opposite ways, so only one is ever towards the viewer, and it lies inside the other flange. Without a hub
      * (the line starts within the flange) its back is a whole disc.
      */
-    private static void flange(Mesh m, Frame f, double od, double z, int sides, boolean joined) {
+    static void flange(Mesh m, Frame f, double od, double z, int sides, boolean joined) {
         double t = PipeSizes.flangeThickness(od), flange = PipeSizes.flange(od) / 2, hubR = PipeSizes.hubOutside(od) / 2;
         boolean hub = .5 - t > z + EPS;
         if (hub) m.frustum(f, od / 2, hubR, z, .5 - t, sides, Material.PIPE);

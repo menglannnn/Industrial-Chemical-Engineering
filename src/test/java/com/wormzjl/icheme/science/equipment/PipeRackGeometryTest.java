@@ -128,6 +128,43 @@ class PipeRackGeometryTest {
     }
 
     @Test
+    void everyFlangeStandsClearOfTheSteel() {
+        // Owner 2026-10-26, "Staggered, off steel": an open end's blind flange stands in off the steel at its face, a
+        // spool's flange pair where no brace or bent comes near it. No flange or bolt reaches into a member, between
+        // bents (no bent, a light frame) as well as at them.
+        int[] frames = {FRAMES[0], FRAMES[1], FRAMES[2], 0, RackGeometry.LEFT_JOINED | RackGeometry.RIGHT_JOINED | RackGeometry.STACKED};
+        int spools = 0;
+        for (int facing : new int[]{NORTH, EAST})
+            for (int corner = RackGeometry.STRAIGHT; corner <= RackGeometry.TEE; corner++)
+                for (var alone : lanes(new RackGeometry.Rack(facing, corner)))
+                    for (int joined : new int[]{0, alone.arms()})
+                        for (int steel : frames) {
+                            var lane = new RackGeometry.Lane(alone.option(), alone.width(), alone.arms(), joined, alone.outside());
+                            var rack = new RackGeometry.Rack(facing, corner, steel, RackGeometry.beam(List.of(lane)));
+                            boolean spool = RackGeometry.spool(rack, lane, 3 * RackGeometry.position(lane.option()));
+                            if (spool) spools++;
+                            var members = RackGeometry.steelwork(rack, List.of(lane)).drawn();
+                            for (var polygon : RackGeometry.lane(rack, lane, spool)) {
+                                if (polygon.material() != Mesh.Material.FLANGE && polygon.material() != Mesh.Material.BOLT) continue;
+                                var box = bounds(polygon.positions());
+                                for (var member : members) {
+                                    double grow = member.bar() ? member.width() : 0;
+                                    double[] a = member.a(), b = member.b();
+                                    if (Math.min(a[0], b[0]) - grow > box[3] || Math.max(a[0], b[0]) + grow < box[0] || Math.min(a[1], b[1]) - grow > box[4]
+                                            || Math.max(a[1], b[1]) + grow < box[1] || Math.min(a[2], b[2]) - grow > box[5] || Math.max(a[2], b[2]) + grow < box[2]) continue;
+                                    for (var p : samples(polygon)) {
+                                        boolean inside = member.bar() ? segmentDistance(p, p, a, b) < member.width() / 2 - 1e-3
+                                                : p[0] > a[0] + 1e-3 && p[0] < b[0] - 1e-3 && p[1] > a[1] + 1e-3 && p[1] < b[1] - 1e-3 && p[2] > a[2] + 1e-3 && p[2] < b[2] - 1e-3;
+                                        assertFalse(inside, "facing " + facing + " shape " + corner + " steel " + steel + (spool ? " spool" : "") + ": " + lane + "'s "
+                                                + polygon.material() + " at " + java.util.Arrays.toString(p) + " in the steel at " + java.util.Arrays.toString(a) + " " + java.util.Arrays.toString(b));
+                                    }
+                                }
+                            }
+                        }
+        assertTrue(spools > 0, "spools drawn");
+    }
+
+    @Test
     void theSteelStaysInItsBlockAndClearOverTheTierOfTheLinesAtTheSides() {
         // Over the beam's top only the columns and braces of the sides stand, within 3.75/32 m of them: tier lines keep
         // from about 4.26/32 m (a 6" line on an outer position).
@@ -233,12 +270,13 @@ class PipeRackGeometryTest {
     }
 
     @Test
-    void anOpenLaneEndIsCappedAndAJoinedOneIsNot() {
+    void anOpenLaneEndIsBlindFlangedAndAJoinedOneIsNot() {
         var rack = new RackGeometry.Rack(NORTH, RackGeometry.STRAIGHT);
         int arms = 1 << NORTH | 1 << SOUTH;
         var open = RackGeometry.lane(rack, new RackGeometry.Lane(RackGeometry.option(1, RackGeometry.TIER), 1, arms, 0, PipeSizes.code(.1)));
         var joined = RackGeometry.lane(rack, new RackGeometry.Lane(RackGeometry.option(1, RackGeometry.TIER), 1, arms, arms, PipeSizes.code(.1)));
-        assertTrue(open.size() > joined.size(), "the open lane has two caps");
+        assertTrue(open.size() > joined.size(), "the open lane has a blind flange at each end");
+        assertTrue(open.stream().anyMatch(polygon -> polygon.material() == Mesh.Material.FLANGE), "flanged as a laid pipe's open end");
         var exit = new RackGeometry.Lane(RackGeometry.option(1, RackGeometry.ABOVE), 1, 1 << SOUTH | 1 << EAST, 0, PipeSizes.code(.1));
         assertEquals(3, RackGeometry.boxes(rack, exit).size(), "a lane over the tier: along, up and across");
     }
@@ -389,6 +427,30 @@ class PipeRackGeometryTest {
     }
 
     /** A segment's least distance to a box, sampled finely (the boxes are thin, the segments short). */
+    /** The box {@code {x0, y0, z0, x1, y1, z1}} round the points {@code positions}. */
+    private static double[] bounds(double[] positions) {
+        double[] out = {Double.MAX_VALUE, Double.MAX_VALUE, Double.MAX_VALUE, -Double.MAX_VALUE, -Double.MAX_VALUE, -Double.MAX_VALUE};
+        for (int v = 0; v < positions.length; v++) {
+            out[v % 3] = Math.min(out[v % 3], positions[v]);
+            out[3 + v % 3] = Math.max(out[3 + v % 3], positions[v]);
+        }
+        return out;
+    }
+
+    /** Points over a convex polygon: a grid eight to an edge on each triangle of its fan. */
+    private static List<double[]> samples(Mesh.Polygon polygon) {
+        var out = new ArrayList<double[]>();
+        double[] p = polygon.positions();
+        int n = 8;
+        for (int k = 1; k + 1 < polygon.size(); k++)
+            for (int i = 0; i <= n; i++)
+                for (int j = 0; i + j <= n; j++) {
+                    double s = i / (double) n, t = j / (double) n, r = 1 - s - t;
+                    out.add(new double[]{r * p[0] + s * p[3 * k] + t * p[3 * k + 3], r * p[1] + s * p[3 * k + 1] + t * p[3 * k + 4], r * p[2] + s * p[3 * k + 2] + t * p[3 * k + 5]});
+                }
+        return out;
+    }
+
     private static double boxDistance(double[][] segment, double[] box) {
         double best = Double.MAX_VALUE;
         for (int k = 0; k <= 256; k++) {

@@ -279,18 +279,20 @@ public final class RackGeometry {
 
     /**
      * The shape a rack placed with the player looking {@code look} takes (RACK_JUNCTION_PLAN J2), decided once: it never
-     * changes after (J1). It comes from the racks whose runs point into the cell, its feeds (a rack whose lanes run
-     * through its face towards the cell), and the look:
+     * changes after (J1). It faces the look (owner 2026-10-26: "Placed rack direction should be strictly based on player
+     * facing"); its shape comes from the racks whose runs point into the cell, its feeds (a rack whose lanes run through
+     * its face towards the cell), and the look:
      * <ul>
-     *   <li>no feed: straight along a straight rack beside it (a wider rack), else along the look;</li>
-     *   <li>one: on along its run where the look runs that way, else a corner from it towards the look;</li>
+     *   <li>no feed: straight, whatever stands beside it;</li>
+     *   <li>one: straight where it lies in line with the look, else a corner from it towards the look;</li>
      *   <li>two in line: straight between them where the look runs along them, else a tee whose branch opens towards
      *   the look;</li>
-     *   <li>two at a corner: the corner joining them; three: the tee joining them;</li>
-     *   <li>four: straight along the look, as runs cross at two heights, one stacked on the other (X1).</li>
+     *   <li>two at a corner: the corner joining them;</li>
+     *   <li>three: the tee joining them, which faces its branch, the feed with none across from it;</li>
+     *   <li>four: straight, as runs cross at two heights, one stacked on the other (X1).</li>
      * </ul>
-     * Sneaking places a plain straight rack along the look. A rack beside a run, its side towards the cell, never feeds
-     * it, so racks side by side make no junctions.
+     * Sneaking places a plain straight rack. A rack beside a run, its side towards the cell, never feeds it, so racks side
+     * by side make no junctions.
      */
     public static Rack placed(Neighbours around, int look, boolean sneaking) {
         if (sneaking) return new Rack(look, STRAIGHT);
@@ -300,47 +302,23 @@ public final class RackGeometry {
             if (neighbour != null && along(neighbour, face ^ 1)) feeds |= 1 << face;
         }
         int first = Integer.numberOfTrailingZeros(feeds), last = 31 - Integer.numberOfLeadingZeros(feeds);
-        switch (Integer.bitCount(feeds)) {
-            case 0 -> {
-                for (int face = 2; face < 6; face++) {
-                    var beside = around.rack(face);
-                    if (beside != null && !beside.junction()) return new Rack(beside.facing, STRAIGHT);
-                }
-                return new Rack(look, STRAIGHT);
-            }
-            case 1 -> {
-                return LineGeometry.axis(first) == LineGeometry.axis(look) ? new Rack(onward(around, first), STRAIGHT) : corner(first, look);
-            }
-            case 2 -> {
-                if (last != (first ^ 1)) return corner(first, last);
-                if (LineGeometry.axis(look) != LineGeometry.axis(first)) return new Rack(look, TEE);
-                // Filling a gap: the facing of a straight run on either side, else the look.
-                var a = around.rack(first);
-                var b = around.rack(last);
-                return new Rack(!a.junction() ? a.facing : !b.junction() ? b.facing : look, STRAIGHT);
-            }
+        return switch (Integer.bitCount(feeds)) {
+            case 1 -> LineGeometry.axis(first) == LineGeometry.axis(look) ? new Rack(look, STRAIGHT) : joining(look, look, first);
+            case 2 -> last != (first ^ 1) ? joining(look, first, last) : LineGeometry.axis(look) != LineGeometry.axis(first) ? new Rack(look, TEE) : new Rack(look, STRAIGHT);
             case 3 -> {
-                // The branch is the feed whose opposite face has none: the other two are the run.
-                for (int face = 2; face < 6; face++)
-                    if ((feeds >> face & 1) != 0 && (feeds >> (face ^ 1) & 1) == 0) return new Rack(face, TEE);
-                throw new AssertionError();
+                int branch = -1;
+                for (int face = 2; face < 6; face++) if ((feeds >> face & 1) != 0 && (feeds >> (face ^ 1) & 1) == 0) branch = face;
+                yield new Rack(branch, TEE);
             }
-            default -> {
-                return new Rack(look, STRAIGHT);
-            }
-        }
+            default -> new Rack(look, STRAIGHT);
+        };
     }
 
-    /** A corner whose lanes come in through {@code end} and turn out through {@code side}: it faces away from its end. */
-    private static Rack corner(int end, int side) {
-        int facing = end ^ 1;
-        return new Rack(facing, side == cw(facing) ? BACK_RIGHT : BACK_LEFT);
-    }
-
-    /** The facing of a run continued from the feed beyond {@code face}: a straight feed's own, away from a junction. */
-    private static int onward(Neighbours around, int face) {
-        var feed = around.rack(face);
-        return feed.junction() ? face ^ 1 : feed.facing;
+    /** The corner facing {@code facing} that joins faces {@code a} and {@code b}: one on its run's axis (its end), one across (its side). */
+    private static Rack joining(int facing, int a, int b) {
+        int end = LineGeometry.axis(a) == LineGeometry.axis(facing) ? a : b, side = end == a ? b : a;
+        boolean right = side == cw(facing);
+        return new Rack(facing, end == facing ? (right ? FRONT_RIGHT : FRONT_LEFT) : (right ? BACK_RIGHT : BACK_LEFT));
     }
 
     /**
@@ -706,53 +684,176 @@ public final class RackGeometry {
         return out;
     }
 
-    /** One lane's polygons, cell-local: the rack draws each lane apart for its paint, and the laying tool's ghost draws a lane it would lay. */
+    /** One lane's polygons, cell-local, with no spool flanges: the laying tool's ghost draws a lane it would lay. */
     public static List<Polygon> lane(Rack rack, Lane lane) {
+        return lane(rack, lane, false);
+    }
+
+    /** One lane's polygons, cell-local, its spool flanges where {@code spool} says ({@link #spool}): the rack draws each lane apart for its paints. */
+    public static List<Polygon> lane(Rack rack, Lane lane, boolean spool) {
         var m = new Mesh();
-        lane(m, rack, lane);
+        lane(m, rack, lane, spool);
         return m.cell(0, 0, 0);
     }
 
     /**
-     * One lane: a straight pipe; a corner's bend about the inner corner, so the bends of a corner nest and keep their
-     * order; or the bends of a turn at mid-block, as a transition pipe draws them. A lane is welded where a line next door
-     * continues it and capped where nothing does: a flange would be wider than its position. A tee's lane is drawn on its leg.
+     * Whether {@code lane} carries a spool's flange pair in this cell, {@code along} blocks along its run in the world:
+     * a lane joined straight through a straight cell, every {@link LineGeometry#SPOOL} blocks as a pipe is, staggered
+     * three blocks a position (owner 2026-10-26: flanges "staggered, off steel"), so that lanes side by side never
+     * flange in one block; where the pair finds no room clear of the cell's steel ({@link #spoolAt}), the line runs on
+     * welded to the next.
      */
-    static void lane(Mesh m, Rack rack, Lane lane) {
-        if (rack.tee()) {
-            var leg = leg(rack, lane);
-            lane(m, leg.rack, leg.lane);
-            return;
-        }
+    public static boolean spool(Rack rack, Lane lane, int along) {
+        int arms = runs(rack);
+        return !rack.junction() && tier(lane.option) && level(lane.option) == TIER && lane.arms == arms && lane.joined == arms
+                && Math.floorMod(along - 3 * position(lane.option), LineGeometry.SPOOL) == 0 && spoolAt(rack, lane) >= 0;
+    }
+
+    /**
+     * One lane: a straight pipe; a corner's bend about the inner corner, so the bends of a corner nest and keep their
+     * order; or the bends of a turn at mid-block, as a transition pipe draws them. A tee's lane is drawn on its leg. A
+     * lane is welded where a line next door continues it; where nothing does it ends in a blind flange, as a pipe does
+     * (owner 2026-10-26: "Pipe on rack should have their flange rendered normally"), set in off the steel the cell draws
+     * at that face ({@link #setback}); a corner's bend is capped there instead. A spool's flange pair stands where
+     * {@link #spoolAt} finds it clear of the steel.
+     */
+    static void lane(Mesh m, Rack rack, Lane lane, boolean spool) {
+        var leg = leg(rack, lane);
+        var on = leg.rack;
+        var drawn = leg.lane;
         double od = lane.diameter(), r = od / 2;
         int sides = PipeSizes.sides(od);
-        int a = first(rack, lane), b = second(rack, lane);
-        var path = path(rack, lane);
-        LineGeometry.End ea = bare(lane, a, od), eb = bare(lane, b, od);
+        int a = first(on, drawn), b = second(on, drawn);
+        var path = new ArrayList<>(path(on, drawn));
+        boolean openA = (drawn.joined >> a & 1) == 0, openB = (drawn.joined >> b & 1) == 0;
+        double sa = openA ? setback(rack, od, a, path.getFirst()) : 0, sb = openB ? setback(rack, od, b, path.getLast()) : 0;
+        var ea = end(openA, sa, od);
+        var eb = end(openB, sb, od);
+        sa = Math.max(0, sa);
+        sb = Math.max(0, sb);
+        double[] da = LineGeometry.step(a), db = LineGeometry.step(b);
         if (path.size() == 2) {
-            var middle = lerp(path.get(0), path.get(1), .5);
-            LineGeometry.arm(m, middle, a, 0, od, ea, LineGeometry.ref(a), sides, false);
-            LineGeometry.arm(m, middle, b, 0, od, eb, LineGeometry.ref(b), sides, false);
+            // Each arm from where the pipe starts, measured from its face: the middle, or either side of the spool pair.
+            double startA = .5, startB = .5;
+            double at = spool ? spoolAt(rack, lane) : -1;
+            if (at >= 0) {
+                double fromA = a == (rack.rising() ? rack.back() : rack.front()) ? at : 1 - at;
+                double reach = LineGeometry.spoolPair(m, new Frame(lerp(path.get(0), path.get(1), fromA), db, LineGeometry.ref(b)), od, sides);
+                startA = fromA - reach;
+                startB = 1 - fromA - reach;
+            }
+            LineGeometry.arm(m, plus(path.get(0), scale(da, -.5 - sa)), a, .5 + sa - startA, od, ea, LineGeometry.ref(a), sides, false);
+            LineGeometry.arm(m, plus(path.get(1), scale(db, -.5 - sb)), b, .5 + sb - startB, od, eb, LineGeometry.ref(b), sides, false);
             return;
         }
-        if (tier(lane.option) && rack.cornered()) {
-            // Radius: the lane's distance from the inner corner, the same on both legs.
+        if (tier(drawn.option) && on.cornered()) {
+            // Radius: the lane's distance from the inner corner, the same on both legs. Its bend meets both faces square,
+            // so an open end cannot stand in off the junction's face beams: it is capped there. A flange set in would
+            // tilt into the beam, and a tighter bend would close on the next lane out (6": 4.7/32 m apart, 6/32 m needed).
             var corner = path.get(1);
-            double[] da = LineGeometry.step(a), db = LineGeometry.step(b);
             double bend = Math.abs(dot(sub(path.get(0), corner), da));
-            var origin = new double[]{corner[0] + bend * (da[0] + db[0]), corner[1] + bend * (da[1] + db[1]), corner[2] + bend * (da[2] + db[2])};
+            var origin = plus(corner, scale(plus(da, db), bend));
             var f = new Frame(origin, cross(db, da), neg(db));
             m.torus(f, bend, r, 0, Math.PI / 2, Math.max(3, (int) Math.ceil(Math.PI / 2 * bend / .08)), sides, Material.PIPE);
-            if (!ea.joined()) m.annulus(new Frame(corner, da, neg(db)), 0, r, bend, sides, 1, Material.PIPE);
-            if (!eb.joined()) m.annulus(new Frame(corner, db, neg(da)), 0, r, bend, sides, 1, Material.PIPE);
+            if (openA) m.annulus(new Frame(corner, da, neg(db)), 0, r, bend, sides, 1, Material.PIPE);
+            if (openB) m.annulus(new Frame(corner, db, neg(da)), 0, r, bend, sides, 1, Material.PIPE);
             return;
         }
+        if (sa > 0) path.set(0, plus(path.getFirst(), scale(da, -sa)));
+        if (sb > 0) path.set(path.size() - 1, plus(path.getLast(), scale(db, -sb)));
         LineGeometry.line(m, LineGeometry.fitted(path, ea, eb, od, BEND), a, b, od, sides);
     }
 
-    /** A lane's plain end at face {@code face}: no fitting, welded where joined, else capped. */
-    private static LineGeometry.End bare(Lane lane, int face, double od) {
-        return new LineGeometry.End(od, false, 0, 0, (lane.joined >> face & 1) != 0);
+    /** A plate box at least this deep along a line runs beside it (a side channel), rather than across it. */
+    private static final double ACROSS = 8 * S;
+    /** Points a brace is checked at, along its length. */
+    private static final int BAR_SAMPLES = 64;
+
+    /** How far a flange's plate and the nuts behind it reach along its line from the plate's face, for a line of outside {@code od}. */
+    private static double flangeReach(double od) {
+        return PipeSizes.flangeThickness(od) + Math.max(1.2 * PipeSizes.boltDiameter(od), Mesh.MIN_NUT);
+    }
+
+    /**
+     * How far in from face {@code face} an open end's blind flange stands, a line of outside {@code od} meeting the face
+     * at {@code point}: its plate and the nuts behind it clear by {@link #CLEARANCE} of the steel the cell draws (a
+     * bent's columns and beam, a light frame, a junction's beams) wherever its flange would meet it, stepping in past
+     * each member it would reach (a column's outer flange, then its inner one); 0 where none is in the way. -1 where it
+     * would stand past the middle of the cell, off its own half of the lane (a line of 21" or more in a stacked rack,
+     * whose flange meets the side brace where it runs high): that end is capped at the face.
+     */
+    static double setback(Rack rack, double od, int face, double[] point) {
+        double reach = flangeReach(od), x = clearOf(rack, face, point, PipeSizes.flange(od) / 2, 0, reach, 0);
+        return x + reach <= .5 + EPS ? x : -1;
+    }
+
+    /** A lane's end: welded where a line next door goes on; else a blind flange where one stands clear ({@link #setback}), or a cap. */
+    private static LineGeometry.End end(boolean open, double setback, double od) {
+        return !open ? new LineGeometry.End(od, false, 0, 0, true) : setback >= 0 ? LineGeometry.End.flanged(od, false) : new LineGeometry.End(od, false, 0, 0, false);
+    }
+
+    /**
+     * Where a spool's flange pair stands on a straight lane that carries one ({@link #spool}), as its distance in from
+     * the face the cell's side braces leave low: the nearest place to that face where both plates and their nuts clear
+     * the steel, as an open end's blind flange does; -1 where none does in the cell (a 26" or 28" line in a stacked
+     * rack, whose flanges reach the side braces everywhere past a bent). Low there, the braces pass under the flanges.
+     */
+    static double spoolAt(Rack rack, Lane lane) {
+        double od = lane.diameter(), reach = flangeReach(od);
+        int low = rack.rising() ? rack.back() : rack.front();
+        double[] point = low == first(rack, lane) ? path(rack, lane).getFirst() : path(rack, lane).getLast();
+        double x = clearOf(rack, low, point, PipeSizes.flange(od) / 2, reach, reach, reach);
+        return x + reach <= 1 + EPS ? x : -1;
+    }
+
+    /**
+     * The least depth {@code x} in from face {@code face}, from {@code start} on, at which a disc of {@code radius} round
+     * the line through {@code point} normal to the face, filling depths {@code [x - back, x + front]}, clears by
+     * {@link #CLEARANCE} every member of the cell's steel that comes within {@code radius} of the line. Each member in
+     * the way pushes the disc on past it.
+     */
+    private static double clearOf(Rack rack, int face, double[] point, double radius, double back, double front, double start) {
+        int k = LineGeometry.axis(face);
+        boolean high = (face & 1) != 0;
+        var spans = new ArrayList<double[]>();
+        for (var member : steelwork(rack, List.of()).drawn) {
+            double lo = Double.MAX_VALUE, hi = -Double.MAX_VALUE;
+            if (member.bar()) {
+                // A brace only over the stretch of it that comes that near; a square bar reaches its half diagonal.
+                double grow = member.width / Math.sqrt(2), pad = Math.abs(member.b[k] - member.a[k]) / BAR_SAMPLES / 2;
+                for (int n = 0; n <= BAR_SAMPLES; n++) {
+                    double[] q = lerp(member.a, member.b, n / (double) BAR_SAMPLES);
+                    if (inPlane(q, q, k, point) >= radius + grow) continue;
+                    lo = Math.min(lo, q[k] - grow - pad);
+                    hi = Math.max(hi, q[k] + grow + pad);
+                }
+            } else if (inPlane(member.a, member.b, k, point) < radius && Math.abs(member.b[k] - member.a[k]) <= ACROSS) {
+                lo = Math.min(member.a[k], member.b[k]);
+                hi = Math.max(member.a[k], member.b[k]);
+            }
+            if (lo <= hi) spans.add(high ? new double[]{1 - hi, 1 - lo} : new double[]{lo, hi});
+        }
+        double x = start;
+        for (boolean moved = true; moved; ) {
+            moved = false;
+            for (var span : spans)
+                if (span[0] < x + front + CLEARANCE - EPS && span[1] + CLEARANCE > x - back + EPS) {
+                    x = span[1] + CLEARANCE + back;
+                    moved = true;
+                }
+        }
+        return x;
+    }
+
+    /** The distance from {@code point} to the box spanned by {@code a} and {@code b}, in the plane square to axis {@code k}. */
+    private static double inPlane(double[] a, double[] b, int k, double[] point) {
+        double gap = 0;
+        for (int i = 0; i < 3; i++) {
+            if (i == k) continue;
+            double d = Math.max(0, Math.max(Math.min(a[i], b[i]) - point[i], point[i] - Math.max(a[i], b[i])));
+            gap += d * d;
+        }
+        return Math.sqrt(gap);
     }
 
     /**
@@ -910,14 +1011,15 @@ public final class RackGeometry {
                     solid(u0, u1, beam - 2.5, beam, w0, w0 + 2);
                 }
             }
-            // Channels along the outer sides at the beam, the web outside and the flanges in.
+            // Channels along the outer sides at the beam, the web outside and the flanges in. The flanges stop 2.75/32
+            // in, so a 6" line's flange at the outer slot clears them (0.30 m across, its centre 7/32 in).
             for (int side = 0; side < 2; side++) {
                 if (!(side == 0 ? left : right)) continue;
-                double web = side == 0 ? .25 : 31, flange = side == 0 ? 1 : 28.5;
+                double web = side == 0 ? .25 : 31, flange = side == 0 ? 1 : 29.25;
                 box(web, web + .75, beam - 3, beam, 0, 32);
-                box(flange, flange + 2.5, beam - .7, beam, 0, 32);
-                box(flange, flange + 2.5, beam - 3, beam - 2.3, 0, 32);
-                solid(side == 0 ? .25 : 28.5, side == 0 ? 3.5 : 31.75, beam - 3, beam, 0, 32);
+                box(flange, flange + 1.75, beam - .7, beam, 0, 32);
+                box(flange, flange + 1.75, beam - 3, beam - 2.3, 0, 32);
+                solid(side == 0 ? .25 : 29.25, side == 0 ? 2.75 : 31.75, beam - 3, beam, 0, 32);
             }
             double rise = rack.stacked() ? 32 : beam - 3;
             boolean rising = rack.rising();
@@ -944,12 +1046,12 @@ public final class RackGeometry {
                     }
                 }
             for (double w0 : new double[]{0, 30}) girder(0, 32, w0);
-            // On the two sides, I beams between the face beams.
-            for (double u : new double[]{.25, 28.5}) {
-                box(u, u + 3.25, beam - .8, beam, 2, 30);
-                box(u + 1.25, u + 2, bottom + .8, beam - .8, 2, 30);
-                box(u, u + 3.25, bottom, bottom + .8, 2, 30);
-                solid(u, u + 3.25, bottom, beam, 2, 30);
+            // On the two sides, I beams between the face beams, 2.5/32 wide so an outer lane's flange clears them.
+            for (double u : new double[]{.25, 29.25}) {
+                box(u, u + 2.5, beam - .8, beam, 2, 30);
+                box(u + .875, u + 1.625, bottom + .8, beam - .8, 2, 30);
+                box(u, u + 2.5, bottom, bottom + .8, 2, 30);
+                solid(u, u + 2.5, bottom, beam, 2, 30);
             }
         }
 

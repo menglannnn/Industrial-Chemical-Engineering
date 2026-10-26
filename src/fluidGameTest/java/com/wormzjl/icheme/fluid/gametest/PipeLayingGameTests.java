@@ -133,8 +133,8 @@ public final class PipeLayingGameTests {
         for (var at : placed) level.setBlock(at, net.minecraft.world.level.block.Blocks.AIR.defaultBlockState(), 3);
         level.setBlock(west, ModBlocks.FLUID_RESERVOIR.get().defaultBlockState(), 3);
         level.setBlock(south, ModBlocks.FLUID_RESERVOIR.get().defaultBlockState(), 3);
-        // Placed as a player places them (RACK_JUNCTION_PLAN J2): one looking east; the next at its end looking south, a
-        // corner from the run towards the look; one more south of it, on along the turned run.
+        // Placed as a player places them (RACK_JUNCTION_PLAN J2), each facing the look: one looking east; the next at its
+        // end looking south, a corner from the run towards the look; one more south of it, on along the turned run.
         var racks = ModBlocks.PIPE_RACK.get();
         level.setBlock(straight, racks.placed(level, straight, Direction.EAST, false), 3);
         level.setBlock(corner, racks.placed(level, corner, Direction.SOUTH, false), 3);
@@ -151,7 +151,8 @@ public final class PipeLayingGameTests {
         player.getInventory().add(new ItemStack(ModItems.FLUID_PIPE.get(), 6));
         try {
             helper.assertTrue(level.getBlockState(straight).getValue(PipeRackBlock.SHAPE) == PipeRackBlock.Shape.STRAIGHT
-                    && level.getBlockState(corner).getValue(PipeRackBlock.SHAPE) == PipeRackBlock.Shape.BACK_RIGHT
+                    && level.getBlockState(corner).getValue(PipeRackBlock.SHAPE) == PipeRackBlock.Shape.FRONT_RIGHT
+                    && level.getBlockState(corner).getValue(PipeRackBlock.FACING) == Direction.SOUTH
                     && level.getBlockState(turned).getValue(PipeRackBlock.SHAPE) == PipeRackBlock.Shape.STRAIGHT, "The racks did not take their shapes: " + level.getBlockState(corner));
             // The route the client searches: into the rack run, round its corner, out to the far tank.
             var start = new PipeAnchor.Click(west, Direction.EAST);
@@ -162,10 +163,10 @@ public final class PipeLayingGameTests {
             var route = PipeRoute.search(from.end(), from.heading(to.end().cell()), to.end(), outside, PipeAnchor.space(level), PipeRoute.Limits.DEFAULT);
             var path = List.of(first, straight, corner, turned, last);
             helper.assertTrue(route.found() && route.cells().equals(path.stream().map(PipeAnchor::cell).toList()), "The route does not follow the racks: " + route);
-            // One position through the run and round the corner, which keeps the order of its lanes.
-            int option = route.options().get(1);
-            helper.assertTrue(RackGeometry.tier(option) && RackGeometry.level(option) == RackGeometry.TIER && route.options().equals(List.of(-1, option, option, option, -1)),
-                    "Not one lane through the racks: " + route.options());
+            // One tier lane through the run and round the corner, each rack numbering it from its own facing's left.
+            var options = route.options();
+            helper.assertTrue(options.get(0) == -1 && options.get(4) == -1 && options.subList(1, 4).stream().allMatch(o -> o >= 0 && RackGeometry.tier(o) && RackGeometry.level(o) == RackGeometry.TIER),
+                    "Not one lane through the racks: " + options);
             helper.assertTrue(PipeLaying.lay(player, InteractionHand.MAIN_HAND, start, end, path, route.options()) == null, "The line was refused");
             for (var cell : List.of(first, last))
                 helper.assertTrue(level.getBlockEntity(cell) instanceof FluidDeviceBlockEntity pipe && pipe.paint() == SKY_BLUE && pipe.secondary() == FLAME_RED, "Laid pipe " + cell.toShortString() + " not painted");
@@ -176,6 +177,7 @@ public final class PipeLayingGameTests {
                     1 << Direction.NORTH.ordinal() | 1 << Direction.SOUTH.ordinal()};
             for (int i = 0; i < 3; i++) {
                 var rack = (PipeRackBlockEntity) level.getBlockEntity(path.get(i + 1));
+                int option = options.get(i + 1);
                 helper.assertTrue(rack.lanes().size() == 1 && rack.lanes().getFirst().option() == option && rack.lanes().getFirst().joints() == expected[i]
                         && rack.drawnLanes().getFirst().joined() == expected[i], "Rack " + path.get(i + 1).toShortString() + " lanes " + rack.lanes() + " drawn " + rack.drawnLanes());
                 var record = world.registrations().get(rack.lanes().getFirst().identity());
@@ -197,8 +199,8 @@ public final class PipeLayingGameTests {
                     "A rack with a lane was broken");
             var cornerRack = (PipeRackBlockEntity) level.getBlockEntity(corner);
             helper.assertTrue(PipeLaying.dismantle(player, InteractionHand.MAIN_HAND, onLane(corner, cornerRack, 0)) == null, "The lane dismantle was refused");
-            helper.assertTrue(cornerRack.lanes().isEmpty() && world.at(position(level, corner).withLane(option + 1)).isEmpty(), "The corner lane remains");
-            helper.assertTrue(level.getBlockState(corner).getValue(PipeRackBlock.SHAPE) == PipeRackBlock.Shape.BACK_RIGHT, "The empty corner lost its shape");
+            helper.assertTrue(cornerRack.lanes().isEmpty() && world.at(position(level, corner).withLane(options.get(2) + 1)).isEmpty(), "The corner lane remains");
+            helper.assertTrue(level.getBlockState(corner).getValue(PipeRackBlock.SHAPE) == PipeRackBlock.Shape.FRONT_RIGHT, "The empty corner lost its shape");
             helper.assertTrue(player.getInventory().countItem(ModItems.FLUID_PIPE.get()) == 2, "The lane's pipe was not refunded");
             var straightRack = (PipeRackBlockEntity) level.getBlockEntity(straight);
             helper.assertTrue(straightRack.lanes().getFirst().joints() == expected[0] && straightRack.drawnLanes().getFirst().joined() == 1 << Direction.WEST.ordinal(),
@@ -207,7 +209,7 @@ public final class PipeLayingGameTests {
             helper.assertTrue(!joined(world, westTank, southTank), "The tanks are still joined across the gap");
 
             // A one-cell lane from one open end to the other: both lanes keep their joints, the gap lane takes the corner.
-            var refill = PipeLaying.lay(player, InteractionHand.MAIN_HAND, onLane(straight, straightRack, 0), onLane(turned, (PipeRackBlockEntity) level.getBlockEntity(turned), 0), List.of(corner), List.of(option));
+            var refill = PipeLaying.lay(player, InteractionHand.MAIN_HAND, onLane(straight, straightRack, 0), onLane(turned, (PipeRackBlockEntity) level.getBlockEntity(turned), 0), List.of(corner), List.of(options.get(2)));
             helper.assertTrue(refill == null, "The gap was not refilled: " + refill);
             helper.assertTrue(cornerRack.lanes().getFirst().paint() == SKY_BLUE, "The refilled lane is not painted");
             helper.assertTrue(cornerRack.lanes().size() == 1 && cornerRack.lanes().getFirst().joints() == expected[1] && cornerRack.drawnLanes().getFirst().joined() == expected[1],

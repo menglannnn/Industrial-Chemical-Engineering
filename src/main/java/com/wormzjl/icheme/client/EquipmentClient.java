@@ -48,8 +48,8 @@ public final class EquipmentClient {
         event.register((state, level, position, tint) -> Paint.tint((level != null && position != null
                 && level.getBlockEntity(position) instanceof EquipmentShellBlockEntity shell ? shell.paint() : Paint.DEFAULT).colour(tint)), ModBlocks.EQUIPMENT_SHELL.get());
         // A painted laid line (batch 2026-10-26-pipe-laying-system): a pipe's tinted quads take the paint of their channel
-        // (its pipe the primary, its flanges the secondary), a rack's those of the lane whose option is the tint index.
-        // Only painted parts bake tinted quads.
+        // (its pipe the primary, its flanges the secondary), a rack's those of the lane whose option is half the tint
+        // index, the low bit the channel. Only painted parts bake tinted quads.
         event.register((state, level, position, tint) -> {
             if (level == null || position == null || !(level.getBlockEntity(position) instanceof FluidDeviceBlockEntity pipe)) return -1;
             int paint = tint == Paint.STRUCTURE ? pipe.secondary() : pipe.paint();
@@ -57,7 +57,11 @@ public final class EquipmentClient {
         }, ModBlocks.FLUID_PIPE.get());
         event.register((state, level, position, tint) -> {
             if (level != null && position != null && level.getBlockEntity(position) instanceof PipeRackBlockEntity rack)
-                for (var lane : rack.lanes()) if (lane.option() == tint && lane.paint() != Paint.BARE) return Paint.tint(lane.paint());
+                for (var lane : rack.lanes()) {
+                    if (lane.option() != tint >> 1) continue;
+                    int paint = (tint & 1) == Paint.STRUCTURE ? lane.secondary() : lane.paint();
+                    return paint != Paint.BARE ? Paint.tint(paint) : -1;
+                }
             return -1;
         }, ModBlocks.PIPE_RACK.get());
     }

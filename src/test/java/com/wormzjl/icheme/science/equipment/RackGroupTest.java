@@ -67,17 +67,17 @@ class RackGroupTest {
     }
 
     @Test
-    void noFeedBesideARunGoesAlongThatRun() {
+    void noFeedBesideARunFacesTheLook() {
         var world = new HashMap<Cell, RackGeometry.Rack>();
         run(world, new Cell(1, 0, 0), NORTH, 1);
-        assertEquals(new RackGeometry.Rack(NORTH, RackGeometry.STRAIGHT), place(world, O, EAST), "a wider rack, whatever the look");
+        assertEquals(new RackGeometry.Rack(EAST, RackGeometry.STRAIGHT), place(world, O, EAST), "the look, whatever stands beside");
     }
 
     @Test
     void oneFeedInLineWithTheLookRunsOn() {
         var world = new HashMap<Cell, RackGeometry.Rack>();
         run(world, new Cell(0, 0, 1), SOUTH, 1);
-        assertEquals(new RackGeometry.Rack(SOUTH, RackGeometry.STRAIGHT), place(world, O, NORTH), "on along the feed's run, in its facing");
+        assertEquals(new RackGeometry.Rack(NORTH, RackGeometry.STRAIGHT), place(world, O, NORTH), "on along the feed's run, facing the look");
     }
 
     @Test
@@ -86,6 +86,7 @@ class RackGroupTest {
         run(world, new Cell(0, 0, 1), NORTH, 1);
         var corner = place(world, O, EAST);
         assertTrue(corner.cornered(), "a corner");
+        assertEquals(EAST, corner.facing(), "facing the look");
         assertEquals(faces(SOUTH, EAST), RackGeometry.runs(corner), "from the run (south) towards the look (east)");
         // Out of a corner's side the next block runs on away from it.
         assertEquals(new RackGeometry.Rack(EAST, RackGeometry.STRAIGHT), place(world, new Cell(1, 0, 0), EAST));
@@ -96,7 +97,7 @@ class RackGroupTest {
         var world = new HashMap<Cell, RackGeometry.Rack>();
         run(world, new Cell(-1, 0, 0), WEST, 1);
         run(world, new Cell(1, 0, 0), WEST, 1);
-        assertEquals(new RackGeometry.Rack(WEST, RackGeometry.STRAIGHT), place(world, O, EAST));
+        assertEquals(new RackGeometry.Rack(EAST, RackGeometry.STRAIGHT), place(world, O, EAST), "facing the look");
     }
 
     @Test
@@ -116,7 +117,7 @@ class RackGroupTest {
             run(world, new Cell(0, 0, 1), NORTH, 1);
             run(world, new Cell(1, 0, 0), EAST, 1);
             var corner = place(world, O, look);
-            assertTrue(corner.cornered(), "look " + look);
+            assertTrue(corner.cornered() && corner.facing() == look, "look " + look + ": " + corner);
             assertEquals(faces(SOUTH, EAST), RackGeometry.runs(corner), "look " + look);
         }
     }
@@ -127,7 +128,7 @@ class RackGroupTest {
         run(world, new Cell(0, 0, -1), NORTH, 1);
         run(world, new Cell(0, 0, 1), SOUTH, 1);
         run(world, new Cell(-1, 0, 0), WEST, 1);
-        assertEquals(new RackGeometry.Rack(WEST, RackGeometry.TEE), place(world, O, NORTH), "the branch is the feed with none across from it");
+        assertEquals(new RackGeometry.Rack(WEST, RackGeometry.TEE), place(world, O, NORTH), "the branch is the feed with none across from it; the tee faces it");
     }
 
     @Test

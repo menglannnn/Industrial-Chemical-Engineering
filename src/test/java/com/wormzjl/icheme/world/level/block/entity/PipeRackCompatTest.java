@@ -22,10 +22,13 @@ import static org.junit.jupiter.api.Assertions.*;
 class PipeRackCompatTest {
     private static final int DOWN = 0, UP = 1, NORTH = 2, SOUTH = 3, WEST = 4, EAST = 5;
 
-    /** A straight lane on position 0, a 10" riser on positions 1 and 2 painted RAL 5015, and an open crossing above the tier. */
+    /**
+     * A straight lane on position 0, a 10" riser on positions 1 and 2 painted RAL 5015 with RAL 3000 flanges (rack-2), and
+     * an open crossing above the tier.
+     */
     static List<Lane> corpusLanes() {
         return List.of(new Lane(41, RackGeometry.option(0, RackGeometry.TIER), 1, 1 << WEST | 1 << EAST, 1 << WEST | 1 << EAST, .1),
-                new Lane(42, RackGeometry.option(1, RackGeometry.TIER), 2, 1 << WEST | 1 << UP, 1 << WEST, .25, 0x2271B3),
+                new Lane(42, RackGeometry.option(1, RackGeometry.TIER), 2, 1 << WEST | 1 << UP, 1 << WEST, .25, 0x2271B3, 0xA72920),
                 new Lane(43, RackGeometry.crossing(RackGeometry.ABOVE), 1, 1 << NORTH | 1 << SOUTH, 0, .05));
     }
 
@@ -35,6 +38,7 @@ class PipeRackCompatTest {
             out.append("lane ").append(lane.identity()).append(" option ").append(lane.option()).append('+').append(lane.width()).append(" arms ").append(lane.arms())
                     .append(" joints ").append(lane.joints()).append(" bore ").append(lane.bore());
             if (lane.paint() != Paint.BARE) out.append(" paint ").append(Paint.hex(lane.paint()));
+            if (lane.secondary() != lane.paint()) out.append(" secondary ").append(lane.secondary() == Paint.BARE ? "bare" : Paint.hex(lane.secondary()));
             out.append("; ");
         }
         return out.toString();
@@ -70,9 +74,23 @@ class PipeRackCompatTest {
         for (var damage : List.<java.util.function.Consumer<CompoundTag>>of(e -> e.remove("Paint"), e -> e.putString("Paint", "blue"), e -> e.putInt("Paint", 0x1000000), e -> e.putInt("Paint", -2))) {
             var saved = PipeRackBlockEntity.write(List.of(painted), new CompoundTag());
             damage.accept(saved.getList("Lanes", 10).getCompound(0));
-            assertEquals(List.of(painted.painted(Paint.BARE)), PipeRackBlockEntity.read(saved), "paint " + saved.getList("Lanes", 10).getCompound(0).get("Paint"));
+            assertEquals(List.of(painted.painted(Paint.BARE, painted.secondary())), PipeRackBlockEntity.read(saved), "paint " + saved.getList("Lanes", 10).getCompound(0).get("Paint"));
         }
         assertFalse(PipeRackBlockEntity.write(List.of(painted.painted(Paint.BARE)), new CompoundTag()).getList("Lanes", 10).getCompound(0).contains("Paint"), "a bare lane saves no paint");
+    }
+
+    @Test
+    void aSecondaryPaintAbsentOrDamagedReadsThePaint() {
+        var painted = corpusLanes().get(1);
+        assertEquals(0xA72920, PipeRackBlockEntity.read(PipeRackBlockEntity.write(List.of(painted), new CompoundTag())).getFirst().secondary());
+        for (var damage : List.<java.util.function.Consumer<CompoundTag>>of(e -> e.remove("Secondary"), e -> e.putString("Secondary", "red"), e -> e.putInt("Secondary", 0x1000000), e -> e.putInt("Secondary", -2))) {
+            var saved = PipeRackBlockEntity.write(List.of(painted), new CompoundTag());
+            damage.accept(saved.getList("Lanes", 10).getCompound(0));
+            assertEquals(List.of(painted.painted(painted.paint())), PipeRackBlockEntity.read(saved), "secondary " + saved.getList("Lanes", 10).getCompound(0).get("Secondary"));
+        }
+        var bareFlanges = painted.painted(painted.paint(), Paint.BARE);
+        assertEquals(List.of(bareFlanges), PipeRackBlockEntity.read(PipeRackBlockEntity.write(List.of(bareFlanges), new CompoundTag())), "bare flanges on a painted pipe");
+        assertFalse(PipeRackBlockEntity.write(List.of(painted.painted(painted.paint())), new CompoundTag()).getList("Lanes", 10).getCompound(0).contains("Secondary"), "flanges as the pipe save no secondary");
     }
 
     @Test

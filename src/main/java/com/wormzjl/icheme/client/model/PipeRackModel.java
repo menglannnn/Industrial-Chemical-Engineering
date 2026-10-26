@@ -44,17 +44,20 @@ public final class PipeRackModel implements IDynamicBakedModel {
     private static final int CACHE = 4096;
     private static final ChunkRenderTypeSet SOLID = ChunkRenderTypeSet.of(RenderType.solid());
 
-    /** The cache key; {@code painted}: a bit per lane with a paint, whose colour the block tint gives (tint index: the lane's option). */
-    private record Look(RackGeometry.Rack rack, List<RackGeometry.Lane> lanes, int painted) {
+    /**
+     * The cache key; {@code painted}: two bits per lane, its painted channels ({@link Paint#BODY} its pipe,
+     * {@link Paint#STRUCTURE} its flanges), whose colours the block tint gives (tint index: twice the lane's option, plus
+     * the channel); {@code spools}: a bit per lane with a flange pair between spools.
+     */
+    private record Look(RackGeometry.Rack rack, List<RackGeometry.Lane> lanes, long painted, int spools) {
     }
 
-    private final TextureAtlasSprite[] sprites, paintedSprites;
+    private final TextureAtlasSprite[][] paintedSprites;
     private final TextureAtlasSprite particle;
     private final ItemTransforms transforms;
     private final Map<Look, List<BakedQuad>> quads = new ConcurrentHashMap<>();
 
-    private PipeRackModel(TextureAtlasSprite[] sprites, TextureAtlasSprite[] paintedSprites, TextureAtlasSprite particle, ItemTransforms transforms) {
-        this.sprites = sprites;
+    private PipeRackModel(TextureAtlasSprite[][] paintedSprites, TextureAtlasSprite particle, ItemTransforms transforms) {
         this.paintedSprites = paintedSprites;
         this.particle = particle;
         this.transforms = transforms;
@@ -65,9 +68,11 @@ public final class PipeRackModel implements IDynamicBakedModel {
         if (side != null) return List.of();
         var bare = state != null && state.getBlock() instanceof PipeRackBlock ? PipeRackBlock.rack(state) : new RackGeometry.Rack(2, RackGeometry.STRAIGHT);
         var drawn = data.get(PipeRackBlockEntity.DRAWN);
-        int painted = 0;
-        if (drawn != null) for (int i = 0; i < drawn.paints().size(); i++) if (drawn.paints().get(i) != Paint.BARE) painted |= 1 << i;
-        var key = drawn == null ? new Look(new RackGeometry.Rack(bare.facing(), bare.corner(), PipeRackBlockEntity.BARE, RackGeometry.BEAM_TOP), List.of(), 0) : new Look(drawn.rack(), drawn.lanes(), painted);
+        long painted = 0;
+        if (drawn != null) for (int i = 0; i < drawn.paints().size(); i++)
+            painted |= (long) ((drawn.paints().get(i) != Paint.BARE ? 1 << Paint.BODY : 0) | (drawn.secondaries().get(i) != Paint.BARE ? 1 << Paint.STRUCTURE : 0)) << 2 * i;
+        var key = drawn == null ? new Look(new RackGeometry.Rack(bare.facing(), bare.corner(), PipeRackBlockEntity.BARE, RackGeometry.BEAM_TOP), List.of(), 0, 0)
+                : new Look(drawn.rack(), drawn.lanes(), painted, drawn.spools());
         var cached = quads.get(key);
         if (cached == null) {
             if (quads.size() >= CACHE) quads.clear();
@@ -77,17 +82,16 @@ public final class PipeRackModel implements IDynamicBakedModel {
     }
 
     /**
-     * The frame (its braces left out where a lane passes), then each lane: a painted one with the neutral pipe sprite,
-     * tinted by its option. A lane draws no flange, so it takes only a line's primary paint.
+     * The frame (its braces left out where a lane passes), then each lane with its flanges, as a laid pipe draws them:
+     * its painted channels with the neutral sprites, tinted by twice its option plus the channel.
      */
     private List<BakedQuad> bake(Look look) {
-        var out = new ArrayList<>(EquipmentShellModel.bake(RackGeometry.polygons(look.rack, look.lanes), sprites, false));
+        var out = new ArrayList<>(EquipmentShellModel.bake(RackGeometry.polygons(look.rack, look.lanes), paintedSprites[0], false));
         for (int i = 0; i < look.lanes.size(); i++) {
             var lane = look.lanes.get(i);
-            var polygons = RackGeometry.lane(look.rack, lane);
-            int tint = lane.option();
-            out.addAll((look.painted >> i & 1) != 0 ? EquipmentShellModel.bake(polygons, paintedSprites, EquipmentShellModel.lineTints(1 << Paint.BODY, tint - Paint.BODY))
-                    : EquipmentShellModel.bake(polygons, sprites, false));
+            var polygons = RackGeometry.lane(look.rack, lane, (look.spools >> i & 1) != 0);
+            int painted = (int) (look.painted >> 2 * i & 3);
+            out.addAll(EquipmentShellModel.bake(polygons, paintedSprites[painted], EquipmentShellModel.lineTints(painted, 2 * lane.option())));
         }
         return List.copyOf(out);
     }
@@ -136,7 +140,7 @@ public final class PipeRackModel implements IDynamicBakedModel {
         @Override
         public BakedModel bake(IGeometryBakingContext context, ModelBaker baker, Function<Material, TextureAtlasSprite> sprites, ModelState state, ItemOverrides overrides) {
             var bare = EquipmentShellModel.sprites(context, sprites);
-            return new PipeRackModel(bare, EquipmentShellModel.paintedLine(context, sprites, bare, 1 << Paint.BODY), sprites.apply(context.getMaterial("particle")), context.getTransforms());
+            return new PipeRackModel(EquipmentShellModel.paintedLines(context, sprites, bare), sprites.apply(context.getMaterial("particle")), context.getTransforms());
         }
     }
 }
