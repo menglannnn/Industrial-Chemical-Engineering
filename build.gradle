@@ -127,6 +127,9 @@ neoForge {
             def mcpHeight = providers.gradleProperty('mcpClientHeight').getOrElse('480')
             if (!(mcpWidth ==~ /[0-9]{3,4}/ && mcpHeight ==~ /[0-9]{3,4}/)) throw new GradleException('mcpClientWidth and mcpClientHeight must be 3- or 4-digit pixel counts')
             programArguments.addAll('--username', 'FluidMcpTester', '--width', mcpWidth, '--height', mcpHeight)
+            // The bridge never moves, grabs or confines the OS cursor, nor sends java.awt.Robot input (agents drive the
+            // client while the owner works in other windows).
+            systemProperty 'mcp.background_input', 'true'
         }
 
         configureEach {
@@ -161,9 +164,10 @@ configurations {
 }
 
 // Optional MCP test-client tooling never enters the production jar or ordinary test runtime.
-// The bridge is upstream 0.4.7 plus the local background-input fix (it never moves the OS cursor
-// while the game window is in the background); jar and build notes: tools/minecraft-mcp-bridge/ (main checkout).
-def mcpControlModJar = 'minecraft-mcp-1.21.1-neoforge-v0.4.7-osguard.jar'
+// The bridge is the official langyo/minecraft-mod-mcp release, run in its background input mode (mcpClient's
+// mcp.background_input: the OS cursor is left alone while the game window is in the background); jar and notes:
+// tools/minecraft-mcp-bridge/ (main checkout).
+def mcpControlModJar = 'minecraft-mcp-1.21.1-neoforge-v0.4.18.jar'
 def prepareMcpControlMod = tasks.register('prepareMcpControlMod', Copy) {
     def mcpMods = layout.projectDirectory.dir('run/mcp-client/mods').asFile
     from layout.projectDirectory.file("run/mcp-client-mods/${mcpControlModJar}")
@@ -172,7 +176,7 @@ def prepareMcpControlMod = tasks.register('prepareMcpControlMod', Copy) {
         def jar = inputs.files.singleFile
         if (!jar.isFile()) throw new GradleException("Copy ${mcpControlModJar} from tools/minecraft-mcp-bridge/ (main checkout) into run/mcp-client-mods/ first.")
         def digest = java.security.MessageDigest.getInstance('SHA-256').digest(jar.bytes).encodeHex().toString()
-        if (digest != 'd71b35aa220c2f62dae36e60dd76402edeee27fdf76bca06c64e9df2560ec4e7') {
+        if (digest != 'e9359fce30b13e6337b8a40410ad57bdd31e1b9241ce03502bf668b380bd25f0') {
             throw new GradleException('Minecraft MCP control mod checksum mismatch')
         }
         // One bridge jar in the client: drop earlier pinned versions, leave every other mod alone (plain files: the
