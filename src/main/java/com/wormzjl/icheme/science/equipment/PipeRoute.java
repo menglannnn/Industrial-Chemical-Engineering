@@ -372,10 +372,16 @@ public final class PipeRoute {
         return leaving(room, options, ends[0], ends[1], line);
     }
 
-    /** An option's rank at a portion's last cell: its distance from the side {@code towards} (-1: none, the left), then its level changes. */
+    /**
+     * An option's rank at a portion's last cell: its distance from the side {@code towards} (-1: none, the left), then its
+     * level changes. In a tee, the run's lanes keep to the positions furthest from the branch and the turning lanes to
+     * their own side, leaving room for the others.
+     */
     private static int rank(RackGeometry.Rack rack, int option, Line line, int towards) {
         if (!RackGeometry.tier(option)) return RackGeometry.level(option);
-        int p = RackGeometry.position(option), distance = towards == rack.right() ? RackGeometry.POSITIONS - line.width - p : p;
+        int p = RackGeometry.position(option);
+        if (rack.tee()) return RackGeometry.level(option) == RackGeometry.TURN_RIGHT ? RackGeometry.POSITIONS - line.width - p : p;
+        int distance = towards == rack.right() ? RackGeometry.POSITIONS - line.width - p : p;
         return 4 * distance + RackGeometry.level(option);
     }
 
@@ -386,7 +392,7 @@ public final class PipeRoute {
      */
     private static int towards(List<Cell> cells, int[][] ends, int first, int last, RackGeometry.Rack rack, End start, int heading, End end) {
         int left = rack.left(), right = rack.right();
-        if (!rack.cornered() && (ends[last][1] == left || ends[last][1] == right)) return ends[last][1];
+        if (!rack.junction() && (ends[last][1] == left || ends[last][1] == right)) return ends[last][1];
         for (int i = last + 1; i < cells.size(); i++) if (ends[i][1] == left || ends[i][1] == right) return ends[i][1];
         for (int i = first; i >= 0; i--) {
             // Coming in from that side: the face back towards where it came from.

@@ -133,9 +133,12 @@ public final class PipeLayingGameTests {
         for (var at : placed) level.setBlock(at, net.minecraft.world.level.block.Blocks.AIR.defaultBlockState(), 3);
         level.setBlock(west, ModBlocks.FLUID_RESERVOIR.get().defaultBlockState(), 3);
         level.setBlock(south, ModBlocks.FLUID_RESERVOIR.get().defaultBlockState(), 3);
-        // Two racks facing east, then one facing south beside the second: that one turns into a corner towards it.
-        for (var at : List.of(straight, corner)) level.setBlock(at, ModBlocks.PIPE_RACK.get().defaultBlockState().setValue(PipeRackBlock.FACING, Direction.EAST), 3);
-        level.setBlock(turned, ModBlocks.PIPE_RACK.get().defaultBlockState().setValue(PipeRackBlock.FACING, Direction.SOUTH), 3);
+        // Placed as a player places them (RACK_JUNCTION_PLAN J2): one looking east; the next at its end looking south, a
+        // corner from the run towards the look; one more south of it, on along the turned run.
+        var racks = ModBlocks.PIPE_RACK.get();
+        level.setBlock(straight, racks.placed(level, straight, Direction.EAST, false), 3);
+        level.setBlock(corner, racks.placed(level, corner, Direction.SOUTH, false), 3);
+        level.setBlock(turned, racks.placed(level, turned, Direction.SOUTH, false), 3);
         var player = FakePlayerFactory.get(level, new GameProfile(UUID.randomUUID(), "PipeRackTest"));
         player.setGameMode(GameType.SURVIVAL);
         player.setPos(west.getX() + 2.5, west.getY(), west.getZ() - 1.5);

@@ -36,21 +36,21 @@ import java.util.Locale;
 
 /**
  * A layered pipe rack cell (batch 2026-10-26-pipe-laying-system, RACK_LAYERS_PLAN option A): one tier of four positions
- * across its run, carrying up to four laid lanes ({@link PipeRackBlockEntity}). Its facing, taken from the player's
- * look as for stairs, orders the positions and sets the run; racks in line join into one run whatever their facings. A
- * rack becomes a corner where a rack with a perpendicular facing stands at the side of an end of its run, its lanes
- * turning between that end and that side; a rack with racks in line at both ends stays straight (no tee, RD8). A rack
- * that carries lanes keeps its shape, as its lanes were laid in it. A rack that carries lanes is not broken (owner
- * decision D9): its pipes are dismantled first, with the laying tool.
+ * across its run, carrying up to four laid lanes ({@link PipeRackBlockEntity}). Its facing orders the positions and sets
+ * the run; racks in line join into one run whatever their facings. Its shape, straight, a corner or a tee, is decided
+ * once when it is placed, from the racks whose runs point into it and the player's look ({@link RackGeometry#placed},
+ * RACK_JUNCTION_PLAN J1 and J2; sneaking places it straight along the look), and never changes after: neighbours placed
+ * or broken later redraw only its steel and joins. A rack that carries lanes is not broken (owner decision D9): its
+ * pipes are dismantled first, with the laying tool.
  */
 public final class PipeRackBlock extends BaseEntityBlock {
     public static final MapCodec<PipeRackBlock> CODEC = simpleCodec(PipeRackBlock::new);
     public static final DirectionProperty FACING = BlockStateProperties.HORIZONTAL_FACING;
     public static final EnumProperty<Shape> SHAPE = EnumProperty.create("shape", Shape.class);
 
-    /** A rack cell's shape, in {@link RackGeometry}'s corner order: straight, or a corner from an end to a side. */
+    /** A rack cell's shape, in {@link RackGeometry}'s shape order: straight, a corner from an end to a side, or a tee. Saved by name: new shapes go last. */
     public enum Shape implements StringRepresentable {
-        STRAIGHT, BACK_LEFT, BACK_RIGHT, FRONT_LEFT, FRONT_RIGHT;
+        STRAIGHT, BACK_LEFT, BACK_RIGHT, FRONT_LEFT, FRONT_RIGHT, TEE;
 
         @Override
         public String getSerializedName() {
@@ -78,16 +78,16 @@ public final class PipeRackBlock extends BaseEntityBlock {
         return new RackGeometry.Rack(state.getValue(FACING).ordinal(), state.getValue(SHAPE).ordinal());
     }
 
-    /** Facing the player's horizontal look, shaped by the racks next door. */
+    /** Shaped once by the racks next door and the player's horizontal look; sneaking, straight along the look. */
     @Override
     public @Nullable BlockState getStateForPlacement(BlockPlaceContext context) {
-        var facing = context.getHorizontalDirection();
-        return defaultBlockState().setValue(FACING, facing).setValue(SHAPE, shape(context.getLevel(), context.getClickedPos(), facing));
+        return placed(context.getLevel(), context.getClickedPos(), context.getHorizontalDirection(), context.isSecondaryUseActive());
     }
 
-    /** The shape a rack facing {@code facing} at {@code position} takes from its neighbours ({@link RackGeometry#corner}). */
-    static Shape shape(BlockGetter level, BlockPos position, Direction facing) {
-        return Shape.values()[RackGeometry.corner(neighbours(level, position), facing.ordinal())];
+    /** The state a rack placed at {@code position} with the player looking {@code look} takes ({@link RackGeometry#placed}). */
+    public BlockState placed(BlockGetter level, BlockPos position, Direction look, boolean sneaking) {
+        var rack = RackGeometry.placed(neighbours(level, position), look.ordinal(), sneaking);
+        return defaultBlockState().setValue(FACING, Direction.values()[rack.facing()]).setValue(SHAPE, Shape.values()[rack.corner()]);
     }
 
     /** The racks next to {@code position}, as {@link RackGeometry} sees them. */
@@ -110,20 +110,16 @@ public final class PipeRackBlock extends BaseEntityBlock {
 
     @Override
     protected VoxelShape getShape(BlockState state, BlockGetter level, BlockPos position, CollisionContext context) {
-        return level.getBlockEntity(position) instanceof PipeRackBlockEntity rack ? rack.shape() : PipeRackBlockEntity.frame(new RackGeometry.Rack(state.getValue(FACING).ordinal(), state.getValue(SHAPE).ordinal(), 0, false, 0, RackGeometry.BEAM_TOP));
+        return level.getBlockEntity(position) instanceof PipeRackBlockEntity rack ? rack.shape() : PipeRackBlockEntity.frame(rack(state));
     }
 
-    /**
-     * A neighbour changed: an empty rack takes the shape its neighbours give it, and the drawn steel and the faces its
-     * lanes meet redraw once the change is in the world.
-     */
+    /** A neighbour changed: the shape stays (J1); the drawn steel and the faces its lanes meet redraw once the change is in the world. */
     @Override
     protected BlockState updateShape(BlockState state, Direction direction, BlockState neighbour, LevelAccessor level, BlockPos position, BlockPos neighbourPosition) {
-        var shaped = carries(level, position) ? state : state.setValue(SHAPE, shape(level, position, state.getValue(FACING)));
         if (level instanceof ServerLevel server) server.getServer().execute(() -> {
             if (server.getBlockEntity(position) instanceof PipeRackBlockEntity rack && rack.refreshDrawn()) server.sendBlockUpdated(position, rack.getBlockState(), rack.getBlockState(), 2);
         });
-        return super.updateShape(shaped, direction, neighbour, level, position, neighbourPosition);
+        return super.updateShape(state, direction, neighbour, level, position, neighbourPosition);
     }
 
     private static boolean carries(BlockGetter level, BlockPos position) {

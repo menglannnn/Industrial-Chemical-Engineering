@@ -38,9 +38,9 @@ import java.util.concurrent.ConcurrentHashMap;
  * registered in the fluid ledger at this block's position, lane number option + 1, with its face points (I1, I2). The
  * block entity keeps a copy of each lane's facts, its identity, option, width, arms, joints and bore: drawing, the shape
  * and picking read it, and it registers a lane again when the ledger has none (a facts reset), as a laid pipe's block
- * entity keeps its joints. Which arms meet a line next door ({@code joined}) and the drawn steel ({@code frame}: bents,
- * stacked posts, sides joined by a rack beside it) are drawn state: computed on the server from loaded neighbours, sent
- * in the update tag, never saved.
+ * entity keeps its joints. Which arms meet a line next door ({@code joined}) and the drawn steel ({@code frame}, the
+ * bits of {@link RackGeometry#steel}) are drawn state: computed on the server from loaded neighbours, sent in the update
+ * tag, never saved.
  *
  * <p>Saved format {@value #FORMAT} (AGENTS.md, saves; redefined in place by RD9, as only this batch's branch wrote rack
  * lanes): a list {@code Lanes} of compounds, read by name and validated; a damaged lane, or one this cell's shape does
@@ -114,8 +114,10 @@ public final class PipeRackBlockEntity extends BlockEntity {
 
     private List<Lane> lanes = List.of();
     private int[] joined = new int[0];
-    /** The drawn steel: bents (bits 0 and 1), stacked (bit 2), sides joined (bits 3 and 4). */
-    private int frame = 3;
+    /** The steel of a rack alone on the ground: a whole bent at each end, on pedestals. The item and a cell whose neighbours are not read yet draw it. */
+    public static final int BARE = RackGeometry.BENT_BACK | RackGeometry.BENT_FRONT | RackGeometry.END_BACK | RackGeometry.END_FRONT | RackGeometry.GROUNDED;
+    /** The drawn steel bits ({@link RackGeometry#STEEL}). */
+    private int frame = BARE;
     private @Nullable VoxelShape shape;
 
     public PipeRackBlockEntity(BlockPos position, BlockState state) {
@@ -302,10 +304,8 @@ public final class PipeRackBlockEntity extends BlockEntity {
     /**
      * Server: the drawn state from the loaded neighbours. Which joints of each lane meet a line next door: a lane of the
      * next rack with the opposite joint at the same point, or a pipe connected towards this rack; a face whose neighbour
-     * is in an unloaded chunk keeps what it showed (reading it would load the chunk). And the steel: a straight cell
-     * stands a bent in its low face's plane every third block along its run (counted in world coordinates) and in the
-     * plane of each end without a rack beyond; its posts run on up under a rack; a side with a straight rack of its run's
-     * axis beside it joins it. True when anything changed.
+     * is in an unloaded chunk keeps what it showed (reading it would load the chunk). And the steel ({@link
+     * RackGeometry#steel}, along the run counted in world coordinates). True when anything changed.
      */
     public boolean refreshDrawn() {
         if (level == null || level.isClientSide()) return false;
@@ -422,7 +422,7 @@ public final class PipeRackBlockEntity extends BlockEntity {
         var read = read(tag);
         int[] readJoined = null;
         if (tag.contains("Joined", Tag.TAG_INT_ARRAY) && tag.getIntArray("Joined").length == read.size()) readJoined = tag.getIntArray("Joined");
-        if (tag.contains("Frame", Tag.TAG_INT)) frame = tag.getInt("Frame") & 31;
+        if (tag.contains("Frame", Tag.TAG_INT)) frame = tag.getInt("Frame") & RackGeometry.STEEL;
         setLanes(new ArrayList<>(read), readJoined);
     }
 

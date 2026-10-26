@@ -125,13 +125,13 @@ class LineGeometryTest {
 
     /**
      * Every point off its face's centre where a lane of size {@code code} meets rack face {@code face}, as packed offsets:
-     * over every facing and corner a rack cell takes, every option, and every pair of arms the cell takes alone.
+     * over every facing and shape a rack cell takes, every option, and every pair of arms the cell takes alone.
      */
     private static java.util.TreeSet<Integer> lanePoints(int face, int code) {
         var out = new java.util.TreeSet<Integer>();
         double outside = PipeSizes.outsideOf(code);
         for (int facing = 2; facing < 6; facing++)
-            for (int corner = RackGeometry.STRAIGHT; corner <= RackGeometry.FRONT_RIGHT; corner++) {
+            for (int corner = RackGeometry.STRAIGHT; corner <= RackGeometry.TEE; corner++) {
                 var rack = new RackGeometry.Rack(facing, corner);
                 for (int option = 0; option < RackGeometry.OPTIONS; option++)
                     for (int a = 0; a < 6; a++) {

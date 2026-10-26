@@ -19,20 +19,37 @@ import static com.wormzjl.icheme.science.equipment.Mesh.*;
  * at mid-block, between the bents, which stand in the block's face planes.</p>
  *
  * <p>A lane's option says where it lies: a tier lane by its first position p and the level l its side arm leaves at
- * (option p + 4 l), a crossing lane by its level (option 12 above the tier, 13 below). Lanes meet across a face where
- * their points on it coincide, so the numbering is only a label.</p>
+ * (option p + 4 l), a crossing lane by its level (option 12 above the tier, 13 below). In a tee the level is the lane's
+ * leg instead ({@link #RUN}, {@link #TURN_LEFT}, {@link #TURN_RIGHT}). Lanes meet across a face where their points on it
+ * coincide, so the numbering is only a label.</p>
+ *
+ * <p>A cell's shape is decided once, when it is placed, from the racks whose runs point into it and the player's look
+ * ({@link #placed}, RACK_JUNCTION_PLAN J1 and J2): straight, a corner, or a tee where a branch meets a run.</p>
  */
 public final class RackGeometry {
     public static final int POSITIONS = 4, MAX_WIDTH = 4;
     /** The pitch of the positions, the first position's centre, and the clearance kept between lines. */
     public static final double PITCH = 3 / 16.0, FIRST = 7 / 32.0, CLEARANCE = 1 / 64.0;
-    /** Heights in 1/32 m steps: the beam's top and bottom, the stringers' bottom, the crossing levels above and below. */
-    public static final int BEAM_TOP = 13, BEAM_BOTTOM = 11, STRINGER_BOTTOM = 12, UPPER = 26, LOWER = 6;
+    /** Heights in 1/32 m steps: the beam's top, the crossing levels above and below. */
+    public static final int BEAM_TOP = 13, UPPER = 26, LOWER = 6;
     /** How a side arm leaves: at its tier (flat), over the tier at the upper level, or under it at the lower. */
     public static final int TIER = 0, ABOVE = 1, BELOW = 2;
+    /** A tee's legs, as its options' levels: along the run through it, or from the branch turning left or right into the run. */
+    public static final int RUN = TIER, TURN_LEFT = ABOVE, TURN_RIGHT = BELOW;
     public static final int OPTIONS = 14;
-    /** Corners: none, or the end face (back, front) and the side (left, right) a corner's lanes turn between. */
-    public static final int STRAIGHT = 0, BACK_LEFT = 1, BACK_RIGHT = 2, FRONT_LEFT = 3, FRONT_RIGHT = 4;
+    /**
+     * Shapes: straight; a corner, by the end face (back, front) and the side (left, right) its lanes turn between; a tee,
+     * whose run passes from its left face to its right, and whose branch leaves through its front.
+     */
+    public static final int STRAIGHT = 0, BACK_LEFT = 1, BACK_RIGHT = 2, FRONT_LEFT = 3, FRONT_RIGHT = 4, TEE = 5;
+    /**
+     * The drawn steel bits ({@link #steel}): a bent in the back face's plane and in the front's; a rack stands on the cell
+     * (its columns run on up); a rack beside it joins it on the left and on the right; it stands on the ground, not on a
+     * rack (pedestals); the bent at the back and at the front is a run's end, or faces a junction (a whole bent, not half
+     * of one shared with the next cell); and its side braces rise from the back (they alternate block by block).
+     */
+    public static final int BENT_BACK = 1, BENT_FRONT = 2, STACKED = 4, LEFT_JOINED = 8, RIGHT_JOINED = 16, GROUNDED = 32, END_BACK = 64, END_FRONT = 128, RISING = 256,
+            STEEL = 511;
     /** The canonical faces a block face is to a rack cell. */
     static final int FRONT = 0, BACK = 1, LEFT = 2, RIGHT = 3, TOP = 4, BOTTOM = 5;
     private static final double S = LineGeometry.OFFSET, EPS = 1e-9;
@@ -40,20 +57,46 @@ public final class RackGeometry {
     static final double BEND = .5 - 2 * S;
 
     /**
-     * A rack cell's frame: its facing (a horizontal face in {@link LineGeometry#STEPS} order), its corner, and its drawn
-     * steel: a bit per bent (1 in the back face's plane, 2 in the front's), whether a rack stands on it (its posts run on
-     * up), a bit per side a rack beside it joins (1 left, 2 right: no posts or stringer there, the beams run through), and
-     * its beams' top in 1/32 m steps: {@link #BEAM_TOP}, or lower beneath a line too large to rest there ({@link #beam}).
+     * A rack cell's frame: its facing (a horizontal face in {@link LineGeometry#STEPS} order), its shape ({@code corner}:
+     * {@link #STRAIGHT} to {@link #TEE}), its drawn steel bits ({@link #STEEL}), and its beams' top in 1/32 m steps:
+     * {@link #BEAM_TOP}, or lower beneath a line too large to rest there ({@link #beam}).
      */
-    public record Rack(int facing, int corner, int bents, boolean stacked, int sides, int beam) {
+    public record Rack(int facing, int corner, int steel, int beam) {
         public Rack {
-            if (facing < 2 || facing > 5 || corner < STRAIGHT || corner > FRONT_RIGHT || (bents & ~3) != 0 || (sides & ~3) != 0 || beam < 2 || beam > BEAM_TOP)
+            if (facing < 2 || facing > 5 || corner < STRAIGHT || corner > TEE || (steel & ~STEEL) != 0 || beam < 2 || beam > BEAM_TOP)
                 throw new IllegalArgumentException("Invalid rack frame");
         }
 
-        /** A cell's lane geometry alone: its facing and corner. */
+        /** A cell's lane geometry alone: its facing and shape. */
         public Rack(int facing, int corner) {
-            this(facing, corner, 0, false, 0, BEAM_TOP);
+            this(facing, corner, 0, BEAM_TOP);
+        }
+
+        /** The bents, a bit per face plane: 1 the back's, 2 the front's. */
+        public int bents() {
+            return steel & 3;
+        }
+
+        public boolean stacked() {
+            return (steel & STACKED) != 0;
+        }
+
+        /** The sides a rack beside it joins, a bit each: 1 left, 2 right (no column or side member there, the beams run through). */
+        public int sides() {
+            return steel >> 3 & 3;
+        }
+
+        public boolean grounded() {
+            return (steel & GROUNDED) != 0;
+        }
+
+        /** The bents that are whole, a bit per face plane as {@link #bents}: at a run's end, or against a junction. */
+        public int ends() {
+            return steel >> 6 & 3;
+        }
+
+        public boolean rising() {
+            return (steel & RISING) != 0;
         }
 
         public int front() {
@@ -73,6 +116,15 @@ public final class RackGeometry {
         }
 
         public boolean cornered() {
+            return corner >= BACK_LEFT && corner <= FRONT_RIGHT;
+        }
+
+        public boolean tee() {
+            return corner == TEE;
+        }
+
+        /** A corner or a tee: lanes turn in it, and the straight racks next to it stand a whole bent against it. */
+        public boolean junction() {
             return corner != STRAIGHT;
         }
 
@@ -226,46 +278,92 @@ public final class RackGeometry {
     }
 
     /**
-     * The corner a rack facing {@code facing} takes from its neighbours: towards the first side (right, then left) where
-     * a rack runs across, from the end where its run continues (the back where neither or only the back does); straight
-     * where no rack runs across beside it, or where its run continues at both ends. A corner whose turn comes in through
-     * an end continues the run there, so a turn several racks wide nests: each run turns at its own corner, on the
-     * diagonal between the two runs, and the outer runs pass the inner corners straight.
+     * The shape a rack placed with the player looking {@code look} takes (RACK_JUNCTION_PLAN J2), decided once: it never
+     * changes after (J1). It comes from the racks whose runs point into the cell, its feeds (a rack whose lanes run
+     * through its face towards the cell), and the look:
+     * <ul>
+     *   <li>no feed: straight along a straight rack beside it (a wider rack), else along the look;</li>
+     *   <li>one: on along its run where the look runs that way, else a corner from it towards the look;</li>
+     *   <li>two in line: straight between them where the look runs along them, else a tee whose branch opens towards
+     *   the look;</li>
+     *   <li>two at a corner: the corner joining them; three: the tee joining them;</li>
+     *   <li>four: straight along the look, as runs cross at two heights, one stacked on the other (X1).</li>
+     * </ul>
+     * Sneaking places a plain straight rack along the look. A rack beside a run, its side towards the cell, never feeds
+     * it, so racks side by side make no junctions.
      */
-    public static int corner(Neighbours around, int facing) {
-        boolean front = inLine(around.rack(facing), facing, facing), back = inLine(around.rack(facing ^ 1), facing, facing ^ 1);
-        if (front && back) return STRAIGHT;
-        for (int side : new int[]{cw(facing), ccw(facing)}) {
-            var neighbour = around.rack(side);
-            if (neighbour == null || LineGeometry.axis(neighbour.facing) != LineGeometry.axis(side)) continue;
-            boolean right = side == cw(facing);
-            return front && !back ? right ? FRONT_RIGHT : FRONT_LEFT : right ? BACK_RIGHT : BACK_LEFT;
+    public static Rack placed(Neighbours around, int look, boolean sneaking) {
+        if (sneaking) return new Rack(look, STRAIGHT);
+        int feeds = 0;
+        for (int face = 2; face < 6; face++) {
+            var neighbour = around.rack(face);
+            if (neighbour != null && along(neighbour, face ^ 1)) feeds |= 1 << face;
         }
-        return STRAIGHT;
+        int first = Integer.numberOfTrailingZeros(feeds), last = 31 - Integer.numberOfLeadingZeros(feeds);
+        switch (Integer.bitCount(feeds)) {
+            case 0 -> {
+                for (int face = 2; face < 6; face++) {
+                    var beside = around.rack(face);
+                    if (beside != null && !beside.junction()) return new Rack(beside.facing, STRAIGHT);
+                }
+                return new Rack(look, STRAIGHT);
+            }
+            case 1 -> {
+                return LineGeometry.axis(first) == LineGeometry.axis(look) ? new Rack(onward(around, first), STRAIGHT) : corner(first, look);
+            }
+            case 2 -> {
+                if (last != (first ^ 1)) return corner(first, last);
+                if (LineGeometry.axis(look) != LineGeometry.axis(first)) return new Rack(look, TEE);
+                // Filling a gap: the facing of a straight run on either side, else the look.
+                var a = around.rack(first);
+                var b = around.rack(last);
+                return new Rack(!a.junction() ? a.facing : !b.junction() ? b.facing : look, STRAIGHT);
+            }
+            case 3 -> {
+                // The branch is the feed whose opposite face has none: the other two are the run.
+                for (int face = 2; face < 6; face++)
+                    if ((feeds >> face & 1) != 0 && (feeds >> (face ^ 1) & 1) == 0) return new Rack(face, TEE);
+                throw new AssertionError();
+            }
+            default -> {
+                return new Rack(look, STRAIGHT);
+            }
+        }
     }
 
-    /** Whether the rack beyond {@code face} continues the run of a rack facing {@code facing}: it runs the same way, or it turns into this one. */
-    private static boolean inLine(Rack neighbour, int facing, int face) {
-        return neighbour != null && (LineGeometry.axis(neighbour.facing) == LineGeometry.axis(facing) || neighbour.cornered() && neighbour.side() == (face ^ 1));
+    /** A corner whose lanes come in through {@code end} and turn out through {@code side}: it faces away from its end. */
+    private static Rack corner(int end, int side) {
+        int facing = end ^ 1;
+        return new Rack(facing, side == cw(facing) ? BACK_RIGHT : BACK_LEFT);
+    }
+
+    /** The facing of a run continued from the feed beyond {@code face}: a straight feed's own, away from a junction. */
+    private static int onward(Neighbours around, int face) {
+        var feed = around.rack(face);
+        return feed.junction() ? face ^ 1 : feed.facing;
     }
 
     /**
-     * The drawn steel of {@code rack} at {@code along} (its coordinate along its run), as {@link Rack}'s bents, stacked
-     * and sides packed (bents bits 0 and 1, stacked bit 2, sides bits 3 and 4); a bit whose neighbour is not known keeps
-     * its value in {@code previous}. A straight cell stands a bent in its low face's plane every third block along its
-     * run and in the plane of each end without a rack beyond; its posts run on up under a rack; a side with a straight
-     * rack of its run's axis beside it joins it.
+     * The drawn steel bits ({@link #STEEL}) of {@code rack} at {@code along} (its coordinate along its run); a bit whose
+     * neighbour is not known keeps its value in {@code previous}. A straight cell stands a bent every third block face
+     * along its run, half in each cell's face plane there; a whole bent at each end where no straight rack continues its
+     * run (nothing, a junction, or a rack across); its columns run on up under a rack; a side with a straight rack of its
+     * run's axis beside it joins it. Every cell: pedestals where no rack stands under it; side braces alternating by block.
      */
     public static int steel(Neighbours around, Rack rack, int along, int previous) {
-        int out = bit(around, 1, 4, previous, r -> r != null);
-        if (rack.cornered()) return out;
+        int out = bit(around, 1, STACKED, previous, r -> r != null) | bit(around, 0, GROUNDED, previous, r -> r == null);
+        if (Math.floorMod(along, 2) == 0) out |= RISING;
+        if (rack.junction()) return out;
+        // The bent face is the low face of the block at along % 3 == 0, the high face of the block before it.
         boolean up = rack.facing == 3 || rack.facing == 5;
-        if (Math.floorMod(along, 3) == 0) out |= up ? 1 : 2;
-        out |= bit(around, rack.back(), 1, previous, r -> r == null);
-        out |= bit(around, rack.front(), 2, previous, r -> r == null);
-        java.util.function.Predicate<Rack> beside = r -> r != null && !r.cornered() && LineGeometry.axis(r.facing) == LineGeometry.axis(rack.facing);
-        out |= bit(around, rack.left(), 8, previous, beside);
-        out |= bit(around, rack.right(), 16, previous, beside);
+        if (Math.floorMod(along, 3) == 0) out |= up ? BENT_BACK : BENT_FRONT;
+        if (Math.floorMod(along, 3) == 2) out |= up ? BENT_FRONT : BENT_BACK;
+        java.util.function.Predicate<Rack> end = r -> r == null || r.junction() || LineGeometry.axis(r.facing) != LineGeometry.axis(rack.facing);
+        out |= bit(around, rack.back(), BENT_BACK | END_BACK, previous, end);
+        out |= bit(around, rack.front(), BENT_FRONT | END_FRONT, previous, end);
+        java.util.function.Predicate<Rack> beside = r -> r != null && !r.junction() && LineGeometry.axis(r.facing) == LineGeometry.axis(rack.facing);
+        out |= bit(around, rack.left(), LEFT_JOINED, previous, beside);
+        out |= bit(around, rack.right(), RIGHT_JOINED, previous, beside);
         return out;
     }
 
@@ -274,46 +372,59 @@ public final class RackGeometry {
         return test.test(around.rack(face)) ? mask : 0;
     }
 
-    /** A frame from its lane geometry and the packed steel of {@link #steel}, its beams at {@code beam}. */
+    /** A frame from its lane geometry and the steel bits of {@link #steel}, its beams at {@code beam}. */
     public static Rack framed(Rack rack, int steel, int beam) {
-        return new Rack(rack.facing, rack.corner, steel & 3, (steel >> 2 & 1) != 0, steel >> 3 & 3, beam);
+        return new Rack(rack.facing, rack.corner, steel & STEEL, beam);
     }
 
     // ---- lanes -----------------------------------------------------------------------------------------------------
 
     /**
-     * Whether a lane of {@code option}, {@code width} and {@code arms} suits a cell: a crossing runs side to side across a
-     * straight cell; a corner's lane runs from its end face to its side; any other tier lane has an end arm and runs on
-     * to the other end, up, down, or out of a side, where only a one-position line leaves above or below the tier.
+     * Whether a lane of {@code option}, {@code width} and {@code arms} suits a cell ({@link #takes(Rack, int, int)}): a
+     * crossing runs side to side across a straight cell; a corner's lane runs from its end face to its side; a tee's
+     * along its leg ({@link #legFaces}); any other tier lane has an end arm and runs on to the other end, up, down, or out
+     * of a side.
      */
     public static boolean valid(Rack rack, int option, int width, int arms) {
-        if (!takes(option, width) || Integer.bitCount(arms) != 2 || (arms & ~63) != 0) return false;
+        if (!takes(rack, option, width) || Integer.bitCount(arms) != 2 || (arms & ~63) != 0) return false;
+        if (rack.tee()) return arms == legFaces(rack, option);
+        if (rack.cornered()) return arms == (1 << rack.end() | 1 << rack.side());
         int a = rack.canonical(Integer.numberOfTrailingZeros(arms)), b = rack.canonical(31 - Integer.numberOfLeadingZeros(arms));
-        int level = level(option);
-        if (!tier(option)) return !rack.cornered() && side(a) && side(b);
-        if (rack.cornered()) return level == TIER && arms == (1 << rack.end() | 1 << rack.side());
+        if (!tier(option)) return side(a) && side(b);
         boolean endA = a == FRONT || a == BACK, endB = b == FRONT || b == BACK;
         if (!endA && !endB) return false;
         int other = endA ? b : a;
-        return side(other) || level == TIER;
+        return side(other) || level(option) == TIER;
+    }
+
+    /** Whether {@code option} takes a line {@code width} positions wide in some cell: a tier lane within the tier, a crossing one position wide. */
+    public static boolean takes(int option, int width) {
+        if (option < 0 || option >= OPTIONS || width < 1 || width > MAX_WIDTH) return false;
+        return tier(option) ? position(option) + width <= POSITIONS : width == 1;
     }
 
     /**
-     * Whether {@code option} takes a line {@code width} positions wide, whatever the cell: a tier lane within the tier,
-     * leaving above or below it only one position wide; a crossing one position wide.
+     * Whether a cell of {@code rack}'s shape takes {@code option} for a line {@code width} positions wide: in a straight
+     * cell a lane leaves above or below the tier only one position wide; a corner's lanes stay on the tier; a tee's lie on
+     * its three legs, any width.
      */
-    public static boolean takes(int option, int width) {
-        if (option < 0 || option >= OPTIONS || width < 1 || width > MAX_WIDTH) return false;
-        if (!tier(option)) return width == 1;
-        return position(option) + width <= POSITIONS && (level(option) == TIER || width == 1);
+    static boolean takes(Rack rack, int option, int width) {
+        if (!takes(option, width)) return false;
+        if (rack.tee()) return tier(option);
+        if (rack.cornered()) return tier(option) && level(option) == TIER;
+        return !tier(option) || level(option) == TIER || width == 1;
     }
 
     private static boolean side(int canonical) {
         return canonical == LEFT || canonical == RIGHT;
     }
 
-    /** A lane's first arm: its end arm for a tier lane (the back of a straight one), the left one for a crossing. */
+    /** A lane's first arm: its end arm for a tier lane (the back of a straight one), the left one for a crossing; a tee's lane's on its leg. */
     static int first(Rack rack, Lane lane) {
+        if (rack.tee()) {
+            var leg = leg(rack, lane);
+            return first(leg.rack, leg.lane);
+        }
         int a = Integer.numberOfTrailingZeros(lane.arms), b = 31 - Integer.numberOfLeadingZeros(lane.arms);
         int ca = rack.canonical(a), cb = rack.canonical(b);
         if (!tier(lane.option)) return ca == LEFT ? a : b;
@@ -332,14 +443,14 @@ public final class RackGeometry {
 
     /** Whether a lane leaves through a side face at its tier's height. */
     private static boolean flat(Rack rack, Lane lane) {
-        if (!tier(lane.option) || rack.cornered() || level(lane.option) != TIER) return false;
+        if (!tier(lane.option) || rack.junction() || level(lane.option) != TIER) return false;
         for (int face = 2; face < 6; face++) if ((lane.arms >> face & 1) != 0 && side(rack.canonical(face))) return true;
         return false;
     }
 
     /** The tier positions a lane's flat side arm passes over: those between the lane and that side. */
     static int shadow(Rack rack, Lane lane) {
-        if (!tier(lane.option) || rack.cornered() || level(lane.option) != TIER) return 0;
+        if (!tier(lane.option) || rack.junction() || level(lane.option) != TIER) return 0;
         int out = 0, p = position(lane.option);
         for (int face = 0; face < 6; face++) {
             if ((lane.arms >> face & 1) == 0) continue;
@@ -350,10 +461,10 @@ public final class RackGeometry {
         return out;
     }
 
-    /** The tier positions a cell's lanes take or pass over flat, a bit each: no new lane may take them. */
+    /** The tier positions a cell's lanes take or pass over flat, a bit each: no new lane may take them; in a tee, the branch positions its turning lanes take. */
     public static int taken(Rack rack, List<Lane> lanes) {
         int out = 0;
-        for (var lane : lanes) out |= own(lane) | shadow(rack, lane);
+        for (var lane : lanes) out |= rack.tee() ? level(lane.option) == RUN ? 0 : own(lane) : own(lane) | shadow(rack, lane);
         return out;
     }
 
@@ -387,10 +498,11 @@ public final class RackGeometry {
      * Whether {@code lane} fits a cell beside {@code lanes}: it suits the cell; it takes no position another lane takes or
      * passes over flat, nor passes over one flat; it shares no level; and every tier line of the cell clears any line at
      * a crossing level by the clearance: at the upper level lines up to about 10" pass under, at the lower every line
-     * resting on the beam passes over (a line on a lowered beam closes it).
+     * resting on the beam passes over (a line on a lowered beam closes it). A tee's lanes keep to their legs ({@link #room}).
      */
     public static boolean fits(Rack rack, List<Lane> lanes, Lane lane) {
         if (!valid(rack, lane.option, lane.width, lane.arms)) return false;
+        if (rack.tee()) return room(lanes, lane.option, lane.width);
         int own = own(lane), shadow = shadow(rack, lane), levels = levels(rack, lane);
         // A flat side arm passes over the stringer at the side: only a line resting on the beam clears it.
         if (flat(rack, lane) && bottom(lane.diameter()) < BEAM_TOP * S - EPS) return false;
@@ -406,7 +518,8 @@ public final class RackGeometry {
      * positions free (a tier lane), or its level free and clear over the tier (a crossing).
      */
     public static boolean open(Rack rack, List<Lane> lanes, int option, int width, double outside) {
-        if (!takes(option, width)) return false;
+        if (!takes(rack, option, width)) return false;
+        if (rack.tee()) return room(lanes, option, width);
         if (tier(option)) {
             int own = ((1 << width) - 1) << position(option);
             for (var other : lanes) {
@@ -415,7 +528,6 @@ public final class RackGeometry {
             }
             return true;
         }
-        if (rack.cornered()) return false;
         int level = level(option) == ABOVE ? 1 : 2;
         for (var other : lanes) {
             if ((levels(rack, other) & level) != 0) return false;
@@ -424,23 +536,88 @@ public final class RackGeometry {
         return true;
     }
 
-    /** Whether a line in this cell may step through {@code face} along the run: an end face, or a corner's end or side. */
+    /** The faces a cell's lanes run through along its runs, a bit each: a straight cell's ends, a corner's end and side, a tee's run faces and its branch. */
+    public static int runs(Rack rack) {
+        if (rack.tee()) return 1 << rack.front() | 1 << rack.left() | 1 << rack.right();
+        if (rack.cornered()) return 1 << rack.end() | 1 << rack.side();
+        return 1 << rack.front() | 1 << rack.back();
+    }
+
+    /** Whether a line in this cell may step through {@code face} along a run ({@link #runs}). */
     public static boolean along(Rack rack, int face) {
-        if (rack.cornered()) return face == rack.end() || face == rack.side();
-        return face == rack.front() || face == rack.back();
+        return (runs(rack) >> face & 1) != 0;
+    }
+
+    // ---- tees ------------------------------------------------------------------------------------------------------
+
+    /** The faces a tee's lane of {@code option} runs between, a bit each: its run's two faces, or the branch and the side it turns to. */
+    static int legFaces(Rack tee, int option) {
+        return switch (level(option)) {
+            case RUN -> 1 << tee.left() | 1 << tee.right();
+            case TURN_LEFT -> 1 << tee.front() | 1 << tee.left();
+            default -> 1 << tee.front() | 1 << tee.right();
+        };
+    }
+
+    /**
+     * The frame a tee's lane of {@code option} lies in, as a cell of its own (RACK_JUNCTION_PLAN J3: two corners back to
+     * back, with the run behind them): the run, a straight cell facing the tee's left, its positions counted from the
+     * tee's back; or the corner from the branch turning left or right, its positions those of the branch.
+     */
+    static Rack legRack(Rack tee, int option) {
+        return switch (level(option)) {
+            case RUN -> new Rack(tee.left(), STRAIGHT);
+            case TURN_LEFT -> new Rack(tee.facing, FRONT_LEFT);
+            default -> new Rack(tee.facing, FRONT_RIGHT);
+        };
+    }
+
+    /** A lane and the frame it lies in: a tee's lane on its leg, at its position there; any other cell's as it is. */
+    record Leg(Rack rack, Lane lane) {
+    }
+
+    static Leg leg(Rack rack, Lane lane) {
+        if (!rack.tee()) return new Leg(rack, lane);
+        return new Leg(legRack(rack, lane.option), new Lane(position(lane.option), lane.width, lane.arms, lane.joined, lane.outside));
+    }
+
+    /**
+     * Whether a tee has room for a lane of {@code option}, {@code width} positions wide, beside {@code lanes}. A lane on
+     * the run takes run positions; a turning lane takes branch positions and lands on the run positions nearest the
+     * branch ({@link #landing}), where a left-turning and a right-turning lane may share a run position, one on each half.
+     * No two lanes share a position; the left-turning lanes stay left of the right-turning ones, so their bends cannot
+     * cross; and the run's lanes pass behind every turning lane's landing.
+     */
+    private static boolean room(List<Lane> lanes, int option, int width) {
+        for (var other : lanes) if (!teeApart(option, width, other.option, other.width)) return false;
+        return true;
+    }
+
+    private static boolean teeApart(int a, int wa, int b, int wb) {
+        int la = level(a), lb = level(b), pa = position(a), pb = position(b);
+        if ((la == RUN) != (lb == RUN)) return la == RUN ? pa + wa <= landing(b, wb) : pb + wb <= landing(a, wa);
+        if (pa < pb + wb && pb < pa + wa) return false;
+        if (la == lb) return true;
+        return la == TURN_LEFT ? pa + wa <= pb : pb + wb <= pa;
+    }
+
+    /** The first run position a tee's turning lane lands on: a left-turning lane's positions mirror across the branch, a right-turning lane's keep their number. */
+    static int landing(int option, int width) {
+        return level(option) == TURN_LEFT ? POSITIONS - position(option) - width : position(option);
     }
 
     // ---- points ----------------------------------------------------------------------------------------------------
 
     /**
-     * The canonical point (u, y, w) where a lane of {@code option} meets face {@code face}, or null where the option has
-     * no arm there or does not take the width ({@link #takes}). {@code outside} sets a tier line's height.
+     * The canonical point (u, y, w) where a lane of {@code option} meets face {@code face} of a straight cell or a
+     * corner, or null where the option has no arm there or the cell does not take it ({@link #takes(Rack, int, int)}).
+     * {@code outside} sets a tier line's height.
      */
-    static double[] canonicalPoint(Rack rack, int option, int width, double outside, int face) {
-        if (!takes(option, width)) return null;
+    private static double[] canonicalPoint(Rack rack, int option, int width, double outside, int face) {
+        if (!takes(rack, option, width)) return null;
         int c = rack.canonical(face);
         double mid = .5;
-        if (!tier(option)) return rack.cornered() || !side(c) ? null : new double[]{c == LEFT ? 0 : 1, (option == crossing(ABOVE) ? UPPER : LOWER) * S, mid};
+        if (!tier(option)) return !side(c) ? null : new double[]{c == LEFT ? 0 : 1, (option == crossing(ABOVE) ? UPPER : LOWER) * S, mid};
         int level = level(option);
         double u = centre(position(option), width), h = height(outside) * S;
         if (rack.cornered()) {
@@ -464,9 +641,8 @@ public final class RackGeometry {
      * there. Two lanes in cells side by side meet where their points on the shared face are equal.
      */
     public static int point(Rack rack, int option, int width, double outside, int face) {
-        var p = canonicalPoint(rack, option, width, outside, face);
-        if (p == null) return -1;
-        var world = rack.world(p[0], p[1], p[2]);
+        var world = worldPoint(rack, option, width, outside, face);
+        if (world == null) return -1;
         int axis = LineGeometry.axis(face);
         int u = (int) Math.round((world[(axis + 1) % 3] - .5) / S), v = (int) Math.round((world[(axis + 2) % 3] - .5) / S);
         return (int) (LineGeometry.Key.offsets(0, u, v));
@@ -488,7 +664,14 @@ public final class RackGeometry {
 
     /** A lane's point on face {@code face} in block coordinates. */
     public static double[] facePoint(Rack rack, Lane lane, int face) {
-        var p = canonicalPoint(rack, lane.option, lane.width, lane.diameter(), face);
+        return worldPoint(rack, lane.option, lane.width, lane.diameter(), face);
+    }
+
+    /** Where a lane of {@code option} meets face {@code face}, in block coordinates, or null where it has no arm there; a tee's lane meets it as its leg does. */
+    private static double[] worldPoint(Rack rack, int option, int width, double outside, int face) {
+        if (rack.tee())
+            return takes(rack, option, width) && (legFaces(rack, option) >> face & 1) != 0 ? worldPoint(legRack(rack, option), position(option), width, outside, face) : null;
+        var p = canonicalPoint(rack, option, width, outside, face);
         return p == null ? null : rack.world(p[0], p[1], p[2]);
     }
 
@@ -497,9 +680,14 @@ public final class RackGeometry {
     /**
      * A lane's centre line in block coordinates, from its first arm's face point to its second's through its corners: a
      * straight line, a corner's two legs meeting at its corner point (it is drawn as a bend about the inner corner), a
-     * turn at mid-block up, down or out flat, or a rise or drop to a crossing level at mid-block and out sideways.
+     * turn at mid-block up, down or out flat, or a rise or drop to a crossing level at mid-block and out sideways; a
+     * tee's lane as its leg lays it.
      */
     static List<double[]> path(Rack rack, Lane lane) {
+        if (rack.tee()) {
+            var leg = leg(rack, lane);
+            return path(leg.rack, leg.lane);
+        }
         int a = first(rack, lane), b = second(rack, lane);
         var pa = canonicalPoint(rack, lane.option, lane.width, lane.diameter(), a);
         var pb = canonicalPoint(rack, lane.option, lane.width, lane.diameter(), b);
@@ -528,9 +716,14 @@ public final class RackGeometry {
     /**
      * One lane: a straight pipe; a corner's bend about the inner corner, so the bends of a corner nest and keep their
      * order; or the bends of a turn at mid-block, as a transition pipe draws them. A lane is welded where a line next door
-     * continues it and capped where nothing does: a flange would be wider than its position.
+     * continues it and capped where nothing does: a flange would be wider than its position. A tee's lane is drawn on its leg.
      */
     static void lane(Mesh m, Rack rack, Lane lane) {
+        if (rack.tee()) {
+            var leg = leg(rack, lane);
+            lane(m, leg.rack, leg.lane);
+            return;
+        }
         double od = lane.diameter(), r = od / 2;
         int sides = PipeSizes.sides(od);
         int a = first(rack, lane), b = second(rack, lane);
@@ -612,48 +805,198 @@ public final class RackGeometry {
 
     // ---- steel -----------------------------------------------------------------------------------------------------
 
-    /** The frame's polygons, cell-local. */
-    public static List<Polygon> polygons(Rack rack) {
+    /** A drawn member, block-local: a box from its low corner {@code a} to its high corner {@code b}, or a square bar {@code width} wide between them. */
+    record Member(double[] a, double[] b, double width, Material material) {
+        boolean bar() {
+            return width > 0;
+        }
+    }
+
+    /** A cell's steel: the members drawn, and the boxes {lo x, lo y, lo z, hi x, hi y, hi z} a player collides with and aims at (braces are drawn only). */
+    record Steelwork(List<Member> drawn, List<double[]> solid) {
+    }
+
+    private static final double[] UP_AXIS = {0, 1, 0};
+
+    /** The frame's polygons, cell-local; {@code lanes} leave out the braces a lane passes through. */
+    public static List<Polygon> polygons(Rack rack, List<Lane> lanes) {
         var m = new Mesh();
-        for (var box : members(rack)) m.box(new double[]{box[0], box[1], box[2]}, new double[]{box[3], box[4], box[5]}, ALL_FACES, Material.STEELWORK);
+        for (var member : steelwork(rack, lanes).drawn)
+            if (member.bar()) m.bar(member.a, member.b, member.width, UP_AXIS, member.material);
+            else m.box(member.a, member.b, ALL_FACES, member.material);
         return m.cell(0, 0, 0);
     }
 
-    /**
-     * The steel of a cell, block-local boxes {lo x, lo y, lo z, hi x, hi y, hi z}. A straight cell: a bent in each plane
-     * it has one in, two posts 1/16 m square inset 1/32 m from the sides and a beam 1/16 m deep whose top carries the
-     * lines; and a stringer 1/32 m deep along each post line at the beam's top. A corner: posts at its three outer
-     * corners, beams along its two outer sides. A straight cell's beams stand at its {@link Rack#beam} top. Posts stop at
-     * the stringers' top, or run to the top under a stacked rack. A side
-     * joined by a rack beside it has no post or stringer, its beams running through to the next.
-     */
+    /** The boxes of a cell's steel a player collides with and aims at, block-local {lo x, lo y, lo z, hi x, hi y, hi z}. */
     public static List<double[]> members(Rack rack) {
-        var out = new ArrayList<double[]>();
-        double post = (rack.stacked ? 32 : BEAM_TOP) * S;
-        if (rack.cornered()) {
-            boolean right = rack.canonical(rack.side()) == RIGHT, back = rack.canonical(rack.end()) == BACK;
-            // The inner corner at (right ? 1 : 0, back ? 0 : 1): posts at the other three.
-            for (int cu = 0; cu < 2; cu++)
-                for (int cw = 0; cw < 2; cw++) {
-                    if (cu == (right ? 1 : 0) && cw == (back ? 0 : 1)) continue;
-                    out.add(box(rack, cu == 0 ? 1 : 29, cu == 0 ? 3 : 31, 0, post / S, cw == 0 ? 1 : 29, cw == 0 ? 3 : 31));
+        return steelwork(rack, List.of()).solid;
+    }
+
+    /**
+     * A cell's steel (RACK_FRAME_PLAN parts F-h to F-plan at the sturdy sizes of section 3a; owner 2026-10-26), in 1/32 m.
+     * A straight cell: at a bent, H columns 3.75/32 across on its outer sides (and a middle one where a rack beside it
+     * joins on the right), an I beam 4/32 deep under the lines, knee braces, and under each column on the ground a
+     * concrete pedestal and a base plate; a bent shared by two cells is half in each, 2/32 deep, a whole one 4/32. At the
+     * cell's low face, where it has no bent, a light frame: posts on the outer sides and an angle under the lines. Along
+     * each outer side a channel at the beam; in each outer side panel a diagonal and under the tier a plan brace,
+     * alternating by block, each left out where a lane passes through it. A junction: H columns at its outer corners only
+     * (a corner's three, a tee's two at its back), so that none stands inside a bend, and the straight racks next to it
+     * hold its inner corners with their bents; an I beam under the lines on every face; pedestals on the ground. Steel over
+     * the beam's top keeps within 3.75/32 of the sides, clear of every tier line; columns run to the beam, or on up to the
+     * top under a stacked rack.
+     */
+    static Steelwork steelwork(Rack rack, List<Lane> lanes) {
+        var frame = new Framing(rack);
+        if (rack.junction()) frame.junction();
+        else frame.straight(lanes);
+        return new Steelwork(List.copyOf(frame.drawn), List.copyOf(frame.solid));
+    }
+
+    /** Builds a cell's steel in canonical 1/32 m. */
+    private static final class Framing {
+        /** A column across the run, a flange's thickness; a pedestal's width and height, and its base plate's thickness. */
+        static final double COLUMN = 3.75, FLANGE = .9, FOOT = 5.5, PEDESTAL = 4, PLATE = .6;
+        private final Rack rack;
+        private final List<Member> drawn = new ArrayList<>();
+        private final List<double[]> solid = new ArrayList<>();
+        private final double beam, top, bottom, base;
+        private final boolean feet;
+
+        Framing(Rack rack) {
+            this.rack = rack;
+            beam = rack.beam;
+            top = rack.stacked() ? 32 : beam;
+            bottom = Math.max(0, beam - 4);
+            // A lowered beam (under a 24" to 28" line) lies at the ground: its columns stand on the ground, without pedestals.
+            feet = rack.grounded() && bottom >= PEDESTAL + PLATE;
+            base = feet ? PEDESTAL + PLATE : 0;
+        }
+
+        void straight(List<Lane> lanes) {
+            boolean left = (rack.sides() & 1) == 0, right = (rack.sides() & 2) == 0;
+            int low = rack.facing == 3 || rack.facing == 5 ? 0 : 1, used = 0;
+            boolean plain = true;
+            for (var lane : lanes) {
+                used |= lane.arms;
+                plain &= tier(lane.option) && level(lane.option) == TIER && (lane.arms & 3) == 0;
+            }
+            for (int plane = 0; plane < 2; plane++) {
+                boolean end = (rack.ends() >> plane & 1) != 0;
+                double w0 = plane == 0 ? 0 : 30;
+                // A shared bent's half lies in this cell's face plane, the other half in the next cell's; an end's is whole.
+                double c0 = plane == 0 ? 0 : end ? 28 : 30, c1 = plane == 0 ? (end ? 4 : 2) : 32;
+                if ((rack.bents() >> plane & 1) != 0) {
+                    for (int side = 0; side < 2; side++) {
+                        boolean outer = side == 0 ? left : right, middle = side == 1 && !right;
+                        if (!outer && !middle) continue;
+                        double u = side == 0 ? 0 : 32 - COLUMN;
+                        column(u, c0, c1, end ? -1 : plane);
+                        if (feet) {
+                            double p0 = plane == 0 ? 0 : 32 - (end ? FOOT : FOOT / 2), p1 = plane == 0 ? (end ? FOOT : FOOT / 2) : 32;
+                            member(side == 0 ? 0 : 32 - FOOT, side == 0 ? FOOT : 32, 0, PEDESTAL, p0, p1, Material.CONCRETE);
+                            member(side == 0 ? 0 : 27.5, side == 0 ? 4.5 : 32, PEDESTAL, PEDESTAL + PLATE, Math.max(0, c0 - .5), Math.min(32, c1 + .5), Material.STEELWORK);
+                        }
+                        if (outer && bottom - 7 > base + 1)
+                            bar(new double[]{side == 0 ? COLUMN : 32 - COLUMN, bottom - 7, w0 + 1}, new double[]{side == 0 ? 11 : 21, bottom, w0 + 1}, 1.4);
+                    }
+                    girder(left ? COLUMN : 0, right ? 32 - COLUMN : 32, w0);
+                } else if (plane == low) {
+                    // The light frame: posts on the outer sides, an angle under the lines with its leg down on the face.
+                    if (left) member(.5, 3.25, 0, top, w0, w0 + 2, Material.STEELWORK);
+                    if (right) member(28.75, 31.5, 0, top, w0, w0 + 2, Material.STEELWORK);
+                    double u0 = left ? .5 : 0, u1 = right ? 31.5 : 32;
+                    box(u0, u1, beam - .8, beam, w0, w0 + 2);
+                    box(u0, u1, beam - 2.5, beam - .8, plane == 0 ? 0 : 31.2, plane == 0 ? .8 : 32);
+                    solid(u0, u1, beam - 2.5, beam, w0, w0 + 2);
                 }
-            double uLow = right ? 1 : 29, wLow = back ? 29 : 1;
-            out.add(box(rack, uLow, uLow + 2, BEAM_BOTTOM, BEAM_TOP, 1, 31));
-            out.add(box(rack, 1, 31, BEAM_BOTTOM, BEAM_TOP, wLow, wLow + 2));
-            return out;
+            }
+            // Channels along the outer sides at the beam, the web outside and the flanges in.
+            for (int side = 0; side < 2; side++) {
+                if (!(side == 0 ? left : right)) continue;
+                double web = side == 0 ? .25 : 31, flange = side == 0 ? 1 : 28.5;
+                box(web, web + .75, beam - 3, beam, 0, 32);
+                box(flange, flange + 2.5, beam - .7, beam, 0, 32);
+                box(flange, flange + 2.5, beam - 3, beam - 2.3, 0, 32);
+                solid(side == 0 ? .25 : 28.5, side == 0 ? 3.5 : 31.75, beam - 3, beam, 0, 32);
+            }
+            double rise = rack.stacked() ? 32 : beam - 3;
+            boolean rising = rack.rising();
+            for (int side = 0; side < 2 && rise > 6; side++) {
+                if (!(side == 0 ? left : right) || (used >> (side == 0 ? rack.left() : rack.right()) & 1) != 0) continue;
+                double u = side == 0 ? 1.9 : 30.1;
+                bar(new double[]{u, rising ? 0 : rise, 1}, new double[]{u, rising ? rise : 0, 31}, 1.4);
+            }
+            if (plain && bottom >= 2)
+                bar(new double[]{rising ? 4.5 : 27.5, bottom - .7, 2.5}, new double[]{rising ? 27.5 : 4.5, bottom - .7, 29.5}, 1.1);
         }
-        boolean leftJoined = (rack.sides & 1) != 0, rightJoined = (rack.sides & 2) != 0;
-        for (int plane = 0; plane < 2; plane++) {
-            if ((rack.bents >> plane & 1) == 0) continue;
-            double w0 = plane == 0 ? 0 : 30, w1 = w0 + 2;
-            if (!leftJoined) out.add(box(rack, 1, 3, 0, post / S, w0, w1));
-            if (!rightJoined) out.add(box(rack, 29, 31, 0, post / S, w0, w1));
-            out.add(box(rack, leftJoined ? 0 : 1, rightJoined ? 32 : 31, rack.beam - (BEAM_TOP - BEAM_BOTTOM), rack.beam, w0, w1));
+
+        void junction() {
+            // The inner corners, canonical (u, w), stand inside the bends: a corner's between its end and side, a tee's two at its branch.
+            double innerU = rack.cornered() && rack.canonical(rack.side()) == RIGHT ? 32 : 0, innerW = rack.cornered() && rack.canonical(rack.end()) == BACK ? 0 : 32;
+            for (double u : new double[]{0, 32 - COLUMN})
+                for (double c0 : new double[]{0, 28}) {
+                    double cu = u == 0 ? 0 : 32, cw = c0 == 0 ? 0 : 32;
+                    if (rack.tee() ? cw == 32 : cu == innerU && cw == innerW) continue;
+                    column(u, c0, c0 + 4, -1);
+                    if (feet) {
+                        member(u == 0 ? 0 : 32 - FOOT, u == 0 ? FOOT : 32, 0, PEDESTAL, c0 == 0 ? 0 : 32 - FOOT, c0 == 0 ? FOOT : 32, Material.CONCRETE);
+                        member(u == 0 ? 0 : 27.5, u == 0 ? 4.5 : 32, PEDESTAL, PEDESTAL + PLATE, c0 == 0 ? 0 : 27.5, c0 == 0 ? 4.5 : 32, Material.STEELWORK);
+                    }
+                }
+            for (double w0 : new double[]{0, 30}) girder(0, 32, w0);
+            // On the two sides, I beams between the face beams.
+            for (double u : new double[]{.25, 28.5}) {
+                box(u, u + 3.25, beam - .8, beam, 2, 30);
+                box(u + 1.25, u + 2, bottom + .8, beam - .8, 2, 30);
+                box(u, u + 3.25, bottom, bottom + .8, 2, 30);
+                solid(u, u + 3.25, bottom, beam, 2, 30);
+            }
         }
-        if (!leftJoined) out.add(box(rack, 1, 3, STRINGER_BOTTOM, BEAM_TOP, 0, 32));
-        if (!rightJoined) out.add(box(rack, 29, 31, STRINGER_BOTTOM, BEAM_TOP, 0, 32));
-        return out;
+
+        /**
+         * An H column {@link #COLUMN} across from {@code u}, from w {@code c0} to {@code c1}, its flanges towards the
+         * sides: its web on the block face where it is half of a shared bent ({@code plane} 0 or 1: the halves make one
+         * web), at mid-depth where it is whole (-1). It stands on its base plate, or the ground, up to the frame's top.
+         */
+        private void column(double u, double c0, double c1, int plane) {
+            box(u, u + FLANGE, base, top, c0, c1);
+            box(u + COLUMN - FLANGE, u + COLUMN, base, top, c0, c1);
+            double web0 = plane < 0 ? (c0 + c1) / 2 - .5 : plane == 0 ? c0 : c1 - .5;
+            box(u + FLANGE, u + COLUMN - FLANGE, base, top, web0, web0 + (plane < 0 ? 1 : .5));
+            solid(u, u + COLUMN, base, top, c0, c1);
+        }
+
+        /** An I beam 4/32 deep under the lines, from u {@code u0} to {@code u1}, in the face plane from w {@code w0}. */
+        private void girder(double u0, double u1, double w0) {
+            box(u0, u1, beam - .8, beam, w0, w0 + 2);
+            box(u0, u1, bottom + .8, beam - .8, w0 + .6, w0 + 1.4);
+            box(u0, u1, bottom, bottom + .8, w0, w0 + 2);
+            solid(u0, u1, bottom, beam, w0, w0 + 2);
+        }
+
+        private void box(double u0, double u1, double y0, double y1, double w0, double w1) {
+            box(u0, u1, y0, y1, w0, w1, Material.STEELWORK);
+        }
+
+        private void box(double u0, double u1, double y0, double y1, double w0, double w1, Material material) {
+            var b = RackGeometry.box(rack, u0, u1, y0, y1, w0, w1);
+            drawn.add(new Member(new double[]{b[0], b[1], b[2]}, new double[]{b[3], b[4], b[5]}, 0, material));
+        }
+
+        private void solid(double u0, double u1, double y0, double y1, double w0, double w1) {
+            solid.add(RackGeometry.box(rack, u0, u1, y0, y1, w0, w1));
+        }
+
+        /** A member drawn and collided with. */
+        private void member(double u0, double u1, double y0, double y1, double w0, double w1, Material material) {
+            box(u0, u1, y0, y1, w0, w1, material);
+            solid(u0, u1, y0, y1, w0, w1);
+        }
+
+        /** A square brace {@code width} wide between canonical points, drawn only. */
+        private void bar(double[] a, double[] b, double width) {
+            drawn.add(new Member(rack.world(a[0] * S, a[1] * S, a[2] * S), rack.world(b[0] * S, b[1] * S, b[2] * S), width * S, Material.STEELWORK));
+        }
     }
 
     /** A canonical box, in 1/32 m steps, as block coordinates. */

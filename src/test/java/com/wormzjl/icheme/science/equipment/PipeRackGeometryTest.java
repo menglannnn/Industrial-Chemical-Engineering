@@ -73,7 +73,7 @@ class PipeRackGeometryTest {
     @Test
     void everyPairOfLanesInACellKeepsItsClearance() {
         double worst = Double.MAX_VALUE;
-        for (int corner = RackGeometry.STRAIGHT; corner <= RackGeometry.FRONT_RIGHT; corner++) {
+        for (int corner = RackGeometry.STRAIGHT; corner <= RackGeometry.TEE; corner++) {
             var rack = new RackGeometry.Rack(NORTH, corner);
             var lanes = lanes(rack);
             var shapes = new ArrayList<List<double[][]>>();
@@ -92,22 +92,58 @@ class PipeRackGeometryTest {
         assertEquals(RackGeometry.CLEARANCE, worst, 1e-3, "the narrowest gap is the clearance the positions are sized for");
     }
 
+    /**
+     * The steel each lane is checked against: every bent whole and stacked, on the ground, its braces both ways; and
+     * every bent half of a shared one, a rack beside it on the right (the middle column), standing on a rack.
+     */
+    private static final int[] FRAMES = {
+            RackGeometry.BENT_BACK | RackGeometry.BENT_FRONT | RackGeometry.END_BACK | RackGeometry.END_FRONT | RackGeometry.STACKED | RackGeometry.GROUNDED | RackGeometry.RISING,
+            RackGeometry.BENT_BACK | RackGeometry.BENT_FRONT | RackGeometry.END_BACK | RackGeometry.END_FRONT | RackGeometry.STACKED | RackGeometry.GROUNDED,
+            RackGeometry.BENT_BACK | RackGeometry.BENT_FRONT | RackGeometry.RIGHT_JOINED | RackGeometry.RISING};
+
     @Test
     void everyLaneStaysInItsBlockAndClearOfTheSteel() {
         for (int facing : new int[]{NORTH, SOUTH, WEST, EAST})
-            for (int corner = RackGeometry.STRAIGHT; corner <= RackGeometry.FRONT_RIGHT; corner++) {
+            for (int corner = RackGeometry.STRAIGHT; corner <= RackGeometry.TEE; corner++) {
                 var geometry = new RackGeometry.Rack(facing, corner);
-                for (var lane : lanes(geometry)) {
-                    var rack = new RackGeometry.Rack(facing, corner, 3, true, 0, RackGeometry.beam(List.of(lane)));
-                    double r = lane.diameter() / 2;
-                    // A resting line touches its beam; a chord lies at most 1 mm inside the bend it stands for.
-                    for (var segment : segments(rack, lane))
-                        for (var box : RackGeometry.members(rack))
-                            assertTrue(boxDistance(segment, box) >= r - 1e-3, "facing " + facing + " corner " + corner + ": " + lane + " runs into the steel " + java.util.Arrays.toString(box));
-                    for (var polygon : RackGeometry.lane(rack, lane)) {
-                        var p = polygon.positions();
-                        for (int v = 0; v < p.length; v++) assertTrue(p[v] >= -1e-9 && p[v] <= 1 + 1e-9, lane + " leaves its block");
+                for (var lane : lanes(geometry))
+                    for (int steel : FRAMES) {
+                        var rack = new RackGeometry.Rack(facing, corner, steel, RackGeometry.beam(List.of(lane)));
+                        double r = lane.diameter() / 2;
+                        // A resting line touches its beam; a chord lies at most 1 mm inside the bend it stands for. A brace
+                        // is a square bar: clear of the line by its half diagonal.
+                        for (var segment : segments(rack, lane))
+                            for (var member : RackGeometry.steelwork(rack, List.of(lane)).drawn()) {
+                                double gap = member.bar() ? segmentDistance(segment[0], segment[1], member.a(), member.b()) - member.width() / Math.sqrt(2)
+                                        : boxDistance(segment, new double[]{member.a()[0], member.a()[1], member.a()[2], member.b()[0], member.b()[1], member.b()[2]});
+                                assertTrue(gap >= r - 1e-3, "facing " + facing + " shape " + corner + " steel " + steel + ": " + lane + " runs into the steel at "
+                                        + java.util.Arrays.toString(member.a()) + " " + java.util.Arrays.toString(member.b()));
+                            }
+                        for (var polygon : RackGeometry.lane(rack, lane)) {
+                            var p = polygon.positions();
+                            for (int v = 0; v < p.length; v++) assertTrue(p[v] >= -1e-9 && p[v] <= 1 + 1e-9, lane + " leaves its block");
+                        }
                     }
+            }
+    }
+
+    @Test
+    void theSteelStaysInItsBlockAndClearOverTheTierOfTheLinesAtTheSides() {
+        // Over the beam's top only the columns and braces of the sides stand, within 3.75/32 m of them: tier lines keep
+        // from about 4.26/32 m (a 6" line on an outer position).
+        for (int corner = RackGeometry.STRAIGHT; corner <= RackGeometry.TEE; corner++)
+            for (int steel : FRAMES) {
+                var rack = new RackGeometry.Rack(NORTH, corner, steel, RackGeometry.BEAM_TOP);
+                for (var member : RackGeometry.steelwork(rack, List.of()).drawn()) {
+                    double[] a = member.a(), b = member.b();
+                    for (var p : new double[][]{a, b})
+                        for (double v : p) assertTrue(v >= -1e-9 && v <= 1 + 1e-9, "shape " + corner + ": steel leaves its block");
+                    double grow = member.bar() ? member.width() : 0;
+                    double lowX = Math.min(a[0], b[0]) - grow, highX = Math.max(a[0], b[0]) + grow, lowZ = Math.min(a[2], b[2]) - grow, highZ = Math.max(a[2], b[2]) + grow;
+                    if (Math.max(a[1], b[1]) <= 13 / 32.0 + 1e-9) continue;
+                    assertTrue(highX <= 3.75 / 32 + 1e-9 || lowX >= 28.25 / 32 - 1e-9, "shape " + corner + ": steel over the tier between the sides, x " + lowX + " to " + highX);
+                    // A junction's lines leave through its sides too: its columns keep to its corners.
+                    if (rack.junction()) assertTrue(highZ <= 4 / 32.0 + 1e-9 || lowZ >= 28 / 32.0 - 1e-9, "shape " + corner + ": a column over the tier off the corners, z " + lowZ + " to " + highZ);
                 }
             }
     }
@@ -150,9 +186,50 @@ class PipeRackGeometryTest {
             assertEquals(out, RackGeometry.point(next, option, 1, od, WEST), "position " + p + " stays position " + p + " round the corner");
         }
         assertFalse(RackGeometry.valid(corner, RackGeometry.crossing(RackGeometry.ABOVE), 1, 1 << WEST | 1 << EAST), "no crossing in a corner");
-        var members = RackGeometry.members(new RackGeometry.Rack(NORTH, RackGeometry.BACK_RIGHT, 0, false, 0, RackGeometry.BEAM_TOP));
-        for (var box : members) assertFalse(box[0] >= 28 / 32.0 && box[2] >= 28 / 32.0 && box[1] == 0, "no post at the inner (south-east) corner");
-        assertEquals(5, members.size(), "three posts and two beams");
+        var members = RackGeometry.members(new RackGeometry.Rack(NORTH, RackGeometry.BACK_RIGHT));
+        for (var box : members) assertFalse(box[0] >= 28 / 32.0 - 1e-9 && box[2] >= 28 / 32.0 - 1e-9 && box[1] == 0, "no column at the inner (south-east) corner");
+        assertEquals(7, members.size(), "three columns, and a beam under the lines on each face");
+    }
+
+    @Test
+    void aTeeTurnsItsBranchIntoTheRunAndPassesTheRunBehind() {
+        // A run north-south, its branch east: the tee faces east. Its run lanes count their positions from the tee's back
+        // (west); its turning lanes those of the branch, from its left (north).
+        var tee = new RackGeometry.Rack(EAST, RackGeometry.TEE);
+        var branch = new RackGeometry.Rack(EAST, RackGeometry.STRAIGHT);
+        var run = new RackGeometry.Rack(NORTH, RackGeometry.STRAIGHT);
+        double od = PipeSizes.outsideOf(11);
+        int ns = 1 << NORTH | 1 << SOUTH, left = 1 << EAST | 1 << NORTH, right = 1 << EAST | 1 << SOUTH;
+        int through = RackGeometry.option(0, RackGeometry.RUN), turnLeft = RackGeometry.option(0, RackGeometry.TURN_LEFT), turnRight = RackGeometry.option(3, RackGeometry.TURN_RIGHT);
+        assertTrue(RackGeometry.valid(tee, through, 1, ns) && RackGeometry.valid(tee, turnLeft, 1, left) && RackGeometry.valid(tee, turnRight, 1, right));
+        assertFalse(RackGeometry.valid(tee, through, 1, left), "each leg its own faces");
+        assertFalse(RackGeometry.valid(tee, RackGeometry.option(0, RackGeometry.TIER), 1, 1 << EAST | 1 << WEST), "nothing through the tee's back");
+        assertTrue(RackGeometry.valid(tee, RackGeometry.option(1, RackGeometry.TURN_LEFT), 2, left), "a wide line turns too");
+        // Points: the branch meets the next rack east as a straight cell does; the run lanes meet the run racks north and south.
+        for (int p = 0; p < RackGeometry.POSITIONS; p++) {
+            assertEquals(RackGeometry.point(branch, RackGeometry.option(p, RackGeometry.TIER), 1, od, EAST), RackGeometry.point(tee, RackGeometry.option(p, RackGeometry.TURN_LEFT), 1, od, EAST));
+            assertEquals(RackGeometry.point(run, RackGeometry.option(p, RackGeometry.TIER), 1, od, NORTH), RackGeometry.point(tee, RackGeometry.option(p, RackGeometry.RUN), 1, od, NORTH), "run position " + p);
+            // A left-turning lane lands mirrored across the branch on the north run, a right-turning one keeps its number on the south.
+            assertEquals(RackGeometry.point(run, RackGeometry.option(RackGeometry.POSITIONS - 1 - p, RackGeometry.TIER), 1, od, NORTH), RackGeometry.point(tee, RackGeometry.option(p, RackGeometry.TURN_LEFT), 1, od, NORTH));
+            assertEquals(RackGeometry.point(run, RackGeometry.option(p, RackGeometry.TIER), 1, od, SOUTH), RackGeometry.point(tee, RackGeometry.option(p, RackGeometry.TURN_RIGHT), 1, od, SOUTH));
+        }
+        // Room (J3): two run lanes on positions 0 and 1, two lanes turning left from branch 0 and 1, two right from 2 and 3.
+        var lanes = new ArrayList<RackGeometry.Lane>();
+        for (var lane : List.of(lane(RackGeometry.option(0, RackGeometry.RUN), 1, ns, 11), lane(RackGeometry.option(1, RackGeometry.RUN), 1, ns, 11),
+                lane(RackGeometry.option(0, RackGeometry.TURN_LEFT), 1, left, 11), lane(RackGeometry.option(1, RackGeometry.TURN_LEFT), 1, left, 11),
+                lane(RackGeometry.option(2, RackGeometry.TURN_RIGHT), 1, right, 11), lane(RackGeometry.option(3, RackGeometry.TURN_RIGHT), 1, right, 11))) {
+            assertTrue(RackGeometry.fits(tee, lanes, lane), lane + " beside " + lanes);
+            lanes.add(lane);
+        }
+        assertFalse(RackGeometry.fits(tee, List.of(lane(RackGeometry.option(2, RackGeometry.TURN_LEFT), 1, left, 11)), lane(RackGeometry.option(1, RackGeometry.TURN_RIGHT), 1, right, 11)),
+                "a right-turning lane left of a left-turning one would cross its bend");
+        assertFalse(RackGeometry.fits(tee, List.of(lane(RackGeometry.option(0, RackGeometry.TURN_RIGHT), 1, right, 11)), lane(RackGeometry.option(0, RackGeometry.RUN), 1, ns, 11)),
+                "the run passes behind every turning lane's landing");
+        assertFalse(RackGeometry.fits(tee, List.of(lane(RackGeometry.option(1, RackGeometry.TURN_LEFT), 2, left, 23)), lane(RackGeometry.option(2, RackGeometry.TURN_LEFT), 1, left, 11)), "no shared branch position");
+        // Steel: columns stand from the ground (the beams from under the tier), at the tee's back only, so none stands in a bend.
+        var columns = RackGeometry.members(tee).stream().filter(box -> box[1] == 0).toList();
+        assertEquals(2, columns.size(), "two columns");
+        for (var box : columns) assertTrue(box[3] <= 4 / 32.0 + 1e-9, "at the back (west): " + java.util.Arrays.toString(box));
     }
 
     @Test
@@ -168,15 +245,23 @@ class PipeRackGeometryTest {
 
     @Test
     void theBentsStandWhereTheFrameSays() {
-        var bare = RackGeometry.members(new RackGeometry.Rack(NORTH, RackGeometry.STRAIGHT, 0, false, 0, RackGeometry.BEAM_TOP));
-        assertEquals(2, bare.size(), "between bents: the stringers alone");
-        var bent = RackGeometry.members(new RackGeometry.Rack(NORTH, RackGeometry.STRAIGHT, 1, false, 0, RackGeometry.BEAM_TOP));
-        assertEquals(5, bent.size(), "a bent: two posts and a beam");
+        // Facing north, the low face is the front (north): a cell without a bent stands a light frame there.
+        var bare = RackGeometry.members(new RackGeometry.Rack(NORTH, RackGeometry.STRAIGHT));
+        assertEquals(5, bare.size(), "between bents: the side channels and a light frame (two posts and an angle)");
+        int back = RackGeometry.BENT_BACK;
+        var bent = RackGeometry.members(new RackGeometry.Rack(NORTH, RackGeometry.STRAIGHT, back, RackGeometry.BEAM_TOP));
+        assertEquals(8, bent.size(), "a bent at the back: two columns and a beam; the light frame; the channels");
         for (var box : bent) assertTrue(box[4] <= 13 / 32.0 + 1e-9, "nothing stands over the tier");
-        var stacked = RackGeometry.members(new RackGeometry.Rack(NORTH, RackGeometry.STRAIGHT, 1, true, 0, RackGeometry.BEAM_TOP));
-        assertEquals(2, stacked.stream().filter(box -> box[4] == 1).count(), "under a rack the posts run on up");
-        var joined = RackGeometry.members(new RackGeometry.Rack(NORTH, RackGeometry.STRAIGHT, 1, false, 3, RackGeometry.BEAM_TOP));
-        assertEquals(1, joined.size(), "joined on both sides: the beam alone, running through");
+        double half = bent.stream().filter(box -> box[1] == 0 && box[4] == 13 / 32.0 && box[2] > .5).mapToDouble(box -> box[5] - box[2]).max().orElseThrow();
+        assertEquals(2 / 32.0, half, 1e-9, "half of a shared bent: 2/32 m deep");
+        var whole = RackGeometry.members(new RackGeometry.Rack(NORTH, RackGeometry.STRAIGHT, back | RackGeometry.END_BACK, RackGeometry.BEAM_TOP));
+        assertEquals(4 / 32.0, whole.stream().filter(box -> box[1] == 0 && box[2] > .5).mapToDouble(box -> box[5] - box[2]).max().orElseThrow(), 1e-9, "a run's end: a whole bent, 4/32 m deep");
+        var grounded = RackGeometry.members(new RackGeometry.Rack(NORTH, RackGeometry.STRAIGHT, back | RackGeometry.GROUNDED, RackGeometry.BEAM_TOP));
+        assertEquals(bent.size() + 4, grounded.size(), "on the ground: a pedestal and a base plate under each column");
+        var stacked = RackGeometry.members(new RackGeometry.Rack(NORTH, RackGeometry.STRAIGHT, back | RackGeometry.STACKED, RackGeometry.BEAM_TOP));
+        assertEquals(4, stacked.stream().filter(box -> box[4] == 1).count(), "under a rack the columns and the light frame's posts run on up");
+        var joined = RackGeometry.members(new RackGeometry.Rack(NORTH, RackGeometry.STRAIGHT, back | RackGeometry.LEFT_JOINED | RackGeometry.RIGHT_JOINED, RackGeometry.BEAM_TOP));
+        assertEquals(3, joined.size(), "joined on both sides: the middle column, the beam running through and the light frame's angle");
     }
 
     // ---- helpers ---------------------------------------------------------------------------------------------------
@@ -205,8 +290,11 @@ class PipeRackGeometryTest {
         return out;
     }
 
-    /** A lane's centre line as segments: its straights, and its bends in chords of 1/32 of a quarter turn each. */
-    private static List<double[][]> segments(RackGeometry.Rack rack, RackGeometry.Lane lane) {
+    /** A lane's centre line as segments: its straights, and its bends in chords of 1/32 of a quarter turn each; a tee's lane on its leg. */
+    private static List<double[][]> segments(RackGeometry.Rack cell, RackGeometry.Lane laid) {
+        var leg = RackGeometry.leg(cell, laid);
+        var rack = leg.rack();
+        var lane = leg.lane();
         var path = RackGeometry.path(rack, lane);
         var out = new ArrayList<double[][]>();
         double od = lane.diameter();

@@ -255,6 +255,29 @@ class PipeRouteTest {
     }
 
     @Test
+    void aRouteTurnsFromABranchThroughATeeOrPassesAlongItsRun() {
+        // A run north-south at x 0 (z -3 to 3), its block at the origin a tee whose branch runs east (x 1 to 3).
+        var rooms = new HashMap<Cell, Room>();
+        for (int z = -3; z <= 3; z++) if (z != 0) rooms.put(new Cell(0, 0, z), rack(NORTH, RackGeometry.STRAIGHT));
+        rooms.put(O, rack(EAST, RackGeometry.TEE));
+        for (int x = 1; x <= 3; x++) rooms.put(new Cell(x, 0, 0), rack(EAST, RackGeometry.STRAIGHT));
+        var start = new End(new Cell(5, 0, 0), -1);
+        var north = new End(new Cell(0, 0, -4), -1);
+        var turned = search(start, WEST, north, with(rooms));
+        int at = turned.cells().indexOf(O);
+        assertTrue(at > 0 && turned.options().get(at) >= 0, "through the tee: " + turned.cells());
+        assertEquals(RackGeometry.TURN_LEFT, RackGeometry.level(turned.options().get(at)), "from the branch, turning left (north)");
+        assertTrue(lanes(turned).size() >= 7, "along the branch and the run: " + turned.options());
+        assertEquals(-1, PipeRoute.blocked(turned.cells(), turned.options(), start, WEST, north, SMALL, with(rooms)));
+        var south = new End(new Cell(0, 0, 4), -1);
+        var passing = search(south, NORTH, north, with(rooms));
+        int through = passing.cells().indexOf(O);
+        assertTrue(through > 0, "along the run: " + passing.cells());
+        assertEquals(RackGeometry.option(0, RackGeometry.RUN), passing.options().get(through), "on the run's position furthest from the branch, leaving it room to turn");
+        assertEquals(-1, PipeRoute.blocked(passing.cells(), passing.options(), south, NORTH, north, SMALL, with(rooms)));
+    }
+
+    @Test
     void aLineLeavesOverTheTierWhereALaneLiesBetweenItAndItsSide() {
         // A rack facing east along x at z 0; a straight lane on position 0, the north (left) edge. A line from the west end
         // to a point north of the rack takes position 1 and, with position 0 between it and the north, leaves over the tier.

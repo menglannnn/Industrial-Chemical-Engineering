@@ -218,8 +218,7 @@ public record PipeAnchor(Kind kind, BlockPos cell, @Nullable Direction joint, @N
     /** A new lane in {@code rack}: it leaves along the faces its lanes run to. */
     private static PipeAnchor rack(BlockPos at, PipeRackBlockEntity rack) {
         var frame = rack.rack();
-        int runs = frame.cornered() ? 1 << frame.end() | 1 << frame.side() : 1 << frame.front() | 1 << frame.back();
-        return new PipeAnchor(Kind.RACK, at, null, null, 0, -1, Direction.values()[frame.facing()], -1, Fit.RACK, runs);
+        return new PipeAnchor(Kind.RACK, at, null, null, 0, -1, Direction.values()[frame.facing()], -1, Fit.RACK, RackGeometry.runs(frame));
     }
 
     /** Whether the laid pipe at {@code pipe} with {@code joints} meets a rack lane through one of them. */

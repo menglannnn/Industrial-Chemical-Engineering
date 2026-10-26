@@ -52,7 +52,8 @@ class PipeRackCompatTest {
     void aDamagedOrRepeatedLaneIsDroppedAndTheOthersKept() {
         var lanes = corpusLanes();
         for (var damage : List.<java.util.function.Consumer<CompoundTag>>of(e -> e.remove("Bore"), e -> e.putInt("Option", RackGeometry.OPTIONS), e -> e.putInt("Width", 0),
-                e -> e.putInt("Width", 5), e -> { e.putInt("Option", RackGeometry.option(0, RackGeometry.ABOVE)); e.putInt("Width", 2); }, e -> e.putInt("Arms", 1 << NORTH | 1 << SOUTH | 1 << EAST), e -> e.putInt("Joints", 1 << UP), e -> e.putDouble("Bore", -1),
+                e -> e.putInt("Width", 5), e -> { e.putInt("Option", RackGeometry.option(3, RackGeometry.ABOVE)); e.putInt("Width", 2); }, e -> { e.putInt("Option", RackGeometry.crossing(RackGeometry.ABOVE)); e.putInt("Width", 2); },
+                e -> e.putInt("Arms", 1 << NORTH | 1 << SOUTH | 1 << EAST), e -> e.putInt("Joints", 1 << UP), e -> e.putDouble("Bore", -1),
                 e -> e.putString("Identity", "41"))) {
             var saved = PipeRackBlockEntity.write(lanes, new CompoundTag());
             damage.accept(saved.getList("Lanes", 10).getCompound(0));

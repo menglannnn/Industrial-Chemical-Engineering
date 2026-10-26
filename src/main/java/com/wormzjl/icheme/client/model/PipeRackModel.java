@@ -39,7 +39,7 @@ import java.util.function.Function;
  */
 public final class PipeRackModel implements IDynamicBakedModel {
     public static final ResourceLocation LOADER_ID = ResourceLocation.fromNamespaceAndPath(IChemE.MOD_ID, "pipe_rack");
-    /** {@code "loader": "icheme:pipe_rack"}, textures per material (the frame takes "steelwork", the lanes "pipe"). */
+    /** {@code "loader": "icheme:pipe_rack"}, textures per material (the frame takes "steelwork" and its pedestals "concrete", the lanes "pipe"). */
     public static final IGeometryLoader<Geometry> LOADER = (json, context) -> new Geometry();
     private static final int CACHE = 4096;
     private static final ChunkRenderTypeSet SOLID = ChunkRenderTypeSet.of(RenderType.solid());
@@ -67,7 +67,7 @@ public final class PipeRackModel implements IDynamicBakedModel {
         var drawn = data.get(PipeRackBlockEntity.DRAWN);
         int painted = 0;
         if (drawn != null) for (int i = 0; i < drawn.paints().size(); i++) if (drawn.paints().get(i) != Paint.BARE) painted |= 1 << i;
-        var key = drawn == null ? new Look(new RackGeometry.Rack(bare.facing(), bare.corner(), 3, false, 0, RackGeometry.BEAM_TOP), List.of(), 0) : new Look(drawn.rack(), drawn.lanes(), painted);
+        var key = drawn == null ? new Look(new RackGeometry.Rack(bare.facing(), bare.corner(), PipeRackBlockEntity.BARE, RackGeometry.BEAM_TOP), List.of(), 0) : new Look(drawn.rack(), drawn.lanes(), painted);
         var cached = quads.get(key);
         if (cached == null) {
             if (quads.size() >= CACHE) quads.clear();
@@ -77,11 +77,11 @@ public final class PipeRackModel implements IDynamicBakedModel {
     }
 
     /**
-     * The frame, then each lane: a painted one with the neutral pipe sprite, tinted by its option. A lane draws no flange,
-     * so it takes only a line's primary paint.
+     * The frame (its braces left out where a lane passes), then each lane: a painted one with the neutral pipe sprite,
+     * tinted by its option. A lane draws no flange, so it takes only a line's primary paint.
      */
     private List<BakedQuad> bake(Look look) {
-        var out = new ArrayList<>(EquipmentShellModel.bake(RackGeometry.polygons(look.rack), sprites, false));
+        var out = new ArrayList<>(EquipmentShellModel.bake(RackGeometry.polygons(look.rack, look.lanes), sprites, false));
         for (int i = 0; i < look.lanes.size(); i++) {
             var lane = look.lanes.get(i);
             var polygons = RackGeometry.lane(look.rack, lane);
