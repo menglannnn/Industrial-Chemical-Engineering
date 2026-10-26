@@ -15,6 +15,8 @@ All notable changes to Industrial Chemical Engineering (IChemE, formerly CreateC
 
 ## [Unreleased]
 
+## [0.12.4] - 2026-10-26
+
 ### Fixed
 
 - MCP test lane (batch folder: `2026-10-16-minecraft-mcp-mouse-input`, review `BRIDGE_OFFICIAL_0418_REVIEW.md`, commit `1c3d4191`): `runMcpClient` pins the official Minecraft MCP bridge v0.4.18 and runs it in its background input mode (`mcp.background_input=true`, upstream #57), replacing the local 0.4.7-osguard build; the compat mod accepts `mcpmod` `[0.4.18,0.5.0)`. While the client is in the background the bridge's own tools leave the OS cursor alone; the compat mixin `BackgroundCursorMixin` (`ce6923d9`) skips vanilla's cursor grab and release (world join, screen open and close) while the game window is not the foreground window, so the desktop cursor stays where the user put it.
