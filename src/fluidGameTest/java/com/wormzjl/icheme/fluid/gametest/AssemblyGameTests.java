@@ -355,6 +355,31 @@ public final class AssemblyGameTests {
         });
     }
 
+    /**
+     * A click on a unit of the plant opens nothing of the column's before a validation holds it; after it, the column's GUI
+     * with the unit selected, found through a shell cell of the column (plan section 10). A click on the column opens its own.
+     */
+    @GameTest(template = "empty", timeoutTicks = 600, batch = "assembly-click")
+    public static void aClickOnAMemberOpensItsColumnsGuiWithTheMemberSelected(GameTestHelper helper) {
+        withPlant(helper, true, (plant, failure) -> {
+            if (com.wormzjl.icheme.network.AssemblyNetwork.target(plant.level, plant.drum) != null) {
+                failure[0] = "a drum no report holds opens a column";
+                return;
+            }
+            complete(plant, failure);
+            if (failure[0] != null) return;
+            var origin = plant.column.origin();
+            var drum = com.wormzjl.icheme.network.AssemblyNetwork.target(plant.level, plant.drum);
+            var own = com.wormzjl.icheme.network.AssemblyNetwork.target(plant.level, plant.column);
+            if (drum == null || !drum.origin().equals(origin) || drum.selected() != plant.drum.origin().asLong()) failure[0] = "drum: " + drum;
+            else if (own == null || !own.origin().equals(origin) || own.selected() != com.wormzjl.icheme.science.assembly.AssemblyReport.NONE) failure[0] = "column: " + own;
+            else for (var target : List.of(drum, own)) {
+                var found = EquipmentStructure.find(plant.level, target.column());
+                if (found == null || !found.origin().equals(origin)) failure[0] = "the column cell " + target.column() + " finds " + found;
+            }
+        });
+    }
+
     @GameTest(template = "empty", timeoutTicks = 600, batch = "assembly-removed-pipe")
     public static void aRemovedPipeRevertsACompleteReport(GameTestHelper helper) {
         withPlant(helper, true, (plant, failure) -> {

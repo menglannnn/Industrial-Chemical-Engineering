@@ -213,19 +213,27 @@ public final class AssemblyNetwork {
      * unit, with the unit selected. False when the structure is neither.
      */
     public static boolean open(ServerPlayer player, Vessel vessel, BlockPos cell) {
+        var target = target(player.serverLevel(), vessel);
+        if (target == null) return false;
+        // A deployer's fake player opens nothing.
+        if (!(player instanceof FakePlayer)) open(player, target.origin(), target.column(), cell, vessel.shape(), target.selected());
+        return true;
+    }
+
+    /** The column GUI a click opens: the column's origin, a shell cell of it, and the member selected ({@link AssemblyReport#NONE} for none). */
+    public record Target(BlockPos origin, BlockPos column, long selected) {
+    }
+
+    /** The column GUI a click on {@code vessel} opens: its own if it is a column, else its holder's; null for neither. */
+    public static @Nullable Target target(net.minecraft.server.level.ServerLevel level, Vessel vessel) {
         if (vessel.shape().kind() == EquipmentShape.Kind.COLUMN) {
             // The session finds its column through the controller, a shell cell; an interior cell would need a walk.
             var controller = ShapeRasterizer.layout(vessel.shape()).controller();
-            if (!(player instanceof FakePlayer))
-                open(player, vessel.origin(), vessel.origin().offset(controller.x(), controller.y(), controller.z()), cell, vessel.shape(), AssemblyReport.NONE);
-            return true;
+            return new Target(vessel.origin(), vessel.origin().offset(controller.x(), controller.y(), controller.z()), AssemblyReport.NONE);
         }
-        var level = player.serverLevel();
         var master = AssemblyService.holder(level, vessel.origin());
         var column = master == null ? null : AssemblyService.cellOf(level, master, master);
-        if (column == null) return false;
-        if (!(player instanceof FakePlayer)) open(player, BlockPos.of(master), column, cell, vessel.shape(), vessel.origin().asLong());
-        return true;
+        return column == null ? null : new Target(BlockPos.of(master), column, vessel.origin().asLong());
     }
 
     private static void open(ServerPlayer player, BlockPos origin, BlockPos column, BlockPos anchor, EquipmentShape clicked, long selected) {
