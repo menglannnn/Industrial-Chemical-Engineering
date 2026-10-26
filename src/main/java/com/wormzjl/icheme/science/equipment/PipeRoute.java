@@ -167,7 +167,9 @@ public final class PipeRoute {
      * search with {@link Estimate}, which never overestimates, so the route found is a cheapest one. Deterministic: ties
      * go to the lower f, then the lower h, then the earlier push; pushes follow the face order. A state in a rack cell
      * holds the lane options still possible there, so equal choices are one state, not one each. An aimed end
-     * ({@link End#option}) keeps its option, and the route passes through its {@code through} face only.
+     * ({@link End#option}) keeps its option, and the route passes through its {@code through} face only. A route passes
+     * through each cell once ({@link #holds}); where an aimed start leaves away from its end, it comes round outside the
+     * start's cell, or there is no route.
      */
     public static Result search(End start, int heading, End end, double outside, Space space, Limits limits) {
         if (heading < 0 || heading > 5 || start.joint >= 0 && start.joint != (heading ^ 1) || start.open >= 0 && start.open != (heading ^ 1))
@@ -199,6 +201,9 @@ public final class PipeRoute {
         long pushes = 0;
         open.add(new Node(start.cell, heading, startOptions, 0, estimate.at(start.cell, heading), 1, null, pushes++));
         best.put(new State(start.cell, heading, startOptions), 0.0);
+        // An aimed end is entered from the cell beyond its through face only, and a route holds that cell once: from it the
+        // route steps into the end, or it could never come back to.
+        var approach = end.through >= 0 ? end.cell.step(end.through) : null;
         int expansions = 0;
         boolean capped = false;
         while (!open.isEmpty()) {
@@ -225,6 +230,7 @@ public final class PipeRoute {
                 if (face == entry || node.parent == null && start.through >= 0 && face != start.through) continue;
                 var next = node.cell.step(face);
                 if (next.x < lowX || next.x > highX || next.y < lowY || next.y > highY || next.z < lowZ || next.z > highZ) continue;
+                if (holds(node, next) || node.cell.equals(approach) && !next.equals(end.cell)) continue;
                 if (node.length + 1 > limits.cells) {
                     capped = true;
                     continue;
@@ -260,6 +266,16 @@ public final class PipeRoute {
             }
         }
         return Result.refused(capped ? Refusal.TOO_LONG : Refusal.BLOCKED);
+    }
+
+    /**
+     * Whether the route to {@code node} holds {@code cell} already. A line passes through a cell once, as {@link #check}
+     * requires: a rack cell's rooms do not hold the line's own lanes, so without this a line aimed out of its start away
+     * from its end would come round through its start cell, even on the start's own slot.
+     */
+    private static boolean holds(Node node, Cell cell) {
+        for (var at = node; at != null; at = at.parent) if (at.cell.equals(cell)) return true;
+        return false;
     }
 
     /** A rack the line is too wide for is no way through (RD10). */

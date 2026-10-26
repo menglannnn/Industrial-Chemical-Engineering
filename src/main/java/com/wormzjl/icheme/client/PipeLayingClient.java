@@ -54,7 +54,8 @@ import java.util.Set;
 /**
  * The laying tool on the client (batch 2026-10-26-pipe-laying-system, plan 4.1, 4.6 and 4.7). The client decides what a
  * use means, because only it knows whether a line has a start, and sends the server one command: open the settings, lay
- * a route, or dismantle a pipe. It searches the route, draws it as a ghost and reports it on the action bar, and marks
+ * a route, or dismantle a pipe; a line's start stays until the server answers that it laid the line ({@link #answered}).
+ * It searches the route, draws it as a ghost and reports it on the action bar, and marks
  * the equipment ports around the player. Everything here reads blocks the client already holds: nothing is requested
  * from the server and no process data is read. Render thread only.
  */
@@ -85,7 +86,11 @@ public final class PipeLayingClient {
     }
 
     private static @Nullable Start start;
+    /** The start of the lay sent last, until the server answers it: one lay at a time, and a refused one keeps its start. */
+    private static @Nullable Start sent;
     private static @Nullable Plan plan;
+    /** The plan the server refused to lay, with its reason: kept, not re-searched, until the aim moves. */
+    private static @Nullable Plan refused;
     private static @Nullable Slot slot;
     private static boolean armed = true;
     private static int age;
@@ -139,6 +144,7 @@ public final class PipeLayingClient {
             say(player, PipeLaying.message("started", describe(resolved.anchor())));
             return;
         }
+        if (sent == start) return;
         var current = plan(mc.level, hit, settingsDiameter(player));
         plan = current;
         if (current.refusal != null) {
@@ -148,8 +154,23 @@ public final class PipeLayingClient {
         var cells = current.route.cells().stream().map(c -> new BlockPos(c.x(), c.y(), c.z())).toList();
         FluidNetwork.layPipe(offHand, start.click, hit, cells, current.route.options());
         event.setSwingHand(true);
-        start = null;
-        plan = null;
+        sent = start;
+    }
+
+    /**
+     * The server's answer to the lay sent last. Laid: the line is done and its start goes. Refused: a refused lay changes
+     * nothing, so the start stays, and the route to that end shows the server's reason until the aim moves.
+     */
+    public static void answered(Component message, boolean laid) {
+        var player = Minecraft.getInstance().player;
+        if (player != null) say(player, message);
+        if (sent != null && sent == start) {
+            if (laid) {
+                start = null;
+                plan = null;
+            } else if (plan != null) plan = refused = new Plan(plan.end, plan.anchor, plan.route, message, plan.joints, plan.facings, plan.arms);
+        }
+        sent = null;
     }
 
     @SubscribeEvent
@@ -162,7 +183,9 @@ public final class PipeLayingClient {
             slot = null;
             if (start != null || plan != null || !markSlots.isEmpty()) {
                 start = null;
+                sent = null;
                 plan = null;
+                refused = null;
                 for (var slot : List.of(START_SLOT, ROUTE_SLOT)) outliner.remove(slot);
                 for (var slot : REMOVE_SLOTS) outliner.remove(slot);
                 for (var slot : markSlots) outliner.remove(slot);
@@ -180,7 +203,7 @@ public final class PipeLayingClient {
         double diameter = settingsDiameter(player);
         if (start != null) {
             if (hit == null) plan = null;
-            else if (plan == null || !same(mc.level, plan.end, hit, PipeSizes.outside(diameter)) || age % RECHECK_TICKS == 0) plan = plan(mc.level, hit, diameter);
+            else if (plan == null || !same(mc.level, plan.end, hit, PipeSizes.outside(diameter)) || age % RECHECK_TICKS == 0 && plan != refused) plan = plan(mc.level, hit, diameter);
             outliner.showAABB(START_SLOT, new AABB(start.anchor.cell())).colored(START_COLOUR).lineWidth(1 / 16F);
             if (plan != null && plan.refusal != null)
                 outliner.showLine(ROUTE_SLOT, start.anchor.cell().getCenter(), (plan.anchor != null ? plan.anchor.cell() : plan.end.clicked()).getCenter()).colored(REFUSED_COLOUR).lineWidth(1 / 16F);

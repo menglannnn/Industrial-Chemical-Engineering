@@ -436,13 +436,20 @@ public final class FluidNetwork {
                 ByteBufCodecs.VAR_INT.apply(ByteBufCodecs.list(com.wormzjl.icheme.science.equipment.PipeRoute.Limits.DEFAULT.cells())),PipeLay::slots,PipeLay::new);
         @Override public Type<? extends CustomPacketPayload> type(){return TYPE;}
     }
+    /** Server to client: the answer to a lay, for the action bar, and whether it was laid; the client keeps the line's start until it was. */
+    public record PipeLayAnswer(net.minecraft.network.chat.Component message,boolean laid) implements CustomPacketPayload {
+        public static final Type<PipeLayAnswer> TYPE=new Type<>(ResourceLocation.fromNamespaceAndPath(IChemE.MOD_ID,"pipe_lay_answer"));
+        public static final StreamCodec<RegistryFriendlyByteBuf,PipeLayAnswer> STREAM_CODEC=StreamCodec.composite(net.minecraft.network.chat.ComponentSerialization.TRUSTED_STREAM_CODEC,PipeLayAnswer::message,
+                ByteBufCodecs.BOOL,PipeLayAnswer::laid,PipeLayAnswer::new);
+        @Override public Type<? extends CustomPacketPayload> type(){return TYPE;}
+    }
     public record PipeDismantle(boolean offHand,com.wormzjl.icheme.world.level.block.PipeAnchor.Click click) implements CustomPacketPayload {
         public static final Type<PipeDismantle> TYPE=new Type<>(ResourceLocation.fromNamespaceAndPath(IChemE.MOD_ID,"pipe_dismantle"));
         public static final StreamCodec<RegistryFriendlyByteBuf,PipeDismantle> STREAM_CODEC=StreamCodec.composite(ByteBufCodecs.BOOL,PipeDismantle::offHand,com.wormzjl.icheme.world.level.block.PipeAnchor.Click.STREAM_CODEC,PipeDismantle::click,PipeDismantle::new);
         @Override public Type<? extends CustomPacketPayload> type(){return TYPE;}
     }
     private static InteractionHand hand(boolean offHand){return offHand?InteractionHand.OFF_HAND:InteractionHand.MAIN_HAND;}
-    /** The server's answer to a laying command, on the player's action bar. */
+    /** The server's answer to a dismantle, on the player's action bar (a lay's goes back as {@link PipeLayAnswer}). */
     private static void answer(ServerPlayer player,net.minecraft.network.chat.Component refusal,net.minecraft.network.chat.Component done){player.displayClientMessage(refusal!=null?refusal:done,true);}
 
     /** The requested displays and the item settings saves: the tanks' on the fluid registrar, the others each on its own version string. */
@@ -477,9 +484,11 @@ public final class FluidNetwork {
             if(c.player() instanceof ServerPlayer player&&!player.isSpectator()&&player.getItemInHand(hand(p.offHand)).is(com.wormzjl.icheme.registry.ModItems.PIPE_LAYING_TOOL.get()))PipelineToolMenu.open(player,hand(p.offHand));
         });
         tools.playToServer(PipeLay.TYPE,PipeLay.STREAM_CODEC,(p,c)->{
-            if(c.player() instanceof ServerPlayer player)answer(player,com.wormzjl.icheme.world.level.block.PipeLaying.lay(player,hand(p.offHand),p.start,p.end,p.cells,p.slots),
-                    com.wormzjl.icheme.world.level.block.PipeLaying.message("laid",p.cells.size()));
+            if(!(c.player() instanceof ServerPlayer player))return;
+            var refusal=com.wormzjl.icheme.world.level.block.PipeLaying.lay(player,hand(p.offHand),p.start,p.end,p.cells,p.slots);
+            PacketDistributor.sendToPlayer(player,new PipeLayAnswer(refusal!=null?refusal:com.wormzjl.icheme.world.level.block.PipeLaying.message("laid",p.cells.size()),refusal==null));
         });
+        tools.playToClient(PipeLayAnswer.TYPE,PipeLayAnswer.STREAM_CODEC,(p,c)->com.wormzjl.icheme.client.PipeLayingClient.answered(p.message(),p.laid()));
         tools.playToServer(PipeDismantle.TYPE,PipeDismantle.STREAM_CODEC,(p,c)->{
             if(c.player() instanceof ServerPlayer player)answer(player,com.wormzjl.icheme.world.level.block.PipeLaying.dismantle(player,hand(p.offHand),p.click),
                     com.wormzjl.icheme.world.level.block.PipeLaying.message("dismantled"));

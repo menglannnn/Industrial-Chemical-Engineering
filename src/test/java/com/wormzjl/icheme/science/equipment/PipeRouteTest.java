@@ -7,6 +7,7 @@ import com.wormzjl.icheme.science.equipment.PipeRoute.Room;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -264,6 +265,61 @@ class PipeRouteTest {
         assertTrue(round.found(), "" + round.refusal());
         assertEquals(new Cell(4, 0, 0), round.cells().get(round.cells().size() - 2), "arrives through the west face: " + round.cells());
         assertEquals(Refusal.BROKEN, PipeRoute.check(route.cells(), route.options(), start, fromWest, 128), "a route into the other face");
+    }
+
+    /**
+     * Owner report 2026-10-26: a second click on a rack often dropped the line's start. Aimed out of its start away from
+     * its end, the search came round through the start cell, often on the start's own slot; the client sent that route
+     * and dropped the start, and the server refused it (a cell twice). A route holds each cell once.
+     */
+    @Test
+    void anAimedStartLeavingAwayComesRoundOutsideItsCell() {
+        var rooms = row(1, 8, 0);
+        int slot = RackGeometry.option(0, RackGeometry.TIER);
+        var away = new End(new Cell(3, 0, 0), -1, -1, slot, WEST, EAST);
+        var next = new End(new Cell(4, 0, 0), -1, -1, slot, WEST, EAST);
+        assertEquals(Refusal.BLOCKED, search(away, WEST, next, with(rooms)).refusal(), "the end next door is entered from the start's own cell: no route");
+        var far = new End(new Cell(6, 0, 0), -1, -1, slot, WEST, EAST);
+        var round = search(away, WEST, far, with(rooms));
+        assertTrue(round.found(), "" + round.refusal());
+        assertEquals(new Cell(2, 0, 0), round.cells().get(1), "out through the west face");
+        assertEquals(1, Collections.frequency(round.cells(), away.cell()), "round outside the start's cell: " + round.cells());
+        assertNull(PipeRoute.check(round.cells(), round.options(), away, far, 128));
+    }
+
+    /**
+     * Racks facing east along x 1 to 8: from every slot and face of one cell to every slot and face of another, 2" and
+     * 14". Every route the client finds is one the server lays: each cell once, the aimed slots and faces kept, every cell
+     * admitted.
+     */
+    @Test
+    void everyAimedRouteAlongARunIsOneTheServerLays() {
+        var rooms = row(1, 8, 0);
+        var space = with(rooms);
+        int found = 0, refused = 0;
+        for (double outside : new double[]{SMALL, WIDE}) {
+            int width = RackGeometry.width(PipeSizes.outsideOf(PipeSizes.code(outside)));
+            for (int a = 1; a <= 8; a++)
+                for (int b = 1; b <= 8; b++)
+                    for (int from = 0; from + width <= RackGeometry.POSITIONS; from++)
+                        for (int to = 0; to + width <= RackGeometry.POSITIONS; to++)
+                            for (int leave : new int[]{WEST, EAST})
+                                for (int arrive : new int[]{WEST, EAST}) {
+                                    var start = new End(new Cell(a, 0, 0), -1, -1, RackGeometry.option(from, RackGeometry.TIER), leave, leave ^ 1);
+                                    var end = new End(new Cell(b, 0, 0), -1, -1, RackGeometry.option(to, RackGeometry.TIER), arrive, arrive ^ 1);
+                                    var route = PipeRoute.search(start, leave, end, outside, space, PipeRoute.Limits.DEFAULT);
+                                    if (!route.found()) {
+                                        refused++;
+                                        continue;
+                                    }
+                                    found++;
+                                    String at = outside + " from " + a + " p" + from + " face " + leave + " to " + b + " p" + to + " face " + arrive + ": " + route.cells();
+                                    assertEquals(route.cells().size(), new HashSet<>(route.cells()).size(), "each cell once, " + at);
+                                    assertNull(PipeRoute.check(route.cells(), route.options(), start, end, 128), at);
+                                    assertEquals(-1, PipeRoute.blocked(route.cells(), route.options(), start, leave, end, outside, space), at);
+                                }
+        }
+        assertTrue(found > 2 * refused, found + " found, " + refused + " refused");
     }
 
     @Test
