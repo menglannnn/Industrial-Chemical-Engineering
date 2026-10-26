@@ -526,6 +526,67 @@ public final class RackGeometry {
         return (runs(rack) >> face & 1) != 0;
     }
 
+    // ---- aiming ----------------------------------------------------------------------------------------------------
+
+    /**
+     * A slot aimed on a rack's tier: the lane's option, the run face the line passes through to the rest of its route
+     * (where it leaves the rack at a first click, or arrives at a second), the run face its lane ends open at, and whether
+     * a line fits there beside the cell's lanes.
+     */
+    public record Aim(int option, int through, int open, boolean fits) {
+    }
+
+    /**
+     * The slot a player aims at on a rack cell (owner 2026-10-26, "Aim on the tier"), {@code point} being where the
+     * crosshair crosses the tier, cell-local. The run face nearest the point in plan is where the line passes through to
+     * its route; of the tier lanes from that face to another run face (on along the run; a corner's bend; a tee's run or
+     * turn), the free one whose centre line passes nearest the point in plan, for a line of {@code outside}; with none
+     * free, the nearest that suits the cell, not fitting. Exits over, under or out of the side stay the route's. Null
+     * where the cell takes no lane that wide.
+     */
+    public static @org.jetbrains.annotations.Nullable Aim aim(Rack rack, List<Lane> lanes, double outside, double[] point) {
+        int code = PipeSizes.code(outside), width = width(PipeSizes.outsideOf(code)), runs = runs(rack), through = -1;
+        double most = -Double.MAX_VALUE;
+        for (int face = 2; face < 6; face++) {
+            var step = LineGeometry.STEPS[face];
+            double toward = (point[0] - .5) * step[0] + (point[2] - .5) * step[2];
+            if ((runs >> face & 1) != 0 && toward > most + EPS) {
+                most = toward;
+                through = face;
+            }
+        }
+        Aim best = null;
+        double nearest = Double.MAX_VALUE;
+        for (int option = 0; option < OPTIONS; option++) {
+            if (!tier(option) || !rack.tee() && level(option) != TIER) continue;
+            for (int open = 2; open < 6; open++) {
+                int arms = 1 << through | 1 << open;
+                if (open == through || (runs >> open & 1) == 0 || !valid(rack, option, width, arms)) continue;
+                var lane = new Lane(option, width, arms, 0, code);
+                boolean fits = open(rack, lanes, option, width, PipeSizes.outsideOf(code)) && fits(rack, lanes, lane);
+                double distance = planDistance(path(rack, lane), point);
+                if (best == null || fits && !best.fits || fits == best.fits && distance < nearest - EPS) {
+                    best = new Aim(option, through, open, fits);
+                    nearest = distance;
+                }
+            }
+        }
+        return best;
+    }
+
+    /** The distance in plan (x and z) from {@code point} to the centre line {@code path}. */
+    private static double planDistance(List<double[]> path, double[] point) {
+        double best = Double.MAX_VALUE;
+        for (int k = 0; k + 1 < path.size(); k++) {
+            double[] a = path.get(k), b = path.get(k + 1);
+            double dx = b[0] - a[0], dz = b[2] - a[2], length = dx * dx + dz * dz;
+            double t = length < EPS ? 0 : Math.max(0, Math.min(1, ((point[0] - a[0]) * dx + (point[2] - a[2]) * dz) / length));
+            double ex = a[0] + t * dx - point[0], ez = a[2] + t * dz - point[2];
+            best = Math.min(best, Math.sqrt(ex * ex + ez * ez));
+        }
+        return best;
+    }
+
     // ---- tees ------------------------------------------------------------------------------------------------------
 
     /** The faces a tee's lane of {@code option} runs between, a bit each: its run's two faces, or the branch and the side it turns to. */

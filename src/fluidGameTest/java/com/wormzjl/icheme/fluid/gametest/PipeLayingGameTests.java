@@ -157,10 +157,15 @@ public final class PipeLayingGameTests {
             // The route the client searches: into the rack run, round its corner, out to the far tank.
             var start = new PipeAnchor.Click(west, Direction.EAST);
             var end = new PipeAnchor.Click(south, Direction.NORTH);
-            var from = PipeAnchor.resolve(level, start).anchor();
-            var to = PipeAnchor.resolve(level, end).anchor();
             double outside = com.wormzjl.icheme.science.equipment.PipeSizes.outside(.1);
-            var route = PipeRoute.search(from.end(), from.heading(to.end().cell()), to.end(), outside, PipeAnchor.space(level), PipeRoute.Limits.DEFAULT);
+            var from = PipeAnchor.resolve(level, start, outside).anchor();
+            var to = PipeAnchor.resolve(level, end, outside).anchor();
+            // Aimed on the empty straight rack's tier (owner 2026-10-26, "Aim on the tier"): near its east face and its
+            // left (north) side, the slot is position 0, passing through the east face and open at the west.
+            var aimed = PipeAnchor.resolve(level, new PipeAnchor.Click(straight, Direction.UP, new net.minecraft.world.phys.Vec3(.9, .37, .3)), outside).anchor();
+            helper.assertTrue(aimed != null && aimed.kind() == PipeAnchor.Kind.RACK && new RackGeometry.Aim(0, Direction.EAST.ordinal(), Direction.WEST.ordinal(), true).equals(aimed.aim())
+                    && aimed.leaving() == Direction.EAST.ordinal(), "The aimed slot: " + aimed);
+            var route = PipeRoute.search(from.end(), from.leaving(), to.end(), outside, PipeAnchor.space(level), PipeRoute.Limits.DEFAULT);
             var path = List.of(first, straight, corner, turned, last);
             helper.assertTrue(route.found() && route.cells().equals(path.stream().map(PipeAnchor::cell).toList()), "The route does not follow the racks: " + route);
             // One tier lane through the run and round the corner, each rack numbering it from its own facing's left.
@@ -170,8 +175,15 @@ public final class PipeLayingGameTests {
             helper.assertTrue(PipeLaying.lay(player, InteractionHand.MAIN_HAND, start, end, path, route.options()) == null, "The line was refused");
             for (var cell : List.of(first, last))
                 helper.assertTrue(level.getBlockEntity(cell) instanceof FluidDeviceBlockEntity pipe && pipe.paint() == SKY_BLUE && pipe.secondary() == FLAME_RED, "Laid pipe " + cell.toShortString() + " not painted");
-            for (var cell : List.of(straight, corner, turned))
-                helper.assertTrue(((PipeRackBlockEntity) level.getBlockEntity(cell)).lanes().getFirst().paint() == SKY_BLUE, "Lane at " + cell.toShortString() + " not painted");
+            for (var cell : List.of(straight, corner, turned)) {
+                var lane = ((PipeRackBlockEntity) level.getBlockEntity(cell)).lanes().getFirst();
+                helper.assertTrue(lane.paint() == SKY_BLUE && lane.secondary() == FLAME_RED, "Lane at " + cell.toShortString() + " not painted");
+            }
+            // Aimed at the laid lane's slot from under the tier, the nearest free slot is taken instead.
+            var laid = ((PipeRackBlockEntity) level.getBlockEntity(straight)).lanes().getFirst();
+            double across = RackGeometry.centre(RackGeometry.position(laid.option()), laid.width());
+            var beside = PipeAnchor.resolve(level, new PipeAnchor.Click(straight, Direction.UP, new net.minecraft.world.phys.Vec3(.9, .37, across)), outside).anchor();
+            helper.assertTrue(beside != null && beside.aim() != null && beside.aim().option() != laid.option() && beside.aim().fits(), "Aimed at a taken slot: " + beside);
             helper.assertTrue(player.getInventory().countItem(ModItems.FLUID_PIPE.get()) == 1, "Not one pipe item per cell, lanes included");
             int[] expected = {1 << Direction.WEST.ordinal() | 1 << Direction.EAST.ordinal(), 1 << Direction.WEST.ordinal() | 1 << Direction.SOUTH.ordinal(),
                     1 << Direction.NORTH.ordinal() | 1 << Direction.SOUTH.ordinal()};
@@ -190,7 +202,7 @@ public final class PipeLayingGameTests {
             // there would cut the lane off.
             for (var at : List.of(first, last))
                 helper.assertTrue(level.getBlockEntity(at) instanceof FluidDeviceBlockEntity pipe && pipe.transition(), "Not a transition pipe at " + at.toShortString());
-            helper.assertTrue(PipeAnchor.resolve(level, new PipeAnchor.Click(first, Direction.UP)).refusal() == PipeAnchor.Refusal.TRANSITION, "A tee beside a rack lane was offered");
+            helper.assertTrue(PipeAnchor.resolve(level, new PipeAnchor.Click(first, Direction.UP), outside).refusal() == PipeAnchor.Refusal.TRANSITION, "A tee beside a rack lane was offered");
             long westTank = world.at(position(level, west)).orElseThrow().device().id(), southTank = world.at(position(level, south)).orElseThrow().device().id();
             helper.assertTrue(joined(world, westTank, southTank), "The tanks are not one island through the racks");
 

@@ -40,6 +40,7 @@
   "message.icheme.pipe_laying.anchor.face_taken": "Another pipe already leaves the rack through that face",
   "message.icheme.pipe_laying.anchor.lane_size": "That size does not fit the rack there: a rack pipe continues at its own width, leaves no wider, and enters at least as wide as the pipe it leaves",
   "message.icheme.pipe_laying.anchor.transition": "A pipe beside a rack pipe keeps two connections at most, and no fitting or gauge",
+  "message.icheme.pipe_laying.anchor.slot_taken": "No room for this size in that slot of the rack: aim at a free slot on the tier",
   "message.icheme.pipe_laying.port": "%s nozzle · %s · fits up to %s m",
   "message.icheme.pipe_laying.port.free": "free",
   "message.icheme.pipe_laying.port.connected": "connected",

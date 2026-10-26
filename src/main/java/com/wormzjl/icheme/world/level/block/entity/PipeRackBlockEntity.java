@@ -46,11 +46,12 @@ import java.util.concurrent.ConcurrentHashMap;
  * lanes): a list {@code Lanes} of compounds, read by name and validated; a damaged lane, or one this cell's shape does
  * not take, is dropped from the copy, and the ledger's registration, the fact, puts it back at the next load where the
  * shape takes it. A lane's paints are facts only the copy holds: an absent paint reads bare, an absent secondary paint
- * reads the paint (as a laid pipe's does), and a damaged one is repaired to that, the lane kept. Format rack-2 added the
- * secondary paint, saved only when it differs from the paint; a rack-1 copy reads as it did.</p>
+ * reads the paint (as a laid pipe's does), and a damaged one is repaired to that, the lane kept. Format rack-3 added the
+ * secondary paint, saved only when it differs from the paint; a rack-1 copy reads as it did. (The label rack-2 was an
+ * earlier branch-only format, removed by RD9.)</p>
  */
 public final class PipeRackBlockEntity extends BlockEntity {
-    public static final String FORMAT = "rack-2";
+    public static final String FORMAT = "rack-3";
 
     /**
      * A lane's saved copy: its identity in the ledger, its option and width in the cell ({@link RackGeometry}), its arms

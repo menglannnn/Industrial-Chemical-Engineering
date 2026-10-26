@@ -60,7 +60,7 @@ import java.util.Set;
  */
 @EventBusSubscriber(modid = IChemE.MOD_ID, value = Dist.CLIENT)
 public final class PipeLayingClient {
-    private static final Object START_SLOT = "icheme:pipe_start", ROUTE_SLOT = "icheme:pipe_route";
+    private static final Object START_SLOT = "icheme:pipe_start", ROUTE_SLOT = "icheme:pipe_route", AIM_SLOT = "icheme:pipe_aim";
     /** A pipe block is one box to outline, a lane at most three legs. */
     private static final Object[] REMOVE_SLOTS = {"icheme:pipe_remove", "icheme:pipe_remove_arm", "icheme:pipe_remove_leg"};
     private static final int START_COLOUR = 0x55FF55, REFUSED_COLOUR = 0xFF5555, CONNECTED_COLOUR = 0x808080, OPEN_COLOUR = 0xFFDD33, FREE_COLOUR = 0x55FF55;
@@ -80,8 +80,13 @@ public final class PipeLayingClient {
     private record Plan(PipeAnchor.Click end, @Nullable PipeAnchor anchor, PipeRoute.Result route, @Nullable Component refusal, int[] joints, int[] facings, int[] arms) {
     }
 
+    /** The slot aimed on a rack's tier before a click ({@link PipeAnchor#aimed}): its cell, frame and lane, the face the line passes through, and whether it is refused. */
+    private record Slot(BlockPos cell, RackGeometry.Rack frame, RackGeometry.Lane lane, int through, boolean refused) {
+    }
+
     private static @Nullable Start start;
     private static @Nullable Plan plan;
+    private static @Nullable Slot slot;
     private static boolean armed = true;
     private static int age;
     /** The outliner slots of the marks shown last tick: ports, open ends and an aimed rack's free slots. */
@@ -123,7 +128,7 @@ public final class PipeLayingClient {
         }
         if (hit == null) return;
         if (start == null) {
-            var resolved = PipeAnchor.resolve(mc.level, hit);
+            var resolved = PipeAnchor.resolve(mc.level, hit, PipeSizes.outside(settingsDiameter(player)));
             var refusal = resolved.anchor() == null ? resolved.refusal() : resolved.anchor().refuses(PipeSizes.outside(settingsDiameter(player)));
             if (refusal != null) {
                 say(player, PipeLaying.message("anchor." + name(refusal)));
@@ -154,6 +159,7 @@ public final class PipeLayingClient {
         var outliner = Outliner.getInstance();
         if (!mc.options.keyUse.isDown()) armed = true;
         if (player == null || mc.level == null || !holding(player)) {
+            slot = null;
             if (start != null || plan != null || !markSlots.isEmpty()) {
                 start = null;
                 plan = null;
@@ -171,9 +177,10 @@ public final class PipeLayingClient {
             say(player, PipeLaying.message("dropped"));
         }
         var hit = mc.screen == null ? aimed(mc) : null;
+        double diameter = settingsDiameter(player);
         if (start != null) {
             if (hit == null) plan = null;
-            else if (plan == null || !same(mc.level, plan.end, hit) || age % RECHECK_TICKS == 0) plan = plan(mc.level, hit, settingsDiameter(player));
+            else if (plan == null || !same(mc.level, plan.end, hit, PipeSizes.outside(diameter)) || age % RECHECK_TICKS == 0) plan = plan(mc.level, hit, diameter);
             outliner.showAABB(START_SLOT, new AABB(start.anchor.cell())).colored(START_COLOUR).lineWidth(1 / 16F);
             if (plan != null && plan.refusal != null)
                 outliner.showLine(ROUTE_SLOT, start.anchor.cell().getCenter(), (plan.anchor != null ? plan.anchor.cell() : plan.end.clicked()).getCenter()).colored(REFUSED_COLOUR).lineWidth(1 / 16F);
@@ -193,29 +200,91 @@ public final class PipeLayingClient {
             var label = portLabel(mc.level, hit);
             if (label != null) say(player, label);
         }
+        // Before each click, the slot aimed on a rack's tier: red where it is refused, or where the route to it is.
+        boolean routeRefused = start != null && plan != null && plan.refusal != null;
+        slot = hit != null && !player.isShiftKeyDown() && (start == null || plan == null || routeRefused) ? slot(mc.level, hit, PipeSizes.outside(diameter), routeRefused) : null;
         var shown = new HashSet<Object>();
         ports(mc.level, player, outliner, shown);
         openEnds(mc.level, player, outliner, shown);
         freeSlots(mc.level, hit, outliner, shown);
+        if (slot != null) {
+            var aimed = slot;
+            shown.add(AIM_SLOT);
+            outliner.showAABB(AIM_SLOT, square(aimed.cell, Direction.values()[aimed.through], RackGeometry.facePoint(aimed.frame, aimed.lane, aimed.through), Math.min(.45, aimed.lane.diameter() / 2 + .04)))
+                    .colored(aimed.refused ? REFUSED_COLOUR : START_COLOUR).lineWidth(1 / 32F);
+        }
         for (var slot : markSlots) if (!shown.contains(slot)) outliner.remove(slot);
         markSlots = shown;
     }
 
+    /**
+     * The click a use makes (owner 2026-10-26, "Aim on the tier"): where the view ray crosses the tier of the first rack
+     * cell it crosses it in, up to the block it hits (a rack's frame is open, so aiming through it still picks the rack),
+     * unless the block it hits is that rack and the hit is on a lane; else the block it hits. The tier point is sent just
+     * under the beams' top, where no lane resting on them is picked.
+     */
     private static @Nullable PipeAnchor.Click aimed(Minecraft mc) {
-        if (!(mc.hitResult instanceof BlockHitResult hit) || hit.getType() != HitResult.Type.BLOCK) return null;
-        return new PipeAnchor.Click(hit.getBlockPos(), hit.getDirection(), hit.getLocation().subtract(Vec3.atLowerCornerOf(hit.getBlockPos())));
+        var hit = mc.hitResult instanceof BlockHitResult block && block.getType() == HitResult.Type.BLOCK ? block : null;
+        var vanilla = hit == null ? null : new PipeAnchor.Click(hit.getBlockPos(), hit.getDirection(), hit.getLocation().subtract(Vec3.atLowerCornerOf(hit.getBlockPos())));
+        var player = mc.player;
+        if (player == null || mc.level == null) return vanilla;
+        var eye = player.getEyePosition();
+        var look = player.getViewVector(1);
+        double reach = hit != null ? hit.getLocation().distanceTo(eye) : player.blockInteractionRange();
+        double[] from = {eye.x, eye.y, eye.z}, along = {look.x, look.y, look.z}, next = new double[3], delta = new double[3];
+        int[] at = {(int) Math.floor(eye.x), (int) Math.floor(eye.y), (int) Math.floor(eye.z)}, step = new int[3];
+        for (int a = 0; a < 3; a++) {
+            step[a] = along[a] > 0 ? 1 : -1;
+            delta[a] = along[a] == 0 ? Double.MAX_VALUE : 1 / Math.abs(along[a]);
+            next[a] = along[a] == 0 ? Double.MAX_VALUE : (along[a] > 0 ? at[a] + 1 - from[a] : from[a] - at[a]) * delta[a];
+        }
+        var entered = Direction.UP;
+        for (double t = 0; t <= reach + 1e-6; ) {
+            var cell = new BlockPos(at[0], at[1], at[2]);
+            boolean last = hit != null && cell.equals(hit.getBlockPos());
+            if (mc.level.getBlockEntity(cell) instanceof PipeRackBlockEntity rack) {
+                if (last && onLane(rack, vanilla)) return vanilla;
+                double tier = rack.frame().beam() * LineGeometry.OFFSET, crossing = along[1] == 0 ? -1 : (cell.getY() + tier - eye.y) / along[1];
+                if (crossing >= 0) {
+                    double x = eye.x + crossing * look.x - cell.getX(), z = eye.z + crossing * look.z - cell.getZ();
+                    if (x >= 0 && x <= 1 && z >= 0 && z <= 1) return new PipeAnchor.Click(cell, entered, new Vec3(x, tier - LineGeometry.OFFSET, z));
+                }
+            }
+            if (last) break;
+            int a = next[0] < next[1] ? (next[0] < next[2] ? 0 : 2) : (next[1] < next[2] ? 1 : 2);
+            t = next[a];
+            next[a] += delta[a];
+            at[a] += step[a];
+            entered = Direction.values()[2 * ((a + 2) % 3) + (step[a] > 0 ? 0 : 1)];
+        }
+        return vanilla;
     }
 
-    /** The rack lane and arm a click picks, as one number; -1 off a lane, 0 on any other block. */
-    private static int lanePick(Level level, PipeAnchor.Click click) {
-        if (!(level.getBlockEntity(click.clicked()) instanceof PipeRackBlockEntity rack)) return 0;
+    /** Whether {@code click} lands on a lane of {@code rack}. */
+    private static boolean onLane(PipeRackBlockEntity rack, @Nullable PipeAnchor.Click click) {
+        return click != null && rack.pick(click.local().x, click.local().y, click.local().z).lane() >= 0;
+    }
+
+    /** What a click picks on a rack: its lane and arm, or the slot it aims at on the tier for a line of {@code outside}; null on any other block. */
+    private static @Nullable Object rackPick(Level level, PipeAnchor.Click click, double outside) {
+        if (!(level.getBlockEntity(click.clicked()) instanceof PipeRackBlockEntity rack)) return null;
         var pick = rack.pick(click.local().x, click.local().y, click.local().z);
-        return pick.lane() < 0 ? -1 : pick.lane() * 8 + pick.face();
+        return pick.lane() >= 0 ? pick : PipeAnchor.aimed(rack, click.local(), outside);
     }
 
-    /** Two clicks that give the same anchor: the same block and face, and on a rack the same lane and arm. */
-    private static boolean same(Level level, PipeAnchor.Click a, PipeAnchor.Click b) {
-        return a.clicked().equals(b.clicked()) && a.face() == b.face() && lanePick(level, a) == lanePick(level, b);
+    /** Two clicks that give the same anchor: the same block and face, and on a rack the same lane and arm, or the same aimed slot. */
+    private static boolean same(Level level, PipeAnchor.Click a, PipeAnchor.Click b, double outside) {
+        return a.clicked().equals(b.clicked()) && a.face() == b.face() && java.util.Objects.equals(rackPick(level, a, outside), rackPick(level, b, outside));
+    }
+
+    /** The slot {@code click} aims at on a rack's tier, as a ghost lane open at its far face; red where it does not fit, or where {@code refused}. */
+    private static @Nullable Slot slot(Level level, PipeAnchor.Click click, double outside, boolean refused) {
+        if (!(level.getBlockEntity(click.clicked()) instanceof PipeRackBlockEntity rack) || onLane(rack, click)) return null;
+        var aim = PipeAnchor.aimed(rack, click.local(), outside);
+        if (aim == null) return null;
+        int code = PipeSizes.code(outside), width = RackGeometry.width(PipeSizes.outsideOf(code));
+        var lane = new RackGeometry.Lane(aim.option(), width, 1 << aim.through() | 1 << aim.open(), 1 << aim.through(), code);
+        return new Slot(click.clicked(), rack.frame(), lane, aim.through(), refused || !aim.fits());
     }
 
     /** The boxes of what a dismantle at {@code click} removes, in world coordinates: a pipe block or a rack lane's arms; null for anything else. */
@@ -240,13 +309,13 @@ public final class PipeLayingClient {
     private static Plan plan(Level level, PipeAnchor.Click end, double diameter) {
         var none = new int[0];
         var nothing = new PipeRoute.Result(List.of(), List.of(), null);
-        var resolved = PipeAnchor.resolve(level, end);
+        var resolved = PipeAnchor.resolve(level, end, PipeSizes.outside(diameter));
         if (resolved.anchor() == null) return new Plan(end, null, nothing, PipeLaying.message("anchor." + name(resolved.refusal())), none, none, none);
         var from = start.anchor;
         for (var anchor : List.of(from, resolved.anchor()))
             if (anchor.refuses(PipeSizes.outside(diameter)) != null)
                 return new Plan(end, resolved.anchor(), nothing, PipeLaying.message("anchor." + name(anchor.refuses(PipeSizes.outside(diameter)))), none, none, none);
-        int heading = from.heading(resolved.anchor().end().cell());
+        int heading = from.leaving();
         var route = PipeRoute.search(from.end(), heading, resolved.anchor().end(), PipeSizes.outside(diameter), PipeAnchor.space(level), PipeRoute.Limits.DEFAULT);
         if (!route.found()) return new Plan(end, resolved.anchor(), route, PipeLaying.message("route." + name(route.refusal())), none, none, none);
         var joints = PipeRoute.laidJoints(route.cells(), from.end(), resolved.anchor().end());
@@ -413,13 +482,17 @@ public final class PipeLayingClient {
         return new AABB(low[0], low[1], low[2], high[0], high[1], high[2]).move(cell);
     }
 
-    /** The found route drawn translucent at the tool's size, as the pipe blocks it would place are drawn. */
+    /**
+     * The found route drawn translucent at the tool's size, as the pipe blocks it would place are drawn; before a click,
+     * the slot aimed on a rack's tier, red where it is refused.
+     */
     @SubscribeEvent
     public static void render(RenderLevelStageEvent event) {
-        var shown = plan;
-        if (event.getStage() != RenderLevelStageEvent.Stage.AFTER_PARTICLES || start == null || shown == null || shown.refusal != null) return;
+        if (event.getStage() != RenderLevelStageEvent.Stage.AFTER_PARTICLES) return;
+        var shown = start != null && plan != null && plan.refusal == null ? plan : null;
+        var aimed = slot;
         var mc = Minecraft.getInstance();
-        if (mc.player == null) return;
+        if (mc.player == null || shown == null && aimed == null) return;
         var sprite = mc.getModelManager().getAtlas(InventoryMenu.BLOCK_ATLAS).getSprite(PLATE);
         var camera = event.getCamera().getPosition();
         var pose = event.getPoseStack();
@@ -430,7 +503,8 @@ public final class PipeLayingClient {
         // A painted line's ghost shows its paint on the neutral plate sprite, as a vessel's ghost does; a bare one the ghost blue.
         int paint = PipeLayingToolItem.paint(tool(mc.player.getMainHandItem()) ? mc.player.getMainHandItem() : mc.player.getOffhandItem());
         int colour = paint == Paint.BARE ? GHOST : Paint.tint(paint);
-        var cells = shown.route.cells();
+        if (aimed != null) ghost(consumer, pose, camera, sprite, aimed.cell, RackGeometry.lane(aimed.frame, aimed.lane), aimed.refused ? REFUSED_COLOUR : colour);
+        var cells = shown == null ? List.<PipeRoute.Cell>of() : shown.route.cells();
         for (int i = 0; i < cells.size(); i++) {
             var cell = cells.get(i);
             int option = shown.route.options().get(i);
@@ -450,23 +524,29 @@ public final class PipeLayingClient {
                 }
                 polygons = LineGeometry.polygons(new LineGeometry.Key(TopologyCompiler.Kind.PIPE, shown.facings[i], shown.joints[i], code, faces, 0, false, offsets));
             }
-            pose.pushPose();
-            pose.translate(cell.x() - camera.x, cell.y() - camera.y, cell.z() - camera.z);
-            var last = pose.last();
-            for (var polygon : polygons) {
-                double[] p = polygon.positions(), uv = polygon.uvs(), n = polygon.normals();
-                // A fan of quads, as the chunk model bakes it; a last single triangle repeats its final vertex.
-                for (int first = 1; first + 1 < polygon.size(); first += 2)
-                    for (int corner : new int[]{0, first, first + 1, Math.min(first + 2, polygon.size() - 1)})
-                        consumer.addVertex(last, (float) p[3 * corner], (float) p[3 * corner + 1], (float) p[3 * corner + 2])
-                                .setColor(colour >> 16 & 0xFF, colour >> 8 & 0xFF, colour & 0xFF, ALPHA)
-                                .setUv(sprite.getU((float) uv[2 * corner]), sprite.getV((float) uv[2 * corner + 1]))
-                                .setOverlay(OverlayTexture.NO_OVERLAY).setLight(LightTexture.FULL_BRIGHT)
-                                .setNormal(last, (float) n[3 * corner], (float) n[3 * corner + 1], (float) n[3 * corner + 2]);
-            }
-            pose.popPose();
+            ghost(consumer, pose, camera, sprite, new BlockPos(cell.x(), cell.y(), cell.z()), polygons, colour);
         }
         buffers.endBatch(TYPE);
+    }
+
+    /** One cell's polygons drawn translucent in {@code colour} on the plate sprite, at {@code cell}. */
+    private static void ghost(com.mojang.blaze3d.vertex.VertexConsumer consumer, com.mojang.blaze3d.vertex.PoseStack pose, Vec3 camera, net.minecraft.client.renderer.texture.TextureAtlasSprite sprite,
+                              BlockPos cell, List<com.wormzjl.icheme.science.equipment.Mesh.Polygon> polygons, int colour) {
+        pose.pushPose();
+        pose.translate(cell.getX() - camera.x, cell.getY() - camera.y, cell.getZ() - camera.z);
+        var last = pose.last();
+        for (var polygon : polygons) {
+            double[] p = polygon.positions(), uv = polygon.uvs(), n = polygon.normals();
+            // A fan of quads, as the chunk model bakes it; a last single triangle repeats its final vertex.
+            for (int first = 1; first + 1 < polygon.size(); first += 2)
+                for (int corner : new int[]{0, first, first + 1, Math.min(first + 2, polygon.size() - 1)})
+                    consumer.addVertex(last, (float) p[3 * corner], (float) p[3 * corner + 1], (float) p[3 * corner + 2])
+                            .setColor(colour >> 16 & 0xFF, colour >> 8 & 0xFF, colour & 0xFF, ALPHA)
+                            .setUv(sprite.getU((float) uv[2 * corner]), sprite.getV((float) uv[2 * corner + 1]))
+                            .setOverlay(OverlayTexture.NO_OVERLAY).setLight(LightTexture.FULL_BRIGHT)
+                            .setNormal(last, (float) n[3 * corner], (float) n[3 * corner + 1], (float) n[3 * corner + 2]);
+        }
+        pose.popPose();
     }
 
     private static void say(LocalPlayer player, Component message) {

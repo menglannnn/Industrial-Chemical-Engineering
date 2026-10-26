@@ -220,6 +220,53 @@ class PipeRouteTest {
     }
 
     @Test
+    void anAimedStartKeepsItsSlotAndLeavesThroughItsFace() {
+        // Racks facing east along x 1 to 10 at z 0; the start aimed in cell 5 on position 2, through its west face, open at
+        // its east: the line runs back west along the run on position 2 to an end past the run.
+        var rooms = row(1, 10, 0);
+        int slot = RackGeometry.option(2, RackGeometry.TIER);
+        var start = new End(new Cell(5, 0, 0), -1, -1, slot, WEST, EAST);
+        var end = new End(new Cell(-2, 0, 0), -1);
+        var route = search(start, WEST, end, with(rooms));
+        assertTrue(route.found(), "" + route.refusal());
+        assertEquals(new Cell(4, 0, 0), route.cells().get(1), "through the west face");
+        assertTrue(lanes(route).stream().allMatch(option -> option == slot), "on position 2 all along: " + route.options());
+        assertEquals(1 << EAST | 1 << WEST, PipeRoute.arms(route.cells(), start, WEST, end)[0]);
+        assertEquals(1 << WEST, PipeRoute.laidJoints(route.cells(), start, end)[0], "open at the east: no joint there");
+        assertNull(PipeRoute.check(route.cells(), route.options(), start, end, 128));
+        assertEquals(-1, PipeRoute.blocked(route.cells(), route.options(), start, WEST, end, SMALL, with(rooms)));
+        var moved = new ArrayList<>(route.options());
+        moved.set(0, RackGeometry.option(1, RackGeometry.TIER));
+        assertEquals(Refusal.BROKEN, PipeRoute.check(route.cells(), moved, start, end, 128), "another slot than the aimed one");
+        // Through the east face, the line leaves east first, whatever lies west.
+        var east = new End(new Cell(5, 0, 0), -1, -1, slot, EAST, WEST);
+        var around = search(east, EAST, end, with(rooms));
+        assertTrue(around.found() && around.cells().get(1).equals(new Cell(6, 0, 0)), "through the east face: " + around.cells());
+        assertThrows(IllegalArgumentException.class, () -> search(east, WEST, end, with(rooms)), "a heading that does not leave the open face");
+    }
+
+    @Test
+    void anAimedEndIsEnteredThroughItsFaceOnItsSlot() {
+        var rooms = row(1, 10, 0);
+        int slot = RackGeometry.option(1, RackGeometry.TIER);
+        var start = new End(new Cell(13, 0, 0), -1);
+        var fromEast = new End(new Cell(5, 0, 0), -1, -1, slot, EAST, WEST);
+        var route = search(start, WEST, fromEast, with(rooms));
+        assertTrue(route.found(), "" + route.refusal());
+        int last = route.cells().size() - 1;
+        assertEquals(slot, route.options().get(last));
+        assertEquals(new Cell(6, 0, 0), route.cells().get(last - 1), "arrives through the east face");
+        assertEquals(1 << EAST, PipeRoute.laidJoints(route.cells(), start, fromEast)[last], "open at the west");
+        assertNull(PipeRoute.check(route.cells(), route.options(), start, fromEast, 128));
+        // Aimed through its west face, the line comes round to enter from the west.
+        var fromWest = new End(new Cell(5, 0, 0), -1, -1, slot, WEST, EAST);
+        var round = search(start, WEST, fromWest, with(rooms));
+        assertTrue(round.found(), "" + round.refusal());
+        assertEquals(new Cell(4, 0, 0), round.cells().get(round.cells().size() - 2), "arrives through the west face: " + round.cells());
+        assertEquals(Refusal.BROKEN, PipeRoute.check(route.cells(), route.options(), start, fromWest, 128), "a route into the other face");
+    }
+
+    @Test
     void racksInLineJoinWhateverTheirFacingAndTheLineKeepsItsPlace() {
         // Facings alternate east and west along x: a lane's option flips with the facing, its place in the world stays.
         var rooms = new HashMap<Cell, Room>();

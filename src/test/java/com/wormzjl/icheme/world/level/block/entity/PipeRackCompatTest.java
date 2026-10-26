@@ -23,7 +23,7 @@ class PipeRackCompatTest {
     private static final int DOWN = 0, UP = 1, NORTH = 2, SOUTH = 3, WEST = 4, EAST = 5;
 
     /**
-     * A straight lane on position 0, a 10" riser on positions 1 and 2 painted RAL 5015 with RAL 3000 flanges (rack-2), and
+     * A straight lane on position 0, a 10" riser on positions 1 and 2 painted RAL 5015 with RAL 3000 flanges (rack-3), and
      * an open crossing above the tier.
      */
     static List<Lane> corpusLanes() {
