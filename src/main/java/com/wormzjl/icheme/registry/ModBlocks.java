@@ -38,6 +38,7 @@ public final class ModBlocks {
                     .strength(3.5F)
                     .sound(SoundType.METAL)
                     .requiresCorrectToolForDrops()
+                    .noOcclusion()
     );
 
     // Parametric vessels (batch 2026-10-15-custom-equipment-rendering): placed whole by EquipmentStructure, no items, no drops.
