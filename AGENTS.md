@@ -4,10 +4,14 @@ These rules apply to every agent working in this repository (Claude, Codex, suba
 
 ## Saves and data formats
 
-- Do no compatibility work. Test a breaking change to a save format, checkpoint, wire protocol or material data set on a fresh world.
-- Do not test against old worlds. Do not write migrations, absent-field normalisation or legacy-save test gates.
-- New formats validate what they read. They round-trip clocks, material, pending events and any optimisation state they carry.
-- Exception, equipment layouts only: after a placed equipment structure loads, rebuild it to the current layout if an older layout of its shape placed its cells (`EquipmentRefresh`, `EquipmentStructure.refreshLater`, gate `EquipmentRefreshTest`). The rebuild keeps the structure's origin, paint and nozzle sizes, and a drum's registration. It never overwrites another block.
+- Saved fluid and equipment data holds facts and state. Facts are what the player built and put in: device registrations and settings, node contents, captured solids, ledger totals, the world clock, accessories, equipment shapes, paint and nozzle sizes. State is what the engine can compute again: solved intervals, junction seeds, certificates, cadence, caches, pending events.
+- A code or data change never discards a fact. State formats change freely: a mismatch drops the state, and the engine rebuilds it on its schedule.
+- Fact and shape fields are append-only. A new field has a default equal to the behaviour before the field existed. A field never changes meaning or unit. Enums are saved by name; a renamed or removed constant gets an alias.
+- After a material or model change, contents keep their amounts and temperature. An engine job recomputes energy and pressure. The ledger books the energy difference and every removed component; the island's status line names them.
+- After a placed equipment structure loads, rebuild it to the current layout if another layout placed its cells (`EquipmentRefresh`, `EquipmentStructure.refreshLater`). Keep nozzle pipe blocks in place first, then cells. Keep the origin, paint, nozzle sizes and the fluid identity. Never overwrite another block. Remove a structure whose kind no longer exists whole, with every one of its cells.
+- Every format validates what it reads and round-trips what it carries. A damaged facts section refuses the world and leaves its files untouched.
+- At every facts-schema or shape-field change, add a corpus image under `src/test/resources/compat/`. The gates read every image. Do not test against player worlds.
+- Other formats (wire protocols, the column calculator block): no compatibility work. Test a breaking change on a fresh world. Do not write migrations for them.
 
 ## Engine schedule and player-facing updates
 
