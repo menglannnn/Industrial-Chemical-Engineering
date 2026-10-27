@@ -15,6 +15,10 @@ All notable changes to Industrial Chemical Engineering (IChemE, formerly CreateC
 
 ## [Unreleased]
 
+### Changed
+
+- Distillation column sump sized from engineering references (commit `a0ab6b50`; batch `2026-10-27-column-sump`, survey `COLUMN_SUMP_SURVEY.md`, review `COLUMN_SUMP_REVIEW.md`): the space from the bottom tangent to the bottom tray is the stack of the low level, the level span, the reboiler return and its clearances, to the next whole metre: 3 m up to D 1.5 m and 4 m up to D 8 m (was 2 m up to D 4 m, then D/2), half the diameter beyond as before; placed columns under 8 m refresh taller, their trays, side nozzles and platforms up to two blocks higher; ten more short designs find a row for every nozzle.
+
 ## [0.15.0] - 2026-10-27
 
 ### Added
